@@ -505,4 +505,4 @@ class BackendApi():
         #self.socket.join()
 
     def get_root_token(self):
-        return self.jwt_auth.get_auth_token({'name': 'root', 'method': 'root'})
+        return self.jwt_auth.get_auth_token({'name': 'root', 'method': 'root', 'capabilities': ['rw_all']})

@@ -1,8 +1,8 @@
 <template>
   <div class="app d-flex flex-row align-items-center" style="min-height:100vh">
-    <div class="container">
-      <b-row class="justify-content-center p-2">
-        <h1>Login to Snooze</h1>
+    <div class="container pb-5">
+      <b-row class="justify-content-center px-5 pb-5">
+        <h1><img src="img/logo.png" :height="160"></h1>
       </b-row>
       <b-row class="justify-content-center">
         <b-col md="8">
