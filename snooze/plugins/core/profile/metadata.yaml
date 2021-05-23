@@ -1,0 +1,16 @@
+---
+name: 'Profile'
+desc: 'An endpoint to store user profile'
+primary: name,method
+class: ''
+routes:
+  '/profile/{category}':
+    desc: ''
+    class: ProfileRoute
+  '/profile/{category}/{search}':
+    desc: ''
+    class: ProfileRoute
+  '/profile_self/{category}':
+    desc: ''
+    class: ProfileSelfRoute
+    authorization_policy: 'user'

@@ -1,0 +1,64 @@
+# vim:sw=2:ts=2:sts=2:
+---
+- note: Tarpited log
+  plugin: syslog
+  timestamp: 2019-01-01T00:00:00
+  host: myhost01.example.com
+  process: sshd
+  severity: info
+  message: 'pam_unix(sshd:session): session opened for user guillaume.ludinard by (uid=0)'
+  sshd:
+    sub_process: pam_unix
+    user: guillaume.ludinard
+    uid: 0
+  pid: 1234
+  filters:
+    - sshd
+    - sshd/pam_unix
+    - sshd/pam_unix/sshd:session
+  tarpit: true
+
+- note: snoozed log
+  plugin: syslog
+  timestamp: 2019-01-01T00:00:00
+  host: myhost01.example.com
+  process: sshd
+  severity: info
+  message: 'pam_unix(sshd:session): session opened for user guillaume.ludinard by (uid=0)'
+  sshd:
+    sub_process: pam_unix
+    user: guillaume.ludinard
+    uid: 0
+  pid: 1234
+  filters:
+    - sshd
+    - sshd/pam_unix
+    - sshd/pam_unix/sshd:session
+  snooze: true
+
+- note: notified log
+  plugin: syslog
+  timestamp: 2019-01-01T00:00:00
+  host: myhost01.example.com
+  process: sshd
+  severity: info
+  message: 'pam_unix(sshd:session): session opened for user guillaume.ludinard by (uid=0)'
+  sshd:
+    sub_process: pam_unix
+    user: guillaume.ludinard
+    uid: 0
+  pid: 1234
+  filters:
+    - sshd
+    - sshd/pam_unix
+    - sshd/pam_unix/sshd:session
+  notifications:
+    - mail_to_mon
+
+- note: other type of log
+  plugin: traps
+  timestamp: 2019-01-02T00:00:00
+  host: myswitch01.example.com
+  oids:
+    MY-MIB::description: 'Alert'
+    MY-MIB::alert: 'blah blah'

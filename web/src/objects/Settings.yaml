@@ -1,0 +1,78 @@
+---
+tabs:
+    -
+        key: 'general'
+        name: 'General'
+        callback: 'general_reload'
+    -
+        key: 'ldap_auth'
+        name: 'LDAP'
+        callback: 'ldap_reload'
+
+form:
+    general:
+        local_users_enabled:
+            display_name: Local Users
+            component: Radio
+            options:
+                - text: Enabled
+                  value: true
+                - text: Disabled
+                  value: false
+            description: 'Enable or disable Local Users Authentication'
+        default_auth_backend:
+            display_name: Default Authentication
+            component: AuthBackend
+            description: 'Default Authentication backend'
+    ldap_auth:
+        enabled:
+            display_name: LDAP Authentication
+            component: Radio
+            options:
+                - text: Enabled
+                  value: true
+                - text: Disabled
+                  value: false
+            description: 'Enable or disable LDAP Authentication'
+        sweb_title_con: 'Connection settings'
+        host:
+            display_name: Host
+            component: String
+            description: 'LDAP host (eg. ldaps://example.com)'
+        port:
+            display_name: Port
+            component: String
+            description: 'LDAP server port (389 by default if no SSL, 636 if SSL is enabled)'
+        bind_dn:
+            display_name: Bind DN
+            component: String
+            description: 'Distinguished name to bind to the LDAP server (eg. CN=john.doe,OU=users,DC=example,DC=com)'
+        bind_password:
+            display_name: Bind DN password
+            component: Password
+            description: 'Password for the Bind DN user'
+        base_dn:
+            display_name: User base DN
+            component: String
+            description: 'LDAP users location. Multiple DNs can be added if separated by semicolons'
+        sweb_title_user: 'User settings'
+        user_filter:
+            display_name: User base filter
+            component: String
+            description: 'LDAP search filter for the base DN (eg. (objectClass=posixAccount))'
+        display_name_attribute:
+            display_name: Display name attribute
+            component: String
+            description: 'User attribute that displays the user real name. Usually "cn" or "displayName"'
+        email_attribute:
+            display_name: Email attribute
+            component: String
+            description: 'User attribute that displays the user email adress. Usually "mail"'
+        member_attribute:
+            display_name: Member attribute
+            component: String
+            description: 'Member attribute that displays groups membership. Usually "memberof"'
+        #test_connection:
+        #    display_name: Test LDAP
+        #    component: Button
+        #    description: 'Test LDAP connection'

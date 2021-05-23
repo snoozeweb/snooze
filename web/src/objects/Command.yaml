@@ -1,0 +1,40 @@
+---
+endpoint: command
+fields:
+    -
+        label: Name
+        key: name
+        sortable: true
+        thStyle: {width: '20%'}
+    -
+        label: Script
+        key: script
+        thStyle: {width: '35%'}
+    -
+        label: Arguments
+        key: arguments
+        thStyle: {width: '35%'}
+        type: array
+    -
+        label: ''
+        key: button
+        sortable: false
+        tdClass: ['align-middle', 'text-center']
+        thClass: 'text-center'
+        unsearchable: true
+form:
+    name:
+        display_name: Name
+        component: String
+        description: 'Name of the notification entry'
+    script:
+        display_name: Script path
+        component: String
+        description: 'Fully qualified path to the command to execute'
+    arguments:
+        display_name: Script arguments
+        component: Arguments
+        description: 'List of arguments to provide to the script'
+    comment:
+        display_name: Comment
+        component: Text

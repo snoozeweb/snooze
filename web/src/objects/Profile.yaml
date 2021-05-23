@@ -1,0 +1,27 @@
+---
+tabs:
+    -
+        key: 'general'
+        name: 'General'
+        callback: 'reload_profile'
+    -
+        key: 'preferences'
+        name: 'Preferences'
+
+form:
+    general:
+        display_name:
+            display_name: Display Name
+            component: String
+            description: 'Real name'
+        email:
+            display_name: Email
+            component: String
+            description: 'Email address'
+    preferences:
+        theme:
+            display_name: Theme
+            component: Selector
+            options:
+                - default
+            description: 'Theme'

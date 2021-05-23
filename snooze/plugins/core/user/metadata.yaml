@@ -1,0 +1,7 @@
+---
+name: 'User'
+desc: 'An endpoint to store users'
+primary: name,method
+duplicate_policy: 'reject'
+class: UserRoute
+check_permissions: True

@@ -1,0 +1,63 @@
+<template>
+  <div>
+    <b-row>
+      <b-col cols=0 md=1>
+        From:
+      </b-col>
+      <b-col>
+        <VueCtkDateTimePicker id="fromDate" v-model="fromDate" :minute-interval=5 output-format="YYYY-MM-DDTHH:mm" />
+      </b-col>
+    </b-row>
+    <b-row class="pt-1">
+      <b-col cols=0 md=1>
+        Until:
+      </b-col>
+      <b-col>
+        <VueCtkDateTimePicker id="untilDate" v-model="untilDate" :minute-interval=5 output-format="YYYY-MM-DDTHH:mm" />
+      </b-col>
+    </b-row>
+  </div>
+</template>
+
+<script>
+
+import Base from './Base.vue'
+import VueCtkDateTimePicker from 'vue-ctk-date-time-picker'
+import 'vue-ctk-date-time-picker/dist/vue-ctk-date-time-picker.css';
+import moment from 'moment'
+
+export default {
+  extends: Base,
+  name: 'DateTime',
+  components: {
+    VueCtkDateTimePicker,
+  },
+  props: {
+    value: {
+      type: Object,
+      default: function () {
+        return {'from': moment(), 'until': ''}
+      }
+    },
+    options: {},
+  },
+  data() {
+    return {
+      fromDate: this.value['from'],
+      untilDate: this.value['until'],
+    }
+  },
+  watch: {
+    datavalue () {
+      this.$emit('input', this.datavalue)
+    },
+    fromDate: function () {
+      this.$emit('input', {'from': this.fromDate, 'until': this.untilDate})
+    },
+    untilDate: function () {
+      this.$emit('input', {'from': this.fromDate, 'until': this.untilDate})
+    }
+  }
+}
+
+</script>

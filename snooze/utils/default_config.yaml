@@ -1,0 +1,18 @@
+---
+api:
+    type: falcon
+
+# Plugins without process
+core_plugin:
+    - record
+
+# Plugin used for processing records
+# Order matters
+process_plugins:
+    - rule
+    - snooze
+    - notification
+
+# Backend database configuration
+database:
+    type: file

@@ -1,0 +1,4 @@
+---
+name: 'Rule'
+desc: 'Rule desc'
+manage_db: True

@@ -1,0 +1,12 @@
+---
+colors:
+    root: danger
+    ldap: primary
+    local: warning
+    rw_all: danger
+    ro_all: primary
+    critical: danger
+    warning: warning
+    admin: danger
+    user: info
+    test: info

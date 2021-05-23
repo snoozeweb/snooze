@@ -1,0 +1,40 @@
+---
+endpoint: rule
+fields:
+    -
+        key: name
+        sortable: true
+        thStyle: {width: '20%'}
+    -
+        key: condition
+        sortable: false
+        thStyle: {width: '40%'}
+        type: array
+    -
+        key: actions
+        sortable: false
+        thStyle: {width: '30%'}
+        type: array
+    -
+        key: button
+        sortable: false
+        label: ''
+        tdClass: ['align-middle', 'text-center']
+        thClass: 'text-center'
+        unsearchable: true
+form:
+    name:
+        display_name: Name
+        component: String
+        description: Name of the notification entry
+    condition:
+        display_name: Condition
+        component: Condition
+        description: Condition which the notification will be triggered. Default to all the time
+    actions:
+        display_name: Actions
+        component: Action
+        description: Modify a record
+    comment:
+        display_name: Comment
+        component: Text

@@ -1,0 +1,27 @@
+python_version = "3.6"
+
+[packages]
+pymongo = "*"
+falcon = "*"
+falcon-auth = "*"
+PyJWT = "==1.7.1"
+Jinja2 = "*"
+PyYAML = "*"
+requests_unixsocket = "*"
+urllib3 = "*"
+tinydb = "*"
+pathlib = "*"
+click = "*"
+snooze = {editable = true, path = "."}
+
+[dev-packages]
+pytest = "*"
+pytest-cov = "*"
+pytest-data = "*"
+pytest-mongodb = "*"
+pytest-spec = "*"
+python-mimeparse = "*"
+pytest-sugar = "*"
+bandit = "*"
+pylint = "*"
+pytest-timeout = "*"

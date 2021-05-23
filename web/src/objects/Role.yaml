@@ -1,0 +1,43 @@
+---
+endpoint: role
+fields:
+    -
+        label: Name
+        key: name
+        sortable: true
+        thStyle: {width: '20%'}
+    -
+        label: Capabilities
+        key: capabilities
+        thStyle: {width: '25%'}
+        type: array
+    -
+        label: Groups
+        key: groups
+        thStyle: {width: '50%'}
+        type: array
+    -
+        label: ''
+        key: button
+        sortable: false
+        tdClass: ['align-middle', 'text-center']
+        thClass: 'text-center'
+        thStyle: {width: '5%'}
+        unsearchable: true
+form:
+    name:
+        display_name: Name
+        component: String
+        description: 'Name of the notification entry'
+    capabilities:
+        display_name: Capabilities
+        component: Capability
+        colorize: true
+        description: 'List of capabilities'
+    groups:
+        display_name: Groups
+        component: Field
+        description: 'List of groups provided by the authentication backend'
+    comment:
+        display_name: Comment
+        component: Text

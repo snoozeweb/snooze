@@ -1,0 +1,18 @@
+---
+api:
+   type: falcon
+core_plugins:
+   # Plugins without process
+   - record
+   - aggregate
+   - command
+   - settings
+   - profile
+   - user
+   - role
+process_plugins:
+   # Plugins with process (order matters)
+   - rule
+   - aggregaterule
+   - snooze
+   - notification

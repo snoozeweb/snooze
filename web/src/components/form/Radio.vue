@@ -1,0 +1,36 @@
+<template>
+  <div>
+    <b-form-group v-slot="{ ariaDescribedby }">
+      <b-form-radio-group :aria-describedby="ariaDescribedby" v-model="datavalue" :options="options" button-variant="outline-primary" buttons />
+    </b-form-group>
+  </div>
+</template>
+
+<script>
+
+import Base from './Base.vue'
+
+// Create a selector form
+export default {
+  extends: Base,
+  props: {
+    value: {},
+    // Object containing the `{value: display_name}` of the
+    // options of the selector
+    options: {
+      type: Array,
+    },
+  },
+  data() {
+    return {
+      datavalue: this.value
+    }
+  },
+  watch: {
+    datavalue () {
+      this.$emit('input', this.datavalue)
+    }
+  },
+}
+
+</script>

@@ -1,0 +1,2 @@
+default_auth_backend: local
+local_users_enabled: true

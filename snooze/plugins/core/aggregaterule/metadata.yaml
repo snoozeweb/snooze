@@ -1,0 +1,4 @@
+---
+name: 'Aggregate'
+desc: 'Aggregate desc'
+default_sorting: 'name'

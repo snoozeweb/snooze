@@ -1,0 +1,122 @@
+#!/usr/bin/python
+import os
+import json
+
+from importlib import import_module
+from wsgiref import simple_server
+
+from logging import getLogger
+log = getLogger('snooze.api')
+
+class BasicRoute():
+    def __init__(self, core, plugin = None, primary = None, duplicate_policy = 'update', authorization_policy = 'admin', check_permissions = False):
+        self.core = core
+        self.plugin = plugin
+        self.primary = primary
+        self.duplicate_policy = duplicate_policy
+        self.authorization_policy = authorization_policy
+        self.check_permissions = check_permissions
+
+    def search(self, collection, cond_or_uid=[], nb_per_page=0, page_number=1, order_by='', asc=True):
+        if type(cond_or_uid) is list:
+            return self.core.db.search(collection, cond_or_uid, nb_per_page, page_number, order_by, asc)
+        elif type(cond_or_uid) is str:
+            return self.core.db.search(collection, ['=', 'uid', cond_or_uid], nb_per_page, page_number, order_by, asc)
+        else:
+            return None
+
+    def delete(self, collection, cond_or_uid=[]):
+        if type(cond_or_uid) is list:
+            return self.core.db.delete(collection, cond_or_uid)
+        elif type(cond_or_uid) is str:
+            return self.core.db.delete(collection, ['=', 'uid', cond_or_uid])
+        else:
+            return None
+
+    def insert(self, collection, record):
+        return self.core.db.write(collection, record, self.primary, self.duplicate_policy)
+
+    def update(self, collection, record):
+        return self.core.db.write(collection, record, self.primary)
+
+    def get_roles(self, name, method):
+        if name and method:
+            log.debug("Getting roles for user {} ({})".format(name, method))
+            user_search = self.core.db.search('user', ['AND', ['=', 'name', name], ['=', 'method', method]])
+            if user_search['count'] > 0:
+                user = user_search['data'][0]
+                log.debug("User found in database: {}".format(user))
+                roles = list(set((user.get('roles') or []) + (user.get('static_roles') or [])))
+                log.debug("User roles: {}".format(roles))
+                return roles
+            else:
+                return []
+        else:
+            return []
+
+    def get_capabilities(self, roles):
+        if isinstance(roles, list) and len(roles) > 0:
+            log.debug("Getting capabilities for roles {}".format(roles))
+            query = ['=', 'name', roles[0]]
+            for role in roles[1:]:
+                query = ['OR', ['=', 'name', role], query]
+            role_search = self.core.db.search('role', query)
+            capabilities = []
+            if role_search['count'] > 0:
+                for role in role_search['data']:
+                    capabilities += role['capabilities']
+                capabilities = list(set(capabilities))
+                log.debug("List of capabilities: {}".format(capabilities))
+                return capabilities
+            else:
+                return []
+        else:
+            return []
+
+class Api():
+    def __init__(self, core):
+        self.conf = core.conf
+        self.plugins = core.plugins
+        self.core = core
+        self.api_type = self.conf.get('api', {}).get('type', 'falcon')
+        cls = import_module("snooze.api.{}".format(self.api_type))
+        self.__class__ = type('Api', (cls.BackendApi, Api), {})
+        self.init_api(core)
+        self.load_plugin_routes()
+
+    def load_plugin_routes(self):
+        log.debug('Loading plugin routes for API')
+        for plugin in self.plugins:
+            log.debug('Loading routes for {}'.format(plugin.name))
+            try:
+                import_module("snooze.plugins.core.{}".format(plugin.name))
+            except ModuleNotFoundError:
+                log.debug("Module for plugin `{}` not found. Using Basic instead".format(plugin.name))
+            try:
+                plugin_module = import_module("snooze.plugins.core.{}.{}.route".format(plugin.name, self.api_type))
+                log.debug("Found custom routes for {}".format(plugin.name))
+            except ModuleNotFoundError:
+                # Loading default
+                log.debug("Loading default route for `{}`".format(plugin.name))
+                plugin_module = import_module("snooze.plugins.core.basic.{}.route".format(self.api_type))
+            primary = plugin.metadata.get('primary') or None
+            duplicate_policy = plugin.metadata.get('duplicate_policy') or 'update'
+            authorization_policy = plugin.metadata.get('authorization_policy') or 'admin'
+            check_permissions = plugin.metadata.get('check_permissions', False)
+            for path, route in plugin.metadata.get('routes', {}).items():
+                route_class_name = route['class']
+                log.debug("For {} loading route class `{}`".format(path, route_class_name))
+                route_class = getattr(plugin_module, route_class_name)
+                route_duplicate_policy = route.get('duplicate_policy', duplicate_policy)
+                route_authorization_policy = route.get('authorization_policy', authorization_policy)
+                route_check_permissions = route.get('check_permissions', check_permissions)
+                log.debug("Route `{}` attributes: Duplicate Policy ({}), Authorization Policy ({}), Check Permissions ({})".format(route_class_name, route_duplicate_policy, route_authorization_policy, route_check_permissions))
+                self.add_route(path, route_class(self.core, plugin, primary, route_duplicate_policy, route_authorization_policy, route_check_permissions))
+
+    def init_api(self): pass
+
+    def add_route(self, route, action): pass
+
+    def serve(self):
+        httpd = simple_server.make_server('0.0.0.0', 9000, self.handler)
+        httpd.serve_forever()

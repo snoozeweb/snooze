@@ -1,0 +1,10 @@
+base_dn: 
+bind_dn: 
+bind_password: 
+display_name_attribute: cn
+email_attribute: mail
+enabled: true
+host: 
+isTrusted: true
+member_attribute: memberof
+user_filter: (uid=%s)
