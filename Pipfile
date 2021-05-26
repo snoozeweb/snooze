@@ -13,6 +13,7 @@ tinydb = "*"
 pathlib = "*"
 click = "*"
 snooze = {editable = true, path = "."}
+ldap3 = "*"
 
 [dev-packages]
 pytest = "*"
