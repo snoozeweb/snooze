@@ -1,6 +1,7 @@
 #!/usr/bin/python3.6
 
 from snooze.db.database import Database
+from copy import deepcopy
 from logging import getLogger
 log = getLogger('snooze.db.mongo')
 
@@ -29,8 +30,9 @@ class BackendDB(Database):
         obj_copy = []
         tobj = obj
         add_obj = False
-        if type(obj) != list:
-            tobj = [obj]
+        tobj = deepcopy(obj)
+        if type(tobj) != list:
+            tobj = [tobj]
         if primary:
             primary_list = primary.split(',')
         for o in tobj:

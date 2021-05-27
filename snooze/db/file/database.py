@@ -37,8 +37,9 @@ class BackendDB(Database):
         tobj = obj
         add_obj = False
         table = self.db.table(collection)
-        if type(obj) != list:
-            tobj = [obj]
+        tobj = deepcopy(obj)
+        if type(tobj) != list:
+            tobj = [tobj]
         if primary:
             primary_list = primary.split(',')
         for o in tobj:

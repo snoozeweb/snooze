@@ -12,7 +12,7 @@ from socketserver import TCPServer, ThreadingMixIn, StreamRequestHandler, Datagr
 from threading import Thread
 from pathlib import Path
 
-from snooze_client import Snooze
+from client import Snooze
 
 SYSLOG_FACILITY_NAMES = [
     "kern",

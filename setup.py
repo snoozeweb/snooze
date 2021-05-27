@@ -17,6 +17,8 @@ setup(
     packages=find_packages(),
     entry_points={
         'console_scripts': [
+            'snooze-client = client.cli:snooze',
+            'snooze-syslog = snooze.plugins.input.syslog:main',
             'snooze-server = snooze.__main__:main',
             'snooze = snooze.cli.__main__:snooze',
         ],

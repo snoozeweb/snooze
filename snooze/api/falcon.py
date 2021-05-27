@@ -279,9 +279,9 @@ class AuthRoute(BasicRoute):
         if self.enabled:
             self.authenticate(req, resp)
             user = self.parse_user(req.context['user'])
+            self.userplugin.manage_db(user)
             self.inject_permissions(user)
             log.debug("Context user: {}".format(user))
-            self.userplugin.manage_db(user)
             token = self.api.jwt_auth.get_auth_token(user)
             log.debug("Generated token: {}".format(token))
             resp.content_type = falcon.MEDIA_JSON
