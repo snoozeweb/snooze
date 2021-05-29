@@ -62,7 +62,7 @@ class AggregateruleObject():
     def __init__(self, aggregate_rule):
         self.name = aggregate_rule['name']
         LOG.debug("Creating aggregate: {}".format(str(self.name)))
-        self.condition = Condition(aggregate_rule['condition'])
+        self.condition = Condition(aggregate_rule.get('condition', ''))
         LOG.debug("-> condition: {}".format(str(self.condition)))
         self.fields = aggregate_rule.get('fields') or []
         self.fields.sort()

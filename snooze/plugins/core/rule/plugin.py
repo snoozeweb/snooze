@@ -16,7 +16,6 @@ class Rule(Plugin):
             record (dict)
         """
         LOG.debug("Processing record: {}".format(str(record)))
-        self.data = self.db.search('rule', ['NOT', ['EXISTS', 'parent']], orderby='name')['data']
         for rule in (self.data or []):
             if RuleObject(rule).process(record):
                 children = self.db.search('rule', ['=', 'parent', rule['uid']], orderby='name')['data']
@@ -24,6 +23,9 @@ class Rule(Plugin):
                     LOG.debug("-> subrule of {}".format(str(child_rule['name'])))
                     RuleObject(child_rule).process(record)
         return record
+
+    def reload_data(self):
+        self.data = self.db.search('rule', ['NOT', ['EXISTS', 'parent']], orderby='name')['data']
 
 class RuleObject():
     def __init__(self, rule):

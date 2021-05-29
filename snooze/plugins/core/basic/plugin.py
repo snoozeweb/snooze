@@ -53,13 +53,15 @@ class Plugin:
                 routes.update(self.metadata_file['routes'])
             self.metadata = {
                 'name': self.name,
+                'auto_reload': self.metadata_file.get('auto_reload', True),
                 'routes': routes
             }
         else:
             self.metadata = self.metadata_file
-        self.load_data()
-    def load_data(self):
-        if not self.metadata.get('manage_db'):
+        self.reload_data()
+    def reload_data(self):
+        if self.metadata.get('auto_reload', True):
+            log.debug("Reloading data for plugin {}".format(self.name))
             self.data = self.db.search(self.name, orderby=(self.metadata.get('default_sorting') or ''))['data']
     def process(self, record):
         pass

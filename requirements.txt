@@ -1,0 +1,13 @@
+-e .
+click
+falcon
+falcon-auth
+jinja2
+pathlib
+pyjwt==1.7.1
+pymongo
+pyyaml
+requests-unixsocket
+tinydb
+urllib3
+ldap3

@@ -3,6 +3,8 @@
     <List
       ref="table"
       endpoint="record"
+      order_by="timestamp"
+      :is_ascending="false"
       @row-selected="select"
       :fields="fields"
       :tabs="tabs"
@@ -10,56 +12,7 @@
       :edit_mode="false"
       :delete_mode="false"
     >
-      <template v-slot:cell(state)="row">
-        <b-badge
-          v-if="row.item.state !== undefined && row.item.state != null"
-          :variant="get_state_color(row.item.state)"
-        >
-          {{ row.item.state }}
-        </b-badge>
-        <b-badge v-else variant="light">null</b-badge>
-      </template>
-      <template #button="row">
-        <b-button variant="success" v-if="can_be_reescalated(row.item)" @click="modal_reescalate([row.item])" size="sm">Re-escalate</b-button>
-        <b-button variant="warning" v-if="can_be_acked(row.item)" @click="modal_ack([row.item])" size="sm">Acknowledge</b-button>
-      </template>
-      <template #selected_buttons>
-        <b-button v-if="selection_reescalated.length > 0" variant="success" @click="modal_reescalate(selection_reescalated)" size="sm">Re-escalate ({{ selection_reescalated.length }})</b-button>
-        <b-button v-if="selection_acked.length > 0" variant="warning" @click="modal_ack(selection_acked)" size="sm">Acknowledge ({{ selection_acked.length }})</b-button>
-      </template>
     </List>
-
-    <b-modal
-      id="ack"
-      ref="ack"
-      @ok="acknowledge(modal_message, modal_data)"
-      @hidden="modal_clear()"
-      header-bg-variant="warning"
-      size ="xl"
-      centered
-    >
-      <template #modal-title>Acknowledge</template>
-      {{ modal_data }}
-      <b-form-group label="Acknowledgement message:">
-        <b-form-input v-model="modal_message" />
-      </b-form-group>
-    </b-modal>
-
-    <b-modal
-      id="reescalate"
-      ref="reescalate"
-      @ok="reescalate(modal_message, modal_data)"
-      @hidden="modal_clear()"
-      header-bg-variant="success"
-      size ="xl"
-      centered
-    >
-      <template #modal-title>Re-escalate</template>
-      {{ modal_data }}
-      <b-form-group label="Re-escalation message:">
-        <b-form-input v-model="modal_message" />
-      </b-form-group>
-    </b-modal>
   </div>
 </template>
 
@@ -83,15 +36,7 @@ export default {
       form: form,
       fields: fields,
       tabs: [
-        {title: 'Alerts', filter: ['OR',
-            ['NOT', ['EXISTS', 'state']],
-            ['=', 'state', 'reescalated'],
-          ],
-        },
-        {title: 'Acknowledged', filter: ['=', 'state', 'ack']},
-        {title: 'Re-escalated', filter: ['=', 'state', 'reescalated']},
-        {title: 'Snoozed', filter: ['EXISTS', 'snoozed']},
-        {title: 'All', filter: []},
+        {title: 'All Records', filter: []},
       ],
     }
   },

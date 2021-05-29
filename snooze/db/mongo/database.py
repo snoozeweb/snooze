@@ -36,6 +36,7 @@ class BackendDB(Database):
         if primary:
             primary_list = primary.split(',')
         for o in tobj:
+            o.pop('_id', None)
             primary_result = None
             if update_time:
                 o['time_epoch'] = time.time()
@@ -73,7 +74,7 @@ class BackendDB(Database):
                         self.db[collection].update_one(primary_query, {'$set': o})
                         updated.append(primary_result)
                 else:
-                    log.debug("Could not find document with primary {}. Inserting instead".format(primary, o[primary]))
+                    log.debug("Could not find document with primary {}. Inserting instead".format(primary))
                     add_obj = True
             else:
                 add_obj = True

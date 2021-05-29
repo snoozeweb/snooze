@@ -9,11 +9,9 @@ setup(
     name="snooze",
     version="0.0.1",
     author="Florian Dematraz, Guillaume Ludinard",
-    author_email=", guillaume.ludi@gmail.com",
     description="Yet another alerting system",
     long_description=long_description,
     long_description_content_type="text/markdown",
-    url="https://github.com/rudexi/snooze",
     packages=find_packages(),
     entry_points={
         'console_scripts': [

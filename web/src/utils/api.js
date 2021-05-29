@@ -83,10 +83,10 @@ function filter_out_fields(item) {
 
 export function update_items(endpoint, items) {
   //items = items.map(item => filter_out_fields(item))
-  console.log(`POST ${endpoint}`)
+  console.log(`PUT ${endpoint}`)
   console.log(items)
   API
-    .post(`/${endpoint}`, items)
+    .put(`/${endpoint}`, items)
     .then(response => {
       console.log(response)
     })

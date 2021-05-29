@@ -3,6 +3,8 @@
     <List
       ref="table"
       endpoint="aggregate"
+      order_by="timestamp"
+      :is_ascending="false"
       @row-selected="select"
       :fields="fields"
       :tabs="tabs"

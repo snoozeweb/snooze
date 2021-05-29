@@ -51,6 +51,7 @@ class Route(FalconRoute):
                 req_media['snooze_user'] = req.context['user']['user']['name']
             result = dumps(self.insert(self.plugin.name, media))
             resp.body = result
+            self.plugin.reload_data()
             resp.status = falcon.HTTP_201
         except:
             resp.body = []
@@ -65,6 +66,7 @@ class Route(FalconRoute):
             media = req.media.copy()
             result = dumps(self.update(self.plugin.name, media))
             resp.body = result
+            self.plugin.reload_data()
             resp.status = falcon.HTTP_201
         except:
             resp.body = []
@@ -87,6 +89,7 @@ class Route(FalconRoute):
         if result_dict:
             result = dumps(result_dict)
             resp.body = result
+            self.plugin.reload_data()
             resp.status = falcon.HTTP_OK
         else:
             resp.body = '{}'

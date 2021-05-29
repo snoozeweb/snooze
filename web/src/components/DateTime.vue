@@ -1,7 +1,7 @@
 <template>
   <div
     style="white-space:pre"
-  >{{ trimDate(date, true) }}</div>
+  >{{ trimDate(date, false) }}</div>
 </template>
 
 <script>
@@ -19,18 +19,15 @@ export default {
       var mDate = moment(date)
       var newDate = ''
       var now = moment()
-      if (mDate.diff(now) < 0) {
-        newDate = mDate.format('L HH:mm:ss')
-        splitH = false
-      } else if (mDate.year() == now.year()) {
+      if (mDate.year() == now.year()) {
         if (mDate.format('MM-DD') == now.format('MM-DD')) {
           if(splitH) {
-            newDate = 'Today' + '\n' + mDate.format('HH:mm')
+            newDate = 'Today' + '\n' + mDate.format('HH:mm:ss')
           } else {
-            newDate = 'Today' + ' ' + mDate.format('HH:mm')
+            newDate = 'Today' + ' ' + mDate.format('HH:mm:ss')
           }
         } else {
-          newDate = mDate.format('MMM Do HH:mm')
+          newDate = mDate.format('MMM Do HH:mm:ss')
         }
       } else {
         newDate = mDate.format('MMM Do YYYY')

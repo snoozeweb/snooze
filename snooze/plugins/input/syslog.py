@@ -5,6 +5,7 @@ import re
 import ssl
 import sys
 import yaml
+from datetime import datetime
 
 from multiprocessing import JoinableQueue, Process
 from multiprocessing.pool import ThreadPool as Pool
@@ -72,7 +73,13 @@ def parse_rfc3164(msg):
             'pri': int(m.group(1)),
             'host': m.group(2),
             'message': m.group(5),
+            'timestamp': datetime.now().isoformat(),
         }
+
+        process = m.group(4)
+        if process:
+            record['process'] = process
+
         return record
     else:
         raise Exception("Could not parse RFC 3164 syslog message: %s" % msg)
@@ -102,7 +109,8 @@ def parse_cisco(msg):
         record = {
             'syslog_type': 'cisco',
             'pri': int(m.group(1)),
-            'message': m.group(4)
+            'message': m.group(4),
+            'timestamp': datetime.now().isoformat()
         }
         try:
             facility, severity, mnemonic = m.group(3).split('-')
@@ -146,6 +154,9 @@ def parse_syslog(ipaddr, data):
         else:
             LOG.error("Could not parse message: %s", msg)
             continue
+
+        record['source'] = 'syslog'
+        record['raw'] = msg
 
         facility, severity = decode_priority(record['pri'])
         record.update({
@@ -315,7 +326,7 @@ class SyslogDaemon(object):
                 break
             for record in records:
                 LOG.debug(f"Sending record to snooze: {record}")
-                self.api.process(record)
+                self.api.alert(record)
 
     def stop_threads(self, queue, threads):
         for _ in threads:

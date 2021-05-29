@@ -1,1 +1,1 @@
-from .process import Snooze
+from .alert import Snooze

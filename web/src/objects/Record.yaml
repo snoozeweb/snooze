@@ -11,19 +11,16 @@ fields:
         thStyle: {width: '15%'}
     -
         key: process
+        sortable: true
         thStyle: {width: '5%'}
     -
         key: severity
+        sortable: true
         thStyle: {width: '5%'}
     -
         key: message
-        thStyle: {width: '50%'}
-    -
-        key: details
-        thStyle: {width: '5%'}
-    -
-        key: state
-        thStyle: {width: '5%'}
+        thStyle: {width: '60%'}
+        tdClass: ['text-break']
     -
         key: button
         sortable: false

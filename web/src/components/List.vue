@@ -36,7 +36,7 @@
               <b-button @click="select_all">Select All</b-button>
               <slot name="head_buttons"></slot>
               <b-button v-if="add_mode" variant="success" @click="modal_add()">Add</b-button>
-              <b-button @click="get_data"><i class="la la-refresh la-lg"></i></b-button>
+              <b-button @click="get_data(true)"><i class="la la-refresh la-lg"></i></b-button>
             </b-button-group>
 
           </b-button-toolbar>
@@ -52,8 +52,8 @@
         :fields="fields"
         :items="items"
         :no-local-sorting="true"
-        :sort-by.sync="order_by"
-        :sort-desc.sync="is_ascending"
+        :sort-by.sync="orderby"
+        :sort-desc.sync="isascending"
         selectable
         select-mode="range"
         selectedVariant="info"
@@ -256,6 +256,8 @@ export default {
     delete_mode: {type: Boolean, default: true},
     // The default key to order by
     order_by: {type: String, default: undefined},
+    // Ascending (true) or Descending (false)
+    is_ascending: {type: Boolean, default: true},
   },
   mounted () {
     this.get_data()
@@ -275,7 +277,8 @@ export default {
       adding_data: {},
       selected_data: {},
       selected: [],
-      is_ascending: true,
+      orderby: this.order_by,
+      isascending: this.is_ascending,
       modal_data: {
         add: {},
         edit: {},
@@ -289,15 +292,15 @@ export default {
     object_to_query(obj) {
       return Object.entries(obj).map(([key, val]) => `${key}=${encodeURIComponent(val)}`).join('&')
     },
-    get_data() {
+    get_data(alert = false) {
       var filter = JSON.stringify(this.joinQueries([this.filter, this.search_data]))
       var query = {
         s: filter,
         perpage: this.per_page,
         pagenb: this.current_page,
-        asc: this.is_ascending,
+        asc: this.isascending,
       }
-      if ( ! this.order_by === undefined) { query["orderby"] = this.order_by }
+      if (this.orderby !== undefined) { query["orderby"] = this.orderby }
       var query_str = this.object_to_query(query)
       var url = `/${this.endpoint}/?${query_str}`
       console.log(`GET ${url}`)
@@ -307,6 +310,9 @@ export default {
           console.log(response)
           if (response.data) {
             this.update_table(response.data)
+            if(alert) {
+              this.makeToast('Refresh successful', 'success', 'Success')
+            }
           } else {
             if(response.response.data.description) {
               this.makeToast(response.response.data.description, 'danger', 'An error occurred')
@@ -497,16 +503,12 @@ export default {
       this.modal_data.delete = {}
     },
     sortingChanged (ctx) {
-      this.order_by = ctx.sortBy
-      this.is_ascending = ctx.sortDesc
-      this.refresh()
+      this.orderby = ctx.sortBy
+      this.isascending = ctx.sortDesc
+      this.refreshTable()
     },
     clearSelected() {
       this.$refs.table.clearSelected()
-    },
-    refresh() {
-      this.items = []
-      this.get_data()
     },
     select_all() {
       this.$refs.table.selectAllRows()

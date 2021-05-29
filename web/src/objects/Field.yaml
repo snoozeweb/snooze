@@ -10,3 +10,6 @@ colors:
     admin: danger
     user: info
     test: info
+    alert: danger
+    err: danger
+    crit: danger

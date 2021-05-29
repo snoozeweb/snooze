@@ -1,6 +1,6 @@
 import click
 
-from snooze_client.process import Snooze
+from snooze_client.alert import Snooze
 
 COMMON_OPTIONS = [
     click.option('--server', '-s', 'URI of the Snooze server'),
