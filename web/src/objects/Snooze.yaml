@@ -30,6 +30,11 @@ fields:
         tdClass: 'align-middle'
         thStyle: {width: '15%'}
     -
+        key: hits
+        label: '#'
+        tdClass: ['align-middle', 'text-center']
+        thClass: 'text-center'
+    -
         label: ''
         key: button
         sortable: false

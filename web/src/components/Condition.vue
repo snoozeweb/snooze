@@ -1,5 +1,5 @@
 <template>
-  <span v-if="data === undefined">Empty</span>
+  <span v-if="data === undefined">Always true</span>
   <span v-else-if="data.constructor.name == 'Array'">
     ( <Condition :data="data[1]"/> <b>{{ data[0] }}</b> <Condition :data="data[2]" /> )
   </span>

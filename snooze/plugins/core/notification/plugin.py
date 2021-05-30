@@ -9,23 +9,13 @@ from jinja2 import Template
 from logging import getLogger
 log = getLogger('snooze.notification')
 
-from prometheus_client import Counter
-
 from snooze.plugins.core import Plugin
 
 class Notification(Plugin):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self.core.stats['snooze_notification_sent'] = Counter(
-            'snooze_notification_sent',
-            'Counter of notification sent',
-            ['name'],
-        )
-        self.core.stats['snooze_notification_error'] = Counter(
-            'snooze_notification_error',
-            'Counter of notification that failed',
-            ['name'],
-        )
+        self.core.stats.init('notification_sent')
+        self.core.stats.init('notification_error')
 
     def process(self, record):
         for notification in self.data:
@@ -52,9 +42,9 @@ class Notification(Plugin):
                     process = run(script, stdout=PIPE, input=stdin, encoding='ascii')
                     log.debug('stdout: ' + str(process.stdout))
                     log.debug('stderr: ' + str(process.stderr))
-                    self.core.stats['snooze_notification_sent'].labels(name=name).inc()
+                    self.core.stats.inc('notification_sent', {'name': name})
                 except CalledProcessError as e:
-                    self.core.stats['snooze_notification_error'].labels(name=name).inc()
+                    self.core.stats.inc('notification_error', {'name': name})
                     log.error("Notification {} could not run `{}`. STDIN = {}, {}".format(
                         name, ' '.join(script), stdin, e.output)
                     )

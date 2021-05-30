@@ -8,12 +8,27 @@ log = getLogger('snooze')
 
 class Snooze(Plugin):
     def process(self, record):
-        filters = (self.data or [])
-        for f in filters:
-            log.debug("Attempting to match {} against filter {}".format(record, f))
-            if Condition(f.get('condition')).match(record):
-                log.debug("Matched snooze filter {} with {}".format(f['name'], record))
-                record['snoozed'] = True
+        for f in self.filters:
+            log.debug("Attempting to match {} against snooze filter {}".format(record, f.name))
+            if f.condition.match(record):
+                log.debug("Matched snooze filter {} with {}".format(f.name, record))
+                record['snoozed'] = f.name
+                f.hits += 1
+                f.raw['hits'] = f.hits
+                self.db.write('snooze', f.raw)
                 raise Abort_and_write
         else:
             return record
+
+    def reload_data(self):
+        super().reload_data()
+        self.filters = []
+        for f in (self.data or []):
+            self.filters.append(SnoozeObject(f))
+
+class SnoozeObject():
+    def __init__(self, snooze):
+        self.name = snooze['name']
+        self.condition = Condition(snooze.get('condition'))
+        self.hits = 0
+        self.raw = snooze

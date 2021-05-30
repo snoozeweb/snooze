@@ -9,14 +9,14 @@ export default [
         fontIcon: 'la la-tachometer',
       },
       {
-        _name: 'CSidebarNavTitle',
-        _children: ['Core']
-      },
-      {
         _name: 'CSidebarNavItem',
         name: 'Records',
         to: '/record',
         fontIcon: 'la la-file-text'
+      },
+      {
+        _name: 'CSidebarNavTitle',
+        _children: ['Core']
       },
       {
         _name: 'CSidebarNavItem',

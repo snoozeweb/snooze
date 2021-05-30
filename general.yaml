@@ -1,1 +1,2 @@
-{default_auth_backend: ldap, local_users_enabled: true}
+default_auth_backend: local
+local_users_enabled: true

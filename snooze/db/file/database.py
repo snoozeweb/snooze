@@ -4,7 +4,7 @@ from snooze.db.database import Database
 from snooze.utils.functions import dig, flatten
 from logging import getLogger
 import uuid
-import time
+import datetime
 import re
 log = getLogger('snooze.db.file')
 
@@ -29,6 +29,19 @@ class BackendDB(Database):
         log.debug("Initialized TinyDB at path {}".format(filename))
         log.debug("db: {}".format(self.db))
 
+    def cleanup(self, collection):
+        log.debug("Cleanup collection {}".format(collection))
+        now = datetime.datetime.now().timestamp()
+        table = self.db.table(collection)
+        aggregate_results = table.search(Query().ttl >= 0)
+        aggregate_results = list(map(lambda doc: {'_id': doc.doc_id, 'timeout': doc['ttl'] + doc['date_epoch']}, aggregate_results))
+        aggregate_results = list(filter(lambda doc: doc['timeout'] <= now, aggregate_results))
+        ids = list(map(lambda doc: doc['_id'], aggregate_results))
+        deleted_results = table.remove(doc_ids=ids)
+        deleted_count = len(deleted_results)
+        log.debug('Removed {} documents in {}'.format(deleted_count, collection))
+        return deleted_count
+
     def write(self, collection, obj, primary = None, duplicate_policy='update', update_time=True):
         added = []
         updated = []
@@ -45,7 +58,7 @@ class BackendDB(Database):
         for o in tobj:
             primary_docs = None
             if update_time:
-                o['time_epoch'] = time.time()
+                o['date_epoch'] = datetime.datetime.now().timestamp()
             if primary and all(p in o for p in primary_list):
                 primary_query = map(lambda a: Query()[a] == o[a], primary_list)
                 primary_query = reduce(lambda a, b: a & b, primary_query)

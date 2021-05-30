@@ -45,12 +45,12 @@ class Condition():
         elif operation == '=':
             key, value = args
             record_value = dig(record, *key.split('.'))
-            LOG.debug("Rule: {}, Record: {}".format(value, record_value))
+            LOG.debug("Value: {}, Record: {}".format(value, record_value))
             return record_value and (record_value == value)
         elif operation == '!=':
             key, value = args
             record_value = dig(record, *key.split('.'))
-            LOG.debug("Rule: {}, Record: {}".format(value, record_value))
+            LOG.debug("Value: {}, Record: {}".format(value, record_value))
             return record_value and (record_value != value)
         elif operation == '>':
             key, value = args
@@ -61,7 +61,7 @@ class Condition():
             except ValueError:
                 newval = value
                 newrecval = record_value
-            LOG.debug("Rule: {}, Record: {}".format(newval, newrecval))
+            LOG.debug("Value: {}, Record: {}".format(newval, newrecval))
             return record_value and (newrecval > newval)
         elif operation == '<':
             key, value = args
@@ -72,12 +72,12 @@ class Condition():
             except ValueError:
                 newval = value
                 newrecval = record_value
-            LOG.debug("Rule: {}, Record: {}".format(newval, newrecval))
+            LOG.debug("Value: {}, Record: {}".format(newval, newrecval))
             return record_value and (newrecval < newval)
         elif operation == 'MATCHES':
             key, value = args
             record_value = dig(record, *key.split('.'))
-            LOG.debug("Rule: {}, Record: {}".format(value, record_value))
+            LOG.debug("Value: {}, Record: {}".format(value, record_value))
             if record_value:
                 if len(value) > 1 and value[0] == '/' and value[-1] == '/':
                     value = value[1:-1]
@@ -87,10 +87,10 @@ class Condition():
                 return False
         elif operation == 'EXISTS':
             record_value = dig(record, *args[0].split('.'))
-            LOG.debug("Rule: {} exists, Record: {}".format(args[0], record_value))
+            LOG.debug("Value: {} exists, Record: {}".format(args[0], record_value))
             return record_value is not None
         elif operation == 'CONTAINS':
             key, value = args
             record_value = dig(record, *key.split('.'))
-            LOG.debug("Rule: {}, Record: {}".format(value, record_value))
+            LOG.debug("Value: {}, Record: {}".format(value, record_value))
             return isinstance(record_value, list) and any(value.casefold() in a.casefold() for a in flatten(record_value))

@@ -15,20 +15,24 @@ class Rule(Plugin):
         Args:
             record (dict)
         """
-        LOG.debug("Processing record: {}".format(str(record)))
-        for rule in (self.data or []):
-            if RuleObject(rule).process(record):
-                children = self.db.search('rule', ['=', 'parent', rule['uid']], orderby='name')['data']
-                for child_rule in children:
-                    LOG.debug("-> subrule of {}".format(str(child_rule['name'])))
-                    RuleObject(child_rule).process(record)
+        self.process_rules(record, self.rules)
         return record
 
+    def process_rules(self, record, rules):
+        LOG.debug("Processing record {} against rules: {}".format(str(record), str(rules)))
+        for rule in rules:
+            if rule.process(record):
+                self.process_rules(record, rule.children)
+
     def reload_data(self):
+        LOG.debug("Reloading data for plugin {}".format(self.name))
         self.data = self.db.search('rule', ['NOT', ['EXISTS', 'parent']], orderby='name')['data']
+        self.rules = []
+        for rule in (self.data or []):
+            self.rules.append(RuleObject(rule, self.db))
 
 class RuleObject():
-    def __init__(self, rule):
+    def __init__(self, rule, db = None):
         self.name = rule['name']
         LOG.debug("Creating rule: {}".format(str(self.name)))
         self.condition = Condition(rule.get('condition'))
@@ -37,6 +41,14 @@ class RuleObject():
         for action in (rule.get('actions') or []):
             LOG.debug("-> action: {}".format(str(action)))
             self.actions.append(Action(*action))
+        LOG.debug("Searching children of rule {}".format(str(self.name)))
+        self.children = []
+        if db:
+            children = db.search('rule', ['=', 'parent', rule['uid']], orderby='name')['data']
+            for child_rule in children:
+                LOG.debug("Found child {} of rule {}".format(child_rule['name'], str(self.name)))
+                self.children.append(RuleObject(child_rule, db))
+
     def match(self, record):
         """
         Check if a record matched this rule's condition
@@ -55,6 +67,7 @@ class RuleObject():
             record['rules'].append(self.name)
         LOG.debug("-> Match result: {}".format(match))
         return match
+
     def modify(self, record):
         """
         Modify the record based of this rule's actions
@@ -72,6 +85,7 @@ class RuleObject():
         else:
             LOG.debug("Record has not been modified")
         return modified
+
     def process(self, record):
         """
         Process the record against this rule
@@ -88,3 +102,6 @@ class RuleObject():
             # The record reference is the same, the content is modified
             modified = self.modify(record)
         return modified
+
+    def __repr__(self):
+        return self.name

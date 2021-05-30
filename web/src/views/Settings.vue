@@ -25,40 +25,25 @@ export default {
   },
   methods: {
     submit(data) {
-      this.$refs.card.submit(data, this[this.$refs.card.current_tab.callback])
+      this.$refs.card.submit(data, this.reload)
     },
-    ldap_reload() {
-      console.log("Reloading LDAP")
+    reload() {
+      var tab_name = this.$refs.card.current_tab.name
+      console.log('Reloading ' + tab_name)
       API
-        .post(`/login/reload`, {'method': 'ldap'})
+        .post(`/reload`, this.$refs.card.current_tab.reload)
         .then(response => {
           console.log(response)
           if (!response.data) {
             if(response.response.data.description) {
               this.$refs.card.makeToast(response.response.data.description, 'danger', 'Reload error')
             } else {
-              this.$refs.card.makeToast('Could not reload LDAP', 'danger', 'An error occurred')
+              this.$refs.card.makeToast('Could not reload ' + tab_name, 'danger', 'An error occurred')
             }
           }
         })
         .catch(error => console.log(error))
     },
-    general_reload() {
-      console.log("Reloading General")
-      API
-        .post(`/login/reload`, {'method': 'local'})
-        .then(response => {
-          console.log(response)
-          if (!response.data) {
-            if(response.response.data.description) {
-              this.$refs.card.makeToast(response.response.data.description, 'danger', 'Reload error')
-            } else {
-              this.$refs.card.makeToast('Could not reload General', 'danger', 'An error occurred')
-            }
-          }
-        })
-        .catch(error => console.log(error))
-    }
   },
   data () {
     return {

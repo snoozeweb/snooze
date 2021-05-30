@@ -159,7 +159,7 @@ class LoginRoute(BasicRoute):
             resp.content_type = falcon.MEDIA_JSON
             resp.status = falcon.HTTP_200
             resp.media = {
-                'data': {'backends': backends, 'default': config('general').get('default_auth_backend') or ''},
+                'data': {'backends': backends, 'default': self.api.core.general_conf.get('default_auth_backend') or ''},
             }
         except Exception as e:
             log.exception(e)
@@ -173,17 +173,28 @@ class ReloadRoute(BasicRoute):
 
     @authorize
     def on_post(self, req, resp):
-        method = req.params.get('method') or req.media.get('method') or 'Unknown'
-        log.debug("Reloading {} auth backend".format(method))
+        auth_backends = req.params.get('auth_backends', []) or req.media.get('auth_backends', [])
+        reloaded_auth = []
+        config_files = req.params.get('config_files', []) or req.media.get('config_files', [])
+        reloaded_conf = []
         resp.content_type = falcon.MEDIA_TEXT
         try:
-            if self.api.auth_routes.get(method):
+            for config_file in config_files:
+                if self.api.core.reload_conf(config_file):
+                    reloaded_conf.append(config_file)
+            for auth_backend in auth_backends:
+                if self.api.auth_routes.get(auth_backend):
+                    log.debug("Reloading {} auth backend".format(auth_backend))
+                    self.api.auth_routes[auth_backend].reload()
+                    reloaded_auth.append(auth_backend)
+                else:
+                    log.debug("Authentication backend '{}' not found".format(auth_backend))
+            if len(reloaded_auth) > 0 or len(reloaded_conf) > 0:
                 resp.status = falcon.HTTP_200
-                self.api.auth_routes[method].reload()
-                resp.text = "Authentication backend '{}' status: {}".format(method, self.api.auth_routes[method].enabled)
+                resp.text = "Reloaded auth '{}' and conf {}".format(reloaded_auth, reloaded_conf)
             else:
                 resp.status = falcon.HTTP_404
-                resp.text = "Authentication backend '{}' not found".format(method)
+                resp.text = "Error while reloading"
         except Exception as e:
             log.exception(e)
             resp.status = falcon.HTTP_503
@@ -220,7 +231,7 @@ class AuthRoute(BasicRoute):
         super().__init__(api.core)
         self.auth_header_prefix = 'Basic'
         self.api = api
-        self.userplugin = [plug for plug in api.core.plugins if plug.name == 'user'][0]
+        self.userplugin =  next(iter([plug for plug in api.core.plugins if plug.name == 'user']), None)
         self.enabled = True
 
     def parse_auth_token_from_request(self, auth_header):
@@ -279,7 +290,8 @@ class AuthRoute(BasicRoute):
         if self.enabled:
             self.authenticate(req, resp)
             user = self.parse_user(req.context['user'])
-            self.userplugin.manage_db(user)
+            if self.userplugin:
+                self.userplugin.manage_db(user)
             self.inject_permissions(user)
             log.debug("Context user: {}".format(user))
             token = self.api.jwt_auth.get_auth_token(user)
@@ -474,7 +486,7 @@ class BackendApi():
         # List route
         self.add_route('/login', LoginRoute(self))
         # Reload route
-        self.add_route('/login/reload', ReloadRoute(self))
+        self.add_route('/reload', ReloadRoute(self))
         # Capabilities route
         self.add_route('/capabilities', CapabilitiesRoute(self))
         # Basic auth setup

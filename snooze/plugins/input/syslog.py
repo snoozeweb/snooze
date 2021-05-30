@@ -73,7 +73,7 @@ def parse_rfc3164(msg):
             'pri': int(m.group(1)),
             'host': m.group(2),
             'message': m.group(5),
-            'timestamp': datetime.now().isoformat(),
+            'timestamp': datetime.now().astimezone().isoformat(),
         }
 
         process = m.group(4)
@@ -110,7 +110,7 @@ def parse_cisco(msg):
             'syslog_type': 'cisco',
             'pri': int(m.group(1)),
             'message': m.group(4),
-            'timestamp': datetime.now().isoformat()
+            'timestamp': datetime.now().astimezone().isoformat()
         }
         try:
             facility, severity, mnemonic = m.group(3).split('-')

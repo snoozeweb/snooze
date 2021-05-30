@@ -19,7 +19,7 @@
         >
           {{ row.item.state }}
         </b-badge>
-        <b-badge v-else variant="light">null</b-badge>
+        <b-badge v-else variant="light">no state</b-badge>
       </template>
       <template #button="row">
         <b-button variant="success" v-if="can_be_reescalated(row.item)" @click="modal_reescalate([row.item])" size="sm">Re-escalate</b-button>
@@ -68,6 +68,7 @@
 <script>
 import List from '@/components/List.vue'
 
+import moment from 'moment'
 import { update_items } from '@/utils/api'
 import { form, fields } from '@/objects/Aggregate.yaml'
 
@@ -92,7 +93,6 @@ export default {
         },
         {title: 'Acknowledged', filter: ['=', 'state', 'ack']},
         {title: 'Re-escalated', filter: ['=', 'state', 'reescalated']},
-        {title: 'Snoozed', filter: ['EXISTS', 'snoozed']},
         {title: 'All', filter: []},
       ],
     }
@@ -145,12 +145,11 @@ export default {
           item.acks = []
         }
         item.state = 'ack'
-        var user = 'TODO'
-        var now = new Date()
+        var user = localStorage.getItem('name') || 'Unkwnown'
         item.acks.push({
           message: message,
           user: user,
-          date: now.toISOString(),
+          date: moment().format(),
         })
       })
       update_items("aggregate", items)
@@ -163,12 +162,11 @@ export default {
           item.escalations = []
         }
         item.state = 'reescalated'
-        var user = 'TODO'
-        var now = new Date()
+        var user = localStorage.getItem('name') || 'Unkwnown'
         item.escalations.push({
           message: message,
           user: user,
-          date: now.toISOString(),
+          date: moment().format(),
         })
         update_items("aggregate", items)
         this.$refs.table.refreshTable()

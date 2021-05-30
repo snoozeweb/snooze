@@ -20,6 +20,7 @@ def config():
         'process_plugins': ['rule', 'aggregaterule', 'snooze', 'notification'],
         'database': {'type': 'mongo', 'host': 'localhost', 'port': 27017},
         'socket_path': './test.socket',
+        'stats': False,
     }
 
 @pytest.fixture(scope='class')

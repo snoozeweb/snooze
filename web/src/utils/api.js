@@ -123,3 +123,22 @@ export function delete_items(endpoint, items) {
       console.log(error)
     })
 }
+
+export function pp_counter(secs) {
+  var sec_num = parseInt(secs, 10)
+  var hours   = Math.floor(sec_num / 3600)
+  var minutes = Math.floor(sec_num / 60) % 60
+  var seconds = sec_num % 60
+
+  var output = ''
+  if (hours > 0) {
+    output += hours + 'h '
+  }
+  if (minutes > 0) {
+    output += minutes + 'm '
+  }
+  if (seconds > 0) {
+    output += seconds + 's'
+  }
+  return output
+}

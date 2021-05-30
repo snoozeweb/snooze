@@ -8,25 +8,20 @@ from logging import getLogger
 
 log = getLogger('snooze')
 
-from prometheus_client import Summary
-
 from snooze.plugins.core import Abort, Abort_and_write
+from snooze.utils import config, Housekeeper, Stats
 
 class Core:
     def __init__(self, conf):
         self.conf = conf
         self.db = Database(conf.get('database', {}))
+        self.general_conf = config('general')
+        self.housekeeper = Housekeeper(self)
         self.plugins = []
         self.process_plugins = []
-        self.stats = {}
+        self.stats = Stats(conf.get('stats'))
+        self.stats.init('process_record_duration')
         self.load_plugins()
-
-        # Core statistics
-        self.stats['snooze_record_process_duration'] = Summary(
-            'snooze_record_process_duration',
-            'Average time spend processing a record',
-            ['source'],
-        )
 
     def load_plugins(self):
         self.plugins = []
@@ -54,9 +49,9 @@ class Core:
 
     def process_record(self, record):
         source = record.get('source', 'unknown')
-        duration = self.stats['snooze_record_process_duration'].labels(source=source)
-        with duration.time():
-            record['plugins'] = []
+        record['ttl'] = self.housekeeper.conf.get('record_ttl', 86400)
+        record['plugins'] = []
+        with self.stats.time('process_record_duration', {'source': source}):
             for plugin in self.process_plugins:
                 try:
                     log.debug("Executing plugin {} on {}".format(plugin.name, record))
@@ -78,3 +73,15 @@ class Core:
             else:
                 log.debug("Writing record {}")
                 self.db.write('record', record)
+
+    def reload_conf(self, config_file):
+        if config_file == 'general':
+            self.general_conf = config('general')
+            return True
+        elif config_file == 'housekeeping':
+            return self.housekeeper.reload()
+        elif config_file == 'stats':
+            return self.stats.reload()
+        else:
+            log.debug("Config file {} not found".format(config_file))
+            return False

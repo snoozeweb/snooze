@@ -13,7 +13,6 @@ from snooze.api.base import Api
 from pathlib import Path
 import os
 
-
 class TestApi:
 
     data = {

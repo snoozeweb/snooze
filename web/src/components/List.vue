@@ -90,6 +90,9 @@
         <template v-slot:cell(method)="row">
           <Field :data="[dig(row.item, 'method')]" colorize/>
         </template>
+        <template v-slot:cell(throttle)="row">
+          {{ pp_counter(dig(row.item, 'throttle')) }}
+        </template>
         <template v-slot:cell(roles)="row">
           <Field :data="(dig(row.item, 'roles') || []).concat(dig(row.item, 'static_roles') || [])" colorize/>
         </template>
@@ -200,7 +203,9 @@
 
 <script>
 import dig from 'object-dig'
+import moment from 'moment'
 import { API } from '@/api'
+import { pp_counter } from '@/utils/api'
 import Form from '@/components/Form.vue'
 import Search from '@/components/Search.vue'
 import Condition from '@/components/Condition.vue'
@@ -265,6 +270,7 @@ export default {
   data () {
     return {
       dig: dig,
+      pp_counter: pp_counter,
       delete_items: delete_items,
       filter: this.tabs[0].filter,
       tab_index: 0,
@@ -311,7 +317,7 @@ export default {
           if (response.data) {
             this.update_table(response.data)
             if(alert) {
-              this.makeToast('Refresh successful', 'success', 'Success')
+              this.makeToast('Refresh successful', 'success', 'Success', 'b-toaster-top-left')
             }
           } else {
             if(response.response.data.description) {
@@ -443,7 +449,7 @@ export default {
     search(query) {
       console.log(`Search: ${query}`)
       this.search_data = JSON.parse(query)
-      if (!Array.isArray(this.search_data)) {
+      if (this.search_data != null && !Array.isArray(this.search_data)) {
         var search_word = this.search_data
         var lookup = "MATCHES"
         this.search_data = []
@@ -513,7 +519,7 @@ export default {
     select_all() {
       this.$refs.table.selectAllRows()
     },
-    makeToast(text, variant = null, title = null) {
+    makeToast(text, variant = null, title = null, position = 'b-toaster-top-right') {
       if (title == null) {
         switch (variant) {
           case 'success':
@@ -530,8 +536,9 @@ export default {
         title: title,
         variant: variant,
         solid: true,
+        toaster: position,
       })
-    },
+    }
   },
   watch: {
     current_page: function() {

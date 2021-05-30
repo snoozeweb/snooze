@@ -153,3 +153,10 @@ def test_mongo_sort():
     db.write('record', [{'a': '1', 'b': '2'},{'a': '3', 'b': '2'},{'a': '2', 'b': '2'},{'a': '5', 'b': '2'},{'a': '4', 'b': '2'}])
     result = db.search('record', orderby='a', asc=False)['data']
     assert result[0].items() >= {'a': '5', 'b': '2'}.items()
+
+@mongomock.patch('mongodb://localhost:27017')
+def test_mongo_cleanup():
+    db = Database(default_config.get('database'))
+    db.write('record', [{'a': '1', 'ttl': 0}, {'b': '1', 'ttl': 0}, {'c': '1', 'ttl': 1}, {'d': '1'}])
+    deleted_count = db.cleanup('record')
+    assert deleted_count == 2

@@ -31,9 +31,13 @@ class TestRulesPlugin:
         children_rules = [
             {'name': 'SubRule1', 'condition': ['=', 'c', '1'], 'actions': [ ['SET', 'c', '4'], ['SET', 'b', '4'] ], 'parent': uid}
         ]
+        uid = core.db.write('rule', children_rules)['data']['added'][0]
+        children_rules = [
+            {'name': 'SubSubRule1', 'condition': ['=', 'c', '4'], 'actions': [ ['SET', 'c', '5'] ], 'parent': uid}
+        ]
         core.db.write('rule', children_rules)
         return Rule(core, config)
     def test_process(self, ruleplugin):
         record = {'a': '1', 'b': '2'}
         ruleplugin.process(record)
-        assert record == {'a': '1', 'b': '4', 'c': '4', 'rules': ['Rule1', 'SubRule1']}
+        assert record == {'a': '1', 'b': '4', 'c': '5', 'rules': ['Rule1', 'SubRule1', 'SubSubRule1']}

@@ -7,7 +7,7 @@ log = getLogger('snooze.db.mongo')
 
 import pymongo
 import uuid
-import time
+import datetime
 import re
 
 class OperationNotSupported(Exception): pass
@@ -22,6 +22,21 @@ class BackendDB(Database):
         self.db = pymongo.MongoClient(**conf)[database]
         log.debug("Initialized Mongodb with config {}".format(conf))
         log.debug("db: {}".format(self.db))
+
+    def cleanup(self, collection):
+        log.debug("Cleanup collection {}".format(collection))
+        now = datetime.datetime.now().timestamp()
+        pipeline = [
+            #{"$project":{ 'date_epoch':1, 'ttl':{ "$ifNull": ["$ttl", 0] }}},
+            {"$match":{ 'ttl':{ "$gte":0 }}},
+            {"$project":{ 'date_epoch':1, 'ttl':1, 'timeout':{ "$add": ["$date_epoch", "$ttl"] }}},
+            {"$match":{ 'timeout':{ "$lte":now }}}
+        ]
+        aggregate_results = self.db[collection].aggregate(pipeline)
+        ids = list(map(lambda doc: doc['_id'], aggregate_results))
+        deleted_results = self.db[collection].delete_many({'_id': {"$in": ids}})
+        log.debug('Removed {} documents in {}'.format(deleted_results.deleted_count, collection))
+        return deleted_results.deleted_count
 
     def write(self, collection, obj, primary = None, duplicate_policy='update', update_time=True):
         added = []
@@ -39,7 +54,7 @@ class BackendDB(Database):
             o.pop('_id', None)
             primary_result = None
             if update_time:
-                o['time_epoch'] = time.time()
+                o['date_epoch'] = datetime.datetime.now().timestamp()
             if primary and all(p in o for p in primary_list):
                 primary_query = list(map(lambda a: {a: o[a]}, primary_list))
                 if len(primary_list) > 1:

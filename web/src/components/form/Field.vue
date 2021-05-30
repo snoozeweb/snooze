@@ -25,7 +25,7 @@ export default {
   data () {
     return {
       datavalue: this.value,
-			validTags: [],
+      validTags: [],
       invalidTags: [],
       duplicateTags: [],
     }

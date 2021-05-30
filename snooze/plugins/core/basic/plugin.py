@@ -59,12 +59,13 @@ class Plugin:
         else:
             self.metadata = self.metadata_file
         self.reload_data()
+
     def reload_data(self):
         if self.metadata.get('auto_reload', True):
             log.debug("Reloading data for plugin {}".format(self.name))
             self.data = self.db.search(self.name, orderby=(self.metadata.get('default_sorting') or ''))['data']
+
     def process(self, record):
-        pass
         return record
 
 class Abort(Exception): pass

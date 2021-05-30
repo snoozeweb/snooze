@@ -13,7 +13,12 @@ fields:
     -
         key: fields
         sortable: false
-        thStyle: {width: '30%'}
+        thStyle: {width: '25%'}
+        type: array
+    -
+        key: throttle
+        thStyle: {width: '5%'}
+        tdClass: ['text-nowrap']
         type: array
     -
         key: button
@@ -35,6 +40,12 @@ form:
         display_name: Fields
         component: Field
         description: Fields to aggregate
+    throttle:
+        display_name: Throttle
+        component: Duration
+        description: Number of seconds to wait before escalating the next alert (-1 for infinite)
+        options:
+            default: 900
     comment:
         display_name: Comment
         component: Text

@@ -3,12 +3,14 @@
 from snooze.plugins.core import Plugin, Abort_and_write
 from snooze.utils import Condition, Action
 
-import time
+import datetime
 import logging
 import hashlib
 from logging import getLogger
 from copy import deepcopy
+from snooze.plugins.core import Abort
 LOG = getLogger('snooze.process')
+
 
 class Aggregaterule(Plugin):
     def process(self, record):
@@ -30,15 +32,26 @@ class Aggregaterule(Plugin):
                     LOG.debug("Found {}, updating it with the record infos".format(str(aggregate)))
                     uid = aggregate['uid']
                     rules = aggregate.get('rules') or []
+                    ttl = self.core.housekeeper.conf.get('aggregate_ttl', 86400)
                     aggregate.update(record)
                     aggregate['uid'] = uid
                     aggregate['hash'] = agghash
                     aggregate['rules'] = list(set(aggregate.get('rules') or []) | set(rules))
                     aggregate['duplicates'] += 1
-                    if time.time() - aggregate['time_epoch'] < aggrule.throttle:
+                    if ttl >= 0:
+                        aggregate['ttl'] = ttl
+                    now = datetime.datetime.now()
+                    if (aggrule.throttle < 0) or (now.timestamp() - aggregate.get('date_epoch', 0) < aggrule.throttle):
                         self.db.write('aggregate', aggregate, update_time=False)
                         raise Abort
                     else:
+                        if 'state' in aggregate and aggregate['state'] == 'ack':
+                            escalation = {}
+                            escalation['user'] = 'snooze'
+                            escalation['message'] = 'Auto re-escalation'
+                            escalation['date'] = now.astimezone().isoformat()
+                            aggregate['state'] = 'reescalated'
+                            aggregate['escalations'] = aggregate.get('escalations', []) + [escalation]
                         self.db.write('aggregate', aggregate)
                 else:
                     LOG.debug("Not found, creating a new aggregate")
@@ -46,6 +59,7 @@ class Aggregaterule(Plugin):
                     aggregate.pop('uid', None)
                     aggregate['duplicates'] = 1
                     aggregate['hash'] = agghash
+                    aggregate['ttl'] = self.core.housekeeper.conf.get('aggregate_ttl', 86400)
                     self.db.write('aggregate', aggregate)
                 break
         else:
@@ -66,7 +80,10 @@ class AggregateruleObject():
         LOG.debug("-> condition: {}".format(str(self.condition)))
         self.fields = aggregate_rule.get('fields') or []
         self.fields.sort()
-        self.throttle = (aggregate_rule.get('throttle') or 0)
+        try:
+            self.throttle = int(aggregate_rule.get('throttle', 0))
+        except:
+            self.throttle = 0
     def match(self, record):
         """
         Check if a record matched this aggregate's rule condition
