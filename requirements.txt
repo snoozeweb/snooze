@@ -11,3 +11,4 @@ requests-unixsocket
 tinydb
 urllib3
 ldap3
+prometheus-client

@@ -8,6 +8,8 @@ from logging import getLogger
 
 log = getLogger('snooze')
 
+from prometheus_client import Summary
+
 from snooze.plugins.core import Abort, Abort_and_write
 
 class Core:
@@ -16,7 +18,15 @@ class Core:
         self.db = Database(conf.get('database', {}))
         self.plugins = []
         self.process_plugins = []
+        self.stats = {}
         self.load_plugins()
+
+        # Core statistics
+        self.stats['snooze_record_process_duration'] = Summary(
+            'snooze_record_process_duration',
+            'Average time spend processing a record',
+            ['source'],
+        )
 
     def load_plugins(self):
         self.plugins = []
@@ -43,25 +53,28 @@ class Core:
                 self.process_plugins.append(plugin_instance)
 
     def process_record(self, record):
-        record['plugins'] = []
-        for plugin in self.process_plugins:
-            try:
-                log.debug("Executing plugin {} on {}".format(plugin.name, record))
-                record['plugins'].append(plugin.name)
-                record = plugin.process(record)
-            except Abort:
-                break
-            except Abort_and_write:
+        source = record.get('source', 'unknown')
+        duration = self.stats['snooze_record_process_duration'].labels(source=source)
+        with duration.time():
+            record['plugins'] = []
+            for plugin in self.process_plugins:
+                try:
+                    log.debug("Executing plugin {} on {}".format(plugin.name, record))
+                    record['plugins'].append(plugin.name)
+                    record = plugin.process(record)
+                except Abort:
+                    break
+                except Abort_and_write:
+                    self.db.write('record', record)
+                    break
+                except Exception as e:
+                    log.exception(e)
+                    record['exception'] = {
+                        'core_plugin': plugin.name,
+                        'message': str(e)
+                    }
+                    self.db.write('record', record)
+                    break
+            else:
+                log.debug("Writing record {}")
                 self.db.write('record', record)
-                break
-            except Exception as e:
-                log.exception(e)
-                record['exception'] = {
-                    'core_plugin': plugin.name,
-                    'message': str(e)
-                }
-                self.db.write('record', record)
-                break
-        else:
-            log.debug("Writing record {}")
-            self.db.write('record', record)
