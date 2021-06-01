@@ -5,8 +5,14 @@ export default [
       {
         _name: 'CSidebarNavItem',
         name: 'Dashboard',
-        to: '/aggregate',
+        to: '/dashboard',
         fontIcon: 'la la-tachometer',
+      },
+      {
+        _name: 'CSidebarNavItem',
+        name: 'Alerts',
+        to: '/aggregate',
+        fontIcon: 'la la-folder',
       },
       {
         _name: 'CSidebarNavItem',

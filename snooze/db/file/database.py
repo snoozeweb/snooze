@@ -185,6 +185,13 @@ class BackendDB(Database):
             except ValueError:
                 newval = value
             return_obj = dig(Query(), *key.split('.')) > newval
+        elif operation == '>=':
+            key, value = args
+            try:
+                newval = float(value)
+            except ValueError:
+                newval = value
+            return_obj = dig(Query(), *key.split('.')) >= newval
         elif operation == '<':
             key, value = args
             try:
@@ -192,6 +199,13 @@ class BackendDB(Database):
             except ValueError:
                 newval = value
             return_obj = dig(Query(), *key.split('.')) < newval
+        elif operation == '<=':
+            key, value = args
+            try:
+                newval = float(value)
+            except ValueError:
+                newval = value
+            return_obj = dig(Query(), *key.split('.')) <= newval
         elif operation == 'MATCHES':
             key, value = args
             return_obj = dig(Query(), *key.split('.')).search(value, flags=re.IGNORECASE)

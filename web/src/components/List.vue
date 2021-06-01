@@ -81,6 +81,9 @@
         <template v-slot:cell(severity)="row">
           <Field :data="[dig(row.item, 'severity')]" colorize/>
         </template>
+        <template v-slot:cell(ttl)="row">
+          {{ dig(row.item, 'ttl') >= 0 ? countdown(dig(row.item, 'ttl') - timestamp + dig(row.item, 'date_epoch')) : '-' }}
+        </template>
         <template v-slot:cell(capabilities)="row">
           <Field :data="dig(row.item, 'capabilities')" colorize/>
         </template>
@@ -91,7 +94,7 @@
           <Field :data="[dig(row.item, 'method')]" colorize/>
         </template>
         <template v-slot:cell(throttle)="row">
-          {{ pp_counter(dig(row.item, 'throttle')) }}
+          {{ pp_countdown(dig(row.item, 'throttle')) }}
         </template>
         <template v-slot:cell(roles)="row">
           <Field :data="(dig(row.item, 'roles') || []).concat(dig(row.item, 'static_roles') || [])" colorize/>
@@ -119,6 +122,7 @@
                 <strong>{{ key }}:</strong> {{ value }}
               </li>
             </ul>
+            <Timeline :data="(dig(row.item, 'acks') || []).map(item => ({...item, 'timeline_type': 'ack'})).concat((dig(row.item, 'escalations') || []).map(item => ({...item, 'timeline_type': 'esc'})))"/>
             <b-button size="sm" @click="row.toggleDetails">Less</b-button>
           </b-card>
         </template>
@@ -205,13 +209,14 @@
 import dig from 'object-dig'
 import moment from 'moment'
 import { API } from '@/api'
-import { pp_counter } from '@/utils/api'
+import { pp_countdown, countdown, preprocess_data } from '@/utils/api'
 import Form from '@/components/Form.vue'
 import Search from '@/components/Search.vue'
 import Condition from '@/components/Condition.vue'
 import Action from '@/components/Action.vue'
 import Field from '@/components/Field.vue'
 import DateTime from '@/components/DateTime.vue'
+import Timeline from '@/components/Timeline.vue'
 
 import { delete_items } from '@/utils/api'
 
@@ -225,6 +230,7 @@ export default {
     DateTime,
     Search,
     Form,
+    Timeline,
   },
   props: {
     // The tabs name and their associated search
@@ -266,11 +272,16 @@ export default {
   },
   mounted () {
     this.get_data()
+    this.get_now()
+    setInterval(this.get_now, 1000);
   },
   data () {
     return {
       dig: dig,
-      pp_counter: pp_counter,
+      pp_countdown: pp_countdown,
+      countdown: countdown,
+      preprocess_data: preprocess_data,
+      timestamp: 0,
       delete_items: delete_items,
       filter: this.tabs[0].filter,
       tab_index: 0,
@@ -295,6 +306,9 @@ export default {
   computed: {
   },
   methods: {
+    get_now() {
+      this.timestamp = moment().unix()
+    },
     object_to_query(obj) {
       return Object.entries(obj).map(([key, val]) => `${key}=${encodeURIComponent(val)}`).join('&')
     },
@@ -328,15 +342,6 @@ export default {
           }
         })
         .catch(error => console.log(error))
-    },
-    preprocess_data(data) {
-      var filtered_object = Object.assign({}, data)
-      Object.keys(filtered_object).forEach((key, ) => {
-        if (key[0] == '_') {
-          delete filtered_object[key]
-        }
-      })
-      return filtered_object
     },
     checkForm(node) {
       return (node.getElementsByClassName('form-control is-invalid').length == 0)

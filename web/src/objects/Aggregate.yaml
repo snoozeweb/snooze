@@ -4,32 +4,40 @@ fields:
     -
         key: timestamp
         sortable: true
-        thStyle: {width: '10%'}
+        thStyle: {width: '5%'}
+        tdClass: ['px-2']
     -
         key: host
         sortable: true
-        thStyle: {width: '15%'}
+        thStyle: {width: '5%'}
+        tdClass: ['px-2']
     -
         key: process
         sortable: true
         thStyle: {width: '5%'}
+        tdClass: ['px-2']
     -
         key: severity
         sortable: true
-        thStyle: {width: '5%'}
+    -
+        key: ttl
+        label: TTL
+        tdClass: ['align-middle', 'text-center']
+        thClass: 'text-center'
     -
         key: message
-        thStyle: {width: '50%'}
+        thStyle: {width: '70%'}
         tdClass: ['text-break']
     -
         key: duplicates
         label: '#'
+        sortable: true
         tdClass: ['align-middle', 'text-center']
         thClass: 'text-center'
     -
         key: state
-        thStyle: {width: '5%'}
         unsearchable: true
+        thClass: 'text-center'
     -
         key: button
         sortable: false

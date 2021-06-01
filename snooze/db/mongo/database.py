@@ -168,6 +168,13 @@ class BackendDB(Database):
             except ValueError:
                 newval = value
             return_dict = {key: {'$gt': newval}}
+        elif operation == '>=':
+            key, value = args
+            try:
+                newval = float(value)
+            except ValueError:
+                newval = value
+            return_dict = {key: {'$gte': newval}}
         elif operation == '<':
             key, value = args
             try:
@@ -175,6 +182,13 @@ class BackendDB(Database):
             except ValueError:
                 newval = value
             return_dict = {key: {'$lt': newval}}
+        elif operation == '<=':
+            key, value = args
+            try:
+                newval = float(value)
+            except ValueError:
+                newval = value
+            return_dict = {key: {'$lte': newval}}
         elif operation == 'MATCHES':
             key, value = args
             return_dict = {key: {'$regex': value, "$options": "-i"}}

@@ -18,7 +18,7 @@
 // @group Forms
 // Class for inputing a duration
 import Base from './Base.vue'
-import { pp_counter } from '@/utils/api'
+import { pp_countdown } from '@/utils/api'
 
 export default {
   extends: Base,
@@ -31,7 +31,7 @@ export default {
   data() {
     return {
       datavalue: this.value,
-      pp_counter: pp_counter,
+      pp_countdown: pp_countdown,
     }
   },
   methods: {
@@ -64,7 +64,7 @@ export default {
       if (this.datavalue < 0) {
         return "No TTL"
       } else {
-        return this.pp_counter(this.datavalue)
+        return this.pp_countdown(this.datavalue)
       }
     }
   },

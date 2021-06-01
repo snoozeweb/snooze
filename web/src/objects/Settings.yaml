@@ -90,7 +90,7 @@ form:
         #    description: 'Test LDAP connection'
     housekeeping:
         trigger_on_startup:
-            display_name: Startup
+            display_name: Trigger on Startup
             component: Radio
             options:
                 - text: Yes
@@ -118,7 +118,7 @@ form:
                 default: 60
     stats:
         enabled:
-            display_name: Local Users
+            display_name: Metrics
             component: Radio
             options:
                 - text: Enabled

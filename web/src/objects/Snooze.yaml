@@ -27,11 +27,13 @@ fields:
     -
         label: User
         key: snooze_user
+        sortable: true
         tdClass: 'align-middle'
         thStyle: {width: '15%'}
     -
         key: hits
         label: '#'
+        sortable: true
         tdClass: ['align-middle', 'text-center']
         thClass: 'text-center'
     -

@@ -1,6 +1,7 @@
 #!/usr/bin/python3.6
 
-from prometheus_client import CollectorRegistry, start_http_server, Summary, Counter
+from prometheus_client import start_http_server, Summary, Counter
+from prometheus_client.context_managers import Timer
 
 import logging
 import datetime
@@ -8,19 +9,6 @@ import datetime
 from logging import getLogger
 from snooze.utils import config
 log = getLogger('snooze.stats')
-
-class TimerStats():
-    def __init__(self, metric=None):
-        self.metric = metric
-        self.time = 0
-
-    def __enter__(self):
-        if self.metric:
-            self.time = datetime.datetime.now().timestamp()
-
-    def __exit__(self, type, value, traceback):
-        if self.metric:
-            self.metric.observe(datetime.datetime.now().timestamp() - self.time)
 
 class Stats():
     def __init__(self, auto_enable=None):
@@ -64,7 +52,7 @@ class Stats():
         metric = None
         if self.enabled and metric_name in self.metrics:
             metric = self.metrics[metric_name].labels(**labels)
-        return TimerStats(metric)
+        return Timer(metric.observe if metric else (lambda x: x))
 
     def inc(self, metric_name, labels):
         if self.enabled and metric_name in self.metrics:

@@ -22,10 +22,14 @@
         <b-badge v-else variant="light">no state</b-badge>
       </template>
       <template #button="row">
+        <b-button variant="info" v-if="row.item.ttl >= 0" @click="toggle_ttl([row.item])" size="sm">Shelve</b-button>
+        <b-button variant="primary" v-else @click="toggle_ttl([row.item])" size="sm">Unshelve</b-button>
         <b-button variant="success" v-if="can_be_reescalated(row.item)" @click="modal_reescalate([row.item])" size="sm">Re-escalate</b-button>
         <b-button variant="warning" v-if="can_be_acked(row.item)" @click="modal_ack([row.item])" size="sm">Acknowledge</b-button>
       </template>
       <template #selected_buttons>
+        <b-button v-if="selection_shelved.length > 0" variant="info" @click="toggle_ttl(selection_shelved)" size="sm">Shelve ({{ selection_shelved.length }})</b-button>
+        <b-button v-if="selection_unshelved.length > 0" variant="primary" @click="toggle_ttl(selection_unshelved)" size="sm">Unshelve ({{ selection_unshelved.length }})</b-button>
         <b-button v-if="selection_reescalated.length > 0" variant="success" @click="modal_reescalate(selection_reescalated)" size="sm">Re-escalate ({{ selection_reescalated.length }})</b-button>
         <b-button v-if="selection_acked.length > 0" variant="warning" @click="modal_ack(selection_acked)" size="sm">Acknowledge ({{ selection_acked.length }})</b-button>
       </template>
@@ -69,7 +73,7 @@
 import List from '@/components/List.vue'
 
 import moment from 'moment'
-import { update_items } from '@/utils/api'
+import { update_items, preprocess_data } from '@/utils/api'
 import { form, fields } from '@/objects/Aggregate.yaml'
 
 export default {
@@ -86,18 +90,32 @@ export default {
       form: form,
       fields: fields,
       tabs: [
-        {title: 'Alerts', filter: ['OR',
-            ['NOT', ['EXISTS', 'state']],
-            ['=', 'state', 'reescalated'],
-          ],
+        {title: 'Alerts', filter: ['AND', 
+            ['OR',
+              ['NOT', ['EXISTS', 'state']],
+              ['=', 'state', 'reescalated'],
+            ],
+            ['>=', 'ttl', 0],
+          ]
         },
         {title: 'Acknowledged', filter: ['=', 'state', 'ack']},
         {title: 'Re-escalated', filter: ['=', 'state', 'reescalated']},
+        {title: 'Shelved', filter: ['OR',
+            ['NOT', ['EXISTS', 'ttl']],
+            ['<', 'ttl', 0],
+          ]
+        },
         {title: 'All', filter: []},
       ],
     }
   },
   computed: {
+    selection_shelved: function() {
+      return this.selected.filter(item => item.ttl >= 0)
+    },
+    selection_unshelved: function() {
+      return this.selected.filter(item => item.ttl == undefined || item.ttl < 0)
+    },
     selection_reescalated: function() {
       return this.selected.filter(item => this.can_be_reescalated(item))
     },
@@ -117,6 +135,9 @@ export default {
         default:
           return 'light'
       }
+    },
+    can_be_shelved(item) {
+      return item.ttl >= 0
     },
     can_be_reescalated(item) {
       return ['ack', 'snoozed'].includes(item.state)
@@ -139,13 +160,25 @@ export default {
     select(items) {
       this.selected = items
     },
+    toggle_ttl(items, ttl) {
+      items.forEach(item => {
+        if (item.ttl === undefined) {
+          item.ttl = 0
+        } else {
+          item.ttl = item.ttl * -1
+        }
+        item.date_epoch = moment().unix()
+      })
+      update_items("aggregate", items)
+      this.$refs.table.refreshTable()
+    },
     acknowledge(message, items) {
       items.forEach(item => {
         if (item.acks === undefined) {
           item.acks = []
         }
         item.state = 'ack'
-        var user = localStorage.getItem('name') || 'Unkwnown'
+        var user = localStorage.getItem('name') || 'Unknown'
         item.acks.push({
           message: message,
           user: user,
@@ -162,7 +195,7 @@ export default {
           item.escalations = []
         }
         item.state = 'reescalated'
-        var user = localStorage.getItem('name') || 'Unkwnown'
+        var user = localStorage.getItem('name') || 'Unknown'
         item.escalations.push({
           message: message,
           user: user,

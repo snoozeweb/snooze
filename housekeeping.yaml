@@ -1,4 +1,4 @@
-trigger_on_startup: true
 aggregate_ttl: 86400
 cleanup_interval: 60
-record_ttl: 1
+record_ttl: 10800
+trigger_on_startup: true

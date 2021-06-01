@@ -71,8 +71,8 @@ export function submit(endpoint, data) {
     })
 }
 
-function filter_out_fields(item) {
-  var filtered_object = Object.assign({}, item)
+export function preprocess_data(data) {
+  var filtered_object = Object.assign({}, data)
   Object.keys(filtered_object).forEach((key, ) => {
     if (key[0] == '_') {
       delete filtered_object[key]
@@ -82,7 +82,7 @@ function filter_out_fields(item) {
 }
 
 export function update_items(endpoint, items) {
-  //items = items.map(item => filter_out_fields(item))
+  items = items.map(item => preprocess_data(item))
   console.log(`PUT ${endpoint}`)
   console.log(items)
   API
@@ -124,7 +124,7 @@ export function delete_items(endpoint, items) {
     })
 }
 
-export function pp_counter(secs) {
+export function pp_countdown(secs) {
   var sec_num = parseInt(secs, 10)
   var hours   = Math.floor(sec_num / 3600)
   var minutes = Math.floor(sec_num / 60) % 60
@@ -141,4 +141,21 @@ export function pp_counter(secs) {
     output += seconds + 's'
   }
   return output
+}
+
+export function countdown(secs) {
+  var sec_num = parseInt(secs, 10)
+  var hours   = Math.floor(sec_num / 3600)
+  var minutes = Math.floor(sec_num / 60) % 60
+  var seconds = sec_num % 60
+  if (hours < 10) {
+    hours = "0" + hours;
+  }
+  if (minutes < 10) {
+    minutes = "0" + minutes;
+  }
+  if (seconds < 10) {
+    seconds = "0" + seconds;
+  }
+  return hours + ':' + minutes + ':' + seconds
 }

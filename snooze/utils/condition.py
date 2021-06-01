@@ -63,6 +63,17 @@ class Condition():
                 newrecval = record_value
             LOG.debug("Value: {}, Record: {}".format(newval, newrecval))
             return record_value and (newrecval > newval)
+        elif operation == '>=':
+            key, value = args
+            record_value = dig(record, *key.split('.'))
+            try:
+                newval = float(value)
+                newrecval = float(record_value)
+            except ValueError:
+                newval = value
+                newrecval = record_value
+            LOG.debug("Value: {}, Record: {}".format(newval, newrecval))
+            return record_value and (newrecval >= newval)
         elif operation == '<':
             key, value = args
             record_value = dig(record, *key.split('.'))
@@ -74,6 +85,17 @@ class Condition():
                 newrecval = record_value
             LOG.debug("Value: {}, Record: {}".format(newval, newrecval))
             return record_value and (newrecval < newval)
+        elif operation == '<=':
+            key, value = args
+            record_value = dig(record, *key.split('.'))
+            try:
+                newval = float(value)
+                newrecval = float(record_value)
+            except ValueError:
+                newval = value
+                newrecval = record_value
+            LOG.debug("Value: {}, Record: {}".format(newval, newrecval))
+            return record_value and (newrecval <= newval)
         elif operation == 'MATCHES':
             key, value = args
             record_value = dig(record, *key.split('.'))

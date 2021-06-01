@@ -32,11 +32,10 @@ class HousekeeperThread(Thread):
         self.housekeeper = housekeeper
 
     def run(self):
-        timer = (1 - self.conf.get('trigger_on_startup', True)) * time.time()
+        timer = (1 - self.housekeeper.conf.get('trigger_on_startup', True)) * time.time()
         while True:
             if time.time() - timer >= self.housekeeper.interval:
                 timer = time.time()
                 self.housekeeper.core.db.cleanup('aggregate')
                 self.housekeeper.core.db.cleanup('record')
-                break
             time.sleep(1)
