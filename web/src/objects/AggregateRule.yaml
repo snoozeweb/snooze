@@ -5,20 +5,23 @@ fields:
         key: name
         sortable: true
         thStyle: {width: '20%'}
+        tdClass: ['align-middle']
     -
         key: condition
         sortable: false
         thStyle: {width: '40%'}
+        tdClass: ['align-middle']
         type: array
     -
         key: fields
         sortable: false
         thStyle: {width: '25%'}
+        tdClass: ['align-middle']
         type: array
     -
         key: throttle
         thStyle: {width: '5%'}
-        tdClass: ['text-nowrap']
+        tdClass: ['align-middle', 'text-nowrap']
         type: array
     -
         key: button

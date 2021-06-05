@@ -6,14 +6,17 @@ fields:
         key: name
         sortable: true
         thStyle: {width: '20%'}
+        tdClass: ['align-middle']
     -
         label: Script
         key: script
         thStyle: {width: '35%'}
+        tdClass: ['align-middle']
     -
         label: Arguments
         key: arguments
         thStyle: {width: '35%'}
+        tdClass: ['align-middle']
         type: array
     -
         label: ''

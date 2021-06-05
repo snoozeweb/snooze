@@ -1,5 +1,8 @@
 ---
 colors:
+    ack: success
+    reescalated: warning
+    open: light
     root: danger
     ldap: primary
     local: warning

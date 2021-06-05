@@ -5,20 +5,22 @@ fields:
         key: timestamp
         sortable: true
         thStyle: {width: '5%'}
-        tdClass: ['px-2']
+        tdClass: ['align-middle', 'px-2']
     -
         key: host
         sortable: true
         thStyle: {width: '5%'}
-        tdClass: ['px-2']
+        tdClass: ['align-middle', 'px-2']
     -
         key: process
         sortable: true
         thStyle: {width: '5%'}
-        tdClass: ['px-2']
+        tdClass: ['align-middle', 'px-2']
     -
         key: severity
         sortable: true
+        tdClass: ['align-middle', 'text-center']
+        thClass: 'text-center'
     -
         key: ttl
         label: TTL
@@ -27,7 +29,7 @@ fields:
     -
         key: message
         thStyle: {width: '80%'}
-        tdClass: ['text-break']
+        tdClass: ['align-middle', 'text-break']
     -
         key: button
         sortable: false

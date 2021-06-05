@@ -8,7 +8,7 @@
       ref="list"
     >
       <template #button="row">
-        <b-button size="sm" @click="show_children(row.item)" variant="info">Children</b-button>
+        <b-button size="sm" @click="show_children(row.item)" variant="info" v-b-tooltip.hover title="Children"><i class="la la-folder-open la-lg"/></b-button>
       </template>
     </List>
   </div>

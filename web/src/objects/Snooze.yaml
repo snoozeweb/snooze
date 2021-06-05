@@ -5,14 +5,12 @@ fields:
         label: From
         key: time_constraint.from
         sortable: true
-        tdClass: ['align-middle', 'text-center']
-        thClass: 'text-center'
+        tdClass: ['align-middle']
     -
         label: Until
         key: time_constraint.until
         sortable: true
-        tdClass: ['align-middle', 'text-center']
-        thClass: 'text-center'
+        tdClass: ['align-middle']
     -
         key: name
         sortable: true,

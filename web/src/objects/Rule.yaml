@@ -5,15 +5,18 @@ fields:
         key: name
         sortable: true
         thStyle: {width: '20%'}
+        tdClass: ['align-middle']
     -
         key: condition
         sortable: false
         thStyle: {width: '40%'}
+        tdClass: ['align-middle']
         type: array
     -
         key: actions
         sortable: false
         thStyle: {width: '30%'}
+        tdClass: ['align-middle']
         type: array
     -
         key: button

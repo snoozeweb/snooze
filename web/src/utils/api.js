@@ -1,4 +1,5 @@
 import { API } from '@/api'
+import moment from 'moment'
 
 import { join_queries, object_to_query, text_alert } from '@/utils/query'
 
@@ -81,7 +82,7 @@ export function preprocess_data(data) {
   return filtered_object
 }
 
-export function update_items(endpoint, items) {
+export function update_items(endpoint, items, callback = null) {
   items = items.map(item => preprocess_data(item))
   console.log(`PUT ${endpoint}`)
   console.log(items)
@@ -89,6 +90,9 @@ export function update_items(endpoint, items) {
     .put(`/${endpoint}`, items)
     .then(response => {
       console.log(response)
+      if (callback) {
+        callback(response)
+      }
     })
     .catch(error => console.log(error))
 }
@@ -139,6 +143,8 @@ export function pp_countdown(secs) {
   }
   if (seconds > 0) {
     output += seconds + 's'
+  } else {
+    output = '0s'
   }
   return output
 }
@@ -148,14 +154,46 @@ export function countdown(secs) {
   var hours   = Math.floor(sec_num / 3600)
   var minutes = Math.floor(sec_num / 60) % 60
   var seconds = sec_num % 60
-  if (hours < 10) {
-    hours = "0" + hours;
+  if (seconds < 0) {
+    return '00:00:00'
+  } else {
+    if (hours < 10) {
+      hours = "0" + hours;
+    }
+    if (minutes < 10) {
+      minutes = "0" + minutes;
+    }
+    if (seconds < 10) {
+      seconds = "0" + seconds;
+    }
+    return hours + ':' + minutes + ':' + seconds
   }
-  if (minutes < 10) {
-    minutes = "0" + minutes;
+}
+export function trimDate(date, splitH) {
+  if (!date) {
+    return 'Empty'
   }
-  if (seconds < 10) {
-    seconds = "0" + seconds;
+  var mDate = moment(date)
+  var newDate = ''
+  var now = moment()
+  if (mDate.year() == now.year()) {
+    if (mDate.format('MM-DD') == now.format('MM-DD')) {
+      if(splitH) {
+        newDate = 'Today' + '\n' + mDate.format('HH:mm:ss')
+      } else {
+        newDate = 'Today' + ' ' + mDate.format('HH:mm:ss')
+      }
+    } else {
+      newDate = mDate.format('MMM Do HH:mm:ss')
+    }
+  } else {
+    newDate = mDate.format('MMM Do YYYY')
   }
-  return hours + ':' + minutes + ':' + seconds
+  if(splitH) {
+    var splitDate = newDate.split(' ')
+    if (splitDate.length > 2) {
+      newDate = splitDate[0] + ' ' + splitDate[1] + '\n' + splitDate.slice(2).join(' ')
+    }
+  }
+  return newDate
 }

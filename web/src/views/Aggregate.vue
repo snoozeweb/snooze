@@ -12,35 +12,28 @@
       :edit_mode="false"
       :delete_mode="false"
     >
-      <template v-slot:cell(state)="row">
-        <b-badge
-          v-if="row.item.state !== undefined && row.item.state != null"
-          :variant="get_state_color(row.item.state)"
-        >
-          {{ row.item.state }}
-        </b-badge>
-        <b-badge v-else variant="light">no state</b-badge>
-      </template>
       <template #button="row">
-        <b-button variant="info" v-if="row.item.ttl >= 0" @click="toggle_ttl([row.item])" size="sm">Shelve</b-button>
-        <b-button variant="primary" v-else @click="toggle_ttl([row.item])" size="sm">Unshelve</b-button>
-        <b-button variant="success" v-if="can_be_reescalated(row.item)" @click="modal_reescalate([row.item])" size="sm">Re-escalate</b-button>
-        <b-button variant="warning" v-if="can_be_acked(row.item)" @click="modal_ack([row.item])" size="sm">Acknowledge</b-button>
+        <b-button variant="info" v-if="row.item.ttl >= 0" @click="toggle_ttl([row.item])" size="sm" v-b-tooltip.hover title="Shelve"><i class="la la-folder-plus la-lg"/></b-button>
+        <b-button variant="info" v-else @click="toggle_ttl([row.item])" size="sm" v-b-tooltip.hover title="Unshelve"><i class="la la-folder-minus la-lg"/></b-button>
+        <b-button variant="warning" v-if="can_be_reescalated(row.item)" @click="modal_show([row.item], 'reescalate')" size="sm" v-b-tooltip.hover title="Re-escalate"><i class="la la-exclamation la-lg"/></b-button>
+        <b-button variant="success" v-if="can_be_acked(row.item)" @click="modal_show([row.item], 'ack')" size="sm" v-b-tooltip.hover title="Acknowledge"><i class="la la-thumbs-up la-lg"/></b-button>
+        <b-button variant="primary" class='text-nowrap' @click="modal_show([row.item], 'comment')" size="sm" v-b-tooltip.hover title="Add comment"><i class="las la-comment-dots la-lg"/> <b-badge v-if="row.item['timeline']" variant='light' class='mfs-auto'>{{ row.item['timeline'].length }}</b-badge></b-button>
       </template>
       <template #selected_buttons>
         <b-button v-if="selection_shelved.length > 0" variant="info" @click="toggle_ttl(selection_shelved)" size="sm">Shelve ({{ selection_shelved.length }})</b-button>
         <b-button v-if="selection_unshelved.length > 0" variant="primary" @click="toggle_ttl(selection_unshelved)" size="sm">Unshelve ({{ selection_unshelved.length }})</b-button>
-        <b-button v-if="selection_reescalated.length > 0" variant="success" @click="modal_reescalate(selection_reescalated)" size="sm">Re-escalate ({{ selection_reescalated.length }})</b-button>
-        <b-button v-if="selection_acked.length > 0" variant="warning" @click="modal_ack(selection_acked)" size="sm">Acknowledge ({{ selection_acked.length }})</b-button>
+        <b-button v-if="selection_reescalated.length > 0" variant="warning" @click="modal_show(selection_reescalated, 'reescalate')" size="sm">Re-escalate ({{ selection_reescalated.length }})</b-button>
+        <b-button v-if="selection_acked.length > 0" variant="success" @click="modal_show(selection_acked, 'ack')" size="sm">Acknowledge ({{ selection_acked.length }})</b-button>
+        <b-button v-if="selection_comment.length > 0" variant="primary" @click="modal_show(selection_comment, 'comment')" size="sm">Comment ({{ selection_comment.length }})</b-button>
       </template>
     </List>
 
     <b-modal
       id="ack"
       ref="ack"
-      @ok="acknowledge(modal_message, modal_data)"
+      @ok="write_timeline(modal_message, modal_data, 'ack')"
       @hidden="modal_clear()"
-      header-bg-variant="warning"
+      header-bg-variant="success"
       size ="xl"
       centered
     >
@@ -54,15 +47,31 @@
     <b-modal
       id="reescalate"
       ref="reescalate"
-      @ok="reescalate(modal_message, modal_data)"
+      @ok="write_timeline(modal_message, modal_data, 'reescalated')"
       @hidden="modal_clear()"
-      header-bg-variant="success"
+      header-bg-variant="warning"
       size ="xl"
       centered
     >
       <template #modal-title>Re-escalate</template>
       {{ modal_data }}
       <b-form-group label="Re-escalation message:">
+        <b-form-input v-model="modal_message" />
+      </b-form-group>
+    </b-modal>
+
+    <b-modal
+      id="comment"
+      ref="comment"
+      @ok="write_timeline(modal_message, modal_data, 'comment')"
+      @hidden="modal_clear()"
+      header-bg-variant="primary"
+      size ="xl"
+      centered
+    >
+      <template #modal-title>Add a comment</template>
+      {{ modal_data }}
+      <b-form-group label="Comment:">
         <b-form-input v-model="modal_message" />
       </b-form-group>
     </b-modal>
@@ -122,20 +131,11 @@ export default {
     selection_acked: function() {
       return this.selected.filter(item => this.can_be_acked(item))
     },
+    selection_comment: function() {
+      return this.selected
+    },
   },
   methods: {
-    get_state_color(state) {
-      switch(state) {
-        case 'ack':
-          return 'warning'
-        case 'snoozed':
-          return 'secondary'
-        case 'reescalated':
-          return 'success'
-        default:
-          return 'light'
-      }
-    },
     can_be_shelved(item) {
       return item.ttl >= 0
     },
@@ -149,13 +149,9 @@ export default {
       this.modal_data = []
       this.modal_message = null
     },
-    modal_ack(items) {
+    modal_show(items, type) {
       this.modal_data = items
-      this.$bvModal.show('ack')
-    },
-    modal_reescalate(items) {
-      this.modal_data = items
-      this.$bvModal.show('reescalate')
+      this.$bvModal.show(type)
     },
     select(items) {
       this.selected = items
@@ -169,41 +165,43 @@ export default {
         }
         item.date_epoch = moment().unix()
       })
-      update_items("aggregate", items)
-      this.$refs.table.refreshTable()
+      update_items("aggregate", items, this.callback)
     },
-    acknowledge(message, items) {
+    write_timeline(message, items, type) {
       items.forEach(item => {
-        if (item.acks === undefined) {
-          item.acks = []
+        if (item.timeline === undefined) {
+          item.timeline = []
         }
-        item.state = 'ack'
-        var user = localStorage.getItem('name') || 'Unknown'
-        item.acks.push({
+        if(type != 'comment') {
+          item.state = type
+        }
+        var user = {'name': localStorage.getItem('name') || '', 'method': localStorage.getItem('method')}
+        item.timeline.push({
           message: message,
           user: user,
+          type: type,
           date: moment().format(),
         })
-      })
-      update_items("aggregate", items)
-      this.$refs.table.refreshTable()
-      this.modal_clear()
-    },
-    reescalate(message, items) {
-      items.forEach(item => {
-        if (item.escalations === undefined) {
-          item.escalations = []
-        }
-        item.state = 'reescalated'
-        var user = localStorage.getItem('name') || 'Unknown'
-        item.escalations.push({
-          message: message,
-          user: user,
-          date: moment().format(),
-        })
-        update_items("aggregate", items)
-        this.$refs.table.refreshTable()
+        update_items("aggregate", items, this.callback)
         this.modal_clear()
+      })
+    },
+    callback(response) {
+      this.$refs.table.refreshTable()
+      var title, message, variant
+      if (response.data) {
+        title = 'Success!'
+        variant = 'success'
+        message = 'The operation was successful'
+      } else {
+        title = 'Error'
+        message = 'The operation could not be completed'
+        variant = 'danger'
+      }
+      this.$bvToast.toast(message, {
+        title: title,
+        variant: variant,
+        solid: true,
       })
     },
   },

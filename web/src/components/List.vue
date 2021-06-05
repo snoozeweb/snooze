@@ -105,25 +105,38 @@
         <template v-slot:cell(time_constraint.until)="row">
           <DateTime :date="dig(row.item, 'time_constraint', 'until')" />
         </template>
+        <template v-slot:cell(state)="row">
+          <Field :data="[(dig(row.item, 'state') || 'open')]" colorize/>
+        </template>
 
         <template v-slot:cell(button)="row">
           <b-button-group>
             <!-- Action buttons -->
-            <b-button size="sm" @click="row.toggleDetails">{{ row.detailsShowing ? 'Less' : 'More' }}</b-button>
+            <b-button size="sm" @click="row.toggleDetails"><i v-if="row.detailsShowing" class="la la-angle-up la-lg"/><i v-else class="la la-angle-down la-lg"/></b-button>
             <slot name="button" v-bind="row" />
-            <b-button v-if="edit_mode" size="sm" @click="modal_edit(row.item)" variant="primary"><i class="la la-pencil-square la-lg"></i></b-button>
-            <b-button v-if="delete_mode" size="sm" @click="modal_delete(row.item)" variant="danger"><i class="la la-trash la-lg"></i></b-button>
+            <b-button v-if="edit_mode" size="sm" @click="modal_edit(row.item)" variant="primary" v-b-tooltip.hover title="Edit"><i class="la la-pencil-alt la-lg"/></b-button>
+            <b-button v-if="delete_mode" size="sm" @click="modal_delete(row.item)" variant="danger" v-b-tooltip.hover title="Delete"><i class="la la-trash la-lg"/></b-button>
           </b-button-group>
         </template>
         <template v-slot:row-details="row">
-          <b-card>
-            <ul>
-              <li v-for="(value, key) in row.item" v-bind:key="key.id" v-if="key[0] != '_'">
-                <strong>{{ key }}:</strong> {{ value }}
-              </li>
-            </ul>
-            <Timeline :data="(dig(row.item, 'acks') || []).map(item => ({...item, 'timeline_type': 'ack'})).concat((dig(row.item, 'escalations') || []).map(item => ({...item, 'timeline_type': 'esc'})))"/>
-            <b-button size="sm" @click="row.toggleDetails">Less</b-button>
+          <b-card body-class="p-2" bg-variant="light">
+          <b-row>
+            <b-col>
+              <b-card header='Infos' header-class='text-center font-weight-bold' body-class='p-2'>
+                <ul>
+                  <li v-for="(value, key) in row.item" v-bind:key="key.id" v-if="key[0] != '_'">
+                    <strong>{{ key }}:</strong> {{ value }}
+                  </li>
+                </ul>
+              </b-card>
+            </b-col>
+            <b-col v-if="dig(row.item, 'timeline')">
+    	      <b-card header='Timeline' header-class='text-center font-weight-bold' body-class='p-2'>
+                <Timeline :data="dig(row.item, 'timeline') || []"/>
+              </b-card>
+            </b-col>
+          </b-row>
+            <b-button size="sm" @click="row.toggleDetails"><i class="la la-angle-up la-lg"/></b-button>
           </b-card>
         </template>
       </b-table>
