@@ -20,7 +20,7 @@
         </CHeaderNavLink>
       </CHeaderNavItem>
       <CHeaderNavItem class="px-3">
-        <CHeaderNavLink to="/aggregate">
+        <CHeaderNavLink to="/record">
           Alerts
         </CHeaderNavLink>
       </CHeaderNavItem>

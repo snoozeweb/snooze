@@ -11,14 +11,14 @@ export default [
       {
         _name: 'CSidebarNavItem',
         name: 'Alerts',
-        to: '/aggregate',
-        fontIcon: 'la la-folder',
+        to: '/record',
+        fontIcon: 'la la-file-text'
       },
       {
         _name: 'CSidebarNavItem',
-        name: 'Records',
-        to: '/record',
-        fontIcon: 'la la-file-text'
+        name: 'Aggregates',
+        to: '/aggregate',
+        fontIcon: 'la la-folder',
       },
       {
         _name: 'CSidebarNavTitle',

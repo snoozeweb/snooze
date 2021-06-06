@@ -31,6 +31,11 @@ fields:
         thStyle: {width: '80%'}
         tdClass: ['align-middle', 'text-break']
     -
+        key: state
+        unsearchable: true
+        thClass: 'text-center'
+        tdClass: ['align-middle', 'text-center']
+    -
         key: button
         sortable: false
         label: ''
