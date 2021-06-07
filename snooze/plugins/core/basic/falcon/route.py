@@ -13,6 +13,8 @@ from snooze.api.falcon import authorize, FalconRoute
 class Route(FalconRoute):
     @authorize
     def on_get(self, req, resp, search='[]', nb_per_page=0, page_number=1, order_by='', asc='true'):
+        if self.inject_payload:
+            self.inject_payload_params(req, resp)
         if 's' in req.params or 'perpage' in req.params or 'orderby' in req.params or 'asc' in req.params:
             s = req.params.get('s') or search
             perpage = req.params.get('perpage') or nb_per_page
@@ -43,12 +45,14 @@ class Route(FalconRoute):
 
     @authorize
     def on_post(self, req, resp):
+        if self.inject_payload:
+            self.inject_payload_media(req, resp)
         resp.content_type = falcon.MEDIA_JSON
         try:
             log.debug("Trying to insert {}".format(req.media))
             media = req.media.copy()
             for req_media in media:
-                req_media['snooze_user'] = req.context['user']['user']['name']
+                req_media['snooze_user'] = {'name': req.context['user']['user']['name'], 'method': req.context['user']['user']['method']}
             result = dumps(self.insert(self.plugin.name, media))
             resp.body = result
             self.plugin.reload_data()
@@ -60,6 +64,8 @@ class Route(FalconRoute):
 
     @authorize
     def on_put(self, req, resp):
+        if self.inject_payload:
+            self.inject_payload_media(req, resp)
         resp.content_type = falcon.MEDIA_JSON
         try:
             log.debug("Trying to update {}".format(req.media))
@@ -75,6 +81,8 @@ class Route(FalconRoute):
 
     @authorize
     def on_delete(self, req, resp, search='[]'):
+        if self.inject_payload:
+            self.inject_payload_media(req, resp)
         if 'uid' in req.params:
             cond_or_uid = ['=', 'uid', req.params['uid']]
         else:

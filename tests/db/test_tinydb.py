@@ -119,6 +119,21 @@ def test_tinydb_update_uid_duplicate_primary(db):
     rejected = db.write('record', result, 'a')['data']['rejected']
     assert len(rejected) == 1
 
+def test_tinydb_update_uid_constant(db):
+    uid = db.write('record', {'a': '1', 'b': '2', 'c': 3})['data']['added'][0]
+    result = db.search('record', ['=', 'uid', uid])['data']
+    result[0]['c'] = '4'
+    updated = db.write('record', result, constant=['a','b'])['data']['updated']
+    result[0]['b'] = '1'
+    rejected = db.write('record', result, constant=['a','b'])['data']['rejected']
+    assert len(updated) == 1 and len(rejected) == 1
+
+def test_tinydb_update_primary_constant(db):
+    db.write('record', {'a': '1', 'b': '2', 'c': 3}, 'a')['data']['added'][0]
+    updated = db.write('record',  {'a': '1', 'b': '2', 'c': 4}, 'a', constant='b')['data']['updated']
+    rejected = db.write('record', {'a': '1', 'b': '1', 'c': 4}, 'a', constant='b')['data']['rejected']
+    assert len(updated) == 1 and len(rejected) == 1
+
 def test_tinydb_primary_duplicate_update(db):
     db.write('record', {'a': '1', 'b': '2'})
     updated = db.write('record', {'a': '1', 'b': '3'}, 'a')['data']['updated']

@@ -44,14 +44,17 @@ def authorize(func):
         method = user_payload['method']
         name = user_payload['name']
         if name == 'root' and method == 'root':
-            log.warning("Root user detected! Please use a proper admin role if possible")
+            log.warning("Root user detected! Authorized but please use a proper admin role if possible")
             return func(self, req, resp, *args, **kw)
-        elif self.authorization_policy == 'user':
-            log.debug("User is checking its own infos. Authorized")
+        elif self.authorization_policy == ['any']:
+            log.debug("Any access policy. Authorized")
             return func(self, req, resp, *args, **kw)
         else:
             capabilities = user_payload.get('capabilities', [])
-            if endpoint == 'on_get':
+            if self.authorization_policy and all(cap in capabilities for cap in self.authorization_policy):
+                log.debug("User {} has capabilities {}. Authorized".format(name, self.authorization_policy))
+                return func(self, req, resp, *args, **kw)
+            elif endpoint == 'on_get':
                 if any(cap in capabilities for cap in read_permissions):
                     return func(self, req, resp, *args, **kw)
             elif endpoint == 'on_post' or endpoint == 'on_put' or endpoint == 'on_delete':
@@ -67,20 +70,14 @@ def authorize(func):
 class FalconRoute(BasicRoute):
     def inject_payload_media(self, req, resp):
         user_payload = req.context['user']['user']
+        log.debug("Injecting payload {} to {}".format(user_payload, req.media))
         if isinstance(req.media, list):
-            if len(req.media) == 1:
-                req.media[0]['name'] = user_payload['name']
-                req.media[0]['method'] = user_payload['method']
-            else:
-                log.error("List is not containing only one document")
-                resp.content_type = falcon.MEDIA_TEXT
-                resp.status = falcon.HTTP_503
-                resp.text = 'Please pass a list containing only one document'
-                return False
+            for media in req.media:
+                media['name'] = user_payload['name']
+                media['method'] = user_payload['method']
         else:
             req.media['name'] = user_payload['name']
             req.media['method'] = user_payload['method']
-        return True
 
     def inject_payload_params(self, req, resp):
         user_payload = req.context['user']['user']
@@ -88,7 +85,6 @@ class FalconRoute(BasicRoute):
         req.params.pop('method', None)
         req.params.pop('uid', None)
         req.params['s'] = ['AND', ['=', 'name', user_payload['name']], ['=', 'method', user_payload['method']]]
-        return True
 
     def update_password(self, media):
         password = media.pop('password', None)
@@ -118,6 +114,8 @@ class CapabilitiesRoute(BasicRoute):
             for plugin in self.api.core.plugins:
                 capabilities.append('rw_' + plugin.name)
                 capabilities.append('ro_' + plugin.name)
+                for additional_capability in plugin.capabilities:
+                    capabilities.append(additional_capability)
             log.debug("List of capabilities: {}".format(capabilities))
             resp.content_type = falcon.MEDIA_JSON
             resp.status = falcon.HTTP_200

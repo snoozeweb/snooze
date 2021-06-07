@@ -1,7 +1,9 @@
 ---
 name: 'Profile'
 desc: 'An endpoint to store user profile'
-primary: name,method
+primary:
+  - name
+  - method
 class: ''
 routes:
   '/profile/{category}':
@@ -12,5 +14,7 @@ routes:
     class: ProfileRoute
   '/profile_self/{category}':
     desc: ''
-    class: ProfileSelfRoute
-    authorization_policy: 'user'
+    class: ProfileRoute
+    authorization_policy:
+        - 'any'
+    inject_payload: True

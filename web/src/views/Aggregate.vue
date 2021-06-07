@@ -18,7 +18,6 @@
 <script>
 import List from '@/components/List.vue'
 
-import { update_items } from '@/utils/api'
 import { form, fields } from '@/objects/Aggregate.yaml'
 
 export default {

@@ -24,7 +24,7 @@ fields:
         type: array
     -
         label: User
-        key: snooze_user
+        key: snooze_user.name
         sortable: true
         tdClass: 'align-middle'
         thStyle: {width: '15%'}

@@ -1,0 +1,17 @@
+---
+name: 'Comment'
+desc: 'An endpoint to store user comments'
+check_permissions: True
+class: CommentRoute
+provides:
+    - can_comment
+routes:
+  '/comment_self':
+    desc: ''
+    class: CommentRoute
+    inject_payload: True
+    authorization_policy:
+        - can_comment
+    check_constant:
+        - name
+        - method

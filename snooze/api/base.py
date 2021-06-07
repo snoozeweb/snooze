@@ -9,13 +9,15 @@ from logging import getLogger
 log = getLogger('snooze.api')
 
 class BasicRoute():
-    def __init__(self, core, plugin = None, primary = None, duplicate_policy = 'update', authorization_policy = 'admin', check_permissions = False):
+    def __init__(self, core, plugin = None, primary = None, duplicate_policy = 'update', authorization_policy = None, check_permissions = False, check_constant = None, inject_payload = False):
         self.core = core
         self.plugin = plugin
         self.primary = primary
         self.duplicate_policy = duplicate_policy
         self.authorization_policy = authorization_policy
         self.check_permissions = check_permissions
+        self.check_constant = check_constant
+        self.inject_payload = inject_payload
 
     def search(self, collection, cond_or_uid=[], nb_per_page=0, page_number=1, order_by='', asc=True):
         if type(cond_or_uid) is list:
@@ -34,10 +36,10 @@ class BasicRoute():
             return None
 
     def insert(self, collection, record):
-        return self.core.db.write(collection, record, self.primary, self.duplicate_policy)
+        return self.core.db.write(collection, record, self.primary, self.duplicate_policy, constant = self.check_constant)
 
     def update(self, collection, record):
-        return self.core.db.write(collection, record, self.primary)
+        return self.core.db.write(collection, record, self.primary, constant = self.check_constant)
 
     def get_roles(self, name, method):
         if name and method:
@@ -101,8 +103,10 @@ class Api():
                 plugin_module = import_module("snooze.plugins.core.basic.{}.route".format(self.api_type))
             primary = plugin.metadata.get('primary') or None
             duplicate_policy = plugin.metadata.get('duplicate_policy') or 'update'
-            authorization_policy = plugin.metadata.get('authorization_policy') or 'admin'
+            authorization_policy = plugin.metadata.get('authorization_policy')
             check_permissions = plugin.metadata.get('check_permissions', False)
+            check_constant = plugin.metadata.get('check_constant')
+            injectpayload = plugin.metadata.get('inject_payload', False)
             for path, route in plugin.metadata.get('routes', {}).items():
                 route_class_name = route['class']
                 log.debug("For {} loading route class `{}`".format(path, route_class_name))
@@ -110,8 +114,10 @@ class Api():
                 route_duplicate_policy = route.get('duplicate_policy', duplicate_policy)
                 route_authorization_policy = route.get('authorization_policy', authorization_policy)
                 route_check_permissions = route.get('check_permissions', check_permissions)
-                log.debug("Route `{}` attributes: Duplicate Policy ({}), Authorization Policy ({}), Check Permissions ({})".format(route_class_name, route_duplicate_policy, route_authorization_policy, route_check_permissions))
-                self.add_route(path, route_class(self.core, plugin, primary, route_duplicate_policy, route_authorization_policy, route_check_permissions))
+                route_check_constant = route.get('check_constant', check_constant)
+                route_injectpayload = route.get('inject_payload', injectpayload)
+                log.debug("Route `{}` attributes: Duplicate Policy ({}), Authorization Policy ({}), Check Permissions ({}), Check Constant ({}), Inject Payload ({})".format(route_class_name, route_duplicate_policy, route_authorization_policy, route_check_permissions, route_check_constant, route_injectpayload))
+                self.add_route(path, route_class(self.core, plugin, primary, route_duplicate_policy, route_authorization_policy, route_check_permissions, route_check_constant, route_injectpayload))
 
     def init_api(self): pass
 

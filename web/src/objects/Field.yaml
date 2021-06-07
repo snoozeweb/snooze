@@ -2,6 +2,7 @@
 colors:
     ack: success
     reescalated: warning
+    esc: warning
     open: light
     root: danger
     ldap: primary

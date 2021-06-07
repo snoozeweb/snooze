@@ -115,6 +115,25 @@ def test_mongo_update_uid_duplicate_primary():
     assert len(rejected) == 1
 
 @mongomock.patch('mongodb://localhost:27017')
+def test_mongo_update_uid_constant():
+    db = Database(default_config.get('database'))
+    uid = db.write('record', {'a': '1', 'b': '2', 'c': 3})['data']['added'][0]
+    result = db.search('record', ['=', 'uid', uid])['data']
+    result[0]['c'] = '4'
+    updated = db.write('record', result, constant=['a','b'])['data']['updated']
+    result[0]['b'] = '1'
+    rejected = db.write('record', result, constant=['a','b'])['data']['rejected']
+    assert len(updated) == 1 and len(rejected) == 1
+
+@mongomock.patch('mongodb://localhost:27017')
+def test_mongo_update_primary_constant():
+    db = Database(default_config.get('database'))
+    db.write('record', {'a': '1', 'b': '2', 'c': 3}, 'a')['data']['added'][0]
+    updated = db.write('record',  {'a': '1', 'b': '2', 'c': 4}, 'a', constant='b')['data']['updated']
+    rejected = db.write('record', {'a': '1', 'b': '1', 'c': 4}, 'a', constant='b')['data']['rejected']
+    assert len(updated) == 1 and len(rejected) == 1
+
+@mongomock.patch('mongodb://localhost:27017')
 def test_mongo_primary_duplicate_update():
     db = Database(default_config.get('database'))
     db.write('record', {'a': '1', 'b': '2'})

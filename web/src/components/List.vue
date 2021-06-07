@@ -130,11 +130,7 @@
                 </ul>
               </b-card>
             </b-col>
-            <b-col v-if="dig(row.item, 'timeline')">
-    	      <b-card header='Timeline' header-class='text-center font-weight-bold' body-class='p-2'>
-                <Timeline :data="dig(row.item, 'timeline') || []"/>
-              </b-card>
-            </b-col>
+            <slot name="details_side" v-bind="row"></slot>
           </b-row>
             <b-button size="sm" @click="row.toggleDetails"><i class="la la-angle-up la-lg"/></b-button>
           </b-card>
@@ -229,7 +225,6 @@ import Condition from '@/components/Condition.vue'
 import Action from '@/components/Action.vue'
 import Field from '@/components/Field.vue'
 import DateTime from '@/components/DateTime.vue'
-import Timeline from '@/components/Timeline.vue'
 
 import { delete_items } from '@/utils/api'
 
@@ -243,7 +238,6 @@ export default {
     DateTime,
     Search,
     Form,
-    Timeline,
   },
   props: {
     // The tabs name and their associated search

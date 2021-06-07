@@ -18,35 +18,46 @@ class Plugin:
                 self.metadata_file = yaml.load(f.read())
         except:
             pass
+        self.capabilities = self.metadata_file.get('provides', [])
         default_routeclass = self.metadata_file.get('class', 'Route')
-        default_authorization = self.metadata_file.get('authorization_policy', 'admin')
+        default_authorization = self.metadata_file.get('authorization_policy')
         default_duplicate = self.metadata_file.get('duplicate_policy', 'update')
         default_checkpermissions = self.metadata_file.get('check_permissions', False)
+        default_checkconstant = self.metadata_file.get('check_constant')
+        default_injectpayload = self.metadata_file.get('inject_payload', False)
         if default_routeclass:
             routes = {
                 '/'+self.name: {
                     'class': default_routeclass,
                     'authorization_policy': default_authorization,
                     'duplicate_policy': default_duplicate,
-                    'check_permissions': default_checkpermissions
+                    'check_permissions': default_checkpermissions,
+                    'check_constant': default_checkconstant,
+                    'injectpayload': default_injectpayload
                 },
                 '/'+self.name+'/{search}': {
                     'class': default_routeclass,
                     'authorization_policy': default_authorization,
                     'duplicate_policy': default_duplicate,
-                    'check_permissions': default_checkpermissions
+                    'check_permissions': default_checkpermissions,
+                    'check_constant': default_checkconstant,
+                    'injectpayload': default_injectpayload
                 },
                 '/'+self.name+'/{search}/{nb_per_page}/{page_number}': {
                     'class': default_routeclass,
                     'authorization_policy': default_authorization,
                     'duplicate_policy': default_duplicate,
-                    'check_permissions': default_checkpermissions
+                    'check_permissions': default_checkpermissions,
+                    'check_constant': default_checkconstant,
+                    'injectpayload': default_injectpayload
                 },
                 '/'+self.name+'/{search}/{nb_per_page}/{page_number}/{order_by}/{asc}': {
                     'class': default_routeclass,
                     'authorization_policy': default_authorization,
                     'duplicate_policy': default_duplicate,
-                    'check_permissions': default_checkpermissions
+                    'check_permissions': default_checkpermissions,
+                    'check_constant': default_checkconstant,
+                    'injectpayload': default_injectpayload
                 }
             }
             if 'routes' in self.metadata_file:

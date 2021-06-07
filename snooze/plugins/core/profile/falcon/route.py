@@ -13,6 +13,8 @@ from snooze.api.falcon import authorize, FalconRoute
 class ProfileRoute(FalconRoute):
     @authorize
     def on_get(self, req, resp, category='', search=[]):
+        if self.inject_payload:
+            self.inject_payload_params(req, resp)
         if 'uid' in req.params:
             query = ['=', 'uid', req.params['uid']]
         elif 'name' in req.params and 'method' in req.params:
@@ -42,6 +44,8 @@ class ProfileRoute(FalconRoute):
 
     @authorize
     def on_put(self, req, resp, category=''):
+        if self.inject_payload:
+            self.inject_payload_media(req, resp)
         c = req.params.get('c') or category
         resp.content_type = falcon.MEDIA_JSON
         try:
@@ -62,12 +66,13 @@ class ProfileRoute(FalconRoute):
 
     @authorize
     def on_delete(self, req, resp, category='', search=[]):
+        if self.inject_payload:
+            self.inject_payload_media(req, resp)
         if 'uid' in req.params:
             query = ['=', 'uid', req.params['uid']]
         elif 'name' in req.params and 'method' in req.params:
             query = ['AND', ['=', 'name', req.params['name']], ['=', 'method', req.params['method']]]
         else:
-            #query = ['AND', ['=', 'name', self.payload['user']['name']], ['=', 'method', self.payload['user']['method']]]
             query = req.params.get('s') or search
             try:
                 query = loads(query)
@@ -89,16 +94,3 @@ class ProfileRoute(FalconRoute):
             resp.body = '{}'
             resp.status = falcon.HTTP_NOT_FOUND
             pass
-
-class ProfileSelfRoute(ProfileRoute):
-    def on_get(self, req, resp, category=''):
-        if self.inject_payload_params(req, resp):
-            super(ProfileSelfRoute, self).on_get(req, resp, category)
-
-    def on_put(self, req, resp, category=''):
-        if self.inject_payload_media(req, resp):
-            super(ProfileSelfRoute, self).on_put(req, resp, category)
-
-    def on_delete(self, req, resp, category=''):
-        if self.inject_payload_params(req, resp):
-            super(ProfileSelfRoute, self).on_delete(req, resp, category)

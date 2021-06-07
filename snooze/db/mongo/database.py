@@ -38,7 +38,7 @@ class BackendDB(Database):
         log.debug('Removed {} documents in {}'.format(deleted_results.deleted_count, collection))
         return deleted_results.deleted_count
 
-    def write(self, collection, obj, primary = None, duplicate_policy='update', update_time=True):
+    def write(self, collection, obj, primary = None, duplicate_policy='update', update_time=True, constant=None):
         added = []
         rejected = []
         updated = []
@@ -49,15 +49,19 @@ class BackendDB(Database):
         if type(tobj) != list:
             tobj = [tobj]
         if primary:
-            primary_list = primary.split(',')
+            if isinstance(primary , str):
+                primary = primary.split(',')
+        if constant:
+            if isinstance(constant , str):
+                constant = constant.split(',')
         for o in tobj:
             o.pop('_id', None)
             primary_result = None
             if update_time:
                 o['date_epoch'] = datetime.datetime.now().timestamp()
-            if primary and all(p in o for p in primary_list):
-                primary_query = list(map(lambda a: {a: o[a]}, primary_list))
-                if len(primary_list) > 1:
+            if primary and all(p in o for p in primary):
+                primary_query = list(map(lambda a: {a: o[a]}, primary))
+                if len(primary) > 1:
                     primary_query = {'$and': primary_query}
                 else:
                     primary_query = primary_query[0]
@@ -70,6 +74,9 @@ class BackendDB(Database):
                     if primary_result and primary_result['uid'] != o['uid']:
                         log.error("Found another document with same primary {}: {}. Since UID is different, cannot update".format(primary, primary_result))
                         rejected.append(o)
+                    elif constant and any(result.get(c, '') != o.get(c) for c in constant):
+                        log.error("Found a document with existing uid {} but different constant values: {}. Since UID is different, cannot update".format(o['uid'], constant))
+                        rejected.append(o)
                     else:
                         log.debug("In {}, updating {}".format(collection, o))
                         self.db[collection].update_one({'uid': o['uid']}, {'$set': o})
@@ -79,15 +86,19 @@ class BackendDB(Database):
                     rejected.append(o)
             elif primary:
                 if primary_result:
-                    log.debug('Evaluating duplicate policy: {}'.format(duplicate_policy))
-                    if duplicate_policy == 'insert':
-                        add_obj = True
-                    elif duplicate_policy == 'reject':
+                    if constant and any(primary_result.get(c, '') != o.get(c) for c in constant):
+                        log.error("Found a document with existing primary {} but different constant values: {}. Since UID is different, cannot update".format(primary, constant))
                         rejected.append(o)
                     else:
-                        log.debug("In {}, updating {}".format(collection, o))
-                        self.db[collection].update_one(primary_query, {'$set': o})
-                        updated.append(primary_result)
+                        log.debug('Evaluating duplicate policy: {}'.format(duplicate_policy))
+                        if duplicate_policy == 'insert':
+                            add_obj = True
+                        elif duplicate_policy == 'reject':
+                            rejected.append(o)
+                        else:
+                            log.debug("In {}, updating {}".format(collection, o))
+                            self.db[collection].update_one(primary_query, {'$set': o})
+                            updated.append(primary_result)
                 else:
                     log.debug("Could not find document with primary {}. Inserting instead".format(primary))
                     add_obj = True

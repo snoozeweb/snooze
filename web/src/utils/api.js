@@ -82,7 +82,22 @@ export function preprocess_data(data) {
   return filtered_object
 }
 
-export function update_items(endpoint, items, callback = null) {
+export function add_items(endpoint, items, callback = null, callback_arguments = null) {
+  items = items.map(item => preprocess_data(item))
+  console.log(`POST ${endpoint}`)
+  console.log(items)
+  API
+    .post(`/${endpoint}`, items)
+    .then(response => {
+      console.log(response)
+      if (callback) {
+        callback(response, callback_arguments)
+      }
+    })
+    .catch(error => console.log(error))
+}
+
+export function update_items(endpoint, items, callback = null, callback_arguments = null) {
   items = items.map(item => preprocess_data(item))
   console.log(`PUT ${endpoint}`)
   console.log(items)
@@ -91,13 +106,10 @@ export function update_items(endpoint, items, callback = null) {
     .then(response => {
       console.log(response)
       if (callback) {
-        callback(response)
+        callback(response, callback_arguments)
       }
     })
     .catch(error => console.log(error))
-}
-
-export function add_item(endpoint, data) {
 }
 
 export function delete_items(endpoint, items) {

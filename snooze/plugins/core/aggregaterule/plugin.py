@@ -62,13 +62,6 @@ class Aggregaterule(Plugin):
                     aggregate['ttl'] = self.core.housekeeper.conf.get('aggregate_ttl', 86400)
                     self.db.write('aggregate', aggregate)
                 break
-        else:
-            LOG.debug("Record {} could not match any aggregate rule, assigning a default aggregate".format(str(record)))
-            aggregate = deepcopy(record)
-            aggregate.pop('uid', None)
-            aggregate['duplicates'] = 1
-            aggregate['aggregate'] = 'default'
-            self.db.write('aggregate', aggregate)
 
         return record
 

@@ -17,7 +17,7 @@
         <b-button variant="info" v-else @click="toggle_ttl([row.item])" size="sm" v-b-tooltip.hover title="Unshelve"><i class="la la-folder-minus la-lg"/></b-button>
         <b-button variant="warning" v-if="can_be_reescalated(row.item)" @click="modal_show([row.item], 'reescalate')" size="sm" v-b-tooltip.hover title="Re-escalate"><i class="la la-exclamation la-lg"/></b-button>
         <b-button variant="success" v-if="can_be_acked(row.item)" @click="modal_show([row.item], 'ack')" size="sm" v-b-tooltip.hover title="Acknowledge"><i class="la la-thumbs-up la-lg"/></b-button>
-        <b-button variant="primary" class='text-nowrap' @click="modal_show([row.item], 'comment')" size="sm" v-b-tooltip.hover title="Add comment"><i class="las la-comment-dots la-lg"/> <b-badge v-if="row.item['timeline']" variant='light' class='mfs-auto'>{{ row.item['timeline'].length }}</b-badge></b-button>
+        <b-button variant="primary" class='text-nowrap' @click="modal_show([row.item], 'comment')" size="sm" v-b-tooltip.hover title="Add comment"><i class="las la-comment-dots la-lg"/> <b-badge v-if="row.item['comment_count']" variant='light' class='mfs-auto'>{{ row.item['comment_count'] }}</b-badge></b-button>
       </template>
       <template #selected_buttons>
         <b-button v-if="selection_shelved.length > 0" variant="info" @click="toggle_ttl(selection_shelved)" size="sm">Shelve ({{ selection_shelved.length }})</b-button>
@@ -26,12 +26,19 @@
         <b-button v-if="selection_acked.length > 0" variant="success" @click="modal_show(selection_acked, 'ack')" size="sm">Acknowledge ({{ selection_acked.length }})</b-button>
         <b-button v-if="selection_comment.length > 0" variant="primary" @click="modal_show(selection_comment, 'comment')" size="sm">Comment ({{ selection_comment.length }})</b-button>
       </template>
+      <template #details_side="row">
+        <b-col v-if="row.item['comment_count']">
+          <b-card header='Timeline' header-class='text-center font-weight-bold' body-class='p-2'>
+            <Timeline :record="row.item" ref="timeline"/>
+          </b-card>
+        </b-col>
+      </template>
     </List>
 
     <b-modal
       id="ack"
       ref="ack"
-      @ok="write_timeline(modal_message, modal_data, 'ack')"
+      @ok="add_comment(modal_message, modal_data, 'ack')"
       @hidden="modal_clear()"
       header-bg-variant="success"
       size ="xl"
@@ -47,7 +54,7 @@
     <b-modal
       id="reescalate"
       ref="reescalate"
-      @ok="write_timeline(modal_message, modal_data, 'reescalated')"
+      @ok="add_comment(modal_message, modal_data, 'esc')"
       @hidden="modal_clear()"
       header-bg-variant="warning"
       size ="xl"
@@ -63,7 +70,7 @@
     <b-modal
       id="comment"
       ref="comment"
-      @ok="write_timeline(modal_message, modal_data, 'comment')"
+      @ok="add_comment(modal_message, modal_data, 'comment')"
       @hidden="modal_clear()"
       header-bg-variant="primary"
       size ="xl"
@@ -82,12 +89,14 @@
 import List from '@/components/List.vue'
 
 import moment from 'moment'
-import { update_items, preprocess_data } from '@/utils/api'
+import { add_items, update_items } from '@/utils/api'
 import { form, fields } from '@/objects/Record.yaml'
+import Timeline from '@/components/Timeline.vue'
 
 export default {
   components: {
     List,
+    Timeline,
   },
   mounted () {
   },
@@ -102,7 +111,7 @@ export default {
         {title: 'Alerts', filter: ['AND', 
             ['OR',
               ['NOT', ['EXISTS', 'state']],
-              ['=', 'state', 'reescalated'],
+              ['=', 'state', 'esc'],
             ],
             ['AND',
               ['NOT', ['EXISTS', 'snooze']],
@@ -112,7 +121,7 @@ export default {
         },
         {title: 'Snoozed', filter: ['EXISTS', 'snoozed']},
         {title: 'Acknowledged', filter: ['=', 'state', 'ack']},
-        {title: 'Re-escalated', filter: ['=', 'state', 'reescalated']},
+        {title: 'Re-escalated', filter: ['=', 'state', 'esc']},
         {title: 'Shelved', filter: ['OR',
             ['NOT', ['EXISTS', 'ttl']],
             ['<', 'ttl', 0],
@@ -171,27 +180,26 @@ export default {
       })
       update_items("record", items, this.callback)
     },
-    write_timeline(message, items, type) {
+    add_comment(message, items, type) {
+      //var user = {'name': localStorage.getItem('name') || '', 'method': localStorage.getItem('method')}
+      var comments = []
       items.forEach(item => {
-        if (item.timeline === undefined) {
-          item.timeline = []
-        }
-        if(type != 'comment') {
-          item.state = type
-        }
-        var user = {'name': localStorage.getItem('name') || '', 'method': localStorage.getItem('method')}
-        item.timeline.push({
+        comments.push({
+          record_uid: item['uid'],
+	  type: type,
           message: message,
-          user: user,
-          type: type,
+          //user: user,
           date: moment().format(),
         })
-        update_items("record", items, this.callback)
-        this.modal_clear()
       })
+      add_items("comment_self", comments, this.callback, {'items': items, 'type': type})
+      this.modal_clear()
     },
-    callback(response) {
+    callback(response, arg) {
       this.$refs.table.refreshTable()
+      this.show_toast(response)
+    },
+    show_toast(response) {
       var title, message, variant
       if (response.data) {
         title = 'Success!'

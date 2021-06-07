@@ -25,8 +25,7 @@ export default {
     login: function () {
       console.log("Got authentication token")
       localStorage.setItem('snooze-token', this.token)
-      //localStorage.setItem('username', jwt_decode(this.token)['user'])
-      router.push('/aggregate')
+      router.push('/record')
     }
   },
 }
