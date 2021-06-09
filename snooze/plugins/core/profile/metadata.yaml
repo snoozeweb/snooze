@@ -16,5 +16,6 @@ routes:
     desc: ''
     class: ProfileRoute
     authorization_policy:
-        - 'any'
+        read: [any]
+        write: [any]
     inject_payload: True

@@ -142,9 +142,10 @@ class BackendDB(Database):
                 results = 0
                 log.debug("Too dangerous to delete everything. Aborting")
             else:
-                results = self.db[collection].delete_many(mongo_search).deleted_count
-                log.debug("Found {} item(s) to delete search {}".format(results, mongo_search))
-            return {'data': results}
+                results = self.db[collection].delete_many(mongo_search)
+                results_count = results.deleted_count
+                log.debug("Found {} item(s) to delete search {}".format(results_count, mongo_search))
+            return {'data': [], 'count': results_count}
         else:
             log.error("Cannot find collection {}".format(collection))
             return {'data': 0}

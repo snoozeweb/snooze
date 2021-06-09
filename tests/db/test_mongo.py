@@ -74,7 +74,7 @@ def test_mongo_delete():
     db.write('record', {'a': '30', 'b': '40'})
     db.write('record', {'a': '100', 'b': '400'})
     search1 = ['OR', ['=', 'a', '1'], ['=', 'a', '30']]
-    count = db.delete('record', search1)['data']
+    count = db.delete('record', search1)['count']
     result = db.search('record', search1)['data']
     assert count == 2 and len(result) == 0
 
@@ -83,7 +83,7 @@ def test_mongo_delete_id():
     db = Database(default_config.get('database'))
     db.write('record', {'a': '1', 'b': '2'})
     uid = db.write('record', {'a': '1', 'b': '2'})['data']['added'][0]
-    count = db.delete('record', ['=', 'uid', uid])['data']
+    count = db.delete('record', ['=', 'uid', uid])['count']
     assert count == 1
 
 @mongomock.patch('mongodb://localhost:27017')
@@ -91,7 +91,7 @@ def test_mongo_delete_all():
     db = Database(default_config.get('database'))
     db.write('record', {'a': '1', 'b': '2'})
     db.write('record', {'a': '30', 'b': '40'})
-    count = db.delete('record', {})['data']
+    count = db.delete('record', {})['count']
     assert count == 0
 
 @mongomock.patch('mongodb://localhost:27017')

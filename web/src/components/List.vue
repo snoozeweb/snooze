@@ -36,7 +36,7 @@
               <b-button @click="select_all">Select All</b-button>
               <slot name="head_buttons"></slot>
               <b-button v-if="add_mode" variant="success" @click="modal_add()">Add</b-button>
-              <b-button @click="get_data(true)"><i class="la la-refresh la-lg"></i></b-button>
+              <b-button @click="refresh(true)"><i class="la la-refresh la-lg"></i></b-button>
             </b-button-group>
 
           </b-button-toolbar>
@@ -209,8 +209,20 @@
   >
     <template v-slot:modal-title>Deleting this item</template>
     <p>{{ modal_data.delete }}</p>
-
   </b-modal>
+
+  <b-alert
+    :show="alert_countdown"
+    dismissible
+    fade
+    class="position-fixed fixed-top m-0 rounded-0 text-center"
+    style="z-index: 2000;"
+    variant="success"
+    @dismiss-count-down="a => this.alert_countdown = a"
+  >
+    Updated
+  </b-alert>
+
   </div>
 </template>
 
@@ -218,7 +230,8 @@
 import dig from 'object-dig'
 import moment from 'moment'
 import { API } from '@/api'
-import { pp_countdown, countdown, preprocess_data } from '@/utils/api'
+import { get_data, pp_countdown, countdown, preprocess_data } from '@/utils/api'
+import { join_queries } from '@/utils/query'
 import Form from '@/components/Form.vue'
 import Search from '@/components/Search.vue'
 import Condition from '@/components/Condition.vue'
@@ -278,7 +291,7 @@ export default {
     is_ascending: {type: Boolean, default: true},
   },
   mounted () {
-    this.get_data()
+    this.refresh()
     this.get_now()
     setInterval(this.get_now, 1000);
   },
@@ -288,6 +301,9 @@ export default {
       pp_countdown: pp_countdown,
       countdown: countdown,
       preprocess_data: preprocess_data,
+      get_data: get_data,
+      join_queries: join_queries,
+      alert_countdown: 0,
       timestamp: 0,
       delete_items: delete_items,
       filter: this.tabs[0].filter,
@@ -316,39 +332,19 @@ export default {
     get_now() {
       this.timestamp = moment().unix()
     },
-    object_to_query(obj) {
-      return Object.entries(obj).map(([key, val]) => `${key}=${encodeURIComponent(val)}`).join('&')
-    },
-    get_data(alert = false) {
-      var filter = JSON.stringify(this.joinQueries([this.filter, this.search_data]))
-      var query = {
-        s: filter,
+    refresh(feedback = false) {
+      var query = join_queries([this.filter, this.search_data])
+      var options = {
         perpage: this.per_page,
         pagenb: this.current_page,
         asc: this.isascending,
       }
-      if (this.orderby !== undefined) { query["orderby"] = this.orderby }
-      var query_str = this.object_to_query(query)
-      var url = `/${this.endpoint}/?${query_str}`
-      console.log(`GET ${url}`)
-      API
-        .get(url)
-        .then(response => {
-          console.log(response)
-          if (response.data) {
-            this.update_table(response.data)
-            if(alert) {
-              this.makeToast('Refresh successful', 'success', 'Success', 'b-toaster-top-left')
-            }
-          } else {
-            if(response.response.data.description) {
-              this.makeToast(response.response.data.description, 'danger', 'An error occurred')
-            } else {
-              this.makeToast('Could not display the content', 'danger', 'An error occurred')
-            }
-          }
-        })
-        .catch(error => console.log(error))
+      if (this.orderby !== undefined) { options["orderby"] = this.orderby }
+      this.get_data(this.endpoint, query, options, feedback ? this.feedback_then_update : this.update_table, null)
+    },
+    feedback_then_update(response) {
+      this.alert_countdown = 1
+      this.update_table(response)      
     },
     checkForm(node) {
       return (node.getElementsByClassName('form-control is-invalid').length == 0)
@@ -434,29 +430,16 @@ export default {
         .catch(error => console.log(error))
     },
     update_table(response) {
-      this.items = []
-      this.nb_rows = response['count']
-      var rows = response['data']
-      rows.forEach(row => {
-        if ( this.items.every(x => x['uid'] != row['uid']) ) {
-          this.items.push(row)
-        }
-      })
-    },
-    joinQueries(queries) {
-      var filtered_queries = queries.filter(function (el) {
-        return el != null && el != "" && el != [];
-      });
-      if (filtered_queries.length == 0) {
-        return []
+      if (response.data) {
+        this.items = []
+        this.nb_rows = response.data.count
+        var rows = response.data.data || []
+        rows.forEach(row => {
+          if ( this.items.every(x => x['uid'] != row['uid']) ) {
+            this.items.push(row)
+          }
+        })
       }
-      return filtered_queries.reduce((memo, query) => {
-        if (query != "" && query != []) {
-          return ['AND', memo, query]
-        } else {
-          return memo
-        }
-      })
     },
     search(query) {
       console.log(`Search: ${query}`)
@@ -492,7 +475,7 @@ export default {
     },
     refreshTable() {
       this.items = []
-      this.get_data()
+      this.refresh()
     },
     select (items) {
       this.selected = items

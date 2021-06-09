@@ -156,12 +156,13 @@ class BackendDB(Database):
         if collection in self.db.tables():
             table = self.db.table(collection)
             if tinydb_search:
-                results = len(table.remove(tinydb_search))
-                log.debug("Found {} item(s) to delete for search {}".format(results, tinydb_search))
+                results = table.remove(tinydb_search)
+                results_count = len(results)
+                log.debug("Found {} item(s) to delete for search {}".format(results_count, tinydb_search))
             else:
                 results = 0
                 log.debug("Too dangerous to delete everything. Aborting")
-            return {'data': results}
+            return {'data': [], 'count': results_count}
         else:
             log.error("Cannot find collection {}".format(collection))
             return {'data': 0}

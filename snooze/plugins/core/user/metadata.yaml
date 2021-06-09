@@ -5,3 +5,11 @@ primary: name,method
 duplicate_policy: 'reject'
 class: UserRoute
 check_permissions: True
+routes:
+  '/user_self':
+    desc: ''
+    class: UserRoute
+    authorization_policy:
+        read: [any]
+        write: []
+    inject_payload: True

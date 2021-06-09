@@ -4,7 +4,33 @@
 .la, .lab, .lad, .lal, .lar, .las {
     display: inline;
 }
+
+.la-lg {
+  font-size: 1.33333em;
+  line-height: 0.75em;
+  vertical-align: -.06em;
+}
 .c-sidebar-nav-icon {
     font-size: 1.45em !important;
 }
 .b-tooltip:not([style*='transform']) { top: 0; }
+
+.pt-0_5,
+.py-0_5 {
+  padding-top: .125rem !important;
+}
+
+.pr-0_5,
+.px-0_5 {
+  padding-right: .125rem !important;
+}
+
+.pb-0_5,
+.py-0_5 {
+  padding-bottom: .125rem !important;
+}
+
+.pl-0_5,
+.px-0_5 {
+  padding-left: .125rem !important;
+}

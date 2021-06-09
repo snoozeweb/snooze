@@ -31,7 +31,7 @@ export default new Router({
     },
     {
       path: '/',
-      redirect: '/aggregate',
+      redirect: '/record',
       name: 'Home',
       component: TheContainer,
       children: [

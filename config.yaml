@@ -10,6 +10,7 @@ core_plugins:
    - profile
    - user
    - role
+   - comment
 process_plugins:
    # Plugins with process (order matters)
    - rule

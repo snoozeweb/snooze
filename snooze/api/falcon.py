@@ -46,23 +46,24 @@ def authorize(func):
         if name == 'root' and method == 'root':
             log.warning("Root user detected! Authorized but please use a proper admin role if possible")
             return func(self, req, resp, *args, **kw)
-        elif self.authorization_policy == ['any']:
-            log.debug("Any access policy. Authorized")
-            return func(self, req, resp, *args, **kw)
         else:
             capabilities = user_payload.get('capabilities', [])
-            if self.authorization_policy and all(cap in capabilities for cap in self.authorization_policy):
-                log.debug("User {} has capabilities {}. Authorized".format(name, self.authorization_policy))
-                return func(self, req, resp, *args, **kw)
-            elif endpoint == 'on_get':
-                if any(cap in capabilities for cap in read_permissions):
+            capabilities.append('any')
+            if endpoint == 'on_get':
+                if self.authorization_policy and any(cap in capabilities for cap in self.authorization_policy.get('read', [])):
+                    log.debug("User {} has any read capabilities {}. Authorized".format(name, self.authorization_policy.get('read')))
+                    return func(self, req, resp, *args, **kw)
+                elif any(cap in capabilities for cap in read_permissions):
                     return func(self, req, resp, *args, **kw)
             elif endpoint == 'on_post' or endpoint == 'on_put' or endpoint == 'on_delete':
                 if self.check_permissions:
                     log.debug("Will double check {} permissions".format(name))
                     capabilities = self.get_capabilities(self.get_roles(name, method))
                 if len(capabilities) > 0:
-                    if any(cap in capabilities for cap in write_permissions):
+                    if self.authorization_policy and any(cap in capabilities for cap in self.authorization_policy.get('write', [])):
+                        log.debug("User {} has any write capabilities {}. Authorized".format(name, self.authorization_policy.get('write')))
+                        return func(self, req, resp, *args, **kw)
+                    elif any(cap in capabilities for cap in write_permissions):
                         return func(self, req, resp, *args, **kw)
         raise falcon.HTTPForbidden('Forbidden', 'Permission Denied')
     return _f
@@ -79,12 +80,13 @@ class FalconRoute(BasicRoute):
             req.media['name'] = user_payload['name']
             req.media['method'] = user_payload['method']
 
-    def inject_payload_params(self, req, resp):
+    def inject_payload_search(self, req, s):
         user_payload = req.context['user']['user']
-        req.params.pop('name', None)
-        req.params.pop('method', None)
-        req.params.pop('uid', None)
-        req.params['s'] = ['AND', ['=', 'name', user_payload['name']], ['=', 'method', user_payload['method']]]
+        to_inject = ['AND', ['=', 'name', user_payload['name']], ['=', 'method', user_payload['method']]]
+        if s:
+            return ['AND', s, to_inject]
+        else:
+            return to_inject
 
     def update_password(self, media):
         password = media.pop('password', None)
@@ -415,7 +417,7 @@ class LdapAuthRoute(AuthRoute):
             ):
                 user_dn = response[0]['dn']
                 attributes = response[0]['attributes']
-                return {'name': username, 'dn': user_dn, 'display_name': attributes[self.display_name_attribute], 'email': attributes[self.email_attribute], 'groups': attributes[self.member_attribute]}
+                return {'name': username, 'dn': user_dn, 'groups': attributes[self.member_attribute]}
             else:
                 # Could not find user in search
                 raise falcon.HTTPUnauthorized(description=f"Error in search: Could not find user {username} in LDAP search")
@@ -451,7 +453,7 @@ class LdapAuthRoute(AuthRoute):
             raise falcon.HTTPUnauthorized(description="")
 
     def parse_user(self, user):
-        return {'name': user['name'], 'display_name': user['display_name'], 'email': user['email'], 'groups': list(map(lambda x: x.split(',')[0].split('=')[1], user['groups'])), 'method': 'ldap'}
+        return {'name': user['name'], 'groups': list(map(lambda x: x.split(',')[0].split('=')[1], user['groups'])), 'method': 'ldap'}
 
 SNOOZE_GLOBAL_RUNDIR = '/var/run/snooze'
 SNOOZE_LOCAL_RUNDIR = "/var/run/user/{}".format(os.getuid())

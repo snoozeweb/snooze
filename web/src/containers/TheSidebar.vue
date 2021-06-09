@@ -14,9 +14,17 @@
         :height="60" 
         viewBox="0 0 556 234"
       />
+      <img
+        class="c-sidebar-brand-minimized my-2" 
+        name="logo" 
+        size="custom-size"
+	src="img/logo-symbol.png"
+        :height="32" 
+        viewBox="0 0 110 134"
+      />
     </CSidebarBrand>
 
-    <CRenderFunction flat :content-to-render="$options.nav"/>
+    <CRenderFunction flat :content-to-render="nav_filter($options.nav)"/>
     <CSidebarMinimizer
       class="d-md-down-none"
       @click.native="$store.commit('set', ['sidebarMinimize', !minimize])"
@@ -26,10 +34,45 @@
 
 <script>
 import nav from './_nav'
+import jwt_decode from "jwt-decode"
 
 export default {
   name: 'TheSidebar',
   nav,
+  mounted () {
+  },
+  methods: {
+    nav_filter(nav_el) {
+      var token = localStorage.getItem('snooze-token')
+      var capabilities = []
+      if (token) {
+        capabilities = jwt_decode(token).user.capabilities
+      }
+      if (capabilities) {
+        var nav_items = []
+        nav_el[0]._children.forEach(function(item) {
+          if (item.capabilities) {
+            capabilities.forEach(function(cap) {
+              if(cap == 'rw_all' || cap == 'ro_all' || item.capabilities.includes(cap)) {
+                nav_items.push(item)
+              }
+            })
+          } else {
+            nav_items.push(item)
+          }
+        })
+        var nav_children = []
+        nav_items.forEach(function (item, i) {
+          if (item._name != 'CSidebarNavTitle' || nav_items[i+1]._name != 'CSidebarNavTitle') {
+            nav_children.push(item)
+          }
+        })
+        return [{'_name': "CSidebarNav", '_children': nav_children}]
+      } else {
+        return []
+      }
+    }
+  },
   computed: {
     show () {
       return this.$store.state.sidebarShow 

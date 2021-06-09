@@ -17,7 +17,7 @@
         <b-button variant="info" v-else @click="toggle_ttl([row.item])" size="sm" v-b-tooltip.hover title="Unshelve"><i class="la la-folder-minus la-lg"/></b-button>
         <b-button variant="warning" v-if="can_be_reescalated(row.item)" @click="modal_show([row.item], 'reescalate')" size="sm" v-b-tooltip.hover title="Re-escalate"><i class="la la-exclamation la-lg"/></b-button>
         <b-button variant="success" v-if="can_be_acked(row.item)" @click="modal_show([row.item], 'ack')" size="sm" v-b-tooltip.hover title="Acknowledge"><i class="la la-thumbs-up la-lg"/></b-button>
-        <b-button variant="primary" class='text-nowrap' @click="modal_show([row.item], 'comment')" size="sm" v-b-tooltip.hover title="Add comment"><i class="las la-comment-dots la-lg"/> <b-badge v-if="row.item['comment_count']" variant='light' class='mfs-auto'>{{ row.item['comment_count'] }}</b-badge></b-button>
+        <b-button variant="primary" class='text-nowrap' @click="modal_show([row.item], 'comment')" size="sm" v-b-tooltip.hover title="Add comment"><i class="las la-comment-dots la-lg"/> <b-badge v-if="row.item['comment_count']" variant='light' class='position-absolute' style='top:0!important; left:100%!important; transform:translate(-50%,-50%)!important'>{{ row.item['comment_count'] }}</b-badge></b-button>
       </template>
       <template #selected_buttons>
         <b-button v-if="selection_shelved.length > 0" variant="info" @click="toggle_ttl(selection_shelved)" size="sm">Shelve ({{ selection_shelved.length }})</b-button>
@@ -110,7 +110,10 @@ export default {
       tabs: [
         {title: 'Alerts', filter: ['AND', 
             ['OR',
-              ['NOT', ['EXISTS', 'state']],
+              ['OR',
+                ['NOT', ['EXISTS', 'state']],
+                ['=', 'state', ''],
+              ],
               ['=', 'state', 'esc'],
             ],
             ['AND',
@@ -156,7 +159,7 @@ export default {
       return ['ack', 'snoozed'].includes(item.state)
     },
     can_be_acked(item) {
-      return [null, undefined, 'reescalated'].includes(item.state)
+      return [null, undefined, 'esc', ''].includes(item.state)
     },
     modal_clear() {
       this.modal_data = []
@@ -197,24 +200,6 @@ export default {
     },
     callback(response, arg) {
       this.$refs.table.refreshTable()
-      this.show_toast(response)
-    },
-    show_toast(response) {
-      var title, message, variant
-      if (response.data) {
-        title = 'Success!'
-        variant = 'success'
-        message = 'The operation was successful'
-      } else {
-        title = 'Error'
-        message = 'The operation could not be completed'
-        variant = 'danger'
-      }
-      this.$bvToast.toast(message, {
-        title: title,
-        variant: variant,
-        solid: true,
-      })
     },
   },
 }

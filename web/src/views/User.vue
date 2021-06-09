@@ -14,7 +14,7 @@
         <b-button variant="success" @click="modal_add()">Add</b-button>
       </template>
       <template #button="row">
-        <b-button size="sm" @click="modal_edit(row.item)" variant="primary"><i class="la la-pencil-square la-lg"></i></b-button>
+        <b-button size="sm" @click="modal_edit(row.item)" variant="primary"><i class="la la-pencil-alt la-lg"></i></b-button>
       </template>
     </List>
   </div>

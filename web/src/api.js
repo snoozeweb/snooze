@@ -32,7 +32,7 @@ API.interceptors.response.use(
   function (resp) { return resp },
   function (error) {
     if (router.currentRoute.path != '/login') {
-      if (error.response.status === 401) {
+      if (error.response && error.response.status === 401) {
         router.push('/login')
       } else {
         return error

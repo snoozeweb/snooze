@@ -11,8 +11,11 @@ export function object_to_query(obj) {
 // Input: [ ['=', 'a', '1'], ['=', 'b', '2'] ]
 // Output: ['AND', ['=', 'a', '1'], ['=', 'b', '2']]
 export function join_queries(queries, op="AND") {
+  if (queries.length == 0) {
+    return []
+  }
   return queries.reduce((memo, query) => {
-    if (query != "" && query != []) {
+    if (query != null && query != "" && query != []) {
       return [op, memo, query]
     } else {
       return memo
@@ -23,7 +26,7 @@ export function join_queries(queries, op="AND") {
 import { app } from '@/main'
 
 // Alert the user of a problem
-export function text_alert(text, title = null, variant = null) {
+export function text_alert(text, title = null, variant = null, position = 'b-toaster-top-right') {
   if (title == null) {
     switch (variant) {
       case 'success':
@@ -40,5 +43,6 @@ export function text_alert(text, title = null, variant = null) {
     title: title,
     variant: variant,
     solid: true,
+    toaster: position,
   })
 }

@@ -59,12 +59,12 @@ export default {
     }
   },
   methods: {
-		get_data() {
+    get_data() {
       API
-        .get('/user?s='+encodeURIComponent(JSON.stringify(['AND', ['=', 'name', localStorage.getItem('name')], ['=', 'method', localStorage.getItem('method')]])))
+        .get('/profile_self/general')
         .then(response => {
           console.log(response)
-          if (response !== undefined) {
+          if (response.data) {
             this.display_name = response.data.data[0]['display_name'] || ''
             this.email = response.data.data[0]['email'] || ''
             localStorage.setItem('display_name', this.display_name)
@@ -76,6 +76,7 @@ export default {
 		},
     logout() {
       localStorage.setItem('snooze-token', '')
+      localStorage.setItem('refreshed', false)
       router.push('/login')
     }
   },

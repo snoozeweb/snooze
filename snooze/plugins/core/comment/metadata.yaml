@@ -11,7 +11,8 @@ routes:
     class: CommentRoute
     inject_payload: True
     authorization_policy:
-        - can_comment
+        read: [any]
+        write: [can_comment]
     check_constant:
         - name
         - method

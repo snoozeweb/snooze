@@ -88,19 +88,19 @@ def test_tinydb_delete(db):
     db.write('record', {'a': '30', 'b': '40'})
     db.write('record', {'a': '100', 'b': '400'})
     search1 = ['OR', ['=', 'a', '1'], ['=', 'a', '30']]
-    count = db.delete('record', search1)['data']
+    count = db.delete('record', search1)['count']
     result = db.search('record', search1)['data']
     assert count == 2 and len(result) == 0
 
 def test_tinydb_delete_id(db):
     uid = db.write('record', {'a': '1', 'b': '2'})['data']['added'][0]
-    count = db.delete('record', ['=', 'uid', uid])['data']
+    count = db.delete('record', ['=', 'uid', uid])['count']
     assert count == 1
 
 def test_tinydb_delete_all(db):
     db.write('record', {'a': '1', 'b': '2'})
     db.write('record', {'a': '30', 'b': '40'})
-    count = db.delete('record', [])['data']
+    count = db.delete('record', [])['count']
     assert count == 0
 
 def test_tinydb_update_uid_with_primary(db):

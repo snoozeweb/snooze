@@ -12,9 +12,7 @@ from snooze.api.falcon import authorize, FalconRoute
 
 class ProfileRoute(FalconRoute):
     @authorize
-    def on_get(self, req, resp, category='', search=[]):
-        if self.inject_payload:
-            self.inject_payload_params(req, resp)
+    def on_get(self, req, resp, category='', search='[]'):
         if 'uid' in req.params:
             query = ['=', 'uid', req.params['uid']]
         elif 'name' in req.params and 'method' in req.params:
@@ -25,6 +23,8 @@ class ProfileRoute(FalconRoute):
                 query = loads(query)
             except:
                 pass
+        if self.inject_payload:
+            query = self.inject_payload_search(req, query)
         c = req.params.get('c') or category
         log.debug("Loading profile {}".format(c))
         result_dict = self.search(self.plugin.name + '.' + c, query)
@@ -65,9 +65,7 @@ class ProfileRoute(FalconRoute):
             pass
 
     @authorize
-    def on_delete(self, req, resp, category='', search=[]):
-        if self.inject_payload:
-            self.inject_payload_media(req, resp)
+    def on_delete(self, req, resp, category='', search='[]'):
         if 'uid' in req.params:
             query = ['=', 'uid', req.params['uid']]
         elif 'name' in req.params and 'method' in req.params:
@@ -78,6 +76,8 @@ class ProfileRoute(FalconRoute):
                 query = loads(query)
             except:
                 pass
+        if self.inject_payload:
+            query = self.inject_payload_search(req, query)
         c = req.params.get('c') or category
         log.debug("Trying delete profile {}: {}".format(c, media))
         result_dict = self.delete(self.plugin.name + '.' + c, query)

@@ -3,53 +3,22 @@ import moment from 'moment'
 
 import { join_queries, object_to_query, text_alert } from '@/utils/query'
 
-export class ItemAPI {
-
-  constructor(endpoint) {
-    this.endpoint = endpoint
-  }
-
-  search(query, options) {
-    var query_str = object_to_query({s: JSON.stringify(query), ...options})
-    var url = `/${this.endpoint}/?${query_str}`
-    console.log(`GET ${url}`)
-    API
-      .get(url)
-      .then(response => {
-        console.log(response)
-        return response.data
-      })
-      .catch(error => console.log(error))
-  }
-
-  delete(items) {
-    var uids = items.map(x => x["uid"])
-    uids.forEach(uid => {
-      console.log(`DELETE ${uid}`)
+export function get_data(endpoint, query, options = {}, callback = null, callback_arguments = null) {
+  var query_str = object_to_query({s: JSON.stringify(query), ...options})
+  var url = `/${endpoint}/?${query_str}`
+  console.log(`GET ${url}`)
+  API
+    .get(url)
+    .then(response => {
+      console.log(response)
+      if (callback) {
+        callback(response, callback_arguments)
+      }
+      if (response.data == undefined) {
+        show_feedback(response)
+      }
     })
-    var queries = uids.map(uid => ["=", "uid", uid])
-    var query = {
-      s: JSON.stringify(join_queries(queries, "OR")),
-    }
-    var query_str = object_to_query(query)
-    API
-      .delete(`/${this.endpoint}/?${query_str}`)
-      .then(response => {
-        console.log(response)
-        switch(true) {
-          case (response.status >= 200 && response.status < 300):
-            text_alert(`Deleted ${uids.length} objects`, 'Delete success', 'success')
-            break
-          default:
-            console.log(response)
-            text_alert(`Failed to delete ${uids.length} objects: ${response.statusText}`, 'Delete failure', 'danger')
-        }
-      })
-      .catch(error => {
-        console.log(error)
-      })
-  }
-
+    .catch(error => console.log(error))
 }
 
 // Submit data to an endpoint
@@ -82,6 +51,32 @@ export function preprocess_data(data) {
   return filtered_object
 }
 
+export function show_feedback(response, title = null, position = 'b-toaster-top-right') {
+  if(response.data) {
+    if (title) {
+      text_alert(`Succeeded to ${title} ${response.data.count || ((response.data.data.updated || []).length + (response.data.data.added || []).length)} object(s)`, title + ' success', 'success', position)
+    } else {
+      text_alert('Operation successful', 'Success', 'success', position)
+    }
+  } else {
+    var message = ''
+    if(response.response && response.response.data.description) {
+      message = response.response.data.description
+    } else {
+      if (title) {
+        message = `Failed to ${title} object(s): ${response.statusText}`
+      } else {
+        message = 'An error occurred'
+      }
+    }
+    if (title) {
+      text_alert(message, title + ' failure', 'danger', position)
+    } else {
+      text_alert(message, 'Failure', 'danger', position)
+    }
+  }
+}
+
 export function add_items(endpoint, items, callback = null, callback_arguments = null) {
   items = items.map(item => preprocess_data(item))
   console.log(`POST ${endpoint}`)
@@ -93,6 +88,7 @@ export function add_items(endpoint, items, callback = null, callback_arguments =
       if (callback) {
         callback(response, callback_arguments)
       }
+      show_feedback(response, 'Add')
     })
     .catch(error => console.log(error))
 }
@@ -108,11 +104,12 @@ export function update_items(endpoint, items, callback = null, callback_argument
       if (callback) {
         callback(response, callback_arguments)
       }
+      show_feedback(response, 'Update')
     })
     .catch(error => console.log(error))
 }
 
-export function delete_items(endpoint, items) {
+export function delete_items(endpoint, items, callback = null, callback_arguments = null) {
   var uids = items.map(x => x["uid"])
   uids.forEach(uid => {
     console.log(`DELETE ${uid}`)
@@ -123,17 +120,13 @@ export function delete_items(endpoint, items) {
   }
   var query_str = object_to_query(query)
   API
-    .delete(`/${endpoint}/?${query_str}`)
+    .delete(`/${endpoint}?${query_str}`)
     .then(response => {
       console.log(response)
-      switch(true) {
-        case (response.status >= 200 && response.status < 300):
-          text_alert(`Deleted ${uids.length} objects`, 'Delete success', 'success')
-          break
-        default:
-          console.log(response)
-          text_alert(`Failed to delete ${uids.length} objects: ${response.statusText}`, 'Delete failure', 'danger')
+      if (callback) {
+        callback(response, callback_arguments)
       }
+      show_feedback(response, 'Delete')
     })
     .catch(error => {
       console.log(error)
