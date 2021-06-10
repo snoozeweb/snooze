@@ -10,7 +10,7 @@ class Snooze(Plugin):
     def process(self, record):
         for f in self.filters:
             log.debug("Attempting to match {} against snooze filter {}".format(record, f.name))
-            if f.condition.match(record):
+            if f.enabled and f.condition.match(record):
                 log.debug("Matched snooze filter {} with {}".format(f.name, record))
                 record['snoozed'] = f.name
                 f.hits += 1
@@ -28,6 +28,7 @@ class Snooze(Plugin):
 
 class SnoozeObject():
     def __init__(self, snooze):
+        self.enabled = snooze.get('enabled', True)
         self.name = snooze['name']
         self.condition = Condition(snooze.get('condition'))
         self.hits = 0

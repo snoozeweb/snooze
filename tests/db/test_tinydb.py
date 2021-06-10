@@ -164,7 +164,13 @@ def test_tinydb_sort(db):
     result = db.search('record', orderby='a', asc=False)['data']
     assert result[0].items() >= {'a': '5', 'b': '2'}.items()
 
-def test_tinydb_cleanup(db):
+def test_tinydb_cleanup_timeout(db):
     db.write('record', [{'a': '1', 'ttl': 0}, {'b': '1', 'ttl': 0}, {'c': '1', 'ttl': 1}, {'d': '1'}])
-    deleted_count = db.cleanup('record')
+    deleted_count = db.cleanup_timeout('record')
     assert deleted_count == 2
+
+def test_tinydb_cleanup_orphans(db):
+    uids = db.write('record', [{'a': '1'}, {'b': '1'}])['data']['added']
+    db.write('comment', [{'record_uid': uids[0]}, {'record_uid': uids[1]}, {'record_uid': 'random'}])
+    deleted_count = db.cleanup_orphans('comment', 'record_uid', 'record', 'uid')
+    assert deleted_count == 1

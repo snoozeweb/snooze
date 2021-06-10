@@ -1,6 +1,6 @@
 <template>
   <div>
-    <b-form-group v-slot="{ ariaDescribedby }">
+    <b-form-group v-slot="{ ariaDescribedby }" class="m-0">
       <b-form-radio-group :aria-describedby="ariaDescribedby" v-model="datavalue" :options="options" button-variant="outline-primary" buttons />
     </b-form-group>
   </div>

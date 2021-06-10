@@ -21,9 +21,8 @@ class Aggregaterule(Plugin):
             record (dict)
         """
         LOG.debug("Processing record: {}".format(str(record)))
-        for aggregate_rule in (self.data or []):
-            aggrule = AggregateruleObject(aggregate_rule)
-            if aggrule.process(record):
+        for aggrule in self.aggregate_rules:
+            if aggrule.enabled and aggrule.process(record):
                 agghash = hashlib.md5((str(aggrule.name) + '.'.join([(record.get(field) or '') for field in aggrule.fields])).encode()).hexdigest()
                 LOG.debug("Checking if an aggregate with hash {} can be found".format(agghash))
                 aggregate_result = self.db.search('aggregate', ['=', 'hash', agghash])
@@ -65,8 +64,15 @@ class Aggregaterule(Plugin):
 
         return record
 
+    def reload_data(self):
+        super().reload_data()
+        self.aggregate_rules = []
+        for aggrule in (self.data or []):
+            self.aggregate_rules.append(AggregateruleObject(aggrule))
+
 class AggregateruleObject():
     def __init__(self, aggregate_rule):
+        self.enabled = aggregate_rule.get('enabled', True)
         self.name = aggregate_rule['name']
         LOG.debug("Creating aggregate: {}".format(str(self.name)))
         self.condition = Condition(aggregate_rule.get('condition', ''))

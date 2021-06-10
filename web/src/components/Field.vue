@@ -1,7 +1,7 @@
 <template>
   <span v-if="data === undefined">Empty</span>
   <span v-else>
-    <b-badge v-for="field in data" :key="field" class="mr-1" :variant="get_color(colorize?field:'')">{{ field }}</b-badge>
+    <b-badge v-for="(field, index) in data" :key="field" :class="index != data.length - 1 ? 'mr-1' : ''" :variant="get_color(colorize?field:'')">{{ field }}</b-badge>
   </span>
 </template>
 

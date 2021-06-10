@@ -24,12 +24,12 @@
 export default {
   props: {
     value: {},
-    metadata: {type: Object},
+    metadata: {type: Object, default: () => {}},
     data: {type: Object},
   },
   data() {
     return {
-      datavalue: this.value
+      datavalue: (this.value != undefined) ? this.value : (this.metadata ? this.metadata.default : {})
     }
   },
   computed: {

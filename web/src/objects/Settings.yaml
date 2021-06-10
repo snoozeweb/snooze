@@ -4,6 +4,7 @@ tabs:
         key: 'general'
         name: 'General'
         reload:
+            config_files: ['general']
             auth_backends: ['local']
     -
         key: 'ldap_auth'
@@ -53,7 +54,7 @@ form:
             description: 'LDAP host (eg. ldaps://example.com)'
         port:
             display_name: Port
-            component: String
+            component: Number
             description: 'LDAP server port (389 by default if no SSL, 636 if SSL is enabled)'
         bind_dn:
             display_name: Bind DN
@@ -128,5 +129,5 @@ form:
             description: 'Enable or disable metrics'
         port:
             display_name: Port
-            component: String
+            component: Number
             description: 'Metrics endpoint listening port (default 9234)'

@@ -23,7 +23,7 @@ class BackendDB(Database):
         log.debug("Initialized Mongodb with config {}".format(conf))
         log.debug("db: {}".format(self.db))
 
-    def cleanup(self, collection):
+    def cleanup_timeout(self, collection):
         log.debug("Cleanup collection {}".format(collection))
         now = datetime.datetime.now().timestamp()
         pipeline = [
@@ -32,6 +32,23 @@ class BackendDB(Database):
             {"$project":{ 'date_epoch':1, 'ttl':1, 'timeout':{ "$add": ["$date_epoch", "$ttl"] }}},
             {"$match":{ 'timeout':{ "$lte":now }}}
         ]
+        return self.run_pipeline(collection, pipeline)
+
+    def cleanup_orphans(self, collection, key, col_ref, key_ref):
+        log.debug("Cleanup collection {} by finding {} in collection {} matching {}".format(collection, key, col_ref, key_ref))
+        pipeline = [{
+    	    "$lookup": {
+                'from': col_ref,
+                'localField': key,
+                'foreignField': key_ref,
+                'as': "matched_docs"
+            }
+        },{
+            "$match": { "matched_docs": { "$eq": [] } }
+        }]
+        return self.run_pipeline(collection, pipeline)
+
+    def run_pipeline(self, collection, pipeline):
         aggregate_results = self.db[collection].aggregate(pipeline)
         ids = list(map(lambda doc: doc['_id'], aggregate_results))
         deleted_results = self.db[collection].delete_many({'_id': {"$in": ids}})
@@ -139,7 +156,7 @@ class BackendDB(Database):
         log.debug("List of collections: {}".format(self.db.collection_names()))
         if collection in self.db.collection_names():
             if len(condition) == 0:
-                results = 0
+                results_count = 0
                 log.debug("Too dangerous to delete everything. Aborting")
             else:
                 results = self.db[collection].delete_many(mongo_search)

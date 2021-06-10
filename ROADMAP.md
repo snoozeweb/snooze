@@ -11,6 +11,7 @@
 * Transform a record search into a rule
 * Make it possible to change the port and have an easy dev environment
 * Add a MQ
+* Export and import DB
 
 ## Long term
 

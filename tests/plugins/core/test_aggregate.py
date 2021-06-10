@@ -45,5 +45,4 @@ class TestAggregatePlugin:
             aggregateplugin.process(record)
         results1 = aggregateplugin.core.db.search('aggregate', ['=', 'aggregate', 'Agg1'])['data']
         results2 = aggregateplugin.core.db.search('aggregate', ['=', 'aggregate', 'Agg2'])['data']
-        results3 = aggregateplugin.core.db.search('aggregate', ['=', 'aggregate', 'default'])['data']
-        assert results1[0]['duplicates'] == 3 and results1[1]['duplicates'] == 1 and results2[0]['duplicates'] == 2 and results2[1]['duplicates'] == 1 and results3[0]['duplicates'] == 1
+        assert results1[0]['duplicates'] == 3 and results1[1]['duplicates'] == 1 and results2[0]['duplicates'] == 2 and results2[1]['duplicates'] == 1

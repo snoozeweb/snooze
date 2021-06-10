@@ -9,7 +9,7 @@ fields:
     -
         key: condition
         sortable: false
-        thStyle: {width: '40%'}
+        thStyle: {width: '50%'}
         tdClass: ['align-middle']
         type: array
     -
@@ -19,6 +19,12 @@ fields:
         tdClass: ['align-middle']
         type: array
     -
+        label: State
+        key: enabled
+        tdClass: ['align-middle', 'text-center']
+        thClass: 'text-center'
+        sortable: false
+    -
         key: button
         sortable: false
         label: ''
@@ -26,6 +32,16 @@ fields:
         thClass: 'text-center'
         unsearchable: true
 form:
+    enabled:
+        display_name: State
+        component: Radio
+        options:
+            - text: Enabled
+              value: true
+            - text: Disabled
+              value: false
+        default: true
+        description: Enabled
     name:
         display_name: Name
         component: String

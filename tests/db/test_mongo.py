@@ -174,8 +174,16 @@ def test_mongo_sort():
     assert result[0].items() >= {'a': '5', 'b': '2'}.items()
 
 @mongomock.patch('mongodb://localhost:27017')
-def test_mongo_cleanup():
+def test_mongo_cleanup_timeout():
     db = Database(default_config.get('database'))
     db.write('record', [{'a': '1', 'ttl': 0}, {'b': '1', 'ttl': 0}, {'c': '1', 'ttl': 1}, {'d': '1'}])
-    deleted_count = db.cleanup('record')
+    deleted_count = db.cleanup_timeout('record')
     assert deleted_count == 2
+
+@mongomock.patch('mongodb://localhost:27017')
+def test_mongo_cleanup_orphans():
+    db = Database(default_config.get('database'))
+    uids = db.write('record', [{'a': '1'}, {'b': '1'}])['data']['added']
+    db.write('comment', [{'record_uid': uids[0]}, {'record_uid': uids[1]}, {'record_uid': 'random'}])
+    deleted_count = db.cleanup_orphans('comment', 'record_uid', 'record', 'uid')
+    assert deleted_count == 1

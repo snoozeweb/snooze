@@ -2,8 +2,8 @@
 
 import logging
 import time
+import threading
 
-from threading import Thread
 from logging import getLogger
 from snooze.utils import config
 log = getLogger('snooze.housekeeping')
@@ -25,17 +25,21 @@ class Housekeeper():
         log.debug("Reloading Housekeeper with conf {}".format(self.conf))
         return True
 
-class HousekeeperThread(Thread):
+class HousekeeperThread(threading.Thread):
 
     def __init__(self, housekeeper):
         super().__init__()
         self.housekeeper = housekeeper
+        self.main_thread = threading.main_thread()
 
     def run(self):
         timer = (1 - self.housekeeper.conf.get('trigger_on_startup', True)) * time.time()
         while True:
+            if not self.main_thread.is_alive():
+                break
             if time.time() - timer >= self.housekeeper.interval:
                 timer = time.time()
-                self.housekeeper.core.db.cleanup('aggregate')
-                self.housekeeper.core.db.cleanup('record')
+                self.housekeeper.core.db.cleanup_timeout('aggregate')
+                self.housekeeper.core.db.cleanup_timeout('record')
+                self.housekeeper.core.db.cleanup_orphans('comment', 'record_uid', 'record', 'uid')
             time.sleep(1)

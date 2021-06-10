@@ -108,6 +108,9 @@
         <template v-slot:cell(state)="row">
           <Field :data="[(dig(row.item, 'state') || 'open')]" colorize/>
         </template>
+        <template v-slot:cell(enabled)="row">
+          <Field :data="[(dig(row.item, 'enabled') == undefined || dig(row.item, 'enabled') == true) ? 'enabled' : 'disabled']" colorize/>
+        </template>
 
         <template v-slot:cell(button)="row">
           <b-button-group>
@@ -347,7 +350,7 @@ export default {
       this.update_table(response)      
     },
     checkForm(node) {
-      return (node.getElementsByClassName('form-control is-invalid').length == 0)
+      return (node.getElementsByClassName('form-control is-invalid').length + node.getElementsByClassName('has-error').length) == 0
     },
     submit_edit(bvModalEvt) {
       bvModalEvt.preventDefault()

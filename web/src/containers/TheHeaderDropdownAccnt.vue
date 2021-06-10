@@ -34,7 +34,7 @@
     </div>
     <CDropdownDivider/>
     <CDropdownItem @click="logout()">
-      <CIcon name="la la-sign-out-alt la-lg" /> Logout
+      <i class="la la-sign-out-alt la-lg pr-2" /> Logout
     </CDropdownItem>
   </CDropdown>
 </template>

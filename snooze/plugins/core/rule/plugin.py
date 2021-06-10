@@ -21,7 +21,7 @@ class Rule(Plugin):
     def process_rules(self, record, rules):
         LOG.debug("Processing record {} against rules: {}".format(str(record), str(rules)))
         for rule in rules:
-            if rule.process(record):
+            if rule.enabled and rule.process(record):
                 self.process_rules(record, rule.children)
 
     def reload_data(self):
@@ -33,6 +33,7 @@ class Rule(Plugin):
 
 class RuleObject():
     def __init__(self, rule, db = None):
+        self.enabled = rule.get('enabled', True)
         self.name = rule['name']
         LOG.debug("Creating rule: {}".format(str(self.name)))
         self.condition = Condition(rule.get('condition'))

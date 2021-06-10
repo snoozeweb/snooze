@@ -5,18 +5,27 @@ fields:
         label: Name
         key: name
         sortable: true
-        thStyle: {width: '20%'}
+        thStyle: {width: '30%'}
+        tdClass: ['align-middle']
     -
         label: Method
         key: method
+        tdClass: ['align-middle', 'text-center']
+        thClass: 'text-center'
         sortable: true
-        thStyle: {width: '10%'}
     -
         label: Roles
         key: roles
-        thStyle: {width: '60%'}
+        thStyle: {width: '70%'}
+        tdClass: ['align-middle']
         sortable: false
         type: array
+    -
+        label: State
+        key: enabled
+        tdClass: ['align-middle', 'text-center']
+        thClass: 'text-center'
+        sortable: false
     -
         label: ''
         key: button
@@ -29,6 +38,16 @@ hidden_fields:
         key: static_roles
         type: array
 form:
+    enabled:
+        display_name: State
+        component: Radio
+        options:
+            - text: Enabled
+              value: true
+            - text: Disabled
+              value: false
+        default: true
+        description: Enabled
     roles:
         display_name: Roles
         component: Role

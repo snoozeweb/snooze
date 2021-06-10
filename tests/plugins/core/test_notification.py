@@ -15,7 +15,7 @@ class TestNotification:
     @pytest.fixture
     def notification(self, core, config):
         notifications = [
-            {'name': 'Notification1', 'condition': ['=', 'a', '1'], 'script': '/bin/echo', 'arguments': ['test']},
+            {'name': 'Notification1', 'condition': ['=', 'a', '1'], 'command': '/bin/echo', 'arguments': ['test']},
         ]
         core.db.write('notification', notifications)
         return Notification(core, config)

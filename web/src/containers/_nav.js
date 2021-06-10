@@ -4,12 +4,6 @@ export default [
     _children: [
       {
         _name: 'CSidebarNavItem',
-        name: 'Dashboard',
-        to: '/dashboard',
-        fontIcon: 'la la-tachometer',
-      },
-      {
-        _name: 'CSidebarNavItem',
         name: 'Alerts',
         to: '/record',
         fontIcon: 'la la-file-text',
