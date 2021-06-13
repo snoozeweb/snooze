@@ -49,11 +49,13 @@ class Notification(Plugin):
                     )
         return record
 
-    def reload_data(self):
+    def reload_data(self, sync = False):
         super().reload_data()
         self.notifications = []
         for f in (self.data or []):
             self.notifications.append(NotificationObject(f))
+        if sync and self.core.cluster:
+            self.core.cluster.reload_plugin(self.name)
 
 class NotificationObject():
     def __init__(self, notification):

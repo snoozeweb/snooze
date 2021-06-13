@@ -4,7 +4,6 @@ tabs:
         key: 'general'
         name: 'General'
         reload:
-            config_files: ['general']
             auth_backends: ['local']
     -
         key: 'ldap_auth'
@@ -14,13 +13,9 @@ tabs:
     -
         key: 'stats'
         name: 'Stats'
-        reload:
-            config_files: ['stats']
     -
         key: 'housekeeping'
         name: 'Housekeeping'
-        reload:
-            config_files: ['housekeeping']
 
 form:
     general:

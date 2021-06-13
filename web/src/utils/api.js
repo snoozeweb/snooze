@@ -3,9 +3,13 @@ import moment from 'moment'
 
 import { join_queries, object_to_query, text_alert } from '@/utils/query'
 
-export function get_data(endpoint, query, options = {}, callback = null, callback_arguments = null) {
-  var query_str = object_to_query({s: JSON.stringify(query), ...options})
-  var url = `/${endpoint}/?${query_str}`
+export function get_data(endpoint, query = null, options = {}, callback = null, callback_arguments = null) {
+  var query_str = null
+  var url = `/${endpoint}`
+  if (query) {
+    query_str = object_to_query({s: JSON.stringify(query), ...options})
+    url = `/${endpoint}/?${query_str}`
+  }
   console.log(`GET ${url}`)
   API
     .get(url)

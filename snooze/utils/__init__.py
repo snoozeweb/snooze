@@ -3,3 +3,4 @@ from .condition import Condition
 from .action import Action
 from .housekeeper import Housekeeper
 from .stats import Stats
+from .cluster import Cluster

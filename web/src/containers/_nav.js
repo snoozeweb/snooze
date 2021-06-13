@@ -17,6 +17,12 @@ export default [
 	capabilities: ['ro_aggregate', 'rw_aggregate'],
       },
       {
+        _name: 'CSidebarNavItem',
+        name: 'Status',
+        to: '/status',
+        fontIcon: 'la la-signal',
+      },
+      {
         _name: 'CSidebarNavTitle',
         _children: ['Core']
       },

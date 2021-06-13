@@ -20,11 +20,13 @@ class Snooze(Plugin):
         else:
             return record
 
-    def reload_data(self):
+    def reload_data(self, sync = False):
         super().reload_data()
         self.filters = []
         for f in (self.data or []):
             self.filters.append(SnoozeObject(f))
+        if sync and self.core.cluster:
+            self.core.cluster.reload_plugin(self.name)
 
 class SnoozeObject():
     def __init__(self, snooze):

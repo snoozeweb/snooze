@@ -57,9 +57,12 @@ def write_config(configname = 'config', config = {}):
     try:
         with configfile.open('r') as f:
             old_config = yaml.load(f.read(), Loader=yaml.Loader)
+            log.debug('Writing config {}'.format(config))
+            log.debug('Type {}'.format(type(config)))
             old_config.update(config)
         with configfile.open('w') as f:
             yaml.dump(old_config, f)
+            log.debug('New config: {}'.format(old_config))
             return {'file': str(configfile)}
     except Exception as e:
         log.error(e)

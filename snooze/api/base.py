@@ -4,13 +4,15 @@ import json
 
 from importlib import import_module
 from wsgiref import simple_server
+from snooze.utils import Cluster
 
 from logging import getLogger
 log = getLogger('snooze.api')
 
 class BasicRoute():
-    def __init__(self, core, plugin = None, primary = None, duplicate_policy = 'update', authorization_policy = None, check_permissions = False, check_constant = None, inject_payload = False):
-        self.core = core
+    def __init__(self, api, plugin = None, primary = None, duplicate_policy = 'update', authorization_policy = None, check_permissions = False, check_constant = None, inject_payload = False):
+        self.api = api
+        self.core = api.core
         self.plugin = plugin
         self.primary = primary
         self.duplicate_policy = duplicate_policy
@@ -85,6 +87,8 @@ class Api():
         self.__class__ = type('Api', (cls.BackendApi, Api), {})
         self.init_api(core)
         self.load_plugin_routes()
+        self.cluster = Cluster(self)
+        self.core.cluster = self.cluster
 
     def load_plugin_routes(self):
         log.debug('Loading plugin routes for API')
@@ -117,7 +121,7 @@ class Api():
                 route_check_constant = route.get('check_constant', check_constant)
                 route_injectpayload = route.get('inject_payload', injectpayload)
                 log.debug("Route `{}` attributes: Duplicate Policy ({}), Authorization Policy ({}), Check Permissions ({}), Check Constant ({}), Inject Payload ({})".format(route_class_name, route_duplicate_policy, route_authorization_policy, route_check_permissions, route_check_constant, route_injectpayload))
-                self.add_route(path, route_class(self.core, plugin, primary, route_duplicate_policy, route_authorization_policy, route_check_permissions, route_check_constant, route_injectpayload))
+                self.add_route(path, route_class(self, plugin, primary, route_duplicate_policy, route_authorization_policy, route_check_permissions, route_check_constant, route_injectpayload))
 
     def init_api(self): pass
 

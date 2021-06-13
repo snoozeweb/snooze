@@ -4,8 +4,9 @@ import Router from 'vue-router'
 // Containers
 const TheContainer = () => import('@/containers/TheContainer')
 // Components
-const Aggregate = () => import('@/views/Aggregate')
 const Record = () => import('@/views/Record')
+const Aggregate = () => import('@/views/Aggregate')
+const Status = () => import('@/views/Status')
 const Rule = () => import('@/views/Rule')
 const AggregateRule = () => import('@/views/AggregateRule')
 const Snooze = () => import('@/views/Snooze')
@@ -36,14 +37,19 @@ export default new Router({
       component: TheContainer,
       children: [
         {
+          path: 'record',
+          name: 'Records',
+          component: Record
+        },
+        {
           path: 'aggregate',
           name: 'Aggregates',
           component: Aggregate
         },
         {
-          path: 'record',
-          name: 'Records',
-          component: Record
+          path: 'status',
+          name: 'Status',
+          component: Status
         },
         {
           path: 'rule',

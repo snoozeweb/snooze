@@ -17,9 +17,11 @@ class Core:
         self.db = Database(conf.get('database', {}))
         self.general_conf = config('general')
         self.housekeeper = Housekeeper(self)
+        self.cluster = None
         self.plugins = []
         self.process_plugins = []
         self.stats = Stats(conf.get('stats'))
+        self.secrets = config('secrets')
         self.stats.init('process_record_duration')
         self.load_plugins()
 
@@ -75,8 +77,11 @@ class Core:
                 self.db.write('record', record)
 
     def reload_conf(self, config_file):
+        log.debug("Reload config file '{}'".format(config_file))
         if config_file == 'general':
             self.general_conf = config('general')
+            return True
+        if config_file == 'ldap_auth':
             return True
         elif config_file == 'housekeeping':
             return self.housekeeper.reload()

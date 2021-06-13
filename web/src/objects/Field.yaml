@@ -19,3 +19,5 @@ colors:
     crit: danger
     disabled: danger
     enabled: success
+    OK: success
+    ERROR: danger

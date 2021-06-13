@@ -9,7 +9,7 @@ from logging import getLogger
 log = getLogger('snooze.api')
 
 from snooze.api.base import BasicRoute
-from snooze.utils import config, write_config
+from snooze.utils import config
 from snooze.api.falcon import authorize
 
 class SettingsRoute(BasicRoute):
@@ -39,15 +39,13 @@ class SettingsRoute(BasicRoute):
         try:
             log.debug("Trying write to configfile {}: {}".format(c, req.media))
             media = req.media[0].copy()
-            media = {k:v for k,v in media.items() if ('password' not in k) or v}
-            result_dict = write_config(c, media)
-            result = dumps({'data': result_dict})
+            media_config = {k:v for k,v in media.get('conf', {}).items() if ('password' not in k) or v}
+            results = self.api.write_and_reload(c, media_config, media.get('reload'), True)
+            result = dumps({'data': results.get('text', '')})
             resp.body = result
-            if 'error' in result_dict.keys():
-                resp.status = falcon.HTTP_503
-            else:
-                resp.status = falcon.HTTP_201
-        except:
+            resp.status = results.get('status', falcon.HTTP_503)
+        except Exception as e:
+            log.exception(e)
             resp.body = '{}'
             resp.status = falcon.HTTP_404
             pass

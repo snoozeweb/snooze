@@ -11,7 +11,7 @@ from wsgiref import simple_server
 from bson.json_util import loads, dumps
 
 from snooze.api.base import Api, BasicRoute
-from snooze.utils import config
+from snooze.utils import config, write_config
 
 from logging import getLogger
 log = getLogger('snooze.api')
@@ -103,9 +103,8 @@ class FalconRoute(BasicRoute):
         self.core.db.write('user.password', user_password, 'name,method')
 
 class CapabilitiesRoute(BasicRoute):
-    def __init__(self, api):
-        super().__init__(api.core)
-        self.api = api
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
         self.name = 'role'
 
     @authorize
@@ -148,10 +147,6 @@ class LoginRoute(BasicRoute):
         'auth_disabled': True
     }
 
-    def __init__(self, api):
-        super().__init__(api.core)
-        self.api = api
-
     def on_get(self, req, resp):
         log.debug("Listing authentication backends")
         try:
@@ -166,37 +161,41 @@ class LoginRoute(BasicRoute):
             resp.status = falcon.HTTP_503
 
 class ReloadRoute(BasicRoute):
-    def __init__(self, api):
-        super().__init__(api.core)
-        self.api = api
-        self.name = 'settings'
+    auth = {
+        'auth_disabled': True
+    }
 
-    @authorize
     def on_post(self, req, resp):
-        auth_backends = req.params.get('auth_backends', []) or req.media.get('auth_backends', [])
-        reloaded_auth = []
-        config_files = req.params.get('config_files', []) or req.media.get('config_files', [])
-        reloaded_conf = []
-        resp.content_type = falcon.MEDIA_TEXT
-        try:
-            for config_file in config_files:
-                if self.api.core.reload_conf(config_file):
-                    reloaded_conf.append(config_file)
-            for auth_backend in auth_backends:
-                if self.api.auth_routes.get(auth_backend):
-                    log.debug("Reloading {} auth backend".format(auth_backend))
-                    self.api.auth_routes[auth_backend].reload()
-                    reloaded_auth.append(auth_backend)
-                else:
-                    log.debug("Authentication backend '{}' not found".format(auth_backend))
-            if len(reloaded_auth) > 0 or len(reloaded_conf) > 0:
-                resp.status = falcon.HTTP_200
-                resp.text = "Reloaded auth '{}' and conf {}".format(reloaded_auth, reloaded_conf)
+        media = req.media.copy()
+        if media.get('reload_token', '-') == self.api.core.secrets.get('reload_token', '+'):
+            log.debug("Reloading conf ({}, {}), backend {}, sync {}".format(media.get('filename', ''), media.get('conf', ''), media.get('reload', ''), media.get('sync', False)))
+            results = self.api.write_and_reload(media.get('filename'), media.get('conf'), media.get('reload'), media.get('sync', False))
+            resp.content_type = falcon.MEDIA_TEXT
+            resp.status = results.get('status', falcon.HTTP_503)
+            resp.text = results.get('text', '')
+        else:
+            resp.status = falcon.HTTP_401
+            resp.text = 'Invalid secret reload token'
+
+class ClusterRoute(BasicRoute):
+    auth = {
+        'auth_disabled': True
+    }
+
+    def on_get(self, req, resp):
+        log.debug("Listing cluster members")
+        if self.api.core.cluster.enabled:
+            if req.params.get('self', False):
+                members = self.api.core.cluster.get_self()
             else:
-                resp.status = falcon.HTTP_404
-                resp.text = "Error while reloading"
-        except Exception as e:
-            log.exception(e)
+                members = self.api.core.cluster.get_members()
+            resp.content_type = falcon.MEDIA_JSON
+            resp.status = falcon.HTTP_200
+            resp.media = {
+                'data': members,
+            }
+        else:
+            resp.text = 'Clustering had been disabled'
             resp.status = falcon.HTTP_503
 
 class CORS(object):
@@ -227,11 +226,10 @@ class AuthRoute(BasicRoute):
         'auth_disabled': True
     }
 
-    def __init__(self, api):
-        super().__init__(api.core)
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
         self.auth_header_prefix = 'Basic'
-        self.api = api
-        self.userplugin =  next(iter([plug for plug in api.core.plugins if plug.name == 'user']), None)
+        self.userplugin =  next(iter([plug for plug in self.api.core.plugins if plug.name == 'user']), None)
         self.enabled = True
 
     def parse_auth_token_from_request(self, auth_header):
@@ -315,8 +313,8 @@ class AuthRoute(BasicRoute):
         pass
 
 class LocalAuthRoute(AuthRoute):
-    def __init__(self, api):
-        super().__init__(api)
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
         self.name = 'Local'
         self.reload()
 
@@ -358,8 +356,8 @@ class LocalAuthRoute(AuthRoute):
         return {'name': user, 'method': 'local'}
 
 class LdapAuthRoute(AuthRoute):
-    def __init__(self, api):
-        super().__init__(api)
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
         self.name = 'Ldap'
         self.reload()
 
@@ -464,7 +462,7 @@ class BackendApi():
         self.core = core
 
         # JWT setup
-        self.secret = b64encode(os.urandom(64)).decode('utf-8')
+        self.secret = self.core.secrets['jwt_secret_key']
         def auth(payload):
             log.debug("Payload received: {}".format(payload))
             return payload
@@ -482,11 +480,13 @@ class BackendApi():
         self.handler.req_options.auto_parse_qs_csv = False
         self.auth_routes = {}
         # Alerta route
-        self.add_route('/alert', AlertRoute(core))
+        self.add_route('/alert', AlertRoute(self))
         # List route
         self.add_route('/login', LoginRoute(self))
         # Reload route
         self.add_route('/reload', ReloadRoute(self))
+        # Cluster route
+        self.add_route('/cluster', ClusterRoute(self))
         # Capabilities route
         self.add_route('/capabilities', CapabilitiesRoute(self))
         # Basic auth setup
@@ -518,3 +518,61 @@ class BackendApi():
 
     def get_root_token(self):
         return self.jwt_auth.get_auth_token({'name': 'root', 'method': 'root', 'capabilities': ['rw_all']})
+
+    def reload(self, filename, auth_backends):
+        reloaded_auth = []
+        reloaded_conf = []
+        try:
+            if self.core.reload_conf(filename):
+                reloaded_conf.append(filename)
+            for auth_backend in auth_backends:
+                if self.auth_routes.get(auth_backend):
+                    log.debug("Reloading {} auth backend".format(auth_backend))
+                    self.auth_routes[auth_backend].reload()
+                    reloaded_auth.append(auth_backend)
+                else:
+                    log.debug("Authentication backend '{}' not found".format(auth_backend))
+            if len(reloaded_auth) > 0 or len(reloaded_conf) > 0:
+                return {'status': falcon.HTTP_200, 'text': "Reloaded auth '{}' and conf {}".format(reloaded_auth, reloaded_conf)}
+            else:
+                return {'status': falcon.HTTP_404, 'text': 'Error while reloading'}
+        except Exception as e:
+            log.exception(e)
+            return {'status': falcon.HTTP_503}
+            
+    def write_and_reload(self, filename, conf, reload_conf, sync = False):
+        result_dict = {}
+        log.debug("Will write to {} config {} and reload {}".format(filename, conf, reload_conf))
+        if filename and conf:
+            res = write_config(filename, conf)
+            if 'error' in res.keys():
+                return {'status': falcon.HTTP_503, 'text': res['error']}
+            else:
+                result_dict = {'status': falcon.HTTP_200, 'text': "Reloaded config file {}".format(res['file'])}
+        if reload_conf:
+            auth_backends = reload_conf.get('auth_backends', [])
+            if auth_backends:
+                result_dict = self.reload(filename, auth_backends)
+            plugins = reload_conf.get('plugins', [])
+            if plugins:
+                result_dict = self.reload_plugins(plugins)
+        if sync and self.cluster:
+            self.cluster.write_and_reload(filename, conf, reload_conf)
+        return result_dict
+
+    def reload_plugins(self, plugins):
+        plugins_error = []
+        plugins_success = []
+        log.debug("Reloading plugins {}".format(plugins))
+        for plugin_name in plugins:
+            plugin = next(iter([plug for plug in self.core.plugins if plug.name == plugin_name]), None)
+            if plugin:
+                plugin.reload_data()
+                plugins_success.append(plugin)
+            else:
+                plugins_error.append(plugin)
+        if plugins_error:
+            return {'status': falcon.HTTP_404, 'text': "The following plugins could not be found: {}".format(plugins_error)}
+        else:
+            return {'status': falcon.HTTP_200, 'text': "Reloaded plugins: {}".format(plugins_success)}
+

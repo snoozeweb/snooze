@@ -25,24 +25,7 @@ export default {
   },
   methods: {
     submit(data) {
-      this.$refs.card.submit(data, this.reload)
-    },
-    reload() {
-      var tab_name = this.$refs.card.current_tab.name
-      console.log('Reloading ' + tab_name)
-      API
-        .post(`/reload`, this.$refs.card.current_tab.reload)
-        .then(response => {
-          console.log(response)
-          if (!response.data) {
-            if(response.response.data.description) {
-              this.$refs.card.makeToast(response.response.data.description, 'danger', 'Reload error')
-            } else {
-              this.$refs.card.makeToast('Could not reload ' + tab_name, 'danger', 'An error occurred')
-            }
-          }
-        })
-        .catch(error => console.log(error))
+      this.$refs.card.submit({'conf': data, 'reload': this.$refs.card.current_tab.reload})
     },
   },
   data () {

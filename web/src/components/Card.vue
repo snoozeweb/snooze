@@ -82,7 +82,7 @@ export default {
       }
       this.submitForm(this.form_data)
     },
-		get_data() {
+    get_data() {
       API
         .get(`/${this.current_endpoint}`)
         .then(response => {
@@ -133,7 +133,6 @@ export default {
               callback(response.data)
             }
             this.makeToast(`Saved ${this.current_tab.name}`, 'success', 'Save successful')
-            this.get_data()
           } else {
             if(response.response.data.description) {
               this.makeToast(response.response.data.description, 'danger', 'Save error')

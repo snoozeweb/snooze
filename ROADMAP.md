@@ -12,6 +12,7 @@
 * Make it possible to change the port and have an easy dev environment
 * Add a MQ
 * Export and import DB
+* When restarting snooze server, should not have to restart syslog as well
 
 ## Long term
 

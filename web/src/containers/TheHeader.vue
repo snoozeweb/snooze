@@ -18,9 +18,14 @@
         <CHeaderNavLink to="/dashboard">
           Dashboard
         </CHeaderNavLink>
+      </CHeaderNavItem>-->
+      <CHeaderNavItem class="px-3">
+        <CHeaderNavLink to="/status" exact>
+          Status
+        </CHeaderNavLink>
       </CHeaderNavItem>
       <CHeaderNavItem class="px-3">
-        <CHeaderNavLink to="/profile" exact>-->
+        <CHeaderNavLink to="/profile" exact>
           Profile
         </CHeaderNavLink>
       </CHeaderNavItem>
