@@ -87,12 +87,20 @@ def test_mongo_delete_id():
     assert count == 1
 
 @mongomock.patch('mongodb://localhost:27017')
-def test_mongo_delete_all():
+def test_mongo_delete_all_fail():
     db = Database(default_config.get('database'))
     db.write('record', {'a': '1', 'b': '2'})
     db.write('record', {'a': '30', 'b': '40'})
     count = db.delete('record', {})['count']
     assert count == 0
+
+@mongomock.patch('mongodb://localhost:27017')
+def test_mongo_delete_all_force():
+    db = Database(default_config.get('database'))
+    db.write('record', {'a': '1', 'b': '2'})
+    db.write('record', {'a': '30', 'b': '40'})
+    count = db.delete('record', {}, True)['count']
+    assert count == 2
 
 @mongomock.patch('mongodb://localhost:27017')
 def test_mongo_update_uid_with_primary():

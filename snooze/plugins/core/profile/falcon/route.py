@@ -5,6 +5,7 @@ import falcon
 from bson.json_util import loads, dumps
 from bson.errors import BSONError
 from json import JSONDecodeError
+from urllib.parse import unquote
 from logging import getLogger
 log = getLogger('snooze.api')
 
@@ -20,7 +21,7 @@ class ProfileRoute(FalconRoute):
         else:
             query = req.params.get('s') or search
             try:
-                query = loads(query)
+                query = loads(unquote(query))
             except:
                 pass
         if self.inject_payload:

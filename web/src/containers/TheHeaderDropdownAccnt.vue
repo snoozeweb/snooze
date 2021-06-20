@@ -26,10 +26,14 @@
       <span v-if="email" class="text-nowrap font-italic"><i class="la la-at la-lg"/> {{ email }}</br></span>
       <CDropdownDivider/>
       <div class="align-middle">
+      <span class="text-nowrap h6">Auth / Roles<br/></span>
       <CBadge :color="get_color(method)" class="mr-1">{{ method }}</CBadge>
       <CBadge v-for="field in roles" :key="field" :color="get_color(field)" class="mr-1">{{ field }}</CBadge>
-      <CDropdownDivider v-if="capabilities.length > 0"/>
-      <CBadge v-for="field in capabilities" :key="field" :color="get_color(field)" class="mr-1">{{ field }}</CBadge>
+      <span v-if="capabilities.length > 0">
+        <CDropdownDivider />
+        <span class="text-nowrap h6">Capabilities<br/></span>
+        <CBadge v-for="field in capabilities" :key="field" :color="get_color(field)" class="mr-1">{{ field }}</CBadge>
+      </span>
       </div>
     </div>
     <CDropdownDivider/>

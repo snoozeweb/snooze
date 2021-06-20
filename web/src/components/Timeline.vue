@@ -5,8 +5,8 @@
       <b-col>
         <b-card no-body class='mb-2'>
           <div class='position-absolute' style='top:0!important; right:0!important'>
-      	    <b-button v-if="can_edit(row)" size="sm" class='py-0_5 px-1' style='border-radius: 0 0 0 .25rem' variant="primary" @click="modal_edit(row)"><i class="la la-pencil-alt la-lg"/></b-button>
-      	    <b-button v-if="can_delete(row)" size="sm" class='py-0_5 px-1' style='border-radius: 0 .25rem 0 0' variant="danger" @click="modal_delete(row)"><i class="la la-trash la-lg"/></b-button>
+      	    <b-button v-if="can_edit(row)" size="sm" class='py-0_5 px-1' style='border-radius: 0 0 0 .25rem' variant="primary" @click="modal_edit(row)" v-b-tooltip.hover title="Edit"><i class="la la-pencil-alt la-lg"/></b-button>
+      	    <b-button v-if="can_delete(row)" size="sm" class='py-0_5 px-1' style='border-radius: 0 .25rem 0 0' variant="danger" @click="modal_delete(row)" v-b-tooltip.hover title="Delete"><i class="la la-trash la-lg"/></b-button>
           </div>
           <b-card-body class="d-flex p-2 align-items-center">
             <div :class="'bg-' + get_color(row['type']) + ' mr-3 text-white rounded p-2'" v-b-tooltip.hover :title="get_tooltip(row['type'])">
@@ -35,8 +35,9 @@
       class='mb-2'
     ></b-form-textarea>
     <div>
-      <b-button size="sm" variant='primary' @click="add_comment(input_text, 'comment')">Comment</b-button>
-      <b-button size="sm" class='float-right ml-2' @click="refresh()"><i class="la la-refresh la-lg"/></b-button>
+      <b-button size="sm" variant='primary' @click="add_comment(input_text, 'comment')" v-b-tooltip.hover title="Add a comment">Comment</b-button>
+      <b-button size="sm" class='float-right ml-2' @click="refresh()" v-b-tooltip.hover title="Refresh"><i class="la la-refresh la-lg"/></b-button>
+      <b-button size="sm" :variant="auto_mode ? 'success':''" v-b-tooltip.hover :title="auto_mode ? 'Auto Mode ON':'Audo Mode OFF'" class='float-right ml-2' @click="toggle_auto()" :pressed.sync="auto_mode"><i v-if="auto_mode" class="la la-comment la-lg"/><i v-else="auto_mode" class="la la-comment-slash la-lg"/></b-button>
       <div class="d-flex float-right align-items-center ">
         <div class="mr-3">
           <b-pagination
@@ -123,6 +124,8 @@ export default {
       get_data: get_data,
       data: [],
       input_text: '',
+      auto_mode: true,
+      auto_interval: {},
       per_page: 5,
       page_options: [5, 10, 20],
       nb_rows: 0,
@@ -137,6 +140,7 @@ export default {
   },
   mounted () {
     this.refresh()
+    this.auto_interval = setInterval(this.refresh, 2000);
   },
   methods: {
     refresh () {
@@ -149,6 +153,9 @@ export default {
       }
       if (this.orderby !== undefined) { options["orderby"] = this.orderby }
       this.get_data('comment', query, options, this.update_data)
+      if (this.auto_mode && this.auto_interval && this.$options.parent._isDestroyed) {
+        clearInterval(this.auto_interval)
+      }
     },
     update_data(response) {
       if (response.data) {
@@ -221,6 +228,14 @@ export default {
       this.$nextTick(() => {
         this.$bvModal.hide('timeline_delete')
       })
+    },
+    toggle_auto() {
+      if(this.auto_interval) {
+        clearInterval(this.auto_interval);
+      }
+      if (this.auto_mode) {
+        this.auto_interval = setInterval(this.refresh, 2000);
+      }
     },
     get_color(type) {
       switch (type) {

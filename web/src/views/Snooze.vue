@@ -6,12 +6,16 @@
       :fields="fields"
       :tabs="tabs"
     >
+        <template v-slot:cell(hits)="row">
+          <router-link :to="{ path: 'record', query: { tab: 'Snoozed', s: 'snoozed='+encodeURIComponent(dig(row.item,'name')) }}">{{ dig(row.item, 'hits') }}</router-link>
+        </template>
     </List>
   </div>
 </template>
 
 <script>
 import moment from 'moment'
+import dig from 'object-dig'
 
 import List from '@/components/List.vue'
 
@@ -25,6 +29,7 @@ export default {
   },
   data () {
     return {
+      dig: dig,
       form: form,
       fields: fields,
       tabs: [

@@ -10,6 +10,7 @@ log = getLogger('snooze')
 
 from snooze.plugins.core import Abort, Abort_and_write
 from snooze.utils import config, Housekeeper, Stats
+from hashlib import sha256
 
 class Core:
     def __init__(self, conf):
@@ -23,6 +24,7 @@ class Core:
         self.stats = Stats(conf.get('stats'))
         self.secrets = config('secrets')
         self.stats.init('process_record_duration')
+        self.bootstrap_db()
         self.load_plugins()
 
     def load_plugins(self):
@@ -90,3 +92,20 @@ class Core:
         else:
             log.debug("Config file {} not found".format(config_file))
             return False
+
+    def bootstrap_db(self):
+        if self.conf.get('bootstrap_db', False):
+            result = self.db.search('general')
+            if result['count'] == 0:
+                log.debug("First time starting Snooze with self database. Let us configure it...")
+                aggregate_rules = [{"fields": [ "host", "message" ], "snooze_user": "root" , "name": "Host and Message", "condition": [], "throttle": 900 }]
+                self.db.write('aggregate', aggregate_rules)
+                roles = [{"name": "admin", "capabilities": [ "rw_all" ], "snooze_user": "root"}, {"name": "user", "capabilities": [ "ro_all" ], "snooze_user": "root"}]
+                self.db.write('role', roles)
+                if self.conf.get('create_root_user', False):
+                    users = [{"name": "root", "method": "local", "roles": ["admin"], "enabled": True}]
+                    self.db.write('user', users)
+                    user_passwords = [{"name": "root", "method": "local", "password": sha256("root".encode('utf-8')).hexdigest()}]
+                    self.db.write('user.password', user_passwords)
+                self.db.write('general', [{'init_db': True}])
+

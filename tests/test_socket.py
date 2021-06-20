@@ -45,4 +45,4 @@ def test_socket_root_token(mysocket):
     root_token = myjson.get('root_token')
     assert root_token
     token = jwt.decode(jwt=root_token, key='secret')
-    assert token.get('user') == {'name': 'root'}
+    assert token.get('user') == {'name': 'root', 'capabilities': ['rw_all'], 'method': 'root'}

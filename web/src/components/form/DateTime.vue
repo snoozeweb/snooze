@@ -5,7 +5,7 @@
         From:
       </b-col>
       <b-col>
-        <VueCtkDateTimePicker id="fromDate" v-model="fromDate" :minute-interval=5 output-format="YYYY-MM-DDTHH:mm" :color="main_color" :error="!fromDate"/>
+        <VueCtkDateTimePicker id="fromDate" v-model="fromDate" :minute-interval=5 output-format="YYYY-MM-DDTHH:mm:ssZ" format="YYYY-MM-DD HH:mm" :color="main_color" :error="!fromDate"/>
       </b-col>
     </b-row>
     <b-row class="pt-1">
@@ -13,7 +13,7 @@
         Until:
       </b-col>
       <b-col>
-        <VueCtkDateTimePicker id="untilDate" v-model="untilDate" :minute-interval=5 output-format="YYYY-MM-DDTHH:mm" :color="main_color" :error="!untilDate"/>
+        <VueCtkDateTimePicker id="untilDate" v-model="untilDate" :minute-interval=5 output-format="YYYY-MM-DDTHH:mm:ssZ" format="YYYY-MM-DD HH:mm" :color="main_color" :error="!untilDate"/>
       </b-col>
     </b-row>
   </div>
@@ -36,7 +36,7 @@ export default {
     value: {
       type: Object,
       default: function () {
-        return {'from': moment(), 'until': moment().add(1, 'hours')}
+        return {'from': moment().format(), 'until': moment().add(1, 'hours').format()}
       }
     },
     options: {},

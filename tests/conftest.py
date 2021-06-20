@@ -45,6 +45,8 @@ def client(config, request):
     data = get_data(request, 'data')
     log.debug("data: {}".format(data))
     for key, value in data.items():
+        core.db.delete(key, [], True)
+    for key, value in data.items():
         core.db.write(key, value)
     api = Api(core)
     token = api.get_root_token()

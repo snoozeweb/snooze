@@ -150,12 +150,12 @@ class BackendDB(Database):
             log.error("Cannot find collection {}".format(collection))
             return {'data': [], 'count': 0}
 
-    def delete(self, collection, condition=[]):
+    def delete(self, collection, condition=[], force=False):
         mongo_search = self.convert(condition)
         log.debug("Condition {} converted to mongo delete search {}".format(condition, mongo_search))
         log.debug("List of collections: {}".format(self.db.collection_names()))
         if collection in self.db.collection_names():
-            if len(condition) == 0:
+            if len(condition) == 0 and not force:
                 results_count = 0
                 log.debug("Too dangerous to delete everything. Aborting")
             else:

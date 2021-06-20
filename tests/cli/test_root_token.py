@@ -11,12 +11,6 @@ from click.testing import CliRunner
 from snooze.cli.__main__ import snooze
 from snooze.api.socket import SocketServer
 
-def test_root_token_fail():
-    runner = CliRunner()
-    result = runner.invoke(snooze, ['root-token'])
-    assert result.exit_code == 0
-    assert result.output == "Could not find any socket in ['/var/run/snooze/socket', './snooze.socket']\n"
-
 @pytest.fixture(scope='class')
 def mysocket():
     jwt_auth = JWTAuthBackend(lambda u: u, 'secret')

@@ -13,18 +13,18 @@
       :delete_mode="false"
     >
       <template #button="row">
+        <b-button variant="primary" class='text-nowrap' @click="modal_show([row.item], 'comment')" size="sm" v-b-tooltip.hover title="Add comment"><i class="las la-comment-dots la-lg"/> <b-badge v-if="row.item['comment_count']" variant='light' class='position-absolute' style='z-index: 10; top:0!important; right:100%!important; transform:translate(50%,-50%)!important'>{{ row.item['comment_count'] }}</b-badge></b-button>
         <b-button variant="info" v-if="row.item.ttl >= 0" @click="toggle_ttl([row.item])" size="sm" v-b-tooltip.hover title="Shelve"><i class="la la-folder-plus la-lg"/></b-button>
         <b-button variant="info" v-else @click="toggle_ttl([row.item])" size="sm" v-b-tooltip.hover title="Unshelve"><i class="la la-folder-minus la-lg"/></b-button>
         <b-button variant="warning" v-if="can_be_reescalated(row.item)" @click="modal_show([row.item], 'reescalate')" size="sm" v-b-tooltip.hover title="Re-escalate"><i class="la la-exclamation la-lg"/></b-button>
         <b-button variant="success" v-if="can_be_acked(row.item)" @click="modal_show([row.item], 'ack')" size="sm" v-b-tooltip.hover title="Acknowledge"><i class="la la-thumbs-up la-lg"/></b-button>
-        <b-button variant="primary" class='text-nowrap' @click="modal_show([row.item], 'comment')" size="sm" v-b-tooltip.hover title="Add comment"><i class="las la-comment-dots la-lg"/> <b-badge v-if="row.item['comment_count']" variant='light' class='position-absolute' style='top:0!important; left:100%!important; transform:translate(-50%,-50%)!important'>{{ row.item['comment_count'] }}</b-badge></b-button>
       </template>
       <template #selected_buttons>
+        <b-button v-if="selection_comment.length > 0" variant="primary" @click="modal_show(selection_comment, 'comment')" size="sm">Comment ({{ selection_comment.length }})</b-button>
         <b-button v-if="selection_shelved.length > 0" variant="info" @click="toggle_ttl(selection_shelved)" size="sm">Shelve ({{ selection_shelved.length }})</b-button>
         <b-button v-if="selection_unshelved.length > 0" variant="primary" @click="toggle_ttl(selection_unshelved)" size="sm">Unshelve ({{ selection_unshelved.length }})</b-button>
         <b-button v-if="selection_reescalated.length > 0" variant="warning" @click="modal_show(selection_reescalated, 'reescalate')" size="sm">Re-escalate ({{ selection_reescalated.length }})</b-button>
         <b-button v-if="selection_acked.length > 0" variant="success" @click="modal_show(selection_acked, 'ack')" size="sm">Acknowledge ({{ selection_acked.length }})</b-button>
-        <b-button v-if="selection_comment.length > 0" variant="primary" @click="modal_show(selection_comment, 'comment')" size="sm">Comment ({{ selection_comment.length }})</b-button>
       </template>
       <template #details_side="row">
         <b-col v-if="row.item['comment_count']">
@@ -41,6 +41,7 @@
       @ok="add_comment(modal_message, modal_data, 'ack')"
       @hidden="modal_clear()"
       header-bg-variant="success"
+      header-text-variant="white"
       size ="xl"
       centered
     >
@@ -73,6 +74,7 @@
       @ok="add_comment(modal_message, modal_data, 'comment')"
       @hidden="modal_clear()"
       header-bg-variant="primary"
+      header-text-variant="white"
       size ="xl"
       centered
     >
@@ -117,7 +119,7 @@ export default {
               ['=', 'state', 'esc'],
             ],
             ['AND',
-              ['NOT', ['EXISTS', 'snooze']],
+              ['NOT', ['EXISTS', 'snoozed']],
               ['>=', 'ttl', 0],
            ],
           ]

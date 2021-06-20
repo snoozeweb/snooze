@@ -15,6 +15,7 @@ click = "*"
 snooze = {editable = true, path = "."}
 ldap3 = "*"
 prometheus-client = "*"
+python-dateutil = "*"
 
 [dev-packages]
 pytest = "*"

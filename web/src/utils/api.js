@@ -144,16 +144,18 @@ export function pp_countdown(secs) {
   var seconds = sec_num % 60
 
   var output = ''
-  if (hours > 0) {
-    output += hours + 'h '
-  }
-  if (minutes > 0) {
-    output += minutes + 'm '
-  }
-  if (seconds > 0) {
-    output += seconds + 's'
-  } else {
+  if (secs < 0) {
     output = '0s'
+  } else {
+    if (hours > 0) {
+      output += hours + 'h '
+    }
+    if (minutes > 0) {
+      output += minutes + 'm '
+    }
+    if (seconds > 0) {
+      output += seconds + 's'
+    }
   }
   return output
 }
@@ -163,7 +165,7 @@ export function countdown(secs) {
   var hours   = Math.floor(sec_num / 3600)
   var minutes = Math.floor(sec_num / 60) % 60
   var seconds = sec_num % 60
-  if (seconds < 0) {
+  if (secs < 0) {
     return '00:00:00'
   } else {
     if (hours < 10) {

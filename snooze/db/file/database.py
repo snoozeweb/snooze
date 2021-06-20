@@ -158,19 +158,23 @@ class BackendDB(Database):
             log.error("Cannot find collection {}".format(collection))
             return {'data': [], 'count': 0}
 
-    def delete(self, collection, condition=[]):
+    def delete(self, collection, condition=[], force=False):
         tinydb_search = self.convert(condition)
         log.debug("Condition {} converted to tinydb delete search {}".format(condition, tinydb_search))
         log.debug("List of collections: {}".format(self.db.tables()))
         if collection in self.db.tables():
             table = self.db.table(collection)
-            if tinydb_search:
-                results = table.remove(tinydb_search)
-                results_count = len(results)
-                log.debug("Found {} item(s) to delete for search {}".format(results_count, tinydb_search))
-            else:
+            if len(condition) == 0 and not force:
                 results_count = 0
                 log.debug("Too dangerous to delete everything. Aborting")
+            else:
+                if len(condition) == 0:
+                    results_count = len(table)
+                    results = table.truncate()
+                else:
+                    results = table.remove(tinydb_search)
+                    results_count = len(results)
+                log.debug("Found {} item(s) to delete for search {}".format(results_count, tinydb_search))
             return {'data': [], 'count': results_count}
         else:
             log.error("Cannot find collection {}".format(collection))

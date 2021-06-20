@@ -85,7 +85,7 @@ export default {
       fields: [
         {key: 'host'},
         {key: 'port'},
-        {key: 'healthy', label: ''}
+        {key: 'healthy', label: 'Status'}
       ],
       items: [],
     }

@@ -5,8 +5,10 @@ import falcon
 from bson.json_util import loads, dumps
 from bson.errors import BSONError
 from json import JSONDecodeError
+from urllib.parse import unquote
 from logging import getLogger
 log = getLogger('snooze.api')
+
 
 from snooze.api.falcon import authorize, FalconRoute
 
@@ -26,7 +28,7 @@ class Route(FalconRoute):
             orderby = order_by
             ascending = asc
         try:
-            cond_or_uid = loads(s)
+            cond_or_uid = loads(unquote(s))
         except:
             cond_or_uid = s
         if self.inject_payload:
@@ -51,6 +53,8 @@ class Route(FalconRoute):
         try:
             log.debug("Trying to insert {}".format(req.media))
             media = req.media.copy()
+            if not isinstance(media, list):
+                media = [media]
             for req_media in media:
                 req_media['snooze_user'] = {'name': req.context['user']['user']['name'], 'method': req.context['user']['user']['method']}
             result = dumps(self.insert(self.plugin.name, media))

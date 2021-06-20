@@ -34,8 +34,6 @@ def prepare_socket(socket_path=None):
             dirname = os.path.dirname(abspath)
             if not os.path.exists(dirname):
                 os.makedirs(abspath)
-            if os.path.exists(abspath):
-                raise Exception("Socket already exists")
             my_socket = abspath
             break
         except Exception as e:
@@ -50,12 +48,14 @@ class SocketServer:
         socket_path = prepare_socket(socket_path)
         self.jwt_engine = jwt_engine
         self.socket_path = socket_path
-        if os.path.exists(self.socket_path):
-            os.remove(self.socket_path)
+        self.cleanup_socket()
         atexit.register(self.__del__)
         self.server = UnixSocketHttpServer(self.socket_path, self.get_handler())
 
     def __del__(self):
+        self.cleanup_socket()
+
+    def cleanup_socket(self):
         if os.path.exists(self.socket_path):
             os.remove(self.socket_path)
 

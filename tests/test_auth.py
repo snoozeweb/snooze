@@ -23,18 +23,16 @@ with open('./examples/default_config.yaml', 'r') as f:
 def test_basic_auth():
     core = Core(default_config)
     api = Api(core)
-    # User
-    username = 'myuser'
-    password = 'secretpassphrase'
-    password_hash = sha256(password.encode('utf-8')).hexdigest()
-    users = [{'name': username, 'password': password_hash}]
+    users = [{"name": "root", "method": "local", "enabled": True}]
     core.db.write('user', users)
-    token = str(b64encode("{}:{}".format(username, password).encode('utf-8')), 'utf-8')
+    user_passwords = [{"name": "root", "method": "local", "password": sha256("root".encode('utf-8')).hexdigest()}]
+    core.db.write('user.password', user_passwords)
+    token = str(b64encode("{}:{}".format('root', 'root').encode('utf-8')), 'utf-8')
     headers = {'Authorization': 'Basic {}'.format(token)}
     log.debug(headers)
     client = testing.TestClient(api.handler, headers=headers)
     log.debug('Attempting Basic auth')
-    result = client.simulate_get('/auth/basic').json
+    result = client.simulate_post('/login/local').json
     log.debug("Received {}".format(result))
     assert result['token']
 

@@ -14,7 +14,7 @@
         </b-nav-item>
 
         <b-nav-form class="pl-2">
-          <Search @search="search($event)" @clear="search_clear()" />
+          <Search @search="search($event)" @clear="search_clear()" ref='search' />
         </b-nav-form>
 
         <b-nav-item class="ml-auto" link-classes="py-0 pr-0">
@@ -175,6 +175,7 @@
     @ok="submit_edit"
     @hidden="modal_clear"
     header-bg-variant="primary"
+    header-text-variant="white"
     size ="xl"
     centered
   >
@@ -190,6 +191,7 @@
     @ok="submit_add"
     @hidden="modal_clear"
     header-bg-variant="success"
+    header-text-variant="white"
     okVariant="success"
     size="xl"
     centered
@@ -206,6 +208,7 @@
     @ok="submit_delete"
     @hidden="modal_clear"
     header-bg-variant="danger"
+    header-text-variant="white"
     okVariant="danger"
     size="xl"
     centered
@@ -294,7 +297,7 @@ export default {
     is_ascending: {type: Boolean, default: true},
   },
   mounted () {
-    this.refresh()
+    this.reload()
     this.get_now()
     setInterval(this.get_now, 1000);
   },
@@ -332,6 +335,23 @@ export default {
   computed: {
   },
   methods: {
+    reload() {
+      var tab = this.tabs[0]
+      if (this.$route.query.tab !== undefined) {
+        var find_tab = this.tabs.find(el => el.title == this.$route.query.tab)
+        if (tab) {
+          tab = find_tab
+        }
+      }
+      this.changeTab(tab, false)
+      if (this.$route.query.s !== undefined) {
+        this.$refs.search.datavalue = this.$route.query.s
+        this.$refs.search.search()
+      } else {
+        this.$refs.search.datavalue = ''
+        this.refreshTable()
+      }
+    },
     get_now() {
       this.timestamp = moment().unix()
     },
@@ -445,7 +465,7 @@ export default {
       }
     },
     search(query) {
-      console.log(`Search: ${query}`)
+      console.log(`Search: ${this.query}`)
       this.search_data = JSON.parse(query)
       if (this.search_data != null && !Array.isArray(this.search_data)) {
         var search_word = this.search_data
@@ -463,18 +483,23 @@ export default {
         })
       }
       this.refreshTable()
+      this.add_history()
     },
     search_clear() {
       this.search_data = []
       this.refreshTable()
+      this.add_history()
     },
-    changeTab(tab) {
+    changeTab(tab, refresh = true) {
       this.tab_index = this.tabs.indexOf(tab)
       this.filter = tab.filter
       if (tab.handler) {
         tab.handler(tab)
       }
-      this.refreshTable()
+      if (refresh) {
+        this.refreshTable()
+        this.add_history()
+      }
     },
     refreshTable() {
       this.items = []
@@ -536,7 +561,13 @@ export default {
         solid: true,
         toaster: position,
       })
-    }
+    },
+    add_history() {
+      const query = { tab: this.tabs[this.tab_index].title, s: this.$refs.search.datavalue }
+      if (this.$route.query.tab != query.tab || this.$route.query.s != query.s) {
+        this.$router.push({ path: this.$router.currentRoute.path, query: query })
+      }
+    },
   },
   watch: {
     current_page: function() {
@@ -545,6 +576,9 @@ export default {
     per_page: function() {
       this.refreshTable()
     },
+    $route() {
+      this.$nextTick(this.reload);
+    }   
   },
 }
 </script>

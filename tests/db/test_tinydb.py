@@ -97,11 +97,17 @@ def test_tinydb_delete_id(db):
     count = db.delete('record', ['=', 'uid', uid])['count']
     assert count == 1
 
-def test_tinydb_delete_all(db):
+def test_tinydb_delete_all_fail(db):
     db.write('record', {'a': '1', 'b': '2'})
     db.write('record', {'a': '30', 'b': '40'})
     count = db.delete('record', [])['count']
     assert count == 0
+
+def test_tinydb_delete_all_force(db):
+    db.write('record', {'a': '1', 'b': '2'})
+    db.write('record', {'a': '30', 'b': '40'})
+    count = db.delete('record', {}, True)['count']
+    assert count == 2
 
 def test_tinydb_update_uid_with_primary(db):
     uid = db.write('record', {'a': '1', 'b': '2'}, 'a')['data']['added'][0]

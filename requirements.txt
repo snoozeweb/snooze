@@ -12,3 +12,4 @@ tinydb
 urllib3
 ldap3
 prometheus-client
+python-dateutil

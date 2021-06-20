@@ -59,7 +59,7 @@ export default {
   },
   mounted () {
     this.save_enable()
-    this.changeTab(this.current_tab)
+    this.reload()
   },
   data () {
     return {
@@ -75,6 +75,16 @@ export default {
   computed: {
   },
   methods: {
+    reload() {
+      var tab = this.tabs[0]
+      if (this.$route.query.tab !== undefined) {
+        var find_tab = this.tabs.find(el => el.key == this.$route.query.tab)
+        if (tab) {
+          tab = find_tab
+        }
+      }
+      this.changeTab(tab, false)
+    },
     checkForm() {
       if (this.$el.getElementsByClassName('form-control is-invalid').length > 0) {
         this.makeToast('Form is invalid', 'danger', 'Error')
@@ -100,19 +110,18 @@ export default {
         })
         .catch(error => console.log(error))
 		},
-    changeTab(new_tab) {
-			this.current_tab = new_tab
+    changeTab(new_tab, update_history = true) {
+      this.current_tab = new_tab
       if (this.current_tab.endpoint) {
         this.current_endpoint = this.current_tab.endpoint
       } else {
         this.current_endpoint = this.endpoint + '/' + this.current_tab.key
       }
-      //if (this.current_tab.self) {
-      //  this.current_endpoint += '/' + localStorage.getItem('name') + '/' + localStorage.getItem('method')
-      //}
-			this.current_tab = new_tab
       this.form_data = {}
       this.get_data()
+      if (update_history) {
+        this.add_history()
+      }
     },
     save_enable() {
       this.save_disabled = false
@@ -165,11 +174,20 @@ export default {
     forceRerender() {
       this.form_key += 1;
     },
+    add_history() {
+      const query = { tab: this.current_tab.key }
+      if (this.$route.query.tab != query.tab) {
+        this.$router.push({ path: this.$router.currentRoute.path, query: query })
+      }
+    },
   },
   watch: {
     form_data () {
       this.$emit('input', this.form_data)
-    }
+    },
+    $route() {
+      this.$nextTick(this.reload);
+    }   
   },
 }
 </script>

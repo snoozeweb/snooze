@@ -1,4 +1,3 @@
----
 api:
    type: falcon
 core_plugins:
@@ -17,3 +16,5 @@ process_plugins:
    - aggregaterule
    - snooze
    - notification
+bootstrap_db: True
+create_root_user: True
