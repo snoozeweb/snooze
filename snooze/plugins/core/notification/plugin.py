@@ -21,13 +21,13 @@ class Notification(Plugin):
             if notification.enabled and notification.condition.match(record):
                 name = notification.name
                 log.debug("Matched notification `{}` with {}".format(name, record))
-                if self.action_plugin:
+                if notification.action_plugin:
                     if not 'notifications' in record:
                         record['notifications'] = []
                         record['notifications'].append( name)
-                    self.action_plugin.send(deepcopy(record), self.content)
+                    notification.action_plugin.send(deepcopy(record), notification.content)
                 else:
-                    log.error("Notification {} has to action. Cannot send".format(self.name))
+                    log.error("Notification {} has no action. Cannot send".format(self.name))
         return record
 
     def reload_data(self, sync = False):
@@ -43,9 +43,15 @@ class NotificationObject():
         self.enabled = notification.get('enabled', True)
         self.name = notification['name']
         self.condition = Condition(notification.get('condition'))
-        self.action = notification.get('action', {})
-        self.action_plugin = next(iter([plug for plug in core.action_plugins if plug.name == self.action.get('selected')]), None)
-        self.content = self.action.get('subcontent')
-        if self.enabled and not self.action_plugin:
-            log.error("Notification {} has to action. Disabling".format(self.name))
+        self.action = notification.get('action', '')
+        action_search = core.db.search('action',['=', 'name', self.action])
+        if action_search['count'] > 0:
+            action_data = action_search['data'][0]
+            action = action_data.get('action', {})
+            self.action_plugin = core.get_action_plugin(action.get('selected'))
+            self.content = action.get('subcontent', {})
+            self.content['notification_name'] = self.name
+            self.content['action_name'] = action.get('name')
+        elif self.enabled:
+            log.error("Notification {} has no action. Disabling".format(self.name))
             self.enabled = False

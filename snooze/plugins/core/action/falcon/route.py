@@ -22,7 +22,7 @@ class ActionRoute(Route):
         action = media.get('action', [])
         plugin_name = action.get('selected')
         content = action.get('subcontent')
-        plugin = next(iter([plug for plug in self.api.core.action_plugins if plug.name == plugin_name]), None)
+        plugin = self.api.core.get_action_plugin(plugin_name)
         if plugin:
             media['pprint'] = plugin.pprint(content)
         else:

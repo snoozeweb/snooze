@@ -140,7 +140,7 @@ class ActionPluginRoute(BasicRoute):
             plugins = []
             loaded_plugins = self.api.core.action_plugins
             if plugin_name:
-                loaded_plugins = [next(iter([plug for plug in self.api.core.action_plugins if plug.name == plugin_name]), None)]
+                loaded_plugins = [self.api.core.get_action_plugin(plugin_name)]
             for plugin in loaded_plugins:
                 log.debug("Retrieving action {} metadata".format(plugin.name))
                 plugins.append(plugin.get_metadata())
@@ -255,7 +255,7 @@ class AuthRoute(BasicRoute):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.auth_header_prefix = 'Basic'
-        self.userplugin =  next(iter([plug for plug in self.api.core.plugins if plug.name == 'user']), None)
+        self.userplugin = self.api.core.get_core_plugin('user')
         self.enabled = True
 
     def parse_auth_token_from_request(self, auth_header):
@@ -597,7 +597,7 @@ class BackendApi():
         plugins_success = []
         log.debug("Reloading plugins {}".format(plugins))
         for plugin_name in plugins:
-            plugin = next(iter([plug for plug in self.core.plugins if plug.name == plugin_name]), None)
+            plugin = self.core.get_core_plugin(plugin_name)
             if plugin:
                 plugin.reload_data()
                 plugins_success.append(plugin)

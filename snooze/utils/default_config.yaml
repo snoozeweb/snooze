@@ -1,18 +1,38 @@
 ---
+bootstrap_db: True
+create_root_user: True
 api:
     type: falcon
-
-# Plugins without process
-core_plugin:
+core_plugins:
+    # Plugins without process
     - record
-
-# Plugin used for processing records
-# Order matters
+    - aggregate
+    - action
+    - settings
+    - profile
+    - user
+    - role
+    - comment
 process_plugins:
+    # Plugins with process (order matters)
     - rule
+    - aggregaterule
     - snooze
     - notification
+action_plugins:
+    - mail
+    - script
 
 # Backend database configuration
 database:
     type: file
+
+# Clustering
+clustering:
+    enabled: false
+    ssl: false
+    members:
+        - host: hostA
+          port: 9001
+        - host: hostB
+          port: 9001

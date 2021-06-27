@@ -13,26 +13,26 @@ form:
     component: Selector
     options:
       - text: Lowest
-        value: lowest
+        value: 5
       - text: Low
-        value: low
+        value: 4
       - text: Normal
-        value: normal
+        value: 3
       - text: High
-        value: high
+        value: 2
       - text: Highest
-        value: highest
-    default_value: normal
+        value: 1
+    default_value: 3
     description: 'Email priority'
   subject:
     display_name: Subject
     component: String
-    default_value: 'Alert: $name$'
+    default_value: "Alert: {{ record.get('host') }}"
     description: 'Email subject'
   message:
     display_name: Message
     component: Text
-    default_value: 'The alert $name$ was triggered'
+    default_value: "Message: {{ record.get('message') }}"
     description: 'Email content'
   type:
     display_name: Type

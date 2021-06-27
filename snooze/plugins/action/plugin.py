@@ -3,11 +3,13 @@ import yaml
 from os.path import dirname
 from os.path import join as joindir
 from snooze import __file__ as rootdir
+from snooze.utils import config, write_config
 
 class Action:
     def __init__(self, core):
         self.core = core
         self.name = self.__class__.__name__.lower()
+        self.conf = config('action_' + self.name) 
         metadata_path = joindir(dirname(rootdir), 'plugins', 'action', self.name, 'metadata.yaml')
         self.metadata_file = {}
         try:

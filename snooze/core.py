@@ -31,6 +31,19 @@ class Core:
     def load_plugins(self):
         self.plugins = []
         self.process_plugins = []
+        self.action_plugins = []
+        log.debug("Starting to load notification plugins")
+        for plugin_name in (self.conf.get('action_plugins') or []):
+            try:
+                log.debug("Attempting to load notification plugin {}".format(plugin_name))
+                plugin_module = import_module("snooze.plugins.action.{}.plugin".format(plugin_name))
+                plugin_class = getattr(plugin_module, plugin_name.capitalize())
+            except Exception as e:
+                log.exception(e)
+                log.error("Error for notification plugin `{}`: {}".format(plugin_name, e))
+                continue
+            plugin_instance = plugin_class(self)
+            self.action_plugins.append(plugin_instance)
         log.debug("Starting to load core plugins")
         for plugin_name in (self.conf.get('core_plugins') or []) + (self.conf.get('process_plugins') or []):
             try:
@@ -51,19 +64,6 @@ class Core:
             if (plugin_name in (self.conf.get('process_plugins') or [])):
                 log.debug("Detected {} as a process plugin".format(plugin_name))
                 self.process_plugins.append(plugin_instance)
-        self.action_plugins = []
-        log.debug("Starting to load notification plugins")
-        for plugin_name in (self.conf.get('action_plugins') or []):
-            try:
-                log.debug("Attempting to load notification plugin {}".format(plugin_name))
-                plugin_module = import_module("snooze.plugins.action.{}.plugin".format(plugin_name))
-                plugin_class = getattr(plugin_module, plugin_name.capitalize())
-            except Exception as e:
-                log.exception(e)
-                log.error("Error for notification plugin `{}`: {}".format(plugin_name, e))
-                continue
-            plugin_instance = plugin_class(self)
-            self.action_plugins.append(plugin_instance)
 
     def process_record(self, record):
         source = record.get('source', 'unknown')
@@ -91,6 +91,12 @@ class Core:
             else:
                 log.debug("Writing record {}")
                 self.db.write('record', record)
+
+    def get_core_plugin(self, plugin_name):
+        return next(iter([plug for plug in self.plugins if plug.name == plugin_name]), None)
+
+    def get_action_plugin(self, plugin_name):
+        return next(iter([plug for plug in self.action_plugins if plug.name == plugin_name]), None)
 
     def reload_conf(self, config_file):
         log.debug("Reload config file '{}'".format(config_file))
