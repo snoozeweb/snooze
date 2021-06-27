@@ -118,7 +118,7 @@ class TestApi4:
 # def test_api_alert_rule():
 #     core = Core(default_config)
 #     api = Api(core)
-#     rule = {'name': 'Rule1', 'condition': ['=', 'host', 'app'], 'actions': [ ['SET', 'test_validated', 'True'] ]}
+#     rule = {'name': 'Rule1', 'condition': ['=', 'host', 'app'], 'modifications': [ ['SET', 'test_validated', 'True'] ]}
 #     core.write('rule', rule)
 #     alert = {"resource": "app:", "event": "UserNotice", "environment": "Production", "severity": "normal", "correlate": ["UserEmerg", "UserAlert", "UserCrit", "UserErr", "UserWarning", "UserNotice", "UserInfo", "UserDebug"],"service": ["Platform"], "group": "Syslog", "value": "notice", "text": "lulu\u0000", "tags": ["user.notice"], "attributes": {}, "origin": None, "type": None, "createTime": "2019-04-17T08:00:32.493Z", "timeout": None, "rawData": "<13>Apr 17 17:00:32 app: lulu\u0000", "customer": None}
 #     client = testing.TestClient(api.handler)

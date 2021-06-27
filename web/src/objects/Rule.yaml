@@ -13,7 +13,7 @@ fields:
         tdClass: ['align-middle']
         type: array
     -
-        key: actions
+        key: modifications
         sortable: false
         thStyle: {width: '30%'}
         tdClass: ['align-middle']
@@ -46,13 +46,14 @@ form:
         display_name: Name
         component: String
         description: Name of the notification entry
+        required: true
     condition:
         display_name: Condition
         component: Condition
         description: Condition which the notification will be triggered. Default to all the time
-    actions:
-        display_name: Actions
-        component: Action
+    modifications:
+        display_name: Modifications
+        component: Modification
         description: Modify a record
     comment:
         display_name: Comment

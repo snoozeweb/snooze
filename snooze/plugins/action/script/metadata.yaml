@@ -1,0 +1,14 @@
+---
+name: 'Run a script'
+desc: ''
+icon: 'terminal'
+form:
+  script:
+    display_name: Path
+    component: String
+    description: 'Fully qualified path to the action to execute'
+    required: true
+  arguments:
+    display_name: Arguments
+    component: Arguments
+    description: 'List of arguments to provide to the script'

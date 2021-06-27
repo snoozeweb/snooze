@@ -19,12 +19,19 @@ export default {
   extends: Base,
   name: 'Condition',
   props: {
-    value: {type: Array, default: () => []},
-    options: {},
+    value: {
+      type: Array,
+    },
+    options: {
+      type: Array,
+    },
+    default_value: {
+      type: Array,
+    },
   },
   data () {
     return {
-      datavalue: this.value,
+      datavalue: [undefined, '', [], {}].includes(this.value) ? (this.default_value == undefined ? [] : this.default_value) : this.value,
       validTags: [],
       invalidTags: [],
       duplicateTags: [],

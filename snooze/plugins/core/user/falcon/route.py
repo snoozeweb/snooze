@@ -1,5 +1,4 @@
 #!/usr/bin/python
-from hashlib import sha256
 from logging import getLogger
 log = getLogger('snooze.api')
 

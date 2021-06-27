@@ -1,7 +1,7 @@
 #!/usr/bin/python3.6
 
 from snooze.plugins.core import Plugin, Abort_and_write
-from snooze.utils import Condition, Action
+from snooze.utils import Condition, Modification
 
 import datetime
 import logging

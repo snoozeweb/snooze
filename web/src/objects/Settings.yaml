@@ -98,20 +98,17 @@ form:
             display_name: Aggregate TTL
             component: Duration
             description: 'Assign a time to live for any new aggregate'
-            options:
-                default: 86400
+            default_value: 86400
         record_ttl:
             display_name: Record TTL
             component: Duration
             description: 'Assign a time to live for any new record'
-            options:
-                default: 86400
+            default_value: 86400
         cleanup_interval:
             display_name: Cleanup interval
             component: Duration
             description: 'Launch a cleanup job at interval'
-            options:
-                default: 60
+            default_value: 60
     stats:
         enabled:
             display_name: Metrics

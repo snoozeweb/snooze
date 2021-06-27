@@ -1,7 +1,7 @@
 #!/usr/bin/python3.6
 
 from snooze.plugins.core import Plugin
-from snooze.utils import Condition, Action
+from snooze.utils import Condition, Modification
 
 import logging
 from logging import getLogger
@@ -40,10 +40,10 @@ class RuleObject():
         LOG.debug("Creating rule: {}".format(str(self.name)))
         self.condition = Condition(rule.get('condition'))
         LOG.debug("-> condition: {}".format(str(self.condition)))
-        self.actions = []
-        for action in (rule.get('actions') or []):
-            LOG.debug("-> action: {}".format(str(action)))
-            self.actions.append(Action(*action))
+        self.modifications = []
+        for modification in (rule.get('modifications') or []):
+            LOG.debug("-> modification: {}".format(str(modification)))
+            self.modifications.append(Modification(*modification))
         LOG.debug("Searching children of rule {}".format(str(self.name)))
         self.children = []
         if db:
@@ -73,7 +73,7 @@ class RuleObject():
 
     def modify(self, record):
         """
-        Modify the record based of this rule's actions
+        Modify the record based of this rule's modifications
 
         Args:
             record (dict)
@@ -82,7 +82,7 @@ class RuleObject():
             bool: Record has been modified
         """
         LOG.debug("Attempting to modify record: {}".format(str(record)))
-        modified = any([ action.modify(record) for action in self.actions])
+        modified = any([ modification.modify(record) for modification in self.modifications])
         if modified:
             LOG.debug("Record has been modified: {}".format(str(record)))
         else:

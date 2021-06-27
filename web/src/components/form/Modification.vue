@@ -22,7 +22,7 @@ import Base from './Base.vue'
 
 export default {
   extends: Base,
-  name: 'Action',
+  name: 'Modification',
   props: {
     value: {type: Array, default: () => []},
     options: {},
@@ -31,7 +31,7 @@ export default {
     return {
       datavalue: this.value,
       operations: [
-				{value: 'SET', text: 'Set'},
+	{value: 'SET', text: 'Set'},
         {value: 'DELETE', text: 'Delete'},
         {value: 'ARRAY_APPEND', text: 'Append (to array)'},
         {value: 'ARRAY_DELETE', text: 'Delete (from array)'},

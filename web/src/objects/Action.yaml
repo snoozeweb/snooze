@@ -1,5 +1,5 @@
 ---
-endpoint: command
+endpoint: action
 fields:
     -
         label: Name
@@ -8,14 +8,14 @@ fields:
         thStyle: {width: '20%'}
         tdClass: ['align-middle']
     -
-        label: Script
-        key: script
-        thStyle: {width: '35%'}
-        tdClass: ['align-middle']
+        label: Action
+        key: pprint
+        thStyle: {width: '50%'}
+        tdClass: ['align-middle', 'multiline']
     -
-        label: Arguments
-        key: arguments
-        thStyle: {width: '35%'}
+        label: Comment
+        key: comment
+        thStyle: {width: '30%'}
         tdClass: ['align-middle']
         type: array
     -
@@ -30,14 +30,13 @@ form:
         display_name: Name
         component: String
         description: 'Name of the notification entry'
-    script:
-        display_name: Script path
-        component: String
-        description: 'Fully qualified path to the command to execute'
-    arguments:
-        display_name: Script arguments
-        component: Arguments
-        description: 'List of arguments to provide to the script'
+        required: true
+    action:
+        display_name: Action
+        component: APIElement
+        endpoint: plugin/action
+        primary: action_name
+        required: true
     comment:
         display_name: Comment
         component: Text

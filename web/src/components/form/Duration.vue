@@ -23,20 +23,21 @@ import { pp_countdown } from '@/utils/api'
 export default {
   extends: Base,
   props: {
-    'value': {type: Number, default: () => 0},
+    'value': {type: Number},
     'options': {type: Object, default: () => {}},
     'disabled': {type: Boolean, default: () => false},
     'required': {type: Boolean, default: () => false},
+    'default_value': {type: Number},
   },
   data() {
     return {
-      datavalue: this.value,
+      datavalue: [undefined, '', [], {}].includes(this.value) ? (this.default_value == undefined ? 86400 : this.default_value) : this.value,
       pp_countdown: pp_countdown,
     }
   },
   methods: {
     reset() {
-      this.datavalue = this.options['default'] || 86400
+      this.datavalue = this.default_value == undefined ? 86400 : this.default_value
     },
   },
   watch: {

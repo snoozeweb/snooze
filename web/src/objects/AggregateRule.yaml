@@ -50,6 +50,7 @@ form:
         display_name: Name
         component: String
         description: Name of the notification entry
+        required: true
     condition:
         display_name: Condition
         component: Condition
@@ -62,8 +63,7 @@ form:
         display_name: Throttle
         component: Duration
         description: Number of seconds to wait before escalating the next alert (-1 for infinite)
-        options:
-            default: 900
+        default_value: 900
     comment:
         display_name: Comment
         component: Text

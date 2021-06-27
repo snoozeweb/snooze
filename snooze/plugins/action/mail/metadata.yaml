@@ -1,0 +1,46 @@
+---
+name: 'Send email'
+desc: ''
+icon: 'envelope'
+form:
+  to:
+    display_name: To
+    component: Text
+    description: 'Comma separated list of recipient addresses'
+    required: true
+  priority:
+    display_name: Priority
+    component: Selector
+    options:
+      - text: Lowest
+        value: lowest
+      - text: Low
+        value: low
+      - text: Normal
+        value: normal
+      - text: High
+        value: high
+      - text: Highest
+        value: highest
+    default_value: normal
+    description: 'Email priority'
+  subject:
+    display_name: Subject
+    component: String
+    default_value: 'Alert: $name$'
+    description: 'Email subject'
+  message:
+    display_name: Message
+    component: Text
+    default_value: 'The alert $name$ was triggered'
+    description: 'Email content'
+  type:
+    display_name: Type
+    component: Radio
+    options:
+      - text: HTML & Plain Text
+        value: html
+      - text: Plain Text
+        value: plain
+    default_value: html
+    description: 'Email formatting'

@@ -1,0 +1,6 @@
+---
+name: 'Action'
+desc: 'An endpoint to store action objects'
+primary: name
+duplicate_policy: 'reject'
+class: ActionRoute

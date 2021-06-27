@@ -1,13 +1,13 @@
-# Command
+# Action
 
 ## Props
 
-<!-- @vuese:Commands:props:start -->
+<!-- @vuese:Actions:props:start -->
 |Name|Description|Type|Required|Default|
 |---|---|---|---|---|
 |value|-|—|`false`|-|
 |options|-|—|`false`|-|
 
-<!-- @vuese:Commands:props:end -->
+<!-- @vuese:Actions:props:end -->
 
 

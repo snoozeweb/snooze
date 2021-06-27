@@ -33,7 +33,7 @@ def prepare_socket(socket_path=None):
             abspath = os.path.abspath(path)
             dirname = os.path.dirname(abspath)
             if not os.path.exists(dirname):
-                os.makedirs(abspath)
+                os.makedirs(dirname)
             my_socket = abspath
             break
         except Exception as e:

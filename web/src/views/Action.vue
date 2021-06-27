@@ -1,7 +1,7 @@
 <template>
   <div class="animated fadeIn">
     <List
-      endpoint="command"
+      endpoint="action"
       :form="form"
       :fields="fields"
       :tabs="tabs"
@@ -13,7 +13,8 @@
 <script>
 import List from '@/components/List.vue'
 
-import { form, fields } from '@/objects/Command.yaml'
+import { form, fields } from '@/objects/Action.yaml'
+import { get_data, preprocess_data } from '@/utils/api'
 
 export default {
   components: {
@@ -23,10 +24,11 @@ export default {
   },
   data () {
     return {
+      get_data: get_data,
       form: form,
       fields: fields,
       tabs: [
-        {title: 'Commands', filter: []},
+        {title: 'Actions', filter: []},
       ],
     }
   },

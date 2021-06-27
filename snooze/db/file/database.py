@@ -155,7 +155,7 @@ class BackendDB(Database):
             log.debug("Found {} for search {}. Page: {}-{}. Count: {}. Sort by {}. Order: {}".format(results, tinydb_search, page_number, nb_per_page, total, orderby, 'Ascending' if asc else 'Descending'))
             return {'data': deepcopy(results), 'count': total}
         else:
-            log.error("Cannot find collection {}".format(collection))
+            log.warning("Cannot find collection {}".format(collection))
             return {'data': [], 'count': 0}
 
     def delete(self, collection, condition=[], force=False):

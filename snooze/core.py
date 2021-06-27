@@ -21,6 +21,7 @@ class Core:
         self.cluster = None
         self.plugins = []
         self.process_plugins = []
+        self.action_plugins = []
         self.stats = Stats(conf.get('stats'))
         self.secrets = config('secrets')
         self.stats.init('process_record_duration')
@@ -37,12 +38,12 @@ class Core:
                 plugin_module = import_module("snooze.plugins.core.{}.plugin".format(plugin_name))
                 plugin_class = getattr(plugin_module, plugin_name.capitalize())
             except ModuleNotFoundError:
-                log.warning("Module for plugin `{}` not found. Using Basic instead".format(plugin_name))
+                log.debug("Module for plugin `{}` not found. Using Basic instead".format(plugin_name))
                 plugin_module = import_module("snooze.plugins.core.basic.plugin")
                 plugin_class = type(plugin_name.capitalize(), (plugin_module.Plugin,), {})
             except Exception as e:
                 log.exception(e)
-                log.error("Error for plugin `{}`: {}".format(plugin_name, e))
+                log.error("Error for core plugin `{}`: {}".format(plugin_name, e))
                 continue
             plugin_conf = (self.conf.get(plugin_name) or {})
             plugin_instance = plugin_class(self, plugin_conf)
@@ -50,6 +51,19 @@ class Core:
             if (plugin_name in (self.conf.get('process_plugins') or [])):
                 log.debug("Detected {} as a process plugin".format(plugin_name))
                 self.process_plugins.append(plugin_instance)
+        self.action_plugins = []
+        log.debug("Starting to load notification plugins")
+        for plugin_name in (self.conf.get('action_plugins') or []):
+            try:
+                log.debug("Attempting to load notification plugin {}".format(plugin_name))
+                plugin_module = import_module("snooze.plugins.action.{}.plugin".format(plugin_name))
+                plugin_class = getattr(plugin_module, plugin_name.capitalize())
+            except Exception as e:
+                log.exception(e)
+                log.error("Error for notification plugin `{}`: {}".format(plugin_name, e))
+                continue
+            plugin_instance = plugin_class(self)
+            self.action_plugins.append(plugin_instance)
 
     def process_record(self, record):
         source = record.get('source', 'unknown')

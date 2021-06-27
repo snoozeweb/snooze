@@ -11,7 +11,7 @@ const Rule = () => import('@/views/Rule')
 const AggregateRule = () => import('@/views/AggregateRule')
 const Snooze = () => import('@/views/Snooze')
 const Notification = () => import('@/views/Notification')
-const Command = () => import('@/views/Command')
+const Action = () => import('@/views/Action')
 const User = () => import('@/views/User')
 const Role = () => import('@/views/Role')
 const Settings = () => import('@/views/Settings')
@@ -77,9 +77,9 @@ export default new Router({
           component: Notification,
         },
         {
-          path: '/command',
-          name: 'Commands',
-          component: Command,
+          path: '/action',
+          name: 'Actions',
+          component: Action,
         },
         {
           path: '/user',

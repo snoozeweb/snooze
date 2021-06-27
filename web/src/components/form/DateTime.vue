@@ -53,9 +53,6 @@ export default {
     this.main_color = bodystyle.getPropertyValue('--primary').trim()
   },
   watch: {
-    datavalue () {
-      this.$emit('input', this.datavalue)
-    },
     fromDate: function () {
       this.$emit('input', {'from': this.fromDate, 'until': this.untilDate})
     },

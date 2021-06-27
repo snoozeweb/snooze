@@ -14,16 +14,21 @@ import Base from './Base.vue'
 export default {
   extends: Base,
   props: {
-    value: {},
+    value: {
+      type: [Object, String, Number, Boolean],
+    },
     // Object containing the `{value: display_name}` of the
     // options of the selector
     options: {
       type: Array,
     },
+    default_value: {
+      type: [Object, String, Number, Boolean],
+    },
   },
   data() {
     return {
-      datavalue: this.value
+      datavalue: [undefined, '', [], {}].includes(this.value) ? (this.default_value == undefined ? '' : this.default_value) : this.value
     }
   },
   watch: {

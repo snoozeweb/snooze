@@ -1,13 +1,13 @@
 #!/usr/bin/python3.6
 
-class ActionException(Exception): pass
+class ModificationException(Exception): pass
 
 from jinja2 import Template
 
 from logging import getLogger
-log = getLogger('snooze.utils.action')
+log = getLogger('snooze.utils.modification')
 
-class Action():
+class Modification():
     def __init__(self, operation, key, value=None):
         self.operation = operation
         self.key = key
@@ -23,14 +23,14 @@ class Action():
             The Boolean returned is just used for control
             (pretty logs, better verbose information)
         Examples:
-            >>> action = Action('SET', 'key', 'value')
-            >>> action.modify({})
+            >>> modification = Modification('SET', 'key', 'value')
+            >>> modification.modify({})
             True
             >>> record
             {'key': 'value'}
         """
         return_code = False
-        log.debug("Starting action [{}, {}, {}]".format(self.operation, self.key, self.value))
+        log.debug("Starting modification [{}, {}, {}]".format(self.operation, self.key, self.value))
         if self.operation == 'SET':
             return_code = bool(self.value and record.get(self.key) != self.value)
             record[self.key] = self.value

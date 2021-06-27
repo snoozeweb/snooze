@@ -127,6 +127,32 @@ class CapabilitiesRoute(BasicRoute):
             log.exception(e)
             resp.status = falcon.HTTP_503
 
+class ActionPluginRoute(BasicRoute):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.name = 'action'
+
+    @authorize
+    def on_get(self, req, resp, action=None):
+        log.debug("Listing actions")
+        plugin_name = req.params.get('action') or action
+        try:
+            plugins = []
+            loaded_plugins = self.api.core.action_plugins
+            if plugin_name:
+                loaded_plugins = [next(iter([plug for plug in self.api.core.action_plugins if plug.name == plugin_name]), None)]
+            for plugin in loaded_plugins:
+                log.debug("Retrieving action {} metadata".format(plugin.name))
+                plugins.append(plugin.get_metadata())
+            log.debug("List of actions: {}".format(plugins))
+            resp.content_type = falcon.MEDIA_JSON
+            resp.status = falcon.HTTP_200
+            resp.media = {
+                'data': plugins,
+            }
+        except Exception as e:
+            log.exception(e)
+            resp.status = falcon.HTTP_503
 
 class AlertRoute(BasicRoute):
     auth = {
@@ -386,9 +412,12 @@ class LdapAuthRoute(AuthRoute):
                     raise_exceptions=True
                 )
                 if not bind_con.bind():
-                    raise Exception(f"Cannot BIND to LDAP server: {conf['host']}{conf['port']}")
+                    log.error(f"Cannot BIND to LDAP server: {conf['host']}{conf['port']}")
+                    self.enabled = False
             except Exception as err:
-                raise err
+                log.exception(err)
+                self.enabled = False
+                pass
         log.debug("Authentication backend 'ldap' status: {}".format(self.enabled))
 
     def _search_user(self, username):
@@ -489,6 +518,9 @@ class BackendApi():
         self.add_route('/cluster', ClusterRoute(self))
         # Capabilities route
         self.add_route('/capabilities', CapabilitiesRoute(self))
+        # Capabilities route
+        self.add_route('/plugin/action', ActionPluginRoute(self))
+        self.add_route('/plugin/action/{action}', ActionPluginRoute(self))
         # Basic auth setup
         self.auth_routes['local'] = LocalAuthRoute(self)
         self.add_route('/login/local', self.auth_routes['local'])

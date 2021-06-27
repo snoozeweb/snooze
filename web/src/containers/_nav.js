@@ -60,10 +60,10 @@ export default [
       },
       {
         _name: 'CSidebarNavItem',
-        name: 'Commands',
-        to: '/command',
+        name: 'Actions',
+        to: '/action',
         fontIcon: 'la la-code',
-	capabilities: ['ro_command', 'rw_command'],
+	capabilities: ['ro_action', 'rw_action'],
       },
       {
         _name: 'CSidebarNavTitle',

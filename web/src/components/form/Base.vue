@@ -11,7 +11,21 @@
         ></b-popover>
       </b-col>
       <b-col cols=9 md=10>
-        <component :id="'component_'+metadata.display_name" :is="component" :options="metadata.options" :disabled="metadata.disabled" :required="metadata.required" :colorize="metadata.colorize" :import_keys="metadata.import" :data="data" v-model="datavalue" />
+        <component
+          v-model="datavalue"
+          :id="'component_'+metadata.display_name"
+          :is="component"
+          :data="data"
+          :options="metadata.options"
+          :disabled="metadata.disabled"
+          :required="metadata.required"
+          :colorize="metadata.colorize"
+          :import_keys="metadata.import"
+          :placeholder="metadata.placeholder"
+          :default_value="metadata.default_value"
+          :endpoint="metadata.endpoint"
+          :primary="metadata.primary"
+        />
       </b-col>
     </b-row>
 

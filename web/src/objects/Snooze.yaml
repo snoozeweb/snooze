@@ -62,6 +62,7 @@ form:
         display_name: Name
         component: String
         description: 'Name of the notification entry'
+        required: true
     condition:
         display_name: Condition
         component: Condition

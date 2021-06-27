@@ -1,12 +1,12 @@
-# Action
+# Modification
 
 ## Props
 
-<!-- @vuese:Action:props:start -->
+<!-- @vuese:Modification:props:start -->
 |Name|Description|Type|Required|Default|
 |---|---|---|---|---|
 |data|-|`Array` /  `String`|`false`|-|
 
-<!-- @vuese:Action:props:end -->
+<!-- @vuese:Modification:props:end -->
 
 

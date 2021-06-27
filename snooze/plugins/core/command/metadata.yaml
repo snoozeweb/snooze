@@ -1,5 +1,0 @@
----
-name: 'Command'
-desc: 'An endpoint to store command objects'
-primary: name
-duplicate_policy: 'reject'

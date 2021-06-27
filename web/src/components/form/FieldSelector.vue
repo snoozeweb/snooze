@@ -20,14 +20,14 @@
           </li>
         </ul>
         <b-form-select
-					v-bind="inputAttrs"
+          v-bind="inputAttrs"
           v-on="inputHandlers"
           :disabled="disabled || availableOptions.length === 0"
           :options="availableOptions"
-				>
+        >
           <template #first>
             <!-- This is required to prevent bugs with Safari -->
-            <option disabled value="">Choose an option...</option>
+            <option disabled v-if="!default_value && default_value != ''" value="">Choose an option...</option>
           </template>
         </b-form-select>
       </template>
@@ -46,7 +46,6 @@ export default {
   props: {
     value: {
       type: Array,
-      default: () => [],
     },
     // Object containing the `{value: display_name}` of the
     // options of the selector
@@ -56,11 +55,14 @@ export default {
     colorize: {
       type: Boolean,
     },
+    default_value: {
+      type: Array,
+    },
   },
   data() {
     return {
       get_color: get_color,
-      datavalue: this.value || []
+      datavalue: [undefined, '', [], {}].includes(this.value) ? (this.default_value == undefined ? [] : this.default_value) : this.value,
     }
   },
   computed: {

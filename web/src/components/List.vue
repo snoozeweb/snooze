@@ -72,8 +72,8 @@
         <template v-slot:cell(condition)="row">
           <Condition :data="dig(row.item, 'condition')" />
         </template>
-        <template v-slot:cell(actions)="row">
-          <Action :data="dig(row.item, 'actions')" />
+        <template v-slot:cell(modifications)="row">
+          <Modification :data="dig(row.item, 'modifications')" />
         </template>
         <template v-slot:cell(fields)="row">
           <Field :data="dig(row.item, 'fields')" />
@@ -110,6 +110,9 @@
         </template>
         <template v-slot:cell(enabled)="row">
           <Field :data="[(dig(row.item, 'enabled') == undefined || dig(row.item, 'enabled') == true) ? 'enabled' : 'disabled']" colorize/>
+        </template>
+        <template v-slot:cell(pprint)="row">
+          <table class="table-borderless"><tr style="background-color: transparent !important"><td class="p-0 pr-1"><i :class="'la la-'+dig(row.item, 'icon')+' la-lg'"/></td><td class="p-0">{{ dig(row.item, 'pprint') }}</td></tr></table>
         </template>
 
         <template v-slot:cell(button)="row">
@@ -241,7 +244,7 @@ import { join_queries } from '@/utils/query'
 import Form from '@/components/Form.vue'
 import Search from '@/components/Search.vue'
 import Condition from '@/components/Condition.vue'
-import Action from '@/components/Action.vue'
+import Modification from '@/components/Modification.vue'
 import Field from '@/components/Field.vue'
 import DateTime from '@/components/DateTime.vue'
 
@@ -252,7 +255,7 @@ export default {
   name: 'List',
   components: {
     Condition,
-    Action,
+    Modification,
     Field,
     DateTime,
     Search,

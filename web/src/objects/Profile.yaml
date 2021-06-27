@@ -23,5 +23,7 @@ form:
             display_name: Theme
             component: Selector
             options:
-                - default
+                - value: default
+                  text: Default
             description: 'Theme'
+            default_value: default
