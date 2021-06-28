@@ -535,7 +535,9 @@ class BackendApi():
         log.debug('Starting socket API')
         self.socket.start()
         log.debug('Starting REST API')
-        httpd = simple_server.make_server('0.0.0.0', 9001, self.handler)
+        listen_addr = self.core.conf.get('listen_addr', '0.0.0.0')
+        port = self.core.conf.get('port', '9001')
+        httpd = simple_server.make_server(listen_addr, port, self.handler)
         ssl = self.core.conf.get('ssl')
         if ssl == True:
             certfile = self.core.conf.get('certfile')

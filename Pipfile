@@ -16,6 +16,7 @@ snooze = {editable = true, path = "."}
 ldap3 = "*"
 prometheus-client = "*"
 python-dateutil = "*"
+netifaces = "*"
 
 [dev-packages]
 pytest = "*"
@@ -28,3 +29,4 @@ pytest-sugar = "*"
 bandit = "*"
 pylint = "*"
 pytest-timeout = "*"
+shovel = "*"

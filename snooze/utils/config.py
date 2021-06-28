@@ -7,63 +7,57 @@ from pathlib import Path
 from logging import getLogger
 log = getLogger('snooze.utils.config')
 
-SNOOZE_CONFIG_PATH = os.environ.get('SNOOZE_CONFIG_PATH')
+SNOOZE_CONFIG_PATH = os.environ.get('SNOOZE_SERVER_CONFIG', '/etc/snooze/server')
 
-DEFAULT_PATHS = [
-    Path('.'),
-    Path('/etc/snooze'),
-    Path(SNOOZE_PATH).parent / 'utils',
-]
+def config(configname = 'main', configpath = SNOOZE_CONFIG_PATH):
+    '''
+    Read a configuration file and return its content.
+    '''
+    server_config_path = Path(configpath) / (configname + '.yaml')
 
-if SNOOZE_CONFIG_PATH:
-    DEFAULT_PATHS.append(SNOOZE_CONFIG_PATH)
+    default_file = Path(SNOOZE_PATH).parent / 'defaults' / (configname + '.yaml')
+    if default_file.is_file():
+        return_config = yaml.safe_load(default_file.read_text())
+    else:
+        log.debug('No default config for %s', default_file)
+        return_config = {}
 
-def config(configname = 'config', use_env = True):
-    paths = [path for path in DEFAULT_PATHS if path.is_dir()]
-    log.debug('Read: Loading configuration from {}'.format(paths))
-    return_config = {}
-    for filename in ['default_' + configname + '.yaml', configname + '.yaml']:
-        for path in paths:
-            configfile = path / filename
-            if configfile.is_file():
-                log.debug('Read: Found YAML config file at {}'.format(configfile))
-                with configfile.open('r') as f:
-                    try:
-                        for y in yaml.load_all(f.read()):
-                            return_config.update(y)
-                    except Exception as e:
-                        log.error(e)
-                        return {'error': str(e)}
-    if use_env:
-        environment_variables = {k:v for (k,v) in os.environ.items() if k.startswith('SNOOZE_') and k != 'SNOOZE_CONFIG_PATH'}
-        return_config.update(environment_variables)
-    log.debug('Will load the following config: {}'.format(return_config))
+    log.debug('Attempting to load configuration at %s', server_config_path)
+    if server_config_path.is_file():
+        config = yaml.safe_load(server_config_path.read_text())
+        return_config.update(config)
+    else:
+        log.warning('Could not find config at %s', server_config_path)
+
+    environment_variables = {k:v for (k,v) in os.environ.items() if k.startswith('SNOOZE_SERVER_') and k != 'SNOOZE_SERVER_CONFIG'}
+    return_config.update(environment_variables)
+
+    log.debug('Retreived the following config: %s', return_config)
+
     return return_config
 
-def write_config(configname = 'config', config = {}):
-    paths = [path for path in DEFAULT_PATHS if path.is_dir()]
-    log.debug('Write: Loading configuration from {}'.format(paths))
-    configfile = ''
-    found_file = False
-    for path in paths:
-        configfile = path / (configname + '.yaml')
-        if configfile.is_file():
-            log.debug('Write: Found YAML config file at {}'.format(configfile))
-            found_file = True
-            break
-    if not found_file:
-        configfile = paths[-1] / (configname + '.yaml')
-        log.debug('Write: YAML config file not found. Creating {}'.format(configfile))
+def write_config(configname = 'main', config = {}, configpath = SNOOZE_CONFIG_PATH):
+    '''
+    Update or create a configuration file.
+    '''
+    config_file = Path(configpath) / (configname + '.yaml')
+    log.debug('Write: Loading configuration from %s', config_file)
+
     try:
-        with configfile.open('r') as f:
-            old_config = yaml.load(f.read(), Loader=yaml.Loader)
-            log.debug('Writing config {}'.format(config))
-            log.debug('Type {}'.format(type(config)))
-            old_config.update(config)
-        with configfile.open('w') as f:
-            yaml.dump(old_config, f)
-            log.debug('New config: {}'.format(old_config))
-            return {'file': str(configfile)}
+        if config_file.is_file():
+            log.debug('Write: %s found', config_file)
+            current_config = yaml.safe_load(config_file.read_text())
+            current_config.update(config)
+        else:
+            log.debug('Write: YAML config file not found. Creating %s', config_file)
+            current_config = config
+
+        # Write config
+        with config_file.open("w") as f:
+            yaml.dump(current_config, f)
+            log.debug('New config: %s', current_config)
+        return {'file': str(config_file)}
+
     except Exception as e:
         log.error(e)
         return {'error': str(e)}
