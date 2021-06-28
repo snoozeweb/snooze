@@ -14,13 +14,13 @@ log = getLogger('snooze.cluster')
 
 class Cluster():
     def __init__(self, api):
-        log.debug('Init Cluster Manager')
         self.api = api
         self.conf = api.core.conf.get('clustering', {})
         self.thread = None
         self.sync_queue = []
         self.enabled = self.conf.get('enabled', False)
         if self.enabled:
+            log.debug('Init Cluster Manager')
             self.all_peers = self.conf.get('members', [])
             self.other_peers = self.conf.get('members', [])
             for interface in netifaces.interfaces():

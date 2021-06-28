@@ -2,6 +2,7 @@
 
 from snooze.db.database import Database
 from snooze.utils.functions import dig, flatten
+from threading import Lock
 from logging import getLogger
 import uuid
 import datetime
@@ -15,6 +16,7 @@ from functools import reduce
 class OperationNotSupported(Exception): pass
 
 default_filename = 'db.json'
+mutex = Lock()
 
 def test_contains(array, value):
     return any(value.casefold() in a.casefold() for a in flatten(array))
@@ -30,19 +32,25 @@ class BackendDB(Database):
         log.debug("db: {}".format(self.db))
 
     def cleanup_timeout(self, collection):
+        mutex.acquire()
         log.debug("Cleanup collection {}".format(collection))
         now = datetime.datetime.now().timestamp()
         aggregate_results = self.db.table(collection).search(Query().ttl >= 0)
         aggregate_results = list(map(lambda doc: {'_id': doc.doc_id, 'timeout': doc['ttl'] + doc['date_epoch']}, aggregate_results))
         aggregate_results = list(filter(lambda doc: doc['timeout'] <= now, aggregate_results))
-        return self.delete_aggregates(collection, aggregate_results)
+        res = self.delete_aggregates(collection, aggregate_results)
+        mutex.release()
+        return res
 
     def cleanup_orphans(self, collection, key, col_ref, key_ref):
+        mutex.acquire()
         log.debug("Cleanup collection {} by finding {} in collection {} matching {}".format(collection, key, col_ref, key_ref))
         results = list(map(lambda doc: doc[key_ref], self.db.table(col_ref).all()))
         aggregate_results = self.db.table(collection).search(~ (Query()[key].one_of(results)))
         aggregate_results = list(map(lambda doc: {'_id': doc.doc_id}, aggregate_results))
-        return self.delete_aggregates(collection, aggregate_results)
+        res = self.delete_aggregates(collection, aggregate_results)
+        mutex.release()
+        return res
 
     def delete_aggregates(self, collection, aggregate_results):
         ids = list(map(lambda doc: doc['_id'], aggregate_results))
@@ -52,6 +60,7 @@ class BackendDB(Database):
         return deleted_count
 
     def write(self, collection, obj, primary = None, duplicate_policy='update', update_time=True, constant=None):
+        mutex.acquire()
         added = []
         updated = []
         rejected = []
@@ -127,9 +136,11 @@ class BackendDB(Database):
                 log.debug("In {}, inserting {}".format(collection, o))
         if len(obj_copy) > 0:
             table.insert_multiple(obj_copy)
+        mutex.release()
         return {'data': {'added': deepcopy(added), 'updated': deepcopy(updated), 'rejected': deepcopy(rejected)}}
 
     def search(self, collection, condition=[], nb_per_page=0, page_number=1, orderby="", asc=True):
+        mutex.acquire()
         tinydb_search = self.convert(condition)
         log.debug("Condition {} converted to tinydb search {}".format(condition, tinydb_search))
         log.debug("List of collections: {}".format(self.db.tables()))
@@ -153,12 +164,15 @@ class BackendDB(Database):
                 results = list(reversed(results))
             results = results[from_el:to_el]
             log.debug("Found {} for search {}. Page: {}-{}. Count: {}. Sort by {}. Order: {}".format(results, tinydb_search, page_number, nb_per_page, total, orderby, 'Ascending' if asc else 'Descending'))
+            mutex.release()
             return {'data': deepcopy(results), 'count': total}
         else:
             log.warning("Cannot find collection {}".format(collection))
+            mutex.release()
             return {'data': [], 'count': 0}
 
     def delete(self, collection, condition=[], force=False):
+        mutex.acquire()
         tinydb_search = self.convert(condition)
         log.debug("Condition {} converted to tinydb delete search {}".format(condition, tinydb_search))
         log.debug("List of collections: {}".format(self.db.tables()))
@@ -175,8 +189,10 @@ class BackendDB(Database):
                     results = table.remove(tinydb_search)
                     results_count = len(results)
                 log.debug("Found {} item(s) to delete for search {}".format(results_count, tinydb_search))
+            mutex.release()
             return {'data': [], 'count': results_count}
         else:
+            mutex.release()
             log.error("Cannot find collection {}".format(collection))
             return {'data': 0}
 

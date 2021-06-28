@@ -8,11 +8,9 @@ import logging.config
 import yaml
 import os
 
-def setup_logging(path='logging.yaml'):
-    if os.path.exists(path):
-        with open(path, 'rt') as f:
-            config = yaml.safe_load(f.read())
-        logging.config.dictConfig(config)
+def setup_logging():
+    logging_config = config('logging')
+    logging.config.dictConfig(logging_config)
     log = getLogger('snooze')
     log.debug("Log system on")
 

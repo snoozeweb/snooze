@@ -65,8 +65,7 @@ export default {
       this.get_data('cluster', null, {}, this.callback, feedback)
     },
     callback(response, feedback) {
-      console.log(response)
-      if (response.data) {
+      if (response.data && response.data.data) {
         this.items = response.data.data
         this.items.sort(function(a, b) {
           return a.host - b.host;

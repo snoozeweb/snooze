@@ -1,0 +1,5 @@
+enabled: false
+display_name_attribute: cn
+email_attribute: mail
+member_attribute: uniqueMember
+user_filter: (uid=%s)

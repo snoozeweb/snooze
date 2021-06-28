@@ -1,9 +1,0 @@
-base_dn: dc=example,dc=com
-bind_dn: cn=read-only-admin,dc=example,dc=com
-bind_password: password
-display_name_attribute: cn
-email_attribute: mail
-enabled: false
-host: ldap://ldap.forumsys.com
-member_attribute: uniqueMember
-user_filter: (uid=%s)

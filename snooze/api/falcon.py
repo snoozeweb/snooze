@@ -222,7 +222,7 @@ class ClusterRoute(BasicRoute):
             }
         else:
             resp.text = 'Clustering had been disabled'
-            resp.status = falcon.HTTP_503
+            resp.status = falcon.HTTP_200
 
 class CORS(object):
     def __init__(self):
