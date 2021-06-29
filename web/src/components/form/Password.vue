@@ -29,9 +29,12 @@ export default {
     }
   },
   watch: {
-    datavalue () {
-      this.$emit('input', this.datavalue)
-    }
+    datavalue: {
+      handler: function () {
+        this.$emit('input', this.datavalue)
+      },
+      immediate: true
+    },
   },
   method () {
     if (this.datavalue) {

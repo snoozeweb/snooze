@@ -1,6 +1,6 @@
 <template>
   <div>
-    <APIElementField v-model="datavalue" endpoint="capabilities" :colorize="colorize" :data="data"/>
+    <APIElementField v-model="datavalue" endpoint="permissions" :colorize="colorize" :data="data"/>
   </div>
 </template>
 
@@ -20,9 +20,12 @@ export default {
     }
   },
   watch: {
-    datavalue () {
-      this.$emit('input', this.datavalue)
-    }
+    datavalue: {
+      handler: function () {
+        this.$emit('input', this.datavalue)
+      },
+      immediate: true
+    },
   },
 }
 </script>

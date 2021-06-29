@@ -26,12 +26,14 @@ Severity: {{ record.get('severity') }}
 
 DEFAULT_SERVER = 'localhost'
 DEFAULT_PORT = 25
+DEFAULT_TIMEOUT = 10
 
 class Mail(Action):
     def __init__(self, core):
         super().__init__(core)
         self.host = self.conf.get('host', DEFAULT_SERVER)
         self.port = self.conf.get('port', DEFAULT_PORT)
+        self.timeout = self.conf.get('timeout', DEFAULT_TIMEOUT)
         self.sender = self.conf.get('sender', '')
 
     def pprint(self, content):
@@ -49,12 +51,11 @@ class Mail(Action):
         message['X-Priority'] = str(content.get('priority', 3))
         message.preamble = message['Subject']
         message.attach(MIMEText(msg, content.get('type', 'plain'), 'utf-8'))
+        log.debug("Send mail to {}".format(message['To']))
+        self.server = SMTP(self.host, self.port, timeout=self.timeout)
         try:
-            log.debug("Send mail to {}".format(message['To']))
-            self.server = SMTP(self.host, self.port)
             self.server.sendmail(self.sender, recipients, message.as_string())
-            self.server.close()
-            self.core.stats.inc('snooze_notification_sent', {'type': self.name, 'name': content.get('name', '')})
         except Exception as e:
-            self.core.stats.inc('snooze_notification_error', {'type': self.name, 'name': content.get('name', '')})
-            log.exception(e)
+            self.server.close()
+            raise
+        self.server.close()

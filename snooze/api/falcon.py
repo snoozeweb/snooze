@@ -47,23 +47,23 @@ def authorize(func):
             log.warning("Root user detected! Authorized but please use a proper admin role if possible")
             return func(self, req, resp, *args, **kw)
         else:
-            capabilities = user_payload.get('capabilities', [])
-            capabilities.append('any')
+            permissions = user_payload.get('permissions', [])
+            permissions.append('any')
             if endpoint == 'on_get':
-                if self.authorization_policy and any(cap in capabilities for cap in self.authorization_policy.get('read', [])):
-                    log.debug("User {} has any read capabilities {}. Authorized".format(name, self.authorization_policy.get('read')))
+                if self.authorization_policy and any(perm in permissions for perm in self.authorization_policy.get('read', [])):
+                    log.debug("User {} has any read permissions {}. Authorized".format(name, self.authorization_policy.get('read')))
                     return func(self, req, resp, *args, **kw)
-                elif any(cap in capabilities for cap in read_permissions):
+                elif any(perm in permissions for perm in read_permissions):
                     return func(self, req, resp, *args, **kw)
             elif endpoint == 'on_post' or endpoint == 'on_put' or endpoint == 'on_delete':
                 if self.check_permissions:
                     log.debug("Will double check {} permissions".format(name))
-                    capabilities = self.get_capabilities(self.get_roles(name, method))
-                if len(capabilities) > 0:
-                    if self.authorization_policy and any(cap in capabilities for cap in self.authorization_policy.get('write', [])):
-                        log.debug("User {} has any write capabilities {}. Authorized".format(name, self.authorization_policy.get('write')))
+                    permissions = self.get_permissions(self.get_roles(name, method))
+                if len(permissions) > 0:
+                    if self.authorization_policy and any(perm in permissions for perm in self.authorization_policy.get('write', [])):
+                        log.debug("User {} has any write permissions {}. Authorized".format(name, self.authorization_policy.get('write')))
                         return func(self, req, resp, *args, **kw)
-                    elif any(cap in capabilities for cap in write_permissions):
+                    elif any(perm in permissions for perm in write_permissions):
                         return func(self, req, resp, *args, **kw)
         raise falcon.HTTPForbidden('Forbidden', 'Permission Denied')
     return _f
@@ -102,26 +102,26 @@ class FalconRoute(BasicRoute):
         user_password['password'] = sha256(password.encode('utf-8')).hexdigest()
         self.core.db.write('user.password', user_password, 'name,method')
 
-class CapabilitiesRoute(BasicRoute):
+class PermissionsRoute(BasicRoute):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.name = 'role'
 
     @authorize
     def on_get(self, req, resp):
-        log.debug("Listing capabilities")
+        log.debug("Listing permissions")
         try:
-            capabilities = ['rw_all', 'ro_all']
+            permissions = ['rw_all', 'ro_all']
             for plugin in self.api.core.plugins:
-                capabilities.append('rw_' + plugin.name)
-                capabilities.append('ro_' + plugin.name)
-                for additional_capability in plugin.capabilities:
-                    capabilities.append(additional_capability)
-            log.debug("List of capabilities: {}".format(capabilities))
+                permissions.append('rw_' + plugin.name)
+                permissions.append('ro_' + plugin.name)
+                for additional_permission in plugin.permissions:
+                    permissions.append(additional_permission)
+            log.debug("List of permissions: {}".format(permissions))
             resp.content_type = falcon.MEDIA_JSON
             resp.status = falcon.HTTP_200
             resp.media = {
-                'data': capabilities,
+                'data': permissions,
             }
         except Exception as e:
             log.exception(e)
@@ -163,6 +163,22 @@ class AlertRoute(BasicRoute):
         log.debug("Received log {}".format(req.media))
         try:
             self.core.process_record(req.media)
+            resp.status = falcon.HTTP_200
+        except Exception as e:
+            log.exception(e)
+            resp.status = falcon.HTTP_503
+
+class MetricsRoute(BasicRoute):
+    auth = {
+        'auth_disabled': True
+    }
+
+    def on_get(self, req, resp):
+        log.debug("Retrieving metrics")
+        try:
+            resp.content_type = falcon.MEDIA_TEXT
+            data = self.api.core.stats.get_metrics()
+            resp.body = str(data.decode('utf-8'))
             resp.status = falcon.HTTP_200
         except Exception as e:
             log.exception(e)
@@ -306,9 +322,9 @@ class AuthRoute(BasicRoute):
 
     def inject_permissions(self, user):
         roles = self.get_roles(user['name'], user['method'])
-        capabilities = self.get_capabilities(roles)
+        permissions = self.get_permissions(roles)
         user['roles'] = roles
-        user['capabilities'] = capabilities
+        user['permissions'] = permissions
 
     def on_post(self, req, resp):
         if self.enabled:
@@ -508,7 +524,7 @@ class BackendApi():
         self.handler = falcon.API(middleware=[CORS(), FalconAuthMiddleware(self.jwt_auth)])
         self.handler.req_options.auto_parse_qs_csv = False
         self.auth_routes = {}
-        # Alerta route
+        # Alert route
         self.add_route('/alert', AlertRoute(self))
         # List route
         self.add_route('/login', LoginRoute(self))
@@ -516,9 +532,9 @@ class BackendApi():
         self.add_route('/reload', ReloadRoute(self))
         # Cluster route
         self.add_route('/cluster', ClusterRoute(self))
-        # Capabilities route
-        self.add_route('/capabilities', CapabilitiesRoute(self))
-        # Capabilities route
+        # Permissions route
+        self.add_route('/permissions', PermissionsRoute(self))
+        # Action route
         self.add_route('/plugin/action', ActionPluginRoute(self))
         self.add_route('/plugin/action/{action}', ActionPluginRoute(self))
         # Basic auth setup
@@ -527,6 +543,9 @@ class BackendApi():
         # Ldap auth
         self.auth_routes['ldap'] = LdapAuthRoute(self)
         self.add_route('/login/ldap', self.auth_routes['ldap'])
+        # Optional metrics
+        if self.core.stats.enabled:
+             self.add_route('/metrics', MetricsRoute(self))
 
     def add_route(self, route, action):
         self.handler.add_route(route, action)
@@ -551,7 +570,7 @@ class BackendApi():
         #self.socket.join()
 
     def get_root_token(self):
-        return self.jwt_auth.get_auth_token({'name': 'root', 'method': 'root', 'capabilities': ['rw_all']})
+        return self.jwt_auth.get_auth_token({'name': 'root', 'method': 'root', 'permissions': ['rw_all']})
 
     def reload(self, filename, auth_backends):
         reloaded_auth = []

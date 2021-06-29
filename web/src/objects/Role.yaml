@@ -8,8 +8,8 @@ fields:
         thStyle: {width: '20%'}
         tdClass: ['align-middle']
     -
-        label: Capabilities
-        key: capabilities
+        label: Permissions
+        key: permissions
         thStyle: {width: '25%'}
         tdClass: ['align-middle']
         type: array
@@ -32,11 +32,11 @@ form:
         display_name: Name
         component: String
         description: 'Name of the notification entry'
-    capabilities:
-        display_name: Capabilities
-        component: Capability
+    permissions:
+        display_name: Permissions
+        component: Permission
         colorize: true
-        description: 'List of capabilities'
+        description: 'List of permissions'
     groups:
         display_name: Groups
         component: Field

@@ -11,14 +11,20 @@ tabs:
         reload:
             auth_backends: ['ldap']
     -
-        key: 'stats'
-        name: 'Stats'
-    -
         key: 'housekeeping'
         name: 'Housekeeping'
 
 form:
     general:
+        metrics_enabled:
+            display_name: Metrics
+            component: Radio
+            options:
+                - text: Enabled
+                  value: true
+                - text: Disabled
+                  value: false
+            description: 'Enable or disable metrics'
         local_users_enabled:
             display_name: Local Users
             component: Radio
@@ -110,16 +116,3 @@ form:
             description: 'Launch a cleanup job at interval'
             default_value: 60
     stats:
-        enabled:
-            display_name: Metrics
-            component: Radio
-            options:
-                - text: Enabled
-                  value: true
-                - text: Disabled
-                  value: false
-            description: 'Enable or disable metrics'
-        port:
-            display_name: Port
-            component: Number
-            description: 'Metrics endpoint listening port (default 9234)'

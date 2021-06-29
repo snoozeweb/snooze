@@ -71,7 +71,7 @@ class SocketServer:
             '''Handler for the socket connection'''
             def do_GET(self):
                 if self.path == '/root_token':
-                    root_token = jwt_engine.get_auth_token({'name': 'root', 'method': 'root', 'capabilities': ['rw_all']})
+                    root_token = jwt_engine.get_auth_token({'name': 'root', 'method': 'root', 'permissions': ['rw_all']})
                     self.protocol_version = 'HTTP/1.1'
                     self.send_response(200, 'OK')
                     self.send_header('Content-type', 'application/json')

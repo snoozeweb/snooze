@@ -29,10 +29,10 @@
       <span class="text-nowrap h6">Auth / Roles<br/></span>
       <CBadge :color="get_color(method)" class="mr-1">{{ method }}</CBadge>
       <CBadge v-for="field in roles" :key="field" :color="get_color(field)" class="mr-1">{{ field }}</CBadge>
-      <span v-if="capabilities.length > 0">
+      <span v-if="permissions.length > 0">
         <CDropdownDivider />
-        <span class="text-nowrap h6">Capabilities<br/></span>
-        <CBadge v-for="field in capabilities" :key="field" :color="get_color(field)" class="mr-1">{{ field }}</CBadge>
+        <span class="text-nowrap h6">Permissions<br/></span>
+        <CBadge v-for="field in permissions" :key="field" :color="get_color(field)" class="mr-1">{{ field }}</CBadge>
       </span>
       </div>
     </div>
@@ -56,7 +56,7 @@ export default {
       get_color: get_color,
       username: '',
       roles: [],
-      capabilities: [],
+      permissions: [],
       method: '',
       display_name: '',
       email: '',
@@ -91,11 +91,11 @@ export default {
       this.username = decoded_token.user.name
       this.method = decoded_token.user.method
       this.roles = decoded_token.user.roles
-      this.capabilities = decoded_token.user.capabilities
+      this.permissions = decoded_token.user.permissions
       localStorage.setItem('name', this.username)
       localStorage.setItem('method', this.method)
       localStorage.setItem('roles', this.roles)
-      localStorage.setItem('capabilities', this.capabilities)
+      localStorage.setItem('permissions', this.permissions)
       console.log(decoded_token)
     }
     if (localStorage.getItem('refreshed') != true) {

@@ -44,16 +44,16 @@ export default {
   methods: {
     nav_filter(nav_el) {
       var token = localStorage.getItem('snooze-token')
-      var capabilities = []
+      var permissions = []
       if (token) {
-        capabilities = jwt_decode(token).user.capabilities
+        permissions = jwt_decode(token).user.permissions
       }
-      if (capabilities) {
+      if (permissions) {
         var nav_items = []
         nav_el[0]._children.forEach(function(item) {
-          if (item.capabilities) {
-            capabilities.forEach(function(cap) {
-              if(cap == 'rw_all' || cap == 'ro_all' || item.capabilities.includes(cap)) {
+          if (item.permissions) {
+            permissions.forEach(function(cap) {
+              if(cap == 'rw_all' || cap == 'ro_all' || item.permissions.includes(cap)) {
                 nav_items.push(item)
               }
             })

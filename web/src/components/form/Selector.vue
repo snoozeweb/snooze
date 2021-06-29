@@ -20,7 +20,7 @@ export default {
   extends: Base,
   props: {
     value: {
-      type: String,
+      type: [String, Number, Boolean],
     },
     // Object containing the `{value: display_name}` of the
     // options of the selector
@@ -28,7 +28,7 @@ export default {
       type: Array,
     },
     default_value: {
-      type: String,
+      type: [String, Number, Boolean],
     },
     required: {
       type: Boolean,
@@ -41,9 +41,12 @@ export default {
     }
   },
   watch: {
-    datavalue () {
-      this.$emit('input', this.datavalue)
-    }
+    datavalue: {
+      handler: function () {
+        this.$emit('input', this.datavalue)
+      },
+      immediate: true
+    },
   },
   computed: {
     checkField () {

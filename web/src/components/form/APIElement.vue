@@ -1,6 +1,6 @@
 <template>
   <div>
-    <b-form-select v-model="selected" aria-describedby="feedback" :required="required" :state="checkField">
+    <b-form-select v-model="selected" aria-describedby="feedback" :required="required" :state="checkField" @input="selection_changed">
       <option disabled value="">{{ this.empty_message }}</option>
       <option v-for="item in this.items" :key="item[primary]" :value="item[primary]">
         {{ item['name'] }}
@@ -57,15 +57,21 @@ export default {
     }
   },
   watch: {
-    selected () {
-      if (this.subcontent && Object.keys(this.subcontent).length > 0 && this.subcontent.constructor === Object) {
-      	this.$emit('input', {'selected': this.selected, 'subcontent': this.subcontent})
-      } else {
-      	this.$emit('input', this.selected)
-      }
+    selected: {
+      handler: function () {
+        if (this.subcontent && Object.keys(this.subcontent).length > 0 && this.subcontent.constructor === Object) {
+          this.$emit('input', {'selected': this.selected, 'subcontent': this.subcontent})
+        } else {
+          this.$emit('input', this.selected)
+        }
+      },
+      immediate: true
     },
-    subcontent () {
-      this.$emit('input', {'selected': this.selected, 'subcontent': this.subcontent})
+    subcontent: {
+      handler: function () {
+        this.$emit('input', {'selected': this.selected, 'subcontent': this.subcontent})
+      },
+      immediate: true
     },
   },
   mounted () {
@@ -86,6 +92,9 @@ export default {
           }
         })
     },
+    selection_changed() {
+      this.subcontent = {}
+    }
   },
   computed: {
     selection() {

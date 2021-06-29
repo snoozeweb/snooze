@@ -84,8 +84,8 @@
         <template v-slot:cell(ttl)="row">
           {{ dig(row.item, 'ttl') >= 0 ? countdown(dig(row.item, 'ttl') - timestamp + dig(row.item, 'date_epoch')) : '-' }}
         </template>
-        <template v-slot:cell(capabilities)="row">
-          <Field :data="dig(row.item, 'capabilities')" colorize/>
+        <template v-slot:cell(permissions)="row">
+          <Field :data="dig(row.item, 'permissions')" colorize/>
         </template>
         <template v-slot:cell(groups)="row">
           <Field :data="dig(row.item, 'groups')" />

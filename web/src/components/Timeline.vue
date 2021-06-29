@@ -187,14 +187,14 @@ export default {
       this.input_text = ''
     },
     is_admin() {
-      var capabilities = localStorage.getItem('capabilities') || []
-      return capabilities.includes('rw_all') || capabilities.includes('rw_comment')
+      var permissions = localStorage.getItem('permissions') || []
+      return permissions.includes('rw_all') || permissions.includes('rw_comment')
     },
     can_comment(row) {
-      var capabilities = localStorage.getItem('capabilities') || []
+      var permissions = localStorage.getItem('permissions') || []
       var name = localStorage.getItem('name')
       var method = localStorage.getItem('method')
-      return capabilities.includes('can_comment') && name == row['name'] && method == row['method']
+      return permissions.includes('can_comment') && name == row['name'] && method == row['method']
     },
     can_delete(row) {
       return this.is_admin() || this.can_comment(row)

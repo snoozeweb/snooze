@@ -18,7 +18,7 @@ class Plugin:
                 self.metadata_file = yaml.load(f.read())
         except:
             pass
-        self.capabilities = self.metadata_file.get('provides', [])
+        self.permissions = self.metadata_file.get('provides', [])
         default_routeclass = self.metadata_file.get('class', 'Route')
         default_authorization = self.metadata_file.get('authorization_policy')
         default_duplicate = self.metadata_file.get('duplicate_policy', 'update')

@@ -13,8 +13,6 @@ from snooze.plugins.core import Plugin
 class Notification(Plugin):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self.core.stats.init('notification_sent')
-        self.core.stats.init('notification_error')
 
     def process(self, record):
         for notification in self.notifications:
@@ -24,8 +22,14 @@ class Notification(Plugin):
                 if notification.action_plugin:
                     if not 'notifications' in record:
                         record['notifications'] = []
-                        record['notifications'].append( name)
-                    notification.action_plugin.send(deepcopy(record), notification.content)
+                        record['notifications'].append(name)
+                    try:
+                        notification.action_plugin.send(deepcopy(record), notification.content)
+                        self.core.stats.inc('notification_sent', {'name': notifiation.name, 'action': notification.content.get('action_name', '')})
+                    except Exception as e:
+                        self.core.stats.inc('notification_error', {'name': notification.name, 'action': notification.content.get('action_name', '')})
+                        log.error("Notification {} could not be send".format(self.name))
+                        log.exception(e)
                 else:
                     log.error("Notification {} has no action. Cannot send".format(self.name))
         return record

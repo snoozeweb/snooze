@@ -58,20 +58,20 @@ class BasicRoute():
         else:
             return []
 
-    def get_capabilities(self, roles):
+    def get_permissions(self, roles):
         if isinstance(roles, list) and len(roles) > 0:
-            log.debug("Getting capabilities for roles {}".format(roles))
+            log.debug("Getting permissions for roles {}".format(roles))
             query = ['=', 'name', roles[0]]
             for role in roles[1:]:
                 query = ['OR', ['=', 'name', role], query]
             role_search = self.core.db.search('role', query)
-            capabilities = []
+            permissions = []
             if role_search['count'] > 0:
                 for role in role_search['data']:
-                    capabilities += role['capabilities']
-                capabilities = list(set(capabilities))
-                log.debug("List of capabilities: {}".format(capabilities))
-                return capabilities
+                    permissions += role['permissions']
+                permissions = list(set(permissions))
+                log.debug("List of permissions: {}".format(permissions))
+                return permissions
             else:
                 return []
         else:

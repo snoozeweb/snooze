@@ -23,7 +23,6 @@ class Housekeeper():
         self.conf = config('housekeeping')
         self.interval = self.conf.get('cleanup_interval', 60)
         log.debug("Reloading Housekeeper with conf {}".format(self.conf))
-        return True
 
 class HousekeeperThread(threading.Thread):
 

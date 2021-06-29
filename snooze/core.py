@@ -22,9 +22,11 @@ class Core:
         self.plugins = []
         self.process_plugins = []
         self.action_plugins = []
-        self.stats = Stats(conf.get('stats'))
+        self.stats = Stats(self)
         self.secrets = config('secrets')
-        self.stats.init('process_record_duration')
+        self.stats.init('process_record_duration', 'summary', 'snooze_record_process_duration', 'Average time spend processing a record', ['source'])
+        self.stats.init('notification_sent', 'counter', 'snooze_notification_sent', 'Counter of notification sent', ['name', 'action'])
+        self.stats.init('notification_error', 'counter', 'snooze_notification_error', 'Counter of notification that failed', ['name', 'action'])
         self.bootstrap_db()
         self.load_plugins()
 
@@ -102,13 +104,13 @@ class Core:
         log.debug("Reload config file '{}'".format(config_file))
         if config_file == 'general':
             self.general_conf = config('general')
+            self.stats.reload()
             return True
         if config_file == 'ldap_auth':
             return True
         elif config_file == 'housekeeping':
-            return self.housekeeper.reload()
-        elif config_file == 'stats':
-            return self.stats.reload()
+            self.housekeeper.reload()
+            return True
         else:
             log.debug("Config file {} not found".format(config_file))
             return False
@@ -120,7 +122,7 @@ class Core:
                 log.debug("First time starting Snooze with self database. Let us configure it...")
                 aggregate_rules = [{"fields": [ "host", "message" ], "snooze_user": "root" , "name": "Host and Message", "condition": [], "throttle": 900 }]
                 self.db.write('aggregate', aggregate_rules)
-                roles = [{"name": "admin", "capabilities": [ "rw_all" ], "snooze_user": "root"}, {"name": "user", "capabilities": [ "ro_all" ], "snooze_user": "root"}]
+                roles = [{"name": "admin", "permissions": [ "rw_all" ], "snooze_user": "root"}, {"name": "user", "permissions": [ "ro_all" ], "snooze_user": "root"}]
                 self.db.write('role', roles)
                 if self.conf.get('create_root_user', False):
                     users = [{"name": "root", "method": "local", "roles": ["admin"], "enabled": True}]
