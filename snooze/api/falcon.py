@@ -11,6 +11,7 @@ from wsgiref import simple_server
 from bson.json_util import loads, dumps
 
 from snooze.api.base import Api, BasicRoute
+from snooze.api.static import StaticRoute
 from snooze.utils import config, write_config
 
 from logging import getLogger
@@ -547,8 +548,13 @@ class BackendApi():
         if self.core.stats.enabled:
              self.add_route('/metrics', MetricsRoute(self))
 
+        web_config = config('web')
+        web_path = web_config.get('path', '/var/www/snooze')
+
+        self.handler.add_sink(StaticRoute(web_path, '/web').on_get, '/web')
+
     def add_route(self, route, action):
-        self.handler.add_route(route, action)
+        self.handler.add_route('/api' + route, action)
 
     def serve(self):
         log.debug('Starting socket API')

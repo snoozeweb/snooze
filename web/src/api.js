@@ -4,9 +4,13 @@ import jwt_decode from "jwt-decode"
 
 axios.defaults.headers.post['Content-type'] = 'application/json'
 
-export const API = axios.create({
-  baseURL: process.env.VUE_APP_API,
-})
+if ('VUE_APP_API' in process.env) {
+  var axios_config = {baseURL: process.env.VUE_APP_API}
+} else {
+  var axios_config = {baseURL: '/api/'}
+}
+
+export const API = axios.create(axios_config)
 
 if (!localStorage.getItem('username')) {
   let token = localStorage.getItem('snooze-token')

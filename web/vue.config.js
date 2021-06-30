@@ -1,7 +1,7 @@
 module.exports = {
   lintOnSave: false,
   runtimeCompiler: true,
-  publicPath: '/',
+  publicPath: '/web',
   devServer: {
     port: 8082
   }
