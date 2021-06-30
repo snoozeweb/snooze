@@ -1,0 +1,19 @@
+---
+name: 'Patlite'
+desc: 'Set the light and alarm of a Patlite device'
+icon: 'traffic-light'
+form:
+  host:
+    display_name: Host
+    component: String
+    description: Address of the Patlite
+    required: true
+  port:
+    display_text: Port
+    component: String
+    description: Port of the Patlite
+    default_value: '10000'
+  lights:
+    display_text: Lights
+    component: Patlite
+    description: Lights of the Patlite to turn on when triggering this alert
