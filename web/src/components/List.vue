@@ -108,6 +108,9 @@
         <template v-slot:cell(state)="row">
           <Field :data="[(dig(row.item, 'state') || 'open')]" colorize/>
         </template>
+        <template v-slot:cell(actions)="row">
+          <Field :data="dig(row.item, 'actions')" />
+        </template>
         <template v-slot:cell(enabled)="row">
           <Field :data="[(dig(row.item, 'enabled') == undefined || dig(row.item, 'enabled') == true) ? 'enabled' : 'disabled']" colorize/>
         </template>
@@ -388,8 +391,12 @@ export default {
         .put(`/${this.endpoint}`, [filtered_object])
         .then(response => {
           if (response.data) {
-            this.refreshTable()
-            this.makeToast('Entry updated successfully', 'success')
+            if (response.data.data.rejected.length > 0) {
+              this.makeToast('Duplicate entry found', 'danger', 'An error occurred')
+            } else {
+              this.refreshTable()
+              this.makeToast('Entry updated successfully', 'success')
+            }
           } else {
             if(response.response.data.description) {
               this.makeToast(response.response.data.description, 'danger', 'An error occurred')

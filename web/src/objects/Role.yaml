@@ -34,7 +34,8 @@ form:
         description: 'Name of the notification entry'
     permissions:
         display_name: Permissions
-        component: Permission
+        component: APIElementField
+        endpoint: permissions
         colorize: true
         description: 'List of permissions'
     groups:

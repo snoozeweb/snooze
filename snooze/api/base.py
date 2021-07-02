@@ -120,7 +120,7 @@ class Api():
                 route_check_permissions = route.get('check_permissions', check_permissions)
                 route_check_constant = route.get('check_constant', check_constant)
                 route_injectpayload = route.get('inject_payload', injectpayload)
-                log.debug("Route `{}` attributes: Duplicate Policy ({}), Authorization Policy ({}), Check Permissions ({}), Check Constant ({}), Inject Payload ({})".format(route_class_name, route_duplicate_policy, route_authorization_policy, route_check_permissions, route_check_constant, route_injectpayload))
+                log.debug("Route `{}` attributes: Primary ({}). Duplicate Policy ({}), Authorization Policy ({}), Check Permissions ({}), Check Constant ({}), Inject Payload ({})".format(route_class_name, primary, route_duplicate_policy, route_authorization_policy, route_check_permissions, route_check_constant, route_injectpayload))
                 self.add_route(path, route_class(self, plugin, primary, route_duplicate_policy, route_authorization_policy, route_check_permissions, route_check_constant, route_injectpayload))
 
     def init_api(self): pass

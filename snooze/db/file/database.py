@@ -19,7 +19,10 @@ default_filename = 'db.json'
 mutex = Lock()
 
 def test_contains(array, value):
-    return any(value.casefold() in a.casefold() for a in flatten(array))
+    return any(value.casefold() in a.casefold() for a in array)
+
+def test_in(array, value):
+    return any(value.casefold() == a.casefold() for a in array)
 
 class BackendDB(Database):
     def init_db(self, conf):
@@ -255,6 +258,9 @@ class BackendDB(Database):
         elif operation == 'CONTAINS':
             key, value = args
             return_obj = dig(Query(), *key.split('.')).test(test_contains, value)
+        elif operation == 'IN':
+            key, value = args
+            return_obj = dig(Query(), *value.split('.')).test(test_in, key)
         else:
             raise OperationNotSupported(operation)
         return return_obj

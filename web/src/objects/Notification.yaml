@@ -13,7 +13,7 @@ fields:
         tdClass: ['align-middle']
         type: array
     -
-        key: action
+        key: actions
         sortable: false
         thStyle: {width: '30%'}
         tdClass: ['align-middle']
@@ -51,12 +51,12 @@ form:
         display_name: Condition
         component: Condition
         description: Condition which the notification will be triggered. Default to all the time
-    action:
-        display_name: Action
-        component: APIElement
+    actions:
+        display_name: Actions
+        component: APIElementField
         endpoint: action
         primary: name
-        description: Action to execute when sending a mail
+        description: List of actions to execute
         required: true
     comment:
         display_name: Comment

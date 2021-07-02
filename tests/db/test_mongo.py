@@ -40,9 +40,18 @@ def test_mongo_search():
 @mongomock.patch('mongodb://localhost:27017')
 def test_mongo_search_contains():
     db = Database(default_config.get('database'))
-    db.write('record', [{'a': ['00', '11', '22']}])
-    result = db.search('record', ['CONTAINS', 'a', '1'])['data']
-    assert len(result) == 1
+    db.write('record', [{'a': ['00', '11', '22']}, {'b': ['00', '1', '22']}])
+    result1 = db.search('record', ['CONTAINS', 'a', '1'])['data']
+    result2 = db.search('record', ['CONTAINS', 'b', '1'])['data']
+    assert len(result1) == 1 and len(result2) == 1
+
+@mongomock.patch('mongodb://localhost:27017')
+def test_mongo_search_in():
+    db = Database(default_config.get('database'))
+    db.write('record', [{'a': ['00', '11', '22']}, {'b': ['00', '1', '22']}])
+    result1 = db.search('record', ['IN', '1', 'a'])['data']
+    result2 = db.search('record', ['IN', '1', 'b'])['data']
+    assert len(result1) == 0 and len(result2) == 1
 
 @mongomock.patch('mongodb://localhost:27017')
 def test_mongo_search_nested():

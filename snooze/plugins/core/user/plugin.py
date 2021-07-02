@@ -27,9 +27,9 @@ class User(Plugin):
                 user['groups'] = new_groups
                 write_db = True
             if len(new_groups) > 0:
-                query = ['CONTAINS', 'groups', new_groups[0]]
+                query = ['IN', new_groups[0], 'groups']
                 for group in new_groups[1:]:
-                    query = ['OR', ['CONTAINS', 'groups', group], query]
+                    query = ['OR', ['IN', group, 'groups'], query]
                 role_search = self.db.search('role', query)
                 if role_search['count'] > 0:
                     old_static_roles = user.get('static_roles') or []

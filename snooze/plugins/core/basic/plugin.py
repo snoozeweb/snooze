@@ -65,6 +65,7 @@ class Plugin:
             self.metadata = {
                 'name': self.name,
                 'auto_reload': self.metadata_file.get('auto_reload', True),
+                'primary': self.metadata_file.get('primary', None),
                 'routes': routes
             }
         else:

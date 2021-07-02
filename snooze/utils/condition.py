@@ -116,3 +116,8 @@ class Condition():
             record_value = dig(record, *key.split('.'))
             LOG.debug("Value: {}, Record: {}".format(value, record_value))
             return isinstance(record_value, list) and any(value.casefold() in a.casefold() for a in flatten(record_value))
+        elif operation == 'IN':
+            key, value = args
+            record_value = dig(record, *value.split('.'))
+            LOG.debug("Value: {}, Record: {}".format(key, record_value))
+            return isinstance(record_value, list) and any(key.casefold() == a.casefold() for a in flatten(record_value))

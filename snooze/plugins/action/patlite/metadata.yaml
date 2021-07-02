@@ -9,11 +9,11 @@ form:
     description: Address of the Patlite
     required: true
   port:
-    display_text: Port
+    display_name: Port
     component: String
     description: Port of the Patlite
     default_value: '10000'
   lights:
-    display_text: Lights
+    display_name: Lights
     component: Patlite
     description: Lights of the Patlite to turn on when triggering this alert

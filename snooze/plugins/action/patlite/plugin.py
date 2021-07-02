@@ -14,8 +14,8 @@ class Patlite(Action):
         '''
         host = options.get('host')
         port = options.get('port')
-        lights = {k: v for k,v in options.get('lights').items() if v != 'off'}
-        output = "@{}:{} {}".format(host, port, lights)
+        lights = [k+': '+v for k,v in options.get('lights').items() if v != 'off']
+        output = " - ".join(lights)
         return output
     def send(self, record, options):
         '''

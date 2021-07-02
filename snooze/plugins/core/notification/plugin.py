@@ -19,17 +19,21 @@ class Notification(Plugin):
             if notification.enabled and notification.condition.match(record):
                 name = notification.name
                 log.debug("Matched notification `{}` with {}".format(name, record))
-                if notification.action_plugin:
-                    if not 'notifications' in record:
-                        record['notifications'] = []
-                        record['notifications'].append(name)
-                    try:
-                        notification.action_plugin.send(deepcopy(record), notification.content)
-                        self.core.stats.inc('notification_sent', {'name': notifiation.name, 'action': notification.content.get('action_name', '')})
-                    except Exception as e:
-                        self.core.stats.inc('notification_error', {'name': notification.name, 'action': notification.content.get('action_name', '')})
-                        log.error("Notification {} could not be send".format(self.name))
-                        log.exception(e)
+                if len(notification.action_plugins) > 0:
+                    for action_plugin in notification.action_plugins:
+                        if not 'notifications' in record:
+                            record['notifications'] = []
+                            record['notifications'].append(name)
+                        action = action_plugin.get('action')
+                        action_content = action_plugin.get('content', {})
+                        action_name = action_content.get('action_name', '')
+                        try:
+                            action.send(deepcopy(record), action_content)
+                            self.core.stats.inc('notification_sent', {'name': notification.name, 'action': action_name})
+                        except Exception as e:
+                            self.core.stats.inc('notification_error', {'name': notification.name, 'action': action_name})
+                            log.error("Notification {} action '{}' could not be send".format(self.name, action_name))
+                            log.exception(e)
                 else:
                     log.error("Notification {} has no action. Cannot send".format(self.name))
         return record
@@ -47,15 +51,23 @@ class NotificationObject():
         self.enabled = notification.get('enabled', True)
         self.name = notification['name']
         self.condition = Condition(notification.get('condition'))
-        self.action = notification.get('action', '')
-        action_search = core.db.search('action',['=', 'name', self.action])
-        if action_search['count'] > 0:
-            action_data = action_search['data'][0]
-            action = action_data.get('action', {})
-            self.action_plugin = core.get_action_plugin(action.get('selected'))
-            self.content = action.get('subcontent', {})
-            self.content['notification_name'] = self.name
-            self.content['action_name'] = action.get('name')
+        self.actions = notification.get('actions', [])
+        self.action_plugins = []
+        if (type(self.actions) is list) and len(self.actions) > 0:
+            query = ['=', 'name', self.actions[0]]
+            for action in self.actions[1:]:
+                query = ['OR', ['=', 'name', action], query]
+            action_search = core.db.search('action', query)
+            if action_search['count'] > 0:
+                actions_data = action_search['data']
+                for action_data in actions_data:
+                    action = action_data.get('action', {})
+                    content = action.get('subcontent', {})
+                    content['action_name'] = action.get('name')
+                    self.action_plugins.append({'action': core.get_action_plugin(action.get('selected')), 'content': content})
+            elif self.enabled:
+                log.error("Could not find any action defined notification {}. Disabling".format(self.name))
+                self.enabled = False
         elif self.enabled:
             log.error("Notification {} has no action. Disabling".format(self.name))
             self.enabled = False

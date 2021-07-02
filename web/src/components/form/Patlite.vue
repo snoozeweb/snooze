@@ -1,23 +1,22 @@
 <template>
   <div>
     <b-form inline>
-    <b-input-group prepend="Red">
+    <b-input-group prepend="Red" class='pr-1'>
         <b-form-select v-model="datavalue.red" :options="light_options"></b-form-select>
     </b-input-group>
-    <b-input-group prepend="Yellow">
+    <b-input-group prepend="Yellow" class='pr-1'>
         <b-form-select v-model="datavalue.yellow" :options="light_options"></b-form-select>
     </b-input-group>
-    <b-input-group prepend="Green">
+    <b-input-group prepend="Green" class='pr-1'>
         <b-form-select v-model="datavalue.green" :options="light_options"></b-form-select>
     </b-input-group>
-    <b-input-group prepend="Blue">
+    <b-input-group prepend="Blue" class='pr-1'>
         <b-form-select v-model="datavalue.blue" :options="light_options"></b-form-select>
     </b-input-group>
     <b-input-group prepend="White">
         <b-form-select v-model="datavalue.white" :options="light_options"></b-form-select>
     </b-input-group>
     </b-form>
-    {{ datavalue }}
   </div>
 </template>
 
@@ -44,6 +43,7 @@ export default {
     datavalue: {
       handler(v) { this.$emit('input', this.datavalue) },
       deep: true,
+      immediate: true
     },
   },
 }

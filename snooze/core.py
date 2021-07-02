@@ -91,7 +91,7 @@ class Core:
                     self.db.write('record', record)
                     break
             else:
-                log.debug("Writing record {}")
+                log.debug("Writing record {}".format(record))
                 self.db.write('record', record)
 
     def get_core_plugin(self, plugin_name):

@@ -19,7 +19,7 @@ class TestNotification:
         ]
         core.db.write('action', actions)
         notifications = [
-            {'name': 'Notification1', 'condition': ['=', 'a', '1'], 'action': 'Script'},
+            {'name': 'Notification1', 'condition': ['=', 'a', '1'], 'actions': ['Script']},
         ]
         core.db.write('notification', notifications)
         return Notification(core, config)

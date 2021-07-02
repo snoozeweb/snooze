@@ -50,8 +50,10 @@ form:
         description: Enabled
     roles:
         display_name: Roles
-        component: Role
+        component: APIElementField
+        endpoint: role
         import:
             - static_roles
         colorize: true
+        primary: name
         description: 'List of roles for authorization'
