@@ -1,0 +1,11 @@
+[Unit]
+Description=Snooze server
+After=network.service
+
+[Service]
+User=snooze
+ExecStart=/opt/snooze/bin/snooze-server
+RuntimeDirectory=snooze
+
+[Install]
+WantedBy=multi-user.target

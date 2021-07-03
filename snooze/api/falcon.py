@@ -559,7 +559,7 @@ class BackendApi():
         web_conf = self.core.conf.get('web', {})
         if web_conf.get('enabled', True):        
             self.handler.add_route('/', RedirectRoute())
-            self.handler.add_sink(StaticRoute(web_conf.get('path', '/var/www/snooze'), '/web').on_get, '/web')
+            self.handler.add_sink(StaticRoute(web_conf.get('path', '/opt/snooze/web'), '/web').on_get, '/web')
 
     def add_route(self, route, action):
         self.handler.add_route('/api' + route, action)

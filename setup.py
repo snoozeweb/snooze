@@ -12,7 +12,7 @@ setup(
     description="Monitoring tool for logs aggregation and alerting",
     long_description=long_description,
     long_description_content_type="text/markdown",
-    packages=find_packages(),
+    packages=find_packages(exclude=("tests",)),
     classifiers=[
         'License :: OSI Approved :: GNU Affero General Public License v3 or later (AGPLv3+)',
     ],
