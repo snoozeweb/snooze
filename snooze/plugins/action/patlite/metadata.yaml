@@ -10,9 +10,9 @@ form:
     required: true
   port:
     display_name: Port
-    component: String
+    component: Number
     description: Port of the Patlite
-    default_value: '10000'
+    default_value: 10000
   lights:
     display_name: Lights
     component: Patlite

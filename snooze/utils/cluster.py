@@ -54,7 +54,7 @@ class Cluster():
         if self.enabled:
             success = False
             members = self.get_self(True)
-            use_ssl = self.api.core.conf.get('ssl', False)
+            use_ssl = self.api.core.conf.get('ssl', {}).get('enabled', False)
             for peer in self.other_peers:
                 if use_ssl:
                     connection = http.client.HTTPSConnection(peer['host'], peer['port'])
@@ -100,7 +100,7 @@ class ClusterThread(threading.Thread):
 
     def run(self):
         headers = {'Content-type': 'application/json'}
-        use_ssl = self.cluster.api.core.conf.get('ssl', False)
+        use_ssl = self.api.core.conf.get('ssl', {}).get('enabled', False)
         success = False
         while True:
             if not self.main_thread.is_alive():

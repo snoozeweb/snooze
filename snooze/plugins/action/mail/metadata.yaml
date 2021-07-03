@@ -3,6 +3,20 @@ name: 'Send email'
 desc: ''
 icon: 'envelope'
 form:
+  host:
+    display_name: Host
+    component: String
+    description: 'Mail server address'
+    default_value: 'localhost'
+  port:
+    display_name: Port
+    component: Number
+    description: 'Mail server port'
+    default_value: 25
+  from:
+    display_name: From
+    component: String
+    description: 'Sender address'
   to:
     display_name: To
     component: Text

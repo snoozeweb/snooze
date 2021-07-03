@@ -4,8 +4,6 @@ from snooze.utils.patlite import Patlite as PatliteAPI, State
 from snooze.plugins.action import Action
 
 class Patlite(Action):
-    def __init__(self, core):
-        super().__init__(core)
     def pprint(self, options):
         '''
         Determine the pretty print for the Patlite action plugin.
@@ -15,8 +13,9 @@ class Patlite(Action):
         host = options.get('host')
         port = options.get('port')
         lights = [k+': '+v for k,v in options.get('lights').items() if v != 'off']
-        output = " - ".join(lights)
+        output = host + ' @ ' + " - ".join(lights)
         return output
+
     def send(self, record, options):
         '''
         Determine the action that will be taken when this action is invoked.

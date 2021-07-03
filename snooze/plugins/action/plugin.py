@@ -9,7 +9,6 @@ class Action:
     def __init__(self, core):
         self.core = core
         self.name = self.__class__.__name__.lower()
-        self.conf = config('action_' + self.name) 
         metadata_path = joindir(dirname(rootdir), 'plugins', 'action', self.name, 'metadata.yaml')
         self.metadata_file = {}
         try:

@@ -19,10 +19,11 @@ export default {
     'options': {type: Array, default: () => []},
     'disabled': {type: Boolean, default: () => false},
     'required': {type: Boolean, default: () => false},
+    'default_value': {type: Number, default: () => 0},
   },
   data() {
     return {
-      datavalue: this.value
+      datavalue: [undefined, 0, [], {}].includes(this.value) ? (this.default_value == undefined ? 0 : this.default_value) : this.value
     }
   },
   watch: {

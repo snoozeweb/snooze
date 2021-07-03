@@ -8,15 +8,18 @@ import logging.config
 import yaml
 import os
 
-def setup_logging():
+def setup_logging(conf):
     logging_config = config('logging')
+    if conf.get('debug', False):
+        logging_config['handlers']['console']['level'] = 'DEBUG'
+        logging_config['loggers']['snooze']['level'] = 'DEBUG'
     logging.config.dictConfig(logging_config)
     log = getLogger('snooze')
     log.debug("Log system on")
 
 def main(conf={}):
-    setup_logging()
     conf.update(config())
+    setup_logging(conf)
     core = Core(conf)
 
     api = Api(core)

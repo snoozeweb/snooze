@@ -32,7 +32,7 @@ def test_basic_auth():
     log.debug(headers)
     client = testing.TestClient(api.handler, headers=headers)
     log.debug('Attempting Basic auth')
-    result = client.simulate_post('/login/local').json
+    result = client.simulate_post('/api/login/local').json
     log.debug("Received {}".format(result))
     assert result['token']
 

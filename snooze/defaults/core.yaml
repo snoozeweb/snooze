@@ -1,8 +1,23 @@
 ---
 listen_addr: '0.0.0.0'
-port: 9001
-bootstrap_db: True
-create_root_user: True
+port: 5200
+debug: false
+bootstrap_db: true
+create_root_user: true
+ssl:
+    enabled: false
+    certfile: ''
+    keyfile: ''
+# Web Interface
+web:
+    enabled: true
+    path: /opt/snooze/web 
+# Clustering
+clustering:
+    enabled: false
+    members:
+        - host: localhost
+          port: 5200
 api:
     type: falcon
 core_plugins:
@@ -28,12 +43,3 @@ action_plugins:
 # Backend database configuration
 database:
     type: file
-# Clustering
-clustering:
-    enabled: false
-    ssl: false
-    members:
-        - host: hostA
-          port: 9001
-        - host: hostB
-          port: 9001

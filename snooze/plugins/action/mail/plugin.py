@@ -29,32 +29,28 @@ DEFAULT_PORT = 25
 DEFAULT_TIMEOUT = 10
 
 class Mail(Action):
-    def __init__(self, core):
-        super().__init__(core)
-        self.host = self.conf.get('host', DEFAULT_SERVER)
-        self.port = self.conf.get('port', DEFAULT_PORT)
-        self.timeout = self.conf.get('timeout', DEFAULT_TIMEOUT)
-        self.sender = self.conf.get('sender', '')
-
     def pprint(self, content):
         output  =  'mailto: ' + content.get('to', '').replace(',', '\nmailto: ')
         return output
 
     def send(self, record, content):
+        host = content.get('host', DEFAULT_SERVER)
+        port = content.get('port', DEFAULT_PORT)
+        sender = content.get('from', '')
         recipients = content.get('to', '').split(',')
         message = MIMEMultipart('alternative')
         msg = Template(content.get('message', DEFAULT_MESSAGE_TEMPLATE)).render(record)
         message['Subject'] = Header(Template(content.get('subject', '')).render(record), 'utf-8').encode()
-        if self.sender:
-            message['From'] = self.sender
+        if sender:
+            message['From'] = sender
         message['To'] = content.get('to', '')
         message['X-Priority'] = str(content.get('priority', 3))
         message.preamble = message['Subject']
         message.attach(MIMEText(msg, content.get('type', 'plain'), 'utf-8'))
         log.debug("Send mail to {}".format(message['To']))
-        self.server = SMTP(self.host, self.port, timeout=self.timeout)
+        self.server = SMTP(host, port, timeout=DEFAULT_TIMEOUT)
         try:
-            self.server.sendmail(self.sender, recipients, message.as_string())
+            self.server.sendmail(sender, recipients, message.as_string())
         except Exception as e:
             self.server.close()
             raise

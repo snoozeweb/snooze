@@ -22,7 +22,7 @@ def write_token_to_file(token):
 def login(token):
     '''CLI command to login'''
     headers = {'Authorization': 'JWT {}'.format(token)}
-    response = requests.get('http://localhost:9001/record', headers=headers)
+    response = requests.get('http://localhost:5200/api/record', headers=headers)
     if response.status_code == 200:
         write_token_to_file(token)
     else:

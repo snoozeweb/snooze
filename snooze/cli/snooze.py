@@ -14,14 +14,14 @@ def post(data):
     token = get_token()
     headers = {'Authorization': 'JWT {}'.format(token)}
     json_data = json.loads(data)
-    response = requests.post('http://localhost:9001/snooze', headers=headers, data = json_data)
+    response = requests.post('http://localhost:5200/api/snooze', headers=headers, data = json_data)
     print(response)
 
 @snooze.command()
 def list():
     token = get_token()
     headers = {'Authorization': 'JWT {}'.format(token)}
-    response = requests.get('http://localhost:9001/snooze', headers=headers)
+    response = requests.get('http://localhost:5200/api/snooze', headers=headers)
     json = response.json()
     data = json['data']
     if data:

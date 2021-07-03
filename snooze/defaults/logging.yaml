@@ -8,11 +8,11 @@ formatters:
 handlers:
     console:
         class: logging.StreamHandler
-        level: DEBUG
+        level: INFO
         formatter: simple
         stream: ext://sys.stdout
 loggers:
     snooze:
-        level: DEBUG
+        level: INFO
         handlers: [console]
         propagate: false

@@ -9,7 +9,7 @@ log = getLogger('snooze.utils.config')
 
 SNOOZE_CONFIG_PATH = os.environ.get('SNOOZE_SERVER_CONFIG', '/etc/snooze/server')
 
-def config(configname = 'main', configpath = SNOOZE_CONFIG_PATH):
+def config(configname = 'core', configpath = SNOOZE_CONFIG_PATH):
     '''
     Read a configuration file and return its content.
     '''
@@ -36,7 +36,7 @@ def config(configname = 'main', configpath = SNOOZE_CONFIG_PATH):
 
     return return_config
 
-def write_config(configname = 'main', config = {}, configpath = SNOOZE_CONFIG_PATH):
+def write_config(configname = 'core', config = {}, configpath = SNOOZE_CONFIG_PATH):
     '''
     Update or create a configuration file.
     '''

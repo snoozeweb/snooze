@@ -4,6 +4,7 @@ import json
 
 from pathlib import Path
 
+import ssl
 import falcon
 from falcon_auth import FalconAuthMiddleware, BasicAuthBackend, JWTAuthBackend
 import requests
@@ -499,6 +500,13 @@ class LdapAuthRoute(AuthRoute):
     def parse_user(self, user):
         return {'name': user['name'], 'groups': list(map(lambda x: x.split(',')[0].split('=')[1], user['groups'])), 'method': 'ldap'}
 
+class RedirectRoute():
+    auth = {
+        'auth_disabled': True
+    }
+    def on_get(self, req, resp):
+        raise falcon.HTTPMovedPermanently('/web/')
+
 SNOOZE_GLOBAL_RUNDIR = '/var/run/snooze'
 SNOOZE_LOCAL_RUNDIR = "/var/run/user/{}".format(os.getuid())
 
@@ -546,12 +554,12 @@ class BackendApi():
         self.add_route('/login/ldap', self.auth_routes['ldap'])
         # Optional metrics
         if self.core.stats.enabled:
-             self.add_route('/metrics', MetricsRoute(self))
+            self.handler.add_route('/metrics', MetricsRoute(self))
 
-        web_config = config('web')
-        web_path = web_config.get('path', '/var/www/snooze')
-
-        self.handler.add_sink(StaticRoute(web_path, '/web').on_get, '/web')
+        web_conf = self.core.conf.get('web', {})
+        if web_conf.get('enabled', True):        
+            self.handler.add_route('/', RedirectRoute())
+            self.handler.add_sink(StaticRoute(web_conf.get('path', '/var/www/snooze'), '/web').on_get, '/web')
 
     def add_route(self, route, action):
         self.handler.add_route('/api' + route, action)
@@ -561,12 +569,13 @@ class BackendApi():
         self.socket.start()
         log.debug('Starting REST API')
         listen_addr = self.core.conf.get('listen_addr', '0.0.0.0')
-        port = self.core.conf.get('port', '9001')
+        port = self.core.conf.get('port', '5200')
         httpd = simple_server.make_server(listen_addr, port, self.handler)
-        ssl = self.core.conf.get('ssl')
-        if ssl == True:
-            certfile = self.core.conf.get('certfile')
-            keyfile = self.core.conf.get('keyfile')
+        ssl_conf = self.core.conf.get('ssl', {})
+        use_ssl = ssl_conf.get('enabled')
+        if use_ssl == True:
+            certfile = ssl_conf.get('certfile')
+            keyfile = ssl_conf.get('keyfile')
             httpd.socket = ssl.wrap_socket(
                 httpd.socket, server_side=True,
                 certfile=certfile,
