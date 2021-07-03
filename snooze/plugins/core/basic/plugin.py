@@ -14,10 +14,11 @@ class Plugin:
         metadata_path = joindir(dirname(rootdir), 'plugins', 'core', self.name, 'metadata.yaml')
         self.metadata_file = {}
         try:
+            log.debug("Attempting to read metadata at %s for %s module", metadata_path, self.name)
             with open(metadata_path, 'r') as f:
                 self.metadata_file = yaml.load(f.read())
-        except:
-            pass
+        except Exception as err:
+            log.debug("Skipping. Cannot read metadata.yaml due to: %s", err)
         self.permissions = self.metadata_file.get('provides', [])
         default_routeclass = self.metadata_file.get('class', 'Route')
         default_authorization = self.metadata_file.get('authorization_policy')

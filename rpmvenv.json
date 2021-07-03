@@ -1,0 +1,49 @@
+{
+  "extensions": {
+    "enabled": ["python_venv", "blocks", "file_permissions", "file_extras"]
+  },
+  "core": {
+    "name": "snooze-server",
+    "group": "Application/System",
+    "license": "AGPL3",
+    "summary": "Snooze server",
+    "version": "1.0.4"
+  },
+  "python_venv": {
+    "name": "snooze",
+    "path": "opt",
+    "python": "python3.8",
+    "strip_binaries": true,
+    "use_pip_install": true
+  },
+  "file_permissions": {
+    "user": "snooze",
+    "group": "snooze",
+    "create_user": true,
+    "create_group": true
+  },
+  "file_extras": {
+    "files": [
+      {"src": "snooze-server.service", "dest": "usr/lib/systemd/system/snooze-server.service"},
+      {"src": "web/dist", "dest": "opt/snooze/web"}
+    ]
+  },
+  "blocks": {
+    "desc": [
+      "Snooze server"
+    ],
+    "build": [
+      "cd %{SOURCE0}/web",
+      "rm -rf %{SOURCE0}/web/node_modules",
+      "rm -rf %{SOURCE0}/web/dist",
+      "npm install",
+      "npm run build"
+    ],
+    "files": [
+      "%exclude %dir /usr/lib/.build-id"
+    ],
+    "install": [
+      "pathfix.py -pni \"%{__python3} %{py3_shbang_opts}\" %{venv_dir}"
+    ]
+  }
+}
