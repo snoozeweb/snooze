@@ -1,61 +1,105 @@
-# Snooze
+![Snoozeweb Logo](web/public/img/logo.png)
 
-## Command line
+# About
 
-Running a snooze server:
+Snooze is a powerful monitoring tool used for log aggregation and alerting. It comes with the following features:
+* Backend + Web interface
+* Local / LDAP / JWT token based authentication
+* Built-in clustering for scalability
+* Large number of sources as inputs
+* Log aggregation
+* Log manipulation
+* Log archiving
+* Alerting policies
+* Various alerting methods
+* Auto housekeeping
+* Metrics
+
+![Alerts](doc/images/web_alerts.png)
+
+# Installation
+
+Snooze only supports python 3.6 or higher:
 ```bash
-snooze-server &
+$ pip install snoozeweb
+$ snooze-server
+```
+Web interface URL: http://localhost:5200/web/
+if `create_root_user` in `/etc/snooze/core.yaml` has not been set to **false**, login credentials are `root:root`
+Otherwise, it is always possible to generate a root token that can be used for **JWT Token** authentication method:
+```bash
+$ snooze root-token
+Root token: eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJ1c2VyIjp7Im...
 ```
 
-Obtain a root token from the socket of a runnning snooze:
-```bash
-snooze root-token
+## Recommendations
+
+By default, Snooze is using a single file to store its database and therefore can run out of the box without any additional configuration or dependency. While this implementation is convenient for testing purpose, it is heavily recommended to switch the database configuration to MongoDB.
+
+## Docker
+
+Support coming soon
+
+# Configuration
+
+The only configuration file not managed in the web interface is `/etc/snooze/core.yaml` and requires restarting Snooze if changed.
+
+`/etc/snooze/core.yaml`
+* `listen_addr` (`'0.0.0.0'`): IPv4 address on which Snooze process is listening to
+* `port` (`5200`): Port on which Snooze process is listening to
+* `debug` (`false`): Activate debug log output
+* `bootstrap_db` (`true`): Populate the database with an initial configuration
+* `create_root_user` (`true`): Create a *root* user with a default password *root*
+* `ssl`
+	* `enabled` (`false`): Enable TLS termination for both the API and the web interface
+	* `certfile` (`''`): Path to the SSL certificate
+	* `keyfile` (`''`): Path to the private key
+* `web`
+    * `enabled` (`true`): Enable the web interface
+    * `path` (`/opt/snooze/web`): Path to the web interface dist files
+* `clustering`
+	*  `enabled` (`false`): Enable clustering mode
+    * `members`: List of snooze servers in the cluster {host, port}
+        - `host` (`localhost`): Hostname or IPv4 address of the first member
+          `port` (`5200`): Port on which the first member is listening to
+* `database`
+	* `type` (`file`): Backend database to use (file or mongo)
+
+Example for MongoDB backend with database replication enabled:
+```yaml
+database:
+    type: mongo
+    host:
+        - hostA
+        - hostB
+        - hostC
+    port: 27017
+    username: snooze
+    password: 7dg9khqg1w6
+    authSource: snooze
+    replicaSet: rs0
 ```
 
-Configure bash completion at system level:
-```bash
-_SNOOZE_COMPLETION=source_bash snooze > /etc/bash_completion.d/snooze.sh
+# Documentation
+
+[Documentation page](doc/README.md)
+
+# License
+
 ```
+Snooze - Log aggregation and alerting
+Copyright 2018-2021 Florian Dematraz, Guillaume Ludinard
 
-Configure bash completion at user level:
-```bash
-mkdir -p ~/.bash_completion.d
-_SNOOZE_COMPLETION=source_bash snooze > ~/.bash_completion.d/snooze.sh
-cat <<END > ~/.bash_completion
-for bcfile in ~/.bash_completion.d/*; do
-    . $bcfile
-done
-END
-```
-> Note: You might need to adapt to your `.bashrc`/`.bash_completion` existing
-> files.
+This program is free software: you can redistribute it and/or modify
+it under the terms of the GNU Affero General Public License as
+published by the Free Software Foundation, either version 3 of the
+License, or (at your option) any later version.
 
-## API
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+GNU Affero General Public License for more details.
 
-### Write to API
-
-```bash
-curl localhost:8080/record/ \
-    -X POST \
-    -H 'Content-Type: application/json' \
-    -d '{"a": "1", "b": "2"}'
-```
-
-`Content-Type` matters.
-
-### Retrieve from API
-
-```bash
-curl localhost:8080/record/ \
-    -H 'Content-Type: application/json' \
-    -d '[]' # search here
-```
-
-Search example:
-```json
-[
-    "and",
-    ["=", "a", "1"],
-    ["=", "b", "2"]
-]
+You should have received a copy of the GNU Affero General Public License
+along with this program.  If not, see <https://www.gnu.org/licenses/>.
 ```

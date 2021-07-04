@@ -1,4 +1,4 @@
-# Contributing to snooze
+# Contributing
 
 ## Setup
 
@@ -7,7 +7,7 @@ by following the instructions.
 
 Clone this git:
 ```bash
-git clone https://github.com/rudexi/snooze
+git clone https://github.com/snoozeweb/snooze
 cd snooze
 ```
 
@@ -20,3 +20,7 @@ Install the version of python, as well as the package dependencies:
 ```bash
 pipenv install --dev
 ```
+
+## Web interface
+
+[CONTRIBUTE.md](web/CONTRIBUTE.md)

@@ -17,7 +17,7 @@ Automatic change of directory can be provided by `avn`:
 
 Once you change into the project directory:
 ```
-$cd snooze-web/
+$cd snooze/web/
 avn activated 8.16.1
 
 $node --version
@@ -46,15 +46,10 @@ snooze root-token
 
 Prepare the `.env.development.local` as follow:
 ```javascript
-VUE_APP_API = "http://localhost:9000"
+VUE_APP_API = "http://localhost:5200"
 ```
 
-Please note that you need to change the localhost part if you're running
-snooze-server on a remote machine, even if snooze-web is installed on the
-same machine. It's the browser making the request to the snooze-server API
-after all.
-
-Run the snooze-web dev environment:
+Run Snooze Web dev environment:
 
 ```
 npm run serve
