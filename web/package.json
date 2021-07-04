@@ -24,7 +24,7 @@
     "@coreui/vue": "^3.2.9",
     "@coreui/vue-chartjs": "^1.0.6",
     "avn": "^0.2.4",
-    "axios": "^0.19.2",
+    "axios": "^0.21.1",
     "bootstrap": "^4.6.0",
     "bootstrap-vue": "^2.21.2",
     "chart.js": "^2.9.4",
