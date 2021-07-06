@@ -19,9 +19,9 @@ Snooze is a powerful monitoring tool used for log aggregation and alerting. It c
 
 # Installation
 
-Snooze only supports python 3.6 or higher:
+Installation on CentOS/RHEL
 ```bash
-$ pip install snoozeweb
+$ sudo yum install https://github.com/snoozeweb/snooze/releases/download/v1.0.0/snooze-server-1.0.0-1.x86_64.rpm
 $ snooze-server
 ```
 Web interface URL: http://localhost:5200/web/
