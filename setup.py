@@ -7,7 +7,7 @@ with open("README.md", "r") as f:
 
 setup(
     name="snooze-server",
-    version="1.0.4",
+    version="1.0.1",
     author="Florian Dematraz, Guillaume Ludinard",
     description="Monitoring tool for logs aggregation and alerting",
     long_description=long_description,

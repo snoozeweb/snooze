@@ -19,13 +19,15 @@ Snooze is a powerful monitoring tool used for log aggregation and alerting. It c
 
 # Installation
 
-Snooze only supports python 3.6 or higher:
-```bash
-$ pip install snoozeweb
-$ snooze-server
+We recommend installing the rpm which ships the server, the python virtualenv and the web server files:
 ```
+wget https://github.com/snoozeweb/snooze/releases/download/v1.0.0/snooze-server-1.0.0-1.x86_64.rpm
+sudo yum install snooze-server-1.0.0-1.x86_64.rpm
+```
+
 Web interface URL: http://localhost:5200/web/
-if `create_root_user` in `/etc/snooze/core.yaml` has not been set to **false**, login credentials are `root:root`
+
+If `create_root_user` in `/etc/snooze/core.yaml` has not been set to **false**, login credentials are `root:root`
 Otherwise, it is always possible to generate a root token that can be used for **JWT Token** authentication method:
 ```bash
 $ snooze root-token
