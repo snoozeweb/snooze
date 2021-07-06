@@ -6,6 +6,7 @@ After=network.service
 User=snooze
 ExecStart=/opt/snooze/bin/snooze-server
 RuntimeDirectory=snooze
+WorkingDirectory=/var/lib/snooze
 
 [Install]
 WantedBy=multi-user.target

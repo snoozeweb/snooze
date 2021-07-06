@@ -7,12 +7,12 @@
     "group": "Application/System",
     "license": "AGPL3",
     "summary": "Snooze server",
-    "version": "1.0.4"
+    "version": "1.0.2"
   },
   "python_venv": {
     "name": "snooze",
     "path": "opt",
-    "python": "python3.8",
+    "python": "python3.6",
     "strip_binaries": true,
     "use_pip_install": true
   },
@@ -25,7 +25,8 @@
   "file_extras": {
     "files": [
       {"src": "snooze-server.service", "dest": "usr/lib/systemd/system/snooze-server.service"},
-      {"src": "web/dist", "dest": "opt/snooze/web"}
+      {"src": "web/dist", "dest": "opt/snooze/web"},
+      {"src": "snooze/defaults/core.yaml", "dest": "etc/snooze/server/core.yaml", "config": "noreplace"}
     ]
   },
   "blocks": {
@@ -40,10 +41,16 @@
       "npm run build"
     ],
     "files": [
-      "%exclude %dir /usr/lib/.build-id"
+      "/var/lib/snooze",
+      "/var/log/snooze",
+      "/etc/snooze",
+      "/etc/snooze/server"
     ],
     "install": [
-      "pathfix.py -pni \"%{__python3} %{py3_shbang_opts}\" %{venv_dir}"
+      "pathfix.py -pni \"%{__python3} %{py3_shbang_opts}\" %{venv_dir}",
+      "mkdir -p %{buildroot}/var/log/snooze",
+      "mkdir -p %{buildroot}/etc/snooze/server",
+      "mkdir -p %{buildroot}/var/lib/snooze"
     ]
   }
 }

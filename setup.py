@@ -1,5 +1,3 @@
-#!/usr/bin/python3.6
-
 from setuptools import setup, find_packages
 
 with open("README.md", "r") as f:
@@ -7,7 +5,7 @@ with open("README.md", "r") as f:
 
 setup(
     name="snooze-server",
-    version="1.0.4",
+    version="1.0.2",
     author="Florian Dematraz, Guillaume Ludinard",
     description="Monitoring tool for logs aggregation and alerting",
     long_description=long_description,
