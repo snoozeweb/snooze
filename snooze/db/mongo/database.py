@@ -225,10 +225,15 @@ class BackendDB(Database):
             return_dict = {args[0]: {'$exists': True}}
         elif operation == 'CONTAINS':
             key, value = args
-            return_dict = {key: {'$in': [re.compile(value, re.IGNORECASE)]}}
+            if not isinstance(value, list):
+                value = [value]
+            reg_array = list(map(lambda x: re.compile(x, re.IGNORECASE), value))
+            return_dict = {key: {'$in': reg_array}}
         elif operation == 'IN':
             key, value = args
-            return_dict = {value: {'$in': [key]}}
+            if not isinstance(key, list):
+                key = [key]
+            return_dict = {value: {'$in': key}}
         else:
             raise OperationNotSupported(operation)
         return return_dict

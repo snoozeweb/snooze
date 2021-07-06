@@ -57,14 +57,20 @@ def test_match_exists():
     assert not Condition(search).match(record)
 
 def test_match_contains():
-    record = {'a': ['0', ['11', '2'], '3']}
-    search = ['CONTAINS', 'a', '1']
-    assert Condition(search).match(record)
+    record1 = {'a': ['0', ['11', '2'], '3']}
+    search1 = ['CONTAINS', 'a', '1']
+    assert Condition(search1).match(record1)
+    record2 = {'a': '11'}
+    search2 = ['CONTAINS', 'a', ['0', '1']]
+    assert Condition(search2).match(record2)
 
 def test_match_in():
-    record = {'a': ['0', ['11', '2'], '3']}
-    search = ['IN', '1', 'a']
-    assert not Condition(search).match(record)
+    record1 = {'a': ['0', ['11', '2'], '3']}
+    search1 = ['IN', ['1', '5'], 'a']
+    assert not Condition(search1).match(record1)
+    record2 = {'a': '1'}
+    search2 = ['IN', ['1', '5'], 'a']
+    assert Condition(search2).match(record2)
 
 def test_str():
     search = ['OR', ['NOT', ['=', 'a', 1]], ['=', 'b', 2]]

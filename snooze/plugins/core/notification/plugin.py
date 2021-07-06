@@ -54,9 +54,7 @@ class NotificationObject():
         self.actions = notification.get('actions', [])
         self.action_plugins = []
         if (type(self.actions) is list) and len(self.actions) > 0:
-            query = ['=', 'name', self.actions[0]]
-            for action in self.actions[1:]:
-                query = ['OR', ['=', 'name', action], query]
+            query = ['IN', self.actions, 'name']
             action_search = core.db.search('action', query)
             if action_search['count'] > 0:
                 actions_data = action_search['data']

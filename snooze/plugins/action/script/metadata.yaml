@@ -6,7 +6,7 @@ form:
   script:
     display_name: Path
     component: String
-    description: 'Fully qualified path to the action to execute'
+    description: 'Fully qualified path of the script to execute'
     required: true
   arguments:
     display_name: Arguments

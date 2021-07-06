@@ -21,14 +21,16 @@ Snooze is a powerful monitoring tool used for log aggregation and alerting. It c
 
 Installation on CentOS/RHEL
 ```bash
-$ sudo yum install https://github.com/snoozeweb/snooze/releases/download/v1.0.0/snooze-server-1.0.0-1.x86_64.rpm
-$ snooze-server
+$ wget https://rpm.snoozeweb.net -O snooze-server-latest.rpm
+$ sudo yum localinstall snooze-server-latest.rpm
+$ sudo systemctl start snooze-server
 ```
-Web interface URL: http://localhost:5200/web/
+Web interface URL: http://localhost:5200
 if `create_root_user` in `/etc/snooze/core.yaml` has not been set to **false**, login credentials are `root:root`
-Otherwise, it is always possible to generate a root token that can be used for **JWT Token** authentication method:
+Otherwise, it is always possible to generate a root token that can be used for **JWT Token** authentication method if [Snooze Client](https://github.com/snoozeweb/snooze_client) is installed:
 ```bash
 $ snooze root-token
+# Run with root or snooze user
 Root token: eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJ1c2VyIjp7Im...
 ```
 

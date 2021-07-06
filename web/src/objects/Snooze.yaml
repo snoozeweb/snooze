@@ -61,17 +61,17 @@ form:
     name:
         display_name: Name
         component: String
-        description: 'Name of the notification entry'
+        description: 'Name of the snooze filter'
         required: true
     condition:
         display_name: Condition
         component: Condition
-        description: 'Condition which the notification will be triggered. Default to all the time'
+        description: 'This snooze filter will be triggered only if this condition is matched. Leave it blank to always match'
     time_constraint:
         display_name: Time constraint
         component: DateTime
-        description: 'Time constraint of the snooze entry'
+        description: 'From which date to which date this snooze filter will be active'
     comment:
         display_name: Comment
         component: Text
-        description: The place to document the notification
+        description: 'Description'

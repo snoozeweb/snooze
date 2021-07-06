@@ -10,7 +10,7 @@ fields:
         key: host
         sortable: true
         thStyle: {width: '5%'}
-        tdClass: ['align-middle', 'px-2']
+        tdClass: ['align-middle', 'px-2', 'singleline']
     -
         key: process
         sortable: true

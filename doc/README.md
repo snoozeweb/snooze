@@ -5,7 +5,7 @@
 * [03 - Users creation and permissions](03_Users.md)
 * [04 - Inject logs into Snooze](04_Inputs.md)
 * [05 - Rules - Modify records](05_Rules.md)
-* [06 - Aggregates - Group records](06_Aggregates.md)
+* [06 - Aggregate Rules - Group records](06_AggregateRules.md)
 * [07 - Snooze - Stop alerting](07_Snooze.md)
 * [08 - Notifications - Alerting](08_Notifications.md)
 * [09 - Alerting scripts](09_Actions.md)

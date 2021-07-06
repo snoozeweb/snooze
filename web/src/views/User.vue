@@ -50,7 +50,7 @@ export default {
       var name_form = {'name': {
           display_name: 'Username',
           component: 'String',
-          description: 'Username',
+          description: 'Account username',
           required: true
         }
       }
@@ -70,7 +70,7 @@ export default {
         var name_form = {'name': {
             display_name: 'Username',
             component: 'String',
-            description: 'Username',
+            description: 'Account username',
             required: true
           }
         }

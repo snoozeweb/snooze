@@ -61,16 +61,18 @@ def test_tinydb_search(db):
     assert len(result1) == 1 and len(result2) == 2 and len(result3) == 1 and len(result4) == 1 and len(result5) == 1 and len(result6) == 1 and len(result7) == 1
 
 def test_tinydb_search_contains(db):
-    db.write('record', [{'a': ['00', '11', '22']}, {'b': ['00', '1', '22']}])
+    db.write('record', [{'a': ['00', '11', '22']}, {'a': ['00', '1', '2']}, {'a': ['00', '1', '4']}, {'b': '5'}])
     result1 = db.search('record', ['CONTAINS', 'a', '1'])['data']
-    result2 = db.search('record', ['CONTAINS', 'b', '1'])['data']
-    assert len(result1) == 1 and len(result2) == 1
+    result2 = db.search('record', ['CONTAINS', 'a', ['2', '4']])['data']
+    result3 = db.search('record', ['CONTAINS', 'b', ['5', '1']])['data']
+    assert len(result1) == 3 and len(result2) == 3 and len(result3) == 1
 
 def test_tinydb_search_in(db):
-    db.write('record', [{'a': ['00', '11', '22']}, {'b': ['00', '1', '22']}])
+    db.write('record', [{'a': ['00', '11', '22']}, {'a': ['00', '1', '2']}, {'a': ['00', '1', '4']}, {'b': '5'}])
     result1 = db.search('record', ['IN', '1', 'a'])['data']
-    result2 = db.search('record', ['IN', '1', 'b'])['data']
-    assert len(result1) == 0 and len(result2) == 1
+    result2 = db.search('record', ['IN', ['2', '4'], 'a'])['data']
+    result3 = db.search('record', ['IN', ['5', '1'], 'b'])['data']
+    assert len(result1) == 2 and len(result2) == 2 and len(result3) == 1
 
 def test_tinydb_search_nested(db):
    db.write('record', [{'a': 1, 'b': {'c': 2, 'd': 3}}])

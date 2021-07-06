@@ -16,3 +16,6 @@ def dig(dic, *lst):
         return dic
 
 flatten = lambda x: [z for y in x for z in (flatten(y) if hasattr(y, '__iter__') and not isinstance(y, str) else (y,))]
+
+def to_tuple(l):
+    return tuple(to_tuple(x) for x in l) if type(l) is list else l

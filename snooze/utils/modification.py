@@ -35,8 +35,7 @@ class Modification():
             return_code = bool(self.value and record.get(self.key) != self.value)
             record[self.key] = self.value
         if self.operation == 'SET_TEMPLATE':
-            template = Template(self.value)
-            record[self.key] = template.render(record.copy())
+            record[Template(self.key).render(record)] = Template(self.value).render(record)
             return_code = True
         if self.operation == 'ARRAY_APPEND':
             array = record.get(self.key)

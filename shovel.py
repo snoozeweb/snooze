@@ -68,4 +68,4 @@ def rpm():
     if os.path.isfile('dist/' + pkg_name):
         print("Detected dist/{}. Deleting.".format(pkg_name))
         os.remove('dist/' + pkg_name)
-    execute('rpmvenv', '--verbose', 'rpmvenv.json', '--destination', 'dist')
+    execute('rpmvenv', '--verbose', 'rpmvenv.json', '--destination', 'dist/')

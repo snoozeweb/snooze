@@ -41,12 +41,12 @@ form:
   subject:
     display_name: Subject
     component: String
-    default_value: "Alert: {{ record.get('host') }}"
+    default_value: "Alert: {{ host }}"
     description: 'Email subject'
   message:
     display_name: Message
     component: Text
-    default_value: "Message: {{ record.get('message') }}"
+    default_value: "Message: {{ message }}"
     description: 'Email content'
   type:
     display_name: Type

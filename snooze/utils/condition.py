@@ -114,10 +114,23 @@ class Condition():
         elif operation == 'CONTAINS':
             key, value = args
             record_value = dig(record, *key.split('.'))
+            if not isinstance(value, list):
+                value = [value]
+            if not isinstance(record_value, list):
+                record_value = [record_value]
             LOG.debug("Value: {}, Record: {}".format(value, record_value))
-            return isinstance(record_value, list) and any(value.casefold() in a.casefold() for a in flatten(record_value))
+            for val in flatten(value):
+                reg = re.compile(val, flags=re.IGNORECASE)
+                for record in flatten(record_value): 
+                    if reg.search(record):
+                        return True
+            return False
         elif operation == 'IN':
             key, value = args
             record_value = dig(record, *value.split('.'))
+            if not isinstance(key, list):
+                key = [key]
+            if not isinstance(record_value, list):
+                record_value = [record_value]
             LOG.debug("Value: {}, Record: {}".format(key, record_value))
-            return isinstance(record_value, list) and any(key.casefold() == a.casefold() for a in flatten(record_value))
+            return any(a in flatten(key) for a in flatten(record_value))

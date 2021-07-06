@@ -18,11 +18,11 @@ The final Process plugin (**Notification**) is used for alerting. It relies on i
 A Process plugin receives a Record, processes it then sends it to the next Process plugin. At the moment, Snooze has four Process plugins executed in the following order:
 
 - [Rules](05_Rules.md): Modify records
-- [Aggregates](06_Aggregates.md): Group records
+- [Aggregate Rules](06_AggregatesRules.md): Group records
 - [Snooze](07_Snooze.md): Stop alerting
 - [Notifications](08_Notifications.md): Alerting
 
-It is worth mentioning that the configuration file `/etc/snooze/core.yaml` allows this list to be completely redefined. If one component is not necessary, it can be removed from the list. A new component could also be added in between in the future.
+It is worth mentioning that the configuration file `/etc/snooze/server/core.yaml` allows this list to be completely redefined. If one component is not necessary, it can be removed from the list. A new component could also be added in between in the future.
 
 ## Action Plugins  (alerting scripts)
 

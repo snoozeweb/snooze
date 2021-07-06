@@ -56,4 +56,4 @@ form:
             - static_roles
         colorize: true
         primary: name
-        description: 'List of roles for authorization'
+        description: 'List of roles assigned to the user'

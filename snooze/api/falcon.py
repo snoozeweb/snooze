@@ -419,10 +419,16 @@ class LdapAuthRoute(AuthRoute):
                 self.bind_dn = conf['bind_dn']
                 self.bind_password = conf['bind_password']
                 self.port = conf.get('port') or ''
+                self.host = conf['host']
+                if not self.host.startswith('ldap://') and not self.host.startswith('ldaps://'):
+                    if str(self.port) == '636':
+                        self.host = 'ldaps://' + self.host
+                    else:
+                        self.host = 'ldap://' + self.host
                 if self.port:
-                    self.server = Server(conf['host'], port=self.port, get_info=ALL)
+                    self.server = Server(self.host, port=self.port, get_info=ALL, connect_timeout=10)
                 else:
-                    self.server = Server(conf['host'], get_info=ALL)
+                    self.server = Server(self.host, get_info=ALL, connect_timeout=10)
                 bind_con = Connection(
                     self.server,
                     user=self.bind_dn,
@@ -436,7 +442,7 @@ class LdapAuthRoute(AuthRoute):
                 log.exception(err)
                 self.enabled = False
                 pass
-        log.debug("Authentication backend 'ldap' status: {}".format(self.enabled))
+        log.debug("Authentication backend 'ldap'. Enabled: {}".format(self.enabled))
 
     def _search_user(self, username):
         try:
@@ -559,6 +565,7 @@ class BackendApi():
         web_conf = self.core.conf.get('web', {})
         if web_conf.get('enabled', True):        
             self.handler.add_route('/', RedirectRoute())
+            self.handler.add_route('/web', RedirectRoute())
             self.handler.add_sink(StaticRoute(web_conf.get('path', '/opt/snooze/web'), '/web').on_get, '/web')
 
     def add_route(self, route, action):

@@ -31,6 +31,7 @@ export default {
     JwtToken
   },
   mounted () {
+    localStorage.setItem('refreshed', false)
     this.list_backends()
   },
   data () {

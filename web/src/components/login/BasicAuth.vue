@@ -43,7 +43,7 @@ export default {
   },
   methods: {
     onSubmit(event) {
-			event.preventDefault()
+      event.preventDefault()
       API
         .post(`/login/${this.endpoint}`, {}, {"auth": {"username": this.username, "password": this.password}})
         .then(response => {
@@ -52,21 +52,21 @@ export default {
             localStorage.setItem('snooze-token', response.data.token)
             router.push('/record')
           } else {
-						this.validate = false
+	    this.validate = false
             if(response.response.status == 401) {
               this.error_message = 'Invalid user or password / Session expired'
             } else {
               this.error_message = response.response.data.description
             }
-					}
+	  }
         })
         .catch(error => {
           console.log(error)
         })
     },
-		onChanged() {
-			this.validate = true
-		}
+    onChanged() {
+      this.validate = true
+    }
   },
 }
 </script>

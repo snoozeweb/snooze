@@ -77,10 +77,9 @@ export default {
           }
         })
         .catch(error => console.log(error))
-		},
+    },
     logout() {
       localStorage.setItem('snooze-token', '')
-      localStorage.setItem('refreshed', false)
       router.push('/login')
     }
   },

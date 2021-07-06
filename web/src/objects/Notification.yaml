@@ -45,18 +45,18 @@ form:
     name:
         display_name: Name
         component: String
-        description: Name of the notification entry
+        description: Name of the notification
         required: true
     condition:
         display_name: Condition
         component: Condition
-        description: Condition which the notification will be triggered. Default to all the time
+        description: This notification will be triggered only if this condition is matched. Leave it blank to always match
     actions:
         display_name: Actions
         component: APIElementField
         endpoint: action
         primary: name
-        description: List of actions to execute
+        description: List of actions to execute. At least one action needs to be created beforehand
         required: true
     comment:
         display_name: Comment

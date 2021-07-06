@@ -50,11 +50,12 @@ form:
     condition:
         display_name: Condition
         component: Condition
-        description: Condition which the notification will be triggered. Default to all the time
+        description: This rule will be triggered only if this condition is matched. Leave it blank to always match.
     modifications:
         display_name: Modifications
         component: Modification
-        description: Modify a record
+        description: List of changes to apply to the Record
     comment:
         display_name: Comment
         component: Text
+        description: 'Description'

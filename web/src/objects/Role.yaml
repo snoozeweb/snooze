@@ -31,17 +31,19 @@ form:
     name:
         display_name: Name
         component: String
-        description: 'Name of the notification entry'
+        description: 'Name of the role'
+        required: true
     permissions:
         display_name: Permissions
         component: APIElementField
         endpoint: permissions
         colorize: true
-        description: 'List of permissions'
+        description: 'List of permissions granted by the role'
     groups:
         display_name: Groups
         component: Field
-        description: 'List of groups provided by the authentication backend'
+        description: 'List of groups provided by the authentication backend. If a user successfully logs in and is a member of a group, this role will get automatically assigned to the user'
     comment:
         display_name: Comment
         component: Text
+        description: 'Description'

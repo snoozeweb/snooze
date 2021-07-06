@@ -1,7 +1,7 @@
 #!/usr/bin/python3.6
 
 from snooze.db.database import Database
-from snooze.utils.functions import dig, flatten
+from snooze.utils.functions import dig, flatten, to_tuple
 from threading import Lock
 from logging import getLogger
 import uuid
@@ -19,10 +19,14 @@ default_filename = 'db.json'
 mutex = Lock()
 
 def test_contains(array, value):
-    return any(value.casefold() in a.casefold() for a in array)
-
-def test_in(array, value):
-    return any(value.casefold() == a.casefold() for a in array)
+    if not isinstance(array, list):
+        array = [array]
+    for val in value:
+        reg = re.compile(val, flags=re.IGNORECASE)
+        for record in array:
+            if reg.search(record):
+                return True
+    return False
 
 class BackendDB(Database):
     def init_db(self, conf):
@@ -257,10 +261,15 @@ class BackendDB(Database):
             return_obj = dig(Query(), *args[0].split('.')).exists()
         elif operation == 'CONTAINS':
             key, value = args
-            return_obj = dig(Query(), *key.split('.')).test(test_contains, value)
+            if not isinstance(value, list):
+                value = [value]
+            for val in value:
+                return_obj = dig(Query(), *key.split('.')).test(test_contains, to_tuple(value))
         elif operation == 'IN':
             key, value = args
-            return_obj = dig(Query(), *value.split('.')).test(test_in, key)
+            if not isinstance(key, list):
+                key = [key]
+            return_obj = dig(Query(), *value.split('.')).any(key)
         else:
             raise OperationNotSupported(operation)
         return return_obj
