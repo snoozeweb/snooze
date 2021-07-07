@@ -57,11 +57,11 @@ class Cluster():
             use_ssl = self.api.core.conf.get('ssl', {}).get('enabled', False)
             for peer in self.other_peers:
                 if use_ssl:
-                    connection = http.client.HTTPSConnection(peer['host'], peer['port'])
+                    connection = http.client.HTTPSConnection(peer['host'], peer['port'], timeout=10)
                 else:
-                    connection = http.client.HTTPConnection(peer['host'], peer['port'])
+                    connection = http.client.HTTPConnection(peer['host'], peer['port'], timeout=10)
                 try:
-                    connection.request('GET', '/cluster?self=true')
+                    connection.request('GET', '/api/cluster?self=true')
                     response = connection.getresponse()
                     success = (response.status == 200)
                 except Exception as e:
@@ -100,20 +100,20 @@ class ClusterThread(threading.Thread):
 
     def run(self):
         headers = {'Content-type': 'application/json'}
-        use_ssl = self.api.core.conf.get('ssl', {}).get('enabled', False)
+        use_ssl = self.cluster.api.core.conf.get('ssl', {}).get('enabled', False)
         success = False
         while True:
             if not self.main_thread.is_alive():
                 break
             for index, job in enumerate(self.cluster.sync_queue):
                 if use_ssl:
-                    connection = http.client.HTTPSConnection(job['host'], job['port'])
+                    connection = http.client.HTTPSConnection(job['host'], job['port'], timeout=10)
                 else:
-                    connection = http.client.HTTPConnection(job['host'], job['port'])
+                    connection = http.client.HTTPConnection(job['host'], job['port'], timeout=10)
                 job['payload'].update({'reload_token': self.cluster.api.core.secrets.get('reload_token', '')})
                 job_json = dumps(job['payload'])
                 try:
-                    connection.request('POST', '/reload', job_json, headers)
+                    connection.request('POST', '/api/reload', job_json, headers)
                     response = connection.getresponse()
                     success = (response.status == 200)
                 except Exception as e:

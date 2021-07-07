@@ -583,11 +583,18 @@ class BackendApi():
         if use_ssl == True:
             certfile = ssl_conf.get('certfile')
             keyfile = ssl_conf.get('keyfile')
+            if not os.access(certfile, os.R_OK):
+                log.error("{} is not readable. Cannot start server".format(certfile))
+                return
+            if not os.access(keyfile, os.R_OK):
+                log.error("{} is not readable. Cannot start server".format(keyfile))
+                return
             httpd.socket = ssl.wrap_socket(
                 httpd.socket, server_side=True,
                 certfile=certfile,
                 keyfile=keyfile
             )
+        log.info("Snooze server is now listening on {}:{}".format(listen_addr, port))
         httpd.serve_forever()
         #self.socket.join()
 
