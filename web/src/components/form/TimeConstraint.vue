@@ -23,7 +23,6 @@
         </b-input-group-append>
       </b-input-group>
     </b-form>
-    {{ datavalue }}
   </div>
 </template>
 

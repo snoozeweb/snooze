@@ -1,12 +1,14 @@
-#!/usr/bin/python3.6
+import sys
 
 from snooze.plugins.core import Plugin, Abort_and_write
 from snooze.utils import Condition
 from dateutil import parser
 
+from collections import defaultdict
+
 from logging import getLogger
-from datetime import datetime, timedelta
-log = getLogger('snooze')
+from datetime import datetime, timedelta, time
+log = getLogger('snooze.plugins.snooze')
 
 class Snooze(Plugin):
     def process(self, record):
@@ -37,24 +39,132 @@ class SnoozeObject():
         self.condition = Condition(snooze.get('condition'))
         self.hits = snooze.get('hits', True)
         self.raw = snooze
-        self.time_constraint = snooze.get('time_constraint', {})
-        self.date_epoch = datetime.fromtimestamp(snooze.get('date_epoch', datetime.now().timestamp())).astimezone()
-        self.date_from = parser.parse(self.time_constraint.get('from', self.date_epoch.isoformat())).astimezone()
-        self.date_until = parser.parse(self.time_constraint.get('until', (self.date_epoch + timedelta(hours=1)).isoformat())).astimezone()
-    
-    def match(self, record):
-        matched_date = True
-        if self.time_constraint:
-            record_timestamp = record.get('timestamp')
-            if record_timestamp:
-                record_date = parser.parse(record_timestamp).astimezone()
-            else:
-                record_epoch = record.get('date_epoch')
-                if record_epoch:
-                    record_date = datetime.fromtimestamp(record_epoch).astimezone()
-                else:
-                    record_date = datetime.now().astimezone()
-            matched_date = (self.date_from < record_date) and (record_date < self.date_until)
-        log.debug("Snooze filter {}. Is record date is between date {} and {}: {}".format(self.name, self.date_from.isoformat(), self.date_until.isoformat(), matched_date))
-        return matched_date and self.condition.match(record)
 
+        # Initializing the time constraints
+        time_constraints = snooze.get('time_constraints', [])
+        constraints = []
+        for time_constraint in time_constraints:
+            obj = Constraint.detect(time_constraint)
+            constraints.append(obj)
+        self.time_constraint = MultiConstraint(*constraints)
+
+    def match(self, record):
+        '''Whether a record match the Snooze object'''
+        record_date = get_record_date(record)
+        return self.condition.match(record) and self.time_constraint.match(record_date)
+
+def get_record_date(record):
+    '''Extract the date of the record and return a `datetime` object'''
+    if record.get('timestamp'):
+        record_date = parser.parse(record['timestamp']).astimezone()
+    elif record.get('date_epoch'):
+        record_date = datetime.fromtimestamp(record['date_epoch']).astimezone()
+    else:
+        record_date = datetime.now().astimezone()
+    return record_date
+
+class MultiConstraint:
+    def __init__(self, *constraints):
+        self.constraints_by_type = defaultdict(list)
+        for constraint in constraints:
+            class_name = constraint.__class__.__name__
+            self.constraints_by_type[class_name].append(constraint)
+
+    def match(self, record_date):
+        '''
+        Match all constraints, but make sure constraints of the same
+        type are merged with `OR`.
+        '''
+        return all(
+            any(constraint.match(record_date) for constraint in constraints)
+            for _, constraints in self.constraints_by_type.items()
+        )
+
+class Constraint:
+    @staticmethod
+    def detect(time_constraint_dict):
+        '''Return the correct time constraint object given a dictionary representing it'''
+        constraint_type = time_constraint_dict.pop('type')
+
+        if constraint_type is None:
+            return ForeverConstraint()
+
+        try:
+            class_obj = getattr(sys.modules[__name__], constraint_type)
+            if issubclass(class_obj, Constraint):
+                return class_obj(**time_constraint_dict)
+            else:
+                log.error("Constraint type %s does not inherit from Contraint", constraint_type)
+                raise Exception("Constraint type %s does not inherit from Contraint" % constraint_type)
+        except AttributeError:
+            log.error("No such constraint type: %s", constraint_type)
+            raise Exception("No such constraint type: %s" % constraint_type)
+
+    def match(self, _record_date):
+        '''Method to fill when inheriting this class'''
+        pass
+
+class ForeverConstraint(Constraint):
+    '''Always match'''
+    def __init__(self, **kwargs):
+        pass
+    def match(self, _):
+        return True
+
+class DatetimeConstraint(Constraint):
+    '''
+    A time constraint using fixed dates.
+    Features:
+        * Before a fixed date
+        * After a fixed date
+        * Between two fixed dates
+    '''
+    def __init__(self, date_from=None, date_until=None):
+        self.date_from = parser.parse(date_from).astimezone() if date_from else None
+        self.date_until = parser.parse(date_until).astimezone() if date_until else None
+    def match(self, record_date):
+        '''Perform a fixed date matching'''
+        date_from = self.date_from
+        date_until = self.date_until
+        if date_from and date_until:
+            return (date_from < record_date) and (record_date < date_until)
+        elif (not date_from) and date_until:
+            return record_date < date_until
+        elif date_from and (not date_until):
+            return date_from < record_date
+        else:
+            return False
+
+class WeekdayConstraint(Constraint):
+    '''
+    Features:
+        * Match certain days of the week
+    '''
+    def __init__(self, weekdays=list):
+        self.weekdays = weekdays
+    def match(self, record_date):
+        weekday_number = int(record_date.strftime('%w'))
+        return weekday_number in self.weekdays
+
+class TimeConstraint(Constraint):
+    '''
+    A time constraint that has a daily period.
+    Features:
+        * Match before/after/between fixed hours
+    '''
+    def __init__(self, time_from=None, time_until=None):
+        self.time_from = parser.parse(time_from).astimezone().time() if time_from else None
+        self.time_until = parser.parse(time_until).astimezone().time() if time_until else None
+    def match(self, record_date):
+        '''Match a daily periodic time constraint'''
+        time_from = self.time_from
+        time_until = self.time_until
+        record_time = record_date.time()
+        if time_from and time_until:
+            return (time_from < record_time) and (record_time < time_until)
+        elif time_from and (not time_until):
+            return time_from < record_time
+        elif (not time_from) and time_until:
+            return record_time < time_until
+        else:
+            return True
