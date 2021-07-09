@@ -26,7 +26,9 @@ $ sudo yum localinstall snooze-server-latest.rpm
 $ sudo systemctl start snooze-server
 ```
 Web interface URL: http://localhost:5200
+
 if `create_root_user` in `/etc/snooze/core.yaml` has not been set to **false**, login credentials are `root:root`
+
 Otherwise, it is always possible to generate a root token that can be used for **JWT Token** authentication method if [Snooze Client](https://github.com/snoozeweb/snooze_client) is installed:
 ```bash
 $ snooze root-token

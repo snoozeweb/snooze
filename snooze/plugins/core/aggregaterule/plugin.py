@@ -44,13 +44,6 @@ class Aggregaterule(Plugin):
                         self.db.write('aggregate', aggregate, update_time=False)
                         raise Abort
                     else:
-                        if 'state' in aggregate and aggregate['state'] == 'ack':
-                            escalation = {}
-                            escalation['user'] = 'snooze'
-                            escalation['message'] = 'Auto re-escalation'
-                            escalation['date'] = now.astimezone().isoformat()
-                            aggregate['state'] = 'reescalated'
-                            aggregate['escalations'] = aggregate.get('escalations', []) + [escalation]
                         self.db.write('aggregate', aggregate)
                 else:
                     LOG.debug("Not found, creating a new aggregate")

@@ -70,6 +70,7 @@ class Core:
     def process_record(self, record):
         source = record.get('source', 'unknown')
         record['ttl'] = self.housekeeper.conf.get('record_ttl', 86400)
+        record['state'] = 'open'
         record['plugins'] = []
         with self.stats.time('process_record_duration', {'source': source}):
             for plugin in self.process_plugins:

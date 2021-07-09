@@ -5,7 +5,9 @@
 ## Overview
 
 Execute a command when called. Right now only **Notifications** can call an Action.
+
 Internal Actions are being shipped with `snooze-server` package.
+
 External Actions can be found and installed from [Snooze Plugins Repository](https://github.com/snoozeweb/snooze_plugins)
 
 ## How to enable/disable Actions

@@ -5,7 +5,9 @@
 ## Overview
 
 Group Records based on matching fields and a throttle period.
+
 Records have to match the Aggregate's condition in order to being processed.
+
 Aggregates are mainly designed to prevent similar Records from being notified especially if they were sent in burst or the process generating them was flapping.
 
 For example:
@@ -36,11 +38,14 @@ fields:
 throttle: 900 # 15 mins
 ```
 All three Records have the same fields `host` and `message`. 
+
 Record A being the first one processed, it was correctly passed to the next Process plugin. The throttle period started from Record A timestamp.
+
 Record B was processed 10 minutes after Record A which was lower than the throttle period (15 mins), therefore Record B was not passed to the next Process plugin.
+
 Record C was processed 20 minutes after Record A which was greater than the throttle period, therefore Record C was correctly passed to the next Process plugin. The throttle period restarted from Record C timestamp.
 
-**Note**: On the web interface, it is possible to see how many times a Record was aggregated by checking the number on the very right in **Aggregates** tab:
+**Note**: On the web interface, it is possible to see how many times a Record was aggregated by checking the number on the very right in **Aggregates** section:
 
 ![Aggregates](images/web_aggregates.png)
 
@@ -48,7 +53,8 @@ Record C was processed 20 minutes after Record A which was greater than the thro
 
 ![Aggregate Rules](images/web_aggregaterules.png)
 
-* `Name`*: Name of the snooze filter.
-* `Condition`: This rule will be triggered only if this condition is matched. Leave it blank to always match.
-* `Time Constraint`: From which date to which date this snooze filter will be active
+* `Name`*: Name of the aggregate rule.
+* `Condition`: This aggregate rule will be triggered only if this condition is matched. Leave it blank to always match.
+* `Fields`: Space separated values used to group incoming alerts.
+* `Throttle`: Number of seconds to wait before escalating the next alert matching this aggregate rule (-1 for infinite).
 * `Comment`: Description.

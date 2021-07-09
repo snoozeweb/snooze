@@ -5,8 +5,11 @@
 ## Overview
 
 Snooze can receive logs from dedicated endpoints called **Webhooks** or from external components called **Input plugins**.
+
 Upon receiving a log, Snooze creates a data structure called **Record** which is actually a dictionary with pre parsed fields.
+
 Records are then being processed through a series of components called **Process plugins**.
+
 The final Process plugin (**Notification**) is used for alerting. It relies on internal and external components called **Action plugins** (sending a mail, executing a script, etc...)
 
 ## Input plugins / Webhooks

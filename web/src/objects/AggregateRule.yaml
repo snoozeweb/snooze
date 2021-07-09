@@ -49,16 +49,16 @@ form:
     name:
         display_name: Name
         component: String
-        description: Name of the notification entry
+        description: Name of the aggregate rule
         required: true
     condition:
         display_name: Condition
         component: Condition
-        description: Condition which the notification will be triggered. Default to all the time
+        description: This aggregate rule will be triggered only if this condition is matched. Leave it blank to always match
     fields:
         display_name: Fields
         component: Field
-        description: Fields to aggregate
+        description: Space separated values used to group incoming alerts
     throttle:
         display_name: Throttle
         component: Duration
@@ -67,3 +67,4 @@ form:
     comment:
         display_name: Comment
         component: Text
+        description: Description

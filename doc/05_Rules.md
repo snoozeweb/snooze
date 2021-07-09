@@ -5,7 +5,9 @@
 ## Overview
 
 Add, modify or delete fields from a Record.
+
 Records have to match the Rule's condition in order to being processed.
+
 Rules are very useful to analyze incoming Records and add infos that were not in the original log.
 
 For example:
@@ -28,6 +30,7 @@ environment: production
 Any Record matching a Rule will have a new field `rules` added with the list of matched Rules.
 
 Rules can have an optional field called `children` which can hold a list of Rules. These Rules will be processed the same way Rules are but only if the parent's condition has been correctly matched in the first place.
+
 This design allowing Rules to be nested is very convenient to avoid repeating the same conditions across multiple Rules.
 
 ## Web interface ##

@@ -1,19 +1,11 @@
 <template>
   <div>
     <b-row>
-      <b-col cols=0 md=1>
-        From:
+      <b-col>
+        <VueCtkDateTimePicker label="From" id="fromDate" v-model="fromDate" :minute-interval=5 output-format="YYYY-MM-DDTHH:mm:ssZ" format="YYYY-MM-DD HH:mm" :color="main_color" :error="!fromDate"/>
       </b-col>
       <b-col>
-        <VueCtkDateTimePicker id="fromDate" v-model="fromDate" :minute-interval=5 output-format="YYYY-MM-DDTHH:mm:ssZ" format="YYYY-MM-DD HH:mm" :color="main_color" :error="!fromDate"/>
-      </b-col>
-    </b-row>
-    <b-row class="pt-1">
-      <b-col cols=0 md=1>
-        Until:
-      </b-col>
-      <b-col>
-        <VueCtkDateTimePicker id="untilDate" v-model="untilDate" :minute-interval=5 output-format="YYYY-MM-DDTHH:mm:ssZ" format="YYYY-MM-DD HH:mm" :color="main_color" :error="!untilDate"/>
+        <VueCtkDateTimePicker label="To" id="untilDate" v-model="untilDate" :minute-interval=5 output-format="YYYY-MM-DDTHH:mm:ssZ" format="YYYY-MM-DD HH:mm" :color="main_color" :error="!untilDate"/>
       </b-col>
     </b-row>
   </div>

@@ -240,11 +240,15 @@ export default {
     get_color(type) {
       switch (type) {
         case 'ack':
-          return 'gradient-success'
+          return 'success'
         case 'esc':
-          return 'gradient-warning'
+          return 'warning'
+        case 'close':
+          return 'tertiary'
+        case 'open':
+          return 'quaternary'
         default:
-          return 'gradient-primary'
+          return 'primary'
       }
     },
     get_icon(type) {
@@ -253,6 +257,10 @@ export default {
           return 'la-thumbs-up'
         case 'esc':
           return 'la-exclamation'
+        case 'close':
+          return 'la-lock'
+        case 'open':
+          return 'la-lock-open'
         default:
           return 'la-comment-dots'
       }
@@ -260,9 +268,13 @@ export default {
     get_tooltip(type) {
       switch (type) {
         case 'ack':
-          return 'Ack'
+          return 'Acknowledge'
         case 'esc':
-          return 'Re-escalation'
+          return 'Re-escalate'
+        case 'close':
+          return 'Lock'
+        case 'open':
+          return 'Re-open'
         default:
           return 'Comment'
       }

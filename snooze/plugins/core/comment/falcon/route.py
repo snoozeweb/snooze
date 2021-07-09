@@ -43,7 +43,7 @@ class CommentRoute(Route):
                     media_type = req_media.get('type')
                     comments = self.search('comment', ['=', 'record_uid', record_uid], nb_per_page=0, page_number=1, order_by='date', asc=False)
                     records['data'][0]['comment_count'] = comments['count'] + len(record_comments[record_uid])
-                    if media_type == 'ack' or media_type == 'esc':
+                    if media_type == 'ack' or media_type == 'esc' or media_type == 'open' or media_type == 'close':
                         log.debug("Changing record {} type to {}".format(record_uid, media_type))
                         records['data'][0]['state'] = media_type
                     update_records.append(records['data'][0])
@@ -84,7 +84,7 @@ class CommentRoute(Route):
                     log.debug("Found record {}".format(records))
                     comments = self.search('comment', ['=', 'record_uid', record_uid], nb_per_page=0, page_number=1, order_by='date', asc=False)
                     records['data'][0]['comment_count'] = comments['count'] - len(record_comments[record_uid])
-                    relevant_comments = [com for com in comments['data'] if ((com.get('uid') not in record_comments[record_uid]) and (com.get('type') == 'ack' or com.get('type') == 'esc'))]
+                    relevant_comments = [com for com in comments['data'] if ((com.get('uid') not in record_comments[record_uid]) and (com.get('type') in ['ack', 'esc', 'open', 'close']))]
                     log.debug("Relevant comments: {}".format(relevant_comments))
                     if len(relevant_comments) > 0:
                         new_type = relevant_comments[0]['type']
@@ -92,7 +92,7 @@ class CommentRoute(Route):
                         records['data'][0]['state'] = new_type
                     else:
                         log.debug("Resetting record {} type".format(record_uid))
-                        records['data'][0]['state'] = ''
+                        records['data'][0]['state'] = 'open'
                     update_records.append(records['data'][0])
                 else:
                     resp.content_type = falcon.MEDIA_TEXT

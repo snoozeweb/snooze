@@ -1,7 +1,7 @@
-# Inputs
+# Inject logs into Snooze
 
-To receive alert from different sources, Snooze server use a plugin system.
-The snooze server exposes a HTTP API, and each plugin use this API to create new alerts.
+To receive alert from different sources, Snooze server uses a plugin system.
+Snooze server exposes a HTTP API and each plugin uses this API to create new alerts.
 
 The following plugins are officially supported:
 * Syslog
@@ -50,7 +50,7 @@ Example usage:
 snooze alert "timestamp=$(date -Is)" host=myhost01 severity=err custom_field=custom_system "message=Alert on custom system"
 ```
 
-Spaces can be escaped in standard bash, what matters is that the field and value are separated by a `=`.
+Spaces can be escaped in standard bash, what matters is that fields and values should be separated by a `=`.
 The character `=` is not supported in the field name, but is supported in the value.
 
 The example will result in the following record:

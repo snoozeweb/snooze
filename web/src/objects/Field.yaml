@@ -4,6 +4,7 @@ colors:
     reescalated: warning
     esc: warning
     open: light
+    close: tertiary
     root: danger
     ldap: primary
     local: warning
