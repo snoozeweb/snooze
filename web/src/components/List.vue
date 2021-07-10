@@ -99,11 +99,8 @@
         <template v-slot:cell(roles)="row">
           <Field :data="(dig(row.item, 'roles') || []).concat(dig(row.item, 'static_roles') || [])" colorize/>
         </template>
-        <template v-slot:cell(time_constraint.from)="row">
-          <DateTime :date="dig(row.item, 'time_constraint', 'from')" />
-        </template>
-        <template v-slot:cell(time_constraint.until)="row">
-          <DateTime :date="dig(row.item, 'time_constraint', 'until')" />
+        <template v-slot:cell(time_constraint)="row">
+          <TimeConstraint :date="dig(row.item, 'time_constraint')" />
         </template>
         <template v-slot:cell(state)="row">
           <Field :data="[(dig(row.item, 'state') || 'open')]" colorize/>
@@ -250,6 +247,7 @@ import Condition from '@/components/Condition.vue'
 import Modification from '@/components/Modification.vue'
 import Field from '@/components/Field.vue'
 import DateTime from '@/components/DateTime.vue'
+import TimeConstraint from '@/components/TimeConstraint.vue'
 
 import { delete_items } from '@/utils/api'
 
@@ -261,6 +259,7 @@ export default {
     Modification,
     Field,
     DateTime,
+    TimeConstraint,
     Search,
     Form,
   },
@@ -368,7 +367,14 @@ export default {
         pagenb: this.current_page,
         asc: this.isascending,
       }
-      if (this.orderby !== undefined) { options["orderby"] = this.orderby }
+      if (this.orderby !== undefined) {
+        var form_field = this.fields.concat(this.hidden_fields).find((field, ) => field.key == this.orderby)
+        if (form_field && form_field.orderby) {
+          options["orderby"] = form_field.orderby
+        } else {
+          options["orderby"] = this.orderby
+        }
+      }
       this.get_data(this.endpoint, query, options, feedback ? this.feedback_then_update : this.update_table, null)
     },
     feedback_then_update(response) {

@@ -164,8 +164,7 @@ class BackendDB(Database):
             else:
                 from_el = None
                 to_el = None
-            #sorted_list = [(dict_[orderby], dict_) for dict_ in list(results)].sort()
-            if len(orderby) > 0:
+            if len(orderby) > 0 and all(dig(res, *orderby.split('.')) for res in list(results)):
                 results = sorted(list(results),  key=lambda x: reduce(lambda c, k: c.get(k, {}), orderby.split('.'), x))
             if not asc:
                 results = list(reversed(results))

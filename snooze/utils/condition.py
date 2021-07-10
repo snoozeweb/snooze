@@ -29,7 +29,7 @@ class Condition():
         Output: Boolean
         """
         if not self.array:
-            LOG.debug("No condition, auto match the rule")
+            LOG.debug("No condition, auto match the condition")
             return True
         operation, *args = self.array
         LOG.debug("Operation: {}, Args: {}".format(operation, args))

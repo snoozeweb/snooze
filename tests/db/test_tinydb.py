@@ -45,20 +45,29 @@ def test_tinydb_all(db):
 def test_tinydb_search(db):
     db.write('record', [{'a': 1, 'b': 2},{'a': 30, 'b': 40, 'c': 'tata'}])
     search1 = ['AND', ['=', 'a', 1], ['!=', 'b', 40]]
-    result1 = db.search('record', search1)['data']
+    result1 = db.search('record', search1)['count']
     search2 = ['OR', ['=', 'a', 1], ['=', 'a', 30]]
-    result2 = db.search('record', search2)['data']
+    result2 = db.search('record', search2)['count']
     search3 = ['MATCHES', 'c', 'ta*']
-    result3 = db.search('record', search3)['data']
+    result3 = db.search('record', search3)['count']
     search4 = ['NOT', ['=', 'a', 1]]
-    result4 = db.search('record', search4)['data']
+    result4 = db.search('record', search4)['count']
     search5 = ['EXISTS', 'c']
-    result5 = db.search('record', search5)['data']
+    result5 = db.search('record', search5)['count']
     search6 = ['>', 'a', 1]
-    result6 = db.search('record', search6)['data']
+    result6 = db.search('record', search6)['count']
     search7 = ['<', 'c', 'toto']
-    result7 = db.search('record', search7)['data']
-    assert len(result1) == 1 and len(result2) == 2 and len(result3) == 1 and len(result4) == 1 and len(result5) == 1 and len(result6) == 1 and len(result7) == 1
+    result7 = db.search('record', search7)['count']
+    search8 = ['=', 'c', 'toto']
+    result8 = db.search('record', search8)['count']
+    assert result1 == 1
+    assert result2 == 2
+    assert result3 == 1
+    assert result4 == 1
+    assert result5 == 1
+    assert result6 == 1
+    assert result7 == 1
+    assert result8 == 0
 
 def test_tinydb_search_contains(db):
     db.write('record', [{'a': ['00', '11', '22']}, {'a': ['00', '1', '2']}, {'a': ['00', '1', '4']}, {'b': '5'}])
@@ -178,6 +187,11 @@ def test_tinydb_sort(db):
     db.write('record', [{'a': '1', 'b': '2'},{'a': '3', 'b': '2'},{'a': '2', 'b': '2'},{'a': '5', 'b': '2'},{'a': '4', 'b': '2'}])
     result = db.search('record', orderby='a', asc=False)['data']
     assert result[0].items() >= {'a': '5', 'b': '2'}.items()
+
+def test_tinydb_sort_unknown(db):
+    db.write('record', [{'a': '1', 'b': '2'},{'a': '3', 'b': '2'},{'a': '2', 'b': '2'},{'a': '5', 'b': '2'},{'a': '4', 'b': '2'}])
+    result = db.search('record', orderby='c', asc=False)['data']
+    assert result[0].items() >= {'a': '4', 'b': '2'}.items()
 
 def test_tinydb_cleanup_timeout(db):
     db.write('record', [{'a': '1', 'ttl': 0}, {'b': '1', 'ttl': 0}, {'c': '1', 'ttl': 1}, {'d': '1'}])

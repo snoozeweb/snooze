@@ -86,7 +86,7 @@ database:
 
 # Documentation
 
-[Documentation page](doc/README.md)
+[Documentation page](doc/)
 
 # License
 

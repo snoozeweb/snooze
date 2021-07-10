@@ -41,7 +41,7 @@ class SnoozeObject():
         self.raw = snooze
 
         # Initializing the time constraints
-        time_constraints = snooze.get('time_constraints', [])
+        time_constraints = snooze.get('time_constraint', [])
         constraints = []
         for time_constraint in time_constraints:
             obj = Constraint.detect(time_constraint)
@@ -84,34 +84,27 @@ class Constraint:
     @staticmethod
     def detect(time_constraint_dict):
         '''Return the correct time constraint object given a dictionary representing it'''
-        constraint_type = time_constraint_dict.pop('type')
 
-        if constraint_type is None:
-            return ForeverConstraint()
-
+        constraint_type = ''
         try:
+            constraint_type = time_constraint_dict.get('type', 'Error') + 'Constraint'
             class_obj = getattr(sys.modules[__name__], constraint_type)
             if issubclass(class_obj, Constraint):
-                return class_obj(**time_constraint_dict)
+                return class_obj(time_constraint_dict.get('content', {}))
             else:
                 log.error("Constraint type %s does not inherit from Contraint", constraint_type)
                 raise Exception("Constraint type %s does not inherit from Contraint" % constraint_type)
         except AttributeError:
             log.error("No such constraint type: %s", constraint_type)
-            raise Exception("No such constraint type: %s" % constraint_type)
+        except Exception as e:
+            log.exception(e)
+
 
     def match(self, _record_date):
         '''Method to fill when inheriting this class'''
         pass
 
-class ForeverConstraint(Constraint):
-    '''Always match'''
-    def __init__(self, **kwargs):
-        pass
-    def match(self, _):
-        return True
-
-class DatetimeConstraint(Constraint):
+class DateTimeConstraint(Constraint):
     '''
     A time constraint using fixed dates.
     Features:
@@ -119,7 +112,9 @@ class DatetimeConstraint(Constraint):
         * After a fixed date
         * Between two fixed dates
     '''
-    def __init__(self, date_from=None, date_until=None):
+    def __init__(self, content={}):
+        date_from = content.get('from')
+        date_until = content.get('until')
         self.date_from = parser.parse(date_from).astimezone() if date_from else None
         self.date_until = parser.parse(date_until).astimezone() if date_until else None
     def match(self, record_date):
@@ -135,13 +130,13 @@ class DatetimeConstraint(Constraint):
         else:
             return False
 
-class WeekdayConstraint(Constraint):
+class WeekdaysConstraint(Constraint):
     '''
     Features:
         * Match certain days of the week
     '''
-    def __init__(self, weekdays=list):
-        self.weekdays = weekdays
+    def __init__(self, content={}):
+        self.weekdays = content.get('weekdays', [])
     def match(self, record_date):
         weekday_number = int(record_date.strftime('%w'))
         return weekday_number in self.weekdays
@@ -152,7 +147,9 @@ class TimeConstraint(Constraint):
     Features:
         * Match before/after/between fixed hours
     '''
-    def __init__(self, time_from=None, time_until=None):
+    def __init__(self, content={}):
+        time_from = content.get('from')
+        time_until = content.get('until')
         self.time_from = parser.parse(time_from).astimezone().time() if time_from else None
         self.time_until = parser.parse(time_until).astimezone().time() if time_until else None
     def match(self, record_date):

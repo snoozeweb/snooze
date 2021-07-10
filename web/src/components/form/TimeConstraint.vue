@@ -2,9 +2,9 @@
   <div>
     <h5 v-if="datavalue.length == 0"><b-badge variant="primary">Forever</b-badge></h5>
     <b-form-group class="m-0">
-      <b-row v-for="(v, k) in datavalue" :key="k" class="mb-1">
+      <b-row v-for="(v, k) in datavalue" :key="k" class="mb-2">
         <b-col cols="1">
-          <b-button variant="danger" v-on:click="remove_component(k)">X</b-button>
+          <b-button variant="danger" size="lg" v-on:click="remove_component(k)">X</b-button>
         </b-col>
         <b-col cols="11">
           <component
@@ -32,8 +32,6 @@ import Base from './Base'
 import DateTime from '@/components/form/DateTime'
 import Time from '@/components/form/Time'
 import Weekdays from '@/components/form/Weekdays'
-
-var default_object = [{type: 'DateTime'}]
 
 export default {
   extends: Base,

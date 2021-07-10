@@ -2,6 +2,7 @@
   <div class="animated fadeIn">
     <List
       endpoint="snooze"
+      order_by="time_constraint"
       :form="form"
       :fields="fields"
       :tabs="tabs"
@@ -19,7 +20,7 @@ import dig from 'object-dig'
 
 import List from '@/components/List.vue'
 
-import { form, fields } from '@/objects/Snooze.yaml'
+import { form, fields, default_sorting } from '@/objects/Snooze.yaml'
 
 export default {
   components: {
@@ -33,13 +34,10 @@ export default {
       form: form,
       fields: fields,
       tabs: [
-        {title: 'Active', filter: ["AND",
-            ["<", "time_constraint.from", moment().format("YYYY-MM-DDTHH:mm")],
-            [">", "time_constraint.until", moment().format("YYYY-MM-DDTHH:mm")],
-          ],
-        },
+        {title: 'Active', filter: [{type: 'date_in', expression: [moment().format("YYYY-MM-DDTHH:mm"), 'time_constraints']}]},
         {title: 'Upcoming', filter: [">", "time_constraint.from", moment().format("YYYY-MM-DDTHH:mm")]},
         {title: 'Expired', filter: ["<", "time_constraint.until", moment().format("YYYY-MM-DDTHH:mm")]},
+        {title: 'All', filter: []},
       ],
     }
   },

@@ -187,10 +187,15 @@ export function trimDate(date, splitH) {
   var mDate = moment(date)
   var newDate = ''
   var now = moment()
+  var hours_only = false
+  if (!mDate.isValid()) {
+    mDate = moment(date, ['HH:mm'])
+    hours_only = true
+  }
   if (mDate.year() == now.year()) {
     if (mDate.format('MM-DD') == now.format('MM-DD')) {
-      if(splitH) {
-        newDate = 'Today' + '\n' + mDate.format('HH:mm:ss')
+      if(hours_only) {
+        newDate = mDate.format('HH:mm')
       } else {
         newDate = 'Today' + ' ' + mDate.format('HH:mm:ss')
       }
@@ -207,4 +212,25 @@ export function trimDate(date, splitH) {
     }
   }
   return newDate
+}
+
+export function get_weekday(nb) {
+  switch(nb) {
+    case 1:
+      return 'Monday'
+    case 2:
+      return 'Tuesday'
+    case 3:
+      return 'Wednesday'
+    case 4:
+      return 'Thursday'
+    case 5:
+      return 'Friday'
+    case 6:
+      return 'Saturday'
+    case 7:
+      return 'Sunday'
+    default:
+      return 'Invalid weekday ' + nb
+  }
 }

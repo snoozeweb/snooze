@@ -1,8 +1,8 @@
 <template>
-  <div>
+  <div class="h-100">
     <b-form-group
-      label="Weekdays"
       v-slot="{ ariaDescribedby }"
+      class="d-flex align-items-center mb-0 h-100"
     >
       <b-form-checkbox-group
         v-model="datavalue['weekdays']"
@@ -17,7 +17,7 @@
 <script>
 import Base from './Base.vue'
 
-var default_object = {type: 'WeekdayConstraint', weekdays: []}
+var default_object = {weekdays: []}
 
 export default {
   extends: Base,

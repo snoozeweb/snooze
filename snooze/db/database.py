@@ -13,3 +13,4 @@ class Database():
     def search(self): pass
     def delete(self): pass
     def write(self): pass
+    def convert(self): pass

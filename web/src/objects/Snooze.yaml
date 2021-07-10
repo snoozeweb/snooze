@@ -2,13 +2,9 @@
 endpoint: snooze
 fields:
     -
-        label: From
-        key: time_constraint.from
-        sortable: true
-        tdClass: ['align-middle']
-    -
-        label: Until
-        key: time_constraint.until
+        label: Time Constraint
+        key: time_constraint
+        orderby: sort
         sortable: true
         tdClass: ['align-middle']
     -

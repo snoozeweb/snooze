@@ -28,7 +28,7 @@ export default {
     value: {
       type: Object,
       default: function () {
-        return {'type': 'fixed', 'from': moment().format(), 'until': moment().add(1, 'hours').format()}
+        return {'from': moment().format(), 'until': moment().add(1, 'hours').format()}
       }
     },
     options: {},

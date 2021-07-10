@@ -3,32 +3,31 @@
     <b-row>
       <b-col>
     <VueCtkDateTimePicker
-      only-time="true"
+      only-time
       id="fromTime"
       label="From"
-      v-model="datavalue['time_from']"
+      v-model="datavalue['from']"
       :minute-interval=5
       :output-format="output_format"
       format="HH:mm"
       formatted="HH:mm"
-      :error="!datavalue['time_from']"
+      :error="!datavalue['from']"
     />
       </b-col>
       <b-col>
     <VueCtkDateTimePicker
-      only-time="true"
+      only-time
       id="untilTime"
       label="Until"
-      v-model="datavalue['time_until']"
+      v-model="datavalue['until']"
       :minute-interval=5
       :output-format="output_format"
       format="HH:mm"
       formatted="HH:mm"
-      :error="!datavalue['time_until']"
+      :error="!datavalue['until']"
     />
       </b-col>
     </b-row>
-    {{ datavalue }}
   </div>
 </template>
 
@@ -43,7 +42,7 @@ var output_format = "HH:mm:ssZ"
 
 var now = moment().format(output_format)
 var one_hour_later = moment().add(1, 'hours').format(output_format)
-var default_object = {type: 'TimeConstraint', time_from: now, time_until: one_hour_later}
+var default_object = {from: now, until: one_hour_later}
 
 export default {
   extends: Base,
