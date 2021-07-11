@@ -2,10 +2,28 @@
   <div>
     <b-row>
       <b-col>
-        <VueCtkDateTimePicker label="From" id="fromDate" v-model="fromDate" :minute-interval=5 output-format="YYYY-MM-DDTHH:mm:ssZ" format="YYYY-MM-DD HH:mm" :color="main_color" :error="!fromDate"/>
+        <VueCtkDateTimePicker
+          label="From"
+          id="fromDate"
+          v-model="datavalue['from']"
+          :minute-interval=5
+          output-format="YYYY-MM-DDTHH:mm:ssZ"
+          format="YYYY-MM-DD HH:mm"
+          :color="main_color"
+          :error="!datavalue['from']"
+        />
       </b-col>
       <b-col>
-        <VueCtkDateTimePicker label="To" id="untilDate" v-model="untilDate" :minute-interval=5 output-format="YYYY-MM-DDTHH:mm:ssZ" format="YYYY-MM-DD HH:mm" :color="main_color" :error="!untilDate"/>
+        <VueCtkDateTimePicker
+          label="To"
+          id="untilDate"
+          v-model="datavalue['until']"
+          :minute-interval=5
+          output-format="YYYY-MM-DDTHH:mm:ssZ"
+          format="YYYY-MM-DD HH:mm"
+          :color="main_color"
+          :error="!datavalue['until']"
+        />
       </b-col>
     </b-row>
   </div>
@@ -18,6 +36,10 @@ import VueCtkDateTimePicker from 'vue-ctk-date-time-picker'
 import 'vue-ctk-date-time-picker/dist/vue-ctk-date-time-picker.css';
 import moment from 'moment'
 
+var now = moment().format()
+var one_hour_later = moment().add(1, 'hours').format()
+var default_object = {from: now, until: one_hour_later}
+
 export default {
   extends: Base,
   name: 'DateTime',
@@ -28,15 +50,14 @@ export default {
     value: {
       type: Object,
       default: function () {
-        return {'from': moment().format(), 'until': moment().add(1, 'hours').format()}
+        return default_object
       }
     },
     options: {},
   },
   data() {
     return {
-      fromDate: this.value['from'],
-      untilDate: this.value['until'],
+      datavalue: {from: this.value['from'] || now, until: this.value['until'] || one_hour_later},
       main_color: '',
     }
   },
@@ -45,15 +66,11 @@ export default {
     this.main_color = bodystyle.getPropertyValue('--primary').trim()
   },
   watch: {
-    fromDate: {
-      handler: function () {
-        this.$emit('input', {'from': this.fromDate, 'until': this.untilDate})
-      },
-      immediate: true
+    datavalue: {
+      handler() { this.$emit('input', this.datavalue) },
+      immediate: true,
+      deep: true,
     },
-    untilDate: function () {
-      this.$emit('input', {'from': this.fromDate, 'until': this.untilDate})
-    }
   }
 }
 

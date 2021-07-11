@@ -12,6 +12,7 @@
       format="HH:mm"
       formatted="HH:mm"
       :error="!datavalue['from']"
+      :color="main_color"
     />
       </b-col>
       <b-col>
@@ -25,6 +26,7 @@
       format="HH:mm"
       formatted="HH:mm"
       :error="!datavalue['until']"
+      :color="main_color"
     />
       </b-col>
     </b-row>
@@ -53,17 +55,13 @@ export default {
   data() {
     return {
       output_format: output_format,
-      datavalue: this.value,
-      options: [
-        {text: 'Monday',    value: 1},
-        {text: 'Tuesday',   value: 2},
-        {text: 'Wednesday', value: 3},
-        {text: 'Thursday',  value: 4},
-        {text: 'Friday',    value: 5},
-        {text: 'Saturday',  value: 6},
-        {text: 'Sunday',    value: 7},
-      ],
+      datavalue: {from: this.value['from'] || now, until: this.value['until'] || one_hour_later},
+      main_color: '',
     }
+  },
+  mounted() {
+    var bodystyle = window.getComputedStyle(document.body)
+    this.main_color = bodystyle.getPropertyValue('--primary').trim()
   },
   watch: {
     datavalue: {

@@ -99,8 +99,8 @@
         <template v-slot:cell(roles)="row">
           <Field :data="(dig(row.item, 'roles') || []).concat(dig(row.item, 'static_roles') || [])" colorize/>
         </template>
-        <template v-slot:cell(time_constraint)="row">
-          <TimeConstraint :date="dig(row.item, 'time_constraint')" />
+        <template v-slot:cell(time_constraints)="row">
+          <TimeConstraint :date="dig(row.item, 'time_constraints')" />
         </template>
         <template v-slot:cell(state)="row">
           <Field :data="[(dig(row.item, 'state') || 'open')]" colorize/>
@@ -315,7 +315,7 @@ export default {
       get_data: get_data,
       join_queries: join_queries,
       alert_countdown: 0,
-      timestamp: 0,
+      timestamp: {},
       delete_items: delete_items,
       filter: this.tabs[0].filter,
       tab_index: 0,
@@ -346,6 +346,8 @@ export default {
         var find_tab = this.tabs.find(el => el.title == this.$route.query.tab)
         if (tab) {
           tab = find_tab
+          this.tab_index = this.tabs.indexOf(this.tab_index)
+          this.filter = tab.filter
         }
       }
       this.changeTab(tab, false)
@@ -361,6 +363,7 @@ export default {
       this.timestamp = moment().unix()
     },
     refresh(feedback = false) {
+      this.filter = this.tabs[this.tab_index].filter
       var query = join_queries([this.filter, this.search_data])
       var options = {
         perpage: this.per_page,

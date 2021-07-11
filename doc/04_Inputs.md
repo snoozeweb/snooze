@@ -25,7 +25,7 @@ See more details in [the documentation of snooze-client](https://github.com/snoo
 # Plugins
 ## Syslog
 
-See [plugin documentation](https://github.com/snoozeweb/snooze_plugins/tree/inputs/syslog).
+See [plugin documentation](https://github.com/snoozeweb/snooze_plugins/tree/master/inputs/syslog).
 
 ## CLI
 

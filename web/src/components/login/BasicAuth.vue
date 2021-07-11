@@ -3,11 +3,11 @@
     <p class="text-muted">Sign In to your account</p>
     <b-input-group class="mb-3">
       <b-input-group-prepend><b-input-group-text><i class="la la-user la-lg"></i></b-input-group-text></b-input-group-prepend>
-      <b-form-input type="text" v-model="username" class="form-control" placeholder="Username" autocomplete="username email" @change="onChanged" required/>
+      <b-form-input type="text" v-model="username" class="form-control" placeholder="Username" autocomplete="username email" @input="reset_validatio" required/>
     </b-input-group>
     <b-input-group class="mb-4">
       <b-input-group-prepend><b-input-group-text><i class="la la-lock la-lg"></i></b-input-group-text></b-input-group-prepend>
-      <b-form-input type="password" v-model="password" class="form-control" placeholder="Password" autocomplete="current-password" @change="onChanged" required/>
+      <b-form-input type="password" v-model="password" class="form-control" placeholder="Password" autocomplete="current-password" @input="reset_validation" required/>
       <b-form-invalid-feedback :state="validate">
         {{ error_message }}
       </b-form-invalid-feedback>
@@ -64,8 +64,9 @@ export default {
           console.log(error)
         })
     },
-    onChanged() {
+    reset_validation() {
       this.validate = true
+      this.error_message = ''
     }
   },
 }

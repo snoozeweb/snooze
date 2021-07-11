@@ -17,7 +17,7 @@
 <script>
 import Base from './Base.vue'
 
-var default_object = {weekdays: []}
+var default_object = {'weekdays': []}
 
 export default {
   extends: Base,
@@ -26,7 +26,7 @@ export default {
   },
   data() {
     return {
-      datavalue: this.value,
+      datavalue: {'weekdays': this.value['weekdays'] || []},
       options: [
         {text: 'Monday',    value: 1},
         {text: 'Tuesday',   value: 2},

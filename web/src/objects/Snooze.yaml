@@ -3,7 +3,7 @@ endpoint: snooze
 fields:
     -
         label: Time Constraint
-        key: time_constraint
+        key: time_constraints
         orderby: sort
         sortable: true
         tdClass: ['align-middle']
@@ -63,7 +63,7 @@ form:
         display_name: Condition
         component: Condition
         description: 'This snooze filter will be triggered only if this condition is matched. Leave it blank to always match'
-    time_constraint:
+    time_constraints:
         display_name: Time constraint
         component: TimeConstraint
         description: 'Time constraint during this snooze filter will be active'

@@ -1,19 +1,21 @@
 <template>
   <div>
-    <h5 v-if="datavalue.length == 0"><b-badge variant="primary">Forever</b-badge></h5>
+    <h5 v-if="Object.keys(datavalue).length === 0 && datavalue.constructor === Object"><b-badge variant="primary">Forever</b-badge></h5>
     <b-form-group class="m-0">
-      <b-row v-for="(v, k) in datavalue" :key="k" class="mb-2">
-        <b-col cols="1">
-          <b-button variant="danger" size="lg" v-on:click="remove_component(k)">X</b-button>
-        </b-col>
-        <b-col cols="11">
-          <component
-            :is="v['type']"
-            :id="'component_'+v['type']+'_'+k"
-            v-model="v['content']"
-          />
-        </b-col>
-      </b-row>
+      <template v-for="(constraint, ctype) in datavalue">
+        <b-row v-for="(val, k) in constraint" :key="ctype+'_'+k" class="mb-2">
+          <b-col cols="1">
+            <b-button variant="danger" size="lg" v-on:click="remove_component(ctype, k)">X</b-button>
+          </b-col>
+          <b-col cols="11">
+            <component
+              :is="detect_constraint(ctype)"
+              :id="'component_'+ctype+'_'+k"
+              v-model="constraint[k]"
+            />
+          </b-col>
+        </b-row>
+      </template>
     </b-form-group>
     <b-form inline>
       <b-input-group>
@@ -42,26 +44,43 @@ export default {
     Weekdays,
   },
   props: {
-    value: {type: Array, default: () => []},
+    value: {type: Object, default: () => {}},
   },
   data() {
     return {
       date_toggle: false,
-      selected: 'DateTime',
+      selected: 'datetime',
       components: [
-        {value: 'DateTime', text: 'DateTime'},
-        {value: 'Time', text: 'Time'},
-        {value: 'Weekdays', text: 'Weekdays'},
+        {value: 'datetime', text: 'DateTime'},
+        {value: 'time', text: 'Time'},
+        {value: 'weekdays', text: 'Weekdays'},
       ],
-      datavalue: this.value,
+      datavalue: this.value || {},
     }
   },
   methods: {
     add_component(component_type) {
-      this.datavalue.push({'type': component_type})
+      if (!(component_type in this.datavalue)) {
+        this.$set(this.datavalue, component_type, [])
+      }
+      this.datavalue[component_type].splice(this.datavalue[component_type].length, 1, {})
     },
-    remove_component(component_index) {
-      this.datavalue.splice(component_index, 1)
+    remove_component(component_type, component_index) {
+      this.datavalue[component_type].splice(component_index, 1)
+      if (this.datavalue[component_type].length == 0) {
+        this.$delete(this.datavalue, component_type)
+      }
+    },
+    detect_constraint(constraint_name) {
+      switch (constraint_name) {
+        case 'datetime':
+          return 'DateTime'
+        case 'time':
+          return 'Time'
+        case 'weekdays':
+        default:
+          return 'Weekdays'
+      }
     },
   },
   watch: {

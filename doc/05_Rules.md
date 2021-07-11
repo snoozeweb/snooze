@@ -50,4 +50,4 @@ This design allowing Rules to be nested is very convenient to avoid repeating th
 
 **Note**: How to access a Rule's children:
 
-![Rules](images/web_rules_children.png
+![Rules](images/web_rules_children.png)

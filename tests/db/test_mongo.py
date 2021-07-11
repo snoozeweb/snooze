@@ -20,7 +20,7 @@ def test_mongo_all():
 @mongomock.patch('mongodb://localhost:27017')
 def test_mongo_search():
     db = Database(default_config.get('database'))
-    db.write('record', [{'a': 1, 'b': 2},{'a': 30, 'b': 40, 'c': 'tata'}])
+    db.write('record', [{'a': 1, 'b': 2, 'd': 1},{'a': 30, 'b': 40, 'c': 'tata', 'd': 1}])
     search1 = ['AND', ['=', 'a', 1], ['!=', 'b', 40]]
     result1 = db.search('record', search1)['count']
     search2 = ['OR', ['=', 'a', 1], ['=', 'a', 30]]
@@ -37,6 +37,8 @@ def test_mongo_search():
     result7 = db.search('record', search7)['count']
     search8 = ['=', 'c', 'toto']
     result8 = db.search('record', search8)['count']
+    search9 = ['AND', ['=', 'b', 2], ['OR', ['=', 'd', 2], ['=', 'd', 1]]]
+    result9 = db.search('record', search9)['count']
     assert result1 == 1
     assert result2 == 2
     assert result3 == 1
@@ -45,6 +47,7 @@ def test_mongo_search():
     assert result6 == 1
     assert result7 == 1
     assert result8 == 0
+    assert result9 == 1
 
 @mongomock.patch('mongodb://localhost:27017')
 def test_mongo_search_contains():

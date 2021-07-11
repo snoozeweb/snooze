@@ -2,7 +2,6 @@
 
 from snooze.db.database import Database
 from copy import deepcopy
-from dateutil import parser
 from logging import getLogger
 log = getLogger('snooze.db.mongo')
 
@@ -33,7 +32,7 @@ class BackendDB(Database):
             {"$project":{ 'date_epoch':1, 'ttl':1, 'timeout':{ "$add": ["$date_epoch", "$ttl"] }}},
             {"$match":{ 'timeout':{ "$lte":now }}}
         ]
-        return self.run_pipeline_delete(collection, pipeline)
+        return self.run_pipeline(collection, pipeline)
 
     def cleanup_orphans(self, collection, key, col_ref, key_ref):
         log.debug("Cleanup collection {} by finding {} in collection {} matching {}".format(collection, key, col_ref, key_ref))
@@ -47,34 +46,14 @@ class BackendDB(Database):
         },{
             "$match": { "matched_docs": { "$eq": [] } }
         }]
-        return self.run_pipeline_delete(collection, pipeline)
+        return self.run_pipeline(collection, pipeline)
 
-    def run_pipeline_delete(self, collection, pipeline):
+    def run_pipeline(self, collection, pipeline):
         aggregate_results = self.db[collection].aggregate(pipeline)
         ids = list(map(lambda doc: doc['_id'], aggregate_results))
         deleted_results = self.db[collection].delete_many({'_id': {"$in": ids}})
         log.debug('Removed {} documents in {}'.format(deleted_results.deleted_count, collection))
         return deleted_results.deleted_count
-
-    def date_in(self, collection, expression):
-        try:
-            date_str = expression[0]
-            date_parsed = parser.parse(date_str)
-            hours_str = date_parsed.strftime('%H:%m')
-            weekday = int(date_parsed.strftime('%w'))
-            field = expression[1]
-            pipeline = [
-                {"$match": {'$or': [{field+'.weekdays': {'$exists': False}}, {field+'.weekdays': {'$in': [weekday]}}]}},
-                {"$match": {'$or': [{field+'.datetime': {'$exists': False}}, {field+'.datetime.until': {'$gte': date_str}}]}},
-                {"$match": {'$or': [{field+'.datetime': {'$exists': False}}, {field+'.datetime.from': {'$lte': date_str}}]}},
-                {"$match": {'$or': [{field+'.time': {'$exists': False}}, {field+'.time.until': {'$gte': hours_str}}]}},
-                {"$match": {'$or': [{field+'.time': {'$exists': False}}, {field+'.time.from': {'$lte': hours_str}}]}}
-            ]
-            return pipeline
-        except Exception as e:
-            log.exception(e)
-            return None
-        
 
     def write(self, collection, obj, primary = None, duplicate_policy='update', update_time=True, constant=None):
         added = []
@@ -152,40 +131,19 @@ class BackendDB(Database):
             self.db[collection].insert_many(obj_copy)
         return {'data': {'added': added, 'updated': updated, 'rejected': rejected}}
 
-    def search(self, collection, condition=[], nb_per_page=0, page_number=1, orderby='date_epoch', asc=True):
+    def search(self, collection, condition=[], nb_per_page=0, page_number=1, orderby='$natural', asc=True):
         if orderby == '':
-            orderby = 'date_epoch'
-        mongo_search = []
-        if condition != []:
-            if type(condition[0]) is dict:
-                log.debug("Special condition detected")
-                for cond in condition:
-                    if cond.get('type', '') == 'match':
-                        mongo_search.append({'$match': self.convert(cond.get('expression', []))})
-                    elif cond.get('type', '') == 'date_in':
-                        date_request = self.date_in(collection, cond.get('expression'))
-                        if date_request:
-                            mongo_search += date_request
-            else:
-                mongo_search.append({'$match': self.convert(condition)})
+            orderby = '$natural'
+        mongo_search = self.convert(condition)
         log.debug("Condition {} converted to mongo search {}".format(condition, mongo_search))
         log.debug("List of collections: {}".format(self.db.collection_names()))
         if collection in self.db.collection_names():
-            mongo_search.append({'$sort': {orderby: 1 if asc else -1}})
-            facet = []
             if nb_per_page > 0:
-                facet.append({'$skip': (page_number-1)*nb_per_page if page_number-1>0 else 0})
-                facet.append({'$limit': nb_per_page})
+                results = self.db[collection].find(mongo_search).skip((page_number-1)*nb_per_page if page_number-1>0 else 0).limit(nb_per_page).sort(orderby, 1 if asc else -1)
             else:
-                facet.append({'$skip': 0})
-            mongo_search.append({'$facet': {'data': facet, 'count': [{'$count': 'count'}]}})
-            agg_res = list(self.db[collection].aggregate(mongo_search))
-            try:
-                results = agg_res[0]['data']
-                total = agg_res[0]['count'][0]['count']
-            except Exception as e:
-                results = []
-                total = 0
+                results = self.db[collection].find(mongo_search).sort(orderby, 1 if asc else -1)
+            total = results.count()
+            results = list(results)
             log.debug("Found {} for search {}. Page: {}-{}. Count: {}. Sort by {}. Order: {}".format(results, mongo_search, page_number, nb_per_page, total, orderby, 'Ascending' if asc else 'Descending'))
             return {'data': results, 'count': total}
         else:
@@ -219,7 +177,7 @@ class BackendDB(Database):
         operation, *args = array
         if operation == 'AND':
             arg1, arg2 = map(self.convert, args)
-            return_dict = {**arg1, **arg2}
+            return_dict = {'$and': [arg1, arg2]}
         elif operation == 'OR':
             arg1, arg2 = map(self.convert, args)
             return_dict = {'$or': [arg1, arg2]}

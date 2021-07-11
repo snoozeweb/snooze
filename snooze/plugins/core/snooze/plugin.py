@@ -41,11 +41,28 @@ class SnoozeObject():
         self.raw = snooze
 
         # Initializing the time constraints
-        time_constraints = snooze.get('time_constraint', [])
+        time_constraints = snooze.get('time_constraints', {})
         constraints = []
-        for time_constraint in time_constraints:
-            obj = Constraint.detect(time_constraint)
-            constraints.append(obj)
+        log.debug("Init Snooze filter {}".format(self.name))
+        for constraint_type in time_constraints:
+            ctype = constraint_type
+            try:
+                if constraint_type == 'datetime':
+                    ctype = 'DateTimeConstraint'
+                elif constraint_type == 'time':
+                    ctype = 'TimeConstraint'
+                elif constraint_type == 'weekdays':
+                    ctype = 'WeekdaysConstraint'
+                class_obj = getattr(sys.modules[__name__], ctype)
+                if issubclass(class_obj, Constraint):
+                    for constraint_data in time_constraints.get(constraint_type, []):
+                        log.debug("Snooze filter {} constraint {} detected. Data: {}".format(self.name, ctype, constraint_data))
+                        constraints.append(class_obj(constraint_data))
+                else:
+                    log.error("Constraint type %s does not inherit from Contraint", ctype)
+                    raise Exception("Constraint type %s does not inherit from Contraint" % ctype)
+            except Exception as e:
+                log.exception(e)
         self.time_constraint = MultiConstraint(*constraints)
 
     def match(self, record):
@@ -81,25 +98,6 @@ class MultiConstraint:
         )
 
 class Constraint:
-    @staticmethod
-    def detect(time_constraint_dict):
-        '''Return the correct time constraint object given a dictionary representing it'''
-
-        constraint_type = ''
-        try:
-            constraint_type = time_constraint_dict.get('type', 'Error') + 'Constraint'
-            class_obj = getattr(sys.modules[__name__], constraint_type)
-            if issubclass(class_obj, Constraint):
-                return class_obj(time_constraint_dict.get('content', {}))
-            else:
-                log.error("Constraint type %s does not inherit from Contraint", constraint_type)
-                raise Exception("Constraint type %s does not inherit from Contraint" % constraint_type)
-        except AttributeError:
-            log.error("No such constraint type: %s", constraint_type)
-        except Exception as e:
-            log.exception(e)
-
-
     def match(self, _record_date):
         '''Method to fill when inheriting this class'''
         pass

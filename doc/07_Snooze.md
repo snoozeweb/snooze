@@ -1,4 +1,4 @@
-# Snooze
+# Snooze filters
 
 ![Architecture](images/architecture.png)
 
@@ -15,24 +15,32 @@ It can be because it was not a critical issue after all or if the escalating tim
 
 For example:
 ```yaml
-# Record before being processed by Snooze
+# Record before being processed by Snooze filters
 host: dev-syslog01.example.com
 rules: ['is_development']
 environment: development
+timestamp: 2020-07-15 04:00:00
 ```
 ```yaml
-# Snooze
+# Snooze filter
 name: snooze_dev
 condition: environment = development
 time_constraint:
-    from: 2020-01-01 00:00:00
-    to: 2099-01-01 00:00:00
+    datetime:
+      - from:  2021-07-01 00:00:00
+        until: 2021-07-31 23:59:59
+    time:
+      - from:  00:00:00
+        until: 00:08:00
+    weekdays:
+      - weekdays: [1,4] # Monday, Thursday 
 ```
 ```yaml
-# Record after being processed by Snooze
+# Record after being processed by Snooze filters
 host: dev-syslog01.example.com
 rules: ['is_development']
 environment: development
+timestamp: 2020-07-15 04:00:00
 snoozed: snooze_dev
 ```
 
