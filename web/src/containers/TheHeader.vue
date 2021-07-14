@@ -14,11 +14,6 @@
       <CIcon name="logo" height="48" alt="Logo"/>
     </CHeaderBrand>
     <CHeaderNav class="d-md-down-none mr-auto">
-      <!--<CHeaderNavItem class="px-3">
-        <CHeaderNavLink to="/dashboard">
-          Dashboard
-        </CHeaderNavLink>
-      </CHeaderNavItem>-->
       <CHeaderNavItem class="px-3">
         <CHeaderNavLink to="/status" exact>
           Status
@@ -29,6 +24,7 @@
           Profile
         </CHeaderNavLink>
       </CHeaderNavItem>
+      <WidgetList />
     </CHeaderNav>
     <CHeaderNav class="mr-4">
       <TheHeaderDropdownAccnt/>
@@ -41,11 +37,21 @@
 
 <script>
 import TheHeaderDropdownAccnt from './TheHeaderDropdownAccnt'
+import WidgetList from '@/components/WidgetList'
 
 export default {
   name: 'TheHeader',
   components: {
-    TheHeaderDropdownAccnt
-  }
+    TheHeaderDropdownAccnt,
+    WidgetList,
+  },
+  data() {
+    return {
+    }
+  },
+  mounted() {
+  },
+  methods: {
+  },
 }
 </script>

@@ -61,3 +61,16 @@ def write_config(configname = 'core', config = {}, configpath = SNOOZE_CONFIG_PA
     except Exception as e:
         log.error(e)
         return {'error': str(e)}
+
+def get_metadata(plugin_name):
+    '''Read metadata at a given plugin path'''
+    plugin_root = Path(SNOOZE_PATH).parent / 'plugins/core'
+    metadata_path = plugin_root / plugin_name / 'metadata.yaml'
+    try:
+        log.debug("Attempting to read metadata at %s for %s module", metadata_path, plugin_name)
+        data = metadata_path.read_text()
+        metadata = yaml.safe_load(data)
+        return metadata
+    except Exception as err:
+        log.warning("Skipping. Cannot read %s due to: %s", metadata_path, err)
+        return {}

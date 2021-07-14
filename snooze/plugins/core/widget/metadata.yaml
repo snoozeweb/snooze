@@ -1,0 +1,9 @@
+---
+name: 'Widget'
+desc: 'A component to store snooze widgets for the web interface'
+auto_reload: false
+class: WidgetRoute
+routes:
+  /widget/plugins:
+    desc: 'List the widget plugins available'
+    class: WidgetPluginRoute

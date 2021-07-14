@@ -134,11 +134,13 @@ class Patlite:
         return state
 
     def read(self):
+        '''Read the raw data for the state'''
         self.sock.sendall(READ)
         data = self.sock.recv(512)
         return data
 
     def set_full_state(self, state):
+        '''Set the full state of the Patlite'''
         print("Need to set state to: {}".format(state))
         data = state.pack()
         print("Sending data: {}".format(data))
@@ -150,6 +152,11 @@ class Patlite:
             raise PatliteError("Received NAK")
         else:
             raise PatliteError("Unknown return code from Patlite: {}".format(ret))
+
+    def reset(self):
+        '''Reset the Patlite state'''
+        state = State()
+        self.set_full_state(state)
 
     def set(self, key, value):
         state = State(**{key: value})

@@ -1,0 +1,24 @@
+---
+name: Patlite
+desc: Patlite plugin
+auto_reload: false
+routes:
+    /patlite/status/{name}:
+        desc: 'Get the status of a patlite'
+        class: PatliteStatusRoute
+    /patlite/reset/{name}:
+        desc: 'Reset a patlite status'
+        class: PatliteResetRoute
+widgets:
+    patlite:
+        python_class: PatliteWidget
+        vue_component: PatliteWidget
+        display_name: Patlite widget
+        form:
+            patlite:
+                display_name: Patlite
+                component: APIElement
+                description: Address of the Patlite
+                endpoint: patlite
+                primary: name
+                required: true

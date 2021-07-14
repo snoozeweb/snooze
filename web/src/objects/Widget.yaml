@@ -1,0 +1,42 @@
+---
+endpoint: widget
+fields:
+    -
+        label: Name
+        key: name
+        sortable: true
+        thStyle: {width: '20%'}
+        tdClass: ['align-middle']
+    -
+        label: Action
+        key: pprint
+        thStyle: {width: '50%'}
+        tdClass: ['align-middle', 'multiline']
+    -
+        label: Comment
+        key: comment
+        thStyle: {width: '30%'}
+        tdClass: ['align-middle']
+        type: array
+    -
+        label: ''
+        key: button
+        sortable: false
+        tdClass: ['align-middle', 'text-center']
+        thClass: 'text-center'
+        unsearchable: true
+form:
+    name:
+        display_name: Name
+        component: String
+        description: 'Name of the notification entry'
+        required: true
+    widget:
+        display_name: Widget
+        component: APIElement
+        endpoint: widget/plugins
+        primary: name
+        required: true
+    comment:
+        display_name: Comment
+        component: Text

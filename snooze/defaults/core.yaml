@@ -63,6 +63,7 @@ core_plugins:
     - user
     - role
     - comment
+    - widget
 process_plugins:
     # Plugins with process (order matters)
     - rule
