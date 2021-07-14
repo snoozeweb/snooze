@@ -69,6 +69,9 @@
         <template v-slot:cell(timestamp)="row">
           <DateTime :date="dig(row.item, 'timestamp')" />
         </template>
+        <template v-slot:cell(message)="row">
+          {{ truncate_message(dig(row.item, 'message')) }}
+        </template>
         <template v-slot:cell(condition)="row">
           <Condition :data="dig(row.item, 'condition')" />
         </template>
@@ -112,7 +115,7 @@
           <Field :data="[(dig(row.item, 'enabled') == undefined || dig(row.item, 'enabled') == true) ? 'enabled' : 'disabled']" colorize/>
         </template>
         <template v-slot:cell(pprint)="row">
-          <table class="table-borderless"><tr style="background-color: transparent !important"><td class="p-0 pr-1"><i :class="'la la-'+dig(row.item, 'icon')+' la-lg'"/></td><td class="p-0">{{ dig(row.item, 'pprint') }}</td></tr></table>
+          <table class="table-borderless"><tr style="background-color: transparent !important"><td class="p-0 pr-1"><i :class="'la la-'+dig(row.item, 'icon')+' la-lg'"/></td><td class="p-0"><b>{{ dig(row.item, 'widget', 'selected') || '' + dig(row.item, 'action', 'selected') || '' }}</b> @ {{ dig(row.item, 'pprint') }}</td></tr></table>
         </template>
 
         <template v-slot:cell(button)="row">
@@ -239,7 +242,7 @@
 import dig from 'object-dig'
 import moment from 'moment'
 import { API } from '@/api'
-import { get_data, pp_countdown, countdown, preprocess_data } from '@/utils/api'
+import { get_data, pp_countdown, countdown, preprocess_data, delete_items, truncate_message } from '@/utils/api'
 import { join_queries } from '@/utils/query'
 import Form from '@/components/Form.vue'
 import Search from '@/components/Search.vue'
@@ -248,8 +251,6 @@ import Modification from '@/components/Modification.vue'
 import Field from '@/components/Field.vue'
 import DateTime from '@/components/DateTime.vue'
 import TimeConstraint from '@/components/TimeConstraint.vue'
-
-import { delete_items } from '@/utils/api'
 
 // Create a table representing an API endpoint.
 export default {
@@ -314,6 +315,7 @@ export default {
       preprocess_data: preprocess_data,
       get_data: get_data,
       join_queries: join_queries,
+      truncate_message: truncate_message,
       alert_countdown: 0,
       timestamp: {},
       delete_items: delete_items,

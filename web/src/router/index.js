@@ -12,7 +12,7 @@ const AggregateRule = () => import('@/views/AggregateRule')
 const Snooze = () => import('@/views/Snooze')
 const Notification = () => import('@/views/Notification')
 const Action = () => import('@/views/Action')
-const Widgets = () => import('@/views/Widgets')
+const Widget = () => import('@/views/Widget')
 const Patlite = () => import('@/views/Patlite')
 const User = () => import('@/views/User')
 const Role = () => import('@/views/Role')
@@ -86,7 +86,7 @@ export default new Router({
         {
           path: '/widget',
           name: 'Widgets',
-          component: Widgets,
+          component: Widget,
         },
         {
           path: '/patlite',

@@ -9,47 +9,58 @@ log = getLogger('snooze.widget')
 
 from snooze.api.falcon import authorize
 from snooze.plugins.core.basic.falcon.route import Route
+from snooze.api.base import BasicRoute
 from snooze.utils.config import get_metadata
 
-class WidgetPluginRoute(Route):
-    '''A route to list all widget plugins (to instantiate widgets)'''
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        self.name = 'widget_plugins'
-
-    def list_widget_plugins(self):
-        '''Return the list of loaded Widget plugins'''
-        widgets = getattr(self.core, 'widget_plugins', [])
-        # Remove non-serializable keys
-        for widget in widgets:
-            widget.pop('python_instance', None)
-        return widgets
-
-    def on_get(self, req, resp):
+class WidgetPluginRoute(BasicRoute):
+    @authorize
+    def on_get(self, req, resp, widget=None):
         log.debug("Listing widgets")
-        widgets = self.list_widget_plugins()
-        resp.content_type = falcon.MEDIA_JSON
-        resp.status = falcon.HTTP_OK
-        resp.media = {
-            'data': widgets,
-        }
+        plugin_name = req.params.get('widget') or widget
+        try:
+            plugins = []
+            loaded_plugins = self.api.core.plugins
+            if plugin_name:
+                loaded_plugins = [self.api.core.get_core_plugin(plugin_name)]
+            for plugin in loaded_plugins:
+                plugin_metadata = plugin.get_metadata()
+                log.debug("Retrieving widget {} metadata".format(plugin_metadata))
+                plugin_widgets = plugin_metadata.get('widgets', {})
+                for name, widget in plugin_widgets.items():
+                    log.debug("Retrieving widget {} metadata".format(name))
+                    widget['widget_name'] = name
+                    plugins.append(widget)
+            log.debug("List of widgets: {}".format(plugins))
+            resp.content_type = falcon.MEDIA_JSON
+            resp.status = falcon.HTTP_200
+            resp.media = {
+                'data': plugins,
+            }
+        except Exception as e:
+            log.exception(e)
+            resp.status = falcon.HTTP_503
 
 class WidgetRoute(Route):
     @authorize
-    def on_get(self, req, resp, **kwargs):
-        super(WidgetRoute, self).on_get(req, resp, **kwargs)
-        widgets = loads(resp.body).get('data')
-        for widget in widgets:
-            matching_plugins = [
-                plugin for plugin in self.core.widget_plugins
-                if plugin.get('name') \
-                and plugin.get('name') == widget.get('widget', {}).get('selected')
-            ]
-            log.debug("Plugins: %s", matching_plugins)
-            if matching_plugins:
-                plugin = copy.deepcopy(matching_plugins[0])
-                plugin.pop('python_instance', None)
-                widget['form'] = plugin.get('form')
-                widget['plugin_name'] = plugin.get('name')
-                widget['vue_component'] = plugin.get('vue_component')
-        resp.body = dumps({'data': widgets})
+    def on_post(self, req, resp):
+        for req_media in req.media:
+            self.inject_meta(req_media)
+        super(WidgetRoute, self).on_post(req, resp)
+
+    @authorize
+    def on_put(self, req, resp):
+        for req_media in req.media:
+            self.inject_meta(req_media)
+        super(WidgetRoute, self).on_put(req, resp)
+
+    def inject_meta(self, media):
+        widget = media.get('widget', [])
+        widget_name = widget.get('selected')
+        content = widget.get('subcontent')
+        plugin = self.api.core.get_core_plugin(widget_name)
+        if plugin:
+            media['pprint'] = plugin.pprint(widget_name, content)
+        else:
+            media['pprint'] = widget_name
+        media['icon'] = plugin.get_metadata().get('widgets', {}).get(widget_name, {}).get('icon')
+        media['vue_component'] = plugin.get_metadata().get('widgets', {}).get(widget_name, {}).get('vue_component')

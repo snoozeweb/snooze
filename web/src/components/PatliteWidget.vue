@@ -1,7 +1,7 @@
 <template>
   <div>
     <b-button-group v-b-popover.hover.bottom="timestamp" title="Last updated time">
-      <b-button disabled size="sm">{{ options.name }}</b-button>
+      <b-button variant='outline-dark' disabled size="sm">{{ options.name }}</b-button>
       <b-button
         disabled
         v-for="(status, color) in patlite_status"
@@ -18,7 +18,7 @@
     Last fetch at {{ timestamp }}
   </div>
   -->
-      <b-button size="sm" @click="resetPatlite()">Reset</b-button>
+      <b-button size="sm" v-b-tooltip.hover title="Reset" variant="info" @click="resetPatlite()"><i class="la la-redo-alt la-lg"></i></b-button>
       <b-button
         size="sm"
         :variant="auto_refresh ? 'success' : ''"
@@ -26,7 +26,7 @@
         :title="auto_refresh ? 'Auto Refresh ON':'Auto Refresh OFF'"
         @click="toggle_auto()"
         :pressed.sync="auto_refresh"
-      ><i class="la la-sync"></i></b-button>
+      ><i class="la la-sync la-lg"></i></b-button>
     </b-button-group>
   </div>
 </template>
@@ -63,10 +63,10 @@ export default {
      * Get the Patlite status from snooze server and update the `patlite_status` and `timestamp` variables
      */
     getPatliteStatus() {
-      var patlite_name = this.options.widget.subcontent.patlite.selected
-      console.log(`GET /patlite/status/${patlite_name}`)
+      var parameters = 'host='+encodeURI(this.options.widget.subcontent.host)+'&port='+this.options.widget.subcontent.port
+      console.log(`GET /patlite/status?${parameters}`)
       API
-        .get(`/patlite/status/${patlite_name}`)
+        .get(`/patlite/status?${parameters}`)
         .then(response => {
           if (response.data !== undefined) {
             this.patlite_status = response.data
@@ -102,11 +102,13 @@ export default {
      * Order the snooze server to reset the Patlite status
      */
     resetPatlite() {
-      var patlite_name = this.options.widget.subcontent.patlite.selected
+      var parameters = 'host='+encodeURI(this.options.widget.subcontent.host)+'&port='+this.options.widget.subcontent.port
       API
-        .post(`/patlite/reset/${patlite_name}`)
+        .post(`/patlite/reset?${parameters}`)
+        .then(response => {
+          this.refresh()
+        })
         .catch(error => console.log(error))
-      this.refresh()
     },
     toggle_auto() {
       if (this.auto_refresh) {

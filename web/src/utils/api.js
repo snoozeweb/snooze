@@ -234,3 +234,10 @@ export function get_weekday(nb) {
       return 'Invalid weekday ' + nb
   }
 }
+
+export function truncate_message(message, size=280) {
+  if (message.length <= size) {
+    return message
+  }
+  return message.slice(0, size) + '...'
+}

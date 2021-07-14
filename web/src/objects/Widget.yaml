@@ -8,7 +8,7 @@ fields:
         thStyle: {width: '20%'}
         tdClass: ['align-middle']
     -
-        label: Action
+        label: Widget
         key: pprint
         thStyle: {width: '50%'}
         tdClass: ['align-middle', 'multiline']
@@ -19,13 +19,29 @@ fields:
         tdClass: ['align-middle']
         type: array
     -
-        label: ''
+        label: State
+        key: enabled
+        tdClass: ['align-middle', 'text-center']
+        thClass: 'text-center'
+        sortable: false
+    -
         key: button
         sortable: false
+        label: ''
         tdClass: ['align-middle', 'text-center']
         thClass: 'text-center'
         unsearchable: true
 form:
+    enabled:
+        display_name: State
+        component: Radio
+        options:
+            - text: Enabled
+              value: true
+            - text: Disabled
+              value: false
+        default: true
+        description: Enabled
     name:
         display_name: Name
         component: String
@@ -34,8 +50,8 @@ form:
     widget:
         display_name: Widget
         component: APIElement
-        endpoint: widget/plugins
-        primary: name
+        endpoint: widget/plugin
+        primary: widget_name
         required: true
     comment:
         display_name: Comment

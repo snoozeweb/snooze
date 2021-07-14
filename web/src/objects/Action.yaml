@@ -34,7 +34,7 @@ form:
     action:
         display_name: Action
         component: APIElement
-        endpoint: plugin/action
+        endpoint: action/plugin
         primary: action_name
         required: true
     comment:

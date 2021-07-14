@@ -1,8 +1,10 @@
 #!/usr/bin/python
+import falcon
 from logging import getLogger
 log = getLogger('snooze.api')
 
 from snooze.plugins.core.basic.falcon.route import Route
+from snooze.api.base import BasicRoute
 from snooze.api.falcon import authorize
 
 class ActionRoute(Route):
@@ -28,3 +30,26 @@ class ActionRoute(Route):
         else:
             media['pprint'] = plugin_name
         media['icon'] = plugin.get_icon()
+
+class ActionPluginRoute(BasicRoute):
+    @authorize
+    def on_get(self, req, resp, action=None):
+        log.debug("Listing actions")
+        plugin_name = req.params.get('action') or action
+        try:
+            plugins = []
+            loaded_plugins = self.api.core.action_plugins
+            if plugin_name:
+                loaded_plugins = [self.api.core.get_action_plugin(plugin_name)]
+            for plugin in loaded_plugins:
+                log.debug("Retrieving action {} metadata".format(plugin.name))
+                plugins.append(plugin.get_metadata())
+            log.debug("List of actions: {}".format(plugins))
+            resp.content_type = falcon.MEDIA_JSON
+            resp.status = falcon.HTTP_200
+            resp.media = {
+                'data': plugins,
+            }
+        except Exception as e:
+            log.exception(e)
+            resp.status = falcon.HTTP_503

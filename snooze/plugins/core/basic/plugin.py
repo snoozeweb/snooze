@@ -81,5 +81,11 @@ class Plugin:
     def process(self, record):
         return record
 
+    def get_metadata(self):
+        return self.metadata_file
+
+    def pprint(self):
+        return self.name
+
 class Abort(Exception): pass
 class Abort_and_write(Exception): pass

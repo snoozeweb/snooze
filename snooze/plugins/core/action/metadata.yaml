@@ -4,3 +4,8 @@ desc: 'An endpoint to store action objects'
 primary: name
 duplicate_policy: 'reject'
 class: ActionRoute
+routes:
+  '/action/plugin':
+    class: ActionPluginRoute
+  '/action/plugin/{action}':
+    class: ActionPluginRoute

@@ -129,33 +129,6 @@ class PermissionsRoute(BasicRoute):
             log.exception(e)
             resp.status = falcon.HTTP_503
 
-class ActionPluginRoute(BasicRoute):
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        self.name = 'action'
-
-    @authorize
-    def on_get(self, req, resp, action=None):
-        log.debug("Listing actions")
-        plugin_name = req.params.get('action') or action
-        try:
-            plugins = []
-            loaded_plugins = self.api.core.action_plugins
-            if plugin_name:
-                loaded_plugins = [self.api.core.get_action_plugin(plugin_name)]
-            for plugin in loaded_plugins:
-                log.debug("Retrieving action {} metadata".format(plugin.name))
-                plugins.append(plugin.get_metadata())
-            log.debug("List of actions: {}".format(plugins))
-            resp.content_type = falcon.MEDIA_JSON
-            resp.status = falcon.HTTP_200
-            resp.media = {
-                'data': plugins,
-            }
-        except Exception as e:
-            log.exception(e)
-            resp.status = falcon.HTTP_503
-
 class AlertRoute(BasicRoute):
     auth = {
         'auth_disabled': True
@@ -549,9 +522,6 @@ class BackendApi():
         self.add_route('/cluster', ClusterRoute(self))
         # Permissions route
         self.add_route('/permissions', PermissionsRoute(self))
-        # Action route
-        self.add_route('/plugin/action', ActionPluginRoute(self))
-        self.add_route('/plugin/action/{action}', ActionPluginRoute(self))
         # Basic auth setup
         self.auth_routes['local'] = LocalAuthRoute(self)
         self.add_route('/login/local', self.auth_routes['local'])

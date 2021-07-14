@@ -50,7 +50,7 @@
       centered
     >
       <template #modal-title>{{ modal_title }}</template>
-      <b-form-group label="Message:">
+      <b-form-group label="Message (optional):">
         <b-form-input v-model="modal_message" />
       </b-form-group>
     </b-modal>

@@ -5,7 +5,6 @@
       <h4 v-else-if="k.includes('sweb_title')"><CDropdownDivider/>{{v}}<CDropdownDivider/></h4>
       <Base v-else :metadata="v" v-model="value[k]" :data="value" class="pb-2" :ref="'form.' + k"/>
     </div>
-  {{ value }}
   </div>
 </template>
 

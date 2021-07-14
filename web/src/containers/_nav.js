@@ -69,15 +69,8 @@ export default [
         _name: "CSidebarNavItem",
         name: "Widgets",
         to: '/widget',
-        fontIcon: 'la la-hippo',
-        permissions: ['ro_widgets', 'rw_widgets']
-      },
-      {
-        _name: "CSidebarNavItem",
-        name: "Patlite",
-        to: '/patlite',
-        fontIcon: 'la la-traffic-light',
-        permissions: ['ro_patlite', 'rw_patlite']
+        fontIcon: 'la la-plug',
+        permissions: ['ro_widget', 'rw_widget']
       },
       {
         _name: 'CSidebarNavTitle',
