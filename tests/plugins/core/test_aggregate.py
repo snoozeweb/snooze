@@ -42,7 +42,10 @@ class TestAggregatePlugin:
             {'a': '3', 'b': '1', 'c': '3'},
         ]
         for record in records:
-            aggregateplugin.process(record)
-        results1 = aggregateplugin.core.db.search('aggregate', ['=', 'aggregate', 'Agg1'])['data']
-        results2 = aggregateplugin.core.db.search('aggregate', ['=', 'aggregate', 'Agg2'])['data']
-        assert results1[0]['duplicates'] == 3 and results1[1]['duplicates'] == 1 and results2[0]['duplicates'] == 2 and results2[1]['duplicates'] == 1
+             aggregateplugin.core.db.write('record', aggregateplugin.process(record))
+        results1 = aggregateplugin.core.db.search('record', ['=', 'aggregate', 'Agg1'])['data']
+        results2 = aggregateplugin.core.db.search('record', ['=', 'aggregate', 'Agg2'])['data']
+        assert results1[0]['duplicates'] == 3
+        assert results1[1]['duplicates'] == 1
+        assert results2[0]['duplicates'] == 2
+        assert results2[1]['duplicates'] == 1

@@ -100,11 +100,6 @@ form:
                 - text: No
                   value: false
             description: 'Trigger on startup'
-        aggregate_ttl:
-            display_name: Aggregate TTL
-            component: Duration
-            description: 'Assign a time to live for any new aggregate'
-            default_value: 86400
         record_ttl:
             display_name: Record TTL
             component: Duration

@@ -11,6 +11,8 @@ log = getLogger('snooze')
 from snooze.plugins.core import Abort, Abort_and_write
 from snooze.utils import config, Housekeeper, Stats
 from hashlib import sha256
+from dateutil import parser
+from datetime import datetime
 
 class Core:
     def __init__(self, conf):
@@ -72,6 +74,11 @@ class Core:
         record['ttl'] = self.housekeeper.conf.get('record_ttl', 86400)
         record['state'] = 'open'
         record['plugins'] = []
+        try:
+            record['timestamp'] = parser.parse(record['timestamp']).astimezone().strftime("%Y-%m-%dT%H:%M:%S%z")
+        except Exception as e:
+            log.exception(e)
+            record['timestamp'] = datetime.now().astimezone().strftime("%Y-%m-%dT%H:%M:%S%z")
         with self.stats.time('process_record_duration', {'source': source}):
             for plugin in self.process_plugins:
                 try:

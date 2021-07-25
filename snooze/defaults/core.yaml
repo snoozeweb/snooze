@@ -56,7 +56,6 @@ api:
 core_plugins:
     # Plugins without process
     - record
-    - aggregate
     - action
     - settings
     - profile

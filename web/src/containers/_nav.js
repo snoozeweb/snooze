@@ -11,13 +11,6 @@ export default [
       },
       {
         _name: 'CSidebarNavItem',
-        name: 'Aggregates',
-        to: '/aggregate',
-        fontIcon: 'la la-folder',
-	permissions: ['ro_aggregate', 'rw_aggregate'],
-      },
-      {
-        _name: 'CSidebarNavItem',
         name: 'Status',
         to: '/status',
         fontIcon: 'la la-signal',

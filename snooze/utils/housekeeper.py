@@ -38,7 +38,6 @@ class HousekeeperThread(threading.Thread):
                 break
             if time.time() - timer >= self.housekeeper.interval:
                 timer = time.time()
-                self.housekeeper.core.db.cleanup_timeout('aggregate')
                 self.housekeeper.core.db.cleanup_timeout('record')
                 self.housekeeper.core.db.cleanup_orphans('comment', 'record_uid', 'record', 'uid')
             time.sleep(1)

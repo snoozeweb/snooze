@@ -44,11 +44,6 @@ export default new Router({
           component: Record
         },
         {
-          path: 'aggregate',
-          name: 'Aggregates',
-          component: Aggregate
-        },
-        {
           path: 'status',
           name: 'Status',
           component: Status

@@ -56,6 +56,8 @@ def ensure_rpmmacros_line(myline):
 @task
 def rpm():
     ensure_rpmmacros_line('%_build_id_links none')
+    if not os.path.isdir('dist'):
+        os.makedirs('dist')
     print("Building rpm")
     with open('rpmvenv.json') as f:
         config = json.loads(f.read())

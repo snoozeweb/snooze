@@ -25,35 +25,45 @@ class Aggregaterule(Plugin):
             if aggrule.enabled and aggrule.process(record):
                 agghash = hashlib.md5((str(aggrule.name) + '.'.join([(record.get(field) or '') for field in aggrule.fields])).encode()).hexdigest()
                 LOG.debug("Checking if an aggregate with hash {} can be found".format(agghash))
-                aggregate_result = self.db.search('aggregate', ['=', 'hash', agghash])
+                aggregate_result = self.db.search('record', ['=', 'hash', agghash])
                 if aggregate_result['count'] > 0:
                     aggregate = aggregate_result['data'][0]
                     LOG.debug("Found {}, updating it with the record infos".format(str(aggregate)))
-                    uid = aggregate['uid']
-                    rules = aggregate.get('rules') or []
-                    ttl = self.core.housekeeper.conf.get('aggregate_ttl', 86400)
-                    aggregate.update(record)
-                    aggregate['uid'] = uid
-                    aggregate['hash'] = agghash
-                    aggregate['rules'] = list(set(aggregate.get('rules') or []) | set(rules))
-                    aggregate['duplicates'] += 1
-                    if ttl >= 0:
-                        aggregate['ttl'] = ttl
                     now = datetime.datetime.now()
+                    rules = record.get('rules', [])
+                    timestamp = record.get('timestamp', now.astimezone().strftime("%Y-%m-%dT%H:%M:%S%z"))
+                    host = record.get('host', '')
+                    process = record.get('process', '')
+                    severity = record.get('severity', '')
+                    message = record.get('message', '')
+                    record.update(aggregate)
+                    record['rules'] = list(set(aggregate.get('rules') or []) | set(rules))
+                    record['duplicates'] = aggregate.get('duplicates', 0) + 1
+                    record['timestamp'] = timestamp
+                    record['host'] = host
+                    record['process'] = process
+                    record['severity'] = severity
+                    record['message'] = message
                     if (aggrule.throttle < 0) or (now.timestamp() - aggregate.get('date_epoch', 0) < aggrule.throttle):
-                        self.db.write('aggregate', aggregate, update_time=False)
+                        self.db.write('record', record, update_time=False)
                         raise Abort
-                    else:
-                        self.db.write('aggregate', aggregate)
+                    elif record.get('state') in ['ack', 'close']:
+                        comment = {}
+                        comment['record_uid'] = aggregate['uid']
+                        comment['type'] = 'esc'
+                        comment['message'] = 'Auto re-escalated'
+                        comment['date'] = now.astimezone().isoformat()
+                        self.db.write('comment', comment)
+                        record['state'] = 'esc'
                 else:
                     LOG.debug("Not found, creating a new aggregate")
-                    aggregate = deepcopy(record)
-                    aggregate.pop('uid', None)
-                    aggregate['duplicates'] = 1
-                    aggregate['hash'] = agghash
-                    aggregate['ttl'] = self.core.housekeeper.conf.get('aggregate_ttl', 86400)
-                    self.db.write('aggregate', aggregate)
+                    record['duplicates'] = 1
+                    record['hash'] = agghash
                 break
+        else:
+            LOG.debug("Record {} could not match any aggregate rule, assigning a default aggregate".format(str(record)))
+            record['duplicates'] = 1
+            record['aggregate'] = 'default'
 
         return record
 

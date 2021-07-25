@@ -43,7 +43,7 @@ class CommentRoute(Route):
                     media_type = req_media.get('type')
                     comments = self.search('comment', ['=', 'record_uid', record_uid], nb_per_page=0, page_number=1, order_by='date', asc=False)
                     records['data'][0]['comment_count'] = comments['count'] + len(record_comments[record_uid])
-                    if media_type == 'ack' or media_type == 'esc' or media_type == 'open' or media_type == 'close':
+                    if media_type in ['ack', 'esc', 'open', 'close']:
                         log.debug("Changing record {} type to {}".format(record_uid, media_type))
                         records['data'][0]['state'] = media_type
                     update_records.append(records['data'][0])

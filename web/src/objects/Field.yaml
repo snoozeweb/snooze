@@ -22,3 +22,6 @@ colors:
     enabled: success
     OK: success
     ERROR: danger
+    CRITICAL: danger
+    WARNING: warning
+    UNKNOWN: tertiary
