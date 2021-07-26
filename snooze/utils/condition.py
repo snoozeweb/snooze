@@ -11,7 +11,8 @@ class Condition():
     def __init__(self, array=None):
         LOG.debug("Creating condition with {}".format(array))
         self.array = array
-        if self.array is list and len(self.array) > 0 and self.array[0] is None:
+        if type(self.array) is list and len(self.array) > 0 and self.array[0] is None:
+            LOG.debug("Condition None will always match")
             self.array = None
     def __str__(self):
         if not self.array:

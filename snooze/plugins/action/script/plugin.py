@@ -17,7 +17,7 @@ class Script(Action):
         output = content.get('script')
         arguments = content.get('arguments')
         if arguments:
-            output += ' ' + ' '.join(map(lambda x: x[0]+' '+x[1], arguments))
+            output += ' ' + ' '.join(map(lambda x: ' '.join(x), arguments))
         return output
 
     def send(self, record, content):
@@ -31,7 +31,7 @@ class Script(Action):
                 script += interpret_jinja(argument, record)
             if type(argument) is dict:
                 script += sum([interpret_jinja([k, v], record) for k, v in argument])
-        log.debug("Will execute notification script `{}`".format(' '.join(script)))
+        log.debug("Will execute action script `{}`".format(' '.join(script)))
         stdin = dumps(record) if json else None
         process = run(script, stdout=PIPE, input=stdin, encoding='ascii')
         log.debug('stdout: ' + str(process.stdout))

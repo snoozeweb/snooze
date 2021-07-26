@@ -24,5 +24,6 @@ class Patlite(Action):
         lights = options.get('lights')
         host = options.get('host')
         port = int(options.get('port'))
+        log.debug("Will execute action patlite `{}:{}` with lights `{}`".format(host, port, lights))
         with PatliteAPI(host, port=port) as patlite:
             patlite.set_full_state(State(**lights))

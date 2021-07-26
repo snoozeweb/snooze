@@ -1,9 +1,10 @@
 ---
 colors:
+    -: light
     ack: success
     reescalated: warning
     esc: warning
-    open: light
+    open: quaternary
     close: tertiary
     root: danger
     ldap: primary

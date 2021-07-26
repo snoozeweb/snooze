@@ -92,7 +92,7 @@ class CommentRoute(Route):
                         records['data'][0]['state'] = new_type
                     else:
                         log.debug("Resetting record {} type".format(record_uid))
-                        records['data'][0]['state'] = 'open'
+                        records['data'][0]['state'] = ''
                     update_records.append(records['data'][0])
                 else:
                     resp.content_type = falcon.MEDIA_TEXT

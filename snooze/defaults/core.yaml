@@ -73,6 +73,7 @@ action_plugins:
     # Plugins used in Notifications
     - mail
     - script
+    - webhook
 
 ##########
 # Database

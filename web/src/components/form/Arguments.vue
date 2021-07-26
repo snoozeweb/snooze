@@ -2,8 +2,8 @@
   <div>
     <b-form inline v-for="(argument, index) in this.arguments" :key="index">
     <b-input-group class="pb-1">
-      <b-form-input v-model=argument[0] placeholder="--mykey"  />
-      <b-form-input v-model=argument[1] placeholder="my_value" />
+      <b-form-input v-model=argument[0] :placeholder="placeholder[0]"  />
+      <b-form-input v-model=argument[1] :placeholder="placeholder[1]" />
       <b-input-group-append>
         <b-button v-on:click="remove(index)" variant="danger"><i class="la la-trash la-lg"></i></b-button>
       </b-input-group-append>
@@ -22,6 +22,7 @@ export default {
   props: {
     value: {type: Array, default: () => []},
     options: {},
+    placeholder: {type: Array, default: () => ['--key', 'value']},
   },
   data () {
     return {

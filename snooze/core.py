@@ -72,7 +72,7 @@ class Core:
     def process_record(self, record):
         source = record.get('source', 'unknown')
         record['ttl'] = self.housekeeper.conf.get('record_ttl', 86400)
-        record['state'] = 'open'
+        record['state'] = ''
         record['plugins'] = []
         try:
             record['timestamp'] = parser.parse(record['timestamp']).astimezone().strftime("%Y-%m-%dT%H:%M:%S%z")

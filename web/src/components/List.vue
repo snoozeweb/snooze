@@ -106,7 +106,7 @@
           <TimeConstraint :date="dig(row.item, 'time_constraints')" />
         </template>
         <template v-slot:cell(state)="row">
-          <Field :data="[(dig(row.item, 'state') || 'open')]" colorize/>
+          <Field :data="[(dig(row.item, 'state') || '-')]" colorize/>
         </template>
         <template v-slot:cell(actions)="row">
           <Field :data="dig(row.item, 'actions')" />
