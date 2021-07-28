@@ -33,3 +33,13 @@ form:
         value: false
     default_value: true
     description: 'Verify SSL Certificate when using HTTPS'
+  inject_response:
+    display_name: Inject Response
+    component: Radio
+    options:
+      - text: Yes
+        value: true
+      - text: No
+        value: false
+    default_value: false
+    description: 'Inject HTTP Response to a field called reponse_{{webhook_name}} (Auto parse JSON)'

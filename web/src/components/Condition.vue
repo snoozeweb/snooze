@@ -1,7 +1,12 @@
 <template>
   <span v-if="data === undefined || data == ''">Always true</span>
   <span v-else-if="data.constructor.name == 'Array'">
-    ( <Condition :data="data[1]"/> <b>{{ data[0] }}</b> <Condition :data="data[2]" /> )
+    <span v-if="data[0] != 'NOT'">
+      ( <Condition :data="data[1]"/> <b>{{ data[0] }}</b> <Condition v-if="data[0] != 'EXISTS'" :data="data[2]" /> )
+    </span>
+    <span v-else>
+      ( <b>{{ data[0] }}</b> <Condition :data="data[1]"/> )
+    </span>
   </span>
   <span v-else-if="data.constructor.name == 'String'">{{ data }}</span>
   <span v-else>

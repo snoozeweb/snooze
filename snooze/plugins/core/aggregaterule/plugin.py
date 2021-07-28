@@ -31,6 +31,7 @@ class Aggregaterule(Plugin):
                     aggregate = aggregate_result['data'][0]
                     LOG.debug("Found {}, updating it with the record infos".format(str(aggregate)))
                     now = datetime.datetime.now()
+                    record = dict(list(aggregate.items()) + list(record.items()))
                     record['uid'] = aggregate.get('uid') 
                     record['state'] = aggregate.get('state', '')
                     record['duplicates'] = aggregate.get('duplicates', 0) + 1

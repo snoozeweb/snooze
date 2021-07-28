@@ -28,9 +28,10 @@ class Webhook(Action):
 
     def send(self, record, content):
         url = content.get('url', '')
-        params = content.get('params')
+        params = content.get('params', [])
         payload = content.get('payload')
         proxy = content.get('proxy')
+        inject_response = content.get('inject_response', False)
         if payload:
             try:
                 payload_list = loads(unquote(payload))
@@ -54,6 +55,7 @@ class Webhook(Action):
             ssl_verify=True
         else:
             ssl_verify=False
+        response = None
         try:
             if parsed_params:
                 parsed_params = { parsed_params[i][0]: parsed_params[i][1] for i in range(0, len(parsed_params)) }
@@ -61,9 +63,16 @@ class Webhook(Action):
             else:
                 parsed_params = None
             response = RestHelper().send_http_request(url, 'POST', payload=parsed_payload, parameters=parsed_params, verify=ssl_verify, proxy_uri=proxy)
-            log.debug("HTTP Response: {}".format(response.content))
+            log.debug("HTTP Response: {}".format(response))
         except Exception as e:
             log.exception(e)
+        if inject_response and response and response.status_code == 200:
+            try:
+                response_content = loads(response.content)
+            except:
+                response_content = response.content
+            log.debug(content)
+            record['response_' + content.get('action_name', self.name).replace(' ', '_')] = response_content
 
 def interpret_jinja(fields, record):
     return list(map(lambda field: Template(field).render(record), fields))

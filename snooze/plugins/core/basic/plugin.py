@@ -66,6 +66,8 @@ class Plugin:
             self.metadata = {
                 'name': self.name,
                 'auto_reload': self.metadata_file.get('auto_reload', True),
+                'default_sorting': self.metadata_file.get('default_sorting', ''),
+                'default_ordering': self.metadata_file.get('default_ordering', True),
                 'primary': self.metadata_file.get('primary', None),
                 'routes': routes
             }
@@ -76,13 +78,13 @@ class Plugin:
     def reload_data(self, sync = False):
         if self.metadata.get('auto_reload', True):
             log.debug("Reloading data for plugin {}".format(self.name))
-            self.data = self.db.search(self.name, orderby=(self.metadata.get('default_sorting') or ''))['data']
+            self.data = self.db.search(self.name, orderby=self.metadata.get('default_sorting', ''), asc=self.metadata.get('default_ordering', True))['data']
 
     def process(self, record):
         return record
 
     def get_metadata(self):
-        return self.metadata_file
+        return self.metadata
 
     def pprint(self):
         return self.name

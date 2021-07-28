@@ -2,6 +2,8 @@
   <div class="animated fadeIn">
     <List
       endpoint="rule"
+      order_by="name"
+      is_ascending="true"
       :form="form"
       :fields="fields"
       :tabs="tabs"

@@ -2,7 +2,6 @@
 
 
 import json
-from copy import deepcopy
 from snooze.utils import Condition
 
 from logging import getLogger
@@ -28,7 +27,7 @@ class Notification(Plugin):
                         action_content = action_plugin.get('content', {})
                         action_name = action_content.get('action_name', '')
                         try:
-                            action.send(deepcopy(record), action_content)
+                            action.send(record, action_content)
                             self.core.stats.inc('notification_sent', {'name': notification.name, 'action': action_name})
                         except Exception as e:
                             self.core.stats.inc('notification_error', {'name': notification.name, 'action': action_name})
@@ -61,7 +60,7 @@ class NotificationObject():
                 for action_data in actions_data:
                     action = action_data.get('action', {})
                     content = action.get('subcontent', {})
-                    content['action_name'] = action.get('name')
+                    content['action_name'] = action_data.get('name')
                     self.action_plugins.append({'action': core.get_action_plugin(action.get('selected')), 'content': content})
             elif self.enabled:
                 log.error("Could not find any action defined notification {}. Disabling".format(self.name))

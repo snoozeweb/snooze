@@ -4,7 +4,7 @@
       ref="table"
       endpoint="record"
       order_by="timestamp"
-      :is_ascending="false"
+      is_ascending="false"
       @row-selected="select"
       :fields="fields"
       :tabs="tabs"

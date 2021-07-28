@@ -4,7 +4,7 @@
       ref="table"
       endpoint="aggregate"
       order_by="timestamp"
-      :is_ascending="false"
+      is_ascending="false"
       :fields="fields"
       :tabs="tabs"
       :add_mode="false"

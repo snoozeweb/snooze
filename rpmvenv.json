@@ -7,7 +7,7 @@
     "group": "Application/System",
     "license": "AGPL3",
     "summary": "Snooze server",
-    "version": "1.0.5"
+    "version": "1.0.6"
   },
   "python_venv": {
     "name": "snooze",
@@ -47,7 +47,7 @@
       "/etc/snooze/server"
     ],
     "install": [
-      "pathfix.py -pni \"%{__python3} %{py3_shbang_opts}\" %{venv_dir}",
+      "/usr/bin/pathfix.py -pni \"%{__python3} %{py3_shbang_opts}\" %{venv_dir}",
       "mkdir -p %{buildroot}/var/log/snooze",
       "mkdir -p %{buildroot}/etc/snooze/server",
       "mkdir -p %{buildroot}/var/lib/snooze"
