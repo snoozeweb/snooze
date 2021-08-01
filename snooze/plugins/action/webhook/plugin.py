@@ -7,6 +7,7 @@ from urllib.parse import unquote
 import requests
 
 from snooze.plugins.action import Action
+from snooze.utils.functions import ca_bundle
 
 from logging import getLogger
 log = getLogger('snooze.action.script')
@@ -15,6 +16,7 @@ log = getLogger('snooze.action.script')
 class Webhook(Action):
     def __init__(self, core):
         super().__init__(core)
+        self.ca_bundle = ca_bundle()
 
     def pprint(self, content):
         output = content.get('url')
@@ -52,9 +54,9 @@ class Webhook(Action):
                 parsed_params += [sum([interpret_jinja([k, v], record) for k, v in argument])]
         log.debug("Will execute action webhook `{}`".format(url))
         if str.startswith(url, 'https') and content.get('ssl_verify'): 
-            ssl_verify=True
+            ssl_verify = self.ca_bundle
         else:
-            ssl_verify=False
+            ssl_verify = False
         response = None
         try:
             if parsed_params:

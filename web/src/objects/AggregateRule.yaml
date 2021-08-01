@@ -15,7 +15,13 @@ fields:
     -
         key: fields
         sortable: false
-        thStyle: {width: '30%'}
+        thStyle: {width: '15%'}
+        tdClass: ['align-middle']
+        type: array
+    -
+        key: watch
+        sortable: false
+        thStyle: {width: '15%'}
         tdClass: ['align-middle']
         type: array
     -
@@ -59,6 +65,10 @@ form:
         display_name: Fields
         component: Field
         description: Space separated values used to group incoming alerts
+    watch:
+        display_name: Watch
+        component: Field
+        description: List of fields to bypass aggregation if they get updated
     throttle:
         display_name: Throttle
         component: Duration

@@ -81,6 +81,9 @@
         <template v-slot:cell(fields)="row">
           <Field :data="dig(row.item, 'fields')" />
         </template>
+        <template v-slot:cell(watch)="row">
+          <Field :data="dig(row.item, 'watch')" />
+        </template>
         <template v-slot:cell(severity)="row">
           <Field :data="[dig(row.item, 'severity')]" colorize/>
         </template>

@@ -9,7 +9,7 @@ import hashlib
 from logging import getLogger
 from copy import deepcopy
 from snooze.plugins.core import Abort
-LOG = getLogger('snooze.process')
+LOG = getLogger('snooze.aggregaterule')
 
 
 class Aggregaterule(Plugin):
@@ -36,20 +36,52 @@ class Aggregaterule(Plugin):
                     record['state'] = aggregate.get('state', '')
                     record['duplicates'] = aggregate.get('duplicates', 0) + 1
                     record['date_epoch'] = aggregate.get('date_epoch', now.timestamp())
-                    if (aggrule.throttle < 0) or (now.timestamp() - aggregate.get('date_epoch', 0) < aggrule.throttle):
-                        self.db.write('record', record, update_time=False)
-                        raise Abort
-                    elif record.get('state') in ['ack', 'close']:
+                    watched_fields = []
+                    for watched_field in aggrule.watch:
+                        LOG.debug("Watched field {}: compare {} and {}".format(watched_field, record.get(watched_field), aggregate.get(watched_field)))
+                        if record.get(watched_field) != aggregate.get(watched_field):
+                            watched_fields.append({'name': watched_field, 'old': aggregate.get(watched_field), 'new': record.get(watched_field)})
+                    if watched_fields:
+                        LOG.debug("Found updated fields from watchlist: {}".format(watched_fields))
                         comment = {}
                         comment['record_uid'] = aggregate['uid']
-                        comment['type'] = 'esc'
                         comment['date'] = now.astimezone().isoformat()
+                        comment['auto'] = True
+                        append_txt = []
+                        for watch_field in watched_fields:
+                            append_txt.append("{} ({} => {})".format(watch_field['name'], watch_field['old'], watch_field['new']))
+                        if record.get('state') == 'close':
+                            comment['message'] = 'Auto re-opened from watchlist: {}'.format(', '.join(append_txt))
+                            comment['type'] = 'open'
+                            record['state'] = 'open'
+                        elif record.get('state') == 'ack':
+                            comment['message'] = 'Auto re-escalated from watchlist: {}'.format(', '.join(append_txt))
+                            comment['type'] = 'esc'
+                            record['state'] = 'esc'
+                        else:
+                            comment['message'] = 'New escalation from watchlist: {}'.format(', '.join(append_txt))
+                            comment['type'] = 'comment'
+                        self.db.write('comment', comment)
+                        record['comment_count'] = aggregate.get('comment_count', 0) + 1
+                    elif (aggrule.throttle < 0) or (now.timestamp() - aggregate.get('date_epoch', 0) < aggrule.throttle):
+                        self.db.write('record', record, update_time=False)
+                        raise Abort
+                    else:
+                        comment = {}
+                        comment['record_uid'] = aggregate['uid']
+                        comment['date'] = now.astimezone().isoformat()
+                        comment['auto'] = True
                         if record.get('state') == 'close':
                             comment['message'] = 'Auto re-opened'
+                            comment['type'] = 'open'
                             record['state'] = 'open'
-                        else:
+                        elif record.get('state') == 'ack':
                             comment['message'] = 'Auto re-escalated'
+                            comment['type'] = 'esc'
                             record['state'] = 'esc'
+                        else:
+                            comment['message'] = 'New escalation'
+                            comment['type'] = 'comment'
                         self.db.write('comment', comment)
                         record['comment_count'] = aggregate.get('comment_count', 0) + 1
                 else:
@@ -78,8 +110,9 @@ class AggregateruleObject():
         LOG.debug("Creating aggregate: {}".format(str(self.name)))
         self.condition = Condition(aggregate_rule.get('condition', ''))
         LOG.debug("-> condition: {}".format(str(self.condition)))
-        self.fields = aggregate_rule.get('fields') or []
+        self.fields = aggregate_rule.get('fields', [])
         self.fields.sort()
+        self.watch = aggregate_rule.get('watch', [])
         try:
             self.throttle = int(aggregate_rule.get('throttle', 0))
         except:

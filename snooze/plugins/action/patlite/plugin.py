@@ -2,6 +2,8 @@
 
 from snooze.utils.patlite import Patlite as PatliteAPI, State
 from snooze.plugins.action import Action
+from logging import getLogger
+log = getLogger('snooze.action.patlite')
 
 class Patlite(Action):
     def pprint(self, options):
