@@ -102,6 +102,9 @@
         <template v-slot:cell(throttle)="row">
           {{ pp_countdown(dig(row.item, 'throttle')) }}
         </template>
+        <template v-slot:cell(delay)="row">
+          {{ pp_countdown(dig(row.item, 'delay')) }}
+        </template>
         <template v-slot:cell(roles)="row">
           <Field :data="(dig(row.item, 'roles') || []).concat(dig(row.item, 'static_roles') || [])" colorize/>
         </template>
@@ -295,15 +298,15 @@ export default {
       default: () => { return {} },
     },
     // Allow the `Add` button
-    add_mode: {type: Boolean, default: true},
+    add_mode: {type: Boolean, default: false},
     // Allow the `Edit` button in actions
-    edit_mode: {type: Boolean, default: true},
+    edit_mode: {type: Boolean, default: false},
     // Allow the `Delete` button in actions
-    delete_mode: {type: Boolean, default: true},
+    delete_mode: {type: Boolean, default: false},
     // The default key to order by
     order_by: {type: String, default: undefined},
     // Ascending (true) or Descending (false)
-    is_ascending: {type: Boolean, default: true},
+    is_ascending: {type: Boolean, default: false},
   },
   mounted () {
     this.reload()

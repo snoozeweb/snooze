@@ -5,6 +5,9 @@
       :form="form"
       :fields="fields"
       :tabs="tabs"
+      edit_mode
+      delete_mode
+      add_mode
     >
     </List>
   </div>

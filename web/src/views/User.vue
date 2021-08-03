@@ -6,8 +6,7 @@
       :fields="fields"
       :hidden_fields="hidden_fields"
       :tabs="tabs"
-      :add_mode="false"
-      :edit_mode="false"
+      delete_mode
       ref="list"
     >
       <template #head_buttons>

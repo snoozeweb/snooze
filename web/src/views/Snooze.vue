@@ -7,6 +7,9 @@
       :fields="fields"
       :tabs="tabs"
       ref="table"
+      edit_mode
+      delete_mode
+      add_mode
     >
         <template v-slot:cell(hits)="row">
           <router-link :to="{ path: 'record', query: { tab: 'Snoozed', s: 'snoozed='+encodeURIComponent(dig(row.item,'name')) }}">{{ dig(row.item, 'hits') }}</router-link>

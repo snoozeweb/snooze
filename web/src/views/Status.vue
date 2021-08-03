@@ -29,7 +29,7 @@
       </b-card-body>
       <div v-else>
         <span class='m-2'>
-          No cluster was configured
+          {{ feedback_message }}
         </span>
       </div>
     </b-card>
@@ -62,9 +62,11 @@ export default {
   },
   methods: {
     refresh(feedback = false) {
+      this.feedback_message = 'Getting cluster infos...'
       this.get_data('cluster', null, {}, this.callback, feedback)
     },
     callback(response, feedback) {
+      this.feedback_message = 'No cluster was configured'
       if (response.data && response.data.data) {
         this.items = response.data.data
         this.items.sort(function(a, b) {
@@ -81,6 +83,7 @@ export default {
       dig: dig,
       get_data: get_data,
       alert_countdown: 0,
+      feedback_message: '',
       fields: [
         {key: 'host'},
         {key: 'port'},

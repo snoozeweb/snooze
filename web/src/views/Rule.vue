@@ -3,11 +3,14 @@
     <List
       endpoint="rule"
       order_by="name"
-      is_ascending="true"
+      is_ascending
       :form="form"
       :fields="fields"
       :tabs="tabs"
       ref="list"
+      edit_mode
+      delete_mode
+      add_mode
     >
       <template #button="row">
         <b-button size="sm" @click="show_children(row.item)" variant="info" v-b-tooltip.hover title="Children"><i class="la la-folder-open la-lg"/></b-button>

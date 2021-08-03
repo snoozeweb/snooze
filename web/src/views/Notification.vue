@@ -3,10 +3,13 @@
     <List
       endpoint="notification"
       order_by="name"
-      is_ascending="true"
+      is_ascending
       :form="form"
       :fields="fields"
       :tabs="tabs"
+      edit_mode
+      delete_mode
+      add_mode
     />
   </div>
 </template>

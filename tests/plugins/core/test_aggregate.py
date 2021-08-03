@@ -1,6 +1,7 @@
 #!/usr/bin/python3.6
 
 from snooze.plugins.core.aggregaterule.plugin import Aggregaterule, AggregateruleObject
+from snooze.plugins.core import Abort
 
 from logging import getLogger
 log = getLogger('snooze.tests')
@@ -19,13 +20,16 @@ class TestAggregate:
 class TestAggregatePlugin:
     @pytest.fixture
     def aggregateplugin(self, core, config):
+        core.db.delete('record', [], True)
         aggregate_rules = [
-            {'name': 'Agg1', 'condition': ['=', 'a', '1'], 'fields': ['a', 'b']},
-            {'name': 'Agg2', 'condition': ['=', 'a', '2'], 'fields': ['a', 'c']}
+            {'name': 'Agg1', 'condition': ['=', 'a', '1'], 'fields': ['a', 'b'], 'throttle': 15},
+            {'name': 'Agg2', 'condition': ['=', 'a', '2'], 'fields': ['a', 'c'], 'throttle': 15},
+            {'name': 'Agg3', 'condition': ['=', 'a', '3'], 'fields': ['a', 'b'], 'throttle': 0},
+            {'name': 'Agg4', 'condition': ['=', 'a', '4'], 'fields': ['a', 'b'], 'throttle': 15, 'watch': ['c']},
         ]
         core.db.write('aggregaterule', aggregate_rules)
         return Aggregaterule(core, config)
-    def test_process(self, aggregateplugin):
+    def test_agreggate_throttle(self, aggregateplugin):
         records = [
             # Agg1 - 1
             {'a': '1', 'b': '2', 'c': '3'},
@@ -39,13 +43,46 @@ class TestAggregatePlugin:
             # Agg2 - 2
             {'a': '2', 'b': '1', 'c': '3'},
             # Default
-            {'a': '3', 'b': '1', 'c': '3'},
+            {'a': '999', 'b': '1', 'c': '3'},
+            {'a': '999', 'b': '1', 'c': '3'},
         ]
         for record in records:
-             aggregateplugin.core.db.write('record', aggregateplugin.process(record))
+            try:
+                rec = aggregateplugin.process(record)
+                aggregateplugin.core.db.write('record', rec)
+            except Abort:
+                continue
         results1 = aggregateplugin.core.db.search('record', ['=', 'aggregate', 'Agg1'])['data']
         results2 = aggregateplugin.core.db.search('record', ['=', 'aggregate', 'Agg2'])['data']
+        results3 = aggregateplugin.core.db.search('record', ['=', 'aggregate', 'default'])['data']
         assert results1[0]['duplicates'] == 3
         assert results1[1]['duplicates'] == 1
         assert results2[0]['duplicates'] == 2
         assert results2[1]['duplicates'] == 1
+        assert results3[0]['duplicates'] == 2
+
+    def test_agreggate_nothrottle(self, aggregateplugin):
+        records = [
+            # Agg3 - 1
+            {'a': '3', 'b': '2', 'c': '3'},
+            {'a': '3', 'b': '2', 'c': '4'},
+        ]
+        for record in records:
+            rec = aggregateplugin.process(record)
+            aggregateplugin.core.db.write('record', rec)
+        results = aggregateplugin.core.db.search('record', ['=', 'aggregate', 'Agg3'])['data']
+        assert results[0]['duplicates'] == 2
+        assert results[0]['comment_count'] == 1
+
+    def test_aggregate_watchedfields(self, aggregateplugin):
+        records = [
+            # Agg4 - 1
+            {'a': '4', 'b': '2', 'c': '3'},
+            {'a': '4', 'b': '2', 'c': '4'},
+        ]
+        for record in records:
+            rec = aggregateplugin.process(record)
+            aggregateplugin.core.db.write('record', rec)
+        results = aggregateplugin.core.db.search('record', ['=', 'aggregate', 'Agg4'])['data']
+        assert results[0]['duplicates'] == 2
+        assert results[0]['comment_count'] == 1

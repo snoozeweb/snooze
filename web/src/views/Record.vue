@@ -4,13 +4,10 @@
       ref="table"
       endpoint="record"
       order_by="timestamp"
-      is_ascending="false"
+      is_ascending
       @row-selected="select"
       :fields="fields"
       :tabs="tabs"
-      :add_mode="false"
-      :edit_mode="false"
-      :delete_mode="false"
     >
       <template #button="row">
         <b-button variant="primary" class='text-nowrap' @click="modal_show([row.item], 'comment')" size="sm" v-b-tooltip.hover title="Add comment"><i class="las la-comment-dots la-lg"/> <b-badge v-if="row.item['comment_count']" variant='light' class='position-absolute' style='z-index: 10; top:0!important; right:100%!important; transform:translate(50%,-50%)!important'>{{ row.item['comment_count'] }}</b-badge></b-button>

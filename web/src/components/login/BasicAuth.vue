@@ -3,7 +3,7 @@
     <p class="text-muted">Sign In to your account</p>
     <b-input-group class="mb-3">
       <b-input-group-prepend><b-input-group-text><i class="la la-user la-lg"></i></b-input-group-text></b-input-group-prepend>
-      <b-form-input type="text" v-model="username" class="form-control" placeholder="Username" autocomplete="username email" @input="reset_validatio" required/>
+      <b-form-input type="text" v-model="username" class="form-control" placeholder="Username" autocomplete="username email" @input="reset_validation" required/>
     </b-input-group>
     <b-input-group class="mb-4">
       <b-input-group-prepend><b-input-group-text><i class="la la-lock la-lg"></i></b-input-group-text></b-input-group-prepend>

@@ -23,76 +23,84 @@ class Aggregaterule(Plugin):
         LOG.debug("Processing record: {}".format(str(record)))
         for aggrule in self.aggregate_rules:
             if aggrule.enabled and aggrule.process(record):
-                agghash = hashlib.md5((str(aggrule.name) + '.'.join([(record.get(field) or '') for field in aggrule.fields])).encode()).hexdigest()
-                record['hash'] = agghash
-                LOG.debug("Checking if an aggregate with hash {} can be found".format(agghash))
-                aggregate_result = self.db.search('record', ['=', 'hash', agghash])
-                if aggregate_result['count'] > 0:
-                    aggregate = aggregate_result['data'][0]
-                    LOG.debug("Found {}, updating it with the record infos".format(str(aggregate)))
-                    now = datetime.datetime.now()
-                    record = dict(list(aggregate.items()) + list(record.items()))
-                    record['uid'] = aggregate.get('uid') 
-                    record['state'] = aggregate.get('state', '')
-                    record['duplicates'] = aggregate.get('duplicates', 0) + 1
-                    record['date_epoch'] = aggregate.get('date_epoch', now.timestamp())
-                    watched_fields = []
-                    for watched_field in aggrule.watch:
-                        LOG.debug("Watched field {}: compare {} and {}".format(watched_field, record.get(watched_field), aggregate.get(watched_field)))
-                        if record.get(watched_field) != aggregate.get(watched_field):
-                            watched_fields.append({'name': watched_field, 'old': aggregate.get(watched_field), 'new': record.get(watched_field)})
-                    if watched_fields:
-                        LOG.debug("Found updated fields from watchlist: {}".format(watched_fields))
-                        comment = {}
-                        comment['record_uid'] = aggregate['uid']
-                        comment['date'] = now.astimezone().isoformat()
-                        comment['auto'] = True
-                        append_txt = []
-                        for watch_field in watched_fields:
-                            append_txt.append("{} ({} => {})".format(watch_field['name'], watch_field['old'], watch_field['new']))
-                        if record.get('state') == 'close':
-                            comment['message'] = 'Auto re-opened from watchlist: {}'.format(', '.join(append_txt))
-                            comment['type'] = 'open'
-                            record['state'] = 'open'
-                        elif record.get('state') == 'ack':
-                            comment['message'] = 'Auto re-escalated from watchlist: {}'.format(', '.join(append_txt))
-                            comment['type'] = 'esc'
-                            record['state'] = 'esc'
-                        else:
-                            comment['message'] = 'New escalation from watchlist: {}'.format(', '.join(append_txt))
-                            comment['type'] = 'comment'
-                        self.db.write('comment', comment)
-                        record['comment_count'] = aggregate.get('comment_count', 0) + 1
-                    elif (aggrule.throttle < 0) or (now.timestamp() - aggregate.get('date_epoch', 0) < aggrule.throttle):
-                        self.db.write('record', record, update_time=False)
-                        raise Abort
-                    else:
-                        comment = {}
-                        comment['record_uid'] = aggregate['uid']
-                        comment['date'] = now.astimezone().isoformat()
-                        comment['auto'] = True
-                        if record.get('state') == 'close':
-                            comment['message'] = 'Auto re-opened'
-                            comment['type'] = 'open'
-                            record['state'] = 'open'
-                        elif record.get('state') == 'ack':
-                            comment['message'] = 'Auto re-escalated'
-                            comment['type'] = 'esc'
-                            record['state'] = 'esc'
-                        else:
-                            comment['message'] = 'New escalation'
-                            comment['type'] = 'comment'
-                        self.db.write('comment', comment)
-                        record['comment_count'] = aggregate.get('comment_count', 0) + 1
-                else:
-                    LOG.debug("Not found, creating a new aggregate")
-                    record['duplicates'] = 1
+                record['hash'] = hashlib.md5((str(aggrule.name) + '.'.join([(record.get(field) or '') for field in aggrule.fields])).encode()).hexdigest()
+                record = self.match_aggregate(record, aggrule.throttle, aggrule.watch)
                 break
         else:
             LOG.debug("Record {} could not match any aggregate rule, assigning a default aggregate".format(str(record)))
-            record['duplicates'] = 1
+            if 'raw' in record:
+                record['hash'] = hashlib.md5(record['raw']).hexdigest()
+            else:
+                record['hash'] = hashlib.md5(repr(sorted(record.items())).encode('utf-8')).hexdigest()
             record['aggregate'] = 'default'
+            record = self.match_aggregate(record)
 
+        return record
+
+    def match_aggregate(self, record, throttle=10, watch=[]):
+        LOG.debug("Checking if an aggregate with hash {} can be found".format(record['hash']))
+        aggregate_result = self.db.search('record', ['=', 'hash', record['hash']])
+        if aggregate_result['count'] > 0:
+            aggregate = aggregate_result['data'][0]
+            LOG.debug("Found {}, updating it with the record infos".format(str(aggregate)))
+            now = datetime.datetime.now()
+            record = dict(list(aggregate.items()) + list(record.items()))
+            record['uid'] = aggregate.get('uid') 
+            record['state'] = aggregate.get('state', '')
+            record['duplicates'] = aggregate.get('duplicates', 0) + 1
+            record['date_epoch'] = aggregate.get('date_epoch', now.timestamp())
+            watched_fields = []
+            for watched_field in watch:
+                LOG.debug("Watched field {}: compare {} and {}".format(watched_field, record.get(watched_field), aggregate.get(watched_field)))
+                if record.get(watched_field) != aggregate.get(watched_field):
+                    watched_fields.append({'name': watched_field, 'old': aggregate.get(watched_field), 'new': record.get(watched_field)})
+            if watched_fields:
+                LOG.debug("Found updated fields from watchlist: {}".format(watched_fields))
+                comment = {}
+                comment['record_uid'] = aggregate['uid']
+                comment['date'] = now.astimezone().isoformat()
+                comment['auto'] = True
+                append_txt = []
+                for watch_field in watched_fields:
+                    append_txt.append("{} ({} => {})".format(watch_field['name'], watch_field['old'], watch_field['new']))
+                if record.get('state') == 'close':
+                    comment['message'] = 'Auto re-opened from watchlist: {}'.format(', '.join(append_txt))
+                    comment['type'] = 'open'
+                    record['state'] = 'open'
+                elif record.get('state') == 'ack':
+                    comment['message'] = 'Auto re-escalated from watchlist: {}'.format(', '.join(append_txt))
+                    comment['type'] = 'esc'
+                    record['state'] = 'esc'
+                else:
+                    comment['message'] = 'New escalation from watchlist: {}'.format(', '.join(append_txt))
+                    comment['type'] = 'comment'
+                self.db.write('comment', comment)
+                record['comment_count'] = aggregate.get('comment_count', 0) + 1
+            elif (throttle < 0) or (now.timestamp() - aggregate.get('date_epoch', 0) < throttle):
+                LOG.debug("Time within throttle {} range, discarding".format(throttle))
+                self.db.write('record', record, update_time=False)
+                raise Abort
+            else:
+                comment = {}
+                comment['record_uid'] = aggregate['uid']
+                comment['date'] = now.astimezone().isoformat()
+                comment['auto'] = True
+                if record.get('state') == 'close':
+                    comment['message'] = 'Auto re-opened'
+                    comment['type'] = 'open'
+                    record['state'] = 'open'
+                elif record.get('state') == 'ack':
+                    comment['message'] = 'Auto re-escalated'
+                    comment['type'] = 'esc'
+                    record['state'] = 'esc'
+                else:
+                    comment['message'] = 'New escalation'
+                    comment['type'] = 'comment'
+                self.db.write('comment', comment)
+                record['comment_count'] = aggregate.get('comment_count', 0) + 1
+        else:
+            LOG.debug("Not found, creating a new aggregate")
+            record['duplicates'] = 1
         return record
 
     def reload_data(self, sync = False):
@@ -114,9 +122,9 @@ class AggregateruleObject():
         self.fields.sort()
         self.watch = aggregate_rule.get('watch', [])
         try:
-            self.throttle = int(aggregate_rule.get('throttle', 0))
+            self.throttle = int(aggregate_rule.get('throttle', 10))
         except:
-            self.throttle = 0
+            self.throttle = 10
     def match(self, record):
         """
         Check if a record matched this aggregate's rule condition
