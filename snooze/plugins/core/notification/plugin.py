@@ -7,6 +7,7 @@ import threading
 import hashlib
 import socket
 from snooze.utils import Condition
+from snooze.utils.time_constraints import get_record_date, init_time_constraints
 
 from logging import getLogger
 log = getLogger('snooze.notification')
@@ -30,7 +31,7 @@ class Notification(Plugin):
 
     def process(self, record):
         for notification in self.notifications:
-            if notification.enabled and notification.condition.match(record):
+            if notification.enabled and notification.match(record):
                 log.debug("Matched notification `{}` with {}".format(notification.name, record))
                 if len(notification.action_plugins) > 0:
                     if notification.delay > 0:
@@ -86,6 +87,13 @@ class NotificationObject():
         elif self.enabled:
             log.error("Notification {} has no action. Disabling".format(self.name))
             self.enabled = False
+        # Initializing the time constraints
+        log.debug("Init Notification filter {} Time Constraints".format(self.name))
+        self.time_constraint = init_time_constraints(notification.get('time_constraints', {}))
+
+    def match(self, record):
+        '''Whether a record match the Notification object'''
+        return self.condition.match(record) and self.time_constraint.match(get_record_date(record))
 
     def send_delayed(self, record):
         delayed_records = self.core.db.search('record', ['=', 'hash', record.get('hash')])

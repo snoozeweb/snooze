@@ -2,6 +2,12 @@
 endpoint: notification
 fields:
     -
+        label: Time Constraint
+        key: time_constraints
+        orderby: sort
+        sortable: true
+        tdClass: ['align-middle']
+    -
         key: name
         sortable: true
         thStyle: {width: '20%'}
@@ -54,6 +60,10 @@ form:
         display_name: Condition
         component: Condition
         description: This notification will be triggered only if this condition is matched. Leave it blank to always match
+    time_constraints:
+        display_name: Time constraint
+        component: TimeConstraint
+        description: 'Time constraint during this notification will be active'
     actions:
         display_name: Actions
         component: APIElementField

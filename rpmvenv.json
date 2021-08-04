@@ -7,7 +7,7 @@
     "group": "Application/System",
     "license": "AGPL3",
     "summary": "Snooze server",
-    "version": "1.0.6"
+    "version": "1.0.7"
   },
   "python_venv": {
     "name": "snooze",

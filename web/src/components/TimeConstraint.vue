@@ -31,7 +31,12 @@ import { trimDate, get_weekday } from '@/utils/api'
 
 export default {
   props: {
-    date: {type: Object},
+    date: {
+      type: Object,
+      default: function () {
+        return {}
+      }
+    },
   },
   data () {
     return {
