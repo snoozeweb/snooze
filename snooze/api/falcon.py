@@ -550,9 +550,9 @@ class BackendApi():
         httpd = simple_server.make_server(listen_addr, port, self.handler)
         ssl_conf = self.core.conf.get('ssl', {})
         use_ssl = ssl_conf.get('enabled')
-        if use_ssl == True:
-            certfile = ssl_conf.get('certfile')
-            keyfile = ssl_conf.get('keyfile')
+        if ('SNOOZE_CERT_FILE' in os.environ and 'SNOOZE_KEY_FILE' in os.environ) or use_ssl == True:
+            certfile = os.environ.get('SNOOZE_CERT_FILE', ssl_conf.get('certfile'))
+            keyfile = os.environ.get('SNOOZE_KEY_FILE', ssl_conf.get('keyfile'))
             if not os.access(certfile, os.R_OK):
                 log.error("{} is not readable. Cannot start server".format(certfile))
                 return

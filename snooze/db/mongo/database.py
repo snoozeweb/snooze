@@ -9,17 +9,21 @@ import pymongo
 import uuid
 import datetime
 import re
+import os
 
 class OperationNotSupported(Exception): pass
 
-database = 'snooze'
+database = os.environ.get('DATABASE_NAME', 'snooze')
 
 def test_contains(array, value):
     return any(value in a for a in flatten(array))
 
 class BackendDB(Database):
     def init_db(self, conf):
-        self.db = pymongo.MongoClient(**conf)[database]
+        if 'DATABASE_URL' in os.environ:
+            self.db = pymongo.MongoClient(os.environ.get('DATABASE_URL'))[database]
+        else:
+            self.db = pymongo.MongoClient(**conf)[database]
         log.debug("Initialized Mongodb with config {}".format(conf))
         log.debug("db: {}".format(self.db))
 
