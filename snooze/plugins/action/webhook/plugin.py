@@ -4,6 +4,7 @@ from bson.json_util import dumps
 from jinja2 import Template
 from bson.json_util import loads, dumps
 from urllib.parse import unquote
+from copy import deepcopy
 import requests
 
 from snooze.plugins.action import Action
@@ -34,10 +35,12 @@ class Webhook(Action):
         payload = content.get('payload')
         proxy = content.get('proxy')
         inject_response = content.get('inject_response', False)
+        record_copy = deepcopy(record)
+        record_copy['__self__'] = record
         if payload:
             try:
                 payload_list = loads(unquote(payload))
-                parsed_payload = interpret_jinja_dict(payload_list, record)
+                parsed_payload = interpret_jinja_dict(payload_list, record_copy)
                 log.debug("Parsed payload: {}".format(parsed_payload))
             except Exception as e:
                 log.exception(e)
@@ -47,11 +50,11 @@ class Webhook(Action):
         parsed_params = []
         for argument in params:
             if type(argument) is str:
-                parsed_params += [interpret_jinja([argument, ''], record)]
+                parsed_params += [interpret_jinja([argument, ''], record_copy)]
             if type(argument) is list:
-                parsed_params += [interpret_jinja(argument, record)]
+                parsed_params += [interpret_jinja(argument, record_copy)]
             if type(argument) is dict:
-                parsed_params += [sum([interpret_jinja([k, v], record) for k, v in argument])]
+                parsed_params += [sum([interpret_jinja([k, v], record_copy) for k, v in argument])]
         log.debug("Will execute action webhook `{}`".format(url))
         if str.startswith(url, 'https') and content.get('ssl_verify'): 
             ssl_verify = self.ca_bundle
