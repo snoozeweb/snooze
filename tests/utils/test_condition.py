@@ -16,6 +16,11 @@ def test_match_equal_3():
     search = ['=', 'a.c', '2']
     assert not Condition(search).match(record)
 
+def test_match_equal_4():
+    record = {'a': [1, 2]}
+    search = ['=', 'a.1', 2]
+    assert Condition(search).match(record)
+
 def test_match_different_1():
     record = {'a': '1', 'b': '2'}
     search = ['!=', 'a', '1']
@@ -71,6 +76,14 @@ def test_match_in():
     record2 = {'a': '1'}
     search2 = ['IN', ['1', '5'], 'a']
     assert Condition(search2).match(record2)
+
+def test_match_in_condition():
+    record1 = {'a': [{'b':'0'}, {'c': '0'}]}
+    search1 = ['IN', ['=', 'c', '0'], 'a']
+    assert Condition(search1).match(record1)
+    record2 = {'a': [{'b':'0'}, {'c': '0'}]}
+    search2 = ['IN', ['=', 'd', '0'], 'a']
+    assert not Condition(search2).match(record2)
 
 def test_str():
     search = ['OR', ['NOT', ['=', 'a', 1]], ['=', 'b', 2]]

@@ -35,10 +35,10 @@ class Notification(Plugin):
                 log.debug("Matched notification `{}` with {}".format(notification.name, record))
                 if len(notification.action_plugins) > 0:
                     if notification.delay > 0:
-                        log.debug("Notification `{}` will be sent now".format(notification.name))
+                        log.debug("Notification `{}` will be sent in {}s".format(notification.name, notification.delay))
                         self.delay(notification, record)
                     else:
-                        log.debug("Notification `{}` will be sent in {}s".format(notification.name, notification.delay))
+                        log.debug("Notification `{}` will be sent now".format(notification.name))
                         notification.send(record)
                 else:
                     log.error("Notification {} has no action. Cannot send".format(self.name))
@@ -114,6 +114,7 @@ class NotificationObject():
             action_content = action_plugin.get('content', {})
             action_name = action_content.get('action_name', '')
             try:
+                log.debug('Action {}'.format(action_plugin))
                 action.send(record, action_content)
                 self.core.stats.inc('notification_sent', {'name': self.name, 'action': action_name})
             except Exception as e:

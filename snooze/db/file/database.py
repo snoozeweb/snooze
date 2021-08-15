@@ -268,6 +268,12 @@ class BackendDB(Database):
             key, value = args
             if not isinstance(key, list):
                 key = [key]
+            else:
+                try:
+                    saved_key = key
+                    key = self.convert(key)
+                except:
+                    key = saved_key
             return_obj = dig(Query(), *value.split('.')).any(key)
         else:
             raise OperationNotSupported(operation)

@@ -7,6 +7,8 @@ import logging
 from logging import getLogger
 LOG = getLogger('snooze.condition')
 
+class OperationNotSupported(Exception): pass
+
 class Condition():
     def __init__(self, array=None):
         LOG.debug("Creating condition with {}".format(array))
@@ -131,9 +133,19 @@ class Condition():
         elif operation == 'IN':
             key, value = args
             record_value = dig(record, *value.split('.'))
-            if not isinstance(key, list):
-                key = [key]
             if not isinstance(record_value, list):
                 record_value = [record_value]
+            if not isinstance(key, list):
+                key = [key]
+            else:
+                try:
+                    saved_key = key
+                    key = Condition(key)
+                    return any(map(key.match, record_value))
+                except:
+                    key = saved_key
+                    LOG.debug("{} is not a Condition, using default match".format(key))
             LOG.debug("Value: {}, Record: {}".format(key, record_value))
             return any(a in flatten(key) for a in flatten(record_value))
+        else:
+            raise OperationNotSupported(operation)

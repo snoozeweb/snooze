@@ -1,7 +1,7 @@
 #!/usr/bin/python36
 
 from bson.json_util import dumps
-from jinja2 import Template
+from jinja2 import Template, Environment, BaseLoader
 from bson.json_util import loads, dumps
 from urllib.parse import unquote
 from copy import deepcopy
@@ -34,20 +34,25 @@ class Webhook(Action):
         params = content.get('params', [])
         payload = content.get('payload')
         proxy = content.get('proxy')
+        action_name = content.get('action_name', self.name)
         inject_response = content.get('inject_response', False)
         record_copy = deepcopy(record)
         record_copy['__self__'] = record
         if payload:
             try:
-                payload_list = loads(unquote(payload))
-                parsed_payload = interpret_jinja_dict(payload_list, record_copy)
-                log.debug("Parsed payload: {}".format(parsed_payload))
+                unquoted_payload = unquote(payload)
+                log.debug("Unquoted payload: {}".format(unquoted_payload))
+                env = Environment(loader=BaseLoader)
+                env.policies['json.dumps_kwargs'] = {'default': str}
+                payload_jinja = env.from_string(unquoted_payload).render(record_copy)
+                log.debug("Jinja payload: {}".format(payload_jinja))
+                parsed_payload = loads(payload_jinja)
             except Exception as e:
                 log.exception(e)
                 parsed_payload = None
         else:
             parsed_payload = None
-        parsed_params = []
+        parsed_params = [['snooze_action_name', action_name]]
         for argument in params:
             if type(argument) is str:
                 parsed_params += [interpret_jinja([argument, ''], record_copy)]
@@ -77,7 +82,15 @@ class Webhook(Action):
             except:
                 response_content = response.content
             log.debug(content)
-            record['response_' + content.get('action_name', self.name).replace(' ', '_')] = response_content
+            response_dict = {'action_name': action_name, 'content': response_content}
+            if 'snooze_webhook_responses' not in record:
+                record['snooze_webhook_responses'] = []
+            for idx, action_response in enumerate(record['snooze_webhook_responses']):
+                if action_response.get('action_name') == action_name:
+                    record['snooze_webhook_responses'][idx] = response_dict
+                    break
+            else:
+                record['snooze_webhook_responses'].append(response_dict)
 
 def interpret_jinja(fields, record):
     return list(map(lambda field: Template(field).render(record), fields))

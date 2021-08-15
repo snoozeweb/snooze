@@ -41,6 +41,8 @@ class ActionPluginRoute(BasicRoute):
             loaded_plugins = self.api.core.action_plugins
             if plugin_name:
                 loaded_plugins = [self.api.core.get_action_plugin(plugin_name)]
+            else:
+                log.error("Could not find action plugin for request {}".format(req.params))
             for plugin in loaded_plugins:
                 log.debug("Retrieving action {} metadata".format(plugin.name))
                 plugins.append(plugin.get_metadata())

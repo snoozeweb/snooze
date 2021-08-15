@@ -3,11 +3,15 @@ import os
 import json
 
 from importlib import import_module
-from wsgiref import simple_server
+from wsgiref.simple_server import make_server, WSGIServer
+from socketserver import ThreadingMixIn
 from snooze.utils import Cluster
 
 from logging import getLogger
 log = getLogger('snooze.api')
+
+class ThreadingWSGIServer(ThreadingMixIn, WSGIServer):
+    daemon_threads = True
 
 class BasicRoute():
     def __init__(self, api, plugin = None, primary = None, duplicate_policy = 'update', authorization_policy = None, check_permissions = False, check_constant = None, inject_payload = False):
@@ -128,5 +132,5 @@ class Api():
     def add_route(self, route, action): pass
 
     def serve(self):
-        httpd = simple_server.make_server('0.0.0.0', 9000, self.handler)
+        httpd = make_server('0.0.0.0', 9000, self.handler, ThreadingWSGIServer)
         httpd.serve_forever()

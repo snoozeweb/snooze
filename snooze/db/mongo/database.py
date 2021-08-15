@@ -235,9 +235,17 @@ class BackendDB(Database):
             return_dict = {key: {'$in': reg_array}}
         elif operation == 'IN':
             key, value = args
+            search_operator = '$in'
             if not isinstance(key, list):
                 key = [key]
-            return_dict = {value: {'$in': key}}
+            else:
+                try:
+                    saved_key = key
+                    key = self.convert(key)
+                    search_operator = '$elemMatch'
+                except:
+                    key = saved_key
+            return_dict = {value: {search_operator: key}}
         else:
             raise OperationNotSupported(operation)
         return return_dict

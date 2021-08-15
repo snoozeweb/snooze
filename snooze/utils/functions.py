@@ -11,7 +11,10 @@ def dig(dic, *lst):
     """
     if len(lst) > 0:
         try:
-            return dig(dic[lst[0]], *lst[1:])
+            if lst[0].isnumeric():
+                return dig(dic[int(lst[0])], *lst[1:])
+            else:
+                return dig(dic[lst[0]], *lst[1:])
         except:
             return None
     else:

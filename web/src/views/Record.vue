@@ -84,12 +84,9 @@ export default {
         {title: 'Alerts', filter: ['AND', 
             ['AND',
 	      ['NOT', ['=', 'state', 'ack']],
-	      ['NOT', ['=', 'state', 'close']],
+	      ['NOT', ['=', 'state', 'close']]
             ],
-            ['AND',
-              ['NOT', ['EXISTS', 'snoozed']],
-              ['>=', 'ttl', 0],
-           ],
+            ['NOT', ['EXISTS', 'snoozed']]
           ]
         },
         {title: 'Snoozed', filter: ['EXISTS', 'snoozed']},

@@ -8,7 +8,8 @@ import ssl
 import falcon
 from falcon_auth import FalconAuthMiddleware, BasicAuthBackend, JWTAuthBackend
 import requests
-from wsgiref import simple_server
+from wsgiref.simple_server import make_server, WSGIServer
+from socketserver import ThreadingMixIn
 from bson.json_util import loads, dumps
 
 from snooze.api.base import Api, BasicRoute
@@ -26,6 +27,9 @@ from .socket import SocketServer
 
 from ldap3 import Server, Connection, ALL, SUBTREE
 from ldap3.core.exceptions import LDAPOperationResult, LDAPExceptionError
+
+class ThreadingWSGIServer(ThreadingMixIn, WSGIServer):
+    daemon_threads = True
 
 def authorize(func):
     def _f(self, req, resp, *args, **kw):
@@ -547,7 +551,7 @@ class BackendApi():
         log.debug('Starting REST API')
         listen_addr = self.core.conf.get('listen_addr', '0.0.0.0')
         port = self.core.conf.get('port', '5200')
-        httpd = simple_server.make_server(listen_addr, port, self.handler)
+        httpd = make_server(listen_addr, port, self.handler, ThreadingWSGIServer)
         ssl_conf = self.core.conf.get('ssl', {})
         use_ssl = ssl_conf.get('enabled')
         if ('SNOOZE_CERT_FILE' in os.environ and 'SNOOZE_KEY_FILE' in os.environ) or use_ssl == True:

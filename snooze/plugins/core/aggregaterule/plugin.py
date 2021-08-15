@@ -49,6 +49,8 @@ class Aggregaterule(Plugin):
             record['state'] = aggregate.get('state', '')
             record['duplicates'] = aggregate.get('duplicates', 0) + 1
             record['date_epoch'] = aggregate.get('date_epoch', now.timestamp())
+            if aggregate.get('ttl', -1) < 0:
+                record['ttl'] = aggregate.get('ttl', -1)
             watched_fields = []
             for watched_field in watch:
                 LOG.debug("Watched field {}: compare {} and {}".format(watched_field, record.get(watched_field), aggregate.get(watched_field)))

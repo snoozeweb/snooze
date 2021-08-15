@@ -68,10 +68,20 @@ def test_mongo_search_in():
     assert len(result1) == 2 and len(result2) == 2 and len(result3) == 1
 
 @mongomock.patch('mongodb://localhost:27017')
+def test_mongo_search_in_query():
+    db = Database(default_config.get('database'))
+    db.write('record', [{'b': [{'x': '00'}, {'y':'1'}, {'z':'2'}]}, {'a': [{'x': '00'}, {'y':'1'}, {'z':'2'}]}, {'a': [{'x': '00'}, {'y':'1'}, {'z':'4'}]}])
+    result1 = db.search('record', ['IN', ['=', 'y', '1'], 'b'])['data']
+    result2 = db.search('record', ['IN', ['=', 'y', '1'], 'a'])['data']
+    result3 = db.search('record', ['IN', ['OR', ['=', 'z', '2'], ['=', 'z', '4']], 'a'])['data']
+    assert len(result1) == 1 and len(result2) == 2 and len(result3) == 2
+
+@mongomock.patch('mongodb://localhost:27017')
 def test_mongo_search_nested():
    db = Database(default_config.get('database'))
-   db.write('record', [{'a': 1, 'b': {'c': 2, 'd': 3}}])
+   db.write('record', [{'a': [1, 2], 'b': {'c': 2, 'd': 3}}])
    assert len(db.search('record', ['=', 'b.c', 2])['data']) == 1
+   assert len(db.search('record', ['=', 'a.1', 2])['data']) == 1
 
 @mongomock.patch('mongodb://localhost:27017')
 def test_mongo_search_page():
