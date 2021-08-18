@@ -17,6 +17,7 @@ ldap3 = "*"
 prometheus-client = "*"
 python-dateutil = "*"
 netifaces = "*"
+pyparsing = "*"
 
 [dev-packages]
 pytest = "*"
