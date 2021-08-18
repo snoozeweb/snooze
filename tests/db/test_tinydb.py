@@ -93,6 +93,15 @@ def test_tinydb_search_in_query(db):
     result3 = db.search('record', ['IN', ['OR', ['=', 'z', '2'], ['=', 'z', '4']], 'a'])['data']
     assert len(result1) == 1 and len(result2) == 2 and len(result3) == 2
 
+def test_tinydb_search_text(db):
+    db.write('record', [{'myfield': [{'found':'mystring'}, {'mysearch': '0'}]}, {'a': {'found': 'myvalue'}}])
+    assert len(db.search('record', ['SEARCH', 'field'])['data']) == 1
+    assert len(db.search('record', ['SEARCH', 'string'])['data']) == 1
+    assert len(db.search('record', ['SEARCH', 'value'])['data']) == 1
+    assert len(db.search('record', ['SEARCH', 'found'])['data']) == 2
+    assert len(db.search('record', ['OR', ['SEARCH', 'string'], ['SEARCH', 'value']])['data']) == 2
+    assert len(db.search('record', ['SEARCH', 'unknown'])['data']) == 0
+
 def test_tinydb_search_nested(db):
    db.write('record', [{'a': [1, 2], 'b': {'c': 2, 'd': 3}}])
    assert len(db.search('record', ['=', 'b.c', 2])['data']) == 1

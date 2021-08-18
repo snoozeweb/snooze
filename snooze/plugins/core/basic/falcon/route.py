@@ -9,30 +9,34 @@ from urllib.parse import unquote
 from logging import getLogger
 log = getLogger('snooze.api')
 
-
 from snooze.api.falcon import authorize, FalconRoute
+from snooze.utils.parser import parser
 
 class Route(FalconRoute):
     @authorize
     def on_get(self, req, resp, search='[]', nb_per_page=0, page_number=1, order_by='', asc='true'):
-        if 's' in req.params or 'perpage' in req.params or 'orderby' in req.params or 'asc' in req.params:
+        ql = None
+        if 'ql' in req.params:
+            try:
+                ql = parser(req.params.get('ql'))
+            except:
+                ql = None
+        if 's' in req.params:
             s = req.params.get('s') or search
-            perpage = req.params.get('perpage') or nb_per_page
-            pagenb = req.params.get('pagenb') or page_number
-            orderby = req.params.get('orderby') or order_by
-            ascending = req.params.get('asc') or asc
         else:
             s = search
-            perpage = nb_per_page
-            pagenb = page_number
-            orderby = order_by
-            ascending = asc
+        perpage = req.params.get('perpage', nb_per_page)
+        pagenb = req.params.get('pagenb', page_number)
+        orderby = req.params.get('orderby', order_by)
+        ascending = req.params.get('asc', asc)
         try:
             cond_or_uid = loads(unquote(s))
         except:
             cond_or_uid = s
         if self.inject_payload:
             cond_or_uid = self.inject_payload_search(req, cond_or_uid)
+        if ql:
+            cond_or_uid = ['AND', ql, cond_or_uid]
         log.debug("Trying search {}".format(cond_or_uid))
         result_dict = self.search(self.plugin.name, cond_or_uid, int(perpage), int(pagenb), orderby, ascending.lower() == 'true')
         resp.content_type = falcon.MEDIA_JSON
@@ -50,13 +54,20 @@ class Route(FalconRoute):
         if self.inject_payload:
             self.inject_payload_media(req, resp)
         resp.content_type = falcon.MEDIA_JSON
+        queries = req.params.get('qls', [])
+        log.debug("Trying to insert {}".format(req.media))
+        media = req.media.copy()
+        if not isinstance(media, list):
+            media = [media]
+        for req_media in media:
+            req_media['snooze_user'] = {'name': req.context['user']['user']['name'], 'method': req.context['user']['user']['method']}
+            for query in queries:
+                try:
+                    parsed_query = parser(query['ql'])
+                    req_media[query['field']] = parsed_query
+                except:
+                    continue
         try:
-            log.debug("Trying to insert {}".format(req.media))
-            media = req.media.copy()
-            if not isinstance(media, list):
-                media = [media]
-            for req_media in media:
-                req_media['snooze_user'] = {'name': req.context['user']['user']['name'], 'method': req.context['user']['user']['method']}
             result = dumps(self.insert(self.plugin.name, media))
             resp.body = result
             self.plugin.reload_data(True)

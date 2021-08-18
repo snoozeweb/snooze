@@ -9,7 +9,7 @@ import datetime
 import re
 log = getLogger('snooze.db.file')
 
-from tinydb import TinyDB, Query
+from tinydb import TinyDB, Query as BaseQuery
 from copy import deepcopy
 from functools import reduce
 
@@ -17,6 +17,14 @@ class OperationNotSupported(Exception): pass
 
 default_filename = 'db.json'
 mutex = Lock()
+
+class Query(BaseQuery):
+    def test_root(self, func, *args):
+        return self._generate_test(
+            lambda value: func(value, *args),
+            ('test', self._path, func, args),
+            allow_empty_path=True
+        )
 
 def test_contains(array, value):
     if not isinstance(array, list):
@@ -27,6 +35,9 @@ def test_contains(array, value):
             if reg.search(record):
                 return True
     return False
+
+def test_search(dic, value):
+    return value in str(dic)
 
 class BackendDB(Database):
     def init_db(self, conf):
@@ -275,6 +286,9 @@ class BackendDB(Database):
                 except:
                     key = saved_key
             return_obj = dig(Query(), *value.split('.')).any(key)
+        elif operation == 'SEARCH':
+            arg = args[0]
+            return_obj = Query().test_root(test_search, to_tuple(arg))
         else:
             raise OperationNotSupported(operation)
         return return_obj

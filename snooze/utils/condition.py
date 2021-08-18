@@ -147,5 +147,9 @@ class Condition():
                     LOG.debug("{} is not a Condition, using default match".format(key))
             LOG.debug("Value: {}, Record: {}".format(key, record_value))
             return any(a in flatten(key) for a in flatten(record_value))
+        elif operation == 'SEARCH':
+            cond = args[0]
+            LOG.debug("Search value '{}' in record: {}".format(cond, record))
+            return cond in str(record)
         else:
             raise OperationNotSupported(operation)

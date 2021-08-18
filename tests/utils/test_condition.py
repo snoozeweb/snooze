@@ -85,6 +85,17 @@ def test_match_in_condition():
     search2 = ['IN', ['=', 'd', '0'], 'a']
     assert not Condition(search2).match(record2)
 
+def test_match_search():
+    record = {'myfield': [{'b':'mystring'}, {'mysearch': '0'}]}
+    search1 = ['SEARCH', 'field']
+    assert Condition(search1).match(record)
+    search2 = ['SEARCH', 'string']
+    assert Condition(search2).match(record)
+    search3 = ['SEARCH', 'search']
+    assert Condition(search3).match(record)
+    search4 = ['SEARCH', 'value']
+    assert not Condition(search4).match(record)
+
 def test_str():
     search = ['OR', ['NOT', ['=', 'a', 1]], ['=', 'b', 2]]
     assert str(Condition(search)) == "((!(a = 1)) OR (b = 2))"

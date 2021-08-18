@@ -2,6 +2,7 @@
 
 from snooze.db.database import Database
 from copy import deepcopy
+from bson.code import Code
 from logging import getLogger
 log = getLogger('snooze.db.mongo')
 
@@ -246,6 +247,25 @@ class BackendDB(Database):
                 except:
                     key = saved_key
             return_dict = {value: {search_operator: key}}
+        elif operation == 'SEARCH':
+            arg = args[0]
+            search_text = Code("function() {"
+                               "    var deepIterate = function  (obj, value) {"
+                               "        for (var field in obj) {"
+                               "            if (typeof obj[field] == 'string' && obj[field].includes(value)) {"
+                               "                return true;"
+                               "            }"
+                               "            var found = false;"
+                               "            if (typeof obj[field] === 'object') {"
+                               "               found = deepIterate(obj[field], value);"
+                               "               if (found) { return true; }"
+                               "            }"
+                               "        }"
+                               "        return false;"
+                               "    };"
+                               "    return deepIterate(this, '" + arg + "');"
+                               "}")
+            return_dict = {'$where': search_text}
         else:
             raise OperationNotSupported(operation)
         return return_dict
