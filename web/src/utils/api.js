@@ -180,7 +180,8 @@ export function countdown(secs) {
     return hours + ':' + minutes + ':' + seconds
   }
 }
-export function trimDate(date, splitH) {
+
+export function trimDate(date, show_secs) {
   if (!date) {
     return 'Empty'
   }
@@ -194,22 +195,22 @@ export function trimDate(date, splitH) {
   }
   if (mDate.year() == now.year()) {
     if (mDate.format('MM-DD') == now.format('MM-DD')) {
-      if(hours_only) {
+      if (hours_only) {
         newDate = mDate.format('HH:mm')
-      } else {
+      } else if (show_secs) {
         newDate = 'Today' + ' ' + mDate.format('HH:mm:ss')
+      } else {
+        newDate = 'Today' + ' ' + mDate.format('HH:mm')
       }
     } else {
-      newDate = mDate.format('MMM Do HH:mm:ss')
+      if (show_secs) {
+        newDate = mDate.format('MMM Do HH:mm:ss')
+      } else {
+        newDate = mDate.format('MMM Do HH:mm')
+      }
     }
   } else {
     newDate = mDate.format('MMM Do YYYY')
-  }
-  if(splitH) {
-    var splitDate = newDate.split(' ')
-    if (splitDate.length > 2) {
-      newDate = splitDate[0] + ' ' + splitDate[1] + '\n' + splitDate.slice(2).join(' ')
-    }
   }
   return newDate
 }

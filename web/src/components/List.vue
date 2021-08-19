@@ -3,7 +3,6 @@
   <b-card no-body ref="main">
     <b-card-header header-tag="nav" class="p-2">
       <b-nav card-header pills class='m-0'>
-
         <b-nav-item
           v-for="(tab, index) in tabs"
           v-bind:key="tab.title"
@@ -12,10 +11,6 @@
         >
           {{ tab.title }}
         </b-nav-item>
-
-        <b-nav-form class="pl-2">
-          <Search @search="search($event)" @clear="search_clear()" ref='search' />
-        </b-nav-form>
 
         <b-nav-item class="ml-auto" link-classes="py-0 pr-0">
           <b-button-toolbar key-nav>
@@ -41,9 +36,12 @@
 
           </b-button-toolbar>
         </b-nav-item>
-
       </b-nav>
+
     </b-card-header>
+    <b-form>
+      <Search @search="search($event)" @clear="search_clear()" ref='search' class="pt-2 px-2"/>
+    </b-form>
     <b-card-body class="p-2">
       <b-table
         ref="table"
@@ -67,7 +65,7 @@
         </template>
 
         <template v-slot:cell(timestamp)="row">
-          <DateTime :date="dig(row.item, 'timestamp')" />
+          <DateTime :date="dig(row.item, 'timestamp')" show_secs />
         </template>
         <template v-slot:cell(message)="row">
           {{ truncate_message(dig(row.item, 'message')) }}
@@ -327,7 +325,7 @@ export default {
       delete_items: delete_items,
       filter: this.tabs[0].filter,
       tab_index: 0,
-      search_data: [],
+      search_data: '',
       per_page: 20,
       page_options: [20, 50, 100],
       nb_rows: 0,
@@ -372,11 +370,14 @@ export default {
     },
     refresh(feedback = false) {
       this.filter = this.tabs[this.tab_index].filter
-      var query = join_queries([this.filter, this.search_data])
+      var query = this.filter
       var options = {
         perpage: this.per_page,
         pagenb: this.current_page,
         asc: this.isascending,
+      }
+      if (this.search_data) {
+        options["ql"] = this.search_data
       }
       if (this.orderby !== undefined) {
         var form_field = this.fields.concat(this.hidden_fields).find((field, ) => field.key == this.orderby)
@@ -493,27 +494,12 @@ export default {
     },
     search(query) {
       console.log(`Search: ${this.query}`)
-      this.search_data = JSON.parse(query)
-      if (this.search_data != null && !Array.isArray(this.search_data)) {
-        var search_word = this.search_data
-        var lookup = "MATCHES"
-        this.search_data = []
-        this.fields.concat(this.hidden_fields).forEach((field, ) => {
-          lookup = (field.type == "array"? "CONTAINS" : "MATCHES")
-          if (!field.unsearchable) {
-            if (this.search_data.length == 0) {
-              this.search_data = [lookup, field.key, search_word]
-            } else {
-              this.search_data = ["OR", [lookup, field.key, search_word], this.search_data]
-            }
-          }
-        })
-      }
+      this.search_data = query
       this.refreshTable()
       this.add_history()
     },
     search_clear() {
-      this.search_data = []
+      this.search_data = ''
       this.refreshTable()
       this.add_history()
     },

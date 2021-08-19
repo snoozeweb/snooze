@@ -19,21 +19,20 @@
     <CHeaderNav class="mr-4">
       <TheHeaderDropdownAccnt/>
     </CHeaderNav>
-    <CSubheader class="px-3">
-      <CBreadcrumbRouter class="border-0 mb-0"/>
-    </CSubheader>
   </CHeader>
 </template>
 
 <script>
 import TheHeaderDropdownAccnt from './TheHeaderDropdownAccnt'
 import WidgetList from '@/components/WidgetList'
+import Search from '@/components/Search.vue'
 
 export default {
   name: 'TheHeader',
   components: {
     TheHeaderDropdownAccnt,
     WidgetList,
+    Search,
   },
   data() {
     return {

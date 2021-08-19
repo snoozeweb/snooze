@@ -13,7 +13,6 @@
 </template>
 
 <script>
-const Parser = require('@/utils/parser/index')
 
 export default {
   props: {
@@ -26,11 +25,7 @@ export default {
   },
   methods: {
     search() {
-      if (this.datavalue.length > 1 && this.datavalue[0] == '"' && this.datavalue[this.datavalue.length-1] == '"') {
-        this.$emit('search', this.datavalue)
-      } else {
-        this.$emit('search', Parser.parse(this.datavalue))
-      }
+      this.$emit('search', this.datavalue)
     },
     clear() {
       this.datavalue = ""

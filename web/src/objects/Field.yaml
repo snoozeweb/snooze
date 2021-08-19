@@ -11,8 +11,6 @@ colors:
     local: warning
     rw_all: danger
     ro_all: primary
-    critical: danger
-    warning: warning
     admin: danger
     user: info
     test: info
@@ -22,8 +20,13 @@ colors:
     emerg: danger
     disabled: danger
     enabled: success
+    ok: success
     OK: success
+    error: danger
     ERROR: danger
+    critical: danger
     CRITICAL: danger
+    warning: warning
     WARNING: warning
+    unknown: tertiary
     UNKNOWN: tertiary

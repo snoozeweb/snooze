@@ -129,6 +129,10 @@ class TestParserTypes:
         result = parser('myfield = {a: {"mymessage": "x"}, b: 2}')
         assert result == ['=', 'myfield', {'a': {'mymessage': 'x'}, 'b': 2}]
 
+    def test_hash(self):
+        result = parser('hash=3f75728488a0e6892905f0db6a473382')
+        assert result == ['=', 'hash', '3f75728488a0e6892905f0db6a473382']
+
 class TestParserOperations:
     def test_nequal(self):
         result = parser('process != systemd')

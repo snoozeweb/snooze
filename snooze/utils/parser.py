@@ -36,7 +36,7 @@ array.setParseAction(lambda t: t.asList())
 hashmap = pp.Forward()
 
 fieldname = string | valid_word
-literal << (ppc.real | ppc.signed_integer | string | array | hashmap | boolean | valid_word)
+literal << (ppc.real ^ ppc.signed_integer ^ string ^ array ^ hashmap ^ boolean ^ valid_word)
 
 hashmap_element = pp.Group(fieldname + COLON + literal)
 hashmap_elements = pp.delimitedList(hashmap_element, delim=',')

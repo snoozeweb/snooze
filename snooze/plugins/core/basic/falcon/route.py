@@ -36,7 +36,10 @@ class Route(FalconRoute):
         if self.inject_payload:
             cond_or_uid = self.inject_payload_search(req, cond_or_uid)
         if ql:
-            cond_or_uid = ['AND', ql, cond_or_uid]
+            if cond_or_uid:
+                cond_or_uid = ['AND', ql, cond_or_uid]
+            else:
+                cond_or_uid = ql
         log.debug("Trying search {}".format(cond_or_uid))
         result_dict = self.search(self.plugin.name, cond_or_uid, int(perpage), int(pagenb), orderby, ascending.lower() == 'true')
         resp.content_type = falcon.MEDIA_JSON
@@ -54,18 +57,20 @@ class Route(FalconRoute):
         if self.inject_payload:
             self.inject_payload_media(req, resp)
         resp.content_type = falcon.MEDIA_JSON
-        queries = req.params.get('qls', [])
         log.debug("Trying to insert {}".format(req.media))
         media = req.media.copy()
         if not isinstance(media, list):
             media = [media]
         for req_media in media:
+            queries = req_media.get('qls', [])
             req_media['snooze_user'] = {'name': req.context['user']['user']['name'], 'method': req.context['user']['user']['method']}
             for query in queries:
                 try:
                     parsed_query = parser(query['ql'])
+                    log.debug("Parsed query: {} -> {}".format(query['ql'], parsed_query))
                     req_media[query['field']] = parsed_query
                 except:
+                    log.exception(e)
                     continue
         try:
             result = dumps(self.insert(self.plugin.name, media))

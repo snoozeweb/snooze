@@ -2,6 +2,7 @@
 
 from snooze.plugins.core import Plugin, Abort_and_write
 from snooze.utils import Condition, Modification
+from snooze.utils.functions import dig
 
 import datetime
 import logging
@@ -23,7 +24,7 @@ class Aggregaterule(Plugin):
         LOG.debug("Processing record: {}".format(str(record)))
         for aggrule in self.aggregate_rules:
             if aggrule.enabled and aggrule.process(record):
-                record['hash'] = hashlib.md5((str(aggrule.name) + '.'.join([(record.get(field) or '') for field in aggrule.fields])).encode()).hexdigest()
+                record['hash'] = hashlib.md5((str(aggrule.name) + '.'.join([(dig(record, *field.split('.')) or '') for field in aggrule.fields])).encode()).hexdigest()
                 record = self.match_aggregate(record, aggrule.throttle, aggrule.watch)
                 break
         else:
@@ -53,9 +54,11 @@ class Aggregaterule(Plugin):
                 record['ttl'] = aggregate.get('ttl', -1)
             watched_fields = []
             for watched_field in watch:
-                LOG.debug("Watched field {}: compare {} and {}".format(watched_field, record.get(watched_field), aggregate.get(watched_field)))
-                if record.get(watched_field) != aggregate.get(watched_field):
-                    watched_fields.append({'name': watched_field, 'old': aggregate.get(watched_field), 'new': record.get(watched_field)})
+                aggregate_field = dig(aggregate, *watched_field.split('.'))
+                record_field = dig(record, *watched_field.split('.'))
+                LOG.debug("Watched field {}: compare {} and {}".format(watched_field, record_field, aggregate_field))
+                if record_field != aggregate_field:
+                    watched_fields.append({'name': watched_field, 'old': aggregate_field, 'new': record_field})
             if watched_fields:
                 LOG.debug("Found updated fields from watchlist: {}".format(watched_fields))
                 comment = {}

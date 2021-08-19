@@ -44,5 +44,6 @@ setup(
         'tinydb',
         'urllib3',
         'netifaces',
+        'pyparsing',
     ],
 )

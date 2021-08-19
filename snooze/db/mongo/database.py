@@ -263,7 +263,7 @@ class BackendDB(Database):
                                "        }"
                                "        return false;"
                                "    };"
-                               "    return deepIterate(this, '" + arg + "');"
+                               "    return deepIterate(this, '" + str(arg) + "');"
                                "}")
             return_dict = {'$where': search_text}
         else:

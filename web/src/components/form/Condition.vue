@@ -51,7 +51,7 @@
       <b-input-group>
         <b-form-input v-model="datavalue[1]"/>
         <b-form-select v-model="datavalue[0]" :options="operations" value="="/>
-        <b-form-input v-model="datavalue[2]" v-if="datavalue[0] != 'EXISTS'"/>
+        <b-form-input v-model="datavalue[2]" v-if="datavalue[0] != 'EXISTS' && datavalue[0] != 'SEARCH'"/>
         <b-input-group-append>
           <b-button v-b-tooltip.hover title="Add" v-on:click="datavalue = ['OR', datavalue, []]"><i class="la la-plus la-lg"></i></b-button>
           <b-button v-b-tooltip.hover title="Reset" v-on:click="datavalue = [];" variant="info"><i class="la la-redo-alt la-lg"></i></b-button>
@@ -89,6 +89,7 @@ export default {
         {value: 'MATCHES', text: 'matches'},
         {value: 'EXISTS', text: 'exists?'},
         {value: 'CONTAINS', text: 'contains'},
+        {value: 'SEARCH', text: 'search'},
       ],
       logic: [
         {value: 'OR', text: 'OR'},
