@@ -66,7 +66,7 @@ export default {
     },
     converted () {
       if (this.datavalue < 0) {
-        return "No TTL"
+        return "No expiration"
       } else {
         return this.pp_countdown(this.datavalue)
       }

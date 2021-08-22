@@ -22,6 +22,11 @@ fields:
         tdClass: ['align-middle', 'text-center']
         thClass: 'text-center'
     -
+        key: source
+        sortable: true
+        tdClass: ['align-middle', 'text-center']
+        thClass: 'text-center'
+    -
         key: ttl
         label: TTL
         tdClass: ['align-middle', 'text-center']
@@ -38,7 +43,6 @@ fields:
         thClass: 'text-center'
     -
         key: state
-        unsearchable: true
         thClass: 'text-center'
         tdClass: ['align-middle', 'text-center']
     -
@@ -47,4 +51,3 @@ fields:
         label: ''
         tdClass: ['align-middle', 'text-center']
         thClass: 'text-center'
-        unsearchable: true

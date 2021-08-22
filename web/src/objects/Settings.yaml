@@ -101,13 +101,18 @@ form:
                   value: false
             description: 'Trigger on startup'
         record_ttl:
-            display_name: Record TTL
+            display_name: Alerts TTL
             component: Duration
-            description: 'Assign a time to live for any new record'
+            description: 'Assign a time to live for any new alert. -1 for no expiration'
             default_value: 86400
         cleanup_interval:
-            display_name: Cleanup interval
+            display_name: Cleanup job interval
             component: Duration
-            description: 'Launch a cleanup job at interval'
+            description: 'Execute a cleanup job at interval'
             default_value: 60
+        cleanup_snooze:
+            display_name: Cleanup expired snooze
+            component: Duration
+            description: 'Cleanup expired snooze filters after a certain amount of time (job executed once at 00:00AM). -1 for no cleanup'
+            default_value: 86400
     stats:

@@ -26,7 +26,6 @@ fields:
         thClass: 'text-center'
         tdClass: ['align-middle', 'text-center']
         thStyle: {width: '5%'}
-        unsearchable: true
 form:
     name:
         display_name: Name

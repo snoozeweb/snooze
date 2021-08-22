@@ -39,7 +39,6 @@ fields:
         label: ''
         tdClass: ['align-middle', 'text-center']
         thClass: 'text-center'
-        unsearchable: true
 form:
     enabled:
         display_name: State

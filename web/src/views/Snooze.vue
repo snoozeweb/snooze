@@ -65,8 +65,8 @@ export default {
       ]
       return [
         {title: 'Active', filter: match},
-        {title: 'Upcoming', filter: ["AND", ["NOT", match], ["OR", ['NOT', ['EXISTS', 'time_constraints.datetime']], ['>=', 'time_constraints.datetime.from', date]]]},
-        {title: 'Expired', filter: ["AND", ["NOT", match], ['<=', 'time_constraints.datetime.until', date]]},
+        {title: 'Upcoming', filter: ['AND', ['NOT', match], ['OR', ['NOT', ['EXISTS', 'time_constraints.datetime']], ['>=', 'time_constraints.datetime.until', date]]]},
+        {title: 'Expired', filter: ['AND', ['NOT', match], ['AND', ['EXISTS', 'time_constraints.datetime'], ['NOT', ['>=', 'time_constraints.datetime.until', date]]]]},
         {title: 'All', filter: []},
       ]
     },
