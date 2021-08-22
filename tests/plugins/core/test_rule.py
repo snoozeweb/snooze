@@ -16,10 +16,6 @@ class TestRule:
         rule = {'name': 'Rule1', 'condition': ['=', 'a', '99999'], 'modifications': [ ['SET', 'a', '2'], ['SET', 'c', '3'] ]}
         RuleObject(rule).modify(record)
         assert record == {'a': '2', 'b': '2', 'c': '3'}
-    def test_process(self, record):
-        rule = {'name': 'Rule1', 'condition': ['=', 'a', '1'], 'modifications': [ ['SET', 'a', '2'], ['SET', 'c', '3'] ]}
-        RuleObject(rule).process(record)
-        assert record == {'a': '2', 'b': '2', 'c': '3', 'rules': ['Rule1']}
 
 class TestRulesPlugin:
     @pytest.fixture

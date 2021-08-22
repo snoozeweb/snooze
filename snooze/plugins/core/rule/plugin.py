@@ -21,7 +21,9 @@ class Rule(Plugin):
     def process_rules(self, record, rules):
         LOG.debug("Processing record {} against rules: {}".format(str(record), str(rules)))
         for rule in rules:
-            if rule.enabled and rule.process(record):
+            LOG.debug("Rule {} processing record: {}".format(str(self.name), str(record)))
+            if rule.enabled and rule.match(record):
+                rule.modify(record)
                 self.process_rules(record, rule.children)
 
     def reload_data(self, sync = False):
@@ -87,23 +89,6 @@ class RuleObject():
             LOG.debug("Record has been modified: {}".format(str(record)))
         else:
             LOG.debug("Record has not been modified")
-        return modified
-
-    def process(self, record):
-        """
-        Process the record against this rule
-
-        Args:
-            record (dict)
-
-        Returns:
-            bool: Record has been modified
-        """
-        LOG.debug("Rule {} processing record: {}".format(str(self.name), str(record)))
-        modified = False
-        if self.match(record):
-            # The record reference is the same, the content is modified
-            modified = self.modify(record)
         return modified
 
     def __repr__(self):

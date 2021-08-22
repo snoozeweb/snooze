@@ -34,7 +34,7 @@ def test_modification_array_delete():
 
 def test_modification_template():
     record = {'a': '1', 'b': '2'}
-    modification = Modification('SET_TEMPLATE', 'c', '{{ (a | int) + (b | int) }}')
+    modification = Modification('SET', 'c', '{{ (a | int) + (b | int) }}')
     log.debug("Record before: {}".format(record))
     return_code = modification.modify(record)
     log.debug("Record after: {}".format(record))

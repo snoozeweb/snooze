@@ -33,19 +33,22 @@ Rules can have an optional field called `children` which can hold a list of Rule
 
 This design allowing Rules to be nested is very convenient to avoid repeating the same conditions across multiple Rules.
 
+## Templates
+
+It is possible to use Jinja templates to render the Record's fields for any modification
+_Example_: ["SET", "environment", "{{ env }}"] will create a new field **environment** using the content of the field  **env**.
+
 ## Web interface ##
 
 ![Rules](images/web_rules.png)
 
-* `Name`*: Name of the rule.
+* `Name`\*: Name of the rule.
 * `Condition`: This rule will be triggered only if this condition is matched. Leave it blank to always match.
 * `Modifications`: List of changes to apply to the Record.
 	- `Set`: Modify field. Create it if it does not exists.
 	- `Delete`: Delete field.
 	- `Append (to array)`: Append an element to an array field.
 	- `Delete (from array)`: Delete an element from an array field if it exists.
-	- `Template`: Same as `Set` but use Jinja templates to render the Record's fields.
-	   Example: ["Template", "environment", "{{ env }}"] will create a new field **environment** using the content of the field  **env**.
 * `Comment`: Description.
 
 **Note**: How to access a Rule's children:

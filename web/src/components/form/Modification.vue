@@ -35,7 +35,6 @@ export default {
         {value: 'DELETE', text: 'Delete'},
         {value: 'ARRAY_APPEND', text: 'Append (to array)'},
         {value: 'ARRAY_DELETE', text: 'Delete (from array)'},
-        {value: 'SET_TEMPLATE', text: 'Template'},
       ],
     }
   },

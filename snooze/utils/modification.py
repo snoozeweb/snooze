@@ -31,24 +31,27 @@ class Modification():
         """
         return_code = False
         log.debug("Starting modification [{}, {}, {}]".format(self.operation, self.key, self.value))
+        templated_key = self.key
+        templated_value = self.value
+        if self.key and type(self.key) is str:
+            templated_key = Template(self.key).render(record)
+        if self.value and type(self.value) is str:
+            templated_value = Template(self.value).render(record)
         if self.operation == 'SET':
-            return_code = bool(self.value and record.get(self.key) != self.value)
-            record[self.key] = self.value
-        if self.operation == 'SET_TEMPLATE':
-            record[Template(self.key).render(record)] = Template(self.value).render(record)
-            return_code = True
-        if self.operation == 'ARRAY_APPEND':
-            array = record.get(self.key)
+            return_code = bool(templated_value and record.get(templated_key) != templated_value)
+            record[templated_key] = templated_value
+        elif self.operation == 'ARRAY_APPEND':
+            array = record.get(templated_key)
             if array and type(array) == list:
-                record[self.key] += self.value
+                record[templated_key] += templated_value
                 return_code = True
-        if self.operation == 'ARRAY_DELETE':
-            array = record.get(self.key)
-            if array and type(array) == list and self.value in array:
-                array.remove(self.value)
+        elif self.operation == 'ARRAY_DELETE':
+            array = record.get(templated_key)
+            if array and type(array) == list and templated_value in array:
+                array.remove(templated_value)
                 return_code = True
-        if self.operation == 'DELETE':
-            if self.key in record:
-                del record[self.key]
+        elif self.operation == 'DELETE':
+            if templated_key in record:
+                del record[templated_key]
                 return_code = True
         return return_code
