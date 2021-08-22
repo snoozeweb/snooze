@@ -242,3 +242,14 @@ export function truncate_message(message, size=280) {
   }
   return message.slice(0, size) + '...'
 }
+
+export function more(data, limit=5) {
+  var lines = data.split(/\r?\n/)
+  if (lines.length > limit) {
+    var start = lines.slice(0, limit).join('\n')
+    var end = lines.slice(limit+1, -1).join('\n')
+    return [start, end]
+  } else {
+    return [data, '']
+  }
+}

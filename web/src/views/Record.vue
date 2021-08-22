@@ -7,6 +7,7 @@
       @row-selected="select"
       :fields="fields"
       :tabs="tabs"
+      :info_excluded_fields="['smtp']"
     >
       <template #button="row">
         <b-button variant="primary" class='text-nowrap' @click="modal_show([row.item], 'comment')" size="sm" v-b-tooltip.hover title="Add comment"><i class="las la-comment-dots la-lg"/> <b-badge v-if="row.item['comment_count']" variant='light' class='position-absolute' style='z-index: 10; top:0!important; right:100%!important; transform:translate(50%,-50%)!important'>{{ row.item['comment_count'] }}</b-badge></b-button>
@@ -25,6 +26,9 @@
         <b-button v-if="selection_acked.length > 0" variant="success" @click="modal_show(selection_acked, 'ack')" size="sm">Acknowledge ({{ selection_acked.length }})</b-button>
         <b-button v-if="selection_closed.length > 0" variant="tertiary" @click="modal_show(selection_closed, 'close')" size="sm">Close ({{ selection_closed.length }})</b-button>
         <b-button v-if="selection_reopened.length > 0" variant="quaternary" @click="modal_show(selection_reopened, 'open')" size="sm">Open ({{ selection_reopened.length }})</b-button>
+      </template>
+      <template #info="row">
+        <Mail :smtp="row.item.smtp" v-if="!!row.item.smtp" />
       </template>
       <template #details_side="row">
         <b-col v-if="row.item['comment_count']">
@@ -78,11 +82,14 @@ import { form, fields } from '@/objects/Record.yaml'
 import Timeline from '@/components/Timeline.vue'
 import Modification from '@/components/form/Modification.vue'
 
+import Mail from '@/components/info/Mail.vue'
+
 export default {
   components: {
     List,
     Timeline,
     Modification,
+    Mail,
   },
   mounted () {
   },
