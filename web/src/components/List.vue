@@ -135,13 +135,8 @@
           <b-card body-class="p-2" bg-variant="light">
           <b-row>
             <b-col>
-              <b-card header='Infos' header-class='text-center font-weight-bold' body-class='p-2'>
-                <ul>
-                  <li v-for="(value, key) in row.item" v-bind:key="key.id" v-if="key[0] != '_'">
-                    <strong>{{ key }}:</strong> {{ value }}
-                  </li>
-                </ul>
-              </b-card>
+              <slot name="info" v-bind="row" />
+              <Info :myobject="row.item" :excluded_fields="info_excluded_fields" />
             </b-col>
             <slot name="details_side" v-bind="row"></slot>
           </b-row>
@@ -255,6 +250,7 @@ import Modification from '@/components/Modification.vue'
 import Field from '@/components/Field.vue'
 import DateTime from '@/components/DateTime.vue'
 import TimeConstraint from '@/components/TimeConstraint.vue'
+import Info from '@/components/Info.vue'
 
 // Create a table representing an API endpoint.
 export default {
@@ -267,6 +263,7 @@ export default {
     TimeConstraint,
     Search,
     Form,
+    Info,
   },
   props: {
     // The tabs name and their associated search
@@ -305,6 +302,9 @@ export default {
     order_by: {type: String, default: undefined},
     // Ascending (true) or Descending (false)
     is_ascending: {type: Boolean, default: false},
+    // List of fields to exclude from Info, as they will be displayed
+    // in a custom view.
+    info_excluded_fields: {type: Array, default: () => []},
   },
   mounted () {
     this.reload()
@@ -585,6 +585,9 @@ export default {
         this.$router.push({ path: this.$router.currentRoute.path, query: query })
       }
     },
+    hasSlot(name) {
+      return !!this.$slots[name] || !!this.$scopedSlots[name]
+    }
   },
   watch: {
     current_page: function() {
