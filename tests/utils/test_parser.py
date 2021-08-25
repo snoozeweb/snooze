@@ -102,8 +102,15 @@ class TestParserTypes:
         assert result == ['=', 'key', 'value']
 
     def test_double_quoted_escape(self):
-        result = parser(r'key = "value\t\n\"')
+        result = parser(r'key = "value\t\n\\"')
         assert result == ['=', 'key', "value\t\n\\"]
+
+    def test_double_quoted_escape_quote(self):
+        data = r'key = "my \"test\""'
+        result = parser(data)
+        print(data)
+        print(result)
+        assert result == ['=', 'key', 'my "test"']
 
     def test_quoted_field(self):
         result = parser('"myfield with space" = myapp01')

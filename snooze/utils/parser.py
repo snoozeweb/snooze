@@ -22,7 +22,7 @@ AND = pp.Optional(pp.CaselessKeyword('AND') | '&').setParseAction(lambda: 'AND')
 
 valid_word = pp.Regex(r'[a-zA-Z0-9_.-]+')
 
-string = pp.QuotedString('"') | pp.QuotedString("'")
+string = pp.QuotedString('"', escChar="\\") | pp.QuotedString("'", escChar="\\")
 boolean = (
     pp.CaselessKeyword('true').setParseAction(lambda: True)
     | pp.CaselessKeyword('false').setParseAction(lambda: False)

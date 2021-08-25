@@ -358,8 +358,10 @@ export default {
       }
       this.changeTab(tab, false)
       if (this.$route.query.s !== undefined) {
-        this.$refs.search.datavalue = this.$route.query.s
-        this.$refs.search.search()
+        var decoded_query = decodeURIComponent(this.$route.query.s)
+        this.$refs.search.datavalue = decoded_query
+        this.search_data = decoded_query
+        this.refreshTable()
       } else {
         this.$refs.search.datavalue = ''
         this.refreshTable()
@@ -499,9 +501,11 @@ export default {
       this.add_history()
     },
     search_clear() {
-      this.search_data = ''
-      this.refreshTable()
-      this.add_history()
+      if (this.search_data != '') {
+        this.search_data = ''
+        this.refreshTable()
+        this.add_history()
+      }
     },
     changeTab(tab, refresh = true) {
       this.tab_index = this.tabs.indexOf(tab)

@@ -38,7 +38,7 @@
     <b-modal
       id="modal"
       ref="modal"
-      @ok="add_comment(modal_message, modal_data, modal_type)"
+      @ok="add_comment(modal_message, modal_data, modal_type, modifications)"
       @hidden="modal_clear()"
       :header-bg-variant="modal_bg_variant"
       :header-text-variant="modal_text_variant"
@@ -49,6 +49,22 @@
       <b-form-group label="Message (optional):">
         <b-form-input v-model="modal_message" />
       </b-form-group>
+      <b-row v-if="modal_type == 'esc'">
+        <b-col cols=3 md=2>
+          <label id="title_modifications" >Modifications (optional):</label>
+          <b-popover
+            target="title_modifications"
+            content="Apply modifications to the record then notify"
+            triggers="hover focus"
+            placement="right"
+          ></b-popover>
+        </b-col>
+        <b-col cols=9 md=10>
+          <Modification
+            v-model="modifications"
+          />
+        </b-col>
+      </b-row>
     </b-modal>
   </div>
 </template>
@@ -60,11 +76,13 @@ import moment from 'moment'
 import { add_items, update_items } from '@/utils/api'
 import { form, fields } from '@/objects/Record.yaml'
 import Timeline from '@/components/Timeline.vue'
+import Modification from '@/components/form/Modification.vue'
 
 export default {
   components: {
     List,
     Timeline,
+    Modification,
   },
   mounted () {
   },
@@ -79,6 +97,7 @@ export default {
       modal_data: [],
       form: form,
       fields: fields,
+      modifications: [],
       tabs: [
         {title: 'Alerts', filter: ['AND', 
             ['AND',
@@ -151,7 +170,7 @@ export default {
     modal_show(items, type) {
       this.modal_data = items
       this.modal_type = type
-      console.log(type)
+      this.modifications = []
       switch (type) {
         case 'ack':
           this.modal_title = 'Acknowledge'
@@ -178,7 +197,6 @@ export default {
           this.modal_bg_variant = 'primary'
           this.modal_text_variant = 'white'
       }
-      console.log(this.modal_bg_variant)
       this.$bvModal.show('modal')
     },
     select(items) {
@@ -195,7 +213,7 @@ export default {
       })
       update_items("record", items, this.callback)
     },
-    add_comment(message, items, type) {
+    add_comment(message, items, type, modifs = []) {
       //var user = {'name': localStorage.getItem('name') || '', 'method': localStorage.getItem('method')}
       var comments = []
       items.forEach(item => {
@@ -203,8 +221,8 @@ export default {
           record_uid: item['uid'],
 	  type: type,
           message: message,
-          //user: user,
           date: moment().format(),
+          modifications: modifs,
         })
       })
       add_items("comment_self", comments, this.callback, {'items': items, 'type': type})

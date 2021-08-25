@@ -12,7 +12,7 @@
       add_mode
     >
         <template v-slot:cell(hits)="row">
-          <router-link :to="{ path: 'record', query: { tab: 'Snoozed', s: 'snoozed='+encodeURIComponent(dig(row.item,'name')) }}">{{ dig(row.item, 'hits') }}</router-link>
+          <router-link :to="get_link(dig(row.item, 'name'))">{{ dig(row.item, 'hits') }}</router-link>
         </template>
     </List>
   </div>
@@ -70,6 +70,16 @@ export default {
         {title: 'All', filter: []},
       ]
     },
+    get_link(name) {
+      var escaped_name = JSON.stringify(name)
+      return {
+          path: 'record',
+          query: {
+          tab: 'Snoozed',
+          s: encodeURIComponent(`snoozed=${escaped_name}`),
+        },
+      }
+    }, 
   },
 }
 </script>

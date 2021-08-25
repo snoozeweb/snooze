@@ -58,7 +58,7 @@ export function preprocess_data(data) {
 export function show_feedback(response, title = null, position = 'b-toaster-top-right') {
   if(response.data) {
     if (title) {
-      text_alert(`Succeeded to ${title} ${response.data.count || ((response.data.data.updated || []).length + (response.data.data.added || []).length)} object(s)`, title + ' success', 'success', position)
+      text_alert(`Succeeded to ${title} ${response.data.count || ((response.data.data.replaced || []).length + (response.data.data.updated || []).length + (response.data.data.added || []).length)} object(s)`, title + ' success', 'success', position)
     } else {
       text_alert('Operation successful', 'Success', 'success', position)
     }

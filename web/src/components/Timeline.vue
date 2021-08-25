@@ -21,6 +21,9 @@
               <div class="text-muted">
                 {{ row['message'] }}
               </div>
+              <div class="text-muted" v-if="row['modifications'] && row['modifications'].length > 0">
+                <b-badge variant="warning">modifications</b-badge> <Modification style="font-size: 0.70rem;" :data="row['modifications']"/>
+              </div>
             </div>
           </b-card-body>
         </b-card>
@@ -74,6 +77,7 @@
     @ok="submit_edit"
     @hidden="modal_clear"
     header-bg-variant="primary"
+    header-text-variant="white"
     size ="xl"
     centered
   >
@@ -89,6 +93,7 @@
     @ok="submit_delete"
     @hidden="modal_clear"
     header-bg-variant="danger"
+    header-text-variant="white"
     okVariant="danger"
     size="xl"
     centered
@@ -103,6 +108,7 @@
 
 <script>
 import DateTime from '@/components/DateTime.vue'
+import Modification from '@/components/Modification.vue'
 import moment from 'moment'
 import { add_items, update_items, delete_items } from '@/utils/api'
 import { get_data } from '@/utils/api'
@@ -112,6 +118,7 @@ export default {
   name: 'Timeline',
   components: {
     DateTime,
+    Modification,
   },
   props: {
     record: {type: Object},

@@ -153,7 +153,14 @@ def test_tinydb_update_uid_with_primary(db):
     result[0]['a'] = '2'
     updated = db.write('record', result, 'a')['data']['updated']
     result = db.search('record')['data']
-    assert len(result) == 1 and len(updated) == 1 and result[0].items() >= {'a': '2', 'b': '2'}.items() and updated[0].items() >= {'a': '1', 'b': '2'}.items()
+    assert len(result) == 1 and len(updated) == 1 and result[0].items() >= {'a': '2', 'b': '2'}.items()
+
+def test_tinydb_replace_uid_with_primary(db):
+    uid = db.write('record', {'a': '1', 'b': '2'}, 'a')['data']['added'][0]
+    result = db.search('record', ['=', 'uid', uid])['data']
+    del result[0]['b']
+    replaced = db.write('record', result, 'a', 'replace')['data']['replaced']
+    assert len(replaced) == 1 and 'b' not in replaced[0]
 
 def test_tinydb_update_uid_duplicate_primary(db):
     db.write('record', {'a': '1', 'b': '2'}, 'a')
@@ -182,7 +189,7 @@ def test_tinydb_primary_duplicate_update(db):
     db.write('record', {'a': '1', 'b': '2'})
     updated = db.write('record', {'a': '1', 'b': '3'}, 'a')['data']['updated']
     result = db.search('record')['data']
-    assert len(result) == 1 and len(updated) == 1 and result[0].items() >= {'a': '1', 'b': '3'}.items() and updated[0].items() >= {'a': '1', 'b': '2'}.items()
+    assert len(result) == 1 and len(updated) == 1 and result[0].items() >= {'a': '1', 'b': '3'}.items()
 
 def test_tinydb_primary_duplicate_insert(db):
     db.write('record', {'a': '1', 'b': '2'})
@@ -202,6 +209,11 @@ def test_tinydb_multiple_primary_update(db):
     db.write('record', {'a': '1', 'b': '2', 'c': '3'}, 'a,b')
     result = db.search('record',  ['=', 'b', '2'])['data']
     assert len(result) == 1 and result[0].items() >= {'a': '1', 'b': '2', 'c': '3'}.items()
+
+def test_tinydb_primary_duplicate_replace(db):
+    db.write('record', {'a': '1', 'b': '2'})
+    replaced = db.write('record', {'a': '1'}, 'a', 'replace')['data']['replaced']
+    assert len(replaced) == 1 and 'b' not in replaced[0]
 
 def test_tinydb_sort(db):
     db.write('record', [{'a': '1', 'b': '2'},{'a': '3', 'b': '2'},{'a': '2', 'b': '2'},{'a': '5', 'b': '2'},{'a': '4', 'b': '2'}])

@@ -143,7 +143,16 @@ def test_mongo_update_uid_with_primary():
     result[0]['a'] = '2'
     updated = db.write('record', result, 'a')['data']['updated']
     result = db.search('record')['data']
-    assert len(result) == 1 and len(updated) == 1 and result[0].items() >= {'a': '2', 'b': '2'}.items() and updated[0].items() >= {'a': '1', 'b': '2'}.items()
+    assert len(result) == 1 and len(updated) == 1 and result[0].items() >= {'a': '2', 'b': '2'}.items()
+
+@mongomock.patch('mongodb://localhost:27017')
+def test_mongo_replace_uid_with_primary():
+    db = Database(default_config.get('database'))
+    uid = db.write('record', {'a': '1', 'b': '2'}, 'a')['data']['added'][0]
+    result = db.search('record', ['=', 'uid', uid])['data']
+    del result[0]['b']
+    replaced = db.write('record', result, 'a', 'replace')['data']['replaced']
+    assert len(replaced) == 1 and 'b' not in replaced[0]
 
 @mongomock.patch('mongodb://localhost:27017')
 def test_mongo_update_uid_duplicate_primary():
@@ -180,7 +189,7 @@ def test_mongo_primary_duplicate_update():
     db.write('record', {'a': '1', 'b': '2'})
     updated = db.write('record', {'a': '1', 'b': '3'}, 'a')['data']['updated']
     result = db.search('record')['data']
-    assert len(result) == 1 and len(updated) == 1 and result[0].items() >= {'a': '1', 'b': '3'}.items() and updated[0].items() >= {'a': '1', 'b': '2'}.items()
+    assert len(result) == 1 and len(updated) == 1 and result[0].items() >= {'a': '1', 'b': '3'}.items()
 
 @mongomock.patch('mongodb://localhost:27017')
 def test_mongo_primary_duplicate_insert():
@@ -196,6 +205,13 @@ def test_mongo_primary_duplicate_reject():
     db.write('record', {'a': '1', 'b': '2'})
     rejected = db.write('record', {'a': '1', 'b': '3'}, 'a', 'reject')['data']['rejected']
     assert len(rejected) == 1
+
+@mongomock.patch('mongodb://localhost:27017')
+def test_mongo_primary_duplicate_replace():
+    db = Database(default_config.get('database'))
+    db.write('record', {'a': '1', 'b': '2'})
+    replaced = db.write('record', {'a': '1'}, 'a', 'replace')['data']['replaced']
+    assert len(replaced) == 1 and 'b' not in replaced[0]
 
 @mongomock.patch('mongodb://localhost:27017')
 def test_mongo_multiple_primary_update():

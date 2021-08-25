@@ -10,8 +10,13 @@ log = getLogger('snooze.api')
 
 from snooze.plugins.core.basic.falcon.route import Route
 from snooze.api.falcon import authorize
+from snooze.utils import Condition, Modification
 
 class CommentRoute(Route):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.notification_plugin = self.core.get_core_plugin('notification')
+
     @authorize
     def on_post(self, req, resp):
         if self.update_records(req, resp):
@@ -46,6 +51,17 @@ class CommentRoute(Route):
                     if media_type in ['ack', 'esc', 'open', 'close']:
                         log.debug("Changing record {} type to {}".format(record_uid, media_type))
                         records['data'][0]['state'] = media_type
+                        modification_raw = req_media.get('modifications', [])
+                        if media_type in ['esc', 'open']:
+                            try:
+                                modified = False
+                                for modification in modification_raw:
+                                    if Modification(*modification).modify(records['data'][0]):
+                                        modified = True
+                                if modified and self.notification_plugin:
+                                    self.notification_plugin.process(records['data'][0])
+                            except:
+                                pass
                     update_records.append(records['data'][0])
                 else:
                     resp.content_type = falcon.MEDIA_TEXT
@@ -58,8 +74,8 @@ class CommentRoute(Route):
                 resp.text = 'Comments must contain records uid'
                 return False
         if update_records:
-            log.debug("Update records {}".format(update_records))
-            self.core.db.write('record', update_records)
+            log.debug("Replace records {}".format(update_records))
+            self.core.db.write('record', update_records, duplicate_policy='replace')
         return True
 
     def delete_records(self, req, resp, search):

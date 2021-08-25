@@ -64,6 +64,7 @@ class BackendDB(Database):
         added = []
         rejected = []
         updated = []
+        replaced = []
         obj_copy = []
         tobj = obj
         add_obj = False
@@ -99,6 +100,10 @@ class BackendDB(Database):
                     elif constant and any(result.get(c, '') != o.get(c) for c in constant):
                         log.error("Found a document with existing uid {} but different constant values: {}. Since UID is different, cannot update".format(o['uid'], constant))
                         rejected.append(o)
+                    elif duplicate_policy == 'replace':
+                        log.debug("In {}, replacing {}".format(collection, o))
+                        self.db[collection].replace_one({'uid': o['uid']}, o)
+                        replaced.append(o)
                     else:
                         log.debug("In {}, updating {}".format(collection, o))
                         self.db[collection].update_one({'uid': o['uid']}, {'$set': o})
@@ -117,10 +122,14 @@ class BackendDB(Database):
                             add_obj = True
                         elif duplicate_policy == 'reject':
                             rejected.append(o)
+                        elif duplicate_policy == 'replace':
+                            log.debug("In {}, replacing {}".format(collection, o))
+                            self.db[collection].replace_one(primary_query, o)
+                            replaced.append(o)
                         else:
                             log.debug("In {}, updating {}".format(collection, o))
                             self.db[collection].update_one(primary_query, {'$set': o})
-                            updated.append(primary_result)
+                            updated.append(o)
                 else:
                     log.debug("Could not find document with primary {}. Inserting instead".format(primary))
                     add_obj = True
@@ -134,7 +143,7 @@ class BackendDB(Database):
                 log.debug("In {}, inserting {}".format(collection, o))
         if len(obj_copy) > 0:
             self.db[collection].insert_many(obj_copy)
-        return {'data': {'added': added, 'updated': updated, 'rejected': rejected}}
+        return {'data': {'added': added, 'updated': updated, 'replaced': replaced, 'rejected': rejected}}
 
     def search(self, collection, condition=[], nb_per_page=0, page_number=1, orderby='$natural', asc=True):
         if orderby == '':

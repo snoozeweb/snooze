@@ -5,7 +5,7 @@
     <b-input-group class="pb-1">
       <b-form-select v-model="val[0]" :options="operations" style="width: auto"/>
       <b-form-input v-model="val[1]"/>
-      <b-form-input v-model="val[2]"/>
+      <b-form-input v-model="val[2]" v-if="val[0] != 'DELETE'"/>
       <b-input-group-append>
         <b-button v-on:click="remove(index)" variant="danger"><i class="la la-trash la-lg"></i></b-button>
       </b-input-group-append>

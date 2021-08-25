@@ -81,6 +81,7 @@ class BackendDB(Database):
         mutex.acquire()
         added = []
         updated = []
+        replaced = []
         rejected = []
         obj_copy = []
         tobj = obj
@@ -117,8 +118,13 @@ class BackendDB(Database):
                     elif constant and any(doc.get(c, '') != o.get(c) for c in constant):
                         log.error("Found a document with existing uid {} but different constant values: {}. Since UID is different, cannot update".format(o['uid'], constant))
                         rejected.append(o)
+                    elif duplicate_policy == 'replace':
+                        log.debug('Replacing with: {}'.format(o))
+                        self.db.table(collection).remove(doc_ids=[doc_id])
+                        self.db.table(collection).insert(o)
+                        replaced.append(o)
                     else:
-                        log.debug('Overriding with: {}'.format(o))
+                        log.debug('Updating with: {}'.format(o))
                         self.db.table(collection).update(o, doc_ids=[doc_id])
                         updated.append(doc)
                 else:
@@ -137,10 +143,15 @@ class BackendDB(Database):
                             add_obj = True
                         elif duplicate_policy == 'reject':
                             rejected.append(o)
+                        elif duplicate_policy == 'replace':
+                            log.debug('Replace with: {}'.format(o))
+                            self.db.table(collection).remove(doc_ids=[doc_id])
+                            self.db.table(collection).insert(o)
+                            replaced.append(o)
                         else:
-                            log.debug('Overriding with: {}'.format(o))
+                            log.debug('Update with: {}'.format(o))
                             self.db.table(collection).update(o, doc_ids=[doc_id])
-                            updated.append(doc)
+                            updated.append(o)
                 else:
                     log.debug("Could not find document with primary {}. Inserting instead".format(primary))
                     add_obj = True
@@ -155,7 +166,7 @@ class BackendDB(Database):
         if len(obj_copy) > 0:
             table.insert_multiple(obj_copy)
         mutex.release()
-        return {'data': {'added': deepcopy(added), 'updated': deepcopy(updated), 'rejected': deepcopy(rejected)}}
+        return {'data': {'added': deepcopy(added), 'updated': deepcopy(updated), 'replaced': deepcopy(replaced),'rejected': deepcopy(rejected)}}
 
     def search(self, collection, condition=[], nb_per_page=0, page_number=1, orderby="", asc=True):
         mutex.acquire()
