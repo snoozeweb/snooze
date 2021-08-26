@@ -40,7 +40,7 @@ class HousekeeperThread(threading.Thread):
         while True:
             if not self.main_thread.is_alive():
                 break
-            if time.time() - timer >= self.housekeeper.interval:
+            if self.housekeeper.interval > 0 and time.time() - timer >= self.housekeeper.interval:
                 timer = time.time()
                 self.housekeeper.core.db.cleanup_timeout('record')
                 self.housekeeper.core.db.cleanup_orphans('comment', 'record_uid', 'record', 'uid')
@@ -51,7 +51,7 @@ class HousekeeperThread(threading.Thread):
             time.sleep(1)
 
     def cleanup_expired_snooze(self):
-        if self.housekeeper.snooze_expired >= 0:
+        if self.housekeeper.snooze_expired > 0:
             log.debug("Starting to cleanup expired snooze filters")
             now = datetime.datetime.now().astimezone()
             date = now.astimezone().strftime("%Y-%m-%dT%H:%M")

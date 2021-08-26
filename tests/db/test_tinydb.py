@@ -163,11 +163,11 @@ def test_tinydb_replace_uid_with_primary(db):
     assert len(replaced) == 1 and 'b' not in replaced[0]
 
 def test_tinydb_update_uid_duplicate_primary(db):
-    db.write('record', {'a': '1', 'b': '2'}, 'a')
-    uid = db.write('record', {'a': '2', 'b': '2'}, 'a')['data']['added'][0]
+    db.write('record', {'a': {'b': '1', 'c': '1'}}, 'a.b')
+    uid = db.write('record', {'a': {'b': '2', 'c': '2'}}, 'a.b')['data']['added'][0]
     result = db.search('record', ['=', 'uid', uid])['data']
-    result[0]['a'] = '1'
-    rejected = db.write('record', result, 'a')['data']['rejected']
+    result[0]['a']['b'] = '1'
+    rejected = db.write('record', result, 'a.b')['data']['rejected']
     assert len(rejected) == 1
 
 def test_tinydb_update_uid_constant(db):

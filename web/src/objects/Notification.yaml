@@ -70,11 +70,14 @@ form:
         primary: name
         description: List of actions to execute. At least one action needs to be created beforehand
         required: true
-    delay:
-        display_name: Delay
-        component: Duration
-        description: Number of seconds to wait before sending notification. If acknowledged, notification will not be sent
-        default_value: 0
+    frequency:
+        display_name: Frequency
+        component: Frequency
+        description: Keep sending notifications. If acknowledged or closed, no more notification will be sent
+        default_value:
+            total: 1
+            delay: 0
+            every: 0
     comment:
         display_name: Comment
         component: Text

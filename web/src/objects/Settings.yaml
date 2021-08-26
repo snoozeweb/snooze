@@ -104,15 +104,22 @@ form:
             display_name: Alerts TTL
             component: Duration
             description: 'Assign a time to live for any new alert. -1 for no expiration'
+            options:
+                zero_label: 'Do not keep alerts'
+                negative_label: 'No expiration'
             default_value: 86400
         cleanup_interval:
             display_name: Cleanup job interval
             component: Duration
-            description: 'Execute a cleanup job at interval'
+            description: 'Execute a cleanup job at interval. <=0 for no cleanup'
+            options:
+                negative_label: 'No cleanup'
             default_value: 60
         cleanup_snooze:
             display_name: Cleanup expired snooze
             component: Duration
-            description: 'Cleanup expired snooze filters after a certain amount of time (job executed once at 00:00AM). -1 for no cleanup'
+            description: 'Cleanup expired snooze filters after a certain amount of time (job executed once at 00:00AM). <=0 for no cleanup'
+            options:
+                negative_label: 'No cleanup'
             default_value: 86400
     stats:

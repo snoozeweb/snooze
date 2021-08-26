@@ -51,12 +51,12 @@ class Condition():
             key, value = args
             record_value = dig(record, *key.split('.'))
             LOG.debug("Value: {}, Record: {}".format(value, record_value))
-            return record_value and (record_value == value)
+            return record_value is not None and (record_value == value)
         elif operation == '!=':
             key, value = args
             record_value = dig(record, *key.split('.'))
             LOG.debug("Value: {}, Record: {}".format(value, record_value))
-            return record_value and (record_value != value)
+            return record_value != value
         elif operation == '>':
             key, value = args
             record_value = dig(record, *key.split('.'))
@@ -67,7 +67,7 @@ class Condition():
                 newval = value
                 newrecval = record_value
             LOG.debug("Value: {}, Record: {}".format(newval, newrecval))
-            return record_value and (newrecval > newval)
+            return record_value is not None and (newrecval > newval)
         elif operation == '>=':
             key, value = args
             record_value = dig(record, *key.split('.'))
@@ -78,7 +78,7 @@ class Condition():
                 newval = value
                 newrecval = record_value
             LOG.debug("Value: {}, Record: {}".format(newval, newrecval))
-            return record_value and (newrecval >= newval)
+            return record_value is not None and (newrecval >= newval)
         elif operation == '<':
             key, value = args
             record_value = dig(record, *key.split('.'))
@@ -89,7 +89,7 @@ class Condition():
                 newval = value
                 newrecval = record_value
             LOG.debug("Value: {}, Record: {}".format(newval, newrecval))
-            return record_value and (newrecval < newval)
+            return record_value is not None and (newrecval < newval)
         elif operation == '<=':
             key, value = args
             record_value = dig(record, *key.split('.'))
@@ -100,7 +100,7 @@ class Condition():
                 newval = value
                 newrecval = record_value
             LOG.debug("Value: {}, Record: {}".format(newval, newrecval))
-            return record_value and (newrecval <= newval)
+            return record_value is not None and (newrecval <= newval)
         elif operation == 'MATCHES':
             key, value = args
             record_value = dig(record, *key.split('.'))

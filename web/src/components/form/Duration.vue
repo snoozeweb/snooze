@@ -33,6 +33,7 @@ export default {
     return {
       datavalue: [undefined, '', [], {}].includes(this.value) ? (this.default_value == undefined ? 86400 : this.default_value) : this.value,
       pp_countdown: pp_countdown,
+      opts: this.options || {},
     }
   },
   methods: {
@@ -66,9 +67,13 @@ export default {
     },
     converted () {
       if (this.datavalue < 0) {
-        return "No expiration"
+        return this.opts.negative_label || ''
+      } else if (this.datavalue == 0) {
+        return this.opts.zero_label || this.opts.negative_label || ''
+      } else if (this.opts.custom_label != undefined) {
+        return (this.opts.custom_label_prefix || '') + this.datavalue + (this.opts.custom_label || '')
       } else {
-        return this.pp_countdown(this.datavalue)
+        return (this.opts.custom_label_prefix || '') + this.pp_countdown(this.datavalue)
       }
     }
   },

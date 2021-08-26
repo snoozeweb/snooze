@@ -72,6 +72,9 @@ form:
         display_name: Throttle
         component: Duration
         description: Number of seconds to wait before escalating the next alert (-1 for infinite)
+        options:
+            zero_label: '0s'
+            negative_label: 'Infinite'
         default_value: 900
     comment:
         display_name: Comment

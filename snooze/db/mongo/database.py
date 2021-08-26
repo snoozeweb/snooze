@@ -1,6 +1,7 @@
 #!/usr/bin/python3.6
 
 from snooze.db.database import Database
+from snooze.utils.functions import dig
 from copy import deepcopy
 from bson.code import Code
 from logging import getLogger
@@ -82,8 +83,8 @@ class BackendDB(Database):
             primary_result = None
             if update_time:
                 o['date_epoch'] = datetime.datetime.now().timestamp()
-            if primary and all(p in o for p in primary):
-                primary_query = list(map(lambda a: {a: o[a]}, primary))
+            if primary and all(dig(o, *p.split('.')) for p in primary):
+                primary_query = list(map(lambda a: {a: dig(o, *a.split('.'))}, primary))
                 if len(primary) > 1:
                     primary_query = {'$and': primary_query}
                 else:

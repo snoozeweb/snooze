@@ -25,8 +25,10 @@ class Notification(Plugin):
             for delayed_notif in delayed_notifs['data']:
                 notif_uid = delayed_notif['notification_uid']
                 notification = next(notif for notif in self.notifications if notif.uid == delayed_notif['notification_uid'])
-                record = delayed_notif['record']
-                self.thread.delayed[record['hash']] = {'notification': notification, 'record': record, 'time': time.time() + notification.delay}
+                record_hash = delayed_notif['record_hash']
+                delay = delayed_notif['delay']
+                total = delayed_notif['total']
+                self.thread.delayed[record_hash] = {'notification': notification, 'time': time.time() + delay, 'total': total}
             log.debug("Restored notification queue {}".format(self.thread.delayed))
 
     def process(self, record):
@@ -34,24 +36,27 @@ class Notification(Plugin):
             if notification.enabled and notification.match(record):
                 log.debug("Matched notification `{}` with {}".format(notification.name, record))
                 if len(notification.action_plugins) > 0:
-                    if notification.delay > 0:
-                        log.debug("Notification `{}` will be sent in {}s".format(notification.name, notification.delay))
-                        self.delay(notification, record)
-                    else:
-                        log.debug("Notification `{}` will be sent now".format(notification.name))
+                    total = notification.freq.get('total', 1)
+                    if notification.freq.get('delay', 0) <= 0 and total != 0:
+                        log.debug("{} Notification(s) `{}` will be sent now".format(total, notification.name))
                         notification.send(record)
+                        total -= 1
+                    delay = max(notification.freq.get('delay', 0), 0) or notification.freq.get('every', 0)
+                    if delay > 0 and total != 0:
+                        log.debug("Notification `{}` will be sent in {}s".format(notification.name, delay))
+                        if not 'hash' in record:
+                            if 'raw' in record:
+                                record['hash'] = hashlib.md5(record['raw']).hexdigest()
+                            else:
+                                record['hash'] = hashlib.md5(repr(sorted(record.items())).encode('utf-8')).hexdigest()
+                        self.delay_send(notification, record['hash'], delay, total - 1)
                 else:
                     log.error("Notification {} has no action. Cannot send".format(self.name))
         return record
 
-    def delay(self, notification, record):
-        if not 'hash' in record:
-            if 'raw' in record:
-                record['hash'] = hashlib.md5(record['raw']).hexdigest()
-            else:
-                record['hash'] = hashlib.md5(repr(sorted(record.items())).encode('utf-8')).hexdigest()
-        self.thread.delayed[record['hash']] = {'notification': notification, 'record': record, 'time': time.time() + notification.delay}
-        self.core.db.write('notification.delay', {'notification_uid': notification.uid, 'record': record, 'host': self.hostname})
+    def delay_send(self, notification, record_hash, delay, total):
+        self.thread.delayed[record_hash] = {'notification': notification, 'time': time.time() + delay, 'total': total}
+        self.core.db.write('notification.delay', {'notification_uid': notification.uid, 'record_hash': record_hash, 'host': self.hostname, 'delay': delay, 'total': total}, 'record.hash')
 
     def reload_data(self, sync = False):
         super().reload_data()
@@ -68,7 +73,7 @@ class NotificationObject():
         self.enabled = notification.get('enabled', True)
         self.name = notification['name']
         self.condition = Condition(notification.get('condition'))
-        self.delay = notification.get('delay', 0)
+        self.freq = notification.get('frequency', {})
         self.actions = notification.get('actions', [])
         self.action_plugins = []
         if (type(self.actions) is list) and len(self.actions) > 0:
@@ -95,15 +100,17 @@ class NotificationObject():
         '''Whether a record match the Notification object'''
         return self.condition.match(record) and self.time_constraint.match(get_record_date(record))
 
-    def send_delayed(self, record):
-        delayed_records = self.core.db.search('record', ['=', 'hash', record.get('hash')])
+    def send_delayed(self, record_hash):
+        delayed_records = self.core.db.search('record', ['=', 'hash', record_hash])
         if delayed_records['count'] > 0:
             for delayed_record in delayed_records['data']:
                 if delayed_record.get('state') not in ['ack', 'close']:
-                    self.send(record)
+                    self.send(delayed_record)
+                    self.core.db.write('record', delayed_record)
+                    return True
                 else:
                     log.debug("record {} is already acked or closed, do not notify".format(record.get('hash')))
-        self.core.db.delete('notification.delay', ['=', 'record.hash', record.get('hash')])
+                    return False
 
     def send(self, record):
         for action_plugin in self.action_plugins:
@@ -119,7 +126,7 @@ class NotificationObject():
                 self.core.stats.inc('notification_sent', {'name': self.name, 'action': action_name})
             except Exception as e:
                 self.core.stats.inc('notification_error', {'name': self.name, 'action': action_name})
-                log.error("Notification {} action '{}' could not be send".format(self.name, action_name))
+                log.error("Notification {} action a{}' could not be send".format(self.name, action_name))
                 log.exception(e)
 
 class NotificationThread(threading.Thread):
@@ -134,11 +141,18 @@ class NotificationThread(threading.Thread):
         while True:
             if not self.main_thread.is_alive():
                 break
-            for rec_hash in list(self.delayed.keys()):
-                if time.time() >= self.delayed[rec_hash]['time']:
-                    self.delayed[rec_hash]['notification'].send_delayed(self.delayed[rec_hash]['record'])
-                    try:
-                        del self.delayed[rec_hash]
-                    except KeyError:
-                        continue
+            for record_hash in list(self.delayed.keys()):
+                if time.time() >= self.delayed[record_hash]['time']:
+                    notification = self.delayed[record_hash]['notification']
+                    can_delete = not notification.send_delayed(record_hash)
+                    every = max(notification.freq.get('every', 0), 0)
+                    total = max(self.delayed[record_hash]['total'], -1)
+                    if not can_delete and every >= 0 and total != 0:
+                        self.notification.delay_send(notification, record_hash, every, total - 1)
+                    else:
+                        self.notification.core.db.delete('notification.delay', ['=', 'record.hash', record_hash])
+                        try:
+                            del self.delayed[record_hash]
+                        except KeyError:
+                            continue
             time.sleep(2)

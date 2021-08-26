@@ -100,8 +100,8 @@ class BackendDB(Database):
             primary_docs = None
             if update_time:
                 o['date_epoch'] = datetime.datetime.now().timestamp()
-            if primary and all(p in o for p in primary):
-                primary_query = map(lambda a: Query()[a] == o[a], primary)
+            if primary and all(dig(o, *p.split('.')) for p in primary):
+                primary_query = map(lambda a: dig(Query(), *a.split('.')) == dig(o, *a.split('.')), primary)
                 primary_query = reduce(lambda a, b: a & b, primary_query)
                 primary_docs = table.search(primary_query)
                 log.debug('Documents with same primary {}: {}'.format(primary, primary_docs))
