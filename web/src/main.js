@@ -8,10 +8,13 @@ import CoreuiVue from '@coreui/vue'
 import store from './store'
 import velocityPlugin from 'velocity-vue'
 
+import VueSecureHTML from 'vue-html-secure'
+
 Vue.config.performance = true
 Vue.use(CoreuiVue)
 Vue.use(BootstrapVue)
 Vue.use(velocityPlugin)
+Vue.use(VueSecureHTML)
 Vue.prototype.$log = console.log.bind(console)
 
 export const app = new Vue({

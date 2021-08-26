@@ -24,7 +24,7 @@
       </div>
       <div v-if="body_html">
         <h5>HTML body</h5>
-        <div v-html="body_html" />
+        <div v-html-safe="body_html" />
       </div>
     </b-card>
   </div>

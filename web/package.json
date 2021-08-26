@@ -42,6 +42,7 @@
     "vue-chartjs": "^3.5.1",
     "vue-cli-plugin-yaml": "^1.0.2",
     "vue-ctk-date-time-picker": "^2.5.0",
+    "vue-html-secure": "^1.0.9",
     "vue-perfect-scrollbar": "^0.1.0",
     "vue-router": "^3.5.1",
     "vue-swatches": "^2.1.1",

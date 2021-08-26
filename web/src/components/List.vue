@@ -119,16 +119,19 @@
           <Field :data="[(dig(row.item, 'enabled') == undefined || dig(row.item, 'enabled') == true) ? 'enabled' : 'disabled']" colorize/>
         </template>
         <template v-slot:cell(pprint)="row">
-          <table class="table-borderless"><tr style="background-color: transparent !important"><td class="p-0 pr-1"><i :class="'la la-'+dig(row.item, 'icon')+' la-lg'"/></td><td class="p-0"><b>{{ dig(row.item, 'widget', 'selected') || '' + dig(row.item, 'action', 'selected') || '' }}</b> @ {{ dig(row.item, 'pprint') }}</td></tr></table>
+          <table class="table-borderless"><tr style="background-color: transparent !important"><td class="p-0 pr-1"><i :class="'la la-'+dig(row.item, 'icon')+' la-lg'"></i></td><td class="p-0"><b>{{ dig(row.item, 'widget', 'selected') || '' + dig(row.item, 'action', 'selected') || '' }}</b> @ {{ dig(row.item, 'pprint') }}</td></tr></table>
         </template>
 
         <template v-slot:cell(button)="row">
           <b-button-group>
             <!-- Action buttons -->
-            <b-button size="sm" @click="row.toggleDetails"><i v-if="row.detailsShowing" class="la la-angle-up la-lg"/><i v-else class="la la-angle-down la-lg"/></b-button>
+            <b-button size="sm" @click="row.toggleDetails">
+              <i v-if="row.detailsShowing" class="la la-angle-up la-lg"></i>
+              <i v-else class="la la-angle-down la-lg"></i>
+            </b-button>
             <slot name="button" v-bind="row" />
-            <b-button v-if="edit_mode" size="sm" @click="modal_edit(row.item)" variant="primary" v-b-tooltip.hover title="Edit"><i class="la la-pencil-alt la-lg"/></b-button>
-            <b-button v-if="delete_mode" size="sm" @click="modal_delete(row.item)" variant="danger" v-b-tooltip.hover title="Delete"><i class="la la-trash la-lg"/></b-button>
+            <b-button v-if="edit_mode" size="sm" @click="modal_edit(row.item)" variant="primary" v-b-tooltip.hover title="Edit"><i class="la la-pencil-alt la-lg"></i></b-button>
+            <b-button v-if="delete_mode" size="sm" @click="modal_delete(row.item)" variant="danger" v-b-tooltip.hover title="Delete"><i class="la la-trash la-lg"></i></b-button>
           </b-button-group>
         </template>
         <template v-slot:row-details="row">
@@ -140,7 +143,7 @@
             </b-col>
             <slot name="details_side" v-bind="row"></slot>
           </b-row>
-            <b-button size="sm" @click="row.toggleDetails"><i class="la la-angle-up la-lg"/></b-button>
+            <b-button size="sm" @click="row.toggleDetails"><i class="la la-angle-up la-lg"></i></b-button>
           </b-card>
         </template>
       </b-table>
@@ -393,7 +396,7 @@ export default {
     },
     feedback_then_update(response) {
       this.alert_countdown = 1
-      this.update_table(response)      
+      this.update_table(response)
     },
     checkForm(node) {
       return (node.getElementsByClassName('form-control is-invalid').length + node.getElementsByClassName('has-error').length) == 0
@@ -598,7 +601,7 @@ export default {
     },
     $route() {
       this.$nextTick(this.reload);
-    }   
+    }
   },
 }
 </script>

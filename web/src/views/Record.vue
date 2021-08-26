@@ -10,13 +10,13 @@
       :info_excluded_fields="['smtp']"
     >
       <template #button="row">
-        <b-button variant="primary" class='text-nowrap' @click="modal_show([row.item], 'comment')" size="sm" v-b-tooltip.hover title="Add comment"><i class="las la-comment-dots la-lg"/> <b-badge v-if="row.item['comment_count']" variant='light' class='position-absolute' style='z-index: 10; top:0!important; right:100%!important; transform:translate(50%,-50%)!important'>{{ row.item['comment_count'] }}</b-badge></b-button>
-        <b-button variant="info" v-if="row.item.ttl >= 0" @click="toggle_ttl([row.item])" size="sm" v-b-tooltip.hover title="Shelve"><i class="la la-folder-plus la-lg"/></b-button>
-        <b-button variant="info" v-else @click="toggle_ttl([row.item])" size="sm" v-b-tooltip.hover title="Unshelve"><i class="la la-folder-minus la-lg"/></b-button>
-        <b-button variant="warning" v-if="can_be_reescalated(row.item)" @click="modal_show([row.item], 'esc')" size="sm" v-b-tooltip.hover title="Re-escalate"><i class="la la-exclamation la-lg"/></b-button>
-        <b-button variant="success" v-if="can_be_acked(row.item)" @click="modal_show([row.item], 'ack')" size="sm" v-b-tooltip.hover title="Acknowledge"><i class="la la-thumbs-up la-lg"/></b-button>
-        <b-button variant="tertiary" v-if="can_be_closed(row.item)" @click="modal_show([row.item], 'close')" size="sm" v-b-tooltip.hover title="Close"><i class="la la-lock la-lg"/></b-button>
-        <b-button variant="quaternary" v-if="can_be_reopened(row.item)" @click="modal_show([row.item], 'open')" size="sm" v-b-tooltip.hover title="Re-open"><i class="la la-lock-open la-lg"/></b-button>
+        <b-button variant="primary" class='text-nowrap' @click="modal_show([row.item], 'comment')" size="sm" v-b-tooltip.hover title="Add comment"><i class="las la-comment-dots la-lg"></i> <b-badge v-if="row.item['comment_count']" variant='light' class='position-absolute' style='z-index: 10; top:0!important; right:100%!important; transform:translate(50%,-50%)!important'>{{ row.item['comment_count'] }}</b-badge></b-button>
+        <b-button variant="info" v-if="row.item.ttl >= 0" @click="toggle_ttl([row.item])" size="sm" v-b-tooltip.hover title="Shelve"><i class="la la-folder-plus la-lg"></i></b-button>
+        <b-button variant="info" v-else @click="toggle_ttl([row.item])" size="sm" v-b-tooltip.hover title="Unshelve"><i class="la la-folder-minus la-lg"></i></b-button>
+        <b-button variant="warning" v-if="can_be_reescalated(row.item)" @click="modal_show([row.item], 'esc')" size="sm" v-b-tooltip.hover title="Re-escalate"><i class="la la-exclamation la-lg"></i></b-button>
+        <b-button variant="success" v-if="can_be_acked(row.item)" @click="modal_show([row.item], 'ack')" size="sm" v-b-tooltip.hover title="Acknowledge"><i class="la la-thumbs-up la-lg"></i></b-button>
+        <b-button variant="tertiary" v-if="can_be_closed(row.item)" @click="modal_show([row.item], 'close')" size="sm" v-b-tooltip.hover title="Close"><i class="la la-lock la-lg"></i></b-button>
+        <b-button variant="quaternary" v-if="can_be_reopened(row.item)" @click="modal_show([row.item], 'open')" size="sm" v-b-tooltip.hover title="Re-open"><i class="la la-lock-open la-lg"></i></b-button>
       </template>
       <template #selected_buttons>
         <b-button v-if="selection_comment.length > 0" variant="primary" @click="modal_show(selection_comment, 'comment')" size="sm">Comment ({{ selection_comment.length }})</b-button>
@@ -106,10 +106,10 @@ export default {
       fields: fields,
       modifications: [],
       tabs: [
-        {title: 'Alerts', filter: ['AND', 
+        {title: 'Alerts', filter: ['AND',
             ['AND',
-	      ['NOT', ['=', 'state', 'ack']],
-	      ['NOT', ['=', 'state', 'close']]
+              ['NOT', ['=', 'state', 'ack']],
+              ['NOT', ['=', 'state', 'close']],
             ],
             ['NOT', ['EXISTS', 'snoozed']]
           ]
@@ -226,7 +226,7 @@ export default {
       items.forEach(item => {
         comments.push({
           record_uid: item['uid'],
-	  type: type,
+          type: type,
           message: message,
           date: moment().format(),
           modifications: modifs,
