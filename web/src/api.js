@@ -37,7 +37,9 @@ API.interceptors.response.use(
   function (error) {
     if (router.currentRoute.path != '/login') {
       if (error.response && error.response.status === 401) {
-        router.push('/login')
+        var return_to = encodeURIComponent(router.currentRoute.fullPath)
+        console.log(return_to)
+        router.push('/login?return_to='+return_to)
       } else {
         return error
       }

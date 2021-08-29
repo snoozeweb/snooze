@@ -50,7 +50,11 @@ export default {
           if (response.data) {
             console.log("Got authentication token")
             localStorage.setItem('snooze-token', response.data.token)
-            router.push('/record')
+            if (this.$route.query.return_to) {
+              router.push(decodeURIComponent(this.$route.query.return_to))
+            } else {
+              router.push('/record')
+            }
           } else {
 	    this.validate = false
             if(response.response.status == 401) {
