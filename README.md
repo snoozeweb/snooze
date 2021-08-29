@@ -1,4 +1,4 @@
-![Snoozeweb Logo](web/public/img/logo.png)
+![Snoozeweb Logo](https://github.com/snoozeweb/snooze/raw/master/web/public/img/logo.png)
 
 # About
 
@@ -15,21 +15,28 @@ Snooze is a powerful monitoring tool used for log aggregation and alerting. It c
 * Auto housekeeping
 * Metrics
 
-![Alerts](doc/images/web_alerts.png)
+![Alerts](https://github.com/snoozeweb/snooze/raw/master/doc/images/web_alerts.png)
 
 # Installation
 
 Installation on CentOS/RHEL
+
 ```bash
 $ wget https://rpm.snoozeweb.net -O snooze-server-latest.rpm
 $ sudo yum localinstall snooze-server-latest.rpm
 $ sudo systemctl start snooze-server
 ```
-Web interface URL: http://localhost:5200
+
+Web interface URL:
+
+```
+http://localhost:5200
+```
 
 if `create_root_user` in `/etc/snooze/core.yaml` has not been set to **false**, login credentials are `root:root`
 
 Otherwise, it is always possible to generate a root token that can be used for **JWT Token** authentication method if [Snooze Client](https://github.com/snoozeweb/snooze_client) is installed:
+
 ```bash
 $ snooze root-token
 # Run with root or snooze user
@@ -42,7 +49,29 @@ By default, Snooze is using a single file to store its database and therefore ca
 
 ## Docker
 
-Support coming soon
+```
+$ docker run --name snoozeweb -d -p <port>:5200 snoozeweb/snooze
+```
+
+Then the Web interface should be available at this URL:
+
+```
+http://<docker>:<port>
+```
+
+Snoozeweb docker image can be run without any backend database (will default to a file based DB) but if one is needed:
+
+```
+$ docker run --name snooze-db -d mongo
+```
+
+Then
+
+```
+$ export DATABASE_URL=mongodb://db:27017/snooze
+$ docker run --name snoozeweb -e DATABASE_URL=$DATABASE_URL --link snooze-db:db \
+-d -p <port>:5200 snoozeweb/snooze
+```
 
 # Configuration
 
@@ -55,19 +84,19 @@ The only configuration file not managed in the web interface is `/etc/snooze/cor
 * `bootstrap_db` (`true`): Populate the database with an initial configuration
 * `create_root_user` (`true`): Create a *root* user with a default password *root*
 * `ssl`
-	* `enabled` (`false`): Enable TLS termination for both the API and the web interface
-	* `certfile` (`''`): Path to the SSL certificate
-	* `keyfile` (`''`): Path to the private key
+    * `enabled` (`false`): Enable TLS termination for both the API and the web interface
+    * `certfile` (`''`): Path to the SSL certificate
+    * `keyfile` (`''`): Path to the private key
 * `web`
     * `enabled` (`true`): Enable the web interface
     * `path` (`/opt/snooze/web`): Path to the web interface dist files
 * `clustering`
-	*  `enabled` (`false`): Enable clustering mode
+    *  `enabled` (`false`): Enable clustering mode
     * `members`: List of snooze servers in the cluster {host, port}
         - `host` (`localhost`): Hostname or IPv4 address of the first member
           `port` (`5200`): Port on which the first member is listening to
 * `database`
-	* `type` (`file`): Backend database to use (file or mongo)
+    * `type` (`file`): Backend database to use (file or mongo)
 
 Example for MongoDB backend with database replication enabled:
 ```yaml
