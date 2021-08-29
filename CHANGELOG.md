@@ -1,6 +1,6 @@
 ## v1.0.9 (2021-09-??)
 
-TBD
+* Added a toggleable button to automatically refresh Alerts display
 
 ## v1.0.8 (2021-08-27)
 

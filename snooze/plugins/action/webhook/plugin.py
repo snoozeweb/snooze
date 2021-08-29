@@ -122,7 +122,7 @@ class RestHelper:
                           cert=None, timeout=None, proxy_uri=None):
         if self.http_session is None:
             self._init_request_session(proxy_uri)
-        requests_args = {'timeout': (10.0, 5.0), 'verify': verify}
+        requests_args = {'timeout': (10.0, 13.0), 'verify': verify}
         if parameters:
             requests_args['params'] = parameters
         if payload:

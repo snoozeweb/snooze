@@ -37,6 +37,9 @@
           </b-card>
         </b-col>
       </template>
+      <template #head_buttons>
+        <b-button size="sm" :variant="auto_refresh ? 'success':''" v-b-tooltip.hover :title="auto_refresh ? 'Auto Mode ON':'Audo Mode OFF'" @click="toggle_auto()" :pressed.sync="auto_refresh"><i v-if="auto_refresh" class="la la-eye la-lg"/><i v-else="auto_refresh" class="la la-eye-slash la-lg"/></b-button>
+      </template>
     </List>
 
     <b-modal
@@ -92,6 +95,10 @@ export default {
     Mail,
   },
   mounted () {
+    if(localStorage.getItem('record_auto') == 'true') {
+      this.auto_refresh = true
+    }
+    this.toggle_auto()
   },
   data () {
     return {
@@ -105,6 +112,8 @@ export default {
       form: form,
       fields: fields,
       modifications: [],
+      auto_refresh: false,
+      auto_interval: null,
       tabs: [
         {title: 'Alerts', filter: ['AND',
             ['AND',
@@ -237,6 +246,17 @@ export default {
     },
     callback(response, arg) {
       this.$refs.table.refreshTable()
+    },
+    toggle_auto() {
+      if (this.auto_refresh) {
+        this.auto_interval = setInterval(this.$refs.table.refreshTable, 10000)
+      } else {
+        if (this.auto_interval) {
+          clearInterval(this.auto_interval)
+          this.auto_interval = null
+        }
+      }
+      localStorage.setItem('record_auto', this.auto_refresh)
     },
   },
 }

@@ -18,7 +18,7 @@
     Last fetch at {{ timestamp }}
   </div>
   -->
-      <b-button size="sm" v-b-tooltip.hover title="Reset" variant="info" @click="resetPatlite()"><i class="la la-redo-alt la-lg"></i></b-button>
+      <b-button size="sm" v-b-tooltip.hover title="Reset" variant="info" @click="resetPatlite()"><i class="la la-redo-alt la-lg" /></b-button>
       <b-button
         size="sm"
         :variant="auto_refresh ? 'success' : ''"
@@ -26,7 +26,7 @@
         :title="auto_refresh ? 'Auto Refresh ON':'Auto Refresh OFF'"
         @click="toggle_auto()"
         :pressed.sync="auto_refresh"
-      ><i class="la la-sync la-lg"></i></b-button>
+      ><i v-if="auto_refresh" class="la la-eye la-lg" /><i v-else class="la la-eye-slash la-lg" /></i></b-button>
     </b-button-group>
   </div>
 </template>
