@@ -2,10 +2,12 @@ from setuptools import setup, find_packages
 
 with open("README.md", "r") as f:
     long_description = f.read()
+with open("VERSION", "r") as f:
+    version = f.read().rstrip('\n')
 
 setup(
     name="snooze-server",
-    version="1.0.8",
+    version=version,
     author="Florian Dematraz, Guillaume Ludinard",
     description="Monitoring tool for logs aggregation and alerting",
     long_description=long_description,

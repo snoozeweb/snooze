@@ -1,0 +1,55 @@
+## v1.0.9 (2021-09-??)
+
+TBD
+
+## v1.0.8 (2021-08-27)
+
+* Advanced schedule support for Notifications (number of notifications sent, frequency, delay)
+* More environment variables supported (documentation to come later)
+* Can now pass full Record to webhooks using {{ __self__ }} (Jinja template)
+* New Search bar for the WebUI with a powerful [query language](https://github.com/snoozeweb/snooze/blob/master/doc/14_Query_language.md) supported
+* Dockerfile added. Snooze image to come very soon!
+* When re-escalating an alert, can now trigger Modifications. Any actual change to a Record will trigger Notifications again
+* Can now use Jinja templates in Modifications (Rules, Re-escalations)
+* Housekeeper will auto cleanup expired Snooze filters. Parameters supported
+* New view for the Alert Infos tab
+
+## v1.0.7 (2021-08-05)
+
+* New feature: Time constraint for notifications. Same as for Snooze filters
+* New feature: Delay for notifications. If an alert gets acknowledged or closed before the delay ends, it does not get notified.
+* New feature: Watchlist for aggregate rules. Bypass aggregation if a specified field gets updated
+* New feature: Webhooks now support CA bundles
+
+## v1.0.6 (2021-07-29)
+
+* Webhook fixes
+* Added a new feature to webhooks: can now inject HTTP Response to a Record
+* Fixes issue with Conditions NOT and EXISTS not being properly displayed
+
+## v1.0.5 (2021-07-27)
+
+* Fixed bugs with aggregates from previous release
+* Reworked alerts lifecycle. Alerts first show up without a state. "open" state can now be entered only whenever reopening a closed alert by user interaction or automatically whenever a closed alert receives a new aggregation
+* New action: Webhook! Can be used by Notification to call a URL. Documentation will come soon
+
+## v1.0.4 (2021-07-26)
+
+Transferred Aggregates logic to Records, meaning there is one less collection in the DB and one less menu item to care about. As a bonus, now whenever an aggregated record gets alerted, if the aggregate state was "open" or "ack", it will get automatically re-escalated (before it was creating a new alert)
+
+## v1.0.3 (2021-07-20)
+
+* Widgets
+* Records lifecycle (open/close)
+* New Snooze filters time constraints (datetime, time, weekdays). Can be mixed together
+* Patlite support
+* More documentation
+* Bugfixes
+
+## v1.0.2 (2021-07-09)
+
+Fixes
+
+## v1.0.0 (2021-07-06)
+
+Initial release

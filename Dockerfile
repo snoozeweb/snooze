@@ -8,8 +8,6 @@ ARG BUILD_DATE=now
 ARG VCS_REF
 ARG VERSION
 
-ENV APP_VERSION=1.0.8
-
 LABEL org.label-schema.build-date=$BUILD_DATE \
       org.label-schema.url="https://snoozeweb.net" \
       org.label-schema.vcs-url="https://github.com/snoozeweb/snooze" \
@@ -39,8 +37,8 @@ RUN pip install --no-cache-dir pip virtualenv && \
     /venv/bin/pip install --no-cache-dir --requirement /app/requirements.txt
 ENV PATH $PATH:/venv/bin
 
-RUN /venv/bin/pip install snooze-server==${APP_VERSION}
-ADD https://github.com/snoozeweb/snooze/releases/download/v${APP_VERSION}/snooze-web-${APP_VERSION}.tar.gz /tmp/snooze-web.tar.gz
+RUN /venv/bin/pip install snooze-server==${VERSION}
+ADD https://github.com/snoozeweb/snooze/releases/download/v${VERSION}/snooze-web-${VERSION}.tar.gz /tmp/snooze-web.tar.gz
 RUN tar axvf /tmp/snooze-web.tar.gz -C /
 
 RUN mkdir -p /opt/snooze /var/lib/snooze /etc/snooze/server

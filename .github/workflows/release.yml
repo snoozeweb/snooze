@@ -1,0 +1,200 @@
+name: Create new release
+
+on:
+  push:
+    tags:
+      - v*
+
+jobs:
+  python_tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
+      - name: Install packages
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            build-essential \
+            python3-dev
+      - name: Set up Python 3.6
+        uses: actions/setup-python@v2
+        with:
+          python-version: '3.6'
+          architecture: 'x64'
+      - name: Install dependencies
+        id: install-deps
+        run: |
+          python -m pip install --upgrade pip
+          pip install \
+            pytest \
+            pytest-cov \
+            pytest-data \
+            pytest-mongodb \
+            pytest-spec \
+            pytest-timeout
+            pytest-sugar \
+            python-mimeparse \
+            pylint \
+          pip install -r requirements.txt
+          pip install .
+      - name: Running Pytest
+        id: pytest
+        run: |
+          pytest
+
+  release:
+    runs-on: ubuntu-latest
+    needs: python_tests
+    steps:
+      - name: checkout
+        uses: actions/checkout@v2
+      - name: release
+        uses: actions/create-release@v1
+        id: create_release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          draft: true
+          prerelease: false
+          release_name: v$(cat VERSION)
+          tag_name: ${{ github.ref }}
+          body: $(awk -vRS='\n\n' -vORS='' 'FNR==2 {print}' CHANGELOG.md)
+
+  pypi:
+    runs-on: ubuntu-latest
+    needs: python_tests
+    steps:
+      - uses: actions/checkout@v2
+      - name: Set up Python 3.x
+        uses: actions/setup-python@v2
+        with:
+          python-version: '3.x'
+          architecture: 'x64'
+      - name: Install dependencies
+        id: install-deps
+        run: |
+          python -m pip install --upgrade pip
+          pip install \
+            twine
+      - name: Package application
+        id: package
+        run: |
+          python setup.py bdist_wheel
+      - name: Upload package to pypi
+        id: upload
+        env:
+          TWINE_USERNAME: ${{ secrets.TWINE_USERNAME }}
+          TWINE_PASSWORD: ${{ secrets.TWINE_PASSWORD }}
+        run: |
+          twine upload dist/*
+
+  web:
+    runs-on: ubuntu-latest
+    needs: release
+    steps:
+      - name: checkout
+        uses: actions/checkout@v2
+      - name: setup Node
+        uses: actions/setup-node@v1
+        with:
+          node-version: 10.x
+          registry-url: 'https://registry.npmjs.org'
+      - name: build
+        run: npm run build
+        working-directory: ./web
+      - name: archive dist files
+        run: tar -czf snooze-web.tar.gz --transform='s+^./web/dist+opt/snooze/web+' ./web/dist/
+      - name: upload
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ github.repository }}/releases/download/v$(cat VERSION)
+          asset_path: ./snooze-web.tar.gz
+          asset_name: snooze-web-$(cat VERSION).tar.gz
+          asset_content_type: application/gzip
+
+  rpm:
+    runs-on: ubuntu-latest
+    steps:
+      - name: checkout
+        uses: actions/checkout@v2
+      - name: Install packages
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            python3-dev \
+            python3-venv \
+            rpm
+      - name: Set up Python 3.6
+        uses: actions/setup-python@v2
+        with:
+          python-version: '3.6'
+          architecture: 'x64'
+      - name: Install dependencies
+        id: install-deps
+        run: |
+          python -m pip install --upgrade pip
+          pip install \
+            virtualenv \
+            venvctrl
+      - name: Build RPM
+        id: rpm-build
+        run: rpmbuild --bb snooze-server.spec
+      - name: upload
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ github.repository }}/releases/download/v$(cat VERSION)
+          asset_path: ./RPMS/x86_64/snooze-server-$(cat VERSION)-1.x86_64.rpm
+          asset_name: snooze-server-$(cat VERSION)-1.x86_64.rpm
+          asset_content_type: application/octet-stream
+
+  docker_tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
+      - name: Docker Lint
+        id: docker-lint
+        run: |
+          docker run --rm -i ghcr.io/hadolint/hadolint hadolint \
+          --ignore DL3008 \
+          --ignore DL3059 \
+          - < Dockerfile
+
+  docker_push:
+    needs: [docker_tests, pypi, web]
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push'
+    env:
+      REPOSITORY_URL: registry.hub.docker.com
+      IMAGE_NAME: snoozeweb/snooze
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v2
+      - name: Variables
+        id: vars
+        run: echo "::set-output name=SHORT_COMMIT_ID::$(git rev-parse --short HEAD)"
+      - name: Build Image
+        id: docker-build
+        run: >-
+          docker build
+          --build-arg VCS_REF=${{ github.sha }}
+          --build-arg BUILD_DATE=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+          --build-arg VERSION=$(cat VERSION)
+          -t $IMAGE_NAME
+          -t $REPOSITORY_URL/$IMAGE_NAME:$(cat VERSION)
+          -t $REPOSITORY_URL/$IMAGE_NAME:${{ steps.vars.outputs.SHORT_COMMIT_ID }}
+          -t $REPOSITORY_URL/$IMAGE_NAME:latest .
+      - name: Docker Login
+        env:
+          DOCKER_USERNAME: ${{ secrets.DOCKER_USERNAME }}
+          DOCKER_PASSWORD: ${{ secrets.DOCKER_PASSWORD }}
+        run: echo "$DOCKER_PASSWORD" | docker login $REPOSITORY_URL --username "$DOCKER_USERNAME" --password-stdin
+      - name: Publish Image
+        id: docker-push
+        run: |
+          docker push $REPOSITORY_URL/$IMAGE_NAME:$(cat VERSION)
+          docker push $REPOSITORY_URL/$IMAGE_NAME:${{ steps.vars.outputs.SHORT_COMMIT_ID }}
+          docker push $REPOSITORY_URL/$IMAGE_NAME:latest

@@ -4,7 +4,7 @@ import os
 import json
 import sys
 
-from subprocess import Popen
+from subprocess import Popen, PIPE
 
 from shovel import task
 
@@ -14,13 +14,20 @@ def execute(*cmd):
     '''Wrapper to execute a subprocess'''
     cmd_string = " ".join(cmd)
     print("Running {}".format(cmd_string))
-    proc = Popen(cmd)
-    return_code = proc.wait()
-    if return_code == 0:
-        print("Command successful: {}".format(cmd_string))
+    proc = Popen(cmd, stdout=PIPE, stderr=PIPE)
+    outs, errs = proc.communicate()
+    if proc.returncode == 0:
+        print("Command `{}` successful: {}".format(cmd_string, outs))
+        return outs.decode()
     else:
-        print("Command failed: `{}` exited with {}".format(cmd_string, return_code))
+        print("Command `{}` failed with error {}: (stdout) `{}` / (stderr) `{}`".format(cmd_string, proc.returncode, outs, errs))
         sys.exit(1)
+
+def get_version():
+    version_path = '{}/VERSION'.format(os.environ['PWD'])
+    if os.path.isfile(version_path):
+        with open(version_path) as f:
+            version = f.read().rstrip('\n')
 
 @task
 def build_vue():
@@ -33,41 +40,22 @@ def pipenv():
     execute('pipenv', 'install', '--deploy', '--ignore-pipfile')
     execute('pipenv', 'clean')
 
-def ensure_rpmmacros_line(myline):
-    '''
-    Ensure the user's .rpmmacros contains `%_build_id_links none`.
-    This is necessary in CentOS 8, since it creates /usr/lib/.build-id/ files
-    which actually conflict with other rpms since we're actually shipping the same
-    binaries (we're shipping python).
-    Since .rpmmacros cannot be defined per-project but rather per-user, and we cannot
-    customize it with rpmvenv library, the workaround is to ensure the user that build
-    the program has it.
-    '''
-    print("Checking ~/.rpmmacros for line '{}'".format(myline))
-    rpmmacros = '{}/.rpmmacros'.format(os.environ['HOME'])
-    if os.path.isfile(rpmmacros):
-        with open(rpmmacros, 'r+') as f:
-            if not any(line.rstrip('\r\n') == myline for line in f.readlines()):
-                f.write(myline + '\n')
-    else:
-        with open(rpmmacros, 'w') as f:
-            f.write(myline + '\n')
-
 @task
 def rpm():
-    ensure_rpmmacros_line('%_build_id_links none')
-    if not os.path.isdir('dist'):
-        os.makedirs('dist')
     print("Building rpm")
-    with open('rpmvenv.json') as f:
-        config = json.loads(f.read())
-    core = config.get('core', {})
-    name = core.get('name')
-    version = core.get('version')
-    release = core.get('release', '1')
-    arch = core.get('arch', 'x86_64')
-    pkg_name = "{}-{}-{}.{}.rpm".format(name, version, release, arch)
-    if os.path.isfile('dist/' + pkg_name):
-        print("Detected dist/{}. Deleting.".format(pkg_name))
-        os.remove('dist/' + pkg_name)
-    execute('rpmvenv', '--verbose', 'rpmvenv.json', '--destination', 'dist/')
+    execute('rpmbuild', '--bb', 'snooze-server.spec')
+
+@task
+def docker():
+    print("Building docker image")
+    repo_url = 'registry.hub.docker.com'
+    image_name = 'snoozeweb/snooze'
+    vcs_ref = execute('git', 'rev-parse', '--short', 'HEAD').rstrip('\r\n')
+    version = get_version()
+    execute('docker', 'build',
+            '--build-arg', 'VCS_REF={}'.format(vcs_ref),
+            '--build-arg', 'VERSION={}'.format(version),
+            '-t', '{}/{}:v{}'.format(repo_url, image_name, version),
+            '-t', '{}/{}:{}'.format(repo_url, image_name, vcs_ref),
+            '-t', '{}/{}:latest'.format(repo_url, image_name),
+            '.')
