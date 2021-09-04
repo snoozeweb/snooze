@@ -10,22 +10,23 @@
 %define __prelink_undo_cmd %{nil}
 %define file_permissions_user snooze
 %define file_permissions_group snooze
-%define version %(cat %{_topdir}/VERSION)
 %define _build_id_links none
-%define _topdir %(pwd)
+%define topdir %(pwd)
+%define version %(cat %{topdir}/VERSION)
+%define _topdir %{_tmppath}
 # Globals
 %global __os_install_post %(echo '%{__os_install_post}' | sed -e 's!/usr/lib[^[:space:]]*/brp-python-bytecompile[[:space:]].*$!!g')
 # Tags
 Name: snooze-server
 Version: %{version}
 Release: 1
-BuildRoot: %(mktemp -ud %{_tmppath}/%{_topdir}-%{version}-%{release}-XXXXXX)
 Summary: Snooze server
 Group: Application/System
 License: AGPL3
-Source0: https://github.com/snoozeweb/snooze/releases/download/v%{version}/snooze-web-%{version}.tar.gz
 AutoReq: No
 AutoProv: No
+BuildRoot: %{_tmppath}/%{name}-%{version}-build
+Source0: https://github.com/snoozeweb/snooze/releases/download/v%{version}/snooze-web-%{version}.tar.gz
 # Blocks
 
 %prep
@@ -48,9 +49,7 @@ rm -rf %{buildroot}
 
 %install
 %{venv_cmd} %{venv_dir}
-cd %{_topdir}
 %{venv_pip} --trusted-host pypi.org --trusted-host files.pythonhosted.org snooze-server==%{version}
-cd -
 # RECORD files are used by wheels for checksum. They contain path names which
 # match the buildroot and must be removed or the package will fail to build.
 find %{buildroot} -name "RECORD" -exec rm -rf {} \;
@@ -61,11 +60,11 @@ mkdir -p %{buildroot}/var/log/snooze
 mkdir -p %{buildroot}/etc/snooze/server
 mkdir -p %{buildroot}/var/lib/snooze
 mkdir -p "%{buildroot}/usr/lib/systemd/system"
-cp -R %{_topdir}/snooze-server.service %{buildroot}/usr/lib/systemd/system/snooze-server.service
+cp -R %{topdir}/snooze-server.service %{buildroot}/usr/lib/systemd/system/snooze-server.service
 mkdir -p "%{buildroot}/opt/snooze/web"
 tar xzf %{SOURCE0} -C %{buildroot}
 mkdir -p "%{buildroot}/etc/snooze/server"
-cp -R %{_topdir}/snooze/defaults/core.yaml %{buildroot}/etc/snooze/server/core.yaml
+cp -R %{topdir}/snooze/defaults/core.yaml %{buildroot}/etc/snooze/server/core.yaml
 
 %build
 

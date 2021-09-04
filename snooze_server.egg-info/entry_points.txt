@@ -1,0 +1,4 @@
+[console_scripts]
+snooze = snooze.cli.__main__:snooze
+snooze-server = snooze.__main__:main
+

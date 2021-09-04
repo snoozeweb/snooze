@@ -27,14 +27,10 @@ jobs:
           python -m pip install --upgrade pip
           pip install \
             pytest \
-            pytest-cov \
             pytest-data \
             pytest-mongodb \
             pytest-spec \
             pytest-timeout
-            pytest-sugar \
-            python-mimeparse \
-            pylint \
           pip install -r requirements.txt
           pip install .
       - name: Running Pytest
@@ -44,21 +40,25 @@ jobs:
 
   release:
     runs-on: ubuntu-latest
-    needs: python_tests
     steps:
       - name: checkout
         uses: actions/checkout@v2
-      - name: release
-        uses: actions/create-release@v1
-        id: create_release
+      - name: changelog
+        run: |
+          export CHANGELOG="$(awk -vRS='\n\n' -vORS='' 'FNR==2 {print}' CHANGELOG.md)"
+          CHANGELOG="${CHANGELOG//'%'/'%25'}"
+          CHANGELOG="${CHANGELOG//$'\n'/'%0A'}"
+          CHANGELOG="${CHANGELOG//$'\r'/'%0D'}"
+          echo "::set-output name=changelog::$(echo "$CHANGELOG")"
+        id: changelog
+      - name: Update release with changelog
+        id: update
+        uses: tubone24/update_release@v1.1.0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG_NAME: ${{ github.ref }}
         with:
-          draft: true
-          prerelease: false
-          release_name: v$(cat VERSION)
-          tag_name: ${{ github.ref }}
-          body: $(awk -vRS='\n\n' -vORS='' 'FNR==2 {print}' CHANGELOG.md)
+          body: ${{ steps.changelog.outputs.changelog }}
 
   pypi:
     runs-on: ubuntu-latest
@@ -75,7 +75,8 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install \
-            twine
+            twine \
+            wheel
       - name: Package application
         id: package
         run: |
@@ -90,7 +91,6 @@ jobs:
 
   web:
     runs-on: ubuntu-latest
-    needs: release
     steps:
       - name: checkout
         uses: actions/checkout@v2
@@ -99,20 +99,25 @@ jobs:
         with:
           node-version: 10.x
           registry-url: 'https://registry.npmjs.org'
+      - name: install deps
+        run: npm install
+        working-directory: ./web
       - name: build
         run: npm run build
         working-directory: ./web
       - name: archive dist files
         run: tar -czf snooze-web.tar.gz --transform='s+^./web/dist+opt/snooze/web+' ./web/dist/
+      - name: package_name
+        run: echo "::set-output name=package_name::$(echo snooze-web-$(cat VERSION).tar.gz)"
+        id: package_name
       - name: upload
-        uses: actions/upload-release-asset@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        uses: svenstaro/upload-release-action@v2
         with:
-          upload_url: ${{ github.repository }}/releases/download/v$(cat VERSION)
-          asset_path: ./snooze-web.tar.gz
-          asset_name: snooze-web-$(cat VERSION).tar.gz
-          asset_content_type: application/gzip
+          repo_token: ${{ secrets.GITHUB_TOKEN }}
+          file: ./snooze-web.tar.gz
+          asset_name: ${{ steps.package_name.outputs.package_name }}
+          tag: ${{ github.ref }}
+          overwrite: true
 
   rpm:
     runs-on: ubuntu-latest
@@ -138,18 +143,24 @@ jobs:
           pip install \
             virtualenv \
             venvctrl
+          mkdir /var/tmp/BUILD /var/tmp/SOURCES /var/tmp/SRPMS/ /var/tmp/RPMS
       - name: Build RPM
         id: rpm-build
         run: rpmbuild --bb snooze-server.spec
+      - name: package_path
+        run: echo "::set-output name=package_path::$(echo /var/tmp/RPMS/x86_64/snooze-server-$(cat VERSION)-1.x86_64.rpm)"
+        id: package_path
+      - name: package_name
+        run: echo "::set-output name=package_name::$(echo snooze-server-$(cat VERSION)-1.x86_64.rpm)"
+        id: package_name
       - name: upload
-        uses: actions/upload-release-asset@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        uses: svenstaro/upload-release-action@v2
         with:
-          upload_url: ${{ github.repository }}/releases/download/v$(cat VERSION)
-          asset_path: ./RPMS/x86_64/snooze-server-$(cat VERSION)-1.x86_64.rpm
-          asset_name: snooze-server-$(cat VERSION)-1.x86_64.rpm
-          asset_content_type: application/octet-stream
+          repo_token: ${{ secrets.GITHUB_TOKEN }}
+          file: ${{ steps.package_path.outputs.package_path }}
+          asset_name: ${{ steps.package_name.outputs.package_name }}
+          tag: ${{ github.ref }}
+          overwrite: true
 
   docker_tests:
     runs-on: ubuntu-latest
@@ -160,13 +171,13 @@ jobs:
         run: |
           docker run --rm -i ghcr.io/hadolint/hadolint hadolint \
           --ignore DL3008 \
+          --ignore DL3018 \
           --ignore DL3059 \
           - < Dockerfile
 
   docker_push:
     needs: [docker_tests, pypi, web]
     runs-on: ubuntu-latest
-    if: github.event_name == 'push'
     env:
       REPOSITORY_URL: registry.hub.docker.com
       IMAGE_NAME: snoozeweb/snooze

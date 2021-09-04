@@ -1,12 +1,6 @@
-name: snooze-server testing
+name: Snooze-server testing
 
 on:
-  push:
-    branches:
-      - master
-    tags:
-      - v*
-
   pull_request:
     branches: [ master ]
 
@@ -33,14 +27,10 @@ jobs:
           python -m pip install --upgrade pip
           pip install \
             pytest \
-            pytest-cov \
             pytest-data \
             pytest-mongodb \
             pytest-spec \
             pytest-timeout
-            pytest-sugar \
-            python-mimeparse \
-            pylint \
           pip install -r requirements.txt
           pip install .
       - name: Running Pytest
