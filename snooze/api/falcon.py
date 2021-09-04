@@ -140,12 +140,25 @@ class AlertRoute(BasicRoute):
 
     def on_post(self, req, resp):
         log.debug("Received log {}".format(req.media))
-        try:
-            self.core.process_record(req.media)
+        media = req.media.copy()
+        error_list = []
+        ok_list = []
+        if not isinstance(media, list):
+            media = [media]
+        for req_media in media:
+            try:
+                self.core.process_record(req_media)
+                ok_list.append(req_media)
+            except Exception as e:
+                log.exception(e)
+                error_list.append(req_media)
+                continue
+        if len(ok_list) > 0:
             resp.status = falcon.HTTP_200
-        except Exception as e:
-            log.exception(e)
+            resp.media = {'data': {'added': ok_list, 'rejected': error_list}}
+        else:
             resp.status = falcon.HTTP_503
+            resp.media = {'data': {'added': [], 'rejected': error_list}}
 
 class MetricsRoute(BasicRoute):
     auth = {

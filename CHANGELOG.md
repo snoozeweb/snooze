@@ -1,5 +1,6 @@
-## v1.0.9 (2021-09-??)
+## v1.0.9 (2021-09-04)
 
+* Admins can use the webUI to manually trigger alerts
 * Added a toggleable button to automatically refresh Alerts display
 * Log in back to the webUI now keeps the initial query
 

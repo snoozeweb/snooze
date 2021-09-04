@@ -21,7 +21,7 @@
               <b-button @click="clearSelected">Clear selection</b-button>
               <b-button
                 variant="danger"
-                v-if="delete_mode"
+                v-if="delete_m"
                 @click="delete_items(endpoint, selected)"
               >Delete selection</b-button>
             </b-button-group>
@@ -30,7 +30,7 @@
               <!-- Slots for placing additional buttons in the header of the table -->
               <b-button @click="select_all">Select All</b-button>
               <slot name="head_buttons"></slot>
-              <b-button v-if="add_mode" variant="success" @click="modal_add()">Add</b-button>
+              <b-button v-if="add_m" variant="success" @click="modal_add()">New</b-button>
               <b-button @click="refresh(true)"><i class="la la-refresh la-lg"></i></b-button>
             </b-button-group>
 
@@ -130,8 +130,8 @@
               <i v-else class="la la-angle-down la-lg"></i>
             </b-button>
             <slot name="button" v-bind="row" />
-            <b-button v-if="edit_mode" size="sm" @click="modal_edit(row.item)" variant="primary" v-b-tooltip.hover title="Edit"><i class="la la-pencil-alt la-lg"></i></b-button>
-            <b-button v-if="delete_mode" size="sm" @click="modal_delete(row.item)" variant="danger" v-b-tooltip.hover title="Delete"><i class="la la-trash la-lg"></i></b-button>
+            <b-button v-if="edit_m" size="sm" @click="modal_edit(row.item)" variant="primary" v-b-tooltip.hover title="Edit"><i class="la la-pencil-alt la-lg"></i></b-button>
+            <b-button v-if="delete_m" size="sm" @click="modal_delete(row.item)" variant="danger" v-b-tooltip.hover title="Delete"><i class="la la-trash la-lg"></i></b-button>
           </b-button-group>
         </template>
         <template v-slot:row-details="row">
@@ -187,7 +187,7 @@
     size ="xl"
     centered
   >
-    <template v-slot:modal-title>Edit</template>
+    <template v-slot:modal-title>{{ modal_title_edit }}</template>
     <b-form @submit.stop.prevent="checkForm" novalidate ref="edit_form">
       <Form v-model="modal_data.edit" :metadata="form" />
     </b-form>
@@ -204,7 +204,7 @@
     size="xl"
     centered
   >
-    <template v-slot:modal-title>Add</template>
+    <template v-slot:modal-title>{{ modal_title_add }}</template>
     <b-form @submit.stop.prevent="checkForm" novalidate ref="add_form">
       <Form v-model="modal_data.add" :metadata="form" />
     </b-form>
@@ -221,7 +221,7 @@
     size="xl"
     centered
   >
-    <template v-slot:modal-title>Deleting this item</template>
+    <template v-slot:modal-title>{{ modal_title_delete }}</template>
     <p>{{ modal_data.delete }}</p>
   </b-modal>
 
@@ -308,6 +308,9 @@ export default {
     // List of fields to exclude from Info, as they will be displayed
     // in a custom view.
     info_excluded_fields: {type: Array, default: () => []},
+    modal_title_add: {type: String, default: 'Create new'},
+    modal_title_edit: {type: String, default: 'Edit'},
+    modal_title_delete: {type: String, default: 'Delete this item'},
   },
   mounted () {
     this.reload()
@@ -339,6 +342,9 @@ export default {
       selected: [],
       orderby: this.order_by,
       isascending: this.is_ascending,
+      add_m: this.add_mode,
+      edit_m: this.edit_mode,
+      delete_m: this.delete_mode,
       modal_data: {
         add: {},
         edit: {},
@@ -401,7 +407,7 @@ export default {
     checkForm(node) {
       return (node.getElementsByClassName('form-control is-invalid').length + node.getElementsByClassName('has-error').length) == 0
     },
-    submit_edit(bvModalEvt) {
+    submit_edit(bvModalEvt, endpoint = this.endpoint) {
       bvModalEvt.preventDefault()
       if (!this.checkForm(this.$refs.edit_form)) {
         this.makeToast('Form is invalid', 'danger', 'Error')
@@ -409,9 +415,9 @@ export default {
       }
       var data = this.modal_data.edit
       var filtered_object = this.preprocess_data(data)
-      console.log(`PUT /${this.endpoint}`)
+      console.log(`PUT /${endpoint}`)
       API
-        .put(`/${this.endpoint}`, [filtered_object])
+        .put(`/${endpoint}`, [filtered_object])
         .then(response => {
           if (response.data) {
             if (response.data.data.rejected.length > 0) {
@@ -433,7 +439,7 @@ export default {
         this.$bvModal.hide('edit')
       })
     },
-    submit_add(bvModalEvt) {
+    submit_add(bvModalEvt, endpoint = this.endpoint) {
       bvModalEvt.preventDefault()
       if (!this.checkForm(this.$refs.add_form)) {
         this.makeToast('Form is invalid', 'danger', 'Error')
@@ -441,9 +447,9 @@ export default {
       }
       var data = this.modal_data.add
       var filtered_object = this.preprocess_data(data)
-      console.log(`POST /${this.endpoint}`)
+      console.log(`POST /${endpoint}`)
       API
-        .post(`/${this.endpoint}`, [filtered_object])
+        .post(`/${endpoint}`, [filtered_object])
         .then(response => {
           if (response.data) {
             if (response.data.data.rejected.length > 0) {
@@ -465,11 +471,11 @@ export default {
         this.$bvModal.hide('add')
       })
     },
-    submit_delete() {
+    submit_delete(bvModalEvt, endpoint = this.endpoint) {
       var uid = this.modal_data.delete.uid
-      console.log(`DELETE ${this.endpoint}/${uid}`)
+      console.log(`DELETE ${endpoint}/${uid}`)
       API
-        .delete(`/${this.endpoint}/${uid}`)
+        .delete(`/${endpoint}/${uid}`)
         .then(response => {
           if (response.data) {
             console.log(response)
@@ -484,6 +490,9 @@ export default {
           }
         })
         .catch(error => console.log(error))
+      this.$nextTick(() => {
+        this.$bvModal.hide('delete')
+      })
     },
     update_table(response) {
       if (response.data) {

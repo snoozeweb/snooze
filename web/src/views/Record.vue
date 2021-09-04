@@ -8,6 +8,7 @@
       :fields="fields"
       :tabs="tabs"
       :info_excluded_fields="['smtp']"
+      :form="form"
     >
       <template #button="row">
         <b-button variant="primary" class='text-nowrap' @click="modal_show([row.item], 'comment')" size="sm" v-b-tooltip.hover title="Add comment"><i class="las la-comment-dots la-lg"></i> <b-badge v-if="row.item['comment_count']" variant='light' class='position-absolute' style='z-index: 10; top:0!important; right:100%!important; transform:translate(50%,-50%)!important'>{{ row.item['comment_count'] }}</b-badge></b-button>
@@ -38,7 +39,8 @@
         </b-col>
       </template>
       <template #head_buttons>
-        <b-button size="sm" :variant="auto_refresh ? 'success':''" v-b-tooltip.hover :title="auto_refresh ? 'Auto Mode ON':'Audo Mode OFF'" @click="toggle_auto()" :pressed.sync="auto_refresh"><i v-if="auto_refresh" class="la la-eye la-lg"/><i v-else="auto_refresh" class="la la-eye-slash la-lg"/></b-button>
+        <b-button size="sm" :variant="auto_refresh ? 'success':''" v-b-tooltip.hover :title="auto_refresh ? 'Auto Mode ON':'Auto Mode OFF'" @click="toggle_auto()" :pressed.sync="auto_refresh"><i v-if="auto_refresh" class="la la-eye la-lg"/><i v-else="auto_refresh" class="la la-eye-slash la-lg"/></b-button>
+        <b-button v-if="is_admin()" variant="success" @click="modal_add()">New</b-button>
       </template>
     </List>
 
@@ -99,6 +101,8 @@ export default {
       this.auto_refresh = true
     }
     this.toggle_auto()
+    this.$refs.table.submit_add_back = this.$refs.table.submit_add
+    this.$refs.table.submit_add = this.submit_add
   },
   data () {
     return {
@@ -257,6 +261,23 @@ export default {
         }
       }
       localStorage.setItem('record_auto', this.auto_refresh)
+    },
+    is_admin() {
+      var permissions = localStorage.getItem('permissions') || []
+      return permissions.includes('rw_all') || permissions.includes('rw_record')
+    },
+    modal_add() {
+      this.$refs.table.modal_add()
+    },
+    submit_add(bvModalEvt) {
+      if (this.$refs.table.modal_data.add.custom_fields !== undefined) {
+        this.$refs.table.modal_data.add.custom_fields.forEach(field => {
+          if (field[0] != '') {
+            this.$refs.table.modal_data.add[field[0]] = field[1]
+          }
+        })
+      }
+      this.$refs.table.submit_add_back(bvModalEvt, 'alert')
     },
   },
 }

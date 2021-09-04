@@ -51,3 +51,44 @@ fields:
         label: ''
         tdClass: ['align-middle', 'text-center']
         thClass: 'text-center'
+form:
+    timestamp:
+        display_name: Timestamp
+        component: DateTimeSingle
+        description: Timestamp
+        required: true
+    host:
+        display_name: Host
+        component: String
+        description: Hostname
+        placeholder: 'myhost001'
+        required: true
+    process:
+        display_name: Process
+        component: String
+        description: Process name
+        placeholder: 'myapp'
+        required: true
+    severity:
+        display_name: Severity
+        component: String
+        description: Severity
+        placeholder: 'critical'
+        required: true
+    source:
+        display_name: Source
+        component: String
+        description: Source
+        placeholder: 'syslog'
+        required: true
+    message:
+        display_name: Message
+        component: Text
+        description: Message
+    custom_fields:
+        display_name: Custom Fields
+        component: Arguments
+        description: List of custom fields
+        placeholder:
+          - field_name
+          - field_value

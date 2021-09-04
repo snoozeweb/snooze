@@ -40,7 +40,7 @@
     <div>
       <b-button size="sm" variant='primary' @click="add_comment(input_text, 'comment')" v-b-tooltip.hover title="Add a comment">Comment</b-button>
       <b-button-group class='float-right ml-2'>
-        <b-button size="sm" :variant="auto_mode ? 'success':''" v-b-tooltip.hover :title="auto_mode ? 'Auto Mode ON':'Audo Mode OFF'" @click="toggle_auto()" :pressed.sync="auto_mode"><i v-if="auto_mode" class="la la-eye la-lg"/><i v-else="auto_mode" class="la la-eye-slash la-lg"/></b-button>
+        <b-button size="sm" :variant="auto_mode ? 'success':''" v-b-tooltip.hover :title="auto_mode ? 'Auto Mode ON':'Auto Mode OFF'" @click="toggle_auto()" :pressed.sync="auto_mode"><i v-if="auto_mode" class="la la-eye la-lg"/><i v-else="auto_mode" class="la la-eye-slash la-lg"/></b-button>
         <b-button size="sm" @click="refresh()" v-b-tooltip.hover title="Refresh"><i class="la la-refresh la-lg"/></b-button>
       </b-button-group>
       <div class="d-flex float-right align-items-center ">
