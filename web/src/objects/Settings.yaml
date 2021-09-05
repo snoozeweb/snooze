@@ -34,6 +34,15 @@ form:
                 - text: Disabled
                   value: false
             description: 'Enable or disable Local Users Authentication'
+        anonymous_enabled:
+            display_name: Anonymous Login
+            component: Radio
+            options:
+                - text: Enabled
+                  value: true
+                - text: Disabled
+                  value: false
+            description: 'Enable or disable Anonymous login'
         default_auth_backend:
             display_name: Default Authentication
             component: AuthBackend

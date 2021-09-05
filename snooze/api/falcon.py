@@ -33,6 +33,9 @@ class ThreadingWSGIServer(ThreadingMixIn, WSGIServer):
 
 def authorize(func):
     def _f(self, req, resp, *args, **kw):
+        if os.environ.get('SNOOZE_NO_LOGIN', self.core.conf.get('no_login', False)):
+            log.warning("Authentication disabled. Authorized")
+            return func(self, req, resp, *args, **kw)
         user_payload = req.context['user']['user']
         if (self.plugin and hasattr(self.plugin, 'name')):
             plugin_name = self.plugin.name
@@ -153,6 +156,7 @@ class AlertRoute(BasicRoute):
                 log.exception(e)
                 error_list.append(req_media)
                 continue
+        resp.content_type = falcon.MEDIA_JSON
         if len(ok_list) > 0:
             resp.status = falcon.HTTP_200
             resp.media = {'data': {'added': ok_list, 'rejected': error_list}}
@@ -183,12 +187,23 @@ class LoginRoute(BasicRoute):
 
     def on_get(self, req, resp):
         log.debug("Listing authentication backends")
+        if os.environ.get('SNOOZE_NO_LOGIN', self.core.conf.get('no_login', False)):
+            resp.content_type = falcon.MEDIA_JSON
+            resp.status = falcon.HTTP_200
+            resp.media = {
+                'token': self.api.get_root_token(),
+            }
+            return
         try:
             backends = [{'name':self.api.auth_routes[backend].name, 'endpoint': backend} for backend in self.api.auth_routes.keys() if self.api.auth_routes[backend].enabled]
             resp.content_type = falcon.MEDIA_JSON
             resp.status = falcon.HTTP_200
+            default_backend = list(filter(lambda x: x['endpoint'] == self.api.core.general_conf.get('default_auth_backend', ''), backends))
+            if len(default_backend) > 0:
+                backends.remove(default_backend[0])
+                backends.insert(0, default_backend[0])
             resp.media = {
-                'data': {'backends': backends, 'default': self.api.core.general_conf.get('default_auth_backend') or ''},
+                'data': {'backends': backends},
             }
         except Exception as e:
             log.exception(e)
@@ -346,6 +361,24 @@ class AuthRoute(BasicRoute):
     def reload(self):
         pass
 
+class AnonymousAuthRoute(AuthRoute):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.name = 'Anonymous'
+        self.reload()
+
+    def reload(self):
+        conf = config('general')
+        self.enabled = conf.get('anonymous_enabled', False)
+        log.debug("Authentication backend 'anonymous' status: {}".format(self.enabled))
+
+    def authenticate(self, req, resp):
+        log.debug('Anonymous login')
+        req.context['user'] = 'anonymous'
+
+    def parse_user(self, user):
+        return {'name': 'anonymous', 'method': 'local'}
+
 class LocalAuthRoute(AuthRoute):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -354,7 +387,7 @@ class LocalAuthRoute(AuthRoute):
 
     def reload(self):
         conf = config('general')
-        self.enabled = conf.get('local_users_enabled') or False
+        self.enabled = conf.get('local_users_enabled', False)
         log.debug("Authentication backend 'local' status: {}".format(self.enabled))
 
     def authenticate(self, req, resp):
@@ -542,6 +575,10 @@ class BackendApi():
         # Basic auth setup
         self.auth_routes['local'] = LocalAuthRoute(self)
         self.add_route('/login/local', self.auth_routes['local'])
+        # Anonymous auth
+        if self.core.general_conf.get('anonymous_enabled', False):
+            self.auth_routes['anonymous'] = AnonymousAuthRoute(self)
+            self.add_route('/login/anonymous', self.auth_routes['anonymous'])
         # Ldap auth
         self.auth_routes['ldap'] = LdapAuthRoute(self)
         self.add_route('/login/ldap', self.auth_routes['ldap'])

@@ -83,6 +83,7 @@ The only configuration file not managed in the web interface is `/etc/snooze/cor
 * `debug` (`false`): Activate debug log output
 * `bootstrap_db` (`true`): Populate the database with an initial configuration
 * `create_root_user` (`true`): Create a *root* user with a default password *root*
+* `no_login` (`false`): Disable Authentication (everyone has admin priviledges)
 * `ssl`
     * `enabled` (`false`): Enable TLS termination for both the API and the web interface
     * `certfile` (`''`): Path to the SSL certificate

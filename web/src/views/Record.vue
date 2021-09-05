@@ -39,8 +39,8 @@
         </b-col>
       </template>
       <template #head_buttons>
-        <b-button size="sm" :variant="auto_refresh ? 'success':''" v-b-tooltip.hover :title="auto_refresh ? 'Auto Mode ON':'Auto Mode OFF'" @click="toggle_auto()" :pressed.sync="auto_refresh"><i v-if="auto_refresh" class="la la-eye la-lg"/><i v-else="auto_refresh" class="la la-eye-slash la-lg"/></b-button>
         <b-button v-if="is_admin()" variant="success" @click="modal_add()">New</b-button>
+        <b-button size="sm" :variant="auto_refresh ? 'success':''" v-b-tooltip.hover :title="auto_refresh ? 'Auto Mode ON':'Auto Mode OFF'" @click="toggle_auto()" :pressed.sync="auto_refresh"><i v-if="auto_refresh" class="la la-eye la-lg"/><i v-else="auto_refresh" class="la la-eye-slash la-lg"/></b-button>
       </template>
     </List>
 

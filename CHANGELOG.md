@@ -1,3 +1,12 @@
+## v1.0.10
+
+### New features
+* Config option to disable authentication. People will be automatically logged in as root
+* Anonymous login backend. Can be enabled in Settings (or general.yaml config file)
+
+## Bugfixes
+* Default authentication backend display order not being respected since 2021-06-30
+
 ## v1.0.9 (2021-09-04)
 
 * Admins can use the webUI to manually trigger alerts

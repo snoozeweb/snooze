@@ -114,7 +114,7 @@ class Core:
             self.general_conf = config('general')
             self.stats.reload()
             return True
-        if config_file == 'ldap_auth':
+        elif config_file == 'ldap_auth':
             return True
         elif config_file == 'housekeeping':
             self.housekeeper.reload()

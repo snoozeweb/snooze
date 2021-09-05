@@ -1,5 +1,5 @@
 <template>
-  <div class="app d-flex flex-row align-items-center" style="min-height:100vh">
+  <div v-if="show_login" class="app d-flex flex-row align-items-center" style="min-height:100vh">
     <div class="container pb-5">
       <b-row class="justify-content-center px-5 pb-5">
         <h1><img src="img/logo.png" :height="160"></h1>
@@ -23,6 +23,7 @@
 import BasicAuth from '@/components/login/BasicAuth.vue'
 import JwtToken from '@/components/login/JwtToken.vue'
 import { API } from '@/api'
+import router from '@/router'
 
 export default {
   name: 'Login',
@@ -39,6 +40,7 @@ export default {
       auth_backends: [],
       default_backend: '',
       tabIndex: 0,
+      show_login: false,
     }
   },
   methods: {
@@ -49,13 +51,17 @@ export default {
         .then(response => {
           console.log(response)
           if (response !== undefined) {
-            this.auth_backends = response.data.data.backends
-            this.default_backend = response.data.data.default
-            var index = this.auth_backends.findIndex(b => b['endpoint'] == this.default_backend) || 0
-            this.auth_backends.splice(0, 0, this.auth_backends.splice(index, 1)[0]);
-            this.$nextTick(() => {
-              this.tabIndex = 0
-            })
+            if (response.data.token !== undefined) {
+              localStorage.setItem('snooze-token', response.data.token)
+              if (this.$route.query.return_to) {
+                router.push(decodeURIComponent(this.$route.query.return_to))
+              } else {
+                router.push('/record')
+              }
+            } else {
+              this.auth_backends = response.data.data.backends
+              this.show_login = true
+            }
           }
         })
         .catch(error => console.log(error))

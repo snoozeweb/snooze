@@ -69,7 +69,11 @@ export default {
     },
     subcontent: {
       handler: function () {
-        this.$emit('input', {'selected': this.selected, 'subcontent': this.subcontent})
+        if (this.subcontent && Object.keys(this.subcontent).length > 0 && this.subcontent.constructor === Object) {
+          this.$emit('input', {'selected': this.selected, 'subcontent': this.subcontent})
+        } else {
+          this.$emit('input', this.selected)
+        }
       },
       immediate: true
     },

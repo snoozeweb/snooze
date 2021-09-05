@@ -1,17 +1,19 @@
 <template>
   <b-form @submit="onSubmit">
-    <p class="text-muted">Sign In to your account</p>
-    <b-input-group class="mb-3">
-      <b-input-group-prepend><b-input-group-text><i class="la la-user la-lg"></i></b-input-group-text></b-input-group-prepend>
-      <b-form-input type="text" v-model="username" class="form-control" placeholder="Username" autocomplete="username email" @input="reset_validation" required/>
-    </b-input-group>
-    <b-input-group class="mb-4">
-      <b-input-group-prepend><b-input-group-text><i class="la la-lock la-lg"></i></b-input-group-text></b-input-group-prepend>
-      <b-form-input type="password" v-model="password" class="form-control" placeholder="Password" autocomplete="current-password" @input="reset_validation" required/>
-      <b-form-invalid-feedback :state="validate">
-        {{ error_message }}
-      </b-form-invalid-feedback>
-    </b-input-group>
+    <div v-if="endpoint != 'anonymous'">
+      <p class="text-muted">Sign In to your account</p>
+      <b-input-group class="mb-3">
+        <b-input-group-prepend><b-input-group-text><i class="la la-user la-lg"></i></b-input-group-text></b-input-group-prepend>
+        <b-form-input type="text" v-model="username" class="form-control" placeholder="Username" autocomplete="username email" @input="reset_validation" required/>
+      </b-input-group>
+      <b-input-group class="mb-4">
+        <b-input-group-prepend><b-input-group-text><i class="la la-lock la-lg"></i></b-input-group-text></b-input-group-prepend>
+        <b-form-input type="password" v-model="password" class="form-control" placeholder="Password" autocomplete="current-password" @input="reset_validation" required/>
+        <b-form-invalid-feedback :state="validate">
+          {{ error_message }}
+        </b-form-invalid-feedback>
+      </b-input-group>
+    </div>
     <b-row>
       <b-col cols="6">
         <b-button type="submit" variant="primary" class="px-4">Login</b-button>
