@@ -1,0 +1,48 @@
+name: Dedian release
+
+on:
+  push:
+    branches: master
+
+  rpm:
+    runs-on: ubuntu-latest
+    steps:
+      - name: checkout
+        uses: actions/checkout@v2
+      - name: Install packages
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            build-essential \
+            virtualenv \
+            debhelper \
+            wget
+      - name: Set up Python 3.6
+        uses: actions/setup-python@v2
+        with:
+          python-version: '3.6'
+          architecture: 'x64'
+      - name: version
+        run: echo "::set-output name=version::$(cat VERSION)"
+        id: version
+      - name: Prepare env
+        id: prepare
+        run: |
+          find *dsc *diff.gz -exec sed -i "s+__VERSION__+$(cat VERSION)+g" {} +
+          wget https://github.com/snoozeweb/snooze/releases/download/v$(cat VERSION)/snooze-web-$(cat VERSION).tar.gz -O snooze-server_$(cat VERSION).tar.gz
+          mv snooze-server.diff.gz snooze-server_$(cat VERSION).diff.gz 
+      - name: Extract
+        id: extract
+        run: dpkg-source -x --no-check snooze-server.dsc
+      - name: Build
+        id: build
+        run: dpkg-buildpackage
+        working-directory: ./snooze-server-${{ steps.version.outputs.version }}
+      - name: upload
+        uses: svenstaro/upload-release-action@v2
+        with:
+          repo_token: ${{ secrets.GITHUB_TOKEN }}
+          file: *.deb
+          tag: ${{ github.ref }}
+          overwrite: true
+          file_glob: true

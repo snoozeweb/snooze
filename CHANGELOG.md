@@ -3,8 +3,9 @@
 ### New features
 * Config option to disable authentication. People will be automatically logged in as root
 * Anonymous login backend. Can be enabled in Settings (or general.yaml config file)
+* Debian package export
 
-## Bugfixes
+### Bug fixes
 * Default authentication backend display order not being respected since 2021-06-30
 
 ## v1.0.9 (2021-09-04)
