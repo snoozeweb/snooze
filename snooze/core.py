@@ -8,6 +8,9 @@ from logging import getLogger
 
 log = getLogger('snooze')
 
+from os import listdir
+from os.path import dirname, isdir, join as joindir
+from snooze import __file__ as rootdir
 from snooze.plugins.core import Abort, Abort_and_write
 from snooze.utils import config, Housekeeper, Stats
 from hashlib import sha256
@@ -23,7 +26,6 @@ class Core:
         self.cluster = None
         self.plugins = []
         self.process_plugins = []
-        self.action_plugins = []
         self.stats = Stats(self)
         self.secrets = config('secrets')
         self.stats.init('process_record_duration', 'summary', 'snooze_record_process_duration', 'Average time spend processing a record', ['source'])
@@ -35,21 +37,11 @@ class Core:
     def load_plugins(self):
         self.plugins = []
         self.process_plugins = []
-        self.action_plugins = []
-        log.debug("Starting to load notification plugins")
-        for plugin_name in (self.conf.get('action_plugins') or []):
-            try:
-                log.debug("Attempting to load notification plugin {}".format(plugin_name))
-                plugin_module = import_module("snooze.plugins.action.{}.plugin".format(plugin_name))
-                plugin_class = getattr(plugin_module, plugin_name.capitalize())
-            except Exception as e:
-                log.exception(e)
-                log.error("Error for notification plugin `{}`: {}".format(plugin_name, e))
-                continue
-            plugin_instance = plugin_class(self)
-            self.action_plugins.append(plugin_instance)
         log.debug("Starting to load core plugins")
-        for plugin_name in (self.conf.get('core_plugins') or []) + (self.conf.get('process_plugins') or []):
+        plugins_path = joindir(dirname(rootdir), 'plugins', 'core')
+        for plugin_name in listdir(plugins_path):
+            if (not isdir(plugins_path + '/' + plugin_name)) or plugin_name == 'basic' or plugin_name.startswith('_'):
+                continue
             try:
                 log.debug("Attempting to load core plugin {}".format(plugin_name))
                 plugin_module = import_module("snooze.plugins.core.{}.plugin".format(plugin_name))
@@ -60,14 +52,21 @@ class Core:
                 plugin_class = type(plugin_name.capitalize(), (plugin_module.Plugin,), {})
             except Exception as e:
                 log.exception(e)
-                log.error("Error for core plugin `{}`: {}".format(plugin_name, e))
+                log.error("Error init core plugin `{}`: {}".format(plugin_name, e))
                 continue
-            plugin_conf = (self.conf.get(plugin_name) or {})
-            plugin_instance = plugin_class(self, plugin_conf)
+            plugin_instance = plugin_class(self)
             self.plugins.append(plugin_instance)
             if (plugin_name in (self.conf.get('process_plugins') or [])):
                 log.debug("Detected {} as a process plugin".format(plugin_name))
                 self.process_plugins.append(plugin_instance)
+        for plugin in self.plugins:
+            try:
+                plugin.post_init()
+            except Exception as e:
+                log.exception(e)
+                log.error("Error post init core plugin `{}`: {}".format(plugin_name, e))
+                continue
+        log.debug("List of loaded core plugins: {}".format([plugin.name for plugin in self.plugins]))
 
     def process_record(self, record):
         source = record.get('source', 'unknown')
@@ -77,7 +76,7 @@ class Core:
         try:
             record['timestamp'] = parser.parse(record['timestamp']).astimezone().strftime("%Y-%m-%dT%H:%M:%S%z")
         except Exception as e:
-            log.exception(e)
+            log.warning(e)
             record['timestamp'] = datetime.now().astimezone().strftime("%Y-%m-%dT%H:%M:%S%z")
         with self.stats.time('process_record_duration', {'source': source}):
             for plugin in self.process_plugins:
@@ -104,9 +103,6 @@ class Core:
 
     def get_core_plugin(self, plugin_name):
         return next(iter([plug for plug in self.plugins if plug.name == plugin_name]), None)
-
-    def get_action_plugin(self, plugin_name):
-        return next(iter([plug for plug in self.action_plugins if plug.name == plugin_name]), None)
 
     def reload_conf(self, config_file):
         log.debug("Reload config file '{}'".format(config_file))

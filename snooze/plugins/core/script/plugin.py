@@ -4,12 +4,12 @@ from bson.json_util import dumps
 from subprocess import run, CalledProcessError, PIPE
 from jinja2 import Template
 
-from snooze.plugins.action import Action
+from snooze.plugins.core import Plugin
 
 from logging import getLogger
 log = getLogger('snooze.action.script')
 
-class Script(Action):
+class Script(Plugin):
     def __init__(self, core):
         super().__init__(core)
 

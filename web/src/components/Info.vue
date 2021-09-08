@@ -33,7 +33,7 @@ export default {
     return {
       fields: [
         {key: 'name'},
-        {key: 'value', tdClass: 'border-left'},
+        {key: 'value', tdClass: 'border-left, multiline, text-break'},
       ],
     }
   },

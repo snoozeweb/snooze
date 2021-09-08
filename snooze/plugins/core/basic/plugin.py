@@ -6,10 +6,9 @@ from logging import getLogger
 log = getLogger('snooze')
 
 class Plugin:
-    def __init__(self, core, conf):
+    def __init__(self, core):
         self.core = core
         self.db = core.db
-        self.conf = conf
         self.name = self.__class__.__name__.lower()
         metadata_path = joindir(dirname(rootdir), 'plugins', 'core', self.name, 'metadata.yaml')
         self.metadata_file = {}
@@ -26,6 +25,9 @@ class Plugin:
         default_checkpermissions = self.metadata_file.get('check_permissions', False)
         default_checkconstant = self.metadata_file.get('check_constant')
         default_injectpayload = self.metadata_file.get('inject_payload', False)
+        default_prefix = self.metadata_file.get('prefix', '/api')
+        if self.metadata_file.get('action_form'):
+            self.metadata_file['action_name'] = self.name
         if default_routeclass:
             routes = {
                 '/'+self.name: {
@@ -34,7 +36,8 @@ class Plugin:
                     'duplicate_policy': default_duplicate,
                     'check_permissions': default_checkpermissions,
                     'check_constant': default_checkconstant,
-                    'injectpayload': default_injectpayload
+                    'inject_payload': default_injectpayload,
+                    'prefix': default_prefix
                 },
                 '/'+self.name+'/{search}': {
                     'class': default_routeclass,
@@ -42,7 +45,8 @@ class Plugin:
                     'duplicate_policy': default_duplicate,
                     'check_permissions': default_checkpermissions,
                     'check_constant': default_checkconstant,
-                    'injectpayload': default_injectpayload
+                    'inject_payload': default_injectpayload,
+                    'prefix': default_prefix
                 },
                 '/'+self.name+'/{search}/{nb_per_page}/{page_number}': {
                     'class': default_routeclass,
@@ -50,7 +54,8 @@ class Plugin:
                     'duplicate_policy': default_duplicate,
                     'check_permissions': default_checkpermissions,
                     'check_constant': default_checkconstant,
-                    'injectpayload': default_injectpayload
+                    'inject_payload': default_injectpayload,
+                    'prefix': default_prefix
                 },
                 '/'+self.name+'/{search}/{nb_per_page}/{page_number}/{order_by}/{asc}': {
                     'class': default_routeclass,
@@ -58,7 +63,8 @@ class Plugin:
                     'duplicate_policy': default_duplicate,
                     'check_permissions': default_checkpermissions,
                     'check_constant': default_checkconstant,
-                    'injectpayload': default_injectpayload
+                    'inject_payload': default_injectpayload,
+                    'prefix': default_prefix
                 }
             }
             if 'routes' in self.metadata_file:
@@ -73,6 +79,8 @@ class Plugin:
             }
         else:
             self.metadata = self.metadata_file
+
+    def post_init(self):
         self.reload_data()
 
     def reload_data(self, sync = False):
@@ -88,6 +96,12 @@ class Plugin:
 
     def pprint(self):
         return self.name
+
+    def get_icon(self):
+        return self.metadata_file.get('icon', 'question-circle')
+
+    def send(self, record, content):
+        pass
 
 class Abort(Exception): pass
 class Abort_and_write(Exception): pass

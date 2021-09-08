@@ -19,7 +19,7 @@ class TestRule:
 
 class TestRulesPlugin:
     @pytest.fixture
-    def ruleplugin(self, core, config):
+    def ruleplugin(self, core):
         rules = [
             {'name': 'Rule1', 'condition': ['=', 'a', '1'], 'modifications': [['SET', 'c', '1']]}
         ]
@@ -32,7 +32,9 @@ class TestRulesPlugin:
             {'name': 'SubSubRule1', 'condition': ['=', 'c', '4'], 'modifications': [ ['SET', 'c', '5'] ], 'parent': uid}
         ]
         core.db.write('rule', children_rules)
-        return Rule(core, config)
+        rule = Rule(core)
+        rule.post_init()
+        return rule
     def test_process(self, ruleplugin):
         record = {'a': '1', 'b': '2'}
         ruleplugin.process(record)

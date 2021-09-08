@@ -4,7 +4,7 @@ from snooze.utils.config import config, write_config
 
 def test_config():
     default_config = config()
-    assert 'core_plugins' in default_config
+    assert 'process_plugins' in default_config
 
 def test_write_config(tmp_path):
     write_config('test_config', {'a': 1, 'b': 2}, tmp_path)

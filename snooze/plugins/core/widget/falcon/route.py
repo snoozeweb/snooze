@@ -10,7 +10,6 @@ log = getLogger('snooze.widget')
 from snooze.api.falcon import authorize
 from snooze.plugins.core.basic.falcon.route import Route
 from snooze.api.base import BasicRoute
-from snooze.utils.config import get_metadata
 
 class WidgetPluginRoute(BasicRoute):
     @authorize
@@ -24,10 +23,9 @@ class WidgetPluginRoute(BasicRoute):
                 loaded_plugins = [self.api.core.get_core_plugin(plugin_name)]
             for plugin in loaded_plugins:
                 plugin_metadata = plugin.get_metadata()
-                log.debug("Retrieving widget {} metadata".format(plugin_metadata))
                 plugin_widgets = plugin_metadata.get('widgets', {})
                 for name, widget in plugin_widgets.items():
-                    log.debug("Retrieving widget {} metadata".format(name))
+                    log.debug("Retrieving widget {} from {}".format(name, plugin.name))
                     widget['widget_name'] = name
                     plugins.append(widget)
             log.debug("List of widgets: {}".format(plugins))

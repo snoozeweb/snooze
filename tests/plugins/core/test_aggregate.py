@@ -19,7 +19,7 @@ class TestAggregate:
 
 class TestAggregatePlugin:
     @pytest.fixture
-    def aggregateplugin(self, core, config):
+    def aggregateplugin(self, core):
         core.db.delete('record', [], True)
         aggregate_rules = [
             {'name': 'Agg1', 'condition': ['=', 'a', '1'], 'fields': ['a', 'b'], 'throttle': 15},
@@ -29,7 +29,9 @@ class TestAggregatePlugin:
             {'name': 'Agg5', 'condition': ['=', 'a', '5'], 'fields': ['a', 'b'], 'throttle': 15, 'watch': ['c.test']},
         ]
         core.db.write('aggregaterule', aggregate_rules)
-        return Aggregaterule(core, config)
+        agg_rule = Aggregaterule(core)
+        agg_rule.post_init()
+        return agg_rule
     def test_agreggate_throttle(self, aggregateplugin):
         records = [
             # Agg1 - 1

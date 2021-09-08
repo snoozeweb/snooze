@@ -25,6 +25,7 @@
           :default_value="metadata.default_value"
           :endpoint="metadata.endpoint"
           :primary="metadata.primary"
+          :form="metadata.form"
         />
       </b-col>
     </b-row>

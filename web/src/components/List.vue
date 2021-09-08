@@ -47,6 +47,7 @@
         ref="table"
         @row-selected="select"
         @sort-changed="sortingChanged"
+        @row-contextmenu="contextMenu"
         :fields="fields"
         :items="items"
         :no-local-sorting="true"
@@ -599,6 +600,9 @@ export default {
     },
     hasSlot(name) {
       return !!this.$slots[name] || !!this.$scopedSlots[name]
+    },
+    contextMenu(item, index, event) {
+      event.preventDefault()
     }
   },
   watch: {

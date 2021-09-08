@@ -2,7 +2,8 @@
 name: 'Run a script'
 desc: ''
 icon: 'terminal'
-form:
+class: ''
+action_form:
   script:
     display_name: Path
     component: String

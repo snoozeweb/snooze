@@ -7,14 +7,14 @@ from urllib.parse import unquote
 from copy import deepcopy
 import requests
 
-from snooze.plugins.action import Action
+from snooze.plugins.core import Plugin
 from snooze.utils.functions import ca_bundle
 
 from logging import getLogger
 log = getLogger('snooze.action.script')
 
 
-class Webhook(Action):
+class Webhook(Plugin):
     def __init__(self, core):
         super().__init__(core)
         self.ca_bundle = ca_bundle()

@@ -5,12 +5,14 @@ import pytest
 
 class TestSnooze():
     @pytest.fixture
-    def snooze(self, core, config):
+    def snooze(self, core):
         filters = [
             {'name': 'Filter 1', 'condition': ['=', 'a', '1']}
         ]
         core.db.write('snooze', filters)
-        return Snooze(core, config)
+        snooze_plugin = Snooze(core)
+        snooze_plugin.post_init()
+        return snooze_plugin
 
     def test_snooze_1(self, snooze):
         record = {'a': '1', 'b': '2'}

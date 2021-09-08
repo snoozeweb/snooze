@@ -56,27 +56,13 @@ clustering:
 
 api:
     type: falcon
-core_plugins:
-    # Plugins without process
-    - record
-    - action
-    - settings
-    - profile
-    - user
-    - role
-    - comment
-    - widget
+
 process_plugins:
     # Plugins with process (order matters)
     - rule
     - aggregaterule
     - snooze
     - notification
-action_plugins:
-    # Plugins used in Notifications
-    - mail
-    - script
-    - webhook
 
 ##########
 # Database

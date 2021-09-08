@@ -30,6 +30,7 @@
       </template>
       <template #info="row">
         <Mail :smtp="row.item.smtp" v-if="!!row.item.smtp" />
+        <Grafana :data="row.item" v-if="!!row.item.image_url" />
       </template>
       <template #details_side="row">
         <b-col v-if="row.item['comment_count']">
@@ -88,6 +89,7 @@ import Timeline from '@/components/Timeline.vue'
 import Modification from '@/components/form/Modification.vue'
 
 import Mail from '@/components/info/Mail.vue'
+import Grafana from '@/components/info/Grafana.vue'
 
 export default {
   components: {
@@ -95,6 +97,7 @@ export default {
     Timeline,
     Modification,
     Mail,
+    Grafana,
   },
   mounted () {
     if(localStorage.getItem('record_auto') == 'true') {

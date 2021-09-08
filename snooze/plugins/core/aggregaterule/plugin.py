@@ -30,7 +30,12 @@ class Aggregaterule(Plugin):
         else:
             LOG.debug("Record {} could not match any aggregate rule, assigning a default aggregate".format(str(record)))
             if 'raw' in record:
-                record['hash'] = hashlib.md5(record['raw']).hexdigest()
+                if type(record['raw']) is dict:
+                    record['hash'] = hashlib.md5(repr(sorted(record['raw'].items())).encode('utf-8')).hexdigest()
+                elif type(record['raw']) is list:
+                    record['hash'] = hashlib.md5(repr(sorted(record['raw'])).encode('utf-8')).hexdigest()
+                else:
+                    record['hash'] = hashlib.md5(record['raw'].encode('utf-8')).hexdigest()
             else:
                 record['hash'] = hashlib.md5(repr(sorted(record.items())).encode('utf-8')).hexdigest()
             record['aggregate'] = 'default'

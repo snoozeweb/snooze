@@ -12,7 +12,6 @@ const Snooze = () => import('@/views/Snooze')
 const Notification = () => import('@/views/Notification')
 const Action = () => import('@/views/Action')
 const Widget = () => import('@/views/Widget')
-const Patlite = () => import('@/views/Patlite')
 const User = () => import('@/views/User')
 const Role = () => import('@/views/Role')
 const Settings = () => import('@/views/Settings')
@@ -81,11 +80,6 @@ export default new Router({
           path: '/widget',
           name: 'Widgets',
           component: Widget,
-        },
-        {
-          path: '/patlite',
-          name: 'Patlite',
-          component: Patlite,
         },
         {
           path: '/user',

@@ -1,9 +1,6 @@
 ---
 api:
     type: falcon
-core_plugins:
-    # Plugins without process
-    - record
 process_plugins:
     # Plugins with process (order matters)
     - rule

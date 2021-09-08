@@ -111,6 +111,42 @@ class FalconRoute(BasicRoute):
         user_password['password'] = sha256(password.encode('utf-8')).hexdigest()
         self.core.db.write('user.password', user_password, 'name,method')
 
+class WebhookRoute(FalconRoute):
+    auth = {
+        'auth_disabled': True
+    }
+
+    def parse_webhook(self, req, media):
+        return req_media
+
+    def on_post(self, req, resp):
+        log.debug("Received webhook log {}".format(req.media))
+        media = req.media.copy()
+        error_list = []
+        ok_list = []
+        if not isinstance(media, list):
+            media = [media]
+        for req_media in media:
+            try:
+                alerts = self.parse_webhook(req, req_media)
+                if alerts:
+                    if not isinstance(alerts, list):
+                        alerts = [alerts]
+                    for alert in alerts:
+                        self.core.process_record(alert)
+                    ok_list.append(req_media)
+            except Exception as e:
+                log.exception(e)
+                error_list.append(req_media)
+                continue
+        resp.content_type = falcon.MEDIA_JSON
+        if len(ok_list) > 0:
+            resp.status = falcon.HTTP_200
+            resp.media = {'data': {'added': ok_list, 'rejected': error_list}}
+        else:
+            resp.status = falcon.HTTP_503
+            resp.media = {'data': {'added': [], 'rejected': error_list}}
+
 class PermissionsRoute(BasicRoute):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -584,16 +620,16 @@ class BackendApi():
         self.add_route('/login/ldap', self.auth_routes['ldap'])
         # Optional metrics
         if self.core.stats.enabled:
-            self.handler.add_route('/metrics', MetricsRoute(self))
+            self.add_route('/metrics', MetricsRoute(self), '')
 
         web_conf = self.core.conf.get('web', {})
         if web_conf.get('enabled', True):        
-            self.handler.add_route('/', RedirectRoute())
-            self.handler.add_route('/web', RedirectRoute())
+            self.add_route('/', RedirectRoute(), '')
+            self.add_route('/web', RedirectRoute(), '')
             self.handler.add_sink(StaticRoute(web_conf.get('path', '/opt/snooze/web'), '/web').on_get, '/web')
 
-    def add_route(self, route, action):
-        self.handler.add_route('/api' + route, action)
+    def add_route(self, route, action, prefix = '/api'):
+        self.handler.add_route(prefix + route, action)
 
     def serve(self):
         log.debug('Starting socket API')

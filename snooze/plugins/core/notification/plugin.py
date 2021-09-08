@@ -15,22 +15,6 @@ log = getLogger('snooze.notification')
 from snooze.plugins.core import Plugin
 
 class Notification(Plugin):
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        self.hostname = socket.gethostname()
-        self.thread = NotificationThread(self)
-        self.thread.start()
-        delayed_notifs = self.core.db.search('notification.delay', ['=', 'host', self.hostname])
-        if delayed_notifs['count'] > 0:
-            for delayed_notif in delayed_notifs['data']:
-                notif_uid = delayed_notif['notification_uid']
-                notification = next(notif for notif in self.notifications if notif.uid == delayed_notif['notification_uid'])
-                record_hash = delayed_notif['record_hash']
-                delay = delayed_notif['delay']
-                total = delayed_notif['total']
-                self.thread.delayed[record_hash] = {'notification': notification, 'time': time.time() + delay, 'total': total}
-            log.debug("Restored notification queue {}".format(self.thread.delayed))
-
     def process(self, record):
         for notification in self.notifications:
             if notification.enabled and notification.match(record):
@@ -57,6 +41,22 @@ class Notification(Plugin):
     def delay_send(self, notification, record_hash, delay, total):
         self.thread.delayed[record_hash] = {'notification': notification, 'time': time.time() + delay, 'total': total}
         self.core.db.write('notification.delay', {'notification_uid': notification.uid, 'record_hash': record_hash, 'host': self.hostname, 'delay': delay, 'total': total}, 'record.hash')
+
+    def post_init(self):
+        super().post_init()
+        self.hostname = socket.gethostname()
+        self.thread = NotificationThread(self)
+        self.thread.start()
+        delayed_notifs = self.core.db.search('notification.delay', ['=', 'host', self.hostname])
+        if delayed_notifs['count'] > 0:
+            for delayed_notif in delayed_notifs['data']:
+                notif_uid = delayed_notif['notification_uid']
+                notification = next(notif for notif in self.notifications if notif.uid == delayed_notif['notification_uid'])
+                record_hash = delayed_notif['record_hash']
+                delay = delayed_notif['delay']
+                total = delayed_notif['total']
+                self.thread.delayed[record_hash] = {'notification': notification, 'time': time.time() + delay, 'total': total}
+            log.debug("Restored notification queue {}".format(self.thread.delayed))
 
     def reload_data(self, sync = False):
         super().reload_data()
@@ -85,7 +85,8 @@ class NotificationObject():
                     action = action_data.get('action', {})
                     content = action.get('subcontent', {})
                     content['action_name'] = action_data.get('name')
-                    self.action_plugins.append({'action': self.core.get_action_plugin(action.get('selected')), 'content': content})
+                    log.debug("Adding action plugin {}".format(action))
+                    self.action_plugins.append({'action': self.core.get_core_plugin(action.get('selected')), 'content': content})
             elif self.enabled:
                 log.error("Could not find any action defined notification {}. Disabling".format(self.name))
                 self.enabled = False
@@ -126,7 +127,7 @@ class NotificationObject():
                 self.core.stats.inc('notification_sent', {'name': self.name, 'action': action_name})
             except Exception as e:
                 self.core.stats.inc('notification_error', {'name': self.name, 'action': action_name})
-                log.error("Notification {} action a{}' could not be send".format(self.name, action_name))
+                log.error("Notification {} action {}' could not be send".format(self.name, action_name))
                 log.exception(e)
 
 class NotificationThread(threading.Thread):

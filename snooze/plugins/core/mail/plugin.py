@@ -6,7 +6,7 @@ from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from jinja2 import Template
 
-from snooze.plugins.action import Action
+from snooze.plugins.core import Plugin
 
 from logging import getLogger
 log = getLogger('snooze.action.mail')
@@ -28,7 +28,7 @@ DEFAULT_SERVER = 'localhost'
 DEFAULT_PORT = 25
 DEFAULT_TIMEOUT = 10
 
-class Mail(Action):
+class Mail(Plugin):
     def pprint(self, content):
         output  =  'mailto: ' + content.get('to', '').replace(',', '\nmailto: ')
         return output

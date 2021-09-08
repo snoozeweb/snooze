@@ -2,7 +2,8 @@
 name: 'Call a webhook'
 desc: 'HTTP POST to a specific URL'
 icon: 'link'
-form:
+class: ''
+action_form:
   url:
     display_name: URL
     component: String

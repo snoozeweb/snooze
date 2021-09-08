@@ -17,10 +17,10 @@ import yaml
 class TestCore():
     def test_load_plugins(self, core):
         plugin_list = list(map(lambda x: x.name, core.plugins))
-        assert plugin_list == ['record', 'rule', 'aggregaterule', 'snooze', 'notification']
+        assert all(plugin in plugin_list for plugin in ['record', 'rule', 'aggregaterule', 'snooze', 'notification'])
     def test_process_record(self, core):
         record = {'a': '1', 'b': '2'}
         core.process_record(record)
         search = core.db.search('record', ['AND', ['=', 'a', '1'], ['=', 'b', '2']])
         log.debug(search)
-        assert search['data'][0]['plugins'] == ['rule', 'aggregaterule', 'snooze', 'notification']
+        assert all(plugin in search['data'][0]['plugins'] for plugin in ['rule', 'aggregaterule', 'snooze', 'notification'])

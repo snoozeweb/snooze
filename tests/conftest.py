@@ -16,7 +16,6 @@ log = getLogger('snooze')
 def config():
     return {
         'api': {'type': 'falcon'},
-        'core_plugins': ['record'],
         'process_plugins': ['rule', 'aggregaterule', 'snooze', 'notification'],
         'database': {'type': 'mongo', 'host': 'localhost', 'port': 27017},
         'socket_path': './test.socket',

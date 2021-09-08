@@ -24,7 +24,7 @@ class ActionRoute(Route):
         action = media.get('action', [])
         plugin_name = action.get('selected')
         content = action.get('subcontent')
-        plugin = self.api.core.get_action_plugin(plugin_name)
+        plugin = self.api.core.get_core_plugin(plugin_name)
         if plugin:
             media['pprint'] = plugin.pprint(content)
         else:
@@ -38,14 +38,16 @@ class ActionPluginRoute(BasicRoute):
         plugin_name = req.params.get('action') or action
         try:
             plugins = []
-            loaded_plugins = self.api.core.action_plugins
+            loaded_plugins = self.api.core.plugins
             if plugin_name:
-                loaded_plugins = [self.api.core.get_action_plugin(plugin_name)]
+                loaded_plugins = [self.api.core.get_core_plugin(plugin_name)]
             else:
                 log.error("Could not find action plugin for request {}".format(req.params))
             for plugin in loaded_plugins:
-                log.debug("Retrieving action {} metadata".format(plugin.name))
-                plugins.append(plugin.get_metadata())
+                plugin_metadata = plugin.get_metadata()
+                if plugin_metadata.get('action_form'):
+                    log.debug("Retrieving action {} metadata: {}".format(plugin.name, plugin_metadata))
+                    plugins.append(plugin_metadata)
             log.debug("List of actions: {}".format(plugins))
             resp.content_type = falcon.MEDIA_JSON
             resp.status = falcon.HTTP_200

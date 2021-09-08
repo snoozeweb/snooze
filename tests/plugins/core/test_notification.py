@@ -12,7 +12,7 @@ class TestNotification:
     def record(self):
         return {'a': '1', 'b': '2'}
     @pytest.fixture
-    def notification(self, core, config):
+    def notification(self, core):
         actions = [
             {'name': 'Script', 'action': {'selected': 'script', 'subcontent': {'script': '/bin/echo', 'arguments': ['test']}}}
         ]
@@ -21,7 +21,9 @@ class TestNotification:
             {'name': 'Notification1', 'condition': ['=', 'a', '1'], 'actions': ['Script']},
         ]
         core.db.write('notification', notifications)
-        return Notification(core, config)
+        notif = Notification(core)
+        notif.post_init()
+        return notif
     def test_notification_echo(self, notification, record):
         notification.process(record)
     

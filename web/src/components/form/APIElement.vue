@@ -9,7 +9,7 @@
     <b-form-invalid-feedback id="feedback" :state="checkField">
       Field is required
     </b-form-invalid-feedback>
-    <Form v-if="selection && selection.form" v-model="subcontent" :metadata="selection.form" class="pt-2"/>
+    <Form v-if="selection && selection[form]" v-model="subcontent" :metadata="selection[form]" class="pt-2"/>
   </div>
 </template>
 
@@ -39,6 +39,10 @@ export default {
     primary: {
       type: String,
       required: true,
+    },
+    form: {
+      type: String,
+      default: () => 'form',
     },
     subkey: {
       type: String,

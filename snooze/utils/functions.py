@@ -20,6 +20,15 @@ def dig(dic, *lst):
     else:
         return dic
 
+def sanitize(d, str_from = '.', str_to = '_'):
+    new_d = {}
+    if isinstance(d, dict):
+        for k, v in d.items():
+            new_d[k.replace(str_from, str_to)] = sanitize(v)
+        return new_d
+    else:
+        return d
+
 flatten = lambda x: [z for y in x for z in (flatten(y) if hasattr(y, '__iter__') and not isinstance(y, str) else (y,))]
 
 def to_tuple(l):

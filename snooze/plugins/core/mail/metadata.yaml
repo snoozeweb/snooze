@@ -2,7 +2,8 @@
 name: 'Send email'
 desc: ''
 icon: 'envelope'
-form:
+class: ''
+action_form:
   host:
     display_name: Host
     component: String

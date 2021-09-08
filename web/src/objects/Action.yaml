@@ -36,6 +36,7 @@ form:
         endpoint: action/plugin
         primary: action_name
         required: true
+        form: action_form
     comment:
         display_name: Comment
         component: Text

@@ -115,6 +115,7 @@ class Api():
             check_permissions = plugin.metadata.get('check_permissions', False)
             check_constant = plugin.metadata.get('check_constant')
             injectpayload = plugin.metadata.get('inject_payload', False)
+            prefix = plugin.metadata.get('prefix', '/api')
             for path, route in plugin.metadata.get('routes', {}).items():
                 route_class_name = route['class']
                 log.debug("For {} loading route class `{}`".format(path, route_class_name))
@@ -124,12 +125,13 @@ class Api():
                 route_check_permissions = route.get('check_permissions', check_permissions)
                 route_check_constant = route.get('check_constant', check_constant)
                 route_injectpayload = route.get('inject_payload', injectpayload)
+                route_prefix = route.get('prefix', prefix)
                 log.debug("Route `{}` attributes: Primary ({}). Duplicate Policy ({}), Authorization Policy ({}), Check Permissions ({}), Check Constant ({}), Inject Payload ({})".format(route_class_name, primary, route_duplicate_policy, route_authorization_policy, route_check_permissions, route_check_constant, route_injectpayload))
-                self.add_route(path, route_class(self, plugin, primary, route_duplicate_policy, route_authorization_policy, route_check_permissions, route_check_constant, route_injectpayload))
+                self.add_route(path, route_class(self, plugin, primary, route_duplicate_policy, route_authorization_policy, route_check_permissions, route_check_constant, route_injectpayload), route_prefix)
 
     def init_api(self): pass
 
-    def add_route(self, route, action): pass
+    def add_route(self, route, action, prefix): pass
 
     def serve(self):
         httpd = make_server('0.0.0.0', 9000, self.handler, ThreadingWSGIServer)
