@@ -238,6 +238,29 @@
     Updated
   </b-alert>
 
+  <v-contextmenu ref="contextmenu">
+    <v-contextmenu-submenu>
+      <template v-slot:title><i class="la la-copy la-lg"/> Copy</template>
+      <v-contextmenu-item @click="copy_clipboard" method="yaml">
+        As YAML
+      </v-contextmenu-item>
+      <v-contextmenu-item @click="copy_clipboard" method="yaml" full="true">
+        As YAML (Full)
+      </v-contextmenu-item>
+      <v-contextmenu-item divider></v-contextmenu-item>
+      <v-contextmenu-item @click="copy_clipboard" method="json">
+        As JSON
+      </v-contextmenu-item>
+      <v-contextmenu-item @click="copy_clipboard" method="json" full="true">
+        As JSON (Full)
+      </v-contextmenu-item>
+      <v-contextmenu-item divider></v-contextmenu-item>
+      <v-contextmenu-item v-for="field in fields.filter(field => field.key != 'button')" :key="field.key" @click="copy_clipboard" method="simple" :value="field.key">
+        {{ field.key.charAt(0).toUpperCase() + field.key.slice(1) }}
+      </v-contextmenu-item>
+    </v-contextmenu-submenu>
+  </v-contextmenu>
+
   </div>
 </template>
 
@@ -245,7 +268,7 @@
 import dig from 'object-dig'
 import moment from 'moment'
 import { API } from '@/api'
-import { get_data, pp_countdown, countdown, preprocess_data, delete_items, truncate_message } from '@/utils/api'
+import { get_data, pp_countdown, countdown, preprocess_data, delete_items, truncate_message, to_clipboard } from '@/utils/api'
 import { join_queries } from '@/utils/query'
 import Form from '@/components/Form.vue'
 import Search from '@/components/Search.vue'
@@ -255,6 +278,7 @@ import Field from '@/components/Field.vue'
 import DateTime from '@/components/DateTime.vue'
 import TimeConstraint from '@/components/TimeConstraint.vue'
 import Info from '@/components/Info.vue'
+const yaml = require('js-yaml')
 
 // Create a table representing an API endpoint.
 export default {
@@ -309,7 +333,7 @@ export default {
     // List of fields to exclude from Info, as they will be displayed
     // in a custom view.
     info_excluded_fields: {type: Array, default: () => []},
-    modal_title_add: {type: String, default: 'Create new'},
+    modal_title_add: {type: String, default: 'New'},
     modal_title_edit: {type: String, default: 'Edit'},
     modal_title_delete: {type: String, default: 'Delete this item'},
   },
@@ -320,6 +344,7 @@ export default {
   },
   data () {
     return {
+      to_clipboard:to_clipboard,
       dig: dig,
       pp_countdown: pp_countdown,
       countdown: countdown,
@@ -338,6 +363,7 @@ export default {
       nb_rows: 0,
       current_page: 1,
       items: [],
+      item_copy: {},
       adding_data: {},
       selected_data: {},
       selected: [],
@@ -603,7 +629,49 @@ export default {
     },
     contextMenu(item, index, event) {
       event.preventDefault()
-    }
+      this.item_copy = item
+      this.$refs.contextmenu.hideAll()
+      this.$refs.contextmenu.show({top: event.pageY, left: event.pageX})
+    },
+    get_fields(row, selected_fields = {}) {
+      var return_obj = Object.keys(row).filter(key => key[0] != '_' && key != 'button')
+      if (Object.keys(selected_fields).length > 0) {
+        var filtered_fields = selected_fields.reduce((obj, key) => {
+          obj.push(key.key)
+          return obj
+        }, [])
+        return_obj = return_obj.filter(key => filtered_fields.includes(key))
+      }
+      return return_obj.reduce((obj, key) => {
+        obj.push({name: key, value: row[key]})
+        return obj
+      }, [])
+    },
+    add_clipboard(row, parse_fun, selected_fields = {}) {
+      if (row) {
+        var output = {}
+        this.get_fields(row, selected_fields).forEach(field => {
+          output[field.name] = field.value
+        })
+      	this.to_clipboard(parse_fun(output))
+      }
+    },
+    copy_clipboard(vm, event) {
+      var method
+      var fields = this.fields
+      if (vm.$attrs.method == 'yaml') {
+        method = yaml.dump
+      } else if (vm.$attrs.method == 'json') {
+        method = JSON.stringify
+      } else {
+        this.to_clipboard(yaml.dump(this.item_copy[vm.$attrs.value], { flowLevel: 0 }).slice(0, -1))
+        return
+      }
+      if (vm.$attrs.full) {
+        fields = {}
+      }
+      this.add_clipboard(this.item_copy, method, fields)
+    },
   },
   watch: {
     current_page: function() {

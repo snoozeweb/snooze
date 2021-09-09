@@ -10,7 +10,7 @@
       ref="list"
     >
       <template #head_buttons>
-        <b-button variant="success" @click="modal_add()">Create new</b-button>
+        <b-button variant="success" @click="modal_add()">New</b-button>
       </template>
       <template #button="row">
         <b-button size="sm" @click="modal_edit(row.item)" variant="primary" v-b-tooltip.hover title="Edit"><i class="la la-pencil-alt la-lg"></i></b-button>

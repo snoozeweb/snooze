@@ -19,4 +19,6 @@ export default {
   @import '~vue-swatches/dist/vue-swatches.css';
   // Import Main styles for this application
   @import 'assets/scss/style';
+  // V-contextmenu css
+  @import '~v-contextmenu/dist/index.css';
 </style>
