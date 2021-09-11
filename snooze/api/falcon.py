@@ -576,7 +576,7 @@ SNOOZE_GLOBAL_RUNDIR = '/var/run/snooze'
 SNOOZE_LOCAL_RUNDIR = "/var/run/user/{}".format(os.getuid())
 
 class BackendApi():
-    def init_api(self, core):
+    def init_api(self, core, use_socket=True):
         # Authentication
         self.core = core
 
@@ -588,11 +588,12 @@ class BackendApi():
         self.jwt_auth = JWTAuthBackend(auth, self.secret)
 
         # Socket
-        log.debug('BackendAPI: init_api')
-        socket_path = self.core.conf.get('socket_path', None)
-        log.debug("Socket path: {}".format(socket_path))
-        self.socket_server = SocketServer(self.jwt_auth, socket_path=socket_path)
-        self.socket = Process(target=self.socket_server.serve)
+        if use_socket:
+            log.debug('BackendAPI: init_api')
+            socket_path = self.core.conf.get('socket_path', None)
+            log.debug("Socket path: {}".format(socket_path))
+            self.socket_server = SocketServer(self.jwt_auth, socket_path=socket_path)
+            self.socket = Process(target=self.socket_server.serve)
 
         # Handler
         self.handler = falcon.API(middleware=[CORS(), FalconAuthMiddleware(self.jwt_auth)])
@@ -635,9 +636,9 @@ class BackendApi():
         log.debug('Starting socket API')
         self.socket.start()
         log.debug('Starting REST API')
-        listen_addr = self.core.conf.get('listen_addr', '0.0.0.0')
-        port = self.core.conf.get('port', '5200')
-        httpd = make_server(listen_addr, port, self.handler, ThreadingWSGIServer)
+        listen_addr =  os.environ.get('SNOOZE_ADDRESS', self.core.conf.get('listen_addr', '0.0.0.0'))
+        port = os.environ.get('SNOOZE_PORT', self.core.conf.get('port', '5200'))
+        httpd = make_server(listen_addr, int(port), self.handler, ThreadingWSGIServer)
         ssl_conf = self.core.conf.get('ssl', {})
         use_ssl = ssl_conf.get('enabled')
         if ('SNOOZE_CERT_FILE' in os.environ and 'SNOOZE_KEY_FILE' in os.environ) or use_ssl == True:

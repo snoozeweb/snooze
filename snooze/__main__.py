@@ -17,6 +17,14 @@ def setup_logging(conf):
     log = getLogger('snooze')
     log.debug("Log system on")
 
+def app(conf={}):
+    conf.update(config())
+    setup_logging(conf)
+    core = Core(conf)
+
+    api = Api(core, False)
+    return api.handler
+
 def main(conf={}):
     conf.update(config())
     setup_logging(conf)
