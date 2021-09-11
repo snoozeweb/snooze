@@ -7,11 +7,9 @@
 * Webhooks support
 * Grafana webhook added
 * Copy content from any row in the WebUI
-
 ### Changes
 * Plugin refactor. Now even actions are considered core plugins. Scanning snooze/plugins/core folder instead of declaring plugins in core.yaml
 * Moved Patlite plugin to [snooze\_plugins](https://github.com/snoozeweb/snooze_plugins) repository
-
 ### Bug fixes
 * Default authentication backend display order not being respected since 2021-06-30
 

@@ -15,6 +15,8 @@ Snooze is a powerful monitoring tool used for log aggregation and alerting. It c
 * Auto housekeeping
 * Metrics
 
+Try it now on: https://try.snoozeweb.net
+
 ![Alerts](https://github.com/snoozeweb/snooze/raw/master/doc/images/web_alerts.png)
 
 # Installation
@@ -24,6 +26,14 @@ Installation on CentOS/RHEL
 ```bash
 $ wget https://rpm.snoozeweb.net -O snooze-server-latest.rpm
 $ sudo yum localinstall snooze-server-latest.rpm
+$ sudo systemctl start snooze-server
+```
+
+Installation on Ubuntu/Debian
+
+```bash
+$ wget https://deb.snoozeweb.net -O snooze-server-latest.deb
+$ sudo apt install snooze-server-latest.deb
 $ sudo systemctl start snooze-server
 ```
 
