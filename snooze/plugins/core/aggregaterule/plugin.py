@@ -1,6 +1,6 @@
 #!/usr/bin/python3.6
 
-from snooze.plugins.core import Plugin, Abort_and_write
+from snooze.plugins.core import Plugin, Abort_and_update
 from snooze.utils import Condition, Modification
 from snooze.utils.functions import dig
 
@@ -8,8 +8,6 @@ import datetime
 import logging
 import hashlib
 from logging import getLogger
-from copy import deepcopy
-from snooze.plugins.core import Abort
 LOG = getLogger('snooze.aggregaterule')
 
 
@@ -88,8 +86,7 @@ class Aggregaterule(Plugin):
                 record['comment_count'] = aggregate.get('comment_count', 0) + 1
             elif (throttle < 0) or (now.timestamp() - aggregate.get('date_epoch', 0) < throttle):
                 LOG.debug("Time within throttle {} range, discarding".format(throttle))
-                self.db.write('record', record, update_time=False)
-                raise Abort
+                raise Abort_and_update(record)
             else:
                 comment = {}
                 comment['record_uid'] = aggregate['uid']

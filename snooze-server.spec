@@ -55,7 +55,8 @@ rm -rf %{buildroot}
 find %{buildroot} -name "RECORD" -exec rm -rf {} \;
 # Strip native modules as they contain buildroot paths intheir debug information
 find %{venv_dir}/lib -type f -name "*.so" | xargs -r strip
-find %{venv_dir} -name "*.py" -exec sed -i "s+^#\!/.*$+#\!/usr/bin/python3 -s+g" {} +
+find %{venv_dir} -name "*.py" -exec sed -i "s+^#\!/.*$+#\!/opt/snooze/bin/python3 -s+g" {} +
+find %{venv_dir}/bin -maxdepth 1 -type f -exec sed -i "s+^#\!/.*$+#\!/opt/snooze/bin/python3 -s+g" {} +
 mkdir -p %{buildroot}/var/log/snooze
 mkdir -p %{buildroot}/etc/snooze/server
 mkdir -p %{buildroot}/var/lib/snooze

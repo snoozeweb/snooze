@@ -51,11 +51,16 @@ class Notification(Plugin):
         if delayed_notifs['count'] > 0:
             for delayed_notif in delayed_notifs['data']:
                 notif_uid = delayed_notif['notification_uid']
-                notification = next(notif for notif in self.notifications if notif.uid == delayed_notif['notification_uid'])
-                record_hash = delayed_notif['record_hash']
-                delay = delayed_notif['delay']
-                total = delayed_notif['total']
-                self.thread.delayed[record_hash] = {'notification': notification, 'time': time.time() + delay, 'total': total}
+                queue_it = iter(notif for notif in self.notifications if notif.uid == delayed_notif['notification_uid'])
+                if any(queue_it):
+                    notification = next(queue_it)
+                    record_hash = delayed_notif['record_hash']
+                    delay = delayed_notif['delay']
+                    total = delayed_notif['total']
+                    self.thread.delayed[record_hash] = {'notification': notification, 'time': time.time() + delay, 'total': total}
+                else:
+                    log.debug("Delayed notification {} original notification in not in the database anymore. Removing it from queue".format(delayed_notif))
+                    self.core.db.delete('notification.delay', ['=', 'uid', delayed_notif['uid']])
             log.debug("Restored notification queue {}".format(self.thread.delayed))
 
     def reload_data(self, sync = False):

@@ -13,7 +13,7 @@ colors:
     ro_all: primary
     admin: danger
     user: info
-    test: info
+    test: warning
     alert: danger
     err: danger
     crit: danger

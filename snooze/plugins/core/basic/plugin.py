@@ -104,4 +104,9 @@ class Plugin:
         pass
 
 class Abort(Exception): pass
-class Abort_and_write(Exception): pass
+class Abort_and_write(Exception):
+    def __init__(self, record={}, *args, **kwargs):
+        self.record = record
+class Abort_and_update(Exception):
+    def __init__(self, record={}, *args, **kwargs):
+        self.record = record

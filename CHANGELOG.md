@@ -1,3 +1,11 @@
+## v1.0.11
+
+### New features
+* Environmnents support! Can be used to create search filters that can be applied on top of any search
+### Bug fixes
+* Wrong version of PyJWT broke LDAP auth
+* Recent change in plugin loading broke plugin processing order
+
 ## v1.0.10
 
 ### New features

@@ -32,7 +32,7 @@ setup(
     },
     install_requires = [
         'Jinja2',
-        'PyJWT',
+        'PyJWT==1.7.1',
         'PyYAML',
         'click',
         'falcon',

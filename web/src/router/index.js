@@ -14,6 +14,7 @@ const Action = () => import('@/views/Action')
 const Widget = () => import('@/views/Widget')
 const User = () => import('@/views/User')
 const Role = () => import('@/views/Role')
+const Environment = () => import('@/views/Environment')
 const Settings = () => import('@/views/Settings')
 const Profile = () => import('@/views/Profile')
 const Login = () => import('@/views/Login')
@@ -90,6 +91,11 @@ export default new Router({
           path: '/role',
           name: 'Roles',
           component: Role,
+        },
+        {
+          path: '/Environment',
+          name: 'Environments',
+          component: Environment,
         },
         {
           path: '/settings',

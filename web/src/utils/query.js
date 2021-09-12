@@ -10,7 +10,8 @@ export function object_to_query(obj) {
 // Example:
 // Input: [ ['=', 'a', '1'], ['=', 'b', '2'] ]
 // Output: ['AND', ['=', 'a', '1'], ['=', 'b', '2']]
-export function join_queries(queries, op="AND") {
+export function join_queries(original_queries, op="AND") {
+  var queries = Object.assign([], original_queries)
   if (queries.length == 0) {
     return []
   }

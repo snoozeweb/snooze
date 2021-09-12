@@ -1,0 +1,6 @@
+---
+name: 'Environment'
+desc: 'An endpoint to store environment'
+primary: name
+duplicate_policy: 'reject'
+check_permissions: True

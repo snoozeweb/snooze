@@ -8,6 +8,7 @@ import ssl
 import falcon
 from falcon_auth import FalconAuthMiddleware, BasicAuthBackend, JWTAuthBackend
 import requests
+import functools
 from wsgiref.simple_server import make_server, WSGIServer
 from socketserver import ThreadingMixIn
 from bson.json_util import loads, dumps
@@ -122,8 +123,7 @@ class WebhookRoute(FalconRoute):
     def on_post(self, req, resp):
         log.debug("Received webhook log {}".format(req.media))
         media = req.media.copy()
-        error_list = []
-        ok_list = []
+        rec_list = [{'data': {}}]
         if not isinstance(media, list):
             media = [media]
         for req_media in media:
@@ -133,19 +133,15 @@ class WebhookRoute(FalconRoute):
                     if not isinstance(alerts, list):
                         alerts = [alerts]
                     for alert in alerts:
-                        self.core.process_record(alert)
-                    ok_list.append(req_media)
+                        rec = self.core.process_record(alert)
+                        rec_list.append(rec)
             except Exception as e:
                 log.exception(e)
-                error_list.append(req_media)
+                rec_list.append({'data': {'rejected': req_media}})
                 continue
         resp.content_type = falcon.MEDIA_JSON
-        if len(ok_list) > 0:
-            resp.status = falcon.HTTP_200
-            resp.media = {'data': {'added': ok_list, 'rejected': error_list}}
-        else:
-            resp.status = falcon.HTTP_503
-            resp.media = {'data': {'added': [], 'rejected': error_list}}
+        resp.status = falcon.HTTP_200
+        resp.media = {'data': functools.reduce(lambda a, b: {k: a.get('data', {}).get(k, []) + b.get('data', {}).get(k, []) for k in list(dict.fromkeys(list(a.get('data', {}).keys()) + list(b.get('data', {}).keys())))}, rec_list)}
 
 class PermissionsRoute(BasicRoute):
     def __init__(self, *args, **kwargs):
@@ -180,25 +176,21 @@ class AlertRoute(BasicRoute):
     def on_post(self, req, resp):
         log.debug("Received log {}".format(req.media))
         media = req.media.copy()
-        error_list = []
-        ok_list = []
+        rec_list = [{'data': {}}]
         if not isinstance(media, list):
             media = [media]
         for req_media in media:
             try:
-                self.core.process_record(req_media)
-                ok_list.append(req_media)
+                rec = self.core.process_record(req_media)
+                rec_list.append(rec)
             except Exception as e:
                 log.exception(e)
-                error_list.append(req_media)
+                rec_list.append({'data': {'rejected': req_media}})
                 continue
         resp.content_type = falcon.MEDIA_JSON
-        if len(ok_list) > 0:
-            resp.status = falcon.HTTP_200
-            resp.media = {'data': {'added': ok_list, 'rejected': error_list}}
-        else:
-            resp.status = falcon.HTTP_503
-            resp.media = {'data': {'added': [], 'rejected': error_list}}
+        resp.status = falcon.HTTP_200
+        resp.media = {'data': functools.reduce(lambda a, b: {k: a.get('data', {}).get(k, []) + b.get('data', {}).get(k, []) for k in list(dict.fromkeys(list(a.get('data', {}).keys()) + list(b.get('data', {}).keys())))}, rec_list)}
+
 
 class MetricsRoute(BasicRoute):
     auth = {

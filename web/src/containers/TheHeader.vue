@@ -16,6 +16,9 @@
     <CHeaderNav class="d-md-down-none mr-auto">
       <WidgetList class="ml-3"/>
     </CHeaderNav>
+    <CHeaderNav class="d-md-down-none mr-auto" v-if="router.currentRoute.path == '/record'">
+      <Environment />
+    </CHeaderNav>
     <CHeaderNav class="mr-4">
       <TheHeaderDropdownAccnt/>
     </CHeaderNav>
@@ -25,17 +28,19 @@
 <script>
 import TheHeaderDropdownAccnt from './TheHeaderDropdownAccnt'
 import WidgetList from '@/components/WidgetList'
-import Search from '@/components/Search.vue'
+import Environment from '@/components/Environment.vue'
+import router from '@/router'
 
 export default {
   name: 'TheHeader',
   components: {
     TheHeaderDropdownAccnt,
     WidgetList,
-    Search,
+    Environment,
   },
   data() {
     return {
+      router: router,
     }
   },
   mounted() {

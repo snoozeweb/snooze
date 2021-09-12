@@ -56,19 +56,24 @@ class Core:
                 continue
             plugin_instance = plugin_class(self)
             self.plugins.append(plugin_instance)
-            if (plugin_name in (self.conf.get('process_plugins') or [])):
-                log.debug("Detected {} as a process plugin".format(plugin_name))
-                self.process_plugins.append(plugin_instance)
+        for plugin_name in self.conf.get('process_plugins', []):
+            for plugin in self.plugins:
+                if plugin_name == plugin.name:
+                    log.debug("Detected {} as a process plugin".format(plugin_name))
+                    self.process_plugins.append(plugin)
+                    break
         for plugin in self.plugins:
             try:
                 plugin.post_init()
             except Exception as e:
                 log.exception(e)
-                log.error("Error post init core plugin `{}`: {}".format(plugin_name, e))
+                log.error("Error post init core plugin `{}`: {}".format(plugin.name, e))
                 continue
         log.debug("List of loaded core plugins: {}".format([plugin.name for plugin in self.plugins]))
+        log.debug("List of loaded process plugins: {}".format([plugin.name for plugin in self.process_plugins]))
 
     def process_record(self, record):
+        data = {}
         source = record.get('source', 'unknown')
         record['ttl'] = self.housekeeper.conf.get('record_ttl', 86400)
         record['state'] = ''
@@ -85,21 +90,25 @@ class Core:
                     record['plugins'].append(plugin.name)
                     record = plugin.process(record)
                 except Abort:
+                    data = {'data': {'rejected': record}}
                     break
-                except Abort_and_write:
-                    self.db.write('record', record)
+                except Abort_and_write as e:
+                    data = self.db.write('record', e.record or record)
                     break
+                except Abort_and_update as e:
+                    data = self.db.write('record', e.record or record, update_time=False)
                 except Exception as e:
                     log.exception(e)
                     record['exception'] = {
                         'core_plugin': plugin.name,
                         'message': str(e)
                     }
-                    self.db.write('record', record)
+                    data = self.db.write('record', record)
                     break
             else:
                 log.debug("Writing record {}".format(record))
-                self.db.write('record', record)
+                data = self.db.write('record', record)
+        return data
 
     def get_core_plugin(self, plugin_name):
         return next(iter([plug for plug in self.plugins if plug.name == plugin_name]), None)

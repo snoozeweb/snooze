@@ -15,7 +15,7 @@ class Snooze(Plugin):
                 f.hits += 1
                 f.raw['hits'] = f.hits
                 self.db.write('snooze', f.raw)
-                raise Abort_and_write
+                raise Abort_and_write(record)
         else:
             return record
 

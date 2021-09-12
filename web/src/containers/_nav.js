@@ -85,6 +85,13 @@ export default [
       },
       {
         _name: 'CSidebarNavItem',
+        name: 'Environments',
+        to: '/environment',
+        fontIcon: 'la la-layer-group',
+	permissions: ['ro_environment', 'rw_environment'],
+      },
+      {
+        _name: 'CSidebarNavItem',
         name: 'Settings',
         to: '/settings',
         fontIcon: 'la la-cog',

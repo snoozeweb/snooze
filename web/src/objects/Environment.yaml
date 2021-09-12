@@ -1,0 +1,50 @@
+---
+endpoint: environment
+fields:
+    -
+        label: Name
+        key: name
+        sortable: true
+        thStyle: {width: '20%'}
+        tdClass: ['align-middle']
+    -
+        key: filter
+        sortable: false
+        thStyle: {width: '50%'}
+        tdClass: ['align-middle']
+        type: array
+    -
+        key: color
+        sortable: false
+        thStyle: {width: '5%'}
+        tdClass: ['align-middle']
+        type: array
+    -
+        label: Comment
+        key: comment
+        thStyle: {width: '30%'}
+        tdClass: ['align-middle']
+        type: array
+    -
+        label: ''
+        key: button
+        sortable: false
+        tdClass: ['align-middle', 'text-center']
+        thClass: 'text-center'
+form:
+    name:
+        display_name: Name
+        component: String
+        description: Name of the environment
+        required: true
+    filter:
+        display_name: Filter
+        component: Condition
+        description: Search filter used to define this environment
+    color:
+        display_name: Color
+        component: ColorSwatches
+        description: Color customization
+    comment:
+        display_name: Comment
+        component: Text

@@ -74,6 +74,9 @@
         <template v-slot:cell(condition)="row">
           <Condition :data="dig(row.item, 'condition')" />
         </template>
+        <template v-slot:cell(filter)="row">
+          <Condition :data="dig(row.item, 'filter')" />
+        </template>
         <template v-slot:cell(modifications)="row">
           <Modification :data="dig(row.item, 'modifications')" />
         </template>
@@ -121,6 +124,9 @@
         </template>
         <template v-slot:cell(pprint)="row">
           <table class="table-borderless"><tr style="background-color: transparent !important"><td class="p-0 pr-1"><i :class="'la la-'+dig(row.item, 'icon')+' la-lg'"></i></td><td class="p-0"><b>{{ dig(row.item, 'widget', 'selected') || '' + dig(row.item, 'action', 'selected') || '' }}</b> @ {{ dig(row.item, 'pprint') }}</td></tr></table>
+        </template>
+        <template v-slot:cell(color)="row">
+          <ColorBadge :data="dig(row.item, 'color') || '#ffffff'" />
         </template>
 
         <template v-slot:cell(button)="row">
@@ -278,6 +284,7 @@ import Field from '@/components/Field.vue'
 import DateTime from '@/components/DateTime.vue'
 import TimeConstraint from '@/components/TimeConstraint.vue'
 import Info from '@/components/Info.vue'
+import ColorBadge from '@/components/ColorBadge.vue'
 const yaml = require('js-yaml')
 
 // Create a table representing an API endpoint.
@@ -292,6 +299,7 @@ export default {
     Search,
     Form,
     Info,
+    ColorBadge,
   },
   props: {
     // The tabs name and their associated search
@@ -341,6 +349,12 @@ export default {
     this.reload()
     this.get_now()
     setInterval(this.get_now, 1000);
+    this.$root.$on('environment_change_tab', (tab) => {
+      this.env_name = tab.name
+      this.env_filter = tab.filter
+      this.refreshTable()
+      this.add_history()
+    })
   },
   data () {
     return {
@@ -356,6 +370,8 @@ export default {
       timestamp: {},
       delete_items: delete_items,
       filter: this.tabs[0].filter,
+      env_name: '',
+      env_filter: [],
       tab_index: 0,
       search_data: '',
       per_page: 20,
@@ -393,6 +409,16 @@ export default {
         }
       }
       this.changeTab(tab, false)
+      if (this.$route.query.env_filter !== undefined) {
+        this.env_filter = JSON.parse(decodeURIComponent(this.$route.query.env_filter))
+      } else {
+        this.env_filter = []
+      }
+      if (this.$route.query.env_name !== undefined) {
+        this.env_name = decodeURIComponent(this.$route.query.env_name)
+      } else {
+        this.env_name = ''
+      }
       if (this.$route.query.s !== undefined) {
         var decoded_query = decodeURIComponent(this.$route.query.s)
         this.$refs.search.datavalue = decoded_query
@@ -409,6 +435,9 @@ export default {
     refresh(feedback = false) {
       this.filter = this.tabs[this.tab_index].filter
       var query = this.filter
+      if (this.env_filter.length > 0) {
+        query = join_queries([this.filter, this.env_filter])
+      }
       var options = {
         perpage: this.per_page,
         pagenb: this.current_page,
@@ -619,8 +648,8 @@ export default {
       })
     },
     add_history() {
-      const query = { tab: this.tabs[this.tab_index].title, s: this.$refs.search.datavalue }
-      if (this.$route.query.tab != query.tab || this.$route.query.s != query.s) {
+      const query = { tab: this.tabs[this.tab_index].title, s: (this.$refs.search.datavalue || ''), env_name: this.env_name, env_filter: encodeURIComponent(JSON.stringify(this.env_filter)) }
+      if (this.$route.query.tab != query.tab || this.$route.query.s != query.s || this.$route.query.env_name != query.env_name) {
         this.$router.push({ path: this.$router.currentRoute.path, query: query })
       }
     },
