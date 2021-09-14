@@ -4,6 +4,7 @@ import json
 
 import pytest
 from pytest_data.functions import use_data
+from freezegun import freeze_time
 
 from logging import getLogger
 log = getLogger('snooze.tests.api')
@@ -103,6 +104,77 @@ class TestApi4:
     def test_search_record_sort_2(self, client):
         result = client.simulate_get('/api/record', query_string='orderby=b&asc=false').json
         assert result and result['data'][0].items() >= {'a': '0', 'b': '3'}.items()
+
+class TestApiAlert:
+
+    data = {
+        'record': [],
+        'rule': [
+            {'name': 'rule01', 'condition': ['MATCHES', 'host', '^myhost'], 'modifications': [['SET', 'role', 'myhost']]},
+        ],
+        'aggregaterule': [
+            {'name': 'agg01', 'condition': ['=', 'source', 'syslog'], 'fields': ['host', 'message']},
+        ],
+        'snooze': [
+            {'name': 'snooze01', 'condition': ['=', 'host', 'myhost02'], 'time_constraints': {}},
+        ],
+    }
+
+    def test_alert_standard(self, client):
+        alert = {'timestamp': '2021-08-30T09:00', 'source': 'syslog', 'host': 'myhost01', 'process': 'myapp', 'message': 'error found in process'}
+        result = client.simulate_post('/api/alert', json=alert)
+        assert result.status == '200 OK'
+        uid = result.json['data']['added'][0]
+        record = client.simulate_get('/api/record/' + uid).json['data'][0]
+        assert record['host'] == 'myhost01'
+        assert record['plugins'] == ['rule', 'aggregaterule', 'snooze', 'notification']
+        assert record.get('snoozed') == None
+
+    def test_alert_snooze(self, client):
+        alert = {'timestamp': '2021-08-30T09:00', 'source': 'syslog', 'host': 'myhost02', 'process': 'myapp', 'message': 'error found in process'}
+        result = client.simulate_post('/api/alert', json=alert)
+        assert result.status == '200 OK'
+        uid = result.json['data']['added'][0]
+        record = client.simulate_get('/api/record/' + uid).json['data'][0]
+        assert record['plugins'] == ['rule', 'aggregaterule', 'snooze']
+        assert record['snoozed'] == 'snooze01'
+
+    # Note: Time is frozen only for the /api/alert endpoint
+    # because authenticated endpoints (/api/record) has a token from
+    # `client` already, and it's time sensitive
+    def test_alert_aggregation(self, client):
+            alert1 = {'timestamp': '2021-08-30T09:00:00+0900', 'source': 'syslog', 'host': 'myhost03', 'process': 'myapp', 'message': 'error found in process'}
+            with freeze_time('2021-08-30T09:00:00+0900'):
+                result1 = client.simulate_post('/api/alert', json=alert1)
+            assert result1.status == '200 OK'
+            uid1 = result1.json['data']['added'][0]
+            record1 = client.simulate_get('/api/record/' + uid1).json['data'][0]
+            assert record1['aggregate'] == 'agg01'
+            assert record1['plugins'] == ['rule', 'aggregaterule', 'snooze', 'notification']
+
+            alert2 = {'timestamp': '2021-08-30T09:00:05+0900', 'source': 'syslog', 'host': 'myhost03', 'process': 'myapp', 'message': 'error found in process'}
+            with freeze_time('2021-08-30T09:00:05+0900'):
+                result2 = client.simulate_post('/api/alert', json=alert2)
+            assert result2.status == '200 OK'
+            print(result2.json)
+            uid2 = result2.json['data']['updated'][0]['uid']
+            record2 = client.simulate_get('/api/record/' + uid2).json['data'][0]
+
+            assert uid1 == uid2
+            print(record2)
+            assert record2['timestamp'] == '2021-08-30T09:00:05+0900'
+            assert record2['plugins'] == ['rule', 'aggregaterule']
+
+            alert3 = {'timestamp': '2021-08-30T09:15:00+0900', 'source': 'syslog', 'host': 'myhost03', 'process': 'myapp', 'message': 'error found in process'}
+            with freeze_time('2021-08-30T09:15:00+0900'):
+                result3 = client.simulate_post('/api/alert', json=alert3)
+            assert result3.status == '200 OK'
+            uid3 = result3.json['data']['updated'][0]['uid']
+            record3 = client.simulate_get('/api/record/' + uid3).json['data'][0]
+
+            assert uid1 == uid3
+            assert record3['timestamp'] == '2021-08-30T09:15:00+0900'
+            assert record3['plugins'] == ['rule', 'aggregaterule', 'snooze', 'notification']
 
 # @mongomock.patch('mongodb://localhost:27017')
 # def test_api_alert_simple():

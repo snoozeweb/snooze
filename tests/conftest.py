@@ -1,14 +1,15 @@
+'''Configuration and fixtures for testing'''
+
+from logging import getLogger
+
+import mongomock
+import pytest
+from falcon.testing import TestClient
+from pytest_data.functions import get_data
+
 from snooze.db.database import Database
 from snooze.core import Core
 from snooze.api.base import Api
-from falcon.testing import TestClient
-
-import pytest
-from pytest_data.functions import get_data
-import yaml
-import mongomock
-
-from logging import getLogger
 
 log = getLogger('snooze')
 
@@ -47,6 +48,8 @@ def client(config, request):
         core.db.delete(key, [], True)
     for key, value in data.items():
         core.db.write(key, value)
+    for plugin in core.plugins:
+        plugin.reload_data()
     api = Api(core)
     token = api.get_root_token()
     log.info("Token obtained from get_root_token: {}".format(token))

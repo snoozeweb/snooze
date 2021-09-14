@@ -30,7 +30,8 @@ jobs:
             pytest-data \
             pytest-mongodb \
             pytest-spec \
-            pytest-timeout
+            pytest-timeout \
+            freezegun
           pip install -r requirements.txt
           pip install .
       - name: Running Pytest
