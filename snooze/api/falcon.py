@@ -137,7 +137,7 @@ class WebhookRoute(FalconRoute):
                         rec_list.append(rec)
             except Exception as e:
                 log.exception(e)
-                rec_list.append({'data': {'rejected': req_media}})
+                rec_list.append({'data': {'rejected': [req_media]}})
                 continue
         resp.content_type = falcon.MEDIA_JSON
         resp.status = falcon.HTTP_200
@@ -185,7 +185,7 @@ class AlertRoute(BasicRoute):
                 rec_list.append(rec)
             except Exception as e:
                 log.exception(e)
-                rec_list.append({'data': {'rejected': req_media}})
+                rec_list.append({'data': {'rejected': [req_media]}})
                 continue
         resp.content_type = falcon.MEDIA_JSON
         resp.status = falcon.HTTP_200

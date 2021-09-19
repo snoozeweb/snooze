@@ -108,7 +108,7 @@ class BackendDB(Database):
                     else:
                         log.debug("In {}, updating {}".format(collection, o))
                         self.db[collection].update_one({'uid': o['uid']}, {'$set': o})
-                        updated.append(result)
+                        updated.append(o)
                 else:
                     log.error("UID {} not found. Skipping...".format(o['uid']))
                     rejected.append(o)

@@ -587,7 +587,6 @@ export default {
       }
     },
     refreshTable() {
-      this.items = []
       this.refresh()
     },
     select (items) {

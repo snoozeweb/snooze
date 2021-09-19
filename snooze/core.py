@@ -11,7 +11,7 @@ log = getLogger('snooze')
 from os import listdir
 from os.path import dirname, isdir, join as joindir
 from snooze import __file__ as rootdir
-from snooze.plugins.core import Abort, Abort_and_write
+from snooze.plugins.core import Abort, Abort_and_write, Abort_and_update
 from snooze.utils import config, Housekeeper, Stats
 from hashlib import sha256
 from dateutil import parser
@@ -90,13 +90,14 @@ class Core:
                     record['plugins'].append(plugin.name)
                     record = plugin.process(record)
                 except Abort:
-                    data = {'data': {'rejected': record}}
+                    data = {'data': {'rejected': [record]}}
                     break
                 except Abort_and_write as e:
                     data = self.db.write('record', e.record or record)
                     break
                 except Abort_and_update as e:
                     data = self.db.write('record', e.record or record, update_time=False)
+                    break
                 except Exception as e:
                     log.exception(e)
                     record['exception'] = {

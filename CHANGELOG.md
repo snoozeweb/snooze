@@ -1,3 +1,11 @@
+## v1.0.12
+
+### New features
+### Bug fixes
+* When changing tabs or refreshing, webUI row tables are not flickering anymore
+* Throttled alerts generated duplicate entries
+* Aggregated alerts now correctly reset their snooze filters fields
+
 ## v1.0.11
 
 ### New features

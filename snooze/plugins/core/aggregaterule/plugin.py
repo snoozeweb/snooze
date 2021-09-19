@@ -53,6 +53,8 @@ class Aggregaterule(Plugin):
             record['state'] = aggregate.get('state', '')
             record['duplicates'] = aggregate.get('duplicates', 0) + 1
             record['date_epoch'] = aggregate.get('date_epoch', now.timestamp())
+            if 'snoozed' in record:
+                del record['snoozed']
             if aggregate.get('ttl', -1) < 0:
                 record['ttl'] = aggregate.get('ttl', -1)
             watched_fields = []
