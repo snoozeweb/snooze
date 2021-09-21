@@ -21,6 +21,7 @@ def config():
         'database': {'type': 'mongo', 'host': 'localhost', 'port': 27017},
         'socket_path': './test.socket',
         'stats': False,
+        'bootstrap_db': True,
     }
 
 @pytest.fixture(scope='class')

@@ -1,31 +1,21 @@
+'''CLI command for retrieving root token'''
+
+import sys
 from pathlib import Path
-from requests_unixsocket import Session
 from urllib.parse import quote
 
-from snooze.api.socket import POSSIBLE_PATHS
-
 import click
-import sys
-
-def find_socket(sock=None):
-    '''Return the first socket that exists from the list of defaults'''
-    possible_paths = POSSIBLE_PATHS
-    if sock:
-        possible_paths.insert(0, sock)
-    for path in possible_paths:
-        if Path(path).exists():
-            return path
-    print("Could not find any socket in {}".format(possible_paths))
-    raise SystemExit
-
+from requests_unixsocket import Session
 
 @click.command()
-@click.option('-s', '--socket', help='Force the socket which to connect', default=None)
-def root_token(socket=None):
+@click.option('-s', '--socket', help='Force the socket which to connect', default='/var/run/snooze/server.socket')
+def root_token(socket):
     '''main'''
-    socket = find_socket(socket)
-    response = Session().get("http+unix://{}/root_token".format(quote(socket, safe='')))
-    root_token = response.json().get('root_token')
-    print('Root token: {}'.format(root_token))
-    if not root_token:
+    path = str(Path(socket).absolute())
+    escaped_path = quote(path, safe='')
+    uri = "http+unix://{}/api/root_token".format(escaped_path)
+    response = Session().get(uri)
+    token = response.json().get('root_token')
+    print('Root token: {}'.format(token))
+    if not token:
         sys.exit(1)

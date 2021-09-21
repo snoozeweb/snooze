@@ -1,84 +1,67 @@
-import os
-import json
-
-import atexit
-from socketserver import UnixStreamServer
-from http.server import SimpleHTTPRequestHandler
+'''
+A server running special functionalities on a unix socket
+for bypassing authentication
+'''
 
 from logging import getLogger
-log = getLogger('snooze')
+from pathlib import Path
+from threading import Thread, Event
 
-POSSIBLE_PATHS = [
-    '/var/run/snooze/snooze.socket',
-    "/var/run/user/{}/snooze/snooze.socket".format(os.getuid()),
-    './snooze.socket',
-]
+import falcon
+from waitress.adjustments import Adjustments
+from waitress.server import UnixWSGIServer
 
-class UnixSocketHttpServer(UnixStreamServer):
-    def get_request(self):
-        request, client_address = super(UnixSocketHttpServer, self).get_request()
-        return (request, ["snooze_server", 0])
+from snooze.api.falcon import LoggerMiddleware
 
-def prepare_socket(socket_path=None):
-    '''
-    Verify the socket can be opened in that directory and
-    select a good default socket if the argument is null
-    '''
-    possible_socket_paths = POSSIBLE_PATHS
-    if socket_path:
-        possible_socket_paths.insert(0, socket_path)
-    my_socket = None
-    for path in possible_socket_paths:
-        try:
-            abspath = os.path.abspath(path)
-            dirname = os.path.dirname(abspath)
-            if not os.path.exists(dirname):
-                os.makedirs(dirname)
-            my_socket = abspath
-            break
-        except Exception as e:
-            log.debug("Tried socket %s, failed with:%s", abspath, e)
-            continue
-    log.info('Socket %s is available', my_socket)
-    return my_socket
+log = getLogger('snooze.api.socket')
 
-class SocketServer:
-    '''Class to manage the socket connection'''
-    def __init__(self, jwt_engine, socket_path=None):
-        socket_path = prepare_socket(socket_path)
-        self.jwt_engine = jwt_engine
-        self.socket_path = socket_path
-        self.cleanup_socket()
-        atexit.register(self.__del__)
-        self.server = UnixSocketHttpServer(self.socket_path, self.get_handler())
+class RootTokenRoute:
+    '''A route for generating a root token'''
+    def __init__(self, token_engine):
+        self.token_engine = token_engine
 
-    def __del__(self):
-        self.cleanup_socket()
+    def on_get(self, req, resp):
+        log.debug("Received root token request from client")
+        payload = {'name': 'root', 'method': 'root', 'permissions': ['rw_all']}
+        root_token = self.token_engine.sign(payload).decode()
+        resp.content_type = falcon.MEDIA_JSON
+        resp.media = {'root_token': root_token}
+        resp.status = falcon.HTTP_200
 
-    def cleanup_socket(self):
-        if os.path.exists(self.socket_path):
-            os.remove(self.socket_path)
+def admin_api(token_engine):
+    '''Return a falcon WSGI app for returning the root token. Only used by the unix socket'''
+    api = falcon.API(middleware=[LoggerMiddleware()])
+    api.add_route('/api/root_token', RootTokenRoute(token_engine))
+    return api
 
-    def serve(self):
-        '''Function to service forever on the socket'''
-        log.debug("Starting Unix socket at %s", self.socket_path)
-        self.server.serve_forever()
+class WSGISocketServer(Thread, UnixWSGIServer):
+    '''Listen on a Unix socket and serve the application'''
+    def __init__(self, api, path, exit_button=None):
+        self.path = Path(path).absolute()
+        self.timeout = 10
+        self.exit_button = exit_button or Event()
 
-    def get_handler(self):
-        '''Return the handler class to use to serve'''
-        jwt_engine = self.jwt_engine
-        class Handler(SimpleHTTPRequestHandler):
-            '''Handler for the socket connection'''
-            def do_GET(self):
-                if self.path == '/root_token':
-                    root_token = jwt_engine.get_auth_token({'name': 'root', 'method': 'root', 'permissions': ['rw_all']})
-                    self.protocol_version = 'HTTP/1.1'
-                    self.send_response(200, 'OK')
-                    self.send_header('Content-type', 'application/json')
-                    self.end_headers()
-                    json_string = json.dumps({'root_token': root_token}).encode('utf-8')
-                    bytes_data = bytes(json_string)
-                    self.wfile.write(bytes_data)
-            def log_message(self, fmt, *args):
-                log.debug(fmt, *args)
-        return Handler
+        unix_socket_adj = Adjustments(unix_socket=str(self.path))
+        UnixWSGIServer.__init__(self, api, adj=unix_socket_adj)
+
+        Thread.__init__(self)
+
+    def run(self):
+        '''Override Thread method. Start the service'''
+        log.info("Listening on %s", self.path)
+        UnixWSGIServer.run(self)
+
+    def excepthook(self, exc_type, exc_value, _exc_traceback, _thread):
+        '''Override Thread method. Handle exceptions and gracefully stop'''
+        log.error("Fatal: Received error %s: %s", exc_type, exc_value)
+        self.stop()
+        self.exit_button.set()
+
+    def stop(self):
+        '''Gracefully stop the service'''
+        log.debug("Closing wsgi unix socket at %s", self.path)
+        self.close()
+        log.debug("Waiting for wsgi unix socket at %s to close...")
+        self.join(self.timeout)
+        log.debug("Deleting unix socket at %s", self.path)
+        self.path.unlink()

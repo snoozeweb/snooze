@@ -82,14 +82,14 @@ class BasicRoute():
             return []
 
 class Api():
-    def __init__(self, core, use_socket=True):
+    def __init__(self, core):
         self.conf = core.conf
         self.plugins = core.plugins
         self.core = core
         self.api_type = self.conf.get('api', {}).get('type', 'falcon')
         cls = import_module("snooze.api.{}".format(self.api_type))
         self.__class__ = type('Api', (cls.BackendApi, Api), {})
-        self.init_api(core, use_socket)
+        self.init_api(core)
         self.load_plugin_routes()
         self.cluster = Cluster(self)
         self.core.cluster = self.cluster

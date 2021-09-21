@@ -24,10 +24,23 @@ from hashlib import sha256
 from base64 import b64decode, b64encode
 
 from multiprocessing import Process
-from .socket import SocketServer
 
 from ldap3 import Server, Connection, ALL, SUBTREE
 from ldap3.core.exceptions import LDAPOperationResult, LDAPExceptionError
+
+class LoggerMiddleware(object):
+    '''Middleware for logging'''
+    def __init__(self):
+        self.logger = getLogger('snooze.audit')
+    def process_response(self, req, resp, *_args):
+        '''Method for handling requests as a middleware'''
+        message = '{source} {method} {path} {status}'.format(
+            source=req.access_route[0],
+            method=req.method,
+            path=req.relative_uri,
+            status=resp.status[:3],
+        )
+        self.logger.info(message)
 
 class ThreadingWSGIServer(ThreadingMixIn, WSGIServer):
     daemon_threads = True
@@ -568,24 +581,16 @@ SNOOZE_GLOBAL_RUNDIR = '/var/run/snooze'
 SNOOZE_LOCAL_RUNDIR = "/var/run/user/{}".format(os.getuid())
 
 class BackendApi():
-    def init_api(self, core, use_socket=True):
+    def init_api(self, core):
         # Authentication
         self.core = core
 
         # JWT setup
-        self.secret = self.core.secrets['jwt_secret_key']
+        self.secret = self.core.secrets['jwt_private_key']
         def auth(payload):
             log.debug("Payload received: {}".format(payload))
             return payload
         self.jwt_auth = JWTAuthBackend(auth, self.secret)
-
-        # Socket
-        if use_socket:
-            log.debug('BackendAPI: init_api')
-            socket_path = self.core.conf.get('socket_path', None)
-            log.debug("Socket path: {}".format(socket_path))
-            self.socket_server = SocketServer(self.jwt_auth, socket_path=socket_path)
-            self.socket = Process(target=self.socket_server.serve)
 
         # Handler
         self.handler = falcon.API(middleware=[CORS(), FalconAuthMiddleware(self.jwt_auth)])
@@ -616,7 +621,7 @@ class BackendApi():
             self.add_route('/metrics', MetricsRoute(self), '')
 
         web_conf = self.core.conf.get('web', {})
-        if web_conf.get('enabled', True):        
+        if web_conf.get('enabled', True):
             self.add_route('/', RedirectRoute(), '')
             self.add_route('/web', RedirectRoute(), '')
             self.handler.add_sink(StaticRoute(web_conf.get('path', '/opt/snooze/web'), '/web').on_get, '/web')
@@ -625,8 +630,6 @@ class BackendApi():
         self.handler.add_route(prefix + route, action)
 
     def serve(self):
-        log.debug('Starting socket API')
-        self.socket.start()
         log.debug('Starting REST API')
         listen_addr =  os.environ.get('SNOOZE_ADDRESS', self.core.conf.get('listen_addr', '0.0.0.0'))
         port = os.environ.get('SNOOZE_PORT', self.core.conf.get('port', '5200'))
@@ -649,7 +652,6 @@ class BackendApi():
             )
         log.info("Snooze server is now listening on {}:{}".format(listen_addr, port))
         httpd.serve_forever()
-        #self.socket.join()
 
     def get_root_token(self):
         return self.jwt_auth.get_auth_token({'name': 'root', 'method': 'root', 'permissions': ['rw_all']})
@@ -674,7 +676,7 @@ class BackendApi():
         except Exception as e:
             log.exception(e)
             return {'status': falcon.HTTP_503}
-            
+
     def write_and_reload(self, filename, conf, reload_conf, sync = False):
         result_dict = {}
         log.debug("Will write to {} config {} and reload {}".format(filename, conf, reload_conf))

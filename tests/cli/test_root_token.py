@@ -1,27 +1,27 @@
-import threading
-import json
-import jwt
-import pytest
 import os
 import re
+import threading
+import time
 
-from falcon_auth import JWTAuthBackend
+import pytest
 from click.testing import CliRunner
 
 from snooze.cli.__main__ import snooze
-from snooze.api.socket import SocketServer
+from snooze.api.socket import WSGISocketServer, admin_api
+from snooze.token import TokenEngine
 
 @pytest.fixture(scope='class')
 def mysocket():
-    jwt_auth = JWTAuthBackend(lambda u: u, 'secret')
-    s = SocketServer(jwt_auth, socket_path='./test2.socket')
-    thread = threading.Thread(target=s.serve)
+    token_engine = TokenEngine('secret')
+    api = admin_api(token_engine)
+    thread = WSGISocketServer(api, './test_root_token.socket')
     thread.daemon = True
     thread.start()
-    return s
+    time.sleep(0.1)
+    return thread
 
 def test_root_token(mysocket):
-    path = os.path.abspath('./test2.socket')
+    path = os.path.abspath('./test_root_token.socket')
     runner = CliRunner()
     result = runner.invoke(snooze, ['root-token', '--socket', path])
     assert result.exit_code == 0

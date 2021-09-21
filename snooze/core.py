@@ -1,21 +1,23 @@
-#!/usr/bin/python3.6
+'''Module for managing the snooze server core'''
 
-from snooze.db.database import Database
-
+from datetime import datetime
+from hashlib import sha256
 from importlib import import_module
-
 from logging import getLogger
-
-log = getLogger('snooze')
-
 from os import listdir
 from os.path import dirname, isdir, join as joindir
-from snooze import __file__ as rootdir
-from snooze.plugins.core import Abort, Abort_and_write, Abort_and_update
-from snooze.utils import config, Housekeeper, Stats
-from hashlib import sha256
+from secrets import token_urlsafe
+from threading import Event
+
 from dateutil import parser
-from datetime import datetime
+
+from snooze import __file__ as rootdir
+from snooze.db.database import Database
+from snooze.plugins.core import Abort, Abort_and_write, Abort_and_update
+from snooze.token import TokenEngine
+from snooze.utils import config, Housekeeper, Stats
+
+log = getLogger('snooze')
 
 class Core:
     def __init__(self, conf):
@@ -24,14 +26,16 @@ class Core:
         self.general_conf = config('general')
         self.housekeeper = Housekeeper(self)
         self.cluster = None
+        self.exit_button = Event()
         self.plugins = []
         self.process_plugins = []
         self.stats = Stats(self)
-        self.secrets = config('secrets')
         self.stats.init('process_record_duration', 'summary', 'snooze_record_process_duration', 'Average time spend processing a record', ['source'])
         self.stats.init('notification_sent', 'counter', 'snooze_notification_sent', 'Counter of notification sent', ['name', 'action'])
         self.stats.init('notification_error', 'counter', 'snooze_notification_error', 'Counter of notification that failed', ['name', 'action'])
         self.bootstrap_db()
+        self.secrets = self.ensure_secrets()
+        self.token_engine = TokenEngine(self.secrets['jwt_private_key'])
         self.load_plugins()
 
     def load_plugins(self):
@@ -114,6 +118,36 @@ class Core:
     def get_core_plugin(self, plugin_name):
         return next(iter([plug for plug in self.plugins if plug.name == plugin_name]), None)
 
+    def get_secrets(self):
+        '''Return a dict of secrets stored in the database'''
+        results = self.db.search('secrets', ['=', 'type', 'secret'])
+        if results.get('count') > 0:
+            secrets = {}
+            for data in results['data']:
+                name = data.get('name')
+                value = data.get('value')
+                if name:
+                    secrets[name] = value
+            return secrets
+        else:
+            return {}
+
+    def ensure_secrets(self):
+        '''Bootstrap the secrets if not present and store them in the database'''
+        should = {
+            'jwt_private_key': lambda: token_urlsafe(128),
+            'reload_token': lambda: token_urlsafe(32),
+        }
+        actual = self.get_secrets()
+        towrite = []
+        for name, method in should.items():
+            if name not in actual:
+                secret = method()
+                towrite.append({'type': 'secret', 'name': name, 'value': secret})
+        if towrite:
+            self.db.write('secrets', towrite)
+        return self.get_secrets()
+
     def reload_conf(self, config_file):
         log.debug("Reload config file '{}'".format(config_file))
         if config_file == 'general':
@@ -144,4 +178,3 @@ class Core:
                     user_passwords = [{"name": "root", "method": "local", "password": sha256("root".encode('utf-8')).hexdigest()}]
                     self.db.write('user.password', user_passwords)
                 self.db.write('general', [{'init_db': True}])
-

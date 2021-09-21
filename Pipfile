@@ -18,6 +18,7 @@ prometheus-client = "*"
 python-dateutil = "*"
 netifaces = "*"
 pyparsing = "*"
+waitress = "*"
 
 [dev-packages]
 pytest = "*"

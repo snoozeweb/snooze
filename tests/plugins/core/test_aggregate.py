@@ -28,6 +28,7 @@ class TestAggregatePlugin:
             {'name': 'Agg4', 'condition': ['=', 'a', '4'], 'fields': ['a', 'b'], 'throttle': 15, 'watch': ['c']},
             {'name': 'Agg5', 'condition': ['=', 'a', '5'], 'fields': ['a', 'b'], 'throttle': 15, 'watch': ['c.test']},
         ]
+        core.db.delete('aggregaterule', [], True)
         core.db.write('aggregaterule', aggregate_rules)
         agg_rule = Aggregaterule(core)
         agg_rule.post_init()

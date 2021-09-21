@@ -16,12 +16,8 @@ from base64 import b64encode
 
 from hashlib import sha256
 
-with open('./examples/default_config.yaml', 'r') as f:
-    default_config = yaml.load(f.read())
-
 @mongomock.patch('mongodb://localhost:27017')
-def test_basic_auth():
-    core = Core(default_config)
+def test_basic_auth(core):
     api = Api(core)
     users = [{"name": "root", "method": "local", "enabled": True}]
     core.db.write('user', users)
@@ -34,5 +30,5 @@ def test_basic_auth():
     log.debug('Attempting Basic auth')
     result = client.simulate_post('/api/login/local').json
     log.debug("Received {}".format(result))
+    assert result
     assert result['token']
-

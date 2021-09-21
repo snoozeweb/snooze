@@ -18,6 +18,9 @@ bootstrap_db: true
 # `create_root_user` (Boolean): Create a *root* user with a default password *root*
 create_root_user: true
 
+# `unix_socket` (String): Listen on this unix socket to issue root tokens
+unix_socket: /var/run/snooze/server.socket
+
 # `no_login` (Boolean): disable Authentication (everyone has admin priviledges)
 no_login: false
 
