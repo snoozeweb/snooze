@@ -91,7 +91,7 @@ form:
             display_name: Email attribute
             component: String
             description: 'User attribute that displays the user email adress. Usually "mail"'
-        sweb_title_user: 'Group settings'
+        sweb_title_group: 'Group settings'
         member_attribute:
             display_name: Member attribute
             component: String

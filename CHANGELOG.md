@@ -1,6 +1,12 @@
 ## v1.0.12
 
 ### New features
+* Kapacitor webhook added
+* LDAP: Filtering out groups with group_dn or base_dn
+* Moving Unix socket management out of the falcon API
+* Using Waitress for Unix socket and TCP socket
+* Secrets are now bootstrapped using random numbers and are stored in the backend database
+* Dedicated middleware for logging 
 ### Bug fixes
 * When changing tabs or refreshing, webUI row tables are not flickering anymore
 * Throttled alerts generated duplicate entries

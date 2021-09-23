@@ -1,0 +1,12 @@
+---
+name: 'Kapacitor'
+desc: 'Kapacitor'
+auto_reload: false
+prefix: ''
+class: ''
+routes:
+    /webhook/kapacitor:
+        desc: 'Receive Kapacitor alerts'
+        class: KapacitorRoute
+        authorization_policy:
+            write: [any]
