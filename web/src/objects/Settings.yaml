@@ -91,10 +91,15 @@ form:
             display_name: Email attribute
             component: String
             description: 'User attribute that displays the user email adress. Usually "mail"'
+        sweb_title_user: 'Group settings'
         member_attribute:
             display_name: Member attribute
             component: String
             description: 'Member attribute that displays groups membership. Usually "memberof"'
+        group_dn:
+            display_name: Group base DN
+            component: String
+            description: 'Base DN used to filter out groups. Will default to the User base DN. Multiple DNs can be added if separated by semicolons'
         #test_connection:
         #    display_name: Test LDAP
         #    component: Button

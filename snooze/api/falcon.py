@@ -475,6 +475,7 @@ class LdapAuthRoute(AuthRoute):
         if self.enabled:
             try:
                 self.base_dn = conf['base_dn']
+                self.group_dn = conf.get('group_dn', self.base_dn)
                 self.user_filter = conf['user_filter']
                 self.email_attribute = conf.get('email_attribute') or 'mail'
                 self.display_name_attribute = conf.get('display_name_attribute') or 'cn'
@@ -532,7 +533,12 @@ class LdapAuthRoute(AuthRoute):
             ):
                 user_dn = response[0]['dn']
                 attributes = response[0]['attributes']
-                return {'name': username, 'dn': user_dn, 'groups': attributes[self.member_attribute]}
+                groups = [
+                    group for group in attributes[self.member_attribute]
+                    for dn in self.group_dn.split(':')
+                    if group.endswith(dn)
+                ]
+                return {'name': username, 'dn': user_dn, 'groups': groups}
             else:
                 # Could not find user in search
                 raise falcon.HTTPUnauthorized(description=f"Error in search: Could not find user {username} in LDAP search")
