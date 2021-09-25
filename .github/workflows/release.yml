@@ -54,11 +54,10 @@ jobs:
         id: changelog
       - name: Update release with changelog
         id: update
-        uses: tubone24/update_release@v1.1.0
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          TAG_NAME: ${{ github.ref }}
+        uses: ncipollo/release-action@v1
         with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          tag: ${{ github.ref }}
           body: ${{ steps.changelog.outputs.changelog }}
 
   pypi:
