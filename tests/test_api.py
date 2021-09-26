@@ -144,7 +144,7 @@ class TestApiAlert:
     # `client` already, and it's time sensitive
     def test_alert_aggregation(self, client):
             alert1 = {'timestamp': '2021-08-30T09:00:00+0900', 'source': 'syslog', 'host': 'myhost03', 'process': 'myapp', 'message': 'error found in process'}
-            with freeze_time('2021-08-30T09:00:00+0900'):
+            with freeze_time('2021-08-30T09:00:00+0900', tz_offset=9):
                 result1 = client.simulate_post('/api/alert', json=alert1)
             assert result1.status == '200 OK'
             uid1 = result1.json['data']['added'][0]
@@ -153,7 +153,7 @@ class TestApiAlert:
             assert record1['plugins'] == ['rule', 'aggregaterule', 'snooze', 'notification']
 
             alert2 = {'timestamp': '2021-08-30T09:00:05+0900', 'source': 'syslog', 'host': 'myhost03', 'process': 'myapp', 'message': 'error found in process'}
-            with freeze_time('2021-08-30T09:00:05+0900'):
+            with freeze_time('2021-08-30T09:00:05+0900', tz_offset=9):
                 result2 = client.simulate_post('/api/alert', json=alert2)
             assert result2.status == '200 OK'
             print(result2.json)
@@ -166,7 +166,7 @@ class TestApiAlert:
             assert record2['plugins'] == ['rule', 'aggregaterule']
 
             alert3 = {'timestamp': '2021-08-30T09:15:00+0900', 'source': 'syslog', 'host': 'myhost03', 'process': 'myapp', 'message': 'error found in process'}
-            with freeze_time('2021-08-30T09:15:00+0900'):
+            with freeze_time('2021-08-30T09:15:00+0900', tz_offset=9):
                 result3 = client.simulate_post('/api/alert', json=alert3)
             assert result3.status == '200 OK'
             uid3 = result3.json['data']['updated'][0]['uid']
