@@ -10,6 +10,7 @@ jobs:
 
   lint:
     runs-on: ubuntu-latest
+    if: ${{ false }} # Disabled for now
     steps:
       - uses: actions/checkout@v2
       - name: Set up Python 3.x
@@ -35,7 +36,7 @@ jobs:
         run: pipenv run pylint snooze/
 
   tests:
-    needs: lint
+    # needs: lint
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v2
