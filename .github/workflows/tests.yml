@@ -1,3 +1,5 @@
+# vim:set softtabstop=2 shiftwidth=2 tabstop=2 expandtab:
+---
 name: Snooze-server testing
 
 on:
@@ -10,31 +12,27 @@ jobs:
 
     steps:
       - uses: actions/checkout@v2
-      - name: Install packages
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y \
-            build-essential \
-            python3-dev
       - name: Set up Python 3.x
         uses: actions/setup-python@v2
         with:
-          python-version: '3.x'
+          python-version: '3.6'
           architecture: 'x64'
+
+      - name: Install Pipenv
+        run: |
+          python -m pip install pipenv wheel
+
+      - name: Cache Pipenv
+        uses: actions/cache@v1
+        with:
+          path: ~/.local/share/virtualenvs
+          key: "{{ runner.os }}-pipenv-{{ hashFIles('**/Pipfile.lock') }}"
+
       - name: Install dependencies
-        id: install-deps
+        if: steps.cache-pipenv.outputs.cache-hit != 'true'
         run: |
-          python -m pip install --upgrade pip
-          pip install \
-            pytest \
-            pytest-data \
-            pytest-mongodb \
-            pytest-spec \
-            pytest-timeout \
-            freezegun
-          pip install -r requirements.txt
-          pip install .
+          pipenv install --deploy --dev
+
       - name: Running Pytest
-        id: pytest
         run: |
-          pytest
+          pipenv run pytest
