@@ -599,7 +599,7 @@ class BackendApi():
         self.jwt_auth = JWTAuthBackend(auth, self.secret)
 
         # Handler
-        self.handler = falcon.API(middleware=[CORS(), FalconAuthMiddleware(self.jwt_auth)])
+        self.handler = falcon.API(middleware=[CORS(), LoggerMiddleware(), FalconAuthMiddleware(self.jwt_auth)])
         self.handler.req_options.auto_parse_qs_csv = False
         self.auth_routes = {}
         # Alert route
@@ -634,30 +634,6 @@ class BackendApi():
 
     def add_route(self, route, action, prefix = '/api'):
         self.handler.add_route(prefix + route, action)
-
-    def serve(self):
-        log.debug('Starting REST API')
-        listen_addr =  os.environ.get('SNOOZE_ADDRESS', self.core.conf.get('listen_addr', '0.0.0.0'))
-        port = os.environ.get('SNOOZE_PORT', self.core.conf.get('port', '5200'))
-        httpd = make_server(listen_addr, int(port), self.handler, ThreadingWSGIServer)
-        ssl_conf = self.core.conf.get('ssl', {})
-        use_ssl = ssl_conf.get('enabled')
-        if ('SNOOZE_CERT_FILE' in os.environ and 'SNOOZE_KEY_FILE' in os.environ) or use_ssl == True:
-            certfile = os.environ.get('SNOOZE_CERT_FILE', ssl_conf.get('certfile'))
-            keyfile = os.environ.get('SNOOZE_KEY_FILE', ssl_conf.get('keyfile'))
-            if not os.access(certfile, os.R_OK):
-                log.error("{} is not readable. Cannot start server".format(certfile))
-                return
-            if not os.access(keyfile, os.R_OK):
-                log.error("{} is not readable. Cannot start server".format(keyfile))
-                return
-            httpd.socket = ssl.wrap_socket(
-                httpd.socket, server_side=True,
-                certfile=certfile,
-                keyfile=keyfile
-            )
-        log.info("Snooze server is now listening on {}:{}".format(listen_addr, port))
-        httpd.serve_forever()
 
     def get_root_token(self):
         return self.jwt_auth.get_auth_token({'name': 'root', 'method': 'root', 'permissions': ['rw_all']})

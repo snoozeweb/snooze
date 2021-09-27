@@ -8,7 +8,7 @@ from threading import Thread, Event
 from waitress.adjustments import Adjustments
 from waitress.server import TcpWSGIServer
 
-log = getLogger('snooze.wsgi.tcp')
+log = getLogger('snooze.api.tcp')
 
 class WSGITCPServer(TcpWSGIServer, Thread):
     '''A TCP server that serve a WSGI application'''
@@ -28,10 +28,11 @@ class WSGITCPServer(TcpWSGIServer, Thread):
 
         wsgi_options = Adjustments(host=self.listen_addr, port=self.port)
         TcpWSGIServer.__init__(self, api, adj=wsgi_options)
+        self.wrap_tls()
         Thread.__init__(self)
 
-    def handle_connect(self):
-        '''Override asyncore dispatcher to provide TLS'''
+    def wrap_tls(self):
+        '''Override the socket with a TLS socket when TLS is enabled'''
         use_ssl = self.ssl_conf.get('enabled', False)
         certfile = os.environ.get('SNOOZE_CERT_FILE') or self.ssl_conf.get('certfile')
         keyfile = os.environ.get('SNOOZE_KEY_FILE') or self.ssl_conf.get('keyfile')
@@ -47,6 +48,7 @@ class WSGITCPServer(TcpWSGIServer, Thread):
                 server_side=True,
                 certfile=certfile,
                 keyfile=keyfile,
+                do_handshake_on_connect=True,
             )
 
     def run(self):
