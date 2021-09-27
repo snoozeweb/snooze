@@ -237,16 +237,20 @@ jobs:
         id: vars
         run: echo "::set-output name=SHORT_COMMIT_ID::$(git rev-parse --short HEAD)"
       - name: Build Image
+        uses: nick-invision/retry@v2
         id: docker-build
-        run: >-
-          docker build
-          --build-arg VCS_REF=${{ github.sha }}
-          --build-arg BUILD_DATE=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
-          --build-arg VERSION=$(cat VERSION)
-          -t $IMAGE_NAME
-          -t $REPOSITORY_URL/$IMAGE_NAME:$(cat VERSION)
-          -t $REPOSITORY_URL/$IMAGE_NAME:${{ steps.vars.outputs.SHORT_COMMIT_ID }}
-          -t $REPOSITORY_URL/$IMAGE_NAME:latest .
+        with:
+          retry_on: error
+          max_attempts: 3
+          command: >-
+            docker build
+            --build-arg VCS_REF=${{ github.sha }}
+            --build-arg BUILD_DATE=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+            --build-arg VERSION=$(cat VERSION)
+            -t $IMAGE_NAME
+            -t $REPOSITORY_URL/$IMAGE_NAME:$(cat VERSION)
+            -t $REPOSITORY_URL/$IMAGE_NAME:${{ steps.vars.outputs.SHORT_COMMIT_ID }}
+            -t $REPOSITORY_URL/$IMAGE_NAME:latest .
       - name: Docker Login
         env:
           DOCKER_USERNAME: ${{ secrets.DOCKER_USERNAME }}

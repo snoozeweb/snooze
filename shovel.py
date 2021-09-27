@@ -5,22 +5,30 @@ import json
 import sys
 
 from subprocess import Popen, PIPE
+from getpass import getpass
 
 from shovel import task
 
 PWD = os.getcwd()
 
-def execute(*cmd):
+def execute(*cmd, show_stdout = True):
     '''Wrapper to execute a subprocess'''
     cmd_string = " ".join(cmd)
-    print("Running {}".format(cmd_string))
+    if show_stdout:
+        print("Running {}".format(cmd_string))
     proc = Popen(cmd, stdout=PIPE, stderr=PIPE)
     outs, errs = proc.communicate()
     if proc.returncode == 0:
-        print("Command `{}` successful: {}".format(cmd_string, outs))
+        if show_stdout:
+            print("Command `{}` successful: {}".format(cmd_string, outs))
+        else:
+            print("Command successful: {}".format(cmd_string, outs))
         return outs.decode()
     else:
-        print("Command `{}` failed with error {}: (stdout) `{}` / (stderr) `{}`".format(cmd_string, proc.returncode, outs, errs))
+        if show_stdout:
+            print("Command `{}` failed with error {}: (stdout) `{}` / (stderr) `{}`".format(cmd_string, proc.returncode, outs, errs))
+        else:
+            print("Command failed with error {}: (stdout) `{}` / (stderr) `{}`".format(proc.returncode, outs, errs))
         sys.exit(1)
 
 def get_version():
@@ -28,6 +36,7 @@ def get_version():
     if os.path.isfile(version_path):
         with open(version_path) as f:
             version = f.read().rstrip('\n')
+    return version
 
 @task
 def build_vue():
@@ -46,7 +55,7 @@ def rpm():
     execute('rpmbuild', '--bb', 'snooze-server.spec')
 
 @task
-def docker():
+def docker_build():
     print("Building docker image")
     repo_url = 'registry.hub.docker.com'
     image_name = 'snoozeweb/snooze'
@@ -59,3 +68,23 @@ def docker():
             '-t', '{}/{}:{}'.format(repo_url, image_name, vcs_ref),
             '-t', '{}/{}:latest'.format(repo_url, image_name),
             '.')
+
+@task
+def docker_push():
+    print("Pushing docker image")
+    password = getpass()
+    repo_url = 'registry.hub.docker.com'
+    image_name = 'snoozeweb/snooze'
+    vcs_ref = execute('git', 'rev-parse', '--short', 'HEAD').rstrip('\r\n')
+    version = get_version()
+    execute('docker', 'login',
+            '{}'.format(repo_url),
+            '--username', 'snoozeweb',
+            '--password', '{}'.format(password),
+            show_stdout=False)
+    execute('docker', 'push',
+            '{}/{}:v{}'.format(repo_url, image_name, version))
+    execute('docker', 'push',
+            '{}/{}:{}'.format(repo_url, image_name, vcs_ref))
+    execute('docker', 'push',
+            '{}/{}:latest'.format(repo_url, image_name))

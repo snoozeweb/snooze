@@ -1,3 +1,9 @@
+## v1.0.13
+
+### Bug fixes
+* Fixed issues from previous version about Waitress
+* Fixed CI to account for pypi delay before building docker image
+
 ## v1.0.12
 
 ### New features
