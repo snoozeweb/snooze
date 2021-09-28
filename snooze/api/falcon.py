@@ -30,17 +30,24 @@ from ldap3.core.exceptions import LDAPOperationResult, LDAPExceptionError
 
 class LoggerMiddleware(object):
     '''Middleware for logging'''
-    def __init__(self):
+
+    def __init__(self, conf={}):
         self.logger = getLogger('snooze.audit')
+        self.excluded_paths = conf.get('audit_excluded_paths', [])
+
     def process_response(self, req, resp, *_args):
         '''Method for handling requests as a middleware'''
+        path = req.relative_uri
         message = '{source} {method} {path} {status}'.format(
             source=req.access_route[0],
             method=req.method,
-            path=req.relative_uri,
+            path=path,
             status=resp.status[:3],
         )
-        self.logger.info(message)
+        if any(path.startswith(excluded) for excluded in self.excluded_paths):
+            self.logger.debug(message)
+        else:
+            self.logger.info(message)
 
 class ThreadingWSGIServer(ThreadingMixIn, WSGIServer):
     daemon_threads = True
@@ -599,7 +606,7 @@ class BackendApi():
         self.jwt_auth = JWTAuthBackend(auth, self.secret)
 
         # Handler
-        self.handler = falcon.API(middleware=[CORS(), LoggerMiddleware(), FalconAuthMiddleware(self.jwt_auth)])
+        self.handler = falcon.API(middleware=[CORS(), LoggerMiddleware(self.core.conf), FalconAuthMiddleware(self.jwt_auth)])
         self.handler.req_options.auto_parse_qs_csv = False
         self.auth_routes = {}
         # Alert route

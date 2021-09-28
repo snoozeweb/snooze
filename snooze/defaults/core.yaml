@@ -24,6 +24,13 @@ unix_socket: /var/run/snooze/server.socket
 # `no_login` (Boolean): disable Authentication (everyone has admin priviledges)
 no_login: false
 
+# `audit_excluded_paths` (List[String]): A list of HTTP paths excluded from audit logs. Any path
+# that starts with a path in this list will be excluded.
+audit_excluded_paths:
+    - /api/patlite
+    - /metrics
+    - /web
+
 ###################
 # TLS configuration
 ###################
@@ -42,7 +49,7 @@ web:
     # `enabled` (Boolean): Enable the web interface
     enabled: true
     # `path` (String): Path to the web interface dist files
-    path: /opt/snooze/web 
+    path: /opt/snooze/web
 
 ############
 # Clustering
