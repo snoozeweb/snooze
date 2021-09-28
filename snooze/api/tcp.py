@@ -1,39 +1,53 @@
 '''A WSGI server binding to a TCP port'''
 
 import os
+import socket
 import ssl
 from logging import getLogger
 from threading import Thread, Event
+from wsgiref.simple_server import WSGIServer, WSGIRequestHandler
 
-from waitress.adjustments import Adjustments
-from waitress.server import TcpWSGIServer
+from socketserver import ThreadingMixIn
 
 log = getLogger('snooze.api.tcp')
 
-class WSGITCPServer(TcpWSGIServer, Thread):
-    '''A TCP server that serve a WSGI application'''
+class NoLogHandler(WSGIRequestHandler):
+    '''Handler that doesn't log to stdout'''
+    def log_message(self, *args):
+        '''Overriding log to avoid stdout logs'''
+        pass
+    def handle(self):
+        '''
+        Bug in socketserver. It doesn't catch exceptions.
+        https://bugs.python.org/issue14574
+        '''
+        try:
+            WSGIRequestHandler.handle(self)
+        except socket.error:
+            pass
+        except Exception as err:
+            log.warning(err)
+
+class WSGITCPServer(ThreadingMixIn, WSGIServer, Thread):
+    daemon_threads = True
+
     def __init__(self, conf, api, exit_button=None):
-        '''
-        Args:
-            conf (dict): Configuration of snooze
-            api: A WSGI API object
-            exit_button (threading.Event): An event used to exit everything if this thread dies
-        '''
         self.exit_button = exit_button or Event()
         self.timeout = 10
 
-        self.listen_addr = conf.get('listen_addr', '0.0.0.0')
-        self.port = conf.get('port', '5200')
+        host = conf.get('listen_addr', '0.0.0.0')
+        port = conf.get('port', '5200')
         self.ssl_conf = conf.get('ssl', dict)
 
-        wsgi_options = Adjustments(host=self.listen_addr, port=self.port)
-        TcpWSGIServer.__init__(self, api, adj=wsgi_options)
-        self.wrap_tls()
+        WSGIServer.__init__(self, (host, port), NoLogHandler)
+        self.set_app(api)
+        self.wrap_ssl()
+
         Thread.__init__(self)
 
-    def wrap_tls(self):
-        '''Override the socket with a TLS socket when TLS is enabled'''
-        use_ssl = self.ssl_conf.get('enabled', False)
+    def wrap_ssl(self):
+        '''Wrap the socket with a TLS socket when TLS is enabled'''
+        use_ssl = self.ssl_conf.get('enabled')
         certfile = os.environ.get('SNOOZE_CERT_FILE') or self.ssl_conf.get('certfile')
         keyfile = os.environ.get('SNOOZE_KEY_FILE') or self.ssl_conf.get('keyfile')
         if use_ssl or (certfile and keyfile):
@@ -48,24 +62,20 @@ class WSGITCPServer(TcpWSGIServer, Thread):
                 server_side=True,
                 certfile=certfile,
                 keyfile=keyfile,
-                do_handshake_on_connect=True,
             )
 
     def run(self):
         '''Override Thread method. Start the service'''
-        log.info("Listening on %s:%s", self.listen_addr, self.port)
-        TcpWSGIServer.run(self)
-
-    def excepthook(self, exc_type, exc_value, _exc_traceback, _thread):
-        '''Override Thread method. Handle exceptions and gracefully stop'''
-        log.error("Fatal: Received error %s: %s", exc_type, exc_value)
-        self.stop()
-        self.exit_button.set()
+        log.debug('Starting REST API')
+        try:
+            self.serve_forever()
+        except Exception as err:
+            log.error(err)
+            self.stop()
+            self.exit_button.set()
 
     def stop(self):
         '''Gracefully stop the service'''
-        log.debug("Closing socket at %s:%s", self.listen_addr, self.port)
+        log.debug('Closing TCP socket...')
         self.close()
-        log.debug("Waiting for socket at %s:%s to close...", self.listen_addr, self.port)
-        self.join(self.timeout)
         log.debug("Closed TCP listener")
