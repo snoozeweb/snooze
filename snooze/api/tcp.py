@@ -37,7 +37,7 @@ class WSGITCPServer(ThreadingMixIn, WSGIServer, Thread):
 
         host = conf.get('listen_addr', '0.0.0.0')
         port = conf.get('port', '5200')
-        self.ssl_conf = conf.get('ssl', dict)
+        self.ssl_conf = conf.get('ssl', {})
 
         WSGIServer.__init__(self, (host, port), NoLogHandler)
         self.set_app(api)
