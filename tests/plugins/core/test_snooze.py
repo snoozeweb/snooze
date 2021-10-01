@@ -7,8 +7,11 @@ class TestSnooze():
     @pytest.fixture
     def snooze(self, core):
         filters = [
-            {'name': 'Filter 1', 'condition': ['=', 'a', '1']}
+            {'name': 'Filter 1', 'condition': ['=', 'a', '1']},
+            {'name': 'Filter 2', 'condition': ['=', 'a', '3'], 'discard': True}
         ]
+        core.db.delete('snooze', [], True)
+        core.db.delete('record', [], True)
         core.db.write('snooze', filters)
         snooze_plugin = Snooze(core)
         snooze_plugin.post_init()
@@ -20,7 +23,8 @@ class TestSnooze():
             record = snooze.process(record)
             assert False
         except Abort_and_write:
-            assert record['snoozed']
+            assert record['snoozed'] == 'Filter 1'
+
     def test_snooze_2(self, snooze):
         record = {'a': '2', 'b': '2'}
         try:
@@ -28,6 +32,29 @@ class TestSnooze():
             assert True
         except Abort_and_write:
             assert False
+
+    def test_snooze_3(self, snooze):
+        record = {'a': '3', 'b': '2'}
+        try:
+            record = snooze.process(record)
+            assert False
+        except Abort:
+            assert True
+
+    # $merge not implemented in mongomock
+    #def test_retro_apply(self, snooze):
+    #    snooze.db.write('record', {'a': '1', 'b': '2'})
+    #    count = snooze.retro_apply('Filter 1')
+    #    record = snooze.db.search('record')['data'][0]
+    #    assert count == 1
+    #    assert record['snoozed'] == 'Filter 1'
+    
+    def test_retro_apply_discard(self, snooze):
+        snooze.db.write('record', {'a': '3', 'b': '2'})
+        count = snooze.retro_apply(['Filter 2'])
+        count_records = snooze.db.search('record')['count']
+        assert count == 1
+        assert count_records == 0
 
 class TestSnoozeObject:
 

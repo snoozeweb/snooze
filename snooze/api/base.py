@@ -1,10 +1,12 @@
 #!/usr/bin/python
 import os
 import json
+import importlib.util
 
 from importlib import import_module
 from socketserver import ThreadingMixIn
 from snooze.utils import Cluster
+from os.path import join as joindir
 
 from logging import getLogger
 log = getLogger('snooze.api')
@@ -93,15 +95,13 @@ class Api():
     def load_plugin_routes(self):
         log.debug('Loading plugin routes for API')
         for plugin in self.plugins:
-            log.debug('Loading routes for {}'.format(plugin.name))
+            log.debug('Loading routes for {} at {}/{}/route.py'.format(plugin.name, plugin.rootdir, self.api_type))
+            spec = importlib.util.spec_from_file_location('snooze.plugins.core.{}.{}.route'.format(plugin.name, self.api_type), joindir(plugin.rootdir, self.api_type, 'route.py'))
+            plugin_module = importlib.util.module_from_spec(spec)
             try:
-                import_module("snooze.plugins.core.{}".format(plugin.name))
-            except ModuleNotFoundError:
-                log.debug("Module for plugin `{}` not found. Using Basic instead".format(plugin.name))
-            try:
-                plugin_module = import_module("snooze.plugins.core.{}.{}.route".format(plugin.name, self.api_type))
-                log.debug("Found custom routes for {}".format(plugin.name))
-            except ModuleNotFoundError:
+                spec.loader.exec_module(plugin_module)
+                log.debug("Found custom routes for `{}`".format(plugin.name))
+            except:
                 # Loading default
                 log.debug("Loading default route for `{}`".format(plugin.name))
                 plugin_module = import_module("snooze.plugins.core.basic.{}.route".format(self.api_type))

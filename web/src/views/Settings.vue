@@ -13,7 +13,6 @@
 
 <script>
 
-import { API } from '@/api'
 import Card from '@/components/Card.vue'
 import { tabs, form } from '@/objects/Settings.yaml'
 

@@ -1,3 +1,16 @@
+## v1.0.14
+
+### New features
+* External core plugins support
+* Added a spinner in the webUI when doing a DB query
+* Search in Alerts should be faster
+* Resized Condition box to get more input space
+* Snooze filters can discard alerts
+* Retro apply Snooze filters to all alerts
+
+### Bug fixes
+* Going back to wsgiref. It was working fine. Waitress is just having issues with TLS
+
 ## v1.0.13
 
 ### Bug fixes

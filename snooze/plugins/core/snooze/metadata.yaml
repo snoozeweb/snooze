@@ -5,3 +5,6 @@ default_sorting: 'name'
 primary: name
 duplicate_policy: 'reject'
 class: SnoozeRoute
+routes:
+  '/snooze_apply':
+    class: SnoozeApplyRoute

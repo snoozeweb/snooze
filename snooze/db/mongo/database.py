@@ -26,8 +26,14 @@ class BackendDB(Database):
             self.db = pymongo.MongoClient(os.environ.get('DATABASE_URL'))[database]
         else:
             self.db = pymongo.MongoClient(**conf)[database]
+        self.search_fields = {}
         log.debug("Initialized Mongodb with config {}".format(conf))
         log.debug("db: {}".format(self.db))
+
+    def create_index(self, collection, fields):
+        log.debug("Create index for {} with fields: {}".format(collection, fields))
+        #self.db[collection].create_index(list(map(lambda x: (x, pymongo.ASCENDING), fields)), unique=True)
+        self.search_fields[collection] = fields
 
     def cleanup_timeout(self, collection):
         log.debug("Cleanup collection {}".format(collection))
@@ -146,10 +152,30 @@ class BackendDB(Database):
             self.db[collection].insert_many(obj_copy)
         return {'data': {'added': added, 'updated': updated, 'replaced': replaced, 'rejected': rejected}}
 
+    def update_fields(self, collection, fields, condition=[]):
+        mongo_search = self.convert(condition, self.search_fields.get(collection, []))
+        log.debug("Update collection '{}' with fields '{}' based on the following search".format(collection, fields))
+        log.debug("Condition {} converted to mongo search {}".format(condition, mongo_search))
+        total = 0
+        if collection in self.db.collection_names():
+            pipeline = [
+                {"$match": mongo_search},
+                {"$addFields": fields},
+                {"$merge": {'into': collection, 'on': '_id'}},
+            ]
+            try:
+                self.db[collection].aggregate(pipeline)
+                total = self.db[collection].find(mongo_search).count()
+            except Exception as e:
+                log.exception(e)
+                total = 0
+        log.debug("Updated {} fields".format(total))
+        return total
+
     def search(self, collection, condition=[], nb_per_page=0, page_number=1, orderby='$natural', asc=True):
         if orderby == '':
             orderby = '$natural'
-        mongo_search = self.convert(condition)
+        mongo_search = self.convert(condition, self.search_fields.get(collection, []))
         log.debug("Condition {} converted to mongo search {}".format(condition, mongo_search))
         log.debug("List of collections: {}".format(self.db.collection_names()))
         if collection in self.db.collection_names():
@@ -166,7 +192,7 @@ class BackendDB(Database):
             return {'data': [], 'count': 0}
 
     def delete(self, collection, condition=[], force=False):
-        mongo_search = self.convert(condition)
+        mongo_search = self.convert(condition, self.search_fields.get(collection, []))
         log.debug("Condition {} converted to mongo delete search {}".format(condition, mongo_search))
         log.debug("List of collections: {}".format(self.db.collection_names()))
         if collection in self.db.collection_names():
@@ -182,7 +208,7 @@ class BackendDB(Database):
             log.error("Cannot find collection {}".format(collection))
             return {'data': 0}
 
-    def convert(self, array):
+    def convert(self, array, search_fields = []):
         """
         Convert `Condition` type from snooze.utils
         to Mongodb compatible type of search
@@ -191,13 +217,13 @@ class BackendDB(Database):
             return {}
         operation, *args = array
         if operation == 'AND':
-            arg1, arg2 = map(self.convert, args)
+            arg1, arg2 = map(lambda a: self.convert(a, search_fields), args)
             return_dict = {'$and': [arg1, arg2]}
         elif operation == 'OR':
-            arg1, arg2 = map(self.convert, args)
+            arg1, arg2 = map(lambda a: self.convert(a, search_fields), args)
             return_dict = {'$or': [arg1, arg2]}
         elif operation == 'NOT':
-            arg = self.convert(args[0])
+            arg = self.convert(args[0], search_fields)
             return_dict = {'$nor': [arg]}
         elif operation == '=':
             key, value = args
@@ -252,30 +278,34 @@ class BackendDB(Database):
             else:
                 try:
                     saved_key = key
-                    key = self.convert(key)
+                    key = self.convert(key, search_fields)
                     search_operator = '$elemMatch'
                 except:
                     key = saved_key
             return_dict = {value: {search_operator: key}}
         elif operation == 'SEARCH':
             arg = args[0]
-            search_text = Code("function() {"
-                               "    var deepIterate = function  (obj, value) {"
-                               "        for (var field in obj) {"
-                               "            if (typeof obj[field] == 'string' && obj[field].includes(value)) {"
-                               "                return true;"
-                               "            }"
-                               "            var found = false;"
-                               "            if (typeof obj[field] === 'object') {"
-                               "               found = deepIterate(obj[field], value);"
-                               "               if (found) { return true; }"
-                               "            }"
-                               "        }"
-                               "        return false;"
-                               "    };"
-                               "    return deepIterate(this, '" + str(arg) + "');"
-                               "}")
-            return_dict = {'$where': search_text}
+            if search_fields:
+                return_dict = {'$or': list(map(lambda field: {field: {'$regex': arg, "$options": "-i"}}, search_fields))}
+                log.debug("Special search : {}".format(return_dict))
+            else:
+                search_text = Code("function() {"
+                                   "    var deepIterate = function  (obj, value) {"
+                                   "        for (var field in obj) {"
+                                   "            if (typeof obj[field] == 'string' && obj[field].includes(value)) {"
+                                   "                return true;"
+                                   "            }"
+                                   "            var found = false;"
+                                   "            if (typeof obj[field] === 'object') {"
+                                   "               found = deepIterate(obj[field], value);"
+                                   "               if (found) { return true; }"
+                                   "            }"
+                                   "        }"
+                                   "        return false;"
+                                   "    };"
+                                   "    return deepIterate(this, '" + str(arg) + "');"
+                                   "}")
+                return_dict = {'$where': search_text}
         else:
             raise OperationNotSupported(operation)
         return return_dict

@@ -53,6 +53,7 @@
         :no-local-sorting="true"
         :sort-by.sync="orderby"
         :sort-desc.sync="isascending"
+        :busy="is_busy"
         selectable
         select-mode="range"
         selectedVariant="info"
@@ -60,6 +61,13 @@
         small
         bordered
       >
+        <template #table-busy>
+          <div class="text-center text-dark my-2">
+            <b-spinner class="align-middle"></b-spinner>
+            <strong> Loading...</strong>
+          </div>
+        </template>
+
         <template v-for="(_, slot) of $scopedSlots" v-slot:[slot]="scope">
           <!-- cell() slots for the b-table -->
           <slot :name="slot" v-bind="scope" />
@@ -115,6 +123,10 @@
         </template>
         <template v-slot:cell(state)="row">
           <Field :data="[(dig(row.item, 'state') || '-')]" colorize/>
+        </template>
+        <template v-slot:cell(discard)="row">
+          <b-badge v-if="dig(row.item, 'discard')" variant="quaternary">yes</b-badge>
+          <b-badge v-else variant="success">no</b-badge>
         </template>
         <template v-slot:cell(actions)="row">
           <Field :data="dig(row.item, 'actions')" />
@@ -358,6 +370,8 @@ export default {
   },
   data () {
     return {
+      busy_interval: null,
+      is_busy: false,
       to_clipboard:to_clipboard,
       dig: dig,
       pp_countdown: pp_countdown,
@@ -471,10 +485,12 @@ export default {
       }
       var data = this.modal_data.edit
       var filtered_object = this.preprocess_data(data)
+      this.set_busy(true)
       console.log(`PUT /${endpoint}`)
       API
         .put(`/${endpoint}`, [filtered_object])
         .then(response => {
+          this.set_busy(false)
           if (response.data) {
             if (response.data.data.rejected.length > 0) {
               this.makeToast('Duplicate entry found', 'danger', 'An error occurred')
@@ -503,10 +519,12 @@ export default {
       }
       var data = this.modal_data.add
       var filtered_object = this.preprocess_data(data)
+      this.set_busy(true)
       console.log(`POST /${endpoint}`)
       API
         .post(`/${endpoint}`, [filtered_object])
         .then(response => {
+          this.set_busy(false)
           if (response.data) {
             if (response.data.data.rejected.length > 0) {
               this.makeToast('Duplicate entry found', 'danger', 'An error occurred')
@@ -529,10 +547,12 @@ export default {
     },
     submit_delete(bvModalEvt, endpoint = this.endpoint) {
       var uid = this.modal_data.delete.uid
+      this.set_busy(true)
       console.log(`DELETE ${endpoint}/${uid}`)
       API
         .delete(`/${endpoint}/${uid}`)
         .then(response => {
+          this.set_busy(false)
           if (response.data) {
             console.log(response)
             this.makeToast(`Entry ${uid} deleted`, 'success', 'Delete success')
@@ -551,6 +571,7 @@ export default {
       })
     },
     update_table(response) {
+      this.set_busy(false)
       if (response.data) {
         this.items = []
         this.nb_rows = response.data.count
@@ -587,7 +608,19 @@ export default {
       }
     },
     refreshTable() {
+      this.set_busy(true)
       this.refresh()
+    },
+    set_busy(busy) {
+      if (this.busy_interval) {
+        clearInterval(this.busy_interval)
+        this.busy_interval = null
+      }
+      if (busy) {
+        this.busy_interval = setInterval(() => {this.is_busy = true}, 500);
+      } else {
+        this.is_busy = false
+      }
     },
     select (items) {
       this.selected = items

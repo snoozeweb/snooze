@@ -1,4 +1,4 @@
-from snooze.plugins.core import Plugin, Abort_and_write
+from snooze.plugins.core import Plugin, Abort_and_write, Abort
 from snooze.utils import Condition
 from snooze.utils.time_constraints import get_record_date, init_time_constraints
 
@@ -15,7 +15,10 @@ class Snooze(Plugin):
                 f.hits += 1
                 f.raw['hits'] = f.hits
                 self.db.write('snooze', f.raw)
-                raise Abort_and_write(record)
+                if f.discard:
+                    raise Abort()
+                else:
+                    raise Abort_and_write(record)
         else:
             return record
 
@@ -27,12 +30,29 @@ class Snooze(Plugin):
         if sync and self.core.cluster:
             self.core.cluster.reload_plugin(self.name)
 
+    def retro_apply(self, filter_names):
+        log.debug("Attempting to retro apply snooze filters {}".format(filter_names))
+        filters = [f for f in self.filters if f.name in filter_names]
+        count = 0
+        for f in filters:
+            if f.enabled:
+                if f.discard:
+                    log.debug("Retro apply discard snooze filter {}".format(f.name))
+                    results = self.db.delete('record', f.condition_raw)
+                    count += results.get('count', 0)
+                else:
+                    log.debug("Retro apply snooze filter {}".format(f.name))
+                    count += self.db.update_fields('record', {'snoozed': f.name}, f.condition_raw)
+        return count
+
 class SnoozeObject():
     def __init__(self, snooze):
         self.enabled = snooze.get('enabled', True)
         self.name = snooze['name']
         self.condition = Condition(snooze.get('condition'))
+        self.condition_raw = snooze.get('condition')
         self.hits = snooze.get('hits', True)
+        self.discard = snooze.get('discard', False)
         self.raw = snooze
 
         # Initializing the time constraints

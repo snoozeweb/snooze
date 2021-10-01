@@ -168,6 +168,20 @@ class BackendDB(Database):
         mutex.release()
         return {'data': {'added': deepcopy(added), 'updated': deepcopy(updated), 'replaced': deepcopy(replaced),'rejected': deepcopy(rejected)}}
 
+    def update_fields(self, collection, fields, condition=[]):
+        log.debug("Update collection '{}' with fields '{}' based on the following search".format(collection, fields))
+        total = 0
+        if collection in self.db.tables():
+            results = self.search(collection, condition)
+            total = results['count']
+            for record in results['data']:
+                for field, val in fields.items():
+                    record[field] = val
+            if total > 0:
+                self.write(collection, results['data'])
+        log.debug("Updated {} fields".format(total))
+        return total
+
     def search(self, collection, condition=[], nb_per_page=0, page_number=1, orderby="", asc=True):
         mutex.acquire()
         tinydb_search = self.convert(condition)

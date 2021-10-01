@@ -52,10 +52,14 @@ jobs:
           CHANGELOG="${CHANGELOG//$'\r'/'%0D'}"
           echo "::set-output name=changelog::$(echo "$CHANGELOG")"
         id: changelog
+      - name: version
+        run: echo "::set-output name=version::v$(cat VERSION)"
+        id: version
       - name: Update release with changelog
         id: update
         uses: ncipollo/release-action@v1
         with:
+          name: ${{ steps.version.outputs.version }} 
           token: ${{ secrets.GITHUB_TOKEN }}
           tag: ${{ github.ref }}
           body: ${{ steps.changelog.outputs.changelog }}
@@ -121,7 +125,7 @@ jobs:
 
   rpm:
     runs-on: ubuntu-latest
-    needs: web
+    needs: [pypi, web]
     steps:
       - name: checkout
         uses: actions/checkout@v2
@@ -165,7 +169,7 @@ jobs:
 
   deb:
     runs-on: ubuntu-latest
-    needs: web
+    needs: [pypi, web]
     steps:
       - name: checkout
         uses: actions/checkout@v2

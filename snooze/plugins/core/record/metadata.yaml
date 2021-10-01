@@ -2,3 +2,10 @@
 name: 'Record'
 desc: 'Record desc'
 auto_reload: false
+search_fields:
+    - timestamp
+    - host
+    - process
+    - severity
+    - source
+    - message

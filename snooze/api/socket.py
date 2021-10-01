@@ -51,17 +51,9 @@ class WSGISocketServer(Thread, UnixWSGIServer):
         log.info("Listening on %s", self.path)
         UnixWSGIServer.run(self)
 
-    def excepthook(self, exc_type, exc_value, _exc_traceback, _thread):
-        '''Override Thread method. Handle exceptions and gracefully stop'''
-        log.error("Fatal: Received error %s: %s", exc_type, exc_value)
-        self.stop()
-        self.exit_button.set()
-
     def stop(self):
         '''Gracefully stop the service'''
-        log.debug("Closing wsgi unix socket at %s", self.path)
+        log.info("Closing wsgi unix socket at %s", self.path)
         self.close()
-        log.debug("Waiting for wsgi unix socket at %s to close...")
-        self.join(self.timeout)
         log.debug("Deleting unix socket at %s", self.path)
         self.path.unlink()

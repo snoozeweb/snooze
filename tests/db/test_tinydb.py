@@ -235,3 +235,14 @@ def test_tinydb_cleanup_orphans(db):
     db.write('comment', [{'record_uid': uids[0]}, {'record_uid': uids[1]}, {'record_uid': 'random'}])
     deleted_count = db.cleanup_orphans('comment', 'record_uid', 'record', 'uid')
     assert deleted_count == 1
+
+def test_tinydb_update_fields(db):
+    db.write('record', [{'a': '1'}, {'b': '1', 'c': '1'}, {'b': '1'}])
+    fields = {'c': '2', 'd': '1'}
+    total = db.update_fields('record', fields, ['=', 'b', '1'])
+    result = db.search('record')['data']
+    total_real = 0
+    for record in result:
+        if record.get('c') == '2' and record.get('d') == '1':
+            total_real += 1
+    assert total == total_real == 2

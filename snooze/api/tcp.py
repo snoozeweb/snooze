@@ -76,6 +76,6 @@ class WSGITCPServer(ThreadingMixIn, WSGIServer, Thread):
 
     def stop(self):
         '''Gracefully stop the service'''
-        log.debug('Closing TCP socket...')
-        self.close()
+        log.info('Closing TCP socket...')
+        self.shutdown()
         log.debug("Closed TCP listener")

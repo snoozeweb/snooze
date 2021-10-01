@@ -8,6 +8,7 @@ from os import listdir
 from os.path import dirname, isdir, join as joindir
 from secrets import token_urlsafe
 from threading import Event
+from pkg_resources import iter_entry_points
 
 from dateutil import parser
 
@@ -43,6 +44,11 @@ class Core:
         self.process_plugins = []
         log.debug("Starting to load core plugins")
         plugins_path = joindir(dirname(rootdir), 'plugins', 'core')
+        for ep in iter_entry_points('snooze.plugins.core'):
+            log.debug("External core plugin '{}' detected".format(ep.name))
+            plugin_class = ep.load()
+            plugin_instance = plugin_class(self)
+            self.plugins.append(plugin_instance)
         for plugin_name in listdir(plugins_path):
             if (not isdir(plugins_path + '/' + plugin_name)) or plugin_name == 'basic' or plugin_name.startswith('_'):
                 continue
@@ -94,7 +100,7 @@ class Core:
                     record['plugins'].append(plugin.name)
                     record = plugin.process(record)
                 except Abort:
-                    data = {'data': {'rejected': [record]}}
+                    data = {'data': {'processed': [record]}}
                     break
                 except Abort_and_write as e:
                     data = self.db.write('record', e.record or record)

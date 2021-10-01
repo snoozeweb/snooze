@@ -12,6 +12,7 @@
   * Client CLI dynamically updated with new versions of the API schema
 * Remove bootstrap and bootstrap-vue packages (because coreui ships them already)
 * Plugin manager (wraps Pip)
+* Play with montydb (remove tinydb, replace mongomock)
 
 ## Long term
 

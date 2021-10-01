@@ -16,6 +16,7 @@ class Database():
         self.__class__ = type('DB', (cls.BackendDB, Database), {})
         self.init_db(config)
     def init_db(self, conf): pass
+    def create_indexes(self, indexes): pass
     def search(self): pass
     def delete(self): pass
     def write(self): pass

@@ -1,6 +1,7 @@
 import yaml
-from os.path import dirname
-from os.path import join as joindir
+import sys
+import os
+from os.path import dirname, join as joindir
 from snooze import __file__ as rootdir
 from logging import getLogger
 log = getLogger('snooze')
@@ -10,7 +11,11 @@ class Plugin:
         self.core = core
         self.db = core.db
         self.name = self.__class__.__name__.lower()
-        metadata_path = joindir(dirname(rootdir), 'plugins', 'core', self.name, 'metadata.yaml')
+        self.rootdir = joindir(dirname(rootdir), 'plugins', 'core', self.name)
+        metadata_path = joindir(self.rootdir, 'metadata.yaml')
+        if not os.access(metadata_path, os.R_OK):
+            self.rootdir = dirname(sys.modules[self.__module__].__file__)
+            metadata_path = joindir(self.rootdir, 'metadata.yaml')
         self.metadata_file = {}
         try:
             log.debug("Attempting to read metadata at %s for %s module", metadata_path, self.name)
@@ -79,6 +84,9 @@ class Plugin:
             }
         else:
             self.metadata = self.metadata_file
+        search_fields = self.metadata_file.get('search_fields', [])
+        if search_fields:
+            self.db.create_index(self.name, search_fields)
 
     def post_init(self):
         self.reload_data()

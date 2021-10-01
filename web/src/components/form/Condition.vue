@@ -11,14 +11,14 @@
       </b-input-group>
     </b-form>
     <ul>
-      <b-form inline class="pt-1">
+      <b-form class="pt-1">
         <Condition v-model="datavalue[1]" :parent_value="datavalue[2]">
           <template #parent_comp>
             <b-button v-b-tooltip.hover title="Remove" v-if="is_not_operation(datavalue[1])" v-on:click="datavalue = datavalue[2]" variant="danger"><i class="la la-trash la-lg"></i></b-button>
           </template>
         </Condition>
       </b-form>
-      <b-form inline class="pt-1">
+      <b-form class="pt-1">
         <Condition v-model="datavalue[2]" :parent_value="datavalue[1]">
           <template #parent_comp>
             <b-button v-b-tooltip.hover title="Remove" v-if="is_not_operation(datavalue[1])" v-on:click="datavalue = datavalue[2]" variant="danger"><i class="la la-trash la-lg"></i></b-button>
@@ -37,7 +37,7 @@
       </b-input-group>
     </b-form>
     <ul>
-      <b-form inline class="pt-1">
+      <b-form class="pt-1">
         <Condition v-model="datavalue[1]" :parent_value="datavalue[1]">
           <template #parent_comp>
             <b-button v-b-tooltip.hover title="Remove" v-if="is_not_operation(datavalue[1])" v-on:click="datavalue = datavalue[1]" variant="danger"><i class="la la-trash la-lg"></i></b-button>
@@ -47,11 +47,11 @@
     </ul>
   </span>
   <span v-else>
-    <b-form inline>
+    <b-form>
       <b-input-group>
-        <b-form-input v-model="datavalue[1]"/>
-        <b-form-select v-model="datavalue[0]" :options="operations" value="="/>
-        <b-form-input v-model="datavalue[2]" v-if="datavalue[0] != 'EXISTS' && datavalue[0] != 'SEARCH'"/>
+        <b-form-input v-model="datavalue[1]" class="col-3"/>
+        <b-form-select v-model="datavalue[0]" :options="operations" value="=" class="col-2"/>
+        <b-form-input v-model="datavalue[2]" v-if="datavalue[0] != 'EXISTS' && datavalue[0] != 'SEARCH'" />
         <b-input-group-append>
           <b-button v-b-tooltip.hover title="Add" v-on:click="datavalue = ['OR', datavalue, []]"><i class="la la-plus la-lg"></i></b-button>
           <b-button v-b-tooltip.hover title="Reset" v-on:click="datavalue = [];" variant="info"><i class="la la-redo-alt la-lg"></i></b-button>
