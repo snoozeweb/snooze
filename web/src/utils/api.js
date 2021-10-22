@@ -8,7 +8,7 @@ export function get_data(endpoint, query = null, options = {}, callback = null, 
   var url = `/${endpoint}`
   if (query) {
     query_str = object_to_query({s: JSON.stringify(query), ...options})
-    url = `/${endpoint}/?${query_str}`
+    url = `/${endpoint}?${query_str}`
   }
   console.log(`GET ${url}`)
   API
@@ -278,4 +278,56 @@ export function to_clipboard(txt) {
     console.log('Unable to copy');
   }
   document.body.removeChild(textArea);
+}
+
+export function pp_number(x) {
+  if (isNaN(x)) {
+    return '0'
+  }
+  return x.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ",");
+}
+
+export function get_alert_color(type) {
+  switch (type) {
+    case 'ack':
+      return 'success'
+    case 'esc':
+      return 'warning'
+    case 'close':
+      return 'tertiary'
+    case 'open':
+      return 'quaternary'
+    default:
+      return 'primary'
+  }
+}
+
+export function get_alert_icon(type) {
+  switch (type) {
+    case 'ack':
+      return 'la-thumbs-up'
+    case 'esc':
+      return 'la-exclamation'
+    case 'close':
+      return 'la-lock'
+    case 'open':
+      return 'la-lock-open'
+    default:
+      return 'la-comment-dots'
+  }
+}
+
+export function get_alert_tooltip(type) {
+  switch (type) {
+    case 'ack':
+      return 'Acknowledge'
+    case 'esc':
+      return 'Re-escalate'
+    case 'close':
+      return 'Close'
+    case 'open':
+      return 'Re-open'
+    default:
+      return 'Comment'
+  }
 }

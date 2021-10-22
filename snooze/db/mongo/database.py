@@ -43,7 +43,7 @@ class BackendDB(Database):
         self.search_fields[collection] = fields
 
     def cleanup_timeout(self, collection):
-        log.debug("Cleanup collection {}".format(collection))
+        #log.debug("Cleanup collection {}".format(collection))
         now = datetime.datetime.now().timestamp()
         pipeline = [
             #{"$project":{ 'date_epoch':1, 'ttl':{ "$ifNull": ["$ttl", 0] }}},
@@ -54,7 +54,7 @@ class BackendDB(Database):
         return self.run_pipeline(collection, pipeline)
 
     def cleanup_orphans(self, collection, key, col_ref, key_ref):
-        log.debug("Cleanup collection {} by finding {} in collection {} matching {}".format(collection, key, col_ref, key_ref))
+        #log.debug("Cleanup collection {} by finding {} in collection {} matching {}".format(collection, key, col_ref, key_ref))
         pipeline = [{
     	    "$lookup": {
                 'from': col_ref,
@@ -70,9 +70,12 @@ class BackendDB(Database):
     def run_pipeline(self, collection, pipeline):
         aggregate_results = self.db[collection].aggregate(pipeline)
         ids = list(map(lambda doc: doc['_id'], aggregate_results))
-        deleted_results = self.db[collection].delete_many({'_id': {"$in": ids}})
-        log.debug('Removed {} documents in {}'.format(deleted_results.deleted_count, collection))
-        return deleted_results.deleted_count
+        if ids:
+            deleted_results = self.db[collection].delete_many({'_id': {"$in": ids}})
+            log.debug('Removed {} documents in {}'.format(deleted_results.deleted_count, collection))
+            return deleted_results.deleted_count
+        else:
+            return 0
 
     def write(self, collection, obj, primary = None, duplicate_policy='update', update_time=True, constant=None):
         added = []
@@ -159,6 +162,32 @@ class BackendDB(Database):
             self.db[collection].insert_many(obj_copy)
         return {'data': {'added': added, 'updated': updated, 'replaced': replaced, 'rejected': rejected}}
 
+    def inc(self, collection, field, labels={}):
+        now = datetime.datetime.utcnow()
+        now = now.replace(minute=0, second=0, microsecond=0)
+        keys = []
+        added = []
+        updated = []
+        if labels:
+            for k,v in labels.items():
+                keys.append(field+'__'+k+'__'+v)
+        else:
+            keys.append(field)
+        for key in keys:
+            result = self.db[collection].find_one({"$and": [{"date": now}, {"key": key}]})
+            if result:
+                result['value'] = result.get('value', 0) + 1
+                self.db[collection].update_one({"$and": [{"date": now}, {"key": key}]}, {'$set': result})
+                log.debug('Updated in {} metric {}'.format(collection, result))
+                updated.append(result)
+            else:
+                result = {'date': now, 'type': 'counter', 'key': key}
+                result['value'] = 1
+                self.db[collection].insert_one(result)
+                log.debug('Inserted in {} metric {}'.format(collection, result))
+                added.append(result)
+        return {'data': {'added': added, 'updated': updated}}
+
     def update_fields(self, collection, fields, condition=[]):
         mongo_search = self.convert(condition, self.search_fields.get(collection, []))
         log.debug("Update collection '{}' with fields '{}' based on the following search".format(collection, fields))
@@ -214,6 +243,42 @@ class BackendDB(Database):
         else:
             log.error("Cannot find collection {}".format(collection))
             return {'data': 0}
+
+    def compute_stats(self, collection, date_from, date_until, groupby='hour'):
+        log.debug("Compute metrics on `{}` from {} until {} grouped by {}".format(collection, date_from, date_until, groupby))
+        date_from = date_from.replace(minute=0, second=0, microsecond=0)
+        if collection not in self.db.collection_names():
+            log.debug("Compute stats: collection {} does not exist".format(collection))
+            return {'data': [], 'count': 0}
+        if groupby == 'hour':
+            date_format = '%Y-%m-%dT%H:00%z'
+        elif groupby == 'day':
+            date_format = '%Y-%m-%dT00:00%z'
+        elif groupby == 'month':
+            date_format = '%Y-%m-01T00:00%z'
+        elif groupby == 'year':
+            date_format = '%Y-01-01T00:00%z'
+        elif groupby == 'week':
+            date_format = '%Y-%VT00:00%z'
+        elif groupby == 'weekday':
+            date_format = '%u'
+        else:
+            date_format = '%Y-%m-%dT%H:00%z'
+        pipeline = [
+            {"$match": {"$and": [{"date": {"$gte": date_from}}, {"date": {"$lte": date_until}}]}},
+            {"$addFields": {"date_range": {"$dateToString": {"format": date_format, "timezone": date_from.strftime("%z"), "date": "$date"}}}},
+            {"$group": {"_id": { "id": "$date_range", "key": "$key"}, "value": {"$sum": "$value"}}},
+            {"$group": {"_id": "$_id.id", "data": {"$push": {"key": "$_id.key", "value": "$value"}}}},
+        ]
+        try:
+            results_agg = sorted(list(self.db[collection].aggregate(pipeline)), key=lambda d: d['_id'])
+            count = len(results_agg)
+            log.debug("Compute stats: Got {} results".format(count))
+            return {'data': results_agg, 'count': count}
+        except Exception as e:
+            log.exception(e)
+            return {'data': [], 'count': 0}
+
 
     def convert(self, array, search_fields = []):
         """

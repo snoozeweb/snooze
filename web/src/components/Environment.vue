@@ -18,6 +18,7 @@
 
 import { gen_color, gen_color_outline } from '@/utils/colors'
 import { get_data } from '@/utils/api'
+import { getStyle } from '@coreui/utils/src'
 
 export default {
   name: 'Environment',
@@ -43,8 +44,7 @@ export default {
     }
   },
   mounted() {
-    var bodystyle = window.getComputedStyle(document.body)
-    this.all_tab.color = bodystyle.getPropertyValue('--primary').trim()
+    this.all_tab.color = getStyle('--primary') || '#304ffe'
     this.tabs = [this.all_tab]
     this.get_data('environment', null, {}, this.get_data_response)
   },

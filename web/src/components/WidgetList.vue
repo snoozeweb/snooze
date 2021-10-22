@@ -45,8 +45,7 @@ export default {
         .then(response => {
           if (response.data !== undefined && response.data.data !== undefined) {
             var widgets = response.data.data
-            widgets.filter(widget => widget.vue_component !== undefined)
-            this.widgets = widgets
+            this.widgets = widgets.filter(widget => widget.enabled && widget.vue_component !== undefined)
           }
         })
         .catch(error => console.log(error))

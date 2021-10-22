@@ -54,6 +54,8 @@ export default {
             localStorage.setItem('snooze-token', response.data.token)
             if (this.$route.query.return_to) {
               router.push(decodeURIComponent(this.$route.query.return_to))
+            } else if (response.data.default_page) {
+              router.push(response.data.default_page)
             } else {
               router.push('/record')
             }

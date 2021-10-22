@@ -38,7 +38,10 @@ class Core:
         self.plugins = []
         self.process_plugins = []
         self.stats = Stats(self)
-        self.stats.init('process_record_duration', 'summary', 'snooze_record_process_duration', 'Average time spend processing a record', ['source'])
+        self.stats.init('process_alert_duration', 'summary', 'snooze_process_alert_duration', 'Average time spend processing a alert', ['source', 'environment', 'severity'])
+        self.stats.init('alert_hit', 'counter', 'snooze_alert_hit', 'Counter of received alerts', ['source', 'environment', 'severity'])
+        self.stats.init('alert_snoozed', 'counter', 'snooze_alert_snoozed', 'Counter of snoozed alerts', ['name'])
+        self.stats.init('alert_throttled', 'counter', 'snooze_alert_throttled', 'Counter of throttled alerts', ['name'])
         self.stats.init('notification_sent', 'counter', 'snooze_notification_sent', 'Counter of notification sent', ['name', 'action'])
         self.stats.init('notification_error', 'counter', 'snooze_notification_error', 'Counter of notification that failed', ['name', 'action'])
         self.bootstrap_db()
@@ -92,6 +95,8 @@ class Core:
     def process_record(self, record):
         data = {}
         source = record.get('source', 'unknown')
+        environment = record.get('environment', 'unknown')
+        severity = record.get('severity', 'unknown')
         record['ttl'] = self.housekeeper.conf.get('record_ttl', 86400)
         record['state'] = ''
         record['plugins'] = []
@@ -100,7 +105,7 @@ class Core:
         except Exception as e:
             log.warning(e)
             record['timestamp'] = datetime.now().astimezone().strftime("%Y-%m-%dT%H:%M:%S%z")
-        with self.stats.time('process_record_duration', {'source': source}):
+        with self.stats.time('process_alert_duration', {'source': source, 'environment': environment, 'severity': severity}):
             for plugin in self.process_plugins:
                 try:
                     log.debug("Executing plugin {} on {}".format(plugin.name, record))
@@ -126,6 +131,9 @@ class Core:
             else:
                 log.debug("Writing record {}".format(record))
                 data = self.db.write('record', record)
+        environment = record.get('environment', 'unknown')
+        severity = record.get('severity', 'unknown')
+        self.stats.inc('alert_hit', {'source': source, 'environment': environment, 'severity': severity})
         return data
 
     def get_core_plugin(self, plugin_name):

@@ -246,6 +246,7 @@ jobs:
         with:
           retry_on: error
           max_attempts: 3
+          timeout_minutes: 10
           command: >-
             docker build
             --build-arg VCS_REF=${{ github.sha }}

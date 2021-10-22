@@ -12,6 +12,7 @@ from snooze.db.database import Database
 import pytest
 from pathlib import Path
 from os import remove
+from datetime import datetime, timezone
 
 from logging import getLogger
 log = getLogger('snooze.test.tinydb')
@@ -253,3 +254,42 @@ def test_tinydb_update_fields(db):
         if record.get('c') == '2' and record.get('d') == '1':
             total_real += 1
     assert total == total_real == 2
+
+def test_tinydb_inc(db):
+    db.inc('stats', 'metric_a')
+    assert db.search('stats', ['=', 'key', 'metric_a'])['data'][0]['value'] == 1
+    db.inc('stats', 'metric_a')
+    db.inc('stats', 'metric_b')
+    assert db.search('stats', ['=', 'key', 'metric_a'])['data'][0]['value'] == 2
+    assert db.search('stats', ['=', 'key', 'metric_b'])['data'][0]['value'] == 1
+
+def test_tinydb_inc_labels(db):
+    db.inc('stats', 'metric_a')
+    assert db.search('stats')['data'][0]['value'] == 1
+    db.inc('stats', 'metric_a', {'source': 'syslog'})
+    assert db.search('stats', ['=', 'key', 'metric_a__source__syslog'])['data'][0]['value'] == 1
+    db.inc('stats', 'metric_a', {'source': 'syslog', 'type': 'db'})
+    assert db.search('stats', ['=', 'key', 'metric_a__source__syslog'])['data'][0]['value'] == 2
+    assert db.search('stats', ['=', 'key', 'metric_a__type__db'])['data'][0]['value'] == 1
+
+def test_tinydb_compute_stats(db):
+    date_from = datetime(2016, 3, 10, 0, tzinfo=timezone.utc)
+    a = datetime(2016, 3, 1, 0, tzinfo=timezone.utc).timestamp()
+    b = datetime(2016, 3, 13, 0, tzinfo=timezone.utc).timestamp()
+    c = datetime(2016, 3, 13, 5, tzinfo=timezone.utc).timestamp()
+    d = datetime(2016, 3, 14, 0, tzinfo=timezone.utc).timestamp()
+    date_until = datetime(2016, 3, 20, 0, tzinfo=timezone.utc)
+    stats = [
+        {'date': a, 'key': 'a_qty', 'value': 1 },
+        {'date': b, 'key': 'a_qty', 'value': 1 },
+        {'date': b, 'key': 'b_qty', 'value': 10},
+        {'date': c, 'key': 'a_qty', 'value': 2 },
+        {'date': d, 'key': 'a_qty', 'value': 4 },
+        {'date': d, 'key': 'b_qty', 'value': 40},
+        ]
+    db.write('stats', stats)
+    results = db.compute_stats('stats', date_from, date_until, 'day')
+    assert list(filter(lambda x: x['key'] == 'a_qty', results['data'][0]['data']))[0]['value'] == 3
+    assert list(filter(lambda x: x['key'] == 'b_qty', results['data'][0]['data']))[0]['value'] == 10
+    assert list(filter(lambda x: x['key'] == 'a_qty', results['data'][1]['data']))[0]['value'] == 4
+    assert list(filter(lambda x: x['key'] == 'b_qty', results['data'][1]['data']))[0]['value'] == 40

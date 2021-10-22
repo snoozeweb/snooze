@@ -1,3 +1,14 @@
+## v1.0.15
+
+### New features
+* Storing metrics locally and displaying a dashboard
+* Can configure a default landing page in preferences
+* Keeping track of Last login for all users
+* InfluxDB 2.0 webhook added
+### Bug fixes
+* Do no crash whenever a plugin fails to load
+* Widgets pretty print was not working properly
+
 ## v1.0.14
 
 ### New features
@@ -7,7 +18,6 @@
 * Resized Condition box to get more input space
 * Snooze filters can discard alerts
 * Retro apply Snooze filters to all alerts
-
 ### Bug fixes
 * Going back to wsgiref. It was working fine. Waitress is just having issues with TLS
 

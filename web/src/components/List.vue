@@ -140,6 +140,9 @@
         <template v-slot:cell(color)="row">
           <ColorBadge :data="dig(row.item, 'color') || '#ffffff'" />
         </template>
+        <template v-slot:cell(login)="row">
+          <DateTime :date="dig(row.item, 'last_login') || '0'"/>
+        </template>
 
         <template v-slot:cell(button)="row">
           <b-button-group>
@@ -493,7 +496,7 @@ export default {
           this.set_busy(false)
           if (response.data) {
             if (response.data.data.rejected.length > 0) {
-              this.makeToast('Duplicate entry found', 'danger', 'An error occurred')
+              this.makeToast('Cannot Edit', 'danger', 'An error occurred')
             } else {
               this.refreshTable()
               this.makeToast('Entry updated successfully', 'success')
@@ -527,7 +530,7 @@ export default {
           this.set_busy(false)
           if (response.data) {
             if (response.data.data.rejected.length > 0) {
-              this.makeToast('Duplicate entry found', 'danger', 'An error occurred')
+              this.makeToast('Cannot Add', 'danger', 'An error occurred')
             } else {
               this.refreshTable()
               this.makeToast('Entry added successfully', 'success')
