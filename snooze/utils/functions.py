@@ -28,6 +28,12 @@ def dig(dic, *lst):
         return dic
 
 def ensure_kv(dic, value, *lst):
+    """
+    Input: Dict, Value, List
+    Output: Any
+
+    Set value at dic[*lst]
+    """
     element = dic
     for i, raw_key in enumerate(lst):
         key = raw_key

@@ -23,6 +23,7 @@ from bson.json_util import loads, dumps
 from snooze.api.base import Api, BasicRoute
 from snooze.api.static import StaticRoute
 from snooze.utils import config, write_config
+from snooze.utils.functions import ensure_kv
 
 from logging import getLogger
 log = getLogger('snooze.api')
@@ -160,6 +161,8 @@ class WebhookRoute(FalconRoute):
                     if not isinstance(alerts, list):
                         alerts = [alerts]
                     for alert in alerts:
+                        for key, val in req.params.items():
+                            alert = ensure_kv(alert, val, *key.split('.'))
                         rec = self.core.process_record(alert)
                         rec_list.append(rec)
             except Exception as e:
@@ -392,8 +395,9 @@ class AuthRoute(BasicRoute):
         if self.enabled:
             self.authenticate(req, resp)
             user = self.parse_user(req.context['user'])
+            preferences = None
             if self.userplugin:
-                self.userplugin.manage_db(user)
+                _, preferences = self.userplugin.manage_db(user)
             self.inject_permissions(user)
             log.debug("Context user: {}".format(user))
             token = self.api.jwt_auth.get_auth_token(user)
@@ -403,6 +407,8 @@ class AuthRoute(BasicRoute):
             resp.media = {
                 'token': token,
             }
+            if preferences:
+                resp.media['default_page'] = preferences.get('default_page')
         else:
             resp.content_type = falcon.MEDIA_JSON
             resp.status = falcon.HTTP_409

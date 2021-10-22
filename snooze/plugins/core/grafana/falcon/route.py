@@ -10,7 +10,7 @@ from logging import getLogger
 log = getLogger('snooze.webhooks.grafana')
 
 from snooze.api.falcon import WebhookRoute
-from snooze.utils.functions import sanitize, ensure_kv
+from snooze.utils.functions import sanitize
 import json
 
 class GrafanaRoute(WebhookRoute):
