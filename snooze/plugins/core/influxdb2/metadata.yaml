@@ -1,0 +1,12 @@
+---
+name: 'InfluxDB 2.0'
+desc: 'InfluxDB 2.0'
+auto_reload: false
+prefix: ''
+class: ''
+routes:
+    /webhook/influxdb2:
+        desc: 'Receive InfluxDB 2.0 alerts'
+        class: InfluxDBRoute
+        authorization_policy:
+            write: [any]

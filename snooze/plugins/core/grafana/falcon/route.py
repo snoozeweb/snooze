@@ -10,19 +10,17 @@ from logging import getLogger
 log = getLogger('snooze.webhooks.grafana')
 
 from snooze.api.falcon import WebhookRoute
-from snooze.utils.functions import sanitize
+from snooze.utils.functions import sanitize, ensure_kv
+import json
 
 class GrafanaRoute(WebhookRoute):
     auth = {
         'auth_disabled': True
     }
 
-    def parse_grafana(self, match, params, media):
+    def parse(self, match, media):
         alert = {}
-        for key,val in params:
-            alert[key.replace('.', '_')] = val
-        alert['tags'] = match.get('tags') or {}
-        alert['tags'].update(media.get('tags') or {})
+        tags = match.get('tags') or {}
         alert['metric'] = match.get('metric', '')
         alert['value'] = match.get('value', '')
         alert['image_url'] = media.get('imageUrl', '')
@@ -33,18 +31,26 @@ class GrafanaRoute(WebhookRoute):
         alert['org_id'] = media.get('orgId', '')
         alert['rule_name'] = media.get('ruleName', '')
 
-        alert['host'] = alert['tags'].get('host', media.get('ruleName', ''))
-        alert['process'] = alert['tags'].get('process', match.get('metric', ''))
-        alert['severity'] = alert['tags'].get('severity', 'critical')
+        alert['host'] = tags.pop('host', media.get('ruleName', ''))
+        alert['process'] = tags.pop('process', match.get('metric', ''))
+        alert['severity'] = tags.pop('severity', 'critical')
         alert['message'] = media.get('message', media.get('title', media.get('rule_name', '')))
         alert['source'] = 'grafana'
         alert['raw'] = sanitize(media)
+        for tag_k, tag_v in tags.items,:
+            try:
+                alert['tags'][tag_k] = json.loads(tag_v)
+            except:
+                alert['tags'][tag_k] = tag_v
+        alert['tags'].update(media.get('tags') or {})
+        alert['tags'] = sanitize(alert['tags'])
+
         return alert
 
     def parse_webhook(self, req, media):
         alerts = []
         if media.get('state', '') == 'alerting':
             for match in media.get('evalMatches', []):
-                alert = self.parse_grafana(match, req.params, media)
+                alert = self.parse(match, media)
                 alerts.append(alert)
         return alerts

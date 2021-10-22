@@ -5,7 +5,7 @@
 # SPDX-License-Identifier: AFL-3.0
 #
 
-from snooze.utils.functions import dig, sanitize, flatten
+from snooze.utils.functions import dig, ensure_kv, sanitize, flatten
 
 def test_dig():
     dic = {
@@ -16,6 +16,11 @@ def test_dig():
         }
     }
     assert dig(dic, 'a', 'b', 'c') == 'found'
+
+def test_ensure_kv():
+    dic = {'a': {'b': ''}}
+    ensure_kv(dic, 'found', 'a', 'c', 'd')
+    assert dic['a']['c']['d'] == 'found'
 
 def test_sanitize():
     dic = {'a.b': {'c.d': 0}}

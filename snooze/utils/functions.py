@@ -27,6 +27,24 @@ def dig(dic, *lst):
     else:
         return dic
 
+def ensure_kv(dic, value, *lst):
+    element = dic
+    for i, raw_key in enumerate(lst):
+        key = raw_key
+        if raw_key.isnumeric():
+            key = int(raw_key)
+        try:
+            if key not in element:
+                if i == len(lst) - 1:
+                    element[key] = value
+                    return dic
+                else:
+                    element[key] = {}
+            element = element[key]
+        except:
+            return dic
+    return dic
+
 def sanitize(d, str_from = '.', str_to = '_'):
     new_d = {}
     if isinstance(d, dict):

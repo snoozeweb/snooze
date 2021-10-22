@@ -64,7 +64,7 @@ class WidgetRoute(Route):
         content = widget.get('subcontent')
         plugin = self.api.core.get_core_plugin(widget_name)
         if plugin:
-            media['pprint'] = plugin.pprint(widget_name, content)
+            media['pprint'] = plugin.pprint(content)
         else:
             media['pprint'] = widget_name
         media['icon'] = plugin.get_metadata().get('widgets', {}).get(widget_name, {}).get('icon')
