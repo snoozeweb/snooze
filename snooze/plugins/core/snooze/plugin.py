@@ -1,3 +1,10 @@
+#
+# Copyright 2018-2020 Florian Dematraz <florian.dematraz@snoozeweb.net>
+# Copyright 2018-2020 Guillaume Ludinard <guillaume.ludi@gmail.com>
+# Copyright 2020-2021 Japannext Co., Ltd. <https://www.japannext.co.jp/>
+# SPDX-License-Identifier: AFL-3.0
+#
+
 from snooze.plugins.core import Plugin, Abort_and_write, Abort
 from snooze.utils import Condition
 from snooze.utils.time_constraints import get_record_date, init_time_constraints

@@ -132,7 +132,10 @@ database:
 
 ```
 Snooze - Log aggregation and alerting
-Copyright 2018-2021 Florian Dematraz, Guillaume Ludinard
+
+Copyright 2018-2020 Florian Dematraz <florian.dematraz@snoozeweb.net>
+Copyright 2018-2020 Guillaume Ludinard <guillaume.ludi@gmail.com>
+Copyright 2020-2021 Japannext Co., Ltd. <https://www.japannext.co.jp/>
 
 This program is free software: you can redistribute it and/or modify
 it under the terms of the GNU Affero General Public License as
