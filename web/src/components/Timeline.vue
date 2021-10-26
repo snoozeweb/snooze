@@ -9,8 +9,8 @@
       	    <b-button v-if="can_delete(row)" size="sm" class='py-0_5 px-1' style='border-radius: 0 .25rem 0 0' variant="danger" @click="modal_delete(row)" v-b-tooltip.hover title="Delete"><i class="la la-trash la-lg"/></b-button>
           </div>
           <b-card-body class="d-flex p-2 align-items-center">
-            <div :class="'bg-' + get_color(row['type']) + ' mr-3 text-white rounded p-2'" v-b-tooltip.hover :title="get_tooltip(row['type'])">
-              <i :class="'la ' + get_icon(row['type']) + ' la-2x'"/>
+            <div :class="'bg-' + get_alert_color(row['type']) + ' mr-3 text-white rounded p-2'" v-b-tooltip.hover :title="get_alert_tooltip(row['type'])">
+              <i :class="'la ' + get_alert_icon(row['type']) + ' la-2x'"/>
             </div>
             <div>
               <div>
@@ -113,7 +113,7 @@ import DateTime from '@/components/DateTime.vue'
 import Modification from '@/components/Modification.vue'
 import moment from 'moment'
 import { add_items, update_items, delete_items } from '@/utils/api'
-import { get_data } from '@/utils/api'
+import { get_data, get_alert_icon, get_alert_color, get_alert_tooltip } from '@/utils/api'
 import { API } from '@/api'
 
 export default {
@@ -131,6 +131,9 @@ export default {
       add_items: add_items,
       update_items: update_items,
       get_data: get_data,
+      get_alert_icon: get_alert_icon,
+      get_alert_color: get_alert_color,
+      get_alert_tooltip: get_alert_tooltip,
       data: [],
       input_text: '',
       auto_mode: true,
@@ -244,48 +247,6 @@ export default {
       }
       if (this.auto_mode) {
         this.auto_interval = setInterval(this.refresh, 2000);
-      }
-    },
-    get_color(type) {
-      switch (type) {
-        case 'ack':
-          return 'success'
-        case 'esc':
-          return 'warning'
-        case 'close':
-          return 'tertiary'
-        case 'open':
-          return 'quaternary'
-        default:
-          return 'primary'
-      }
-    },
-    get_icon(type) {
-      switch (type) {
-        case 'ack':
-          return 'la-thumbs-up'
-        case 'esc':
-          return 'la-exclamation'
-        case 'close':
-          return 'la-lock'
-        case 'open':
-          return 'la-lock-open'
-        default:
-          return 'la-comment-dots'
-      }
-    },
-    get_tooltip(type) {
-      switch (type) {
-        case 'ack':
-          return 'Acknowledge'
-        case 'esc':
-          return 'Re-escalate'
-        case 'close':
-          return 'Lock'
-        case 'open':
-          return 'Re-open'
-        default:
-          return 'Comment'
       }
     },
   },

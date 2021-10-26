@@ -22,6 +22,7 @@ class Snooze(Plugin):
                 f.hits += 1
                 f.raw['hits'] = f.hits
                 self.db.write('snooze', f.raw)
+                self.core.stats.inc('alert_snoozed', {'name': f.name})
                 if f.discard:
                     raise Abort()
                 else:

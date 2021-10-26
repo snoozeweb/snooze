@@ -1,3 +1,15 @@
+## v1.0.15
+
+### New features
+* Storing metrics locally and displaying a dashboard
+* Can configure a default landing page in preferences
+* Keeping track of Last login for all users
+* InfluxDB 2.0 webhook added
+### Bug fixes
+* Do no crash whenever a plugin fails to load
+* Widgets pretty print was not working properly
+* Failed webhook actions did not register as failed properly
+
 ## v1.0.14
 
 ### New features
@@ -7,7 +19,6 @@
 * Resized Condition box to get more input space
 * Snooze filters can discard alerts
 * Retro apply Snooze filters to all alerts
-
 ### Bug fixes
 * Going back to wsgiref. It was working fine. Waitress is just having issues with TLS
 
@@ -25,7 +36,7 @@
 * Moving Unix socket management out of the falcon API
 * Using Waitress for Unix socket and TCP socket
 * Secrets are now bootstrapped using random numbers and are stored in the backend database
-* Dedicated middleware for logging 
+* Dedicated middleware for logging
 ### Bug fixes
 * When changing tabs or refreshing, webUI row tables are not flickering anymore
 * Throttled alerts generated duplicate entries

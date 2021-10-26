@@ -52,11 +52,9 @@ export default {
         var nav_items = []
         nav_el[0]._children.forEach(function(item) {
           if (item.permissions) {
-            permissions.forEach(function(cap) {
-              if(cap == 'rw_all' || cap == 'ro_all' || item.permissions.includes(cap)) {
-                nav_items.push(item)
-              }
-            })
+            if (permissions.filter(cap => cap == 'rw_all' || cap == 'ro_all' || item.permissions.includes(cap)).length > 0) {
+              nav_items.push(item)
+            }
           } else {
             nav_items.push(item)
           }

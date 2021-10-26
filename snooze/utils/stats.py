@@ -50,6 +50,7 @@ class Stats():
     def inc(self, metric_name, labels):
         if self.enabled and metric_name in self.metrics:
             self.metrics[metric_name].labels(**labels).inc()
+            self.core.db.inc('stats', metric_name, labels)
 
     def get_metrics(self):
         return generate_latest(self.registry)

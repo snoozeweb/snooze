@@ -19,6 +19,14 @@ form:
             component: String
             description: 'Email address'
     preferences:
+        default_page:
+            display_name: Default Page
+            component: Selector
+            options:
+                - value: /record
+                  text: Alerts
+            description: 'Landing page after login'
+            default_value: /record
         theme:
             display_name: Theme
             component: Selector

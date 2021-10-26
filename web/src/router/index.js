@@ -5,6 +5,7 @@ import Router from 'vue-router'
 const TheContainer = () => import('@/containers/TheContainer')
 // Components
 const Record = () => import('@/views/Record')
+const Dashboard = () => import('@/views/Dashboard')
 const Status = () => import('@/views/Status')
 const Rule = () => import('@/views/Rule')
 const AggregateRule = () => import('@/views/AggregateRule')
@@ -41,6 +42,11 @@ export default new Router({
           path: 'record',
           name: 'Records',
           component: Record
+        },
+        {
+          path: 'dashboard',
+          name: 'Dashboard',
+          component: Dashboard
         },
         {
           path: 'status',

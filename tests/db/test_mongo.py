@@ -11,6 +11,7 @@ import mongomock
 from snooze.db.database import Database
 
 import yaml
+from datetime import datetime, timezone
 
 from logging import getLogger
 log = getLogger('snooze.tests')
@@ -258,6 +259,52 @@ def test_mongo_cleanup_orphans():
     db.write('comment', [{'record_uid': uids[0]}, {'record_uid': uids[1]}, {'record_uid': 'random'}])
     deleted_count = db.cleanup_orphans('comment', 'record_uid', 'record', 'uid')
     assert deleted_count == 1
+
+@mongomock.patch('mongodb://localhost:27017')
+def test_mongo_inc():
+    db = Database(default_config.get('database'))
+    db.inc('stats', 'metric_a')
+    assert db.search('stats', ['=', 'key', 'metric_a'])['data'][0]['value'] == 1
+    db.inc('stats', 'metric_a')
+    db.inc('stats', 'metric_b')
+    assert db.search('stats', ['=', 'key', 'metric_a'])['data'][0]['value'] == 2
+    assert db.search('stats', ['=', 'key', 'metric_b'])['data'][0]['value'] == 1
+
+@mongomock.patch('mongodb://localhost:27017')
+def test_mongo_inc_labels():
+    db = Database(default_config.get('database'))
+    db.inc('stats', 'metric_a')
+    assert db.search('stats')['data'][0]['value'] == 1
+    db.inc('stats', 'metric_a', {'source': 'syslog'})
+    assert db.search('stats', ['=', 'key', 'metric_a__source__syslog'])['data'][0]['value'] == 1
+    db.inc('stats', 'metric_a', {'source': 'syslog', 'type': 'db'})
+    assert db.search('stats', ['=', 'key', 'metric_a__source__syslog'])['data'][0]['value'] == 2
+    assert db.search('stats', ['=', 'key', 'metric_a__type__db'])['data'][0]['value'] == 1
+
+# timezone in datetostring not implemented
+#@mongomock.patch('mongodb://localhost:27017')
+#def test_mongo_compute_stats():
+#    db = Database(default_config.get('database'))
+#    date_from = datetime(2016, 3, 10, 0, tzinfo=timezone.utc)
+#    a = datetime(2016, 3, 1, 0, tzinfo=timezone.utc)
+#    b = datetime(2016, 3, 13, 0, tzinfo=timezone.utc)
+#    c = datetime(2016, 3, 13, 5, tzinfo=timezone.utc)
+#    d = datetime(2016, 3, 14, 0, tzinfo=timezone.utc)
+#    date_until = datetime(2016, 3, 20, 0, tzinfo=timezone.utc)
+#    stats = [
+#        {'date': a, 'key': 'a_qty', 'value': 1 },
+#        {'date': b, 'key': 'a_qty', 'value': 1 },
+#        {'date': b, 'key': 'b_qty', 'value': 10},
+#        {'date': c, 'key': 'a_qty', 'value': 2 },
+#        {'date': d, 'key': 'a_qty', 'value': 4 },
+#        {'date': d, 'key': 'b_qty', 'value': 40},
+#        ]
+#    db.write('stats', stats)
+#    results = db.compute_stats('stats', date_from, date_until, 'day')
+#    assert list(filter(lambda x: x['key'] == 'a_qty', results['data'][0]['data']))[0]['value'] == 3
+#    assert list(filter(lambda x: x['key'] == 'b_qty', results['data'][0]['data']))[0]['value'] == 10
+#    assert list(filter(lambda x: x['key'] == 'a_qty', results['data'][1]['data']))[0]['value'] == 4
+#    assert list(filter(lambda x: x['key'] == 'b_qty', results['data'][1]['data']))[0]['value'] == 40
 
 # $merge not implemented
 #@mongomock.patch('mongodb://localhost:27017')

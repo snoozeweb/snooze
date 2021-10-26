@@ -32,6 +32,7 @@
 <script>
 
 import Base from './Base.vue'
+import { getStyle } from '@coreui/utils/src'
 import VueCtkDateTimePicker from 'vue-ctk-date-time-picker'
 import 'vue-ctk-date-time-picker/dist/vue-ctk-date-time-picker.css';
 import moment from 'moment'
@@ -62,8 +63,7 @@ export default {
     }
   },
   mounted() {
-    var bodystyle = window.getComputedStyle(document.body)
-    this.main_color = bodystyle.getPropertyValue('--primary').trim()
+    this.main_color = getStyle('--primary') || '#304ffe'
   },
   watch: {
     datavalue: {

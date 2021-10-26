@@ -58,7 +58,7 @@ class BackendDB(Database):
 
     def cleanup_timeout(self, collection):
         mutex.acquire()
-        log.debug("Cleanup collection {}".format(collection))
+        #log.debug("Cleanup collection {}".format(collection))
         now = datetime.datetime.now().timestamp()
         aggregate_results = self.db.table(collection).search(Query().ttl >= 0)
         aggregate_results = list(map(lambda doc: {'_id': doc.doc_id, 'timeout': doc['ttl'] + doc['date_epoch']}, aggregate_results))
@@ -69,7 +69,7 @@ class BackendDB(Database):
 
     def cleanup_orphans(self, collection, key, col_ref, key_ref):
         mutex.acquire()
-        log.debug("Cleanup collection {} by finding {} in collection {} matching {}".format(collection, key, col_ref, key_ref))
+        #log.debug("Cleanup collection {} by finding {} in collection {} matching {}".format(collection, key, col_ref, key_ref))
         results = list(map(lambda doc: doc[key_ref], self.db.table(col_ref).all()))
         aggregate_results = self.db.table(collection).search(~ (Query()[key].one_of(results)))
         aggregate_results = list(map(lambda doc: {'_id': doc.doc_id}, aggregate_results))
@@ -79,9 +79,11 @@ class BackendDB(Database):
 
     def delete_aggregates(self, collection, aggregate_results):
         ids = list(map(lambda doc: doc['_id'], aggregate_results))
-        deleted_results = self.db.table(collection).remove(doc_ids=ids)
-        deleted_count = len(deleted_results)
-        log.debug('Removed {} documents in {}'.format(deleted_count, collection))
+        deleted_count = 0
+        if ids:
+            deleted_results = self.db.table(collection).remove(doc_ids=ids)
+            deleted_count = len(deleted_results)
+            log.debug('Removed {} documents in {}'.format(deleted_count, collection))
         return deleted_count
 
     def write(self, collection, obj, primary = None, duplicate_policy='update', update_time=True, constant=None):
@@ -127,12 +129,12 @@ class BackendDB(Database):
                         rejected.append(o)
                     elif duplicate_policy == 'replace':
                         log.debug('Replacing with: {}'.format(o))
-                        self.db.table(collection).remove(doc_ids=[doc_id])
-                        self.db.table(collection).insert(o)
+                        table.remove(doc_ids=[doc_id])
+                        table.insert(o)
                         replaced.append(o)
                     else:
                         log.debug('Updating with: {}'.format(o))
-                        self.db.table(collection).update(o, doc_ids=[doc_id])
+                        table.update(o, doc_ids=[doc_id])
                         updated.append(doc)
                 else:
                     log.error("UID {} not found. Skipping...".format(o['uid']))
@@ -152,12 +154,12 @@ class BackendDB(Database):
                             rejected.append(o)
                         elif duplicate_policy == 'replace':
                             log.debug('Replace with: {}'.format(o))
-                            self.db.table(collection).remove(doc_ids=[doc_id])
-                            self.db.table(collection).insert(o)
+                            table.remove(doc_ids=[doc_id])
+                            table.insert(o)
                             replaced.append(o)
                         else:
                             log.debug('Update with: {}'.format(o))
-                            self.db.table(collection).update(o, doc_ids=[doc_id])
+                            table.update(o, doc_ids=[doc_id])
                             updated.append(o)
                 else:
                     log.debug("Could not find document with primary {}. Inserting instead".format(primary))
@@ -175,6 +177,36 @@ class BackendDB(Database):
         mutex.release()
         return {'data': {'added': deepcopy(added), 'updated': deepcopy(updated), 'replaced': deepcopy(replaced),'rejected': deepcopy(rejected)}}
 
+    def inc(self, collection, field, labels={}):
+        now = int((datetime.datetime.now().timestamp() // 3600) * 3600)
+        table = self.db.table(collection)
+        query = Query()
+        mutex.acquire()
+        keys = []
+        added = []
+        updated = []
+        if labels:
+            for k,v in labels.items():
+                keys.append(field+'__'+k+'__'+v)
+        else:
+            keys.append(field)
+        for key in keys:
+            result = table.search((query.date == now) & (query.key == key))
+            if result:
+                result = result[0]
+                result['value'] = result.get('value', 0) + 1
+                table.update(result, doc_ids=[result.doc_id])
+                log.debug('Updated in {} metric {}'.format(collection, result))
+                updated.append(deepcopy(result))
+            else:
+                result = {'date': now, 'type': 'counter', 'key': key}
+                result['value'] = 1
+                table.insert(result)
+                log.debug('Inserted in {} metric {}'.format(collection, result))
+                added.append(deepcopy(result))
+        mutex.release()
+        return {'data': {'added': added, 'updated': updated}}
+
     def update_fields(self, collection, fields, condition=[]):
         log.debug("Update collection '{}' with fields '{}' based on the following search".format(collection, fields))
         total = 0
@@ -188,6 +220,52 @@ class BackendDB(Database):
                 self.write(collection, results['data'])
         log.debug("Updated {} fields".format(total))
         return total
+
+    def compute_stats(self, collection, date_from, date_until, groupby='hour'):
+        log.debug("Compute metrics on `{}` from {} until {} grouped by {}".format(collection, date_from, date_until, groupby))
+        date_from = date_from.replace(minute=0, second=0, microsecond=0)
+        if collection not in self.db.tables():
+            log.debug("Compute stats: collection {} does not exist".format(collection))
+            return {'data': [], 'count': 0}
+        if groupby == 'hour':
+            date_format = '%Y-%m-%dT%H:00%z'
+        elif groupby == 'day':
+            date_format = '%Y-%m-%dT00:00%z'
+        elif groupby == 'month':
+            date_format = '%Y-%m-01T00:00%z'
+        elif groupby == 'year':
+            date_format = '%Y-01-01T00:00%z'
+        elif groupby == 'week':
+            date_format = '%Y-%VT00:00%z'
+        elif groupby == 'weekday':
+            date_format = '%u'
+        else:
+            date_format = '%Y-%m-%dT%H:00%z'
+        date_from = date_from.timestamp()
+        date_until = date_until.timestamp()
+        table = self.db.table(collection)
+        results = table.search((Query().date >= date_from) & (Query().date <= date_until))
+        if len(results) == 0:
+            log.debug("Compute stats: No data found within time interval")
+            return {'data': [], 'count': 0}
+        groups = {}
+        res = []
+        for doc in results:
+            date_range = datetime.date.fromtimestamp(doc['date']).strftime(date_format)
+            if date_range not in groups:
+                groups[date_range] = {doc['key']: {'value': 0}}
+            elif doc['key'] not in groups[date_range]:
+                groups[date_range][doc['key']] = {'value': 0}
+            groups[date_range][doc['key']]['value'] += doc['value']
+        for date, v in groups.items():
+            entry = {'_id': date, 'data': []}
+            for key, doc in v.items():
+                entry['data'].append({'key': key, 'value': doc['value']})
+            res.append(entry)
+        results_agg = sorted(res, key=lambda d: d['_id'])
+        count = len(results_agg)
+        log.debug("Compute stats: Got {} results".format(count))
+        return {'data': results_agg, 'count': count}
 
     def search(self, collection, condition=[], nb_per_page=0, page_number=1, orderby="", asc=True):
         mutex.acquire()

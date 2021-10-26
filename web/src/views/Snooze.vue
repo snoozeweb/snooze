@@ -3,6 +3,7 @@
     <List
       endpoint="snooze"
       order_by="time_constraints"
+      is_ascending
       :form="form"
       :fields="fields"
       :tabs="tabs"

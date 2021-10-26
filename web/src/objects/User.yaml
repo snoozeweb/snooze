@@ -21,6 +21,10 @@ fields:
         sortable: false
         type: array
     -
+        label: Login
+        key: login
+        tdClass: ['align-middle']
+    -
         label: State
         key: enabled
         tdClass: ['align-middle', 'text-center']

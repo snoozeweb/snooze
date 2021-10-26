@@ -15,6 +15,7 @@
 
 import Card from '@/components/Card.vue'
 import { tabs, form } from '@/objects/Profile.yaml'
+import nav from '@/containers/_nav'
 
 export default {
   components: {
@@ -29,6 +30,12 @@ export default {
         description: 'Reset password'
       }
     }
+    this.form.preferences.default_page.options = []
+    nav[0]._children.forEach(n => {
+      if (n._name == "CSidebarNavItem") {
+        this.form.preferences.default_page.options.push({text: n.name, value: n.to})
+      }
+    })
   },
   data () {
     return {

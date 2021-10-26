@@ -30,7 +30,7 @@ class Aggregaterule(Plugin):
         for aggrule in self.aggregate_rules:
             if aggrule.enabled and aggrule.process(record):
                 record['hash'] = hashlib.md5((str(aggrule.name) + '.'.join([(dig(record, *field.split('.')) or '') for field in aggrule.fields])).encode()).hexdigest()
-                record = self.match_aggregate(record, aggrule.throttle, aggrule.watch)
+                record = self.match_aggregate(record, aggrule.throttle, aggrule.watch, aggrule.name)
                 break
         else:
             LOG.debug("Record {} could not match any aggregate rule, assigning a default aggregate".format(str(record)))
@@ -48,7 +48,7 @@ class Aggregaterule(Plugin):
 
         return record
 
-    def match_aggregate(self, record, throttle=10, watch=[]):
+    def match_aggregate(self, record, throttle=10, watch=[], aggrule_name='default'):
         LOG.debug("Checking if an aggregate with hash {} can be found".format(record['hash']))
         aggregate_result = self.db.search('record', ['=', 'hash', record['hash']])
         if aggregate_result['count'] > 0:
@@ -95,6 +95,7 @@ class Aggregaterule(Plugin):
                 record['comment_count'] = aggregate.get('comment_count', 0) + 1
             elif (throttle < 0) or (now.timestamp() - aggregate.get('date_epoch', 0) < throttle):
                 LOG.debug("Time within throttle {} range, discarding".format(throttle))
+                self.core.stats.inc('alert_throttled', {'name': aggrule_name})
                 raise Abort_and_update(record)
             else:
                 comment = {}

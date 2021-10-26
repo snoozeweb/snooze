@@ -40,7 +40,7 @@ setup(
     install_requires = [
         'Jinja2',
         'PyJWT==1.7.1',
-        'PyYAML',
+        'PyYAML==5.4.1',
         'click',
         'falcon',
         'falcon-auth',

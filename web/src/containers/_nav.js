@@ -11,6 +11,13 @@ export default [
       },
       {
         _name: 'CSidebarNavItem',
+        name: 'Dashboard',
+        to: '/dashboard',
+        fontIcon: 'la la-tachometer-alt',
+	permissions: ['ro_stats', 'rw_stats'],
+      },
+      {
+        _name: 'CSidebarNavItem',
         name: 'Status',
         to: '/status',
         fontIcon: 'la la-signal',

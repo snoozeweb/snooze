@@ -108,10 +108,14 @@ class Api():
             try:
                 spec.loader.exec_module(plugin_module)
                 log.debug("Found custom routes for `{}`".format(plugin.name))
-            except:
+            except FileNotFoundError:
                 # Loading default
                 log.debug("Loading default route for `{}`".format(plugin.name))
                 plugin_module = import_module("snooze.plugins.core.basic.{}.route".format(self.api_type))
+            except Exception as e:
+                log.exception(e)
+                log.debug("Skip loading plugin `{}` routes".format(plugin.name))
+                continue
             primary = plugin.metadata.get('primary') or None
             duplicate_policy = plugin.metadata.get('duplicate_policy') or 'update'
             authorization_policy = plugin.metadata.get('authorization_policy')
