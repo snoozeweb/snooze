@@ -150,8 +150,13 @@ jobs:
             venvctrl
           mkdir /var/tmp/BUILD /var/tmp/SOURCES /var/tmp/SRPMS/ /var/tmp/RPMS
       - name: Build RPM
+        uses: nick-invision/retry@v2
         id: rpm-build
-        run: rpmbuild --bb snooze-server.spec
+        with:
+          retry_on: error
+          max_attempts: 3
+          timeout_minutes: 10
+          command: rpmbuild --bb snooze-server.spec
       - name: package_path
         run: echo "::set-output name=package_path::$(echo /var/tmp/RPMS/x86_64/snooze-server-$(cat VERSION)-1.x86_64.rpm)"
         id: package_path

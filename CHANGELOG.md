@@ -1,3 +1,10 @@
+## v1.0.16
+
+### Bug fixes
+* TinyDB was broken since v1.0.11
+* Date was handled incorrectly for TinyDB metric features
+* Github CI fix
+
 ## v1.0.15
 
 ### New features

@@ -11,8 +11,8 @@ from snooze.db.database import Database
 from snooze.utils.functions import dig, flatten, to_tuple
 from threading import Lock
 from logging import getLogger
+from datetime import datetime
 import uuid
-import datetime
 import re
 log = getLogger('snooze.db.file')
 
@@ -32,6 +32,7 @@ class Query(BaseQuery):
             ('test', self._path, func, args),
             allow_empty_path=True
         )
+
 
 def test_contains(array, value):
     if not isinstance(array, list):
@@ -56,10 +57,13 @@ class BackendDB(Database):
         log.debug("Initialized TinyDB at path {}".format(filename))
         log.debug("db: {}".format(self.db))
 
+    def create_index(self, collection, fields):
+        pass
+
     def cleanup_timeout(self, collection):
         mutex.acquire()
         #log.debug("Cleanup collection {}".format(collection))
-        now = datetime.datetime.now().timestamp()
+        now = datetime.now().timestamp()
         aggregate_results = self.db.table(collection).search(Query().ttl >= 0)
         aggregate_results = list(map(lambda doc: {'_id': doc.doc_id, 'timeout': doc['ttl'] + doc['date_epoch']}, aggregate_results))
         aggregate_results = list(filter(lambda doc: doc['timeout'] <= now, aggregate_results))
@@ -108,7 +112,7 @@ class BackendDB(Database):
         for o in tobj:
             primary_docs = None
             if update_time:
-                o['date_epoch'] = datetime.datetime.now().timestamp()
+                o['date_epoch'] = datetime.now().timestamp()
             if primary and all(dig(o, *p.split('.')) for p in primary):
                 primary_query = map(lambda a: dig(Query(), *a.split('.')) == dig(o, *a.split('.')), primary)
                 primary_query = reduce(lambda a, b: a & b, primary_query)
@@ -178,7 +182,7 @@ class BackendDB(Database):
         return {'data': {'added': deepcopy(added), 'updated': deepcopy(updated), 'replaced': deepcopy(replaced),'rejected': deepcopy(rejected)}}
 
     def inc(self, collection, field, labels={}):
-        now = int((datetime.datetime.now().timestamp() // 3600) * 3600)
+        now = int((datetime.now().timestamp() // 3600) * 3600)
         table = self.db.table(collection)
         query = Query()
         mutex.acquire()
@@ -251,7 +255,7 @@ class BackendDB(Database):
         groups = {}
         res = []
         for doc in results:
-            date_range = datetime.date.fromtimestamp(doc['date']).strftime(date_format)
+            date_range = datetime.fromtimestamp(doc['date']).astimezone().strftime(date_format)
             if date_range not in groups:
                 groups[date_range] = {doc['key']: {'value': 0}}
             elif doc['key'] not in groups[date_range]:
