@@ -73,16 +73,13 @@ class Webhook(Plugin):
         else:
             ssl_verify = False
         response = None
-        try:
-            if parsed_params:
-                parsed_params = { parsed_params[i][0]: parsed_params[i][1] for i in range(0, len(parsed_params)) }
-                log.debug("Parsed params: {}".format(parsed_params))
-            else:
-                parsed_params = None
-            response = RestHelper().send_http_request(url, 'POST', payload=parsed_payload, parameters=parsed_params, verify=ssl_verify, proxy_uri=proxy)
-            log.debug("HTTP Response: {}".format(response))
-        except Exception as e:
-            log.exception(e)
+        if parsed_params:
+            parsed_params = { parsed_params[i][0]: parsed_params[i][1] for i in range(0, len(parsed_params)) }
+            log.debug("Parsed params: {}".format(parsed_params))
+        else:
+            parsed_params = None
+        response = RestHelper().send_http_request(url, 'POST', payload=parsed_payload, parameters=parsed_params, verify=ssl_verify, proxy_uri=proxy)
+        log.debug("HTTP Response: {}".format(response))
         if inject_response and response and response.status_code == 200:
             try:
                 response_content = loads(response.content)

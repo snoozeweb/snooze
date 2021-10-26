@@ -8,6 +8,7 @@
 ### Bug fixes
 * Do no crash whenever a plugin fails to load
 * Widgets pretty print was not working properly
+* Failed webhook actions did not register as failed properly
 
 ## v1.0.14
 
@@ -35,7 +36,7 @@
 * Moving Unix socket management out of the falcon API
 * Using Waitress for Unix socket and TCP socket
 * Secrets are now bootstrapped using random numbers and are stored in the backend database
-* Dedicated middleware for logging 
+* Dedicated middleware for logging
 ### Bug fixes
 * When changing tabs or refreshing, webUI row tables are not flickering anymore
 * Throttled alerts generated duplicate entries
