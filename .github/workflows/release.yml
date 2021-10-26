@@ -1,8 +1,8 @@
 name: Create new release
 
 on:
-  push:
-    branches: [ fix_ci ]
+  - push
+  - pull_request
 
 jobs:
   rpm:
