@@ -125,7 +125,7 @@ class Condition():
             return record_value is not None
         elif operation == 'CONTAINS':
             key, value = args
-            record_value = dig(record, *key.split('.'))
+            record_value = dig(record, *key.split('.')) or []
             if not isinstance(value, list):
                 value = [value]
             if not isinstance(record_value, list):
@@ -133,13 +133,13 @@ class Condition():
             LOG.debug("Value: {}, Record: {}".format(value, record_value))
             for val in flatten(value):
                 reg = re.compile(val, flags=re.IGNORECASE)
-                for record in flatten(record_value): 
+                for record in flatten(record_value):
                     if reg.search(record):
                         return True
             return False
         elif operation == 'IN':
             key, value = args
-            record_value = dig(record, *value.split('.'))
+            record_value = dig(record, *value.split('.')) or []
             if not isinstance(record_value, list):
                 record_value = [record_value]
             if not isinstance(key, list):

@@ -46,7 +46,7 @@ snooze root-token
 
 Prepare the `.env.development.local` as follow:
 ```javascript
-VUE_APP_API = "http://localhost:5200"
+VUE_APP_API = "http://localhost:5200/api"
 ```
 
 Run Snooze Web dev environment:

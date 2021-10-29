@@ -32,6 +32,7 @@ class Core:
         self.conf = conf
         self.db = Database(conf.get('database', {}))
         self.general_conf = config('general')
+        self.ok_severities = list(map(lambda x: x.casefold(), list(self.general_conf.get('ok_severities', []))))
         self.housekeeper = Housekeeper(self)
         self.cluster = None
         self.exit_button = Event()
@@ -98,7 +99,10 @@ class Core:
         environment = record.get('environment', 'unknown')
         severity = record.get('severity', 'unknown')
         record['ttl'] = self.housekeeper.conf.get('record_ttl', 86400)
-        record['state'] = ''
+        if severity.casefold() in self.ok_severities:
+            record['state'] = 'close'
+        else:
+            record['state'] = ''
         record['plugins'] = []
         try:
             record['timestamp'] = parser.parse(record['timestamp']).astimezone().strftime("%Y-%m-%dT%H:%M:%S%z")
@@ -173,6 +177,7 @@ class Core:
         log.debug("Reload config file '{}'".format(config_file))
         if config_file == 'general':
             self.general_conf = config('general')
+            self.ok_severities = list(map(lambda x: x.casefold(), list(self.general_conf.get('ok_severities', []))))
             self.stats.reload()
             return True
         elif config_file == 'ldap_auth':

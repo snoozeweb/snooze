@@ -29,7 +29,7 @@ class Aggregaterule(Plugin):
         LOG.debug("Processing record: {}".format(str(record)))
         for aggrule in self.aggregate_rules:
             if aggrule.enabled and aggrule.process(record):
-                record['hash'] = hashlib.md5((str(aggrule.name) + '.'.join([(dig(record, *field.split('.')) or '') for field in aggrule.fields])).encode()).hexdigest()
+                record['hash'] = hashlib.md5((str(aggrule.name) + '.'.join([(field + '=' + (dig(record, *field.split('.')) or '')) for field in aggrule.fields])).encode()).hexdigest()
                 record = self.match_aggregate(record, aggrule.throttle, aggrule.watch, aggrule.name)
                 break
         else:
@@ -56,7 +56,8 @@ class Aggregaterule(Plugin):
             LOG.debug("Found {}, updating it with the record infos".format(str(aggregate)))
             now = datetime.datetime.now()
             record = dict(list(aggregate.items()) + list(record.items()))
-            record['uid'] = aggregate.get('uid') 
+            record_state = record.get('state', '')
+            record['uid'] = aggregate.get('uid')
             record['state'] = aggregate.get('state', '')
             record['duplicates'] = aggregate.get('duplicates', 0) + 1
             record['date_epoch'] = aggregate.get('date_epoch', now.timestamp())
@@ -64,6 +65,18 @@ class Aggregaterule(Plugin):
                 del record['snoozed']
             if aggregate.get('ttl', -1) < 0:
                 record['ttl'] = aggregate.get('ttl', -1)
+            comment = {}
+            comment['record_uid'] = aggregate['uid']
+            comment['date'] = now.astimezone().isoformat()
+            comment['auto'] = True
+            if record_state == 'close' and record.get('state') != 'close':
+                LOG.debug("OK received, closing alert")
+                comment['message'] = 'Auto closed: Severity {} => {}'.format(aggregate.get('severity', 'unknown'), record.get('severity', 'unknown'))
+                comment['type'] = 'close'
+                record['state'] = 'close'
+                self.db.write('comment', comment)
+                record['comment_count'] = aggregate.get('comment_count', 0) + 1
+                raise Abort_and_update(record)
             watched_fields = []
             for watched_field in watch:
                 aggregate_field = dig(aggregate, *watched_field.split('.'))
@@ -73,10 +86,6 @@ class Aggregaterule(Plugin):
                     watched_fields.append({'name': watched_field, 'old': aggregate_field, 'new': record_field})
             if watched_fields:
                 LOG.debug("Found updated fields from watchlist: {}".format(watched_fields))
-                comment = {}
-                comment['record_uid'] = aggregate['uid']
-                comment['date'] = now.astimezone().isoformat()
-                comment['auto'] = True
                 append_txt = []
                 for watch_field in watched_fields:
                     append_txt.append("{} ({} => {})".format(watch_field['name'], watch_field['old'], watch_field['new']))
@@ -98,10 +107,6 @@ class Aggregaterule(Plugin):
                 self.core.stats.inc('alert_throttled', {'name': aggrule_name})
                 raise Abort_and_update(record)
             else:
-                comment = {}
-                comment['record_uid'] = aggregate['uid']
-                comment['date'] = now.astimezone().isoformat()
-                comment['auto'] = True
                 if record.get('state') == 'close':
                     comment['message'] = 'Auto re-opened'
                     comment['type'] = 'open'
