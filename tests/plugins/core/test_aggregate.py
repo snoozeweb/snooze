@@ -104,3 +104,19 @@ class TestAggregatePlugin:
         results = aggregateplugin.core.db.search('record', ['=', 'aggregate', 'Agg5'])['data']
         assert results[0]['duplicates'] == 2
         assert results[0]['comment_count'] == 1
+
+    def test_aggregate_ok(self, aggregateplugin):
+        records = [
+            {'a': '1', 'state': 'open'},
+            {'a': '1', 'state': 'close'}
+        ]
+        for record in records:
+            try:
+                rec = aggregateplugin.process(record)
+                aggregateplugin.core.db.write('record', rec)
+            except Abort_and_update as e:
+                aggregateplugin.core.db.write('record', e.record or record)
+                continue
+        results = aggregateplugin.core.db.search('record', ['=', 'aggregate', 'Agg1'])['data'][0]
+        assert results['duplicates'] == 2
+        assert results['state'] == 'close'

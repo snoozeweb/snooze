@@ -79,7 +79,7 @@ class Cluster():
                 else:
                     members.append({'host': peer['host'], 'port': peer['port'], 'healthy': False})
             log.debug("Cluster members: {}".format(members))
-            return members 
+            return members
         else:
             log.debug('Clustering is disabled')
             return {}
@@ -90,7 +90,7 @@ class Cluster():
                 job = {'payload': {'reload': {'plugins':[plugin_name]}}, 'host': peer['host'], 'port': peer['port']}
                 self.sync_queue.append(job)
                 log.debug("Queued job: {}".format(job))
-    
+
     def write_and_reload(self, filename, conf, reload_conf):
         if self.thread:
             for peer in self.other_peers:

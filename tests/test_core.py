@@ -29,5 +29,10 @@ class TestCore():
         record = {'a': '1', 'b': '2'}
         core.process_record(record)
         search = core.db.search('record', ['AND', ['=', 'a', '1'], ['=', 'b', '2']])
-        log.debug(search)
         assert all(plugin in search['data'][0]['plugins'] for plugin in ['rule', 'aggregaterule', 'snooze', 'notification'])
+    def test_process_ok(self, core):
+        core.ok_severities = ['ok']
+        record = {'severity': 'ok'}
+        core.process_record(record)
+        data = core.db.search('record')['data'][0]
+        assert data['state'] == 'close'

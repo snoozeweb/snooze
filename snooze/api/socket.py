@@ -19,6 +19,7 @@ from waitress.adjustments import Adjustments
 from waitress.server import UnixWSGIServer
 
 from snooze.api.falcon import LoggerMiddleware
+from datetime import datetime, timedelta
 
 log = getLogger('snooze.api.socket')
 
@@ -29,7 +30,7 @@ class RootTokenRoute:
 
     def on_get(self, req, resp):
         log.debug("Received root token request from client")
-        payload = {'name': 'root', 'method': 'root', 'permissions': ['rw_all']}
+        payload = {'user': {'name': 'root', 'method': 'root', 'permissions': ['rw_all']}, 'iat': datetime.utcnow(), 'nbf': datetime.utcnow(), 'exp': datetime.utcnow() + timedelta(seconds=3600)}
         root_token = self.token_engine.sign(payload).decode()
         resp.content_type = falcon.MEDIA_JSON
         resp.media = {'root_token': root_token}
