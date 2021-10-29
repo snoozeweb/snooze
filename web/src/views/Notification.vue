@@ -1,12 +1,10 @@
 <template>
   <div class="animated fadeIn">
     <List
-      endpoint="notification"
+      endpoint_prop="notification"
       order_by="name"
       is_ascending
-      :form="form"
-      :fields="fields"
-      :tabs="tabs"
+      :tabs_prop="tabs"
       edit_mode
       delete_mode
       add_mode
@@ -17,7 +15,6 @@
 <script>
 import List from '@/components/List.vue'
 
-import { form, fields } from '@/objects/Notification.yaml'
 import moment from 'moment'
 
 export default {
@@ -29,8 +26,6 @@ export default {
   },
   data () {
     return {
-      form: form,
-      fields: fields,
       tabs: this.get_tabs_default(),
     }
   },

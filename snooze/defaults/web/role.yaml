@@ -1,5 +1,8 @@
 ---
-endpoint: role
+tabs:
+    -
+        title: 'Roles'
+        filter: []
 fields:
     -
         label: Name

@@ -1,10 +1,7 @@
 <template>
   <div class="animated fadeIn">
     <List
-      endpoint="role"
-      :form="form"
-      :fields="fields"
-      :tabs="tabs"
+      endpoint_prop="role"
       edit_mode
       delete_mode
       add_mode
@@ -16,22 +13,9 @@
 <script>
 import List from '@/components/List.vue'
 
-import { form, fields } from '@/objects/Role.yaml'
-
 export default {
   components: {
     List,
-  },
-  mounted () {
-  },
-  data () {
-    return {
-      form: form,
-      fields: fields,
-      tabs: [
-        {title: 'Roles', filter: []},
-      ],
-    }
   },
 }
 </script>

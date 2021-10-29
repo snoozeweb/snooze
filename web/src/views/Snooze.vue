@@ -1,12 +1,10 @@
 <template>
   <div class="animated fadeIn">
     <List
-      endpoint="snooze"
+      endpoint_prop="snooze"
       order_by="time_constraints"
+      :tabs_prop="tabs"
       is_ascending
-      :form="form"
-      :fields="fields"
-      :tabs="tabs"
       @row-selected="select"
       ref="table"
       edit_mode
@@ -47,7 +45,6 @@ import dig from 'object-dig'
 import List from '@/components/List.vue'
 
 import { text_alert } from '@/utils/query'
-import { form, fields, default_sorting } from '@/objects/Snooze.yaml'
 import { API } from '@/api'
 
 export default {
@@ -67,8 +64,6 @@ export default {
       modal_data: [],
       selected: [],
       dig: dig,
-      form: form,
-      fields: fields,
       tabs: this.get_tabs_default(),
     }
   },
@@ -119,7 +114,7 @@ export default {
         .put(`/snooze_apply`, filter_names)
         .then(response => {
           console.log(response)
-          if (response !== undefined && response.data) {
+          if (response !== undefined && response.data !== undefined) {
             text_alert(`Updated ${response.data} alert(s)`, 'Success', 'success')
           } else {
             text_alert('An error occured', 'Failure', 'danger')

@@ -47,6 +47,10 @@ form:
             display_name: Default Authentication
             component: AuthBackend
             description: 'Default Authentication backend'
+        ok_severities:
+            display_name: OK Severities
+            component: Field
+            description: Space separated severities used to automatically close an alert (case incensitive)
     ldap_auth:
         enabled:
             display_name: LDAP Authentication
@@ -136,4 +140,3 @@ form:
             options:
                 negative_label: 'No cleanup'
             default_value: 86400
-    stats:

@@ -1,11 +1,7 @@
 <template>
   <div class="animated fadeIn">
     <List
-      endpoint="user"
-      :form="form"
-      :fields="fields"
-      :hidden_fields="hidden_fields"
-      :tabs="tabs"
+      endpoint_prop="user"
       delete_mode
       ref="list"
     >
@@ -22,30 +18,14 @@
 <script>
 import List from '@/components/List.vue'
 
-import { form, fields, hidden_fields } from '@/objects/User.yaml'
-
 export default {
   components: {
     List,
   },
-  mounted () {
-  },
-  data () {
-    return {
-      form: form,
-      fields: fields,
-      hidden_fields: hidden_fields,
-      tabs: [
-        {title: 'All', filter: []},
-        {title: 'LDAP', filter: ["=", "method", "ldap"]},
-        {title: 'Local', filter: ["=", "method", "local"]},
-      ],
-    }
-  },
   methods: {
     modal_add() {
-      delete this.form['name']
-      delete this.form['password']
+      delete this.$refs.list.form['name']
+      delete this.$refs.list.form['password']
       var name_form = {'name': {
           display_name: 'Username',
           component: 'String',
@@ -53,8 +33,8 @@ export default {
           required: true
         }
       }
-      this.form = Object.assign({}, name_form, this.form);
-      this.form['password'] = {
+      this.$refs.list.form = Object.assign({}, name_form, this.$refs.list.form);
+      this.$refs.list.form['password'] = {
         display_name: 'Password',
         component: 'Password',
         description: 'Set password',
@@ -63,8 +43,8 @@ export default {
       this.$refs.list.modal_add()
     },
     modal_edit(row) {
-      delete this.form['name']
-      delete this.form['password']
+      delete this.$refs.list.form['name']
+      delete this.$refs.list.form['password']
       if (row['method'] == 'local') {
         var name_form = {'name': {
             display_name: 'Username',
@@ -73,8 +53,8 @@ export default {
             required: true
           }
         }
-        this.form = Object.assign({}, name_form, this.form);
-        this.form['password'] = {
+        this.$refs.list.form = Object.assign({}, name_form, this.$refs.list.form);
+        this.$refs.list.form['password'] = {
           display_name: 'Reset Password',
           component: 'Password',
           description: 'Reset password'

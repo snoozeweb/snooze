@@ -1,5 +1,8 @@
 ---
-endpoint: action
+tabs:
+    -
+        title: 'Environments'
+        filter: []
 fields:
     -
         label: Name
@@ -8,10 +11,17 @@ fields:
         thStyle: {width: '20%'}
         tdClass: ['align-middle']
     -
-        label: Action
-        key: pprint
+        key: filter
+        sortable: false
         thStyle: {width: '50%'}
-        tdClass: ['align-middle', 'multiline']
+        tdClass: ['align-middle']
+        type: array
+    -
+        key: color
+        sortable: false
+        thStyle: {width: '5%'}
+        tdClass: ['align-middle']
+        type: array
     -
         label: Comment
         key: comment
@@ -28,15 +38,16 @@ form:
     name:
         display_name: Name
         component: String
-        description: 'Name of the notification entry'
+        description: Name of the environment
         required: true
-    action:
-        display_name: Action
-        component: APIElement
-        endpoint: action/plugin
-        primary: action_name
-        required: true
-        form: action_form
+    filter:
+        display_name: Filter
+        component: Condition
+        description: Search filter used to define this environment
+    color:
+        display_name: Color
+        component: ColorSwatches
+        description: Color customization
     comment:
         display_name: Comment
         component: Text

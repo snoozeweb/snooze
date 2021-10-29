@@ -214,6 +214,7 @@ class BackendDB(Database):
     def update_fields(self, collection, fields, condition=[]):
         log.debug("Update collection '{}' with fields '{}' based on the following search".format(collection, fields))
         total = 0
+        mutex.acquire()
         if collection in self.db.tables():
             results = self.search(collection, condition)
             total = results['count']
@@ -222,14 +223,17 @@ class BackendDB(Database):
                     record[field] = val
             if total > 0:
                 self.write(collection, results['data'])
+        mutex.release()
         log.debug("Updated {} fields".format(total))
         return total
 
     def compute_stats(self, collection, date_from, date_until, groupby='hour'):
         log.debug("Compute metrics on `{}` from {} until {} grouped by {}".format(collection, date_from, date_until, groupby))
         date_from = date_from.replace(minute=0, second=0, microsecond=0)
+        mutex.acquire()
         if collection not in self.db.tables():
             log.debug("Compute stats: collection {} does not exist".format(collection))
+            mutex.release()
             return {'data': [], 'count': 0}
         if groupby == 'hour':
             date_format = '%Y-%m-%dT%H:00%z'
@@ -251,6 +255,7 @@ class BackendDB(Database):
         results = table.search((Query().date >= date_from) & (Query().date <= date_until))
         if len(results) == 0:
             log.debug("Compute stats: No data found within time interval")
+            mutex.release()
             return {'data': [], 'count': 0}
         groups = {}
         res = []
@@ -269,6 +274,7 @@ class BackendDB(Database):
         results_agg = sorted(res, key=lambda d: d['_id'])
         count = len(results_agg)
         log.debug("Compute stats: Got {} results".format(count))
+        mutex.release()
         return {'data': results_agg, 'count': count}
 
     def search(self, collection, condition=[], nb_per_page=0, page_number=1, orderby="", asc=True):

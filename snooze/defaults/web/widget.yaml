@@ -1,5 +1,8 @@
 ---
-endpoint: widget
+tabs:
+    -
+        title: 'Widgets'
+        filter: []
 fields:
     -
         label: Name

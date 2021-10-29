@@ -1,4 +1,5 @@
 ---
+endpoint: 'profile_self'
 tabs:
     -
         key: 'general'
