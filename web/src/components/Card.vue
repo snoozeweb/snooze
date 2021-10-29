@@ -1,7 +1,7 @@
 <template>
   <div>
   <b-form @submit.prevent="checkForm" novalidate>
-    <b-card no-body ref="main">
+    <b-card v-if="current_tab" no-body ref="main">
       <b-card-header header-tag="nav" class="p-2">
         <b-nav card-header pills class='m-0'>
 
@@ -30,7 +30,9 @@
 
 <script>
 import { API } from '@/api'
+import dig from 'object-dig'
 import Form from '@/components/Form.vue'
+import { get_data } from '@/utils/api'
 
 // Create a card fed by an API endpoint.
 export default {
@@ -40,18 +42,21 @@ export default {
   },
   props: {
     // The tabs name and their associated search
-    tabs: {
+    tabs_prop: {
       type: Array,
-      required: true
+      default: () => { return [] },
     },
     // The API path to query
-    endpoint: {
+    endpoint_prop: {
       type: String,
       required: true,
     },
-    form: {
+    form_prop: {
       type: Object,
       default: () => { return {} },
+    },
+    loaded_callback: {
+      type: Function,
     },
     onSubmit: {
       type: Function,
@@ -59,14 +64,17 @@ export default {
   },
   mounted () {
     this.save_enable()
-    this.reload()
+    get_data(`settings/?c=web/${this.endpoint}`, null, {}, this.load_table)
   },
   data () {
     return {
+      form: this.form_prop,
+      tabs: this.tabs_prop,
       form_data: {},
       form_key: 0,
-      current_endpoint: this.endpoint,
-			current_tab: this.tabs[0],
+      endpoint: this.endpoint_prop,
+      current_endpoint: this.endpoint_prop,
+			current_tab: {},
       save_disabled: null,
       save_variant: null,
       submitForm: this.onSubmit || this.submit
@@ -75,6 +83,19 @@ export default {
   computed: {
   },
   methods: {
+    load_table(response) {
+      if (response.data) {
+        var data = response.data.data[0]
+        this.form = dig(data, 'form')
+        this.tabs = dig(data, 'tabs')
+        this.endpoint = dig(data, 'endpoint') || this.endpoint
+        this.current_tab = this.tabs[0]
+        if (this.loaded_callback) {
+          this.loaded_callback()
+        }
+        this.reload()
+      }
+    },
     reload() {
       var tab = this.tabs[0]
       if (this.$route.query.tab !== undefined) {
@@ -92,7 +113,7 @@ export default {
       }
       this.submitForm(this.form_data)
     },
-    get_data() {
+    get_config_data() {
       API
         .get(`/${this.current_endpoint}`)
         .then(response => {
@@ -118,7 +139,7 @@ export default {
         this.current_endpoint = this.endpoint + '/' + this.current_tab.key
       }
       this.form_data = {}
-      this.get_data()
+      this.get_config_data()
       if (update_history) {
         this.add_history()
       }
@@ -187,7 +208,7 @@ export default {
     },
     $route() {
       this.$nextTick(this.reload);
-    }   
+    }
   },
 }
 </script>

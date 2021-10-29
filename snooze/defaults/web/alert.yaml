@@ -1,5 +1,38 @@
 ---
 endpoint: record
+tabs:
+    -
+        title: Alerts
+        filter:
+            -    'AND'
+            -    -    'AND'
+                 -    ['NOT', ['=', 'state', 'ack']]
+                 -    ['NOT', ['=', 'state', 'close']]
+            -    ['NOT', ['EXISTS', 'snoozed']]
+    -
+        title: 'Snoozed'
+        filter: ['EXISTS', 'snoozed']
+    -
+        title: 'Acknowledged'
+        filter: ['=', 'state', 'ack']
+    -
+        title: 'Re-escalated'
+        filter:
+            -    'OR'
+            -    ['=', 'state', 'esc']
+            -    ['=', 'state', 'open']
+    -
+        title: 'Closed'
+        filter: ['=', 'state', 'close']
+    -
+        title: 'Shelved'
+        filter:
+            -    'OR'
+            -    ['NOT', ['EXISTS', 'ttl']]
+            -    ['<', 'ttl', 0]
+    -
+        title: 'All'
+        filter: []
 fields:
     -
         key: timestamp

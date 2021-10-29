@@ -1,5 +1,14 @@
 ---
-endpoint: user
+tabs:
+    -
+        title: All
+        filter: []
+    -
+        title: LDAP
+        filter: ["=", "method", "ldap"]
+    -
+        title: Local
+        filter: ["=", "method", "local"]
 fields:
     -
         label: Name

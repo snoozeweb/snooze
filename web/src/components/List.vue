@@ -318,28 +318,27 @@ export default {
   },
   props: {
     // The tabs name and their associated search
-    tabs: {
+    tabs_prop: {
       type: Array,
-      required: true
+      default: () => { return [] },
     },
     // The API path to query
-    endpoint: {
+    endpoint_prop: {
       type: String,
       required: true,
     },
     // An array containing the fields to pass to the `b-table`
-    fields: {
+    fields_prop: {
       type: Array,
-      required: true,
+      default: () => { return [] },
     },
     // An array containing the hidden fields used for searching
-    hidden_fields: {
+    hidden_fields_prop: {
       type: Array,
-      required: false,
       default: () => { return [] },
     },
     // An object describing the input form for editing/adding
-    form: {
+    form_prop: {
       type: Object,
       default: () => { return {} },
     },
@@ -361,15 +360,7 @@ export default {
     modal_title_delete: {type: String, default: 'Delete this item'},
   },
   mounted () {
-    this.reload()
-    this.get_now()
-    setInterval(this.get_now, 1000);
-    this.$root.$on('environment_change_tab', (tab) => {
-      this.env_name = tab.name
-      this.env_filter = tab.filter
-      this.refreshTable()
-      this.add_history()
-    })
+    get_data('settings/?c='+encodeURIComponent(`web/${this.endpoint}`), null, {}, this.load_table)
   },
   data () {
     return {
@@ -380,13 +371,12 @@ export default {
       pp_countdown: pp_countdown,
       countdown: countdown,
       preprocess_data: preprocess_data,
-      get_data: get_data,
       join_queries: join_queries,
       truncate_message: truncate_message,
       alert_countdown: 0,
       timestamp: {},
       delete_items: delete_items,
-      filter: this.tabs[0].filter,
+      filter: [],
       env_name: '',
       env_filter: [],
       tab_index: 0,
@@ -400,6 +390,11 @@ export default {
       adding_data: {},
       selected_data: {},
       selected: [],
+      endpoint: this.endpoint_prop,
+      tabs: this.tabs_prop,
+      form: this.form_prop,
+      fields: this.fields_prop,
+      hidden_fields: this.hidden_fields_prop,
       orderby: this.order_by,
       isascending: this.is_ascending,
       add_m: this.add_mode,
@@ -415,6 +410,26 @@ export default {
   computed: {
   },
   methods: {
+    load_table(response) {
+      if (response.data) {
+        var data = response.data.data[0]
+        this.tabs = dig(data, 'tabs') || this.tabs
+        this.form = dig(data, 'form')
+        this.fields = dig(data, 'fields')
+        this.hidden_fields = dig(data, 'hidden_fields')
+        this.endpoint = dig(data, 'endpoint') || this.endpoint
+        this.filter = this.tabs[0].filter
+        this.reload()
+        this.get_now()
+        setInterval(this.get_now, 1000);
+        this.$root.$on('environment_change_tab', (tab) => {
+          this.env_name = tab.name
+          this.env_filter = tab.filter
+          this.refreshTable()
+          this.add_history()
+        })
+      }
+    },
     reload() {
       var tab = this.tabs[0]
       if (this.$route.query.tab !== undefined) {
@@ -471,7 +486,7 @@ export default {
           options["orderby"] = this.orderby
         }
       }
-      this.get_data(this.endpoint, query, options, feedback ? this.feedback_then_update : this.update_table, null)
+      get_data(this.endpoint, query, options, feedback ? this.feedback_then_update : this.update_table, null)
     },
     feedback_then_update(response) {
       this.alert_countdown = 1

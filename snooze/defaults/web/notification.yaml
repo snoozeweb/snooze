@@ -1,6 +1,11 @@
 ---
-endpoint: rule
 fields:
+    -
+        label: Time Constraint
+        key: time_constraints
+        orderby: sort
+        sortable: true
+        tdClass: ['align-middle']
     -
         key: name
         sortable: true
@@ -13,11 +18,14 @@ fields:
         tdClass: ['align-middle']
         type: array
     -
-        key: modifications
+        key: actions
         sortable: false
         thStyle: {width: '30%'}
         tdClass: ['align-middle']
         type: array
+    -
+        key: Delay
+        tdClass: ['align-middle', 'text-nowrap']
     -
         label: State
         key: enabled
@@ -44,17 +52,31 @@ form:
     name:
         display_name: Name
         component: String
-        description: Name of the notification entry
+        description: Name of the notification
         required: true
     condition:
         display_name: Condition
         component: Condition
-        description: This rule will be triggered only if this condition is matched. Leave it blank to always match.
-    modifications:
-        display_name: Modifications
-        component: Modification
-        description: List of changes to apply to the Record
+        description: This notification will be triggered only if this condition is matched. Leave it blank to always match
+    time_constraints:
+        display_name: Time constraint
+        component: TimeConstraint
+        description: 'Time constraint during this notification will be active'
+    actions:
+        display_name: Actions
+        component: APIElementField
+        endpoint: action
+        primary: name
+        description: List of actions to execute. At least one action needs to be created beforehand
+        required: true
+    frequency:
+        display_name: Frequency
+        component: Frequency
+        description: Keep sending notifications. If acknowledged or closed, no more notification will be sent
+        default_value:
+            total: 1
+            delay: 0
+            every: 0
     comment:
         display_name: Comment
         component: Text
-        description: 'Description'

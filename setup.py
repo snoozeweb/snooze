@@ -26,6 +26,7 @@ setup(
     package_data={
         'snooze': [
             'defaults/*.yaml',
+            'defaults/web/*.yaml',
             'plugins/core/*/metadata.yaml',
             'plugins/action/*/metadata.yaml',
         ],

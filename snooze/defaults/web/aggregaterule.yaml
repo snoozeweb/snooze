@@ -1,5 +1,8 @@
 ---
-endpoint: aggregaterule
+tabs:
+    -
+        title: 'Aggregate Rules'
+        filter: []
 fields:
     -
         key: name

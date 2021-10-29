@@ -2,13 +2,10 @@
   <div class="animated fadeIn">
     <List
       ref="table"
-      endpoint="record"
+      endpoint_prop="alert"
       order_by="timestamp"
       @row-selected="select"
-      :fields="fields"
-      :tabs="tabs"
       :info_excluded_fields="['smtp']"
-      :form="form"
     >
       <template #button="row">
         <b-button variant="primary" class='text-nowrap' @click="modal_show([row.item], 'comment')" size="sm" v-b-tooltip.hover title="Add comment"><i class="las la-comment-dots la-lg"></i> <b-badge v-if="row.item['comment_count']" variant='light' class='position-absolute' style='z-index: 10; top:0!important; right:100%!important; transform:translate(50%,-50%)!important'>{{ row.item['comment_count'] }}</b-badge></b-button>
@@ -84,7 +81,6 @@ import List from '@/components/List.vue'
 
 import moment from 'moment'
 import { add_items, update_items } from '@/utils/api'
-import { form, fields } from '@/objects/Record.yaml'
 import Timeline from '@/components/Timeline.vue'
 import Modification from '@/components/form/Modification.vue'
 
@@ -116,31 +112,9 @@ export default {
       modal_bg_variant: '',
       modal_text_variant: '',
       modal_data: [],
-      form: form,
-      fields: fields,
       modifications: [],
       auto_refresh: false,
       auto_interval: null,
-      tabs: [
-        {title: 'Alerts', filter: ['AND',
-            ['AND',
-              ['NOT', ['=', 'state', 'ack']],
-              ['NOT', ['=', 'state', 'close']],
-            ],
-            ['NOT', ['EXISTS', 'snoozed']]
-          ]
-        },
-        {title: 'Snoozed', filter: ['EXISTS', 'snoozed']},
-        {title: 'Acknowledged', filter: ['=', 'state', 'ack']},
-        {title: 'Re-escalated', filter: ['OR', ['=', 'state', 'esc'], ['=', 'state', 'open']]},
-        {title: 'Closed', filter: ['=', 'state', 'close']},
-        {title: 'Shelved', filter: ['OR',
-            ['NOT', ['EXISTS', 'ttl']],
-            ['<', 'ttl', 0],
-          ]
-        },
-        {title: 'All', filter: []},
-      ],
     }
   },
   computed: {

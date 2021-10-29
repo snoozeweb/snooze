@@ -1,5 +1,4 @@
 ---
-endpoint: snooze
 fields:
     -
         label: Time Constraint

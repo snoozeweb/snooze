@@ -381,7 +381,7 @@ export default {
       var query = ['EXISTS', 'name']
       var options = {
         perpage: n,
-        pagenb: 0,
+        pagenb: 1,
         orderby: 'date',
         asc: false,
       }
@@ -391,34 +391,36 @@ export default {
       var users = []
       var records_uid = []
       if (response.data) {
-          this.tableItems = []
-          var user = {}
-          response.data.data.forEach(comment => {
-            user = comment.name + '_@_' + comment.method
-            if (users.indexOf(user) == -1) {
-              users.push(user)
-            }
-            if (records_uid.indexOf(comment.record_uid) == -1) {
-              records_uid.push(comment.record_uid)
-            }
-            this.tableItems.push({
-              type: comment.type,
-              user: { name: comment.name, method: comment.method, last_login: 'Unknown' },
-              message: comment.message,
-              date: trimDate(comment.date),
-              record_uid: comment.record_uid,
-              host: '',
-              alert: '',
-            })
+        this.tableItems = []
+        var user = {}
+        response.data.data.forEach(comment => {
+          user = comment.name + '_@_' + comment.method
+          if (users.indexOf(user) == -1) {
+            users.push(user)
+          }
+          if (records_uid.indexOf(comment.record_uid) == -1) {
+            records_uid.push(comment.record_uid)
+          }
+          this.tableItems.push({
+            type: comment.type,
+            user: { name: comment.name, method: comment.method, last_login: 'Unknown' },
+            message: comment.message,
+            date: trimDate(comment.date),
+            record_uid: comment.record_uid,
+            host: '',
+            alert: '',
           })
+        })
+        if (users.length > 0) {
+          users = users.map(u => this.query_name(u))
+          var query = users.reduce((a, b) => ['OR', a, b])
+          this.get_data('user', query, {}, this.users_callback)
+          this.get_data('profile/general', query, {}, this.users_callback)
+          records_uid = records_uid.map(r => ['=', 'uid', r])
+          query = records_uid.reduce((a, b) => ['OR', a, b])
+          this.get_data('record', query, {}, this.records_callback)
+        }
       }
-      users = users.map(u => this.query_name(u))
-      var query = users.reduce((a, b) => ['OR', a, b])
-      this.get_data('user', query, {}, this.users_callback)
-      this.get_data('profile/general', query, {}, this.users_callback)
-      records_uid = records_uid.map(r => ['=', 'uid', r])
-      query = records_uid.reduce((a, b) => ['OR', a, b])
-      this.get_data('record', query, {}, this.records_callback)
     },
     query_name(a) {
       var name_method = a.split('_@_')
