@@ -102,22 +102,25 @@ class Aggregaterule(Plugin):
                     comment['type'] = 'comment'
                 self.db.write('comment', comment)
                 record['comment_count'] = aggregate.get('comment_count', 0) + 1
+            elif record.get('state') == 'close':
+                comment['message'] = 'Auto re-opened'
+                comment['type'] = 'open'
+                record['state'] = 'open'
+                self.db.write('comment', comment)
+                record['comment_count'] = aggregate.get('comment_count', 0) + 1
+            elif record.get('state') == 'ack':
+                comment['message'] = 'Auto re-escalated'
+                comment['type'] = 'esc'
+                record['state'] = 'esc'
+                self.db.write('comment', comment)
+                record['comment_count'] = aggregate.get('comment_count', 0) + 1
             elif (throttle < 0) or (now.timestamp() - aggregate.get('date_epoch', 0) < throttle):
                 LOG.debug("Time within throttle {} range, discarding".format(throttle))
                 self.core.stats.inc('alert_throttled', {'name': aggrule_name})
                 raise Abort_and_update(record)
             else:
-                if record.get('state') == 'close':
-                    comment['message'] = 'Auto re-opened'
-                    comment['type'] = 'open'
-                    record['state'] = 'open'
-                elif record.get('state') == 'ack':
-                    comment['message'] = 'Auto re-escalated'
-                    comment['type'] = 'esc'
-                    record['state'] = 'esc'
-                else:
-                    comment['message'] = 'New escalation'
-                    comment['type'] = 'comment'
+                comment['message'] = 'New escalation'
+                comment['type'] = 'comment'
                 self.db.write('comment', comment)
                 record['comment_count'] = aggregate.get('comment_count', 0) + 1
         else:

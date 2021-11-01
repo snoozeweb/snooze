@@ -3,7 +3,6 @@
     <List
       ref="table"
       endpoint_prop="alert"
-      order_by="timestamp"
       @row-selected="select"
       :info_excluded_fields="['smtp']"
     >

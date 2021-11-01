@@ -140,3 +140,10 @@ form:
             options:
                 negative_label: 'No cleanup'
             default_value: 86400
+        cleanup_notification:
+            display_name: Cleanup expired notif
+            component: Duration
+            description: 'Cleanup expired notifications after a certain amount of time (job executed once at 00:00AM). <=0 for no cleanup'
+            options:
+                negative_label: 'No cleanup'
+            default_value: 86400

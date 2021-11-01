@@ -1,3 +1,5 @@
 cleanup_interval: 60
 record_ttl: 172800
 trigger_on_startup: true
+cleanup_snooze: 86400
+cleanup_notification: 86400

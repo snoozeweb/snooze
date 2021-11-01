@@ -46,6 +46,8 @@ fields:
         sortable: false
         tdClass: ['align-middle', 'text-center']
         thClass: 'text-center'
+orderby: time_constraints
+isascending: true
 form:
     enabled:
         display_name: State

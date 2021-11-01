@@ -360,7 +360,8 @@ export default {
     modal_title_delete: {type: String, default: 'Delete this item'},
   },
   mounted () {
-    get_data('settings/?c='+encodeURIComponent(`web/${this.endpoint}`), null, {}, this.load_table)
+    this.settings = JSON.parse(localStorage.getItem(this.endpoint+'_json') || '{}')
+    get_data('settings/?c='+encodeURIComponent(`web/${this.endpoint}`)+'&checksum='+(this.settings.checksum || ""), null, {}, this.load_table)
   },
   data () {
     return {
@@ -390,12 +391,17 @@ export default {
       adding_data: {},
       selected_data: {},
       selected: [],
+      settings: {},
       endpoint: this.endpoint_prop,
       tabs: this.tabs_prop,
       form: this.form_prop,
+      default_fields: this.fields_prop,
       fields: this.fields_prop,
+      default_hidden_fields: this.hidden_fields_prop,
       hidden_fields: this.hidden_fields_prop,
+      default_orderby: this.order_by,
       orderby: this.order_by,
+      default_isascending: this.is_ascending,
       isascending: this.is_ascending,
       add_m: this.add_mode,
       edit_m: this.edit_mode,
@@ -412,12 +418,22 @@ export default {
   methods: {
     load_table(response) {
       if (response.data) {
-        var data = response.data.data[0]
+        if (response.data.count > 0) {
+          this.settings = response.data
+          localStorage.setItem(this.endpoint+'_json', JSON.stringify(response.data))
+        }
+        var data = this.settings.data[0]
         this.tabs = dig(data, 'tabs') || this.tabs
         this.form = dig(data, 'form')
-        this.fields = dig(data, 'fields')
-        this.hidden_fields = dig(data, 'hidden_fields')
         this.endpoint = dig(data, 'endpoint') || this.endpoint
+        this.orderby = dig(data, 'orderby') || this.orderby
+        this.default_orderby = this.orderby
+        this.fields = dig(data, 'fields')
+        this.default_fields = this.fields
+        this.hidden_fields = dig(data, 'hidden_fields') || []
+        this.default_hidden_fields = this.hidden_fields
+        this.isascending = dig(data, 'isascending') || false
+        this.default_isascending = this.isascending
         this.filter = this.tabs[0].filter
         this.reload()
         this.get_now()
@@ -617,6 +633,26 @@ export default {
     changeTab(tab, refresh = true) {
       this.tab_index = this.tabs.indexOf(tab)
       this.filter = tab.filter
+      if (tab.fields) {
+        this.fields = tab.fields
+      } else {
+        this.fields = this.default_fields
+      }
+      if (tab.orderby) {
+        this.orderby = tab.orderby
+      } else {
+        this.orderby = this.default_orderby
+      }
+      if (tab.hidden_fields) {
+        this.hidden_fields = tab.hidden_fields
+      } else {
+        this.hidden_fields = this.default_hidden_fields
+      }
+      if (tab.isascending) {
+        this.isascending = tab.isascending
+      } else {
+        this.isascending = this.default_isascending
+      }
       if (tab.handler) {
         tab.handler(tab)
       }
