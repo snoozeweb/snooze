@@ -183,9 +183,9 @@ class BackendDB(Database):
 
     def inc(self, collection, field, labels={}):
         now = int((datetime.now().timestamp() // 3600) * 3600)
+        mutex.acquire()
         table = self.db.table(collection)
         query = Query()
-        mutex.acquire()
         keys = []
         added = []
         updated = []
@@ -215,15 +215,17 @@ class BackendDB(Database):
         log.debug("Update collection '{}' with fields '{}' based on the following search".format(collection, fields))
         total = 0
         mutex.acquire()
-        if collection in self.db.tables():
-            results = self.search(collection, condition)
-            total = results['count']
-            for record in results['data']:
-                for field, val in fields.items():
-                    record[field] = val
-            if total > 0:
-                self.write(collection, results['data'])
+        if collection not in self.db.tables():
+            mutex.release()
+            return 0
         mutex.release()
+        results = self.search(collection, condition)
+        total = results['count']
+        for record in results['data']:
+            for field, val in fields.items():
+                record[field] = val
+        if total > 0:
+            self.write(collection, results['data'])
         log.debug("Updated {} fields".format(total))
         return total
 

@@ -33,6 +33,7 @@ tabs:
     -
         title: 'All'
         filter: []
+orderby: timestamp
 fields:
     -
         key: timestamp

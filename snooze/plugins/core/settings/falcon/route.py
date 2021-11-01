@@ -9,6 +9,7 @@
 import os
 import json
 import falcon
+import hashlib
 from bson.json_util import loads, dumps
 from bson.errors import BSONError
 from json import JSONDecodeError
@@ -23,12 +24,17 @@ class SettingsRoute(BasicRoute):
     @authorize
     def on_get(self, req, resp, conf=''):
         c = req.params.get('c') or conf
+        checksum = req.params.get('checksum')
         log.debug("Loading config file {}".format(c))
         result_dict = config(c)
         resp.content_type = falcon.MEDIA_JSON
         if result_dict:
             result_dict = {k:v for k,v in result_dict.items() if 'password' not in k}
-            result = dumps({'data': [result_dict], 'count': 1})
+            dict_checksum = hashlib.md5(repr([result_dict]).encode('utf-8')).hexdigest()
+            if checksum != dict_checksum:
+                result = dumps({'data': [result_dict], 'count': 1, 'checksum': dict_checksum})
+            else:
+                result = dumps({'count': 0})
             resp.body = result
             if 'error' in result_dict.keys():
                 resp.status = falcon.HTTP_503

@@ -2,9 +2,7 @@
   <div class="animated fadeIn">
     <List
       endpoint_prop="snooze"
-      order_by="time_constraints"
       :tabs_prop="tabs"
-      is_ascending
       @row-selected="select"
       ref="table"
       edit_mode

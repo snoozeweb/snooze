@@ -2,8 +2,6 @@
   <div class="animated fadeIn">
     <List
       endpoint_prop="rule"
-      order_by="name"
-      is_ascending
       ref="list"
       edit_mode
       delete_mode

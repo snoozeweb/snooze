@@ -1,3 +1,15 @@
+## v1.0.17
+
+### New features
+* WebUI Settings: configure severity levels that automatically close alerts
+* Can now configure WebUI tables directly from config files
+* Housekeeper: Also cleanup expired notifications
+### Bug fixes
+* JWT Tokens were not functioning properly
+* Retro actively apply Snooze filters were throwing error messages if no change was made
+* CONTAINS and IN conditions were not working properly if an alert value was empty
+* Stats dashboard stored in TinyDB had chances to lock the DB when being displayed
+
 ## v1.0.16
 
 ### Bug fixes

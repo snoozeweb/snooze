@@ -2,8 +2,6 @@
   <div class="animated fadeIn">
     <List
       endpoint_prop="notification"
-      order_by="name"
-      is_ascending
       :tabs_prop="tabs"
       edit_mode
       delete_mode

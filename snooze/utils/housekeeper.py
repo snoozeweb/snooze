@@ -24,6 +24,7 @@ class Housekeeper():
         self.thread = None
         self.interval = None
         self.snooze_expired = None
+        self.notification_expired = None
         self.reload()
         self.thread = HousekeeperThread(self)
         self.thread.start()
@@ -32,6 +33,7 @@ class Housekeeper():
         self.conf = config('housekeeping')
         self.interval = self.conf.get('cleanup_interval', 60)
         self.snooze_expired = self.conf.get('cleanup_snooze', 86400)
+        self.notification_expired = self.conf.get('cleanup_notification', 86400)
         log.debug("Reloading Housekeeper with conf {}".format(self.conf))
 
 class HousekeeperThread(threading.Thread):
@@ -54,17 +56,18 @@ class HousekeeperThread(threading.Thread):
             day = datetime.datetime.now().day
             if day != last_day:
                 last_day = day
-                self.cleanup_expired_snooze()
+                self.cleanup_expired('snooze', self.housekeeper.snooze_expired)
+                self.cleanup_expired('notification', self.housekeeper.notification_expired)
             time.sleep(1)
 
-    def cleanup_expired_snooze(self):
-        if self.housekeeper.snooze_expired > 0:
-            log.debug("Starting to cleanup expired snooze filters")
+    def cleanup_expired(self, collection, cleanup_delay):
+        if cleanup_delay > 0:
+            log.debug("Starting to cleanup expired {}".format(collection))
             now = datetime.datetime.now().astimezone()
             date = now.astimezone().strftime("%Y-%m-%dT%H:%M")
             hour = now.astimezone().strftime("%H:%M")
             weekday = now.day
-            date_delta = (now - datetime.timedelta(seconds=self.housekeeper.snooze_expired)).astimezone().strftime("%Y-%m-%dT%H:%M")
+            date_delta = (now - datetime.timedelta(seconds=cleanup_delay)).astimezone().strftime("%Y-%m-%dT%H:%M")
             match = ['AND',
                 ['OR', ['NOT', ['EXISTS', 'time_constraints.weekdays']], ['IN', weekday, 'time_constraints.weekdays.weekdays']],
                 ['AND',
@@ -79,8 +82,8 @@ class HousekeeperThread(threading.Thread):
                 ]
             ]
             expired_query = ['AND', ['NOT', match], ['AND', ['EXISTS', 'time_constraints.datetime'], ['NOT', ['>=', 'time_constraints.datetime.until', date_delta]]]]
-            expired_results = self.housekeeper.core.db.search('snooze', expired_query)
+            expired_results = self.housekeeper.core.db.search(collection, expired_query)
             if expired_results['count'] > 0:
-                log.debug("List of expired snooze filters to cleanup: {}".format(expired_results))
-                deleted_results = self.housekeeper.core.db.delete('snooze', expired_query)
-                log.debug("Deleted {} snooze filters".format(deleted_results['count']))
+                log.debug("List of expired {} to cleanup: {}".format(collection, expired_results))
+                deleted_results = self.housekeeper.core.db.delete(collection, expired_query)
+                log.debug("Deleted {} {}".format(deleted_results['count'], collection))

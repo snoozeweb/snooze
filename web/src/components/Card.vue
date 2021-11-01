@@ -64,7 +64,8 @@ export default {
   },
   mounted () {
     this.save_enable()
-    get_data(`settings/?c=web/${this.endpoint}`, null, {}, this.load_table)
+    this.settings = JSON.parse(localStorage.getItem(this.endpoint+'_json') || '{}')
+    get_data('settings/?c='+encodeURIComponent(`web/${this.endpoint}`)+'&checksum='+(this.settings.checksum || ""), null, {}, this.load_table)
   },
   data () {
     return {
@@ -77,7 +78,8 @@ export default {
 			current_tab: {},
       save_disabled: null,
       save_variant: null,
-      submitForm: this.onSubmit || this.submit
+      submitForm: this.onSubmit || this.submit,
+      settings: {},
     }
   },
   computed: {
@@ -85,7 +87,11 @@ export default {
   methods: {
     load_table(response) {
       if (response.data) {
-        var data = response.data.data[0]
+        if (response.data.count > 0) {
+          this.settings = response.data
+          localStorage.setItem(this.endpoint+'_json', JSON.stringify(response.data))
+        }
+        var data = this.settings.data[0]
         this.form = dig(data, 'form')
         this.tabs = dig(data, 'tabs')
         this.endpoint = dig(data, 'endpoint') || this.endpoint
