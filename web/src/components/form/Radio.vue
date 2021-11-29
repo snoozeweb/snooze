@@ -1,8 +1,21 @@
 <template>
   <div>
-    <b-form-group v-slot="{ ariaDescribedby }" class="m-0">
-      <b-form-radio-group :aria-describedby="ariaDescribedby" v-model="datavalue" :options="options" button-variant="outline-primary" buttons />
-    </b-form-group>
+    <CForm class="m-0">
+      <CButtonGroup role="group">
+        <CFormCheck
+          type="radio"
+          autocomplete="off"
+          :name="id"
+          :button="{color: 'primary', variant: 'outline'}"
+          v-for="(opts, i) in options"
+          :id="id + i"
+          @click="opts.value != undefined ? (datavalue = opts.value) : (datavalue = opts)"
+          :checked="opts.value != undefined ? (opts.value == datavalue) : (opts == datavalue)"
+          :value="opts.value != undefined ? opts.value : opts"
+          :label="opts.text != undefined ? opts.text : opts"
+        />
+      </CButtonGroup>
+    </CForm>
   </div>
 </template>
 
@@ -13,8 +26,12 @@ import Base from './Base.vue'
 // Create a selector form
 export default {
   extends: Base,
+  emits: ['update:modelValue'],
   props: {
-    value: {
+    id: {
+      type: String,
+    },
+    modelValue: {
       type: [Object, String, Number, Boolean],
     },
     // Object containing the `{value: display_name}` of the
@@ -28,13 +45,13 @@ export default {
   },
   data() {
     return {
-      datavalue: [undefined, '', [], {}].includes(this.value) ? (this.default_value == undefined ? '' : this.default_value) : this.value
+      datavalue: [undefined, '', [], {}].includes(this.modelValue) ? (this.default_value == undefined ? '' : this.default_value) : this.modelValue
     }
   },
   watch: {
     datavalue: {
       handler: function () {
-        this.$emit('input', this.datavalue)
+        this.$emit('update:modelValue', this.datavalue)
       },
       immediate: true
     },

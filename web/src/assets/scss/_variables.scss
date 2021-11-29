@@ -1,14 +1,41 @@
 // Variable overrides
+$font-size-base: .875rem;
+$font-size-small: .765rem;
+$sidebar-nav-link-active-color: rgba(255, 255, 255, 1);
+$sidebar-nav-link-color: rgba(255, 255, 255, 0.75);
 
-$theme-colors: (
-  primary: #304ffe,
-  secondary: #c4cfd4,
-  success: #00c853,
-  info: #2196f3,
-  warning: #ffc107,
-  danger: #f44336,
-  light: #fafafa,
-  dark: #212121,
-  tertiary: #aa00ff,
-  quaternary: #ff6d00
+$primary: #304ffe;
+$secondary: #c4cfd4;
+$success: #00c853;
+$info: #2196f3;
+$warning: #ffc107;
+$danger: #f44336;
+$light: #fafafa;
+$dark: #212121;
+$tertiary: #aa00ff;
+$quaternary: #ff6d00;
+$muted: #768192;
+$card-cap-bg: #f4f5f6;
+$input-group-addon-bg: #f4f5f6;
+$input-group-addon-border-color: #d8dbe0;
+$input-group-addon-color: #768192;
+$input-border-color: #d8dbe0;
+$toast-header-background-color: rgba(255, 255, 255, 0.05);
+$toast-header-border-color: rgba(0, 0, 0, 0.05);
+$badge-color: rgba(255, 255, 255, 0.95);
+$btn-color: rgba(255, 255, 255, 0.95);
+$nav-pills-link-active-color: rgba(255, 255, 255, 0.95);
+
+$colors: (
+  primary: $primary,
+  secondary: $secondary,
+  success: $success,
+  info: $info,
+  warning: $warning,
+  danger: $danger,
+  light: $light,
+  dark: $dark,
+  tertiary: $tertiary,
+  muted: $muted,
+  quaternary: $quaternary
 );

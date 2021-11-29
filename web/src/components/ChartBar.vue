@@ -1,17 +1,17 @@
 <template>
-  <CChartBar
-    :datasets="data.sets"
-    :labels="data.labels"
+  <SChart
+    type="bar"
+    :data="data"
     :options="default_options"
   />
 </template>
 
 <script>
-import { CChartBar } from '@coreui/vue-chartjs'
+import SChart from '@/components/SChart.vue'
 
 export default {
   name: 'ChartBar',
-  components: { CChartBar },
+  components: { SChart },
   props: {
     datasets: {
       type: Array,
@@ -57,16 +57,18 @@ export default {
           data: series_array.map(x => x[1][i] || 0)
         })
       })
-      return {sets: sets, labels: series_array.map(x => x[0])}
+      return {datasets: sets, labels: series_array.map(x => x[0])}
     },
     default_options () {
       return {
         maintainAspectRatio: false,
-        legend: {
-          display: this.datasets.length > 1
+        plugins: {
+          legend: {
+            display: this.datasets.length > 1
+          },
         },
         scales: {
-          yAxes: [{
+          y: {
             ticks: {
               beginAtZero: true,
               precision: 0,
@@ -74,7 +76,7 @@ export default {
             gridLines: {
               display: true
             }
-          }]
+          }
         },
       }
     }

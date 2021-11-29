@@ -1,30 +1,26 @@
 <template>
   <div>
-  <b-form @submit.prevent="checkForm" novalidate>
-    <b-card v-if="current_tab" no-body ref="main">
-      <b-card-header header-tag="nav" class="p-2">
-        <b-nav card-header pills class='m-0'>
-
-          <b-nav-item
+  <CForm @submit.prevent="checkForm" novalidate>
+    <CCard v-if="current_tab" no-body ref="main">
+      <CCardHeader header-tag="nav" class="p-2">
+        <CNav variant="pills" role="tablist" card v-model="tab_index" class='m-0'>
+          <CNavItem
             v-for="tab in tabs"
             v-bind:key="tab.key"
-            link-classes="fix-nav px-3"
-            :active="tab.key == current_tab.key"
             v-on:click="changeTab(tab)"
           >
-            <span>{{ tab.name }}</span>
-          </b-nav-item>
-
-        </b-nav>
-      </b-card-header>
-      <b-card-body class="p-2">
+            <CNavLink href="javascript:void(0);" :active="tab.key == current_tab.key">{{ tab.name }}</CNavLink>
+          </CNavItem>
+        </CNav>
+      </CCardHeader>
+      <CCardBody class="p-2">
         <Form v-model="form_data" :metadata="form[current_tab.key]" :key="form_key" ref='form'/>
-      </b-card-body>
-      <b-card-footer class="p-2">
-        <b-button type="submit" :variant="save_variant" :disabled="save_disabled">Save {{ current_tab.name }}</b-button>
-      </b-card-footer>
-    </b-card>
-  </b-form>
+      </CCardBody>
+      <CCardFooter class="p-2">
+        <CButton type="submit" :color="save_variant" :disabled="save_disabled">Save {{ current_tab.name }}</CButton>
+      </CCardFooter>
+    </CCard>
+  </CForm>
   </div>
 </template>
 
@@ -80,6 +76,7 @@ export default {
       save_variant: null,
       submitForm: this.onSubmit || this.submit,
       settings: {},
+      loaded: false,
     }
   },
   computed: {
@@ -110,11 +107,13 @@ export default {
           tab = find_tab
         }
       }
-      this.changeTab(tab, false)
+      if (tab) {
+        this.changeTab(tab, false)
+      }
     },
     checkForm() {
       if (this.$el.getElementsByClassName('form-control is-invalid').length > 0) {
-        this.makeToast('Form is invalid', 'danger', 'Error')
+        this.$root.text_alert('Form is invalid', 'danger')
         return
       }
       this.submitForm(this.form_data)
@@ -123,14 +122,13 @@ export default {
       API
         .get(`/${this.current_endpoint}`)
         .then(response => {
-          console.log(response)
           if (response.data) {
             this.form_data = response.data.data[0] || {}
           } else {
             if(response.response.data.description) {
-              this.makeToast(response.response.data.description, 'danger', 'An error occurred')
+              this.$root.text_alert(response.response.data.description, 'danger')
             } else {
-              this.makeToast('Could not display the content', 'danger', 'An error occurred')
+              this.$root.text_alert('Could not display the content', 'danger')
             }
           }
           this.forceRerender()
@@ -168,43 +166,25 @@ export default {
             if (callback) {
               callback(response.data)
             }
-            this.makeToast(`Saved ${this.current_tab.name}`, 'success', 'Save successful')
+            this.$root.text_alert(`Saved ${this.current_tab.name}`, 'success', 'Save successful')
           } else {
             if(response.response.data.description) {
-              this.makeToast(response.response.data.description, 'danger', 'Save error')
+              this.$root.text_alert(response.response.data.description, 'danger', 'Save error')
             } else {
-            this.makeToast(`Failed to save ${this.current_tab.name}`, 'danger', 'Save error')
+            this.$root.text_alert(`Failed to save ${this.current_tab.name}`, 'danger', 'Save error')
             }
           }
         })
         .catch(error => console.log(error))
     },
-    makeToast(text, variant = null, title = null) {
-      if (title == null) {
-        switch (variant) {
-          case 'success':
-            title = 'Success!'
-            break
-          case 'danger':
-            title = 'Error!'
-            break
-          default:
-            title = ''
-        }
-      }
-      this.$bvToast.toast(text, {
-        title: title,
-        variant: variant,
-        solid: true,
-      })
-    },
     forceRerender() {
-      this.form_key += 1;
+      this.form_key += 1
+      this.loaded = true
     },
     add_history() {
       const query = { tab: this.current_tab.key }
       if (this.$route.query.tab != query.tab) {
-        this.$router.push({ path: this.$router.currentRoute.path, query: query })
+        this.$router.push({ path: this.$router.currentRoute.value.path, query: query })
       }
     },
   },
@@ -213,7 +193,9 @@ export default {
       this.$emit('input', this.form_data)
     },
     $route() {
-      this.$nextTick(this.reload);
+      if (this.loaded && this.$route.path == `/${this.endpoint_prop}`) {
+        this.$nextTick(this.reload);
+      }
     }
   },
 }

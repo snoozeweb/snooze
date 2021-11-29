@@ -6,10 +6,10 @@
       ref="list"
     >
       <template #head_buttons>
-        <b-button variant="success" @click="modal_add()">New</b-button>
+        <CButton color="success" @click="modal_add()">New</CButton>
       </template>
-      <template #button="row">
-        <b-button size="sm" @click="modal_edit(row.item)" variant="primary" v-b-tooltip.hover title="Edit"><i class="la la-pencil-alt la-lg"></i></b-button>
+      <template #custom_buttons="row">
+        <CButton size="sm" @click="modal_edit(row.item)" color="primary" v-c-tooltip="{content: 'Edit'}"><i class="la la-pencil-alt la-lg"></i></CButton>
       </template>
     </List>
   </div>

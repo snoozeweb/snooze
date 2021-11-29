@@ -1,11 +1,11 @@
 <template>
-  <CFooter :fixed="false">
+  <CFooter>
     <div>
       <a href="https://snoozeweb.net" target="_blank">Snooze Web</a>
-      <span class="ml-1">{{new Date()}}</span>
+      <span> - {{new Date()}}</span>
     </div>
-    <div class="mfs-auto">
-      <span class="mr-1" target="_blank">Contribute on</span>
+    <div class="ms-auto">
+      <span target="_blank">Contribute on </span>
       <a href="https://github.com/snoozeweb/snooze">GitHub</a>
     </div>
   </CFooter>
@@ -13,6 +13,6 @@
 
 <script>
 export default {
-  name: 'TheFooter'
+  name: 'AppFooter'
 }
 </script>

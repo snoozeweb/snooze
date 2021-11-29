@@ -1,20 +1,29 @@
 <template>
   <div>
-    <b-card no-body header="Infos" header-class='text-center font-weight-bold'>
-    <b-card-body class="p-0">
-      <div>
-      <b-table
-        :items="infos"
-        :fields="fields"
-        thead-class="d-none"
-        class='m-0'
-        borderless
-        small
-      >
-      </b-table>
-      </div>
-    </b-card-body>
-    </b-card>
+    <CCard>
+      <CCardHeader class='text-center' style='font-weight:bold'>
+        Infos
+      </CCardHeader>
+      <CCardBody class="p-0">
+        <div>
+          <CTable
+            :items="infos"
+            :fields="fields"
+            thead-class="d-none"
+            class='m-0'
+            borderless
+            small
+            striped
+          >
+            <CTableBody>
+              <CTableRow v-for="(item, i) in infos" :key="i">
+                <CTableDataCell scope="row" v-for="(field, k) in fields" :key="`${field.key}_${k}`">{{ item[field.key] || '' }}</CTableDataCell>
+              </CTableRow>
+            </CTableBody>
+          </CTable>
+        </div>
+      </CCardBody>
+    </CCard>
   </div>
 </template>
 

@@ -12,7 +12,7 @@
 
 <script>
 import Base from './Base.vue'
-import VSwatches from 'vue-swatches'
+import VSwatches from 'vue3-swatches'
 import { gen_palette } from '@/utils/colors'
 
 export default {
@@ -20,10 +20,11 @@ export default {
   components: {
     VSwatches,
   },
-  props: ['value'],
+  emits: ['update:modelValue'],
+  props: ['modelValue'],
   data() {
     return {
-      datavalue: this.value,
+      datavalue: this.modelValue,
       swatches: [],
     }
   },
@@ -33,7 +34,7 @@ export default {
   watch: {
     datavalue: {
       handler: function () {
-        this.$emit('input', this.datavalue)
+        this.$emit('update:modelValue', this.datavalue)
       },
       immediate: true
     },

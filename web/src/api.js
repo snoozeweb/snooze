@@ -1,5 +1,5 @@
 import axios from 'axios'
-import router from './router'
+import router from '@/router'
 import jwt_decode from "jwt-decode"
 
 axios.defaults.headers.post['Content-type'] = 'application/json'
@@ -35,10 +35,9 @@ API.interceptors.request.use(
 API.interceptors.response.use(
   function (resp) { return resp },
   function (error) {
-    if (router.currentRoute.path != '/login') {
+    if (router.currentRoute.value.path != '/login') {
       if (error.response && error.response.status === 401) {
-        var return_to = encodeURIComponent(router.currentRoute.fullPath)
-        console.log(return_to)
+        var return_to = encodeURIComponent(router.currentRoute.value.fullPath)
         router.push('/login?return_to='+return_to)
       } else {
         return error

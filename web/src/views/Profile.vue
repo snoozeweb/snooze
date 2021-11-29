@@ -13,7 +13,7 @@
 <script>
 
 import Card from '@/components/Card.vue'
-import nav from '@/containers/_nav'
+import nav from '@/_nav'
 
 export default {
   components: {
@@ -37,8 +37,8 @@ export default {
         }
       }
       this.$refs.card.form.preferences.default_page.options = []
-      nav[0]._children.forEach(n => {
-        if (n._name == "CSidebarNavItem") {
+      nav.forEach(n => {
+        if (n.component == "CNavItem") {
           this.$refs.card.form.preferences.default_page.options.push({text: n.name, value: n.to})
         }
       })

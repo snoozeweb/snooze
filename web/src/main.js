@@ -1,32 +1,23 @@
-import 'core-js/stable'
-import Vue from 'vue'
-import BootstrapVue from 'bootstrap-vue'
+import { createApp } from 'vue'
 import App from './App'
 import router from './router'
 import CoreuiVue from '@coreui/vue'
 //import { iconsSet as icons } from './assets/icons/icons.js'
 import store from './store'
-import velocityPlugin from 'velocity-vue'
-import contentmenu from 'v-contextmenu'
+import contextmenu from 'v-contextmenu'
+import VueSafeHTML from 'vue-safe-html'
+import 'chartjs-adapter-moment'
+import mitt from 'mitt'
+const emitter = mitt()
 
-import VueSecureHTML from 'vue-html-secure'
+export const app = createApp(App)
+app.config.warnHandler = () => null
+app.config.performance = true
+app.config.globalProperties.emitter = emitter
+app.use(store)
+app.use(router)
+app.use(CoreuiVue)
+app.use(VueSafeHTML)
+app.use(contextmenu)
 
-
-Vue.config.performance = true
-Vue.use(CoreuiVue)
-Vue.use(BootstrapVue)
-Vue.use(velocityPlugin)
-Vue.use(VueSecureHTML)
-Vue.use(contentmenu)
-Vue.prototype.$log = console.log.bind(console)
-
-export const app = new Vue({
-  el: '#app',
-  router,
-  store,
-//  icons,
-  template: '<App/>',
-  components: {
-    App
-  }
-})
+export const vm = app.mount('#app')

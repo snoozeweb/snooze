@@ -1,11 +1,11 @@
 <template>
   <div>
-    <b-form-input v-model="datavalue" :disabled="disabled" type="password" :state="isIdentical" ref="pwd"/>
-    <div class="pt-1"><b-form-input v-model="datavalue_repeat" :disabled="disabled" type="password" :state="isIdentical" aria-describedby="feedback" ref="pwd_confirm"/></div>
-    <b-form-invalid-feedback id="feedback" :state="isIdentical">
+    <CFormInput v-model="datavalue" :disabled="disabled" type="password" :invalid="checkFieldInvalid" :valid="checkFieldValid" ref="pwd"/>
+    <div class="pt-1"><CFormInput v-model="datavalue_repeat" :disabled="disabled" type="password" :invalid="checkFieldInvalid" :valid="checkFieldValid" ref="pwd_confirm"/></div>
+    <CFormFeedback invalid>
       <label v-if="datavalue.length == 0 && datavalue_repeat.length == 0">Fields are required</label>
       <label v-else>Passwords are not identical</label>
-    </b-form-invalid-feedback>
+    </CFormFeedback>
   </div>
 </template>
 
@@ -17,43 +17,42 @@ import Base from './Base.vue'
 export default {
   extends: Base,
   props: {
-    'value': {type: String, default: () => ''},
+    'modelValue': {type: String, default: () => ''},
     'options': {type: Array, default: () => []},
     'disabled': {type: Boolean, default: () => false},
     'required': {type: Boolean, default: () => false},
   },
+  emits: ['update:modelValue'],
   data() {
     return {
-      datavalue: this.value || '',
+      datavalue: this.modelValue || '',
       datavalue_repeat: '',
     }
   },
   watch: {
     datavalue: {
       handler: function () {
-        this.$emit('input', this.datavalue)
+        this.$emit('update:modelValue', this.datavalue)
       },
       immediate: true
     },
   },
-  method () {
-    if (this.datavalue) {
-      this.$refs['pwd'].value = '***'
-      this.$refs['pwd_confirm'].value = '***'
+  methods: {
+    checkField(is_valid) {
+      if (this.datavalue.length == 0 && this.datavalue_repeat.length == 0) {
+        return !is_valid && !this.required
+      } else {
+        return this.datavalue == this.datavalue_repeat
+      }
     }
   },
   computed: {
-    isIdentical() {
-      if (this.datavalue.length == 0 && this.datavalue_repeat.length == 0) {
-        if (this.required) {
-          return false
-        } else {
-          return null
-        }
-      } else {
-       return this.datavalue == this.datavalue_repeat
-      }
-    }
+    checkFieldValid() {
+      return this.checkField(true)
+    },
+    checkFieldInvalid() {
+      return !this.checkField(false)
+    },
   },
 }
 

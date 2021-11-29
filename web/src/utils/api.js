@@ -1,7 +1,9 @@
 import { API } from '@/api'
+import { vm } from '@/main'
 import moment from 'moment'
-
-import { join_queries, object_to_query, text_alert } from '@/utils/query'
+import router from '@/router'
+import jwt_decode from "jwt-decode"
+import { join_queries, object_to_query } from '@/utils/query'
 
 export function get_data(endpoint, query = null, options = {}, callback = null, callback_arguments = null) {
   var query_str = null
@@ -38,7 +40,7 @@ export function submit(endpoint, data) {
     .post(`/${endpoint}`, [filtered_object])
     .then(response => {
       console.log(response)
-      text_alert(`Updated object ${response.data["uid"]}`)
+      vm.text_alert(`Updated object ${response.data["uid"]}`)
     })
     .catch(error => {
       console.log(error)
@@ -55,12 +57,12 @@ export function preprocess_data(data) {
   return filtered_object
 }
 
-export function show_feedback(response, title = null, position = 'b-toaster-top-right') {
+export function show_feedback(response, title = null) {
   if(response.data) {
     if (title) {
-      text_alert(`Succeeded to ${title} ${response.data.count || ((response.data.data.replaced || []).length + (response.data.data.updated || []).length + (response.data.data.added || []).length)} object(s)`, title + ' success', 'success', position)
+      vm.text_alert(`Succeeded to ${title} ${response.data.count || ((response.data.data.replaced || []).length + (response.data.data.updated || []).length + (response.data.data.added || []).length)} object(s)`, 'success', title + ' success')
     } else {
-      text_alert('Operation successful', 'Success', 'success', position)
+      vm.text_alert('Operation successful', 'success')
     }
   } else {
     var message = ''
@@ -74,9 +76,9 @@ export function show_feedback(response, title = null, position = 'b-toaster-top-
       }
     }
     if (title) {
-      text_alert(message, title + ' failure', 'danger', position)
+      vm.text_alert(message, 'danger', title + ' failure')
     } else {
-      text_alert(message, 'Failure', 'danger', position)
+      vm.text_alert(message, 'danger')
     }
   }
 }
@@ -329,5 +331,39 @@ export function get_alert_tooltip(type) {
       return 'Re-open'
     default:
       return 'Comment'
+  }
+}
+
+export const stopEvent = (
+  event,
+  { preventDefault = true, propagation = true, immediatePropagation = false } = {}
+) => {
+  if (preventDefault) {
+    event.preventDefault()
+  }
+  if (propagation) {
+    event.stopPropagation()
+  }
+  if (immediatePropagation) {
+    event.stopImmediatePropagation()
+  }
+}
+
+export function capitalizeFirstLetter(string) {
+  return string.charAt(0).toUpperCase() + string.slice(1)
+}
+
+export function safe_jwt_decode(token, redirect = true) {
+  var decoded_token = ''
+  try {
+    decoded_token = jwt_decode(token)
+    return decoded_token
+  } catch (error) {
+    if (redirect) {
+      var return_to = encodeURIComponent(router.currentRoute.value.fullPath)
+      router.push('/login?return_to='+return_to)
+    } else {
+      return ''
+    }
   }
 }

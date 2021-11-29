@@ -1,11 +1,22 @@
 // If you want to override variables do it here
 @import "variables";
 
+$enable-ltr: true;
+$enable-rtl: true;
+
 // Import styles
 @import "~@coreui/coreui/scss/coreui";
+//@import "~@coreui/chartjs/scss/tooltips";
 
 // If you want to add something do it here
 @import "custom";
+
+.wrapper {
+  width: 100%;
+  @include ltr-rtl("padding-left", var(--cui-sidebar-occupy-start, 0));
+  will-change: auto;
+  @include transition(padding .15s);
+}
 
 .card-header:not(.content-center) > .c-icon:first-child {
   margin-right: 0.1rem;

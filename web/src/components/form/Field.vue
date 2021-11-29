@@ -1,25 +1,26 @@
 <template>
 <div>
-  <b-form-tags
-    input-id="tags-state-event"
+  <SFormTags
     v-model="datavalue"
     placeholder="Enter fields separated by space"
-    separator=" "
-    @tag-state="onTagState"
-    remove-on-delete
-  ></b-form-tags>
+  ></SFormTags>
 </div>
 </template>
 
 <script>
 
 import Base from './Base.vue'
+import SFormTags from '@/components/SFormTags.vue'
 
 export default {
   extends: Base,
   name: 'Condition',
+  components: {
+    SFormTags,
+  },
+  emits: ['update:modelValue'],
   props: {
-    value: {
+    modelValue: {
       type: Array,
     },
     options: {
@@ -31,23 +32,16 @@ export default {
   },
   data () {
     return {
-      datavalue: [undefined, '', [], {}].includes(this.value) ? (this.default_value == undefined ? [] : this.default_value) : this.value,
+      datavalue: [undefined, '', [], {}].includes(this.modelValue) ? (this.default_value == undefined ? [] : this.default_value) : this.modelValue,
       validTags: [],
       invalidTags: [],
       duplicateTags: [],
     }
   },
-  methods: {
-    onTagState(valid, invalid, duplicate) {
-      this.validTags = valid
-      this.invalidTags = invalid
-      this.duplicateTags = duplicate
-    },
-  },
   watch: {
     datavalue: {
       handler: function () {
-        this.$emit('input', this.datavalue)
+        this.$emit('update:modelValue', this.datavalue)
       },
       immediate: true
     },

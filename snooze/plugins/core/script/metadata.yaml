@@ -15,11 +15,6 @@ action_form:
     description: 'List of arguments to provide to the script'
   json:
     display_name: Send to Stdin
-    component: Radio
-    options:
-      - text: Yes
-        value: true
-      - text: No
-        value: false
+    component: Switch
     default_value: false
     description: 'Send the record as JSON to the script Stdin'

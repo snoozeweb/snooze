@@ -1,19 +1,20 @@
 <template>
-  <CChartLine
-    :datasets="datasets"
+  <SChart
+    type="line"
+    :data="{ datasets: datasets, labels: [] }"
     :options="options || defaultOptions"
-    :labels="[]"
+    :customTooltips="false"
     ref=chart
   />
 </template>
 
 <script>
-import { CChartLine } from '@coreui/vue-chartjs'
+import SChart from '@/components/SChart.vue'
 
 export default {
   name: 'ChartMain',
   components: {
-    CChartLine
+    SChart
   },
   props: {
     datasets: {
@@ -26,43 +27,62 @@ export default {
       type: Array,
     },
   },
-  mounted () {
-    this.$refs.chart.customTooltips.tooltips.intersect = false
-    this.$refs.chart.customTooltips.tooltips.axis = 'x'
-  },
   computed: {
     defaultOptions () {
       return {
         maintainAspectRatio: false,
-        legend: {
-          display: false
+        plugins: {
+          legend: {
+            display: false
+          },
+          tooltip: {
+            intersect: false,
+						callbacks: {
+							labelColor: function(tooltipItem, chartInstance) {
+								return {
+									borderColor: tooltipItem.dataset.borderColor,
+									backgroundColor: tooltipItem.dataset.borderColor,
+									borderWidth: 3,
+									borderRadius: 2,
+								};
+							},
+            },
+          },
         },
         hover: {
           mode: 'index',
           intersect: false,
           axis: 'x',
-          animationDuration: 0,
         },
         scales: {
-          xAxes: [{
-            type: 'time',
-            distribution: 'series',
-            gridLines: {
+          x: {
+            type: 'timeseries',
+            grid: {
               drawOnChartArea: false
             },
             ticks: {
-              precision: 0,
+              source: 'data',
+              major: {
+                enabled: true
+              },
+              font: function(context) {
+                if (context.tick && context.tick.major) {
+                  return {
+                    weight: 'bold',
+                  };
+                }
+              }
             },
-          }],
-          yAxes: [{
+          },
+          y: {
+            beginAtZero: true,
             ticks: {
-              beginAtZero: true,
               precision: 0,
             },
-            gridLines: {
+            grid: {
               display: true
             }
-          }]
+          }
         },
         elements: {
           point: {

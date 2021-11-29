@@ -13,10 +13,10 @@ export default {
   components: {
     APIElement,
   },
-  props: ['value', 'options'],
+  props: ['modelValue', 'options'],
   data() {
     return {
-      datavalue: this.value,
+      datavalue: this.modelValue,
     }
   },
 }

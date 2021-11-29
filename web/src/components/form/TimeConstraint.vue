@@ -1,30 +1,36 @@
 <template>
   <div>
-    <h5 v-if="Object.keys(datavalue).length === 0 && datavalue.constructor === Object"><b-badge variant="primary">Forever</b-badge></h5>
-    <b-form-group class="m-0">
+    <h5 v-if="Object.keys(datavalue).length === 0 && datavalue.constructor === Object"><CBadge color="primary">Forever</CBadge></h5>
+    <CForm class="m-0" @submit.prevent>
       <template v-for="(constraint, ctype) in datavalue">
-        <b-row v-for="(val, k) in constraint" :key="ctype+'_'+k" class="mb-2">
-          <b-col cols="1">
-            <b-button variant="danger" size="lg" v-on:click="remove_component(ctype, k)">X</b-button>
-          </b-col>
-          <b-col cols="11">
+        <CRow v-for="(val, k) in constraint" :key="ctype+'_'+k" class="mb-2 g-0">
+          <CCol xs="1">
+            <CButton color="danger" size="lg" v-on:click="remove_component(ctype, k)" @click.stop.prevent>X</CButton>
+          </CCol>
+          <CCol xs="11" class="m-auto">
             <component
               :is="detect_constraint(ctype)"
               :id="'component_'+ctype+'_'+k"
               v-model="constraint[k]"
             />
-          </b-col>
-        </b-row>
+          </CCol>
+        </CRow>
       </template>
-    </b-form-group>
-    <b-form inline>
-      <b-input-group>
-        <b-form-select v-model="selected" :options="components" value="DateTime"/>
-        <b-input-group-append>
-          <b-button v-on:click="add_component(selected)"><i class="la la-plus la-lg"></i></b-button>
-        </b-input-group-append>
-      </b-input-group>
-    </b-form>
+    </CForm>
+    <CForm inline>
+      <CRow class="g-0">
+        <CCol xs="auto">
+          <CInputGroup>
+            <CFormSelect v-model="selected" class="col-form-label">
+              <option v-for="opts in components" :value="opts.value">{{ opts.text }}</option>
+            </CFormSelect>
+            <CButton color="secondary" v-on:click="add_component(selected)" @click.stop.prevent>
+              <i class="la la-plus la-lg"></i>
+            </CButton>
+          </CInputGroup>
+        </CCol>
+      </CRow>
+    </CForm>
   </div>
 </template>
 
@@ -43,8 +49,9 @@ export default {
     Time,
     Weekdays,
   },
+  emits: ['update:modelValue'],
   props: {
-    value: {type: Object, default: () => {}},
+    modelValue: {type: Object, default: () => {}},
   },
   data() {
     return {
@@ -55,20 +62,20 @@ export default {
         {value: 'time', text: 'Time'},
         {value: 'weekdays', text: 'Weekdays'},
       ],
-      datavalue: this.value || {},
+      datavalue: this.modelValue || {},
     }
   },
   methods: {
     add_component(component_type) {
       if (!(component_type in this.datavalue)) {
-        this.$set(this.datavalue, component_type, [])
+        this.datavalue[component_type] = []
       }
       this.datavalue[component_type].splice(this.datavalue[component_type].length, 1, {})
     },
     remove_component(component_type, component_index) {
       this.datavalue[component_type].splice(component_index, 1)
       if (this.datavalue[component_type].length == 0) {
-        this.$delete(this.datavalue, component_type)
+        delete this.datavalue[component_type]
       }
     },
     detect_constraint(constraint_name) {
@@ -85,7 +92,7 @@ export default {
   },
   watch: {
     datavalue: {
-      handler(v) { this.$emit('input', this.datavalue) },
+      handler(v) { this.$emit('update:modelValue', this.datavalue) },
       deep: true,
       immediate: true
     },

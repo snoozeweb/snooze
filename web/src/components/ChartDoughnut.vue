@@ -1,18 +1,19 @@
 <template>
-  <CChartDoughnut
-    :datasets="data.sets"
-    :labels="data.labels"
+  <SChart
+    type="doughnut"
+    :data="data"
     :options="default_options"
   />
 </template>
 
 <script>
-import { CChartDoughnut } from '@coreui/vue-chartjs'
+import SChart from '@/components/SChart.vue'
 import { gen_palette, hexToRgba } from '@/utils/colors'
+import { ref } from 'vue'
 
 export default {
   name: 'ChartDoughnut',
-  components: { CChartDoughnut },
+  components: { SChart },
   props: {
     datasets: {
       type: Object,
@@ -31,7 +32,7 @@ export default {
         series_array = series_array.sort((a, b) => (a[1] < b[1]) ? 1: -1)
         var palette = gen_palette(series_array.length)
         return {
-          sets: [{
+          datasets: [{
             borderColor: palette,
             backgroundColor: palette.map(x => hexToRgba(x, 75)),
             data: series_array.map(x => x[1]),
@@ -39,9 +40,9 @@ export default {
           labels: series_array.map(x => x[0]),
         }
       } else {
-        return {sets:[], labels: []}
+        return {datasets:[], labels: []}
       }
     },
-  }
+  },
 }
 </script>

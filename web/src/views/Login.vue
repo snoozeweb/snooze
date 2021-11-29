@@ -1,20 +1,36 @@
 <template>
-  <div v-if="show_login" class="app d-flex flex-row align-items-center" style="min-height:100vh">
-    <div class="container pb-5">
-      <b-row class="justify-content-center px-5 pb-5">
-        <h1><img src="img/logo.png" :height="160"></h1>
-      </b-row>
-      <b-row class="justify-content-center">
-        <b-col md="8">
-          <b-card no-body>
-            <b-tabs card pills v-model="tabIndex">
-              <b-tab v-for="backend in this.auth_backends" :key="backend['endpoint']" :title="backend['name']"><b-card-text><basic-auth :endpoint="backend['endpoint']"/></b-card-text></b-tab>
-              <b-tab title="JWT Token"><b-card-text><jwt-token /></b-card-text></b-tab>
-            </b-tabs>
-          </b-card>
-        </b-col>
-      </b-row>
-    </div>
+  <div v-if="show_login" class="app bg-light min-vh-100 d-flex flex-row align-items-center">
+    <CContainer>
+      <CRow class="justify-content-center px-5 pb-5">
+        <img src="img/logo.png" style="max-width: 50%; height: auto;">
+      </CRow>
+      <CRow class="justify-content-center">
+        <CCol md="8">
+          <CCard>
+            <CCardHeader>
+              <CNav variant="pills" role="tablist" card v-model="tabIndex">
+                <CNavItem v-for="(backend, i) in this.auth_backends" :key="backend['endpoint']">
+                  <CNavLink href="javascript:void(0);" :active="tabIndex == i" @click="() => {tabIndex = i}">{{ backend['name'] }}</CNavLink>
+                </CNavItem>
+                <CNavItem title="JWT Token">
+                  <CNavLink href="javascript:void(0);" :active="tabIndex == this.auth_backends.length" @click="() => {tabIndex = this.auth_backends.length}">JWT Token</CNavLink>
+                </CNavItem>
+              </CNav>
+            </CCardHeader>
+            <CCardBody>
+              <CTabContent>
+                <CTabPane role="tabpanel" v-for="(backend, i) in this.auth_backends" :key="i" :visible="tabIndex == i">
+                  <CCardText><basic-auth :endpoint="backend['endpoint']"/></CCardText>
+                </CTabPane>
+                <CTabPane role="tabpanel" :visible="tabIndex == this.auth_backends.length">
+                  <CCardText><jwt-token /></CCardText>
+                </CTabPane>
+              </CTabContent>
+            </CCardBody>
+          </CCard>
+        </CCol>
+      </CRow>
+    </CContainer>
   </div>
 </template>
 
@@ -23,7 +39,6 @@
 import BasicAuth from '@/components/login/BasicAuth.vue'
 import JwtToken from '@/components/login/JwtToken.vue'
 import { API } from '@/api'
-import router from '@/router'
 
 export default {
   name: 'Login',
@@ -54,9 +69,9 @@ export default {
             if (response.data.token !== undefined) {
               localStorage.setItem('snooze-token', response.data.token)
               if (this.$route.query.return_to) {
-                router.push(decodeURIComponent(this.$route.query.return_to))
+                this.$router.push(decodeURIComponent(this.$route.query.return_to))
               } else {
-                router.push('/record')
+                this.$router.push('/record')
               }
             } else {
               this.auth_backends = response.data.data.backends

@@ -1,14 +1,14 @@
 <template>
   <div>
-    <b-form-select v-model="selected" aria-describedby="feedback" :required="required" :state="checkField" @input="selection_changed">
-      <option disabled value="">{{ this.empty_message }}</option>
+    <CFormSelect v-model="selected" :value="selected" :required="required" @change="onChange" :class="{ 'is-invalid': required && !checkField, 'is-valid': required && checkField }">
+      <option disabled value="" :selected="selected == ''">Please select an option</option>
       <option v-for="item in this.items" :key="item[primary]" :value="item[primary]">
         {{ item['name'] }}
       </option>
-    </b-form-select>
-    <b-form-invalid-feedback id="feedback" :state="checkField">
+    </CFormSelect>
+    <CFormFeedback invalid>
       Field is required
-    </b-form-invalid-feedback>
+    </CFormFeedback>
     <Form v-if="selection && selection[form]" v-model="subcontent" :metadata="selection[form]" class="pt-2"/>
   </div>
 </template>
@@ -20,11 +20,12 @@ import Form from '@/components/Form.vue'
 
 export default {
   extends: Base,
+  emits: ['update:modelValue'],
   components: {
     Form
   },
   props: {
-    value: {
+    modelValue: {
       type: [Object, String],
       default: function () {
         return {'selected': '', 'subcontent': {}}
@@ -54,19 +55,18 @@ export default {
   },
   data() {
     return {
-      selected: (this.value['selected'] == undefined) ? this.value : this.value['selected'],
-      subcontent: this.value['subcontent'],
+      selected: (this.modelValue['selected'] == undefined) ? this.modelValue : this.modelValue['selected'],
+      subcontent: this.modelValue['subcontent'],
       items: [],
-      empty_message: "Please select a value",
     }
   },
   watch: {
     selected: {
       handler: function () {
         if (this.subcontent && Object.keys(this.subcontent).length > 0 && this.subcontent.constructor === Object) {
-          this.$emit('input', {'selected': this.selected, 'subcontent': this.subcontent})
+          this.$emit('update:modelValue', {'selected': this.selected, 'subcontent': this.subcontent})
         } else {
-          this.$emit('input', this.selected)
+          this.$emit('update:modelValue', this.selected)
         }
       },
       immediate: true
@@ -74,11 +74,12 @@ export default {
     subcontent: {
       handler: function () {
         if (this.subcontent && Object.keys(this.subcontent).length > 0 && this.subcontent.constructor === Object) {
-          this.$emit('input', {'selected': this.selected, 'subcontent': this.subcontent})
+          this.$emit('update:modelValue', {'selected': this.selected, 'subcontent': this.subcontent})
         } else {
-          this.$emit('input', this.selected)
+          this.$emit('update:modelValue', this.selected)
         }
       },
+      deep: true,
       immediate: true
     },
   },
@@ -87,11 +88,9 @@ export default {
   },
   methods: {
     reload_items() {
-      console.log(`GET /${this.endpoint}`)
       API
         .get(`/${this.endpoint}`)
         .then(response => {
-          console.log(response)
           if (response.data) {
             this.items = response.data.data
             if (this.subkey && this.items[this.subkey]) {
@@ -100,7 +99,7 @@ export default {
           }
         })
     },
-    selection_changed() {
+    onChange() {
       this.subcontent = {}
     }
   },
@@ -109,11 +108,7 @@ export default {
       return this.items.find(opt => opt[this.primary] == this.selected)
     },
     checkField () {
-      if (!this.required) {
-        return null
-      } else {
-        return this.required && this.selected != ''
-      }
+      return this.selected != ''
     }
   },
 }

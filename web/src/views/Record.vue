@@ -3,75 +3,97 @@
     <List
       ref="table"
       endpoint_prop="alert"
-      @row-selected="select"
       :info_excluded_fields="['smtp']"
     >
-      <template #button="row">
-        <b-button variant="primary" class='text-nowrap' @click="modal_show([row.item], 'comment')" size="sm" v-b-tooltip.hover title="Add comment"><i class="las la-comment-dots la-lg"></i> <b-badge v-if="row.item['comment_count']" variant='light' class='position-absolute' style='z-index: 10; top:0!important; right:100%!important; transform:translate(50%,-50%)!important'>{{ row.item['comment_count'] }}</b-badge></b-button>
-        <b-button variant="info" v-if="row.item.ttl >= 0" @click="toggle_ttl([row.item])" size="sm" v-b-tooltip.hover title="Shelve"><i class="la la-folder-plus la-lg"></i></b-button>
-        <b-button variant="info" v-else @click="toggle_ttl([row.item])" size="sm" v-b-tooltip.hover title="Unshelve"><i class="la la-folder-minus la-lg"></i></b-button>
-        <b-button variant="warning" v-if="can_be_reescalated(row.item)" @click="modal_show([row.item], 'esc')" size="sm" v-b-tooltip.hover title="Re-escalate"><i class="la la-exclamation la-lg"></i></b-button>
-        <b-button variant="success" v-if="can_be_acked(row.item)" @click="modal_show([row.item], 'ack')" size="sm" v-b-tooltip.hover title="Acknowledge"><i class="la la-thumbs-up la-lg"></i></b-button>
-        <b-button variant="tertiary" v-if="can_be_closed(row.item)" @click="modal_show([row.item], 'close')" size="sm" v-b-tooltip.hover title="Close"><i class="la la-lock la-lg"></i></b-button>
-        <b-button variant="quaternary" v-if="can_be_reopened(row.item)" @click="modal_show([row.item], 'open')" size="sm" v-b-tooltip.hover title="Re-open"><i class="la la-lock-open la-lg"></i></b-button>
+      <template #custom_buttons="row">
+        <CButton color="primary" class='text-nowrap' @click="modal_show([row.item], 'comment')" size="sm" v-c-tooltip="{content: 'Add comment'}"><i class="la la-comment-dots la-lg"></i> <CBadge v-if="row.item['comment_count']" color='light' class='position-absolute text-dark' style='z-index: 10; top:0!important; right:100%!important; transform:translate(50%,-50%)!important'>{{ row.item['comment_count'] }}</CBadge></CButton>
+        <CButton class="btn-info" v-if="row.item.ttl >= 0" @click="toggle_ttl([row.item])" size="sm" v-c-tooltip="{content: 'Shelve'}"><i class="la la-folder-plus la-lg"></i></CButton>
+        <CButton class="btn-info" v-else @click="toggle_ttl([row.item])" size="sm" v-c-tooltip="{content: 'Unshelve'}"><i class="la la-folder-minus la-lg"></i></CButton>
+        <CButton class="btn-warning" v-if="can_be_reescalated(row.item)" @click="modal_show([row.item], 'esc')" size="sm" v-c-tooltip="{content: 'Re-escalate'}"><i class="la la-exclamation la-lg"></i></CButton>
+        <CButton class="btn-success" v-if="can_be_acked(row.item)" @click="modal_show([row.item], 'ack')" size="sm" v-c-tooltip="{content: 'Acknowledge'}"><i class="la la-thumbs-up la-lg"></i></CButton>
+        <CButton class="btn-tertiary" v-if="can_be_closed(row.item)" @click="modal_show([row.item], 'close')" size="sm" v-c-tooltip="{content: 'Close'}"><i class="la la-lock la-lg"></i></CButton>
+        <CButton class="btn-quaternary" v-if="can_be_reopened(row.item)" @click="modal_show([row.item], 'open')" size="sm" v-c-tooltip="{content: 'Re-open'}"><i class="la la-lock-open la-lg"></i></CButton>
       </template>
       <template #selected_buttons>
-        <b-button v-if="selection_comment.length > 0" variant="primary" @click="modal_show(selection_comment, 'comment')" size="sm">Comment ({{ selection_comment.length }})</b-button>
-        <b-button v-if="selection_shelved.length > 0" variant="info" @click="toggle_ttl(selection_shelved)" size="sm">Shelve ({{ selection_shelved.length }})</b-button>
-        <b-button v-if="selection_unshelved.length > 0" variant="info" @click="toggle_ttl(selection_unshelved)" size="sm">Unshelve ({{ selection_unshelved.length }})</b-button>
-        <b-button v-if="selection_reescalated.length > 0" variant="warning" @click="modal_show(selection_reescalated, 'esc')" size="sm">Re-escalate ({{ selection_reescalated.length }})</b-button>
-        <b-button v-if="selection_acked.length > 0" variant="success" @click="modal_show(selection_acked, 'ack')" size="sm">Acknowledge ({{ selection_acked.length }})</b-button>
-        <b-button v-if="selection_closed.length > 0" variant="tertiary" @click="modal_show(selection_closed, 'close')" size="sm">Close ({{ selection_closed.length }})</b-button>
-        <b-button v-if="selection_reopened.length > 0" variant="quaternary" @click="modal_show(selection_reopened, 'open')" size="sm">Open ({{ selection_reopened.length }})</b-button>
+        <CButton class="btn-primary" v-if="selection_comment.length > 0" @click="modal_show(selection_comment, 'comment')" size="sm">Comment ({{ selection_comment.length }})</CButton>
+        <CButton class="btn-info" v-if="selection_shelved.length > 0" @click="toggle_ttl(selection_shelved)" size="sm">Shelve ({{ selection_shelved.length }})</CButton>
+        <CButton class="btn-info" v-if="selection_unshelved.length > 0" @click="toggle_ttl(selection_unshelved)" size="sm">Unshelve ({{ selection_unshelved.length }})</CButton>
+        <CButton class="btn-warning" v-if="selection_reescalated.length > 0" @click="modal_show(selection_reescalated, 'esc')" size="sm">Re-escalate ({{ selection_reescalated.length }})</CButton>
+        <CButton class="btn-success" v-if="selection_acked.length > 0" @click="modal_show(selection_acked, 'ack')" size="sm">Acknowledge ({{ selection_acked.length }})</CButton>
+        <CButton class="btn-tertiary" v-if="selection_closed.length > 0" @click="modal_show(selection_closed, 'close')" size="sm">Close ({{ selection_closed.length }})</CButton>
+        <CButton class="btn-quaternary" v-if="selection_reopened.length > 0" @click="modal_show(selection_reopened, 'open')" size="sm">Open ({{ selection_reopened.length }})</CButton>
       </template>
       <template #info="row">
         <Mail :smtp="row.item.smtp" v-if="!!row.item.smtp" />
         <Grafana :data="row.item" v-if="!!row.item.image_url" />
       </template>
       <template #details_side="row">
-        <b-col v-if="row.item['comment_count']">
-          <b-card header='Timeline' header-class='text-center font-weight-bold' body-class='p-2'>
-            <Timeline :record="row.item" ref="timeline"/>
-          </b-card>
-        </b-col>
+        <CCol v-if="row.item['comment_count']" class="p-2">
+          <CCard>
+            <CCardHeader class='text-center' style='font-weight:bold'>
+              Timeline
+            </CCardHeader>
+            <CCardBody class="p-2">
+              <Timeline :record="row.item" ref="timeline"/>
+            </CCardBody>
+          </CCard>
+        </CCol>
       </template>
       <template #head_buttons>
-        <b-button v-if="is_admin()" variant="success" @click="modal_add()">New</b-button>
-        <b-button size="sm" :variant="auto_refresh ? 'success':''" v-b-tooltip.hover :title="auto_refresh ? 'Auto Mode ON':'Auto Mode OFF'" @click="toggle_auto()" :pressed.sync="auto_refresh"><i v-if="auto_refresh" class="la la-eye la-lg"/><i v-else="auto_refresh" class="la la-eye-slash la-lg"/></b-button>
+        <CButton v-if="is_admin()" color="success" @click="modal_add()">New</CButton>
+        <CTooltip :content="auto_refresh ? 'Auto Refresh ON':'Auto Refresh OFF'" trigger="hover">
+          <template #toggler="{ on }">
+            <CButton size="sm" :color="auto_refresh ? 'success':'secondary'" @click="toggle_auto" v-on="on">
+              <i v-if="auto_refresh" class="la la-eye la-lg"></i>
+              <i v-else class="la la-eye-slash la-lg"></i>
+            </CButton>
+          </template>
+        </CTooltip>
       </template>
     </List>
 
-    <b-modal
-      id="modal"
-      ref="modal"
-      @ok="add_comment(modal_message, modal_data, modal_type, modifications)"
-      @hidden="modal_clear()"
-      :header-bg-variant="modal_bg_variant"
-      :header-text-variant="modal_text_variant"
-      size="xl"
-      centered
-    >
-      <template #modal-title>{{ modal_title }}</template>
-      <b-form-group label="Message (optional):">
-        <b-form-input v-model="modal_message" />
-      </b-form-group>
-      <b-row v-if="modal_type == 'esc'">
-        <b-col cols=3 md=2>
-          <label id="title_modifications" >Modifications (optional):</label>
-          <b-popover
-            target="title_modifications"
+  <CModal
+    ref="modal"
+    :visible="show_modal"
+    @close="modal_clear"
+    alignment="center"
+    size="xl"
+    backdrop="static"
+  >
+    <CModalHeader :class="`bg-${modal_bg_variant}`">
+      <CModalTitle :class="`text-${modal_text_variant}`">{{ modal_title }}</CModalTitle>
+    </CModalHeader>
+    <CModalBody>
+      <CFormFloating>
+        <CFormInput id="floatingInput" v-model="modal_message" placeholder="message"/>
+        <CFormLabel for="floatingInput">Message (optional)</CFormLabel>
+      </CFormFloating>
+      <CRow v-if="modal_type == 'esc'" class="mt-3">
+        <CCol col=3 md=2>
+          <CPopover
             content="Apply modifications to the record then notify"
-            triggers="hover focus"
+            :trigger="['hover', 'focus']"
             placement="right"
-          ></b-popover>
-        </b-col>
-        <b-col cols=9 md=10>
+          >
+          </CPopover>
+          <CTooltip content="Apply modifications to the record then notify" placement="right" trigger="hover">
+            <template #toggler="{ on }">
+              <label id="title_modifications" v-on="on">Modifications (optional):</label>
+            </template>
+          </CTooltip>
+        </CCol>
+        <CCol col=9 md=10>
           <Modification
             v-model="modifications"
           />
-        </b-col>
-      </b-row>
-    </b-modal>
+        </CCol>
+      </CRow>
+    </CModalBody>
+    <CModalFooter>
+      <CButton @click="modal_clear" color="secondary">Cancel</CButton>
+      <CButton @click="add_comment(modal_message, modal_data, modal_type, modifications)" :color="modal_bg_variant">OK</CButton>
+    </CModalFooter>
+  </CModal>
   </div>
 </template>
 
@@ -98,13 +120,13 @@ export default {
     if(localStorage.getItem('record_auto') == 'true') {
       this.auto_refresh = true
     }
-    this.toggle_auto()
+    this.auto_update()
     this.$refs.table.submit_add_back = this.$refs.table.submit_add
     this.$refs.table.submit_add = this.submit_add
   },
   data () {
     return {
-      selected: [],
+      show_modal: false,
       modal_title: '',
       modal_message: null,
       modal_type: '',
@@ -118,25 +140,25 @@ export default {
   },
   computed: {
     selection_shelved: function() {
-      return this.selected.filter(item => item.ttl >= 0)
+      return this.$refs.table.selected.filter(item => item.ttl >= 0)
     },
     selection_unshelved: function() {
-      return this.selected.filter(item => item.ttl == undefined || item.ttl < 0)
+      return this.$refs.table.selected.filter(item => item.ttl == undefined || item.ttl < 0)
     },
     selection_reescalated: function() {
-      return this.selected.filter(item => this.can_be_reescalated(item))
+      return this.$refs.table.selected.filter(item => this.can_be_reescalated(item))
     },
     selection_acked: function() {
-      return this.selected.filter(item => this.can_be_acked(item))
+      return this.$refs.table.selected.filter(item => this.can_be_acked(item))
     },
     selection_comment: function() {
-      return this.selected
+      return this.$refs.table.selected
     },
     selection_closed: function() {
-      return this.selected.filter(item => this.can_be_closed(item))
+      return this.$refs.table.selected.filter(item => this.can_be_closed(item))
     },
     selection_reopened: function() {
-      return this.selected.filter(item => this.can_be_reopened(item))
+      return this.$refs.table.selected.filter(item => this.can_be_reopened(item))
     },
   },
   methods: {
@@ -162,6 +184,7 @@ export default {
       this.modal_type = ''
       this.modal_bg_variant = ''
       this.modal_text_variant = ''
+      this.show_modal = false
     },
     modal_show(items, type) {
       this.modal_data = items
@@ -193,10 +216,7 @@ export default {
           this.modal_bg_variant = 'primary'
           this.modal_text_variant = 'white'
       }
-      this.$bvModal.show('modal')
-    },
-    select(items) {
-      this.selected = items
+      this.show_modal = true
     },
     toggle_ttl(items, ttl) {
       items.forEach(item => {
@@ -228,6 +248,10 @@ export default {
       this.$refs.table.refreshTable()
     },
     toggle_auto() {
+      this.auto_refresh = !this.auto_refresh
+      this.auto_update()
+    },
+    auto_update() {
       if (this.auto_refresh) {
         this.auto_interval = setInterval(this.$refs.table.refreshTable, 10000)
       } else {

@@ -1,26 +1,25 @@
 <template>
-  <b-input-group>
-    <b-form-input placeholder="Search" type="search" v-model="datavalue"/>
-    <b-input-group-append>
-      <b-button block variant="primary" type="submit" @click="search">
+  <CInputGroup>
+    <CFormInput placeholder="Search" type="search" v-model="datavalue"/>
+    <CButton block color="primary" type="submit" @click="search">
         <i class="la la-search la-lg"></i>
-      </b-button>
-    </b-input-group-append>
-    <b-input-group-append>
-      <b-button block variant="secondary" type="reset" @click="clear">Clear</b-button>
-    </b-input-group-append>
-  </b-input-group>
+    </CButton>
+    <CButton block color="secondary" type="reset" @click="clear">
+        Clear
+    </CButton>
+  </CInputGroup>
 </template>
 
 <script>
 
 export default {
   props: {
-    value: {type: String, default: () => ''},
+    modelValue: {type: String, default: () => ''},
   },
+  emits: ['update:modelValue', 'clear', 'search'],
   data () {
     return {
-      datavalue: this.value,
+      datavalue: this.modelValue,
     }
   },
   methods: {
@@ -35,7 +34,7 @@ export default {
   },
   watch: {
     datavalue () {
-      this.$emit('input', this.datavalue)
+      this.$emit('update:modelValue', this.datavalue)
     }
   },
 }

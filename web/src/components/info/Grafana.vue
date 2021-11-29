@@ -1,12 +1,12 @@
 <template>
   <div>
-    <b-card header="Grafana" header-class='text-center font-weight-bold'>
+    <CCard header="Grafana" header-class='text-center font-weight-bold'>
       <div class='text-center'>
         <a :href="data.rule_url">
           <img :src="data.image_url" class="rounded border border-danger" style="max-width:100%; max-height: 100%;"/>
         </a>
       </div>
-    </b-card>
+    </CCard>
   </div>
 </template>
 
