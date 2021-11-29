@@ -1,8 +1,6 @@
-import Vue from 'vue'
-import Router from 'vue-router'
+import { createRouter, createWebHashHistory } from 'vue-router'
+import DefaultLayout from '@/containers/DefaultLayout'
 
-// Containers
-const TheContainer = () => import('@/containers/TheContainer')
 // Components
 const Record = () => import('@/views/Record')
 const Dashboard = () => import('@/views/Dashboard')
@@ -20,12 +18,9 @@ const Settings = () => import('@/views/Settings')
 const Profile = () => import('@/views/Profile')
 const Login = () => import('@/views/Login')
 
-Vue.use(Router)
-
-export default new Router({
-  mode: 'hash', // https://router.vuejs.org/api/#mode
-  linkActiveClass: 'active',
-  scrollBehavior: () => ({ y: 0 }),
+const router = createRouter({
+  history: createWebHashHistory(process.env.BASE_URL),
+  scrollBehavior: () => ({ top: 0 }),
   routes: [
     {
       path: '/login',
@@ -36,7 +31,7 @@ export default new Router({
       path: '/',
       redirect: '/record',
       name: 'Home',
-      component: TheContainer,
+      component: DefaultLayout,
       children: [
         {
           path: 'record',
@@ -117,3 +112,5 @@ export default new Router({
     },
   ]
 })
+
+export default router

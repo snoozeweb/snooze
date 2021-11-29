@@ -1,16 +1,17 @@
 <template>
   <div class="h-100">
-    <b-form-group
-      v-slot="{ ariaDescribedby }"
+    <CForm
       class="d-flex align-items-center mb-0 h-100"
     >
-      <b-form-checkbox-group
-        v-model="datavalue['weekdays']"
-        :options="options"
-        :aria-describedby="ariaDescribedby"
-        name="weekdays"
+      <CFormCheck
+        inline
+        v-for="opts in options"
+        @change="onChange"
+        :checked="opts.value != undefined ? datavalue.weekdays.includes(opts.value) : datavalue.weekdays.includes(opts)"
+        :value="opts.value != undefined ? opts.value : opts"
+        :label="opts.text != undefined ? opts.text : opts"
       />
-    </b-form-group>
+    </CForm>
   </div>
 </template>
 
@@ -21,12 +22,13 @@ var default_object = {'weekdays': []}
 
 export default {
   extends: Base,
+  emits: ['update:modelValue'],
   props: {
-    value: {type: Object, default: () => Object.assign({}, default_object)},
+    modelValue: {type: Object, default: () => Object.assign({}, default_object)},
   },
   data() {
     return {
-      datavalue: {'weekdays': this.value['weekdays'] || []},
+      datavalue: {'weekdays': this.modelValue['weekdays'] || []},
       options: [
         {text: 'Monday',    value: 1},
         {text: 'Tuesday',   value: 2},
@@ -38,9 +40,20 @@ export default {
       ],
     }
   },
+  methods: {
+    onChange(e) {
+      var val = parseInt(e.target.value)
+      var index = this.datavalue.weekdays.indexOf(val)
+      if (e.target.checked && index == -1) {
+        this.datavalue.weekdays.push(val)
+      } else if(!e.target.checked && index >= 0) {
+        this.datavalue.weekdays.splice(index)
+      }
+    }
+  },
   watch: {
     datavalue: {
-      handler() { this.$emit('input', this.datavalue) },
+      handler() { this.$emit('update:modelValue', this.datavalue) },
       immediate: true,
       deep: true,
     },

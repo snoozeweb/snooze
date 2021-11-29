@@ -50,13 +50,8 @@ orderby: time_constraints
 isascending: true
 form:
     enabled:
-        display_name: State
-        component: Radio
-        options:
-            - text: Enabled
-              value: true
-            - text: Disabled
-              value: false
+        display_name: Enabled
+        component: Switch
         default: true
         description: Enabled
     name:
@@ -74,13 +69,7 @@ form:
         description: 'Time constraint during this snooze filter will be active'
     discard:
         display_name: Discard alert
-        component: Radio
-        options:
-            - text: Yes
-              value: true
-            - text: No
-              value: false
-        default: false
+        component: Switch
         description: 'Discard alerts matching this snooze filter'
     comment:
         display_name: Comment

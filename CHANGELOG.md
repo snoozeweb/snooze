@@ -1,3 +1,13 @@
+## v1.1.0
+
+### New features
+* Web: Updated from Vue 2.x to 3.x
+* Web: Updated CoreUI from 3.x to 4.x
+* Web: Removed Bootstrap dependency
+* Web: Converted Radio buttons to Switches
+* Web: Added row selector to Tables
+* Added alert_closed metric
+
 ## v1.0.17
 
 ### New features

@@ -1,5 +1,5 @@
 <template>
-  <b-badge :style="gen_color(data)">{{ data }}</b-badge>
+  <CBadge :style="gen_color(data)">{{ data }}</CBadge>
 </template>
 
 <script>

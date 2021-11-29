@@ -1,285 +1,292 @@
 <template>
   <div>
-  <b-card no-body ref="main">
-    <b-card-header header-tag="nav" class="p-2">
-      <b-nav card-header pills class='m-0'>
-        <b-nav-item
-          v-for="(tab, index) in tabs"
+  <CCard no-body ref="main">
+    <CCardHeader class="p-2">
+      <CNav variant="pills" role="tablist" card v-model="tab_index" class='m-0'>
+        <CNavItem
+          v-for="(tab, i) in tabs"
           v-bind:key="tab.title"
-          :active="index == tab_index"
           v-on:click="changeTab(tab)"
         >
-          {{ tab.title }}
-        </b-nav-item>
+          <CNavLink href="javascript:void(0);" :active="tab_index == i">{{ tab.title }}</CNavLink>
+        </CNavItem>
 
-        <b-nav-item class="ml-auto" link-classes="py-0 pr-0">
-          <b-button-toolbar key-nav>
+        <CNavItem class="ms-auto">
+          <CButtonToolbar key-nav>
 
-            <b-button-group class="mx-2" v-if="Array.isArray(selected) && selected.length">
+            <CButtonGroup role="group" class="mx-2" v-if="Array.isArray(selected) && selected.length">
               <!-- Slot for placing buttons that appear only when a selection is made -->
               <slot name="selected_buttons"></slot>
-              <b-button @click="clearSelected">Clear selection</b-button>
-              <b-button
-                variant="danger"
+              <CButton
+                color="danger"
                 v-if="delete_m"
-                @click="delete_items(endpoint, selected)"
-              >Delete selection</b-button>
-            </b-button-group>
+                @click="modal_delete(selected)"
+              >Delete selection</CButton>
+            </CButtonGroup>
 
-            <b-button-group>
+            <CButtonGroup role="group">
               <!-- Slots for placing additional buttons in the header of the table -->
-              <b-button @click="select_all">Select All</b-button>
               <slot name="head_buttons"></slot>
-              <b-button v-if="add_m" variant="success" @click="modal_add()">New</b-button>
-              <b-button @click="refresh(true)"><i class="la la-refresh la-lg"></i></b-button>
-            </b-button-group>
+              <CButton v-if="add_m" color="success" @click="modal_add()">New</CButton>
+              <CButton @click="refreshTable(true)" color="secondary"><i class="la la-refresh la-lg"></i></CButton>
+            </CButtonGroup>
 
-          </b-button-toolbar>
-        </b-nav-item>
-      </b-nav>
-
-    </b-card-header>
-    <b-form>
-      <Search @search="search($event)" @clear="search_clear()" ref='search' class="pt-2 px-2"/>
-    </b-form>
-    <b-card-body class="p-2">
-      <b-table
+          </CButtonToolbar>
+        </CNavItem>
+      </CNav>
+    </CCardHeader>
+    <CForm @submit.prevent="">
+      <Search @search="search" v-model="search_value" @clear="search_clear" ref='search' class="pt-2 px-2"/>
+    </CForm>
+    <CCardBody class="p-2">
+      <CTabContent>
+      <SDataTable
         ref="table"
-        @row-selected="select"
-        @sort-changed="sortingChanged"
+        @cell-clicked="select"
+        @celltitle-clicked="selectall_toggle"
+        @update:sorter-value="sortingChanged"
         @row-contextmenu="contextMenu"
+        v-contextmenu:contextmenu
         :fields="fields"
         :items="items"
-        :no-local-sorting="true"
-        :sort-by.sync="orderby"
-        :sort-desc.sync="isascending"
-        :busy="is_busy"
-        selectable
-        select-mode="range"
-        selectedVariant="info"
+        :sorter='{external: true}'
+        :sorterValue="{column: orderby, asc: isascending}"
+        :loading="is_busy"
         striped
         small
-        bordered
+        border
       >
-        <template #table-busy>
-          <div class="text-center text-dark my-2">
-            <b-spinner class="align-middle"></b-spinner>
-            <strong> Loading...</strong>
-          </div>
-        </template>
-
-        <template v-for="(_, slot) of $scopedSlots" v-slot:[slot]="scope">
+        <template v-for="(_, slot) of $slots" v-slot:[slot]="scope">
           <!-- cell() slots for the b-table -->
           <slot :name="slot" v-bind="scope" />
         </template>
 
-        <template v-slot:cell(timestamp)="row">
+        <template v-slot:timestamp="row">
           <DateTime :date="dig(row.item, 'timestamp')" show_secs />
         </template>
-        <template v-slot:cell(message)="row">
+        <template v-slot:message="row">
           {{ truncate_message(dig(row.item, 'message')) }}
         </template>
-        <template v-slot:cell(condition)="row">
+        <template v-slot:condition="row">
           <Condition :data="dig(row.item, 'condition')" />
         </template>
-        <template v-slot:cell(filter)="row">
+        <template v-slot:filter="row">
           <Condition :data="dig(row.item, 'filter')" />
         </template>
-        <template v-slot:cell(modifications)="row">
+        <template v-slot:modifications="row">
           <Modification :data="dig(row.item, 'modifications')" />
         </template>
-        <template v-slot:cell(fields)="row">
+        <template v-slot:fields="row">
           <Field :data="dig(row.item, 'fields')" />
         </template>
-        <template v-slot:cell(watch)="row">
+        <template v-slot:watch="row">
           <Field :data="dig(row.item, 'watch')" />
         </template>
-        <template v-slot:cell(severity)="row">
+        <template v-slot:severity="row">
           <Field :data="[dig(row.item, 'severity')]" colorize/>
         </template>
-        <template v-slot:cell(ttl)="row">
+        <template v-slot:ttl="row">
           {{ dig(row.item, 'ttl') >= 0 ? countdown(dig(row.item, 'ttl') - timestamp + dig(row.item, 'date_epoch')) : '-' }}
         </template>
-        <template v-slot:cell(permissions)="row">
+        <template v-slot:permissions="row">
           <Field :data="dig(row.item, 'permissions')" colorize/>
         </template>
-        <template v-slot:cell(groups)="row">
+        <template v-slot:groups="row">
           <Field :data="dig(row.item, 'groups')" />
         </template>
-        <template v-slot:cell(method)="row">
+        <template v-slot:method="row">
           <Field :data="[dig(row.item, 'method')]" colorize/>
         </template>
-        <template v-slot:cell(throttle)="row">
+        <template v-slot:throttle="row">
           {{ pp_countdown(dig(row.item, 'throttle')) }}
         </template>
-        <template v-slot:cell(delay)="row">
+        <template v-slot:delay="row">
           {{ pp_countdown(dig(row.item, 'delay')) }}
         </template>
-        <template v-slot:cell(roles)="row">
+        <template v-slot:roles="row">
           <Field :data="(dig(row.item, 'roles') || []).concat(dig(row.item, 'static_roles') || [])" colorize/>
         </template>
-        <template v-slot:cell(time_constraints)="row">
+        <template v-slot:time_constraints="row">
           <TimeConstraint :date="dig(row.item, 'time_constraints')" />
         </template>
-        <template v-slot:cell(state)="row">
+        <template v-slot:state="row">
           <Field :data="[(dig(row.item, 'state') || '-')]" colorize/>
         </template>
-        <template v-slot:cell(discard)="row">
-          <b-badge v-if="dig(row.item, 'discard')" variant="quaternary">yes</b-badge>
-          <b-badge v-else variant="success">no</b-badge>
+        <template v-slot:duplicates="row">
+          {{ dig(row.item, 'duplicates') || '1' }}
         </template>
-        <template v-slot:cell(actions)="row">
+        <template v-slot:discard="row">
+          <CBadge v-if="dig(row.item, 'discard')" color="quaternary">yes</CBadge>
+          <CBadge v-else color="success">no</CBadge>
+        </template>
+        <template v-slot:actions="row">
           <Field :data="dig(row.item, 'actions')" />
         </template>
-        <template v-slot:cell(enabled)="row">
+        <template v-slot:enabled="row">
           <Field :data="[(dig(row.item, 'enabled') == undefined || dig(row.item, 'enabled') == true) ? 'enabled' : 'disabled']" colorize/>
         </template>
-        <template v-slot:cell(pprint)="row">
-          <table class="table-borderless"><tr style="background-color: transparent !important"><td class="p-0 pr-1"><i :class="'la la-'+dig(row.item, 'icon')+' la-lg'"></i></td><td class="p-0"><b>{{ dig(row.item, 'widget', 'selected') || '' + dig(row.item, 'action', 'selected') || '' }}</b> @ {{ dig(row.item, 'pprint') }}</td></tr></table>
+        <template v-slot:pprint="row">
+          <table class="table-borderless"><tr style="background-color: transparent !important"><td class="p-0 pe-1"><i :class="'la la-'+dig(row.item, 'icon')+' la-lg'"></i></td><td class="p-0"><b>{{ dig(row.item, 'widget', 'selected') || '' + dig(row.item, 'action', 'selected') || '' }}</b> @ {{ dig(row.item, 'pprint') }}</td></tr></table>
         </template>
-        <template v-slot:cell(color)="row">
+        <template v-slot:color="row">
           <ColorBadge :data="dig(row.item, 'color') || '#ffffff'" />
         </template>
-        <template v-slot:cell(login)="row">
+        <template v-slot:login="row">
           <DateTime :date="dig(row.item, 'last_login') || '0'"/>
         </template>
+        <template v-slot:select="row">
+          <input type="checkbox" class="pointer mx-1" :checked="dig(row.item, '_selected') == true">
+        </template>
+        <template v-slot:select-header="row">
+          <input type="checkbox" class="pointer mx-1" :checked="this.items.length == this.selected.length">
+        </template>
 
-        <template v-slot:cell(button)="row">
-          <b-button-group>
+        <template v-slot:button="row">
+          <CButtonGroup role="group">
             <!-- Action buttons -->
-            <b-button size="sm" @click="row.toggleDetails">
-              <i v-if="row.detailsShowing" class="la la-angle-up la-lg"></i>
+            <CButton color="secondary" size="sm" @click="toggleDetails(row.item, $event)">
+              <i v-if="Boolean(row.item._showDetails)" class="la la-angle-up la-lg"></i>
               <i v-else class="la la-angle-down la-lg"></i>
-            </b-button>
-            <slot name="button" v-bind="row" />
-            <b-button v-if="edit_m" size="sm" @click="modal_edit(row.item)" variant="primary" v-b-tooltip.hover title="Edit"><i class="la la-pencil-alt la-lg"></i></b-button>
-            <b-button v-if="delete_m" size="sm" @click="modal_delete(row.item)" variant="danger" v-b-tooltip.hover title="Delete"><i class="la la-trash la-lg"></i></b-button>
-          </b-button-group>
+            </CButton>
+            <slot name="custom_buttons" v-bind="row" />
+            <CButton v-if="edit_m" size="sm" @click="modal_edit(row.item)" color="primary" v-c-tooltip="{content: 'Edit'}"><i class="la la-pencil-alt la-lg"></i></CButton>
+            <CButton v-if="delete_m" size="sm" @click="modal_delete([row.item])" color="danger" v-c-tooltip="{content: 'Delete'}"><i class="la la-trash la-lg"></i></CButton>
+          </CButtonGroup>
         </template>
-        <template v-slot:row-details="row">
-          <b-card body-class="p-2" bg-variant="light">
-          <b-row>
-            <b-col>
-              <slot name="info" v-bind="row" />
-              <Info :myobject="row.item" :excluded_fields="info_excluded_fields" />
-            </b-col>
-            <slot name="details_side" v-bind="row"></slot>
-          </b-row>
-            <b-button size="sm" @click="row.toggleDetails"><i class="la la-angle-up la-lg"></i></b-button>
-          </b-card>
+        <template v-slot:details="row">
+          <CCollapse :visible="Boolean(row.item._showDetails)">
+            <CCard v-if="Boolean(row.item._showDetails)">
+              <CRow class="m-0">
+                <CCol class="p-2">
+                  <slot name="info" v-bind="row" />
+                  <Info :myobject="row.item" :excluded_fields="info_excluded_fields" />
+                </CCol>
+                <slot name="details_side" v-bind="row" />
+              </CRow>
+              <CButton size="sm" @click="toggleDetails(row.item, $event)"><i class="la la-angle-up la-lg"></i></CButton>
+            </CCard>
+          </CCollapse>
         </template>
-      </b-table>
+      </SDataTable>
       <div class="d-flex align-items-center">
-        <div class="mr-3">
-          <b-pagination
-            v-model="current_page"
-            :total-rows="nb_rows"
-            :per-page="per_page"
-            class="m-0"
+        <div class="me-2">
+          <SPagination
+            v-model:activePage="current_page"
+            :pages="Math.ceil(nb_rows / per_page)"
+            ulClass="m-0"
           />
         </div>
         <div>
-          <b-form-group
-            label="Per page"
-            label-align="right"
-            label-cols="auto"
-            label-size="sm"
-            label-for="perPageSelect"
-            class="m-0"
-          >
-            <b-form-select
-              v-model="per_page"
-              id="perPageSelect"
-              size="sm"
-              :options="page_options"
-            />
-          </b-form-group>
+          <CRow class="align-items-center gx-0">
+            <CCol xs="auto px-1">
+              <CFormLabel for="perPageSelect" class="col-form-label col-form-label-sm">Per page</CFormLabel>
+            </CCol>
+            <CCol xs="auto px-1">
+              <CFormSelect
+                v-model="per_page"
+                id="perPageSelect"
+                size="sm"
+              >
+                <option v-for="opts in page_options" :value="opts">{{ opts }}</option>
+              </CFormSelect>
+            </CCol>
+          </CRow>
         </div>
       </div>
-    </b-card-body>
-  </b-card>
+      </CTabContent>
+    </CCardBody>
+  </CCard>
 
-  <b-modal
-    id="edit"
+  <CModal
     ref="edit"
-    @ok="submit_edit"
-    @hidden="modal_clear"
-    header-bg-variant="primary"
-    header-text-variant="white"
+    :visible="show_edit"
+    @close="modal_clear"
     size ="xl"
-    centered
+    alignment="center"
+    backdrop="static"
   >
-    <template v-slot:modal-title>{{ modal_title_edit }}</template>
-    <b-form @submit.stop.prevent="checkForm" novalidate ref="edit_form">
-      <Form v-model="modal_data.edit" :metadata="form" />
-    </b-form>
-  </b-modal>
+    <CModalHeader class="bg-primary">
+      <CModalTitle class="text-white">{{ modal_title_edit }}</CModalTitle>
+    </CModalHeader>
+    <CModalBody>
+      <CForm @submit.stop.prevent="checkForm" novalidate ref="edit_form">
+        <Form v-model="modal_data.edit" :metadata="form" />
+      </CForm>
+    </CModalBody>
+    <CModalFooter>
+      <CButton @click="modal_clear" color="secondary">Cancel</CButton>
+      <CButton @click="submit_edit" color="primary">OK</CButton>
+    </CModalFooter>
+  </CModal>
 
-  <b-modal
-    id="add"
+  <CModal
     ref="add"
-    @ok="submit_add"
-    @hidden="modal_clear"
-    header-bg-variant="success"
-    header-text-variant="white"
-    okVariant="success"
+    :visible="show_add"
+    @close="modal_clear"
     size="xl"
-    centered
+    alignment="center"
+    backdrop="static"
   >
-    <template v-slot:modal-title>{{ modal_title_add }}</template>
-    <b-form @submit.stop.prevent="checkForm" novalidate ref="add_form">
-      <Form v-model="modal_data.add" :metadata="form" />
-    </b-form>
-  </b-modal>
+    <CModalHeader class="bg-success">
+      <CModalTitle class="text-white">{{ modal_title_add }}</CModalTitle>
+    </CModalHeader>
+    <CModalBody>
+      <CForm @submit.stop.prevent="checkForm" novalidate ref="add_form">
+        <Form v-model="modal_data.add" :metadata="form" />
+      </CForm>
+    </CModalBody>
+    <CModalFooter>
+      <CButton @click="modal_clear" color="secondary">Cancel</CButton>
+      <CButton @click="submit_add" color="success">OK</CButton>
+    </CModalFooter>
+  </CModal>
 
-  <b-modal
-    id="delete"
+  <CModal
     ref="delete"
-    @ok="submit_delete"
-    @hidden="modal_clear"
-    header-bg-variant="danger"
-    header-text-variant="white"
-    okVariant="danger"
+    :visible="show_delete"
+    @close="modal_clear"
     size="xl"
-    centered
+    alignment="center"
+    backdrop="static"
   >
-    <template v-slot:modal-title>{{ modal_title_delete }}</template>
-    <p>{{ modal_data.delete }}</p>
-  </b-modal>
-
-  <b-alert
-    :show="alert_countdown"
-    dismissible
-    fade
-    class="position-fixed fixed-top m-0 rounded-0 text-center"
-    style="z-index: 2000;"
-    variant="success"
-    @dismiss-count-down="a => this.alert_countdown = a"
-  >
-    Updated
-  </b-alert>
+    <CModalHeader class="bg-danger">
+      <CModalTitle class="text-white" v-if="modal_data.delete.length > 1">Delete {{ modal_data.delete.length }} items</CModalTitle>
+      <CModalTitle class="text-white" v-else>{{ modal_title_delete }}</CModalTitle>
+    </CModalHeader>
+    <CModalBody>
+      <p v-if="modal_data.delete.length > 1">This operation cannot be undone. Are you sure?</p>
+      <p v-else>{{ modal_data.delete[0] }}</p>
+    </CModalBody>
+    <CModalFooter>
+      <CButton @click="modal_clear" color="secondary">Cancel</CButton>
+      <CButton @click="submit_delete" color="danger">OK</CButton>
+    </CModalFooter>
+  </CModal>
 
   <v-contextmenu ref="contextmenu">
-    <v-contextmenu-submenu>
-      <template v-slot:title><i class="la la-copy la-lg"/> Copy</template>
+    <v-contextmenu-submenu title="Copy">
+      <template v-slot:title><i class="la la-copy la-lg"></i> Copy</template>
       <v-contextmenu-item @click="copy_clipboard" method="yaml">
         As YAML
       </v-contextmenu-item>
       <v-contextmenu-item @click="copy_clipboard" method="yaml" full="true">
         As YAML (Full)
       </v-contextmenu-item>
-      <v-contextmenu-item divider></v-contextmenu-item>
+      <v-contextmenu-divider />
       <v-contextmenu-item @click="copy_clipboard" method="json">
         As JSON
       </v-contextmenu-item>
       <v-contextmenu-item @click="copy_clipboard" method="json" full="true">
         As JSON (Full)
       </v-contextmenu-item>
-      <v-contextmenu-item divider></v-contextmenu-item>
-      <v-contextmenu-item v-for="field in fields.filter(field => field.key != 'button')" :key="field.key" @click="copy_clipboard" method="simple" :value="field.key">
-        {{ field.key.charAt(0).toUpperCase() + field.key.slice(1) }}
+      <v-contextmenu-divider />
+      <v-contextmenu-item v-for="field in fields.filter(field => field.key != 'button')" :key="field.key" @click="copy_clipboard" method="simple" :field="field.key">
+        {{ capitalizeFirstLetter(field.key) }}
       </v-contextmenu-item>
     </v-contextmenu-submenu>
+    <v-contextmenu-item @click="select_all">
+      <i class="la la-check-square la-lg"></i> Select All
+    </v-contextmenu-item>
   </v-contextmenu>
 
   </div>
@@ -289,7 +296,7 @@
 import dig from 'object-dig'
 import moment from 'moment'
 import { API } from '@/api'
-import { get_data, pp_countdown, countdown, preprocess_data, delete_items, truncate_message, to_clipboard } from '@/utils/api'
+import { get_data, pp_countdown, countdown, preprocess_data, delete_items, truncate_message, to_clipboard, capitalizeFirstLetter } from '@/utils/api'
 import { join_queries } from '@/utils/query'
 import Form from '@/components/Form.vue'
 import Search from '@/components/Search.vue'
@@ -300,6 +307,8 @@ import DateTime from '@/components/DateTime.vue'
 import TimeConstraint from '@/components/TimeConstraint.vue'
 import Info from '@/components/Info.vue'
 import ColorBadge from '@/components/ColorBadge.vue'
+import SDataTable from '@/components/SDataTable.vue'
+import SPagination from '@/components/SPagination.vue'
 const yaml = require('js-yaml')
 
 // Create a table representing an API endpoint.
@@ -315,6 +324,8 @@ export default {
     Form,
     Info,
     ColorBadge,
+    SDataTable,
+    SPagination,
   },
   props: {
     // The tabs name and their associated search
@@ -327,7 +338,7 @@ export default {
       type: String,
       required: true,
     },
-    // An array containing the fields to pass to the `b-table`
+    // An array containing the fields to pass to the `CTable`
     fields_prop: {
       type: Array,
       default: () => { return [] },
@@ -363,6 +374,9 @@ export default {
     this.settings = JSON.parse(localStorage.getItem(this.endpoint+'_json') || '{}')
     get_data('settings/?c='+encodeURIComponent(`web/${this.endpoint}`)+'&checksum='+(this.settings.checksum || ""), null, {}, this.load_table)
   },
+  unmounted () {
+    this.emitter.all.clear()
+  },
   data () {
     return {
       busy_interval: null,
@@ -374,16 +388,16 @@ export default {
       preprocess_data: preprocess_data,
       join_queries: join_queries,
       truncate_message: truncate_message,
-      alert_countdown: 0,
+      capitalizeFirstLetter: capitalizeFirstLetter,
       timestamp: {},
       delete_items: delete_items,
       filter: [],
       env_name: '',
       env_filter: [],
       tab_index: 0,
-      search_data: '',
-      per_page: 20,
-      page_options: [20, 50, 100],
+      search_value: '',
+      per_page: '20',
+      page_options: ['20', '50', '100'],
       nb_rows: 0,
       current_page: 1,
       items: [],
@@ -392,6 +406,7 @@ export default {
       selected_data: {},
       selected: [],
       settings: {},
+      loaded: false,
       endpoint: this.endpoint_prop,
       tabs: this.tabs_prop,
       form: this.form_prop,
@@ -406,10 +421,13 @@ export default {
       add_m: this.add_mode,
       edit_m: this.edit_mode,
       delete_m: this.delete_mode,
+      show_edit: false,
+      show_add: false,
+      show_delete: false,
       modal_data: {
         add: {},
         edit: {},
-        delete: {},
+        delete: [],
       },
     }
   },
@@ -429,6 +447,7 @@ export default {
         this.orderby = dig(data, 'orderby') || this.orderby
         this.default_orderby = this.orderby
         this.fields = dig(data, 'fields')
+        this.fields.splice(0, 0, { key: 'select', label: '', tdClass: ['align-middle'], clickable: true, clickable_title: true })
         this.default_fields = this.fields
         this.hidden_fields = dig(data, 'hidden_fields') || []
         this.default_hidden_fields = this.hidden_fields
@@ -438,10 +457,9 @@ export default {
         this.reload()
         this.get_now()
         setInterval(this.get_now, 1000);
-        this.$root.$on('environment_change_tab', (tab) => {
+        this.emitter.on('environment_change_tab', tab => {
           this.env_name = tab.name
           this.env_filter = tab.filter
-          this.refreshTable()
           this.add_history()
         })
       }
@@ -450,13 +468,15 @@ export default {
       var tab = this.tabs[0]
       if (this.$route.query.tab !== undefined) {
         var find_tab = this.tabs.find(el => el.title == this.$route.query.tab)
-        if (tab) {
+        if (find_tab) {
           tab = find_tab
           this.tab_index = this.tabs.indexOf(this.tab_index)
           this.filter = tab.filter
         }
       }
-      this.changeTab(tab, false)
+      if (tab) {
+        this.changeTab(tab, false)
+      }
       if (this.$route.query.env_filter !== undefined) {
         this.env_filter = JSON.parse(decodeURIComponent(this.$route.query.env_filter))
       } else {
@@ -469,19 +489,28 @@ export default {
       }
       if (this.$route.query.s !== undefined) {
         var decoded_query = decodeURIComponent(this.$route.query.s)
-        this.$refs.search.datavalue = decoded_query
-        this.search_data = decoded_query
+        if (this.$refs.search) {
+          this.search_value = decoded_query
+          this.$refs.search.datavalue = decoded_query
+        }
         this.refreshTable()
       } else {
-        this.$refs.search.datavalue = ''
+        if (this.$refs.search) {
+          this.search_value = ''
+          this.$refs.search.datavalue = ''
+        }
         this.refreshTable()
       }
     },
     get_now() {
       this.timestamp = moment().unix()
     },
-    refresh(feedback = false) {
-      this.filter = this.tabs[this.tab_index].filter
+    refreshTable(feedback = false) {
+      this.clearSelected()
+      this.set_busy(true)
+      if (this.tabs[this.tab_index]) {
+        this.filter = this.tabs[this.tab_index].filter
+      }
       var query = this.filter
       if (this.env_filter.length > 0) {
         query = join_queries([this.filter, this.env_filter])
@@ -491,8 +520,8 @@ export default {
         pagenb: this.current_page,
         asc: this.isascending,
       }
-      if (this.search_data) {
-        options["ql"] = this.search_data
+      if (this.search_value) {
+        options["ql"] = this.search_value
       }
       if (this.orderby !== undefined) {
         var form_field = this.fields.concat(this.hidden_fields).find((field, ) => field.key == this.orderby)
@@ -502,19 +531,19 @@ export default {
           options["orderby"] = this.orderby
         }
       }
-      get_data(this.endpoint, query, options, feedback ? this.feedback_then_update : this.update_table, null)
+      get_data(this.endpoint, query, options, feedback == true ? this.feedback_then_update : this.update_table, null)
     },
     feedback_then_update(response) {
-      this.alert_countdown = 1
+      this.$root.show_alert()
       this.update_table(response)
     },
     checkForm(node) {
-      return (node.getElementsByClassName('form-control is-invalid').length + node.getElementsByClassName('has-error').length) == 0
+      return (node.$el.getElementsByClassName('form-control is-invalid').length + node.$el.getElementsByClassName('has-error').length) == 0
     },
     submit_edit(bvModalEvt, endpoint = this.endpoint) {
       bvModalEvt.preventDefault()
       if (!this.checkForm(this.$refs.edit_form)) {
-        this.makeToast('Form is invalid', 'danger', 'Error')
+        this.$root.text_alert('Form is invalid', 'danger')
         return
       }
       var data = this.modal_data.edit
@@ -527,28 +556,28 @@ export default {
           this.set_busy(false)
           if (response.data) {
             if (response.data.data.rejected.length > 0) {
-              this.makeToast('Cannot Edit', 'danger', 'An error occurred')
+              this.$root.text_alert('Cannot Edit', 'danger')
             } else {
               this.refreshTable()
-              this.makeToast('Entry updated successfully', 'success')
+              this.$root.text_alert('Entry updated successfully', 'success')
             }
           } else {
             if(response.response.data.description) {
-              this.makeToast(response.response.data.description, 'danger', 'An error occurred')
+              this.$root.text_alert(response.response.data.description, 'danger')
             } else {
-              this.makeToast('Could not update the entry', 'danger', 'An error occurred')
+              this.$root.text_alert('Could not update the entry', 'danger')
             }
           }
         })
         .catch(error => console.log(error))
       this.$nextTick(() => {
-        this.$bvModal.hide('edit')
+        this.show_edit = false
       })
     },
     submit_add(bvModalEvt, endpoint = this.endpoint) {
       bvModalEvt.preventDefault()
       if (!this.checkForm(this.$refs.add_form)) {
-        this.makeToast('Form is invalid', 'danger', 'Error')
+        this.$root.text_alert('Form is invalid', 'danger', 'Error')
         return
       }
       var data = this.modal_data.add
@@ -561,47 +590,29 @@ export default {
           this.set_busy(false)
           if (response.data) {
             if (response.data.data.rejected.length > 0) {
-              this.makeToast('Cannot Add', 'danger', 'An error occurred')
+              this.$root.text_alert('Cannot Add', 'danger')
             } else {
               this.refreshTable()
-              this.makeToast('Entry added successfully', 'success')
+              this.$root.text_alert('Entry added successfully', 'success')
             }
           } else {
             if(response.response.data.description) {
-              this.makeToast(response.response.data.description, 'danger', 'An error occurred')
+              this.$root.text_alert(response.response.data.description, 'danger')
             } else {
-              this.makeToast('Could not add the entry', 'danger', 'An error occurred')
+              this.$root.text_alert('Could not add the entry', 'danger')
             }
           }
         })
         .catch(error => console.log(error))
       this.$nextTick(() => {
-        this.$bvModal.hide('add')
+        this.show_add = false
       })
     },
     submit_delete(bvModalEvt, endpoint = this.endpoint) {
-      var uid = this.modal_data.delete.uid
       this.set_busy(true)
-      console.log(`DELETE ${endpoint}/${uid}`)
-      API
-        .delete(`/${endpoint}/${uid}`)
-        .then(response => {
-          this.set_busy(false)
-          if (response.data) {
-            console.log(response)
-            this.makeToast(`Entry ${uid} deleted`, 'success', 'Delete success')
-            this.refreshTable()
-          } else {
-            if(response.response.data.description) {
-              this.makeToast(response.response.data.description, 'danger', 'An error occurred')
-            } else {
-              this.makeToast('Could not delete the entry', 'danger', 'An error occurred')
-            }
-          }
-        })
-        .catch(error => console.log(error))
+      delete_items(endpoint, this.modal_data.delete, () => { this.set_busy(false); this.refreshTable()})
       this.$nextTick(() => {
-        this.$bvModal.hide('delete')
+        this.show_delete = false
       })
     },
     update_table(response) {
@@ -616,17 +627,15 @@ export default {
           }
         })
       }
+      this.loaded = true
     },
     search(query) {
-      console.log(`Search: ${this.query}`)
-      this.search_data = query
-      this.refreshTable()
+      console.log(`Search: ${query}`)
       this.add_history()
     },
     search_clear() {
-      if (this.search_data != '') {
-        this.search_data = ''
-        this.refreshTable()
+      if (this.search_value != '') {
+        this.search_value = ''
         this.add_history()
       }
     },
@@ -657,13 +666,8 @@ export default {
         tab.handler(tab)
       }
       if (refresh) {
-        this.refreshTable()
         this.add_history()
       }
-    },
-    refreshTable() {
-      this.set_busy(true)
-      this.refresh()
     },
     set_busy(busy) {
       if (this.busy_interval) {
@@ -676,76 +680,75 @@ export default {
         this.is_busy = false
       }
     },
-    select (items) {
-      this.selected = items
-      // Emit the selected rows from the `b-table`
-      this.$emit('row-selected', items)
+    select (item, colName, index, e) {
+      var found = this.selected.indexOf(item)
+      if (found >= 0) {
+        this.selected.splice(found, 1)
+        item._selected = false
+      } else {
+        this.selected.push(item)
+        item._selected = true
+      }
     },
     modal_add () {
       this.modal_data.add = {}
       if (this.tabs[this.tab_index]['parent']) {
         this.modal_data.add['parent'] = this.tabs[this.tab_index]['parent']
       }
-      this.$bvModal.show('add')
+      this.show_add = true
     },
     modal_edit (item) {
       var new_item = JSON.parse(JSON.stringify(item))
       this.modal_data.edit = new_item
-      this.$bvModal.show('edit')
+      this.show_edit = true
     },
-    modal_delete(item) {
-      this.modal_data.delete = item
-      this.$bvModal.show('delete')
+    modal_delete(items) {
+      this.modal_data.delete = items
+      this.show_delete = true
     },
     modal_clear() {
       this.modal_data.add = {}
       this.modal_data.edit = {}
-      this.modal_data.delete = {}
+      this.modal_data.delete = []
+      this.show_add = false
+      this.show_edit = false
+      this.show_delete = false
     },
     sortingChanged (ctx) {
-      this.orderby = ctx.sortBy
-      this.isascending = ctx.sortDesc
+      this.orderby = ctx.column
+      this.isascending = ctx.asc
       this.refreshTable()
     },
     clearSelected() {
-      this.$refs.table.clearSelected()
+      this.items.forEach(item => {
+        item._selected = false
+      })
+      this.selected = []
     },
     select_all() {
-      this.$refs.table.selectAllRows()
-    },
-    makeToast(text, variant = null, title = null, position = 'b-toaster-top-right') {
-      if (title == null) {
-        switch (variant) {
-          case 'success':
-            title = 'Success!'
-            break
-          case 'danger':
-            title = 'Error!'
-            break
-          default:
-            title = ''
-        }
-      }
-      this.$bvToast.toast(text, {
-        title: title,
-        variant: variant,
-        solid: true,
-        toaster: position,
+      this.selected = []
+      this.items.forEach(item => {
+        item._selected = true
+        this.selected.push(item)
       })
     },
-    add_history() {
-      const query = { tab: this.tabs[this.tab_index].title, s: (this.$refs.search.datavalue || ''), env_name: this.env_name, env_filter: encodeURIComponent(JSON.stringify(this.env_filter)) }
-      if (this.$route.query.tab != query.tab || this.$route.query.s != query.s || this.$route.query.env_name != query.env_name) {
-        this.$router.push({ path: this.$router.currentRoute.path, query: query })
+    selectall_toggle (name, index) {
+      if(this.items.length != this.selected.length) {
+        this.select_all()
+      } else {
+        this.clearSelected()
       }
     },
-    hasSlot(name) {
-      return !!this.$slots[name] || !!this.$scopedSlots[name]
+    add_history() {
+      const query = { tab: this.tabs[this.tab_index].title, s: (this.search_value || ''), env_name: this.env_name, env_filter: encodeURIComponent(JSON.stringify(this.env_filter)) }
+      if (this.$route.query.tab != query.tab || this.$route.query.s != query.s || this.$route.query.env_name != query.env_name) {
+        this.$router.push({ query: query })
+      }
     },
-    contextMenu(item, index, event) {
+    contextMenu(item, index, colname, event) {
       event.preventDefault()
       this.item_copy = item
-      this.$refs.contextmenu.hideAll()
+      this.$refs.contextmenu.hide()
       this.$refs.contextmenu.show({top: event.pageY, left: event.pageX})
     },
     get_fields(row, selected_fields = {}) {
@@ -771,21 +774,25 @@ export default {
       	this.to_clipboard(parse_fun(output))
       }
     },
-    copy_clipboard(vm, event) {
+    copy_clipboard(event) {
       var method
       var fields = this.fields
-      if (vm.$attrs.method == 'yaml') {
+      if (event.target.attributes.method.value == 'yaml') {
         method = yaml.dump
-      } else if (vm.$attrs.method == 'json') {
+      } else if (event.target.attributes.method.value == 'json') {
         method = JSON.stringify
       } else {
-        this.to_clipboard(yaml.dump(this.item_copy[vm.$attrs.value], { flowLevel: 0 }).slice(0, -1))
+        this.to_clipboard(yaml.dump(this.item_copy[event.target.attributes.field.value], { flowLevel: 0 }).slice(0, -1))
         return
       }
-      if (vm.$attrs.full) {
+      if (event.target.attributes.full) {
         fields = {}
       }
       this.add_clipboard(this.item_copy, method, fields)
+    },
+    toggleDetails(row, event) {
+      event.stopPropagation()
+      row._showDetails = !row._showDetails
     },
   },
   watch: {
@@ -796,7 +803,9 @@ export default {
       this.refreshTable()
     },
     $route() {
-      this.$nextTick(this.reload);
+      if (this.loaded && this.$route.path == `/${this.endpoint}`) {
+        this.$nextTick(this.reload);
+      }
     }
   },
 }

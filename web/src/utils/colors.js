@@ -59,9 +59,9 @@ export function gen_color(hexcolor) {
   }
 }
 
-export function gen_color_outline(hexcolor) {
+export function gen_color_outline(hexcolor, borderWidth = 1) {
   if (hexcolor) {
-    return 'background-color: #fff !important; border-color: ' + hexcolor + ' !important; color: #3c4b64 !important; border-width: 2px !important'
+    return 'background-color: #fff !important; border-style: solid; border-color: ' + hexcolor + ' !important; color: #3c4b64 !important; border-width: ' + borderWidth + 'px !important'
   } else {
     return ''
   }
@@ -71,7 +71,7 @@ export function get_color(field) {
   if(field in colors) {
     return colors[field]
   } else {
-    return 'secondary'
+    return 'info'
   }
 }
 

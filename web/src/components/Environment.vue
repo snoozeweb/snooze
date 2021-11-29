@@ -1,16 +1,16 @@
 <template>
   <span>
-    <b-button-group>
-      <b-button
+    <CButtonGroup role="group">
+      <CButton
           v-for="(tab, index) in tabs"
           v-bind:key="tab.title"
-          :style="(index == tab_index) ? gen_color(tab.color) : gen_color_outline(tab.color)"
+          :style="(index == tab_index) ? gen_color(tab.color) : gen_color_outline(tab.color, 2)"
           v-on:click="change_tab(tab)"
       >
         {{ tab.name }}
-      </b-button>
-      <b-button v-if="is_admin()" to="/environment" variant="secondary"><i class="la la-cog la-lg align-middle"/></b-button>
-    </b-button-group>
+      </CButton>
+      <CButton v-if="is_admin()" color="secondary" @click="go_settings"><i class="la la-cog la-lg"></i></CButton>
+    </CButtonGroup>
   </span>
 </template>
 
@@ -55,7 +55,7 @@ export default {
       if (tab.handler) {
         tab.handler(tab)
       }
-      this.$root.$emit('environment_change_tab', tab)
+      this.emitter.emit('environment_change_tab', tab)
       //if (refresh) {
       //  this.refreshTable()
       //  this.add_history()
@@ -87,6 +87,9 @@ export default {
       var permissions = localStorage.getItem('permissions') || []
       return permissions.includes('rw_all') || permissions.includes('rw_environment')
     },
+    go_settings() {
+      this.$router.push('/environment')
+    }
   },
   watch: {
     $route() {

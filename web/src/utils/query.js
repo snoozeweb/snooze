@@ -23,27 +23,3 @@ export function join_queries(original_queries, op="AND") {
     }
   })
 }
-
-import { app } from '@/main'
-
-// Alert the user of a problem
-export function text_alert(text, title = null, variant = null, position = 'b-toaster-top-right') {
-  if (title == null) {
-    switch (variant) {
-      case 'success':
-        title = 'Success!'
-        break
-      case 'danger':
-        title = 'Error!'
-        break
-      default:
-        title = ''
-    }
-  }
-  app.$bvToast.toast(text, {
-    title: title,
-    variant: variant,
-    solid: true,
-    toaster: position,
-  })
-}

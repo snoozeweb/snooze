@@ -20,7 +20,7 @@
   padding-top: .125rem !important;
 }
 
-.pr-0_5,
+.pe-0_5,
 .px-0_5 {
   padding-right: .125rem !important;
 }
@@ -30,7 +30,7 @@
   padding-bottom: .125rem !important;
 }
 
-.pl-0_5,
+.ps-0_5,
 .px-0_5 {
   padding-left: .125rem !important;
 }
@@ -50,4 +50,52 @@
 .pointer {
   cursor: pointer;
   user-select: none;
+}
+
+.badge-lg {
+  padding: 0.3em 0.5em;
+  font-size: 1em;
+}
+
+.toast-body-extra {
+  background-color: rgba(0, 0, 0, 0.15);
+  border-bottom-left-radius: calc(0.25rem - 1px);
+  border-bottom-right-radius: calc(0.25rem - 1px);
+}
+
+.dp__main .is-valid {
+  background-position: right calc(1.875em + 0.1875rem) center;
+}
+
+.dp__main .is-invalid {
+  background-position: right calc(1.875em + 0.1875rem) center;
+}
+
+$button-variants-custom: (
+  tertiary: btn-color-map($tertiary, $tertiary),
+  quaternary: btn-color-map($quaternary, $quaternary)
+);
+
+@each $state, $variant in $button-variants-custom {
+  @include button-variant($state, $variant)
+}
+
+.btn-info, .btn-success, .btn-quaternary, .btn-danger {
+  --cui-btn-color: #ffffff;
+}
+
+.btn-warning {
+  --cui-btn-color: $gray-base;
+}
+
+.bg-warning {
+  color: $gray-base;
+}
+
+.bg-tertiary {
+  background-color: $tertiary !important;
+}
+
+.bg-quaternary {
+  background-color: $quaternary !important;
 }

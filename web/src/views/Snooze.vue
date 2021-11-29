@@ -9,30 +9,33 @@
       delete_mode
       add_mode
     >
-      <template v-slot:cell(hits)="row">
-        <router-link :to="get_link(dig(row.item, 'name'))">{{ dig(row.item, 'hits') }}</router-link>
+      <template v-slot:hits="row">
+        <router-link :to="get_link(dig(row.item, 'name'))">{{ dig(row.item, 'hits') || 0 }}</router-link>
       </template>
-      <template #button="row">
-        <b-button variant="info" @click="modal_show([row.item], 'apply')" size="sm" v-b-tooltip.hover title="Retro apply"><i class="la la-redo la-lg"></i></b-button>
+      <template #custom_buttons="row">
+        <CButton color="info" @click="modal_show([row.item], 'apply')" size="sm" v-c-tooltip="{content: 'Retro apply'}"><i class="la la-redo la-lg"></i></CButton>
       </template>
       <template #selected_buttons>
-        <b-button variant="info" @click="modal_show(selected, 'apply')">Retro apply</b-button>
+        <CButton color="info" @click="modal_show(selected, 'apply')">Retro apply</CButton>
       </template>
     </List>
 
-    <b-modal
-      id="modal"
+    <CModal
       ref="modal"
-      @ok="retro_apply(modal_data)"
-      @hidden="modal_clear()"
-      :header-bg-variant="modal_bg_variant"
-      :header-text-variant="modal_text_variant"
+      @close="modal_clear"
       size="xl"
-      centered
+      backdrop="static"
     >
-      <template #modal-title>{{ modal_title }}</template>
-      <p>{{ modal_message }}</p>
-    </b-modal>
+      <CModalHeader :color="modal_bg_variant">
+        <CModalTitle :color="modal_text_variant"><template v-slot:modal-title>{{ modal_title }}</template></CModalTitle>
+      </CModalHeader>
+      <CModalBody>
+        <p>{{ modal_message }}</p>
+      </CModalBody>
+      <CModalFooter>
+        <CButton @click="retro_apply(modal_data)" :color="modal_bg_variant">OK</CButton>
+      </CModalFooter>
+    </CModal>
   </div>
 </template>
 
@@ -42,7 +45,6 @@ import dig from 'object-dig'
 
 import List from '@/components/List.vue'
 
-import { text_alert } from '@/utils/query'
 import { API } from '@/api'
 
 export default {
@@ -113,9 +115,9 @@ export default {
         .then(response => {
           console.log(response)
           if (response !== undefined && response.data !== undefined) {
-            text_alert(`Updated ${response.data} alert(s)`, 'Success', 'success')
+            this.$root.text_alert(`Updated ${response.data} alert(s)`, 'success')
           } else {
-            text_alert('An error occured', 'Failure', 'danger')
+            this.$root.text_alert('Could not apply snooze filter', 'danger')
           }
         })
         .catch(error => console.log(error))
@@ -142,7 +144,7 @@ export default {
           this.modal_bg_variant = 'info'
           this.modal_text_variant = 'white'
       }
-      this.$bvModal.show('modal')
+      this.$refs.modal.show()
     },
   },
 }

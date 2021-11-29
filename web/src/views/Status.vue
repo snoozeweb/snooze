@@ -1,56 +1,63 @@
 <template>
   <div class="animated fadeIn">
-    <b-card no-body ref="main">
-      <b-card-header header-tag="nav" class="p-2">
-        <b-nav card-header pills class='m-0'>
-          <b-nav-item active>
-            Cluster
-          </b-nav-item>
-          <b-nav-item class="ml-auto" link-classes="py-0 pr-0">
-            <b-button-toolbar key-nav>
-              <b-button @click="refresh(true)"><i class="la la-refresh la-lg"></i></b-button>
-            </b-button-toolbar>
-          </b-nav-item>
-        </b-nav>
-      </b-card-header>
-      <b-card-body class="p-2" v-if="items.length > 0">
-        <b-table
-          ref="table"
-          :items="items"
-          :fields="fields"
-          striped
-          small
-          bordered
-        >
-          <template v-slot:cell(healthy)="row">
-            <Field :data="dig(row.item, 'healthy') ? ['OK']: ['ERROR']" colorize/>
-          </template>
-        </b-table>
-      </b-card-body>
+    <CCard no-body ref="main">
+      <CCardHeader class="p-2">
+        <CNav variant="pills" role="tablist" card>
+          <CNavItem>
+            <CNavLink active>Cluster</CNavLink>
+          </CNavItem>
+          <CNavItem class="ms-auto" link-classes="py-0 pe-0">
+            <CButtonToolbar role="group" key-nav>
+              <CButton color="secondary" @click="refresh(true)"><i class="la la-refresh la-lg"></i></CButton>
+            </CButtonToolbar>
+          </CNavItem>
+        </CNav>
+      </CCardHeader>
+      <CCardBody class="p-2" v-if="items.length > 0">
+        <CTabContent>
+          <CTable
+            ref="table"
+            :items="items"
+            :fields="fields"
+            striped
+            small
+            bordered
+          >
+            <CTableHead>
+              <CTableRow>
+                <CTableHeaderCell scope="col" v-for="(field, i) in fields" :key="`${field.key}_${i}`" :class="field.size">
+                  {{ capitalizeFirstLetter(field.label || field.key || field) }}
+                </CTableHeaderCell>
+              </CTableRow>
+            </CTableHead>
+            <CTableBody>
+              <CTableRow v-for="(item, i) in items" :key="i">
+                <CTableDataCell scope="row" v-for="(field, k) in fields" :key="`${field.key}_${k}`">
+                  <span v-if="field.key == 'healthy'">
+                    <Field :data="item[field.key] ? ['OK']: ['ERROR']" colorize/>
+                  </span>
+                  <span v-else>
+                    {{ item[field.key] || '' }}
+                  </span>
+                </CTableDataCell>
+              </CTableRow>
+            </CTableBody>
+          </CTable>
+        </CTabContent>
+      </CCardBody>
       <div v-else>
         <span class='m-2'>
           {{ feedback_message }}
         </span>
       </div>
-    </b-card>
-  <b-alert
-    :show="alert_countdown"
-    dismissible
-    fade
-    class="position-fixed fixed-top m-0 rounded-0 text-center"
-    style="z-index: 2000;"
-    variant="success"
-    @dismiss-count-down="a => this.alert_countdown = a"
-  >
-    Updated
-  </b-alert>
+    </CCard>
   </div>
 </template>
 
 <script>
 
 import dig from 'object-dig'
-import { get_data } from '@/utils/api'
+import { get_data, capitalizeFirstLetter } from '@/utils/api'
 import Field from '@/components/Field.vue'
 
 export default {
@@ -73,7 +80,7 @@ export default {
           return a.host - b.host;
         });
         if (feedback) {
-          this.alert_countdown = 1
+          this.$root.show_alert()
         }
       }
     },
@@ -82,12 +89,12 @@ export default {
     return {
       dig: dig,
       get_data: get_data,
-      alert_countdown: 0,
+      capitalizeFirstLetter: capitalizeFirstLetter,
       feedback_message: '',
       fields: [
-        {key: 'host'},
-        {key: 'port'},
-        {key: 'healthy', label: 'Status'}
+        {key: 'host', size: 'w-50'},
+        {key: 'port', size: 'w-25'},
+        {key: 'healthy', label: 'Status', size: 'w-25'}
       ],
       items: [],
     }

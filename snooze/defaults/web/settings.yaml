@@ -18,30 +18,15 @@ form:
     general:
         metrics_enabled:
             display_name: Metrics
-            component: Radio
-            options:
-                - text: Enabled
-                  value: true
-                - text: Disabled
-                  value: false
+            component: Switch
             description: 'Enable or disable metrics'
         local_users_enabled:
             display_name: Local Users
-            component: Radio
-            options:
-                - text: Enabled
-                  value: true
-                - text: Disabled
-                  value: false
+            component: Switch
             description: 'Enable or disable Local Users Authentication'
         anonymous_enabled:
             display_name: Anonymous Login
-            component: Radio
-            options:
-                - text: Enabled
-                  value: true
-                - text: Disabled
-                  value: false
+            component: Switch
             description: 'Enable or disable Anonymous login'
         default_auth_backend:
             display_name: Default Authentication
@@ -54,12 +39,7 @@ form:
     ldap_auth:
         enabled:
             display_name: LDAP Authentication
-            component: Radio
-            options:
-                - text: Enabled
-                  value: true
-                - text: Disabled
-                  value: false
+            component: Switch
             description: 'Enable or disable LDAP Authentication'
         sweb_title_con: 'Connection settings'
         host:
@@ -111,12 +91,7 @@ form:
     housekeeping:
         trigger_on_startup:
             display_name: Trigger on Startup
-            component: Radio
-            options:
-                - text: Yes
-                  value: true
-                - text: No
-                  value: false
+            component: Switch
             description: 'Trigger on startup'
         record_ttl:
             display_name: Alerts TTL

@@ -19,7 +19,7 @@
             >{{ tag }}</b-form-tag>
           </li>
         </ul>
-        <b-form-select
+        <CFormSelect
           v-bind="inputAttrs"
           v-on="inputHandlers"
           :disabled="disabled || availableOptions.length === 0"
@@ -29,7 +29,7 @@
             <!-- This is required to prevent bugs with Safari -->
             <option disabled v-if="!default_value && default_value != ''" value="">Choose an option...</option>
           </template>
-        </b-form-select>
+        </CFormSelect>
       </template>
     </b-form-tags>
   </div>
@@ -43,8 +43,9 @@ import { get_color } from '@/utils/colors'
 // Create a selector form
 export default {
   extends: Base,
+  emits: ['update:modelValue'],
   props: {
-    value: {
+    modelValue: {
       type: Array,
     },
     // Object containing the `{value: display_name}` of the
@@ -62,7 +63,7 @@ export default {
   data() {
     return {
       get_color: get_color,
-      datavalue: [undefined, '', [], {}].includes(this.value) ? (this.default_value == undefined ? [] : this.default_value) : this.value,
+      datavalue: [undefined, '', [], {}].includes(this.modelValue) ? (this.default_value == undefined ? [] : this.default_value) : this.modelValue,
     }
   },
   computed: {
@@ -73,7 +74,7 @@ export default {
   watch: {
     datavalue: {
       handler: function () {
-        this.$emit('input', this.datavalue)
+        this.$emit('update:modelValue', this.datavalue)
       },
       immediate: true
     },

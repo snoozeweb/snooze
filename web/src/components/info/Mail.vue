@@ -1,14 +1,14 @@
 <template>
   <div>
-    <b-card header="Mail" header-class='text-center font-weight-bold'>
+    <CCard header="Mail" header-class='text-center font-weight-bold'>
       <h5>Header</h5>
-      <b-table
+      <CTable
         :items="infos"
         :fields="fields"
         thead-class="d-none"
         small
       >
-      </b-table>
+      </CTable>
       <br />
       <div v-if="body_plain_data">
         <h5>Body</h5>
@@ -24,9 +24,9 @@
       </div>
       <div v-if="body_html">
         <h5>HTML body</h5>
-        <div v-html-safe="body_html" />
+        <div v-safe-html="body_html" />
       </div>
-    </b-card>
+    </CCard>
   </div>
 </template>
 

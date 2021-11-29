@@ -1,33 +1,47 @@
 <template>
   <div>
-    <b-button-group v-b-popover.hover.bottom="timestamp" title="Last updated time">
-      <b-button variant='outline-dark' disabled size="sm">{{ options.name }}</b-button>
-      <b-button
-        disabled
-        v-for="(status, color) in patlite_status"
+    <CButtonGroup role="group">
+      <CTooltip :content="timestamp" placement="bottom" trigger="hover">
+        <template #toggler="{ on }">
+          <div class='btn btn-outline-dark btn-sm' style="cursor: auto; --cui-btn-hover-bg: inherit; --cui-btn-hover-color: inherit" v-on="on">{{ options.name }}</div>
+        </template>
+      </CTooltip>
+      <div
+        v-for="(status, color) in patlite_data"
         v-bind:key="color"
-        size="sm"
-        :variant="getStatusVariant(color, status)"
+        style="cursor: auto; pointer-events: none"
+        :class="['btn', 'btn-sm', getStatusVariant(color, status)].join(' ')"
       >
         <span v-if="status != 'off'">O</span>
         <span v-else-if="status == 'off'">X</span>
         <span v-else>?</span>
-      </b-button>
+      </div>
+      <CTooltip :content="patlite_status && patlite_status.message" placement="bottom" trigger="hover" v-if="patlite_status">
+        <template #toggler="{ on }">
+          <div
+            style="cursor: auto; --cui-btn-hover-bg: inherit; --cui-btn-hover-color: inherit"
+            class="btn btn-outline-danger btn-sm"
+            v-on="on"
+          >
+           {{ patlite_status.title }}
+          </div>
+        </template>
+      </CTooltip>
   <!--
   <div v-if="timestamp != null">
     Last fetch at {{ timestamp }}
   </div>
   -->
-      <b-button size="sm" v-b-tooltip.hover title="Reset" variant="info" @click="resetPatlite()"><i class="la la-redo-alt la-lg" /></b-button>
-      <b-button
-        size="sm"
-        :variant="auto_refresh ? 'success' : ''"
-        v-b-tooltip.hover
-        :title="auto_refresh ? 'Auto Refresh ON':'Auto Refresh OFF'"
-        @click="toggle_auto()"
-        :pressed.sync="auto_refresh"
-      ><i v-if="auto_refresh" class="la la-eye la-lg" /><i v-else class="la la-eye-slash la-lg" /></i></b-button>
-    </b-button-group>
+      <CButton size="sm" v-c-tooltip="{content: 'Reset'}" color="info" @click="resetPatlite()"><i class="la la-redo-alt la-lg"></i></CButton>
+      <CTooltip :content="auto_mode ? 'Auto Refresh ON':'Auto Refresh OFF'" trigger="hover">
+        <template #toggler="{ on }">
+          <CButton size="sm" :color="auto_mode ? 'success':'secondary'" @click="toggle_auto" v-on="on">
+            <i v-if="auto_mode" class="la la-eye la-lg"></i>
+            <i v-else class="la la-eye-slash la-lg"></i>
+          </CButton>
+        </template>
+      </CTooltip>
+    </CButtonGroup>
   </div>
 </template>
 
@@ -36,6 +50,14 @@ import { API } from '@/api'
 import moment from 'moment'
 
 var default_options = {}
+const COLOR_MAP = {
+  red: 'danger',
+  yellow: 'warning',
+  green: 'success',
+  blue: 'primary',
+  white: 'secondary',
+  alert: 'info',
+}
 
 // Create a card fed by an API endpoint.
 export default {
@@ -45,32 +67,46 @@ export default {
   },
   data () {
     return {
-      patlite_status: {},
-      auto_refresh: true,
+      patlite_data: {},
+      auto_mode: true,
       auto_interval: null,
-      timestamp: null,
+      timestamp: 'No Data',
+      patlite_status: null,
+      timeout: null
     }
   },
   mounted() {
     this.getPatliteStatus()
-    this.toggle_auto()
+    this.auto_interval = setInterval(this.refresh, 10000);
   },
   methods: {
     refresh() {
       this.getPatliteStatus()
     },
     /**
-     * Get the Patlite status from snooze server and update the `patlite_status` and `timestamp` variables
+     * Get the Patlite status from snooze server and update the `patlite_data` and `timestamp` variables
      */
     getPatliteStatus() {
+      this.timeout = setTimeout(() => {
+        this.patlite_status = {title: 'Connecting to Patlite...', message: `Trying ${this.options.widget.subcontent.host}:${this.options.widget.subcontent.port}...`}
+        this.timeout = null
+      }, 1000)
       var parameters = 'host='+encodeURI(this.options.widget.subcontent.host)+'&port='+this.options.widget.subcontent.port
       console.log(`GET /patlite/status?${parameters}`)
       API
         .get(`/patlite/status?${parameters}`)
         .then(response => {
+          if (this.timeout) {
+            clearTimeout(this.timeout)
+            this.timeout = null
+          }
           if (response.data !== undefined) {
-            this.patlite_status = response.data
+            this.patlite_data = response.data
             this.timestamp = moment().format()
+            this.patlite_status = null
+          } else {
+            this.patlite_status = {title: 'Could not connect', message: response.message }
+            this.timestamp = 'No Data'
           }
         })
     },
@@ -80,22 +116,14 @@ export default {
      * @param {string} stat - The status of the light  (on/off/blink1/blink2)
      */
     getStatusVariant(color, stat) {
-      const COLOR_MAP = {
-        red: 'danger',
-        yellow: 'warning',
-        green: 'success',
-        blue: 'primary',
-        white: 'secondary',
-        alert: 'info',
-      }
       var variant_color = COLOR_MAP[color]
       switch(stat) {
         case 'on':
         case 'blink1':
         case 'blink2':
-          return variant_color
+          return `btn-${variant_color}`
         case 'off':
-          return `outline-${variant_color}`
+          return `btn-outline-${variant_color}`
       }
     },
     /**
@@ -111,13 +139,12 @@ export default {
         .catch(error => console.log(error))
     },
     toggle_auto() {
-      if (this.auto_refresh) {
-        this.auto_interval = setInterval(this.refresh, 10000)
-      } else {
-        if (this.auto_interval) {
-          clearInterval(this.auto_interval)
-          this.auto_interval = null
-        }
+      if(this.auto_interval) {
+        clearInterval(this.auto_interval);
+      }
+      this.auto_mode = !this.auto_mode
+      if (this.auto_mode) {
+        this.auto_interval = setInterval(this.refresh, 10000);
       }
     },
   },

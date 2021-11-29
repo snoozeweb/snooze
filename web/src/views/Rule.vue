@@ -7,8 +7,8 @@
       delete_mode
       add_mode
     >
-      <template #button="row">
-        <b-button size="sm" @click="show_children(row.item)" variant="info" v-b-tooltip.hover title="Children"><i class="la la-folder-open la-lg"/></b-button>
+      <template #custom_buttons="row">
+        <CButton size="sm" @click="show_children(row.item)" color="info" v-c-tooltip="{content: 'Children'}"><i class="la la-folder-open la-lg"></i></CButton>
       </template>
     </List>
   </div>

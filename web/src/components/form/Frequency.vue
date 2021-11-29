@@ -1,16 +1,16 @@
 <template>
   <div>
-    <b-row>
-      <b-col>
+    <CRow>
+      <CCol>
         <Duration v-model="datavalue.delay" :default_value="default_value.delay" :options="{'custom_label_prefix': 'After ', 'negative_label': 'Immediately'}" />
-      </b-col>
-      <b-col>
+      </CCol>
+      <CCol>
         <Duration v-model="datavalue.every" :default_value="default_value.every" :options="{'custom_label_prefix': 'Send every ', 'negative_label': 'Send'}" />
-      </b-col>
-      <b-col>
+      </CCol>
+      <CCol>
         <Duration v-model="datavalue.total" :default_value="default_value.total" :options="{'custom_label': ' time(s) total', 'negative_label': 'Forever', 'zero_label': 'Nothing'}" />
-      </b-col>
-    </b-row>
+      </CCol>
+    </CRow>
   </div>
 </template>
 
@@ -25,8 +25,9 @@ export default {
   components: {
     Duration,
   },
+  emits: ['update:modelValue'],
   props: {
-    'value': {type: Object, default: () => {}},
+    'modelValue': {type: Object, default: () => {}},
     'options': {type: Array, default: () => []},
     'disabled': {type: Boolean, default: () => false},
     'required': {type: Boolean, default: () => false},
@@ -35,13 +36,13 @@ export default {
   },
   data() {
     return {
-      datavalue: [undefined, '', [], {}].includes(this.value) ? (this.default_value == undefined ? {} : this.default_value) : this.value
+      datavalue: [undefined, '', [], {}].includes(this.modelValue) ? (this.default_value == undefined ? {} : this.default_value) : this.modelValue
     }
   },
   watch: {
     datavalue: {
       handler: function () {
-        this.$emit('input', this.datavalue)
+        this.$emit('update:modelValue', this.datavalue)
       },
       immediate: true,
       deep: true,

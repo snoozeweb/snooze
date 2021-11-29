@@ -1,17 +1,29 @@
 <template>
 
   <div>
-    <b-form inline v-for="(val, index) in this.datavalue" :key="index">
-    <b-input-group class="pb-1">
-      <b-form-select v-model="val[0]" :options="operations" style="width: auto"/>
-      <b-form-input v-model="val[1]"/>
-      <b-form-input v-model="val[2]" v-if="val[0] != 'DELETE'"/>
-      <b-input-group-append>
-        <b-button v-on:click="remove(index)" variant="danger"><i class="la la-trash la-lg"></i></b-button>
-      </b-input-group-append>
-    </b-input-group>
-    </b-form>
-    <b-button v-on:click="append()"><i class="la la-plus la-lg"></i></b-button>
+    <CForm  @submit.prevent>
+      <CRow class="g-0" v-for="(val, index) in this.datavalue" :key="index">
+        <CCol xs="auto">
+          <CInputGroup class="pb-1">
+            <CFormSelect v-model="val[0]" style="width: auto">
+              <option v-for="opts in operations" :value="opts.value">{{ opts.text }}</option>
+            </CFormSelect>
+            <CFormInput v-model="val[1]"/>
+            <CFormInput v-model="val[2]" v-if="val[0] != 'DELETE'"/>
+            <CButton v-on:click="remove(index)" @click.stop.prevent color="danger">
+              <i class="la la-trash la-lg"></i>
+            </CButton>
+          </CInputGroup>
+        </CCol>
+      </CRow>
+    </CForm>
+    <CCol xs="auto">
+      <CTooltip content="Add">
+        <template #toggler="{ on }">
+          <CButton @click="append" @click.stop.prevent color="secondary" v-on="on"><i class="la la-plus la-lg"></i></CButton>
+        </template>
+      </CTooltip>
+    </CCol>
   </div>
 
 </template>
@@ -23,15 +35,16 @@ import Base from './Base.vue'
 export default {
   extends: Base,
   name: 'Modification',
+  emits: ['update:modelValue'],
   props: {
-    value: {type: Array, default: () => []},
+    modelValue: {type: Array, default: () => []},
     options: {},
   },
   data () {
     return {
-      datavalue: this.value,
+      datavalue: this.modelValue,
       operations: [
-	{value: 'SET', text: 'Set'},
+        {value: 'SET', text: 'Set'},
         {value: 'DELETE', text: 'Delete'},
         {value: 'ARRAY_APPEND', text: 'Append (to array)'},
         {value: 'ARRAY_DELETE', text: 'Delete (from array)'},
@@ -40,7 +53,7 @@ export default {
   },
   methods: {
     append () {
-      this.datavalue.push(['', '', ''])
+      this.datavalue.push(['SET', '', ''])
       //this.add_key = null
       //this.add_value = null
     },
@@ -51,7 +64,7 @@ export default {
   watch: {
     datavalue: {
       handler: function () {
-        this.$emit('input', this.datavalue)
+        this.$emit('update:modelValue', this.datavalue)
       },
       immediate: true
     },

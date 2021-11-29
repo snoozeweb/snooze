@@ -1,16 +1,23 @@
 <template>
   <div>
-    <b-form inline>
-      <b-input-group :append="converted">
-    	<b-form-input v-model="dataval" :disabled="disabled" aria-describedby="feedback" :required="required" :state="checkField" type="number" min="-1"/>
-        <b-input-group-append>
-          <b-button v-on:click="reset" :disabled="disabled" variant="info"><i class="la la-redo-alt la-lg"></i></b-button>
-        </b-input-group-append>
-      </b-input-group>
-    </b-form>
-    <b-form-invalid-feedback id="feedback" :state="checkField">
+    <CForm @submit.prevent class="row g-0">
+      <CCol xs="auto">
+        <CInputGroup>
+          <CFormInput v-model="datavalue" :disabled="disabled" aria-describedby="feedback" :required="required" :invalid="required && !checkField" :valid="required && checkField" type="number" min="-1"/>
+          <CTooltip content="Reset">
+            <template #toggler="{ on }">
+              <CButton v-on:click="reset" :disabled="disabled" color="info" @click.stop.prevent v-on="on">
+                <i class="la la-redo-alt la-lg"></i>
+              </CButton>
+            </template>
+          </CTooltip>
+          <CInputGroupText>{{ converted }}</CInputGroupText>
+        </CInputGroup>
+      </CCol>
+    </CForm>
+    <CFormFeedback invalid>
       Field is required
-    </b-form-invalid-feedback>
+    </CFormFeedback>
   </div>
 </template>
 
@@ -23,57 +30,47 @@ import { pp_countdown } from '@/utils/api'
 export default {
   extends: Base,
   props: {
-    'value': {type: Number},
+    'modelValue': {type: [String, Number]},
     'options': {type: Object, default: () => {}},
     'disabled': {type: Boolean, default: () => false},
     'required': {type: Boolean, default: () => false},
     'default_value': {type: Number},
   },
+  emits: ['update:modelValue'],
   data() {
     return {
-      datavalue: [undefined, '', [], {}].includes(this.value) ? (this.default_value == undefined ? 86400 : this.default_value) : this.value,
+      datavalue: ([undefined, '', [], {}].includes(this.modelValue) ? (this.default_value == undefined ? 86400 : this.default_value) : this.modelValue).toString(),
       pp_countdown: pp_countdown,
       opts: this.options || {},
     }
   },
   methods: {
     reset() {
-      this.datavalue = this.default_value == undefined ? 86400 : this.default_value
+      this.datavalue = (this.default_value == undefined ? 86400 : this.default_value).toString()
     },
   },
   watch: {
     datavalue: {
       handler: function () {
-        this.$emit('input', this.datavalue)
+        this.$emit('update:modelValue', parseInt(this.datavalue) || 0)
       },
       immediate: true
     },
   },
   computed: {
     checkField () {
-      if (!this.required) {
-        return null
-      } else {
-        return this.required && this.value != ''
-      }
-    },
-    dataval: {
-      get: function () {
-        return parseInt(this.datavalue)
-      },
-      set: function (val) {
-        this.datavalue = parseInt(val)
-      }
+      return this.datavalue != ''
     },
     converted () {
-      if (this.datavalue < 0) {
+      var datavalue = parseInt(this.datavalue) || 0
+      if (datavalue < 0) {
         return this.opts.negative_label || ''
-      } else if (this.datavalue == 0) {
+      } else if (datavalue == 0) {
         return this.opts.zero_label || this.opts.negative_label || ''
       } else if (this.opts.custom_label != undefined) {
-        return (this.opts.custom_label_prefix || '') + this.datavalue + (this.opts.custom_label || '')
+        return (this.opts.custom_label_prefix || '') + datavalue + (this.opts.custom_label || '')
       } else {
-        return (this.opts.custom_label_prefix || '') + this.pp_countdown(this.datavalue)
+        return (this.opts.custom_label_prefix || '') + this.pp_countdown(datavalue)
       }
     }
   },

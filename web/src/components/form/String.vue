@@ -1,9 +1,9 @@
 <template>
   <div>
-    <b-form-input v-model="datavalue" :disabled="disabled" aria-describedby="feedback" :required="required" :state="checkField" :placeholder="placeholder"/>
-    <b-form-invalid-feedback id="feedback" :state="checkField">
+    <CFormInput v-model="datavalue" :disabled="disabled" aria-describedby="feedback" :required="required" :invalid="required && !checkField" :valid="required && checkField" :placeholder="placeholder"/>
+    <CFormFeedback invalid>
       Field is required
-    </b-form-invalid-feedback>
+    </CFormFeedback>
   </div>
 </template>
 
@@ -14,8 +14,10 @@ import Base from './Base.vue'
 
 export default {
   extends: Base,
+  name: 'String',
+  emits: ['update:modelValue'],
   props: {
-    'value': {type: String, default: () => ''},
+    'modelValue': {type: String, default: () => ''},
     'options': {type: Array, default: () => []},
     'disabled': {type: Boolean, default: () => false},
     'required': {type: Boolean, default: () => false},
@@ -24,24 +26,20 @@ export default {
   },
   data() {
     return {
-      datavalue: [undefined, '', [], {}].includes(this.value) ? (this.default_value == undefined ? '' : this.default_value) : this.value
+      datavalue: [undefined, '', [], {}].includes(this.modelValue) ? (this.default_value == undefined ? '' : this.default_value) : this.modelValue
     }
   },
   watch: {
     datavalue: {
       handler: function () {
-        this.$emit('input', this.datavalue)
+        this.$emit('update:modelValue', this.datavalue)
       },
       immediate: true
     },
   },
   computed: {
     checkField () {
-      if (!this.required) {
-        return null
-      } else {
-        return this.required && this.value != ''
-      }
+      return this.datavalue != ''
     }
   },
 }

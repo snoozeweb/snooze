@@ -3,18 +3,17 @@
     <CCard>
       <CCardBody class="p-3">
         <CRow>
-          <CCol col="3">
+          <CCol xs="3">
             <h4 id="traffic" class="card-title mb-0">Alerts</h4>
             <div class="small text-muted">Dashboard</div>
           </CCol>
-          <CCol col="9" class="d-none d-md-block">
-            <b-button class="float-right" size="lg" @click="refresh()" variant="primary" v-b-tooltip.hover title="Reload"><i class="la la-refresh la-lg"></i></b-button>
-            <DateTime class="float-right mr-3 mb-1" style="width:510px" :value="datetime" ref='datetimepicker'/>
-            <b-button class="float-right mr-3 mb-1" size="sm" @click="refresh(1,'d')" variant="info" v-b-tooltip.hover title="1 day">Daily</b-button>
-            <b-button class="float-right mr-2 mb-1" size="sm" @click="refresh(1,'w')" variant="info" v-b-tooltip.hover title="1 week">Weekly</b-button>
-            <b-button class="float-right mr-2 mb-1" size="sm" @click="refresh(1,'M')" variant="info" v-b-tooltip.hover title="1 month">Monthly</b-button>
-            <b-button class="float-right mr-2 mb-1" size="sm" @click="refresh(1,'y')" variant="info" v-b-tooltip.hover title="1 year">Yearly</b-button>
-            </CButtonGroup>
+          <CCol xs="9">
+            <CButton class="float-end" @click="refresh()" color="primary" v-c-tooltip="{content: 'Reload'}"><i class="la la-refresh la-lg"></i></CButton>
+            <DateTime class="float-end me-3 d-inline-block" style="width: 380px" v-model="datetime" ref='datetimepicker'/>
+            <CButton class="float-end me-3" size="sm" @click="refresh(1,'d')" color="info" v-c-tooltip="{content: '1 day'}">Daily</CButton>
+            <CButton class="float-end me-2" size="sm" @click="refresh(1,'w')" color="info" v-c-tooltip="{content: '1 week'}">Weekly</CButton>
+            <CButton class="float-end me-2" size="sm" @click="refresh(1,'M')" color="info" v-c-tooltip="{content: '1 month'}">Monthly</CButton>
+            <CButton class="float-end me-2" size="sm" @click="refresh(1,'y')" color="info" v-c-tooltip="{content: '1 year'}">Yearly</CButton>
           </CCol>
         </CRow>
         <ChartMain style="height:350px;margin-top:10px;"
@@ -24,8 +23,8 @@
       </CCardBody>
       <CCardFooter class="p-2">
         <CRow class="text-center">
-          <CCol md sm="12" class="mb-sm-2 mb-0" v-for="(source, key) in datasource" :key="source.label">
-            <div><b-badge class="pointer" :style="source.hidden ? '' : gen_color(source.color)" @click="toggle(key)">{{ source.label }}</b-badge></div>
+          <CCol class="mb-sm-2 mb-0" v-for="(source, key) in datasource" :key="source.label">
+            <div><CBadge class="pointer" color="secondary" :style="source.hidden ? '' : gen_color(source.color)" @click="toggle(key)">{{ source.label }}</CBadge></div>
             <strong>{{ pp_number(data[key]) }} ({{ Math.round(100*(data[key] || 0)/(data[data_ref] || 1)) }}%)</strong>
             <div class="progress-xs mt-2 progress">
               <div class="progress-bar progress-bar-striped progress-bar-animated"
@@ -38,7 +37,7 @@
         </CRow>
       </CCardFooter>
     </CCard>
-    <CRow>
+    <CRow class="mt-3">
       <CCol md="3" sm="12">
         <CCard>
           <CCardHeader class="py-2 px-3">Alerts by Source</CCardHeader>
@@ -74,7 +73,7 @@
         </CCard>
       </CCol>
     </CRow>
-    <CRow>
+    <CRow class="mt-3">
       <CCol md="6" sm="12">
         <CCard>
           <CCardHeader class="py-2 px-3">Throttled Alerts</CCardHeader>
@@ -102,7 +101,7 @@
         </CCard>
       </CCol>
     </CRow>
-    <CRow>
+    <CRow class="mt-3">
       <CCol md="12" sm="12">
         <CCard>
           <CCardHeader class="py-2 px-3">Alert by Weekday</CCardHeader>
@@ -114,52 +113,50 @@
         </CCard>
       </CCol>
     </CRow>
-    <CRow>
+    <CRow class="mt-3">
       <CCol md="12">
         <CCard>
           <CCardHeader class="py-2 px-3">
             Last 10 Comments
           </CCardHeader>
           <CCardBody class="p-2">
-            <CDataTable
+            <SDataTable
               ref="table"
               class="mb-0"
-              hover
               :items="tableItems"
               :fields="tableFields"
-              head-color="light"
+              size="sm"
               no-sorting
               striped
-              size="sm"
               outlined
             >
-              <td slot="type" class="text-center align-middle" style="width: 1%" slot-scope="{item}">
-                <div :class="'bg-' + get_alert_color(item['type']) + ' mr-3 text-white rounded p-2'" v-b-tooltip.hover :title="get_alert_tooltip(item['type'])">
-                  <i :class="'la ' + get_alert_icon(item['type']) + ' la-2x'"></i>
+              <template v-slot:type="row">
+                <div :class="'bg-' + get_alert_color(row.item['type']) + ' me-1 text-white rounded p-2'" v-c-tooltip="get_alert_tooltip(row.item['type'])">
+                  <i :class="'la ' + get_alert_icon(row.item['type']) + ' la-2x'"></i>
                 </div>
-              </td>
-              <td slot="user" class="align-middle" slot-scope="{item}">
-                <strong>{{item.user.name}}</strong>
+              </template>
+              <template v-slot:user="row">
+                <strong>{{ row.item.user.name }}</strong>
                 <div class="small text-muted">
-                  Last login: <strong>{{item.user.last_login}}</strong>
+                  Last login: <strong>{{ row.item.user.last_login }}</strong>
                 </div>
-              </td>
-              <td slot="message" class="align-middle text-break" slot-scope="{item}">
-                <div>{{ item.message }}</div>
-              </td>
-              <td slot="date" class="align-middle" slot-scope="{item}">
-                {{item.date}}
-              </td>
-              <td slot="host" class="align-middle singleline" slot-scope="{item}">
-                {{item.host}}
-              </td>
-              <td slot="alert" class="align-middle text-break" slot-scope="{item}">
-                {{item.alert}}
-              </td>
-              <td slot="button" class="align-middle pr-2" style="width: 1%" slot-scope="{item}">
-                <b-button size="sm" @click="$router.push(get_link(item.record_uid))" v-b-tooltip.hover title="Search"><i class="la la-link la-lg"></i></b-button>
-              </td>
-            </CDataTable>
+              </template>
+              <template v-slot:message="row">
+                <div>{{ row.item.message }}</div>
+              </template>
+              <template v-slot:date="row">
+                {{row.item.date}}
+              </template>
+              <template v-slot:host="row">
+                {{row.item.host}}
+              </template>
+              <template v-slot:alert="row">
+                {{row.item.alert}}
+              </template>
+              <template v-slot:button="row">
+                <CButton size="sm" color="secondary" @click="$router.push(get_link(row.item.record_uid))" v-c-tooltip="{content: 'Search'}"><i class="la la-link la-lg"></i></CButton>
+              </template>
+            </SDataTable>
           </CCardBody>
         </CCard>
       </CCol>
@@ -171,6 +168,7 @@
 import ChartMain from '@/components/ChartMain.vue'
 import ChartDoughnut from '@/components/ChartDoughnut.vue'
 import ChartBar from '@/components/ChartBar.vue'
+import SDataTable from '@/components/SDataTable.vue'
 import DateTime from '@/components/form/DateTime.vue'
 import moment from 'moment'
 import { get_data, pp_number, trimDate, get_alert_icon, get_alert_color, get_alert_tooltip, truncate_message } from '@/utils/api'
@@ -178,6 +176,7 @@ import { hexToRgba, theme_colors, gen_color } from '@/utils/colors'
 import { API } from '@/api'
 
 const weekdays = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
+const format = "YYYY-MM-DDTHH:mmZ"
 
 export default {
   name: 'Dashboard',
@@ -185,6 +184,7 @@ export default {
     ChartMain,
     ChartDoughnut,
     ChartBar,
+    SDataTable,
     DateTime,
   },
   data () {
@@ -201,6 +201,7 @@ export default {
       datasets: [],
       datasets_weekday: [],
       data: {values: {}, split_data: {}},
+      loaded: false,
       get_data: get_data,
       gen_color: gen_color,
       get_alert_icon: get_alert_icon,
@@ -220,13 +221,13 @@ export default {
       },
       tableItems: [],
       tableFields: [
-        { key: 'type', label: ''},
-        { key: 'user'},
-        { key: 'date' },
-        { key: 'message'},
-        { key: 'host'},
-        { key: 'alert'},
-        { key: 'button', label: ''},
+        { key: 'type', label: '', tdClass: 'text-center align-middle', thStyle: {width: '1%'}},
+        { key: 'user', tdClass: 'align-middle'},
+        { key: 'date', tdClass: 'align-middle'},
+        { key: 'message', tdClass: 'align-middle text-break'},
+        { key: 'host', tdClass: 'align-middle singleline'},
+        { key: 'alert', tdClass: 'align-middle text-break'},
+        { key: 'button', label: '', tdClass: 'align-middle pe-2', thStyle: {width: '1%'}},
       ]
     }
   },
@@ -235,22 +236,27 @@ export default {
   },
   methods: {
     reload() {
-      this.datetime = { from: this.$route.query.from || moment().add(-1, 'd').format(), until: this.$route.query.until || moment().format() }
+      this.datetime = {from: this.$route.query.from || moment().add(-1, 'd').format(format), until: this.$route.query.until || moment().format(format)}
       this.last_datetime = Object.assign({}, this.datetime)
       this.reload_charts()
       this.get_comments(10)
     },
     refresh(dur, unit) {
       if (dur && unit) {
-        this.datetime = {from: moment().add(-dur, unit).format(), until: moment().format()}
+        this.datetime = {from: moment().add(-dur, unit).format(format), until: moment().format(format)}
       }
+      console.log(this.datetime)
+      console.log(this.last_datetime)
       if (this.last_datetime.from != this.datetime.from || this.last_datetime.until != this.datetime.until) {
-        this.$router.push({ path: this.$router.currentRoute.path, query: this.datetime })
+        this.$router.push({ path: this.$router.currentRoute.value.path, query: {from: this.datetime.from, until: this.datetime.until} })
         this.last_datetime = Object.assign({}, this.datetime)
+        console.log(this.last_datetime)
       }
     },
     reload_charts() {
-      this.$refs.datetimepicker.datavalue = this.datetime
+      if (this.$refs.datetimepicker) {
+        this.$refs.datetimepicker.datavalue = [this.datetime.from, this.datetime.until]
+      }
       this.date_from = moment(this.datetime.from)
       this.date_until = moment(this.datetime.until)
       var duration = moment.duration(this.date_until.diff(this.date_from))
@@ -261,11 +267,11 @@ export default {
       if (days < 2) {
         this.groupby = 'hour'
       } else if (months < 2) {
-	this.groupby = 'day'
+        this.groupby = 'day'
       } else if (years < 2) {
-	this.groupby = 'month'
+        this.groupby = 'month'
       } else {
-	this.groupby = 'year'
+        this.groupby = 'year'
       }
       this.get_data('stats', {}, {'date_from': this.date_from.unix(), 'date_until': this.date_until.unix(), 'groupby': this.groupby}, this.update_data)
       this.get_data('stats', {}, {'date_from': this.date_from.unix(), 'date_until': this.date_until.unix(), 'groupby': 'weekday'}, this.update_weekday)
@@ -330,12 +336,14 @@ export default {
         this.datasets.push(
           {
             label: this.datasource[f].label,
-            backgroundColor: hexToRgba(this.datasource[f].color, 10),
+            backgroundColor: hexToRgba(this.datasource[f].color, 20),
             borderColor: this.datasource[f].color,
             pointHoverBackgroundColor: this.datasource[f].color,
             borderWidth: 2,
             data: this.data.values[f],
             hidden: this.datasource[f].hidden,
+            tension: 0.3,
+            fill: true,
           }
         )
       )
@@ -366,13 +374,14 @@ export default {
           this.datasets_weekday.push({label: this.datasource[metric].label, color: hexToRgba(this.datasource[metric].color, 50), bordercolor: this.datasource[metric].color, data: weekday_metrics[metric]})
         })
       }
+      this.loaded = true
     },
     toggle(key) {
       if (this.datasource[key].hidden) {
-        this.$set(this.datasource[key], 'hidden', false)
+        this.datasource[key].hidden = false
         this.datasets[Object.keys(this.datasource).indexOf(key)].hidden = false
       } else {
-        this.$set(this.datasource[key], 'hidden', true)
+        this.datasource[key].hidden = true
         this.datasets[Object.keys(this.datasource).indexOf(key)].hidden = true
       }
       this.$refs.mainchart.$refs.chart.updateChart();
@@ -467,7 +476,9 @@ export default {
   },
   watch: {
     $route() {
-      this.$nextTick(this.reload);
+      if (this.loaded && this.$route.path == '/dashboard') {
+        this.$nextTick(this.reload);
+      }
     }
   },
 }

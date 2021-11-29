@@ -35,13 +35,8 @@ fields:
         thClass: 'text-center'
 form:
     enabled:
-        display_name: State
-        component: Radio
-        options:
-            - text: Enabled
-              value: true
-            - text: Disabled
-              value: false
+        display_name: Enabled
+        component: Switch
         default: true
         description: Enabled
     name:
