@@ -24,6 +24,7 @@ from snooze.db.database import Database
 from snooze.plugins.core import Abort, Abort_and_write, Abort_and_update
 from snooze.token import TokenEngine
 from snooze.utils import config, Housekeeper, Stats
+from snooze.utils.functions import flatten
 
 log = getLogger('snooze')
 
@@ -32,7 +33,7 @@ class Core:
         self.conf = conf
         self.db = Database(conf.get('database', {}))
         self.general_conf = config('general')
-        self.ok_severities = list(map(lambda x: x.casefold(), list(self.general_conf.get('ok_severities', []))))
+        self.ok_severities = list(map(lambda x: x.casefold(), flatten([self.general_conf.get('ok_severities', [])])))
         self.housekeeper = Housekeeper(self)
         self.cluster = None
         self.exit_button = Event()
@@ -43,6 +44,7 @@ class Core:
         self.stats.init('alert_hit', 'counter', 'snooze_alert_hit', 'Counter of received alerts', ['source', 'environment', 'severity'])
         self.stats.init('alert_snoozed', 'counter', 'snooze_alert_snoozed', 'Counter of snoozed alerts', ['name'])
         self.stats.init('alert_throttled', 'counter', 'snooze_alert_throttled', 'Counter of throttled alerts', ['name'])
+        self.stats.init('alert_closed', 'counter', 'snooze_alert_closed', 'Counter of received closed alerts', ['name'])
         self.stats.init('notification_sent', 'counter', 'snooze_notification_sent', 'Counter of notification sent', ['name', 'action'])
         self.stats.init('notification_error', 'counter', 'snooze_notification_error', 'Counter of notification that failed', ['name', 'action'])
         self.bootstrap_db()
@@ -177,7 +179,7 @@ class Core:
         log.debug("Reload config file '{}'".format(config_file))
         if config_file == 'general':
             self.general_conf = config('general')
-            self.ok_severities = list(map(lambda x: x.casefold(), list(self.general_conf.get('ok_severities', []))))
+            self.ok_severities = list(map(lambda x: x.casefold(), flatten([self.general_conf.get('ok_severities', [])])))
             self.stats.reload()
             return True
         elif config_file == 'ldap_auth':

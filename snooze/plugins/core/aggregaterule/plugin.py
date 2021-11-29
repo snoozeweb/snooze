@@ -76,6 +76,7 @@ class Aggregaterule(Plugin):
                 record['state'] = 'close'
                 self.db.write('comment', comment)
                 record['comment_count'] = aggregate.get('comment_count', 0) + 1
+                self.core.stats.inc('alert_closed', {'name': aggrule_name})
                 raise Abort_and_update(record)
             watched_fields = []
             for watched_field in watch:

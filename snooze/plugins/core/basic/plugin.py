@@ -87,6 +87,8 @@ class Plugin:
                 'default_sorting': self.metadata_file.get('default_sorting', ''),
                 'default_ordering': self.metadata_file.get('default_ordering', True),
                 'primary': self.metadata_file.get('primary', None),
+                'widgets': self.metadata_file.get('widgets', {}),
+                'action_form': self.metadata_file.get('action_form', {}),
                 'routes': routes
             }
         else:
@@ -109,7 +111,7 @@ class Plugin:
     def get_metadata(self):
         return self.metadata
 
-    def pprint(self):
+    def pprint(self, options={}):
         return self.name
 
     def get_icon(self):
