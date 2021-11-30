@@ -8,7 +8,7 @@
 #!/usr/bin/python3.6
 
 from snooze.plugins.core import Plugin, Abort_and_update
-from snooze.utils import Condition, Modification
+from snooze.utils import Condition
 from snooze.utils.functions import dig
 
 import datetime

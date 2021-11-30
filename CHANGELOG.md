@@ -9,6 +9,7 @@
 * Core: Added alert_closed metric
 * Core: Added SNOOZE_CLUSTER env variable
 * Core: Separated alerts and comments housekeeping
+* Core: New modification: Regex Parse
 * Added full container deployment (docker-compose.yaml)
 ### Bug fixes
 * Core: Could get duplicates if multiple servers were bootstraped at the same time
