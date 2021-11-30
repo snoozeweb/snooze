@@ -7,58 +7,92 @@
 
 #!/usr/bin/python3.6
 
-class ModificationException(Exception): pass
+import re
+from abc import abstractmethod
+from logging import getLogger
 
 from jinja2 import Template
 
-from logging import getLogger
 log = getLogger('snooze.utils.modification')
 
-class Modification():
-    def __init__(self, operation, key, value=None):
-        self.operation = operation
-        self.key = key
-        self.value = value
-    def modify(self, record):
-        """
-        Modify the record inplace.
-        Args:
-            record (dict): Record to modify
-        Returns:
-            bool: True if the record was modified
+class ModificationException(Exception): pass
 
-            The Boolean returned is just used for control
-            (pretty logs, better verbose information)
-        Examples:
-            >>> modification = Modification('SET', 'key', 'value')
-            >>> modification.modify({})
-            True
-            >>> record
-            {'key': 'value'}
-        """
-        return_code = False
-        log.debug("Starting modification [{}, {}, {}]".format(self.operation, self.key, self.value))
-        templated_key = self.key
-        templated_value = self.value
-        if self.key and type(self.key) is str:
-            templated_key = Template(self.key).render(record)
-        if self.value and type(self.value) is str:
-            templated_value = Template(self.value).render(record)
-        if self.operation == 'SET':
-            return_code = bool(templated_value and record.get(templated_key) != templated_value)
-            record[templated_key] = templated_value
-        elif self.operation == 'ARRAY_APPEND':
-            array = record.get(templated_key)
-            if array and type(array) == list:
-                record[templated_key] += templated_value
-                return_code = True
-        elif self.operation == 'ARRAY_DELETE':
-            array = record.get(templated_key)
-            if array and type(array) == list and templated_value in array:
-                array.remove(templated_value)
-                return_code = True
-        elif self.operation == 'DELETE':
-            if templated_key in record:
-                del record[templated_key]
-                return_code = True
+def resolve(record, args):
+    '''Return the arguments evaluated if it's a template'''
+    return [
+        Template(arg).render(record)
+        if isinstance(arg, str) else arg
+        for arg in args
+    ]
+
+class Modification:
+    '''A class to represent a modification'''
+
+    def __init__(self, *args):
+        self.args = args
+
+    @abstractmethod
+    def modify(self, record):
+        pass
+
+class SetOperation(Modification):
+    def modify(self, record):
+        key, value = resolve(record, self.args)
+        return_code = bool(value and record.get(key) != value)
+        record[key] = value
         return return_code
+
+class DeleteOperation(Modification):
+    def modify(self, record):
+        key, *_ = resolve(record, self.args)
+        try:
+            del record[key]
+            return True
+        except KeyError:
+            return False
+
+class ArrayAppendOperation(Modification):
+    def modify(self, record):
+        key, value = resolve(record, self.args)
+        array = record.get(key)
+        if isinstance(array, list):
+            record[key] += value
+            return True
+        return False
+
+class ArrayDeleteOperation(Modification):
+    def modify(self, record):
+        key, value = resolve(record, self.args)
+        try:
+            record[key].remove(value)
+            return True
+        except (ValueError, KeyError):
+            return False
+
+class RegexParse(Modification):
+    def modify(self, record):
+        try:
+            key, regex = resolve(record, self.args)
+            results = re.search(regex, record[key])
+            if results:
+                for name, value in results.groupdict({}).items():
+                    record[name] = value
+                return True
+            return False
+        except KeyError:
+            return False
+        except re.error as err:
+            log.warning("Syntax error in REGEX_PARSE: regex `%s` has error: %s", regex, err)
+            return False
+
+OPERATIONS = {
+    'SET': SetOperation,
+    'DELETE': DeleteOperation,
+    'ARRAY_APPEND': ArrayAppendOperation,
+    'ARRAY_DELETE': ArrayDeleteOperation,
+    'REGEX_PARSE': RegexParse,
+}
+
+def get_modification(operation, *args):
+    '''Return the modification class to run'''
+    return OPERATIONS[operation](*args)

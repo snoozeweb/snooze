@@ -8,7 +8,7 @@
 #!/usr/bin/python3.6
 
 from snooze.plugins.core import Plugin
-from snooze.utils import Condition, Modification
+from snooze.utils import Condition, get_modification
 
 import logging
 from logging import getLogger
@@ -52,7 +52,7 @@ class RuleObject():
         self.modifications = []
         for modification in (rule.get('modifications') or []):
             LOG.debug("-> modification: {}".format(str(modification)))
-            self.modifications.append(Modification(*modification))
+            self.modifications.append(get_modification(*modification))
         LOG.debug("Searching children of rule {}".format(str(self.name)))
         self.children = []
         if db:

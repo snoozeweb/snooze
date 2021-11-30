@@ -17,7 +17,7 @@ log = getLogger('snooze.api')
 
 from snooze.plugins.core.basic.falcon.route import Route
 from snooze.api.falcon import authorize
-from snooze.utils import Condition, Modification
+from snooze.utils import Condition, get_modification
 
 class CommentRoute(Route):
     def __init__(self, *args, **kwargs):
@@ -63,7 +63,7 @@ class CommentRoute(Route):
                             try:
                                 modified = False
                                 for modification in modification_raw:
-                                    if Modification(*modification).modify(records['data'][0]):
+                                    if get_modification(*modification).modify(records['data'][0]):
                                         modified = True
                                 if modified and self.notification_plugin:
                                     self.notification_plugin.process(records['data'][0])

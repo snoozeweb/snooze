@@ -7,7 +7,7 @@
 
 from .config import config, write_config
 from .condition import Condition
-from .modification import Modification
+from .modification import get_modification
 from .housekeeper import Housekeeper
 from .stats import Stats
 from .cluster import Cluster
