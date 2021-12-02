@@ -5,8 +5,6 @@
 # SPDX-License-Identifier: AFL-3.0
 #
 
-#!/usr/bin/python3.6
-
 import re
 from abc import abstractmethod
 from logging import getLogger
@@ -85,12 +83,27 @@ class RegexParse(Modification):
             log.warning("Syntax error in REGEX_PARSE: regex `%s` has error: %s", regex, err)
             return False
 
+class RegexSub(Modification):
+    def modify(self, record):
+        key, out_key, regex, sub = resolve(record, self.args)
+        try:
+            value = record[key]
+            new_value = re.sub(regex, sub, value)
+            record[out_key] = new_value
+            return True
+        except (KeyError, TypeError):
+            return False
+        except re.error as err:
+            log.warning("Syntax error in REGEX_SUB: regex `%s` has error: %s", regex, err)
+            return False
+
 OPERATIONS = {
     'SET': SetOperation,
     'DELETE': DeleteOperation,
     'ARRAY_APPEND': ArrayAppendOperation,
     'ARRAY_DELETE': ArrayDeleteOperation,
     'REGEX_PARSE': RegexParse,
+    'REGEX_SUB': RegexSub,
 }
 
 def get_modification(operation, *args):

@@ -8,8 +8,16 @@
             <CFormSelect v-model="val[0]" :value="val[0]" style="width: auto">
               <option v-for="opts in operations" :value="opts.value">{{ opts.text }}</option>
             </CFormSelect>
-            <CFormInput v-model="val[1]"/>
-            <CFormInput v-model="val[2]" v-if="val[0] != 'DELETE'"/>
+            <div v-if="opts.value == 'DELETE'">
+              <CFormInput v-model="val[0]" />
+            </div>
+            <div v-else-if="opts.value == 'REGEX_SUB'">
+              <CFormInput v-model="val[0]" />
+            </div>
+            <div v-else>
+              <CFormInput v-model="val[0]" />
+              <CFormInput v-model="val[1]" />
+            </div>
             <CButton v-on:click="remove(index)" @click.stop.prevent color="danger">
               <i class="la la-trash la-lg"></i>
             </CButton>
@@ -49,6 +57,7 @@ export default {
         {value: 'ARRAY_APPEND', text: 'Append (to array)'},
         {value: 'ARRAY_DELETE', text: 'Delete (from array)'},
         {value: 'REGEX_PARSE', text: 'Regex capture group'},
+        {value: 'REGEX_SUB', text: 'Regex sub'},
       ],
     }
   },
