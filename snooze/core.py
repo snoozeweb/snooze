@@ -7,7 +7,9 @@
 
 '''Module for managing the snooze server core'''
 
+from random import random
 from datetime import datetime
+from time import sleep
 from hashlib import sha256
 from importlib import import_module
 from logging import getLogger
@@ -169,6 +171,11 @@ class Core:
         towrite = []
         for name, method in should.items():
             if name not in actual:
+                sleep(random()*self.conf.get('init_sleep', 5))
+                actual = self.get_secrets()
+                break
+        for name, method in should.items():
+            if name not in actual:
                 secret = method()
                 towrite.append({'type': 'secret', 'name': name, 'value': secret})
         if towrite:
@@ -194,6 +201,9 @@ class Core:
     def bootstrap_db(self):
         if self.conf.get('bootstrap_db', False):
             result = self.db.search('general')
+            if result['count'] == 0:
+                sleep(random()*self.conf.get('init_sleep', 10))
+                result = self.db.search('general')
             if result['count'] == 0:
                 log.debug("First time starting Snooze with self database. Let us configure it...")
                 aggregate_rules = [{"fields": [ "host", "message" ], "snooze_user": "root" , "name": "Host and Message", "condition": [], "throttle": 900 }]

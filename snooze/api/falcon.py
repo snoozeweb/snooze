@@ -612,7 +612,7 @@ class BackendApi():
         self.core = core
 
         # JWT setup
-        self.secret = self.core.secrets['jwt_private_key']
+        self.secret = '' if os.environ.get('SNOOZE_NO_LOGIN', self.core.conf.get('no_login', False)) else self.core.secrets['jwt_private_key']
         def auth(payload):
             log.debug("Payload received: {}".format(payload))
             return payload

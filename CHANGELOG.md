@@ -6,7 +6,9 @@
 * Web: Removed Bootstrap dependency
 * Web: Converted Radio buttons to Switches
 * Web: Added row selector to Tables
-* Added alert_closed metric
+* Core: Added alert_closed metric
+### Bug fixes
+* Core: Could get duplicates if multiple servers were bootstraped at the same time
 
 ## v1.0.17
 

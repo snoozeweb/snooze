@@ -29,6 +29,7 @@ def config():
         'socket_path': './test.socket',
         'stats': False,
         'bootstrap_db': True,
+        'init_sleep': 0,
     }
 
 @pytest.fixture(scope='class')
