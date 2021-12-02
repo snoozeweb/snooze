@@ -105,7 +105,9 @@ The only configuration file not managed in the web interface is `/etc/snooze/cor
     *  `enabled` (`false`): Enable clustering mode
     * `members`: List of snooze servers in the cluster {host, port}
         - `host` (`localhost`): Hostname or IPv4 address of the first member
+
           `port` (`5200`): Port on which the first member is listening to
+        - ...
 * `database`
     * `type` (`file`): Backend database to use (file or mongo)
 
