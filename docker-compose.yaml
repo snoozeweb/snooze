@@ -1,0 +1,97 @@
+version: "3"
+
+services:
+  lb:
+    image: nginx
+    volumes:
+      - ./nginx.conf:/etc/nginx/conf.d/default.conf
+    ports:
+      - 80:80
+    networks:
+      - snoozenw
+    deploy:
+      replicas: 1
+      placement:
+        constraints:
+          - node.role == manager
+  snooze1:
+    image: snoozeweb/snooze
+    environment:
+      - DATABASE_URL=mongodb://mongo1:27017,mongo2:27017,mongo3:27017/snooze?replicaSet=rs0
+      - SNOOZE_CLUSTER=snooze1:5200,snooze2:5200,snooze3:5200
+    ports:
+      - "5201:5200"
+    networks:
+      - snoozenw
+    depends_on:
+      - mongo1
+    deploy:
+      replicas: 1
+      placement:
+        constraints:
+          - node.hostname == HOST1
+  snooze2:
+    image: snoozeweb/snooze
+    environment:
+      - DATABASE_URL=mongodb://mongo1:27017,mongo2:27017,mongo3:27017/snooze?replicaSet=rs0
+      - SNOOZE_CLUSTER=snooze1:5200,snooze2:5200,snooze3:5200
+    ports:
+      - "5202:5200"
+    networks:
+      - snoozenw
+    depends_on:
+      - mongo1
+    deploy:
+      replicas: 1
+      placement:
+        constraints:
+          - node.hostname == HOST2
+  snooze3:
+    image: snoozeweb/snooze
+    environment:
+      - DATABASE_URL=mongodb://mongo1:27017,mongo2:27017,mongo3:27017/snooze?replicaSet=rs0
+      - SNOOZE_CLUSTER=snooze1:5200,snooze2:5200,snooze3:5200
+    ports:
+      - "5203:5200"
+    networks:
+      - snoozenw
+    depends_on:
+      - mongo1
+    deploy:
+      replicas: 1
+      placement:
+        constraints:
+           - node.hostname == HOST3
+  mongo1:
+    image: mongo
+    networks:
+      - snoozenw
+    command: ["--replSet", "rs0"]
+    deploy:
+      replicas: 1
+      placement:
+        constraints:
+          - node.hostname == HOST1
+  mongo2:
+    image: mongo
+    networks:
+      - snoozenw
+    command: ["--replSet", "rs0"]
+    deploy:
+      replicas: 1
+      placement:
+        constraints:
+          - node.hostname == HOST2
+  mongo3:
+    image: mongo
+    networks:
+      - snoozenw
+    command: ["--replSet", "rs0"]
+    deploy:
+      replicas: 1
+      placement:
+        constraints:
+          - node.hostname == HOST3
+
+networks:
+  snoozenw:
