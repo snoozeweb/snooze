@@ -7,6 +7,8 @@
 * Web: Converted Radio buttons to Switches
 * Web: Added row selector to Tables
 * Core: Added alert_closed metric
+* Core: Can configure cluster using SNOOZE_CLUSTER env variable
+* Added full container deployment (docker-compose.yaml)
 ### Bug fixes
 * Core: Could get duplicates if multiple servers were bootstraped at the same time
 

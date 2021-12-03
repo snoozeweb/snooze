@@ -13,6 +13,7 @@ import threading
 import http.client
 import netifaces
 import socket
+import os
 
 from bson.json_util import loads, dumps
 from logging import getLogger
@@ -22,7 +23,22 @@ log = getLogger('snooze.cluster')
 class Cluster():
     def __init__(self, api):
         self.api = api
-        self.conf = api.core.conf.get('clustering', {})
+        env_cluster = os.environ.get('SNOOZE_CLUSTER')
+        self.conf = {}
+        if env_cluster:
+            try:
+                env_cluster = env_cluster.split(',')
+                self.conf['enabled'] = True
+                self.conf['members'] = []
+                for member in env_cluster:
+                    host, *port = member.split(':')
+                    self.conf['members'].append({'host': host, 'port': port[0] if port else 5200})
+            except Exception as e:
+                log.exception(e)
+                log.warning('Error when parsing cluster config defined in SNOOZE_CLUSTER env var')
+                self.conf = {}
+        if not self.conf:
+            self.conf = api.core.conf.get('clustering', {})
         self.thread = None
         self.sync_queue = []
         self.enabled = self.conf.get('enabled', False)

@@ -4,3 +4,5 @@ __pycache__/
 build
 dist
 snooze.egg-info
+snooze_server.egg-info
+**/Pipfile
