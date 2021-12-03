@@ -22,7 +22,8 @@ class Housekeeper():
         self.core = core
         self.conf = None
         self.thread = None
-        self.interval = None
+        self.interval_record = None
+        self.interval_comment = None
         self.snooze_expired = None
         self.notification_expired = None
         self.reload()
@@ -31,9 +32,10 @@ class Housekeeper():
 
     def reload(self):
         self.conf = config('housekeeping')
-        self.interval = self.conf.get('cleanup_interval', 60)
-        self.snooze_expired = self.conf.get('cleanup_snooze', 86400)
-        self.notification_expired = self.conf.get('cleanup_notification', 86400)
+        self.interval_record = self.conf.get('cleanup_alert', 300)
+        self.interval_comment = self.conf.get('cleanup_comment', 86400)
+        self.snooze_expired = self.conf.get('cleanup_snooze', 259200)
+        self.notification_expired = self.conf.get('cleanup_notification', 259200)
         log.debug("Reloading Housekeeper with conf {}".format(self.conf))
 
 class HousekeeperThread(threading.Thread):
@@ -44,14 +46,17 @@ class HousekeeperThread(threading.Thread):
         self.main_thread = threading.main_thread()
 
     def run(self):
-        timer = (1 - self.housekeeper.conf.get('trigger_on_startup', True)) * time.time()
+        timer_record = (1 - self.housekeeper.conf.get('trigger_on_startup', True)) * time.time()
+        timer_comment = timer_record
         last_day = -1
         while True:
             if not self.main_thread.is_alive():
                 break
-            if self.housekeeper.interval > 0 and time.time() - timer >= self.housekeeper.interval:
-                timer = time.time()
+            if self.housekeeper.interval_record > 0 and time.time() - timer_record >= self.housekeeper.interval_record:
+                timer_record = time.time()
                 self.housekeeper.core.db.cleanup_timeout('record')
+            if self.housekeeper.interval_comment > 0 and time.time() - timer_comment >= self.housekeeper.interval_comment:
+                timer_comment = time.time()
                 self.housekeeper.core.db.cleanup_orphans('comment', 'record_uid', 'record', 'uid')
             day = datetime.datetime.now().day
             if day != last_day:
