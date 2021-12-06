@@ -1,3 +1,7 @@
+## v1.1.1
+### Bug fixes
+* Core: Forced Pymongo < 4.0
+
 ## v1.1.0
 
 ### New features
