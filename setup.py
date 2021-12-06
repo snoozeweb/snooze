@@ -48,7 +48,7 @@ setup(
         'ldap3',
         'pathlib',
         'prometheus-client',
-        'pymongo',
+        'pymongo==3.12.1',
         'python-dateutil',
         'requests_unixsocket',
         'tinydb',
