@@ -24,8 +24,8 @@
         <CButton class="btn-quaternary" v-if="selection_reopened.length > 0" @click="modal_show(selection_reopened, 'open')" size="sm">Open ({{ selection_reopened.length }})</CButton>
       </template>
       <template #info="row">
-        <Mail :smtp="row.item.smtp" v-if="!!row.item.smtp" />
-        <Grafana :data="row.item" v-if="!!row.item.image_url" />
+        <Mail :smtp="row.item.smtp" v-if="!!row.item.smtp" class="pb-2"/>
+        <Grafana :data="row.item" v-if="!!row.item.image_url" class="pb-2"/>
       </template>
       <template #details_side="row">
         <CCol v-if="row.item['comment_count']" class="p-2">

@@ -1,3 +1,15 @@
+## v1.1.2
+
+### New features
+* Web: Added Copy selection in tables context menu
+* Web: Added Search selection in tables context menu
+### Bug fixes
+* Web: Values in Modifications were not correctly retrieved in edit mode
+* Web: Mail and Grafana Infos wre not correctly ported to CoreUI 4.x
+* Core: Grafana webhook did not work correctly if tags were empty
+* Core: Conditions were not working if they were null
+* Core: Receiving multiple OK for the same alert now processes the first one only
+
 ## v1.1.1
 ### Bug fixes
 * Core: Forced Pymongo < 4.0

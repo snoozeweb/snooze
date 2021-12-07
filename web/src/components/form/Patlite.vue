@@ -3,31 +3,31 @@
     <CForm inline>
     <CInputGroup class='pe-1'>
       <CInputGroupText>Red</CInputGroupText>
-      <CFormSelect v-model="datavalue.red">
+      <CFormSelect v-model="datavalue.red" :value="datavalue.red">
         <option v-for="opts in light_options" :value="opts">{{ opts }}</option>
       </CFormSelect>
     </CInputGroup>
     <CInputGroup class='pe-1'>
       <CInputGroupText>Yellow</CInputGroupText>
-      <CFormSelect v-model="datavalue.yellow">
+      <CFormSelect v-model="datavalue.yellow" :value="datavalue.yellow">
         <option v-for="opts in light_options" :value="opts">{{ opts }}</option>
       </CFormSelect>
     </CInputGroup>
     <CInputGroup class='pe-1'>
       <CInputGroupText>Green</CInputGroupText>
-      <CFormSelect v-model="datavalue.green">
+      <CFormSelect v-model="datavalue.green" :value="datavalue.green">
         <option v-for="opts in light_options" :value="opts">{{ opts }}</option>
       </CFormSelect>
     </CInputGroup>
     <CInputGroup class='pe-1'>
       <CInputGroupText>Blue</CInputGroupText>
-      <CFormSelect v-model="datavalue.blue">
+      <CFormSelect v-model="datavalue.blue" :value="datavalue.blue">
         <option v-for="opts in light_options" :value="opts">{{ opts }}</option>
       </CFormSelect>
     </CInputGroup>
     <CInputGroup>
       <CInputGroupText>White</CInputGroupText>
-      <CFormSelect v-model="datavalue.white">
+      <CFormSelect v-model="datavalue.white" :value="datavalue.white">
         <option v-for="opts in light_options" :value="opts">{{ opts }}</option>
       </CFormSelect>
     </CInputGroup>

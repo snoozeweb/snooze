@@ -69,15 +69,19 @@ class Aggregaterule(Plugin):
             comment['record_uid'] = aggregate['uid']
             comment['date'] = now.astimezone().isoformat()
             comment['auto'] = True
-            if record_state == 'close' and record.get('state') != 'close':
-                LOG.debug("OK received, closing alert")
-                comment['message'] = 'Auto closed: Severity {} => {}'.format(aggregate.get('severity', 'unknown'), record.get('severity', 'unknown'))
-                comment['type'] = 'close'
-                record['state'] = 'close'
-                self.db.write('comment', comment)
-                record['comment_count'] = aggregate.get('comment_count', 0) + 1
+            if record_state == 'close':
                 self.core.stats.inc('alert_closed', {'name': aggrule_name})
-                raise Abort_and_update(record)
+                if record.get('state') != 'close':
+                    LOG.debug("OK received, closing alert")
+                    comment['message'] = 'Auto closed: Severity {} => {}'.format(aggregate.get('severity', 'unknown'), record.get('severity', 'unknown'))
+                    comment['type'] = 'close'
+                    record['state'] = 'close'
+                    self.db.write('comment', comment)
+                    record['comment_count'] = aggregate.get('comment_count', 0) + 1
+                    return record
+                else:
+                    LOG.debug("OK received but the alert is already closed, discarding")
+                    raise Abort_and_update(record)
             watched_fields = []
             for watched_field in watch:
                 aggregate_field = dig(aggregate, *watched_field.split('.'))

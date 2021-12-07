@@ -20,7 +20,7 @@ class Condition():
     def __init__(self, array=None):
         LOG.debug("Creating condition with {}".format(array))
         self.array = array
-        if type(self.array) is list and len(self.array) > 0 and self.array[0] is None:
+        if type(self.array) is not list or (len(self.array) > 0 and (self.array[0] in [None, ''])):
             LOG.debug("Condition None will always match")
             self.array = None
     def __str__(self):
@@ -30,11 +30,19 @@ class Condition():
         conds = list(map(Condition, args))
         if operation in ['NOT']:
             return "(!{})".format(str(conds[0]))
+        elif operation in ['EXISTS']:
+            return "({} exists)".format(str(conds[0]))
+        elif operation in ['SEARCH']:
+            return "(search {})".format(str(conds[0]))
         elif operation in ['AND', 'OR']:
             return "({} {} {})".format(str(conds[0]), operation, str(conds[1]))
         else:
-            arg1, arg2 = args
-            return "({} {} {})".format(arg1, operation, arg2)
+            try:
+                arg1, arg2 = args
+                return "({} {} {})".format(arg1, operation, arg2)
+            except Exception as e:
+                LOG.exception(e)
+                return "()"
     def match(self, record):
         """
         Input: Dict

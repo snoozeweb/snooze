@@ -5,7 +5,7 @@
       <CRow class="g-0" v-for="(val, index) in this.datavalue" :key="index">
         <CCol xs="auto">
           <CInputGroup class="pb-1">
-            <CFormSelect v-model="val[0]" style="width: auto">
+            <CFormSelect v-model="val[0]" :value="val[0]" style="width: auto">
               <option v-for="opts in operations" :value="opts.value">{{ opts.text }}</option>
             </CFormSelect>
             <CFormInput v-model="val[1]"/>

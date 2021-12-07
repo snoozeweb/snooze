@@ -263,9 +263,18 @@
     </CModalFooter>
   </CModal>
 
-  <v-contextmenu ref="contextmenu">
-    <v-contextmenu-submenu title="Copy">
-      <template v-slot:title><i class="la la-copy la-lg"></i> Copy</template>
+  <v-contextmenu ref="contextmenu" @show="store_selection">
+    <v-contextmenu-item @click="copy_browser">
+      <i class="la la-copy la-lg"></i> Copy
+    </v-contextmenu-item>
+    <v-contextmenu-item @click="select_all">
+      <i class="la la-check-square la-lg"></i> Select All
+    </v-contextmenu-item>
+    <v-contextmenu-item @click="context_search">
+      <i class="la la-search la-lg"></i> Search
+    </v-contextmenu-item>
+    <v-contextmenu-submenu title="To Clipboard">
+      <template v-slot:title><i class="la la-clipboard la-lg"></i> To Clipboard</template>
       <v-contextmenu-item @click="copy_clipboard" method="yaml">
         As YAML
       </v-contextmenu-item>
@@ -280,13 +289,10 @@
         As JSON (Full)
       </v-contextmenu-item>
       <v-contextmenu-divider />
-      <v-contextmenu-item v-for="field in fields.filter(field => field.key != 'button')" :key="field.key" @click="copy_clipboard" method="simple" :field="field.key">
+      <v-contextmenu-item v-for="field in fields.filter(field => field.key != 'button' && field.key != 'select')" :key="field.key" @click="copy_clipboard" method="simple" :field="field.key">
         {{ capitalizeFirstLetter(field.key) }}
       </v-contextmenu-item>
     </v-contextmenu-submenu>
-    <v-contextmenu-item @click="select_all">
-      <i class="la la-check-square la-lg"></i> Select All
-    </v-contextmenu-item>
   </v-contextmenu>
 
   </div>
@@ -403,6 +409,7 @@ export default {
       items: [],
       item_copy: {},
       adding_data: {},
+      selected_text: '',
       selected_data: {},
       selected: [],
       settings: {},
@@ -630,7 +637,7 @@ export default {
       this.loaded = true
     },
     search(query) {
-      console.log(`Search: ${query}`)
+      //console.log(`Search: ${query}`)
       this.add_history()
     },
     search_clear() {
@@ -789,6 +796,19 @@ export default {
         fields = {}
       }
       this.add_clipboard(this.item_copy, method, fields)
+    },
+    store_selection() {
+      this.selectedText = window.getSelection().toString()
+    },
+    copy_browser(event) {
+      this.to_clipboard(this.selectedText)
+    },
+    context_search(event) {
+      if (this.selectedText != '') {
+        this.search_value = this.selectedText
+        this.$refs.search.datavalue = this.selectedText
+        this.search(this.selectedText)
+      }
     },
     toggleDetails(row, event) {
       event.stopPropagation()

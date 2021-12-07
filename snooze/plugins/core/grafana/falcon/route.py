@@ -36,8 +36,9 @@ class GrafanaRoute(WebhookRoute):
         alert['severity'] = tags.pop('severity', 'critical')
         alert['message'] = media.get('message', media.get('title', media.get('rule_name', '')))
         alert['source'] = 'grafana'
+        alert['tags'] = {}
         alert['raw'] = sanitize(media)
-        for tag_k, tag_v in tags.items,:
+        for tag_k, tag_v in tags.items():
             try:
                 alert['tags'][tag_k] = json.loads(tag_v)
             except:
