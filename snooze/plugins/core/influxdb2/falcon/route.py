@@ -29,7 +29,7 @@ class InfluxDBRoute(WebhookRoute):
         alert['severity'] = media.get('severity', level)
         alert['message'] = media.get('_message', '')
         alert['source'] = 'influxdb2'
-        for k,v in media.items():
+        for k, v in media.items():
             if k[0] != '_':
                 try:
                     alert[k.replace('.', '_')] = sanitize(json.loads(v))

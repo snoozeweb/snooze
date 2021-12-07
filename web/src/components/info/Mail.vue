@@ -1,31 +1,35 @@
 <template>
   <div>
-    <CCard header="Mail" header-class='text-center font-weight-bold'>
-      <h5>Header</h5>
-      <CTable
-        :items="infos"
-        :fields="fields"
-        thead-class="d-none"
-        small
-      >
-      </CTable>
-      <br />
-      <div v-if="body_plain_data">
-        <h5>Body</h5>
-        <div class="multiline">
-          {{ body_plain_data[0] }}
-          <span v-if="more">{{ body_plain_data[1] }}</span>
-          <br />
-          <a v-if="body_plain_data[1] != ''" @click="more = !more" href="#">
-            <span v-if="more">less</span>
-            <span v-else>more</span>
-          </a>
+    <CCard>
+      <CCardHeader class='text-center' style='font-weight:bold'>
+        Mail
+      </CCardHeader>
+      <CCardBody class="p-0">
+        <h5 class="ps-2 pt-1">Header</h5>
+        <SDataTable
+          :items="infos"
+          :fields="fields"
+          size="sm"
+        >
+        </SDataTable>
+        <br />
+        <div v-if="body_plain_data">
+          <h5 class="ps-2 pt-1">Body</h5>
+          <div class="multiline p-2">
+            {{ body_plain_data[0] }}
+            <span v-if="more">{{ body_plain_data[1] }}</span>
+            <br />
+            <CLink v-if="body_plain_data[1] != ''" @click="more = !more" class="pointer">
+              <span v-if="more">less</span>
+              <span v-else>more</span>
+            </CLink>
+          </div>
         </div>
-      </div>
-      <div v-if="body_html">
-        <h5>HTML body</h5>
-        <div v-safe-html="body_html" />
-      </div>
+        <div v-if="body_html">
+          <h5 class="ps-2 pt-1">HTML body</h5>
+          <div v-safe-html="body_html" class="p-2"/>
+        </div>
+      </CCardBody>
     </CCard>
   </div>
 </template>
@@ -33,9 +37,13 @@
 <script>
 
 import { more } from '@/utils/api'
+import SDataTable from '@/components/SDataTable.vue'
 
 export default {
   name: 'Mail',
+  components: {
+    SDataTable,
+  },
   props: {
     smtp: {type: Object},
   },

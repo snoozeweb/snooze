@@ -84,8 +84,9 @@ class Route(FalconRoute):
             resp.body = result
             self.plugin.reload_data(True)
             resp.status = falcon.HTTP_201
-        except:
-            resp.body = []
+        except Exception as e:
+            log.exception(e)
+            resp.body = '[]'
             resp.status = falcon.HTTP_503
             pass
 
@@ -101,8 +102,9 @@ class Route(FalconRoute):
             resp.body = result
             self.plugin.reload_data(True)
             resp.status = falcon.HTTP_201
-        except:
-            resp.body = []
+        except Exception as e:
+            log.exception(e)
+            resp.body = '[]'
             resp.status = falcon.HTTP_503
             pass
 

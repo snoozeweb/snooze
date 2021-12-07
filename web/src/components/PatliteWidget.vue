@@ -32,7 +32,7 @@
     Last fetch at {{ timestamp }}
   </div>
   -->
-      <CButton size="sm" v-c-tooltip="{content: 'Reset'}" color="info" @click="resetPatlite()"><i class="la la-redo-alt la-lg"></i></CButton>
+      <CButton size="sm" v-c-tooltip="{content: 'Reset', placement: 'bottom'}" color="info" @click="resetPatlite()"><i class="la la-redo-alt la-lg"></i></CButton>
       <CTooltip :content="auto_mode ? 'Auto Refresh ON':'Auto Refresh OFF'" trigger="hover">
         <template #toggler="{ on }">
           <CButton size="sm" :color="auto_mode ? 'success':'secondary'" @click="toggle_auto" v-on="on">
