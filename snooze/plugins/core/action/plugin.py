@@ -10,7 +10,7 @@
 
 import json
 from copy import deepcopy
-from snooze.utils import Condition
+from snooze.utils import get_condition
 
 from logging import getLogger
 log = getLogger('snooze.notification')

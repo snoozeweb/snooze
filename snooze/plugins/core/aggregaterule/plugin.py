@@ -8,7 +8,7 @@
 #!/usr/bin/python3.6
 
 from snooze.plugins.core import Plugin, Abort_and_update
-from snooze.utils import Condition
+from snooze.utils import get_condition
 from snooze.utils.functions import dig
 
 import datetime
@@ -146,7 +146,7 @@ class AggregateruleObject():
         self.enabled = aggregate_rule.get('enabled', True)
         self.name = aggregate_rule['name']
         LOG.debug("Creating aggregate: {}".format(str(self.name)))
-        self.condition = Condition(aggregate_rule.get('condition', ''))
+        self.condition = get_condition(aggregate_rule.get('condition', ''))
         LOG.debug("-> condition: {}".format(str(self.condition)))
         self.fields = aggregate_rule.get('fields', [])
         self.fields.sort()
