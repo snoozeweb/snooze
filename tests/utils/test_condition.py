@@ -4,105 +4,232 @@
 # Copyright 2020-2021 Japannext Co., Ltd. <https://www.japannext.co.jp/>
 # SPDX-License-Identifier: AFL-3.0
 #
+'''
+Tests for conditions. Each condition is tested in its own class.
+'''
 
-#!/usr/bin/python3.6
+from snooze.utils.condition import *
 
-from snooze.utils import Condition
-def test_match_equal_1():
-    record = {'a': '1', 'b': '2'}
-    search = ['=', 'a', '1']
-    assert Condition(search).match(record)
+class TestEquals:
+    def test_get_condition(self):
+        condition = get_condition(['=', 'a', '0'])
+        assert isinstance(condition, Equals)
+    def test_init(self):
+        condition = Equals(['=', 'a', '0'])
+        assert isinstance(condition, Condition)
+    def test_match_simple(self):
+        record = {'a': '1', 'b': '2'}
+        condition = Equals(['=', 'a', '1'])
+        assert condition.match(record) == True
+    def test_match_nested_dict(self):
+        record = {'a': '1', 'b': {'c': '1'}}
+        condition = Equals(['=', 'b.c', '1'])
+        assert condition.match(record) == True
+    def test_miss_nested_dict(self):
+        record = {'a': '1', 'b': {'c': 1}}
+        condition = Equals(['=', 'a.c', '2'])
+        assert condition.match(record) == False
+    def test_match_nested_list(self):
+        record = {'a': ['1', '2']}
+        condition = Equals(['=', 'a.1', '2'])
+        assert condition.match(record) == True
+    def test_str(self):
+        condition = Equals(['=', 'a.1', '2'])
+        assert str(condition) == "(a.1 = '2')"
 
-def test_match_equal_2():
-    record = {'a': '1', 'b': {'c': 1}}
-    search = ['=', 'b.c', 1]
-    assert Condition(search).match(record)
+class TestNotEquals:
+    def test_get_condition(self):
+        condition = get_condition(['!=', 'a', '0'])
+        assert isinstance(condition, NotEquals)
+    def test_init(self):
+        condition = NotEquals(['!=', 'a', '1'])
+        assert isinstance(condition, Condition)
+    def test_miss(self):
+        record = {'a': '1', 'b': '2'}
+        condition = NotEquals(['!=', 'a', '1'])
+        assert condition.match(record) == False
+    def test_str(self):
+        condition = NotEquals(['!=', 'a', 1])
+        assert str(condition) == "(a != 1)"
 
-def test_match_equal_3():
-    record = {'a': '1', 'b': {'c': 1}}
-    search = ['=', 'a.c', '2']
-    assert not Condition(search).match(record)
+class TestGreaterThan:
+    def test_get_condition(self):
+        condition = get_condition(['>', 'a', '0'])
+        assert isinstance(condition, GreaterThan)
+    def test_init(self):
+        condition = GreaterThan(['>', 'b', '1'])
+        assert isinstance(condition, Condition)
+    def test_match_two_float(self):
+        record = {'a': 1.0, 'b': 2.0}
+        condition = GreaterThan(['>', 'b', 1.0])
+        assert condition.match(record) == True
+    def test_match_string_and_integer(self):
+        record = {'a': 1, 'b': 2}
+        condition = GreaterThan(['>', 'b', '1'])
+        assert condition.match(record) == True
+    def test_str(self):
+        condition = GreaterThan(['>', 'x', 100])
+        assert str(condition) == "(x > 100)"
 
-def test_match_equal_4():
-    record = {'a': [1, 2]}
-    search = ['=', 'a.1', 2]
-    assert Condition(search).match(record)
+class TestLowerThan:
+    def test_get_condition(self):
+        condition = get_condition(['<', 'a', '0'])
+        assert isinstance(condition, LowerThan)
+    def test_init(self):
+        condition = LowerThan(['<', 'var', 'ab'])
+        assert isinstance(condition, Condition)
+    def test_match_two_string(self):
+        record = {'var': 'aa'}
+        condition = LowerThan(['<', 'var', 'ab'])
+        assert condition.match(record) == True
+    def test_str(self):
+        condition = LowerThan(['<', 'x', 100])
+        assert str(condition) == "(x < 100)"
 
-def test_match_different_1():
-    record = {'a': '1', 'b': '2'}
-    search = ['!=', 'a', '1']
-    assert not Condition(search).match(record)
+class TestAnd:
+    def test_get_condition(self):
+        condition = get_condition(['AND', ['=', 'a', 1], ['=', 'b', 2]])
+        assert isinstance(condition, And)
+    def test_init(self):
+        condition = And(['AND', ['=', 'a', 1], ['=', 'b', 2]])
+        assert isinstance(condition, Condition)
+    def test_and_operation(self):
+        condition = Equals(['=', 'a', 1]) & Equals(['=', 'b', 2])
+        assert isinstance(condition, And)
+    def test_match(self):
+        record = {'a': 1, 'b': 2}
+        condition = And(['AND', ['=', 'a', 1], ['=', 'b', 2]])
+        assert condition.match(record) == True
+    def test_str(self):
+        condition = Equals(['=', 'a', 1]) & Equals(['=', 'b', 2])
+        assert str(condition) == "((a = 1) & (b = 2))"
 
-def test_match_greater_1():
-    record = {'a': 1, 'b': 2}
-    search = ['>', 'b', '1']
-    assert Condition(search).match(record)
+class TestOr:
+    def test_get_condition(self):
+        condition = get_condition(['OR', ['=', 'a', 1], ['=', 'b', 2]])
+        assert isinstance(condition, Or)
+    def test_init(self):
+        condition = Or(['OR', ['=', 'a', 1], ['=', 'b', 2]])
+        assert isinstance(condition, Condition)
+    def test_match(self):
+        record = {'a': 1, 'b': 3}
+        condition = Or(['OR', ['=', 'a', 1], ['=', 'b', 2]])
+        assert condition.match(record) == True
+    def test_str(self):
+        condition = Equals(['=', 'a', 1]) | Equals(['=', 'b', 2])
+        assert str(condition) == "((a = 1) | (b = 2))"
 
-def test_match_lower_1():
-    record = {'var': 'aa'}
-    search = ['<', 'var', 'ab']
-    assert Condition(search).match(record)
+class TestNot:
+    def test_get_condition(self):
+        condition = get_condition(['NOT', ['=', 'a', 1]])
+        assert isinstance(condition, Not)
+    def test_init(self):
+        condition = Not(['NOT', ['=', 'a', 1]])
+        assert isinstance(condition, Condition)
+    def test_match(self):
+        record = {'a': 1, 'b': 3}
+        condition = Not(['NOT', ['=', 'a', 2]])
+        assert condition.match(record) == True
+    def test_miss(self):
+        record = {'a': 1, 'b': 3}
+        condition = Not(['NOT', ['=', 'a', 1]])
+        assert condition.match(record) == False
+    def test_str(self):
+        condition = ~Equals(['=', 'b', 2])
+        assert str(condition) == "!(b = 2)"
 
-def test_match_and():
-    record = {'a': 1, 'b': 2}
-    search = ['AND', ['=', 'a', 1], ['=', 'b', 2]]
-    assert Condition(search).match(record)
+class TestMatches:
+    def test_get_condition(self):
+        condition = get_condition(['MATCHES', 'a', 'string'])
+        assert isinstance(condition, Matches)
+    def test_match(self):
+        record = {'a': '__pattern__'}
+        condition = Matches(['MATCHES', 'a', 'pattern'])
+        assert condition.match(record) == True
+    def test_match_sugar(self):
+        record = {'a': '__pattern__'}
+        condition = Matches(['MATCHES', 'a', '/pattern/'])
+        assert condition.match(record) == True
+    def test_str(self):
+        condition = Matches(['MATCHES', 'a', '/string/'])
+        assert str(condition) == "(a ~ '/string/')"
 
-def test_match_or():
-    record = {'a': 1, 'b': 3}
-    search = ['OR', ['=', 'a', 1], ['=', 'b', 2]]
-    assert Condition(search).match(record)
+class TestExists:
+    def test_get_condition(self):
+        condition = get_condition(['EXISTS', 'a'])
+        assert isinstance(condition, Exists)
+    def test_match(self):
+        record = {'a': '1'}
+        condition = Exists(['EXISTS', 'a'])
+        assert condition.match(record) == True
+    def test_miss(self):
+        record = {'a': '1'}
+        condition = Exists(['EXISTS', 'b'])
+        assert condition.match(record) == False
+    def test_str(self):
+        condition = Exists(['EXISTS', 'a'])
+        assert str(condition) == "a?"
 
-def test_match_not():
-    record = {'a': 1, 'b': 3}
-    search = ['NOT', ['=', 'a', 1]]
-    assert not Condition(search).match(record)
+class TestContains:
+    def test_get_condition(self):
+        condition = get_condition(['CONTAINS', 'a', 'substring'])
+        assert isinstance(condition, Contains)
+    def test_match_search_in_string(self):
+        record = {'a': ['0', ['11', '2'], '3']}
+        condition = Contains(['CONTAINS', 'a', '1'])
+        assert condition.match(record) == True
+    def test_match_incomplete_list(self):
+        record = {'a': '11'}
+        condition = Contains(['CONTAINS', 'a', ['0', '1']])
+        assert condition.match(record) == True
+    def test_str(self):
+        condition = Contains(['CONTAINS', 'a', 'substring'])
+        assert str(condition) == "(a contains 'substring')"
 
-def test_match_regex():
-    record = {'a': '__pattern__'}
-    search = ['MATCHES', 'a', '/pattern/']
-    assert Condition(search).match(record)
+class TestIn:
+    def test_get_condition(self):
+        condition = get_condition(['IN', ['1', '2', '3'], 'a'])
+        assert isinstance(condition, In)
+    def test_match_list(self):
+        record = {'a': '1'}
+        condition = In(['IN', ['1', '5'], 'a'])
+        assert condition.match(record) == True
+    def test_miss_list(self):
+        record = {'a': ['0', ['11', '2'], '3']}
+        condition = In(['IN', ['1', '5'], 'a'])
+        assert condition.match(record) == False
+    def test_match_condition(self):
+        record = {'a': [{'b':'0'}, {'c': '0'}]}
+        condition = In(['IN', ['=', 'c', '0'], 'a'])
+        assert condition.match(record) == True
+    def test_miss_condition(self):
+        record = {'a': [{'b':'0'}, {'c': '0'}]}
+        condition = In(['IN', ['=', 'd', '0'], 'a'])
+        assert condition.match(record) == False
+    def test_str(self):
+        condition = In(['IN', 'element', 'a'])
+        assert str(condition) == "('element' in a)"
 
-def test_match_exists():
-    record = {'a': '1'}
-    search = ['EXISTS', 'b']
-    assert not Condition(search).match(record)
-
-def test_match_contains():
-    record1 = {'a': ['0', ['11', '2'], '3']}
-    search1 = ['CONTAINS', 'a', '1']
-    assert Condition(search1).match(record1)
-    record2 = {'a': '11'}
-    search2 = ['CONTAINS', 'a', ['0', '1']]
-    assert Condition(search2).match(record2)
-
-def test_match_in():
-    record1 = {'a': ['0', ['11', '2'], '3']}
-    search1 = ['IN', ['1', '5'], 'a']
-    assert not Condition(search1).match(record1)
-    record2 = {'a': '1'}
-    search2 = ['IN', ['1', '5'], 'a']
-    assert Condition(search2).match(record2)
-
-def test_match_in_condition():
-    record1 = {'a': [{'b':'0'}, {'c': '0'}]}
-    search1 = ['IN', ['=', 'c', '0'], 'a']
-    assert Condition(search1).match(record1)
-    record2 = {'a': [{'b':'0'}, {'c': '0'}]}
-    search2 = ['IN', ['=', 'd', '0'], 'a']
-    assert not Condition(search2).match(record2)
-
-def test_match_search():
-    record = {'myfield': [{'b':'mystring'}, {'mysearch': '0'}]}
-    search1 = ['SEARCH', 'field']
-    assert Condition(search1).match(record)
-    search2 = ['SEARCH', 'string']
-    assert Condition(search2).match(record)
-    search3 = ['SEARCH', 'search']
-    assert Condition(search3).match(record)
-    search4 = ['SEARCH', 'value']
-    assert not Condition(search4).match(record)
-
-def test_str():
-    search = ['OR', ['NOT', ['=', 'a', 1]], ['=', 'b', 2]]
-    assert str(Condition(search)) == "((!(a = 1)) OR (b = 2))"
+class TestSearch:
+    def test_get_condition(self):
+        condition = get_condition(['SEARCH', 'string'])
+        assert isinstance(condition, Search)
+    def test_match_incomplete_field(self):
+        record = {'myfield': [{'b':'mystring'}, {'mysearch': '0'}]}
+        condition = Search(['SEARCH', 'field'])
+        assert condition.match(record) == True
+    def test_match_nested_value(self):
+        record = {'myfield': [{'b':'mystring'}, {'mysearch': '0'}]}
+        condition = Search(['SEARCH', 'string'])
+        assert condition.match(record) == True
+    def test_match_incomplete_nested_field(self):
+        record = {'myfield': [{'b':'mystring'}, {'mysearch': '0'}]}
+        condition = Search(['SEARCH', 'search'])
+        assert condition.match(record) == True
+    def test_miss(self):
+        record = {'myfield': [{'b':'mystring'}, {'mysearch': '0'}]}
+        condition = Search(['SEARCH', 'value'])
+        assert condition.match(record) == False
+    def test_str(self):
+        condition = Search(['SEARCH', 'mystring'])
+        assert str(condition) == "(SEARCH 'mystring')"

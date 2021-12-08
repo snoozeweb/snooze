@@ -17,7 +17,7 @@ log = getLogger('snooze.api')
 
 from snooze.plugins.core.basic.falcon.route import Route
 from snooze.api.falcon import authorize
-from snooze.utils import Condition, get_modification
+from snooze.utils import get_modification
 
 class CommentRoute(Route):
     def __init__(self, *args, **kwargs):

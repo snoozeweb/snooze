@@ -13,7 +13,7 @@ import time
 import threading
 import hashlib
 import socket
-from snooze.utils import Condition
+from snooze.utils import get_condition
 from snooze.utils.time_constraints import get_record_date, init_time_constraints
 
 from logging import getLogger
@@ -84,7 +84,7 @@ class NotificationObject():
         self.uid = notification.get('uid')
         self.enabled = notification.get('enabled', True)
         self.name = notification['name']
-        self.condition = Condition(notification.get('condition'))
+        self.condition = get_condition(notification.get('condition'))
         self.freq = notification.get('frequency', {})
         self.actions = notification.get('actions', [])
         self.action_plugins = []

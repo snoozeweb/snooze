@@ -6,7 +6,7 @@
 #
 
 from .config import config, write_config
-from .condition import Condition
+from .condition import get_condition
 from .modification import get_modification
 from .housekeeper import Housekeeper
 from .stats import Stats
