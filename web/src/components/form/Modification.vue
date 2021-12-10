@@ -1,35 +1,60 @@
 <template>
-
   <div>
     <CForm  @submit.prevent>
-      <CRow class="g-0" v-for="(val, index) in this.datavalue" :key="index">
-        <CCol xs="auto">
-          <CInputGroup class="pb-1">
-            <CFormSelect v-model="val[0]" :value="val[0]" style="width: auto">
-              <option v-for="opts in operations" :value="opts.value">{{ opts.text }}</option>
+      <CRow v-for="(val, index) in this.dataValue" :key="index" class="m-0 pb-2">
+        <CCard no-body class="p-0 col">
+          <CCardBody class="p-0">
+            <CInputGroup>
+            <CFormSelect v-model="val[0]">
+              <option v-for="opts in operations" v-bind:key="opts.value" :value="opts.value">{{ opts.text }}</option>
             </CFormSelect>
-            <CFormInput v-model="val[1]"/>
-            <CFormInput v-model="val[2]" v-if="val[0] != 'DELETE'"/>
-            <CButton v-on:click="remove(index)" @click.stop.prevent color="danger">
+            <template v-if="val[0] == 'DELETE'">
+              <CFormInput id="field" v-model="val[1]" placeholder="Field to delete" />
+            </template>
+            <template v-else-if="val[0] == 'REGEX_PARSE'">
+              <CFormInput id="field" v-model="val[1]" placeholder="Field to parse" />
+            </template>
+            <template v-else-if="val[0] == 'REGEX_SUB'">
+              <CFormInput id="field" v-model="val[1]" placeholder="Field to parse" />
+              <CFormInput id="out_field" v-model="val[2]" placeholder="Output field" />
+            </template>
+            <template v-else>
+              <CFormInput id="field" v-model="val[1]" placeholder="Field"/>
+              <CFormInput id="value" v-model="val[2]" placeholder="Value"/>
+            </template>
+            <CButton class="ms-auto" size="sm" color="secondary" v-c-tooltip="{content: documentation[val[0]], trigger: 'click', placement: 'bottom'}">
+              <i class="la la-info la-lg"></i>
+            </CButton>
+            <CButton
+              size="sm"
+              color="danger"
+              v-on:click="remove(index)"
+              @click.stop.prevent
+            >
               <i class="la la-trash la-lg"></i>
             </CButton>
-          </CInputGroup>
-        </CCol>
+            </CInputGroup>
+            <CInputGroup v-if="val[0] == 'REGEX_PARSE'">
+              <CFormTextarea class="" id="regex" v-model="val[2]" placeholder="Regex with capture groups (?P<field_name>.*?)" />
+              <!--<CodeTextarea v-model="val[2]" language="regex" placeholder="Regex with capture groups (?P<field_name>.*?)" />-->
+            </CInputGroup>
+            <CInputGroup v-else-if="val[0] == 'REGEX_SUB'">
+              <CFormTextarea class="" id="regex" v-model="val[3]" placeholder="Regex pattern to search for replacement" />
+              <!--<CodeTextarea class="form-control" v-model="val[3]" language="regex" placeholder="Regex pattern to search for replacement" />-->
+              <CFormTextarea class="" id="sub" v-model="val[4]" placeholder="Substitute" />
+            </CInputGroup>
+          </CCardBody>
+        </CCard>
       </CRow>
     </CForm>
     <CCol xs="auto">
-      <CTooltip content="Add">
-        <template #toggler="{ on }">
-          <CButton @click="append" @click.stop.prevent color="secondary" v-on="on"><i class="la la-plus la-lg"></i></CButton>
-        </template>
-      </CTooltip>
+      <CButton @click="append" @click.stop.prevent color="secondary" v-c-tooltip="'Add'"><i class="la la-plus la-lg"></i></CButton>
     </CCol>
   </div>
 
 </template>
 
 <script>
-
 import Base from './Base.vue'
 
 export default {
@@ -42,33 +67,51 @@ export default {
   },
   data () {
     return {
-      datavalue: this.modelValue,
+      dataValue: this.modelValue,
+      documentation: {
+        'SET': "Set a field to a given value (string)",
+        'DELETE': "Delete a field value",
+        'ARRAY_APPEND': "Append a string to an array",
+        'ARRAY_DELETE': "Delete an element from an array by value",
+        'REGEX_PARSE': "Given a regex with named capture groups, the value of the capture groups will be merged to the record by name",
+        'REGEX_SUB': "Search the elements matching a regex, and replace them with a substitute",
+      },
       operations: [
         {value: 'SET', text: 'Set'},
         {value: 'DELETE', text: 'Delete'},
         {value: 'ARRAY_APPEND', text: 'Append (to array)'},
         {value: 'ARRAY_DELETE', text: 'Delete (from array)'},
         {value: 'REGEX_PARSE', text: 'Regex capture group'},
+        {value: 'REGEX_SUB', text: 'Regex sub'},
       ],
     }
   },
   methods: {
     append () {
-      this.datavalue.push(['SET', '', ''])
-      //this.add_key = null
-      //this.add_value = null
+      this.dataValue.push(['SET', '', ''])
     },
     remove (index) {
-      this.datavalue.splice(index, 1)
-    }
+      this.dataValue.splice(index, 1)
+    },
   },
   watch: {
-    datavalue: {
+    dataValue: {
       handler: function () {
-        this.$emit('update:modelValue', this.datavalue)
+        this.$emit('update:modelValue', this.dataValue)
       },
       immediate: true
     },
   },
 }
 </script>
+
+<style scoped lang="scss">
+
+.input-group {
+  .form-select, .form-control, btn {
+    margin: -1px;
+  }
+
+}
+
+</style>

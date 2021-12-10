@@ -60,3 +60,10 @@ def test_modification_regex_parse_broken_regex():
     return_code = modification.modify(record)
     assert return_code == False
     assert record == {'message': 'CRON[12345]: Error during cronjob'}
+
+def test_modification_regex_sub():
+    record = {'message': 'Error in session 0x2134adf890bc89'}
+    modification = get_modification('REGEX_SUB', 'message', 'message', '0x[a-fA-F0-9]+', '0x###')
+    return_code = modification.modify(record)
+    assert return_code == True
+    assert record == {'message': 'Error in session 0x###'}
