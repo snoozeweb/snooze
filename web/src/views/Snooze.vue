@@ -1,10 +1,9 @@
 <template>
   <div class="animated fadeIn">
     <List
+      ref="table"
       endpoint_prop="snooze"
       :tabs_prop="tabs"
-      @row-selected="select"
-      ref="table"
       edit_mode
       delete_mode
       add_mode
@@ -22,17 +21,27 @@
 
     <CModal
       ref="modal"
+      :visible="show_modal"
       @close="modal_clear"
+      alignment="center"
       size="xl"
       backdrop="static"
     >
-      <CModalHeader :color="modal_bg_variant">
-        <CModalTitle :color="modal_text_variant"><template v-slot:modal-title>{{ modal_title }}</template></CModalTitle>
+      <CModalHeader :class="`bg-${modal_bg_variant}`">
+        <CModalTitle class="text-white" v-if="modal_data.length > 1">Retro apply to {{ modal_data.length }} items</CModalTitle>
+        <CModalTitle :class="`text-${modal_text_variant}`" v-else>Retro apply</CModalTitle>
       </CModalHeader>
       <CModalBody>
         <p>{{ modal_message }}</p>
+        <p>
+          Retro applying on:
+          <ul>
+            <li v-bind:key="snooze_obj.name" v-for="snooze_obj in modal_data">{{ snooze_obj.name }}</li>
+          </ul>
+        </p>
       </CModalBody>
       <CModalFooter>
+        <CButton @click="modal_clear" color="secondary">Cancel</CButton>
         <CButton @click="retro_apply(modal_data)" :color="modal_bg_variant">OK</CButton>
       </CModalFooter>
     </CModal>
@@ -62,9 +71,14 @@ export default {
       modal_bg_variant: '',
       modal_text_variant: '',
       modal_data: [],
-      selected: [],
+      show_modal: false,
       dig: dig,
       tabs: this.get_tabs_default(),
+    }
+  },
+  computed: {
+    selected () {
+      return this.$refs.table.selected
     }
   },
   methods: {
@@ -122,21 +136,18 @@ export default {
         })
         .catch(error => console.log(error))
     },
-    select(items) {
-      this.selected = items
-    },
     modal_clear() {
       this.modal_data = []
       this.modal_title = ''
-      this.modal_message = ''
+      this.modal_message = null
       this.modal_type = ''
       this.modal_bg_variant = ''
       this.modal_text_variant = ''
+      this.show_modal = false
     },
     modal_show(items, type) {
       this.modal_data = items
       this.modal_type = type
-      this.modifications = []
       switch (type) {
         default:
           this.modal_title = 'Retro apply to all alerts'
@@ -144,7 +155,7 @@ export default {
           this.modal_bg_variant = 'info'
           this.modal_text_variant = 'white'
       }
-      this.$refs.modal.show()
+      this.show_modal = true
     },
   },
 }
