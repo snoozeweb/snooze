@@ -6,7 +6,7 @@
 #
 
 from snooze.plugins.core import Plugin, Abort_and_write, Abort
-from snooze.utils import Condition
+from snooze.utils import get_condition
 from snooze.utils.time_constraints import get_record_date, init_time_constraints
 
 from logging import getLogger
@@ -57,7 +57,7 @@ class SnoozeObject():
     def __init__(self, snooze):
         self.enabled = snooze.get('enabled', True)
         self.name = snooze['name']
-        self.condition = Condition(snooze.get('condition'))
+        self.condition = get_condition(snooze.get('condition'))
         self.condition_raw = snooze.get('condition')
         self.hits = snooze.get('hits', True)
         self.discard = snooze.get('discard', False)

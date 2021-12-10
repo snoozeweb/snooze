@@ -8,7 +8,7 @@
 #!/usr/bin/python3.6
 
 from snooze.plugins.core import Plugin
-from snooze.utils import Condition, get_modification
+from snooze.utils import get_condition, get_modification
 
 import logging
 from logging import getLogger
@@ -47,7 +47,7 @@ class RuleObject():
         self.enabled = rule.get('enabled', True)
         self.name = rule['name']
         LOG.debug("Creating rule: {}".format(str(self.name)))
-        self.condition = Condition(rule.get('condition'))
+        self.condition = get_condition(rule.get('condition'))
         LOG.debug("-> condition: {}".format(str(self.condition)))
         self.modifications = []
         for modification in (rule.get('modifications') or []):
