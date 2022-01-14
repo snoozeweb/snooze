@@ -135,6 +135,7 @@ export default {
           }
         })
         .catch(error => console.log(error))
+      this.modal_clear()
     },
     modal_clear() {
       this.modal_data = []
@@ -144,6 +145,8 @@ export default {
       this.modal_bg_variant = ''
       this.modal_text_variant = ''
       this.show_modal = false
+      Array.from(document.getElementsByClassName('modal')).forEach(el => el.style.display = "none")
+      Array.from(document.getElementsByClassName('modal-backdrop')).forEach(el => el.style.display = "none")
     },
     modal_show(items, type) {
       this.modal_data = items

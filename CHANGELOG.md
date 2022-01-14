@@ -1,3 +1,14 @@
+## v1.2.0
+
+### New features
+* Web: Better display for Modifications
+* Core: RegexSub (useful for improving aggregation or scrapping secrets)
+### Bug fixes
+* Web: Modals and Toasts were not disappearing once faded out
+* Web: Time in Time Constaints was reset when updating
+* Web: Snooze filters Retro apply modal was not showing up
+* Core: Conditions refactoring
+
 ## v1.1.2
 
 ### New features
