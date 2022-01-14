@@ -578,7 +578,7 @@ export default {
         })
         .catch(error => console.log(error))
       this.$nextTick(() => {
-        this.show_edit = false
+        this.modal_clear()
       })
     },
     submit_add(bvModalEvt, endpoint = this.endpoint) {
@@ -612,14 +612,14 @@ export default {
         })
         .catch(error => console.log(error))
       this.$nextTick(() => {
-        this.show_add = false
+        this.modal_clear()
       })
     },
     submit_delete(bvModalEvt, endpoint = this.endpoint) {
       this.set_busy(true)
       delete_items(endpoint, this.modal_data.delete, () => { this.set_busy(false); this.refreshTable()})
       this.$nextTick(() => {
-        this.show_delete = false
+        this.modal_clear()
       })
     },
     update_table(response) {
@@ -720,6 +720,8 @@ export default {
       this.show_add = false
       this.show_edit = false
       this.show_delete = false
+      Array.from(document.getElementsByClassName('modal')).forEach(el => el.style.display = "none")
+      Array.from(document.getElementsByClassName('modal-backdrop')).forEach(el => el.style.display = "none")
     },
     sortingChanged (ctx) {
       this.orderby = ctx.column

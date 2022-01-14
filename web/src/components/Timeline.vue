@@ -255,6 +255,8 @@ export default {
       this.modal_data.delete = {}
       this.show_edit = false
       this.show_delete = false
+      Array.from(document.getElementsByClassName('modal')).forEach(el => el.style.display = "none")
+      Array.from(document.getElementsByClassName('modal-backdrop')).forEach(el => el.style.display = "none")
     },
     submit_edit(bvModalEvt) {
       bvModalEvt.preventDefault()

@@ -22,8 +22,8 @@ import 'vue3-date-time-picker/dist/main.css';
 import moment from 'moment'
 
 var output_format = "HH:mm:ssZ"
-var now = moment().format()
-var one_hour_later = moment().add(1, 'hours').format()
+var now = moment().format(output_format)
+var one_hour_later = moment().add(1, 'hours').format(output_format)
 var default_object = {from: now, until: one_hour_later}
 
 export default {
@@ -38,11 +38,11 @@ export default {
     return {
       datavalue: [
         {
-          hours: moment(this.modelValue['from'] || now).hours(),
-          minutes: moment(this.modelValue['from'] || now).minutes()
+          hours: moment('2000-01-01 ' + (this.modelValue['from'] || now)).hours(),
+          minutes: moment('2000-01-01 ' + (this.modelValue['from'] || now)).minutes()
         }, {
-          hours: moment(this.modelValue['until'] || one_hour_later).hours(),
-          minutes: moment(this.modelValue['until'] || one_hour_later).minutes()
+          hours: moment('2000-01-01 ' + (this.modelValue['until'] || one_hour_later)).hours(),
+          minutes: moment('2000-01-01 ' + (this.modelValue['until'] || one_hour_later)).minutes()
         }
       ],
       main_color: '',
