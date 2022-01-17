@@ -5,7 +5,7 @@
         <CCard no-body class="p-0 col">
           <CCardBody class="p-0">
             <CInputGroup>
-            <CFormSelect v-model="val[0]">
+            <CFormSelect v-model="val[0]" :value="val[0]">
               <option v-for="opts in operations" v-bind:key="opts.value" :value="opts.value">{{ opts.text }}</option>
             </CFormSelect>
             <template v-if="val[0] == 'DELETE'">
@@ -81,7 +81,7 @@ export default {
         {value: 'DELETE', text: 'Delete'},
         {value: 'ARRAY_APPEND', text: 'Append (to array)'},
         {value: 'ARRAY_DELETE', text: 'Delete (from array)'},
-        {value: 'REGEX_PARSE', text: 'Regex capture group'},
+        {value: 'REGEX_PARSE', text: 'Regex parse (capture)'},
         {value: 'REGEX_SUB', text: 'Regex sub'},
       ],
     }

@@ -6,15 +6,16 @@ fields:
         orderby: sort
         sortable: true
         tdClass: ['align-middle']
+        thStyle: {width: '15%'}
     -
         key: name
         sortable: true,
-        tdClass: 'align-middle'
-        thStyle: {width: '25%'}
+        tdClass: ['align-middle', 'text-break']
+        thStyle: {width: '20%'}
     -
         key: condition
         sortable: false
-        tdClass: 'align-middle'
+        tdClass: ['align-middle', 'text-break']
         thStyle: {width: '50%'}
         type: array
     -
@@ -22,7 +23,7 @@ fields:
         key: snooze_user.name
         sortable: true
         tdClass: 'align-middle'
-        thStyle: {width: '25%'}
+        thStyle: {width: '15%'}
     -
         key: hits
         label: '#'
