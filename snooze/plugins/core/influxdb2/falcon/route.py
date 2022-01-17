@@ -1,7 +1,8 @@
 #!/usr/bin/python
 from logging import getLogger
-log = getLogger('snooze.webhooks.kapacitor')
+log = getLogger('snooze.webhooks.influxdb')
 
+from copy import deepcopy
 from snooze.api.falcon import WebhookRoute
 from snooze.utils.functions import sanitize
 import json
@@ -14,6 +15,8 @@ class InfluxDBRoute(WebhookRoute):
     def parse(self, media):
         alert = {}
 
+        media = sanitize(media)
+        alert['raw'] = deepcopy(media)
         level = media.get('_level')
         if level == 'crit':
             level = 'critical'
@@ -32,10 +35,9 @@ class InfluxDBRoute(WebhookRoute):
         for k, v in media.items():
             if k[0] != '_':
                 try:
-                    alert[k.replace('.', '_')] = sanitize(json.loads(v))
+                    alert[k] = sanitize(json.loads(v))
                 except:
-                    alert[k.replace('.', '_')] = v
-        alert['raw'] = sanitize(media)
+                    alert[k] = v
 
         return alert
 
