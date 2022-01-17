@@ -18,7 +18,7 @@
 import { more } from '@/utils/api'
 
 export default {
-  name: 'Mail',
+  name: 'Grafana',
   props: {
     data: {type: Object},
   },

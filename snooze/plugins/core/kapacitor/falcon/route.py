@@ -30,19 +30,19 @@ class KapacitorRoute(WebhookRoute):
         alert['severity'] = tags.pop('severity', media.get('level', 'critical'))
         alert['message'] = media.get('message', '')
         alert['source'] = 'kapacitor'
-        alert['raw'] = sanitize(media)
-        for tag_k, tag_v in tags.items,:
+        alert['raw'] = media
+        for tag_k, tag_v in tags.items():
             try:
-                alert['tags'][tag_k] = json.loads(tag_v)
+                alert['tags'][tag_k] = sanitize(json.loads(tag_v))
             except:
                 alert['tags'][tag_k] = tag_v
         alert['tags'].update(media.get('tags') or {})
-        alert['tags'] = sanitize(alert['tags'])
 
         return alert
 
     def parse_webhook(self, req, media):
         alerts = []
+        media = sanitize(media)
         for match in media.get('data', {}).get('series', []):
             alert = self.parse(match, media)
             alerts.append(alert)

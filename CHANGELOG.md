@@ -3,6 +3,7 @@
 ### New features
 * Web: Better display for Modifications
 * Core: RegexSub (useful for improving aggregation or scrapping secrets)
+* Core: Prometheus webhook added
 ### Bug fixes
 * Web: Few display issues
 * Web: Modals and Toasts were not disappearing once faded out

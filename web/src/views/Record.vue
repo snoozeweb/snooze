@@ -26,6 +26,7 @@
       <template #info="row">
         <Mail :smtp="row.item.smtp" v-if="!!row.item.smtp" class="pb-2"/>
         <Grafana :data="row.item" v-if="!!row.item.image_url" class="pb-2"/>
+        <Prometheus :data="row.item.prometheus" v-if="!!row.item.prometheus" class="pb-2"/>
       </template>
       <template #details_side="row">
         <CCol v-if="row.item['comment_count']" class="p-2">
@@ -107,6 +108,7 @@ import Modification from '@/components/form/Modification.vue'
 
 import Mail from '@/components/info/Mail.vue'
 import Grafana from '@/components/info/Grafana.vue'
+import Prometheus from '@/components/info/Prometheus.vue'
 
 export default {
   components: {
@@ -115,6 +117,7 @@ export default {
     Modification,
     Mail,
     Grafana,
+    Prometheus,
   },
   mounted () {
     if(localStorage.getItem('record_auto') == 'true') {
