@@ -4,6 +4,7 @@
 * Web: Better display for Modifications
 * Core: RegexSub (useful for improving aggregation or scrapping secrets)
 ### Bug fixes
+* Web: Few display issues
 * Web: Modals and Toasts were not disappearing once faded out
 * Web: Time in Time Constaints was reset when updating
 * Web: Snooze filters Retro apply modal was not showing up

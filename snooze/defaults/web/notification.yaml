@@ -6,21 +6,22 @@ fields:
         orderby: sort
         sortable: true
         tdClass: ['align-middle']
+        thStyle: {width: '15%'}
     -
         key: name
         sortable: true
-        thStyle: {width: '20%'}
-        tdClass: ['align-middle']
+        thStyle: {width: '15%'}
+        tdClass: ['align-middle', 'text-break']
     -
         key: condition
         sortable: false
-        thStyle: {width: '50%'}
-        tdClass: ['align-middle']
+        thStyle: {width: '45%'}
+        tdClass: ['align-middle', 'text-break']
         type: array
     -
         key: actions
         sortable: false
-        thStyle: {width: '30%'}
+        thStyle: {width: '25%'}
         tdClass: ['align-middle']
         type: array
     -
