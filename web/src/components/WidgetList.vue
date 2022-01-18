@@ -1,13 +1,12 @@
 <template>
-  <div>
-  <CNavItem v-for="widget in widgets" v-bind:key="widget.name" class="d-inline-block pe-2">
+  <div v-for="widget in widgets" v-bind:key="widget.name" class="d-inline-flex m-auto pe-2">
     <component
       v-if="widget.vue_component"
       v-bind:is="widget.vue_component"
       :id="'component_'+widget.vue_component"
       :options="widget"
+      class="pb-1 m-auto"
     />
-  </CNavItem>
   </div>
 </template>
 

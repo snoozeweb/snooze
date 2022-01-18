@@ -2,9 +2,12 @@
 
 ### New features
 * Web: Better display for Modifications
+* Web: Set tables to a busy state for each request
 * Core: RegexSub (useful for improving aggregation or scrapping secrets)
 * Core: Prometheus webhook added
 ### Bug fixes
+* Web: Could not clear search if the bar was empty
+* Web: Improved Widget + Environment bar display
 * Web: Few display issues
 * Web: Modals and Toasts were not disappearing once faded out
 * Web: Time in Time Constaints was reset when updating

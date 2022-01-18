@@ -6,7 +6,7 @@
 
 Add, modify or delete fields from a Record.
 
-Records have to match the Rule's condition in order to being processed.
+Records have to match a Rule's conditions in order to being processed.
 
 Rules are very useful to analyze incoming Records and add infos that were not in the original log.
 

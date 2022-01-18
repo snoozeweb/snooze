@@ -246,6 +246,7 @@ export default {
           modifications: modifs,
         })
       })
+      this.$refs.table.set_busy(true)
       add_items("comment_self", comments, this.callback, {'items': items, 'type': type})
       this.modal_clear()
     },
