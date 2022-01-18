@@ -1,17 +1,15 @@
 <template>
-  <span>
-    <CButtonGroup role="group">
-      <CButton
-          v-for="(tab, index) in tabs"
-          v-bind:key="tab.title"
-          :style="(index == tab_index) ? gen_color(tab.color) : gen_color_outline(tab.color, 2)"
-          v-on:click="change_tab(tab)"
-      >
-        {{ tab.name }}
-      </CButton>
-      <CButton v-if="is_admin()" color="secondary" @click="go_settings"><i class="la la-cog la-lg"></i></CButton>
-    </CButtonGroup>
-  </span>
+  <CButtonGroup role="group" class="pb-1 m-auto">
+    <CButton
+        v-for="(tab, index) in tabs"
+        v-bind:key="tab.title"
+        :style="(index == tab_index) ? gen_color(tab.color) : gen_color_outline(tab.color, 2)"
+        v-on:click="change_tab(tab)"
+    >
+      {{ tab.name }}
+    </CButton>
+    <CButton v-if="is_admin()" color="secondary" @click="go_settings"><i class="la la-cog la-lg"></i></CButton>
+  </CButtonGroup>
 </template>
 
 <script>

@@ -124,10 +124,12 @@ export default {
       var filter_names = []
       rows.forEach(item => { filter_names.push(item.name) })
       console.log(`Retro apply ${filter_names}`)
+      this.$refs.table.set_busy(true)
       API
         .put(`/snooze_apply`, filter_names)
         .then(response => {
           console.log(response)
+          this.$refs.table.set_busy(false)
           if (response !== undefined && response.data !== undefined) {
             this.$root.text_alert(`Updated ${response.data} alert(s)`, 'success')
           } else {

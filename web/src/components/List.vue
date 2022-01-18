@@ -641,10 +641,8 @@ export default {
       this.add_history()
     },
     search_clear() {
-      if (this.search_value != '') {
-        this.search_value = ''
-        this.add_history()
-      }
+      this.search_value = ''
+      this.add_history()
     },
     changeTab(tab, refresh = true) {
       this.tab_index = this.tabs.indexOf(tab)

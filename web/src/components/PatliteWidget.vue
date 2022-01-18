@@ -3,14 +3,14 @@
     <CButtonGroup role="group">
       <CTooltip :content="timestamp" placement="bottom" trigger="hover">
         <template #toggler="{ on }">
-          <div class='btn btn-outline-dark btn-sm' style="cursor: auto; --cui-btn-hover-bg: inherit; --cui-btn-hover-color: inherit" v-on="on">{{ options.name }}</div>
+          <div class='btn btn-outline-dark' style="cursor: auto; --cui-btn-hover-bg: inherit; --cui-btn-hover-color: inherit" v-on="on">{{ options.name }}</div>
         </template>
       </CTooltip>
       <div
         v-for="(status, color) in patlite_data"
         v-bind:key="color"
         style="cursor: auto; pointer-events: none"
-        :class="['btn', 'btn-sm', getStatusVariant(color, status)].join(' ')"
+        :class="['btn', getStatusVariant(color, status)].join(' ')"
       >
         <span v-if="status != 'off'">O</span>
         <span v-else-if="status == 'off'">X</span>
@@ -20,7 +20,7 @@
         <template #toggler="{ on }">
           <div
             style="cursor: auto; --cui-btn-hover-bg: inherit; --cui-btn-hover-color: inherit"
-            class="btn btn-outline-danger btn-sm"
+            class="btn btn-outline-danger"
             v-on="on"
           >
            {{ patlite_status.title }}
@@ -32,10 +32,10 @@
     Last fetch at {{ timestamp }}
   </div>
   -->
-      <CButton size="sm" v-c-tooltip="{content: 'Reset', placement: 'bottom'}" color="info" @click="resetPatlite()"><i class="la la-redo-alt la-lg"></i></CButton>
+      <CButton class="singleline" v-c-tooltip="{content: 'Clear', placement: 'bottom'}" color="info" @click="resetPatlite()">Clear <i class="la la-redo-alt la-lg"></i></CButton>
       <CTooltip :content="auto_mode ? 'Auto Refresh ON':'Auto Refresh OFF'" trigger="hover">
         <template #toggler="{ on }">
-          <CButton size="sm" :color="auto_mode ? 'success':'secondary'" @click="toggle_auto" v-on="on">
+          <CButton :color="auto_mode ? 'success':'secondary'" @click="toggle_auto" v-on="on">
             <i v-if="auto_mode" class="la la-eye la-lg"></i>
             <i v-else class="la la-eye-slash la-lg"></i>
           </CButton>

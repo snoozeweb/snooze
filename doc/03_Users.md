@@ -26,10 +26,10 @@ Explanation of all default permissions:
 
 * `Username`*: Account username.
 * `Roles`: List of roles assigned to the user.
-* `Password`*: When creating a user, this field is required to set up the user's first password. When editing a user, leave it blank to no apply changes to it. Note: for LDAP users, passwords are not displayed.
+* `Password`*: When creating a user, this field is required to set up the user's first password. When editing a user, leave it blank to apply no changes to it. Note: for LDAP users, passwords are not displayed.
 
 ### Static_Roles
 
 ![Static Roles](images/web_users_group.png)
 
-Roles that automatically assigned to a user because of his group membership coming from the authentication backend will appear as locked.  They cannot be removed unless either the Role's groups are changed or the user's group membership is changed.
+Roles that automatically assigned to a user because of their group membership coming from the authentication backend will appear as locked.  They cannot be removed unless either the Role's groups are changed or the user's group membership is changed.
