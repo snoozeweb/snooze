@@ -1,6 +1,7 @@
 ## v1.2.0
 
 ### New features
+* Web: Better display for some tables
 * Web: Better display for Modifications
 * Web: Set tables to a busy state for each request
 * Core: RegexSub (useful for improving aggregation or scrapping secrets)

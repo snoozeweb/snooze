@@ -3,6 +3,7 @@
     <List
       endpoint_prop="user"
       delete_mode
+      show_tabs
       ref="list"
     >
       <template #head_buttons>

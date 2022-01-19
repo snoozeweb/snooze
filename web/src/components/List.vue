@@ -1,7 +1,7 @@
 <template>
   <div>
   <CCard no-body ref="main">
-    <CCardHeader class="p-2">
+    <CCardHeader class="p-2" v-if="show_tabs">
       <CNav variant="pills" role="tablist" card v-model="tab_index" class='m-0'>
         <CNavItem
           v-for="(tab, i) in tabs"
@@ -36,9 +36,24 @@
       </CNav>
     </CCardHeader>
     <CForm @submit.prevent="">
-      <Search @search="search" v-model="search_value" @clear="search_clear" ref='search' class="pt-2 px-2"/>
+      <Search @search="search" v-model="search_value" @clear="search_clear" ref='search' class="pt-2 px-2 pb-0">
+        <template #search_buttons v-if="!show_tabs">
+          <!-- Slots for placing additional buttons in the header of the table -->
+          <template v-if="Array.isArray(selected) && selected.length">
+            <slot name="selected_buttons"></slot>
+            <CButton
+              color="danger"
+              v-if="delete_m"
+              @click="modal_delete(selected)"
+            >Delete selection</CButton>
+          </template>
+          <slot name="head_buttons"></slot>
+          <CButton v-if="add_m" color="success" @click="modal_add()">New</CButton>
+          <CButton @click="refreshTable(true)" color="secondary" style="border-bottom-right-radius: 0"><i class="la la-refresh la-lg"></i></CButton>
+        </template>
+      </Search>
     </CForm>
-    <CCardBody class="p-2">
+    <CCardBody class="px-2 pb-2 pt-0">
       <CTabContent>
       <SDataTable
         ref="table"
@@ -375,6 +390,7 @@ export default {
     modal_title_add: {type: String, default: 'New'},
     modal_title_edit: {type: String, default: 'Edit'},
     modal_title_delete: {type: String, default: 'Delete this item'},
+    show_tabs: {type: Boolean, default: false},
   },
   mounted () {
     this.settings = JSON.parse(localStorage.getItem(this.endpoint+'_json') || '{}')
