@@ -6,6 +6,7 @@
       edit_mode
       delete_mode
       add_mode
+      show_tabs
     />
   </div>
 </template>

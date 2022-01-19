@@ -4,6 +4,7 @@
       ref="table"
       endpoint_prop="alert"
       :info_excluded_fields="['smtp']"
+      show_tabs
     >
       <template #custom_buttons="row">
         <CButton color="primary" class='text-nowrap' @click="modal_show([row.item], 'comment')" size="sm" v-c-tooltip="{content: 'Add comment'}"><i class="la la-comment-dots la-lg"></i> <CBadge v-if="row.item['comment_count']" color='light' class='position-absolute text-dark' style='z-index: 10; top:0!important; right:100%!important; transform:translate(50%,-50%)!important'>{{ row.item['comment_count'] }}</CBadge></CButton>

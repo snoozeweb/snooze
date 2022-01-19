@@ -7,6 +7,7 @@
       edit_mode
       delete_mode
       add_mode
+      show_tabs
     >
       <template v-slot:hits="row">
         <router-link :to="get_link(dig(row.item, 'name'))">{{ dig(row.item, 'hits') || 0 }}</router-link>
