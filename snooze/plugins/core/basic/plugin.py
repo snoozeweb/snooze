@@ -8,6 +8,7 @@
 import yaml
 import sys
 import os
+from abc import abstractmethod
 from os.path import dirname, join as joindir
 from snooze import __file__ as rootdir
 from logging import getLogger
@@ -96,6 +97,12 @@ class Plugin:
         search_fields = self.metadata_file.get('search_fields', [])
         if search_fields:
             self.db.create_index(self.name, search_fields)
+
+    @abstractmethod
+    def validate(self, obj):
+        '''Validate an object before writing it to the database.
+        Should raise an exception if the object is invalid
+        '''
 
     def post_init(self):
         self.reload_data()

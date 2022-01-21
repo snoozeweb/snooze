@@ -332,6 +332,12 @@ CONDITIONS = {
     None: AlwaysTrue,
 }
 
+def validate_condition(obj):
+    '''Validate the condition of an object'''
+    condition = obj.get('condition')
+    if condition:
+        get_condition(condition)
+
 def get_condition(args):
     '''Return an instance of a condition given a condition array representation'''
     try:

@@ -13,7 +13,7 @@ import time
 import threading
 import hashlib
 import socket
-from snooze.utils import get_condition
+from snooze.utils.condition import get_condition, validate_condition
 from snooze.utils.time_constraints import get_record_date, init_time_constraints
 
 from logging import getLogger
@@ -44,6 +44,10 @@ class Notification(Plugin):
                 else:
                     log.error("Notification {} has no action. Cannot send".format(self.name))
         return record
+
+    def validate(self, obj):
+        '''Validate a notification object'''
+        validate_condition(obj)
 
     def delay_send(self, notification, record_hash, delay, total):
         self.thread.delayed[record_hash] = {'notification': notification, 'time': time.time() + delay, 'total': total}

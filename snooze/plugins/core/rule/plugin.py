@@ -8,7 +8,8 @@
 #!/usr/bin/python3.6
 
 from snooze.plugins.core import Plugin
-from snooze.utils import get_condition, get_modification
+from snooze.utils.condition import get_condition, validate_condition
+from snooze.utils.modification import get_modification
 
 import logging
 from logging import getLogger
@@ -24,6 +25,10 @@ class Rule(Plugin):
         """
         self.process_rules(record, self.rules)
         return record
+
+    def validate(self, obj):
+        '''Validate a rule object'''
+        validate_condition(obj)
 
     def process_rules(self, record, rules):
         LOG.debug("Processing record {} against rules: {}".format(str(record), str(rules)))

@@ -71,12 +71,20 @@ class Route(FalconRoute):
         for req_media in media:
             queries = req_media.get('qls', [])
             req_media['snooze_user'] = {'name': req.context['user']['user']['name'], 'method': req.context['user']['user']['method']}
+            # Validation
+            try:
+                self.plugin.validate(req_media)
+            except Exception as err:
+                log.exception(err)
+                resp.body = '[]'
+                resp.status = falcon.HTTP_503
+                return
             for query in queries:
                 try:
                     parsed_query = parser(query['ql'])
                     log.debug("Parsed query: {} -> {}".format(query['ql'], parsed_query))
                     req_media[query['field']] = parsed_query
-                except:
+                except Exception as e:
                     log.exception(e)
                     continue
         try:
@@ -98,6 +106,10 @@ class Route(FalconRoute):
         try:
             log.debug("Trying to update {}".format(req.media))
             media = req.media.copy()
+            if not isinstance(media, list):
+                media = [media]
+            for obj in media:
+                self.plugin.validate(obj)
             result = dumps(self.update(self.plugin.name, media))
             resp.body = result
             self.plugin.reload_data(True)

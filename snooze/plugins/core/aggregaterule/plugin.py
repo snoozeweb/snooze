@@ -8,7 +8,7 @@
 #!/usr/bin/python3.6
 
 from snooze.plugins.core import Plugin, Abort_and_update
-from snooze.utils import get_condition
+from snooze.utils.condition import get_condition, validate_condition
 from snooze.utils.functions import dig
 
 import datetime
@@ -47,6 +47,10 @@ class Aggregaterule(Plugin):
             record = self.match_aggregate(record)
 
         return record
+
+    def validate(self, obj):
+        '''Validate an aggregate rule object'''
+        validate_condition(obj)
 
     def match_aggregate(self, record, throttle=10, watch=[], aggrule_name='default'):
         LOG.debug("Checking if an aggregate with hash {} can be found".format(record['hash']))

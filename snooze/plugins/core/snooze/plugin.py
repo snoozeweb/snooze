@@ -6,7 +6,7 @@
 #
 
 from snooze.plugins.core import Plugin, Abort_and_write, Abort
-from snooze.utils import get_condition
+from snooze.utils.condition import get_condition, validate_condition
 from snooze.utils.time_constraints import get_record_date, init_time_constraints
 
 from logging import getLogger
@@ -29,6 +29,10 @@ class Snooze(Plugin):
                     raise Abort_and_write(record)
         else:
             return record
+
+    def validate(self, obj):
+        '''Validate a snooze object'''
+        validate_condition(obj)
 
     def reload_data(self, sync = False):
         super().reload_data()
