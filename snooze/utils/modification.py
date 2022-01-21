@@ -15,6 +15,18 @@ log = getLogger('snooze.utils.modification')
 
 class ModificationException(Exception): pass
 
+class OperationNotSupported(Exception):
+    '''Exception raised when the modification type doesn't exist'''
+    def __init__(self, name):
+        message = f"Modification type '{name}' is not supported"
+        super().__init__(message)
+
+class ModificationInvalid(RuntimeError):
+    '''Exception raise when there was an error when creating a modification'''
+    def __init__(self, name, args, err):
+        message = f"Error in modification '{name}' ({args}): {err}"
+        super().__init__(message)
+
 def resolve(record, args):
     '''Return the arguments evaluated if it's a template'''
     return [
@@ -106,6 +118,17 @@ OPERATIONS = {
     'REGEX_SUB': RegexSub,
 }
 
+def validate_modification(obj):
+    '''Raise an exception if the object contains an invalid modification'''
+    modifications = obj.get('modifications', [])
+    for modification in modifications:
+        get_modification(*obj)
+
 def get_modification(operation, *args):
     '''Return the modification class to run'''
-    return OPERATIONS[operation](*args)
+    try:
+        return OPERATIONS[operation](*args)
+    except KeyError as err:
+        raise OperationNotSupported(operation) from err
+    except TypeError as err:
+        raise ModificationInvalid(operation, args, err) from err
