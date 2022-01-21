@@ -8,6 +8,7 @@
 Tests for conditions. Each condition is tested in its own class.
 '''
 
+import pytest
 from snooze.utils.condition import *
 
 class TestEquals:
@@ -36,6 +37,14 @@ class TestEquals:
     def test_str(self):
         condition = Equals(['=', 'a.1', '2'])
         assert str(condition) == "(a.1 = '2')"
+    def test_edge_no_field(self):
+        record = {'a': '1'}
+        with pytest.raises(ConditionInvalid):
+            condition = Equals(['=', None, '1'])
+    def test_edge_no_value(self):
+        record = {'a': '1'}
+        condition = Equals(['=', 'a', None])
+        assert condition.match(record) == False
 
 class TestNotEquals:
     def test_get_condition(self):
@@ -233,3 +242,24 @@ class TestSearch:
     def test_str(self):
         condition = Search(['SEARCH', 'mystring'])
         assert str(condition) == "(SEARCH 'mystring')"
+
+class TestAlwaysTrue:
+    def test_get_condition(self):
+        conditions = [
+            [],
+            [''],
+            [None],
+        ]
+        for condition_str in conditions:
+            condition = get_condition(condition_str)
+            assert isinstance(condition, AlwaysTrue)
+
+    def test_match(self):
+        records = [
+            {'a': 1},
+            {'b': '2'},
+            {},
+        ]
+        condition = AlwaysTrue()
+        for record in records:
+            assert condition.match(record) == True
