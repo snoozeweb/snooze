@@ -48,7 +48,7 @@ def convert_float(value1, value2):
 class OperationNotSupported(Exception):
     '''Exception raised when the condition requested doesn't exist'''
     def __init__(self, name):
-        message = f"Operation '{name}' is not supported"
+        message = f"Condition '{name}' is not supported"
         super().__init__(message)
 
 class ConditionInvalid(RuntimeError):
@@ -94,6 +94,8 @@ class BinaryOperator(Condition):
         try:
             self.field = args[1]
             self.value = args[2]
+            if not (isinstance(self.field, str) and len(self.field) > 0):
+                raise ConditionInvalid(args[0], args, "Field is not a valid non-null string")
         except IndexError as err:
             raise ConditionInvalid(args[0], args, err) from err
 
@@ -103,7 +105,7 @@ class BinaryOperator(Condition):
 
 class AlwaysTrue(Condition):
     '''A condition that always return True for matching'''
-    def __init__(self):
+    def __init__(self, *_args):
         super().__init__([''])
         self._args = []
     def match(self, record):
