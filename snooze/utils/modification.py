@@ -38,7 +38,8 @@ def resolve(record, args):
 class Modification:
     '''A class to represent a modification'''
 
-    def __init__(self, *args):
+    def __init__(self, args, db=None):
+        self.db = db
         self.args = args
 
     @abstractmethod
@@ -109,6 +110,23 @@ class RegexSub(Modification):
             log.warning("Syntax error in REGEX_SUB: regex `%s` has error: %s", regex, err)
             return False
 
+class KvSet(Modification):
+    '''Match a key-value'''
+    def __init__(self, args, db=None):
+        super().__init__(args, db)
+        self.dict, self.key, self.out_field = args
+    def modify(self, record):
+        try:
+            record_key = record[self.key]
+            log.debug("Record has key: %s=%s", self.key, record_key)
+            out_value = self.db.search('kv', ['AND', ['=', 'dict', self.dict], ['=', 'key', record_key]])['data'][0]['value']
+            log.debug("Found key-value: %s[%s] = %s", self.dict, record_key, out_value)
+            record[self.out_field] = out_value
+            return True
+        except (KeyError, IndexError):
+            return False
+
+
 OPERATIONS = {
     'SET': SetOperation,
     'DELETE': DeleteOperation,
@@ -116,19 +134,24 @@ OPERATIONS = {
     'ARRAY_DELETE': ArrayDeleteOperation,
     'REGEX_PARSE': RegexParse,
     'REGEX_SUB': RegexSub,
+    'KV_SET': KvSet,
 }
 
-def validate_modification(obj):
+def validate_modification(obj, db=None):
     '''Raise an exception if the object contains an invalid modification'''
     modifications = obj.get('modifications', [])
     for modification in modifications:
-        get_modification(*obj)
+        get_modification(modification, db=db)
 
-def get_modification(operation, *args):
+def get_modification(args, db=None):
     '''Return the modification class to run'''
     try:
-        return OPERATIONS[operation](*args)
-    except KeyError as err:
+        operation = args[0]
+        modification = args[1:]
+        return OPERATIONS[operation](modification, db=db)
+    except IndexError as err:
+        raise Exception(f"Error with modification `{args}`") from err
+    except (KeyError, IndexError) as err:
         raise OperationNotSupported(operation) from err
     except TypeError as err:
         raise ModificationInvalid(operation, args, err) from err

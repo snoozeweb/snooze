@@ -18,6 +18,11 @@
               <CFormInput id="field" v-model="val[1]" placeholder="Field to parse" />
               <CFormInput id="out_field" v-model="val[2]" placeholder="Output field" />
             </template>
+            <template v-else-if="val[0] == 'KV_SET'">
+              <CFormInput id="dict" v-model="val[1]" placeholder="Dictionary"/>
+              <CFormInput id="field" v-model="val[2]" placeholder="Field"/>
+              <CFormInput id="out_field" v-model="val[3]" placeholder="Output field"/>
+            </template>
             <template v-else>
               <CFormInput id="field" v-model="val[1]" placeholder="Field"/>
               <CFormInput id="value" v-model="val[2]" placeholder="Value"/>
@@ -75,6 +80,7 @@ export default {
         'ARRAY_DELETE': "Delete an element from an array by value",
         'REGEX_PARSE': "Given a regex with named capture groups, the value of the capture groups will be merged to the record by name",
         'REGEX_SUB': "Search the elements matching a regex, and replace them with a substitute",
+        'KV_SET': "Map a field to a value in a key-value dictionary",
       },
       operations: [
         {value: 'SET', text: 'Set'},
@@ -83,6 +89,7 @@ export default {
         {value: 'ARRAY_DELETE', text: 'Delete (from array)'},
         {value: 'REGEX_PARSE', text: 'Regex parse (capture)'},
         {value: 'REGEX_SUB', text: 'Regex sub'},
+        {value: 'KV_SET', text: 'Key-value mapping'},
       ],
     }
   },

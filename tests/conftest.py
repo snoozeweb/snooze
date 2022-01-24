@@ -32,10 +32,19 @@ def config():
         'init_sleep': 0,
     }
 
-@pytest.fixture(scope='class')
+def write_data(db, request):
+    '''Write data fetch with get_data(request, 'data') to a database'''
+    data = get_data(request, 'data')
+    for key, value in data.items():
+        db.delete(key, [], True)
+    for key, value in data.items():
+        db.write(key, value)
+
+@pytest.fixture(scope='function')
 @mongomock.patch('mongodb://localhost:27017')
 def db(config, request):
     db = Database(config.get('database'))
+    write_data(db, request)
     return db
 
 @pytest.fixture(scope='class')
@@ -53,12 +62,7 @@ def client(config, request):
     core = Core(config)
     data = get_data(request, 'data')
     log.debug("data: {}".format(data))
-    for key, value in data.items():
-        core.db.delete(key, [], True)
-    for key, value in data.items():
-        core.db.write(key, value)
-    for plugin in core.plugins:
-        plugin.reload_data()
+    write_data(core.db, request)
     api = Api(core)
     token = api.get_root_token()
     log.info("Token obtained from get_root_token: {}".format(token))

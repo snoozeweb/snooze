@@ -1,0 +1,7 @@
+---
+name: 'Key value'
+desc: 'A series of key-values to use for complex modifications'
+primary: dict,key
+# This is useful for cronjobs to update everything with a csv file. New values
+# can be updated easily.
+duplicate_policy: replace

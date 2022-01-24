@@ -11,6 +11,7 @@ const Snooze = () => import('@/views/Snooze')
 const Notification = () => import('@/views/Notification')
 const Action = () => import('@/views/Action')
 const Widget = () => import('@/views/Widget')
+const KeyValue = () => import('@/views/KeyValue')
 const User = () => import('@/views/User')
 const Role = () => import('@/views/Role')
 const Environment = () => import('@/views/Environment')
@@ -82,6 +83,11 @@ const router = createRouter({
           path: '/widget',
           name: 'Widgets',
           component: Widget,
+        },
+        {
+          path: '/kv',
+          name: 'Key-values',
+          component: KeyValue,
         },
         {
           path: '/user',

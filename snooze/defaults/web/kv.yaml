@@ -1,0 +1,40 @@
+---
+tabs:
+    -
+        title: All
+        filter: []
+fields:
+    -
+        label: Dictionary
+        key: dict
+        sortable: true
+        thStyle: {width: '20%'}
+    -
+        label: Key
+        key: key
+        thStyle: {width: '30%'}
+        sortable: true
+    -
+        label: Value
+        key: value
+        thStyle: {width: '30%'}
+        sortable: false
+    -
+        label: ''
+        key: button
+        sortable: false
+        tdClass: ['align-middle', 'text-center']
+        thClass: 'text-center'
+form:
+    dict:
+        display_name: Dictionary
+        component: String
+        description: Name of the dictionary in which to add the key-value
+    key:
+        display_name: Key
+        component: String
+        description: Key of the dictionary. Existing keys will be overritten.
+    value:
+        display_name: Value
+        component: String
+        description: Value to associate with the key

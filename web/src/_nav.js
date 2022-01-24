@@ -70,6 +70,13 @@ export default [
       permissions: ['ro_widget', 'rw_widget']
     },
     {
+      component: 'CNavItem',
+      name: 'Key-values',
+      to: '/kv',
+      fontIcon: 'la la-book',
+      permissions: ['ro_kv', 'rw_kv'],
+    },
+    {
       component: 'CNavTitle',
       name: 'Customize',
     },
