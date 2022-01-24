@@ -47,10 +47,12 @@ def db(config, request):
     write_data(db, request)
     return db
 
-@pytest.fixture(scope='class')
+@pytest.fixture(scope='function')
 @mongomock.patch('mongodb://localhost:27017')
-def core(config):
-    return Core(config)
+def core(config, request):
+    core = Core(config)
+    write_data(core.db, request)
+    return core
 
 @pytest.fixture(scope='class')
 def api(core):

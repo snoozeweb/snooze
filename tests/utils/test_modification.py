@@ -86,9 +86,11 @@ class TestKvSet:
         ],
     }
 
-    def test_modify(self, db):
+    def test_modify(self, core):
+        kv_plugin = core.get_core_plugin('kv')
+        kv_plugin.post_init()
         record = {'hostname': 'ops01', 'message': 'Issue on ops server'}
-        modification = KvSet(['hostnames-to-owners', 'hostname', 'owner'], db)
+        modification = KvSet(['hostnames-to-owners', 'hostname', 'owner'], core)
         return_code = modification.modify(record)
         assert return_code == True
         assert record['owner'] == 'ops'

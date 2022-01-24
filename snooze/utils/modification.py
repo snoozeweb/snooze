@@ -38,8 +38,8 @@ def resolve(record, args):
 class Modification:
     '''A class to represent a modification'''
 
-    def __init__(self, args, db=None):
-        self.db = db
+    def __init__(self, args, core=None):
+        self.core = core
         self.args = args
 
     @abstractmethod
@@ -112,14 +112,17 @@ class RegexSub(Modification):
 
 class KvSet(Modification):
     '''Match a key-value'''
-    def __init__(self, args, db=None):
-        super().__init__(args, db)
+    def __init__(self, args, core):
+        super().__init__(args, core)
         self.dict, self.key, self.out_field = args
+        self.kv_plugin = core.get_core_plugin('kv')
+        if not self.kv_plugin:
+            raise Exception('KV plugin not present. Could not load Modification')
     def modify(self, record):
         try:
             record_key = record[self.key]
-            log.debug("Record has key: %s=%s", self.key, record_key)
-            out_value = self.db.search('kv', ['AND', ['=', 'dict', self.dict], ['=', 'key', record_key]])['data'][0]['value']
+            log.debug("Check if Record has key: %s=%s", self.key, record_key)
+            out_value = self.kv_plugin.get(self.dict, record_key)
             log.debug("Found key-value: %s[%s] = %s", self.dict, record_key, out_value)
             record[self.out_field] = out_value
             return True
@@ -137,18 +140,18 @@ OPERATIONS = {
     'KV_SET': KvSet,
 }
 
-def validate_modification(obj, db=None):
+def validate_modification(obj, core=None):
     '''Raise an exception if the object contains an invalid modification'''
     modifications = obj.get('modifications', [])
     for modification in modifications:
-        get_modification(modification, db=db)
+        get_modification(modification, core=core)
 
-def get_modification(args, db=None):
+def get_modification(args, core=None):
     '''Return the modification class to run'''
     try:
         operation = args[0]
         modification = args[1:]
-        return OPERATIONS[operation](modification, db=db)
+        return OPERATIONS[operation](modification, core=core)
     except IndexError as err:
         raise Exception(f"Error with modification `{args}`") from err
     except (KeyError, IndexError) as err:

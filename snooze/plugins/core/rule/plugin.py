@@ -29,7 +29,7 @@ class Rule(Plugin):
     def validate(self, obj):
         '''Validate a rule object'''
         validate_condition(obj)
-        validate_modification(obj, self.db)
+        validate_modification(obj, self.core)
 
     def process_rules(self, record, rules):
         LOG.debug("Processing record {} against rules: {}".format(str(record), str(rules)))
@@ -44,12 +44,12 @@ class Rule(Plugin):
         self.data = self.db.search('rule', ['NOT', ['EXISTS', 'parent']], orderby='name')['data']
         self.rules = []
         for rule in (self.data or []):
-            self.rules.append(RuleObject(rule, self.db))
+            self.rules.append(RuleObject(rule, self.core))
         if sync and self.core.cluster:
             self.core.cluster.reload_plugin(self.name)
 
 class RuleObject():
-    def __init__(self, rule, db = None):
+    def __init__(self, rule, core = None):
         self.enabled = rule.get('enabled', True)
         self.name = rule['name']
         LOG.debug("Creating rule: {}".format(str(self.name)))
@@ -58,14 +58,15 @@ class RuleObject():
         self.modifications = []
         for modification in (rule.get('modifications') or []):
             LOG.debug("-> modification: {}".format(str(modification)))
-            self.modifications.append(get_modification(modification, db=db))
+            self.modifications.append(get_modification(modification, core=core))
         LOG.debug("Searching children of rule {}".format(str(self.name)))
         self.children = []
-        if db:
+        if core and core.db:
+            db = core.db
             children = db.search('rule', ['=', 'parent', rule['uid']], orderby='name')['data']
             for child_rule in children:
                 LOG.debug("Found child {} of rule {}".format(child_rule['name'], str(self.name)))
-                self.children.append(RuleObject(child_rule, db))
+                self.children.append(RuleObject(child_rule, core))
 
     def match(self, record):
         """
