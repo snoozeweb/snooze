@@ -134,6 +134,7 @@ class BackendDB(Database):
                     elif duplicate_policy == 'replace':
                         log.debug('Replacing with: {}'.format(o))
                         table.remove(doc_ids=[doc_id])
+                        o['uid'] = doc['uid']
                         table.insert(o)
                         replaced.append(o)
                     else:
@@ -159,6 +160,7 @@ class BackendDB(Database):
                         elif duplicate_policy == 'replace':
                             log.debug('Replace with: {}'.format(o))
                             table.remove(doc_ids=[doc_id])
+                            o['uid'] = doc['uid']
                             table.insert(o)
                             replaced.append(o)
                         else:

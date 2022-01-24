@@ -8,16 +8,19 @@ fields:
         label: Dictionary
         key: dict
         sortable: true
-        thStyle: {width: '20%'}
+        thStyle: {width: '30%'}
+        tdClass: ['align-middle']
     -
         label: Key
         key: key
-        thStyle: {width: '30%'}
+        thStyle: {width: '35%'}
         sortable: true
+        tdClass: ['align-middle']
     -
         label: Value
         key: value
-        thStyle: {width: '30%'}
+        thStyle: {width: '35%'}
+        tdClass: ['align-middle']
         sortable: false
     -
         label: ''
