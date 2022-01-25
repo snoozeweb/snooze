@@ -228,7 +228,6 @@ class MetricsRoute(BasicRoute):
     }
 
     def on_get(self, req, resp):
-        log.debug("Retrieving metrics")
         try:
             resp.content_type = falcon.MEDIA_TEXT
             data = self.api.core.stats.get_metrics()

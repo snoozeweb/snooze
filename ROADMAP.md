@@ -14,7 +14,6 @@
 * Plugin manager (wraps Pip)
 * Play with montydb (remove tinydb, replace mongomock)
 * Audit (who did what at any time)
-* Rules: add a matching dictionnary
 * Time constraints: holidays (use a custom calendar?)
 * Time constraints in rules
 * Personal environment

@@ -1,3 +1,7 @@
+## v1.3.0
+* Core: New Key-values modification (add fields to an alert based on matching a dictionary)
+* Core: Added rotating logs in /var/log/snooze/snooze-server.log
+
 ## v1.2.0
 
 ### New features

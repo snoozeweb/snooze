@@ -13,4 +13,4 @@
 * [11 - Clustering](11_Clustering.md)
 * [12 - Housekeeping](12_Housekeeping.md)
 * [13 - Configure LDAP Authentication](13_LDAP.md)
-* [14 - Query Language](14_Query_Language.md)
+* [14 - Query Language](14_QueryLanguage.md)

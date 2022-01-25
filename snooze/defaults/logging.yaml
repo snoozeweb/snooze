@@ -11,8 +11,15 @@ handlers:
         level: INFO
         formatter: simple
         stream: ext://sys.stdout
+    file:
+        level: INFO
+        class : logging.handlers.RotatingFileHandler
+        formatter: simple
+        filename: /var/log/snooze/snooze-server.log
+        maxBytes: 1024000
+        backupCount: 5
 loggers:
     snooze:
         level: INFO
-        handlers: [console]
+        handlers: [console, file]
         propagate: false

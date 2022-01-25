@@ -23,6 +23,7 @@ def setup_logging(conf):
     logging_config = config('logging')
     if os.environ.get('SNOOZE_DEBUG', conf.get('debug', False)):
         logging_config['handlers']['console']['level'] = 'DEBUG'
+        logging_config['handlers']['file']['level'] = 'DEBUG'
         logging_config['loggers']['snooze']['level'] = 'DEBUG'
     logging.config.dictConfig(logging_config)
     log = getLogger('snooze')

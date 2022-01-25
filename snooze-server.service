@@ -7,6 +7,8 @@ User=snooze
 ExecStart=/opt/snooze/bin/snooze-server
 RuntimeDirectory=snooze
 WorkingDirectory=/var/lib/snooze
+StandardOutput=null
+StandardError=journal
 
 [Install]
 WantedBy=multi-user.target
