@@ -2,3 +2,4 @@
 name: 'Notification'
 desc: 'Notification desc'
 default_sorting: 'name'
+auto_reload: true

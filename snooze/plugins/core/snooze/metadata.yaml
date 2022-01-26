@@ -4,6 +4,7 @@ desc: 'Snooze desc'
 default_sorting: 'name'
 primary: name
 duplicate_policy: 'reject'
+auto_reload: true
 class: SnoozeRoute
 routes:
   '/snooze_apply':

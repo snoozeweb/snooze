@@ -1,7 +1,6 @@
 ---
 name: 'Prometheus'
 desc: 'Prometheus'
-auto_reload: false
 prefix: ''
 class: ''
 routes:

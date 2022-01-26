@@ -63,11 +63,12 @@ class CommentRoute(Route):
                             try:
                                 modified = False
                                 for modification in modification_raw:
-                                    if get_modification(*modification).modify(records['data'][0]):
+                                    if get_modification(modification, self.core).modify(records['data'][0]):
                                         modified = True
                                 if modified and self.notification_plugin:
                                     self.notification_plugin.process(records['data'][0])
-                            except:
+                            except Exception as e:
+                                log.exception(e)
                                 pass
                     update_records.append(records['data'][0])
                 else:

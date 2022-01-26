@@ -1,3 +1,4 @@
 ---
 name: 'Rule'
 desc: 'Rule desc'
+auto_reload: true

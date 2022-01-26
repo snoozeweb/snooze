@@ -1,7 +1,6 @@
 ---
 name: 'Kapacitor'
 desc: 'Kapacitor'
-auto_reload: false
 prefix: ''
 class: ''
 routes:

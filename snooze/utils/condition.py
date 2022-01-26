@@ -248,7 +248,7 @@ class Search(Condition):
     search in the string)'''
     def __init__(self, args):
         super().__init__(args)
-        self.value = args[1]
+        self.value = str(args[1])
     def match(self, record):
         return self.value in str(record)
     def __str__(self):

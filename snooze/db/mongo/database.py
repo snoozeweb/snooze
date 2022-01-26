@@ -36,6 +36,7 @@ class BackendDB(Database):
         self.search_fields = {}
         log.debug("Initialized Mongodb with config {}".format(conf))
         log.debug("db: {}".format(self.db))
+        log.debug("List of collections: {}".format(self.db.collection_names()))
 
     def create_index(self, collection, fields):
         log.debug("Create index for {} with fields: {}".format(collection, fields))
@@ -141,6 +142,8 @@ class BackendDB(Database):
                             rejected.append(o)
                         elif duplicate_policy == 'replace':
                             log.debug("In {}, replacing {}".format(collection, o))
+                            if 'uid' in primary_result:
+                                o['uid'] = primary_result['uid']
                             self.db[collection].replace_one(primary_query, o)
                             replaced.append(o)
                         else:
@@ -213,7 +216,6 @@ class BackendDB(Database):
             orderby = '$natural'
         mongo_search = self.convert(condition, self.search_fields.get(collection, []))
         log.debug("Condition {} converted to mongo search {}".format(condition, mongo_search))
-        log.debug("List of collections: {}".format(self.db.collection_names()))
         if collection in self.db.collection_names():
             if nb_per_page > 0:
                 results = self.db[collection].find(mongo_search).skip((page_number-1)*nb_per_page if page_number-1>0 else 0).limit(nb_per_page).sort(orderby, 1 if asc else -1)
@@ -221,7 +223,7 @@ class BackendDB(Database):
                 results = self.db[collection].find(mongo_search).sort(orderby, 1 if asc else -1)
             total = results.count()
             results = list(results)
-            log.debug("Found {} for search {}. Page: {}-{}. Count: {}. Sort by {}. Order: {}".format(results, mongo_search, page_number, nb_per_page, total, orderby, 'Ascending' if asc else 'Descending'))
+            log.debug("Found {} result(s) for search {} in collection {}. Page: {}-{}. Sort by {}. Order: {}".format(total, mongo_search, collection, page_number, nb_per_page, orderby, 'Ascending' if asc else 'Descending'))
             return {'data': results, 'count': total}
         else:
             log.warning("Cannot find collection {}".format(collection))
@@ -230,7 +232,6 @@ class BackendDB(Database):
     def delete(self, collection, condition=[], force=False):
         mongo_search = self.convert(condition, self.search_fields.get(collection, []))
         log.debug("Condition {} converted to mongo delete search {}".format(condition, mongo_search))
-        log.debug("List of collections: {}".format(self.db.collection_names()))
         if collection in self.db.collection_names():
             if len(condition) == 0 and not force:
                 results_count = 0

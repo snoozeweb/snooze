@@ -14,10 +14,7 @@
       ( <b>{{ data[0] }}</b> <Condition :data="data[1]" rec /> )
     </span>
   </span>
-  <span v-else-if="data.constructor.name == 'String'">{{ data }}</span>
-  <span v-else>
-    <i>Error in displaying condition: {{ data.constructor.name }}, data: {{ data }}</i>
-  </span>
+  <span v-else>{{ data }}</span>
 </template>
 
 <script>

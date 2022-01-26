@@ -1,7 +1,6 @@
 ---
 name: 'InfluxDB 2.0'
 desc: 'InfluxDB 2.0'
-auto_reload: false
 prefix: ''
 class: ''
 routes:

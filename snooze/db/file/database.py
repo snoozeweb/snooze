@@ -56,6 +56,7 @@ class BackendDB(Database):
         self.db = TinyDB(filename)
         log.debug("Initialized TinyDB at path {}".format(filename))
         log.debug("db: {}".format(self.db))
+        log.debug("List of collections: {}".format(self.db.tables()))
 
     def create_index(self, collection, fields):
         pass
@@ -134,7 +135,6 @@ class BackendDB(Database):
                     elif duplicate_policy == 'replace':
                         log.debug('Replacing with: {}'.format(o))
                         table.remove(doc_ids=[doc_id])
-                        o['uid'] = doc['uid']
                         table.insert(o)
                         replaced.append(o)
                     else:
@@ -160,7 +160,8 @@ class BackendDB(Database):
                         elif duplicate_policy == 'replace':
                             log.debug('Replace with: {}'.format(o))
                             table.remove(doc_ids=[doc_id])
-                            o['uid'] = doc['uid']
+                            if 'uid' in doc:
+                                o['uid'] = doc['uid']
                             table.insert(o)
                             replaced.append(o)
                         else:
@@ -285,7 +286,6 @@ class BackendDB(Database):
         mutex.acquire()
         tinydb_search = self.convert(condition)
         log.debug("Condition {} converted to tinydb search {}".format(condition, tinydb_search))
-        log.debug("List of collections: {}".format(self.db.tables()))
         if collection in self.db.tables():
             table = self.db.table(collection)
             if tinydb_search:
@@ -304,7 +304,7 @@ class BackendDB(Database):
             if not asc:
                 results = list(reversed(results))
             results = results[from_el:to_el]
-            log.debug("Found {} for search {}. Page: {}-{}. Count: {}. Sort by {}. Order: {}".format(results, tinydb_search, page_number, nb_per_page, total, orderby, 'Ascending' if asc else 'Descending'))
+            log.debug("Found {} result(s) for search {} in collection {}. Page: {}-{}. Sort by {}. Order: {}".format(total, tinydb_search, collection, page_number, nb_per_page, orderby, 'Ascending' if asc else 'Descending'))
             mutex.release()
             return {'data': deepcopy(results), 'count': total}
         else:
@@ -316,7 +316,6 @@ class BackendDB(Database):
         mutex.acquire()
         tinydb_search = self.convert(condition)
         log.debug("Condition {} converted to tinydb delete search {}".format(condition, tinydb_search))
-        log.debug("List of collections: {}".format(self.db.tables()))
         if collection in self.db.tables():
             table = self.db.table(collection)
             if len(condition) == 0 and not force:

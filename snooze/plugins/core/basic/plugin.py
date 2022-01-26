@@ -84,7 +84,7 @@ class Plugin:
                 routes.update(self.metadata_file['routes'])
             self.metadata = {
                 'name': self.name,
-                'auto_reload': self.metadata_file.get('auto_reload', True),
+                'auto_reload': self.metadata_file.get('auto_reload', False),
                 'default_sorting': self.metadata_file.get('default_sorting', ''),
                 'default_ordering': self.metadata_file.get('default_ordering', True),
                 'primary': self.metadata_file.get('primary', None),
@@ -108,7 +108,7 @@ class Plugin:
         self.reload_data()
 
     def reload_data(self, sync = False):
-        if self.metadata.get('auto_reload', True):
+        if self.metadata.get('auto_reload', False):
             log.debug("Reloading data for plugin {}".format(self.name))
             self.data = self.db.search(self.name, orderby=self.metadata.get('default_sorting', ''), asc=self.metadata.get('default_ordering', True))['data']
 
