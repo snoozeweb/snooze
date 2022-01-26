@@ -102,13 +102,35 @@ class TestAnd:
     def test_init(self):
         condition = And(['AND', ['=', 'a', 1], ['=', 'b', 2]])
         assert isinstance(condition, Condition)
-    def test_and_operation(self):
+    def test_operation(self):
         condition = Equals(['=', 'a', 1]) & Equals(['=', 'b', 2])
         assert isinstance(condition, And)
-    def test_match(self):
+    def test_matches(self):
         record = {'a': 1, 'b': 2}
-        condition = And(['AND', ['=', 'a', 1], ['=', 'b', 2]])
+        conditions = [
+            And(['AND', ['=', 'a', 1], ['=', 'b', 2]])
+        ]
+        for condition in conditions:
+            assert condition.match(record) == True
+    def test_misses(self):
+        record = {'a': 1, 'b': 2}
+        conditions = [
+            And(['AND', ['=', 'a', 1], ['=', 'b', 3]])
+        ]
+        for condition in conditions:
+            assert condition.match(record) == False
+    def test_multiple(self):
+        record = {'a': 1, 'b': 2, 'c': 3}
+        condition = And(['AND', ['=', 'a', 1], ['=', 'b', 2], ['=', 'c', 3]])
         assert condition.match(record) == True
+    def test_nested(self):
+        record = {'a': 1, 'b': 2, 'c': 3}
+        condition = And(['AND', ['=', 'a', 1], ['AND', ['=', 'b', 2], ['=', 'c', 3]]])
+        assert condition.match(record) == True
+    def test_nested_miss(self):
+        record = {'a': 1, 'b': 2, 'c': 3}
+        condition = And(['AND', ['=', 'a', 1], ['AND', ['=', 'b', 2], ['=', 'c', 4]]])
+        assert condition.match(record) == False
     def test_str(self):
         condition = Equals(['=', 'a', 1]) & Equals(['=', 'b', 2])
         assert str(condition) == "((a = 1) & (b = 2))"
@@ -123,6 +145,10 @@ class TestOr:
     def test_match(self):
         record = {'a': 1, 'b': 3}
         condition = Or(['OR', ['=', 'a', 1], ['=', 'b', 2]])
+        assert condition.match(record) == True
+    def test_multiple(self):
+        record = {'a': 1, 'b': 2, 'c': 3}
+        condition = Or(['OR', ['=', 'a', 6], ['=', 'b', 4], ['=', 'c', 3]])
         assert condition.match(record) == True
     def test_str(self):
         condition = Equals(['=', 'a', 1]) | Equals(['=', 'b', 2])
@@ -249,6 +275,7 @@ class TestAlwaysTrue:
             [],
             [''],
             [None],
+            None,
         ]
         for condition_str in conditions:
             condition = get_condition(condition_str)

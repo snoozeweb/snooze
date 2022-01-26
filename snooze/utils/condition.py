@@ -129,34 +129,32 @@ class Not(Condition):
         return '!' + str(self.condition)
 
 class And(Condition):
-    '''Match only if the two conditions given in arguments match'''
+    '''Match only if all conditions given in arguments match'''
     def __init__(self, args):
         super().__init__(args)
-        self.left = get_condition(args[1])
-        self.right = get_condition(args[2])
+        self.conditions = [get_condition(arg) for arg in args[1:]]
     def match(self, record):
         try:
-            return self.left.match(record) and self.right.match(record)
+            return all(condition.match(record) for condition in self.conditions)
         except Exception as e:
             LOG.exception(e)
             return False
     def __str__(self):
-        return f"({self.left} & {self.right})"
+        return '(' + ' & '.join(map(str, self.conditions)) + ')'
 
 class Or(Condition):
-    '''Match only if one of the two condition given in arguments match'''
+    '''Match only if one of the condition given in arguments match'''
     def __init__(self, args):
         super().__init__(args)
-        self.left = get_condition(args[1])
-        self.right = get_condition(args[2])
+        self.conditions = [get_condition(arg) for arg in args[1:]]
     def match(self, record):
         try:
-            return self.left.match(record) or self.right.match(record)
+            return any(condition.match(record) for condition in self.conditions)
         except Exception as e:
             LOG.exception(e)
             return False
     def __str__(self):
-        return f"({self.left} | {self.right})"
+        return '(' + ' | '.join(map(str, self.conditions)) + ')'
 
 # Basic operations
 class Equals(BinaryOperator):
@@ -381,6 +379,8 @@ def validate_condition(obj):
 
 def get_condition(args):
     '''Return an instance of a condition given a condition array representation'''
+    if args is None:
+        return AlwaysTrue()
     try:
         name = args[0]
         condition_class = CONDITIONS[name]
