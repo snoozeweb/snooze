@@ -4,8 +4,9 @@
 * Core: New Key-values modification (add fields to an alert based on matching a dictionary)
 * Core: Added rotating logs in /var/log/snooze/snooze-server.log
 ### Bug fixes
+* Web: Fixed a display error when deleting part of a condition
 * Core: Avoid loading in memory unnecessary plugin data
-* Core: Fix an issue with duplicate policies using Replace (lost UID)
+* Core: Fixed an issue with duplicate policies using Replace (lost UID)
 
 ## v1.2.0
 

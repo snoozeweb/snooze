@@ -35,7 +35,7 @@
           <template #parent_comp>
             <CTooltip content="Remove" trigger="hover">
               <template #toggler="{ on }">
-                <CButton v-if="is_not_operation(datavalue[1])" @click="datavalue = datavalue[2]" @click.stop.prevent color="danger" v-on="on"><i class="la la-trash la-lg"></i></CButton>
+                <CButton v-if="is_not_operation(datavalue[2])" @click="datavalue = datavalue[1]" @click.stop.prevent color="danger" v-on="on"><i class="la la-trash la-lg"></i></CButton>
               </template>
             </CTooltip>
           </template>
