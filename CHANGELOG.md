@@ -3,6 +3,7 @@
 ### New features
 * Core: New Key-values modification (add fields to an alert based on matching a dictionary)
 * Core: Added rotating logs in /var/log/snooze/snooze-server.log
+* Core: Added `notification_from` field to Alerts when they get re-escalated
 ### Bug fixes
 * Web: Fixed a display error when deleting part of a condition
 * Core: Avoid loading in memory unnecessary plugin data

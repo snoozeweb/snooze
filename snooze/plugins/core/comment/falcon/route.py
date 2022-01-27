@@ -46,6 +46,7 @@ class CommentRoute(Route):
         record_comments = {}
         for req_media in req.media:
             if 'record_uid' in req_media:
+                notification_from = {'name': req_media.get('name', req.context.get('user', {}).get('user', {}).get('name', '')), 'message': req_media.get('message', '')}
                 record_uid = req_media['record_uid']
                 record_comments.setdefault(record_uid, []).append(req_media)
                 records = self.search('record', record_uid)
@@ -63,9 +64,11 @@ class CommentRoute(Route):
                             try:
                                 modified = False
                                 for modification in modification_raw:
-                                    if get_modification(modification, self.core).modify(records['data'][0]):
+                                    mod_obj = get_modification(modification, self.core)
+                                    if mod_obj.modify(records['data'][0]):
                                         modified = True
                                 if modified and self.notification_plugin:
+                                    records['data'][0]['notification_from'] = notification_from
                                     self.notification_plugin.process(records['data'][0])
                             except Exception as e:
                                 log.exception(e)

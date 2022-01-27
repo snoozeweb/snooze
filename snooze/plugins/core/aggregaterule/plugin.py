@@ -26,9 +26,10 @@ class Aggregaterule(Plugin):
         Args:
             record (dict)
         """
-        LOG.debug("Processing record: {}".format(str(record)))
+        LOG.debug("Processing record {} against aggregate rules: {}".format(str(record), str(self.aggregate_rules)))
         for aggrule in self.aggregate_rules:
-            if aggrule.enabled and aggrule.process(record):
+            if aggrule.enabled and aggrule.match(record):
+                LOG.debug("Aggregate rule {} matched record: {}".format(str(aggrule.name), str(record)))
                 record['hash'] = hashlib.md5((str(aggrule.name) + '.'.join([(field + '=' + (dig(record, *field.split('.')) or '')) for field in aggrule.fields])).encode()).hexdigest()
                 record = self.match_aggregate(record, aggrule.throttle, aggrule.watch, aggrule.name)
                 break
@@ -65,8 +66,7 @@ class Aggregaterule(Plugin):
             record['state'] = aggregate.get('state', '')
             record['duplicates'] = aggregate.get('duplicates', 0) + 1
             record['date_epoch'] = aggregate.get('date_epoch', now.timestamp())
-            if 'snoozed' in record:
-                del record['snoozed']
+            record.pop('notification_from', '')
             if aggregate.get('ttl', -1) < 0:
                 record['ttl'] = aggregate.get('ttl', -1)
             comment = {}
@@ -135,6 +135,8 @@ class Aggregaterule(Plugin):
         else:
             LOG.debug("Not found, creating a new aggregate")
             record['duplicates'] = 1
+        record.pop('snoozed', '')
+        record.pop('notifications', '')
         return record
 
     def reload_data(self, sync = False):
@@ -169,22 +171,8 @@ class AggregateruleObject():
         Returns:
             bool: Record matched the rule's condition
         """
-        LOG.debug("Attempting to match aggregate rule {} with record {}".format(str(self.name), str(record)))
         match = self.condition.match(record)
         if match:
             if not 'aggregate' in record:
                 record['aggregate'] = self.name
-        LOG.debug("-> Match result: {}".format(match))
         return match
-    def process(self, record):
-        """
-        Process the record against this aggregate
-
-        Args:
-            record (dict)
-
-        Returns:
-            bool: Record has been modified
-        """
-        LOG.debug("Aggregate rule {} processing record: {}".format(str(self.name), str(record)))
-        return self.match(record)

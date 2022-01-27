@@ -123,10 +123,10 @@ class Core:
                     data = {'data': {'processed': [record]}}
                     break
                 except Abort_and_write as e:
-                    data = self.db.write('record', e.record or record)
+                    data = self.db.write('record', e.record or record, duplicate_policy='replace')
                     break
                 except Abort_and_update as e:
-                    data = self.db.write('record', e.record or record, update_time=False)
+                    data = self.db.write('record', e.record or record, update_time=False, duplicate_policy='replace')
                     break
                 except Exception as e:
                     log.exception(e)
@@ -134,11 +134,11 @@ class Core:
                         'core_plugin': plugin.name,
                         'message': str(e)
                     }
-                    data = self.db.write('record', record)
+                    data = self.db.write('record', record, duplicate_policy='replace')
                     break
             else:
                 log.debug("Writing record {}".format(record))
-                data = self.db.write('record', record)
+                data = self.db.write('record', record, duplicate_policy='replace')
         environment = record.get('environment', 'unknown')
         severity = record.get('severity', 'unknown')
         self.stats.inc('alert_hit', {'source': source, 'environment': environment, 'severity': severity})
