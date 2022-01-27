@@ -120,7 +120,11 @@ class Not(Condition):
         super().__init__(args)
         self.condition = get_condition(args[1])
     def match(self, record):
-        return not self.condition.match(record)
+        try:
+            return not self.condition.match(record)
+        except Exception as e:
+            LOG.exception(e)
+            return False
     def __str__(self):
         return '!' + str(self.condition)
 
@@ -131,7 +135,11 @@ class And(Condition):
         self.left = get_condition(args[1])
         self.right = get_condition(args[2])
     def match(self, record):
-        return self.left.match(record) and self.right.match(record)
+        try:
+            return self.left.match(record) and self.right.match(record)
+        except Exception as e:
+            LOG.exception(e)
+            return False
     def __str__(self):
         return f"({self.left} & {self.right})"
 
@@ -142,7 +150,11 @@ class Or(Condition):
         self.left = get_condition(args[1])
         self.right = get_condition(args[2])
     def match(self, record):
-        return self.left.match(record) or self.right.match(record)
+        try:
+            return self.left.match(record) or self.right.match(record)
+        except Exception as e:
+            LOG.exception(e)
+            return False
     def __str__(self):
         return f"({self.left} | {self.right})"
 
@@ -151,17 +163,25 @@ class Equals(BinaryOperator):
     '''Match if the field of a record is exactly equal to a given value'''
     display_name = '='
     def match(self, record):
-        return search(record, self.field) == self.value
+        try:
+            return search(record, self.field) == self.value
+        except Exception as e:
+            LOG.exception(e)
+            return False
 
 class NotEquals(BinaryOperator):
     '''Match if a field of a record is not equal to a given value'''
     display_name = '!='
     def match(self, record):
         record_value = search(record, self.field)
-        return (
-            record_value is not None
-            and record_value != self.value
-        )
+        try:
+            return (
+                record_value is not None
+                and record_value != self.value
+            )
+        except Exception as e:
+            LOG.exception(e)
+            return False
 
 class GreaterThan(BinaryOperator):
     '''Match if the field of a record is strictly greater than a value.
@@ -173,7 +193,8 @@ class GreaterThan(BinaryOperator):
             record_value = search(record, self.field)
             value, record_value = convert_float(self.value, record_value)
             return record_value > value
-        except TypeError: # Cannot be compared
+        except TypeError as e: # Cannot be compared
+            LOG.exception(e)
             return False
 
 class LowerThan(BinaryOperator):
@@ -186,7 +207,8 @@ class LowerThan(BinaryOperator):
             record_value = search(record, self.field)
             value, record_value = convert_float(self.value, record_value)
             return record_value < value
-        except TypeError: # Cannot be compared
+        except TypeError as e: # Cannot be compared
+            LOG.exception(e)
             return False
 
 class GreaterOrEquals(BinaryOperator):
@@ -199,7 +221,8 @@ class GreaterOrEquals(BinaryOperator):
             record_value = search(record, self.field)
             value, record_value = convert_float(self.value, record_value)
             return record_value >= value
-        except TypeError: # Cannot be compared
+        except TypeError as e: # Cannot be compared
+            LOG.exception(e)
             return False
 
 class LowerOrEquals(BinaryOperator):
@@ -212,7 +235,8 @@ class LowerOrEquals(BinaryOperator):
             record_value = search(record, self.field)
             value, record_value = convert_float(self.value, record_value)
             return record_value <= value
-        except TypeError: # Cannot be compared
+        except TypeError as e: # Cannot be compared
+            LOG.exception(e)
             return False
 
 # Complex operations
@@ -229,9 +253,13 @@ class Matches(BinaryOperator):
         self.regex = re.compile(value)
     def match(self, record):
         record_value = search(record, self.field)
-        if record_value is None:
+        try:
+            if record_value is None:
+                return False
+            return self.regex.search(record_value) is not None
+        except Exception as e:
+            LOG.exception(e)
             return False
-        return self.regex.search(record_value) is not None
 
 class Exists(Condition):
     '''Match if a given field exist and is not null in the record'''
@@ -239,7 +267,11 @@ class Exists(Condition):
         super().__init__(args)
         self.field = args[1]
     def match(self, record):
-        return search(record, self.field) is not None
+        try:
+            return search(record, self.field) is not None
+        except Exception as e:
+            LOG.exception(e)
+            return False
     def __str__(self):
         return self.field + '?'
 
@@ -250,7 +282,11 @@ class Search(Condition):
         super().__init__(args)
         self.value = str(args[1])
     def match(self, record):
-        return self.value in str(record)
+        try:
+            return self.value in str(record)
+        except Exception as e:
+            LOG.exception(e)
+            return False
     def __str__(self):
         return f"(SEARCH {repr(self.value)})"
 
@@ -265,7 +301,8 @@ class Contains(BinaryOperator):
                 for value in flatten([self.value])
                 for rec in flatten([record_value])
             )
-        except TypeError:
+        except TypeError as e:
+            LOG.exception(e)
             return False
 
 class In(Condition):
@@ -291,16 +328,20 @@ class In(Condition):
 
     def match(self, record):
         record_value = search(record, self.field)
-        if self.mode == 'condition':
-            return any(
-                self.condition.match(rec)
-                for rec in record_value
-            )
-        if self.mode == 'list':
-            return any(
-                rec in flatten([self.value])
-                for rec in record_value
-            )
+        try:
+            if self.mode == 'condition':
+                return any(
+                    self.condition.match(rec)
+                    for rec in record_value
+                )
+            if self.mode == 'list':
+                return any(
+                    rec in flatten([self.value])
+                    for rec in flatten([record_value])
+                )
+        except Exception as e:
+            LOG.exception(e)
+            return False
         # Unknown case
         LOG.warning("Unknown situation encountered for IN condition: condition=%s, record=%s",
             self._args, record)

@@ -7,6 +7,7 @@
 * Web: Fixed a display error when deleting part of a condition
 * Core: Avoid loading in memory unnecessary plugin data
 * Core: Fixed an issue with duplicate policies using Replace (lost UID)
+* Core: Better handling of crashed conditions and modifications
 
 ## v1.2.0
 

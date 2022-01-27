@@ -49,9 +49,12 @@ class Modification:
 class SetOperation(Modification):
     def modify(self, record):
         key, value = resolve(record, self.args)
-        return_code = bool(value and record.get(key) != value)
-        record[key] = value
-        return return_code
+        try:
+            return_code = bool(value and record.get(key) != value)
+            record[key] = value
+            return return_code
+        except:
+            return False
 
 class DeleteOperation(Modification):
     def modify(self, record):
