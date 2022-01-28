@@ -89,11 +89,11 @@ class DateTimeConstraint(Constraint):
         date_from = self.date_from
         date_until = self.date_until
         if date_from and date_until:
-            return (date_from < record_date) and (record_date < date_until)
+            return (date_from <= record_date) and (record_date <= date_until)
         elif (not date_from) and date_until:
-            return record_date < date_until
+            return record_date <= date_until
         elif date_from and (not date_until):
-            return date_from < record_date
+            return date_from <= record_date
         else:
             return False
 
@@ -125,10 +125,10 @@ class TimeConstraint(Constraint):
         time_until = self.time_until
         record_time = record_date.time()
         if time_from and time_until:
-            return (time_from < record_time) and (record_time < time_until)
+            return (time_from <= record_time) and (record_time <= time_until)
         elif time_from and (not time_until):
-            return time_from < record_time
+            return time_from <= record_time
         elif (not time_from) and time_until:
-            return record_time < time_until
+            return record_time <= time_until
         else:
             return True

@@ -72,6 +72,8 @@ class TestTimeConstraint:
         record_date = parser.parse('2021-07-01T12:00:00+09:00')
         tc = TimeConstraint({'from':'10:00'})
         assert tc.match(record_date) == True
+        tc = TimeConstraint({'from':'12:00'})
+        assert tc.match(record_date) == True
 
     def test_from_false(self):
         record_date = parser.parse('2021-07-01T12:00:00+09:00')
@@ -81,6 +83,8 @@ class TestTimeConstraint:
     def test_until_true(self):
         record_date = parser.parse('2021-07-01T12:00:00+09:00')
         tc = TimeConstraint({'until':'14:00'})
+        assert tc.match(record_date) == True
+        tc = TimeConstraint({'until':'12:00'})
         assert tc.match(record_date) == True
 
     def test_until_false(self):

@@ -9,6 +9,7 @@
 * Core: Avoid loading in memory unnecessary plugin data
 * Core: Fixed an issue with duplicate policies using Replace (lost UID)
 * Core: Better handling of crashed conditions and modifications
+* Core: Fixed a Time Constraints issue with exact matches
 
 ## v1.2.0
 
