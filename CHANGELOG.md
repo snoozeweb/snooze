@@ -6,6 +6,7 @@
 * Core: Added `notification_from` field to Alerts when they get re-escalated
 ### Bug fixes
 * Web: Fixed a display error when deleting part of a condition
+* Web: Active and Upcoming Snooze filters/Notifications were sometimes wrong
 * Core: Avoid loading in memory unnecessary plugin data
 * Core: Fixed an issue with duplicate policies using Replace (lost UID)
 * Core: Better handling of crashed conditions and modifications

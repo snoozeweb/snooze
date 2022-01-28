@@ -47,7 +47,7 @@ export default {
       if (e.target.checked && index == -1) {
         this.datavalue.weekdays.push(val)
       } else if(!e.target.checked && index >= 0) {
-        this.datavalue.weekdays.splice(index)
+        this.datavalue.weekdays.splice(index, 1)
       }
     }
   },

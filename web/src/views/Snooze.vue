@@ -89,17 +89,23 @@ export default {
     get_tabs_default() {
       var now = moment()
       var date = now.format("YYYY-MM-DDTHH:mm")
-      var hour = now.format("HH:mm")
+      var hour = now.format("HH:mm:ssZ")
       var weekday = now.day()
       var match = ['AND',
-        ['OR', ['NOT', ['EXISTS', 'time_constraints.weekdays']], ['IN', weekday, 'time_constraints.weekdays.weekdays']],
+        ['OR', ['NOT', ['EXISTS', 'time_constraints.weekdays']], ['IN', ['IN', weekday, 'weekdays'], 'time_constraints.weekdays']],
         ['AND',
-          ['OR', ['NOT', ['EXISTS', 'time_constraints.datetime']], ['<=', 'time_constraints.datetime.from', date]],
-          ['AND',
-            ['OR', ['NOT', ['EXISTS', 'time_constraints.datetime']], ['>=', 'time_constraints.datetime.until', date]],
-            ['AND',
-              ['OR', ['NOT', ['EXISTS', 'time_constraints.time']], ['<=', 'time_constraints.time.from', hour]],
-              ['OR', ['NOT', ['EXISTS', 'time_constraints.time']], ['>=', 'time_constraints.time.until', hour]]
+          ['OR',
+            ['NOT', ['EXISTS', 'time_constraints.datetime']],
+            ['IN',
+              ['AND', ['<=', 'from', date], ['>=', 'until', date]],
+              'time_constraints.datetime'
+            ]
+          ],
+          ['OR',
+            ['NOT', ['EXISTS', 'time_constraints.time']],
+            ['IN',
+               ['AND', ['<=', 'from', hour], ['>=', 'until', hour]],
+               'time_constraints.time'
             ]
           ]
         ]
