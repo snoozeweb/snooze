@@ -133,7 +133,7 @@ class NotificationObject():
         for action_plugin in self.action_plugins:
             if not 'notifications' in record:
                 record['notifications'] = []
-                record['notifications'].append(self.name)
+            record['notifications'].append(self.name)
             action = action_plugin.get('action')
             action_content = action_plugin.get('content', {})
             action_name = action_content.get('action_name', '')

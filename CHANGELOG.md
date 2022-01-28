@@ -11,6 +11,7 @@
 * Core: Fixed an issue with duplicate policies using Replace (lost UID)
 * Core: Better handling of crashed conditions and modifications
 * Core: Fixed a Time Constraints issue with exact matches
+* Core: Triggered notifications in an alert were capped at one item
 
 ## v1.2.0
 
