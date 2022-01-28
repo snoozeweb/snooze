@@ -1,6 +1,8 @@
 ## v1.3.0
 
 ### New features
+* Core/Web: Better handling of strings in conditions and modifications
+* Core/Web: Supports AND/OR condititions with more than 2 arguments
 * Core: New Key-values modification (add fields to an alert based on matching a dictionary)
 * Core: Added rotating logs in /var/log/snooze/snooze-server.log
 * Core: Added `notification_from` field to Alerts when they get re-escalated
