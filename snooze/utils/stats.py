@@ -12,6 +12,7 @@ from prometheus_client.context_managers import Timer
 
 import logging
 import datetime
+import contextlib
 
 from logging import getLogger
 from snooze.utils import config
@@ -45,7 +46,8 @@ class Stats():
         metric = None
         if self.enabled and metric_name in self.metrics:
             metric = self.metrics[metric_name].labels(**labels)
-        return Timer(metric.observe if metric else (lambda x: x))
+            return Timer(metric, 'observe')
+        return contextlib.suppress()
 
     def inc(self, metric_name, labels):
         if self.enabled and metric_name in self.metrics:

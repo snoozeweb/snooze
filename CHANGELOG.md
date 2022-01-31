@@ -5,6 +5,7 @@
 * Core: Added rotating logs in /var/log/snooze/snooze-server.log
 * Core: Added `notification_from` field to Alerts when they get re-escalated
 * Core: Resend failed notifications (configurable in Settings)
+* Core: Supports prometheus-client 13.x
 ### Bug fixes
 * Web: Fixed a display error when deleting part of a condition
 * Web: Active and Upcoming Snooze filters/Notifications were sometimes wrong
