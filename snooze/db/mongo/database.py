@@ -181,12 +181,14 @@ class BackendDB(Database):
             if result:
                 result['value'] = result.get('value', 0) + 1
                 self.db[collection].update_one({"$and": [{"date": now}, {"key": key}]}, {'$set': result})
+                result.pop('_id', None)
                 log.debug('Updated in {} metric {}'.format(collection, result))
                 updated.append(result)
             else:
                 result = {'date': now, 'type': 'counter', 'key': key}
                 result['value'] = 1
                 self.db[collection].insert_one(result)
+                result.pop('_id', None)
                 log.debug('Inserted in {} metric {}'.format(collection, result))
                 added.append(result)
         return {'data': {'added': added, 'updated': updated}}

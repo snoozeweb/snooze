@@ -13,6 +13,7 @@
 * Core: Better handling of crashed conditions and modifications
 * Core: Fixed a Time Constraints issue with exact matches
 * Core: Triggered notifications in an alert were capped at one item
+* Core: Metrics api endpoint failed to return sometimes
 
 ## v1.2.0
 
