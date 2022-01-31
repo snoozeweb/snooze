@@ -328,7 +328,7 @@ class BackendDB(Database):
                 else:
                     results = table.remove(tinydb_search)
                     results_count = len(results)
-                log.debug("Found {} item(s) to delete for search {}".format(results_count, tinydb_search))
+                log.debug("Found {} item(s) to delete in collection {} for search {}".format(results_count, collection, tinydb_search))
             mutex.release()
             return {'data': [], 'count': results_count}
         else:

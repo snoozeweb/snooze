@@ -28,30 +28,47 @@ class Notification(Plugin):
                 log.debug("Matched notification `{}` with {}".format(notification.name, record))
                 if len(notification.action_plugins) > 0:
                     total = notification.freq.get('total', 1)
+                    was_sent = None
                     if notification.freq.get('delay', 0) <= 0 and total != 0:
                         log.debug("{} Notification(s) `{}` will be sent now".format(total, notification.name))
-                        notification.send(record)
-                        total -= 1
-                    delay = max(notification.freq.get('delay', 0), 0) or notification.freq.get('every', 0)
-                    if delay > 0 and total != 0:
-                        log.debug("Notification `{}` will be sent in {}s".format(notification.name, delay))
+                        was_sent = notification.send(record)
+                    every = notification.freq.get('every', 0)
+                    delay = max(notification.freq.get('delay', 0), 0) or every
+                    retry = self.get_default(record, 'notification_retry', 3)
+                    if was_sent == False:
+                        every = self.get_default(record, 'notification_freq', 60)
+                        delay = every
+                        if retry == 0:
+                            log.debug("Notification `{}` has 0 retry configured, discarding...".format(notification.name))
+                            delay = 0
+                    if delay > 0 and (total < 0 or total > (1 if was_sent else 0)):
                         if not 'hash' in record:
                             if 'raw' in record:
                                 record['hash'] = hashlib.md5(record['raw']).hexdigest()
                             else:
                                 record['hash'] = hashlib.md5(repr(sorted(record.items())).encode('utf-8')).hexdigest()
-                        self.delay_send(notification, record['hash'], delay, total - 1)
+                        self.delay_send(notification, record['hash'], delay, every, total - 1, self.get_default(record, 'notification_retry', 3), was_sent)
                 else:
                     log.error("Notification {} has no action. Cannot send".format(self.name))
         return record
+
+    def get_default(self, record, key, default_val):
+        val = record.get(key)
+        if val:
+            return val
+        else:
+            return self.core.notif_conf.get(key, default_val)
 
     def validate(self, obj):
         '''Validate a notification object'''
         validate_condition(obj)
 
-    def delay_send(self, notification, record_hash, delay, total):
-        self.thread.delayed[record_hash] = {'notification': notification, 'time': time.time() + delay, 'total': total}
-        self.core.db.write('notification.delay', {'notification_uid': notification.uid, 'record_hash': record_hash, 'host': self.hostname, 'delay': delay, 'total': total}, 'record.hash')
+    def delay_send(self, notification, record_hash, delay, every, total, retry, was_sent):
+        log.debug("Notification `{}` will be {}sent in {}s ({} retries left)".format(notification.name, '' if was_sent == True else 're', delay, retry))
+        if was_sent == False:
+            total += 1
+        self.thread.set_delayed(record_hash, notification.uid, {'notification': notification, 'time': time.time() + delay, 'every': every, 'total': total, 'retry': retry})
+        self.core.db.write('notification.delay', {'notification_uid': notification.uid, 'record_hash': record_hash, 'host': self.hostname, 'every': every, 'delay': delay, 'total': total, 'retry': retry}, 'notification_uid,record_hash')
 
     def post_init(self):
         super().post_init()
@@ -62,13 +79,15 @@ class Notification(Plugin):
         if delayed_notifs['count'] > 0:
             for delayed_notif in delayed_notifs['data']:
                 notif_uid = delayed_notif['notification_uid']
-                queue_it = iter(notif for notif in self.notifications if notif.uid == delayed_notif['notification_uid'])
-                if any(queue_it):
-                    notification = next(queue_it)
+                queue_it = [notif for notif in self.notifications if notif.uid == notif_uid]
+                if len(queue_it) > 0:
+                    notification = queue_it[0]
                     record_hash = delayed_notif['record_hash']
                     delay = delayed_notif['delay']
+                    every = delayed_notif['every']
                     total = delayed_notif['total']
-                    self.thread.delayed[record_hash] = {'notification': notification, 'time': time.time() + delay, 'total': total}
+                    retry = delayed_notif['retry']
+                    self.thread.set_delayed(record_hash, notif_uid, {'notification': notification, 'time': time.time() + delay, 'every': every, 'total': total, 'retry': retry})
                 else:
                     log.debug("Delayed notification {} original notification in not in the database anymore. Removing it from queue".format(delayed_notif))
                     self.core.db.delete('notification.delay', ['=', 'uid', delayed_notif['uid']])
@@ -122,12 +141,15 @@ class NotificationObject():
         if delayed_records['count'] > 0:
             for delayed_record in delayed_records['data']:
                 if delayed_record.get('state') not in ['ack', 'close']:
-                    self.send(delayed_record)
+                    was_sent = self.send(delayed_record)
                     self.core.db.write('record', delayed_record)
-                    return True
+                    return (True, was_sent)
                 else:
-                    log.debug("record {} is already acked or closed, do not notify".format(record.get('hash')))
-                    return False
+                    log.debug("Record {} is already acked or closed, do not notify".format(record_hash))
+                    return (False, True)
+        else:
+            log.debug("Record {} does not exist anymore, do not notify".format(record_hash))
+            return (False, True)
 
     def send(self, record):
         for action_plugin in self.action_plugins:
@@ -137,14 +159,24 @@ class NotificationObject():
             action = action_plugin.get('action')
             action_content = action_plugin.get('content', {})
             action_name = action_content.get('action_name', '')
+            was_sent = False
             try:
                 log.debug('Action {}'.format(action_plugin))
                 action.send(record, action_content)
-                self.core.stats.inc('notification_sent', {'name': self.name, 'action': action_name})
+                was_sent = True
             except Exception as e:
-                self.core.stats.inc('notification_error', {'name': self.name, 'action': action_name})
-                log.error("Notification {} action {}' could not be send".format(self.name, action_name))
                 log.exception(e)
+                log.error("Notification {} action {}' could not be send".format(self.name, action_name))
+                was_sent = False
+            try:
+                if was_sent:
+                    self.core.stats.inc('notification_sent', {'name': self.name, 'action': action_name})
+                else:
+                    self.core.stats.inc('notification_error', {'name': self.name, 'action': action_name})
+            except Exception as e:
+                log.exception(e)
+            return was_sent
+
 
 class NotificationThread(threading.Thread):
 
@@ -154,22 +186,39 @@ class NotificationThread(threading.Thread):
         self.main_thread = threading.main_thread()
         self.delayed = {}
 
+    def set_delayed(self, record_hash, notif_uid, val):
+        if record_hash not in self.delayed:
+            self.delayed[record_hash] = {}
+        self.delayed[record_hash][notif_uid] = val
+
     def run(self):
         while True:
             if not self.main_thread.is_alive():
                 break
             for record_hash in list(self.delayed.keys()):
-                if time.time() >= self.delayed[record_hash]['time']:
-                    notification = self.delayed[record_hash]['notification']
-                    can_delete = not notification.send_delayed(record_hash)
-                    every = max(notification.freq.get('every', 0), 0)
-                    total = max(self.delayed[record_hash]['total'], -1)
-                    if not can_delete and every >= 0 and total != 0:
-                        self.notification.delay_send(notification, record_hash, every, total - 1)
-                    else:
-                        self.notification.core.db.delete('notification.delay', ['=', 'record.hash', record_hash])
-                        try:
-                            del self.delayed[record_hash]
-                        except KeyError:
-                            continue
+                for notif_uid in list(self.delayed[record_hash].keys()):
+                    if time.time() >= self.delayed[record_hash][notif_uid]['time']:
+                        notification = self.delayed[record_hash][notif_uid]['notification']
+                        keep, was_sent = notification.send_delayed(record_hash)
+                        every = max(self.delayed[record_hash][notif_uid]['every'], 0)
+                        total = max(self.delayed[record_hash][notif_uid]['total'], -1)
+                        retry = self.delayed[record_hash][notif_uid]['retry'] - 1
+                        if (was_sent or retry > 0) and keep and every >= 0 and total != 0:
+                            self.notification.delay_send(notification, record_hash, every, every, total - 1, retry, was_sent)
+                        else:
+                            if keep:
+                                self.notification.core.db.delete('notification.delay', ['AND', ['=', 'record_hash', record_hash], ['=', 'notification_uid', notif_uid]])
+                                try:
+                                    del self.delayed[record_hash][notif_uid]
+                                    if not self.delayed[record_hash]:
+                                        del self.delayed[record_hash]
+                                except KeyError:
+                                    continue
+                            else:
+                                self.notification.core.db.delete('notification.delay', ['=', 'record_hash', record_hash])
+                                try:
+                                    del self.delayed[record_hash]
+                                except KeyError:
+                                    break
+                                break
             time.sleep(2)

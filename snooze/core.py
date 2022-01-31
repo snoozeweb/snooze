@@ -35,6 +35,7 @@ class Core:
         self.conf = conf
         self.db = Database(conf.get('database', {}))
         self.general_conf = config('general')
+        self.notif_conf = config('notifications')
         self.ok_severities = list(map(lambda x: x.casefold(), flatten([self.general_conf.get('ok_severities', [])])))
         self.housekeeper = Housekeeper(self)
         self.cluster = None
@@ -193,6 +194,9 @@ class Core:
             return True
         elif config_file == 'housekeeping':
             self.housekeeper.reload()
+            return True
+        elif config_file == 'notifications':
+            self.notif_conf = config('notifications')
             return True
         else:
             log.debug("Config file {} not found".format(config_file))

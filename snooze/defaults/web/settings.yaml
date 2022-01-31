@@ -6,6 +6,9 @@ tabs:
         reload:
             auth_backends: ['local']
     -
+        key: 'notifications'
+        name: 'Notifications'
+    -
         key: 'ldap_auth'
         name: 'LDAP'
         reload:
@@ -36,6 +39,24 @@ form:
             display_name: OK Severities
             component: Field
             description: Space separated severities used to automatically close an alert (case incensitive)
+    notifications:
+        notification_retry:
+            display_name: Retries
+            component: Duration
+            description: 'Number of times to retry sending a failed notification'
+            options:
+                zero_label: 'No retry'
+                negative_label: 'No retry'
+                custom_label: ' time(s)'
+            default_value: 3
+        notification_freq:
+            display_name: Frequency
+            component: Duration
+            description: 'Time to wait before sending the next notification'
+            options:
+                zero_label: 'Immediate'
+                negative_label: 'Immediate'
+            default_value: 60
     ldap_auth:
         enabled:
             display_name: LDAP Authentication
