@@ -7,7 +7,6 @@
 
 #!/usr/bin/python
 import os
-import json
 
 from pathlib import Path
 
@@ -18,7 +17,6 @@ import requests
 import functools
 from wsgiref.simple_server import make_server, WSGIServer
 from socketserver import ThreadingMixIn
-from bson.json_util import loads, dumps
 
 from snooze.api.base import Api, BasicRoute
 from snooze.api.static import StaticRoute

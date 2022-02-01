@@ -32,10 +32,10 @@ class Rule(Plugin):
         validate_modification(obj, self.core)
 
     def process_rules(self, record, rules):
-        LOG.debug("Processing record {} against rules: {}".format(str(record), str(rules)))
+        LOG.debug("Processing record {} against rules".format(str(record.get('hash', ''))))
         for rule in rules:
-            LOG.debug("Rule {} processing record: {}".format(str(self.name), str(record)))
             if rule.enabled and rule.match(record):
+                LOG.debug("Rule {} matched record: {}".format(str(rule.name), str(record)))
                 rule.modify(record)
                 self.process_rules(record, rule.children)
 
@@ -78,13 +78,11 @@ class RuleObject():
         Returns:
             bool: Record matched the rule's condition
         """
-        LOG.debug("Attempting to match rule {} with record {}".format(str(self.name), str(record)))
         match = self.condition.match(record)
         if match:
             if not 'rules' in record:
                 record['rules'] = []
             record['rules'].append(self.name)
-        LOG.debug("-> Match result: {}".format(match))
         return match
 
     def modify(self, record):
@@ -97,12 +95,16 @@ class RuleObject():
         Returns:
             bool: Record has been modified
         """
-        LOG.debug("Attempting to modify record: {}".format(str(record)))
-        modified = any([ modification.modify(record) for modification in self.modifications])
+        modified = False
+        modifs = []
+        for modification in self.modifications:
+            if modification.modify(record):
+                modified = True
+                modifs.append(modification)
         if modified:
-            LOG.debug("Record has been modified: {}".format(str(record)))
+            LOG.debug("Record {} has been modified: {}".format(str(record.get('hash', '')), str([m.pprint() for m in modifs])))
         else:
-            LOG.debug("Record has not been modified")
+            LOG.debug("Record {} has not been modified".format(str(record.get('hash', ''))))
         return modified
 
     def __repr__(self):

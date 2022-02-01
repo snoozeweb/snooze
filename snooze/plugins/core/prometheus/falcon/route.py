@@ -5,7 +5,7 @@ log = getLogger('snooze.webhooks.prometheus')
 from copy import deepcopy
 from snooze.api.falcon import WebhookRoute
 from snooze.utils.functions import sanitize
-import json
+from bson.json_util import loads
 
 class PrometheusRoute(WebhookRoute):
     auth = {
@@ -42,13 +42,13 @@ class PrometheusRoute(WebhookRoute):
         alert['tags'] = {}
         for tag_k, tag_v in labels.items():
             try:
-                alert['tags'][tag_k] = sanitize(json.loads(tag_v))
+                alert['tags'][tag_k] = sanitize(loads(tag_v))
             except:
                 alert['tags'][tag_k] = tag_v
         alert['annotations'] = {}
         for a_k, a_v in annotations.items():
             try:
-                alert['annotations'][a_k] = sanitize(json.loads(a_v))
+                alert['annotations'][a_k] = sanitize(loads(a_v))
             except:
                 alert['annotations'][a_k] = a_v
 

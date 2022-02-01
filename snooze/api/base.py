@@ -7,7 +7,6 @@
 
 #!/usr/bin/python
 import os
-import json
 import importlib.util
 
 from importlib import import_module

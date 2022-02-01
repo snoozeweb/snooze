@@ -7,7 +7,7 @@
 
 import click
 import requests
-import json
+from bson.json_util import loads
 
 from snooze.cli.login import get_token
 
@@ -20,7 +20,7 @@ def record():
 def post(data):
     token = get_token()
     headers = {'Authorization': 'JWT {}'.format(token), 'Content-Type': 'application/json'}
-    json_data = json.loads(data)
+    json_data = loads(data)
     response = requests.post('http://localhost:5200/api/record', headers=headers, data = json_data)
     print(response)
 

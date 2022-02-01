@@ -203,13 +203,11 @@ class BackendDB(Database):
                 result = result[0]
                 result['value'] = result.get('value', 0) + 1
                 table.update(result, doc_ids=[result.doc_id])
-                log.debug('Updated in {} metric {}'.format(collection, result))
                 updated.append(deepcopy(result))
             else:
                 result = {'date': now, 'type': 'counter', 'key': key}
                 result['value'] = 1
                 table.insert(result)
-                log.debug('Inserted in {} metric {}'.format(collection, result))
                 added.append(deepcopy(result))
         mutex.release()
         return {'data': {'added': added, 'updated': updated}}

@@ -117,7 +117,7 @@ class Core:
         with self.stats.time('process_alert_duration', {'source': source, 'environment': environment, 'severity': severity}):
             for plugin in self.process_plugins:
                 try:
-                    log.debug("Executing plugin {} on {}".format(plugin.name, record))
+                    log.debug("Executing plugin {} on record {}".format(plugin.name, record.get('hash', record)))
                     record['plugins'].append(plugin.name)
                     record = plugin.process(record)
                 except Abort:

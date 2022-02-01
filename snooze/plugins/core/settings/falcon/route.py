@@ -7,12 +7,10 @@
 
 #!/usr/bin/python
 import os
-import json
 import falcon
 import hashlib
 from bson.json_util import loads, dumps
 from bson.errors import BSONError
-from json import JSONDecodeError
 from logging import getLogger
 log = getLogger('snooze.api')
 

@@ -26,7 +26,7 @@ class Aggregaterule(Plugin):
         Args:
             record (dict)
         """
-        LOG.debug("Processing record {} against aggregate rules: {}".format(str(record), str(self.aggregate_rules)))
+        LOG.debug("Processing record {} against aggregate rules".format(str(record)))
         for aggrule in self.aggregate_rules:
             if aggrule.enabled and aggrule.match(record):
                 LOG.debug("Aggregate rule {} matched record: {}".format(str(aggrule.name), str(record)))
@@ -58,7 +58,7 @@ class Aggregaterule(Plugin):
         aggregate_result = self.db.search('record', ['=', 'hash', record['hash']])
         if aggregate_result['count'] > 0:
             aggregate = aggregate_result['data'][0]
-            LOG.debug("Found {}, updating it with the record infos".format(str(aggregate)))
+            LOG.debug("Found record hash {}, updating it with the record infos".format(str(record['hash'])))
             now = datetime.datetime.now()
             record = dict(list(aggregate.items()) + list(record.items()))
             record_state = record.get('state', '')

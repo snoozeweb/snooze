@@ -14,10 +14,10 @@ log = getLogger('snooze.plugins.snooze')
 
 class Snooze(Plugin):
     def process(self, record):
+        log.debug("Processing record {} against snooze filters".format(str(record.get('hash', ''))))
         for f in self.filters:
-            log.debug("Attempting to match {} against snooze filter {}".format(record, f.name))
             if f.enabled and f.match(record):
-                log.debug("Matched snooze filter {} with {}".format(f.name, record))
+                log.debug("Snooze filter {} matched record: {}".format(str(f.name), str(record)))
                 record['snoozed'] = f.name
                 f.hits += 1
                 f.raw['hits'] = f.hits

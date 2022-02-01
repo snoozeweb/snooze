@@ -8,7 +8,6 @@
 #!/usr/bin/python3.6
 
 
-import json
 import time
 import threading
 import hashlib
@@ -23,9 +22,10 @@ from snooze.plugins.core import Plugin
 
 class Notification(Plugin):
     def process(self, record):
+        log.debug("Processing record {} against notifications".format(str(record.get('hash', ''))))
         for notification in self.notifications:
             if notification.enabled and notification.match(record):
-                log.debug("Matched notification `{}` with {}".format(notification.name, record))
+                log.debug("Notification {} matched record: {}".format(str(notification.name), str(record)))
                 if len(notification.action_plugins) > 0:
                     total = notification.freq.get('total', 1)
                     was_sent = None

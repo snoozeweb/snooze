@@ -8,7 +8,6 @@
 #!/usr/bin/python3.6
 
 
-import json
 from snooze.utils import get_condition
 
 from logging import getLogger

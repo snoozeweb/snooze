@@ -11,7 +11,7 @@ log = getLogger('snooze.webhooks.grafana')
 
 from snooze.api.falcon import WebhookRoute
 from snooze.utils.functions import sanitize
-import json
+from bson.json_util import loads
 
 class GrafanaRoute(WebhookRoute):
     auth = {
@@ -40,7 +40,7 @@ class GrafanaRoute(WebhookRoute):
         alert['raw'] = sanitize(media)
         for tag_k, tag_v in tags.items():
             try:
-                alert['tags'][tag_k] = json.loads(tag_v)
+                alert['tags'][tag_k] = loads(tag_v)
             except:
                 alert['tags'][tag_k] = tag_v
         alert['tags'].update(media.get('tags') or {})

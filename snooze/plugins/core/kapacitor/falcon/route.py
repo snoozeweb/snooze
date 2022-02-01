@@ -11,7 +11,7 @@ log = getLogger('snooze.webhooks.kapacitor')
 
 from snooze.api.falcon import WebhookRoute
 from snooze.utils.functions import sanitize
-import json
+from bson.json_util import loads
 
 class KapacitorRoute(WebhookRoute):
     auth = {
@@ -33,7 +33,7 @@ class KapacitorRoute(WebhookRoute):
         alert['raw'] = media
         for tag_k, tag_v in tags.items():
             try:
-                alert['tags'][tag_k] = sanitize(json.loads(tag_v))
+                alert['tags'][tag_k] = sanitize(loads(tag_v))
             except:
                 alert['tags'][tag_k] = tag_v
         alert['tags'].update(media.get('tags') or {})

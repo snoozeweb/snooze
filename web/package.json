@@ -42,7 +42,7 @@
     "vue": "^3.2.20",
     "vue-cli-plugin-yaml": "^1.0.2",
     "vue-safe-html": "^1.0.1",
-    "vue3-date-time-picker": "^2.3.5",
+    "vue3-date-time-picker": "^2.5.0",
     "vue3-swatches": "^1.0.5",
     "vuex": "^4.0.2"
   },

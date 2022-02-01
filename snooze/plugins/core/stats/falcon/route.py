@@ -9,13 +9,12 @@
 
 import falcon
 from datetime import datetime, timedelta
-from bson.json_util import loads, dumps
 from logging import getLogger
 log = getLogger('snooze.stats')
 
 from snooze.api.base import BasicRoute
 from snooze.api.falcon import authorize
-from bson.json_util import loads, dumps
+from bson.json_util import dumps
 from urllib.parse import unquote
 
 class StatsRoute(BasicRoute):

@@ -7,9 +7,8 @@
 
 #!/usr/bin/python36
 
-from bson.json_util import dumps
 from jinja2 import Template, Environment, BaseLoader
-from bson.json_util import loads, dumps
+from bson.json_util import loads
 from urllib.parse import unquote
 from copy import deepcopy
 import requests
@@ -44,7 +43,7 @@ class Webhook(Plugin):
         action_name = content.get('action_name', self.name)
         inject_response = content.get('inject_response', False)
         record_copy = deepcopy(record)
-        record_copy['__self__'] = record
+        record_copy['__self__'] = record_copy.copy()
         if payload:
             try:
                 unquoted_payload = unquote(payload)
@@ -68,7 +67,7 @@ class Webhook(Plugin):
             if type(argument) is dict:
                 parsed_params += [sum([interpret_jinja([k, v], record_copy) for k, v in argument])]
         log.debug("Will execute action webhook `{}`".format(url))
-        if str.startswith(url, 'https') and content.get('ssl_verify'): 
+        if str.startswith(url, 'https') and content.get('ssl_verify'):
             ssl_verify = self.ca_bundle
         else:
             ssl_verify = False

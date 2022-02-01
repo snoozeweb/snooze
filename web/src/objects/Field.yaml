@@ -15,6 +15,7 @@ colors:
     user: info
     test: warning
     alert: danger
+    Alert: danger
     err: danger
     crit: danger
     emerg: danger

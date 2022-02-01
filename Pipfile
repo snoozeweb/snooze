@@ -2,7 +2,7 @@
 python_version = "3.6"
 
 [packages]
-pymongo = "*"
+pymongo = "==3.12.1"
 falcon = "*"
 falcon-auth = "*"
 PyJWT = "==1.7.1"
@@ -10,7 +10,7 @@ Jinja2 = "*"
 PyYAML = "5.4.1"
 requests_unixsocket = "*"
 urllib3 = "*"
-tinydb = "*"
+tinydb = "==4.5.2"
 pathlib = "*"
 click = "*"
 ldap3 = "*"
@@ -19,6 +19,7 @@ python-dateutil = "*"
 netifaces = "*"
 pyparsing = "*"
 waitress = "*"
+snooze = {editable = true, path = "."}
 
 [dev-packages]
 pytest = "*"

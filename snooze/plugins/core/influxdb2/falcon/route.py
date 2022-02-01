@@ -5,7 +5,7 @@ log = getLogger('snooze.webhooks.influxdb')
 from copy import deepcopy
 from snooze.api.falcon import WebhookRoute
 from snooze.utils.functions import sanitize
-import json
+from bson.json_util import loads
 
 class InfluxDBRoute(WebhookRoute):
     auth = {
@@ -35,7 +35,7 @@ class InfluxDBRoute(WebhookRoute):
         for k, v in media.items():
             if k[0] != '_':
                 try:
-                    alert[k] = sanitize(json.loads(v))
+                    alert[k] = sanitize(loads(v))
                 except:
                     alert[k] = v
 

@@ -51,7 +51,7 @@ setup(
         'pymongo==3.12.1',
         'python-dateutil',
         'requests_unixsocket',
-        'tinydb',
+        'tinydb==4.5.2',
         'urllib3',
         'netifaces',
         'waitress',

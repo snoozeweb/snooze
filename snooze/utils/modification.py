@@ -46,6 +46,9 @@ class Modification:
     def modify(self, record):
         pass
 
+    def pprint(self):
+        return f"{self.__class__.__name__}({self.args})"
+
 class SetOperation(Modification):
     def modify(self, record):
         key, value = resolve(record, self.args)

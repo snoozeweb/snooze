@@ -18,6 +18,7 @@
 * Time constraints in rules
 * Personal environment
 * Re-escalation message to Google Chat
+* Recode severity to map fixed values
 
 ## Long term
 
