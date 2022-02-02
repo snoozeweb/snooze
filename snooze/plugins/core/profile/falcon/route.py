@@ -8,8 +8,7 @@
 #!/usr/bin/python
 import os
 import falcon
-from bson.json_util import loads, dumps
-from bson.errors import BSONError
+import bson.json_util
 from urllib.parse import unquote
 from logging import getLogger
 log = getLogger('snooze.api')
@@ -26,7 +25,7 @@ class ProfileRoute(FalconRoute):
         else:
             query = req.params.get('s') or search
             try:
-                query = loads(unquote(query))
+                query = bson.json_util.loads(unquote(query))
             except:
                 pass
         if self.inject_payload:
@@ -37,14 +36,13 @@ class ProfileRoute(FalconRoute):
         resp.content_type = falcon.MEDIA_JSON
         if result_dict:
             try:
-                result = dumps(result_dict)
-                resp.body = result
+                resp.media = result_dict
                 resp.status = falcon.HTTP_200
             except:
-                resp.body = '{}'
+                resp.media = {}
                 resp.status = falcon.HTTP_503
         else:
-            resp.body = '{}'
+            resp.media = {}
             resp.status = falcon.HTTP_404
             pass
 
@@ -61,12 +59,11 @@ class ProfileRoute(FalconRoute):
                 for req_media in media:
                     self.update_password(req_media)
             result_dict = self.update(self.plugin.name + '.' + c, media)
-            result = dumps(result_dict)
-            resp.body = result
+            resp.media = result_dict
             resp.status = falcon.HTTP_201
         except Exception as e:
             log.exception(e)
-            resp.body = '{}'
+            resp.media = {}
             resp.status = falcon.HTTP_503
             pass
 
@@ -79,7 +76,7 @@ class ProfileRoute(FalconRoute):
         else:
             query = req.params.get('s') or search
             try:
-                query = loads(query)
+                query = bson.json_util.loads(query)
             except:
                 pass
         if self.inject_payload:
@@ -90,13 +87,12 @@ class ProfileRoute(FalconRoute):
         resp.content_type = falcon.MEDIA_JSON
         if result_dict:
             try:
-                result = dumps(result_dict)
-                resp.body = result
+                resp.media = result_dict
                 resp.status = falcon.HTTP_OK
             except:
-                resp.body = '{}'
+                resp.media = {}
                 resp.status = falcon.HTTP_503
         else:
-            resp.body = '{}'
+            resp.media = {}
             resp.status = falcon.HTTP_NOT_FOUND
             pass

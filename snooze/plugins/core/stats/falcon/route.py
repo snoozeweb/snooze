@@ -14,7 +14,6 @@ log = getLogger('snooze.stats')
 
 from snooze.api.base import BasicRoute
 from snooze.api.falcon import authorize
-from bson.json_util import dumps
 from urllib.parse import unquote
 
 class StatsRoute(BasicRoute):
@@ -29,10 +28,9 @@ class StatsRoute(BasicRoute):
         resp.content_type = falcon.MEDIA_JSON
         result_dict = self.core.db.compute_stats('stats', date_from, date_until, groupby)
         if result_dict:
-            result = dumps(result_dict)
-            resp.body = result
+            resp.media = result_dict
             resp.status = falcon.HTTP_200
         else:
-            resp.body = '{}'
+            resp.media = {}
             resp.status = falcon.HTTP_404
             pass

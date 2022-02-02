@@ -8,8 +8,7 @@
 #!/usr/bin/python
 import os
 import falcon
-from bson.json_util import loads, dumps
-from bson.errors import BSONError
+import bson.json_util
 from urllib.parse import unquote
 from logging import getLogger
 log = getLogger('snooze.api')
@@ -35,7 +34,7 @@ class Route(FalconRoute):
         orderby = req.params.get('orderby', order_by)
         ascending = req.params.get('asc', asc)
         try:
-            cond_or_uid = loads(unquote(s))
+            cond_or_uid = bson.json_util.loads(unquote(s))
         except:
             cond_or_uid = s
         if self.inject_payload:
@@ -49,11 +48,10 @@ class Route(FalconRoute):
         result_dict = self.search(self.plugin.name, cond_or_uid, int(perpage), int(pagenb), orderby, ascending.lower() == 'true')
         resp.content_type = falcon.MEDIA_JSON
         if result_dict:
-            result = dumps(result_dict)
-            resp.body = result
+            resp.media = result_dict
             resp.status = falcon.HTTP_200
         else:
-            resp.body = '{}'
+            resp.media = {}
             resp.status = falcon.HTTP_404
             pass
 
@@ -86,13 +84,13 @@ class Route(FalconRoute):
                     log.exception(e)
                     continue
         try:
-            result = dumps(self.insert(self.plugin.name, media))
-            resp.body = result
+            result = self.insert(self.plugin.name, media)
+            resp.media = result
             self.plugin.reload_data(True)
             resp.status = falcon.HTTP_201
         except Exception as e:
             log.exception(e)
-            resp.body = '[]'
+            resp.media = []
             resp.status = falcon.HTTP_503
             pass
 
@@ -108,13 +106,13 @@ class Route(FalconRoute):
                 media = [media]
             for obj in media:
                 self.plugin.validate(obj)
-            result = dumps(self.update(self.plugin.name, media))
-            resp.body = result
+            result = self.update(self.plugin.name, media)
+            resp.media = result
             self.plugin.reload_data(True)
             resp.status = falcon.HTTP_201
         except Exception as e:
             log.exception(e)
-            resp.body = '[]'
+            resp.media = []
             resp.status = falcon.HTTP_503
             pass
 
@@ -125,7 +123,7 @@ class Route(FalconRoute):
         else:
             string = req.params.get('s') or search
             try:
-                cond_or_uid = loads(string)
+                cond_or_uid = bson.json_util.loads(string)
             except:
                 cond_or_uid = string
         if self.inject_payload:
@@ -134,11 +132,11 @@ class Route(FalconRoute):
         result_dict = self.delete(self.plugin.name, cond_or_uid)
         resp.content_type = falcon.MEDIA_JSON
         if result_dict:
-            result = dumps(result_dict)
-            resp.body = result
+            result = result_dict
+            resp.media = result
             self.plugin.reload_data(True)
             resp.status = falcon.HTTP_OK
         else:
-            resp.body = '{}'
+            resp.media = {}
             resp.status = falcon.HTTP_NOT_FOUND
             pass

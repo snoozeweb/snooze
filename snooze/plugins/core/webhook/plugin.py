@@ -7,8 +7,8 @@
 
 #!/usr/bin/python36
 
+import bson.json_util
 from jinja2 import Template, Environment, BaseLoader
-from bson.json_util import loads
 from urllib.parse import unquote
 from copy import deepcopy
 import requests
@@ -52,7 +52,7 @@ class Webhook(Plugin):
                 env.policies['json.dumps_kwargs'] = {'default': str}
                 payload_jinja = env.from_string(unquoted_payload).render(record_copy)
                 log.debug("Jinja payload: {}".format(payload_jinja))
-                parsed_payload = loads(payload_jinja)
+                parsed_payload = bson.json_util.loads(payload_jinja)
             except Exception as e:
                 log.exception(e)
                 parsed_payload = None
@@ -81,7 +81,7 @@ class Webhook(Plugin):
         log.debug("HTTP Response: {}".format(response))
         if inject_response and response and response.status_code == 200:
             try:
-                response_content = loads(response.content)
+                response_content = bson.json_util.loads(response.content)
             except:
                 response_content = response.content
             log.debug(content)

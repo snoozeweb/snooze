@@ -8,8 +8,7 @@
 #!/usr/bin/python
 import os
 import falcon
-from bson.json_util import loads, dumps
-from bson.errors import BSONError
+import bson.json_util
 from logging import getLogger
 log = getLogger('snooze.api')
 
@@ -94,7 +93,7 @@ class CommentRoute(Route):
         else:
             string = req.params.get('s') or search
             try:
-                cond_or_uid = loads(string)
+                cond_or_uid = bson.json_util.loads(string)
             except:
                 cond_or_uid = string
         comments = self.search('comment', cond_or_uid)

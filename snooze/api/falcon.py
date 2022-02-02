@@ -10,6 +10,7 @@ import os
 
 from pathlib import Path
 
+import bson.json_util
 import ssl
 import falcon
 from falcon_auth import FalconAuthMiddleware, BasicAuthBackend, JWTAuthBackend
@@ -54,6 +55,7 @@ class LoggerMiddleware(object):
             self.logger.debug(message)
         else:
             self.logger.info(message)
+
 
 class ThreadingWSGIServer(ThreadingMixIn, WSGIServer):
     daemon_threads = True
@@ -618,6 +620,13 @@ class BackendApi():
         # Handler
         self.handler = falcon.API(middleware=[CORS(), LoggerMiddleware(self.core.conf), FalconAuthMiddleware(self.jwt_auth)])
         self.handler.req_options.auto_parse_qs_csv = False
+
+        json_handler = falcon.media.JSONHandler(
+            dumps=bson.json_util.dumps,
+            loads=bson.json_util.loads,
+        )
+        self.handler.req_options.media_handlers.update({'application/json': json_handler})
+        self.handler.resp_options.media_handlers.update({'application/json': json_handler})
         self.auth_routes = {}
         # Alert route
         self.add_route('/alert', AlertRoute(self))

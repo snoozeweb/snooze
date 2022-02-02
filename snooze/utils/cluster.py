@@ -15,7 +15,7 @@ import netifaces
 import socket
 import os
 
-from bson.json_util import loads, dumps
+import bson.json_util
 from logging import getLogger
 from snooze.utils import config
 log = getLogger('snooze.cluster')
@@ -134,7 +134,7 @@ class ClusterThread(threading.Thread):
                 else:
                     connection = http.client.HTTPConnection(job['host'], job['port'], timeout=10)
                 job['payload'].update({'reload_token': self.cluster.api.core.secrets.get('reload_token', '')})
-                job_json = dumps(job['payload'])
+                job_json = bson.json_util.dumps(job['payload'])
                 try:
                     connection.request('POST', '/api/reload', job_json, headers)
                     response = connection.getresponse()

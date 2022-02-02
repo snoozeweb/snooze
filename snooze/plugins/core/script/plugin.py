@@ -7,7 +7,7 @@
 
 #!/usr/bin/python36
 
-from bson.json_util import dumps
+import bson.json_util
 from subprocess import run, CalledProcessError, PIPE
 from jinja2 import Template
 
@@ -39,7 +39,7 @@ class Script(Plugin):
             if type(argument) is dict:
                 script += sum([interpret_jinja([k, v], record) for k, v in argument])
         log.debug("Will execute action script `{}`".format(' '.join(script)))
-        stdin = dumps(record) if json else None
+        stdin = bson.json_util.dumps(record) if json else None
         process = run(script, stdout=PIPE, input=stdin, encoding='ascii')
         log.debug('stdout: ' + str(process.stdout))
         log.debug('stderr: ' + str(process.stderr))

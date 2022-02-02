@@ -9,7 +9,6 @@
 
 import copy
 import falcon
-from bson.json_util import loads, dumps
 
 from logging import getLogger
 log = getLogger('snooze.widget')

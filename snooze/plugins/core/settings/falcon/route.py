@@ -9,8 +9,6 @@
 import os
 import falcon
 import hashlib
-from bson.json_util import loads, dumps
-from bson.errors import BSONError
 from logging import getLogger
 log = getLogger('snooze.api')
 
@@ -30,16 +28,16 @@ class SettingsRoute(BasicRoute):
             result_dict = {k:v for k,v in result_dict.items() if 'password' not in k}
             dict_checksum = hashlib.md5(repr([result_dict]).encode('utf-8')).hexdigest()
             if checksum != dict_checksum:
-                result = dumps({'data': [result_dict], 'count': 1, 'checksum': dict_checksum})
+                result = {'data': [result_dict], 'count': 1, 'checksum': dict_checksum}
             else:
-                result = dumps({'count': 0})
-            resp.body = result
+                result = {'count': 0}
+            resp.media = result
             if 'error' in result_dict.keys():
                 resp.status = falcon.HTTP_503
             else:
                 resp.status = falcon.HTTP_200
         else:
-            resp.body = '{}'
+            resp.media = {}
             resp.status = falcon.HTTP_404
             pass
 
@@ -52,11 +50,11 @@ class SettingsRoute(BasicRoute):
             media = req.media[0].copy()
             media_config = {k:v for k,v in media.get('conf', {}).items() if ('password' not in k) or v}
             results = self.api.write_and_reload(c, media_config, media.get('reload'), True)
-            result = dumps({'data': results.get('text', '')})
-            resp.body = result
+            result = {'data': results.get('text', '')}
+            resp.media = result
             resp.status = results.get('status', falcon.HTTP_503)
         except Exception as e:
             log.exception(e)
-            resp.body = '{}'
+            resp.media = {}
             resp.status = falcon.HTTP_404
             pass
