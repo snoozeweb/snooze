@@ -367,3 +367,42 @@ export function safe_jwt_decode(token, redirect = true) {
     }
   }
 }
+
+export function parseNumber(string) {
+  if (string) {
+    if (isNaN(string)) {
+      if (string.length > 1) {
+        var first_char = string.charAt(0)
+        var last_char = string.charAt(string.length -1)
+        if (first_char == last_char && (first_char == "\"" || first_char == "\'")) {
+          var sub = string.substr(1, string.length -2)
+          if (!isNaN(sub)) {
+            return sub
+          } else {
+            return string
+          }
+        } else {
+          return string
+        }
+      } else {
+        return string
+      }
+    } else {
+      if (string.charAt(0) == '0' && string.length > 1) {
+        return string
+      } else {
+        return parseFloat(string)
+      }
+    }
+  } else {
+    return ''
+  }
+}
+
+export function revParseNumber(value) {
+  if (value && !isNaN(value) && typeof value == 'string') {
+    return '"' + value + '"'
+  } else {
+    return value
+  }
+}

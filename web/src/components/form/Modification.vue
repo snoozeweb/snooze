@@ -25,7 +25,7 @@
             </template>
             <template v-else>
               <CFormInput id="field" v-model="val[1]" placeholder="Field"/>
-              <CFormInput id="value" v-model="val[2]" placeholder="Value"/>
+              <SFormInput id="value" v-model="val[2]" placeholder="Value"/>
             </template>
             <CButton class="ms-auto" size="sm" color="secondary" v-c-tooltip="{content: documentation[val[0]], trigger: 'click', placement: 'bottom'}">
               <i class="la la-info la-lg"></i>
@@ -61,11 +61,15 @@
 
 <script>
 import Base from './Base.vue'
+import SFormInput from '@/components/SFormInput.vue'
 
 export default {
   extends: Base,
   name: 'Modification',
   emits: ['update:modelValue'],
+  components: {
+    SFormInput,
+  },
   props: {
     modelValue: {type: Array, default: () => []},
     options: {},

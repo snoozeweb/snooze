@@ -60,20 +60,22 @@ def test_mongo_search():
 @mongomock.patch('mongodb://localhost:27017')
 def test_mongo_search_contains():
     db = Database(default_config.get('database'))
-    db.write('record', [{'a': ['00', '11', '22']}, {'a': ['00', '1', '2']}, {'a': ['00', '1', '4']}, {'b': '5'}])
+    db.write('record', [{'a': ['00', '11', '22', 9]}, {'a': ['00', '1', '2']}, {'a': ['00', '1', '4']}, {'b': '5'}])
     result1 = db.search('record', ['CONTAINS', 'a', '1'])['data']
     result2 = db.search('record', ['CONTAINS', 'a', ['2', '4']])['data']
     result3 = db.search('record', ['CONTAINS', 'b', ['5', '1']])['data']
-    assert len(result1) == 3 and len(result2) == 3 and len(result3) == 1
+    result4 = db.search('record', ['CONTAINS', 'a', 9])['data']
+    assert len(result1) == 3 and len(result2) == 3 and len(result3) == 1 and len(result4) == 1
 
 @mongomock.patch('mongodb://localhost:27017')
 def test_mongo_search_in():
     db = Database(default_config.get('database'))
-    db.write('record', [{'a': ['00', '11', '22']}, {'a': ['00', '1', '2']}, {'a': ['00', '1', '4']}, {'b': '5'}])
+    db.write('record', [{'a': ['00', '11', '22', 9]}, {'a': ['00', '1', '2']}, {'a': ['00', '1', '4']}, {'b': '5'}])
     result1 = db.search('record', ['IN', '1', 'a'])['data']
     result2 = db.search('record', ['IN', ['2', '4'], 'a'])['data']
     result3 = db.search('record', ['IN', ['5', '1'], 'b'])['data']
-    assert len(result1) == 2 and len(result2) == 2 and len(result3) == 1
+    result4 = db.search('record', ['IN', 9, 'a'])['data']
+    assert len(result1) == 2 and len(result2) == 2 and len(result3) == 1 and len(result4) == 1
 
 @mongomock.patch('mongodb://localhost:27017')
 def test_mongo_search_in_query():

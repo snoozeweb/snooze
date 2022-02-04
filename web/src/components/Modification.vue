@@ -7,7 +7,7 @@
     <span v-if="modification[0] == 'KV_SET'">
     <b>{{ modification[0] }}</b> {{ modification[3] }} = {{ modification[1] }}[{{ modification[2] }}]</span>
     <span v-else>
-    <b>{{ modification[0] }}</b> {{ modification[1] }} = {{ modification[2] }}</span>
+    <b>{{ modification[0] }}</b> {{ modification[1] }} = {{ JSON.stringify(modification[2]) }}</span>
   </span>
 </span>
 </template>

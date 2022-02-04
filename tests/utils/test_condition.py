@@ -75,7 +75,7 @@ class TestGreaterThan:
     def test_match_string_and_integer(self):
         record = {'a': 1, 'b': 2}
         condition = GreaterThan(['>', 'b', '1'])
-        assert condition.match(record) == True
+        assert condition.match(record) == False
     def test_str(self):
         condition = GreaterThan(['>', 'x', 100])
         assert str(condition) == "(x > 100)"
@@ -210,13 +210,17 @@ class TestContains:
         condition = get_condition(['CONTAINS', 'a', 'substring'])
         assert isinstance(condition, Contains)
     def test_match_search_in_string(self):
-        record = {'a': ['0', ['11', '2'], '3']}
-        condition = Contains(['CONTAINS', 'a', '1'])
-        assert condition.match(record) == True
+        record = {'a': ['0', ['11', '2', 9], '3']}
+        condition1 = Contains(['CONTAINS', 'a', '1'])
+        condition2 = Contains(['CONTAINS', 'a', 9])
+        assert condition1.match(record) == True
+        assert condition2.match(record) == True
     def test_match_incomplete_list(self):
-        record = {'a': '11'}
-        condition = Contains(['CONTAINS', 'a', ['0', '1']])
-        assert condition.match(record) == True
+        record = {'a': '11', 'b': 9}
+        condition1 = Contains(['CONTAINS', 'a', ['0', '1']])
+        condition2 = Contains(['CONTAINS', 'b', ['0', 9]])
+        assert condition1.match(record) == True
+        assert condition2.match(record) == True
     def test_str(self):
         condition = Contains(['CONTAINS', 'a', 'substring'])
         assert str(condition) == "(a contains 'substring')"
@@ -226,9 +230,11 @@ class TestIn:
         condition = get_condition(['IN', ['1', '2', '3'], 'a'])
         assert isinstance(condition, In)
     def test_match_list(self):
-        record = {'a': '1'}
-        condition = In(['IN', ['1', '5'], 'a'])
-        assert condition.match(record) == True
+        record = {'a': '1', 'b': 1}
+        condition1 = In(['IN', ['1', '5'], 'a'])
+        condition2 = In(['IN', [1, 5], 'b'])
+        assert condition1.match(record) == True
+        assert condition2.match(record) == True
     def test_miss_list(self):
         record = {'a': ['0', ['11', '2'], '3']}
         condition = In(['IN', ['1', '5'], 'a'])
@@ -241,6 +247,10 @@ class TestIn:
         record = {'a': [{'b':'0'}, {'c': '0'}]}
         condition = In(['IN', ['=', 'd', '0'], 'a'])
         assert condition.match(record) == False
+    def test_match_integer(self):
+        record = {'a': [{'b':0}, {'c': '0'}]}
+        condition = In(['IN', ['=', 'b', 0], 'a'])
+        assert condition.match(record) == True
     def test_str(self):
         condition = In(['IN', 'element', 'a'])
         assert str(condition) == "('element' in a)"

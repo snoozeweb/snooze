@@ -42,7 +42,7 @@
           <CFormSelect v-model="operation" :value="dataValue.operation" style="flex: 0 0 auto; width: 15%">
             <option v-for="option in OPERATION_OPTIONS" :value="option.value">{{ option.text }}</option>
           </CFormSelect>
-          <CFormInput v-model="dataValue.args[1]" placeholder="Value" v-if="dataValue.type == 'binary'"/>
+          <SFormInput v-model="dataValue.args[1]" placeholder="Value" v-if="dataValue.type == 'binary'"/>
           <CButton @click="fork" @click.stop.prevent color="secondary"><i class="la la-plus la-lg"></i></CButton>
           <CButton @click="dataValue = defaultCondition()" @click.stop.prevent color="info"><i class="la la-redo-alt la-lg"></i></CButton>
           <CButton @click="escalateDelete" @click.stop.prevent color="danger"><i class="la la-trash la-lg"></i></CButton>
@@ -77,10 +77,14 @@ const LOGIC_OPTIONS = [
 ]
 
 import { ConditionObject, OPERATION_TYPE } from '@/utils/condition'
+import SFormInput from '@/components/SFormInput.vue'
 
 export default {
   name: 'ConditionChild',
   emits: ['update:modelValue', 'deleteEvent'],
+  components: {
+    SFormInput,
+  },
   props: [
     "modelValue",
     "index",

@@ -29,20 +29,12 @@ def unsugar_regex(regex):
         regex = regex[1:-1]
     return regex
 
-def lazy_search(regex, string):
+def lazy_search(value, string):
     '''Attempt to regex search a word in a string'''
     try:
-        return re.search(regex, string, flags=re.IGNORECASE)
+        return re.search(str(value), str(string), flags=re.IGNORECASE)
     except TypeError:
         return False
-
-def convert_float(value1, value2):
-    '''Attempt to convert 2 values into float, else give up
-    and return the original values. Used for comparisons.'''
-    try:
-        return float(value1), float(value2)
-    except ValueError:
-        return value1, value2
 
 # Exceptions
 class OperationNotSupported(Exception):
@@ -182,57 +174,45 @@ class NotEquals(BinaryOperator):
             return False
 
 class GreaterThan(BinaryOperator):
-    '''Match if the field of a record is strictly greater than a value.
-    Will attempt to convert both value to float, so integers/floats as string
-    can be compared to real integer/float inside the record.'''
+    '''Match if the field of a record is strictly greater than a value.'''
     display_name = '>'
     def match(self, record):
         try:
             record_value = search(record, self.field)
-            value, record_value = convert_float(self.value, record_value)
-            return record_value > value
+            return record_value > self.value
         except TypeError as e: # Cannot be compared
             LOG.exception(e)
             return False
 
 class LowerThan(BinaryOperator):
-    '''Match if the field of a record is strictly lower than a value.
-    Will attempt to convert both value to float, so integers/floats as string
-    can be compared to real integer/float inside the record.'''
+    '''Match if the field of a record is strictly lower than a value.'''
     display_name = '<'
     def match(self, record):
         try:
             record_value = search(record, self.field)
-            value, record_value = convert_float(self.value, record_value)
-            return record_value < value
+            return record_value < self.value
         except TypeError as e: # Cannot be compared
             LOG.exception(e)
             return False
 
 class GreaterOrEquals(BinaryOperator):
-    '''Match if the field of a record is greater than or equal to a value.
-    Will attempt to convert both value to float, so integers/floats as string
-    can be compared to real integer/float inside the record.'''
+    '''Match if the field of a record is greater than or equal to a value.'''
     display_name = '>='
     def match(self, record):
         try:
             record_value = search(record, self.field)
-            value, record_value = convert_float(self.value, record_value)
-            return record_value >= value
+            return record_value >= self.value
         except TypeError as e: # Cannot be compared
             LOG.exception(e)
             return False
 
 class LowerOrEquals(BinaryOperator):
-    '''Match if the field of a record is lower than or equal a value.
-    Will attempt to convert both value to float, so integers/floats as string
-    can be compared to real integer/float inside the record.'''
+    '''Match if the field of a record is lower than or equal a value.'''
     display_name = '<='
     def match(self, record):
         try:
             record_value = search(record, self.field)
-            value, record_value = convert_float(self.value, record_value)
-            return record_value <= value
+            return record_value <= self.value
         except TypeError as e: # Cannot be compared
             LOG.exception(e)
             return False
@@ -247,7 +227,7 @@ class Matches(BinaryOperator):
     def __init__(self, args):
         super().__init__(args)
         self.field = args[1]
-        value = unsugar_regex(args[2])
+        value = unsugar_regex(str(args[2]))
         self.regex = re.compile(value)
     def match(self, record):
         record_value = search(record, self.field)

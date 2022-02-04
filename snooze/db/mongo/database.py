@@ -304,42 +304,26 @@ class BackendDB(Database):
             return_dict = {key: {'$ne': value}}
         elif operation == '>':
             key, value = args
-            try:
-                newval = float(value)
-            except ValueError:
-                newval = value
-            return_dict = {key: {'$gt': newval}}
+            return_dict = {key: {'$gt': value}}
         elif operation == '>=':
             key, value = args
-            try:
-                newval = float(value)
-            except ValueError:
-                newval = value
-            return_dict = {key: {'$gte': newval}}
+            return_dict = {key: {'$gte': value}}
         elif operation == '<':
             key, value = args
-            try:
-                newval = float(value)
-            except ValueError:
-                newval = value
-            return_dict = {key: {'$lt': newval}}
+            return_dict = {key: {'$lt': value}}
         elif operation == '<=':
             key, value = args
-            try:
-                newval = float(value)
-            except ValueError:
-                newval = value
-            return_dict = {key: {'$lte': newval}}
+            return_dict = {key: {'$lte': value}}
         elif operation == 'MATCHES':
             key, value = args
-            return_dict = {key: {'$regex': value, "$options": "-i"}}
+            return_dict = {key: {'$regex': str(value), "$options": "-i"}}
         elif operation == 'EXISTS':
             return_dict = {args[0]: {'$exists': True}}
         elif operation == 'CONTAINS':
             key, value = args
             if not isinstance(value, list):
                 value = [value]
-            reg_array = list(map(lambda x: re.compile(x, re.IGNORECASE), value))
+            reg_array = list(map(lambda x: re.compile(x, re.IGNORECASE) if isinstance(x, str) else x, value))
             return_dict = {key: {'$in': reg_array}}
         elif operation == 'IN':
             key, value = args
@@ -357,7 +341,7 @@ class BackendDB(Database):
         elif operation == 'SEARCH':
             arg = args[0]
             if search_fields:
-                return_dict = {'$or': list(map(lambda field: {field: {'$regex': arg, "$options": "-i"}}, search_fields))}
+                return_dict = {'$or': list(map(lambda field: {field: {'$regex': str(arg), "$options": "-i"}}, search_fields))}
                 log.debug("Special search : {}".format(return_dict))
             else:
                 search_text = Code("function() {"

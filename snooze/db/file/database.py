@@ -38,10 +38,15 @@ def test_contains(array, value):
     if not isinstance(array, list):
         array = [array]
     for val in value:
-        reg = re.compile(val, flags=re.IGNORECASE)
-        for record in array:
-            if reg.search(record):
-                return True
+        if isinstance(val, str):
+            reg = re.compile(val, flags=re.IGNORECASE)
+            for record in array:
+                if reg.search(record):
+                    return True
+        else:
+            for record in array:
+                if str(val) in str(record):
+                    return True
     return False
 
 def test_search(dic, value):
@@ -359,32 +364,16 @@ class BackendDB(Database):
             return_obj = dig(Query(), *key.split('.')) != value
         elif operation == '>':
             key, value = args
-            try:
-                newval = float(value)
-            except ValueError:
-                newval = value
-            return_obj = dig(Query(), *key.split('.')) > newval
+            return_obj = dig(Query(), *key.split('.')) > value
         elif operation == '>=':
             key, value = args
-            try:
-                newval = float(value)
-            except ValueError:
-                newval = value
-            return_obj = dig(Query(), *key.split('.')) >= newval
+            return_obj = dig(Query(), *key.split('.')) >= value
         elif operation == '<':
             key, value = args
-            try:
-                newval = float(value)
-            except ValueError:
-                newval = value
-            return_obj = dig(Query(), *key.split('.')) < newval
+            return_obj = dig(Query(), *key.split('.')) < value
         elif operation == '<=':
             key, value = args
-            try:
-                newval = float(value)
-            except ValueError:
-                newval = value
-            return_obj = dig(Query(), *key.split('.')) <= newval
+            return_obj = dig(Query(), *key.split('.')) <= value
         elif operation == 'MATCHES':
             key, value = args
             return_obj = dig(Query(), *key.split('.')).search(value, flags=re.IGNORECASE)
