@@ -2,8 +2,10 @@
 
 ## Setup
 
-Install [pyenv](https://github.com/pyenv/pyenv) and [pyenv-virtualenv](https://github.com/pyenv/pyenv-virtualenv)
-by following the instructions.
+Install poetry
+```bash
+pip3 install 'poetry>=1.2.0a2' --user
+```
 
 Clone this git:
 ```bash
@@ -11,36 +13,38 @@ git clone https://github.com/snoozeweb/snooze
 cd snooze
 ```
 
-Install `pipenv`:
+Install dependencies:
 ```bash
-pip install pipenv
+poetry install
 ```
 
-Install the version of python, as well as the package dependencies:
+## Running unit tests
+
 ```bash
-pipenv install --dev
+poetry run pytest
 ```
 
-Install snooze-server
+## Running the server locally
+
+At the moment, we're using a specific default logging configuration, so you either need to:
+* Create `/var/log/snooze` directory
+* Or edit `snooze/defaults/logging.yaml` to remove the `file` configuration
+
+THen you can run the server in the following manner:
 ```bash
-pipenv install -e .
+poetry run snooze-server
 ```
 
-Create a directory for the snooze server socket:
+The server will bind to `*:5200`.
+
+# Building
+
 ```bash
-sudo mkdir /var/run/snooze
-sudo chmod 777 /var/run/snooze
+poetry build
 ```
 
-Note: The socket path can be overwritten with the config file `/etc/snooze/server/core.yaml`
-```
-unix_socket: /var/run/snooze/server.socket
-```
-
-The config file path itself can be changed with the environment variable `SNOOZE_CONFIG_PATH`
-```bash
-export SNOOZE_SERVER_CONFIG=/etc/snooze/server
-```
+The builds will be placed in the `dist/` directory. If you're building versions, you will need to
+manage the version in `pyproject.toml`.
 
 ## Web interface
 

@@ -29,7 +29,9 @@ RUN apk update && \
     libldap \
     python3-dev
 
-COPY requirements.txt /app/
+RUN pip install --no-cache-dir poetry>=1.2.0a2
+RUN poetry export -o /app/requirements.txt
+RUN pip uninstall poetry
 # hadolint ignore=DL3013
 RUN pip install --no-cache-dir pip virtualenv && \
     python3 -m venv /venv && \
