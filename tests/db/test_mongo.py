@@ -58,6 +58,13 @@ def test_mongo_search():
     assert result9 == 1
 
 @mongomock.patch('mongodb://localhost:27017')
+def test_mongo_search_and_or():
+    db = Database(default_config.get('database'))
+    db.write('record', [{'a': 1, 'b': 2, 'c': 3}, {'c': 3}])
+    assert db.search('record', ['AND', ['=', 'a', 1], ['=', 'b', 2], ['=', 'c', 3]])['count'] == 1
+    assert db.search('record', ['OR', ['!=', 'a', 1], ['!=', 'b', 2], ['=', 'c', 3]])['count'] == 2
+
+@mongomock.patch('mongodb://localhost:27017')
 def test_mongo_search_contains():
     db = Database(default_config.get('database'))
     db.write('record', [{'a': ['00', '11', '22', 9]}, {'a': ['00', '1', '2']}, {'a': ['00', '1', '4']}, {'b': '5'}])

@@ -348,11 +348,11 @@ class BackendDB(Database):
             return None
         operation, *args = array
         if operation == 'AND':
-            arg1, arg2 = map(self.convert, args)
-            return_obj = arg1 & arg2
+            arguments = list(map(self.convert, args))
+            return_obj = reduce(lambda a, b: a & b, arguments)
         elif operation == 'OR':
-            arg1, arg2 = map(self.convert, args)
-            return_obj = arg1 | arg2
+            arguments = list(map(self.convert, args))
+            return_obj = reduce(lambda a, b: a | b, arguments)
         elif operation == 'NOT':
             arg = self.convert(args[0])
             return_obj = ~ arg

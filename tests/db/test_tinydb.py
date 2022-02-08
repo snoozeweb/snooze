@@ -80,6 +80,11 @@ def test_tinydb_search(db):
     assert result8 == 0
     assert result9 == 1
 
+def test_tinydb_search_and_or(db):
+    db.write('record', [{'a': 1, 'b': 2, 'c': 3}, {'c': 3}])
+    assert db.search('record', ['AND', ['=', 'a', 1], ['=', 'b', 2], ['=', 'c', 3]])['count'] == 1
+    assert db.search('record', ['OR', ['!=', 'a', 1], ['!=', 'b', 2], ['=', 'c', 3]])['count'] == 2
+
 def test_tinydb_search_contains(db):
     db.write('record', [{'a': ['00', '11', '22', 9]}, {'a': ['00', '1', '2']}, {'a': ['00', '1', '4']}, {'b': '5'}])
     result1 = db.search('record', ['CONTAINS', 'a', '1'])['data']

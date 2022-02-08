@@ -288,11 +288,11 @@ class BackendDB(Database):
             return {}
         operation, *args = array
         if operation == 'AND':
-            arg1, arg2 = map(lambda a: self.convert(a, search_fields), args)
-            return_dict = {'$and': [arg1, arg2]}
+            arguments = list(map(lambda a: self.convert(a, search_fields), args))
+            return_dict = {'$and': arguments}
         elif operation == 'OR':
-            arg1, arg2 = map(lambda a: self.convert(a, search_fields), args)
-            return_dict = {'$or': [arg1, arg2]}
+            arguments = list(map(lambda a: self.convert(a, search_fields), args))
+            return_dict = {'$or': arguments}
         elif operation == 'NOT':
             arg = self.convert(args[0], search_fields)
             return_dict = {'$nor': [arg]}
