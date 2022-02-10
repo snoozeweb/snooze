@@ -29,8 +29,8 @@ class Aggregaterule(Plugin):
         LOG.debug("Processing record {} against aggregate rules".format(str(record)))
         for aggrule in self.aggregate_rules:
             if aggrule.enabled and aggrule.match(record):
-                LOG.debug("Aggregate rule {} matched record: {}".format(str(aggrule.name), str(record)))
                 record['hash'] = hashlib.md5((str(aggrule.name) + '.'.join([(field + '=' + (dig(record, *field.split('.')) or '')) for field in aggrule.fields])).encode()).hexdigest()
+                LOG.debug("Aggregate rule {} matched record: {}".format(str(aggrule.name), str(record['hash'])))
                 record = self.match_aggregate(record, aggrule.throttle, aggrule.watch, aggrule.name)
                 break
         else:

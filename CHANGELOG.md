@@ -17,6 +17,7 @@
 * Core: Fixed a Time Constraints issue with exact matches
 * Core: Triggered notifications in an alert were capped at one item
 * Core: Metrics api endpoint failed to return sometimes
+* Core: Do not retry all actions if only one fails
 
 ## v1.2.0
 

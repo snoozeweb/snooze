@@ -123,14 +123,15 @@ class BackendDB(Database):
                 primary_query = map(lambda a: dig(Query(), *a.split('.')) == dig(o, *a.split('.')), primary)
                 primary_query = reduce(lambda a, b: a & b, primary_query)
                 primary_docs = table.search(primary_query)
-                log.debug('Documents with same primary {}: {}'.format(primary, primary_docs))
+                if primary_docs:
+                    log.debug('Documents with same primary {}: {}'.format(primary, str(primary_docs[0].doc_id)))
             if 'uid' in o:
                 query = Query()
                 docs = table.search(query.uid == o['uid'])
                 if docs:
                     doc = docs[0]
                     doc_id = doc.doc_id
-                    log.debug('Found: {}'.format(doc))
+                    log.debug('Found: {}'.format(str(doc_id)))
                     if primary_docs and doc_id != primary_docs[0].doc_id:
                         log.error("Found another document with same primary {}: {}. Since UID is different, cannot update".format(primary, primary_docs))
                         rejected.append(o)
@@ -138,12 +139,12 @@ class BackendDB(Database):
                         log.error("Found a document with existing uid {} but different constant values: {}. Since UID is different, cannot update".format(o['uid'], constant))
                         rejected.append(o)
                     elif duplicate_policy == 'replace':
-                        log.debug('Replacing with: {}'.format(o))
+                        log.debug('Replacing with: {}'.format(str(doc_id)))
                         table.remove(doc_ids=[doc_id])
                         table.insert(o)
                         replaced.append(o)
                     else:
-                        log.debug('Updating with: {}'.format(o))
+                        log.debug('Updating with: {}'.format(str(doc_id)))
                         table.update(o, doc_ids=[doc_id])
                         updated.append(doc)
                 else:
@@ -163,14 +164,14 @@ class BackendDB(Database):
                         elif duplicate_policy == 'reject':
                             rejected.append(o)
                         elif duplicate_policy == 'replace':
-                            log.debug('Replace with: {}'.format(o))
+                            log.debug('Replace with: {}'.format(str(doc_id)))
                             table.remove(doc_ids=[doc_id])
                             if 'uid' in doc:
                                 o['uid'] = doc['uid']
                             table.insert(o)
                             replaced.append(o)
                         else:
-                            log.debug('Update with: {}'.format(o))
+                            log.debug('Update with: {}'.format(str(doc_id)))
                             table.update(o, doc_ids=[doc_id])
                             updated.append(o)
                 else:
@@ -183,7 +184,7 @@ class BackendDB(Database):
                 obj_copy[-1]['uid'] = str(uuid.uuid4())
                 added.append(o['uid'])
                 add_obj = False
-                log.debug("In {}, inserting {}".format(collection, o))
+                log.debug("In {}, inserting {}".format(collection, o.get('uid', '')))
         if len(obj_copy) > 0:
             table.insert_multiple(obj_copy)
         mutex.release()
@@ -288,7 +289,7 @@ class BackendDB(Database):
     def search(self, collection, condition=[], nb_per_page=0, page_number=1, orderby="", asc=True):
         mutex.acquire()
         tinydb_search = self.convert(condition)
-        log.debug("Condition {} converted to tinydb search {}".format(condition, tinydb_search))
+        #log.debug("Condition {} converted to tinydb search {}".format(condition, tinydb_search))
         if collection in self.db.tables():
             table = self.db.table(collection)
             if tinydb_search:
@@ -318,7 +319,7 @@ class BackendDB(Database):
     def delete(self, collection, condition=[], force=False):
         mutex.acquire()
         tinydb_search = self.convert(condition)
-        log.debug("Condition {} converted to tinydb delete search {}".format(condition, tinydb_search))
+        #log.debug("Condition {} converted to tinydb delete search {}".format(condition, tinydb_search))
         if collection in self.db.tables():
             table = self.db.table(collection)
             if len(condition) == 0 and not force:

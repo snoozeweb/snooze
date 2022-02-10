@@ -63,7 +63,6 @@ class ThreadingWSGIServer(ThreadingMixIn, WSGIServer):
 def authorize(func):
     def _f(self, req, resp, *args, **kw):
         if os.environ.get('SNOOZE_NO_LOGIN', self.core.conf.get('no_login', False)):
-            log.warning("Authentication disabled. Authorized")
             return func(self, req, resp, *args, **kw)
         user_payload = req.context['user']['user']
         if (self.plugin and hasattr(self.plugin, 'name')):
@@ -78,31 +77,28 @@ def authorize(func):
             read_permissions = ['ro_all', 'rw_all']
             write_permissions = ['rw_all']
         endpoint = func.__name__
-        log.debug("Checking user {} authorization '{}' for plugin {}".format(user_payload, endpoint, plugin_name))
         method = user_payload['method']
         name = user_payload['name']
         if name == 'root' and method == 'root':
-            log.warning("Root user detected! Authorized but please use a proper admin role if possible")
+            log.warning("Root user detected! Authorized but please use a proper admin role if possible (authorization '{}' for plugin {})".format(endpoint, plugin_name))
             return func(self, req, resp, *args, **kw)
         else:
             permissions = user_payload.get('permissions', [])
             permissions.append('any')
             if endpoint == 'on_get':
                 if self.authorization_policy and any(perm in permissions for perm in self.authorization_policy.get('read', [])):
-                    log.debug("User {} has any read permissions {}. Authorized".format(name, self.authorization_policy.get('read')))
                     return func(self, req, resp, *args, **kw)
                 elif any(perm in permissions for perm in read_permissions):
                     return func(self, req, resp, *args, **kw)
             elif endpoint == 'on_post' or endpoint == 'on_put' or endpoint == 'on_delete':
                 if self.check_permissions:
-                    log.debug("Will double check {} permissions".format(name))
                     permissions = self.get_permissions(self.get_roles(name, method))
                 if len(permissions) > 0:
                     if self.authorization_policy and any(perm in permissions for perm in self.authorization_policy.get('write', [])):
-                        log.debug("User {} has any write permissions {}. Authorized".format(name, self.authorization_policy.get('write')))
                         return func(self, req, resp, *args, **kw)
                     elif any(perm in permissions for perm in write_permissions):
                         return func(self, req, resp, *args, **kw)
+        log.warning("Access denied. User {} on endpoint '{}' for plugin {}".format(name, endpoint, plugin_name))
         raise falcon.HTTPForbidden('Forbidden', 'Permission Denied')
     return _f
 
@@ -613,7 +609,7 @@ class BackendApi():
         # JWT setup
         self.secret = '' if os.environ.get('SNOOZE_NO_LOGIN', self.core.conf.get('no_login', False)) else self.core.secrets['jwt_private_key']
         def auth(payload):
-            log.debug("Payload received: {}".format(payload))
+            log.debug("Payload received: {}".format(payload.get('user', {}).get('name', payload)))
             return payload
         self.jwt_auth = JWTAuthBackend(auth, self.secret)
 

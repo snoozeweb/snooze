@@ -35,7 +35,7 @@ class Rule(Plugin):
         LOG.debug("Processing record {} against rules".format(str(record.get('hash', ''))))
         for rule in rules:
             if rule.enabled and rule.match(record):
-                LOG.debug("Rule {} matched record: {}".format(str(rule.name), str(record)))
+                LOG.debug("Rule {} matched record: {}".format(str(rule.name), str(record.get('hash', ''))))
                 rule.modify(record)
                 self.process_rules(record, rule.children)
 
@@ -82,7 +82,8 @@ class RuleObject():
         if match:
             if not 'rules' in record:
                 record['rules'] = []
-            record['rules'].append(self.name)
+            if self.name not in record['rules']:
+                record['rules'].append(self.name)
         return match
 
     def modify(self, record):

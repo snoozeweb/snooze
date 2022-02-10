@@ -107,7 +107,8 @@ class BackendDB(Database):
                 else:
                     primary_query = primary_query[0]
                 primary_result = self.db[collection].find_one(primary_query)
-                log.debug("Documents with same primary {}: {}".format(primary, primary_result))
+                if primary_result:
+                    log.debug("Documents with same primary {}: {}".format(primary, primary_result.get('uid', '')))
             if 'uid' in o:
                 result = self.db[collection].find_one({'uid': o['uid']})
                 if result:
@@ -119,11 +120,11 @@ class BackendDB(Database):
                         log.error("Found a document with existing uid {} but different constant values: {}. Since UID is different, cannot update".format(o['uid'], constant))
                         rejected.append(o)
                     elif duplicate_policy == 'replace':
-                        log.debug("In {}, replacing {}".format(collection, o))
+                        log.debug("In {}, replacing {}".format(collection, o['uid']))
                         self.db[collection].replace_one({'uid': o['uid']}, o)
                         replaced.append(o)
                     else:
-                        log.debug("In {}, updating {}".format(collection, o))
+                        log.debug("In {}, updating {}".format(collection, o['uid']))
                         self.db[collection].update_one({'uid': o['uid']}, {'$set': o})
                         updated.append(o)
                 else:
@@ -141,13 +142,13 @@ class BackendDB(Database):
                         elif duplicate_policy == 'reject':
                             rejected.append(o)
                         elif duplicate_policy == 'replace':
-                            log.debug("In {}, replacing {}".format(collection, o))
+                            log.debug("In {}, replacing {}".format(collection, primary_result.get('uid', '')))
                             if 'uid' in primary_result:
                                 o['uid'] = primary_result['uid']
                             self.db[collection].replace_one(primary_query, o)
                             replaced.append(o)
                         else:
-                            log.debug("In {}, updating {}".format(collection, o))
+                            log.debug("In {}, updating {}".format(collection, primary_result.get('uid', '')))
                             self.db[collection].update_one(primary_query, {'$set': o})
                             updated.append(o)
                 else:
@@ -160,7 +161,7 @@ class BackendDB(Database):
                 obj_copy[-1]['uid'] = str(uuid.uuid4())
                 added.append(o['uid'])
                 add_obj = False
-                log.debug("In {}, inserting {}".format(collection, o))
+                log.debug("In {}, inserting {}".format(collection, o.get('uid', '')))
         if len(obj_copy) > 0:
             self.db[collection].insert_many(obj_copy)
         return {'data': {'added': added, 'updated': updated, 'replaced': replaced, 'rejected': rejected}}
@@ -192,7 +193,7 @@ class BackendDB(Database):
     def update_fields(self, collection, fields, condition=[]):
         mongo_search = self.convert(condition, self.search_fields.get(collection, []))
         log.debug("Update collection '{}' with fields '{}' based on the following search".format(collection, fields))
-        log.debug("Condition {} converted to mongo search {}".format(condition, mongo_search))
+        #log.debug("Condition {} converted to mongo search {}".format(condition, mongo_search))
         total = 0
         if collection in self.db.collection_names():
             pipeline = [
@@ -213,7 +214,7 @@ class BackendDB(Database):
         if orderby == '':
             orderby = '$natural'
         mongo_search = self.convert(condition, self.search_fields.get(collection, []))
-        log.debug("Condition {} converted to mongo search {}".format(condition, mongo_search))
+        #log.debug("Condition {} converted to mongo search {}".format(condition, mongo_search))
         if collection in self.db.collection_names():
             if nb_per_page > 0:
                 results = self.db[collection].find(mongo_search).skip((page_number-1)*nb_per_page if page_number-1>0 else 0).limit(nb_per_page).sort(orderby, 1 if asc else -1)
@@ -229,7 +230,7 @@ class BackendDB(Database):
 
     def delete(self, collection, condition=[], force=False):
         mongo_search = self.convert(condition, self.search_fields.get(collection, []))
-        log.debug("Condition {} converted to mongo delete search {}".format(condition, mongo_search))
+        #log.debug("Condition {} converted to mongo delete search {}".format(condition, mongo_search))
         if collection in self.db.collection_names():
             if len(condition) == 0 and not force:
                 results_count = 0
