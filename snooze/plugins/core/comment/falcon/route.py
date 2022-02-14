@@ -51,7 +51,7 @@ class CommentRoute(Route):
                 if records['count'] > 0:
                     log.debug("Found record {}".format(records))
                     media_type = req_media.get('type')
-                    comments = self.search('comment', ['=', 'record_uid', record_uid], nb_per_page=0, page_number=1, order_by='date', asc=False)
+                    comments = self.search('comment', ['=', 'record_uid', record_uid])
                     records['data'][0]['comment_count'] = comments['count'] + len(record_comments[record_uid])
                     if media_type in ['ack', 'esc', 'open', 'close']:
                         log.debug("Changing record {} type to {}".format(record_uid, media_type))

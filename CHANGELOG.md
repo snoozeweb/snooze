@@ -18,6 +18,7 @@
 * Core: Triggered notifications in an alert were capped at one item
 * Core: Metrics api endpoint failed to return sometimes
 * Core: Do not retry all actions if only one fails
+* Core: Fixed memory issue with comment related queries
 
 ## v1.2.0
 
