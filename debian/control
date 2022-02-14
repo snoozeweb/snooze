@@ -1,0 +1,10 @@
+Package: snooze-server
+Version: __VERSION__
+Architecture: all
+Maintainer: Florian Dematraz <florian.dematraz@snoozeweb.net>
+Description: Snooze server
+Homepage: https://github.com/snoozeweb/snooze
+Priority: optional
+Build-Depends: debhelper (>= 5)
+Standards-Version: 3.8.2
+Section: utils

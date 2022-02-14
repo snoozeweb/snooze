@@ -1,11 +1,14 @@
+# vim:sw=2:ts=2:sts=2:et:
+---
 name: Create new release
 
-on:
+'on':
   push:
     tags:
       - v*
 
 jobs:
+
   python_tests:
     runs-on: ubuntu-latest
     steps:
@@ -13,48 +16,68 @@ jobs:
         uses: actions/checkout@v2
 
       - name: Setup python environment
-        uses: .github/actions/python-poetry
+        uses: ./.github/actions/python-poetry
+        with: {poetry_options: '--default --with test'}
 
       - name: Running Pytest
         run: poetry run pytest
 
-  release:
+  github_release:
     runs-on: ubuntu-latest
     steps:
       - name: checkout
         uses: actions/checkout@v2
-      - name: changelog
-        run: |
-          export CHANGELOG="$(awk -vRS='\n\n' -vORS='' 'FNR==2 {print}' CHANGELOG.md)"
-          CHANGELOG="${CHANGELOG//'%'/'%25'}"
-          CHANGELOG="${CHANGELOG//$'\n'/'%0A'}"
-          CHANGELOG="${CHANGELOG//$'\r'/'%0D'}"
-          echo "::set-output name=changelog::$(echo "$CHANGELOG")"
+
+      - name: Setup python environment
+        uses: ./.github/actions/python-poetry
+        with: {poetry_options: '--with build'}
+
+      - name: Running Pytest
+        run: poetry run invoke changelog --github-output
         id: changelog
+
       - name: version
-        run: echo "::set-output name=version::v$(cat VERSION)"
+        run: poetry run invoke version --github-output
         id: version
+
       - name: Update release with changelog
         id: update
         uses: ncipollo/release-action@v1
         with:
-          name: ${{ steps.version.outputs.version }} 
+          name: ${{ steps.version.outputs.VERSION }}
           token: ${{ secrets.GITHUB_TOKEN }}
           tag: ${{ github.ref }}
-          body: ${{ steps.changelog.outputs.changelog }}
+          body: ${{ steps.changelog.outputs.CHANGELOG }}
 
   pypi:
     runs-on: ubuntu-latest
-    needs: python_tests
+    needs: [python_tests, github_release]
     steps:
       - name: Checking out git repository
         uses: actions/checkout@v2
 
       - name: Setup python environment
-        uses: .github/actions/python-poetry
+        uses: ./.github/actions/python-poetry
+        with: {poetry_options: '--with build'}
 
-      - name: Running Pytest
-        run: poetry build
+      - name: Build pip packages
+        run: poetry run invoke pip.build --github-output
+        id: build
+
+      - name: Upload job artifact
+        uses: actions/upload-artifact@v2
+        with:
+          name: pip
+          path: ${{ steps.build.outputs.PATH }}
+
+      - name: Upload to github release
+        uses: svenstaro/upload-release-action@v2
+        with:
+          repo_token: ${{ secrets.GITHUB_TOKEN }}
+          file: ${{ steps.build.outputs.PATH }}
+          asset_name: ${{ steps.build.outputs.ASSET_NAME }}
+          tag: ${{ github.ref }}
+          overwrite: true
 
       - name: Upload package to pypi
         env:
@@ -65,179 +88,137 @@ jobs:
   web:
     runs-on: ubuntu-latest
     steps:
-      - name: checkout
+      - name: Checking out git repository
         uses: actions/checkout@v2
-      - name: setup Node
+
+      - name: Setup Node
         uses: actions/setup-node@v1
         with:
           node-version: 10.x
           registry-url: 'https://registry.npmjs.org'
-      - name: install deps
-        run: npm install
-        working-directory: ./web
-      - name: build
-        run: npm run build
-        working-directory: ./web
-      - name: archive dist files
-        run: tar -czf snooze-web.tar.gz --transform='s+^./web/dist+opt/snooze/web+' ./web/dist/
-      - name: package_name
-        run: echo "::set-output name=package_name::$(echo snooze-web-$(cat VERSION).tar.gz)"
-        id: package_name
-      - name: upload
+
+      - name: Setup python environment
+        uses: ./.github/actions/python-poetry
+        with: {poetry_options: '--with build'}
+
+      - name: Build web tarball
+        run: poetry run web.build --github-output
+        id: build
+
+      - name: Upload job artifact
+        uses: actions/upload-artifact@v2
+        with:
+          name: web
+          path: ${{ steps.build.outputs.PATH }}
+
+      - name: Upload to github release
         uses: svenstaro/upload-release-action@v2
         with:
           repo_token: ${{ secrets.GITHUB_TOKEN }}
-          file: ./snooze-web.tar.gz
-          asset_name: ${{ steps.package_name.outputs.package_name }}
+          file: ${{ steps.build.outputs.PATH }}
+          asset_name: ${{ steps.build.outputs.ASSET_NAME }}
           tag: ${{ github.ref }}
           overwrite: true
 
   rpm:
     runs-on: ubuntu-latest
+    container: 'centos:7'
     needs: [pypi, web]
     steps:
-      - name: checkout
+      - name: Checking out git repository
         uses: actions/checkout@v2
-      - name: Install packages
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y \
-            python3-dev \
-            python3-venv \
-            rpm
-      - name: Set up Python 3.6
-        uses: actions/setup-python@v2
-        with:
-          python-version: '3.6'
-          architecture: 'x64'
-      - name: Install dependencies
-        id: install-deps
-        run: |
-          python -m pip install --upgrade pip
-          pip install \
-            virtualenv \
-            venvctrl
-          mkdir /var/tmp/BUILD /var/tmp/SOURCES /var/tmp/SRPMS/ /var/tmp/RPMS
-      - name: Build RPM
-        uses: nick-invision/retry@v2
-        id: rpm-build
-        with:
-          retry_on: error
-          max_attempts: 3
-          timeout_minutes: 10
-          command: rpmbuild --bb snooze-server.spec
-      - name: package_path
-        run: echo "::set-output name=package_path::$(echo /var/tmp/RPMS/x86_64/snooze-server-$(cat VERSION)-1.x86_64.rpm)"
-        id: package_path
-      - name: package_name
-        run: echo "::set-output name=package_name::$(echo snooze-server-$(cat VERSION)-1.x86_64.rpm)"
-        id: package_name
-      - name: upload
+
+      - name: Setup python environment
+        uses: ./.github/actions/python-poetry
+        with: {poetry_options: '--with build'}
+
+      - name: Download pip package
+        uses: actions/download-artifact@v2
+        with: {name: pip}
+
+      - name: Download web tarball
+        uses: actions/download-artifact@v2
+        with: {name: web}
+
+      - name: Installing rpmbuild
+        run: yum install rpm-build
+
+      - name: Build rpm
+        run: poetry run invoke rpm.build --github-output
+        id: build
+
+      - name: Upload to github
         uses: svenstaro/upload-release-action@v2
         with:
           repo_token: ${{ secrets.GITHUB_TOKEN }}
-          file: ${{ steps.package_path.outputs.package_path }}
-          asset_name: ${{ steps.package_name.outputs.package_name }}
+          file: ${{ steps.build.outputs.PATH }}
+          asset_name: ${{ steps.build.outputs.ASSET_NAME }}
           tag: ${{ github.ref }}
           overwrite: true
 
   deb:
     runs-on: ubuntu-latest
     needs: [pypi, web]
+    container: 'ubuntu:18.04'
     steps:
       - name: checkout
         uses: actions/checkout@v2
-      - name: Install packages
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y \
-            build-essential \
-            virtualenv \
-            debhelper \
-            wget
-      - name: Set up Python 3.6
-        uses: actions/setup-python@v2
-        with:
-          python-version: '3.6'
-          architecture: 'x64'
-      - name: version
-        run: echo "::set-output name=version::$(cat VERSION)"
-        id: version
-      - name: Prepare env
-        id: prepare
-        run: |
-          find *dsc  -exec sed -i "s+__VERSION__+$(cat VERSION)+g" {} +
-          for f in *diff.gz; do
-            cp "$f" "$f~" &&   
-            gzip -cd "$f~" | sed "s+__VERSION__+$(cat VERSION)+g" | gzip > "$f"
-          done
-          wget https://github.com/snoozeweb/snooze/releases/download/v$(cat VERSION)/snooze-web-$(cat VERSION).tar.gz -O snooze-server_$(cat VERSION).tar.gz
-          mv snooze-server.diff.gz snooze-server_$(cat VERSION).diff.gz 
-      - name: Extract
-        id: extract
-        run: dpkg-source -x --no-check snooze-server.dsc
-      - name: Build
+
+      - name: Setup python environment
+        uses: ./.github/actions/python-poetry
+        with: {poetry_options: '--with build'}
+
+      - name: Download pip package
+        uses: actions/download-artifact@v2
+        with: {name: pip}
+
+      - name: Download web tarball
+        uses: actions/download-artifact@v2
+        with: {name: web}
+
+      - name: Build deb
+        run: poetry run invoke debian.build --github-output
         id: build
-        run: dpkg-buildpackage
-        working-directory: ./snooze-server-${{ steps.version.outputs.version }}
-      - name: upload
+
+      - name: Upload to github
         uses: svenstaro/upload-release-action@v2
         with:
           repo_token: ${{ secrets.GITHUB_TOKEN }}
-          file: ./*.deb
+          file: ${{ steps.build.outputs.PATH }}
+          asset_name: ${{ steps.build.outputs.ASSET_NAME }}
           tag: ${{ github.ref }}
           overwrite: true
-          file_glob: true
 
-  docker_tests:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v2
-      - name: Docker Lint
-        id: docker-lint
-        run: |
-          docker run --rm -i ghcr.io/hadolint/hadolint hadolint \
-          --ignore DL3008 \
-          --ignore DL3018 \
-          --ignore DL3059 \
-          - < Dockerfile
-
-  docker_push:
-    needs: [docker_tests, pypi, web]
+  docker:
+    needs: [pypi, web]
     runs-on: ubuntu-latest
     env:
-      REPOSITORY_URL: registry.hub.docker.com
-      IMAGE_NAME: snoozeweb/snooze
+      INVOKE_DOCKER_REPO: registry.hub.docker.com
+      INVOKE_DOCKER_IMAGE: snoozeweb/snooze
     steps:
-      - name: Checkout
+      - name: Checking out git repository
         uses: actions/checkout@v2
-      - name: Variables
-        id: vars
-        run: echo "::set-output name=SHORT_COMMIT_ID::$(git rev-parse --short HEAD)"
-      - name: Build Image
-        uses: nick-invision/retry@v2
-        id: docker-build
-        with:
-          retry_on: error
-          max_attempts: 3
-          timeout_minutes: 10
-          command: >-
-            docker build
-            --build-arg VCS_REF=${{ github.sha }}
-            --build-arg BUILD_DATE=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
-            --build-arg VERSION=$(cat VERSION)
-            -t $IMAGE_NAME
-            -t $REPOSITORY_URL/$IMAGE_NAME:$(cat VERSION)
-            -t $REPOSITORY_URL/$IMAGE_NAME:${{ steps.vars.outputs.SHORT_COMMIT_ID }}
-            -t $REPOSITORY_URL/$IMAGE_NAME:latest .
-      - name: Docker Login
+
+      - name: Setup python environment
+        uses: ./.github/actions/python-poetry
+        with: {poetry_options: '--with build'}
+
+      - name: Download pip package
+        uses: actions/download-artifact@v2
+        with: {name: pip}
+
+      - name: Download web tarball
+        uses: actions/download-artifact@v2
+        with: {name: web}
+
+      - name: Check dockerfile
+        run: poetry run invoke docker.check
+
+      - name: Build docker image
+        run: poetry run invoke docker.build
+
+      - name: Push docker image
+        run: poetry run invoke docker.push
         env:
-          DOCKER_USERNAME: ${{ secrets.DOCKER_USERNAME }}
-          DOCKER_PASSWORD: ${{ secrets.DOCKER_PASSWORD }}
-        run: echo "$DOCKER_PASSWORD" | docker login $REPOSITORY_URL --username "$DOCKER_USERNAME" --password-stdin
-      - name: Publish Image
-        id: docker-push
-        run: |
-          docker push $REPOSITORY_URL/$IMAGE_NAME:$(cat VERSION)
-          docker push $REPOSITORY_URL/$IMAGE_NAME:${{ steps.vars.outputs.SHORT_COMMIT_ID }}
-          docker push $REPOSITORY_URL/$IMAGE_NAME:latest
+          INVOKE_DOCKER_PUSH_USERNAME: ${{ secrets.DOCKER_USERNAME }}
+          INVOKE_DOCKER_PUSH_PASSWORD: ${{ secrets.DOCKER_PASSWORD }}

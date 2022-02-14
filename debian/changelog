@@ -1,0 +1,5 @@
+snooze-server (__VERSION__) stable; urgency=low
+
+  * Check out https://github.com/snoozeweb/snooze/blob/master/CHANGELOG.md
+
+ -- Florian Dematraz <florian.dematraz@snoozeweb.net>  Sat, 01 Jan 2000 00:00:00 +0000

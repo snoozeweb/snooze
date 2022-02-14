@@ -6,9 +6,10 @@ branding:
   icon: arrow-down
   color: green
 inputs:
-  poetry_group:
-    description: Poetry group to install
-    required: true
+  poetry_options:
+    description: A string to pass options to `poetry install`
+    required: false
+    default: '--default'
   python_version:
     description: The python version to install
     required: false
@@ -18,7 +19,7 @@ runs:
   steps:
     - name: Installing Python
       uses: actions/setup-python@v2
-      with: {python-version: "${{ python_version }}"}
+      with: {python-version: "${{ inputs.python_version }}"}
 
     - name: Installing Poetry
       run: |
@@ -36,5 +37,5 @@ runs:
           Poetry-
 
     - name: Installing dependencies
-      run: "poetry install --only ${{ poetry_group }}"
+      run: "poetry install ${{ inputs.poetry_options }}"
       shell: bash
