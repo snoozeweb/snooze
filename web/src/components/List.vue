@@ -199,6 +199,7 @@
             <CCol xs="auto px-1">
               <CFormSelect
                 v-model="per_page"
+                :value="per_page"
                 id="perPageSelect"
                 size="sm"
               >
@@ -510,6 +511,18 @@ export default {
       } else {
         this.env_name = ''
       }
+      if (this.$route.query.perpage !== undefined) {
+        this.per_page = this.$route.query.perpage
+      }
+      if (this.$route.query.pagenb !== undefined) {
+        this.current_page = parseInt(this.$route.query.pagenb)
+      }
+      if (this.$route.query.asc !== undefined) {
+        this.isascending = JSON.parse(this.$route.query.asc)
+      }
+      if (this.$route.query.orderby !== undefined) {
+        this.orderby = this.$route.query.orderby
+      }
       if (this.$route.query.s !== undefined) {
         var decoded_query = decodeURIComponent(this.$route.query.s)
         if (this.$refs.search) {
@@ -740,7 +753,7 @@ export default {
     sortingChanged (ctx) {
       this.orderby = ctx.column
       this.isascending = ctx.asc
-      this.refreshTable()
+      this.add_history()
     },
     clearSelected() {
       this.items.forEach(item => {
@@ -763,8 +776,10 @@ export default {
       }
     },
     add_history() {
-      const query = { tab: this.tabs[this.tab_index].title, s: (this.search_value || ''), env_name: this.env_name, env_filter: encodeURIComponent(JSON.stringify(this.env_filter)) }
-      if (this.$route.query.tab != query.tab || this.$route.query.s != query.s || this.$route.query.env_name != query.env_name) {
+      const query = { tab: this.tabs[this.tab_index].title, s: (this.search_value || ''), env_name: this.env_name, env_filter: encodeURIComponent(JSON.stringify(this.env_filter)),
+        perpage: this.per_page, pagenb: this.current_page, orderby: this.orderby, asc: this.isascending }
+      if (this.$route.query.tab != query.tab || this.$route.query.s != query.s || this.$route.query.env_name != query.env_name
+        || this.$route.query.perpage != query.perpage || this.$route.query.pagenb != query.pagenb || this.$route.query.asc != query.asc || this.$route.query.orderby != query.orderby) {
         this.$router.push({ query: query })
       }
     },
@@ -833,10 +848,10 @@ export default {
   },
   watch: {
     current_page: function() {
-      this.refreshTable()
+      this.add_history()
     },
     per_page: function() {
-      this.refreshTable()
+      this.add_history()
     },
     $route() {
       if (this.loaded && this.$route.path == `/${this.endpoint}`) {

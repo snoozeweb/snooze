@@ -11,6 +11,7 @@
 ### Bug fixes
 * Web: Fixed a display error when deleting part of a condition
 * Web: Active and Upcoming Snooze filters/Notifications were sometimes wrong
+* Web: Supports history for sorting and paging
 * Core: Avoid loading in memory unnecessary plugin data
 * Core: Fixed an issue with duplicate policies using Replace (lost UID)
 * Core: Better handling of crashed conditions and modifications
