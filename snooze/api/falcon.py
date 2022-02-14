@@ -51,10 +51,8 @@ class LoggerMiddleware(object):
             path=path,
             status=resp.status[:3],
         )
-        if any(path.startswith(excluded) for excluded in self.excluded_paths):
+        if not any(path.startswith(excluded) for excluded in self.excluded_paths):
             self.logger.debug(message)
-        else:
-            self.logger.info(message)
 
 
 class ThreadingWSGIServer(ThreadingMixIn, WSGIServer):
