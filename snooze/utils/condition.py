@@ -166,8 +166,7 @@ class NotEquals(BinaryOperator):
         record_value = search(record, self.field)
         try:
             return (
-                record_value is not None
-                and record_value != self.value
+                record_value != self.value
             )
         except Exception as e:
             LOG.exception(e)

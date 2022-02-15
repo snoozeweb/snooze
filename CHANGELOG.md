@@ -2,6 +2,9 @@
 ### New features
 * Core: Supports time constraints over midnight
 
+### Bug fixes
+* Core: (!=) Condition will not assume the field exists
+
 ## v1.3.0
 
 ### New features
