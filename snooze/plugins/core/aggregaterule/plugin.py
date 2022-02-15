@@ -26,7 +26,7 @@ class Aggregaterule(Plugin):
         Args:
             record (dict)
         """
-        LOG.debug("Processing record {} against aggregate rules".format(str(record)))
+        LOG.debug("Processing record against aggregate rules")
         for aggrule in self.aggregate_rules:
             if aggrule.enabled and aggrule.match(record):
                 record['hash'] = hashlib.md5((str(aggrule.name) + '.'.join([(field + '=' + (dig(record, *field.split('.')) or '')) for field in aggrule.fields])).encode()).hexdigest()

@@ -65,7 +65,7 @@ class Notification(Plugin):
         validate_condition(obj)
 
     def delay_send(self, notification, record_hash, delay, every, total, retry, was_sent, actions_success):
-        log.debug("Notification `{}` will be {}sent in {}s ({} retries left)".format(notification.name, '' if was_sent == True else 're', delay, retry))
+        log.debug("Notification `{}` will be {}sent in {}s ({} retries left)".format(notification.name, 're' if was_sent == False else '', delay, retry))
         if was_sent == False:
             total += 1
         self.thread.set_delayed(record_hash, notification.uid, {'notification': notification, 'time': time.time() + delay, 'every': every, 'total': total, 'retry': retry, 'actions_success': actions_success})
@@ -166,7 +166,7 @@ class NotificationObject():
             if action_name not in actions_success:
                 sent = False
                 try:
-                    log.debug('Action {}'.format(action_plugin))
+                    log.debug('Action {} will be executed'.format(action_name))
                     action.send(record, action_content)
                     actions_success.append(action_name)
                     sent = True
