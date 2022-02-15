@@ -1,3 +1,7 @@
+## v1.4.0
+### New features
+* Core: Supports time constraints over midnight
+
 ## v1.3.0
 
 ### New features

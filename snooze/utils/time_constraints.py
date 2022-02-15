@@ -113,22 +113,39 @@ class TimeConstraint(Constraint):
     A time constraint that has a daily period.
     Features:
         * Match before/after/between fixed hours
+        * Support hours over midnight (`from` lower than `until`)
     '''
-    def __init__(self, content={}):
-        time_from = content.get('from')
-        time_until = content.get('until')
-        self.time_from = parser.parse(time_from).astimezone().time() if time_from else None
-        self.time_until = parser.parse(time_until).astimezone().time() if time_until else None
-    def match(self, record_date):
-        '''Match a daily periodic time constraint'''
-        time_from = self.time_from
-        time_until = self.time_until
-        record_time = record_date.time()
-        if time_from and time_until:
-            return (time_from <= record_time) and (record_time <= time_until)
-        elif time_from and (not time_until):
-            return time_from <= record_time
-        elif (not time_from) and time_until:
-            return record_time <= time_until
+    def __init__(self, content=None):
+        if content is None:
+            content = {}
+        time1 = content.get('from')
+        time2 = content.get('until')
+        self.time1 = parser.parse(time1).time() if time1 else None
+        self.time2 = parser.parse(time2).time() if time2 else None
+
+    def get_intervals(self, record_date):
+        '''Return the an array of datetime intervals depending on the `from`
+        and `until` time, and the date of the record. The intervals will all be
+        ordered.'''
+        day = timedelta(days=1)
+        date1 = datetime.combine(record_date, self.time1).astimezone()
+        date2 = datetime.combine(record_date, self.time2).astimezone()
+        if date2 < date1:
+            return [(date1 - day, date2), (date1, date2 + day)]
+        return [(date1, date2)]
+
+    def match(self, rd):
+        '''Match a daily periodic time constraint.
+        rd = record datetime
+        '''
+        if self.time1 and self.time2:
+            intervals = self.get_intervals(rd.date())
+            return any(date1 <= rd and rd <= date2 for date1, date2 in intervals)
+        elif self.time1 and not self.time2:
+            date1 = datetime.combine(rd.date(), self.time1).astimezone()
+            return date1 <= rd
+        elif self.time2 and not self.time1:
+            date2 = datetime.combine(rd.date(), self.time2).astimezone()
+            return rd <= date2
         else:
             return True

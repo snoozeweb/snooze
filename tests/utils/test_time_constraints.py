@@ -7,6 +7,7 @@
 
 from snooze.utils.time_constraints import MultiConstraint, DateTimeConstraint, WeekdaysConstraint, TimeConstraint
 from dateutil import parser
+from freezegun import freeze_time
 
 class TestMultiConstraint:
 
@@ -68,6 +69,7 @@ class TestWeekdaysConstraint:
 
 class TestTimeConstraint:
 
+    @freeze_time('2021-07-01T12:00:10+09:00')
     def test_from_true(self):
         record_date = parser.parse('2021-07-01T12:00:00+09:00')
         tc = TimeConstraint({'from':'10:00'})
@@ -75,11 +77,13 @@ class TestTimeConstraint:
         tc = TimeConstraint({'from':'12:00'})
         assert tc.match(record_date) == True
 
+    @freeze_time('2021-07-01T12:00:10+09:00')
     def test_from_false(self):
         record_date = parser.parse('2021-07-01T12:00:00+09:00')
         tc = TimeConstraint({'from':'14:00'})
         assert tc.match(record_date) == False
 
+    @freeze_time('2021-07-01T12:00:10+09:00')
     def test_until_true(self):
         record_date = parser.parse('2021-07-01T12:00:00+09:00')
         tc = TimeConstraint({'until':'14:00'})
@@ -87,18 +91,32 @@ class TestTimeConstraint:
         tc = TimeConstraint({'until':'12:00'})
         assert tc.match(record_date) == True
 
+    @freeze_time('2021-07-01T12:00:10+09:00')
     def test_until_false(self):
         record_date = parser.parse('2021-07-01T12:00:00+09:00')
         tc = TimeConstraint({'until':'10:00'})
         assert tc.match(record_date) == False
 
+    @freeze_time('2021-07-01T12:00:10+09:00')
     def test_range_true(self):
         record_date = parser.parse('2021-07-01T12:00:00+09:00')
         tc = TimeConstraint({'from':'10:00', 'until':'14:00'})
         assert tc.match(record_date) == True
 
+    @freeze_time('2021-07-01T08:00:10+09:00')
     def test_range_false(self):
         record_date = parser.parse('2021-07-01T08:00:00+09:00')
         tc = TimeConstraint({'from':'10:00', 'until':'14:00'})
         assert tc.match(record_date) == False
 
+    @freeze_time('2021-07-01T01:00:10+09:00')
+    def test_over_midnight(self):
+        record_date = parser.parse('2021-07-01T01:00:00+09:00')
+        tc = TimeConstraint({'from':'23:00', 'until':'02:00'})
+        assert tc.match(record_date) == True
+
+    @freeze_time('2021-07-01T03:00:10+09:00')
+    def test_over_midnight_miss(self):
+        record_date = parser.parse('2021-07-01T03:00:00+09:00')
+        tc = TimeConstraint({'from':'23:00', 'until':'02:00'})
+        assert tc.match(record_date) == False
