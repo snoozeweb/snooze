@@ -19,7 +19,6 @@ python-dateutil = "*"
 netifaces = "*"
 pyparsing = "*"
 waitress = "*"
-snooze = {editable = true, path = "."}
 
 [dev-packages]
 pytest = "*"
