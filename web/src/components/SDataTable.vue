@@ -175,7 +175,7 @@
                     {{ noItemsText }}
                     <i
                       width="30"
-                      class="la la-ban text-danger mb-2"
+                      :class="`${noItemsIconClass} mb-2`"
                     ></i>
                   </h2>
                   <h2 v-else>
@@ -485,6 +485,10 @@ export default {
         return customValues.noResults || 'No filtering results'
       }
       return customValues.noItems || 'No items'
+    },
+    noItemsIconClass () {
+      const customValues = this.noItemsView || {}
+      return customValues.noItemsIconClass || 'la la-ban text-danger mb-2'
     },
     isFiltered () {
       return this.tableFilterState ||

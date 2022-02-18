@@ -9,6 +9,9 @@ tabs:
                  -    ['NOT', ['=', 'state', 'ack']]
                  -    ['NOT', ['=', 'state', 'close']]
             -    ['NOT', ['EXISTS', 'snoozed']]
+        noItems:
+            text: No alerts
+            icon: la la-check text-success
     -
         title: 'Snoozed'
         filter: ['EXISTS', 'snoozed']

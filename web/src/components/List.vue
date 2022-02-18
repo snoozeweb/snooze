@@ -67,6 +67,7 @@
         :sorter='{external: true}'
         :sorterValue="{column: orderby, asc: isascending}"
         :loading="is_busy"
+        :noItemsView="noItemsView"
         striped
         small
         border
@@ -456,6 +457,14 @@ export default {
     }
   },
   computed: {
+    noItemsView: function() {
+      var tab = this.tabs[this.tab_index]
+      if (tab != undefined && tab.noItems != undefined) {
+        return {noItems: tab.noItems.text, noItemsIconClass: tab.noItems.icon}
+      } else {
+        return {}
+      }
+    }
   },
   methods: {
     load_table(response) {
