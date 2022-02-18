@@ -24,6 +24,8 @@ class Snooze(Plugin):
                 self.db.write('snooze', f.raw)
                 self.core.stats.inc('alert_snoozed', {'name': f.name})
                 if f.discard:
+                    if 'hash' in record:
+                        self.db.delete('record', ['=', 'hash', record['hash']])
                     raise Abort()
                 else:
                     raise Abort_and_write(record)

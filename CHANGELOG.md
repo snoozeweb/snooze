@@ -7,6 +7,7 @@
 ### Bug fixes
 * Web: Removed CoreUI Collapse component
 * Core: (!=) Condition will not assume the field exists
+* Core: Properly delete discarded logs
 
 ## v1.3.0
 
