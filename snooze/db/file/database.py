@@ -12,6 +12,8 @@ from snooze.utils.functions import dig, flatten, to_tuple
 from threading import Lock
 from logging import getLogger
 from datetime import datetime
+from bson.json_util import dumps
+from pathlib import Path
 import uuid
 import re
 log = getLogger('snooze.db.file')
@@ -403,3 +405,17 @@ class BackendDB(Database):
         else:
             raise OperationNotSupported(operation)
         return return_obj
+
+    def backup(self, backup_path, backup_exclude = []):
+        collections = [c for c in self.db.tables() if c not in backup_exclude]
+        log.debug('Starting backup of {}'.format(collections))
+        try:
+            for i, collection_name in enumerate(collections):
+                collection = self.db.table(collections[i]).all()
+                jsonpath = Path(backup_path) / (collection_name + '.json')
+                with jsonpath.open("wb") as jsonfile:
+                    jsonfile.write(dumps(collection).encode())
+        except Exception as e:
+            log.error('Backup failed')
+            log.exception(e)
+        log.info('Backup of {} succeeded'.format(collections))

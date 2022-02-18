@@ -1,6 +1,7 @@
 ## v1.4.0
 ### New features
 * Core: Supports time constraints over midnight
+* Core: Added daily backups
 
 ### Bug fixes
 * Core: (!=) Condition will not assume the field exists

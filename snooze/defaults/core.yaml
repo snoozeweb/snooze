@@ -80,3 +80,15 @@ process_plugins:
 database:
     # `type` (String): Backend database to use (file or mongo)
     type: file
+
+backup:
+    # `enabled` (Boolean): Enable backups
+    enabled: true
+    # `path` (String): Path to store database backups
+    path: './backups'
+    # `exclude` (List): Collections to exclude from backups
+    exclude:
+        - record
+        - stats
+        - comment
+        - secrets

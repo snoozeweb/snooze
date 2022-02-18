@@ -11,6 +11,8 @@ from snooze.db.database import Database
 from snooze.utils.functions import dig
 from copy import deepcopy
 from bson.code import Code
+from bson.json_util import dumps
+from pathlib import Path
 from logging import getLogger
 log = getLogger('snooze.db.mongo')
 
@@ -279,7 +281,6 @@ class BackendDB(Database):
             log.exception(e)
             return {'data': [], 'count': 0}
 
-
     def convert(self, array, search_fields = []):
         """
         Convert `Condition` type from snooze.utils
@@ -365,3 +366,18 @@ class BackendDB(Database):
         else:
             raise OperationNotSupported(operation)
         return return_dict
+
+    def backup(self, backup_path, backup_exclude = []):
+        collections = [c for c in self.db.collection_names() if c not in backup_exclude]
+        log.debug('Starting backup of {}'.format(collections))
+        try:
+            for i, collection_name in enumerate(collections):
+                col = getattr(self.db, collections[i])
+                collection = col.find()
+                jsonpath = Path(backup_path) / (collection_name + '.json')
+                with jsonpath.open("wb") as jsonfile:
+                    jsonfile.write(dumps(collection).encode())
+        except Exception as e:
+            log.error('Backup failed')
+            log.exception(e)
+        log.info('Backup of {} succeeded'.format(collections))

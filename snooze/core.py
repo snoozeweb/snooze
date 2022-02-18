@@ -13,7 +13,7 @@ from time import sleep
 from hashlib import sha256
 from importlib import import_module
 from logging import getLogger
-from os import listdir
+from os import listdir, mkdir
 from os.path import dirname, isdir, join as joindir
 from secrets import token_urlsafe
 from threading import Event
@@ -37,6 +37,7 @@ class Core:
         self.general_conf = config('general')
         self.notif_conf = config('notifications')
         self.ok_severities = list(map(lambda x: x.casefold(), flatten([self.general_conf.get('ok_severities', [])])))
+        self.init_backup()
         self.housekeeper = Housekeeper(self)
         self.cluster = None
         self.exit_button = Event()
@@ -220,3 +221,13 @@ class Core:
                     user_passwords = [{"name": "root", "method": "local", "password": sha256("root".encode('utf-8')).hexdigest()}]
                     self.db.write('user.password', user_passwords)
                 self.db.write('general', [{'init_db': True}])
+
+    def init_backup(self):
+        if self.conf.get('backup', {}).get('enabled', True):
+            try:
+                mkdir(self.conf.get('backup', {}).get('path', './backups'))
+            except FileExistsError as e:
+                pass
+            except Exception as e:
+                log.exception(e)
+                pass

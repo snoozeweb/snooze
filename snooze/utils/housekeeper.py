@@ -63,6 +63,9 @@ class HousekeeperThread(threading.Thread):
                 last_day = day
                 self.cleanup_expired('snooze', self.housekeeper.snooze_expired)
                 self.cleanup_expired('notification', self.housekeeper.notification_expired)
+                backup_conf = self.housekeeper.core.conf.get('backup', {})
+                if backup_conf.get('enabled', True):
+                    self.housekeeper.core.db.backup(backup_conf.get('path', '/var/log/snooze'), backup_conf.get('exclude', ['record', 'stats', 'comment', 'secrets']))
             time.sleep(1)
 
     def cleanup_expired(self, collection, cleanup_delay):
