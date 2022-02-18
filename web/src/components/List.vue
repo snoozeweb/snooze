@@ -170,18 +170,16 @@
           </CButtonGroup>
         </template>
         <template v-slot:details="row">
-          <CCollapse :visible="Boolean(row.item._showDetails)">
-            <CCard v-if="Boolean(row.item._showDetails)">
-              <CRow class="m-0">
-                <CCol class="p-2">
-                  <slot name="info" v-bind="row" />
-                  <Info :myobject="row.item" :excluded_fields="info_excluded_fields" />
-                </CCol>
-                <slot name="details_side" v-bind="row" />
-              </CRow>
-              <CButton size="sm" @click="toggleDetails(row.item, $event)"><i class="la la-angle-up la-lg"></i></CButton>
-            </CCard>
-          </CCollapse>
+          <CCard v-if="Boolean(row.item._showDetails)">
+            <CRow class="m-0">
+              <CCol class="p-2">
+                <slot name="info" v-bind="row" />
+                <Info :myobject="row.item" :excluded_fields="info_excluded_fields" />
+              </CCol>
+              <slot name="details_side" v-bind="row" />
+            </CRow>
+            <CButton size="sm" @click="toggleDetails(row.item, $event)"><i class="la la-angle-up la-lg"></i></CButton>
+          </CCard>
         </template>
       </SDataTable>
       <div class="d-flex align-items-center">
