@@ -97,9 +97,10 @@ class Notification(Plugin):
 
     def reload_data(self, sync = False):
         super().reload_data()
-        self.notifications = []
+        notifications = []
         for f in (self.data or []):
-            self.notifications.append(NotificationObject(f, self.core))
+            notifications.append(NotificationObject(f, self.core))
+        self.notifications = notifications
         if sync and self.core.cluster:
             self.core.cluster.reload_plugin(self.name)
 

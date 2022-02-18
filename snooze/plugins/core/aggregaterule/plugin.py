@@ -141,9 +141,10 @@ class Aggregaterule(Plugin):
 
     def reload_data(self, sync = False):
         super().reload_data()
-        self.aggregate_rules = []
+        aggregate_rules = []
         for aggrule in (self.data or []):
-            self.aggregate_rules.append(AggregateruleObject(aggrule))
+            aggregate_rules.append(AggregateruleObject(aggrule))
+        self.aggregate_rules = aggregate_rules
         if sync and self.core.cluster:
             self.core.cluster.reload_plugin(self.name)
 

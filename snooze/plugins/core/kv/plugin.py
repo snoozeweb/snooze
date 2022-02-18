@@ -15,15 +15,16 @@ log = getLogger('snooze.kv')
 class Kv(Plugin):
     def reload_data(self, sync = False):
         super().reload_data()
-        self.kv = {}
+        kv = {}
         for key_val in self.data:
             try:
-                if key_val['dict'] not in self.kv:
-                    self.kv[key_val['dict']] = {}
-                self.kv[key_val['dict']][key_val['key']] = key_val['value']
+                if key_val['dict'] not in kv:
+                    kv[key_val['dict']] = {}
+                kv[key_val['dict']][key_val['key']] = key_val['value']
             except Exception as e:
                 log.exception(e)
                 continue
+        self.kv = kv
         if sync and self.core.cluster:
             self.core.cluster.reload_plugin(self.name)
 
