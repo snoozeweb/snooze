@@ -9,6 +9,7 @@
 * Core: (!=) Condition will not assume the field exists
 * Core: Properly delete discarded logs
 * Core: Fixed a concurrency issue when reloading plugins
+* Core: Fixed an issue with IN operator for TinyDB
 
 ## v1.3.0
 

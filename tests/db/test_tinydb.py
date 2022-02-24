@@ -94,10 +94,10 @@ def test_tinydb_search_contains(db):
     assert len(result1) == 3 and len(result2) == 3 and len(result3) == 1 and len(result4) == 1
 
 def test_tinydb_search_in(db):
-    db.write('record', [{'a': ['00', '11', '22', 9]}, {'a': ['00', '1', '2']}, {'a': ['00', '1', '4']}, {'b': '5'}])
+    db.write('record', [{'a': ['00', '11', '22', 9]}, {'a': ['00', '1', '2']}, {'a': ['00', '1', '4']}, {'b': 'test'}])
     result1 = db.search('record', ['IN', '1', 'a'])['data']
     result2 = db.search('record', ['IN', ['2', '4'], 'a'])['data']
-    result3 = db.search('record', ['IN', ['5', '1'], 'b'])['data']
+    result3 = db.search('record', ['IN', 'test', 'b'])['data']
     result4 = db.search('record', ['IN', 9, 'a'])['data']
     assert len(result1) == 2 and len(result2) == 2 and len(result3) == 1 and len(result4) == 1
 

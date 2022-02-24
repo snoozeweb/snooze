@@ -390,15 +390,22 @@ class BackendDB(Database):
                 return_obj = dig(Query(), *key.split('.')).test(test_contains, to_tuple(value))
         elif operation == 'IN':
             key, value = args
+            converted = False
             if not isinstance(key, list):
                 key = [key]
             else:
                 try:
                     saved_key = key
                     key = self.convert(key)
+                    converted = True
                 except:
                     key = saved_key
-            return_obj = dig(Query(), *value.split('.')).any(key)
+            if converted:
+                return_obj = dig(Query(), *value.split('.')).any(key)
+            else:
+                test_eq = lambda s, v: s == v
+                eq_list = list(map(lambda a: dig(Query(), *value.split('.')).test(test_eq, a), key))
+                return_obj = reduce(lambda a, b: a | b, eq_list) | dig(Query(), *value.split('.')).any(key)
         elif operation == 'SEARCH':
             arg = args[0]
             return_obj = Query().test_root(test_search, to_tuple(arg))

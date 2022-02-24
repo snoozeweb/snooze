@@ -11,11 +11,14 @@
 from snooze.utils import get_condition
 
 from logging import getLogger
-log = getLogger('snooze.notification')
+log = getLogger('snooze.action')
 
 from snooze.plugins.core import Plugin
 
 class Action(Plugin):
+    def post_init(self):
+        super().reload_data()
+
     def reload_data(self, sync = False):
         super().reload_data()
         notification_plugin = self.core.get_core_plugin('notification')
