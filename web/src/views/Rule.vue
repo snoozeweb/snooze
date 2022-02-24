@@ -10,15 +10,20 @@
       <template #custom_buttons="row">
         <CButton size="sm" @click="show_children(row.item)" color="info" v-c-tooltip="{content: 'Children'}"><i class="la la-folder-open la-lg"></i></CButton>
       </template>
+      <template #details_side="row">
+        <AuditLogs collection="rule" :object="row.item" />
+      </template>
     </List>
   </div>
 </template>
 
 <script>
+import AuditLogs from '@/components/AuditLogs.vue'
 import List from '@/components/List.vue'
 
 export default {
   components: {
+    AuditLogs,
     List,
   },
   methods: {

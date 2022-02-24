@@ -12,15 +12,20 @@
       <template #custom_buttons="row">
         <CButton size="sm" @click="modal_edit(row.item)" color="primary" v-c-tooltip="{content: 'Edit'}"><i class="la la-pencil-alt la-lg"></i></CButton>
       </template>
+      <template #details_side="row">
+        <AuditLogs collection="user" :object="row.item" />
+      </template>
     </List>
   </div>
 </template>
 
 <script>
+import AuditLogs from '@/components/AuditLogs.vue'
 import List from '@/components/List.vue'
 
 export default {
   components: {
+    AuditLogs,
     List,
   },
   methods: {

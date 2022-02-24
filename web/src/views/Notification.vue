@@ -7,17 +7,23 @@
       delete_mode
       add_mode
       show_tabs
-    />
+    >
+      <template #details_side="row">
+        <AuditLogs collection="notification" :object="row.item" />
+      </template>
+    </List>
   </div>
 </template>
 
 <script>
+import AuditLogs from '@/components/AuditLogs.vue'
 import List from '@/components/List.vue'
 
 import moment from 'moment'
 
 export default {
   components: {
+    AuditLogs,
     List,
   },
   mounted () {
