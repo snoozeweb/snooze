@@ -40,7 +40,6 @@ def init_time_constraints(time_constraints):
             class_obj = getattr(sys.modules[__name__], ctype)
             if issubclass(class_obj, Constraint):
                 for constraint_data in time_constraints.get(constraint_type, []):
-                    log.debug("Time Constraint {} detected. Data: {}".format(ctype, constraint_data))
                     constraints.append(class_obj(constraint_data))
             else:
                 log.error("Constraint type %s does not inherit from Contraint", ctype)

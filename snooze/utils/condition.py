@@ -55,7 +55,6 @@ class Condition(ABC):
     '''An abstract class for all conditions'''
     def __init__(self, args):
         self._args = args
-        LOG.debug("Instantiating %s(%s)", self.__class__.__name__, args)
         try:
             self.operator = args[0]
         except IndexError as err:
