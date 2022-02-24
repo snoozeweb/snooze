@@ -143,13 +143,13 @@ class NotificationObject():
         delayed_records = self.core.db.search('record', ['=', 'hash', record_hash])
         if delayed_records['count'] > 0:
             for delayed_record in delayed_records['data']:
-                if delayed_record.get('state') not in ['ack', 'close']:
+                if delayed_record.get('state') in ['ack', 'close'] or delayed_record.get('snoozed'):
+                    log.debug("Record {} is already acked, closed or snoozed. Do not notify".format(record_hash))
+                    return (False, True)
+                else:
                     was_sent = self.send(delayed_record, actions_success)
                     self.core.db.write('record', delayed_record)
                     return (True, was_sent)
-                else:
-                    log.debug("Record {} is already acked or closed, do not notify".format(record_hash))
-                    return (False, True)
         else:
             log.debug("Record {} does not exist anymore, do not notify".format(record_hash))
             return (False, True)
