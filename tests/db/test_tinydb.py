@@ -9,11 +9,13 @@
 
 from snooze.db.database import Database
 
+import dateutil
 import pytest
 from pathlib import Path
 from os import remove
 from datetime import datetime, timezone
 
+from freezegun import freeze_time
 from logging import getLogger
 log = getLogger('snooze.test.tinydb')
 
@@ -250,6 +252,26 @@ def test_tinydb_cleanup_orphans(db):
     db.write('comment', [{'record_uid': uids[0]}, {'record_uid': uids[1]}, {'record_uid': 'random'}])
     deleted_count = db.cleanup_orphans('comment', 'record_uid', 'record', 'uid')
     assert deleted_count == 1
+
+def test_mongo_cleanup_audit_logs(db):
+    audits = [
+        {'id': 'a', 'collection': 'rule', 'object_id': 'uid1', 'timestamp': '2022-01-01T10:00:00+09:00', 'action': 'added', 'username': 'john.doe', 'method': 'ldap'},
+        {'id': 'b', 'collection': 'rule', 'object_id': 'uid2', 'timestamp': '2022-01-02T11:00:00+09:00', 'action': 'updated', 'username': 'root', 'method': 'root'},
+        {'id': 'c', 'collection': 'rule', 'object_id': 'uid1', 'timestamp': '2022-01-03T12:00:00+09:00', 'action': 'added', 'username': 'test', 'method': 'local'},
+        {'id': 'd', 'collection': 'rule', 'object_id': 'uid3', 'timestamp': '2022-01-04T13:00:00+09:00', 'action': 'updated', 'username': 'john.doe', 'method': 'ldap'},
+        {'id': 'e', 'collection': 'rule', 'object_id': 'uid3', 'timestamp': '2022-01-04T14:00:00+09:00', 'action': 'updated', 'username': 'john.doe', 'method': 'ldap'},
+        {'id': 'f', 'collection': 'rule', 'object_id': 'uid3', 'timestamp': '2022-01-04T15:00:00+09:00', 'action': 'deleted', 'username': 'john.doe', 'method': 'ldap'},
+    ]
+    with freeze_time('2022-01-10T12:00:00+0900'):
+        for audit in audits:
+            audit['date_epoch'] = dateutil.parser.parse(audit['timestamp']).astimezone().timestamp()
+        db.write('audit', audits, update_time=False)
+    with freeze_time('2022-01-10T12:00:00+0900'):
+        interval = 3*24*3600 # 3 days
+        db.cleanup_audit_logs(interval)
+    s = db.search('audit', orderby='timestamp')['data']
+    assert len(s) == 3
+    assert sorted(x['id'] for x in s) == ['a', 'b', 'c']
 
 def test_tinydb_update_fields(db):
     db.write('record', [{'a': '1'}, {'b': '1', 'c': '1'}, {'b': '1'}])

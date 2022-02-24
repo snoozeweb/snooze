@@ -89,6 +89,37 @@ class BackendDB(Database):
         mutex.release()
         return res
 
+    def cleanup_audit_logs(self, interval):
+        mutex.acquire()
+        audits = self.db.table('audit').all()
+        audit_dict = {}
+        now = datetime.now().timestamp()
+        threshold_date = now - interval
+        for audit in audits:
+            oid = audit.get('object_id')
+            timestamp = audit_dict.get(oid, {}).get('date_epoch', 0)
+
+            # Remember latest audit log by object_id
+            if oid and audit.get('date_epoch', 0) >= timestamp:
+                audit_dict[oid] = audit
+
+        oids = [
+            audit['object_id']
+            for object_id, audit in audit_dict.items()
+            if audit.get('action') == 'deleted' \
+            and audit.get('date_epoch') < threshold_date
+        ]
+        log.debug("Found audit log to remove for %d objects", len(oids))
+        doc_ids = [
+            obj.doc_id
+            for obj in self.db.table('audit').search(Query().object_id == oid)
+            for oid in oids
+        ]
+        log.debug("Found %d audit logs to remove", len(doc_ids))
+        self.db.table('audit').remove(doc_ids=doc_ids)
+
+        mutex.release()
+
     def delete_aggregates(self, collection, aggregate_results):
         ids = list(map(lambda doc: doc['_id'], aggregate_results))
         deleted_count = 0

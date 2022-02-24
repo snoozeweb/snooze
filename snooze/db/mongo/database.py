@@ -70,6 +70,29 @@ class BackendDB(Database):
         }]
         return self.run_pipeline(collection, pipeline)
 
+    def cleanup_audit_logs(self, interval):
+        '''Cleanup audit logs of deleted objects'''
+        log.info('Running audit log cleanup')
+        now = datetime.datetime.now().astimezone().timestamp()
+        date_threshold = now - interval
+        log.debug("Threshold date: %s", datetime.datetime.fromtimestamp(date_threshold).astimezone())
+        pipeline = [
+            # Sort by most recent
+            {'$sort': {'timestamp': -1}},
+            # Get the last action for each object
+            {'$group': {'_id': '$object_id', 'action': {'$first': '$action'}, 'date_epoch': {'$first': '$date_epoch'}}},
+        ]
+        ids = [
+            o['_id']
+            for o in self.db['audit'].aggregate(pipeline)
+            if o.get('action') == 'deleted' \
+            and o.get('date_epoch', 0) < date_threshold
+        ]
+        log.info("Found audit logs to remove for %d objects", len(ids))
+        if ids:
+            log.debug("Removing audit logs for %d objects", len(ids))
+            self.db['audit'].delete_many({'object_id': {'$in': ids}})
+
     def run_pipeline(self, collection, pipeline):
         aggregate_results = self.db[collection].aggregate(pipeline)
         ids = list(map(lambda doc: doc['_id'], aggregate_results))
