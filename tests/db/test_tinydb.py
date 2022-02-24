@@ -132,7 +132,7 @@ def test_tinydb_search_page(db):
 
 def test_tinydb_search_id(db):
     db.write('record', {'a': '1', 'b': '2'})
-    uid = db.write('record', {'a': '1', 'b': '2'})['data']['added'][0]
+    uid = db.write('record', {'a': '1', 'b': '2'})['data']['added'][0]['uid']
     result = db.search('record', ['=', 'uid', uid])['data']
     assert len(result) == 1
 
@@ -146,7 +146,7 @@ def test_tinydb_delete(db):
     assert count == 2 and len(result) == 0
 
 def test_tinydb_delete_id(db):
-    uid = db.write('record', {'a': '1', 'b': '2'})['data']['added'][0]
+    uid = db.write('record', {'a': '1', 'b': '2'})['data']['added'][0]['uid']
     count = db.delete('record', ['=', 'uid', uid])['count']
     assert count == 1
 
@@ -163,7 +163,7 @@ def test_tinydb_delete_all_force(db):
     assert count == 2
 
 def test_tinydb_update_uid_with_primary(db):
-    uid = db.write('record', {'a': '1', 'b': '2'}, 'a')['data']['added'][0]
+    uid = db.write('record', {'a': '1', 'b': '2'}, 'a')['data']['added'][0]['uid']
     result = db.search('record', ['=', 'uid', uid])['data']
     result[0]['a'] = '2'
     updated = db.write('record', result, 'a')['data']['updated']
@@ -171,7 +171,7 @@ def test_tinydb_update_uid_with_primary(db):
     assert len(result) == 1 and len(updated) == 1 and result[0].items() >= {'a': '2', 'b': '2'}.items()
 
 def test_tinydb_replace_uid_with_primary(db):
-    uid = db.write('record', {'a': '1', 'b': '2'}, 'a')['data']['added'][0]
+    uid = db.write('record', {'a': '1', 'b': '2'}, 'a')['data']['added'][0]['uid']
     result = db.search('record', ['=', 'uid', uid])['data']
     del result[0]['b']
     replaced = db.write('record', result, 'a', 'replace')['data']['replaced']
@@ -179,14 +179,14 @@ def test_tinydb_replace_uid_with_primary(db):
 
 def test_tinydb_update_uid_duplicate_primary(db):
     db.write('record', {'a': {'b': '1', 'c': '1'}}, 'a.b')
-    uid = db.write('record', {'a': {'b': '2', 'c': '2'}}, 'a.b')['data']['added'][0]
+    uid = db.write('record', {'a': {'b': '2', 'c': '2'}}, 'a.b')['data']['added'][0]['uid']
     result = db.search('record', ['=', 'uid', uid])['data']
     result[0]['a']['b'] = '1'
     rejected = db.write('record', result, 'a.b')['data']['rejected']
     assert len(rejected) == 1
 
 def test_tinydb_update_uid_constant(db):
-    uid = db.write('record', {'a': '1', 'b': '2', 'c': 3})['data']['added'][0]
+    uid = db.write('record', {'a': '1', 'b': '2', 'c': 3})['data']['added'][0]['uid']
     result = db.search('record', ['=', 'uid', uid])['data']
     result[0]['c'] = '4'
     updated = db.write('record', result, constant=['a','b'])['data']['updated']
@@ -195,7 +195,7 @@ def test_tinydb_update_uid_constant(db):
     assert len(updated) == 1 and len(rejected) == 1
 
 def test_tinydb_update_primary_constant(db):
-    db.write('record', {'a': '1', 'b': '2', 'c': 3}, 'a')['data']['added'][0]
+    db.write('record', {'a': '1', 'b': '2', 'c': 3}, 'a')['data']['added'][0]['uid']
     updated = db.write('record',  {'a': '1', 'b': '2', 'c': 4}, 'a', constant='b')['data']['updated']
     rejected = db.write('record', {'a': '1', 'b': '1', 'c': 4}, 'a', constant='b')['data']['rejected']
     assert len(updated) == 1 and len(rejected) == 1
@@ -246,7 +246,7 @@ def test_tinydb_cleanup_timeout(db):
     assert deleted_count == 2
 
 def test_tinydb_cleanup_orphans(db):
-    uids = db.write('record', [{'a': '1'}, {'b': '1'}])['data']['added']
+    uids = [o['uid'] for o in db.write('record', [{'a': '1'}, {'b': '1'}])['data']['added']]
     db.write('comment', [{'record_uid': uids[0]}, {'record_uid': uids[1]}, {'record_uid': 'random'}])
     deleted_count = db.cleanup_orphans('comment', 'record_uid', 'record', 'uid')
     assert deleted_count == 1
