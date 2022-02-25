@@ -682,6 +682,7 @@ export default {
     },
     changeTab(tab, refresh = true) {
       this.tab_index = this.tabs.indexOf(tab)
+      this.current_page = 1
       this.filter = tab.filter
       if (tab.fields) {
         this.fields = tab.fields
