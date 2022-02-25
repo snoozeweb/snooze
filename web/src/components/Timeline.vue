@@ -19,7 +19,7 @@
             <div>
               <div>
                 <span class="fw-bold" style="font-size: 1.0rem">{{ row['name'] }}</span>
-                <span class="fst-italic muted"> @<DateTime :date="row['date']" /></span>
+                <span class="fst-italic muted"> @<DateTime :date="row['date']" show_secs /></span>
                 <span class="text-muted" style="font-size: 0.75rem" v-if="row['edited']"> (edited)</span>
               </div>
               <div class="text-muted">
