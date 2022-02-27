@@ -226,7 +226,7 @@ class Matches(BinaryOperator):
         super().__init__(args)
         self.field = args[1]
         value = unsugar_regex(str(args[2]))
-        self.regex = re.compile(value)
+        self.regex = re.compile(value, flags=re.IGNORECASE)
     def match(self, record):
         record_value = search(record, self.field)
         try:
