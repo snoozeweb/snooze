@@ -41,9 +41,9 @@ RUN /venv/bin/pip install snooze-server==${VERSION}
 ADD https://github.com/snoozeweb/snooze/releases/download/v${VERSION}/snooze-web-${VERSION}.tar.gz /tmp/snooze-web.tar.gz
 RUN tar axvf /tmp/snooze-web.tar.gz -C /
 
-RUN mkdir -p /opt/snooze /var/lib/snooze /etc/snooze/server /var/run/snooze
-RUN chgrp -R 0 /venv /opt/snooze /var/lib/snooze /etc/snooze/server /var/run/snooze && \
-    chmod -R g=u /venv /opt/snooze /var/lib/snooze /etc/snooze/server /var/run/snooze && \
+RUN mkdir -p /opt/snooze /var/lib/snooze /etc/snooze/server /var/run/snooze /var/log/snooze
+RUN chgrp -R 0 /venv /opt/snooze /var/lib/snooze /etc/snooze/server /var/run/snooze /var/log/snooze && \
+    chmod -R g=u /venv /opt/snooze /var/lib/snooze /etc/snooze/server /var/run/snooze /var/log/snooze && \
     adduser -D -u 1001 -G root -h /var/lib/snooze snooze
 
 USER 1001
