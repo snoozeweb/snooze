@@ -32,7 +32,7 @@ class TestAggregatePlugin:
             {'name': 'Agg1', 'condition': ['=', 'a', '1'], 'fields': ['a', 'b'], 'throttle': 15},
             {'name': 'Agg2', 'condition': ['=', 'a', '2'], 'fields': ['a', 'b.c'], 'throttle': 15},
             {'name': 'Agg3', 'condition': ['=', 'a', '3'], 'fields': ['a', 'b'], 'throttle': 0},
-            {'name': 'Agg4', 'condition': ['=', 'a', '4'], 'fields': ['a', 'b'], 'throttle': 15, 'watch': ['c']},
+            {'name': 'Agg4', 'condition': ['=', 'a', '4'], 'fields': ['a', 'b'], 'throttle': 15, 'watch': ['c'], 'flapping': 2},
             {'name': 'Agg5', 'condition': ['=', 'a', '5'], 'fields': ['a', 'b'], 'throttle': 15, 'watch': ['c.test']},
         ]
         core.db.delete('aggregaterule', [], True)
@@ -108,7 +108,7 @@ class TestAggregatePlugin:
     def test_aggregate_ok(self, aggregateplugin):
         records = [
             {'a': '1', 'state': 'open'},
-            {'a': '1', 'state': 'close'}
+            {'a': '1', 'state': 'close'},
         ]
         for record in records:
             try:
@@ -120,3 +120,22 @@ class TestAggregatePlugin:
         results = aggregateplugin.core.db.search('record', ['=', 'aggregate', 'Agg1'])['data'][0]
         assert results['duplicates'] == 2
         assert results['state'] == 'close'
+
+    def test_aggregate_flapping(self, aggregateplugin):
+        records = [
+            {'a': '4', 'c': '1', 'state': 'open'},
+            {'a': '4', 'c': '1', 'state': 'close'},
+            {'a': '4', 'c': '2', 'state': 'open'},
+            {'a': '4', 'c': '3', 'state': 'open'},
+            {'a': '4', 'c': '4', 'state': 'open'},
+        ]
+        for record in records:
+            try:
+                rec = aggregateplugin.process(record)
+                aggregateplugin.core.db.write('record', rec)
+            except Abort_and_update as e:
+                aggregateplugin.core.db.write('record', e.record or record)
+                continue
+        results = aggregateplugin.core.db.search('record', ['=', 'aggregate', 'Agg4'])['data'][0]
+        assert results['duplicates'] == 5
+        assert results['flapping_countdown'] == -1

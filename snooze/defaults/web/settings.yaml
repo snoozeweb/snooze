@@ -70,6 +70,8 @@ form:
         port:
             display_name: Port
             component: Number
+            options:
+                min: 1
             description: 'LDAP server port (389 by default if no SSL, 636 if SSL is enabled)'
         bind_dn:
             display_name: Bind DN

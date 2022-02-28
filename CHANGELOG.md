@@ -3,6 +3,7 @@
 * Web: Custom message for no alerts
 * Core: Supports time constraints over midnight
 * Core: Added daily backups
+* Core: Prevent alerts flapping
 
 ### Bug fixes
 * Web: Removed CoreUI Collapse component

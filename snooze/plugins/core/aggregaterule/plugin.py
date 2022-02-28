@@ -31,7 +31,7 @@ class Aggregaterule(Plugin):
             if aggrule.enabled and aggrule.match(record):
                 record['hash'] = hashlib.md5((str(aggrule.name) + '.'.join([(field + '=' + (dig(record, *field.split('.')) or '')) for field in aggrule.fields])).encode()).hexdigest()
                 LOG.debug("Aggregate rule {} matched record: {}".format(str(aggrule.name), str(record['hash'])))
-                record = self.match_aggregate(record, aggrule.throttle, aggrule.watch, aggrule.name)
+                record = self.match_aggregate(record, aggrule.throttle, aggrule.flapping, aggrule.watch, aggrule.name)
                 break
         else:
             LOG.debug("Record {} could not match any aggregate rule, assigning a default aggregate".format(str(record)))
@@ -53,7 +53,7 @@ class Aggregaterule(Plugin):
         '''Validate an aggregate rule object'''
         validate_condition(obj)
 
-    def match_aggregate(self, record, throttle=10, watch=[], aggrule_name='default'):
+    def match_aggregate(self, record, throttle=10, flapping=2, watch=[], aggrule_name='default'):
         LOG.debug("Checking if an aggregate with hash {} can be found".format(record['hash']))
         aggregate_result = self.db.search('record', ['=', 'hash', record['hash']])
         if aggregate_result['count'] > 0:
@@ -94,7 +94,7 @@ class Aggregaterule(Plugin):
                 if record_field != aggregate_field:
                     watched_fields.append({'name': watched_field, 'old': aggregate_field, 'new': record_field})
             if watched_fields:
-                LOG.debug("Found updated fields from watchlist: {}".format(watched_fields))
+                LOG.debug("Alert {} Found updated fields from watchlist: {}".format(str(record['hash']), watched_fields))
                 append_txt = []
                 for watch_field in watched_fields:
                     append_txt.append("{} ({} => {})".format(watch_field['name'], watch_field['old'], watch_field['new']))
@@ -110,28 +110,30 @@ class Aggregaterule(Plugin):
                     comment['message'] = 'New escalation from watchlist: {}'.format(', '.join(append_txt))
                     comment['type'] = 'comment'
                 self.db.write('comment', comment)
-                record['comment_count'] = aggregate.get('comment_count', 0) + 1
+                record['flapping_countdown'] = aggregate.get('flapping_countdown', flapping) - 1
             elif record.get('state') == 'close':
                 comment['message'] = 'Auto re-opened'
                 comment['type'] = 'open'
                 record['state'] = 'open'
                 self.db.write('comment', comment)
-                record['comment_count'] = aggregate.get('comment_count', 0) + 1
-            elif record.get('state') == 'ack':
-                comment['message'] = 'Auto re-escalated'
-                comment['type'] = 'esc'
-                record['state'] = 'esc'
-                self.db.write('comment', comment)
-                record['comment_count'] = aggregate.get('comment_count', 0) + 1
+                record['flapping_countdown'] = aggregate.get('flapping_countdown', flapping) - 1
             elif (throttle < 0) or (now.timestamp() - aggregate.get('date_epoch', 0) < throttle):
-                LOG.debug("Time within throttle {} range, discarding".format(throttle))
+                LOG.debug("Alert {} Time within throttle {} range, discarding".format(str(record['hash']), throttle))
                 self.core.stats.inc('alert_throttled', {'name': aggrule_name})
                 raise Abort_and_update(record)
             else:
+                if record.get('state') == 'ack':
+                    comment['type'] = 'esc'
+                    record['state'] = 'esc'
+                else:
+                    comment['type'] = 'comment'
                 comment['message'] = 'New escalation'
-                comment['type'] = 'comment'
                 self.db.write('comment', comment)
-                record['comment_count'] = aggregate.get('comment_count', 0) + 1
+                record.pop('flapping_countdown', '')
+            record['comment_count'] = aggregate.get('comment_count', 0) + 1
+            if record.get('flapping_countdown', 0) < 0:
+                LOG.debug("Alert {} is flapping, discarding".format(str(record['hash'])))
+                raise Abort_and_update(record)
         else:
             LOG.debug("Not found, creating a new aggregate")
             record['duplicates'] = 1
@@ -162,6 +164,10 @@ class AggregateruleObject():
             self.throttle = int(aggregate_rule.get('throttle', 10))
         except:
             self.throttle = 10
+        try:
+            self.flapping = int(aggregate_rule.get('flapping', 3))
+        except:
+            self.flapping = 3
     def match(self, record):
         """
         Check if a record matched this aggregate's rule condition

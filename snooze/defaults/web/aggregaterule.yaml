@@ -74,6 +74,13 @@ form:
             zero_label: '0s'
             negative_label: 'Infinite'
         default_value: 900
+    flapping:
+        display_name: Flapping
+        component: Number
+        description: Maximum number of times to be alerted during the throttle period
+        options:
+            min: 0
+        default_value: 2
     comment:
         display_name: Comment
         component: Text
