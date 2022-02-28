@@ -8,6 +8,7 @@
 ### Bug fixes
 * Web: Removed CoreUI Collapse component
 * Web: Resets current page number when changing tabs
+* Web: Sunday was numbered as 7 instead of 6
 * Core: (!=) Condition will not assume the field exists
 * Core: Properly delete discarded logs
 * Core: Fixed a concurrency issue when reloading plugins

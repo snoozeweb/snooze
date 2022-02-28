@@ -36,7 +36,7 @@ export default {
         {text: 'Thursday',  value: 4},
         {text: 'Friday',    value: 5},
         {text: 'Saturday',  value: 6},
-        {text: 'Sunday',    value: 7},
+        {text: 'Sunday',    value: 0},
       ],
     }
   },
