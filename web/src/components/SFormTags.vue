@@ -9,7 +9,7 @@
         >
           <CBadge :color="get_color(colorize?tag:'')" :class="{ 'duplicate': tag === duplicate, [`badge-${size}`]: size }">
             <span>{{ tag }}</span>
-            <span v-if="is_tag_locked(tag)" class="ps-1">
+            <span v-if="lockedTags.includes(tag)" class="ps-1">
               <i class="la la-lock"></i>
             </span>
             <span v-else>
@@ -153,11 +153,6 @@ export default {
     availableOptions () {
       if (!this.tagsOptions) return false;
       return this.tagsOptions.filter((option) => !this.tags.includes(option[this.primary] || option));
-    },
-    is_tag_locked() {
-      return function (tag) {
-        return this.lockedTags.includes(tag)
-      }
     },
     checkField () {
       return this.tags.length > 0
