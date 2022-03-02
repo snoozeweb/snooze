@@ -24,7 +24,7 @@ class Notification(Plugin):
     def process(self, record):
         log.debug("Processing record {} against notifications".format(str(record.get('hash', ''))))
         for notification in self.notifications:
-            if notification.enabled and notification.match(record):
+            if notification.enabled and record.get('state') not in ['ack', 'close'] and notification.match(record):
                 log.debug("Notification {} matched record: {}".format(str(notification.name), str(record.get('hash', ''))))
                 if len(notification.action_plugins) > 0:
                     actions_success = []
