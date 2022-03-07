@@ -4,14 +4,7 @@ elif [ "configure" = "$1" ] && [ "." != ".$2" ]; then shift ; set -- "2" "$@"
 fi
 
 chown -R snooze:snooze /usr/lib/systemd/system/snooze-server.service
-chown -R snooze:snooze /opt/snooze/web
-chown -R snooze:snooze /etc/snooze/server/core.yaml
-dpkg -L snooze-server | grep '^-' | xargs -d '\n' -i chown root:root {} || true
-dpkg -L snooze-server | grep '^/opt/snooze' | xargs -d '\n' -i chown snooze:snooze {} || true
-dpkg -L snooze-server | grep '^/var/lib/snooze' | xargs -d '\n' -i chown snooze:snooze {} || true
-dpkg -L snooze-server | grep '^/var/log/snooze' | xargs -d '\n' -i chown snooze:snooze {} || true
-dpkg -L snooze-server | grep '^/etc/snooze' | xargs -d '\n' -i chown snooze:snooze {} || true
-dpkg -L snooze-server | grep '^/etc/snooze/server' | xargs -d '\n' -i chown snooze:snooze {} || true
-dpkg -L snooze-server | grep '^/usr/lib/systemd/system/snooze-server.service' | xargs -d '\n' -i chown snooze:snooze {} || true
-dpkg -L snooze-server | grep '^/opt/snooze/web' | xargs -d '\n' -i chown snooze:snooze {} || true
-dpkg -L snooze-server | grep '^/etc/snooze/server/core.yaml' | xargs -d '\n' -i chown snooze:snooze {} || true
+chown -R snooze:snooze /opt/snooze
+chown -R snooze:snooze /etc/snooze
+chown -R snooze:snooze /var/lib/snooze
+chown -R snooze:snooze /var/log/snooze

@@ -1,6 +1,5 @@
 '''Build the rpm'''
 
-import platform
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
@@ -8,14 +7,13 @@ from invoke import task, Collection
 
 import tasks.pip
 import tasks.web
-from tasks.utils import get_version, print_github_kv
+from tasks.utils import print_github_kv, get_paths, get_versions
 
 @task(tasks.pip.build, tasks.web.build)
 def build(ctx, force=False, github_output=False):
     '''Build a rpm based on the code produce by pip and vue build jobs'''
-    ver, rel = get_version()
-    arch = platform.machine()
-    target = Path(f"dist/RPMS/{arch}/snooze-server-{ver}-{rel}.{arch}.rpm")
+    artifacts = get_paths()
+    target = artifacts['rpm']
     if (not force) and target.exists():
         print(f"Target {target} already exists")
         return
@@ -33,5 +31,19 @@ def build(ctx, force=False, github_output=False):
         print_github_kv('PATH', target)
         print_github_kv('ASSET_NAME', target.name)
 
+@task
+def version(_ctx):
+    '''Return the rpm version'''
+    ver, _ = get_versions()['rpm'].split('-', 1)
+    print(ver, end="")
+
+@task
+def release(_ctx):
+    '''Return the rpm release'''
+    _, rel = get_versions()['rpm'].split('-', 1)
+    print(rel, end="")
+
 ns = Collection('rpm')
 ns.add_task(build)
+ns.add_task(version)
+ns.add_task(release)

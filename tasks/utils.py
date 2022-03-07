@@ -1,14 +1,78 @@
 '''Utils for tasks'''
 
-import toml
+import platform
 from pathlib import Path
 
-def get_version():
-    '''Return the current version and release of the project'''
+import toml
+
+from invoke import task
+
+def get_versions():
+    '''Return the current version and release of the project, based on pyproject.toml'''
     pyproject = Path(__file__).parent.parent / 'pyproject.toml'
     mytoml = toml.loads(pyproject.read_text(encoding='utf-8'))
-    ver = mytoml.get('tool', {}).get('poetry', {}).get('version')
-    return ver.split('+', 1)
+    python_version = mytoml.get('tool', {}).get('poetry', {}).get('version')
+
+    if '+' in python_version: # Development release
+        ver, rel = python_version.split('+', 1)
+        versions = {
+            'global_version': ver,
+            'python': python_version,
+            'web': f"{ver}-{rel}",
+            'rpm': f"{ver}-{rel}",
+            'deb': f"{ver}-{rel}",
+            'docker': f"{ver}-{rel}",
+        }
+
+    else: # Production release
+        ver, rel = python_version, None
+        versions = {
+            'global_version': ver,
+            'python': ver,
+            'web': ver,
+            'rpm': f"{ver}-0",
+            'deb': ver,
+            'docker': f"{ver}-0",
+        }
+
+    return versions
+
+@task(name='version')
+def version_task(_ctx, field, github_output=False):
+    '''Return the full version for a type of artifact'''
+    ver = get_versions()[field]
+    if github_output:
+        print_github_kv(f"{field}_version", ver)
+    else:
+        print(ver, end="")
+
+def get_paths(field=None):
+    '''Return a directionary of target paths for artifacts'''
+    versions = get_versions()
+    arch = platform.machine()
+    artifacts = {
+        'wheel': Path(f"dist/snooze_server-{versions['python']}-py3-none-any.whl"),
+        'sdist': Path(f"dist/snooze-server-{versions['python']}.tar.gz"),
+        'web': Path(f"dist/snooze-web-{versions['web']}.tar.gz"),
+        'docker': Path(f"dist/snooze-server-docker-{versions['docker']}.tar.gz"),
+        'rpm': Path(f"dist/RPMS/{arch}/snooze-server-{versions['rpm']}.{arch}.rpm"),
+        'deb': Path(f"dist/snooze-server_{versions['deb']}_all.deb"),
+        'deb-buildroot': Path(f"snooze-server_{versions['deb']}_{arch}"),
+    }
+    if field:
+        print(artifacts[field], end="")
+        return artifacts[field]
+    return artifacts
+
+@task(name='path')
+def path_task(_ctx, field, github_output=False):
+    '''Return a directionary of target path for a given type of artifact'''
+    artifacts = get_paths()
+    path = artifacts[field]
+    if github_output:
+        print_github_kv(f"{field}_path", path)
+    else:
+        print(path, end="")
 
 def git_sanity_check(ctx):
     '''Raise an exception and abort the run if git is not in a clean status'''

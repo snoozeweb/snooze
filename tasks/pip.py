@@ -1,17 +1,14 @@
 '''Manage the pip/python operations'''
 
-from pathlib import Path
-
 from invoke import task, Collection
 
-from tasks.utils import get_version, print_github_kv
+from tasks.utils import print_github_kv, get_paths
 
 @task
 def build(ctx, force=False, github_output=False):
     '''Package the python code into a pip package (output in dist/)'''
-    ver, rel = get_version()
-    ver_rel = f"{ver}+{rel}" if rel else ver
-    target = Path(f"dist/snooze_server-{ver_rel}-py3-none-any.whl")
+    artifacts = get_paths()
+    target = artifacts['wheel']
     if (not force) and target.exists():
         print(f"Target {target} already exists")
         return

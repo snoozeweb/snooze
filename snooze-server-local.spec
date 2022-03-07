@@ -6,12 +6,12 @@
 
 # Variables
 %define topdir %(pwd)
-%define version %(poetry run invoke version)
-%define release %(poetry run invoke release)
+%define version %(poetry run invoke rpm.version)
+%define release %(poetry run invoke rpm.release)
 %define snooze_user snooze
 %define snooze_group snooze
-%define python_version %{version}+%{release}
-%define web_version %{version}-%{release}
+%define python_version %(poetry run invoke version python)
+%define web_version %(poetry run invoke version web)
 %define sources %{_topdir}/SOURCES
 %define venv %{buildroot}/opt/snooze
 

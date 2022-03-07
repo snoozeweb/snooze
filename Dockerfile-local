@@ -7,6 +7,8 @@ FROM python:3.6-alpine
 
 ARG VERSION
 ARG RELEASE
+ARG WHEEL_PATH
+ARG WEB_PATH
 ARG VCS_REF
 ARG BUILD_DATE=now
 
@@ -36,20 +38,20 @@ RUN apk update && \
     python3-dev \
     libffi-dev
 
-RUN pip install --no-cache-dir poetry>=1.2.0a2 pip virtualenv
+RUN pip install --no-cache-dir poetry==1.2.0a2 pip==21.0.1 virtualenv==20.4.4
 RUN python3 -m venv /opt/snooze
 RUN mkdir -p /opt/snooze/web
-ADD dist/ /dist
+COPY dist /dist
 RUN find /dist
-RUN /opt/snooze/bin/pip install --no-cache-dir /dist/snooze_server-${VERSION}+${RELEASE}-py3-none-any.whl
-RUN tar -xvf /dist/snooze-web-${VERSION}-${RELEASE}.tar.gz -C /opt/snooze/web
+RUN /opt/snooze/bin/pip install --no-cache-dir "/${WHEEL_PATH}"
+RUN tar -xvf "/${WEB_PATH}" -C /opt/snooze/web
 
 # hadolint ignore=DL3013
 ENV PATH $PATH:/venv/bin
 
-RUN mkdir -p /opt/snooze /var/lib/snooze /etc/snooze/server /var/run/snooze
-RUN chgrp -R 0 /opt/snooze /var/lib/snooze /etc/snooze/server /var/run/snooze && \
-    chmod -R g=u /opt/snooze /var/lib/snooze /etc/snooze/server /var/run/snooze && \
+RUN mkdir -p /opt/snooze /var/lib/snooze /etc/snooze/server /var/run/snooze /var/log/snooze
+RUN chgrp -R 0 /opt/snooze /var/lib/snooze /etc/snooze/server /var/run/snooze /var/log/snooze && \
+    chmod -R g=u /opt/snooze /var/lib/snooze /etc/snooze/server /var/run/snooze /var/log/snooze && \
     adduser -D -u 1001 -G root -h /var/lib/snooze snooze
 
 USER 1001

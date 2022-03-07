@@ -1,13 +1,13 @@
 # vim:set ts=2 sw=2 sts=2 et:
 ---
-name: Snooze-server testing
+name: Tests
 
 on:
   pull_request:
     branches: [master, release*]
 
 jobs:
-  unit:
+  pytest:
     runs-on: ubuntu-latest
     steps:
       - name: Checking out git repository
