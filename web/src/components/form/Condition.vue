@@ -30,7 +30,7 @@ export default {
     dataValue: {
       handler: function () {
         var arrayCondition = this.dataValue.toArray()
-        console.log(`Condition.modelValue update to: ${arrayCondition}`)
+        //console.log(`Condition.modelValue update to: ${arrayCondition}`)
         this.$emit('update:modelValue', arrayCondition)
       },
       deep: true,
