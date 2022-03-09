@@ -1,8 +1,10 @@
 <template>
   <div class="animated fadeIn">
     <List
+      ref="table"
       endpoint_prop="notification"
       :tabs_prop="tabs"
+      @update="get_now"
       edit_mode
       delete_mode
       add_mode
@@ -20,9 +22,6 @@ export default {
   components: {
     List,
   },
-  mounted () {
-    setInterval(this.get_now, 1000);
-  },
   data () {
     return {
       tabs: this.get_tabs_default(),
@@ -31,11 +30,12 @@ export default {
   methods: {
     get_now() {
       this.tabs = this.get_tabs_default()
+      this.$refs.table.tabs = this.tabs
     },
     get_tabs_default() {
       var now = moment()
       var date = now.format("YYYY-MM-DDTHH:mm")
-      var hour = now.format("HH:mm")
+      var hour = now.format("HH:mm:ssZ")
       var weekday = now.day()
       var match = ['AND',
         ['OR', ['NOT', ['EXISTS', 'time_constraints.weekdays']], ['IN', ['IN', weekday, 'weekdays'], 'time_constraints.weekdays']],

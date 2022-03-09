@@ -348,6 +348,7 @@ export default {
     SDataTable,
     SPagination,
   },
+  emits: ['update'],
   props: {
     // The tabs name and their associated search
     tabs_prop: {
@@ -575,6 +576,7 @@ export default {
         }
       }
       get_data(this.endpoint, query, options, feedback == true ? this.feedback_then_update : this.update_table, null)
+      this.$emit('update')
     },
     feedback_then_update(response) {
       this.$root.show_alert()

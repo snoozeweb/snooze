@@ -4,6 +4,7 @@
       ref="table"
       endpoint_prop="snooze"
       :tabs_prop="tabs"
+      @update="get_now"
       edit_mode
       delete_mode
       add_mode
@@ -61,9 +62,6 @@ export default {
   components: {
     List,
   },
-  mounted () {
-    setInterval(this.get_now, 1000);
-  },
   data () {
     return {
       modal_title: '',
@@ -85,6 +83,7 @@ export default {
   methods: {
     get_now() {
       this.tabs = this.get_tabs_default()
+      this.$refs.table.tabs = this.tabs
     },
     get_tabs_default() {
       var now = moment()

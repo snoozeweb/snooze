@@ -25,9 +25,6 @@ import { getStyle } from '@coreui/utils/src'
 import Datepicker from 'vue3-date-time-picker';
 import 'vue3-date-time-picker/dist/main.css';
 import moment from 'moment'
-var week_start = moment().startOf('week').weekday()
-
-var now = moment().format()
 
 export default {
   extends: Base,
@@ -39,20 +36,21 @@ export default {
   props: {
     modelValue: {
       type: String,
-      default: moment().format(),
+      default: function () {
+        return moment().format()
+      }
     },
     options: {},
     placeholder: {type: String, default: () => 'Select Date'}
   },
   data() {
     return {
-      datavalue: this.modelValue || now,
-      main_color: '',
-      week_start: week_start,
+      datavalue: this.modelValue || moment().format(),
+      week_start: moment().startOf('week').weekday(),
     }
   },
   mounted() {
-    this.main_color = getStyle('--primary') || '#304ffe'
+    this.datavalue = this.modelValue || moment().format()
   },
   computed: {
     formatted_date () {

@@ -23,10 +23,6 @@ import Datepicker from 'vue3-date-time-picker';
 import 'vue3-date-time-picker/dist/main.css';
 import moment from 'moment'
 
-var now = moment().format()
-var one_hour_later = moment().add(1, 'hours').format()
-var default_object = {from: now, until: one_hour_later}
-var week_start = moment().startOf('week').weekday()
 
 export default {
   extends: Base,
@@ -39,7 +35,7 @@ export default {
     modelValue: {
       type: Object,
       default: function () {
-        return default_object
+        return {from: moment().format(), until: moment().add(1, 'hours').format()}
       }
     },
     options: {},
@@ -47,13 +43,14 @@ export default {
   },
   data() {
     return {
-      datavalue: [this.modelValue['from'] || now, this.modelValue['until'] || one_hour_later],
-      main_color: '',
-      week_start: week_start,
+      now: moment().format(),
+      one_hour_later: moment().add(1, 'hours').format(),
+      week_start: moment().startOf('week').weekday(),
+      datavalue: [this.modelValue['from'] || moment().format(), this.modelValue['until'] || moment().add(1, 'hours').format()],
     }
   },
   mounted() {
-    this.main_color = getStyle('--primary') || '#304ffe'
+    this.datavalue = [this.modelValue['from'] || this.now, this.modelValue['until'] || this.one_hour_later]
   },
   computed: {
     formatted_date () {
