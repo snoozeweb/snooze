@@ -3,6 +3,7 @@
   <SFormTags
     v-model="datavalue"
     placeholder="Enter fields separated by space"
+    trim
   ></SFormTags>
 </div>
 </template>

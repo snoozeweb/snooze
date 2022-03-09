@@ -71,6 +71,7 @@ export default {
     size: { type: String, default: () => '' },
     colorize: { type: Boolean, default: false },
     required: {type: Boolean, default: () => false},
+    trim: {type: Boolean, default: () => false},
   },
   data () {
     return {
@@ -95,6 +96,9 @@ export default {
       // only allow predefined tags when allowCustom is false
       if (!this.allowCustom && !this.tagsOptions.includes(tag)) return
       // return early if duplicate
+      if (this.trim) {
+        tag = tag.toString().trim()
+      }
       if (this.tags.includes(tag)) {
         this.handleDuplicate(tag)
         return
