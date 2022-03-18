@@ -59,6 +59,7 @@ freezegun = "^1.1.0"
 [tool.poetry.group.build.dependencies]
 virtualenv = "^20.8.1"
 invoke = "^1.6.0"
+toml = "^0.10.2"
 
 [tool.pylint.format]
 max-line-length = 120

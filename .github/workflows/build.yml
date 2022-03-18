@@ -19,7 +19,7 @@ jobs:
         uses: ./.github/actions/python-poetry
         with: {poetry_options: '--only build'}
 
-      - name: Running Pytest
+      - name: Computing changelog
         run: poetry run invoke changelog --github-output
         id: changelog
 
