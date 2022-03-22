@@ -113,24 +113,22 @@ class TimeConstraint(Constraint):
     Features:
         * Match before/after/between fixed hours
         * Support hours over midnight (`from` lower than `until`)
-    The offset parameter (int) is present only for easying unit tests.
     '''
-    def __init__(self, content=None, offset=None):
+    def __init__(self, content=None):
         if content is None:
             content = {}
         time1 = content.get('from')
         time2 = content.get('until')
-        self.time1 = parser.parse(time1).time() if time1 else None
-        self.time2 = parser.parse(time2).time() if time2 else None
-        self.timezone = timezone(offset=timedelta(hours=offset)) if offset is not None else None
+        self.time1 = parser.parse(time1).astimezone().timetz() if time1 else None
+        self.time2 = parser.parse(time2).astimezone().timetz() if time2 else None
 
     def get_intervals(self, record_date):
         '''Return the an array of datetime intervals depending on the `from`
         and `until` time, and the date of the record. The intervals will all be
         ordered.'''
         day = timedelta(days=1)
-        date1 = datetime.combine(record_date, self.time1, tzinfo=self.timezone)
-        date2 = datetime.combine(record_date, self.time2, tzinfo=self.timezone)
+        date1 = datetime.combine(record_date, self.time1)
+        date2 = datetime.combine(record_date, self.time2)
         if date2 < date1:
             return [(date1 - day, date2), (date1, date2 + day)]
         return [(date1, date2)]
@@ -139,14 +137,15 @@ class TimeConstraint(Constraint):
         '''Match a daily periodic time constraint.
         rd = record datetime
         '''
+        rd = rd.astimezone()
         if self.time1 and self.time2:
             intervals = self.get_intervals(rd.date())
             return any(date1 <= rd <= date2 for date1, date2 in intervals)
         elif self.time1 and not self.time2:
-            date1 = datetime.combine(rd.date(), self.time1, tzinfo=self.timezone)
+            date1 = datetime.combine(rd.date(), self.time1)
             return date1 <= rd
         elif self.time2 and not self.time1:
-            date2 = datetime.combine(rd.date(), self.time2, tzinfo=self.timezone)
+            date2 = datetime.combine(rd.date(), self.time2)
             return rd <= date2
         else:
             return True
