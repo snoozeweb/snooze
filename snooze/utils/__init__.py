@@ -9,5 +9,6 @@ from .config import config, write_config
 from .condition import get_condition
 from .modification import get_modification
 from .housekeeper import Housekeeper
+from .mq import MQManager
 from .stats import Stats
 from .cluster import Cluster

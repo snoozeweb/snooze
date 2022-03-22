@@ -49,9 +49,9 @@ class Stats():
             return Timer(metric, 'observe')
         return contextlib.suppress()
 
-    def inc(self, metric_name, labels):
+    def inc(self, metric_name, labels, amount = 1):
         if self.enabled and metric_name in self.metrics:
-            self.metrics[metric_name].labels(**labels).inc()
+            self.metrics[metric_name].labels(**labels).inc(amount)
             self.core.db.inc('stats', metric_name, labels)
 
     def get_metrics(self):

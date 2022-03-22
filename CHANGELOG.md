@@ -1,6 +1,7 @@
 ## v1.4.0
 ### New features
 * Web: Custom message for no alerts
+* Core: Supports batched actions
 * Core: Supports time constraints over midnight
 * Core: Added daily backups
 * Core: Prevent alerts flapping

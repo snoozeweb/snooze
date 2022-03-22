@@ -25,7 +25,7 @@ from snooze import __file__ as rootdir
 from snooze.db.database import Database
 from snooze.plugins.core import Abort, Abort_and_write, Abort_and_update
 from snooze.token import TokenEngine
-from snooze.utils import config, Housekeeper, Stats
+from snooze.utils import config, Housekeeper, Stats, MQManager
 from snooze.utils.functions import flatten
 
 log = getLogger('snooze')
@@ -39,6 +39,7 @@ class Core:
         self.ok_severities = list(map(lambda x: x.casefold(), flatten([self.general_conf.get('ok_severities', [])])))
         self.init_backup()
         self.housekeeper = Housekeeper(self)
+        self.mq = MQManager(self)
         self.cluster = None
         self.exit_button = Event()
         self.plugins = []

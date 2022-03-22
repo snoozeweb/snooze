@@ -19,6 +19,7 @@ class Plugin:
         self.core = core
         self.db = core.db
         self.name = self.__class__.__name__.lower()
+        self.data = []
         self.rootdir = joindir(dirname(rootdir), 'plugins', 'core', self.name)
         metadata_path = joindir(self.rootdir, 'metadata.yaml')
         if not os.access(metadata_path, os.R_OK):
@@ -123,6 +124,12 @@ class Plugin:
 
     def get_icon(self):
         return self.metadata_file.get('icon', 'question-circle')
+
+    def get_options(self, key=''):
+        options = self.metadata_file.get('options', {})
+        if key:
+            options = options.get(key, {})
+        return options
 
     def send(self, record, content):
         pass

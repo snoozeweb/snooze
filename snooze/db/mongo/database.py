@@ -26,9 +26,6 @@ class OperationNotSupported(Exception): pass
 
 database = os.environ.get('DATABASE_NAME', 'snooze')
 
-def test_contains(array, value):
-    return any(value in a for a in flatten(array))
-
 class BackendDB(Database):
     def init_db(self, conf):
         if 'DATABASE_URL' in os.environ:
@@ -36,6 +33,7 @@ class BackendDB(Database):
         else:
             self.db = pymongo.MongoClient(**conf)[database]
         self.search_fields = {}
+        self.conf = conf
         log.debug("Initialized Mongodb with config {}".format(conf))
         log.debug("db: {}".format(self.db))
         log.debug("List of collections: {}".format(self.db.collection_names()))
@@ -381,3 +379,28 @@ class BackendDB(Database):
             log.error('Backup failed')
             log.exception(e)
         log.info('Backup of {} succeeded'.format(collections))
+
+    def get_uri(self):
+        if 'DATABASE_URL' in os.environ:
+            return os.environ.get('DATABASE_URL')
+        else:
+            uri = 'mongodb://'
+            if 'username' in self.conf or 'user' in self.conf:
+                uri += self.conf.get('username', self.conf.get('user'))
+            if 'password' in self.conf:
+                uri += ':' + self.conf.get('password')
+            if 'username' in self.conf or 'user' in self.conf:
+                uri += '@'
+            port = ''
+            if 'port' in self.conf:
+                port = ':' + str(self.conf.get('port'))
+            if isinstance(self.conf.get('host'), list):
+                uri += ','.self.conf.get('host') + port
+            else:
+                uri += self.conf.get('host') + port
+            uri += '/snooze'
+            options = [op for op in ['authSource', 'replicaSet', 'tls', 'tlsCAFile'] if op in self.conf]
+            if options:
+                uri += '?' + '&'.join(list(map(lambda x: x + '=' + str(self.conf.get(x)), options)))
+            return uri
+

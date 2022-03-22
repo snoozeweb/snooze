@@ -3,6 +3,12 @@ name: 'Call a webhook'
 desc: 'HTTP POST to a specific URL'
 icon: 'link'
 class: ''
+options:
+    batch:
+        default: False
+        hidden: False
+        timer: 10
+        maxsize: 100
 action_form:
   url:
     display_name: URL

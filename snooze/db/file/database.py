@@ -408,7 +408,11 @@ class BackendDB(Database):
                 return_obj = reduce(lambda a, b: a | b, eq_list) | dig(Query(), *value.split('.')).any(key)
         elif operation == 'SEARCH':
             arg = args[0]
-            return_obj = Query().test_root(test_search, to_tuple(arg))
+            try:
+                return_obj = Query().test_root(test_search, to_tuple(arg))
+            except Exception as e:
+                log.exception(e)
+                raise OperationNotSupported(operation)
         else:
             raise OperationNotSupported(operation)
         return return_obj
@@ -416,13 +420,18 @@ class BackendDB(Database):
     def backup(self, backup_path, backup_exclude = []):
         collections = [c for c in self.db.tables() if c not in backup_exclude]
         log.debug('Starting backup of {}'.format(collections))
-        try:
-            for i, collection_name in enumerate(collections):
+        succeeded = []
+        for i, collection_name in enumerate(collections):
+            try:
                 collection = self.db.table(collections[i]).all()
                 jsonpath = Path(backup_path) / (collection_name + '.json')
                 with jsonpath.open("wb") as jsonfile:
                     jsonfile.write(dumps(collection).encode())
-        except Exception as e:
-            log.error('Backup failed')
-            log.exception(e)
-        log.info('Backup of {} succeeded'.format(collections))
+                    succeeded.append(collection_name)
+            except Exception as e:
+                log.error('Backup of {} failed'.format(collection_name))
+                log.exception(e)
+        log.info('Backup of {} succeeded'.format(succeeded))
+
+    def get_uri(self):
+        return None

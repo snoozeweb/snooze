@@ -3,6 +3,12 @@ name: 'Run a script'
 desc: ''
 icon: 'terminal'
 class: ''
+options:
+    batch:
+        default: False
+        hidden: False
+        timer: 10
+        maxsize: 100
 action_form:
   script:
     display_name: Path

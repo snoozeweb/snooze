@@ -7,6 +7,7 @@
 
 #!/usr/bin/python3.6
 import os
+import hashlib
 from pathlib import Path
 
 def dig(dic, *lst):
@@ -84,3 +85,10 @@ def ca_bundle():
         for ca_path in CA_BUNDLE_PATHS:
             if Path(ca_path).exists():
                 return ca_path
+
+def ensure_hash(record):
+    if not 'hash' in record:
+        if 'raw' in record:
+            record['hash'] = hashlib.md5(record['raw']).hexdigest()
+        else:
+            record['hash'] = hashlib.md5(repr(sorted(record.items())).encode('utf-8')).hexdigest()
