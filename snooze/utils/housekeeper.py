@@ -61,8 +61,9 @@ class HousekeeperThread(threading.Thread):
             if self.housekeeper.interval_comment > 0 and time.time() - timer_comment >= self.housekeeper.interval_comment:
                 timer_comment = time.time()
                 self.housekeeper.core.db.cleanup_orphans('comment', 'record_uid', 'record', 'uid')
-            if self.housekeeper.internal_audit > 0 and time.time() - timer_audit >= self.housekeeper.interval_audit:
-                self.housekeeper.core.db.cleanup_audit_logs()
+            if self.housekeeper.interval_audit > 0 and time.time() - timer_audit >= self.housekeeper.interval_audit:
+                timer_audit = time.time()
+                self.housekeeper.core.db.cleanup_audit_logs(self.housekeeper.interval_audit)
             day = datetime.datetime.now().day
             if day != last_day:
                 last_day = day

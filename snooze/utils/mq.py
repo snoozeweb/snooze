@@ -1,12 +1,14 @@
 import time
 import sys
 import threading
+import bson.json_util
 from random import random
 from itertools import count
 from logging import getLogger
 from kombu import Exchange, Queue
 from kombu.mixins import ConsumerMixin
 from kombu.pools import producers
+from kombu.serialization import register
 from kombu import Connection
 log = getLogger('snooze.mq')
 
@@ -20,6 +22,9 @@ class MQManager():
         self.threads = {}
         if not self.url:
             self.url = 'memory:///'
+        register('bson', bson.json_util.dumps, bson.json_util.loads,
+                 content_type='application/json',
+                 content_encoding='utf-8')
 
     def update_queue(self, queue, timer = 10, maxsize = 100, worker_class = None, worker_obj = None):
         if queue not in self.threads:
@@ -47,7 +52,7 @@ class MQManager():
             try:
                 with producers[connection].acquire(block=True) as producer:
                     producer.publish(payload,
-                                     serializer='json',
+                                     serializer='bson',
                                      exchange=task_exchange,
                                      declare=[task_exchange],
                                      routing_key=queue)

@@ -432,7 +432,7 @@ class BackendDB(Database):
             if 'port' in self.conf:
                 port = ':' + str(self.conf.get('port'))
             if isinstance(self.conf.get('host'), list):
-                uri += ','.self.conf.get('host') + port
+                uri += ','.join(self.conf.get('host')) + port
             else:
                 uri += self.conf.get('host') + port
             uri += '/snooze'
