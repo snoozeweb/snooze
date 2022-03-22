@@ -30,11 +30,11 @@ class TestRulesPlugin:
         rules = [
             {'name': 'Rule1', 'condition': ['=', 'a', '1'], 'modifications': [['SET', 'c', '1']]}
         ]
-        uid = core.db.write('rule', rules)['data']['added'][0]
+        uid = core.db.write('rule', rules)['data']['added'][0]['uid']
         children_rules = [
             {'name': 'SubRule1', 'condition': ['=', 'c', '1'], 'modifications': [ ['SET', 'c', '4'], ['SET', 'b', '4'] ], 'parent': uid}
         ]
-        uid = core.db.write('rule', children_rules)['data']['added'][0]
+        uid = core.db.write('rule', children_rules)['data']['added'][0]['uid']
         children_rules = [
             {'name': 'SubSubRule1', 'condition': ['=', 'c', '4'], 'modifications': [ ['SET', 'c', '5'] ], 'parent': uid}
         ]
@@ -45,4 +45,7 @@ class TestRulesPlugin:
     def test_process(self, ruleplugin):
         record = {'a': '1', 'b': '2'}
         ruleplugin.process(record)
-        assert record == {'a': '1', 'b': '4', 'c': '5', 'rules': ['Rule1', 'SubRule1', 'SubSubRule1']}
+        assert record['a'] == '1'
+        assert record['b'] == '4'
+        assert record['c'] == '5'
+        assert record['rules'] == ['Rule1', 'SubRule1', 'SubSubRule1']

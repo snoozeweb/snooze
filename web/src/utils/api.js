@@ -13,18 +13,22 @@ export function get_data(endpoint, query = null, options = {}, callback = null, 
     url = `/${endpoint}?${query_str}`
   }
   console.log(`GET ${url}`)
-  API
+  return API
     .get(url)
     .then(response => {
       console.log(response)
       if (callback) {
-        callback(response, callback_arguments)
+        return callback(response, callback_arguments)
       }
       if (response.data == undefined) {
         show_feedback(response)
+        throw `No data found at /${endpoint}`
       }
     })
-    .catch(error => console.log(error))
+    .catch(error => {
+      console.log(error)
+      throw error
+    })
 }
 
 // Submit data to an endpoint

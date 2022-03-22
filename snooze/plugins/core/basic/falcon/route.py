@@ -7,14 +7,21 @@
 
 #!/usr/bin/python
 import os
+import traceback
+import sys
 import falcon
 import bson.json_util
+from datetime import datetime
 from urllib.parse import unquote
 from logging import getLogger
 log = getLogger('snooze.api')
 
 from snooze.api.falcon import authorize, FalconRoute
 from snooze.utils.parser import parser
+from snooze.utils.functions import dig
+
+class ValidationError(RuntimeError):
+    '''Raised when the validation fails'''
 
 class Route(FalconRoute):
     @authorize
@@ -64,30 +71,29 @@ class Route(FalconRoute):
         media = req.media.copy()
         if not isinstance(media, list):
             media = [media]
-        for req_media in media:
-            queries = req_media.get('qls', [])
-            req_media['snooze_user'] = {'name': req.context['user']['user']['name'], 'method': req.context['user']['user']['method']}
-            # Validation
-            try:
-                self.plugin.validate(req_media)
-            except Exception as err:
-                log.exception(err)
-                resp.body = '[]'
-                resp.status = falcon.HTTP_503
-                return
-            for query in queries:
-                try:
-                    parsed_query = parser(query['ql'])
-                    log.debug("Parsed query: {} -> {}".format(query['ql'], parsed_query))
-                    req_media[query['field']] = parsed_query
-                except Exception as e:
-                    log.exception(e)
-                    continue
         try:
-            result = self.insert(self.plugin.name, media)
-            resp.media = result
-            self.plugin.reload_data(True)
-            resp.status = falcon.HTTP_201
+            for req_media in media:
+                queries = req_media.get('qls', [])
+                req_media['snooze_user'] = {'name': req.context['user']['user']['name'], 'method': req.context['user']['user']['method']}
+
+                # Validation
+                self._validate(req_media, req, resp)
+
+                for query in queries:
+                    try:
+                        parsed_query = parser(query['ql'])
+                        log.debug("Parsed query: {} -> {}".format(query['ql'], parsed_query))
+                        req_media[query['field']] = parsed_query
+                    except Exception as e:
+                        log.exception(e)
+                        continue
+                result = self.insert(self.plugin.name, media)
+                resp.media = result
+                self.plugin.reload_data(True)
+                resp.status = falcon.HTTP_201
+                self._audit(result, req)
+        except ValidationError:
+            return
         except Exception as e:
             log.exception(e)
             resp.media = []
@@ -105,19 +111,22 @@ class Route(FalconRoute):
             if not isinstance(media, list):
                 media = [media]
             for obj in media:
-                self.plugin.validate(obj)
+                self._validate(obj, req, resp)
             result = self.update(self.plugin.name, media)
             resp.media = result
             self.plugin.reload_data(True)
             resp.status = falcon.HTTP_201
-        except Exception as e:
-            log.exception(e)
+            self._audit(result, req)
+        except ValidationError:
+            return
+        except Exception as err:
+            log.exception(err)
             resp.media = []
             resp.status = falcon.HTTP_503
-            pass
 
     @authorize
     def on_delete(self, req, resp, search='[]'):
+        object_uids = []
         if 'uid' in req.params:
             cond_or_uid = ['=', 'uid', req.params['uid']]
         else:
@@ -128,9 +137,11 @@ class Route(FalconRoute):
                 cond_or_uid = string
         if self.inject_payload:
             cond_or_uid = self.inject_payload_search(req, cond_or_uid)
+        deleted_objects = [{'_old': data} for data in self.search(self.plugin.name, cond_or_uid)['data']]
         log.debug("Trying delete %s" % cond_or_uid)
         result_dict = self.delete(self.plugin.name, cond_or_uid)
         resp.content_type = falcon.MEDIA_JSON
+        self._audit({'data': {'deleted': deleted_objects}}, req)
         if result_dict:
             result = result_dict
             resp.media = result
@@ -140,3 +151,95 @@ class Route(FalconRoute):
             resp.media = {}
             resp.status = falcon.HTTP_NOT_FOUND
             pass
+
+    def _validate(self, obj, req, resp):
+        '''Validate an object and handle the response in case of exception'''
+        try:
+            self.plugin.validate(obj)
+        except Exception as err:
+            rejected = obj
+            rejected['error'] = f"Error during validation: {err}"
+            rejected['traceback'] = traceback.format_exception(*sys.exc_info())
+            results = {'data': {'rejected': [rejected]}}
+            self._audit(results, req)
+            log.exception(err)
+            resp.media = results
+            resp.status = falcon.HTTP_503
+            raise ValidationError("Invalid object")
+
+    def _audit(self, results, req):
+        '''Audit the changed objects in a dedicated collection'''
+        if self.plugin.metadata.get('audit'):
+            messages = []
+            for action, objs in results.get('data', {}).items():
+                for obj in objs:
+                    try:
+                        log.debug("Action %s: %s", action, obj)
+                        error = obj.pop('error', None)
+                        traceback = obj.pop('traceback', None)
+                        old = sanitize(obj.pop('_old', {}))
+                        new = sanitize(dict(obj))
+                        source_ip = req.access_route[0] if len(req.access_route) > 0 else 'unknown'
+                        if action == 'deleted':
+                            object_id = old.get('uid')
+                        else:
+                            object_id = obj.get('uid')
+                        try:
+                            username = req.context['user']['user']['name']
+                            method = req.context['user']['user']['method']
+                        except KeyError:
+                            username = 'unknown'
+                            method = 'unknown'
+                        message = {
+                            'collection': self.plugin.name,
+                            'object_id': object_id,
+                            'timestamp': datetime.now().astimezone().isoformat(),
+                            'action': action,
+                            'username': username,
+                            'method': method,
+                            'snapshot': new,
+                            'source_ip': source_ip,
+                            'user_agent': req.user_agent,
+                            'summary': diff_summary(old, new),
+                        }
+                        messages.append(message)
+                    except Exception as err:
+                        log.exception(err)
+                        continue
+                    if error:
+                        message['error'] = error
+                    if traceback:
+                        message['traceback'] = traceback
+            self.insert('audit', messages)
+
+def sanitize(obj):
+    '''Remove certain fields from an object to make the display more human readable'''
+    excluded_fields = ['date_epoch', 'audit_increment', 'snooze_user']
+    fields_to_remove = []
+    for field in obj.keys():
+        if field.startswith('_') or field in excluded_fields:
+            fields_to_remove.append(field)
+    for field in fields_to_remove:
+        obj.pop(field, None)
+    return obj
+
+EMPTY_VALUES = ["", [], {}]
+
+def diff_summary(old, new):
+    '''Return a summary of the diff'''
+    field_dict = {}
+    fields = set.union(set(old.keys()), set(new.keys()))
+    for field in fields:
+        old_field, new_field = old.get(field), new.get(field)
+        if old_field != new_field:
+            if old_field is None:
+                field_dict[field] = 'added'
+            elif new_field is None:
+                field_dict[field] = 'removed'
+            elif old_field in EMPTY_VALUES:
+                field_dict[field] = 'added'
+            elif new_field in EMPTY_VALUES:
+                field_dict[field] = 'removed'
+            else:
+                field_dict[field] = 'updated'
+    return field_dict

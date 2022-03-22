@@ -19,6 +19,9 @@
       <template #selected_buttons>
         <CButton color="info" @click="modal_show(selected, 'apply')">Retro apply</CButton>
       </template>
+      <template #details_side="row">
+        <AuditLogs collection="snooze" :object="row.item" />
+      </template>
     </List>
 
     <CModal
@@ -54,12 +57,14 @@
 import moment from 'moment'
 import dig from 'object-dig'
 
+import AuditLogs from '@/components/AuditLogs.vue'
 import List from '@/components/List.vue'
 
 import { API } from '@/api'
 
 export default {
   components: {
+    AuditLogs,
     List,
   },
   data () {

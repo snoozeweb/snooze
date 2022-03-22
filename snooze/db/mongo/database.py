@@ -68,6 +68,29 @@ class BackendDB(Database):
         }]
         return self.run_pipeline(collection, pipeline)
 
+    def cleanup_audit_logs(self, interval):
+        '''Cleanup audit logs of deleted objects'''
+        log.info('Running audit log cleanup')
+        now = datetime.datetime.now().astimezone().timestamp()
+        date_threshold = now - interval
+        log.debug("Threshold date: %s", datetime.datetime.fromtimestamp(date_threshold).astimezone())
+        pipeline = [
+            # Sort by most recent
+            {'$sort': {'timestamp': -1}},
+            # Get the last action for each object
+            {'$group': {'_id': '$object_id', 'action': {'$first': '$action'}, 'date_epoch': {'$first': '$date_epoch'}}},
+        ]
+        ids = [
+            o['_id']
+            for o in self.db['audit'].aggregate(pipeline)
+            if o.get('action') == 'deleted' \
+            and o.get('date_epoch', 0) < date_threshold
+        ]
+        log.info("Found audit logs to remove for %d objects", len(ids))
+        if ids:
+            log.debug("Removing audit logs for %d objects", len(ids))
+            self.db['audit'].delete_many({'object_id': {'$in': ids}})
+
     def run_pipeline(self, collection, pipeline):
         aggregate_results = self.db[collection].aggregate(pipeline)
         ids = list(map(lambda doc: doc['_id'], aggregate_results))
@@ -98,6 +121,7 @@ class BackendDB(Database):
         for o in tobj:
             o.pop('_id', None)
             primary_result = None
+            old = {}
             if update_time:
                 o['date_epoch'] = datetime.datetime.now().timestamp()
             if primary and all(dig(o, *p.split('.')) for p in primary):
@@ -113,11 +137,16 @@ class BackendDB(Database):
                 result = self.db[collection].find_one({'uid': o['uid']})
                 if result:
                     log.debug("UID {} found".format(o['uid']))
+                    old = result
                     if primary_result and primary_result['uid'] != o['uid']:
-                        log.error("Found another document with same primary {}: {}. Since UID is different, cannot update".format(primary, primary_result))
+                        error_message = f"Found another document with same primary {primary}: {primary_result}. Since UID is different, cannot update"
+                        log.error(error_message)
+                        o['error'] = error_message
                         rejected.append(o)
                     elif constant and any(result.get(c, '') != o.get(c) for c in constant):
-                        log.error("Found a document with existing uid {} but different constant values: {}. Since UID is different, cannot update".format(o['uid'], constant))
+                        error_message = f"Found a document with existing uid {o['uid']} but different constant values: {constant}. Since UID is different, cannot update"
+                        log.error(error_message)
+                        o['error'] = error_message
                         rejected.append(o)
                     elif duplicate_policy == 'replace':
                         log.debug("In {}, replacing {}".format(collection, o['uid']))
@@ -128,18 +157,25 @@ class BackendDB(Database):
                         self.db[collection].update_one({'uid': o['uid']}, {'$set': o})
                         updated.append(o)
                 else:
-                    log.error("UID {} not found. Skipping...".format(o['uid']))
+                    error_message = f"UID {o['uid']} not found. Skipping..."
+                    log.error(error_message)
+                    o['error'] = error_message
                     rejected.append(o)
             elif primary:
                 if primary_result:
+                    old = primary_result
                     if constant and any(primary_result.get(c, '') != o.get(c) for c in constant):
-                        log.error("Found a document with existing primary {} but different constant values: {}. Since UID is different, cannot update".format(primary, constant))
+                        error_message = f"Found a document with existing primary {primary} but different constant values: {constant}. Since UID is different, cannot update"
+                        log.error(error_message)
+                        o['error'] = error_message
                         rejected.append(o)
                     else:
                         log.debug('Evaluating duplicate policy: {}'.format(duplicate_policy))
                         if duplicate_policy == 'insert':
                             add_obj = True
                         elif duplicate_policy == 'reject':
+                            error_message = "Another object exist with the same {primary}"
+                            o['error'] = error_message
                             rejected.append(o)
                         elif duplicate_policy == 'replace':
                             log.debug("In {}, replacing {}".format(collection, primary_result.get('uid', '')))
@@ -159,9 +195,10 @@ class BackendDB(Database):
             if add_obj:
                 obj_copy.append(o)
                 obj_copy[-1]['uid'] = str(uuid.uuid4())
-                added.append(o['uid'])
+                added.append(o)
                 add_obj = False
                 log.debug("In {}, inserting {}".format(collection, o.get('uid', '')))
+            o['_old'] = old
         if len(obj_copy) > 0:
             self.db[collection].insert_many(obj_copy)
         return {'data': {'added': added, 'updated': updated, 'replaced': replaced, 'rejected': rejected}}

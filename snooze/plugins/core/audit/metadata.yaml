@@ -1,0 +1,4 @@
+---
+name: 'Audit'
+desc: 'An endpoint to store auditing logs'
+check_permissions: true

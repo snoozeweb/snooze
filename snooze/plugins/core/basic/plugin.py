@@ -91,7 +91,8 @@ class Plugin:
                 'primary': self.metadata_file.get('primary', None),
                 'widgets': self.metadata_file.get('widgets', {}),
                 'action_form': self.metadata_file.get('action_form', {}),
-                'routes': routes
+                'routes': routes,
+                'audit': self.metadata_file.get('audit', True),
             }
         else:
             self.metadata = self.metadata_file
