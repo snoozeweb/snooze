@@ -1,30 +1,16 @@
 # vim:sw=2:ts=2:sts=2:et:
 ---
-name: Release
+name: Build
 
 'on':
   push:
-    tags:
-      - v*
+    branches:
+      - 'release*'
 
 jobs:
 
-  python_tests:
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checking out git repository
-        uses: actions/checkout@v2
-
-      - name: Setup python environment
-        uses: ./.github/actions/python-poetry
-        with: {poetry_options: '--default --with test'}
-
-      - name: Running Pytest
-        run: poetry run pytest
-
   github_release:
     runs-on: ubuntu-latest
-    needs: [python_tests]
     steps:
       - name: checkout
         uses: actions/checkout@v2
@@ -33,18 +19,9 @@ jobs:
         uses: ./.github/actions/python-poetry
         with: {poetry_options: '--only build'}
 
-      - name: Running Pytest
+      - name: Computing changelog
         run: poetry run invoke changelog --github-output
         id: changelog
-
-      - name: Update release with changelog
-        id: update
-        uses: ncipollo/release-action@v1
-        with:
-          name: "${{ steps.version.outputs.VERSION }}"
-          token: "${{ secrets.GITHUB_TOKEN }}"
-          tag: "${{ github.ref }}"
-          body: "${{ steps.changelog.outputs.CHANGELOG }}"
 
   pypi:
     runs-on: ubuntu-latest
@@ -66,22 +43,6 @@ jobs:
         with:
           name: pip
           path: "${{ steps.build.outputs.PATH }}"
-
-
-      - name: Upload to github release
-        uses: svenstaro/upload-release-action@v2
-        with:
-          repo_token: "${{ secrets.GITHUB_TOKEN }}"
-          file: "${{ steps.build.outputs.PATH }}"
-          asset_name: "${{ steps.build.outputs.ASSET_NAME }}"
-          tag: "${{ github.ref }}"
-          overwrite: true
-
-      - name: Upload package to pypi
-        env:
-          POETRY_HTTP_BASIC_PYPI_USERNAME: "${{ secrets.TWINE_USERNAME }}"
-          POETRY_HTTP_BASIC_PYPI_PASSWORD: "${{ secrets.TWINE_PASSWORD }}"
-        run: poetry publish
 
   web:
     runs-on: ubuntu-latest
@@ -110,15 +71,6 @@ jobs:
         with:
           name: web
           path: "${{ steps.build.outputs.PATH }}"
-
-      - name: Upload to github release
-        uses: svenstaro/upload-release-action@v2
-        with:
-          repo_token: "${{ secrets.GITHUB_TOKEN }}"
-          file: "${{ steps.build.outputs.PATH }}"
-          asset_name: "${{ steps.build.outputs.ASSET_NAME }}"
-          tag: "${{ github.ref }}"
-          overwrite: true
 
   rpm:
     runs-on: ubuntu-latest
@@ -152,15 +104,6 @@ jobs:
           name: rpm
           path: "${{ steps.build.outputs.PATH }}"
 
-      - name: Upload to github
-        uses: svenstaro/upload-release-action@v2
-        with:
-          repo_token: "${{ secrets.GITHUB_TOKEN }}"
-          file: "${{ steps.build.outputs.PATH }}"
-          asset_name: "${{ steps.build.outputs.ASSET_NAME }}"
-          tag: "${{ github.ref }}"
-          overwrite: true
-
   deb:
     runs-on: ubuntu-latest
     needs: [pypi, web]
@@ -189,15 +132,6 @@ jobs:
         with:
           name: deb
           path: "${{ steps.build.outputs.PATH }}"
-
-      - name: Upload to github
-        uses: svenstaro/upload-release-action@v2
-        with:
-          repo_token: "${{ secrets.GITHUB_TOKEN }}"
-          file: "${{ steps.build.outputs.PATH }}"
-          asset_name: "${{ steps.build.outputs.ASSET_NAME }}"
-          tag: "${{ github.ref }}"
-          overwrite: true
 
   docker:
     needs: [pypi, web]
@@ -233,9 +167,3 @@ jobs:
         with:
           name: docker
           path: "${{ steps.build.outputs.PATH }}"
-
-      - name: Push docker image
-        run: poetry run invoke docker.push
-        env:
-          INVOKE_DOCKER_PUSH_USERNAME: "${{ secrets.DOCKER_USERNAME }}"
-          INVOKE_DOCKER_PUSH_PASSWORD: "${{ secrets.DOCKER_PASSWORD }}"

@@ -1,0 +1,10 @@
+#!/bin/bash
+if   [ "configure" = "$1" ] && [ "." = ".$2" ]; then  shift ; set -- "1" "$@"
+elif [ "configure" = "$1" ] && [ "." != ".$2" ]; then shift ; set -- "2" "$@"
+fi
+
+chown -R snooze:snooze /usr/lib/systemd/system/snooze-server.service
+chown -R snooze:snooze /opt/snooze
+chown -R snooze:snooze /etc/snooze
+chown -R snooze:snooze /var/lib/snooze
+chown -R snooze:snooze /var/log/snooze

@@ -1,0 +1,41 @@
+# vim:set ts=2 sw=2 sts=2 et:
+---
+name: 'python-poetry'
+description: Install Python, Poetry and run Poetry install command.
+branding:
+  icon: arrow-down
+  color: green
+inputs:
+  poetry_options:
+    description: A string to pass options to `poetry install`
+    required: false
+    default: '--default'
+  python_version:
+    description: The python version to install
+    required: false
+    default: '3.6'
+runs:
+  using: composite
+  steps:
+    - name: Installing Python
+      uses: actions/setup-python@v2
+      with: {python-version: "${{ inputs.python_version }}"}
+
+    - name: Installing Poetry
+      run: |
+        python -m pip install 'poetry>=1.2.0a2'
+        poetry --version
+      shell: bash
+
+    - name: Cache Poetry
+      uses: actions/cache@v2
+      with:
+        path: ~/.cache/pypoetry/virtualenvs
+        key: "Poetry-${{ runner.os }}-${{ hashFiles('**/poetry.lock') }}"
+        restore-keys: |
+          Poetry-${{ runner.os }}-
+          Poetry-
+
+    - name: Installing dependencies
+      run: "poetry install ${{ inputs.poetry_options }}"
+      shell: bash
