@@ -71,27 +71,27 @@ class Route(FalconRoute):
         media = req.media.copy()
         if not isinstance(media, list):
             media = [media]
+        for req_media in media:
+            queries = req_media.get('qls', [])
+            req_media['snooze_user'] = {'name': req.context['user']['user']['name'], 'method': req.context['user']['user']['method']}
+
+            # Validation
+            self._validate(req_media, req, resp)
+
+            for query in queries:
+                try:
+                    parsed_query = parser(query['ql'])
+                    log.debug("Parsed query: {} -> {}".format(query['ql'], parsed_query))
+                    req_media[query['field']] = parsed_query
+                except Exception as e:
+                    log.exception(e)
+                    continue
         try:
-            for req_media in media:
-                queries = req_media.get('qls', [])
-                req_media['snooze_user'] = {'name': req.context['user']['user']['name'], 'method': req.context['user']['user']['method']}
-
-                # Validation
-                self._validate(req_media, req, resp)
-
-                for query in queries:
-                    try:
-                        parsed_query = parser(query['ql'])
-                        log.debug("Parsed query: {} -> {}".format(query['ql'], parsed_query))
-                        req_media[query['field']] = parsed_query
-                    except Exception as e:
-                        log.exception(e)
-                        continue
-                result = self.insert(self.plugin.name, media)
-                resp.media = result
-                self.plugin.reload_data(True)
-                resp.status = falcon.HTTP_201
-                self._audit(result, req)
+            result = self.insert(self.plugin.name, media)
+            resp.media = result
+            self.plugin.reload_data(True)
+            resp.status = falcon.HTTP_201
+            self._audit(result, req)
         except ValidationError:
             return
         except Exception as e:
@@ -174,7 +174,6 @@ class Route(FalconRoute):
             for action, objs in results.get('data', {}).items():
                 for obj in objs:
                     try:
-                        log.debug("Action %s: %s", action, obj)
                         error = obj.pop('error', None)
                         traceback = obj.pop('traceback', None)
                         old = sanitize(obj.pop('_old', {}))

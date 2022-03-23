@@ -438,6 +438,6 @@ class BackendDB(Database):
             uri += '/snooze'
             options = [op for op in ['authSource', 'replicaSet', 'tls', 'tlsCAFile'] if op in self.conf]
             if options:
-                uri += '?' + '&'.join(list(map(lambda x: x + '=' + str(self.conf.get(x)), options)))
+                uri += '?' + '&'.join(list(map(lambda x: x + '=' + (str(self.conf.get(x, '')) if not isinstance(self.conf.get(x), bool) else str(self.conf.get(x)).lower()), options)))
             return uri
 

@@ -3,6 +3,7 @@ name: 'Comment'
 desc: 'An endpoint to store user comments'
 check_permissions: True
 class: CommentRoute
+audit: false
 provides:
     - can_comment
 routes:
