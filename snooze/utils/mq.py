@@ -99,23 +99,23 @@ class Worker(ConsumerMixin):
         self.to_ack = []
         self.wait_time = 0
         self.end = False
+        self.can_process = False
 
     def get_consumers(self, Consumer, channel):
         self.consumer = Consumer(queues=[self.thread.queue], accept=['json'], callbacks=[self.add_msg])
         return [self.consumer]
 
     def add_msg(self, body, message):
-        log.debug('Got task: %s', body)
         if (body, message) not in self.to_ack:
             self.to_ack.append((body, message))
         self.try_process()
 
     def try_process(self):
-        time.sleep(1)
-        if self.wait_time >= self.thread.timer:
+        if self.can_process and len(self.to_ack) > 0:
             if self.msg_count() == 0 or len(self.to_ack) >= self.thread.maxsize:
                 self.process()
                 self.wait_time = 0
+                self.can_process = False
                 if self.end:
                     try:
                         name = self.thread.queue.name
@@ -132,21 +132,26 @@ class Worker(ConsumerMixin):
         self.to_ack = []
 
     def on_iteration(self):
-        while self.wait_time < self.thread.timer:
+        while not self.can_process:
             if not self.thread.main.is_alive():
                 self.should_stop = True
                 break
             total = self.msg_count() + len(self.to_ack)
             if total > 0:
                 if total >= self.thread.maxsize:
-                    time.sleep(random()*(3%self.thread.timer))
-                    new_total = self.msg_count() + len(self.to_ack)
-                    if total == new_total or new_total >= self.thread.maxsize:
-                        self.wait_time = self.thread.timer
-                        break
-                self.wait_time += 1
+                    self.wait_time = self.thread.timer
+                else:
+                    self.wait_time += 1
             else:
                 self.wait_time = 0
+            if self.wait_time >= self.thread.timer:
+                time.sleep(random()*5)
+                new_total = self.msg_count() + len(self.to_ack)
+                if total == new_total or new_total >= self.thread.maxsize:
+                    self.can_process = True
+                    break
+                else:
+                    self.wait_time = 0
             time.sleep(1)
         else:
             self.try_process()
