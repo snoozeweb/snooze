@@ -21,6 +21,27 @@ class TestAudit:
         assert audits[0]['action'] == 'added'
         assert audits[0]['snapshot'].items() >= rule.items()
 
+    def test_create_multiple(self, client):
+        rules = [
+            {'name': 'rule01', 'condition': ['=', 'a', 'x'], 'modifications': [['SET', 'x', 1]]},
+            {'name': 'rule02', 'condition': ['=', 'b', 'y'], 'modifications': [['SET', 'x', 2]]},
+        ]
+        added = client.simulate_post('/api/rule', json=rules).json['data']['added']
+        assert len(added) == 2
+
+        audits = client.simulate_get('/api/audit').json['data']
+        assert len(audits) == 2
+
+        assert audits[0]['collection'] == 'rule'
+        assert audits[0]['object_id'] == added[0]['uid']
+        assert audits[0]['action'] == 'added'
+        assert audits[0]['snapshot'].items() >= rules[0].items()
+
+        assert audits[1]['collection'] == 'rule'
+        assert audits[1]['object_id'] == added[1]['uid']
+        assert audits[1]['action'] == 'added'
+        assert audits[1]['snapshot'].items() >= rules[1].items()
+
     def test_update(self, client):
         rule = {'name': 'rule01', 'condition': ['=', 'a', 'x'], 'modifications': [['SET', 'x', 1]]}
         added = client.simulate_post('/api/rule', json=rule).json['data']['added']
