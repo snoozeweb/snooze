@@ -147,7 +147,6 @@ class ActionObject():
             if hashes[record['hash']]['delay'] > 0:
                 hashes[record['hash']]['delay'] = hashes[record['hash']]['every']
         self.update_stats(succeeded, len(succeeded))
-        self.update_stats(failed, len(failed))
         return succeeded, failed
 
     def send_one(self, loop, action_obj):
@@ -177,27 +176,31 @@ class ActionObject():
             else:
                 action_obj['total'] -= 1
                 action_obj['delay'] = action_obj['every']
-        self.update_stats(success, loop)
+        if success:
+            self.update_stats(True, loop)
         return success
 
     def delay(self, action_obj):
         record = action_obj['record']
         if action_obj['total'] == 0 or action_obj['retry'] < 0:
             self.plugin.thread.cleanup(record['hash'], self.uid)
+            if action_obj['retry'] < 0:
+                self.update_stats(False)
             return
         action_obj['action'] = self
         action_obj['time'] = time.time() + action_obj['delay']
         self.plugin.thread.set_delayed(action_obj)
         log.debug("Action `{}` will be sent in {}s ({} retrie(s) left)".format(self.name, action_obj['delay'], action_obj['retry']))
 
-    def update_stats(self, success, amount):
-        try:
-            if success:
-                self.core.stats.inc('action_sent', {'name': self.name}, amount)
-            else:
-                self.core.stats.inc('action_error', {'name': self.name}, amount)
-        except Exception as e:
-            log.exception(e)
+    def update_stats(self, success, amount = 1):
+        if amount > 0:
+            try:
+                if success:
+                    self.core.stats.inc('action_success', {'name': self.name}, amount)
+                else:
+                    self.core.stats.inc('action_error', {'name': self.name}, amount)
+            except Exception as e:
+                log.exception(e)
 
     def __str__(self):
         return self.name

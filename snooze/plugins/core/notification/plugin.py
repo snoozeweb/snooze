@@ -99,6 +99,7 @@ class NotificationObject():
             retry = self.get_default(record, 'notification_retry', 3)
             freq = self.get_default(record, 'notification_freq', 60)
             action_obj = {'record': record, 'delay': self.delay, 'every': self.every, 'total': self.total, 'retry': retry, 'freq': freq}
+            self.core.stats.inc('notification_sent', {'name': self.name})
             for action_plugin in self.action_plugins:
                 action_plugin.send(action_obj)
         else:
