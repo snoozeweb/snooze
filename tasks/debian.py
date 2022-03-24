@@ -31,6 +31,8 @@ def build(ctx, cleanup=True, github_output=False):
     ctx.run(f"find '{venv}/lib' -type f -name '*.so' -exec strip {{}} +")
     ctx.run(f"find '{venv}' -name '*.py' -exec sed -i 's+^#\\!/.*$+#!/opt/snooze/bin/python3 -s+g' {{}} +")
     ctx.run(f"find '{venv}/bin' -maxdepth 1 -type f -exec sed -i 's+^#\\!/.*$+#!/opt/snooze/bin/python3 -s+g' {{}} +")
+    ctx.run(f"find '{buildroot}' -name 'RECORD' -exec rm -rf {{}} +")
+    ctx.run(f"find '{venv}/lib' -type f -name '*.so' -exec strip {{}} +")
 
     ctx.run(f"cp -r debian/* {debian}")
     ctx.run(f"sed -i 's/__VERSION__/{ver_rel}/' {debian}/control")

@@ -1,6 +1,6 @@
 <template>
   <div>
-    <Datepicker
+    <VueDatePicker
       v-model="datavalue"
       :placeholder="placeholder"
       :inputClassName="datavalue != null ? 'form-control is-valid' : 'form-control is-invalid'"
@@ -17,15 +17,15 @@
 
 import Base from './Base.vue'
 import { getStyle } from '@coreui/utils/src'
-import Datepicker from 'vue3-date-time-picker';
-import 'vue3-date-time-picker/dist/main.css';
+import VueDatePicker from '@vuepic/vue-datepicker';
+import '@vuepic/vue-datepicker/src/VueDatePicker/style/main.scss';
 import moment from 'moment'
 
 var output_format = "HH:mm:ssZ"
 
 export default {
   extends: Base,
-  components: { Datepicker },
+  components: { VueDatePicker },
   emits: ['update:modelValue'],
   props: {
     modelValue: {type: Object, default: () => Object.assign({}, {from: moment().format(output_format), until: moment().add(1, 'hours').format(output_format)})},

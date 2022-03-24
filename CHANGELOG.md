@@ -14,6 +14,8 @@
 * Web: Sunday was numbered as 7 instead of 6
 * Web: Trim tags
 * Web: Time related filters correctly updated on refresh
+* Web: Fixed datetime on keyboard input
+* Web: Fixed modals bouncing unexpectedly
 * Core: (!=) Condition will not assume the field exists
 * Core: Properly delete discarded logs
 * Core: Fixed a concurrency issue when reloading plugins

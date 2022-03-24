@@ -1,6 +1,6 @@
 <template>
   <div>
-    <Datepicker
+    <VueDatePicker
       v-model="datavalue"
       format="yyyy-MM-dd HH:mm"
       previewFormat="yyyy-MM-dd HH:mm"
@@ -19,8 +19,8 @@
 
 import Base from './Base.vue'
 import { getStyle } from '@coreui/utils/src'
-import Datepicker from 'vue3-date-time-picker';
-import 'vue3-date-time-picker/dist/main.css';
+import VueDatePicker from '@vuepic/vue-datepicker';
+import '@vuepic/vue-datepicker/src/VueDatePicker/style/main.scss';
 import moment from 'moment'
 
 
@@ -28,7 +28,7 @@ export default {
   extends: Base,
   name: 'DateTime',
   components: {
-    Datepicker,
+    VueDatePicker,
   },
   emits: ['update:modelValue'],
   props: {

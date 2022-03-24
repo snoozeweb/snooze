@@ -69,6 +69,12 @@ cp %{sources}/core.yaml %{buildroot}/etc/snooze/server/
 find %{venv} -name "*.py" -exec sed -i "s+^#\!/.*$+#\!/opt/snooze/bin/python3 -s+g" {} +
 find %{venv}/bin -maxdepth 1 -type f -exec sed -i "s+^#\!/.*$+#\!/opt/snooze/bin/python3 -s+g" {} +
 
+# RECORD files are used by wheels for checksum. They contain path names which
+# match the buildroot and must be removed or the package will fail to build.
+find %{buildroot} -name "RECORD" -exec rm -rf {} \;
+# Strip native modules as they contain buildroot paths intheir debug information
+find %{venv}/lib -type f -name "*.so" | xargs -r strip
+
 %files
 %defattr(-,%{snooze_user},%{snooze_group},-)
 /etc/snooze
@@ -79,12 +85,6 @@ find %{venv}/bin -maxdepth 1 -type f -exec sed -i "s+^#\!/.*$+#\!/opt/snooze/bin
 /var/lib/snooze
 /var/log/snooze
 %config(noreplace) /etc/snooze/server/core.yaml
-
-# RECORD files are used by wheels for checksum. They contain path names which
-# match the buildroot and must be removed or the package will fail to build.
-#find %{buildroot} -name "RECORD" -exec rm -rf {} \;
-# Strip native modules as they contain buildroot paths intheir debug information
-#find %{venv_dir}/lib -type f -name "*.so" | xargs -r strip
 
 %build
 
