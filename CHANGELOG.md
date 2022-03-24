@@ -1,11 +1,13 @@
 ## v1.4.0
+
 ### New features
 * Web: Custom message for no alerts
 * Core: Supports batched actions
+* Core: Audit logs
 * Core: Supports time constraints over midnight
 * Core: Added daily backups
 * Core: Prevent alerts flapping
-
+* Env: Switched from pyenv to poetry
 ### Bug fixes
 * Web: Removed CoreUI Collapse component
 * Web: Resets current page number when changing tabs
@@ -16,6 +18,7 @@
 * Core: Properly delete discarded logs
 * Core: Fixed a concurrency issue when reloading plugins
 * Core: Fixed an issue with IN operator for TinyDB
+* Core: Prevent rejecting all PUT and POST data if only one is failing
 
 ## v1.3.0
 
@@ -70,6 +73,7 @@
 * Core: Receiving multiple OK for the same alert now processes the first one only
 
 ## v1.1.1
+
 ### Bug fixes
 * Core: Forced Pymongo < 4.0
 

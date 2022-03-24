@@ -71,12 +71,18 @@ class Route(FalconRoute):
         media = req.media.copy()
         if not isinstance(media, list):
             media = [media]
+        rejected = []
+        validated = []
         for req_media in media:
             queries = req_media.get('qls', [])
             req_media['snooze_user'] = {'name': req.context['user']['user']['name'], 'method': req.context['user']['user']['method']}
 
             # Validation
-            self._validate(req_media, req, resp)
+            try:
+                self._validate(req_media, req, resp)
+            except ValidationError:
+                rejected.append(req_media)
+                continue
 
             for query in queries:
                 try:
@@ -85,40 +91,46 @@ class Route(FalconRoute):
                     req_media[query['field']] = parsed_query
                 except Exception as e:
                     log.exception(e)
+                    rejected.append(req_media)
                     continue
+            validated.append(req_media)
         try:
-            result = self.insert(self.plugin.name, media)
+            result = self.insert(self.plugin.name, validated)
+            result['data']['rejected'] += rejected
             resp.media = result
             self.plugin.reload_data(True)
             resp.status = falcon.HTTP_201
             self._audit(result, req)
-        except ValidationError:
-            return
         except Exception as e:
             log.exception(e)
             resp.media = []
             resp.status = falcon.HTTP_503
-            pass
 
     @authorize
     def on_put(self, req, resp):
         if self.inject_payload:
             self.inject_payload_media(req, resp)
         resp.content_type = falcon.MEDIA_JSON
+        log.debug("Trying to update {}".format(req.media))
+        media = req.media.copy()
+        if not isinstance(media, list):
+            media = [media]
+        rejected = []
+        validated = []
+        for req_media in media:
+            try:
+                self._validate(req_media, req, resp)
+            except ValidationError:
+                rejected.append(req_media)
+                continue
+            validated.append(req_media)
         try:
-            log.debug("Trying to update {}".format(req.media))
-            media = req.media.copy()
-            if not isinstance(media, list):
-                media = [media]
-            for obj in media:
-                self._validate(obj, req, resp)
-            result = self.update(self.plugin.name, media)
+            result = self.update(self.plugin.name, validated)
+            result['data']['rejected'] += rejected
             resp.media = result
             self.plugin.reload_data(True)
             resp.status = falcon.HTTP_201
             self._audit(result, req)
-        except ValidationError:
-            return
         except Exception as err:
             log.exception(err)
             resp.media = []
@@ -161,10 +173,7 @@ class Route(FalconRoute):
             rejected['error'] = f"Error during validation: {err}"
             rejected['traceback'] = traceback.format_exception(*sys.exc_info())
             results = {'data': {'rejected': [rejected]}}
-            self._audit(results, req)
             log.exception(err)
-            resp.media = results
-            resp.status = falcon.HTTP_503
             raise ValidationError("Invalid object")
 
     def _audit(self, results, req):
