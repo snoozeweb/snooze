@@ -4,7 +4,7 @@
       <CCardHeader class="p-2">
         <CNav variant="pills" role="tablist" card>
           <CNavItem>
-            <CNavLink active>Cluster</CNavLink>
+            <CNavLink active>Status</CNavLink>
           </CNavItem>
           <CNavItem class="ms-auto" link-classes="py-0 pe-0">
             <CButtonToolbar role="group" key-nav>
@@ -69,7 +69,7 @@ export default {
   },
   methods: {
     refresh(feedback = false) {
-      this.feedback_message = 'Getting cluster infos...'
+      this.feedback_message = 'Getting infos...'
       this.get_data('cluster', null, {}, this.callback, feedback)
     },
     callback(response, feedback) {
@@ -92,8 +92,9 @@ export default {
       capitalizeFirstLetter: capitalizeFirstLetter,
       feedback_message: '',
       fields: [
-        {key: 'host', size: 'w-50'},
+        {key: 'host', size: 'w-25'},
         {key: 'port', size: 'w-25'},
+        {key: 'version', size: 'w-25'},
         {key: 'healthy', label: 'Status', size: 'w-25'}
       ],
       items: [],

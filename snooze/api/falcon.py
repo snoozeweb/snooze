@@ -284,19 +284,15 @@ class ClusterRoute(BasicRoute):
 
     def on_get(self, req, resp):
         log.debug("Listing cluster members")
-        if self.api.core.cluster.enabled:
-            if req.params.get('self', False):
-                members = self.api.core.cluster.get_self()
-            else:
-                members = self.api.core.cluster.get_members()
-            resp.content_type = falcon.MEDIA_JSON
-            resp.status = falcon.HTTP_200
-            resp.media = {
-                'data': members,
-            }
+        if req.params.get('self', False):
+            members = self.api.core.cluster.get_self()
         else:
-            resp.text = 'Clustering had been disabled'
-            resp.status = falcon.HTTP_200
+            members = self.api.core.cluster.get_members()
+        resp.content_type = falcon.MEDIA_JSON
+        resp.status = falcon.HTTP_200
+        resp.media = {
+            'data': members,
+        }
 
 class CORS(object):
     def __init__(self):

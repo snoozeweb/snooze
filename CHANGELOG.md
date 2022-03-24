@@ -2,6 +2,7 @@
 
 ### New features
 * Web: Custom message for no alerts
+* Web: Show current version in Status
 * Core: Supports batched actions
 * Core: Audit logs
 * Core: Supports time constraints over midnight
