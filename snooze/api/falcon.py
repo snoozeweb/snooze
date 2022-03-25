@@ -14,6 +14,7 @@ import bson.json_util
 import ssl
 import falcon
 from falcon_auth import FalconAuthMiddleware, BasicAuthBackend, JWTAuthBackend
+from falcon.errors import HTTPInternalServerError
 import requests
 import functools
 from wsgiref.simple_server import make_server, WSGIServer
@@ -617,6 +618,7 @@ class BackendApi():
         )
         self.handler.req_options.media_handlers.update({'application/json': json_handler})
         self.handler.resp_options.media_handlers.update({'application/json': json_handler})
+        self.handler.add_error_handler(Exception, self.custom_handle_uncaught_exception)
         self.auth_routes = {}
         # Alert route
         self.add_route('/alert', AlertRoute(self))
@@ -647,6 +649,10 @@ class BackendApi():
             self.add_route('/', RedirectRoute(), '')
             self.add_route('/web', RedirectRoute(), '')
             self.handler.add_sink(StaticRoute(web_conf.get('path', '/opt/snooze/web'), '/web').on_get, '/web')
+
+    def custom_handle_uncaught_exception(self, e, req, resp, params):
+        log.exception(e)
+        self.handler._compose_error_response(req, resp, HTTPInternalServerError())
 
     def add_route(self, route, action, prefix = '/api'):
         self.handler.add_route(prefix + route, action)
