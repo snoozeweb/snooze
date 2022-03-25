@@ -31,6 +31,7 @@ Source0: snooze-web-%{web_version}.tar.gz
 Source1: snooze_server-%{python_version}-py3-none-any.whl
 Source2: snooze-server.service
 Source3: core.yaml
+Source4: logging.yaml
 
 %description
 Snooze server
@@ -65,6 +66,7 @@ cp -r snooze-web/* %{venv}/web
 # Default config
 mkdir -p %{buildroot}/etc/snooze/server
 cp %{sources}/core.yaml %{buildroot}/etc/snooze/server/
+cp %{sources}/logging.yaml %{buildroot}/etc/snooze/server/
 
 find %{venv} -name "*.py" -exec sed -i "s+^#\!/.*$+#\!/opt/snooze/bin/python3 -s+g" {} +
 find %{venv}/bin -maxdepth 1 -type f -exec sed -i "s+^#\!/.*$+#\!/opt/snooze/bin/python3 -s+g" {} +
@@ -85,6 +87,7 @@ find %{venv}/lib -type f -name "*.so" | xargs -r strip
 /var/lib/snooze
 /var/log/snooze
 %config(noreplace) /etc/snooze/server/core.yaml
+%config(noreplace) /etc/snooze/server/logging.yaml
 
 %build
 
@@ -96,3 +99,4 @@ id -g %{snooze_group} &>/dev/null || snooze_groupadd %{snooze_group}
 chown -R %{snooze_user}:%{snooze_group} /usr/lib/systemd/system/snooze-server.service
 chown -R %{snooze_user}:%{snooze_group} /opt/snooze/web
 chown -R %{snooze_user}:%{snooze_group} /etc/snooze/server/core.yaml
+chown -R %{snooze_user}:%{snooze_group} /etc/snooze/server/logging.yaml

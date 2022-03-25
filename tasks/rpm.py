@@ -25,6 +25,7 @@ def build(ctx, force=False, github_output=False):
         ctx.run(f"cp -r dist/* {tmpdir}/SOURCES/")
         ctx.run(f"cp snooze-server.service {tmpdir}/SOURCES/")
         ctx.run(f"cp snooze/defaults/core.yaml {tmpdir}/SOURCES/")
+        ctx.run(f"cp snooze/defaults/logging_file.yaml {tmpdir}/SOURCES/logging.yaml")
         ctx.run(f"rpmbuild --define '_topdir {tmpdir}' --ba snooze-server-local.spec -vv --debug")
         ctx.run(f"cp -r {tmpdir}/RPMS/ dist/")
     if github_output:
