@@ -120,6 +120,7 @@ class BackendDB(Database):
                 constant = constant.split(',')
         for o in tobj:
             o.pop('_id', None)
+            o.pop('_old', None)
             primary_result = None
             old = {}
             if update_time:
@@ -198,7 +199,8 @@ class BackendDB(Database):
                 added.append(o)
                 add_obj = False
                 log.debug("In {}, inserting {}".format(collection, o.get('uid', '')))
-            o['_old'] = old
+            if old:
+                o['_old'] = old
         if len(obj_copy) > 0:
             self.db[collection].insert_many(obj_copy)
         return {'data': {'added': added, 'updated': updated, 'replaced': replaced, 'rejected': rejected}}

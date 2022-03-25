@@ -151,6 +151,7 @@ class BackendDB(Database):
         for o in tobj:
             primary_docs = None
             old = {}
+            o.pop('_old', None)
             if update_time:
                 o['date_epoch'] = datetime.now().timestamp()
             if primary and all(dig(o, *p.split('.')) for p in primary):
@@ -231,7 +232,8 @@ class BackendDB(Database):
                 added.append(o)
                 add_obj = False
                 log.debug("In {}, inserting {}".format(collection, o.get('uid', '')))
-            o['_old'] = old
+            if old:
+                o['_old'] = old
         if len(obj_copy) > 0:
             table.insert_multiple(obj_copy)
         mutex.release()

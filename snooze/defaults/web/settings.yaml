@@ -152,3 +152,10 @@ form:
             options:
                 negative_label: 'No cleanup'
             default_value: 259200
+        cleanup_audit:
+            display_name: Cleanup expired audit logs
+            component: Duration
+            description: 'Cleanup expired audit logs that are X seconds old (job executed once at 00:00AM). <=0 for no cleanup'
+            options:
+                negative_label: 'No cleanup'
+            default_value: 2419200
