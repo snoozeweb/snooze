@@ -5,14 +5,17 @@
 # SPDX-License-Identifier: AFL-3.0
 #
 
-#!/usr/bin/python
+'''Falcon routes for the user plugin'''
+
 from logging import getLogger
-log = getLogger('snooze.api')
 
 from snooze.plugins.core.basic.falcon.route import Route
 from snooze.api.falcon import authorize
 
+log = getLogger('snooze.api')
+
 class UserRoute(Route):
+    '''Overriding the default route for better management of the password'''
     @authorize
     def on_post(self, req, resp):
         for req_media in req.media:

@@ -1,18 +1,30 @@
-#!/usr/bin/python
-from logging import getLogger
-log = getLogger('snooze.webhooks.prometheus')
+#
+# Copyright 2018-2020 Florian Dematraz <florian.dematraz@snoozeweb.net>
+# Copyright 2018-2020 Guillaume Ludinard <guillaume.ludi@gmail.com>
+# Copyright 2020-2021 Japannext Co., Ltd. <https://www.japannext.co.jp/>
+# SPDX-License-Identifier: AFL-3.0
+#
+
+'''Route for Prometheus webhook input plugin'''
 
 from copy import deepcopy
-from snooze.api.falcon import WebhookRoute
-from snooze.utils.functions import sanitize
+from logging import getLogger
+
 from bson.json_util import loads
 
+from snooze.api.falcon import WebhookRoute
+from snooze.utils.functions import sanitize
+
+log = getLogger('snooze.webhooks.prometheus')
+
 class PrometheusRoute(WebhookRoute):
+    '''A webhook to receive Prometheus Alert Manager notifications'''
     auth = {
         'auth_disabled': True
     }
 
     def parse(self, content, media):
+        '''Parse the data of the webhook to create an alert'''
         alert = {}
 
         content = sanitize(content)
@@ -43,13 +55,13 @@ class PrometheusRoute(WebhookRoute):
         for tag_k, tag_v in labels.items():
             try:
                 alert['tags'][tag_k] = sanitize(loads(tag_v))
-            except:
+            except Exception:
                 alert['tags'][tag_k] = tag_v
         alert['annotations'] = {}
         for a_k, a_v in annotations.items():
             try:
                 alert['annotations'][a_k] = sanitize(loads(a_v))
-            except:
+            except Exception:
                 alert['annotations'][a_k] = a_v
 
         return alert

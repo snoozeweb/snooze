@@ -22,10 +22,9 @@ class NoLogHandler(WSGIRequestHandler):
     '''Handler that doesn't log to stdout'''
     def log_message(self, *args):
         '''Overriding log to avoid stdout logs'''
-        pass
+
     def handle(self):
-        '''
-        Bug in socketserver. It doesn't catch exceptions.
+        '''Bug in socketserver. It doesn't catch exceptions.
         https://bugs.python.org/issue14574
         '''
         try:
@@ -36,6 +35,7 @@ class NoLogHandler(WSGIRequestHandler):
             log.warning(err)
 
 class WSGITCPServer(ThreadingMixIn, WSGIServer, Thread):
+    '''Multi threaded TCP server serving a WSGI application'''
     daemon_threads = True
 
     def __init__(self, conf, api, exit_button=None):

@@ -20,19 +20,20 @@ from snooze.core import Core
 from snooze.utils import config
 
 def setup_logging(conf):
+    '''Initialize the python logger'''
     logging_config = config('logging')
     if os.environ.get('SNOOZE_DEBUG', conf.get('debug', False)):
         try:
             logging_config['handlers']['console']['level'] = 'DEBUG'
-        except:
+        except KeyError:
             pass
         try:
             logging_config['handlers']['file']['level'] = 'DEBUG'
-        except:
+        except KeyError:
             pass
         try:
             logging_config['loggers']['snooze']['level'] = 'DEBUG'
-        except:
+        except KeyError:
             pass
     logging.config.dictConfig(logging_config)
     log = getLogger('snooze')
@@ -46,7 +47,10 @@ def exit_all(threads, exit_code=0):
             thread.stop()
     sys.exit(exit_code)
 
-def app(conf={}):
+def app(conf=None):
+    '''Used to initialize the application in Docker Heroku'''
+    if conf is None:
+        conf = {}
     conf.update(config())
     setup_logging(conf)
     core = Core(conf)
@@ -54,7 +58,10 @@ def app(conf={}):
     api = Api(core)
     return api.handler
 
-def main(conf={}):
+def main(conf=None):
+    '''Main thread when running snooze-server executable'''
+    if conf is None:
+        conf = {}
     conf.update(config())
     log = setup_logging(conf)
     core = Core(conf)

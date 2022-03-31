@@ -5,6 +5,11 @@
 # SPDX-License-Identifier: AFL-3.0
 #
 
+'''Module for managing modification objects.
+Modifications are used by the rule core plugin to modify records
+automatically based on a rule.
+'''
+
 import re
 from abc import abstractmethod
 from logging import getLogger
@@ -12,8 +17,6 @@ from logging import getLogger
 from jinja2 import Template
 
 log = getLogger('snooze.utils.modification')
-
-class ModificationException(Exception): pass
 
 class OperationNotSupported(Exception):
     '''Exception raised when the modification type doesn't exist'''
@@ -44,22 +47,25 @@ class Modification:
 
     @abstractmethod
     def modify(self, record):
-        pass
+        '''Called when the modification should be applied to a record'''
 
     def pprint(self):
+        '''Pretty print of the modification object'''
         return f"{self.__class__.__name__}({self.args})"
 
 class SetOperation(Modification):
+    '''Set a key to a given value'''
     def modify(self, record):
         key, value = resolve(record, self.args)
         try:
             return_code = bool(value and record.get(key) != value)
             record[key] = value
             return return_code
-        except:
+        except Exception:
             return False
 
 class DeleteOperation(Modification):
+    '''Delete a given key'''
     def modify(self, record):
         key, *_ = resolve(record, self.args)
         try:
@@ -69,6 +75,7 @@ class DeleteOperation(Modification):
             return False
 
 class ArrayAppendOperation(Modification):
+    '''Append an element to a key, if this key is an array/list'''
     def modify(self, record):
         key, value = resolve(record, self.args)
         array = record.get(key)
@@ -78,6 +85,7 @@ class ArrayAppendOperation(Modification):
         return False
 
 class ArrayDeleteOperation(Modification):
+    '''Delete an element from an array/list, by value'''
     def modify(self, record):
         key, value = resolve(record, self.args)
         try:
@@ -87,6 +95,8 @@ class ArrayDeleteOperation(Modification):
             return False
 
 class RegexParse(Modification):
+    '''Given a key and a regex with named capture groups, parse the
+    key's value, and merge the captured elements with the record'''
     def modify(self, record):
         try:
             key, regex = resolve(record, self.args)
@@ -103,6 +113,7 @@ class RegexParse(Modification):
             return False
 
 class RegexSub(Modification):
+    '''Apply a regex search and replace expression to a key's value'''
     def modify(self, record):
         key, out_key, regex, sub = resolve(record, self.args)
         try:
@@ -117,7 +128,7 @@ class RegexSub(Modification):
             return False
 
 class KvSet(Modification):
-    '''Match a key-value'''
+    '''Match the key's value with the corresponding value from the kv core plugin'''
     def __init__(self, args, core):
         super().__init__(args, core)
         self.dict, self.key, self.out_field = args
@@ -160,7 +171,7 @@ def get_modification(args, core=None):
         return OPERATIONS[operation](modification, core=core)
     except IndexError as err:
         raise Exception(f"Error with modification `{args}`") from err
-    except (KeyError, IndexError) as err:
+    except KeyError as err:
         raise OperationNotSupported(operation) from err
     except TypeError as err:
         raise ModificationInvalid(operation, args, err) from err

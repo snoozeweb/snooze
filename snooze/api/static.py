@@ -7,13 +7,11 @@
 
 '''A static file handler for the Vue web interface'''
 
-import falcon
-
-from pathlib import Path
 import os.path
 import mimetypes
-
 from logging import getLogger
+
+import falcon
 
 log = getLogger('snooze')
 
@@ -21,7 +19,7 @@ MAX_AGE = 24 * 3600
 
 class StaticRoute:
     '''Handler route for static files (for the web server)'''
-    def __init__(self, root, prefix = '', indexes = ['index.html']):
+    def __init__(self, root, prefix='', indexes=('index.html',)):
         self.prefix = prefix
         self.indexes = indexes
         self.root = root
@@ -48,14 +46,14 @@ class StaticRoute:
                 return
 
         # Type and encoding
-        content_type, encoding = mimetypes.guess_type(path)
+        content_type, _encoding = mimetypes.guess_type(path)
         if content_type is not None:
             res.content_type = content_type
 
         try:
-            with open(path, 'rb') as f:
-                res.cache_control = ["max-age={}".format(MAX_AGE)]
-                res.text = f.read()
+            with open(path, 'rb') as static_file:
+                res.cache_control = [f"max-age={MAX_AGE}"]
+                res.text = static_file.read()
         except FileNotFoundError as err:
             res.status = falcon.HTTP_404
 
@@ -65,5 +63,4 @@ class StaticRoute:
             index_file = os.path.join(path, index)
             if os.path.isfile(index_file):
                 return index_file
-        else:
-            return None
+        return None

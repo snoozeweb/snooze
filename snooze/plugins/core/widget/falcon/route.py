@@ -7,21 +7,21 @@
 
 '''Routes for widget'''
 
-import copy
-import falcon
-
 from logging import getLogger
-log = getLogger('snooze.widget')
+
+import falcon
 
 from snooze.api.falcon import authorize
 from snooze.plugins.core.basic.falcon.route import Route
 from snooze.api.base import BasicRoute
 
+log = getLogger('snooze.widget')
+
 class WidgetPluginRoute(BasicRoute):
     @authorize
-    def on_get(self, req, resp, widget=None):
+    def on_get(self, req, resp, plugin_name=None):
         log.debug("Listing widgets")
-        plugin_name = req.params.get('widget') or widget
+        plugin_name = req.params.get('widget') or plugin_name
         try:
             plugins = []
             loaded_plugins = self.api.core.plugins
@@ -31,17 +31,17 @@ class WidgetPluginRoute(BasicRoute):
                 plugin_metadata = plugin.get_metadata()
                 plugin_widgets = plugin_metadata.get('widgets', {})
                 for name, widget in plugin_widgets.items():
-                    log.debug("Retrieving widget {} from {}".format(name, plugin.name))
+                    log.debug("Retrieving widget %s from %s", name, plugin.name)
                     widget['widget_name'] = name
                     plugins.append(widget)
-            log.debug("List of widgets: {}".format(plugins))
+            log.debug("List of widgets: %s", plugins)
             resp.content_type = falcon.MEDIA_JSON
             resp.status = falcon.HTTP_200
             resp.media = {
                 'data': plugins,
             }
-        except Exception as e:
-            log.exception(e)
+        except Exception as err:
+            log.exception(err)
             resp.status = falcon.HTTP_503
 
 class WidgetRoute(Route):

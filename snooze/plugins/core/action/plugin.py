@@ -5,21 +5,23 @@
 # SPDX-License-Identifier: AFL-3.0
 #
 
-#!/usr/bin/python3.6
+'''The action plugin. Execute an async action (script or python code) upon being
+triggered by a notification. Actions can be batched or delayed.'''
 
 import threading
 import socket
 import time
-from snooze.utils import get_condition
+
+from logging import getLogger
+
+from snooze.plugins.core import Plugin
 from snooze.utils.functions import ensure_hash
 from snooze.utils.mq import Worker
 
-from logging import getLogger
 log = getLogger('snooze.action')
 
-from snooze.plugins.core import Plugin
-
 class Action(Plugin):
+    '''The action plugin. Spawn a background thread that will manage delayed and batched actions'''
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.hostname = socket.gethostname()
@@ -41,20 +43,22 @@ class Action(Plugin):
                     action_obj['record'] = {'hash': action_obj['record_hash']}
                     self.thread.set_delayed(action_obj, False)
                 else:
-                    log.debug("Delayed notification {} original notification in not in the database anymore. Removing it from queue".format(delayed_notif))
+                    log.debug("Delayed notification %s original notification in not in the database anymore. "
+                        "Removing it from queue", delayed_notif)
                     self.core.db.delete('action.delay', ['=', 'uid', action_uid])
-            log.debug("Restored delayed actions {}".format(self.thread.delayed))
+            log.debug("Restored delayed actions %s", self.thread.delayed)
 
     def reload_data(self, sync = False):
         super().reload_data()
         actions = []
-        for a in self.data or []:
-            action_object = ActionObject(a, self)
+        for action in self.data or []:
+            action_object = ActionObject(action, self)
             actions.append(action_object)
             if action_object.batch:
-                self.core.mq.update_queue("action_{}".format(action_object.uid), action_object.batch_timer, action_object.batch_maxsize, ActionWorker, action_object)
-            log.debug("Init action {}".format(action_object.name))
-        self.core.mq.keep_queues(["action_{}".format(a.uid) for a in actions], "action_")
+                self.core.mq.update_queue(f"action_{action_object.uid}",
+                    action_object.batch_timer, action_object.batch_maxsize, ActionWorker, action_object)
+            log.debug("Init action %s", action_object.name)
+        self.core.mq.keep_queues([f"action_{action.uid}" for action in actions], "action_")
         self.actions = actions
         notification_plugin = self.core.get_core_plugin('notification')
         if notification_plugin:
@@ -62,8 +66,8 @@ class Action(Plugin):
         if sync and self.core.cluster:
             self.core.cluster.reload_plugin(self.name)
 
-class ActionObject():
-
+class ActionObject:
+    '''Object representing an action in the database'''
     def __init__(self, action, plugin):
         self.action = action
         self.plugin = plugin
@@ -114,13 +118,13 @@ class ActionObject():
         if action_obj['delay'] <= 0 and action_obj['total'] != 0:
             if action_obj['every'] <= 0:
                 if action_obj['total'] < 0:
-                    log.warning("Action {} has probably misonfigured (spamming). Will send only once.".format(self.name))
+                    log.warning("Action %s has probably misonfigured (spamming). Will send only once.", self.name)
                     loop = 1
                 else:
                     loop = action_obj['total']
             else:
                 loop = 1
-            log.debug("{} Action(s) `{}` will be executed right now".format(loop, self.name))
+            log.debug("%s Action(s) `%s` will be executed right now", loop, self.name)
             self.send_one(loop, action_obj)
         if action_obj['total'] != 0:
             ensure_hash(record)
@@ -135,8 +139,8 @@ class ActionObject():
         records = [action_obj['record'] for action_obj in hashes.values()]
         try:
             succeeded, failed = self.action_plugin.send(records, self.content)
-        except Exception as e:
-            log.exception(e)
+        except Exception as err:
+            log.exception(err)
             succeeded, failed = [], records
         for record in failed:
             hashes[record['hash']]['retry'] -= 1
@@ -152,11 +156,11 @@ class ActionObject():
     def send_one(self, loop, action_obj):
         record = action_obj['record']
         success = True
-        for i in range(loop):
+        for _ in range(loop):
             try:
                 if self.batch:
                     action_obj.pop('action', '')
-                    got_queued = self.plugin.core.mq.send("action_{}".format(self.uid), action_obj)
+                    got_queued = self.plugin.core.mq.send(f"action_{self.uid}", action_obj)
                     if got_queued:
                         action_obj['total'] = 0
                         break
@@ -164,9 +168,9 @@ class ActionObject():
                         failed = record
                 else:
                     _, failed = self.action_plugin.send(record, self.content)
-            except Exception as e:
-                log.exception(e)
-                log.error("Action {}' could not be send".format(self.name))
+            except Exception as err:
+                log.exception(err)
+                log.error("Action %s' could not be send", self.name)
                 failed = record
             if failed:
                 action_obj['retry'] -= 1
@@ -190,7 +194,8 @@ class ActionObject():
         action_obj['action'] = self
         action_obj['time'] = time.time() + action_obj['delay']
         self.plugin.thread.set_delayed(action_obj)
-        log.debug("Action `{}` will be sent in {}s ({} retrie(s) left)".format(self.name, action_obj['delay'], action_obj['retry']))
+        log.debug("Action `%s` will be sent in %ss (%s retrie(s) left)",
+            self.name, action_obj['delay'], action_obj['retry'])
 
     def update_stats(self, success, amount = 1):
         if amount > 0:
@@ -199,8 +204,8 @@ class ActionObject():
                     self.core.stats.inc('action_success', {'name': self.name}, amount)
                 else:
                     self.core.stats.inc('action_error', {'name': self.name}, amount)
-            except Exception as e:
-                log.exception(e)
+            except Exception as err:
+                log.exception(err)
 
     def __str__(self):
         return self.name
@@ -221,29 +226,40 @@ class ActionThread(threading.Thread):
             self.delayed[record_hash] = {}
         self.delayed[record_hash][action_uid] = action_obj
         if update_db:
-            self.action.core.db.write('action.delay', {'action_uid': action_uid, 'record_hash': record_hash, 'host': self.action.hostname, 'every': action_obj['every'], 'delay': action_obj['delay'], 'total': action_obj['total'], 'retry': action_obj['retry'], 'freq': action_obj['freq']}, 'action_uid,record_hash')
+            object_to_write = {
+                'action_uid': action_uid,
+                'record_hash': record_hash,
+                'host': self.action.hostname,
+                'every': action_obj['every'],
+                'delay': action_obj['delay'],
+                'total': action_obj['total'],
+                'retry': action_obj['retry'],
+                'freq': action_obj['freq'],
+            }
+            self.action.core.db.write('action.delay', object_to_write, 'action_uid,record_hash')
 
     def cleanup(self, record_hash, action_uid=None):
         try:
             if record_hash in self.delayed:
                 if action_uid:
-                    self.action.core.db.delete('action.delay', ['AND', ['=', 'record_hash', record_hash], ['=', 'action_uid', action_uid], ['=', 'host', self.action.hostname]])
+                    query = ['AND', ['=', 'record_hash', record_hash], ['=', 'action_uid', action_uid], ['=', 'host', self.action.hostname]]
+                    self.action.core.db.delete('action.delay', query)
                     if action_uid in self.delayed[record_hash]:
                         del self.delayed[record_hash][action_uid]
                     if not self.delayed[record_hash]:
                         del self.delayed[record_hash]
                 else:
-                    self.action.core.db.delete('action.delay', ['AND', ['=', 'record_hash', record_hash], ['=', 'host', self.action.hostname]])
-                    del self.delayed[record_hash]
-        except KeyError as e:
-            log.exception(e)
+                    self.action.core.db.delete('action.delay', ['=', 'record_hash', record_hash], ['=', 'host', self.action.hostname])
+                    self.delayed[record_hash]
+        except KeyError as err:
+            log.exception(err)
 
     def send_delayed(self, record_hash, action_uid):
         delayed_records = self.action.core.db.search('record', ['=', 'hash', record_hash])
         if delayed_records['count'] > 0:
             delayed_record = delayed_records['data'][0]
             if delayed_record.get('state') in ['ack', 'close'] or delayed_record.get('snoozed'):
-                log.debug("Record {} is already acked, closed or snoozed. Do not notify".format(record_hash))
+                log.debug("Record %s is already acked, closed or snoozed. Do not notify", record_hash)
                 self.cleanup(record_hash)
             else:
                 try:
@@ -253,10 +269,10 @@ class ActionThread(threading.Thread):
                     if success:
                         self.action.core.db.write('record', delayed_record)
                     action.delay(self.delayed[record_hash][action_uid])
-                except Exception as e:
-                    log.exception(e)
+                except Exception as err:
+                    log.exception(err)
         else:
-            log.debug("Record {} does not exist anymore, do not notify".format(record_hash))
+            log.debug("Record %s does not exist anymore, do not notify", record_hash)
             self.cleanup(record_hash)
 
     def run(self):

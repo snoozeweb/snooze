@@ -5,18 +5,19 @@
 # SPDX-License-Identifier: AFL-3.0
 #
 
-#!/usr/bin/python3.6
+'''A module with the database housekeeping functionalities'''
 
-import logging
-import time
 import datetime
 import threading
-
+import time
 from logging import getLogger
+
 from snooze.utils import config
+
 log = getLogger('snooze.housekeeping')
 
-class Housekeeper():
+class Housekeeper:
+    '''Main class starting the housekeeping thread in the background'''
     def __init__(self, core):
         log.debug('Init Housekeeper')
         self.core = core
@@ -32,16 +33,17 @@ class Housekeeper():
         self.thread.start()
 
     def reload(self):
+        ''' Reload the housekeeper configuration'''
         self.conf = config('housekeeping')
         self.interval_record = self.conf.get('cleanup_alert', 300)
         self.interval_comment = self.conf.get('cleanup_comment', 86400)
         self.interval_audit = self.conf.get('cleanup_audit', 2419200)
         self.snooze_expired = self.conf.get('cleanup_snooze', 259200)
         self.notification_expired = self.conf.get('cleanup_notification', 259200)
-        log.debug("Reloading Housekeeper with conf {}".format(self.conf))
+        log.debug("Reloading Housekeeper with conf %s", self.conf)
 
 class HousekeeperThread(threading.Thread):
-
+    '''Housekeeper thread running in the background'''
     def __init__(self, housekeeper):
         super().__init__()
         self.housekeeper = housekeeper
@@ -75,8 +77,10 @@ class HousekeeperThread(threading.Thread):
             time.sleep(1)
 
     def cleanup_expired(self, collection, cleanup_delay):
+        '''Cleanup expired objects. Used for objects containing a time constraint, and
+        that have an expiration date, like snooze filters'''
         if cleanup_delay > 0:
-            log.debug("Starting to cleanup expired {}".format(collection))
+            log.debug("Starting to cleanup expired %s", collection)
             now = datetime.datetime.now().astimezone()
             date = now.astimezone().strftime("%Y-%m-%dT%H:%M")
             hour = now.astimezone().strftime("%H:%M")
@@ -98,6 +102,6 @@ class HousekeeperThread(threading.Thread):
             expired_query = ['AND', ['NOT', match], ['AND', ['EXISTS', 'time_constraints.datetime'], ['NOT', ['>=', 'time_constraints.datetime.until', date_delta]]]]
             expired_results = self.housekeeper.core.db.search(collection, expired_query)
             if expired_results['count'] > 0:
-                log.debug("List of expired {} to cleanup: {}".format(collection, expired_results))
+                log.debug("List of expired %s to cleanup: %s", collection, expired_results)
                 deleted_results = self.housekeeper.core.db.delete(collection, expired_query)
-                log.debug("Deleted {} {}".format(deleted_results['count'], collection))
+                log.debug("Deleted %s %s", deleted_results['count'], collection)

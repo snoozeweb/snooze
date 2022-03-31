@@ -5,14 +5,17 @@
 # SPDX-License-Identifier: AFL-3.0
 #
 
-#!/usr/bin/python3.6
+'''A module for managing time constraint objects, mainly used by the
+snooze and notification core plugins'''
+
 import sys
+from abc import ABC, abstractmethod
+from collections import defaultdict
+from datetime import datetime, timedelta
+from logging import getLogger
 
 from dateutil import parser
-from collections import defaultdict
-from datetime import datetime, timedelta, time, timezone
 
-from logging import getLogger
 log = getLogger('snooze.time_constraints')
 
 def get_record_date(record):
@@ -25,9 +28,18 @@ def get_record_date(record):
         record_date = datetime.now().astimezone()
     return record_date
 
+class Constraint(ABC):
+    '''A base class for time constraints'''
+    @abstractmethod
+    def match(self, _record_date):
+        '''Method to fill when inheriting this class'''
+    def __str__(self):
+        return "AbstractTimeConstraint"
+
 def init_time_constraints(time_constraints):
+    '''Return a time constraint object from a list of time constraints'''
     constraints = []
-    log.debug("Init Time Constraints with {}".format(time_constraints))
+    log.debug("Init Time Constraints with %s", time_constraints)
     for constraint_type in time_constraints:
         ctype = constraint_type
         try:
@@ -43,12 +55,13 @@ def init_time_constraints(time_constraints):
                     constraints.append(class_obj(constraint_data))
             else:
                 log.error("Constraint type %s does not inherit from Contraint", ctype)
-                raise Exception("Constraint type %s does not inherit from Contraint" % ctype)
-        except Exception as e:
-            log.exception(e)
+                raise Exception(f"Constraint type {ctype} does not inherit from Contraint")
+        except Exception as err:
+            log.exception(err)
     return MultiConstraint(*constraints)
 
-class MultiConstraint:
+class MultiConstraint(Constraint):
+    '''An object representing the union of several time constraints'''
     def __init__(self, *constraints):
         self.constraints_by_type = defaultdict(list)
         for constraint in constraints:
@@ -56,29 +69,28 @@ class MultiConstraint:
             self.constraints_by_type[class_name].append(constraint)
 
     def match(self, record_date):
-        '''
-        Match all constraints, but make sure constraints of the same
-        type are merged with `OR`.
-        '''
+        '''Match all constraints, but make sure constraints of the same
+        type are merged with `OR`'''
         return all(
             any(constraint.match(record_date) for constraint in constraints)
             for _, constraints in self.constraints_by_type.items()
         )
-
-class Constraint:
-    def match(self, _record_date):
-        '''Method to fill when inheriting this class'''
-        pass
+    def __str__(self):
+        return ' and '.join([
+            '(' + ' or '.join([str(constraint) for constraint in constraints]) + ')'
+            for _, constraints in self.constraints_by_type.items()
+        ])
 
 class DateTimeConstraint(Constraint):
-    '''
-    A time constraint using fixed dates.
+    '''A time constraint using fixed dates.
     Features:
         * Before a fixed date
         * After a fixed date
         * Between two fixed dates
     '''
-    def __init__(self, content={}):
+    def __init__(self, content=None):
+        if content is None:
+            content = {}
         date_from = content.get('from')
         date_until = content.get('until')
         self.date_from = parser.parse(date_from).astimezone() if date_from else None
@@ -88,28 +100,33 @@ class DateTimeConstraint(Constraint):
         date_from = self.date_from
         date_until = self.date_until
         if date_from and date_until:
-            return (date_from <= record_date) and (record_date <= date_until)
+            return date_from <= record_date <= date_until
         elif (not date_from) and date_until:
             return record_date <= date_until
         elif date_from and (not date_until):
             return date_from <= record_date
         else:
             return False
+    def __str__(self):
+        return f"DateTimeConstraint<{self.date_from} to {self.date_until}>"
 
 class WeekdaysConstraint(Constraint):
-    '''
+    '''A constraint on the days of the week
     Features:
         * Match certain days of the week
     '''
-    def __init__(self, content={}):
+    def __init__(self, content=None):
+        if content is None:
+            content = {}
         self.weekdays = content.get('weekdays', [])
     def match(self, record_date):
         weekday_number = int(record_date.strftime('%w'))
         return weekday_number in self.weekdays
+    def __str__(self):
+        return f"WeekdaysConstraint<{self.weekdays}>"
 
 class TimeConstraint(Constraint):
-    '''
-    A time constraint that has a daily period.
+    '''A time constraint that has a daily period.
     Features:
         * Match before/after/between fixed hours
         * Support hours over midnight (`from` lower than `until`)
@@ -149,3 +166,6 @@ class TimeConstraint(Constraint):
             return rd <= date2
         else:
             return True
+
+    def __str__(self):
+        return f"TimeConstraint<{self.time1} to {self.time2}>"

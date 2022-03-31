@@ -65,6 +65,7 @@ term << (
 )
 
 class Term:
+    '''Parser action for terms'''
     def __init__(self, tokens):
         if 'field' in tokens:
             self.field = tokens['field']
@@ -78,10 +79,12 @@ class Term:
             self.value = None
     def __repr__(self):
         if self.field and self.value:
-            return "Term({}, {})".format(self.operation, [self.field, self.value])
+            key_value = [self.field, self.value]
+            return f"Term({self.operation}, {key_value})"
         else:
-            return "Term({})".format(self.value)
+            return f"Term({self.value})"
     def asList(self):
+        '''Return the parsed result'''
         if self.field is not None and self.value is not None:
             return [self.operation, self.field, self.value]
         elif self.field is not None:
@@ -90,26 +93,28 @@ class Term:
             return ['SEARCH', self.value]
 
 class Operation:
+    '''Parser action for operations'''
     def __init__(self, tokens):
         tokens = tokens[0]
         if len(tokens) > 1:
             if tokens[0] == 'NOT':
-                self.op = 'NOT'
+                self.oper = 'NOT'
                 if tokens[1] == 'NOT':
                     self.args = [Operation([tokens[1:]])]
                 else:
                     self.args = [tokens[1]]
             elif tokens[1] in ['AND', 'OR']:
-                self.op = tokens[1]
+                self.oper = tokens[1]
                 if len(tokens) > 3:
                     self.args = [tokens[0], Operation([tokens[2:]])]
                 else:
                     self.args = [tokens[0], tokens[2]]
         else:
-            raise Exception("Unexpected operation: {}".format(tokens))
+            raise Exception(f"Unexpected operation: {tokens}")
     def __repr__(self):
-        return "Operation({}, {})".format(self.op, self.args)
+        return f"Operation({self.oper}, {self.args})"
     def asList(self):
+        '''Return the parsed result'''
         args = []
         for arg in self.args:
             if isinstance(arg, Operation):
@@ -118,7 +123,7 @@ class Operation:
                 args.append(arg.asList())
             else:
                 args.append(arg)
-        return [self.op, *args]
+        return [self.oper, *args]
 
 term.setParseAction(Term)
 
@@ -133,5 +138,6 @@ expression << pp.infixNotation(
 )
 
 def parser(data):
+    '''Parse a query string'''
     result = expression.parseString(data).asList()[0].asList()
     return result

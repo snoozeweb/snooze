@@ -5,16 +5,20 @@
 # SPDX-License-Identifier: AFL-3.0
 #
 
-#!/usr/bin/python
-import os
-import falcon
-import bson.json_util
+'''Comment custom falcon routes.
+Mainly used for allowing users to comment as their user only
+'''
+
 from logging import getLogger
-log = getLogger('snooze.api')
+
+import bson.json_util
+import falcon
 
 from snooze.plugins.core.basic.falcon.route import Route
 from snooze.api.falcon import authorize
 from snooze.utils import get_modification
+
+log = getLogger('snooze.api')
 
 class CommentRoute(Route):
     def __init__(self, *args, **kwargs):
@@ -47,14 +51,14 @@ class CommentRoute(Route):
                 record_uid = req_media['record_uid']
                 record_comments.setdefault(record_uid, []).append(req_media)
                 records = self.search('record', record_uid)
-                log.debug("Search record {}".format(record_uid))
+                log.debug("Search record %s", record_uid)
                 if records['count'] > 0:
-                    log.debug("Found record {}".format(records))
+                    log.debug("Found record %s", records)
                     media_type = req_media.get('type')
                     comments = self.search('comment', ['=', 'record_uid', record_uid])
                     records['data'][0]['comment_count'] = comments['count'] + len(record_comments[record_uid])
                     if media_type in ['ack', 'esc', 'open', 'close']:
-                        log.debug("Changing record {} type to {}".format(record_uid, media_type))
+                        log.debug("Changing record %s type to %s", record_uid, media_type)
                         records['data'][0]['state'] = media_type
                         modification_raw = req_media.get('modifications', [])
                         if media_type in ['esc', 'open']:
@@ -66,14 +70,13 @@ class CommentRoute(Route):
                                     records['data'][0].pop('snoozed', '')
                                     records['data'][0].pop('notifications', '')
                                     self.notification_plugin.process(records['data'][0])
-                            except Exception as e:
-                                log.exception(e)
-                                pass
+                            except Exception as err:
+                                log.exception(err)
                     update_records.append(records['data'][0])
                 else:
                     resp.content_type = falcon.MEDIA_TEXT
                     resp.status = falcon.HTTP_503
-                    resp.text = 'Record uid {} was not found'.format(record_uid)
+                    resp.text = f"Record uid {record_uid} was not found"
                     return False
             else:
                 resp.content_type = falcon.MEDIA_TEXT
@@ -81,7 +84,7 @@ class CommentRoute(Route):
                 resp.text = 'Comments must contain records uid'
                 return False
         if update_records:
-            log.debug("Replace records {}".format(update_records))
+            log.debug("Replace records %s", update_records)
             self.core.db.write('record', update_records, duplicate_policy='replace')
         return True
 
@@ -94,7 +97,7 @@ class CommentRoute(Route):
             string = req.params.get('s') or search
             try:
                 cond_or_uid = bson.json_util.loads(string)
-            except:
+            except Exception:
                 cond_or_uid = string
         comments = self.search('comment', cond_or_uid)
         if comments['count'] > 0:
@@ -102,25 +105,30 @@ class CommentRoute(Route):
                 record_uid = comment['record_uid']
                 record_comments.setdefault(record_uid, []).append(comment['uid'])
                 records = self.search('record', record_uid)
-                log.debug("Search record {}".format(record_uid))
+                log.debug("Search record %s", record_uid)
                 if records['count'] > 0:
-                    log.debug("Found record {}".format(records))
-                    comments = self.search('comment', ['=', 'record_uid', record_uid], nb_per_page=0, page_number=1, order_by='date', asc=False)
+                    log.debug("Found record %s", records)
+                    comments = self.search('comment', ['=', 'record_uid', record_uid],
+                        nb_per_page=0, page_number=1, order_by='date', asc=False)
                     records['data'][0]['comment_count'] = comments['count'] - len(record_comments[record_uid])
-                    relevant_comments = [com for com in comments['data'] if ((com.get('uid') not in record_comments[record_uid]) and (com.get('type') in ['ack', 'esc', 'open', 'close']))]
-                    log.debug("Relevant comments: {}".format(relevant_comments))
+                    relevant_comments = [
+                        com for com in comments['data']
+                        if com.get('uid') not in record_comments[record_uid]
+                        and com.get('type') in ['ack', 'esc', 'open', 'close']
+                    ]
+                    log.debug("Relevant comments: %s", relevant_comments)
                     if len(relevant_comments) > 0:
                         new_type = relevant_comments[0]['type']
-                        log.debug("Reverting record {} type to {}".format(record_uid, new_type))
+                        log.debug("Reverting record %s type to %s", record_uid, new_type)
                         records['data'][0]['state'] = new_type
                     else:
-                        log.debug("Resetting record {} type".format(record_uid))
+                        log.debug("Resetting record %s type", record_uid)
                         records['data'][0]['state'] = ''
                     update_records.append(records['data'][0])
                 else:
                     resp.content_type = falcon.MEDIA_TEXT
                     resp.status = falcon.HTTP_503
-                    resp.text = 'Record uid {} was not found'.format(record_uid)
+                    resp.text = f"Record uid {record_uid} was not found"
                     return False
         else:
             resp.content_type = falcon.MEDIA_TEXT
@@ -128,6 +136,6 @@ class CommentRoute(Route):
             resp.text = 'No record was found matching this comment uid'
             return False
         if update_records:
-            log.debug("Update records {}".format(update_records))
+            log.debug("Update records %s", update_records)
             self.core.db.write('record', update_records)
         return True

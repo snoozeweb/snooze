@@ -31,6 +31,7 @@ from snooze.utils.functions import flatten
 log = getLogger('snooze')
 
 class Core:
+    '''The main class of snooze, passed to all plugins'''
     def __init__(self, conf):
         self.conf = conf
         self.db = Database(conf.get('database', {}))
@@ -45,13 +46,17 @@ class Core:
         self.plugins = []
         self.process_plugins = []
         self.stats = Stats(self)
-        self.stats.init('process_alert_duration', 'summary', 'snooze_process_alert_duration', 'Average time spend processing a alert', ['source', 'environment', 'severity'])
-        self.stats.init('alert_hit', 'counter', 'snooze_alert_hit', 'Counter of received alerts', ['source', 'environment', 'severity'])
+        self.stats.init('process_alert_duration', 'summary', 'snooze_process_alert_duration',
+            'Average time spend processing a alert', ['source', 'environment', 'severity'])
+        self.stats.init('alert_hit', 'counter', 'snooze_alert_hit',
+            'Counter of received alerts', ['source', 'environment', 'severity'])
         self.stats.init('alert_snoozed', 'counter', 'snooze_alert_snoozed', 'Counter of snoozed alerts', ['name'])
         self.stats.init('alert_throttled', 'counter', 'snooze_alert_throttled', 'Counter of throttled alerts', ['name'])
         self.stats.init('alert_closed', 'counter', 'snooze_alert_closed', 'Counter of received closed alerts', ['name'])
-        self.stats.init('notification_sent', 'counter', 'snooze_notification_sent', 'Counter of notification sent', ['name'])
-        self.stats.init('action_success', 'counter', 'snooze_action_success', 'Counter of action that succeeded', ['name'])
+        self.stats.init('notification_sent', 'counter', 'snooze_notification_sent',
+            'Counter of notification sent', ['name'])
+        self.stats.init('action_success', 'counter', 'snooze_action_success',
+            'Counter of action that succeeded', ['name'])
         self.stats.init('action_error', 'counter', 'snooze_action_error', 'Counter of action that failed', ['name'])
         self.bootstrap_db()
         self.secrets = self.ensure_secrets()
@@ -59,49 +64,62 @@ class Core:
         self.load_plugins()
 
     def load_plugins(self):
+        '''Load the plugins from the configuration'''
         self.plugins = []
         self.process_plugins = []
         log.debug("Starting to load core plugins")
         plugins_path = joindir(dirname(rootdir), 'plugins', 'core')
-        for ep in iter_entry_points('snooze.plugins.core'):
-            log.debug("External core plugin '{}' detected".format(ep.name))
-            plugin_class = ep.load()
+        for entry_point in iter_entry_points('snooze.plugins.core'):
+            log.debug("External core plugin '%s' detected", entry_point.name)
+            plugin_class = entry_point.load()
             plugin_instance = plugin_class(self)
             self.plugins.append(plugin_instance)
         for plugin_name in listdir(plugins_path):
             if (not isdir(plugins_path + '/' + plugin_name)) or plugin_name == 'basic' or plugin_name.startswith('_'):
                 continue
             try:
-                log.debug("Attempting to load core plugin {}".format(plugin_name))
-                plugin_module = import_module("snooze.plugins.core.{}.plugin".format(plugin_name))
+                log.debug("Attempting to load core plugin %s", plugin_name)
+                plugin_module = import_module(f"snooze.plugins.core.{plugin_name}.plugin")
                 plugin_class = getattr(plugin_module, plugin_name.capitalize())
             except ModuleNotFoundError:
-                log.debug("Module for plugin `{}` not found. Using Basic instead".format(plugin_name))
+                log.debug("Module for plugin `%s` not found. Using Basic instead", plugin_name)
                 plugin_module = import_module("snooze.plugins.core.basic.plugin")
                 plugin_class = type(plugin_name.capitalize(), (plugin_module.Plugin,), {})
-            except Exception as e:
-                log.exception(e)
-                log.error("Error init core plugin `{}`: {}".format(plugin_name, e))
+            except Exception as err:
+                log.exception(err)
+                log.error("Error init core plugin `%s`: %s",plugin_name, err)
                 continue
             plugin_instance = plugin_class(self)
             self.plugins.append(plugin_instance)
         for plugin_name in self.conf.get('process_plugins', []):
             for plugin in self.plugins:
                 if plugin_name == plugin.name:
-                    log.debug("Detected {} as a process plugin".format(plugin_name))
+                    log.debug("Detected %s as a process plugin", plugin_name)
                     self.process_plugins.append(plugin)
                     break
         for plugin in self.plugins:
             try:
                 plugin.post_init()
-            except Exception as e:
-                log.exception(e)
-                log.error("Error post init core plugin `{}`: {}".format(plugin.name, e))
+            except Exception as err:
+                log.exception(err)
+                log.error("Error post init core plugin `%s`: %s", plugin.name, err)
                 continue
-        log.debug("List of loaded core plugins: {}".format([plugin.name for plugin in self.plugins]))
-        log.debug("List of loaded process plugins: {}".format([plugin.name for plugin in self.process_plugins]))
+        log.debug("List of loaded core plugins: %s", [plugin.name for plugin in self.plugins])
+        log.debug("List of loaded process plugins: %s", [plugin.name for plugin in self.process_plugins])
 
     def process_record(self, record):
+        '''Method called when a given record enters the system.
+        The method will run the record through all configured plugin,
+        except when it receive a specific exception.
+        Abort:
+            Will abort the processing for a record.
+        Abort_and_write:
+            Will abort processing, and write the record in the database.
+        Abort_and_update:
+            Will abort processing, and write the record in the database, but will not
+            update the timestamp of the record. This is used mainly by aggregaterule plugin
+            for throttling.
+        '''
         data = {}
         source = record.get('source', 'unknown')
         environment = record.get('environment', 'unknown')
@@ -114,34 +132,34 @@ class Core:
         record['plugins'] = []
         try:
             record['timestamp'] = parser.parse(record['timestamp']).astimezone().strftime("%Y-%m-%dT%H:%M:%S%z")
-        except Exception as e:
-            log.warning(e)
+        except Exception as err:
+            log.warning(err)
             record['timestamp'] = datetime.now().astimezone().strftime("%Y-%m-%dT%H:%M:%S%z")
         with self.stats.time('process_alert_duration', {'source': source, 'environment': environment, 'severity': severity}):
             for plugin in self.process_plugins:
                 try:
-                    log.debug("Executing plugin {} on record {}".format(plugin.name, record.get('hash', '')))
+                    log.debug("Executing plugin %s on record %s", plugin.name, record.get('hash', ''))
                     record['plugins'].append(plugin.name)
                     record = plugin.process(record)
                 except Abort:
                     data = {'data': {'processed': [record]}}
                     break
-                except Abort_and_write as e:
-                    data = self.db.write('record', e.record or record, duplicate_policy='replace')
+                except Abort_and_write as abort:
+                    data = self.db.write('record', abort.record or record, duplicate_policy='replace')
                     break
-                except Abort_and_update as e:
-                    data = self.db.write('record', e.record or record, update_time=False, duplicate_policy='replace')
+                except Abort_and_update as abort:
+                    data = self.db.write('record', abort.record or record, update_time=False, duplicate_policy='replace')
                     break
-                except Exception as e:
-                    log.exception(e)
+                except Exception as err:
+                    log.exception(err)
                     record['exception'] = {
                         'core_plugin': plugin.name,
-                        'message': str(e)
+                        'message': str(err),
                     }
                     data = self.db.write('record', record, duplicate_policy='replace')
                     break
             else:
-                log.debug("Writing record {}".format(record))
+                log.debug("Writing record %s", record)
                 data = self.db.write('record', record, duplicate_policy='replace')
         environment = record.get('environment', 'unknown')
         severity = record.get('severity', 'unknown')
@@ -149,6 +167,7 @@ class Core:
         return data
 
     def get_core_plugin(self, plugin_name):
+        '''Return a core plugin object by name'''
         return next(iter([plug for plug in self.plugins if plug.name == plugin_name]), None)
 
     def get_secrets(self):
@@ -187,10 +206,12 @@ class Core:
         return self.get_secrets()
 
     def reload_conf(self, config_file):
-        log.debug("Reload config file '{}'".format(config_file))
+        '''Reload the configuration file'''
+        log.debug("Reload config file '%s'", config_file)
         if config_file == 'general':
             self.general_conf = config('general')
-            self.ok_severities = list(map(lambda x: x.casefold(), flatten([self.general_conf.get('ok_severities', [])])))
+            ok_severities = self.general_conf.get('ok_severities', [])
+            self.ok_severities = [x.casefold() for x in flatten([ok_severities])]
             self.stats.reload()
             return True
         elif config_file == 'ldap_auth':
@@ -202,10 +223,13 @@ class Core:
             self.notif_conf = config('notifications')
             return True
         else:
-            log.debug("Config file {} not found".format(config_file))
+            log.debug("Config file %s not found", config_file)
             return False
 
     def bootstrap_db(self):
+        '''Will attempt to bootstrap the database with default values for the core collections.
+        Will not bootstrap anything if it detects a bootstrap happened in the past.
+        '''
         if self.conf.get('bootstrap_db', False):
             result = self.db.search('general')
             if result['count'] == 0:
@@ -213,23 +237,44 @@ class Core:
                 result = self.db.search('general')
             if result['count'] == 0:
                 log.debug("First time starting Snooze with self database. Let us configure it...")
-                aggregate_rules = [{"fields": [ "host", "message" ], "snooze_user": "root" , "name": "Host and Message", "condition": [], "throttle": 900 }]
+                aggregate_rules = [
+                    {
+                        "fields": [ "host", "message" ],
+                        "snooze_user": "root" ,
+                        "name": "Host and Message",
+                        "condition": [],
+                        "throttle": 900,
+                    },
+                ]
                 self.db.write('aggregaterule', aggregate_rules)
-                roles = [{"name": "admin", "permissions": [ "rw_all" ], "snooze_user": "root"}, {"name": "user", "permissions": [ "ro_all" ], "snooze_user": "root"}]
+                roles = [
+                    {
+                        "name": "admin",
+                        "permissions": [ "rw_all" ],
+                        "snooze_user": "root",
+                    },
+                    {
+                        "name": "user",
+                        "permissions": [ "ro_all" ],
+                        "snooze_user": "root",
+                    },
+                ]
                 self.db.write('role', roles)
                 if self.conf.get('create_root_user', False):
                     users = [{"name": "root", "method": "local", "roles": ["admin"], "enabled": True}]
                     self.db.write('user', users)
-                    user_passwords = [{"name": "root", "method": "local", "password": sha256("root".encode('utf-8')).hexdigest()}]
+                    user_passwords = [
+                        {"name": "root", "method": "local", "password": sha256("root".encode('utf-8')).hexdigest()},
+                    ]
                     self.db.write('user.password', user_passwords)
                 self.db.write('general', [{'init_db': True}])
 
     def init_backup(self):
+        '''Create the necessary directory for backups'''
         if self.conf.get('backup', {}).get('enabled', True):
             try:
                 mkdir(self.conf.get('backup', {}).get('path', './backups'))
-            except FileExistsError as e:
+            except FileExistsError:
                 pass
-            except Exception as e:
-                log.exception(e)
-                pass
+            except Exception as err:
+                log.exception(err)

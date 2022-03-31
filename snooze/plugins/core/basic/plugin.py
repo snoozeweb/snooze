@@ -5,13 +5,16 @@
 # SPDX-License-Identifier: AFL-3.0
 #
 
-import yaml
 import sys
 import os
-from abc import abstractmethod
-from os.path import dirname, join as joindir
-from snooze import __file__ as rootdir
 from logging import getLogger
+from os.path import dirname, join as joindir
+from abc import abstractmethod
+
+import yaml
+
+from snooze import __file__ as rootdir
+
 log = getLogger('snooze')
 
 class Plugin:
@@ -28,9 +31,9 @@ class Plugin:
         self.metadata_file = {}
         try:
             log.debug("Attempting to read metadata at %s for %s module", metadata_path, self.name)
-            with open(metadata_path, 'r') as f:
-                self.metadata_file = yaml.load(f.read())
-        except Exception as err:
+            with open(metadata_path, 'r', encoding='utf-8') as metadata_file:
+                self.metadata_file = yaml.safe_load(metadata_file.read())
+        except (OSError, yaml.YAMLError) as err:
             log.debug("Skipping. Cannot read metadata.yaml due to: %s", err)
         self.permissions = self.metadata_file.get('provides', [])
         default_routeclass = self.metadata_file.get('class', 'Route')
@@ -100,30 +103,34 @@ class Plugin:
         if search_fields:
             self.db.create_index(self.name, search_fields)
 
-    @abstractmethod
     def validate(self, obj):
         '''Validate an object before writing it to the database.
         Should raise an exception if the object is invalid
         '''
 
     def post_init(self):
+        '''Hook to execute something after the default init'''
         self.reload_data()
 
-    def reload_data(self, sync = False):
+    def reload_data(self, sync=False):
+        '''Reload the data of a plugin from the database'''
         if self.metadata.get('auto_reload', False):
             log.debug("Reloading data for plugin {}".format(self.name))
             self.data = self.db.search(self.name, orderby=self.metadata.get('default_sorting', ''), asc=self.metadata.get('default_ordering', True))['data']
 
     def process(self, record):
+        '''Process a record if it's a process plugin'''
         return record
 
     def get_metadata(self):
+        '''Returned the metadata of the plugin (from the parsed yaml file)'''
         return self.metadata
 
     def pprint(self, options={}):
         return self.name
 
     def get_icon(self):
+        '''Return the icon of the plugin, for web interface usage'''
         return self.metadata_file.get('icon', 'question-circle')
 
     def get_options(self, key=''):
@@ -132,13 +139,19 @@ class Plugin:
             options = options.get(key, {})
         return options
 
+    @abstractmethod
     def send(self, record, content):
-        pass
+        '''Method called for action plugin'''
 
-class Abort(Exception): pass
+class Abort(Exception):
+    '''Abort the processing for a record'''
+
 class Abort_and_write(Exception):
+    '''Abort the processing for a record, then write it in the database'''
     def __init__(self, record={}, *args, **kwargs):
         self.record = record
+
 class Abort_and_update(Exception):
+    '''Abort the processing for a record, then write it in the database without updating its timestamp'''
     def __init__(self, record={}, *args, **kwargs):
         self.record = record

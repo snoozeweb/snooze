@@ -5,8 +5,6 @@
 # SPDX-License-Identifier: AFL-3.0
 #
 
-#!/usr/bin/python3.6
-
 import mongomock
 from snooze.db.database import Database
 

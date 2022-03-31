@@ -5,26 +5,46 @@
 # SPDX-License-Identifier: AFL-3.0
 #
 
-#!/usr/bin/python3.6
-import sys
+'''General objects for managing database backends'''
+
 import os
 from importlib import import_module
 from urllib.parse import urlparse
+from abc import abstractmethod
 
-class Database():
+class Database:
+    '''Abstract class for the database backend'''
     def __init__(self, conf):
         config = conf.copy()
         db_type = config.pop('type', 'file')
         if 'DATABASE_URL' in os.environ:
-            scheme = urlparse(os.environ.get('DATABASE_URL')).scheme
+            scheme = str(urlparse(os.environ.get('DATABASE_URL')).scheme)
             if scheme.startswith('mongodb'):
                 db_type = 'mongo'
-        cls = import_module("snooze.db.{}.database".format(db_type))
+        cls = import_module(f"snooze.db.{db_type}.database")
         self.__class__ = type('DB', (cls.BackendDB, Database), {})
         self.init_db(config)
-    def init_db(self, conf): pass
-    def create_indexes(self, indexes): pass
-    def search(self): pass
-    def delete(self): pass
-    def write(self): pass
-    def convert(self): pass
+
+    @abstractmethod
+    def init_db(self, conf):
+        '''Initialize the database connection'''
+
+    @abstractmethod
+    def create_index(self, collection, fields):
+        '''Create indexes for a given collection, and a given list of fields'''
+
+    @abstractmethod
+    def search(self, collection, condition, nb_per_page=0, page_number=1, orderby='', asc=True):
+        '''List the objects of a collection based on a condition'''
+
+    @abstractmethod
+    def delete(self, collection, condition, force):
+        '''Delete a collection's objects based on a condition'''
+
+    @abstractmethod
+    def write(self, collection, obj, primary=None, duplicate_policy='update', update_time=True, constant=None):
+        '''Write an object in a collection'''
+
+    @abstractmethod
+    def convert(self, condition, search_fields=[]):
+        '''Convert a condition (search) into a query usable in the database backend'''

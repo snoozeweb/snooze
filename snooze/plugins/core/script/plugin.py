@@ -5,19 +5,21 @@
 # SPDX-License-Identifier: AFL-3.0
 #
 
-#!/usr/bin/python36
+'''An action plugin for executing a script'''
+
+from copy import deepcopy
+from logging import getLogger
+from subprocess import run, PIPE
 
 import bson.json_util
-from subprocess import run, CalledProcessError, PIPE
 from jinja2 import Template
-from copy import deepcopy
 
 from snooze.plugins.core import Plugin
 
-from logging import getLogger
 log = getLogger('snooze.action.script')
 
 class Script(Plugin):
+    '''Action plugin for executing scripts on the snooze server'''
     def __init__(self, core):
         super().__init__(core)
 
@@ -48,25 +50,25 @@ class Script(Plugin):
         for artifact in artifacts:
             try:
                 for argument in arguments:
-                    if type(argument) is str:
+                    if isinstance(argument, str):
                         artifact['arguments'] += interpret_jinja([argument], artifact['record'])
-                    elif type(argument) is list:
+                    elif isinstance(argument, list):
                         artifact['arguments'] += interpret_jinja(argument, artifact['record'])
-                    elif type(argument) is dict:
+                    elif isinstance(argument, dict):
                         artifact['arguments'] += sum([interpret_jinja([k, v], artifact['record']) for k, v in argument])
                 succeeded.append(artifact)
-            except Exception as e:
-                log.exception(e)
+            except Exception as err:
+                log.exception(err)
                 failed.append(artifact)
-        log.debug("Will execute action script `{}`".format(' '.join(script)))
+        log.debug("Will execute action script `%s`", ' '.join(script))
         if json:
             tmp_succeeded = []
             for artifact in succeeded:
                 try:
                     artifact['json'] = bson.json_util.dumps(artifact['record'])
                     tmp_succeeded.append(artifact)
-                except Exception as e:
-                    log.exception(e)
+                except Exception as err:
+                    log.exception(err)
                     failed.append(artifact)
             succeeded = tmp_succeeded
         tmp_succeeded = []
@@ -74,10 +76,10 @@ class Script(Plugin):
             try:
                 process = run(script + artifact['arguments'], stdout=PIPE, input=artifact['json'], encoding='ascii')
                 tmp_succeeded.append(artifact)
-                log.debug('stdout: ' + str(process.stdout))
-                log.debug('stderr: ' + str(process.stderr))
-            except Exception as e:
-                log.exception(e)
+                log.debug("stdout: %s", process.stdout)
+                log.debug("stderr: %s", process.stderr)
+            except Exception as err:
+                log.exception(err)
                 failed.append(artifact)
         succeeded = tmp_succeeded
         if batch:
@@ -91,4 +93,5 @@ class Script(Plugin):
         return succeeded, failed
 
 def interpret_jinja(fields, record):
-    return list(map(lambda field: Template(field).render(record), fields))
+    '''Interpret the arguments written as Jinja template with the record data'''
+    return [Template(field).render(record) for field in fields]

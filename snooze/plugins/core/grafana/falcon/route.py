@@ -5,20 +5,25 @@
 # SPDX-License-Identifier: AFL-3.0
 #
 
-#!/usr/bin/python
+'''Webhook input plugin for Grafana notifications'''
+
 from logging import getLogger
-log = getLogger('snooze.webhooks.grafana')
+
+from bson.json_util import loads
 
 from snooze.api.falcon import WebhookRoute
 from snooze.utils.functions import sanitize
-from bson.json_util import loads
+
+log = getLogger('snooze.webhooks.grafana')
 
 class GrafanaRoute(WebhookRoute):
+    '''A falcon route to receive Grafana alerts as input'''
     auth = {
         'auth_disabled': True
     }
 
     def parse(self, match, media):
+        '''Parse the data of the webhook to create an alert'''
         alert = {}
         tags = match.get('tags') or {}
         alert['metric'] = match.get('metric', '')
@@ -41,7 +46,7 @@ class GrafanaRoute(WebhookRoute):
         for tag_k, tag_v in tags.items():
             try:
                 alert['tags'][tag_k] = loads(tag_v)
-            except:
+            except Exception:
                 alert['tags'][tag_k] = tag_v
         alert['tags'].update(media.get('tags') or {})
         alert['tags'] = sanitize(alert['tags'])

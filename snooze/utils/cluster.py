@@ -5,23 +5,24 @@
 # SPDX-License-Identifier: AFL-3.0
 #
 
-#!/usr/bin/python3.6
+'''A module for managing the snooze cluster, which is used for sharing configuration
+file updates accross the cluster.'''
 
-import logging
-import time
-import threading
 import http.client
-import netifaces
-import socket
 import os
-import pkg_resources
-
-import bson.json_util
+import socket
+import threading
+import time
 from logging import getLogger
-from snooze.utils import config
+
+import netifaces
+import pkg_resources
+import bson.json_util
+
 log = getLogger('snooze.cluster')
 
-class Cluster():
+class Cluster:
+    '''A class representing the cluster and used for interacting with it.'''
     def __init__(self, api):
         self.api = api
         env_cluster = os.environ.get('SNOOZE_CLUSTER')
@@ -34,8 +35,8 @@ class Cluster():
                 for member in env_cluster:
                     host, *port = member.split(':')
                     self.conf['members'].append({'host': host, 'port': port[0] if port else 5200})
-            except Exception as e:
-                log.exception(e)
+            except Exception as err:
+                log.exception(err)
                 log.warning('Error when parsing cluster config defined in SNOOZE_CLUSTER env var')
                 self.conf = {}
         if not self.conf:
@@ -51,35 +52,57 @@ class Cluster():
                 for arr in netifaces.ifaddresses(interface).values():
                     for line in arr:
                         try:
-                            self.other_peers = list(filter(lambda x: socket.gethostbyname(x['host']) != line['addr'], self.other_peers))
-                        except Exception as e:
-                            log.exception(e)
+                            self.other_peers = [
+                                x for x in self.other_peers
+                                if socket.gethostbyname(x['host']) != line['addr']
+                            ]
+                        except Exception as err:
+                            log.exception(err)
                             log.error('Error while setting up the cluster. Disabling cluster...')
                             self.enabled = False
                             return
             self.self_peer = [peer for peer in self.all_peers if peer not in self.other_peers]
             if len(self.self_peer) != 1:
-                log.error("This node was found {} time(s) in the cluster configuration. Disabling cluster...".format(len(self.self_peer)))
+                log.error("This node was found %d time(s) in the cluster configuration. Disabling cluster...",
+                    len(self.self_peer))
                 self.enabled = False
                 return
-            log.debug("Other peers: {}".format(self.other_peers))
+            log.debug("Other peers: %s", self.other_peers)
             self.thread = ClusterThread(self)
             self.thread.start()
 
-    def get_self(self, caller = False):
+    def get_self(self, caller=False):
+        '''Return the status, health and info of the current node'''
         if self.enabled:
-            self_peer = [{'host': self.self_peer[0]['host'], 'port': self.self_peer[0]['port'], 'version': self.get_version(), 'healthy': True, 'caller': caller}]
-            log.debug("Self cluster configuration: {}".format(self_peer))
+            self_peer = [
+                {
+                    'host': self.self_peer[0]['host'],
+                    'port': self.self_peer[0]['port'],
+                    'version': self.get_version(),
+                    'healthy': True,
+                    'caller': caller,
+                },
+            ]
+            log.debug("Self cluster configuration: %s", self_peer)
             return self_peer
         else:
             try:
                 hostname = socket.gethostname()
-            except Exception as e:
-                log.exception(e)
+            except Exception as err:
+                log.exception(err)
                 hostname = 'unknown'
-            return [{'host': hostname, 'port': self.api.core.conf.get('port', '5200'), 'version': self.get_version(), 'healthy': True, 'caller': True}]
+            return [
+                {
+                    'host': hostname,
+                    'port': self.api.core.conf.get('port', '5200'),
+                    'version': self.get_version(),
+                    'healthy': True,
+                    'caller': True,
+                },
+            ]
 
     def get_members(self):
+        '''Fetch the status of all members of the cluster'''
         if self.enabled:
             success = False
             members = self.get_self(True)
@@ -93,8 +116,8 @@ class Cluster():
                     connection.request('GET', '/api/cluster?self=true')
                     response = connection.getresponse()
                     success = (response.status == 200)
-                except Exception as e:
-                    log.exception(e)
+                except Exception as err:
+                    log.exception(err)
                     success = False
                 host = peer['host']
                 port = peer['port']
@@ -105,33 +128,40 @@ class Cluster():
                     host = json_data.get('host', peer['host'])
                     port = json_data.get('port', peer['port'])
                     version = json_data.get('version', 'unknown')
-                except Exception as e:
-                    log.exception(e)
+                except Exception as err:
+                    log.exception(err)
                 members.append({'host': host, 'port': port, 'version': version, 'healthy': healthy})
-            log.debug("Cluster members: {}".format(members))
+            log.debug("Cluster members: %s", members)
             return members
         else:
             return self.get_self()
 
     def reload_plugin(self, plugin_name):
+        '''Ask other members to reload the configuration of a plugin'''
         if self.thread:
             for peer in self.other_peers:
                 job = {'payload': {'reload': {'plugins':[plugin_name]}}, 'host': peer['host'], 'port': peer['port']}
                 self.sync_queue.append(job)
-                log.debug("Queued job: {}".format(job))
+                log.debug("Queued job: %s", job)
 
     def write_and_reload(self, filename, conf, reload_conf):
+        '''Ask other members to update their configuration and reload'''
         if self.thread:
             for peer in self.other_peers:
-                job = {'payload': {'filename': filename, 'conf': conf, 'reload': reload_conf}, 'host': peer['host'], 'port': peer['port']}
+                job = {
+                    'payload': {'filename': filename, 'conf': conf, 'reload': reload_conf},
+                    'host': peer['host'],
+                    'port': peer['port'],
+                }
                 self.sync_queue.append(job)
-                log.debug("Queued job: {}".format(job))
+                log.debug("Queued job: %s", job)
 
     def get_version(self):
+        '''Return the version of the installed snooze-server. Return 'unknown' if not found'''
         try:
             return pkg_resources.get_distribution('snooze-server').version
-        except Exception as e:
-            log.exception(e)
+        except Exception as err:
+            log.exception(err)
             return 'unknown'
 
 class ClusterThread(threading.Thread):
@@ -159,13 +189,13 @@ class ClusterThread(threading.Thread):
                     connection.request('POST', '/api/reload', job_json, headers)
                     response = connection.getresponse()
                     success = (response.status == 200)
-                except Exception as e:
-                    log.exception(e)
+                except Exception as err:
+                    log.exception(err)
                     success = False
                 job['payload'].pop('reload_token')
                 if success:
                     del self.cluster.sync_queue[index]
-                    log.debug("Dequeued job: {}".format(job))
+                    log.debug("Dequeued job: %s", job)
                 else:
-                    log.error("Could not dequeue job: {}".format(job))
+                    log.error("Could not dequeue job: %s", job)
             time.sleep(1)

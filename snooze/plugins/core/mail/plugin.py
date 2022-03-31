@@ -5,8 +5,6 @@
 # SPDX-License-Identifier: AFL-3.0
 #
 
-#!/usr/bin/python36
-
 from smtplib import SMTP
 from email.header import Header
 from email.mime.multipart import MIMEMultipart
@@ -57,7 +55,7 @@ class Mail(Plugin):
             message['From'] = sender
         message['To'] = content.get('to', '')
         message['X-Priority'] = str(content.get('priority', 3))
-        log.debug("Send {} mail(s) to {}".format(len(records), message['To']))
+        log.debug("Send %s mail(s) to %s", len(records), message['To'])
         self.server = SMTP(host, port, timeout=DEFAULT_TIMEOUT)
         succeeded = []
         failed = []
@@ -69,14 +67,14 @@ class Mail(Plugin):
                 if not batch:
                     artifact['subject'] = Header(Template(content.get('subject', '')).render(record), 'utf-8').encode()
                 artifacts.append(artifact)
-            except Exception as e:
-                log.exception(e)
+            except Exception as err:
+                log.exception(err)
                 failed.append(record)
         if batch:
             artifact = {'records': records}
             separator = {'plain': "\n\n", 'html': '<br><br>'}
             artifact['body'] = separator[content.get('type', 'plain')].join([a['body'] for a in artifacts])
-            artifact['subject'] = '[SnoozeWeb] Received {} alerts'.format(len(records))
+            artifact['subject'] = f"[SnoozeWeb] Received {len(records)} alerts"
             artifacts = [artifact]
         for artifact in artifacts:
             message.set_payload([MIMEText(artifact['body'], content.get('type', 'plain'), 'utf-8')])
@@ -85,8 +83,8 @@ class Mail(Plugin):
             try:
                 self.server.sendmail(sender, recipients, message.as_string())
                 succeeded += artifact['records']
-            except Exception as e:
-                log.exception(e)
+            except Exception as err:
+                log.exception(err)
                 failed += artifact['records']
         self.server.close()
         return succeeded, failed

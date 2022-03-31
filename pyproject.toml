@@ -64,6 +64,8 @@ toml = "^0.10.2"
 
 [tool.pylint.format]
 max-line-length = 120
+extension-pkg-whitelist = ['falcon']
+disable = ['no-else-return']
 
 [tool.pytest.ini_options]
 testpaths = "tests"

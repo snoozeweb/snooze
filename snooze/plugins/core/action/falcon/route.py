@@ -5,16 +5,21 @@
 # SPDX-License-Identifier: AFL-3.0
 #
 
-#!/usr/bin/python
-import falcon
-from logging import getLogger
-log = getLogger('snooze.api')
+'''Custom falcon routes for the action plugin'''
 
-from snooze.plugins.core.basic.falcon.route import Route
+from logging import getLogger
+
+import falcon
+
 from snooze.api.base import BasicRoute
 from snooze.api.falcon import authorize
+from snooze.plugins.core.basic.falcon.route import Route
+
+log = getLogger('snooze.api')
 
 class ActionRoute(Route):
+    '''Overriding post/put to incude pre-computed values for the web
+    interface'''
     @authorize
     def on_post(self, req, resp):
         for req_media in req.media:
@@ -39,6 +44,7 @@ class ActionRoute(Route):
         media['icon'] = plugin.get_icon()
 
 class ActionPluginRoute(BasicRoute):
+    '''A route to list the action plugin types (script, webhook, mail, etc)'''
     @authorize
     def on_get(self, req, resp, action=None):
         log.debug("Listing actions")
@@ -49,18 +55,18 @@ class ActionPluginRoute(BasicRoute):
             if plugin_name:
                 loaded_plugins = [self.api.core.get_core_plugin(plugin_name)]
             else:
-                log.error("Could not find action plugin for request {}".format(req.params))
+                log.error("Could not find action plugin for request %s", req.params)
             for plugin in loaded_plugins:
                 plugin_metadata = plugin.get_metadata()
                 if plugin_metadata.get('action_form'):
-                    log.debug("Retrieving action {} metadata".format(plugin.name))
+                    log.debug("Retrieving action %s metadata", plugin.name)
                     plugins.append(plugin_metadata)
-            log.debug("List of actions: {} elements".format(len(plugins)))
+            log.debug("List of actions: %d elements", len(plugins))
             resp.content_type = falcon.MEDIA_JSON
             resp.status = falcon.HTTP_200
             resp.media = {
                 'data': plugins,
             }
-        except Exception as e:
-            log.exception(e)
+        except Exception as err:
+            log.exception(err)
             resp.status = falcon.HTTP_503

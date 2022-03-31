@@ -5,16 +5,17 @@
 # SPDX-License-Identifier: AFL-3.0
 #
 
-#!/usr/bin/python
+'''Custom falcon route for statistics'''
 
-import falcon
 from datetime import datetime, timedelta
 from logging import getLogger
-log = getLogger('snooze.stats')
+
+import falcon
 
 from snooze.api.base import BasicRoute
 from snooze.api.falcon import authorize
-from urllib.parse import unquote
+
+log = getLogger('snooze.stats')
 
 class StatsRoute(BasicRoute):
     @authorize
@@ -33,4 +34,3 @@ class StatsRoute(BasicRoute):
         else:
             resp.media = {}
             resp.status = falcon.HTTP_404
-            pass

@@ -5,20 +5,18 @@
 # SPDX-License-Identifier: AFL-3.0
 #
 
-#!/usr/bin/python36
-
-import bson.json_util
-from jinja2 import Template, Environment, BaseLoader
 from urllib.parse import unquote
 from copy import deepcopy
+from logging import getLogger
+
 import requests
+import bson.json_util
+from jinja2 import Template, Environment, BaseLoader
 
 from snooze.plugins.core import Plugin
 from snooze.utils.functions import ca_bundle
 
-from logging import getLogger
 log = getLogger('snooze.action.script')
-
 
 class Webhook(Plugin):
     def __init__(self, core):
@@ -52,34 +50,34 @@ class Webhook(Plugin):
             to_send.append({'record': record, 'record_copy': record_copy, 'parsed_payload': None, 'response': None})
         if payload:
             unquoted_payload = unquote(payload)
-            log.debug("Unquoted payload: {}".format(unquoted_payload))
+            log.debug("Unquoted payload: %s", unquoted_payload)
             env = Environment(loader=BaseLoader)
             env.policies['json.dumps_kwargs'] = {'default': str}
             for artifact in to_send:
                 try:
                     payload_jinja = env.from_string(unquoted_payload).render(artifact['record_copy'])
-                    log.debug("Jinja payload for {}: {}".format(artifact['record_copy'].get('hash', ''), payload_jinja))
+                    log.debug("Jinja payload for %s: %s", artifact['record_copy'].get('hash', ''), payload_jinja)
                     parsed_payload = bson.json_util.loads(payload_jinja)
                     artifact['parsed_payload'] = parsed_payload
-                except Exception as e:
-                    log.exception(e)
+                except Exception as err:
+                    log.exception(err)
         parsed_params = [['snooze_action_name', action_name]]
         for artifact in to_send:
             try:
                 for argument in params:
-                    if type(argument) is str:
+                    if isinstance(argument, str):
                         parsed_params += [interpret_jinja([argument, ''], artifact['record_copy'])]
-                    elif type(argument) is list:
+                    elif isinstance(argument, list):
                         parsed_params += [interpret_jinja(argument, artifact['record_copy'])]
-                    elif type(argument) is dict:
+                    elif isinstance(argument, dict):
                         parsed_params += [sum([interpret_jinja([k, v], artifact['record_copy']) for k, v in argument])]
-            except Exception as e:
-                log.exception(e)
+            except Exception as err:
+                log.exception(err)
         params_dict = {}
         for i in range(len(parsed_params)):
             params_dict[parsed_params[i][0]] = parsed_params[i][1]
-        log.debug("Parsed params: {}".format(params_dict))
-        log.debug("Will execute action webhook `{}`".format(url))
+        log.debug("Parsed params: %s", params_dict)
+        log.debug("Will execute action webhook `%s`", url)
         if str.startswith(url, 'https') and content.get('ssl_verify'):
             ssl_verify = self.ca_bundle
         else:
@@ -89,39 +87,38 @@ class Webhook(Plugin):
             response_content_json = None
             try:
                 response = RestHelper().send_http_request(url, 'POST', payload=[artifact['parsed_payload'] for artifact in to_send if artifact['parsed_payload']], parameters=params_dict, verify=ssl_verify, proxy_uri=proxy)
-            except Exception as e:
-                log.exception(e)
+            except Exception as err:
+                log.exception(err)
                 response = None
             try:
                 response_content_json = bson.json_util.loads(response.content)
-            except Exception as e:
-                log.exception(e)
+            except Exception as err:
+                log.exception(err)
                 response_content_json = None
             for artifact in to_send:
                 artifact['response'] = response
                 if response_content_json:
                     try:
                         artifact['response_content'] = response_content_json[artifact['record']['hash']]
-                    except:
+                    except Exception:
                         artifact['response_content'] = response_content_json
         else:
             for artifact in to_send:
                 try:
                     artifact['response'] = RestHelper().send_http_request(url, 'POST', payload=artifact['parsed_payload'], parameters=parsed_params, verify=ssl_verify, proxy_uri=proxy)
-                except Exception as e:
-                    log.exception(e)
+                except Exception as err:
+                    log.exception(err)
                     artifact['response'] = None
                 if artifact['response']:
                     try:
                         artifact['response_content'] = bson.json_util.loads(artifact['response'].content)
-                    except Exception as e:
-                        log.exception(e)
+                    except Exception as err:
+                        log.exception(err)
                         artifact['response_content'] = None
         succeeded = []
         failed = []
-        response_content = None
         for artifact in to_send:
-            log.debug("HTTP Response: {}".format(artifact.get('response', '')))
+            log.debug("HTTP Response: %s", artifact.get('response', ''))
             if artifact['response'] and artifact['response'].status_code == 200:
                 if inject_response:
                     response_dict = {'action_name': action_name, 'content': artifact.get('response_content', {})}
@@ -141,14 +138,14 @@ class Webhook(Plugin):
 def interpret_jinja(fields, record):
     return list(map(lambda field: Template(field).render(record), fields))
 
-def interpret_jinja_dict(d, record):
-    a = {}
-    for k, v in d.items():
-        if isinstance(v, dict):
-            a[Template(k).render(record)] = interpret_jinja_dict(v, record)
+def interpret_jinja_dict(dic, record):
+    new_dic = {}
+    for key, value in dic.items():
+        if isinstance(value, dict):
+            new_dic[Template(key).render(record)] = interpret_jinja_dict(value, record)
         else:
-            a[Template(k).render(record)] = Template(v).render(record)
-    return a
+            new_dic[Template(key).render(record)] = Template(value).render(record)
+    return new_dic
 
 class RestHelper:
     def __init__(self):

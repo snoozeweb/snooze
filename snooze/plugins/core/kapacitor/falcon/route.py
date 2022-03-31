@@ -5,20 +5,25 @@
 # SPDX-License-Identifier: AFL-3.0
 #
 
-#!/usr/bin/python
+'''Webhook input plugin for kapacitor'''
+
 from logging import getLogger
-log = getLogger('snooze.webhooks.kapacitor')
+
+from bson.json_util import loads
 
 from snooze.api.falcon import WebhookRoute
 from snooze.utils.functions import sanitize
-from bson.json_util import loads
+
+log = getLogger('snooze.webhooks.kapacitor')
 
 class KapacitorRoute(WebhookRoute):
+    '''A falcon route for parsing kapacitor alerts'''
     auth = {
         'auth_disabled': True
     }
 
     def parse(self, match, media):
+        '''Parse the data of the webhook to create an alert'''
         alert = {}
         tags = match.get('tags') or {}
         alert['columns'] = match.get('columns', [])
@@ -34,7 +39,7 @@ class KapacitorRoute(WebhookRoute):
         for tag_k, tag_v in tags.items():
             try:
                 alert['tags'][tag_k] = sanitize(loads(tag_v))
-            except:
+            except Exception:
                 alert['tags'][tag_k] = tag_v
         alert['tags'].update(media.get('tags') or {})
 

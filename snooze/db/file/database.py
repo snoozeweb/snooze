@@ -5,24 +5,27 @@
 # SPDX-License-Identifier: AFL-3.0
 #
 
-#!/usr/bin/python3.6
+'''Module for managing the file based database backend (with TinyDB)'''
+
+import re
+from copy import deepcopy
+from datetime import datetime
+from functools import reduce
+from logging import getLogger
+from pathlib import Path
+from threading import Lock
+
+import uuid
+from bson.json_util import dumps
+from tinydb import TinyDB, Query as BaseQuery
 
 from snooze.db.database import Database
-from snooze.utils.functions import dig, flatten, to_tuple
-from threading import Lock
-from logging import getLogger
-from datetime import datetime
-from bson.json_util import dumps
-from pathlib import Path
-import uuid
-import re
+from snooze.utils.functions import dig, to_tuple
+
 log = getLogger('snooze.db.file')
 
-from tinydb import TinyDB, Query as BaseQuery
-from copy import deepcopy
-from functools import reduce
-
-class OperationNotSupported(Exception): pass
+class OperationNotSupported(Exception):
+    '''Raised when the search operator is not supported'''
 
 default_filename = 'db.json'
 mutex = Lock()
@@ -55,36 +58,35 @@ def test_search(dic, value):
     return value in str(dic)
 
 class BackendDB(Database):
+    '''Backend database based on local file (TinyDB)'''
     def init_db(self, conf):
         if conf.get('path'):
             filename = conf.get('path')
         else:
             filename = default_filename
         self.db = TinyDB(filename)
-        log.debug("Initialized TinyDB at path {}".format(filename))
-        log.debug("db: {}".format(self.db))
-        log.debug("List of collections: {}".format(self.db.tables()))
+        log.debug("Initialized TinyDB at path %s", filename)
+        log.debug("db: %s", self.db)
+        log.debug("List of collections: %s", self.db.tables())
 
     def create_index(self, collection, fields):
         pass
 
     def cleanup_timeout(self, collection):
         mutex.acquire()
-        #log.debug("Cleanup collection {}".format(collection))
         now = datetime.now().timestamp()
         aggregate_results = self.db.table(collection).search(Query().ttl >= 0)
-        aggregate_results = list(map(lambda doc: {'_id': doc.doc_id, 'timeout': doc['ttl'] + doc['date_epoch']}, aggregate_results))
-        aggregate_results = list(filter(lambda doc: doc['timeout'] <= now, aggregate_results))
+        aggregate_results = [{'_id': doc.doc_id, 'timeout': doc['ttl'] + doc['date_epoch']} for doc in aggregate_results]
+        aggregate_results = [doc for doc in aggregate_results if doc['timeout'] <= now]
         res = self.delete_aggregates(collection, aggregate_results)
         mutex.release()
         return res
 
     def cleanup_orphans(self, collection, key, col_ref, key_ref):
         mutex.acquire()
-        #log.debug("Cleanup collection {} by finding {} in collection {} matching {}".format(collection, key, col_ref, key_ref))
-        results = list(map(lambda doc: doc[key_ref], self.db.table(col_ref).all()))
+        results = [doc[key_ref] for doc in self.db.table(col_ref).all()]
         aggregate_results = self.db.table(collection).search(~ (Query()[key].one_of(results)))
-        aggregate_results = list(map(lambda doc: {'_id': doc.doc_id}, aggregate_results))
+        aggregate_results = [{'_id': doc.doc_id} for doc in aggregate_results]
         res = self.delete_aggregates(collection, aggregate_results)
         mutex.release()
         return res
@@ -121,15 +123,15 @@ class BackendDB(Database):
         mutex.release()
 
     def delete_aggregates(self, collection, aggregate_results):
-        ids = list(map(lambda doc: doc['_id'], aggregate_results))
+        ids = [doc['_id'] for doc in aggregate_results]
         deleted_count = 0
         if ids:
             deleted_results = self.db.table(collection).remove(doc_ids=ids)
             deleted_count = len(deleted_results)
-            log.debug('Removed {} documents in {}'.format(deleted_count, collection))
+            log.debug('Removed %d documents in %s', deleted_count, collection)
         return deleted_count
 
-    def write(self, collection, obj, primary = None, duplicate_policy='update', update_time=True, constant=None):
+    def write(self, collection, obj, primary=None, duplicate_policy='update', update_time=True, constant=None):
         mutex.acquire()
         added = []
         updated = []
@@ -140,7 +142,7 @@ class BackendDB(Database):
         add_obj = False
         table = self.db.table(collection)
         tobj = deepcopy(obj)
-        if type(tobj) != list:
+        if not isinstance(tobj, list):
             tobj = [tobj]
         if primary:
             if isinstance(primary , str):
@@ -159,7 +161,7 @@ class BackendDB(Database):
                 primary_query = reduce(lambda a, b: a & b, primary_query)
                 primary_docs = table.search(primary_query)
                 if primary_docs:
-                    log.debug('Documents with same primary {}: {}'.format(primary, str(primary_docs[0].doc_id)))
+                    log.debug('Documents with same primary %s: %s', primary, primary_docs[0].doc_id)
             if 'uid' in o:
                 query = Query()
                 docs = table.search(query.uid == o['uid'])
@@ -167,24 +169,26 @@ class BackendDB(Database):
                     doc = docs[0]
                     doc_id = doc.doc_id
                     old = doc
-                    log.debug('Found: {}'.format(str(doc_id)))
+                    log.debug('Found: %s', doc_id)
                     if primary_docs and doc_id != primary_docs[0].doc_id:
-                        error_message = f"Found another document with same primary {primary}: {primary_docs}. Since UID is different, cannot update"
+                        error_message = f"Found another document with same primary {primary}: {primary_docs}. " \
+                            "Since UID is different, cannot update"
                         log.error(error_message)
                         o['error'] = error_message
                         rejected.append(o)
                     elif constant and any(doc.get(c, '') != o.get(c) for c in constant):
-                        error_message = f"Found a document with existing uid {o['uid']} but different constant values: {constant}. Since UID is different, cannot update"
+                        error_message = f"Found a document with existing uid {o['uid']} but different constant " \
+                            f"values: {constant}. Since UID is different, cannot update"
                         log.error(error_message)
                         o['error'] = error_message
                         rejected.append(o)
                     elif duplicate_policy == 'replace':
-                        log.debug('Replacing with: {}'.format(str(doc_id)))
+                        log.debug('Replacing with: %s', doc_id)
                         table.remove(doc_ids=[doc_id])
                         table.insert(o)
                         replaced.append(o)
                     else:
-                        log.debug('Updating with: {}'.format(str(doc_id)))
+                        log.debug('Updating with: %s', doc_id)
                         table.update(o, doc_ids=[doc_id])
                         updated.append(o)
                 else:
@@ -198,12 +202,13 @@ class BackendDB(Database):
                     doc_id = doc.doc_id
                     old = doc
                     if constant and any(doc.get(c, '') != o.get(c) for c in constant):
-                        error_message = f"Found a document with existing primary {primary} but different constant values: {constant}. Since UID is different, cannot update"
+                        error_message = f"Found a document with existing primary {primary} but different "\
+                            f"constant values: {constant}. Since UID is different, cannot update"
                         log.error(error_message)
                         o['error'] = error_message
                         rejected.append(o)
                     else:
-                        log.debug('Evaluating duplicate policy: {}'.format(duplicate_policy))
+                        log.debug('Evaluating duplicate policy: %s', duplicate_policy)
                         if duplicate_policy == 'insert':
                             add_obj = True
                         elif duplicate_policy == 'reject':
@@ -211,14 +216,14 @@ class BackendDB(Database):
                             o['error'] = error_message
                             rejected.append(o)
                         elif duplicate_policy == 'replace':
-                            log.debug('Replace with: {}'.format(str(doc_id)))
+                            log.debug('Replace with: %s', doc_id)
                             table.remove(doc_ids=[doc_id])
                             if 'uid' in doc:
                                 o['uid'] = doc['uid']
                             table.insert(o)
                             replaced.append(o)
                         else:
-                            log.debug('Update with: {}'.format(str(doc_id)))
+                            log.debug('Update with: %s', doc_id)
                             table.update(o, doc_ids=[doc_id])
                             updated.append(o)
                 else:
@@ -231,13 +236,20 @@ class BackendDB(Database):
                 obj_copy[-1]['uid'] = str(uuid.uuid4())
                 added.append(o)
                 add_obj = False
-                log.debug("In {}, inserting {}".format(collection, o.get('uid', '')))
+                log.debug("In %s, inserting %s", collection, o.get('uid', ''))
             if old:
                 o['_old'] = old
         if len(obj_copy) > 0:
             table.insert_multiple(obj_copy)
         mutex.release()
-        return {'data': {'added': deepcopy(added), 'updated': deepcopy(updated), 'replaced': deepcopy(replaced),'rejected': deepcopy(rejected)}}
+        return {
+            'data': {
+                'added': deepcopy(added),
+                'updated': deepcopy(updated),
+                'replaced': deepcopy(replaced),
+                'rejected': deepcopy(rejected),
+            },
+        }
 
     def inc(self, collection, field, labels={}):
         now = int((datetime.now().timestamp() // 3600) * 3600)
@@ -248,8 +260,8 @@ class BackendDB(Database):
         added = []
         updated = []
         if labels:
-            for k,v in labels.items():
-                keys.append(field+'__'+k+'__'+v)
+            for key, value in labels.items():
+                keys.append(f"{field}__{key}__{value}")
         else:
             keys.append(field)
         for key in keys:
@@ -268,7 +280,7 @@ class BackendDB(Database):
         return {'data': {'added': added, 'updated': updated}}
 
     def update_fields(self, collection, fields, condition=[]):
-        log.debug("Update collection '{}' with fields '{}' based on the following search".format(collection, fields))
+        log.debug("Update collection '%s' with fields '%s' based on the following search", collection, fields)
         total = 0
         mutex.acquire()
         if collection not in self.db.tables():
@@ -282,15 +294,15 @@ class BackendDB(Database):
                 record[field] = val
         if total > 0:
             self.write(collection, results['data'])
-        log.debug("Updated {} fields".format(total))
+        log.debug("Updated %d fields", total)
         return total
 
     def compute_stats(self, collection, date_from, date_until, groupby='hour'):
-        log.debug("Compute metrics on `{}` from {} until {} grouped by {}".format(collection, date_from, date_until, groupby))
+        log.debug("Compute metrics on `%s` from %s until %s grouped by %s", collection, date_from, date_until, groupby)
         date_from = date_from.replace(minute=0, second=0, microsecond=0)
         mutex.acquire()
         if collection not in self.db.tables():
-            log.debug("Compute stats: collection {} does not exist".format(collection))
+            log.debug("Compute stats: collection %s does not exist", collection)
             mutex.release()
             return {'data': [], 'count': 0}
         if groupby == 'hour':
@@ -324,21 +336,20 @@ class BackendDB(Database):
             elif doc['key'] not in groups[date_range]:
                 groups[date_range][doc['key']] = {'value': 0}
             groups[date_range][doc['key']]['value'] += doc['value']
-        for date, v in groups.items():
+        for date, value in groups.items():
             entry = {'_id': date, 'data': []}
-            for key, doc in v.items():
+            for key, doc in value.items():
                 entry['data'].append({'key': key, 'value': doc['value']})
             res.append(entry)
         results_agg = sorted(res, key=lambda d: d['_id'])
         count = len(results_agg)
-        log.debug("Compute stats: Got {} results".format(count))
+        log.debug("Compute stats: Got %s results", count)
         mutex.release()
         return {'data': results_agg, 'count': count}
 
     def search(self, collection, condition=[], nb_per_page=0, page_number=1, orderby="", asc=True):
         mutex.acquire()
         tinydb_search = self.convert(condition)
-        #log.debug("Condition {} converted to tinydb search {}".format(condition, tinydb_search))
         if collection in self.db.tables():
             table = self.db.table(collection)
             if tinydb_search:
@@ -357,18 +368,18 @@ class BackendDB(Database):
             if not asc:
                 results = list(reversed(results))
             results = results[from_el:to_el]
-            log.debug("Found {} result(s) for search {} in collection {}. Page: {}-{}. Sort by {}. Order: {}".format(total, tinydb_search, collection, page_number, nb_per_page, orderby, 'Ascending' if asc else 'Descending'))
+            log.debug("Found %d result(s) for search %s in collection %s. Page: %d-%d. Sort by %s. Order: %s",
+                total, tinydb_search, collection, page_number, nb_per_page, orderby, 'Ascending' if asc else 'Descending')
             mutex.release()
             return {'data': deepcopy(results), 'count': total}
         else:
-            log.warning("Cannot find collection {}".format(collection))
+            log.warning("Cannot find collection %s", collection)
             mutex.release()
             return {'data': [], 'count': 0}
 
     def delete(self, collection, condition=[], force=False):
         mutex.acquire()
         tinydb_search = self.convert(condition)
-        #log.debug("Condition {} converted to tinydb delete search {}".format(condition, tinydb_search))
         if collection in self.db.tables():
             table = self.db.table(collection)
             if len(condition) == 0 and not force:
@@ -381,12 +392,13 @@ class BackendDB(Database):
                 else:
                     results = table.remove(tinydb_search)
                     results_count = len(results)
-                log.debug("Found {} item(s) to delete in collection {} for search {}".format(results_count, collection, tinydb_search))
+                log.debug("Found %d item(s) to delete in collection %s for search %s",
+                    results_count, collection, tinydb_search)
             mutex.release()
             return {'data': [], 'count': results_count}
         else:
             mutex.release()
-            log.error("Cannot find collection {}".format(collection))
+            log.error("Cannot find collection %s", collection)
             return {'data': 0}
 
     def convert(self, array):
@@ -445,7 +457,7 @@ class BackendDB(Database):
                     saved_key = key
                     key = self.convert(key)
                     converted = True
-                except:
+                except Exception:
                     key = saved_key
             if converted:
                 return_obj = dig(Query(), *value.split('.')).any(key)
@@ -457,16 +469,16 @@ class BackendDB(Database):
             arg = args[0]
             try:
                 return_obj = Query().test_root(test_search, to_tuple(arg))
-            except Exception as e:
-                log.exception(e)
+            except Exception as err:
+                log.exception(err)
                 raise OperationNotSupported(operation)
         else:
             raise OperationNotSupported(operation)
         return return_obj
 
-    def backup(self, backup_path, backup_exclude = []):
+    def backup(self, backup_path, backup_exclude=[]):
         collections = [c for c in self.db.tables() if c not in backup_exclude]
-        log.debug('Starting backup of {}'.format(collections))
+        log.debug('Starting backup of %s', collections)
         succeeded = []
         for i, collection_name in enumerate(collections):
             try:
@@ -475,10 +487,10 @@ class BackendDB(Database):
                 with jsonpath.open("wb") as jsonfile:
                     jsonfile.write(dumps(collection).encode())
                     succeeded.append(collection_name)
-            except Exception as e:
-                log.error('Backup of {} failed'.format(collection_name))
-                log.exception(e)
-        log.info('Backup of {} succeeded'.format(succeeded))
+            except Exception as err:
+                log.error('Backup of %s failed', collection_name)
+                log.exception(err)
+        log.info('Backup of %s succeeded', succeeded)
 
     def get_uri(self):
         return None

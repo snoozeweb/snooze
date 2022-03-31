@@ -5,20 +5,19 @@
 # SPDX-License-Identifier: AFL-3.0
 #
 
-#!/usr/bin/python
-import os
 import traceback
 import sys
-import falcon
-import bson.json_util
 from datetime import datetime
 from urllib.parse import unquote
 from logging import getLogger
-log = getLogger('snooze.api')
+
+import falcon
+import bson.json_util
 
 from snooze.api.falcon import authorize, FalconRoute
 from snooze.utils.parser import parser
-from snooze.utils.functions import dig
+
+log = getLogger('snooze.api')
 
 class ValidationError(RuntimeError):
     '''Raised when the validation fails'''
@@ -30,7 +29,7 @@ class Route(FalconRoute):
         if 'ql' in req.params:
             try:
                 ql = parser(req.params.get('ql'))
-            except:
+            except Exception:
                 ql = None
         if 's' in req.params:
             s = req.params.get('s') or search
@@ -42,7 +41,7 @@ class Route(FalconRoute):
         ascending = req.params.get('asc', asc)
         try:
             cond_or_uid = bson.json_util.loads(unquote(s))
-        except:
+        except Exception:
             cond_or_uid = s
         if self.inject_payload:
             cond_or_uid = self.inject_payload_search(req, cond_or_uid)
@@ -51,8 +50,10 @@ class Route(FalconRoute):
                 cond_or_uid = ['AND', ql, cond_or_uid]
             else:
                 cond_or_uid = ql
-        log.debug("Trying search {}".format(cond_or_uid))
-        result_dict = self.search(self.plugin.name, cond_or_uid, int(perpage), int(pagenb), orderby, ascending.lower() == 'true')
+        log.debug("Trying search %s", cond_or_uid)
+        asc = (ascending.lower() == 'true')
+        result_dict = self.search(self.plugin.name, cond_or_uid,
+            int(perpage), int(pagenb), orderby, asc)
         resp.content_type = falcon.MEDIA_JSON
         if result_dict:
             resp.media = result_dict
@@ -60,14 +61,13 @@ class Route(FalconRoute):
         else:
             resp.media = {}
             resp.status = falcon.HTTP_404
-            pass
 
     @authorize
     def on_post(self, req, resp):
         if self.inject_payload:
             self.inject_payload_media(req, resp)
         resp.content_type = falcon.MEDIA_JSON
-        log.debug("Trying to insert {}".format(req.media))
+        log.debug("Trying to insert %s", req.media)
         media = req.media.copy()
         if not isinstance(media, list):
             media = [media]
@@ -75,7 +75,10 @@ class Route(FalconRoute):
         validated = []
         for req_media in media:
             queries = req_media.get('qls', [])
-            req_media['snooze_user'] = {'name': req.context['user']['user']['name'], 'method': req.context['user']['user']['method']}
+            req_media['snooze_user'] = {
+                'name': req.context['user']['user']['name'],
+                'method': req.context['user']['user']['method'],
+            }
 
             # Validation
             try:
@@ -87,10 +90,10 @@ class Route(FalconRoute):
             for query in queries:
                 try:
                     parsed_query = parser(query['ql'])
-                    log.debug("Parsed query: {} -> {}".format(query['ql'], parsed_query))
+                    log.debug("Parsed query: %s -> %s", query['ql'], parsed_query)
                     req_media[query['field']] = parsed_query
-                except Exception as e:
-                    log.exception(e)
+                except Exception as err:
+                    log.exception(err)
                     rejected.append(req_media)
                     continue
             validated.append(req_media)
@@ -101,8 +104,8 @@ class Route(FalconRoute):
             self.plugin.reload_data(True)
             resp.status = falcon.HTTP_201
             self._audit(result, req)
-        except Exception as e:
-            log.exception(e)
+        except Exception as err:
+            log.exception(err)
             resp.media = []
             resp.status = falcon.HTTP_503
 
@@ -111,7 +114,7 @@ class Route(FalconRoute):
         if self.inject_payload:
             self.inject_payload_media(req, resp)
         resp.content_type = falcon.MEDIA_JSON
-        log.debug("Trying to update {}".format(req.media))
+        log.debug("Trying to update %s", req.media)
         media = req.media.copy()
         if not isinstance(media, list):
             media = [media]
@@ -138,14 +141,13 @@ class Route(FalconRoute):
 
     @authorize
     def on_delete(self, req, resp, search='[]'):
-        object_uids = []
         if 'uid' in req.params:
             cond_or_uid = ['=', 'uid', req.params['uid']]
         else:
             string = req.params.get('s') or search
             try:
                 cond_or_uid = bson.json_util.loads(string)
-            except:
+            except Exception:
                 cond_or_uid = string
         if self.inject_payload:
             cond_or_uid = self.inject_payload_search(req, cond_or_uid)
@@ -162,7 +164,6 @@ class Route(FalconRoute):
         else:
             resp.media = {}
             resp.status = falcon.HTTP_NOT_FOUND
-            pass
 
     def _validate(self, obj, req, resp):
         '''Validate an object and handle the response in case of exception'''
@@ -184,7 +185,7 @@ class Route(FalconRoute):
                 for obj in objs:
                     try:
                         error = obj.pop('error', None)
-                        traceback = obj.pop('traceback', None)
+                        _traceback = obj.pop('traceback', None)
                         old = sanitize(obj.pop('_old', {}))
                         new = sanitize(dict(obj))
                         source_ip = req.access_route[0] if len(req.access_route) > 0 else 'unknown'
@@ -216,8 +217,8 @@ class Route(FalconRoute):
                         continue
                     if error:
                         message['error'] = error
-                    if traceback:
-                        message['traceback'] = traceback
+                    if _traceback:
+                        message['traceback'] = _traceback
             self.insert('audit', messages)
 
 def sanitize(obj):

@@ -5,21 +5,22 @@
 # SPDX-License-Identifier: AFL-3.0
 #
 
-#!/usr/bin/python3.6
+'''Module for managing loading and writing the configuration files'''
 
 import os
-import yaml
-from snooze import __file__ as SNOOZE_PATH
-from pathlib import Path
 from logging import getLogger
+from pathlib import Path
+
+import yaml
+
+from snooze import __file__ as SNOOZE_PATH
+
 log = getLogger('snooze.utils.config')
 
 SNOOZE_CONFIG_PATH = os.environ.get('SNOOZE_SERVER_CONFIG', '/etc/snooze/server')
 
 def config(configname = 'core', configpath = SNOOZE_CONFIG_PATH):
-    '''
-    Read a configuration file and return its content.
-    '''
+    '''Read a configuration file and return its content'''
     server_config_path = Path(configpath) / (configname + '.yaml')
 
     default_file = Path(SNOOZE_PATH).parent / 'defaults' / (configname + '.yaml')
@@ -31,43 +32,47 @@ def config(configname = 'core', configpath = SNOOZE_CONFIG_PATH):
 
     log.debug('Attempting to load configuration at %s', server_config_path)
     if server_config_path.is_file():
-        config = yaml.safe_load(server_config_path.read_text())
-        return_config.update(config)
+        config_dict = yaml.safe_load(server_config_path.read_text())
+        return_config.update(config_dict)
     else:
         log.warning('Could not find config at %s', server_config_path)
 
-    environment_variables = {k:v for (k,v) in os.environ.items() if k.startswith('SNOOZE_SERVER_') and k != 'SNOOZE_SERVER_CONFIG'}
+    environment_variables = {
+        key: value
+        for (key, value) in os.environ.items()
+        if key.startswith('SNOOZE_SERVER_') and key != 'SNOOZE_SERVER_CONFIG'
+    }
     return_config.update(environment_variables)
 
     log.debug('Retreived the following config: %s', return_config)
 
     return return_config
 
-def write_config(configname = 'core', config = {}, configpath = SNOOZE_CONFIG_PATH):
-    '''
-    Update or create a configuration file.
-    '''
-    config_file = Path(configpath) / (configname + '.yaml')
+def write_config(config_name='core', config_dict=None, config_path=SNOOZE_CONFIG_PATH):
+    '''Update or create a configuration file'''
+    if config_dict is None:
+        config_dict = {}
+    config_file = Path(config_path) / (config_name + '.yaml')
     log.debug('Write: Loading configuration from %s', config_file)
 
     try:
         if config_file.is_file():
             log.debug('Write: %s found', config_file)
             current_config = yaml.safe_load(config_file.read_text())
-            current_config.update(config)
+            current_config.update(config_dict)
         else:
             log.debug('Write: YAML config file not found. Creating %s', config_file)
-            current_config = config
+            current_config = config_dict
 
         # Write config
-        with config_file.open("w") as f:
-            yaml.dump(current_config, f)
+        with config_file.open("w") as config_fd:
+            yaml.dump(current_config, config_fd)
             log.debug('New config: %s', current_config)
         return {'file': str(config_file)}
 
-    except Exception as e:
-        log.error(e)
-        return {'error': str(e)}
+    except Exception as err:
+        log.error(err)
+        return {'error': str(err)}
 
 def get_metadata(plugin_name):
     '''Read metadata at a given plugin path'''

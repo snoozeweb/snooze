@@ -1,20 +1,22 @@
+'''Module for managing the Message Queue in the database'''
+
 import time
-import sys
 import threading
-import bson.json_util
-from random import random
-from itertools import count
 from logging import getLogger
+from random import random
+
+import bson.json_util
+from kombu import Connection
 from kombu import Exchange, Queue
 from kombu.mixins import ConsumerMixin
 from kombu.pools import producers
 from kombu.serialization import register
-from kombu import Connection
+
 log = getLogger('snooze.mq')
 
 task_exchange = Exchange('tasks', type='direct')
 
-class MQManager():
+class MQManager:
     def __init__(self, core):
         log.debug('Init MQManager')
         self.core = core
@@ -26,7 +28,7 @@ class MQManager():
                  content_type='application/json',
                  content_encoding='utf-8')
 
-    def update_queue(self, queue, timer = 10, maxsize = 100, worker_class = None, worker_obj = None):
+    def update_queue(self, queue, timer=10, maxsize=100, worker_class=None, worker_obj=None):
         if queue not in self.threads:
             self.threads[queue] = MQThread(self, queue, timer, maxsize, worker_class, worker_obj)
             self.threads[queue].start()
@@ -43,7 +45,7 @@ class MQManager():
     def keep_queues(self, queues, prefix = ''):
         for queue, thread in self.threads.items():
             if queue.startswith(prefix) and queue not in queues:
-                log.debug("Trying to clean queue {}".format(queue))
+                log.debug("Trying to clean queue %s", queue)
                 thread.worker.end = True
 
     def send(self, queue, payload):
@@ -57,16 +59,15 @@ class MQManager():
                                      declare=[task_exchange],
                                      routing_key=queue)
                 return True
-            except Exception as e:
-                log.exception(e)
+            except Exception as err:
+                log.exception(err)
                 return False
         else:
-            log.error("Queue `{}` is disconnected. Cannot send message".format(queue))
+            log.error("Queue `%s` is disconnected. Cannot send message", queue)
             return False
 
 class MQThread(threading.Thread):
-
-    def __init__(self, manager, queue, timer = 10, maxsize = 100, worker_class = None, worker_obj = None):
+    def __init__(self, manager, queue, timer=10, maxsize=100, worker_class=None, worker_obj=None):
         super().__init__()
         self.manager = manager
         self.queue = Queue(queue, task_exchange, routing_key=queue)
@@ -80,7 +81,7 @@ class MQThread(threading.Thread):
         self.obj = worker_obj
         self.worker = None
 
-    def update(self, timer = 10, maxsize = 100, worker_obj = None):
+    def update(self, timer=10, maxsize=100, worker_obj=None):
         self.timer = timer
         self.maxsize = maxsize
         self.obj = worker_obj
@@ -92,7 +93,6 @@ class MQThread(threading.Thread):
             self.worker.run()
 
 class Worker(ConsumerMixin):
-
     def __init__(self, connection, thread):
         self.connection = connection
         self.thread = thread
@@ -122,12 +122,12 @@ class Worker(ConsumerMixin):
                         self.consumer.cancel()
                         self.thread.queue.delete()
                         self.should_stop = True
-                        log.debug("Queue {} cleaned successfully".format(name))
-                    except Exception as e:
-                        log.exception(e)
+                        log.debug("Queue %s cleaned successfully", name)
+                    except Exception as err:
+                        log.exception(err)
 
     def process(self):
-        for body, msg in self.to_ack:
+        for _body, msg in self.to_ack:
             msg.ack()
         self.to_ack = []
 

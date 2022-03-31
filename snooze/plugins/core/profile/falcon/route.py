@@ -5,15 +5,15 @@
 # SPDX-License-Identifier: AFL-3.0
 #
 
-#!/usr/bin/python
-import os
+from logging import getLogger
+from urllib.parse import unquote
+
 import falcon
 import bson.json_util
-from urllib.parse import unquote
-from logging import getLogger
-log = getLogger('snooze.api')
 
 from snooze.api.falcon import authorize, FalconRoute
+
+log = getLogger('snooze.api')
 
 class ProfileRoute(FalconRoute):
     @authorize
@@ -26,12 +26,12 @@ class ProfileRoute(FalconRoute):
             query = req.params.get('s') or search
             try:
                 query = bson.json_util.loads(unquote(query))
-            except:
+            except Exception:
                 pass
         if self.inject_payload:
             query = self.inject_payload_search(req, query)
         c = req.params.get('c') or category
-        log.debug("Loading profile {}".format(c))
+        log.debug("Loading profile %s", c)
         result_dict = self.search(self.plugin.name + '.' + c, query)
         resp.content_type = falcon.MEDIA_JSON
         if result_dict:
@@ -44,7 +44,6 @@ class ProfileRoute(FalconRoute):
         else:
             resp.media = {}
             resp.status = falcon.HTTP_404
-            pass
 
     @authorize
     def on_put(self, req, resp, category=''):
@@ -54,18 +53,17 @@ class ProfileRoute(FalconRoute):
         resp.content_type = falcon.MEDIA_JSON
         try:
             media = req.media.copy()
-            log.debug("Trying write to profile {}: {}".format(c, media))
+            log.debug("Trying write to profile %s: %s", c, media)
             if c == 'general':
                 for req_media in media:
                     self.update_password(req_media)
             result_dict = self.update(self.plugin.name + '.' + c, media)
             resp.media = result_dict
             resp.status = falcon.HTTP_201
-        except Exception as e:
-            log.exception(e)
+        except Exception as err:
+            log.exception(err)
             resp.media = {}
             resp.status = falcon.HTTP_503
-            pass
 
     @authorize
     def on_delete(self, req, resp, category='', search='[]'):
@@ -77,22 +75,21 @@ class ProfileRoute(FalconRoute):
             query = req.params.get('s') or search
             try:
                 query = bson.json_util.loads(query)
-            except:
+            except Exception:
                 pass
         if self.inject_payload:
             query = self.inject_payload_search(req, query)
         c = req.params.get('c') or category
-        log.debug("Trying delete profile {}: {}".format(c, media))
+        log.debug("Trying delete profile %s: %s", c, media)
         result_dict = self.delete(self.plugin.name + '.' + c, query)
         resp.content_type = falcon.MEDIA_JSON
         if result_dict:
             try:
                 resp.media = result_dict
                 resp.status = falcon.HTTP_OK
-            except:
+            except Exception:
                 resp.media = {}
                 resp.status = falcon.HTTP_503
         else:
             resp.media = {}
             resp.status = falcon.HTTP_NOT_FOUND
-            pass

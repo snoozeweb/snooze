@@ -10,6 +10,7 @@ A server running special functionalities on a unix socket
 for bypassing authentication
 '''
 
+from datetime import datetime, timedelta
 from logging import getLogger
 from pathlib import Path
 from threading import Thread, Event
@@ -19,7 +20,6 @@ from waitress.adjustments import Adjustments
 from waitress.server import UnixWSGIServer
 
 from snooze.api.falcon import LoggerMiddleware
-from datetime import datetime, timedelta
 
 log = getLogger('snooze.api.socket')
 
@@ -30,11 +30,17 @@ class RootTokenRoute:
 
     def on_get(self, req, resp):
         log.debug("Received root token request from client")
-        payload = {'user': {'name': 'root', 'method': 'root', 'permissions': ['rw_all']}, 'iat': datetime.utcnow(), 'nbf': datetime.utcnow(), 'exp': datetime.utcnow() + timedelta(seconds=3600)}
+        now = datetime.utcnow()
+        payload = {
+            'user': {'name': 'root', 'method': 'root', 'permissions': ['rw_all']},
+            'iat': now,
+            'nbf': now,
+            'exp': now + timedelta(seconds=3600),
+        }
         root_token = self.token_engine.sign(payload).decode()
         resp.content_type = falcon.MEDIA_JSON
-        resp.media = {'root_token': root_token}
         resp.status = falcon.HTTP_200
+        resp.media = {'root_token': root_token}
 
 def admin_api(token_engine):
     '''Return a falcon WSGI app for returning the root token. Only used by the unix socket'''

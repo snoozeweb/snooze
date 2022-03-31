@@ -5,28 +5,32 @@
 # SPDX-License-Identifier: AFL-3.0
 #
 
-#!/usr/bin/python3.6
+'''MongoDB related tools'''
+
+import datetime
+import os
+import re
+import uuid
+from copy import deepcopy
+from pathlib import Path
+from logging import getLogger
+
+import pymongo
+from bson.code import Code
+from bson.json_util import dumps
 
 from snooze.db.database import Database
 from snooze.utils.functions import dig
-from copy import deepcopy
-from bson.code import Code
-from bson.json_util import dumps
-from pathlib import Path
-from logging import getLogger
+
 log = getLogger('snooze.db.mongo')
 
-import pymongo
-import uuid
-import datetime
-import re
-import os
-
-class OperationNotSupported(Exception): pass
+class OperationNotSupported(Exception):
+    '''Raised when the search operator is not supported'''
 
 database = os.environ.get('DATABASE_NAME', 'snooze')
 
 class BackendDB(Database):
+    '''Database backend for MongoDB'''
     def init_db(self, conf):
         if 'DATABASE_URL' in os.environ:
             self.db = pymongo.MongoClient(os.environ.get('DATABASE_URL'))[database]
@@ -34,17 +38,16 @@ class BackendDB(Database):
             self.db = pymongo.MongoClient(**conf)[database]
         self.search_fields = {}
         self.conf = conf
-        log.debug("Initialized Mongodb with config {}".format(conf))
-        log.debug("db: {}".format(self.db))
-        log.debug("List of collections: {}".format(self.db.collection_names()))
+        log.debug("Initialized Mongodb with config %s", conf)
+        log.debug("db: %s", self.db)
+        log.debug("List of collections: %s", self.db.collection_names())
 
     def create_index(self, collection, fields):
-        log.debug("Create index for {} with fields: {}".format(collection, fields))
+        log.debug("Create index for %s with fields: %s", collection, fields)
         #self.db[collection].create_index(list(map(lambda x: (x, pymongo.ASCENDING), fields)), unique=True)
         self.search_fields[collection] = fields
 
     def cleanup_timeout(self, collection):
-        #log.debug("Cleanup collection {}".format(collection))
         now = datetime.datetime.now().timestamp()
         pipeline = [
             #{"$project":{ 'date_epoch':1, 'ttl':{ "$ifNull": ["$ttl", 0] }}},
@@ -55,7 +58,6 @@ class BackendDB(Database):
         return self.run_pipeline(collection, pipeline)
 
     def cleanup_orphans(self, collection, key, col_ref, key_ref):
-        #log.debug("Cleanup collection {} by finding {} in collection {} matching {}".format(collection, key, col_ref, key_ref))
         pipeline = [{
     	    "$lookup": {
                 'from': col_ref,
@@ -92,115 +94,119 @@ class BackendDB(Database):
             self.db['audit'].delete_many({'object_id': {'$in': ids}})
 
     def run_pipeline(self, collection, pipeline):
+        '''Execute a filter pipeline on a collection, and delete the resulting objects.
+        Return the number of deleted objects'''
         aggregate_results = self.db[collection].aggregate(pipeline)
-        ids = list(map(lambda doc: doc['_id'], aggregate_results))
+        ids = [doc['_id'] for doc in aggregate_results]
         if ids:
             deleted_results = self.db[collection].delete_many({'_id': {"$in": ids}})
-            log.debug('Removed {} documents in {}'.format(deleted_results.deleted_count, collection))
+            log.debug('Removed %d documents in %s', deleted_results.deleted_count, collection)
             return deleted_results.deleted_count
         else:
             return 0
 
-    def write(self, collection, obj, primary = None, duplicate_policy='update', update_time=True, constant=None):
+    def write(self, collection, obj, primary=None, duplicate_policy='update', update_time=True, constant=None):
         added = []
         rejected = []
         updated = []
         replaced = []
         obj_copy = []
-        tobj = obj
         add_obj = False
-        tobj = deepcopy(obj)
-        if type(tobj) != list:
-            tobj = [tobj]
+        tobjs = deepcopy(obj)
+        if not isinstance(tobjs, list):
+            tobjs = [tobjs]
         if primary:
             if isinstance(primary , str):
                 primary = primary.split(',')
         if constant:
             if isinstance(constant , str):
                 constant = constant.split(',')
-        for o in tobj:
-            o.pop('_id', None)
-            o.pop('_old', None)
+        for tobj in tobjs:
+            tobj.pop('_id', None)
+            tobj.pop('_old', None)
             primary_result = None
             old = {}
             if update_time:
-                o['date_epoch'] = datetime.datetime.now().timestamp()
-            if primary and all(dig(o, *p.split('.')) for p in primary):
-                primary_query = list(map(lambda a: {a: dig(o, *a.split('.'))}, primary))
+                tobj['date_epoch'] = datetime.datetime.now().timestamp()
+            if primary and all(dig(tobj, *p.split('.')) for p in primary):
+                primary_query = [{a: dig(tobj, *a.split('.'))} for a in primary]
                 if len(primary) > 1:
                     primary_query = {'$and': primary_query}
                 else:
                     primary_query = primary_query[0]
                 primary_result = self.db[collection].find_one(primary_query)
                 if primary_result:
-                    log.debug("Documents with same primary {}: {}".format(primary, primary_result.get('uid', '')))
-            if 'uid' in o:
-                result = self.db[collection].find_one({'uid': o['uid']})
+                    log.debug("Documents with same primary %s: %s", primary, primary_result.get('uid', ''))
+            if 'uid' in tobj:
+                result = self.db[collection].find_one({'uid': tobj['uid']})
                 if result:
-                    log.debug("UID {} found".format(o['uid']))
+                    log.debug("UID %s found", tobj['uid'])
                     old = result
-                    if primary_result and primary_result['uid'] != o['uid']:
-                        error_message = f"Found another document with same primary {primary}: {primary_result}. Since UID is different, cannot update"
+                    if primary_result and primary_result['uid'] != tobj['uid']:
+                        error_message = f"Found another document with same primary {primary}: {primary_result}." \
+                            "Since UID is different, cannot update"
                         log.error(error_message)
-                        o['error'] = error_message
-                        rejected.append(o)
-                    elif constant and any(result.get(c, '') != o.get(c) for c in constant):
-                        error_message = f"Found a document with existing uid {o['uid']} but different constant values: {constant}. Since UID is different, cannot update"
+                        tobj['error'] = error_message
+                        rejected.append(tobj)
+                    elif constant and any(result.get(c, '') != tobj.get(c) for c in constant):
+                        error_message = f"Found a document with existing uid {tobj['uid']} but different constant " \
+                            f"values: {constant}. Since UID is different, cannot update"
                         log.error(error_message)
-                        o['error'] = error_message
-                        rejected.append(o)
+                        tobj['error'] = error_message
+                        rejected.append(tobj)
                     elif duplicate_policy == 'replace':
-                        log.debug("In {}, replacing {}".format(collection, o['uid']))
-                        self.db[collection].replace_one({'uid': o['uid']}, o)
-                        replaced.append(o)
+                        log.debug("In %s, replacing %s", collection, tobj['uid'])
+                        self.db[collection].replace_one({'uid': tobj['uid']}, tobj)
+                        replaced.append(tobj)
                     else:
-                        log.debug("In {}, updating {}".format(collection, o['uid']))
-                        self.db[collection].update_one({'uid': o['uid']}, {'$set': o})
-                        updated.append(o)
+                        log.debug("In %s, updating %s", collection, tobj['uid'])
+                        self.db[collection].update_one({'uid': tobj['uid']}, {'$set': tobj})
+                        updated.append(tobj)
                 else:
-                    error_message = f"UID {o['uid']} not found. Skipping..."
+                    error_message = f"UID {tobj['uid']} not found. Skipping..."
                     log.error(error_message)
-                    o['error'] = error_message
-                    rejected.append(o)
+                    tobj['error'] = error_message
+                    rejected.append(tobj)
             elif primary:
                 if primary_result:
                     old = primary_result
-                    if constant and any(primary_result.get(c, '') != o.get(c) for c in constant):
-                        error_message = f"Found a document with existing primary {primary} but different constant values: {constant}. Since UID is different, cannot update"
+                    if constant and any(primary_result.get(c, '') != tobj.get(c) for c in constant):
+                        error_message = f"Found a document with existing primary {primary} but different " \
+                            f"constant values: {constant}. Since UID is different, cannot update"
                         log.error(error_message)
-                        o['error'] = error_message
-                        rejected.append(o)
+                        tobj['error'] = error_message
+                        rejected.append(tobj)
                     else:
-                        log.debug('Evaluating duplicate policy: {}'.format(duplicate_policy))
+                        log.debug('Evaluating duplicate policy: %s', duplicate_policy)
                         if duplicate_policy == 'insert':
                             add_obj = True
                         elif duplicate_policy == 'reject':
-                            error_message = "Another object exist with the same {primary}"
-                            o['error'] = error_message
-                            rejected.append(o)
+                            error_message = f"Another object exist with the same {primary}"
+                            tobj['error'] = error_message
+                            rejected.append(tobj)
                         elif duplicate_policy == 'replace':
-                            log.debug("In {}, replacing {}".format(collection, primary_result.get('uid', '')))
+                            log.debug("In %s, replacing %s", collection, primary_result.get('uid', ''))
                             if 'uid' in primary_result:
-                                o['uid'] = primary_result['uid']
-                            self.db[collection].replace_one(primary_query, o)
-                            replaced.append(o)
+                                tobj['uid'] = primary_result['uid']
+                            self.db[collection].replace_one(primary_query, tobj)
+                            replaced.append(tobj)
                         else:
-                            log.debug("In {}, updating {}".format(collection, primary_result.get('uid', '')))
-                            self.db[collection].update_one(primary_query, {'$set': o})
-                            updated.append(o)
+                            log.debug("In %s, updating %s", collection, primary_result.get('uid', ''))
+                            self.db[collection].update_one(primary_query, {'$set': tobj})
+                            updated.append(tobj)
                 else:
-                    log.debug("Could not find document with primary {}. Inserting instead".format(primary))
+                    log.debug("Could not find document with primary %s. Inserting instead", primary)
                     add_obj = True
             else:
                 add_obj = True
             if add_obj:
-                obj_copy.append(o)
+                obj_copy.append(tobj)
                 obj_copy[-1]['uid'] = str(uuid.uuid4())
-                added.append(o)
+                added.append(tobj)
                 add_obj = False
-                log.debug("In {}, inserting {}".format(collection, o.get('uid', '')))
+                log.debug("In %s, inserting %s", collection, tobj.get('uid', ''))
             if old:
-                o['_old'] = old
+                tobj['_old'] = old
         if len(obj_copy) > 0:
             self.db[collection].insert_many(obj_copy)
         return {'data': {'added': added, 'updated': updated, 'replaced': replaced, 'rejected': rejected}}
@@ -212,8 +218,8 @@ class BackendDB(Database):
         added = []
         updated = []
         if labels:
-            for k,v in labels.items():
-                keys.append(field+'__'+k+'__'+v)
+            for key, value in labels.items():
+                keys.append(f"{field}__{key}__{value}")
         else:
             keys.append(field)
         for key in keys:
@@ -231,8 +237,7 @@ class BackendDB(Database):
 
     def update_fields(self, collection, fields, condition=[]):
         mongo_search = self.convert(condition, self.search_fields.get(collection, []))
-        log.debug("Update collection '{}' with fields '{}' based on the following search".format(collection, fields))
-        #log.debug("Condition {} converted to mongo search {}".format(condition, mongo_search))
+        log.debug("Update collection '%s' with fields '%s' based on the following search", collection, fields)
         total = 0
         if collection in self.db.collection_names():
             pipeline = [
@@ -243,28 +248,32 @@ class BackendDB(Database):
             try:
                 self.db[collection].aggregate(pipeline)
                 total = self.db[collection].find(mongo_search).count()
-            except Exception as e:
-                log.exception(e)
+            except Exception as err:
+                log.exception(err)
                 total = 0
-        log.debug("Updated {} fields".format(total))
+        log.debug("Updated %d fields", total)
         return total
 
     def search(self, collection, condition=[], nb_per_page=0, page_number=1, orderby='$natural', asc=True):
         if orderby == '':
             orderby = '$natural'
         mongo_search = self.convert(condition, self.search_fields.get(collection, []))
-        #log.debug("Condition {} converted to mongo search {}".format(condition, mongo_search))
         if collection in self.db.collection_names():
             if nb_per_page > 0:
-                results = self.db[collection].find(mongo_search).skip((page_number-1)*nb_per_page if page_number-1>0 else 0).limit(nb_per_page).sort(orderby, 1 if asc else -1)
+                results = self.db[collection] \
+                    .find(mongo_search) \
+                    .skip((page_number-1)*nb_per_page if page_number-1>0 else 0) \
+                    .limit(nb_per_page) \
+                    .sort(orderby, 1 if asc else -1)
             else:
                 results = self.db[collection].find(mongo_search).sort(orderby, 1 if asc else -1)
             total = results.count()
             results = list(results)
-            log.debug("Found {} result(s) for search {} in collection {}. Page: {}-{}. Sort by {}. Order: {}".format(total, mongo_search, collection, page_number, nb_per_page, orderby, 'Ascending' if asc else 'Descending'))
+            log.debug("Found %d result(s) for search %s in collection %s. Page: %d-%d. Sort by %s. Order: %s",
+                total, mongo_search, collection, page_number, nb_per_page, orderby, 'Ascending' if asc else 'Descending')
             return {'data': results, 'count': total}
         else:
-            log.warning("Cannot find collection {}".format(collection))
+            log.warning("Cannot find collection %s", collection)
             return {'data': [], 'count': 0}
 
     def delete(self, collection, condition=[], force=False):
@@ -277,29 +286,30 @@ class BackendDB(Database):
             else:
                 results = self.db[collection].delete_many(mongo_search)
                 results_count = results.deleted_count
-                log.debug("Found {} item(s) to delete in collection {} for search {}".format(results_count, collection, mongo_search))
+                log.debug("Found %d item(s) to delete in collection %s for search %s",
+                    results_count, collection, mongo_search)
             return {'data': [], 'count': results_count}
         else:
-            log.error("Cannot find collection {}".format(collection))
+            log.error("Cannot find collection %s", collection)
             return {'data': 0}
 
-    def compute_stats(self, collection, date_from, date_until, groupby='hour'):
-        log.debug("Compute metrics on `{}` from {} until {} grouped by {}".format(collection, date_from, date_until, groupby))
+    def compute_stats(self, collection, date_from, date_until, group_by='hour'):
+        log.debug("Compute metrics on `%s` from %s until %s grouped by %s", collection, date_from, date_until, group_by)
         date_from = date_from.replace(minute=0, second=0, microsecond=0)
         if collection not in self.db.collection_names():
-            log.debug("Compute stats: collection {} does not exist".format(collection))
+            log.debug("Compute stats: collection %s does not exist", collection)
             return {'data': [], 'count': 0}
-        if groupby == 'hour':
+        if group_by == 'hour':
             date_format = '%Y-%m-%dT%H:00%z'
-        elif groupby == 'day':
+        elif group_by == 'day':
             date_format = '%Y-%m-%dT00:00%z'
-        elif groupby == 'month':
+        elif group_by == 'month':
             date_format = '%Y-%m-01T00:00%z'
-        elif groupby == 'year':
+        elif group_by == 'year':
             date_format = '%Y-01-01T00:00%z'
-        elif groupby == 'week':
+        elif group_by == 'week':
             date_format = '%Y-%VT00:00%z'
-        elif groupby == 'weekday':
+        elif group_by == 'weekday':
             date_format = '%u'
         else:
             date_format = '%Y-%m-%dT%H:00%z'
@@ -312,13 +322,13 @@ class BackendDB(Database):
         try:
             results_agg = sorted(list(self.db[collection].aggregate(pipeline)), key=lambda d: d['_id'])
             count = len(results_agg)
-            log.debug("Compute stats: Got {} results".format(count))
+            log.debug("Compute stats: Got %d results", count)
             return {'data': results_agg, 'count': count}
-        except Exception as e:
-            log.exception(e)
+        except Exception as err:
+            log.exception(err)
             return {'data': [], 'count': 0}
 
-    def convert(self, array, search_fields = []):
+    def convert(self, array, search_fields=[]):
         """
         Convert `Condition` type from snooze.utils
         to Mongodb compatible type of search
@@ -374,14 +384,14 @@ class BackendDB(Database):
                     saved_key = key
                     key = self.convert(key, search_fields)
                     search_operator = '$elemMatch'
-                except:
+                except Exception:
                     key = saved_key
             return_dict = {value: {search_operator: key}}
         elif operation == 'SEARCH':
             arg = args[0]
             if search_fields:
-                return_dict = {'$or': list(map(lambda field: {field: {'$regex': str(arg), "$options": "-i"}}, search_fields))}
-                log.debug("Special search : {}".format(return_dict))
+                return_dict = {'$or': [{field: {'$regex': str(arg), "$options": "-i"}} for field in search_fields]}
+                log.debug("Special search : %s", return_dict)
             else:
                 search_text = Code("function() {"
                                    "    var deepIterate = function  (obj, value) {"
@@ -404,9 +414,9 @@ class BackendDB(Database):
             raise OperationNotSupported(operation)
         return return_dict
 
-    def backup(self, backup_path, backup_exclude = []):
+    def backup(self, backup_path, backup_exclude=[]):
         collections = [c for c in self.db.collection_names() if c not in backup_exclude]
-        log.debug('Starting backup of {}'.format(collections))
+        log.debug('Starting backup of %s', collections)
         try:
             for i, collection_name in enumerate(collections):
                 col = getattr(self.db, collections[i])
@@ -414,10 +424,10 @@ class BackendDB(Database):
                 jsonpath = Path(backup_path) / (collection_name + '.json')
                 with jsonpath.open("wb") as jsonfile:
                     jsonfile.write(dumps(collection).encode())
-        except Exception as e:
+        except Exception as err:
             log.error('Backup failed')
-            log.exception(e)
-        log.info('Backup of {} succeeded'.format(collections))
+            log.exception(err)
+        log.info('Backup of %s succeeded', collections)
 
     def get_uri(self):
         if 'DATABASE_URL' in os.environ:
@@ -440,6 +450,5 @@ class BackendDB(Database):
             uri += '/snooze'
             options = [op for op in ['authSource', 'replicaSet', 'tls', 'tlsCAFile'] if op in self.conf]
             if options:
-                uri += '?' + '&'.join(list(map(lambda x: x + '=' + (str(self.conf.get(x, '')) if not isinstance(self.conf.get(x), bool) else str(self.conf.get(x)).lower()), options)))
+                uri = '?' + '&'.join([x + '=' + (str(self.conf.get(x, '')) if not isinstance(self.conf.get(x), bool) else str(self.conf.get(x)).lower()) for x in options])
             return uri
-

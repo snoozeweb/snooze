@@ -5,61 +5,57 @@
 # SPDX-License-Identifier: AFL-3.0
 #
 
-#!/usr/bin/python
-import os
+'''Module for handling the falcon WSGI'''
 
-from pathlib import Path
+import os
+import functools
+from logging import getLogger
+from hashlib import sha256
+from base64 import b64decode
+from abc import abstractmethod
 
 import bson.json_util
-import ssl
 import falcon
 from falcon_auth import FalconAuthMiddleware, BasicAuthBackend, JWTAuthBackend
 from falcon.errors import HTTPInternalServerError
-import requests
-import functools
 from wsgiref.simple_server import make_server, WSGIServer
 from socketserver import ThreadingMixIn
+from ldap3 import Server, Connection, ALL, SUBTREE
+from ldap3.core.exceptions import LDAPOperationResult, LDAPExceptionError
 
-from snooze.api.base import Api, BasicRoute
+from snooze.api.base import BasicRoute
 from snooze.api.static import StaticRoute
 from snooze.utils import config, write_config
 from snooze.utils.functions import ensure_kv
 
-from logging import getLogger
 log = getLogger('snooze.api')
-
-from hashlib import sha256
-from base64 import b64decode, b64encode
-
-from multiprocessing import Process
-
-from ldap3 import Server, Connection, ALL, SUBTREE
-from ldap3.core.exceptions import LDAPOperationResult, LDAPExceptionError
 
 class LoggerMiddleware(object):
     '''Middleware for logging'''
 
-    def __init__(self, conf={}):
+    def __init__(self, conf=None):
+        if conf is None:
+            conf = {}
         self.logger = getLogger('snooze.audit')
         self.excluded_paths = conf.get('audit_excluded_paths', [])
 
     def process_response(self, req, resp, *_args):
         '''Method for handling requests as a middleware'''
+        source = req.access_route[0]
+        method = req.method
         path = req.relative_uri
-        message = '{source} {method} {path} {status}'.format(
-            source=req.access_route[0],
-            method=req.method,
-            path=path,
-            status=resp.status[:3],
-        )
+        status = resp.status[:3]
+        message = f"{source} {method} {path} {status}"
         if not any(path.startswith(excluded) for excluded in self.excluded_paths):
             self.logger.debug(message)
 
 
 class ThreadingWSGIServer(ThreadingMixIn, WSGIServer):
+    '''Daemonized threaded WSGI server'''
     daemon_threads = True
 
 def authorize(func):
+    '''Decorator for methods that are protected by authorization'''
     def _f(self, req, resp, *args, **kw):
         if os.environ.get('SNOOZE_NO_LOGIN', self.core.conf.get('no_login', False)):
             return func(self, req, resp, *args, **kw)
@@ -89,7 +85,7 @@ def authorize(func):
                     return func(self, req, resp, *args, **kw)
                 elif any(perm in permissions for perm in read_permissions):
                     return func(self, req, resp, *args, **kw)
-            elif endpoint == 'on_post' or endpoint == 'on_put' or endpoint == 'on_delete':
+            elif endpoint in ['on_post', 'on_put', 'on_delete']:
                 if self.check_permissions:
                     permissions = self.get_permissions(self.get_roles(name, method))
                 if len(permissions) > 0:
@@ -97,14 +93,15 @@ def authorize(func):
                         return func(self, req, resp, *args, **kw)
                     elif any(perm in permissions for perm in write_permissions):
                         return func(self, req, resp, *args, **kw)
-        log.warning("Access denied. User {} on endpoint '{}' for plugin {}".format(name, endpoint, plugin_name))
+        log.warning("Access denied. User %s on endpoint '%s' for plugin %s", name, endpoint, plugin_name)
         raise falcon.HTTPForbidden('Forbidden', 'Permission Denied')
     return _f
 
 class FalconRoute(BasicRoute):
+    '''Basic falcon route'''
     def inject_payload_media(self, req, resp):
         user_payload = req.context['user']['user']
-        log.debug("Injecting payload {} to {}".format(user_payload, req.media))
+        log.debug("Injecting payload %s to %s", user_payload, req.media)
         if isinstance(req.media, list):
             for media in req.media:
                 media['name'] = user_payload['name']
@@ -128,23 +125,28 @@ class FalconRoute(BasicRoute):
         if not password or not name or method != 'local':
             log.debug("Skipping updating password")
             return
-        log.debug("Updating password for {} user {}".format(method, name))
+        log.debug("Updating password for %s user %s", method, name)
         user_password = {}
         user_password['name'] = name
         user_password['method'] = method
         user_password['password'] = sha256(password.encode('utf-8')).hexdigest()
         self.core.db.write('user.password', user_password, 'name,method')
 
+def merge_batch_results(rec_list):
+    '''Merge the results (added/rejected/...) in the case of a batch'''
+    return {'data': functools.reduce(lambda a, b: {k: a.get('data', {}).get(k, []) + b.get('data', {}).get(k, []) for k in list(dict.fromkeys(list(a.get('data', {}).keys()) + list(b.get('data', {}).keys())))}, rec_list)}
+
 class WebhookRoute(FalconRoute):
     auth = {
         'auth_disabled': True
     }
 
+    @abstractmethod
     def parse_webhook(self, req, media):
-        return req_media
+        pass
 
     def on_post(self, req, resp):
-        log.debug("Received webhook log {}".format(req.media))
+        log.debug("Received webhook log %s", req.media)
         media = req.media.copy()
         rec_list = [{'data': {}}]
         if not isinstance(media, list):
@@ -166,7 +168,7 @@ class WebhookRoute(FalconRoute):
                 continue
         resp.content_type = falcon.MEDIA_JSON
         resp.status = falcon.HTTP_200
-        resp.media = {'data': functools.reduce(lambda a, b: {k: a.get('data', {}).get(k, []) + b.get('data', {}).get(k, []) for k in list(dict.fromkeys(list(a.get('data', {}).keys()) + list(b.get('data', {}).keys())))}, rec_list)}
+        resp.media = merge_batch_results(rec_list)
 
 class PermissionsRoute(BasicRoute):
     def __init__(self, *args, **kwargs):
@@ -199,7 +201,7 @@ class AlertRoute(BasicRoute):
     }
 
     def on_post(self, req, resp):
-        log.debug("Received log {}".format(req.media))
+        log.debug("Received log %s", req.media)
         media = req.media.copy()
         rec_list = [{'data': {}}]
         if not isinstance(media, list):
@@ -214,10 +216,10 @@ class AlertRoute(BasicRoute):
                 continue
         resp.content_type = falcon.MEDIA_JSON
         resp.status = falcon.HTTP_200
-        resp.media = {'data': functools.reduce(lambda a, b: {k: a.get('data', {}).get(k, []) + b.get('data', {}).get(k, []) for k in list(dict.fromkeys(list(a.get('data', {}).keys()) + list(b.get('data', {}).keys())))}, rec_list)}
-
+        resp.media = merge_batch_results(rec_list)
 
 class MetricsRoute(BasicRoute):
+    '''A falcon route to serve prometheus metrics'''
     auth = {
         'auth_disabled': True
     }
@@ -228,11 +230,12 @@ class MetricsRoute(BasicRoute):
             data = self.api.core.stats.get_metrics()
             resp.body = str(data.decode('utf-8'))
             resp.status = falcon.HTTP_200
-        except Exception as e:
-            log.exception(e)
+        except Exception as err:
+            log.exception(err)
             resp.status = falcon.HTTP_503
 
 class LoginRoute(BasicRoute):
+    '''A falcon route for users to login'''
     auth = {
         'auth_disabled': True
     }
@@ -247,21 +250,27 @@ class LoginRoute(BasicRoute):
             }
             return
         try:
-            backends = [{'name':self.api.auth_routes[backend].name, 'endpoint': backend} for backend in self.api.auth_routes.keys() if self.api.auth_routes[backend].enabled]
+            backends = [
+                {'name':self.api.auth_routes[backend].name, 'endpoint': backend}
+                for backend in self.api.auth_routes.keys()
+                if self.api.auth_routes[backend].enabled
+            ]
             resp.content_type = falcon.MEDIA_JSON
             resp.status = falcon.HTTP_200
-            default_backend = list(filter(lambda x: x['endpoint'] == self.api.core.general_conf.get('default_auth_backend', ''), backends))
-            if len(default_backend) > 0:
-                backends.remove(default_backend[0])
-                backends.insert(0, default_backend[0])
+            default_auth_backend = self.api.core.general_conf.get('default_auth_backend', '')
+            default_backends = [x for x in backends if x['endpoint'] == default_auth_backend]
+            if len(default_backends) > 0:
+                backends.remove(default_backends[0])
+                backends.insert(0, default_backends[0])
             resp.media = {
                 'data': {'backends': backends},
             }
-        except Exception as e:
-            log.exception(e)
+        except Exception as err:
+            log.exception(err)
             resp.status = falcon.HTTP_503
 
 class ReloadRoute(BasicRoute):
+    '''A falcon route to reload one's token'''
     auth = {
         'auth_disabled': True
     }
@@ -269,8 +278,12 @@ class ReloadRoute(BasicRoute):
     def on_post(self, req, resp):
         media = req.media.copy()
         if media.get('reload_token', '-') == self.api.core.secrets.get('reload_token', '+'):
-            log.debug("Reloading conf ({}, {}), backend {}, sync {}".format(media.get('filename', ''), media.get('conf', ''), media.get('reload', ''), media.get('sync', False)))
-            results = self.api.write_and_reload(media.get('filename'), media.get('conf'), media.get('reload'), media.get('sync', False))
+            filename = media.get('filename')
+            conf = media.get('conf')
+            _reload = media.get('reload')
+            sync = media.get('sync', False)
+            log.debug("Reloading conf (%s, %s), backend %s, sync %s", filename, conf, _reload, sync)
+            results = self.api.write_and_reload(filename, conf, _reload, sync)
             resp.content_type = falcon.MEDIA_TEXT
             resp.status = results.get('status', falcon.HTTP_503)
             resp.text = results.get('text', '')
@@ -295,11 +308,14 @@ class ClusterRoute(BasicRoute):
             'data': members,
         }
 
-class CORS(object):
+class CORS:
+    '''A falcon middleware to handle CORS when the snooze-server and
+    snooze-web components are on different hosts.
+    '''
     def __init__(self):
         pass
 
-    def process_response(self, req, resp, resource, req_succeeded):
+    def process_response(self, req, resp, _resource, req_succeeded):
         resp.set_header('Access-Control-Allow-Origin', '*')
         if (
             req_succeeded
@@ -342,8 +358,7 @@ class AuthRoute(BasicRoute):
 
         if parts[0].lower() != self.auth_header_prefix.lower():
             raise falcon.HTTPUnauthorized(
-                description='Invalid Authorization Header: '
-                            'Must start with {0}'.format(self.auth_header_prefix))
+                description=f"Invalid Authorization Header: Must start with {self.auth_header_prefix}")
 
         elif len(parts) == 1:
             raise falcon.HTTPUnauthorized(
@@ -389,9 +404,9 @@ class AuthRoute(BasicRoute):
             if self.userplugin:
                 _, preferences = self.userplugin.manage_db(user)
             self.inject_permissions(user)
-            log.debug("Context user: {}".format(user))
+            log.debug("Context user: %s", user)
             token = self.api.jwt_auth.get_auth_token(user)
-            log.debug("Generated token: {}".format(token))
+            log.debug("Generated token: %s", token)
             resp.content_type = falcon.MEDIA_JSON
             resp.status = falcon.HTTP_200
             resp.media = {
@@ -406,13 +421,20 @@ class AuthRoute(BasicRoute):
                 'response': 'Backend disabled',
             }
 
+    @abstractmethod
     def authenticate(self, req, resp):
-        pass
+        '''Abstract method called to authenticate the user.
+        Is expected to set req.context['user'], and to raise
+        falcon.HTTPUnauthorized when unauthorized.
+        '''
 
+    @abstractmethod
     def reload(self):
-        pass
+        '''Abstract method to reload the configuration. Usually make
+        use of snooze.utils.config to do so.'''
 
 class AnonymousAuthRoute(AuthRoute):
+    '''An authentication route for anonymous users'''
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.name = 'Anonymous'
@@ -421,7 +443,7 @@ class AnonymousAuthRoute(AuthRoute):
     def reload(self):
         conf = config('general')
         self.enabled = conf.get('anonymous_enabled', False)
-        log.debug("Authentication backend 'anonymous' status: {}".format(self.enabled))
+        log.debug("Authentication backend 'anonymous' status: %s", self.enabled)
 
     def authenticate(self, req, resp):
         log.debug('Anonymous login')
@@ -431,6 +453,7 @@ class AnonymousAuthRoute(AuthRoute):
         return {'name': 'anonymous', 'method': 'local'}
 
 class LocalAuthRoute(AuthRoute):
+    '''An authentication route for local users'''
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.name = 'Local'
@@ -439,19 +462,20 @@ class LocalAuthRoute(AuthRoute):
     def reload(self):
         conf = config('general')
         self.enabled = conf.get('local_users_enabled', False)
-        log.debug("Authentication backend 'local' status: {}".format(self.enabled))
+        log.debug("Authentication backend 'local' status: %s", self.enabled)
 
     def authenticate(self, req, resp):
         username, password = self._extract_credentials(req)
         password_hash = sha256(password.encode('utf-8')).hexdigest()
-        log.debug("Attempting login for {}, with password hash {}".format(username, password_hash))
+        log.debug("Attempting login for %s, with password hash %s", username, password_hash)
         user_search = self.core.db.search('user', ['AND', ['=', 'name', username], ['=', 'method', 'local']])
         try:
             if user_search['count'] > 0:
-                db_password_search = self.core.db.search('user.password', ['AND', ['=', 'name', username], ['=', 'method', 'local']])
+                query = ['AND', ['=', 'name', username], ['=', 'method', 'local']]
+                db_password_search = self.core.db.search('user.password', query)
                 try:
                     db_password = db_password_search['data'][0]['password']
-                except:
+                except Exception as _err:
                     raise falcon.HTTPUnauthorized(
                 		description='Password not found')
                 if db_password == password_hash:
@@ -474,6 +498,7 @@ class LocalAuthRoute(AuthRoute):
         return {'name': user, 'method': 'local'}
 
 class LdapAuthRoute(AuthRoute):
+    '''An authentication route for LDAP users'''
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.name = 'Ldap'
@@ -511,13 +536,12 @@ class LdapAuthRoute(AuthRoute):
                     raise_exceptions=True
                 )
                 if not bind_con.bind():
-                    log.error(f"Cannot BIND to LDAP server: {conf['host']}{conf['port']}")
+                    log.error("Cannot BIND to LDAP server: %s:%s", conf['host'], conf['port'])
                     self.enabled = False
             except Exception as err:
                 log.exception(err)
                 self.enabled = False
-                pass
-        log.debug("Authentication backend 'ldap'. Enabled: {}".format(self.enabled))
+        log.debug("Authentication backend 'ldap'. Enabled: %s", self.enabled)
 
     def _search_user(self, username):
         try:
@@ -584,9 +608,11 @@ class LdapAuthRoute(AuthRoute):
             raise falcon.HTTPUnauthorized(description="")
 
     def parse_user(self, user):
-        return {'name': user['name'], 'groups': list(map(lambda x: x.split(',')[0].split('=')[1], user['groups'])), 'method': 'ldap'}
+        groups = list(map(lambda x: x.split(',')[0].split('=')[1], user['groups']))
+        return {'name': user['name'], 'groups': groups, 'method': 'ldap'}
 
-class RedirectRoute():
+class RedirectRoute:
+    '''A falcon route for managing the default redirection'''
     auth = {
         'auth_disabled': True
     }
@@ -594,7 +620,8 @@ class RedirectRoute():
         raise falcon.HTTPMovedPermanently('/web/')
 
 SNOOZE_GLOBAL_RUNDIR = '/var/run/snooze'
-SNOOZE_LOCAL_RUNDIR = "/var/run/user/{}".format(os.getuid())
+uid = os.getuid()
+SNOOZE_LOCAL_RUNDIR = f"/var/run/user/{uid}"
 
 class BackendApi():
     def init_api(self, core):
@@ -604,7 +631,7 @@ class BackendApi():
         # JWT setup
         self.secret = '' if os.environ.get('SNOOZE_NO_LOGIN', self.core.conf.get('no_login', False)) else self.core.secrets['jwt_private_key']
         def auth(payload):
-            log.debug("Payload received: {}".format(payload.get('user', {}).get('name', payload)))
+            log.debug("Payload received: %s", payload.get('user', {}).get('name', payload))
             return payload
         self.jwt_auth = JWTAuthBackend(auth, self.secret)
 
@@ -651,16 +678,22 @@ class BackendApi():
             self.handler.add_sink(StaticRoute(web_conf.get('path', '/opt/snooze/web'), '/web').on_get, '/web')
 
     def custom_handle_uncaught_exception(self, e, req, resp, params):
+        '''Custom handler for logging uncaught exceptions in falcon inside python logger.
+        Make use of an internal method of falcon to do so.
+        '''
         log.exception(e)
         self.handler._compose_error_response(req, resp, HTTPInternalServerError())
 
-    def add_route(self, route, action, prefix = '/api'):
+    def add_route(self, route, action, prefix='/api'):
+        '''Map a falcon route class to a given path'''
         self.handler.add_route(prefix + route, action)
 
     def get_root_token(self):
+        '''Return a root token for the root user. Used only when requesting it from the internal unix socket'''
         return self.jwt_auth.get_auth_token({'name': 'root', 'method': 'root', 'permissions': ['rw_all']})
 
     def reload(self, filename, auth_backends):
+        '''Reload authentication backends configuration'''
         reloaded_auth = []
         reloaded_conf = []
         try:
@@ -668,28 +701,31 @@ class BackendApi():
                 reloaded_conf.append(filename)
             for auth_backend in auth_backends:
                 if self.auth_routes.get(auth_backend):
-                    log.debug("Reloading {} auth backend".format(auth_backend))
+                    log.debug("Reloading %s auth backend", auth_backend)
                     self.auth_routes[auth_backend].reload()
                     reloaded_auth.append(auth_backend)
                 else:
-                    log.debug("Authentication backend '{}' not found".format(auth_backend))
+                    log.debug("Authentication backend '%s' not found", auth_backend)
             if len(reloaded_auth) > 0 or len(reloaded_conf) > 0:
-                return {'status': falcon.HTTP_200, 'text': "Reloaded auth '{}' and conf {}".format(reloaded_auth, reloaded_conf)}
+                return {'status': falcon.HTTP_200, 'text': f"Reloaded auth '{reloaded_auth}' and conf {reloaded_conf}"}
             else:
                 return {'status': falcon.HTTP_404, 'text': 'Error while reloading'}
         except Exception as e:
             log.exception(e)
             return {'status': falcon.HTTP_503}
 
-    def write_and_reload(self, filename, conf, reload_conf, sync = False):
+    def write_and_reload(self, filename, conf, reload_conf, sync=False):
+        '''Override the config files and reload. This is mainly used when changing the configuration
+        from the web interface.
+        '''
         result_dict = {}
-        log.debug("Will write to {} config {} and reload {}".format(filename, conf, reload_conf))
+        log.debug("Will write to %s config %s and reload %s", filename, conf, reload_conf)
         if filename and conf:
             res = write_config(filename, conf)
-            if 'error' in res.keys():
+            if 'error' in res:
                 return {'status': falcon.HTTP_503, 'text': res['error']}
             else:
-                result_dict = {'status': falcon.HTTP_200, 'text': "Reloaded config file {}".format(res['file'])}
+                result_dict = {'status': falcon.HTTP_200, 'text': f"Reloaded config file {res['file']}"}
         if reload_conf:
             auth_backends = reload_conf.get('auth_backends', [])
             if auth_backends:
@@ -702,9 +738,10 @@ class BackendApi():
         return result_dict
 
     def reload_plugins(self, plugins):
+        '''Reload plugins'''
         plugins_error = []
         plugins_success = []
-        log.debug("Reloading plugins {}".format(plugins))
+        log.debug("Reloading plugins %s", plugins)
         for plugin_name in plugins:
             plugin = self.core.get_core_plugin(plugin_name)
             if plugin:
@@ -713,7 +750,7 @@ class BackendApi():
             else:
                 plugins_error.append(plugin)
         if plugins_error:
-            return {'status': falcon.HTTP_404, 'text': "The following plugins could not be found: {}".format(plugins_error)}
+            return {'status': falcon.HTTP_404, 'text': f"The following plugins could not be found: {plugin_error}"}
         else:
-            return {'status': falcon.HTTP_200, 'text': "Reloaded plugins: {}".format(plugins_success)}
+            return {'status': falcon.HTTP_200, 'text': "Reloaded plugins: {plugin_success}"}
 
