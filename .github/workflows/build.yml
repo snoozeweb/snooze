@@ -9,23 +9,22 @@ name: Build
 
 jobs:
 
-  github_release:
+  python_tests:
     runs-on: ubuntu-latest
     steps:
-      - name: checkout
+      - name: Checking out git repository
         uses: actions/checkout@v2
 
       - name: Setup python environment
         uses: ./.github/actions/python-poetry
-        with: {poetry_options: '--only build'}
+        with: {poetry_options: '--default --with test'}
 
-      - name: Computing changelog
-        run: poetry run invoke changelog --github-output
-        id: changelog
+      - name: Running Pytest
+        run: poetry run pytest
 
   pypi:
     runs-on: ubuntu-latest
-    needs: [github_release]
+    needs: [python_tests]
     steps:
       - name: Checking out git repository
         uses: actions/checkout@v2
@@ -46,7 +45,7 @@ jobs:
 
   web:
     runs-on: ubuntu-latest
-    needs: [github_release]
+    needs: [python_tests]
     steps:
       - name: Checking out git repository
         uses: actions/checkout@v2
