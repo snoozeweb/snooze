@@ -9,16 +9,18 @@
 rule's condition'''
 
 from logging import getLogger
+from typing import List
 
 from snooze.plugins.core import Plugin
 from snooze.utils.condition import get_condition, validate_condition
 from snooze.utils.modification import get_modification, validate_modification
+from snooze.utils.typing import Record, Rule as RuleType
 
 LOG = getLogger('snooze.process')
 
 class RuleObject:
     '''An object representing the rule object in the database'''
-    def __init__(self, rule, core = None):
+    def __init__(self, rule: RuleType, core: 'Core' = None):
         self.enabled = rule.get('enabled', True)
         self.name = rule['name']
         LOG.debug("Creating rule: %s", self.name)
@@ -37,15 +39,8 @@ class RuleObject:
                 LOG.debug("Found child %s of rule %s", child_rule['name'], self.name)
                 self.children.append(RuleObject(child_rule, core))
 
-    def match(self, record):
-        """Check if a record matched this rule's condition
-
-        Args:
-            record (dict)
-
-        Returns:
-            bool: Record matched the rule's condition
-        """
+    def match(self, record: Record) -> bool:
+        '''Check if a record matched this rule's condition'''
         match = self.condition.match(record)
         if match:
             if not 'rules' in record:
@@ -54,15 +49,8 @@ class RuleObject:
                 record['rules'].append(self.name)
         return match
 
-    def modify(self, record):
-        """Modify the record based of this rule's modifications
-
-        Args:
-            record (dict)
-
-        Returns:
-            bool: Record has been modified
-        """
+    def modify(self, record: Record) -> bool:
+        '''Modify the record based of this rule's modifications'''
         modified = False
         modifs = []
         for modification in self.modifications:

@@ -14,13 +14,15 @@ import uuid
 from copy import deepcopy
 from pathlib import Path
 from logging import getLogger
+from typing import List, Optional, Union
 
 import pymongo
 from bson.code import Code
 from bson.json_util import dumps
 
-from snooze.db.database import Database
+from snooze.db.database import Database, Pagination
 from snooze.utils.functions import dig
+from snooze.utils.typing import Condition, Config
 
 log = getLogger('snooze.db.mongo')
 
@@ -31,7 +33,7 @@ database = os.environ.get('DATABASE_NAME', 'snooze')
 
 class BackendDB(Database):
     '''Database backend for MongoDB'''
-    def init_db(self, conf):
+    def init_db(self, conf: Config):
         if 'DATABASE_URL' in os.environ:
             self.db = pymongo.MongoClient(os.environ.get('DATABASE_URL'))[database]
         else:
@@ -42,12 +44,12 @@ class BackendDB(Database):
         log.debug("db: %s", self.db)
         log.debug("List of collections: %s", self.db.collection_names())
 
-    def create_index(self, collection, fields):
+    def create_index(self, collection: str, fields: List[str]):
         log.debug("Create index for %s with fields: %s", collection, fields)
         #self.db[collection].create_index(list(map(lambda x: (x, pymongo.ASCENDING), fields)), unique=True)
         self.search_fields[collection] = fields
 
-    def cleanup_timeout(self, collection):
+    def cleanup_timeout(self, collection: str) -> int:
         now = datetime.datetime.now().timestamp()
         pipeline = [
             #{"$project":{ 'date_epoch':1, 'ttl':{ "$ifNull": ["$ttl", 0] }}},
@@ -57,7 +59,7 @@ class BackendDB(Database):
         ]
         return self.run_pipeline(collection, pipeline)
 
-    def cleanup_orphans(self, collection, key, col_ref, key_ref):
+    def cleanup_orphans(self, collection: str, key: str, col_ref: str, key_ref: str) -> int:
         pipeline = [{
     	    "$lookup": {
                 'from': col_ref,
@@ -70,7 +72,7 @@ class BackendDB(Database):
         }]
         return self.run_pipeline(collection, pipeline)
 
-    def cleanup_audit_logs(self, interval):
+    def cleanup_audit_logs(self, interval: int):
         '''Cleanup audit logs of deleted objects'''
         log.info('Running audit log cleanup')
         now = datetime.datetime.now().astimezone().timestamp()
@@ -93,7 +95,7 @@ class BackendDB(Database):
             log.debug("Removing audit logs for %d objects", len(ids))
             self.db['audit'].delete_many({'object_id': {'$in': ids}})
 
-    def run_pipeline(self, collection, pipeline):
+    def run_pipeline(self, collection: str, pipeline: List[dict]) -> int:
         '''Execute a filter pipeline on a collection, and delete the resulting objects.
         Return the number of deleted objects'''
         aggregate_results = self.db[collection].aggregate(pipeline)
@@ -105,7 +107,7 @@ class BackendDB(Database):
         else:
             return 0
 
-    def write(self, collection, obj, primary=None, duplicate_policy='update', update_time=True, constant=None):
+    def write(self, collection:str, obj:Union[List[dict], dict], primary:Optional[str]=None, duplicate_policy:str='update', update_time:bool=True, constant:Optional[str]=None) -> dict:
         added = []
         rejected = []
         updated = []
@@ -211,7 +213,7 @@ class BackendDB(Database):
             self.db[collection].insert_many(obj_copy)
         return {'data': {'added': added, 'updated': updated, 'replaced': replaced, 'rejected': rejected}}
 
-    def inc(self, collection, field, labels={}):
+    def inc(self, collection: str, field: str, labels: dict = {}):
         now = datetime.datetime.utcnow()
         now = now.replace(minute=0, second=0, microsecond=0)
         keys = []
@@ -235,7 +237,7 @@ class BackendDB(Database):
                 added.append(result)
         return {'data': {'added': added, 'updated': updated}}
 
-    def update_fields(self, collection, fields, condition=[]):
+    def update_fields(self, collection: str, fields: List[str], condition: Condition = []):
         mongo_search = self.convert(condition, self.search_fields.get(collection, []))
         log.debug("Update collection '%s' with fields '%s' based on the following search", collection, fields)
         total = 0
@@ -276,9 +278,10 @@ class BackendDB(Database):
             log.warning("Cannot find collection %s", collection)
             return {'data': [], 'count': 0}
 
-    def delete(self, collection, condition=[], force=False):
+    def delete(self, collection: str, condition:Optional[Condition]=None, force:bool=False):
+        if condition is None:
+            condition = []
         mongo_search = self.convert(condition, self.search_fields.get(collection, []))
-        #log.debug("Condition {} converted to mongo delete search {}".format(condition, mongo_search))
         if collection in self.db.collection_names():
             if len(condition) == 0 and not force:
                 results_count = 0
@@ -328,14 +331,12 @@ class BackendDB(Database):
             log.exception(err)
             return {'data': [], 'count': 0}
 
-    def convert(self, array, search_fields=[]):
-        """
-        Convert `Condition` type from snooze.utils
-        to Mongodb compatible type of search
-        """
-        if not array:
+    def convert(self, condition: Condition, search_fields: list = []):
+        '''Convert `Condition` type from snooze.utils to Mongodb
+        compatible type of search'''
+        if not condition:
             return {}
-        operation, *args = array
+        operation, *args = condition
         if operation == 'AND':
             arguments = list(map(lambda a: self.convert(a, search_fields), args))
             return_dict = {'$and': arguments}

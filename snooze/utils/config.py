@@ -10,16 +10,18 @@
 import os
 from logging import getLogger
 from pathlib import Path
+from typing import Optional
 
 import yaml
 
 from snooze import __file__ as SNOOZE_PATH
+from snooze.utils.typing import Config
 
 log = getLogger('snooze.utils.config')
 
 SNOOZE_CONFIG_PATH = os.environ.get('SNOOZE_SERVER_CONFIG', '/etc/snooze/server')
 
-def config(configname = 'core', configpath = SNOOZE_CONFIG_PATH):
+def config(configname: str = 'core', configpath: str = SNOOZE_CONFIG_PATH) -> Config:
     '''Read a configuration file and return its content'''
     server_config_path = Path(configpath) / (configname + '.yaml')
 
@@ -48,7 +50,7 @@ def config(configname = 'core', configpath = SNOOZE_CONFIG_PATH):
 
     return return_config
 
-def write_config(config_name='core', config_dict=None, config_path=SNOOZE_CONFIG_PATH):
+def write_config(config_name: str = 'core', config_dict: Optional[dict] = None, config_path=SNOOZE_CONFIG_PATH) -> dict:
     '''Update or create a configuration file'''
     if config_dict is None:
         config_dict = {}
@@ -74,7 +76,7 @@ def write_config(config_name='core', config_dict=None, config_path=SNOOZE_CONFIG
         log.error(err)
         return {'error': str(err)}
 
-def get_metadata(plugin_name):
+def get_metadata(plugin_name: str) -> dict:
     '''Read metadata at a given plugin path'''
     plugin_root = Path(SNOOZE_PATH).parent / 'plugins/core'
     metadata_path = plugin_root / plugin_name / 'metadata.yaml'

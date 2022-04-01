@@ -10,9 +10,11 @@ import sys
 from datetime import datetime
 from urllib.parse import unquote
 from logging import getLogger
+from typing import Dict
 
 import falcon
 import bson.json_util
+from typing_extensions import Literal
 
 from snooze.api.falcon import authorize, FalconRoute
 from snooze.utils.parser import parser
@@ -234,7 +236,9 @@ def sanitize(obj):
 
 EMPTY_VALUES = ["", [], {}]
 
-def diff_summary(old, new):
+AuditSummary = Dict[str, Literal['added', 'removed', 'updated']]
+
+def diff_summary(old: dict, new: dict) -> AuditSummary:
     '''Return a summary of the diff'''
     field_dict = {}
     fields = set.union(set(old.keys()), set(new.keys()))

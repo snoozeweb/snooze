@@ -14,11 +14,12 @@ from abc import abstractmethod
 import yaml
 
 from snooze import __file__ as rootdir
+from snooze.utils.typing import Record, Config
 
 log = getLogger('snooze')
 
 class Plugin:
-    def __init__(self, core):
+    def __init__(self, core: 'Core'):
         self.core = core
         self.db = core.db
         self.name = self.__class__.__name__.lower()
@@ -103,7 +104,7 @@ class Plugin:
         if search_fields:
             self.db.create_index(self.name, search_fields)
 
-    def validate(self, obj):
+    def validate(self, obj: dict):
         '''Validate an object before writing it to the database.
         Should raise an exception if the object is invalid
         '''
@@ -112,28 +113,28 @@ class Plugin:
         '''Hook to execute something after the default init'''
         self.reload_data()
 
-    def reload_data(self, sync=False):
+    def reload_data(self, sync: bool = False):
         '''Reload the data of a plugin from the database'''
         if self.metadata.get('auto_reload', False):
             log.debug("Reloading data for plugin {}".format(self.name))
             self.data = self.db.search(self.name, orderby=self.metadata.get('default_sorting', ''), asc=self.metadata.get('default_ordering', True))['data']
 
-    def process(self, record):
+    def process(self, record: Record) -> Record:
         '''Process a record if it's a process plugin'''
         return record
 
-    def get_metadata(self):
+    def get_metadata(self) -> dict:
         '''Returned the metadata of the plugin (from the parsed yaml file)'''
         return self.metadata
 
-    def pprint(self, options={}):
+    def pprint(self, options: dict = {}) -> str:
         return self.name
 
-    def get_icon(self):
+    def get_icon(self) -> str:
         '''Return the icon of the plugin, for web interface usage'''
         return self.metadata_file.get('icon', 'question-circle')
 
-    def get_options(self, key=''):
+    def get_options(self, key: str = '') -> dict:
         options = self.metadata_file.get('options', {})
         if key:
             options = options.get(key, {})
@@ -153,5 +154,5 @@ class Abort_and_write(Exception):
 
 class Abort_and_update(Exception):
     '''Abort the processing for a record, then write it in the database without updating its timestamp'''
-    def __init__(self, record={}, *args, **kwargs):
+    def __init__(self, record: Record, *_args, **_kwargs):
         self.record = record

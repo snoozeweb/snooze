@@ -39,9 +39,11 @@ typing-extensions = "^3.10.0.2"
 waitress = "^2.0.0"
 netifaces = "^0.11.0"
 kombu = "5.1.0"
+dataclasses = {version = "^0.8", python = "~3.6"}
 
 [tool.poetry.group.lint.dependencies]
 pylint = "^2.11.1"
+pyright = "0.0.13.post0"
 
 [tool.poetry.group.security.dependencies]
 bandit = "^1.7.0"
@@ -64,8 +66,11 @@ toml = "^0.10.2"
 
 [tool.pylint.format]
 max-line-length = 120
-extension-pkg-whitelist = ['falcon']
+extension-pkg-whitelist = ['falcon', 'netifaces']
 disable = ['no-else-return']
+
+[tool.pyright]
+typeCheckingMode = "strict"
 
 [tool.pytest.ini_options]
 testpaths = "tests"

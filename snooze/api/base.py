@@ -11,13 +11,27 @@ from importlib import import_module
 from logging import getLogger
 from os.path import join as joindir
 from abc import abstractmethod
+from typing import Optional, Union, List
+
 
 from snooze.utils import Cluster
+from snooze.utils.typing import DuplicatePolicy, AuthorizationPolicy
 
 log = getLogger('snooze.api')
 
-class BasicRoute():
-    def __init__(self, api, plugin=None, primary=None, duplicate_policy='update', authorization_policy=None, check_permissions=False, check_constant=None, inject_payload=False):
+ConditionOrUid = Optional[Union[str, list]]
+
+class BasicRoute:
+    def __init__(self,
+        api: 'Api',
+        plugin: Optional[str] = None,
+        primary: Optional[str] = None,
+        duplicate_policy: DuplicatePolicy = 'update',
+        authorization_policy: Optional[AuthorizationPolicy] = None,
+        check_permissions: bool = False,
+        check_constant: Optional[str] = None,
+        inject_payload: bool = False
+    ):
         self.api = api
         self.core = api.core
         self.plugin = plugin
@@ -39,7 +53,7 @@ class BasicRoute():
         else:
             return None
 
-    def delete(self, collection, cond_or_uid=None):
+    def delete(self, collection: str, cond_or_uid: ConditionOrUid = None):
         '''Wrapping the delete of an object by condition or uid'''
         if cond_or_uid is None:
             cond_or_uid = []
@@ -50,15 +64,15 @@ class BasicRoute():
         else:
             return None
 
-    def insert(self, collection, record):
+    def insert(self, collection: str, record: dict):
         '''Wrapping the insertion of a new object'''
         return self.core.db.write(collection, record, self.primary, self.duplicate_policy, constant=self.check_constant)
 
-    def update(self, collection, record):
+    def update(self, collection: str, record: dict):
         '''Wrapping the update of an existing object'''
         return self.core.db.write(collection, record, self.primary, constant = self.check_constant)
 
-    def get_roles(self, username, method):
+    def get_roles(self, username: str, method: str) -> List[str]:
         '''Get the authorization roles for a user/auth method pair'''
         if username and method:
             log.debug("Getting roles for user %s (%s)", username, method)
@@ -74,7 +88,7 @@ class BasicRoute():
         else:
             return []
 
-    def get_permissions(self, roles):
+    def get_permissions(self, roles: List[str]) -> List[str]:
         '''Return the permissions for a given list of roles'''
         if isinstance(roles, list) and len(roles) > 0:
             log.debug("Getting permissions for roles %s", roles)

@@ -13,8 +13,11 @@ automatically based on a rule.
 import re
 from abc import abstractmethod
 from logging import getLogger
+from typing import Optional
 
 from jinja2 import Template
+
+from snooze.utils.typing import Record
 
 log = getLogger('snooze.utils.modification')
 
@@ -30,7 +33,7 @@ class ModificationInvalid(RuntimeError):
         message = f"Error in modification '{name}' ({args}): {err}"
         super().__init__(message)
 
-def resolve(record, args):
+def resolve(record: Record, args: list):
     '''Return the arguments evaluated if it's a template'''
     return [
         Template(arg).render(record)
@@ -41,21 +44,21 @@ def resolve(record, args):
 class Modification:
     '''A class to represent a modification'''
 
-    def __init__(self, args, core=None):
+    def __init__(self, args: list, core: 'Optional[Core]' = None):
         self.core = core
         self.args = args
 
     @abstractmethod
-    def modify(self, record):
+    def modify(self, record: Record) -> bool:
         '''Called when the modification should be applied to a record'''
 
-    def pprint(self):
+    def pprint(self) -> str:
         '''Pretty print of the modification object'''
         return f"{self.__class__.__name__}({self.args})"
 
 class SetOperation(Modification):
     '''Set a key to a given value'''
-    def modify(self, record):
+    def modify(self, record: Record) -> bool:
         key, value = resolve(record, self.args)
         try:
             return_code = bool(value and record.get(key) != value)
@@ -66,7 +69,7 @@ class SetOperation(Modification):
 
 class DeleteOperation(Modification):
     '''Delete a given key'''
-    def modify(self, record):
+    def modify(self, record: Record) -> bool:
         key, *_ = resolve(record, self.args)
         try:
             del record[key]
@@ -76,7 +79,7 @@ class DeleteOperation(Modification):
 
 class ArrayAppendOperation(Modification):
     '''Append an element to a key, if this key is an array/list'''
-    def modify(self, record):
+    def modify(self, record: Record) -> bool:
         key, value = resolve(record, self.args)
         array = record.get(key)
         if isinstance(array, list):
@@ -86,7 +89,7 @@ class ArrayAppendOperation(Modification):
 
 class ArrayDeleteOperation(Modification):
     '''Delete an element from an array/list, by value'''
-    def modify(self, record):
+    def modify(self, record: Record) -> bool:
         key, value = resolve(record, self.args)
         try:
             record[key].remove(value)
@@ -97,7 +100,7 @@ class ArrayDeleteOperation(Modification):
 class RegexParse(Modification):
     '''Given a key and a regex with named capture groups, parse the
     key's value, and merge the captured elements with the record'''
-    def modify(self, record):
+    def modify(self, record: Record) -> bool:
         try:
             key, regex = resolve(record, self.args)
             results = re.search(regex, record[key])
@@ -114,7 +117,7 @@ class RegexParse(Modification):
 
 class RegexSub(Modification):
     '''Apply a regex search and replace expression to a key's value'''
-    def modify(self, record):
+    def modify(self, record: Record) -> bool:
         key, out_key, regex, sub = resolve(record, self.args)
         try:
             value = record[key]
@@ -129,13 +132,13 @@ class RegexSub(Modification):
 
 class KvSet(Modification):
     '''Match the key's value with the corresponding value from the kv core plugin'''
-    def __init__(self, args, core):
+    def __init__(self, args: list, core: 'Optional[Core]'):
         super().__init__(args, core)
         self.dict, self.key, self.out_field = args
         self.kv_plugin = core.get_core_plugin('kv')
         if not self.kv_plugin:
             raise Exception('KV plugin not present. Could not load Modification')
-    def modify(self, record):
+    def modify(self, record: Record) -> bool:
         try:
             record_key = record[self.key]
             log.debug("Check if Record has key: %s=%s", self.key, record_key)
@@ -157,13 +160,13 @@ OPERATIONS = {
     'KV_SET': KvSet,
 }
 
-def validate_modification(obj, core=None):
+def validate_modification(obj: list, core: 'Optional[Core]' = None):
     '''Raise an exception if the object contains an invalid modification'''
     modifications = obj.get('modifications', [])
     for modification in modifications:
         get_modification(modification, core=core)
 
-def get_modification(args, core=None):
+def get_modification(args: list, core: 'Optional[Core]' = None) -> Modification:
     '''Return the modification class to run'''
     try:
         operation = args[0]

@@ -14,6 +14,9 @@ import socket
 import threading
 import time
 from logging import getLogger
+from typing import List
+
+from dataclasses import dataclass
 
 import netifaces
 import pkg_resources
@@ -21,9 +24,17 @@ import bson.json_util
 
 log = getLogger('snooze.cluster')
 
+@dataclass
+class PeerStatus:
+    '''A dataclass containing the status of one peer'''
+    host: str
+    port: str
+    version: str
+    healthy: bool
+
 class Cluster:
     '''A class representing the cluster and used for interacting with it.'''
-    def __init__(self, api):
+    def __init__(self, api: 'Api'):
         self.api = api
         env_cluster = os.environ.get('SNOOZE_CLUSTER')
         self.conf = {}

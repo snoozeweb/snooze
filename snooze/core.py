@@ -17,6 +17,7 @@ from os import listdir, mkdir
 from os.path import dirname, isdir, join as joindir
 from secrets import token_urlsafe
 from threading import Event
+from typing import Dict, Optional
 from pkg_resources import iter_entry_points
 
 from dateutil import parser
@@ -27,12 +28,13 @@ from snooze.plugins.core import Abort, Abort_and_write, Abort_and_update
 from snooze.token import TokenEngine
 from snooze.utils import config, Housekeeper, Stats, MQManager
 from snooze.utils.functions import flatten
+from snooze.utils.typing import Config, Record
 
 log = getLogger('snooze')
 
 class Core:
     '''The main class of snooze, passed to all plugins'''
-    def __init__(self, conf):
+    def __init__(self, conf: Config):
         self.conf = conf
         self.db = Database(conf.get('database', {}))
         self.general_conf = config('general')
@@ -107,7 +109,7 @@ class Core:
         log.debug("List of loaded core plugins: %s", [plugin.name for plugin in self.plugins])
         log.debug("List of loaded process plugins: %s", [plugin.name for plugin in self.process_plugins])
 
-    def process_record(self, record):
+    def process_record(self, record: Record):
         '''Method called when a given record enters the system.
         The method will run the record through all configured plugin,
         except when it receive a specific exception.
@@ -166,11 +168,11 @@ class Core:
         self.stats.inc('alert_hit', {'source': source, 'environment': environment, 'severity': severity})
         return data
 
-    def get_core_plugin(self, plugin_name):
+    def get_core_plugin(self, plugin_name: str) -> Optional['Plugin']:
         '''Return a core plugin object by name'''
         return next(iter([plug for plug in self.plugins if plug.name == plugin_name]), None)
 
-    def get_secrets(self):
+    def get_secrets(self) -> dict:
         '''Return a dict of secrets stored in the database'''
         results = self.db.search('secrets', ['=', 'type', 'secret'])
         if results.get('count') > 0:

@@ -10,14 +10,15 @@
 import os
 import hashlib
 from pathlib import Path
+from typing import Optional, List, Union, Any, TypeVar
 
-def dig(dic, *lst):
-    """
-    Input: Dict, List
-    Output: Any
+from snooze.utils.typing import Record
 
-    Like a Dict[value], but recursive
-    """
+T = TypeVar('T')
+
+
+def dig(dic: dict, *lst: List[Union[str, int]]) -> Any:
+    '''Like a Dict[value], but recursive'''
     if len(lst) > 0:
         try:
             if lst[0].isnumeric():
@@ -29,13 +30,8 @@ def dig(dic, *lst):
     else:
         return dic
 
-def ensure_kv(dic, value, *lst):
-    """
-    Input: Dict, Value, List
-    Output: Any
-
-    Set value at dic[*lst]
-    """
+def ensure_kv(dic: dict, value: Any, *lst: list):
+    '''Set value at dic[*lst]'''
     element = dic
     for i, raw_key in enumerate(lst):
         key = raw_key
@@ -53,7 +49,7 @@ def ensure_kv(dic, value, *lst):
             return dic
     return dic
 
-def sanitize(dic, str_from='.', str_to='_'):
+def sanitize(dic: T, str_from:str='.', str_to:str= '_') -> T:
     '''Sanitize a dict object keys to avoid issues with MongoDB
     (since MongoDB interpret dots)'''
     new_dic = {}
@@ -64,7 +60,7 @@ def sanitize(dic, str_from='.', str_to='_'):
     else:
         return dic
 
-def flatten(lst):
+def flatten(lst: list) -> list:
     '''Flatten a nested list'''
     return [z for y in lst for z in (flatten(y) if hasattr(y, '__iter__') and not isinstance(y, str) else (y,))]
 
@@ -81,7 +77,7 @@ CA_BUNDLE_PATHS = [
     '/etc/ssl/cert.pem', # Alpine Linux
 ]
 
-def ca_bundle():
+def ca_bundle() -> Optional[str]:
     '''Returns Linux CA bundle path'''
     ssl_cert_file = os.environ.get('SSL_CERT_FILE')
     requests_ca_bundle = os.environ.get('REQUESTS_CA_BUNDLE')
@@ -94,7 +90,7 @@ def ca_bundle():
             return ca_path
     return None
 
-def ensure_hash(record):
+def ensure_hash(record: Record):
     '''Given a record with a 'raw' key, compute the hash of the
     record if not present, and append it to the record'''
     if not 'hash' in record:

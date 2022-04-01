@@ -18,7 +18,7 @@ log = getLogger('snooze.housekeeping')
 
 class Housekeeper:
     '''Main class starting the housekeeping thread in the background'''
-    def __init__(self, core):
+    def __init__(self, core: 'Core'):
         log.debug('Init Housekeeper')
         self.core = core
         self.conf = None
@@ -44,7 +44,7 @@ class Housekeeper:
 
 class HousekeeperThread(threading.Thread):
     '''Housekeeper thread running in the background'''
-    def __init__(self, housekeeper):
+    def __init__(self, housekeeper: Housekeeper):
         super().__init__()
         self.housekeeper = housekeeper
         self.main_thread = threading.main_thread()
@@ -76,7 +76,7 @@ class HousekeeperThread(threading.Thread):
                     self.housekeeper.core.db.backup(backup_conf.get('path', '/var/log/snooze'), backup_conf.get('exclude', ['record', 'stats', 'comment', 'secrets']))
             time.sleep(1)
 
-    def cleanup_expired(self, collection, cleanup_delay):
+    def cleanup_expired(self, collection: str, cleanup_delay: int):
         '''Cleanup expired objects. Used for objects containing a time constraint, and
         that have an expiration date, like snooze filters'''
         if cleanup_delay > 0:

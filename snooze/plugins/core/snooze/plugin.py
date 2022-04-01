@@ -12,12 +12,13 @@ from logging import getLogger
 from snooze.plugins.core import Plugin, Abort_and_write, Abort
 from snooze.utils.condition import get_condition, validate_condition
 from snooze.utils.time_constraints import get_record_date, init_time_constraints
+from snooze.utils.typing import Record, SnoozeFilter
 
 log = getLogger('snooze.plugins.snooze')
 
 class Snooze(Plugin):
     '''The snooze process plugin'''
-    def process(self, record):
+    def process(self, record: Record) -> Record:
         log.debug("Processing record %s against snooze filters", record.get('hash', ''))
         for filt in self.filters:
             if filt.enabled and filt.match(record):
@@ -35,11 +36,11 @@ class Snooze(Plugin):
                     raise Abort_and_write(record)
         return record
 
-    def validate(self, obj):
+    def validate(self, obj: dict):
         '''Validate a snooze object'''
         validate_condition(obj)
 
-    def reload_data(self, sync = False):
+    def reload_data(self, sync: bool = False):
         super().reload_data()
         filters = []
         for filt in (self.data or []):
@@ -66,7 +67,7 @@ class Snooze(Plugin):
 
 class SnoozeObject:
     '''Object representing the snooze filter in the database'''
-    def __init__(self, snooze):
+    def __init__(self, snooze: SnoozeFilter):
         self.enabled = snooze.get('enabled', True)
         self.name = snooze['name']
         self.condition = get_condition(snooze.get('condition'))
@@ -79,6 +80,6 @@ class SnoozeObject:
         log.debug("Init Snooze filter %s Time Constraints", self.name)
         self.time_constraint = init_time_constraints(snooze.get('time_constraints', {}))
 
-    def match(self, record):
+    def match(self, record: Record) -> bool:
         '''Whether a record match the Snooze object'''
         return self.condition.match(record) and self.time_constraint.match(get_record_date(record))

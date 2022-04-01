@@ -13,12 +13,17 @@ from abc import ABC, abstractmethod
 from collections import defaultdict
 from datetime import datetime, timedelta
 from logging import getLogger
+from typing import List, Optional, NewType, Tuple
 
 from dateutil import parser
 
+from snooze.utils.typing import Record
+
+TimeRange = Tuple[datetime, datetime]
+
 log = getLogger('snooze.time_constraints')
 
-def get_record_date(record):
+def get_record_date(record: Record) -> datetime:
     '''Extract the date of the record and return a `datetime` object'''
     if record.get('timestamp'):
         record_date = parser.parse(record['timestamp']).astimezone()
@@ -31,12 +36,12 @@ def get_record_date(record):
 class Constraint(ABC):
     '''A base class for time constraints'''
     @abstractmethod
-    def match(self, _record_date):
+    def match(self, record_date: datetime) -> bool:
         '''Method to fill when inheriting this class'''
     def __str__(self):
         return "AbstractTimeConstraint"
 
-def init_time_constraints(time_constraints):
+def init_time_constraints(time_constraints) -> Constraint:
     '''Return a time constraint object from a list of time constraints'''
     constraints = []
     log.debug("Init Time Constraints with %s", time_constraints)
@@ -62,13 +67,13 @@ def init_time_constraints(time_constraints):
 
 class MultiConstraint(Constraint):
     '''An object representing the union of several time constraints'''
-    def __init__(self, *constraints):
+    def __init__(self, *constraints: List[Constraint]):
         self.constraints_by_type = defaultdict(list)
         for constraint in constraints:
             class_name = constraint.__class__.__name__
             self.constraints_by_type[class_name].append(constraint)
 
-    def match(self, record_date):
+    def match(self, record_date: datetime) -> bool:
         '''Match all constraints, but make sure constraints of the same
         type are merged with `OR`'''
         return all(
@@ -88,14 +93,14 @@ class DateTimeConstraint(Constraint):
         * After a fixed date
         * Between two fixed dates
     '''
-    def __init__(self, content=None):
+    def __init__(self, content: Optional[dict] = None):
         if content is None:
             content = {}
         date_from = content.get('from')
         date_until = content.get('until')
         self.date_from = parser.parse(date_from).astimezone() if date_from else None
         self.date_until = parser.parse(date_until).astimezone() if date_until else None
-    def match(self, record_date):
+    def match(self, record_date: datetime) -> bool:
         '''Perform a fixed date matching'''
         date_from = self.date_from
         date_until = self.date_until
@@ -115,11 +120,11 @@ class WeekdaysConstraint(Constraint):
     Features:
         * Match certain days of the week
     '''
-    def __init__(self, content=None):
+    def __init__(self, content: Optional[dict] = None):
         if content is None:
             content = {}
         self.weekdays = content.get('weekdays', [])
-    def match(self, record_date):
+    def match(self, record_date: datetime) -> bool:
         weekday_number = int(record_date.strftime('%w'))
         return weekday_number in self.weekdays
     def __str__(self):
@@ -131,7 +136,7 @@ class TimeConstraint(Constraint):
         * Match before/after/between fixed hours
         * Support hours over midnight (`from` lower than `until`)
     '''
-    def __init__(self, content=None):
+    def __init__(self, content: Optional[dict] = None):
         if content is None:
             content = {}
         time1 = content.get('from')
@@ -139,7 +144,7 @@ class TimeConstraint(Constraint):
         self.time1 = parser.parse(time1).astimezone().timetz() if time1 else None
         self.time2 = parser.parse(time2).astimezone().timetz() if time2 else None
 
-    def get_intervals(self, record_date):
+    def get_intervals(self, record_date: datetime) -> List[TimeRange]:
         '''Return the an array of datetime intervals depending on the `from`
         and `until` time, and the date of the record. The intervals will all be
         ordered.'''
@@ -150,7 +155,7 @@ class TimeConstraint(Constraint):
             return [(date1 - day, date2), (date1, date2 + day)]
         return [(date1, date2)]
 
-    def match(self, rd):
+    def match(self, rd: datetime) -> bool:
         '''Match a daily periodic time constraint.
         rd = record datetime
         '''
