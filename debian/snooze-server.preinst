@@ -1,0 +1,7 @@
+#!/bin/bash
+if   [ "install" = "$1" ]; then  shift ; set -- "0" "$@"
+elif [ "update" = "$1" ]; then   shift ; set -- "1" "$@"
+fi
+
+id -u snooze &>/dev/null || useradd snooze
+id -g snooze &>/dev/null || groupadd snooze

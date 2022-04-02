@@ -1,132 +1,137 @@
 <template>
-<span>
-  <div v-if="data != ''">
-    <CRow v-for="row in data.slice().reverse()" :key="row['uid']" class="m-0">
-      <CCol class="p-0">
-        <CCard no-body class='mb-2'>
-          <div class='position-absolute' style='top:0!important; right:0!important; margin-top: -1px; margin-right: -1px'>
-      	    <CButton v-if="can_edit(row)" size="sm" class='py-0_5 px-1' style='border-radius: 0 0 0 .25rem' color="primary" @click="modal_edit(row)" v-c-tooltip="{content: 'Edit'}"><i class="la la-pencil-alt la-lg"></i></CButton>
-      	    <CButton v-if="can_delete(row)" size="sm" class='py-0_5 px-1' style='border-radius: 0 .25rem 0 0' color="danger" @click="modal_delete(row)" v-c-tooltip="{content: 'Delete'}"><i class="la la-trash la-lg"></i></CButton>
-          </div>
-          <CCardBody class="d-flex p-2 align-items-center">
-            <CTooltip :content="get_alert_tooltip(row['type'])" trigger="hover">
-              <template #toggler="{ on }">
-                <div :class="'bg-' + get_alert_color(row['type']) + ' me-3 text-white rounded p-2'" :v-c-tooltip="'{content: ' + get_alert_tooltip(row['type']) + '}'" v-on="on">
-                  <i :class="'la ' + get_alert_icon(row['type']) + ' la-2x'"></i>
+  <CCol v-if="record['comment_count']" class="p-2">
+    <CCard>
+      <CCardHeader class='text-center' style='font-weight:bold'>Timeline</CCardHeader>
+      <CCardBody class="p-2">
+        <div v-if="data != ''">
+          <CRow v-for="row in data.slice().reverse()" :key="row['uid']" class="m-0">
+            <CCol class="p-0">
+              <CCard no-body class='mb-2'>
+                <div class='position-absolute' style='top:0!important; right:0!important; margin-top: -1px; margin-right: -1px'>
+                  <CButton v-if="can_edit(row)" size="sm" class='py-0_5 px-1' style='border-radius: 0 0 0 .25rem' color="primary" @click="modal_edit(row)" v-c-tooltip="{content: 'Edit'}"><i class="la la-pencil-alt la-lg"></i></CButton>
+                  <CButton v-if="can_delete(row)" size="sm" class='py-0_5 px-1' style='border-radius: 0 .25rem 0 0' color="danger" @click="modal_delete(row)" v-c-tooltip="{content: 'Delete'}"><i class="la la-trash la-lg"></i></CButton>
                 </div>
-              </template>
-            </CTooltip>
-            <div>
-              <div>
-                <span class="fw-bold" style="font-size: 1.0rem">{{ row['name'] }}</span>
-                <span class="fst-italic muted"> @<DateTime :date="row['date']" /></span>
-                <span class="text-muted" style="font-size: 0.75rem" v-if="row['edited']"> (edited)</span>
-              </div>
-              <div class="text-muted">
-                {{ row['message'] }}
-              </div>
-              <div class="text-muted" v-if="row['modifications'] && row['modifications'].length > 0">
-                <CBadge color="warning">modifications</CBadge> <Modification style="font-size: 0.70rem;" :data="row['modifications']"/>
-              </div>
-            </div>
-          </CCardBody>
-        </CCard>
-      </CCol>
-    </CRow>
-    <CFormTextarea
-      id="textarea"
-      v-model="input_text"
-      placeholder="Add a comment"
-      rows="1"
-      max-rows="8"
-      class='mb-2'
-    ></CFormTextarea>
-    <div>
-      <CButtonToolbar role="group">
-        <CButton size="sm" color='primary' @click="add_comment(input_text, 'comment')" v-c-tooltip="{content: 'Add a comment'}">Comment</CButton>
-        <div class="d-flex ms-auto me-2 align-items-center">
-          <div class="me-2">
-            <SPagination
-              v-model:activePage="current_page"
-              :pages="Math.ceil(nb_rows / per_page)"
-              ulClass="m-0"
-            />
-          </div>
+                <CCardBody class="d-flex p-2 align-items-center">
+                  <CTooltip :content="get_alert_tooltip(row['type'])" trigger="hover">
+                    <template #toggler="{ on }">
+                      <div :class="'bg-' + get_alert_color(row['type']) + ' me-3 text-white rounded p-2'" :v-c-tooltip="'{content: ' + get_alert_tooltip(row['type']) + '}'" v-on="on">
+                        <i :class="'la ' + get_alert_icon(row['type']) + ' la-2x'"></i>
+                      </div>
+                    </template>
+                  </CTooltip>
+                  <div>
+                    <div>
+                      <span class="fw-bold" style="font-size: 1.0rem">{{ row['name'] }}</span>
+                      <span class="fst-italic muted"> @<DateTime :date="row['date']" show_secs /></span>
+                      <span class="text-muted" style="font-size: 0.75rem" v-if="row['edited']"> (edited)</span>
+                    </div>
+                    <div class="text-muted">
+                      {{ row['message'] }}
+                    </div>
+                    <div class="text-muted" v-if="row['modifications'] && row['modifications'].length > 0">
+                      <CBadge color="warning">modifications</CBadge> <Modification style="font-size: 0.70rem;" :data="row['modifications']"/>
+                    </div>
+                  </div>
+                </CCardBody>
+              </CCard>
+            </CCol>
+          </CRow>
+          <CFormTextarea
+            id="textarea"
+            v-model="input_text"
+            placeholder="Add a comment"
+            rows="1"
+            max-rows="8"
+            class='mb-2'
+          ></CFormTextarea>
           <div>
-            <CRow class="align-items-center gx-0">
-              <CCol xs="auto px-1">
-                <CFormLabel for="perPageSelect" class="col-form-label col-form-label-sm">Per page</CFormLabel>
-              </CCol>
-              <CCol xs="auto px-1">
-                <CFormSelect
-                  v-model="per_page"
-                  id="perPageSelect"
-                  size="sm"
-                >
-                  <option v-for="opts in page_options" :value="opts">{{ opts }}</option>
-                </CFormSelect>
-              </CCol>
-            </CRow>
+            <CButtonToolbar role="group">
+              <CButton size="sm" color='primary' @click="add_comment(input_text, 'comment')" v-c-tooltip="{content: 'Add a comment'}">Comment</CButton>
+              <div class="d-flex ms-auto me-2 align-items-center">
+                <div class="me-2">
+                  <SPagination
+                    v-model:activePage="current_page"
+                    :pages="Math.ceil(nb_rows / per_page)"
+                    ulClass="m-0"
+                  />
+                </div>
+                <div>
+                  <CRow class="align-items-center gx-0">
+                    <CCol xs="auto px-1">
+                      <CFormLabel for="perPageSelect" class="col-form-label col-form-label-sm">Per page</CFormLabel>
+                    </CCol>
+                    <CCol xs="auto px-1">
+                      <CFormSelect
+                        v-model="per_page"
+                        id="perPageSelect"
+                        size="sm"
+                      >
+                        <option v-for="opts in page_options" :value="opts">{{ opts }}</option>
+                      </CFormSelect>
+                    </CCol>
+                  </CRow>
+                </div>
+              </div>
+              <CButtonGroup role="group">
+                <CTooltip :content="auto_mode ? 'Auto Refresh ON':'Auto Refresh OFF'" trigger="hover">
+                  <template #toggler="{ on }">
+                    <CButton size="sm" :color="auto_mode ? 'success':'secondary'" @click="toggle_auto" v-on="on">
+                      <i v-if="auto_mode" class="la la-eye la-lg"></i>
+                      <i v-else class="la la-eye-slash la-lg"></i>
+                    </CButton>
+                  </template>
+                </CTooltip>
+                <CButton size="sm" color="secondary" @click="refresh()" v-c-tooltip="{content: 'Refresh'}"><i class="la la-refresh la-lg"></i></CButton>
+              </CButtonGroup>
+            </CButtonToolbar>
           </div>
         </div>
-        <CButtonGroup role="group">
-          <CTooltip :content="auto_mode ? 'Auto Refresh ON':'Auto Refresh OFF'" trigger="hover">
-            <template #toggler="{ on }">
-              <CButton size="sm" :color="auto_mode ? 'success':'secondary'" @click="toggle_auto" v-on="on">
-                <i v-if="auto_mode" class="la la-eye la-lg"></i>
-                <i v-else class="la la-eye-slash la-lg"></i>
-              </CButton>
-            </template>
-          </CTooltip>
-          <CButton size="sm" color="secondary" @click="refresh()" v-c-tooltip="{content: 'Refresh'}"><i class="la la-refresh la-lg"></i></CButton>
-        </CButtonGroup>
-      </CButtonToolbar>
-    </div>
-  </div>
-  <CModal
-    ref="timeline_edit"
-    :visible="show_edit"
-    @close="modal_clear"
-    alignment="center"
-    size ="xl"
-    backdrop="static"
-  >
-    <CModalHeader class="bg-primary">
-      <CModalTitle class="text-white">Edit</CModalTitle>
-    </CModalHeader>
-    <CModalBody>
-      <CFormFloating>
-        <CFormInput id="floatingInput" v-model="modal_data.edit.message" placeholder="message"/>
-        <CFormLabel for="floatingInput">Message (optional)</CFormLabel>
-      </CFormFloating>
-    </CModalBody>
-    <CModalFooter>
-      <CButton @click="modal_clear" color="secondary">Cancel</CButton>
-      <CButton @click="submit_edit" color="primary">OK</CButton>
-    </CModalFooter>
-  </CModal>
+      </CCardBody>
+    </CCard>
+    <CModal
+      ref="timeline_edit"
+      :visible="show_edit"
+      @close="modal_clear"
+      alignment="center"
+      size ="xl"
+      backdrop="static"
+    >
+      <CModalHeader class="bg-primary">
+        <CModalTitle class="text-white">Edit</CModalTitle>
+      </CModalHeader>
+      <CModalBody>
+        <CFormFloating>
+          <CFormInput id="floatingInput" v-model="modal_data.edit.message" placeholder="message"/>
+          <CFormLabel for="floatingInput">Message (optional)</CFormLabel>
+        </CFormFloating>
+      </CModalBody>
+      <CModalFooter>
+        <CButton @click="modal_clear" color="secondary">Cancel</CButton>
+        <CButton @click="submit_edit" color="primary">OK</CButton>
+      </CModalFooter>
+    </CModal>
 
-  <CModal
-    ref="timeline_delete"
-    :visible="show_delete"
-    @close="modal_clear"
-    alignment="center"
-    size="xl"
-    backdrop="static"
-  >
-    <CModalHeader class="bg-danger">
-      <CModalTitle class="text-white">Delete item</CModalTitle>
-    </CModalHeader>
-    <CModalBody>
-      <p>{{ modal_data.delete }}</p>
-    </CModalBody>
-    <CModalFooter>
-      <CButton @click="modal_clear" color="secondary">Cancel</CButton>
-      <CButton @click="submit_delete" color="danger">OK</CButton>
-    </CModalFooter>
-  </CModal>
-</span>
+    <CModal
+      ref="timeline_delete"
+      :visible="show_delete"
+      @close="modal_clear"
+      alignment="center"
+      size="xl"
+      backdrop="static"
+    >
+      <CModalHeader class="bg-danger">
+        <CModalTitle class="text-white">Delete item</CModalTitle>
+      </CModalHeader>
+      <CModalBody>
+        <p>{{ modal_data.delete }}</p>
+      </CModalBody>
+      <CModalFooter>
+        <CButton @click="modal_clear" color="secondary">Cancel</CButton>
+        <CButton @click="submit_delete" color="danger">OK</CButton>
+      </CModalFooter>
+    </CModal>
 
+  </CCol>
 </template>
 
 <script>

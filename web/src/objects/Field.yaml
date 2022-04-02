@@ -31,3 +31,6 @@ colors:
     WARNING: warning
     unknown: tertiary
     UNKNOWN: tertiary
+    UNREACHABLE: tertiary
+    DOWN: danger
+    UP: success

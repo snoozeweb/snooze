@@ -128,7 +128,7 @@ export default {
       if (this.root) {
         this.dataValue = new ConditionObject('')
       } else {
-        console.log(`escalateDelete: index=${this.index}`)
+        //console.log(`escalateDelete: index=${this.index}`)
         this.$emit('deleteEvent', this.index)
       }
     },

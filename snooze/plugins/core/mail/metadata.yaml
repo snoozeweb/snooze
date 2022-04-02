@@ -3,6 +3,12 @@ name: 'Send email'
 desc: ''
 icon: 'envelope'
 class: ''
+options:
+    batch:
+        default: False
+        hidden: False
+        timer: 10
+        maxsize: 100
 action_form:
   host:
     display_name: Host

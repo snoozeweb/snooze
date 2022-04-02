@@ -1,6 +1,6 @@
 <template>
   <div>
-    <Datepicker
+    <VueDatePicker
       v-model="datavalue"
       :placeholder="placeholder"
       :inputClassName="datavalue != null ? 'form-control is-valid' : 'form-control is-invalid'"
@@ -17,39 +17,29 @@
 
 import Base from './Base.vue'
 import { getStyle } from '@coreui/utils/src'
-import Datepicker from 'vue3-date-time-picker';
-import 'vue3-date-time-picker/dist/main.css';
+import VueDatePicker from '@vuepic/vue-datepicker';
+import '@vuepic/vue-datepicker/src/VueDatePicker/style/main.scss';
 import moment from 'moment'
 
 var output_format = "HH:mm:ssZ"
-var now = moment().format(output_format)
-var one_hour_later = moment().add(1, 'hours').format(output_format)
-var default_object = {from: now, until: one_hour_later}
 
 export default {
   extends: Base,
-  components: { Datepicker },
+  components: { VueDatePicker },
   emits: ['update:modelValue'],
   props: {
-    modelValue: {type: Object, default: () => Object.assign({}, default_object)},
+    modelValue: {type: Object, default: () => Object.assign({}, {from: moment().format(output_format), until: moment().add(1, 'hours').format(output_format)})},
     placeholder: {type: String, default: () => 'Select Time'}
   },
   data() {
     return {
-      datavalue: [
-        {
-          hours: moment('2000-01-01 ' + (this.modelValue['from'] || now)).hours(),
-          minutes: moment('2000-01-01 ' + (this.modelValue['from'] || now)).minutes()
-        }, {
-          hours: moment('2000-01-01 ' + (this.modelValue['until'] || one_hour_later)).hours(),
-          minutes: moment('2000-01-01 ' + (this.modelValue['until'] || one_hour_later)).minutes()
-        }
-      ],
-      main_color: '',
+      now: moment().format(output_format),
+      one_hour_later: moment().add(1, 'hours').format(output_format),
+      datavalue: this.default_datavalue(),
     }
   },
   mounted() {
-    this.main_color = getStyle('--primary') || '#304ffe'
+      this.datavalue = this.default_datavalue()
   },
   computed: {
     formatted_date () {
@@ -61,6 +51,19 @@ export default {
        } else {
          return {}
        }
+    }
+  },
+  methods: {
+    default_datavalue () {
+      return [
+        {
+          hours: moment('2000-01-01 ' + (this.modelValue['from'] || moment().format(output_format))).hours(),
+          minutes: moment('2000-01-01 ' + (this.modelValue['from'] || moment().format(output_format))).minutes()
+        }, {
+          hours: moment('2000-01-01 ' + (this.modelValue['until'] || moment().add(1, 'hours').format(output_format))).hours(),
+          minutes: moment('2000-01-01 ' + (this.modelValue['until'] || moment().add(1, 'hours').format(output_format))).minutes()
+        }
+      ]
     }
   },
   watch: {

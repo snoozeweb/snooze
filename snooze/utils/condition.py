@@ -55,7 +55,6 @@ class Condition(ABC):
     '''An abstract class for all conditions'''
     def __init__(self, args):
         self._args = args
-        LOG.debug("Instantiating %s(%s)", self.__class__.__name__, args)
         try:
             self.operator = args[0]
         except IndexError as err:
@@ -166,8 +165,7 @@ class NotEquals(BinaryOperator):
         record_value = search(record, self.field)
         try:
             return (
-                record_value is not None
-                and record_value != self.value
+                record_value != self.value
             )
         except Exception as e:
             LOG.exception(e)
@@ -228,7 +226,7 @@ class Matches(BinaryOperator):
         super().__init__(args)
         self.field = args[1]
         value = unsugar_regex(str(args[2]))
-        self.regex = re.compile(value)
+        self.regex = re.compile(value, flags=re.IGNORECASE)
     def match(self, record):
         record_value = search(record, self.field)
         try:

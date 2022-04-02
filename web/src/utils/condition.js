@@ -31,13 +31,13 @@ export const OPERATION_SYMBOL = {
 
 export class ConditionObject {
   constructor(op, args) {
-    console.log(`ConditionObject(${op}, ${args})`)
+    //console.log(`ConditionObject(${op}, ${args})`)
     this.id = uuid.v4()
     this.args = args
     this.operation = op
   }
   static fromArray(array) {
-    console.log(`ConditionObject.fromArray(${array})`)
+    //console.log(`ConditionObject.fromArray(${array})`)
     if (array === undefined) {
       return new ConditionObject('', [])
     }
@@ -47,10 +47,10 @@ export class ConditionObject {
     } else {
       var args =  array.slice(1)
     }
-    console.log(`Operation: ${operation}`)
-    console.log(`Args: ${args}`)
+    //console.log(`Operation: ${operation}`)
+    //console.log(`Args: ${args}`)
     var c = new ConditionObject(operation, args)
-    console.log(`ConditionObject.fromArray: ${c}`)
+    //console.log(`ConditionObject.fromArray: ${c}`)
     return c
   }
   get type() {
@@ -108,7 +108,7 @@ export class ConditionObject {
     }
   }
   combine(operator, other) {
-    console.log(`ConditionObject.combine(${operator}, ${other})`)
+    //console.log(`ConditionObject.combine(${operator}, ${other})`)
     return new ConditionObject(operator, [this, other])
   }
   toString() {

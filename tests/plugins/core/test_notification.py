@@ -24,20 +24,21 @@ class TestNotification:
             {'name': 'Script', 'action': {'selected': 'script', 'subcontent': {'script': '/bin/echo', 'arguments': ['test']}}}
         ]
         core.db.write('action', actions)
+        action = core.get_core_plugin('action')
+        action.post_init()
         notifications = [
             {'name': 'Notification1', 'condition': ['=', 'a', '1'], 'actions': ['Script']},
         ]
         core.db.write('notification', notifications)
-        notif = Notification(core)
+        notif = core.get_core_plugin('notification')
         notif.post_init()
         return notif
     def test_notification_echo(self, notification, record):
         notification.process(record)
-    
-class TestNotificationObject:
-    def test_match_true(self, core):
+
+    def test_match_true(self, notification):
         record = {'timestamp': '2021-07-01T12:00:00+09:00', 'host': 'myhost01', 'message': 'my message'}
-        notification = {
+        notif_obj = {
             'name': 'Notification 1',
             'condition': ['=', 'host', 'myhost01'],
             'time_constraint': [
@@ -45,4 +46,4 @@ class TestNotificationObject:
                 {'type': 'Time', 'content': {'from': '10:00', 'until': '14:00'}}
             ],
         }
-        assert NotificationObject(notification, core).match(record) == True
+        assert NotificationObject(notif_obj, notification).match(record) == True

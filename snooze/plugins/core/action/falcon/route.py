@@ -53,9 +53,9 @@ class ActionPluginRoute(BasicRoute):
             for plugin in loaded_plugins:
                 plugin_metadata = plugin.get_metadata()
                 if plugin_metadata.get('action_form'):
-                    log.debug("Retrieving action {} metadata: {}".format(plugin.name, plugin_metadata))
+                    log.debug("Retrieving action {} metadata".format(plugin.name))
                     plugins.append(plugin_metadata)
-            log.debug("List of actions: {}".format(plugins))
+            log.debug("List of actions: {} elements".format(len(plugins)))
             resp.content_type = falcon.MEDIA_JSON
             resp.status = falcon.HTTP_200
             resp.media = {

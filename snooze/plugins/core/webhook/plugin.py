@@ -35,65 +35,108 @@ class Webhook(Plugin):
             output += ' payload=' + payload
         return output
 
-    def send(self, record, content):
+    def send(self, records, content):
+        if not isinstance(records, list):
+            records = [records]
         url = content.get('url', '')
         params = content.get('params', [])
         payload = content.get('payload')
         proxy = content.get('proxy')
         action_name = content.get('action_name', self.name)
         inject_response = content.get('inject_response', False)
-        record_copy = deepcopy(record)
-        record_copy['__self__'] = record_copy.copy()
+        batch = content.get('batch', False)
+        to_send = []
+        for record in records:
+            record_copy = deepcopy(record)
+            record_copy['__self__'] = record_copy.copy()
+            to_send.append({'record': record, 'record_copy': record_copy, 'parsed_payload': None, 'response': None})
         if payload:
+            unquoted_payload = unquote(payload)
+            log.debug("Unquoted payload: {}".format(unquoted_payload))
+            env = Environment(loader=BaseLoader)
+            env.policies['json.dumps_kwargs'] = {'default': str}
+            for artifact in to_send:
+                try:
+                    payload_jinja = env.from_string(unquoted_payload).render(artifact['record_copy'])
+                    log.debug("Jinja payload for {}: {}".format(artifact['record_copy'].get('hash', ''), payload_jinja))
+                    parsed_payload = bson.json_util.loads(payload_jinja)
+                    artifact['parsed_payload'] = parsed_payload
+                except Exception as e:
+                    log.exception(e)
+        parsed_params = [['snooze_action_name', action_name]]
+        for artifact in to_send:
             try:
-                unquoted_payload = unquote(payload)
-                log.debug("Unquoted payload: {}".format(unquoted_payload))
-                env = Environment(loader=BaseLoader)
-                env.policies['json.dumps_kwargs'] = {'default': str}
-                payload_jinja = env.from_string(unquoted_payload).render(record_copy)
-                log.debug("Jinja payload: {}".format(payload_jinja))
-                parsed_payload = bson.json_util.loads(payload_jinja)
+                for argument in params:
+                    if type(argument) is str:
+                        parsed_params += [interpret_jinja([argument, ''], artifact['record_copy'])]
+                    elif type(argument) is list:
+                        parsed_params += [interpret_jinja(argument, artifact['record_copy'])]
+                    elif type(argument) is dict:
+                        parsed_params += [sum([interpret_jinja([k, v], artifact['record_copy']) for k, v in argument])]
             except Exception as e:
                 log.exception(e)
-                parsed_payload = None
-        else:
-            parsed_payload = None
-        parsed_params = [['snooze_action_name', action_name]]
-        for argument in params:
-            if type(argument) is str:
-                parsed_params += [interpret_jinja([argument, ''], record_copy)]
-            if type(argument) is list:
-                parsed_params += [interpret_jinja(argument, record_copy)]
-            if type(argument) is dict:
-                parsed_params += [sum([interpret_jinja([k, v], record_copy) for k, v in argument])]
+        params_dict = {}
+        for i in range(len(parsed_params)):
+            params_dict[parsed_params[i][0]] = parsed_params[i][1]
+        log.debug("Parsed params: {}".format(params_dict))
         log.debug("Will execute action webhook `{}`".format(url))
         if str.startswith(url, 'https') and content.get('ssl_verify'):
             ssl_verify = self.ca_bundle
         else:
             ssl_verify = False
-        response = None
-        if parsed_params:
-            parsed_params = { parsed_params[i][0]: parsed_params[i][1] for i in range(0, len(parsed_params)) }
-            log.debug("Parsed params: {}".format(parsed_params))
-        else:
-            parsed_params = None
-        response = RestHelper().send_http_request(url, 'POST', payload=parsed_payload, parameters=parsed_params, verify=ssl_verify, proxy_uri=proxy)
-        log.debug("HTTP Response: {}".format(response))
-        if inject_response and response and response.status_code == 200:
+        if batch:
+            response = None
+            response_content_json = None
             try:
-                response_content = bson.json_util.loads(response.content)
-            except:
-                response_content = response.content
-            log.debug(content)
-            response_dict = {'action_name': action_name, 'content': response_content}
-            if 'snooze_webhook_responses' not in record:
-                record['snooze_webhook_responses'] = []
-            for idx, action_response in enumerate(record['snooze_webhook_responses']):
-                if action_response.get('action_name') == action_name:
-                    record['snooze_webhook_responses'][idx] = response_dict
-                    break
+                response = RestHelper().send_http_request(url, 'POST', payload=[artifact['parsed_payload'] for artifact in to_send if artifact['parsed_payload']], parameters=params_dict, verify=ssl_verify, proxy_uri=proxy)
+            except Exception as e:
+                log.exception(e)
+                response = None
+            try:
+                response_content_json = bson.json_util.loads(response.content)
+            except Exception as e:
+                log.exception(e)
+                response_content_json = None
+            for artifact in to_send:
+                artifact['response'] = response
+                if response_content_json:
+                    try:
+                        artifact['response_content'] = response_content_json[artifact['record']['hash']]
+                    except:
+                        artifact['response_content'] = response_content_json
+        else:
+            for artifact in to_send:
+                try:
+                    artifact['response'] = RestHelper().send_http_request(url, 'POST', payload=artifact['parsed_payload'], parameters=parsed_params, verify=ssl_verify, proxy_uri=proxy)
+                except Exception as e:
+                    log.exception(e)
+                    artifact['response'] = None
+                if artifact['response']:
+                    try:
+                        artifact['response_content'] = bson.json_util.loads(artifact['response'].content)
+                    except Exception as e:
+                        log.exception(e)
+                        artifact['response_content'] = None
+        succeeded = []
+        failed = []
+        response_content = None
+        for artifact in to_send:
+            log.debug("HTTP Response: {}".format(artifact.get('response', '')))
+            if artifact['response'] and artifact['response'].status_code == 200:
+                if inject_response:
+                    response_dict = {'action_name': action_name, 'content': artifact.get('response_content', {})}
+                    if 'snooze_webhook_responses' not in artifact['record']:
+                        artifact['record']['snooze_webhook_responses'] = []
+                    for idx, action_response in enumerate(artifact['record']['snooze_webhook_responses']):
+                        if action_response.get('action_name') == action_name:
+                            artifact['record']['snooze_webhook_responses'][idx] = response_dict
+                            break
+                    else:
+                        artifact['record']['snooze_webhook_responses'].append(response_dict)
+                succeeded.append(artifact['record'])
             else:
-                record['snooze_webhook_responses'].append(response_dict)
+                failed.append(artifact['record'])
+        return succeeded, failed
 
 def interpret_jinja(fields, record):
     return list(map(lambda field: Template(field).render(record), fields))

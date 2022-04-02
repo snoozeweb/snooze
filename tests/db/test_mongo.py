@@ -10,8 +10,10 @@
 import mongomock
 from snooze.db.database import Database
 
+import dateutil
 import yaml
 from datetime import datetime, timezone
+from freezegun import freeze_time
 
 from logging import getLogger
 log = getLogger('snooze.tests')
@@ -113,7 +115,7 @@ def test_mongo_search_page():
 def test_mongo_search_id():
     db = Database(default_config.get('database'))
     db.write('record', {'a': '1', 'b': '2'})
-    uid = db.write('record', {'a': '1', 'b': '2'})['data']['added'][0]
+    uid = db.write('record', {'a': '1', 'b': '2'})['data']['added'][0]['uid']
     result = db.search('record', ['=', 'uid', uid])['data']
     assert len(result) == 1
 
@@ -132,7 +134,7 @@ def test_mongo_delete():
 def test_mongo_delete_id():
     db = Database(default_config.get('database'))
     db.write('record', {'a': '1', 'b': '2'})
-    uid = db.write('record', {'a': '1', 'b': '2'})['data']['added'][0]
+    uid = db.write('record', {'a': '1', 'b': '2'})['data']['added'][0]['uid']
     count = db.delete('record', ['=', 'uid', uid])['count']
     assert count == 1
 
@@ -155,7 +157,7 @@ def test_mongo_delete_all_force():
 @mongomock.patch('mongodb://localhost:27017')
 def test_mongo_update_uid_with_primary():
     db = Database(default_config.get('database'))
-    uid = db.write('record', {'a': '1', 'b': '2'}, 'a')['data']['added'][0]
+    uid = db.write('record', {'a': '1', 'b': '2'}, 'a')['data']['added'][0]['uid']
     result = db.search('record', ['=', 'uid', uid])['data']
     result[0]['a'] = '2'
     updated = db.write('record', result, 'a')['data']['updated']
@@ -165,7 +167,7 @@ def test_mongo_update_uid_with_primary():
 @mongomock.patch('mongodb://localhost:27017')
 def test_mongo_replace_uid_with_primary():
     db = Database(default_config.get('database'))
-    uid = db.write('record', {'a': '1', 'b': '2'}, 'a')['data']['added'][0]
+    uid = db.write('record', {'a': '1', 'b': '2'}, 'a')['data']['added'][0]['uid']
     result = db.search('record', ['=', 'uid', uid])['data']
     del result[0]['b']
     replaced = db.write('record', result, 'a', 'replace')['data']['replaced']
@@ -175,7 +177,7 @@ def test_mongo_replace_uid_with_primary():
 def test_mongo_update_uid_duplicate_primary():
     db = Database(default_config.get('database'))
     db.write('record', {'a': {'b': '1', 'c': '1'}}, 'a.b')
-    uid = db.write('record', {'a': {'b': '2', 'c': '2'}}, 'a.b')['data']['added'][0]
+    uid = db.write('record', {'a': {'b': '2', 'c': '2'}}, 'a.b')['data']['added'][0]['uid']
     result = db.search('record', ['=', 'uid', uid])['data']
     result[0]['a']['b'] = '1'
     rejected = db.write('record', result, 'a.b')['data']['rejected']
@@ -184,7 +186,7 @@ def test_mongo_update_uid_duplicate_primary():
 @mongomock.patch('mongodb://localhost:27017')
 def test_mongo_update_uid_constant():
     db = Database(default_config.get('database'))
-    uid = db.write('record', {'a': '1', 'b': '2', 'c': 3})['data']['added'][0]
+    uid = db.write('record', {'a': '1', 'b': '2', 'c': 3})['data']['added'][0]['uid']
     result = db.search('record', ['=', 'uid', uid])['data']
     result[0]['c'] = '4'
     updated = db.write('record', result, constant=['a','b'])['data']['updated']
@@ -195,7 +197,7 @@ def test_mongo_update_uid_constant():
 @mongomock.patch('mongodb://localhost:27017')
 def test_mongo_update_primary_constant():
     db = Database(default_config.get('database'))
-    db.write('record', {'a': '1', 'b': '2', 'c': 3}, 'a')['data']['added'][0]
+    db.write('record', {'a': '1', 'b': '2', 'c': 3}, 'a')['data']['added'][0]['uid']
     updated = db.write('record',  {'a': '1', 'b': '2', 'c': 4}, 'a', constant='b')['data']['updated']
     rejected = db.write('record', {'a': '1', 'b': '1', 'c': 4}, 'a', constant='b')['data']['rejected']
     assert len(updated) == 1 and len(rejected) == 1
@@ -264,10 +266,32 @@ def test_mongo_cleanup_timeout():
 @mongomock.patch('mongodb://localhost:27017')
 def test_mongo_cleanup_orphans():
     db = Database(default_config.get('database'))
-    uids = db.write('record', [{'a': '1'}, {'b': '1'}])['data']['added']
+    uids = [o['uid'] for o in db.write('record', [{'a': '1'}, {'b': '1'}])['data']['added']]
     db.write('comment', [{'record_uid': uids[0]}, {'record_uid': uids[1]}, {'record_uid': 'random'}])
     deleted_count = db.cleanup_orphans('comment', 'record_uid', 'record', 'uid')
     assert deleted_count == 1
+
+@mongomock.patch('mongodb://localhost:27017')
+def test_mongo_cleanup_audit_logs():
+    db = Database(default_config.get('database'))
+    audits = [
+        {'id': 'a', 'collection': 'rule', 'object_id': 'uid1', 'timestamp': '2022-01-01T10:00:00+09:00', 'action': 'added', 'username': 'john.doe', 'method': 'ldap'},
+        {'id': 'b', 'collection': 'rule', 'object_id': 'uid2', 'timestamp': '2022-01-02T11:00:00+09:00', 'action': 'updated', 'username': 'root', 'method': 'root'},
+        {'id': 'c', 'collection': 'rule', 'object_id': 'uid1', 'timestamp': '2022-01-03T12:00:00+09:00', 'action': 'added', 'username': 'test', 'method': 'local'},
+        {'id': 'd', 'collection': 'rule', 'object_id': 'uid3', 'timestamp': '2022-01-04T13:00:00+09:00', 'action': 'updated', 'username': 'john.doe', 'method': 'ldap'},
+        {'id': 'e', 'collection': 'rule', 'object_id': 'uid3', 'timestamp': '2022-01-04T14:00:00+09:00', 'action': 'updated', 'username': 'john.doe', 'method': 'ldap'},
+        {'id': 'f', 'collection': 'rule', 'object_id': 'uid3', 'timestamp': '2022-01-04T15:00:00+09:00', 'action': 'deleted', 'username': 'john.doe', 'method': 'ldap'},
+    ]
+    with freeze_time('2022-01-10T12:00:00+0900'):
+        for audit in audits:
+            audit['date_epoch'] = dateutil.parser.parse(audit['timestamp']).astimezone().timestamp()
+        db.write('audit', audits, update_time=False)
+    with freeze_time('2022-01-10T12:00:00+0900'):
+        interval = 3*24*3600 # 3 days
+        db.cleanup_audit_logs(interval)
+    s = db.search('audit', orderby='timestamp')['data']
+    assert len(s) == 3
+    assert sorted(x['id'] for x in s) == ['a', 'b', 'c']
 
 @mongomock.patch('mongodb://localhost:27017')
 def test_mongo_inc():
@@ -289,6 +313,11 @@ def test_mongo_inc_labels():
     db.inc('stats', 'metric_a', {'source': 'syslog', 'type': 'db'})
     assert db.search('stats', ['=', 'key', 'metric_a__source__syslog'])['data'][0]['value'] == 2
     assert db.search('stats', ['=', 'key', 'metric_a__type__db'])['data'][0]['value'] == 1
+
+@mongomock.patch('mongodb://localhost:27017')
+def test_mongo_get_uri():
+    db = Database(default_config.get('database'))
+    assert db.get_uri() == 'mongodb://localhost:27017/snooze'
 
 # timezone in datetostring not implemented
 #@mongomock.patch('mongodb://localhost:27017')

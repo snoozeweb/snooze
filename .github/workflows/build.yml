@@ -1,0 +1,168 @@
+# vim:sw=2:ts=2:sts=2:et:
+---
+name: Build
+
+'on':
+  push:
+    branches:
+      - 'release*'
+
+jobs:
+
+  python_tests:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checking out git repository
+        uses: actions/checkout@v2
+
+      - name: Setup python environment
+        uses: ./.github/actions/python-poetry
+        with: {poetry_options: '--default --with test'}
+
+      - name: Running Pytest
+        run: poetry run pytest
+
+  pypi:
+    runs-on: ubuntu-latest
+    needs: [python_tests]
+    steps:
+      - name: Checking out git repository
+        uses: actions/checkout@v2
+
+      - name: Setup python environment
+        uses: ./.github/actions/python-poetry
+        with: {poetry_options: '--only build'}
+
+      - name: Build pip packages
+        run: poetry run invoke pip.build --github-output
+        id: build
+
+      - name: Upload job artifact
+        uses: actions/upload-artifact@v2
+        with:
+          name: pip
+          path: "${{ steps.build.outputs.PATH }}"
+
+  web:
+    runs-on: ubuntu-latest
+    needs: [python_tests]
+    steps:
+      - name: Checking out git repository
+        uses: actions/checkout@v2
+
+      - name: Setup Node
+        uses: actions/setup-node@v2
+        with:
+          node-version: '10'
+          cache: npm
+          cache-dependency-path: 'web/package-lock.json'
+
+      - name: Setup python environment
+        uses: ./.github/actions/python-poetry
+        with: {poetry_options: '--only build'}
+
+      - name: Build web tarball
+        run: poetry run invoke web.build --github-output
+        id: build
+
+      - name: Upload job artifact
+        uses: actions/upload-artifact@v2
+        with:
+          name: web
+          path: "${{ steps.build.outputs.PATH }}"
+
+  rpm:
+    runs-on: ubuntu-latest
+    needs: [pypi, web]
+    steps:
+      - name: Checking out git repository
+        uses: actions/checkout@v2
+
+      - name: Setup python environment
+        uses: ./.github/actions/python-poetry
+        with: {poetry_options: '--only build'}
+
+      - name: Download pip package
+        uses: actions/download-artifact@v2
+        with: {name: pip, path: dist}
+
+      - name: Download web tarball
+        uses: actions/download-artifact@v2
+        with: {name: web, path: dist}
+
+      - name: Installing rpmbuild
+        run: sudo apt-get install rpm
+
+      - name: Build rpm
+        run: poetry run invoke rpm.build --github-output
+        id: build
+
+      - name: Upload job artifact
+        uses: actions/upload-artifact@v2
+        with:
+          name: rpm
+          path: "${{ steps.build.outputs.PATH }}"
+
+  deb:
+    runs-on: ubuntu-latest
+    needs: [pypi, web]
+    steps:
+      - name: checkout
+        uses: actions/checkout@v2
+
+      - name: Setup python environment
+        uses: ./.github/actions/python-poetry
+        with: {poetry_options: '--only build'}
+
+      - name: Download pip package
+        uses: actions/download-artifact@v2
+        with: {name: pip, path: dist}
+
+      - name: Download web tarball
+        uses: actions/download-artifact@v2
+        with: {name: web, path: dist}
+
+      - name: Build deb
+        run: poetry run invoke debian.build --github-output
+        id: build
+
+      - name: Upload job artifact
+        uses: actions/upload-artifact@v2
+        with:
+          name: deb
+          path: "${{ steps.build.outputs.PATH }}"
+
+  docker:
+    needs: [pypi, web]
+    runs-on: ubuntu-latest
+    env:
+      INVOKE_DOCKER_REPO: registry.hub.docker.com
+      INVOKE_DOCKER_IMAGE: snoozeweb/snooze
+    steps:
+      - name: Checking out git repository
+        uses: actions/checkout@v2
+
+      - name: Setup python environment
+        uses: ./.github/actions/python-poetry
+        with: {poetry_options: '--only build'}
+
+      - name: Download pip package
+        uses: actions/download-artifact@v2
+        with: {name: pip, path: dist}
+
+      - name: Download web tarball
+        uses: actions/download-artifact@v2
+        with: {name: web, path: dist}
+
+      - name: Check dockerfile
+        run: poetry run invoke docker.check
+
+      - name: Build docker image
+        run: poetry run invoke docker.build --mode production --save --github-output
+        id: build
+
+      - name: Upload job artifact
+        uses: actions/upload-artifact@v2
+        with:
+          name: docker
+          path: "${{ steps.build.outputs.PATH }}"

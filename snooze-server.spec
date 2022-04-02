@@ -66,6 +66,7 @@ mkdir -p "%{buildroot}/opt/snooze/web"
 tar xzf %{SOURCE0} -C %{buildroot}
 mkdir -p "%{buildroot}/etc/snooze/server"
 cp -R %{topdir}/snooze/defaults/core.yaml %{buildroot}/etc/snooze/server/core.yaml
+cp -R %{topdir}/snooze/defaults/logging_file.yaml %{buildroot}/etc/snooze/server/logging.yaml
 
 %build
 

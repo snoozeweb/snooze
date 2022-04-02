@@ -60,13 +60,13 @@
       </CCol>
       <CCol md="6" sm="12">
         <CCard>
-          <CCardHeader class="py-2 px-3">Notifications</CCardHeader>
+          <CCardHeader class="py-2 px-3">Actions</CCardHeader>
           <CCardBody class="p-2">
             <ChartBar style="min-height:300px"
               sort
               :datasets="[
-                {label: 'Notification sent', color: hexToRgba(theme_colors.success, 50), bordercolor: theme_colors.success, data: this.data.split_data['notification_sent__name__'] || {}},
-                {label: 'Notification error', color: hexToRgba(theme_colors.danger, 50), bordercolor: theme_colors.danger, data: this.data.split_data['notification_error__name__'] || {}},
+                {label: 'Action success', color: hexToRgba(theme_colors.success, 50), bordercolor: theme_colors.success, data: this.data.split_data['action_success__name__'] || {}},
+                {label: 'Action error', color: hexToRgba(theme_colors.danger, 50), bordercolor: theme_colors.danger, data: this.data.split_data['action_error__name__'] || {}},
               ]"
             />
           </CCardBody>
@@ -211,13 +211,13 @@ export default {
       theme_colors: theme_colors,
       pp_number: pp_number,
       data_ref: 'alert_hit__source',
-      split_data: ['alert_hit__source__', 'alert_hit__environment__', 'notification_sent__name__', 'notification_error__name__', 'alert_throttled__name__', 'alert_snoozed__name__'],
+      split_data: ['alert_hit__source__', 'alert_hit__environment__', 'notification_sent__name__', 'action_success__name__', 'action_error__name__', 'alert_throttled__name__', 'alert_snoozed__name__'],
       datasource: {
         'alert_hit__source': {label: 'Alerts', color: theme_colors.info},
         'alert_throttled__name': {label: 'Throttled', color: theme_colors.tertiary},
         'alert_snoozed__name': {label: 'Snoozed', color: theme_colors.warning},
         'notification_sent__name': {label: 'Notification sent', color: theme_colors.success},
-        'notification_error__name': {label: 'Notification error', color: theme_colors.danger}
+        'action_error__name': {label: 'Action error', color: theme_colors.danger}
       },
       tableItems: [],
       tableFields: [

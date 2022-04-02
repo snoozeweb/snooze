@@ -4,6 +4,7 @@
       ref="table"
       endpoint_prop="snooze"
       :tabs_prop="tabs"
+      @update="get_now"
       edit_mode
       delete_mode
       add_mode
@@ -17,6 +18,9 @@
       </template>
       <template #selected_buttons>
         <CButton color="info" @click="modal_show(selected, 'apply')">Retro apply</CButton>
+      </template>
+      <template #details_side="row">
+        <AuditLogs collection="snooze" :object="row.item" />
       </template>
     </List>
 
@@ -53,16 +57,15 @@
 import moment from 'moment'
 import dig from 'object-dig'
 
+import AuditLogs from '@/components/AuditLogs.vue'
 import List from '@/components/List.vue'
 
 import { API } from '@/api'
 
 export default {
   components: {
+    AuditLogs,
     List,
-  },
-  mounted () {
-    setInterval(this.get_now, 1000);
   },
   data () {
     return {
@@ -85,6 +88,7 @@ export default {
   methods: {
     get_now() {
       this.tabs = this.get_tabs_default()
+      this.$refs.table.tabs = this.tabs
     },
     get_tabs_default() {
       var now = moment()

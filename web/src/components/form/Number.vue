@@ -1,6 +1,6 @@
 <template>
   <div>
-    <CFormInput type="number" v-model="datavalue" :disabled="disabled" aria-describedby="feedback" :required="required" :invalid="required && !checkField" :valid="required && checkField"/>
+    <CFormInput type="number" v-model="datavalue" :disabled="disabled" aria-describedby="feedback" :required="required" :invalid="required && !checkField" :valid="required && checkField" :min="opts.min" :max="opts.max"/>
     <CFormFeedback invalid>
       Field is required
     </CFormFeedback>
@@ -24,7 +24,8 @@ export default {
   emits: ['update:modelValue'],
   data() {
     return {
-      datavalue: ([undefined, 0, [], {}].includes(this.modelValue) ? (this.default_value == undefined ? 0 : this.default_value) : this.modelValue).toString()
+      datavalue: ([undefined, 0, [], {}].includes(this.modelValue) ? (this.default_value == undefined ? 0 : this.default_value) : this.modelValue).toString(),
+      opts: this.options || {},
     }
   },
   watch: {

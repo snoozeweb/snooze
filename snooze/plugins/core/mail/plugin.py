@@ -19,16 +19,20 @@ from logging import getLogger
 log = getLogger('snooze.action.mail')
 
 DEFAULT_MESSAGE_TEMPLATE = """
-*** Snooze ***
-Received message:
-{{ record.get('message') }}
-
 {% if record.get('host') %}
 Host: {{ record.get('host') }}
 {% endif %}
-{% if record.get('host') %}
+{% if record.get('source') %}
+Source: {{ record.get('source') }}
+{% endif %}
+{% if record.get('process') %}
+Process: {{ record.get('process') }}
+{% endif %}
+{% if record.get('severity') %}
 Severity: {{ record.get('severity') }}
 {% endif %}
+Received message:
+{{ record.get('message') }}
 """
 
 DEFAULT_SERVER = 'localhost'
@@ -40,25 +44,49 @@ class Mail(Plugin):
         output  =  'mailto: ' + content.get('to', '').replace(',', '\nmailto: ')
         return output
 
-    def send(self, record, content):
+    def send(self, records, content):
+        if not isinstance(records, list):
+            records = [records]
+        batch = content.get('batch', False) and len(records) > 1
         host = content.get('host', DEFAULT_SERVER)
         port = content.get('port', DEFAULT_PORT)
         sender = content.get('from', '')
         recipients = content.get('to', '').split(',')
         message = MIMEMultipart('alternative')
-        msg = Template(content.get('message', DEFAULT_MESSAGE_TEMPLATE)).render(record)
-        message['Subject'] = Header(Template(content.get('subject', '')).render(record), 'utf-8').encode()
         if sender:
             message['From'] = sender
         message['To'] = content.get('to', '')
         message['X-Priority'] = str(content.get('priority', 3))
-        message.preamble = message['Subject']
-        message.attach(MIMEText(msg, content.get('type', 'plain'), 'utf-8'))
-        log.debug("Send mail to {}".format(message['To']))
+        log.debug("Send {} mail(s) to {}".format(len(records), message['To']))
         self.server = SMTP(host, port, timeout=DEFAULT_TIMEOUT)
-        try:
-            self.server.sendmail(sender, recipients, message.as_string())
-        except Exception as e:
-            self.server.close()
-            raise
+        succeeded = []
+        failed = []
+        artifacts = []
+        for record in records:
+            try:
+                artifact = {'records': [record]}
+                artifact['body'] = Template(content.get('message', DEFAULT_MESSAGE_TEMPLATE)).render(record)
+                if not batch:
+                    artifact['subject'] = Header(Template(content.get('subject', '')).render(record), 'utf-8').encode()
+                artifacts.append(artifact)
+            except Exception as e:
+                log.exception(e)
+                failed.append(record)
+        if batch:
+            artifact = {'records': records}
+            separator = {'plain': "\n\n", 'html': '<br><br>'}
+            artifact['body'] = separator[content.get('type', 'plain')].join([a['body'] for a in artifacts])
+            artifact['subject'] = '[SnoozeWeb] Received {} alerts'.format(len(records))
+            artifacts = [artifact]
+        for artifact in artifacts:
+            message.set_payload([MIMEText(artifact['body'], content.get('type', 'plain'), 'utf-8')])
+            message['Subject'] = artifact['subject']
+            message.preamble = message['Subject']
+            try:
+                self.server.sendmail(sender, recipients, message.as_string())
+                succeeded += artifact['records']
+            except Exception as e:
+                log.exception(e)
+                failed += artifact['records']
         self.server.close()
+        return succeeded, failed

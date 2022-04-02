@@ -12,6 +12,8 @@ from snooze.utils.functions import dig, flatten, to_tuple
 from threading import Lock
 from logging import getLogger
 from datetime import datetime
+from bson.json_util import dumps
+from pathlib import Path
 import uuid
 import re
 log = getLogger('snooze.db.file')
@@ -87,6 +89,37 @@ class BackendDB(Database):
         mutex.release()
         return res
 
+    def cleanup_audit_logs(self, interval):
+        mutex.acquire()
+        audits = self.db.table('audit').all()
+        audit_dict = {}
+        now = datetime.now().timestamp()
+        threshold_date = now - interval
+        for audit in audits:
+            oid = audit.get('object_id')
+            timestamp = audit_dict.get(oid, {}).get('date_epoch', 0)
+
+            # Remember latest audit log by object_id
+            if oid and audit.get('date_epoch', 0) >= timestamp:
+                audit_dict[oid] = audit
+
+        oids = [
+            audit['object_id']
+            for object_id, audit in audit_dict.items()
+            if audit.get('action') == 'deleted' \
+            and audit.get('date_epoch') < threshold_date
+        ]
+        log.debug("Found audit log to remove for %d objects", len(oids))
+        doc_ids = [
+            obj.doc_id
+            for obj in self.db.table('audit').search(Query().object_id == oid)
+            for oid in oids
+        ]
+        log.debug("Found %d audit logs to remove", len(doc_ids))
+        self.db.table('audit').remove(doc_ids=doc_ids)
+
+        mutex.release()
+
     def delete_aggregates(self, collection, aggregate_results):
         ids = list(map(lambda doc: doc['_id'], aggregate_results))
         deleted_count = 0
@@ -117,6 +150,8 @@ class BackendDB(Database):
                 constant = constant.split(',')
         for o in tobj:
             primary_docs = None
+            old = {}
+            o.pop('_old', None)
             if update_time:
                 o['date_epoch'] = datetime.now().timestamp()
             if primary and all(dig(o, *p.split('.')) for p in primary):
@@ -131,12 +166,17 @@ class BackendDB(Database):
                 if docs:
                     doc = docs[0]
                     doc_id = doc.doc_id
+                    old = doc
                     log.debug('Found: {}'.format(str(doc_id)))
                     if primary_docs and doc_id != primary_docs[0].doc_id:
-                        log.error("Found another document with same primary {}: {}. Since UID is different, cannot update".format(primary, primary_docs))
+                        error_message = f"Found another document with same primary {primary}: {primary_docs}. Since UID is different, cannot update"
+                        log.error(error_message)
+                        o['error'] = error_message
                         rejected.append(o)
                     elif constant and any(doc.get(c, '') != o.get(c) for c in constant):
-                        log.error("Found a document with existing uid {} but different constant values: {}. Since UID is different, cannot update".format(o['uid'], constant))
+                        error_message = f"Found a document with existing uid {o['uid']} but different constant values: {constant}. Since UID is different, cannot update"
+                        log.error(error_message)
+                        o['error'] = error_message
                         rejected.append(o)
                     elif duplicate_policy == 'replace':
                         log.debug('Replacing with: {}'.format(str(doc_id)))
@@ -146,22 +186,29 @@ class BackendDB(Database):
                     else:
                         log.debug('Updating with: {}'.format(str(doc_id)))
                         table.update(o, doc_ids=[doc_id])
-                        updated.append(doc)
+                        updated.append(o)
                 else:
-                    log.error("UID {} not found. Skipping...".format(o['uid']))
+                    error_message = f"UID {o['uid']} not found. Skipping..."
+                    log.error(error_message)
+                    o['error'] = error_message
                     rejected.append(o)
             elif primary:
                 if primary_docs:
                     doc = primary_docs[0]
                     doc_id = doc.doc_id
+                    old = doc
                     if constant and any(doc.get(c, '') != o.get(c) for c in constant):
-                        log.error("Found a document with existing primary {} but different constant values: {}. Since UID is different, cannot update".format(primary, constant))
+                        error_message = f"Found a document with existing primary {primary} but different constant values: {constant}. Since UID is different, cannot update"
+                        log.error(error_message)
+                        o['error'] = error_message
                         rejected.append(o)
                     else:
                         log.debug('Evaluating duplicate policy: {}'.format(duplicate_policy))
                         if duplicate_policy == 'insert':
                             add_obj = True
                         elif duplicate_policy == 'reject':
+                            error_message = "Another object exist with the same {primary}"
+                            o['error'] = error_message
                             rejected.append(o)
                         elif duplicate_policy == 'replace':
                             log.debug('Replace with: {}'.format(str(doc_id)))
@@ -182,9 +229,11 @@ class BackendDB(Database):
             if add_obj:
                 obj_copy.append(o)
                 obj_copy[-1]['uid'] = str(uuid.uuid4())
-                added.append(o['uid'])
+                added.append(o)
                 add_obj = False
                 log.debug("In {}, inserting {}".format(collection, o.get('uid', '')))
+            if old:
+                o['_old'] = old
         if len(obj_copy) > 0:
             table.insert_multiple(obj_copy)
         mutex.release()
@@ -388,18 +437,48 @@ class BackendDB(Database):
                 return_obj = dig(Query(), *key.split('.')).test(test_contains, to_tuple(value))
         elif operation == 'IN':
             key, value = args
+            converted = False
             if not isinstance(key, list):
                 key = [key]
             else:
                 try:
                     saved_key = key
                     key = self.convert(key)
+                    converted = True
                 except:
                     key = saved_key
-            return_obj = dig(Query(), *value.split('.')).any(key)
+            if converted:
+                return_obj = dig(Query(), *value.split('.')).any(key)
+            else:
+                test_eq = lambda s, v: s == v
+                eq_list = list(map(lambda a: dig(Query(), *value.split('.')).test(test_eq, a), key))
+                return_obj = reduce(lambda a, b: a | b, eq_list) | dig(Query(), *value.split('.')).any(key)
         elif operation == 'SEARCH':
             arg = args[0]
-            return_obj = Query().test_root(test_search, to_tuple(arg))
+            try:
+                return_obj = Query().test_root(test_search, to_tuple(arg))
+            except Exception as e:
+                log.exception(e)
+                raise OperationNotSupported(operation)
         else:
             raise OperationNotSupported(operation)
         return return_obj
+
+    def backup(self, backup_path, backup_exclude = []):
+        collections = [c for c in self.db.tables() if c not in backup_exclude]
+        log.debug('Starting backup of {}'.format(collections))
+        succeeded = []
+        for i, collection_name in enumerate(collections):
+            try:
+                collection = self.db.table(collections[i]).all()
+                jsonpath = Path(backup_path) / (collection_name + '.json')
+                with jsonpath.open("wb") as jsonfile:
+                    jsonfile.write(dumps(collection).encode())
+                    succeeded.append(collection_name)
+            except Exception as e:
+                log.error('Backup of {} failed'.format(collection_name))
+                log.exception(e)
+        log.info('Backup of {} succeeded'.format(succeeded))
+
+    def get_uri(self):
+        return None

@@ -13,7 +13,7 @@ from time import sleep
 from hashlib import sha256
 from importlib import import_module
 from logging import getLogger
-from os import listdir
+from os import listdir, mkdir
 from os.path import dirname, isdir, join as joindir
 from secrets import token_urlsafe
 from threading import Event
@@ -25,7 +25,7 @@ from snooze import __file__ as rootdir
 from snooze.db.database import Database
 from snooze.plugins.core import Abort, Abort_and_write, Abort_and_update
 from snooze.token import TokenEngine
-from snooze.utils import config, Housekeeper, Stats
+from snooze.utils import config, Housekeeper, Stats, MQManager
 from snooze.utils.functions import flatten
 
 log = getLogger('snooze')
@@ -37,7 +37,9 @@ class Core:
         self.general_conf = config('general')
         self.notif_conf = config('notifications')
         self.ok_severities = list(map(lambda x: x.casefold(), flatten([self.general_conf.get('ok_severities', [])])))
+        self.init_backup()
         self.housekeeper = Housekeeper(self)
+        self.mq = MQManager(self)
         self.cluster = None
         self.exit_button = Event()
         self.plugins = []
@@ -48,8 +50,9 @@ class Core:
         self.stats.init('alert_snoozed', 'counter', 'snooze_alert_snoozed', 'Counter of snoozed alerts', ['name'])
         self.stats.init('alert_throttled', 'counter', 'snooze_alert_throttled', 'Counter of throttled alerts', ['name'])
         self.stats.init('alert_closed', 'counter', 'snooze_alert_closed', 'Counter of received closed alerts', ['name'])
-        self.stats.init('notification_sent', 'counter', 'snooze_notification_sent', 'Counter of notification sent', ['name', 'action'])
-        self.stats.init('notification_error', 'counter', 'snooze_notification_error', 'Counter of notification that failed', ['name', 'action'])
+        self.stats.init('notification_sent', 'counter', 'snooze_notification_sent', 'Counter of notification sent', ['name'])
+        self.stats.init('action_success', 'counter', 'snooze_action_success', 'Counter of action that succeeded', ['name'])
+        self.stats.init('action_error', 'counter', 'snooze_action_error', 'Counter of action that failed', ['name'])
         self.bootstrap_db()
         self.secrets = self.ensure_secrets()
         self.token_engine = TokenEngine(self.secrets['jwt_private_key'])
@@ -220,3 +223,13 @@ class Core:
                     user_passwords = [{"name": "root", "method": "local", "password": sha256("root".encode('utf-8')).hexdigest()}]
                     self.db.write('user.password', user_passwords)
                 self.db.write('general', [{'init_db': True}])
+
+    def init_backup(self):
+        if self.conf.get('backup', {}).get('enabled', True):
+            try:
+                mkdir(self.conf.get('backup', {}).get('path', './backups'))
+            except FileExistsError as e:
+                pass
+            except Exception as e:
+                log.exception(e)
+                pass

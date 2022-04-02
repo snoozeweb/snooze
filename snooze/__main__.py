@@ -22,9 +22,18 @@ from snooze.utils import config
 def setup_logging(conf):
     logging_config = config('logging')
     if os.environ.get('SNOOZE_DEBUG', conf.get('debug', False)):
-        logging_config['handlers']['console']['level'] = 'DEBUG'
-        logging_config['handlers']['file']['level'] = 'DEBUG'
-        logging_config['loggers']['snooze']['level'] = 'DEBUG'
+        try:
+            logging_config['handlers']['console']['level'] = 'DEBUG'
+        except:
+            pass
+        try:
+            logging_config['handlers']['file']['level'] = 'DEBUG'
+        except:
+            pass
+        try:
+            logging_config['loggers']['snooze']['level'] = 'DEBUG'
+        except:
+            pass
     logging.config.dictConfig(logging_config)
     log = getLogger('snooze')
     log.debug("Log system on")

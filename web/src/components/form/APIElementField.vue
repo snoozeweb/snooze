@@ -8,6 +8,7 @@
       size="lg"
       :colorize="colorize"
       :required="required"
+      trim
     >
     </SFormTags>
   </div>

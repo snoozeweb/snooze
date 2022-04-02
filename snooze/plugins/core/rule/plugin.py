@@ -42,9 +42,10 @@ class Rule(Plugin):
     def reload_data(self, sync = False):
         LOG.debug("Reloading data for plugin {}".format(self.name))
         self.data = self.db.search('rule', ['NOT', ['EXISTS', 'parent']], orderby='name')['data']
-        self.rules = []
+        rules = []
         for rule in (self.data or []):
-            self.rules.append(RuleObject(rule, self.core))
+            rules.append(RuleObject(rule, self.core))
+        self.rules = rules
         if sync and self.core.cluster:
             self.core.cluster.reload_plugin(self.name)
 

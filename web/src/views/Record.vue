@@ -30,16 +30,7 @@
         <Prometheus :data="row.item.prometheus" v-if="!!row.item.prometheus" class="pb-2"/>
       </template>
       <template #details_side="row">
-        <CCol v-if="row.item['comment_count']" class="p-2">
-          <CCard>
-            <CCardHeader class='text-center' style='font-weight:bold'>
-              Timeline
-            </CCardHeader>
-            <CCardBody class="p-2">
-              <Timeline :record="row.item" ref="timeline"/>
-            </CCardBody>
-          </CCard>
-        </CCol>
+        <Timeline :record="row.item" ref="timeline" v-if="row.item['comment_count']" />
       </template>
       <template #head_buttons>
         <CButton v-if="is_admin()" color="success" @click="modal_add()">New</CButton>

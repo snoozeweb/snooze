@@ -11,6 +11,8 @@ from snooze.db.database import Database
 from snooze.utils.functions import dig
 from copy import deepcopy
 from bson.code import Code
+from bson.json_util import dumps
+from pathlib import Path
 from logging import getLogger
 log = getLogger('snooze.db.mongo')
 
@@ -24,9 +26,6 @@ class OperationNotSupported(Exception): pass
 
 database = os.environ.get('DATABASE_NAME', 'snooze')
 
-def test_contains(array, value):
-    return any(value in a for a in flatten(array))
-
 class BackendDB(Database):
     def init_db(self, conf):
         if 'DATABASE_URL' in os.environ:
@@ -34,6 +33,7 @@ class BackendDB(Database):
         else:
             self.db = pymongo.MongoClient(**conf)[database]
         self.search_fields = {}
+        self.conf = conf
         log.debug("Initialized Mongodb with config {}".format(conf))
         log.debug("db: {}".format(self.db))
         log.debug("List of collections: {}".format(self.db.collection_names()))
@@ -68,6 +68,29 @@ class BackendDB(Database):
         }]
         return self.run_pipeline(collection, pipeline)
 
+    def cleanup_audit_logs(self, interval):
+        '''Cleanup audit logs of deleted objects'''
+        log.info('Running audit log cleanup')
+        now = datetime.datetime.now().astimezone().timestamp()
+        date_threshold = now - interval
+        log.debug("Threshold date: %s", datetime.datetime.fromtimestamp(date_threshold).astimezone())
+        pipeline = [
+            # Sort by most recent
+            {'$sort': {'timestamp': -1}},
+            # Get the last action for each object
+            {'$group': {'_id': '$object_id', 'action': {'$first': '$action'}, 'date_epoch': {'$first': '$date_epoch'}}},
+        ]
+        ids = [
+            o['_id']
+            for o in self.db['audit'].aggregate(pipeline)
+            if o.get('action') == 'deleted' \
+            and o.get('date_epoch', 0) < date_threshold
+        ]
+        log.info("Found audit logs to remove for %d objects", len(ids))
+        if ids:
+            log.debug("Removing audit logs for %d objects", len(ids))
+            self.db['audit'].delete_many({'object_id': {'$in': ids}})
+
     def run_pipeline(self, collection, pipeline):
         aggregate_results = self.db[collection].aggregate(pipeline)
         ids = list(map(lambda doc: doc['_id'], aggregate_results))
@@ -97,7 +120,9 @@ class BackendDB(Database):
                 constant = constant.split(',')
         for o in tobj:
             o.pop('_id', None)
+            o.pop('_old', None)
             primary_result = None
+            old = {}
             if update_time:
                 o['date_epoch'] = datetime.datetime.now().timestamp()
             if primary and all(dig(o, *p.split('.')) for p in primary):
@@ -113,11 +138,16 @@ class BackendDB(Database):
                 result = self.db[collection].find_one({'uid': o['uid']})
                 if result:
                     log.debug("UID {} found".format(o['uid']))
+                    old = result
                     if primary_result and primary_result['uid'] != o['uid']:
-                        log.error("Found another document with same primary {}: {}. Since UID is different, cannot update".format(primary, primary_result))
+                        error_message = f"Found another document with same primary {primary}: {primary_result}. Since UID is different, cannot update"
+                        log.error(error_message)
+                        o['error'] = error_message
                         rejected.append(o)
                     elif constant and any(result.get(c, '') != o.get(c) for c in constant):
-                        log.error("Found a document with existing uid {} but different constant values: {}. Since UID is different, cannot update".format(o['uid'], constant))
+                        error_message = f"Found a document with existing uid {o['uid']} but different constant values: {constant}. Since UID is different, cannot update"
+                        log.error(error_message)
+                        o['error'] = error_message
                         rejected.append(o)
                     elif duplicate_policy == 'replace':
                         log.debug("In {}, replacing {}".format(collection, o['uid']))
@@ -128,18 +158,25 @@ class BackendDB(Database):
                         self.db[collection].update_one({'uid': o['uid']}, {'$set': o})
                         updated.append(o)
                 else:
-                    log.error("UID {} not found. Skipping...".format(o['uid']))
+                    error_message = f"UID {o['uid']} not found. Skipping..."
+                    log.error(error_message)
+                    o['error'] = error_message
                     rejected.append(o)
             elif primary:
                 if primary_result:
+                    old = primary_result
                     if constant and any(primary_result.get(c, '') != o.get(c) for c in constant):
-                        log.error("Found a document with existing primary {} but different constant values: {}. Since UID is different, cannot update".format(primary, constant))
+                        error_message = f"Found a document with existing primary {primary} but different constant values: {constant}. Since UID is different, cannot update"
+                        log.error(error_message)
+                        o['error'] = error_message
                         rejected.append(o)
                     else:
                         log.debug('Evaluating duplicate policy: {}'.format(duplicate_policy))
                         if duplicate_policy == 'insert':
                             add_obj = True
                         elif duplicate_policy == 'reject':
+                            error_message = "Another object exist with the same {primary}"
+                            o['error'] = error_message
                             rejected.append(o)
                         elif duplicate_policy == 'replace':
                             log.debug("In {}, replacing {}".format(collection, primary_result.get('uid', '')))
@@ -159,9 +196,11 @@ class BackendDB(Database):
             if add_obj:
                 obj_copy.append(o)
                 obj_copy[-1]['uid'] = str(uuid.uuid4())
-                added.append(o['uid'])
+                added.append(o)
                 add_obj = False
                 log.debug("In {}, inserting {}".format(collection, o.get('uid', '')))
+            if old:
+                o['_old'] = old
         if len(obj_copy) > 0:
             self.db[collection].insert_many(obj_copy)
         return {'data': {'added': added, 'updated': updated, 'replaced': replaced, 'rejected': rejected}}
@@ -279,7 +318,6 @@ class BackendDB(Database):
             log.exception(e)
             return {'data': [], 'count': 0}
 
-
     def convert(self, array, search_fields = []):
         """
         Convert `Condition` type from snooze.utils
@@ -365,3 +403,43 @@ class BackendDB(Database):
         else:
             raise OperationNotSupported(operation)
         return return_dict
+
+    def backup(self, backup_path, backup_exclude = []):
+        collections = [c for c in self.db.collection_names() if c not in backup_exclude]
+        log.debug('Starting backup of {}'.format(collections))
+        try:
+            for i, collection_name in enumerate(collections):
+                col = getattr(self.db, collections[i])
+                collection = col.find()
+                jsonpath = Path(backup_path) / (collection_name + '.json')
+                with jsonpath.open("wb") as jsonfile:
+                    jsonfile.write(dumps(collection).encode())
+        except Exception as e:
+            log.error('Backup failed')
+            log.exception(e)
+        log.info('Backup of {} succeeded'.format(collections))
+
+    def get_uri(self):
+        if 'DATABASE_URL' in os.environ:
+            return os.environ.get('DATABASE_URL')
+        else:
+            uri = 'mongodb://'
+            if 'username' in self.conf or 'user' in self.conf:
+                uri += self.conf.get('username', self.conf.get('user'))
+            if 'password' in self.conf:
+                uri += ':' + self.conf.get('password')
+            if 'username' in self.conf or 'user' in self.conf:
+                uri += '@'
+            port = ''
+            if 'port' in self.conf:
+                port = ':' + str(self.conf.get('port'))
+            if isinstance(self.conf.get('host'), list):
+                uri += ','.join(self.conf.get('host')) + port
+            else:
+                uri += self.conf.get('host') + port
+            uri += '/snooze'
+            options = [op for op in ['authSource', 'replicaSet', 'tls', 'tlsCAFile'] if op in self.conf]
+            if options:
+                uri += '?' + '&'.join(list(map(lambda x: x + '=' + (str(self.conf.get(x, '')) if not isinstance(self.conf.get(x), bool) else str(self.conf.get(x)).lower()), options)))
+            return uri
+

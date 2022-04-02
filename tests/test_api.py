@@ -131,7 +131,7 @@ class TestApiAlert:
         alert = {'timestamp': '2021-08-30T09:00', 'source': 'syslog', 'host': 'myhost01', 'process': 'myapp', 'message': 'error found in process'}
         result = client.simulate_post('/api/alert', json=alert)
         assert result.status == '200 OK'
-        uid = result.json['data']['added'][0]
+        uid = result.json['data']['added'][0]['uid']
         record = client.simulate_get('/api/record/' + uid).json['data'][0]
         assert record['host'] == 'myhost01'
         assert record['plugins'] == ['rule', 'aggregaterule', 'snooze', 'notification']
@@ -141,7 +141,7 @@ class TestApiAlert:
         alert = {'timestamp': '2021-08-30T09:00', 'source': 'syslog', 'host': 'myhost02', 'process': 'myapp', 'message': 'error found in process'}
         result = client.simulate_post('/api/alert', json=alert)
         assert result.status == '200 OK'
-        uid = result.json['data']['added'][0]
+        uid = result.json['data']['added'][0]['uid']
         record = client.simulate_get('/api/record/' + uid).json['data'][0]
         assert record['plugins'] == ['rule', 'aggregaterule', 'snooze']
         assert record['snoozed'] == 'snooze01'

@@ -14,6 +14,7 @@ import http.client
 import netifaces
 import socket
 import os
+import pkg_resources
 
 import bson.json_util
 from logging import getLogger
@@ -67,11 +68,16 @@ class Cluster():
 
     def get_self(self, caller = False):
         if self.enabled:
-            self_peer = [{'host': self.self_peer[0]['host'], 'port': self.self_peer[0]['port'], 'healthy': True, 'caller': caller}]
+            self_peer = [{'host': self.self_peer[0]['host'], 'port': self.self_peer[0]['port'], 'version': self.get_version(), 'healthy': True, 'caller': caller}]
             log.debug("Self cluster configuration: {}".format(self_peer))
             return self_peer
         else:
-            return []
+            try:
+                hostname = socket.gethostname()
+            except Exception as e:
+                log.exception(e)
+                hostname = 'unknown'
+            return [{'host': hostname, 'port': self.api.core.conf.get('port', '5200'), 'version': self.get_version(), 'healthy': True, 'caller': True}]
 
     def get_members(self):
         if self.enabled:
@@ -90,15 +96,22 @@ class Cluster():
                 except Exception as e:
                     log.exception(e)
                     success = False
-                if success:
-                    members.append({'host': peer['host'], 'port': peer['port'], 'healthy': True})
-                else:
-                    members.append({'host': peer['host'], 'port': peer['port'], 'healthy': False})
+                host = peer['host']
+                port = peer['port']
+                version = 'unknown'
+                healthy = success
+                try:
+                    json_data = bson.json_util.loads(response.read().decode()).get('data')[0]
+                    host = json_data.get('host', peer['host'])
+                    port = json_data.get('port', peer['port'])
+                    version = json_data.get('version', 'unknown')
+                except Exception as e:
+                    log.exception(e)
+                members.append({'host': host, 'port': port, 'version': version, 'healthy': healthy})
             log.debug("Cluster members: {}".format(members))
             return members
         else:
-            log.debug('Clustering is disabled')
-            return {}
+            return self.get_self()
 
     def reload_plugin(self, plugin_name):
         if self.thread:
@@ -113,6 +126,13 @@ class Cluster():
                 job = {'payload': {'filename': filename, 'conf': conf, 'reload': reload_conf}, 'host': peer['host'], 'port': peer['port']}
                 self.sync_queue.append(job)
                 log.debug("Queued job: {}".format(job))
+
+    def get_version(self):
+        try:
+            return pkg_resources.get_distribution('snooze-server').version
+        except Exception as e:
+            log.exception(e)
+            return 'unknown'
 
 class ClusterThread(threading.Thread):
 

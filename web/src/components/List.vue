@@ -67,6 +67,7 @@
         :sorter='{external: true}'
         :sorterValue="{column: orderby, asc: isascending}"
         :loading="is_busy"
+        :noItemsView="noItemsView"
         striped
         small
         border
@@ -169,18 +170,16 @@
           </CButtonGroup>
         </template>
         <template v-slot:details="row">
-          <CCollapse :visible="Boolean(row.item._showDetails)">
-            <CCard v-if="Boolean(row.item._showDetails)">
-              <CRow class="m-0">
-                <CCol class="p-2">
-                  <slot name="info" v-bind="row" />
-                  <Info :myobject="row.item" :excluded_fields="info_excluded_fields" />
-                </CCol>
-                <slot name="details_side" v-bind="row" />
-              </CRow>
-              <CButton size="sm" @click="toggleDetails(row.item, $event)"><i class="la la-angle-up la-lg"></i></CButton>
-            </CCard>
-          </CCollapse>
+          <CCard v-if="Boolean(row.item._showDetails)">
+            <CRow class="m-0">
+              <CCol class="p-2">
+                <slot name="info" v-bind="row" />
+                <Info :myobject="row.item" :excluded_fields="info_excluded_fields" />
+              </CCol>
+              <slot name="details_side" v-bind="row" />
+            </CRow>
+            <CButton size="sm" @click="toggleDetails(row.item, $event)"><i class="la la-angle-up la-lg"></i></CButton>
+          </CCard>
         </template>
       </SDataTable>
       <div class="d-flex align-items-center">
@@ -349,6 +348,7 @@ export default {
     SDataTable,
     SPagination,
   },
+  emits: ['update'],
   props: {
     // The tabs name and their associated search
     tabs_prop: {
@@ -456,6 +456,14 @@ export default {
     }
   },
   computed: {
+    noItemsView: function() {
+      var tab = this.tabs[this.tab_index]
+      if (tab != undefined && tab.noItems != undefined) {
+        return {noItems: tab.noItems.text, noItemsIconClass: tab.noItems.icon}
+      } else {
+        return {}
+      }
+    }
   },
   methods: {
     load_table(response) {
@@ -568,6 +576,7 @@ export default {
         }
       }
       get_data(this.endpoint, query, options, feedback == true ? this.feedback_then_update : this.update_table, null)
+      this.$emit('update')
     },
     feedback_then_update(response) {
       this.$root.show_alert()
@@ -675,6 +684,7 @@ export default {
     },
     changeTab(tab, refresh = true) {
       this.tab_index = this.tabs.indexOf(tab)
+      this.current_page = 1
       this.filter = tab.filter
       if (tab.fields) {
         this.fields = tab.fields

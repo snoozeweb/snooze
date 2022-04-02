@@ -1,4 +1,0 @@
-include snooze/defaults/*.yaml
-include snooze/plugins/core/*/metadata.yaml
-include snooze/plugins/action/*/metadata.yaml
-recursive-exclude tests *

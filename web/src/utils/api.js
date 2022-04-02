@@ -13,18 +13,22 @@ export function get_data(endpoint, query = null, options = {}, callback = null, 
     url = `/${endpoint}?${query_str}`
   }
   console.log(`GET ${url}`)
-  API
+  return API
     .get(url)
     .then(response => {
       console.log(response)
       if (callback) {
-        callback(response, callback_arguments)
+        return callback(response, callback_arguments)
       }
       if (response.data == undefined) {
         show_feedback(response)
+        throw `No data found at /${endpoint}`
       }
     })
-    .catch(error => console.log(error))
+    .catch(error => {
+      console.log(error)
+      throw error
+    })
 }
 
 // Submit data to an endpoint
@@ -141,7 +145,8 @@ export function delete_items(endpoint, items, callback = null, callback_argument
 
 export function pp_countdown(secs) {
   var sec_num = parseInt(secs, 10)
-  var hours   = Math.floor(sec_num / 3600)
+  var days    = Math.floor(sec_num / (3600*24))
+  var hours   = Math.floor(sec_num / 3600) % 24
   var minutes = Math.floor(sec_num / 60) % 60
   var seconds = sec_num % 60
 
@@ -149,6 +154,9 @@ export function pp_countdown(secs) {
   if (secs < 0) {
     output = '0s'
   } else {
+    if (days > 0) {
+      output += days + 'd '
+    }
     if (hours > 0) {
       output += hours + 'h '
     }
