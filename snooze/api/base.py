@@ -16,6 +16,7 @@ from typing import Optional, Union, List
 
 from snooze.utils import Cluster
 from snooze.db.database import Pagination
+from snooze.utils.functions import unique
 from snooze.utils.typing import DuplicatePolicy, AuthorizationPolicy
 
 log = getLogger('snooze.api')
@@ -81,7 +82,7 @@ class BasicRoute:
             if user_search['count'] > 0:
                 user = user_search['data'][0]
                 log.debug("User found in database: %s", user)
-                roles = list(set((user.get('roles') or []) + (user.get('static_roles') or [])))
+                roles = unique(user.get('roles', []) + user.get('static_roles', []))
                 log.debug("User roles: %s", roles)
                 return roles
             else:
@@ -101,7 +102,7 @@ class BasicRoute:
             if role_search['count'] > 0:
                 for role in role_search['data']:
                     permissions += role['permissions']
-                permissions = list(set(permissions))
+                permissions = unique(permissions)
                 log.debug("List of permissions: %s", permissions)
                 return permissions
             else:

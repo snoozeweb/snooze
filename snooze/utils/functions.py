@@ -16,6 +16,9 @@ from snooze.utils.typing import Record
 
 T = TypeVar('T')
 
+def unique(lst: list) -> list:
+    '''Return a list with only unique elements'''
+    return list(set(lst))
 
 def dig(dic: dict, *lst: List[Union[str, int]]) -> Any:
     '''Like a Dict[value], but recursive'''
