@@ -239,10 +239,11 @@ class Core:
                 result = self.db.search('general')
             if result['count'] == 0:
                 log.debug("First time starting Snooze with self database. Let us configure it...")
+                root = {'name': 'root', 'method': 'root'}
                 aggregate_rules = [
                     {
                         "fields": [ "host", "message" ],
-                        "snooze_user": "root" ,
+                        "snooze_user": root,
                         "name": "Host and Message",
                         "condition": [],
                         "throttle": 900,
@@ -253,12 +254,12 @@ class Core:
                     {
                         "name": "admin",
                         "permissions": [ "rw_all" ],
-                        "snooze_user": "root",
+                        "snooze_user": root,
                     },
                     {
                         "name": "user",
                         "permissions": [ "ro_all" ],
-                        "snooze_user": "root",
+                        "snooze_user": root,
                     },
                 ]
                 self.db.write('role', roles)
