@@ -32,6 +32,14 @@ class PeerStatus:
     version: str
     healthy: bool
 
+def get_version() -> str:
+    '''Return the version of the installed snooze-server. Return 'unknown' if not found'''
+    try:
+        return pkg_resources.get_distribution('snooze-server').version
+    except pkg_resources.DistributionNotFound as err:
+        log.exception(err)
+        return 'unknown'
+
 class Cluster:
     '''A class representing the cluster and used for interacting with it.'''
     def __init__(self, api: 'Api'):
@@ -82,41 +90,25 @@ class Cluster:
             self.thread = ClusterThread(self)
             self.thread.start()
 
-    def get_self(self, caller=False):
+    def status(self) -> PeerStatus:
         '''Return the status, health and info of the current node'''
         if self.enabled:
-            self_peer = [
-                {
-                    'host': self.self_peer[0]['host'],
-                    'port': self.self_peer[0]['port'],
-                    'version': self.get_version(),
-                    'healthy': True,
-                    'caller': caller,
-                },
-            ]
-            log.debug("Self cluster configuration: %s", self_peer)
-            return self_peer
+            host = self.self_peer[0]['host']
+            port = self.self_peer[0]['port']
         else:
-            try:
-                hostname = socket.gethostname()
-            except Exception as err:
-                log.exception(err)
-                hostname = 'unknown'
-            return [
-                {
-                    'host': hostname,
-                    'port': self.api.core.conf.get('port', '5200'),
-                    'version': self.get_version(),
-                    'healthy': True,
-                    'caller': True,
-                },
-            ]
+            host = socket.gethostname()
+            port = self.api.core.conf.get('port', '5200')
+        version = get_version()
+        self_peer = PeerStatus(host, port, version, True)
+        log.debug("Self cluster configuration: %s", self_peer)
+        return self_peer
 
-    def get_members(self):
+    def members_status(self) -> List[PeerStatus]:
         '''Fetch the status of all members of the cluster'''
+        members = []
+        members.append(self.status())
         if self.enabled:
             success = False
-            members = self.get_self(True)
             use_ssl = self.api.core.conf.get('ssl', {}).get('enabled', False)
             for peer in self.other_peers:
                 if use_ssl:
@@ -141,11 +133,12 @@ class Cluster:
                     version = json_data.get('version', 'unknown')
                 except Exception as err:
                     log.exception(err)
-                members.append({'host': host, 'port': port, 'version': version, 'healthy': healthy})
+                peer = PeerStatus(host, port, version, healthy)
+                members.append(peer)
             log.debug("Cluster members: %s", members)
             return members
         else:
-            return self.get_self()
+            return members
 
     def reload_plugin(self, plugin_name):
         '''Ask other members to reload the configuration of a plugin'''
@@ -167,16 +160,7 @@ class Cluster:
                 self.sync_queue.append(job)
                 log.debug("Queued job: %s", job)
 
-    def get_version(self):
-        '''Return the version of the installed snooze-server. Return 'unknown' if not found'''
-        try:
-            return pkg_resources.get_distribution('snooze-server').version
-        except Exception as err:
-            log.exception(err)
-            return 'unknown'
-
 class ClusterThread(threading.Thread):
-
     def __init__(self, cluster):
         super().__init__()
         self.cluster = cluster

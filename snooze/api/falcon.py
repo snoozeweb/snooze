@@ -14,6 +14,8 @@ from hashlib import sha256
 from base64 import b64decode
 from abc import abstractmethod
 
+from dataclasses import asdict
+
 import bson.json_util
 import falcon
 from falcon_auth import FalconAuthMiddleware, BasicAuthBackend, JWTAuthBackend
@@ -298,14 +300,15 @@ class ClusterRoute(BasicRoute):
 
     def on_get(self, req, resp):
         log.debug("Listing cluster members")
+        cluster = self.core.threads['cluster']
         if req.params.get('self', False):
-            members = self.api.core.cluster.get_self()
+            members = [cluster.status()]
         else:
-            members = self.api.core.cluster.get_members()
+            members = cluster.members_status()
         resp.content_type = falcon.MEDIA_JSON
         resp.status = falcon.HTTP_200
         resp.media = {
-            'data': members,
+            'data': [asdict(m) for m in members],
         }
 
 class CORS:
@@ -627,6 +630,7 @@ class BackendApi():
     def init_api(self, core):
         # Authentication
         self.core = core
+        self.cluster = core.threads['cluster']
 
         # JWT setup
         self.secret = '' if os.environ.get('SNOOZE_NO_LOGIN', self.core.conf.get('no_login', False)) else self.core.secrets['jwt_private_key']
