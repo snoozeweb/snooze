@@ -105,8 +105,8 @@ def test_mongo_search_page():
     db = Database(default_config.get('database'))
     db.write('record', [{'a': '1', 'b': '2'},{'a': '2', 'b': '2'},{'a': '3', 'b': '2'},{'a': '4', 'b': '2'},{'a': '5', 'b': '2'}])
     search = ['=', 'b', '2']
-    result1 = db.search('record', search, 2)['data']
-    result2 = db.search('record', search, 2, 3)
+    result1 = db.search('record', search, nb_per_page=2)['data']
+    result2 = db.search('record', search, nb_per_page=2, page_number=3)
     assert len(result1) == 2 and len(result2['data']) == 1 and result2['count'] == 5
 
 @mongomock.patch('mongodb://localhost:27017')

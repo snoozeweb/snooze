@@ -66,7 +66,7 @@ class Plugin:
                     'inject_payload': default_injectpayload,
                     'prefix': default_prefix
                 },
-                '/'+self.name+'/{search}/{nb_per_page}/{page_number}': {
+                '/'+self.name+'/{search}/{perpage}/{pagenb}': {
                     'class': default_routeclass,
                     'authorization_policy': default_authorization,
                     'duplicate_policy': default_duplicate,
@@ -75,7 +75,7 @@ class Plugin:
                     'inject_payload': default_injectpayload,
                     'prefix': default_prefix
                 },
-                '/'+self.name+'/{search}/{nb_per_page}/{page_number}/{order_by}/{asc}': {
+                '/'+self.name+'/{search}/{perpage}/{pagenb}/{orderby}/{asc}': {
                     'class': default_routeclass,
                     'authorization_policy': default_authorization,
                     'duplicate_policy': default_duplicate,
@@ -90,7 +90,7 @@ class Plugin:
             self.metadata = {
                 'name': self.name,
                 'auto_reload': self.metadata_file.get('auto_reload', False),
-                'default_sorting': self.metadata_file.get('default_sorting', ''),
+                'default_sorting': self.metadata_file.get('default_sorting', None),
                 'default_ordering': self.metadata_file.get('default_ordering', True),
                 'primary': self.metadata_file.get('primary', None),
                 'widgets': self.metadata_file.get('widgets', {}),
@@ -116,8 +116,13 @@ class Plugin:
     def reload_data(self, sync: bool = False):
         '''Reload the data of a plugin from the database'''
         if self.metadata.get('auto_reload', False):
-            log.debug("Reloading data for plugin {}".format(self.name))
-            self.data = self.db.search(self.name, orderby=self.metadata.get('default_sorting', ''), asc=self.metadata.get('default_ordering', True))['data']
+            log.debug("Reloading data for plugin %s", self.name)
+            pagination = {}
+            if 'default_sorting' in self.metadata:
+                pagination['orderby'] = self.metadata['default_sorting']
+            if 'asc' in self.metadata:
+                pagination['asc'] = self.metadata['default_ordering']
+            self.data = self.db.search(self.name, **pagination)['data']
 
     def process(self, record: Record) -> Record:
         '''Process a record if it's a process plugin'''

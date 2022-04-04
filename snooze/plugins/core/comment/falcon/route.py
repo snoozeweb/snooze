@@ -109,7 +109,7 @@ class CommentRoute(Route):
                 if records['count'] > 0:
                     log.debug("Found record %s", records)
                     comments = self.search('comment', ['=', 'record_uid', record_uid],
-                        nb_per_page=0, page_number=1, order_by='date', asc=False)
+                        nb_per_page=0, page_number=1, orderby='date', asc=False)
                     records['data'][0]['comment_count'] = comments['count'] - len(record_comments[record_uid])
                     relevant_comments = [
                         com for com in comments['data']

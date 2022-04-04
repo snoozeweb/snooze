@@ -30,6 +30,12 @@ class OperationNotSupported(Exception):
     '''Raised when the search operator is not supported'''
 
 database = os.environ.get('DATABASE_NAME', 'snooze')
+DEFAULT_PAGINATION = {
+    'orderby': r'$natural',
+    'page_number': 1,
+    'nb_per_page': 0,
+    'asc': True,
+}
 
 class BackendDB(Database):
     '''Database backend for MongoDB'''
@@ -256,23 +262,32 @@ class BackendDB(Database):
         log.debug("Updated %d fields", total)
         return total
 
-    def search(self, collection, condition=[], nb_per_page=0, page_number=1, orderby='$natural', asc=True):
-        if orderby == '':
-            orderby = '$natural'
+    def search(self, collection: str, condition:Optional[Condition]=None, **pagination) -> dict:
+        if condition is None:
+            condition = []
+        for key, value in DEFAULT_PAGINATION.items():
+            if pagination.get(key) is None:
+                pagination[key] = value
+        page_number = pagination['page_number']
+        nb_per_page = pagination['nb_per_page']
+        orderby = pagination['orderby']
+        asc = pagination['asc']
+        asc_int = (1 if asc else -1)
         mongo_search = self.convert(condition, self.search_fields.get(collection, []))
         if collection in self.db.collection_names():
             if nb_per_page > 0:
+                to_skip = (page_number - 1) * nb_per_page if page_number - 1 > 0 else 0
                 results = self.db[collection] \
                     .find(mongo_search) \
-                    .skip((page_number-1)*nb_per_page if page_number-1>0 else 0) \
+                    .skip(to_skip) \
                     .limit(nb_per_page) \
-                    .sort(orderby, 1 if asc else -1)
+                    .sort(orderby, asc_int)
             else:
-                results = self.db[collection].find(mongo_search).sort(orderby, 1 if asc else -1)
+                results = self.db[collection].find(mongo_search).sort(orderby, asc_int)
             total = results.count()
             results = list(results)
-            log.debug("Found %d result(s) for search %s in collection %s. Page: %d-%d. Sort by %s. Order: %s",
-                total, mongo_search, collection, page_number, nb_per_page, orderby, 'Ascending' if asc else 'Descending')
+            log.debug("Found %d result(s) for search %s in collection %s. Pagination options: %s",
+                total, mongo_search, collection, pagination)
             return {'data': results, 'count': total}
         else:
             log.warning("Cannot find collection %s", collection)

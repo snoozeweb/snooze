@@ -15,6 +15,7 @@ from typing import Optional, Union, List
 
 
 from snooze.utils import Cluster
+from snooze.db.database import Pagination
 from snooze.utils.typing import DuplicatePolicy, AuthorizationPolicy
 
 log = getLogger('snooze.api')
@@ -42,14 +43,14 @@ class BasicRoute:
         self.check_constant = check_constant
         self.inject_payload = inject_payload
 
-    def search(self, collection, cond_or_uid=None, nb_per_page=0, page_number=1, order_by='', asc=True):
+    def search(self, collection: str, cond_or_uid: ConditionOrUid = None, **pagination: Pagination):
         '''Wrapping the search of an object by condition or uid. Also handling options for pagination'''
         if cond_or_uid is None:
             cond_or_uid = []
         if isinstance(cond_or_uid, list):
-            return self.core.db.search(collection, cond_or_uid, nb_per_page, page_number, order_by, asc)
+            return self.core.db.search(collection, cond_or_uid, **pagination)
         elif isinstance(cond_or_uid, str):
-            return self.core.db.search(collection, ['=', 'uid', cond_or_uid], nb_per_page, page_number, order_by, asc)
+            return self.core.db.search(collection, ['=', 'uid', cond_or_uid], **pagination)
         else:
             return None
 

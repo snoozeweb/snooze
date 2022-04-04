@@ -46,7 +46,7 @@ class Database:
         '''Create indexes for a given collection, and a given list of fields'''
 
     @abstractmethod
-    def search(self, collection, condition, nb_per_page=0, page_number=1, orderby='', asc=True):
+    def search(self, collection: str, condition:Optional[Condition]=None, **pagination: Pagination) -> dict:
         '''List the objects of a collection based on a condition'''
 
     @abstractmethod

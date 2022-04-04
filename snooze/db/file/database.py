@@ -23,6 +23,12 @@ from snooze.db.database import Database
 from snooze.utils.functions import dig, to_tuple
 
 log = getLogger('snooze.db.file')
+DEFAULT_PAGINATION = {
+    'orderby': '',
+    'page_number': 1,
+    'nb_per_page': 0,
+    'asc': True,
+}
 
 class OperationNotSupported(Exception):
     '''Raised when the search operator is not supported'''
@@ -347,8 +353,13 @@ class BackendDB(Database):
         mutex.release()
         return {'data': results_agg, 'count': count}
 
-    def search(self, collection, condition=[], nb_per_page=0, page_number=1, orderby="", asc=True):
+    def search(self, collection, condition=[], **pagination):
         mutex.acquire()
+        pagination = {**DEFAULT_PAGINATION, **pagination}
+        orderby = pagination['orderby']
+        page_number = pagination['page_number']
+        nb_per_page = pagination['nb_per_page']
+        asc = pagination['asc']
         tinydb_search = self.convert(condition)
         if collection in self.db.tables():
             table = self.db.table(collection)
@@ -368,8 +379,8 @@ class BackendDB(Database):
             if not asc:
                 results = list(reversed(results))
             results = results[from_el:to_el]
-            log.debug("Found %d result(s) for search %s in collection %s. Page: %d-%d. Sort by %s. Order: %s",
-                total, tinydb_search, collection, page_number, nb_per_page, orderby, 'Ascending' if asc else 'Descending')
+            log.debug("Found %d result(s) for search %s in collection %s. Pagination: %s",
+                total, tinydb_search, collection, pagination)
             mutex.release()
             return {'data': deepcopy(results), 'count': total}
         else:

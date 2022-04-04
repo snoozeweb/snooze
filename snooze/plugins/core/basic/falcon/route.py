@@ -10,11 +10,13 @@ import sys
 from datetime import datetime
 from urllib.parse import unquote
 from logging import getLogger
-from typing import Dict
+from typing import Dict, Any, Union, List, NamedTuple
+
+from dataclasses import dataclass
+from typing_extensions import Literal
 
 import falcon
 import bson.json_util
-from typing_extensions import Literal
 
 from snooze.api.falcon import authorize, FalconRoute
 from snooze.utils.parser import parser
@@ -24,9 +26,34 @@ log = getLogger('snooze.api')
 class ValidationError(RuntimeError):
     '''Raised when the validation fails'''
 
+def convert_type(mytype: type, value: str) -> Union[str, bool, int, None]:
+    '''Convert a query string value to a given type. Returns None in case of empty string'''
+    if value == '':
+        return None
+    if mytype == str:
+        return str(value)
+    if mytype == int:
+        return int(value)
+    if mytype == bool:
+        return (value == 'true')
+    else:
+        raise Exception(f"Unsupported type {mytype}")
+
+class ParamSchema(NamedTuple):
+    '''A named tuple for representing the result key and type of a param'''
+    result_name: str
+    type: type
+
+SCHEMA = {
+    'perpage': ParamSchema('nb_per_page', int),
+    'pagenb': ParamSchema('page_number', int),
+    'orderby': ParamSchema('orderby', str),
+    'asc': ParamSchema('asc', bool),
+}
+
 class Route(FalconRoute):
     @authorize
-    def on_get(self, req, resp, search='[]', nb_per_page=0, page_number=1, order_by='', asc='true'):
+    def on_get(self, req, resp, search='[]', **kwargs):
         ql = None
         if 'ql' in req.params:
             try:
@@ -37,10 +64,12 @@ class Route(FalconRoute):
             s = req.params.get('s') or search
         else:
             s = search
-        perpage = req.params.get('perpage', nb_per_page)
-        pagenb = req.params.get('pagenb', page_number)
-        orderby = req.params.get('orderby', order_by)
-        ascending = req.params.get('asc', asc)
+
+        pagination = {}
+        for key, value in {**req.params, **kwargs}.items():
+            if key in SCHEMA:
+                result_key, mytype = SCHEMA[key]
+                pagination[result_key] = convert_type(mytype, value)
         try:
             cond_or_uid = bson.json_util.loads(unquote(s))
         except Exception:
@@ -53,9 +82,7 @@ class Route(FalconRoute):
             else:
                 cond_or_uid = ql
         log.debug("Trying search %s", cond_or_uid)
-        asc = (ascending.lower() == 'true')
-        result_dict = self.search(self.plugin.name, cond_or_uid,
-            int(perpage), int(pagenb), orderby, asc)
+        result_dict = self.search(self.plugin.name, cond_or_uid, **pagination)
         resp.content_type = falcon.MEDIA_JSON
         if result_dict:
             resp.media = result_dict
