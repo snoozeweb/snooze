@@ -16,7 +16,7 @@ handlers:
         class : logging.handlers.RotatingFileHandler
         formatter: simple
         filename: /var/log/snooze/snooze-server.log
-        maxBytes: 1024000
+        maxBytes: 102400000
         backupCount: 5
 loggers:
     snooze:

@@ -4,6 +4,7 @@
 * Web: Bad display for Sunday
 * Web: Sort weekdays
 * Core: TinyDB Audit was broken
+* Core: Increasing log file size from 1MB to 100MB
 
 ## v1.4.0
 
