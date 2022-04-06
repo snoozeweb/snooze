@@ -6,6 +6,7 @@
 * Core: TinyDB Audit was broken
 * Core: Increasing log file size from 1MB to 100MB
 * Core: Catching issues better within Action thread
+* Core: Pretty big typo in Action class
 
 ## v1.4.0
 

@@ -234,7 +234,7 @@ class ActionThread(threading.Thread):
                         del self.delayed[record_hash]
                 else:
                     self.action.core.db.delete('action.delay', ['AND', ['=', 'record_hash', record_hash], ['=', 'host', self.action.hostname]])
-                    self.delayed[record_hash]
+                    del self.delayed[record_hash]
         except KeyError as e:
             log.exception(e)
 
