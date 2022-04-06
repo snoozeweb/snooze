@@ -19,7 +19,7 @@
           <i class="la la-arrow-right la-lg"></i><CBadge style="font-size: 0.875rem;" color="danger">{{ trimDate(date_obj.until, false) }}</CBadge>
         </div>
         <div v-else-if="ctype == 'weekdays'" class="d-flex align-items-center flex-wrap">
-          <CBadge style="font-size: 0.875rem;" color="warning" v-for="(weekday, ind) in date_obj.weekdays" :key="ind" :class="ind != date_obj.weekdays.length - 1 ? 'me-1 mb-1' : 'mb-1'">{{ get_weekday(weekday) }}</CBadge>
+          <CBadge style="font-size: 0.875rem;" color="warning" v-for="(weekday, ind) in date_obj.weekdays.sort()" :key="ind" :class="ind != date_obj.weekdays.length - 1 ? 'me-1 mb-1' : 'mb-1'">{{ get_weekday(weekday) }}</CBadge>
         </div>
       </div>
     </template>

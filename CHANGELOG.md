@@ -1,3 +1,9 @@
+## v1.4.1
+
+### Bug fixes
+* Web: Bad display for Sunday
+* Web: Sort weekdays
+
 ## v1.4.0
 
 ### New features

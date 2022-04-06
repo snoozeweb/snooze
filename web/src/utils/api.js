@@ -227,6 +227,8 @@ export function trimDate(date, show_secs) {
 
 export function get_weekday(nb) {
   switch(nb) {
+    case 0:
+      return 'Sunday'
     case 1:
       return 'Monday'
     case 2:
@@ -239,8 +241,6 @@ export function get_weekday(nb) {
       return 'Friday'
     case 6:
       return 'Saturday'
-    case 7:
-      return 'Sunday'
     default:
       return 'Invalid weekday ' + nb
   }
