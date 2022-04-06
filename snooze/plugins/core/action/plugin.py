@@ -227,13 +227,13 @@ class ActionThread(threading.Thread):
         try:
             if record_hash in self.delayed:
                 if action_uid:
-                    self.action.core.db.delete('action.delay', ['AND', ['=', 'record_hash', record_hash], ['=', 'action_uid', action_uid]])
+                    self.action.core.db.delete('action.delay', ['AND', ['=', 'record_hash', record_hash], ['=', 'action_uid', action_uid], ['=', 'host', self.action.hostname]])
                     if action_uid in self.delayed[record_hash]:
                         del self.delayed[record_hash][action_uid]
                     if not self.delayed[record_hash]:
                         del self.delayed[record_hash]
                 else:
-                    self.action.core.db.delete('action.delay', ['=', 'record_hash', record_hash])
+                    self.action.core.db.delete('action.delay', ['AND', ['=', 'record_hash', record_hash], ['=', 'host', self.action.hostname]])
                     self.delayed[record_hash]
         except KeyError as e:
             log.exception(e)
@@ -241,17 +241,20 @@ class ActionThread(threading.Thread):
     def send_delayed(self, record_hash, action_uid):
         delayed_records = self.action.core.db.search('record', ['=', 'hash', record_hash])
         if delayed_records['count'] > 0:
-            for delayed_record in delayed_records['data']:
-                if delayed_record.get('state') in ['ack', 'close'] or delayed_record.get('snoozed'):
-                    log.debug("Record {} is already acked, closed or snoozed. Do not notify".format(record_hash))
-                    self.cleanup(record_hash)
-                else:
+            delayed_record = delayed_records['data'][0]
+            if delayed_record.get('state') in ['ack', 'close'] or delayed_record.get('snoozed'):
+                log.debug("Record {} is already acked, closed or snoozed. Do not notify".format(record_hash))
+                self.cleanup(record_hash)
+            else:
+                try:
                     self.delayed[record_hash][action_uid]['record'] = delayed_record
                     action = self.delayed[record_hash][action_uid]['action']
                     success = action.send_one(1, self.delayed[record_hash][action_uid])
                     if success:
                         self.action.core.db.write('record', delayed_record)
                     action.delay(self.delayed[record_hash][action_uid])
+                except Exception as e:
+                    log.exception(e)
         else:
             log.debug("Record {} does not exist anymore, do not notify".format(record_hash))
             self.cleanup(record_hash)

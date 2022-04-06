@@ -5,6 +5,7 @@
 * Web: Sort weekdays
 * Core: TinyDB Audit was broken
 * Core: Increasing log file size from 1MB to 100MB
+* Core: Catching issues better within Action thread
 
 ## v1.4.0
 
