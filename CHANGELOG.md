@@ -3,6 +3,7 @@
 ### Bug fixes
 * Web: Bad display for Sunday
 * Web: Sort weekdays
+* Core: TinyDB Audit was broken
 
 ## v1.4.0
 

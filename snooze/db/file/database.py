@@ -112,8 +112,8 @@ class BackendDB(Database):
         log.debug("Found audit log to remove for %d objects", len(oids))
         doc_ids = [
             obj.doc_id
-            for obj in self.db.table('audit').search(Query().object_id == oid)
             for oid in oids
+            for obj in self.db.table('audit').search(Query().object_id == oid)
         ]
         log.debug("Found %d audit logs to remove", len(doc_ids))
         self.db.table('audit').remove(doc_ids=doc_ids)
