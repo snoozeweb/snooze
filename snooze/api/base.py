@@ -111,21 +111,17 @@ class BasicRoute:
             return []
 
 class Api:
-    def __init__(self, core):
+    def __init__(self, core: 'Core'):
         self.conf = core.conf
-        self.plugins = core.plugins
         self.core = core
         self.api_type = self.conf.get('api', {}).get('type', 'falcon')
         cls = import_module(f"snooze.api.{self.api_type}")
         self.__class__ = type('Api', (cls.BackendApi, Api), {})
         self.init_api(core)
-        self.load_plugin_routes()
-        self.cluster = Cluster(self)
-        self.core.cluster = self.cluster
 
     def load_plugin_routes(self):
         log.debug('Loading plugin routes for API')
-        for plugin in self.plugins:
+        for plugin in self.core.plugins:
             log.debug('Loading routes for %s at %s/%s/route.py', plugin.name, plugin.rootdir, self.api_type)
             spec = importlib.util.spec_from_file_location(
                 f"snooze.plugins.core.{plugin.name}.{self.api_type}.route",

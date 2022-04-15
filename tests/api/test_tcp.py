@@ -14,7 +14,7 @@ import falcon
 import requests
 import pytest
 
-from snooze.api.tcp import WSGITCPServer
+from snooze.api.tcp import TcpThread
 
 def get_open_port():
     s = socket(AF_INET, SOCK_STREAM)
@@ -33,7 +33,7 @@ def wsgiserver():
     conf = {'listen_addr': '0.0.0.0', 'port': port}
     api = falcon.App()
     api.add_route('/test', TestRoute())
-    thread = WSGITCPServer(conf, api)
+    thread = TcpThread(conf, api)
     thread.daemon = True
     thread.start()
     time.sleep(0.1)
@@ -44,4 +44,4 @@ def test_wsgiserver(wsgiserver):
     resp = requests.get("http://localhost:{}/test".format(port))
     assert resp.status_code == 200
     assert resp.json() == {'result': 'Hello, world!'}
-    thread.stop()
+    thread.stop_thread()

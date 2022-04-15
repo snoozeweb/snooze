@@ -13,10 +13,8 @@ import sys
 
 from logging import getLogger
 
-from snooze.api.base import Api
-from snooze.api.socket import WSGISocketServer, admin_api
-from snooze.api.tcp import WSGITCPServer
 from snooze.core import Core
+from snooze.api.base import Api
 from snooze.utils import config
 
 def setup_logging(conf):
@@ -44,7 +42,7 @@ def exit_all(threads, exit_code=0):
     '''Stop all threads, and exit'''
     for thread in threads:
         if thread.is_alive():
-            thread.stop()
+            thread.stop_thread()
     sys.exit(exit_code)
 
 def app(conf=None):
@@ -66,31 +64,13 @@ def main(conf=None):
     log = setup_logging(conf)
     core = Core(conf)
 
-    threads = []
-
-    api = Api(core)
-    tcp_server = WSGITCPServer(core.conf, api.handler, core.exit_button)
-    threads.append(tcp_server)
-
-    unix_socket = core.conf.get('unix_socket')
-    if unix_socket:
-        try:
-            socket_server = WSGISocketServer(
-                admin_api(core.token_engine),
-                unix_socket,
-                core.exit_button
-            )
-            threads.append(socket_server)
-        except Exception as err:
-            log.warning("Error starting unix socket at %s: %s", unix_socket, err)
-
     try:
-        for thread in threads:
+        for thread in core.threads.values():
             thread.start()
-        if core.exit_button.wait():
-            exit_all(threads)
+        if core.exit_event.wait():
+            exit_all(core.threads.values())
     except (KeyboardInterrupt, SystemExit):
-        exit_all(threads, 1)
+        exit_all(core.threads.values(), 1)
 
 if __name__ == '__main__':
     main()

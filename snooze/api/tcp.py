@@ -11,10 +11,13 @@ import os
 import socket
 import ssl
 from logging import getLogger
-from threading import Thread, Event
+from threading import Event
+from typing import Optional
 from wsgiref.simple_server import WSGIServer, WSGIRequestHandler
 
 from socketserver import ThreadingMixIn
+
+from snooze.utils.threading import SurvivingThread
 
 log = getLogger('snooze.api.tcp')
 
@@ -34,23 +37,20 @@ class NoLogHandler(WSGIRequestHandler):
         except Exception as err:
             log.warning(err)
 
-class WSGITCPServer(ThreadingMixIn, WSGIServer, Thread):
+class TcpWsgiServer(ThreadingMixIn, WSGIServer):
     '''Multi threaded TCP server serving a WSGI application'''
     daemon_threads = True
 
-    def __init__(self, conf, api, exit_button=None):
-        self.exit_button = exit_button or Event()
+    def __init__(self, conf: dict, api: 'Api'):
         self.timeout = 10
 
         host = conf.get('listen_addr', '0.0.0.0')
-        port = conf.get('port', '5200')
+        port = int(conf.get('port', '5200'))
         self.ssl_conf = conf.get('ssl', {})
 
         WSGIServer.__init__(self, (host, port), NoLogHandler)
         self.set_app(api)
         self.wrap_ssl()
-
-        Thread.__init__(self)
 
     def wrap_ssl(self):
         '''Wrap the socket with a TLS socket when TLS is enabled'''
@@ -71,18 +71,33 @@ class WSGITCPServer(ThreadingMixIn, WSGIServer, Thread):
                 keyfile=keyfile,
             )
 
-    def run(self):
+
+class TcpThread(SurvivingThread):
+    '''A TCP thread to manage the multi-threaded TCP server.'''
+    daemon_threads = True
+
+    def __init__(self, conf: dict, api: 'Api', exit_event: Optional[Event] = None):
+        exit_event = exit_event or Event()
+        self.timeout = 10
+
+        self.conf = conf
+        self.api = api
+
+        self.server: Optional[TcpWsgiServer] = None
+        SurvivingThread.__init__(self, exit_event)
+
+    def start_thread(self):
         '''Override Thread method. Start the service'''
         log.debug('Starting REST API')
-        try:
-            self.serve_forever()
-        except Exception as err:
-            log.error(err)
-            self.stop()
-            self.exit_button.set()
+        # The WSGIServer is binding on init. This is very inconvenient
+        # for many use-cases (testing, etc). So we're manking this thread
+        # cheap to initialize.
+        self.server = TcpWsgiServer(self.conf, self.api)
+        self.server.serve_forever()
 
-    def stop(self):
+    def stop_thread(self):
         '''Gracefully stop the service'''
         log.info('Closing TCP socket...')
-        self.shutdown()
+        if self.server:
+            self.server.shutdown()
         log.debug("Closed TCP listener")

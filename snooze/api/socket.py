@@ -13,13 +13,15 @@ for bypassing authentication
 from datetime import datetime, timedelta
 from logging import getLogger
 from pathlib import Path
-from threading import Thread, Event
+from threading import Event
+from typing import Optional
 
 import falcon
 from waitress.adjustments import Adjustments
 from waitress.server import UnixWSGIServer
 
 from snooze.api.falcon import LoggerMiddleware
+from snooze.utils.threading import SurvivingThread
 
 log = getLogger('snooze.api.socket')
 
@@ -48,24 +50,24 @@ def admin_api(token_engine):
     api.add_route('/api/root_token', RootTokenRoute(token_engine))
     return api
 
-class WSGISocketServer(Thread, UnixWSGIServer):
+class WSGISocketServer(SurvivingThread, UnixWSGIServer):
     '''Listen on a Unix socket and serve the application'''
-    def __init__(self, api, path, exit_button=None):
+    def __init__(self, api, path, exit_event: Optional[Event] = None):
         self.path = Path(path).absolute()
         self.timeout = 10
-        self.exit_button = exit_button or Event()
+        self.exit_event = exit_event or Event()
 
         unix_socket_adj = Adjustments(unix_socket=str(self.path))
         UnixWSGIServer.__init__(self, api, adj=unix_socket_adj)
 
-        Thread.__init__(self)
+        SurvivingThread.__init__(self, exit_event)
 
-    def run(self):
+    def start_thread(self):
         '''Override Thread method. Start the service'''
         log.info("Listening on %s", self.path)
         UnixWSGIServer.run(self)
 
-    def stop(self):
+    def stop_thread(self):
         '''Gracefully stop the service'''
         log.info("Closing wsgi unix socket at %s", self.path)
         self.close()

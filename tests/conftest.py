@@ -56,7 +56,7 @@ def core(config, request):
 
 @pytest.fixture(scope='class')
 def api(core):
-    return Api(core)
+    return core.api
 
 @pytest.fixture(scope='function')
 @mongomock.patch('mongodb://localhost:27017')
@@ -65,8 +65,7 @@ def client(config, request):
     data = get_data(request, 'data')
     log.debug("data: {}".format(data))
     write_data(core.db, request)
-    api = Api(core)
-    token = api.get_root_token()
+    token = core.api.get_root_token()
     log.info("Token obtained from get_root_token: {}".format(token))
     headers = {'Authorization': 'JWT {}'.format(token)}
-    return TestClient(api.handler, headers=headers)
+    return TestClient(core.api.handler, headers=headers)

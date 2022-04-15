@@ -22,6 +22,8 @@ import netifaces
 import pkg_resources
 import bson.json_util
 
+from snooze.utils.threading import SurvivingThread
+
 log = getLogger('snooze.cluster')
 
 @dataclass
@@ -40,10 +42,10 @@ def get_version() -> str:
         log.exception(err)
         return 'unknown'
 
-class Cluster:
+class Cluster(SurvivingThread):
     '''A class representing the cluster and used for interacting with it.'''
-    def __init__(self, api: 'Api'):
-        self.api = api
+    def __init__(self, core: 'Core'):
+        self.core = core
         env_cluster = os.environ.get('SNOOZE_CLUSTER')
         self.conf = {}
         if env_cluster:
@@ -59,7 +61,7 @@ class Cluster:
                 log.warning('Error when parsing cluster config defined in SNOOZE_CLUSTER env var')
                 self.conf = {}
         if not self.conf:
-            self.conf = api.core.conf.get('clustering', {})
+            self.conf = core.conf.get('clustering', {})
         self.thread = None
         self.sync_queue = []
         self.enabled = self.conf.get('enabled', False)
@@ -87,8 +89,7 @@ class Cluster:
                 self.enabled = False
                 return
             log.debug("Other peers: %s", self.other_peers)
-            self.thread = ClusterThread(self)
-            self.thread.start()
+        SurvivingThread.__init__(self, core.exit_event)
 
     def status(self) -> PeerStatus:
         '''Return the status, health and info of the current node'''
@@ -97,7 +98,7 @@ class Cluster:
             port = self.self_peer[0]['port']
         else:
             host = socket.gethostname()
-            port = self.api.core.conf.get('port', '5200')
+            port = self.core.conf.get('port', '5200')
         version = get_version()
         self_peer = PeerStatus(host, port, version, True)
         log.debug("Self cluster configuration: %s", self_peer)
@@ -109,7 +110,7 @@ class Cluster:
         members.append(self.status())
         if self.enabled:
             success = False
-            use_ssl = self.api.core.conf.get('ssl', {}).get('enabled', False)
+            use_ssl = self.core.conf.get('ssl', {}).get('enabled', False)
             for peer in self.other_peers:
                 if use_ssl:
                     connection = http.client.HTTPSConnection(peer['host'], peer['port'], timeout=10)
@@ -160,25 +161,17 @@ class Cluster:
                 self.sync_queue.append(job)
                 log.debug("Queued job: %s", job)
 
-class ClusterThread(threading.Thread):
-    def __init__(self, cluster):
-        super().__init__()
-        self.cluster = cluster
-        self.main_thread = threading.main_thread()
-
-    def run(self):
+    def start_thread(self):
         headers = {'Content-type': 'application/json'}
-        use_ssl = self.cluster.api.core.conf.get('ssl', {}).get('enabled', False)
+        use_ssl = self.core.conf.get('ssl', {}).get('enabled', False)
         success = False
         while True:
-            if not self.main_thread.is_alive():
-                break
-            for index, job in enumerate(self.cluster.sync_queue):
+            for index, job in enumerate(self.sync_queue):
                 if use_ssl:
                     connection = http.client.HTTPSConnection(job['host'], job['port'], timeout=10)
                 else:
                     connection = http.client.HTTPConnection(job['host'], job['port'], timeout=10)
-                job['payload'].update({'reload_token': self.cluster.api.core.secrets.get('reload_token', '')})
+                job['payload'].update({'reload_token': self.core.secrets.get('reload_token', '')})
                 job_json = bson.json_util.dumps(job['payload'])
                 try:
                     connection.request('POST', '/api/reload', job_json, headers)
@@ -189,7 +182,7 @@ class ClusterThread(threading.Thread):
                     success = False
                 job['payload'].pop('reload_token')
                 if success:
-                    del self.cluster.sync_queue[index]
+                    del self.sync_queue[index]
                     log.debug("Dequeued job: %s", job)
                 else:
                     log.error("Could not dequeue job: %s", job)

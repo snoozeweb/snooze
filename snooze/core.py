@@ -23,12 +23,17 @@ from pkg_resources import iter_entry_points
 from dateutil import parser
 
 from snooze import __file__ as rootdir
+from snooze.api.base import Api
 from snooze.db.database import Database
 from snooze.plugins.core import Abort, Abort_and_write, Abort_and_update
 from snooze.token import TokenEngine
 from snooze.utils import config, Housekeeper, Stats, MQManager
 from snooze.utils.functions import flatten
 from snooze.utils.typing import Config, Record
+from snooze.api.socket import WSGISocketServer, admin_api
+from snooze.api.tcp import TcpThread
+from snooze.utils.cluster import Cluster
+from snooze.utils.threading import SurvivingThread
 
 log = getLogger('snooze')
 
@@ -41,12 +46,7 @@ class Core:
         self.notif_conf = config('notifications')
         self.ok_severities = list(map(lambda x: x.casefold(), flatten([self.general_conf.get('ok_severities', [])])))
         self.init_backup()
-        self.housekeeper = Housekeeper(self)
-        self.mq = MQManager(self)
-        self.cluster = None
-        self.exit_button = Event()
-        self.plugins = []
-        self.process_plugins = []
+
         self.stats = Stats(self)
         self.stats.init('process_alert_duration', 'summary', 'snooze_process_alert_duration',
             'Average time spend processing a alert', ['source', 'environment', 'severity'])
@@ -60,10 +60,32 @@ class Core:
         self.stats.init('action_success', 'counter', 'snooze_action_success',
             'Counter of action that succeeded', ['name'])
         self.stats.init('action_error', 'counter', 'snooze_action_error', 'Counter of action that failed', ['name'])
-        self.bootstrap_db()
+
+        self.exit_event = Event()
         self.secrets = self.ensure_secrets()
         self.token_engine = TokenEngine(self.secrets['jwt_private_key'])
+
+        self.threads:  Dict[str, SurvivingThread] = {}
+        self.threads['housekeeper'] = Housekeeper(self)
+        self.threads['cluster'] = Cluster(self)
+        self.mq = MQManager(self)
+
+        unix_socket = self.conf.get('unix_socket')
+        if unix_socket:
+            try:
+                admin_app = admin_api(self.token_engine)
+                self.threads['socket'] = WSGISocketServer(admin_app, unix_socket, self.exit_event)
+            except Exception as err:
+                log.warning("Error starting unix socket at %s: %s", unix_socket, err)
+
+        self.plugins = []
+        self.process_plugins = []
+        self.bootstrap_db()
         self.load_plugins()
+
+        self.api = Api(self)
+        self.api.load_plugin_routes()
+        self.threads['tcp'] = TcpThread(self.conf, self.api.handler, self.exit_event)
 
     def load_plugins(self):
         '''Load the plugins from the configuration'''
@@ -126,7 +148,7 @@ class Core:
         source = record.get('source', 'unknown')
         environment = record.get('environment', 'unknown')
         severity = record.get('severity', 'unknown')
-        record['ttl'] = self.housekeeper.conf.get('record_ttl', 86400)
+        record['ttl'] = self.threads['housekeeper'].conf.get('record_ttl', 86400)
         if severity.casefold() in self.ok_severities:
             record['state'] = 'close'
         else:
@@ -219,7 +241,7 @@ class Core:
         elif config_file == 'ldap_auth':
             return True
         elif config_file == 'housekeeping':
-            self.housekeeper.reload()
+            self.threads['housekeeper'].reload()
             return True
         elif config_file == 'notifications':
             self.notif_conf = config('notifications')
