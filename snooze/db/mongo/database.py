@@ -20,7 +20,7 @@ import pymongo
 from bson.code import Code
 from bson.json_util import dumps
 
-from snooze.db.database import Database, Pagination
+from snooze.db.database import Database, Pagination, wrap_exception
 from snooze.utils.functions import dig
 from snooze.utils.typing import Condition, Config
 
@@ -113,6 +113,7 @@ class BackendDB(Database):
         else:
             return 0
 
+    @wrap_exception
     def write(self, collection:str, obj:Union[List[dict], dict], primary:Optional[str]=None, duplicate_policy:str='update', update_time:bool=True, constant:Optional[str]=None) -> dict:
         added = []
         rejected = []
@@ -219,6 +220,7 @@ class BackendDB(Database):
             self.db[collection].insert_many(obj_copy)
         return {'data': {'added': added, 'updated': updated, 'replaced': replaced, 'rejected': rejected}}
 
+    @wrap_exception
     def inc(self, collection: str, field: str, labels: dict = {}):
         now = datetime.datetime.utcnow()
         now = now.replace(minute=0, second=0, microsecond=0)
@@ -262,6 +264,7 @@ class BackendDB(Database):
         log.debug("Updated %d fields", total)
         return total
 
+    @wrap_exception
     def search(self, collection: str, condition:Optional[Condition]=None, **pagination) -> dict:
         if condition is None:
             condition = []
@@ -293,6 +296,7 @@ class BackendDB(Database):
             log.warning("Cannot find collection %s", collection)
             return {'data': [], 'count': 0}
 
+    @wrap_exception
     def delete(self, collection: str, condition:Optional[Condition]=None, force:bool=False):
         if condition is None:
             condition = []

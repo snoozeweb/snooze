@@ -19,7 +19,7 @@ import uuid
 from bson.json_util import dumps
 from tinydb import TinyDB, Query as BaseQuery
 
-from snooze.db.database import Database
+from snooze.db.database import Database, wrap_exception
 from snooze.utils.functions import dig, to_tuple
 
 log = getLogger('snooze.db.file')
@@ -137,6 +137,7 @@ class BackendDB(Database):
             log.debug('Removed %d documents in %s', deleted_count, collection)
         return deleted_count
 
+    @wrap_exception
     def write(self, collection, obj, primary=None, duplicate_policy='update', update_time=True, constant=None):
         mutex.acquire()
         added = []
@@ -257,6 +258,7 @@ class BackendDB(Database):
             },
         }
 
+    @wrap_exception
     def inc(self, collection, field, labels={}):
         now = int((datetime.now().timestamp() // 3600) * 3600)
         mutex.acquire()
@@ -353,6 +355,7 @@ class BackendDB(Database):
         mutex.release()
         return {'data': results_agg, 'count': count}
 
+    @wrap_exception
     def search(self, collection, condition=[], **pagination):
         mutex.acquire()
         pagination = {**DEFAULT_PAGINATION, **pagination}
@@ -388,6 +391,7 @@ class BackendDB(Database):
             mutex.release()
             return {'data': [], 'count': 0}
 
+    @wrap_exception
     def delete(self, collection, condition=[], force=False):
         mutex.acquire()
         tinydb_search = self.convert(condition)

@@ -16,6 +16,7 @@ from typing import List, Optional, Union
 from typing_extensions import TypedDict
 
 from snooze.utils.typing import Config, Condition
+from snooze.utils.exceptions import DatabaseError
 
 class Pagination(TypedDict, total=False):
     '''A type hint for pagination options'''
@@ -23,6 +24,17 @@ class Pagination(TypedDict, total=False):
     nb_per_page: int
     page_nb: int
     asc: bool
+
+def wrap_exception(function):
+    '''Wrap an method exception so we get more information about the
+    query that made it fail'''
+    def wrapper(collection: str, *args, **kwargs):
+        try:
+            return function(collection, *args, **kwargs)
+        except Exception as err:
+            details = {'collection': collection, 'args': args, 'kwargs': kwargs}
+            raise DatabaseError(function.__name__, details, err) from err
+    return wrapper
 
 class Database:
     '''Abstract class for the database backend'''
