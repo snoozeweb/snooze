@@ -26,6 +26,12 @@ def changelog(_ctx, github_output=False):
         print_github_kv('VERSION', ver)
 
 @task
+def dev_version(ctx):
+    '''Generate a dev version with the current git context'''
+    git_sanity_check(ctx)
+    gen_version(ctx)
+
+@task
 def dev_build(ctx, force=False):
     '''Build several packages for development purposes (use a dev versioning)'''
     git_sanity_check(ctx)
@@ -51,4 +57,5 @@ ns.add_collection(debian.ns)
 ns.add_task(version_task)
 ns.add_task(path_task)
 ns.add_task(dev_build)
+ns.add_task(dev_version)
 ns.add_task(changelog)
