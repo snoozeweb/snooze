@@ -29,6 +29,7 @@ from snooze.api.base import BasicRoute
 from snooze.api.static import StaticRoute
 from snooze.utils import config, write_config
 from snooze.utils.functions import ensure_kv
+from snooze.health import HealthRoute
 
 log = getLogger('snooze.api')
 
@@ -659,6 +660,8 @@ class BackendApi():
         self.add_route('/reload', ReloadRoute(self))
         # Cluster route
         self.add_route('/cluster', ClusterRoute(self))
+        # Health route
+        self.add_route('/health', HealthRoute(self))
         # Permissions route
         self.add_route('/permissions', PermissionsRoute(self))
         # Basic auth setup

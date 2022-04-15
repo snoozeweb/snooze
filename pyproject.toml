@@ -15,6 +15,7 @@ packages = [
 [tool.poetry.scripts]
 snooze-server = "snooze.__main__:main"
 snooze = "snooze.cli.__main__:snooze"
+check_snooze_server = "snooze.cli.health:check_snooze_server"
 
 [tool.poetry.dependencies]
 python = "^3.6"
