@@ -11,7 +11,6 @@ file updates accross the cluster.'''
 import http.client
 import os
 import socket
-import threading
 import time
 from logging import getLogger
 from typing import List
@@ -62,8 +61,8 @@ class Cluster(SurvivingThread):
                 self.conf = {}
         if not self.conf:
             self.conf = core.conf.get('clustering', {})
-        self.thread = None
         self.sync_queue = []
+        self.other_peers = []
         self.enabled = self.conf.get('enabled', False)
         if self.enabled:
             log.debug('Init Cluster Manager')
@@ -143,23 +142,21 @@ class Cluster(SurvivingThread):
 
     def reload_plugin(self, plugin_name):
         '''Ask other members to reload the configuration of a plugin'''
-        if self.thread:
-            for peer in self.other_peers:
-                job = {'payload': {'reload': {'plugins':[plugin_name]}}, 'host': peer['host'], 'port': peer['port']}
-                self.sync_queue.append(job)
-                log.debug("Queued job: %s", job)
+        for peer in self.other_peers:
+            job = {'payload': {'reload': {'plugins':[plugin_name]}}, 'host': peer['host'], 'port': peer['port']}
+            self.sync_queue.append(job)
+            log.debug("Queued job: %s", job)
 
     def write_and_reload(self, filename, conf, reload_conf):
         '''Ask other members to update their configuration and reload'''
-        if self.thread:
-            for peer in self.other_peers:
-                job = {
-                    'payload': {'filename': filename, 'conf': conf, 'reload': reload_conf},
-                    'host': peer['host'],
-                    'port': peer['port'],
-                }
-                self.sync_queue.append(job)
-                log.debug("Queued job: %s", job)
+        for peer in self.other_peers:
+            job = {
+                'payload': {'filename': filename, 'conf': conf, 'reload': reload_conf},
+                'host': peer['host'],
+                'port': peer['port'],
+            }
+            self.sync_queue.append(job)
+            log.debug("Queued job: %s", job)
 
     def start_thread(self):
         headers = {'Content-type': 'application/json'}

@@ -25,13 +25,11 @@ class TestNotification:
         ]
         core.db.write('action', actions)
         action = core.get_core_plugin('action')
-        action.post_init()
         notifications = [
             {'name': 'Notification1', 'condition': ['=', 'a', '1'], 'actions': ['Script']},
         ]
         core.db.write('notification', notifications)
         notif = core.get_core_plugin('notification')
-        notif.post_init()
         return notif
     def test_notification_echo(self, notification, record):
         notification.process(record)

@@ -10,6 +10,7 @@ based on a rule (time constraint, condition)'''
 
 
 from logging import getLogger
+from typing import List
 
 from snooze.plugins.core import Plugin
 from snooze.utils.condition import get_condition, validate_condition
@@ -22,6 +23,7 @@ class Notification(Plugin):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.action = None
+        self.notifications: List[NotificationObject] = []
 
     def process(self, record):
         log.debug("Processing record %s against notifications", record.get('hash', ''))
@@ -46,8 +48,8 @@ class Notification(Plugin):
         for notification in (self.data or []):
             notifications.append(NotificationObject(notification, self))
         self.notifications = notifications
-        if sync and self.core.cluster:
-            self.core.cluster.reload_plugin(self.name)
+        if sync:
+            self.sync_neighbors()
 
 class NotificationObject:
     '''An object representing a single notification in the database'''

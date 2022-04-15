@@ -27,8 +27,8 @@ class Kv(Plugin):
                 log.exception(err)
                 continue
         self.kv = kv
-        if sync and self.core.cluster:
-            self.core.cluster.reload_plugin(self.name)
+        if sync:
+            self.sync_neighbors()
 
     def get(self, mydict, key):
         '''Return the value for a given dictionary and key'''

@@ -151,8 +151,8 @@ class Aggregaterule(Plugin):
         for aggrule in (self.data or []):
             aggregate_rules.append(AggregateruleObject(aggrule))
         self.aggregate_rules = aggregate_rules
-        if sync and self.core.cluster:
-            self.core.cluster.reload_plugin(self.name)
+        if sync:
+            self.sync_neighbors()
 
 class AggregateruleObject:
     def __init__(self, aggregate_rule):

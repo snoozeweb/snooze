@@ -66,8 +66,8 @@ class Action(Plugin):
         notification_plugin = self.core.get_core_plugin('notification')
         if notification_plugin:
             notification_plugin.reload_data()
-        if sync and self.core.cluster:
-            self.core.cluster.reload_plugin(self.name)
+        if sync:
+            self.sync_neighbors()
 
 class ActionObject:
     '''Object representing an action in the database'''

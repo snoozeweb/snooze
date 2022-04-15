@@ -94,5 +94,5 @@ class Rule(Plugin):
         for rule in (self.data or []):
             rules.append(RuleObject(rule, self.core))
         self.rules = rules
-        if sync and self.core.cluster:
-            self.core.cluster.reload_plugin(self.name)
+        if sync:
+            self.sync_neighbors()
