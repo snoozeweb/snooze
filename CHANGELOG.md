@@ -1,3 +1,22 @@
+## v1.4.2
+
+### New features
+* Monitoring endpoint at `/api/health`
+* Nagios/Icinga compatible check script (`check_snooze_server`)
+
+### Changes
+* Linting of the code, and adding type hints
+* Now we're pre-catching all database errors to give more information about what
+  was the query before throwing
+* Backups can now fail independently on a per-collection basis
+
+### Bug fixes
+* Core: Improving the thread management, so we don't end up with rogue threads
+  dying without causing snooze to die as well.
+* Mq: Fixing an issue related to the URL character limit when passing the connection string
+  to kombu. Now we are using a patched transport backend that pass the MongoClient()[database]
+  directly.
+
 ## v1.4.1
 
 ### Bug fixes
