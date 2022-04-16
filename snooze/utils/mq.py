@@ -87,10 +87,13 @@ class MQThread(threading.Thread):
         self.obj = worker_obj
 
     def run(self):
-        with Connection(self.manager.url) as conn:
-            self.connection = conn
-            self.worker = self.worker_class(conn, self)
-            self.worker.run()
+        try:
+            with Connection(self.manager.url) as conn:
+                self.connection = conn
+                self.worker = self.worker_class(conn, self)
+                self.worker.run()
+        except Exception as err:
+            log.exception(err)
 
 class Worker(ConsumerMixin):
     def __init__(self, connection, thread):
