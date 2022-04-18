@@ -434,20 +434,23 @@ class BackendDB(Database):
             raise OperationNotSupported(operation)
         return return_dict
 
-    def backup(self, backup_path, backup_exclude=[]):
+    def backup(self, backup_path: str, backup_exclude: Optional[List[str]] = None):
+        '''Export the database into a directory'''
+        if backup_exclude is None:
+            backup_exclude = []
         collections = [c for c in self.db.collection_names() if c not in backup_exclude]
         log.debug('Starting backup of %s', collections)
-        try:
-            for i, collection_name in enumerate(collections):
-                col = getattr(self.db, collections[i])
-                collection = col.find()
-                jsonpath = Path(backup_path) / (collection_name + '.json')
+        for collection in collections:
+            try:
+                data = self.db[collection].find()
+                jsonpath = Path(backup_path) / (collection + '.json')
                 with jsonpath.open("wb") as jsonfile:
-                    jsonfile.write(dumps(collection).encode())
-        except Exception as err:
-            log.error('Backup failed')
-            log.exception(err)
-        log.info('Backup of %s succeeded', collections)
+                    jsonfile.write(dumps(data).encode())
+                log.info('Backup of %s succeeded', collection)
+            except Exception as err:
+                log.exception(err)
+                log.error('Backup of %s failed: %s', collection, err)
+                continue
 
     def get_uri(self):
         if 'DATABASE_URL' in os.environ:
