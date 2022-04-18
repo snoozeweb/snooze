@@ -39,6 +39,9 @@ DEFAULT_PAGINATION = {
 
 class BackendDB(Database):
     '''Database backend for MongoDB'''
+
+    name = 'mongo'
+
     def init_db(self, conf: Config):
         if 'DATABASE_URL' in os.environ:
             self.db = pymongo.MongoClient(os.environ.get('DATABASE_URL'))[database]
@@ -451,27 +454,3 @@ class BackendDB(Database):
                 log.exception(err)
                 log.error('Backup of %s failed: %s', collection, err)
                 continue
-
-    def get_uri(self):
-        if 'DATABASE_URL' in os.environ:
-            return os.environ.get('DATABASE_URL')
-        else:
-            uri = 'mongodb://'
-            if 'username' in self.conf or 'user' in self.conf:
-                uri += self.conf.get('username', self.conf.get('user'))
-            if 'password' in self.conf:
-                uri += ':' + self.conf.get('password')
-            if 'username' in self.conf or 'user' in self.conf:
-                uri += '@'
-            port = ''
-            if 'port' in self.conf:
-                port = ':' + str(self.conf.get('port'))
-            if isinstance(self.conf.get('host'), list):
-                uri += ','.join(self.conf.get('host')) + port
-            else:
-                uri += self.conf.get('host') + port
-            uri += '/snooze'
-            options = [op for op in ['authSource', 'replicaSet', 'tls', 'tlsCAFile'] if op in self.conf]
-            if options:
-                uri = '?' + '&'.join([x + '=' + (str(self.conf.get(x, '')) if not isinstance(self.conf.get(x), bool) else str(self.conf.get(x)).lower()) for x in options])
-            return uri

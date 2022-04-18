@@ -1,3 +1,10 @@
+#
+# Copyright 2018-2020 Florian Dematraz <florian.dematraz@snoozeweb.net>
+# Copyright 2018-2020 Guillaume Ludinard <guillaume.ludi@gmail.com>
+# Copyright 2020-2021 Japannext Co., Ltd. <https://www.japannext.co.jp/>
+# SPDX-License-Identifier: AFL-3.0
+#
+
 '''Module for managing the Message Queue in the database'''
 
 import time
@@ -12,25 +19,32 @@ from kombu.mixins import ConsumerMixin
 from kombu.pools import producers
 from kombu.serialization import register
 
+from snooze.utils.kombu import MongodbTransport
+
 log = getLogger('snooze.mq')
 
 task_exchange = Exchange('tasks', type='direct')
+
 
 class MQManager:
     def __init__(self, core):
         log.debug('Init MQManager')
         self.core = core
-        self.url = core.db.get_uri()
         self.threads = {}
-        if not self.url:
-            self.url = 'memory:///'
+        if core.db.name == 'file':
+            self.connection = Connection('memory:///')
+        elif core.db.name == 'mongo':
+            self.connection = Connection(transport=MongodbTransport,
+                transport_options={'database': core.db.db})
+        else:
+            raise Exception("Unsupported database type '{core.db.name}'")
         register('bson', bson.json_util.dumps, bson.json_util.loads,
                  content_type='application/json',
                  content_encoding='utf-8')
 
     def update_queue(self, queue, timer=10, maxsize=100, worker_class=None, worker_obj=None):
         if queue not in self.threads:
-            self.threads[queue] = MQThread(self, queue, timer, maxsize, worker_class, worker_obj)
+            self.threads[queue] = MQThread(self.connection, queue, timer, maxsize, worker_class, worker_obj)
             self.threads[queue].start()
         else:
             self.threads[queue].update(timer, maxsize, worker_obj)
@@ -67,9 +81,9 @@ class MQManager:
             return False
 
 class MQThread(threading.Thread):
-    def __init__(self, manager, queue, timer=10, maxsize=100, worker_class=None, worker_obj=None):
+    def __init__(self, connection, queue, timer=10, maxsize=100, worker_class=None, worker_obj=None):
         super().__init__()
-        self.manager = manager
+        self.connection = connection
         self.queue = Queue(queue, task_exchange, routing_key=queue)
         if worker_class:
             self.worker_class = worker_class
@@ -88,10 +102,8 @@ class MQThread(threading.Thread):
 
     def run(self):
         try:
-            with Connection(self.manager.url) as conn:
-                self.connection = conn
-                self.worker = self.worker_class(conn, self)
-                self.worker.run()
+            self.worker = self.worker_class(self.connection, self)
+            self.worker.run()
         except Exception as err:
             log.exception(err)
 

@@ -65,6 +65,9 @@ def test_search(dic, value):
 
 class BackendDB(Database):
     '''Backend database based on local file (TinyDB)'''
+
+    name = 'file'
+
     def init_db(self, conf):
         if conf.get('path'):
             filename = conf.get('path')
@@ -506,6 +509,3 @@ class BackendDB(Database):
                 log.error('Backup of %s failed', collection_name)
                 log.exception(err)
         log.info('Backup of %s succeeded', succeeded)
-
-    def get_uri(self):
-        return None

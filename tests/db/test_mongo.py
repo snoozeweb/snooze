@@ -312,11 +312,6 @@ def test_mongo_inc_labels():
     assert db.search('stats', ['=', 'key', 'metric_a__source__syslog'])['data'][0]['value'] == 2
     assert db.search('stats', ['=', 'key', 'metric_a__type__db'])['data'][0]['value'] == 1
 
-@mongomock.patch('mongodb://localhost:27017')
-def test_mongo_get_uri():
-    db = Database(default_config.get('database'))
-    assert db.get_uri() == 'mongodb://localhost:27017/snooze'
-
 # timezone in datetostring not implemented
 #@mongomock.patch('mongodb://localhost:27017')
 #def test_mongo_compute_stats():
