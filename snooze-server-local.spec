@@ -32,6 +32,7 @@ Source1: snooze_server-%{python_version}-py3-none-any.whl
 Source2: snooze-server.service
 Source3: core.yaml
 Source4: logging.yaml
+Requires: python(abi) = 3.8
 
 %description
 Snooze server
@@ -52,7 +53,7 @@ mkdir -p %{buildroot}/var/log/snooze
 mkdir -p %{buildroot}/var/lib/snooze
 
 # Snooze server
-virtualenv --always-copy --python=python3.6 %{venv}
+virtualenv --always-copy --python=python3.8 %{venv}
 %{venv}/bin/pip install %{sources}/snooze_server-%{python_version}-py3-none-any.whl
 
 # Systemd service

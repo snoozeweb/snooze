@@ -18,11 +18,10 @@ snooze = "snooze.cli.__main__:snooze"
 check_snooze_server = "snooze.cli.health:check_snooze_server"
 
 [tool.poetry.dependencies]
-python = "^3.6"
+python = "^3.8"
 click = "^8.0.1"
 falcon-auth = "^1.1.0"
 falcon = "^3.0.1"
-importlib-metadata = "^4.8.1"
 Jinja2 = "^3.0.1"
 ldap3 = "^2.9.1"
 MarkupSafe = "^2.0.1"
@@ -36,15 +35,13 @@ PyYAML = "5.4.1"
 requests-unixsocket = "^0.2.0"
 requests = "^2.26.0"
 tinydb = "4.5.2"
-typing-extensions = "^3.10.0.2"
 waitress = "^2.0.0"
 netifaces = "^0.11.0"
-kombu = "5.1.0"
-dataclasses = {version = "^0.8", python = "~3.6"}
+kombu = "^5.1.0"
 
 [tool.poetry.group.lint.dependencies]
 pylint = "^2.11.1"
-pyright = "0.0.13.post0"
+pyright = "^1.1.238"
 
 [tool.poetry.group.security.dependencies]
 bandit = "^1.7.0"
