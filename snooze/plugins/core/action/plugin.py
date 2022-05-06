@@ -28,8 +28,8 @@ class Action(Plugin):
         super().__init__(*args, **kwargs)
         self.hostname = socket.gethostname()
         self.actions = []
-        self.deffered_actions = DefferedActions(self, self.core.exit_event)
-        self.core.threads['deferred_actions'] = self.deffered_actions
+        self.delayed_actions = DelayedActions(self, self.core.exit_event)
+        self.core.threads['delayed_actions'] = self.delayed_actions
 
     def post_init(self):
         self.reload_data()
@@ -44,12 +44,12 @@ class Action(Plugin):
                     action_obj['action'] = action
                     action_obj['time'] = time.time() + action_obj['delay']
                     action_obj['record'] = {'hash': action_obj['record_hash']}
-                    self.deffered_actions.set_delayed(action_obj, False)
+                    self.delayed_actions.set_delayed(action_obj, False)
                 else:
                     log.debug("Delayed notification %s original notification in not in the database anymore. "
                         "Removing it from queue", delayed_notif)
                     self.core.db.delete('action.delay', ['=', 'uid', action_uid])
-            log.debug("Restored delayed actions %s", self.deffered_actions.delayed)
+            log.debug("Restored delayed actions %s", self.delayed_actions.delayed)
 
     def reload_data(self, sync = False):
         super().reload_data()
@@ -74,7 +74,7 @@ class ActionObject:
     def __init__(self, action, plugin):
         self.action = action
         self.plugin = plugin
-        self.deffered = plugin.deffered_actions
+        self.delayed = plugin.delayed_actions
         self.core = plugin.core
         self.uid = action.get('uid')
         self.name = action.get('name', '')
@@ -191,13 +191,13 @@ class ActionObject:
     def delay(self, action_obj):
         record = action_obj['record']
         if action_obj['total'] == 0 or action_obj['retry'] < 0:
-            self.deffered.cleanup(record['hash'], self.uid)
+            self.delayed.cleanup(record['hash'], self.uid)
             if action_obj['retry'] < 0:
                 self.update_stats(False)
             return
         action_obj['action'] = self
         action_obj['time'] = time.time() + action_obj['delay']
-        self.deffered.set_delayed(action_obj)
+        self.delayed.set_delayed(action_obj)
         log.debug("Action `%s` will be sent in %ss (%s retrie(s) left)",
             self.name, action_obj['delay'], action_obj['retry'])
 
@@ -215,8 +215,8 @@ class ActionObject:
         return self.name
 
 
-class DefferedActions(SurvivingThread):
-    '''A thread for handling deferred/delayed actions'''
+class DelayedActions(SurvivingThread):
+    '''A thread for handling delayed actions'''
     def __init__(self, action, exit_event: Optional[Event] = None):
         exit_event = exit_event or Event()
         super().__init__()
