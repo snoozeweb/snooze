@@ -26,7 +26,7 @@ from dateutil import parser
 
 from snooze import __file__ as rootdir
 from snooze.db.database import Database
-from snooze.plugins.core import Abort, Abort_and_write, Abort_and_update
+from snooze.plugins.core import Abort, AbortAndWrite, AbortAndUpdate
 from snooze.token import TokenEngine
 from snooze.utils.functions import flatten
 from snooze.api.socket import WSGISocketServer, admin_api
@@ -146,17 +146,20 @@ class Core:
         except when it receive a specific exception.
         Abort:
             Will abort the processing for a record.
-        Abort_and_write:
+        AbortAndWrite:
             Will abort processing, and write the record in the database.
-        Abort_and_update:
+        AbortAndUpdate:
             Will abort processing, and write the record in the database, but will not
             update the timestamp of the record. This is used mainly by aggregaterule plugin
             for throttling.
         '''
         data = {}
-        source = record.get('source', 'unknown')
-        environment = record.get('environment', 'unknown')
         severity = record.get('severity', 'unknown')
+        labels = {
+            'source': record.get('source', 'unknown'),
+            'environment': record.get('environment', 'unknown'),
+            'severity': severity,
+        }
         record['ttl'] = int(self.config.housekeeper.record_ttl.total_seconds())
         log.debug("OK severities: %s", self.config.general.ok_severities)
         if severity.casefold() in self.config.general.ok_severities:
@@ -169,7 +172,7 @@ class Core:
         except Exception as err:
             log.warning(err)
             record['timestamp'] = datetime.now().astimezone().strftime("%Y-%m-%dT%H:%M:%S%z")
-        with self.stats.time('process_alert_duration', {'source': source, 'environment': environment, 'severity': severity}):
+        with self.stats.time('process_alert_duration', labels):
             for plugin in self.process_plugins:
                 try:
                     log.debug("Executing plugin %s on record %s", plugin.name, record.get('hash', ''))
@@ -178,10 +181,10 @@ class Core:
                 except Abort:
                     data = {'data': {'processed': [record]}}
                     break
-                except Abort_and_write as abort:
+                except AbortAndWrite as abort:
                     data = self.db.write('record', abort.record or record, duplicate_policy='replace')
                     break
-                except Abort_and_update as abort:
+                except AbortAndUpdate as abort:
                     data = self.db.write('record', abort.record or record, update_time=False, duplicate_policy='replace')
                     break
                 except Exception as err:
@@ -197,7 +200,7 @@ class Core:
                 data = self.db.write('record', record, duplicate_policy='replace')
         environment = record.get('environment', 'unknown')
         severity = record.get('severity', 'unknown')
-        self.stats.inc('alert_hit', {'source': source, 'environment': environment, 'severity': severity})
+        self.stats.inc('alert_hit', labels)
         return data
 
     def get_core_plugin(self, plugin_name: str) -> Optional['Plugin']:

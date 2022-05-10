@@ -10,7 +10,7 @@
 import pytest
 
 from snooze.plugins.core.notification.plugin import Notification, NotificationObject
-from snooze.plugins.core import Abort, Abort_and_write
+from snooze.plugins.core import Abort, AbortAndWrite
 
 import pytest
 

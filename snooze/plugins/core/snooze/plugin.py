@@ -9,7 +9,7 @@
 
 from logging import getLogger
 
-from snooze.plugins.core import Plugin, Abort_and_write, Abort
+from snooze.plugins.core import Plugin, AbortAndWrite, Abort
 from snooze.utils.condition import get_condition, validate_condition
 from snooze.utils.time_constraints import get_record_date, init_time_constraints
 from snooze.utils.typing import Record, SnoozeFilter
@@ -33,7 +33,7 @@ class Snooze(Plugin):
                         self.db.delete('record', ['=', 'hash', record['hash']])
                     raise Abort()
                 else:
-                    raise Abort_and_write(record)
+                    raise AbortAndWrite(record)
         return record
 
     def validate(self, obj: dict):
