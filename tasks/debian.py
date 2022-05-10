@@ -34,7 +34,7 @@ def build(ctx, cleanup=True, github_output=False):
     ctx.run(f"find '{buildroot}' -name 'RECORD' -exec rm -rf {{}} +")
     ctx.run(f"find '{venv}/lib' -type f -name '*.so' -exec strip {{}} +")
 
-    ctx.run(f"cp -r debian/* {debian}")
+    ctx.run(f"cp -r packaging/debian/* {debian}")
     ctx.run(f"sed -i 's/__VERSION__/{ver_rel}/' {debian}/control")
 
     ctx.run(f"cp packaging/files/core.yaml {etc_server}")

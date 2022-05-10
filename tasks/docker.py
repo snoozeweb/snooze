@@ -15,7 +15,7 @@ def docker_images(ctx, tag):
     return images
 
 @task
-def check(ctx, ignore_check=('DL3008', 'DL3018', 'DL3059'), dockerfile="Dockerfile-local"):
+def check(ctx, ignore_check=('DL3008', 'DL3018', 'DL3059'), dockerfile="packaging/Dockerfile"):
     '''Check the validity of the Dockerfile'''
     ignores = ' '.join([f"--ignore {i}" for i in ignore_check])
     ctx.run(f"docker run --rm -i ghcr.io/hadolint/hadolint hadolint {ignores} - < {dockerfile}")
@@ -29,7 +29,7 @@ def release():
     return get_versions()['docker'].split('-', 1)[-1]
 
 @task(help={'mode': 'The mode to auto generate the tags'})
-def build(ctx, mode='dev', save=False, github_output=False):
+def build(ctx, mode='dev', save=False, github_output=False, dockerfile="packaging/Dockerfile"):
     '''Build a docker image based on the latest git version'''
     image = ctx.get('image')
     repo = ctx.get('repo')
@@ -54,7 +54,7 @@ def build(ctx, mode='dev', save=False, github_output=False):
     _tags = ' '.join([f"-t {repo}/{image}:{tag}" for tag in tags])
     cmd = [
         'docker build',
-        '-f Dockerfile-local',
+        f"-f {dockerfile}",
         f"--build-arg VERSION={ver}",
         f"--build-arg RELEASE={rel}",
         f"--build-arg VCS_REF={ref}",
