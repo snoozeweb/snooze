@@ -20,7 +20,7 @@ import falcon
 from waitress.adjustments import Adjustments
 from waitress.server import UnixWSGIServer
 
-from snooze.api.falcon import LoggerMiddleware
+from snooze.api import LoggerMiddleware
 from snooze.utils.threading import SurvivingThread
 
 log = getLogger('snooze.api.socket')

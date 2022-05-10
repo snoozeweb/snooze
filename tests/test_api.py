@@ -16,8 +16,6 @@ from freezegun import freeze_time
 from logging import getLogger
 log = getLogger('snooze.tests.api')
 
-from snooze.api.base import Api
-
 from pathlib import Path
 import os
 

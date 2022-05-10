@@ -9,7 +9,7 @@ import falcon
 import pytest
 from falcon.testing import TestClient
 
-from snooze.api.falcon import LoggerMiddleware
+from snooze.api import LoggerMiddleware
 
 class TestRoute:
     def on_get(self, req, resp):

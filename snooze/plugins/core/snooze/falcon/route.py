@@ -11,7 +11,7 @@ from logging import getLogger
 
 import falcon
 
-from snooze.api.falcon import authorize
+from snooze.utils.functions import authorize
 from snooze.plugins.core.basic.falcon.route import Route
 from snooze.utils.condition import get_condition
 

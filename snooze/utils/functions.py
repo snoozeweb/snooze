@@ -9,10 +9,15 @@
 
 import os
 import hashlib
+from logging import getLogger
 from pathlib import Path
 from typing import Optional, List, Union, Any, TypeVar
 
+import falcon
+
 from snooze.utils.typing import Record
+
+log = getLogger('snooze.utils.functions')
 
 T = TypeVar('T')
 
@@ -101,3 +106,47 @@ def ensure_hash(record: Record):
             record['hash'] = hashlib.md5(record['raw']).hexdigest()
         else:
             record['hash'] = hashlib.md5(repr(sorted(record.items())).encode('utf-8')).hexdigest()
+
+def authorize(func):
+    '''Decorator for methods that are protected by authorization'''
+    def _f(self, req, resp, *args, **kw):
+        if self.core.config.core.no_login:
+            return func(self, req, resp, *args, **kw)
+        user_payload = req.context['user']['user']
+        if (self.plugin and hasattr(self.plugin, 'name')):
+            plugin_name = self.plugin.name
+        elif self.name:
+            plugin_name = self.name
+        if plugin_name:
+            read_permissions = ['ro_all', 'rw_all', 'ro_'+plugin_name, 'rw_'+plugin_name]
+            write_permissions = ['rw_all', 'rw_'+plugin_name]
+        else:
+            plugin_name = 'unknown'
+            read_permissions = ['ro_all', 'rw_all']
+            write_permissions = ['rw_all']
+        endpoint = func.__name__
+        method = user_payload['method']
+        name = user_payload['name']
+        if name == 'root' and method == 'root':
+            log.warning("Root user detected! Authorized but please use a proper admin role if possible (authorization '{}' for plugin {})".format(endpoint, plugin_name))
+            return func(self, req, resp, *args, **kw)
+        else:
+            permissions = user_payload.get('permissions', [])
+            permissions.append('any')
+            if endpoint == 'on_get':
+                if self.authorization_policy and any(perm in permissions for perm in self.authorization_policy.get('read', [])):
+                    return func(self, req, resp, *args, **kw)
+                elif any(perm in permissions for perm in read_permissions):
+                    return func(self, req, resp, *args, **kw)
+            elif endpoint in ['on_post', 'on_put', 'on_delete']:
+                if self.check_permissions:
+                    permissions = self.get_permissions(self.get_roles(name, method))
+                if len(permissions) > 0:
+                    if self.authorization_policy and any(perm in permissions for perm in self.authorization_policy.get('write', [])):
+                        return func(self, req, resp, *args, **kw)
+                    elif any(perm in permissions for perm in write_permissions):
+                        return func(self, req, resp, *args, **kw)
+        log.warning("Access denied. User %s on endpoint '%s' for plugin %s", name, endpoint, plugin_name)
+        raise falcon.HTTPForbidden('Forbidden', 'Permission Denied')
+    return _f
+

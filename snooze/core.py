@@ -25,13 +25,13 @@ from typing import List
 from dateutil import parser
 
 from snooze import __file__ as rootdir
-from snooze.api.base import Api
 from snooze.db.database import Database
 from snooze.plugins.core import Abort, Abort_and_write, Abort_and_update
 from snooze.token import TokenEngine
 from snooze.utils.functions import flatten
 from snooze.api.socket import WSGISocketServer, admin_api
 from snooze.api.tcp import TcpThread
+from snooze.api import Api
 from snooze.utils import Housekeeper, Stats, MQManager
 from snooze.utils.cluster import Cluster
 from snooze.utils.config import Config, SNOOZE_CONFIG
