@@ -6,7 +6,7 @@
 #
 
 from snooze.plugins.core.snooze.plugin import *
-from snooze.plugins.core import Abort, Abort_and_write
+from snooze.plugins.core import Abort, AbortAndWrite
 
 import pytest
 
@@ -29,7 +29,7 @@ class TestSnooze():
         try:
             record = snooze.process(record)
             assert False
-        except Abort_and_write:
+        except AbortAndWrite:
             assert record['snoozed'] == 'Filter 1'
 
     def test_snooze_2(self, snooze):
@@ -37,7 +37,7 @@ class TestSnooze():
         try:
             record = snooze.process(record)
             assert True
-        except Abort_and_write:
+        except AbortAndWrite:
             assert False
 
     def test_snooze_3(self, snooze):

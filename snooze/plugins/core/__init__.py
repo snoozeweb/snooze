@@ -5,4 +5,4 @@
 # SPDX-License-Identifier: AFL-3.0
 #
 
-from .basic.plugin import Plugin, Abort, Abort_and_write, Abort_and_update
+from .basic.plugin import Plugin, Abort, AbortAndWrite, AbortAndUpdate

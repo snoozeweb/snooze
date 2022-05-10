@@ -8,7 +8,7 @@
 #!/usr/bin/python3.6
 
 from snooze.plugins.core.aggregaterule.plugin import Aggregaterule, AggregateruleObject
-from snooze.plugins.core import Abort_and_update
+from snooze.plugins.core import AbortAndUpdate
 
 from logging import getLogger
 log = getLogger('snooze.tests')
@@ -61,7 +61,7 @@ class TestAggregatePlugin:
             try:
                 rec = aggregateplugin.process(record)
                 aggregateplugin.core.db.write('record', rec)
-            except Abort_and_update as e:
+            except AbortAndUpdate as e:
                 aggregateplugin.core.db.write('record', e.record or record)
                 continue
         results1 = aggregateplugin.core.db.search('record', ['=', 'aggregate', 'Agg1'])['data']
@@ -114,7 +114,7 @@ class TestAggregatePlugin:
             try:
                 rec = aggregateplugin.process(record)
                 aggregateplugin.core.db.write('record', rec)
-            except Abort_and_update as e:
+            except AbortAndUpdate as e:
                 aggregateplugin.core.db.write('record', e.record or record)
                 continue
         results = aggregateplugin.core.db.search('record', ['=', 'aggregate', 'Agg1'])['data'][0]
@@ -133,7 +133,7 @@ class TestAggregatePlugin:
             try:
                 rec = aggregateplugin.process(record)
                 aggregateplugin.core.db.write('record', rec)
-            except Abort_and_update as e:
+            except AbortAndUpdate as e:
                 aggregateplugin.core.db.write('record', e.record or record)
                 continue
         results = aggregateplugin.core.db.search('record', ['=', 'aggregate', 'Agg4'])['data'][0]

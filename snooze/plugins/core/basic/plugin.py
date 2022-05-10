@@ -104,12 +104,12 @@ class Plugin:
 class Abort(Exception):
     '''Abort the processing for a record'''
 
-class Abort_and_write(Exception):
+class AbortAndWrite(Exception):
     '''Abort the processing for a record, then write it in the database'''
     def __init__(self, record={}, *args, **kwargs):
         self.record = record
 
-class Abort_and_update(Exception):
+class AbortAndUpdate(Exception):
     '''Abort the processing for a record, then write it in the database without updating its timestamp'''
     def __init__(self, record: Record, *_args, **_kwargs):
         self.record = record

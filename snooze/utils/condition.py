@@ -14,7 +14,7 @@ from logging import getLogger
 
 from snooze.utils.functions import dig, flatten
 
-LOG = getLogger('snooze.condition')
+log = getLogger('snooze.condition')
 
 SCALARS = (str, int, float)
 
@@ -114,7 +114,7 @@ class Not(Condition):
         try:
             return not self.condition.match(record)
         except Exception as e:
-            LOG.exception(e)
+            log.exception(e)
             return False
     def __str__(self):
         return '!' + str(self.condition)
@@ -128,7 +128,7 @@ class And(Condition):
         try:
             return all(condition.match(record) for condition in self.conditions)
         except Exception as err:
-            LOG.exception(err)
+            log.exception(err)
             return False
     def __str__(self):
         return '(' + ' & '.join(map(str, self.conditions)) + ')'
@@ -142,7 +142,7 @@ class Or(Condition):
         try:
             return any(condition.match(record) for condition in self.conditions)
         except Exception as err:
-            LOG.exception(err)
+            log.exception(err)
             return False
     def __str__(self):
         return '(' + ' | '.join(map(str, self.conditions)) + ')'
@@ -155,7 +155,7 @@ class Equals(BinaryOperator):
         try:
             return search(record, self.field) == self.value
         except Exception as err:
-            LOG.exception(err)
+            log.exception(err)
             return False
 
 class NotEquals(BinaryOperator):
@@ -168,7 +168,7 @@ class NotEquals(BinaryOperator):
                 record_value != self.value
             )
         except Exception as err:
-            LOG.exception(err)
+            log.exception(err)
             return False
 
 class GreaterThan(BinaryOperator):
@@ -179,7 +179,7 @@ class GreaterThan(BinaryOperator):
             record_value = search(record, self.field)
             return record_value > self.value
         except TypeError as err: # Cannot be compared
-            LOG.exception(err)
+            log.exception(err)
             return False
 
 class LowerThan(BinaryOperator):
@@ -190,7 +190,7 @@ class LowerThan(BinaryOperator):
             record_value = search(record, self.field)
             return record_value < self.value
         except TypeError as err: # Cannot be compared
-            LOG.exception(err)
+            log.exception(err)
             return False
 
 class GreaterOrEquals(BinaryOperator):
@@ -201,7 +201,7 @@ class GreaterOrEquals(BinaryOperator):
             record_value = search(record, self.field)
             return record_value >= self.value
         except TypeError as err: # Cannot be compared
-            LOG.exception(err)
+            log.exception(err)
             return False
 
 class LowerOrEquals(BinaryOperator):
@@ -212,7 +212,7 @@ class LowerOrEquals(BinaryOperator):
             record_value = search(record, self.field)
             return record_value <= self.value
         except TypeError as err: # Cannot be compared
-            LOG.exception(err)
+            log.exception(err)
             return False
 
 # Complex operations
@@ -234,7 +234,7 @@ class Matches(BinaryOperator):
                 return False
             return self.regex.search(record_value) is not None
         except Exception as err:
-            LOG.exception(err)
+            log.exception(err)
             return False
 
 class Exists(Condition):
@@ -246,7 +246,7 @@ class Exists(Condition):
         try:
             return search(record, self.field) is not None
         except Exception as err:
-            LOG.exception(err)
+            log.exception(err)
             return False
     def __str__(self):
         return self.field + '?'
@@ -261,7 +261,7 @@ class Search(Condition):
         try:
             return self.value in str(record)
         except Exception as err:
-            LOG.exception(err)
+            log.exception(err)
             return False
     def __str__(self):
         return f"(SEARCH {repr(self.value)})"
@@ -278,7 +278,7 @@ class Contains(BinaryOperator):
                 for rec in flatten([record_value])
             )
         except TypeError as err:
-            LOG.exception(err)
+            log.exception(err)
             return False
 
 class In(Condition):
@@ -316,10 +316,10 @@ class In(Condition):
                     for rec in flatten([record_value])
                 )
         except Exception as err:
-            LOG.exception(err)
+            log.exception(err)
             return False
         # Unknown case
-        LOG.warning("Unknown situation encountered for IN condition: condition=%s, record=%s",
+        log.warning("Unknown situation encountered for IN condition: condition=%s, record=%s",
             self._args, record)
         return False
 
