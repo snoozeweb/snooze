@@ -1,0 +1,25 @@
+---
+version: 1
+disable_existing_loggers: false
+#propagate: true
+formatters:
+    simple:
+        format: '%(asctime)s %(name)-20s %(levelname)-8s %(message)s'
+handlers:
+    error:
+        class: logging.StreamHandler
+        level: ERROR
+        formatter: simple
+        stream: ext://sys.stderr
+    file:
+        level: INFO
+        class : logging.handlers.RotatingFileHandler
+        formatter: simple
+        filename: /var/log/snooze/snooze-server.log
+        maxBytes: 102400000
+        backupCount: 5
+loggers:
+    snooze:
+        level: INFO
+        handlers: [error, file]
+        propagate: false

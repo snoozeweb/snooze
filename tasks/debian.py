@@ -37,9 +37,9 @@ def build(ctx, cleanup=True, github_output=False):
     ctx.run(f"cp -r debian/* {debian}")
     ctx.run(f"sed -i 's/__VERSION__/{ver_rel}/' {debian}/control")
 
-    ctx.run(f"cp snooze/defaults/core.yaml {etc_server}")
-    ctx.run(f"cp snooze/defaults/logging_file.yaml {etc_server}/logging.yaml")
-    ctx.run(f"cp snooze-server.service {systemd}")
+    ctx.run(f"cp packaging/files/core.yaml {etc_server}")
+    ctx.run(f"cp packaging/files/logging.yaml {etc_server}/logging.yaml")
+    ctx.run(f"cp packaging/files/snooze-server.service {systemd}")
 
     ctx.run(f"dpkg-deb --build {buildroot} dist")
 

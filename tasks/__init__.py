@@ -6,7 +6,7 @@ import platform
 
 from invoke import task, Collection
 
-from tasks import debian, docker, rpm, pip, web
+from tasks import debian, docker, rpm, pip, web, doc
 from tasks.utils import *
 
 @task
@@ -53,6 +53,7 @@ ns.add_collection(web.ns)
 ns.add_collection(rpm.ns)
 ns.add_collection(pip.ns)
 ns.add_collection(debian.ns)
+ns.add_collection(doc.ns)
 
 ns.add_task(version_task)
 ns.add_task(path_task)

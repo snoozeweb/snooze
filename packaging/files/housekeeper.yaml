@@ -1,0 +1,33 @@
+---
+# Housekeeper configuration
+# Config for the housekeeper thread. Can be edited live in the web interface.
+# Usually located at `/etc/snooze/server/housekeeper.yaml`.
+
+# Trigger on startup (boolean)
+# Trigger all housekeeping job on startup
+trigger_on_startup: true
+
+# Record Time-To-Live (number)
+# Default TTL (in seconds) for alerts incoming
+record_ttl: 172800.0
+
+# Cleanup alert (number)
+# Time (in seconds) between each run of alert cleaning. Alerts that exceeded their TTL  will be deleted
+cleanup_alert: 300.0
+
+# Cleanup comment (number)
+# Time (in seconds) between each run of comment cleaning. Comments which are not bound to any alert will be deleted
+cleanup_comment: 86400.0
+
+# Cleanup audit (number)
+# Cleanup orphans audit logs that are older than the given duration (in seconds). Run daily
+cleanup_audit: 2419200.0
+
+# Cleanup snooze (number)
+# Cleanup snooze filters that have been expired for the given duration (in seconds). Run daily
+cleanup_snooze: 259200.0
+
+# Cleanup notifications (number)
+# Cleanup notifications that have been expired for the given duration (in seconds). Run daily
+cleanup_notification: 259200.0
+
