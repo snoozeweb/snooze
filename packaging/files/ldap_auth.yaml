@@ -1,0 +1,52 @@
+---
+# LDAP configuration
+# Configuration for LDAP authentication. Can be edited live in the web interface.
+# Usually located at `/etc/snooze/server/ldap_auth.yaml`.
+
+# Enabled (boolean)
+# Enable or disable LDAP Authentication
+enabled: false
+
+# Base DN (string)
+# LDAP users location. Multiple DNs can be added if separated by semicolons
+# base_dn: 
+
+# User base filter (string)
+# LDAP search filter for the base DN
+# Example #0:
+# user_filter: (objectClass=posixAccount)
+
+# Bind DN (string)
+# Distinguished name to bind to the LDAP server
+# Example #0:
+# bind_dn: CN=john.doe,OU=users,DC=example,DC=com
+
+# Bind DN password (string)
+# Password for the Bind DN user
+# bind_password: 
+
+# Host (string)
+# LDAP host
+# Example #0:
+# host: ldaps://example.com
+
+# Port (integer)
+# LDAP server port
+port: 636
+
+# Group DN (string)
+# Base DN used to filter out groups. Will default to the User base DN Multiple DNs can be added if separated by semicolons
+# group_dn: 
+
+# Email attribute (string)
+# User attribute that displays the user email adress
+email_attribute: mail
+
+# Display name attribute (string)
+# User attribute that displays the user real name
+display_name_attribute: cn
+
+# Member attribute (string)
+# Member attribute that displays groups membership
+member_attribute: memberof
+

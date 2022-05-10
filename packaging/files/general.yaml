@@ -1,0 +1,27 @@
+---
+# General configuration
+# General configuration of snooze. Can be edited live in the web interface.
+# Usually located at `/etc/snooze/server/general.yaml`.
+
+# Default authentication backend (string)
+# Backend that will be first in the list of displayed authentication backends
+default_auth_backend: local
+
+# Local users enabled (boolean)
+# Enable the creation of local users in snooze. This can be disabled when another reliable authentication backend is used, and the admin want to make auditing easier
+local_users_enabled: true
+
+# Metrics enabled (boolean)
+# Enable Prometheus metrics
+metrics_enabled: true
+
+# Anonymous enabled (boolean)
+# Enable anonymous user login. When a user log in as anonymous, he will be given user permissions
+anonymous_enabled: false
+
+# OK severities (array[string])
+# List of severities that will automatically close the aggregate upon entering the system. This is mainly for icinga/grafana that can close the alert when the status becomes green again
+ok_severities:
+- ok
+- success
+

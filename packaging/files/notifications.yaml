@@ -1,0 +1,13 @@
+---
+# Notification configuration
+# Configuration for default notification delays/retry. Can be edited live in the web interface.
+# Usually located at `/etc/snooze/server/notifications.yaml`.
+
+# Frequency (number)
+# Time (in seconds) to wait before sending the next notification
+notification_freq: 60.0
+
+# Retry number (integer)
+# Number of times to retry sending a failed notification
+notification_retry: 3
+
