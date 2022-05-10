@@ -1,8 +1,9 @@
 ---
 name: 'Kapacitor'
 desc: 'Kapacitor'
-prefix: ''
-class: ''
+route_defaults:
+    prefix: ''
+    class: ~
 routes:
     /webhook/kapacitor:
         desc: 'Receive Kapacitor alerts'

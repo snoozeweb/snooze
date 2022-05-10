@@ -2,41 +2,42 @@
 name: 'Call a webhook'
 desc: 'HTTP POST to a specific URL'
 icon: 'link'
-class: ''
+route_defaults:
+    class: ~
 options:
     batch:
-        default: False
-        hidden: False
+        default: false
+        hidden: false
         timer: 10
         maxsize: 100
 action_form:
-  url:
-    display_name: URL
-    component: String
-    description: 'URL to send JSON payload via HTTP POST'
-    required: true
-  params:
-    display_name: Post data
-    component: Arguments
-    description: 'List of POST data parameters'
-    placeholder:
-      - param_name
-      - param_value
-  payload:
-    display_name: Payload
-    component: Text
-    description: 'JSON or List to send'
-  proxy:
-    display_name: Proxy URI
-    component: String
-    description: 'Send the request through a proxy server'
-  ssl_verify:
-    display_name: SSL Verify
-    component: Switch
-    default_value: true
-    description: 'Verify SSL Certificate when using HTTPS'
-  inject_response:
-    display_name: Inject Response
-    component: Switch
-    default_value: false
-    description: 'Inject HTTP Response to a field called reponse_{{webhook_name}} (Auto parse JSON)'
+    url:
+        display_name: URL
+        component: String
+        description: 'URL to send JSON payload via HTTP POST'
+        required: true
+    params:
+        display_name: Post data
+        component: Arguments
+        description: 'List of POST data parameters'
+        placeholder:
+            - param_name
+            - param_value
+    payload:
+        display_name: Payload
+        component: Text
+        description: 'JSON or List to send'
+    proxy:
+        display_name: Proxy URI
+        component: String
+        description: 'Send the request through a proxy server'
+    ssl_verify:
+        display_name: SSL Verify
+        component: Switch
+        default_value: true
+        description: 'Verify SSL Certificate when using HTTPS'
+    inject_response:
+        display_name: Inject Response
+        component: Switch
+        default_value: false
+        description: 'Inject HTTP Response to a field called reponse_{{webhook_name}} (Auto parse JSON)'

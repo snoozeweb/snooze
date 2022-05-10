@@ -121,3 +121,15 @@ class TestLdapConfig:
         assert config.enabled == False
         assert config.bind_dn == None
         assert config.bind_password == None
+
+class TestMetadataConfig:
+    def test_all_plugins(self):
+        metadata_files = SNOOZE_PLUGIN_PATH.glob('*/metadata.yaml')
+        plugins = [path.parent.name for path in metadata_files]
+        assert plugins
+        metadata = {}
+        for plugin in plugins:
+            metadata[plugin] = MetadataConfig(plugin)
+
+        assert metadata['audit'].name == 'Audit'
+        assert metadata['snooze'].name == 'Snooze'

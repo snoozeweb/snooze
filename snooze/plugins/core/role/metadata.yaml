@@ -1,6 +1,7 @@
 ---
 name: 'Role'
 desc: 'An endpoint to store roles'
-primary: name
-duplicate_policy: 'reject'
-check_permissions: True
+route_defaults:
+    primary: [name]
+    duplicate_policy: 'reject'
+    check_permissions: true

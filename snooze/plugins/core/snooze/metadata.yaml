@@ -2,10 +2,11 @@
 name: 'Snooze'
 desc: 'Snooze desc'
 default_sorting: 'name'
-primary: name
-duplicate_policy: 'reject'
 auto_reload: true
-class: SnoozeRoute
+route_defaults:
+    class: SnoozeRoute
+    primary: [name]
+    duplicate_policy: 'reject'
 routes:
-  '/snooze_apply':
-    class: SnoozeApplyRoute
+    '/snooze_apply':
+        class: SnoozeApplyRoute

@@ -73,18 +73,6 @@ class ReadOnlyConfig(BaseModel):
     def __getitem__(self, key: str):
         return getattr(self, key)
 
-def get_metadata(plugin_name: str) -> dict:
-    '''Read metadata at a given plugin path'''
-    plugin_root = Path(SNOOZE_PATH).parent / 'plugins/core'
-    metadata_path = plugin_root / plugin_name / 'metadata.yaml'
-    try:
-        log.debug("Attempting to read metadata at %s for %s module", metadata_path, plugin_name)
-        data = metadata_path.read_text()
-        metadata = yaml.safe_load(data)
-        return metadata
-    except Exception as err:
-        log.warning("Skipping. Cannot read %s due to: %s", metadata_path, err)
-        return {}
     def dig(self, *keys: List[str], default: Optional[Any] = None) -> Any:
         '''Get a nested key from the config'''
         try:
@@ -148,6 +136,33 @@ class WritableConfig(ReadOnlyConfig):
         with self._lock():
             for key, value in values.items():
                 object.__setattr__(self, key, value)
+
+class MetadataConfig(ReadOnlyConfig):
+    '''A class to fetch metadata configuration'''
+    name: Optional[str] = None
+    desc: Optional[str] = None
+    class_name: Optional[str] = Field('Route', alias='class')
+    auto_reload: bool = False
+    default_sorting: Optional[str] = None
+    default_ordering: bool = True
+    audit: bool = True
+    widgets: Dict[str, Widget] = Field(default_factory=dict)
+    action_form: dict  = Field(default_factory=dict)
+    provides: List[str] = Field(default_factory=list)
+    routes: Dict[str, RouteArgs] = Field(default_factory=dict)
+    route_defaults: RouteArgs = RouteArgs()
+    icon: str = 'question-circle'
+    options: dict = Field(default_factory=dict)
+    search_fields: List[str] = Field(default_factory=list)
+
+    def __init__(self, plugin_name: str):
+        path = SNOOZE_PLUGIN_PATH / plugin_name / 'metadata.yaml'
+        self._class_set('_path', path)
+        data = self._read() or {}
+        try:
+            BaseModel.__init__(self, **data)
+        except ValidationError as err:
+            raise Exception(f"Cannot load metadata for plugin {plugin_name}") from err
 
 class LdapConfig(WritableConfig, title='LDAP configuration'):
     '''Configuration for LDAP authentication. Can be edited live in the web interface.

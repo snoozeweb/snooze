@@ -28,12 +28,11 @@ class WidgetPluginRoute(BasicRoute):
             if plugin_name:
                 loaded_plugins = [self.api.core.get_core_plugin(plugin_name)]
             for plugin in loaded_plugins:
-                plugin_metadata = plugin.get_metadata()
-                plugin_widgets = plugin_metadata.get('widgets', {})
-                for name, widget in plugin_widgets.items():
+                for name, widget in plugin.meta.widgets.items():
                     log.debug("Retrieving widget %s from %s", name, plugin.name)
-                    widget['widget_name'] = name
-                    plugins.append(widget)
+                    if widget.widget_name is None:
+                        widget.widget_name = name
+                    plugins.append(widget.dict())
             log.debug("List of widgets: %s", plugins)
             resp.content_type = falcon.MEDIA_JSON
             resp.status = falcon.HTTP_200
@@ -66,5 +65,7 @@ class WidgetRoute(Route):
             media['pprint'] = plugin.pprint(content)
         else:
             media['pprint'] = widget_name
-        media['icon'] = plugin.get_metadata().get('widgets', {}).get(widget_name, {}).get('icon')
-        media['vue_component'] = plugin.get_metadata().get('widgets', {}).get(widget_name, {}).get('vue_component')
+        widget_config = plugin.meta.widgets.get(widget_name)
+        if widget_config:
+            media['icon'] = widget_config.icon
+            media['vue_component'] = widget_config.vue_component

@@ -41,6 +41,18 @@ class AuthorizationPolicy(BaseModel):
     read: List[str] = Field(default_factory=list)
     write: List[str] = Field(default_factory=list)
 
+class RouteArgs(BaseModel):
+    '''Description of the arguments passed to a route'''
+    class_name: Optional[str] = Field('Route', alias='class')
+    desc: Optional[str] = None
+    primary: List[str] = Field(default_factory=list)
+    duplicate_policy: DuplicatePolicy = 'update'
+    authorization_policy: Optional[AuthorizationPolicy]
+    check_permissions: bool = False
+    check_constant: List[str] = Field(default_factory=list)
+    inject_payload: bool = False
+    prefix: str = '/api'
+
 class HostPort(BaseModel):
     '''An object to represent a host-port pair'''
     host: str = Field(
@@ -52,3 +64,9 @@ class HostPort(BaseModel):
         description='The port where the host is expected to listen to'
     )
 
+class Widget(BaseModel):
+    '''A widget representation in the config'''
+    widget_name: Optional[str] = None
+    icon: str
+    vue_component: str
+    form: dict

@@ -208,22 +208,9 @@ class Api:
                 log.exception(err)
                 log.debug("Skip loading plugin `%s` routes", plugin.name)
                 continue
-            primary = plugin.metadata.get('primary') or None
-            duplicate_policy = plugin.metadata.get('duplicate_policy') or 'update'
-            authorization_policy = plugin.metadata.get('authorization_policy')
-            check_permissions = plugin.metadata.get('check_permissions', False)
-            check_constant = plugin.metadata.get('check_constant')
-            injectpayload = plugin.metadata.get('inject_payload', False)
-            prefix = plugin.metadata.get('prefix', '/api')
-            for path, route in plugin.metadata.get('routes', {}).items():
-                route_class_name = route['class']
-                log.debug("For %s loading route class `%s`", path, route_class_name)
-                route_class = getattr(plugin_module, route_class_name)
-                route_duplicate_policy = route.get('duplicate_policy', duplicate_policy)
-                route_authorization_policy = route.get('authorization_policy', authorization_policy)
-                route_check_permissions = route.get('check_permissions', check_permissions)
-                route_check_constant = route.get('check_constant', check_constant)
-                route_injectpayload = route.get('inject_payload', injectpayload)
-                route_prefix = route.get('prefix', prefix)
-                log.debug("Route `%s` attributes: Primary (%s). Duplicate Policy (%s), Authorization Policy (%s), Check Permissions (%s), Check Constant (%s), Inject Payload (%s)", route_class_name, primary, route_duplicate_policy, route_authorization_policy, route_check_permissions, route_check_constant, route_injectpayload)
-                self.add_route(path, route_class(self, plugin, primary, route_duplicate_policy, route_authorization_policy, route_check_permissions, route_check_constant, route_injectpayload), route_prefix)
+            for path, route_args in plugin.meta.routes.items():
+                log.debug("For %s loading route: %s", path, route_args.dict())
+                if route_args.class_name is not None:
+                    instance = getattr(plugin_module, route_args.class_name)(self, plugin, route_args)
+                    log.debug("Adding route %s: %s", path, instance)
+                    self.add_route(path, instance)

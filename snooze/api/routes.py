@@ -24,7 +24,7 @@ from ldap3 import Server, Connection, ALL, SUBTREE
 from ldap3.core.exceptions import LDAPOperationResult, LDAPExceptionError
 
 from snooze.utils.functions import ensure_kv, unique, authorize
-from snooze.utils.typing import DuplicatePolicy, AuthorizationPolicy
+from snooze.utils.typing import DuplicatePolicy, AuthorizationPolicy, RouteArgs
 from snooze.db.database import Pagination
 
 log = getLogger('snooze.api')
@@ -41,22 +41,12 @@ class BasicRoute:
     def __init__(self,
         api: 'Api',
         plugin: Optional[str] = None,
-        primary: Optional[str] = None,
-        duplicate_policy: DuplicatePolicy = 'update',
-        authorization_policy: Optional[AuthorizationPolicy] = None,
-        check_permissions: bool = False,
-        check_constant: Optional[str] = None,
-        inject_payload: bool = False
+        route_args: RouteArgs = RouteArgs(),
     ):
         self.api = api
         self.core = api.core
         self.plugin = plugin
-        self.primary = primary
-        self.duplicate_policy = duplicate_policy
-        self.authorization_policy = authorization_policy
-        self.check_permissions = check_permissions
-        self.check_constant = check_constant
-        self.inject_payload = inject_payload
+        self.options = route_args
 
     def search(self, collection: str, cond_or_uid: ConditionOrUid = None, **pagination: Pagination):
         '''Wrapping the search of an object by condition or uid. Also handling options for pagination'''
@@ -82,11 +72,13 @@ class BasicRoute:
 
     def insert(self, collection: str, record: dict):
         '''Wrapping the insertion of a new object'''
-        return self.core.db.write(collection, record, self.primary, self.duplicate_policy, constant=self.check_constant)
+        return self.core.db.write(collection, record,
+            self.options.primary, self.options.duplicate_policy, constant=self.options.check_constant)
 
     def update(self, collection: str, record: dict):
         '''Wrapping the update of an existing object'''
-        return self.core.db.write(collection, record, self.primary, constant = self.check_constant)
+        return self.core.db.write(collection, record,
+            self.options.primary, constant=self.options.check_constant)
 
     def get_roles(self, username: str, method: str) -> List[str]:
         '''Get the authorization roles for a user/auth method pair'''
