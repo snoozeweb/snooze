@@ -41,7 +41,7 @@ class ActionRoute(Route):
             media['pprint'] = plugin.pprint(content)
         else:
             media['pprint'] = plugin_name
-        media['icon'] = plugin.get_icon()
+        media['icon'] = plugin.meta.icon
 
 class ActionPluginRoute(BasicRoute):
     '''A route to list the action plugin types (script, webhook, mail, etc)'''
@@ -57,10 +57,9 @@ class ActionPluginRoute(BasicRoute):
             else:
                 log.error("Could not find action plugin for request %s", req.params)
             for plugin in loaded_plugins:
-                plugin_metadata = plugin.get_metadata()
-                if plugin_metadata.get('action_form'):
+                if plugin.meta.action_form:
                     log.debug("Retrieving action %s metadata", plugin.name)
-                    plugins.append(plugin_metadata)
+                    plugins.append(plugin.meta.dict())
             log.debug("List of actions: %d elements", len(plugins))
             resp.content_type = falcon.MEDIA_JSON
             resp.status = falcon.HTTP_200

@@ -1,11 +1,12 @@
 ---
 name: 'Widget'
 desc: 'A component to store snooze widgets for the web interface'
-class: WidgetRoute
+route_defaults:
+    class: WidgetRoute
 routes:
-  '/widget/plugin':
-    desc: 'List the widget plugins available'
-    class: WidgetPluginRoute
-  '/widget/plugin/{widget}':
-    desc: 'List a specific widget plugin available'
-    class: WidgetPluginRoute
+    '/widget/plugin':
+        desc: 'List the widget plugins available'
+        class: WidgetPluginRoute
+    '/widget/plugin/{widget}':
+        desc: 'List a specific widget plugin available'
+        class: WidgetPluginRoute

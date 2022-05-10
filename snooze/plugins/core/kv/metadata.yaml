@@ -2,9 +2,10 @@
 name: 'Key value'
 desc: 'A series of key-values to use for complex modifications'
 audit: false
-primary: dict,key
-# This is useful for cronjobs to update everything with a csv file. New values
-# can be updated easily.
-duplicate_policy: 'replace'
-check_permissions: true
 auto_reload: true
+route_defaults:
+    # This is useful for cronjobs to update everything with a csv file.
+    # New values can be updated easily.
+    duplicate_policy: 'replace'
+    check_permissions: true
+    primary: [dict, key]

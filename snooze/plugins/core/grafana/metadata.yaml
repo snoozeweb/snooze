@@ -1,8 +1,9 @@
 ---
 name: 'Grafana'
 desc: 'Grafana'
-prefix: ''
-class: ''
+route_defaults:
+    class: ~
+    prefix: ''
 routes:
     /webhook/grafana:
         desc: 'Receive Grafana alerts'

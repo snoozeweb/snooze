@@ -2,25 +2,26 @@
 name: 'Run a script'
 desc: ''
 icon: 'terminal'
-class: ''
+route_defaults:
+    class: ~
 options:
     batch:
-        default: False
-        hidden: False
+        default: false
+        hidden: false
         timer: 10
         maxsize: 100
 action_form:
-  script:
-    display_name: Path
-    component: String
-    description: 'Fully qualified path of the script to execute'
-    required: true
-  arguments:
-    display_name: Arguments
-    component: Arguments
-    description: 'List of arguments to provide to the script'
-  json:
-    display_name: Send to Stdin
-    component: Switch
-    default_value: false
-    description: 'Send the record as JSON to the script Stdin'
+    script:
+        display_name: Path
+        component: String
+        description: 'Fully qualified path of the script to execute'
+        required: true
+    arguments:
+        display_name: Arguments
+        component: Arguments
+        description: 'List of arguments to provide to the script'
+    json:
+        display_name: Send to Stdin
+        component: Switch
+        default_value: false
+        description: 'Send the record as JSON to the script Stdin'

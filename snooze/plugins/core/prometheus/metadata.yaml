@@ -1,8 +1,9 @@
 ---
 name: 'Prometheus'
 desc: 'Prometheus'
-prefix: ''
-class: ''
+route_defaults:
+    class: ~
+    prefix: ''
 routes:
     /webhook/prometheus:
         desc: 'Receive Prometheus alerts'

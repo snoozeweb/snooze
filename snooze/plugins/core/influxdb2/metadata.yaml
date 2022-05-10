@@ -1,8 +1,9 @@
 ---
 name: 'InfluxDB 2.0'
 desc: 'InfluxDB 2.0'
-prefix: ''
-class: ''
+route_defaults:
+    prefix: ''
+    class: ~
 routes:
     /webhook/influxdb2:
         desc: 'Receive InfluxDB 2.0 alerts'

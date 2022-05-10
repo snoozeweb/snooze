@@ -2,66 +2,60 @@
 name: 'Send email'
 desc: ''
 icon: 'envelope'
-class: ''
+default_route:
+    class: ~
 options:
     batch:
-        default: False
-        hidden: False
+        default: false
+        hidden: false
         timer: 10
         maxsize: 100
 action_form:
-  host:
-    display_name: Host
-    component: String
-    description: 'Mail server address'
-    default_value: 'localhost'
-  port:
-    display_name: Port
-    component: Number
-    description: 'Mail server port'
-    default_value: 25
-  from:
-    display_name: From
-    component: String
-    description: 'Sender address'
-  to:
-    display_name: To
-    component: Text
-    description: 'Comma separated list of recipient addresses'
-    required: true
-  priority:
-    display_name: Priority
-    component: Selector
-    options:
-      - text: Lowest
-        value: 5
-      - text: Low
-        value: 4
-      - text: Normal
-        value: 3
-      - text: High
-        value: 2
-      - text: Highest
-        value: 1
-    default_value: 3
-    description: 'Email priority'
-  subject:
-    display_name: Subject
-    component: String
-    default_value: "Alert: {{ host }}"
-    description: 'Email subject'
-  message:
-    display_name: Message
-    component: Text
-    default_value: "Message: {{ message }}"
-    description: 'Email content'
-  type:
-    display_name: Type
-    component: Radio
-    options:
-      - text: HTML & Plain Text
-        value: html
-      - text: Plain Text
-        value: plain
-    default_value: html
-    description: 'Email formatting'
+    host:
+        display_name: Host
+        component: String
+        description: 'Mail server address'
+        default_value: 'localhost'
+    port:
+        display_name: Port
+        component: Number
+        description: 'Mail server port'
+        default_value: 25
+    from:
+        display_name: From
+        component: String
+        description: 'Sender address'
+    to:
+        display_name: To
+        component: Text
+        description: 'Comma separated list of recipient addresses'
+        required: true
+    priority:
+        display_name: Priority
+        component: Selector
+        options:
+            - {text: Lowest, value: 5}
+            - {text: Low, value: 4}
+            - {text: Normal, value: 3}
+            - {text: High, value: 2}
+            - {text: Highest, value: 1}
+        default_value: 3
+        description: 'Email priority'
+    subject:
+        display_name: Subject
+        component: String
+        default_value: "Alert: {{ host }}"
+        description: 'Email subject'
+    message:
+        display_name: Message
+        component: Text
+        default_value: "Message: {{ message }}"
+        description: 'Email content'
+    type:
+        display_name: Type
+        component: Radio
+        options:
+            - {text: HTML & Plain Text, value: html}
+            - {text: Plain Text, value: plain}
+        default_value: html
+        description: 'Email formatting'

@@ -29,7 +29,7 @@ class ProfileRoute(FalconRoute):
                 query = bson.json_util.loads(unquote(query))
             except Exception:
                 pass
-        if self.inject_payload:
+        if self.options.inject_payload:
             query = self.inject_payload_search(req, query)
         c = req.params.get('c') or category
         log.debug("Loading profile %s", c)
@@ -48,7 +48,7 @@ class ProfileRoute(FalconRoute):
 
     @authorize
     def on_put(self, req, resp, category=''):
-        if self.inject_payload:
+        if self.options.inject_payload:
             self.inject_payload_media(req, resp)
         c = req.params.get('c') or category
         resp.content_type = falcon.MEDIA_JSON
@@ -78,7 +78,7 @@ class ProfileRoute(FalconRoute):
                 query = bson.json_util.loads(query)
             except Exception:
                 pass
-        if self.inject_payload:
+        if self.options.inject_payload:
             query = self.inject_payload_search(req, query)
         c = req.params.get('c') or category
         log.debug("Trying delete profile %s", c)

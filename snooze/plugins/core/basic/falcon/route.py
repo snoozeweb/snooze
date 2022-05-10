@@ -75,7 +75,7 @@ class Route(FalconRoute):
             cond_or_uid = bson.json_util.loads(unquote(s))
         except Exception:
             cond_or_uid = s
-        if self.inject_payload:
+        if self.options.inject_payload:
             cond_or_uid = self.inject_payload_search(req, cond_or_uid)
         if ql:
             if cond_or_uid:
@@ -94,7 +94,7 @@ class Route(FalconRoute):
 
     @authorize
     def on_post(self, req, resp):
-        if self.inject_payload:
+        if self.options.inject_payload:
             self.inject_payload_media(req, resp)
         resp.content_type = falcon.MEDIA_JSON
         log.debug("Trying to insert %s", req.media)
@@ -141,7 +141,7 @@ class Route(FalconRoute):
 
     @authorize
     def on_put(self, req, resp):
-        if self.inject_payload:
+        if self.options.inject_payload:
             self.inject_payload_media(req, resp)
         resp.content_type = falcon.MEDIA_JSON
         log.debug("Trying to update %s", req.media)
@@ -179,7 +179,7 @@ class Route(FalconRoute):
                 cond_or_uid = bson.json_util.loads(string)
             except Exception:
                 cond_or_uid = string
-        if self.inject_payload:
+        if self.options.inject_payload:
             cond_or_uid = self.inject_payload_search(req, cond_or_uid)
         deleted_objects = [{'_old': data} for data in self.search(self.plugin.name, cond_or_uid)['data']]
         log.debug("Trying delete %s" % cond_or_uid)
@@ -209,7 +209,7 @@ class Route(FalconRoute):
 
     def _audit(self, results, req):
         '''Audit the changed objects in a dedicated collection'''
-        if self.plugin.metadata.get('audit'):
+        if self.plugin.meta.audit:
             messages = []
             for action, objs in results.get('data', {}).items():
                 for obj in objs:
