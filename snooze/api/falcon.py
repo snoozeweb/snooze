@@ -760,7 +760,7 @@ class BackendApi():
             else:
                 plugins_error.append(plugin)
         if plugins_error:
-            return {'status': falcon.HTTP_404, 'text': f"The following plugins could not be found: {plugin_error}"}
+            return {'status': falcon.HTTP_404, 'text': f"The following plugins could not be found: {plugins_error}"}
         else:
             return {'status': falcon.HTTP_200, 'text': "Reloaded plugins: {plugin_success}"}
 

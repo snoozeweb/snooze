@@ -80,7 +80,7 @@ class ProfileRoute(FalconRoute):
         if self.inject_payload:
             query = self.inject_payload_search(req, query)
         c = req.params.get('c') or category
-        log.debug("Trying delete profile %s: %s", c, media)
+        log.debug("Trying delete profile %s", c)
         result_dict = self.delete(self.plugin.name + '.' + c, query)
         resp.content_type = falcon.MEDIA_JSON
         if result_dict:

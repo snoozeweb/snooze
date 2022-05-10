@@ -29,9 +29,9 @@ class Pagination(TypedDict, total=False):
 def wrap_exception(function):
     '''Wrap an method exception so we get more information about the
     query that made it fail'''
-    def wrapper(collection: str, *args, **kwargs):
+    def wrapper(database: 'Database', collection: str, *args, **kwargs):
         try:
-            return function(collection, *args, **kwargs)
+            return function(database, collection, *args, **kwargs)
         except Exception as err:
             details = {'collection': collection, 'args': args, 'kwargs': kwargs}
             raise DatabaseError(function.__name__, details, err) from err
