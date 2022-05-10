@@ -1,0 +1,661 @@
+
+<!DOCTYPE html>
+
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" /><meta name="generator" content="Docutils 0.17.1: http://docutils.sourceforge.net/" />
+
+    <title>Manage alerts &#8212;   documentation</title>
+    
+  <!-- Loaded before other Sphinx assets -->
+  <link href="../_static/styles/theme.css?digest=1999514e3f237ded88cf" rel="stylesheet">
+<link href="../_static/styles/pydata-sphinx-theme.css?digest=1999514e3f237ded88cf" rel="stylesheet">
+
+    
+  <link rel="stylesheet"
+    href="../_static/vendor/fontawesome/5.13.0/css/all.min.css">
+  <link rel="preload" as="font" type="font/woff2" crossorigin
+    href="../_static/vendor/fontawesome/5.13.0/webfonts/fa-solid-900.woff2">
+  <link rel="preload" as="font" type="font/woff2" crossorigin
+    href="../_static/vendor/fontawesome/5.13.0/webfonts/fa-brands-400.woff2">
+
+    <link rel="stylesheet" type="text/css" href="../_static/pygments.css" />
+    <link rel="stylesheet" href="../_static/styles/sphinx-book-theme.css?digest=62ba249389abaaa9ffc34bf36a076bdc1d65ee18" type="text/css" />
+    <link rel="stylesheet" type="text/css" href="../_static/custom.css" />
+    
+  <!-- Pre-loaded scripts that we'll load fully later -->
+  <link rel="preload" as="script" href="../_static/scripts/pydata-sphinx-theme.js?digest=1999514e3f237ded88cf">
+
+    <script data-url_root="../" id="documentation_options" src="../_static/documentation_options.js"></script>
+    <script src="../_static/jquery.js"></script>
+    <script src="../_static/underscore.js"></script>
+    <script src="../_static/doctools.js"></script>
+    <script src="../_static/scripts/sphinx-book-theme.js?digest=f31d14ad54b65d19161ba51d4ffff3a77ae00456"></script>
+    <link rel="index" title="Index" href="../genindex.html" />
+    <link rel="search" title="Search" href="../search.html" />
+    <link rel="next" title="Key-values" href="11_KV.html" />
+    <link rel="prev" title="Actions (Alerting scripts)" href="09_Actions.html" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="docsearch:language" content="None">
+    
+
+    <!-- Google Analytics -->
+    
+  </head>
+  <body data-spy="scroll" data-target="#bd-toc-nav" data-offset="60">
+<!-- Checkboxes to toggle the left sidebar -->
+<input type="checkbox" class="sidebar-toggle" name="__navigation" id="__navigation" aria-label="Toggle navigation sidebar">
+<label class="overlay overlay-navbar" for="__navigation">
+    <div class="visually-hidden">Toggle navigation sidebar</div>
+</label>
+<!-- Checkboxes to toggle the in-page toc -->
+<input type="checkbox" class="sidebar-toggle" name="__page-toc" id="__page-toc" aria-label="Toggle in-page Table of Contents">
+<label class="overlay overlay-pagetoc" for="__page-toc">
+    <div class="visually-hidden">Toggle in-page Table of Contents</div>
+</label>
+<!-- Headers at the top -->
+<div class="announcement header-item noprint"></div>
+<div class="header header-item noprint"></div>
+
+    
+    <div class="container-fluid" id="banner"></div>
+
+    
+
+    <div class="container-xl">
+      <div class="row">
+          
+<!-- Sidebar -->
+<div class="bd-sidebar noprint" id="site-navigation">
+    <div class="bd-sidebar__content">
+        <div class="bd-sidebar__top"><div class="navbar-brand-box">
+    <a class="navbar-brand text-wrap" href="../index.html">
+      
+        <!-- `logo` is deprecated in Sphinx 4.0, so remove this when we stop supporting 3 -->
+        
+      
+      
+      <img src="../_static/logo.png" class="logo" alt="logo">
+      
+      
+    </a>
+</div><form class="bd-search d-flex align-items-center" action="../search.html" method="get">
+  <i class="icon fas fa-search"></i>
+  <input type="search" class="form-control" name="q" id="search-input" placeholder="Search the docs ..." aria-label="Search the docs ..." autocomplete="off" >
+</form><nav class="bd-links" id="bd-docs-nav" aria-label="Main">
+    <div class="bd-toc-item active">
+        <ul class="current nav bd-sidenav">
+ <li class="toctree-l1 has-children">
+  <a class="reference internal" href="../getting_started/index.html">
+   Getting Started
+  </a>
+  <input checked class="toctree-checkbox" id="toctree-checkbox-1" name="toctree-checkbox-1" type="checkbox"/>
+  <label for="toctree-checkbox-1">
+   <i class="fas fa-chevron-down">
+   </i>
+  </label>
+  <ul>
+   <li class="toctree-l2">
+    <a class="reference internal" href="../getting_started/01_Installation.html">
+     Installation on RHEL/Debian
+    </a>
+   </li>
+   <li class="toctree-l2">
+    <a class="reference internal" href="../getting_started/02_Docker.html">
+     Docker deployment
+    </a>
+   </li>
+   <li class="toctree-l2">
+    <a class="reference internal" href="../getting_started/03_Login.html">
+     Log in to the web interface
+    </a>
+   </li>
+  </ul>
+ </li>
+ <li class="toctree-l1 current active has-children">
+  <a class="reference internal" href="index.html">
+   General
+  </a>
+  <input checked class="toctree-checkbox" id="toctree-checkbox-2" name="toctree-checkbox-2" type="checkbox"/>
+  <label for="toctree-checkbox-2">
+   <i class="fas fa-chevron-down">
+   </i>
+  </label>
+  <ul class="current">
+   <li class="toctree-l2">
+    <a class="reference internal" href="01_Architecture.html">
+     Architecture
+    </a>
+   </li>
+   <li class="toctree-l2">
+    <a class="reference internal" href="03_Users.html">
+     User creation and permissions
+    </a>
+   </li>
+   <li class="toctree-l2">
+    <a class="reference internal" href="04_Inputs.html">
+     Inject logs into Snooze server
+    </a>
+   </li>
+   <li class="toctree-l2">
+    <a class="reference internal" href="05_Rules.html">
+     Rules
+    </a>
+   </li>
+   <li class="toctree-l2">
+    <a class="reference internal" href="06_AggregateRules.html">
+     Aggregate Rules
+    </a>
+   </li>
+   <li class="toctree-l2">
+    <a class="reference internal" href="07_Snooze.html">
+     Snooze filters
+    </a>
+   </li>
+   <li class="toctree-l2">
+    <a class="reference internal" href="08_Notifications.html">
+     Notifications
+    </a>
+   </li>
+   <li class="toctree-l2">
+    <a class="reference internal" href="09_Actions.html">
+     Actions (Alerting scripts)
+    </a>
+   </li>
+   <li class="toctree-l2 current active">
+    <a class="current reference internal" href="#">
+     Manage alerts
+    </a>
+   </li>
+   <li class="toctree-l2">
+    <a class="reference internal" href="11_KV.html">
+     Key-values
+    </a>
+   </li>
+   <li class="toctree-l2">
+    <a class="reference internal" href="12_Conditions.html">
+     Conditions
+    </a>
+   </li>
+   <li class="toctree-l2">
+    <a class="reference internal" href="13_TimeConstraints.html">
+     Time Constraints
+    </a>
+   </li>
+   <li class="toctree-l2">
+    <a class="reference internal" href="14_Environments.html">
+     Environments
+    </a>
+   </li>
+   <li class="toctree-l2">
+    <a class="reference internal" href="15_Clustering.html">
+     Clustering
+    </a>
+   </li>
+   <li class="toctree-l2">
+    <a class="reference internal" href="16_Housekeeping.html">
+     Housekeeping
+    </a>
+   </li>
+   <li class="toctree-l2">
+    <a class="reference internal" href="17_QueryLanguage.html">
+     Query language
+    </a>
+   </li>
+   <li class="toctree-l2">
+    <a class="reference internal" href="18_Metrics.html">
+     Metrics
+    </a>
+   </li>
+   <li class="toctree-l2">
+    <a class="reference internal" href="19_Settings.html">
+     Settings
+    </a>
+   </li>
+  </ul>
+ </li>
+ <li class="toctree-l1 has-children">
+  <a class="reference internal" href="../advanced/index.html">
+   Advanced
+  </a>
+  <input checked class="toctree-checkbox" id="toctree-checkbox-3" name="toctree-checkbox-3" type="checkbox"/>
+  <label for="toctree-checkbox-3">
+   <i class="fas fa-chevron-down">
+   </i>
+  </label>
+  <ul>
+   <li class="toctree-l2">
+    <a class="reference internal" href="../advanced/01_Configuration.html">
+     Configuration
+    </a>
+   </li>
+  </ul>
+ </li>
+</ul>
+
+    </div>
+</nav></div>
+        <div class="bd-sidebar__bottom">
+             <!-- To handle the deprecated key -->
+            
+        </div>
+    </div>
+    <div id="rtd-footer-container"></div>
+</div>
+
+
+          
+
+
+          
+<!-- A tiny helper pixel to detect if we've scrolled -->
+<div class="sbt-scroll-pixel-helper"></div>
+<!-- Main content -->
+<div class="col py-0 content-container">
+    
+    <div class="header-article row sticky-top noprint">
+        
+
+
+
+<div class="col py-1 d-flex header-article-main">
+    <div class="header-article__left">
+        
+        <label for="__navigation"
+  class="headerbtn"
+  data-toggle="tooltip"
+data-placement="right"
+title="Toggle navigation"
+>
+  
+
+<span class="headerbtn__icon-container">
+  <i class="fas fa-bars"></i>
+  </span>
+
+</label>
+
+        
+    </div>
+    <div class="header-article__right">
+<button onclick="toggleFullScreen()"
+  class="headerbtn"
+  data-toggle="tooltip"
+data-placement="bottom"
+title="Fullscreen mode"
+>
+  
+
+<span class="headerbtn__icon-container">
+  <i class="fas fa-expand"></i>
+  </span>
+
+</button>
+
+<div class="menu-dropdown menu-dropdown-repository-buttons">
+  <button class="headerbtn menu-dropdown__trigger"
+      aria-label="Source repositories">
+      <i class="fab fa-github"></i>
+  </button>
+  <div class="menu-dropdown__content">
+    <ul>
+      <li>
+        <a href="https://github.com/snoozeweb/snooze"
+   class="headerbtn"
+   data-toggle="tooltip"
+data-placement="left"
+title="Source repository"
+>
+  
+
+<span class="headerbtn__icon-container">
+  <i class="fab fa-github"></i>
+  </span>
+<span class="headerbtn__text-container">repository</span>
+</a>
+
+      </li>
+      
+      <li>
+        <a href="https://github.com/snoozeweb/snooze/issues/new?title=Issue%20on%20page%20%2Fgeneral/10_Alerts.html&body=Your%20issue%20content%20here."
+   class="headerbtn"
+   data-toggle="tooltip"
+data-placement="left"
+title="Open an issue"
+>
+  
+
+<span class="headerbtn__icon-container">
+  <i class="fas fa-lightbulb"></i>
+  </span>
+<span class="headerbtn__text-container">open issue</span>
+</a>
+
+      </li>
+      
+    </ul>
+  </div>
+</div>
+
+<div class="menu-dropdown menu-dropdown-download-buttons">
+  <button class="headerbtn menu-dropdown__trigger"
+      aria-label="Download this page">
+      <i class="fas fa-download"></i>
+  </button>
+  <div class="menu-dropdown__content">
+    <ul>
+      <li>
+        <a href="../_sources/general/10_Alerts.rst.txt"
+   class="headerbtn"
+   data-toggle="tooltip"
+data-placement="left"
+title="Download source file"
+>
+  
+
+<span class="headerbtn__icon-container">
+  <i class="fas fa-file"></i>
+  </span>
+<span class="headerbtn__text-container">.rst</span>
+</a>
+
+      </li>
+      
+      <li>
+        
+<button onclick="printPdf(this)"
+  class="headerbtn"
+  data-toggle="tooltip"
+data-placement="left"
+title="Print to PDF"
+>
+  
+
+<span class="headerbtn__icon-container">
+  <i class="fas fa-file-pdf"></i>
+  </span>
+<span class="headerbtn__text-container">.pdf</span>
+</button>
+
+      </li>
+      
+    </ul>
+  </div>
+</div>
+<label for="__page-toc"
+  class="headerbtn headerbtn-page-toc"
+  
+>
+  
+
+<span class="headerbtn__icon-container">
+  <i class="fas fa-list"></i>
+  </span>
+
+</label>
+
+    </div>
+</div>
+
+<!-- Table of contents -->
+<div class="col-md-3 bd-toc show noprint">
+    <div class="tocsection onthispage pt-5 pb-3">
+        <i class="fas fa-list"></i> Contents
+    </div>
+    <nav id="bd-toc-nav" aria-label="Page">
+        <ul class="visible nav section-nav flex-column">
+ <li class="toc-h2 nav-item toc-entry">
+  <a class="reference internal nav-link" href="#overview">
+   Overview
+  </a>
+ </li>
+ <li class="toc-h2 nav-item toc-entry">
+  <a class="reference internal nav-link" href="#alert-states">
+   Alert states
+  </a>
+  <ul class="nav section-nav flex-column">
+   <li class="toc-h3 nav-item toc-entry">
+    <a class="reference internal nav-link" href="#acknowledge">
+     Acknowledge
+    </a>
+   </li>
+   <li class="toc-h3 nav-item toc-entry">
+    <a class="reference internal nav-link" href="#re-escalate">
+     Re-escalate
+    </a>
+   </li>
+   <li class="toc-h3 nav-item toc-entry">
+    <a class="reference internal nav-link" href="#close">
+     Close
+    </a>
+   </li>
+   <li class="toc-h3 nav-item toc-entry">
+    <a class="reference internal nav-link" href="#re-open">
+     Re-open
+    </a>
+   </li>
+  </ul>
+ </li>
+ <li class="toc-h2 nav-item toc-entry">
+  <a class="reference internal nav-link" href="#alerts-ttl">
+   Alerts TTL
+  </a>
+  <ul class="nav section-nav flex-column">
+   <li class="toc-h3 nav-item toc-entry">
+    <a class="reference internal nav-link" href="#shelve">
+     Shelve
+    </a>
+   </li>
+  </ul>
+ </li>
+ <li class="toc-h2 nav-item toc-entry">
+  <a class="reference internal nav-link" href="#timeline">
+   Timeline
+  </a>
+ </li>
+</ul>
+
+    </nav>
+</div>
+    </div>
+    <div class="article row">
+        <div class="col pl-md-3 pl-lg-5 content-container">
+            <!-- Table of contents that is only displayed when printing the page -->
+            <div id="jb-print-docs-body" class="onlyprint">
+                <h1>Manage alerts</h1>
+                <!-- Table of contents -->
+                <div id="print-main-content">
+                    <div id="jb-print-toc">
+                        
+                        <div>
+                            <h2> Contents </h2>
+                        </div>
+                        <nav aria-label="Page">
+                            <ul class="visible nav section-nav flex-column">
+ <li class="toc-h2 nav-item toc-entry">
+  <a class="reference internal nav-link" href="#overview">
+   Overview
+  </a>
+ </li>
+ <li class="toc-h2 nav-item toc-entry">
+  <a class="reference internal nav-link" href="#alert-states">
+   Alert states
+  </a>
+  <ul class="nav section-nav flex-column">
+   <li class="toc-h3 nav-item toc-entry">
+    <a class="reference internal nav-link" href="#acknowledge">
+     Acknowledge
+    </a>
+   </li>
+   <li class="toc-h3 nav-item toc-entry">
+    <a class="reference internal nav-link" href="#re-escalate">
+     Re-escalate
+    </a>
+   </li>
+   <li class="toc-h3 nav-item toc-entry">
+    <a class="reference internal nav-link" href="#close">
+     Close
+    </a>
+   </li>
+   <li class="toc-h3 nav-item toc-entry">
+    <a class="reference internal nav-link" href="#re-open">
+     Re-open
+    </a>
+   </li>
+  </ul>
+ </li>
+ <li class="toc-h2 nav-item toc-entry">
+  <a class="reference internal nav-link" href="#alerts-ttl">
+   Alerts TTL
+  </a>
+  <ul class="nav section-nav flex-column">
+   <li class="toc-h3 nav-item toc-entry">
+    <a class="reference internal nav-link" href="#shelve">
+     Shelve
+    </a>
+   </li>
+  </ul>
+ </li>
+ <li class="toc-h2 nav-item toc-entry">
+  <a class="reference internal nav-link" href="#timeline">
+   Timeline
+  </a>
+ </li>
+</ul>
+
+                        </nav>
+                    </div>
+                </div>
+            </div>
+            <main id="main-content" role="main">
+                
+              <div>
+                
+  <section id="manage-alerts">
+<span id="alerts"></span><h1>Manage alerts<a class="headerlink" href="#manage-alerts" title="Permalink to this headline">#</a></h1>
+<figure class="align-center">
+<a class="reference external image-reference" href="../_images/web_alerts.png"><img alt="../_images/web_alerts.png" src="../_images/web_alerts.png" /></a>
+</figure>
+<section id="overview">
+<h2>Overview<a class="headerlink" href="#overview" title="Permalink to this headline">#</a></h2>
+<p>This page will list all the tools available to manage alerts.</p>
+<p>Alerts that have not been <a class="reference internal" href="07_Snooze.html#snooze-filters"><span class="std std-ref">snoozed</span></a>, <a class="reference internal" href="#id1"><span class="std std-ref">acknowledged</span></a> or <a class="reference internal" href="#id2"><span class="std std-ref">closed</span></a> will be displayed under the first tab of the <strong>Alerts</strong> page on the web interface.</p>
+<p>Alerts that have been snoozed will be displayed under the <strong>Snoozed</strong> tab on the same page.</p>
+<p>Alerts that have been <a class="reference internal" href="#reescalate"><span class="std std-ref">re-escalated</span></a> or <a class="reference internal" href="#reopen"><span class="std std-ref">re-opened</span></a>  will be displayed under the <strong>Re-escalated</strong> tab on the same page.</p>
+<p>Alerts that have been <a class="reference internal" href="#id2"><span class="std std-ref">closed</span></a> will be displayed under the <strong>Closed</strong> tab on the same page.</p>
+<p>Alerts that have been <a class="reference internal" href="#id3"><span class="std std-ref">shelved</span></a> will be displayed under the <strong>Shelved</strong> tab on the same page.</p>
+</section>
+<section id="alert-states">
+<h2>Alert states<a class="headerlink" href="#alert-states" title="Permalink to this headline">#</a></h2>
+<p>User interaction allows an alert to switch between states. Here are the different states an alert can have:</p>
+<dl class="field-list simple">
+<dt class="field-odd"><code class="docutils literal notranslate"><span class="pre">-</span></code></dt>
+<dd class="field-odd"><p>A new alert will always have no initial state, meaning nobody has interacted with it yet.</p>
+</dd>
+<dt class="field-even"><code class="docutils literal notranslate"><span class="pre">ack</span></code></dt>
+<dd class="field-even"><p><a class="reference internal" href="#id1"><span class="std std-ref">Acknowledged</span></a>.</p>
+</dd>
+<dt class="field-odd"><code class="docutils literal notranslate"><span class="pre">esc</span></code></dt>
+<dd class="field-odd"><p><a class="reference internal" href="#reescalate"><span class="std std-ref">Re-escalated</span></a>.</p>
+</dd>
+<dt class="field-even"><code class="docutils literal notranslate"><span class="pre">close</span></code></dt>
+<dd class="field-even"><p><a class="reference internal" href="#id2"><span class="std std-ref">Closed</span></a>.</p>
+</dd>
+<dt class="field-odd"><code class="docutils literal notranslate"><span class="pre">open</span></code></dt>
+<dd class="field-odd"><p><a class="reference internal" href="#reopen"><span class="std std-ref">Re-opened</span></a>.</p>
+</dd>
+</dl>
+<section id="acknowledge">
+<h3>Acknowledge<a class="headerlink" href="#acknowledge" title="Permalink to this headline">#</a></h3>
+<p id="id1">Used to let people know that someone is taking care of the issue related to the alert.</p>
+<p>Acknowledged alerts will stop getting <a class="reference internal" href="08_Notifications.html#id2"><span class="std std-ref">notified</span></a>.</p>
+</section>
+<section id="re-escalate">
+<h3>Re-escalate<a class="headerlink" href="#re-escalate" title="Permalink to this headline">#</a></h3>
+<p id="reescalate">After being acknowledged, an alert can get re-escalated.</p>
+<p>It can be done automatically by an <a class="reference internal" href="06_AggregateRules.html#aggregate-rules"><span class="std std-ref">aggregate rule</span></a> after the throttle period ended or a field from the watchlist got updated.</p>
+<p>It can be done manually by the user to have the alert go through the full processing once more, meaning it can get notified again or snoozed.
+<a class="reference internal" href="05_Rules.html#id2"><span class="std std-ref">Modifications</span></a> can be applied to the alert beforehand.</p>
+</section>
+<section id="close">
+<h3>Close<a class="headerlink" href="#close" title="Permalink to this headline">#</a></h3>
+<p id="id2">Used to let people know that the issue related to the alert is resolved.</p>
+<p>Alerts can get closed automatically if their <strong>severity</strong> field is in the list of defined <strong>OK Severities</strong> in <a class="reference internal" href="19_Settings.html#settings"><span class="std std-ref">Settings</span></a></p>
+<p>Closed alerts will stop getting <a class="reference internal" href="08_Notifications.html#id2"><span class="std std-ref">notified</span></a>.</p>
+</section>
+<section id="re-open">
+<h3>Re-open<a class="headerlink" href="#re-open" title="Permalink to this headline">#</a></h3>
+<p id="reopen">After being closed, an alert can get re-opened.</p>
+<p>It can be done automatically by an <a class="reference internal" href="06_AggregateRules.html#aggregate-rules"><span class="std std-ref">aggregate rule</span></a> if the same alert is observed regardless of the throttle period.</p>
+<p>It can be done manually by the user to have the alert go through the full processing once more, meaning it can get notified again or snoozed.
+<a class="reference internal" href="05_Rules.html#id2"><span class="std std-ref">Modifications</span></a> can be applied to the alert beforehand.</p>
+</section>
+</section>
+<section id="alerts-ttl">
+<h2>Alerts TTL<a class="headerlink" href="#alerts-ttl" title="Permalink to this headline">#</a></h2>
+<p>Alerts are automatically cleaned up by the <a class="reference internal" href="16_Housekeeping.html#housekeeping"><span class="std std-ref">housekeeper</span></a> after a certain period of time called <strong>TTL</strong> (Time To Live)</p>
+<p>Default TTL is 172800 seconds (2 days). Check the housekeeper page for more information.</p>
+<section id="shelve">
+<h3>Shelve<a class="headerlink" href="#shelve" title="Permalink to this headline">#</a></h3>
+<p id="id3">A mean to keep some alerts from being deleted is to shelve them. The operation actually deletes their <strong>TTL</strong> field.</p>
+</section>
+</section>
+<section id="timeline">
+<h2>Timeline<a class="headerlink" href="#timeline" title="Permalink to this headline">#</a></h2>
+<figure class="align-center">
+<img alt="../_images/web_alerts_ack.png" src="../_images/web_alerts_ack.png" />
+</figure>
+<p>By clicking on the grey arrow on an alert, a timeline appears. It contains a history of all events and user interactions related to the alert.
+There is a possibility to leave a comment as well. An admin can edit or delete any event. By deleting a state event (for example an acknowledgement), the alert goes back to its previous state.</p>
+</section>
+</section>
+
+
+              </div>
+              
+            </main>
+            <footer class="footer-article noprint">
+                
+    <!-- Previous / next buttons -->
+<div class='prev-next-area'>
+    <a class='left-prev' id="prev-link" href="09_Actions.html" title="previous page">
+        <i class="fas fa-angle-left"></i>
+        <div class="prev-next-info">
+            <p class="prev-next-subtitle">previous</p>
+            <p class="prev-next-title">Actions (Alerting scripts)</p>
+        </div>
+    </a>
+    <a class='right-next' id="next-link" href="11_KV.html" title="next page">
+    <div class="prev-next-info">
+        <p class="prev-next-subtitle">next</p>
+        <p class="prev-next-title">Key-values</p>
+    </div>
+    <i class="fas fa-angle-right"></i>
+    </a>
+</div>
+            </footer>
+        </div>
+    </div>
+    <div class="footer-content row">
+        <footer class="col footer"><p>
+  
+    By Florian Dematraz, Guillaume Ludinard<br/>
+  
+      &copy; Copyright 2022, Florian Dematraz, Guillaume Ludinard.<br/>
+</p>
+        </footer>
+    </div>
+    
+</div>
+
+
+      </div>
+    </div>
+  
+  <!-- Scripts loaded after <body> so the DOM is not blocked -->
+  <script src="../_static/scripts/pydata-sphinx-theme.js?digest=1999514e3f237ded88cf"></script>
+
+
+  </body>
+</html>

@@ -32,11 +32,13 @@ form:
     dict:
         display_name: Dictionary
         component: String
+        required: true
         description: Name of the dictionary in which to add the key-value
     key:
         display_name: Key
         component: String
-        description: Key of the dictionary. Existing keys will be overritten.
+        required: true
+        description: Key of the dictionary. Existing keys will be overritten
     value:
         display_name: Value
         component: String
