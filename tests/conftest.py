@@ -17,7 +17,7 @@ from falcon.testing import TestClient
 from pytest_data.functions import get_data
 
 from snooze.db.database import Database
-from snooze.core import Core
+from snooze.core import Core, MAIN_THREADS
 from snooze.utils.config import Config
 
 log = getLogger('tests')
@@ -74,7 +74,8 @@ def fixture_db(config, request) -> Database:
 @mongomock.patch('mongodb://localhost:27017')
 def fixture_core(config, request) -> Core:
     '''Fixture returning a Core'''
-    core = Core(config.basedir)
+    allowed_threads = get_data(request, 'allowed_threads') or MAIN_THREADS
+    core = Core(config.basedir, allowed_threads)
     write_data(core.db, request)
     return core
 
