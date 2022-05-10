@@ -65,6 +65,8 @@ responses = "^0.20.0"
 virtualenv = "^20.8.1"
 invoke = "^1.6.0"
 toml = "^0.10.2"
+Sphinx = "^4"
+sphinx-book-theme = "^0.3.2"
 
 [tool.pylint.MASTER]
 load-plugins = ['pylint_pydantic']

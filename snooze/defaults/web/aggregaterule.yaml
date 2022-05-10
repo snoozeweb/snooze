@@ -65,7 +65,7 @@ form:
     watch:
         display_name: Watch
         component: Field
-        description: List of fields to bypass aggregation if they get updated
+        description: List of fields to bypass the throttle period if they get updated
     throttle:
         display_name: Throttle
         component: Duration
