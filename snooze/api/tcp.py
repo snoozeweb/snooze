@@ -66,6 +66,10 @@ class TcpWsgiServer(ThreadingMixIn, WSGIServer):
                 keyfile=self.ssl.keyfile,
             )
 
+class TcpServerError(RuntimeError):
+    '''A wrapped exception to have the host:port information'''
+    def __init__(self, host: str, port: int, err: Exception):
+        RuntimeError.__init__(self, f"Erro binding to `{host}:{port}`: {err}")
 
 class TcpThread(SurvivingThread):
     '''A TCP thread to manage the multi-threaded TCP server.'''
@@ -87,8 +91,12 @@ class TcpThread(SurvivingThread):
         # The WSGIServer is binding on init. This is very inconvenient
         # for many use-cases (testing, etc). So we're manking this thread
         # cheap to initialize.
+        try:
             self.server = TcpWsgiServer(*self.tcp_config, self.api)
             self.server.serve_forever()
+        except OSError as err:
+            host, port, _ = self.tcp_config
+            raise TcpServerError(host, port, err) from err
 
     def stop_thread(self):
         '''Gracefully stop the service'''
