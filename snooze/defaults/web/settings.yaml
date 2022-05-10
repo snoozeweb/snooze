@@ -3,16 +3,12 @@ tabs:
     -
         key: 'general'
         name: 'General'
-        reload:
-            auth_backends: ['local']
     -
         key: 'notifications'
         name: 'Notifications'
     -
         key: 'ldap_auth'
         name: 'LDAP'
-        reload:
-            auth_backends: ['ldap']
     -
         key: 'housekeeping'
         name: 'Housekeeping'

@@ -9,9 +9,9 @@ import hashlib
 from logging import getLogger
 
 import falcon
+from pydantic import ValidationError
 
 from snooze.api.base import BasicRoute
-from snooze.utils import config
 from snooze.api.falcon import authorize
 
 log = getLogger('snooze.api')
@@ -19,40 +19,33 @@ log = getLogger('snooze.api')
 class SettingsRoute(BasicRoute):
     @authorize
     def on_get(self, req, resp, conf=''):
-        c = req.params.get('c') or conf
-        checksum = req.params.get('checksum')
-        log.debug("Loading config file %s", c)
-        result_dict = config(c)
+        '''Fetch a config file data.
+        Secrets are protected thanks to the `Field(exclude=True)` of pydantic.
+        ValidationError are server side errors (the local config file is broken)'''
+
         resp.content_type = falcon.MEDIA_JSON
-        if result_dict:
-            result_dict = {k:v for k,v in result_dict.items() if 'password' not in k}
-            dict_checksum = hashlib.md5(repr([result_dict]).encode('utf-8')).hexdigest()
-            if checksum != dict_checksum:
-                result = {'data': [result_dict], 'count': 1, 'checksum': dict_checksum}
-            else:
-                result = {'count': 0}
-            resp.media = result
-            if 'error' in result_dict.keys():
-                resp.status = falcon.HTTP_503
-            else:
-                resp.status = falcon.HTTP_200
-        else:
-            resp.media = {}
-            resp.status = falcon.HTTP_404
+
+        section = req.params.get('c') or conf
+        log.debug("Loading config file %s", section)
+        try:
+            config = self.core.config[section]
+            resp.media = {'data': config.dict()}
+            resp.status = falcon.HTTP_OK
+        except KeyError:
+            raise falcon.HTTPNotFound(description=f"Unknown config section '{section}'")
+        except ValidationError as err:
+            raise falcon.HTTPInternalServerError(
+                description=f"Config section '{section}' is invalid on the server: {err}") from err
 
     @authorize
     def on_put(self, req, resp, conf=''):
-        c = req.params.get('c') or conf
+        '''Rewrite a setting section on the server'''
+
         resp.content_type = falcon.MEDIA_JSON
-        try:
-            log.debug("Trying write to configfile %s: %s", c, req.media)
-            media = req.media[0].copy()
-            media_config = {k:v for k,v in media.get('conf', {}).items() if ('password' not in k) or v}
-            results = self.api.write_and_reload(c, media_config, media.get('reload'), True)
-            result = {'data': results.get('text', '')}
-            resp.media = result
-            resp.status = results.get('status', falcon.HTTP_503)
-        except Exception as err:
-            log.exception(err)
-            resp.media = {}
-            resp.status = falcon.HTTP_404
+
+        section = req.params.get('c') or conf
+        media = req.media[0].copy()
+        results = self.api.write_and_reload(section, media, True)
+        result = {'data': results.get('text', '')}
+        resp.media = result
+        resp.status = results.get('status', falcon.HTTP_503)
