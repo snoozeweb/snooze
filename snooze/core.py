@@ -20,6 +20,7 @@ from threading import Event
 from typing import Dict, Optional
 from pkg_resources import iter_entry_points
 from pathlib import Path
+from typing import List
 
 from dateutil import parser
 
@@ -39,9 +40,11 @@ from snooze.utils.typing import Record
 
 log = getLogger('snooze')
 
+MAIN_THREADS = ('housekeeper', 'cluster', 'tcp', 'socket')
+
 class Core:
     '''The main class of snooze, passed to all plugins'''
-    def __init__(self, basedir: Path = SNOOZE_CONFIG):
+    def __init__(self, basedir: Path = SNOOZE_CONFIG, allowed_threads: List[str] = MAIN_THREADS):
         self.basedir = basedir
         self.config = Config(basedir)
         core_config = self.config.core
@@ -66,11 +69,15 @@ class Core:
         self.token_engine = TokenEngine(self.secrets['jwt_private_key'])
 
         self.threads:  Dict[str, SurvivingThread] = {}
-        self.threads['housekeeper'] = Housekeeper(self.config.housekeeper, self.config.core.backup, self.db, self.exit_event)
-        self.threads['cluster'] = Cluster(self.config.core, self.secrets['reload_token'], self.exit_event)
+        if 'housekeeper' in allowed_threads:
+            self.threads['housekeeper'] = Housekeeper(self.config.housekeeper,
+                self.config.core.backup, self.db, self.exit_event)
+        if 'cluster' in allowed_threads:
+            self.threads['cluster'] = Cluster(self.config.core, self.secrets['reload_token'], self.exit_event)
+
         self.mq = MQManager(self)
 
-        if core_config.unix_socket:
+        if 'socket' in allowed_threads and core_config.unix_socket:
             try:
                 admin_app = admin_api(self.token_engine)
                 self.threads['socket'] = WSGISocketServer(admin_app, core_config.unix_socket, self.exit_event)
@@ -84,8 +91,10 @@ class Core:
 
         self.api = Api(self)
         self.api.load_plugin_routes()
-        tcp_config = core_config.listen_addr, core_config.port, core_config.ssl
-        self.threads['tcp'] = TcpThread(tcp_config, self.api.handler, self.exit_event)
+
+        if 'tcp' in allowed_threads:
+            tcp_config = core_config.listen_addr, core_config.port, core_config.ssl
+            self.threads['tcp'] = TcpThread(tcp_config, self.api.handler, self.exit_event)
 
     def load_plugins(self):
         '''Load the plugins from the configuration'''
