@@ -69,7 +69,7 @@ class TcpWsgiServer(ThreadingMixIn, WSGIServer):
 class TcpServerError(RuntimeError):
     '''A wrapped exception to have the host:port information'''
     def __init__(self, host: str, port: int, err: Exception):
-        RuntimeError.__init__(self, f"Erro binding to `{host}:{port}`: {err}")
+        RuntimeError.__init__(self, f"Error binding to `{host}:{port}`: {err}")
 
 class TcpThread(SurvivingThread):
     '''A TCP thread to manage the multi-threaded TCP server.'''

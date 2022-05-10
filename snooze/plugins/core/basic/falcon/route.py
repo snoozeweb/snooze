@@ -252,7 +252,7 @@ class Route(FalconRoute):
 
 def sanitize(obj):
     '''Remove certain fields from an object to make the display more human readable'''
-    excluded_fields = ['date_epoch', 'audit_increment', 'snooze_user']
+    excluded_fields = ['date_epoch', 'snooze_user']
     fields_to_remove = []
     for field in obj.keys():
         if field.startswith('_') or field in excluded_fields:
