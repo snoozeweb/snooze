@@ -1,7 +1,0 @@
-default_auth_backend: local
-local_users_enabled: true
-metrics_enabled: true
-anonymous_enabled: false
-ok_severities:
-    - ok
-    - success

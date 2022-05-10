@@ -38,10 +38,12 @@ tinydb = "4.5.2"
 waitress = "^2.0.0"
 netifaces = "^0.11.0"
 kombu = "^5.1.0"
+pydantic = "^1.9.0"
 
 [tool.poetry.group.lint.dependencies]
 pylint = "^2.11.1"
 pyright = "^1.1.238"
+pylint-pydantic = "^0.1.4"
 
 [tool.poetry.group.security.dependencies]
 bandit = "^1.7.0"
@@ -62,10 +64,15 @@ virtualenv = "^20.8.1"
 invoke = "^1.6.0"
 toml = "^0.10.2"
 
-[tool.pylint.format]
-max-line-length = 120
-extension-pkg-whitelist = ['falcon', 'netifaces']
+[tool.pylint.MASTER]
+load-plugins = ['pylint_pydantic']
+extension-pkg-whitelist = ['falcon', 'netifaces', 'pydantic']
+
+[tool.pylint."MESSAGE CONTROL"]
 disable = ['no-else-return']
+
+[tool.pylint.FORMAT]
+max-line-length = 120
 
 [tool.pyright]
 typeCheckingMode = "strict"

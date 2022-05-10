@@ -5,29 +5,23 @@
 # SPDX-License-Identifier: AFL-3.0
 #
 
-import mongomock
-from snooze.db.database import Database
+from datetime import datetime, timezone
+from logging import getLogger
 
 import dateutil
+import mongomock
 import yaml
-from datetime import datetime, timezone
 from freezegun import freeze_time
 
-from logging import getLogger
-log = getLogger('snooze.tests')
+from snooze.db.database import Database
 
-with open('./examples/mongo.yaml', 'r') as f:
-    default_config = yaml.load(f.read())
+log = getLogger('tests')
 
-@mongomock.patch('mongodb://localhost:27017')
-def test_mongo_all():
-    db = Database(default_config.get('database'))
+def test_mongo_all(db):
     db.write('record', {'a': '1', 'b': '2'})
     assert db.search('record')['data'][0].items() >= {'a': '1', 'b': '2'}.items()
 
-@mongomock.patch('mongodb://localhost:27017')
-def test_mongo_search():
-    db = Database(default_config.get('database'))
+def test_mongo_search(db):
     db.write('record', [{'a': 1, 'b': 2, 'd': 1},{'a': 30, 'b': 40, 'c': 'tata', 'd': 1}])
     search1 = ['AND', ['=', 'a', 1], ['!=', 'b', 40]]
     result1 = db.search('record', search1)['count']
@@ -57,16 +51,12 @@ def test_mongo_search():
     assert result8 == 0
     assert result9 == 1
 
-@mongomock.patch('mongodb://localhost:27017')
-def test_mongo_search_and_or():
-    db = Database(default_config.get('database'))
+def test_mongo_search_and_or(db):
     db.write('record', [{'a': 1, 'b': 2, 'c': 3}, {'c': 3}])
     assert db.search('record', ['AND', ['=', 'a', 1], ['=', 'b', 2], ['=', 'c', 3]])['count'] == 1
     assert db.search('record', ['OR', ['!=', 'a', 1], ['!=', 'b', 2], ['=', 'c', 3]])['count'] == 2
 
-@mongomock.patch('mongodb://localhost:27017')
-def test_mongo_search_contains():
-    db = Database(default_config.get('database'))
+def test_mongo_search_contains(db):
     db.write('record', [{'a': ['00', '11', '22', 9]}, {'a': ['00', '1', '2']}, {'a': ['00', '1', '4']}, {'b': '5'}])
     result1 = db.search('record', ['CONTAINS', 'a', '1'])['data']
     result2 = db.search('record', ['CONTAINS', 'a', ['2', '4']])['data']
@@ -74,9 +64,7 @@ def test_mongo_search_contains():
     result4 = db.search('record', ['CONTAINS', 'a', 9])['data']
     assert len(result1) == 3 and len(result2) == 3 and len(result3) == 1 and len(result4) == 1
 
-@mongomock.patch('mongodb://localhost:27017')
-def test_mongo_search_in():
-    db = Database(default_config.get('database'))
+def test_mongo_search_in(db):
     db.write('record', [{'a': ['00', '11', '22', 9]}, {'a': ['00', '1', '2']}, {'a': ['00', '1', '4']}, {'b': '5'}])
     result1 = db.search('record', ['IN', '1', 'a'])['data']
     result2 = db.search('record', ['IN', ['2', '4'], 'a'])['data']
@@ -84,42 +72,32 @@ def test_mongo_search_in():
     result4 = db.search('record', ['IN', 9, 'a'])['data']
     assert len(result1) == 2 and len(result2) == 2 and len(result3) == 1 and len(result4) == 1
 
-@mongomock.patch('mongodb://localhost:27017')
-def test_mongo_search_in_query():
-    db = Database(default_config.get('database'))
+def test_mongo_search_in_query(db):
     db.write('record', [{'b': [{'x': '00'}, {'y':'1'}, {'z':'2'}]}, {'a': [{'x': '00'}, {'y':'1'}, {'z':'2'}]}, {'a': [{'x': '00'}, {'y':'1'}, {'z':'4'}]}])
     result1 = db.search('record', ['IN', ['=', 'y', '1'], 'b'])['data']
     result2 = db.search('record', ['IN', ['=', 'y', '1'], 'a'])['data']
     result3 = db.search('record', ['IN', ['OR', ['=', 'z', '2'], ['=', 'z', '4']], 'a'])['data']
     assert len(result1) == 1 and len(result2) == 2 and len(result3) == 2
 
-@mongomock.patch('mongodb://localhost:27017')
-def test_mongo_search_nested():
-   db = Database(default_config.get('database'))
+def test_mongo_search_nested(db):
    db.write('record', [{'a': [1, 2], 'b': {'c': 2, 'd': 3}}])
    assert len(db.search('record', ['=', 'b.c', 2])['data']) == 1
    assert len(db.search('record', ['=', 'a.1', 2])['data']) == 1
 
-@mongomock.patch('mongodb://localhost:27017')
-def test_mongo_search_page():
-    db = Database(default_config.get('database'))
+def test_mongo_search_page(db):
     db.write('record', [{'a': '1', 'b': '2'},{'a': '2', 'b': '2'},{'a': '3', 'b': '2'},{'a': '4', 'b': '2'},{'a': '5', 'b': '2'}])
     search = ['=', 'b', '2']
     result1 = db.search('record', search, nb_per_page=2)['data']
     result2 = db.search('record', search, nb_per_page=2, page_number=3)
     assert len(result1) == 2 and len(result2['data']) == 1 and result2['count'] == 5
 
-@mongomock.patch('mongodb://localhost:27017')
-def test_mongo_search_id():
-    db = Database(default_config.get('database'))
+def test_mongo_search_id(db):
     db.write('record', {'a': '1', 'b': '2'})
     uid = db.write('record', {'a': '1', 'b': '2'})['data']['added'][0]['uid']
     result = db.search('record', ['=', 'uid', uid])['data']
     assert len(result) == 1
 
-@mongomock.patch('mongodb://localhost:27017')
-def test_mongo_delete():
-    db = Database(default_config.get('database'))
+def test_mongo_delete(db):
     db.write('record', {'a': '1', 'b': '2'})
     db.write('record', {'a': '30', 'b': '40'})
     db.write('record', {'a': '100', 'b': '400'})
@@ -128,33 +106,25 @@ def test_mongo_delete():
     result = db.search('record', search1)['data']
     assert count == 2 and len(result) == 0
 
-@mongomock.patch('mongodb://localhost:27017')
-def test_mongo_delete_id():
-    db = Database(default_config.get('database'))
+def test_mongo_delete_id(db):
     db.write('record', {'a': '1', 'b': '2'})
     uid = db.write('record', {'a': '1', 'b': '2'})['data']['added'][0]['uid']
     count = db.delete('record', ['=', 'uid', uid])['count']
     assert count == 1
 
-@mongomock.patch('mongodb://localhost:27017')
-def test_mongo_delete_all_fail():
-    db = Database(default_config.get('database'))
+def test_mongo_delete_all_fail(db):
     db.write('record', {'a': '1', 'b': '2'})
     db.write('record', {'a': '30', 'b': '40'})
     count = db.delete('record', {})['count']
     assert count == 0
 
-@mongomock.patch('mongodb://localhost:27017')
-def test_mongo_delete_all_force():
-    db = Database(default_config.get('database'))
+def test_mongo_delete_all_force(db):
     db.write('record', {'a': '1', 'b': '2'})
     db.write('record', {'a': '30', 'b': '40'})
     count = db.delete('record', {}, True)['count']
     assert count == 2
 
-@mongomock.patch('mongodb://localhost:27017')
-def test_mongo_update_uid_with_primary():
-    db = Database(default_config.get('database'))
+def test_mongo_update_uid_with_primary(db):
     uid = db.write('record', {'a': '1', 'b': '2'}, 'a')['data']['added'][0]['uid']
     result = db.search('record', ['=', 'uid', uid])['data']
     result[0]['a'] = '2'
@@ -162,18 +132,14 @@ def test_mongo_update_uid_with_primary():
     result = db.search('record')['data']
     assert len(result) == 1 and len(updated) == 1 and result[0].items() >= {'a': '2', 'b': '2'}.items()
 
-@mongomock.patch('mongodb://localhost:27017')
-def test_mongo_replace_uid_with_primary():
-    db = Database(default_config.get('database'))
+def test_mongo_replace_uid_with_primary(db):
     uid = db.write('record', {'a': '1', 'b': '2'}, 'a')['data']['added'][0]['uid']
     result = db.search('record', ['=', 'uid', uid])['data']
     del result[0]['b']
     replaced = db.write('record', result, 'a', 'replace')['data']['replaced']
     assert len(replaced) == 1 and 'b' not in replaced[0]
 
-@mongomock.patch('mongodb://localhost:27017')
-def test_mongo_update_uid_duplicate_primary():
-    db = Database(default_config.get('database'))
+def test_mongo_update_uid_duplicate_primary(db):
     db.write('record', {'a': {'b': '1', 'c': '1'}}, 'a.b')
     uid = db.write('record', {'a': {'b': '2', 'c': '2'}}, 'a.b')['data']['added'][0]['uid']
     result = db.search('record', ['=', 'uid', uid])['data']
@@ -181,9 +147,7 @@ def test_mongo_update_uid_duplicate_primary():
     rejected = db.write('record', result, 'a.b')['data']['rejected']
     assert len(rejected) == 1
 
-@mongomock.patch('mongodb://localhost:27017')
-def test_mongo_update_uid_constant():
-    db = Database(default_config.get('database'))
+def test_mongo_update_uid_constant(db):
     uid = db.write('record', {'a': '1', 'b': '2', 'c': 3})['data']['added'][0]['uid']
     result = db.search('record', ['=', 'uid', uid])['data']
     result[0]['c'] = '4'
@@ -192,47 +156,35 @@ def test_mongo_update_uid_constant():
     rejected = db.write('record', result, constant=['a','b'])['data']['rejected']
     assert len(updated) == 1 and len(rejected) == 1
 
-@mongomock.patch('mongodb://localhost:27017')
-def test_mongo_update_primary_constant():
-    db = Database(default_config.get('database'))
+def test_mongo_update_primary_constant(db):
     db.write('record', {'a': '1', 'b': '2', 'c': 3}, 'a')['data']['added'][0]['uid']
     updated = db.write('record',  {'a': '1', 'b': '2', 'c': 4}, 'a', constant='b')['data']['updated']
     rejected = db.write('record', {'a': '1', 'b': '1', 'c': 4}, 'a', constant='b')['data']['rejected']
     assert len(updated) == 1 and len(rejected) == 1
 
-@mongomock.patch('mongodb://localhost:27017')
-def test_mongo_primary_duplicate_update():
-    db = Database(default_config.get('database'))
+def test_mongo_primary_duplicate_update(db):
     db.write('record', {'a': '1', 'b': '2'})
     updated = db.write('record', {'a': '1', 'b': '3'}, 'a')['data']['updated']
     result = db.search('record')['data']
     assert len(result) == 1 and len(updated) == 1 and result[0].items() >= {'a': '1', 'b': '3'}.items()
 
-@mongomock.patch('mongodb://localhost:27017')
-def test_mongo_primary_duplicate_insert():
-    db = Database(default_config.get('database'))
+def test_mongo_primary_duplicate_insert(db):
     db.write('record', {'a': '1', 'b': '2'})
     added = db.write('record', {'a': '1', 'b': '3'}, 'a', 'insert')['data']['added']
     result = db.search('record')['data']
     assert len(result) == 2 and len(added) == 1
 
-@mongomock.patch('mongodb://localhost:27017')
-def test_mongo_primary_duplicate_reject():
-    db = Database(default_config.get('database'))
+def test_mongo_primary_duplicate_reject(db):
     db.write('record', {'a': '1', 'b': '2'})
     rejected = db.write('record', {'a': '1', 'b': '3'}, 'a', 'reject')['data']['rejected']
     assert len(rejected) == 1
 
-@mongomock.patch('mongodb://localhost:27017')
-def test_mongo_primary_duplicate_replace():
-    db = Database(default_config.get('database'))
+def test_mongo_primary_duplicate_replace(db):
     db.write('record', {'a': '1', 'b': '2'})
     replaced = db.write('record', {'a': '1'}, 'a', 'replace')['data']['replaced']
     assert len(replaced) == 1 and 'b' not in replaced[0]
 
-@mongomock.patch('mongodb://localhost:27017')
-def test_mongo_multiple_primary_update():
-    db = Database(default_config.get('database'))
+def test_mongo_multiple_primary_update(db):
     db.write('record', {'a': '1', 'b': '1'})
     db.write('record', {'a': '1', 'b': '2'})
     db.write('record', {'a': '1', 'b': '3'})
@@ -240,38 +192,28 @@ def test_mongo_multiple_primary_update():
     result = db.search('record',  ['=', 'b', '2'])['data']
     assert len(result) == 1 and result[0].items() >= {'a': '1', 'b': '2', 'c': '3'}.items()
 
-@mongomock.patch('mongodb://localhost:27017')
-def test_mongo_sort():
-    db = Database(default_config.get('database'))
+def test_mongo_sort(db):
     db.write('record', [{'a': '1', 'b': '2'},{'a': '3', 'b': '2'},{'a': '2', 'b': '2'},{'a': '5', 'b': '2'},{'a': '4', 'b': '2'}])
     result = db.search('record', orderby='a', asc=False)['data']
     assert result[0].items() >= {'a': '5', 'b': '2'}.items()
 
-@mongomock.patch('mongodb://localhost:27017')
-def test_mongo_sort_unknown():
-    db = Database(default_config.get('database'))
+def test_mongo_sort_unknown(db):
     db.write('record', [{'a': '1', 'b': '2'},{'a': '3', 'b': '2'},{'a': '2', 'b': '2'},{'a': '5', 'b': '2'},{'a': '4', 'b': '2'}])
     result = db.search('record', orderby='c', asc=False)['data']
     assert result[0].items() >= {'a': '1', 'b': '2'}.items()
 
-@mongomock.patch('mongodb://localhost:27017')
-def test_mongo_cleanup_timeout():
-    db = Database(default_config.get('database'))
+def test_mongo_cleanup_timeout(db):
     db.write('record', [{'a': '1', 'ttl': 0}, {'b': '1', 'ttl': 0}, {'c': '1', 'ttl': 1}, {'d': '1'}])
     deleted_count = db.cleanup_timeout('record')
     assert deleted_count == 2
 
-@mongomock.patch('mongodb://localhost:27017')
-def test_mongo_cleanup_orphans():
-    db = Database(default_config.get('database'))
+def test_mongo_cleanup_orphans(db):
     uids = [o['uid'] for o in db.write('record', [{'a': '1'}, {'b': '1'}])['data']['added']]
     db.write('comment', [{'record_uid': uids[0]}, {'record_uid': uids[1]}, {'record_uid': 'random'}])
     deleted_count = db.cleanup_orphans('comment', 'record_uid', 'record', 'uid')
     assert deleted_count == 1
 
-@mongomock.patch('mongodb://localhost:27017')
-def test_mongo_cleanup_audit_logs():
-    db = Database(default_config.get('database'))
+def test_mongo_cleanup_audit_logs(db):
     audits = [
         {'id': 'a', 'collection': 'rule', 'object_id': 'uid1', 'timestamp': '2022-01-01T10:00:00+09:00', 'action': 'added', 'username': 'john.doe', 'method': 'ldap'},
         {'id': 'b', 'collection': 'rule', 'object_id': 'uid2', 'timestamp': '2022-01-02T11:00:00+09:00', 'action': 'updated', 'username': 'root', 'method': 'root'},
@@ -291,9 +233,7 @@ def test_mongo_cleanup_audit_logs():
     assert len(s) == 3
     assert sorted(x['id'] for x in s) == ['a', 'b', 'c']
 
-@mongomock.patch('mongodb://localhost:27017')
-def test_mongo_inc():
-    db = Database(default_config.get('database'))
+def test_mongo_inc(db):
     db.inc('stats', 'metric_a')
     assert db.search('stats', ['=', 'key', 'metric_a'])['data'][0]['value'] == 1
     db.inc('stats', 'metric_a')
@@ -301,9 +241,7 @@ def test_mongo_inc():
     assert db.search('stats', ['=', 'key', 'metric_a'])['data'][0]['value'] == 2
     assert db.search('stats', ['=', 'key', 'metric_b'])['data'][0]['value'] == 1
 
-@mongomock.patch('mongodb://localhost:27017')
-def test_mongo_inc_labels():
-    db = Database(default_config.get('database'))
+def test_mongo_inc_labels(db):
     db.inc('stats', 'metric_a')
     assert db.search('stats')['data'][0]['value'] == 1
     db.inc('stats', 'metric_a', {'source': 'syslog'})

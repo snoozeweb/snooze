@@ -5,41 +5,34 @@
 # SPDX-License-Identifier: AFL-3.0
 #
 
-#!/usr/bin/python3.6
-
-from snooze.db.database import Database
-
 import dateutil
-import pytest
-from pathlib import Path
-from os import remove
 from datetime import datetime, timezone
-
-from freezegun import freeze_time
 from logging import getLogger
-log = getLogger('snooze.test.tinydb')
 
+import pytest
+import yaml
+from freezegun import freeze_time
 from tinydb import TinyDB, Query
 
-import yaml
+from snooze.db.database import Database
+from snooze.utils.config import FileConfig
 
-with open('./examples/local_db.yaml', 'r') as f:
-    default_config = yaml.load(f.read())
+log = getLogger('tests')
 
 @pytest.fixture(scope='function')
-def tinydb_file():
-    filename = './db_test.json'
-    Path(filename).touch()
-    yield filename
-    remove(filename)
+def config(tmp_path):
+    path = tmp_path / 'db.json'
+    cfg = FileConfig(path=path)
+    path.touch()
+    yield cfg
+    path.unlink()
 
 @pytest.fixture
-def db(tinydb_file):
-    config = {'type': 'file', 'path': tinydb_file}
+def db(config):
     return Database(config)
 
-def test_tinydb_base(tinydb_file):
-    db = TinyDB(tinydb_file)
+def test_tinydb_base(config):
+    db = TinyDB(config.path)
     db.insert({'a': '1'})
     db.insert({'b': '2'})
     Records = Query()

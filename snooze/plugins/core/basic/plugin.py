@@ -14,7 +14,7 @@ from abc import abstractmethod
 import yaml
 
 from snooze import __file__ as rootdir
-from snooze.utils.typing import Record, Config
+from snooze.utils.typing import Record
 
 log = getLogger('snooze')
 

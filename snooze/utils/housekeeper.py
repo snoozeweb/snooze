@@ -10,59 +10,66 @@
 import datetime
 import time
 from logging import getLogger
+from typing import Optional
+from threading import Event
 
-from snooze.utils import config
+from snooze.utils.config import HousekeeperConfig, BackupConfig
 from snooze.utils.threading import SurvivingThread
 
 log = getLogger('snooze.housekeeping')
 
 class Housekeeper(SurvivingThread):
     '''Main class starting the housekeeping thread in the background'''
-    def __init__(self, core: 'Core'):
+    def __init__(self,
+        config: HousekeeperConfig,
+        backup: BackupConfig,
+        db: 'Database',
+        exit_event: Optional[Event] = None,
+    ):
         log.debug('Init Housekeeper')
-        self.core = core
-        self.conf = None
+        self.db = db
+        self.config = config
+        self.backup = backup
         self.interval_record = None
         self.interval_comment = None
         self.interval_audit = None
         self.snooze_expired = None
         self.notification_expired = None
         self.reload()
-        SurvivingThread.__init__(self, core.exit_event)
+        SurvivingThread.__init__(self, exit_event)
 
     def reload(self):
         ''' Reload the housekeeper configuration'''
-        self.conf = config('housekeeping')
-        self.interval_record = self.conf.get('cleanup_alert', 300)
-        self.interval_comment = self.conf.get('cleanup_comment', 86400)
-        self.interval_audit = self.conf.get('cleanup_audit', 2419200)
-        self.snooze_expired = self.conf.get('cleanup_snooze', 259200)
-        self.notification_expired = self.conf.get('cleanup_notification', 259200)
-        log.debug("Reloading Housekeeper with conf %s", self.conf)
+        self.config.refresh()
+        self.interval_record = self.config.cleanup_alert.total_seconds()
+        self.interval_comment = self.config.cleanup_comment.total_seconds()
+        self.interval_audit = self.config.cleanup_audit.total_seconds()
+        self.snooze_expired = self.config.cleanup_snooze.total_seconds()
+        self.notification_expired = self.config.cleanup_notification.total_seconds()
+        log.debug("Reloading Housekeeper with conf %s", self.config)
 
     def start_thread(self):
-        timer_record = (1 - self.conf.get('trigger_on_startup', True)) * time.time()
+        timer_record = (1 - self.config.trigger_on_startup) * time.time()
         timer_comment = timer_record
         timer_audit = timer_record
         last_day = -1
         while not self.exit.wait(0.1):
             if self.interval_record > 0 and time.time() - timer_record >= self.interval_record:
                 timer_record = time.time()
-                self.core.db.cleanup_timeout('record')
+                self.db.cleanup_timeout('record')
             if self.interval_comment > 0 and time.time() - timer_comment >= self.interval_comment:
                 timer_comment = time.time()
-                self.core.db.cleanup_orphans('comment', 'record_uid', 'record', 'uid')
+                self.db.cleanup_orphans('comment', 'record_uid', 'record', 'uid')
             if self.interval_audit > 0 and time.time() - timer_audit >= self.interval_audit:
                 timer_audit = time.time()
-                self.core.db.cleanup_audit_logs(self.interval_audit)
+                self.db.cleanup_audit_logs(self.interval_audit)
             day = datetime.datetime.now().day
             if day != last_day:
                 last_day = day
-                cleanup_expired(self.core.db, 'snooze', self.snooze_expired)
-                cleanup_expired(self.core.db, 'notification', self.notification_expired)
-                backup_conf = self.core.conf.get('backup', {})
-                if backup_conf.get('enabled', True):
-                    self.core.db.backup(backup_conf.get('path', '/var/log/snooze'), backup_conf.get('exclude', ['record', 'stats', 'comment', 'secrets']))
+                cleanup_expired(self.db, 'snooze', self.snooze_expired)
+                cleanup_expired(self.db, 'notification', self.notification_expired)
+                if self.backup.enabled:
+                    self.db.backup(self.backup.path, self.backup.exclude)
             time.sleep(1)
         log.info('Stopped housekeeper')
 
