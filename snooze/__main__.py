@@ -15,7 +15,7 @@ from logging import getLogger
 import yaml
 
 from snooze.core import Core
-from snooze.api.base import Api
+from snooze.api import Api
 from snooze.utils.config import setup_logging
 
 def exit_all(threads, exit_code=0):

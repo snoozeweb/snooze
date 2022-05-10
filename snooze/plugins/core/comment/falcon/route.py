@@ -15,8 +15,8 @@ import bson.json_util
 import falcon
 
 from snooze.plugins.core.basic.falcon.route import Route
-from snooze.api.falcon import authorize
 from snooze.utils import get_modification
+from snooze.utils.functions import authorize
 
 log = getLogger('snooze.api')
 

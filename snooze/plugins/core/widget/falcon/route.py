@@ -11,9 +11,9 @@ from logging import getLogger
 
 import falcon
 
-from snooze.api.falcon import authorize
+from snooze.utils.functions import authorize
+from snooze.api.routes import BasicRoute
 from snooze.plugins.core.basic.falcon.route import Route
-from snooze.api.base import BasicRoute
 
 log = getLogger('snooze.widget')
 

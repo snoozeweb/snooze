@@ -12,7 +12,7 @@ from logging import getLogger
 
 from bson.json_util import loads
 
-from snooze.api.falcon import WebhookRoute
+from snooze.api.routes import WebhookRoute
 from snooze.utils.functions import sanitize
 
 log = getLogger('snooze.webhooks.influxdb')

@@ -14,7 +14,7 @@ from typing_extensions import Literal
 
 import falcon
 
-from snooze.api.base import BasicRoute
+from snooze.api.routes import BasicRoute
 
 log = getLogger('snooze.health')
 

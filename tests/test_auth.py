@@ -8,7 +8,7 @@
 #!/usr/bin/python3.6
 
 from snooze.core import Core
-from snooze.api.base import Api
+from snooze.api import Api
 from falcon import testing
 
 import mongomock

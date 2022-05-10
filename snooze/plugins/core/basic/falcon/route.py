@@ -18,8 +18,9 @@ from typing_extensions import Literal
 import falcon
 import bson.json_util
 
-from snooze.api.falcon import authorize, FalconRoute
+from snooze.api.routes import FalconRoute
 from snooze.utils.parser import parser
+from snooze.utils.functions import authorize
 
 log = getLogger('snooze.api')
 
