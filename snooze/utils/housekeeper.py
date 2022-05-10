@@ -7,16 +7,108 @@
 
 '''A module with the database housekeeping functionalities'''
 
-import datetime
 import time
+from abc import abstractmethod, ABC
+from datetime import datetime, timedelta
 from logging import getLogger
-from typing import Optional
 from threading import Event
+from typing import Callable, Optional
+from pathlib import Path
 
 from snooze.utils.config import HousekeeperConfig, BackupConfig
 from snooze.utils.threading import SurvivingThread
 
 log = getLogger('snooze.housekeeping')
+
+class AbstractJob(ABC):
+    '''An abstract class for a job'''
+    def __init__(self, *_args, **_kwargs):
+        self.next_run = datetime.now()
+
+    @abstractmethod
+    def run(self, db: 'Database'):
+        '''The method that will run when the job is triggered'''
+
+    @abstractmethod
+    def next(self):
+        '''Will move the timer to the next step, computing next_run'''
+
+    def reload(self, conf: dict):
+        '''A method to reload the configuration (if any)'''
+
+# TODO Support negative intervals with a enabled/disabled system
+class BasicJob(AbstractJob):
+    '''A housekeeping job triggerring a db based callback at a regular interval'''
+    def __init__(self,
+        config_key: str,
+        interval: timedelta,
+        callback: Callable[['Database', int], None],
+    ):
+        AbstractJob.__init__(self)
+        self.config_key = config_key
+        self.interval = interval
+        self.callback = callback
+
+    def run(self, db):
+        self.callback(db)
+
+    def next(self):
+        self.next_run += self.interval
+
+    def reload(self, conf: dict):
+        '''Called to reload the configuration of the job'''
+        new_interval = getattr(conf, self.config_key)
+        if new_interval:
+            self.interval = new_interval
+
+# TODO Support negative intervals with a enabled/disabled system
+class IntervalJob(AbstractJob):
+    '''A housekeeping job triggerring a db based callback at a regular interval,
+    with another interval passed to the db callback'''
+    def __init__(self,
+        config_key: str,
+        run_interval: timedelta,
+        cleanup_interval: timedelta,
+        callback: Callable[['Database', int], None],
+    ):
+        AbstractJob.__init__(self)
+        self.config_key = config_key
+        self.run_interval = run_interval
+        self.cleanup_interval = cleanup_interval
+        self.callback = callback
+
+    def run(self, db):
+        self.callback(db, self.cleanup_interval)
+
+    def next(self):
+        self.next_run += self.run_interval
+
+    def reload(self, conf: dict):
+        '''Called to reload the configuration of the job'''
+        new_interval = getattr(conf, self.config_key)
+        if new_interval:
+            self.cleanup_interval = new_interval
+
+class BackupJob(AbstractJob):
+    '''A dedicated class for the backup job'''
+    def __init__(self, config: BackupConfig, interval: timedelta):
+        self.config = config
+        self.interval = interval
+        try:
+            self.config.path.mkdir(parents=True, exist_ok=True)
+        except OSError:
+            self.config.path = Path('.')
+        self.reload({})
+        AbstractJob.__init__(self)
+
+    def next(self):
+        self.next_run += self.interval
+
+    def run(self, db):
+        db.backup(self.config.path, self.config.excludes)
+
+    def reload(self, conf: dict):
+        ...
 
 class Housekeeper(SurvivingThread):
     '''Main class starting the housekeeping thread in the background'''
@@ -27,49 +119,62 @@ class Housekeeper(SurvivingThread):
         exit_event: Optional[Event] = None,
     ):
         log.debug('Init Housekeeper')
-        self.db = db
         self.config = config
+        self.db = db
         self.backup = backup
-        self.interval_record = None
-        self.interval_comment = None
-        self.interval_audit = None
-        self.snooze_expired = None
-        self.notification_expired = None
+        self.jobs = {
+            'cleanup_alert': BasicJob('cleanup_alert', timedelta(minutes=5),
+                lambda db: db.cleanup_timeout('record')),
+            'cleanup_comment': BasicJob('cleanup_comment', timedelta(days=1),
+                lambda db: db.cleanup_orphans('comment', 'record_uid', 'record', 'uid')),
+            'cleanup_audit': IntervalJob('cleanup_audit', timedelta(days=1), timedelta(days=28),
+                lambda db, interval: db.cleanup_audit_logs(interval.total_seconds())),
+            'cleanup_snooze': IntervalJob('cleanup_snooze', timedelta(days=1), timedelta(days=3),
+                lambda db, interval: cleanup_expired(db, 'snooze', interval.total_seconds())),
+            'cleanup_notification': IntervalJob('cleanup_notification', timedelta(days=1), timedelta(days=3),
+                lambda db, interval: cleanup_expired(db, 'notification', interval.total_seconds())),
+        }
+        self.backup_job = None
         self.reload()
+        if self.config.trigger_on_startup:
+            for job in self.jobs.values():
+                job.next_run = datetime.now()
         SurvivingThread.__init__(self, exit_event)
 
     def reload(self):
         ''' Reload the housekeeper configuration'''
         self.config.refresh()
-        self.interval_record = self.config.cleanup_alert.total_seconds()
-        self.interval_comment = self.config.cleanup_comment.total_seconds()
-        self.interval_audit = self.config.cleanup_audit.total_seconds()
-        self.snooze_expired = self.config.cleanup_snooze.total_seconds()
-        self.notification_expired = self.config.cleanup_notification.total_seconds()
-        log.debug("Reloading Housekeeper with conf %s", self.config)
+        log.debug("Reloading Housekeeper with config %s", self.config)
+        for job in self.jobs.values():
+            job.reload(self.config)
+
+        # Backup config
+        if self.backup.enabled:
+            if not self.backup_job:
+                self.backup_job = BackupJob(self.backup, timedelta(days=1))
+            self.backup_job.reload(self.backup)
+        else:
+            self.backup_job = None
+
+    def handler(self):
+        '''The check to execute at every loop'''
+        for name, job in self.jobs.items():
+            if job.next_run <= datetime.now():
+                log.debug("Running housekeeping job %s", name)
+                job.next()
+                job.run(self.db)
+        if self.backup_job:
+            if self.backup_job.next_run <= datetime.now():
+                log.debug("Running backup job")
+                self.backup_job.run(self.db)
+                self.backup_job.next()
 
     def start_thread(self):
-        timer_record = (1 - self.config.trigger_on_startup) * time.time()
-        timer_comment = timer_record
-        timer_audit = timer_record
-        last_day = -1
+        if self.config.trigger_on_startup:
+            for _, job in self.jobs.items():
+                job.next_run = datetime.now()
         while not self.exit.wait(0.1):
-            if self.interval_record > 0 and time.time() - timer_record >= self.interval_record:
-                timer_record = time.time()
-                self.db.cleanup_timeout('record')
-            if self.interval_comment > 0 and time.time() - timer_comment >= self.interval_comment:
-                timer_comment = time.time()
-                self.db.cleanup_orphans('comment', 'record_uid', 'record', 'uid')
-            if self.interval_audit > 0 and time.time() - timer_audit >= self.interval_audit:
-                timer_audit = time.time()
-                self.db.cleanup_audit_logs(self.interval_audit)
-            day = datetime.datetime.now().day
-            if day != last_day:
-                last_day = day
-                cleanup_expired(self.db, 'snooze', self.snooze_expired)
-                cleanup_expired(self.db, 'notification', self.notification_expired)
-                if self.backup.enabled:
-                    self.db.backup(self.backup.path, self.backup.exclude)
+            self.handler()
             time.sleep(1)
         log.info('Stopped housekeeper')
 
@@ -78,25 +183,46 @@ def cleanup_expired(db: 'Database', collection: str, cleanup_delay: int):
     that have an expiration date, like snooze filters'''
     if cleanup_delay > 0:
         log.debug("Starting to cleanup expired %s", collection)
-        now = datetime.datetime.now().astimezone()
-        date = now.astimezone().strftime("%Y-%m-%dT%H:%M")
-        hour = now.astimezone().strftime("%H:%M")
+        now = datetime.now().astimezone()
+        date = now.strftime("%Y-%m-%dT%H:%M")
+        hour = now.strftime("%H:%M")
         weekday = now.day
-        date_delta = (now - datetime.timedelta(seconds=cleanup_delay)).astimezone().strftime("%Y-%m-%dT%H:%M")
+        date_delta = (now - timedelta(seconds=cleanup_delay)).astimezone().strftime("%Y-%m-%dT%H:%M")
         match = ['AND',
-            ['OR', ['NOT', ['EXISTS', 'time_constraints.weekdays']], ['IN', weekday, 'time_constraints.weekdays.weekdays']],
+            ['OR',
+                ['NOT', ['EXISTS', 'time_constraints.weekdays']],
+                ['IN', weekday, 'time_constraints.weekdays.weekdays'],
+            ],
             ['AND',
-                ['OR', ['NOT', ['EXISTS', 'time_constraints.datetime']], ['<=', 'time_constraints.datetime.from', date]],
+                ['OR',
+                    ['NOT', ['EXISTS', 'time_constraints.datetime']],
+                    ['<=', 'time_constraints.datetime.from', date],
+                ],
                 ['AND',
-                    ['OR', ['NOT', ['EXISTS', 'time_constraints.datetime']], ['>=', 'time_constraints.datetime.until', date]],
+                    ['OR',
+                        ['NOT', ['EXISTS', 'time_constraints.datetime']],
+                        ['>=', 'time_constraints.datetime.until', date],
+                    ],
                     ['AND',
-                        ['OR', ['NOT', ['EXISTS', 'time_constraints.time']], ['<=', 'time_constraints.time.from', hour]],
-                        ['OR', ['NOT', ['EXISTS', 'time_constraints.time']], ['>=', 'time_constraints.time.until', hour]]
+                        ['OR',
+                            ['NOT', ['EXISTS', 'time_constraints.time']],
+                            ['<=', 'time_constraints.time.from', hour],
+                        ],
+                        ['OR',
+                            ['NOT', ['EXISTS', 'time_constraints.time']],
+                            ['>=', 'time_constraints.time.until', hour],
+                        ],
                     ]
                 ]
             ]
         ]
-        expired_query = ['AND', ['NOT', match], ['AND', ['EXISTS', 'time_constraints.datetime'], ['NOT', ['>=', 'time_constraints.datetime.until', date_delta]]]]
+        expired_query = ['AND',
+            ['NOT', match],
+            ['AND',
+                ['EXISTS', 'time_constraints.datetime'],
+                ['NOT', ['>=', 'time_constraints.datetime.until', date_delta]],
+            ],
+        ]
         expired_results = db.search(collection, expired_query)
         if expired_results['count'] > 0:
             log.debug("List of expired %s to cleanup: %s", collection, expired_results)
