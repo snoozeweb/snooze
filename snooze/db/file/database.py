@@ -20,6 +20,7 @@ from bson.json_util import dumps
 from tinydb import TinyDB, Query as BaseQuery
 
 from snooze.db.database import Database, wrap_exception
+from snooze.utils.config import FileConfig
 from snooze.utils.functions import dig, to_tuple
 
 log = getLogger('snooze.db.file')
@@ -33,7 +34,6 @@ DEFAULT_PAGINATION = {
 class OperationNotSupported(Exception):
     '''Raised when the search operator is not supported'''
 
-default_filename = 'db.json'
 mutex = Lock()
 
 class Query(BaseQuery):
@@ -68,13 +68,9 @@ class BackendDB(Database):
 
     name = 'file'
 
-    def init_db(self, conf):
-        if conf.get('path'):
-            filename = conf.get('path')
-        else:
-            filename = default_filename
-        self.db = TinyDB(filename)
-        log.debug("Initialized TinyDB at path %s", filename)
+    def init_db(self, config: FileConfig):
+        self.db = TinyDB(config.path)
+        log.debug("Initialized TinyDB at path %s", config.path)
         log.debug("db: %s", self.db)
         log.debug("List of collections: %s", self.db.tables())
 

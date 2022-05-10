@@ -13,22 +13,25 @@ from logging import getLogger
 from prometheus_client import Summary, Counter, CollectorRegistry, generate_latest
 from prometheus_client.context_managers import Timer
 
+from snooze.utils.config import GeneralConfig
+
 log = getLogger('snooze.stats')
 
 class Stats():
     '''A wrapped backend for registrating and emitting metrics'''
-    def __init__(self, core):
-        self.core = core
-        self.conf = self.core.general_conf
+    def __init__(self, database: 'Database', general: GeneralConfig):
+        self.general = general
+        self.enabled = general.metrics_enabled
+        self.database = database
         self.metrics = {}
-        self.reload()
         if self.enabled:
             self.registry = CollectorRegistry()
             log.debug('Enabling Prometheus')
 
     def reload(self):
         '''Reload prometheus related configuration'''
-        self.enabled = self.conf.get('metrics_enabled', True)
+        self.general.refresh()
+        self.enabled = self.general.metrics_enabled
         log.debug('Prometheus server is %s', self.enabled)
 
     def init(self, metric, mtype, name, desc, labels):
@@ -55,7 +58,7 @@ class Stats():
         '''Increment a counter'''
         if self.enabled and metric_name in self.metrics:
             self.metrics[metric_name].labels(**labels).inc(amount)
-            self.core.db.inc('stats', metric_name, labels)
+            self.database.inc('stats', metric_name, labels)
 
     def get_metrics(self):
         return generate_latest(self.registry)

@@ -5,7 +5,7 @@
 # SPDX-License-Identifier: AFL-3.0
 #
 
-from .config import config, write_config
+from .config import Config
 from .condition import get_condition
 from .modification import get_modification
 from .housekeeper import Housekeeper

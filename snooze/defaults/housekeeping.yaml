@@ -1,6 +1,0 @@
-cleanup_alert: 300
-cleanup_comment: 86400
-record_ttl: 172800
-trigger_on_startup: true
-cleanup_snooze: 259200
-cleanup_notification: 259200

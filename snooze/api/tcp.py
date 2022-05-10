@@ -12,11 +12,12 @@ import socket
 import ssl
 from logging import getLogger
 from threading import Event
-from typing import Optional
+from typing import Optional, Tuple
 from wsgiref.simple_server import WSGIServer, WSGIRequestHandler
 
 from socketserver import ThreadingMixIn
 
+from snooze.utils.config import SslConfig
 from snooze.utils.threading import SurvivingThread
 
 log = getLogger('snooze.api.tcp')
@@ -41,34 +42,28 @@ class TcpWsgiServer(ThreadingMixIn, WSGIServer):
     '''Multi threaded TCP server serving a WSGI application'''
     daemon_threads = True
 
-    def __init__(self, conf: dict, api: 'Api'):
+    def __init__(self, host: str, port: int, sslconf: SslConfig, api: 'Api'):
         self.timeout = 10
 
-        host = conf.get('listen_addr', '0.0.0.0')
-        port = int(conf.get('port', '5200'))
-        self.ssl_conf = conf.get('ssl', {})
-
+        self.ssl = sslconf
         WSGIServer.__init__(self, (host, port), NoLogHandler)
         self.set_app(api)
         self.wrap_ssl()
 
     def wrap_ssl(self):
         '''Wrap the socket with a TLS socket when TLS is enabled'''
-        use_ssl = self.ssl_conf.get('enabled')
-        certfile = os.environ.get('SNOOZE_CERT_FILE') or self.ssl_conf.get('certfile')
-        keyfile = os.environ.get('SNOOZE_KEY_FILE') or self.ssl_conf.get('keyfile')
-        if use_ssl or (certfile and keyfile):
-            if not os.access(certfile, os.R_OK):
-                log.error("%s is not readable. Cannot start server", certfile)
+        if self.ssl.enabled or (self.ssl.certfile and self.ssl.keyfile):
+            if not os.access(self.ssl.certfile, os.R_OK):
+                log.error("%s is not readable. Cannot start server", self.ssl.certfile)
                 return
-            if not os.access(keyfile, os.R_OK):
-                log.error("%s is not readable. Cannot start server", keyfile)
+            if not os.access(self.ssl.keyfile, os.R_OK):
+                log.error("%s is not readable. Cannot start server", self.ssl.keyfile)
                 return
             self.socket = ssl.wrap_socket(
                 self.socket,
                 server_side=True,
-                certfile=certfile,
-                keyfile=keyfile,
+                certfile=self.ssl.certfile,
+                keyfile=self.ssl.keyfile,
             )
 
 
@@ -76,11 +71,11 @@ class TcpThread(SurvivingThread):
     '''A TCP thread to manage the multi-threaded TCP server.'''
     daemon_threads = True
 
-    def __init__(self, conf: dict, api: 'Api', exit_event: Optional[Event] = None):
+    def __init__(self, tcp_config: Tuple[str, int, SslConfig], api: 'Api', exit_event: Optional[Event] = None):
         exit_event = exit_event or Event()
         self.timeout = 10
 
-        self.conf = conf
+        self.tcp_config = tcp_config
         self.api = api
 
         self.server: Optional[TcpWsgiServer] = None
@@ -92,8 +87,8 @@ class TcpThread(SurvivingThread):
         # The WSGIServer is binding on init. This is very inconvenient
         # for many use-cases (testing, etc). So we're manking this thread
         # cheap to initialize.
-        self.server = TcpWsgiServer(self.conf, self.api)
-        self.server.serve_forever()
+            self.server = TcpWsgiServer(*self.tcp_config, self.api)
+            self.server.serve_forever()
 
     def stop_thread(self):
         '''Gracefully stop the service'''

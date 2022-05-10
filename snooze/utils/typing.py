@@ -7,9 +7,9 @@
 
 '''Typing utils for snooze'''
 
-from typing import NewType, List
+from typing import NewType, List, Literal, Optional, TypedDict, Union
 
-from typing_extensions import Literal, TypedDict
+from pydantic import BaseModel, Field
 
 RecordUid = NewType('RecordUid', str)
 Record = NewType('Record', dict)
@@ -17,14 +17,25 @@ Rule = NewType('Rule', dict)
 AggregateRule = NewType('AggregateRule', dict)
 SnoozeFilter = NewType('SnoozeFilter', dict)
 
-Config = NewType('Config', dict)
 Condition = NewType('Condition', list)
 
 Pagination = NewType('Pagination', dict)
 
 DuplicatePolicy = Literal['insert', 'reject', 'replace', 'update']
 
-class AuthorizationPolicy(TypedDict):
+class AuthorizationPolicy(BaseModel):
     '''A list of authorized policy for read and write'''
-    read: List[str]
-    write: List[str]
+    read: List[str] = Field(default_factory=list)
+    write: List[str] = Field(default_factory=list)
+
+class HostPort(BaseModel):
+    '''An object to represent a host-port pair'''
+    host: str = Field(
+        required=True,
+        description='The host address to reach (IP or resolvable hostname)',
+    )
+    port: int = Field(
+        default=5200,
+        description='The port where the host is expected to listen to'
+    )
+

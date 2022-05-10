@@ -15,7 +15,8 @@ from typing import List, Optional, Union
 
 from typing_extensions import TypedDict
 
-from snooze.utils.typing import Config, Condition
+from snooze.utils.config import DatabaseConfig
+from snooze.utils.typing import Condition
 from snooze.utils.exceptions import DatabaseError
 
 class Pagination(TypedDict, total=False):
@@ -38,19 +39,13 @@ def wrap_exception(function):
 
 class Database:
     '''Abstract class for the database backend'''
-    def __init__(self, conf: Config):
-        config = conf.copy()
-        db_type = config.pop('type', 'file')
-        if 'DATABASE_URL' in os.environ:
-            scheme = str(urlparse(os.environ.get('DATABASE_URL')).scheme)
-            if scheme.startswith('mongodb'):
-                db_type = 'mongo'
-        cls = import_module(f"snooze.db.{db_type}.database")
+    def __init__(self, config: DatabaseConfig):
+        cls = import_module(f"snooze.db.{config.type}.database")
         self.__class__ = type('DB', (cls.BackendDB, Database), {})
         self.init_db(config)
 
     @abstractmethod
-    def init_db(self, conf: Config):
+    def init_db(self, config: DatabaseConfig):
         '''Initialize the database connection'''
 
     @abstractmethod

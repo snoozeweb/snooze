@@ -22,7 +22,8 @@ from bson.json_util import dumps
 
 from snooze.db.database import Database, Pagination, wrap_exception
 from snooze.utils.functions import dig
-from snooze.utils.typing import Condition, Config
+from snooze.utils.typing import Condition
+from snooze.utils.config import MongodbConfig
 
 log = getLogger('snooze.db.mongo')
 
@@ -42,14 +43,10 @@ class BackendDB(Database):
 
     name = 'mongo'
 
-    def init_db(self, conf: Config):
-        if 'DATABASE_URL' in os.environ:
-            self.db = pymongo.MongoClient(os.environ.get('DATABASE_URL'))[database]
-        else:
-            self.db = pymongo.MongoClient(**conf)[database]
+    def init_db(self, config: MongodbConfig):
+        self.db = pymongo.MongoClient(**config.dict(exclude={'type'}))[database]
         self.search_fields = {}
-        self.conf = conf
-        log.debug("Initialized Mongodb with config %s", conf)
+        log.debug("Initialized Mongodb")
         log.debug("db: %s", self.db)
         log.debug("List of collections: %s", self.db.collection_names())
 

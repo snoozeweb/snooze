@@ -13,7 +13,8 @@ import os
 import socket
 import time
 from logging import getLogger
-from typing import List
+from threading import Event
+from typing import List, Optional
 
 from dataclasses import dataclass
 
@@ -22,6 +23,7 @@ import pkg_resources
 import bson.json_util
 
 from snooze.utils.threading import SurvivingThread
+from snooze.utils.config import CoreConfig
 
 log = getLogger('snooze.cluster')
 
@@ -43,31 +45,17 @@ def get_version() -> str:
 
 class Cluster(SurvivingThread):
     '''A class representing the cluster and used for interacting with it.'''
-    def __init__(self, core: 'Core'):
-        self.core = core
-        env_cluster = os.environ.get('SNOOZE_CLUSTER')
-        self.conf = {}
-        if env_cluster:
-            try:
-                env_cluster = env_cluster.split(',')
-                self.conf['enabled'] = True
-                self.conf['members'] = []
-                for member in env_cluster:
-                    host, *port = member.split(':')
-                    self.conf['members'].append({'host': host, 'port': port[0] if port else 5200})
-            except Exception as err:
-                log.exception(err)
-                log.warning('Error when parsing cluster config defined in SNOOZE_CLUSTER env var')
-                self.conf = {}
-        if not self.conf:
-            self.conf = core.conf.get('clustering', {})
+    def __init__(self, core_config: CoreConfig, reload_token: str, exit_event: Optional[Event] = None):
+        self.config = core_config.cluster
+        self.core_config = core_config
+        self.reload_token = reload_token
         self.sync_queue = []
         self.other_peers = []
-        self.enabled = self.conf.get('enabled', False)
+        self.enabled = self.config.enabled
         if self.enabled:
             log.debug('Init Cluster Manager')
-            self.all_peers = self.conf.get('members', [])
-            self.other_peers = self.conf.get('members', [])
+            self.all_peers = self.config.members
+            self.other_peers = self.config.members
             for interface in netifaces.interfaces():
                 for arr in netifaces.ifaddresses(interface).values():
                     for line in arr:
@@ -88,7 +76,7 @@ class Cluster(SurvivingThread):
                 self.enabled = False
                 return
             log.debug("Other peers: %s", self.other_peers)
-        SurvivingThread.__init__(self, core.exit_event)
+        SurvivingThread.__init__(self, exit_event)
 
     def status(self) -> PeerStatus:
         '''Return the status, health and info of the current node'''
@@ -97,7 +85,7 @@ class Cluster(SurvivingThread):
             port = self.self_peer[0]['port']
         else:
             host = socket.gethostname()
-            port = self.core.conf.get('port', '5200')
+            port = self.core_config.port
         version = get_version()
         self_peer = PeerStatus(host, port, version, True)
         log.debug("Self cluster configuration: %s", self_peer)
@@ -109,7 +97,7 @@ class Cluster(SurvivingThread):
         members.append(self.status())
         if self.enabled:
             success = False
-            use_ssl = self.core.conf.get('ssl', {}).get('enabled', False)
+            use_ssl = self.core_config.ssl.enabled
             for peer in self.other_peers:
                 if use_ssl:
                     connection = http.client.HTTPSConnection(peer['host'], peer['port'], timeout=10)
@@ -160,7 +148,7 @@ class Cluster(SurvivingThread):
 
     def start_thread(self):
         headers = {'Content-type': 'application/json'}
-        use_ssl = self.core.conf.get('ssl', {}).get('enabled', False)
+        use_ssl = self.core_config.ssl.enabled
         success = False
         while not self.exit.wait(0.1):
             for index, job in enumerate(self.sync_queue):
@@ -168,7 +156,7 @@ class Cluster(SurvivingThread):
                     connection = http.client.HTTPSConnection(job['host'], job['port'], timeout=10)
                 else:
                     connection = http.client.HTTPConnection(job['host'], job['port'], timeout=10)
-                job['payload'].update({'reload_token': self.core.secrets.get('reload_token', '')})
+                job['payload'].update({'reload_token': self.reload_token})
                 job_json = bson.json_util.dumps(job['payload'])
                 try:
                     connection.request('POST', '/api/reload', job_json, headers)

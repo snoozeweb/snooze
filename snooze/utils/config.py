@@ -8,73 +8,69 @@
 '''Module for managing loading and writing the configuration files'''
 
 import os
+from contextlib import contextmanager
 from logging import getLogger
 from pathlib import Path
-from typing import Optional
+from datetime import timedelta
+from urllib.parse import urlparse
+from typing import Optional, List, Any, Dict, Literal, ClassVar, Union
 
 import yaml
+from filelock import FileLock
+from pydantic import BaseModel, Field, validator, root_validator, ValidationError, Extra
 
 from snooze import __file__ as SNOOZE_PATH
-from snooze.utils.typing import Config
+from snooze.utils.typing import *
 
 log = getLogger('snooze.utils.config')
 
-SNOOZE_CONFIG_PATH = os.environ.get('SNOOZE_SERVER_CONFIG', '/etc/snooze/server')
+SNOOZE_CONFIG = Path(os.environ.get('SNOOZE_SERVER_CONFIG', '/etc/snooze/server'))
+SNOOZE_PLUGIN_PATH = Path(SNOOZE_PATH).parent / 'plugins/core'
 
-def config(configname: str = 'core', configpath: str = SNOOZE_CONFIG_PATH) -> Config:
-    '''Read a configuration file and return its content'''
-    server_config_path = Path(configpath) / (configname + '.yaml')
+class ReadOnlyConfig(BaseModel):
+    '''A class representing a config file at a given path.
+    Can only be read.'''
+    _section: ClassVar[Optional[str]] = None
+    _path: ClassVar[Optional[Path]] = None
 
-    default_file = Path(SNOOZE_PATH).parent / 'defaults' / (configname + '.yaml')
-    if default_file.is_file():
-        return_config = yaml.safe_load(default_file.read_text())
-    else:
-        log.debug('No default config for %s', default_file)
-        return_config = {}
+    class Config:
+        allow_mutation = False
 
-    log.debug('Attempting to load configuration at %s', server_config_path)
-    if server_config_path.is_file():
-        config_dict = yaml.safe_load(server_config_path.read_text())
-        return_config.update(config_dict)
-    else:
-        log.warning('Could not find config at %s', server_config_path)
+    def __init__(self, basedir: Path = SNOOZE_CONFIG, data: Optional[dict] = None):
+        #section = self._class_get('_section')
+        if self._section:
+            #self._class_set('_path', basedir / f"{section}.yaml")
+            self.__class__._path = basedir / f"{self._section}.yaml"
+        data = data or self._read() or {}
+        BaseModel.__init__(self, **data)
 
-    environment_variables = {
-        key: value
-        for (key, value) in os.environ.items()
-        if key.startswith('SNOOZE_SERVER_') and key != 'SNOOZE_SERVER_CONFIG'
-    }
-    return_config.update(environment_variables)
+    def _class_get(self, key: str):
+        '''Get a class attribute'''
+        return getattr(self.__class__, key)
 
-    log.debug('Retreived the following config: %s', return_config)
+    def _class_set(self, key: str, value: Any):
+        '''Set a class attribute'''
+        # Using this workaround to avoid pydantic and WritableConfig own __setattr__
+        setattr(self.__class__, key, value)
 
-    return return_config
-
-def write_config(config_name: str = 'core', config_dict: Optional[dict] = None, config_path=SNOOZE_CONFIG_PATH) -> dict:
-    '''Update or create a configuration file'''
-    if config_dict is None:
-        config_dict = {}
-    config_file = Path(config_path) / (config_name + '.yaml')
-    log.debug('Write: Loading configuration from %s', config_file)
-
-    try:
-        if config_file.is_file():
-            log.debug('Write: %s found', config_file)
-            current_config = yaml.safe_load(config_file.read_text())
-            current_config.update(config_dict)
+    def _read(self) -> dict:
+        '''Read the config file and return the raw dict'''
+        if self._path:
+            try:
+                return yaml.safe_load(self._path.read_text(encoding='utf-8')) or {}
+            except OSError:
+                return {}
         else:
-            log.debug('Write: YAML config file not found. Creating %s', config_file)
-            current_config = config_dict
+            return {}
 
-        # Write config
-        with config_file.open("w") as config_fd:
-            yaml.dump(current_config, config_fd)
-            log.debug('New config: %s', current_config)
-        return {'file': str(config_file)}
+    def refresh(self):
+        '''Read the config file to load the config'''
+        data = self._read()
+        for key, value in data.items():
+            setattr(self, key, value)
 
-    except Exception as err:
-        log.error(err)
-        return {'error': str(err)}
+    def __getitem__(self, key: str):
+        return getattr(self, key)
 
 def get_metadata(plugin_name: str) -> dict:
     '''Read metadata at a given plugin path'''
@@ -88,3 +84,471 @@ def get_metadata(plugin_name: str) -> dict:
     except Exception as err:
         log.warning("Skipping. Cannot read %s due to: %s", metadata_path, err)
         return {}
+    def dig(self, *keys: List[str], default: Optional[Any] = None) -> Any:
+        '''Get a nested key from the config'''
+        try:
+            cursor = getattr(self, keys[0])
+            for key in keys[1:]:
+                cursor = getattr(cursor, key)
+            return cursor
+        except AttributeError:
+            return default
+
+class WritableConfig(ReadOnlyConfig):
+    '''A class representing a writable config file at a given path.
+    Can be explored, and updated with a lock file.'''
+    _filelock: ClassVar[FileLock] = None
+    _auth_routes: ClassVar[List[str]] = Field(default_factory=list)
+
+    class Config:
+        # Setting values should trigger validation
+        validate_assignment = True
+        allow_mutation = True
+
+    def __init__(self, basedir: Path = SNOOZE_CONFIG, data: Optional[dict] = None):
+        if data is None:
+            data = {}
+        ReadOnlyConfig.__init__(self, basedir, data)
+        self._path.touch(mode=0o600)
+        self.__class__._filelock = FileLock(self._path, timeout=1)
+
+    @contextmanager
+    def _lock(self):
+        self._class_get('_filelock').acquire()
+        self.refresh()
+        try:
+            yield # Update the config
+        finally:
+            self._update()
+            self._class_get('_filelock').release()
+
+    def _update(self):
+        '''Write a new config to the config file'''
+        path = self._class_get('_path')
+        if path:
+            # dict(model) is more appropriate than model.dict()
+            # in this case since it's including excluded fields
+            data = yaml.safe_dump(dict(self))
+            path.write_text(data, encoding='utf-8')
+
+    def __setitem__(self, key: str, value: Any):
+        self._set(key, value)
+
+    def __setattr__(self, key: str, value: Any):
+        self._set(key, value)
+
+    def _set(self, key: str, value: Any):
+        '''Rewrite a config key with a given value'''
+        with self._lock():
+            object.__setattr__(self, key, value)
+
+    def update(self, values: dict):
+        '''Update the config with a dictionary'''
+        with self._lock():
+            for key, value in values.items():
+                object.__setattr__(self, key, value)
+
+class LdapConfig(WritableConfig, title='LDAP configuration'):
+    '''Configuration for LDAP authentication. Can be edited live in the web interface.
+    Usually located at `/etc/snooze/server/ldap_auth.yaml`.'''
+    _section = 'ldap_auth'
+    _auth_routes = ['ldap']
+
+    @root_validator
+    def validate_enabled(cls, values):
+        if values.get('enabled'):
+            for field in ['base_dn', 'user_filter', 'bind_dn', 'bind_password', 'host']:
+                assert values.get(field)
+        return values
+
+    enabled: bool = Field(
+        description='Enable or disable LDAP Authentication',
+        default=False,
+    )
+    base_dn: Optional[str] = Field(
+        title='Base DN',
+        default=None,
+        description='LDAP users location. Multiple DNs can be added if separated by semicolons',
+    )
+    user_filter: Optional[str] = Field(
+        title='User base filter',
+        default=None,
+        description='LDAP search filter for the base DN',
+        examples=['(objectClass=posixAccount)'],
+    )
+    bind_dn: Optional[str] = Field(
+        title='Bind DN',
+        default=None,
+        description='Distinguished name to bind to the LDAP server',
+        examples=['CN=john.doe,OU=users,DC=example,DC=com'],
+    )
+    bind_password: Optional[str] = Field(
+        title='Bind DN password',
+        description='Password for the Bind DN user',
+        default=None,
+        exclude=True,
+    )
+    host: Optional[str] = Field(
+        description='LDAP host',
+        default=None,
+        examples=['ldaps://example.com'],
+    )
+    port: int = Field(
+        default=636,
+        description='LDAP server port',
+    )
+    group_dn: Optional[str] = Field(
+        title='Group DN',
+        default=None,
+        description='Base DN used to filter out groups. Will default to the User base DN'
+        ' Multiple DNs can be added if separated by semicolons',
+    )
+    email_attribute: str = Field(
+        title='Email attribute',
+        default='mail',
+        description='User attribute that displays the user email adress',
+    )
+    display_name_attribute: str = Field(
+        title='Display name attribute',
+        default='cn',
+        description='User attribute that displays the user real name',
+    )
+    member_attribute: str = Field(
+        title='Member attribute',
+        default='memberof',
+        description='Member attribute that displays groups membership',
+    )
+
+class SslConfig(BaseModel):
+    '''SSL configuration'''
+
+    @root_validator
+    def validate_enabled(cls, values):
+        '''Throw an error if the setting is enabled but a mandatory option is
+        not set'''
+        if values.get('enabled'):
+            for field in ['certfile', 'keyfile']:
+                assert values.get(field)
+        return values
+
+    enabled: bool = Field(
+        default=False,
+        description='Enabling TLS termination',
+    )
+    certfile: Optional[Path] = Field(
+        title='Certificate file',
+        env='SNOOZE_CERT_FILE',
+        default=None,
+        description='Path to the x509 PEM style certificate to use for TLS termination',
+        examples=['/etc/pki/tls/certs/snooze.crt', '/etc/ssl/certs/snooze.crt'],
+    )
+    keyfile: Optional[Path] = Field(
+        title='Key file',
+        default=None,
+        env='SNOOZE_KEY_FILE',
+        description='Path to the private key to use for TLS termination',
+        examples=['/etc/pki/tls/private/snooze.key', '/etc/ssl/private/snooze.key'],
+    )
+
+class WebConfig(BaseModel):
+    '''The subconfig for the web server (snooze-web)'''
+    enabled: bool = Field(
+        default=True,
+        description='Enable the web interface',
+    )
+    path: Path = Field(
+        default='/opt/snooze/web',
+        description='Path to the web interface dist files',
+    )
+
+class BackupConfig(BaseModel):
+    '''Configuration for the backup job'''
+
+    enabled: bool = Field(
+        default=True,
+        description='Enable backups',
+    )
+    path: Path = Field(
+        default=Path('/var/lib/snooze'),
+        env='SNOOZE_BACKUP_PATH',
+        description='Path to store database backups',
+    )
+    excludes: List[str] = Field(
+        description='Collections to exclude from backups',
+        default=['record', 'stats', 'comment', 'secrets'],
+    )
+
+class ClusterConfig(BaseModel):
+    '''Configuration for the cluster'''
+
+    enabled: bool = Field(
+        default=False,
+        description='Enable clustering. Required when running multiple backends',
+    )
+    members: List[HostPort] = Field(
+        env='SNOOZE_CLUSTER',
+        default_factory=lambda: [HostPort(host='localhost')],
+        description='List of snooze servers in the cluster. If the environment variable is provided,'
+        ' a special syntax is expected (`"<host>:<port>,<host>:<port>,..."`).',
+        examples=[
+            [
+                {'host': 'host01', 'port': 5200},
+                {'host': 'host02', 'port': 5200},
+                {'host': 'host03', 'port': 5200},
+            ],
+            "host01:5200,host02:5200,host03:5200",
+        ],
+
+    )
+
+    @validator('members')
+    def parse_members_env(cls, value):
+        '''In case the environment (a string) is passed, parse the environment string'''
+        if isinstance(value, str):
+            members = []
+            for member in value.split(','):
+                members.append(HostPort(member.split(':', 1)))
+            return members
+        return value
+
+class MongodbConfig(BaseModel, extra=Extra.allow):
+    '''Mongodb configuration passed to pymongo MongoClient'''
+    type: Literal['mongo'] = 'mongo'
+    host: Optional[Union[str, List[str]]] = Field(
+        title='Host',
+        default=None,
+        env='DATABASE_URL',
+        description='Hostname or IP address or Unix domain socket path of a single mongod or mongos instance'
+        'to connect to',
+    )
+    port: Optional[int] = Field(
+        title='Port',
+        default=None,
+        description='Port number on which to connect',
+    )
+
+class FileConfig(BaseModel, extra=Extra.allow):
+    type: Literal['file'] = 'file'
+    path: Path = Path(f"{os.getcwd()}/db.json")
+
+def select_db() -> Union[MongodbConfig, FileConfig]:
+    '''Return the correct database config type'''
+    if 'DATABASE_URL' in os.environ:
+        scheme = urlparse(os.environ['DATABASE_URL']).scheme
+        if scheme == 'mongodb':
+            return MongodbConfig()
+    return FileConfig()
+
+DatabaseConfig = Union[MongodbConfig, FileConfig]
+
+class CoreConfig(ReadOnlyConfig, title='Core configuration'):
+    '''Core configuration. Not editable live. Require a restart of the server.
+    Usually located at `/etc/snooze/server/core.yaml`'''
+    _section = 'core'
+
+    listen_addr: str = Field(
+        title='Listening address',
+        default='0.0.0.0',
+        description="IPv4 address on which Snooze process is listening to",
+    )
+    port: int = Field(
+        default=5200,
+        description='Port on which Snooze process is listening to',
+    )
+    debug: bool = Field(
+        default=False,
+        description='Activate debug log output',
+    )
+    bootstrap_db: bool = Field(
+        title='Bootstrap database',
+        default=True,
+        description='Populate the database with an initial configuration',
+    )
+    unix_socket: Optional[Path] = Field(
+        title='Unix socket',
+        default='/var/run/snooze/server.socket',
+        description='Listen on this unix socket to issue root tokens',
+    )
+    no_login: bool = Field(
+        title='No login',
+        default=False,
+        env='SNOOZE_NO_LOGIN',
+        description='Disable Authentication (everyone has admin priviledges)',
+    )
+    audit_excluded_paths: List[str] = Field(
+        title='Audit excluded paths',
+        default=['/api/patlite', '/metrics', '/web'],
+        description='A list of HTTP paths excluded from audit logs. Any path'
+        'that starts with a path in this list will be excluded.',
+    )
+    process_plugins: List[str] = Field(
+        title='Process plugins',
+        default=['rule', 'aggregaterule', 'snooze', 'notification'],
+        description='List of plugins that will be used for processing alerts.'
+        ' Order matters.',
+    )
+    database: DatabaseConfig = Field(
+        title='Database',
+        default_factory=select_db,
+    )
+    init_sleep: int = Field(
+        title='Init sleep',
+        default=5,
+        description='Time to sleep before retrying certain operations (bootstrap, clustering)',
+    )
+    create_root_user: bool = Field(
+        title='Create root user',
+        default=True,
+        description='Create a *root* user with a default password *root*',
+    )
+    ssl: SslConfig = Field(
+        title='SSL configuration',
+        default_factory=SslConfig,
+    )
+    web: WebConfig = Field(
+        title='Web server configuration',
+        default_factory=WebConfig,
+    )
+    cluster: ClusterConfig = Field(
+        title='Cluster configuration',
+        default_factory=ClusterConfig,
+    )
+    backup: BackupConfig = Field(
+        title='Backup configuration',
+        default_factory=BackupConfig,
+    )
+
+class GeneralConfig(WritableConfig, title='General configuration'):
+    '''General configuration of snooze. Can be edited live in the web interface.
+    Usually located at `/etc/snooze/server/general.yaml`.'''
+    _section = 'general'
+    _auth_routes = ['local']
+
+    default_auth_backend: Literal['local', 'ldap'] = Field(
+        title='Default authentication backend',
+        description='Backend that will be first in the list of displayed authentication backends',
+        default='local',
+    )
+    local_users_enabled: bool = Field(
+        title='Local users enabled',
+        description='Enable the creation of local users in snooze. This can be disabled when another'
+        ' reliable authentication backend is used, and the admin want to make auditing easier',
+        default=True,
+    )
+    metrics_enabled: bool = Field(
+        title='Metrics enabled',
+        description='Enable Prometheus metrics',
+        default=True,
+    )
+    anonymous_enabled: bool = Field(
+        title='Anonymous enabled',
+        description='Enable anonymous user login. When a user log in as anonymous, he will be given user permissions',
+        default=False,
+    )
+    ok_severities: List[str] = Field(
+        title='OK severities',
+        description='List of severities that will automatically close the aggregate upon entering the system.'
+        ' This is mainly for icinga/grafana that can close the alert when the status becomes green again',
+        default=['ok', 'success'],
+    )
+
+    @validator('ok_severities', each_item=True)
+    def normalize_severities(cls, value):
+        '''Normalizing severities upon retrieval and insertion'''
+        return value.casefold()
+
+class NotificationConfig(WritableConfig):
+    '''Configuration for default notification delays/retry. Can be edited live in the web interface.
+    Usually located at `/etc/snooze/server/notifications.yaml`.'''
+    _section = 'notifications'
+
+    notification_freq: timedelta = Field(
+        title='Frequency',
+        description='Time (in seconds) to wait before sending the next notification',
+        default=timedelta(minutes=1),
+    )
+    notification_retry: int = Field(
+        title='Retry number',
+        description='Number of times to retry sending a failed notification',
+        default=3,
+    )
+    class Config:
+        title = 'Notification configuration'
+        json_encoders = {
+            # timedelta should be serialized into seconds (int)
+            timedelta: lambda dt: int(dt.total_seconds()),
+        }
+
+class HousekeeperConfig(WritableConfig):
+    '''Config for the housekeeper thread. Can be edited live in the web interface.
+    Usually located at `/etc/snooze/server/housekeeper.yaml`.'''
+    _section = 'housekeeper'
+
+    trigger_on_startup: bool = Field(
+        title='Trigger on startup',
+        default=True,
+        description='Trigger all housekeeping job on startup',
+    )
+    record_ttl: timedelta = Field(
+        title='Record Time-To-Live',
+        description='Default TTL (in seconds) for alerts incoming',
+        default=timedelta(days=2),
+    )
+    cleanup_alert: timedelta = Field(
+        title='Cleanup alert',
+        description='Time (in seconds) between each run of alert cleaning. Alerts that exceeded their TTL '
+        ' will be deleted',
+        default=timedelta(minutes=5),
+    )
+    cleanup_comment: timedelta = Field(
+        title='Cleanup comment',
+        description='Time (in seconds) between each run of comment cleaning. Comments which are not bound to'
+        ' any alert will be deleted',
+        default=timedelta(days=1),
+    )
+    cleanup_audit: timedelta = Field(
+        title='Cleanup audit',
+        description='Cleanup orphans audit logs that are older than the given duration (in seconds). Run daily',
+        default=timedelta(days=28),
+    )
+    cleanup_snooze: timedelta = Field(
+        title='Cleanup snooze',
+        description="Cleanup snooze filters that have been expired for the given duration (in seconds). Run daily",
+        default=timedelta(days=3),
+    )
+    cleanup_notification: timedelta = Field(
+        title='Cleanup notifications',
+        description='Cleanup notifications that have been expired for the given duration (in seconds). Run daily',
+        default=timedelta(days=3),
+    )
+
+    class Config:
+        title = 'Housekeeper configuration'
+        json_encoders = {
+            # timedelta should be serialized into seconds (int)
+            timedelta: lambda dt: int(dt.total_seconds()),
+        }
+
+class Config(BaseModel):
+    '''An object representing the complete snooze configuration'''
+    basedir: Path
+
+    core: CoreConfig
+    general: GeneralConfig
+    housekeeper: HousekeeperConfig
+    notifications: NotificationConfig
+    ldap: LdapConfig
+
+    def __init__(self, basedir: Path = SNOOZE_CONFIG):
+        configs = {
+            'basedir': basedir,
+            'core': CoreConfig(basedir),
+            'general': GeneralConfig(basedir),
+            'notifications': NotificationConfig(basedir),
+            'housekeeper': HousekeeperConfig(basedir),
+        }
+        try:
+            configs['ldap'] = LdapConfig(basedir)
+        except (FileNotFoundError, ValidationError):
+            configs['ldap'] = LdapConfig(basedir, dict(enabled=False))
+        BaseModel.__init__(self, **configs)

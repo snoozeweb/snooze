@@ -112,9 +112,8 @@ class BasicRoute:
 
 class Api:
     def __init__(self, core: 'Core'):
-        self.conf = core.conf
         self.core = core
-        self.api_type = self.conf.get('api', {}).get('type', 'falcon')
+        self.api_type = 'falcon'
         cls = import_module(f"snooze.api.{self.api_type}")
         self.__class__ = type('Api', (cls.BackendApi, Api), {})
         self.init_api(core)
