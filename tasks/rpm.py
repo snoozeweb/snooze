@@ -107,7 +107,7 @@ def build(ctx, force=False, github_output=False):
             (basedir / name).mkdir()
         ctx.run(f"cp -r dist/* {tmpdir}/SOURCES/")
         ctx.run(f"cp packaging/files/* {tmpdir}/SOURCES/")
-        ctx.run(f"rpmbuild --define '_topdir {tmpdir}' --ba snooze-server-local.spec -vv --debug")
+        ctx.run(f"rpmbuild --define '_topdir {tmpdir}' --ba packaging/snooze-server.spec -vv --debug")
         ctx.run(f"cp -r {tmpdir}/RPMS/ dist/")
     if github_output:
         print_github_kv('PATH', target)
