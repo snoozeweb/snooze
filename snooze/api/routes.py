@@ -13,16 +13,20 @@ from logging import getLogger
 from hashlib import sha256
 from base64 import b64decode
 from abc import abstractmethod
-from typing import List, Optional, Union
+from typing import List, Optional, Union, ClassVar, Dict
 from wsgiref.simple_server import WSGIServer
 from socketserver import ThreadingMixIn
+from pathlib import Path
 
 from dataclasses import asdict
 
 import falcon
+import yaml
+from falcon import Request, Response
 from ldap3 import Server, Connection, ALL, SUBTREE
 from ldap3.core.exceptions import LDAPOperationResult, LDAPExceptionError
 
+from snooze import __file__ as rootdir
 from snooze.utils.functions import ensure_kv, unique, authorize
 from snooze.utils.typing import DuplicatePolicy, AuthorizationPolicy, RouteArgs
 from snooze.db.database import Pagination
@@ -322,6 +326,34 @@ class ClusterRoute(BasicRoute):
         resp.media = {
             'data': [m.dict() for m in members],
         }
+
+class SchemaRoute(BasicRoute):
+    '''A route to return the form schema of each endpoint'''
+
+    schemas: ClassVar[Dict[str, dict]] = {}
+
+    def __init__(self, *args, **kwargs):
+        BasicRoute.__init__(self, *args, **kwargs)
+        # Loading the web form schema at startup to avoid
+        # runtime errors.
+        self.schemas = {}
+        basedir = Path(rootdir).parent / 'defaults/web'
+        etcdir = Path('/etc/snooze/web')
+        for path in basedir.glob('*.yaml'):
+            custom_override = etcdir / f"{path.stem}.yaml"
+            if custom_override.is_file():
+                text = custom_override.read_text(encoding='utf-8')
+            else:
+                text = path.read_text(encoding='utf-8')
+            self.schemas[path.stem] = yaml.safe_load(text)
+
+    def on_get(self, req: Request, resp: Response, endpoint: str):
+        '''Return the form schema of a given endpoint'''
+        try:
+            resp.media = self.schemas[endpoint]
+            resp.status = falcon.HTTP_OK
+        except KeyError as err:
+            raise falcon.HTTPNotFound(f"No web config found for endpoint '{endpoint}'") from err
 
 class AuthRoute(BasicRoute):
     auth = {
