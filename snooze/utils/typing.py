@@ -23,6 +23,19 @@ Pagination = NewType('Pagination', dict)
 
 DuplicatePolicy = Literal['insert', 'reject', 'replace', 'update']
 
+# We're listing only the ones we might raise.
+# It will not affect performance to list many, since falcon keep a dictionary of exception => handler.
+HTTPUserErrors = (
+    # HTTP 400
+    falcon.HTTPBadRequest, falcon.HTTPInvalidHeader, falcon.HTTPInvalidParam, falcon.HTTPMissingParam,
+    # HTTP 401
+    falcon.HTTPUnauthorized,
+    # HTTP 403
+    falcon.HTTPForbidden,
+    # HTTP 404
+    falcon.HTTPNotFound, falcon.HTTPRouteNotFound,
+)
+
 class AuthorizationPolicy(BaseModel):
     '''A list of authorized policy for read and write'''
     read: List[str] = Field(default_factory=list)
