@@ -47,7 +47,7 @@ class Action(Plugin):
                     self.delayed_actions.set_delayed(action_obj, False)
                 else:
                     log.debug("Delayed notification %s original notification in not in the database anymore. "
-                        "Removing it from queue", delayed_notif)
+                        "Removing it from queue", action_obj)
                     self.core.db.delete('action.delay', ['=', 'uid', action_uid])
             log.debug("Restored delayed actions %s", self.delayed_actions.delayed)
 
