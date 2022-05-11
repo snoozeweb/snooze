@@ -50,7 +50,7 @@ const nav_filter = (nav_el) => {
   if (token) {
     var decoded_token = safe_jwt_decode(token)
     if (decoded_token) {
-      permissions = decoded_token.user.permissions
+      permissions = decoded_token.permissions
     } else {
       return
     }

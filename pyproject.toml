@@ -20,14 +20,13 @@ check_snooze_server = "snooze.cli.health:check_snooze_server"
 [tool.poetry.dependencies]
 python = "^3.8"
 click = "^8.0.1"
-falcon-auth = "^1.1.0"
-falcon = "^3.0.1"
+falcon = "^3.1.0"
 Jinja2 = "^3.0.1"
 ldap3 = "^2.9.1"
 MarkupSafe = "^2.0.1"
 pathlib = "^1.0.1"
 prometheus-client = "^0.13.1"
-PyJWT = "1.7.1"
+PyJWT = "^2.3.0"
 pymongo = "3.12.1"
 pyparsing = "^2.4.7"
 python-dateutil = "^2.8.2"
@@ -69,7 +68,7 @@ load-plugins = ['pylint_pydantic']
 extension-pkg-whitelist = ['falcon', 'netifaces', 'pydantic']
 
 [tool.pylint."MESSAGE CONTROL"]
-disable = ['no-else-return']
+disable = ['no-else-return', 'too-few-public-methods']
 
 [tool.pylint.FORMAT]
 max-line-length = 120

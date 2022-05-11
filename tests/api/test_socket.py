@@ -47,7 +47,7 @@ def test_socket_root_token(mysocket):
         assert False
     root_token = myjson.get('root_token')
     assert root_token
-    payload = jwt.decode(jwt=root_token, options={'verify_signature': False})['user']
-    assert payload['name'] == 'root'
+    payload = jwt.decode(jwt=root_token, options={'verify_signature': False})
+    assert payload['username'] == 'root'
     assert payload['method'] == 'root'
     assert payload['permissions'] == ['rw_all']

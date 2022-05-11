@@ -27,8 +27,8 @@ from ldap3 import Server, Connection, ALL, SUBTREE
 from ldap3.core.exceptions import LDAPOperationResult, LDAPExceptionError
 
 from snooze import __file__ as rootdir
-from snooze.utils.functions import ensure_kv, unique, authorize
-from snooze.utils.typing import DuplicatePolicy, AuthorizationPolicy, RouteArgs
+from snooze.utils.functions import ensure_kv, unique, authorize, extract_basic_auth
+from snooze.utils.typing import DuplicatePolicy, AuthorizationPolicy, RouteArgs, AuthPayload
 from snooze.db.database import Pagination
 
 log = getLogger('snooze.api')
@@ -124,19 +124,19 @@ class BasicRoute:
 class FalconRoute(BasicRoute):
     '''Basic falcon route'''
     def inject_payload_media(self, req, resp):
-        user_payload = req.context['user']['user']
-        log.debug("Injecting payload %s to %s", user_payload, req.media)
+        auth: AuthPayload = req.context.auth
+        log.debug("Injecting payload %s to %s", auth, req.media)
         if isinstance(req.media, list):
             for media in req.media:
-                media['name'] = user_payload['name']
-                media['method'] = user_payload['method']
+                media['name'] = auth.username
+                media['method'] = auth.method
         else:
-            req.media['name'] = user_payload['name']
-            req.media['method'] = user_payload['method']
+            req.media['name'] = auth.username
+            req.media['method'] = auth.method
 
     def inject_payload_search(self, req, s):
-        user_payload = req.context['user']['user']
-        to_inject = ['AND', ['=', 'name', user_payload['name']], ['=', 'method', user_payload['method']]]
+        auth: AuthPayload = req.context.auth
+        to_inject = ['AND', ['=', 'name', auth.username], ['=', 'method', auth.method]]
         if s:
             return ['AND', s, to_inject]
         else:
@@ -161,9 +161,7 @@ def merge_batch_results(rec_list):
     return {'data': functools.reduce(lambda a, b: {k: a.get('data', {}).get(k, []) + b.get('data', {}).get(k, []) for k in list(dict.fromkeys(list(a.get('data', {}).keys()) + list(b.get('data', {}).keys())))}, rec_list)}
 
 class WebhookRoute(FalconRoute):
-    auth = {
-        'auth_disabled': True
-    }
+    authentication = False
 
     @abstractmethod
     def parse_webhook(self, req, media):
@@ -220,9 +218,7 @@ class PermissionsRoute(BasicRoute):
             resp.status = falcon.HTTP_503
 
 class AlertRoute(BasicRoute):
-    auth = {
-        'auth_disabled': True
-    }
+    authentication = False
 
     def on_post(self, req, resp):
         log.debug("Received log %s", req.media)
@@ -244,9 +240,7 @@ class AlertRoute(BasicRoute):
 
 class MetricsRoute(BasicRoute):
     '''A falcon route to serve prometheus metrics'''
-    auth = {
-        'auth_disabled': True
-    }
+    authentication = False
 
     def on_get(self, req, resp):
         try:
@@ -260,9 +254,7 @@ class MetricsRoute(BasicRoute):
 
 class LoginRoute(BasicRoute):
     '''A falcon route for users to login'''
-    auth = {
-        'auth_disabled': True
-    }
+    authentication = False
 
     def on_get(self, req, resp):
         log.debug("Listing authentication backends")
@@ -311,7 +303,7 @@ class ReloadPluginRoute(BasicRoute):
 
 class ClusterRoute(BasicRoute):
     '''A route to fetch the status of the cluster member'''
-    auth = {'auth_disabled': True}
+    authentication = False
 
     def on_get(self, req, resp):
         '''Return the status of every cluster member'''
@@ -329,6 +321,7 @@ class ClusterRoute(BasicRoute):
 
 class SchemaRoute(BasicRoute):
     '''A route to return the form schema of each endpoint'''
+    authentication = False
 
     schemas: ClassVar[Dict[str, dict]] = {}
 
@@ -356,9 +349,7 @@ class SchemaRoute(BasicRoute):
             raise falcon.HTTPNotFound(f"No web config found for endpoint '{endpoint}'") from err
 
 class AuthRoute(BasicRoute):
-    auth = {
-        'auth_disabled': True
-    }
+    authentication = False
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -390,43 +381,20 @@ class AuthRoute(BasicRoute):
 
         return parts[1]
 
-    def _extract_credentials(self, req):
-        auth = req.get_header('Authorization')
-        token = self.parse_auth_token_from_request(auth_header=auth)
-        try:
-            token = b64decode(token).decode('utf-8')
-
-        except Exception:
-            raise falcon.HTTPUnauthorized(
-                description='Invalid Authorization Header: Unable to decode credentials')
-
-        try:
-            username, password = token.split(':', 1)
-        except ValueError:
-            raise falcon.HTTPUnauthorized(
-                description='Invalid Authorization: Unable to decode credentials')
-
-        return username, password
-
-    def parse_user(self, user):
-        return user
-
-    def inject_permissions(self, user):
-        roles = self.get_roles(user['name'], user['method'])
-        permissions = self.get_permissions(roles)
-        user['roles'] = roles
-        user['permissions'] = permissions
+    def inject_permissions(self, auth: AuthPayload):
+        '''Populate the roles and permissions in a given AuthPayload'''
+        auth.roles = self.get_roles(auth.username, auth.method)
+        auth.permissions = self.get_permissions(auth.roles)
 
     def on_post(self, req, resp):
         if self.enabled:
-            self.authenticate(req, resp)
-            user = self.parse_user(req.context['user'])
+            auth = self.authenticate(req, resp)
             preferences = None
             if self.userplugin:
-                _, preferences = self.userplugin.manage_db(user)
-            self.inject_permissions(user)
-            log.debug("Context user: %s", user)
-            token = self.api.jwt_auth.get_auth_token(user)
+                _, preferences = self.userplugin.manage_db(auth)
+            self.inject_permissions(auth)
+            log.debug("Context user: %s", auth)
+            token = self.core.token_engine.sign(auth)
             log.debug("Generated token: %s", token)
             resp.content_type = falcon.MEDIA_JSON
             resp.status = falcon.HTTP_200
@@ -443,9 +411,9 @@ class AuthRoute(BasicRoute):
             }
 
     @abstractmethod
-    def authenticate(self, req, resp):
+    def authenticate(self, req, resp) -> AuthPayload:
         '''Abstract method called to authenticate the user.
-        Is expected to set req.context['user'], and to raise
+        Is expected to return an AuthPayload, and to raise
         falcon.HTTPUnauthorized when unauthorized.
         '''
 
@@ -468,10 +436,7 @@ class AnonymousAuthRoute(AuthRoute):
 
     def authenticate(self, req, resp):
         log.debug('Anonymous login')
-        req.context['user'] = 'anonymous'
-
-    def parse_user(self, user):
-        return {'name': 'anonymous', 'method': 'local'}
+        return AuthPayload(username='anonymous', method='anonymous')
 
 class LocalAuthRoute(AuthRoute):
     '''An authentication route for local users'''
@@ -486,7 +451,7 @@ class LocalAuthRoute(AuthRoute):
         log.debug("Authentication backend 'local' status: %s", self.enabled)
 
     def authenticate(self, req, resp):
-        username, password = self._extract_credentials(req)
+        username, password = extract_basic_auth(req)
         password_hash = sha256(password.encode('utf-8')).hexdigest()
         log.debug("Attempting login for %s, with password hash %s", username, password_hash)
         user_search = self.core.db.search('user', ['AND', ['=', 'name', username], ['=', 'method', 'local']])
@@ -501,7 +466,7 @@ class LocalAuthRoute(AuthRoute):
                 		description='Password not found')
                 if db_password == password_hash:
                     log.debug('Password was correct for user %s', username)
-                    req.context['user'] = username
+                    return AuthPayload(username=username, method='local')
                 else:
                     log.debug('Password was incorrect for user %s', username)
                     raise falcon.HTTPUnauthorized(
@@ -514,9 +479,6 @@ class LocalAuthRoute(AuthRoute):
             log.exception('Exception while trying to compare passwords')
             raise falcon.HTTPUnauthorized(
            		description='Exception while trying to compare passwords')
-
-    def parse_user(self, user):
-        return {'name': user, 'method': 'local'}
 
 class LdapAuthRoute(AuthRoute):
     '''An authentication route for LDAP users'''
@@ -614,23 +576,19 @@ class LdapAuthRoute(AuthRoute):
             user_con.unbind()
 
     def authenticate(self, req, resp):
-        username, password = self._extract_credentials(req)
+        username, password = extract_basic_auth(req)
         user = self._search_user(username)
         user_con = self._bind_user(user['dn'], password)
         if user_con.result['result'] == 0:
-            req.context['user'] = user
+            groups = [group.split(',')[0].split('=', 1)[-1] for group in user['groups']]
+            return AuthPayload(username=user['name'], method='ldap', groups=groups)
         else:
-            raise falcon.HTTPUnauthorized(description="")
-
-    def parse_user(self, user):
-        groups = list(map(lambda x: x.split(',')[0].split('=')[1], user['groups']))
-        return {'name': user['name'], 'groups': groups, 'method': 'ldap'}
+            raise falcon.HTTPUnauthorized(description=f"Wrong LDAP username or password for '{user['dn']}'")
 
 class RedirectRoute:
     '''A falcon route for managing the default redirection'''
-    auth = {
-        'auth_disabled': True
-    }
+    authentication = False
+
     def on_get(self, req, resp):
         raise falcon.HTTPMovedPermanently('/web/')
 

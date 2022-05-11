@@ -51,7 +51,8 @@ def mock_who_am_i(members):
 class TestStandaloneCluster:
     def test_status(self, config):
         hostname = socket.gethostname()
-        cluster = Cluster(config.core)
+        token = 'secret123'
+        cluster = Cluster(config.core, token)
         status = cluster.status()
         assert isinstance(status, PeerStatus)
         assert status.host == 'localhost'
@@ -60,7 +61,8 @@ class TestStandaloneCluster:
 
     def test_member_status(self, config):
         hostname = socket.gethostname()
-        cluster = Cluster(config.core)
+        token = 'secret123'
+        cluster = Cluster(config.core, token)
         statuses = cluster.members_status()
         assert len(statuses) == 1
         assert statuses[0].host == 'localhost'
@@ -70,15 +72,17 @@ class TestStandaloneCluster:
 class TestRequestHandler:
     @responses.activate
     def test_handle_query_reload_plugin(self, config):
-        cluster = Cluster(config.core)
-        req = RequestReloadPlugin('http://host02:5200', 'notification')
+        token = 'secret123'
+        cluster = Cluster(config.core, token)
+        req = RequestReloadPlugin('http://host02:5200', 'notification', token)
         responses.add(responses.POST, 'http://host02:5200/api/reload/notification')
         resp = cluster.handle_query(req)
         assert resp.status_code == 200
 
     @responses.activate
     def test_handler_query_setting_update(self, config):
-        cluster = Cluster(config.core)
+        token = 'secret123'
+        cluster = Cluster(config.core, token)
         data = {'anonymous_login': True}
         auth = 'JWT secret123'
         req = RequestSettingUpdate('http://host02:5200', 'general', data, auth)
@@ -103,7 +107,8 @@ class TestClusterThread:
 
     @patch('snooze.utils.cluster.who_am_i', mock_who_am_i)
     def test_start_stop(self, config):
-        cluster = Cluster(config.core)
+        token = 'secret123'
+        cluster = Cluster(config.core, token)
         cluster.daemon = True
         cluster.start()
         time.sleep(0.1)
@@ -113,7 +118,8 @@ class TestClusterThread:
     @responses.activate
     @patch('snooze.utils.cluster.who_am_i', mock_who_am_i)
     def test_sync_reload_plugin(self, config):
-        cluster = Cluster(config.core)
+        token = 'secret123'
+        cluster = Cluster(config.core, token)
         cluster.daemon = True
         cluster.start()
         time.sleep(0.1)
@@ -125,7 +131,8 @@ class TestClusterThread:
     @responses.activate
     @patch('snooze.utils.cluster.who_am_i', mock_who_am_i)
     def test_sync_setting_update(self, config):
-        cluster = Cluster(config.core)
+        token = 'secret123'
+        cluster = Cluster(config.core, token)
         cluster.daemon = True
         cluster.start()
         time.sleep(0.1)
@@ -155,7 +162,8 @@ class TestRealCluster:
     @patch('snooze.utils.cluster.who_am_i', mock_who_am_i)
     def test_status(self, config):
         hostname = socket.gethostname()
-        cluster = Cluster(config.core)
+        token = 'secret123'
+        cluster = Cluster(config.core, token)
         status = cluster.status()
         assert isinstance(status, PeerStatus)
         assert status.host == 'host01'
@@ -168,7 +176,8 @@ class TestRealCluster:
         # host03 is unreachable, since it's not mocked by responses, it will throw a ConnectionError
         host02_status = {'data': [{'host': 'host02', 'port': 5200, 'version': '1.x.x', 'healthy': True}]}
         responses.add(responses.GET, 'http://host02:5200/api/cluster?one', status=200, json=host02_status)
-        cluster = Cluster(config.core)
+        token = 'secret123'
+        cluster = Cluster(config.core, token)
         statuses = cluster.members_status()
         assert len(statuses) == 3
 

@@ -19,9 +19,7 @@ log = getLogger('snooze.webhooks.prometheus')
 
 class PrometheusRoute(WebhookRoute):
     '''A webhook to receive Prometheus Alert Manager notifications'''
-    auth = {
-        'auth_disabled': True
-    }
+    authentication = False
 
     def parse(self, content, media):
         '''Parse the data of the webhook to create an alert'''

@@ -19,9 +19,7 @@ log = getLogger('snooze.webhooks.influxdb')
 
 class InfluxDBRoute(WebhookRoute):
     '''A falcon route to handle InfluxDB v2 alerts'''
-    auth = {
-        'auth_disabled': True
-    }
+    authentication = False
 
     def parse(self, media):
         '''Parse the data of the webhook to create an alert'''
