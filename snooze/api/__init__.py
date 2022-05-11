@@ -24,6 +24,8 @@ from falcon_auth import FalconAuthMiddleware, JWTAuthBackend
 from snooze.api.routes import *
 from snooze.health import HealthRoute
 from snooze.utils.config import WebConfig
+from snooze.utils.functions import log_error_handler, log_warning_handler, log_uncaught_handler
+from snooze.utils.typing import HTTPUserErrors
 
 SNOOZE_GLOBAL_RUNDIR = '/var/run/snooze'
 uid = os.getuid()
@@ -99,7 +101,9 @@ class Api:
         )
         self.handler.req_options.media_handlers.update({'application/json': json_handler})
         self.handler.resp_options.media_handlers.update({'application/json': json_handler})
-        self.handler.add_error_handler(Exception, self.custom_handle_uncaught_exception)
+        self.handler.add_error_handler(HTTPUserErrors, log_warning_handler)
+        self.handler.add_error_handler(falcon.HTTPError, log_error_handler)
+        self.handler.add_error_handler(Exception, log_uncaught_handler)
 
         self.auth_routes = {}
         # Alert route
@@ -133,13 +137,6 @@ class Api:
             self.add_route('/', RedirectRoute(), '')
             self.add_route('/web', RedirectRoute(), '')
             self.handler.add_sink(StaticRoute(web.path, '/web').on_get, '/web')
-
-    def custom_handle_uncaught_exception(self, e, req, resp, params):
-        '''Custom handler for logging uncaught exceptions in falcon inside python logger.
-        Make use of an internal method of falcon to do so.
-        '''
-        log.exception(e)
-        self.handler._compose_error_response(req, resp, HTTPInternalServerError())
 
     def add_route(self, route, action, prefix='/api'):
         '''Map a falcon route class to a given path'''

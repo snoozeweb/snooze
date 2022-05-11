@@ -14,12 +14,38 @@ from pathlib import Path
 from typing import Optional, List, Union, Any, TypeVar
 
 import falcon
+from falcon import Request, Response, HTTPError
 
 from snooze.utils.typing import Record
 
 log = getLogger('snooze.utils.functions')
 
 T = TypeVar('T')
+
+def log_warning_handler(err: HTTPError, req: Request, _resp, _params):
+    '''Log caught exceptions as a warning'''
+    source = req.access_route[0]
+    method = req.method
+    path = req.relative_uri
+    status = err.status[:3]
+    message = f"{source} {method} {path} {status} - {err.description}"
+    log.warning(message, exc_info=err)
+    raise err
+
+def log_error_handler(err: HTTPError, req: Request, _resp, _params):
+    '''Log caught exceptions as an error'''
+    source = req.access_route[0]
+    method = req.method
+    path = req.relative_uri
+    status = err.status[:3]
+    message = f"{source} {method} {path} {status} - {err.description}"
+    log.error(message, exc_info=err)
+    raise err
+
+def log_uncaught_handler(err: Exception, _req, _resp, _params):
+    '''Log uncaught exceptions and return a clean 5xx'''
+    log.exception(err)
+    raise falcon.HTTPInternalServerError(description=str(err)) from err
 
 def unique(lst: list) -> list:
     '''Return a list with only unique elements'''
