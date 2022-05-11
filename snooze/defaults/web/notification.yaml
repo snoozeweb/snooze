@@ -25,8 +25,10 @@ fields:
         tdClass: ['align-middle']
         type: array
     -
-        key: Delay
+        key: frequency
         tdClass: ['align-middle', 'text-nowrap']
+        sortable: false
+        type: array
     -
         label: State
         key: enabled

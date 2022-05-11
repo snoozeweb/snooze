@@ -138,6 +138,9 @@
         <template v-slot:actions="row">
           <Field :data="dig(row.item, 'actions')" />
         </template>
+        <template v-slot:frequency="row">
+          <Frequency :data="dig(row.item, 'frequency')" />
+        </template>
         <template v-slot:enabled="row">
           <Field :data="[(dig(row.item, 'enabled') == undefined || dig(row.item, 'enabled') == true) ? 'enabled' : 'disabled']" colorize/>
         </template>
@@ -324,6 +327,7 @@ import Search from '@/components/Search.vue'
 import Condition from '@/components/Condition.vue'
 import Modification from '@/components/Modification.vue'
 import Field from '@/components/Field.vue'
+import Frequency from '@/components/Frequency.vue'
 import DateTime from '@/components/DateTime.vue'
 import TimeConstraint from '@/components/TimeConstraint.vue'
 import Info from '@/components/Info.vue'
@@ -339,6 +343,7 @@ export default {
     Condition,
     Modification,
     Field,
+    Frequency,
     DateTime,
     TimeConstraint,
     Search,
