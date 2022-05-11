@@ -53,7 +53,7 @@ def mq_status(mq_manager: 'MQManager', status: dict) -> List[Health]:
 
 class HealthRoute(BasicRoute):
     '''A falcon route that return the health of the snooze server'''
-    auth = {'auth_disabled': True}
+    authentication = False
 
     def on_get(self, req, resp):
         status = {}

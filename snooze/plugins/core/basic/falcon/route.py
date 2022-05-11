@@ -106,8 +106,8 @@ class Route(FalconRoute):
         for req_media in media:
             queries = req_media.get('qls', [])
             req_media['snooze_user'] = {
-                'name': req.context['user']['user']['name'],
-                'method': req.context['user']['user']['method'],
+                'name': req.context.auth.username,
+                'method': req.context.auth.method,
             }
 
             # Validation
@@ -224,8 +224,8 @@ class Route(FalconRoute):
                         else:
                             object_id = obj.get('uid')
                         try:
-                            username = req.context['user']['user']['name']
-                            method = req.context['user']['user']['method']
+                            username = req.context.auth.username
+                            method = req.context.auth.method
                         except KeyError:
                             username = 'unknown'
                             method = 'unknown'

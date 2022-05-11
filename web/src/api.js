@@ -15,7 +15,7 @@ export const API = axios.create(axios_config)
 if (!localStorage.getItem('username')) {
   let token = localStorage.getItem('snooze-token')
   if (token) {
-    localStorage.setItem('username', jwt_decode(token).user.name)
+    localStorage.setItem('username', jwt_decode(token).username)
   }
 }
 
@@ -25,6 +25,9 @@ API.interceptors.request.use(
     let token = localStorage.getItem('snooze-token')
     if (token) {
       config.headers['Authorization'] = "JWT " + token
+    } else {
+      const return_to = encodeURIComponent(router.currentRoute.value.fullPath)
+      router.push(`/login?return_to=${return_to}`)
     }
     return config
   },
@@ -37,8 +40,8 @@ API.interceptors.response.use(
   function (error) {
     if (router.currentRoute.value.path != '/login') {
       if (error.response && error.response.status === 401) {
-        var return_to = encodeURIComponent(router.currentRoute.value.fullPath)
-        router.push('/login?return_to='+return_to)
+        const return_to = encodeURIComponent(router.currentRoute.value.fullPath)
+        router.push(`/login?return_to=${return_to}`)
       } else {
         return error
       }

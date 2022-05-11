@@ -18,9 +18,7 @@ log = getLogger('snooze.webhooks.kapacitor')
 
 class KapacitorRoute(WebhookRoute):
     '''A falcon route for parsing kapacitor alerts'''
-    auth = {
-        'auth_disabled': True
-    }
+    authentication = False
 
     def parse(self, match, media):
         '''Parse the data of the webhook to create an alert'''

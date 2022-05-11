@@ -81,10 +81,10 @@ export default {
     if (token) {
       var decoded_token = safe_jwt_decode(token)
       if (decoded_token) {
-        this.username = decoded_token.user.name
-        this.method = decoded_token.user.method
-        this.roles = decoded_token.user.roles
-        this.permissions = decoded_token.user.permissions
+        this.username = decoded_token.username
+        this.method = decoded_token.method
+        this.roles = decoded_token.roles
+        this.permissions = decoded_token.permissions
         localStorage.setItem('name', this.username)
         localStorage.setItem('method', this.method)
         localStorage.setItem('roles', this.roles)

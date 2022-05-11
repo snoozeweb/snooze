@@ -7,8 +7,10 @@
 
 '''Typing utils for snooze'''
 
-from typing import NewType, List, Literal, Optional, TypedDict, Union
+from datetime import datetime, timedelta
+from typing import NewType, List, Literal, Optional, TypedDict, Union, Set
 
+import falcon
 from pydantic import BaseModel, Field
 
 RecordUid = NewType('RecordUid', str)
@@ -38,8 +40,8 @@ HTTPUserErrors = (
 
 class AuthorizationPolicy(BaseModel):
     '''A list of authorized policy for read and write'''
-    read: List[str] = Field(default_factory=list)
-    write: List[str] = Field(default_factory=list)
+    read: Set[str] = Field(default_factory=set)
+    write: Set[str] = Field(default_factory=set)
 
 class RouteArgs(BaseModel):
     '''Description of the arguments passed to a route'''
@@ -72,6 +74,22 @@ class HostPort(BaseModel):
         default=5200,
         description='The port where the host is expected to listen to'
     )
+
+class AuthPayload(BaseModel):
+    '''An object representing the authentication payload that will
+    be contained in the JWT token'''
+    username: str
+    method: str
+    roles: List[str] = Field(default_factory=list)
+    permissions: Set[str] = Field(default_factory=set)
+    groups: List[str] = Field(default_factory=list)
+
+    def dict(self, **kwargs):
+        data = BaseModel.dict(self, **kwargs)
+        for key, value in data.items():
+            if isinstance(value, set):
+                data[key] = list(value)
+        return data
 
 class Widget(BaseModel):
     '''A widget representation in the config'''

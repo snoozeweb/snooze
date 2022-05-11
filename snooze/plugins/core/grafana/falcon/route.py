@@ -18,9 +18,7 @@ log = getLogger('snooze.webhooks.grafana')
 
 class GrafanaRoute(WebhookRoute):
     '''A falcon route to receive Grafana alerts as input'''
-    auth = {
-        'auth_disabled': True
-    }
+    authentication = False
 
     def parse(self, match, media):
         '''Parse the data of the webhook to create an alert'''
