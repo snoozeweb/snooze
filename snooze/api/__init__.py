@@ -90,6 +90,8 @@ class Api:
         self.add_route('/cluster', ClusterRoute(self))
         # Health route
         self.add_route('/health', HealthRoute(self))
+        # Schema route
+        self.add_route('/schema/{endpoint}', SchemaRoute(self))
         # Permissions route
         self.add_route('/permissions', PermissionsRoute(self))
         # Basic auth setup

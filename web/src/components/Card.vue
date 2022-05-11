@@ -60,8 +60,8 @@ export default {
   },
   mounted () {
     this.save_enable()
-    this.settings = JSON.parse(localStorage.getItem(this.endpoint+'_json') || '{}')
-    get_data('settings/?c='+encodeURIComponent(`web/${this.endpoint}`)+'&checksum='+(this.settings.checksum || ""), null, {}, this.load_table)
+    this.schema = JSON.parse(localStorage.getItem(this.endpoint+'_json') || '{}')
+    get_data(`schema/${this.endpoint}`, null, {}, this.load_table)
   },
   data () {
     return {
@@ -75,7 +75,7 @@ export default {
       save_disabled: null,
       save_variant: null,
       submitForm: this.onSubmit || this.submit,
-      settings: {},
+      schema: {},
       loaded: false,
     }
   },
@@ -85,10 +85,10 @@ export default {
     load_table(response) {
       if (response.data) {
         if (response.data.count > 0) {
-          this.settings = response.data
+          this.schema = response.data
           localStorage.setItem(this.endpoint+'_json', JSON.stringify(response.data))
         }
-        var data = this.settings.data[0]
+        var data = this.schema
         this.form = dig(data, 'form')
         this.tabs = dig(data, 'tabs')
         this.endpoint = dig(data, 'endpoint') || this.endpoint
