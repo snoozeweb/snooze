@@ -135,6 +135,10 @@
           <CBadge v-if="dig(row.item, 'discard')" color="quaternary">yes</CBadge>
           <CBadge v-else color="success">no</CBadge>
         </template>
+        <template v-slot:batch="row">
+          <CBadge v-if="dig(row.item, 'action', 'subcontent', 'batch')" color="quaternary">yes</CBadge>
+          <CBadge v-else color="tertiary">no</CBadge>
+        </template>
         <template v-slot:actions="row">
           <Field :data="dig(row.item, 'actions')" />
         </template>

@@ -2,6 +2,7 @@
 
 ### New features
 * Web: Added a frequency display in Notifications
+* Web: Added a batch display in Actions
 * Core: Monitoring endpoint at `/api/health`
 * Core: Nagios/Icinga compatible check script (`check_snooze_server`)
 
