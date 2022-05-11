@@ -66,6 +66,7 @@ class WSGISocketServer(SurvivingThread, UnixWSGIServer):
         '''Override Thread method. Start the service'''
         log.info("Listening on %s", self.path)
         UnixWSGIServer.run(self)
+        log.info('Stopped socket server')
 
     def stop_thread(self):
         '''Gracefully stop the service'''

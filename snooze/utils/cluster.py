@@ -162,7 +162,7 @@ class Cluster(SurvivingThread):
         headers = {'Content-type': 'application/json'}
         use_ssl = self.core.conf.get('ssl', {}).get('enabled', False)
         success = False
-        while True:
+        while not self.exit.wait(0.1):
             for index, job in enumerate(self.sync_queue):
                 if use_ssl:
                     connection = http.client.HTTPSConnection(job['host'], job['port'], timeout=10)
@@ -184,3 +184,4 @@ class Cluster(SurvivingThread):
                 else:
                     log.error("Could not dequeue job: %s", job)
             time.sleep(1)
+        log.info('Stopped cluster')

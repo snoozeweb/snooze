@@ -282,13 +282,13 @@ class DelayedActions(SurvivingThread):
             self.cleanup(record_hash)
 
     def start_thread(self):
-        while True:
+        while not self.exit.wait(0.1):
             for record_hash in list(self.delayed.keys()):
                 for action_uid in list(self.delayed[record_hash].keys()):
                     if time.time() >= self.delayed[record_hash][action_uid]['time']:
                         self.send_delayed(record_hash, action_uid)
             time.sleep(2)
-
+        log.info('Stopped delayed action thread')
 
 class ActionWorker(Worker):
 

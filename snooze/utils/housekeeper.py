@@ -45,7 +45,7 @@ class Housekeeper(SurvivingThread):
         timer_comment = timer_record
         timer_audit = timer_record
         last_day = -1
-        while True:
+        while not self.exit.wait(0.1):
             if self.interval_record > 0 and time.time() - timer_record >= self.interval_record:
                 timer_record = time.time()
                 self.core.db.cleanup_timeout('record')
@@ -64,6 +64,7 @@ class Housekeeper(SurvivingThread):
                 if backup_conf.get('enabled', True):
                     self.core.db.backup(backup_conf.get('path', '/var/log/snooze'), backup_conf.get('exclude', ['record', 'stats', 'comment', 'secrets']))
             time.sleep(1)
+        log.info('Stopped housekeeper')
 
 def cleanup_expired(db: 'Database', collection: str, cleanup_delay: int):
     '''Cleanup expired objects. Used for objects containing a time constraint, and

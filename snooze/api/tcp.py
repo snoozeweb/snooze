@@ -97,7 +97,7 @@ class TcpThread(SurvivingThread):
 
     def stop_thread(self):
         '''Gracefully stop the service'''
-        log.info('Closing TCP socket...')
         if self.server:
+            log.info('Stopping TCP socket...')
             self.server.shutdown()
-        log.debug("Closed TCP listener")
+            log.info("Stopped TCP listener")

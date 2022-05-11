@@ -25,8 +25,10 @@ class SurvivingThread(Thread):
         while True:
             try:
                 self.start_thread()
+                self.exit.set()
+                break
             except Exception as err:
-                log.error(err)
+                log.exception(err)
                 self.stop_thread()
                 if self.restart:
                     continue
