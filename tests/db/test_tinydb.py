@@ -14,7 +14,7 @@ import yaml
 from freezegun import freeze_time
 from tinydb import TinyDB, Query
 
-from snooze.db.database import Database
+from snooze.db.database import Database, get_database
 from snooze.utils.config import FileConfig
 
 log = getLogger('tests')
@@ -29,7 +29,7 @@ def config(tmp_path):
 
 @pytest.fixture
 def db(config):
-    return Database(config)
+    return get_database(config)
 
 def test_tinydb_base(config):
     db = TinyDB(config.path)

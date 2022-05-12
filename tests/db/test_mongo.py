@@ -13,7 +13,7 @@ import mongomock
 import yaml
 from freezegun import freeze_time
 
-from snooze.db.database import Database
+from snooze.db.database import Database, get_database
 
 log = getLogger('tests')
 

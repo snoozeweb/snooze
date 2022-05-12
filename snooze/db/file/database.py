@@ -68,7 +68,7 @@ class BackendDB(Database):
 
     name = 'file'
 
-    def init_db(self, config: FileConfig):
+    def __init__(self, config: FileConfig):
         self.db = TinyDB(config.path)
         log.debug("Initialized TinyDB at path %s", config.path)
         log.debug("db: %s", self.db)

@@ -25,14 +25,15 @@ from typing import List
 from dateutil import parser
 
 from snooze import __file__ as rootdir
-from snooze.db.database import Database
+from snooze.db.database import Database, AsyncDatabase, get_database
 from snooze.plugins.core import Abort, AbortAndWrite, AbortAndUpdate
 from snooze.token import TokenEngine
 from snooze.utils.functions import flatten
 from snooze.api.socket import WSGISocketServer, admin_api
 from snooze.api.tcp import TcpThread
 from snooze.api import Api
-from snooze.utils import Housekeeper, Stats, MQManager
+from snooze.utils import Housekeeper, MQManager
+from snooze.utils.stats import Stats
 from snooze.utils.cluster import Cluster
 from snooze.utils.config import Config, SNOOZE_CONFIG
 from snooze.utils.threading import SurvivingThread
@@ -48,27 +49,18 @@ class Core:
         self.basedir = basedir
         self.config = Config(basedir)
         core_config = self.config.core
-        self.db = Database(core_config.database)
-
-        self.stats = Stats(self.db, self.config.general)
-        self.stats.init('process_alert_duration', 'summary', 'snooze_process_alert_duration',
-            'Average time spend processing a alert', ['source', 'environment', 'severity'])
-        self.stats.init('alert_hit', 'counter', 'snooze_alert_hit',
-            'Counter of received alerts', ['source', 'environment', 'severity'])
-        self.stats.init('alert_snoozed', 'counter', 'snooze_alert_snoozed', 'Counter of snoozed alerts', ['name'])
-        self.stats.init('alert_throttled', 'counter', 'snooze_alert_throttled', 'Counter of throttled alerts', ['name'])
-        self.stats.init('alert_closed', 'counter', 'snooze_alert_closed', 'Counter of received closed alerts', ['name'])
-        self.stats.init('notification_sent', 'counter', 'snooze_notification_sent',
-            'Counter of notification sent', ['name'])
-        self.stats.init('action_success', 'counter', 'snooze_action_success',
-            'Counter of action that succeeded', ['name'])
-        self.stats.init('action_error', 'counter', 'snooze_action_error', 'Counter of action that failed', ['name'])
+        self.db = get_database(core_config.database)
 
         self.exit_event = Event()
         self.secrets = self.ensure_secrets()
         self.token_engine = TokenEngine(self.secrets['jwt_private_key'])
 
         self.threads:  Dict[str, SurvivingThread] = {}
+        self.threads['asyncdb'] = AsyncDatabase(self.db, exit_event=self.exit_event)
+
+        self.stats = Stats(self, self.config.general)
+        self.stats.bootstrap()
+
         if 'housekeeper' in allowed_threads:
             self.threads['housekeeper'] = Housekeeper(self.config.housekeeper,
                 self.config.core.backup, self.db, self.exit_event)
