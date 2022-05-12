@@ -9,6 +9,7 @@
 
 from logging import getLogger
 
+from snooze.db.database import AsyncIncrement
 from snooze.plugins.core import Plugin, AbortAndWrite, Abort
 from snooze.utils.condition import get_condition, validate_condition
 from snooze.utils.time_constraints import get_record_date, init_time_constraints
@@ -18,16 +19,19 @@ log = getLogger('snooze.plugins.snooze')
 
 class Snooze(Plugin):
     '''The snooze process plugin'''
+
+    def __init__(self, *args, **kwargs):
+        Plugin.__init__(self, *args, **kwargs)
+        self.hits = AsyncIncrement(self.db, 'snooze', 'hits')
+        self.core.threads['asyncdb'].new_increment(self.hits)
+
     def process(self, record: Record) -> Record:
         log.debug("Processing record %s against snooze filters", record.get('hash', ''))
         for filt in self.filters:
             if filt.enabled and filt.match(record):
                 log.debug("Snooze filter %s matched record: %s", filt.name, record.get('hash', ''))
                 record['snoozed'] = filt.name
-                filt.hits += 1
-                filt.raw['hits'] = filt.hits
-                self.db.write('snooze', filt.raw)
-                self.core.stats.inc('alert_snoozed', {'name': filt.name})
+                self.hits.increment({'name': filt.name})
                 if filt.discard:
                     if 'hash' in record:
                         self.db.delete('record', ['=', 'hash', record['hash']])

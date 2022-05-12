@@ -16,8 +16,8 @@ import yaml
 from falcon.testing import TestClient
 from pytest_data.functions import get_data
 
-from snooze.db.database import Database
 from snooze.core import Core, MAIN_THREADS
+from snooze.db.database import Database, get_database
 from snooze.utils.config import Config
 
 log = getLogger('tests')
@@ -66,7 +66,7 @@ def fixture_config(port, tmp_path, request) -> Config:
 @mongomock.patch('mongodb://localhost:27017')
 def fixture_db(config, request) -> Database:
     '''Fixture returning a mocked mongodb Database'''
-    database = Database(config.core.database)
+    database = get_database(config.core.database)
     write_data(database, request)
     return database
 

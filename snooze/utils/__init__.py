@@ -10,5 +10,5 @@ from .condition import get_condition
 from .modification import get_modification
 from .housekeeper import Housekeeper
 from .mq import MQManager
-from .stats import Stats
+#from .stats import Stats
 from .cluster import Cluster

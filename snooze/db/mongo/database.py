@@ -14,9 +14,10 @@ import uuid
 from copy import deepcopy
 from pathlib import Path
 from logging import getLogger
-from typing import List, Optional, Union
+from typing import List, Optional, Union, Tuple
 
 import pymongo
+from pymongo import UpdateOne
 from bson.code import Code
 from bson.json_util import dumps
 
@@ -43,7 +44,7 @@ class BackendDB(Database):
 
     name = 'mongo'
 
-    def init_db(self, config: MongodbConfig):
+    def __init__(self, config: MongodbConfig):
         self.db = pymongo.MongoClient(**config.dict(exclude={'type'}))[database]
         self.search_fields = {}
         log.debug("Initialized Mongodb")
@@ -244,6 +245,16 @@ class BackendDB(Database):
                 self.db[collection].insert_one(result)
                 added.append(result)
         return {'data': {'added': added, 'updated': updated}}
+
+    @wrap_exception
+    def bulk_increment(self, collection: str, updates: List[Tuple[dict, dict]]):
+        '''Perform a bulk update of increments. Each update should be a tuple of search and update'''
+        requests = []
+        for search, update in updates:
+            new_update = dict(update)
+            new_update.pop('_id', None)
+            requests.append(UpdateOne(search, {'$inc': new_update, '$setOnInsert': search}, upsert=True))
+        self.db[collection].bulk_write(requests)
 
     def update_fields(self, collection: str, fields: List[str], condition: Condition = []):
         mongo_search = self.convert(condition, self.search_fields.get(collection, []))

@@ -8,16 +8,22 @@
 '''General objects for managing database backends'''
 
 import os
+import time
 from importlib import import_module
 from urllib.parse import urlparse
-from abc import abstractmethod
-from typing import List, Optional, Union
+from abc import ABC, abstractmethod
+from logging import getLogger
+from threading import Event
+from typing import List, Optional, Union, Dict, Tuple, Any
 
 from typing_extensions import TypedDict
 
 from snooze.utils.config import DatabaseConfig
 from snooze.utils.typing import Condition
 from snooze.utils.exceptions import DatabaseError
+from snooze.utils.threading import SurvivingThread
+
+log = getLogger('snooze.db')
 
 class Pagination(TypedDict, total=False):
     '''A type hint for pagination options'''
@@ -37,16 +43,12 @@ def wrap_exception(function):
             raise DatabaseError(function.__name__, details, err) from err
     return wrapper
 
-class Database:
-    '''Abstract class for the database backend'''
-    def __init__(self, config: DatabaseConfig):
-        cls = import_module(f"snooze.db.{config.type}.database")
-        self.__class__ = type('DB', (cls.BackendDB, Database), {})
-        self.init_db(config)
+def get_database(config: DatabaseConfig):
+    module = import_module(f"snooze.db.{config.type}.database")
+    return module.BackendDB(config)
 
-    @abstractmethod
-    def init_db(self, config: DatabaseConfig):
-        '''Initialize the database connection'''
+class Database(ABC):
+    '''Abstract class for the database backend'''
 
     @abstractmethod
     def create_index(self, collection: str, fields: List[str]):
@@ -67,3 +69,71 @@ class Database:
     @abstractmethod
     def convert(self, condition: Condition, search_fields: List[str] = []):
         '''Convert a condition (search) into a query usable in the database backend'''
+
+class AsyncIncrement:
+    '''An object representing an increment in a collection.
+    Will keep track of increments locally, and can flush them.'''
+    collection: str
+    field: str
+    increments: Dict[dict, int]
+
+    def __init__(self, database: Database, collection: str, field: str):
+        self.database = database
+        self.collection = collection
+        self.field = field
+
+        self.increments = {}
+
+    def hash(self, search: dict) -> dict:
+        '''Hash a dict search into something hashable as long as every value is
+        hashable'''
+        return tuple(zip(search.keys(), search.values()))
+
+    def unhash(self, mytuple) -> dict:
+        '''Return a dict to be used for searching from a hashed dict (into tuple)'''
+        return dict(mytuple)
+
+    def flush(self):
+        '''Flush the saved increments to the database'''
+        updates = []
+        for search_tuple, value in self.increments.items():
+            search = self.unhash(search_tuple)
+            updates.append((search, {self.field: value}))
+            self.increments[search_tuple] -= value
+        if updates:
+            self.database.bulk_increment(self.collection, updates)
+
+    def increment(self, search: dict, value: int = 1):
+        '''Increment an object by a value'''
+        search_tuple = self.hash(search)
+        self.increments.setdefault(search_tuple, 0)
+        self.increments[search_tuple] += value
+
+class AsyncDatabase(SurvivingThread):
+    '''A thread that will flush some async operations to the database.
+    Practical for increments or bulk writes.'''
+    increments: Dict[str, AsyncIncrement]
+    def __init__(self, database: Database, interval: int = 1, exit_event: Optional[Event] = None):
+        self.database = database
+        self.interval = interval
+        self.increments = {}
+
+        SurvivingThread.__init__(self, exit_event)
+
+    def new_increment(self, obj: AsyncIncrement):
+        '''Add a new increment to the async worker.
+        Currently only supporting one increment per collection.'''
+        self.increments[obj.collection] = obj
+
+    def _flush(self):
+        '''Flush the data to the database'''
+        for obj in self.increments.values():
+            obj.flush()
+
+    def start_thread(self):
+        while not self.exit.wait(0.1):
+            self._flush()
+            time.sleep(self.interval)
+        # Flushing one last time before exiting
+        self._flush()
+        log.info('Stopped async database thread')
