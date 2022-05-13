@@ -293,6 +293,10 @@ class DelayedActions(SurvivingThread):
 class ActionWorker(Worker):
 
     def process(self):
+        for action_obj, _ in self.to_ack:
+            records = self.thread.obj.core.db.search('record', ['=', 'hash', action_obj['record']['hash']])
+            if records['count'] > 0:
+                action_obj['record'] = records['data'][0]
         succeeded, _ = self.thread.obj.send_from_queue([action_obj for action_obj, _ in self.to_ack])
         if succeeded:
             self.thread.obj.core.db.write('record', succeeded, 'hash')

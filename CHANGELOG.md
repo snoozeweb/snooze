@@ -19,6 +19,7 @@
 * Core: Fixing an issue related to the URL character limit when passing the connection string
   to kombu. Now it is using a patched transport backend that passes MongoClient()[database]
   directly.
+* Core: Making sure batched actions are not out to date
 
 ## v1.4.1
 
