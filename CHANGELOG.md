@@ -13,6 +13,7 @@
 * Core: Backups can now fail independently on a per-collection basis
 
 ### Bug fixes
+* Web: Could not reset Conditions right member correctly
 * Core: Improving the thread management to prevent rogue threads dying without causing Snooze
   to die as well.
 * Core: Fixing an issue related to the URL character limit when passing the connection string

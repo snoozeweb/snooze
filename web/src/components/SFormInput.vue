@@ -120,5 +120,13 @@ export default {
       this.$emit('update:modelValue', parseNumber(target.value))
     },
   },
+  watch: {
+    modelValue: {
+      handler: function () {
+        this.dataValue = this.modelValue
+      },
+      immediate: true
+    },
+  },
 }
 </script>
