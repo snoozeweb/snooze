@@ -1,4 +1,4 @@
-## v1.4.2
+## v1.4.1
 
 ### New features
 * Web: Added a frequency display in Notifications
@@ -13,6 +13,8 @@
 * Core: Backups can now fail independently on a per-collection basis
 
 ### Bug fixes
+* Web: Bad display for Sunday
+* Web: Sort weekdays
 * Web: Could not reset Conditions right member correctly
 * Core: Improving the thread management to prevent rogue threads dying without causing Snooze
   to die as well.
@@ -20,12 +22,6 @@
   to kombu. Now it is using a patched transport backend that passes MongoClient()[database]
   directly.
 * Core: Making sure batched actions are not out to date
-
-## v1.4.1
-
-### Bug fixes
-* Web: Bad display for Sunday
-* Web: Sort weekdays
 * Core: TinyDB Audit was broken
 * Core: Increasing log file size from 1MB to 100MB
 * Core: Catching issues better within Action thread
