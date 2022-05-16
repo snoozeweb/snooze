@@ -76,7 +76,7 @@ def path_task(_ctx, field, github_output=False):
 
 def git_sanity_check(ctx):
     '''Raise an exception and abort the run if git is not in a clean status'''
-    exceptions = ['pyproject.toml', 'web/package.json', '']
+    exceptions = ['pyproject.toml', 'web/package.json', 'web/package-lock.json', '']
     lines = ctx.run('git status --porcelain --untracked-files=no').stdout.strip('\r\n').splitlines()
     changes = []
     for line in lines:
