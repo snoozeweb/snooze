@@ -223,20 +223,23 @@ class AlertRoute(BasicRoute):
     def on_post(self, req, resp):
         log.debug("Received log %s", req.media)
         media = req.media.copy()
-        rec_list = [{'data': {}}]
         if not isinstance(media, list):
             media = [media]
+        data = {}
         for req_media in media:
             try:
-                rec = self.core.process_record(req_media)
-                rec_list.append(rec)
-            except Exception as e:
-                log.exception(e)
-                rec_list.append({'data': {'rejected': [req_media]}})
+                result = self.core.process_record(req_media)
+                for action, records in result.items():
+                    data.setdefault(action, [])
+                    data[action] += records
+            except Exception as err:
+                log.exception(err)
+                data.setdefault('rejected', [])
+                data['rejected'].append(req_media)
                 continue
         resp.content_type = falcon.MEDIA_JSON
         resp.status = falcon.HTTP_200
-        resp.media = merge_batch_results(rec_list)
+        resp.media = {'data': data}
 
 class MetricsRoute(BasicRoute):
     '''A falcon route to serve prometheus metrics'''

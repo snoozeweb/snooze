@@ -210,8 +210,9 @@ class BackendDB(Database):
             else:
                 add_obj = True
             if add_obj:
+                if 'uid' not in tobj:
+                    tobj['uid'] = str(uuid.uuid4())
                 obj_copy.append(tobj)
-                obj_copy[-1]['uid'] = str(uuid.uuid4())
                 added.append(tobj)
                 add_obj = False
                 log.debug("In %s, inserting %s", collection, tobj.get('uid', ''))
@@ -220,6 +221,28 @@ class BackendDB(Database):
         if len(obj_copy) > 0:
             self.db[collection].insert_many(obj_copy)
         return {'data': {'added': added, 'updated': updated, 'replaced': replaced, 'rejected': rejected}}
+
+    @wrap_exception
+    def update_one(self, collection: str, uid: str, obj: dict, update_time: bool = True):
+        new_obj = dict(obj)
+        new_obj.pop('_id', None)
+        new_obj['uid'] = uid
+        if update_time:
+            new_obj['date_epoch'] = datetime.datetime.now().timestamp()
+        update = {
+            '$set': new_obj,
+            '$setOnInsert': {'uid': uid},
+        }
+        self.db[collection].update_one({'uid': uid}, update, upsert=True)
+
+    @wrap_exception
+    def replace_one(self, collection: str, uid: str, obj: dict, update_time: bool = True):
+        new_obj = dict(obj)
+        new_obj.pop('_id', None)
+        new_obj['uid'] = uid
+        if update_time:
+            new_obj['date_epoch'] = datetime.datetime.now().timestamp()
+        self.db[collection].replace_one({'uid': uid}, new_obj, upsert=True)
 
     @wrap_exception
     def inc(self, collection: str, field: str, labels: dict = {}):
