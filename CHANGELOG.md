@@ -3,6 +3,9 @@
 ### Changes
 * Web: Updated all web packages + NodeJS (10->12)
 
+### Bug fixes
+* Core: DB query typo in Actions
+
 ## v1.4.1
 
 ### New features
