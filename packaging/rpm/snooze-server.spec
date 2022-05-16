@@ -16,7 +16,6 @@
 %define venv %{buildroot}/opt/snooze
 
 # Globals
-#%global __os_install_post %(echo '%{__os_install_post}' | sed -e 's!/usr/lib[^[:space:]]*/brp-python-bytecompile[[:space:]].*$!!g')
 
 # Tags
 Name: snooze-server
@@ -54,7 +53,7 @@ mkdir -p %{buildroot}/var/lib/snooze
 
 # Snooze server
 virtualenv --always-copy --python=python3.8 %{venv}
-%{venv}/bin/pip install %{sources}/snooze_server-%{python_version}-py3-none-any.whl
+%{venv}/bin/pip3 install %{sources}/snooze_server-%{python_version}-py3-none-any.whl
 
 # Systemd service
 mkdir -p %{buildroot}/usr/lib/systemd/system
