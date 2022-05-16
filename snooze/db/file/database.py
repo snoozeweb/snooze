@@ -17,7 +17,7 @@ from threading import Lock
 
 import uuid
 from bson.json_util import dumps
-from tinydb import TinyDB, Query as BaseQuery
+from tinydb import TinyDB, Query as BaseQuery, where
 
 from snooze.db.database import Database, wrap_exception
 from snooze.utils.config import FileConfig
@@ -256,6 +256,25 @@ class BackendDB(Database):
                 'rejected': deepcopy(rejected),
             },
         }
+
+    @wrap_exception
+    def replace_one(self, collection: str, uid: str, obj: dict, update_time: bool = True):
+        with mutex:
+            query = Query()
+            new_obj = dict(obj)
+            if update_time:
+                new_obj['date_epoch'] = datetime.datetime.now().timestamp()
+            search = self.db.table(collection).search(query.uid == uid)
+            self.db.table(collection).remove(doc_ids=[search[0]['doc_id']])
+            self.db.table(collection).insert(new_obj)
+
+    @wrap_exception
+    def update_one(self, collection: str, uid: str, obj: dict, update_time: bool = True):
+        with mutex:
+            new_obj = dict(obj)
+            if update_time:
+                new_obj['date_epoch'] = datetime.datetime.now().timestamp()
+            self.db.table(collection).upsert(new_obj, where('uid') == uid)
 
     @wrap_exception
     def inc(self, collection, field, labels={}):

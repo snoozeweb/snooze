@@ -64,7 +64,7 @@ class Aggregaterule(Plugin):
             now = datetime.datetime.now()
             record = dict(list(aggregate.items()) + list(record.items()))
             record_state = record.get('state', '')
-            record['uid'] = aggregate.get('uid')
+            record['uid'] = aggregate['uid']
             record['state'] = aggregate.get('state', '')
             record['duplicates'] = aggregate.get('duplicates', 0) + 1
             record['date_epoch'] = aggregate.get('date_epoch', now.timestamp())
@@ -72,7 +72,7 @@ class Aggregaterule(Plugin):
             if aggregate.get('ttl', -1) < 0:
                 record['ttl'] = aggregate.get('ttl', -1)
             comment = {}
-            comment['record_uid'] = aggregate['uid']
+            comment['record_uid'] = aggregate.get('uid')
             comment['date'] = now.astimezone().isoformat()
             comment['auto'] = True
             if record_state == 'close':

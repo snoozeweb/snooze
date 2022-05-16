@@ -67,6 +67,14 @@ class Database(ABC):
         '''Write an object in a collection'''
 
     @abstractmethod
+    def replace_one(self, collection: str, uid: str, obj: dict, update_time: bool = True):
+        '''Insert an object if absent'''
+
+    @abstractmethod
+    def update_one(self, collection: str, uid: str, obj: dict, update_time: bool = True):
+        '''Update an object with a partial object, or insert if absent'''
+
+    @abstractmethod
     def convert(self, condition: Condition, search_fields: List[str] = []):
         '''Convert a condition (search) into a query usable in the database backend'''
 
