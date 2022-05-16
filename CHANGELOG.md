@@ -1,3 +1,8 @@
+## v1.5.0
+
+### Changes
+* Web: Updated all web packages + NodeJS (10->12)
+
 ## v1.4.1
 
 ### New features
