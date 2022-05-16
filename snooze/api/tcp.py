@@ -83,7 +83,7 @@ class TcpThread(SurvivingThread):
         self.api = api
 
         self.server: Optional[TcpWsgiServer] = None
-        SurvivingThread.__init__(self, exit_event)
+        SurvivingThread.__init__(self, exit_event, critical=True)
 
     def start_thread(self):
         '''Override Thread method. Start the service'''
