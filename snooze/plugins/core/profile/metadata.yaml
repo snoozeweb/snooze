@@ -5,13 +5,10 @@ route_defaults:
     class: ~
     primary: [name, method]
 routes:
-    '/profile/{category}':
+    '/profile/{section}':
         desc: ''
         class: ProfileRoute
-    '/profile/{category}/{search}':
-        desc: ''
-        class: ProfileRoute
-    '/profile_self/{category}':
+    '/profile_self/{section}':
         desc: ''
         class: ProfileRoute
         authorization_policy:

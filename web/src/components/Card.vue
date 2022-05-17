@@ -159,7 +159,7 @@ export default {
     submit(data, callback = null) {
       console.log(`PUT /${this.current_endpoint}`)
       API
-        .put(`/${this.current_endpoint}`, [data])
+        .put(`/${this.current_endpoint}`, data)
         .then(response => {
           console.log(response)
           if (response.data) {

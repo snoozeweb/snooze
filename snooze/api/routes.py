@@ -289,44 +289,38 @@ class LoginRoute(BasicRoute):
             log.exception(err)
             resp.status = falcon.HTTP_503
 
-class ReloadRoute(BasicRoute):
-    '''A falcon route to reload one's token'''
-    auth = {
-        'auth_disabled': True
-    }
+class ReloadPluginRoute(BasicRoute):
+    '''A route to trigger the reload of a given plugin'''
 
-    def on_post(self, req, resp):
-        media = req.media.copy()
-        if media.get('reload_token', '-') == self.api.core.secrets.get('reload_token', '+'):
-            filename = media.get('filename')
-            conf = media.get('conf')
-            _reload = media.get('reload')
-            sync = media.get('sync', False)
-            log.debug("Reloading conf (%s, %s), backend %s, sync %s", filename, conf, _reload, sync)
-            results = self.api.write_and_reload(filename, conf, _reload, sync)
-            resp.content_type = falcon.MEDIA_TEXT
-            resp.status = results.get('status', falcon.HTTP_503)
-            resp.text = results.get('text', '')
+    def on_post(self, req, resp, plugin_name: str):
+        '''Trigger the reload of a plugin'''
+        propagate = (req.params.get('propagate') is not None) # Key existence
+        plugin = self.core.get_core_plugin(plugin_name)
+        if plugin is None:
+            raise falcon.HTTPNotFound(f"Plugin '{plugin_name}' not loaded in core")
+        plugin.reload_data()
+        if propagate:
+            self.core.sync_reload_plugin(plugin_name)
+            resp.status = falcon.HTTP_ACCEPTED
         else:
-            resp.status = falcon.HTTP_401
-            resp.text = 'Invalid secret reload token'
+            resp.status = falcon.HTTP_OK
 
 class ClusterRoute(BasicRoute):
-    auth = {
-        'auth_disabled': True
-    }
+    '''A route to fetch the status of the cluster member'''
+    auth = {'auth_disabled': True}
 
     def on_get(self, req, resp):
-        log.debug("Listing cluster members")
+        '''Return the status of every cluster member'''
         cluster = self.core.threads['cluster']
-        if req.params.get('self', False):
+        one = (req.params.get('one') is not None)
+        if one:
             members = [cluster.status()]
         else:
             members = cluster.members_status()
         resp.content_type = falcon.MEDIA_JSON
-        resp.status = falcon.HTTP_200
+        resp.status = falcon.HTTP_OK
         resp.media = {
-            'data': [asdict(m) for m in members],
+            'data': [m.dict() for m in members],
         }
 
 class AuthRoute(BasicRoute):
