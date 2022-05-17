@@ -59,6 +59,7 @@ python-mimeparse = "^1.6.0"
 pytest-sugar = "^0.9.4"
 pytest-timeout = "^1.4.2"
 freezegun = "^1.1.0"
+responses = "^0.20.0"
 
 [tool.poetry.group.build.dependencies]
 virtualenv = "^20.8.1"
