@@ -5,6 +5,6 @@ route_defaults:
     class: ~
     check_permissions: true
 routes:
-    '/settings/{conf}':
+    '/settings/{section}':
         desc: ''
         class: SettingsRoute

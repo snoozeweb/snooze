@@ -85,7 +85,7 @@ class Api:
         # List route
         self.add_route('/login', LoginRoute(self))
         # Reload route
-        self.add_route('/reload', ReloadRoute(self))
+        self.add_route('/reload/{plugin_name}', ReloadPluginRoute(self))
         # Cluster route
         self.add_route('/cluster', ClusterRoute(self))
         # Health route
@@ -119,74 +119,6 @@ class Api:
     def get_root_token(self):
         '''Return a root token for the root user. Used only when requesting it from the internal unix socket'''
         return self.jwt_auth.get_auth_token({'name': 'root', 'method': 'root', 'permissions': ['rw_all']})
-
-    def reload(self, config_name: str):
-        reloaded_auth = []
-        reloaded_conf = []
-
-        try:
-            config = self.core.config[config_name]
-        except KeyError:
-            return {'status': falcon.HTTP_404, 'text': f"Config '{config_name}' doesn't exist"}
-        try:
-            config.reload()
-            for auth_backend in config._auth_routes:
-                if self.auth_routes.get(auth_backend):
-                    log.debug("Reloading %s auth backend", auth_backend)
-                    self.auth_routes[auth_backend].reload()
-                    reloaded_auth.append(auth_backend)
-                else:
-                    log.debug("Authentication backend '%s' not found", auth_backend)
-            if len(reloaded_auth) > 0 or len(reloaded_conf) > 0:
-                return {'status': falcon.HTTP_200, 'text': f"Reloaded auth '{reloaded_auth}' and conf {reloaded_conf}"}
-            else:
-                return {'status': falcon.HTTP_404, 'text': 'Error while reloading'}
-        except Exception as err:
-            log.exception(err)
-            return {'status': falcon.HTTP_503}
-
-    def write_and_reload(self, name: str, conf: dict, reload_conf, sync=False):
-        '''Override the config files and reload. This is mainly used when changing the configuration
-        from the web interface.
-        '''
-        result_dict = {}
-        log.debug("Will write to %s config %s and reload %s", name, conf, reload_conf)
-        if name and conf:
-            try:
-                config = self.core.config[name]
-                config.update(conf)
-            except (KeyError, AttributeError):
-                return {'status': falcon.HTTP_404, 'text': f"Config '{name}' doesn't exist"}
-            except Exception as err:
-                return {'status': falcon.HTTP_503, 'text': str(err)}
-            result_dict = {'status': falcon.HTTP_200, 'text': f"Reloaded config file {config._path}"}
-        if reload_conf:
-            auth_backends = reload_conf.get('auth_backends', [])
-            if auth_backends:
-                result_dict = self.reload(name)
-            plugins = reload_conf.get('plugins', [])
-            if plugins:
-                result_dict = self.reload_plugins(plugins)
-        if sync and self.cluster:
-            self.cluster.write_and_reload(name, conf, reload_conf)
-        return result_dict
-
-    def reload_plugins(self, plugins):
-        '''Reload plugins'''
-        plugins_error = []
-        plugins_success = []
-        log.debug("Reloading plugins %s", plugins)
-        for plugin_name in plugins:
-            plugin = self.core.get_core_plugin(plugin_name)
-            if plugin:
-                plugin.reload_data()
-                plugins_success.append(plugin)
-            else:
-                plugins_error.append(plugin)
-        if plugins_error:
-            return {'status': falcon.HTTP_404, 'text': f"The following plugins could not be found: {plugins_error}"}
-        else:
-            return {'status': falcon.HTTP_200, 'text': "Reloaded plugins: {plugin_success}"}
 
     def load_plugin_routes(self):
         log.debug('Loading plugin routes for API')

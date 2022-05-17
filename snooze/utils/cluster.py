@@ -8,32 +8,168 @@
 '''A module for managing the snooze cluster, which is used for sharing configuration
 file updates accross the cluster.'''
 
-import http.client
-import os
 import socket
-import time
 from logging import getLogger
+from queue import Queue
 from threading import Event
-from typing import List, Optional
+from typing import List, Tuple
 
-from dataclasses import dataclass
-
-import netifaces
+import requests
 import pkg_resources
-import bson.json_util
+from netifaces import interfaces, ifaddresses, AF_INET
+from requests import Request, Response
+from requests.adapters import HTTPAdapter, Retry
+from requests.exceptions import RequestException
 
-from snooze.utils.threading import SurvivingThread
 from snooze.utils.config import CoreConfig
+from snooze.utils.exceptions import NonResolvableHost, SelfNotInCluster, SelfTooMuchInCluster
+from snooze.utils.functions import ca_bundle
+from snooze.utils.threading import SurvivingThread
+from snooze.utils.typing import HostPort, PeerStatus
 
 log = getLogger('snooze.cluster')
 
-@dataclass
-class PeerStatus:
-    '''A dataclass containing the status of one peer'''
-    host: str
-    port: str
-    version: str
-    healthy: bool
+# Similar to urllib3.util.Retry in term of API
+# https://urllib3.readthedocs.io/en/stable/reference/urllib3.util.html
+# Will attempt 10 retries, with increasing interval between retries.
+# intervals (in seconds) = [0.1, 0.2, 0.4, 1.6, 3.2, 6.4, 12.8, ..., 51.2]
+ADAPTER = HTTPAdapter(max_retries=Retry(total=10, backoff_factor=0.1))
+
+CACERT = ca_bundle()
+
+class Cluster(SurvivingThread):
+    '''A class representing the cluster and used for interacting with it.'''
+
+    def __init__(self, core_config: CoreConfig, token: str, exit_event: Event = None):
+        if exit_event is None:
+            exit_event = Event()
+        self.config = core_config.cluster
+        self.token = token
+
+        self.myself = HostPort(host=socket.gethostname(), port=core_config.port)
+        self.others: List[HostPort] = []
+
+        self.schema = 'https' if core_config.ssl.enabled else 'http'
+
+        self.myself, self.others = who_am_i(self.config.members)
+
+        self.queue = Queue()
+        SurvivingThread.__init__(self, exit_event)
+
+    def handle_query(self, req: Request) -> Response:
+        '''Handle a request to other members of the cluster. We will not catch exceptions here
+        because we want to fail if the retry doesn't work.'''
+        session = requests.Session()
+        session.mount(f"{self.schema}", ADAPTER)
+        resp = session.send(req.prepare(), verify=CACERT, timeout=10)
+        return resp
+
+    def start_thread(self):
+        while True:
+            req: Request = self.queue.get()
+            if req is ...: # Queue stopper
+                self.queue.task_done()
+                break
+            self.handle_query(req)
+            self.queue.task_done()
+        log.info('Stopped cluster')
+
+    def stop_thread(self):
+        log.debug("Stopping cluster...")
+        # Python's ellipsis (...) is used as a queue stopper, which is pretty
+        # standard, and better than None which can happen accidentally, while ... is more rare.
+        # and doesn't require a custom class.
+        self.queue.put(...)
+        self.queue.join()
+
+    def status(self) -> PeerStatus:
+        '''Return the status, health and info of the current node'''
+        version = get_version()
+        status = PeerStatus(
+            host=self.myself.host,
+            port=self.myself.port,
+            version=version,
+            healthy=True,
+        )
+        return status
+
+    def members_status(self) -> List[PeerStatus]:
+        '''Fetch the status of all members of the cluster'''
+        statuses = []
+        statuses.append(self.status())
+        for member in self.others:
+            try:
+                url = f"{self.schema}://{member.host}:{member.port}/api/cluster?one"
+                params = {}
+                resp = requests.get(url, params=params, verify=CACERT, timeout=10)
+                resp.raise_for_status()
+                data = resp.json()['data'][0]
+                status = PeerStatus(**data)
+            except RequestException as err:
+                status = PeerStatus(
+                    host=member.host,
+                    port=member.port,
+                    version='unknown',
+                    healthy=False,
+                    error=str(err),
+            )
+            statuses.append(status)
+        return statuses
+
+    def sync_reload_plugin(self, plugin_name: str):
+        '''Async function to ask other members to reload the configuration of a plugin'''
+        for member in self.others:
+            site = f"{self.schema}://{member.host}:{member.port}"
+            self.queue.put(RequestReloadPlugin(site, plugin_name, self.token))
+
+    def sync_setting_update(self, section: str, data: dict, auth: str):
+        '''Async function to ask other members to update their configuration and reload'''
+        for member in self.others:
+            site = f"{self.schema}://{member.host}:{member.port}"
+            self.queue.put(RequestSettingUpdate(site, section, data, auth))
+
+class RequestReloadPlugin(Request):
+    '''Request another member to reload a given plugin'''
+    def __init__(self, site: str, plugin_name: str, token: str):
+        url = f"{site}/api/reload/{plugin_name}"
+        headers = {'Authorization': f"JWT {token}"}
+        Request.__init__(self, 'POST', url, headers=headers)
+
+class RequestSettingUpdate(Request):
+    '''Request another member to rewrite a config'''
+    def __init__(self, site: str, section: str, data: dict, auth: str):
+        url = f"{site}/api/settings/{section}"
+        # Forwarding the authentication to the next peer
+        headers = {'Authorization': auth}
+        Request.__init__(self, 'PUT', url, headers=headers, json=data)
+
+def who_am_i(members: List[HostPort]) -> Tuple[HostPort, List[HostPort]]:
+    '''Return which member of the cluster the running program is.
+    Raise exceptions in the following cases:
+    * NonResolvableHost: if one member of the cluster has its DNS not resolvable
+    * SelfNotInCluster: if the running node cannot be found in the cluster
+    * SelfTooMuchInCluster: if the running node is found more than one time in the cluster
+    '''
+    my_addresses = [
+        link.get('addr')
+        for interface in interfaces()
+        for link in ifaddresses(interface).get(AF_INET, [])
+    ]
+    matches = []
+    for member in members:
+        try:
+            host = socket.gethostbyname(member.host)
+            if host in my_addresses:
+                matches.append(member)
+        except socket.gaierror as err:
+            raise NonResolvableHost(member.host) from err
+    if len(matches) == 1:
+        myself = matches[0]
+        return myself, [x for x in members if x != myself]
+    elif len(matches) == 0:
+        raise SelfNotInCluster()
+    else:
+        raise SelfTooMuchInCluster()
 
 def get_version() -> str:
     '''Return the version of the installed snooze-server. Return 'unknown' if not found'''
@@ -42,134 +178,3 @@ def get_version() -> str:
     except pkg_resources.DistributionNotFound as err:
         log.exception(err)
         return 'unknown'
-
-class Cluster(SurvivingThread):
-    '''A class representing the cluster and used for interacting with it.'''
-    def __init__(self, core_config: CoreConfig, reload_token: str, exit_event: Optional[Event] = None):
-        self.config = core_config.cluster
-        self.core_config = core_config
-        self.reload_token = reload_token
-        self.sync_queue = []
-        self.other_peers = []
-        self.enabled = self.config.enabled
-        if self.enabled:
-            log.debug('Init Cluster Manager')
-            self.all_peers = self.config.members
-            self.other_peers = self.config.members
-            for interface in netifaces.interfaces():
-                for arr in netifaces.ifaddresses(interface).values():
-                    for line in arr:
-                        try:
-                            self.other_peers = [
-                                x for x in self.other_peers
-                                if socket.gethostbyname(x['host']) != line['addr']
-                            ]
-                        except Exception as err:
-                            log.exception(err)
-                            log.error('Error while setting up the cluster. Disabling cluster...')
-                            self.enabled = False
-                            return
-            self.self_peer = [peer for peer in self.all_peers if peer not in self.other_peers]
-            if len(self.self_peer) != 1:
-                log.error("This node was found %d time(s) in the cluster configuration. Disabling cluster...",
-                    len(self.self_peer))
-                self.enabled = False
-                return
-            log.debug("Other peers: %s", self.other_peers)
-        SurvivingThread.__init__(self, exit_event)
-
-    def status(self) -> PeerStatus:
-        '''Return the status, health and info of the current node'''
-        if self.enabled:
-            host = self.self_peer[0]['host']
-            port = self.self_peer[0]['port']
-        else:
-            host = socket.gethostname()
-            port = self.core_config.port
-        version = get_version()
-        self_peer = PeerStatus(host, port, version, True)
-        log.debug("Self cluster configuration: %s", self_peer)
-        return self_peer
-
-    def members_status(self) -> List[PeerStatus]:
-        '''Fetch the status of all members of the cluster'''
-        members = []
-        members.append(self.status())
-        if self.enabled:
-            success = False
-            use_ssl = self.core_config.ssl.enabled
-            for peer in self.other_peers:
-                if use_ssl:
-                    connection = http.client.HTTPSConnection(peer['host'], peer['port'], timeout=10)
-                else:
-                    connection = http.client.HTTPConnection(peer['host'], peer['port'], timeout=10)
-                try:
-                    connection.request('GET', '/api/cluster?self=true')
-                    response = connection.getresponse()
-                    success = (response.status == 200)
-                except Exception as err:
-                    log.exception(err)
-                    success = False
-                host = peer['host']
-                port = peer['port']
-                version = 'unknown'
-                healthy = success
-                try:
-                    json_data = bson.json_util.loads(response.read().decode()).get('data')[0]
-                    host = json_data.get('host', peer['host'])
-                    port = json_data.get('port', peer['port'])
-                    version = json_data.get('version', 'unknown')
-                except Exception as err:
-                    log.exception(err)
-                peer = PeerStatus(host, port, version, healthy)
-                members.append(peer)
-            log.debug("Cluster members: %s", members)
-            return members
-        else:
-            return members
-
-    def reload_plugin(self, plugin_name):
-        '''Ask other members to reload the configuration of a plugin'''
-        for peer in self.other_peers:
-            job = {'payload': {'reload': {'plugins':[plugin_name]}}, 'host': peer['host'], 'port': peer['port']}
-            self.sync_queue.append(job)
-            log.debug("Queued job: %s", job)
-
-    def write_and_reload(self, filename, conf, reload_conf):
-        '''Ask other members to update their configuration and reload'''
-        for peer in self.other_peers:
-            job = {
-                'payload': {'filename': filename, 'conf': conf, 'reload': reload_conf},
-                'host': peer['host'],
-                'port': peer['port'],
-            }
-            self.sync_queue.append(job)
-            log.debug("Queued job: %s", job)
-
-    def start_thread(self):
-        headers = {'Content-type': 'application/json'}
-        use_ssl = self.core_config.ssl.enabled
-        success = False
-        while not self.exit.wait(0.1):
-            for index, job in enumerate(self.sync_queue):
-                if use_ssl:
-                    connection = http.client.HTTPSConnection(job['host'], job['port'], timeout=10)
-                else:
-                    connection = http.client.HTTPConnection(job['host'], job['port'], timeout=10)
-                job['payload'].update({'reload_token': self.reload_token})
-                job_json = bson.json_util.dumps(job['payload'])
-                try:
-                    connection.request('POST', '/api/reload', job_json, headers)
-                    response = connection.getresponse()
-                    success = (response.status == 200)
-                except Exception as err:
-                    log.exception(err)
-                    success = False
-                job['payload'].pop('reload_token')
-                if success:
-                    del self.sync_queue[index]
-                    log.debug("Dequeued job: %s", job)
-                else:
-                    log.error("Could not dequeue job: %s", job)
-            time.sleep(1)
-        log.info('Stopped cluster')
