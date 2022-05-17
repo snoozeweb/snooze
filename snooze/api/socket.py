@@ -70,4 +70,4 @@ class WSGISocketServer(SurvivingThread, UnixWSGIServer):
         log.info("Closing wsgi unix socket at %s", self.path)
         self.close()
         log.debug("Deleting unix socket at %s", self.path)
-        self.path.unlink()
+        self.path.unlink(missing_ok=True)
