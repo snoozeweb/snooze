@@ -69,6 +69,10 @@ class Action(Plugin):
         if sync:
             self.sync_neighbors()
 
+class UnknownPlugin(RuntimeError):
+    def __init__(self, plugin_name: str):
+        RuntimeError.__init__(self, f"Plugin '{plugin_name}' not found")
+
 class ActionObject:
     '''Object representing an action in the database'''
     def __init__(self, action, plugin):
@@ -82,6 +86,8 @@ class ActionObject:
         self.content = action.get('action', {}).get('subcontent', {})
         self.content['action_name'] = self.name
         self.action_plugin = self.core.get_core_plugin(self.selected)
+        if self.action_plugin is None:
+            raise UnknownPlugin(self.selected)
         batch = self.action_plugin.get_options('batch')
         self.batch = self.content.get('batch', batch.get('default', False))
         self.content['batch'] = self.batch
