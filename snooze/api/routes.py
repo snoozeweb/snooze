@@ -7,7 +7,6 @@
 
 '''Module for handling the falcon WSGI'''
 
-import os.path
 import mimetypes
 import functools
 from logging import getLogger
@@ -619,48 +618,54 @@ class RedirectRoute:
 
 class StaticRoute:
     '''Handler route for static files (for the web server)'''
+    root: Path
+    prefix: str
+    indexes: List[str]
+
     def __init__(self, root, prefix='', indexes=('index.html',)):
         self.prefix = prefix
         self.indexes = indexes
         self.root = root
 
-    def on_get(self, req, res):
+    def on_get(self, req: Request, resp: Response):
+        '''Serve a file like an HTTP file server'''
         file = req.path[len(self.prefix):]
-
         if len(file) > 0 and file.startswith('/'):
             file = file[1:]
 
-        path = os.path.join(self.root, file)
-        path = os.path.abspath(path)
+        path: Path = self.root / file
+        path.resolve()
 
         # Prevent top level access
-        if not path.startswith(self.root):
-            res.stats = falcon.HTTP_403
-            return
+        if self.root not in [path, *path.parents]:
+            raise falcon.HTTPForbidden(f"Request path {req.path} is trying to escape root ({self.root})")
 
         # Search for index if directory
-        if os.path.isdir(path):
-            path = self.search_index(path)
-            if not path:
-                res.stats = falcon.HTTP_404
-                return
+        if path.is_dir():
+            index = self.search_index(path)
+            if not index:
+                raise falcon.HTTPNotFound()
+            filepath = index
+        elif path.is_file():
+            filepath = path
+        else:
+            raise falcon.HTTPNotFound()
 
         # Type and encoding
-        content_type, _encoding = mimetypes.guess_type(path)
+        content_type, _encoding = mimetypes.guess_type(filepath)
         if content_type is not None:
-            res.content_type = content_type
+            resp.content_type = content_type
 
         try:
-            with open(path, 'rb') as static_file:
-                res.cache_control = [f"max-age={MAX_AGE}"]
-                res.text = static_file.read()
-        except FileNotFoundError as err:
-            res.status = falcon.HTTP_404
+            resp.data = filepath.read_bytes()
+            resp.cache_control = [f"max-age={MAX_AGE}"]
+        except OSError:
+            raise falcon.HTTPForbidden()
 
-    def search_index(self, path):
+    def search_index(self, path: Path) -> Optional[Path]:
         '''Return the index file when requesting a directory'''
         for index in self.indexes:
-            index_file = os.path.join(path, index)
-            if os.path.isfile(index_file):
+            index_file = path / index
+            if index_file.is_file():
                 return index_file
         return None
