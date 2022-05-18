@@ -57,9 +57,8 @@ class Aggregaterule(Plugin):
     def match_aggregate(self, record, throttle=10, flapping=2, watch=[], aggrule_name='default'):
         '''Attempt to match an aggregate with a record, and throttle the record if it does'''
         log.debug("Checking if an aggregate with hash %s can be found", record['hash'])
-        aggregate_result = self.db.search('record', ['=', 'hash', record['hash']])
-        if aggregate_result['count'] > 0:
-            aggregate = aggregate_result['data'][0]
+        aggregate = self.db.get_one('record', dict(hash=record['hash']))
+        if aggregate:
             log.debug("Found record hash %s, updating it with the record infos", record['hash'])
             now = datetime.datetime.now()
             record = dict(list(aggregate.items()) + list(record.items()))
