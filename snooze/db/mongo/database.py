@@ -236,6 +236,11 @@ class BackendDB(Database):
         self.db[collection].update_one({'uid': uid}, update, upsert=True)
 
     @wrap_exception
+    def get_one(self, collection, search: dict):
+        result = self.db[collection].find_one(search)
+        return result
+
+    @wrap_exception
     def replace_one(self, collection: str, uid: str, obj: dict, update_time: bool = True):
         new_obj = dict(obj)
         new_obj.pop('_id', None)

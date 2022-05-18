@@ -258,6 +258,21 @@ class BackendDB(Database):
         }
 
     @wrap_exception
+    def get_one(self, collection: str, search: dict):
+        '''Return the first element found based on a search dict'''
+        with mutex:
+            queries = []
+            for key, value in search.items():
+                query = dig(Query(), *key.split('.')) == value
+                queries.append(query)
+            search_query = reduce(lambda a, b: a & b, queries)
+            results = self.db.table(collection).search(search_query)
+            if results:
+                return results[0]
+            else:
+                return None
+
+    @wrap_exception
     def replace_one(self, collection: str, uid: str, obj: dict, update_time: bool = True):
         with mutex:
             query = Query()

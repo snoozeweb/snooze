@@ -267,9 +267,8 @@ class DelayedActions(SurvivingThread):
             log.exception(err)
 
     def send_delayed(self, record_hash, action_uid):
-        delayed_records = self.action.core.db.search('record', ['=', 'hash', record_hash])
-        if delayed_records['count'] > 0:
-            delayed_record = delayed_records['data'][0]
+        delayed_record = self.action.core.db.get_one('record', dict(hash=record_hash))
+        if delayed_record:
             if delayed_record.get('state') in ['ack', 'close'] or delayed_record.get('snoozed'):
                 log.debug("Record %s is already acked, closed or snoozed. Do not notify", record_hash)
                 self.cleanup(record_hash)
@@ -300,9 +299,9 @@ class ActionWorker(Worker):
 
     def process(self):
         for action_obj, _ in self.to_ack:
-            records = self.thread.obj.core.db.search('record', ['=', 'hash', action_obj['record']['hash']])
-            if records['count'] > 0:
-                action_obj['record'] = records['data'][0]
+            record = self.thread.obj.core.get_one('record', dict(hash=action_obj['record']['hash']))
+            if record:
+                action_obj['record'] = record
         succeeded, _ = self.thread.obj.send_from_queue([action_obj for action_obj, _ in self.to_ack])
         if succeeded:
             self.thread.obj.core.db.write('record', succeeded, 'hash')

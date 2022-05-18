@@ -88,9 +88,8 @@ class BasicRoute:
         '''Get the authorization roles for a user/auth method pair'''
         if username and method:
             log.debug("Getting roles for user %s (%s)", username, method)
-            user_search = self.core.db.search('user', ['AND', ['=', 'name', username], ['=', 'method', method]])
-            if user_search['count'] > 0:
-                user = user_search['data'][0]
+            user = self.core.db.get_one('user', dict(name=username, method=method))
+            if user:
                 log.debug("User found in database: %s", user)
                 roles = unique(user.get('roles', []) + user.get('static_roles', []))
                 log.debug("User roles: %s", roles)
@@ -457,16 +456,17 @@ class LocalAuthRoute(AuthRoute):
         username, password = extract_basic_auth(req)
         password_hash = sha256(password.encode('utf-8')).hexdigest()
         log.debug("Attempting login for %s, with password hash %s", username, password_hash)
-        user_search = self.core.db.search('user', ['AND', ['=', 'name', username], ['=', 'method', 'local']])
+        user = self.core.db.get_one('user', dict(name=username, method='local'))
         try:
-            if user_search['count'] > 0:
-                query = ['AND', ['=', 'name', username], ['=', 'method', 'local']]
-                db_password_search = self.core.db.search('user.password', query)
+            if user:
+                passwd = self.core.db.get_one('user.password', dict(name=username, method='local'))
+                if not passwd:
+                    raise falcon.HTTPUnauthorized(description='Password not found')
                 try:
-                    db_password = db_password_search['data'][0]['password']
-                except Exception as _err:
-                    raise falcon.HTTPUnauthorized(
-                		description='Password not found')
+                    db_password = passwd['password']
+                except KeyError:
+                    raise falcon.HTTPUnauthorized(description='Invalid password entry in database')
+
                 if db_password == password_hash:
                     log.debug('Password was correct for user %s', username)
                     return AuthPayload(username=username, method='local')

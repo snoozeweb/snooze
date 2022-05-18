@@ -20,11 +20,9 @@ class User(Plugin):
         if auth.username == 'root' and auth.method == 'root':
             log.warning("Root user detected! Will not create an account in the database")
             return (None, None)
-        user_query = ['AND', ['=', 'name', auth.username], ['=', 'method', auth.method]]
-        user_search = self.db.search('user', user_query)
+        user = self.db.get_one('user', dict(name=auth.username, method=auth.method))
         log.debug("Searching in users for user %s with method %s", auth.username, auth.method)
-        if user_search['count'] > 0:
-            user = user_search['data'][0]
+        if user:
             log.debug("User found: %s", user)
             user.setdefault('groups', [])
             if auth.groups != user['groups']:
@@ -50,14 +48,14 @@ class User(Plugin):
         display_name = user.pop('display_name', '')
         email = user.pop('email', '')
         self.db.write('user', user, self.meta.route_defaults.primary)
-        profile_search = self.db.search('profile.general', user_query)
-        if profile_search['count'] > 0:
+        profile = self.db.get_one('profile.general', dict(name=auth.username, method=auth.method))
+        if profile:
             log.debug("User %s profile already exists, skipping", auth.username)
-            pref_search = self.db.search('profile.preferences', user_query)
-            if pref_search['count'] > 0:
-                return (profile_search['data'][0], pref_search['data'][0])
+            preferences = self.db.get_one('profile.preferences', dict(name=auth.username, method=auth.method))
+            if preferences:
+                return (profile, preferences)
             else:
-                return (profile_search['data'][0], None)
+                return (profile, None)
         else:
             log.debug("Creating user %s profile: Display Name (%s), Email (%s)", auth.username, display_name, email)
             user_profile = {'name': auth.username, 'method': auth.method, 'display_name': display_name, 'email': email}
