@@ -86,6 +86,13 @@ class Stats():
             labels=['source', 'environment', 'severity'],
         )
         self.init(
+            metric='process_alert_duration_by_plugin',
+            mtype='summary',
+            name='snooze_process_alert_duration_by_plugin',
+            description='Average time spend processing a alert by a given plugin',
+            labels=['environment', 'plugin'],
+        )
+        self.init(
             metric='alert_hit',
             mtype='counter',
             name='snooze_alert_hit',

@@ -171,37 +171,39 @@ class Core:
             record['timestamp'] = datetime.now().astimezone().strftime("%Y-%m-%dT%H:%M:%S%z")
         with self.stats.time('process_alert_duration', labels):
             for plugin in self.process_plugins:
-                try:
-                    log.debug("Executing plugin %s on record %s", plugin.name, record.get('hash', ''))
-                    record['plugins'].append(plugin.name)
-                    record = plugin.process(record)
-                except Abort:
-                    data = {'data': {'processed': [record]}}
-                    break
-                except AbortAndWrite as abort:
-                    if abort.record:
-                        record = abort.record
-                    uid = record.get('uid', str(uuid4()))
-                    self.db.replace_one('record', uid, abort.record or record)
-                    data = {'added': [{'uid': uid}]}
-                    break
-                except AbortAndUpdate as abort:
-                    if abort.record:
-                        record = abort.record
-                    uid = record.get('uid', str(uuid4()))
-                    self.db.replace_one('record', uid, record, update_time=False)
-                    data = {'updated': [{'uid': uid}]}
-                    break
-                except Exception as err:
-                    log.exception(err)
-                    record['exception'] = {
-                        'core_plugin': plugin.name,
-                        'message': str(err),
-                    }
-                    uid = record.get('uid', str(uuid4()))
-                    self.db.replace_one('record', record)
-                    data = {'added': [{'uid': uid}]}
-                    break
+                plugin_labels = {'environment': labels['environment'], 'plugin': plugin.name}
+                with self.stats.time('process_alert_duration_by_plugin', plugin_labels):
+                    try:
+                        log.debug("Executing plugin %s on record %s", plugin.name, record.get('hash', ''))
+                        record['plugins'].append(plugin.name)
+                        record = plugin.process(record)
+                    except Abort:
+                        data = {'data': {'processed': [record]}}
+                        break
+                    except AbortAndWrite as abort:
+                        if abort.record:
+                            record = abort.record
+                        uid = record.get('uid', str(uuid4()))
+                        self.db.replace_one('record', uid, abort.record or record)
+                        data = {'added': [{'uid': uid}]}
+                        break
+                    except AbortAndUpdate as abort:
+                        if abort.record:
+                            record = abort.record
+                        uid = record.get('uid', str(uuid4()))
+                        self.db.replace_one('record', uid, record, update_time=False)
+                        data = {'updated': [{'uid': uid}]}
+                        break
+                    except Exception as err:
+                        log.exception(err)
+                        record['exception'] = {
+                            'core_plugin': plugin.name,
+                            'message': str(err),
+                        }
+                        uid = record.get('uid', str(uuid4()))
+                        self.db.replace_one('record', record)
+                        data = {'added': [{'uid': uid}]}
+                        break
             else:
                 log.debug("Writing record %s", record)
                 uid = record.get('uid', str(uuid4()))
