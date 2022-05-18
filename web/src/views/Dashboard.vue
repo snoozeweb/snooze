@@ -19,6 +19,7 @@
         <ChartMain style="height:350px;margin-top:10px;"
           ref="mainchart"
           :datasets="datasets"
+          @click="main_click"
         />
       </CCardBody>
       <CCardFooter class="p-2">
@@ -471,6 +472,19 @@ export default {
           tab: 'All',
           s: encodeURIComponent(`uid=${escaped_name}`),
         },
+      }
+    },
+    main_click(point) {
+      if (point.y > 0) {
+        var date_from = point.x / 1000
+        var date_until = moment(point.x).add(1, this.groupby).unix()
+        this.$router.push({
+            path: 'record',
+            query: {
+            tab: 'All',
+            s: encodeURIComponent(`date_epoch > ${date_from} and date_epoch < ${date_until}`),
+          },
+        })
       }
     },
   },

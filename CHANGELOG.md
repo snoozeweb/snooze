@@ -1,5 +1,8 @@
 ## v1.5.0
 
+### New features
+* Web: Cliking on the main graph in Dashboard redirects to the corresponding alerts
+
 ### Changes
 * Web: Updated all web packages + NodeJS (10->12)
 

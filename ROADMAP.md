@@ -10,14 +10,11 @@
 * When restarting snooze server, should not have to restart syslog as well
 * Client CLI
   * Client CLI dynamically updated with new versions of the API schema
-* Remove bootstrap and bootstrap-vue packages (because coreui ships them already)
 * Plugin manager (wraps Pip)
 * Play with montydb (remove tinydb, replace mongomock)
-* Audit (who did what at any time)
 * Time constraints: holidays (use a custom calendar?)
 * Time constraints in rules
 * Personal environment
-* Re-escalation message to Google Chat
 * Recode severity to map fixed values
 
 ## Long term
@@ -39,3 +36,5 @@ push notification to all listening clients.
   * Be able to optionally assign one or multiple commands when creating a snooze filter (using a dropdown like for notifications)
   * Before 'Abort and Write to DB' when a record is snoozed, run these commands
 * Add auto documentation for each known error log received. Possibility for the user to add more
+* Put "comment, shelve, ack, close" buttons in a div overlapping messages and being shown when hovering
+* Put log.exception and log.warning in a DB collection and display them in the webUI
