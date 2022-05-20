@@ -36,7 +36,7 @@ fields:
         thClass: 'text-center'
         sortable: false
     -
-        label: State
+        label: ''
         key: enabled
         tdClass: ['align-middle', 'text-center']
         thClass: 'text-center'

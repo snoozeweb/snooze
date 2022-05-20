@@ -34,3 +34,5 @@ colors:
     UNREACHABLE: tertiary
     DOWN: danger
     UP: success
+    ✓: success
+    X: danger
