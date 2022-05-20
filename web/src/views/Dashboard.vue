@@ -246,12 +246,9 @@ export default {
       if (dur && unit) {
         this.datetime = {from: moment().add(-dur, unit).format(format), until: moment().format(format)}
       }
-      console.log(this.datetime)
-      console.log(this.last_datetime)
       if (this.last_datetime.from != this.datetime.from || this.last_datetime.until != this.datetime.until) {
         this.$router.push({ path: this.$router.currentRoute.value.path, query: {from: this.datetime.from, until: this.datetime.until} })
         this.last_datetime = Object.assign({}, this.datetime)
-        console.log(this.last_datetime)
       }
     },
     reload_charts() {

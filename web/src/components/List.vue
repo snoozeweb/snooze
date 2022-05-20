@@ -4,7 +4,7 @@
     <CCardHeader class="p-2" v-if="show_tabs">
       <CNav variant="pills" role="tablist" card v-model="tab_index" class='m-0'>
         <CNavItem
-          v-for="(tab, i) in tabs"
+          v-for="(tab, i) in tabs.filter(el => !el.hidden)"
           v-bind:key="tab.title"
           v-on:click="changeTab(tab)"
         >
@@ -35,8 +35,8 @@
         </CNavItem>
       </CNav>
     </CCardHeader>
-    <CForm @submit.prevent="">
-      <Search @search="search" v-model="search_value" @clear="search_clear" ref='search' class="pt-2 px-2 pb-0">
+    <CForm @submit.prevent="" class="pt-2 px-2 pb-0">
+      <Search @search="search" v-model="search_value" @clear="search_clear" ref='search' v-if="!no_search">
         <template #search_buttons v-if="!show_tabs">
           <!-- Slots for placing additional buttons in the header of the table -->
           <template v-if="Array.isArray(selected) && selected.length">
@@ -232,7 +232,7 @@
     </CModalHeader>
     <CModalBody>
       <CForm @submit.stop.prevent="checkForm" novalidate ref="edit_form">
-        <Form v-model="modal_data.edit" :metadata="form" />
+        <Form v-model="modal_data.edit" :metadata="form" :footer_metadata="form_footer"/>
       </CForm>
     </CModalBody>
     <CModalFooter>
@@ -254,7 +254,7 @@
     </CModalHeader>
     <CModalBody>
       <CForm @submit.stop.prevent="checkForm" novalidate ref="add_form">
-        <Form v-model="modal_data.add" :metadata="form" />
+        <Form v-model="modal_data.add" :metadata="form" :footer_metadata="form_footer"/>
       </CForm>
     </CModalBody>
     <CModalFooter>
@@ -289,10 +289,10 @@
     <v-contextmenu-item @click="copy_browser">
       <i class="la la-copy la-lg"></i> Copy
     </v-contextmenu-item>
-    <v-contextmenu-item @click="select_all">
+    <v-contextmenu-item @click="select_all" v-if="!no_contextmenu">
       <i class="la la-check-square la-lg"></i> Select All
     </v-contextmenu-item>
-    <v-contextmenu-item @click="context_search">
+    <v-contextmenu-item @click="context_search" v-if="!no_contextmenu">
       <i class="la la-search la-lg"></i> Search
     </v-contextmenu-item>
     <v-contextmenu-submenu title="To Clipboard">
@@ -379,11 +379,6 @@ export default {
       type: Array,
       default: () => { return [] },
     },
-    // An object describing the input form for editing/adding
-    form_prop: {
-      type: Object,
-      default: () => { return {} },
-    },
     // Allow the `Add` button
     add_mode: {type: Boolean, default: false},
     // Allow the `Edit` button in actions
@@ -397,17 +392,24 @@ export default {
     // List of fields to exclude from Info, as they will be displayed
     // in a custom view.
     info_excluded_fields: {type: Array, default: () => []},
+    page_options_prop: {type: Array, default: () => ['20', '50', '100']},
     modal_title_add: {type: String, default: 'New'},
     modal_title_edit: {type: String, default: 'Edit'},
     modal_title_delete: {type: String, default: 'Delete this item'},
     show_tabs: {type: Boolean, default: false},
+    no_search: {type: Boolean, default: false},
+    no_history: {type: Boolean, default: false},
+    no_selection: {type: Boolean, default: false},
+    no_contextmenu: {type: Boolean, default: false},
+    default_search_prop: {type: String, default: ''},
+    default_tab: {type: String, default: ''},
   },
   mounted () {
     this.schema = JSON.parse(localStorage.getItem(this.endpoint+'_json') || '{}')
     get_data(`schema/${this.endpoint}`, null, {}, this.load_table)
   },
   unmounted () {
-    this.emitter.all.clear()
+    this.emitter.off('environment_change_tab', this.handler['environment_change_tab'])
   },
   data () {
     return {
@@ -428,8 +430,8 @@ export default {
       env_filter: [],
       tab_index: 0,
       search_value: '',
-      per_page: '20',
-      page_options: ['20', '50', '100'],
+      per_page: this.page_options_prop[0],
+      page_options: this.page_options_prop,
       nb_rows: 0,
       current_page: 1,
       items: [],
@@ -442,11 +444,13 @@ export default {
       loaded: false,
       endpoint: this.endpoint_prop,
       tabs: this.tabs_prop,
-      form: this.form_prop,
+      form: {},
+      form_footer: {},
       default_fields: this.fields_prop,
       fields: this.fields_prop,
       default_hidden_fields: this.hidden_fields_prop,
       hidden_fields: this.hidden_fields_prop,
+      default_search: this.default_search_prop,
       default_orderby: this.order_by,
       orderby: this.order_by,
       default_isascending: this.is_ascending,
@@ -462,6 +466,7 @@ export default {
         edit: {},
         delete: [],
       },
+      handler: {},
     }
   },
   computed: {
@@ -482,11 +487,14 @@ export default {
         var data = this.schema
         this.tabs = dig(data, 'tabs') || this.tabs
         this.form = dig(data, 'form')
+        this.form_footer = dig(data, 'form_footer')
         this.endpoint = dig(data, 'endpoint') || this.endpoint
         this.orderby = dig(data, 'orderby') || this.orderby
         this.default_orderby = this.orderby
         this.fields = dig(data, 'fields')
-        this.fields.splice(0, 0, { key: 'select', label: '', tdClass: ['align-middle'], clickable: true, clickable_title: true })
+        if (!this.no_selection) {
+          this.fields.splice(0, 0, { key: 'select', label: '', tdClass: ['align-middle'], clickable: true, clickable_title: true })
+        }
         this.default_fields = this.fields
         this.hidden_fields = dig(data, 'hidden_fields') || []
         this.default_hidden_fields = this.hidden_fields
@@ -496,62 +504,64 @@ export default {
         this.reload()
         this.get_now()
         setInterval(this.get_now, 1000);
-        this.emitter.on('environment_change_tab', tab => {
+        this.handler['environment_change_tab'] = tab => {
           this.env_name = tab.name
           this.env_filter = tab.filter
           this.add_history()
-        })
+        }
+        this.emitter.on('environment_change_tab', this.handler['environment_change_tab'])
       }
     },
     reload() {
+      var search = this.default_search
+      var tab_title = this.default_tab
       var tab = this.tabs[0]
-      if (this.$route.query.tab !== undefined) {
-        var find_tab = this.tabs.find(el => el.title == this.$route.query.tab)
-        if (find_tab) {
-          tab = find_tab
-          this.tab_index = this.tabs.indexOf(this.tab_index)
-          this.filter = tab.filter
+      if (!this.no_history) {
+        if (this.$route.query.tab !== undefined) {
+          tab_title = this.$route.query.tab
         }
+      }
+      var find_tab = this.tabs.find(el => el.title == tab_title)
+      if (find_tab) {
+        tab = find_tab
+        this.tab_index = this.tabs.indexOf(this.tab_index)
+        this.filter = tab.filter
       }
       if (tab) {
         this.changeTab(tab, false)
       }
-      if (this.$route.query.env_filter !== undefined) {
-        this.env_filter = JSON.parse(decodeURIComponent(this.$route.query.env_filter))
-      } else {
-        this.env_filter = []
-      }
-      if (this.$route.query.env_name !== undefined) {
-        this.env_name = decodeURIComponent(this.$route.query.env_name)
-      } else {
-        this.env_name = ''
-      }
-      if (this.$route.query.perpage !== undefined) {
-        this.per_page = this.$route.query.perpage
-      }
-      if (this.$route.query.pagenb !== undefined) {
-        this.current_page = parseInt(this.$route.query.pagenb)
-      }
-      if (this.$route.query.asc !== undefined) {
-        this.isascending = JSON.parse(this.$route.query.asc)
-      }
-      if (this.$route.query.orderby !== undefined) {
-        this.orderby = this.$route.query.orderby
-      }
-      if (this.$route.query.s !== undefined) {
-        var decoded_query = decodeURIComponent(this.$route.query.s)
-        if (this.$refs.search) {
-          this.search_value = decoded_query
-          this.$refs.search.datavalue = decoded_query
+      if (!this.no_history) {
+        if (this.$route.query.env_filter !== undefined) {
+          this.env_filter = JSON.parse(decodeURIComponent(this.$route.query.env_filter))
+        } else {
+          this.env_filter = []
         }
-        this.refreshTable()
-      } else {
-        if (this.$refs.search) {
-          this.search_value = ''
-          this.$refs.search.datavalue = ''
+        if (this.$route.query.env_name !== undefined) {
+          this.env_name = decodeURIComponent(this.$route.query.env_name)
+        } else {
+          this.env_name = ''
         }
-        this.refreshTable()
+        if (this.$route.query.perpage !== undefined) {
+          this.per_page = this.$route.query.perpage
+        }
+        if (this.$route.query.pagenb !== undefined) {
+          this.current_page = parseInt(this.$route.query.pagenb)
+        }
+        if (this.$route.query.asc !== undefined) {
+          this.isascending = JSON.parse(this.$route.query.asc)
+        }
+        if (this.$route.query.orderby !== undefined) {
+          this.orderby = this.$route.query.orderby
+        }
+        if (this.$route.query.s !== undefined) {
+          search = decodeURIComponent(this.$route.query.s)
+        }
       }
+      this.search_value = search
+      if (this.$refs.search) {
+        this.$refs.search.datavalue = search
+      }
+      this.refreshTable()
     },
     get_now() {
       this.timestamp = moment().unix()
@@ -572,7 +582,14 @@ export default {
         asc: this.isascending,
       }
       if (this.search_value) {
-        options["ql"] = this.search_value
+        if (this.search_value[0] == '[') {
+          var search_json = JSON.parse(this.search_value)
+          if (search_json) {
+            query = join_queries([query, search_json])
+          }
+        } else {
+          options["ql"] = this.search_value
+        }
       }
       if (this.orderby !== undefined) {
         var form_field = this.fields.concat(this.hidden_fields).find((field, ) => field.key == this.orderby)
@@ -583,7 +600,6 @@ export default {
         }
       }
       get_data(this.endpoint, query, options, feedback == true ? this.feedback_then_update : this.update_table, null)
-      this.$emit('update')
     },
     feedback_then_update(response) {
       this.$root.show_alert()
@@ -680,13 +696,14 @@ export default {
         })
       }
       this.loaded = true
+      this.$emit('update')
     },
     search(query) {
       //console.log(`Search: ${query}`)
       this.add_history()
     },
     search_clear() {
-      this.search_value = ''
+      this.search_value = this.default_search
       this.add_history()
     },
     changeTab(tab, refresh = true) {
@@ -793,18 +810,22 @@ export default {
       }
     },
     add_history() {
-      const query = { tab: this.tabs[this.tab_index].title, s: (this.search_value || ''), env_name: this.env_name, env_filter: encodeURIComponent(JSON.stringify(this.env_filter)),
-        perpage: this.per_page, pagenb: this.current_page, orderby: this.orderby, asc: this.isascending }
-      if (this.$route.query.tab != query.tab || this.$route.query.s != query.s || this.$route.query.env_name != query.env_name
-        || this.$route.query.perpage != query.perpage || this.$route.query.pagenb != query.pagenb || this.$route.query.asc != query.asc || this.$route.query.orderby != query.orderby) {
-        this.$router.push({ query: query })
+      if (!this.no_history) {
+        const query = { tab: this.tabs[this.tab_index].title, s: (this.search_value || this.default_search || ''), env_name: this.env_name, env_filter: encodeURIComponent(JSON.stringify(this.env_filter)),
+          perpage: this.per_page, pagenb: this.current_page, orderby: this.orderby, asc: this.isascending }
+        if (this.$route.query.tab != query.tab || this.$route.query.s != query.s || this.$route.query.env_name != query.env_name
+          || this.$route.query.perpage != query.perpage || this.$route.query.pagenb != query.pagenb || this.$route.query.asc != query.asc || this.$route.query.orderby != query.orderby) {
+          this.$router.push({ query: query })
+        }
+      } else {
+        this.reload()
       }
     },
     contextMenu(item, index, colname, event) {
-      event.preventDefault()
-      this.item_copy = item
-      this.$refs.contextmenu.hide()
-      this.$refs.contextmenu.show({top: event.pageY, left: event.pageX})
+        event.preventDefault()
+        this.item_copy = item
+        this.$refs.contextmenu.hide()
+        this.$refs.contextmenu.show({top: event.pageY, left: event.pageX})
     },
     get_fields(row, selected_fields = {}) {
       var return_obj = Object.keys(row).filter(key => key[0] != '_' && key != 'button')

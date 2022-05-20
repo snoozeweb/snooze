@@ -47,10 +47,6 @@ export default {
       type: String,
       required: true,
     },
-    form_prop: {
-      type: Object,
-      default: () => { return {} },
-    },
     loaded_callback: {
       type: Function,
     },
@@ -65,7 +61,7 @@ export default {
   },
   data () {
     return {
-      form: this.form_prop,
+      form: {},
       tabs: this.tabs_prop,
       form_data: {},
       form_key: 0,
