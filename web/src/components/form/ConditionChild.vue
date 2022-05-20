@@ -18,7 +18,7 @@
         <CForm inline class="row g-0">
         <CCol xs="auto">
         <CInputGroup>
-          <CFormSelect v-model="operation" :value="dataValue.operation" class="w-auto">
+          <CFormSelect v-model="operation" :value="dataValue.operation" class="w-auto" @change="refresh">
             <option v-for="option in LOGIC_OPTIONS" :value="option.value">{{ option.text }}</option>
           </CFormSelect>
           <CButton @click="logicAdd" @click.stop.prevent color="secondary" v-if="dataValue.operation != 'NOT'">
@@ -30,7 +30,7 @@
         </CForm>
         <ul class="ps-3">
           <CForm @submit.prevent class="pt-1" v-for="(arg, i) in dataValue.args" v-bind:key="arg.id">
-            <ConditionChild v-model="dataValue.args[i]" :index="i" @delete-event="deleteCondition" />
+            <ConditionChild v-model="dataValue.args[i]" :index="i" @delete-event="deleteCondition" @refresh="refresh"/>
           </CForm>
         </ul>
       </template>
@@ -38,11 +38,11 @@
       <!-- `field=value` case (and other operations) -->
       <template v-else-if="['binary', 'unary'].includes(dataValue.type)">
         <CInputGroup>
-          <CFormInput v-model="dataValue.args[0]" placeholder="Field" style="flex: 0 0 auto; width: 25%"/>
-          <CFormSelect v-model="operation" :value="dataValue.operation" style="flex: 0 0 auto; width: 15%">
+          <CFormInput v-model="dataValue.args[0]" placeholder="Field" style="flex: 0 0 auto; width: 25%" @change="refresh"/>
+          <CFormSelect v-model="operation" :value="dataValue.operation" style="flex: 0 0 auto; width: 15%" @change="refresh">
             <option v-for="option in OPERATION_OPTIONS" :value="option.value">{{ option.text }}</option>
           </CFormSelect>
-          <SFormInput v-model="dataValue.args[1]" placeholder="Value" v-if="dataValue.type == 'binary'"/>
+          <SFormInput v-model="dataValue.args[1]" placeholder="Value" v-if="dataValue.type == 'binary'" @change="refresh"/>
           <CButton @click="fork" @click.stop.prevent color="secondary"><i class="la la-plus la-lg"></i></CButton>
           <CButton @click="dataValue = defaultCondition()" @click.stop.prevent color="info"><i class="la la-redo-alt la-lg"></i></CButton>
           <CButton @click="escalateDelete" @click.stop.prevent color="danger"><i class="la la-trash la-lg"></i></CButton>
@@ -81,7 +81,7 @@ import SFormInput from '@/components/SFormInput.vue'
 
 export default {
   name: 'ConditionChild',
-  emits: ['update:modelValue', 'deleteEvent'],
+  emits: ['update:modelValue', 'deleteEvent', 'refresh'],
   components: {
     SFormInput,
   },
@@ -103,6 +103,7 @@ export default {
   methods: {
     // Return a new condition object
     defaultCondition () {
+      this.refresh()
       return new ConditionObject('=', ['', ''])
     },
     // Triggered when we push the `+` button for a logic operator (AND/OR)
@@ -125,6 +126,7 @@ export default {
     // escalate the delete operation to the parent condition, or reset the condition
     // if it's the root condition.
     escalateDelete() {
+      this.refresh()
       if (this.root) {
         this.dataValue = new ConditionObject('')
       } else {
@@ -135,8 +137,11 @@ export default {
     // Trigerred when pushing the `+` button for a normal condition (a=x)
     // This will create a logic operator at the place of the condition, resulting
     // in "a=1 AND defaultCondition()"
-    fork () {
+    fork() {
       this.dataValue = this.dataValue.combine('AND', this.defaultCondition())
+    },
+    refresh() {
+      this.$nextTick(() => this.$emit('refresh'))
     },
   },
   computed: {

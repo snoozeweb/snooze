@@ -4,6 +4,7 @@
     <ConditionChild
       v-model="dataValue"
       :root="true"
+      @refresh="refresh"
     ></ConditionChild>
   </div>
 </template>
@@ -25,6 +26,14 @@ export default {
     return {
       dataValue: ConditionObject.fromArray(this.modelValue),
     }
+  },
+  methods: {
+    refresh () {
+      this.emitter.emit('condition_refresh', this.dataValue)
+    },
+  },
+  mounted () {
+    setTimeout(() => this.refresh(), 1)
   },
   watch: {
     dataValue: {

@@ -85,3 +85,8 @@ form:
         display_name: Comment
         component: Text
         description: Description
+form_footer:
+    preview_alerts:
+        display_name: Preview alerts
+        component: Alert
+        description: 'Checking in real time if alerts are matching the condition'

@@ -36,6 +36,30 @@ tabs:
     -
         title: 'All'
         filter: []
+    -
+        title: 'Preview'
+        hidden: true
+        filter: []
+        fields:
+            -
+                key: timestamp
+                sortable: true
+                thStyle: {width: '5%'}
+                tdClass: ['align-middle', 'px-2']
+            -
+                key: host
+                sortable: true
+                thStyle: {width: '10%'}
+                tdClass: ['align-middle', 'px-2', 'singleline']
+            -
+                key: process
+                sortable: true
+                thStyle: {width: '5%'}
+                tdClass: ['align-middle', 'px-2']
+            -
+                key: message
+                thStyle: {width: '80%'}
+                tdClass: ['align-middle', 'text-break']
 orderby: timestamp
 fields:
     -
