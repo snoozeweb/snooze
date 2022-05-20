@@ -550,6 +550,8 @@ export default {
       let classes = [item._classes]
       if (item._selected) {
         classes.push('table-info')
+      } else if (item.enabled == false) {
+        classes.push('table-dark')
       }
       return classes
     },

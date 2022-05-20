@@ -30,7 +30,7 @@ fields:
         sortable: false
         type: array
     -
-        label: State
+        label: ''
         key: enabled
         tdClass: ['align-middle', 'text-center']
         thClass: 'text-center'

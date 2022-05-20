@@ -5,6 +5,7 @@
 
 ### Changes
 * Web: Updated all web packages + NodeJS (10->12)
+* Web: Enabled/Disabled labels replaced with Checkmark/Crossmark
 
 ### Bug fixes
 * Core: DB query typo in Actions

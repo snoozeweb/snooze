@@ -133,7 +133,7 @@
         </template>
         <template v-slot:discard="row">
           <CBadge v-if="dig(row.item, 'discard')" color="quaternary">yes</CBadge>
-          <CBadge v-else color="success">no</CBadge>
+          <CBadge v-else color="tertiary">no</CBadge>
         </template>
         <template v-slot:batch="row">
           <CBadge v-if="dig(row.item, 'action', 'subcontent', 'batch')" color="quaternary">yes</CBadge>
@@ -146,7 +146,7 @@
           <Frequency :data="dig(row.item, 'frequency')" />
         </template>
         <template v-slot:enabled="row">
-          <Field :data="[(dig(row.item, 'enabled') == undefined || dig(row.item, 'enabled') == true) ? 'enabled' : 'disabled']" colorize/>
+          <Field :data="[(dig(row.item, 'enabled') == undefined || dig(row.item, 'enabled') == true) ? '✓' : 'X']" colorize/>
         </template>
         <template v-slot:pprint="row">
           <table class="table-borderless"><tr style="background-color: transparent !important"><td class="p-0 pe-1"><i :class="'la la-'+dig(row.item, 'icon')+' la-lg'"></i></td><td class="p-0"><b>{{ dig(row.item, 'widget', 'selected') || '' + dig(row.item, 'action', 'selected') || '' }}</b> @ {{ dig(row.item, 'pprint') }}</td></tr></table>
