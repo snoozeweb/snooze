@@ -240,10 +240,10 @@ def test_tinydb_cleanup_timeout(db):
     deleted_count = db.cleanup_timeout('record')
     assert deleted_count == 2
 
-def test_tinydb_cleanup_orphans(db):
+def test_tinydb_cleanup_comments(db):
     uids = [o['uid'] for o in db.write('record', [{'a': '1'}, {'b': '1'}])['data']['added']]
     db.write('comment', [{'record_uid': uids[0]}, {'record_uid': uids[1]}, {'record_uid': 'random'}])
-    deleted_count = db.cleanup_orphans('comment', 'record_uid', 'record', 'uid')
+    deleted_count = db.cleanup_comments()
     assert deleted_count == 1
 
 def test_tinydb_cleanup_audit_logs(db):
