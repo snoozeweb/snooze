@@ -39,6 +39,27 @@ DEFAULT_PAGINATION = {
     'asc': True,
 }
 
+def batch(cursor, batch_size: int = 100):
+    '''Given a mongodb cursor, return a generator that yield a list of items
+    of size that can be up to `batch_size`.
+    Example:
+    for chunk in batch(database.find({})):
+        chunk: List[dict] = chunk
+    '''
+    index = 0
+    cursor = cursor.batch_size(batch_size)
+    while True:
+        next_index = index + batch_size
+        results = []
+        for _ in range(batch_size):
+            try:
+                results.append(cursor.next())
+            except StopIteration:
+                yield results
+                return
+        yield results
+        index = next_index
+
 class BackendDB(Database):
     '''Database backend for MongoDB'''
 
@@ -66,18 +87,23 @@ class BackendDB(Database):
         ]
         return self.run_pipeline(collection, pipeline)
 
-    def cleanup_orphans(self, collection: str, key: str, col_ref: str, key_ref: str) -> int:
-        pipeline = [{
-    	    "$lookup": {
-                'from': col_ref,
-                'localField': key,
-                'foreignField': key_ref,
-                'as': "matched_docs"
-            }
-        },{
-            "$match": { "matched_docs": { "$eq": [] } }
-        }]
-        return self.run_pipeline(collection, pipeline)
+    def cleanup_comments(self):
+        '''Delete comments which record doesn't exist anymore'''
+        log.debug('cleanup_comments: Start')
+        pipeline = [
+            {'$group': {'_id': '$record_uid'}},
+            {'$lookup': {'from': 'record', 'foreignField': 'uid', 'localField': '_id', 'as': 'matched'}},
+            {'$match': {'matched': {'$eq': []}}},
+        ]
+        cursor = self.db['comment'].aggregate(pipeline)
+        total_deleted = 0
+        for chunk in batch(cursor, 100):
+            record_uids = [comment['_id'] for comment in chunk if '_id' in comment]
+            result = self.db['comment'].delete_many({'record_uid': {'$in': record_uids}})
+            total_deleted += result.deleted_count
+            log.debug("cleanup_comments: Removed %d comments", result.deleted_count)
+        log.debug('cleanup_comments: Success')
+        return total_deleted
 
     def cleanup_audit_logs(self, interval: int):
         '''Cleanup audit logs of deleted objects'''

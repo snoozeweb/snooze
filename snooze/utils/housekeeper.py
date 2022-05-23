@@ -126,7 +126,7 @@ class Housekeeper(SurvivingThread):
             'cleanup_alert': BasicJob('cleanup_alert', timedelta(minutes=5),
                 lambda db: db.cleanup_timeout('record')),
             'cleanup_comment': BasicJob('cleanup_comment', timedelta(days=1),
-                lambda db: db.cleanup_orphans('comment', 'record_uid', 'record', 'uid')),
+                lambda db: db.cleanup_comments()),
             'cleanup_audit': IntervalJob('cleanup_audit', timedelta(days=1), timedelta(days=28),
                 lambda db, interval: db.cleanup_audit_logs(interval.total_seconds())),
             'cleanup_snooze': IntervalJob('cleanup_snooze', timedelta(days=1), timedelta(days=3),

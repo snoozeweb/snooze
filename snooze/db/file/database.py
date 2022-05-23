@@ -87,14 +87,14 @@ class BackendDB(Database):
         mutex.release()
         return res
 
-    def cleanup_orphans(self, collection, key, col_ref, key_ref):
-        mutex.acquire()
-        results = [doc[key_ref] for doc in self.db.table(col_ref).all()]
-        aggregate_results = self.db.table(collection).search(~ (Query()[key].one_of(results)))
-        aggregate_results = [{'_id': doc.doc_id} for doc in aggregate_results]
-        res = self.delete_aggregates(collection, aggregate_results)
-        mutex.release()
-        return res
+    def cleanup_comments(self):
+        '''Delete comments which record doesn't exist anymore'''
+        with mutex:
+            record_uids = [doc['uid'] for doc in self.db.table('record').all()]
+            aggregate_results = self.db.table('comment').search(~ (Query()['record_uid'].one_of(record_uids)))
+            aggregate_results = [{'_id': doc.doc_id} for doc in aggregate_results]
+            res = self.delete_aggregates('comment', aggregate_results)
+            return res
 
     def cleanup_audit_logs(self, interval):
         mutex.acquire()
