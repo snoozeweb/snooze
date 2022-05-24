@@ -85,10 +85,14 @@ def fixture_api(core):
     return core.api
 
 @pytest.fixture(name='client', scope='function')
-def fixture_client(api):
+def fixture_client(api, request):
     '''Fixture returning a falcon TestClient'''
     token = api.get_root_token()
     log.debug("Token obtained from get_root_token: %s", token)
     headers = {'Authorization': f"JWT {token}"}
-    return TestClient(api.handler, headers=headers)
-
+    client = TestClient(api.handler, headers=headers)
+    data = get_data(request, 'data', {})
+    for collection, items in data.items():
+        api.core.db.db[collection].drop()
+        client.simulate_post(f"/api/{collection}", json=items)
+    return client
