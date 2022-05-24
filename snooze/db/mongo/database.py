@@ -131,14 +131,15 @@ class BackendDB(Database):
     def run_pipeline(self, collection: str, pipeline: List[dict]) -> int:
         '''Execute a filter pipeline on a collection, and delete the resulting objects.
         Return the number of deleted objects'''
-        aggregate_results = self.db[collection].aggregate(pipeline)
-        ids = [doc['_id'] for doc in aggregate_results]
-        if ids:
-            deleted_results = self.db[collection].delete_many({'_id': {"$in": ids}})
-            log.debug('Removed %d documents in %s', deleted_results.deleted_count, collection)
-            return deleted_results.deleted_count
-        else:
-            return 0
+        cursor = self.db[collection].aggregate(pipeline)
+        total = 0
+        for chunk in batch(cursor, 100):
+            ids = [doc['_id'] for doc in chunk if '_id' in doc]
+            if ids:
+                deleted_results = self.db[collection].delete_many({'_id': {"$in": ids}})
+                log.debug('Removed %d documents in %s', deleted_results.deleted_count, collection)
+                total += deleted_results.deleted_count
+        return total
 
     @wrap_exception
     def write(self, collection:str, obj:Union[List[dict], dict], primary:Optional[str]=None, duplicate_policy:str='update', update_time:bool=True, constant:Optional[str]=None) -> dict:
