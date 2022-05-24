@@ -48,32 +48,6 @@ class LoggerMiddleware(object):
         if not any(path.startswith(excluded) for excluded in self.excluded_paths):
             self.logger.debug(message)
 
-class CORS:
-    '''A falcon middleware to handle CORS when the snooze-server and
-    snooze-web components are on different hosts.
-    '''
-    def __init__(self):
-        pass
-
-    def process_response(self, req, resp, _resource, req_succeeded):
-        resp.set_header('Access-Control-Allow-Origin', '*')
-        if (
-            req_succeeded
-            and req.method == 'OPTIONS'
-            and req.get_header('Access-Control-Request-Method')
-        ):
-            allow = resp.get_header('Allow')
-            resp.delete_header('Allow')
-
-            allow_headers = req.get_header('Access-Control-Request-Headers', default='*')
-            resp.set_headers(
-                (
-                    ('Access-Control-Allow-Methods', allow),
-                    ('Access-Control-Allow-Headers', allow_headers),
-                    ('Access-Control-Max-Age', '86400'),  # 24 hours
-                )
-            )
-
 class Api:
     def __init__(self, core: 'Core'):
         self.core = core
@@ -88,7 +62,7 @@ class Api:
 
         # Handler
         middlewares = [
-            CORS(),
+            falcon.CORSMiddleware(allow_origins='*', allow_credentials='*'),
             LoggerMiddleware(self.core.config.core.audit_excluded_paths),
             FalconAuthMiddleware(self.jwt_auth),
         ]
