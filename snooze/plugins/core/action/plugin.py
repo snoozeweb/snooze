@@ -93,35 +93,6 @@ class ActionObject:
         self.content['batch'] = self.batch
         self.batch_timer = self.content.get('batch_timer', batch.get('timer', 10))
         self.batch_maxsize = self.content.get('batch_maxsize', batch.get('maxsize', 100))
-        if batch and not batch.get('hidden', False):
-            batch_form = {
-                'batch': {
-                    'display_name': 'Batch',
-                    'component': 'Switch',
-                    'default': batch.get('default', False),
-                    'description': 'Batch alerts',
-                },
-                'batch_timer': {
-                    'display_name': 'Batch Timer',
-                    'component': 'Duration',
-                    'description': 'Number of seconds to wait before sending a batch',
-                    'options': {
-                        'zero_label': 'Immediate',
-                        'negative_label': 'Immediate',
-                    },
-                    'default_value': batch.get('timer', 10),
-                },
-                'batch_maxsize': {
-                    'display_name': 'Batch Maxsize',
-                    'component': 'Number',
-                    'description': 'Maximum batch size to send',
-                    'options': {
-                        'min': 1,
-                    },
-                    'default_value': batch.get('maxsize', 100),
-                },
-            }
-            self.action_plugin.meta.action_form.update(batch_form)
 
     def send(self, action_obj):
         record = action_obj['record']

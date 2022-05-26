@@ -10,6 +10,7 @@
 
 ### Bug fixes
 * Core: DB query typo in Actions
+* Core: Batch form would not being displayed if no action was previously created
 
 ## v1.4.1
 
