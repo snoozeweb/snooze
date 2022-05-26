@@ -52,6 +52,39 @@ class Plugin:
             routes[path] = config.route_defaults
         if config.routes:
             routes.update(config.routes)
+
+        if config.action_form:
+            config.action_form['action_name'] = self.name
+            batch = config.options.get('batch')
+            if batch and not batch.get('hidden', False):
+                batch_form = {
+                    'batch': {
+                        'display_name': 'Batch',
+                        'component': 'Switch',
+                        'default': batch.get('default', False),
+                        'description': 'Batch alerts',
+                    },
+                    'batch_timer': {
+                        'display_name': 'Batch Timer',
+                        'component': 'Duration',
+                        'description': 'Number of seconds to wait before sending a batch',
+                        'options': {
+                            'zero_label': 'Immediate',
+                            'negative_label': 'Immediate',
+                        },
+                        'default_value': batch.get('timer', 10),
+                    },
+                    'batch_maxsize': {
+                        'display_name': 'Batch Maxsize',
+                        'component': 'Number',
+                        'description': 'Maximum batch size to send',
+                        'options': {
+                            'min': 1,
+                        },
+                        'default_value': batch.get('maxsize', 100),
+                    },
+                }
+                config.action_form.update(batch_form)
         self.meta = Metadata(
             name=self.name,
             auto_reload=config.auto_reload,
