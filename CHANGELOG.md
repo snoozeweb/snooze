@@ -3,6 +3,7 @@
 ### New features
 * Web: Cliking on the main graph in Dashboard redirects to the corresponding alerts
 * Web: Alerts preview when writing a condition
+* Core: Support for Grafana 8.5+ (same webhook)
 
 ### Changes
 * Web: Updated all web packages + NodeJS (10->12)

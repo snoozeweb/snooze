@@ -20,8 +20,8 @@ class GrafanaRoute(WebhookRoute):
     '''A falcon route to receive Grafana alerts as input'''
     authentication = False
 
-    def parse(self, match, media):
-        '''Parse the data of the webhook to create an alert'''
+    def parse_old(self, match, media):
+        '''Grafana 8.4 and lower. Parse the data of the webhook to create an alert'''
         alert = {}
         tags = match.get('tags') or {}
         alert['metric'] = match.get('metric', '')
@@ -51,10 +51,50 @@ class GrafanaRoute(WebhookRoute):
 
         return alert
 
+    def parse_new(self, match, media):
+        '''Grafana 8.5 and higher. Parse the data of the webhook to create an alert'''
+        alert = {}
+        labels = match.get('labels') or {}
+        annotations = match.get('annotations') or {}
+        alert['generator_url'] = match.get('generatorURL', '')
+        alert['fingerprint'] = match.get('fingerprint', '')
+        alert['dashboard_url'] = match.get('dashboardURL', '')
+        alert['panel_url'] = match.get('panelURL', '')
+        alert['value_string'] = match.get('valueString', '')
+        alert['description'] = annotations.pop('description', '')
+
+        alert['host'] = labels.pop('host', labels.pop('instance', ''))
+        alert['process'] = labels.pop('process', labels.pop('alertname', ''))
+        alert['severity'] = labels.pop('severity', 'critical')
+        alert['message'] = annotations.pop('message', annotations.pop('summary', ''))
+        alert['source'] = 'grafana'
+        alert['raw'] = sanitize(media)
+        alert['labels'] = {}
+        for label_k, label_v in labels.items():
+            try:
+                alert['labels'][label_k] = loads(label_v)
+            except Exception:
+                alert['labels'][label_k] = label_v
+        alert['labels'].update(media.get('labels') or {})
+        alert['labels'] = sanitize(alert['labels'])
+        alert['annotations'] = {}
+        for annotation_k, annotation_v in annotations.items():
+            try:
+                alert['annotations'][annotation_k] = loads(annotation_v)
+            except Exception:
+                alert['annotations'][annotation_k] = annotation_v
+        alert['annotations'].update(media.get('annotations') or {})
+        alert['annotations'] = sanitize(alert['annotations'])
+
+        return alert
+
     def parse_webhook(self, req, media):
         alerts = []
         if media.get('state', '') == 'alerting':
             for match in media.get('evalMatches', []):
-                alert = self.parse(match, media)
+                alert = self.parse_old(match, media)
+                alerts.append(alert)
+            for match in media.get('alerts', []):
+                alert = self.parse_new(match, media)
                 alerts.append(alert)
         return alerts
