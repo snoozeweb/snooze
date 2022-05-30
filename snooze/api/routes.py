@@ -184,6 +184,8 @@ class WebhookRoute(FalconRoute):
                             alert = ensure_kv(alert, val, *key.split('.'))
                         rec = self.core.process_record(alert)
                         rec_list.append(rec)
+                else:
+                    raise
             except Exception as e:
                 log.exception(e)
                 rec_list.append({'data': {'rejected': [req_media]}})
