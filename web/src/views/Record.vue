@@ -61,7 +61,7 @@
         <CFormInput id="floatingInput" v-model="modal_message" placeholder="message"/>
         <CFormLabel for="floatingInput">Message (optional)</CFormLabel>
       </CFormFloating>
-      <CRow v-if="modal_type == 'esc'" class="mt-3">
+      <CRow v-if="modal_type == 'esc' || modal_type == 'open'" class="mt-3">
         <CCol col=3 md=2>
           <CPopover
             content="Apply modifications to the record then notify"
