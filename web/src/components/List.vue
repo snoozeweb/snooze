@@ -406,7 +406,11 @@ export default {
   },
   mounted () {
     this.schema = JSON.parse(localStorage.getItem(this.endpoint+'_json') || '{}')
-    get_data(`schema/${this.endpoint}`, null, {}, this.load_table)
+    var options = {}
+    if (this.checksum) {
+      options.checksum = this.checksum
+    }
+    get_data(`schema/${this.endpoint}`, null, options, this.load_table)
   },
   unmounted () {
     this.emitter.off('environment_change_tab', this.handler['environment_change_tab'])
@@ -441,6 +445,7 @@ export default {
       selected_data: {},
       selected: [],
       schema: {},
+      checksum: null,
       loaded: false,
       endpoint: this.endpoint_prop,
       tabs: this.tabs_prop,
@@ -481,36 +486,41 @@ export default {
   },
   methods: {
     load_table(response) {
-      if (response.data) {
+      // Cache was updated
+      if (response.status == 200) {
         this.schema = response.data
-        localStorage.setItem(this.endpoint+'_json', JSON.stringify(response.data))
-        var data = this.schema
-        this.tabs = dig(data, 'tabs') || this.tabs
-        this.form = dig(data, 'form')
-        this.form_footer = dig(data, 'form_footer')
-        this.endpoint = dig(data, 'endpoint') || this.endpoint
-        this.orderby = dig(data, 'orderby') || this.orderby
-        this.default_orderby = this.orderby
-        this.fields = dig(data, 'fields')
-        if (!this.no_selection) {
-          this.fields.splice(0, 0, { key: 'select', label: '', tdClass: ['align-middle'], clickable: true, clickable_title: true })
-        }
-        this.default_fields = this.fields
-        this.hidden_fields = dig(data, 'hidden_fields') || []
-        this.default_hidden_fields = this.hidden_fields
-        this.isascending = dig(data, 'isascending') || false
-        this.default_isascending = this.isascending
-        this.filter = this.tabs[0].filter
-        this.reload()
-        this.get_now()
-        setInterval(this.get_now, 1000);
-        this.handler['environment_change_tab'] = tab => {
-          this.env_name = tab.name
-          this.env_filter = tab.filter
-          this.add_history()
-        }
-        this.emitter.on('environment_change_tab', this.handler['environment_change_tab'])
+        this.checksum = response.headers['CHECKSUM']
+        localStorage.setItem(`${this.endpoint}_json`, JSON.stringify(response.data))
+      // Cache not modified
+      } else if (response.stats == 304) {
+        // Do nothing
       }
+      var data = this.schema
+      this.tabs = dig(data, 'tabs') || this.tabs
+      this.form = dig(data, 'form')
+      this.form_footer = dig(data, 'form_footer')
+      this.endpoint = dig(data, 'endpoint') || this.endpoint
+      this.orderby = dig(data, 'orderby') || this.orderby
+      this.default_orderby = this.orderby
+      this.fields = dig(data, 'fields')
+      if (!this.no_selection) {
+        this.fields.splice(0, 0, { key: 'select', label: '', tdClass: ['align-middle'], clickable: true, clickable_title: true })
+      }
+      this.default_fields = this.fields
+      this.hidden_fields = dig(data, 'hidden_fields') || []
+      this.default_hidden_fields = this.hidden_fields
+      this.isascending = dig(data, 'isascending') || false
+      this.default_isascending = this.isascending
+      this.filter = this.tabs[0].filter
+      this.reload()
+      this.get_now()
+      setInterval(this.get_now, 1000);
+      this.handler['environment_change_tab'] = tab => {
+        this.env_name = tab.name
+        this.env_filter = tab.filter
+        this.add_history()
+      }
+      this.emitter.on('environment_change_tab', this.handler['environment_change_tab'])
     },
     reload() {
       var search = this.default_search

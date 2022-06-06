@@ -56,8 +56,12 @@ export default {
   },
   mounted () {
     this.save_enable()
+    var options = {}
+    if (this.checksum) {
+      options.checksum = this.checksum
+    }
     this.schema = JSON.parse(localStorage.getItem(this.endpoint+'_json') || '{}')
-    get_data(`schema/${this.endpoint}`, null, {}, this.load_table)
+    get_data(`schema/${this.endpoint}`, null, options, this.load_table)
   },
   data () {
     return {
@@ -72,6 +76,7 @@ export default {
       save_variant: null,
       submitForm: this.onSubmit || this.submit,
       schema: {},
+      checksum: null,
       loaded: false,
     }
   },
@@ -79,21 +84,24 @@ export default {
   },
   methods: {
     load_table(response) {
-      if (response.data) {
-        if (response.data.count > 0) {
-          this.schema = response.data
-          localStorage.setItem(this.endpoint+'_json', JSON.stringify(response.data))
-        }
-        var data = this.schema
-        this.form = dig(data, 'form')
-        this.tabs = dig(data, 'tabs')
-        this.endpoint = dig(data, 'endpoint') || this.endpoint
-        this.current_tab = this.tabs[0]
-        if (this.loaded_callback) {
-          this.loaded_callback()
-        }
-        this.reload()
+      // Cache was updated
+      if (response.status == 200) {
+        this.schema = response.data
+        this.checksum = response.headers['CHECKSUM']
+        localStorage.setItem(`${this.endpoint}_json`, JSON.stringify(response.data))
+      // Cache not modified
+      } else if (response.stats == 304) {
+        // Do nothing
       }
+      var data = this.schema
+      this.form = dig(data, 'form')
+      this.tabs = dig(data, 'tabs')
+      this.endpoint = dig(data, 'endpoint') || this.endpoint
+      this.current_tab = this.tabs[0]
+      if (this.loaded_callback) {
+        this.loaded_callback()
+      }
+      this.reload()
     },
     reload() {
       var tab = this.tabs[0]
