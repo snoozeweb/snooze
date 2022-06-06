@@ -11,6 +11,7 @@ import mimetypes
 import functools
 from logging import getLogger
 from hashlib import sha256
+from hashlib import md5
 from base64 import b64decode
 from abc import abstractmethod
 from typing import List, Optional, Union, ClassVar, Dict
@@ -326,27 +327,34 @@ class SchemaRoute(BasicRoute):
     authentication = False
 
     schemas: ClassVar[Dict[str, dict]] = {}
+    checksums: ClassVar[Dict[str, str]] = {}
 
     def __init__(self, *args, **kwargs):
         BasicRoute.__init__(self, *args, **kwargs)
         # Loading the web form schema at startup to avoid
         # runtime errors.
         self.schemas = {}
+        self.checksums = {}
         basedir = Path(rootdir).parent / 'defaults/web'
         etcdir = Path('/etc/snooze/web')
         for path in basedir.glob('*.yaml'):
             custom_override = etcdir / f"{path.stem}.yaml"
             if custom_override.is_file():
-                text = custom_override.read_text(encoding='utf-8')
-            else:
-                text = path.read_text(encoding='utf-8')
+                path = custom_override
+            text = path.read_text(encoding='utf-8')
+            self.checksums[path.stem] = md5(text.encode('utf8')).hexdigest()
             self.schemas[path.stem] = yaml.safe_load(text)
 
     def on_get(self, req: Request, resp: Response, endpoint: str):
         '''Return the form schema of a given endpoint'''
         try:
-            resp.media = self.schemas[endpoint]
-            resp.status = falcon.HTTP_OK
+            endpoint_checksum = self.checksums[endpoint]
+            if endpoint_checksum == req.params.get('checksum'):
+                resp.status = falcon.HTTP_NOT_MODIFIED
+            else:
+                resp.media = self.schemas[endpoint]
+                resp.set_header('CHECKSUM', endpoint_checksum)
+                resp.status = falcon.HTTP_OK
         except KeyError as err:
             raise falcon.HTTPNotFound(f"No web config found for endpoint '{endpoint}'") from err
 
