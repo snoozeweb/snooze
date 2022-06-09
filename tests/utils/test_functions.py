@@ -55,6 +55,7 @@ def route():
     route = Mock()
     route.core.config.core.no_login = False
     route.plugin.name = 'myplugin'
+    route.options.check_permissions = False
     route.options.authorization_policy = AuthorizationPolicy()
     return route
 
