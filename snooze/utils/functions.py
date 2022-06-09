@@ -164,7 +164,7 @@ def is_authorized(route: 'BasicRoute', req: Request) -> bool:
         read_permissions |= authorization_policy.read
         write_permissions |= authorization_policy.write
 
-    valid_permissions: Set[str] = set('any')
+    valid_permissions: Set[str] = set()
     if req.method in ['GET']:
         valid_permissions |= read_permissions | write_permissions
     elif req.method in ['PUT', 'POST', 'DELETE']:
