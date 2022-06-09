@@ -144,6 +144,12 @@ def is_authorized(route: 'BasicRoute', req: Request) -> bool:
     if auth.username == 'root' and auth.method == 'root':
         return True
 
+    if route.options.check_permissions and req.method in ['PUT', 'POST', 'DELETE']:
+        roles = route.get_roles(auth.username, auth.method)
+        permissions = set(route.get_permissions(roles))
+    else:
+        permissions = auth.permissions
+
     if (route.plugin and hasattr(route.plugin, 'name')):
         plugin_name = route.plugin.name
     elif hasattr(route, 'name'):
@@ -170,7 +176,7 @@ def is_authorized(route: 'BasicRoute', req: Request) -> bool:
     elif req.method in ['PUT', 'POST', 'DELETE']:
         valid_permissions |= write_permissions
 
-    auth_permissions = auth.permissions | {'any'}
+    auth_permissions = permissions | {'any'}
 
     return bool(auth_permissions & valid_permissions)
 
