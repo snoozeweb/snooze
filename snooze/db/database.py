@@ -85,10 +85,11 @@ class AsyncIncrement:
     field: str
     increments: Dict[dict, int]
 
-    def __init__(self, database: Database, collection: str, field: str):
+    def __init__(self, database: Database, collection: str, field: str, upsert=False):
         self.database = database
         self.collection = collection
         self.field = field
+        self.upsert = upsert
 
         self.increments = {}
 
@@ -109,7 +110,7 @@ class AsyncIncrement:
             updates.append((search, {self.field: value}))
             self.increments[search_tuple] -= value
         if updates:
-            self.database.bulk_increment(self.collection, updates)
+            self.database.bulk_increment(self.collection, updates, upsert=self.upsert)
 
     def increment(self, search: dict, value: int = 1):
         '''Increment an object by a value'''
