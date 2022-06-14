@@ -14,11 +14,14 @@ from logging import getLogger
 from pathlib import Path
 from datetime import timedelta
 from urllib.parse import urlparse
-from typing import Optional, List, Any, Dict, Literal, ClassVar, Union
+from typing import Optional, List, Any, Dict, Literal, ClassVar, Union, Callable, Type
 
 import yaml
 from filelock import FileLock
-from pydantic import BaseModel, Field, validator, root_validator, ValidationError, Extra
+from pydantic import BaseModel, Field, PrivateAttr, validator, root_validator, ValidationError, Extra
+from pydantic.config import BaseConfig
+from pydantic.fields import ModelField
+from pydantic.utils import deep_update
 
 from snooze import __file__ as SNOOZE_PATH
 from snooze.utils.typing import *
@@ -29,115 +32,134 @@ SNOOZE_CONFIG = Path(os.environ.get('SNOOZE_SERVER_CONFIG', '/etc/snooze/server'
 SNOOZE_PLUGIN_PATH = Path(SNOOZE_PATH).parent / 'plugins/core'
 
 class ReadOnlyConfig(BaseModel):
-    '''A class representing a config file at a given path.
-    Can only be read.'''
-    _section: ClassVar[Optional[str]] = None
-    _path: ClassVar[Optional[Path]] = None
+    '''Similar to pydantic.BaseSettings, load a BaseModel from different sources
+    (yaml config files and environment variables).
+    Follow the same structure as pydantic.BaseSettings.
+    Can be reloaded with the reload method.
+    '''
+    _path: Path = PrivateAttr()
 
-    class Config:
-        allow_mutation = False
+    def __init__(self, _basedir: Path = SNOOZE_CONFIG, **data):
+        object.__setattr__(self, '_path', _basedir / f"{self.__config__.section}.yaml")
+        BaseModel.__init__(self, **self._load_data(**data))
 
-    def __init__(self, basedir: Path = SNOOZE_CONFIG, data: Optional[dict] = None):
-        #section = self._class_get('_section')
-        if self._section:
-            #self._class_set('_path', basedir / f"{section}.yaml")
-            self.__class__._path = basedir / f"{self._section}.yaml"
-        data = data or self._read() or {}
-        BaseModel.__init__(self, **data)
+    class Config(BaseConfig):
+        # Custom variable used for sources
+        section: str
+        # We're using assignments for the refresh
+        validate_assignment = True
 
-    def _class_get(self, key: str):
-        '''Get a class attribute'''
-        return getattr(self.__class__, key)
+        @classmethod
+        def prepare_field(cls, field: ModelField) -> None:
+            '''Preparing auto-environment variables'''
+            section = cls.section
+            env = field.field_info.extra.get('env', [])
+            env_names = [f"SNOOZE_SERVER_{section}_{field.name}"] + list(env)
+            field.field_info.extra['env_names'] = env_names
 
-    def _class_set(self, key: str, value: Any):
-        '''Set a class attribute'''
-        # Using this workaround to avoid pydantic and WritableConfig own __setattr__
-        setattr(self.__class__, key, value)
+    __config__: ClassVar[Type[Config]]
 
-    def _read(self) -> dict:
-        '''Read the config file and return the raw dict'''
-        if self._path:
-            try:
-                return yaml.safe_load(self._path.read_text(encoding='utf-8')) or {}
-            except OSError:
-                return {}
-        else:
-            return {}
+    def __setattr__(self, _key, _value):
+        '''Overridding the __setattr__ to virtually make this class
+        immutable'''
+        raise TypeError(f"{self.__class__.__name__} is immutable")
+
+    def _load_data(self, **data) -> dict:
+        '''Load data from different sources'''
+        env_settings = EnvSettingsSource()
+        yaml_settings = SnoozeSettingsSource(self._path)
+        # deep_update take the left argument, and deep merge the right
+        # arguments one by one
+        return deep_update(yaml_settings(self), env_settings(self), data)
 
     def refresh(self):
-        '''Read the config file to load the config'''
-        data = self._read()
+        '''Reload the data from source (config and env variables)'''
+        data = self._load_data()
         for key, value in data.items():
-            setattr(self, key, value)
+            BaseModel.__setattr__(self, key, value)
 
-    def __getitem__(self, key: str):
-        return getattr(self, key)
+class SnoozeSettingsSource:
+    '''A config source of information, pydantic style'''
+    def __init__(self, path: Path):
+        self.path = path
 
-    def dig(self, *keys: List[str], default: Optional[Any] = None) -> Any:
-        '''Get a nested key from the config'''
+    def __call__(self, settings: ReadOnlyConfig) -> Dict[str, Any]:
         try:
-            cursor = getattr(self, keys[0])
-            for key in keys[1:]:
-                cursor = getattr(cursor, key)
-            return cursor
-        except AttributeError:
-            return default
+            text = self.path.read_text(encoding='utf-8')
+            data = yaml.safe_load(text) or {}
+            return data
+        except OSError:
+            return {}
+
+class EnvSettingsSource:
+    '''A config loader for environment variables'''
+    def __call__(self, settings: ReadOnlyConfig) -> Dict[str, Any]:
+        section = settings.__config__.section
+        envs = {
+            k.split('_', 3)[-1].lower(): v
+            for k, v in os.environ.items()
+            if k.startswith(f"SNOOZE_SERVER_{section}_")
+        }
+        return envs
+
+@contextmanager
+def lock_and_flush(path: Path, flush: Callable):
+    '''Lock the file, yield, and execute a flush callable at the end'''
+    if not path.is_file():
+        path.touch(mode=0o600)
+    lock = FileLock(path, timeout=1)
+    lock.acquire()
+    try:
+        yield
+        flush()
+    except Exception as err:
+        raise RuntimeError(f"Error while updating config at {path}: {err}") from err
+    finally:
+        lock.release()
 
 class WritableConfig(ReadOnlyConfig):
     '''A class representing a writable config file at a given path.
     Can be explored, and updated with a lock file.'''
-    _filelock: ClassVar[FileLock] = None
-    _auth_routes: ClassVar[List[str]] = Field(default_factory=list)
 
     class Config:
+        # Custom config
+        auth_routes: List[str] = []
         # Setting values should trigger validation
         validate_assignment = True
         allow_mutation = True
 
-    def __init__(self, basedir: Path = SNOOZE_CONFIG, data: Optional[dict] = None):
-        if data is None:
-            data = {}
-        ReadOnlyConfig.__init__(self, basedir, data)
-        self._path.touch(mode=0o600)
-        self.__class__._filelock = FileLock(self._path, timeout=1)
+    def __init__(self, _basedir: Path = SNOOZE_CONFIG, **data):
+        ReadOnlyConfig.__init__(self, _basedir, **data)
 
-    @contextmanager
-    def _lock(self):
-        self._class_get('_filelock').acquire()
-        self.refresh()
-        try:
-            yield # Update the config
-        finally:
-            self._update()
-            self._class_get('_filelock').release()
-
-    def _update(self):
-        '''Write a new config to the config file'''
-        path = self._class_get('_path')
-        if path:
-            # dict(model) is more appropriate than model.dict()
-            # in this case since it's including excluded fields
-            data = yaml.safe_dump(dict(self))
-            path.write_text(data, encoding='utf-8')
-
-    def __setitem__(self, key: str, value: Any):
-        self._set(key, value)
-
-    def __setattr__(self, key: str, value: Any):
-        self._set(key, value)
-
-    def _set(self, key: str, value: Any):
+    def set(self, key: str, value: Any):
         '''Rewrite a config key with a given value'''
-        with self._lock():
-            object.__setattr__(self, key, value)
+        with lock_and_flush(self._path, self.flush):
+            BaseModel.__setattr__(self, key, value)
 
     def update(self, values: dict):
         '''Update the config with a dictionary'''
-        with self._lock():
+        with lock_and_flush(self._path, self.flush):
             for key, value in values.items():
                 object.__setattr__(self, key, value)
 
-class MetadataConfig(ReadOnlyConfig):
+    def __setattr__(self, key: str, value: Any):
+        self.set(key, value)
+
+    def __setitem__(self, key: str, value: Any):
+        self.set(key, value)
+
+    def flush(self):
+        '''Flush the live config to the config file'''
+        # dict(model) is more appropriate than model.dict()
+        # in this case since it's including excluded fields
+        data = dict(self)
+        # Filtering the private fields used by ReadOnlyConfig and WritableConfig
+        # (starting with '_')
+        data = {k: v for k, v in data.items() if not k.startswith('_')}
+        text = yaml.safe_dump(data)
+        self._path.write_text(text, encoding='utf-8')
+
+class MetadataConfig(BaseModel):
     '''A class to fetch metadata configuration'''
     name: Optional[str] = None
     desc: Optional[str] = None
@@ -156,19 +178,41 @@ class MetadataConfig(ReadOnlyConfig):
     search_fields: List[str] = Field(default_factory=list)
 
     def __init__(self, plugin_name: str):
-        path = SNOOZE_PLUGIN_PATH / plugin_name / 'metadata.yaml'
-        self._class_set('_path', path)
-        data = self._read() or {}
+        self.name = plugin_name
+        data = self._load_data()
         try:
             BaseModel.__init__(self, **data)
         except ValidationError as err:
-            raise Exception(f"Cannot load metadata for plugin {plugin_name}") from err
+            raise ValidationError("Cannot load metadata for plugin {self.name}: {err}") from err
 
-class LdapConfig(WritableConfig, title='LDAP configuration'):
+    def _load_data(self) -> Dict[str, Any]:
+        core_path = SNOOZE_PLUGIN_PATH / self.name / 'metadata.yaml'
+
+        if core_path.is_file():
+            path = core_path
+        else:
+            log.debug("Could not find metadata.yaml for plugin '%s'", self.name)
+            return {}
+        try:
+            text = path.read_text(encoding='utf-8')
+            data = yaml.safe_load(text)
+            return data
+        except OSError:
+            return {}
+
+    def reload(self):
+        '''Reload the data from metadata.yaml'''
+        data = self._load_data()
+        for key, value in data.items():
+            BaseModel.__setattr__(self, key, value)
+
+class LdapConfig(WritableConfig):
     '''Configuration for LDAP authentication. Can be edited live in the web interface.
     Usually located at `/etc/snooze/server/ldap_auth.yaml`.'''
-    _section = 'ldap_auth'
-    _auth_routes = ['ldap']
+    class Config:
+        title = 'LDAP configuration'
+        section = 'ldap_auth'
+        auth_routes = ['ldap']
 
     @root_validator
     def validate_enabled(cls, values):
@@ -357,10 +401,12 @@ def select_db() -> Union[MongodbConfig, FileConfig]:
 
 DatabaseConfig = Union[MongodbConfig, FileConfig]
 
-class CoreConfig(ReadOnlyConfig, title='Core configuration'):
+class CoreConfig(ReadOnlyConfig):
     '''Core configuration. Not editable live. Require a restart of the server.
     Usually located at `/etc/snooze/server/core.yaml`'''
-    _section = 'core'
+    class Config:
+        title = 'Core configuration'
+        section = 'core'
 
     listen_addr: str = Field(
         title='Listening address',
@@ -435,11 +481,13 @@ class CoreConfig(ReadOnlyConfig, title='Core configuration'):
         default_factory=BackupConfig,
     )
 
-class GeneralConfig(WritableConfig, title='General configuration'):
+class GeneralConfig(WritableConfig):
     '''General configuration of snooze. Can be edited live in the web interface.
     Usually located at `/etc/snooze/server/general.yaml`.'''
-    _section = 'general'
-    _auth_routes = ['local']
+    class Config:
+        title = 'General configuration'
+        section = 'general'
+        auth_routes = ['local']
 
     default_auth_backend: Literal['local', 'ldap'] = Field(
         title='Default authentication backend',
@@ -477,7 +525,13 @@ class GeneralConfig(WritableConfig, title='General configuration'):
 class NotificationConfig(WritableConfig):
     '''Configuration for default notification delays/retry. Can be edited live in the web interface.
     Usually located at `/etc/snooze/server/notifications.yaml`.'''
-    _section = 'notifications'
+    class Config:
+        title='Notification configuration'
+        section = 'notifications'
+        json_encoders = {
+            # timedelta should be serialized into seconds (int)
+            timedelta: lambda dt: int(dt.total_seconds()),
+        }
 
     notification_freq: timedelta = Field(
         title='Frequency',
@@ -489,17 +543,17 @@ class NotificationConfig(WritableConfig):
         description='Number of times to retry sending a failed notification',
         default=3,
     )
-    class Config:
-        title = 'Notification configuration'
-        json_encoders = {
-            # timedelta should be serialized into seconds (int)
-            timedelta: lambda dt: int(dt.total_seconds()),
-        }
 
 class HousekeeperConfig(WritableConfig):
     '''Config for the housekeeper thread. Can be edited live in the web interface.
     Usually located at `/etc/snooze/server/housekeeper.yaml`.'''
-    _section = 'housekeeper'
+    class Config:
+        title = 'Housekeeper configuration'
+        section = 'housekeeper'
+        json_encoders = {
+            # timedelta should be serialized into seconds (int)
+            timedelta: lambda dt: int(dt.total_seconds()),
+        }
 
     trigger_on_startup: bool = Field(
         title='Trigger on startup',
@@ -538,13 +592,6 @@ class HousekeeperConfig(WritableConfig):
         description='Cleanup notifications that have been expired for the given duration (in seconds). Run daily',
         default=timedelta(days=3),
     )
-
-    class Config:
-        title = 'Housekeeper configuration'
-        json_encoders = {
-            # timedelta should be serialized into seconds (int)
-            timedelta: lambda dt: int(dt.total_seconds()),
-        }
 
 def setup_logging(basedir: Path = SNOOZE_CONFIG):
     '''Initialize the python logger'''
