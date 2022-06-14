@@ -56,8 +56,6 @@ class SettingsRoute(BasicRoute):
             if auth_route:
                 auth_route.reload()
         if propagate:
-            print(req.headers)
-            print(req.context)
             self.core.sync_setting_update(section, req.media, req.get_header('Authorization'))
             resp.status = falcon.HTTP_ACCEPTED
         else:
