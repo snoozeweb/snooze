@@ -307,6 +307,45 @@ def test_mongo_remove_list(db):
     assert db.search('record', ['=', 'id', 1])['data'][0]['parents'] == ['a']
     assert db.remove_list('record', {'id': ['a']}, ['=', 'id', 1]) == 0
 
+def test_tinydb_bulk_increment(db):
+    filters = [
+        {'name': 'snooze 1', 'hits': 0},
+        {'name': 'snooze 2', 'hits': 40},
+    ]
+    db.write('snooze', filters)
+    updates = [
+        ({'name': 'snooze 2'}, {'hits': 2}),
+        ({'name': 'snooze 3'}, {'hits': 1}), # Unknown snooze, should not update anything
+    ]
+    db.bulk_increment('snooze', updates)
+    filters = db.search('snooze')['data']
+    assert len(filters) == 2
+    snooze1 = [f for f in filters if f['name'] == 'snooze 1'][0]
+    snooze2 = [f for f in filters if f['name'] == 'snooze 2'][0]
+    assert snooze1['hits'] == 0
+    assert snooze2['hits'] == 42
+
+def test_tinydb_bulk_increment_upsert(db):
+    stats = [
+        {'name': 'stat 1', 'hits': 0},
+        {'name': 'stat 2', 'hits': 40},
+    ]
+    db.write('stat', stats)
+    updates = [
+        ({'name': 'stat 2'}, {'hits': 2}),
+        ({'name': 'stat 3'}, {'hits': 1}), # Unknown snooze, should not update anything
+    ]
+    db.bulk_increment('stat', updates, upsert=True)
+    stats = db.search('stat')['data']
+    print(stats)
+    assert len(stats) == 3
+    stat1 = [s for s in stats if s['name'] == 'stat 1'][0]
+    stat2 = [s for s in stats if s['name'] == 'stat 2'][0]
+    stat3 = [s for s in stats if s['name'] == 'stat 3'][0]
+    assert stat1['hits'] == 0
+    assert stat2['hits'] == 42
+    assert stat3['hits'] == 1
+
 # timezone in datetostring not implemented
 #@mongomock.patch('mongodb://localhost:27017')
 #def test_mongo_compute_stats():

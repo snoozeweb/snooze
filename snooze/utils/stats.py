@@ -28,7 +28,7 @@ class Stats():
         self.core = core
         self.database = core.db
         self.metrics = {}
-        self.increment = AsyncIncrement(self.database, 'stats', 'value')
+        self.increment = AsyncIncrement(self.database, 'stats', 'value', upsert=True)
         self.core.threads['asyncdb'].new_increment(self.increment)
         if self.enabled:
             self.registry = CollectorRegistry()

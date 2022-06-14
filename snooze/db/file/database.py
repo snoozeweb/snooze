@@ -14,6 +14,7 @@ from functools import reduce
 from logging import getLogger
 from pathlib import Path
 from threading import Lock
+from typing import List, Tuple
 
 import uuid
 from bson.json_util import dumps
@@ -331,6 +332,21 @@ class BackendDB(Database):
             if update_time:
                 new_obj['date_epoch'] = datetime.datetime.now().timestamp()
             self.db.table(collection).upsert(new_obj, where('uid') == uid)
+
+    @wrap_exception
+    def bulk_increment(self, collection: str, updates: List[Tuple[dict, dict]], upsert: bool = False):
+        '''Perform a bulk update of increments. Each update should be a tuple of search and update'''
+        for search, update in updates:
+            queries = []
+            for key, value in search.items():
+                query = dig(Query(), *key.split('.')) == value
+                queries.append(query)
+            search_query = reduce(lambda a, b: a & b, queries)
+            update.pop('_id', None)
+            for key, value in update.items():
+                self.db.table(collection).update(add(key, value), search_query)
+            if upsert and not self.db.table(collection).search(search_query):
+                self.db.table(collection).insert({**search, **update})
 
     @wrap_exception
     def inc(self, collection, field, labels={}):

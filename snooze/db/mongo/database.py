@@ -334,13 +334,17 @@ class BackendDB(Database):
         return total
 
     @wrap_exception
-    def bulk_increment(self, collection: str, updates: List[Tuple[dict, dict]]):
+    def bulk_increment(self, collection: str, updates: List[Tuple[dict, dict]], upsert: bool = False):
         '''Perform a bulk update of increments. Each update should be a tuple of search and update'''
         requests = []
         for search, update in updates:
             new_update = dict(update)
             new_update.pop('_id', None)
-            requests.append(UpdateOne(search, {'$inc': new_update, '$setOnInsert': search}, upsert=True))
+            if upsert:
+                update_one = UpdateOne(search, {'$inc': new_update, '$setOnInsert': search}, upsert=True)
+            else:
+                update_one = UpdateOne(search, {'$inc': new_update})
+            requests.append(update_one)
         self.db[collection].bulk_write(requests)
 
     def update_with_operation(self, collection, operation, condition=[]):
