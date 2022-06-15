@@ -21,7 +21,7 @@ export default {
   },
   methods: {
     submit(data) {
-      this.$refs.card.submit({'conf': data, 'reload': this.$refs.card.current_tab.reload})
+      this.$refs.card.submit(data)
     },
   },
 }
