@@ -80,18 +80,8 @@ class TestDatabaseConfig:
         assert config.database.type == 'mongo'
         assert config.database.host == ['host01', 'host02', 'host03']
 
-    def test_select_db_file(self):
-        database = select_db()
-        assert database.type == 'file'
-
-    @patch.dict(os.environ, {'DATABASE_URL': 'mongodb://host01,host02,host03/snooze'}, clear=True)
-    def test_select_db_mongo(self):
-        database = select_db()
-        assert database.type == 'mongo'
-
     @patch.dict(os.environ, {'DATABASE_URL': 'mongodb://host01,host02,host03/snooze'}, clear=True)
     def test_mongo_environ(self, tmp_path):
-        print(os.environ)
         config = CoreConfig(tmp_path)
         assert config.database.type == 'mongo'
 
