@@ -51,7 +51,7 @@ class SettingsRoute(BasicRoute):
         except ValidationError as err:
             raise falcon.HTTPBadRequest(
                 description=f"Validation error in setting section '{section}': {err}") from err
-        for auth in config._auth_routes:
+        for auth in config.auth_routes():
             auth_route = self.api.auth_routes.get(auth)
             if auth_route:
                 auth_route.reload()

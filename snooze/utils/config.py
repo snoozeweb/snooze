@@ -131,6 +131,10 @@ class WritableConfig(ReadOnlyConfig):
     def __init__(self, _basedir: Path = SNOOZE_CONFIG, **data):
         ReadOnlyConfig.__init__(self, _basedir, **data)
 
+    def auth_routes(self) -> List[str]:
+        '''Return the list of auth routes to reload'''
+        return self.__config__.auth_routes
+
     def set(self, key: str, value: Any):
         '''Rewrite a config key with a given value'''
         with lock_and_flush(self._path, self.flush):
