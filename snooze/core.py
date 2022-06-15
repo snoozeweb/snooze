@@ -63,7 +63,7 @@ class Core:
         self.stats.bootstrap()
 
         if 'housekeeper' in allowed_threads:
-            self.threads['housekeeper'] = Housekeeper(self.config.housekeeper,
+            self.threads['housekeeper'] = Housekeeper(self.config.housekeeping,
                 self.config.core.backup, self.db, self.exit_event)
         if 'cluster' in allowed_threads:
             auth = AuthPayload(username='root', method='root')
@@ -155,7 +155,7 @@ class Core:
             'environment': record.get('environment', 'unknown'),
             'severity': severity,
         }
-        record['ttl'] = int(self.config.housekeeper.record_ttl.total_seconds())
+        record['ttl'] = int(self.config.housekeeping.record_ttl.total_seconds())
         log.debug("OK severities: %s", self.config.general.ok_severities)
         if severity.casefold() in self.config.general.ok_severities:
             record['state'] = 'close'

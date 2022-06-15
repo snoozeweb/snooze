@@ -564,7 +564,7 @@ class HousekeeperConfig(WritableConfig):
     Usually located at `/etc/snooze/server/housekeeper.yaml`.'''
     class Config:
         title = 'Housekeeper configuration'
-        section = 'housekeeper'
+        section = 'housekeeping'
         json_encoders = {
             # timedelta should be serialized into seconds (int)
             timedelta: lambda dt: int(dt.total_seconds()),
@@ -662,9 +662,9 @@ class Config(BaseModel):
 
     core: CoreConfig
     general: GeneralConfig
-    housekeeper: HousekeeperConfig
+    housekeeping: HousekeeperConfig
     notifications: NotificationConfig
-    ldap: LdapConfig
+    ldap_auth: LdapConfig
 
     def __init__(self, basedir: Path = SNOOZE_CONFIG):
         configs = {
@@ -672,10 +672,10 @@ class Config(BaseModel):
             'core': CoreConfig(basedir),
             'general': GeneralConfig(basedir),
             'notifications': NotificationConfig(basedir),
-            'housekeeper': HousekeeperConfig(basedir),
+            'housekeeping': HousekeeperConfig(basedir),
         }
         try:
-            configs['ldap'] = LdapConfig(basedir)
+            configs['ldap_auth'] = LdapConfig(basedir)
         except (FileNotFoundError, ValidationError):
-            configs['ldap'] = LdapConfig(basedir, dict(enabled=False))
+            configs['ldap_auth'] = LdapConfig(basedir, dict(enabled=False))
         BaseModel.__init__(self, **configs)

@@ -17,7 +17,7 @@ class TestConfig:
         assert isinstance(config.core, CoreConfig)
         assert isinstance(config.general, GeneralConfig)
         assert isinstance(config.notifications, NotificationConfig)
-        assert isinstance(config.ldap, LdapConfig)
+        assert isinstance(config.ldap_auth, LdapConfig)
 
 class TestCoreConfig:
     def test_empty(self, tmp_path):

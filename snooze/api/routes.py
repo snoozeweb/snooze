@@ -497,7 +497,7 @@ class LdapAuthRoute(AuthRoute):
         super().__init__(*args, **kwargs)
         self.name = 'Ldap'
         self.enabled = False
-        self.config = self.core.config.ldap
+        self.config = self.core.config.ldap_auth
         self.reload()
 
     def reload(self):
