@@ -54,7 +54,11 @@ class ReadOnlyConfig(BaseModel):
             '''Preparing auto-environment variables'''
             section = cls.section
             env = field.field_info.extra.get('env', [])
-            env_names = [f"SNOOZE_SERVER_{section}_{field.name}"] + list(env)
+            if isinstance(env, str):
+                env = [env]
+            else:
+                env = list(env)
+            env_names = [f"SNOOZE_SERVER_{section}_{field.name}"] + env
             field.field_info.extra['env_names'] = env_names
 
     __config__: ClassVar[Type[Config]]
@@ -100,6 +104,11 @@ class EnvSettingsSource:
             for k, v in os.environ.items()
             if k.startswith(f"SNOOZE_SERVER_{section}_")
         }
+        for field in settings.__fields__.values():
+            env_names = field.field_info.extra.get('env_names', [])
+            value = next((os.environ[env] for env in env_names if env in os.environ), None)
+            if value is not None:
+                envs[field.alias] = value
         return envs
 
 @contextmanager
