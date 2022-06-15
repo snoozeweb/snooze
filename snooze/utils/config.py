@@ -177,8 +177,9 @@ class MetadataConfig(BaseModel):
     options: dict = Field(default_factory=dict)
     search_fields: List[str] = Field(default_factory=list)
 
-    def __init__(self, plugin_name: str):
-        self.name = plugin_name
+    def __init__(self, plugin_name: str, moduledir: Optional[Path] = None):
+        object.__setattr__(self, 'name', plugin_name)
+        object.__setattr__(self, '_moduledir', moduledir)
         data = self._load_data()
         try:
             BaseModel.__init__(self, **data)
@@ -187,9 +188,12 @@ class MetadataConfig(BaseModel):
 
     def _load_data(self) -> Dict[str, Any]:
         core_path = SNOOZE_PLUGIN_PATH / self.name / 'metadata.yaml'
+        alt_path = self._moduledir / 'metadata.yaml' if self._moduledir else None
 
         if core_path.is_file():
             path = core_path
+        elif alt_path and alt_path.is_file():
+            path = alt_path
         else:
             log.debug("Could not find metadata.yaml for plugin '%s'", self.name)
             return {}
