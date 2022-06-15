@@ -153,7 +153,7 @@ class WritableConfig(ReadOnlyConfig):
         '''Update the config with a dictionary'''
         with lock_and_flush(self._path, self.flush):
             for key, value in values.items():
-                object.__setattr__(self, key, value)
+                BaseModel.__setattr__(self, key, value)
 
     def __setattr__(self, key: str, value: Any):
         self.set(key, value)
