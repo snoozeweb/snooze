@@ -385,7 +385,6 @@ class MongodbConfig(BaseModel, extra=Extra.allow):
     host: Optional[Union[str, List[str]]] = Field(
         title='Host',
         default=None,
-        env='DATABASE_URL',
         description='Hostname or IP address or Unix domain socket path of a single mongod or mongos instance'
         'to connect to',
     )
@@ -398,14 +397,6 @@ class MongodbConfig(BaseModel, extra=Extra.allow):
 class FileConfig(BaseModel, extra=Extra.allow):
     type: Literal['file'] = 'file'
     path: Path = Path(f"{os.getcwd()}/db.json")
-
-def select_db() -> Union[MongodbConfig, FileConfig]:
-    '''Return the correct database config type'''
-    if 'DATABASE_URL' in os.environ:
-        scheme = urlparse(os.environ['DATABASE_URL']).scheme
-        if scheme == 'mongodb':
-            return MongodbConfig()
-    return FileConfig()
 
 DatabaseConfig = Union[MongodbConfig, FileConfig]
 
@@ -460,7 +451,8 @@ class CoreConfig(ReadOnlyConfig):
     )
     database: DatabaseConfig = Field(
         title='Database',
-        default_factory=select_db,
+        env='DATABASE_URL',
+        default_factory=FileConfig,
     )
     init_sleep: int = Field(
         title='Init sleep',
@@ -488,6 +480,17 @@ class CoreConfig(ReadOnlyConfig):
         title='Backup configuration',
         default_factory=BackupConfig,
     )
+
+    @validator('database', pre=True)
+    def parse_url(cls, database):
+        '''Parse the database if given in a URL form'''
+        if isinstance(database, str):
+            scheme = urlparse(database).scheme
+            if scheme == 'mongodb':
+                return MongodbConfig(host=database)
+            else:
+                raise ValueError(f"Unsupported scheme {scheme} for given database URL")
+        return database
 
 class GeneralConfig(WritableConfig):
     '''General configuration of snooze. Can be edited live in the web interface.
