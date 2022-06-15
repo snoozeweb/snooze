@@ -5,9 +5,11 @@
 # SPDX-License-Identifier: AFL-3.0
 #
 
+import sys
 from logging import getLogger
 from os.path import dirname, join as joindir
 from abc import abstractmethod
+from pathlib import Path
 from typing import Optional, Dict
 
 from pydantic import BaseModel
@@ -40,7 +42,8 @@ class Plugin:
         self.name = self.__class__.__name__.lower()
         self.data = []
         self.rootdir = joindir(dirname(rootdir), 'plugins', 'core', self.name)
-        config = MetadataConfig(self.name)
+        moduledir = Path(sys.modules[self.__module__].__file__)
+        config = MetadataConfig(self.name, moduledir)
         routes = {}
         default_routes = [
             f"/{self.name}",
