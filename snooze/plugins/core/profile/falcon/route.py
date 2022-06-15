@@ -14,6 +14,7 @@ import bson.json_util
 
 from snooze.api.routes import FalconRoute
 from snooze.utils.functions import authorize
+from snooze.utils.typing import AuthPayload
 
 log = getLogger('snooze.api')
 
@@ -33,18 +34,18 @@ class ProfileRoute(FalconRoute):
         if self.options.inject_payload:
             query = self.inject_payload_search(req, query)
         log.debug("Loading profile %s", section)
-        result_dict = self.search(f"profile.{section}", query)
+        data = self.search(f"profile.{section}", query).get('data', [])
         resp.content_type = falcon.MEDIA_JSON
-        if result_dict:
+        if data:
             try:
-                resp.media = result_dict
+                resp.media = data[0]
                 resp.status = falcon.HTTP_200
-            except:
-                resp.media = {}
-                resp.status = falcon.HTTP_503
+            except Exception as err:
+                raise falcon.HTTPInternalServerError(description=f"{err}") from err
         else:
-            resp.media = {}
-            resp.status = falcon.HTTP_404
+            auth: AuthPayload = req.context.auth
+            raise falcon.HTTPNotFound(description=f"Could not find user {auth.method}/{auth.username} \
+                in db's profile.{section}")
 
     @authorize
     def on_put(self, req: Request, resp: Response, section: str):

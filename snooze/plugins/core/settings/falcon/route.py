@@ -23,7 +23,7 @@ class SettingsRoute(BasicRoute):
         resp.content_type = falcon.MEDIA_JSON
         try:
             config = getattr(self.core.config, section)
-            resp.media = {'data': config.dict()}
+            resp.media = config.dict()
             resp.status = falcon.HTTP_OK
         except AttributeError as err:
             raise falcon.HTTPNotFound(description=f"Unknown config section '{section}'") from err
