@@ -541,6 +541,13 @@ class NotificationConfig(WritableConfig):
             timedelta: lambda dt: int(dt.total_seconds()),
         }
 
+    def dict(self, **kwargs):
+        data = BaseModel.dict(self, **kwargs)
+        for key, value in data.items():
+            if isinstance(value, timedelta):
+                data[key] = value.total_seconds()
+        return data
+
     notification_freq: timedelta = Field(
         title='Frequency',
         description='Time (in seconds) to wait before sending the next notification',
@@ -562,6 +569,13 @@ class HousekeeperConfig(WritableConfig):
             # timedelta should be serialized into seconds (int)
             timedelta: lambda dt: int(dt.total_seconds()),
         }
+
+    def dict(self, **kwargs):
+        data = BaseModel.dict(self, **kwargs)
+        for key, value in data.items():
+            if isinstance(value, timedelta):
+                data[key] = value.total_seconds()
+        return data
 
     trigger_on_startup: bool = Field(
         title='Trigger on startup',
