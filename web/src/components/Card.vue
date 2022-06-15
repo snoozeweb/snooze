@@ -123,17 +123,17 @@ export default {
       this.submitForm(this.form_data)
     },
     get_config_data() {
+      console.log(`GET /${this.current_endpoint}`)
       API
         .get(`/${this.current_endpoint}`)
         .then(response => {
-          if (response.data) {
-            this.form_data = response.data.data[0] || {}
-          } else {
-            if(response.response.data.description) {
+          if (response.status >= 200 && response.status < 300) {
+            console.log(response.data)
+            this.form_data = response.data
+          } else if (response.response.data.description) {
               this.$root.text_alert(response.response.data.description, 'danger')
-            } else {
+          } else {
               this.$root.text_alert('Could not display the content', 'danger')
-            }
           }
           this.forceRerender()
         })
@@ -162,21 +162,20 @@ export default {
     },
     submit(data, callback = null) {
       console.log(`PUT /${this.current_endpoint}`)
+      console.log(data)
       API
         .put(`/${this.current_endpoint}`, data)
         .then(response => {
           console.log(response)
-          if (response.data) {
+          if (response.status >= 200 && response.status < 300) {
             if (callback) {
               callback(response.data)
             }
             this.$root.text_alert(`Saved ${this.current_tab.name}`, 'success', 'Save successful')
-          } else {
-            if(response.response.data.description) {
+          } else if(response.response.data.description) {
               this.$root.text_alert(response.response.data.description, 'danger', 'Save error')
-            } else {
+          } else {
             this.$root.text_alert(`Failed to save ${this.current_tab.name}`, 'danger', 'Save error')
-            }
           }
         })
         .catch(error => console.log(error))

@@ -62,8 +62,8 @@ export default {
         .get('/profile_self/general')
         .then(response => {
           if (response.data) {
-            this.display_name = response.data.data[0]['display_name'] || ''
-            this.email = response.data.data[0]['email'] || ''
+            this.display_name = response.data['display_name'] || ''
+            this.email = response.data['email'] || ''
             localStorage.setItem('display_name', this.display_name)
             localStorage.setItem('email', this.email)
             localStorage.setItem('refreshed', true)
