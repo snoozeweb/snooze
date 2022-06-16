@@ -112,6 +112,45 @@ class TestLdapConfig:
         assert config.bind_dn == None
         assert config.bind_password == None
 
+    def test_update(self, tmp_path):
+        config = LdapConfig(tmp_path)
+        myupdate = {
+            'enabled': True,
+            'host': 'ldap.example.com',
+            'bind_dn': 'cn=myuser,ou=users,dc=example,dc=com',
+            'base_dn': 'ou=users,dc=example,dc=com',
+            'bind_password': 'my-secret-password123',
+            'user_filter': '()'
+        }
+        config.update(myupdate)
+        assert config.enabled == True
+        assert config.host == 'ldap.example.com'
+
+        # Checking file content
+        path = tmp_path / 'ldap_auth.yaml'
+        text = path.read_text(encoding='utf-8')
+        data = yaml.safe_load(text)
+        assert data['enabled'] == True
+        assert data['host'] == 'ldap.example.com'
+
+    def test_excluded_update(self, tmp_path):
+        text = inspect.cleandoc('''---
+        enabled: true
+        host: ldap.example.com
+        bind_dn: cn=myuser,ou=users,dc=example,dc=com
+        base_dn: ou=users,dc=example,dc=com
+        bind_password: my-secret-password123
+        user_filter: '()'
+        ''')
+        ldap_auth = tmp_path / 'ldap_auth.yaml'
+        ldap_auth.write_text(text, encoding='utf-8')
+        config = LdapConfig(tmp_path)
+        assert config.bind_password == 'my-secret-password123'
+
+        # Attempting a falsy update of the excluded field
+        config.bind_password = ''
+        assert config.bind_password == 'my-secret-password123'
+
 class TestMetadataConfig:
     def test_all_plugins(self):
         metadata_files = SNOOZE_PLUGIN_PATH.glob('*/metadata.yaml')
