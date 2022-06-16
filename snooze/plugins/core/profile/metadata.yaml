@@ -11,6 +11,7 @@ routes:
     '/profile_self/{section}':
         desc: ''
         class: ProfileRoute
+        primary: [name, method]
         authorization_policy:
             read: [any]
             write: [any]
