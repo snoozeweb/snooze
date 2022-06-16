@@ -70,6 +70,7 @@ class ReadOnlyConfig(BaseModel):
 
     def _load_data(self, **data) -> dict:
         '''Load data from different sources'''
+        log.debug("Loading config %s", self._path)
         env_settings = EnvSettingsSource()
         yaml_settings = SnoozeSettingsSource(self._path)
         # deep_update take the left argument, and deep merge the right
@@ -148,14 +149,23 @@ class WritableConfig(ReadOnlyConfig):
 
     def set(self, key: str, value: Any):
         '''Rewrite a config key with a given value'''
+        # Ignore updates of falsy values for excluded keys.
+        # Handle the password update case, since we're not returning
+        # the value for every excluded field.
+        if key in self.__exclude_fields__.keys() and not value:
+            return
         with lock_and_flush(self._path, self.flush):
             BaseModel.__setattr__(self, key, value)
 
     def update(self, values: dict):
         '''Update the config with a dictionary'''
+        log.debug("Updating config %s", self._path)
+        for key in self.__exclude_fields__.keys():
+            if not values.get(key):
+                values.pop(key, None)
         with lock_and_flush(self._path, self.flush):
-            for key, value in values.items():
-                BaseModel.__setattr__(self, key, value)
+            clone = self.copy(update=values, deep=True)
+            self.__dict__.update(clone.__dict__)
 
     def __setattr__(self, key: str, value: Any):
         self.set(key, value)
@@ -237,7 +247,8 @@ class LdapConfig(WritableConfig):
     def validate_enabled(cls, values):
         if values.get('enabled'):
             for field in ['base_dn', 'user_filter', 'bind_dn', 'bind_password', 'host']:
-                assert values.get(field)
+                if values.get(field) is None:
+                    raise ValueError(f"field {field} should not be null when the config is enabled")
         return values
 
     enabled: bool = Field(
