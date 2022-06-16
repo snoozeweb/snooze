@@ -19,6 +19,19 @@ if (!localStorage.getItem('username')) {
   }
 }
 
+// Compute the value of return_to with the current route
+// @returns {string} The value of the URL to return to after login
+function compute_return_to() {
+  var return_to
+  const route = router.currentRoute.value
+  if (route.query.return_to) {
+    return_to = route.query.return_to
+  } else {
+    return_to = encodeURIComponent(route.fullPath)
+  }
+  return return_to
+}
+
 // Token authentication
 API.interceptors.request.use(
   function (config) {
@@ -26,7 +39,7 @@ API.interceptors.request.use(
     if (token) {
       config.headers['Authorization'] = "JWT " + token
     } else {
-      const return_to = encodeURIComponent(router.currentRoute.value.fullPath)
+      const return_to = compute_return_to()
       router.push(`/login?return_to=${return_to}`)
     }
     return config
@@ -40,7 +53,7 @@ API.interceptors.response.use(
   function (error) {
     if (router.currentRoute.value.path != '/login') {
       if (error.response && error.response.status === 401) {
-        const return_to = encodeURIComponent(router.currentRoute.value.fullPath)
+        const return_to = compute_return_to()
         router.push(`/login?return_to=${return_to}`)
       } else {
         return error
