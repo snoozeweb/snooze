@@ -64,7 +64,7 @@ class Stats():
         now = datetime.utcnow().replace(minute=0, second=0, microsecond=0)
         for key, value in labels.items():
             metric_key = f"{metric_name}__{key}__{value}"
-            search = {'data': now, 'key': metric_key}
+            search = {'date': now, 'key': metric_key}
             self.increment.increment(search, amount)
 
     def inc(self, metric_name, labels, amount=1):
