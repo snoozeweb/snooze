@@ -73,4 +73,4 @@ License
 
    getting_started/index
    general/index
-   advanced/index
+   configuration/index

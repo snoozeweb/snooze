@@ -1,0 +1,1471 @@
+
+<!DOCTYPE html>
+
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" /><meta name="generator" content="Docutils 0.17.1: http://docutils.sourceforge.net/" />
+
+    <title>Core configuration &#8212;   documentation</title>
+    
+  <!-- Loaded before other Sphinx assets -->
+  <link href="../_static/styles/theme.css?digest=1999514e3f237ded88cf" rel="stylesheet">
+<link href="../_static/styles/pydata-sphinx-theme.css?digest=1999514e3f237ded88cf" rel="stylesheet">
+
+    
+  <link rel="stylesheet"
+    href="../_static/vendor/fontawesome/5.13.0/css/all.min.css">
+  <link rel="preload" as="font" type="font/woff2" crossorigin
+    href="../_static/vendor/fontawesome/5.13.0/webfonts/fa-solid-900.woff2">
+  <link rel="preload" as="font" type="font/woff2" crossorigin
+    href="../_static/vendor/fontawesome/5.13.0/webfonts/fa-brands-400.woff2">
+
+    <link rel="stylesheet" type="text/css" href="../_static/pygments.css" />
+    <link rel="stylesheet" href="../_static/styles/sphinx-book-theme.css?digest=62ba249389abaaa9ffc34bf36a076bdc1d65ee18" type="text/css" />
+    <link rel="stylesheet" type="text/css" href="../_static/custom.css" />
+    
+  <!-- Pre-loaded scripts that we'll load fully later -->
+  <link rel="preload" as="script" href="../_static/scripts/pydata-sphinx-theme.js?digest=1999514e3f237ded88cf">
+
+    <script data-url_root="../" id="documentation_options" src="../_static/documentation_options.js"></script>
+    <script src="../_static/jquery.js"></script>
+    <script src="../_static/underscore.js"></script>
+    <script src="../_static/doctools.js"></script>
+    <script src="../_static/scripts/sphinx-book-theme.js?digest=f31d14ad54b65d19161ba51d4ffff3a77ae00456"></script>
+    <link rel="index" title="Index" href="../genindex.html" />
+    <link rel="search" title="Search" href="../search.html" />
+    <link rel="next" title="General configuration" href="general.html" />
+    <link rel="prev" title="Configuration" href="index.html" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="docsearch:language" content="None">
+    
+
+    <!-- Google Analytics -->
+    
+  </head>
+  <body data-spy="scroll" data-target="#bd-toc-nav" data-offset="60">
+<!-- Checkboxes to toggle the left sidebar -->
+<input type="checkbox" class="sidebar-toggle" name="__navigation" id="__navigation" aria-label="Toggle navigation sidebar">
+<label class="overlay overlay-navbar" for="__navigation">
+    <div class="visually-hidden">Toggle navigation sidebar</div>
+</label>
+<!-- Checkboxes to toggle the in-page toc -->
+<input type="checkbox" class="sidebar-toggle" name="__page-toc" id="__page-toc" aria-label="Toggle in-page Table of Contents">
+<label class="overlay overlay-pagetoc" for="__page-toc">
+    <div class="visually-hidden">Toggle in-page Table of Contents</div>
+</label>
+<!-- Headers at the top -->
+<div class="announcement header-item noprint"></div>
+<div class="header header-item noprint"></div>
+
+    
+    <div class="container-fluid" id="banner"></div>
+
+    
+
+    <div class="container-xl">
+      <div class="row">
+          
+<!-- Sidebar -->
+<div class="bd-sidebar noprint" id="site-navigation">
+    <div class="bd-sidebar__content">
+        <div class="bd-sidebar__top"><div class="navbar-brand-box">
+    <a class="navbar-brand text-wrap" href="../index.html">
+      
+        <!-- `logo` is deprecated in Sphinx 4.0, so remove this when we stop supporting 3 -->
+        
+      
+      
+      <img src="../_static/logo.png" class="logo" alt="logo">
+      
+      
+    </a>
+</div><form class="bd-search d-flex align-items-center" action="../search.html" method="get">
+  <i class="icon fas fa-search"></i>
+  <input type="search" class="form-control" name="q" id="search-input" placeholder="Search the docs ..." aria-label="Search the docs ..." autocomplete="off" >
+</form><nav class="bd-links" id="bd-docs-nav" aria-label="Main">
+    <div class="bd-toc-item active">
+        <ul class="current nav bd-sidenav">
+ <li class="toctree-l1 has-children">
+  <a class="reference internal" href="../getting_started/index.html">
+   Getting Started
+  </a>
+  <input checked class="toctree-checkbox" id="toctree-checkbox-1" name="toctree-checkbox-1" type="checkbox"/>
+  <label for="toctree-checkbox-1">
+   <i class="fas fa-chevron-down">
+   </i>
+  </label>
+  <ul>
+   <li class="toctree-l2">
+    <a class="reference internal" href="../getting_started/01_Installation.html">
+     Installation on RHEL/Debian
+    </a>
+   </li>
+   <li class="toctree-l2">
+    <a class="reference internal" href="../getting_started/02_Docker.html">
+     Docker deployment
+    </a>
+   </li>
+   <li class="toctree-l2">
+    <a class="reference internal" href="../getting_started/03_Login.html">
+     Log in to the web interface
+    </a>
+   </li>
+  </ul>
+ </li>
+ <li class="toctree-l1 has-children">
+  <a class="reference internal" href="../general/index.html">
+   General
+  </a>
+  <input checked class="toctree-checkbox" id="toctree-checkbox-2" name="toctree-checkbox-2" type="checkbox"/>
+  <label for="toctree-checkbox-2">
+   <i class="fas fa-chevron-down">
+   </i>
+  </label>
+  <ul>
+   <li class="toctree-l2">
+    <a class="reference internal" href="../general/01_Architecture.html">
+     Architecture
+    </a>
+   </li>
+   <li class="toctree-l2">
+    <a class="reference internal" href="../general/03_Users.html">
+     User creation and permissions
+    </a>
+   </li>
+   <li class="toctree-l2">
+    <a class="reference internal" href="../general/04_Inputs.html">
+     Inject logs into Snooze server
+    </a>
+   </li>
+   <li class="toctree-l2">
+    <a class="reference internal" href="../general/05_Rules.html">
+     Rules
+    </a>
+   </li>
+   <li class="toctree-l2">
+    <a class="reference internal" href="../general/06_AggregateRules.html">
+     Aggregate Rules
+    </a>
+   </li>
+   <li class="toctree-l2">
+    <a class="reference internal" href="../general/07_Snooze.html">
+     Snooze filters
+    </a>
+   </li>
+   <li class="toctree-l2">
+    <a class="reference internal" href="../general/08_Notifications.html">
+     Notifications
+    </a>
+   </li>
+   <li class="toctree-l2">
+    <a class="reference internal" href="../general/09_Actions.html">
+     Actions (Alerting scripts)
+    </a>
+   </li>
+   <li class="toctree-l2">
+    <a class="reference internal" href="../general/10_Alerts.html">
+     Manage alerts
+    </a>
+   </li>
+   <li class="toctree-l2">
+    <a class="reference internal" href="../general/11_KV.html">
+     Key-values
+    </a>
+   </li>
+   <li class="toctree-l2">
+    <a class="reference internal" href="../general/12_Conditions.html">
+     Conditions
+    </a>
+   </li>
+   <li class="toctree-l2">
+    <a class="reference internal" href="../general/13_TimeConstraints.html">
+     Time Constraints
+    </a>
+   </li>
+   <li class="toctree-l2">
+    <a class="reference internal" href="../general/14_Environments.html">
+     Environments
+    </a>
+   </li>
+   <li class="toctree-l2">
+    <a class="reference internal" href="../general/15_Clustering.html">
+     Clustering
+    </a>
+   </li>
+   <li class="toctree-l2">
+    <a class="reference internal" href="../general/16_Housekeeping.html">
+     Housekeeping
+    </a>
+   </li>
+   <li class="toctree-l2">
+    <a class="reference internal" href="../general/17_QueryLanguage.html">
+     Query language
+    </a>
+   </li>
+   <li class="toctree-l2">
+    <a class="reference internal" href="../general/18_Metrics.html">
+     Metrics
+    </a>
+   </li>
+   <li class="toctree-l2">
+    <a class="reference internal" href="../general/19_Settings.html">
+     Settings
+    </a>
+   </li>
+  </ul>
+ </li>
+ <li class="toctree-l1 current active has-children">
+  <a class="reference internal" href="index.html">
+   Configuration
+  </a>
+  <input checked class="toctree-checkbox" id="toctree-checkbox-3" name="toctree-checkbox-3" type="checkbox"/>
+  <label for="toctree-checkbox-3">
+   <i class="fas fa-chevron-down">
+   </i>
+  </label>
+  <ul class="current">
+   <li class="toctree-l2 current active">
+    <a class="current reference internal" href="#">
+     Core configuration
+    </a>
+   </li>
+   <li class="toctree-l2">
+    <a class="reference internal" href="general.html">
+     General configuration
+    </a>
+   </li>
+   <li class="toctree-l2">
+    <a class="reference internal" href="housekeeping.html">
+     Housekeeper configuration
+    </a>
+   </li>
+   <li class="toctree-l2">
+    <a class="reference internal" href="ldap_auth.html">
+     LDAP configuration
+    </a>
+   </li>
+   <li class="toctree-l2">
+    <a class="reference internal" href="notifications.html">
+     Notification configuration
+    </a>
+   </li>
+  </ul>
+ </li>
+</ul>
+
+    </div>
+</nav></div>
+        <div class="bd-sidebar__bottom">
+             <!-- To handle the deprecated key -->
+            
+        </div>
+    </div>
+    <div id="rtd-footer-container"></div>
+</div>
+
+
+          
+
+
+          
+<!-- A tiny helper pixel to detect if we've scrolled -->
+<div class="sbt-scroll-pixel-helper"></div>
+<!-- Main content -->
+<div class="col py-0 content-container">
+    
+    <div class="header-article row sticky-top noprint">
+        
+
+
+
+<div class="col py-1 d-flex header-article-main">
+    <div class="header-article__left">
+        
+        <label for="__navigation"
+  class="headerbtn"
+  data-toggle="tooltip"
+data-placement="right"
+title="Toggle navigation"
+>
+  
+
+<span class="headerbtn__icon-container">
+  <i class="fas fa-bars"></i>
+  </span>
+
+</label>
+
+        
+    </div>
+    <div class="header-article__right">
+<button onclick="toggleFullScreen()"
+  class="headerbtn"
+  data-toggle="tooltip"
+data-placement="bottom"
+title="Fullscreen mode"
+>
+  
+
+<span class="headerbtn__icon-container">
+  <i class="fas fa-expand"></i>
+  </span>
+
+</button>
+
+<div class="menu-dropdown menu-dropdown-repository-buttons">
+  <button class="headerbtn menu-dropdown__trigger"
+      aria-label="Source repositories">
+      <i class="fab fa-github"></i>
+  </button>
+  <div class="menu-dropdown__content">
+    <ul>
+      <li>
+        <a href="https://github.com/snoozeweb/snooze"
+   class="headerbtn"
+   data-toggle="tooltip"
+data-placement="left"
+title="Source repository"
+>
+  
+
+<span class="headerbtn__icon-container">
+  <i class="fab fa-github"></i>
+  </span>
+<span class="headerbtn__text-container">repository</span>
+</a>
+
+      </li>
+      
+      <li>
+        <a href="https://github.com/snoozeweb/snooze/issues/new?title=Issue%20on%20page%20%2Fconfiguration/core.html&body=Your%20issue%20content%20here."
+   class="headerbtn"
+   data-toggle="tooltip"
+data-placement="left"
+title="Open an issue"
+>
+  
+
+<span class="headerbtn__icon-container">
+  <i class="fas fa-lightbulb"></i>
+  </span>
+<span class="headerbtn__text-container">open issue</span>
+</a>
+
+      </li>
+      
+    </ul>
+  </div>
+</div>
+
+<div class="menu-dropdown menu-dropdown-download-buttons">
+  <button class="headerbtn menu-dropdown__trigger"
+      aria-label="Download this page">
+      <i class="fas fa-download"></i>
+  </button>
+  <div class="menu-dropdown__content">
+    <ul>
+      <li>
+        <a href="../_sources/configuration/core.rst.txt"
+   class="headerbtn"
+   data-toggle="tooltip"
+data-placement="left"
+title="Download source file"
+>
+  
+
+<span class="headerbtn__icon-container">
+  <i class="fas fa-file"></i>
+  </span>
+<span class="headerbtn__text-container">.rst</span>
+</a>
+
+      </li>
+      
+      <li>
+        
+<button onclick="printPdf(this)"
+  class="headerbtn"
+  data-toggle="tooltip"
+data-placement="left"
+title="Print to PDF"
+>
+  
+
+<span class="headerbtn__icon-container">
+  <i class="fas fa-file-pdf"></i>
+  </span>
+<span class="headerbtn__text-container">.pdf</span>
+</button>
+
+      </li>
+      
+    </ul>
+  </div>
+</div>
+<label for="__page-toc"
+  class="headerbtn headerbtn-page-toc"
+  
+>
+  
+
+<span class="headerbtn__icon-container">
+  <i class="fas fa-list"></i>
+  </span>
+
+</label>
+
+    </div>
+</div>
+
+<!-- Table of contents -->
+<div class="col-md-3 bd-toc show noprint">
+    <div class="tocsection onthispage pt-5 pb-3">
+        <i class="fas fa-list"></i> Contents
+    </div>
+    <nav id="bd-toc-nav" aria-label="Page">
+        <ul class="visible nav section-nav flex-column">
+ <li class="toc-h2 nav-item toc-entry">
+  <a class="reference internal nav-link" href="#properties">
+   Properties
+  </a>
+  <ul class="nav section-nav flex-column">
+   <li class="toc-h3 nav-item toc-entry">
+    <a class="reference internal nav-link" href="#listen-addr">
+     listen_addr
+    </a>
+   </li>
+   <li class="toc-h3 nav-item toc-entry">
+    <a class="reference internal nav-link" href="#port">
+     port
+    </a>
+   </li>
+   <li class="toc-h3 nav-item toc-entry">
+    <a class="reference internal nav-link" href="#debug">
+     debug
+    </a>
+   </li>
+   <li class="toc-h3 nav-item toc-entry">
+    <a class="reference internal nav-link" href="#bootstrap-db">
+     bootstrap_db
+    </a>
+   </li>
+   <li class="toc-h3 nav-item toc-entry">
+    <a class="reference internal nav-link" href="#unix-socket">
+     unix_socket
+    </a>
+   </li>
+   <li class="toc-h3 nav-item toc-entry">
+    <a class="reference internal nav-link" href="#no-login">
+     no_login
+    </a>
+   </li>
+   <li class="toc-h3 nav-item toc-entry">
+    <a class="reference internal nav-link" href="#audit-excluded-paths">
+     audit_excluded_paths
+    </a>
+   </li>
+   <li class="toc-h3 nav-item toc-entry">
+    <a class="reference internal nav-link" href="#process-plugins">
+     process_plugins
+    </a>
+   </li>
+   <li class="toc-h3 nav-item toc-entry">
+    <a class="reference internal nav-link" href="#database">
+     database
+    </a>
+   </li>
+   <li class="toc-h3 nav-item toc-entry">
+    <a class="reference internal nav-link" href="#init-sleep">
+     init_sleep
+    </a>
+   </li>
+   <li class="toc-h3 nav-item toc-entry">
+    <a class="reference internal nav-link" href="#create-root-user">
+     create_root_user
+    </a>
+   </li>
+   <li class="toc-h3 nav-item toc-entry">
+    <a class="reference internal nav-link" href="#ssl">
+     ssl
+    </a>
+   </li>
+   <li class="toc-h3 nav-item toc-entry">
+    <a class="reference internal nav-link" href="#web">
+     web
+    </a>
+   </li>
+   <li class="toc-h3 nav-item toc-entry">
+    <a class="reference internal nav-link" href="#cluster">
+     cluster
+    </a>
+   </li>
+   <li class="toc-h3 nav-item toc-entry">
+    <a class="reference internal nav-link" href="#backup">
+     backup
+    </a>
+   </li>
+  </ul>
+ </li>
+ <li class="toc-h2 nav-item toc-entry">
+  <a class="reference internal nav-link" href="#definitions">
+   Definitions
+  </a>
+  <ul class="nav section-nav flex-column">
+   <li class="toc-h3 nav-item toc-entry">
+    <a class="reference internal nav-link" href="#mongodbconfig">
+     MongodbConfig
+    </a>
+    <ul class="nav section-nav flex-column">
+     <li class="toc-h4 nav-item toc-entry">
+      <a class="reference internal nav-link" href="#type">
+       type
+      </a>
+     </li>
+     <li class="toc-h4 nav-item toc-entry">
+      <a class="reference internal nav-link" href="#host">
+       host
+      </a>
+     </li>
+     <li class="toc-h4 nav-item toc-entry">
+      <a class="reference internal nav-link" href="#id2">
+       port
+      </a>
+     </li>
+    </ul>
+   </li>
+   <li class="toc-h3 nav-item toc-entry">
+    <a class="reference internal nav-link" href="#fileconfig">
+     FileConfig
+    </a>
+    <ul class="nav section-nav flex-column">
+     <li class="toc-h4 nav-item toc-entry">
+      <a class="reference internal nav-link" href="#id4">
+       type
+      </a>
+     </li>
+     <li class="toc-h4 nav-item toc-entry">
+      <a class="reference internal nav-link" href="#path">
+       path
+      </a>
+     </li>
+    </ul>
+   </li>
+   <li class="toc-h3 nav-item toc-entry">
+    <a class="reference internal nav-link" href="#sslconfig">
+     SslConfig
+    </a>
+    <ul class="nav section-nav flex-column">
+     <li class="toc-h4 nav-item toc-entry">
+      <a class="reference internal nav-link" href="#enabled">
+       enabled
+      </a>
+     </li>
+     <li class="toc-h4 nav-item toc-entry">
+      <a class="reference internal nav-link" href="#certfile">
+       certfile
+      </a>
+     </li>
+     <li class="toc-h4 nav-item toc-entry">
+      <a class="reference internal nav-link" href="#keyfile">
+       keyfile
+      </a>
+     </li>
+    </ul>
+   </li>
+   <li class="toc-h3 nav-item toc-entry">
+    <a class="reference internal nav-link" href="#webconfig">
+     WebConfig
+    </a>
+    <ul class="nav section-nav flex-column">
+     <li class="toc-h4 nav-item toc-entry">
+      <a class="reference internal nav-link" href="#id7">
+       enabled
+      </a>
+     </li>
+     <li class="toc-h4 nav-item toc-entry">
+      <a class="reference internal nav-link" href="#id8">
+       path
+      </a>
+     </li>
+    </ul>
+   </li>
+   <li class="toc-h3 nav-item toc-entry">
+    <a class="reference internal nav-link" href="#hostport">
+     HostPort
+    </a>
+    <ul class="nav section-nav flex-column">
+     <li class="toc-h4 nav-item toc-entry">
+      <a class="reference internal nav-link" href="#id10">
+       host
+      </a>
+     </li>
+     <li class="toc-h4 nav-item toc-entry">
+      <a class="reference internal nav-link" href="#id11">
+       port
+      </a>
+     </li>
+    </ul>
+   </li>
+   <li class="toc-h3 nav-item toc-entry">
+    <a class="reference internal nav-link" href="#clusterconfig">
+     ClusterConfig
+    </a>
+    <ul class="nav section-nav flex-column">
+     <li class="toc-h4 nav-item toc-entry">
+      <a class="reference internal nav-link" href="#id13">
+       enabled
+      </a>
+     </li>
+     <li class="toc-h4 nav-item toc-entry">
+      <a class="reference internal nav-link" href="#members">
+       members
+      </a>
+     </li>
+    </ul>
+   </li>
+   <li class="toc-h3 nav-item toc-entry">
+    <a class="reference internal nav-link" href="#backupconfig">
+     BackupConfig
+    </a>
+    <ul class="nav section-nav flex-column">
+     <li class="toc-h4 nav-item toc-entry">
+      <a class="reference internal nav-link" href="#id15">
+       enabled
+      </a>
+     </li>
+     <li class="toc-h4 nav-item toc-entry">
+      <a class="reference internal nav-link" href="#id16">
+       path
+      </a>
+     </li>
+     <li class="toc-h4 nav-item toc-entry">
+      <a class="reference internal nav-link" href="#excludes">
+       excludes
+      </a>
+     </li>
+    </ul>
+   </li>
+  </ul>
+ </li>
+</ul>
+
+    </nav>
+</div>
+    </div>
+    <div class="article row">
+        <div class="col pl-md-3 pl-lg-5 content-container">
+            <!-- Table of contents that is only displayed when printing the page -->
+            <div id="jb-print-docs-body" class="onlyprint">
+                <h1>Core configuration</h1>
+                <!-- Table of contents -->
+                <div id="print-main-content">
+                    <div id="jb-print-toc">
+                        
+                        <div>
+                            <h2> Contents </h2>
+                        </div>
+                        <nav aria-label="Page">
+                            <ul class="visible nav section-nav flex-column">
+ <li class="toc-h2 nav-item toc-entry">
+  <a class="reference internal nav-link" href="#properties">
+   Properties
+  </a>
+  <ul class="nav section-nav flex-column">
+   <li class="toc-h3 nav-item toc-entry">
+    <a class="reference internal nav-link" href="#listen-addr">
+     listen_addr
+    </a>
+   </li>
+   <li class="toc-h3 nav-item toc-entry">
+    <a class="reference internal nav-link" href="#port">
+     port
+    </a>
+   </li>
+   <li class="toc-h3 nav-item toc-entry">
+    <a class="reference internal nav-link" href="#debug">
+     debug
+    </a>
+   </li>
+   <li class="toc-h3 nav-item toc-entry">
+    <a class="reference internal nav-link" href="#bootstrap-db">
+     bootstrap_db
+    </a>
+   </li>
+   <li class="toc-h3 nav-item toc-entry">
+    <a class="reference internal nav-link" href="#unix-socket">
+     unix_socket
+    </a>
+   </li>
+   <li class="toc-h3 nav-item toc-entry">
+    <a class="reference internal nav-link" href="#no-login">
+     no_login
+    </a>
+   </li>
+   <li class="toc-h3 nav-item toc-entry">
+    <a class="reference internal nav-link" href="#audit-excluded-paths">
+     audit_excluded_paths
+    </a>
+   </li>
+   <li class="toc-h3 nav-item toc-entry">
+    <a class="reference internal nav-link" href="#process-plugins">
+     process_plugins
+    </a>
+   </li>
+   <li class="toc-h3 nav-item toc-entry">
+    <a class="reference internal nav-link" href="#database">
+     database
+    </a>
+   </li>
+   <li class="toc-h3 nav-item toc-entry">
+    <a class="reference internal nav-link" href="#init-sleep">
+     init_sleep
+    </a>
+   </li>
+   <li class="toc-h3 nav-item toc-entry">
+    <a class="reference internal nav-link" href="#create-root-user">
+     create_root_user
+    </a>
+   </li>
+   <li class="toc-h3 nav-item toc-entry">
+    <a class="reference internal nav-link" href="#ssl">
+     ssl
+    </a>
+   </li>
+   <li class="toc-h3 nav-item toc-entry">
+    <a class="reference internal nav-link" href="#web">
+     web
+    </a>
+   </li>
+   <li class="toc-h3 nav-item toc-entry">
+    <a class="reference internal nav-link" href="#cluster">
+     cluster
+    </a>
+   </li>
+   <li class="toc-h3 nav-item toc-entry">
+    <a class="reference internal nav-link" href="#backup">
+     backup
+    </a>
+   </li>
+  </ul>
+ </li>
+ <li class="toc-h2 nav-item toc-entry">
+  <a class="reference internal nav-link" href="#definitions">
+   Definitions
+  </a>
+  <ul class="nav section-nav flex-column">
+   <li class="toc-h3 nav-item toc-entry">
+    <a class="reference internal nav-link" href="#mongodbconfig">
+     MongodbConfig
+    </a>
+    <ul class="nav section-nav flex-column">
+     <li class="toc-h4 nav-item toc-entry">
+      <a class="reference internal nav-link" href="#type">
+       type
+      </a>
+     </li>
+     <li class="toc-h4 nav-item toc-entry">
+      <a class="reference internal nav-link" href="#host">
+       host
+      </a>
+     </li>
+     <li class="toc-h4 nav-item toc-entry">
+      <a class="reference internal nav-link" href="#id2">
+       port
+      </a>
+     </li>
+    </ul>
+   </li>
+   <li class="toc-h3 nav-item toc-entry">
+    <a class="reference internal nav-link" href="#fileconfig">
+     FileConfig
+    </a>
+    <ul class="nav section-nav flex-column">
+     <li class="toc-h4 nav-item toc-entry">
+      <a class="reference internal nav-link" href="#id4">
+       type
+      </a>
+     </li>
+     <li class="toc-h4 nav-item toc-entry">
+      <a class="reference internal nav-link" href="#path">
+       path
+      </a>
+     </li>
+    </ul>
+   </li>
+   <li class="toc-h3 nav-item toc-entry">
+    <a class="reference internal nav-link" href="#sslconfig">
+     SslConfig
+    </a>
+    <ul class="nav section-nav flex-column">
+     <li class="toc-h4 nav-item toc-entry">
+      <a class="reference internal nav-link" href="#enabled">
+       enabled
+      </a>
+     </li>
+     <li class="toc-h4 nav-item toc-entry">
+      <a class="reference internal nav-link" href="#certfile">
+       certfile
+      </a>
+     </li>
+     <li class="toc-h4 nav-item toc-entry">
+      <a class="reference internal nav-link" href="#keyfile">
+       keyfile
+      </a>
+     </li>
+    </ul>
+   </li>
+   <li class="toc-h3 nav-item toc-entry">
+    <a class="reference internal nav-link" href="#webconfig">
+     WebConfig
+    </a>
+    <ul class="nav section-nav flex-column">
+     <li class="toc-h4 nav-item toc-entry">
+      <a class="reference internal nav-link" href="#id7">
+       enabled
+      </a>
+     </li>
+     <li class="toc-h4 nav-item toc-entry">
+      <a class="reference internal nav-link" href="#id8">
+       path
+      </a>
+     </li>
+    </ul>
+   </li>
+   <li class="toc-h3 nav-item toc-entry">
+    <a class="reference internal nav-link" href="#hostport">
+     HostPort
+    </a>
+    <ul class="nav section-nav flex-column">
+     <li class="toc-h4 nav-item toc-entry">
+      <a class="reference internal nav-link" href="#id10">
+       host
+      </a>
+     </li>
+     <li class="toc-h4 nav-item toc-entry">
+      <a class="reference internal nav-link" href="#id11">
+       port
+      </a>
+     </li>
+    </ul>
+   </li>
+   <li class="toc-h3 nav-item toc-entry">
+    <a class="reference internal nav-link" href="#clusterconfig">
+     ClusterConfig
+    </a>
+    <ul class="nav section-nav flex-column">
+     <li class="toc-h4 nav-item toc-entry">
+      <a class="reference internal nav-link" href="#id13">
+       enabled
+      </a>
+     </li>
+     <li class="toc-h4 nav-item toc-entry">
+      <a class="reference internal nav-link" href="#members">
+       members
+      </a>
+     </li>
+    </ul>
+   </li>
+   <li class="toc-h3 nav-item toc-entry">
+    <a class="reference internal nav-link" href="#backupconfig">
+     BackupConfig
+    </a>
+    <ul class="nav section-nav flex-column">
+     <li class="toc-h4 nav-item toc-entry">
+      <a class="reference internal nav-link" href="#id15">
+       enabled
+      </a>
+     </li>
+     <li class="toc-h4 nav-item toc-entry">
+      <a class="reference internal nav-link" href="#id16">
+       path
+      </a>
+     </li>
+     <li class="toc-h4 nav-item toc-entry">
+      <a class="reference internal nav-link" href="#excludes">
+       excludes
+      </a>
+     </li>
+    </ul>
+   </li>
+  </ul>
+ </li>
+</ul>
+
+                        </nav>
+                    </div>
+                </div>
+            </div>
+            <main id="main-content" role="main">
+                
+              <div>
+                
+  <section id="core-configuration">
+<h1>Core configuration<a class="headerlink" href="#core-configuration" title="Permalink to this headline">#</a></h1>
+<blockquote>
+<div><dl class="field-list simple">
+<dt class="field-odd">Package location</dt>
+<dd class="field-odd"><p><code class="docutils literal notranslate"><span class="pre">/etc/snooze/server/core.yaml</span></code></p>
+</dd>
+<dt class="field-even">Live reload</dt>
+<dd class="field-even"><p><code class="docutils literal notranslate"><span class="pre">False</span></code></p>
+</dd>
+</dl>
+</div></blockquote>
+<p>Core configuration. Not editable live. Require a restart of the server.</p>
+<section id="properties">
+<h2>Properties<a class="headerlink" href="#properties" title="Permalink to this headline">#</a></h2>
+<section id="listen-addr">
+<h3>listen_addr<a class="headerlink" href="#listen-addr" title="Permalink to this headline">#</a></h3>
+<blockquote>
+<div><dl class="field-list simple">
+<dt class="field-odd">Type</dt>
+<dd class="field-odd"><p>string (ipvanyaddress)</p>
+</dd>
+<dt class="field-even">Default</dt>
+<dd class="field-even"><p><code class="docutils literal notranslate"><span class="pre">'0.0.0.0'</span></code></p>
+</dd>
+</dl>
+<p>IPv4 address on which Snooze process is listening to</p>
+</div></blockquote>
+</section>
+<section id="port">
+<h3>port<a class="headerlink" href="#port" title="Permalink to this headline">#</a></h3>
+<blockquote>
+<div><dl class="field-list simple">
+<dt class="field-odd">Type</dt>
+<dd class="field-odd"><p>integer</p>
+</dd>
+<dt class="field-even">Default</dt>
+<dd class="field-even"><p><code class="docutils literal notranslate"><span class="pre">5200</span></code></p>
+</dd>
+</dl>
+<p>Port on which Snooze process is listening to</p>
+</div></blockquote>
+</section>
+<section id="debug">
+<h3>debug<a class="headerlink" href="#debug" title="Permalink to this headline">#</a></h3>
+<blockquote>
+<div><dl class="field-list simple">
+<dt class="field-odd">Type</dt>
+<dd class="field-odd"><p>boolean</p>
+</dd>
+<dt class="field-even">Environment variable</dt>
+<dd class="field-even"><p><code class="docutils literal notranslate"><span class="pre">SNOOZE_DEBUG</span></code></p>
+</dd>
+<dt class="field-odd">Default</dt>
+<dd class="field-odd"><p><code class="docutils literal notranslate"><span class="pre">False</span></code></p>
+</dd>
+</dl>
+<p>Activate debug log output</p>
+</div></blockquote>
+</section>
+<section id="bootstrap-db">
+<h3>bootstrap_db<a class="headerlink" href="#bootstrap-db" title="Permalink to this headline">#</a></h3>
+<blockquote>
+<div><dl class="field-list simple">
+<dt class="field-odd">Type</dt>
+<dd class="field-odd"><p>boolean</p>
+</dd>
+<dt class="field-even">Default</dt>
+<dd class="field-even"><p><code class="docutils literal notranslate"><span class="pre">True</span></code></p>
+</dd>
+</dl>
+<p>Populate the database with an initial configuration</p>
+</div></blockquote>
+</section>
+<section id="unix-socket">
+<h3>unix_socket<a class="headerlink" href="#unix-socket" title="Permalink to this headline">#</a></h3>
+<blockquote>
+<div><dl class="field-list simple">
+<dt class="field-odd">Type</dt>
+<dd class="field-odd"><p>string (path)</p>
+</dd>
+<dt class="field-even">Default</dt>
+<dd class="field-even"><p><code class="docutils literal notranslate"><span class="pre">'/var/run/snooze/server.socket'</span></code></p>
+</dd>
+</dl>
+<p>Listen on this unix socket to issue root tokens</p>
+</div></blockquote>
+</section>
+<section id="no-login">
+<h3>no_login<a class="headerlink" href="#no-login" title="Permalink to this headline">#</a></h3>
+<blockquote>
+<div><dl class="field-list simple">
+<dt class="field-odd">Type</dt>
+<dd class="field-odd"><p>boolean</p>
+</dd>
+<dt class="field-even">Environment variable</dt>
+<dd class="field-even"><p><code class="docutils literal notranslate"><span class="pre">SNOOZE_NO_LOGIN</span></code></p>
+</dd>
+<dt class="field-odd">Default</dt>
+<dd class="field-odd"><p><code class="docutils literal notranslate"><span class="pre">False</span></code></p>
+</dd>
+</dl>
+<p>Disable Authentication (everyone has admin priviledges)</p>
+</div></blockquote>
+</section>
+<section id="audit-excluded-paths">
+<h3>audit_excluded_paths<a class="headerlink" href="#audit-excluded-paths" title="Permalink to this headline">#</a></h3>
+<blockquote>
+<div><dl class="field-list simple">
+<dt class="field-odd">Type</dt>
+<dd class="field-odd"><p>array[string]</p>
+</dd>
+<dt class="field-even">Default</dt>
+<dd class="field-even"><p><code class="docutils literal notranslate"><span class="pre">['/api/patlite',</span> <span class="pre">'/metrics',</span> <span class="pre">'/web']</span></code></p>
+</dd>
+</dl>
+<p>A list of HTTP paths excluded from audit logs. Any paththat starts with a path in this list will be excluded.</p>
+</div></blockquote>
+</section>
+<section id="process-plugins">
+<h3>process_plugins<a class="headerlink" href="#process-plugins" title="Permalink to this headline">#</a></h3>
+<blockquote>
+<div><dl class="field-list simple">
+<dt class="field-odd">Type</dt>
+<dd class="field-odd"><p>array[string]</p>
+</dd>
+<dt class="field-even">Default</dt>
+<dd class="field-even"><p><code class="docutils literal notranslate"><span class="pre">['rule',</span> <span class="pre">'aggregaterule',</span> <span class="pre">'snooze',</span> <span class="pre">'notification']</span></code></p>
+</dd>
+</dl>
+<p>List of plugins that will be used for processing alerts. Order matters.</p>
+</div></blockquote>
+</section>
+<section id="database">
+<h3>database<a class="headerlink" href="#database" title="Permalink to this headline">#</a></h3>
+<blockquote>
+<div><dl class="field-list simple">
+<dt class="field-odd">Type</dt>
+<dd class="field-odd"><p><a class="reference internal" href="#mongodbconfig"><span class="std std-ref">MongodbConfig</span></a> | <a class="reference internal" href="#fileconfig"><span class="std std-ref">FileConfig</span></a></p>
+</dd>
+<dt class="field-even">Environment variable</dt>
+<dd class="field-even"><p><code class="docutils literal notranslate"><span class="pre">DATABASE_URL</span></code></p>
+</dd>
+</dl>
+</div></blockquote>
+</section>
+<section id="init-sleep">
+<h3>init_sleep<a class="headerlink" href="#init-sleep" title="Permalink to this headline">#</a></h3>
+<blockquote>
+<div><dl class="field-list simple">
+<dt class="field-odd">Type</dt>
+<dd class="field-odd"><p>integer</p>
+</dd>
+<dt class="field-even">Default</dt>
+<dd class="field-even"><p><code class="docutils literal notranslate"><span class="pre">5</span></code></p>
+</dd>
+</dl>
+<p>Time to sleep before retrying certain operations (bootstrap, clustering)</p>
+</div></blockquote>
+</section>
+<section id="create-root-user">
+<h3>create_root_user<a class="headerlink" href="#create-root-user" title="Permalink to this headline">#</a></h3>
+<blockquote>
+<div><dl class="field-list simple">
+<dt class="field-odd">Type</dt>
+<dd class="field-odd"><p>boolean</p>
+</dd>
+<dt class="field-even">Default</dt>
+<dd class="field-even"><p><code class="docutils literal notranslate"><span class="pre">True</span></code></p>
+</dd>
+</dl>
+<p>Create a <em>root</em> user with a default password <em>root</em></p>
+</div></blockquote>
+</section>
+<section id="ssl">
+<h3>ssl<a class="headerlink" href="#ssl" title="Permalink to this headline">#</a></h3>
+<blockquote>
+<div><dl class="field-list simple">
+<dt class="field-odd">Type</dt>
+<dd class="field-odd"><p><a class="reference internal" href="#sslconfig"><span class="std std-ref">SslConfig</span></a></p>
+</dd>
+</dl>
+</div></blockquote>
+</section>
+<section id="web">
+<h3>web<a class="headerlink" href="#web" title="Permalink to this headline">#</a></h3>
+<blockquote>
+<div><dl class="field-list simple">
+<dt class="field-odd">Type</dt>
+<dd class="field-odd"><p><a class="reference internal" href="#webconfig"><span class="std std-ref">WebConfig</span></a></p>
+</dd>
+</dl>
+</div></blockquote>
+</section>
+<section id="cluster">
+<h3>cluster<a class="headerlink" href="#cluster" title="Permalink to this headline">#</a></h3>
+<blockquote>
+<div><dl class="field-list simple">
+<dt class="field-odd">Type</dt>
+<dd class="field-odd"><p><a class="reference internal" href="#clusterconfig"><span class="std std-ref">ClusterConfig</span></a></p>
+</dd>
+</dl>
+</div></blockquote>
+</section>
+<section id="backup">
+<h3>backup<a class="headerlink" href="#backup" title="Permalink to this headline">#</a></h3>
+<blockquote>
+<div><dl class="field-list simple">
+<dt class="field-odd">Type</dt>
+<dd class="field-odd"><p><a class="reference internal" href="#backupconfig"><span class="std std-ref">BackupConfig</span></a></p>
+</dd>
+</dl>
+</div></blockquote>
+</section>
+</section>
+<section id="definitions">
+<h2>Definitions<a class="headerlink" href="#definitions" title="Permalink to this headline">#</a></h2>
+<section id="mongodbconfig">
+<span id="id1"></span><h3>MongodbConfig<a class="headerlink" href="#mongodbconfig" title="Permalink to this headline">#</a></h3>
+<p>Mongodb configuration passed to pymongo MongoClient</p>
+<section id="type">
+<h4>type<a class="headerlink" href="#type" title="Permalink to this headline">#</a></h4>
+<blockquote>
+<div><dl class="field-list simple">
+<dt class="field-odd">Type</dt>
+<dd class="field-odd"><p>‘mongo’</p>
+</dd>
+<dt class="field-even">Default</dt>
+<dd class="field-even"><p><code class="docutils literal notranslate"><span class="pre">'mongo'</span></code></p>
+</dd>
+</dl>
+</div></blockquote>
+</section>
+<section id="host">
+<h4>host<a class="headerlink" href="#host" title="Permalink to this headline">#</a></h4>
+<blockquote>
+<div><dl class="field-list simple">
+<dt class="field-odd">Type</dt>
+<dd class="field-odd"><p>string | array[string]</p>
+</dd>
+</dl>
+<p>Hostname or IP address or Unix domain socket path of a single mongod or mongos instanceto connect to</p>
+</div></blockquote>
+</section>
+<section id="id2">
+<h4>port<a class="headerlink" href="#id2" title="Permalink to this headline">#</a></h4>
+<blockquote>
+<div><dl class="field-list simple">
+<dt class="field-odd">Type</dt>
+<dd class="field-odd"><p>integer</p>
+</dd>
+</dl>
+<p>Port number on which to connect</p>
+</div></blockquote>
+</section>
+</section>
+<section id="fileconfig">
+<span id="id3"></span><h3>FileConfig<a class="headerlink" href="#fileconfig" title="Permalink to this headline">#</a></h3>
+<section id="id4">
+<h4>type<a class="headerlink" href="#id4" title="Permalink to this headline">#</a></h4>
+<blockquote>
+<div><dl class="field-list simple">
+<dt class="field-odd">Type</dt>
+<dd class="field-odd"><p>‘file’</p>
+</dd>
+<dt class="field-even">Default</dt>
+<dd class="field-even"><p><code class="docutils literal notranslate"><span class="pre">'file'</span></code></p>
+</dd>
+</dl>
+</div></blockquote>
+</section>
+<section id="path">
+<h4>path<a class="headerlink" href="#path" title="Permalink to this headline">#</a></h4>
+<blockquote>
+<div><dl class="field-list simple">
+<dt class="field-odd">Type</dt>
+<dd class="field-odd"><p>string (path)</p>
+</dd>
+<dt class="field-even">Default</dt>
+<dd class="field-even"><p><code class="docutils literal notranslate"><span class="pre">'db.json'</span></code></p>
+</dd>
+</dl>
+</div></blockquote>
+</section>
+</section>
+<section id="sslconfig">
+<span id="id5"></span><h3>SslConfig<a class="headerlink" href="#sslconfig" title="Permalink to this headline">#</a></h3>
+<p>SSL configuration</p>
+<section id="enabled">
+<h4>enabled<a class="headerlink" href="#enabled" title="Permalink to this headline">#</a></h4>
+<blockquote>
+<div><dl class="field-list simple">
+<dt class="field-odd">Type</dt>
+<dd class="field-odd"><p>boolean</p>
+</dd>
+<dt class="field-even">Default</dt>
+<dd class="field-even"><p><code class="docutils literal notranslate"><span class="pre">False</span></code></p>
+</dd>
+</dl>
+<p>Enabling TLS termination</p>
+</div></blockquote>
+</section>
+<section id="certfile">
+<h4>certfile<a class="headerlink" href="#certfile" title="Permalink to this headline">#</a></h4>
+<blockquote>
+<div><dl class="field-list simple">
+<dt class="field-odd">Type</dt>
+<dd class="field-odd"><p>string (path)</p>
+</dd>
+<dt class="field-even">Environment variable</dt>
+<dd class="field-even"><p><code class="docutils literal notranslate"><span class="pre">SNOOZE_CERT_FILE</span></code></p>
+</dd>
+</dl>
+<p>Path to the x509 PEM style certificate to use for TLS termination</p>
+<div class="admonition-example-1 admonition">
+<p class="admonition-title">Example 1</p>
+<div class="highlight-yaml notranslate"><div class="highlight"><pre><span></span><span class="nt">certfile</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">/etc/pki/tls/certs/snooze.crt</span><span class="w"></span>
+</pre></div>
+</div>
+</div>
+<div class="admonition-example-2 admonition">
+<p class="admonition-title">Example 2</p>
+<div class="highlight-yaml notranslate"><div class="highlight"><pre><span></span><span class="nt">certfile</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">/etc/ssl/certs/snooze.crt</span><span class="w"></span>
+</pre></div>
+</div>
+</div>
+</div></blockquote>
+</section>
+<section id="keyfile">
+<h4>keyfile<a class="headerlink" href="#keyfile" title="Permalink to this headline">#</a></h4>
+<blockquote>
+<div><dl class="field-list simple">
+<dt class="field-odd">Type</dt>
+<dd class="field-odd"><p>string (path)</p>
+</dd>
+<dt class="field-even">Environment variable</dt>
+<dd class="field-even"><p><code class="docutils literal notranslate"><span class="pre">SNOOZE_KEY_FILE</span></code></p>
+</dd>
+</dl>
+<p>Path to the private key to use for TLS termination</p>
+<div class="admonition-example-1 admonition">
+<p class="admonition-title">Example 1</p>
+<div class="highlight-yaml notranslate"><div class="highlight"><pre><span></span><span class="nt">keyfile</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">/etc/pki/tls/private/snooze.key</span><span class="w"></span>
+</pre></div>
+</div>
+</div>
+<div class="admonition-example-2 admonition">
+<p class="admonition-title">Example 2</p>
+<div class="highlight-yaml notranslate"><div class="highlight"><pre><span></span><span class="nt">keyfile</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">/etc/ssl/private/snooze.key</span><span class="w"></span>
+</pre></div>
+</div>
+</div>
+</div></blockquote>
+</section>
+</section>
+<section id="webconfig">
+<span id="id6"></span><h3>WebConfig<a class="headerlink" href="#webconfig" title="Permalink to this headline">#</a></h3>
+<p>The subconfig for the web server (snooze-web)</p>
+<section id="id7">
+<h4>enabled<a class="headerlink" href="#id7" title="Permalink to this headline">#</a></h4>
+<blockquote>
+<div><dl class="field-list simple">
+<dt class="field-odd">Type</dt>
+<dd class="field-odd"><p>boolean</p>
+</dd>
+<dt class="field-even">Default</dt>
+<dd class="field-even"><p><code class="docutils literal notranslate"><span class="pre">True</span></code></p>
+</dd>
+</dl>
+<p>Enable the web interface</p>
+</div></blockquote>
+</section>
+<section id="id8">
+<h4>path<a class="headerlink" href="#id8" title="Permalink to this headline">#</a></h4>
+<blockquote>
+<div><dl class="field-list simple">
+<dt class="field-odd">Type</dt>
+<dd class="field-odd"><p>string (path)</p>
+</dd>
+<dt class="field-even">Default</dt>
+<dd class="field-even"><p><code class="docutils literal notranslate"><span class="pre">'/opt/snooze/web'</span></code></p>
+</dd>
+</dl>
+<p>Path to the web interface dist files</p>
+</div></blockquote>
+</section>
+</section>
+<section id="hostport">
+<span id="id9"></span><h3>HostPort<a class="headerlink" href="#hostport" title="Permalink to this headline">#</a></h3>
+<p>An object to represent a host-port pair</p>
+<section id="id10">
+<h4>host<a class="headerlink" href="#id10" title="Permalink to this headline">#</a></h4>
+<blockquote>
+<div><dl class="field-list simple">
+<dt class="field-odd">Type</dt>
+<dd class="field-odd"><p>string</p>
+</dd>
+<dt class="field-even">Required</dt>
+<dd class="field-even"><p>True</p>
+</dd>
+</dl>
+<p>The host address to reach (IP or resolvable hostname)</p>
+</div></blockquote>
+</section>
+<section id="id11">
+<h4>port<a class="headerlink" href="#id11" title="Permalink to this headline">#</a></h4>
+<blockquote>
+<div><dl class="field-list simple">
+<dt class="field-odd">Type</dt>
+<dd class="field-odd"><p>integer</p>
+</dd>
+<dt class="field-even">Default</dt>
+<dd class="field-even"><p><code class="docutils literal notranslate"><span class="pre">5200</span></code></p>
+</dd>
+</dl>
+<p>The port where the host is expected to listen to</p>
+</div></blockquote>
+</section>
+</section>
+<section id="clusterconfig">
+<span id="id12"></span><h3>ClusterConfig<a class="headerlink" href="#clusterconfig" title="Permalink to this headline">#</a></h3>
+<p>Configuration for the cluster</p>
+<section id="id13">
+<h4>enabled<a class="headerlink" href="#id13" title="Permalink to this headline">#</a></h4>
+<blockquote>
+<div><dl class="field-list simple">
+<dt class="field-odd">Type</dt>
+<dd class="field-odd"><p>boolean</p>
+</dd>
+<dt class="field-even">Default</dt>
+<dd class="field-even"><p><code class="docutils literal notranslate"><span class="pre">False</span></code></p>
+</dd>
+</dl>
+<p>Enable clustering. Required when running multiple backends</p>
+</div></blockquote>
+</section>
+<section id="members">
+<h4>members<a class="headerlink" href="#members" title="Permalink to this headline">#</a></h4>
+<blockquote>
+<div><dl class="field-list simple">
+<dt class="field-odd">Type</dt>
+<dd class="field-odd"><p>array[<a class="reference internal" href="#hostport"><span class="std std-ref">HostPort</span></a>]</p>
+</dd>
+<dt class="field-even">Environment variable</dt>
+<dd class="field-even"><p><code class="docutils literal notranslate"><span class="pre">SNOOZE_CLUSTER</span></code></p>
+</dd>
+</dl>
+<p>List of snooze servers in the cluster. If the environment variable is provided, a special syntax is expected (<cite>“&lt;host&gt;:&lt;port&gt;,&lt;host&gt;:&lt;port&gt;,…”</cite>).</p>
+<div class="admonition-example-1 admonition">
+<p class="admonition-title">Example 1</p>
+<div class="highlight-yaml notranslate"><div class="highlight"><pre><span></span><span class="nt">members</span><span class="p">:</span><span class="w"></span>
+<span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">host</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">host01</span><span class="w"></span>
+<span class="w">  </span><span class="nt">port</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">5200</span><span class="w"></span>
+<span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">host</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">host02</span><span class="w"></span>
+<span class="w">  </span><span class="nt">port</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">5200</span><span class="w"></span>
+<span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">host</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">host03</span><span class="w"></span>
+<span class="w">  </span><span class="nt">port</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">5200</span><span class="w"></span>
+</pre></div>
+</div>
+</div>
+<div class="admonition-example-2 admonition">
+<p class="admonition-title">Example 2</p>
+<div class="highlight-yaml notranslate"><div class="highlight"><pre><span></span><span class="nt">members</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">host01:5200,host02:5200,host03:5200</span><span class="w"></span>
+</pre></div>
+</div>
+</div>
+</div></blockquote>
+</section>
+</section>
+<section id="backupconfig">
+<span id="id14"></span><h3>BackupConfig<a class="headerlink" href="#backupconfig" title="Permalink to this headline">#</a></h3>
+<p>Configuration for the backup job</p>
+<section id="id15">
+<h4>enabled<a class="headerlink" href="#id15" title="Permalink to this headline">#</a></h4>
+<blockquote>
+<div><dl class="field-list simple">
+<dt class="field-odd">Type</dt>
+<dd class="field-odd"><p>boolean</p>
+</dd>
+<dt class="field-even">Default</dt>
+<dd class="field-even"><p><code class="docutils literal notranslate"><span class="pre">True</span></code></p>
+</dd>
+</dl>
+<p>Enable backups</p>
+</div></blockquote>
+</section>
+<section id="id16">
+<h4>path<a class="headerlink" href="#id16" title="Permalink to this headline">#</a></h4>
+<blockquote>
+<div><dl class="field-list simple">
+<dt class="field-odd">Type</dt>
+<dd class="field-odd"><p>string (path)</p>
+</dd>
+<dt class="field-even">Environment variable</dt>
+<dd class="field-even"><p><code class="docutils literal notranslate"><span class="pre">SNOOZE_BACKUP_PATH</span></code></p>
+</dd>
+<dt class="field-odd">Default</dt>
+<dd class="field-odd"><p><code class="docutils literal notranslate"><span class="pre">'/var/lib/snooze'</span></code></p>
+</dd>
+</dl>
+<p>Path to store database backups</p>
+</div></blockquote>
+</section>
+<section id="excludes">
+<h4>excludes<a class="headerlink" href="#excludes" title="Permalink to this headline">#</a></h4>
+<blockquote>
+<div><dl class="field-list simple">
+<dt class="field-odd">Type</dt>
+<dd class="field-odd"><p>array[string]</p>
+</dd>
+<dt class="field-even">Default</dt>
+<dd class="field-even"><p><code class="docutils literal notranslate"><span class="pre">['record',</span> <span class="pre">'stats',</span> <span class="pre">'comment',</span> <span class="pre">'secrets']</span></code></p>
+</dd>
+</dl>
+<p>Collections to exclude from backups</p>
+</div></blockquote>
+</section>
+</section>
+</section>
+</section>
+
+
+              </div>
+              
+            </main>
+            <footer class="footer-article noprint">
+                
+    <!-- Previous / next buttons -->
+<div class='prev-next-area'>
+    <a class='left-prev' id="prev-link" href="index.html" title="previous page">
+        <i class="fas fa-angle-left"></i>
+        <div class="prev-next-info">
+            <p class="prev-next-subtitle">previous</p>
+            <p class="prev-next-title">Configuration</p>
+        </div>
+    </a>
+    <a class='right-next' id="next-link" href="general.html" title="next page">
+    <div class="prev-next-info">
+        <p class="prev-next-subtitle">next</p>
+        <p class="prev-next-title">General configuration</p>
+    </div>
+    <i class="fas fa-angle-right"></i>
+    </a>
+</div>
+            </footer>
+        </div>
+    </div>
+    <div class="footer-content row">
+        <footer class="col footer"><p>
+  
+    By Florian Dematraz, Guillaume Ludinard<br/>
+  
+      &copy; Copyright 2022, Florian Dematraz, Guillaume Ludinard.<br/>
+</p>
+        </footer>
+    </div>
+    
+</div>
+
+
+      </div>
+    </div>
+  
+  <!-- Scripts loaded after <body> so the DOM is not blocked -->
+  <script src="../_static/scripts/pydata-sphinx-theme.js?digest=1999514e3f237ded88cf"></script>
+
+
+  </body>
+</html>
