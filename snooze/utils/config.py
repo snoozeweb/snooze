@@ -152,7 +152,8 @@ class WritableConfig(ReadOnlyConfig):
         # Ignore updates of falsy values for excluded keys.
         # Handle the password update case, since we're not returning
         # the value for every excluded field.
-        if key in self.__exclude_fields__.keys() and not value:
+        excluded = getattr(self, '__exclude_fields__') or {}
+        if key in excluded.keys() and not value:
             return
         with lock_and_flush(self._path, self.flush):
             BaseModel.__setattr__(self, key, value)
@@ -160,7 +161,8 @@ class WritableConfig(ReadOnlyConfig):
     def update(self, values: dict):
         '''Update the config with a dictionary'''
         log.debug("Updating config %s", self._path)
-        for key in self.__exclude_fields__.keys():
+        excluded = getattr(self, '__exclude_fields__') or {}
+        for key in excluded.keys():
             if not values.get(key):
                 values.pop(key, None)
         with lock_and_flush(self._path, self.flush):
