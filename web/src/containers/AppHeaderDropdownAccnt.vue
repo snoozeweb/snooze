@@ -1,6 +1,6 @@
 <template>
-  <CDropdown variant="nav-item">
-    <CDropdownToggle placement="bottom-end" class="py-0" :caret="false">
+  <CDropdown auto-close="outside">
+    <CDropdownToggle placement="bottom-end" class="py-0 nav-link" :caret="false">
       <CAvatar>
         <span class="la-stack la-3x">
           <i class="la la-circle la-stack-1x"></i>
