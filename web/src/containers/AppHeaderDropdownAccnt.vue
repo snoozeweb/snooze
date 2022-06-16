@@ -66,7 +66,7 @@ export default {
             this.email = response.data['email'] || ''
             localStorage.setItem('display_name', this.display_name)
             localStorage.setItem('email', this.email)
-            localStorage.setItem('refreshed', true)
+            localStorage.setItem('refreshed', 'true')
           }
         })
         .catch(error => console.log(error))
@@ -93,7 +93,7 @@ export default {
         return
       }
     }
-    if (localStorage.getItem('refreshed') != true) {
+    if (localStorage.getItem('refreshed') != 'true') {
       this.get_data()
     } else {
       this.display_name = localStorage.getItem('display_name')
