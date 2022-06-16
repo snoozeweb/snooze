@@ -9,6 +9,7 @@ import falcon
 from pydantic import ValidationError
 
 from snooze.api.routes import BasicRoute
+from snooze.utils.config import WritableConfig
 from snooze.utils.functions import authorize
 
 class SettingsRoute(BasicRoute):
@@ -44,10 +45,10 @@ class SettingsRoute(BasicRoute):
         except ValidationError as err:
             raise falcon.HTTPInternalServerError(
                 description=f"Config section '{section}' is invalid on the server: {err}") from err
+        if not isinstance(config, WritableConfig):
+            raise falcon.HTTPNotFound(description=f"Config section not writable: '{section}'")
         try:
             config.update(req.media)
-        except AttributeError as err:
-            raise falcon.HTTPNotFound(description=f"Config section not writable: '{section}'") from err
         except ValidationError as err:
             raise falcon.HTTPBadRequest(
                 description=f"Validation error in setting section '{section}': {err}") from err
