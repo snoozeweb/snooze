@@ -116,7 +116,8 @@ def lock_and_flush(path: Path, flush: Callable):
     '''Lock the file, yield, and execute a flush callable at the end'''
     if not path.is_file():
         path.touch(mode=0o600)
-    lock = FileLock(path, timeout=1)
+    lockfile = path.parent / f"{path.name}.lock"
+    lock = FileLock(lockfile, timeout=1)
     lock.acquire()
     try:
         yield
@@ -125,6 +126,7 @@ def lock_and_flush(path: Path, flush: Callable):
         raise RuntimeError(f"Error while updating config at {path}: {err}") from err
     finally:
         lock.release()
+        lockfile.unlink(missing_ok=True)
 
 class WritableConfig(ReadOnlyConfig):
     '''A class representing a writable config file at a given path.
