@@ -163,8 +163,12 @@ export default {
     submit(data, callback = null) {
       console.log(`PUT /${this.current_endpoint}`)
       console.log(data)
+      var url = `/${this.current_endpoint}`
+      if (this.endpoint == "settings") {
+        url += "?propagate"
+      }
       API
-        .put(`/${this.current_endpoint}`, data)
+        .put(url, data)
         .then(response => {
           console.log(response)
           if (response.status >= 200 && response.status < 300) {
