@@ -246,6 +246,10 @@ class LdapConfig(WritableConfig):
         title = 'LDAP configuration'
         section = 'ldap_auth'
         auth_routes = ['ldap']
+        schema_extra = {
+            'path': '/etc/snooze/server/ldap_auth.yaml',
+            'live': True,
+        }
 
     @root_validator
     def validate_enabled(cls, values):
@@ -422,16 +426,19 @@ class MongodbConfig(BaseModel, extra=Extra.allow):
 
 class FileConfig(BaseModel, extra=Extra.allow):
     type: Literal['file'] = 'file'
-    path: Path = Path(f"{os.getcwd()}/db.json")
+    path: Path = Path('./db.json')
 
 DatabaseConfig = Union[MongodbConfig, FileConfig]
 
 class CoreConfig(ReadOnlyConfig):
-    '''Core configuration. Not editable live. Require a restart of the server.
-    Usually located at `/etc/snooze/server/core.yaml`'''
+    '''Core configuration. Not editable live. Require a restart of the server.'''
     class Config:
         title = 'Core configuration'
         section = 'core'
+        schema_extra = {
+            'path': '/etc/snooze/server/core.yaml',
+            'live': False,
+        }
 
     listen_addr: str = Field(
         title='Listening address',
@@ -525,6 +532,10 @@ class GeneralConfig(WritableConfig):
         title = 'General configuration'
         section = 'general'
         auth_routes = ['local', 'anonymous']
+        schema_extra = {
+            'path': '/etc/snooze/server/general.yaml',
+            'live': True,
+        }
 
     default_auth_backend: Literal['local', 'ldap', 'anonymous'] = Field(
         title='Default authentication backend',
@@ -569,6 +580,10 @@ class NotificationConfig(WritableConfig):
             # timedelta should be serialized into seconds (int)
             timedelta: lambda dt: int(dt.total_seconds()),
         }
+        schema_extra = {
+            'path': '/etc/snooze/server/notifications.yaml',
+            'live': True,
+        }
 
     def dict(self, **kwargs):
         data = BaseModel.dict(self, **kwargs)
@@ -597,6 +612,10 @@ class HousekeeperConfig(WritableConfig):
         json_encoders = {
             # timedelta should be serialized into seconds (int)
             timedelta: lambda dt: int(dt.total_seconds()),
+        }
+        schema_extra = {
+            'path': '/etc/snooze/server/housekeeping.yaml',
+            'live': True,
         }
 
     def dict(self, **kwargs):

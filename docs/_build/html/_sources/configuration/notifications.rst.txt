@@ -1,0 +1,35 @@
+##########################
+Notification configuration
+##########################
+
+    :Package location: ``/etc/snooze/server/notifications.yaml``
+    :Live reload: ``True``
+
+Configuration for default notification delays/retry. Can be edited live in the web interface.
+Usually located at `/etc/snooze/server/notifications.yaml`.
+
+**********
+Properties
+**********
+
+notification_freq
+=================
+
+    :Type: number (time-delta)
+    :Default: ``60.0``
+
+    Time (in seconds) to wait before sending the next notification
+
+
+
+notification_retry
+==================
+
+    :Type: integer
+    :Default: ``3``
+
+    Number of times to retry sending a failed notification
+
+
+
+

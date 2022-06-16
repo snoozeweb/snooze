@@ -1,0 +1,137 @@
+##################
+LDAP configuration
+##################
+
+    :Package location: ``/etc/snooze/server/ldap_auth.yaml``
+    :Live reload: ``True``
+
+Configuration for LDAP authentication. Can be edited live in the web interface.
+Usually located at `/etc/snooze/server/ldap_auth.yaml`.
+
+**********
+Properties
+**********
+
+enabled
+=======
+
+    :Type: boolean
+    :Default: ``False``
+
+    Enable or disable LDAP Authentication
+
+
+
+base_dn
+=======
+
+    :Type: string
+
+    LDAP users location. Multiple DNs can be added if separated by semicolons
+
+
+
+user_filter
+===========
+
+    :Type: string
+
+    LDAP search filter for the base DN
+
+    .. admonition:: Example 1
+
+        .. code-block:: yaml
+
+            user_filter: (objectClass=posixAccount)
+
+
+
+bind_dn
+=======
+
+    :Type: string
+
+    Distinguished name to bind to the LDAP server
+
+    .. admonition:: Example 1
+
+        .. code-block:: yaml
+
+            bind_dn: CN=john.doe,OU=users,DC=example,DC=com
+
+
+
+bind_password
+=============
+
+    :Type: string
+
+    Password for the Bind DN user
+
+
+
+host
+====
+
+    :Type: string
+
+    LDAP host
+
+    .. admonition:: Example 1
+
+        .. code-block:: yaml
+
+            host: ldaps://example.com
+
+
+
+port
+====
+
+    :Type: integer
+    :Default: ``636``
+
+    LDAP server port
+
+
+
+group_dn
+========
+
+    :Type: string
+
+    Base DN used to filter out groups. Will default to the User base DN Multiple DNs can be added if separated by semicolons
+
+
+
+email_attribute
+===============
+
+    :Type: string
+    :Default: ``'mail'``
+
+    User attribute that displays the user email adress
+
+
+
+display_name_attribute
+======================
+
+    :Type: string
+    :Default: ``'cn'``
+
+    User attribute that displays the user real name
+
+
+
+member_attribute
+================
+
+    :Type: string
+    :Default: ``'memberof'``
+
+    Member attribute that displays groups membership
+
+
+
+

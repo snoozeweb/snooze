@@ -8,3 +8,5 @@ snooze.egg-info
 snooze_server.egg-info
 **/Pipfile
 invoke.yaml
+docs/configuration/*.rst
+!docs/configuration/index.rst
