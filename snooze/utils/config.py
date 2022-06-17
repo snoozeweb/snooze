@@ -524,7 +524,7 @@ class GeneralConfig(WritableConfig):
     class Config:
         title = 'General configuration'
         section = 'general'
-        auth_routes = ['local']
+        auth_routes = ['local', 'anonymous']
 
     default_auth_backend: Literal['local', 'ldap', 'anonymous'] = Field(
         title='Default authentication backend',
