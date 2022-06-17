@@ -12,3 +12,11 @@ When edited that way, snooze-server will override the config file in ``/etc/snoo
     :glob:
 
     *
+
+Web interface
+=============
+
+Some configuration files can be managed in the web interface:
+
+.. figure:: images/web_settings_general.png
+    :align: center
