@@ -208,11 +208,6 @@
      Metrics
     </a>
    </li>
-   <li class="toctree-l2">
-    <a class="reference internal" href="19_Settings.html">
-     Settings
-    </a>
-   </li>
   </ul>
  </li>
  <li class="toctree-l1 has-children">
@@ -498,31 +493,11 @@ only covering Service HA.</p>
 </section>
 <section id="configuration">
 <h2>Configuration<a class="headerlink" href="#configuration" title="Permalink to this headline">#</a></h2>
-<p>Clustering configuration should be defined in <code class="docutils literal notranslate"><span class="pre">/etc/snooze/server/core.yaml</span></code> and requires restarting Snooze if changed.</p>
-<p><strong>clustering</strong>:</p>
-<dl class="field-list simple">
-<dt class="field-odd">enable` (<code class="docutils literal notranslate"><span class="pre">false</span></code>)</dt>
-<dd class="field-odd"><p>Enable clustering mode</p>
-</dd>
-<dt class="field-even">members</dt>
-<dd class="field-even"><p>List of snooze servers in the cluster {host, port}</p>
-</dd>
-</dl>
-<ul class="simple">
-<li><dl class="field-list simple">
-<dt class="field-odd">host (<code class="docutils literal notranslate"><span class="pre">localhost</span></code>)</dt>
-<dd class="field-odd"><p>Hostname or IPv4 address of the first member</p>
-</dd>
-<dt class="field-even">port (<code class="docutils literal notranslate"><span class="pre">5200</span></code>)</dt>
-<dd class="field-even"><p>Port on which the first member is listening to</p>
-</dd>
-</dl>
-</li>
-<li><p>…</p></li>
-</ul>
+<p>See configuration reference at <a class="reference internal" href="../configuration/core.html#clusterconfig"><span class="std std-ref">ClusterConfig</span></a></p>
 </section>
 <section id="web-interface">
 <h2>Web interface<a class="headerlink" href="#web-interface" title="Permalink to this headline">#</a></h2>
+<p>The status of the running cluster can be seen in the web interface:</p>
 <figure class="align-center">
 <img alt="../_images/web_cluster.png" src="../_images/web_cluster.png" />
 </figure>

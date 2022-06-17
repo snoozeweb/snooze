@@ -208,11 +208,6 @@
      Metrics
     </a>
    </li>
-   <li class="toctree-l2">
-    <a class="reference internal" href="19_Settings.html">
-     Settings
-    </a>
-   </li>
   </ul>
  </li>
  <li class="toctree-l1 has-children">
@@ -435,11 +430,6 @@ title="Print to PDF"
    Configuration
   </a>
  </li>
- <li class="toc-h2 nav-item toc-entry">
-  <a class="reference internal nav-link" href="#web-interface">
-   Web interface
-  </a>
- </li>
 </ul>
 
     </nav>
@@ -469,11 +459,6 @@ title="Print to PDF"
    Configuration
   </a>
  </li>
- <li class="toc-h2 nav-item toc-entry">
-  <a class="reference internal nav-link" href="#web-interface">
-   Web interface
-  </a>
- </li>
 </ul>
 
                         </nav>
@@ -493,37 +478,8 @@ preventing Snooze server to grow indefinitely large.</p>
 </section>
 <section id="configuration">
 <h2>Configuration<a class="headerlink" href="#configuration" title="Permalink to this headline">#</a></h2>
-<p>Located in <code class="docutils literal notranslate"><span class="pre">/etc/snooze/server/housekeeper.yaml</span></code>, these settings can also be set up using the web interface on the <strong>Settings</strong> page:</p>
-<dl class="field-list">
-<dt class="field-odd">trigger_on_startup (<code class="docutils literal notranslate"><span class="pre">true</span></code>)</dt>
-<dd class="field-odd"><p>Trigger the housekeeper on Startup</p>
-</dd>
-<dt class="field-even">record_ttl (<code class="docutils literal notranslate"><span class="pre">172800</span></code>)</dt>
-<dd class="field-even"><p>Assign a time to live for any new alert. -1 for no expiration.  Default is every 2 days.</p>
-<div class="admonition caution">
-<p class="admonition-title">Caution</p>
-<p>It is not recommended to have alerts that do not expire. As they will keep on filling up disk space, their growing number will also decrease overall performances.</p>
-</div>
-</dd>
-<dt class="field-odd">cleanup_alert (<code class="docutils literal notranslate"><span class="pre">300</span></code>)</dt>
-<dd class="field-odd"><p>Execute a cleanup job every X seconds. &lt;=0 for no cleanup. Default is every 5min.</p>
-</dd>
-<dt class="field-even">cleanup_comment (<code class="docutils literal notranslate"><span class="pre">86400</span></code>)</dt>
-<dd class="field-even"><p>Execute a cleanup job every X seconds. &lt;=0 for no cleanup. Default is daily.</p>
-</dd>
-<dt class="field-odd">cleanup_snooze (<code class="docutils literal notranslate"><span class="pre">259200</span></code>)</dt>
-<dd class="field-odd"><p>Cleanup expired snooze filters that are X seconds old (job executed once at 00:00AM). &lt;=0 for no cleanup. Default is every 3 days.</p>
-</dd>
-<dt class="field-even">cleanup_notification (<code class="docutils literal notranslate"><span class="pre">259200</span></code>)</dt>
-<dd class="field-even"><p>‘Cleanup expired notifications that are X seconds old (job executed once at 00:00AM). &lt;=0 for no cleanup’. Default is every 3 days.</p>
-</dd>
-<dt class="field-odd">cleanup_audit (<code class="docutils literal notranslate"><span class="pre">2419200</span></code>)</dt>
-<dd class="field-odd"><p>Cleanup expired audit logs that are X seconds old (job executed once at 00:00AM). &lt;=0 for no cleanup. Default is every 28 days.</p>
-</dd>
-</dl>
-</section>
-<section id="web-interface">
-<h2>Web interface<a class="headerlink" href="#web-interface" title="Permalink to this headline">#</a></h2>
+<p>See configuration reference at <span class="xref std std-ref">Housekeeper configuration</span>
+It can also be configured in the web interface:</p>
 <figure class="align-center">
 <img alt="../_images/web_housekeeping.png" src="../_images/web_housekeeping.png" />
 </figure>
