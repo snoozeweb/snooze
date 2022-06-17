@@ -16,6 +16,7 @@ from typing import Optional, Tuple
 from wsgiref.simple_server import WSGIServer, WSGIRequestHandler
 
 from socketserver import ThreadingMixIn
+from pydantic import IPvAnyAddress
 
 from snooze.utils.config import SslConfig
 from snooze.utils.threading import SurvivingThread
@@ -42,11 +43,11 @@ class TcpWsgiServer(ThreadingMixIn, WSGIServer):
     '''Multi threaded TCP server serving a WSGI application'''
     daemon_threads = True
 
-    def __init__(self, host: str, port: int, sslconf: SslConfig, api: 'Api'):
+    def __init__(self, host: IPvAnyAddress, port: int, sslconf: SslConfig, api: 'Api'):
         self.timeout = 10
 
         self.ssl = sslconf
-        WSGIServer.__init__(self, (host, port), NoLogHandler)
+        WSGIServer.__init__(self, (str(host), port), NoLogHandler)
         self.set_app(api)
         self.wrap_ssl()
 
