@@ -10,6 +10,7 @@
 import os
 import logging
 from contextlib import contextmanager
+from ipaddress import IPv4Address
 from logging import getLogger
 from pathlib import Path
 from datetime import timedelta
@@ -18,7 +19,7 @@ from typing import Optional, List, Any, Dict, Literal, ClassVar, Union, Callable
 
 import yaml
 from filelock import FileLock
-from pydantic import BaseModel, Field, PrivateAttr, validator, root_validator, ValidationError, Extra
+from pydantic import BaseModel, Field, PrivateAttr, validator, root_validator, ValidationError, Extra, IPvAnyAddress
 from pydantic.config import BaseConfig
 from pydantic.fields import ModelField
 from pydantic.utils import deep_update
@@ -440,9 +441,9 @@ class CoreConfig(ReadOnlyConfig):
             'live': False,
         }
 
-    listen_addr: str = Field(
+    listen_addr: IPvAnyAddress = Field(
         title='Listening address',
-        default='0.0.0.0',
+        default=IPv4Address('0.0.0.0'),
         description="IPv4 address on which Snooze process is listening to",
     )
     port: int = Field(
