@@ -13,7 +13,7 @@ preventing Snooze server to grow indefinitely large.
 Configuration
 -------------
 
-See configuration reference at :ref:`Housekeeper configuration<Housekeeper configuration>`
+See configuration reference at :ref:`Housekeeper configuration<Housekeeper-configuration>`
 It can also be configured in the web interface:
 
 .. figure:: images/web_housekeeping.png

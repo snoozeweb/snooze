@@ -1,3 +1,5 @@
+.. _Housekeeper-configuration:
+
 #########################
 Housekeeper configuration
 #########################
