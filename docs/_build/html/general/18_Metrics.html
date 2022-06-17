@@ -429,6 +429,53 @@ title="Print to PDF"
   <a class="reference internal nav-link" href="#overview">
    Overview
   </a>
+  <ul class="nav section-nav flex-column">
+   <li class="toc-h3 nav-item toc-entry">
+    <a class="reference internal nav-link" href="#snooze-process-alert-duration">
+     snooze_process_alert_duration
+    </a>
+   </li>
+   <li class="toc-h3 nav-item toc-entry">
+    <a class="reference internal nav-link" href="#snooze-process-alert-duration-by-plugin">
+     snooze_process_alert_duration_by_plugin
+    </a>
+   </li>
+   <li class="toc-h3 nav-item toc-entry">
+    <a class="reference internal nav-link" href="#snooze-alert-hit">
+     snooze_alert_hit
+    </a>
+   </li>
+   <li class="toc-h3 nav-item toc-entry">
+    <a class="reference internal nav-link" href="#snooze-alert-snoozed">
+     snooze_alert_snoozed
+    </a>
+   </li>
+   <li class="toc-h3 nav-item toc-entry">
+    <a class="reference internal nav-link" href="#snooze-alert-throttled">
+     snooze_alert_throttled
+    </a>
+   </li>
+   <li class="toc-h3 nav-item toc-entry">
+    <a class="reference internal nav-link" href="#snooze-alert-closed">
+     snooze_alert_closed
+    </a>
+   </li>
+   <li class="toc-h3 nav-item toc-entry">
+    <a class="reference internal nav-link" href="#snooze-notification-sent">
+     snooze_notification_sent
+    </a>
+   </li>
+   <li class="toc-h3 nav-item toc-entry">
+    <a class="reference internal nav-link" href="#snooze-action-success">
+     snooze_action_success
+    </a>
+   </li>
+   <li class="toc-h3 nav-item toc-entry">
+    <a class="reference internal nav-link" href="#snooze-action-error">
+     snooze_action_error
+    </a>
+   </li>
+  </ul>
  </li>
  <li class="toc-h2 nav-item toc-entry">
   <a class="reference internal nav-link" href="#web-interface">
@@ -470,6 +517,53 @@ title="Print to PDF"
   <a class="reference internal nav-link" href="#overview">
    Overview
   </a>
+  <ul class="nav section-nav flex-column">
+   <li class="toc-h3 nav-item toc-entry">
+    <a class="reference internal nav-link" href="#snooze-process-alert-duration">
+     snooze_process_alert_duration
+    </a>
+   </li>
+   <li class="toc-h3 nav-item toc-entry">
+    <a class="reference internal nav-link" href="#snooze-process-alert-duration-by-plugin">
+     snooze_process_alert_duration_by_plugin
+    </a>
+   </li>
+   <li class="toc-h3 nav-item toc-entry">
+    <a class="reference internal nav-link" href="#snooze-alert-hit">
+     snooze_alert_hit
+    </a>
+   </li>
+   <li class="toc-h3 nav-item toc-entry">
+    <a class="reference internal nav-link" href="#snooze-alert-snoozed">
+     snooze_alert_snoozed
+    </a>
+   </li>
+   <li class="toc-h3 nav-item toc-entry">
+    <a class="reference internal nav-link" href="#snooze-alert-throttled">
+     snooze_alert_throttled
+    </a>
+   </li>
+   <li class="toc-h3 nav-item toc-entry">
+    <a class="reference internal nav-link" href="#snooze-alert-closed">
+     snooze_alert_closed
+    </a>
+   </li>
+   <li class="toc-h3 nav-item toc-entry">
+    <a class="reference internal nav-link" href="#snooze-notification-sent">
+     snooze_notification_sent
+    </a>
+   </li>
+   <li class="toc-h3 nav-item toc-entry">
+    <a class="reference internal nav-link" href="#snooze-action-success">
+     snooze_action_success
+    </a>
+   </li>
+   <li class="toc-h3 nav-item toc-entry">
+    <a class="reference internal nav-link" href="#snooze-action-error">
+     snooze_action_error
+    </a>
+   </li>
+  </ul>
  </li>
  <li class="toc-h2 nav-item toc-entry">
   <a class="reference internal nav-link" href="#web-interface">
@@ -503,32 +597,95 @@ title="Print to PDF"
 <section id="overview">
 <h2>Overview<a class="headerlink" href="#overview" title="Permalink to this headline">#</a></h2>
 <p>SnoozeWeb has several metrics exposed by the HTTP endpoint <code class="docutils literal notranslate"><span class="pre">/metrics</span></code> in <a class="reference external" href="https://openmetrics.io/">OpenMetrics</a> format.</p>
+<section id="snooze-process-alert-duration">
+<h3>snooze_process_alert_duration<a class="headerlink" href="#snooze-process-alert-duration" title="Permalink to this headline">#</a></h3>
 <dl class="field-list simple">
-<dt class="field-odd">process_alert_duration</dt>
-<dd class="field-odd"><p>Average time spend processing a alert by <code class="docutils literal notranslate"><span class="pre">source</span></code>, <code class="docutils literal notranslate"><span class="pre">environment</span></code> and <code class="docutils literal notranslate"><span class="pre">severity</span></code>.</p>
+<dt class="field-odd">Type</dt>
+<dd class="field-odd"><p>Summary</p>
 </dd>
-<dt class="field-even">alert_hit</dt>
-<dd class="field-even"><p>Counter of received alerts by by <code class="docutils literal notranslate"><span class="pre">source</span></code>, <code class="docutils literal notranslate"><span class="pre">environment</span></code> and <code class="docutils literal notranslate"><span class="pre">severity</span></code>.</p>
-</dd>
-<dt class="field-odd">alert_snoozed</dt>
-<dd class="field-odd"><p>Counter of snoozed alerts by <code class="docutils literal notranslate"><span class="pre">name</span></code>.</p>
-</dd>
-<dt class="field-even">alert_throttled</dt>
-<dd class="field-even"><p>Counter of throttled alerts by <code class="docutils literal notranslate"><span class="pre">name</span></code>.</p>
-</dd>
-<dt class="field-odd">alert_closed</dt>
-<dd class="field-odd"><p>Counter of received closed alerts by <code class="docutils literal notranslate"><span class="pre">name</span></code>.</p>
-</dd>
-<dt class="field-even">notification_sent</dt>
-<dd class="field-even"><p>Counter of notification sent by <code class="docutils literal notranslate"><span class="pre">name</span></code>.</p>
-</dd>
-<dt class="field-odd">action_success</dt>
-<dd class="field-odd"><p>Counter of action that succeeded by <code class="docutils literal notranslate"><span class="pre">name</span></code>.</p>
-</dd>
-<dt class="field-even">action_error</dt>
-<dd class="field-even"><p>Counter of action that failed by <code class="docutils literal notranslate"><span class="pre">name</span></code>.</p>
+<dt class="field-even">Unit</dt>
+<dd class="field-even"><p>Seconds</p>
 </dd>
 </dl>
+<p>Average time spent processing a alert by <code class="docutils literal notranslate"><span class="pre">source</span></code>, <code class="docutils literal notranslate"><span class="pre">environment</span></code> and <code class="docutils literal notranslate"><span class="pre">severity</span></code>.</p>
+</section>
+<section id="snooze-process-alert-duration-by-plugin">
+<h3>snooze_process_alert_duration_by_plugin<a class="headerlink" href="#snooze-process-alert-duration-by-plugin" title="Permalink to this headline">#</a></h3>
+<dl class="field-list simple">
+<dt class="field-odd">Type</dt>
+<dd class="field-odd"><p>Summary</p>
+</dd>
+<dt class="field-even">Unit</dt>
+<dd class="field-even"><p>Seconds</p>
+</dd>
+</dl>
+<p>Average time spend processing a alert by <code class="docutils literal notranslate"><span class="pre">plugin</span></code> and <code class="docutils literal notranslate"><span class="pre">environment</span></code>. Useful to track down
+slowness in the processing.</p>
+</section>
+<section id="snooze-alert-hit">
+<h3>snooze_alert_hit<a class="headerlink" href="#snooze-alert-hit" title="Permalink to this headline">#</a></h3>
+<dl class="field-list simple">
+<dt class="field-odd">Type</dt>
+<dd class="field-odd"><p>Counter</p>
+</dd>
+</dl>
+<p>Counter of received alerts by by <code class="docutils literal notranslate"><span class="pre">source</span></code>, <code class="docutils literal notranslate"><span class="pre">environment</span></code> and <code class="docutils literal notranslate"><span class="pre">severity</span></code>.</p>
+</section>
+<section id="snooze-alert-snoozed">
+<h3>snooze_alert_snoozed<a class="headerlink" href="#snooze-alert-snoozed" title="Permalink to this headline">#</a></h3>
+<dl class="field-list simple">
+<dt class="field-odd">Type</dt>
+<dd class="field-odd"><p>Counter</p>
+</dd>
+</dl>
+<p>Total number of alerts snoozed by the <code class="docutils literal notranslate"><span class="pre">snooze</span></code> plugin.</p>
+</section>
+<section id="snooze-alert-throttled">
+<h3>snooze_alert_throttled<a class="headerlink" href="#snooze-alert-throttled" title="Permalink to this headline">#</a></h3>
+<dl class="field-list simple">
+<dt class="field-odd">Type</dt>
+<dd class="field-odd"><p>Counter</p>
+</dd>
+</dl>
+<p>Total number of alerts throttled by the <code class="docutils literal notranslate"><span class="pre">aggregaterule</span></code> plugin. Alerts are grouped by
+aggregate rule names.</p>
+</section>
+<section id="snooze-alert-closed">
+<h3>snooze_alert_closed<a class="headerlink" href="#snooze-alert-closed" title="Permalink to this headline">#</a></h3>
+<dl class="field-list simple">
+<dt class="field-odd">Type</dt>
+<dd class="field-odd"><p>Counter</p>
+</dd>
+</dl>
+<p>Total number of alerts closed by a user.</p>
+</section>
+<section id="snooze-notification-sent">
+<h3>snooze_notification_sent<a class="headerlink" href="#snooze-notification-sent" title="Permalink to this headline">#</a></h3>
+<dl class="field-list simple">
+<dt class="field-odd">Type</dt>
+<dd class="field-odd"><p>Counter</p>
+</dd>
+</dl>
+<p>Total number of notifications sent. Grouped by notification name.</p>
+</section>
+<section id="snooze-action-success">
+<h3>snooze_action_success<a class="headerlink" href="#snooze-action-success" title="Permalink to this headline">#</a></h3>
+<dl class="field-list simple">
+<dt class="field-odd">Type</dt>
+<dd class="field-odd"><p>Counter</p>
+</dd>
+</dl>
+<p>Total number of notification actions that succeeded.</p>
+</section>
+<section id="snooze-action-error">
+<h3>snooze_action_error<a class="headerlink" href="#snooze-action-error" title="Permalink to this headline">#</a></h3>
+<dl class="field-list simple">
+<dt class="field-odd">Type</dt>
+<dd class="field-odd"><p>Counter</p>
+</dd>
+</dl>
+<p>Total number of notification actions that failed.</p>
+</section>
 </section>
 <section id="web-interface">
 <h2>Web interface<a class="headerlink" href="#web-interface" title="Permalink to this headline">#</a></h2>

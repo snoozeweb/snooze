@@ -9,14 +9,72 @@ Overview
 
 SnoozeWeb has several metrics exposed by the HTTP endpoint ``/metrics`` in `OpenMetrics <https://openmetrics.io/>`_ format.
 
-:process_alert_duration: Average time spend processing a alert by ``source``, ``environment`` and ``severity``.
-:alert_hit: Counter of received alerts by by ``source``, ``environment`` and ``severity``.
-:alert_snoozed: Counter of snoozed alerts by ``name``.
-:alert_throttled: Counter of throttled alerts by ``name``.
-:alert_closed: Counter of received closed alerts by ``name``.
-:notification_sent: Counter of notification sent by ``name``.
-:action_success: Counter of action that succeeded by ``name``.
-:action_error: Counter of action that failed by ``name``.
+snooze_process_alert_duration
+-----------------------------
+
+:Type: Summary
+:Unit: Seconds
+
+Average time spent processing a alert by ``source``, ``environment`` and ``severity``.
+
+snooze_process_alert_duration_by_plugin
+---------------------------------------
+
+:Type: Summary
+:Unit: Seconds
+
+Average time spend processing a alert by ``plugin`` and ``environment``. Useful to track down
+slowness in the processing.
+
+snooze_alert_hit
+----------------
+
+:Type: Counter
+
+Counter of received alerts by by ``source``, ``environment`` and ``severity``.
+
+snooze_alert_snoozed
+--------------------
+
+:Type: Counter
+
+Total number of alerts snoozed by the ``snooze`` plugin.
+
+snooze_alert_throttled
+----------------------
+
+:Type: Counter
+
+Total number of alerts throttled by the ``aggregaterule`` plugin. Alerts are grouped by
+aggregate rule names.
+
+snooze_alert_closed
+-------------------
+
+:Type: Counter
+
+Total number of alerts closed by a user.
+
+snooze_notification_sent
+------------------------
+
+:Type: Counter
+
+Total number of notifications sent. Grouped by notification name.
+
+snooze_action_success
+---------------------
+
+:Type: Counter
+
+Total number of notification actions that succeeded.
+
+snooze_action_error
+-------------------
+
+:Type: Counter
+
+Total number of notification actions that failed.
 
 Web interface
 =============
