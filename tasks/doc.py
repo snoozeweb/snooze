@@ -149,6 +149,7 @@ def config(ctx):
 def sphinx(ctx):
     '''Build HTML documentation from RST using Sphinx'''
     with ctx.cd('docs'):
+        ctx.run('rm -rf _build')
         ctx.run('make html')
 
 ns = Collection('doc')
