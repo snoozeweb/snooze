@@ -101,6 +101,9 @@ def rst_definition(name: str, definition: dict) -> str:
 
 def rst_schema(schema: dict) -> str:
     text = ''
+    # Reference
+    ref_name = schema['title'].replace(' ', '-')
+    text += f".. _{ref_name}:\n\n"
     # Title
     text += rst_title(schema['title'], '#', double=True) + "\n\n"
     # Description
