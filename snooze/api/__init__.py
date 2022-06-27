@@ -24,8 +24,8 @@ from snooze.api.routes import *
 from snooze.health import HealthRoute
 from snooze.token import TokenAuthMiddleware
 from snooze.utils.config import WebConfig
-from snooze.utils.functions import log_error_handler, log_warning_handler, log_uncaught_handler
-from snooze.utils.typing import HTTPUserErrors
+from snooze.utils.functions import log_error_handler, log_warning_handler, log_uncaught_handler, log_ignore_handler
+from snooze.utils.typing import HTTPUserErrors, HTTPIgnoredErrors
 
 SNOOZE_GLOBAL_RUNDIR = '/var/run/snooze'
 uid = os.getuid()
@@ -58,7 +58,8 @@ class Api:
             falcon.CORSMiddleware(allow_origins='*', allow_credentials='*'),
             LoggerMiddleware(self.core.config.core.audit_excluded_paths),
         ]
-        middlewares.append(TokenAuthMiddleware(self.core.token_engine))
+        if not self.core.config.core.no_login:
+            middlewares.append(TokenAuthMiddleware(self.core.token_engine))
         self.handler = falcon.API(middleware=middlewares)
         self.handler.req_options.auto_parse_qs_csv = False
 
@@ -68,6 +69,7 @@ class Api:
         )
         self.handler.req_options.media_handlers.update({'application/json': json_handler})
         self.handler.resp_options.media_handlers.update({'application/json': json_handler})
+        self.handler.add_error_handler(HTTPIgnoredErrors, log_ignore_handler)
         self.handler.add_error_handler(HTTPUserErrors, log_warning_handler)
         self.handler.add_error_handler(falcon.HTTPError, log_error_handler)
         self.handler.add_error_handler(Exception, log_uncaught_handler)
