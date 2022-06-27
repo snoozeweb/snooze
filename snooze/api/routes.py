@@ -207,7 +207,7 @@ class PermissionsRoute(BasicRoute):
             for plugin in self.api.core.plugins:
                 permissions.append('rw_' + plugin.name)
                 permissions.append('ro_' + plugin.name)
-                for additional_permission in plugin.permissions:
+                for additional_permission in plugin.meta.permissions:
                     permissions.append(additional_permission)
             log.debug("List of permissions: {}".format(permissions))
             resp.content_type = falcon.MEDIA_JSON
