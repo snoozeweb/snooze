@@ -58,8 +58,7 @@ class Api:
             falcon.CORSMiddleware(allow_origins='*', allow_credentials='*'),
             LoggerMiddleware(self.core.config.core.audit_excluded_paths),
         ]
-        if not self.core.config.core.no_login:
-            middlewares.append(TokenAuthMiddleware(self.core.token_engine))
+        middlewares.append(TokenAuthMiddleware(self.core.token_engine))
         self.handler = falcon.API(middleware=middlewares)
         self.handler.req_options.auto_parse_qs_csv = False
 

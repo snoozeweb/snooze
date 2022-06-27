@@ -326,6 +326,8 @@ class Core:
                         {"name": "root", "method": "local", "password": sha256("root".encode('utf-8')).hexdigest()},
                     ]
                     self.db.write('user.password', user_passwords)
+
+                self.db.write('profile.general', root)
                 self.db.write('general', [{'init_db': True}])
 
     def init_backup(self):

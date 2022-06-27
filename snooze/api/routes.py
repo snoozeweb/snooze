@@ -263,13 +263,6 @@ class LoginRoute(BasicRoute):
 
     def on_get(self, req, resp):
         log.debug("Listing authentication backends")
-        if self.core.config.core.no_login:
-            resp.content_type = falcon.MEDIA_JSON
-            resp.status = falcon.HTTP_200
-            resp.media = {
-                'token': self.api.get_root_token(),
-            }
-            return
         try:
             backends = [
                 {'name':self.api.auth_routes[backend].name, 'endpoint': backend}
@@ -283,9 +276,10 @@ class LoginRoute(BasicRoute):
             if len(default_backends) > 0:
                 backends.remove(default_backends[0])
                 backends.insert(0, default_backends[0])
-            resp.media = {
-                'data': {'backends': backends},
-            }
+            data = {'data': {'backends': backends}}
+            if self.core.config.core.no_login:
+                data['token'] = self.api.get_root_token()
+            resp.media = data
         except Exception as err:
             log.exception(err)
             resp.status = falcon.HTTP_503
