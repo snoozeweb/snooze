@@ -524,7 +524,7 @@ class GeneralConfig(WritableConfig):
         section = 'general'
         auth_routes = ['local']
 
-    default_auth_backend: Literal['local', 'ldap'] = Field(
+    default_auth_backend: Literal['local', 'ldap', 'anonymous'] = Field(
         title='Default authentication backend',
         description='Backend that will be first in the list of displayed authentication backends',
         default='local',
@@ -676,6 +676,8 @@ def setup_logging(basedir: Path = SNOOZE_CONFIG):
     debug = CoreConfig(basedir).debug
     if debug:
         for _, handler in logging_dict.get('handlers', {}).items():
+            handler['level'] = 'DEBUG'
+        for _, handler in logging_dict.get('loggers', {}).items():
             handler['level'] = 'DEBUG'
 
     logging.config.dictConfig(logging_dict)
