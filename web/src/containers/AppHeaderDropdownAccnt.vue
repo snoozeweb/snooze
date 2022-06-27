@@ -73,7 +73,7 @@ export default {
     },
     logout() {
       localStorage.setItem('snooze-token', '')
-      this.$router.push('/login')
+      this.$router.go()
     }
   },
   mounted() {
