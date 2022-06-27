@@ -34,6 +34,7 @@ class Metadata(BaseModel):
     routes: Dict[str, RouteArgs]
     route_defaults: RouteArgs
     options: dict
+    permissions: list
 
 class Plugin:
     def __init__(self, core: 'Core'):
@@ -99,6 +100,7 @@ class Plugin:
             route_defaults=config.route_defaults,
             audit=config.audit,
             options=config.options,
+            permissions=config.provides,
         )
         if config.search_fields:
             self.db.create_index(self.name, config.search_fields)
