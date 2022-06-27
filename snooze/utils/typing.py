@@ -29,11 +29,18 @@ DuplicatePolicy = Literal['insert', 'reject', 'replace', 'update']
 # It will not affect performance to list many, since falcon keep a dictionary of exception => handler.
 HTTPUserErrors = (
     # HTTP 400
-    falcon.HTTPBadRequest, falcon.HTTPInvalidHeader, falcon.HTTPInvalidParam, falcon.HTTPMissingParam,
-    # HTTP 403
-    falcon.HTTPForbidden,
+    falcon.HTTPBadRequest,
     # HTTP 404
     falcon.HTTPNotFound, falcon.HTTPRouteNotFound,
+)
+
+HTTPIgnoredErrors = (
+    # HTTP 400: When the user doesn't have a token
+    falcon.HTTPMissingHeader,
+    # HTTP 401: Invalid token (when out of validity)
+    falcon.HTTPUnauthorized,
+    # HTTP 403: When missing authorization
+    falcon.HTTPForbidden,
 )
 
 class AuthorizationPolicy(BaseModel):
