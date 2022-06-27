@@ -30,8 +30,6 @@ DuplicatePolicy = Literal['insert', 'reject', 'replace', 'update']
 HTTPUserErrors = (
     # HTTP 400
     falcon.HTTPBadRequest, falcon.HTTPInvalidHeader, falcon.HTTPInvalidParam, falcon.HTTPMissingParam,
-    # HTTP 401
-    falcon.HTTPUnauthorized,
     # HTTP 403
     falcon.HTTPForbidden,
     # HTTP 404
