@@ -320,3 +320,9 @@ def test_tinydb_compute_stats(db):
     assert list(filter(lambda x: x['key'] == 'b_qty', results['data'][0]['data']))[0]['value'] == 10
     assert list(filter(lambda x: x['key'] == 'a_qty', results['data'][1]['data']))[0]['value'] == 4
     assert list(filter(lambda x: x['key'] == 'b_qty', results['data'][1]['data']))[0]['value'] == 40
+
+def test_tinydb_get_one(db):
+    db.write('record', [{'a': '1', 'b': '1'}, {'a': '1', 'b': '2'}])
+    assert db.get_one('record', {'a': '1'})['b'] == '1'
+    assert db.get_one('record', {'a': '1'}, orderby='b', asc=True)['b'] == '1'
+    assert db.get_one('record', {'a': '1'}, orderby='b', asc=False)['b'] == '2'
