@@ -250,6 +250,12 @@ def test_mongo_inc_labels(db):
     assert db.search('stats', ['=', 'key', 'metric_a__source__syslog'])['data'][0]['value'] == 2
     assert db.search('stats', ['=', 'key', 'metric_a__type__db'])['data'][0]['value'] == 1
 
+def test_mongo_get_one(db):
+    db.write('record', [{'a': '1', 'b': '1'}, {'a': '1', 'b': '2'}])
+    assert db.get_one('record', {'a': '1'})['b'] == '1'
+    assert db.get_one('record', {'a': '1'}, orderby='b', asc=True)['b'] == '1'
+    assert db.get_one('record', {'a': '1'}, orderby='b', asc=False)['b'] == '2'
+
 # timezone in datetostring not implemented
 #@mongomock.patch('mongodb://localhost:27017')
 #def test_mongo_compute_stats():

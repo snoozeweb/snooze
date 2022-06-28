@@ -263,8 +263,14 @@ class BackendDB(Database):
         self.db[collection].update_one({'uid': uid}, update, upsert=True)
 
     @wrap_exception
-    def get_one(self, collection, search: dict):
-        result = self.db[collection].find_one(search)
+    def get_one(self, collection, search: dict, **pagination):
+        for key, value in DEFAULT_PAGINATION.items():
+            if pagination.get(key) is None:
+                pagination[key] = value
+        orderby = pagination['orderby']
+        asc = pagination['asc']
+        asc_int = (1 if asc else -1)
+        result = self.db[collection].find_one(search, sort=[(orderby, asc_int)])
         return result
 
     @wrap_exception

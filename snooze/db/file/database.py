@@ -258,9 +258,12 @@ class BackendDB(Database):
         }
 
     @wrap_exception
-    def get_one(self, collection: str, search: dict):
+    def get_one(self, collection: str, search: dict, **pagination):
         '''Return the first element found based on a search dict'''
         with mutex:
+            pagination = {**DEFAULT_PAGINATION, **pagination}
+            orderby = pagination['orderby']
+            asc = pagination['asc']
             queries = []
             for key, value in search.items():
                 query = dig(Query(), *key.split('.')) == value
@@ -268,6 +271,10 @@ class BackendDB(Database):
             search_query = reduce(lambda a, b: a & b, queries)
             results = self.db.table(collection).search(search_query)
             if results:
+                if len(orderby) > 0 and all(dig(res, *orderby.split('.')) for res in list(results)):
+                    results = sorted(list(results),  key=lambda x: reduce(lambda c, k: c.get(k, {}), orderby.split('.'), x))
+                if not asc:
+                    results = list(reversed(results))
                 return results[0]
             else:
                 return None
