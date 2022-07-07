@@ -32,17 +32,13 @@ fields:
         tdClass: ['align-middle', 'text-nowrap']
         type: array
     -
-        label: ''
-        key: enabled
-        tdClass: ['align-middle', 'text-center']
-        thClass: 'text-center'
-        sortable: false
-    -
         key: button
         sortable: false
         label: ''
         tdClass: ['align-middle', 'text-center']
         thClass: 'text-center'
+orderby: name
+isascending: true
 form:
     enabled:
         display_name: Enabled

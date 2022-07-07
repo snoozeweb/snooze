@@ -2,38 +2,25 @@
 tabs:
     -
         title: 'Rules'
-        filter: ['NOT', ['EXISTS', 'parent']]
 fields:
     -
         key: name
         sortable: true
-        thStyle: {width: '20%'}
+        tdStyle: {width: '20%'}
         tdClass: ['align-middle']
     -
         key: condition
         sortable: false
-        thStyle: {width: '50%'}
+        tdStyle: {width: '45%'}
         tdClass: ['align-middle']
         type: array
     -
         key: modifications
         sortable: false
-        thStyle: {width: '30%'}
+        tdStyle: {width: '35%'}
         tdClass: ['align-middle']
         type: array
-    -
-        label: ''
-        key: enabled
-        tdClass: ['align-middle', 'text-center']
-        thClass: 'text-center'
-        sortable: false
-    -
-        key: button
-        sortable: false
-        label: ''
-        tdClass: ['align-middle', 'text-center']
-        thClass: 'text-center'
-orderby: name
+orderby: tree_order
 isascending: true
 form:
     enabled:

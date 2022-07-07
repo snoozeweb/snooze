@@ -41,7 +41,7 @@
     <CRow class="mt-3">
       <CCol md="3" sm="12">
         <CCard>
-          <CCardHeader class="py-2 px-3">Alerts by Source</CCardHeader>
+          <CCardHeader class="card-header-border py-2 px-3">Alerts by Source</CCardHeader>
           <CCardBody class="p-2">
             <ChartDoughnut style="min-height:300px"
               :datasets="this.data.split_data['alert_hit__source__']"
@@ -51,7 +51,7 @@
       </CCol>
       <CCol md="3" sm="12">
         <CCard>
-          <CCardHeader class="py-2 px-3">Alerts by Environment</CCardHeader>
+          <CCardHeader class="card-header-border py-2 px-3">Alerts by Environment</CCardHeader>
           <CCardBody class="p-2">
             <ChartDoughnut style="min-height:300px"
               :datasets="this.data.split_data['alert_hit__environment__']"
@@ -61,7 +61,7 @@
       </CCol>
       <CCol md="6" sm="12">
         <CCard>
-          <CCardHeader class="py-2 px-3">Actions</CCardHeader>
+          <CCardHeader class="card-header-border py-2 px-3">Actions</CCardHeader>
           <CCardBody class="p-2">
             <ChartBar style="min-height:300px"
               sort
@@ -77,7 +77,7 @@
     <CRow class="mt-3">
       <CCol md="6" sm="12">
         <CCard>
-          <CCardHeader class="py-2 px-3">Throttled Alerts</CCardHeader>
+          <CCardHeader class="card-header-border py-2 px-3">Throttled Alerts</CCardHeader>
           <CCardBody class="p-2">
             <ChartBar style="min-height:300px"
               sort
@@ -90,7 +90,7 @@
       </CCol>
       <CCol md="6" sm="12">
         <CCard>
-          <CCardHeader class="py-2 px-3">Snoozed Alerts</CCardHeader>
+          <CCardHeader class="card-header-border py-2 px-3">Snoozed Alerts</CCardHeader>
           <CCardBody class="p-2">
             <ChartBar style="min-height:300px"
               sort
@@ -105,7 +105,7 @@
     <CRow class="mt-3">
       <CCol md="12" sm="12">
         <CCard>
-          <CCardHeader class="py-2 px-3">Alert by Weekday</CCardHeader>
+          <CCardHeader class="card-header-border py-2 px-3">Alert by Weekday</CCardHeader>
           <CCardBody class="p-2">
             <ChartBar style="min-height:300px"
               :datasets="datasets_weekday"
@@ -117,7 +117,7 @@
     <CRow class="mt-3">
       <CCol md="12">
         <CCard>
-          <CCardHeader class="py-2 px-3">
+          <CCardHeader class="card-header-border py-2 px-3">
             Last 10 Comments
           </CCardHeader>
           <CCardBody class="p-2">

@@ -52,6 +52,16 @@
   user-select: none;
 }
 
+.grab {
+  cursor: grab;
+  user-select: none;
+}
+
+.grabbing {
+  cursor: grabbing;
+  user-select: none;
+}
+
 .badge-lg {
   padding: 0.3em 0.5em;
   font-size: 1em;

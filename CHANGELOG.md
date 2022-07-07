@@ -4,6 +4,7 @@
 * Web: Cliking on the main graph in Dashboard redirects to the corresponding alerts
 * Web: Alerts preview when writing a condition
 * Web: Can set modifications when re-opening an alert
+* Web: New treeview for Rules. Drag&Drop support
 * Core: Support for Grafana 8.5+ (same webhook)
 * Core: Housekeeper: cleanup rule orphans
 

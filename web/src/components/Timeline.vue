@@ -1,7 +1,7 @@
 <template>
   <CCol v-if="record['comment_count']" class="p-2">
     <CCard>
-      <CCardHeader class='text-center' style='font-weight:bold'>Timeline</CCardHeader>
+      <CCardHeader class='card-header-border text-center' style='font-weight:bold'>Timeline</CCardHeader>
       <CCardBody class="p-2">
         <div v-if="data != ''">
           <CRow v-for="row in data.slice().reverse()" :key="row['uid']" class="m-0">

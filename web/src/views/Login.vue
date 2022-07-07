@@ -7,7 +7,7 @@
       <CRow class="justify-content-center">
         <CCol md="8">
           <CCard>
-            <CCardHeader>
+            <CCardHeader class="card-header-border">
               <CNav variant="pills" role="tablist" card v-model="tabIndex">
                 <CNavItem v-for="(backend, i) in this.auth_backends" :key="backend['endpoint']">
                   <CNavLink href="javascript:void(0);" :active="tabIndex == i" @click="() => {tabIndex = i}">{{ backend['name'] }}</CNavLink>

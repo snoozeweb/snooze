@@ -2,3 +2,5 @@
 name: 'Rule'
 desc: 'Rule desc'
 auto_reload: true
+force_order: 'tree_order'
+tree: true

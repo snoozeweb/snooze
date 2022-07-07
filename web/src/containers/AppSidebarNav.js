@@ -129,7 +129,6 @@ const AppSidebarNav = defineComponent({
                   {
                     active: props.isActive,
                     href: props.href,
-                    onClick: () => props.navigate(),
                   },
                   {
                     default: () => [

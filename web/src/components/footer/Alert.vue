@@ -7,7 +7,7 @@
       no_search
       no_history
       no_selection
-      no_contextmenu
+      short_contextmenu
       default_tab="Preview"
       @update="on_update"
     >
@@ -29,7 +29,9 @@ export default {
   mounted () {
     this.handler['condition_refresh'] = condition => {
       this.$refs.table.default_search = JSON.stringify(condition.toArray())
-      this.$refs.table.reload()
+      if (this.$refs.table.loaded) {
+        this.$refs.table.reload()
+      }
     }
     this.emitter.on('condition_refresh', this.handler['condition_refresh'])
   },

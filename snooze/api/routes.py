@@ -75,12 +75,12 @@ class BasicRoute:
         else:
             return None
 
-    def insert(self, collection: str, record: dict):
+    def insert(self, collection: str, record: Union[List[dict], dict]):
         '''Wrapping the insertion of a new object'''
         return self.core.db.write(collection, record,
             self.options.primary, self.options.duplicate_policy, constant=self.options.check_constant)
 
-    def update(self, collection: str, record: dict):
+    def update(self, collection: str, record: Union[List[dict], dict]):
         '''Wrapping the update of an existing object'''
         return self.core.db.write(collection, record,
             self.options.primary, constant=self.options.check_constant)

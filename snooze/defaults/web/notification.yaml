@@ -30,12 +30,6 @@ fields:
         sortable: false
         type: array
     -
-        label: ''
-        key: enabled
-        tdClass: ['align-middle', 'text-center']
-        thClass: 'text-center'
-        sortable: false
-    -
         key: button
         sortable: false
         label: ''

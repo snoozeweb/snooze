@@ -18,6 +18,16 @@ $enable-rtl: true;
   @include transition(padding .15s);
 }
 
+.card-header {
+  border: 1px solid var(--cui-card-border-color, rgba(0, 0, 21, 0.125));
+}
+
+.card-header-border {
+  border-left: none;
+  border-right: none;
+  border-top: none;
+}
+
 .card-header:not(.content-center) > .c-icon:first-child {
   margin-right: 0.1rem;
   margin-top: 0.1rem;
@@ -25,4 +35,18 @@ $enable-rtl: true;
   width: 1.2rem;
   height: 1.2rem;
   font-size: 1.2rem;
+}
+
+.striped-bg {
+  background-color: var(--cui-table-striped-bg, rgba(0,0,21,0.05));
+  border-color: var(--cui-table-border-color, #d8dbe0) !important;
+}
+
+.nonstriped-bg {
+  background-color: var(--cui-table-bg, transparent);
+  border-color: var(--cui-table-border-color, #d8dbe0) !important;
+}
+
+.border-color {
+  border-color: var(--cui-table-border-color, #d8dbe0) !important;
 }
