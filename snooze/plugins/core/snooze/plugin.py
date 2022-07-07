@@ -33,8 +33,6 @@ class Snooze(Plugin):
                 record['snoozed'] = filt.name
                 self.hits.increment({'name': filt.name})
                 if filt.discard:
-                    if 'hash' in record:
-                        self.db.delete('record', ['=', 'hash', record['hash']])
                     raise Abort()
                 else:
                     raise AbortAndWrite(record)
@@ -66,7 +64,7 @@ class Snooze(Plugin):
                     count += results.get('count', 0)
                 else:
                     log.debug("Retro apply snooze filter %s", filt.name)
-                    count += self.db.update_fields('record', {'snoozed': filt.name}, filt.condition_raw)
+                    count += self.db.set_fields('record', {'snoozed': filt.name}, filt.condition_raw)
         return count
 
 class SnoozeObject:

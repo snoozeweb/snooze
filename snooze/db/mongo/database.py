@@ -37,6 +37,7 @@ DEFAULT_PAGINATION = {
     'page_number': 1,
     'nb_per_page': 0,
     'asc': True,
+    'only_one': False,
 }
 
 def batch(cursor, batch_size: int = 100):
@@ -104,6 +105,27 @@ class BackendDB(Database):
             log.debug("cleanup_comments: Removed %d comments", result.deleted_count)
         log.debug('cleanup_comments: Success')
         return total_deleted
+
+    def cleanup_orphans(self, collection: str) -> int:
+        '''Delete objects which one of their ancestors does not exist anymore'''
+        log.debug("cleanup_orphans (%s): Start", collection)
+        pipeline = [
+            {'$addFields': {'parent': {'$last': "$parents"}}},
+            {'$group': {'_id': None, 'parents': {'$addToSet': "$parent"}}},
+        ]
+        parents = list(self.db[collection].aggregate(pipeline))
+        if len(parents) > 0:
+            parents = [p for p in parents[0]['parents'] if p]
+        if len(parents) == 0:
+            log.debug('cleanup_orphans: Success (no parents)')
+            return 0
+        to_delete = []
+        for parent in parents:
+            if not self.db[collection].find_one({'uid': parent}):
+                to_delete.append(parent)
+        total = self.db[collection].delete_many({'parents': {'$in': to_delete}}).deleted_count
+        log.debug("cleanup_orphans: Removed %d documents in %s", total, collection)
+        return total
 
     def cleanup_audit_logs(self, interval: int):
         '''Cleanup audit logs of deleted objects'''
@@ -263,14 +285,8 @@ class BackendDB(Database):
         self.db[collection].update_one({'uid': uid}, update, upsert=True)
 
     @wrap_exception
-    def get_one(self, collection, search: dict, **pagination):
-        for key, value in DEFAULT_PAGINATION.items():
-            if pagination.get(key) is None:
-                pagination[key] = value
-        orderby = pagination['orderby']
-        asc = pagination['asc']
-        asc_int = (1 if asc else -1)
-        result = self.db[collection].find_one(search, sort=[(orderby, asc_int)])
+    def get_one(self, collection, search: dict):
+        result = self.db[collection].find_one(search)
         return result
 
     @wrap_exception
@@ -308,6 +324,16 @@ class BackendDB(Database):
         return {'data': {'added': added, 'updated': updated}}
 
     @wrap_exception
+    def inc_many(self, collection: str, field: str, condition:Optional[Condition] = None, value: int = 1):
+        if condition is None:
+            condition = []
+        mongo_search = self.convert(condition)
+        total = 0
+        if collection in self.db.collection_names():
+            total = self.db[collection].update_many(mongo_search, {'$inc': {field: value}}).matched_count
+        return total
+
+    @wrap_exception
     def bulk_increment(self, collection: str, updates: List[Tuple[dict, dict]]):
         '''Perform a bulk update of increments. Each update should be a tuple of search and update'''
         requests = []
@@ -317,24 +343,32 @@ class BackendDB(Database):
             requests.append(UpdateOne(search, {'$inc': new_update, '$setOnInsert': search}, upsert=True))
         self.db[collection].bulk_write(requests)
 
-    def update_fields(self, collection: str, fields: List[str], condition: Condition = []):
-        mongo_search = self.convert(condition, self.search_fields.get(collection, []))
-        log.debug("Update collection '%s' with fields '%s' based on the following search", collection, fields)
+    def update_with_operation(self, collection, operation, condition=[]):
+        mongo_search = self.convert(condition)
         total = 0
         if collection in self.db.collection_names():
-            pipeline = [
-                {"$match": mongo_search},
-                {"$addFields": fields},
-                {"$merge": {'into': collection, 'on': '_id'}},
-            ]
             try:
-                self.db[collection].aggregate(pipeline)
-                total = self.db[collection].find(mongo_search).count()
+                total = self.db[collection].update_many(mongo_search, operation).modified_count
             except Exception as err:
                 log.exception(err)
-                total = 0
-        log.debug("Updated %d fields", total)
+        log.debug("Updated %d document(s)", total)
         return total
+
+    def set_fields(self, collection, fields, condition=[]):
+        log.debug("Update collection '%s' with fields '%s' based on the following search '%s'", collection, fields, condition)
+        return self.update_with_operation(collection, {'$set': fields}, condition)
+
+    def append_list(self, collection, fields, condition=[]):
+        log.debug("Append to collection '%s' fields '%s' based on the following search: '%s'", collection, fields, condition)
+        return self.update_with_operation(collection, {'$push': {field: {'$each': values} for field, values in fields.items()}}, condition)
+
+    def prepend_list(self, collection, fields, condition=[]):
+        log.debug("Prepend to collection '%s' fields '%s' based on the following search: '%s'", collection, fields, condition)
+        return self.update_with_operation(collection, {'$push': {field: {'$each': values, '$position': 0} for field, values in fields.items()}}, condition)
+
+    def remove_list(self, collection, fields, condition=[]):
+        log.debug("Remove from collection '%s' fields '%s' based on the following search: '%s'", collection, fields, condition)
+        return self.update_with_operation(collection, {'$pull': {field: {'$in': values} for field, values in fields.items()}}, condition)
 
     @wrap_exception
     def search(self, collection: str, condition:Optional[Condition]=None, **pagination) -> dict:
@@ -347,20 +381,29 @@ class BackendDB(Database):
         nb_per_page = pagination['nb_per_page']
         orderby = pagination['orderby']
         asc = pagination['asc']
+        only_one = pagination['only_one']
         asc_int = (1 if asc else -1)
         mongo_search = self.convert(condition, self.search_fields.get(collection, []))
         if collection in self.db.collection_names():
-            if nb_per_page > 0:
-                to_skip = (page_number - 1) * nb_per_page if page_number - 1 > 0 else 0
-                results = self.db[collection] \
-                    .find(mongo_search) \
-                    .skip(to_skip) \
-                    .limit(nb_per_page) \
-                    .sort(orderby, asc_int)
+            if only_one:
+                result = self.db[collection].find_one(mongo_search, sort=[(orderby, asc_int)])
+                results = []
+                total = 0
+                if result:
+                    results = [result]
+                    total = 1
             else:
-                results = self.db[collection].find(mongo_search).sort(orderby, asc_int)
-            total = results.count()
-            results = list(results)
+                if nb_per_page > 0:
+                    to_skip = (page_number - 1) * nb_per_page if page_number - 1 > 0 else 0
+                    results = self.db[collection] \
+                        .find(mongo_search) \
+                        .skip(to_skip) \
+                        .limit(nb_per_page) \
+                        .sort(orderby, asc_int)
+                else:
+                    results = self.db[collection].find(mongo_search).sort(orderby, asc_int)
+                total = results.count()
+                results = list(results)
             log.debug("Found %d result(s) for search %s in collection %s. Pagination options: %s",
                 total, mongo_search, collection, pagination)
             return {'data': results, 'count': total}

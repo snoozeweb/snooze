@@ -271,10 +271,10 @@ def test_tinydb_cleanup_audit_logs(db):
     assert len(s) == 3
     assert sorted(x['id'] for x in s) == ['a', 'b', 'c']
 
-def test_tinydb_update_fields(db):
+def test_tinydb_set_fields(db):
     db.write('record', [{'a': '1'}, {'b': '1', 'c': '1'}, {'b': '1'}])
     fields = {'c': '2', 'd': '1'}
-    total = db.update_fields('record', fields, ['=', 'b', '1'])
+    total = db.set_fields('record', fields, ['=', 'b', '1'])
     result = db.search('record')['data']
     total_real = 0
     for record in result:
@@ -321,8 +321,48 @@ def test_tinydb_compute_stats(db):
     assert list(filter(lambda x: x['key'] == 'a_qty', results['data'][1]['data']))[0]['value'] == 4
     assert list(filter(lambda x: x['key'] == 'b_qty', results['data'][1]['data']))[0]['value'] == 40
 
-def test_tinydb_get_one(db):
+def test_tinydb_search_only_one(db):
     db.write('record', [{'a': '1', 'b': '1'}, {'a': '1', 'b': '2'}])
-    assert db.get_one('record', {'a': '1'})['b'] == '1'
-    assert db.get_one('record', {'a': '1'}, orderby='b', asc=True)['b'] == '1'
-    assert db.get_one('record', {'a': '1'}, orderby='b', asc=False)['b'] == '2'
+    result = db.search('record', ['=', 'a', '1'], only_one=True)
+    assert result['count'] == 1 and result['data'][0]['b'] == '1'
+    assert db.search('record', ['=', 'a', '1'], only_one=True, orderby='b', asc=True)['data'][0]['b'] == '1'
+    assert db.search('record', ['=', 'a', '1'], only_one=True, orderby='b', asc=False)['data'][0]['b'] == '2'
+
+def test_tinydb_inc_many(db):
+    db.write('record', [{'a': '1', 'count': 1}, {'a': '1', 'count': 2}])
+    total = db.inc_many('record', 'count', ['=', 'a', '1'], 2)
+    assert total == 2
+    results = db.search('record', ['=', 'a', '1'])
+    assert results['data'][0]['count'] == 3
+    assert results['data'][1]['count'] == 4
+
+def test_tinydb_cleanup_orphans(db):
+    uids = []
+    assert db.cleanup_orphans('record') == 0
+    uids.append(db.write('record', [{'name': 'a'}])['data']['added'][0]['uid'])
+    assert db.cleanup_orphans('record') == 0
+    uids.append(db.write('record', [{'name': 'a.a', 'parents': uids}])['data']['added'][0]['uid'])
+    uids.append(db.write('record', [{'name': 'a.a.a', 'parents': uids}, {'name': 'a.a.b', 'parents': uids}])['data']['added'][0]['uid'])
+    uids = []
+    uids.append(db.write('record', [{'name': 'b'}])['data']['added'][0]['uid'])
+    uids.append(db.write('record', [{'name': 'b.a', 'parents': uids}])['data']['added'][0]['uid'])
+    db.delete('record', ['OR', ['=', 'name', 'a.a'], ['=', 'name', 'b']])
+    assert db.cleanup_orphans('record') == 3
+
+def test_tinydb_append_list(db):
+    db.write('record', [{'id': 1, 'parents': ['a']}])
+    assert db.append_list('record', {'parents': ['b', 'c']}, ['=', 'id', 1]) == 1
+    assert db.search('record', ['=', 'id', 1])['data'][0]['parents'] == ['a', 'b', 'c']
+    assert db.append_list('record', {'id': ['a']}, ['=', 'id', 1]) == 0
+
+def test_tinydb_prepend_list(db):
+    db.write('record', [{'id': 1, 'parents': ['c']}])
+    assert db.prepend_list('record', {'parents': ['a', 'b']}, ['=', 'id', 1]) == 1
+    assert db.search('record', ['=', 'id', 1])['data'][0]['parents'] == ['a', 'b', 'c']
+    assert db.prepend_list('record', {'id': ['a']}, ['=', 'id', 1]) == 0
+
+def test_tinydb_remove_list(db):
+    db.write('record', [{'id': 1, 'parents': ['a', 'b', 'c']}])
+    assert db.remove_list('record', {'parents': ['b', 'c']}, ['=', 'id', 1]) == 1
+    assert db.search('record', ['=', 'id', 1])['data'][0]['parents'] == ['a']
+    assert db.remove_list('record', {'id': ['a']}, ['=', 'id', 1]) == 0
