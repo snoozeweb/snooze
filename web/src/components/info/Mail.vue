@@ -1,7 +1,7 @@
 <template>
   <div>
     <CCard>
-      <CCardHeader class='text-center' style='font-weight:bold'>
+      <CCardHeader class='card-header-border text-center' style='font-weight:bold'>
         Mail
       </CCardHeader>
       <CCardBody class="p-0">

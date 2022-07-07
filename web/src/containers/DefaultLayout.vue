@@ -4,7 +4,7 @@
     <div class="wrapper d-flex flex-column min-vh-100 bg-light">
       <AppHeader />
       <div class="body flex-grow-1">
-        <CContainer lg class="p-3 mw-100">
+        <CContainer lg class="p-2 mw-100">
           <router-view v-slot="{ Component }">
             <transition name="mode-fade" mode="out-in">
               <component :is="Component" />

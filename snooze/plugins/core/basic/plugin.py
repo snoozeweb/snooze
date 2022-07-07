@@ -35,6 +35,8 @@ class Metadata(BaseModel):
     route_defaults: RouteArgs
     options: dict
     permissions: list
+    force_order: Optional[str]
+    tree: bool
 
 class Plugin:
     def __init__(self, core: 'Core'):
@@ -101,6 +103,8 @@ class Plugin:
             audit=config.audit,
             options=config.options,
             permissions=config.provides,
+            force_order=config.force_order,
+            tree=config.tree,
         )
         if config.search_fields:
             self.db.create_index(self.name, config.search_fields)

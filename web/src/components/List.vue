@@ -1,7 +1,7 @@
 <template>
   <div>
-  <CCard no-body ref="main">
-    <CCardHeader class="p-2" v-if="show_tabs">
+  <div no-body ref="main">
+    <CCardHeader class="p-2" v-if="show_tabs" style="border-bottom:none">
       <CNav variant="pills" role="tablist" card v-model="tab_index" class='m-0'>
         <CNavItem
           v-for="(tab, i) in tabs.filter(el => !el.hidden)"
@@ -35,7 +35,7 @@
         </CNavItem>
       </CNav>
     </CCardHeader>
-    <CForm @submit.prevent="" class="pt-2 px-2 pb-0">
+    <CForm @submit.prevent="" class="pt-0 px-0 pb-0">
       <Search @search="search" v-model="search_value" @clear="search_clear" ref='search' v-if="!no_search">
         <template #search_buttons v-if="!show_tabs">
           <!-- Slots for placing additional buttons in the header of the table -->
@@ -45,7 +45,7 @@
               color="danger"
               v-if="delete_m"
               @click="modal_delete(selected)"
-            >Delete selection</CButton>
+            >Delete selection {{selected.map(i => i['name'])}}</CButton>
           </template>
           <slot name="head_buttons"></slot>
           <CButton v-if="add_m" color="success" @click="modal_add()">New</CButton>
@@ -53,21 +53,23 @@
         </template>
       </Search>
     </CForm>
-    <CCardBody class="px-2 pb-2 pt-0">
+    <CCardBody class="px-0 pb-0 pt-0">
       <CTabContent>
       <SDataTable
         ref="table"
         @cell-clicked="select"
         @celltitle-clicked="selectall_toggle"
         @update:sorter-value="sortingChanged"
-        @row-contextmenu="contextMenu"
-        v-contextmenu:contextmenu
+        @context_search="context_search"
         :fields="fields"
         :items="items"
         :sorter='{external: true}'
         :sorterValue="{column: orderby, asc: isascending}"
         :loading="is_busy"
         :noItemsView="noItemsView"
+        :header="!no_header"
+        :responsive="false"
+        :full_contextmenu="!short_contextmenu"
         striped
         small
         border
@@ -161,7 +163,7 @@
           <input type="checkbox" class="pointer mx-1" :checked="dig(row.item, '_selected') == true">
         </template>
         <template v-slot:select-header="row">
-          <input type="checkbox" class="pointer mx-1" :checked="this.items.length == this.selected.length">
+          <input type="checkbox" class="pointer mx-1" :checked="this.get_items_length() == this.selected.length">
         </template>
 
         <template v-slot:button="row">
@@ -187,12 +189,14 @@
             </CRow>
             <CButton size="sm" @click="toggleDetails(row.item, $event)"><i class="la la-angle-up la-lg"></i></CButton>
           </CCard>
+          <slot name="details_footer" v-bind="row" />
         </template>
       </SDataTable>
-      <div class="d-flex align-items-center">
+      <div class="d-flex align-items-center pt-2" v-if="!no_paging && nb_rows > per_page">
         <div class="me-2">
           <SPagination
-            v-model:activePage="current_page"
+            :activePage="current_page"
+            @update:activePage="change_currentpage"
             :pages="Math.ceil(nb_rows / per_page)"
             ulClass="m-0"
           />
@@ -205,6 +209,7 @@
             <CCol xs="auto px-1">
               <CFormSelect
                 v-model="per_page"
+                @change="change_perpage"
                 :value="per_page"
                 id="perPageSelect"
                 size="sm"
@@ -217,7 +222,7 @@
       </div>
       </CTabContent>
     </CCardBody>
-  </CCard>
+  </div>
 
   <CModal
     ref="edit"
@@ -284,39 +289,6 @@
       <CButton @click="submit_delete" color="danger">OK</CButton>
     </CModalFooter>
   </CModal>
-
-  <v-contextmenu ref="contextmenu" @show="store_selection">
-    <v-contextmenu-item @click="copy_browser">
-      <i class="la la-copy la-lg"></i> Copy
-    </v-contextmenu-item>
-    <v-contextmenu-item @click="select_all" v-if="!no_contextmenu">
-      <i class="la la-check-square la-lg"></i> Select All
-    </v-contextmenu-item>
-    <v-contextmenu-item @click="context_search" v-if="!no_contextmenu">
-      <i class="la la-search la-lg"></i> Search
-    </v-contextmenu-item>
-    <v-contextmenu-submenu title="To Clipboard">
-      <template v-slot:title><i class="la la-clipboard la-lg"></i> To Clipboard</template>
-      <v-contextmenu-item @click="copy_clipboard" method="yaml">
-        As YAML
-      </v-contextmenu-item>
-      <v-contextmenu-item @click="copy_clipboard" method="yaml" full="true">
-        As YAML (Full)
-      </v-contextmenu-item>
-      <v-contextmenu-divider />
-      <v-contextmenu-item @click="copy_clipboard" method="json">
-        As JSON
-      </v-contextmenu-item>
-      <v-contextmenu-item @click="copy_clipboard" method="json" full="true">
-        As JSON (Full)
-      </v-contextmenu-item>
-      <v-contextmenu-divider />
-      <v-contextmenu-item v-for="field in fields.filter(field => field.key != 'button' && field.key != 'select')" :key="field.key" @click="copy_clipboard" method="simple" :field="field.key">
-        {{ capitalizeFirstLetter(field.key) }}
-      </v-contextmenu-item>
-    </v-contextmenu-submenu>
-  </v-contextmenu>
-
   </div>
 </template>
 
@@ -324,7 +296,7 @@
 import dig from 'object-dig'
 import moment from 'moment'
 import { API } from '@/api'
-import { get_data, pp_countdown, countdown, preprocess_data, delete_items, truncate_message, to_clipboard, capitalizeFirstLetter } from '@/utils/api'
+import { get_data, pp_countdown, countdown, preprocess_data, delete_items, truncate_message } from '@/utils/api'
 import { join_queries } from '@/utils/query'
 import Form from '@/components/Form.vue'
 import Search from '@/components/Search.vue'
@@ -338,7 +310,6 @@ import Info from '@/components/Info.vue'
 import ColorBadge from '@/components/ColorBadge.vue'
 import SDataTable from '@/components/SDataTable.vue'
 import SPagination from '@/components/SPagination.vue'
-const yaml = require('js-yaml')
 
 // Create a table representing an API endpoint.
 export default {
@@ -357,7 +328,7 @@ export default {
     SDataTable,
     SPagination,
   },
-  emits: ['update'],
+  emits: ['loaded', 'update', 'select_all', 'clear_selected', 'select', 'search', 'reload'],
   props: {
     // The tabs name and their associated search
     tabs_prop: {
@@ -398,9 +369,11 @@ export default {
     modal_title_delete: {type: String, default: 'Delete this item'},
     show_tabs: {type: Boolean, default: false},
     no_search: {type: Boolean, default: false},
+    no_paging: {type: Boolean, default: false},
+    no_header: {type: Boolean, default: false},
     no_history: {type: Boolean, default: false},
     no_selection: {type: Boolean, default: false},
-    no_contextmenu: {type: Boolean, default: false},
+    short_contextmenu: {type: Boolean, default: false},
     default_search_prop: {type: String, default: ''},
     default_tab: {type: String, default: ''},
   },
@@ -419,27 +392,24 @@ export default {
     return {
       busy_interval: null,
       is_busy: false,
-      to_clipboard:to_clipboard,
       dig: dig,
       pp_countdown: pp_countdown,
       countdown: countdown,
       preprocess_data: preprocess_data,
       join_queries: join_queries,
       truncate_message: truncate_message,
-      capitalizeFirstLetter: capitalizeFirstLetter,
       timestamp: {},
       delete_items: delete_items,
       filter: [],
       env_name: '',
       env_filter: [],
-      tab_index: 0,
+      tab_index: -1,
       search_value: '',
       per_page: this.page_options_prop[0],
       page_options: this.page_options_prop,
       nb_rows: 0,
       current_page: 1,
       items: [],
-      item_copy: {},
       adding_data: {},
       selected_text: '',
       selected_data: {},
@@ -496,7 +466,7 @@ export default {
         // Do nothing
       }
       var data = this.schema
-      this.tabs = dig(data, 'tabs') || this.tabs
+      this.tabs = this.tabs.length > 0 ? this.tabs : dig(data, 'tabs')
       this.form = dig(data, 'form')
       this.form_footer = dig(data, 'form_footer')
       this.endpoint = dig(data, 'endpoint') || this.endpoint
@@ -504,7 +474,7 @@ export default {
       this.default_orderby = this.orderby
       this.fields = dig(data, 'fields')
       if (!this.no_selection) {
-        this.fields.splice(0, 0, { key: 'select', label: '', tdClass: ['align-middle'], clickable: true, clickable_title: true })
+        this.fields.splice(0, 0, { key: 'select', label: '', tdClass: ['align-middle'], clickable: true, clickable_title: true, thStyle: {width: '0%'} })
       }
       this.default_fields = this.fields
       this.hidden_fields = dig(data, 'hidden_fields') || []
@@ -523,6 +493,7 @@ export default {
       this.emitter.on('environment_change_tab', this.handler['environment_change_tab'])
     },
     reload() {
+      this.$emit('reload')
       var search = this.default_search
       var tab_title = this.default_tab
       var tab = this.tabs[0]
@@ -534,10 +505,9 @@ export default {
       var find_tab = this.tabs.find(el => el.title == tab_title)
       if (find_tab) {
         tab = find_tab
-        this.tab_index = this.tabs.indexOf(this.tab_index)
         this.filter = tab.filter
       }
-      if (tab) {
+      if (tab && this.tabs.indexOf(tab) != this.tab_index) {
         this.changeTab(tab, false)
       }
       if (!this.no_history) {
@@ -577,12 +547,12 @@ export default {
       this.timestamp = moment().unix()
     },
     refreshTable(feedback = false) {
-      this.clearSelected()
+      this.clear_selected()
       this.set_busy(true)
       if (this.tabs[this.tab_index]) {
         this.filter = this.tabs[this.tab_index].filter
       }
-      var query = this.filter
+      var query = this.filter || []
       if (this.env_filter.length > 0) {
         query = join_queries([this.filter, this.env_filter])
       }
@@ -705,15 +675,20 @@ export default {
           }
         })
       }
-      this.loaded = true
+      if (!this.loaded) {
+        this.loaded = true
+        this.$emit('loaded')
+      }
       this.$emit('update')
     },
     search(query) {
       //console.log(`Search: ${query}`)
+      this.$emit('search')
       this.add_history()
     },
     search_clear() {
       this.search_value = this.default_search
+      this.$emit('search')
       this.add_history()
     },
     changeTab(tab, refresh = true) {
@@ -767,11 +742,12 @@ export default {
         this.selected.push(item)
         item._selected = true
       }
+      this.$emit('select', item)
     },
-    modal_add () {
+    modal_add (item = {}) {
       this.modal_data.add = {}
-      if (this.tabs[this.tab_index]['parent']) {
-        this.modal_data.add['parent'] = this.tabs[this.tab_index]['parent']
+      if (item && item.uid) {
+        this.modal_data.add['parent'] = item.uid
       }
       this.show_add = true
     },
@@ -799,11 +775,14 @@ export default {
       this.isascending = ctx.asc
       this.add_history()
     },
-    clearSelected() {
+    clear_selected() {
+      var selected = this.selected
       this.items.forEach(item => {
         item._selected = false
       })
       this.selected = []
+      this.$emit('clear_selected')
+      return selected
     },
     select_all() {
       this.selected = []
@@ -811,12 +790,14 @@ export default {
         item._selected = true
         this.selected.push(item)
       })
+      this.$emit('select_all')
+      return this.selected
     },
     selectall_toggle (name, index) {
-      if(this.items.length != this.selected.length) {
+      if(this.get_items_length() != this.selected.length) {
         this.select_all()
       } else {
-        this.clearSelected()
+        this.clear_selected()
       }
     },
     add_history() {
@@ -831,76 +812,39 @@ export default {
         this.reload()
       }
     },
-    contextMenu(item, index, colname, event) {
-        event.preventDefault()
-        this.item_copy = item
-        this.$refs.contextmenu.hide()
-        this.$refs.contextmenu.show({top: event.pageY, left: event.pageX})
-    },
-    get_fields(row, selected_fields = {}) {
-      var return_obj = Object.keys(row).filter(key => key[0] != '_' && key != 'button')
-      if (Object.keys(selected_fields).length > 0) {
-        var filtered_fields = selected_fields.reduce((obj, key) => {
-          obj.push(key.key)
-          return obj
-        }, [])
-        return_obj = return_obj.filter(key => filtered_fields.includes(key))
-      }
-      return return_obj.reduce((obj, key) => {
-        obj.push({name: key, value: row[key]})
-        return obj
-      }, [])
-    },
-    add_clipboard(row, parse_fun, selected_fields = {}) {
-      if (row) {
-        var output = {}
-        this.get_fields(row, selected_fields).forEach(field => {
-          output[field.name] = field.value
-        })
-      	this.to_clipboard(parse_fun(output))
-      }
-    },
-    copy_clipboard(event) {
-      var method
-      var fields = this.fields
-      if (event.target.attributes.method.value == 'yaml') {
-        method = yaml.dump
-      } else if (event.target.attributes.method.value == 'json') {
-        method = JSON.stringify
-      } else {
-        this.to_clipboard(yaml.dump(this.item_copy[event.target.attributes.field.value], { flowLevel: 0 }).slice(0, -1))
-        return
-      }
-      if (event.target.attributes.full) {
-        fields = {}
-      }
-      this.add_clipboard(this.item_copy, method, fields)
-    },
-    store_selection() {
-      this.selectedText = window.getSelection().toString()
-    },
-    copy_browser(event) {
-      this.to_clipboard(this.selectedText)
-    },
-    context_search(event) {
-      if (this.selectedText != '') {
-        this.search_value = this.selectedText
-        this.$refs.search.datavalue = this.selectedText
-        this.search(this.selectedText)
-      }
-    },
     toggleDetails(row, event) {
       event.stopPropagation()
       row._showDetails = !row._showDetails
     },
+    get_children(item) {
+      return [{title: item.name + '>', filter: ['=', 'parent', item.uid], row: item, "parent": item.uid}]
+    },
+    get_items_length() {
+      return this.items.length
+    },
+    context_search(text) {
+      if (text != '') {
+        this.search_value = text
+        this.$refs.search.datavalue = text
+        this.search(text)
+      }
+    },
+    change_perpage (e) {
+      var new_value = parseInt(e.target.value)
+      this.current_page = Math.ceil((this.current_page * this.per_page) / new_value)
+      if (new_value != this.per_page) {
+        this.per_page = new_value
+        this.add_history()
+      }
+    },
+    change_currentpage (page_number) {
+      if (page_number != this.current_page) {
+        this.current_page = page_number
+        this.add_history()
+      }
+    },
   },
   watch: {
-    current_page: function() {
-      this.add_history()
-    },
-    per_page: function() {
-      this.add_history()
-    },
     $route() {
       if (this.loaded && this.$route.path == `/${this.endpoint}`) {
         this.$nextTick(this.reload);

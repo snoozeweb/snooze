@@ -4,6 +4,7 @@ import moment from 'moment'
 import router from '@/router'
 import jwt_decode from "jwt-decode"
 import { join_queries, object_to_query } from '@/utils/query'
+const yaml = require('js-yaml')
 
 export function get_data(endpoint, query = null, options = {}, callback = null, callback_arguments = null) {
   var query_str = null
@@ -413,4 +414,46 @@ export function revParseNumber(value) {
   } else {
     return value
   }
+}
+
+export function add_clipboard(row, parse_fun, selected_fields = {}) {
+  if (row) {
+    var output = {}
+    get_fields(row, selected_fields).forEach(field => {
+      output[field.name] = field.value
+    })
+    to_clipboard(parse_fun(output))
+  }
+}
+
+export function get_fields(row, selected_fields = {}) {
+  var return_obj = Object.keys(row).filter(key => key[0] != '_' && key != 'button')
+  if (Object.keys(selected_fields).length > 0) {
+    var filtered_fields = selected_fields.reduce((obj, key) => {
+      obj.push(key.key)
+      return obj
+    }, [])
+    return_obj = return_obj.filter(key => filtered_fields.includes(key))
+  }
+  return return_obj.reduce((obj, key) => {
+    obj.push({name: key, value: row[key]})
+    return obj
+  }, [])
+}
+
+export function copy_clipboard(item, fields, event) {
+  var method
+  var f = fields
+  if (event.target.attributes.method.value == 'yaml') {
+    method = yaml.dump
+  } else if (event.target.attributes.method.value == 'json') {
+    method = JSON.stringify
+  } else {
+    to_clipboard(yaml.dump(item[event.target.attributes.field.value], { flowLevel: 0 }).slice(0, -1))
+    return
+  }
+  if (event.target.attributes.full) {
+    f = {}
+  }
+  add_clipboard(item, method, f)
 }

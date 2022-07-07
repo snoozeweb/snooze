@@ -18,9 +18,45 @@ from snooze.utils.typing import Record, Rule as RuleType
 
 log = getLogger('snooze.process')
 
+class Rule(Plugin):
+    '''The rule plugin main class'''
+    def process(self, record):
+        '''Process the record against a list of rules'''
+        self.process_rules(record, self.rules)
+        return record
+
+    def validate(self, obj):
+        '''Validate a rule object'''
+        validate_condition(obj)
+        validate_modification(obj, self.core)
+
+    def process_rules(self, record, rules):
+        '''Process a list of rules'''
+        log.debug("Processing record %s against rules", record.get('hash', ''))
+        for rule in rules:
+            if rule.enabled and rule.match(record):
+                log.debug("Rule %s matched record: %s", rule.name, record.get('hash', ''))
+                rule.modify(record)
+                self.process_rules(record, rule.children)
+
+    def reload_data(self, sync = False):
+        log.debug("Reloading data for plugin %s", self.name)
+        self.data = self.db.search('rule', ['NOT', ['EXISTS', 'parent']], orderby=self.meta.force_order)['data']
+        rules = []
+        for rule in (self.data or []):
+            rules.append(RuleObject(rule, self))
+        self.rules = rules
+        if sync:
+            self.sync_neighbors()
+
 class RuleObject:
     '''An object representing the rule object in the database'''
-    def __init__(self, rule: RuleType, core: 'Core' = None):
+    def __init__(self, rule: RuleType, rule_plugin: Rule = None):
+        core = None
+        order = None
+        if rule_plugin:
+            core = rule_plugin.core
+            order = rule_plugin.meta.force_order
         self.enabled = rule.get('enabled', True)
         self.name = rule['name']
         log.debug("Creating rule: %s", self.name)
@@ -34,10 +70,10 @@ class RuleObject:
         self.children = []
         if core and core.db:
             db = core.db
-            children = db.search('rule', ['=', 'parent', rule['uid']], orderby='name')['data']
+            children = db.search('rule', ['=', 'parent', rule['uid']], orderby=order)['data']
             for child_rule in children:
                 log.debug("Found child %s of rule %s", child_rule['name'], self.name)
-                self.children.append(RuleObject(child_rule, core))
+                self.children.append(RuleObject(child_rule, rule_plugin))
 
     def match(self, record: Record) -> bool:
         '''Check if a record matched this rule's condition'''
@@ -65,34 +101,3 @@ class RuleObject:
 
     def __repr__(self):
         return self.name
-
-class Rule(Plugin):
-    '''The rule plugin main class'''
-    def process(self, record):
-        '''Process the record against a list of rules'''
-        self.process_rules(record, self.rules)
-        return record
-
-    def validate(self, obj):
-        '''Validate a rule object'''
-        validate_condition(obj)
-        validate_modification(obj, self.core)
-
-    def process_rules(self, record, rules):
-        '''Process a list of rules'''
-        log.debug("Processing record %s against rules", record.get('hash', ''))
-        for rule in rules:
-            if rule.enabled and rule.match(record):
-                log.debug("Rule %s matched record: %s", rule.name, record.get('hash', ''))
-                rule.modify(record)
-                self.process_rules(record, rule.children)
-
-    def reload_data(self, sync = False):
-        log.debug("Reloading data for plugin %s", self.name)
-        self.data = self.db.search('rule', ['NOT', ['EXISTS', 'parent']], orderby='name')['data']
-        rules = []
-        for rule in (self.data or []):
-            rules.append(RuleObject(rule, self.core))
-        self.rules = rules
-        if sync:
-            self.sync_neighbors()

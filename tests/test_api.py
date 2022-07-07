@@ -71,6 +71,56 @@ class TestApi:
         assert [x for x in result_search['data'] if x.items() >= {'a': '1', 'b': '2'}.items()] == []
         assert [x for x in result_search['data'] if x.items() >= {'c': '1', 'd': '2'}.items()] != []
 
+    def test_api_delete_rule(self, client):
+        client.simulate_post('/api/rule', json=[{'name': 'Rule0'}])
+        result = client.simulate_get('/api/rule').json
+        client.simulate_post('/api/rule', json={'name': 'Child', 'parent': result['data'][0]['uid']})
+        client.simulate_delete('/api/rule/["=", "name", "Rule0"]').json
+        result = client.simulate_get('/api/rule').json
+        assert result['count'] == 0
+
+    def test_api_post_rule_order(self, client):
+        client.simulate_post('/api/rule', json=[{'name': 'Rule0'}, {'name': 'Rule1'}, {'name': 'Rule2'}])
+        result = client.simulate_get('/api/rule?orderby=tree_order').json
+        for idx, rule in enumerate(result['data']):
+            assert rule['tree_order'] == idx
+            assert rule['name'] == 'Rule'+str(idx)
+        client.simulate_post('/api/rule', json={'name': 'Rule3'})
+        result = client.simulate_get('/api/rule?orderby=tree_order').json
+        assert result['data'][3]['tree_order'] == 3
+        new_rules =  [{'name': 'Rule2_1', 'parent': result['data'][2]['uid']}, {'name': 'Rule2_0', 'parent': result['data'][2]['uid']}, {'name': 'Rule0_0', 'parent': result['data'][0]['uid']}]
+        client.simulate_post('/api/rule', json=new_rules)
+        result = client.simulate_get('/api/rule?orderby=tree_order').json
+        assert list(map(lambda x: x['name'], result['data'])) == ['Rule0', 'Rule0_0', 'Rule1', 'Rule2', 'Rule2_0', 'Rule2_1', 'Rule3']
+        new_rules =  [{'name': 'Rule3_0', 'parent': result['data'][6]['uid']}, {'name': 'Rule2_3', 'parent': result['data'][3]['uid']}, {'name': 'Rule2_2', 'parent': result['data'][3]['uid']}]
+        client.simulate_post('/api/rule', json=new_rules)
+        result = client.simulate_get('/api/rule?orderby=tree_order').json
+        assert list(map(lambda x: x['name'], result['data'])) == ['Rule0', 'Rule0_0', 'Rule1', 'Rule2', 'Rule2_0', 'Rule2_1','Rule2_2', 'Rule2_3', 'Rule3', 'Rule3_0']
+
+    def test_api_put_rule_order(self, client):
+        client.simulate_post('/api/rule', json=[{'name': 'Rule0'}, {'name': 'Rule1'}, {'name': 'Rule2'}, {'name': 'Rule3'}])
+        result = client.simulate_get('/api/rule?orderby=tree_order').json
+        new_rules =  [{'name': 'Rule2_1', 'parent': result['data'][2]['uid']}, {'name': 'Rule2_0', 'parent': result['data'][2]['uid']}, {'name': 'Rule0_0', 'parent': result['data'][0]['uid']}]
+        client.simulate_post('/api/rule', json=new_rules)
+        result = client.simulate_get('/api/rule?orderby=tree_order').json
+        new_rules =  [{'name': 'Rule0_0_0', 'parent': result['data'][1]['uid']}, {'name': 'Rule2_1_1', 'parent': result['data'][5]['uid']}, {'name': 'Rule2_1_0', 'parent': result['data'][5]['uid']}]
+        client.simulate_post('/api/rule', json=new_rules)
+        result = client.simulate_get('/api/rule?orderby=tree_order').json
+        assert list(map(lambda x: x['name'], result['data'])) == ['Rule0', 'Rule0_0', 'Rule0_0_0', 'Rule1', 'Rule2', 'Rule2_0', 'Rule2_1', 'Rule2_1_0', 'Rule2_1_1', 'Rule3']
+        drag_rule0_0 = result['data'][1]
+        drag_rule0_0['parent'] = result['data'][4]['uid']
+        drag_rule0_0['insert_before'] = result['data'][6]['uid']
+        client.simulate_put('/api/rule', json=drag_rule0_0)
+        result = client.simulate_get('/api/rule?orderby=tree_order').json
+        assert list(map(lambda x: x['name'], result['data'])) == ['Rule0', 'Rule1', 'Rule2', 'Rule2_0', 'Rule0_0', 'Rule0_0_0', 'Rule2_1', 'Rule2_1_0', 'Rule2_1_1', 'Rule3']
+        drag_rule2_1 = result['data'][6]
+        drag_rule2_1['parent'] = result['data'][1]['uid']
+        drag_rule2_1['insert_after'] = result['data'][1]['uid']
+        client.simulate_put('/api/rule', json=drag_rule2_1)
+        result = client.simulate_get('/api/rule?orderby=tree_order').json
+        assert list(map(lambda x: x['name'], result['data'])) == ['Rule0', 'Rule1', 'Rule2_1', 'Rule2_1_0', 'Rule2_1_1', 'Rule2', 'Rule2_0', 'Rule0_0', 'Rule0_0_0', 'Rule3']
+
+
 class TestApi2:
 
     data = {

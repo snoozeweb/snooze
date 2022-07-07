@@ -1,38 +1,30 @@
 <template>
-  <div class="animated fadeIn">
-    <List
-      endpoint_prop="rule"
-      ref="list"
-      edit_mode
-      delete_mode
-      add_mode
-    >
-      <template #custom_buttons="row">
-        <CButton size="sm" @click="show_children(row.item)" color="info" v-c-tooltip="{content: 'Children'}"><i class="la la-folder-open la-lg"></i></CButton>
-      </template>
-      <template #details_side="row">
-        <AuditLogs collection="rule" :object="row.item" />
-      </template>
-    </List>
-  </div>
+  <DraggableTable
+    endpoint_prop="rule"
+  >
+    <template #details_side="row">
+      <AuditLogs collection="rule" :object="row.item" />
+    </template>
+  </DraggableTable>
 </template>
 
 <script>
+
+import DraggableTable from '@/components/DraggableTable.vue'
 import AuditLogs from '@/components/AuditLogs.vue'
-import List from '@/components/List.vue'
 
 export default {
   components: {
+    DraggableTable,
     AuditLogs,
-    List,
+  },
+  data () {
+    return {
+    }
+  },
+  mounted () {
   },
   methods: {
-    show_children(item) {
-      var new_tab = {title: item.name + '>', filter: ['=', 'parent', item.uid], row: item, "parent": item.uid}
-      this.$refs.list.tabs.splice(this.$refs.list.tab_index + 1)
-      this.$refs.list.tabs.push(new_tab)
-      this.$refs.list.changeTab(new_tab)
-    },
   },
 }
 </script>

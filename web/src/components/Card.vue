@@ -2,7 +2,7 @@
   <div>
   <CForm @submit.prevent="checkForm" novalidate>
     <CCard v-if="current_tab" no-body ref="main">
-      <CCardHeader header-tag="nav" class="p-2">
+      <CCardHeader header-tag="nav" class="card-header-border p-2">
         <CNav variant="pills" role="tablist" card v-model="tab_index" class='m-0'>
           <CNavItem
             v-for="tab in tabs"

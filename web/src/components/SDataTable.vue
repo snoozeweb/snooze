@@ -62,7 +62,7 @@
 
     <slot name="over-table"/>
     <div :class="`position-relative ${responsive ? 'table-responsive' : '' }`">
-      <table :class="tableClasses">
+      <table :class="tableClasses" style="margin-bottom: 0px">
         <thead>
           <slot name="thead-top"/>
           <tr v-if="header">
@@ -118,6 +118,7 @@
             <tr
               @click="rowClicked(item, itemIndex + firstItemIndex, $event)"
               @contextmenu="contextMenu(item, itemIndex + firstItemIndex, $event)"
+              v-contextmenu:contextmenu
               :class="rowClass(item)"
               :tabindex="clickableRows ? 0 : null"
             >
@@ -170,17 +171,17 @@
           <tr v-if="!currentItems.length">
             <td :colspan="colspan">
               <slot name="no-items-view">
-                <div class="text-center my-5">
-                  <h2 v-if="!loading">
+                <div class="text-center my-0">
+                  <h3 v-if="!loading" class="mb-0">
                     {{ noItemsText }}
                     <i
-                      width="30"
-                      :class="`${noItemsIconClass} mb-2`"
+                      width="20"
+                      :class="`${noItemsIconClass}`"
                     ></i>
-                  </h2>
-                  <h2 v-else>
+                  </h3>
+                  <h3 v-else>
                     Loading...
-                  </h2>
+                  </h3>
                 </div>
               </slot>
             </td>
@@ -237,6 +238,36 @@
       :pages="totalPages"
       v-bind="typeof pagination === 'object' ? pagination : null"
     />
+
+  <v-contextmenu ref="contextmenu" @show="store_selection">
+    <v-contextmenu-item @click="copy_browser" v-if="selectedText">
+      <i class="la la-copy la-lg"></i> Copy
+    </v-contextmenu-item>
+    <v-contextmenu-item @click="context_search" v-if="full_contextmenu && selectedText">
+      <i class="la la-search la-lg"></i> Search
+    </v-contextmenu-item>
+    <v-contextmenu-submenu title="To Clipboard">
+      <template v-slot:title><i class="la la-clipboard la-lg"></i> To Clipboard</template>
+      <v-contextmenu-item @click="copy_clipboard(itemCopy, fields, $event)" method="yaml">
+        As YAML
+      </v-contextmenu-item>
+      <v-contextmenu-item @click="copy_clipboard(itemCopy, fields, $event)" method="yaml" full="true">
+        As YAML (Full)
+      </v-contextmenu-item>
+      <v-contextmenu-divider />
+      <v-contextmenu-item @click="copy_clipboard(itemCopy, fields, $event)" method="json">
+        As JSON
+      </v-contextmenu-item>
+      <v-contextmenu-item @click="copy_clipboard(itemCopy, fields, $event)" method="json" full="true">
+        As JSON (Full)
+      </v-contextmenu-item>
+      <v-contextmenu-divider />
+      <v-contextmenu-item v-for="field in fields.filter(field => field.key != 'button' && field.key != 'select')" :key="field.key" @click="copy_clipboard(itemCopy, fields, $event)" method="simple" :field="field.key">
+        {{ capitalizeFirstLetter(field.key) }}
+      </v-contextmenu-item>
+    </v-contextmenu-submenu>
+  </v-contextmenu>
+
   </div>
 </template>
 
@@ -244,6 +275,7 @@
 
 import dig from 'object-dig'
 import SElementCover from '@/components/SElementCover.vue'
+import { capitalizeFirstLetter, to_clipboard, copy_clipboard } from '@/utils/api'
 
 export default {
   name: 'SDataTable',
@@ -260,7 +292,8 @@ export default {
     'pagination-change',
     'row-contextmenu',
     'cell-clicked',
-    'celltitle-clicked'
+    'celltitle-clicked',
+    'context_search',
   ],
   props: {
     items: Array,
@@ -297,6 +330,10 @@ export default {
       type: Boolean,
       default: true
     },
+    full_contextmenu: {
+      type: Boolean,
+      default: true
+    },
     footer: Boolean,
     loading: Boolean,
     clickableRows: Boolean,
@@ -315,6 +352,11 @@ export default {
       page: this.activePage || 1,
       perPageItems: this.itemsPerPage,
       passedItems: this.items || [],
+      selectedText: '',
+      itemCopy: {},
+      to_clipboard: to_clipboard,
+      copy_clipboard: copy_clipboard,
+      capitalizeFirstLetter: capitalizeFirstLetter,
     }
   },
   watch: {
@@ -633,6 +675,9 @@ export default {
       )
     },
     contextMenu (item, index, e) {
+      this.itemCopy = item
+      this.$refs.contextmenu.hide()
+      this.$refs.contextmenu.show({top: e.pageY, left: e.pageX})
       this.$emit(
         'row-contextmenu', item, index, this.getClickedColumnName(e, false), e
       )
@@ -682,6 +727,15 @@ export default {
       this.tableFilterState = ""
       this.columnFilterState = {}
       this.sorterState = { column: "", asc: true }
+    },
+    store_selection() {
+      this.selectedText = window.getSelection().toString()
+    },
+    copy_browser(event) {
+      this.to_clipboard(this.selectedText)
+    },
+    context_search(event) {
+      this.$emit('context_search', this.selectedText)
     },
   }
 }

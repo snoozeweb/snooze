@@ -1,7 +1,7 @@
 <template>
   <div>
     <CCard header="Grafana" header-class='text-center font-weight-bold'>
-      <CCardHeader class='text-center' style='font-weight:bold'>
+      <CCardHeader class='card-header-border text-center' style='font-weight:bold'>
         Grafana
       </CCardHeader>
       <CCardBody class="p-2 m-auto">

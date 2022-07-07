@@ -1,7 +1,7 @@
 <template>
   <CCol v-if="curatedLogs.length > 0" class="p-2">
     <CCard no-body>
-      <CCardHeader class='text-center' style='font-weight:bold'>Audit logs</CCardHeader>
+      <CCardHeader class='card-header-border text-center' style='font-weight:bold'>Audit logs</CCardHeader>
       <CCardBody class="p-2">
 
       <template v-if="authorized">
