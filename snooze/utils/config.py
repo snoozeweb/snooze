@@ -203,6 +203,8 @@ class MetadataConfig(BaseModel):
     icon: str = 'question-circle'
     options: dict = Field(default_factory=dict)
     search_fields: List[str] = Field(default_factory=list)
+    force_order: Optional[str] = None
+    tree: Optional[bool] = False
 
     def __init__(self, plugin_name: str, moduledir: Optional[Path] = None):
         object.__setattr__(self, 'name', plugin_name)
@@ -624,6 +626,11 @@ class HousekeeperConfig(WritableConfig):
         title='Cleanup comment',
         description='Time (in seconds) between each run of comment cleaning. Comments which are not bound to'
         ' any alert will be deleted',
+        default=timedelta(days=1),
+    )
+    cleanup_orphans: timedelta = Field(
+        title='Cleanup orphans',
+        description='Time (in seconds) between each run of orphans cleaning',
         default=timedelta(days=1),
     )
     cleanup_audit: timedelta = Field(

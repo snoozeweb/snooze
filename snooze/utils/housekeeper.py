@@ -127,6 +127,8 @@ class Housekeeper(SurvivingThread):
                 lambda db: db.cleanup_timeout('record')),
             'cleanup_comment': BasicJob('cleanup_comment', timedelta(days=1),
                 lambda db: db.cleanup_comments()),
+            'cleanup_orphans': BasicJob('cleanup_orphans', timedelta(days=1),
+                lambda db: db.cleanup_orphans('rule')),
             'cleanup_audit': IntervalJob('cleanup_audit', timedelta(days=1), timedelta(days=28),
                 lambda db, interval: db.cleanup_audit_logs(interval.total_seconds())),
             'cleanup_snooze': IntervalJob('cleanup_snooze', timedelta(days=1), timedelta(days=3),
@@ -160,7 +162,6 @@ class Housekeeper(SurvivingThread):
         '''The check to execute at every loop'''
         for name, job in self.jobs.items():
             if job.next_run <= datetime.now():
-                log.debug("Running housekeeping job %s", name)
                 job.next()
                 job.run(self.db)
         if self.backup_job:

@@ -5,6 +5,7 @@
 * Web: Alerts preview when writing a condition
 * Web: Can set modifications when re-opening an alert
 * Core: Support for Grafana 8.5+ (same webhook)
+* Core: Housekeeper: cleanup rule orphans
 
 ### Changes
 * Web: Updated all web packages + NodeJS (10->12)
