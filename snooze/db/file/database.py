@@ -18,10 +18,11 @@ from threading import Lock
 import uuid
 from bson.json_util import dumps
 from tinydb import TinyDB, Query as BaseQuery, where
+from tinydb.operations import add
 
 from snooze.db.database import Database, wrap_exception
 from snooze.utils.config import FileConfig
-from snooze.utils.functions import dig, to_tuple
+from snooze.utils.functions import dig, to_tuple, flatten
 
 log = getLogger('snooze.db.file')
 DEFAULT_PAGINATION = {
@@ -29,6 +30,7 @@ DEFAULT_PAGINATION = {
     'page_number': 1,
     'nb_per_page': 0,
     'asc': True,
+    'only_one': False,
 }
 
 class OperationNotSupported(Exception):
@@ -63,6 +65,30 @@ def test_contains(array, value):
 def test_search(dic, value):
     return value in str(dic)
 
+def append_many(fields):
+    def transform(doc):
+        for field, val in fields.items():
+            doc[field] += val
+    return transform
+
+def prepend_many(fields):
+    def transform(doc):
+        for field, val in fields.items():
+            doc[field] = val + doc[field]
+    return transform
+
+def set_many(fields):
+    def transform(doc):
+        for field, val in fields.items():
+            doc[field] = val
+    return transform
+
+def remove_many(fields):
+    def transform(doc):
+        for field, val in fields.items():
+            doc[field] = [i for i in doc[field] if i not in val]
+    return transform
+
 class BackendDB(Database):
     '''Backend database based on local file (TinyDB)'''
 
@@ -95,6 +121,21 @@ class BackendDB(Database):
             aggregate_results = [{'_id': doc.doc_id} for doc in aggregate_results]
             res = self.delete_aggregates('comment', aggregate_results)
             return res
+
+    def cleanup_orphans(self, collection: str) -> int:
+        '''Delete objects which one of their ancestors does not exist anymore'''
+        with mutex:
+            parents = set(flatten([doc.get('parents', []) for doc in self.db.table(collection).all()]))
+        if len(parents) == 0:
+           return 0
+        to_delete = []
+        for parent in parents:
+            if not self.get_one(collection, {'uid': parent}):
+                to_delete.append(parent)
+        total = 0
+        with mutex:
+            total = len(self.db.table(collection).remove(Query().parents.any(to_delete)))
+        return total
 
     def cleanup_audit_logs(self, interval):
         mutex.acquire()
@@ -258,12 +299,9 @@ class BackendDB(Database):
         }
 
     @wrap_exception
-    def get_one(self, collection: str, search: dict, **pagination):
+    def get_one(self, collection: str, search: dict):
         '''Return the first element found based on a search dict'''
         with mutex:
-            pagination = {**DEFAULT_PAGINATION, **pagination}
-            orderby = pagination['orderby']
-            asc = pagination['asc']
             queries = []
             for key, value in search.items():
                 query = dig(Query(), *key.split('.')) == value
@@ -271,10 +309,6 @@ class BackendDB(Database):
             search_query = reduce(lambda a, b: a & b, queries)
             results = self.db.table(collection).search(search_query)
             if results:
-                if len(orderby) > 0 and all(dig(res, *orderby.split('.')) for res in list(results)):
-                    results = sorted(list(results),  key=lambda x: reduce(lambda c, k: c.get(k, {}), orderby.split('.'), x))
-                if not asc:
-                    results = list(reversed(results))
                 return results[0]
             else:
                 return None
@@ -327,23 +361,45 @@ class BackendDB(Database):
         mutex.release()
         return {'data': {'added': added, 'updated': updated}}
 
-    def update_fields(self, collection, fields, condition=[]):
-        log.debug("Update collection '%s' with fields '%s' based on the following search", collection, fields)
+    def inc_many(self, collection: str, field: str, condition = None, value: int = 1):
+        if condition is None:
+            condition = []
+        tinydb_search = self.convert(condition)
+        total = 0
+        if collection in self.db.tables():
+            table = self.db.table(collection)
+            total = table.count(tinydb_search)
+            table.update(add(field, value), tinydb_search)
+        return total
+
+    def update_with_operation(self, collection, operation, condition=[]):
+        tinydb_search = self.convert(condition)
         total = 0
         mutex.acquire()
-        if collection not in self.db.tables():
-            mutex.release()
-            return 0
+        if collection in self.db.tables():
+            try:
+                total = len(self.db.table(collection).update(operation, tinydb_search))
+            except Exception as err:
+                log.exception(err)
         mutex.release()
-        results = self.search(collection, condition)
-        total = results['count']
-        for record in results['data']:
-            for field, val in fields.items():
-                record[field] = val
-        if total > 0:
-            self.write(collection, results['data'])
-        log.debug("Updated %d fields", total)
+        log.debug("Updated %d document(s)", total)
         return total
+
+    def set_fields(self, collection, fields, condition=[]):
+        log.debug("Update collection '%s' with fields '%s' based on the following search '%s'", collection, fields, condition)
+        return self.update_with_operation(collection, set_many(fields), condition)
+
+    def append_list(self, collection, fields, condition=[]):
+        log.debug("Append to collection '%s' fields '%s' based on the following search: '%s'", collection, fields, condition)
+        return self.update_with_operation(collection, append_many(fields), condition)
+
+    def prepend_list(self, collection, fields, condition=[]):
+        log.debug("Prepend to collection '%s' fields '%s' based on the following search: '%s'", collection, fields, condition)
+        return self.update_with_operation(collection, prepend_many(fields), condition)
+
+    def remove_list(self, collection, fields, condition=[]):
+        log.debug("Remove from collection '%s' fields '%s' based on the following search: '%s'", collection, fields, condition)
+        return self.update_with_operation(collection, remove_many(fields), condition)
 
     def compute_stats(self, collection, date_from, date_until, groupby='hour'):
         log.debug("Compute metrics on `%s` from %s until %s grouped by %s", collection, date_from, date_until, groupby)
@@ -403,6 +459,7 @@ class BackendDB(Database):
         page_number = pagination['page_number']
         nb_per_page = pagination['nb_per_page']
         asc = pagination['asc']
+        only_one = pagination['only_one']
         tinydb_search = self.convert(condition)
         if collection in self.db.tables():
             table = self.db.table(collection)
@@ -410,18 +467,22 @@ class BackendDB(Database):
                 results = table.search(tinydb_search)
             else:
                 results = table.all()
-            total = len(results)
-            if nb_per_page > 0:
-                from_el = max((page_number-1)*nb_per_page, 0)
-                to_el = page_number*nb_per_page
-            else:
-                from_el = None
-                to_el = None
             if len(orderby) > 0 and all(dig(res, *orderby.split('.')) for res in list(results)):
                 results = sorted(list(results),  key=lambda x: reduce(lambda c, k: c.get(k, {}), orderby.split('.'), x))
             if not asc:
                 results = list(reversed(results))
-            results = results[from_el:to_el]
+            if only_one:
+                total = 1
+                results = results[:1]
+            else:
+                total = len(results)
+                if nb_per_page > 0:
+                    from_el = max((page_number-1)*nb_per_page, 0)
+                    to_el = page_number*nb_per_page
+                else:
+                    from_el = None
+                    to_el = None
+                results = results[from_el:to_el]
             log.debug("Found %d result(s) for search %s in collection %s. Pagination: %s",
                 total, tinydb_search, collection, pagination)
             mutex.release()
