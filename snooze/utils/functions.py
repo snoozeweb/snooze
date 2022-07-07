@@ -44,8 +44,8 @@ def log_error_handler(err: HTTPError, req: Request, _resp, _params):
     log.error(message, exc_info=err)
     raise err
 
-def log_ignore_handler(_err: HTTPError, _req: Request, _resp, _params):
-    '''Do nothing'''
+def log_ignore_handler(err: HTTPError, _req: Request, _resp, _params):
+    raise err
 
 def log_uncaught_handler(err: Exception, _req, _resp, _params):
     '''Log uncaught exceptions and return a clean 5xx'''
