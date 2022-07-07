@@ -56,12 +56,13 @@ export default {
   },
   mounted () {
     this.save_enable()
+    let storage = JSON.parse(localStorage.getItem(this.endpoint+'_json') || '{}')
+    this.schema = storage.data
     var options = {}
-    if (this.checksum) {
-      options.checksum = this.checksum
+    if (storage.checksum) {
+      options.checksum = storage.checksum
     }
-    this.schema = JSON.parse(localStorage.getItem(this.endpoint+'_json') || '{}')
-    get_data(`schema/${this.endpoint}`, null, options, this.load_table)
+    get_data(`schema/${this.endpoint}`, [], options, this.load_table)
   },
   data () {
     return {
@@ -85,13 +86,9 @@ export default {
   methods: {
     load_table(response) {
       // Cache was updated
-      if (response.status == 200) {
-        this.schema = response.data
-        this.checksum = response.headers['CHECKSUM']
+      if (response.data.data) {
+        this.schema = response.data.data
         localStorage.setItem(`${this.endpoint}_json`, JSON.stringify(response.data))
-      // Cache not modified
-      } else if (response.stats == 304) {
-        // Do nothing
       }
       var data = this.schema
       this.form = dig(data, 'form')

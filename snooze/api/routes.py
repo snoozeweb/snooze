@@ -346,10 +346,13 @@ class SchemaRoute(BasicRoute):
         try:
             endpoint_checksum = self.checksums[endpoint]
             if endpoint_checksum == req.params.get('checksum'):
-                resp.status = falcon.HTTP_NOT_MODIFIED
+                resp.media = {}
+                resp.status = falcon.HTTP_OK
             else:
-                resp.media = self.schemas[endpoint]
-                resp.set_header('CHECKSUM', endpoint_checksum)
+                resp.media = {
+                    'data': self.schemas[endpoint],
+                    'checksum': endpoint_checksum,
+                }
                 resp.status = falcon.HTTP_OK
         except KeyError as err:
             raise falcon.HTTPNotFound(f"No web config found for endpoint '{endpoint}'") from err
