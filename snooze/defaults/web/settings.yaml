@@ -155,3 +155,10 @@ form:
             options:
                 negative_label: 'No cleanup'
             default_value: 2419200
+        cleanup_orphans:
+            display_name: Cleanup orphaned rules
+            component: Duration
+            description: 'Execute a cleanup job every X seconds. <=0 for no cleanup'
+            options:
+                negative_label: 'No cleanup'
+            default_value: 86400
