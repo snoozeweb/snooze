@@ -43,9 +43,8 @@ class ProfileRoute(FalconRoute):
             except Exception as err:
                 raise falcon.HTTPInternalServerError(description=f"{err}") from err
         else:
-            auth: AuthPayload = req.context.auth
-            raise falcon.HTTPNotFound(description=f"Could not find user {auth.method}/{auth.username} \
-                in db's profile.{section}")
+            resp.media = {}
+            resp.status = falcon.HTTP_200
 
     @authorize
     def on_put(self, req: Request, resp: Response, section: str):
