@@ -54,7 +54,7 @@ class Aggregaterule(Plugin):
         '''Validate an aggregate rule object'''
         validate_condition(obj)
 
-    def match_aggregate(self, record, throttle=10, flapping=2, watch=[], aggrule_name='default'):
+    def match_aggregate(self, record, throttle=10, flapping=3, watch=[], aggrule_name='default'):
         '''Attempt to match an aggregate with a record, and throttle the record if it does'''
         log.debug("Checking if an aggregate with hash %s can be found", record['hash'])
         aggregate = self.db.get_one('record', dict(hash=record['hash']))
@@ -74,6 +74,10 @@ class Aggregaterule(Plugin):
             comment['record_uid'] = aggregate.get('uid')
             comment['date'] = now.astimezone().isoformat()
             comment['auto'] = True
+            comment['type'] = 'comment'
+            throttling = (throttle < 0) or (now.timestamp() - aggregate.get('date_epoch', 0) < throttle)
+            if not throttling:
+                record.pop('flapping_countdown', '')
             if record_state == 'close':
                 self.core.stats.inc('alert_closed', {'name': aggrule_name})
                 if record.get('state') != 'close':
@@ -111,30 +115,37 @@ class Aggregaterule(Plugin):
                     record['state'] = 'esc'
                 else:
                     comment['message'] = 'New escalation from watchlist: {}'.format(', '.join(append_txt))
-                    comment['type'] = 'comment'
-                self.db.write('comment', comment)
                 record['flapping_countdown'] = aggregate.get('flapping_countdown', flapping) - 1
             elif record.get('state') == 'close':
                 comment['message'] = 'Auto re-opened'
                 comment['type'] = 'open'
                 record['state'] = 'open'
-                self.db.write('comment', comment)
                 record['flapping_countdown'] = aggregate.get('flapping_countdown', flapping) - 1
-            elif (throttle < 0) or (now.timestamp() - aggregate.get('date_epoch', 0) < throttle):
+            elif throttling:
                 log.debug("Alert %s Time within throttle %s range, discarding", record['hash'], throttle)
                 self.core.stats.inc('alert_throttled', {'name': aggrule_name})
+                if now.timestamp() != aggregate.get('date_epoch', 0):
+                    comment['message'] = "First throttled message detected. Stopped notifications until throttle expires ({}s left)".format(
+                        throttle - (now.timestamp() - aggregate.get('date_epoch', 0)))
+                    self.db.write('comment', comment)
                 raise AbortAndUpdate(record)
             else:
                 if record.get('state') == 'ack':
                     comment['type'] = 'esc'
                     record['state'] = 'esc'
-                else:
-                    comment['type'] = 'comment'
                 comment['message'] = 'New escalation'
+            flapping_count = record.get('flapping_countdown', 1)
+            if flapping_count == 0:
+                flapping_message = "Flapping detected. Stopped notifications until throttle expires ({}s left)".format(
+                    throttle - (now.timestamp() - aggregate.get('date_epoch', 0)))
+                if 'message' in comment:
+                    comment['message'] += '\n' + flapping_message
+                else:
+                    comment['message'] = flapping_message
+            if 'message' in comment:
                 self.db.write('comment', comment)
-                record.pop('flapping_countdown', '')
             record['comment_count'] = aggregate.get('comment_count', 0) + 1
-            if record.get('flapping_countdown', 0) < 0:
+            if flapping_count <= 0:
                 log.debug("Alert %s is flapping, discarding", record['hash'])
                 raise AbortAndUpdate(record)
         else:

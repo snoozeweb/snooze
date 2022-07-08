@@ -34,6 +34,8 @@ User interaction allows an alert to switch between states. Here are the differen
 :``close``: :ref:`Closed <close>`.
 :``open``: :ref:`Re-opened <reopen>`.
 
+Expected alert management workflow is: ``(esc ->) ack -> close (-> open)``
+
 Acknowledge
 -----------
 
@@ -41,7 +43,7 @@ Acknowledge
 
 Used to let people know that someone is taking care of the issue related to the alert.
 
-Acknowledged alerts will stop getting :ref:`notified <frequency>`.
+Acknowledged alerts will stop getting :ref:`notified <frequency>` if a frequency has been set.
 
 Re-escalate
 -----------
@@ -60,11 +62,12 @@ Close
 
 .. _close:
 
-Used to let people know that the issue related to the alert is resolved.
+Used to let people know that the issue related to the alert is resolved. It is not expected to reoccur anymore.
 
 Alerts can get closed automatically if their **severity** field is in the list of defined **OK Severities** in :ref:`Settings <settings>`
 
-Closed alerts will stop getting :ref:`notified <frequency>`.
+Closed alerts will stop getting :ref:`notified <frequency>` if a frequency has been set. They can be re-opened automatically on a new hit
+regardless of their :ref:`throttle period <aggregate_rules>`.
 
 Re-open
 -------

@@ -16,6 +16,7 @@
 ### Bug fixes
 * Core: DB query typo in Actions
 * Core: Batch form would not being displayed if no action was previously created
+* Core: Fixed issue preventing the flapping counter from being reset
 
 ## v1.4.1
 

@@ -32,7 +32,7 @@ class TestAggregatePlugin:
             {'name': 'Agg1', 'condition': ['=', 'a', '1'], 'fields': ['a', 'b'], 'throttle': 15},
             {'name': 'Agg2', 'condition': ['=', 'a', '2'], 'fields': ['a', 'b.c'], 'throttle': 15},
             {'name': 'Agg3', 'condition': ['=', 'a', '3'], 'fields': ['a', 'b'], 'throttle': 0},
-            {'name': 'Agg4', 'condition': ['=', 'a', '4'], 'fields': ['a', 'b'], 'throttle': 15, 'watch': ['c'], 'flapping': 2},
+            {'name': 'Agg4', 'condition': ['=', 'a', '4'], 'fields': ['a', 'b'], 'throttle': 15, 'watch': ['c'], 'flapping': 3},
             {'name': 'Agg5', 'condition': ['=', 'a', '5'], 'fields': ['a', 'b'], 'throttle': 15, 'watch': ['c.test']},
         ]
         core.db.delete('aggregaterule', [], True)
@@ -138,4 +138,4 @@ class TestAggregatePlugin:
                 continue
         results = aggregateplugin.core.db.search('record', ['=', 'aggregate', 'Agg4'])['data'][0]
         assert results['duplicates'] == 5
-        assert results['flapping_countdown'] == -1
+        assert results['flapping_countdown'] == 0
