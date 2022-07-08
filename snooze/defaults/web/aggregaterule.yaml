@@ -76,7 +76,7 @@ form:
         description: Maximum number of times to be alerted during the throttle period
         options:
             min: 0
-        default_value: 2
+        default_value: 3
     comment:
         display_name: Comment
         component: Text

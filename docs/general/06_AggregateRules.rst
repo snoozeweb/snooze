@@ -60,6 +60,43 @@ Alert C was processed 20 minutes after Alert A which was greater than the thrott
 .. image:: images/web_aggregates.png
     :align: center
 
+Watch
+=====
+
+Normally, during the throttle period, subsequent alerts would not be notified. It is possible though to bypass this behavior by setting up watched fields.
+
+If a new incoming alert that would be aggregated has one of its watched fields changed, the throttle period will be reset and the alert will be notified.
+
+.. code-block:: yaml
+    :caption: Example
+
+    # Alert A
+    host: prod-syslog01.example.com
+    severity: critical
+    timestamp: 2021-01-01 10:00:00
+
+    # Alert B
+    host: prod-syslog01.example.com
+    severity: emergency
+    timestamp: 2021-01-01 10:10:00
+
+.. code-block:: yaml
+
+    # Aggregate rule
+    fields:
+        - host
+    watch:
+        - severity
+    throttle: 900 # 15 mins
+
+Since ``severity`` has been set as a watched field, Alert B which would usually not be notified because of the throttle period is getting notified (critical -> emergency).
+
+Flapping
+========
+
+Even during the throttle period, closed alerts getting new hits are being re-opened and therefore notified. However, an anti-flapping feature is present to cap the number
+of the times this behavior can happen. by default it is set to 3, meaning only 3 subsequent hits can be notified until the throttle period ends.
+
 Web interface
 =============
 
