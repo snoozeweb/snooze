@@ -6,6 +6,8 @@ from getpass import getpass
 
 from invoke import task, Collection
 
+import tasks.pip
+import tasks.web
 from tasks.utils import get_versions, print_github_kv, get_paths
 
 def docker_images(ctx, tag):
@@ -28,7 +30,7 @@ def release():
     '''Return the release number of the docker container'''
     return get_versions()['docker'].split('-', 1)[-1]
 
-@task(help={'mode': 'The mode to auto generate the tags'})
+@task(tasks.pip.build, tasks.web.build, help={'mode': 'The mode to auto generate the tags'})
 def build(ctx, mode='dev', save=False, github_output=False, dockerfile="packaging/Dockerfile"):
     '''Build a docker image based on the latest git version'''
     image = ctx.get('image')
