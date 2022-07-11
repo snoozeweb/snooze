@@ -41,10 +41,16 @@ RUN apk update && \
 RUN pip install --no-cache-dir poetry==1.2.0a2 pip==21.0.1 virtualenv==20.4.4
 RUN python3 -m venv /opt/snooze
 RUN mkdir -p /opt/snooze/web
-COPY dist /dist
-RUN find /dist
+
+# Copy and install the wheel
+COPY "${WHEEL_PATH}" "/${WHEEL_PATH}"
 RUN /opt/snooze/bin/pip install --no-cache-dir "/${WHEEL_PATH}"
+RUN rm "/${WHEEL_PATH}"
+
+# Copy and install the web
+COPY "${WEB_PATH}" "/${WEB_PATH}"
 RUN tar -xvf "/${WEB_PATH}" -C /opt/snooze/web
+RUN rm "/${WEB_PATH}"
 
 # hadolint ignore=DL3013
 ENV PATH $PATH:/venv/bin
