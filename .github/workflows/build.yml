@@ -17,7 +17,7 @@ jobs:
 
       - name: Setup python environment
         uses: ./.github/actions/python-poetry
-        with: {poetry_options: '--default --with test'}
+        with: {poetry_options: '--default --only test'}
 
       - name: Running Pytest
         run: poetry run pytest
