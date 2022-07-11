@@ -90,6 +90,13 @@ def remove_many(fields):
             doc[field] = [i for i in doc[field] if i not in val]
     return transform
 
+def overwrite(data, field):
+    def transform(doc):
+        if doc[field] in data:
+            for k,v in data[doc[field]].items():
+                doc[k] = v
+    return transform
+
 class BackendDB(Database):
     '''Backend database based on local file (TinyDB)'''
 
@@ -168,6 +175,17 @@ class BackendDB(Database):
         self.db.table('audit').remove(doc_ids=doc_ids)
 
         mutex.release()
+
+    def renumber_field(self, collection, field):
+        '''Renumber field by ascending order'''
+        log.info("Reordering field '%s' in collection %s", field, collection)
+        data = self.search(collection, pagination={'orderby': field, 'asc': True})['data']
+        rows_by_uid = {}
+        for idx, row in enumerate(data):
+            row[field] = idx
+            rows_by_uid[row['uid']] = row
+        self.db.table(collection).update(overwrite(rows_by_uid, 'uid'))
+        log.info("Field '%s' renumbering on collection %s: Success", field, collection)
 
     def delete_aggregates(self, collection, aggregate_results):
         ids = [doc['_id'] for doc in aggregate_results]

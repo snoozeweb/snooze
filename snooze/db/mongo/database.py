@@ -150,6 +150,19 @@ class BackendDB(Database):
             log.debug("Removing audit logs for %d objects", len(ids))
             self.db['audit'].delete_many({'object_id': {'$in': ids}})
 
+    def renumber_field(self, collection, field):
+        '''Renumber field by ascending order'''
+        log.info("Reordering field '%s' in collection %s", field, collection)
+        pipeline = [
+            {'$sort': {field: 1}},
+            {'$group': {'_id': 1, 'tmp_items': {'$push': '$$ROOT'}}},
+            {'$unwind': {'path': '$tmp_items', 'includeArrayIndex': field}},
+            {'$replaceWith': {'$mergeObjects': ['$tmp_items', {field: "$"+field}]}},
+            {'$merge': { 'into': collection, 'on': '_id', 'whenMatched': 'replace'}},
+        ]
+        result = self.db[collection].aggregate(pipeline)
+        log.info("Field '%s' renumbering on collection %s: Success", field, collection)
+
     def run_pipeline(self, collection: str, pipeline: List[dict]) -> int:
         '''Execute a filter pipeline on a collection, and delete the resulting objects.
         Return the number of deleted objects'''
