@@ -356,7 +356,7 @@ class WebConfig(BaseModel):
         description='Enable the web interface',
     )
     path: Path = Field(
-        default='/opt/snooze/web',
+        default=Path('/opt/snooze/web'),
         description='Path to the web interface dist files',
     )
 
