@@ -668,6 +668,11 @@ class HousekeeperConfig(WritableConfig):
         description='Cleanup notifications that have been expired for the given duration (in seconds). Run daily',
         default=timedelta(days=3),
     )
+    renumber_field: timedelta = Field(
+        title='Renumber field',
+        description='Renumber given field from 0 to count(collection)-1',
+        default=timedelta(days=1),
+    )
 
 def setup_logging(basedir: Path = SNOOZE_CONFIG):
     '''Initialize the python logger'''

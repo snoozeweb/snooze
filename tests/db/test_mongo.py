@@ -346,6 +346,11 @@ def test_tinydb_bulk_increment_upsert(db):
     assert stat2['hits'] == 42
     assert stat3['hits'] == 1
 
+#def test_mongo_renumber_field(db):
+#    db.write('record', [{'id': 1}, {'id': 100}, {'id': 12}, {'id': 876}])
+#    db.renumber_field('record', 'id')
+#    assert list(map(lambda x: x['id'], db.search('record')['data'])) == [0, 1, 2, 3]
+
 # timezone in datetostring not implemented
 #@mongomock.patch('mongodb://localhost:27017')
 #def test_mongo_compute_stats():

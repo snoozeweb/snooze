@@ -129,6 +129,8 @@ class Housekeeper(SurvivingThread):
                 lambda db: db.cleanup_comments()),
             'cleanup_orphans': BasicJob('cleanup_orphans', timedelta(days=1),
                 lambda db: db.cleanup_orphans('rule')),
+            'renumber_field': BasicJob('renumber_field', timedelta(days=1),
+                lambda db: db.renumber_field('rule', 'tree_order')),
             'cleanup_audit': IntervalJob('cleanup_audit', timedelta(days=1), timedelta(days=28),
                 lambda db, interval: db.cleanup_audit_logs(interval.total_seconds())),
             'cleanup_snooze': IntervalJob('cleanup_snooze', timedelta(days=1), timedelta(days=3),
