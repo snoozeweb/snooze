@@ -22,7 +22,7 @@ class TestConfig:
 class TestCoreConfig:
     def test_empty(self, tmp_path):
         config = CoreConfig(tmp_path)
-        assert config.listen_addr == '0.0.0.0'
+        assert config.listen_addr == IPv4Address('0.0.0.0')
         assert config.port == 5200
 
     def test_read(self, tmp_path):
@@ -51,7 +51,7 @@ class TestCoreConfig:
         core_path.write_text(data)
 
         config = CoreConfig(tmp_path)
-        assert config.listen_addr == '0.0.0.0'
+        assert config.listen_addr == IPv4Address('0.0.0.0')
         assert config.port == 5200
         assert config.debug == True
         assert config.bootstrap_db == True
