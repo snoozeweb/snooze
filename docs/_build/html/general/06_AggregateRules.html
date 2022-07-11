@@ -219,32 +219,7 @@
    <i class="fas fa-chevron-down">
    </i>
   </label>
-  <ul>
-   <li class="toctree-l2">
-    <a class="reference internal" href="../configuration/core.html">
-     Core configuration
-    </a>
-   </li>
-   <li class="toctree-l2">
-    <a class="reference internal" href="../configuration/general.html">
-     General configuration
-    </a>
-   </li>
-   <li class="toctree-l2">
-    <a class="reference internal" href="../configuration/housekeeping.html">
-     Housekeeper configuration
-    </a>
-   </li>
-   <li class="toctree-l2">
-    <a class="reference internal" href="../configuration/ldap_auth.html">
-     LDAP configuration
-    </a>
-   </li>
-   <li class="toctree-l2">
-    <a class="reference internal" href="../configuration/notifications.html">
-     Notification configuration
-    </a>
-   </li>
+  <ul class="simple">
   </ul>
  </li>
 </ul>
@@ -426,6 +401,16 @@ title="Print to PDF"
   </a>
  </li>
  <li class="toc-h2 nav-item toc-entry">
+  <a class="reference internal nav-link" href="#watch">
+   Watch
+  </a>
+ </li>
+ <li class="toc-h2 nav-item toc-entry">
+  <a class="reference internal nav-link" href="#flapping">
+   Flapping
+  </a>
+ </li>
+ <li class="toc-h2 nav-item toc-entry">
   <a class="reference internal nav-link" href="#web-interface">
    Web interface
   </a>
@@ -452,6 +437,16 @@ title="Print to PDF"
  <li class="toc-h2 nav-item toc-entry">
   <a class="reference internal nav-link" href="#overview">
    Overview
+  </a>
+ </li>
+ <li class="toc-h2 nav-item toc-entry">
+  <a class="reference internal nav-link" href="#watch">
+   Watch
+  </a>
+ </li>
+ <li class="toc-h2 nav-item toc-entry">
+  <a class="reference internal nav-link" href="#flapping">
+   Flapping
   </a>
  </li>
  <li class="toc-h2 nav-item toc-entry">
@@ -517,6 +512,39 @@ title="Print to PDF"
 <p>Alert C was processed 20 minutes after Alert A which was greater than the throttle period, therefore Alert C was correctly passed to the next Process plugin. The throttle period restarted from Alert C timestamp.</p>
 <p><strong>Note</strong>: On the web interface, it is possible to see how many times an alert was aggregated by checking the number on the very right on <strong>Alerts</strong> page:</p>
 <img alt="../_images/web_aggregates.png" class="align-center" src="../_images/web_aggregates.png" />
+</section>
+<section id="watch">
+<h2>Watch<a class="headerlink" href="#watch" title="Permalink to this headline">#</a></h2>
+<p>Normally, during the throttle period, subsequent alerts would not be notified. It is possible though to bypass this behavior by setting up watched fields.</p>
+<p>If a new incoming alert that would be aggregated has one of its watched fields changed, the throttle period will be reset and the alert will be notified.</p>
+<div class="literal-block-wrapper docutils container" id="id4">
+<div class="code-block-caption"><span class="caption-text">Example</span><a class="headerlink" href="#id4" title="Permalink to this code">#</a></div>
+<div class="highlight-yaml notranslate"><div class="highlight"><pre><span></span><span class="c1"># Alert A</span><span class="w"></span>
+<span class="nt">host</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">prod-syslog01.example.com</span><span class="w"></span>
+<span class="nt">severity</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">critical</span><span class="w"></span>
+<span class="nt">timestamp</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">2021-01-01 10:00:00</span><span class="w"></span>
+
+<span class="c1"># Alert B</span><span class="w"></span>
+<span class="nt">host</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">prod-syslog01.example.com</span><span class="w"></span>
+<span class="nt">severity</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">emergency</span><span class="w"></span>
+<span class="nt">timestamp</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">2021-01-01 10:10:00</span><span class="w"></span>
+</pre></div>
+</div>
+</div>
+<div class="highlight-yaml notranslate"><div class="highlight"><pre><span></span><span class="c1"># Aggregate rule</span><span class="w"></span>
+<span class="nt">fields</span><span class="p">:</span><span class="w"></span>
+<span class="w">    </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">host</span><span class="w"></span>
+<span class="nt">watch</span><span class="p">:</span><span class="w"></span>
+<span class="w">    </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">severity</span><span class="w"></span>
+<span class="nt">throttle</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">900</span><span class="w"> </span><span class="c1"># 15 mins</span><span class="w"></span>
+</pre></div>
+</div>
+<p>Since <code class="docutils literal notranslate"><span class="pre">severity</span></code> has been set as a watched field, Alert B which would usually not be notified because of the throttle period is getting notified (critical -&gt; emergency).</p>
+</section>
+<section id="flapping">
+<h2>Flapping<a class="headerlink" href="#flapping" title="Permalink to this headline">#</a></h2>
+<p>Even during the throttle period, closed alerts getting new hits are being re-opened and therefore notified. However, an anti-flapping feature is present to cap the number
+of the times this behavior can happen. by default it is set to 3, meaning only 3 subsequent hits can be notified until the throttle period ends.</p>
 </section>
 <section id="web-interface">
 <h2>Web interface<a class="headerlink" href="#web-interface" title="Permalink to this headline">#</a></h2>

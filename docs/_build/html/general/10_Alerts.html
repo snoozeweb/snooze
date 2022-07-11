@@ -219,32 +219,7 @@
    <i class="fas fa-chevron-down">
    </i>
   </label>
-  <ul>
-   <li class="toctree-l2">
-    <a class="reference internal" href="../configuration/core.html">
-     Core configuration
-    </a>
-   </li>
-   <li class="toctree-l2">
-    <a class="reference internal" href="../configuration/general.html">
-     General configuration
-    </a>
-   </li>
-   <li class="toctree-l2">
-    <a class="reference internal" href="../configuration/housekeeping.html">
-     Housekeeper configuration
-    </a>
-   </li>
-   <li class="toctree-l2">
-    <a class="reference internal" href="../configuration/ldap_auth.html">
-     LDAP configuration
-    </a>
-   </li>
-   <li class="toctree-l2">
-    <a class="reference internal" href="../configuration/notifications.html">
-     Notification configuration
-    </a>
-   </li>
+  <ul class="simple">
   </ul>
  </li>
 </ul>
@@ -581,10 +556,11 @@ title="Print to PDF"
 <dd class="field-odd"><p><a class="reference internal" href="#reopen"><span class="std std-ref">Re-opened</span></a>.</p>
 </dd>
 </dl>
+<p>Expected alert management workflow is: <code class="docutils literal notranslate"><span class="pre">(esc</span> <span class="pre">-&gt;)</span> <span class="pre">ack</span> <span class="pre">-&gt;</span> <span class="pre">close</span> <span class="pre">(-&gt;</span> <span class="pre">open)</span></code></p>
 <section id="acknowledge">
 <h3>Acknowledge<a class="headerlink" href="#acknowledge" title="Permalink to this headline">#</a></h3>
 <p id="id1">Used to let people know that someone is taking care of the issue related to the alert.</p>
-<p>Acknowledged alerts will stop getting <a class="reference internal" href="08_Notifications.html#id2"><span class="std std-ref">notified</span></a>.</p>
+<p>Acknowledged alerts will stop getting <a class="reference internal" href="08_Notifications.html#id2"><span class="std std-ref">notified</span></a> if a frequency has been set.</p>
 </section>
 <section id="re-escalate">
 <h3>Re-escalate<a class="headerlink" href="#re-escalate" title="Permalink to this headline">#</a></h3>
@@ -595,9 +571,10 @@ title="Print to PDF"
 </section>
 <section id="close">
 <h3>Close<a class="headerlink" href="#close" title="Permalink to this headline">#</a></h3>
-<p id="id2">Used to let people know that the issue related to the alert is resolved.</p>
+<p id="id2">Used to let people know that the issue related to the alert is resolved. It is not expected to reoccur anymore.</p>
 <p>Alerts can get closed automatically if their <strong>severity</strong> field is in the list of defined <strong>OK Severities</strong> in <span class="xref std std-ref">Settings</span></p>
-<p>Closed alerts will stop getting <a class="reference internal" href="08_Notifications.html#id2"><span class="std std-ref">notified</span></a>.</p>
+<p>Closed alerts will stop getting <a class="reference internal" href="08_Notifications.html#id2"><span class="std std-ref">notified</span></a> if a frequency has been set. They can be re-opened automatically on a new hit
+regardless of their <a class="reference internal" href="06_AggregateRules.html#aggregate-rules"><span class="std std-ref">throttle period</span></a>.</p>
 </section>
 <section id="re-open">
 <h3>Re-open<a class="headerlink" href="#re-open" title="Permalink to this headline">#</a></h3>
