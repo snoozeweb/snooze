@@ -5,6 +5,7 @@
 * Web: Alerts preview when writing a condition
 * Web: Can set modifications when re-opening an alert
 * Web: New treeview for Rules. Drag&Drop support
+* Web: Drag&Drop support for Environments
 * Core: Support for Grafana 8.5+ (same webhook)
 * Core: Housekeeper: cleanup rule orphans
 

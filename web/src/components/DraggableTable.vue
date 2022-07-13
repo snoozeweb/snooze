@@ -44,7 +44,7 @@
         </div>
       </slot>
     </div>
-    <Draggable ref="draggable" :flatData="items" idKey="nid" parentIdKey="pid" @drop-change="drag_end" triggerClass="can-drag" @mouseover="can_drop = true" @mouseleave="can_drop = false" :afterPlaceholderCreated="store_placeholder">
+    <Draggable ref="draggable" :flatData="items" idKey="nid" parentIdKey="pid" @drop-change="drag_end" triggerClass="can-drag" @mouseover="can_drop = true" @mouseleave="can_drop = false" :afterPlaceholderCreated="store_placeholder" :eachDroppable="eachDroppable">
       <template v-slot="{ node, tree }">
         <div v-if="node.item.date_epoch">
         <div :class="rowClass(node)" @mouseover="node.hover = true" @mouseleave="node.hover = false" @contextmenu="contextMenu(node.item, $event)" v-contextmenu:contextmenu>
@@ -54,8 +54,9 @@
               <input type="checkbox" class="pointer ms-1 me-1" :checked="dig(node, '_checked')" @change="check(node)">
             </div>
             <div v-for="field in fields" :class="field.tdClass" :style="field.tdStyle">
-              <Condition v-if="field.key == 'condition'" :data="dig(node.item, 'condition')" />
+              <Condition v-if="field.key == 'condition' || field.key == 'filter'" :data="dig(node.item, 'condition')" />
               <Modification v-else-if="field.key == 'modifications'" :data="dig(node.item, 'modifications')" />
+              <ColorBadge v-else-if="field.key == 'color'" :data="dig(node.item, 'color') || '#ffffff'" />
               <span v-else>{{ dig(node.item, field.key) }}</span>
             </div>
             <div :class="['float-right', 'position-relative', {'d-none': !node.hover}]">
@@ -65,7 +66,7 @@
                     <i v-if="Boolean(dig(node.item, '_showDetails'))" class="la la-angle-up la-lg"></i>
                     <i v-else class="la la-angle-down la-lg"></i>
                   </CButton>
-                  <CButton size="sm" @click="modal_show('new', [{'parent': dig(node.item, 'uid')}])" color="success" v-c-tooltip="{content: 'Add child'}"><i class="la la-plus la-lg"></i></CButton>
+                  <CButton v-if="max_level != 1" size="sm" @click="modal_show('new', [{'parent': dig(node.item, 'uid')}])" color="success" v-c-tooltip="{content: 'Add child'}"><i class="la la-plus la-lg"></i></CButton>
                   <CButton size="sm" @click="modal_show('edit', [node.item])" color="primary" v-c-tooltip="{content: 'Edit'}"><i class="la la-pencil-alt la-lg"></i></CButton>
                   <CButton size="sm" @click="modal_show('delete', [node.item])" color="danger" v-c-tooltip="{content: 'Delete'}"><i class="la la-trash la-lg"></i></CButton>
                 </CButtonGroup>
@@ -206,6 +207,10 @@ export default {
     endpoint_prop: {
       type: String,
       required: true,
+    },
+    max_level: {
+      type: Number,
+      default: 0,
     },
     default_search_prop: {type: String, default: ''},
     page_options_prop: {type: Array, default: () => ['20', '50', '100']},
@@ -583,6 +588,11 @@ export default {
     },
     store_placeholder(p) {
       this.placeholder = p
+    },
+    eachDroppable (node, store, options, startTree) {
+      if (this.max_level > 0 && node.$level >= this.max_level) {
+        return false
+      }
     },
   },
   watch: {

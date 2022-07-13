@@ -44,7 +44,7 @@ export default {
   mounted() {
     this.all_tab.color = getStyle('--primary') || '#304ffe'
     this.tabs = [this.all_tab]
-    this.get_data('environment', null, {}, this.get_data_response)
+    this.get_data('environment', [], {'orderby': 'tree_order', 'asc': true}, this.get_data_response)
   },
   methods: {
     change_tab(tab, refresh = true) {

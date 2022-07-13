@@ -100,7 +100,7 @@ const router = createRouter({
           component: Role,
         },
         {
-          path: '/Environment',
+          path: '/environment',
           name: 'Environments',
           component: Environment,
         },
