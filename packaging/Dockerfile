@@ -45,6 +45,7 @@ RUN mkdir -p /opt/snooze/web
 # Copy and install the wheel
 COPY "${WHEEL_PATH}" "/${WHEEL_PATH}"
 RUN /opt/snooze/bin/pip install --no-cache-dir "/${WHEEL_PATH}"
+RUN find /opt/snooze/lib -type f -name "*.so" -exec strip {} \;
 RUN rm "/${WHEEL_PATH}"
 
 # Copy and install the web
