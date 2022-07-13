@@ -1,26 +1,31 @@
 <template>
-  <div class="animated fadeIn">
-    <List
-      endpoint_prop="environment"
-      edit_mode
-      delete_mode
-      add_mode
-    >
-      <template #details_side="row">
-        <AuditLogs collection="environment" :object="row.item" />
-      </template>
-    </List>
-  </div>
+  <DraggableTable
+    endpoint_prop="environment"
+    max_level=1
+  >
+    <template #details_side="row">
+      <AuditLogs collection="environment" :object="row.item" />
+    </template>
+  </DraggableTable>
 </template>
 
 <script>
+
+import DraggableTable from '@/components/DraggableTable.vue'
 import AuditLogs from '@/components/AuditLogs.vue'
-import List from '@/components/List.vue'
 
 export default {
   components: {
+    DraggableTable,
     AuditLogs,
-    List,
+  },
+  data () {
+    return {
+    }
+  },
+  mounted () {
+  },
+  methods: {
   },
 }
 </script>

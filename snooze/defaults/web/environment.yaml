@@ -2,38 +2,33 @@
 tabs:
     -
         title: 'Environments'
-        filter: []
 fields:
     -
         label: Name
         key: name
         sortable: true
-        thStyle: {width: '20%'}
+        tdStyle: {width: '20%'}
         tdClass: ['align-middle']
     -
         key: filter
         sortable: false
-        thStyle: {width: '50%'}
+        tdStyle: {width: '50%'}
         tdClass: ['align-middle']
         type: array
     -
         key: color
         sortable: false
-        thStyle: {width: '5%'}
+        tdStyle: {width: '70px'}
         tdClass: ['align-middle']
         type: array
     -
         label: Comment
         key: comment
-        thStyle: {width: '30%'}
+        tdStyle: {width: '30%'}
         tdClass: ['align-middle']
         type: array
-    -
-        label: ''
-        key: button
-        sortable: false
-        tdClass: ['align-middle', 'text-center']
-        thClass: 'text-center'
+orderby: tree_order
+isascending: true
 form:
     name:
         display_name: Name
