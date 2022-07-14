@@ -124,7 +124,7 @@ class Api:
             log.debug('Loading routes for %s at %s/falcon/route.py', plugin.name, plugin.rootdir)
             spec = importlib.util.spec_from_file_location(
                 f"snooze.plugins.core.{plugin.name}.falcon.route",
-                joindir(plugin.rootdir, 'falcon', 'route.py')
+                plugin.rootdir / 'falcon' / 'route.py'
             )
             plugin_module = importlib.util.module_from_spec(spec)
             try:
