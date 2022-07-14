@@ -1,6 +1,6 @@
 {
   "name": "snooze-web",
-  "version": "1.4.1",
+  "version": "1.5.0",
   "description": "",
   "author": "",
   "homepage": "",
@@ -13,7 +13,6 @@
     "test:coverage": "vue-cli-service test:unit --coverage",
     "test:unit": "vue-cli-service test:unit",
     "test:e2e": "vue-cli-service test:e2e",
-    "clearCache": "jest --clearCache",
     "release": "npm-run-all clearCache lint build test:unit test:e2e",
     "auto-changelog": "auto-changelog  --hide-credit --commit-limit false --package --backfill-limit 0 --starting-version 3.0.0-beta.0",
     "docs": "vuese gen -k"
@@ -26,7 +25,7 @@
     "@coreui/vue-chartjs": "^2.0.0",
     "@he-tree/vue3": "^1.2.9",
     "@popperjs/core": "^2.11.5",
-    "@vuepic/vue-datepicker": "^3.0.0",
+    "@vuepic/vue-datepicker": "^3.3.1",
     "avn": "^0.2.4",
     "axios": "^0.21.1",
     "chartjs-adapter-moment": "^1.0.0",
@@ -44,7 +43,7 @@
     "v-contextmenu": "^3.0.0",
     "vue": "^3.2.33",
     "vue-cli-plugin-yaml": "^1.0.2",
-    "vue-safe-html": "^1.0.1",
+    "vue-safe-html": "^2.1.0",
     "vue-uuid": "^2.0.2",
     "vue3-swatches": "^1.0.5",
     "vuex": "^4.0.2"
@@ -54,13 +53,10 @@
     "@vue/cli-plugin-babel": "^4.5.17",
     "@vue/cli-plugin-e2e-nightwatch": "^4.5.17",
     "@vue/cli-plugin-eslint": "^4.5.17",
-    "@vue/cli-plugin-unit-jest": "^4.5.17",
     "@vue/cli-service": "^4.5.17",
-    "@vue/test-utils": "1.0.0-beta.29",
     "@vuese/cli": "^2.14.3",
     "auto-changelog": "^2.4.0",
     "babel-eslint": "~10.1.0",
-    "babel-jest": "~26.6.3",
     "chart.js": "^3.7.1",
     "core-js": "^3.22.5",
     "eslint": "^6.8.0",
@@ -92,7 +88,7 @@
     "not ie <= 9"
   ],
   "engines": {
-    "node": ">= 12",
+    "node": ">= 14",
     "npm": ">= 6"
   }
 }

@@ -5,6 +5,7 @@
       :placeholder="placeholder"
       :inputClassName="datavalue != null ? 'form-control is-valid' : 'form-control is-invalid'"
       :closeOnAutoApply="false"
+      disableTimeRangeValidation
       timePicker
       textInput
       autoApply
