@@ -333,13 +333,19 @@ class BackendDB(Database):
                 return None
 
     @wrap_exception
-    def replace_one(self, collection: str, uid: str, obj: dict, update_time: bool = True):
+    def replace_one(self, collection: str, search: dict, obj: dict, update_time: bool = True):
         with mutex:
             query = Query()
             new_obj = dict(obj)
+            queries = []
+            for key, value in search.items():
+                new_obj[key] = value
+                query = dig(Query(), *key.split('.')) == value
+                queries.append(query)
             if update_time:
                 new_obj['date_epoch'] = datetime.datetime.now().timestamp()
-            search = self.db.table(collection).search(query.uid == uid)
+            search_query = reduce(lambda a, b: a & b, queries)
+            search = self.db.table(collection).search(search_query)
             self.db.table(collection).remove(doc_ids=[search[0]['doc_id']])
             self.db.table(collection).insert(new_obj)
 
@@ -550,6 +556,10 @@ class BackendDB(Database):
             mutex.release()
             log.error("Cannot find collection %s", collection)
             return {'data': 0}
+
+    def drop(self, collection):
+        if collection in self.db.tables():
+            self.db.drop_table(collection)
 
     def convert(self, array):
         """

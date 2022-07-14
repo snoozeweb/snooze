@@ -410,3 +410,9 @@ def test_tinydb_renumber_field(db):
     db.renumber_field('record', 'id')
     log.debug( db.search('record'))
     assert list(map(lambda x: x['id'], db.search('record')['data'])) == [0, 1, 2, 3]
+
+def test_tinydb_drop(db):
+    db.write('test', {'name': 'test'})
+    assert db.search('test')['count'] == 1
+    db.drop('test')
+    assert db.search('test')['count'] == 0

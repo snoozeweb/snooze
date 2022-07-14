@@ -303,13 +303,14 @@ class BackendDB(Database):
         return result
 
     @wrap_exception
-    def replace_one(self, collection: str, uid: str, obj: dict, update_time: bool = True):
+    def replace_one(self, collection: str, search: dict, obj: dict, update_time: bool = True):
         new_obj = dict(obj)
         new_obj.pop('_id', None)
-        new_obj['uid'] = uid
+        for key, value in search.items():
+            new_obj[key] = value
         if update_time:
             new_obj['date_epoch'] = datetime.datetime.now().timestamp()
-        self.db[collection].replace_one({'uid': uid}, new_obj, upsert=True)
+        return self.db[collection].replace_one(search, new_obj, upsert=True).matched_count
 
     @wrap_exception
     def inc(self, collection: str, field: str, labels: dict = {}):
@@ -481,6 +482,10 @@ class BackendDB(Database):
         except Exception as err:
             log.exception(err)
             return {'data': [], 'count': 0}
+
+    def drop(self, collection):
+        if collection in self.db.collection_names():
+            self.db[collection].drop()
 
     def convert(self, condition: Condition, search_fields: list = []):
         '''Convert `Condition` type from snooze.utils to Mongodb

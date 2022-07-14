@@ -307,7 +307,7 @@ def test_mongo_remove_list(db):
     assert db.search('record', ['=', 'id', 1])['data'][0]['parents'] == ['a']
     assert db.remove_list('record', {'id': ['a']}, ['=', 'id', 1]) == 0
 
-def test_tinydb_bulk_increment(db):
+def test_mongo_bulk_increment(db):
     filters = [
         {'name': 'snooze 1', 'hits': 0},
         {'name': 'snooze 2', 'hits': 40},
@@ -325,7 +325,7 @@ def test_tinydb_bulk_increment(db):
     assert snooze1['hits'] == 0
     assert snooze2['hits'] == 42
 
-def test_tinydb_bulk_increment_upsert(db):
+def test_mongo_bulk_increment_upsert(db):
     stats = [
         {'name': 'stat 1', 'hits': 0},
         {'name': 'stat 2', 'hits': 40},
@@ -345,6 +345,12 @@ def test_tinydb_bulk_increment_upsert(db):
     assert stat1['hits'] == 0
     assert stat2['hits'] == 42
     assert stat3['hits'] == 1
+
+def test_mongo_drop(db):
+    db.write('test', {'name': 'test'})
+    assert db.search('test')['count'] == 1
+    db.drop('test')
+    assert db.search('test')['count'] == 0
 
 #def test_mongo_renumber_field(db):
 #    db.write('record', [{'id': 1}, {'id': 100}, {'id': 12}, {'id': 876}])

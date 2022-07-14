@@ -12,7 +12,7 @@ import datetime
 import hashlib
 from logging import getLogger
 
-from snooze.plugins.core import Plugin, AbortAndUpdate
+from snooze.plugins.core import Plugin, AbortAndUpdate, Abort
 from snooze.utils.condition import get_condition, validate_condition
 from snooze.utils.functions import dig
 
@@ -149,6 +149,10 @@ class Aggregaterule(Plugin):
                 log.debug("Alert %s is flapping, discarding", record['hash'])
                 raise AbortAndUpdate(record)
         else:
+            matched = self.db.replace_one('aggregate', {'hash': record['hash']}, record, update_time=False)
+            if matched > 0:
+                log.debug("Received 2 alerts with same hash %s at the same time. Discarding one", record['hash'])
+                raise Abort()
             log.debug("Not found, creating a new aggregate")
             record['duplicates'] = 1
         record.pop('snoozed', '')

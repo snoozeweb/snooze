@@ -8,7 +8,7 @@
 #!/usr/bin/python3.6
 
 from snooze.plugins.core.aggregaterule.plugin import Aggregaterule, AggregateruleObject
-from snooze.plugins.core import AbortAndUpdate
+from snooze.plugins.core import AbortAndUpdate, Abort
 
 from logging import getLogger
 log = getLogger('snooze.tests')
@@ -139,3 +139,11 @@ class TestAggregatePlugin:
         results = aggregateplugin.core.db.search('record', ['=', 'aggregate', 'Agg4'])['data'][0]
         assert results['duplicates'] == 5
         assert results['flapping_countdown'] == 0
+
+    def test_aggregate_burst(self, aggregateplugin):
+        try:
+            aggregateplugin.process({'a': 1})
+            aggregateplugin.process({'a': 1})
+            assert False
+        except Abort:
+            assert True

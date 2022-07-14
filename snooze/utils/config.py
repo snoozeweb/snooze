@@ -374,7 +374,7 @@ class BackupConfig(BaseModel):
     )
     excludes: List[str] = Field(
         description='Collections to exclude from backups',
-        default=['record', 'stats', 'comment', 'secrets'],
+        default=['record', 'stats', 'comment', 'secrets', 'aggregate'],
     )
 
 class ClusterConfig(BaseModel):
@@ -640,6 +640,11 @@ class HousekeeperConfig(WritableConfig):
         title='Cleanup alert',
         description='Time (in seconds) between each run of alert cleaning. Alerts that exceeded their TTL '
         ' will be deleted',
+        default=timedelta(minutes=5),
+    )
+    cleanup_aggregate: timedelta = Field(
+        title='Cleanup aggregate',
+        description='Time (in seconds) between collection drop',
         default=timedelta(minutes=5),
     )
     cleanup_comment: timedelta = Field(
