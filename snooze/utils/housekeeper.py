@@ -7,9 +7,9 @@
 
 '''A module with the database housekeeping functionalities'''
 
-import time
+from time import sleep
 from abc import abstractmethod, ABC
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, time
 from logging import getLogger
 from threading import Event
 from typing import Callable, Optional
@@ -60,6 +60,30 @@ class BasicJob(AbstractJob):
         new_interval = getattr(conf, self.config_key)
         if new_interval:
             self.interval = new_interval
+
+class CronJob(AbstractJob):
+    '''Run everyday at a given time'''
+    def __init__(self,
+        config_key: str,
+        cron_time: time,
+        cleanup_interval: Optional[timedelta],
+        callback: Callable[['Database', int], None],
+    ):
+        AbstractJob.__init__(self)
+        self.cleanup_interval = cleanup_interval
+        self.callback = callback
+        self.cron_time = cron_time
+
+    def run(self, db):
+        self.callback(db, self.cleanup_interval)
+
+    def next(self):
+        now = datetime.now()
+        next_run = datetime.combine(now.date(), self.cron_time)
+        if now < next_run:
+            self.next_run = next_run
+        else:
+            self.next_run = next_run + timedelta(days=1)
 
 # TODO Support negative intervals with a enabled/disabled system
 class IntervalJob(AbstractJob):
@@ -131,13 +155,13 @@ class Housekeeper(SurvivingThread):
                 lambda db: db.cleanup_comments()),
             'cleanup_orphans': BasicJob('cleanup_orphans', timedelta(days=1),
                 lambda db: db.cleanup_orphans('rule')),
-            'renumber_field': BasicJob('renumber_field', timedelta(days=1),
-                lambda db: db.renumber_field('rule', 'tree_order')),
-            'cleanup_audit': IntervalJob('cleanup_audit', timedelta(days=1), timedelta(days=28),
+            'renumber_field': CronJob('renumber_field', time(hour=0, minute=0), None,
+                lambda db, _: db.renumber_field('rule', 'tree_order')),
+            'cleanup_audit': CronJob('cleanup_audit', time(hour=0, minute=0), timedelta(days=28),
                 lambda db, interval: db.cleanup_audit_logs(interval.total_seconds())),
-            'cleanup_snooze': IntervalJob('cleanup_snooze', timedelta(days=1), timedelta(days=3),
+            'cleanup_snooze': CronJob('cleanup_snooze', time(hour=0, minute=0), timedelta(days=3),
                 lambda db, interval: cleanup_expired(db, 'snooze', interval.total_seconds())),
-            'cleanup_notification': IntervalJob('cleanup_notification', timedelta(days=1), timedelta(days=3),
+            'cleanup_notification': CronJob('cleanup_notification', time(hour=0, minute=0), timedelta(days=3),
                 lambda db, interval: cleanup_expired(db, 'notification', interval.total_seconds())),
         }
         self.backup_job = None
@@ -167,12 +191,15 @@ class Housekeeper(SurvivingThread):
         for name, job in self.jobs.items():
             if job.next_run <= datetime.now():
                 job.next()
+                log.debug("Job %s starting...", name)
                 job.run(self.db)
+                log.debug("Job %s done. Next run: %s", name, job.next_run)
         if self.backup_job:
             if self.backup_job.next_run <= datetime.now():
-                log.debug("Running backup job")
+                log.debug("Job backup starting...")
                 self.backup_job.run(self.db)
                 self.backup_job.next()
+                log.debug("Job backup done. Next run: %s", self.backup_job.next_run)
 
     def start_thread(self):
         if self.config.trigger_on_startup:
@@ -180,7 +207,7 @@ class Housekeeper(SurvivingThread):
                 job.next_run = datetime.now()
         while not self.exit.wait(0.1):
             self.handler()
-            time.sleep(1)
+            sleep(1)
         log.info('Stopped housekeeper')
 
 def cleanup_expired(db: 'Database', collection: str, cleanup_delay: int):
