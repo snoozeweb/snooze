@@ -10,7 +10,6 @@ import tasks.pip
 import tasks.web
 from tasks.utils import print_github_kv, get_paths, get_versions
 from tasks.docker import docker_images
-from snooze.utils.config import *
 
 def compute_type(prop: dict) -> str:
     if prop['type'] == 'array' and prop.get('items', {}).get('type'):
@@ -84,6 +83,7 @@ def schema_to_yaml(schema: dict) -> str:
 
 @task
 def defaults(ctx):
+    from snooze.utils.config import CoreConfig, GeneralConfig, HousekeeperConfig, NotificationConfig, LdapConfig
     basedir = Path('rpm')
     configs = [CoreConfig, GeneralConfig, HousekeeperConfig, NotificationConfig, LdapConfig]
     for config in configs:
