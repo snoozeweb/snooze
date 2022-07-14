@@ -30,6 +30,7 @@ class Metadata(BaseModel):
     default_sorting: Optional[str]
     default_ordering: bool
     widgets: dict
+    action_name: Optional[str]
     action_form: dict
     audit: bool
     routes: Dict[str, RouteArgs]
@@ -69,8 +70,9 @@ class Plugin:
         if config.routes:
             routes.update(config.routes)
 
+        action_name = None
         if config.action_form:
-            config.action_form['action_name'] = self.name
+            action_name = self.name
             batch = config.options.get('batch')
             if batch and not batch.get('hidden', False):
                 batch_form = {
@@ -107,6 +109,7 @@ class Plugin:
             default_sorting=config.default_sorting,
             default_ordering=config.default_ordering,
             widgets=config.widgets,
+            action_name=action_name,
             action_form=config.action_form,
             routes=routes,
             route_defaults=config.route_defaults,
