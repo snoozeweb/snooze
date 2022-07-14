@@ -249,7 +249,7 @@ class DelayedActions(SurvivingThread):
                     action = self.delayed[record_hash][action_uid]['action']
                     success = action.send_one(1, self.delayed[record_hash][action_uid])
                     if success:
-                        self.action.core.db.write('record', delayed_record)
+                        self.action.core.db.replace_one('record', {'uid': delayed_record['uid']}, delayed_record)
                     action.delay(self.delayed[record_hash][action_uid])
                 except Exception as err:
                     log.exception(err)
@@ -275,7 +275,7 @@ class ActionWorker(Worker):
                 action_obj['record'] = record
         succeeded, _ = self.thread.obj.send_from_queue([action_obj for action_obj, _ in self.to_ack])
         if succeeded:
-            self.thread.obj.core.db.write('record', succeeded, 'hash')
+            self.thread.obj.core.db.replace_one('record', {'hash': succeeded['hash']}, succeeded)
         for action_obj, msg in self.to_ack:
             self.thread.obj.delay(action_obj)
             msg.ack()

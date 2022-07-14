@@ -125,6 +125,8 @@ class Housekeeper(SurvivingThread):
         self.jobs = {
             'cleanup_alert': BasicJob('cleanup_alert', timedelta(minutes=5),
                 lambda db: db.cleanup_timeout('record')),
+            'cleanup_aggregate': BasicJob('cleanup_aggregate', timedelta(minutes=1),
+                lambda db: db.drop('aggregate')),
             'cleanup_comment': BasicJob('cleanup_comment', timedelta(days=1),
                 lambda db: db.cleanup_comments()),
             'cleanup_orphans': BasicJob('cleanup_orphans', timedelta(days=1),
