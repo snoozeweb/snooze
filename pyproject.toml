@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "snooze-server"
-version = "1.4.1+35.g2f2091e"
+version = "1.5.0"
 description = "Monitoring tool for logs aggregation and alerting"
 authors = [
     "Florian Dematraz <florian.dematraz@snoozeweb.net>",
