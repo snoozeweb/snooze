@@ -217,16 +217,11 @@ class MetadataConfig(BaseModel):
             raise ValidationError("Cannot load metadata for plugin {self.name}: {err}") from err
 
     def _load_data(self) -> Dict[str, Any]:
-        core_path = SNOOZE_PLUGIN_PATH / self.name / 'metadata.yaml'
-        alt_path = self._moduledir / 'metadata.yaml' if self._moduledir else None
-
-        if core_path.is_file():
-            path = core_path
-        elif alt_path and alt_path.is_file():
-            path = alt_path
-        else:
-            log.debug("Could not find metadata.yaml for plugin '%s'", self.name)
+        if self._moduledir is None:
             return {}
+
+        path = self._moduledir / 'metadata.yaml'
+
         try:
             text = path.read_text(encoding='utf-8')
             data = yaml.safe_load(text)

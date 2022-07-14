@@ -14,12 +14,13 @@ from typing import Optional, Dict
 
 from pydantic import BaseModel
 
-from snooze import __file__ as rootdir
+from snooze import __file__ as SNOOZE_PATH
 from snooze.utils.config import MetadataConfig
 from snooze.utils.typing import Record, RouteArgs
 
 log = getLogger('snooze')
 
+SNOOZE_PLUGIN_PATH = Path(SNOOZE_PATH).parent / 'plugins/core'
 
 class Metadata(BaseModel):
     '''Object representing the live metadata of a plugin.
@@ -44,9 +45,18 @@ class Plugin:
         self.db = core.db
         self.name = self.__class__.__name__.lower()
         self.data = []
-        self.rootdir = joindir(dirname(rootdir), 'plugins', 'core', self.name)
-        moduledir = Path(sys.modules[self.__module__].__file__)
+
+        pkgdir = Path(sys.modules[self.__module__].__file__).parent
+
+        if (SNOOZE_PLUGIN_PATH / self.name / 'metadata.yaml').is_file():
+            moduledir = SNOOZE_PLUGIN_PATH / self.name
+        elif (pkgdir / 'metadata.yaml').is_file():
+            moduledir = pkgdir
+        else:
+            log.warning("No metadata found for plugin '%s'", self.name)
+            moduledir = None
         config = MetadataConfig(self.name, moduledir)
+        self.rootdir = moduledir
         routes = {}
         default_routes = [
             f"/{self.name}",

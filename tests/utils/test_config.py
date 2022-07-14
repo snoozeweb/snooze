@@ -158,7 +158,7 @@ class TestMetadataConfig:
         assert plugins
         metadata = {}
         for plugin in plugins:
-            metadata[plugin] = MetadataConfig(plugin)
+            metadata[plugin] = MetadataConfig(plugin, SNOOZE_PLUGIN_PATH / plugin)
 
         assert metadata['audit'].name == 'Audit'
         assert metadata['snooze'].name == 'Snooze'
