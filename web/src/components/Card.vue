@@ -168,7 +168,7 @@ export default {
         .put(url, data)
         .then(response => {
           console.log(response)
-          if (response.data) {
+          if (response.status >= 200 && response.status < 300) {
             if (callback) {
               callback(response.data)
             }
