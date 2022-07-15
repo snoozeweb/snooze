@@ -63,7 +63,7 @@ class Aggregaterule(Plugin):
             now = datetime.datetime.now()
             record = dict(list(aggregate.items()) + list(record.items()))
             record_state = record.get('state', '')
-            record['uid'] = aggregate['uid']
+            record['uid'] = aggregate.get('uid', '')
             record['state'] = aggregate.get('state', '')
             record['duplicates'] = aggregate.get('duplicates', 0) + 1
             record['date_epoch'] = aggregate.get('date_epoch', now.timestamp())
