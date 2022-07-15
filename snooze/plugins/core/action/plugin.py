@@ -270,12 +270,12 @@ class ActionWorker(Worker):
 
     def process(self):
         for action_obj, _ in self.to_ack:
-            record = self.thread.obj.core.get_one('record', dict(hash=action_obj['record']['hash']))
+            record = self.thread.obj.core.db.get_one('record', dict(hash=action_obj['record']['hash']))
             if record:
                 action_obj['record'] = record
         succeeded, _ = self.thread.obj.send_from_queue([action_obj for action_obj, _ in self.to_ack])
         if succeeded:
-            self.thread.obj.core.db.replace_one('record', {'hash': succeeded['hash']}, succeeded)
+            self.thread.obj.core.db.write('record', succeeded, 'hash')
         for action_obj, msg in self.to_ack:
             self.thread.obj.delay(action_obj)
             msg.ack()
