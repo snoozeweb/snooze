@@ -30,6 +30,7 @@ class Metadata(BaseModel):
     default_sorting: Optional[str]
     default_ordering: bool
     widgets: dict
+    icon: str
     action_name: Optional[str]
     action_form: dict
     audit: bool
@@ -110,6 +111,7 @@ class Plugin:
             default_sorting=config.default_sorting,
             default_ordering=config.default_ordering,
             widgets=config.widgets,
+            icon=config.icon,
             action_name=action_name,
             action_form=config.action_form,
             routes=routes,
