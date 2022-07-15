@@ -59,16 +59,17 @@ class Plugin:
         config = MetadataConfig(self.name, moduledir)
         self.rootdir = moduledir
         routes = {}
-        default_routes = [
-            f"/{self.name}",
-            f"/{self.name}" + '/{search}',
-            f"/{self.name}" + '/{search}/{perpage}/{pagenb}',
-            f"/{self.name}" + '/{search}/{perpage}/{pagenb}/{orderby}/{asc}',
-        ]
-        for path in default_routes:
-            routes[path] = config.route_defaults
-        if config.routes:
-            routes.update(config.routes)
+        if config.route_defaults.class_name:
+            default_routes = [
+                f"/{self.name}",
+                f"/{self.name}" + '/{search}',
+                f"/{self.name}" + '/{search}/{perpage}/{pagenb}',
+                f"/{self.name}" + '/{search}/{perpage}/{pagenb}/{orderby}/{asc}',
+            ]
+            for path in default_routes:
+                routes[path] = config.route_defaults
+        for path, route in config.routes.items():
+            routes[path] = config.route_defaults.merge(route)
 
         action_name = None
         if config.action_form:

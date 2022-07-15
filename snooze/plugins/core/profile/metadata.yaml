@@ -2,15 +2,15 @@
 name: 'Profile'
 desc: 'An endpoint to store user profile'
 route_defaults:
-    class: ~
+    class_name: ~
     primary: [name, method]
 routes:
     '/profile/{section}':
         desc: ''
-        class: ProfileRoute
+        class_name: ProfileRoute
     '/profile_self/{section}':
         desc: ''
-        class: ProfileRoute
+        class_name: ProfileRoute
         primary: [name, method]
         authorization_policy:
             read: [any]

@@ -50,7 +50,7 @@ class AuthorizationPolicy(BaseModel):
 
 class RouteArgs(BaseModel):
     '''Description of the arguments passed to a route'''
-    class_name: Optional[str] = Field('Route', alias='class')
+    class_name: Optional[str] = Field('Route')
     desc: Optional[str] = None
     primary: List[str] = Field(default_factory=list)
     duplicate_policy: DuplicatePolicy = 'update'
@@ -59,6 +59,13 @@ class RouteArgs(BaseModel):
     check_constant: List[str] = Field(default_factory=list)
     inject_payload: bool = False
     prefix: str = '/api'
+
+    def merge(self, other: 'RouteArgs'):
+        '''Merge 2 RouteArgs together'''
+        self_dict = self.dict(exclude_unset=True)
+        other_dict = other.dict(exclude_unset=True)
+        data = {**self_dict, **other_dict}
+        return RouteArgs(**data)
 
 class PeerStatus(BaseModel):
     '''A dataclass containing the status of one peer'''

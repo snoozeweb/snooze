@@ -2,11 +2,11 @@
 name: 'Prometheus'
 desc: 'Prometheus'
 route_defaults:
-    class: ~
+    class_name: ~
     prefix: ''
 routes:
     /webhook/prometheus:
         desc: 'Receive Prometheus alerts'
-        class: PrometheusRoute
+        class_name: PrometheusRoute
         authorization_policy:
             write: [any]

@@ -3,10 +3,10 @@ name: 'InfluxDB 2.0'
 desc: 'InfluxDB 2.0'
 route_defaults:
     prefix: ''
-    class: ~
+    class_name: ~
 routes:
     /webhook/influxdb2:
         desc: 'Receive InfluxDB 2.0 alerts'
-        class: InfluxDBRoute
+        class_name: InfluxDBRoute
         authorization_policy:
             write: [any]

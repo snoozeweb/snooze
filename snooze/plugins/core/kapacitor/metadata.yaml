@@ -3,10 +3,10 @@ name: 'Kapacitor'
 desc: 'Kapacitor'
 route_defaults:
     prefix: ''
-    class: ~
+    class_name: ~
 routes:
     /webhook/kapacitor:
         desc: 'Receive Kapacitor alerts'
-        class: KapacitorRoute
+        class_name: KapacitorRoute
         authorization_policy:
             write: [any]

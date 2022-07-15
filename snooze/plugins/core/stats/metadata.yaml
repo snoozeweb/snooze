@@ -2,8 +2,8 @@
 name: 'Stats'
 desc: 'Snooze server metrics'
 route_defaults:
-    class: ~
+    class_name: ~
 routes:
     /stats:
         desc: 'Stats endpoint'
-        class: StatsRoute
+        class_name: StatsRoute
