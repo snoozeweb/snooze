@@ -124,10 +124,6 @@ class Aggregaterule(Plugin):
             elif throttling:
                 log.debug("Alert %s Time within throttle %s range, discarding", record['hash'], throttle)
                 self.core.stats.inc('alert_throttled', {'name': aggrule_name})
-                if now.timestamp() != aggregate.get('date_epoch', 0):
-                    comment['message'] = "First throttled message detected. Stopped notifications until throttle expires ({}s left)".format(
-                        throttle - (now.timestamp() - aggregate.get('date_epoch', 0)))
-                    self.db.write('comment', comment)
                 raise AbortAndUpdate(record)
             else:
                 if record.get('state') == 'ack':
