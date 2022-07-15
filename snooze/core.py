@@ -156,7 +156,7 @@ class Core:
             'severity': severity,
         }
         record['ttl'] = int(self.config.housekeeping.record_ttl.total_seconds())
-        uid = record.get('uid', str(uuid4()))
+        record['uid'] = str(uuid4())
         if severity.casefold() in self.config.general.ok_severities:
             record['state'] = 'close'
             log.debug("Detected OK severities: %s, closing alert", severity.casefold())
@@ -184,14 +184,14 @@ class Core:
                     except AbortAndWrite as abort:
                         if abort.record:
                             record = abort.record
-                        self.db.replace_one('record', {'uid': uid}, abort.record or record)
-                        data = {'added': [{'uid': uid}]}
+                        self.db.replace_one('record', {'uid': record['uid']}, abort.record or record)
+                        data = {'added': [{'uid': record['uid']}]}
                         break
                     except AbortAndUpdate as abort:
                         if abort.record:
                             record = abort.record
-                        self.db.replace_one('record', {'uid': uid}, record, update_time=False)
-                        data = {'updated': [{'uid': uid}]}
+                        self.db.replace_one('record', {'uid': record['uid']}, record, update_time=False)
+                        data = {'updated': [{'uid': record['uid']}]}
                         break
                     except Exception as err:
                         log.exception(err)
@@ -199,13 +199,13 @@ class Core:
                             'core_plugin': plugin.name,
                             'message': str(err),
                         }
-                        self.db.replace_one('record', {'uid': uid}, record)
-                        data = {'added': [{'uid': uid}]}
+                        self.db.replace_one('record', {'uid': record['uid']}, record)
+                        data = {'added': [{'uid': record['uid']}]}
                         break
             else:
                 log.debug("Writing record %s", record)
-                self.db.replace_one('record', {'uid': uid}, record)
-                data = {'added': [{'uid': uid}]}
+                self.db.replace_one('record', {'uid': record['uid']}, record)
+                data = {'added': [{'uid': record['uid']}]}
         environment = record.get('environment', 'unknown')
         severity = record.get('severity', 'unknown')
         self.stats.inc('alert_hit', labels)
