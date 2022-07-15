@@ -5,7 +5,7 @@ audit: false
 provides:
     - can_comment
 route_defaults:
-    class: CommentRoute
+    class_name: CommentRoute
     authorization_policy:
         read: [any]
         write: [can_comment]

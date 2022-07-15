@@ -3,7 +3,7 @@ name: 'Run a script'
 desc: ''
 icon: 'terminal'
 route_defaults:
-    class: ~
+    class_name: ~
 options:
     batch:
         default: false

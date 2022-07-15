@@ -2,14 +2,14 @@
 name: 'User'
 desc: 'An endpoint to store users'
 route_defaults:
-    class: UserRoute
+    class_name: UserRoute
     primary: [name, method]
     check_permissions: true
     duplicate_policy: 'reject'
 routes:
     '/user_self':
         desc: ''
-        class: UserRoute
+        class_name: UserRoute
         authorization_policy:
             read: [any]
             write: []

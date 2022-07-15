@@ -3,11 +3,11 @@ name: 'Action'
 desc: 'An endpoint to store action objects'
 auto_reload: true
 route_defaults:
-    class: ActionRoute
+    class_name: ActionRoute
     primary: [name]
     duplicate_policy: 'reject'
 routes:
     '/action/plugin':
-        class: ActionPluginRoute
+        class_name: ActionPluginRoute
     '/action/plugin/{action}':
-        class: ActionPluginRoute
+        class_name: ActionPluginRoute

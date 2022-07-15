@@ -2,9 +2,9 @@
 name: 'Settings'
 desc: 'An endpoint to store config files'
 route_defaults:
-    class: ~
+    class_name: ~
     check_permissions: true
 routes:
     '/settings/{section}':
         desc: ''
-        class: SettingsRoute
+        class_name: SettingsRoute

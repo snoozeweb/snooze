@@ -2,11 +2,11 @@
 name: 'Grafana'
 desc: 'Grafana'
 route_defaults:
-    class: ~
+    class_name: ~
     prefix: ''
 routes:
     /webhook/grafana:
         desc: 'Receive Grafana alerts'
-        class: GrafanaRoute
+        class_name: GrafanaRoute
         authorization_policy:
             write: [any]
