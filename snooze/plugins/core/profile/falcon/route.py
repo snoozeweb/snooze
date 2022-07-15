@@ -34,11 +34,11 @@ class ProfileRoute(FalconRoute):
         if self.options.inject_payload:
             query = self.inject_payload_search(req, query)
         log.debug("Loading profile %s", section)
-        data = self.search(f"profile.{section}", query).get('data', [])
+        result_dict = self.search(f"profile.{section}", query)
         resp.content_type = falcon.MEDIA_JSON
-        if data:
+        if result_dict:
             try:
-                resp.media = data[0]
+                resp.media = result_dict
                 resp.status = falcon.HTTP_200
             except Exception as err:
                 raise falcon.HTTPInternalServerError(description=f"{err}") from err

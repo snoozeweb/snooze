@@ -124,13 +124,13 @@ export default {
       API
         .get(`/${this.current_endpoint}`)
         .then(response => {
-          if (response.status >= 200 && response.status < 300) {
+          if (response.data.data) {
             console.log(response.data)
-            this.form_data = response.data
+            this.form_data = response.data.data[0] || {}
           } else if (response.response.data.description) {
-              this.$root.text_alert(response.response.data.description, 'danger')
+            this.$root.text_alert(response.response.data.description, 'danger')
           } else {
-              this.$root.text_alert('Could not display the content', 'danger')
+            this.$root.text_alert('Could not display the content', 'danger')
           }
           this.forceRerender()
         })
@@ -168,7 +168,7 @@ export default {
         .put(url, data)
         .then(response => {
           console.log(response)
-          if (response.status >= 200 && response.status < 300) {
+          if (response.data) {
             if (callback) {
               callback(response.data)
             }
