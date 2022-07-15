@@ -416,3 +416,21 @@ def test_tinydb_drop(db):
     assert db.search('test')['count'] == 1
     db.drop('test')
     assert db.search('test')['count'] == 0
+
+def test_tinydb_replace_one(db):
+    db.drop('test')
+    db.write('test', {'name': 'test', 'comment': 'test1'})
+    db.replace_one('test', {'name': 'test'}, {'comment': 'test2'})
+    assert db.search('test')['count'] == 1
+    assert db.search('test')['data'][0]['name'] == 'test'
+    assert db.search('test')['data'][0]['comment'] == 'test2'
+
+def test_bulk_increment(db):
+    db.drop('test')
+    updates = [
+        ({'date': '2020-12-01', 'key': 'a'}, {'count': 1}),
+        ({'date': '2020-12-01', 'key': 'b'}, {'count': 2}),
+    ]
+    db.bulk_increment('test', updates, True)
+    print(db.search('test'))
+    assert db.search('test')['count'] == 2
