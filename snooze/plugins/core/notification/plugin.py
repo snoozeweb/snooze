@@ -85,19 +85,25 @@ class NotificationObject:
         '''Whether a record match the Notification object'''
         return self.condition.match(record) and self.time_constraint.match(get_record_date(record))
 
-    def get_default(self, record: dict, key: str):
-        return record.get(key) \
-            or self.options.get(key) \
-            or self.core.config.notifications[key]
-
     def send(self, record):
         if not 'notifications' in record:
             record['notifications'] = []
         if self.name not in record['notifications']:
             record['notifications'].append(self.name)
         if len(self.action_plugins) > 0:
-            retry = self.get_default(record, 'notification_retry')
-            freq = self.get_default(record, 'notification_freq')
+            if 'notification_retry' in record:
+                retry = record['notification_retry']
+            elif 'notification_retry' in self.options:
+                retry = self.options['notification_retry']
+            else:
+                retry = self.core.config.notifications.notification_retry
+
+            if 'notification_freq' in record:
+                freq = record['notification_freq']
+            elif 'notification_freq' in self.options:
+                freq = self.options['notification_freq']
+            else:
+                freq = int(self.core.config.notifications.notification_freq.total_seconds())
             action_obj = {
                 'record': record,
                 'delay': self.delay,
