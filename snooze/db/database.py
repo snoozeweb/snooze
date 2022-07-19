@@ -106,9 +106,10 @@ class AsyncIncrement:
         '''Flush the saved increments to the database'''
         updates = []
         for search_tuple, value in self.increments.items():
-            search = self.unhash(search_tuple)
-            updates.append((search, {self.field: value}))
-            self.increments[search_tuple] -= value
+            if value > 0:
+                search = self.unhash(search_tuple)
+                updates.append((search, {self.field: value}))
+                self.increments[search_tuple] -= value
         if updates:
             self.database.bulk_increment(self.collection, updates, upsert=self.upsert)
 

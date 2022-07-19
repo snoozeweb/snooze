@@ -32,6 +32,7 @@ class Snooze(Plugin):
                 log.debug("Snooze filter %s matched record: %s", filt.name, record.get('hash', ''))
                 record['snoozed'] = filt.name
                 self.hits.increment({'name': filt.name})
+                self.core.stats.inc('alert_snoozed', {'name': filt.name})
                 if filt.discard:
                     raise Abort()
                 else:
