@@ -219,7 +219,32 @@
    <i class="fas fa-chevron-down">
    </i>
   </label>
-  <ul class="simple">
+  <ul>
+   <li class="toctree-l2">
+    <a class="reference internal" href="../configuration/core.html">
+     Core configuration
+    </a>
+   </li>
+   <li class="toctree-l2">
+    <a class="reference internal" href="../configuration/general.html">
+     General configuration
+    </a>
+   </li>
+   <li class="toctree-l2">
+    <a class="reference internal" href="../configuration/housekeeping.html">
+     Housekeeper configuration
+    </a>
+   </li>
+   <li class="toctree-l2">
+    <a class="reference internal" href="../configuration/ldap_auth.html">
+     LDAP configuration
+    </a>
+   </li>
+   <li class="toctree-l2">
+    <a class="reference internal" href="../configuration/notifications.html">
+     Notification configuration
+    </a>
+   </li>
   </ul>
  </li>
 </ul>
@@ -453,6 +478,7 @@ title="Print to PDF"
 <h2>Overview<a class="headerlink" href="#overview" title="Permalink to this headline">#</a></h2>
 <p>Environments are a web interface oriented feature allowing users to filter alerts based on a custom <a class="reference internal" href="12_Conditions.html#conditions"><span class="std std-ref">condition</span></a>.</p>
 <p>They are displayed on the very top on the web interface’s Alert page.</p>
+<p>Multiple environments can be selected.</p>
 </section>
 <section id="web-interface">
 <h2>Web interface<a class="headerlink" href="#web-interface" title="Permalink to this headline">#</a></h2>
@@ -461,18 +487,29 @@ title="Print to PDF"
 </figure>
 <dl class="field-list simple">
 <dt class="field-odd">Name*</dt>
-<dd class="field-odd"><p>Name of the environment.</p>
+<dd class="field-odd"><p>Name of the environment</p>
 </dd>
 <dt class="field-even"><a class="reference internal" href="12_Conditions.html#conditions"><span class="std std-ref">Condition</span></a></dt>
-<dd class="field-even"><p>Condition used to define this environment.</p>
+<dd class="field-even"><p>Condition used to define the environment</p>
 </dd>
-<dt class="field-odd">Color</dt>
-<dd class="field-odd"><p>Change the button’s display</p>
+<dt class="field-odd">Group</dt>
+<dd class="field-odd"><p>Group number</p>
 </dd>
-<dt class="field-even">Comment</dt>
-<dd class="field-even"><p>Description.</p>
+<dt class="field-even">Color</dt>
+<dd class="field-even"><p>Change the button’s display</p>
+</dd>
+<dt class="field-odd">Comment</dt>
+<dd class="field-odd"><p>Description</p>
 </dd>
 </dl>
+<div class="admonition note">
+<p class="admonition-title">Note</p>
+<p>Use drag&amp;drop to change the display order.</p>
+</div>
+<div class="admonition note">
+<p class="admonition-title">Note</p>
+<p>Environments in <strong>same</strong> groups are additive (OR). Environments in <strong>different</strong> groups are multiplicative (AND).</p>
+</div>
 </section>
 </section>
 

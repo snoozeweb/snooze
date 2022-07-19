@@ -17,7 +17,7 @@ Properties
 default_auth_backend
 ====================
 
-    :Type: 'local' | 'ldap'
+    :Type: 'local' | 'ldap' | 'anonymous'
     :Default: ``'local'``
 
     Backend that will be first in the list of displayed authentication backends

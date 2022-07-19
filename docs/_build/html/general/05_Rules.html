@@ -219,7 +219,32 @@
    <i class="fas fa-chevron-down">
    </i>
   </label>
-  <ul class="simple">
+  <ul>
+   <li class="toctree-l2">
+    <a class="reference internal" href="../configuration/core.html">
+     Core configuration
+    </a>
+   </li>
+   <li class="toctree-l2">
+    <a class="reference internal" href="../configuration/general.html">
+     General configuration
+    </a>
+   </li>
+   <li class="toctree-l2">
+    <a class="reference internal" href="../configuration/housekeeping.html">
+     Housekeeper configuration
+    </a>
+   </li>
+   <li class="toctree-l2">
+    <a class="reference internal" href="../configuration/ldap_auth.html">
+     LDAP configuration
+    </a>
+   </li>
+   <li class="toctree-l2">
+    <a class="reference internal" href="../configuration/notifications.html">
+     Notification configuration
+    </a>
+   </li>
   </ul>
  </li>
 </ul>
@@ -571,7 +596,8 @@ title="Print to PDF"
 </pre></div>
 </div>
 <p>Any alert matching a Rule will have a new field <code class="docutils literal notranslate"><span class="pre">rules</span></code> added with the list of matched Rules.</p>
-<p>Rules can have an optional field called <code class="docutils literal notranslate"><span class="pre">children</span></code> which can hold a list of Rules. These Rules will be processed the same way Rules are but only if the parent’s condition has been correctly matched in the first place.</p>
+<p>Rules resolution order is important. It allows Rules to create fields that can be used in subsequent Rules.</p>
+<p>Rules can have an optional field called <code class="docutils literal notranslate"><span class="pre">parents</span></code> which can hold a list of Rule UIDs. These Rules will be processed only if all parents conditions have been met in the first place.</p>
 <p>This design allowing Rules to be nested is very convenient to avoid repeating the same conditions across multiple Rules.</p>
 </section>
 <section id="jinja-templates">
@@ -588,7 +614,7 @@ title="Print to PDF"
 <dd class="field-odd"><p>Name of the rule.</p>
 </dd>
 <dt class="field-even"><a class="reference internal" href="12_Conditions.html#conditions"><span class="std std-ref">Condition</span></a></dt>
-<dd class="field-even"><p>This rule will be triggered only if this condition is matched. Leave it blank to always match.</p>
+<dd class="field-even"><p>This rule will be triggered only if this condition is met. Leave it blank to always match.</p>
 </dd>
 <dt class="field-odd"><a class="reference internal" href="#id2"><span class="std std-ref">Modification</span></a></dt>
 <dd class="field-odd"><p>List of changes to apply to the alert.</p>
@@ -597,7 +623,7 @@ title="Print to PDF"
 <dd class="field-even"><p>Description.</p>
 </dd>
 </dl>
-<p><strong>Note</strong>: How to access a Rule’s children:</p>
+<p><strong>Note</strong>: Use drag&amp;drop to change the rule’s order and/or use nesting:</p>
 <img alt="../_images/web_rules_children.png" class="align-center" src="../_images/web_rules_children.png" />
 </section>
 <section id="modifications">
