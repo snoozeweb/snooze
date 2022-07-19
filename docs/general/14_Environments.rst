@@ -15,15 +15,22 @@ Environments are a web interface oriented feature allowing users to filter alert
 
 They are displayed on the very top on the web interface's Alert page.
 
+Multiple environments can be selected.
+
 Web interface
 -------------
 
 .. figure:: images/web_environments.png
     :align: center
 
-:Name*: Name of the environment.
-:|filter|: Condition used to define this environment.
+:Name*: Name of the environment
+:|filter|: Condition used to define the environment
+:Group: Group number
 :Color: Change the button's display
-:Comment: Description.
+:Comment: Description
 
 .. |filter| replace:: :ref:`Condition <conditions>`
+
+.. note:: Use drag&drop to change the display order.
+
+.. note:: Environments in **same** groups are additive (OR). Environments in **different** groups are multiplicative (AND).

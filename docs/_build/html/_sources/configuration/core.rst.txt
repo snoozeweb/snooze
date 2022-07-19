@@ -413,7 +413,7 @@ excludes
 --------
 
     :Type: array[string]
-    :Default: ``['record', 'stats', 'comment', 'secrets']``
+    :Default: ``['record', 'stats', 'comment', 'secrets', 'aggregate']``
 
     Collections to exclude from backups
 

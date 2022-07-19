@@ -441,8 +441,18 @@ title="Print to PDF"
     </a>
    </li>
    <li class="toc-h3 nav-item toc-entry">
+    <a class="reference internal nav-link" href="#cleanup-aggregate">
+     cleanup_aggregate
+    </a>
+   </li>
+   <li class="toc-h3 nav-item toc-entry">
     <a class="reference internal nav-link" href="#cleanup-comment">
      cleanup_comment
+    </a>
+   </li>
+   <li class="toc-h3 nav-item toc-entry">
+    <a class="reference internal nav-link" href="#cleanup-orphans">
+     cleanup_orphans
     </a>
    </li>
    <li class="toc-h3 nav-item toc-entry">
@@ -458,6 +468,11 @@ title="Print to PDF"
    <li class="toc-h3 nav-item toc-entry">
     <a class="reference internal nav-link" href="#cleanup-notification">
      cleanup_notification
+    </a>
+   </li>
+   <li class="toc-h3 nav-item toc-entry">
+    <a class="reference internal nav-link" href="#renumber-field">
+     renumber_field
     </a>
    </li>
   </ul>
@@ -502,8 +517,18 @@ title="Print to PDF"
     </a>
    </li>
    <li class="toc-h3 nav-item toc-entry">
+    <a class="reference internal nav-link" href="#cleanup-aggregate">
+     cleanup_aggregate
+    </a>
+   </li>
+   <li class="toc-h3 nav-item toc-entry">
     <a class="reference internal nav-link" href="#cleanup-comment">
      cleanup_comment
+    </a>
+   </li>
+   <li class="toc-h3 nav-item toc-entry">
+    <a class="reference internal nav-link" href="#cleanup-orphans">
+     cleanup_orphans
     </a>
    </li>
    <li class="toc-h3 nav-item toc-entry">
@@ -519,6 +544,11 @@ title="Print to PDF"
    <li class="toc-h3 nav-item toc-entry">
     <a class="reference internal nav-link" href="#cleanup-notification">
      cleanup_notification
+    </a>
+   </li>
+   <li class="toc-h3 nav-item toc-entry">
+    <a class="reference internal nav-link" href="#renumber-field">
+     renumber_field
     </a>
    </li>
   </ul>
@@ -591,6 +621,20 @@ Usually located at <cite>/etc/snooze/server/housekeeper.yaml</cite>.</p>
 <p>Time (in seconds) between each run of alert cleaning. Alerts that exceeded their TTL  will be deleted</p>
 </div></blockquote>
 </section>
+<section id="cleanup-aggregate">
+<h3>cleanup_aggregate<a class="headerlink" href="#cleanup-aggregate" title="Permalink to this headline">#</a></h3>
+<blockquote>
+<div><dl class="field-list simple">
+<dt class="field-odd">Type</dt>
+<dd class="field-odd"><p>number (time-delta)</p>
+</dd>
+<dt class="field-even">Default</dt>
+<dd class="field-even"><p><code class="docutils literal notranslate"><span class="pre">300.0</span></code></p>
+</dd>
+</dl>
+<p>Time (in seconds) between collection drop</p>
+</div></blockquote>
+</section>
 <section id="cleanup-comment">
 <h3>cleanup_comment<a class="headerlink" href="#cleanup-comment" title="Permalink to this headline">#</a></h3>
 <blockquote>
@@ -603,6 +647,20 @@ Usually located at <cite>/etc/snooze/server/housekeeper.yaml</cite>.</p>
 </dd>
 </dl>
 <p>Time (in seconds) between each run of comment cleaning. Comments which are not bound to any alert will be deleted</p>
+</div></blockquote>
+</section>
+<section id="cleanup-orphans">
+<h3>cleanup_orphans<a class="headerlink" href="#cleanup-orphans" title="Permalink to this headline">#</a></h3>
+<blockquote>
+<div><dl class="field-list simple">
+<dt class="field-odd">Type</dt>
+<dd class="field-odd"><p>number (time-delta)</p>
+</dd>
+<dt class="field-even">Default</dt>
+<dd class="field-even"><p><code class="docutils literal notranslate"><span class="pre">86400.0</span></code></p>
+</dd>
+</dl>
+<p>Time (in seconds) between each run of orphans cleaning</p>
 </div></blockquote>
 </section>
 <section id="cleanup-audit">
@@ -645,6 +703,20 @@ Usually located at <cite>/etc/snooze/server/housekeeper.yaml</cite>.</p>
 </dd>
 </dl>
 <p>Cleanup notifications that have been expired for the given duration (in seconds). Run daily</p>
+</div></blockquote>
+</section>
+<section id="renumber-field">
+<h3>renumber_field<a class="headerlink" href="#renumber-field" title="Permalink to this headline">#</a></h3>
+<blockquote>
+<div><dl class="field-list simple">
+<dt class="field-odd">Type</dt>
+<dd class="field-odd"><p>number (time-delta)</p>
+</dd>
+<dt class="field-even">Default</dt>
+<dd class="field-even"><p><code class="docutils literal notranslate"><span class="pre">86400.0</span></code></p>
+</dd>
+</dl>
+<p>Renumber given field from 0 to count(collection)-1</p>
 </div></blockquote>
 </section>
 </section>

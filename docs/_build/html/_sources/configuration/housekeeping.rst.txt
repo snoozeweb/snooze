@@ -44,6 +44,16 @@ cleanup_alert
 
 
 
+cleanup_aggregate
+=================
+
+    :Type: number (time-delta)
+    :Default: ``300.0``
+
+    Time (in seconds) between collection drop
+
+
+
 cleanup_comment
 ===============
 
@@ -51,6 +61,16 @@ cleanup_comment
     :Default: ``86400.0``
 
     Time (in seconds) between each run of comment cleaning. Comments which are not bound to any alert will be deleted
+
+
+
+cleanup_orphans
+===============
+
+    :Type: number (time-delta)
+    :Default: ``86400.0``
+
+    Time (in seconds) between each run of orphans cleaning
 
 
 
@@ -81,6 +101,16 @@ cleanup_notification
     :Default: ``259200.0``
 
     Cleanup notifications that have been expired for the given duration (in seconds). Run daily
+
+
+
+renumber_field
+==============
+
+    :Type: number (time-delta)
+    :Default: ``86400.0``
+
+    Renumber given field from 0 to count(collection)-1
 
 
 

@@ -40,7 +40,9 @@ Rules are very useful to analyze incoming alerts and add infos that were not in 
 
 Any alert matching a Rule will have a new field ``rules`` added with the list of matched Rules.
 
-Rules can have an optional field called ``children`` which can hold a list of Rules. These Rules will be processed the same way Rules are but only if the parent's condition has been correctly matched in the first place.
+Rules resolution order is important. It allows Rules to create fields that can be used in subsequent Rules.
+
+Rules can have an optional field called ``parents`` which can hold a list of Rule UIDs. These Rules will be processed only if all parents conditions have been met in the first place.
 
 This design allowing Rules to be nested is very convenient to avoid repeating the same conditions across multiple Rules.
 
@@ -62,14 +64,14 @@ Web interface
     :align: center
 
 :Name*: Name of the rule.
-:|condition|: This rule will be triggered only if this condition is matched. Leave it blank to always match.
+:|condition|: This rule will be triggered only if this condition is met. Leave it blank to always match.
 :|modification|: List of changes to apply to the alert.
 :Comment: Description.
 
 .. |condition| replace:: :ref:`Condition <conditions>`
 .. |modification| replace:: :ref:`Modification <modifications>`
 
-**Note**: How to access a Rule's children:
+**Note**: Use drag&drop to change the rule's order and/or use nesting:
 
 .. image:: images/web_rules_children.png
     :align: center
