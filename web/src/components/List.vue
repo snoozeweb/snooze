@@ -600,7 +600,7 @@ export default {
         .then(response => {
           this.set_busy(false)
           if (response.data) {
-            if (response.data.data.rejected.length > 0) {
+            if (response.data.data.rejected && response.data.data.rejected.length > 0) {
               this.$root.text_alert('Cannot Edit', 'danger')
             } else {
               this.refreshTable()
@@ -634,7 +634,7 @@ export default {
         .then(response => {
           this.set_busy(false)
           if (response.data) {
-            if (response.data.data.rejected.length > 0) {
+            if (response.data.data.rejected && response.data.data.rejected.length > 0) {
               this.$root.text_alert('Cannot Add', 'danger')
             } else {
               this.refreshTable()
