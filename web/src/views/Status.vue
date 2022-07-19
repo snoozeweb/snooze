@@ -1,7 +1,7 @@
 <template>
   <div class="animated fadeIn">
-    <CCard no-body ref="main">
-      <CCardHeader class="p-2">
+    <div no-body ref="main">
+      <CCardHeader class="p-2" style="border-bottom:none">
         <CNav variant="pills" role="tablist" card>
           <CNavItem>
             <CNavLink active>Status</CNavLink>
@@ -13,12 +13,13 @@
           </CNavItem>
         </CNav>
       </CCardHeader>
-      <CCardBody class="p-2" v-if="items.length > 0">
+      <CCardBody class="px-0 pb-0 pt-0" v-if="items.length > 0">
         <CTabContent>
           <CTable
             ref="table"
             :items="items"
             :fields="fields"
+            class="mb-0"
             striped
             small
             bordered
@@ -50,7 +51,7 @@
           {{ feedback_message }}
         </span>
       </div>
-    </CCard>
+    </div>
   </div>
 </template>
 
