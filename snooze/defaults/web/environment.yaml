@@ -16,6 +16,13 @@ fields:
         tdClass: ['align-middle']
         type: array
     -
+        key: group
+        label: '#'
+        sortable: true
+        tdStyle: {width: '30px'}
+        tdClass: ['align-middle', 'justify-content-center']
+        type: array
+    -
         key: color
         sortable: false
         tdStyle: {width: '70px'}
@@ -24,7 +31,7 @@ fields:
     -
         label: Comment
         key: comment
-        tdStyle: {width: '30%'}
+        tdStyle: {width: '20%'}
         tdClass: ['align-middle']
         type: array
 orderby: tree_order
@@ -39,6 +46,12 @@ form:
         display_name: Filter
         component: Condition
         description: Search filter used to define this environment
+    group:
+        display_name: Group
+        component: Number
+        options:
+            min: 0
+        description: Environments in same groups are additive (OR). Environments in different groups are multiplicative (AND)
     color:
         display_name: Color
         component: ColorSwatches

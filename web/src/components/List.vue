@@ -402,7 +402,7 @@ export default {
       timestamp: {},
       delete_items: delete_items,
       filter: [],
-      env_name: '',
+      env_indexes: [],
       env_filter: [],
       tab_index: -1,
       search_value: '',
@@ -482,9 +482,21 @@ export default {
       this.reload()
       this.get_now()
       setInterval(this.get_now, 1000);
-      this.handler['environment_change_tab'] = tab => {
-        this.env_name = tab.name
-        this.env_filter = tab.filter
+      this.handler['environment_change_tab'] = tabs => {
+        this.env_indexes = []
+        var filters = {}
+        var filters_list = []
+        var key = ''
+        tabs.forEach(t => {
+          this.env_indexes.push(t.index)
+          key = (t.group || 0).toString()
+          if (!filters.hasOwnProperty(key)) {
+            filters[key] = []
+          }
+          filters[key].push(t.filter || [])
+        })
+        filters = Object.values(filters).map(k => (k.length > 1) ? ['OR'].concat(k) : k[0])
+        this.env_filter = ((filters.length > 1) ? ['AND'].concat(filters) : filters[0]) || []
         this.add_history()
       }
       this.emitter.on('environment_change_tab', this.handler['environment_change_tab'])
@@ -513,10 +525,10 @@ export default {
         } else {
           this.env_filter = []
         }
-        if (this.$route.query.env_name !== undefined) {
-          this.env_name = decodeURIComponent(this.$route.query.env_name)
+        if (this.$route.query.env_indexes !== undefined) {
+          this.env_indexes = decodeURIComponent(this.$route.query.env_indexes).split(',')
         } else {
-          this.env_name = ''
+          this.env_indexes = []
         }
         if (this.$route.query.perpage !== undefined) {
           this.per_page = this.$route.query.perpage
@@ -799,9 +811,9 @@ export default {
     },
     add_history() {
       if (!this.no_history) {
-        const query = { tab: this.tabs[this.tab_index].title, s: (this.search_value || this.default_search || ''), env_name: this.env_name, env_filter: encodeURIComponent(JSON.stringify(this.env_filter)),
+        const query = { tab: this.tabs[this.tab_index].title, s: (this.search_value || this.default_search || ''), env_indexes: this.env_indexes.join(','), env_filter: encodeURIComponent(JSON.stringify(this.env_filter)),
           perpage: this.per_page, pagenb: this.current_page, orderby: this.orderby, asc: this.isascending }
-        if (this.$route.query.tab != query.tab || this.$route.query.s != query.s || this.$route.query.env_name != query.env_name
+        if (this.$route.query.tab != query.tab || this.$route.query.s != query.s || this.$route.query.env_indexes != query.env_indexes
           || this.$route.query.perpage != query.perpage || this.$route.query.pagenb != query.pagenb || this.$route.query.asc != query.asc || this.$route.query.orderby != query.orderby) {
           this.$router.push({ query: query })
         }

@@ -6,6 +6,7 @@
 * Web: Can set modifications when re-opening an alert
 * Web: New treeview for Rules. Drag&Drop support
 * Web: Drag&Drop support for Environments
+* Web: New Environment bar. Can select multiple ones at the same time
 * Core: Support for Grafana 8.5+ (same webhook)
 * Core: Housekeeper: cleanup rule orphans
 

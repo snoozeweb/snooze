@@ -54,7 +54,9 @@
               <input type="checkbox" class="pointer ms-1 me-1" :checked="dig(node, '_checked')" @change="check(node)">
             </div>
             <div v-for="field in fields" :class="field.tdClass" :style="field.tdStyle">
-              <Condition v-if="field.key == 'condition' || field.key == 'filter'" :data="dig(node.item, 'condition')" />
+              <Condition v-if="field.key == 'condition'" :data="dig(node.item, 'condition')" />
+              <Condition v-else-if="field.key == 'filter'" :data="dig(node.item, 'filter')" />
+              <div v-else-if="field.key == 'group'">{{ dig(node.item, 'group') || '0' }}</div>
               <Modification v-else-if="field.key == 'modifications'" :data="dig(node.item, 'modifications')" />
               <ColorBadge v-else-if="field.key == 'color'" :data="dig(node.item, 'color') || '#ffffff'" />
               <span v-else>{{ dig(node.item, field.key) }}</span>
