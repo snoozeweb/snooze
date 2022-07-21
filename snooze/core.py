@@ -206,8 +206,11 @@ class Core:
                 log.debug("Writing record %s", record)
                 self.db.replace_one('record', {'uid': record['uid']}, record)
                 data = {'added': [{'uid': record['uid']}]}
-        environment = record.get('environment', 'unknown')
-        severity = record.get('severity', 'unknown')
+        labels = {
+            'source': record.get('source', 'unknown'),
+            'environment': record.get('environment', 'unknown'),
+            'severity': record.get('severity', 'unknown'),
+        }
         self.stats.inc('alert_hit', labels)
         return data
 

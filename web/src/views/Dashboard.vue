@@ -67,7 +67,7 @@
               sort
               :datasets="[
                 {label: 'Action success', color: hexToRgba(theme_colors.success, 50), bordercolor: theme_colors.success, data: this.data.split_data['action_success__name__'] || {}},
-                {label: 'Action error', color: hexToRgba(theme_colors.danger, 50), bordercolor: theme_colors.danger, data: this.data.split_data['action_error__name__'] || {}},
+                {label: 'Failed action', color: hexToRgba(theme_colors.danger, 50), bordercolor: theme_colors.danger, data: this.data.split_data['action_error__name__'] || {}},
               ]"
             />
           </CCardBody>
