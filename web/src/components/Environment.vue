@@ -1,10 +1,16 @@
 <template>
   <CButtonGroup role="group" class="pb-1 m-auto">
     <CButton
+        v-on:click="select_all"
+        :style="show_all ? gen_color(all_tab.color) : gen_color_outline(all_tab.color, 2)"
+    >
+      All
+    </CButton>
+    <CButton
         v-for="(tab, index) in tabs"
         v-bind:key="tab.title"
-        :style="(index == tab_index) ? gen_color(tab.color) : gen_color_outline(tab.color, 2)"
-        v-on:click="change_tab(tab)"
+        :style="tab.selected ? gen_color(tab.color) : gen_color_outline(tab.color, 2)"
+        v-on:click="select_tab(tab)"
     >
       {{ tab.name }}
     </CButton>
@@ -36,24 +42,24 @@ export default {
       gen_color_outline: gen_color_outline,
       get_data: get_data,
       tabs: [],
-      all_tab: {'name': 'All', 'filter': {}},
+      all_tab: {},
       tab_index: 0,
-      filter: {},
+      show_all: false,
     }
   },
   mounted() {
     this.all_tab.color = getStyle('--primary') || '#304ffe'
-    this.tabs = [this.all_tab]
+    this.tabs = []
     this.get_data('environment', [], {'orderby': 'tree_order', 'asc': true}, this.get_data_response)
   },
   methods: {
-    change_tab(tab, refresh = true) {
-      this.tab_index = this.tabs.indexOf(tab)
-      this.filter = tab.filter
+    select_tab(tab, refresh = true) {
+      tab.selected = !tab.selected
       if (tab.handler) {
         tab.handler(tab)
       }
-      this.emitter.emit('environment_change_tab', tab)
+      this.emitter.emit('environment_change_tab', this.tabs.filter(t => t.selected))
+      this.check_all()
       //if (refresh) {
       //  this.refreshTable()
       //  this.add_history()
@@ -61,25 +67,24 @@ export default {
     },
     get_data_response(response) {
       if (response.data) {
-        this.tabs = [this.all_tab]
+        this.tabs = []
         var rows = response.data.data || []
-        rows.forEach(row => {
+        rows.forEach((row, index) => {
+          row.index = index
           this.tabs.push(row)
         })
       }
       this.reload()
     },
     reload() {
-      var env_name = decodeURIComponent(this.$route.query.env_name)
-      var tab
-      if (env_name != undefined) {
-        tab = this.tabs.filter(t => t.name == env_name)[0]
+      var env_indexes = decodeURIComponent(this.$route.query.env_indexes)
+      if (env_indexes != undefined) {
+        env_indexes = env_indexes.split(',')
+        this.tabs.forEach(t => {
+          t.selected = env_indexes.indexOf(t.index.toString()) >= 0
+        })
       }
-      if (tab == undefined) {
-        tab = this.tabs[0]
-      }
-      this.tab_index = this.tabs.indexOf(tab)
-      this.filter = tab.filter
+      this.check_all()
     },
     is_admin() {
       var permissions = localStorage.getItem('permissions') || []
@@ -87,7 +92,17 @@ export default {
     },
     go_settings() {
       this.$router.push('/environment')
-    }
+    },
+    check_all() {
+      this.show_all = this.tabs.every(t => t.selected)
+    },
+    select_all() {
+      this.show_all = !this.show_all
+      this.tabs.forEach(t => {
+        t.selected = this.show_all
+      })
+      this.emitter.emit('environment_change_tab', this.tabs.filter(t => t.selected))
+    },
   },
   watch: {
     $route() {
