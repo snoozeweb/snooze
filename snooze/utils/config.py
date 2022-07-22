@@ -707,8 +707,14 @@ def setup_logging(basedir: Path = SNOOZE_CONFIG):
 
     debug = CoreConfig(basedir).debug
     if debug:
-        for _, handler in logging_dict.get('handlers', {}).items():
-            handler['level'] = 'DEBUG'
+        try:
+            logging_dict['handlers']['console']['level'] = 'DEBUG'
+        except:
+            pass
+        try:
+            logging_dict['handlers']['file']['level'] = 'DEBUG'
+        except:
+            pass
         for _, handler in logging_dict.get('loggers', {}).items():
             handler['level'] = 'DEBUG'
 
