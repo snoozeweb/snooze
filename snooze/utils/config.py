@@ -369,7 +369,7 @@ class BackupConfig(BaseModel):
     )
     excludes: List[str] = Field(
         description='Collections to exclude from backups',
-        default=['record', 'stats', 'comment', 'secrets', 'aggregate'],
+        default=['record', 'stats', 'comment', 'secrets', 'aggregate', 'system.profile'],
     )
 
 class ClusterConfig(BaseModel):
