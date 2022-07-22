@@ -92,7 +92,7 @@ export default {
     },
     get_tabs_default() {
       var now = moment()
-      var date = now.format("YYYY-MM-DDTHH:mm")
+      var date = now.format("YYYY-MM-DDTHH:mmZ")
       var hour = now.format("HH:mm:ssZ")
       var weekday = now.day()
       var match = ['AND',
