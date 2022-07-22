@@ -103,7 +103,7 @@ export default {
   methods: {
     // Return a new condition object
     defaultCondition () {
-      this.refresh()
+      this.$nextTick(() => this.refresh())
       return new ConditionObject('=', ['', ''])
     },
     // Triggered when we push the `+` button for a logic operator (AND/OR)
@@ -119,20 +119,20 @@ export default {
         this.dataValue = this.dataValue.args[0]
       }
       if (this.dataValue.type == 'not' && this.dataValue.args.length < 1) {
-        this.dataValue = new ConditionObject('')
+        this.dataValue = new ConditionObject('', [])
       }
     },
     // Triggered when the delete button is pressed for any condition. This will
     // escalate the delete operation to the parent condition, or reset the condition
     // if it's the root condition.
     escalateDelete() {
-      this.refresh()
       if (this.root) {
-        this.dataValue = new ConditionObject('')
+        this.dataValue = new ConditionObject('', [])
       } else {
         //console.log(`escalateDelete: index=${this.index}`)
         this.$emit('deleteEvent', this.index)
       }
+      this.refresh()
     },
     // Trigerred when pushing the `+` button for a normal condition (a=x)
     // This will create a logic operator at the place of the condition, resulting
