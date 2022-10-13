@@ -41,7 +41,7 @@ class Rule(Plugin):
 
     def reload_data(self, sync = False):
         log.debug("Reloading data for plugin %s", self.name)
-        self.data = self.db.search('rule', ['NOT', ['EXISTS', 'parent']], orderby=self.meta.force_order)['data']
+        self.data = self.db.search('rule', ['NOT', ['EXISTS', 'parents']], orderby=self.meta.force_order)['data']
         rules = []
         for rule in (self.data or []):
             rules.append(RuleObject(rule, self))
@@ -52,6 +52,7 @@ class Rule(Plugin):
 class RuleObject:
     '''An object representing the rule object in the database'''
     def __init__(self, rule: RuleType, rule_plugin: Rule = None):
+        self.uid = rule.get('uid')
         core = None
         order = None
         if rule_plugin:
@@ -70,7 +71,7 @@ class RuleObject:
         self.children = []
         if core and core.db:
             db = core.db
-            children = db.search('rule', ['=', 'parent', rule['uid']], orderby=order)['data']
+            children = db.search('rule', ['IN', self.uid, 'parents'], orderby=order)['data']
             for child_rule in children:
                 log.debug("Found child %s of rule %s", child_rule['name'], self.name)
                 self.children.append(RuleObject(child_rule, rule_plugin))
