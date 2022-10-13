@@ -88,15 +88,12 @@ class RuleObject:
     def modify(self, record: Record) -> bool:
         '''Modify the record based of this rule's modifications'''
         modified = False
-        modifs = []
         for modification in self.modifications:
             if modification.modify(record):
                 modified = True
-                modifs.append(modification)
-        if modified:
-            log.debug("Record %s has been modified: %s", record.get('hash', ''), [m.pprint() for m in modifs])
-        else:
-            log.debug("Record %s has not been modified", record.get('hash', ''))
+                log.info("Record modified by rule '%s': %s", self.name, modification.pprint())
+        if not modified:
+            log.debug("Record not modified by rule '%s'", self.name)
         return modified
 
     def __repr__(self):

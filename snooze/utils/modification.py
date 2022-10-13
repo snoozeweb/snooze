@@ -71,6 +71,11 @@ class SetOperation(Modification):
             return return_code
         except Exception:
             return False
+    def pprint(self):
+        try:
+            return f"record[{self.args[0]}] = {self.args[1]}"
+        except IndexError:
+            return f"[INVALID SET: {self.args}]"
 
 class DeleteOperation(Modification):
     '''Delete a given key'''
@@ -84,6 +89,11 @@ class DeleteOperation(Modification):
             return True
         except KeyError:
             return False
+    def pprint(self):
+        try:
+            return f"del record[{self.args[0]}]"
+        except IndexError:
+            return f"[INVALID DELETE: {self.args}]"
 
 class ArrayAppendOperation(Modification):
     '''Append an element to a key, if this key is an array/list'''
@@ -97,6 +107,11 @@ class ArrayAppendOperation(Modification):
             record[key] += value
             return True
         return False
+    def pprint(self):
+        try:
+            return f"{self.args[0]} << {self.args[1]}"
+        except IndexError:
+            return f"[INVALID ARRAY_APPEND: {self.args}]"
 
 class ArrayDeleteOperation(Modification):
     '''Delete an element from an array/list, by value'''
@@ -110,6 +125,11 @@ class ArrayDeleteOperation(Modification):
             return True
         except (ValueError, KeyError):
             return False
+    def pprint(self):
+        try:
+            return f"record[{self.args[0]}].delete({self.args[1]})"
+        except IndexError:
+            return f"[INVALID ARRAY_DELETE: {self.args}]"
 
 class RegexParse(Modification):
     '''Given a key and a regex with named capture groups, parse the
@@ -131,6 +151,11 @@ class RegexParse(Modification):
         except re.error as err:
             log.warning("Syntax error in REGEX_PARSE: regex `%s` has error: %s", regex, err)
             return False
+    def pprint(self):
+        try:
+            return f"{self.args[0]} ~ /{self.args[1]}/"
+        except IndexError:
+            return f"[INVALID REGEX_PARSE: {self.args}]"
 
 class RegexSub(Modification):
     '''Apply a regex search and replace expression to a key's value'''
@@ -149,6 +174,11 @@ class RegexSub(Modification):
         except re.error as err:
             log.warning("Syntax error in REGEX_SUB: regex `%s` has error: %s", regex, err)
             return False
+    def pprint(self):
+        try:
+            return f"record[{self.args[1]}] = record[{self.args[0]}] s/{self.args[2]}/{self.args[3]}/"
+        except IndexError:
+            return f"[INVALID REGEX_SUB: {self.args}]"
 
 class KvSet(Modification):
     '''Match the key's value with the corresponding value from the kv core plugin'''
@@ -171,6 +201,8 @@ class KvSet(Modification):
             return True
         except (KeyError, IndexError):
             return False
+    def pprint(self):
+        return f"record[{self.out_field}] = {self.dict}[record[{self.key}]]"
 
 
 OPERATIONS = {
