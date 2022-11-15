@@ -15,7 +15,7 @@ log = getLogger('snooze.kv')
 
 class Kv(Plugin):
     '''Plugin for managing a user/script defined key-value in the database'''
-    def reload_data(self, sync = False):
+    def reload_data(self):
         super().reload_data()
         kv = {}
         for key_val in self.data:
@@ -27,8 +27,6 @@ class Kv(Plugin):
                 log.exception(err)
                 continue
         self.kv = kv
-        if sync:
-            self.sync_neighbors()
 
     def get(self, mydict, key):
         '''Return the value for a given dictionary and key'''

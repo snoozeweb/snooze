@@ -9,6 +9,7 @@
 
 import os
 import logging
+import socket
 from contextlib import contextmanager
 from ipaddress import IPv4Address
 from logging import getLogger
@@ -372,39 +373,6 @@ class BackupConfig(BaseModel):
         default=['record', 'stats', 'comment', 'secrets', 'aggregate', 'system.profile'],
     )
 
-class ClusterConfig(BaseModel):
-    '''Configuration for the cluster'''
-
-    enabled: bool = Field(
-        default=False,
-        description='Enable clustering. Required when running multiple backends',
-    )
-    members: List[HostPort] = Field(
-        env='SNOOZE_CLUSTER',
-        default_factory=lambda: [HostPort(host='localhost')],
-        description='List of snooze servers in the cluster. If the environment variable is provided,'
-        ' a special syntax is expected (`"<host>:<port>,<host>:<port>,..."`).',
-        examples=[
-            [
-                {'host': 'host01', 'port': 5200},
-                {'host': 'host02', 'port': 5200},
-                {'host': 'host03', 'port': 5200},
-            ],
-            "host01:5200,host02:5200,host03:5200",
-        ],
-
-    )
-
-    @validator('members')
-    def parse_members_env(cls, value):
-        '''In case the environment (a string) is passed, parse the environment string'''
-        if isinstance(value, str):
-            members = []
-            for member in value.split(','):
-                members.append(HostPort(member.split(':', 1)))
-            return members
-        return value
-
 class MongodbConfig(BaseModel, extra=Extra.allow):
     '''Mongodb configuration passed to pymongo MongoClient'''
     type: Literal['mongo'] = 'mongo'
@@ -486,7 +454,7 @@ class CoreConfig(ReadOnlyConfig):
     init_sleep: int = Field(
         title='Init sleep',
         default=5,
-        description='Time to sleep before retrying certain operations (bootstrap, clustering)',
+        description='Time to sleep before retrying certain operations (bootstrap, ...)',
     )
     create_root_user: bool = Field(
         title='Create root user',
@@ -500,10 +468,6 @@ class CoreConfig(ReadOnlyConfig):
     web: WebConfig = Field(
         title='Web server configuration',
         default_factory=WebConfig,
-    )
-    cluster: ClusterConfig = Field(
-        title='Cluster configuration',
-        default_factory=ClusterConfig,
     )
     backup: BackupConfig = Field(
         title='Backup configuration',
@@ -674,6 +638,26 @@ class HousekeeperConfig(WritableConfig):
         default=timedelta(days=1),
     )
 
+class SyncerConfig(WritableConfig):
+    '''Config for the housekeeper thread. Can be edited live in the web interface.
+    Usually located at `/etc/snooze/server/housekeeper.yaml`.'''
+    class Config:
+        title = 'Syncer configuration'
+        section = 'syncer'
+
+    hostname: str = Field(
+        title='Hostname',
+        description='An override for the hostname of the node in the cluster. Should'
+        'be different for each node',
+        default_factory=socket.gethostname,
+    )
+
+    sync_interval_ms: int = Field(
+        title='Sync interval (in ms)',
+        default=1000,
+        description='Interval between checks to update the in-memory value',
+    )
+
 def setup_logging(basedir: Path = SNOOZE_CONFIG):
     '''Initialize the python logger'''
     try:
@@ -731,6 +715,7 @@ class Config(BaseModel):
     general: GeneralConfig
     housekeeping: HousekeeperConfig
     notifications: NotificationConfig
+    syncer: SyncerConfig
     ldap_auth: LdapConfig
 
     def __init__(self, basedir: Path = SNOOZE_CONFIG):
@@ -740,6 +725,7 @@ class Config(BaseModel):
             'general': GeneralConfig(basedir),
             'notifications': NotificationConfig(basedir),
             'housekeeping': HousekeeperConfig(basedir),
+            'syncer': SyncerConfig(basedir),
         }
         try:
             configs['ldap_auth'] = LdapConfig(basedir)

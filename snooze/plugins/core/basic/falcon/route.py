@@ -11,6 +11,7 @@ from datetime import datetime
 from urllib.parse import unquote
 from logging import getLogger
 from typing import Dict, Any, Union, List, NamedTuple
+from uuid import uuid4
 
 from dataclasses import dataclass
 from typing_extensions import Literal
@@ -159,7 +160,7 @@ class Route(FalconRoute):
             result = self.insert(self.plugin.name, validated)
             result['data']['rejected'] += rejected
             resp.media = result
-            self.plugin.reload_data(True)
+            self._update_plugin(self.plugin.name)
             resp.status = falcon.HTTP_201
             self._audit(result, req)
         except Exception as err:
@@ -253,7 +254,7 @@ class Route(FalconRoute):
                 result = {'data': {'updated': dragged, 'rejected': []}}
             result['data']['rejected'] += rejected
             resp.media = result
-            self.plugin.reload_data(True)
+            self._update_plugin(self.plugin.name)
             resp.status = falcon.HTTP_201
             self._audit(result, req)
         except Exception as err:
@@ -284,7 +285,7 @@ class Route(FalconRoute):
         if result_dict:
             result = result_dict
             resp.media = result
-            self.plugin.reload_data(True)
+            self._update_plugin(self.plugin.name)
             resp.status = falcon.HTTP_OK
         else:
             resp.media = {}
@@ -301,6 +302,32 @@ class Route(FalconRoute):
             results = {'data': {'rejected': [rejected]}}
             log.exception(err)
             raise ValidationError("Invalid object")
+
+    def _update_plugin(self, name):
+        '''Update a plugin data for sync purpose via syncer'''
+        latest = self.core.db.get_one('syncer_latest', dict(type='plugin', name=name))
+        if latest and latest.get('uid'):
+            self.core.db.update_one('syncer_latest', latest.get('uid'), {
+                'node': self.core.config.syncer.hostname, # Used for debugging
+                'type': 'plugin',
+                'timestamp': datetime.now().timestamp(),
+            })
+        else:
+            # The latest should be bootstrapped by reload_data() of each plugin, so this case should never arise.
+            self.core.db.replace_one('syncer_latest', dict(type='plugin', name=name), {
+                'uid': str(uuid4()),
+                'node': f"{self.core.config.syncer.hostname}+bootstrap",
+                'type': 'plugin',
+                'name': name,
+                'timestamp': datetime.now().timestamp(),
+            })
+            # There is a limitation to this though. There will be a race condition the first time, if two updates
+            # happen at the same time. In that case, the update will still be signaled, even if the
+            # timestamp will be slightly incorrect. Though, we're already in a unlikely case, so this is good enough.
+            # We will add a warning to debug in case we're hitting this unexpectedly.
+            log.warning("Unlikely situation happened. The syncer_latest for {type=plugin, name=%s} doesn't exit. \
+                It should have been created by reload_data(). If you see this, you might have manually modified your DB, \
+                or something unexpected happened. Will bootstrap the value to fix the problem.", name)
 
     def _audit(self, results, req):
         '''Audit the changed objects in a dedicated collection'''

@@ -51,7 +51,6 @@ class LoggerMiddleware(object):
 class Api:
     def __init__(self, core: 'Core'):
         self.core = core
-        self.cluster = core.threads['cluster']
 
         # Handler
         middlewares = [
@@ -79,10 +78,8 @@ class Api:
         self.add_route('/alert', AlertRoute(self))
         # List route
         self.add_route('/login', LoginRoute(self))
-        # Reload route
-        self.add_route('/reload/{plugin_name}', ReloadPluginRoute(self))
-        # Cluster route
-        self.add_route('/cluster', ClusterRoute(self))
+        # Syncer route
+        self.add_route('/syncer', SyncerRoute(self))
         # Health route
         self.add_route('/health', HealthRoute(self))
         # Schema route

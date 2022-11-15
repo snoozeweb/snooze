@@ -40,7 +40,8 @@ class Notification(Plugin):
     def post_init(self):
         pass
 
-    def reload_data(self, sync = False):
+    def reload_data(self):
+        log.info("Reloading...")
         super().reload_data()
         if not self.action:
             self.action = self.core.get_core_plugin('action')
@@ -48,8 +49,7 @@ class Notification(Plugin):
         for notification in (self.data or []):
             notifications.append(NotificationObject(notification, self))
         self.notifications = notifications
-        if sync:
-            self.sync_neighbors()
+        log.info("Reloaded successfully")
 
 class NotificationObject:
     '''An object representing a single notification in the database'''

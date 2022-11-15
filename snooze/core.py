@@ -35,14 +35,14 @@ from snooze.api.tcp import TcpThread
 from snooze.api import Api
 from snooze.utils import Housekeeper, MQManager
 from snooze.utils.stats import Stats
-from snooze.utils.cluster import Cluster
 from snooze.utils.config import Config, SNOOZE_CONFIG
+from snooze.utils.syncer import Syncer
 from snooze.utils.threading import SurvivingThread
 from snooze.utils.typing import Record, AuthPayload
 
 log = getLogger('snooze')
 
-MAIN_THREADS = ('housekeeper', 'cluster', 'tcp', 'socket')
+MAIN_THREADS = ('housekeeper', 'syncer', 'tcp', 'socket')
 
 class Core:
     '''The main class of snooze, passed to all plugins'''
@@ -65,10 +65,6 @@ class Core:
         if 'housekeeper' in allowed_threads:
             self.threads['housekeeper'] = Housekeeper(self.config.housekeeping,
                 self.config.core.backup, self.db, self.exit_event)
-        if 'cluster' in allowed_threads:
-            auth = AuthPayload(username='root', method='root')
-            token = self.token_engine.sign(auth)
-            self.threads['cluster'] = Cluster(self.config.core, token, self.exit_event)
 
         self.mq = MQManager(self)
 
@@ -90,6 +86,8 @@ class Core:
         if 'tcp' in allowed_threads:
             tcp_config = core_config.listen_addr, core_config.port, core_config.ssl
             self.threads['tcp'] = TcpThread(tcp_config, self.api.handler, self.exit_event)
+        if 'syncer' in allowed_threads:
+            self.threads['syncer'] = Syncer(self, self.exit_event)
 
     def load_plugins(self):
         '''Load the plugins from the configuration'''
@@ -213,18 +211,6 @@ class Core:
         }
         self.stats.inc('alert_hit', labels)
         return data
-
-    def sync_reload_plugin(self, plugin_name: str):
-        '''Trigger a plugin reload to other cluster peers'''
-        cluster = self.threads.get('cluster')
-        if cluster:
-            cluster.sync_reload_plugin(plugin_name)
-
-    def sync_setting_update(self, section, data, auth):
-        '''Trigger a setting update to other cluster peers'''
-        cluster = self.threads.get('cluster')
-        if cluster:
-            cluster.sync_setting_update(section, data, auth)
 
     def get_core_plugin(self, plugin_name: str) -> Optional['Plugin']:
         '''Return a core plugin object by name'''

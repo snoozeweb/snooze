@@ -39,15 +39,14 @@ class Rule(Plugin):
                 rule.modify(record)
                 self.process_rules(record, rule.children)
 
-    def reload_data(self, sync = False):
-        log.debug("Reloading data for plugin %s", self.name)
+    def reload_data(self):
+        log.info("Reloading...")
         self.data = self.db.search('rule', ['NOT', ['EXISTS', 'parents']], orderby=self.meta.force_order)['data']
         rules = []
         for rule in (self.data or []):
             rules.append(RuleObject(rule, self))
         self.rules = rules
-        if sync:
-            self.sync_neighbors()
+        log.info("Reload successful")
 
 class RuleObject:
     '''An object representing the rule object in the database'''
