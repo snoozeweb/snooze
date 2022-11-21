@@ -288,7 +288,6 @@ class BackendDB(Database):
     def update_one(self, collection: str, uid: str, obj: dict, update_time: bool = True):
         new_obj = dict(obj)
         new_obj.pop('_id', None)
-        new_obj['uid'] = uid
         if update_time:
             new_obj['date_epoch'] = datetime.datetime.now().timestamp()
         update = {
