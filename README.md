@@ -35,7 +35,7 @@ Installation on Ubuntu/Debian
 
 ```bash
 $ wget https://deb.snoozeweb.net -O snooze-server-latest.deb
-$ sudo apt install snooze-server-latest.deb
+$ sudo apt install ./snooze-server-latest.deb
 $ sudo systemctl start snooze-server
 ```
 
