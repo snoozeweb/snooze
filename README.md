@@ -21,6 +21,10 @@ Try it now on: https://try.snoozeweb.net
 
 ![Alerts](https://github.com/snoozeweb/snooze/raw/master/docs/_build/html/_images/web_alerts.png)
 
+# Prerequisites (for non Docker install)
+
+* Python 3.8
+
 # Installation
 
 Installation on CentOS/RHEL
