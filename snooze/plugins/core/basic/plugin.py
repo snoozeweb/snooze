@@ -13,6 +13,7 @@ from abc import abstractmethod
 from pathlib import Path
 from typing import Optional, Dict
 from uuid import uuid4
+from dataclasses import dataclass
 
 from pydantic import BaseModel
 
@@ -184,15 +185,15 @@ class Plugin:
     def send(self, record, content):
         '''Method called for action plugin'''
 
-class Abort(Exception):
+class Abort:
     '''Abort the processing for a record'''
 
-class AbortAndWrite(Exception):
+@dataclass
+class AbortAndWrite:
     '''Abort the processing for a record, then write it in the database'''
-    def __init__(self, record={}, *args, **kwargs):
-        self.record = record
+    record: dict
 
-class AbortAndUpdate(Exception):
+@dataclass
+class AbortAndUpdate:
     '''Abort the processing for a record, then write it in the database without updating its timestamp'''
-    def __init__(self, record: Record, *_args, **_kwargs):
-        self.record = record
+    record: dict

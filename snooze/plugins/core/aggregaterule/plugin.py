@@ -35,6 +35,8 @@ class Aggregaterule(Plugin):
                 record['hash'] = hashlib.md5((str(aggrule.name) + '.'.join([(field + '=' + (dig(record, *field.split('.')) or '')) for field in aggrule.fields])).encode()).hexdigest()
                 proclog.info("Computed hash %s (from '%s')", record['hash'], self.name)
                 record = self.match_aggregate(record, aggrule.throttle, aggrule.flapping, aggrule.watch, aggrule.name)
+                if not isinstance(record, dict):
+                    return record
                 break
         else:
             proclog.debug('No aggregate rule matched, will use the default aggregate rule')
@@ -50,6 +52,8 @@ class Aggregaterule(Plugin):
             proclog.info("Computed hash %s (from default aggregate rule)", record['hash'])
             record['aggregate'] = 'default'
             record = self.match_aggregate(record)
+            if not isinstance(record, dict):
+                return record
 
         # Adding useful information to the trace
         span = get_current_span()
@@ -101,8 +105,8 @@ class Aggregaterule(Plugin):
                     record['comment_count'] = aggregate.get('comment_count', 0) + 1
                     return record
                 else:
-                    raise AbortAndUpdate(record)
                     proclog.info("OK received but the alert is already closed, discarding")
+                    return AbortAndUpdate(record=record)
             watched_fields = []
             for watched_field in watch:
                 aggregate_field = dig(aggregate, *watched_field.split('.'))
@@ -135,7 +139,7 @@ class Aggregaterule(Plugin):
             elif throttling:
                 proclog.info("Alert throttled (time within %s range), discarding", throttle)
                 self.core.stats.inc('alert_throttled', {'name': aggrule_name})
-                raise AbortAndUpdate(record)
+                return AbortAndUpdate(record=record)
             else:
                 if record.get('state') == 'ack':
                     comment['type'] = 'esc'
@@ -154,14 +158,14 @@ class Aggregaterule(Plugin):
                 self.db.write('comment', comment)
             record['comment_count'] = aggregate.get('comment_count', 0) + 1
             if flapping_count <= 0:
-                raise AbortAndUpdate(record)
                 proclog.info("Alert is flapping, discarding")
+                return AbortAndUpdate(record=record)
         else:
             proclog.info("Creating aggregate %s", record['hash'])
             matched = self.db.replace_one('aggregate', {'hash': record['hash']}, record, update_time=False)
             if matched > 0:
-                raise Abort()
                 proclog.warning("Received 2 alerts with same hash %s at the same time. Discarding one", record['hash'])
+                return Abort()
             record['duplicates'] = 1
         record.pop('snoozed', '')
         record.pop('notifications', '')

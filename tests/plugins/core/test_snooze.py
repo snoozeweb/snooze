@@ -26,27 +26,19 @@ class TestSnooze():
 
     def test_snooze_1(self, snooze):
         record = {'a': '1', 'b': '2'}
-        try:
-            record = snooze.process(record)
-            assert False
-        except AbortAndWrite:
-            assert record['snoozed'] == 'Filter 1'
+        result = snooze.process(record)
+        assert isinstance(result, AbortAndWrite)
+        assert result.record['snoozed'] == 'Filter 1'
 
     def test_snooze_2(self, snooze):
         record = {'a': '2', 'b': '2'}
-        try:
-            record = snooze.process(record)
-            assert True
-        except AbortAndWrite:
-            assert False
+        result = snooze.process(record)
+        assert isinstance(result, dict)
 
     def test_snooze_3(self, snooze):
         record = {'a': '3', 'b': '2'}
-        try:
-            record = snooze.process(record)
-            assert False
-        except Abort:
-            assert True
+        result = snooze.process(record)
+        assert isinstance(result, Abort)
 
     # $merge not implemented in mongomock
     #def test_retro_apply(self, snooze):
@@ -55,7 +47,7 @@ class TestSnooze():
     #    record = snooze.db.search('record')['data'][0]
     #    assert count == 1
     #    assert record['snoozed'] == 'Filter 1'
-    
+
     def test_retro_apply_discard(self, snooze):
         snooze.db.write('record', {'a': '3', 'b': '2'})
         count = snooze.retro_apply(['Filter 2'])

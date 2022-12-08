@@ -35,10 +35,10 @@ class Snooze(Plugin):
                 self.hits.increment({'name': filt.name})
                 self.core.stats.inc('alert_snoozed', {'name': filt.name})
                 if filt.discard:
-                    raise Abort()
                     proclog.info("Record discarded by '%s'", filt.name)
+                    return Abort()
                 else:
-                    raise AbortAndWrite(record)
+                    return AbortAndWrite(record=record)
         proclog.debug('Done')
         return record
 

@@ -183,24 +183,25 @@ class Core:
                 plugin_labels = {'environment': labels['environment'], 'plugin': plugin.name}
                 with self.stats.time('process_alert_duration_by_plugin', plugin_labels):
                     try:
-                        log.debug("Executing plugin %s on record %s", plugin.name, record.get('hash', ''))
                         record['plugins'].append(plugin.name)
-                        record = plugin.process(record)
-                    except Abort:
-                        data = {'data': {'processed': [record]}}
-                        break
-                    except AbortAndWrite as abort:
-                        if abort.record:
-                            record = abort.record
-                        self.db.replace_one('record', {'uid': record['uid']}, abort.record or record)
-                        data = {'added': [{'uid': record['uid']}]}
-                        break
-                    except AbortAndUpdate as abort:
-                        if abort.record:
-                            record = abort.record
-                        self.db.replace_one('record', {'uid': record['uid']}, record, update_time=False)
-                        data = {'updated': [{'uid': record['uid']}]}
-                        break
+                        with tracer.start_as_current_span(f"{plugin.name}-plugin"):
+                            result = plugin.process(record)
+                        if isinstance(result, Abort):
+                            data = {'data': {'processed': [record]}}
+                            break
+                        if isinstance(result, AbortAndWrite):
+                            if result.record:
+                                record = result.record
+                            self.db.replace_one('record', {'uid': record['uid']}, record)
+                            data = {'added': [{'uid': record['uid']}]}
+                            break
+                        if isinstance(result, AbortAndUpdate):
+                            if result.record:
+                                record = result.record
+                            self.db.replace_one('record', {'uid': record['uid']}, record, update_time=False)
+                            data = {'updated': [{'uid': record['uid']}]}
+                            break
+                        record = result
                     except Exception as err:
                         log.exception(err)
                         record['exception'] = {
