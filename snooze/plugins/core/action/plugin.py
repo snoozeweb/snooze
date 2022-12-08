@@ -51,9 +51,7 @@ class Action(Plugin):
                     self.core.db.delete('action.delay', ['=', 'uid', action_uid])
             log.debug("Restored delayed actions %s", self.delayed_actions.delayed)
 
-    def reload_data(self):
-        log.info('Reloading...')
-        super().reload_data()
+    def _post_reload(self):
         actions = []
         for action in self.data or []:
             action_object = ActionObject(action, self)
@@ -67,7 +65,6 @@ class Action(Plugin):
         notification_plugin = self.core.get_core_plugin('notification')
         if notification_plugin:
             notification_plugin.reload_data()
-        log.info('Reloaded successfully')
 
 class UnknownPlugin(RuntimeError):
     def __init__(self, plugin_name: str):

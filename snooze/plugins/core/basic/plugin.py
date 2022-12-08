@@ -148,10 +148,13 @@ class Plugin:
         '''Hook to execute something after the default init'''
         self.reload_data()
 
+    def _post_reload(self):
+        '''Hook to execute action after the standard data reload'''
+
     def reload_data(self):
         '''Reload the data of a plugin from the database'''
         if self.meta.auto_reload:
-            log.debug("Reloading data for plugin %s", self.name)
+            log.info("Reloading plugin '%s'...", self.name)
             pagination = {}
             if self.meta.default_sorting is not None:
                 pagination['orderby'] = self.meta.default_sorting
@@ -166,6 +169,8 @@ class Plugin:
                 'name': self.name,
                 'timestamp': now,
             })
+            self._post_reload()
+            log.info("Reloaded plugin '%s'", self.name)
 
     def process(self, record: Record) -> Record:
         '''Process a record if it's a process plugin'''

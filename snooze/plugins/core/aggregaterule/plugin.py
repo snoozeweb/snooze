@@ -155,8 +155,7 @@ class Aggregaterule(Plugin):
         record.pop('notifications', '')
         return record
 
-    def reload_data(self):
-        super().reload_data()
+    def _post_reload(self):
         aggregate_rules = []
         for aggrule in (self.data or []):
             aggregate_rules.append(AggregateruleObject(aggrule))
