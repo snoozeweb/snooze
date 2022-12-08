@@ -68,6 +68,8 @@ class Action(Plugin):
             notification_plugin.reload_data()
 
 class UnknownPlugin(RuntimeError):
+    '''A runtime error raised when the action plugin is not found. Useful when
+    the action plugin comes from an external pip package'''
     def __init__(self, plugin_name: str):
         RuntimeError.__init__(self, f"Plugin '{plugin_name}' not found")
 
@@ -93,6 +95,7 @@ class ActionObject:
         self.batch_maxsize = self.content.get('batch_maxsize', batch.get('maxsize', 100))
 
     def send(self, action_obj):
+        '''Called when the action is triggered'''
         record = action_obj['record']
         if action_obj['delay'] <= 0 and action_obj['total'] != 0:
             if action_obj['every'] <= 0:
@@ -164,6 +167,7 @@ class ActionObject:
         return success
 
     def delay(self, action_obj):
+        '''Delay an action'''
         record = action_obj['record']
         if action_obj['total'] == 0 or action_obj['retry'] < 0:
             self.delayed.cleanup(record['hash'], self.uid)
@@ -177,6 +181,7 @@ class ActionObject:
             self.name, action_obj['delay'], action_obj['retry'])
 
     def update_stats(self, success, amount = 1):
+        '''Update internal action statistics'''
         if amount > 0:
             try:
                 if success:

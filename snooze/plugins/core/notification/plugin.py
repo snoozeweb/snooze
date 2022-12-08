@@ -85,6 +85,7 @@ class NotificationObject:
         return self.condition.match(record) and self.time_constraint.match(get_record_date(record))
 
     def send(self, record):
+        '''Trigger the notification'''
         if not 'notifications' in record:
             record['notifications'] = []
         if self.name not in record['notifications']:

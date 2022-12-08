@@ -23,13 +23,9 @@ proclog = getLogger('snooze-process')
 
 class Aggregaterule(Plugin):
     '''The aggregate rule plugin'''
-    def process(self, record):
-        """Process the record against a list of aggregate rules
-
-        Args:
-            record (dict)
-        """
-        log.debug("Processing record against aggregate rules")
+    def process(self, record: dict):
+        '''Process the record against a list of aggregate rules'''
+        proclog.debug('Start')
         for aggrule in self.aggregate_rules:
             if aggrule.enabled and aggrule.match(record):
                 record['hash'] = hashlib.md5((str(aggrule.name) + '.'.join([(field + '=' + (dig(record, *field.split('.')) or '')) for field in aggrule.fields])).encode()).hexdigest()
@@ -195,15 +191,8 @@ class AggregateruleObject:
             self.flapping = int(aggregate_rule.get('flapping', 3))
         except (ValueError, TypeError):
             self.flapping = 3
-    def match(self, record):
-        """Check if a record matched this aggregate's rule condition
-
-        Args:
-            record (dict)
-
-        Returns:
-            bool: Record matched the rule's condition
-        """
+    def match(self, record: dict) -> bool:
+        '''Check if a record matched this aggregate's rule condition'''
         match = self.condition.match(record)
         if match:
             if not 'aggregate' in record:
