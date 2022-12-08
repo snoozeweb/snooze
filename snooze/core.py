@@ -24,6 +24,7 @@ from typing import List
 from uuid import uuid4
 
 from dateutil import parser
+from opentelemetry.trace import get_tracer, get_current_span
 
 from snooze import __file__ as rootdir
 from snooze.db.database import Database, AsyncDatabase, get_database
@@ -42,6 +43,8 @@ from snooze.utils.typing import Record, AuthPayload
 
 log = getLogger('snooze.core')
 proclog = getLogger('snooze-process')
+
+tracer = get_tracer('snooze')
 
 MAIN_THREADS = ('housekeeper', 'syncer', 'tcp', 'socket')
 
@@ -134,6 +137,7 @@ class Core:
         log.debug("List of loaded core plugins: %s", [plugin.name for plugin in self.plugins])
         log.debug("List of loaded process plugins: %s", [plugin.name for plugin in self.process_plugins])
 
+    @tracer.start_as_current_span('process_record')
     def process_record(self, record: Record):
         '''Method called when a given record enters the system.
         The method will run the record through all configured plugin,
@@ -171,7 +175,11 @@ class Core:
             log.warning(err)
             record['timestamp'] = datetime.now().astimezone().strftime("%Y-%m-%dT%H:%M:%S%z")
         with self.stats.time('process_alert_duration', labels):
+            step = 0
+            last_plugin = ''
             for plugin in self.process_plugins:
+                step += 1
+                last_plugin = plugin.name
                 plugin_labels = {'environment': labels['environment'], 'plugin': plugin.name}
                 with self.stats.time('process_alert_duration_by_plugin', plugin_labels):
                     try:
@@ -206,6 +214,12 @@ class Core:
                 log.debug("Writing record %s", record)
                 self.db.replace_one('record', {'uid': record['uid']}, record)
                 data = {'added': [{'uid': record['uid']}]}
+
+        # Adding tracing information
+        span = get_current_span()
+        span.set_attribute('plugin-step', step)
+        span.set_attribute('last-plugin', last_plugin)
+
         labels = {
             'source': record.get('source', 'unknown'),
             'environment': record.get('environment', 'unknown'),

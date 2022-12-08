@@ -24,6 +24,7 @@ from pydantic import BaseModel, Field, PrivateAttr, validator, root_validator, V
 from pydantic.config import BaseConfig
 from pydantic.fields import ModelField
 from pydantic.utils import deep_update
+from opentelemetry.instrumentation.logging import LoggingInstrumentor
 
 from snooze import __file__ as SNOOZE_PATH
 from snooze.utils.typing import *

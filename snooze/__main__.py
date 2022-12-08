@@ -17,6 +17,7 @@ import yaml
 from snooze.core import Core
 from snooze.api import Api
 from snooze.logging import configure_loggers
+from snooze.tracing import configure_tracer
 
 def exit_all(threads, exit_code=0):
     '''Stop all threads, and exit'''
@@ -28,6 +29,7 @@ def exit_all(threads, exit_code=0):
 def app():
     '''Used to initialize the application in Docker Heroku'''
     configure_loggers()
+    configure_tracer()
     core = Core()
 
     api = Api(core)
@@ -36,6 +38,7 @@ def app():
 def main():
     '''Main thread when running snooze-server executable'''
     configure_loggers()
+    configure_tracer()
     core = Core()
 
     try:

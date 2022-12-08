@@ -18,6 +18,7 @@ from typing import Optional, List
 
 import bson.json_util
 import falcon
+from opentelemetry.instrumentation.falcon import FalconInstrumentor
 from pydantic import BaseModel, ValidationError
 
 from snooze.api.routes import *
@@ -59,7 +60,8 @@ class Api:
         ]
         if not self.core.config.core.no_login:
             middlewares.append(TokenAuthMiddleware(self.core.token_engine))
-        self.handler = falcon.API(middleware=middlewares)
+        FalconInstrumentor().instrument()
+        self.handler = falcon.App(middleware=middlewares)
         self.handler.req_options.auto_parse_qs_csv = False
 
         json_handler = falcon.media.JSONHandler(

@@ -12,6 +12,8 @@ import datetime
 import hashlib
 from logging import getLogger
 
+from opentelemetry.trace import get_current_span
+
 from snooze.plugins.core import Plugin, AbortAndUpdate, Abort
 from snooze.utils.condition import get_condition, validate_condition
 from snooze.utils.functions import dig
@@ -48,6 +50,11 @@ class Aggregaterule(Plugin):
             proclog.info("Computed hash %s (from default aggregate rule)", record['hash'])
             record['aggregate'] = 'default'
             record = self.match_aggregate(record)
+
+        # Adding useful information to the trace
+        span = get_current_span()
+        span.set_attribute('record_uid', record.get('uid', ''))
+        span.set_attribute('aggregate_hash', record.get('hash', ''))
 
         proclog.debug('Done')
         return record

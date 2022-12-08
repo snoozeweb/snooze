@@ -9,10 +9,12 @@ from logging.handlers import TimedRotatingFileHandler, RotatingFileHandler
 from pathlib import Path
 from typing import Union, Literal, Dict
 
+from opentelemetry.instrumentation.logging import LoggingInstrumentor
 from pydantic import BaseModel, Field
 from pythonjsonlogger.jsonlogger import JsonFormatter
 
 from snooze.utils.config import ReadOnlyConfig, SNOOZE_CONFIG
+from snooze.tracing import otel_log_hook
 
 class LogMode(Enum):
     CONSOLE = 'console'
@@ -69,6 +71,9 @@ class LogConfig(ReadOnlyConfig):
 
 def configure_loggers(basedir: Path = SNOOZE_CONFIG):
     '''Configure the main loggers'''
+
+    # Opentelemetry integration (get the traceID and spanID in logs)
+    LoggingInstrumentor().instrument(log_hook=otel_log_hook)
 
     config = LogConfig(basedir)
     loggers = {
@@ -129,6 +134,9 @@ def add_formatters(handlers: Dict[str, Handler], config: LogConfig):
             'main': Formatter("%(asctime)s %(name)-20s %(levelname)-6s %(message)s"),
             'tracing': Formatter(
                 "%(asctime)s %(name)-20s %(levelname)-6s "
+                "[trace_id=%(otelTraceID)s "
+                "span_id=%(otelSpanID)s "
+                "resource.service.name=%(otelServiceName)s] "
                 "%(message)s"
             ),
         }
