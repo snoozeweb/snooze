@@ -11,7 +11,7 @@ from logging import getLogger
 
 from snooze.plugins.core import Plugin
 
-log = getLogger('snooze.kv')
+log = getLogger('snooze-api')
 
 class Kv(Plugin):
     '''Plugin for managing a user/script defined key-value in the database'''

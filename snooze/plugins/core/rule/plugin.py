@@ -16,13 +16,17 @@ from snooze.utils.condition import get_condition, validate_condition
 from snooze.utils.modification import get_modification, validate_modification
 from snooze.utils.typing import Record, Rule as RuleType
 
-log = getLogger('snooze.process')
+log = getLogger('snooze')
+apilog = getLogger('snooze-api')
+proclog = getLogger('snooze-process')
 
 class Rule(Plugin):
     '''The rule plugin main class'''
     def process(self, record):
         '''Process the record against a list of rules'''
+        proclog.debug('Start')
         self.process_rules(record, self.rules)
+        proclog.debug('Done')
         return record
 
     def validate(self, obj):
@@ -32,10 +36,9 @@ class Rule(Plugin):
 
     def process_rules(self, record, rules):
         '''Process a list of rules'''
-        log.debug("Processing record %s against rules", record.get('hash', ''))
         for rule in rules:
             if rule.enabled and rule.match(record):
-                log.debug("Rule %s matched record: %s", rule.name, record.get('hash', ''))
+                proclog.debug("Rule '%s' (%s) matched record", rule.name, rule.uid)
                 rule.modify(record)
                 self.process_rules(record, rule.children)
 
@@ -59,20 +62,20 @@ class RuleObject:
             order = rule_plugin.meta.force_order
         self.enabled = rule.get('enabled', True)
         self.name = rule['name']
-        log.debug("Creating rule: %s", self.name)
+        apilog.debug("Instantiating rule: %s", self.name)
         self.condition = get_condition(rule.get('condition'))
-        log.debug("-> condition: %s", self.condition)
+        apilog.debug("Instantiating condition: %s", self.condition)
         self.modifications = []
         for modification in (rule.get('modifications') or []):
-            log.debug("-> modification: %s", modification)
+            apilog.debug("Instantiating modification: %s", modification)
             self.modifications.append(get_modification(modification, core=core))
-        log.debug("Searching children of rule %s", self.name)
+        apilog.debug('Searching children')
         self.children = []
         if core and core.db:
             db = core.db
             children = db.search('rule', ['IN', self.uid, 'parents'], orderby=order)['data']
             for child_rule in children:
-                log.debug("Found child %s of rule %s", child_rule['name'], self.name)
+                apilog.debug("Found child '%s'", child_rule['name'])
                 self.children.append(RuleObject(child_rule, rule_plugin))
 
     def match(self, record: Record) -> bool:
@@ -91,9 +94,9 @@ class RuleObject:
         for modification in self.modifications:
             if modification.modify(record):
                 modified = True
-                log.info("Record modified by rule '%s': %s", self.name, modification.pprint())
+                proclog.info("Record modified by rule '%s': %s", self.name, modification.pprint())
         if not modified:
-            log.debug("Record not modified by rule '%s'", self.name)
+            proclog.debug("Record not modified by rule '%s'", self.name)
         return modified
 
     def __repr__(self):

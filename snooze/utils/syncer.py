@@ -19,7 +19,7 @@ from uuid import uuid4
 
 from snooze.utils.threading import SurvivingThread
 
-log = getLogger('snooze.api.syncer')
+log = getLogger('snooze.syncer')
 
 class Syncer(SurvivingThread):
     '''The syncer thread'''

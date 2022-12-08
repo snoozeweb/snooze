@@ -40,7 +40,8 @@ from snooze.utils.syncer import Syncer
 from snooze.utils.threading import SurvivingThread
 from snooze.utils.typing import Record, AuthPayload
 
-log = getLogger('snooze')
+log = getLogger('snooze.core')
+proclog = getLogger('snooze-process')
 
 MAIN_THREADS = ('housekeeper', 'syncer', 'tcp', 'socket')
 
@@ -155,6 +156,7 @@ class Core:
         }
         record['ttl'] = int(self.config.housekeeping.record_ttl.total_seconds())
         record['uid'] = str(uuid4())
+        proclog.info('New alert received')
         if severity.casefold() in self.config.general.ok_severities:
             record['state'] = 'close'
             log.debug("Detected OK severities: %s, closing alert", severity.casefold())
@@ -210,6 +212,7 @@ class Core:
             'severity': record.get('severity', 'unknown'),
         }
         self.stats.inc('alert_hit', labels)
+        proclog.info('Alert processed')
         return data
 
     def get_core_plugin(self, plugin_name: str) -> Optional['Plugin']:

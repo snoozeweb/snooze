@@ -48,7 +48,7 @@ rm -rf %{buildroot}
 mkdir -p %{buildroot}/opt/snooze
 
 # Utils directory
-mkdir -p %{buildroot}/var/log/snooze
+mkdir -p %{buildroot}/var/log/snooze/server
 mkdir -p %{buildroot}/var/lib/snooze
 
 # Snooze server
@@ -86,6 +86,7 @@ find %{venv}/lib -type f -name "*.so" | xargs -r strip
 /usr/lib/systemd/system/snooze-server.service
 /var/lib/snooze
 /var/log/snooze
+/var/log/snooze/server
 %config(noreplace) /etc/snooze/server/core.yaml
 %config(noreplace) /etc/snooze/server/logging.yaml
 

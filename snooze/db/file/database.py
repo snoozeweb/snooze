@@ -25,7 +25,7 @@ from snooze.db.database import Database, wrap_exception
 from snooze.utils.config import FileConfig
 from snooze.utils.functions import dig, to_tuple, flatten
 
-log = getLogger('snooze.db.file')
+log = getLogger('snooze.api.db')
 DEFAULT_PAGINATION = {
     'orderby': '',
     'page_number': 1,

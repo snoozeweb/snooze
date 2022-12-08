@@ -16,7 +16,7 @@ from snooze.api.routes import FalconRoute
 from snooze.utils.functions import authorize
 from snooze.utils.typing import AuthPayload
 
-log = getLogger('snooze.api')
+log = getLogger('snooze-api')
 
 class ProfileRoute(FalconRoute):
     @authorize

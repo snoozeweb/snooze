@@ -12,7 +12,7 @@ from logging import getLogger
 from snooze.plugins.core.basic.falcon.route import Route
 from snooze.utils.functions import authorize
 
-log = getLogger('snooze.api')
+log = getLogger('snooze-api')
 
 class UserRoute(Route):
     '''Overriding the default route for better management of the password'''

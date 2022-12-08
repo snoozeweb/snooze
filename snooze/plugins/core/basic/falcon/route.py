@@ -23,7 +23,7 @@ from snooze.api.routes import FalconRoute
 from snooze.utils.parser import parser
 from snooze.utils.functions import authorize
 
-log = getLogger('snooze.api')
+log = getLogger('snooze-api')
 
 class ValidationError(RuntimeError):
     '''Raised when the validation fails'''
@@ -198,7 +198,8 @@ class Route(FalconRoute):
                         pivot =  self.core.db.get_one(self.plugin.name, {'uid': req_media['insert_after']})
                         modifier = 0
                     elif self.plugin.meta.tree and 'parent' in req_media:
-                        log.error('Parent for %s has been set up while insert_before or insert_after was not. Please set either one of them', req_media)
+                        log.error('Parent for %s has been set up while insert_before or insert_after was not. Please set either one of them',
+                            req_media)
                         rejected.append(req_media)
                         continue
                     if modifier is not None:
@@ -206,7 +207,8 @@ class Route(FalconRoute):
                         req_media.pop('insert_before', None)
                         req_media.pop('insert_after', None)
                         if not pivot:
-                            log.error('Cannot find pivot uid %s. Aborting on_put', req_media.get('insert_before', req_media.get('insert_after')))
+                            log.error('Cannot find pivot uid %s. Aborting on_put',
+                                req_media.get('insert_before', req_media.get('insert_after')))
                             rejected.append(req_media)
                             continue
                         old_req_media = self.core.db.get_one(self.plugin.name, {'uid': req_media['uid']})
@@ -278,7 +280,7 @@ class Route(FalconRoute):
         deleted_objects = [{'_old': data} for data in to_delete['data']]
         if self.plugin.meta.tree and to_delete['count'] > 0:
             self.core.db.delete(self.plugin.name, ['IN', list(set(list(map(lambda x: x['uid'], to_delete['data'])))), 'parents'])
-        log.debug("Trying delete %s" % cond_or_uid)
+        log.debug("Trying delete %s", cond_or_uid)
         result_dict = self.delete(self.plugin.name, cond_or_uid)
         resp.content_type = falcon.MEDIA_JSON
         self._audit({'data': {'deleted': deleted_objects}}, req)

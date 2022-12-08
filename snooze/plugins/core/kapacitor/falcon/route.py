@@ -14,7 +14,7 @@ from bson.json_util import loads
 from snooze.api.routes import WebhookRoute
 from snooze.utils.functions import sanitize
 
-log = getLogger('snooze.webhooks.kapacitor')
+log = getLogger('snooze-process')
 
 class KapacitorRoute(WebhookRoute):
     '''A falcon route for parsing kapacitor alerts'''

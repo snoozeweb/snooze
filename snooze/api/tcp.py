@@ -21,7 +21,7 @@ from pydantic import IPvAnyAddress
 from snooze.utils.config import SslConfig
 from snooze.utils.threading import SurvivingThread
 
-log = getLogger('snooze.api.tcp')
+log = getLogger('snooze.tcp')
 
 class NoLogHandler(WSGIRequestHandler):
     '''Handler that doesn't log to stdout'''

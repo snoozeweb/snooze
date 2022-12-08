@@ -15,7 +15,7 @@ from snooze.utils.functions import authorize
 from snooze.plugins.core.basic.falcon.route import Route
 from snooze.utils.condition import get_condition
 
-log = getLogger('snooze.api')
+log = getLogger('snooze-api')
 
 class SnoozeRoute(Route):
     '''Pre-process the time_constraints field for sorting purposes on the web interface'''

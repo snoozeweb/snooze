@@ -31,7 +31,6 @@ class TestCoreConfig:
         data = inspect.cleandoc('''---
         listen_addr: '0.0.0.0'
         port: '5200'
-        debug: true
         bootstrap_db: true
         create_root_user: true
         unix_socket: /var/run/snooze/server-test.socket
@@ -53,7 +52,6 @@ class TestCoreConfig:
         config = CoreConfig(tmp_path)
         assert config.listen_addr == IPv4Address('0.0.0.0')
         assert config.port == 5200
-        assert config.debug == True
         assert config.bootstrap_db == True
 
 class TestDatabaseConfig:

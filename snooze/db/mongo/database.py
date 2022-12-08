@@ -26,7 +26,7 @@ from snooze.utils.functions import dig
 from snooze.utils.typing import Condition
 from snooze.utils.config import MongodbConfig
 
-log = getLogger('snooze.db.mongo')
+log = getLogger('snooze.db')
 
 class OperationNotSupported(Exception):
     '''Raised when the search operator is not supported'''

@@ -1,6 +1,7 @@
 opt/snooze
 var/lib/snooze
 var/log/snooze
+var/log/snooze/server
 etc/snooze
 etc/snooze/server
 usr/lib/systemd/system/snooze-server.service

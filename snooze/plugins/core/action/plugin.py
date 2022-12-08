@@ -20,7 +20,8 @@ from snooze.utils.functions import ensure_hash
 from snooze.utils.mq import Worker
 from snooze.utils.threading import SurvivingThread
 
-log = getLogger('snooze.action')
+proclog = getLogger('snooze-process')
+apilog = getLogger('snooze-api')
 
 class Action(Plugin):
     '''The action plugin. Spawn a background thread that will manage delayed and batched actions'''
@@ -46,10 +47,10 @@ class Action(Plugin):
                     action_obj['record'] = {'hash': action_obj['record_hash']}
                     self.delayed_actions.set_delayed(action_obj, False)
                 else:
-                    log.debug("Delayed notification %s original notification in not in the database anymore. "
+                    apilog.warning("Delayed notification '%s' original notification in not in the database anymore. "
                         "Removing it from queue", action_obj)
                     self.core.db.delete('action.delay', ['=', 'uid', action_uid])
-            log.debug("Restored delayed actions %s", self.delayed_actions.delayed)
+            apilog.debug("Restored delayed actions %s", self.delayed_actions.delayed)
 
     def _post_reload(self):
         actions = []
@@ -59,7 +60,7 @@ class Action(Plugin):
             if action_object.batch:
                 self.core.mq.update_queue(f"action_{action_object.uid}",
                     action_object.batch_timer, action_object.batch_maxsize, ActionWorker, action_object)
-            log.debug("Init action %s", action_object.name)
+            apilog.debug("Init action %s", action_object.name, extra=dict(plugin=self.name))
         self.core.mq.keep_queues([f"action_{action.uid}" for action in actions], "action_")
         self.actions = actions
         notification_plugin = self.core.get_core_plugin('notification')
@@ -96,13 +97,14 @@ class ActionObject:
         if action_obj['delay'] <= 0 and action_obj['total'] != 0:
             if action_obj['every'] <= 0:
                 if action_obj['total'] < 0:
-                    log.warning("Action %s has probably misonfigured (spamming). Will send only once.", self.name)
+                    proclog.warning("Action '%s' is probably misonfigured (spamming). Will send only once.",
+                        self.name)
                     loop = 1
                 else:
                     loop = action_obj['total']
             else:
                 loop = 1
-            log.debug("%s Action(s) `%s` will be executed right now", loop, self.name)
+            proclog.info("Executing action '%s' (%d times)", self.name, loop)
             self.send_one(loop, action_obj)
         if action_obj['total'] != 0:
             ensure_hash(record)
@@ -118,7 +120,7 @@ class ActionObject:
         try:
             succeeded, failed = self.action_plugin.send(records, self.content)
         except Exception as err:
-            log.exception(err)
+            proclog.exception(err)
             succeeded, failed = [], records
         for record in failed:
             hashes[record['hash']]['retry'] -= 1
@@ -147,8 +149,7 @@ class ActionObject:
                 else:
                     _, failed = self.action_plugin.send(record, self.content)
             except Exception as err:
-                log.exception(err)
-                log.error("Action %s' could not be send", self.name)
+                proclog.error("Action %s could not be sent: %s", self.name, err, exc_info=err)
                 failed = record
             if failed:
                 action_obj['retry'] -= 1
@@ -172,7 +173,7 @@ class ActionObject:
         action_obj['action'] = self
         action_obj['time'] = time.time() + action_obj['delay']
         self.delayed.set_delayed(action_obj)
-        log.debug("Action `%s` will be sent in %ss (%s retrie(s) left)",
+        proclog.info("Action '%s' will be sent in %d seconds (%d retrie(s) left)",
             self.name, action_obj['delay'], action_obj['retry'])
 
     def update_stats(self, success, amount = 1):
@@ -183,7 +184,8 @@ class ActionObject:
                 else:
                     self.core.stats.inc('action_error', {'name': self.name}, amount)
             except Exception as err:
-                log.exception(err)
+                proclog.warning("Error while incrementing stat for action %s",
+                    self.name, exc_info=err, extra=dict(plugin='action'))
 
     def __str__(self):
         return self.name
@@ -232,13 +234,13 @@ class DelayedActions(SurvivingThread):
                     self.action.core.db.delete('action.delay', ['AND', ['=', 'record_hash', record_hash], ['=', 'host', self.action.hostname]])
                     del self.delayed[record_hash]
         except KeyError as err:
-            log.exception(err)
+            proclog.exception(err, extra=dict(plugin='action'))
 
     def send_delayed(self, record_hash, action_uid):
         delayed_record = self.action.core.db.get_one('record', dict(hash=record_hash))
         if delayed_record:
             if delayed_record.get('state') in ['ack', 'close'] or delayed_record.get('snoozed'):
-                log.debug("Record %s is already acked, closed or snoozed. Do not notify", record_hash)
+                proclog.info("Record already acked/closed/snoozed. Will not notify")
                 self.cleanup(record_hash)
             else:
                 try:
@@ -249,9 +251,9 @@ class DelayedActions(SurvivingThread):
                         self.action.core.db.replace_one('record', {'uid': delayed_record['uid']}, delayed_record)
                     action.delay(self.delayed[record_hash][action_uid])
                 except Exception as err:
-                    log.exception(err)
+                    proclog.exception(err)
         else:
-            log.debug("Record %s does not exist anymore, do not notify", record_hash)
+            proclog.warning("Record %s does not exist anymore. Will not notify", record_hash)
             self.cleanup(record_hash)
 
     def start_thread(self):
@@ -262,9 +264,9 @@ class DelayedActions(SurvivingThread):
                         if time.time() >= self.delayed[record_hash][action_uid]['time']:
                             self.send_delayed(record_hash, action_uid)
                     except KeyError:
-                        log.info("KeyError: Hash %s does not exist anymore", record_hash)
+                        apilog.info("KeyError: Hash %s does not exist anymore", record_hash)
             time.sleep(2)
-        log.info('Stopped delayed action thread')
+        apilog.info('Stopped delayed action thread', extra=dict(plugin='action'))
 
 class ActionWorker(Worker):
 

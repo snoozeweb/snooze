@@ -33,7 +33,7 @@ from snooze.utils.functions import ensure_kv, unique, authorize, extract_basic_a
 from snooze.utils.typing import DuplicatePolicy, AuthorizationPolicy, RouteArgs, AuthPayload
 from snooze.db.database import Pagination
 
-log = getLogger('snooze.api')
+log = getLogger('snooze-api')
 
 MAX_AGE = 24 * 3600
 

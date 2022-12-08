@@ -16,7 +16,7 @@ import falcon
 
 from snooze.api.routes import BasicRoute
 
-log = getLogger('snooze.health')
+log = getLogger('snooze-api.health')
 
 Health = Literal['ok', 'warning', 'critical', 'unknown']
 

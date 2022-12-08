@@ -21,6 +21,7 @@ from snooze.utils.config import MetadataConfig
 from snooze.utils.typing import Record, RouteArgs
 
 log = getLogger('snooze')
+apilog = getLogger('snooze-api')
 
 SNOOZE_PLUGIN_PATH = Path(SNOOZE_PATH).parent / 'plugins/core'
 
@@ -58,7 +59,7 @@ class Plugin:
         elif (pkgdir / 'metadata.yaml').is_file():
             moduledir = pkgdir
         else:
-            log.warning("No metadata found for plugin '%s'", self.name)
+            apilog.warning("No metadata found for plugin '%s'", self.name)
             moduledir = None
         config = MetadataConfig(self.name, moduledir)
         self.rootdir = moduledir

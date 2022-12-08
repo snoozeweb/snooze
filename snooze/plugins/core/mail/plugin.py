@@ -14,7 +14,7 @@ from jinja2 import Template
 from snooze.plugins.core import Plugin
 
 from logging import getLogger
-log = getLogger('snooze.action.mail')
+log = getLogger('snooze-api.mail')
 
 DEFAULT_MESSAGE_TEMPLATE = """
 {% if record.get('host') %}
