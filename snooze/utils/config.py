@@ -8,8 +8,10 @@
 '''Module for managing loading and writing the configuration files'''
 
 import os
+import re
 import logging
 import socket
+import inspect
 from contextlib import contextmanager
 from ipaddress import IPv4Address
 from logging import getLogger
@@ -101,19 +103,37 @@ class SnoozeSettingsSource:
 
 class EnvSettingsSource:
     '''A config loader for environment variables'''
+
+    def extract(self, model: BaseModel, envs: dict) -> dict:
+        log.debug("extract(%s), env: %s", type(model).__name__, envs)
+        for name, field in model.__fields__.items():
+            if inspect.isclass(field.type_) and issubclass(field.type_, BaseModel):
+                log.debug("%s is a nested type", field.type_)
+                sub_model = field.type_
+                sub_envs = {
+                    re.sub(f"^{name}_", '', k): v
+                    for k, v in envs.items()
+                    if k.startswith(f"{name}_")
+                }
+                new_envs = self.extract(sub_model, sub_envs)
+                if new_envs:
+                    envs[name] = new_envs
+            else:
+                log.debug("%s is not a nested type", field.type_)
+                env_names = field.field_info.extra.get('env_names', [])
+                value = next((os.environ[env] for env in env_names if env in os.environ), None)
+                if value is not None:
+                    envs[field.alias] = value
+        return envs
+
     def __call__(self, settings: ReadOnlyConfig) -> Dict[str, Any]:
         section = settings.__config__.section
         envs = {
             k.split('_', 3)[-1].lower(): v
             for k, v in os.environ.items()
-            if k.startswith(f"SNOOZE_SERVER_{section}_")
+            if k.lower().startswith(f"snooze_server_{section}_")
         }
-        for field in settings.__fields__.values():
-            env_names = field.field_info.extra.get('env_names', [])
-            value = next((os.environ[env] for env in env_names if env in os.environ), None)
-            if value is not None:
-                envs[field.alias] = value
-        return envs
+        return self.extract(settings, envs)
 
 @contextmanager
 def lock_and_flush(path: Path, flush: Callable):

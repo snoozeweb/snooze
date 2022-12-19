@@ -8,6 +8,7 @@
 import os
 import inspect
 from unittest.mock import patch
+from pathlib import Path
 
 from snooze.utils.config import *
 
@@ -77,11 +78,6 @@ class TestDatabaseConfig:
         config = CoreConfig(tmp_path)
         assert config.database.type == 'mongo'
         assert config.database.host == ['host01', 'host02', 'host03']
-
-    @patch.dict(os.environ, {'DATABASE_URL': 'mongodb://host01,host02,host03/snooze'}, clear=True)
-    def test_mongo_environ(self, tmp_path):
-        config = CoreConfig(tmp_path)
-        assert config.database.type == 'mongo'
 
     def test_file(self, tmp_path):
         config = CoreConfig(tmp_path)
@@ -160,3 +156,30 @@ class TestMetadataConfig:
 
         assert metadata['audit'].name == 'Audit'
         assert metadata['snooze'].name == 'Snooze'
+
+class TestEnvSettings:
+
+    @patch.dict(os.environ, {'SNOOZE_SERVER_GENERAL_METRICS_ENABLED': '0'}, clear=True)
+    def test_general_config(self, tmp_path):
+        settings = GeneralConfig(tmp_path)
+        assert settings.metrics_enabled == False
+
+    @patch.dict(os.environ, {'SNOOZE_SERVER_CORE_SSL_CERTFILE': '/etc/pki/tls/certs/snooze.crt'}, clear=True)
+    def test_nested_config(self, tmp_path):
+        settings = CoreConfig(tmp_path)
+        assert settings.ssl.certfile == Path('/etc/pki/tls/certs/snooze.crt')
+
+    @patch.dict(os.environ, {'DATABASE_URL': 'mongodb://host01,host02,host03/snooze'}, clear=True)
+    def test_mongo_environ(self, tmp_path):
+        config = CoreConfig(tmp_path)
+        assert config.database.type == 'mongo'
+
+    @patch.dict(os.environ, {'SNOOZE_SERVER_CORE_AUDIT_EXCLUDED_PATHS': '/api1,/api2'}, clear=True)
+    def test_array(self, tmp_path):
+        config = CoreConfig(tmp_path)
+        assert config.audit_excluded_paths == ['/api1', '/api2']
+
+    @patch.dict(os.environ, {'SNOOZE_SERVER_CORE_DATABASE_TYPE': 'mongo', 'SNOOZE_SERVER_CORE_DATABASE_HOST': 'host01,host02,host03'})
+    def test_nested_union(self, tmp_path):
+        settings = CoreConfig(tmp_path)
+        assert isinstance(settings.database, MongodbConfig)
