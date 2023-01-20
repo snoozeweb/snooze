@@ -44,9 +44,11 @@ def resolve(record: Record, args: list):
 class Modification:
     '''A class to represent a modification'''
 
+    nbargs = 2
+
     def __init__(self, args: list, core: 'Optional[Core]' = None):
         self.core = core
-        self.args = args
+        self.args = args + [''] * (type(self).nbargs - len(args))
 
     @abstractmethod
     def modify(self, record: Record) -> bool:
@@ -58,6 +60,9 @@ class Modification:
 
 class SetOperation(Modification):
     '''Set a key to a given value'''
+
+    nbargs = 2
+
     def modify(self, record: Record) -> bool:
         key, value = resolve(record, self.args)
         try:
@@ -69,6 +74,9 @@ class SetOperation(Modification):
 
 class DeleteOperation(Modification):
     '''Delete a given key'''
+
+    nbargs = 1
+
     def modify(self, record: Record) -> bool:
         key, *_ = resolve(record, self.args)
         try:
@@ -79,6 +87,9 @@ class DeleteOperation(Modification):
 
 class ArrayAppendOperation(Modification):
     '''Append an element to a key, if this key is an array/list'''
+
+    nbargs = 2
+
     def modify(self, record: Record) -> bool:
         key, value = resolve(record, self.args)
         array = record.get(key)
@@ -89,6 +100,9 @@ class ArrayAppendOperation(Modification):
 
 class ArrayDeleteOperation(Modification):
     '''Delete an element from an array/list, by value'''
+
+    nbargs = 2
+
     def modify(self, record: Record) -> bool:
         key, value = resolve(record, self.args)
         try:
@@ -100,6 +114,9 @@ class ArrayDeleteOperation(Modification):
 class RegexParse(Modification):
     '''Given a key and a regex with named capture groups, parse the
     key's value, and merge the captured elements with the record'''
+
+    nbargs = 2
+
     def modify(self, record: Record) -> bool:
         try:
             key, regex = resolve(record, self.args)
@@ -117,6 +134,9 @@ class RegexParse(Modification):
 
 class RegexSub(Modification):
     '''Apply a regex search and replace expression to a key's value'''
+
+    nbargs = 4
+
     def modify(self, record: Record) -> bool:
         key, out_key, regex, sub = resolve(record, self.args)
         try:
@@ -132,6 +152,9 @@ class RegexSub(Modification):
 
 class KvSet(Modification):
     '''Match the key's value with the corresponding value from the kv core plugin'''
+
+    nbargs = 3
+
     def __init__(self, args: list, core: 'Optional[Core]'):
         super().__init__(args, core)
         self.dict, self.key, self.out_field = args
