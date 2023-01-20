@@ -1,3 +1,12 @@
+## v1.6.0
+
+### Changes
+* Core: Updated grafana webhook for v8.5+
+
+### Bug fixes
+* Core: Fixed issue regarding regex options for Mongo
+* Core: Nb of arguments mismatch in Modifications WebUI vs Backend
+
 ## v1.5.0
 
 ### New features
