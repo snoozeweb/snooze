@@ -40,7 +40,7 @@ class GrafanaRoute(WebhookRoute):
         alert['message'] = media.get('message', media.get('title', media.get('rule_name', '')))
         alert['source'] = 'grafana'
         alert['tags'] = {}
-        alert['raw'] = sanitize(media)
+        alert['raw'] = sanitize(match)
         for tag_k, tag_v in tags.items():
             try:
                 alert['tags'][tag_k] = loads(tag_v)
@@ -55,6 +55,7 @@ class GrafanaRoute(WebhookRoute):
         '''Grafana 8.5 and higher. Parse the data of the webhook to create an alert'''
         alert = {}
         labels = match.get('labels') or {}
+        values = match.get('values') or {}
         annotations = match.get('annotations') or {}
         alert['generator_url'] = match.get('generatorURL', '')
         alert['fingerprint'] = match.get('fingerprint', '')
@@ -65,10 +66,13 @@ class GrafanaRoute(WebhookRoute):
 
         alert['host'] = labels.pop('host', labels.pop('instance', ''))
         alert['process'] = labels.pop('process', labels.pop('alertname', ''))
-        alert['severity'] = labels.pop('severity', 'critical')
+        if match.get('status') == 'resolved':
+            alert['severity'] = 'ok'
+        else:
+            alert['severity'] = labels.pop('severity', 'critical')
         alert['message'] = annotations.pop('message', annotations.pop('summary', ''))
         alert['source'] = 'grafana'
-        alert['raw'] = sanitize(media)
+        alert['raw'] = sanitize(match)
         alert['labels'] = {}
         for label_k, label_v in labels.items():
             try:
@@ -77,6 +81,14 @@ class GrafanaRoute(WebhookRoute):
                 alert['labels'][label_k] = label_v
         alert['labels'].update(media.get('labels') or {})
         alert['labels'] = sanitize(alert['labels'])
+        alert['values'] = {}
+        for value_k, value_v in values.items():
+            try:
+                alert['values'][value_k] = loads(value_v)
+            except Exception:
+                alert['values'][value_k] = value_v
+        alert['values'].update(media.get('values') or {})
+        alert['values'] = sanitize(alert['values'])
         alert['annotations'] = {}
         for annotation_k, annotation_v in annotations.items():
             try:
