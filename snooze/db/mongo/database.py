@@ -522,7 +522,7 @@ class BackendDB(Database):
             return_dict = {key: {'$lte': value}}
         elif operation == 'MATCHES':
             key, value = args
-            return_dict = {key: {'$regex': str(value), "$options": "-i"}}
+            return_dict = {key: {'$regex': str(value), "$options": "i"}}
         elif operation == 'EXISTS':
             return_dict = {args[0]: {'$exists': True}}
         elif operation == 'CONTAINS':
@@ -547,7 +547,7 @@ class BackendDB(Database):
         elif operation == 'SEARCH':
             arg = args[0]
             if search_fields:
-                return_dict = {'$or': [{field: {'$regex': str(arg), "$options": "-i"}} for field in search_fields]}
+                return_dict = {'$or': [{field: {'$regex': str(arg), "$options": "i"}} for field in search_fields]}
                 log.debug("Special search : %s", return_dict)
             else:
                 search_text = Code("function() {"

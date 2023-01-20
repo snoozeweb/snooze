@@ -349,6 +349,7 @@ class BackendDB(Database):
             if search:
                 self.db.table(collection).remove(doc_ids=[search[0].doc_id])
             self.db.table(collection).insert(new_obj)
+            return len(list(search))
 
     @wrap_exception
     def update_one(self, collection: str, uid: str, obj: dict, update_time: bool = True):
