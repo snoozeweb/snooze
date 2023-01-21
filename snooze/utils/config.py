@@ -107,6 +107,8 @@ class EnvSettingsSource:
     def extract(self, model: BaseModel, envs: dict) -> dict:
         log.debug("extract(%s), env: %s", type(model).__name__, envs)
         for name, field in model.__fields__.items():
+
+            # Submodel case
             if inspect.isclass(field.type_) and issubclass(field.type_, BaseModel):
                 log.debug("%s is a nested type", field.type_)
                 sub_model = field.type_
@@ -118,11 +120,20 @@ class EnvSettingsSource:
                 new_envs = self.extract(sub_model, sub_envs)
                 if new_envs:
                     envs[name] = new_envs
+
+            # Standard case
             else:
                 log.debug("%s is not a nested type", field.type_)
-                env_names = field.field_info.extra.get('env_names', [])
+                env_names = [
+                    env.upper()
+                    for env in
+                    field.field_info.extra.get('env_names', [])
+                ]
                 value = next((os.environ[env] for env in env_names if env in os.environ), None)
                 if value is not None:
+                    if field.outer_type_ in [List[str], Optional[List[str]]]:
+                        log.debug("Found an array. Value: %s", value)
+                        value = value.split(',')
                     envs[field.alias] = value
         return envs
 
