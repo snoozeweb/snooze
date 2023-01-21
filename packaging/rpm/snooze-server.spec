@@ -15,6 +15,9 @@
 %define sources %{_topdir}/SOURCES
 %define venv %{buildroot}/opt/snooze
 
+# Disable shebang mangling
+%define __brp_mangle_shebangs /usr/bin/true
+
 # Globals
 
 # Tags
