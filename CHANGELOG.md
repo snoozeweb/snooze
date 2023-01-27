@@ -6,6 +6,7 @@
 ### Bug fixes
 * Core: Fixed issue regarding regex options for Mongo
 * Core: Nb of arguments mismatch in Modifications WebUI vs Backend
+* Core: OK or snoozed alerts are now correctly removed from batch send
 
 ## v1.5.0
 
