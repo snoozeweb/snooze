@@ -47,7 +47,7 @@ class CommentRoute(Route):
         record_comments = {}
         for req_media in req.media:
             if 'record_uid' in req_media:
-                notification_from = {'name': req_media.get('name', req.context.get('user', {}).get('user', {}).get('name', '')), 'message': req_media.get('message', '')}
+                notification_from = {'name': req_media.get('name', req.context.get('user', {}).get('user', {}).get('name', req.context.auth.username)), 'message': req_media.get('message', '')}
                 record_uid = req_media['record_uid']
                 record_comments.setdefault(record_uid, []).append(req_media)
                 records = self.search('record', record_uid)

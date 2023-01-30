@@ -7,6 +7,7 @@
 * Core: Fixed issue regarding regex options for Mongo
 * Core: Nb of arguments mismatch in Modifications WebUI vs Backend
 * Core: OK or snoozed alerts are now correctly removed from batch send
+* Core: Would not get the username when writing a comment with no Display name
 
 ## v1.5.0
 
