@@ -54,7 +54,7 @@ RUN tar -xvf "/${WEB_PATH}" -C /opt/snooze/web
 RUN rm "/${WEB_PATH}"
 
 # hadolint ignore=DL3013
-ENV PATH $PATH:/venv/bin
+ENV PATH $PATH:/opt/snooze/bin
 
 RUN mkdir -p /opt/snooze /var/lib/snooze /etc/snooze/server /var/run/snooze /var/log/snooze
 RUN chgrp -R 0 /opt/snooze /var/lib/snooze /etc/snooze/server /var/run/snooze /var/log/snooze && \
