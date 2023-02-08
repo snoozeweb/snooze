@@ -8,12 +8,14 @@
 * Core: Better support of environment variables for lists and nested objects
 
 ### Bug fixes
+* Web: Updating some deprecated libraries
+* Web: Searching will now reset the current page to the first page
 * Core: Fixed issue regarding regex options for Mongo
 * Core: Nb of arguments mismatch in Modifications WebUI vs Backend
-* Web: Searching will now reset the current page to the first page
 * Core: Preventing the crash of the delayed action thread in certain cases
-* Web: Updating some deprecated libraries
 * Core: Fixing processing of nested rules
+* Core: OK for snoozed alerts are now correctly removed from batch send
+* Core: Would not get the username when writing a comment with no Display name
 
 ## v1.5.0
 

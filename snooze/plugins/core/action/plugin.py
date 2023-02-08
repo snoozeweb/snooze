@@ -276,10 +276,21 @@ class DelayedActions(SurvivingThread):
 class ActionWorker(Worker):
 
     def process(self):
-        for action_obj, _ in self.to_ack:
+        to_ack = []
+        for action_obj, msg in self.to_ack:
             record = self.thread.obj.core.db.get_one('record', dict(hash=action_obj['record']['hash']))
             if record:
                 action_obj['record'] = record
+                if record.get('state') in ['ack', 'close'] or record.get('snoozed'):
+                    log.debug("Record %s in batch is already acked, closed or snoozed. Do not notify", record.get('hash'))
+                    msg.ack()
+                else:
+                    to_ack.append((action_obj, msg))
+            else:
+                to_ack.append((action_obj, msg))
+        self.to_ack = to_ack
+        if len(to_ack) == 0:
+            return
         succeeded, _ = self.thread.obj.send_from_queue([action_obj for action_obj, _ in self.to_ack])
         if succeeded:
             self.thread.obj.core.db.write('record', succeeded, 'hash')
