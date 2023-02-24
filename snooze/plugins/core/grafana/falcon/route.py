@@ -14,7 +14,7 @@ from bson.json_util import loads
 from snooze.api.routes import WebhookRoute
 from snooze.utils.functions import sanitize
 
-log = getLogger('snooze.webhooks.grafana')
+log = getLogger('snooze-process')
 
 class GrafanaRoute(WebhookRoute):
     '''A falcon route to receive Grafana alerts as input'''

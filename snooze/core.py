@@ -24,6 +24,7 @@ from typing import List
 from uuid import uuid4
 
 from dateutil import parser
+from opentelemetry.trace import get_tracer, get_current_span
 
 from snooze import __file__ as rootdir
 from snooze.db.database import Database, AsyncDatabase, get_database
@@ -35,14 +36,17 @@ from snooze.api.tcp import TcpThread
 from snooze.api import Api
 from snooze.utils import Housekeeper, MQManager
 from snooze.utils.stats import Stats
-from snooze.utils.cluster import Cluster
 from snooze.utils.config import Config, SNOOZE_CONFIG
+from snooze.utils.syncer import Syncer
 from snooze.utils.threading import SurvivingThread
 from snooze.utils.typing import Record, AuthPayload
 
-log = getLogger('snooze')
+log = getLogger('snooze.core')
+proclog = getLogger('snooze-process')
 
-MAIN_THREADS = ('housekeeper', 'cluster', 'tcp', 'socket')
+tracer = get_tracer('snooze')
+
+MAIN_THREADS = ('housekeeper', 'syncer', 'tcp', 'socket')
 
 class Core:
     '''The main class of snooze, passed to all plugins'''
@@ -65,10 +69,6 @@ class Core:
         if 'housekeeper' in allowed_threads:
             self.threads['housekeeper'] = Housekeeper(self.config.housekeeping,
                 self.config.core.backup, self.db, self.exit_event)
-        if 'cluster' in allowed_threads:
-            auth = AuthPayload(username='root', method='root')
-            token = self.token_engine.sign(auth)
-            self.threads['cluster'] = Cluster(self.config.core, token, self.exit_event)
 
         self.mq = MQManager(self)
 
@@ -90,6 +90,8 @@ class Core:
         if 'tcp' in allowed_threads:
             tcp_config = core_config.listen_addr, core_config.port, core_config.ssl
             self.threads['tcp'] = TcpThread(tcp_config, self.api.handler, self.exit_event)
+        if 'syncer' in allowed_threads:
+            self.threads['syncer'] = Syncer(self, self.exit_event)
 
     def load_plugins(self):
         '''Load the plugins from the configuration'''
@@ -135,6 +137,7 @@ class Core:
         log.debug("List of loaded core plugins: %s", [plugin.name for plugin in self.plugins])
         log.debug("List of loaded process plugins: %s", [plugin.name for plugin in self.process_plugins])
 
+    @tracer.start_as_current_span('process_record')
     def process_record(self, record: Record):
         '''Method called when a given record enters the system.
         The method will run the record through all configured plugin,
@@ -157,6 +160,7 @@ class Core:
         }
         record['ttl'] = int(self.config.housekeeping.record_ttl.total_seconds())
         record['uid'] = str(uuid4())
+        proclog.info('New alert received')
         if severity.casefold() in self.config.general.ok_severities:
             record['state'] = 'close'
             log.debug("Detected OK severities: %s, closing alert", severity.casefold())
@@ -171,28 +175,33 @@ class Core:
             log.warning(err)
             record['timestamp'] = datetime.now().astimezone().strftime("%Y-%m-%dT%H:%M:%S%z")
         with self.stats.time('process_alert_duration', labels):
+            step = 0
+            last_plugin = ''
             for plugin in self.process_plugins:
+                step += 1
+                last_plugin = plugin.name
                 plugin_labels = {'environment': labels['environment'], 'plugin': plugin.name}
                 with self.stats.time('process_alert_duration_by_plugin', plugin_labels):
                     try:
-                        log.debug("Executing plugin %s on record %s", plugin.name, record.get('hash', ''))
                         record['plugins'].append(plugin.name)
-                        record = plugin.process(record)
-                    except Abort:
-                        data = {'data': {'processed': [record]}}
-                        break
-                    except AbortAndWrite as abort:
-                        if abort.record:
-                            record = abort.record
-                        self.db.replace_one('record', {'uid': record['uid']}, abort.record or record)
-                        data = {'added': [{'uid': record['uid']}]}
-                        break
-                    except AbortAndUpdate as abort:
-                        if abort.record:
-                            record = abort.record
-                        self.db.replace_one('record', {'uid': record['uid']}, record, update_time=False)
-                        data = {'updated': [{'uid': record['uid']}]}
-                        break
+                        with tracer.start_as_current_span(f"{plugin.name}-plugin"):
+                            result = plugin.process(record)
+                        if isinstance(result, Abort):
+                            data = {'data': {'processed': [record]}}
+                            break
+                        if isinstance(result, AbortAndWrite):
+                            if result.record:
+                                record = result.record
+                            self.db.replace_one('record', {'uid': record['uid']}, record)
+                            data = {'added': [{'uid': record['uid']}]}
+                            break
+                        if isinstance(result, AbortAndUpdate):
+                            if result.record:
+                                record = result.record
+                            self.db.replace_one('record', {'uid': record['uid']}, record, update_time=False)
+                            data = {'updated': [{'uid': record['uid']}]}
+                            break
+                        record = result
                     except Exception as err:
                         log.exception(err)
                         record['exception'] = {
@@ -206,25 +215,20 @@ class Core:
                 log.debug("Writing record %s", record)
                 self.db.replace_one('record', {'uid': record['uid']}, record)
                 data = {'added': [{'uid': record['uid']}]}
+
+        # Adding tracing information
+        span = get_current_span()
+        span.set_attribute('plugin-step', step)
+        span.set_attribute('last-plugin', last_plugin)
+
         labels = {
             'source': record.get('source', 'unknown'),
             'environment': record.get('environment', 'unknown'),
             'severity': record.get('severity', 'unknown'),
         }
         self.stats.inc('alert_hit', labels)
+        proclog.info('Alert processed')
         return data
-
-    def sync_reload_plugin(self, plugin_name: str):
-        '''Trigger a plugin reload to other cluster peers'''
-        cluster = self.threads.get('cluster')
-        if cluster:
-            cluster.sync_reload_plugin(plugin_name)
-
-    def sync_setting_update(self, section, data, auth):
-        '''Trigger a setting update to other cluster peers'''
-        cluster = self.threads.get('cluster')
-        if cluster:
-            cluster.sync_setting_update(section, data, auth)
 
     def get_core_plugin(self, plugin_name: str) -> Optional['Plugin']:
         '''Return a core plugin object by name'''

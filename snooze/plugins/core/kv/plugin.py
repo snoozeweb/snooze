@@ -11,12 +11,11 @@ from logging import getLogger
 
 from snooze.plugins.core import Plugin
 
-log = getLogger('snooze.kv')
+log = getLogger('snooze-api')
 
 class Kv(Plugin):
     '''Plugin for managing a user/script defined key-value in the database'''
-    def reload_data(self, sync = False):
-        super().reload_data()
+    def _post_reload(self):
         kv = {}
         for key_val in self.data:
             try:
@@ -27,8 +26,6 @@ class Kv(Plugin):
                 log.exception(err)
                 continue
         self.kv = kv
-        if sync:
-            self.sync_neighbors()
 
     def get(self, mydict, key):
         '''Return the value for a given dictionary and key'''

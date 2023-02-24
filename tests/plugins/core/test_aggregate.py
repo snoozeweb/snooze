@@ -58,12 +58,10 @@ class TestAggregatePlugin:
             {'a': '999', 'b': '1', 'c': '3'},
         ]
         for record in records:
-            try:
-                rec = aggregateplugin.process(record)
-                aggregateplugin.core.db.write('record', rec)
-            except AbortAndUpdate as e:
-                aggregateplugin.core.db.write('record', e.record or record)
-                continue
+            rec = aggregateplugin.process(record)
+            if isinstance(rec, AbortAndUpdate):
+                rec = rec.record
+            aggregateplugin.core.db.write('record', rec)
         results1 = aggregateplugin.core.db.search('record', ['=', 'aggregate', 'Agg1'])['data']
         results2 = aggregateplugin.core.db.search('record', ['=', 'aggregate', 'Agg2'])['data']
         results3 = aggregateplugin.core.db.search('record', ['=', 'aggregate', 'default'])['data']
@@ -111,12 +109,10 @@ class TestAggregatePlugin:
             {'a': '1', 'state': 'close'},
         ]
         for record in records:
-            try:
-                rec = aggregateplugin.process(record)
-                aggregateplugin.core.db.write('record', rec)
-            except AbortAndUpdate as e:
-                aggregateplugin.core.db.write('record', e.record or record)
-                continue
+            rec = aggregateplugin.process(record)
+            if isinstance(rec, AbortAndUpdate):
+                rec = rec.record
+            aggregateplugin.core.db.write('record', rec)
         results = aggregateplugin.core.db.search('record', ['=', 'aggregate', 'Agg1'])['data'][0]
         assert results['duplicates'] == 2
         assert results['state'] == 'close'
@@ -130,20 +126,16 @@ class TestAggregatePlugin:
             {'a': '4', 'c': '4', 'state': 'open'},
         ]
         for record in records:
-            try:
-                rec = aggregateplugin.process(record)
-                aggregateplugin.core.db.write('record', rec)
-            except AbortAndUpdate as e:
-                aggregateplugin.core.db.write('record', e.record or record)
-                continue
+            rec = aggregateplugin.process(record)
+            if isinstance(rec, AbortAndUpdate):
+                rec = rec.record
+            aggregateplugin.core.db.write('record', rec)
         results = aggregateplugin.core.db.search('record', ['=', 'aggregate', 'Agg4'])['data'][0]
         assert results['duplicates'] == 5
         assert results['flapping_countdown'] == 0
 
     def test_aggregate_burst(self, aggregateplugin):
-        try:
-            aggregateplugin.process({'a': 1})
-            aggregateplugin.process({'a': 1})
-            assert False
-        except Abort:
-            assert True
+        result = aggregateplugin.process({'a': 1})
+        assert isinstance(result, dict)
+        result = aggregateplugin.process({'a': 1})
+        assert isinstance(result, Abort)

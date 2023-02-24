@@ -2,11 +2,19 @@
 
 ### Changes
 * Core: Updated grafana webhook for v8.5+
+* Core: Supporting Opentelemetry
+* Core: Simpler logging configuration, and refactored logs
+* Core: Removed the clustering feature, and opted for a regular sync job from the database
+* Core: Better support of environment variables for lists and nested objects
 
 ### Bug fixes
+* Web: Updating some deprecated libraries
+* Web: Searching will now reset the current page to the first page
 * Core: Fixed issue regarding regex options for Mongo
 * Core: Nb of arguments mismatch in Modifications WebUI vs Backend
-* Core: OK or snoozed alerts are now correctly removed from batch send
+* Core: Preventing the crash of the delayed action thread in certain cases
+* Core: Fixing processing of nested rules
+* Core: OK for snoozed alerts are now correctly removed from batch send
 * Core: Would not get the username when writing a comment with no Display name
 
 ## v1.5.0

@@ -8,7 +8,10 @@
 '''Module for managing loading and writing the configuration files'''
 
 import os
+import re
 import logging
+import socket
+import inspect
 from contextlib import contextmanager
 from ipaddress import IPv4Address
 from logging import getLogger
@@ -23,6 +26,7 @@ from pydantic import BaseModel, Field, PrivateAttr, validator, root_validator, V
 from pydantic.config import BaseConfig
 from pydantic.fields import ModelField
 from pydantic.utils import deep_update
+from opentelemetry.instrumentation.logging import LoggingInstrumentor
 
 from snooze import __file__ as SNOOZE_PATH
 from snooze.utils.typing import *
@@ -99,19 +103,48 @@ class SnoozeSettingsSource:
 
 class EnvSettingsSource:
     '''A config loader for environment variables'''
+
+    def extract(self, model: BaseModel, envs: dict) -> dict:
+        log.debug("extract(%s), env: %s", type(model).__name__, envs)
+        for name, field in model.__fields__.items():
+
+            # Submodel case
+            if inspect.isclass(field.type_) and issubclass(field.type_, BaseModel):
+                log.debug("%s is a nested type", field.type_)
+                sub_model = field.type_
+                sub_envs = {
+                    re.sub(f"^{name}_", '', k): v
+                    for k, v in envs.items()
+                    if k.startswith(f"{name}_")
+                }
+                new_envs = self.extract(sub_model, sub_envs)
+                if new_envs:
+                    envs[name] = new_envs
+
+            # Standard case
+            else:
+                log.debug("%s is not a nested type", field.type_)
+                env_names = [
+                    env.upper()
+                    for env in
+                    field.field_info.extra.get('env_names', [])
+                ]
+                value = next((os.environ[env] for env in env_names if env in os.environ), None)
+                if value is not None:
+                    if field.outer_type_ in [List[str], Optional[List[str]]]:
+                        log.debug("Found an array. Value: %s", value)
+                        value = value.split(',')
+                    envs[field.alias] = value
+        return envs
+
     def __call__(self, settings: ReadOnlyConfig) -> Dict[str, Any]:
         section = settings.__config__.section
         envs = {
             k.split('_', 3)[-1].lower(): v
             for k, v in os.environ.items()
-            if k.startswith(f"SNOOZE_SERVER_{section}_")
+            if k.lower().startswith(f"snooze_server_{section}_")
         }
-        for field in settings.__fields__.values():
-            env_names = field.field_info.extra.get('env_names', [])
-            value = next((os.environ[env] for env in env_names if env in os.environ), None)
-            if value is not None:
-                envs[field.alias] = value
-        return envs
+        return self.extract(settings, envs)
 
 @contextmanager
 def lock_and_flush(path: Path, flush: Callable):
@@ -372,39 +405,6 @@ class BackupConfig(BaseModel):
         default=['record', 'stats', 'comment', 'secrets', 'aggregate', 'system.profile'],
     )
 
-class ClusterConfig(BaseModel):
-    '''Configuration for the cluster'''
-
-    enabled: bool = Field(
-        default=False,
-        description='Enable clustering. Required when running multiple backends',
-    )
-    members: List[HostPort] = Field(
-        env='SNOOZE_CLUSTER',
-        default_factory=lambda: [HostPort(host='localhost')],
-        description='List of snooze servers in the cluster. If the environment variable is provided,'
-        ' a special syntax is expected (`"<host>:<port>,<host>:<port>,..."`).',
-        examples=[
-            [
-                {'host': 'host01', 'port': 5200},
-                {'host': 'host02', 'port': 5200},
-                {'host': 'host03', 'port': 5200},
-            ],
-            "host01:5200,host02:5200,host03:5200",
-        ],
-
-    )
-
-    @validator('members')
-    def parse_members_env(cls, value):
-        '''In case the environment (a string) is passed, parse the environment string'''
-        if isinstance(value, str):
-            members = []
-            for member in value.split(','):
-                members.append(HostPort(member.split(':', 1)))
-            return members
-        return value
-
 class MongodbConfig(BaseModel, extra=Extra.allow):
     '''Mongodb configuration passed to pymongo MongoClient'''
     type: Literal['mongo'] = 'mongo'
@@ -445,11 +445,6 @@ class CoreConfig(ReadOnlyConfig):
         default=5200,
         description='Port on which Snooze process is listening to',
     )
-    debug: bool = Field(
-        default=False,
-        env='SNOOZE_DEBUG',
-        description='Activate debug log output',
-    )
     bootstrap_db: bool = Field(
         title='Bootstrap database',
         default=True,
@@ -486,7 +481,7 @@ class CoreConfig(ReadOnlyConfig):
     init_sleep: int = Field(
         title='Init sleep',
         default=5,
-        description='Time to sleep before retrying certain operations (bootstrap, clustering)',
+        description='Time to sleep before retrying certain operations (bootstrap, ...)',
     )
     create_root_user: bool = Field(
         title='Create root user',
@@ -500,10 +495,6 @@ class CoreConfig(ReadOnlyConfig):
     web: WebConfig = Field(
         title='Web server configuration',
         default_factory=WebConfig,
-    )
-    cluster: ClusterConfig = Field(
-        title='Cluster configuration',
-        default_factory=ClusterConfig,
     )
     backup: BackupConfig = Field(
         title='Backup configuration',
@@ -674,54 +665,25 @@ class HousekeeperConfig(WritableConfig):
         default=timedelta(days=1),
     )
 
-def setup_logging(basedir: Path = SNOOZE_CONFIG):
-    '''Initialize the python logger'''
-    try:
-        logging_file = basedir / 'logging.yaml'
-        logging_dict = yaml.safe_load(logging_file.read_text(encoding='utf-8'))
-    except FileNotFoundError:
-        logging_dict = {
-            'version': 1,
-            'disable_existing_loggers': False,
-            'formatters': {
-                'simple': {
-                    'format': '%(asctime)s %(name)-20s %(levelname)-8s %(message)s',
-                },
-            },
-            'handlers': {
-                'console': {
-                    'class': 'logging.StreamHandler',
-                    'level': 'INFO',
-                    'formatter': 'simple',
-                    'stream': 'ext://sys.stdout',
-                },
-            },
-            'loggers': {
-                'snooze': {
-                    'level': 'INFO',
-                    'handlers': ['console'],
-                    'propagate': False,
-                },
-            },
-        }
+class SyncerConfig(WritableConfig):
+    '''Config for the housekeeper thread. Can be edited live in the web interface.
+    Usually located at `/etc/snooze/server/housekeeper.yaml`.'''
+    class Config:
+        title = 'Syncer configuration'
+        section = 'syncer'
 
-    debug = CoreConfig(basedir).debug
-    if debug:
-        try:
-            logging_dict['handlers']['console']['level'] = 'DEBUG'
-        except:
-            pass
-        try:
-            logging_dict['handlers']['file']['level'] = 'DEBUG'
-        except:
-            pass
-        for _, handler in logging_dict.get('loggers', {}).items():
-            handler['level'] = 'DEBUG'
+    hostname: str = Field(
+        title='Hostname',
+        description='An override for the hostname of the node in the cluster. Should'
+        'be different for each node',
+        default_factory=socket.gethostname,
+    )
 
-    logging.config.dictConfig(logging_dict)
-    log = getLogger('snooze')
-    log.debug("Log system ON")
-    return log
+    sync_interval_ms: int = Field(
+        title='Sync interval (in ms)',
+        default=1000,
+        description='Interval between checks to update the in-memory value',
+    )
 
 class Config(BaseModel):
     '''An object representing the complete snooze configuration'''
@@ -731,6 +693,7 @@ class Config(BaseModel):
     general: GeneralConfig
     housekeeping: HousekeeperConfig
     notifications: NotificationConfig
+    syncer: SyncerConfig
     ldap_auth: LdapConfig
 
     def __init__(self, basedir: Path = SNOOZE_CONFIG):
@@ -740,6 +703,7 @@ class Config(BaseModel):
             'general': GeneralConfig(basedir),
             'notifications': NotificationConfig(basedir),
             'housekeeping': HousekeeperConfig(basedir),
+            'syncer': SyncerConfig(basedir),
         }
         try:
             configs['ldap_auth'] = LdapConfig(basedir)

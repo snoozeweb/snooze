@@ -24,7 +24,7 @@ from snooze.utils.threading import SurvivingThread
 from snooze.utils.functions import log_error_handler, log_warning_handler
 from snooze.utils.typing import AuthPayload, HTTPUserErrors
 
-log = getLogger('snooze.api.socket')
+log = getLogger('snooze.socket')
 
 class RootTokenRoute:
     '''A route for generating a root token'''

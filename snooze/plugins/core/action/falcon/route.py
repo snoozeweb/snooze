@@ -15,7 +15,7 @@ from snooze.api.routes import BasicRoute
 from snooze.utils.functions import authorize
 from snooze.plugins.core.basic.falcon.route import Route
 
-log = getLogger('snooze.api')
+log = getLogger('snooze-api')
 
 class ActionRoute(Route):
     '''Overriding post/put to incude pre-computed values for the web

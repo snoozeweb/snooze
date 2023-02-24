@@ -16,7 +16,7 @@ import falcon
 
 from snooze.api.routes import BasicRoute
 
-log = getLogger('snooze.health')
+log = getLogger('snooze-api.health')
 
 Health = Literal['ok', 'warning', 'critical', 'unknown']
 
@@ -49,6 +49,18 @@ def mq_status(mq_manager: 'MQManager', status: dict) -> List[Health]:
         else:
             healths.append('ok')
         status['mq']['threads'][name] = {'alive': alive}
+    return healths
+
+def syncer_status(core: 'Core', status: dict):
+    data = core.threads['syncer'].get_status()
+    status['syncer'] = {}
+    healths = []
+    if data.get('plugins'):
+        plugin_alive = all(plugin.get('synced') == plugin.get('total') for plugin in data.get('plugins', {}).values())
+        status['syncer']['plugins'] = {'alive': plugin_alive}
+    if data.get('config'):
+        config_alive = all(plugin.get('synced') == plugin.get('total') for plugin in data.get('config', {}).values())
+        status['syncer']['config'] = {'alive': plugin_alive}
     return healths
 
 class HealthRoute(BasicRoute):

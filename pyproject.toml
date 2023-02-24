@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "snooze-server"
-version = "1.5.0"
+version = "1.6.0"
 description = "Monitoring tool for logs aggregation and alerting"
 authors = [
     "Florian Dematraz <florian.dematraz@snoozeweb.net>",
@@ -40,6 +40,13 @@ kombu = "^5.1.0"
 pydantic = "^1.9.0"
 tenacity = "^8.0.1"
 filelock = "^3.7.0"
+python-json-logger = "^2.0.4"
+opentelemetry-api = "^1.14.0"
+opentelemetry-sdk = "^1.14.0"
+opentelemetry-exporter-otlp = "^1.14.0"
+opentelemetry-instrumentation-falcon = "*"
+opentelemetry-instrumentation-logging = "*"
+opentelemetry-instrumentation-pymongo = "*"
 
 [tool.poetry.group.lint.dependencies]
 pylint = "^2.11.1"

@@ -692,6 +692,7 @@ export default {
     },
     search(query) {
       //console.log(`Search: ${query}`)
+      this.current_page = 1
       this.$emit('search')
       this.add_history()
     },

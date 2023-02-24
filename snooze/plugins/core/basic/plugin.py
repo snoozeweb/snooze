@@ -8,9 +8,12 @@
 import sys
 from logging import getLogger
 from os.path import dirname, join as joindir
+from datetime import datetime
 from abc import abstractmethod
 from pathlib import Path
 from typing import Optional, Dict
+from uuid import uuid4
+from dataclasses import dataclass
 
 from pydantic import BaseModel
 
@@ -19,6 +22,7 @@ from snooze.utils.config import MetadataConfig
 from snooze.utils.typing import Record, RouteArgs
 
 log = getLogger('snooze')
+apilog = getLogger('snooze-api')
 
 SNOOZE_PLUGIN_PATH = Path(SNOOZE_PATH).parent / 'plugins/core'
 
@@ -47,6 +51,7 @@ class Plugin:
         self.db = core.db
         self.name = self.__class__.__name__.lower()
         self.data = []
+        self.hostname = core.config.syncer.hostname
 
         pkgdir = Path(sys.modules[self.__module__].__file__).parent
 
@@ -55,7 +60,7 @@ class Plugin:
         elif (pkgdir / 'metadata.yaml').is_file():
             moduledir = pkgdir
         else:
-            log.warning("No metadata found for plugin '%s'", self.name)
+            apilog.warning("No metadata found for plugin '%s'", self.name)
             moduledir = None
         config = MetadataConfig(self.name, moduledir)
         self.rootdir = moduledir
@@ -125,6 +130,17 @@ class Plugin:
         if config.search_fields:
             self.db.create_index(self.name, config.search_fields)
 
+        # Bootstrap script for syncer_latest
+        now = datetime.now().timestamp()
+        if not self.db.get_one('syncer_latest', dict(type='plugin', name=self.name)):
+            self.db.replace_one('syncer_latest', dict(type='plugin', name=self.name), {
+                'uid': str(uuid4()),
+                'node': self.hostname,
+                'type': 'plugin',
+                'name': self.name,
+                'timestamp': now
+            })
+
     def validate(self, obj: dict):
         '''Validate an object before writing it to the database.
         Should raise an exception if the object is invalid
@@ -134,21 +150,29 @@ class Plugin:
         '''Hook to execute something after the default init'''
         self.reload_data()
 
-    def reload_data(self, sync: bool = False):
+    def _post_reload(self):
+        '''Hook to execute action after the standard data reload'''
+
+    def reload_data(self):
         '''Reload the data of a plugin from the database'''
         if self.meta.auto_reload:
-            log.debug("Reloading data for plugin %s", self.name)
+            log.info("Reloading plugin '%s'...", self.name)
             pagination = {}
             if self.meta.default_sorting is not None:
                 pagination['orderby'] = self.meta.default_sorting
             pagination['asc'] = self.meta.default_ordering
             self.data = self.db.search(self.name, **pagination)['data']
-        if sync:
-            self.sync_neighbors()
 
-    def sync_neighbors(self):
-        '''Trigger the reload of the module to neighbors (async)'''
-        self.core.sync_reload_plugin(self.name)
+            # Update the syncer with the node's value
+            now = datetime.now().timestamp()
+            self.db.replace_one('syncer_node', dict(node=self.hostname, type='plugin', name=self.name), {
+                'node': self.hostname,
+                'type': 'plugin',
+                'name': self.name,
+                'timestamp': now,
+            })
+            self._post_reload()
+            log.info("Reloaded plugin '%s'", self.name)
 
     def process(self, record: Record) -> Record:
         '''Process a record if it's a process plugin'''
@@ -161,15 +185,15 @@ class Plugin:
     def send(self, record, content):
         '''Method called for action plugin'''
 
-class Abort(Exception):
+class Abort:
     '''Abort the processing for a record'''
 
-class AbortAndWrite(Exception):
+@dataclass
+class AbortAndWrite:
     '''Abort the processing for a record, then write it in the database'''
-    def __init__(self, record={}, *args, **kwargs):
-        self.record = record
+    record: dict
 
-class AbortAndUpdate(Exception):
+@dataclass
+class AbortAndUpdate:
     '''Abort the processing for a record, then write it in the database without updating its timestamp'''
-    def __init__(self, record: Record, *_args, **_kwargs):
-        self.record = record
+    record: dict

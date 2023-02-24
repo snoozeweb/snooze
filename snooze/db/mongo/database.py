@@ -20,13 +20,20 @@ import pymongo
 from pymongo import UpdateOne
 from bson.code import Code
 from bson.json_util import dumps
+from opentelemetry.trace import get_tracer, get_current_span
+from opentelemetry.instrumentation.pymongo import PymongoInstrumentor
 
 from snooze.db.database import Database, Pagination, wrap_exception
 from snooze.utils.functions import dig
 from snooze.utils.typing import Condition
 from snooze.utils.config import MongodbConfig
+from snooze.tracing import MONGODB_TRACER
 
-log = getLogger('snooze.db.mongo')
+log = getLogger('snooze.db')
+tracer = get_tracer('snooze')
+
+# Instrument mongodb
+PymongoInstrumentor().instrument(tracer_provider=MONGODB_TRACER)
 
 class OperationNotSupported(Exception):
     '''Raised when the search operator is not supported'''
@@ -177,6 +184,7 @@ class BackendDB(Database):
         return total
 
     @wrap_exception
+    @tracer.start_as_current_span('db.write')
     def write(self, collection:str, obj:Union[List[dict], dict], primary:Optional[str]=None, duplicate_policy:str='update', update_time:bool=True, constant:Optional[str]=None) -> dict:
         added = []
         rejected = []
@@ -285,10 +293,13 @@ class BackendDB(Database):
         return {'data': {'added': added, 'updated': updated, 'replaced': replaced, 'rejected': rejected}}
 
     @wrap_exception
+    @tracer.start_as_current_span('db.update_one')
     def update_one(self, collection: str, uid: str, obj: dict, update_time: bool = True):
+        span = get_current_span()
+        span.set_attribute('collection', collection)
+        span.set_attribute('uid', uid)
         new_obj = dict(obj)
         new_obj.pop('_id', None)
-        new_obj['uid'] = uid
         if update_time:
             new_obj['date_epoch'] = datetime.datetime.now().timestamp()
         update = {
@@ -298,12 +309,20 @@ class BackendDB(Database):
         self.db[collection].update_one({'uid': uid}, update, upsert=True)
 
     @wrap_exception
+    @tracer.start_as_current_span('db.get_one')
     def get_one(self, collection, search: dict):
+        span = get_current_span()
+        span.set_attribute('collection', collection)
+        span.set_attribute('search', str(search))
         result = self.db[collection].find_one(search)
         return result
 
     @wrap_exception
+    @tracer.start_as_current_span('db.replace_one')
     def replace_one(self, collection: str, search: dict, obj: dict, update_time: bool = True):
+        span = get_current_span()
+        span.set_attribute('collection', collection)
+        span.set_attribute('search', str(search))
         new_obj = dict(obj)
         new_obj.pop('_id', None)
         for key, value in search.items():
@@ -389,7 +408,12 @@ class BackendDB(Database):
         return self.update_with_operation(collection, {'$pull': {field: {'$in': values} for field, values in fields.items()}}, condition)
 
     @wrap_exception
+    @tracer.start_as_current_span('db.search')
     def search(self, collection: str, condition:Optional[Condition]=None, **pagination) -> dict:
+        span = get_current_span()
+        span.set_attribute('collection', collection)
+        span.set_attribute('condition', str(condition))
+        span.set_attribute('pagination', str(pagination))
         if condition is None:
             condition = []
         for key, value in DEFAULT_PAGINATION.items():
@@ -430,7 +454,12 @@ class BackendDB(Database):
             return {'data': [], 'count': 0}
 
     @wrap_exception
+    @tracer.start_as_current_span('db.search')
     def delete(self, collection: str, condition:Optional[Condition]=None, force:bool=False):
+        span = get_current_span()
+        span.set_attribute('collection', collection)
+        span.set_attribute('condition', str(condition))
+        span.set_attribute('force', force)
         if condition is None:
             condition = []
         mongo_search = self.convert(condition, self.search_fields.get(collection, []))

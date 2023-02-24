@@ -67,6 +67,10 @@ class Database(ABC):
         '''Write an object in a collection'''
 
     @abstractmethod
+    def get_one(self, collection: str, search: dict):
+        '''Get one element based on a simple key=value filter'''
+
+    @abstractmethod
     def replace_one(self, collection: str, uid: str, obj: dict, update_time: bool = True):
         '''Insert an object if absent'''
 

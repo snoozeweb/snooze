@@ -11,6 +11,7 @@ from datetime import datetime
 from urllib.parse import unquote
 from logging import getLogger
 from typing import Dict, Any, Union, List, NamedTuple
+from uuid import uuid4
 
 from dataclasses import dataclass
 from typing_extensions import Literal
@@ -22,7 +23,7 @@ from snooze.api.routes import FalconRoute
 from snooze.utils.parser import parser
 from snooze.utils.functions import authorize
 
-log = getLogger('snooze.api')
+log = getLogger('snooze-api')
 
 class ValidationError(RuntimeError):
     '''Raised when the validation fails'''
@@ -159,7 +160,7 @@ class Route(FalconRoute):
             result = self.insert(self.plugin.name, validated)
             result['data']['rejected'] += rejected
             resp.media = result
-            self.plugin.reload_data(True)
+            self._update_plugin(self.plugin.name)
             resp.status = falcon.HTTP_201
             self._audit(result, req)
         except Exception as err:
@@ -197,7 +198,8 @@ class Route(FalconRoute):
                         pivot =  self.core.db.get_one(self.plugin.name, {'uid': req_media['insert_after']})
                         modifier = 0
                     elif self.plugin.meta.tree and 'parent' in req_media:
-                        log.error('Parent for %s has been set up while insert_before or insert_after was not. Please set either one of them', req_media)
+                        log.error('Parent for %s has been set up while insert_before or insert_after was not. Please set either one of them',
+                            req_media)
                         rejected.append(req_media)
                         continue
                     if modifier is not None:
@@ -205,7 +207,8 @@ class Route(FalconRoute):
                         req_media.pop('insert_before', None)
                         req_media.pop('insert_after', None)
                         if not pivot:
-                            log.error('Cannot find pivot uid %s. Aborting on_put', req_media.get('insert_before', req_media.get('insert_after')))
+                            log.error('Cannot find pivot uid %s. Aborting on_put',
+                                req_media.get('insert_before', req_media.get('insert_after')))
                             rejected.append(req_media)
                             continue
                         old_req_media = self.core.db.get_one(self.plugin.name, {'uid': req_media['uid']})
@@ -253,7 +256,7 @@ class Route(FalconRoute):
                 result = {'data': {'updated': dragged, 'rejected': []}}
             result['data']['rejected'] += rejected
             resp.media = result
-            self.plugin.reload_data(True)
+            self._update_plugin(self.plugin.name)
             resp.status = falcon.HTTP_201
             self._audit(result, req)
         except Exception as err:
@@ -277,14 +280,14 @@ class Route(FalconRoute):
         deleted_objects = [{'_old': data} for data in to_delete['data']]
         if self.plugin.meta.tree and to_delete['count'] > 0:
             self.core.db.delete(self.plugin.name, ['IN', list(set(list(map(lambda x: x['uid'], to_delete['data'])))), 'parents'])
-        log.debug("Trying delete %s" % cond_or_uid)
+        log.debug("Trying delete %s", cond_or_uid)
         result_dict = self.delete(self.plugin.name, cond_or_uid)
         resp.content_type = falcon.MEDIA_JSON
         self._audit({'data': {'deleted': deleted_objects}}, req)
         if result_dict:
             result = result_dict
             resp.media = result
-            self.plugin.reload_data(True)
+            self._update_plugin(self.plugin.name)
             resp.status = falcon.HTTP_OK
         else:
             resp.media = {}
@@ -301,6 +304,32 @@ class Route(FalconRoute):
             results = {'data': {'rejected': [rejected]}}
             log.exception(err)
             raise ValidationError("Invalid object")
+
+    def _update_plugin(self, name):
+        '''Update a plugin data for sync purpose via syncer'''
+        latest = self.core.db.get_one('syncer_latest', dict(type='plugin', name=name))
+        if latest and latest.get('uid'):
+            self.core.db.update_one('syncer_latest', latest.get('uid'), {
+                'node': self.core.config.syncer.hostname, # Used for debugging
+                'type': 'plugin',
+                'timestamp': datetime.now().timestamp(),
+            })
+        else:
+            # The latest should be bootstrapped by reload_data() of each plugin, so this case should never arise.
+            self.core.db.replace_one('syncer_latest', dict(type='plugin', name=name), {
+                'uid': str(uuid4()),
+                'node': f"{self.core.config.syncer.hostname}+bootstrap",
+                'type': 'plugin',
+                'name': name,
+                'timestamp': datetime.now().timestamp(),
+            })
+            # There is a limitation to this though. There will be a race condition the first time, if two updates
+            # happen at the same time. In that case, the update will still be signaled, even if the
+            # timestamp will be slightly incorrect. Though, we're already in a unlikely case, so this is good enough.
+            # We will add a warning to debug in case we're hitting this unexpectedly.
+            log.warning("Unlikely situation happened. The syncer_latest for {type=plugin, name=%s} doesn't exit. \
+                It should have been created by reload_data(). If you see this, you might have manually modified your DB, \
+                or something unexpected happened. Will bootstrap the value to fix the problem.", name)
 
     def _audit(self, results, req):
         '''Audit the changed objects in a dedicated collection'''

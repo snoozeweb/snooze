@@ -9,6 +9,7 @@
 
 import mimetypes
 import functools
+from collections import defaultdict
 from logging import getLogger
 from hashlib import sha256
 from hashlib import md5
@@ -32,7 +33,7 @@ from snooze.utils.functions import ensure_kv, unique, authorize, extract_basic_a
 from snooze.utils.typing import DuplicatePolicy, AuthorizationPolicy, RouteArgs, AuthPayload
 from snooze.db.database import Pagination
 
-log = getLogger('snooze.api')
+log = getLogger('snooze-api')
 
 MAX_AGE = 24 * 3600
 
@@ -284,39 +285,16 @@ class LoginRoute(BasicRoute):
             log.exception(err)
             resp.status = falcon.HTTP_503
 
-class ReloadPluginRoute(BasicRoute):
-    '''A route to trigger the reload of a given plugin'''
+class SyncerRoute(BasicRoute):
+    '''A route to return the sync status of the nodes'''
 
-    def on_post(self, req, resp, plugin_name: str):
-        '''Trigger the reload of a plugin'''
-        propagate = (req.params.get('propagate') is not None) # Key existence
-        plugin = self.core.get_core_plugin(plugin_name)
-        if plugin is None:
-            raise falcon.HTTPNotFound(f"Plugin '{plugin_name}' not loaded in core")
-        plugin.reload_data()
-        if propagate:
-            self.core.sync_reload_plugin(plugin_name)
-            resp.status = falcon.HTTP_ACCEPTED
-        else:
+    def on_get(self, _req: Request, resp: Response):
+        '''Return the status of nodes'''
+        if 'syncer' in self.core.threads:
+            resp.media = self.core.threads['syncer'].get_status()
             resp.status = falcon.HTTP_OK
-
-class ClusterRoute(BasicRoute):
-    '''A route to fetch the status of the cluster member'''
-    authentication = False
-
-    def on_get(self, req, resp):
-        '''Return the status of every cluster member'''
-        cluster = self.core.threads['cluster']
-        one = (req.params.get('one') is not None)
-        if one:
-            members = [cluster.status()]
         else:
-            members = cluster.members_status()
-        resp.content_type = falcon.MEDIA_JSON
-        resp.status = falcon.HTTP_OK
-        resp.media = {
-            'data': [m.dict() for m in members],
-        }
+            raise falcon.HTTPNotFound('The syncer thread is disabled')
 
 class SchemaRoute(BasicRoute):
     '''A route to return the form schema of each endpoint'''

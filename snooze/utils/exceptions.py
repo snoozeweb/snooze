@@ -22,18 +22,3 @@ class DatabaseError(RuntimeError):
         self.operation = operation
         self.details = details
         super().__init__(self, f"Database error during {operation} ({details}): {err}")
-
-class NonResolvableHost(RuntimeError):
-    '''Thrown when one member of the cluster address cnanot be resolved
-    by DNS.'''
-    def __init__(self, host: str):
-        self.host = host
-        super().__init__(f"DNS cannot resolve {host}")
-
-class SelfNotInCluster(RuntimeError):
-    '''Thrown when the running application addresses are not defined in the cluster
-    configuration'''
-
-class SelfTooMuchInCluster(RuntimeError):
-    '''Thrown when the current node has too many entries of his addresses in the cluster
-    configuration'''
