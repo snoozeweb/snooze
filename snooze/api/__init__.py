@@ -55,7 +55,7 @@ class Api:
 
         # Handler
         middlewares = [
-            falcon.CORSMiddleware(allow_origins='*', allow_credentials='*'),
+            falcon.CORSMiddleware(allow_origins=self.core.config.core.cors.allow_origins, allow_credentials=self.core.config.core.cors.allow_credentials),
             LoggerMiddleware(self.core.config.core.audit_excluded_paths),
         ]
         if not self.core.config.core.no_login:

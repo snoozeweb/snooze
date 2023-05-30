@@ -424,6 +424,11 @@ class FileConfig(BaseModel, extra=Extra.allow):
     type: Literal['file'] = 'file'
     path: Path = Path('./db.json')
 
+class CorsConfig(BaseModel):
+    '''CORS configuration for the web server'''
+    allow_origins: str = '*'
+    allow_credentials: str = '*'
+
 DatabaseConfig = Union[MongodbConfig, FileConfig]
 
 class CoreConfig(ReadOnlyConfig):
@@ -499,6 +504,10 @@ class CoreConfig(ReadOnlyConfig):
     backup: BackupConfig = Field(
         title='Backup configuration',
         default_factory=BackupConfig,
+    )
+    cors: CorsConfig = Field(
+        title='CORS configuration',
+        default_factory=CorsConfig,
     )
 
     @validator('database', pre=True)
