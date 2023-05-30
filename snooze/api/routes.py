@@ -598,11 +598,11 @@ class StaticRoute:
             file = file[1:]
 
         path: Path = self.root / file
-        path.resolve()
+        path = path.resolve()
 
         # Prevent top level access
         if self.root not in [path, *path.parents]:
-            raise falcon.HTTPForbidden(f"Request path {req.path} is trying to escape root ({self.root})")
+            raise falcon.HTTPForbidden(f"Request path {req.path} is trying to escape root")
 
         # Search for index if directory
         if path.is_dir():
