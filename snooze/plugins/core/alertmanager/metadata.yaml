@@ -1,0 +1,12 @@
+---
+name: 'AlertManager'
+desc: 'AlertManager'
+route_defaults:
+    class_name: ~
+    prefix: ''
+routes:
+    /webhook/alertmanager/v4:
+        desc: 'Receive AlertManager v4 alerts'
+        class_name: AlertManagerV4Route
+        authorization_policy:
+            write: [any]
