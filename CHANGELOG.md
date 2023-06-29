@@ -1,3 +1,12 @@
+## v1.6.1
+
+### Changes
+* Core: Support for AlertManager webhook
+
+### Bug fixes
+* Core: Properly prevent out-of-path access
+* Core: Allow usrs to properly configure CORS policy
+
 ## v1.6.0
 
 ### Changes
