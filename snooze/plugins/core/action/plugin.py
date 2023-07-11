@@ -282,7 +282,7 @@ class ActionWorker(Worker):
             if record:
                 action_obj['record'] = record
                 if record.get('state') in ['ack', 'close'] or record.get('snoozed'):
-                    log.debug("Record %s in batch is already acked, closed or snoozed. Do not notify", record.get('hash'))
+                    proclog.debug("Record %s in batch is already acked, closed or snoozed. Do not notify", record.get('hash'))
                     msg.ack()
                 else:
                     to_ack.append((action_obj, msg))
