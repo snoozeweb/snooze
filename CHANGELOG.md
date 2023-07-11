@@ -1,3 +1,8 @@
+## v1.6.3
+
+### Bug fixes
+* Fixing a syntax issue which happened when a custom snooze action was trigerred.
+
 ## v1.6.2
 
 ### Bug fixes
