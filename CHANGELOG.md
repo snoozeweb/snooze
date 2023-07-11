@@ -1,3 +1,9 @@
+## v1.6.2
+
+### Bug fixes
+* Locking the requests dependency to avoid the lack of support for urllib3.
+  See: https://github.com/psf/requests/issues/6432
+
 ## v1.6.1
 
 ### Changes
