@@ -6,7 +6,7 @@ metadata:
   namespace: "{{ .Release.Namespace }}"
 subjects:
   - kind: ServiceAccount
-    name: mongodb-kubernetes-appdb
+    name: mongodb-database
 roleRef:
   kind: Role
   name: mongodb-database
