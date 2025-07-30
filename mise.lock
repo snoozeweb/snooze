@@ -2,9 +2,15 @@
 version = "0.11.6"
 backend = "aqua:astral-sh/ruff"
 
+[tools."aqua:astral-sh/ruff".checksums]
+"ruff-x86_64-unknown-linux-musl.tar.gz" = "sha256:e5d91ac0472fa84942fd82cc9289637c9ec5a4669b8b2e2be6f61983707c8973"
+
 [tools."aqua:astral-sh/uv"]
 version = "0.7.2"
 backend = "aqua:astral-sh/uv"
+
+[tools."aqua:astral-sh/uv".checksums]
+"uv-x86_64-unknown-linux-musl.tar.gz" = "sha256:dd10babf6c531597d246c97e55e32ca17b44fe251405fe539ec8ea2f22fac2d6"
 
 [tools.node]
 version = "14.21.3"
