@@ -13,13 +13,20 @@ dependencies = [
     "snooze-client",
     "google-cloud-pubsub",
     "waitress",
+    "google-apps-chat>=0.2.9",
+    "google-auth>=2.40.1",
+    "pydantic>=2.10.6",
+    "google-apps-card>=0.1.8",
+    "types-protobuf>=5.29.1.20241207",
 ]
 
 [tool.uv.sources]
 snooze-client = {path = "../client"}
 
 [dependency-groups]
-dev = ["pytest"]
+dev = [
+    "pytest",
+]
 
 [build-system]
 requires = ["hatchling"]
