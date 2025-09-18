@@ -19,7 +19,9 @@ from snooze_syslog.tcp import TCPListener
 from snooze_syslog.types import LogEntry
 
 LOG = logging.getLogger("snooze.syslog")
-logging.basicConfig(format="%(name)s: %(levelname)s - %(message)s", level=logging.INFO)
+logging.basicConfig(
+    stream=sys.stdout, format="%(levelname)-8s %(message)s", level=logging.INFO
+)
 
 
 def load_config():
