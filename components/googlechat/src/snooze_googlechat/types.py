@@ -124,6 +124,7 @@ class SnoozeAlert(BaseModel):
     snooze_webhook_responses: List[SnoozeWebhookResponse] = []
     notification_from: Optional[NotificationFrom] = None
     env: Optional[str] = None
+    severity: str
 
 
 class SnoozeAlertRequest(BaseModel):

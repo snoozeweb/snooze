@@ -53,20 +53,61 @@ def get_source_icon(source: str) -> dict:
         return {"materialIcon": {"name": "add-triangle"}}
 
 
-def header(req: SnoozeAlertRequest) -> str:
-    # Environment colored prefix
-    env_str = ""
-    if req.alert.env:
-        color = "#2196f3"
-        if re.match(r"prod", req.alert.env):
-            color = "#f44336"
-        elif re.match(r"uat|test", req.alert.env):
-            color = "#ed9600"
-        elif re.match(r"dev|poc", req.alert.env):
-            color = "#00c853"
-        env_str = f'[<font color="{color}">{req.alert.env}</font>] '
+def header(req: AlertWithURL) -> dict:
+    """Return the decorated text object that will constitute the header of the alert"""
+    decorated_text = {}
 
-    return f"{env_str}<b>{req.alert.host}</b> <i>{req.alert.process}</i>"
+    decorated_text["startIcon"] = get_source_icon(req.alert.source)
+    decorated_text["topLabel"] = ""
+    decorated_text["text"] = ""
+    decorated_text["bottomLabel"] = ""
+
+    if req.alert.timestamp:
+        decorated_text["topLabel"] += f"{req.alert.timestamp} "
+
+    short_hash = req.alert.hash[:8]
+    url_to_hash = f"{req.url}/web/#/record?tab=All&s=hash={req.alert.hash}"
+    decorated_text["topLabel"] += f'<a href="{url_to_hash}">#{short_hash}'
+
+    if req.alert.host:
+        env_color = "#2196f3"
+        if req.alert.env:
+            if re.match(r"prod", req.alert.env):
+                env_color = "#f44336"
+            elif re.match(r"uat|test", req.alert.env):
+                env_color = "#ed9600"
+            elif re.match(r"dev|poc", req.alert.env):
+                env_color = "#00c853"
+
+        decorated_text["text"] += (
+            f'<b><font color="{env_color}">{req.alert.host}</font></b> '
+        )
+    if req.alert.process:
+        decorated_text["text"] += f"<i>{req.alert.process}</i> "
+
+    if req.alert.severity:
+        severity_color = "#2196f3"
+        if re.match(r"err|crit|fatal", req.alert.severity):
+            severity_color = "#f44336"
+        elif re.match(r"", req.alert.severity):
+            severity_color = "#ed9600"
+        elif re.match(r"ok", req.alert.severity):
+            severity_color = "#00c853"
+
+        decorated_text["text"] += (
+            f'<b><font color="{severity_color}">[{req.alert.severity}]</font></b> '
+        )
+
+    decorated_text["button"] = {
+        "text": "Ack",
+        "type": "OUTLINED",
+        "icon": {"materialIcon": {"name": "Check"}},
+        "color": GREEN,
+        "altText": "Acknowledge the alert",
+        "onClick": {"action": {"function": "ACK"}},
+    }
+
+    return decorated_text
 
 
 def new_card_v2(req: AlertWithURL) -> dict:
@@ -89,27 +130,28 @@ def new_card_v2(req: AlertWithURL) -> dict:
         ]
     }
 
+    text_paragraph = {
+        "text": req.alert.message,
+    }
+
     text_section = {
         "widgets": [
             {
-                "decoratedText": {
-                    "startIcon": get_source_icon(req.alert.source),
-                    "text": header(req),
-                }
-            },
+                "textParagraph": text_paragraph,
+            }
+        ]
+    }
+
+    header_section = {
+        "widgets": [
             {
-                "textParagraph": {
-                    "text": req.alert.message,
-                }
-            },
-            {
-                "buttonList": button_list,
-            },
+                "decoratedText": header(req),
+            }
         ]
     }
 
     card = {
-        "sections": [text_section],
+        "sections": [header_section, text_section],
     }
 
     cardv2 = {"card_id": "new_alert", "card": card}
