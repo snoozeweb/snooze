@@ -10,12 +10,18 @@ jobs:
   pytest:
     runs-on: ubuntu-latest
     steps:
-      - name: Checking out git repository
-        uses: actions/checkout@v2
+    - name: Checking out git repository
+      uses: actions/checkout@v5
+      with:
+        lfs: true
 
-      - name: Setup python environment
-        uses: ./.github/actions/python-poetry
-        with: {poetry_options: '--only main,test'}
+    - name: Setup uv
+      uses: astral-sh/setup-uv@v6
 
-      - name: Running Pytest
-        run: poetry run pytest
+    - name: Install dependencies
+      run: uv sync --locked --all-extras --dev
+
+    - name: Running Pytest
+      run: uv run pytest
+      env:
+        PYTHONPATH: src
