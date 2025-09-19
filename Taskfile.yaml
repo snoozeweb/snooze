@@ -8,7 +8,7 @@ vars:
   NAME: snooze-server
   VERSION:
     sh: uv version --short
-  REPO: ghcr.io/japannext
+  REPO: ghcr.io/snoozeweb
 
 includes:
   web:
