@@ -19,7 +19,7 @@ Clustering offers a transparent way for the user to replicate all changes done o
 Configuration
 -------------
 
-See configuration reference at :ref:`ClusterConfig<ClusterConfig>`
+See configuration reference at :ref:`Syncer configuration<Syncer-configuration>`.
 
 Web interface
 -------------

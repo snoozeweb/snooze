@@ -6,12 +6,12 @@
 
 # Variables
 %define topdir %(pwd)
-%define version %(poetry run invoke rpm.version)
-%define release %(poetry run invoke rpm.release)
+%define version %(uv run invoke rpm.version)
+%define release %(uv run invoke rpm.release)
 %define snooze_user snooze
 %define snooze_group snooze
-%define python_version %(poetry run invoke version python)
-%define web_version %(poetry run invoke version web)
+%define python_version %(uv run invoke version python)
+%define web_version %(uv run invoke version web)
 %define sources %{_topdir}/SOURCES
 %define venv %{buildroot}/opt/snooze
 
@@ -34,7 +34,7 @@ Source1: snooze_server-%{python_version}-py3-none-any.whl
 Source2: snooze-server.service
 Source3: core.yaml
 Source4: logging.yaml
-Requires: python(abi) = 3.8
+Requires: python(abi) = 3.13
 
 %description
 Snooze server
@@ -55,7 +55,7 @@ mkdir -p %{buildroot}/var/log/snooze/server
 mkdir -p %{buildroot}/var/lib/snooze
 
 # Snooze server
-virtualenv --always-copy --python=python3.8 %{venv}
+virtualenv --always-copy --python=python3.13 %{venv}
 %{venv}/bin/pip3 install %{sources}/snooze_server-%{python_version}-py3-none-any.whl
 
 # Systemd service

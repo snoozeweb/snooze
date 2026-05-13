@@ -78,7 +78,7 @@ class BackendDB(Database):
         self.search_fields = {}
         log.debug("Initialized Mongodb")
         log.debug("db: %s", self.db)
-        log.debug("List of collections: %s", self.db.collection_names())
+        log.debug("List of collections: %s", self.db.list_collection_names())
 
     def create_index(self, collection: str, fields: List[str]):
         log.debug("Create index for %s with fields: %s", collection, fields)
@@ -362,7 +362,7 @@ class BackendDB(Database):
             condition = []
         mongo_search = self.convert(condition)
         total = 0
-        if collection in self.db.collection_names():
+        if collection in self.db.list_collection_names():
             total = self.db[collection].update_many(mongo_search, {'$inc': {field: value}}).matched_count
         return total
 
@@ -383,7 +383,7 @@ class BackendDB(Database):
     def update_with_operation(self, collection, operation, condition=[]):
         mongo_search = self.convert(condition)
         total = 0
-        if collection in self.db.collection_names():
+        if collection in self.db.list_collection_names():
             try:
                 total = self.db[collection].update_many(mongo_search, operation).modified_count
             except Exception as err:
@@ -426,7 +426,7 @@ class BackendDB(Database):
         only_one = pagination['only_one']
         asc_int = (1 if asc else -1)
         mongo_search = self.convert(condition, self.search_fields.get(collection, []))
-        if collection in self.db.collection_names():
+        if collection in self.db.list_collection_names():
             if only_one:
                 result = self.db[collection].find_one(mongo_search, sort=[(orderby, asc_int)])
                 results = []
@@ -444,8 +444,8 @@ class BackendDB(Database):
                         .sort(orderby, asc_int)
                 else:
                     results = self.db[collection].find(mongo_search).sort(orderby, asc_int)
-                total = results.count()
                 results = list(results)
+                total = self.db[collection].count_documents(mongo_search)
             log.debug("Found %d result(s) for search %s in collection %s. Pagination options: %s",
                 total, mongo_search, collection, pagination)
             return {'data': results, 'count': total}
@@ -463,7 +463,7 @@ class BackendDB(Database):
         if condition is None:
             condition = []
         mongo_search = self.convert(condition, self.search_fields.get(collection, []))
-        if collection in self.db.collection_names():
+        if collection in self.db.list_collection_names():
             if len(condition) == 0 and not force:
                 results_count = 0
                 log.debug("Too dangerous to delete everything. Aborting")
@@ -480,7 +480,7 @@ class BackendDB(Database):
     def compute_stats(self, collection, date_from, date_until, group_by='hour'):
         log.debug("Compute metrics on `%s` from %s until %s grouped by %s", collection, date_from, date_until, group_by)
         date_from = date_from.replace(minute=0, second=0, microsecond=0)
-        if collection not in self.db.collection_names():
+        if collection not in self.db.list_collection_names():
             log.debug("Compute stats: collection %s does not exist", collection)
             return {'data': [], 'count': 0}
         if group_by == 'hour':
@@ -513,7 +513,7 @@ class BackendDB(Database):
             return {'data': [], 'count': 0}
 
     def drop(self, collection):
-        if collection in self.db.collection_names():
+        if collection in self.db.list_collection_names():
             self.db[collection].drop()
 
     def convert(self, condition: Condition, search_fields: list = []):
@@ -604,7 +604,7 @@ class BackendDB(Database):
         '''Export the database into a directory'''
         if backup_exclude is None:
             backup_exclude = []
-        collections = [c for c in self.db.collection_names() if c not in backup_exclude]
+        collections = [c for c in self.db.list_collection_names() if c not in backup_exclude]
         log.debug('Starting backup of %s', collections)
         for collection in collections:
             try:

@@ -33,17 +33,6 @@ port
 
 
 
-debug
-=====
-
-    :Type: boolean
-    :Environment variable: ``SNOOZE_DEBUG``
-    :Default: ``False``
-
-    Activate debug log output
-
-
-
 bootstrap_db
 ============
 
@@ -109,7 +98,7 @@ init_sleep
     :Type: integer
     :Default: ``5``
 
-    Time to sleep before retrying certain operations (bootstrap, clustering)
+    Time to sleep before retrying certain operations (bootstrap, ...)
 
 
 
@@ -137,17 +126,17 @@ web
 
 
 
-cluster
-=======
-
-    :Type: :ref:`ClusterConfig<ClusterConfig>`
-
-
-
 backup
 ======
 
     :Type: :ref:`BackupConfig<BackupConfig>`
+
+
+
+cors
+====
+
+    :Type: :ref:`CorsConfig<CorsConfig>`
 
 
 
@@ -306,81 +295,6 @@ path
 
 
 
-.. _HostPort:
-
-HostPort
-========
-
-An object to represent a host-port pair
-
-host
-----
-
-    :Type: string
-    :Required: True
-    The host address to reach (IP or resolvable hostname)
-
-
-
-port
-----
-
-    :Type: integer
-    :Default: ``5200``
-
-    The port where the host is expected to listen to
-
-
-
-
-
-.. _ClusterConfig:
-
-ClusterConfig
-=============
-
-Configuration for the cluster
-
-enabled
--------
-
-    :Type: boolean
-    :Default: ``False``
-
-    Enable clustering. Required when running multiple backends
-
-
-
-members
--------
-
-    :Type: array[:ref:`HostPort<HostPort>`]
-    :Environment variable: ``SNOOZE_CLUSTER``
-
-    List of snooze servers in the cluster. If the environment variable is provided, a special syntax is expected (`"<host>:<port>,<host>:<port>,..."`).
-
-    .. admonition:: Example 1
-
-        .. code-block:: yaml
-
-            members:
-            - host: host01
-              port: 5200
-            - host: host02
-              port: 5200
-            - host: host03
-              port: 5200
-
-    .. admonition:: Example 2
-
-        .. code-block:: yaml
-
-            members: host01:5200,host02:5200,host03:5200
-
-
-
-
-
 .. _BackupConfig:
 
 BackupConfig
@@ -413,9 +327,34 @@ excludes
 --------
 
     :Type: array[string]
-    :Default: ``['record', 'stats', 'comment', 'secrets', 'aggregate']``
+    :Default: ``['record', 'stats', 'comment', 'secrets', 'aggregate', 'system.profile']``
 
     Collections to exclude from backups
+
+
+
+
+
+.. _CorsConfig:
+
+CorsConfig
+==========
+
+CORS configuration for the web server
+
+allow_origins
+-------------
+
+    :Type: string
+    :Default: ``'*'``
+
+
+
+allow_credentials
+-----------------
+
+    :Type: string
+    :Default: ``'*'``
 
 
 

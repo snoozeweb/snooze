@@ -11,7 +11,7 @@ def get_versions():
     '''Return the current version and release of the project, based on pyproject.toml'''
     pyproject = Path(__file__).parent.parent / 'pyproject.toml'
     mytoml = toml.loads(pyproject.read_text(encoding='utf-8'))
-    python_version = mytoml.get('tool', {}).get('poetry', {}).get('version')
+    python_version = mytoml.get('project', {}).get('version')
 
     if '+' in python_version: # Development release
         ver, rel = python_version.split('+', 1)
@@ -94,7 +94,7 @@ def gen_version(ctx):
     ver = ver[1:] # Removing the leading 'v'
     rel = rel.replace('-', '.') # Not supported by rpm
     print(f"Using generated version {ver}+{rel}")
-    ctx.run(f"poetry version {ver}+{rel}")
+    ctx.run(f"uv version {ver}+{rel}")
     with ctx.cd('web'):
         ctx.run(f"npm version {ver} --allow-same-version")
 

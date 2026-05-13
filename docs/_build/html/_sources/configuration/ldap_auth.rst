@@ -67,6 +67,7 @@ bind_password
 =============
 
     :Type: string
+    :Environment variable: ``LDAP_BIND_PASSWORD``
 
     Password for the Bind DN user
 

@@ -11,11 +11,11 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checking out git repository
-        uses: actions/checkout@v2
+        uses: actions/checkout@v4
 
       - name: Setup python environment
-        uses: ./.github/actions/python-poetry
-        with: {poetry_options: '--only main,test'}
+        uses: ./.github/actions/python-uv
+        with: {groups: 'test'}
 
       - name: Running Pytest
-        run: poetry run pytest
+        run: uv run pytest

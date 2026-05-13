@@ -10,7 +10,8 @@ from jinja2 import Environment, PackageLoader
 from snooze import __file__ as rootdir
 
 #from tasks.utils import get_versions, print_github_kv, get_paths
-PROJECT_PATH = Path(rootdir).parent.parent
+# rootdir = .../src/snooze/__init__.py — repo root is three levels up
+PROJECT_PATH = Path(rootdir).parent.parent.parent
 
 def rst_title(text, char, double=False):
     '''Generate a RST style title:
@@ -106,9 +107,11 @@ def rst_schema(schema: dict) -> str:
     text += f".. _{ref_name}:\n\n"
     # Title
     text += rst_title(schema['title'], '#', double=True) + "\n\n"
-    # Description
-    text += f"    :Package location: ``{schema['path']}``\n"
-    text += f"    :Live reload: ``{schema['live']}``\n"
+    # Description (path/live come from each config's schema_extra; optional)
+    if 'path' in schema:
+        text += f"    :Package location: ``{schema['path']}``\n"
+    if 'live' in schema:
+        text += f"    :Live reload: ``{schema['live']}``\n"
     text += "\n"
     if 'description' in schema:
         text += f"{schema['description']}\n\n"
@@ -130,8 +133,11 @@ def rst_schema(schema: dict) -> str:
 @task
 def config(ctx):
     '''Generate documentation for configuration files'''
-    from snooze.utils.config import CoreConfig, GeneralConfig, HousekeeperConfig, NotificationConfig, LdapConfig
-    configs = [CoreConfig, GeneralConfig, HousekeeperConfig, NotificationConfig, LdapConfig]
+    from snooze.utils.config import (
+        CoreConfig, GeneralConfig, HousekeeperConfig, NotificationConfig,
+        LdapConfig, SyncerConfig,
+    )
+    configs = [CoreConfig, GeneralConfig, HousekeeperConfig, NotificationConfig, LdapConfig, SyncerConfig]
     for config in configs:
         text = ''
         text += rst_schema(config.schema())

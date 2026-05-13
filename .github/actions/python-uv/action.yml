@@ -1,0 +1,42 @@
+# vim:set ts=2 sw=2 sts=2 et:
+---
+name: 'python-uv'
+description: Install Python and uv, then sync project dependencies.
+branding:
+  icon: arrow-down
+  color: green
+inputs:
+  groups:
+    description: |
+      Comma-separated list of dependency groups to install on top of the
+      project's main dependencies. Pass an empty string to install main only.
+      Example: 'test', 'build', 'test,lint'.
+    required: false
+    default: ''
+  python_version:
+    description: The python version to install
+    required: false
+    default: '3.13'
+runs:
+  using: composite
+  steps:
+    - name: Install uv
+      uses: astral-sh/setup-uv@v8
+      with:
+        python-version: "${{ inputs.python_version }}"
+        enable-cache: true
+        cache-dependency-glob: "uv.lock"
+
+    - name: Sync project dependencies
+      shell: bash
+      run: |
+        if [ -z "${{ inputs.groups }}" ]; then
+          uv sync --locked --no-default-groups
+        else
+          group_flags=""
+          IFS=',' read -ra groups <<< "${{ inputs.groups }}"
+          for g in "${groups[@]}"; do
+            group_flags="$group_flags --group ${g// /}"
+          done
+          uv sync --locked --no-default-groups $group_flags
+        fi

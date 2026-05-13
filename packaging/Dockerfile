@@ -14,7 +14,7 @@ ADD web/ .
 RUN npm run build
 
 
-FROM ghcr.io/astral-sh/uv:python3.8-alpine AS server-build
+FROM ghcr.io/astral-sh/uv:python3.13-alpine AS server-build
 
 ARG VERSION
 ARG RELEASE
@@ -62,7 +62,7 @@ RUN mkdir -p /app/web
 COPY --from=web-build /app/dist/ /app/web/
 
 
-FROM python:3.8-alpine
+FROM python:3.13-alpine
 
 USER 1001
 WORKDIR /app

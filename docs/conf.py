@@ -58,10 +58,8 @@ html_logo = 'images/logo.png'
 
 html_css_files = ["custom.css"]
 html_theme_options = {
-    "logo_only": True,
     "show_navbar_depth": 2,
     "repository_url": "https://github.com/snoozeweb/snooze",
     "use_repository_button": True,
     "use_issues_button": True,
-    "extra_navbar": "",
 }

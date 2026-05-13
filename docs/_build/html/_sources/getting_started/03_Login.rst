@@ -31,4 +31,4 @@ It is always possible to generate a root token that can be used for **JWT Token*
 LDAP Authentication
 ===================
 
-:ref:`Configure LDAP Authentication <ldap>`
+:ref:`Configure LDAP Authentication <LDAP-configuration>`

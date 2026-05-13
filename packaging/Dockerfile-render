@@ -1,5 +1,5 @@
 # vim: syntax=dockerfile
-FROM python:3.8-alpine
+FROM python:3.13-alpine
 
 ENV PYTHONUNBUFFERED 1
 ENV PIP_DISABLE_PIP_VERSION_CHECK=1
@@ -32,11 +32,11 @@ RUN apk update && \
     python3-dev \
     libffi-dev
 
-RUN pip install --no-cache-dir poetry==1.2.0a2 pip==21.0.1 virtualenv==20.4.4
+RUN pip install --no-cache-dir uv virtualenv
 RUN python3 -m venv /opt/snooze
 RUN mkdir -p /opt/snooze/web
 
-ENV PATH $PATH:/opt/snooze/bin
+ENV PATH=$PATH:/opt/snooze/bin
 
 RUN /opt/snooze/bin/pip install snooze-server==${VERSION}
 ADD https://github.com/snoozeweb/snooze/releases/download/v${VERSION}/snooze-web-${VERSION}.tar.gz /tmp/snooze-web.tar.gz

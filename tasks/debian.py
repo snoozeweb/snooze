@@ -24,7 +24,7 @@ def build(ctx, cleanup=True, github_output=False):
     for directory in [buildroot, debian, venv, web, etc_server, systemd, varlib, varlog]:
         directory.mkdir(exist_ok=True, parents=True)
 
-    ctx.run(f"virtualenv --always-copy --python=python3.8 {venv}")
+    ctx.run(f"virtualenv --always-copy --python=python3.13 {venv}")
     ctx.run(f"{venv}/bin/pip install {artifacts['wheel']}")
     ctx.run(f"tar -xvf {artifacts['web']} -C {venv}/web")
 

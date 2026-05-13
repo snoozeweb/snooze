@@ -1,8 +1,12 @@
-FROM rockylinux:8.5
+FROM rockylinux/rockylinux:10.1
 
-RUN dnf install -y python38 python38-devel
-RUN dnf install -y rpm-build
-RUN pip3 install poetry==1.2.0a2
-RUN alternatives --set python /usr/bin/python3.8
+# Rocky 10 ships python3.12 in BaseOS; python3.13 comes from EPEL.
+RUN dnf install -y epel-release \
+    && dnf install -y python3.13 python3.13-devel python3.13-pip rpm-build \
+    && dnf clean all
+
+# Install uv (the project's package/build manager).
+RUN curl -LsSf https://astral.sh/uv/install.sh | sh
+ENV PATH="/root/.local/bin:${PATH}"
 
 WORKDIR /code

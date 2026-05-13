@@ -40,10 +40,10 @@
 2. **Validate before commit**: `task py:lint` + `task py:test` (backend) and `npm run lint` + `npm run test:unit` (web) must pass before any commit is proposed.
 3. **Do not commit git operations on your own**: The user manages `git commit`, `git push`, tags, and releases manually. Propose diffs, then wait.
    - When you are about to commit, **do not add `Co-Authored-By: Claude` (or any agent attribution) to the commit message**. Commits should look like the user authored them.
-4. **Respect the `src/` layout**: Python source lives in `src/snooze/`, NOT in the stale top-level `snooze/` directory (which only contains `.pyc` artifacts from an older layout). Always edit `src/snooze/…`. See `<repo_structure>` for the gotcha.
-5. **Pydantic v1 only**: The project pins `pydantic>=1.9.0,<2`. Do not write v2-only syntax (`model_config`, `field_validator`, etc.). Use `Config` inner class, `validator`, `Extra.forbid`, etc.
-6. **Python 3.8 syntax floor**: `requires-python = "~=3.8"`. No `match` statements, no PEP 604 `X | Y` union syntax in runtime code (use `Optional[X]` / `Union[X, Y]`), no `dict[str, int]` generic builtin (use `Dict[str, int]` from `typing`).
-7. **Plugin discovery is directory-based**: Adding a plugin means adding a directory under `src/snooze/plugins/core/<name>/` with a `plugin.py`. Do not register plugins via `entry_points` unless they live outside the package.
+4. **Respect the `src/` layout**: Python source lives in `src/snooze/`. (An older layout placed it at top-level `snooze/`; that directory was removed during the 3.13 migration. If it ever reappears, it is stale — never edit it.)
+5. **Pydantic v1 only**: The project pins `pydantic>=1.10.18,<2`. Do not write v2-only syntax (`model_config`, `field_validator`, etc.). Use `Config` inner class, `validator`, `Extra.forbid`, etc. v1.10.18+ is required for Python 3.13.
+6. **Python 3.13 floor**: `requires-python = ">=3.13"`. `match` statements, PEP 604 `X | Y` unions, and PEP 585 built-in generics (`dict[str, int]`, `list[T]`) are all available — feel free to use them in new code. (Older modules still use `typing.Dict` / `Optional[X]`; don't churn untouched files.)
+7. **Plugin discovery is directory-based**: Adding a plugin means adding a directory under `src/snooze/plugins/core/<name>/` with a `plugin.py`. External plugins register via the `snooze.plugins.core` entry-point group (loaded with `importlib.metadata.entry_points`, not `pkg_resources`).
 8. **Token efficiency for file operations**:
    - Use `cp` to duplicate files rather than reading + regenerating.
    - Use `sed` / Edit for small substitutions rather than full-file rewrites.
@@ -79,7 +79,6 @@ snooze/
 │   ├── token.py              # JWT auth
 │   ├── tracing.py            # OpenTelemetry setup
 │   └── logging.py            # Logging configuration
-├── snooze/                    # ⚠️ STALE — only .pyc artifacts. DO NOT EDIT.
 ├── tests/                     # pytest suite (test_api, test_audit, test_auth, test_core, test_token)
 │   └── conftest.py           # mongomock fixtures, Falcon TestClient, JWT root token
 ├── web/                       # Vue 3 SPA (frontend)
@@ -320,7 +319,7 @@ Git operations (commit, push, tag, release) are **manual**. CI on tags publishes
 
 ### Python (backend)
 
-- **Version floor**: 3.8.
+- **Version floor**: 3.13.
 - **Naming**: `snake_case` functions/vars, `PascalCase` classes, `UPPER_SNAKE` constants.
 - **Indentation**: 4 spaces.
 - **Line length**: 120 chars (pylint config).
@@ -385,27 +384,28 @@ OpenTelemetry traces are wired through `src/snooze/tracing.py` and ship via OTLP
 
 | Component | Technology | Version / Pin |
 |-----------|------------|---------------|
-| Language (backend) | Python | 3.8 (mise.toml) |
+| Language (backend) | Python | **3.13** (mise.toml, `.python-version`) |
 | Language (frontend) | Node / JS | Node 14 (.node-version, mise.toml) |
-| API framework | Falcon | `>=3.1,<4` |
-| WSGI server | waitress | `>=2.0,<3` |
-| Database | MongoDB | client `pymongo==3.12.1` |
-| Auth | JWT (PyJWT 2), LDAP (ldap3), local | `>=2.3,<3` / `>=2.9,<3` |
-| Config validation | Pydantic | **v1** (`>=1.9,<2`) |
-| CLI | Click | `>=8.0,<9` |
-| Telemetry | OpenTelemetry (api/sdk/otlp + falcon/logging/pymongo instr.) | `>=1.14,<2` |
-| Templating | Jinja2 | `>=3.0,<4` |
+| API framework | Falcon | `>=4.0,<5` |
+| WSGI server | waitress | `>=3.0,<4` |
+| Database | MongoDB | client `pymongo>=4.6,<4.7` (pinned <4.7 — see "What we DON'T do") |
+| Auth | JWT (PyJWT 2), LDAP (ldap3), local | `>=2.8,<3` / `>=2.9,<3` |
+| Config validation | Pydantic | **v1** (`>=1.10.18,<2`) |
+| CLI | Click | `>=8.1,<9` |
+| Telemetry | OpenTelemetry (api/sdk/otlp + falcon/logging/pymongo instr.) | `>=1.27,<2` |
+| Templating | Jinja2 | `>=3.1,<4` |
 | Build (Python) | uv + hatchling | latest |
 | Build (web) | Vue CLI 4.5 | — |
 | Frontend framework | Vue | `^3.2.33` |
 | UI library | @coreui/vue | `4.3.0` |
 | State | Vuex | `4.0.2` |
 | Router | Vue Router | `4.0.15` |
-| Test (backend) | pytest + mongomock + responses + freezegun | pytest `>=6.2,<7` |
+| Test (backend) | pytest + mongomock + responses + freezegun | pytest `>=8,<9`, mongomock `>=4.3,<5` |
 | Test (web) | Jest (vue-cli-plugin-unit-jest) + Nightwatch | — |
-| Type check | pyright (strict) | `>=1.1.238,<2` |
-| Lint | ruff + pylint (+ pylint-pydantic) | — |
-| Security scan | bandit | `>=1.7,<2` |
+| Type check | pyright (strict) | `>=1.1.380,<2` |
+| Lint | ruff + pylint (+ pylint-pydantic) | pylint `>=3.2,<4` |
+| Security scan | bandit | `>=1.7.9,<2` |
+| Local DB store | tinydb | `>=4.5,<4.6` (pinned <4.6 — see "What we DON'T do") |
 | Task runner | go-task/task | latest (mise.toml) |
 | Toolchain manager | mise | — |
 
@@ -421,18 +421,22 @@ OpenTelemetry traces are wired through `src/snooze/tracing.py` and ship via OTLP
 | **Custom condition DSL** | `src/snooze/utils/condition.py`, `utils/parser.py` | List-form ASTs like `['=', 'host', 'foo']` used in both API queries and rule definitions |
 | **`mitt` global event bus (web)** | `web/src/main.js` (registered as `emitter`) | Cross-component signalling without prop drilling |
 | **localStorage schema cache (web)** | `web/src/utils/api.js` `get_data()` | Cache form schemas keyed by `{endpoint}_json` with checksum invalidation |
-| **3-tier package layout** | `src/` source, `packages = ["snooze"]`, `pythonpath = ["src", "."]` for tests | Keeps the importable package name `snooze` while sources sit in `src/snooze/` |
+| **src/ package layout** | `src/snooze/`, `packages = ["src/snooze"]` (hatchling), `pythonpath = ["src", "."]` for tests | Keeps the importable package name `snooze` while sources sit in `src/snooze/` |
 
 ### What We DON'T Do
 
 | Anti-pattern | Why we avoid it |
 |--------------|-----------------|
-| Edit top-level `snooze/` directory | Stale `.pyc` artifacts from an older layout — real source is in `src/snooze/`. Edits silently do nothing. |
+| Recreate top-level `snooze/` directory | Older layout placed code there. It was removed during the 3.13 migration. If it reappears it is stale and confuses imports. |
 | Pydantic v2 syntax | Dep is pinned `<2`. Code will not start. |
-| `dict[str, int]` / `X \| Y` in runtime code | Project supports Python 3.8 (PEP 585 generics arrived in 3.9, PEP 604 unions in 3.10). |
+| Reintroduce `poetry` | Removed entirely. The project uses `uv` (Astral) — locked via `uv.lock`, CI via `astral-sh/setup-uv@v8`, packaging containers install uv. Invoke tasks call `uv build` / `uv version`, not `poetry build` / `poetry version`. |
+| Bump `pymongo>=4.7` | `pymongo` 4.7 added a `sort` kwarg to `UpdateOne._add_to_bulk()` that `mongomock` 4.3.0 (latest released) does not accept — `bulk_increment` tests fail. Stay on `>=4.6,<4.7` until mongomock releases the fix. |
+| Bump `tinydb>=4.6` | `tinydb` 4.6 removed implicit integer-index path traversal (`Query()['a'][1] == 2`). `dig()` in the file backend relies on it. Stay on `>=4.5,<4.6` or rewrite `dig()` to emit callable path parts. |
+| Use `pkg_resources` | Removed in favour of `importlib.metadata.entry_points(group=…)`. `pkg_resources` is deprecated and slow on import. |
+| `datetime.utcnow()` in NEW code | Deprecated in 3.12+. Use `datetime.now(timezone.utc)`. Existing call sites still emit warnings — fix opportunistically. |
 | Composition API in new Vue components | Existing UI is uniformly Options API — mixing styles fractures patterns. |
 | New top-level state in Vuex | UI is mostly localStorage + component state; growing Vuex un-asked adds friction. |
-| Run pytest without `PYTHONPATH=src` | Imports resolve to the stale top-level `snooze/` and tests run against the wrong code (or fail). Use `task py:test`. |
+| Run pytest without `PYTHONPATH=src` | The package is in `src/snooze/`; without `PYTHONPATH=src` (or `task py:test`) imports fail. |
 | Bypass JWT middleware for "admin" endpoints | Root operations go through the unix-socket route, not by skipping auth. |
 | Bake config into Helm template defaults | `values.schema.json` validates user input; defaults live in `values.yaml`. |
 

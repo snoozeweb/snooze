@@ -18,7 +18,7 @@ from os.path import dirname, isdir, join as joindir
 from secrets import token_urlsafe
 from threading import Event
 from typing import Dict, Optional
-from pkg_resources import iter_entry_points
+from importlib.metadata import entry_points
 from pathlib import Path
 from typing import List
 from uuid import uuid4
@@ -99,7 +99,7 @@ class Core:
         self.process_plugins = []
         log.debug("Starting to load core plugins")
         plugins_path = joindir(dirname(rootdir), 'plugins', 'core')
-        for entry_point in iter_entry_points('snooze.plugins.core'):
+        for entry_point in entry_points(group='snooze.plugins.core'):
             log.debug("External core plugin '%s' detected", entry_point.name)
             plugin_class = entry_point.load()
             plugin_instance = plugin_class(self)

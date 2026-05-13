@@ -13,7 +13,7 @@ def build(ctx, force=False, github_output=False):
         print(f"Target {target} already exists")
         return
     print("Building python pip package")
-    ctx.run("poetry build")
+    ctx.run("uv build")
     if github_output:
         print_github_kv('ASSET_NAME', target.name)
         print_github_kv('PATH', target)

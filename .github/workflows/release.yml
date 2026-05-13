@@ -13,28 +13,28 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checking out git repository
-        uses: actions/checkout@v2
+        uses: actions/checkout@v4
 
       - name: Setup python environment
-        uses: ./.github/actions/python-poetry
-        with: {poetry_options: '--only main,test'}
+        uses: ./.github/actions/python-uv
+        with: {groups: 'test'}
 
       - name: Running Pytest
-        run: poetry run pytest
+        run: uv run pytest
 
   github_release:
     runs-on: ubuntu-latest
     needs: [python_tests]
     steps:
       - name: checkout
-        uses: actions/checkout@v2
+        uses: actions/checkout@v4
 
       - name: Setup python environment
-        uses: ./.github/actions/python-poetry
-        with: {poetry_options: '--only build'}
+        uses: ./.github/actions/python-uv
+        with: {groups: 'build'}
 
       - name: Compute changelog
-        run: poetry run invoke changelog --github-output
+        run: uv run invoke changelog --github-output
         id: changelog
 
       - name: Update release with changelog
@@ -51,18 +51,18 @@ jobs:
     needs: [github_release]
     steps:
       - name: Checking out git repository
-        uses: actions/checkout@v2
+        uses: actions/checkout@v4
 
       - name: Setup python environment
-        uses: ./.github/actions/python-poetry
-        with: {poetry_options: '--only build'}
+        uses: ./.github/actions/python-uv
+        with: {groups: 'build'}
 
       - name: Build pip packages
-        run: poetry run invoke pip.build --github-output
+        run: uv run invoke pip.build --github-output
         id: build
 
       - name: Upload job artifact
-        uses: actions/upload-artifact@v2
+        uses: actions/upload-artifact@v4
         with:
           name: pip
           path: "${{ steps.build.outputs.PATH }}"
@@ -79,34 +79,34 @@ jobs:
 
       - name: Upload package to pypi
         env:
-          POETRY_HTTP_BASIC_PYPI_USERNAME: "${{ secrets.TWINE_USERNAME }}"
-          POETRY_HTTP_BASIC_PYPI_PASSWORD: "${{ secrets.TWINE_PASSWORD }}"
-        run: poetry publish
+          UV_PUBLISH_USERNAME: "${{ secrets.TWINE_USERNAME }}"
+          UV_PUBLISH_PASSWORD: "${{ secrets.TWINE_PASSWORD }}"
+        run: uv publish
 
   web:
     runs-on: ubuntu-latest
     needs: [github_release]
     steps:
       - name: Checking out git repository
-        uses: actions/checkout@v2
+        uses: actions/checkout@v4
 
       - name: Setup Node
-        uses: actions/setup-node@v2
+        uses: actions/setup-node@v4
         with:
           node-version: '14'
           cache: npm
           cache-dependency-path: 'web/package-lock.json'
 
       - name: Setup python environment
-        uses: ./.github/actions/python-poetry
-        with: {poetry_options: '--only build'}
+        uses: ./.github/actions/python-uv
+        with: {groups: 'build'}
 
       - name: Build web tarball
-        run: poetry run invoke web.build --github-output
+        run: uv run invoke web.build --github-output
         id: build
 
       - name: Upload job artifact
-        uses: actions/upload-artifact@v2
+        uses: actions/upload-artifact@v4
         with:
           name: web
           path: "${{ steps.build.outputs.PATH }}"
@@ -125,29 +125,29 @@ jobs:
     needs: [pypi, web]
     steps:
       - name: Checking out git repository
-        uses: actions/checkout@v2
+        uses: actions/checkout@v4
 
       - name: Setup python environment
-        uses: ./.github/actions/python-poetry
-        with: {poetry_options: '--only build'}
+        uses: ./.github/actions/python-uv
+        with: {groups: 'build'}
 
       - name: Download pip package
-        uses: actions/download-artifact@v2
+        uses: actions/download-artifact@v4
         with: {name: pip, path: dist}
 
       - name: Download web tarball
-        uses: actions/download-artifact@v2
+        uses: actions/download-artifact@v4
         with: {name: web, path: dist}
 
       - name: Installing rpmbuild
         run: sudo apt-get install rpm
 
       - name: Build rpm
-        run: poetry run invoke rpm.build --github-output
+        run: uv run invoke rpm.build --github-output
         id: build
 
       - name: Upload job artifact
-        uses: actions/upload-artifact@v2
+        uses: actions/upload-artifact@v4
         with:
           name: rpm
           path: "${{ steps.build.outputs.PATH }}"
@@ -166,26 +166,26 @@ jobs:
     needs: [pypi, web]
     steps:
       - name: checkout
-        uses: actions/checkout@v2
+        uses: actions/checkout@v4
 
       - name: Setup python environment
-        uses: ./.github/actions/python-poetry
-        with: {poetry_options: '--only build'}
+        uses: ./.github/actions/python-uv
+        with: {groups: 'build'}
 
       - name: Download pip package
-        uses: actions/download-artifact@v2
+        uses: actions/download-artifact@v4
         with: {name: pip, path: dist}
 
       - name: Download web tarball
-        uses: actions/download-artifact@v2
+        uses: actions/download-artifact@v4
         with: {name: web, path: dist}
 
       - name: Build deb
-        run: poetry run invoke debian.build --github-output
+        run: uv run invoke debian.build --github-output
         id: build
 
       - name: Upload job artifact
-        uses: actions/upload-artifact@v2
+        uses: actions/upload-artifact@v4
         with:
           name: deb
           path: "${{ steps.build.outputs.PATH }}"
@@ -207,35 +207,35 @@ jobs:
       INVOKE_DOCKER_IMAGE: snoozeweb/snooze
     steps:
       - name: Checking out git repository
-        uses: actions/checkout@v2
+        uses: actions/checkout@v4
 
       - name: Setup python environment
-        uses: ./.github/actions/python-poetry
-        with: {poetry_options: '--only build'}
+        uses: ./.github/actions/python-uv
+        with: {groups: 'build'}
 
       - name: Download pip package
-        uses: actions/download-artifact@v2
+        uses: actions/download-artifact@v4
         with: {name: pip, path: dist}
 
       - name: Download web tarball
-        uses: actions/download-artifact@v2
+        uses: actions/download-artifact@v4
         with: {name: web, path: dist}
 
       - name: Check dockerfile
-        run: poetry run invoke docker.check
+        run: uv run invoke docker.check
 
       - name: Build docker image
-        run: poetry run invoke docker.build --mode production --save --github-output
+        run: uv run invoke docker.build --mode production --save --github-output
         id: build
 
       - name: Upload job artifact
-        uses: actions/upload-artifact@v2
+        uses: actions/upload-artifact@v4
         with:
           name: docker
           path: "${{ steps.build.outputs.PATH }}"
 
       - name: Push docker image
-        run: poetry run invoke docker.push
+        run: uv run invoke docker.push
         env:
           INVOKE_DOCKER_PUSH_USERNAME: "${{ secrets.DOCKER_USERNAME }}"
           INVOKE_DOCKER_PUSH_PASSWORD: "${{ secrets.DOCKER_PASSWORD }}"
