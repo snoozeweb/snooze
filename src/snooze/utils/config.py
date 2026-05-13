@@ -539,8 +539,10 @@ class CoreConfig(ReadOnlyConfig):
             scheme = urlparse(database).scheme
             if scheme == 'mongodb':
                 return MongodbConfig(host=database)
-            else:
-                raise ValueError(f"Unsupported scheme {scheme} for given database URL")
+            if scheme in ('postgres', 'postgresql'):
+                # psycopg accepts the URL form directly as a DSN.
+                return PostgresConfig(dsn=database)
+            raise ValueError(f"Unsupported scheme {scheme} for given database URL")
         return database
 
 class GeneralConfig(WritableConfig):

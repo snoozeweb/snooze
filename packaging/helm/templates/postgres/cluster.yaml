@@ -1,0 +1,29 @@
+{{- if eq .Values.database.kind "postgres" -}}
+# yaml-language-server: $schema=https://raw.githubusercontent.com/datreeio/CRDs-catalog/refs/heads/main/postgresql.cnpg.io/cluster_v1.json
+---
+apiVersion: postgresql.cnpg.io/v1
+kind: Cluster
+metadata:
+  name: "{{ .Release.Name }}-postgres"
+  namespace: "{{ .Release.Namespace }}"
+spec:
+  instances: {{ .Values.postgres.instances }}
+  imageName: "{{ .Values.postgres.imageName }}"
+
+  # ``snooze`` is the logical application user; the CloudNativePG
+  # operator auto-generates the ``{{ .Release.Name }}-postgres-app``
+  # secret containing ``uri`` / ``host`` / ``user`` / ``password`` /
+  # ``dbname``, which the server deployment consumes via DATABASE_URL.
+  bootstrap:
+    initdb:
+      database: snooze
+      owner: snooze
+
+  storage:
+    storageClass: "{{ .Values.postgres.storageClassName }}"
+    size: {{ .Values.postgres.storageSize }}
+
+  affinity:
+    podAntiAffinityType: preferred
+    topologyKey: kubernetes.io/hostname
+{{- end }}

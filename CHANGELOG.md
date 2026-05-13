@@ -11,6 +11,13 @@
   `ubuntu-latest` uses testcontainers to spin up a real
   `postgres:16-alpine` for the Postgres branch; the Mongo branch
   continues to run against mongomock.
+* Helm: new `database.kind: mongo | postgres` selector (default
+  `mongo`, backwards-compatible). When set to `postgres`, the chart
+  provisions a CloudNativePG `Cluster` instead of a MongoDBCommunity
+  replica set; snooze-server reads `DATABASE_URL` from the CNPG
+  app secret. The CNPG operator must be installed in the cluster.
+* Config: `DATABASE_URL` now accepts `postgres://` and `postgresql://`
+  URIs (psycopg-compatible) in addition to `mongodb://`.
 
 ## v1.6.3
 

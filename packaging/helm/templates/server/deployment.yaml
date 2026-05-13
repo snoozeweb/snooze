@@ -41,8 +41,16 @@ spec:
         - name: DATABASE_URL
           valueFrom:
             secretKeyRef:
+              {{- if eq .Values.database.kind "postgres" }}
+              # CloudNativePG auto-creates ``<cluster>-app`` with
+              # ``uri`` set to the libpq-style ``postgresql://…`` URL
+              # for the bootstrapped application user.
+              name: "{{ .Release.Name }}-postgres-app"
+              key: uri
+              {{- else }}
               name: "{{ .Release.Name }}-mongodb-snooze-snooze"
               key: connectionString.standard
+              {{- end }}
         {{- with .Values.timeZone }}
         - name: TZ
           value: "{{ . }}"

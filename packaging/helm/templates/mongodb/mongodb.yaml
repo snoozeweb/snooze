@@ -1,3 +1,4 @@
+{{- if eq .Values.database.kind "mongo" -}}
 # yaml-language-server: $schema=https://raw.githubusercontent.com/datreeio/CRDs-catalog/refs/heads/main/mongodbcommunity.mongodb.com/mongodbcommunity_v1.json
 ---
 apiVersion: mongodbcommunity.mongodb.com/v1
@@ -59,3 +60,4 @@ spec:
           resources:
             requests:
               storage: 2G
+{{- end }}

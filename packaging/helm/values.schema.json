@@ -146,6 +146,22 @@
       "title": "ingress",
       "type": "object"
     },
+    "database": {
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "default": "mongo",
+          "description": "Which database to provision and point snooze-server at",
+          "enum": ["mongo", "postgres"],
+          "required": [],
+          "title": "kind",
+          "type": "string"
+        }
+      },
+      "required": [],
+      "title": "database",
+      "type": "object"
+    },
     "mongodb": {
       "additionalProperties": false,
       "properties": {
@@ -158,6 +174,41 @@
       },
       "required": [],
       "title": "mongodb",
+      "type": "object"
+    },
+    "postgres": {
+      "additionalProperties": false,
+      "properties": {
+        "instances": {
+          "default": 3,
+          "description": "Number of CloudNativePG cluster instances",
+          "required": [],
+          "title": "instances",
+          "type": "integer"
+        },
+        "imageName": {
+          "default": "ghcr.io/cloudnative-pg/postgresql:16",
+          "description": "Postgres image to deploy",
+          "required": [],
+          "title": "imageName",
+          "type": "string"
+        },
+        "storageClassName": {
+          "default": "",
+          "required": [],
+          "title": "storageClassName",
+          "type": "string"
+        },
+        "storageSize": {
+          "default": "10Gi",
+          "description": "Persistent volume size for each instance",
+          "required": [],
+          "title": "storageSize",
+          "type": "string"
+        }
+      },
+      "required": [],
+      "title": "postgres",
       "type": "object"
     },
     "server": {

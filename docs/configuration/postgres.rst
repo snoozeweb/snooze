@@ -119,5 +119,9 @@ Notes
   registered for a collection.
 * Snooze-side backups (``BackupConfig``) dump each table as a JSON file
   under ``backup.path``; use ``pg_dump`` if you want SQL-level dumps.
-* The Helm chart does not yet ship a Postgres operator/sub-chart —
-  point Snooze at an externally-managed Postgres for now.
+* The Helm chart provisions Postgres via the `CloudNativePG
+  <https://cloudnative-pg.io/>`_ operator (the operator itself must be
+  installed in the cluster — the chart ships only the ``Cluster`` CR).
+  Switch it on with ``--set database.kind=postgres``; tune the cluster
+  via the ``postgres.*`` values (instances, image, storage). See
+  ``packaging/helm/values.yaml`` for the full surface.

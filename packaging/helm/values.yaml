@@ -2,6 +2,13 @@
 # -- Timezone to use for all components
 timeZone: ""
 
+database:
+  # -- Which database to provision and point snooze-server at.
+  # ``mongo`` provisions a MongoDBCommunity replica set (default,
+  # backwards-compatible). ``postgres`` provisions a CloudNativePG
+  # Cluster — the CNPG operator must be installed in the cluster.
+  kind: mongo
+
 server:
   # -- Number of replicas of snooze-server to run
   replicaCount: 3
@@ -109,3 +116,13 @@ googlechat:
 
 mongodb:
   storageClassName: ""
+
+postgres:
+  # -- Number of CloudNativePG cluster instances (1 = single-instance).
+  instances: 3
+  # -- Postgres major version to deploy.
+  imageName: "ghcr.io/cloudnative-pg/postgresql:16"
+  # -- StorageClass used for the PGDATA persistent volume claim.
+  storageClassName: ""
+  # -- Persistent volume size for each instance.
+  storageSize: 10Gi

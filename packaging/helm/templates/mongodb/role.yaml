@@ -1,3 +1,4 @@
+{{- if eq .Values.database.kind "mongo" -}}
 ---
 kind: Role
 apiVersion: rbac.authorization.k8s.io/v1
@@ -19,3 +20,4 @@ rules:
       - patch
       - delete
       - get
+{{- end }}

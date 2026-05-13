@@ -1,3 +1,4 @@
+{{- if eq .Values.database.kind "mongo" -}}
 ---
 kind: RoleBinding
 apiVersion: rbac.authorization.k8s.io/v1
@@ -11,4 +12,5 @@ roleRef:
   kind: Role
   name: mongodb-database
   apiGroup: rbac.authorization.k8s.io
+{{- end }}
 
