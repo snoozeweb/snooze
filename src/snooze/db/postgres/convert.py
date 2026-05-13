@@ -20,15 +20,25 @@ from snooze.utils.condition import OperationNotSupported, unsugar_regex
 SCALARS = (str, int, float, bool)
 
 
+def _path_key(part: str):
+    '''Path components that look like integers index into arrays
+    (``a.1`` -> ``data->'a'->1``); everything else is an object key.'''
+    if part.lstrip('-').isdigit():
+        return sql.Literal(int(part))
+    return sql.Literal(part)
+
+
 def _field_path(field: str) -> sql.Composable:
     '''Translate a dotted field path into the JSONB navigation expression.
     ``"host"`` -> ``data->>'host'``; ``"a.b.c"`` -> ``data->'a'->'b'->>'c'``.
+    Numeric path components are emitted as integer indices so array
+    elements can be reached (``"a.1"`` -> ``data->'a'->>1``).
     The terminal arrow is ``->>`` so the result is text.'''
     parts = field.split('.')
     expr: sql.Composable = sql.SQL('data')
     for part in parts[:-1]:
-        expr = sql.SQL('{}->{}').format(expr, sql.Literal(part))
-    expr = sql.SQL('{}->>{}').format(expr, sql.Literal(parts[-1]))
+        expr = sql.SQL('{}->{}').format(expr, _path_key(part))
+    expr = sql.SQL('{}->>{}').format(expr, _path_key(parts[-1]))
     return expr
 
 
@@ -37,7 +47,7 @@ def _field_jsonb(field: str) -> sql.Composable:
     parts = field.split('.')
     expr: sql.Composable = sql.SQL('data')
     for part in parts:
-        expr = sql.SQL('{}->{}').format(expr, sql.Literal(part))
+        expr = sql.SQL('{}->{}').format(expr, _path_key(part))
     return expr
 
 
@@ -132,20 +142,23 @@ def convert(condition, search_fields: Iterable[str] = ()) -> sql.Composable:
         values = value if isinstance(value, list) else [value]
         # CONTAINS is "any element of the (flattened) field matches any of
         # the (flattened) value regexes, case-insensitive". Field may be a
-        # scalar or a list; treat both via jsonb_array_elements_text-or-self.
+        # scalar or a JSON array; handle both with a union of two
+        # branches (Postgres rejects set-returning functions in CASE, so
+        # we can't put ``jsonb_array_elements_text`` there).
         patterns = [unsugar_regex(str(v)) if isinstance(v, str) else str(v)
                     for v in values]
         if not patterns:
             return sql.SQL('FALSE')
         return sql.SQL(
-            '(EXISTS (SELECT 1 FROM ('
-            'SELECT CASE WHEN jsonb_typeof({jb}) = \'array\' '
-            'THEN jsonb_array_elements_text({jb}) '
-            'ELSE {tx} END AS v) e '
-            'WHERE e.v ~* ANY({pats}::text[])))'
+            'COALESCE('
+            '({tx} ~* ANY({pats}::text[])) OR '
+            "(jsonb_typeof({jb}) = 'array' AND EXISTS ("
+            '  SELECT 1 FROM jsonb_array_elements_text({jb}) v '
+            '  WHERE v ~* ANY({pats}::text[])'
+            ')), false)'
         ).format(
-            jb=_field_jsonb(key),
             tx=_field_path(key),
+            jb=_field_jsonb(key),
             pats=sql.Literal(patterns),
         )
 
@@ -161,33 +174,27 @@ def convert(condition, search_fields: Iterable[str] = ()) -> sql.Composable:
                 and value[0] in _DSL_OPERATORS:
             inner = convert(value, search_fields)
             return sql.SQL(
-                '(EXISTS (SELECT 1 FROM jsonb_array_elements({jb}) AS arr(data) '
-                'WHERE {pred}))'
+                "COALESCE((jsonb_typeof({jb}) = 'array' AND EXISTS (SELECT 1 "
+                'FROM jsonb_array_elements({jb}) AS arr(data) WHERE {pred})), '
+                'false)'
             ).format(jb=_field_jsonb(key), pred=inner)
         # Literal list membership. The field may be either a scalar or a
-        # JSONB array of scalars (e.g. ``parents``); match either shape so
-        # we keep parity with Mongo's ``$in`` semantics.
+        # JSONB array of scalars (e.g. ``parents``); match either shape
+        # to keep parity with Mongo's ``$in`` semantics. ``COALESCE(...,
+        # false)`` collapses missing-field NULLs to false so a downstream
+        # ``NOT`` doesn't get NULL-propagated and silently drop the row.
+        # Comparisons are text-based because JSONB ``->>`` only yields
+        # text — a numeric cast on the whole-array text representation
+        # (``["a", "b"]``) would explode for array-typed fields.
         items = value if isinstance(value, list) else [value]
-        if all(_is_numeric(i) for i in items):
-            arr = sql.Literal(items)
-            return sql.SQL(
-                '('
-                '({fld})::numeric = ANY({arr}::numeric[]) OR '
-                "(jsonb_typeof({jb}) = 'array' AND EXISTS ("
-                '  SELECT 1 FROM jsonb_array_elements_text({jb}) v '
-                '  WHERE v::numeric = ANY({arr}::numeric[])'
-                '))'
-                ')'
-            ).format(fld=_field_path(key), jb=_field_jsonb(key), arr=arr)
         arr = sql.Literal([str(i) for i in items])
         return sql.SQL(
-            '('
+            'COALESCE('
             '{fld} = ANY({arr}::text[]) OR '
             "(jsonb_typeof({jb}) = 'array' AND EXISTS ("
             '  SELECT 1 FROM jsonb_array_elements_text({jb}) v '
             '  WHERE v = ANY({arr}::text[])'
-            '))'
-            ')'
+            ')), false)'
         ).format(fld=_field_path(key), jb=_field_jsonb(key), arr=arr)
 
     if operation == 'SEARCH':

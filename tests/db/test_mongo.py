@@ -10,7 +10,6 @@ from logging import getLogger
 
 import dateutil
 import mongomock
-import pytest
 import yaml
 from freezegun import freeze_time
 
@@ -18,9 +17,9 @@ from snooze.db.database import Database, get_database
 
 log = getLogger('tests')
 
-# Tests in this module poke at Mongo-specific behaviour and the
-# mongomock backend; they don't make sense to run against Postgres.
-pytestmark = pytest.mark.mongo_only
+# Historically these tests were Mongo-only; they're now backend-agnostic
+# integration tests exercising the public Database API on whichever
+# backend the ``db`` fixture is parametrised over.
 
 def test_mongo_all(db):
     db.write('record', {'a': '1', 'b': '2'})

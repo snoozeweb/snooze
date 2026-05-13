@@ -174,6 +174,22 @@ def fixture_db(config, request, db_backend) -> Iterator[Database]:
                 getattr(database, 'close', lambda: None)()
 
 
+def _reload_plugins(core: Core) -> None:
+    '''Synchronously refresh every plugin's in-memory state from the DB.
+
+    The production server relies on the Syncer thread to pick up DB-level
+    changes, but in tests the Syncer never actually starts. Without this
+    helper, fixture-injected ``data`` is invisible to the plugin pipeline
+    (plugins still hold their pre-fixture, empty filter list), which makes
+    snooze/rule/notification tests pass or fail based purely on which
+    other tests happened to run first.'''
+    for plugin in core.plugins:
+        try:
+            plugin.reload_data()
+        except Exception:
+            log.exception("Failed to reload plugin %s during fixture setup", plugin.name)
+
+
 @pytest.fixture(name='core', scope='function')
 def fixture_core(config, request, db_backend) -> Iterator[Core]:
     '''Core fixture; same backend selection logic as ``db``.'''
@@ -182,6 +198,7 @@ def fixture_core(config, request, db_backend) -> Iterator[Core]:
         core = Core(config.basedir, allowed_threads)
         try:
             write_data(core.db, request)
+            _reload_plugins(core)
             yield core
         finally:
             if db_backend == 'postgres':
@@ -206,4 +223,8 @@ def fixture_client(api, request):
     for collection, items in data.items():
         api.core.db.drop(collection)
         client.simulate_post(f"/api/{collection}", json=items)
+    # The POST handler bumps ``syncer_latest`` but only the (un-started)
+    # Syncer thread would actually call ``reload_data``. In tests, do it
+    # synchronously so plugins see what the client just posted.
+    _reload_plugins(api.core)
     return client

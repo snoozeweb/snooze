@@ -367,19 +367,27 @@ class BackendDB(Database):
             where = _convert(condition, self.search_fields.get(collection, []))
             extra: List[sql.Composable] = []
             orderby = pagination.get('orderby')
+            # ``$natural`` is Mongo's placeholder for "insertion order, no
+            # specific field". Treat it the same as omitting orderby.
+            if orderby == '$natural':
+                orderby = None
+            asc = bool(pagination.get('asc', True))
             nb_per_page = int(pagination.get('nb_per_page', 0) or 0)
             # Accept both ``page_number`` (used by the falcon routes and
             # the Mongo backend) and ``page_nb`` (the name in the
             # ``Pagination`` TypedDict).
             page_nb = int(pagination.get('page_number') or pagination.get('page_nb') or 1)
+            only_one = bool(pagination.get('only_one', False))
             if orderby:
-                extra.extend(render_order_by(orderby, asc=bool(pagination.get('asc', True))))
-            elif nb_per_page > 0:
+                extra.extend(render_order_by(orderby, asc=asc))
+            else:
                 # Without an explicit sort, default to insertion order via
                 # the auto-incrementing ``seq`` column. Matches Mongo's
                 # natural-order semantics and is stable across pages even
                 # for rows inserted in the same transaction.
-                extra.append(sql.SQL('ORDER BY seq ASC'))
+                extra.append(
+                    sql.SQL('ORDER BY seq {}').format(sql.SQL('ASC') if asc else sql.SQL('DESC'))
+                )
             with conn.cursor() as cur:
                 cur.execute(
                     sql.SQL('SELECT count(*) AS c FROM {} WHERE {}').format(tbl, where),
@@ -390,10 +398,16 @@ class BackendDB(Database):
                 query = sql.SQL('SELECT data FROM {} WHERE {}').format(tbl, where)
                 if extra:
                     query = sql.SQL(' ').join([query, *extra])
-                if nb_per_page > 0:
+                if only_one:
+                    query = sql.SQL(' ').join([query, sql.SQL('LIMIT 1')])
+                elif nb_per_page > 0:
                     query = sql.SQL(' ').join([query, *render_pagination(nb_per_page, page_nb)])
                 cur.execute(query)
                 rows = cur.fetchall()
+            if only_one:
+                if rows:
+                    return {'data': [rows[0]['data']], 'count': 1}
+                return {'data': [], 'count': 0}
             return {'data': [r['data'] for r in rows], 'count': count}
 
     def delete(self, collection: str, condition=None, force: bool = False) -> dict:
@@ -468,7 +482,7 @@ class BackendDB(Database):
                 out[k] = v
         return out
 
-    def inc_many(self, collection: str, field: str, condition=None, value: int = 1) -> None:
+    def inc_many(self, collection: str, field: str, condition=None, value: int = 1) -> int:
         with self._conn_ctx() as conn:
             self._ensure(conn, collection)
             tbl = table_ident(collection)
@@ -490,17 +504,60 @@ class BackendDB(Database):
                         where=where,
                     ),
                 )
+                affected = cur.rowcount or 0
             conn.commit()
+            return affected
 
-    def _update_fields_via_python(self, collection: str, mutator, condition) -> None:
+    def inc(self, collection: str, field: str, labels: Optional[dict] = None) -> dict:
+        '''Legacy single-counter increment with optional label encoding.
+        Keys are stored under composite names ``{field}__{k}__{v}`` per
+        Mongo backend convention. The bucket is the current hour.'''
+        now = datetime.datetime.now().replace(minute=0, second=0, microsecond=0)
+        labels = labels or {}
+        keys = [f"{field}__{k}__{v}" for k, v in labels.items()] if labels else [field]
+        added: List[dict] = []
+        updated: List[dict] = []
+        for key in keys:
+            existing = self.get_one(collection, {'date': now.isoformat(), 'key': key})
+            if existing is None:
+                existing = self.get_one(collection, {'key': key})
+            if existing:
+                payload = dict(existing)
+                payload['value'] = (payload.get('value') or 0) + 1
+                payload['date'] = now.isoformat()
+                self.replace_one(collection, {'uid': payload['uid']}, payload, update_time=False)
+                updated.append(payload)
+            else:
+                payload = {
+                    'uid': str(uuid.uuid4()),
+                    'date': now.isoformat(),
+                    'type': 'counter',
+                    'key': key,
+                    'value': 1,
+                }
+                with self._conn_ctx() as conn:
+                    self._ensure(conn, collection)
+                    tbl = table_ident(collection)
+                    with conn.cursor() as cur:
+                        cur.execute(
+                            sql.SQL('INSERT INTO {} (uid, data) VALUES (%s, %s)').format(tbl),
+                            (payload['uid'], Jsonb(payload)),
+                        )
+                    conn.commit()
+                added.append(payload)
+        return {'data': {'added': added, 'updated': updated}}
+
+    def _update_fields_via_python(self, collection: str, mutator, condition) -> int:
         '''Helper for set/append/prepend/remove: load each matching row,
         let ``mutator`` rewrite its data dict in place, and write it back.
-        Not the fastest path but it keeps semantics aligned with the Mongo
-        backend without rebuilding every Mongo operator in SQL.'''
+        ``mutator`` may return ``False`` to skip a row (matches Mongo's
+        behaviour when e.g. ``$push`` is applied to a non-array field).
+        Returns the number of rows actually updated.'''
         with self._conn_ctx() as conn:
             self._ensure(conn, collection)
             tbl = table_ident(collection)
             where = _convert(condition, self.search_fields.get(collection, []))
+            updated = 0
             with conn.cursor() as cur:
                 cur.execute(
                     sql.SQL('SELECT uid, data FROM {} WHERE {}').format(tbl, where),
@@ -508,50 +565,72 @@ class BackendDB(Database):
                 rows = cur.fetchall()
                 for row in rows:
                     data = row['data']
-                    mutator(data)
+                    if mutator(data) is False:
+                        continue
                     cur.execute(
                         sql.SQL('UPDATE {} SET data = %s::jsonb, updated_at = now() '
                                 'WHERE uid = %s').format(tbl),
                         (Jsonb(data), row['uid']),
                     )
+                    updated += 1
             conn.commit()
+            return updated
 
-    def set_fields(self, collection: str, fields: dict, condition=None) -> None:
-        def mutate(data: dict) -> None:
+    def set_fields(self, collection: str, fields: dict, condition=None) -> int:
+        def mutate(data: dict) -> bool:
             for k, v in fields.items():
                 data[k] = v
-        self._update_fields_via_python(collection, mutate, condition)
+            return True
+        return self._update_fields_via_python(collection, mutate, condition)
 
-    def append_list(self, collection: str, fields: dict, condition=None) -> None:
-        def mutate(data: dict) -> None:
+    @staticmethod
+    def _list_op_applicable(data: dict, fields: dict) -> bool:
+        '''Mongo's ``$push``/``$pull`` silently no-op when the target
+        field exists but isn't an array. Mirror that semantics: only
+        proceed when every target field is missing or already a list.'''
+        for k in fields:
+            existing = data.get(k)
+            if existing is not None and not isinstance(existing, list):
+                return False
+        return True
+
+    def append_list(self, collection: str, fields: dict, condition=None) -> int:
+        def mutate(data: dict) -> bool:
+            if not self._list_op_applicable(data, fields):
+                return False
             for k, values in fields.items():
                 existing = data.get(k) or []
-                if not isinstance(existing, list):
-                    existing = [existing]
                 data[k] = [*existing, *values]
-        self._update_fields_via_python(collection, mutate, condition)
+            return True
+        return self._update_fields_via_python(collection, mutate, condition)
 
-    def prepend_list(self, collection: str, fields: dict, condition=None) -> None:
-        def mutate(data: dict) -> None:
+    def prepend_list(self, collection: str, fields: dict, condition=None) -> int:
+        def mutate(data: dict) -> bool:
+            if not self._list_op_applicable(data, fields):
+                return False
             for k, values in fields.items():
                 existing = data.get(k) or []
-                if not isinstance(existing, list):
-                    existing = [existing]
                 data[k] = [*values, *existing]
-        self._update_fields_via_python(collection, mutate, condition)
+            return True
+        return self._update_fields_via_python(collection, mutate, condition)
 
-    def remove_list(self, collection: str, fields: dict, condition=None) -> None:
-        def mutate(data: dict) -> None:
+    def remove_list(self, collection: str, fields: dict, condition=None) -> int:
+        def mutate(data: dict) -> bool:
+            if not self._list_op_applicable(data, fields):
+                return False
+            changed = False
             for k, values in fields.items():
                 existing = data.get(k) or []
-                if not isinstance(existing, list):
-                    existing = [existing]
                 drop = set(values) if all(isinstance(v, (str, int, float)) for v in values) else None
                 if drop is not None:
-                    data[k] = [item for item in existing if item not in drop]
+                    new_list = [item for item in existing if item not in drop]
                 else:
-                    data[k] = [item for item in existing if item not in values]
-        self._update_fields_via_python(collection, mutate, condition)
+                    new_list = [item for item in existing if item not in values]
+                if new_list != existing:
+                    data[k] = new_list
+                    changed = True
+            return changed
+        return self._update_fields_via_python(collection, mutate, condition)
 
     # ------------------------------------------------------------------ #
     # Stats & maintenance                                                #
