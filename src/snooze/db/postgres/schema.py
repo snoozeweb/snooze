@@ -25,16 +25,28 @@ from psycopg import Connection, sql
 
 log = getLogger('snooze.db.postgres')
 
-_TABLE_RE = re.compile(r'^[A-Za-z_][A-Za-z0-9_]*$')
+# Collection names can contain dots (Mongo treats them as namespaces);
+# Postgres identifiers can't, so we map ``.`` -> ``__``. The leading
+# character must still be alphabetic, and the rest is restricted to a
+# safe character set so we never interpolate untrusted identifiers.
+_COLLECTION_RE = re.compile(r'^[A-Za-z_][A-Za-z0-9_.]*$')
 
 
 def table_name(collection: str) -> str:
     '''Return the physical table name for a logical collection.
     Validates the collection name so we never interpolate user-controlled
-    identifiers into SQL.'''
-    if not _TABLE_RE.match(collection):
+    identifiers into SQL; dotted names become ``snooze_a__b``.'''
+    if not _COLLECTION_RE.match(collection):
         raise ValueError(f"Invalid collection name: {collection!r}")
-    return f'snooze_{collection}'
+    return 'snooze_' + collection.replace('.', '__')
+
+
+def collection_from_table_name(table: str) -> str:
+    '''Inverse of :func:`table_name` for the ``snooze_`` prefix and the
+    ``.`` -> ``__`` rewrite. Returns ``''`` if the table isn't ours.'''
+    if not table.startswith('snooze_'):
+        return ''
+    return table[len('snooze_'):].replace('__', '.')
 
 
 def table_ident(collection: str) -> sql.Identifier:
@@ -80,7 +92,13 @@ def ensure_collection(conn: Connection, collection: str, cache: SchemaCache) -> 
             'CREATE TABLE IF NOT EXISTS {} ('
             'uid TEXT PRIMARY KEY, '
             'data JSONB NOT NULL, '
-            'updated_at TIMESTAMPTZ NOT NULL DEFAULT now())'
+            # BIGSERIAL gives every row a unique, monotonically increasing
+            # insert sequence — used by ``search`` as the default ORDER BY
+            # when no explicit orderby is requested, so pagination matches
+            # MongoDB's natural insertion order even when many rows are
+            # inserted in the same transaction.
+            'seq BIGSERIAL NOT NULL, '
+            'updated_at TIMESTAMPTZ NOT NULL DEFAULT clock_timestamp())'
         ).format(tbl),
         sql.SQL('CREATE INDEX IF NOT EXISTS {} ON {} USING GIN (data jsonb_path_ops)').format(gin_idx, tbl),
         sql.SQL('CREATE INDEX IF NOT EXISTS {} ON {} (updated_at)').format(upd_idx, tbl),
@@ -110,5 +128,5 @@ def list_collection_tables(conn: Connection) -> list[str]:
             name = row['tablename']
         else:
             name = row[0]
-        out.append(name[len('snooze_'):])
+        out.append(collection_from_table_name(name))
     return out

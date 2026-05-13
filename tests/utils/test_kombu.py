@@ -2,10 +2,16 @@
 
 from time import sleep
 
+import pytest
 from kombu import Connection, Exchange, Queue, Consumer
 from kombu.mixins import ConsumerMixin
 
 from snooze.utils.kombu import MongodbTransport
+
+# This module reaches into pymongo (via ``db.db``) and exercises the
+# Mongo-specific kombu transport — there's no Postgres equivalent.
+pytestmark = pytest.mark.mongo_only
+
 
 class TestMongodbTransport:
 

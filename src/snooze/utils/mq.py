@@ -31,13 +31,18 @@ class MQManager:
         log.debug('Init MQManager')
         self.core = core
         self.threads = {}
-        if core.db.name == 'file':
-            self.connection = Connection('memory:///')
-        elif core.db.name == 'mongo':
+        if core.db.name == 'mongo':
             self.connection = Connection(transport=MongodbTransport,
                 transport_options={'database': core.db.db})
+        elif core.db.name in ('file', 'postgres'):
+            # In-memory kombu transport: single-process only. The Postgres
+            # backend does not (yet) ship a dedicated Kombu transport, so
+            # cross-instance MQ propagation falls back to the in-memory
+            # broker — fine for a single snooze-server, and the DB-level
+            # syncer still handles cross-instance state sync.
+            self.connection = Connection('memory:///')
         else:
-            raise Exception("Unsupported database type '{core.db.name}'")
+            raise Exception(f"Unsupported database type '{core.db.name}'")
         register('bson', bson.json_util.dumps, bson.json_util.loads,
                  content_type='application/json',
                  content_encoding='utf-8')

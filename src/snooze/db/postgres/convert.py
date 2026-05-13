@@ -164,16 +164,31 @@ def convert(condition, search_fields: Iterable[str] = ()) -> sql.Composable:
                 '(EXISTS (SELECT 1 FROM jsonb_array_elements({jb}) AS arr(data) '
                 'WHERE {pred}))'
             ).format(jb=_field_jsonb(key), pred=inner)
-        # Literal list membership.
+        # Literal list membership. The field may be either a scalar or a
+        # JSONB array of scalars (e.g. ``parents``); match either shape so
+        # we keep parity with Mongo's ``$in`` semantics.
         items = value if isinstance(value, list) else [value]
         if all(_is_numeric(i) for i in items):
-            return sql.SQL('(({fld})::numeric = ANY({arr}::numeric[]))').format(
-                fld=_field_path(key), arr=sql.Literal(items),
-            )
-        return sql.SQL('({fld} = ANY({arr}::text[]))').format(
-            fld=_field_path(key),
-            arr=sql.Literal([str(i) for i in items]),
-        )
+            arr = sql.Literal(items)
+            return sql.SQL(
+                '('
+                '({fld})::numeric = ANY({arr}::numeric[]) OR '
+                "(jsonb_typeof({jb}) = 'array' AND EXISTS ("
+                '  SELECT 1 FROM jsonb_array_elements_text({jb}) v '
+                '  WHERE v::numeric = ANY({arr}::numeric[])'
+                '))'
+                ')'
+            ).format(fld=_field_path(key), jb=_field_jsonb(key), arr=arr)
+        arr = sql.Literal([str(i) for i in items])
+        return sql.SQL(
+            '('
+            '{fld} = ANY({arr}::text[]) OR '
+            "(jsonb_typeof({jb}) = 'array' AND EXISTS ("
+            '  SELECT 1 FROM jsonb_array_elements_text({jb}) v '
+            '  WHERE v = ANY({arr}::text[])'
+            '))'
+            ')'
+        ).format(fld=_field_path(key), jb=_field_jsonb(key), arr=arr)
 
     if operation == 'SEARCH':
         needle = str(args[0])
@@ -197,11 +212,22 @@ _DSL_OPERATORS = frozenset([
 
 
 def render_order_by(orderby: str, asc: bool = True) -> Tuple[sql.Composable, ...]:
-    '''Render an ORDER BY clause for a dotted field path. Numeric-looking
-    fields sort numerically; otherwise text-collation order is used.'''
+    '''Render an ORDER BY clause for a dotted field path.
+
+    JSONB ``->>`` always yields text, which would sort numeric fields
+    lexicographically (``'10' < '2'``). To match the natural ordering
+    callers expect, we emit a two-level ORDER BY: numeric-looking values
+    sort first by their numeric value, everything else falls through to
+    a stable text sort.'''
     direction = sql.SQL('ASC') if asc else sql.SQL('DESC')
+    field = _field_path(orderby)
     return (
-        sql.SQL('ORDER BY {} {} NULLS LAST').format(_field_path(orderby), direction),
+        sql.SQL(
+            "ORDER BY "
+            "CASE WHEN {fld} ~ '^-?[0-9]+(\\.[0-9]+)?$' "
+            "THEN ({fld})::numeric END {dir} NULLS LAST, "
+            "{fld} {dir} NULLS LAST"
+        ).format(fld=field, dir=direction),
     )
 
 

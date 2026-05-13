@@ -23,6 +23,7 @@ from base64 import b64encode
 
 from hashlib import sha256
 
+@pytest.mark.mongo_only
 @mongomock.patch('mongodb://localhost:27017')
 def test_basic_auth(core):
     api = Api(core)

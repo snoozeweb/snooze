@@ -10,12 +10,17 @@ from logging import getLogger
 
 import dateutil
 import mongomock
+import pytest
 import yaml
 from freezegun import freeze_time
 
 from snooze.db.database import Database, get_database
 
 log = getLogger('tests')
+
+# Tests in this module poke at Mongo-specific behaviour and the
+# mongomock backend; they don't make sense to run against Postgres.
+pytestmark = pytest.mark.mongo_only
 
 def test_mongo_all(db):
     db.write('record', {'a': '1', 'b': '2'})

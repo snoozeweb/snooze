@@ -75,6 +75,7 @@ class BackendDB(Database):
     '''PostgreSQL backend. One :class:`ConnectionPool` is shared across
     threads; each operation acquires a connection for its duration.'''
 
+    name = 'postgres'
     search_fields: Dict[str, List[str]]
 
     def __init__(self, config) -> None:
@@ -366,10 +367,19 @@ class BackendDB(Database):
             where = _convert(condition, self.search_fields.get(collection, []))
             extra: List[sql.Composable] = []
             orderby = pagination.get('orderby')
+            nb_per_page = int(pagination.get('nb_per_page', 0) or 0)
+            # Accept both ``page_number`` (used by the falcon routes and
+            # the Mongo backend) and ``page_nb`` (the name in the
+            # ``Pagination`` TypedDict).
+            page_nb = int(pagination.get('page_number') or pagination.get('page_nb') or 1)
             if orderby:
                 extra.extend(render_order_by(orderby, asc=bool(pagination.get('asc', True))))
-            nb_per_page = int(pagination.get('nb_per_page', 0) or 0)
-            page_nb = int(pagination.get('page_nb', 1) or 1)
+            elif nb_per_page > 0:
+                # Without an explicit sort, default to insertion order via
+                # the auto-incrementing ``seq`` column. Matches Mongo's
+                # natural-order semantics and is stable across pages even
+                # for rows inserted in the same transaction.
+                extra.append(sql.SQL('ORDER BY seq ASC'))
             with conn.cursor() as cur:
                 cur.execute(
                     sql.SQL('SELECT count(*) AS c FROM {} WHERE {}').format(tbl, where),

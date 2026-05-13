@@ -67,6 +67,8 @@ test = [
     "pytest-timeout>=2.3,<3",
     "freezegun>=1.5,<2",
     "responses>=0.25,<1",
+    "psycopg[binary,pool]>=3.2,<4",
+    "testcontainers[postgres]>=4,<5",
 ]
 build = [
     "virtualenv>=20.25,<21",
@@ -113,6 +115,10 @@ addopts = [
     "--import-mode=importlib",
 ]
 pythonpath = ["src", "."]
+markers = [
+    "mongo_only: test depends on MongoDB-specific behaviour (skipped on Postgres backend)",
+    "postgres_only: test depends on PostgreSQL-specific behaviour (skipped on Mongo backend)",
+]
 
 
 [tool.ruff.per-file-ignores]
