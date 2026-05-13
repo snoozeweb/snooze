@@ -9,6 +9,10 @@ on:
 jobs:
   pytest:
     runs-on: ubuntu-latest
+    # GitHub-hosted ubuntu-latest runners ship Docker, which the
+    # ``pg_dsn`` testcontainers fixture uses to spin up a real
+    # postgres:16-alpine for the Postgres-parametrised tests. Nothing
+    # extra needs to be installed here.
     steps:
       - name: Checking out git repository
         uses: actions/checkout@v4

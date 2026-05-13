@@ -1,0 +1,21 @@
+# Example of a PostgreSQL configuration.
+#
+# Either set ``dsn`` to a full libpq connection string (which overrides
+# the individual fields), or set host/port/database/user/password
+# directly. Any field left unset falls back to the standard ``PG*``
+# environment variables (``PGHOST``, ``PGPORT``, ``PGDATABASE``,
+# ``PGUSER``, ``PGPASSWORD``, ``PGSSLMODE``).
+#
+# Install the backend with: ``uv sync --extra postgres``
+---
+database:
+    type: postgres
+    host: localhost
+    port: 5432
+    database: snooze
+    user: snooze
+    password: snooze
+    sslmode: prefer
+    # Optional connection-pool tuning (defaults: min=1, max=10).
+    pool_min_size: 1
+    pool_max_size: 10

@@ -1,3 +1,17 @@
+## [Unreleased]
+
+### Changes
+* Core: PostgreSQL backend (experimental). Set `database.type: postgres`
+  in `core.yaml` to opt in; install the driver with
+  `uv sync --extra postgres`. Documents are stored one-table-per-collection
+  in a single `jsonb` column so the schemaless plugin contract is
+  preserved. See `docs/configuration/postgres.rst` for the full config
+  surface and trade-offs versus MongoDB.
+* Tests: the suite is now parametrised over both backends. CI on
+  `ubuntu-latest` uses testcontainers to spin up a real
+  `postgres:16-alpine` for the Postgres branch; the Mongo branch
+  continues to run against mongomock.
+
 ## v1.6.3
 
 ### Bug fixes

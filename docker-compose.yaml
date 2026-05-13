@@ -93,5 +93,34 @@ services:
         constraints:
           - node.hostname == HOST3
 
+  # Optional Postgres backend. Enable with `docker compose --profile
+  # postgres up postgres snooze-pg`. Snooze defaults to the Mongo
+  # cluster above; this is an alternative single-instance setup.
+  postgres:
+    image: postgres:16-alpine
+    profiles: [postgres]
+    environment:
+      POSTGRES_DB: snooze
+      POSTGRES_USER: snooze
+      POSTGRES_PASSWORD: snooze
+    networks:
+      - snoozenw
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+  snooze-pg:
+    image: snoozeweb/snooze
+    profiles: [postgres]
+    environment:
+      - DATABASE_URL=postgresql://snooze:snooze@postgres:5432/snooze
+    ports:
+      - "5210:5200"
+    networks:
+      - snoozenw
+    depends_on:
+      - postgres
+
 networks:
   snoozenw:
+
+volumes:
+  postgres-data:
