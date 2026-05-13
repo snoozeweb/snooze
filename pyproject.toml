@@ -39,6 +39,11 @@ dependencies = [
     "opentelemetry-instrumentation-pymongo>=0.48b0",
 ]
 
+[project.optional-dependencies]
+postgres = [
+    "psycopg[binary,pool]>=3.2,<4",
+]
+
 [project.scripts]
 snooze-server = "snooze.__main__:main"
 snooze = "snooze.cli.__main__:snooze"

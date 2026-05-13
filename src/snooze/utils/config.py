@@ -425,12 +425,33 @@ class FileConfig(BaseModel, extra=Extra.allow):
     type: Literal['file'] = 'file'
     path: Path = Path('./db.json')
 
+class PostgresConfig(BaseModel, extra=Extra.allow):
+    '''PostgreSQL configuration passed to psycopg.
+
+    Either provide an explicit ``dsn`` libpq connection string, or set the
+    individual fields below. Anything left unset falls back to the
+    standard ``PG*`` environment variables (``PGHOST``, ``PGPORT``,
+    ``PGDATABASE``, ``PGUSER``, ``PGPASSWORD``, ``PGSSLMODE``).'''
+    type: Literal['postgres'] = 'postgres'
+    dsn: Optional[str] = Field(
+        default=None,
+        description='libpq connection string. When set, overrides the individual fields.',
+    )
+    host: Optional[str] = Field(default=None, description='Postgres host.')
+    port: Optional[int] = Field(default=None, description='Postgres port (default 5432).')
+    database: Optional[str] = Field(default=None, description='Database name (default "snooze").')
+    user: Optional[str] = Field(default=None, description='Postgres user.')
+    password: Optional[str] = Field(default=None, description='Postgres password.')
+    sslmode: Optional[str] = Field(default=None, description='libpq sslmode (disable/allow/prefer/require/…).')
+    pool_min_size: int = Field(default=1, description='Minimum size of the connection pool.')
+    pool_max_size: int = Field(default=10, description='Maximum size of the connection pool.')
+
 class CorsConfig(BaseModel):
     '''CORS configuration for the web server'''
     allow_origins: str = '*'
     allow_credentials: str = '*'
 
-DatabaseConfig = Union[MongodbConfig, FileConfig]
+DatabaseConfig = Union[MongodbConfig, FileConfig, PostgresConfig]
 
 class CoreConfig(ReadOnlyConfig):
     '''Core configuration. Not editable live. Require a restart of the server.'''
