@@ -36,8 +36,8 @@ DEFAULT_CONFIG = {
 def write_data(db, request):
     '''Write data fetch with get_data(request, 'data') to a database'''
     data = get_data(request, 'data', {})
-    for collection in db.db.list_collection_names():
-        db.db[collection].drop()
+    for collection in db.list_collections():
+        db.drop(collection)
     for key, value in data.items():
         db.write(key, value)
 
@@ -93,6 +93,6 @@ def fixture_client(api, request):
     client = TestClient(api.handler, headers=headers)
     data = get_data(request, 'data', {})
     for collection, items in data.items():
-        api.core.db.db[collection].drop()
+        api.core.db.drop(collection)
         client.simulate_post(f"/api/{collection}", json=items)
     return client

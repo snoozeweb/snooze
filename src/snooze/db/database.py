@@ -71,8 +71,10 @@ class Database(ABC):
         '''Get one element based on a simple key=value filter'''
 
     @abstractmethod
-    def replace_one(self, collection: str, uid: str, obj: dict, update_time: bool = True):
-        '''Insert an object if absent'''
+    def replace_one(self, collection: str, search: dict, obj: dict, update_time: bool = True):
+        '''Replace the first object matching ``search`` with ``obj`` (upsert).
+        Callers consistently pass a ``{'uid': …}`` or ``{'name': …}`` dict as the
+        match filter — never a bare uid string.'''
 
     @abstractmethod
     def update_one(self, collection: str, uid: str, obj: dict, update_time: bool = True):
@@ -81,6 +83,68 @@ class Database(ABC):
     @abstractmethod
     def convert(self, condition: Condition, search_fields: List[str] = []):
         '''Convert a condition (search) into a query usable in the database backend'''
+
+    @abstractmethod
+    def list_collections(self) -> List[str]:
+        '''Return the list of existing collection (or table) names in the backend.'''
+
+    @abstractmethod
+    def drop(self, collection: str):
+        '''Drop a collection entirely.'''
+
+    @abstractmethod
+    def backup(self, backup_path: str, backup_exclude: Optional[List[str]] = None):
+        '''Dump every collection (except excluded ones) under ``backup_path``.'''
+
+    @abstractmethod
+    def bulk_increment(self, collection: str, updates: List[Tuple[dict, dict]], upsert: bool = False):
+        '''Apply a batch of increments: each ``(search, fields_to_increment)`` tuple
+        adds the given field deltas to the document(s) matching ``search``.'''
+
+    @abstractmethod
+    def inc_many(self, collection: str, field: str, condition: Optional[Condition] = None, value: int = 1):
+        '''Increment ``field`` by ``value`` on every document matching ``condition``.'''
+
+    @abstractmethod
+    def set_fields(self, collection: str, fields: dict, condition: Optional[Condition] = None):
+        '''Set the given fields on every document matching ``condition``.'''
+
+    @abstractmethod
+    def append_list(self, collection: str, fields: dict, condition: Optional[Condition] = None):
+        '''Append values to list-typed fields on every document matching ``condition``.
+        ``fields`` is a ``{field_name: [values, …]}`` map.'''
+
+    @abstractmethod
+    def prepend_list(self, collection: str, fields: dict, condition: Optional[Condition] = None):
+        '''Prepend values to list-typed fields on every document matching ``condition``.'''
+
+    @abstractmethod
+    def remove_list(self, collection: str, fields: dict, condition: Optional[Condition] = None):
+        '''Remove values from list-typed fields on every document matching ``condition``.'''
+
+    @abstractmethod
+    def compute_stats(self, collection: str, date_from, date_until, groupby: str = 'hour') -> dict:
+        '''Aggregate counts grouped by ``groupby`` (hour/day/…) between two dates.'''
+
+    @abstractmethod
+    def cleanup_timeout(self, collection: str) -> int:
+        '''Delete records whose ``timeout + date_epoch`` is in the past.'''
+
+    @abstractmethod
+    def cleanup_comments(self) -> int:
+        '''Delete comments whose parent record no longer exists.'''
+
+    @abstractmethod
+    def cleanup_orphans(self, collection: str) -> int:
+        '''Delete documents whose parent reference no longer resolves.'''
+
+    @abstractmethod
+    def cleanup_audit_logs(self, interval: float):
+        '''Delete audit log entries older than ``interval`` seconds.'''
+
+    @abstractmethod
+    def renumber_field(self, collection: str, field: str):
+        '''Re-pack a positional ordering field so values are contiguous.'''
 
 class AsyncIncrement:
     '''An object representing an increment in a collection.

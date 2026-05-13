@@ -477,23 +477,23 @@ class BackendDB(Database):
             log.error("Cannot find collection %s", collection)
             return {'data': 0}
 
-    def compute_stats(self, collection, date_from, date_until, group_by='hour'):
-        log.debug("Compute metrics on `%s` from %s until %s grouped by %s", collection, date_from, date_until, group_by)
+    def compute_stats(self, collection, date_from, date_until, groupby='hour'):
+        log.debug("Compute metrics on `%s` from %s until %s grouped by %s", collection, date_from, date_until, groupby)
         date_from = date_from.replace(minute=0, second=0, microsecond=0)
         if collection not in self.db.list_collection_names():
             log.debug("Compute stats: collection %s does not exist", collection)
             return {'data': [], 'count': 0}
-        if group_by == 'hour':
+        if groupby == 'hour':
             date_format = '%Y-%m-%dT%H:00%z'
-        elif group_by == 'day':
+        elif groupby == 'day':
             date_format = '%Y-%m-%dT00:00%z'
-        elif group_by == 'month':
+        elif groupby == 'month':
             date_format = '%Y-%m-01T00:00%z'
-        elif group_by == 'year':
+        elif groupby == 'year':
             date_format = '%Y-01-01T00:00%z'
-        elif group_by == 'week':
+        elif groupby == 'week':
             date_format = '%Y-%VT00:00%z'
-        elif group_by == 'weekday':
+        elif groupby == 'weekday':
             date_format = '%u'
         else:
             date_format = '%Y-%m-%dT%H:00%z'
@@ -515,6 +515,9 @@ class BackendDB(Database):
     def drop(self, collection):
         if collection in self.db.list_collection_names():
             self.db[collection].drop()
+
+    def list_collections(self) -> List[str]:
+        return list(self.db.list_collection_names())
 
     def convert(self, condition: Condition, search_fields: list = []):
         '''Convert `Condition` type from snooze.utils to Mongodb

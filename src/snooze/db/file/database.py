@@ -567,6 +567,9 @@ class BackendDB(Database):
         if collection in self.db.tables():
             self.db.drop_table(collection)
 
+    def list_collections(self) -> List[str]:
+        return list(self.db.tables())
+
     def convert(self, array):
         """
         Convert `Condition` type from snooze.utils
