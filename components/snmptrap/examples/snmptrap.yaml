@@ -7,8 +7,8 @@
 listening_address: 0.0.0.0
 
 # `listening_port`: Port to listen to. Please note than when choosing a port
-# lower than 1024 (like 163 for instance), you will need to run the process as root.
-listening_port: 1163
+# lower than 1024 (like 162 for instance), you will need to run the process as root.
+listening_port: 162
 
 ##############
 # SNMP options
@@ -18,6 +18,27 @@ listening_port: 1163
 # be loaded and used to provide MIB names instead of OIDs when creating records.
 mib_dirs:
    - /usr/share/snmp/mibs
+
+# `community`: SNMPv1/v2c community string (default: public)
+community: public
+
+# `v3_users`: List of SNMPv3 users for authentication
+# Each user can have:
+#   - username: (required) The SNMPv3 username
+#   - auth_protocol: none, md5, sha, sha224, sha256, sha384, sha512
+#   - auth_key: Authentication passphrase (required if auth_protocol is not 'none')
+#   - priv_protocol: none, des, 3des, aes, aes128, aes192, aes256
+#   - priv_key: Privacy passphrase (required if priv_protocol is not 'none')
+#
+# Example:
+# v3_users:
+#   - username: awx
+#     auth_protocol: sha
+#     auth_key: myauthpassphrase
+#     priv_protocol: aes
+#     priv_key: myprivpassphrase
+#   - username: monitor
+#     auth_protocol: none
 
 ################
 # Worker options
