@@ -1,16 +1,18 @@
-import { useCallback } from "react";
+import { useCallback, useState } from "react";
 import { useNavigate, useSearch } from "@tanstack/react-router";
 import { DataTable, type RowAction } from "@/shared/ui/DataTable";
 import { Switch } from "@/shared/ui/Switch";
 import { Tooltip } from "@/shared/ui/Tooltip";
 import { toast } from "@/shared/ui/toast/useToast";
+import { Button } from "@/shared/ui/Button";
 import { ApiError } from "@/lib/api/client";
-import { Records, useCommentRecord, type CommentInput } from "./api";
+import { Records, useCommentRecord, useShelveRecord } from "./api";
 import { AlertDetailDrawer } from "./AlertDetailDrawer";
 import { AlertsFilters, type AlertFilters } from "./Filters";
 import { alertColumns } from "./columns";
 import { useAutoRefresh } from "./useAutoRefresh";
 import type { AlertState, Record_ } from "./types";
+import { ActionDialog, type ActionType } from "./ActionDialog";
 import styles from "./AlertsPage.module.css";
 
 type AlertsSearch = AlertFilters & {
@@ -28,6 +30,10 @@ export function AlertsPage() {
   const navigate = useNavigate();
   const auto = useAutoRefresh(5000);
   const commentMut = useCommentRecord();
+
+  const [selectedKeys, setSelectedKeys] = useState<Set<string>>(new Set());
+  const [dialog, setDialog] = useState<{ type: ActionType; records: Record_[] } | null>(null);
+  const shelveMut = useShelveRecord();
 
   const page = search.page ?? 1;
   const orderby = search.orderby ?? "date_epoch";
@@ -99,51 +105,150 @@ export function AlertsPage() {
       const isOpen = state === "" || state === "open";
       const isAcked = state === "ack";
       const isClosed = state === "close";
-
-      const fire = (type: CommentInput["type"], label: string) => async () => {
-        try {
-          await commentMut.mutateAsync({ record_uid: row.uid ?? "", type });
-          toast.success(`${label} • ${row.host ?? row.uid ?? ""}`);
-        } catch (e) {
-          const detail = e instanceof ApiError ? e.detail : "Action failed";
-          toast.error(detail);
-        }
-      };
+      const isShelved = state === "shelved" || (row.ttl !== undefined && row.ttl < 0);
 
       const out: RowAction[] = [];
+
+      const openDialog = (type: ActionType) => setDialog({ type, records: [row] });
+
       if (isOpen) {
         out.push({
           key: "ack",
           label: "Acknowledge",
           icon: "thumbs-up",
-          onSelect: () => void fire("ack", "Acknowledged")(),
+          onSelect: () => openDialog("ack"),
         });
         out.push({
           key: "close",
           label: "Close",
           icon: "lock",
-          onSelect: () => void fire("close", "Closed")(),
+          onSelect: () => openDialog("close"),
         });
-      }
-      if (isAcked) {
+        out.push({
+          key: "esc",
+          label: "Re-escalate",
+          icon: "rotate-cw",
+          onSelect: () => openDialog("esc"),
+        });
+      } else if (isAcked) {
         out.push({
           key: "close",
           label: "Close",
           icon: "lock",
-          onSelect: () => void fire("close", "Closed")(),
+          onSelect: () => openDialog("close"),
         });
-      }
-      if (isClosed) {
+        out.push({
+          key: "esc",
+          label: "Re-escalate",
+          icon: "rotate-cw",
+          onSelect: () => openDialog("esc"),
+        });
+      } else if (isClosed) {
         out.push({
           key: "open",
           label: "Re-open",
           icon: "rotate-cw",
-          onSelect: () => void fire("open", "Re-opened")(),
+          onSelect: () => openDialog("open"),
         });
       }
+
+      out.push({
+        key: "comment",
+        label: "Comment",
+        icon: "message-square",
+        onSelect: () => openDialog("comment"),
+      });
+
+      if (!isClosed) {
+        out.push({
+          key: isShelved ? "unshelve" : "shelve",
+          label: isShelved ? "Unshelve" : "Shelve",
+          icon: isShelved ? "eye" : "eye-off",
+          onSelect: () => {
+            void (async () => {
+              try {
+                await shelveMut.mutateAsync({ uid: row.uid ?? "", shelve: !isShelved });
+                toast.success(
+                  `${isShelved ? "Unshelved" : "Shelved"} • ${row.host ?? row.uid ?? ""}`,
+                );
+              } catch (e) {
+                const detail = e instanceof ApiError ? e.detail : "Action failed";
+                toast.error(detail);
+              }
+            })();
+          },
+        });
+      }
+
       return out;
     },
-    [commentMut],
+    [shelveMut],
+  );
+
+  const bulkActions = useCallback((rows: Record_[]) => {
+    const openBulkDialog = (type: ActionType) => setDialog({ type, records: rows });
+    return (
+      <>
+        <Button
+          size="sm"
+          variant="secondary"
+          leadingIcon="thumbs-up"
+          onClick={() => openBulkDialog("ack")}
+        >
+          Acknowledge ({rows.length})
+        </Button>
+        <Button
+          size="sm"
+          variant="secondary"
+          leadingIcon="lock"
+          onClick={() => openBulkDialog("close")}
+        >
+          Close ({rows.length})
+        </Button>
+        <Button
+          size="sm"
+          variant="secondary"
+          leadingIcon="rotate-cw"
+          onClick={() => openBulkDialog("esc")}
+        >
+          Re-escalate ({rows.length})
+        </Button>
+        <Button
+          size="sm"
+          variant="secondary"
+          leadingIcon="message-square"
+          onClick={() => openBulkDialog("comment")}
+        >
+          Comment ({rows.length})
+        </Button>
+      </>
+    );
+  }, []);
+
+  const submitDialog = useCallback(
+    async ({ message }: { message: string }) => {
+      if (!dialog) return;
+      const { type, records } = dialog;
+      const results = await Promise.allSettled(
+        records.map((r) =>
+          commentMut.mutateAsync({
+            record_uid: r.uid ?? "",
+            type,
+            ...(message ? { message } : {}),
+          }),
+        ),
+      );
+      const ok = results.filter((r) => r.status === "fulfilled").length;
+      const failed = results.length - ok;
+      if (failed === 0) {
+        toast.success(`${ok} alert${ok === 1 ? "" : "s"} updated`);
+        setDialog(null);
+        setSelectedKeys(new Set());
+      } else {
+        toast.error(`${failed} of ${records.length} failed; ${ok} succeeded`);
+      }
+    },
+    [commentMut, dialog],
   );
 
   return (
@@ -178,6 +283,10 @@ export function AlertsPage() {
         columns={alertColumns}
         rowKey={(r) => r.uid ?? `${r.host ?? ""}-${r.date_epoch ?? 0}`}
         loading={list.isPending}
+        selectable
+        selectedKeys={selectedKeys}
+        onSelectionChange={setSelectedKeys}
+        bulkActions={bulkActions}
         serverSort={{
           sortBy: orderby,
           order: asc ? "asc" : "desc",
@@ -197,6 +306,18 @@ export function AlertsPage() {
         }}
       />
       <AlertDetailDrawer uid={detailUid} onClose={closeDrawer} />
+      {dialog ? (
+        <ActionDialog
+          open
+          onOpenChange={(o) => {
+            if (!o) setDialog(null);
+          }}
+          actionType={dialog.type}
+          records={dialog.records}
+          onConfirm={submitDialog}
+          submitting={commentMut.isPending}
+        />
+      ) : null}
     </div>
   );
 }

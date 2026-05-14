@@ -64,7 +64,7 @@ describe("AlertsPage", () => {
     expect(screen.getByText(/disk full/)).toBeInTheDocument();
   });
 
-  it("offers an Acknowledge action on open rows that POSTs to /comment", async () => {
+  it("offers an Acknowledge action on open rows that POSTs to /comment via dialog", async () => {
     const calls: unknown[] = [];
     mswServer.use(
       http.get("/api/v1/record", () =>
@@ -83,6 +83,9 @@ describe("AlertsPage", () => {
     await waitFor(() => expect(screen.getByText("srv-1")).toBeInTheDocument());
     await user.click(screen.getAllByRole("button", { name: /row actions/i })[0]!);
     await user.click(screen.getByRole("menuitem", { name: /acknowledge/i }));
+    // Dialog should appear; confirm it
+    await waitFor(() => expect(screen.getByRole("dialog")).toBeInTheDocument());
+    await user.click(screen.getByRole("button", { name: /^acknowledge$/i }));
     await waitFor(() => expect(calls.length).toBe(1));
     expect(calls[0]).toMatchObject({ record_uid: "r1", type: "ack" });
   });
@@ -127,5 +130,65 @@ describe("AlertsPage", () => {
     // Click the message cell (Code-wrapped host might intercept clicks; message is safe).
     await user.click(screen.getByText("boom"));
     await waitFor(() => expect(screen.getByRole("dialog", { name: /srv-1/i })).toBeInTheDocument());
+  });
+
+  it("bulk acknowledge: posts one comment per selected row, then clears selection", async () => {
+    const calls: unknown[] = [];
+    mswServer.use(
+      http.get("/api/v1/record", () =>
+        HttpResponse.json({
+          data: [
+            { uid: "r1", host: "srv-1", state: "open", date_epoch: 1 },
+            { uid: "r2", host: "srv-2", state: "open", date_epoch: 2 },
+          ],
+          meta: { count: 2, limit: 50, offset: 0, total: 2 },
+        }),
+      ),
+      http.post("/api/v1/comment", async ({ request }) => {
+        calls.push(await request.json());
+        return HttpResponse.json({ ok: true });
+      }),
+    );
+    const user = userEvent.setup();
+    setup();
+    await waitFor(() => expect(screen.getByText("srv-1")).toBeInTheDocument());
+
+    await user.click(screen.getByRole("checkbox", { name: /select all/i }));
+    await user.click(screen.getByRole("button", { name: /acknowledge \(2\)/i }));
+    await user.click(screen.getByRole("button", { name: /^acknowledge$/i }));
+
+    await waitFor(() => expect(calls).toHaveLength(2));
+    const types = (calls as Array<{ type: string }>).map((c) => c.type);
+    expect(types.every((t) => t === "ack")).toBe(true);
+  });
+
+  it("comment-only: requires a message and posts type=comment", async () => {
+    const calls: unknown[] = [];
+    mswServer.use(
+      http.get("/api/v1/record", () =>
+        HttpResponse.json({
+          data: [{ uid: "r1", host: "srv-1", state: "open", date_epoch: 1 }],
+          meta: { count: 1, limit: 50, offset: 0, total: 1 },
+        }),
+      ),
+      http.post("/api/v1/comment", async ({ request }) => {
+        calls.push(await request.json());
+        return HttpResponse.json({ ok: true });
+      }),
+    );
+    const user = userEvent.setup();
+    setup();
+    await waitFor(() => expect(screen.getByText("srv-1")).toBeInTheDocument());
+
+    await user.click(screen.getAllByRole("button", { name: /row actions/i })[0]!);
+    await user.click(screen.getByRole("menuitem", { name: /^comment$/i }));
+    // Try submitting with empty message — should be blocked.
+    await user.click(screen.getByRole("button", { name: /^comment$/i }));
+    expect(calls).toHaveLength(0);
+
+    await user.type(screen.getByPlaceholderText(/type your comment/i), "investigating");
+    await user.click(screen.getByRole("button", { name: /^comment$/i }));
+    await waitFor(() => expect(calls).toHaveLength(1));
+    expect(calls[0]).toMatchObject({ record_uid: "r1", type: "comment", message: "investigating" });
   });
 });
