@@ -1,0 +1,2 @@
+usr/bin/snooze-syslog
+packaging/systemd/snooze-syslog.service lib/systemd/system/

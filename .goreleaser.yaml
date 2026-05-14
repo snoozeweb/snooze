@@ -1,0 +1,139 @@
+version: 2
+project_name: snooze
+
+before:
+  hooks:
+    - go mod tidy
+
+builds:
+  - id: snooze-server
+    main: ./cmd/snooze-server
+    binary: snooze-server
+    env: [CGO_ENABLED=0]
+    goos: [linux, darwin]
+    goarch: [amd64, arm64]
+    flags: ["-trimpath", "-tags=osusergo,netgo"]
+    ldflags:
+      - -s -w
+      - -X github.com/japannext/snooze/internal/version.Version={{.Version}}
+      - -X github.com/japannext/snooze/internal/version.Commit={{.Commit}}
+      - -X github.com/japannext/snooze/internal/version.Date={{.Date}}
+  - id: snooze
+    main: ./cmd/snooze
+    binary: snooze
+    env: [CGO_ENABLED=0]
+    goos: [linux, darwin]
+    goarch: [amd64, arm64]
+    flags: ["-trimpath", "-tags=osusergo,netgo"]
+    ldflags:
+      - -s -w
+      - -X github.com/japannext/snooze/internal/version.Version={{.Version}}
+      - -X github.com/japannext/snooze/internal/version.Commit={{.Commit}}
+      - -X github.com/japannext/snooze/internal/version.Date={{.Date}}
+  - id: snooze-syslog
+    main: ./cmd/snooze-syslog
+    binary: snooze-syslog
+    env: [CGO_ENABLED=0]
+    goos: [linux]
+    goarch: [amd64, arm64]
+    flags: ["-trimpath", "-tags=osusergo,netgo"]
+    ldflags: ["-s -w"]
+  - id: snooze-snmptrap
+    main: ./cmd/snooze-snmptrap
+    binary: snooze-snmptrap
+    env: [CGO_ENABLED=0]
+    goos: [linux]
+    goarch: [amd64, arm64]
+    flags: ["-trimpath", "-tags=osusergo,netgo"]
+    ldflags: ["-s -w"]
+  - id: snooze-smtp
+    main: ./cmd/snooze-smtp
+    binary: snooze-smtp
+    env: [CGO_ENABLED=0]
+    goos: [linux]
+    goarch: [amd64, arm64]
+    flags: ["-trimpath", "-tags=osusergo,netgo"]
+    ldflags: ["-s -w"]
+  - id: snooze-relp
+    main: ./cmd/snooze-relp
+    binary: snooze-relp
+    env: [CGO_ENABLED=0]
+    goos: [linux]
+    goarch: [amd64, arm64]
+    flags: ["-trimpath", "-tags=osusergo,netgo"]
+    ldflags: ["-s -w"]
+  - id: snooze-googlechat
+    main: ./cmd/snooze-googlechat
+    binary: snooze-googlechat
+    env: [CGO_ENABLED=0]
+    goos: [linux]
+    goarch: [amd64, arm64]
+    flags: ["-trimpath", "-tags=osusergo,netgo"]
+    ldflags: ["-s -w"]
+  - id: snooze-mattermost
+    main: ./cmd/snooze-mattermost
+    binary: snooze-mattermost
+    env: [CGO_ENABLED=0]
+    goos: [linux]
+    goarch: [amd64, arm64]
+    flags: ["-trimpath", "-tags=osusergo,netgo"]
+    ldflags: ["-s -w"]
+  - id: snooze-teams
+    main: ./cmd/snooze-teams
+    binary: snooze-teams
+    env: [CGO_ENABLED=0]
+    goos: [linux]
+    goarch: [amd64, arm64]
+    flags: ["-trimpath", "-tags=osusergo,netgo"]
+    ldflags: ["-s -w"]
+  - id: snooze-pacemaker
+    main: ./cmd/snooze-pacemaker
+    binary: snooze-pacemaker
+    env: [CGO_ENABLED=0]
+    goos: [linux]
+    goarch: [amd64, arm64]
+    flags: ["-trimpath", "-tags=osusergo,netgo"]
+    ldflags: ["-s -w"]
+  - id: snooze-jira
+    main: ./cmd/snooze-jira
+    binary: snooze-jira
+    env: [CGO_ENABLED=0]
+    goos: [linux]
+    goarch: [amd64, arm64]
+    flags: ["-trimpath", "-tags=osusergo,netgo"]
+    ldflags: ["-s -w"]
+
+archives:
+  - formats: [tar.gz]
+    name_template: "{{ .Binary }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+
+nfpms:
+  - id: snooze-deb-rpm
+    package_name: snooze
+    vendor: japannext
+    homepage: https://snoozeweb.net
+    maintainer: Snooze maintainers <noreply@snoozeweb.net>
+    description: Snooze monitoring server and components.
+    license: AGPL-3.0
+    formats: [deb, rpm]
+    contents:
+      - src: packaging/systemd/snooze-server.service
+        dst: /usr/lib/systemd/system/snooze-server.service
+      - src: packaging/systemd/snooze-syslog.service
+        dst: /usr/lib/systemd/system/snooze-syslog.service
+      - src: packaging/systemd/snooze-snmptrap.service
+        dst: /usr/lib/systemd/system/snooze-snmptrap.service
+
+checksum:
+  name_template: "checksums.txt"
+
+snapshot:
+  version_template: "{{ .Version }}-next"
+
+changelog:
+  sort: asc
+  filters:
+    exclude:
+      - "^docs:"
+      - "^test:"
+      - "^chore:"

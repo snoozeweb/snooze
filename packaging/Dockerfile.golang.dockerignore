@@ -1,0 +1,83 @@
+# Per-Dockerfile .dockerignore (BuildKit feature).
+#
+# Only the files needed by `packaging/Dockerfile.golang` should reach the
+# daemon. The Go build needs go.mod/go.sum + cmd/ + internal/ + pkg/ + api/;
+# the web build needs the web/ directory minus its node_modules/dist.
+
+# ---- Version control / CI metadata ----
+.git/
+.gitattributes
+.gitignore
+.github/
+
+# ---- Editor / tooling caches ----
+.idea/
+.vscode/
+*.swp
+*.swo
+.DS_Store
+
+# ---- Test + lint caches ----
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.coverage
+htmlcov/
+*.pyc
+*.pyo
+__pycache__/
+testdata-tmp/
+coverage.out
+coverage.html
+*.test
+*.prof
+
+# ---- Local virtualenvs / dists / builds ----
+.venv/
+venv/
+dist/
+build/
+*.egg-info/
+
+# ---- Web build artefacts (rebuilt inside the image) ----
+web/node_modules/
+web/dist/
+web/coverage/
+web/.nyc_output/
+node_modules/
+
+# ---- Task/dev runtime junk ----
+.env
+.env.local
+.env.*.local
+.task/
+tmp/
+log/
+*.log
+
+# ---- Legacy Python sources — not used by the Go image ----
+src/
+tests/
+pyproject.toml
+uv.lock
+.python-version
+
+# ---- Doc artefacts ----
+docs/_build/
+docs/build/
+
+# ---- Other packaging trees the Go image never touches ----
+packaging/helm/
+packaging/debian/
+packaging/rpm/
+packaging/files/
+packaging/Dockerfile
+packaging/Dockerfile-render
+packaging/Dockerfile.golang
+packaging/Dockerfile.golang.dockerignore
+
+# ---- Compose / nginx — runtime concerns, not build concerns ----
+docker-compose.yaml
+nginx.conf
+docker-entrypoint.sh
+snooze-server.dsc

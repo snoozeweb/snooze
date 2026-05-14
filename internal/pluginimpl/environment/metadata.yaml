@@ -1,0 +1,10 @@
+---
+name: 'Environment'
+desc: 'An endpoint to store environment'
+# Python source has `force_order: 'tree_order'`. In Go, Metadata.ForceOrder
+# is an int (UI rank). String sentinel collapses to 0 (unordered).
+force_order: 0
+route_defaults:
+    primary: [name]
+    duplicate_policy: 'reject'
+    check_permissions: true

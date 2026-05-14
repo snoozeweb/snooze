@@ -1,5 +1,5 @@
-snooze-server (__VERSION__) stable; urgency=low
+snooze (3.0.0-1) unstable; urgency=medium
 
-  * Check out https://github.com/snoozeweb/snooze/blob/master/CHANGELOG.md
+  * Go rewrite (Phase 1-9 of the rewrite plan).
 
- -- Florian Dematraz <florian.dematraz@snoozeweb.net>  Sat, 01 Jan 2000 00:00:00 +0000
+ -- Snooze maintainers <dev@japannext.com>  Thu, 14 May 2026 00:00:00 +0000

@@ -1,27 +1,41 @@
-.. SnoozeWeb documentation master file, created by
-   sphinx-quickstart on Tue May 10 11:28:09 2022.
-   You can adapt this file completely to your liking, but it should at least
-   contain the root `toctree` directive.
+.. SnoozeWeb documentation master file.
 
 =========
 SnoozeWeb
 =========
 
-SnoozeWeb is a powerful monitoring tool used for log aggregation and alerting. It comes with the following features:
+.. note::
 
-* Backend + Web interface
-* Local / LDAP / JWT token based authentication
-* Built-in clustering for scalability
-* Large number of sources as inputs
-* Log aggregation
-* Log manipulation
-* Log archiving
-* Alerting policies
-* Various alerting methods
-* Auto housekeeping
-* Auto backups
-* Metrics
-* Audit logs
+   **v2.0 is the Go rewrite.** The Python codebase is retired. See the
+   :doc:`migration/index` for the upgrade path and the project
+   `CHANGELOG <https://github.com/snoozeweb/snooze/blob/master/CHANGELOG.md>`_
+   for the breaking-change inventory.
+
+SnoozeWeb is a monitoring tool used for log aggregation and alerting. It
+ingests alerts from many sources (syslog, SNMP traps, RELP, AlertManager,
+Grafana, InfluxDB 2, Kapacitor, Prometheus, custom webhooks), applies
+rule/aggregate/snooze/notification pipelines, and ships outbound
+notifications to mail, chat (Mattermost, Teams, Google Chat), webhooks,
+or custom action plugins.
+
+Features
+========
+
+* Single-binary Go server (`snooze-server`) plus a separate `snooze`
+  CLI and eight optional auxiliary daemons (`snooze-relp`,
+  `snooze-syslog`, `snooze-snmptrap`, `snooze-smtp`, `snooze-mattermost`,
+  `snooze-googlechat`, `snooze-teams`, `snooze-pacemaker`).
+* Three pluggable backends: SQLite (zero-deps default), MongoDB
+  (production with replica sets), Postgres (production with
+  CloudNativePG / managed services).
+* Three message buses, matched to the backend (in-process channel,
+  Mongo change streams, Postgres LISTEN/NOTIFY).
+* Local + LDAP + anonymous authentication. Bearer-JWT API tokens.
+* OpenAPI 3.1 specification at ``/api/openapi.yaml``.
+* Structured ``log/slog`` JSON logs, OpenTelemetry traces, a Prometheus
+  registry served at ``/metrics``.
+* Distroless container images at ``ghcr.io/japannext/snooze-<binary>``.
+* Helm chart with ``database.kind: mongo | postgres | sqlite``.
 
 .. figure:: images/web_alerts.png
     :align: center
@@ -30,47 +44,45 @@ SnoozeWeb is a powerful monitoring tool used for log aggregation and alerting. I
 Demo
 ====
 
-Try it now on: https://try.snoozeweb.net
+Try it at https://try.snoozeweb.net.
+
+Quick start
+===========
+
+.. code-block:: console
+
+   # Local docker-compose with SQLite (single-replica)
+   $ docker compose --profile sqlite up
+
+   # …or with a 3-node MongoDB replica set + nginx load balancer
+   $ docker compose --profile mongo up
+
+   # …or with a single Postgres instance
+   $ docker compose --profile postgres up
+
+The web UI listens on ``http://localhost:5200`` (or ``:80`` behind the
+nginx in the ``mongo`` profile). The bootstrap root password is printed
+once on the server stderr; see
+:doc:`migration/python-to-go` for rotation.
 
 Contribute
 ==========
 
-* SnoozeWeb Core: https://github.com/snoozeweb/snooze
-* Snoozeweb Plugins: https://github.com/snoozeweb/snooze_plugins
-
-Support
-=======
-
+* Repository: https://github.com/snoozeweb/snooze
 * Issue tracker: https://github.com/snoozeweb/snooze/issues
 
 License
 =======
 
-.. code-block:: console
-
-    SnoozeWeb - Log aggregation and alerting
-
-    Copyright 2018-2020 Florian Dematraz <florian.dematraz@snoozeweb.net>
-    Copyright 2018-2020 Guillaume Ludinard <guillaume.ludi@gmail.com>
-    Copyright 2020-2022 Japannext Co., Ltd. <https://www.japannext.co.jp/>
-
-    This program is free software: you can redistribute it and/or modify
-    it under the terms of the GNU Affero General Public License as
-    published by the Free Software Foundation, either version 3 of the
-    License, or (at your option) any later version.
-
-    This program is distributed in the hope that it will be useful,
-    but WITHOUT ANY WARRANTY; without even the implied warranty of
-    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-    GNU Affero General Public License for more details.
-
-    You should have received a copy of the GNU Affero General Public License
-    along with this program.  If not, see <https://www.gnu.org/licenses/>.
+Snooze is licensed under the GNU Affero General Public License v3.0 or
+later. See the ``LICENSE`` file in the repository root for the full
+text.
 
 .. toctree::
    :maxdepth: 2
    :hidden:
 
    getting_started/index
-   general/index
    configuration/index
+   migration/index
+   general/index

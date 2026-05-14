@@ -1,6 +1,120 @@
-## [Unreleased]
+## v2.0.0
+
+v2.0.0 is a ground-up rewrite of snooze-server from Python to Go. The wire
+contract is intentionally close to the Python API but a number of legacy
+shapes have been retired; see `docs/migration/python-to-go.md` for the
+field-by-field mapping and operational steps.
+
+### BREAKING — language / runtime
+* **Full Python → Go rewrite.** Python 3 / Falcon / Pydantic v1 / Kombu are
+  gone. The server, the CLI, and the eight auxiliary daemons
+  (`snooze-relp`, `snooze-syslog`, `snooze-snmptrap`, `snooze-smtp`,
+  `snooze-mattermost`, `snooze-googlechat`, `snooze-teams`,
+  `snooze-pacemaker`) are now ten statically-linked Go binaries
+  published as `ghcr.io/japannext/snooze-<binary>` distroless images.
+* The plugin loader no longer accepts Python modules. Built-in plugins are
+  compiled in via `internal/pluginimpl/all`; out-of-tree plugins must be
+  forked into the Go tree (third-party Python plugins from
+  `snoozeweb/snooze_plugins` are not loadable at runtime).
+
+### BREAKING — HTTP API
+* **Authorization header**: `Authorization: JWT <token>` is no longer
+  accepted. Clients MUST send `Authorization: Bearer <token>`. Tokens
+  themselves are still HS256 JWTs (`HS384`/`HS512` selectable in
+  `core.yaml`).
+* **List envelope**: the bare-array response (`[{…}, {…}]`) is replaced by
+  `{"data": [...], "meta": {"count": N, "limit": L, "offset": O, "total": T}}`
+  for every paginated endpoint.
+* **List URL shape**: the positional
+  `/{search}/{perpage}/{pagenb}/{orderby}/{asc}` URL fragment is replaced
+  by the query-string form
+  `GET /api/v1/{plugin}?q=<base64url-json>&offset=&limit=&orderby=&asc=`
+  plus a richer `POST /api/v1/{plugin}/search` for queries that don't fit
+  in a URL.
+* **Error envelope** is now `{"error": {"code", "message", "details",
+  "request_id", "trace_id"}}`. The string `code` values are stable and
+  machine-readable (`bad_request`, `unauthorized`, `forbidden`,
+  `not_found`, `conflict`, `validation_error`, `unavailable`, `internal`).
+* **CRUD verbs**: `POST /api/v1/{plugin}` for create, `PUT
+  /api/v1/{plugin}/{uid}` for full replace, `PATCH /api/v1/{plugin}/{uid}`
+  for partial update, `DELETE /api/v1/{plugin}` (with `?q=`) for bulk
+  delete. The Python `replace=true` query parameter on `POST` is gone.
+
+### BREAKING — configuration
+* **No more hot-reload of YAML.** `WritableConfig`, the `filelock` dance,
+  and the on-disk-rewriting WebUI form are removed. Runtime-editable
+  settings now live in the database via the new `settings` plugin (see
+  `docs/configuration/`).
+* **Bootstrap config is YAML only.** Files in `/etc/snooze/server-go/`
+  (`core.yaml`, `general.yaml`, `ldap.yaml`, `housekeeper.yaml`,
+  `notification.yaml`, `syncer.yaml`, `web.yaml`, `auth.yaml`). Legacy
+  Python file names continue to load: the koanf provider treats the old
+  `/etc/snooze/server/*.yaml` layout as a drop-in directory.
+* **Environment variables** are now `SNOOZE_<SECTION>_<KEY>` (uppercase
+  with `_` separator) — for example `SNOOZE_CORE_PORT=5201`. The flat
+  `DATABASE_URL` shortcut is preserved.
+
+### BREAKING — authentication
+* The Python bootstrap secret was `sha256("root")` written into the local
+  user document. The Go bootstrap now generates a 24-byte random password,
+  bcrypt-hashes it, and prints the plaintext **once** to stderr on the
+  first start. There is no longer a known default `root:root` credential.
+* Operators upgrading an existing database keep their existing local users.
+  See `docs/migration/python-to-go.md#root-user-rotation` for how to
+  re-bootstrap a fresh root via the admin Unix socket.
+* `JWT` is no longer accepted as a method name in the `Authorization`
+  header or in the audit log; the canonical wire name is `bearer`.
+
+### New
+* **SQLite backend** via `modernc.org/sqlite` (pure-Go, no cgo) with JSON1.
+  Single-binary, single-file deployments are now possible and are the
+  default for `database.type: sqlite` (the legacy alias `file` still maps
+  to SQLite). See `docs/configuration/sqlite.rst`.
+* **Three backend-native message buses**: `inproc` (single-process fast
+  path), Postgres `LISTEN/NOTIFY`, and Mongo change streams. The Kombu /
+  amqp-on-mongo bridge is retired and the `snooze_kombu_*` collections
+  are no longer touched.
+* **Backend-native syncer**: cluster cache invalidation rides on the same
+  Postgres NOTIFY / Mongo change-stream channels; SQLite uses the inproc
+  bus. The standalone 1Hz polling loop is gone, lowering DB load.
+* **Telemetry**: structured `log/slog` JSON loggers (one each for `api`,
+  `audit`, `core`); first-class OpenTelemetry SDK + OTLP gRPC exporter
+  (`--otel-endpoint`), and a Prometheus registry served at `/metrics`.
+* **Packaging**: GoReleaser-driven multi-target releases, signed distroless
+  images at `ghcr.io/japannext/snooze-<binary>`, `.deb` + `.rpm` via
+  nfpm, systemd units per-binary, a refreshed Helm chart with
+  `database.kind: mongo | postgres | sqlite` (SQLite mode renders a
+  StatefulSet + persistent volume; Postgres mode keeps the CloudNativePG
+  hand-off introduced in 1.6).
+* **OpenAPI**: a hand-curated `api/openapi.yaml` describing the v1 surface
+  ships in the repository.
+
+### Dropped
+* TinyDB (replaced by SQLite/JSON1).
+* `WritableConfig` and the filelock-based YAML mutator.
+* Kombu (`kombu[mongodb]`) and the `snooze_kombu_*` MongoDB collections.
+* Dynamic Python plugin module loading and the `snooze.plugins.core`
+  entry-point group.
+* Sphinx-based Python API doc generation (`sphinx.ext.autodoc`,
+  `sphinxcontrib.apidoc`). The narrative docs remain; the rendered Python
+  API is no longer published.
+* Falcon, Pydantic v1, Waitress, the in-process clustering helper.
+
+### Removed configuration knobs
+* `core.cluster_*` (replaced by the syncer, which is enabled by default).
+* `core.bootstrap` legacy keys that mapped to `WritableConfig` (`general`
+  is now seeded by the `settings` plugin).
+* `web.host_static` (the web UI is now served directly by the Go binary or
+  not at all; nginx is no longer required for the SPA).
+
+## v1.7.0
 
 ### Changes
+* Components: `snooze-jira` ported from the standalone Python plugin in
+  `components/jira` to a native Go daemon under `internal/components/jira`
+  (binary `cmd/snooze-jira`). It exposes the same `POST /alert` webhook
+  surface and YAML config keys, plus a bidirectional JIRA poller that
+  closes Snooze records when their JIRA ticket transitions to Done.
 * Core: PostgreSQL backend (experimental). Set `database.type: postgres`
   in `core.yaml` to opt in; install the driver with
   `uv sync --extra postgres`. Documents are stored one-table-per-collection

@@ -1,17 +1,31 @@
+# Local development
+.env.local
+.ca-bundle
 data/
 backups/
-__pycache__/
-*.py[cod]
-build
-dist
-snooze.egg-info
-snooze_server.egg-info
-**/Pipfile
-invoke.yaml
-docs/configuration/*.rst
-!docs/configuration/index.rst
-!docs/configuration/postgres.rst
-.ca-bundle
-.env.local
+logs/
+
+# Helm secrets (committed-by-mistake guard)
 packaging/helm/.helmfile.yaml
 packaging/helm/.values.yaml
+
+# Go build artefacts
+/bin/
+/dist/
+/coverage.out
+/cover.out
+*.test
+*.out
+
+# Sphinx generated configuration pages (rebuilt from sources)
+docs/_build/
+docs/configuration/*.rst
+!docs/configuration/index.rst
+!docs/configuration/core.rst
+!docs/configuration/general.rst
+!docs/configuration/ldap_auth.rst
+!docs/configuration/housekeeping.rst
+!docs/configuration/notifications.rst
+!docs/configuration/syncer.rst
+!docs/configuration/sqlite.rst
+!docs/configuration/postgres.rst

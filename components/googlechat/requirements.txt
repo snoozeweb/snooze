@@ -1,8 +1,0 @@
-falcon
-google-api-python-client
-google-cloud-pubsub
-protobuf
-pyparsing
-python-dateutil
-pyyaml
-snooze-client

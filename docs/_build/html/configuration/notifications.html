@@ -41,14 +41,14 @@
 <link rel="preload" as="script" href="../_static/scripts/pydata-sphinx-theme.js?digest=8878045cc6db502f8baf" />
 
     <script src="../_static/documentation_options.js?v=9eb32ce0"></script>
-    <script src="../_static/doctools.js?v=9bcbadda"></script>
-    <script src="../_static/sphinx_highlight.js?v=dc90522c"></script>
+    <script src="../_static/doctools.js?v=fd6eb6e6"></script>
+    <script src="../_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="../_static/scripts/sphinx-book-theme.js?v=fab101a9"></script>
     <script>DOCUMENTATION_OPTIONS.pagename = 'configuration/notifications';</script>
     <link rel="index" title="Index" href="../genindex.html" />
     <link rel="search" title="Search" href="../search.html" />
     <link rel="next" title="Syncer configuration" href="syncer.html" />
-    <link rel="prev" title="LDAP configuration" href="ldap_auth.html" />
+    <link rel="prev" title="Housekeeper configuration" href="housekeeping.html" />
   <meta name="viewport" content="width=device-width, initial-scale=1"/>
   <meta name="docsearch:language" content="en"/>
   <meta name="docsearch:version" content="" />
@@ -146,9 +146,18 @@
     <div class="bd-toc-item navbar-nav active">
         <ul class="current nav bd-sidenav">
 <li class="toctree-l1 has-children"><a class="reference internal" href="../getting_started/index.html">Getting Started</a><details open="open"><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l2"><a class="reference internal" href="../getting_started/00_GoQuickstart.html">Getting started (Go, v2.0)</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../getting_started/01_Installation.html">Installation on RHEL/Debian</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../getting_started/02_Docker.html">Docker deployment</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../getting_started/03_Login.html">Log in to the web interface</a></li>
+</ul>
+</details></li>
+<li class="toctree-l1"><a class="reference internal" href="index.html">Configuration</a></li>
+
+
+
+<li class="toctree-l1 has-children"><a class="reference internal" href="../migration/index.html">Migration</a><details open="open"><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l2"><a class="reference internal" href="../migration/python-to-go.html">Python 1.x → Go 2.0 migration</a></li>
 </ul>
 </details></li>
 <li class="toctree-l1 has-children"><a class="reference internal" href="../general/index.html">General</a><details open="open"><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
@@ -171,16 +180,6 @@
 <li class="toctree-l2"><a class="reference internal" href="../general/18_Metrics.html">Metrics</a></li>
 </ul>
 </details></li>
-<li class="toctree-l1 current active has-children"><a class="reference internal" href="index.html">Configuration</a><details open="open"><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul class="current">
-<li class="toctree-l2"><a class="reference internal" href="core.html">Core configuration</a></li>
-<li class="toctree-l2"><a class="reference internal" href="general.html">General configuration</a></li>
-<li class="toctree-l2"><a class="reference internal" href="housekeeping.html">Housekeeper configuration</a></li>
-<li class="toctree-l2"><a class="reference internal" href="ldap_auth.html">LDAP configuration</a></li>
-<li class="toctree-l2 current active"><a class="current reference internal" href="#">Notification configuration</a></li>
-<li class="toctree-l2"><a class="reference internal" href="syncer.html">Syncer configuration</a></li>
-</ul>
-</details></li>
-
 </ul>
 
     </div>
@@ -394,15 +393,25 @@
 <blockquote>
 <div><dl class="field-list simple">
 <dt class="field-odd">Package location<span class="colon">:</span></dt>
-<dd class="field-odd"><p><code class="docutils literal notranslate"><span class="pre">/etc/snooze/server/notifications.yaml</span></code></p>
+<dd class="field-odd"><p><code class="docutils literal notranslate"><span class="pre">/etc/snooze/server-go/notification.yaml</span></code> (Go canonical)</p>
+</dd>
+<dt class="field-even">Legacy name<span class="colon">:</span></dt>
+<dd class="field-even"><p><code class="docutils literal notranslate"><span class="pre">/etc/snooze/server/notifications.yaml</span></code> (still loaded)</p>
+</dd>
+<dt class="field-odd">Loader<span class="colon">:</span></dt>
+<dd class="field-odd"><p><code class="docutils literal notranslate"><span class="pre">internal/config</span></code> (koanf)</p>
 </dd>
 <dt class="field-even">Live reload<span class="colon">:</span></dt>
-<dd class="field-even"><p><code class="docutils literal notranslate"><span class="pre">True</span></code></p>
+<dd class="field-even"><p><code class="docutils literal notranslate"><span class="pre">False</span></code> (bootstrap defaults)</p>
+</dd>
+<dt class="field-odd">Runtime store<span class="colon">:</span></dt>
+<dd class="field-odd"><p><code class="docutils literal notranslate"><span class="pre">settings</span></code> plugin</p>
 </dd>
 </dl>
 </div></blockquote>
-<p>Configuration for default notification delays/retry. Can be edited live in the web interface.
-Usually located at <cite>/etc/snooze/server/notifications.yaml</cite>.</p>
+<p>Default notification frequency / retry. The YAML seeds the defaults
+at startup; runtime overrides live in the <code class="docutils literal notranslate"><span class="pre">settings</span></code> collection.</p>
+<p>The Go schema lives in <code class="docutils literal notranslate"><span class="pre">internal/config/schema/notification.go</span></code>.</p>
 <section id="properties">
 <h2>Properties<a class="headerlink" href="#properties" title="Link to this heading">#</a></h2>
 <section id="notification-freq">
@@ -448,12 +457,12 @@ Usually located at <cite>/etc/snooze/server/notifications.yaml</cite>.</p>
                   
 <div class="prev-next-area">
     <a class="left-prev"
-       href="ldap_auth.html"
+       href="housekeeping.html"
        title="previous page">
       <i class="fa-solid fa-angle-left"></i>
       <div class="prev-next-info">
         <p class="prev-next-subtitle">previous</p>
-        <p class="prev-next-title">LDAP configuration</p>
+        <p class="prev-next-title">Housekeeper configuration</p>
       </div>
     </a>
     <a class="right-next"

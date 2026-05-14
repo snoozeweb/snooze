@@ -1,0 +1,91 @@
+---
+name: 'Send email'
+desc: ''
+icon: 'envelope'
+default_route:
+    class_name: ~
+options:
+    batch:
+        default: false
+        hidden: false
+        timer: 10
+        maxsize: 100
+action_form:
+    host:
+        display_name: Host
+        component: String
+        description: 'Mail server address'
+        default_value: 'localhost'
+    port:
+        display_name: Port
+        component: Number
+        description: 'Mail server port'
+        default_value: 25
+    from:
+        display_name: From
+        component: String
+        description: 'Sender address'
+    to:
+        display_name: To
+        component: Text
+        description: 'Comma separated list of recipient addresses'
+        required: true
+    cc:
+        display_name: Cc
+        component: Text
+        description: 'Comma separated list of Cc recipient addresses'
+    bcc:
+        display_name: Bcc
+        component: Text
+        description: 'Comma separated list of Bcc recipient addresses'
+    priority:
+        display_name: Priority
+        component: Selector
+        options:
+            - {text: Lowest, value: 5}
+            - {text: Low, value: 4}
+            - {text: Normal, value: 3}
+            - {text: High, value: 2}
+            - {text: Highest, value: 1}
+        default_value: 3
+        description: 'Email priority'
+    subject:
+        display_name: Subject
+        component: String
+        default_value: "Alert: {{ .Host }}"
+        description: 'Email subject (Go text/template)'
+    message:
+        display_name: Message
+        component: Text
+        default_value: "Message: {{ .Message }}"
+        description: 'Email content (Go text/template, or html/template when type is html)'
+    type:
+        display_name: Type
+        component: Radio
+        options:
+            - {text: HTML, value: html}
+            - {text: Plain Text, value: plain}
+        default_value: plain
+        description: 'Email formatting'
+    tls_mode:
+        display_name: TLS Mode
+        component: Selector
+        options:
+            - {text: None, value: none}
+            - {text: STARTTLS, value: starttls}
+            - {text: TLS, value: tls}
+        default_value: none
+        description: 'Transport security'
+    username:
+        display_name: Username
+        component: String
+        description: 'SMTP auth username (optional)'
+    password:
+        display_name: Password
+        component: Password
+        description: 'SMTP auth password (optional)'
+    timeout:
+        display_name: Timeout
+        component: Number
+        default_value: 10
+        description: 'SMTP timeout in seconds'

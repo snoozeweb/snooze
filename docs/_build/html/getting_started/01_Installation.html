@@ -41,14 +41,14 @@
 <link rel="preload" as="script" href="../_static/scripts/pydata-sphinx-theme.js?digest=8878045cc6db502f8baf" />
 
     <script src="../_static/documentation_options.js?v=9eb32ce0"></script>
-    <script src="../_static/doctools.js?v=9bcbadda"></script>
-    <script src="../_static/sphinx_highlight.js?v=dc90522c"></script>
+    <script src="../_static/doctools.js?v=fd6eb6e6"></script>
+    <script src="../_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="../_static/scripts/sphinx-book-theme.js?v=fab101a9"></script>
     <script>DOCUMENTATION_OPTIONS.pagename = 'getting_started/01_Installation';</script>
     <link rel="index" title="Index" href="../genindex.html" />
     <link rel="search" title="Search" href="../search.html" />
     <link rel="next" title="Docker deployment" href="02_Docker.html" />
-    <link rel="prev" title="Getting Started" href="index.html" />
+    <link rel="prev" title="Getting started (Go, v2.0)" href="00_GoQuickstart.html" />
   <meta name="viewport" content="width=device-width, initial-scale=1"/>
   <meta name="docsearch:language" content="en"/>
   <meta name="docsearch:version" content="" />
@@ -146,9 +146,18 @@
     <div class="bd-toc-item navbar-nav active">
         <ul class="current nav bd-sidenav">
 <li class="toctree-l1 current active has-children"><a class="reference internal" href="index.html">Getting Started</a><details open="open"><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul class="current">
+<li class="toctree-l2"><a class="reference internal" href="00_GoQuickstart.html">Getting started (Go, v2.0)</a></li>
 <li class="toctree-l2 current active"><a class="current reference internal" href="#">Installation on RHEL/Debian</a></li>
 <li class="toctree-l2"><a class="reference internal" href="02_Docker.html">Docker deployment</a></li>
 <li class="toctree-l2"><a class="reference internal" href="03_Login.html">Log in to the web interface</a></li>
+</ul>
+</details></li>
+<li class="toctree-l1"><a class="reference internal" href="../configuration/index.html">Configuration</a></li>
+
+
+
+<li class="toctree-l1 has-children"><a class="reference internal" href="../migration/index.html">Migration</a><details open="open"><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l2"><a class="reference internal" href="../migration/python-to-go.html">Python 1.x → Go 2.0 migration</a></li>
 </ul>
 </details></li>
 <li class="toctree-l1 has-children"><a class="reference internal" href="../general/index.html">General</a><details open="open"><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
@@ -171,16 +180,6 @@
 <li class="toctree-l2"><a class="reference internal" href="../general/18_Metrics.html">Metrics</a></li>
 </ul>
 </details></li>
-<li class="toctree-l1 has-children"><a class="reference internal" href="../configuration/index.html">Configuration</a><details open="open"><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
-<li class="toctree-l2"><a class="reference internal" href="../configuration/core.html">Core configuration</a></li>
-<li class="toctree-l2"><a class="reference internal" href="../configuration/general.html">General configuration</a></li>
-<li class="toctree-l2"><a class="reference internal" href="../configuration/housekeeping.html">Housekeeper configuration</a></li>
-<li class="toctree-l2"><a class="reference internal" href="../configuration/ldap_auth.html">LDAP configuration</a></li>
-<li class="toctree-l2"><a class="reference internal" href="../configuration/notifications.html">Notification configuration</a></li>
-<li class="toctree-l2"><a class="reference internal" href="../configuration/syncer.html">Syncer configuration</a></li>
-</ul>
-</details></li>
-
 </ul>
 
     </div>
@@ -373,9 +372,9 @@
             </div>
             <nav aria-label="Page">
                 <ul class="visible nav section-nav flex-column">
-<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#installation-on-centos-rhel">Installation on CentOS/RHEL</a></li>
-<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#installation-on-ubuntu-debian">Installation on Ubuntu/Debian</a></li>
-<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#web-interface-access">Web interface access</a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#installation-on-centos-rhel-rocky-alma">Installation on CentOS / RHEL / Rocky / Alma</a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#installation-on-ubuntu-debian">Installation on Ubuntu / Debian</a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#web-interface">Web interface</a></li>
 </ul>
             </nav>
         </div>
@@ -389,31 +388,54 @@
                   
   <section id="installation-on-rhel-debian">
 <span id="installation"></span><h1>Installation on RHEL/Debian<a class="headerlink" href="#installation-on-rhel-debian" title="Link to this heading">#</a></h1>
-<section id="installation-on-centos-rhel">
-<h2>Installation on CentOS/RHEL<a class="headerlink" href="#installation-on-centos-rhel" title="Link to this heading">#</a></h2>
+<div class="admonition note">
+<p class="admonition-title">Note</p>
+<p>Snooze 2.0 is a Go binary distributed via GoReleaser-built
+<code class="docutils literal notranslate"><span class="pre">.deb</span></code> / <code class="docutils literal notranslate"><span class="pre">.rpm</span></code> packages. The system Python install is no
+longer a prerequisite.</p>
+</div>
+<section id="installation-on-centos-rhel-rocky-alma">
+<h2>Installation on CentOS / RHEL / Rocky / Alma<a class="headerlink" href="#installation-on-centos-rhel-rocky-alma" title="Link to this heading">#</a></h2>
 <div class="highlight-console notranslate"><div class="highlight"><pre><span></span><span class="gp">$ </span>wget<span class="w"> </span>https://rpm.snoozeweb.net<span class="w"> </span>-O<span class="w"> </span>snooze-server-latest.rpm
-<span class="gp">$ </span>sudo<span class="w"> </span>yum<span class="w"> </span>localinstall<span class="w"> </span>snooze-server-latest.rpm
+<span class="gp">$ </span>sudo<span class="w"> </span>dnf<span class="w"> </span>localinstall<span class="w"> </span>snooze-server-latest.rpm
 <span class="gp">$ </span>sudo<span class="w"> </span>systemctl<span class="w"> </span>start<span class="w"> </span>snooze-server
 </pre></div>
 </div>
 </section>
 <section id="installation-on-ubuntu-debian">
-<h2>Installation on Ubuntu/Debian<a class="headerlink" href="#installation-on-ubuntu-debian" title="Link to this heading">#</a></h2>
+<h2>Installation on Ubuntu / Debian<a class="headerlink" href="#installation-on-ubuntu-debian" title="Link to this heading">#</a></h2>
 <div class="highlight-console notranslate"><div class="highlight"><pre><span></span><span class="gp">$ </span>wget<span class="w"> </span>https://deb.snoozeweb.net<span class="w"> </span>-O<span class="w"> </span>snooze-server-latest.deb
-<span class="gp">$ </span>sudo<span class="w"> </span>apt<span class="w"> </span>install<span class="w"> </span>snooze-server-latest.deb
+<span class="gp">$ </span>sudo<span class="w"> </span>apt<span class="w"> </span>install<span class="w"> </span>./snooze-server-latest.deb
 <span class="gp">$ </span>sudo<span class="w"> </span>systemctl<span class="w"> </span>start<span class="w"> </span>snooze-server
 </pre></div>
 </div>
+<p>The package drops:</p>
+<ul class="simple">
+<li><p><code class="docutils literal notranslate"><span class="pre">/usr/bin/snooze-server</span></code> — the daemon.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">/usr/bin/snooze</span></code> — the CLI client.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">/etc/snooze/server-go/*.yaml</span></code> — empty starter config; the loader
+also accepts the legacy <code class="docutils literal notranslate"><span class="pre">/etc/snooze/server/*.yaml</span></code> directory.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">/lib/systemd/system/snooze-server.service</span></code> — unit file.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">/var/lib/snooze/</span></code> — SQLite working directory (also Postgres /
+Mongo backup location).</p></li>
+</ul>
 <div class="admonition important">
 <p class="admonition-title">Important</p>
-<p>By default, Snooze is using a single file to store its database and therefore can run out of the box without any additional configuration or dependency. While this implementation is convenient for testing purpose, it is heavily recommended to switch the database configuration to MongoDB.</p>
+<p>By default Snooze uses SQLite as a single embedded file under
+<code class="docutils literal notranslate"><span class="pre">/var/lib/snooze</span></code>. This is convenient for testing and small
+single-node deployments; for production with more than a handful of
+alerts per second, switch to MongoDB (multi-writer) or PostgreSQL
+(single-writer with CloudNativePG). See <a class="reference internal" href="../configuration/core.html"><span class="doc">Core configuration</span></a>
+for the database knobs.</p>
 </div>
 </section>
-<section id="web-interface-access">
-<h2>Web interface access<a class="headerlink" href="#web-interface-access" title="Link to this heading">#</a></h2>
+<section id="web-interface">
+<h2>Web interface<a class="headerlink" href="#web-interface" title="Link to this heading">#</a></h2>
 <div class="highlight-console notranslate"><div class="highlight"><pre><span></span><span class="go">http://localhost:5200</span>
 </pre></div>
 </div>
+<p>The bootstrap root password is logged once on first start. Look for it
+in <code class="docutils literal notranslate"><span class="pre">journalctl</span> <span class="pre">-u</span> <span class="pre">snooze-server</span></code>.</p>
 </section>
 </section>
 
@@ -429,12 +451,12 @@
                   
 <div class="prev-next-area">
     <a class="left-prev"
-       href="index.html"
+       href="00_GoQuickstart.html"
        title="previous page">
       <i class="fa-solid fa-angle-left"></i>
       <div class="prev-next-info">
         <p class="prev-next-subtitle">previous</p>
-        <p class="prev-next-title">Getting Started</p>
+        <p class="prev-next-title">Getting started (Go, v2.0)</p>
       </div>
     </a>
     <a class="right-next"
@@ -464,9 +486,9 @@
   </div>
   <nav id="pst-page-toc-nav" class="page-toc" aria-labelledby="pst-page-navigation-heading-2">
     <ul class="visible nav section-nav flex-column">
-<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#installation-on-centos-rhel">Installation on CentOS/RHEL</a></li>
-<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#installation-on-ubuntu-debian">Installation on Ubuntu/Debian</a></li>
-<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#web-interface-access">Web interface access</a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#installation-on-centos-rhel-rocky-alma">Installation on CentOS / RHEL / Rocky / Alma</a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#installation-on-ubuntu-debian">Installation on Ubuntu / Debian</a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#web-interface">Web interface</a></li>
 </ul>
   </nav></div>
 

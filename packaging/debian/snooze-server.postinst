@@ -1,10 +1,14 @@
-#!/bin/bash
-if   [ "configure" = "$1" ] && [ "." = ".$2" ]; then  shift ; set -- "1" "$@"
-elif [ "configure" = "$1" ] && [ "." != ".$2" ]; then shift ; set -- "2" "$@"
-fi
+#!/bin/sh
+set -e
 
-chown -R snooze:snooze /usr/lib/systemd/system/snooze-server.service
-chown -R snooze:snooze /opt/snooze
-chown -R snooze:snooze /etc/snooze
-chown -R snooze:snooze /var/lib/snooze
-chown -R snooze:snooze /var/log/snooze
+case "$1" in
+    configure)
+        install -d -o snooze -g snooze -m 0750 /etc/snooze
+        install -d -o snooze -g snooze -m 0750 /var/lib/snooze
+        install -d -o snooze -g snooze -m 0750 /var/log/snooze
+        ;;
+esac
+
+#DEBHELPER#
+
+exit 0

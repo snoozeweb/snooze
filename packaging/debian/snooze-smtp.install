@@ -1,0 +1,2 @@
+usr/bin/snooze-smtp
+packaging/systemd/snooze-smtp.service lib/systemd/system/

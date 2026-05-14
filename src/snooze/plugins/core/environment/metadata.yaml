@@ -1,8 +1,0 @@
----
-name: 'Environment'
-desc: 'An endpoint to store environment'
-force_order: 'tree_order'
-route_defaults:
-    primary: [name]
-    duplicate_policy: 'reject'
-    check_permissions: true

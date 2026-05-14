@@ -17,13 +17,13 @@ This page is the narrative companion.
 Installation
 ************
 
-The driver is opt-in to keep the default install lean:
+In Snooze 2.0 the Postgres driver is compiled into the
+``snooze-server`` binary via ``jackc/pgx/v5``. There is no opt-in
+extra and no extra package to install — set ``database.type:
+postgres`` in ``core.yaml`` and restart the daemon.
 
-.. code-block:: bash
-
-    uv sync --extra postgres
-
-The extra installs ``psycopg[binary,pool]>=3.2,<4``.
+(The Python 1.x ``uv sync --extra postgres`` step is no longer
+applicable; the Go binary is statically linked.)
 
 *************
 Configuration
@@ -62,11 +62,10 @@ Pick PostgreSQL over MongoDB when:
   MongoDB Server-Side Public License isn't).
 * You need standard SQL tooling for backup, monitoring, and audit.
 
-Stay on MongoDB when you need the multi-instance kombu message queue
-(``MongodbTransport``) for cross-process plugin sync. The Postgres
-backend currently falls back to the in-memory kombu transport —
-single-process only — and the DB-level syncer keeps instances in sync
-regardless.
+Snooze 2.0 no longer requires kombu for cross-process sync — both
+Postgres and MongoDB carry their own change feeds (``LISTEN/NOTIFY``
+and change streams respectively). Multi-replica deployments are
+supported on every backend; pick the one that fits your platform.
 
 *****************
 Schema and shape

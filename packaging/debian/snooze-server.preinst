@@ -1,7 +1,18 @@
-#!/bin/bash
-if   [ "install" = "$1" ]; then  shift ; set -- "0" "$@"
-elif [ "update" = "$1" ]; then   shift ; set -- "1" "$@"
-fi
+#!/bin/sh
+set -e
 
-id -u snooze &>/dev/null || useradd snooze
-id -g snooze &>/dev/null || groupadd snooze
+case "$1" in
+    install|upgrade)
+        if ! getent group snooze >/dev/null; then
+            addgroup --system snooze
+        fi
+        if ! getent passwd snooze >/dev/null; then
+            adduser --system --ingroup snooze --home /var/lib/snooze \
+                --shell /usr/sbin/nologin --gecos "Snooze service" snooze
+        fi
+        ;;
+esac
+
+#DEBHELPER#
+
+exit 0

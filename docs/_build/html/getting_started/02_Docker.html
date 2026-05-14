@@ -41,8 +41,8 @@
 <link rel="preload" as="script" href="../_static/scripts/pydata-sphinx-theme.js?digest=8878045cc6db502f8baf" />
 
     <script src="../_static/documentation_options.js?v=9eb32ce0"></script>
-    <script src="../_static/doctools.js?v=9bcbadda"></script>
-    <script src="../_static/sphinx_highlight.js?v=dc90522c"></script>
+    <script src="../_static/doctools.js?v=fd6eb6e6"></script>
+    <script src="../_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="../_static/scripts/sphinx-book-theme.js?v=fab101a9"></script>
     <script>DOCUMENTATION_OPTIONS.pagename = 'getting_started/02_Docker';</script>
     <link rel="index" title="Index" href="../genindex.html" />
@@ -146,9 +146,18 @@
     <div class="bd-toc-item navbar-nav active">
         <ul class="current nav bd-sidenav">
 <li class="toctree-l1 current active has-children"><a class="reference internal" href="index.html">Getting Started</a><details open="open"><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul class="current">
+<li class="toctree-l2"><a class="reference internal" href="00_GoQuickstart.html">Getting started (Go, v2.0)</a></li>
 <li class="toctree-l2"><a class="reference internal" href="01_Installation.html">Installation on RHEL/Debian</a></li>
 <li class="toctree-l2 current active"><a class="current reference internal" href="#">Docker deployment</a></li>
 <li class="toctree-l2"><a class="reference internal" href="03_Login.html">Log in to the web interface</a></li>
+</ul>
+</details></li>
+<li class="toctree-l1"><a class="reference internal" href="../configuration/index.html">Configuration</a></li>
+
+
+
+<li class="toctree-l1 has-children"><a class="reference internal" href="../migration/index.html">Migration</a><details open="open"><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l2"><a class="reference internal" href="../migration/python-to-go.html">Python 1.x → Go 2.0 migration</a></li>
 </ul>
 </details></li>
 <li class="toctree-l1 has-children"><a class="reference internal" href="../general/index.html">General</a><details open="open"><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
@@ -171,16 +180,6 @@
 <li class="toctree-l2"><a class="reference internal" href="../general/18_Metrics.html">Metrics</a></li>
 </ul>
 </details></li>
-<li class="toctree-l1 has-children"><a class="reference internal" href="../configuration/index.html">Configuration</a><details open="open"><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
-<li class="toctree-l2"><a class="reference internal" href="../configuration/core.html">Core configuration</a></li>
-<li class="toctree-l2"><a class="reference internal" href="../configuration/general.html">General configuration</a></li>
-<li class="toctree-l2"><a class="reference internal" href="../configuration/housekeeping.html">Housekeeper configuration</a></li>
-<li class="toctree-l2"><a class="reference internal" href="../configuration/ldap_auth.html">LDAP configuration</a></li>
-<li class="toctree-l2"><a class="reference internal" href="../configuration/notifications.html">Notification configuration</a></li>
-<li class="toctree-l2"><a class="reference internal" href="../configuration/syncer.html">Syncer configuration</a></li>
-</ul>
-</details></li>
-
 </ul>
 
     </div>
@@ -373,8 +372,11 @@
             </div>
             <nav aria-label="Page">
                 <ul class="visible nav section-nav flex-column">
-<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#simple">Simple</a></li>
-<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#advanced">Advanced</a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#single-container-sqlite">Single container, SQLite</a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#single-container-mongodb">Single container, MongoDB</a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#single-container-postgresql">Single container, PostgreSQL</a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#compose-stack">Compose stack</a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#helm">Helm</a></li>
 </ul>
             </nav>
         </div>
@@ -388,48 +390,73 @@
                   
   <section id="docker-deployment">
 <span id="docker"></span><h1>Docker deployment<a class="headerlink" href="#docker-deployment" title="Link to this heading">#</a></h1>
-<section id="simple">
-<h2>Simple<a class="headerlink" href="#simple" title="Link to this heading">#</a></h2>
-<div class="highlight-console notranslate"><div class="highlight"><pre><span></span><span class="gp">$ </span>docker<span class="w"> </span>run<span class="w"> </span>--name<span class="w"> </span>snoozeweb<span class="w"> </span>-d<span class="w"> </span>-p<span class="w"> </span>&lt;port&gt;:5200<span class="w"> </span>snoozeweb/snooze
+<p>Snooze 2.0 publishes one distroless image per Go binary at
+<code class="docutils literal notranslate"><span class="pre">ghcr.io/japannext/snooze-&lt;binary&gt;:latest</span></code>. The most common starting
+points are documented below; the repository <code class="docutils literal notranslate"><span class="pre">docker-compose.yaml</span></code>
+covers each layout end-to-end with named profiles.</p>
+<section id="single-container-sqlite">
+<h2>Single container, SQLite<a class="headerlink" href="#single-container-sqlite" title="Link to this heading">#</a></h2>
+<div class="highlight-console notranslate"><div class="highlight"><pre><span></span><span class="gp">$ </span>docker<span class="w"> </span>run<span class="w"> </span>--name<span class="w"> </span>snooze<span class="w"> </span>-d<span class="w"> </span>-p<span class="w"> </span><span class="m">5200</span>:5200<span class="w"> </span><span class="se">\</span>
+<span class="w">    </span>-e<span class="w"> </span><span class="nv">SNOOZE_DATABASE_TYPE</span><span class="o">=</span>sqlite<span class="w"> </span><span class="se">\</span>
+<span class="w">    </span>-e<span class="w"> </span><span class="nv">SNOOZE_DATABASE_PATH</span><span class="o">=</span>/var/lib/snooze/db.sqlite<span class="w"> </span><span class="se">\</span>
+<span class="w">    </span>-v<span class="w"> </span>snooze-data:/var/lib/snooze<span class="w"> </span><span class="se">\</span>
+<span class="w">    </span>ghcr.io/japannext/snooze-server:latest
 </pre></div>
 </div>
-<p>Then the Web interface should be available at this URL:</p>
-<div class="highlight-console notranslate"><div class="highlight"><pre><span></span><span class="go">http://&lt;docker&gt;:&lt;port&gt;</span>
-</pre></div>
-</div>
-<p>Snoozeweb docker image can be run without any backend database (will default to a file based DB) but if one is needed:</p>
-<div class="highlight-console notranslate"><div class="highlight"><pre><span></span><span class="gp">$ </span>docker<span class="w"> </span>run<span class="w"> </span>--name<span class="w"> </span>snooze-db<span class="w"> </span>-d<span class="w"> </span>mongo
-</pre></div>
-</div>
-<p>Then</p>
-<div class="highlight-console notranslate"><div class="highlight"><pre><span></span><span class="gp">$ </span><span class="nb">export</span><span class="w"> </span><span class="nv">DATABASE_URL</span><span class="o">=</span>mongodb://db:27017/snooze
-<span class="gp">$ </span>docker<span class="w"> </span>run<span class="w"> </span>--name<span class="w"> </span>snoozeweb<span class="w"> </span>-e<span class="w"> </span><span class="nv">DATABASE_URL</span><span class="o">=</span><span class="nv">$DATABASE_URL</span><span class="w"> </span><span class="se">\</span>
-<span class="w">    </span>--link<span class="w"> </span>snooze-db:db<span class="w"> </span>-d<span class="w"> </span>-p<span class="w"> </span>&lt;port&gt;:5200<span class="w"> </span>snoozeweb/snooze
-</pre></div>
-</div>
-<p>The web interface will listen locally on port 5200: <a class="reference external" href="http://localhost:5200">http://localhost:5200</a></p>
+<p>The Web interface is then available at <code class="docutils literal notranslate"><span class="pre">http://localhost:5200</span></code>. This
+is the lowest-friction layout: no external database, no replica set,
+zero infrastructure.</p>
 </section>
-<section id="advanced">
-<h2>Advanced<a class="headerlink" href="#advanced" title="Link to this heading">#</a></h2>
-<p>Requirements:</p>
-<ul class="simple">
-<li><p>Docker (version &gt;= 17.0.0)</p></li>
-<li><p>Docker-Compose</p></li>
-</ul>
-<p>The <a class="reference external" href="https://github.com/snoozeweb/snooze/blob/master/docker-compose.yaml">docker-compose.yaml</a> recipe will create the following (Replace <code class="docutils literal notranslate"><span class="pre">HOST1</span></code>, <code class="docutils literal notranslate"><span class="pre">HOST2</span></code> and <code class="docutils literal notranslate"><span class="pre">HOST3</span></code> with swarm workers):</p>
-<ul class="simple">
-<li><p>3 nodes MongoDB Replica Set</p></li>
-<li><p>3 Snooze servers in cluster mode</p></li>
-<li><p>1 Nginx load balancer (manager node)</p></li>
-</ul>
-<p>After initializing <a class="reference external" href="https://docs.docker.com/engine/swarm/">docker swarm</a> and adding workers, run the command:</p>
-<div class="highlight-console notranslate"><div class="highlight"><pre><span></span><span class="gp">$ </span>docker<span class="w"> </span>stack<span class="w"> </span>deploy<span class="w"> </span>-c<span class="w"> </span>docker-compose.yaml<span class="w"> </span>snoozeweb
-<span class="gp"># </span>Wait<span class="w"> </span><span class="k">until</span><span class="w"> </span>MongoDB<span class="w"> </span>containers<span class="w"> </span>are<span class="w"> </span>up
-<span class="gp">$ </span><span class="nv">replicate</span><span class="o">=</span><span class="s2">&quot;rs.initiate(); sleep(1000); cfg = rs.conf(); cfg.members[0].host = \&quot;mongo1:27017\&quot;; rs.reconfig(cfg); rs.add({ host: \&quot;mongo2:27017\&quot;, priority: 0.5 }); rs.add({ host: \&quot;mongo3:27017\&quot;, priority: 0.5 }); rs.status();&quot;</span>
-<span class="gp">$ </span>docker<span class="w"> </span><span class="nb">exec</span><span class="w"> </span>-it<span class="w"> </span><span class="k">$(</span>docker<span class="w"> </span>ps<span class="w"> </span>-qf<span class="w"> </span><span class="nv">label</span><span class="o">=</span>com.docker.swarm.service.name<span class="o">=</span>snoozeweb_mongo1<span class="k">)</span><span class="w"> </span>/bin/bash<span class="w"> </span>-c<span class="w"> </span><span class="s2">&quot;echo &#39;</span><span class="si">${</span><span class="nv">replicate</span><span class="si">}</span><span class="s2">&#39; | mongo&quot;</span>
+<section id="single-container-mongodb">
+<h2>Single container, MongoDB<a class="headerlink" href="#single-container-mongodb" title="Link to this heading">#</a></h2>
+<div class="highlight-console notranslate"><div class="highlight"><pre><span></span><span class="gp">$ </span>docker<span class="w"> </span>run<span class="w"> </span>--name<span class="w"> </span>snooze-db<span class="w"> </span>-d<span class="w"> </span>mongo:7
+<span class="gp">$ </span>docker<span class="w"> </span>run<span class="w"> </span>--name<span class="w"> </span>snooze<span class="w"> </span>-d<span class="w"> </span>-p<span class="w"> </span><span class="m">5200</span>:5200<span class="w"> </span><span class="se">\</span>
+<span class="w">    </span>-e<span class="w"> </span><span class="nv">DATABASE_URL</span><span class="o">=</span>mongodb://snooze-db:27017/snooze<span class="w"> </span><span class="se">\</span>
+<span class="w">    </span>--link<span class="w"> </span>snooze-db:snooze-db<span class="w"> </span><span class="se">\</span>
+<span class="w">    </span>ghcr.io/japannext/snooze-server:latest
 </pre></div>
 </div>
-<p>The web interface will be available on the manager node on port 80</p>
+</section>
+<section id="single-container-postgresql">
+<h2>Single container, PostgreSQL<a class="headerlink" href="#single-container-postgresql" title="Link to this heading">#</a></h2>
+<div class="highlight-console notranslate"><div class="highlight"><pre><span></span><span class="gp">$ </span>docker<span class="w"> </span>run<span class="w"> </span>--name<span class="w"> </span>snooze-pg<span class="w"> </span>-d<span class="w"> </span><span class="se">\</span>
+<span class="w">    </span>-e<span class="w"> </span><span class="nv">POSTGRES_DB</span><span class="o">=</span>snooze<span class="w"> </span><span class="se">\</span>
+<span class="w">    </span>-e<span class="w"> </span><span class="nv">POSTGRES_USER</span><span class="o">=</span>snooze<span class="w"> </span><span class="se">\</span>
+<span class="w">    </span>-e<span class="w"> </span><span class="nv">POSTGRES_PASSWORD</span><span class="o">=</span>snooze<span class="w"> </span><span class="se">\</span>
+<span class="w">    </span>postgres:16-alpine
+<span class="gp">$ </span>docker<span class="w"> </span>run<span class="w"> </span>--name<span class="w"> </span>snooze<span class="w"> </span>-d<span class="w"> </span>-p<span class="w"> </span><span class="m">5200</span>:5200<span class="w"> </span><span class="se">\</span>
+<span class="w">    </span>-e<span class="w"> </span><span class="nv">DATABASE_URL</span><span class="o">=</span>postgresql://snooze:snooze@snooze-pg:5432/snooze<span class="w"> </span><span class="se">\</span>
+<span class="w">    </span>--link<span class="w"> </span>snooze-pg:snooze-pg<span class="w"> </span><span class="se">\</span>
+<span class="w">    </span>ghcr.io/japannext/snooze-server:latest
+</pre></div>
+</div>
+</section>
+<section id="compose-stack">
+<h2>Compose stack<a class="headerlink" href="#compose-stack" title="Link to this heading">#</a></h2>
+<p>The repository <code class="docutils literal notranslate"><span class="pre">docker-compose.yaml</span></code> is profiled so you can pick a
+backend at <code class="docutils literal notranslate"><span class="pre">up</span></code> time:</p>
+<div class="highlight-console notranslate"><div class="highlight"><pre><span></span><span class="gp">$ </span>docker<span class="w"> </span>compose<span class="w"> </span>--profile<span class="w"> </span>sqlite<span class="w">   </span>up<span class="w">   </span><span class="c1"># single replica + named volume</span>
+<span class="gp">$ </span>docker<span class="w"> </span>compose<span class="w"> </span>--profile<span class="w"> </span>mongo<span class="w">    </span>up<span class="w">   </span><span class="c1"># 3-node RS + nginx LB on :80</span>
+<span class="gp">$ </span>docker<span class="w"> </span>compose<span class="w"> </span>--profile<span class="w"> </span>postgres<span class="w"> </span>up<span class="w">   </span><span class="c1"># single Postgres + snooze on :5210</span>
+</pre></div>
+</div>
+<p>The <code class="docutils literal notranslate"><span class="pre">mongo</span></code> profile is the canonical multi-replica layout: three
+<code class="docutils literal notranslate"><span class="pre">snooze-server</span></code> containers behind an nginx <code class="docutils literal notranslate"><span class="pre">round_robin</span></code> load
+balancer talking to a 3-node replica set, with the bus / syncer
+piggy-backed on Mongo change streams.</p>
+</section>
+<section id="helm">
+<h2>Helm<a class="headerlink" href="#helm" title="Link to this heading">#</a></h2>
+<p>A Helm chart lives at <code class="docutils literal notranslate"><span class="pre">packaging/helm/</span></code>. Set <code class="docutils literal notranslate"><span class="pre">database.kind</span></code> to
+pick the backend:</p>
+<div class="highlight-console notranslate"><div class="highlight"><pre><span></span><span class="gp">$ </span>helm<span class="w"> </span>install<span class="w"> </span>snooze<span class="w"> </span>packaging/helm<span class="w"> </span><span class="se">\</span>
+<span class="w">    </span>--set<span class="w"> </span>database.kind<span class="o">=</span>postgres<span class="w">   </span><span class="c1"># provisions a CNPG cluster</span>
+<span class="gp">$ </span>helm<span class="w"> </span>install<span class="w"> </span>snooze<span class="w"> </span>packaging/helm<span class="w"> </span><span class="se">\</span>
+<span class="w">    </span>--set<span class="w"> </span>database.kind<span class="o">=</span>mongo<span class="w">      </span><span class="c1"># provisions a MongoDBCommunity RS</span>
+<span class="gp">$ </span>helm<span class="w"> </span>install<span class="w"> </span>snooze<span class="w"> </span>packaging/helm<span class="w"> </span><span class="se">\</span>
+<span class="w">    </span>--set<span class="w"> </span>database.kind<span class="o">=</span>sqlite<span class="w">     </span><span class="c1"># StatefulSet + PVC</span>
+</pre></div>
+</div>
 </section>
 </section>
 
@@ -480,8 +507,11 @@
   </div>
   <nav id="pst-page-toc-nav" class="page-toc" aria-labelledby="pst-page-navigation-heading-2">
     <ul class="visible nav section-nav flex-column">
-<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#simple">Simple</a></li>
-<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#advanced">Advanced</a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#single-container-sqlite">Single container, SQLite</a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#single-container-mongodb">Single container, MongoDB</a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#single-container-postgresql">Single container, PostgreSQL</a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#compose-stack">Compose stack</a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#helm">Helm</a></li>
 </ul>
   </nav></div>
 

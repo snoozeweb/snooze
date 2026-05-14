@@ -1,0 +1,9 @@
+---
+name: 'Rule'
+desc: 'Rule desc'
+auto_reload: true
+# Python source has `force_order: 'tree_order'`. In Go the Metadata.ForceOrder
+# field is an int (UI rank), so the field-name semantic is hardcoded in the
+# plugin implementation: rules are read with OrderBy = "tree_order".
+force_order: 0
+tree: true

@@ -8,6 +8,43 @@
       "title": "global",
       "type": "object"
     },
+    "client": {
+      "additionalProperties": false,
+      "properties": {
+        "image": {
+          "additionalProperties": false,
+          "properties": {
+            "pullPolicy": {
+              "default": "IfNotPresent",
+              "description": "Image pull policy of snooze CLI client",
+              "required": [],
+              "title": "pullPolicy",
+              "type": "string"
+            },
+            "repository": {
+              "default": "ghcr.io/japannext/snooze",
+              "description": "The image to use for the snooze CLI client",
+              "required": [],
+              "title": "repository",
+              "type": "string"
+            },
+            "tag": {
+              "default": "",
+              "description": "A tag override for snooze",
+              "required": [],
+              "title": "tag",
+              "type": "string"
+            }
+          },
+          "required": [],
+          "title": "image",
+          "type": "object"
+        }
+      },
+      "required": [],
+      "title": "client",
+      "type": "object"
+    },
     "googlechat": {
       "additionalProperties": false,
       "properties": {
@@ -19,7 +56,7 @@
         },
         "enabled": {
           "default": false,
-          "description": "When enabled, deploy snooze-syslog notification plugin",
+          "description": "When enabled, deploy snooze-googlechat notification plugin",
           "required": [],
           "title": "enabled",
           "type": "boolean"
@@ -152,14 +189,117 @@
         "kind": {
           "default": "mongo",
           "description": "Which database to provision and point snooze-server at",
-          "enum": ["mongo", "postgres"],
+          "enum": ["mongo", "postgres", "sqlite"],
           "required": [],
           "title": "kind",
           "type": "string"
+        },
+        "mongo": {
+          "additionalProperties": false,
+          "properties": {
+            "database": {
+              "default": "snooze",
+              "description": "Database name for the snooze user",
+              "required": [],
+              "title": "database",
+              "type": "string"
+            }
+          },
+          "required": [],
+          "title": "mongo",
+          "type": "object"
+        },
+        "postgres": {
+          "additionalProperties": false,
+          "properties": {
+            "poolMinSize": {
+              "default": 2,
+              "description": "Minimum size of the pgx connection pool",
+              "required": [],
+              "title": "poolMinSize",
+              "type": "integer"
+            },
+            "poolMaxSize": {
+              "default": 10,
+              "description": "Maximum size of the pgx connection pool",
+              "required": [],
+              "title": "poolMaxSize",
+              "type": "integer"
+            }
+          },
+          "required": [],
+          "title": "postgres",
+          "type": "object"
+        },
+        "sqlite": {
+          "additionalProperties": false,
+          "properties": {
+            "path": {
+              "default": "/var/lib/snooze/db.sqlite",
+              "description": "On-disk path for the SQLite database",
+              "required": [],
+              "title": "path",
+              "type": "string"
+            }
+          },
+          "required": [],
+          "title": "sqlite",
+          "type": "object"
         }
       },
       "required": [],
       "title": "database",
+      "type": "object"
+    },
+    "mattermost": {
+      "additionalProperties": false,
+      "properties": {
+        "enabled": {
+          "default": false,
+          "description": "When enabled, deploy snooze-mattermost notification plugin",
+          "required": [],
+          "title": "enabled",
+          "type": "boolean"
+        },
+        "image": {
+          "additionalProperties": false,
+          "properties": {
+            "pullPolicy": {
+              "default": "IfNotPresent",
+              "description": "Image pull policy of snooze-mattermost",
+              "required": [],
+              "title": "pullPolicy",
+              "type": "string"
+            },
+            "repository": {
+              "default": "ghcr.io/japannext/snooze-mattermost",
+              "description": "The image to use for snooze-mattermost",
+              "required": [],
+              "title": "repository",
+              "type": "string"
+            },
+            "tag": {
+              "default": "",
+              "description": "A tag override for snooze-mattermost",
+              "required": [],
+              "title": "tag",
+              "type": "string"
+            }
+          },
+          "required": [],
+          "title": "image",
+          "type": "object"
+        },
+        "replicaCount": {
+          "default": 2,
+          "description": "Number of snooze-mattermost replicas",
+          "required": [],
+          "title": "replicaCount",
+          "type": "integer"
+        }
+      },
+      "required": [],
+      "title": "mattermost",
       "type": "object"
     },
     "mongodb": {
@@ -174,6 +314,43 @@
       },
       "required": [],
       "title": "mongodb",
+      "type": "object"
+    },
+    "pacemaker": {
+      "additionalProperties": false,
+      "properties": {
+        "image": {
+          "additionalProperties": false,
+          "properties": {
+            "pullPolicy": {
+              "default": "IfNotPresent",
+              "description": "Image pull policy of snooze-pacemaker",
+              "required": [],
+              "title": "pullPolicy",
+              "type": "string"
+            },
+            "repository": {
+              "default": "ghcr.io/japannext/snooze-pacemaker",
+              "description": "The image to use for snooze-pacemaker",
+              "required": [],
+              "title": "repository",
+              "type": "string"
+            },
+            "tag": {
+              "default": "",
+              "description": "A tag override for snooze-pacemaker",
+              "required": [],
+              "title": "tag",
+              "type": "string"
+            }
+          },
+          "required": [],
+          "title": "image",
+          "type": "object"
+        }
+      },
+      "required": [],
+      "title": "pacemaker",
       "type": "object"
     },
     "postgres": {
@@ -209,6 +386,57 @@
       },
       "required": [],
       "title": "postgres",
+      "type": "object"
+    },
+    "relp": {
+      "additionalProperties": false,
+      "properties": {
+        "enabled": {
+          "default": false,
+          "description": "When enabled, deploy snooze-relp inputs",
+          "required": [],
+          "title": "enabled",
+          "type": "boolean"
+        },
+        "image": {
+          "additionalProperties": false,
+          "properties": {
+            "pullPolicy": {
+              "default": "IfNotPresent",
+              "description": "Image pull policy of snooze-relp",
+              "required": [],
+              "title": "pullPolicy",
+              "type": "string"
+            },
+            "repository": {
+              "default": "ghcr.io/japannext/snooze-relp",
+              "description": "The image to use for snooze-relp",
+              "required": [],
+              "title": "repository",
+              "type": "string"
+            },
+            "tag": {
+              "default": "",
+              "description": "A tag override for snooze-relp",
+              "required": [],
+              "title": "tag",
+              "type": "string"
+            }
+          },
+          "required": [],
+          "title": "image",
+          "type": "object"
+        },
+        "replicaCount": {
+          "default": 2,
+          "description": "Number of snooze-relp replicas",
+          "required": [],
+          "title": "replicaCount",
+          "type": "integer"
+        }
+      },
+      "required": [],
+      "title": "relp",
       "type": "object"
     },
     "server": {
@@ -371,10 +599,91 @@
           "required": [],
           "title": "replicaCount",
           "type": "integer"
+        },
+        "sqlite": {
+          "additionalProperties": false,
+          "properties": {
+            "persistentVolume": {
+              "additionalProperties": false,
+              "properties": {
+                "size": {
+                  "default": "5Gi",
+                  "description": "Size of the PVC backing /var/lib/snooze",
+                  "required": [],
+                  "title": "size",
+                  "type": "string"
+                },
+                "storageClassName": {
+                  "default": "",
+                  "description": "StorageClass for the PVC; empty = cluster default",
+                  "required": [],
+                  "title": "storageClassName",
+                  "type": "string"
+                }
+              },
+              "required": [],
+              "title": "persistentVolume",
+              "type": "object"
+            }
+          },
+          "required": [],
+          "title": "sqlite",
+          "type": "object"
         }
       },
       "required": [],
       "title": "server",
+      "type": "object"
+    },
+    "smtp": {
+      "additionalProperties": false,
+      "properties": {
+        "enabled": {
+          "default": false,
+          "description": "When enabled, deploy snooze-smtp inputs",
+          "required": [],
+          "title": "enabled",
+          "type": "boolean"
+        },
+        "image": {
+          "additionalProperties": false,
+          "properties": {
+            "pullPolicy": {
+              "default": "IfNotPresent",
+              "description": "Image pull policy of snooze-smtp",
+              "required": [],
+              "title": "pullPolicy",
+              "type": "string"
+            },
+            "repository": {
+              "default": "ghcr.io/japannext/snooze-smtp",
+              "description": "The image to use for snooze-smtp",
+              "required": [],
+              "title": "repository",
+              "type": "string"
+            },
+            "tag": {
+              "default": "",
+              "description": "A tag override for snooze-smtp",
+              "required": [],
+              "title": "tag",
+              "type": "string"
+            }
+          },
+          "required": [],
+          "title": "image",
+          "type": "object"
+        },
+        "replicaCount": {
+          "default": 2,
+          "description": "Number of snooze-smtp replicas",
+          "required": [],
+          "title": "replicaCount",
+          "type": "integer"
+        }
+      },
+      "required": [],
+      "title": "smtp",
       "type": "object"
     },
     "snmptrap": {
@@ -497,6 +806,57 @@
       },
       "required": [],
       "title": "syslog",
+      "type": "object"
+    },
+    "teams": {
+      "additionalProperties": false,
+      "properties": {
+        "enabled": {
+          "default": false,
+          "description": "When enabled, deploy snooze-teams notification plugin",
+          "required": [],
+          "title": "enabled",
+          "type": "boolean"
+        },
+        "image": {
+          "additionalProperties": false,
+          "properties": {
+            "pullPolicy": {
+              "default": "IfNotPresent",
+              "description": "Image pull policy of snooze-teams",
+              "required": [],
+              "title": "pullPolicy",
+              "type": "string"
+            },
+            "repository": {
+              "default": "ghcr.io/japannext/snooze-teams",
+              "description": "The image to use for snooze-teams",
+              "required": [],
+              "title": "repository",
+              "type": "string"
+            },
+            "tag": {
+              "default": "",
+              "description": "A tag override for snooze-teams",
+              "required": [],
+              "title": "tag",
+              "type": "string"
+            }
+          },
+          "required": [],
+          "title": "image",
+          "type": "object"
+        },
+        "replicaCount": {
+          "default": 2,
+          "description": "Number of snooze-teams replicas",
+          "required": [],
+          "title": "replicaCount",
+          "type": "integer"
+        }
+      },
+      "required": [],
+      "title": "teams",
       "type": "object"
     },
     "timeZone": {

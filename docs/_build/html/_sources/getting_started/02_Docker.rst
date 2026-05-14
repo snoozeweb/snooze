@@ -4,56 +4,80 @@
 Docker deployment
 =================
 
-Simple
-======
+Snooze 2.0 publishes one distroless image per Go binary at
+``ghcr.io/japannext/snooze-<binary>:latest``. The most common starting
+points are documented below; the repository ``docker-compose.yaml``
+covers each layout end-to-end with named profiles.
+
+Single container, SQLite
+========================
 
 .. code-block:: console
 
-    $ docker run --name snoozeweb -d -p <port>:5200 snoozeweb/snooze
+    $ docker run --name snooze -d -p 5200:5200 \
+        -e SNOOZE_DATABASE_TYPE=sqlite \
+        -e SNOOZE_DATABASE_PATH=/var/lib/snooze/db.sqlite \
+        -v snooze-data:/var/lib/snooze \
+        ghcr.io/japannext/snooze-server:latest
 
-Then the Web interface should be available at this URL:
+The Web interface is then available at ``http://localhost:5200``. This
+is the lowest-friction layout: no external database, no replica set,
+zero infrastructure.
 
-.. code-block:: console
-
-    http://<docker>:<port>
-
-Snoozeweb docker image can be run without any backend database (will default to a file based DB) but if one is needed:
-
-.. code-block:: console
-
-    $ docker run --name snooze-db -d mongo
-
-Then
+Single container, MongoDB
+=========================
 
 .. code-block:: console
 
-    $ export DATABASE_URL=mongodb://db:27017/snooze
-    $ docker run --name snoozeweb -e DATABASE_URL=$DATABASE_URL \
-        --link snooze-db:db -d -p <port>:5200 snoozeweb/snooze
+    $ docker run --name snooze-db -d mongo:7
+    $ docker run --name snooze -d -p 5200:5200 \
+        -e DATABASE_URL=mongodb://snooze-db:27017/snooze \
+        --link snooze-db:snooze-db \
+        ghcr.io/japannext/snooze-server:latest
 
-The web interface will listen locally on port 5200: http://localhost:5200
-
-Advanced
-========
-
-Requirements:
-
-* Docker (version >= 17.0.0)
-* Docker-Compose
-
-The `docker-compose.yaml <https://github.com/snoozeweb/snooze/blob/master/docker-compose.yaml>`_ recipe will create the following (Replace ``HOST1``, ``HOST2`` and ``HOST3`` with swarm workers):
-
-* 3 nodes MongoDB Replica Set
-* 3 Snooze servers in cluster mode
-* 1 Nginx load balancer (manager node)
-
-After initializing `docker swarm <https://docs.docker.com/engine/swarm/>`_ and adding workers, run the command:
+Single container, PostgreSQL
+============================
 
 .. code-block:: console
 
-    $ docker stack deploy -c docker-compose.yaml snoozeweb
-    # Wait until MongoDB containers are up
-    $ replicate="rs.initiate(); sleep(1000); cfg = rs.conf(); cfg.members[0].host = \"mongo1:27017\"; rs.reconfig(cfg); rs.add({ host: \"mongo2:27017\", priority: 0.5 }); rs.add({ host: \"mongo3:27017\", priority: 0.5 }); rs.status();"
-    $ docker exec -it $(docker ps -qf label=com.docker.swarm.service.name=snoozeweb_mongo1) /bin/bash -c "echo '${replicate}' | mongo"
+    $ docker run --name snooze-pg -d \
+        -e POSTGRES_DB=snooze \
+        -e POSTGRES_USER=snooze \
+        -e POSTGRES_PASSWORD=snooze \
+        postgres:16-alpine
+    $ docker run --name snooze -d -p 5200:5200 \
+        -e DATABASE_URL=postgresql://snooze:snooze@snooze-pg:5432/snooze \
+        --link snooze-pg:snooze-pg \
+        ghcr.io/japannext/snooze-server:latest
 
-The web interface will be available on the manager node on port 80
+Compose stack
+=============
+
+The repository ``docker-compose.yaml`` is profiled so you can pick a
+backend at ``up`` time:
+
+.. code-block:: console
+
+    $ docker compose --profile sqlite   up   # single replica + named volume
+    $ docker compose --profile mongo    up   # 3-node RS + nginx LB on :80
+    $ docker compose --profile postgres up   # single Postgres + snooze on :5210
+
+The ``mongo`` profile is the canonical multi-replica layout: three
+``snooze-server`` containers behind an nginx ``round_robin`` load
+balancer talking to a 3-node replica set, with the bus / syncer
+piggy-backed on Mongo change streams.
+
+Helm
+====
+
+A Helm chart lives at ``packaging/helm/``. Set ``database.kind`` to
+pick the backend:
+
+.. code-block:: console
+
+    $ helm install snooze packaging/helm \
+        --set database.kind=postgres   # provisions a CNPG cluster
+    $ helm install snooze packaging/helm \
+        --set database.kind=mongo      # provisions a MongoDBCommunity RS
+    $ helm install snooze packaging/helm \
+        --set database.kind=sqlite     # StatefulSet + PVC

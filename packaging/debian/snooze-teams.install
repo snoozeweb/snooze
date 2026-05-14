@@ -1,0 +1,2 @@
+usr/bin/snooze-teams
+packaging/systemd/snooze-teams.service lib/systemd/system/

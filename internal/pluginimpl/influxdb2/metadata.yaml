@@ -1,0 +1,3 @@
+---
+name: 'influxdb2'
+desc: 'Receive InfluxDB 2.x notification webhook events'

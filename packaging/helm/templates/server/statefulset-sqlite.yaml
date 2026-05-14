@@ -1,0 +1,86 @@
+{{- if eq .Values.database.kind "sqlite" -}}
+---
+# SQLite single-replica StatefulSet.
+#
+# SQLite is a single-writer embedded engine, so we render a StatefulSet
+# with replicas=1 and a stable per-pod PersistentVolumeClaim instead of
+# the Deployment used for the Mongo/Postgres paths. The PVC mounts to
+# ``/var/lib/snooze`` and holds the snooze.db file plus its WAL.
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: "{{ .Release.Name }}-server"
+  namespace: "{{ .Release.Namespace }}"
+  labels:
+    app.kubernetes.io/name: snooze-server
+    app.kubernetes.io/instance: "{{ .Release.Name }}"
+    app.kubernetes.io/component: server
+spec:
+  # SQLite is single-writer; running more than one replica corrupts the
+  # database. We hard-code 1 instead of honouring server.replicaCount.
+  replicas: 1
+  serviceName: "{{ .Release.Name }}-server"
+  revisionHistoryLimit: 3
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: snooze-server
+      app.kubernetes.io/instance: "{{ .Release.Name }}"
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: snooze-server
+        app.kubernetes.io/instance: "{{ .Release.Name }}"
+        app.kubernetes.io/component: server
+      annotations:
+        checksum/config: {{ include (print $.Template.BasePath "/server/configmap.yaml") . | sha256sum }}
+    spec:
+      securityContext:
+      containers:
+      - name: snooze-server
+        image: "{{ .Values.server.image.repository }}:{{ .Values.server.image.tag | default .Chart.AppVersion }}"
+        imagePullPolicy: "{{ .Values.server.image.pullPolicy }}"
+        ports:
+        - containerPort: 5200
+          name: http
+        volumeMounts:
+        - name: config
+          mountPath: /config
+        - name: data
+          mountPath: /var/lib/snooze
+        env:
+        - name: SNOOZE_SERVER_CONFIG
+          value: /config
+        # SQLite does not use DATABASE_URL; the server reads the path
+        # from config (database.path: /var/lib/snooze/db.sqlite).
+        - name: SNOOZE_DATABASE_TYPE
+          value: sqlite
+        - name: SNOOZE_DATABASE_PATH
+          value: "{{ .Values.database.sqlite.path }}"
+        {{- with .Values.timeZone }}
+        - name: TZ
+          value: "{{ . }}"
+        {{- end }}
+        {{- if .Values.server.ldap.bindPasswordExistingSecretName }}
+        - name: LDAP_BIND_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: "{{ .Values.server.ldap.bindPasswordExistingSecretName }}"
+              key: "{{ .Values.server.ldap.bindPasswordExistingSecretKey }}"
+        {{- end }}
+      volumes:
+      - name: config
+        configMap:
+          name: "{{ .Release.Name }}-server-config"
+  volumeClaimTemplates:
+  - metadata:
+      name: data
+    spec:
+      accessModes:
+      - ReadWriteOnce
+      {{- with .Values.server.sqlite.persistentVolume.storageClassName }}
+      storageClassName: "{{ . }}"
+      {{- end }}
+      resources:
+        requests:
+          storage: {{ .Values.server.sqlite.persistentVolume.size }}
+{{- end }}

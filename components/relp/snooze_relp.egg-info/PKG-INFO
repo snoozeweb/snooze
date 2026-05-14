@@ -1,8 +1,0 @@
-Metadata-Version: 2.1
-Name: snooze-relp
-Version: 1.0.1
-Requires-Python: ~=3.8
-Requires-Dist: pathlib
-Requires-Dist: pyyaml
-Requires-Dist: snooze-client
-Requires-Dist: snooze-syslog

@@ -41,13 +41,13 @@
 <link rel="preload" as="script" href="../_static/scripts/pydata-sphinx-theme.js?digest=8878045cc6db502f8baf" />
 
     <script src="../_static/documentation_options.js?v=9eb32ce0"></script>
-    <script src="../_static/doctools.js?v=9bcbadda"></script>
-    <script src="../_static/sphinx_highlight.js?v=dc90522c"></script>
+    <script src="../_static/doctools.js?v=fd6eb6e6"></script>
+    <script src="../_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="../_static/scripts/sphinx-book-theme.js?v=fab101a9"></script>
     <script>DOCUMENTATION_OPTIONS.pagename = 'getting_started/index';</script>
     <link rel="index" title="Index" href="../genindex.html" />
     <link rel="search" title="Search" href="../search.html" />
-    <link rel="next" title="Installation on RHEL/Debian" href="01_Installation.html" />
+    <link rel="next" title="Getting started (Go, v2.0)" href="00_GoQuickstart.html" />
     <link rel="prev" title="SnoozeWeb" href="../index.html" />
   <meta name="viewport" content="width=device-width, initial-scale=1"/>
   <meta name="docsearch:language" content="en"/>
@@ -146,9 +146,18 @@
     <div class="bd-toc-item navbar-nav active">
         <ul class="current nav bd-sidenav">
 <li class="toctree-l1 current active has-children"><a class="current reference internal" href="#">Getting Started</a><details open="open"><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l2"><a class="reference internal" href="00_GoQuickstart.html">Getting started (Go, v2.0)</a></li>
 <li class="toctree-l2"><a class="reference internal" href="01_Installation.html">Installation on RHEL/Debian</a></li>
 <li class="toctree-l2"><a class="reference internal" href="02_Docker.html">Docker deployment</a></li>
 <li class="toctree-l2"><a class="reference internal" href="03_Login.html">Log in to the web interface</a></li>
+</ul>
+</details></li>
+<li class="toctree-l1"><a class="reference internal" href="../configuration/index.html">Configuration</a></li>
+
+
+
+<li class="toctree-l1 has-children"><a class="reference internal" href="../migration/index.html">Migration</a><details open="open"><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l2"><a class="reference internal" href="../migration/python-to-go.html">Python 1.x → Go 2.0 migration</a></li>
 </ul>
 </details></li>
 <li class="toctree-l1 has-children"><a class="reference internal" href="../general/index.html">General</a><details open="open"><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
@@ -171,16 +180,6 @@
 <li class="toctree-l2"><a class="reference internal" href="../general/18_Metrics.html">Metrics</a></li>
 </ul>
 </details></li>
-<li class="toctree-l1 has-children"><a class="reference internal" href="../configuration/index.html">Configuration</a><details open="open"><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
-<li class="toctree-l2"><a class="reference internal" href="../configuration/core.html">Core configuration</a></li>
-<li class="toctree-l2"><a class="reference internal" href="../configuration/general.html">General configuration</a></li>
-<li class="toctree-l2"><a class="reference internal" href="../configuration/housekeeping.html">Housekeeper configuration</a></li>
-<li class="toctree-l2"><a class="reference internal" href="../configuration/ldap_auth.html">LDAP configuration</a></li>
-<li class="toctree-l2"><a class="reference internal" href="../configuration/notifications.html">Notification configuration</a></li>
-<li class="toctree-l2"><a class="reference internal" href="../configuration/syncer.html">Syncer configuration</a></li>
-</ul>
-</details></li>
-
 </ul>
 
     </div>
@@ -377,10 +376,12 @@
                   
   <section id="getting-started">
 <h1>Getting Started<a class="headerlink" href="#getting-started" title="Link to this heading">#</a></h1>
-<p>This section is dedicated to downloading, installing and running Snooze server.</p>
-<p>Various deployments are supported, including RHEL, Debian and Docker.</p>
+<p>This section is dedicated to downloading, installing and running
+<code class="docutils literal notranslate"><span class="pre">snooze-server</span></code> (Go, v2.0). For the Python 1.x retrospective, see
+<a class="reference internal" href="../migration/index.html"><span class="doc">Migration</span></a>.</p>
 <div class="toctree-wrapper compound">
 <ul>
+<li class="toctree-l1"><a class="reference internal" href="00_GoQuickstart.html">Getting started (Go, v2.0)</a></li>
 <li class="toctree-l1"><a class="reference internal" href="01_Installation.html">Installation on RHEL/Debian</a></li>
 <li class="toctree-l1"><a class="reference internal" href="02_Docker.html">Docker deployment</a></li>
 <li class="toctree-l1"><a class="reference internal" href="03_Login.html">Log in to the web interface</a></li>
@@ -409,11 +410,11 @@
       </div>
     </a>
     <a class="right-next"
-       href="01_Installation.html"
+       href="00_GoQuickstart.html"
        title="next page">
       <div class="prev-next-info">
         <p class="prev-next-subtitle">next</p>
-        <p class="prev-next-title">Installation on RHEL/Debian</p>
+        <p class="prev-next-title">Getting started (Go, v2.0)</p>
       </div>
       <i class="fa-solid fa-angle-right"></i>
     </a>

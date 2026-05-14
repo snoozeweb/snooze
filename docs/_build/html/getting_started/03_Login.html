@@ -41,13 +41,13 @@
 <link rel="preload" as="script" href="../_static/scripts/pydata-sphinx-theme.js?digest=8878045cc6db502f8baf" />
 
     <script src="../_static/documentation_options.js?v=9eb32ce0"></script>
-    <script src="../_static/doctools.js?v=9bcbadda"></script>
-    <script src="../_static/sphinx_highlight.js?v=dc90522c"></script>
+    <script src="../_static/doctools.js?v=fd6eb6e6"></script>
+    <script src="../_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="../_static/scripts/sphinx-book-theme.js?v=fab101a9"></script>
     <script>DOCUMENTATION_OPTIONS.pagename = 'getting_started/03_Login';</script>
     <link rel="index" title="Index" href="../genindex.html" />
     <link rel="search" title="Search" href="../search.html" />
-    <link rel="next" title="General" href="../general/index.html" />
+    <link rel="next" title="Configuration" href="../configuration/index.html" />
     <link rel="prev" title="Docker deployment" href="02_Docker.html" />
   <meta name="viewport" content="width=device-width, initial-scale=1"/>
   <meta name="docsearch:language" content="en"/>
@@ -146,9 +146,18 @@
     <div class="bd-toc-item navbar-nav active">
         <ul class="current nav bd-sidenav">
 <li class="toctree-l1 current active has-children"><a class="reference internal" href="index.html">Getting Started</a><details open="open"><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul class="current">
+<li class="toctree-l2"><a class="reference internal" href="00_GoQuickstart.html">Getting started (Go, v2.0)</a></li>
 <li class="toctree-l2"><a class="reference internal" href="01_Installation.html">Installation on RHEL/Debian</a></li>
 <li class="toctree-l2"><a class="reference internal" href="02_Docker.html">Docker deployment</a></li>
 <li class="toctree-l2 current active"><a class="current reference internal" href="#">Log in to the web interface</a></li>
+</ul>
+</details></li>
+<li class="toctree-l1"><a class="reference internal" href="../configuration/index.html">Configuration</a></li>
+
+
+
+<li class="toctree-l1 has-children"><a class="reference internal" href="../migration/index.html">Migration</a><details open="open"><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l2"><a class="reference internal" href="../migration/python-to-go.html">Python 1.x → Go 2.0 migration</a></li>
 </ul>
 </details></li>
 <li class="toctree-l1 has-children"><a class="reference internal" href="../general/index.html">General</a><details open="open"><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
@@ -171,16 +180,6 @@
 <li class="toctree-l2"><a class="reference internal" href="../general/18_Metrics.html">Metrics</a></li>
 </ul>
 </details></li>
-<li class="toctree-l1 has-children"><a class="reference internal" href="../configuration/index.html">Configuration</a><details open="open"><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
-<li class="toctree-l2"><a class="reference internal" href="../configuration/core.html">Core configuration</a></li>
-<li class="toctree-l2"><a class="reference internal" href="../configuration/general.html">General configuration</a></li>
-<li class="toctree-l2"><a class="reference internal" href="../configuration/housekeeping.html">Housekeeper configuration</a></li>
-<li class="toctree-l2"><a class="reference internal" href="../configuration/ldap_auth.html">LDAP configuration</a></li>
-<li class="toctree-l2"><a class="reference internal" href="../configuration/notifications.html">Notification configuration</a></li>
-<li class="toctree-l2"><a class="reference internal" href="../configuration/syncer.html">Syncer configuration</a></li>
-</ul>
-</details></li>
-
 </ul>
 
     </div>
@@ -374,8 +373,9 @@
             <nav aria-label="Page">
                 <ul class="visible nav section-nav flex-column">
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#url">URL</a></li>
-<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#default-local-user-root">Default Local user ‘root’</a></li>
-<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#jwt-token">JWT Token</a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#bootstrap-root-user-v2-0">Bootstrap <code class="docutils literal notranslate"><span class="pre">root</span></code> user (v2.0)</a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#rescue-path-lost-root-password">Rescue path (lost root password)</a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#jwt-vs-bearer">JWT vs Bearer</a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#ldap-authentication">LDAP Authentication</a></li>
 </ul>
             </nav>
@@ -393,18 +393,48 @@
 <img alt="../_images/web_login.png" class="align-center" src="../_images/web_login.png" />
 <section id="url">
 <h2>URL<a class="headerlink" href="#url" title="Link to this heading">#</a></h2>
-<p>By default, the web interface listens locally on port 5200: <a class="reference external" href="http://localhost:5200">http://localhost:5200</a></p>
+<p>By default the web interface listens locally on <code class="docutils literal notranslate"><span class="pre">http://localhost:5200</span></code>.</p>
 </section>
-<section id="default-local-user-root">
-<h2>Default Local user ‘root’<a class="headerlink" href="#default-local-user-root" title="Link to this heading">#</a></h2>
-<p>In case <code class="docutils literal notranslate"><span class="pre">create_root_user</span></code> in <code class="docutils literal notranslate"><span class="pre">/etc/snooze/server/core.yaml</span></code> has been left to <strong>true</strong> or is <strong>undefined</strong>, a local user named <code class="docutils literal notranslate"><span class="pre">root</span></code> will be automatically created whenever snooze is run for the first time. Its password is <code class="docutils literal notranslate"><span class="pre">root</span></code> and it has admin privileges.</p>
+<section id="bootstrap-root-user-v2-0">
+<h2>Bootstrap <code class="docutils literal notranslate"><span class="pre">root</span></code> user (v2.0)<a class="headerlink" href="#bootstrap-root-user-v2-0" title="Link to this heading">#</a></h2>
+<p>If <code class="docutils literal notranslate"><span class="pre">create_root_user</span></code> in <code class="docutils literal notranslate"><span class="pre">/etc/snooze/server-go/core.yaml</span></code> is left
+at its default (<code class="docutils literal notranslate"><span class="pre">true</span></code>), a local <code class="docutils literal notranslate"><span class="pre">root</span></code> user is created the first
+time <code class="docutils literal notranslate"><span class="pre">snooze-server</span></code> starts.</p>
+<p>Unlike Snooze 1.x — which used the hard-coded password <code class="docutils literal notranslate"><span class="pre">root</span></code> — the
+2.0 bootstrap generates a 24-byte random password, bcrypt-hashes it,
+and prints the plaintext <strong>once</strong> to stderr:</p>
+<div class="highlight-console notranslate"><div class="highlight"><pre><span></span><span class="go">snooze-server: bootstrap: root password = NaMd…rotateMeNow</span>
+</pre></div>
+</div>
+<p>Copy that string out of <code class="docutils literal notranslate"><span class="pre">journalctl</span> <span class="pre">-u</span> <span class="pre">snooze-server</span></code> and rotate it as
+soon as you’re in:</p>
+<div class="highlight-console notranslate"><div class="highlight"><pre><span></span><span class="gp">$ </span><span class="nv">TOKEN</span><span class="o">=</span><span class="k">$(</span>curl<span class="w"> </span>-s<span class="w"> </span>-X<span class="w"> </span>POST<span class="w"> </span>-H<span class="w"> </span><span class="s1">&#39;Content-Type: application/json&#39;</span><span class="w"> </span><span class="se">\</span>
+<span class="w">    </span>-d<span class="w"> </span><span class="s1">&#39;{&quot;username&quot;:&quot;root&quot;,&quot;password&quot;:&quot;&lt;bootstrap-password&gt;&quot;}&#39;</span><span class="w"> </span><span class="se">\</span>
+<span class="w">    </span>http://localhost:5200/api/v1/login/local<span class="w"> </span><span class="p">|</span><span class="w"> </span>jq<span class="w"> </span>-r<span class="w"> </span>.token<span class="k">)</span>
+<span class="gp">$ </span>curl<span class="w"> </span>-X<span class="w"> </span>PATCH<span class="w"> </span>-H<span class="w"> </span><span class="s2">&quot;Authorization: Bearer </span><span class="nv">$TOKEN</span><span class="s2">&quot;</span><span class="w"> </span><span class="se">\</span>
+<span class="w">    </span>-H<span class="w"> </span><span class="s1">&#39;Content-Type: application/json&#39;</span><span class="w"> </span><span class="se">\</span>
+<span class="w">    </span>-d<span class="w"> </span><span class="s1">&#39;{&quot;password&quot;:&quot;&lt;your-new-password&gt;&quot;}&#39;</span><span class="w"> </span><span class="se">\</span>
+<span class="w">    </span>http://localhost:5200/api/v1/user/root@local
+</pre></div>
+</div>
 </section>
-<section id="jwt-token">
-<h2>JWT Token<a class="headerlink" href="#jwt-token" title="Link to this heading">#</a></h2>
-<p>It is always possible to generate a root token that can be used for <strong>JWT Token</strong> authentication method if <a class="reference external" href="https://github.com/snoozeweb/snooze_client">Snooze Client</a> is installed:</p>
-<div class="highlight-console notranslate"><div class="highlight"><pre><span></span><span class="gp"># </span>Run<span class="w"> </span>with<span class="w"> </span>root<span class="w"> </span>or<span class="w"> </span>snooze<span class="w"> </span>user
-<span class="gp">$ </span>snooze<span class="w"> </span>root-token
-<span class="go">Root token: eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJ1c2VyIjp7Im...</span>
+<section id="rescue-path-lost-root-password">
+<h2>Rescue path (lost root password)<a class="headerlink" href="#rescue-path-lost-root-password" title="Link to this heading">#</a></h2>
+<p>If the printed password was missed, an operator with shell access on
+the server can mint a one-shot rescue JWT over the admin Unix socket:</p>
+<div class="highlight-console notranslate"><div class="highlight"><pre><span></span><span class="gp">$ </span>sudo<span class="w"> </span>snooze-server<span class="w"> </span>root-token
+<span class="go">eyJhbGciOiJIUzI1NiI…</span>
+</pre></div>
+</div>
+<p>The socket is at <code class="docutils literal notranslate"><span class="pre">/var/run/snooze/admin.sock</span></code> by default and is
+guarded by peer-cred: only the process owner (and root) can read from
+it. The returned JWT carries the admin role for a 5-minute lease.</p>
+</section>
+<section id="jwt-vs-bearer">
+<h2>JWT vs Bearer<a class="headerlink" href="#jwt-vs-bearer" title="Link to this heading">#</a></h2>
+<p>The 1.x <code class="docutils literal notranslate"><span class="pre">Authorization:</span> <span class="pre">JWT</span> <span class="pre">&lt;token&gt;</span></code> scheme is <strong>no longer accepted</strong>.
+Use:</p>
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>Authorization: Bearer &lt;token&gt;
 </pre></div>
 </div>
 </section>
@@ -435,11 +465,11 @@
       </div>
     </a>
     <a class="right-next"
-       href="../general/index.html"
+       href="../configuration/index.html"
        title="next page">
       <div class="prev-next-info">
         <p class="prev-next-subtitle">next</p>
-        <p class="prev-next-title">General</p>
+        <p class="prev-next-title">Configuration</p>
       </div>
       <i class="fa-solid fa-angle-right"></i>
     </a>
@@ -462,8 +492,9 @@
   <nav id="pst-page-toc-nav" class="page-toc" aria-labelledby="pst-page-navigation-heading-2">
     <ul class="visible nav section-nav flex-column">
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#url">URL</a></li>
-<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#default-local-user-root">Default Local user ‘root’</a></li>
-<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#jwt-token">JWT Token</a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#bootstrap-root-user-v2-0">Bootstrap <code class="docutils literal notranslate"><span class="pre">root</span></code> user (v2.0)</a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#rescue-path-lost-root-password">Rescue path (lost root password)</a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#jwt-vs-bearer">JWT vs Bearer</a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#ldap-authentication">LDAP Authentication</a></li>
 </ul>
   </nav></div>

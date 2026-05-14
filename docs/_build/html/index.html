@@ -41,8 +41,8 @@
 <link rel="preload" as="script" href="_static/scripts/pydata-sphinx-theme.js?digest=8878045cc6db502f8baf" />
 
     <script src="_static/documentation_options.js?v=9eb32ce0"></script>
-    <script src="_static/doctools.js?v=9bcbadda"></script>
-    <script src="_static/sphinx_highlight.js?v=dc90522c"></script>
+    <script src="_static/doctools.js?v=fd6eb6e6"></script>
+    <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="_static/scripts/sphinx-book-theme.js?v=fab101a9"></script>
     <script>DOCUMENTATION_OPTIONS.pagename = 'index';</script>
     <link rel="index" title="Index" href="genindex.html" />
@@ -147,9 +147,18 @@
     <div class="bd-toc-item navbar-nav active">
         <ul class="nav bd-sidenav">
 <li class="toctree-l1 has-children"><a class="reference internal" href="getting_started/index.html">Getting Started</a><details open="open"><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l2"><a class="reference internal" href="getting_started/00_GoQuickstart.html">Getting started (Go, v2.0)</a></li>
 <li class="toctree-l2"><a class="reference internal" href="getting_started/01_Installation.html">Installation on RHEL/Debian</a></li>
 <li class="toctree-l2"><a class="reference internal" href="getting_started/02_Docker.html">Docker deployment</a></li>
 <li class="toctree-l2"><a class="reference internal" href="getting_started/03_Login.html">Log in to the web interface</a></li>
+</ul>
+</details></li>
+<li class="toctree-l1"><a class="reference internal" href="configuration/index.html">Configuration</a></li>
+
+
+
+<li class="toctree-l1 has-children"><a class="reference internal" href="migration/index.html">Migration</a><details open="open"><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l2"><a class="reference internal" href="migration/python-to-go.html">Python 1.x → Go 2.0 migration</a></li>
 </ul>
 </details></li>
 <li class="toctree-l1 has-children"><a class="reference internal" href="general/index.html">General</a><details open="open"><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
@@ -172,16 +181,6 @@
 <li class="toctree-l2"><a class="reference internal" href="general/18_Metrics.html">Metrics</a></li>
 </ul>
 </details></li>
-<li class="toctree-l1 has-children"><a class="reference internal" href="configuration/index.html">Configuration</a><details open="open"><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
-<li class="toctree-l2"><a class="reference internal" href="configuration/core.html">Core configuration</a></li>
-<li class="toctree-l2"><a class="reference internal" href="configuration/general.html">General configuration</a></li>
-<li class="toctree-l2"><a class="reference internal" href="configuration/housekeeping.html">Housekeeper configuration</a></li>
-<li class="toctree-l2"><a class="reference internal" href="configuration/ldap_auth.html">LDAP configuration</a></li>
-<li class="toctree-l2"><a class="reference internal" href="configuration/notifications.html">Notification configuration</a></li>
-<li class="toctree-l2"><a class="reference internal" href="configuration/syncer.html">Syncer configuration</a></li>
-</ul>
-</details></li>
-
 </ul>
 
     </div>
@@ -374,9 +373,10 @@
             </div>
             <nav aria-label="Page">
                 <ul class="visible nav section-nav flex-column">
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#features">Features</a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#demo">Demo</a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#quick-start">Quick start</a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#contribute">Contribute</a></li>
-<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#support">Support</a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#license">License</a></li>
 </ul>
             </nav>
@@ -391,65 +391,76 @@
                   
   <section id="snoozeweb">
 <h1>SnoozeWeb<a class="headerlink" href="#snoozeweb" title="Link to this heading">#</a></h1>
-<p>SnoozeWeb is a powerful monitoring tool used for log aggregation and alerting. It comes with the following features:</p>
+<div class="admonition note">
+<p class="admonition-title">Note</p>
+<p><strong>v2.0 is the Go rewrite.</strong> The Python codebase is retired. See the
+<a class="reference internal" href="migration/index.html"><span class="doc">Migration</span></a> for the upgrade path and the project
+<a class="reference external" href="https://github.com/snoozeweb/snooze/blob/master/CHANGELOG.md">CHANGELOG</a>
+for the breaking-change inventory.</p>
+</div>
+<p>SnoozeWeb is a monitoring tool used for log aggregation and alerting. It
+ingests alerts from many sources (syslog, SNMP traps, RELP, AlertManager,
+Grafana, InfluxDB 2, Kapacitor, Prometheus, custom webhooks), applies
+rule/aggregate/snooze/notification pipelines, and ships outbound
+notifications to mail, chat (Mattermost, Teams, Google Chat), webhooks,
+or custom action plugins.</p>
+<section id="features">
+<h2>Features<a class="headerlink" href="#features" title="Link to this heading">#</a></h2>
 <ul class="simple">
-<li><p>Backend + Web interface</p></li>
-<li><p>Local / LDAP / JWT token based authentication</p></li>
-<li><p>Built-in clustering for scalability</p></li>
-<li><p>Large number of sources as inputs</p></li>
-<li><p>Log aggregation</p></li>
-<li><p>Log manipulation</p></li>
-<li><p>Log archiving</p></li>
-<li><p>Alerting policies</p></li>
-<li><p>Various alerting methods</p></li>
-<li><p>Auto housekeeping</p></li>
-<li><p>Auto backups</p></li>
-<li><p>Metrics</p></li>
-<li><p>Audit logs</p></li>
+<li><p>Single-binary Go server (<cite>snooze-server</cite>) plus a separate <cite>snooze</cite>
+CLI and eight optional auxiliary daemons (<cite>snooze-relp</cite>,
+<cite>snooze-syslog</cite>, <cite>snooze-snmptrap</cite>, <cite>snooze-smtp</cite>, <cite>snooze-mattermost</cite>,
+<cite>snooze-googlechat</cite>, <cite>snooze-teams</cite>, <cite>snooze-pacemaker</cite>).</p></li>
+<li><p>Three pluggable backends: SQLite (zero-deps default), MongoDB
+(production with replica sets), Postgres (production with
+CloudNativePG / managed services).</p></li>
+<li><p>Three message buses, matched to the backend (in-process channel,
+Mongo change streams, Postgres LISTEN/NOTIFY).</p></li>
+<li><p>Local + LDAP + anonymous authentication. Bearer-JWT API tokens.</p></li>
+<li><p>OpenAPI 3.1 specification at <code class="docutils literal notranslate"><span class="pre">/api/openapi.yaml</span></code>.</p></li>
+<li><p>Structured <code class="docutils literal notranslate"><span class="pre">log/slog</span></code> JSON logs, OpenTelemetry traces, a Prometheus
+registry served at <code class="docutils literal notranslate"><span class="pre">/metrics</span></code>.</p></li>
+<li><p>Distroless container images at <code class="docutils literal notranslate"><span class="pre">ghcr.io/japannext/snooze-&lt;binary&gt;</span></code>.</p></li>
+<li><p>Helm chart with <code class="docutils literal notranslate"><span class="pre">database.kind:</span> <span class="pre">mongo</span> <span class="pre">|</span> <span class="pre">postgres</span> <span class="pre">|</span> <span class="pre">sqlite</span></code>.</p></li>
 </ul>
 <figure class="align-center">
 <a class="reference external image-reference" href="_images/web_alerts.png"><img alt="_images/web_alerts1.png" src="_images/web_alerts1.png" />
 </a>
 </figure>
+</section>
 <section id="demo">
 <h2>Demo<a class="headerlink" href="#demo" title="Link to this heading">#</a></h2>
-<p>Try it now on: <a class="reference external" href="https://try.snoozeweb.net">https://try.snoozeweb.net</a></p>
+<p>Try it at <a class="reference external" href="https://try.snoozeweb.net">https://try.snoozeweb.net</a>.</p>
+</section>
+<section id="quick-start">
+<h2>Quick start<a class="headerlink" href="#quick-start" title="Link to this heading">#</a></h2>
+<div class="highlight-console notranslate"><div class="highlight"><pre><span></span><span class="gp"># </span>Local<span class="w"> </span>docker-compose<span class="w"> </span>with<span class="w"> </span>SQLite<span class="w"> </span><span class="o">(</span>single-replica<span class="o">)</span>
+<span class="gp">$ </span>docker<span class="w"> </span>compose<span class="w"> </span>--profile<span class="w"> </span>sqlite<span class="w"> </span>up
+
+<span class="gp"># </span>…or<span class="w"> </span>with<span class="w"> </span>a<span class="w"> </span><span class="m">3</span>-node<span class="w"> </span>MongoDB<span class="w"> </span>replica<span class="w"> </span><span class="nb">set</span><span class="w"> </span>+<span class="w"> </span>nginx<span class="w"> </span>load<span class="w"> </span>balancer
+<span class="gp">$ </span>docker<span class="w"> </span>compose<span class="w"> </span>--profile<span class="w"> </span>mongo<span class="w"> </span>up
+
+<span class="gp"># </span>…or<span class="w"> </span>with<span class="w"> </span>a<span class="w"> </span>single<span class="w"> </span>Postgres<span class="w"> </span>instance
+<span class="gp">$ </span>docker<span class="w"> </span>compose<span class="w"> </span>--profile<span class="w"> </span>postgres<span class="w"> </span>up
+</pre></div>
+</div>
+<p>The web UI listens on <code class="docutils literal notranslate"><span class="pre">http://localhost:5200</span></code> (or <code class="docutils literal notranslate"><span class="pre">:80</span></code> behind the
+nginx in the <code class="docutils literal notranslate"><span class="pre">mongo</span></code> profile). The bootstrap root password is printed
+once on the server stderr; see
+<a class="reference internal" href="migration/python-to-go.html"><span class="doc">Python 1.x → Go 2.0 migration</span></a> for rotation.</p>
 </section>
 <section id="contribute">
 <h2>Contribute<a class="headerlink" href="#contribute" title="Link to this heading">#</a></h2>
 <ul class="simple">
-<li><p>SnoozeWeb Core: <a class="github reference external" href="https://github.com/snoozeweb/snooze">snoozeweb/snooze</a></p></li>
-<li><p>Snoozeweb Plugins: <a class="github reference external" href="https://github.com/snoozeweb/snooze_plugins">snoozeweb/snooze_plugins</a></p></li>
-</ul>
-</section>
-<section id="support">
-<h2>Support<a class="headerlink" href="#support" title="Link to this heading">#</a></h2>
-<ul class="simple">
+<li><p>Repository: <a class="github reference external" href="https://github.com/snoozeweb/snooze">snoozeweb/snooze</a></p></li>
 <li><p>Issue tracker: <a class="github reference external" href="https://github.com/snoozeweb/snooze/issues">snoozeweb/snooze#issues</a></p></li>
 </ul>
 </section>
 <section id="license">
 <h2>License<a class="headerlink" href="#license" title="Link to this heading">#</a></h2>
-<div class="highlight-console notranslate"><div class="highlight"><pre><span></span><span class="go">SnoozeWeb - Log aggregation and alerting</span>
-
-<span class="go">Copyright 2018-2020 Florian Dematraz &lt;florian.dematraz@snoozeweb.net&gt;</span>
-<span class="go">Copyright 2018-2020 Guillaume Ludinard &lt;guillaume.ludi@gmail.com&gt;</span>
-<span class="go">Copyright 2020-2022 Japannext Co., Ltd. &lt;https://www.japannext.co.jp/&gt;</span>
-
-<span class="go">This program is free software: you can redistribute it and/or modify</span>
-<span class="go">it under the terms of the GNU Affero General Public License as</span>
-<span class="go">published by the Free Software Foundation, either version 3 of the</span>
-<span class="go">License, or (at your option) any later version.</span>
-
-<span class="go">This program is distributed in the hope that it will be useful,</span>
-<span class="go">but WITHOUT ANY WARRANTY; without even the implied warranty of</span>
-<span class="go">MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the</span>
-<span class="go">GNU Affero General Public License for more details.</span>
-
-<span class="go">You should have received a copy of the GNU Affero General Public License</span>
-<span class="go">along with this program.  If not, see &lt;https://www.gnu.org/licenses/&gt;.</span>
-</pre></div>
-</div>
+<p>Snooze is licensed under the GNU Affero General Public License v3.0 or
+later. See the <code class="docutils literal notranslate"><span class="pre">LICENSE</span></code> file in the repository root for the full
+text.</p>
 <div class="toctree-wrapper compound">
 </div>
 </section>
@@ -493,9 +504,10 @@
   </div>
   <nav id="pst-page-toc-nav" class="page-toc" aria-labelledby="pst-page-navigation-heading-2">
     <ul class="visible nav section-nav flex-column">
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#features">Features</a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#demo">Demo</a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#quick-start">Quick start</a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#contribute">Contribute</a></li>
-<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#support">Support</a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#license">License</a></li>
 </ul>
   </nav></div>

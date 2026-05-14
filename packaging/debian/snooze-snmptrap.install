@@ -1,0 +1,2 @@
+usr/bin/snooze-snmptrap
+packaging/systemd/snooze-snmptrap.service lib/systemd/system/

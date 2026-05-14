@@ -1,0 +1,40 @@
+---
+name: 'Run a script'
+desc: 'Execute a local command/script as a notification target'
+icon: 'terminal'
+route_defaults:
+    class_name: ~
+options:
+    batch:
+        default: false
+        hidden: false
+        timer: 10
+        maxsize: 100
+action_form:
+    command:
+        display_name: Command
+        component: Arguments
+        description: 'Command to execute as an argv list (first element is the program). Each element is a Go text/template rendered against the record (e.g. "{{ .Host }}").'
+        required: true
+    cwd:
+        display_name: Working directory
+        component: String
+        description: 'Optional working directory for the child process. Templated.'
+    env:
+        display_name: Environment
+        component: Object
+        description: 'Extra environment variables prepended to the parent environment. Values are templated.'
+    stdin:
+        display_name: Stdin
+        component: Text
+        description: 'Optional template rendered and fed to the child process stdin (e.g. JSON of the record).'
+    timeout:
+        display_name: Timeout (seconds)
+        component: Number
+        default_value: 10
+        description: 'Hard timeout for the child process. Default 10s.'
+    max_output:
+        display_name: Max captured output (bytes)
+        component: Number
+        default_value: 65536
+        description: 'Cap on the combined stdout+stderr captured by the server. Default 64 KiB.'

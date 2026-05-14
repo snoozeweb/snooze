@@ -1,6 +1,0 @@
-[tools]
-python = "3.13"
-"aqua:astral-sh/ruff" = "latest"
-"aqua:astral-sh/uv" = "latest"
-"ubi:go-task/task" = "latest"
-node = "14"

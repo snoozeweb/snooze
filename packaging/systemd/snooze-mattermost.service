@@ -1,0 +1,26 @@
+[Unit]
+Description=Snooze Mattermost notification daemon
+Documentation=https://github.com/snoozeweb/snooze
+After=network-online.target snooze-server.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=snooze
+Group=snooze
+ExecStart=/usr/bin/snooze-mattermost -config /etc/snooze/mattermost.yaml
+Restart=on-failure
+RestartSec=5s
+
+# Hardening
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+NoNewPrivileges=true
+ReadWritePaths=/var/lib/snooze /var/log/snooze
+
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

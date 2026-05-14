@@ -1,9 +1,2 @@
-opt/snooze
-var/lib/snooze
-var/log/snooze
-var/log/snooze/server
-etc/snooze
-etc/snooze/server
-usr/lib/systemd/system/snooze-server.service
-opt/snooze/web
-etc/snooze/server/core.yaml
+usr/bin/snooze-server
+packaging/systemd/snooze-server.service lib/systemd/system/

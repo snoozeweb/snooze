@@ -1,0 +1,34 @@
+[Unit]
+Description=Snooze main server daemon
+Documentation=https://github.com/snoozeweb/snooze
+After=network-online.target
+Wants=network-online.target
+# Snooze supports MongoDB, PostgreSQL and file backends. The packaging
+# does not pin a specific database service here so any of the three may
+# be used. If your deployment uses a co-located DB, add an override:
+#   systemctl edit snooze-server
+# and set e.g. `Wants=mongodb.service` or `Wants=postgresql.service`.
+
+[Service]
+Type=simple
+User=snooze
+Group=snooze
+ExecStart=/usr/bin/snooze-server -config /etc/snooze/server.yaml
+Restart=on-failure
+RestartSec=5s
+
+# Hardening
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+NoNewPrivileges=true
+ReadWritePaths=/var/lib/snooze /var/log/snooze
+# /run/snooze hosts the admin Unix socket (snoozectl, etc.).
+RuntimeDirectory=snooze
+RuntimeDirectoryMode=0750
+
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

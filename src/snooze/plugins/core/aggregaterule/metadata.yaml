@@ -1,5 +1,0 @@
----
-name: 'Aggregate'
-desc: 'Aggregate desc'
-default_sorting: 'name'
-auto_reload: true

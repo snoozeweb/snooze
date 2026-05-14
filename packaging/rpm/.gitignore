@@ -1,0 +1,6 @@
+*.rpm
+BUILD/
+BUILDROOT/
+RPMS/
+SRPMS/
+SOURCES/

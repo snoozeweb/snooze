@@ -41,12 +41,13 @@
 <link rel="preload" as="script" href="../_static/scripts/pydata-sphinx-theme.js?digest=8878045cc6db502f8baf" />
 
     <script src="../_static/documentation_options.js?v=9eb32ce0"></script>
-    <script src="../_static/doctools.js?v=9bcbadda"></script>
-    <script src="../_static/sphinx_highlight.js?v=dc90522c"></script>
+    <script src="../_static/doctools.js?v=fd6eb6e6"></script>
+    <script src="../_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="../_static/scripts/sphinx-book-theme.js?v=fab101a9"></script>
     <script>DOCUMENTATION_OPTIONS.pagename = 'configuration/syncer';</script>
     <link rel="index" title="Index" href="../genindex.html" />
     <link rel="search" title="Search" href="../search.html" />
+    <link rel="next" title="SQLite backend" href="sqlite.html" />
     <link rel="prev" title="Notification configuration" href="notifications.html" />
   <meta name="viewport" content="width=device-width, initial-scale=1"/>
   <meta name="docsearch:language" content="en"/>
@@ -145,9 +146,18 @@
     <div class="bd-toc-item navbar-nav active">
         <ul class="current nav bd-sidenav">
 <li class="toctree-l1 has-children"><a class="reference internal" href="../getting_started/index.html">Getting Started</a><details open="open"><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l2"><a class="reference internal" href="../getting_started/00_GoQuickstart.html">Getting started (Go, v2.0)</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../getting_started/01_Installation.html">Installation on RHEL/Debian</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../getting_started/02_Docker.html">Docker deployment</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../getting_started/03_Login.html">Log in to the web interface</a></li>
+</ul>
+</details></li>
+<li class="toctree-l1"><a class="reference internal" href="index.html">Configuration</a></li>
+
+
+
+<li class="toctree-l1 has-children"><a class="reference internal" href="../migration/index.html">Migration</a><details open="open"><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l2"><a class="reference internal" href="../migration/python-to-go.html">Python 1.x → Go 2.0 migration</a></li>
 </ul>
 </details></li>
 <li class="toctree-l1 has-children"><a class="reference internal" href="../general/index.html">General</a><details open="open"><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
@@ -170,16 +180,6 @@
 <li class="toctree-l2"><a class="reference internal" href="../general/18_Metrics.html">Metrics</a></li>
 </ul>
 </details></li>
-<li class="toctree-l1 current active has-children"><a class="reference internal" href="index.html">Configuration</a><details open="open"><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul class="current">
-<li class="toctree-l2"><a class="reference internal" href="core.html">Core configuration</a></li>
-<li class="toctree-l2"><a class="reference internal" href="general.html">General configuration</a></li>
-<li class="toctree-l2"><a class="reference internal" href="housekeeping.html">Housekeeper configuration</a></li>
-<li class="toctree-l2"><a class="reference internal" href="ldap_auth.html">LDAP configuration</a></li>
-<li class="toctree-l2"><a class="reference internal" href="notifications.html">Notification configuration</a></li>
-<li class="toctree-l2 current active"><a class="current reference internal" href="#">Syncer configuration</a></li>
-</ul>
-</details></li>
-
 </ul>
 
     </div>
@@ -375,7 +375,7 @@
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#properties">Properties</a><ul class="nav section-nav flex-column">
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#hostname">hostname</a></li>
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#total">total</a></li>
-<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#sync-interval-ms">sync_interval_ms</a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#sync-interval-sync-interval-ms">sync_interval / sync_interval_ms</a></li>
 </ul>
 </li>
 </ul>
@@ -391,8 +391,29 @@
                   
   <section id="syncer-configuration">
 <span id="id1"></span><h1>Syncer configuration<a class="headerlink" href="#syncer-configuration" title="Link to this heading">#</a></h1>
-<p>Config for the housekeeper thread. Can be edited live in the web interface.
-Usually located at <cite>/etc/snooze/server/housekeeper.yaml</cite>.</p>
+<blockquote>
+<div><dl class="field-list simple">
+<dt class="field-odd">Package location<span class="colon">:</span></dt>
+<dd class="field-odd"><p><code class="docutils literal notranslate"><span class="pre">/etc/snooze/server-go/syncer.yaml</span></code></p>
+</dd>
+<dt class="field-even">Loader<span class="colon">:</span></dt>
+<dd class="field-even"><p><code class="docutils literal notranslate"><span class="pre">internal/config</span></code> (koanf)</p>
+</dd>
+<dt class="field-odd">Live reload<span class="colon">:</span></dt>
+<dd class="field-odd"><p><code class="docutils literal notranslate"><span class="pre">False</span></code></p>
+</dd>
+</dl>
+</div></blockquote>
+<p>The syncer keeps each replica’s in-memory plugin caches consistent.
+In 2.0 the cross-replica bus rides on the <strong>backend’s</strong> change feed:</p>
+<ul class="simple">
+<li><p>MongoDB — change streams (<code class="docutils literal notranslate"><span class="pre">watch()</span></code> on each collection)</p></li>
+<li><p>PostgreSQL — <code class="docutils literal notranslate"><span class="pre">LISTEN/NOTIFY</span></code> (one channel per collection)</p></li>
+<li><p>SQLite — an in-process channel (single-replica, no fan-out needed)</p></li>
+</ul>
+<p>The settings below are mostly status-reporting knobs; the standalone
+1-second polling loop used by Python 1.x is gone.</p>
+<p>The Go schema lives in <code class="docutils literal notranslate"><span class="pre">internal/config/schema/syncer.go</span></code>.</p>
 <section id="properties">
 <h2>Properties<a class="headerlink" href="#properties" title="Link to this heading">#</a></h2>
 <section id="hostname">
@@ -402,8 +423,12 @@ Usually located at <cite>/etc/snooze/server/housekeeper.yaml</cite>.</p>
 <dt class="field-odd">Type<span class="colon">:</span></dt>
 <dd class="field-odd"><p>string</p>
 </dd>
+<dt class="field-even">Default<span class="colon">:</span></dt>
+<dd class="field-even"><p><code class="docutils literal notranslate"><span class="pre">os.Hostname()</span></code></p>
+</dd>
 </dl>
-<p>An override for the hostname of the node in the cluster. Shouldbe different for each node</p>
+<p>Identity of this node in the cluster heartbeat document. Set
+different values per replica.</p>
 </div></blockquote>
 </section>
 <section id="total">
@@ -417,21 +442,25 @@ Usually located at <cite>/etc/snooze/server/housekeeper.yaml</cite>.</p>
 <dd class="field-even"><p><code class="docutils literal notranslate"><span class="pre">1</span></code></p>
 </dd>
 </dl>
-<p>Total number of nodes the syncer should expect (for status reporting)</p>
+<p>Expected number of replicas (used by the verbose health endpoint
+to flag degraded clusters).</p>
 </div></blockquote>
 </section>
-<section id="sync-interval-ms">
-<h3>sync_interval_ms<a class="headerlink" href="#sync-interval-ms" title="Link to this heading">#</a></h3>
+<section id="sync-interval-sync-interval-ms">
+<h3>sync_interval / sync_interval_ms<a class="headerlink" href="#sync-interval-sync-interval-ms" title="Link to this heading">#</a></h3>
 <blockquote>
 <div><dl class="field-list simple">
 <dt class="field-odd">Type<span class="colon">:</span></dt>
-<dd class="field-odd"><p>integer</p>
+<dd class="field-odd"><p>Duration / integer (ms)</p>
 </dd>
 <dt class="field-even">Default<span class="colon">:</span></dt>
-<dd class="field-even"><p><code class="docutils literal notranslate"><span class="pre">1000</span></code></p>
+<dd class="field-even"><p><code class="docutils literal notranslate"><span class="pre">1s</span></code> / <code class="docutils literal notranslate"><span class="pre">1000</span></code></p>
 </dd>
 </dl>
-<p>Interval between checks to update the in-memory value</p>
+<p>Heartbeat interval. The actual cache invalidation does not rely
+on this loop in 2.0 — it is driven by the backend’s change feed
+— but the heartbeat document is still written at this cadence so
+the cluster page in the WebUI reflects liveness.</p>
 </div></blockquote>
 </section>
 </section>
@@ -457,6 +486,15 @@ Usually located at <cite>/etc/snooze/server/housekeeper.yaml</cite>.</p>
         <p class="prev-next-title">Notification configuration</p>
       </div>
     </a>
+    <a class="right-next"
+       href="sqlite.html"
+       title="next page">
+      <div class="prev-next-info">
+        <p class="prev-next-subtitle">next</p>
+        <p class="prev-next-title">SQLite backend</p>
+      </div>
+      <i class="fa-solid fa-angle-right"></i>
+    </a>
 </div>
                 </footer>
               
@@ -478,7 +516,7 @@ Usually located at <cite>/etc/snooze/server/housekeeper.yaml</cite>.</p>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#properties">Properties</a><ul class="nav section-nav flex-column">
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#hostname">hostname</a></li>
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#total">total</a></li>
-<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#sync-interval-ms">sync_interval_ms</a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#sync-interval-sync-interval-ms">sync_interval / sync_interval_ms</a></li>
 </ul>
 </li>
 </ul>

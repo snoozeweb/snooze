@@ -1,0 +1,31 @@
+[Unit]
+Description=Snooze SMTP ingestion daemon
+Documentation=https://github.com/snoozeweb/snooze
+After=network-online.target snooze-server.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=snooze
+Group=snooze
+ExecStart=/usr/bin/snooze-smtp -config /etc/snooze/smtp.yaml
+Restart=on-failure
+RestartSec=5s
+
+# Hardening
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+NoNewPrivileges=true
+ReadWritePaths=/var/lib/snooze /var/log/snooze
+
+# SMTP traditionally uses TCP/25 (privileged). If your config binds an
+# unprivileged port (e.g. 2525) you can remove these two lines.
+AmbientCapabilities=CAP_NET_BIND_SERVICE
+CapabilityBoundingSet=CAP_NET_BIND_SERVICE
+
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

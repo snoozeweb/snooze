@@ -1,0 +1,380 @@
+// Maintenance / cleanup helpers for the SQLite backend.
+//
+// Direct ports of the Postgres versions, swapping ``->>`` for
+// ``json_extract(data, '$.<field>')`` and ``->`` for the same expression
+// without a text cast. All single-statement where possible.
+
+package sqlite
+
+import (
+	"context"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"sort"
+	"strings"
+	"time"
+
+	dbpkg "github.com/japannext/snooze/internal/db"
+)
+
+// CleanupTimeout deletes records whose “date_epoch + ttl“ has elapsed.
+// Records without a “ttl“ field or with a negative ttl are kept.
+func (d *Driver) CleanupTimeout(ctx context.Context, collection string) (int, error) {
+	exists, err := d.collectionExists(ctx, collection)
+	if err != nil {
+		return 0, err
+	}
+	if !exists {
+		return 0, nil
+	}
+	tbl, err := tableName(collection)
+	if err != nil {
+		return 0, err
+	}
+	stmt := fmt.Sprintf(
+		`DELETE FROM %s WHERE
+			json_extract(data, '$.ttl') IS NOT NULL
+			AND CAST(json_extract(data, '$.ttl') AS REAL) >= 0
+			AND (COALESCE(CAST(json_extract(data, '$.date_epoch') AS REAL), 0)
+				+ COALESCE(CAST(json_extract(data, '$.ttl') AS REAL), 0))
+			<= CAST(strftime('%%s','now') AS REAL)`,
+		quoteIdent(tbl),
+	)
+	res, err := d.db.ExecContext(ctx, stmt)
+	if err != nil {
+		return 0, err
+	}
+	n, _ := res.RowsAffected()
+	return int(n), nil
+}
+
+// CleanupComments drops comment rows whose record_uid no longer resolves to
+// an existing record. A no-op if either collection is missing.
+func (d *Driver) CleanupComments(ctx context.Context) (int, error) {
+	cExists, err := d.collectionExists(ctx, "comment")
+	if err != nil {
+		return 0, err
+	}
+	rExists, err := d.collectionExists(ctx, "record")
+	if err != nil {
+		return 0, err
+	}
+	if !cExists || !rExists {
+		return 0, nil
+	}
+	ct, err := tableName("comment")
+	if err != nil {
+		return 0, err
+	}
+	rt, err := tableName("record")
+	if err != nil {
+		return 0, err
+	}
+	stmt := fmt.Sprintf(
+		`DELETE FROM %s WHERE json_extract(data, '$.record_uid') NOT IN
+			(SELECT json_extract(data, '$.uid') FROM %s
+			 WHERE json_extract(data, '$.uid') IS NOT NULL)`,
+		quoteIdent(ct), quoteIdent(rt),
+	)
+	res, err := d.db.ExecContext(ctx, stmt)
+	if err != nil {
+		return 0, err
+	}
+	n, _ := res.RowsAffected()
+	return int(n), nil
+}
+
+// CleanupOrphans drops rows whose “parents“ array references a non-existent
+// ancestor in the same collection.
+func (d *Driver) CleanupOrphans(ctx context.Context, collection string) (int, error) {
+	exists, err := d.collectionExists(ctx, collection)
+	if err != nil {
+		return 0, err
+	}
+	if !exists {
+		return 0, nil
+	}
+	tbl, err := tableName(collection)
+	if err != nil {
+		return 0, err
+	}
+	// Load all rows; collect distinct parents; check existence; delete
+	// orphan rows. Done in Go because SQLite's lack of LATERAL joins makes
+	// the single-statement form messy.
+	rows, err := d.db.QueryContext(ctx, fmt.Sprintf(
+		"SELECT uid, json_extract(data, '$.parents') FROM %s "+
+			"WHERE json_type(data, '$.parents') = 'array'",
+		quoteIdent(tbl),
+	))
+	if err != nil {
+		return 0, err
+	}
+	defer rows.Close()
+	type rowRef struct {
+		uid     string
+		parents []string
+	}
+	var refs []rowRef
+	parents := map[string]struct{}{}
+	for rows.Next() {
+		var uid string
+		var parentsJSON []byte
+		if err := rows.Scan(&uid, &parentsJSON); err != nil {
+			return 0, err
+		}
+		var list []any
+		if err := json.Unmarshal(parentsJSON, &list); err != nil {
+			continue
+		}
+		var ps []string
+		for _, p := range list {
+			s, ok := p.(string)
+			if !ok {
+				s = fmt.Sprint(p)
+			}
+			ps = append(ps, s)
+			parents[s] = struct{}{}
+		}
+		refs = append(refs, rowRef{uid: uid, parents: ps})
+	}
+	if err := rows.Err(); err != nil {
+		return 0, err
+	}
+	if len(parents) == 0 {
+		return 0, nil
+	}
+
+	// Check which parents exist.
+	missing := map[string]struct{}{}
+	for p := range parents {
+		// Empty parent UID can't resolve to anything.
+		if p == "" {
+			missing[p] = struct{}{}
+			continue
+		}
+		_, err := d.GetOne(ctx, collection, dbpkg.Document{"uid": p})
+		if errors.Is(err, dbpkg.ErrNotFound) {
+			missing[p] = struct{}{}
+			continue
+		}
+		if err != nil {
+			return 0, err
+		}
+	}
+	if len(missing) == 0 {
+		return 0, nil
+	}
+
+	// Collect uids that reference a missing parent.
+	var toDelete []string
+	for _, r := range refs {
+		for _, p := range r.parents {
+			if _, ok := missing[p]; ok {
+				toDelete = append(toDelete, r.uid)
+				break
+			}
+		}
+	}
+	if len(toDelete) == 0 {
+		return 0, nil
+	}
+
+	// Single DELETE … IN (...) statement, batched if the list is large.
+	const batch = 500
+	deleted := 0
+	for i := 0; i < len(toDelete); i += batch {
+		j := i + batch
+		if j > len(toDelete) {
+			j = len(toDelete)
+		}
+		chunk := toDelete[i:j]
+		placeholders := strings.Repeat("?,", len(chunk))
+		placeholders = strings.TrimSuffix(placeholders, ",")
+		stmt := fmt.Sprintf("DELETE FROM %s WHERE uid IN (%s)", quoteIdent(tbl), placeholders)
+		args := make([]any, len(chunk))
+		for i, s := range chunk {
+			args[i] = s
+		}
+		res, err := d.db.ExecContext(ctx, stmt, args...)
+		if err != nil {
+			return deleted, err
+		}
+		n, _ := res.RowsAffected()
+		deleted += int(n)
+	}
+	return deleted, nil
+}
+
+// CleanupAuditLogs prunes audit entries for objects whose latest event is
+// a "deleted" action older than the threshold.
+func (d *Driver) CleanupAuditLogs(ctx context.Context, olderThan time.Duration) (int, error) {
+	exists, err := d.collectionExists(ctx, "audit")
+	if err != nil {
+		return 0, err
+	}
+	if !exists {
+		return 0, nil
+	}
+	tbl, err := tableName("audit")
+	if err != nil {
+		return 0, err
+	}
+	threshold := float64(time.Now().Add(-olderThan).Unix())
+	// SQLite has no DISTINCT ON; emulate via a sub-query: for every
+	// object_id with a 'deleted' action older than threshold whose
+	// date_epoch is the maximum for that object_id, delete every audit
+	// row for that object_id.
+	stmt := fmt.Sprintf(`
+		DELETE FROM %s
+		WHERE json_extract(data, '$.object_id') IN (
+			SELECT json_extract(a.data, '$.object_id') FROM %s a
+			WHERE json_extract(a.data, '$.action') = 'deleted'
+			  AND COALESCE(CAST(json_extract(a.data, '$.date_epoch') AS REAL), 0) < ?
+			  AND COALESCE(CAST(json_extract(a.data, '$.date_epoch') AS REAL), 0) = (
+				SELECT MAX(COALESCE(CAST(json_extract(b.data, '$.date_epoch') AS REAL), 0))
+				FROM %s b
+				WHERE json_extract(b.data, '$.object_id')
+				  = json_extract(a.data, '$.object_id')
+			  )
+		)
+	`, quoteIdent(tbl), quoteIdent(tbl), quoteIdent(tbl))
+	res, err := d.db.ExecContext(ctx, stmt, threshold)
+	if err != nil {
+		return 0, err
+	}
+	n, _ := res.RowsAffected()
+	return int(n), nil
+}
+
+// ComputeStats aggregates a stats collection into time buckets. Result shape
+// matches Mongo/Postgres so the API surface doesn't branch on driver.
+func (d *Driver) ComputeStats(ctx context.Context, collection string, from, to time.Time, groupBy string) ([]dbpkg.StatsBucket, error) {
+	exists, err := d.collectionExists(ctx, collection)
+	if err != nil {
+		return nil, err
+	}
+	if !exists {
+		return nil, nil
+	}
+	tbl, err := tableName(collection)
+	if err != nil {
+		return nil, err
+	}
+	from = from.Truncate(time.Hour)
+
+	// SQLite has no date_trunc; emulate via strftime patterns.
+	format, ok := groupByFormats[groupBy]
+	if !ok {
+		format = groupByFormats["hour"]
+	}
+	stmt := fmt.Sprintf(`
+		SELECT strftime(?, json_extract(data, '$.date')) AS bucket,
+		       json_extract(data, '$.key') AS k,
+		       SUM(COALESCE(CAST(json_extract(data, '$.value') AS REAL), 0)) AS v
+		FROM %s
+		WHERE json_extract(data, '$.date') BETWEEN ? AND ?
+		GROUP BY bucket, k
+		ORDER BY bucket
+	`, quoteIdent(tbl))
+	fromS := from.UTC().Format(time.RFC3339)
+	toS := to.UTC().Format(time.RFC3339)
+
+	rows, err := d.db.QueryContext(ctx, stmt, format, fromS, toS)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	grouped := make(map[string][]dbpkg.KV)
+	order := []string{}
+	for rows.Next() {
+		var bucket, k string
+		var v float64
+		if err := rows.Scan(&bucket, &k, &v); err != nil {
+			return nil, err
+		}
+		if _, seen := grouped[bucket]; !seen {
+			order = append(order, bucket)
+		}
+		grouped[bucket] = append(grouped[bucket], dbpkg.KV{Key: k, Value: v})
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	sort.Strings(order)
+	out := make([]dbpkg.StatsBucket, 0, len(order))
+	for _, b := range order {
+		out = append(out, dbpkg.StatsBucket{Bucket: b, Series: grouped[b]})
+	}
+	return out, nil
+}
+
+// groupByFormats maps the high-level bucket name to a strftime format string
+// suitable for splicing into SQLite.
+var groupByFormats = map[string]string{
+	"hour":    "%Y-%m-%dT%H:00",
+	"day":     "%Y-%m-%dT00:00",
+	"month":   "%Y-%m-01T00:00",
+	"year":    "%Y-01-01T00:00",
+	"week":    "%Y-W%W",
+	"weekday": "%w",
+}
+
+// RenumberField re-packs the positional “field“ so values are contiguous
+// from 0. Uses ROW_NUMBER() over the ordered set, then writes back via
+// json_set.
+func (d *Driver) RenumberField(ctx context.Context, collection, field string) error {
+	exists, err := d.collectionExists(ctx, collection)
+	if err != nil {
+		return err
+	}
+	if !exists {
+		return nil
+	}
+	tbl, err := tableName(collection)
+	if err != nil {
+		return err
+	}
+	// Load uids in the desired order; assign new positions in Go; write
+	// each back. Doing the row_number/update in pure SQL is awkward in
+	// SQLite (no UPDATE FROM ... JOIN), and N is tiny in practice.
+	path := "$." + escapeJSONPath(field)
+	q := fmt.Sprintf(
+		"SELECT uid FROM %s ORDER BY CAST(json_extract(data, '%s') AS REAL) ASC, uid ASC",
+		quoteIdent(tbl), path,
+	)
+	rows, err := d.db.QueryContext(ctx, q)
+	if err != nil {
+		return err
+	}
+	var uids []string
+	for rows.Next() {
+		var uid string
+		if err := rows.Scan(&uid); err != nil {
+			rows.Close()
+			return err
+		}
+		uids = append(uids, uid)
+	}
+	rows.Close()
+	if err := rows.Err(); err != nil {
+		return err
+	}
+
+	tx, err := d.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback() }()
+	updateStmt := fmt.Sprintf(
+		"UPDATE %s SET data = json_set(data, '%s', ?), "+
+			"updated_at = strftime('%%Y-%%m-%%dT%%H:%%M:%%fZ','now') WHERE uid = ?",
+		quoteIdent(tbl), path,
+	)
+	for i, uid := range uids {
+		if _, err := tx.ExecContext(ctx, updateStmt, int64(i), uid); err != nil {
+			return err
+		}
+	}
+	return tx.Commit()
+}

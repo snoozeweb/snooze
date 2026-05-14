@@ -1,13 +1,13 @@
 ---
+# Root Taskfile for the Go rewrite. Components and the Helm chart
+# carry their own Taskfiles and are included below.
+
 version: '3'
 
 dotenv:
 - .env.local
 
 vars:
-  NAME: snooze-server
-  VERSION:
-    sh: uv version --short
   REPO: ghcr.io/japannext
 
 includes:
@@ -17,59 +17,100 @@ includes:
   chart:
     taskfile: ./packaging/helm/Taskfile.yaml
     dir: ./packaging/helm
-  syslog:
-    taskfile: ./components/syslog/Taskfile.yaml
-    dir: ./components/syslog
-  googlechat:
-    taskfile: ./components/googlechat/Taskfile.yaml
-    dir: ./components/googlechat
-  snmptrap:
-    taskfile: ./components/snmptrap/Taskfile.yaml
-    dir: ./components/snmptrap
 
 tasks:
-  py:lint:
-    cmds:
-    - ruff check
 
-  py:test:
-    desc: Run pytest
+  default:
+    desc: List available tasks
     cmds:
-    - PYTHONPATH=src uv run pytest
+    - task --list
 
-  py:build:
-    desc: Build the python snooze-server
-    cmds:
-    - uv build
+  # ---------- Go ----------
 
-  cacert:
-    desc: Setup the CA bundle from the build environment
+  go:lint:
+    desc: Lint the Go codebase (golangci-lint)
     cmds:
-    - mkdir -p .ca-bundle
-    - cp /etc/pki/ca-trust/source/anchors/* .ca-bundle/
-    status:
-    - find .ca-bundle -name '*.crt'
+    - golangci-lint run ./...
 
-  docker:develop:
-    desc: Build the docker image
-    deps:
-    - cacert
+  go:vet:
+    desc: Run `go vet` over every package
     cmds:
-    - docker build -f packaging/Dockerfile . -t {{ .LOCAL_REPO }}/{{ .NAME }}:latest --no-cache
-    - docker push {{ .LOCAL_REPO }}/{{ .NAME  }}:latest
+    - go vet ./...
+
+  go:test:
+    desc: Run Go unit tests (race detector on, shuffled, fresh cache)
+    cmds:
+    - go test -race -shuffle=on -count=1 ./...
+
+  go:test-short:
+    desc: Run the short test subset (skips the slow integration paths)
+    cmds:
+    - go test -short -race -count=1 ./...
+
+  go:build:
+    desc: Build every Go binary under cmd/ into ./bin/
+    cmds:
+    - mkdir -p bin
+    - |
+      for d in cmd/*/; do
+        bin=$(basename "$d")
+        echo "==> building $bin"
+        go build -trimpath -tags 'osusergo,netgo' -o bin/"$bin" ./"$d"
+      done
+
+  go:tidy:
+    desc: Sync go.mod / go.sum
+    cmds:
+    - go mod tidy
+
+  go:vuln:
+    desc: Scan dependencies for known vulnerabilities (govulncheck)
+    cmds:
+    - govulncheck ./...
+
+  # ---------- Release ----------
+
+  goreleaser:check:
+    desc: Validate .goreleaser.yaml without building anything
+    cmds:
+    - goreleaser check
+
+  goreleaser:snapshot:
+    desc: Build a snapshot release locally (no publish)
+    cmds:
+    - goreleaser release --snapshot --clean
+
+  # ---------- Docker (per-binary) ----------
+
+  docker:build:
+    desc: |
+      Build a Go binary image with packaging/Dockerfile.golang.
+      Pass BINARY=snooze-X (required). The `snooze-server` binary
+      uses the `runtime-server` target (carries the Vue bundle);
+      every other binary uses `runtime-component`.
+      Optional: TAG=dev, VERSION=0.0.0-dev.
+    vars:
+      BINARY: '{{ .BINARY | default "" }}'
+      TAG: '{{ .TAG | default "dev" }}'
+      VERSION: '{{ .VERSION | default "0.0.0-dev" }}'
+      COMMIT:
+        sh: git rev-parse --short HEAD 2>/dev/null || echo unknown
+      BUILD_TIME:
+        sh: date -u +%Y-%m-%dT%H:%M:%SZ
+      TARGET: '{{ if eq .BINARY "snooze-server" }}runtime-server{{ else }}runtime-component{{ end }}'
+    cmds:
+    - |
+      docker build \
+        -f packaging/Dockerfile.golang \
+        --target {{ .TARGET }} \
+        --build-arg BINARY={{ .BINARY }} \
+        --build-arg VERSION={{ .VERSION }} \
+        --build-arg COMMIT={{ .COMMIT }} \
+        --build-arg BUILD_TIME={{ .BUILD_TIME }} \
+        -t {{ .REPO }}/{{ .BINARY }}:{{ .TAG }} \
+        .
     preconditions:
-    - sh: test -n "{{ .LOCAL_REPO }}"
-      msg: "You need to define LOCAL_REPO=... in .env.local!"
-    - sh: docker login "{{ .LOCAL_REPO }}" --get-login
-      msg: "You need to login to docker with `docker login {{ .LOCAL_REPO }}`"
-
-  docker:release:
-    desc: Release to GHCR
-    deps:
-    - cacert
-    cmds:
-    - docker build -f packaging/Dockerfile . -t {{ .REPO }}/{{ .NAME }}:{{ .VERSION }}
-    - docker push {{ .REPO }}/{{ .NAME  }}:{{ .VERSION }}
-    preconditions:
-    - sh: docker login "{{ .REPO }}" --get-login
-      msg: "You need to login to docker with `docker login {{ .REPO }}`"
+    - sh: test -n "{{ .BINARY }}"
+      msg: "BINARY is required (e.g. BINARY=snooze-server)"
+    - sh: test -d cmd/{{ .BINARY }}
+      msg: "cmd/{{ .BINARY }} does not exist"

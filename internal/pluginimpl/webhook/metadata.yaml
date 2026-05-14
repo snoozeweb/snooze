@@ -1,0 +1,42 @@
+---
+name: 'Call a webhook'
+desc: 'HTTP request to an arbitrary URL'
+icon: 'link'
+provides:
+    - notifier
+action_form:
+    url:
+        display_name: URL
+        component: String
+        description: 'URL to send the request to (Go text/template over .Record)'
+        required: true
+    method:
+        display_name: Method
+        component: String
+        description: 'HTTP method (default POST)'
+        default_value: 'POST'
+    headers:
+        display_name: Headers
+        component: Arguments
+        description: 'List of HTTP headers; values may be Go text/templates over .Record'
+        placeholder:
+            - header_name
+            - header_value
+    body:
+        display_name: Body
+        component: Text
+        description: 'Request body (Go text/template over .Record). Defaults to a JSON-encoded record.'
+    timeout:
+        display_name: Timeout
+        component: String
+        description: 'Request timeout as a Go duration (default 10s)'
+        default_value: '10s'
+    tls_insecure:
+        display_name: TLS Insecure
+        component: Switch
+        default_value: false
+        description: 'Skip TLS certificate verification when calling HTTPS endpoints'
+    auth:
+        display_name: Authentication
+        component: Object
+        description: 'Optional auth: {type: bearer|basic, token|username|password}'

@@ -1,3 +1,4 @@
+{{- if ne .Values.database.kind "sqlite" -}}
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -66,3 +67,4 @@ spec:
       - name: config
         configMap:
           name: "{{ .Release.Name }}-server-config"
+{{- end }}

@@ -1,0 +1,2 @@
+usr/bin/snooze-googlechat
+packaging/systemd/snooze-googlechat.service lib/systemd/system/

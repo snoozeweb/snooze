@@ -1,0 +1,744 @@
+openapi: 3.1.0
+info:
+  title: Snooze API
+  version: 2.0.0
+  summary: Log aggregation and alerting REST API.
+  description: |
+    The Snooze v1 HTTP API. Snooze 2.0 is a Go rewrite of the Python 1.x
+    server; this document describes the **v1** wire contract that ships
+    with 2.0.
+
+    ## Authentication
+
+    Every endpoint outside the small "public" set (`/healthz`,
+    `/readyz`, `/metrics`, `/api/v1/login/*`) requires a bearer JWT:
+
+    ```
+    Authorization: Bearer <token>
+    ```
+
+    Tokens are obtained via `POST /api/v1/login/{local,ldap,anonymous}`.
+    The Python 1.x `Authorization: JWT <token>` scheme is no longer
+    accepted.
+
+    ## CRUD shape
+
+    Most plugins expose the same six verbs under
+    `/api/v1/{plugin}`:
+
+    * `GET    /api/v1/{plugin}` — list (paginated).
+    * `POST   /api/v1/{plugin}` — create.
+    * `DELETE /api/v1/{plugin}` — bulk delete by query.
+    * `POST   /api/v1/{plugin}/search` — search with a JSON body.
+    * `GET    /api/v1/{plugin}/{uid}` — fetch one.
+    * `PUT    /api/v1/{plugin}/{uid}` — full replace.
+    * `PATCH  /api/v1/{plugin}/{uid}` — partial update.
+    * `DELETE /api/v1/{plugin}/{uid}` — delete one.
+
+    A handful of plugins (`alertmanager`, `grafana`, `influxdb2`,
+    `kapacitor`, `prometheus`) replace the generic CRUD with an
+    inbound webhook surface under `/api/v1/webhook/{name}`.
+
+    ## Conditions (the `q` parameter)
+
+    `q` is a base64url-encoded JSON document describing a condition.
+    The grammar is the same AST the Python `Condition` model used:
+
+    ```json
+    {"type": "AND", "args": [
+       {"type": "EQUALS", "field": "host", "value": "srv-1"},
+       {"type": "MATCHES", "field": "message", "value": "^ERROR"}
+    ]}
+    ```
+
+    `POST /api/v1/{plugin}/search` accepts the same shape as a JSON
+    body field (`condition`) so clients can avoid URL-length limits.
+
+  contact:
+    name: Snooze maintainers
+    url: https://github.com/snoozeweb/snooze/issues
+  license:
+    name: AGPL-3.0-or-later
+    url: https://www.gnu.org/licenses/agpl-3.0.txt
+
+servers:
+  - url: https://snooze.example.com
+    description: Production deployment (path prefix optional)
+  - url: http://localhost:5200
+    description: Local development
+
+security:
+  - bearerAuth: []
+
+tags:
+  - name: health
+    description: Liveness and readiness probes.
+  - name: auth
+    description: Login + token issuance.
+  - name: telemetry
+    description: Metrics and tracing endpoints.
+  - name: alerts
+    description: Alert ingestion (POST /api/v1/alerts).
+  - name: webhooks
+    description: Inbound webhook receivers for foreign monitoring sources.
+  - name: crud
+    description: Generic per-plugin REST CRUD surface.
+  - name: schema
+    description: JSON Schema discovery + permission enumeration.
+
+paths:
+
+  /healthz:
+    get:
+      tags: [health]
+      summary: Liveness probe
+      description: |
+        Returns 200 as long as the process is up. Used by Kubernetes
+        liveness probes and Docker healthchecks. Always public.
+      security: []
+      responses:
+        '200':
+          description: Process alive.
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/StatusOK'}
+
+  /readyz:
+    get:
+      tags: [health]
+      summary: Readiness probe
+      description: |
+        Polls the database driver with a 2s timeout. Used by
+        Kubernetes readiness probes. Always public.
+      security: []
+      responses:
+        '200':
+          description: Server ready.
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/StatusOK'}
+        '503':
+          description: Database unreachable.
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/ErrEnvelope'}
+
+  /api/v1/health:
+    get:
+      tags: [health]
+      summary: Verbose health check
+      description: |
+        Per-subsystem status: database, registered plugins, optional
+        syncer cluster view.
+      security: []
+      responses:
+        '200':
+          description: Health snapshot.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    enum: [ok, degraded]
+                  subsystems:
+                    type: object
+                    additionalProperties:
+                      type: string
+                  plugins:
+                    type: array
+                    items: {type: string}
+
+  /metrics:
+    get:
+      tags: [telemetry]
+      summary: Prometheus metrics
+      description: |
+        Prometheus text-format exposition. Backed by the
+        `prometheus.Registry` constructed at startup. Always public.
+      security: []
+      responses:
+        '200':
+          description: Metrics payload.
+          content:
+            text/plain:
+              schema:
+                type: string
+
+  /api/v1/login:
+    get:
+      tags: [auth]
+      summary: List enabled authentication backends
+      description: |
+        Returns the names of registered authentication providers, with
+        the configured `general.default_auth_backend` first.
+      security: []
+      responses:
+        '200':
+          description: Backend list.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      backends:
+                        type: array
+                        items: {type: string}
+
+  /api/v1/login/local:
+    post:
+      tags: [auth]
+      summary: Local user login (bcrypt-hashed password)
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/LoginRequest'}
+      responses:
+        '200':
+          description: Bearer JWT.
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/LoginResponse'}
+        '401':
+          description: Invalid credentials.
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/ErrEnvelope'}
+
+  /api/v1/login/ldap:
+    post:
+      tags: [auth]
+      summary: LDAP login
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/LoginRequest'}
+      responses:
+        '200':
+          description: Bearer JWT.
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/LoginResponse'}
+        '401':
+          description: LDAP bind / search failed.
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/ErrEnvelope'}
+        '409':
+          description: Backend disabled.
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/ErrEnvelope'}
+
+  /api/v1/login/anonymous:
+    post:
+      tags: [auth]
+      summary: Anonymous login
+      description: |
+        Issues a bearer JWT with the `anonymous` method, used when
+        `general.anonymous_enabled: true`. No request body.
+      security: []
+      responses:
+        '200':
+          description: Anonymous bearer JWT.
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/LoginResponse'}
+        '404':
+          description: Anonymous backend not registered.
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/ErrEnvelope'}
+
+  /api/v1/alerts:
+    post:
+      tags: [alerts]
+      summary: Submit one or many alert records
+      description: |
+        Accepts a single record object or an array of records. Each
+        record is run through the configured `core.process_plugins`
+        pipeline; the response includes the post-pipeline records and
+        any per-record processing errors.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              oneOf:
+                - {$ref: '#/components/schemas/Record'}
+                - type: array
+                  items: {$ref: '#/components/schemas/Record'}
+      responses:
+        '200':
+          description: Per-record processing result.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    type: array
+                    items: {$ref: '#/components/schemas/Record'}
+                  errors:
+                    type: array
+                    items: {type: string}
+
+  /api/v1/webhook/{webhook}:
+    post:
+      tags: [webhooks]
+      summary: Inbound webhook receiver
+      description: |
+        Convert a foreign monitoring source's alert payload into one or
+        more Snooze records and submit them to the pipeline. The
+        payload schema is source-specific; see each integration's
+        documentation for the wire format.
+      security: []
+      parameters:
+        - name: webhook
+          in: path
+          required: true
+          schema:
+            type: string
+            enum:
+              - alertmanager
+              - grafana
+              - influxdb2
+              - kapacitor
+              - prometheus
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+      responses:
+        '200':
+          description: Records accepted.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items: {$ref: '#/components/schemas/Record'}
+
+  /api/v1/permissions:
+    get:
+      tags: [schema]
+      summary: List every permission string contributed by plugins
+      description: |
+        Returns the sorted union of `metadata.provides` from every
+        registered plugin, plus the canonical `rw_all` / `ro_all`
+        wildcards and a per-plugin `{rw,ro}_<name>` pair.
+      responses:
+        '200':
+          description: Permission list.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items: {type: string}
+
+  /api/v1/schema/{plugin}:
+    get:
+      tags: [schema]
+      summary: Fetch the JSON Schema attached to a DataModel plugin
+      parameters:
+        - {$ref: '#/components/parameters/PluginPath'}
+      responses:
+        '200':
+          description: JSON Schema document.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    additionalProperties: true
+        '404':
+          description: Plugin has no schema.
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/ErrEnvelope'}
+
+  /api/v1/{plugin}:
+    parameters:
+      - {$ref: '#/components/parameters/PluginPath'}
+    get:
+      tags: [crud]
+      summary: List documents in a plugin's collection
+      description: |
+        The `q` query parameter is a base64url-encoded JSON condition.
+        Default sort is by insertion order; pass `orderby` + `asc` to
+        change it.
+      parameters:
+        - {$ref: '#/components/parameters/QueryQ'}
+        - {$ref: '#/components/parameters/Offset'}
+        - {$ref: '#/components/parameters/Limit'}
+        - {$ref: '#/components/parameters/OrderBy'}
+        - {$ref: '#/components/parameters/Asc'}
+      responses:
+        '200':
+          description: Paginated list.
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/ListResponse'}
+        '400':
+          description: Malformed query.
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/ErrEnvelope'}
+    post:
+      tags: [crud]
+      summary: Create one or many documents
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              oneOf:
+                - type: object
+                  additionalProperties: true
+                - type: array
+                  items:
+                    type: object
+                    additionalProperties: true
+      responses:
+        '200':
+          description: Created.
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/ListResponse'}
+        '422':
+          description: Schema validation failed.
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/ErrEnvelope'}
+    delete:
+      tags: [crud]
+      summary: Delete every document matching the query
+      parameters:
+        - {$ref: '#/components/parameters/QueryQ'}
+      responses:
+        '200':
+          description: Deletion summary.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      deleted: {type: integer}
+
+  /api/v1/{plugin}/search:
+    post:
+      tags: [crud]
+      summary: Search with a JSON body (avoids URL-length limits)
+      parameters:
+        - {$ref: '#/components/parameters/PluginPath'}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                condition:
+                  type: object
+                  additionalProperties: true
+                offset: {type: integer, default: 0}
+                limit:  {type: integer, default: 20}
+                orderby: {type: string}
+                asc: {type: boolean, default: true}
+      responses:
+        '200':
+          description: Paginated list.
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/ListResponse'}
+
+  /api/v1/{plugin}/{uid}:
+    parameters:
+      - {$ref: '#/components/parameters/PluginPath'}
+      - name: uid
+        in: path
+        required: true
+        schema: {type: string}
+    get:
+      tags: [crud]
+      summary: Fetch a single document by UID
+      responses:
+        '200':
+          description: Document.
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+        '404':
+          description: Not found.
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/ErrEnvelope'}
+    put:
+      tags: [crud]
+      summary: Replace a document
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+      responses:
+        '200':
+          description: Replaced.
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+    patch:
+      tags: [crud]
+      summary: Partial update
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+      responses:
+        '200':
+          description: Updated.
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+    delete:
+      tags: [crud]
+      summary: Delete a single document
+      responses:
+        '200':
+          description: Deleted.
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/StatusOK'}
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: |
+        HS256 JWT. The Python 1.x `Authorization: JWT <token>` scheme
+        is rejected. Obtain a token via `POST /api/v1/login/local`.
+
+  parameters:
+    PluginPath:
+      name: plugin
+      in: path
+      required: true
+      description: |
+        Plugin / collection name. The built-in set is enumerated in
+        `internal/pluginimpl/all/all.go`.
+      schema:
+        type: string
+        enum:
+          - action
+          - aggregaterule
+          - alertmanager
+          - audit
+          - comment
+          - environment
+          - grafana
+          - influxdb2
+          - kapacitor
+          - kv
+          - mail
+          - notification
+          - patlite
+          - profile
+          - prometheus
+          - record
+          - role
+          - rule
+          - script
+          - settings
+          - snooze
+          - stats
+          - user
+          - webhook
+          - widget
+    QueryQ:
+      name: q
+      in: query
+      required: false
+      description: |
+        Base64url-encoded JSON condition. Empty (or absent) selects
+        every document. Use `POST /{plugin}/search` for queries that
+        won't fit in a URL.
+      schema:
+        type: string
+    Offset:
+      name: offset
+      in: query
+      required: false
+      schema:
+        type: integer
+        minimum: 0
+        default: 0
+    Limit:
+      name: limit
+      in: query
+      required: false
+      schema:
+        type: integer
+        minimum: 0
+        default: 20
+    OrderBy:
+      name: orderby
+      in: query
+      required: false
+      schema:
+        type: string
+    Asc:
+      name: asc
+      in: query
+      required: false
+      schema:
+        type: boolean
+        default: true
+
+  schemas:
+    StatusOK:
+      type: object
+      required: [status]
+      properties:
+        status:
+          type: string
+          enum: [ok]
+      example:
+        status: ok
+
+    LoginRequest:
+      type: object
+      required: [username, password]
+      properties:
+        username: {type: string}
+        password: {type: string, format: password}
+
+    LoginResponse:
+      type: object
+      required: [token, expires_at, method]
+      properties:
+        token:
+          type: string
+          description: "HS256 JWT. Send as `Authorization: Bearer <token>`."
+        expires_at:
+          type: string
+          format: date-time
+        method:
+          type: string
+          enum: [local, ldap, anonymous]
+
+    Record:
+      type: object
+      description: |
+        The canonical alert document moving through the Snooze
+        pipeline. Mirrors `pkg/snoozetypes.Record`. Fields are
+        permissive — plugins routinely inject extra keys that don't
+        appear in this schema.
+      properties:
+        uid:         {type: string}
+        host:        {type: string}
+        source:      {type: string}
+        process:     {type: string}
+        severity:    {type: string}
+        message:     {type: string}
+        timestamp:   {type: string, format: date-time}
+        date_epoch:  {type: integer, format: int64}
+        ttl:         {type: integer, format: int64}
+        environment: {type: string}
+        tags:
+          type: array
+          items: {type: string}
+        raw:
+          type: object
+          additionalProperties: true
+        state:
+          type: string
+          enum: ['', open, ack, close, shelved]
+        plugins:
+          type: array
+          items: {type: string}
+      additionalProperties: true
+
+    ListResponse:
+      type: object
+      required: [data, meta]
+      properties:
+        data:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
+        meta:
+          $ref: '#/components/schemas/ListMeta'
+
+    ListMeta:
+      type: object
+      required: [count, limit, offset, total]
+      properties:
+        count:  {type: integer}
+        limit:  {type: integer}
+        offset: {type: integer}
+        total:  {type: integer}
+
+    ErrEnvelope:
+      type: object
+      required: [error]
+      properties:
+        error:
+          $ref: '#/components/schemas/ErrBody'
+
+    ErrBody:
+      type: object
+      required: [code, message]
+      properties:
+        code:
+          type: string
+          enum:
+            - bad_request
+            - unauthorized
+            - forbidden
+            - not_found
+            - conflict
+            - validation_error
+            - unavailable
+            - internal
+        message: {type: string}
+        details:
+          type: object
+          additionalProperties: true
+        request_id: {type: string}
+        trace_id:   {type: string}

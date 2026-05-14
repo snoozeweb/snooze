@@ -4,13 +4,46 @@ timeZone: ""
 
 database:
   # -- Which database to provision and point snooze-server at.
-  # ``mongo`` provisions a MongoDBCommunity replica set (default,
-  # backwards-compatible). ``postgres`` provisions a CloudNativePG
-  # Cluster — the CNPG operator must be installed in the cluster.
+  # Allowed values: ``mongo`` | ``postgres`` | ``sqlite``.
+  #
+  # * ``mongo`` (default) provisions a MongoDBCommunity replica set
+  #   via the community operator. Backwards-compatible with prior
+  #   Python deployments.
+  # * ``postgres`` provisions a CloudNativePG ``Cluster``. The CNPG
+  #   operator must be installed in the cluster.
+  # * ``sqlite`` skips any external database and switches the server
+  #   to a single-replica StatefulSet that owns an on-disk SQLite
+  #   file at ``/var/lib/snooze/db.sqlite``. Intended for small
+  #   single-tenant installs and dev/test clusters.
   kind: mongo
 
+  # MongoDB driver tunables (only consulted when ``kind: mongo``).
+  mongo:
+    # -- Database name for the snooze user. Must match the
+    # ``users[].db`` entry in ``templates/mongodb/mongodb.yaml``.
+    database: snooze
+
+  # Postgres driver tunables (only consulted when ``kind: postgres``).
+  # All connection details flow through the ``<release>-postgres-app``
+  # secret provisioned by CloudNativePG; this block only carries pool
+  # sizing knobs that the server reads from its own config.
+  postgres:
+    # -- Minimum size of the pgx connection pool.
+    poolMinSize: 2
+    # -- Maximum size of the pgx connection pool.
+    poolMaxSize: 10
+
+  # SQLite driver tunables (only consulted when ``kind: sqlite``).
+  sqlite:
+    # -- On-disk path for the SQLite database. Must live under the
+    # persistent volume mounted into the StatefulSet
+    # (see ``server.sqlite.persistentVolume``).
+    path: /var/lib/snooze/db.sqlite
+
 server:
-  # -- Number of replicas of snooze-server to run
+  # -- Number of replicas of snooze-server to run. Ignored when
+  # ``database.kind`` is ``sqlite`` — the StatefulSet always runs a
+  # single replica because SQLite is single-writer.
   replicaCount: 3
   image:
     # -- The image to use for snooze-server
@@ -30,6 +63,18 @@ server:
 
   config:
     defaultAuthBackend: ldap
+
+  # SQLite-specific deployment knobs. Only consulted when
+  # ``database.kind`` is ``sqlite``.
+  sqlite:
+    persistentVolume:
+      # -- Size of the PersistentVolumeClaim that backs
+      # ``/var/lib/snooze`` in the StatefulSet. SQLite is single-file
+      # so 5Gi is plenty for typical deployments.
+      size: 5Gi
+      # -- StorageClass for the PVC. Leave empty to use the cluster
+      # default StorageClass.
+      storageClassName: ""
 
   ldap:
     # -- Enable LDAP authentication configuration
@@ -95,8 +140,73 @@ snmptrap:
     pullPolicy: IfNotPresent
   sendWorkers: 4
 
+relp:
+  # -- When enabled, deploy snooze-relp inputs
+  enabled: false
+  # -- Number of snooze-relp replicas
+  replicaCount: 2
+  image:
+    # -- The image to use for snooze-relp
+    repository: ghcr.io/japannext/snooze-relp
+    # -- A tag override for snooze-relp
+    tag: ""
+    # -- Image pull policy of snooze-relp
+    pullPolicy: IfNotPresent
+
+smtp:
+  # -- When enabled, deploy snooze-smtp inputs
+  enabled: false
+  # -- Number of snooze-smtp replicas
+  replicaCount: 2
+  image:
+    # -- The image to use for snooze-smtp
+    repository: ghcr.io/japannext/snooze-smtp
+    # -- A tag override for snooze-smtp
+    tag: ""
+    # -- Image pull policy of snooze-smtp
+    pullPolicy: IfNotPresent
+
+pacemaker:
+  # -- Container image config for the snooze-pacemaker one-shot helper.
+  # The helper is invoked by stonith-ng on cluster nodes, not deployed
+  # as a workload; this block exists so the image ref is publishable
+  # from the same chart values.
+  image:
+    # -- The image to use for snooze-pacemaker
+    repository: ghcr.io/japannext/snooze-pacemaker
+    # -- A tag override for snooze-pacemaker
+    tag: ""
+    # -- Image pull policy of snooze-pacemaker
+    pullPolicy: IfNotPresent
+
+teams:
+  # -- When enabled, deploy snooze-teams notification plugin
+  enabled: false
+  # -- Number of snooze-teams replicas
+  replicaCount: 2
+  image:
+    # -- The image to use for snooze-teams
+    repository: ghcr.io/japannext/snooze-teams
+    # -- A tag override for snooze-teams
+    tag: ""
+    # -- Image pull policy of snooze-teams
+    pullPolicy: IfNotPresent
+
+mattermost:
+  # -- When enabled, deploy snooze-mattermost notification plugin
+  enabled: false
+  # -- Number of snooze-mattermost replicas
+  replicaCount: 2
+  image:
+    # -- The image to use for snooze-mattermost
+    repository: ghcr.io/japannext/snooze-mattermost
+    # -- A tag override for snooze-mattermost
+    tag: ""
+    # -- Image pull policy of snooze-mattermost
+    pullPolicy: IfNotPresent
+
 googlechat:
-  # -- When enabled, deploy snooze-syslog notification plugin
+  # -- When enabled, deploy snooze-googlechat notification plugin
   enabled: false
   # Number of snooze-googlechat replicas
   replicaCount: 2
@@ -113,6 +223,17 @@ googlechat:
   httpProxy: ""
   httpsProxy: ""
   noProxy: ""
+
+# Image config for the snooze CLI client (used inside cluster jobs, e.g.
+# bootstrap / migrations). No workload is rendered from this block.
+client:
+  image:
+    # -- The image to use for the snooze CLI client
+    repository: ghcr.io/japannext/snooze
+    # -- A tag override for snooze
+    tag: ""
+    # -- Image pull policy of snooze
+    pullPolicy: IfNotPresent
 
 mongodb:
   storageClassName: ""

@@ -41,14 +41,14 @@
 <link rel="preload" as="script" href="../_static/scripts/pydata-sphinx-theme.js?digest=8878045cc6db502f8baf" />
 
     <script src="../_static/documentation_options.js?v=9eb32ce0"></script>
-    <script src="../_static/doctools.js?v=9bcbadda"></script>
-    <script src="../_static/sphinx_highlight.js?v=dc90522c"></script>
+    <script src="../_static/doctools.js?v=fd6eb6e6"></script>
+    <script src="../_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="../_static/scripts/sphinx-book-theme.js?v=fab101a9"></script>
     <script>DOCUMENTATION_OPTIONS.pagename = 'configuration/index';</script>
     <link rel="index" title="Index" href="../genindex.html" />
     <link rel="search" title="Search" href="../search.html" />
     <link rel="next" title="Core configuration" href="core.html" />
-    <link rel="prev" title="Metrics" href="../general/18_Metrics.html" />
+    <link rel="prev" title="Log in to the web interface" href="../getting_started/03_Login.html" />
   <meta name="viewport" content="width=device-width, initial-scale=1"/>
   <meta name="docsearch:language" content="en"/>
   <meta name="docsearch:version" content="" />
@@ -146,9 +146,18 @@
     <div class="bd-toc-item navbar-nav active">
         <ul class="current nav bd-sidenav">
 <li class="toctree-l1 has-children"><a class="reference internal" href="../getting_started/index.html">Getting Started</a><details open="open"><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l2"><a class="reference internal" href="../getting_started/00_GoQuickstart.html">Getting started (Go, v2.0)</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../getting_started/01_Installation.html">Installation on RHEL/Debian</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../getting_started/02_Docker.html">Docker deployment</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../getting_started/03_Login.html">Log in to the web interface</a></li>
+</ul>
+</details></li>
+<li class="toctree-l1 current active"><a class="current reference internal" href="#">Configuration</a></li>
+
+
+
+<li class="toctree-l1 has-children"><a class="reference internal" href="../migration/index.html">Migration</a><details open="open"><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l2"><a class="reference internal" href="../migration/python-to-go.html">Python 1.x → Go 2.0 migration</a></li>
 </ul>
 </details></li>
 <li class="toctree-l1 has-children"><a class="reference internal" href="../general/index.html">General</a><details open="open"><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
@@ -171,16 +180,6 @@
 <li class="toctree-l2"><a class="reference internal" href="../general/18_Metrics.html">Metrics</a></li>
 </ul>
 </details></li>
-<li class="toctree-l1 current active has-children"><a class="current reference internal" href="#">Configuration</a><details open="open"><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
-<li class="toctree-l2"><a class="reference internal" href="core.html">Core configuration</a></li>
-<li class="toctree-l2"><a class="reference internal" href="general.html">General configuration</a></li>
-<li class="toctree-l2"><a class="reference internal" href="housekeeping.html">Housekeeper configuration</a></li>
-<li class="toctree-l2"><a class="reference internal" href="ldap_auth.html">LDAP configuration</a></li>
-<li class="toctree-l2"><a class="reference internal" href="notifications.html">Notification configuration</a></li>
-<li class="toctree-l2"><a class="reference internal" href="syncer.html">Syncer configuration</a></li>
-</ul>
-</details></li>
-
 </ul>
 
     </div>
@@ -374,6 +373,8 @@
             <nav aria-label="Page">
                 <ul class="visible nav section-nav flex-column">
 <li class="toc-h1 nav-item toc-entry"><a class="reference internal nav-link" href="#">Configuration</a></li>
+<li class="toc-h1 nav-item toc-entry"><a class="reference internal nav-link" href="#bootstrap-yaml-files">Bootstrap YAML files</a></li>
+<li class="toc-h1 nav-item toc-entry"><a class="reference internal nav-link" href="#runtime-mutable-settings">Runtime-mutable settings</a></li>
 <li class="toc-h1 nav-item toc-entry"><a class="reference internal nav-link" href="#web-interface">Web interface</a></li>
 </ul>
 
@@ -389,24 +390,61 @@
                   
   <section id="configuration">
 <h1>Configuration<a class="headerlink" href="#configuration" title="Link to this heading">#</a></h1>
-<p id="id1">Configuration reference for snooze-server. When using the packaged snooze, the configuration
-files are located under <code class="docutils literal notranslate"><span class="pre">/etc/snooze/server/</span></code>.</p>
-<p>Some of these configuration are editable in the web interface with an admin account.
-When edited that way, snooze-server will override the config file in <code class="docutils literal notranslate"><span class="pre">/etc/snooze/server/</span></code>.</p>
+<p id="id1">Snooze 2.0 uses a <strong>two-tier</strong> configuration model:</p>
+<ol class="arabic simple">
+<li><p><strong>Bootstrap YAML</strong> under <code class="docutils literal notranslate"><span class="pre">/etc/snooze/server-go/</span></code> (one file per
+schema section). Read once at process start; a restart is required
+for changes. The schema is defined in
+<code class="docutils literal notranslate"><span class="pre">internal/config/schema/*.go</span></code>.</p></li>
+<li><p><strong>Runtime settings</strong> stored in the database via the new
+<code class="docutils literal notranslate"><span class="pre">settings</span></code> plugin. Mutable at runtime through <code class="docutils literal notranslate"><span class="pre">PATCH</span>
+<span class="pre">/api/v1/settings/{key}</span></code> (or the WebUI). Changes propagate across
+replicas via the backend-native syncer (Postgres <code class="docutils literal notranslate"><span class="pre">LISTEN/NOTIFY</span></code>,
+Mongo change streams, in-process channel for SQLite).</p></li>
+</ol>
+<p>The hot-reload of YAML files used by Python 1.x’s <code class="docutils literal notranslate"><span class="pre">WritableConfig</span></code>
+is <strong>gone</strong>. Anything that needs to change without a restart belongs
+in the <code class="docutils literal notranslate"><span class="pre">settings</span></code> plugin.</p>
+</section>
+<section id="bootstrap-yaml-files">
+<h1>Bootstrap YAML files<a class="headerlink" href="#bootstrap-yaml-files" title="Link to this heading">#</a></h1>
 <div class="toctree-wrapper compound">
 <ul>
 <li class="toctree-l1"><a class="reference internal" href="core.html">Core configuration</a></li>
 <li class="toctree-l1"><a class="reference internal" href="general.html">General configuration</a></li>
-<li class="toctree-l1"><a class="reference internal" href="housekeeping.html">Housekeeper configuration</a></li>
 <li class="toctree-l1"><a class="reference internal" href="ldap_auth.html">LDAP configuration</a></li>
+<li class="toctree-l1"><a class="reference internal" href="housekeeping.html">Housekeeper configuration</a></li>
 <li class="toctree-l1"><a class="reference internal" href="notifications.html">Notification configuration</a></li>
 <li class="toctree-l1"><a class="reference internal" href="syncer.html">Syncer configuration</a></li>
+<li class="toctree-l1"><a class="reference internal" href="sqlite.html">SQLite backend</a></li>
+<li class="toctree-l1"><a class="reference internal" href="postgres.html">PostgreSQL backend</a></li>
 </ul>
 </div>
+<p>Each file is optional: the corresponding Go <code class="docutils literal notranslate"><span class="pre">Default*</span></code> constructor
+fills in sensible defaults. See <code class="docutils literal notranslate"><span class="pre">internal/config/load.go</span></code> for the
+discovery order (lower-numbered overrides win):</p>
+<ol class="arabic simple">
+<li><p><code class="docutils literal notranslate"><span class="pre">/etc/snooze/server-go/&lt;section&gt;.yaml</span></code></p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">/etc/snooze/server/&lt;section&gt;.yaml</span></code> <em>(legacy Python directory,
+accepted unchanged)</em></p></li>
+<li><p>environment variables: <code class="docutils literal notranslate"><span class="pre">SNOOZE_&lt;SECTION&gt;_&lt;KEY&gt;</span></code></p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">DATABASE_URL</span></code> flat shortcut</p></li>
+</ol>
+</section>
+<section id="runtime-mutable-settings">
+<h1>Runtime-mutable settings<a class="headerlink" href="#runtime-mutable-settings" title="Link to this heading">#</a></h1>
+<p>The <code class="docutils literal notranslate"><span class="pre">settings</span></code> plugin exposes the same REST CRUD shape as every
+other plugin:</p>
+<ul class="simple">
+<li><p><code class="docutils literal notranslate"><span class="pre">GET</span> <span class="pre">/api/v1/settings</span></code> — list every key.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">GET</span> <span class="pre">/api/v1/settings/{key}</span></code> — fetch one.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">PATCH</span> <span class="pre">/api/v1/settings/{key}</span></code> — update the value.</p></li>
+</ul>
 </section>
 <section id="web-interface">
 <h1>Web interface<a class="headerlink" href="#web-interface" title="Link to this heading">#</a></h1>
-<p>Some configuration files can be managed in the web interface:</p>
+<p>The WebUI ships the same Settings panel; the form submits to the
+<code class="docutils literal notranslate"><span class="pre">settings</span></code> plugin REST endpoints rather than rewriting YAML on disk.</p>
 <figure class="align-center">
 <img alt="../_images/web_settings_general.png" src="../_images/web_settings_general.png" />
 </figure>
@@ -424,12 +462,12 @@ When edited that way, snooze-server will override the config file in <code class
                   
 <div class="prev-next-area">
     <a class="left-prev"
-       href="../general/18_Metrics.html"
+       href="../getting_started/03_Login.html"
        title="previous page">
       <i class="fa-solid fa-angle-left"></i>
       <div class="prev-next-info">
         <p class="prev-next-subtitle">previous</p>
-        <p class="prev-next-title">Metrics</p>
+        <p class="prev-next-title">Log in to the web interface</p>
       </div>
     </a>
     <a class="right-next"
@@ -460,6 +498,8 @@ When edited that way, snooze-server will override the config file in <code class
   <nav id="pst-page-toc-nav" class="page-toc" aria-labelledby="pst-page-navigation-heading-2">
     <ul class="visible nav section-nav flex-column">
 <li class="toc-h1 nav-item toc-entry"><a class="reference internal nav-link" href="#">Configuration</a></li>
+<li class="toc-h1 nav-item toc-entry"><a class="reference internal nav-link" href="#bootstrap-yaml-files">Bootstrap YAML files</a></li>
+<li class="toc-h1 nav-item toc-entry"><a class="reference internal nav-link" href="#runtime-mutable-settings">Runtime-mutable settings</a></li>
 <li class="toc-h1 nav-item toc-entry"><a class="reference internal nav-link" href="#web-interface">Web interface</a></li>
 </ul>
 

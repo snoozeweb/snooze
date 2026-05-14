@@ -1,0 +1,3 @@
+---
+name: 'kapacitor'
+desc: 'Receive Kapacitor http() alert handler notifications'

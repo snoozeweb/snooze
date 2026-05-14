@@ -1,0 +1,131 @@
+# syntax=docker/dockerfile:1.7
+# vim: syntax=dockerfile
+#
+# Multi-stage Dockerfile for the Snooze Go rewrite.
+#
+# Pick the binary at build time, e.g.:
+#   docker build -f packaging/Dockerfile.golang \
+#     --target runtime-server \
+#     --build-arg BINARY=snooze-server \
+#     -t ghcr.io/japannext/snooze-server:dev .
+#
+#   docker build -f packaging/Dockerfile.golang \
+#     --target runtime-component \
+#     --build-arg BINARY=snooze-syslog \
+#     -t ghcr.io/japannext/snooze-syslog:dev .
+#
+# Build args:
+#   BINARY      (required) name of the cmd/ subdir, e.g. `snooze-server`
+#   VERSION     (default 0.0.0-dev)   ldflags `version.Version`
+#   COMMIT      (default unknown)     ldflags `version.Commit`
+#   BUILD_TIME  (default unknown)     ldflags `version.Date`
+#
+# Base images use major-version tags for readability; pin to digests in CI
+# via `--build-arg` overrides or `docker buildx imagetools` if reproducibility
+# matters.
+
+# ---------- Stage 1: Go build ----------
+FROM golang:1.25-alpine AS gobuilder
+
+ARG BINARY
+ARG VERSION=0.0.0-dev
+ARG COMMIT=unknown
+ARG BUILD_TIME=unknown
+
+# git is needed by `go build` for VCS stamping; ca-certificates is harmless
+# extra weight but useful if anything resolves modules over HTTPS proxies.
+RUN apk add --no-cache git ca-certificates
+
+WORKDIR /src
+
+# Cache module downloads in a dedicated BuildKit cache.
+COPY go.mod go.sum ./
+RUN --mount=type=cache,target=/go/pkg/mod \
+    --mount=type=cache,target=/root/.cache/go-build \
+    go mod download
+
+# Bring in the rest of the source tree.
+COPY . .
+
+# Build a static, stripped binary for the requested cmd/<BINARY>.
+RUN --mount=type=cache,target=/go/pkg/mod \
+    --mount=type=cache,target=/root/.cache/go-build \
+    test -n "${BINARY}" && test -d "./cmd/${BINARY}" \
+    && CGO_ENABLED=0 GOOS=linux go build \
+        -trimpath \
+        -tags 'osusergo,netgo' \
+        -ldflags "-s -w \
+          -X github.com/japannext/snooze/internal/version.Version=${VERSION} \
+          -X github.com/japannext/snooze/internal/version.Commit=${COMMIT} \
+          -X github.com/japannext/snooze/internal/version.Date=${BUILD_TIME}" \
+        -o /out/${BINARY} ./cmd/${BINARY}
+
+# ---------- Stage 2: Web (Vue) build ----------
+FROM node:20-alpine AS webbuilder
+
+WORKDIR /web
+
+# The Vue CLI 4 / webpack 4 toolchain predates OpenSSL 3 and fails with
+# `error:0308010C:digital envelope routines::unsupported` on Node 17+.
+# Re-enabling the legacy provider keeps the existing build working under
+# Node 20 without touching the web codebase.
+ENV NODE_OPTIONS=--openssl-legacy-provider
+
+# Install deps with `npm ci` against a cached npm dir.
+COPY web/package*.json ./
+RUN --mount=type=cache,target=/root/.npm \
+    npm ci --no-audit --no-fund
+
+# Then the rest of the web source, and produce `web/dist/`.
+COPY web/ ./
+RUN npm run build
+
+# ---------- Stage 3: runtime-server (server + Vue assets) ----------
+FROM gcr.io/distroless/static-debian12:nonroot AS runtime-server
+
+ARG BINARY=snooze-server
+
+# Stamp OCI labels for image consumers.
+ARG VERSION=0.0.0-dev
+ARG COMMIT=unknown
+ARG BUILD_TIME=unknown
+LABEL org.opencontainers.image.title="snooze-server" \
+      org.opencontainers.image.source="https://github.com/japannext/snooze" \
+      org.opencontainers.image.licenses="AGPL-3.0" \
+      org.opencontainers.image.version="${VERSION}" \
+      org.opencontainers.image.revision="${COMMIT}" \
+      org.opencontainers.image.created="${BUILD_TIME}"
+
+# Binary lands under a canonical name regardless of BINARY value, so the
+# entrypoint is stable for this target.
+COPY --from=gobuilder /out/${BINARY} /usr/local/bin/snooze-server
+
+# Static Vue assets served from the embedded asset path.
+COPY --from=webbuilder --chown=nonroot:nonroot /web/dist/ /var/lib/snooze/web/
+
+USER nonroot:nonroot
+EXPOSE 9001
+ENTRYPOINT ["/usr/local/bin/snooze-server"]
+
+# ---------- Stage 4: runtime-component (single binary, no web assets) ----------
+FROM gcr.io/distroless/static-debian12:nonroot AS runtime-component
+
+ARG BINARY
+
+ARG VERSION=0.0.0-dev
+ARG COMMIT=unknown
+ARG BUILD_TIME=unknown
+LABEL org.opencontainers.image.title="${BINARY}" \
+      org.opencontainers.image.source="https://github.com/japannext/snooze" \
+      org.opencontainers.image.licenses="AGPL-3.0" \
+      org.opencontainers.image.version="${VERSION}" \
+      org.opencontainers.image.revision="${COMMIT}" \
+      org.opencontainers.image.created="${BUILD_TIME}"
+
+# Keep the binary under its original name so the entrypoint reflects the
+# component (snooze-syslog, snooze-smtp, ...). Distroless static has no
+# shell, so the ENTRYPOINT is the literal path.
+COPY --from=gobuilder /out/${BINARY} /usr/local/bin/snooze-component
+
+USER nonroot:nonroot
+ENTRYPOINT ["/usr/local/bin/snooze-component"]

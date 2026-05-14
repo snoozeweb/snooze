@@ -1,0 +1,37 @@
+---
+name: 'patlite'
+desc: 'Set the light and alarm of a Patlite tower-light device over HTTP'
+icon: 'traffic-light'
+auto_reload: false
+action_form:
+    host:
+        display_name: Host
+        component: String
+        description: Host address of the Patlite device
+        required: true
+    port:
+        display_name: Port
+        component: Number
+        description: HTTP port of the Patlite device
+        default_value: 80
+    path:
+        display_name: Path
+        component: String
+        description: HTTP control endpoint path
+        default_value: '/api/control'
+    timeout:
+        display_name: Timeout (seconds)
+        component: Number
+        description: HTTP request timeout in seconds
+        default_value: 5
+    tls_insecure:
+        display_name: TLS insecure
+        component: Boolean
+        description: Skip TLS verification when path is https
+        default_value: false
+    severity_map:
+        display_name: Severity map
+        component: Object
+        description: >-
+            Map of record severity -> {color, state}. The special key `default`
+            applies when the record's severity is missing from the map.

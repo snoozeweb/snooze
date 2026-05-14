@@ -1,0 +1,2 @@
+usr/bin/snooze-mattermost
+packaging/systemd/snooze-mattermost.service lib/systemd/system/

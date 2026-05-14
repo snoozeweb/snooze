@@ -1,10 +1,88 @@
-Package: snooze-server
-Version: __VERSION__
-Architecture: all
-Maintainer: Florian Dematraz <florian.dematraz@snoozeweb.net>
-Description: Snooze server
-Homepage: https://github.com/snoozeweb/snooze
-Priority: optional
-Build-Depends: debhelper (>= 5)
-Standards-Version: 3.8.2
+Source: snooze
 Section: utils
+Priority: optional
+Maintainer: Snooze maintainers <dev@japannext.com>
+Build-Depends: debhelper-compat (= 13),
+               golang-go (>= 1.25)
+Standards-Version: 4.6.2
+Homepage: https://github.com/snoozeweb/snooze
+Vcs-Browser: https://github.com/snoozeweb/snooze
+Vcs-Git: https://github.com/snoozeweb/snooze.git
+Rules-Requires-Root: no
+
+Package: snooze-server
+Architecture: any
+Depends: ${shlibs:Depends}, ${misc:Depends}, adduser
+Description: Snooze alert routing server (Go rewrite)
+ Snooze is an alert routing and aggregation platform. This package ships
+ the main HTTP/API server daemon that owns the alert database, applies
+ rules, and dispatches notifications.
+
+Package: snooze
+Architecture: any
+Depends: ${shlibs:Depends}, ${misc:Depends}
+Description: Snooze command-line client
+ Command-line client for interacting with a Snooze server (querying
+ alerts, managing rules, acknowledging records, administrative tasks).
+
+Package: snooze-syslog
+Architecture: any
+Depends: ${shlibs:Depends}, ${misc:Depends}, snooze-server
+Description: Snooze syslog ingestion daemon
+ Listens for RFC 3164/5424 syslog messages over UDP/TCP and forwards
+ parsed events into the Snooze server.
+
+Package: snooze-snmptrap
+Architecture: any
+Depends: ${shlibs:Depends}, ${misc:Depends}, snooze-server
+Description: Snooze SNMP trap ingestion daemon
+ Receives SNMPv1/v2c/v3 traps, resolves them against compiled MIBs and
+ forwards the resulting events into the Snooze server.
+
+Package: snooze-smtp
+Architecture: any
+Depends: ${shlibs:Depends}, ${misc:Depends}, snooze-server
+Description: Snooze SMTP ingestion daemon
+ Accepts inbound mail and converts each message into a Snooze event.
+
+Package: snooze-relp
+Architecture: any
+Depends: ${shlibs:Depends}, ${misc:Depends}, snooze-server
+Description: Snooze RELP ingestion daemon
+ Receives reliable event-logging protocol (RELP) messages and forwards
+ them into the Snooze server.
+
+Package: snooze-googlechat
+Architecture: any
+Depends: ${shlibs:Depends}, ${misc:Depends}, snooze-server
+Description: Snooze Google Chat notification daemon
+ Dispatches Snooze notifications to Google Chat spaces via incoming
+ webhooks.
+
+Package: snooze-mattermost
+Architecture: any
+Depends: ${shlibs:Depends}, ${misc:Depends}, snooze-server
+Description: Snooze Mattermost notification daemon
+ Dispatches Snooze notifications to Mattermost channels via incoming
+ webhooks.
+
+Package: snooze-teams
+Architecture: any
+Depends: ${shlibs:Depends}, ${misc:Depends}, snooze-server
+Description: Snooze Microsoft Teams notification daemon
+ Dispatches Snooze notifications to Microsoft Teams channels via
+ workflow / incoming webhooks.
+
+Package: snooze-pacemaker
+Architecture: any
+Depends: ${shlibs:Depends}, ${misc:Depends}
+Description: Snooze Pacemaker resource agent helper
+ Helper binary used by Pacemaker resource agents to manage failover of
+ Snooze daemons in clustered deployments.
+
+Package: snooze-jira
+Architecture: any
+Depends: ${shlibs:Depends}, ${misc:Depends}, snooze-server
+Description: Snooze JIRA notification daemon
+ Creates and updates JIRA Cloud tickets from Snooze alerts and (optionally)
+ closes Snooze records when the corresponding JIRA ticket is resolved.

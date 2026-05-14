@@ -1,8 +1,0 @@
-pyproject.toml
-snooze_relp/__init__.py
-snooze_relp/main.py
-snooze_relp.egg-info/PKG-INFO
-snooze_relp.egg-info/SOURCES.txt
-snooze_relp.egg-info/dependency_links.txt
-snooze_relp.egg-info/requires.txt
-snooze_relp.egg-info/top_level.txt

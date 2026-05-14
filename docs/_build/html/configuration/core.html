@@ -41,8 +41,8 @@
 <link rel="preload" as="script" href="../_static/scripts/pydata-sphinx-theme.js?digest=8878045cc6db502f8baf" />
 
     <script src="../_static/documentation_options.js?v=9eb32ce0"></script>
-    <script src="../_static/doctools.js?v=9bcbadda"></script>
-    <script src="../_static/sphinx_highlight.js?v=dc90522c"></script>
+    <script src="../_static/doctools.js?v=fd6eb6e6"></script>
+    <script src="../_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="../_static/scripts/sphinx-book-theme.js?v=fab101a9"></script>
     <script>DOCUMENTATION_OPTIONS.pagename = 'configuration/core';</script>
     <link rel="index" title="Index" href="../genindex.html" />
@@ -146,9 +146,18 @@
     <div class="bd-toc-item navbar-nav active">
         <ul class="current nav bd-sidenav">
 <li class="toctree-l1 has-children"><a class="reference internal" href="../getting_started/index.html">Getting Started</a><details open="open"><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l2"><a class="reference internal" href="../getting_started/00_GoQuickstart.html">Getting started (Go, v2.0)</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../getting_started/01_Installation.html">Installation on RHEL/Debian</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../getting_started/02_Docker.html">Docker deployment</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../getting_started/03_Login.html">Log in to the web interface</a></li>
+</ul>
+</details></li>
+<li class="toctree-l1"><a class="reference internal" href="index.html">Configuration</a></li>
+
+
+
+<li class="toctree-l1 has-children"><a class="reference internal" href="../migration/index.html">Migration</a><details open="open"><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l2"><a class="reference internal" href="../migration/python-to-go.html">Python 1.x → Go 2.0 migration</a></li>
 </ul>
 </details></li>
 <li class="toctree-l1 has-children"><a class="reference internal" href="../general/index.html">General</a><details open="open"><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
@@ -171,16 +180,6 @@
 <li class="toctree-l2"><a class="reference internal" href="../general/18_Metrics.html">Metrics</a></li>
 </ul>
 </details></li>
-<li class="toctree-l1 current active has-children"><a class="reference internal" href="index.html">Configuration</a><details open="open"><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul class="current">
-<li class="toctree-l2 current active"><a class="current reference internal" href="#">Core configuration</a></li>
-<li class="toctree-l2"><a class="reference internal" href="general.html">General configuration</a></li>
-<li class="toctree-l2"><a class="reference internal" href="housekeeping.html">Housekeeper configuration</a></li>
-<li class="toctree-l2"><a class="reference internal" href="ldap_auth.html">LDAP configuration</a></li>
-<li class="toctree-l2"><a class="reference internal" href="notifications.html">Notification configuration</a></li>
-<li class="toctree-l2"><a class="reference internal" href="syncer.html">Syncer configuration</a></li>
-</ul>
-</details></li>
-
 </ul>
 
     </div>
@@ -378,44 +377,49 @@
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#port">port</a></li>
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#bootstrap-db">bootstrap_db</a></li>
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#unix-socket">unix_socket</a></li>
-<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#no-login">no_login</a></li>
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#audit-excluded-paths">audit_excluded_paths</a></li>
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#process-plugins">process_plugins</a></li>
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#database">database</a></li>
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#init-sleep">init_sleep</a></li>
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#create-root-user">create_root_user</a></li>
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#ssl">ssl</a></li>
-<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#web">web</a></li>
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#backup">backup</a></li>
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#cors">cors</a></li>
 </ul>
 </li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#definitions">Definitions</a><ul class="nav section-nav flex-column">
-<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#mongodbconfig">MongodbConfig</a><ul class="nav section-nav flex-column">
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#sqliteconfig-go-default">SqliteConfig (Go default)</a><ul class="nav section-nav flex-column">
 <li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#type">type</a></li>
-<li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#host">host</a></li>
-<li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#id3">port</a></li>
-</ul>
-</li>
-<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#fileconfig">FileConfig</a><ul class="nav section-nav flex-column">
-<li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#id5">type</a></li>
 <li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#path">path</a></li>
 </ul>
 </li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#mongoconfig">MongoConfig</a><ul class="nav section-nav flex-column">
+<li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#id3">type</a></li>
+<li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#host">host</a></li>
+<li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#id4">port</a></li>
+<li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#id5">database</a></li>
+<li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#dsn-url">dsn / url</a></li>
+<li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#replicaset-tls-tlscafile-authsource">replicaSet, tls, tlsCAFile, authSource</a></li>
+</ul>
+</li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#postgresconfig">PostgresConfig</a><ul class="nav section-nav flex-column">
+<li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#id7">type</a></li>
+<li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#dsn">dsn</a></li>
+<li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#pool-min-size">pool_min_size</a></li>
+<li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#pool-max-size">pool_max_size</a></li>
+<li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#application-name">application_name</a></li>
+</ul>
+</li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#database-url-shortcut">DATABASE_URL shortcut</a></li>
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#sslconfig">SslConfig</a><ul class="nav section-nav flex-column">
 <li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#enabled">enabled</a></li>
 <li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#certfile">certfile</a></li>
 <li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#keyfile">keyfile</a></li>
 </ul>
 </li>
-<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#webconfig">WebConfig</a><ul class="nav section-nav flex-column">
-<li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#id8">enabled</a></li>
-<li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#id9">path</a></li>
-</ul>
-</li>
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#backupconfig">BackupConfig</a><ul class="nav section-nav flex-column">
-<li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#id11">enabled</a></li>
-<li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#id12">path</a></li>
+<li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#id10">enabled</a></li>
+<li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#id11">path</a></li>
 <li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#excludes">excludes</a></li>
 </ul>
 </li>
@@ -442,14 +446,21 @@
 <blockquote>
 <div><dl class="field-list simple">
 <dt class="field-odd">Package location<span class="colon">:</span></dt>
-<dd class="field-odd"><p><code class="docutils literal notranslate"><span class="pre">/etc/snooze/server/core.yaml</span></code></p>
+<dd class="field-odd"><p><code class="docutils literal notranslate"><span class="pre">/etc/snooze/server-go/core.yaml</span></code></p>
 </dd>
-<dt class="field-even">Live reload<span class="colon">:</span></dt>
-<dd class="field-even"><p><code class="docutils literal notranslate"><span class="pre">False</span></code></p>
+<dt class="field-even">Loader<span class="colon">:</span></dt>
+<dd class="field-even"><p><code class="docutils literal notranslate"><span class="pre">internal/config</span></code> (koanf)</p>
+</dd>
+<dt class="field-odd">Live reload<span class="colon">:</span></dt>
+<dd class="field-odd"><p><code class="docutils literal notranslate"><span class="pre">False</span></code> (restart to re-read this file)</p>
 </dd>
 </dl>
 </div></blockquote>
-<p>Core configuration. Not editable live. Require a restart of the server.</p>
+<p>Core configuration. Mandatory; loaded once at startup. Runtime-mutable
+defaults sit in the database via the <code class="docutils literal notranslate"><span class="pre">settings</span></code> plugin instead. See
+<a class="reference internal" href="../migration/python-to-go.html#migration-python-to-go"><span class="std std-ref">Python 1.x → Go 2.0 migration</span></a> for the field-by-field mapping from the
+Python 1.x <code class="docutils literal notranslate"><span class="pre">core.yaml</span></code>.</p>
+<p>The Go-side schema lives in <code class="docutils literal notranslate"><span class="pre">internal/config/schema/core.go</span></code>.</p>
 <section id="properties">
 <h2>Properties<a class="headerlink" href="#properties" title="Link to this heading">#</a></h2>
 <section id="listen-addr">
@@ -457,13 +468,13 @@
 <blockquote>
 <div><dl class="field-list simple">
 <dt class="field-odd">Type<span class="colon">:</span></dt>
-<dd class="field-odd"><p>string (ipvanyaddress)</p>
+<dd class="field-odd"><p>string (IP address)</p>
 </dd>
 <dt class="field-even">Default<span class="colon">:</span></dt>
 <dd class="field-even"><p><code class="docutils literal notranslate"><span class="pre">'0.0.0.0'</span></code></p>
 </dd>
 </dl>
-<p>IPv4 address on which Snooze process is listening to</p>
+<p>IPv4 or IPv6 address the HTTP listener binds to.</p>
 </div></blockquote>
 </section>
 <section id="port">
@@ -471,13 +482,13 @@
 <blockquote>
 <div><dl class="field-list simple">
 <dt class="field-odd">Type<span class="colon">:</span></dt>
-<dd class="field-odd"><p>integer</p>
+<dd class="field-odd"><p>integer (1..65535)</p>
 </dd>
 <dt class="field-even">Default<span class="colon">:</span></dt>
 <dd class="field-even"><p><code class="docutils literal notranslate"><span class="pre">5200</span></code></p>
 </dd>
 </dl>
-<p>Port on which Snooze process is listening to</p>
+<p>TCP port the HTTP listener binds to.</p>
 </div></blockquote>
 </section>
 <section id="bootstrap-db">
@@ -491,7 +502,9 @@
 <dd class="field-even"><p><code class="docutils literal notranslate"><span class="pre">True</span></code></p>
 </dd>
 </dl>
-<p>Populate the database with an initial configuration</p>
+<p>Create the schema (Postgres / SQLite) or indexes (Mongo) on first
+start. Safe to leave on across restarts; the operation is
+idempotent.</p>
 </div></blockquote>
 </section>
 <section id="unix-socket">
@@ -505,24 +518,10 @@
 <dd class="field-even"><p><code class="docutils literal notranslate"><span class="pre">'/var/run/snooze/server.socket'</span></code></p>
 </dd>
 </dl>
-<p>Listen on this unix socket to issue root tokens</p>
-</div></blockquote>
-</section>
-<section id="no-login">
-<h3>no_login<a class="headerlink" href="#no-login" title="Link to this heading">#</a></h3>
-<blockquote>
-<div><dl class="field-list simple">
-<dt class="field-odd">Type<span class="colon">:</span></dt>
-<dd class="field-odd"><p>boolean</p>
-</dd>
-<dt class="field-even">Environment variable<span class="colon">:</span></dt>
-<dd class="field-even"><p><code class="docutils literal notranslate"><span class="pre">SNOOZE_NO_LOGIN</span></code></p>
-</dd>
-<dt class="field-odd">Default<span class="colon">:</span></dt>
-<dd class="field-odd"><p><code class="docutils literal notranslate"><span class="pre">False</span></code></p>
-</dd>
-</dl>
-<p>Disable Authentication (everyone has admin priviledges)</p>
+<p>Legacy Python knob — preserved in the schema for forward
+compatibility with the older YAML. The Go admin socket is wired
+via the <code class="docutils literal notranslate"><span class="pre">--admin-socket</span></code> flag (default
+<code class="docutils literal notranslate"><span class="pre">/var/run/snooze/admin.sock</span></code>).</p>
 </div></blockquote>
 </section>
 <section id="audit-excluded-paths">
@@ -536,7 +535,9 @@
 <dd class="field-even"><p><code class="docutils literal notranslate"><span class="pre">['/api/patlite',</span> <span class="pre">'/metrics',</span> <span class="pre">'/web']</span></code></p>
 </dd>
 </dl>
-<p>A list of HTTP paths excluded from audit logs. Any paththat starts with a path in this list will be excluded.</p>
+<p>HTTP path prefixes excluded from the audit log. The router also
+has a hard-coded skip list for <code class="docutils literal notranslate"><span class="pre">/healthz</span></code>, <code class="docutils literal notranslate"><span class="pre">/readyz</span></code> so a
+busy probe loop doesn’t drown the audit stream.</p>
 </div></blockquote>
 </section>
 <section id="process-plugins">
@@ -550,7 +551,9 @@
 <dd class="field-even"><p><code class="docutils literal notranslate"><span class="pre">['rule',</span> <span class="pre">'aggregaterule',</span> <span class="pre">'snooze',</span> <span class="pre">'notification']</span></code></p>
 </dd>
 </dl>
-<p>List of plugins that will be used for processing alerts. Order matters.</p>
+<p>Order in which the alert-processing pipeline runs registered
+<code class="docutils literal notranslate"><span class="pre">Processor</span></code> plugins. Order matters: earlier plugins see the
+record first.</p>
 </div></blockquote>
 </section>
 <section id="database">
@@ -558,12 +561,14 @@
 <blockquote>
 <div><dl class="field-list simple">
 <dt class="field-odd">Type<span class="colon">:</span></dt>
-<dd class="field-odd"><p><a class="reference internal" href="#mongodbconfig"><span class="std std-ref">MongodbConfig</span></a> | <a class="reference internal" href="#fileconfig"><span class="std std-ref">FileConfig</span></a></p>
+<dd class="field-odd"><p>object — one of the variants below</p>
 </dd>
 <dt class="field-even">Environment variable<span class="colon">:</span></dt>
-<dd class="field-even"><p><code class="docutils literal notranslate"><span class="pre">DATABASE_URL</span></code></p>
+<dd class="field-even"><p><code class="docutils literal notranslate"><span class="pre">DATABASE_URL</span></code> (flat shortcut)</p>
 </dd>
 </dl>
+<p>See <a class="reference internal" href="#database-configuration"><span class="std std-ref">Definitions</span></a> below for the per-backend
+options.</p>
 </div></blockquote>
 </section>
 <section id="init-sleep">
@@ -571,13 +576,15 @@
 <blockquote>
 <div><dl class="field-list simple">
 <dt class="field-odd">Type<span class="colon">:</span></dt>
-<dd class="field-odd"><p>integer</p>
+<dd class="field-odd"><p>integer (seconds)</p>
 </dd>
 <dt class="field-even">Default<span class="colon">:</span></dt>
 <dd class="field-even"><p><code class="docutils literal notranslate"><span class="pre">5</span></code></p>
 </dd>
 </dl>
-<p>Time to sleep before retrying certain operations (bootstrap, …)</p>
+<p>Time to sleep before retrying bootstrap-time operations. Kept for
+backwards compatibility with the Python config; the Go bootstrap
+uses exponential backoff internally.</p>
 </div></blockquote>
 </section>
 <section id="create-root-user">
@@ -591,7 +598,10 @@
 <dd class="field-even"><p><code class="docutils literal notranslate"><span class="pre">True</span></code></p>
 </dd>
 </dl>
-<p>Create a <em>root</em> user with a default password <em>root</em></p>
+<p>On first boot, create a local <code class="docutils literal notranslate"><span class="pre">root</span></code> user. The Go bootstrap
+generates a 24-byte random password, bcrypt-hashes it, and writes
+the plaintext to stderr <strong>once</strong>. See
+<a class="reference internal" href="../getting_started/03_Login.html#login"><span class="std std-ref">Log in to the web interface</span></a> for the rotation steps.</p>
 </div></blockquote>
 </section>
 <section id="ssl">
@@ -600,16 +610,6 @@
 <div><dl class="field-list simple">
 <dt class="field-odd">Type<span class="colon">:</span></dt>
 <dd class="field-odd"><p><a class="reference internal" href="#sslconfig"><span class="std std-ref">SslConfig</span></a></p>
-</dd>
-</dl>
-</div></blockquote>
-</section>
-<section id="web">
-<h3>web<a class="headerlink" href="#web" title="Link to this heading">#</a></h3>
-<blockquote>
-<div><dl class="field-list simple">
-<dt class="field-odd">Type<span class="colon">:</span></dt>
-<dd class="field-odd"><p><a class="reference internal" href="#webconfig"><span class="std std-ref">WebConfig</span></a></p>
 </dd>
 </dl>
 </div></blockquote>
@@ -636,54 +636,18 @@
 </section>
 </section>
 <section id="definitions">
-<h2>Definitions<a class="headerlink" href="#definitions" title="Link to this heading">#</a></h2>
-<section id="mongodbconfig">
-<span id="id2"></span><h3>MongodbConfig<a class="headerlink" href="#mongodbconfig" title="Link to this heading">#</a></h3>
-<p>Mongodb configuration passed to pymongo MongoClient</p>
+<span id="database-configuration"></span><h2>Definitions<a class="headerlink" href="#definitions" title="Link to this heading">#</a></h2>
+<section id="sqliteconfig-go-default">
+<span id="sqliteconfig"></span><h3>SqliteConfig (Go default)<a class="headerlink" href="#sqliteconfig-go-default" title="Link to this heading">#</a></h3>
+<p>Pure-Go SQLite backend via <code class="docutils literal notranslate"><span class="pre">modernc.org/sqlite</span></code> with JSON1. Single
+file, single writer, no external dependency. Ideal for single-node
+deployments and laptop testing.</p>
 <section id="type">
 <h4>type<a class="headerlink" href="#type" title="Link to this heading">#</a></h4>
 <blockquote>
 <div><dl class="field-list simple">
 <dt class="field-odd">Type<span class="colon">:</span></dt>
-<dd class="field-odd"><p>‘mongo’</p>
-</dd>
-<dt class="field-even">Default<span class="colon">:</span></dt>
-<dd class="field-even"><p><code class="docutils literal notranslate"><span class="pre">'mongo'</span></code></p>
-</dd>
-</dl>
-</div></blockquote>
-</section>
-<section id="host">
-<h4>host<a class="headerlink" href="#host" title="Link to this heading">#</a></h4>
-<blockquote>
-<div><dl class="field-list simple">
-<dt class="field-odd">Type<span class="colon">:</span></dt>
-<dd class="field-odd"><p>string | array[string]</p>
-</dd>
-</dl>
-<p>Hostname or IP address or Unix domain socket path of a single mongod or mongos instanceto connect to</p>
-</div></blockquote>
-</section>
-<section id="id3">
-<h4>port<a class="headerlink" href="#id3" title="Link to this heading">#</a></h4>
-<blockquote>
-<div><dl class="field-list simple">
-<dt class="field-odd">Type<span class="colon">:</span></dt>
-<dd class="field-odd"><p>integer</p>
-</dd>
-</dl>
-<p>Port number on which to connect</p>
-</div></blockquote>
-</section>
-</section>
-<section id="fileconfig">
-<span id="id4"></span><h3>FileConfig<a class="headerlink" href="#fileconfig" title="Link to this heading">#</a></h3>
-<section id="id5">
-<h4>type<a class="headerlink" href="#id5" title="Link to this heading">#</a></h4>
-<blockquote>
-<div><dl class="field-list simple">
-<dt class="field-odd">Type<span class="colon">:</span></dt>
-<dd class="field-odd"><p>‘file’</p>
+<dd class="field-odd"><p><code class="docutils literal notranslate"><span class="pre">'sqlite'</span></code> (alias: <code class="docutils literal notranslate"><span class="pre">'file'</span></code>)</p>
 </dd>
 <dt class="field-even">Default<span class="colon">:</span></dt>
 <dd class="field-even"><p><code class="docutils literal notranslate"><span class="pre">'file'</span></code></p>
@@ -699,15 +663,165 @@
 <dd class="field-odd"><p>string (path)</p>
 </dd>
 <dt class="field-even">Default<span class="colon">:</span></dt>
-<dd class="field-even"><p><code class="docutils literal notranslate"><span class="pre">'db.json'</span></code></p>
+<dd class="field-even"><p><code class="docutils literal notranslate"><span class="pre">'./db.sqlite'</span></code></p>
+</dd>
+</dl>
+<p>File path for the SQLite database. Use an absolute path in
+production (<code class="docutils literal notranslate"><span class="pre">/var/lib/snooze/db.sqlite</span></code>).</p>
+</div></blockquote>
+</section>
+</section>
+<section id="mongoconfig">
+<span id="id2"></span><h3>MongoConfig<a class="headerlink" href="#mongoconfig" title="Link to this heading">#</a></h3>
+<p>MongoDB driver: <code class="docutils literal notranslate"><span class="pre">go.mongodb.org/mongo-driver</span></code>. Supports replica
+sets, change streams (used as the message bus), and the same URI
+shape as the Python 1.x deployment.</p>
+<section id="id3">
+<h4>type<a class="headerlink" href="#id3" title="Link to this heading">#</a></h4>
+<blockquote>
+<div><dl class="field-list simple">
+<dt class="field-odd">Type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><code class="docutils literal notranslate"><span class="pre">'mongo'</span></code> (alias: <code class="docutils literal notranslate"><span class="pre">'mongodb'</span></code>)</p>
 </dd>
 </dl>
 </div></blockquote>
 </section>
+<section id="host">
+<h4>host<a class="headerlink" href="#host" title="Link to this heading">#</a></h4>
+<blockquote>
+<div><dl class="field-list simple">
+<dt class="field-odd">Type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>string</p>
+</dd>
+</dl>
+<p>Either a host:port pair or a full <code class="docutils literal notranslate"><span class="pre">mongodb://</span></code> URI.</p>
+</div></blockquote>
+</section>
+<section id="id4">
+<h4>port<a class="headerlink" href="#id4" title="Link to this heading">#</a></h4>
+<blockquote>
+<div><dl class="field-list simple">
+<dt class="field-odd">Type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>integer</p>
+</dd>
+<dt class="field-even">Default<span class="colon">:</span></dt>
+<dd class="field-even"><p><code class="docutils literal notranslate"><span class="pre">27017</span></code></p>
+</dd>
+</dl>
+</div></blockquote>
+</section>
+<section id="id5">
+<h4>database<a class="headerlink" href="#id5" title="Link to this heading">#</a></h4>
+<blockquote>
+<div><dl class="field-list simple">
+<dt class="field-odd">Type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>string</p>
+</dd>
+<dt class="field-even">Default<span class="colon">:</span></dt>
+<dd class="field-even"><p><code class="docutils literal notranslate"><span class="pre">'snooze'</span></code></p>
+</dd>
+</dl>
+</div></blockquote>
+</section>
+<section id="dsn-url">
+<h4>dsn / url<a class="headerlink" href="#dsn-url" title="Link to this heading">#</a></h4>
+<blockquote>
+<div><p>Either accepted; a full <code class="docutils literal notranslate"><span class="pre">mongodb://user:pass&#64;host:port/db?…</span></code> URI
+overrides the per-field knobs.</p>
+</div></blockquote>
+</section>
+<section id="replicaset-tls-tlscafile-authsource">
+<h4>replicaSet, tls, tlsCAFile, authSource<a class="headerlink" href="#replicaset-tls-tlscafile-authsource" title="Link to this heading">#</a></h4>
+<blockquote>
+<div><p>Standard MongoDB URI options. The Go driver passes them through
+to its connection-string parser.</p>
+</div></blockquote>
+</section>
+</section>
+<section id="postgresconfig">
+<span id="id6"></span><h3>PostgresConfig<a class="headerlink" href="#postgresconfig" title="Link to this heading">#</a></h3>
+<p>Postgres driver: <code class="docutils literal notranslate"><span class="pre">jackc/pgx/v5</span></code>. The message bus rides on
+<code class="docutils literal notranslate"><span class="pre">LISTEN/NOTIFY</span></code> over the same connection pool.</p>
+<section id="id7">
+<h4>type<a class="headerlink" href="#id7" title="Link to this heading">#</a></h4>
+<blockquote>
+<div><dl class="field-list simple">
+<dt class="field-odd">Type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><code class="docutils literal notranslate"><span class="pre">'postgres'</span></code> (alias: <code class="docutils literal notranslate"><span class="pre">'pg'</span></code>)</p>
+</dd>
+</dl>
+</div></blockquote>
+</section>
+<section id="dsn">
+<h4>dsn<a class="headerlink" href="#dsn" title="Link to this heading">#</a></h4>
+<blockquote>
+<div><dl class="field-list simple">
+<dt class="field-odd">Type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>string</p>
+</dd>
+</dl>
+<p>libpq-style connection string. When set, overrides every
+per-field knob below. Required for <a class="reference external" href="https://cloudnative-pg.io">CloudNativePG-managed clusters</a> where the URL comes from the app
+secret.</p>
+</div></blockquote>
+</section>
+<section id="pool-min-size">
+<h4>pool_min_size<a class="headerlink" href="#pool-min-size" title="Link to this heading">#</a></h4>
+<blockquote>
+<div><dl class="field-list simple">
+<dt class="field-odd">Type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>integer</p>
+</dd>
+<dt class="field-even">Default<span class="colon">:</span></dt>
+<dd class="field-even"><p><code class="docutils literal notranslate"><span class="pre">1</span></code></p>
+</dd>
+</dl>
+</div></blockquote>
+</section>
+<section id="pool-max-size">
+<h4>pool_max_size<a class="headerlink" href="#pool-max-size" title="Link to this heading">#</a></h4>
+<blockquote>
+<div><dl class="field-list simple">
+<dt class="field-odd">Type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>integer</p>
+</dd>
+<dt class="field-even">Default<span class="colon">:</span></dt>
+<dd class="field-even"><p><code class="docutils literal notranslate"><span class="pre">10</span></code></p>
+</dd>
+</dl>
+</div></blockquote>
+</section>
+<section id="application-name">
+<h4>application_name<a class="headerlink" href="#application-name" title="Link to this heading">#</a></h4>
+<blockquote>
+<div><dl class="field-list simple">
+<dt class="field-odd">Type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>string</p>
+</dd>
+<dt class="field-even">Default<span class="colon">:</span></dt>
+<dd class="field-even"><p><code class="docutils literal notranslate"><span class="pre">'snooze-server'</span></code></p>
+</dd>
+</dl>
+<p>Identifier reported to <code class="docutils literal notranslate"><span class="pre">pg_stat_activity</span></code>.</p>
+</div></blockquote>
+</section>
+</section>
+<section id="database-url-shortcut">
+<h3>DATABASE_URL shortcut<a class="headerlink" href="#database-url-shortcut" title="Link to this heading">#</a></h3>
+<p>The flat environment variable <code class="docutils literal notranslate"><span class="pre">DATABASE_URL</span></code> accepts:</p>
+<ul class="simple">
+<li><p><code class="docutils literal notranslate"><span class="pre">sqlite:/path/to/db.sqlite</span></code> <em>(future; for now use the typed
+config)</em></p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">mongodb://host:27017/snooze</span></code></p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">postgres://snooze:snooze&#64;host:5432/snooze</span></code></p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">postgresql://…</span></code> <em>(alias)</em></p></li>
+</ul>
+<p><code class="docutils literal notranslate"><span class="pre">Database.NormalizeURL</span></code> in <code class="docutils literal notranslate"><span class="pre">internal/config/schema/core.go</span></code> does
+the scheme → driver mapping.</p>
 </section>
 <section id="sslconfig">
-<span id="id6"></span><h3>SslConfig<a class="headerlink" href="#sslconfig" title="Link to this heading">#</a></h3>
-<p>SSL configuration</p>
+<span id="id8"></span><h3>SslConfig<a class="headerlink" href="#sslconfig" title="Link to this heading">#</a></h3>
+<p>SSL configuration for the embedded HTTP listener.</p>
 <section id="enabled">
 <h4>enabled<a class="headerlink" href="#enabled" title="Link to this heading">#</a></h4>
 <blockquote>
@@ -719,7 +833,6 @@
 <dd class="field-even"><p><code class="docutils literal notranslate"><span class="pre">False</span></code></p>
 </dd>
 </dl>
-<p>Enabling TLS termination</p>
 </div></blockquote>
 </section>
 <section id="certfile">
@@ -729,23 +842,10 @@
 <dt class="field-odd">Type<span class="colon">:</span></dt>
 <dd class="field-odd"><p>string (path)</p>
 </dd>
-<dt class="field-even">Environment variable<span class="colon">:</span></dt>
-<dd class="field-even"><p><code class="docutils literal notranslate"><span class="pre">SNOOZE_CERT_FILE</span></code></p>
+<dt class="field-even">Required when<span class="colon">:</span></dt>
+<dd class="field-even"><p><code class="docutils literal notranslate"><span class="pre">enabled</span> <span class="pre">==</span> <span class="pre">True</span></code></p>
 </dd>
 </dl>
-<p>Path to the x509 PEM style certificate to use for TLS termination</p>
-<div class="admonition-example-1 admonition">
-<p class="admonition-title">Example 1</p>
-<div class="highlight-yaml notranslate"><div class="highlight"><pre><span></span><span class="nt">certfile</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">/etc/pki/tls/certs/snooze.crt</span>
-</pre></div>
-</div>
-</div>
-<div class="admonition-example-2 admonition">
-<p class="admonition-title">Example 2</p>
-<div class="highlight-yaml notranslate"><div class="highlight"><pre><span></span><span class="nt">certfile</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">/etc/ssl/certs/snooze.crt</span>
-</pre></div>
-</div>
-</div>
 </div></blockquote>
 </section>
 <section id="keyfile">
@@ -755,63 +855,18 @@
 <dt class="field-odd">Type<span class="colon">:</span></dt>
 <dd class="field-odd"><p>string (path)</p>
 </dd>
-<dt class="field-even">Environment variable<span class="colon">:</span></dt>
-<dd class="field-even"><p><code class="docutils literal notranslate"><span class="pre">SNOOZE_KEY_FILE</span></code></p>
+<dt class="field-even">Required when<span class="colon">:</span></dt>
+<dd class="field-even"><p><code class="docutils literal notranslate"><span class="pre">enabled</span> <span class="pre">==</span> <span class="pre">True</span></code></p>
 </dd>
 </dl>
-<p>Path to the private key to use for TLS termination</p>
-<div class="admonition-example-1 admonition">
-<p class="admonition-title">Example 1</p>
-<div class="highlight-yaml notranslate"><div class="highlight"><pre><span></span><span class="nt">keyfile</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">/etc/pki/tls/private/snooze.key</span>
-</pre></div>
-</div>
-</div>
-<div class="admonition-example-2 admonition">
-<p class="admonition-title">Example 2</p>
-<div class="highlight-yaml notranslate"><div class="highlight"><pre><span></span><span class="nt">keyfile</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">/etc/ssl/private/snooze.key</span>
-</pre></div>
-</div>
-</div>
-</div></blockquote>
-</section>
-</section>
-<section id="webconfig">
-<span id="id7"></span><h3>WebConfig<a class="headerlink" href="#webconfig" title="Link to this heading">#</a></h3>
-<p>The subconfig for the web server (snooze-web)</p>
-<section id="id8">
-<h4>enabled<a class="headerlink" href="#id8" title="Link to this heading">#</a></h4>
-<blockquote>
-<div><dl class="field-list simple">
-<dt class="field-odd">Type<span class="colon">:</span></dt>
-<dd class="field-odd"><p>boolean</p>
-</dd>
-<dt class="field-even">Default<span class="colon">:</span></dt>
-<dd class="field-even"><p><code class="docutils literal notranslate"><span class="pre">True</span></code></p>
-</dd>
-</dl>
-<p>Enable the web interface</p>
-</div></blockquote>
-</section>
-<section id="id9">
-<h4>path<a class="headerlink" href="#id9" title="Link to this heading">#</a></h4>
-<blockquote>
-<div><dl class="field-list simple">
-<dt class="field-odd">Type<span class="colon">:</span></dt>
-<dd class="field-odd"><p>string (path)</p>
-</dd>
-<dt class="field-even">Default<span class="colon">:</span></dt>
-<dd class="field-even"><p><code class="docutils literal notranslate"><span class="pre">'/opt/snooze/web'</span></code></p>
-</dd>
-</dl>
-<p>Path to the web interface dist files</p>
 </div></blockquote>
 </section>
 </section>
 <section id="backupconfig">
-<span id="id10"></span><h3>BackupConfig<a class="headerlink" href="#backupconfig" title="Link to this heading">#</a></h3>
-<p>Configuration for the backup job</p>
-<section id="id11">
-<h4>enabled<a class="headerlink" href="#id11" title="Link to this heading">#</a></h4>
+<span id="id9"></span><h3>BackupConfig<a class="headerlink" href="#backupconfig" title="Link to this heading">#</a></h3>
+<p>Configuration for the backup loop.</p>
+<section id="id10">
+<h4>enabled<a class="headerlink" href="#id10" title="Link to this heading">#</a></h4>
 <blockquote>
 <div><dl class="field-list simple">
 <dt class="field-odd">Type<span class="colon">:</span></dt>
@@ -821,24 +876,19 @@
 <dd class="field-even"><p><code class="docutils literal notranslate"><span class="pre">True</span></code></p>
 </dd>
 </dl>
-<p>Enable backups</p>
 </div></blockquote>
 </section>
-<section id="id12">
-<h4>path<a class="headerlink" href="#id12" title="Link to this heading">#</a></h4>
+<section id="id11">
+<h4>path<a class="headerlink" href="#id11" title="Link to this heading">#</a></h4>
 <blockquote>
 <div><dl class="field-list simple">
 <dt class="field-odd">Type<span class="colon">:</span></dt>
 <dd class="field-odd"><p>string (path)</p>
 </dd>
-<dt class="field-even">Environment variable<span class="colon">:</span></dt>
-<dd class="field-even"><p><code class="docutils literal notranslate"><span class="pre">SNOOZE_BACKUP_PATH</span></code></p>
-</dd>
-<dt class="field-odd">Default<span class="colon">:</span></dt>
-<dd class="field-odd"><p><code class="docutils literal notranslate"><span class="pre">'/var/lib/snooze'</span></code></p>
+<dt class="field-even">Default<span class="colon">:</span></dt>
+<dd class="field-even"><p><code class="docutils literal notranslate"><span class="pre">'/var/lib/snooze'</span></code></p>
 </dd>
 </dl>
-<p>Path to store database backups</p>
 </div></blockquote>
 </section>
 <section id="excludes">
@@ -852,19 +902,19 @@
 <dd class="field-even"><p><code class="docutils literal notranslate"><span class="pre">['record',</span> <span class="pre">'stats',</span> <span class="pre">'comment',</span> <span class="pre">'secrets',</span> <span class="pre">'aggregate',</span> <span class="pre">'system.profile']</span></code></p>
 </dd>
 </dl>
-<p>Collections to exclude from backups</p>
+<p>Collection names skipped by the backup loop.</p>
 </div></blockquote>
 </section>
 </section>
 <section id="corsconfig">
-<span id="id13"></span><h3>CorsConfig<a class="headerlink" href="#corsconfig" title="Link to this heading">#</a></h3>
-<p>CORS configuration for the web server</p>
+<span id="id12"></span><h3>CorsConfig<a class="headerlink" href="#corsconfig" title="Link to this heading">#</a></h3>
+<p>CORS headers emitted by the HTTP listener.</p>
 <section id="allow-origins">
 <h4>allow_origins<a class="headerlink" href="#allow-origins" title="Link to this heading">#</a></h4>
 <blockquote>
 <div><dl class="field-list simple">
 <dt class="field-odd">Type<span class="colon">:</span></dt>
-<dd class="field-odd"><p>string</p>
+<dd class="field-odd"><p>string (comma-separated or <code class="docutils literal notranslate"><span class="pre">*</span></code>)</p>
 </dd>
 <dt class="field-even">Default<span class="colon">:</span></dt>
 <dd class="field-even"><p><code class="docutils literal notranslate"><span class="pre">'*'</span></code></p>
@@ -877,7 +927,7 @@
 <blockquote>
 <div><dl class="field-list simple">
 <dt class="field-odd">Type<span class="colon">:</span></dt>
-<dd class="field-odd"><p>string</p>
+<dd class="field-odd"><p>string (<code class="docutils literal notranslate"><span class="pre">'true'</span></code> / <code class="docutils literal notranslate"><span class="pre">'false'</span></code> / <code class="docutils literal notranslate"><span class="pre">'*'</span></code>)</p>
 </dd>
 <dt class="field-even">Default<span class="colon">:</span></dt>
 <dd class="field-even"><p><code class="docutils literal notranslate"><span class="pre">'*'</span></code></p>
@@ -941,44 +991,49 @@
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#port">port</a></li>
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#bootstrap-db">bootstrap_db</a></li>
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#unix-socket">unix_socket</a></li>
-<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#no-login">no_login</a></li>
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#audit-excluded-paths">audit_excluded_paths</a></li>
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#process-plugins">process_plugins</a></li>
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#database">database</a></li>
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#init-sleep">init_sleep</a></li>
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#create-root-user">create_root_user</a></li>
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#ssl">ssl</a></li>
-<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#web">web</a></li>
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#backup">backup</a></li>
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#cors">cors</a></li>
 </ul>
 </li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#definitions">Definitions</a><ul class="nav section-nav flex-column">
-<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#mongodbconfig">MongodbConfig</a><ul class="nav section-nav flex-column">
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#sqliteconfig-go-default">SqliteConfig (Go default)</a><ul class="nav section-nav flex-column">
 <li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#type">type</a></li>
-<li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#host">host</a></li>
-<li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#id3">port</a></li>
-</ul>
-</li>
-<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#fileconfig">FileConfig</a><ul class="nav section-nav flex-column">
-<li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#id5">type</a></li>
 <li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#path">path</a></li>
 </ul>
 </li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#mongoconfig">MongoConfig</a><ul class="nav section-nav flex-column">
+<li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#id3">type</a></li>
+<li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#host">host</a></li>
+<li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#id4">port</a></li>
+<li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#id5">database</a></li>
+<li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#dsn-url">dsn / url</a></li>
+<li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#replicaset-tls-tlscafile-authsource">replicaSet, tls, tlsCAFile, authSource</a></li>
+</ul>
+</li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#postgresconfig">PostgresConfig</a><ul class="nav section-nav flex-column">
+<li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#id7">type</a></li>
+<li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#dsn">dsn</a></li>
+<li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#pool-min-size">pool_min_size</a></li>
+<li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#pool-max-size">pool_max_size</a></li>
+<li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#application-name">application_name</a></li>
+</ul>
+</li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#database-url-shortcut">DATABASE_URL shortcut</a></li>
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#sslconfig">SslConfig</a><ul class="nav section-nav flex-column">
 <li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#enabled">enabled</a></li>
 <li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#certfile">certfile</a></li>
 <li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#keyfile">keyfile</a></li>
 </ul>
 </li>
-<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#webconfig">WebConfig</a><ul class="nav section-nav flex-column">
-<li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#id8">enabled</a></li>
-<li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#id9">path</a></li>
-</ul>
-</li>
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#backupconfig">BackupConfig</a><ul class="nav section-nav flex-column">
-<li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#id11">enabled</a></li>
-<li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#id12">path</a></li>
+<li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#id10">enabled</a></li>
+<li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#id11">path</a></li>
 <li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#excludes">excludes</a></li>
 </ul>
 </li>
