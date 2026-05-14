@@ -47,3 +47,14 @@ export const authStore = create<AuthState>((set) => {
 export function useAuth(): AuthState {
   return authStore((s) => s);
 }
+
+// Cross-tab sync: when another tab writes/clears snooze-token, mirror
+// the change here. The "storage" event only fires on changes made in
+// *other* documents; same-doc writes go through writeToken/clearToken.
+if (typeof window !== "undefined") {
+  window.addEventListener("storage", (e) => {
+    if (e.key === "snooze-token") {
+      authStore.getState().refresh();
+    }
+  });
+}

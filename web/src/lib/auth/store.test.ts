@@ -67,4 +67,24 @@ describe("auth store", () => {
     expect(result.current.token).toBe(tok);
     expect(result.current.isAuthenticated).toBe(true);
   });
+
+  it("syncs from a cross-tab storage event", () => {
+    const tok = makeToken({ sub: "alice", exp: FRESH_EXP });
+    const { result } = renderHook(() => useAuth());
+    expect(result.current.isAuthenticated).toBe(false);
+
+    // Simulate another tab logging in by writing directly to localStorage.
+    // Also seed the claims cache the way writeToken would, so refresh()
+    // produces a fully-authenticated state.
+    localStorage.setItem("snooze-token", tok);
+    const payload = JSON.parse(atob(tok.split(".")[1]!)) as object;
+    localStorage.setItem("snooze-claims", JSON.stringify(payload));
+
+    act(() => {
+      window.dispatchEvent(new StorageEvent("storage", { key: "snooze-token", newValue: tok }));
+    });
+
+    expect(result.current.isAuthenticated).toBe(true);
+    expect(result.current.token).toBe(tok);
+  });
 });
