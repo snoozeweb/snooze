@@ -10,6 +10,7 @@ import { TooltipProvider } from "@/shared/ui/Tooltip";
 import { ToastProvider, Toaster } from "@/shared/ui/Toast";
 import { AppShell } from "./layout/AppShell";
 import { PlaceholderPage } from "./PlaceholderPage";
+import { AlertsPage } from "@/features/alerts/AlertsPage";
 import { PrimitivesPage } from "@/features/dev/PrimitivesPage";
 import { ResourcePage } from "@/features/dev/ResourcePage";
 import type { IconName } from "@/shared/icons/icon-names";
@@ -103,7 +104,6 @@ function placeholder(title: string, icon: IconName, milestone: string) {
 }
 
 const features: ReadonlyArray<{ path: string; title: string; icon: IconName; m: string }> = [
-  { path: "/web/alerts", title: "Alerts", icon: "file-text", m: "M3" },
   { path: "/web/dashboard", title: "Dashboard", icon: "gauge", m: "M6" },
   { path: "/web/snoozes", title: "Snoozes", icon: "bell-off", m: "M5" },
   { path: "/web/rules", title: "Rules", icon: "scale", m: "M4" },
@@ -124,6 +124,50 @@ const featureRoutes = features.map((cfg) =>
     component: placeholder(cfg.title, cfg.icon, cfg.m),
   }),
 );
+
+type AlertsSearchParams = {
+  state?: string;
+  severity?: string;
+  environment?: string;
+  search?: string;
+  page?: number;
+  orderby?: string;
+  asc?: boolean;
+};
+
+const alertsRoute = createRoute({
+  getParentRoute: () => webLayoutRoute,
+  path: "/web/alerts",
+  component: AlertsPage,
+  validateSearch: (raw): AlertsSearchParams => {
+    const out: Record<string, unknown> = {};
+    const s = (k: string) => (typeof raw[k] === "string" ? raw[k] : undefined);
+    const n = (k: string) => {
+      const v = raw[k];
+      if (typeof v === "number") return v;
+      if (typeof v === "string" && /^\d+$/.test(v)) return Number(v);
+      return undefined;
+    };
+    const b = (k: string) => {
+      const v = raw[k];
+      if (typeof v === "boolean") return v;
+      if (v === "true") return true;
+      if (v === "false") return false;
+      return undefined;
+    };
+    const setIf = (k: string, v: unknown) => {
+      if (v !== undefined) out[k] = v;
+    };
+    setIf("state", s("state"));
+    setIf("severity", s("severity"));
+    setIf("environment", s("environment"));
+    setIf("search", s("search"));
+    setIf("page", n("page"));
+    setIf("orderby", s("orderby"));
+    setIf("asc", b("asc"));
+    return out as AlertsSearchParams;
+  },
+});
 
 const primitivesRoute = createRoute({
   getParentRoute: () => webLayoutRoute,
@@ -148,6 +192,7 @@ const routeTree = rootRoute.addChildren([
   loginRoute,
   webLayoutRoute.addChildren([
     webIndexRoute,
+    alertsRoute,
     ...featureRoutes,
     primitivesRoute,
     resourcePageRoute,
