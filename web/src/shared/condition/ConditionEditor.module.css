@@ -66,3 +66,48 @@
   gap: var(--space-1);
   margin-left: auto;
 }
+
+/* ── Text-mode tab header ────────────────────────────────────── */
+.tabs {
+  display: flex;
+  gap: var(--space-1);
+  border-bottom: 1px solid var(--border);
+  margin-bottom: var(--space-2);
+}
+
+.tab {
+  appearance: none;
+  background: transparent;
+  border: 0;
+  padding: var(--space-1) var(--space-2);
+  color: var(--text-muted);
+  font: inherit;
+  cursor: pointer;
+  border-bottom: 2px solid transparent;
+}
+
+.tab[data-state="active"] {
+  color: var(--text-strong);
+  border-bottom-color: var(--accent);
+}
+
+/* ── Text-mode textarea ──────────────────────────────────────── */
+.textarea {
+  width: 100%;
+  font-family: var(--font-mono);
+  font-size: var(--text-sm);
+  padding: var(--space-2);
+  background: var(--bg-elevated);
+  color: var(--text-strong);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  resize: vertical;
+  box-sizing: border-box;
+}
+
+/* ── Parse error banner ──────────────────────────────────────── */
+.error {
+  margin-top: var(--space-1);
+  color: var(--severity-error);
+  font-size: var(--text-xs);
+}

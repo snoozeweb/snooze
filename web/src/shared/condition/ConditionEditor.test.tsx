@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { render, screen, waitFor, fireEvent } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { http, HttpResponse } from "msw";
@@ -90,5 +90,62 @@ describe("ConditionEditor", () => {
     );
     await user.click(screen.getByRole("button", { name: /^remove$/i }));
     expect(last).toEqual({ type: "AND", args: [] });
+  });
+});
+
+describe("ConditionEditor — text mode", () => {
+  it("toggles Builder → Text and shows encoded value", async () => {
+    const user = userEvent.setup();
+    const onChange = vi.fn();
+    const Wrapper = wrap();
+    render(
+      <Wrapper>
+        <ConditionEditor
+          plugin="record"
+          value={{ type: "EQUALS", field: "host", value: "srv-1" }}
+          onChange={onChange}
+        />
+      </Wrapper>,
+    );
+    await user.click(screen.getByRole("tab", { name: /text/i }));
+    const ta = screen.getByLabelText(/condition text/i);
+    expect((ta as HTMLTextAreaElement).value).toBe(`host = "srv-1"`);
+  });
+
+  it("edits in Text mode and propagates parsed AST on switch to Builder", async () => {
+    const user = userEvent.setup();
+    const onChange = vi.fn();
+    const Wrapper = wrap();
+    render(
+      <Wrapper>
+        <ConditionEditor plugin="record" value={{ type: "ALWAYS_TRUE" }} onChange={onChange} />
+      </Wrapper>,
+    );
+    await user.click(screen.getByRole("tab", { name: /text/i }));
+    const ta = screen.getByLabelText(/condition text/i);
+    // Use fireEvent to avoid userEvent quote-escaping issues in JSDOM
+    fireEvent.change(ta, { target: { value: 'host = "srv-2"' } });
+    await user.click(screen.getByRole("tab", { name: /builder/i }));
+    await waitFor(() =>
+      expect(onChange).toHaveBeenCalledWith({ type: "EQUALS", field: "host", value: "srv-2" }),
+    );
+  });
+
+  it("disables Builder switch and shows error on invalid text", async () => {
+    const user = userEvent.setup();
+    const Wrapper = wrap();
+    render(
+      <Wrapper>
+        <ConditionEditor
+          plugin="record"
+          value={{ type: "ALWAYS_TRUE" }}
+          onChange={() => undefined}
+        />
+      </Wrapper>,
+    );
+    await user.click(screen.getByRole("tab", { name: /text/i }));
+    const ta = screen.getByLabelText(/condition text/i);
+    fireEvent.change(ta, { target: { value: "this is = broken =" } });
+    expect(await screen.findByRole("alert")).toBeInTheDocument();
   });
 });
