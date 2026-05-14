@@ -1,0 +1,11 @@
+.card {
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+}
+.elevated {
+  box-shadow: var(--shadow-md);
+}
+.padded {
+  padding: var(--space-4);
+}
