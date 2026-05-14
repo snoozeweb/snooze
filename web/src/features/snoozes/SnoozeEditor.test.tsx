@@ -58,4 +58,49 @@ describe("SnoozeEditor", () => {
     await waitFor(() => expect(bodies).toHaveLength(1));
     expect((bodies[0] as { name: string }).name).toBe("quiet-friday");
   });
+
+  it("shows the Diff section in edit mode", async () => {
+    mswServer.use(
+      http.get("/api/v1/snooze/sn1", () =>
+        HttpResponse.json({
+          uid: "sn1",
+          name: "quiet-friday",
+          enabled: true,
+          condition: { type: "ALWAYS_TRUE" },
+          ttl: 3600,
+        }),
+      ),
+      http.get("/api/v1/record", () =>
+        HttpResponse.json({
+          data: [],
+          meta: { count: 0, limit: 50, offset: 0, total: 0 },
+        }),
+      ),
+    );
+    const Wrapper = wrap();
+    render(
+      <Wrapper>
+        <SnoozeEditor uid="sn1" onClose={() => undefined} />
+      </Wrapper>,
+    );
+    expect(await screen.findByRole("button", { name: /^diff/i })).toBeInTheDocument();
+  });
+
+  it("hides the Diff section when creating", () => {
+    mswServer.use(
+      http.get("/api/v1/record", () =>
+        HttpResponse.json({
+          data: [],
+          meta: { count: 0, limit: 50, offset: 0, total: 0 },
+        }),
+      ),
+    );
+    const Wrapper = wrap();
+    render(
+      <Wrapper>
+        <SnoozeEditor uid={undefined} onClose={() => undefined} />
+      </Wrapper>,
+    );
+    expect(screen.queryByRole("button", { name: /^diff/i })).not.toBeInTheDocument();
+  });
 });

@@ -10,6 +10,7 @@ import { toast } from "@/shared/ui/toast/useToast";
 import { ConditionEditor } from "@/shared/condition/ConditionEditor";
 import { ApiError } from "@/lib/api/client";
 import type { Condition } from "@/lib/condition/types";
+import { DiffSection } from "@/shared/ui/DiffSection";
 import { Snoozes } from "./api";
 import type { Snooze } from "./types";
 import styles from "./SnoozeEditor.module.css";
@@ -93,6 +94,14 @@ export function SnoozeEditor({ uid, onClose }: SnoozeEditorProps) {
   const ttl = watch("ttl");
   const nameInvalid = formState.isSubmitted && !watch("name").trim();
 
+  const projected: Snooze = {
+    name: watch("name"),
+    ...(watch("comment") ? { comment: watch("comment") } : {}),
+    enabled: enabled,
+    condition: condition,
+    ttl: ttl,
+  };
+
   return (
     <Drawer
       open
@@ -171,6 +180,9 @@ export function SnoozeEditor({ uid, onClose }: SnoozeEditorProps) {
           )}
         </DrawerBody>
         <DrawerFooter>
+          <div style={{ flex: 1 }}>
+            <DiffSection original={isCreate ? undefined : existing.data} current={projected} />
+          </div>
           <Button variant="ghost" onClick={onClose}>
             Cancel
           </Button>

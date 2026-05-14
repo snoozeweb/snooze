@@ -60,4 +60,49 @@ describe("NotificationEditor", () => {
     expect((bodies[0] as { name: string }).name).toBe("page-on-call");
     expect(onClose).toHaveBeenCalled();
   });
+
+  it("shows the Diff section in edit mode", async () => {
+    mswServer.use(
+      http.get("/api/v1/notification/nt1", () =>
+        HttpResponse.json({
+          uid: "nt1",
+          name: "page-on-call",
+          enabled: true,
+          condition: { type: "ALWAYS_TRUE" },
+          actions: ["slack-prod"],
+        }),
+      ),
+      http.get("/api/v1/record", () =>
+        HttpResponse.json({
+          data: [],
+          meta: { count: 0, limit: 50, offset: 0, total: 0 },
+        }),
+      ),
+    );
+    const Wrapper = wrap();
+    render(
+      <Wrapper>
+        <NotificationEditor uid="nt1" onClose={() => undefined} />
+      </Wrapper>,
+    );
+    expect(await screen.findByRole("button", { name: /^diff/i })).toBeInTheDocument();
+  });
+
+  it("hides the Diff section when creating", () => {
+    mswServer.use(
+      http.get("/api/v1/record", () =>
+        HttpResponse.json({
+          data: [],
+          meta: { count: 0, limit: 50, offset: 0, total: 0 },
+        }),
+      ),
+    );
+    const Wrapper = wrap();
+    render(
+      <Wrapper>
+        <NotificationEditor uid={undefined} onClose={() => undefined} />
+      </Wrapper>,
+    );
+    expect(screen.queryByRole("button", { name: /^diff/i })).not.toBeInTheDocument();
+  });
 });

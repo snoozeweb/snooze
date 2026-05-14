@@ -10,6 +10,7 @@ import { toast } from "@/shared/ui/toast/useToast";
 import { ConditionEditor } from "@/shared/condition/ConditionEditor";
 import { ApiError } from "@/lib/api/client";
 import type { Condition } from "@/lib/condition/types";
+import { DiffSection } from "@/shared/ui/DiffSection";
 import { Notifications } from "./api";
 import type { Notification } from "./types";
 import styles from "./NotificationEditor.module.css";
@@ -96,6 +97,18 @@ export function NotificationEditor({ uid, onClose }: NotificationEditorProps) {
   const enabled = watch("enabled");
   const nameInvalid = formState.isSubmitted && !watch("name").trim();
 
+  const actionsArr = watch("actions")
+    .split(",")
+    .map((s) => s.trim())
+    .filter((s) => s.length > 0);
+  const projected: Notification = {
+    name: watch("name"),
+    ...(watch("comment") ? { comment: watch("comment") } : {}),
+    enabled: enabled,
+    condition: condition,
+    ...(actionsArr.length > 0 ? { actions: actionsArr } : {}),
+  };
+
   return (
     <Drawer
       open
@@ -171,6 +184,9 @@ export function NotificationEditor({ uid, onClose }: NotificationEditorProps) {
           )}
         </DrawerBody>
         <DrawerFooter>
+          <div style={{ flex: 1 }}>
+            <DiffSection original={isCreate ? undefined : existing.data} current={projected} />
+          </div>
           <Button variant="ghost" onClick={onClose}>
             Cancel
           </Button>
