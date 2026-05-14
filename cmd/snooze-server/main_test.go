@@ -289,3 +289,25 @@ func (s *safeBuffer) String() string {
 	defer s.mu.Unlock()
 	return s.buf.String()
 }
+
+func TestParseDaemonFlags_WebDirDefault(t *testing.T) {
+	t.Helper()
+	f, err := parseDaemonFlags([]string{}, io.Discard)
+	if err != nil {
+		t.Fatalf("parse: %v", err)
+	}
+	if f.webDir != "/var/lib/snooze/web" {
+		t.Fatalf("webDir default = %q, want %q", f.webDir, "/var/lib/snooze/web")
+	}
+}
+
+func TestParseDaemonFlags_WebDirOverride(t *testing.T) {
+	t.Helper()
+	f, err := parseDaemonFlags([]string{"-web-dir", "/tmp/custom"}, io.Discard)
+	if err != nil {
+		t.Fatalf("parse: %v", err)
+	}
+	if f.webDir != "/tmp/custom" {
+		t.Fatalf("webDir override = %q, want %q", f.webDir, "/tmp/custom")
+	}
+}

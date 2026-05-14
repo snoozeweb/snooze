@@ -14,6 +14,7 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"log/slog"
 	"net"
 	"net/http"
 	"os"
@@ -170,6 +171,7 @@ type daemonFlags struct {
 	skipAdmin    bool
 	skipHTTP     bool
 	otelEndpoint string
+	webDir       string
 }
 
 // parseDaemonFlags parses the no-subcommand path. Unknown flags surface as an
@@ -186,6 +188,7 @@ func parseDaemonFlags(args []string, stderr io.Writer) (*daemonFlags, error) {
 	fs.BoolVar(&f.skipAdmin, "no-admin-socket", false, "disable the admin Unix socket")
 	fs.BoolVar(&f.skipHTTP, "no-http", false, "disable the public HTTP listener (debug only)")
 	fs.StringVar(&f.otelEndpoint, "otel-endpoint", "", "OTLP trace exporter endpoint (defaults: disabled)")
+	fs.StringVar(&f.webDir, "web-dir", "/var/lib/snooze/web", "directory containing the built web UI (web/dist contents); empty disables /web")
 	if err := fs.Parse(args); err != nil {
 		return nil, err
 	}
@@ -288,6 +291,7 @@ func runDaemonCtx(ctx context.Context, f *daemonFlags, stderr io.Writer) error {
 		Providers:       providers,
 		Processor:       adapter,
 		CORSConfig:      corsFromConfig(cfg.Core.CORS),
+		WebFS:           openWebFS(f.webDir, loggers.API),
 	}
 	handler := rt.Build()
 
@@ -405,6 +409,26 @@ func openDB(ctx context.Context, dbcfg schema.Database) (db.Driver, error) {
 	default:
 		return nil, fmt.Errorf("unknown database type %q", dbcfg.Type)
 	}
+}
+
+// openWebFS resolves the directory containing the built web UI into an
+// http.FileSystem suitable for api.Router.WebFS. Empty path or a missing
+// directory yields nil — the SPA stub in internal/api/routes_static.go is
+// then served at /web/.
+func openWebFS(dir string, logger *slog.Logger) http.FileSystem {
+	if dir == "" {
+		return nil
+	}
+	info, err := os.Stat(dir)
+	if err != nil || !info.IsDir() {
+		if logger != nil {
+			logger.Warn("web ui directory missing; serving stub",
+				slog.String("web_dir", dir),
+				slog.Any("err", err))
+		}
+		return nil
+	}
+	return http.Dir(dir)
 }
 
 // buildAuthProviders wires every enabled identity provider into a fresh
