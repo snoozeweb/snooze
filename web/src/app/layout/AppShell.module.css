@@ -1,0 +1,15 @@
+.shell {
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+.body {
+  flex: 1;
+  display: flex;
+  overflow: hidden;
+}
+.main {
+  flex: 1;
+  overflow: auto;
+  background: var(--bg-canvas);
+}

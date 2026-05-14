@@ -10,11 +10,13 @@ import { Sidebar } from "./Sidebar";
 
 function setup(pathname = "/web/alerts") {
   const root = createRootRoute({ component: () => <Sidebar /> });
+  /* eslint-disable @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-assignment */
   const router = createRouter({
     routeTree: root,
     history: createMemoryHistory({ initialEntries: [pathname] }),
-  });
+  }) as any;
   return render(<RouterProvider router={router} />);
+  /* eslint-enable @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-assignment */
 }
 
 describe("Sidebar", () => {

@@ -17,11 +17,13 @@ function Harness() {
 
 function setup() {
   const root = createRootRoute({ component: Harness });
+  /* eslint-disable @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-assignment */
   const router = createRouter({
     routeTree: root,
     history: createMemoryHistory({ initialEntries: ["/web/alerts"] }),
-  });
+  }) as any;
   return render(<RouterProvider router={router} />);
+  /* eslint-enable @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-assignment */
 }
 
 describe("CommandPalette", () => {
