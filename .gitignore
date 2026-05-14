@@ -17,6 +17,11 @@ packaging/helm/.values.yaml
 *.test
 *.out
 
+# Playwright E2E
+web/tests/e2e/.bin/
+web/playwright-report/
+web/test-results/
+
 # Sphinx generated configuration pages (rebuilt from sources)
 docs/_build/
 docs/configuration/*.rst

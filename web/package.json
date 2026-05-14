@@ -16,7 +16,10 @@
     "format:check": "prettier --check \"src/**/*.{ts,tsx,css,md}\"",
     "codegen": "openapi-typescript ../api/openapi.yaml -o src/lib/api/types.gen.ts",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "e2e": "playwright test --config=tests/e2e/playwright.config.ts",
+    "e2e:headed": "playwright test --config=tests/e2e/playwright.config.ts --ui",
+    "e2e:build": "npm run build && cd .. && go build -o web/tests/e2e/.bin/snooze-server ./cmd/snooze-server && cd web"
   },
   "dependencies": {
     "@radix-ui/react-checkbox": "1.1.4",
@@ -44,6 +47,7 @@
   },
   "devDependencies": {
     "@eslint/js": "9.16.0",
+    "@playwright/test": "1.49.1",
     "@testing-library/dom": "10.4.0",
     "@testing-library/jest-dom": "6.6.3",
     "@testing-library/react": "16.1.0",
