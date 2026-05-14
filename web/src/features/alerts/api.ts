@@ -20,3 +20,18 @@ export function useCommentRecord(): UseMutationResult<unknown, ApiError, Comment
     },
   });
 }
+
+export function useShelveRecord(): UseMutationResult<
+  unknown,
+  ApiError,
+  { uid: string; shelve: boolean }
+> {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ uid, shelve }) =>
+      api<unknown>("PATCH", `/record/${uid}`, { body: { ttl: shelve ? -1 : 0 } }),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: Records.queryKey.all });
+    },
+  });
+}

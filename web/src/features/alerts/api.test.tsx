@@ -4,7 +4,7 @@ import { http, HttpResponse } from "msw";
 import { describe, expect, it } from "vitest";
 import type { ReactNode } from "react";
 import { mswServer } from "@/tests/msw/server";
-import { Records, useCommentRecord } from "./api";
+import { Records, useCommentRecord, useShelveRecord } from "./api";
 
 function makeWrapper() {
   const client = new QueryClient({
@@ -45,5 +45,39 @@ describe("alerts.api", () => {
       await result.current.mutateAsync({ record_uid: "r1", type: "ack", message: "got it" });
     });
     expect(bodies[0]).toEqual({ record_uid: "r1", type: "ack", message: "got it" });
+  });
+});
+
+describe("useShelveRecord", () => {
+  it("PATCHes /api/v1/record/<uid> with ttl=-1 when shelving", async () => {
+    const bodies: unknown[] = [];
+    mswServer.use(
+      http.patch("/api/v1/record/r1", async ({ request }) => {
+        bodies.push(await request.json());
+        return HttpResponse.json({ uid: "r1", ttl: -1 });
+      }),
+    );
+    const wrapper = makeWrapper();
+    const { result } = renderHook(() => useShelveRecord(), { wrapper });
+    await act(async () => {
+      await result.current.mutateAsync({ uid: "r1", shelve: true });
+    });
+    expect(bodies[0]).toEqual({ ttl: -1 });
+  });
+
+  it("PATCHes ttl=0 when unshelving", async () => {
+    const bodies: unknown[] = [];
+    mswServer.use(
+      http.patch("/api/v1/record/r1", async ({ request }) => {
+        bodies.push(await request.json());
+        return HttpResponse.json({ uid: "r1", ttl: 0 });
+      }),
+    );
+    const wrapper = makeWrapper();
+    const { result } = renderHook(() => useShelveRecord(), { wrapper });
+    await act(async () => {
+      await result.current.mutateAsync({ uid: "r1", shelve: false });
+    });
+    expect(bodies[0]).toEqual({ ttl: 0 });
   });
 });
