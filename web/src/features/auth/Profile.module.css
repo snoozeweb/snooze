@@ -1,0 +1,36 @@
+.page {
+  padding: var(--space-5);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  max-width: 640px;
+}
+.title {
+  font-size: var(--text-xl);
+  font-weight: var(--weight-semibold);
+  color: var(--text-strong);
+  margin: 0;
+}
+.row {
+  display: flex;
+  gap: var(--space-2);
+  align-items: center;
+}
+.label {
+  font-size: var(--text-xs);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-muted);
+  width: 100px;
+  flex-shrink: 0;
+}
+.value {
+  color: var(--text-strong);
+  font-family: var(--font-mono);
+  font-size: var(--text-sm);
+}
+.perms {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
