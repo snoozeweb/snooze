@@ -5,6 +5,22 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="color-scheme" content="dark light" />
     <link rel="icon" href="/web/favicon.svg" type="image/svg+xml" />
+    <script>
+      // Apply the saved theme before paint to avoid flash-of-wrong-theme.
+      // Reads localStorage["snooze.theme"]; falls back to "dark".
+      // Only "light" or "dark" are accepted; anything else is treated as
+      // the default. Keep this script tiny — it runs synchronously on
+      // every page load.
+      (function () {
+        try {
+          var saved = localStorage.getItem("snooze.theme");
+          var theme = saved === "light" || saved === "dark" ? saved : "dark";
+          document.documentElement.dataset.theme = theme;
+        } catch (e) {
+          document.documentElement.dataset.theme = "dark";
+        }
+      })();
+    </script>
     <title>Snooze</title>
   </head>
   <body>
