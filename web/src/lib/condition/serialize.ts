@@ -1,11 +1,5 @@
-export type Condition =
-  | { type: "ALWAYS_TRUE" }
-  | { type: "EQUALS" | "CONTAINS" | "MATCHES" | "SEARCH"; field: string; value: string }
-  | { type: "IN"; field: string; value: string[] }
-  | { type: "LT" | "GT" | "LE" | "GE"; field: string; value: number }
-  | { type: "EXISTS"; field: string }
-  | { type: "NOT"; arg: Condition }
-  | { type: "AND" | "OR"; args: Condition[] };
+import type { Condition } from "./types";
+export type { Condition } from "./types";
 
 export function encodeConditionQ(cond: Condition): string {
   return base64UrlEncode(JSON.stringify(cond));
