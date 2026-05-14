@@ -9,6 +9,7 @@ import { TooltipProvider } from "@/shared/ui/Tooltip";
 import { ToastProvider, Toaster } from "@/shared/ui/Toast";
 import { AppShell } from "./layout/AppShell";
 import { PlaceholderPage } from "./PlaceholderPage";
+import { PrimitivesPage } from "@/features/dev/PrimitivesPage";
 import type { IconName } from "@/shared/icons/icon-names";
 
 const rootRoute = createRootRoute({
@@ -76,9 +77,15 @@ const featureRoutes = features.map((cfg) =>
   }),
 );
 
+const primitivesRoute = createRoute({
+  getParentRoute: () => webLayoutRoute,
+  path: "/web/dev/primitives",
+  component: PrimitivesPage,
+});
+
 const routeTree = rootRoute.addChildren([
   indexRoute,
-  webLayoutRoute.addChildren([webIndexRoute, ...featureRoutes]),
+  webLayoutRoute.addChildren([webIndexRoute, ...featureRoutes, primitivesRoute]),
 ]);
 
 export const router = createRouter({ routeTree });
