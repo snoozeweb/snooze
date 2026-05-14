@@ -60,23 +60,18 @@ RUN --mount=type=cache,target=/go/pkg/mod \
           -X github.com/japannext/snooze/internal/version.Date=${BUILD_TIME}" \
         -o /out/${BINARY} ./cmd/${BINARY}
 
-# ---------- Stage 2: Web (Vue) build ----------
-FROM node:20-alpine AS webbuilder
+# ---------- Stage 2: Web (React + Vite) build ----------
+FROM node:22-alpine AS webbuilder
 
 WORKDIR /web
 
-# The Vue CLI 4 / webpack 4 toolchain predates OpenSSL 3 and fails with
-# `error:0308010C:digital envelope routines::unsupported` on Node 17+.
-# Re-enabling the legacy provider keeps the existing build working under
-# Node 20 without touching the web codebase.
-ENV NODE_OPTIONS=--openssl-legacy-provider
-
-# Install deps with `npm ci` against a cached npm dir.
-COPY web/package*.json ./
+# Install deps with `npm ci` against a cached npm dir. Lockfile-driven,
+# fully reproducible.
+COPY web/package.json web/package-lock.json ./
 RUN --mount=type=cache,target=/root/.npm \
     npm ci --no-audit --no-fund
 
-# Then the rest of the web source, and produce `web/dist/`.
+# Bring in the rest of the web source and produce web/dist/.
 COPY web/ ./
 RUN npm run build
 
@@ -100,7 +95,7 @@ LABEL org.opencontainers.image.title="snooze-server" \
 # entrypoint is stable for this target.
 COPY --from=gobuilder /out/${BINARY} /usr/local/bin/snooze-server
 
-# Static Vue assets served from the embedded asset path.
+# Static React/Vite assets served from /var/lib/snooze/web/.
 COPY --from=webbuilder --chown=nonroot:nonroot /web/dist/ /var/lib/snooze/web/
 
 USER nonroot:nonroot
