@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { ApiError, api } from "./client";
+import { ApiError, api, setUnauthorizedHandler } from "./client";
 import { writeToken } from "@/lib/auth/storage";
 
 type FetchHandler = (input: RequestInfo | URL, init?: RequestInit) => Response | Promise<Response>;
@@ -163,5 +163,40 @@ describe("api client", () => {
     });
     await api("POST", "/rule", { body: { name: "x" } });
     expect(JSON.parse(bodies[0]!)).toEqual({ name: "x" });
+  });
+});
+
+describe("api client 401 envelope", () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it("parses 401 envelope detail when present", async () => {
+    mockFetch(() => new Response(JSON.stringify({
+      code: "invalid_credentials",
+      detail: "Bad username or password",
+    }), { status: 401, headers: { "Content-Type": "application/json" } }));
+    try {
+      await api("POST", "/login/local", { body: { username: "x", password: "y" } });
+      throw new Error("should have thrown");
+    } catch (e) {
+      const err = e as ApiError;
+      expect(err.status).toBe(401);
+      expect(err.code).toBe("invalid_credentials");
+      expect(err.detail).toBe("Bad username or password");
+    }
+  });
+
+  it("skipAuthHandling avoids calling unauthorized handler on 401", async () => {
+    const handler = vi.fn();
+    setUnauthorizedHandler(handler);
+    mockFetch(() => new Response("", { status: 401 }));
+    try {
+      await api("POST", "/login/local", { body: {}, skipAuthHandling: true });
+    } catch {
+      // expected to throw
+    }
+    expect(handler).not.toHaveBeenCalled();
+    setUnauthorizedHandler(null);
   });
 });

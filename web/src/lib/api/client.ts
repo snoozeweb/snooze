@@ -18,6 +18,12 @@ export type ApiOptions = {
   query?: Record<string, QueryValue>;
   body?: unknown;
   signal?: AbortSignal;
+  /**
+   * When true, a 401 response does NOT invoke the unauthorized handler.
+   * The login endpoints set this — we're already on the login page; a
+   * 401 means "wrong credentials", not "session expired".
+   */
+  skipAuthHandling?: boolean;
 };
 
 export type Method = "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
@@ -62,6 +68,12 @@ async function parseError(res: Response): Promise<ApiError> {
   return new ApiError(res.status, code, detail, traceId);
 }
 
+let unauthorizedHandler: (() => void) | null = null;
+
+export function setUnauthorizedHandler(handler: (() => void) | null): void {
+  unauthorizedHandler = handler;
+}
+
 export async function api<T = unknown>(
   method: Method,
   path: string,
@@ -84,7 +96,18 @@ export async function api<T = unknown>(
   const res = await fetch(url, init);
 
   if (res.status === 401) {
-    throw new ApiError(401, "unauthorized", "Not authenticated");
+    const parsed = await parseError(res);
+    // parseError fills code with "http_401" when no JSON envelope was
+    // present. Map that to the friendlier "unauthorized" code so existing
+    // callers keep working.
+    const err =
+      parsed.code === "http_401"
+        ? new ApiError(401, "unauthorized", parsed.detail || "Not authenticated", parsed.traceId)
+        : parsed;
+    if (!opts.skipAuthHandling) {
+      unauthorizedHandler?.();
+    }
+    throw err;
   }
   if (!res.ok) {
     throw await parseError(res);
