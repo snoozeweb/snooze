@@ -28,7 +28,7 @@ export function CodeBlock({ children, copyable, className }: CodeBlockProps) {
   return (
     <pre className={classes}>
       {copyable ? (
-        <button type="button" className={styles.copyBtn} onClick={handleCopy}>
+        <button type="button" className={styles.copyBtn} onClick={() => void handleCopy()}>
           {copied ? "Copied" : "Copy"}
         </button>
       ) : null}

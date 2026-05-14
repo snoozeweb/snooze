@@ -10,14 +10,14 @@ describe("Skeleton", () => {
 
   it("accepts numeric width/height as px", () => {
     render(<Skeleton width={120} height={24} />);
-    const el = screen.getByTestId("skeleton") as HTMLElement;
+    const el = screen.getByTestId("skeleton");
     expect(el.style.width).toBe("120px");
     expect(el.style.height).toBe("24px");
   });
 
   it("accepts string width/height verbatim", () => {
     render(<Skeleton width="50%" height="2em" />);
-    const el = screen.getByTestId("skeleton") as HTMLElement;
+    const el = screen.getByTestId("skeleton");
     expect(el.style.width).toBe("50%");
     expect(el.style.height).toBe("2em");
   });
