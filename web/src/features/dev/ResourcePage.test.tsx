@@ -10,11 +10,11 @@ describe("ResourcePage", () => {
     mswServer.use(
       http.get("/api/v1/rule", () =>
         HttpResponse.json({
-          items: [
+          data: [
             { id: "r1", name: "alpha", enabled: true, severity: "critical" },
             { id: "r2", name: "beta", enabled: false, severity: "warning" },
           ],
-          total: 2,
+          meta: { count: 2, limit: 10, offset: 0, total: 2 },
         }),
       ),
     );

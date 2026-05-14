@@ -133,7 +133,11 @@ describe("defineResource — create/update/remove", () => {
 describe("defineResource — query keys", () => {
   it("exposes hierarchical query keys", () => {
     expect(Rules.queryKey.all).toEqual(["rule"]);
-    expect(Rules.queryKey.list({ offset: 0 })).toEqual(["rule", "list", JSON.stringify({ offset: 0 })]);
+    expect(Rules.queryKey.list({ offset: 0 })).toEqual([
+      "rule",
+      "list",
+      JSON.stringify({ offset: 0 }),
+    ]);
     expect(Rules.queryKey.one("r1")).toEqual(["rule", "one", "r1"]);
   });
 });

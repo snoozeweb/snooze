@@ -42,7 +42,13 @@ export function ResourcePage() {
   const [page, setPage] = useState(1);
   const [selected, setSelected] = useState<Set<string>>(new Set());
 
-  const list = Rules.useList({ page, pageSize: 10, sortBy, sortOrder: order });
+  const pageSize = 10;
+  const list = Rules.useList({
+    offset: (page - 1) * pageSize,
+    limit: pageSize,
+    orderby: sortBy,
+    asc: order === "asc",
+  });
 
   return (
     <div
@@ -60,7 +66,7 @@ export function ResourcePage() {
       </p>
       <Card>
         <DataTable
-          data={list.data?.items ?? []}
+          data={list.data?.data ?? []}
           columns={columns}
           rowKey={(r) => r.id}
           loading={list.isPending}
@@ -77,8 +83,8 @@ export function ResourcePage() {
           }}
           serverPagination={{
             page,
-            pageSize: 10,
-            total: list.data?.total ?? 0,
+            pageSize,
+            total: list.data?.meta.total ?? 0,
             onChange: (next) => setPage(next.page),
           }}
           bulkActions={(rows) => (

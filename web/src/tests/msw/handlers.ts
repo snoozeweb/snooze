@@ -32,6 +32,10 @@ export const handlers = [
 
   // Catch-all list endpoint for resource-factory smoke tests.
   http.get("/api/v1/:plugin", ({ params }) => {
-    return HttpResponse.json({ items: [], total: 0, plugin: params.plugin });
+    return HttpResponse.json({
+      data: [],
+      meta: { count: 0, limit: 20, offset: 0, total: 0 },
+      plugin: params.plugin,
+    });
   }),
 ];
