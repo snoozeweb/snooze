@@ -23,14 +23,17 @@ describe("defineResource — list", () => {
   it("returns paginated list", async () => {
     mswServer.use(
       http.get("/api/v1/rule", () =>
-        HttpResponse.json({ items: [{ id: "r1", name: "Alpha" }], total: 1 }),
+        HttpResponse.json({
+          data: [{ id: "r1", name: "Alpha" }],
+          meta: { count: 1, limit: 20, offset: 0, total: 1 },
+        }),
       ),
     );
     const wrapper = makeWrapper();
     const { result } = renderHook(() => Rules.useList(), { wrapper });
     await waitFor(() => expect(result.current.isSuccess).toBe(true));
-    expect(result.current.data?.items[0]?.name).toBe("Alpha");
-    expect(result.current.data?.total).toBe(1);
+    expect(result.current.data?.data[0]?.name).toBe("Alpha");
+    expect(result.current.data?.meta.total).toBe(1);
   });
 
   it("threads search params into the query string", async () => {
@@ -38,19 +41,22 @@ describe("defineResource — list", () => {
     mswServer.use(
       http.get("/api/v1/rule", ({ request }) => {
         seen.push(new URL(request.url).search);
-        return HttpResponse.json({ items: [], total: 0 });
+        return HttpResponse.json({
+          data: [],
+          meta: { count: 0, limit: 25, offset: 50, total: 0 },
+        });
       }),
     );
     const wrapper = makeWrapper();
     const { result } = renderHook(
-      () => Rules.useList({ page: 2, pageSize: 50, sortBy: "name", sortOrder: "desc" }),
+      () => Rules.useList({ offset: 50, limit: 25, orderby: "name", asc: false }),
       { wrapper },
     );
     await waitFor(() => expect(result.current.isSuccess).toBe(true));
-    expect(seen[0]).toContain("page=2");
-    expect(seen[0]).toContain("pageSize=50");
-    expect(seen[0]).toContain("sortBy=name");
-    expect(seen[0]).toContain("sortOrder=desc");
+    expect(seen[0]).toContain("offset=50");
+    expect(seen[0]).toContain("limit=25");
+    expect(seen[0]).toContain("orderby=name");
+    expect(seen[0]).toContain("asc=false");
   });
 });
 
@@ -127,7 +133,7 @@ describe("defineResource — create/update/remove", () => {
 describe("defineResource — query keys", () => {
   it("exposes hierarchical query keys", () => {
     expect(Rules.queryKey.all).toEqual(["rule"]);
-    expect(Rules.queryKey.list({ page: 1 })).toEqual(["rule", "list", JSON.stringify({ page: 1 })]);
+    expect(Rules.queryKey.list({ offset: 0 })).toEqual(["rule", "list", JSON.stringify({ offset: 0 })]);
     expect(Rules.queryKey.one("r1")).toEqual(["rule", "one", "r1"]);
   });
 });

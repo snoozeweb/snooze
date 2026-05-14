@@ -8,17 +8,28 @@ import {
 import { api, type ApiError } from "./client";
 
 export type SearchParams = {
-  page?: number;
-  pageSize?: number;
-  sortBy?: string;
-  sortOrder?: "asc" | "desc";
+  offset?: number;
+  limit?: number;
+  /** Field name to sort by. */
+  orderby?: string;
+  /** Ascending order? Default true. Pass false for descending. */
+  asc?: boolean;
+  /** Free-text search (some plugins support this). */
   search?: string;
+  /** base64url-encoded condition AST. */
   q?: string;
 };
 
-export type ListResponse<T> = {
-  items: T[];
+export type ListMeta = {
+  count: number;
+  limit: number;
+  offset: number;
   total: number;
+};
+
+export type ListResponse<T> = {
+  data: T[];
+  meta: ListMeta;
 };
 
 export type ResourceHooks<T, Create, Update> = {
@@ -42,10 +53,10 @@ function searchToQuery(
 ): Record<string, string | number | boolean | undefined> | undefined {
   if (!params) return undefined;
   const out: Record<string, string | number | boolean | undefined> = {};
-  if (params.page !== undefined) out["page"] = params.page;
-  if (params.pageSize !== undefined) out["pageSize"] = params.pageSize;
-  if (params.sortBy !== undefined) out["sortBy"] = params.sortBy;
-  if (params.sortOrder !== undefined) out["sortOrder"] = params.sortOrder;
+  if (params.offset !== undefined) out["offset"] = params.offset;
+  if (params.limit !== undefined) out["limit"] = params.limit;
+  if (params.orderby !== undefined) out["orderby"] = params.orderby;
+  if (params.asc !== undefined) out["asc"] = params.asc;
   if (params.search !== undefined) out["search"] = params.search;
   if (params.q !== undefined) out["q"] = params.q;
   return Object.keys(out).length > 0 ? out : undefined;
