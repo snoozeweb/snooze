@@ -14,6 +14,7 @@ import { AlertsPage } from "@/features/alerts/AlertsPage";
 import { RulesPage } from "@/features/rules/RulesPage";
 import { SnoozesPage } from "@/features/snoozes/SnoozesPage";
 import { NotificationsPage } from "@/features/notifications/NotificationsPage";
+import { DashboardPage } from "@/features/dashboard/DashboardPage";
 import { PrimitivesPage } from "@/features/dev/PrimitivesPage";
 import { ResourcePage } from "@/features/dev/ResourcePage";
 import type { IconName } from "@/shared/icons/icon-names";
@@ -107,7 +108,6 @@ function placeholder(title: string, icon: IconName, milestone: string) {
 }
 
 const features: ReadonlyArray<{ path: string; title: string; icon: IconName; m: string }> = [
-  { path: "/web/dashboard", title: "Dashboard", icon: "gauge", m: "M6" },
   { path: "/web/admin/users", title: "Users", icon: "users", m: "M7" },
   { path: "/web/admin/roles", title: "Roles", icon: "user-plus", m: "M7" },
   { path: "/web/admin/environments", title: "Environments", icon: "layers", m: "M7" },
@@ -248,6 +248,12 @@ const notificationsRoute = createRoute({
   },
 });
 
+const dashboardRoute = createRoute({
+  getParentRoute: () => webLayoutRoute,
+  path: "/web/dashboard",
+  component: DashboardPage,
+});
+
 const primitivesRoute = createRoute({
   getParentRoute: () => webLayoutRoute,
   path: "/web/dev/primitives",
@@ -315,6 +321,7 @@ const routeTree = rootRoute.addChildren([
     rulesRoute,
     snoozesRoute,
     notificationsRoute,
+    dashboardRoute,
     ...featureRoutes,
     primitivesRoute,
     resourcePageRoute,
