@@ -1,5 +1,3 @@
-![Snoozeweb Logo](https://github.com/snoozeweb/snooze/raw/master/web/public/img/logo.png)
-
 # Snooze
 
 Snooze is a clustered log-aggregation and alerting backend. It ingests
