@@ -1,7 +1,8 @@
 // web/tests/e2e/harness/paths.ts
-import { resolve } from "node:path";
+import { resolve, dirname } from "node:path";
+import { fileURLToPath } from "node:url";
 
-const here = __dirname;
+const here = dirname(fileURLToPath(import.meta.url));
 export const harnessDir = here;
 export const e2eDir = resolve(here, "..");
 export const webDir = resolve(e2eDir, "../..");

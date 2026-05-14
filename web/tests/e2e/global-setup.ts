@@ -1,7 +1,10 @@
 // web/tests/e2e/global-setup.ts
 import { execSync } from "node:child_process";
 import { existsSync, mkdirSync } from "node:fs";
-import { resolve } from "node:path";
+import { resolve, dirname } from "node:path";
+import { fileURLToPath } from "node:url";
+
+const __dirname = dirname(fileURLToPath(import.meta.url));
 
 export default async function globalSetup(): Promise<void> {
   const repoRoot = resolve(__dirname, "../../..");

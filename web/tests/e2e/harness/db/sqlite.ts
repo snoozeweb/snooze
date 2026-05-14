@@ -1,4 +1,8 @@
 // web/tests/e2e/harness/db/sqlite.ts
+//
+// NOTE: snooze-server's file-based backend is called "file" in the config
+// schema (oneof=mongo file postgres). The "sqlite" driver name is used only
+// in this harness as an abstraction label; the actual config value is "file".
 import { mkdtemp, rm, mkdir, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -10,18 +14,21 @@ export function sqliteLauncher(): DbLauncher {
     async perWorker(workerIndex) {
       const dir = await mkdtemp(join(tmpdir(), `snooze-e2e-w${workerIndex}-`));
       await mkdir(join(dir, "cfg"), { recursive: true });
-      // Minimal core.yaml that picks sqlite + bind path.
+      const dbPath = join(dir, "db.json");
+      // core.yaml keys are loaded under the "core" section (sectionFiles loader).
+      // The Database.Type field uses validate:"oneof=mongo file postgres", so the
+      // correct value is "file", not "sqlite".
       await writeFile(
         join(dir, "cfg", "core.yaml"),
-        `database:\n  type: sqlite\n  path: ${join(dir, "db.sqlite")}\n`,
+        `database:\n  type: file\n  path: ${dbPath}\n`,
         "utf-8",
       );
       return {
         tmpdir: dir,
         env: {
-          // Belt-and-suspenders override via env (sectionFiles loader respects env too).
-          SNOOZE_SERVER_CORE_DATABASE_TYPE: "sqlite",
-          SNOOZE_SERVER_CORE_DATABASE_PATH: join(dir, "db.sqlite"),
+          // Belt-and-suspenders override via env vars (envKeyToPath mapping).
+          SNOOZE_SERVER_CORE_DATABASE_TYPE: "file",
+          SNOOZE_SERVER_CORE_DATABASE_PATH: dbPath,
         },
       };
     },

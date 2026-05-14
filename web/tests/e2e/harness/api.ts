@@ -14,9 +14,11 @@ export async function mintRootToken(src: RootTokenSource): Promise<string> {
     encoding: "utf-8",
   });
   const body = out.trim();
-  // body is `{"token":"..."}` or bare token; tolerate both.
+  // The admin socket returns {"root_token":"...","expires_at":"..."}.
+  // Tolerate bare token strings as a fallback.
   try {
-    const json = JSON.parse(body) as { token?: string };
+    const json = JSON.parse(body) as { root_token?: string; token?: string };
+    if (json.root_token) return json.root_token;
     if (json.token) return json.token;
   } catch {
     /* fall through */
