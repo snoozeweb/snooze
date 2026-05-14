@@ -1,11 +1,58 @@
 ---
+# Web frontend (React 19 + Vite 6 + TypeScript).
+# Invoked from the root Taskfile as `task web:<name>`.
+
 version: '3'
 
 tasks:
-  build:
-    desc: Build the web tarball
+  install:
+    desc: Install npm dependencies (npm ci, reproducible)
     cmds:
-    - rm -rf dist/
-    - mkdir dist
-    - npm ci
+    - npm ci --no-audit --no-fund
+
+  dev:
+    desc: Run the Vite dev server on :5173 (proxies /api to :5200)
+    cmds:
+    - npm run dev
+
+  build:
+    desc: Build production assets into web/dist/
+    cmds:
+    - rm -rf dist
+    - npm ci --no-audit --no-fund
     - npm run build
+
+  preview:
+    desc: Serve the production build on :4173
+    cmds:
+    - npm run preview
+
+  test:
+    desc: Run Vitest unit tests once
+    cmds:
+    - npm run test
+
+  test:watch:
+    desc: Run Vitest in watch mode
+    cmds:
+    - npm run test:watch
+
+  lint:
+    desc: Run ESLint over the web sources
+    cmds:
+    - npm run lint
+
+  typecheck:
+    desc: Run tsc --noEmit
+    cmds:
+    - npm run typecheck
+
+  format:
+    desc: Format the web sources with Prettier
+    cmds:
+    - npm run format
+
+  format:check:
+    desc: Check Prettier formatting without writing
+    cmds:
+    - npm run format:check
