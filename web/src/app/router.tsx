@@ -12,6 +12,9 @@ import { AppShell } from "./layout/AppShell";
 import { PlaceholderPage } from "./PlaceholderPage";
 import { PrimitivesPage } from "@/features/dev/PrimitivesPage";
 import type { IconName } from "@/shared/icons/icon-names";
+import { authStore } from "@/lib/auth/store";
+import { Login } from "@/features/auth/Login";
+import { Profile } from "@/features/auth/Profile";
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -48,6 +51,17 @@ const webLayoutRoute = createRoute({
   getParentRoute: () => rootRoute,
   id: "weblayout",
   component: AppShell,
+  beforeLoad: ({ location }) => {
+    if (!authStore.getState().isAuthenticated) {
+      // eslint-disable-next-line @typescript-eslint/only-throw-error
+      throw redirect({
+        to: "/web/login",
+        search: {
+          return_to: encodeURIComponent(location.href),
+        },
+      });
+    }
+  },
 });
 
 const indexRoute = createRoute({
@@ -56,6 +70,18 @@ const indexRoute = createRoute({
   beforeLoad: () => {
     // eslint-disable-next-line @typescript-eslint/only-throw-error
     throw redirect({ to: "/web/alerts" as string });
+  },
+});
+
+const loginRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/web/login",
+  component: Login,
+  validateSearch: (search): { return_to?: string } => {
+    if (typeof search["return_to"] === "string") {
+      return { return_to: search["return_to"] };
+    }
+    return {};
   },
 });
 
@@ -87,7 +113,6 @@ const features: ReadonlyArray<{ path: string; title: string; icon: IconName; m: 
   { path: "/web/admin/kv", title: "Key-values", icon: "book", m: "M7" },
   { path: "/web/admin/settings", title: "Settings", icon: "settings", m: "M7" },
   { path: "/web/admin/status", title: "Status", icon: "activity", m: "M7" },
-  { path: "/web/profile", title: "Profile", icon: "sliders", m: "M2" },
 ];
 
 const featureRoutes = features.map((cfg) =>
@@ -104,9 +129,16 @@ const primitivesRoute = createRoute({
   component: PrimitivesPage,
 });
 
+const profileRoute = createRoute({
+  getParentRoute: () => webLayoutRoute,
+  path: "/web/profile",
+  component: Profile,
+});
+
 const routeTree = rootRoute.addChildren([
   indexRoute,
-  webLayoutRoute.addChildren([webIndexRoute, ...featureRoutes, primitivesRoute]),
+  loginRoute,
+  webLayoutRoute.addChildren([webIndexRoute, ...featureRoutes, primitivesRoute, profileRoute]),
 ]);
 
 export const router = createRouter({ routeTree });
