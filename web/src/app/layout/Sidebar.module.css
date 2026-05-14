@@ -1,0 +1,92 @@
+.sidebar {
+  width: 220px;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg-canvas);
+  border-right: 1px solid var(--border);
+  flex-shrink: 0;
+}
+.nav {
+  flex: 1;
+  padding: var(--space-2);
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+.group {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+.groupLabel {
+  padding: 0 var(--space-2);
+  margin-bottom: var(--space-1);
+  font-size: var(--text-xs);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  font-weight: var(--weight-semibold);
+  color: var(--text-muted);
+}
+.item {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: 6px var(--space-2);
+  border-radius: var(--radius-sm);
+  text-decoration: none;
+  color: var(--text);
+  font-size: var(--text-sm);
+  position: relative;
+}
+.item:hover {
+  background: var(--bg-hover);
+  color: var(--text-strong);
+}
+.itemActive {
+  background: var(--bg-hover);
+  color: var(--text-strong);
+}
+.itemActive::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 6px;
+  bottom: 6px;
+  width: 2px;
+  background: var(--accent);
+  border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+}
+.label {
+  flex: 1;
+}
+.shortcut {
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+}
+
+.footer {
+  padding: var(--space-2);
+  border-top: 1px solid var(--border-muted);
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: var(--text-sm);
+  color: var(--text-muted);
+}
+.footerAvatar {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-strong);
+  font-weight: var(--weight-semibold);
+  font-size: var(--text-xs);
+  flex-shrink: 0;
+}
