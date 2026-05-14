@@ -1,0 +1,28 @@
+/* Diff.module.css */
+.pre {
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  line-height: 1.5;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: var(--space-2);
+  margin: 0;
+  overflow: auto;
+  max-height: 320px;
+  white-space: pre;
+}
+.add {
+  color: var(--severity-ok);
+}
+.del {
+  color: var(--severity-error);
+}
+.ctx {
+  color: var(--text-muted);
+}
+.empty {
+  color: var(--text-muted);
+  font-style: italic;
+  padding: var(--space-2);
+}
