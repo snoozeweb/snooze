@@ -32,8 +32,10 @@
     "@tanstack/react-query": "5.62.7",
     "@tanstack/react-router": "1.95.0",
     "@tanstack/react-table": "8.20.6",
+    "chart.js": "4.4.7",
     "jwt-decode": "4.0.0",
     "react": "19.0.0",
+    "react-chartjs-2": "5.2.0",
     "react-dom": "19.0.0",
     "react-hook-form": "7.54.1",
     "zustand": "5.0.2"
