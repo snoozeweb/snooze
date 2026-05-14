@@ -12,8 +12,10 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"log/slog"
 	"net"
 	"net/http"
+	"os"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -310,4 +312,50 @@ func TestParseDaemonFlags_WebDirOverride(t *testing.T) {
 	if f.webDir != "/tmp/custom" {
 		t.Fatalf("webDir override = %q, want %q", f.webDir, "/tmp/custom")
 	}
+}
+
+func TestOpenWebFS(t *testing.T) {
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+
+	t.Run("empty string returns nil", func(t *testing.T) {
+		if fs := openWebFS("", logger); fs != nil {
+			t.Fatalf("expected nil for empty dir, got %T", fs)
+		}
+	})
+
+	t.Run("missing directory returns nil", func(t *testing.T) {
+		missing := filepath.Join(t.TempDir(), "does-not-exist")
+		if fs := openWebFS(missing, logger); fs != nil {
+			t.Fatalf("expected nil for missing dir, got %T", fs)
+		}
+	})
+
+	t.Run("path that is a file returns nil", func(t *testing.T) {
+		tmp := t.TempDir()
+		f := filepath.Join(tmp, "not-a-dir")
+		if err := os.WriteFile(f, []byte("x"), 0o600); err != nil {
+			t.Fatalf("seed: %v", err)
+		}
+		if fs := openWebFS(f, logger); fs != nil {
+			t.Fatalf("expected nil for file path, got %T", fs)
+		}
+	})
+
+	t.Run("valid directory returns http.Dir", func(t *testing.T) {
+		dir := t.TempDir()
+		fs := openWebFS(dir, logger)
+		if fs == nil {
+			t.Fatalf("expected non-nil FileSystem for %q", dir)
+		}
+		if _, ok := fs.(http.Dir); !ok {
+			t.Fatalf("expected http.Dir, got %T", fs)
+		}
+	})
+
+	t.Run("nil logger is tolerated", func(t *testing.T) {
+		// Missing-dir path with no logger: must not panic.
+		if fs := openWebFS("/definitely/not/a/path", nil); fs != nil {
+			t.Fatalf("expected nil, got %T", fs)
+		}
+	})
 }
