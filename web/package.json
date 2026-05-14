@@ -50,6 +50,7 @@
     "@types/react": "19.0.1",
     "@types/react-dom": "19.0.1",
     "@vitejs/plugin-react": "4.3.4",
+    "axe-core": "4.10.2",
     "eslint": "9.16.0",
     "eslint-plugin-jsx-a11y": "6.10.2",
     "eslint-plugin-react-hooks": "5.0.0",
