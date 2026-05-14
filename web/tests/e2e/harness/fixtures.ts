@@ -29,7 +29,7 @@ export const test = base.extend<TestFixtures, WorkerFixtures>({
       const handle = await startServer({
         tmpdir: worker.tmpdir,
         env: worker.env,
-        extraFlags: worker.extraFlags,
+        ...(worker.extraFlags !== undefined ? { extraFlags: worker.extraFlags } : {}),
       });
       try {
         await use(handle);

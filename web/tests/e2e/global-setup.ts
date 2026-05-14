@@ -6,6 +6,7 @@ import { fileURLToPath } from "node:url";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
+// eslint-disable-next-line @typescript-eslint/require-await
 export default async function globalSetup(): Promise<void> {
   const repoRoot = resolve(__dirname, "../../..");
   const webDir = resolve(repoRoot, "web");

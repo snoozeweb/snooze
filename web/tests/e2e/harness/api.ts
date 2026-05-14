@@ -98,16 +98,19 @@ export async function createApi(baseURL: string, token: string): Promise<SnoozeA
       return out.token;
     },
     async reset() {
+      // `this` is typed as the inferred object literal — cast to the public
+      // interface so TypeScript accepts member accesses below.
+      const self = this as SnoozeApi;
       await Promise.all([
-        this.rules.clear(),
-        this.aggregaterules.clear(),
-        this.snoozes.clear(),
-        this.notifications.clear(),
-        this.actions.clear(),
-        this.environments.clear(),
-        this.widgets.clear(),
-        this.kv.clear(),
-        this.alerts.clear(),
+        self.rules.clear(),
+        self.aggregaterules.clear(),
+        self.snoozes.clear(),
+        self.notifications.clear(),
+        self.actions.clear(),
+        self.environments.clear(),
+        self.widgets.clear(),
+        self.kv.clear(),
+        self.alerts.clear(),
       ]);
     },
     alerts: {

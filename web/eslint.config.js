@@ -14,7 +14,7 @@ export default tseslint.config(
       ecmaVersion: 2022,
       globals: globals.browser,
       parserOptions: {
-        project: ["./tsconfig.json", "./tsconfig.node.json"],
+        project: ["./tsconfig.json", "./tsconfig.node.json", "./tests/e2e/tsconfig.json"],
         tsconfigRootDir: import.meta.dirname,
       },
     },
@@ -34,5 +34,15 @@ export default tseslint.config(
   {
     files: ["vite.config.ts", "vitest.config.ts", "eslint.config.js"],
     languageOptions: { globals: globals.node },
+  },
+  // Playwright E2E test files use a `use` parameter that looks like a React
+  // hook to the rules-of-hooks plugin, but it is a Playwright fixture
+  // callback — not a React hook. Disable the false-positive for e2e files.
+  {
+    files: ["tests/e2e/**/*.ts"],
+    rules: {
+      "react-hooks/rules-of-hooks": "off",
+      "no-empty-pattern": "off",
+    },
   },
 );
