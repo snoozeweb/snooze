@@ -15,6 +15,7 @@ import type { IconName } from "@/shared/icons/icon-names";
 import { authStore } from "@/lib/auth/store";
 import { Login } from "@/features/auth/Login";
 import { Profile } from "@/features/auth/Profile";
+import { setUnauthorizedHandler } from "@/lib/api/client";
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -142,6 +143,11 @@ const routeTree = rootRoute.addChildren([
 ]);
 
 export const router = createRouter({ routeTree });
+
+setUnauthorizedHandler(() => {
+  authStore.getState().logout();
+  void router.navigate({ to: "/web/login" });
+});
 
 declare module "@tanstack/react-router" {
   interface Register {
