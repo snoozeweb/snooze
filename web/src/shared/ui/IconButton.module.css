@@ -1,0 +1,51 @@
+.iconButton {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--radius-md);
+  border: 1px solid transparent;
+  cursor: pointer;
+  transition:
+    background var(--dur-fast) var(--ease-out),
+    color var(--dur-fast) var(--ease-out);
+}
+
+.iconButton:disabled,
+.iconButton[aria-busy="true"] {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.sm { width: 24px; height: 24px; }
+.md { width: 28px; height: 28px; }
+.lg { width: 34px; height: 34px; }
+
+.primary {
+  background: var(--accent);
+  color: var(--accent-fg);
+  border-color: var(--accent);
+}
+.primary:hover:not(:disabled) { filter: brightness(1.1); }
+
+.secondary {
+  background: var(--bg-surface);
+  color: var(--text);
+  border-color: var(--border);
+}
+.secondary:hover:not(:disabled) { background: var(--bg-hover); color: var(--text-strong); }
+
+.ghost {
+  background: transparent;
+  color: var(--text);
+}
+.ghost:hover:not(:disabled) {
+  background: var(--bg-hover);
+  color: var(--text-strong);
+}
+
+.danger {
+  background: var(--severity-critical);
+  color: #ffffff;
+  border-color: var(--severity-critical);
+}
+.danger:hover:not(:disabled) { filter: brightness(1.1); }
