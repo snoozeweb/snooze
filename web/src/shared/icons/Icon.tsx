@@ -2,7 +2,7 @@ import type { IconName } from "./icon-names";
 
 export type IconProps = {
   name: IconName;
-  size?: 16 | 20 | 24;
+  size?: 12 | 14 | 16 | 20 | 24;
   label?: string;
   className?: string;
 };
