@@ -11,6 +11,7 @@ import { ToastProvider, Toaster } from "@/shared/ui/Toast";
 import { AppShell } from "./layout/AppShell";
 import { PlaceholderPage } from "./PlaceholderPage";
 import { AlertsPage } from "@/features/alerts/AlertsPage";
+import { RulesPage } from "@/features/rules/RulesPage";
 import { PrimitivesPage } from "@/features/dev/PrimitivesPage";
 import { ResourcePage } from "@/features/dev/ResourcePage";
 import type { IconName } from "@/shared/icons/icon-names";
@@ -106,7 +107,6 @@ function placeholder(title: string, icon: IconName, milestone: string) {
 const features: ReadonlyArray<{ path: string; title: string; icon: IconName; m: string }> = [
   { path: "/web/dashboard", title: "Dashboard", icon: "gauge", m: "M6" },
   { path: "/web/snoozes", title: "Snoozes", icon: "bell-off", m: "M5" },
-  { path: "/web/rules", title: "Rules", icon: "scale", m: "M4" },
   { path: "/web/notifications", title: "Notifications", icon: "megaphone", m: "M5" },
   { path: "/web/admin/users", title: "Users", icon: "users", m: "M7" },
   { path: "/web/admin/roles", title: "Roles", icon: "user-plus", m: "M7" },
@@ -189,12 +189,53 @@ const profileRoute = createRoute({
   component: Profile,
 });
 
+type RulesSearchParams = {
+  tab?: "rules" | "aggregates";
+  uid?: string;
+  page?: number;
+  orderby?: string;
+  asc?: boolean;
+};
+
+const rulesRoute = createRoute({
+  getParentRoute: () => webLayoutRoute,
+  path: "/web/rules",
+  component: RulesPage,
+  validateSearch: (raw): RulesSearchParams => {
+    const out: Record<string, unknown> = {};
+    const tab = typeof raw["tab"] === "string" ? raw["tab"] : undefined;
+    if (tab === "rules" || tab === "aggregates") out["tab"] = tab;
+    if (typeof raw["uid"] === "string") out["uid"] = raw["uid"];
+    const pageRaw = raw["page"];
+    const page =
+      typeof pageRaw === "number"
+        ? pageRaw
+        : typeof pageRaw === "string" && /^\d+$/.test(pageRaw)
+          ? Number(pageRaw)
+          : undefined;
+    if (page !== undefined) out["page"] = page;
+    if (typeof raw["orderby"] === "string") out["orderby"] = raw["orderby"];
+    const ascRaw = raw["asc"];
+    const asc =
+      typeof ascRaw === "boolean"
+        ? ascRaw
+        : ascRaw === "true"
+          ? true
+          : ascRaw === "false"
+            ? false
+            : undefined;
+    if (asc !== undefined) out["asc"] = asc;
+    return out as RulesSearchParams;
+  },
+});
+
 const routeTree = rootRoute.addChildren([
   indexRoute,
   loginRoute,
   webLayoutRoute.addChildren([
     webIndexRoute,
     alertsRoute,
+    rulesRoute,
     ...featureRoutes,
     primitivesRoute,
     resourcePageRoute,
