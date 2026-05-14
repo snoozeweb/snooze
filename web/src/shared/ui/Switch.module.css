@@ -1,0 +1,32 @@
+.root {
+  width: 28px;
+  height: 16px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-pill);
+  position: relative;
+  cursor: pointer;
+  transition: background var(--dur-fast) var(--ease-out);
+}
+.root[data-state="checked"] {
+  background: var(--accent);
+  border-color: var(--accent);
+}
+.root:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.thumb {
+  display: block;
+  width: 12px;
+  height: 12px;
+  background: var(--text-strong);
+  border-radius: 50%;
+  transition: transform var(--dur-fast) var(--ease-out);
+  transform: translateX(1px);
+}
+.root[data-state="checked"] .thumb {
+  background: var(--accent-fg);
+  transform: translateX(13px);
+}

@@ -1,0 +1,26 @@
+.root {
+  width: 16px;
+  height: 16px;
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: background var(--dur-fast) var(--ease-out);
+}
+.root[data-state="checked"],
+.root[data-state="indeterminate"] {
+  background: var(--accent);
+  border-color: var(--accent);
+}
+.root:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.indicator {
+  color: var(--accent-fg);
+  display: inline-flex;
+}

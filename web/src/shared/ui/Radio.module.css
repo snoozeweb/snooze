@@ -1,0 +1,29 @@
+.group {
+  display: flex;
+  gap: var(--space-3);
+}
+.option {
+  width: 16px;
+  height: 16px;
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: 50%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+.option[data-state="checked"] {
+  border-color: var(--accent);
+}
+.option:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.indicator {
+  width: 8px;
+  height: 8px;
+  background: var(--accent);
+  border-radius: 50%;
+}
