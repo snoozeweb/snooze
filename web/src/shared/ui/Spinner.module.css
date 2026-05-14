@@ -1,0 +1,14 @@
+@keyframes spinner-rotate {
+  to { transform: rotate(360deg); }
+}
+
+.spinner {
+  display: inline-block;
+  animation: spinner-rotate var(--dur-slow) linear infinite;
+}
+
+.track { opacity: 0.25; }
+.head {
+  stroke-dasharray: 60;
+  stroke-dashoffset: 30;
+}
