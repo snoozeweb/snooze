@@ -1,0 +1,29 @@
+@keyframes skeleton-pulse {
+  0%,
+  100% {
+    opacity: 0.6;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+.skeleton {
+  display: block;
+  background: var(--bg-hover);
+  border: 1px solid var(--border-muted);
+  animation: skeleton-pulse 1.4s var(--ease-out) infinite;
+}
+
+.sm {
+  border-radius: var(--radius-sm);
+}
+.md {
+  border-radius: var(--radius-md);
+}
+.lg {
+  border-radius: var(--radius-lg);
+}
+.pill {
+  border-radius: var(--radius-pill);
+}
