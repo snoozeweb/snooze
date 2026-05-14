@@ -1,0 +1,96 @@
+import { useCallback, useState } from "react";
+import { useNavigate, useSearch } from "@tanstack/react-router";
+import { Button } from "@/shared/ui/Button";
+import { DataTable } from "@/shared/ui/DataTable";
+import { Settings } from "./api";
+import { SettingEditor } from "./SettingEditor";
+import { settingColumns } from "./columns";
+import type { Setting } from "./types";
+import styles from "./SettingsPage.module.css";
+
+type SettingsSearch = {
+  uid?: string;
+  page?: number;
+  orderby?: string;
+  asc?: boolean;
+};
+
+// TanStack Router's navigate types are locked to the registered route tree at
+// build time. Casting through unknown avoids type errors when the route is
+// locally constructed in tests and still works when fully registered.
+type NavigateFn = (opts: {
+  to: string;
+  search: (prev: SettingsSearch | undefined) => SettingsSearch;
+}) => Promise<void>;
+
+const PAGE_SIZE = 50;
+
+export function SettingsPage() {
+  // useSearch with strict:false returns the validated search params; cast for local type.
+  const search = useSearch({ strict: false }) as unknown as SettingsSearch;
+  const navigate = useNavigate();
+
+  const page = search.page ?? 1;
+  const orderby = search.orderby ?? "name";
+  const asc = search.asc ?? true;
+  const detailUid = search.uid;
+  const [creating, setCreating] = useState(false);
+
+  const updateSearch = useCallback(
+    (next: SettingsSearch) => {
+      void (navigate as unknown as NavigateFn)({
+        to: "/web/admin/settings",
+        search: (prev: SettingsSearch | undefined) => {
+          const merged = { ...(prev ?? {}), ...next };
+          // exactOptionalPropertyTypes: remove keys set to undefined rather than keeping them
+          if (merged.uid === undefined) {
+            const { uid: _uid, ...rest } = merged; // eslint-disable-line @typescript-eslint/no-unused-vars
+            return rest as SettingsSearch;
+          }
+          return merged as SettingsSearch;
+        },
+      });
+    },
+    [navigate],
+  );
+
+  const list = Settings.useList({ offset: (page - 1) * PAGE_SIZE, limit: PAGE_SIZE, orderby, asc });
+
+  return (
+    <div className={styles.page}>
+      <div className={styles.topbar}>
+        <span style={{ color: "var(--text-muted)", fontSize: "var(--text-sm)" }}>
+          {list.data?.meta.total ?? 0} settings
+        </span>
+        <Button size="sm" variant="primary" leadingIcon="plus" onClick={() => setCreating(true)}>
+          New
+        </Button>
+      </div>
+      <DataTable<Setting>
+        data={list.data?.data ?? []}
+        columns={settingColumns}
+        rowKey={(r) => r.uid ?? r.name}
+        loading={list.isPending}
+        serverSort={{
+          sortBy: orderby,
+          order: asc ? "asc" : "desc",
+          onChange: (next) =>
+            updateSearch({ orderby: next.sortBy, asc: next.order === "asc", page: 1 }),
+        }}
+        serverPagination={{
+          page,
+          pageSize: PAGE_SIZE,
+          total: list.data?.meta.total ?? 0,
+          onChange: (next) => updateSearch({ page: next.page }),
+        }}
+        onRowOpen={(row) => {
+          if (row.uid) updateSearch({ uid: row.uid });
+        }}
+      />
+      {detailUid !== undefined ? (
+        <SettingEditor uid={detailUid} onClose={() => updateSearch({})} />
+      ) : null}
+      {creating ? <SettingEditor uid={undefined} onClose={() => setCreating(false)} /> : null}
+    </div>
+  );
+}
