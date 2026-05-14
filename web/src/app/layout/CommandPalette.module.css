@@ -1,0 +1,109 @@
+.overlay {
+  position: fixed;
+  inset: 0;
+  background: rgb(0 0 0 / 0.5);
+  z-index: var(--z-modal);
+}
+.overlay[data-state="open"] {
+  animation: fadeIn var(--dur-fast) var(--ease-out);
+}
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+.content {
+  position: fixed;
+  top: 15vh;
+  left: 50%;
+  transform: translateX(-50%);
+  width: min(560px, calc(100vw - 32px));
+  background: var(--bg-elevated);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-pop);
+  z-index: var(--z-modal);
+  display: flex;
+  flex-direction: column;
+  max-height: 60vh;
+  overflow: hidden;
+}
+.content[data-state="open"] {
+  animation: paletteIn var(--dur-fast) var(--ease-out);
+}
+@keyframes paletteIn {
+  from {
+    opacity: 0;
+    transform: translate(-50%, calc(15vh - 4px));
+  }
+  to {
+    opacity: 1;
+    transform: translate(-50%, 0);
+  }
+}
+
+.searchRow {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-3);
+  border-bottom: 1px solid var(--border-muted);
+}
+.searchIcon {
+  color: var(--text-muted);
+  display: inline-flex;
+}
+.search {
+  flex: 1;
+  background: transparent;
+  border: 0;
+  outline: none;
+  font: inherit;
+  color: var(--text-strong);
+}
+.search::placeholder {
+  color: var(--text-muted);
+}
+
+.list {
+  overflow: auto;
+  padding: var(--space-1);
+  margin: 0;
+  list-style: none;
+}
+.group {
+  padding: var(--space-1) var(--space-2);
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+.option {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-1) var(--space-2);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  font-size: var(--text-sm);
+}
+.option[aria-selected="true"] {
+  background: var(--bg-hover);
+  color: var(--text-strong);
+}
+.optionShortcut {
+  margin-left: auto;
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+}
+.empty {
+  padding: var(--space-3);
+  text-align: center;
+  color: var(--text-muted);
+}
