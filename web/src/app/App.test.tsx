@@ -20,28 +20,40 @@ describe("App (primitives demo)", () => {
     ).toBeInTheDocument();
   });
 
-  it("renders each primitive section", () => {
+  it("renders every primitive section", () => {
     render(<App />);
     const expected = [
       "Button",
       "IconButton",
       "Badge",
-      "Spinner / Skeleton",
-      "Card",
-      "Kbd",
-      "Code / CodeBlock",
-      "EmptyState",
+      "Tooltip",
+      "Popover",
+      "Menu",
+      "Dialog",
+      "Drawer",
+      "Tabs",
+      "Toast",
+      "Input + Textarea",
+      "Switch / Checkbox / Radio",
+      "Select",
+      "Combobox",
     ];
     for (const title of expected) {
       expect(screen.getByRole("heading", { level: 2, name: title })).toBeInTheDocument();
     }
   });
 
+  it("toast button surfaces a toast", async () => {
+    const user = userEvent.setup();
+    render(<App />);
+    await user.click(screen.getByRole("button", { name: /toast success/i }));
+    expect(await screen.findByText(/saved successfully/i)).toBeInTheDocument();
+  });
+
   it("has a working theme toggle in the header", async () => {
     document.documentElement.setAttribute("data-theme", "dark");
     const user = userEvent.setup();
     render(<App />);
-    // Theme toggle label reflects the OPPOSITE theme (i.e., "Light" in dark mode).
     await user.click(screen.getByRole("button", { name: /light/i }));
     expect(document.documentElement.getAttribute("data-theme")).toBe("light");
   });
