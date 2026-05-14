@@ -1,0 +1,44 @@
+/*
+ * Light theme — overrides via [data-theme="light"].
+ *
+ * Mirror of theme.dark.css's semantic names, with values tuned for
+ * AA contrast against a white canvas. Accent and severity hues are
+ * deeper so they sit on white without vibrating.
+ */
+
+[data-theme="light"] {
+  /* Surfaces */
+  --bg-canvas: #f6f8fa;
+  --bg-surface: #ffffff;
+  --bg-elevated: #ffffff;
+  --bg-hover: #f0f3f6;
+
+  /* Borders */
+  --border: #d0d7de;
+  --border-muted: #e4e8ed;
+
+  /* Text */
+  --text-strong: #1f2328;
+  --text: #424a53;
+  --text-muted: #6a737d;
+
+  /* Accent */
+  --accent: #0969da;
+  --accent-bg: #ddf4ff;
+  --accent-fg: #ffffff;
+
+  /* Severity */
+  --severity-critical: #c4241c;
+  --severity-error: #b75d20;
+  --severity-warning: #9a6700;
+  --severity-info: #0969da;
+  --severity-ok: #1a7f37;
+
+  /* Alert lifecycle states */
+  --state-ack: #6639ba;
+  --state-snooze: #57606a;
+  --state-shelve: #2a5687;
+
+  /* Focus ring */
+  --focus-ring: #0969da;
+}

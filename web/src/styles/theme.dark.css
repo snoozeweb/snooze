@@ -1,0 +1,47 @@
+/*
+ * Dark theme — default palette.
+ *
+ * Lives in :root so it applies even when JavaScript is disabled and
+ * data-theme is never set. theme.light.css overrides these via the
+ * [data-theme="light"] selector.
+ *
+ * Inspired by GitHub Dark — high contrast on a near-black canvas,
+ * with one cool-blue accent and a small severity/state set.
+ */
+
+:root {
+  /* Surfaces */
+  --bg-canvas: #0b0d10;
+  --bg-surface: #11151a;
+  --bg-elevated: #161b22;
+  --bg-hover: #1c232c;
+
+  /* Borders */
+  --border: #2a313a;
+  --border-muted: #1c232c;
+
+  /* Text */
+  --text-strong: #e6edf3;
+  --text: #b6bfca;
+  --text-muted: #7d8590;
+
+  /* Accent (used sparingly) */
+  --accent: #4f8cff;
+  --accent-bg: #16243f;
+  --accent-fg: #ffffff;
+
+  /* Severity (used on alerts/rows; AA against bg-surface) */
+  --severity-critical: #f04949;
+  --severity-error: #ef7e3a;
+  --severity-warning: #d4a017;
+  --severity-info: #4f8cff;
+  --severity-ok: #3fb950;
+
+  /* Alert lifecycle states */
+  --state-ack: #8957e5;
+  --state-snooze: #6b7785;
+  --state-shelve: #4a6fa5;
+
+  /* Focus ring */
+  --focus-ring: #4f8cff;
+}
