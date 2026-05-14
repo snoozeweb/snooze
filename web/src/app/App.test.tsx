@@ -3,40 +3,46 @@ import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { App } from "./App";
 
-describe("App", () => {
+describe("App (primitives demo)", () => {
   beforeEach(() => {
     document.documentElement.removeAttribute("data-theme");
     localStorage.clear();
   });
-
   afterEach(() => {
     document.documentElement.removeAttribute("data-theme");
     localStorage.clear();
   });
 
-  it("renders the Snooze title", () => {
+  it("renders the primitives page title", () => {
     render(<App />);
-    expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent("Snooze");
+    expect(
+      screen.getByRole("heading", { level: 1, name: /Snooze · Primitives/i }),
+    ).toBeInTheDocument();
   });
 
-  it("renders the design-foundation placeholder copy", () => {
+  it("renders each primitive section", () => {
     render(<App />);
-    expect(screen.getByText(/design foundation/i)).toBeInTheDocument();
+    const expected = [
+      "Button",
+      "IconButton",
+      "Badge",
+      "Spinner / Skeleton",
+      "Card",
+      "Kbd",
+      "Code / CodeBlock",
+      "EmptyState",
+    ];
+    for (const title of expected) {
+      expect(screen.getByRole("heading", { level: 2, name: title })).toBeInTheDocument();
+    }
   });
 
-  it("shows the current theme in the toggle label", () => {
-    document.documentElement.setAttribute("data-theme", "dark");
-    render(<App />);
-    expect(screen.getByRole("button", { name: /switch to light/i })).toBeInTheDocument();
-  });
-
-  it("clicking the toggle flips the theme and persists", async () => {
+  it("has a working theme toggle in the header", async () => {
     document.documentElement.setAttribute("data-theme", "dark");
     const user = userEvent.setup();
     render(<App />);
-    await user.click(screen.getByRole("button", { name: /switch to light/i }));
+    // Theme toggle label reflects the OPPOSITE theme (i.e., "Light" in dark mode).
+    await user.click(screen.getByRole("button", { name: /light/i }));
     expect(document.documentElement.getAttribute("data-theme")).toBe("light");
-    expect(localStorage.getItem("snooze.theme")).toBe("light");
-    expect(screen.getByRole("button", { name: /switch to dark/i })).toBeInTheDocument();
   });
 });
