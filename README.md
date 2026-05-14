@@ -8,36 +8,6 @@ webhooks, Grafana, AlertManager, …), runs them through a pipeline of
 aggregations, rules, snoozes and notifications, and routes the
 survivors to chat, email, ticketing or arbitrary webhook destinations.
 
-> **v2.0.0 is a from-scratch Go rewrite.** The old Python 1.x server
-> is gone. Operators upgrading from 1.x **must** read the migration
-> guide before starting — the on-disk database, the config layout,
-> and the systemd / Docker / Helm packaging all changed.
->
-> * [CHANGELOG](./CHANGELOG.md) — the full v2.0.0 entry.
-> * [docs/migration/python-to-go.md](./docs/migration/python-to-go.md)
->   — step-by-step upgrade path.
-> * [api/openapi.yaml](./api/openapi.yaml) — the v1 HTTP contract
->   (unchanged where possible).
-
-## What ships in v2
-
-| Binary               | Role                                                  |
-|----------------------|-------------------------------------------------------|
-| `snooze-server`      | HTTP API + Vue web UI + pipeline workers              |
-| `snooze`             | Operator CLI (login, root-token, query)               |
-| `snooze-syslog`      | Syslog (RFC 3164 / 5424) listener                     |
-| `snooze-snmptrap`    | SNMP trap receiver                                    |
-| `snooze-relp`        | RELP listener                                         |
-| `snooze-smtp`        | SMTP submission listener                              |
-| `snooze-googlechat`  | Google Chat output notifier                           |
-| `snooze-mattermost`  | Mattermost output notifier                            |
-| `snooze-teams`       | Microsoft Teams output notifier                       |
-| `snooze-pacemaker`   | Pacemaker cluster integration helper                  |
-
-All ten binaries are statically linked (`CGO_ENABLED=0`,
-`osusergo,netgo`) and ship as distroless container images under
-`ghcr.io/japannext/<binary>:<tag>`.
-
 ## Install
 
 ### Docker (single node, SQLite)
@@ -126,13 +96,29 @@ Repo-internal pointers:
 * `ROADMAP.md` — direction of travel.
 * `docs/migration/python-to-go.md` — upgrading from 1.x.
 
+### What ships in v2
+
+| Binary               | Role                                                  |
+|----------------------|-------------------------------------------------------|
+| `snooze-server`      | HTTP API + Vue web UI + pipeline workers              |
+| `snooze`             | Operator CLI (login, root-token, query)               |
+| `snooze-syslog`      | Syslog (RFC 3164 / 5424) listener                     |
+| `snooze-snmptrap`    | SNMP trap receiver                                    |
+| `snooze-relp`        | RELP listener                                         |
+| `snooze-smtp`        | SMTP submission listener                              |
+| `snooze-googlechat`  | Google Chat output notifier                           |
+| `snooze-mattermost`  | Mattermost output notifier                            |
+| `snooze-teams`       | Microsoft Teams output notifier                       |
+| `snooze-jira`        | Atlassian Jira output notifier                        |
+| `snooze-pacemaker`   | Pacemaker cluster integration helper                  |
+
 ## License
 
 ```
 Snooze — log aggregation and alerting.
 
-Copyright 2018-2020 Florian Dematraz <florian.dematraz@snoozeweb.net>
-Copyright 2018-2020 Guillaume Ludinard <guillaume.ludi@gmail.com>
+Copyright 2018-2026 Florian Dematraz <florian.dematraz@snoozeweb.net>
+Copyright 2018-2026 Guillaume Ludinard <guillaume.ludi@gmail.com>
 Copyright 2020-     Japannext Co., Ltd. <https://www.japannext.co.jp/>
 
 This program is free software: you can redistribute it and/or modify
