@@ -1,0 +1,46 @@
+.timeline {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  position: relative;
+}
+.row {
+  display: grid;
+  grid-template-columns: 24px 1fr;
+  gap: var(--space-2);
+  align-items: start;
+}
+.dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--accent);
+  margin-top: 6px;
+  justify-self: center;
+}
+.body {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.head {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: var(--text-sm);
+}
+.message {
+  font-size: var(--text-sm);
+  color: var(--text);
+  white-space: pre-wrap;
+}
+.meta {
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+}
+.empty {
+  font-size: var(--text-sm);
+  color: var(--text-muted);
+  padding: var(--space-3);
+  text-align: center;
+}
