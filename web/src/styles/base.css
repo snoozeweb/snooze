@@ -1,19 +1,26 @@
+/*
+ * Global base styles.
+ *
+ * Order matters: tokens (theme-independent), then dark palette (the
+ * :root default), then light palette ([data-theme="light"] overrides).
+ * Element defaults follow.
+ */
+
+@import "./tokens.css";
+@import "./theme.dark.css";
+@import "./theme.light.css";
+
 :root {
   color-scheme: dark light;
-  --bg: #0b0d10;
-  --fg: #e6edf3;
-  --muted: #7d8590;
-  --accent: #4f8cff;
-  font-family:
-    system-ui,
-    -apple-system,
-    "Segoe UI",
-    sans-serif;
-  font-size: 13px;
-  line-height: 1.5;
 }
 
-* {
+[data-theme="light"] {
+  color-scheme: light dark;
+}
+
+*,
+*::before,
+*::after {
   box-sizing: border-box;
 }
 
@@ -25,27 +32,80 @@ body,
 }
 
 body {
-  background: var(--bg);
-  color: var(--fg);
+  background: var(--bg-canvas);
+  color: var(--text);
+  font-family: var(--font-sans);
+  font-size: var(--text-md);
+  line-height: var(--leading-normal);
+  font-weight: var(--weight-regular);
+  font-variant-numeric: tabular-nums;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
 }
 
-.placeholder {
-  display: flex;
-  flex-direction: column;
-  justify-content: center;
-  align-items: center;
-  height: 100%;
-  gap: 8px;
+h1,
+h2,
+h3,
+h4,
+h5,
+h6 {
+  margin: 0;
+  font-weight: var(--weight-semibold);
+  color: var(--text-strong);
+  line-height: var(--leading-tight);
 }
 
-.placeholder h1 {
-  font-size: 22px;
-  font-weight: 600;
+h1 {
+  font-size: var(--text-xl);
+}
+h2 {
+  font-size: var(--text-lg);
+}
+h3 {
+  font-size: var(--text-md);
+}
+
+p {
+  margin: 0;
+}
+
+code,
+pre,
+kbd,
+samp {
+  font-family: var(--font-mono);
+  font-size: 0.95em;
+}
+
+button,
+input,
+select,
+textarea {
+  font: inherit;
+  color: inherit;
+}
+
+a {
   color: var(--accent);
-  margin: 0;
+  text-decoration: none;
 }
 
-.placeholder p {
-  color: var(--muted);
-  margin: 0;
+a:hover {
+  text-decoration: underline;
+}
+
+:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
+  border-radius: var(--radius-sm);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0ms !important;
+    transition-duration: 0ms !important;
+  }
 }
