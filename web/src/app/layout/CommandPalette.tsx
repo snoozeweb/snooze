@@ -79,7 +79,6 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
             <span className={styles.searchIcon}>
               <Icon name="search" size={14} />
             </span>
-            {/* eslint-disable-next-line jsx-a11y/no-autofocus */}
             <input
               ref={inputRef}
               type="text"
@@ -104,7 +103,7 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
                       {groupItems.map((item) => {
                         const globalIndex = filtered.indexOf(item);
                         return (
-                          /* eslint-disable-next-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-noninteractive-element-interactions */
+                          /* eslint-disable-next-line jsx-a11y/click-events-have-key-events */
                           <li
                             key={item.to}
                             role="option"
