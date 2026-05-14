@@ -1,0 +1,28 @@
+.list {
+  display: flex;
+  border-bottom: 1px solid var(--border);
+  gap: var(--space-1);
+}
+.trigger {
+  position: relative;
+  padding: var(--space-2) var(--space-3);
+  font-size: var(--text-sm);
+  font-weight: var(--weight-medium);
+  color: var(--text-muted);
+  background: none;
+  border: 0;
+  cursor: pointer;
+  margin-bottom: -1px;
+  border-bottom: 2px solid transparent;
+}
+.trigger:hover {
+  color: var(--text-strong);
+}
+.trigger[data-state="active"] {
+  color: var(--text-strong);
+  border-bottom-color: var(--accent);
+}
+.panel {
+  padding: var(--space-3) 0;
+  outline: none;
+}
