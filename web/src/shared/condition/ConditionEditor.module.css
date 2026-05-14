@@ -1,0 +1,68 @@
+.editor {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-3);
+  background: var(--bg-canvas);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+}
+.empty {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  color: var(--text-muted);
+  font-size: var(--text-sm);
+}
+.group {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  border-left: 2px solid var(--border);
+  padding-left: var(--space-3);
+}
+.groupHeader {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+.groupPill {
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  background: var(--bg-elevated);
+  color: var(--text-strong);
+  padding: 2px 8px;
+  border-radius: var(--radius-pill);
+  border: 1px solid var(--border);
+  cursor: pointer;
+}
+.notBadge {
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  background: var(--severity-warning);
+  color: var(--bg-canvas);
+  padding: 2px 6px;
+  border-radius: var(--radius-pill);
+}
+.leaf {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+}
+.field {
+  min-width: 180px;
+}
+.op {
+  min-width: 110px;
+}
+.value {
+  flex: 1;
+  min-width: 160px;
+}
+.actions {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  margin-left: auto;
+}
