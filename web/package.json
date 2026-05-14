@@ -31,6 +31,7 @@
     "@radix-ui/react-tooltip": "1.2.0",
     "@tanstack/react-query": "5.62.7",
     "@tanstack/react-router": "1.95.0",
+    "@tanstack/react-table": "8.20.6",
     "jwt-decode": "4.0.0",
     "react": "19.0.0",
     "react-dom": "19.0.0",
