@@ -5,7 +5,8 @@ import { BarChart } from "@/shared/chart/BarChart";
 import { DonutChart } from "@/shared/chart/DonutChart";
 import { LineChart, type LineSeries } from "@/shared/chart/LineChart";
 import { useStats } from "./api";
-import { TimeRangePicker, presetToRange, type TimeRange } from "./TimeRangePicker";
+import { TimeRangePicker } from "./TimeRangePicker";
+import { presetToRange, type TimeRange } from "./time-range";
 import styles from "./DashboardPage.module.css";
 
 const SEVERITY_COLORS: Record<string, string> = {

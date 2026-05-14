@@ -1,19 +1,7 @@
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
-import { TimeRangePicker, presetToRange, type TimeRange } from "./TimeRangePicker";
-
-describe("presetToRange", () => {
-  it("returns a 24h window for '1d'", () => {
-    const now = new Date("2026-05-14T12:00:00Z");
-    const r = presetToRange("1d", now);
-    expect(r.to).toBe("2026-05-14T12:00:00.000Z");
-    expect(r.from).toBe("2026-05-13T12:00:00.000Z");
-  });
-  it("returns empty strings for 'custom'", () => {
-    expect(presetToRange("custom").from).toBe("");
-  });
-});
+import { TimeRangePicker, type TimeRange } from "./TimeRangePicker";
 
 describe("TimeRangePicker", () => {
   it("highlights the active preset", () => {
