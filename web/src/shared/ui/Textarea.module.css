@@ -1,0 +1,24 @@
+.textarea {
+  display: block;
+  width: 100%;
+  min-height: 60px;
+  resize: vertical;
+  background: var(--bg-surface);
+  color: var(--text-strong);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: var(--space-2);
+  font: inherit;
+  font-size: var(--text-sm);
+  outline: none;
+  transition: border-color var(--dur-fast) var(--ease-out);
+}
+.textarea:hover {
+  border-color: var(--text-muted);
+}
+.textarea:focus {
+  border-color: var(--accent);
+}
+.invalid {
+  border-color: var(--severity-critical) !important;
+}
