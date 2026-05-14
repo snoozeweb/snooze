@@ -6,6 +6,7 @@ import { Tooltip } from "@/shared/ui/Tooltip";
 import { toast } from "@/shared/ui/toast/useToast";
 import { ApiError } from "@/lib/api/client";
 import { Records, useCommentRecord, type CommentInput } from "./api";
+import { AlertDetailDrawer } from "./AlertDetailDrawer";
 import { AlertsFilters, type AlertFilters } from "./Filters";
 import { alertColumns } from "./columns";
 import { useAutoRefresh } from "./useAutoRefresh";
@@ -16,6 +17,7 @@ type AlertsSearch = AlertFilters & {
   page?: number;
   orderby?: string;
   asc?: boolean;
+  uid?: string;
 };
 
 const PAGE_SIZE = 50;
@@ -30,6 +32,7 @@ export function AlertsPage() {
   const page = search.page ?? 1;
   const orderby = search.orderby ?? "date_epoch";
   const asc = search.asc ?? false;
+  const detailUid = search.uid;
 
   const filters: AlertFilters = {
     ...(search.state !== undefined ? { state: search.state } : {}),
@@ -54,6 +57,20 @@ export function AlertsPage() {
     },
     [navigate],
   );
+
+  const closeDrawer = useCallback(() => {
+    type NavigateFn = (opts: {
+      to: string;
+      search: (prev: AlertsSearch | undefined) => AlertsSearch;
+    }) => Promise<void>;
+    void (navigate as unknown as NavigateFn)({
+      to: "/web/alerts",
+      search: (prev: AlertsSearch | undefined) => {
+        const { uid: _uid, ...rest } = prev ?? {}; // eslint-disable-line @typescript-eslint/no-unused-vars
+        return rest as AlertsSearch;
+      },
+    });
+  }, [navigate]);
 
   const list = Records.useList(
     {
@@ -174,7 +191,12 @@ export function AlertsPage() {
           onChange: (next) => updateSearch({ page: next.page }),
         }}
         rowActions={rowActions}
+        onRowOpen={(row) => {
+          const uid = row.uid;
+          updateSearch(uid !== undefined ? { uid } : {});
+        }}
       />
+      <AlertDetailDrawer uid={detailUid} onClose={closeDrawer} />
     </div>
   );
 }

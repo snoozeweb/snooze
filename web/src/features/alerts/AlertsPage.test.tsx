@@ -86,4 +86,46 @@ describe("AlertsPage", () => {
     await waitFor(() => expect(calls.length).toBe(1));
     expect(calls[0]).toMatchObject({ record_uid: "r1", type: "ack" });
   });
+
+  it("clicking a row opens the detail drawer with the alert host as title", async () => {
+    mswServer.use(
+      http.get("/api/v1/record", () =>
+        HttpResponse.json({
+          data: [
+            {
+              uid: "r1",
+              host: "srv-1",
+              severity: "info",
+              state: "open",
+              message: "boom",
+              date_epoch: 1,
+            },
+          ],
+          meta: { count: 1, limit: 50, offset: 0, total: 1 },
+        }),
+      ),
+      http.get("/api/v1/record/r1", () =>
+        HttpResponse.json({
+          uid: "r1",
+          host: "srv-1",
+          severity: "info",
+          state: "open",
+          message: "boom",
+          date_epoch: 1,
+        }),
+      ),
+      http.get("/api/v1/comment", () =>
+        HttpResponse.json({
+          data: [],
+          meta: { count: 0, limit: 100, offset: 0, total: 0 },
+        }),
+      ),
+    );
+    const user = userEvent.setup();
+    setup();
+    await waitFor(() => expect(screen.getByText("srv-1")).toBeInTheDocument());
+    // Click the message cell (Code-wrapped host might intercept clicks; message is safe).
+    await user.click(screen.getByText("boom"));
+    await waitFor(() => expect(screen.getByRole("dialog", { name: /srv-1/i })).toBeInTheDocument());
+  });
 });

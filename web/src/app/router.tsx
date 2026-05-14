@@ -133,6 +133,7 @@ type AlertsSearchParams = {
   page?: number;
   orderby?: string;
   asc?: boolean;
+  uid?: string;
 };
 
 const alertsRoute = createRoute({
@@ -165,6 +166,7 @@ const alertsRoute = createRoute({
     setIf("page", n("page"));
     setIf("orderby", s("orderby"));
     setIf("asc", b("asc"));
+    setIf("uid", s("uid"));
     return out as AlertsSearchParams;
   },
 });
