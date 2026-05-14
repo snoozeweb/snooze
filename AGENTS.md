@@ -12,8 +12,7 @@
 * **Repo**: `github.com/japannext/snooze`. Module path matches the import path.
 * **Language floor**: Go 1.25 (`go.mod`). Build flags: `-trimpath -tags 'osusergo,netgo'`,
   `CGO_ENABLED=0`. Container images are distroless.
-* **Frontend**: Vue 3 SPA under `web/` (untouched by the Go rewrite; still
-  Vue CLI 4 / Options API).
+* **Frontend**: React 19 SPA under `web/` (Vite 6, TypeScript strict, TanStack Router + Query, Radix UI primitives, Chart.js wrappers). The Vue 3 codebase was replaced in the M0-M8 rewrite.
 * **Versioning**: `git tag vX.Y.Z` on `master`. The user manages all git
   operations — never `commit`, `push`, or `tag` without explicit instruction.
 
@@ -65,7 +64,7 @@ snooze/
 │   ├── snoozeclient/            # Lightweight HTTP client
 │   ├── snoozecondition/         # Re-exports of the condition AST
 │   └── snoozetypes/             # Alert/Record/User/etc. struct definitions
-├── web/                          # Vue 3 SPA (unchanged from 1.x)
+├── web/                          # React 19 SPA (M0-M8 rewrite, see docs/superpowers/)
 ├── api/openapi.yaml              # v1 HTTP contract (single source of truth)
 ├── docs/                         # Sphinx documentation (regenerated for Go)
 ├── examples/                     # Example configs (one per DB backend)
@@ -111,9 +110,7 @@ Files to consult first when starting a change:
    `git tag` unless the user explicitly asks. The user will tag
    releases manually. **Do not** add `Co-Authored-By: Claude` (or any
    other agent attribution) to commit messages.
-4. **Do not touch `web/`** except for genuine UI bugs the user asks for.
-   The Vue codebase is Options API + Vue CLI 4 — match the surrounding
-   style if you must edit it.
+4. **Frontend changes follow the standard PR/CI flow** — see `web/Taskfile.yaml` and `web/package.json` for the available checks (`lint`, `typecheck`, `test`, `build`, `format:check`).
 5. **Do not edit `components/`** as part of Go work. Each `components/<x>/`
    is a standalone Python project published independently; it is *not*
    part of the Go module.
@@ -166,7 +163,7 @@ Files to consult first when starting a change:
 ### Build & run
 
 ```bash
-# Toolchain: Go >= 1.25, Task >= 3. Node 18+ to rebuild the web bundle.
+# Toolchain: Go >= 1.25, Task >= 3. Node 22+ to rebuild the web bundle.
 task go:build                            # ./bin/snooze-*
 task go:test                             # go test -race -shuffle=on -count=1 ./...
 task go:lint                             # golangci-lint
