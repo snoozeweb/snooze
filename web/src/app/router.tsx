@@ -5,6 +5,7 @@ import {
   Outlet,
   redirect,
 } from "@tanstack/react-router";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { TooltipProvider } from "@/shared/ui/Tooltip";
 import { ToastProvider, Toaster } from "@/shared/ui/Toast";
 import { AppShell } from "./layout/AppShell";
@@ -12,14 +13,34 @@ import { PlaceholderPage } from "./PlaceholderPage";
 import { PrimitivesPage } from "@/features/dev/PrimitivesPage";
 import type { IconName } from "@/shared/icons/icon-names";
 
+const queryClient = new QueryClient({
+  defaultOptions: {
+    queries: {
+      // Per-resource refetch intervals are wired at the hook level.
+      // Globals: don't refetch on window focus (operations tool, not
+      // e-commerce) and retry once on network errors only.
+      refetchOnWindowFocus: false,
+      retry: (failureCount, error) => {
+        if (error instanceof Error && error.name === "ApiError") {
+          return false;
+        }
+        return failureCount < 1;
+      },
+      staleTime: 30_000,
+    },
+  },
+});
+
 const rootRoute = createRootRoute({
   component: () => (
-    <TooltipProvider>
-      <ToastProvider>
-        <Outlet />
-        <Toaster />
-      </ToastProvider>
-    </TooltipProvider>
+    <QueryClientProvider client={queryClient}>
+      <TooltipProvider>
+        <ToastProvider>
+          <Outlet />
+          <Toaster />
+        </ToastProvider>
+      </TooltipProvider>
+    </QueryClientProvider>
   ),
 });
 
