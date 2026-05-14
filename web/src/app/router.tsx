@@ -9,7 +9,6 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { TooltipProvider } from "@/shared/ui/Tooltip";
 import { ToastProvider, Toaster } from "@/shared/ui/Toast";
 import { AppShell } from "./layout/AppShell";
-import { PlaceholderPage } from "./PlaceholderPage";
 import { AlertsPage } from "@/features/alerts/AlertsPage";
 import { RulesPage } from "@/features/rules/RulesPage";
 import { SnoozesPage } from "@/features/snoozes/SnoozesPage";
@@ -17,7 +16,13 @@ import { NotificationsPage } from "@/features/notifications/NotificationsPage";
 import { DashboardPage } from "@/features/dashboard/DashboardPage";
 import { PrimitivesPage } from "@/features/dev/PrimitivesPage";
 import { ResourcePage } from "@/features/dev/ResourcePage";
-import type { IconName } from "@/shared/icons/icon-names";
+import { UsersPage } from "@/features/admin/users/UsersPage";
+import { RolesPage } from "@/features/admin/roles/RolesPage";
+import { EnvironmentsPage } from "@/features/admin/environments/EnvironmentsPage";
+import { WidgetsPage } from "@/features/admin/widgets/WidgetsPage";
+import { KVPage } from "@/features/admin/kv/KVPage";
+import { SettingsPage } from "@/features/admin/settings/SettingsPage";
+import { StatusPage } from "@/features/admin/status/StatusPage";
 import { authStore } from "@/lib/auth/store";
 import { Login } from "@/features/auth/Login";
 import { Profile } from "@/features/auth/Profile";
@@ -101,29 +106,233 @@ const webIndexRoute = createRoute({
   },
 });
 
-function placeholder(title: string, icon: IconName, milestone: string) {
-  return function PlaceholderRoute() {
-    return <PlaceholderPage title={title} icon={icon} milestone={milestone} />;
-  };
-}
+type UsersSearchParams = {
+  uid?: string;
+  page?: number;
+  orderby?: string;
+  asc?: boolean;
+};
 
-const features: ReadonlyArray<{ path: string; title: string; icon: IconName; m: string }> = [
-  { path: "/web/admin/users", title: "Users", icon: "users", m: "M7" },
-  { path: "/web/admin/roles", title: "Roles", icon: "user-plus", m: "M7" },
-  { path: "/web/admin/environments", title: "Environments", icon: "layers", m: "M7" },
-  { path: "/web/admin/widgets", title: "Widgets", icon: "plug", m: "M7" },
-  { path: "/web/admin/kv", title: "Key-values", icon: "book", m: "M7" },
-  { path: "/web/admin/settings", title: "Settings", icon: "settings", m: "M7" },
-  { path: "/web/admin/status", title: "Status", icon: "activity", m: "M7" },
-];
+const usersRoute = createRoute({
+  getParentRoute: () => webLayoutRoute,
+  path: "/web/admin/users",
+  component: UsersPage,
+  validateSearch: (raw): UsersSearchParams => {
+    const out: Record<string, unknown> = {};
+    if (typeof raw["uid"] === "string") out["uid"] = raw["uid"];
+    const pageRaw = raw["page"];
+    const page =
+      typeof pageRaw === "number"
+        ? pageRaw
+        : typeof pageRaw === "string" && /^\d+$/.test(pageRaw)
+          ? Number(pageRaw)
+          : undefined;
+    if (page !== undefined) out["page"] = page;
+    if (typeof raw["orderby"] === "string") out["orderby"] = raw["orderby"];
+    const ascRaw = raw["asc"];
+    const asc =
+      typeof ascRaw === "boolean"
+        ? ascRaw
+        : ascRaw === "true"
+          ? true
+          : ascRaw === "false"
+            ? false
+            : undefined;
+    if (asc !== undefined) out["asc"] = asc;
+    return out as UsersSearchParams;
+  },
+});
 
-const featureRoutes = features.map((cfg) =>
-  createRoute({
-    getParentRoute: () => webLayoutRoute,
-    path: cfg.path,
-    component: placeholder(cfg.title, cfg.icon, cfg.m),
-  }),
-);
+type RolesSearchParams = {
+  uid?: string;
+  page?: number;
+  orderby?: string;
+  asc?: boolean;
+};
+
+const rolesRoute = createRoute({
+  getParentRoute: () => webLayoutRoute,
+  path: "/web/admin/roles",
+  component: RolesPage,
+  validateSearch: (raw): RolesSearchParams => {
+    const out: Record<string, unknown> = {};
+    if (typeof raw["uid"] === "string") out["uid"] = raw["uid"];
+    const pageRaw = raw["page"];
+    const page =
+      typeof pageRaw === "number"
+        ? pageRaw
+        : typeof pageRaw === "string" && /^\d+$/.test(pageRaw)
+          ? Number(pageRaw)
+          : undefined;
+    if (page !== undefined) out["page"] = page;
+    if (typeof raw["orderby"] === "string") out["orderby"] = raw["orderby"];
+    const ascRaw = raw["asc"];
+    const asc =
+      typeof ascRaw === "boolean"
+        ? ascRaw
+        : ascRaw === "true"
+          ? true
+          : ascRaw === "false"
+            ? false
+            : undefined;
+    if (asc !== undefined) out["asc"] = asc;
+    return out as RolesSearchParams;
+  },
+});
+
+type EnvironmentsSearchParams = {
+  uid?: string;
+  page?: number;
+  orderby?: string;
+  asc?: boolean;
+};
+
+const environmentsRoute = createRoute({
+  getParentRoute: () => webLayoutRoute,
+  path: "/web/admin/environments",
+  component: EnvironmentsPage,
+  validateSearch: (raw): EnvironmentsSearchParams => {
+    const out: Record<string, unknown> = {};
+    if (typeof raw["uid"] === "string") out["uid"] = raw["uid"];
+    const pageRaw = raw["page"];
+    const page =
+      typeof pageRaw === "number"
+        ? pageRaw
+        : typeof pageRaw === "string" && /^\d+$/.test(pageRaw)
+          ? Number(pageRaw)
+          : undefined;
+    if (page !== undefined) out["page"] = page;
+    if (typeof raw["orderby"] === "string") out["orderby"] = raw["orderby"];
+    const ascRaw = raw["asc"];
+    const asc =
+      typeof ascRaw === "boolean"
+        ? ascRaw
+        : ascRaw === "true"
+          ? true
+          : ascRaw === "false"
+            ? false
+            : undefined;
+    if (asc !== undefined) out["asc"] = asc;
+    return out as EnvironmentsSearchParams;
+  },
+});
+
+type WidgetsSearchParams = {
+  uid?: string;
+  page?: number;
+  orderby?: string;
+  asc?: boolean;
+};
+
+const widgetsRoute = createRoute({
+  getParentRoute: () => webLayoutRoute,
+  path: "/web/admin/widgets",
+  component: WidgetsPage,
+  validateSearch: (raw): WidgetsSearchParams => {
+    const out: Record<string, unknown> = {};
+    if (typeof raw["uid"] === "string") out["uid"] = raw["uid"];
+    const pageRaw = raw["page"];
+    const page =
+      typeof pageRaw === "number"
+        ? pageRaw
+        : typeof pageRaw === "string" && /^\d+$/.test(pageRaw)
+          ? Number(pageRaw)
+          : undefined;
+    if (page !== undefined) out["page"] = page;
+    if (typeof raw["orderby"] === "string") out["orderby"] = raw["orderby"];
+    const ascRaw = raw["asc"];
+    const asc =
+      typeof ascRaw === "boolean"
+        ? ascRaw
+        : ascRaw === "true"
+          ? true
+          : ascRaw === "false"
+            ? false
+            : undefined;
+    if (asc !== undefined) out["asc"] = asc;
+    return out as WidgetsSearchParams;
+  },
+});
+
+type KVSearchParams = {
+  uid?: string;
+  page?: number;
+  orderby?: string;
+  asc?: boolean;
+};
+
+const kvRoute = createRoute({
+  getParentRoute: () => webLayoutRoute,
+  path: "/web/admin/kv",
+  component: KVPage,
+  validateSearch: (raw): KVSearchParams => {
+    const out: Record<string, unknown> = {};
+    if (typeof raw["uid"] === "string") out["uid"] = raw["uid"];
+    const pageRaw = raw["page"];
+    const page =
+      typeof pageRaw === "number"
+        ? pageRaw
+        : typeof pageRaw === "string" && /^\d+$/.test(pageRaw)
+          ? Number(pageRaw)
+          : undefined;
+    if (page !== undefined) out["page"] = page;
+    if (typeof raw["orderby"] === "string") out["orderby"] = raw["orderby"];
+    const ascRaw = raw["asc"];
+    const asc =
+      typeof ascRaw === "boolean"
+        ? ascRaw
+        : ascRaw === "true"
+          ? true
+          : ascRaw === "false"
+            ? false
+            : undefined;
+    if (asc !== undefined) out["asc"] = asc;
+    return out as KVSearchParams;
+  },
+});
+
+type SettingsSearchParams = {
+  uid?: string;
+  page?: number;
+  orderby?: string;
+  asc?: boolean;
+};
+
+const settingsRoute = createRoute({
+  getParentRoute: () => webLayoutRoute,
+  path: "/web/admin/settings",
+  component: SettingsPage,
+  validateSearch: (raw): SettingsSearchParams => {
+    const out: Record<string, unknown> = {};
+    if (typeof raw["uid"] === "string") out["uid"] = raw["uid"];
+    const pageRaw = raw["page"];
+    const page =
+      typeof pageRaw === "number"
+        ? pageRaw
+        : typeof pageRaw === "string" && /^\d+$/.test(pageRaw)
+          ? Number(pageRaw)
+          : undefined;
+    if (page !== undefined) out["page"] = page;
+    if (typeof raw["orderby"] === "string") out["orderby"] = raw["orderby"];
+    const ascRaw = raw["asc"];
+    const asc =
+      typeof ascRaw === "boolean"
+        ? ascRaw
+        : ascRaw === "true"
+          ? true
+          : ascRaw === "false"
+            ? false
+            : undefined;
+    if (asc !== undefined) out["asc"] = asc;
+    return out as SettingsSearchParams;
+  },
+});
+
+const statusRoute = createRoute({
+  getParentRoute: () => webLayoutRoute,
+  path: "/web/admin/status",
+  component: StatusPage,
+});
 
 type AlertsSearchParams = {
   state?: string;
@@ -322,7 +531,13 @@ const routeTree = rootRoute.addChildren([
     snoozesRoute,
     notificationsRoute,
     dashboardRoute,
-    ...featureRoutes,
+    usersRoute,
+    rolesRoute,
+    environmentsRoute,
+    widgetsRoute,
+    kvRoute,
+    settingsRoute,
+    statusRoute,
     primitivesRoute,
     resourcePageRoute,
     profileRoute,
