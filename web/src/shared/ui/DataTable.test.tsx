@@ -37,12 +37,7 @@ describe("DataTable", () => {
     const onRowOpen = vi.fn();
     const user = userEvent.setup();
     render(
-      <DataTable
-        data={sample}
-        columns={columns}
-        rowKey={(r) => r.id}
-        onRowOpen={onRowOpen}
-      />,
+      <DataTable data={sample} columns={columns} rowKey={(r) => r.id} onRowOpen={onRowOpen} />,
     );
     await user.click(screen.getByText("beta"));
     expect(onRowOpen).toHaveBeenCalledWith(sample[1]);

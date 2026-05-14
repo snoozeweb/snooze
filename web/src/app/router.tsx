@@ -11,6 +11,7 @@ import { ToastProvider, Toaster } from "@/shared/ui/Toast";
 import { AppShell } from "./layout/AppShell";
 import { PlaceholderPage } from "./PlaceholderPage";
 import { PrimitivesPage } from "@/features/dev/PrimitivesPage";
+import { ResourcePage } from "@/features/dev/ResourcePage";
 import type { IconName } from "@/shared/icons/icon-names";
 import { authStore } from "@/lib/auth/store";
 import { Login } from "@/features/auth/Login";
@@ -130,6 +131,12 @@ const primitivesRoute = createRoute({
   component: PrimitivesPage,
 });
 
+const resourcePageRoute = createRoute({
+  getParentRoute: () => webLayoutRoute,
+  path: "/web/dev/resource",
+  component: ResourcePage,
+});
+
 const profileRoute = createRoute({
   getParentRoute: () => webLayoutRoute,
   path: "/web/profile",
@@ -139,7 +146,13 @@ const profileRoute = createRoute({
 const routeTree = rootRoute.addChildren([
   indexRoute,
   loginRoute,
-  webLayoutRoute.addChildren([webIndexRoute, ...featureRoutes, primitivesRoute, profileRoute]),
+  webLayoutRoute.addChildren([
+    webIndexRoute,
+    ...featureRoutes,
+    primitivesRoute,
+    resourcePageRoute,
+    profileRoute,
+  ]),
 ]);
 
 export const router = createRouter({ routeTree });

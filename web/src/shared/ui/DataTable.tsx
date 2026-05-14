@@ -71,10 +71,7 @@ export function DataTable<T>({
 }: DataTableProps<T>) {
   const [focusedIndex, setFocusedIndex] = useState<number>(-1);
 
-  const selSet = useMemo(
-    () => selectedKeys ?? new Set<string>(),
-    [selectedKeys],
-  );
+  const selSet = useMemo(() => selectedKeys ?? new Set<string>(), [selectedKeys]);
   const allKeys = useMemo(() => data.map(rowKey), [data, rowKey]);
   const allSelected = selectable && allKeys.length > 0 && allKeys.every((k) => selSet.has(k));
   const someSelected = selectable && allKeys.some((k) => selSet.has(k));
@@ -99,8 +96,7 @@ export function DataTable<T>({
   const handleHeaderSort = useCallback(
     (col: ColumnDef<T>) => {
       if (!serverSort || !col.sortable) return;
-      const nextOrder =
-        serverSort.sortBy === col.id && serverSort.order === "asc" ? "desc" : "asc";
+      const nextOrder = serverSort.sortBy === col.id && serverSort.order === "asc" ? "desc" : "asc";
       serverSort.onChange({ sortBy: col.id, order: nextOrder });
     },
     [serverSort],
@@ -216,11 +212,7 @@ export function DataTable<T>({
               ))
             ) : isEmpty ? (
               <tr>
-                <td
-                  colSpan={
-                    columns.length + (selectable ? 1 : 0) + (rowActions ? 1 : 0)
-                  }
-                >
+                <td colSpan={columns.length + (selectable ? 1 : 0) + (rowActions ? 1 : 0)}>
                   {emptyState ?? <EmptyState icon="file-text" title="No items" />}
                 </td>
               </tr>
@@ -241,10 +233,7 @@ export function DataTable<T>({
                     }}
                   >
                     {selectable ? (
-                      <td
-                        className={styles.checkboxCell}
-                        onClick={(e) => e.stopPropagation()}
-                      >
+                      <td className={styles.checkboxCell} onClick={(e) => e.stopPropagation()}>
                         <Checkbox
                           aria-label={`Select row ${key}`}
                           checked={isSelected}
@@ -261,10 +250,7 @@ export function DataTable<T>({
                       </td>
                     ))}
                     {rowActions ? (
-                      <td
-                        className={styles.actionsCell}
-                        onClick={(e) => e.stopPropagation()}
-                      >
+                      <td className={styles.actionsCell} onClick={(e) => e.stopPropagation()}>
                         <RowActionsMenu actions={rowActions(row)} />
                       </td>
                     ) : null}
@@ -304,11 +290,7 @@ function RowActionsMenu({ actions }: { actions: RowAction[] }) {
   );
 }
 
-function PaginationBar({
-  pag,
-}: {
-  pag: NonNullable<DataTableProps<unknown>["serverPagination"]>;
-}) {
+function PaginationBar({ pag }: { pag: NonNullable<DataTableProps<unknown>["serverPagination"]> }) {
   const totalPages = Math.max(1, Math.ceil(pag.total / pag.pageSize));
   const showing = `${(pag.page - 1) * pag.pageSize + 1}–${Math.min(pag.page * pag.pageSize, pag.total)} of ${pag.total}`;
   return (
@@ -320,9 +302,7 @@ function PaginationBar({
           label="Previous page"
           size="sm"
           disabled={pag.page <= 1}
-          onClick={() =>
-            pag.onChange({ page: pag.page - 1, pageSize: pag.pageSize })
-          }
+          onClick={() => pag.onChange({ page: pag.page - 1, pageSize: pag.pageSize })}
         />
         <span>
           {pag.page} / {totalPages}
@@ -332,9 +312,7 @@ function PaginationBar({
           label="Next page"
           size="sm"
           disabled={pag.page >= totalPages}
-          onClick={() =>
-            pag.onChange({ page: pag.page + 1, pageSize: pag.pageSize })
-          }
+          onClick={() => pag.onChange({ page: pag.page + 1, pageSize: pag.pageSize })}
         />
       </div>
     </div>

@@ -56,8 +56,7 @@ export function defineResource<T, Create = Partial<T>, Update = Partial<T>>(
 ): ResourceHooks<T, Create, Update> {
   const keys = {
     all: [plugin] as const,
-    list: (params?: SearchParams) =>
-      [plugin, "list", JSON.stringify(params ?? {})] as const,
+    list: (params?: SearchParams) => [plugin, "list", JSON.stringify(params ?? {})] as const,
     one: (uid: string) => [plugin, "one", uid] as const,
   };
 
@@ -100,8 +99,7 @@ export function defineResource<T, Create = Partial<T>, Update = Partial<T>>(
     useUpdate() {
       const qc = useQueryClient();
       return useMutation<T, ApiError, { uid: string; body: Update }>({
-        mutationFn: ({ uid, body }) =>
-          api<T>("PATCH", `/${plugin}/${uid}`, { body }),
+        mutationFn: ({ uid, body }) => api<T>("PATCH", `/${plugin}/${uid}`, { body }),
         onSuccess: (_data, vars) => {
           void qc.invalidateQueries({ queryKey: keys.all });
           void qc.invalidateQueries({ queryKey: keys.one(vars.uid) });
