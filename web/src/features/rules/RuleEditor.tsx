@@ -12,6 +12,7 @@ import { ModificationList } from "@/shared/modifications/ModificationList";
 import { ApiError } from "@/lib/api/client";
 import type { Condition } from "@/lib/condition/types";
 import type { Modification } from "@/shared/modifications/types";
+import { DiffSection } from "@/shared/ui/DiffSection";
 import { Rules, AggregateRules } from "./api";
 import type { Rule } from "./types";
 import styles from "./RuleEditor.module.css";
@@ -98,6 +99,14 @@ export function RuleEditor({ plugin, uid, onClose }: RuleEditorProps) {
   const nameInvalid = formState.isSubmitted && !watch("name").trim();
   const labelPlugin = plugin === "rule" ? "rule" : "aggregate rule";
 
+  const projected: Rule = {
+    name: watch("name"),
+    ...(watch("comment") ? { comment: watch("comment") } : {}),
+    enabled: enabled,
+    condition: condition,
+    ...(modifications.length > 0 ? { modifications } : {}),
+  };
+
   return (
     <Drawer
       open
@@ -176,6 +185,9 @@ export function RuleEditor({ plugin, uid, onClose }: RuleEditorProps) {
           )}
         </DrawerBody>
         <DrawerFooter>
+          <div style={{ flex: 1 }}>
+            <DiffSection original={isCreate ? undefined : existing.data} current={projected} />
+          </div>
           <Button variant="ghost" onClick={onClose}>
             Cancel
           </Button>

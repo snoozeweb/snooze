@@ -1,0 +1,23 @@
+/* DiffSection.module.css */
+.wrap {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+.toggle {
+  appearance: none;
+  background: transparent;
+  border: 0;
+  padding: var(--space-1) var(--space-2);
+  color: var(--text-muted);
+  font: inherit;
+  cursor: pointer;
+  align-self: flex-start;
+  border-radius: var(--radius-md);
+}
+.toggle:hover {
+  color: var(--text);
+}
+.body {
+  width: 100%;
+}

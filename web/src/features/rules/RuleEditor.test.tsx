@@ -128,4 +128,48 @@ describe("RuleEditor", () => {
     expect((patches[0] as { name: string }).name).toBe("New name");
     expect(onClose).toHaveBeenCalled();
   });
+
+  it("shows the Diff section in edit mode", async () => {
+    mswServer.use(
+      http.get("/api/v1/rule/rl1", () =>
+        HttpResponse.json({
+          uid: "rl1",
+          name: "Tag prod",
+          enabled: true,
+          condition: { type: "ALWAYS_TRUE" },
+        }),
+      ),
+      http.get("/api/v1/record", () =>
+        HttpResponse.json({
+          data: [],
+          meta: { count: 0, limit: 50, offset: 0, total: 0 },
+        }),
+      ),
+    );
+    const Wrapper = wrap();
+    render(
+      <Wrapper>
+        <RuleEditor plugin="rule" uid="rl1" onClose={() => undefined} />
+      </Wrapper>,
+    );
+    expect(await screen.findByRole("button", { name: /^diff/i })).toBeInTheDocument();
+  });
+
+  it("hides the Diff section when creating", () => {
+    mswServer.use(
+      http.get("/api/v1/record", () =>
+        HttpResponse.json({
+          data: [],
+          meta: { count: 0, limit: 50, offset: 0, total: 0 },
+        }),
+      ),
+    );
+    const Wrapper = wrap();
+    render(
+      <Wrapper>
+        <RuleEditor plugin="rule" uid={undefined} onClose={() => undefined} />
+      </Wrapper>,
+    );
+    expect(screen.queryByRole("button", { name: /^diff/i })).not.toBeInTheDocument();
+  });
 });
