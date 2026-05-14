@@ -1,13 +1,46 @@
+import { useNavigate } from "@tanstack/react-router";
 import { Icon } from "@/shared/icons/Icon";
 import { IconButton } from "@/shared/ui/IconButton";
 import { Kbd } from "@/shared/ui/Kbd";
+import { Menu, MenuContent, MenuItem, MenuSeparator, MenuTrigger } from "@/shared/ui/Menu";
 import { useTheme } from "@/shared/hooks/useTheme";
+import { useAuth } from "@/lib/auth/store";
 import styles from "./Topbar.module.css";
 
 export type TopbarProps = {
   breadcrumb?: string;
   onOpenPalette: () => void;
 };
+
+function UserMenu() {
+  const { claims, logout } = useAuth();
+  const navigate = useNavigate();
+  const username = claims?.sub ?? "anonymous";
+
+  return (
+    <Menu>
+      <MenuTrigger>
+        <IconButton icon="users" label={`Signed in as ${username}`} />
+      </MenuTrigger>
+      <MenuContent>
+        <MenuItem leadingIcon="sliders" onSelect={() => void navigate({ to: "/web/profile" })}>
+          Profile · {username}
+        </MenuItem>
+        <MenuSeparator />
+        <MenuItem
+          leadingIcon="lock"
+          danger
+          onSelect={() => {
+            logout();
+            void navigate({ to: "/web/login" });
+          }}
+        >
+          Log out
+        </MenuItem>
+      </MenuContent>
+    </Menu>
+  );
+}
 
 export function Topbar({ breadcrumb, onOpenPalette }: TopbarProps) {
   const { theme, toggleTheme } = useTheme();
@@ -41,7 +74,7 @@ export function Topbar({ breadcrumb, onOpenPalette }: TopbarProps) {
           label={theme === "dark" ? "Switch to light theme" : "Switch to dark theme"}
           onClick={toggleTheme}
         />
-        <IconButton icon="users" label="Account" />
+        <UserMenu />
       </div>
     </header>
   );

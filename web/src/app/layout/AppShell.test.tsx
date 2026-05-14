@@ -1,5 +1,5 @@
 import { render, screen } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 import {
   createRootRoute,
   createRoute,
@@ -8,7 +8,16 @@ import {
   createMemoryHistory,
   Outlet,
 } from "@tanstack/react-router";
+import { authStore } from "@/lib/auth/store";
 import { AppShell } from "./AppShell";
+
+function loginWithPerms(perms: string[]) {
+  const header = btoa(JSON.stringify({ alg: "HS256", typ: "JWT" }));
+  const body = btoa(
+    JSON.stringify({ sub: "x", exp: Math.floor(Date.now() / 1000) + 3600, permissions: perms }),
+  );
+  authStore.getState().login(`${header}.${body}.sig`);
+}
 
 function setup(pathname = "/web/alerts") {
   const root = createRootRoute({ component: () => <Outlet /> });
@@ -34,6 +43,11 @@ function setup(pathname = "/web/alerts") {
 }
 
 describe("AppShell", () => {
+  afterEach(() => {
+    localStorage.clear();
+    authStore.getState().logout();
+  });
+
   it("renders the Topbar, Sidebar, and the matched route's content", () => {
     setup("/web/alerts");
     expect(screen.getByText("Snooze")).toBeInTheDocument();
@@ -41,6 +55,8 @@ describe("AppShell", () => {
   });
 
   it("shows the current page name in the breadcrumb", () => {
+    // Log in with dashboard permission so the sidebar also shows Dashboard
+    loginWithPerms(["ro_stats"]);
     setup("/web/dashboard");
     // Dashboard appears in sidebar AND breadcrumb — assert at least 2 instances
     expect(screen.getAllByText("Dashboard").length).toBeGreaterThanOrEqual(2);

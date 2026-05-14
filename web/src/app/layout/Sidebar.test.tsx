@@ -1,12 +1,35 @@
 import { render, screen } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 import {
   createRootRoute,
   createRouter,
   RouterProvider,
   createMemoryHistory,
 } from "@tanstack/react-router";
+import { authStore } from "@/lib/auth/store";
 import { Sidebar } from "./Sidebar";
+
+function loginWithPerms(perms: string[]) {
+  const header = btoa(JSON.stringify({ alg: "HS256", typ: "JWT" }));
+  const body = btoa(
+    JSON.stringify({ sub: "x", exp: Math.floor(Date.now() / 1000) + 3600, permissions: perms }),
+  );
+  authStore.getState().login(`${header}.${body}.sig`);
+}
+
+const ALL_PERMS = [
+  "ro_record",
+  "ro_stats",
+  "ro_snooze",
+  "ro_rule",
+  "ro_notification",
+  "ro_user",
+  "ro_role",
+  "ro_environment",
+  "ro_widget",
+  "ro_kv",
+  "ro_settings",
+];
 
 function setup(pathname = "/web/alerts") {
   const root = createRootRoute({ component: () => <Sidebar /> });
@@ -20,7 +43,13 @@ function setup(pathname = "/web/alerts") {
 }
 
 describe("Sidebar", () => {
+  afterEach(() => {
+    localStorage.clear();
+    authStore.getState().logout();
+  });
+
   it("renders the three group labels", () => {
+    loginWithPerms(ALL_PERMS);
     setup();
     expect(screen.getByText("Operate")).toBeInTheDocument();
     expect(screen.getByText("Configure")).toBeInTheDocument();
@@ -28,6 +57,7 @@ describe("Sidebar", () => {
   });
 
   it("renders all 12 nav items", () => {
+    loginWithPerms(ALL_PERMS);
     setup();
     const expected = [
       "Alerts",
@@ -49,8 +79,38 @@ describe("Sidebar", () => {
   });
 
   it("marks the active item with aria-current=page", () => {
+    loginWithPerms(["ro_stats"]);
     setup("/web/dashboard");
     const link = screen.getByRole("link", { name: /dashboard/i });
     expect(link).toHaveAttribute("aria-current", "page");
+  });
+});
+
+describe("Sidebar permission filtering", () => {
+  afterEach(() => {
+    localStorage.clear();
+    authStore.getState().logout();
+  });
+
+  it("hides items the user lacks permission for", () => {
+    loginWithPerms(["ro_record"]);
+    setup();
+    expect(screen.getByText("Alerts")).toBeInTheDocument();
+    expect(screen.queryByText("Rules")).toBeNull();
+    expect(screen.queryByText("Settings")).toBeNull();
+  });
+
+  it("shows all items when the user has wide permissions", () => {
+    loginWithPerms(ALL_PERMS);
+    setup();
+    expect(screen.getByText("Alerts")).toBeInTheDocument();
+    expect(screen.getByText("Rules")).toBeInTheDocument();
+    expect(screen.getByText("Settings")).toBeInTheDocument();
+  });
+
+  it("always shows items with no permission requirement", () => {
+    loginWithPerms([]);
+    setup();
+    expect(screen.getByText("Status")).toBeInTheDocument();
   });
 });
