@@ -1,3 +1,40 @@
+## [Unreleased]
+
+### Changed
+
+* Web UI completely rewritten in React 19 + Vite 6 + TypeScript.
+  Replaces the Vue 3 + CoreUI codebase. Feature parity preserved; IA
+  reorganised into Operate / Configure / Admin sidebar groups.
+* Rules + Aggregates merged into a single page with two tabs.
+* Notifications + Actions merged into a single page with two tabs.
+* Dashboard charts switched from CoreUI's chart wrappers to in-house
+  Chart.js wrappers (Line/Bar/Donut) reading colours from CSS tokens
+  so the theme toggle works on every chart.
+
+### Added
+
+* Dark and light themes with a per-user toggle (defaults to dark).
+* Command palette (⌘K / Ctrl+K) for jump-to navigation.
+* Cross-tab auth sync: logging out in one tab logs out the others.
+* Auto-refresh on the Alerts page with per-user opt-out.
+* In-house SVG icon sprite (45 Lucide-derived glyphs) served as one
+  cached asset.
+
+### Backend
+
+* `snooze-server` learned a `-web-dir` flag (defaults to
+  `/var/lib/snooze/web`, matching the existing Dockerfile copy path).
+  This wires `Router.WebFS` — declared since v2.0.0 but never
+  populated — and is the one Go-side change the rewrite required.
+
+### Removed
+
+* The Vue 3 SPA under `web/src/` and its `vue.config.js`,
+  `babel.config.js`, and `jest.config.js`. The previous Node-14
+  `.node-version` pin also went; we now require Node 22.
+
+---
+
 ## v2.0.0
 
 v2.0.0 is a ground-up rewrite of snooze-server from Python to Go. The wire
