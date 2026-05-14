@@ -65,20 +65,25 @@ helm install snooze ./packaging/helm \
 ## Build from source
 
 ```bash
-# Toolchain: Go >= 1.25, Task >= 3, Node 18+ (for the web bundle).
+# Toolchain: Go >= 1.25, Task >= 3, Node 18+ (for the React bundle).
 task go:build         # builds every cmd/<binary> into ./bin/
 task go:test          # unit tests with -race
 task go:lint          # golangci-lint
 task goreleaser:snapshot   # full multi-arch release tarballs locally
 ```
 
-The Vue frontend is built separately:
+The React frontend is built separately:
 
 ```bash
 cd web && npm ci && npm run build
 ```
 
-`packaging/Dockerfile.golang` builds the Vue bundle and the Go
+Toolchain: Vite 6 + TypeScript 5.7 + React 19. The build outputs
+to `web/dist/`. `snooze-server` serves it via the `-web-dir` flag
+(default `/var/lib/snooze/web`, matching the Docker image's copy
+path).
+
+`packaging/Dockerfile.golang` builds the React bundle and the Go
 binaries in a single multi-stage image; see the `runtime-server`
 and `runtime-component` targets.
 
@@ -98,7 +103,7 @@ Repo-internal pointers:
 
 | Binary               | Role                                                  |
 |----------------------|-------------------------------------------------------|
-| `snooze-server`      | HTTP API + Vue web UI + pipeline workers              |
+| `snooze-server`      | HTTP API + React web UI + pipeline workers            |
 | `snooze`             | Operator CLI (login, root-token, query)               |
 | `snooze-syslog`      | Syslog (RFC 3164 / 5424) listener                     |
 | `snooze-snmptrap`    | SNMP trap receiver                                    |
