@@ -1,10 +1,5 @@
 import { describe, expect, it } from "vitest";
-import {
-  formatRelativeTime,
-  severityBadgeVariant,
-  stateBadgeVariant,
-  stateLabel,
-} from "./format";
+import { formatRelativeTime, severityBadgeVariant, stateBadgeVariant, stateLabel } from "./format";
 
 describe("severityBadgeVariant", () => {
   it.each([
