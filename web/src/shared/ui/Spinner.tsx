@@ -17,8 +17,25 @@ export function Spinner({ size = 16, className, label = "Loading" }: SpinnerProp
       aria-label={label}
       className={classes}
     >
-      <circle className={styles.track} cx="12" cy="12" r="10" fill="none" stroke="currentColor" strokeWidth="2" />
-      <circle className={styles.head} cx="12" cy="12" r="10" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+      <circle
+        className={styles.track}
+        cx="12"
+        cy="12"
+        r="10"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="2"
+      />
+      <circle
+        className={styles.head}
+        cx="12"
+        cy="12"
+        r="10"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+      />
     </svg>
   );
 }

@@ -57,7 +57,11 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(function Button
       aria-busy={loading || undefined}
       {...rest}
     >
-      <span className={[styles.content, loading ? styles.contentHidden : null].filter(Boolean).join(" ")}>
+      <span
+        className={[styles.content, loading ? styles.contentHidden : null]
+          .filter(Boolean)
+          .join(" ")}
+      >
         {leadingIcon ? <Icon name={leadingIcon} size={iconSize} /> : null}
         {children}
         {trailingIcon ? <Icon name={trailingIcon} size={iconSize} /> : null}

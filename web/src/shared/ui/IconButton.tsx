@@ -17,28 +17,36 @@ export type IconButtonProps = Omit<
   type?: "button" | "submit" | "reset";
 };
 
-export const IconButton = forwardRef<HTMLButtonElement, IconButtonProps>(
-  function IconButton(
-    { icon, label, variant = "ghost", size = "md", loading, type = "button", disabled, className, ...rest },
-    ref,
-  ) {
-    const classes = [styles.iconButton, styles[size], styles[variant], className]
-      .filter(Boolean)
-      .join(" ");
-    const iconSize = size === "lg" ? 20 : 16;
-    return (
-      <button
-        ref={ref}
-        type={type}
-        className={classes}
-        disabled={disabled || loading}
-        aria-busy={loading || undefined}
-        aria-label={label}
-        title={label}
-        {...rest}
-      >
-        <Icon name={icon} size={iconSize} />
-      </button>
-    );
+export const IconButton = forwardRef<HTMLButtonElement, IconButtonProps>(function IconButton(
+  {
+    icon,
+    label,
+    variant = "ghost",
+    size = "md",
+    loading,
+    type = "button",
+    disabled,
+    className,
+    ...rest
   },
-);
+  ref,
+) {
+  const classes = [styles.iconButton, styles[size], styles[variant], className]
+    .filter(Boolean)
+    .join(" ");
+  const iconSize = size === "lg" ? 20 : 16;
+  return (
+    <button
+      ref={ref}
+      type={type}
+      className={classes}
+      disabled={disabled || loading}
+      aria-busy={loading || undefined}
+      aria-label={label}
+      title={label}
+      {...rest}
+    >
+      <Icon name={icon} size={iconSize} />
+    </button>
+  );
+});
