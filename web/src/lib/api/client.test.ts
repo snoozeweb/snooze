@@ -172,10 +172,16 @@ describe("api client 401 envelope", () => {
   });
 
   it("parses 401 envelope detail when present", async () => {
-    mockFetch(() => new Response(JSON.stringify({
-      code: "invalid_credentials",
-      detail: "Bad username or password",
-    }), { status: 401, headers: { "Content-Type": "application/json" } }));
+    mockFetch(
+      () =>
+        new Response(
+          JSON.stringify({
+            code: "invalid_credentials",
+            detail: "Bad username or password",
+          }),
+          { status: 401, headers: { "Content-Type": "application/json" } },
+        ),
+    );
     try {
       await api("POST", "/login/local", { body: { username: "x", password: "y" } });
       throw new Error("should have thrown");
