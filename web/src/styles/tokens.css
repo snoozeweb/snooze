@@ -27,12 +27,9 @@
   --radius-pill: 9999px;
 
   /* Font families */
-  --font-sans:
-    "Inter", "Inter Fallback", system-ui, -apple-system, "Segoe UI",
-    "Helvetica Neue", sans-serif;
-  --font-mono:
-    "JetBrains Mono", ui-monospace, "Cascadia Code", "Consolas",
-    "Roboto Mono", monospace;
+  --font-sans: "Inter", "Inter Fallback", system-ui, -apple-system, "Segoe UI", "Helvetica Neue",
+    sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, "Cascadia Code", "Consolas", "Roboto Mono", monospace;
 
   /* Type scale (compact, observability-tool density) */
   --text-xs: 11px;
