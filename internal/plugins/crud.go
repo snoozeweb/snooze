@@ -1,19 +1,73 @@
 package plugins
 
 import (
+	"context"
 	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
 	"net/http"
+	"sort"
 	"strconv"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 
+	"github.com/japannext/snooze/internal/auth"
 	"github.com/japannext/snooze/internal/condition"
 	"github.com/japannext/snooze/internal/db"
 )
+
+// auditCollection is the collection name the audit plugin owns. We avoid
+// emitting audit events for writes to this collection (infinite-recursion
+// guard) even though normal callers wouldn't trigger that.
+const auditCollection = "audit"
+
+// emitAudit best-effort records a single audit event per affected uid. It
+// silently no-ops when the plugin opts out via metadata.audit:false, when
+// the target collection is the audit collection itself, or when the
+// underlying Write fails — auditing must never block the mutation it
+// describes.
+//
+// The schema mirrors internal/pluginimpl/audit/plugin.go: object_type,
+// object_id, action, username, method, summary, date_epoch.
+func emitAudit(ctx context.Context, host Host, meta Metadata, collection, action string, uids []string, summary string) {
+	if !meta.Audit || collection == auditCollection || len(uids) == 0 {
+		return
+	}
+	username := ""
+	authMethod := ""
+	if claims, ok := auth.ClaimsFrom(ctx); ok {
+		username = claims.Subject
+		authMethod = claims.Method
+	}
+	now := float64(time.Now().Unix())
+	docs := make([]db.Document, 0, len(uids))
+	for _, uid := range uids {
+		if uid == "" {
+			continue
+		}
+		docs = append(docs, db.Document{
+			"object_type": collection,
+			"object_id":   uid,
+			"action":      action,
+			"username":    username,
+			"method":      authMethod,
+			"summary":     summary,
+			"date_epoch":  now,
+		})
+	}
+	if len(docs) == 0 {
+		return
+	}
+	if _, err := host.DB().Write(ctx, auditCollection, docs, db.WriteOptions{UpdateTime: false}); err != nil {
+		host.Logger().Warn("plugins: audit emit failed",
+			"collection", collection,
+			"action", action,
+			"err", err)
+	}
+}
 
 // MountCRUD installs the standard REST surface for a plugin's collection at
 // /api/v1/{plugin}. The collection name is taken from p.Name().
@@ -37,12 +91,12 @@ func MountCRUD(r chi.Router, host Host, p Plugin) {
 	r.Route("/api/v1/"+collection, func(sub chi.Router) {
 		sub.Get("/", listHandler(host, p, collection))
 		sub.Post("/", createHandler(host, p, collection))
-		sub.Delete("/", bulkDeleteHandler(host, collection))
+		sub.Delete("/", bulkDeleteHandler(host, p, collection))
 		sub.Post("/search", searchHandler(host, collection))
 		sub.Get("/{uid}", getOneHandler(host, collection))
 		sub.Put("/{uid}", replaceHandler(host, p, collection))
 		sub.Patch("/{uid}", patchHandler(host, p, collection))
-		sub.Delete("/{uid}", deleteOneHandler(host, collection))
+		sub.Delete("/{uid}", deleteOneHandler(host, p, collection))
 	})
 }
 
@@ -211,6 +265,7 @@ func createHandler(host Host, p Plugin, collection string) http.HandlerFunc {
 					"plugin", collection, "err", err)
 			}
 		}
+		emitAudit(r.Context(), host, p.Metadata(), collection, "create", res.Added, "")
 		writeJSON(w, http.StatusCreated, res)
 	}
 }
@@ -243,6 +298,13 @@ func replaceHandler(host Host, p Plugin, collection string) http.HandlerFunc {
 			writeError(w, http.StatusNotFound, "not_found", "uid "+uid)
 			return
 		}
+		if hook, ok := p.(UpdateHook); ok {
+			if err := hook.AfterUpdate(r.Context(), uid, body); err != nil {
+				host.Logger().Error("plugin AfterUpdate failed",
+					"plugin", collection, "err", err)
+			}
+		}
+		emitAudit(r.Context(), host, p.Metadata(), collection, "replace", []string{uid}, "")
 		writeJSON(w, http.StatusOK, map[string]any{"matched": matched})
 	}
 }
@@ -270,12 +332,44 @@ func patchHandler(host Host, p Plugin, collection string) http.HandlerFunc {
 			writeError(w, http.StatusInternalServerError, "db_error", err.Error())
 			return
 		}
+		if hook, ok := p.(UpdateHook); ok {
+			if err := hook.AfterUpdate(r.Context(), uid, patch); err != nil {
+				host.Logger().Error("plugin AfterUpdate failed",
+					"plugin", collection, "err", err)
+			}
+		}
+		emitAudit(r.Context(), host, p.Metadata(), collection, "patch", []string{uid}, patchSummary(patch))
 		writeJSON(w, http.StatusOK, map[string]any{"uid": uid})
 	}
 }
 
+// patchSummary returns a short, human-readable list of the fields a patch
+// touched (e.g. "enabled, tree_order"). Used in audit summary text; we don't
+// include the values because they may be large (nested condition trees,
+// long descriptions) or sensitive.
+func patchSummary(patch db.Document) string {
+	keys := make([]string, 0, len(patch))
+	for k := range patch {
+		// uid is implied; don't list it.
+		if k == "uid" {
+			continue
+		}
+		keys = append(keys, k)
+	}
+	if len(keys) == 0 {
+		return ""
+	}
+	// Stable order so audit rows are diff-friendly.
+	sort.Strings(keys)
+	out := keys[0]
+	for _, k := range keys[1:] {
+		out += ", " + k
+	}
+	return out
+}
+
 // deleteOneHandler DELETE /api/v1/{plugin}/{uid}
-func deleteOneHandler(host Host, collection string) http.HandlerFunc {
+func deleteOneHandler(host Host, p Plugin, collection string) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		uid := chi.URLParam(r, "uid")
 		if uid == "" {
@@ -292,23 +386,57 @@ func deleteOneHandler(host Host, collection string) http.HandlerFunc {
 			writeError(w, http.StatusNotFound, "not_found", "uid "+uid)
 			return
 		}
+		if hook, ok := p.(DeleteHook); ok {
+			if err := hook.AfterDelete(r.Context(), []string{uid}); err != nil {
+				host.Logger().Error("plugin AfterDelete failed",
+					"plugin", collection, "err", err)
+			}
+		}
+		emitAudit(r.Context(), host, p.Metadata(), collection, "delete", []string{uid}, "")
 		writeJSON(w, http.StatusOK, map[string]any{"deleted": deleted})
 	}
 }
 
 // bulkDeleteHandler DELETE /api/v1/{plugin}?q=...
-func bulkDeleteHandler(host Host, collection string) http.HandlerFunc {
+func bulkDeleteHandler(host Host, p Plugin, collection string) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		_, cond, err := decodeListParams(r)
 		if err != nil {
 			writeError(w, http.StatusBadRequest, "bad_request", err.Error())
 			return
 		}
+		// For audit, we want a uid per deleted row. Search first; this costs
+		// one extra round-trip but bulk-delete is a rare admin operation and
+		// the auditor wants per-row traceability. If the search fails we
+		// proceed without audit rather than blocking the user.
+		var uids []string
+		meta := p.Metadata()
+		if meta.Audit && collection != auditCollection {
+			docs, _, serr := host.DB().Search(r.Context(), collection, cond, db.Page{PerPage: 0})
+			if serr == nil {
+				uids = make([]string, 0, len(docs))
+				for _, d := range docs {
+					if u, ok := d["uid"].(string); ok && u != "" {
+						uids = append(uids, u)
+					}
+				}
+			} else {
+				host.Logger().Warn("plugins: pre-delete search for audit failed",
+					"collection", collection, "err", serr)
+			}
+		}
 		deleted, err := host.DB().Delete(r.Context(), collection, cond, false)
 		if err != nil {
 			writeError(w, http.StatusInternalServerError, "db_error", err.Error())
 			return
 		}
+		if hook, ok := p.(DeleteHook); ok {
+			if err := hook.AfterDelete(r.Context(), uids); err != nil {
+				host.Logger().Error("plugin AfterDelete failed",
+					"plugin", collection, "err", err)
+			}
+		}
+		emitAudit(r.Context(), host, meta, collection, "delete", uids, "bulk delete")
 		writeJSON(w, http.StatusOK, map[string]any{"deleted": deleted})
 	}
 }

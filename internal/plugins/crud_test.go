@@ -15,8 +15,10 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/stretchr/testify/require"
 
+	"github.com/japannext/snooze/internal/auth"
 	"github.com/japannext/snooze/internal/condition"
 	"github.com/japannext/snooze/internal/db"
+	"github.com/japannext/snooze/pkg/snoozetypes"
 )
 
 // crudPlugin is a minimal Plugin for CRUD wiring (no Processor/DataModel).
@@ -310,4 +312,191 @@ func TestCRUD_ListPaginationWithQ(t *testing.T) {
 	decode(t, rec, &list)
 	require.Len(t, list.Data, 2)
 	require.Equal(t, 2, list.Meta.Total)
+}
+
+// ---- Audit emission ------------------------------------------------------
+
+// auditPlugin is a Plugin whose Metadata.Audit is true, so the CRUD layer
+// emits audit-log entries for its mutations. Used to verify the
+// emitAudit() integration in createHandler/replaceHandler/patchHandler/
+// deleteOneHandler/bulkDeleteHandler.
+type auditPlugin struct{ name string }
+
+func (p *auditPlugin) Name() string                         { return p.name }
+func (p *auditPlugin) Metadata() Metadata                   { return Metadata{Name: p.name, Audit: true} }
+func (p *auditPlugin) PostInit(context.Context, Host) error { return nil }
+func (p *auditPlugin) Reload(context.Context) error         { return nil }
+
+// auditDocs returns the documents in the "audit" collection of memDB, sorted
+// stably by their object_id so assertions don't depend on insertion order.
+func auditDocs(memo *memDB) []db.Document {
+	memo.mu.Lock()
+	defer memo.mu.Unlock()
+	out := append([]db.Document(nil), memo.data[auditCollection]...)
+	return out
+}
+
+func TestAudit_EmittedOnCreate(t *testing.T) {
+	t.Parallel()
+	memo := newMemDB()
+	plug := &auditPlugin{name: "rule"}
+	r, _ := mount(t, plug, memo)
+
+	rec := doRequest(t, r, "POST", "/api/v1/rule", db.Document{"uid": "r1", "name": "x"})
+	require.Equal(t, http.StatusCreated, rec.Code)
+
+	rows := auditDocs(memo)
+	require.Len(t, rows, 1)
+	require.Equal(t, "rule", rows[0]["object_type"])
+	require.Equal(t, "r1", rows[0]["object_id"])
+	require.Equal(t, "create", rows[0]["action"])
+	require.IsType(t, float64(0), rows[0]["date_epoch"])
+}
+
+func TestAudit_EmittedOnPatchWithFieldSummary(t *testing.T) {
+	t.Parallel()
+	memo := newMemDB()
+	plug := &auditPlugin{name: "rule"}
+	r, _ := mount(t, plug, memo)
+
+	doRequest(t, r, "POST", "/api/v1/rule", db.Document{"uid": "r1", "name": "x"})
+	rec := doRequest(t, r, "PATCH", "/api/v1/rule/r1",
+		db.Document{"enabled": true, "tree_order": 3})
+	require.Equal(t, http.StatusOK, rec.Code)
+
+	rows := auditDocs(memo)
+	require.Len(t, rows, 2) // create + patch
+	patch := rows[1]
+	require.Equal(t, "patch", patch["action"])
+	require.Equal(t, "r1", patch["object_id"])
+	// Summary lists the patched fields, sorted for stable diffs.
+	require.Equal(t, "enabled, tree_order", patch["summary"])
+}
+
+func TestAudit_EmittedOnReplace(t *testing.T) {
+	t.Parallel()
+	memo := newMemDB()
+	plug := &auditPlugin{name: "rule"}
+	r, _ := mount(t, plug, memo)
+
+	doRequest(t, r, "POST", "/api/v1/rule", db.Document{"uid": "r1", "name": "x"})
+	rec := doRequest(t, r, "PUT", "/api/v1/rule/r1", db.Document{"name": "y"})
+	require.Equal(t, http.StatusOK, rec.Code)
+
+	rows := auditDocs(memo)
+	require.Len(t, rows, 2)
+	require.Equal(t, "replace", rows[1]["action"])
+}
+
+func TestAudit_EmittedOnDeleteOne(t *testing.T) {
+	t.Parallel()
+	memo := newMemDB()
+	plug := &auditPlugin{name: "rule"}
+	r, _ := mount(t, plug, memo)
+
+	doRequest(t, r, "POST", "/api/v1/rule", db.Document{"uid": "r1", "name": "x"})
+	rec := doRequest(t, r, "DELETE", "/api/v1/rule/r1", nil)
+	require.Equal(t, http.StatusOK, rec.Code)
+
+	rows := auditDocs(memo)
+	require.Len(t, rows, 2)
+	require.Equal(t, "delete", rows[1]["action"])
+	require.Equal(t, "r1", rows[1]["object_id"])
+}
+
+func TestAudit_EmittedOnBulkDelete(t *testing.T) {
+	t.Parallel()
+	memo := newMemDB()
+	plug := &auditPlugin{name: "rule"}
+	r, _ := mount(t, plug, memo)
+
+	doRequest(t, r, "POST", "/api/v1/rule", []db.Document{
+		{"uid": "r1", "name": "a", "tag": "x"},
+		{"uid": "r2", "name": "b", "tag": "x"},
+		{"uid": "r3", "name": "c", "tag": "y"},
+	})
+	cond := condition.Equals("tag", "x")
+	raw, _ := json.Marshal(cond)
+	q := base64.RawURLEncoding.EncodeToString(raw)
+	rec := doRequest(t, r, "DELETE", "/api/v1/rule?q="+q, nil)
+	require.Equal(t, http.StatusOK, rec.Code)
+
+	// 3 creates (one POST with array) + 2 deletes for r1, r2.
+	rows := auditDocs(memo)
+	require.Len(t, rows, 5)
+	deletes := rows[3:]
+	require.Equal(t, "delete", deletes[0]["action"])
+	require.Equal(t, "bulk delete", deletes[0]["summary"])
+	require.ElementsMatch(t, []any{"r1", "r2"}, []any{deletes[0]["object_id"], deletes[1]["object_id"]})
+}
+
+func TestAudit_SkippedWhenPluginDisabled(t *testing.T) {
+	t.Parallel()
+	memo := newMemDB()
+	// crudPlugin's Metadata has Audit:false — the default for noisy
+	// collections (comment, kv).
+	plug := &crudPlugin{name: "comment"}
+	r, _ := mount(t, plug, memo)
+
+	doRequest(t, r, "POST", "/api/v1/comment", db.Document{"uid": "c1"})
+	doRequest(t, r, "PATCH", "/api/v1/comment/c1", db.Document{"message": "hi"})
+	doRequest(t, r, "DELETE", "/api/v1/comment/c1", nil)
+
+	require.Empty(t, auditDocs(memo))
+}
+
+func TestAudit_DoesNotRecurseOnAuditCollection(t *testing.T) {
+	t.Parallel()
+	memo := newMemDB()
+	// Even if a plugin declares Audit:true for the "audit" collection
+	// itself, emitAudit must short-circuit; otherwise every audit insert
+	// would loop indefinitely.
+	plug := &auditPlugin{name: "audit"}
+	r, _ := mount(t, plug, memo)
+
+	doRequest(t, r, "POST", "/api/v1/audit",
+		db.Document{"uid": "a1", "object_type": "rule"})
+
+	// One document exists in the audit collection — the one we POSTed —
+	// but no extra "audit-of-audit" record was emitted.
+	require.Len(t, auditDocs(memo), 1)
+}
+
+// TestAudit_CapturesUsernameFromContext is a direct exercise of emitAudit
+// rather than going through the HTTP surface, because the http handler
+// here doesn't run the auth middleware. The HTTP path is exercised
+// end-to-end by the E2E tour.
+func TestAudit_CapturesUsernameFromContext(t *testing.T) {
+	t.Parallel()
+	memo := newMemDB()
+	h := newNullHost(memo)
+
+	ctx := auth.WithClaims(context.Background(), snoozetypes.Claims{
+		Subject: "alice",
+		Method:  "local",
+	})
+	emitAudit(ctx, h, Metadata{Audit: true}, "rule", "patch", []string{"r1"}, "enabled")
+
+	rows := auditDocs(memo)
+	require.Len(t, rows, 1)
+	require.Equal(t, "alice", rows[0]["username"])
+	require.Equal(t, "local", rows[0]["method"])
+	require.Equal(t, "enabled", rows[0]["summary"])
+}
+
+func TestMetadata_AuditDefaultsToTrueWhenAbsent(t *testing.T) {
+	t.Parallel()
+	// Most plugins don't declare `audit:` — the default semantic is "audit
+	// unless explicitly disabled" (matches the Python convention). Without
+	// the custom UnmarshalYAML the Go zero-value would silently flip it.
+	m, err := ParseMetadata([]byte("name: Foo\n"))
+	require.NoError(t, err)
+	require.True(t, m.Audit)
+}
+
+func TestMetadata_AuditRespectsExplicitFalse(t *testing.T) {
+	t.Parallel()
+	m, err := ParseMetadata([]byte("name: Foo\naudit: false\n"))
+	require.NoError(t, err)
+	require.False(t, m.Audit)
 }

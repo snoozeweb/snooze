@@ -57,13 +57,11 @@ type Plugin struct {
 	host plugins.Host
 }
 
-// Name returns the registry key.
-func (p *Plugin) Name() string {
-	if p.meta.Name != "" {
-		return p.meta.Name
-	}
-	return "script"
-}
+// Name returns the registry key. We hardcode "script" (matching mail /
+// webhook / patlite) so the key stays machine-readable even though our
+// metadata.yaml's `name:` field is a human display label ("Run a script").
+// The frontend uses this registry key to look up the typed action_form.
+func (p *Plugin) Name() string { return "script" }
 
 // Metadata returns the parsed metadata.yaml descriptor.
 func (p *Plugin) Metadata() plugins.Metadata { return p.meta }

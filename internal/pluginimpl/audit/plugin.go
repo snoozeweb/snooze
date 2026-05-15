@@ -45,12 +45,17 @@ func (p *Plugin) PostInit(_ context.Context, host plugins.Host) error {
 func (p *Plugin) Reload(_ context.Context) error { return nil }
 
 // Schema returns the JSON Schema for an audit document.
+//
+// Field naming: `object_id` (not `object_uid`) — chosen because the cleanup
+// queries in internal/db/{sqlite,postgres,mongo}/cleanup.go index on
+// `object_id`. Keeping the schema field name aligned with the cleanup path
+// is load-bearing for housekeeper's audit-log retention to work.
 func (p *Plugin) Schema() any {
 	return map[string]any{
 		"type": "object",
 		"properties": map[string]any{
 			"object_type": map[string]any{"type": "string"},
-			"object_uid":  map[string]any{"type": "string"},
+			"object_id":   map[string]any{"type": "string"},
 			"action":      map[string]any{"type": "string"},
 			"username":    map[string]any{"type": "string"},
 			"method":      map[string]any{"type": "string"},
