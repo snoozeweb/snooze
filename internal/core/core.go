@@ -38,6 +38,7 @@ type Core struct {
 	Cfg       *config.Config
 	Driver    db.Driver
 	Tokens    *auth.TokenEngine
+	Refresh   *auth.RefreshTokenStore
 	MsgBus    mq.Bus
 	Reg       *telemetry.Registry
 	Trc       trace.Tracer

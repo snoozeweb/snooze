@@ -31,17 +31,22 @@ type AlertProcessor interface {
 // permitted for tests (the corresponding middleware/routes degrade
 // gracefully).
 type Router struct {
-	Auth      *auth.TokenEngine
-	Plugins   map[string]plugins.Plugin
-	Host      plugins.Host
-	DB        db.Driver
-	Logger    *slog.Logger
-	AuditLog  *slog.Logger
-	Metrics          *telemetry.Registry
-	MetricsGatherer  prometheus.Gatherer
-	Tracer           trace.Tracer
-	Config    *config.Config
-	Providers *auth.Registry
+	Auth *auth.TokenEngine
+	// Refresh is the refresh-token store used by the /api/v1/login/refresh
+	// and /api/v1/login/logout endpoints. Concrete type at runtime is
+	// *auth.RefreshTokenStore; the interface narrows the dependency for
+	// route tests. Nil disables both endpoints (logout still returns 204).
+	Refresh         refreshIssuer
+	Plugins         map[string]plugins.Plugin
+	Host            plugins.Host
+	DB              db.Driver
+	Logger          *slog.Logger
+	AuditLog        *slog.Logger
+	Metrics         *telemetry.Registry
+	MetricsGatherer prometheus.Gatherer
+	Tracer          trace.Tracer
+	Config          *config.Config
+	Providers       *auth.Registry
 	// Processor is the alert ingestion callback. Nil disables /alerts.
 	Processor AlertProcessor
 	// CORSConfig overrides the default CORS rules; zero value uses defaults.

@@ -22,6 +22,19 @@
 
 ### Backend
 
+* Refresh-token flow for the authenticated-user session.
+  `POST /api/v1/login/{local,ldap,anonymous}` now returns
+  `refresh_token` + `refresh_expires_at` alongside the access JWT.
+  `POST /api/v1/login/refresh` exchanges a refresh token for a new
+  (access, refresh) pair — the supplied token is rotated server-side
+  (single-use). `POST /api/v1/login/logout` revokes a refresh token
+  (idempotent, always 204). Refresh tokens are opaque 32-byte random
+  values stored as SHA-256 hashes in the `refresh_token` collection;
+  raw tokens never sit at rest. Lease is configurable via
+  `auth.refresh_token_lease` (default 7 days). Roles + permissions are
+  re-resolved on every refresh so an admin's permission change takes
+  effect within the access-token lease. Web client transparently
+  retries 401 responses once via `/refresh` before surfacing the error.
 * `GET /api/v1/metadata` (and `/{plugin}`) now stamps a `plugin_name`
   field on every entry, carrying the registry key (`Plugin.Name()`).
   Most action plugins (mail / webhook / script) use the YAML `name:`

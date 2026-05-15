@@ -13,22 +13,43 @@ function makeStubToken(sub: string): string {
   return `${header}.${body}.sig`;
 }
 
+function stubLoginEnvelope(sub: string, method: string) {
+  const now = Math.floor(Date.now() / 1000);
+  return {
+    token: makeStubToken(sub),
+    expires_at: new Date((now + 3600) * 1000).toISOString(),
+    refresh_token: `refresh-${sub}-${now}`,
+    refresh_expires_at: new Date((now + 7 * 24 * 3600) * 1000).toISOString(),
+    method,
+  };
+}
+
 export const handlers = [
   http.get("/api/v1/healthz", () => HttpResponse.json({ status: "ok" })),
 
   http.post("/api/v1/login/local", async ({ request }) => {
     const body = (await request.json()) as { username?: string; password?: string };
-    return HttpResponse.json({ token: makeStubToken(body.username ?? "user") });
+    return HttpResponse.json(stubLoginEnvelope(body.username ?? "user", "local"));
   }),
 
   http.post("/api/v1/login/ldap", async ({ request }) => {
     const body = (await request.json()) as { username?: string; password?: string };
-    return HttpResponse.json({ token: makeStubToken(body.username ?? "ldap-user") });
+    return HttpResponse.json(stubLoginEnvelope(body.username ?? "ldap-user", "ldap"));
   }),
 
   http.post("/api/v1/login/anonymous", () =>
-    HttpResponse.json({ token: makeStubToken("anonymous") }),
+    HttpResponse.json(stubLoginEnvelope("anonymous", "anonymous")),
   ),
+
+  http.post("/api/v1/login/refresh", async ({ request }) => {
+    const body = (await request.json()) as { refresh_token?: string };
+    if (!body.refresh_token) {
+      return new HttpResponse(null, { status: 401 });
+    }
+    return HttpResponse.json(stubLoginEnvelope("alice", "local"));
+  }),
+
+  http.post("/api/v1/login/logout", () => new HttpResponse(null, { status: 204 })),
 
   // Catch-all list endpoint for resource-factory smoke tests.
   http.get("/api/v1/:plugin", ({ params }) => {

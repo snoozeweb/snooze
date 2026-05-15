@@ -43,6 +43,7 @@ func TestAuth_Defaults(t *testing.T) {
 	a := DefaultAuth()
 	require.Equal(t, "HS256", a.TokenAlgorithm)
 	require.Equal(t, time.Hour, a.TokenLease.AsDuration())
+	require.Equal(t, 7*24*time.Hour, a.RefreshTokenLease.AsDuration())
 }
 
 func TestSyncer_Defaults(t *testing.T) {

@@ -1,4 +1,4 @@
-import { readToken } from "@/lib/auth/storage";
+import { readRefreshToken, readToken, writeRefreshToken, writeToken } from "@/lib/auth/storage";
 
 export class ApiError extends Error {
   constructor(
@@ -24,6 +24,11 @@ export type ApiOptions = {
    * 401 means "wrong credentials", not "session expired".
    */
   skipAuthHandling?: boolean;
+  /**
+   * When true, the 401 retry-via-refresh path is bypassed. The /refresh
+   * and /logout endpoints set this so they never recurse into themselves.
+   */
+  skipRefreshHandling?: boolean;
 };
 
 export type Method = "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
@@ -74,26 +79,77 @@ export function setUnauthorizedHandler(handler: (() => void) | null): void {
   unauthorizedHandler = handler;
 }
 
+// In-flight refresh promise. Multiple concurrent 401s share one /refresh
+// call so we never queue up parallel rotations of the same token (which
+// would race and revoke each other).
+let refreshInFlight: Promise<string | null> | null = null;
+
+type RefreshEnvelope = {
+  token: string;
+  refresh_token?: string;
+};
+
+async function rotateTokens(): Promise<string | null> {
+  const stored = readRefreshToken();
+  if (!stored) return null;
+  if (refreshInFlight) return refreshInFlight;
+  refreshInFlight = (async () => {
+    try {
+      const res = await fetch("/api/v1/login/refresh", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ refresh_token: stored }),
+      });
+      if (!res.ok) return null;
+      const env = (await res.json()) as RefreshEnvelope;
+      if (!env.token) return null;
+      writeToken(env.token);
+      writeRefreshToken(env.refresh_token ?? null);
+      return env.token;
+    } catch {
+      return null;
+    } finally {
+      refreshInFlight = null;
+    }
+  })();
+  return refreshInFlight;
+}
+
+async function doFetch(
+  method: Method,
+  url: string,
+  body: unknown,
+  signal: AbortSignal | undefined,
+  token: string | null,
+): Promise<Response> {
+  const headers: Record<string, string> = { "Content-Type": "application/json" };
+  if (token) headers["Authorization"] = `Bearer ${token}`;
+  const init: RequestInit = { method, headers };
+  if (body !== undefined) init.body = JSON.stringify(body);
+  if (signal) init.signal = signal;
+  return fetch(url, init);
+}
+
 export async function api<T = unknown>(
   method: Method,
   path: string,
   opts: ApiOptions = {},
 ): Promise<T> {
   const url = buildUrl(path, opts.query);
-  const token = readToken();
-  const headers: Record<string, string> = {
-    "Content-Type": "application/json",
-  };
-  if (token) headers["Authorization"] = `Bearer ${token}`;
+  let token = readToken();
+  let res = await doFetch(method, url, opts.body, opts.signal, token);
 
-  const init: RequestInit = {
-    method,
-    headers,
-  };
-  if (opts.body !== undefined) init.body = JSON.stringify(opts.body);
-  if (opts.signal) init.signal = opts.signal;
-
-  const res = await fetch(url, init);
+  // Transparent refresh: if the access token was rejected but we still
+  // have a refresh token, attempt to rotate once and retry the original
+  // request. The refresh endpoint itself sets skipRefreshHandling so it
+  // never recurses into this branch.
+  if (res.status === 401 && !opts.skipRefreshHandling && readRefreshToken()) {
+    const fresh = await rotateTokens();
+    if (fresh) {
+      token = fresh;
+      res = await doFetch(method, url, opts.body, opts.signal, token);
+    }
+  }
 
   if (res.status === 401) {
     const parsed = await parseError(res);

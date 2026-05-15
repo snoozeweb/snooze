@@ -258,6 +258,59 @@ paths:
             application/json:
               schema: {$ref: '#/components/schemas/ErrEnvelope'}
 
+  /api/v1/login/refresh:
+    post:
+      tags: [auth]
+      summary: Exchange a refresh token for a new access+refresh pair
+      description: |
+        Validates the supplied refresh token, revokes it, and issues a
+        fresh access token alongside a rotated refresh token. The caller
+        must replace its stored pair with the new one — the previous
+        refresh token is no longer valid. An invalid, expired, revoked
+        or unknown token returns 401 with a generic message.
+
+        Roles and permissions are re-resolved on every refresh so an
+        admin's revocation of a permission takes effect within the
+        access-token lease (default 1 hour).
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/RefreshRequest'}
+      responses:
+        '200':
+          description: New access + refresh pair.
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/LoginResponse'}
+        '401':
+          description: Invalid, expired, revoked or unknown refresh token.
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/ErrEnvelope'}
+
+  /api/v1/login/logout:
+    post:
+      tags: [auth]
+      summary: Revoke a refresh token
+      description: |
+        Best-effort revocation of the supplied refresh token. Unknown or
+        already-revoked tokens are treated as no-ops — the endpoint
+        always returns 204 so a client cleaning up state never sees a
+        500. The access token (Bearer JWT) is not revoked: it continues
+        to be valid until its own expiry. Clients should drop both
+        tokens client-side after calling this endpoint.
+      security: []
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/RefreshRequest'}
+      responses:
+        '204':
+          description: Logout acknowledged (idempotent).
+
   /api/v1/alerts:
     post:
       tags: [alerts]
@@ -698,13 +751,35 @@ components:
       properties:
         token:
           type: string
-          description: "HS256 JWT. Send as `Authorization: Bearer <token>`."
+          description: "HS256 JWT access token. Send as `Authorization: Bearer <token>`."
         expires_at:
           type: string
           format: date-time
+          description: "Absolute expiry of the access token."
+        refresh_token:
+          type: string
+          description: |
+            Opaque refresh token. Present on initial login and on every
+            `/api/v1/login/refresh` response. Store securely on the client;
+            POST it to `/api/v1/login/refresh` to mint a new access token
+            and POST it to `/api/v1/login/logout` to revoke the session.
+            Each refresh rotates the token — the previous value is revoked
+            server-side and a new one is returned.
+        refresh_expires_at:
+          type: string
+          format: date-time
+          description: "Absolute expiry of the refresh token."
         method:
           type: string
           enum: [local, ldap, anonymous]
+
+    RefreshRequest:
+      type: object
+      required: [refresh_token]
+      properties:
+        refresh_token:
+          type: string
+          description: "The refresh token returned by a prior login or refresh."
 
     Record:
       type: object

@@ -2,6 +2,7 @@ import { decodeJwt, type JwtClaims } from "./jwt";
 
 export const TOKEN_KEY = "snooze-token";
 export const CLAIMS_KEY = "snooze-claims";
+export const REFRESH_KEY = "snooze-refresh-token";
 
 export function readToken(): string | null {
   try {
@@ -29,6 +30,7 @@ export function clearToken(): void {
   try {
     localStorage.removeItem(TOKEN_KEY);
     localStorage.removeItem(CLAIMS_KEY);
+    localStorage.removeItem(REFRESH_KEY);
   } catch {
     // Best-effort.
   }
@@ -41,5 +43,25 @@ export function readClaims(): JwtClaims | null {
     return JSON.parse(raw) as JwtClaims;
   } catch {
     return null;
+  }
+}
+
+export function readRefreshToken(): string | null {
+  try {
+    return localStorage.getItem(REFRESH_KEY);
+  } catch {
+    return null;
+  }
+}
+
+export function writeRefreshToken(token: string | null): void {
+  try {
+    if (token) {
+      localStorage.setItem(REFRESH_KEY, token);
+    } else {
+      localStorage.removeItem(REFRESH_KEY);
+    }
+  } catch {
+    // Best-effort.
   }
 }

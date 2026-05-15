@@ -20,11 +20,28 @@ type loginRequest struct {
 	Password string `json:"password"`
 }
 
-// loginResponse is the wire shape returned on a successful login.
+// refreshRequest is the JSON body accepted by /login/refresh and /login/logout.
+type refreshRequest struct {
+	RefreshToken string `json:"refresh_token"`
+}
+
+// loginResponse is the wire shape returned on a successful login or refresh.
 type loginResponse struct {
-	Token     string    `json:"token"`
-	ExpiresAt time.Time `json:"expires_at"`
-	Method    string    `json:"method"`
+	Token            string    `json:"token"`
+	ExpiresAt        time.Time `json:"expires_at"`
+	RefreshToken     string    `json:"refresh_token,omitempty"`
+	RefreshExpiresAt time.Time `json:"refresh_expires_at,omitempty"`
+	Method           string    `json:"method"`
+}
+
+// refreshIssuer is the narrow surface the login routes need from the refresh
+// token store. The concrete type is *auth.RefreshTokenStore; isolating the
+// dependency behind an interface lets the route tests inject a stub without
+// pulling in a full DB driver.
+type refreshIssuer interface {
+	Issue(ctx context.Context, c snoozetypes.Claims) (string, time.Time, error)
+	VerifyAndRotate(ctx context.Context, raw string) (snoozetypes.Claims, string, time.Time, error)
+	Revoke(ctx context.Context, raw string) error
 }
 
 // mountLogin wires the public /api/v1/login/* endpoints.
@@ -34,6 +51,8 @@ type loginResponse struct {
 //	POST /api/v1/login/local
 //	POST /api/v1/login/ldap
 //	POST /api/v1/login/anonymous   (only when configured)
+//	POST /api/v1/login/refresh     (exchange a refresh token for a new pair)
+//	POST /api/v1/login/logout      (revoke a refresh token)
 //	GET  /api/v1/login              (lists enabled backends)
 func (rt *Router) mountLogin(r chi.Router) {
 	r.Route("/api/v1/login", func(sub chi.Router) {
@@ -41,6 +60,8 @@ func (rt *Router) mountLogin(r chi.Router) {
 		sub.Post("/local", rt.handleLogin("local"))
 		sub.Post("/ldap", rt.handleLogin("ldap"))
 		sub.Post("/anonymous", rt.handleLoginAnonymous)
+		sub.Post("/refresh", rt.handleRefresh)
+		sub.Post("/logout", rt.handleLogout)
 	})
 }
 
@@ -107,13 +128,13 @@ func (rt *Router) handleLogin(method string) http.HandlerFunc {
 			WriteError(w, r, ErrUnauthorized.WithMessage("invalid credentials"))
 			return
 		}
-		token, exp, err := rt.signFor(id)
+		resp, err := rt.signSession(r.Context(), id)
 		if err != nil {
 			WriteError(w, r, ErrInternal.WithCause(err))
 			return
 		}
 		rt.updateLastLogin(r.Context(), id)
-		WriteJSON(w, http.StatusOK, loginResponse{Token: token, ExpiresAt: exp, Method: id.Method})
+		WriteJSON(w, http.StatusOK, resp)
 	}
 }
 
@@ -166,31 +187,130 @@ func (rt *Router) handleLoginAnonymous(w http.ResponseWriter, r *http.Request) {
 		WriteError(w, r, ErrUnauthorized.WithMessage("anonymous login refused").WithCause(err))
 		return
 	}
-	token, exp, err := rt.signFor(id)
+	resp, err := rt.signSession(r.Context(), id)
 	if err != nil {
 		WriteError(w, r, ErrInternal.WithCause(err))
 		return
 	}
-	WriteJSON(w, http.StatusOK, loginResponse{Token: token, ExpiresAt: exp, Method: id.Method})
+	WriteJSON(w, http.StatusOK, resp)
 }
 
-// signFor expands id into the canonical Claims (subject + method + groups +
-// roles + permissions resolved if a resolver is attached) and signs them.
-func (rt *Router) signFor(id auth.Identity) (string, time.Time, error) {
+// handleRefresh exchanges a refresh token for a new access+refresh pair.
+// Rotation is enforced server-side: the supplied token is revoked atomically
+// before the new pair is minted. An invalid, revoked, expired or unknown
+// token returns 401 with a generic message — callers cannot tell the
+// failure modes apart, mirroring how /login responds to bad credentials.
+func (rt *Router) handleRefresh(w http.ResponseWriter, r *http.Request) {
+	if rt.Auth == nil || rt.Refresh == nil {
+		WriteError(w, r, ErrUnavailable.WithMessage("auth not configured"))
+		return
+	}
+	var body refreshRequest
+	if err := ParseJSONBody(r, &body); err != nil {
+		WriteError(w, r, err)
+		return
+	}
+	if body.RefreshToken == "" {
+		WriteError(w, r, ErrUnauthorized.WithMessage("invalid refresh token"))
+		return
+	}
+	claims, newRefresh, refreshExp, err := rt.Refresh.VerifyAndRotate(r.Context(), body.RefreshToken)
+	if err != nil {
+		WriteError(w, r, ErrUnauthorized.WithMessage("invalid refresh token").WithCause(err))
+		return
+	}
+	// Re-resolve roles+permissions so a recent admin change takes effect on
+	// the next access-token rotation (max staleness: the access-token lease).
+	rt.resolveRoles(r.Context(), &claims)
+	token, exp, err := rt.Auth.Sign(claims)
+	if err != nil {
+		WriteError(w, r, ErrInternal.WithCause(err))
+		return
+	}
+	WriteJSON(w, http.StatusOK, loginResponse{
+		Token:            token,
+		ExpiresAt:        exp,
+		RefreshToken:     newRefresh,
+		RefreshExpiresAt: refreshExp,
+		Method:           claims.Method,
+	})
+}
+
+// handleLogout revokes the supplied refresh token. The endpoint is always a
+// 204 — unknown / already-revoked tokens are not surfaced as errors so a
+// client cleaning up state never sees a 500 from a stale token.
+func (rt *Router) handleLogout(w http.ResponseWriter, r *http.Request) {
+	if rt.Refresh == nil {
+		w.WriteHeader(http.StatusNoContent)
+		return
+	}
+	var body refreshRequest
+	if err := ParseJSONBody(r, &body); err != nil {
+		// Malformed JSON still resolves to "no-op logout".
+		w.WriteHeader(http.StatusNoContent)
+		return
+	}
+	if body.RefreshToken != "" {
+		_ = rt.Refresh.Revoke(r.Context(), body.RefreshToken)
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// signSession mints the (access token, refresh token) pair returned to the
+// client on a successful login. The refresh token is omitted when no store
+// is wired (tests, single-binary deployments without DB-backed sessions).
+func (rt *Router) signSession(ctx context.Context, id auth.Identity) (loginResponse, error) {
 	claims := snoozetypes.Claims{
 		Subject: id.Username,
 		Method:  id.Method,
 		Groups:  id.Groups,
 	}
-	if rt.DB != nil {
-		// Best-effort RBAC resolution. Failures fall through with empty
-		// roles/permissions; a malformed role collection should not break
-		// login outright.
-		resolver := auth.NewRoleResolver(rt.DB)
-		if roles, perms, err := resolver.Resolve(context.Background(), id); err == nil {
-			claims.Roles = roles
-			claims.Permissions = perms
-		}
+	rt.resolveRoles(ctx, &claims)
+	token, exp, err := rt.Auth.Sign(claims)
+	if err != nil {
+		return loginResponse{}, err
 	}
-	return rt.Auth.Sign(claims)
+	resp := loginResponse{Token: token, ExpiresAt: exp, Method: id.Method}
+	if rt.Refresh != nil {
+		refresh, refreshExp, err := rt.Refresh.Issue(ctx, claims)
+		if err != nil {
+			return loginResponse{}, err
+		}
+		resp.RefreshToken = refresh
+		resp.RefreshExpiresAt = refreshExp
+	}
+	return resp, nil
+}
+
+// resolveRoles populates claims.Roles and claims.Permissions from the user
+// record. Failures fall through silently — a malformed role collection
+// should not break login outright.
+func (rt *Router) resolveRoles(ctx context.Context, claims *snoozetypes.Claims) {
+	if rt.DB == nil {
+		return
+	}
+	resolver := auth.NewRoleResolver(rt.DB)
+	roles, perms, err := resolver.Resolve(ctx, auth.Identity{
+		Username: claims.Subject,
+		Method:   claims.Method,
+		Groups:   claims.Groups,
+	})
+	if err != nil {
+		return
+	}
+	claims.Roles = roles
+	claims.Permissions = perms
+}
+
+// signFor expands id into the canonical Claims (subject + method + groups +
+// roles + permissions resolved if a resolver is attached) and signs them.
+//
+// Deprecated: kept as a thin wrapper around signSession for callers that
+// only need the access-token half of the pair.
+func (rt *Router) signFor(id auth.Identity) (string, time.Time, error) {
+	resp, err := rt.signSession(context.Background(), id)
+	if err != nil {
+		return "", time.Time{}, err
+	}
+	return resp.Token, resp.ExpiresAt, nil
 }

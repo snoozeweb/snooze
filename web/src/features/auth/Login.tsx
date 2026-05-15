@@ -27,15 +27,15 @@ export function Login() {
     setError(null);
     setSubmitting(true);
     try {
-      let token: string;
+      let result: { token: string; refreshToken: string | null };
       if (tab === "anonymous") {
-        token = await loginAnonymous();
+        result = await loginAnonymous();
       } else if (tab === "ldap") {
-        token = await loginLdap({ username, password });
+        result = await loginLdap({ username, password });
       } else {
-        token = await loginLocal({ username, password });
+        result = await loginLocal({ username, password });
       }
-      authStore.getState().login(token);
+      authStore.getState().login(result.token, result.refreshToken);
       await navigate({ to: returnTo });
     } catch (e) {
       if (e instanceof ApiError) {

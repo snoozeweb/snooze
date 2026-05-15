@@ -279,6 +279,7 @@ func runDaemonCtx(ctx context.Context, f *daemonFlags, stderr io.Writer) error {
 	adapter := &coreAdapter{Core: c}
 	rt := &api.Router{
 		Auth:            c.Tokens,
+		Refresh:         c.Refresh,
 		Plugins:         c.Plugins(),
 		Host:            c,
 		DB:              drv,

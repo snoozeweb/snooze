@@ -61,7 +61,9 @@ func (c *Core) bootstrap(ctx context.Context) error {
 	return nil
 }
 
-// bootSecrets runs EnsureSecrets and constructs the TokenEngine.
+// bootSecrets runs EnsureSecrets and constructs the TokenEngine plus the
+// refresh-token store. The latter persists hashed refresh tokens in the
+// "refresh_token" collection; the lease is sourced from cfg.Auth.
 func (c *Core) bootSecrets(ctx context.Context) error {
 	jwtKey, _, err := EnsureSecrets(ctx, c.Driver)
 	if err != nil {
@@ -72,6 +74,7 @@ func (c *Core) bootSecrets(ctx context.Context) error {
 		return fmt.Errorf("boot: token engine: %w", err)
 	}
 	c.Tokens = engine
+	c.Refresh = auth.NewRefreshTokenStore(c.Driver, time.Duration(c.Cfg.Auth.RefreshTokenLease))
 	return nil
 }
 

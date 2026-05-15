@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ApiError, api, setUnauthorizedHandler } from "./client";
-import { writeToken } from "@/lib/auth/storage";
+import { readRefreshToken, readToken, writeRefreshToken, writeToken } from "@/lib/auth/storage";
 
 type FetchHandler = (input: RequestInfo | URL, init?: RequestInit) => Response | Promise<Response>;
 
@@ -204,5 +204,104 @@ describe("api client 401 envelope", () => {
     }
     expect(handler).not.toHaveBeenCalled();
     setUnauthorizedHandler(null);
+  });
+});
+
+describe("api client refresh-on-401", () => {
+  beforeEach(() => {
+    localStorage.clear();
+  });
+  afterEach(() => {
+    localStorage.clear();
+    vi.restoreAllMocks();
+  });
+
+  function makeFreshToken(sub: string): string {
+    const header = btoa(JSON.stringify({ alg: "HS256", typ: "JWT" }));
+    const body = btoa(
+      JSON.stringify({ sub, exp: Math.floor(Date.now() / 1000) + 3600 }),
+    );
+    return `${header}.${body}.sig`;
+  }
+
+  it("rotates tokens and retries the original request on 401", async () => {
+    writeToken(makeFreshToken("alice"));
+    writeRefreshToken("seed-refresh");
+
+    const rotated = makeFreshToken("alice-rotated");
+    const calls: { url: string; auth: string | undefined }[] = [];
+    let original401 = false;
+    mockFetch((url, init) => {
+      const u = urlToString(url);
+      const auth = (init?.headers as Record<string, string> | undefined)?.["Authorization"];
+      calls.push({ url: u, auth });
+      if (u.endsWith("/api/v1/login/refresh")) {
+        return new Response(
+          JSON.stringify({ token: rotated, refresh_token: "rotated-refresh" }),
+          { status: 200, headers: { "Content-Type": "application/json" } },
+        );
+      }
+      // Original request: 401 on the first hit, 200 once retried.
+      if (!original401) {
+        original401 = true;
+        return new Response("", { status: 401 });
+      }
+      return new Response(JSON.stringify({ ok: true }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      });
+    });
+
+    const result = await api<{ ok: boolean }>("GET", "/rule");
+    expect(result.ok).toBe(true);
+    expect(calls.map((c) => c.url)).toEqual([
+      "/api/v1/rule",
+      "/api/v1/login/refresh",
+      "/api/v1/rule",
+    ]);
+    expect(readToken()).toBe(rotated);
+    expect(readRefreshToken()).toBe("rotated-refresh");
+  });
+
+  it("does not retry when no refresh token is stored", async () => {
+    writeToken(makeFreshToken("bob"));
+    let calls = 0;
+    mockFetch(() => {
+      calls++;
+      return new Response("", { status: 401 });
+    });
+    await expect(api("GET", "/rule")).rejects.toBeInstanceOf(ApiError);
+    expect(calls).toBe(1);
+  });
+
+  it("propagates the 401 when /refresh itself fails", async () => {
+    writeToken(makeFreshToken("carol"));
+    writeRefreshToken("stale-refresh");
+    const seen: string[] = [];
+    mockFetch((url) => {
+      const u = urlToString(url);
+      seen.push(u);
+      if (u.endsWith("/api/v1/login/refresh")) {
+        return new Response("", { status: 401 });
+      }
+      return new Response("", { status: 401 });
+    });
+    await expect(api("GET", "/rule")).rejects.toBeInstanceOf(ApiError);
+    // Original GET, /refresh, no retry because refresh failed.
+    expect(seen).toEqual(["/api/v1/rule", "/api/v1/login/refresh"]);
+  });
+
+  it("skipRefreshHandling bypasses the retry loop", async () => {
+    writeToken(makeFreshToken("dave"));
+    writeRefreshToken("seed-refresh");
+    let calls = 0;
+    mockFetch(() => {
+      calls++;
+      return new Response("", { status: 401 });
+    });
+    await expect(
+      api("POST", "/login/refresh", { body: {}, skipRefreshHandling: true }),
+    ).rejects.toBeInstanceOf(ApiError);
+    expect(calls).toBe(1);
   });
 });

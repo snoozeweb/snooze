@@ -37,14 +37,14 @@ var sectionFiles = map[string]string{
 // Load reads every known section YAML file under basedir, layers environment
 // variable overrides on top, then validates and returns the resulting Config.
 //
-// File discovery is conservative: only the names listed in ``sectionFiles``
+// File discovery is conservative: only the names listed in “sectionFiles“
 // are considered, and missing files fall back to defaults. Missing files are
 // not an error — running snooze-server with an empty basedir should produce a
 // fully-defaulted Config.
 //
-// Environment variables follow the pattern ``SNOOZE_SERVER_<SECTION>_<KEY>``,
-// where ``<KEY>`` may contain underscores from the field name itself (for
-// example ``SNOOZE_SERVER_CORE_AUDIT_EXCLUDED_PATHS``). The loader knows about
+// Environment variables follow the pattern “SNOOZE_SERVER_<SECTION>_<KEY>“,
+// where “<KEY>“ may contain underscores from the field name itself (for
+// example “SNOOZE_SERVER_CORE_AUDIT_EXCLUDED_PATHS“). The loader knows about
 // the legal key paths because it walks the struct tags.
 func Load(basedir string) (*Config, error) {
 	k := koanf.New(".")
@@ -311,10 +311,11 @@ func defaultsYAML() ([]byte, error) {
 			"path":    d.Web.Path,
 		},
 		"auth": map[string]any{
-			"token_algorithm": d.Auth.TokenAlgorithm,
-			"token_lease":     d.Auth.TokenLease.String(),
-			"token_issuer":    d.Auth.TokenIssuer,
-			"token_audience":  d.Auth.TokenAudience,
+			"token_algorithm":     d.Auth.TokenAlgorithm,
+			"token_lease":         d.Auth.TokenLease.String(),
+			"refresh_token_lease": d.Auth.RefreshTokenLease.String(),
+			"token_issuer":        d.Auth.TokenIssuer,
+			"token_audience":      d.Auth.TokenAudience,
 		},
 		"syncer": map[string]any{
 			"hostname":         d.Syncer.Hostname,
