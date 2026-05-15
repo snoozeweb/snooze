@@ -109,3 +109,13 @@ type CreateHook interface {
 	AfterCreate(ctx context.Context, docs []map[string]any) error
 }
 
+// PrimaryKeyer plugins advertise a natural primary-key field set that the
+// generic CRUD createHandler uses to enforce duplicate-policy at the DB
+// layer. Returning an empty slice means "no extra primary beyond uid".
+//
+// Mirrors metadata.yaml's route_defaults.primary in the Python codebase.
+type PrimaryKeyer interface {
+	Plugin
+	PrimaryKey() []string
+}
+

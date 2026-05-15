@@ -183,9 +183,26 @@ func createHandler(host Host, p Plugin, collection string) http.HandlerFunc {
 				}
 			}
 		}
-		res, err := host.DB().Write(r.Context(), collection, docs, db.WriteOptions{UpdateTime: true})
+		writeOpts := db.WriteOptions{UpdateTime: true}
+		if pk, ok := p.(PrimaryKeyer); ok {
+			primary := pk.PrimaryKey()
+			if len(primary) > 0 {
+				writeOpts.Primary = primary
+				// Rejecting duplicates is the right default for a create
+				// endpoint: a user POSTing a name that's already taken
+				// should see an error, not a silent merge.
+				writeOpts.DuplicatePolicy = "reject"
+			}
+		}
+		res, err := host.DB().Write(r.Context(), collection, docs, writeOpts)
 		if err != nil {
 			writeError(w, http.StatusInternalServerError, "db_error", err.Error())
+			return
+		}
+		// Driver-level duplicate rejection lands as a Rejected entry rather
+		// than err. Surface the first rejection as a 409 so callers see it.
+		if len(res.Rejected) > 0 {
+			writeError(w, http.StatusConflict, "duplicate", res.Rejected[0].Reason)
 			return
 		}
 		if hook, ok := p.(CreateHook); ok {
