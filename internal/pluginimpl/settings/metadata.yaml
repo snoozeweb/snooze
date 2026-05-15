@@ -8,3 +8,177 @@ routes:
     '/settings/{section}':
         desc: ''
         class_name: SettingsRoute
+
+# setting_form is the typed catalogue of runtime settings the server actually
+# reads. The runtime ``settings`` collection accepts arbitrary key/value pairs,
+# but only the keys listed here have a documented type and default; the
+# frontend uses this catalogue to render a typed input per setting instead of
+# a raw JSON textarea.
+#
+# The `group:` field on each entry lets the React frontend render the picker
+# grouped by section (general vs notification). Description text is the
+# canonical copy from docs/configuration/{general,notifications}.rst.
+setting_form:
+    default_auth_backend:
+        display_name: 'Default authentication backend'
+        component: 'Selector'
+        description: 'Backend that will be first in the list of displayed authentication backends.'
+        default_value: 'local'
+        options:
+            - { text: 'Local', value: 'local' }
+            - { text: 'LDAP', value: 'ldap' }
+            - { text: 'Anonymous', value: 'anonymous' }
+        group: 'general'
+    local_users_enabled:
+        display_name: 'Local users enabled'
+        component: 'Switch'
+        description: 'Enable the creation of local users in snooze. Can be disabled when another reliable authentication backend is used and the admin wants to make auditing easier.'
+        default_value: true
+        group: 'general'
+    metrics_enabled:
+        display_name: 'Metrics enabled'
+        component: 'Switch'
+        description: 'Enable Prometheus metrics.'
+        default_value: true
+        group: 'general'
+    anonymous_enabled:
+        display_name: 'Anonymous enabled'
+        component: 'Switch'
+        description: 'Enable anonymous user login. When a user logs in as anonymous, they will be given user permissions.'
+        default_value: false
+        group: 'general'
+    ok_severities:
+        display_name: 'OK severities'
+        component: 'Arguments'
+        description: 'List of severities that will automatically close the aggregate upon entering the system. Mainly for icinga/grafana that close the alert when the status becomes green again.'
+        default_value: ['ok', 'success']
+        placeholder: 'severity name'
+        group: 'general'
+    notification_freq:
+        display_name: 'Notification frequency'
+        component: 'String'
+        description: 'Duration to wait before sending the next notification (Go duration string, e.g. "60s", "5m", "1h").'
+        default_value: '60s'
+        group: 'notification'
+    notification_retry:
+        display_name: 'Notification retry'
+        component: 'Number'
+        description: 'Number of times to retry sending a failed notification.'
+        default_value: 3
+        group: 'notification'
+    # --- LDAP ----------------------------------------------------------------
+    ldap.enabled:
+        display_name: 'LDAP enabled'
+        component: 'Switch'
+        description: 'Enable LDAP authentication.'
+        default_value: false
+        group: 'ldap'
+    ldap.host:
+        display_name: 'LDAP host'
+        component: 'String'
+        description: 'LDAP server URL (e.g. ldaps://ldap.example.com).'
+        default_value: ''
+        group: 'ldap'
+    ldap.port:
+        display_name: 'LDAP port'
+        component: 'Number'
+        description: 'LDAP port (389 for ldap, 636 for ldaps).'
+        default_value: 636
+        group: 'ldap'
+    ldap.bind_dn:
+        display_name: 'LDAP bind DN'
+        component: 'String'
+        description: 'Distinguished name used to bind to the directory.'
+        default_value: ''
+        group: 'ldap'
+    ldap.bind_password:
+        display_name: 'LDAP bind password'
+        component: 'Password'
+        description: 'Bind credentials.'
+        default_value: ''
+        group: 'ldap'
+    ldap.base_dn:
+        display_name: 'LDAP base DN'
+        component: 'String'
+        description: 'Search base for users; separate multiple DNs with semicolons.'
+        default_value: ''
+        group: 'ldap'
+    ldap.user_filter:
+        display_name: 'LDAP user filter'
+        component: 'String'
+        description: 'LDAP search filter for users (e.g. (objectClass=posixAccount)).'
+        default_value: ''
+        group: 'ldap'
+    ldap.display_name_attribute:
+        display_name: 'LDAP display name attribute'
+        component: 'String'
+        description: 'User attribute used as display name.'
+        default_value: 'cn'
+        group: 'ldap'
+    ldap.email_attribute:
+        display_name: 'LDAP email attribute'
+        component: 'String'
+        description: 'User attribute used as email.'
+        default_value: 'mail'
+        group: 'ldap'
+    ldap.member_attribute:
+        display_name: 'LDAP member attribute'
+        component: 'String'
+        description: 'Group membership attribute on the user entry.'
+        default_value: 'memberof'
+        group: 'ldap'
+    ldap.group_dn:
+        display_name: 'LDAP group DN'
+        component: 'String'
+        description: 'Base DN for groups.'
+        default_value: ''
+        group: 'ldap'
+    # --- Housekeeping --------------------------------------------------------
+    housekeeping.trigger_on_startup:
+        display_name: 'Trigger on startup'
+        component: 'Switch'
+        description: 'Run cleanup jobs once at startup.'
+        default_value: false
+        group: 'housekeeping'
+    housekeeping.record_ttl:
+        display_name: 'Record TTL'
+        component: 'String'
+        description: 'Time-to-live for alerts (Go duration). Set 0 to disable.'
+        default_value: '48h'
+        group: 'housekeeping'
+    housekeeping.cleanup_alert:
+        display_name: 'Alert cleanup interval'
+        component: 'String'
+        description: 'Interval between alert cleanup runs (Go duration string).'
+        default_value: '5m'
+        group: 'housekeeping'
+    housekeeping.cleanup_comment:
+        display_name: 'Comment cleanup interval'
+        component: 'String'
+        description: 'Interval between orphan-comment cleanup runs (Go duration string).'
+        default_value: '24h'
+        group: 'housekeeping'
+    housekeeping.cleanup_snooze:
+        display_name: 'Snooze cleanup interval'
+        component: 'String'
+        description: 'Interval between expired-snooze cleanup runs (Go duration string).'
+        default_value: '72h'
+        group: 'housekeeping'
+    housekeeping.cleanup_notification:
+        display_name: 'Notification cleanup interval'
+        component: 'String'
+        description: 'Interval between expired-notification cleanup runs (Go duration string).'
+        default_value: '72h'
+        group: 'housekeeping'
+    housekeeping.cleanup_audit:
+        display_name: 'Audit retention'
+        component: 'String'
+        description: 'Retention window for audit log entries (Go duration string).'
+        default_value: '672h'
+        group: 'housekeeping'
+    housekeeping.cleanup_orphans:
+        display_name: 'Orphan cleanup interval'
+        component: 'String'
+        description: 'Interval between orphan-rule cleanup runs (Go duration string).'
+        default_value: '24h'
+        group: 'housekeeping'

@@ -1,5 +1,5 @@
 // Package settings implements the "settings" data-model plugin AND the
-// production implementation of config.RuntimeSettings. Each setting is
+// production implementation of config.RuntimeStore. Each setting is
 // stored as one document per section, keyed by {"section": <name>}. The
 // document's "values" field holds the section payload as a JSON object;
 // Get/Set/Replace operate on that field.
@@ -37,7 +37,7 @@ func factory(meta plugins.Metadata) (plugins.Plugin, error) {
 }
 
 // Plugin is the data-model plugin for runtime settings. It also implements
-// config.RuntimeSettings so the orchestrator can wire it as the live
+// config.RuntimeStore so the orchestrator can wire it as the live
 // settings backend for other subsystems.
 type Plugin struct {
 	meta plugins.Metadata
@@ -94,9 +94,9 @@ func (p *Plugin) Validate(obj map[string]any) error {
 	return nil
 }
 
-// --- config.RuntimeSettings -------------------------------------------------
+// --- config.RuntimeStore -------------------------------------------------
 
-// Get implements config.RuntimeSettings.
+// Get implements config.RuntimeStore.
 func (p *Plugin) Get(ctx context.Context, section, key string) (any, bool, error) {
 	values, err := p.readSection(ctx, section)
 	if err != nil {
@@ -109,7 +109,7 @@ func (p *Plugin) Get(ctx context.Context, section, key string) (any, bool, error
 	return v, ok, nil
 }
 
-// GetSection implements config.RuntimeSettings. dst must be a pointer; the
+// GetSection implements config.RuntimeStore. dst must be a pointer; the
 // section's value map is JSON-round-tripped into it.
 func (p *Plugin) GetSection(ctx context.Context, section string, dst any) error {
 	if dst == nil {
@@ -132,7 +132,7 @@ func (p *Plugin) GetSection(ctx context.Context, section string, dst any) error 
 	return nil
 }
 
-// Set implements config.RuntimeSettings.
+// Set implements config.RuntimeStore.
 func (p *Plugin) Set(ctx context.Context, section, key string, value any) error {
 	if section == "" {
 		return errors.New("settings: section must not be empty")
@@ -155,7 +155,7 @@ func (p *Plugin) Set(ctx context.Context, section, key string, value any) error 
 	return nil
 }
 
-// Replace implements config.RuntimeSettings.
+// Replace implements config.RuntimeStore.
 func (p *Plugin) Replace(ctx context.Context, section string, values map[string]any) error {
 	if section == "" {
 		return errors.New("settings: section must not be empty")
@@ -171,7 +171,7 @@ func (p *Plugin) Replace(ctx context.Context, section string, values map[string]
 	return nil
 }
 
-// Watch implements config.RuntimeSettings. The returned channel is closed
+// Watch implements config.RuntimeStore. The returned channel is closed
 // when ctx is cancelled. Sends are non-blocking; a slow subscriber may miss
 // events (matching the Python broadcast semantics).
 func (p *Plugin) Watch(ctx context.Context, section string) (<-chan config.RuntimeChange, error) {
@@ -272,10 +272,54 @@ func (p *Plugin) fanout(section, key string, value any) {
 	}
 }
 
+// AfterCreate implements plugins.CreateHook. Every successful POST to
+// /api/v1/settings invalidates the runtime cache so the new key/value
+// pair is visible to the next subsystem read (LDAP backend, housekeeper,
+// notification scheduler, ...). The hook is best-effort; a missing host
+// or runtime resolver is silently tolerated.
+func (p *Plugin) AfterCreate(_ context.Context, _ []map[string]any) error {
+	p.invalidateRuntime()
+	return nil
+}
+
+// AfterUpdate implements plugins.UpdateHook for the same reason as
+// AfterCreate.
+func (p *Plugin) AfterUpdate(_ context.Context, _ string, _ map[string]any) error {
+	p.invalidateRuntime()
+	return nil
+}
+
+// AfterDelete implements plugins.DeleteHook for the same reason as
+// AfterCreate.
+func (p *Plugin) AfterDelete(_ context.Context, _ []string) error {
+	p.invalidateRuntime()
+	return nil
+}
+
+// invalidateRuntime drops the cached runtime settings snapshot, if a
+// RuntimeSettingsHost is wired up. No-op for tests that supply a bare
+// plugins.Host fixture.
+func (p *Plugin) invalidateRuntime() {
+	if p.host == nil {
+		return
+	}
+	rsh, ok := p.host.(plugins.RuntimeSettingsHost)
+	if !ok {
+		return
+	}
+	rs := rsh.RuntimeSettings()
+	if rs == nil {
+		return
+	}
+	rs.Invalidate()
+}
+
 // Compile-time interface checks.
 var (
-	_ plugins.Plugin         = (*Plugin)(nil)
-	_ plugins.DataModel      = (*Plugin)(nil)
-	_ config.RuntimeSettings = (*Plugin)(nil)
+	_ plugins.Plugin      = (*Plugin)(nil)
+	_ plugins.DataModel   = (*Plugin)(nil)
+	_ plugins.CreateHook  = (*Plugin)(nil)
+	_ plugins.UpdateHook  = (*Plugin)(nil)
+	_ plugins.DeleteHook  = (*Plugin)(nil)
+	_ config.RuntimeStore = (*Plugin)(nil)
 )
-
