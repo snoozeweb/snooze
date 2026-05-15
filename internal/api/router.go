@@ -102,6 +102,12 @@ func (rt *Router) Build() chi.Router {
 	rt.mountAlerts(r)
 	rt.mountSchema(r)
 	rt.mountPermissions(r)
+	rt.mountMetadata(r)
+
+	// --- snooze retro-apply (mounted BEFORE plugin CRUD so the more
+	//     specific `/{uid}/retro_apply` POST wins over the generic
+	//     `/{uid}` handlers chi installs) ----------------------------------
+	rt.mountSnoozeRetro(r)
 
 	// --- plugin CRUD -------------------------------------------------------
 	for _, p := range rt.Plugins {
