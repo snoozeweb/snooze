@@ -7,7 +7,7 @@ import (
 	"time"
 
 	"github.com/japannext/snooze/internal/auth"
-	"github.com/japannext/snooze/internal/config/schema"
+	"github.com/japannext/snooze/internal/config"
 	"github.com/japannext/snooze/internal/db"
 	"github.com/japannext/snooze/internal/db/asyncwriter"
 	"github.com/japannext/snooze/internal/housekeeper"
@@ -45,6 +45,9 @@ func (c *Core) bootstrap(ctx context.Context) error {
 		if err := BootstrapDB(ctx, c.Driver); err != nil {
 			return fmt.Errorf("boot: bootstrap db: %w", err)
 		}
+	}
+	if err := c.bootRuntimeSettings(); err != nil {
+		return err
 	}
 	if err := c.bootPlugins(ctx); err != nil {
 		return err
@@ -125,6 +128,16 @@ func mqKindForDatabase(dbType string) string {
 	}
 }
 
+// bootRuntimeSettings constructs the DB-backed read-through cache that
+// subsystems consult for live-editable settings (LDAP, housekeeper,
+// notification frequency, ...). Cache TTL is short enough that a missed
+// invalidation still self-heals within seconds; the settings plugin's
+// hook drops the cache explicitly on every write.
+func (c *Core) bootRuntimeSettings() error {
+	c.Settings = config.NewRuntimeSettings(c.Driver, c.Cfg, 5*time.Second)
+	return nil
+}
+
 // bootPlugins instantiates the registered plugin set and captures the ordered
 // processor slice.
 func (c *Core) bootPlugins(ctx context.Context) error {
@@ -175,22 +188,53 @@ type pluggableShim struct {
 	plugin plugins.Plugin
 }
 
-func (p pluggableShim) Name() string                          { return p.name }
-func (p pluggableShim) Reload(ctx context.Context) error      { return p.plugin.Reload(ctx) }
+func (p pluggableShim) Name() string                     { return p.name }
+func (p pluggableShim) Reload(ctx context.Context) error { return p.plugin.Reload(ctx) }
 
 // bootHousekeeper registers the default cleanup/renumber jobs.
+//
+// Cadence is sourced from “c.Settings“ so that an operator who edits a
+// housekeeping.* setting in the Settings UI sees the new interval applied
+// to the next firing of every affected job, without a server restart.
 func (c *Core) bootHousekeeper() error {
 	hk := housekeeper.New(c.Logger(),
 		housekeeper.WithTriggerOnStartup(c.Cfg.Housekeeper.TriggerOnStartup),
 	)
-	hkCfg := c.Cfg.Housekeeper
+
+	// liveInterval reads the current housekeeper snapshot and returns the
+	// field selector applied to it. The closure-per-job pattern keeps the
+	// call site declarative.
+	liveInterval := func(pick func(config.HousekeeperConfig) time.Duration, fallback time.Duration) func(ctx context.Context) time.Duration {
+		return func(ctx context.Context) time.Duration {
+			if c.Settings == nil {
+				return fallback
+			}
+			snap, err := c.Settings.Housekeeper(ctx)
+			if err != nil {
+				return fallback
+			}
+			if d := pick(snap); d > 0 {
+				return d
+			}
+			return fallback
+		}
+	}
 
 	jobs := []registration{
-		intervalReg(housekeeper.CleanupTimeoutJob(c.Driver, "record"), durOrDefault(hkCfg.CleanupAlert, 5*time.Minute)),
-		intervalReg(housekeeper.CleanupAggregateJob(c.Driver), durOrDefault(hkCfg.CleanupAggregate, time.Minute)),
-		intervalReg(housekeeper.CleanupCommentsJob(c.Driver), durOrDefault(hkCfg.CleanupComment, 24*time.Hour)),
-		intervalReg(housekeeper.CleanupOrphansJob(c.Driver, "record"), durOrDefault(hkCfg.CleanupOrphans, 24*time.Hour)),
-		cronReg(housekeeper.CleanupAuditJob(c.Driver, time.Duration(hkCfg.CleanupAudit))),
+		liveIntervalReg(housekeeper.CleanupTimeoutJob(c.Driver, "record"),
+			liveInterval(func(h config.HousekeeperConfig) time.Duration { return h.CleanupAlert.AsDuration() }, 5*time.Minute)),
+		liveIntervalReg(housekeeper.CleanupAggregateJob(c.Driver),
+			liveInterval(func(h config.HousekeeperConfig) time.Duration { return h.CleanupAggregate.AsDuration() }, time.Minute)),
+		liveIntervalReg(housekeeper.CleanupCommentsJob(c.Driver),
+			liveInterval(func(h config.HousekeeperConfig) time.Duration { return h.CleanupComment.AsDuration() }, 24*time.Hour)),
+		liveIntervalReg(housekeeper.CleanupOrphansJob(c.Driver, "record"),
+			liveInterval(func(h config.HousekeeperConfig) time.Duration { return h.CleanupOrphans.AsDuration() }, 24*time.Hour)),
+		liveIntervalReg(housekeeper.CleanupSnoozeJob(c.Driver),
+			liveInterval(func(h config.HousekeeperConfig) time.Duration { return h.CleanupSnooze.AsDuration() }, 72*time.Hour)),
+		liveIntervalReg(housekeeper.CleanupNotificationJob(c.Driver),
+			liveInterval(func(h config.HousekeeperConfig) time.Duration { return h.CleanupNotification.AsDuration() }, 72*time.Hour)),
+		liveIntervalReg(housekeeper.CleanupAuditAsIntervalJob(c.Driver, c.Settings),
+			liveInterval(func(h config.HousekeeperConfig) time.Duration { return h.CleanupAudit.AsDuration() }, 28*24*time.Hour)),
 		cronReg(housekeeper.RenumberJob(c.Driver, "stats", "date_epoch")),
 	}
 
@@ -209,18 +253,17 @@ type registration struct {
 	sched housekeeper.Schedule
 }
 
-// intervalReg overrides the factory-provided Interval when override is
-// non-zero. Factory defaults remain authoritative when the config value is
-// zero (i.e. user did not customise the field).
-func intervalReg(ij housekeeper.IntervalJob, override time.Duration) registration {
-	interval := ij.Interval
-	if override > 0 {
-		interval = override
-	}
+// liveIntervalReg pairs a factory-provided job with a live-interval
+// resolver. The runtime poll cadence defaults to 30 seconds; the resolver
+// chooses when the job actually fires.
+func liveIntervalReg(ij housekeeper.IntervalJob, resolver func(ctx context.Context) time.Duration) registration {
 	return registration{
-		name:  ij.Job.Name(),
-		job:   ij.Job,
-		sched: housekeeper.Schedule{Interval: interval},
+		name: ij.Job.Name(),
+		job:  ij.Job,
+		sched: housekeeper.Schedule{
+			LiveInterval:     resolver,
+			LivePollInterval: 30 * time.Second,
+		},
 	}
 }
 
@@ -230,13 +273,4 @@ func cronReg(cj housekeeper.CronJob) registration {
 		job:   cj.Job,
 		sched: housekeeper.Schedule{Cron: cj.Cron},
 	}
-}
-
-// durOrDefault returns d.AsDuration() unless it is zero, in which case it
-// returns fallback.
-func durOrDefault(d schema.Duration, fallback time.Duration) time.Duration {
-	if v := d.AsDuration(); v > 0 {
-		return v
-	}
-	return fallback
 }

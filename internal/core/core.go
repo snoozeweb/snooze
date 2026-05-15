@@ -44,10 +44,16 @@ type Core struct {
 	Loggers   *telemetry.Loggers
 	Async     *asyncwriter.Writer
 	Providers *auth.Registry
-	HK        *housekeeper.Housekeeper
-	Sync      *syncer.Syncer
-	Heart     *syncer.NodeHeartbeat
-	Sup       *Supervisor
+	// Settings is the live read-through cache for DB-stored runtime
+	// settings. Subsystems (LDAP backend, housekeeper, notification
+	// scheduler, …) consult it on every operation so an edit in the UI
+	// takes effect on the next request. The settings plugin's
+	// create/update/delete hooks call ``Settings.Invalidate``.
+	Settings *config.RuntimeSettings
+	HK       *housekeeper.Housekeeper
+	Sync     *syncer.Syncer
+	Heart    *syncer.NodeHeartbeat
+	Sup      *Supervisor
 
 	mqManager *mq.Manager
 

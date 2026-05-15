@@ -3,6 +3,7 @@ package core
 import (
 	"go.opentelemetry.io/otel/trace"
 
+	"github.com/japannext/snooze/internal/config"
 	"github.com/japannext/snooze/internal/db"
 	"github.com/japannext/snooze/internal/plugins"
 	"github.com/japannext/snooze/internal/telemetry"
@@ -36,5 +37,13 @@ func (c *Core) Bus() plugins.Bus {
 	return w
 }
 
+// RuntimeSettings returns the process-wide read-through cache for
+// DB-stored settings. Implements plugins.RuntimeSettingsHost so the
+// settings plugin can invalidate the cache after a write.
+func (c *Core) RuntimeSettings() *config.RuntimeSettings { return c.Settings }
+
 // Compile-time guarantee that *Core satisfies plugins.Host.
-var _ plugins.Host = (*Core)(nil)
+var (
+	_ plugins.Host                = (*Core)(nil)
+	_ plugins.RuntimeSettingsHost = (*Core)(nil)
+)

@@ -274,7 +274,7 @@ func runDaemonCtx(ctx context.Context, f *daemonFlags, stderr io.Writer) error {
 		return fmt.Errorf("core: %w", err)
 	}
 
-	providers := buildAuthProviders(cfg, drv)
+	providers := buildAuthProviders(cfg, drv, c.Settings)
 
 	adapter := &coreAdapter{Core: c}
 	rt := &api.Router{
@@ -434,12 +434,25 @@ func openWebFS(dir string, logger *slog.Logger) http.FileSystem {
 // buildAuthProviders wires every enabled identity provider into a fresh
 // Registry. Local is always available so the bootstrap root user can log in;
 // LDAP and anonymous come online when their config sections are enabled.
-func buildAuthProviders(cfg *config.Config, drv db.Driver) *auth.Registry {
+//
+// The LDAP provider is always registered when “settings“ includes an
+// “ldap.enabled“ row, OR when the file-config baseline has it enabled —
+// the actual “enabled“ check happens on every Authenticate call so the
+// UI's "flip the switch" path takes effect without a restart. The
+// anonymous provider stays gated on the bootstrap config because it has
+// no settings-form representation today.
+func buildAuthProviders(cfg *config.Config, drv db.Driver, rs *config.RuntimeSettings) *auth.Registry {
 	reg := auth.NewRegistry()
 	reg.Register(auth.NewLocalProvider(drv))
-	if cfg.LDAP.Enabled {
-		reg.Register(auth.NewLDAPProvider(cfg.LDAP))
-	}
+	// Always register the LDAP provider so a runtime ldap.enabled=true
+	// edit becomes effective without a restart. The provider itself
+	// returns ErrProviderDisabled when Enabled is false.
+	reg.Register(auth.NewLDAPProvider(func(ctx context.Context) (schema.LDAP, error) {
+		if rs == nil {
+			return cfg.LDAP, nil
+		}
+		return rs.LDAP(ctx)
+	}))
 	if cfg.General.AnonymousEnabled {
 		reg.Register(auth.NewAnonymousProvider(true))
 	}
