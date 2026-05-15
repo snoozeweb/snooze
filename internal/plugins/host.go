@@ -34,3 +34,12 @@ type Host interface {
 	// Plugin returns the registered plugin by name, or nil when absent.
 	Plugin(name string) Plugin
 }
+
+// RuntimeSettingsHost is the optional capability the settings plugin
+// (and any subsystem that needs to invalidate the runtime cache after a
+// write) probes for via type assertion. Implementations return the
+// process-wide “*config.RuntimeSettings“ constructed at boot, or nil
+// when none is wired (tests, migration tool, etc.).
+type RuntimeSettingsHost interface {
+	RuntimeSettings() *config.RuntimeSettings
+}

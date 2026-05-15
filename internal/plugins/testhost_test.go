@@ -167,6 +167,8 @@ func (m *memDB) CleanupOrphans(context.Context, string) (int, error)    { return
 func (m *memDB) CleanupAuditLogs(context.Context, time.Duration) (int, error) {
 	return 0, nil
 }
+func (m *memDB) CleanupSnooze(context.Context) (int, error)       { return 0, nil }
+func (m *memDB) CleanupNotification(context.Context) (int, error) { return 0, nil }
 func (m *memDB) ComputeStats(context.Context, string, time.Time, time.Time, string) ([]db.StatsBucket, error) {
 	return nil, nil
 }

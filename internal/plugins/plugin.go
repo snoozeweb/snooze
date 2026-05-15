@@ -109,6 +109,22 @@ type CreateHook interface {
 	AfterCreate(ctx context.Context, docs []map[string]any) error
 }
 
+// UpdateHook plugins run side effects after a successful PUT/PATCH on a
+// document. The hook fires after the DB write has succeeded. Same
+// best-effort semantics as CreateHook.
+type UpdateHook interface {
+	Plugin
+	AfterUpdate(ctx context.Context, uid string, patch map[string]any) error
+}
+
+// DeleteHook plugins run side effects after a successful DELETE on one or
+// more documents. The hook fires after the DB delete has succeeded; uids
+// is the list of objects that were just removed.
+type DeleteHook interface {
+	Plugin
+	AfterDelete(ctx context.Context, uids []string) error
+}
+
 // PrimaryKeyer plugins advertise a natural primary-key field set that the
 // generic CRUD createHandler uses to enforce duplicate-policy at the DB
 // layer. Returning an empty slice means "no extra primary beyond uid".
@@ -118,4 +134,3 @@ type PrimaryKeyer interface {
 	Plugin
 	PrimaryKey() []string
 }
-
