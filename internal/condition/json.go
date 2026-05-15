@@ -35,13 +35,63 @@ func (c *Cond) UnmarshalJSON(data []byte) error {
 		*c = v
 		return nil
 	case '{':
-		// Plain object form — decode into an alias to avoid recursion.
-		type alias Cond
-		var a alias
-		if err := json.Unmarshal(trimmed, &a); err != nil {
+		// Decode into a wire-friendly intermediate that accepts both `op`
+		// (Go/Python-internal canonical) and `type` (the React frontend's
+		// discriminated-union key). Without the `type` alias, every
+		// frontend-posted condition silently degrades to AlwaysTrue.
+		var wire struct {
+			Op       string          `json:"op"`
+			Type     string          `json:"type"`
+			Field    string          `json:"field,omitempty"`
+			Value    any             `json:"value,omitempty"`
+			Args     json.RawMessage `json:"args,omitempty"`
+			Arg      json.RawMessage `json:"arg,omitempty"`
+			Children []Cond          `json:"children,omitempty"`
+		}
+		if err := json.Unmarshal(trimmed, &wire); err != nil {
 			return fmt.Errorf("condition: %w", err)
 		}
-		*c = Cond(a)
+		op := wire.Op
+		if op == "" {
+			op = wire.Type
+		}
+		// Frontend ops are spelled out (ALWAYS_TRUE, EQUALS, NOT_EQUALS,
+		// LT, LE, GT, GE). Map to the canonical short Go ops.
+		switch op {
+		case "ALWAYS_TRUE":
+			op = string(OpAlwaysTrue) // ""
+		case "EQUALS":
+			op = string(OpEq)
+		case "NOT_EQUALS":
+			op = string(OpNeq)
+		case "LT":
+			op = string(OpLt)
+		case "LE":
+			op = string(OpLte)
+		case "GT":
+			op = string(OpGt)
+		case "GE":
+			op = string(OpGte)
+		}
+		out := Cond{Op: Op(op), Field: wire.Field, Value: wire.Value, Children: wire.Children}
+		// The frontend's NOT shape is {type:"NOT", arg: <Condition>} (single
+		// arg, not children). And/Or sometimes arrive as {type:"AND", args:[...]}
+		// instead of children. Normalise both into Children.
+		if len(out.Children) == 0 && len(wire.Args) > 0 {
+			var args []Cond
+			if err := json.Unmarshal(wire.Args, &args); err != nil {
+				return fmt.Errorf("condition: args: %w", err)
+			}
+			out.Children = args
+		}
+		if len(out.Children) == 0 && len(wire.Arg) > 0 {
+			var arg Cond
+			if err := json.Unmarshal(wire.Arg, &arg); err != nil {
+				return fmt.Errorf("condition: arg: %w", err)
+			}
+			out.Children = []Cond{arg}
+		}
+		*c = out
 		return nil
 	}
 	return fmt.Errorf("condition: unsupported JSON shape: %s", string(trimmed))

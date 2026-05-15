@@ -15,6 +15,7 @@ package rule
 import (
 	"context"
 	_ "embed"
+	"encoding/json"
 	"fmt"
 	"sync"
 	"time"
@@ -266,6 +267,11 @@ func appendRuleTag(view map[string]any, name string) {
 // parseCondition tolerates both the legacy list form and the new object form.
 // nil/missing yields the AlwaysTrue zero value (matching Python's
 // get_condition(None)).
+//
+// The object form is re-marshalled into JSON so condition.Cond.UnmarshalJSON
+// owns the wire-shape normalisation (op vs type key, EQUALS → "=", etc.).
+// Duplicating that logic here previously left the rule plugin reading
+// frontend-posted conditions as AlwaysTrue.
 func parseCondition(raw any) (condition.Cond, error) {
 	if raw == nil {
 		return condition.Cond{}, nil
@@ -274,34 +280,17 @@ func parseCondition(raw any) (condition.Cond, error) {
 	case []any:
 		return condition.FromList(v)
 	case map[string]any:
-		// Object form: re-marshal via JSON to leverage Cond.UnmarshalJSON.
-		// Avoid the round-trip in hot paths by constructing manually; tests
-		// exercise the list form, so the map path is rarely hit at runtime.
-		return condFromObject(v)
+		buf, err := json.Marshal(v)
+		if err != nil {
+			return condition.Cond{}, fmt.Errorf("condition: marshal: %w", err)
+		}
+		var c condition.Cond
+		if err := c.UnmarshalJSON(buf); err != nil {
+			return condition.Cond{}, err
+		}
+		return c, nil
 	}
 	return condition.Cond{}, fmt.Errorf("unsupported condition shape: %T", raw)
-}
-
-// condFromObject builds a Cond from a map representation produced by the new
-// object-form JSON encoding.
-func condFromObject(m map[string]any) (condition.Cond, error) {
-	op, _ := m["op"].(string)
-	field, _ := m["field"].(string)
-	c := condition.Cond{Op: condition.Op(op), Field: field, Value: m["value"]}
-	if kids, ok := m["children"].([]any); ok {
-		for _, k := range kids {
-			km, ok := k.(map[string]any)
-			if !ok {
-				return condition.Cond{}, fmt.Errorf("child condition is not an object: %T", k)
-			}
-			child, err := condFromObject(km)
-			if err != nil {
-				return condition.Cond{}, err
-			}
-			c.Children = append(c.Children, child)
-		}
-	}
-	return c, nil
 }
 
 // parseModifications splits the raw mods list into (regular, kv_set) pairs.
