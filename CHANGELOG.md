@@ -22,10 +22,50 @@
 
 ### Backend
 
+* `GET /api/v1/metadata` (and `/{plugin}`) now stamps a `plugin_name`
+  field on every entry, carrying the registry key (`Plugin.Name()`).
+  Most action plugins (mail / webhook / script) use the YAML `name:`
+  field as a human label ("Send email", "Run a script"); the frontend
+  needs a separate machine-readable handle to match a notification's
+  `action_type` against. Without this, the Action edit drawer fell back
+  to a JSON textarea for every action instead of the typed form. Also
+  fixed `script.Plugin.Name()` to hardcode "script" (matching mail /
+  webhook / patlite) — it was registering under its YAML display name.
 * `snooze-server` learned a `-web-dir` flag (defaults to
   `/var/lib/snooze/web`, matching the existing Dockerfile copy path).
   This wires `Router.WebFS` — declared since v2.0.0 but never
   populated — and is the one Go-side change the rewrite required.
+* New `GET /api/v1/metadata` and `GET /api/v1/metadata/{plugin}`
+  endpoints expose each plugin's parsed `metadata.yaml`
+  (`action_form`, `widgets`, etc.) so the React frontend can render
+  typed forms for plugin-defined sub-types (Mail / Webhook / Patlite)
+  instead of free-form JSON textareas.
+* `plugins.Metadata` gained a `setting_form` map and the settings
+  plugin's `metadata.yaml` now ships a typed catalogue of the seven
+  documented runtime settings (component / default / description /
+  group). The React Settings page consumes it via the existing
+  `/api/v1/metadata/settings` endpoint instead of a hand-maintained
+  frontend constant. `FormField` also gained an optional `group:` field
+  so the frontend can bucket settings by section (general vs
+  notification).
+* LDAP and housekeeping settings are now runtime-editable. The settings
+  plugin's `metadata.yaml` exposes the full `ldap.*` and
+  `housekeeping.*` keysets as typed `setting_form` entries; the new
+  `config.RuntimeSettings` type reads them from the `settings`
+  collection with a short read-through cache, layered on top of the
+  file-config baseline. The LDAP backend re-reads its configuration on
+  every `Authenticate` call, and the housekeeper jobs consult the
+  resolver before every fire — so flipping `ldap.enabled` or shortening
+  `housekeeping.cleanup_alert` in the Settings UI takes effect on the
+  next request, no server restart required. The settings plugin
+  invalidates the cache on every create / update / delete via the new
+  `plugins.UpdateHook` / `plugins.DeleteHook` interfaces.
+* Housekeeper now expires snoozes and notifications. Two new default
+  jobs (`cleanup_snooze`, `cleanup_notification`) walk the matching
+  collections and delete rows whose `time_constraints.datetime`
+  array is non-empty and every entry's `until` is in the past. The
+  underlying `db.Driver.CleanupSnooze` / `CleanupNotification` methods
+  are implemented on all three backends (SQLite, Postgres, Mongo).
 
 ### Removed
 

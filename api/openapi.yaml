@@ -376,6 +376,51 @@ paths:
             application/json:
               schema: {$ref: '#/components/schemas/ErrEnvelope'}
 
+  /api/v1/metadata:
+    get:
+      tags: [schema]
+      summary: List every registered plugin's metadata
+      description: |
+        Returns the parsed `metadata.yaml` of every registered plugin
+        (name / display_name / icon / action_form / widgets / etc.).
+        The React frontend uses this to render plugin-defined typed
+        forms — e.g. the Action sub-types (Mail, Webhook, Patlite) —
+        instead of free-form JSON textareas.
+
+        Plugins are sorted by name so the payload is deterministic.
+      responses:
+        '200':
+          description: Plugin metadata list.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items: {$ref: '#/components/schemas/Metadata'}
+
+  /api/v1/metadata/{plugin}:
+    get:
+      tags: [schema]
+      summary: Fetch a single plugin's metadata
+      parameters:
+        - {$ref: '#/components/parameters/PluginPath'}
+      responses:
+        '200':
+          description: Plugin metadata.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data: {$ref: '#/components/schemas/Metadata'}
+        '404':
+          description: Plugin not registered.
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/ErrEnvelope'}
+
   /api/v1/{plugin}:
     parameters:
       - {$ref: '#/components/parameters/PluginPath'}
@@ -741,4 +786,98 @@ components:
           type: object
           additionalProperties: true
         request_id: {type: string}
+
+    Metadata:
+      type: object
+      description: |
+        Parsed `metadata.yaml` for a registered plugin. Mirrors
+        `plugins.Metadata` in Go. Field keys are snake_case (JSON tags
+        align with the YAML keys so the frontend reads the document
+        verbatim).
+      required: [name, plugin_name]
+      properties:
+        plugin_name:
+          type: string
+          description: |
+            Registry key (machine-readable identifier; matches `Plugin.Name()`
+            on the server). Injected by the metadata HTTP handler — stable
+            across plugins regardless of what their YAML `name:` field carries.
+            Use this (not `name`) to match a notification action's `action_type`.
+        name: {type: string, description: "Display label taken from the plugin's YAML `name:` field (e.g. \"Send email\", \"Run a script\"). Use `plugin_name` for machine matching."}
+        display_name: {type: string, description: "Human-readable label (YAML `desc`)."}
+        icon: {type: string, description: "Icon glyph name."}
+        default_sorting: {type: string}
+        default_ordering: {type: string}
+        auto_reload: {type: boolean}
+        widgets:
+          type: object
+          additionalProperties: true
+          description: "Free-form per-plugin widget descriptors."
+        action_form:
+          type: object
+          description: "Per-field form descriptor keyed by field name."
+          additionalProperties: {$ref: '#/components/schemas/FormField'}
+        setting_form:
+          type: object
+          description: |
+            Typed catalogue of runtime settings (settings plugin only). Same
+            FormField shape as `action_form`; the optional `group` field on
+            each entry lets the frontend render the picker grouped by section.
+          additionalProperties: {$ref: '#/components/schemas/FormField'}
+        provides:
+          type: array
+          items: {type: string}
+          description: "Permission strings the plugin contributes."
+        routes:
+          type: object
+          description: "Per-route overrides, keyed by route path."
+          additionalProperties:
+            type: object
+            properties:
+              class_name: {type: string}
+              check_permissions: {type: boolean}
+              primary_key:
+                type: array
+                items: {type: string}
+              duplicate_policy: {type: string}
+              authentication: {type: boolean}
+        options:
+          type: object
+          additionalProperties: true
+        search_fields:
+          type: array
+          items: {type: string}
+        audit: {type: boolean}
+        force_order: {type: integer}
+        tree: {type: boolean}
+      additionalProperties: true
+
+    FormField:
+      type: object
+      description: |
+        One field of a plugin's `action_form`. The React frontend renders
+        a typed input based on `component`; `options` populates choice
+        widgets (Selector, Radio).
+      properties:
+        display_name: {type: string}
+        component:
+          type: string
+          description: "Widget kind (e.g. String, Number, Text, Selector, Radio, Password)."
+        description: {type: string}
+        required: {type: boolean}
+        default_value: {}
+        group:
+          type: string
+          description: |
+            Logical section the field belongs to (e.g. "general" or
+            "notification" for settings). Used by the frontend to render
+            grouped pickers; ignored by the server.
+        options:
+          type: array
+          items:
+            type: object
+            properties:
+              text: {type: string}
+              value: {}
+      additionalProperties: true
         trace_id:   {type: string}
