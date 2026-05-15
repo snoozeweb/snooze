@@ -115,8 +115,10 @@ type Plugin struct {
 	warnedNoBus atomic.Bool
 }
 
-// Name returns the registry key.
-func (p *Plugin) Name() string { return p.meta.Name }
+// Name returns the registry key. Returned lowercase so it matches the
+// HTTP path segment in api/openapi.yaml's PluginPath enum
+// (metadata.yaml's `name:` is human-readable and may be capitalised).
+func (p *Plugin) Name() string { return "notification" }
 
 // Metadata returns the parsed metadata.yaml.
 func (p *Plugin) Metadata() plugins.Metadata { return p.meta }
