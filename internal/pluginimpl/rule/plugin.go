@@ -307,6 +307,15 @@ func condFromObject(m map[string]any) (condition.Cond, error) {
 // parseModifications splits the raw mods list into (regular, kv_set) pairs.
 // KV_SET is recognised and routed to a separate slice because the standard
 // modification package intentionally doesn't implement it.
+//
+// Entries are accepted in two shapes:
+//
+//  1. Legacy/Python positional form: ["SET", "field", "value"].
+//  2. UI form: {"type": "set", "field": "...", "value": "..."}.
+//
+// The UI form mirrors web/src/shared/modifications/types.ts and is what the
+// React editor posts. It is normalised to the positional form before going
+// through modification.Parse.
 func parseModifications(raw any) ([]modification.Modification, []kvSet, error) {
 	if raw == nil {
 		return nil, nil, nil
@@ -318,9 +327,9 @@ func parseModifications(raw any) ([]modification.Modification, []kvSet, error) {
 	var mods []modification.Modification
 	var kvs []kvSet
 	for i, entry := range list {
-		args, ok := entry.([]any)
-		if !ok {
-			return nil, nil, fmt.Errorf("modifications[%d]: not a list (%T)", i, entry)
+		args, err := coerceModification(entry)
+		if err != nil {
+			return nil, nil, fmt.Errorf("modifications[%d]: %w", i, err)
 		}
 		if len(args) > 0 {
 			if op, ok := args[0].(string); ok && op == "KV_SET" {
@@ -338,6 +347,41 @@ func parseModifications(raw any) ([]modification.Modification, []kvSet, error) {
 		mods = append(mods, m)
 	}
 	return mods, kvs, nil
+}
+
+// coerceModification normalises a stored modification entry into the
+// positional []any form expected by modification.Parse. Accepts:
+//
+//   - []any                            (already positional)
+//   - map[string]any with a "type" key (UI form; see types.ts)
+func coerceModification(entry any) ([]any, error) {
+	if args, ok := entry.([]any); ok {
+		return args, nil
+	}
+	obj, ok := entry.(map[string]any)
+	if !ok {
+		return nil, fmt.Errorf("not a list or object (%T)", entry)
+	}
+	typeStr, _ := obj["type"].(string)
+	field, _ := obj["field"].(string)
+	switch typeStr {
+	case "set":
+		return []any{"SET", field, obj["value"]}, nil
+	case "delete":
+		return []any{"DELETE", field}, nil
+	case "array_append":
+		return []any{"ARRAY_APPEND", field, obj["value"]}, nil
+	case "array_delete":
+		return []any{"ARRAY_DELETE", field, obj["value"]}, nil
+	case "regex_sub":
+		return []any{"REGEX_SUB", field, obj["pattern"], obj["replace"]}, nil
+	case "regex_parse":
+		return []any{"REGEX_PARSE", field, obj["pattern"]}, nil
+	case "kv_set":
+		return []any{"KV_SET", field, obj["key"]}, nil
+	default:
+		return nil, fmt.Errorf("unknown modification type %q", typeStr)
+	}
 }
 
 // safeString fetches args[i] as a string, returning ("", false) when out of
