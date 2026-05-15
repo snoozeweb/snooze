@@ -22,9 +22,13 @@ import (
 type fakeDB struct {
 	collections []string
 	listErr     error
+	nodes       []db.Document // returned by Search("nodes", …) for cluster status
 }
 
-func (f *fakeDB) Search(_ context.Context, _ string, _ condition.Cond, _ db.Page) ([]db.Document, int, error) {
+func (f *fakeDB) Search(_ context.Context, coll string, _ condition.Cond, _ db.Page) ([]db.Document, int, error) {
+	if coll == "nodes" {
+		return f.nodes, len(f.nodes), nil
+	}
 	return nil, 0, nil
 }
 func (f *fakeDB) GetOne(_ context.Context, _ string, _ db.Document) (db.Document, error) {
@@ -115,4 +119,40 @@ func TestHealthVerbose(t *testing.T) {
 	r.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/v1/health", nil))
 	require.Equal(t, http.StatusOK, rec.Code)
 	require.Contains(t, rec.Body.String(), `"db":"ok"`)
+}
+
+func TestClusterStatus_StandaloneWhenNodesEmpty(t *testing.T) {
+	rt := &Router{DB: &fakeDB{}}
+	r := chi.NewRouter()
+	rt.mountHealth(r)
+	rec := httptest.NewRecorder()
+	r.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/v1/cluster/status", nil))
+	require.Equal(t, http.StatusOK, rec.Code)
+	require.Contains(t, rec.Body.String(), `"name":"standalone"`)
+	require.Contains(t, rec.Body.String(), `"leader":"standalone"`)
+}
+
+func TestClusterStatus_RealMembersGradedByFreshness(t *testing.T) {
+	now := time.Now().UTC()
+	rt := &Router{DB: &fakeDB{
+		nodes: []db.Document{
+			{"node": "node-a", "last_seen": now.Add(-2 * time.Second).Format(time.RFC3339Nano)},
+			{"node": "node-b", "last_seen": now.Add(-30 * time.Second).Format(time.RFC3339Nano)},
+			{"node": "node-c", "last_seen": now.Add(-5 * time.Minute).Format(time.RFC3339Nano)},
+		},
+	}}
+	r := chi.NewRouter()
+	rt.mountHealth(r)
+	rec := httptest.NewRecorder()
+	r.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/v1/cluster/status", nil))
+	require.Equal(t, http.StatusOK, rec.Code)
+	body := rec.Body.String()
+	require.Contains(t, body, `"node-a"`)
+	require.Contains(t, body, `"node-b"`)
+	require.Contains(t, body, `"node-c"`)
+	// node-a (fresh) → ok, node-b (30s) → degraded, node-c (5m) → down.
+	// Leader is the first ok member alphabetically: node-a.
+	require.Contains(t, body, `"leader":"node-a"`)
+	require.Contains(t, body, `"status":"degraded"`)
+	require.Contains(t, body, `"status":"down"`)
 }
