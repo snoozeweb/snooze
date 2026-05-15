@@ -1,0 +1,70 @@
+.wrap {
+  position: relative;
+  background: var(--bg-canvas);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+}
+.toolbar {
+  position: absolute;
+  top: var(--space-1);
+  right: var(--space-1);
+  z-index: 1;
+}
+.pre {
+  margin: 0;
+  padding: var(--space-3);
+  padding-top: var(--space-4);
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  color: var(--text);
+  white-space: pre;
+  overflow-x: auto;
+  max-height: 480px;
+  overflow-y: auto;
+  line-height: 1.5;
+}
+.key {
+  color: var(--accent);
+}
+.string {
+  color: var(--success, #1c7c46);
+}
+.number {
+  color: var(--info, #b04a00);
+}
+.boolean {
+  color: var(--warning, #884400);
+}
+.null {
+  color: var(--text-muted);
+  font-style: italic;
+}
+.muted {
+  color: var(--text-muted);
+  font-style: italic;
+}
+.chevron {
+  background: none;
+  border: 0;
+  color: var(--text-muted);
+  cursor: pointer;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 14px;
+  height: 14px;
+  vertical-align: middle;
+  margin-right: 2px;
+}
+.chevron:hover {
+  color: var(--text);
+}
+.chevronPlaceholder {
+  display: inline-block;
+  width: 14px;
+  height: 14px;
+  margin-right: 2px;
+  vertical-align: middle;
+}

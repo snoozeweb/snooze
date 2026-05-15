@@ -1,0 +1,67 @@
+.wrap {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--surface-2);
+  overflow: hidden;
+}
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--space-2) var(--space-3);
+  cursor: pointer;
+  background: transparent;
+  width: 100%;
+  border: 0;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+}
+.header:hover {
+  background: var(--surface-3);
+}
+.headerLeft {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: var(--text-sm);
+  color: var(--text);
+}
+.body {
+  border-top: 1px solid var(--border);
+  padding: var(--space-2) var(--space-3);
+  font-size: var(--text-sm);
+}
+.row {
+  display: grid;
+  grid-template-columns: 100px 1fr 80px 100px;
+  gap: var(--space-2);
+  padding: var(--space-1) 0;
+  border-bottom: 1px solid var(--border-subtle, var(--border));
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  color: var(--text);
+}
+.row:last-child {
+  border-bottom: 0;
+}
+.empty {
+  padding: var(--space-3);
+  color: var(--text-muted);
+  text-align: center;
+}
+.muted {
+  color: var(--text-muted);
+}
+.controls {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: var(--space-2);
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+}
+.controlButtons {
+  display: inline-flex;
+  gap: var(--space-1);
+}

@@ -1,0 +1,232 @@
+/*
+ * DateTimeRangePicker — chip trigger + Radix Popover panel.
+ *
+ * The trigger styling mirrors the .input rules in TimeConstraintsEditor
+ * (same surface, border, radius, padding, mono font) so the swap is
+ * visually invisible when the chip is closed. The popover panel is
+ * themed against the existing tokens (--bg-elevated, --border, etc.).
+ *
+ * The react-day-picker grid uses its own structural classes shipped in
+ * `react-day-picker/style.css` (imported by the .tsx). We pass an extra
+ * `classNames` prop overriding visuals only — the layout (table, cell
+ * sizing, weekday header) stays managed by the library so we get
+ * keyboard navigation, focus rings, and ARIA wiring for free.
+ */
+
+.trigger {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: var(--space-2);
+  width: 100%;
+  background: var(--surface-2, var(--bg-surface));
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: var(--space-1) var(--space-2);
+  color: var(--text-strong);
+  font-family: var(--font-mono);
+  font-size: var(--text-sm);
+  cursor: pointer;
+  text-align: left;
+  min-height: 28px;
+  transition: border-color var(--dur-fast) var(--ease-out);
+}
+
+.trigger:hover:not(:disabled) {
+  border-color: var(--accent);
+}
+
+.trigger:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 1px;
+}
+
+.trigger:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.triggerLabel {
+  flex: 1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.popover {
+  /* Wider than the default popover content so the calendar fits one
+   * month + the time row underneath without horizontal scroll. */
+  min-width: 280px;
+  padding: var(--space-3);
+  /* The picker is most often rendered inside a Drawer (which sits at
+   * --z-modal = 50). The default popover z-index (--z-popover = 30)
+   * would put the panel behind the drawer body — bump above the modal
+   * layer but below toasts (--z-toast = 60). */
+  z-index: calc(var(--z-modal) + 1);
+}
+
+.calendarWrap {
+  margin-bottom: var(--space-3);
+  border-bottom: 1px solid var(--border-muted, var(--border));
+  padding-bottom: var(--space-3);
+}
+
+.timeRow {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  justify-content: center;
+}
+
+.timeInput {
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: var(--space-1) var(--space-2);
+  color: var(--text-strong);
+  font-family: var(--font-mono);
+  font-size: var(--text-sm);
+  /* Native time inputs are notoriously hard to size; pin a sensible
+   * minimum so both pickers stay aligned even when one side is empty. */
+  min-width: 84px;
+}
+
+.timeInput:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 1px;
+}
+
+.timeSep {
+  color: var(--text-muted);
+}
+
+/* ── react-day-picker overrides ──────────────────────────────────────── */
+/*
+ * The DayPicker classNames prop replaces these atoms on the rendered
+ * grid. We theme colours only; the library's structural styles
+ * (table, cell sizing, weekday row layout) stay in effect.
+ */
+
+.dpRoot {
+  --rdp-accent-color: var(--accent);
+  --rdp-accent-background-color: var(--accent-bg);
+  --rdp-day_button-width: 32px;
+  --rdp-day_button-height: 32px;
+  --rdp-day-width: 36px;
+  --rdp-day-height: 36px;
+  font-family: var(--font-sans);
+  font-size: var(--text-sm);
+  color: var(--text);
+  margin: 0;
+}
+
+.dpCaption {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-1) 0;
+}
+
+.dpCaptionLabel {
+  color: var(--text-strong);
+  font-size: var(--text-md);
+  font-weight: var(--weight-medium);
+}
+
+.dpNav {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+}
+
+.dpNavButton {
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  color: var(--text-muted);
+  cursor: pointer;
+  padding: 2px;
+}
+
+.dpNavButton:hover {
+  background: var(--bg-hover);
+  color: var(--text-strong);
+  border-color: var(--border);
+}
+
+.dpWeekdays {
+  color: var(--text-muted);
+  font-size: var(--text-xs);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.dpWeekday {
+  color: var(--text-muted);
+  font-weight: var(--weight-regular);
+  padding: var(--space-1) 0;
+}
+
+.dpDay {
+  /* The day cell — library sets sizing via CSS vars above. We just
+   * neutralise the default outline on focus so our focus-ring takes
+   * over instead. */
+  color: var(--text);
+  border-radius: var(--radius-sm);
+}
+
+.dpDayButton {
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  color: inherit;
+  cursor: pointer;
+  font-family: inherit;
+  font-size: inherit;
+  width: 100%;
+  height: 100%;
+}
+
+.dpDayButton:hover {
+  background: var(--bg-hover);
+  color: var(--text-strong);
+}
+
+.dpDayButton:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: -2px;
+}
+
+.dpToday .dpDayButton {
+  color: var(--accent);
+  font-weight: var(--weight-semibold);
+}
+
+.dpSelected .dpDayButton {
+  background: var(--accent-bg);
+  color: var(--text-strong);
+}
+
+.dpRangeStart .dpDayButton,
+.dpRangeEnd .dpDayButton {
+  background: var(--accent);
+  color: var(--accent-fg);
+  font-weight: var(--weight-medium);
+}
+
+.dpRangeMiddle .dpDayButton {
+  background: var(--accent-bg);
+  color: var(--text-strong);
+  border-radius: 0;
+}
+
+.dpOutside .dpDayButton {
+  color: var(--text-muted);
+  opacity: 0.55;
+}
+
+.dpDisabled .dpDayButton {
+  color: var(--text-muted);
+  opacity: 0.45;
+  cursor: not-allowed;
+}

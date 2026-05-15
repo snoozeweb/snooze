@@ -1,0 +1,107 @@
+.wrap {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-1);
+  padding: var(--space-1) var(--space-2);
+  min-height: 36px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  cursor: text;
+}
+.wrap:focus-within {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 1px var(--accent);
+}
+.placeholder {
+  color: var(--text-muted);
+  font-size: var(--text-sm);
+}
+.pill {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  padding: 2px var(--space-1);
+  font-size: var(--text-xs);
+  font-family: var(--font-mono);
+  background: var(--surface-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text);
+}
+.pill button {
+  background: transparent;
+  border: none;
+  padding: 0;
+  margin: 0 0 0 2px;
+  color: var(--text-muted);
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+}
+.pill button:hover {
+  color: var(--text);
+}
+.trigger {
+  flex: 1;
+  text-align: left;
+  background: transparent;
+  border: none;
+  padding: 0;
+  font-size: var(--text-sm);
+  color: var(--text);
+  cursor: pointer;
+}
+.popContent {
+  width: var(--radix-popover-trigger-width);
+  max-height: 260px;
+  overflow: auto;
+  background: var(--surface-1);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  box-shadow: 0 4px 16px rgb(0 0 0 / 30%);
+  z-index: 50;
+}
+.searchWrap {
+  padding: var(--space-2);
+  border-bottom: 1px solid var(--border);
+}
+.search {
+  width: 100%;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: var(--space-1) var(--space-2);
+  font-size: var(--text-sm);
+  color: var(--text);
+}
+.list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.option {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--space-1) var(--space-2);
+  cursor: pointer;
+  font-size: var(--text-sm);
+}
+.option[aria-selected="true"] {
+  background: var(--surface-2);
+}
+.option[data-active="true"] {
+  background: color-mix(in oklch, var(--accent) 12%, var(--surface-1));
+}
+.optionCheck {
+  color: var(--accent);
+  display: inline-flex;
+}
+.empty {
+  padding: var(--space-3);
+  text-align: center;
+  font-size: var(--text-sm);
+  color: var(--text-muted);
+}

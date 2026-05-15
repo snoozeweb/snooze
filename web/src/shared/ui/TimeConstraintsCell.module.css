@@ -1,0 +1,43 @@
+.wrap {
+  display: inline-flex;
+  flex-direction: column;
+  gap: 2px;
+  font-size: var(--text-xs);
+  line-height: 1.35;
+}
+.muted {
+  color: var(--text-muted);
+  font-size: var(--text-xs);
+  font-style: italic;
+}
+.always {
+  color: var(--text-muted);
+  font-size: var(--text-xs);
+}
+.block {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  column-gap: 8px;
+  align-items: baseline;
+}
+.label {
+  color: var(--text-muted);
+  font-size: 9px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  text-align: right;
+}
+.values {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+}
+.line {
+  color: var(--text);
+}
+.lineMono {
+  color: var(--text);
+  font-family: var(--font-mono);
+}
