@@ -188,6 +188,12 @@ func createHandler(host Host, p Plugin, collection string) http.HandlerFunc {
 			writeError(w, http.StatusInternalServerError, "db_error", err.Error())
 			return
 		}
+		if hook, ok := p.(CreateHook); ok {
+			if err := hook.AfterCreate(r.Context(), docs); err != nil {
+				host.Logger().Error("plugin AfterCreate failed",
+					"plugin", collection, "err", err)
+			}
+		}
 		writeJSON(w, http.StatusCreated, res)
 	}
 }

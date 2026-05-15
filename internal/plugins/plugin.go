@@ -98,3 +98,14 @@ type LifecycleHook interface {
 	Stop(ctx context.Context) error
 }
 
+// CreateHook plugins run side effects after a successful POST /api/v1/{name}
+// create. The hook fires after the underlying DB write has succeeded; it must
+// not retry the create. Use cases: cascading updates onto other collections.
+type CreateHook interface {
+	Plugin
+	// AfterCreate runs once per create request, receiving every document that
+	// was just written. An error from AfterCreate is logged via host.Logger
+	// but does not roll back the create — the side-effect is best-effort.
+	AfterCreate(ctx context.Context, docs []map[string]any) error
+}
+
