@@ -24,7 +24,13 @@ test.describe("admin / users", () => {
     await expect(page.getByRole("heading", { name: /new user/i })).toBeVisible();
 
     await page.locator("#user-name").fill("e2e-new-user");
-    await page.locator("#user-roles").fill("viewer");
+    // Roles is now a MultiCombobox (allowCustom). Open the popover, type
+    // the role name, press Enter to add it as a badge.
+    const roles = page.getByRole("combobox", { name: "Roles" });
+    await roles.click();
+    const search = page.getByPlaceholder(/search or type/i);
+    await search.fill("viewer");
+    await search.press("Enter");
     await page.locator("#user-password").fill("hunter2-hashed-placeholder");
 
     await page.getByRole("button", { name: /^create$/i }).click({ force: true });

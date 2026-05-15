@@ -16,7 +16,7 @@ test.describe("rule editor validation", () => {
     await page.goto(server.baseURL + "/web/rules");
     await page.getByRole("button", { name: /^new$/i }).click({ force: true });
 
-    const nameInput = page.getByLabel("Name");
+    const nameInput = page.getByLabel("Name", { exact: true });
     await expect(nameInput).not.toHaveAttribute("aria-invalid", "true");
 
     await page.getByRole("button", { name: /^create$/i }).click({ force: true });
@@ -37,7 +37,9 @@ test.describe("rule editor validation", () => {
     await page.goto(server.baseURL + "/web/rules");
     await page.getByRole("button", { name: /^new$/i }).click({ force: true });
 
-    await page.getByLabel("Name").fill("dup-name");
+    // exact:true distinguishes the "Name" input label from the
+    // drag-handle aria-labels that contain rule names like "Drag dup-name".
+    await page.getByLabel("Name", { exact: true }).fill("dup-name");
     await page.getByRole("button", { name: /^create$/i }).click({ force: true });
 
     // Either the API rejects the duplicate (toast.error → "Save failed" or a

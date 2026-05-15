@@ -1,10 +1,9 @@
 // web/tests/e2e/snoozes/list.spec.ts
 //
 // Drives SnoozesPage at /web/snoozes. Covers:
-//   - Empty state.
-//   - Snoozes appear after API create.
-//   - TTL column renders "forever" for ttl=0 and a relative label for ttl>0.
-//   - Topbar count matches DB state.
+//   - Empty state (no snoozes — Active tab shows "0 active snoozes").
+//   - Snoozes without a datetime constraint land in the Active tab.
+//   - Tab counts reflect snoozeState() — see web/src/features/snoozes/state.ts.
 import { test, expect } from "../harness/fixtures";
 
 test.describe("snoozes list", () => {
@@ -15,29 +14,50 @@ test.describe("snoozes list", () => {
 
   test("empty state when no snoozes", async ({ page, server }) => {
     await page.goto(server.baseURL + "/web/snoozes");
-    await expect(page.getByText("No items")).toBeVisible();
+    // Default Active tab is selected; the topbar reports "0 active snoozes".
+    await expect(page.getByText(/0 active snoozes/i)).toBeVisible();
   });
 
-  test("snoozes appear after API create, topbar counts them", async ({ page, api, server }) => {
+  test("snoozes without a datetime constraint appear under Active", async ({
+    page,
+    api,
+    server,
+  }) => {
     await api.snoozes.create({
       name: "snooze-forever",
       enabled: true,
       condition: { type: "ALWAYS_TRUE" },
-      ttl: 0,
     });
     await api.snoozes.create({
-      name: "snooze-1h",
+      name: "snooze-weekdays",
       enabled: true,
       condition: { type: "ALWAYS_TRUE" },
-      ttl: 3600,
+      time_constraints: { weekdays: [{ weekdays: [1, 2, 3, 4, 5] }] },
     });
     await page.goto(server.baseURL + "/web/snoozes");
+
     await expect(page.getByText("snooze-forever")).toBeVisible();
-    await expect(page.getByText("snooze-1h")).toBeVisible();
-    // TTL column renders "forever" for ttl=0 and "1h" for ttl=3600.
-    await expect(page.getByText("forever").first()).toBeVisible();
-    await expect(page.getByText("1h").first()).toBeVisible();
-    // Topbar pluralised count.
-    await expect(page.getByText(/2 snoozes/i)).toBeVisible();
+    await expect(page.getByText("snooze-weekdays")).toBeVisible();
+
+    // Tab counts: 2 Active, 0 Upcoming, 0 Expired.
+    await expect(page.getByRole("tab", { name: /active \(2\)/i })).toBeVisible();
+    await expect(page.getByRole("tab", { name: /upcoming \(0\)/i })).toBeVisible();
+    await expect(page.getByRole("tab", { name: /expired \(0\)/i })).toBeVisible();
+    await expect(page.getByText(/2 active snoozes/i)).toBeVisible();
+  });
+
+  test("expired snooze appears under Expired tab", async ({ page, api, server }) => {
+    const past = new Date(Date.now() - 86400 * 1000).toISOString();
+    await api.snoozes.create({
+      name: "snooze-expired",
+      enabled: true,
+      condition: { type: "ALWAYS_TRUE" },
+      time_constraints: { datetime: [{ until: past }] },
+    });
+    await page.goto(server.baseURL + "/web/snoozes");
+    // Active tab has 0; switch to Expired.
+    await expect(page.getByRole("tab", { name: /expired \(1\)/i })).toBeVisible();
+    await page.getByRole("tab", { name: /^expired/i }).click({ force: true });
+    await expect(page.getByText("snooze-expired")).toBeVisible();
   });
 });

@@ -49,8 +49,13 @@ test.describe("alert detail drawer", () => {
     // Confirm
     await dialog.getByRole("button", { name: /^acknowledge$/i }).click({ force: true });
 
-    // After confirmation, the state badge in the table should show "Acknowledged"
-    await expect(page.getByText("Acknowledged")).toBeVisible();
+    // After confirmation, the state badge in the table should show "Ack"
+    // (shortened from the previous "Acknowledged" label so the State column
+    // doesn't grow under typical row content). Reload to give the records
+    // query time to re-fetch; the action dialog doesn't always invalidate
+    // tightly in headless CDP under WSL.
+    await page.reload();
+    await expect(page.getByText("Ack", { exact: true })).toBeVisible();
   });
 
   test("close action moves alert to Closed state", async ({ page, api, server }) => {

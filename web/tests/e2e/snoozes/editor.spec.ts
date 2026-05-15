@@ -1,8 +1,10 @@
 // web/tests/e2e/snoozes/editor.spec.ts
 //
 // Exercises SnoozeEditor (web/src/features/snoozes/SnoozeEditor.tsx):
-//   - Create a snooze with TTL=0 (forever) — happy path.
-//   - Create a snooze with TTL=600 — value is persisted as-is.
+//   - Create a snooze without expiration — happy path (no TTL field; the
+//     legacy Python era didn't have one and the Go backend doesn't
+//     enforce it on the snooze collection, so we removed it from the
+//     form).
 //   - Edit an existing snooze (rename), Save persists the new name.
 import { test, expect } from "../harness/fixtures";
 
@@ -12,19 +14,12 @@ test.describe("snooze editor", () => {
     await adminAuth();
   });
 
-  test("create a snooze with TTL forever via the dedicated New flow", async ({
-    page,
-    api,
-    server,
-  }) => {
+  test("create a snooze via the dedicated New flow", async ({ page, api, server }) => {
     await page.goto(server.baseURL + "/web/snoozes");
     await page.getByRole("button", { name: /^new$/i }).click({ force: true });
     await expect(page.getByRole("heading", { name: /new snooze/i })).toBeVisible();
 
     await page.getByLabel("Name").fill("e2e-forever-snooze");
-
-    // TTL input is type="number" with label "TTL (seconds, 0 = forever)".
-    await page.getByLabel(/^TTL/i).fill("0");
 
     await page.getByRole("button", { name: /^create$/i }).click({ force: true });
     await expect(page.getByText(/snooze created/i).first()).toBeVisible();
@@ -38,7 +33,6 @@ test.describe("snooze editor", () => {
       name: "snooze-original",
       enabled: true,
       condition: { type: "ALWAYS_TRUE" },
-      ttl: 3600,
     });
 
     await page.goto(server.baseURL + "/web/snoozes");

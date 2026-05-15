@@ -16,10 +16,14 @@ test.describe("notification editor", () => {
     await page.getByRole("button", { name: /^new$/i }).click({ force: true });
     await expect(page.getByRole("heading", { name: /new notification/i })).toBeVisible();
 
-    // "Actions (comma-separated action names)" matches getByLabel("Name") via
-    // partial accessible-name match — scope to the Name input by id.
     await page.locator("#notif-name").fill("e2e-notif");
-    await page.locator("#notif-actions").fill("slack-prod");
+    // Actions is now a MultiCombobox; click it to open the popover, type
+    // the name (allowCustom is on), and Enter to add it as a badge.
+    const actions = page.getByRole("combobox", { name: "Actions" });
+    await actions.click();
+    const search = page.getByPlaceholder(/search or type/i);
+    await search.fill("slack-prod");
+    await search.press("Enter");
 
     await page.getByRole("button", { name: /^create$/i }).click({ force: true });
     await expect(page.getByText(/notification created/i).first()).toBeVisible();
