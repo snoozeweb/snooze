@@ -308,14 +308,12 @@ func condFromObject(m map[string]any) (condition.Cond, error) {
 // KV_SET is recognised and routed to a separate slice because the standard
 // modification package intentionally doesn't implement it.
 //
-// Entries are accepted in two shapes:
-//
-//  1. Legacy/Python positional form: ["SET", "field", "value"].
-//  2. UI form: {"type": "set", "field": "...", "value": "..."}.
-//
-// The UI form mirrors web/src/shared/modifications/types.ts and is what the
-// React editor posts. It is normalised to the positional form before going
-// through modification.Parse.
+// The canonical wire/storage shape is the positional Python-era form
+// ["OP", "field", arg…]. The React rule editor de/serialises its
+// discriminated-union TS type at the network boundary (see
+// web/src/shared/modifications/wire.ts) so this side never sees the
+// object form. modification.Modification (and the rest of the Go layer)
+// is built around the positional shape.
 func parseModifications(raw any) ([]modification.Modification, []kvSet, error) {
 	if raw == nil {
 		return nil, nil, nil
@@ -327,9 +325,9 @@ func parseModifications(raw any) ([]modification.Modification, []kvSet, error) {
 	var mods []modification.Modification
 	var kvs []kvSet
 	for i, entry := range list {
-		args, err := coerceModification(entry)
-		if err != nil {
-			return nil, nil, fmt.Errorf("modifications[%d]: %w", i, err)
+		args, ok := entry.([]any)
+		if !ok {
+			return nil, nil, fmt.Errorf("modifications[%d]: not a list (%T)", i, entry)
 		}
 		if len(args) > 0 {
 			if op, ok := args[0].(string); ok && op == "KV_SET" {
@@ -347,41 +345,6 @@ func parseModifications(raw any) ([]modification.Modification, []kvSet, error) {
 		mods = append(mods, m)
 	}
 	return mods, kvs, nil
-}
-
-// coerceModification normalises a stored modification entry into the
-// positional []any form expected by modification.Parse. Accepts:
-//
-//   - []any                            (already positional)
-//   - map[string]any with a "type" key (UI form; see types.ts)
-func coerceModification(entry any) ([]any, error) {
-	if args, ok := entry.([]any); ok {
-		return args, nil
-	}
-	obj, ok := entry.(map[string]any)
-	if !ok {
-		return nil, fmt.Errorf("not a list or object (%T)", entry)
-	}
-	typeStr, _ := obj["type"].(string)
-	field, _ := obj["field"].(string)
-	switch typeStr {
-	case "set":
-		return []any{"SET", field, obj["value"]}, nil
-	case "delete":
-		return []any{"DELETE", field}, nil
-	case "array_append":
-		return []any{"ARRAY_APPEND", field, obj["value"]}, nil
-	case "array_delete":
-		return []any{"ARRAY_DELETE", field, obj["value"]}, nil
-	case "regex_sub":
-		return []any{"REGEX_SUB", field, obj["pattern"], obj["replace"]}, nil
-	case "regex_parse":
-		return []any{"REGEX_PARSE", field, obj["pattern"]}, nil
-	case "kv_set":
-		return []any{"KV_SET", field, obj["key"]}, nil
-	default:
-		return nil, fmt.Errorf("unknown modification type %q", typeStr)
-	}
 }
 
 // safeString fetches args[i] as a string, returning ("", false) when out of

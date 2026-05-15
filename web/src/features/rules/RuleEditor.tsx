@@ -12,6 +12,10 @@ import { ModificationList } from "@/shared/modifications/ModificationList";
 import { ApiError } from "@/lib/api/client";
 import type { Condition } from "@/lib/condition/types";
 import type { Modification } from "@/shared/modifications/types";
+import {
+  modificationsFromWire,
+  modificationsToWire,
+} from "@/shared/modifications/wire";
 import { DiffSection } from "@/shared/ui/DiffSection";
 import { Rules, AggregateRules } from "./api";
 import type { Rule } from "./types";
@@ -61,7 +65,7 @@ export function RuleEditor({ plugin, uid, onClose }: RuleEditorProps) {
         comment: existing.data.comment ?? "",
         enabled: existing.data.enabled ?? true,
         condition: existing.data.condition ?? { type: "ALWAYS_TRUE" },
-        modifications: existing.data.modifications ?? [],
+        modifications: modificationsFromWire(existing.data.modifications),
       });
     }
   }, [existing.data, isCreate, reset]);
@@ -83,7 +87,9 @@ export function RuleEditor({ plugin, uid, onClose }: RuleEditorProps) {
         ...(form.comment ? { comment: form.comment } : {}),
         enabled: form.enabled,
         condition: form.condition,
-        ...(form.modifications.length > 0 ? { modifications: form.modifications } : {}),
+        ...(form.modifications.length > 0
+          ? { modifications: modificationsToWire(form.modifications) }
+          : {}),
       };
       if (isCreate) {
         await create.mutateAsync(body);
@@ -106,12 +112,16 @@ export function RuleEditor({ plugin, uid, onClose }: RuleEditorProps) {
   const nameInvalid = formState.isSubmitted && !watch("name").trim();
   const labelPlugin = plugin === "rule" ? "rule" : "aggregate rule";
 
+  // The Diff section compares against the server payload, so the projected
+  // value must use the same wire shape (positional modifications).
   const projected: Rule = {
     name: watch("name"),
     ...(watch("comment") ? { comment: watch("comment") } : {}),
     enabled: enabled,
     condition: condition,
-    ...(modifications.length > 0 ? { modifications } : {}),
+    ...(modifications.length > 0
+      ? { modifications: modificationsToWire(modifications) }
+      : {}),
   };
 
   return (

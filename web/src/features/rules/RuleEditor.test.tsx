@@ -44,7 +44,7 @@ describe("RuleEditor", () => {
           comment: "for noisy hosts",
           enabled: true,
           condition: { type: "EQUALS", field: "host", value: "srv-1" },
-          modifications: [{ type: "set", field: "environment", value: "prod" }],
+          modifications: [["SET", "environment", "prod"]],
         }),
       ),
       http.get("/api/v1/record", () =>

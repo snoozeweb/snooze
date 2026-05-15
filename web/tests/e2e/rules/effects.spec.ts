@@ -23,7 +23,10 @@ test.describe("rule pipeline effects", () => {
       enabled: true,
       // ALWAYS_TRUE matches every alert.
       condition: { type: "ALWAYS_TRUE" },
-      modifications: [{ type: "set", field: "environment", value: "prod" }],
+      // Modifications use the positional wire form. The React editor
+      // de/serialises through shared/modifications/wire.ts; raw API
+      // callers (tests, CLIs, automation) send the wire shape directly.
+      modifications: [["SET", "environment", "prod"]],
     });
 
     // The syncer debounces collection-change events (~100ms default) before

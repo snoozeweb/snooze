@@ -1,5 +1,4 @@
 import type { Condition } from "@/lib/condition/types";
-import type { Modification } from "@/shared/modifications/types";
 
 export type Rule = {
   uid?: string;
@@ -7,7 +6,10 @@ export type Rule = {
   comment?: string;
   enabled?: boolean;
   condition?: Condition;
-  modifications?: Modification[];
+  // Wire shape is the positional [op, field, …args] form used by the
+  // Python era and the Go-internal modification.Modification. The React
+  // editor de/serialises this via shared/modifications/wire.ts.
+  modifications?: unknown[][];
 };
 
 export type AggregateRule = Rule & {
