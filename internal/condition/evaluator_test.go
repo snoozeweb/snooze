@@ -330,3 +330,133 @@ func TestAlwaysTrue_Match(t *testing.T) {
 		require.True(t, Match(rec, c))
 	}
 }
+
+// --- Deeply nested mixed trees ---
+//
+// The two tests above (TestAnd_Nested, TestAnd_NestedMiss) pin 2-level
+// nesting. These pin 3+ levels and mixed AND/OR/NOT, which is the shape
+// the ConditionEditor builds when users click "Add group" inside an
+// existing group.
+
+func TestEval_DeepMixedTree_Match(t *testing.T) {
+	// AND(
+	//   OR(
+	//     =(host, srv-prod-1),
+	//     NOT(EXISTS(maintenance)),
+	//   ),
+	//   AND(
+	//     MATCHES(message, "CPU"),
+	//     OR(=(severity, "critical"), =(severity, "error")),
+	//   ),
+	// )
+	c := mustFromList(t, []any{
+		"AND",
+		[]any{"OR",
+			[]any{"=", "host", "srv-prod-1"},
+			[]any{"NOT", []any{"EXISTS", "maintenance"}},
+		},
+		[]any{"AND",
+			[]any{"MATCHES", "message", "CPU"},
+			[]any{"OR",
+				[]any{"=", "severity", "critical"},
+				[]any{"=", "severity", "error"},
+			},
+		},
+	})
+	require.True(t, Match(map[string]any{
+		"host":     "srv-prod-1",
+		"message":  "CPU usage above 95%",
+		"severity": "critical",
+	}, c))
+}
+
+func TestEval_DeepMixedTree_RightArmFails(t *testing.T) {
+	c := mustFromList(t, []any{
+		"AND",
+		[]any{"OR",
+			[]any{"=", "host", "srv-prod-1"},
+			[]any{"NOT", []any{"EXISTS", "maintenance"}},
+		},
+		[]any{"AND",
+			[]any{"MATCHES", "message", "CPU"},
+			[]any{"OR",
+				[]any{"=", "severity", "critical"},
+				[]any{"=", "severity", "error"},
+			},
+		},
+	})
+	// Right-arm fails: severity is "info" (not critical/error).
+	require.False(t, Match(map[string]any{
+		"host":     "srv-prod-1",
+		"message":  "CPU usage above 95%",
+		"severity": "info",
+	}, c))
+}
+
+func TestEval_DeepMixedTree_LeftArmFailsViaMaintenance(t *testing.T) {
+	c := mustFromList(t, []any{
+		"AND",
+		[]any{"OR",
+			[]any{"=", "host", "srv-prod-1"},
+			[]any{"NOT", []any{"EXISTS", "maintenance"}},
+		},
+		[]any{"AND",
+			[]any{"MATCHES", "message", "CPU"},
+			[]any{"OR",
+				[]any{"=", "severity", "critical"},
+				[]any{"=", "severity", "error"},
+			},
+		},
+	})
+	// Different host + maintenance is set → left OR fails on both arms,
+	// AND fails despite right being satisfied.
+	require.False(t, Match(map[string]any{
+		"host":        "srv-other",
+		"maintenance": true,
+		"message":     "CPU usage above 95%",
+		"severity":    "critical",
+	}, c))
+}
+
+func TestEval_DoubleNot(t *testing.T) {
+	// NOT(NOT(=(a, 1))) is equivalent to =(a, 1).
+	c := mustFromList(t, []any{"NOT", []any{"NOT", []any{"=", "a", int64(1)}}})
+	require.True(t, Match(map[string]any{"a": int64(1)}, c))
+	require.False(t, Match(map[string]any{"a": int64(2)}, c))
+}
+
+func TestEval_NotAroundOrGroup(t *testing.T) {
+	// NOT(OR(=(a, 1), =(b, 2))) = AND(!=(a, 1), !=(b, 2))
+	c := mustFromList(t, []any{"NOT", []any{"OR",
+		[]any{"=", "a", int64(1)},
+		[]any{"=", "b", int64(2)},
+	}})
+	require.False(t, Match(map[string]any{"a": int64(1), "b": int64(99)}, c))
+	require.False(t, Match(map[string]any{"a": int64(99), "b": int64(2)}, c))
+	require.True(t, Match(map[string]any{"a": int64(99), "b": int64(99)}, c))
+}
+
+func TestEval_DeeplyNestedShortCircuit(t *testing.T) {
+	// 5-level AND chain matching at every level. Pins that the evaluator
+	// walks all the way to the leaves and doesn't truncate at some depth.
+	c := mustFromList(t, []any{"AND",
+		[]any{"=", "a", int64(1)},
+		[]any{"AND",
+			[]any{"=", "b", int64(2)},
+			[]any{"AND",
+				[]any{"=", "c", int64(3)},
+				[]any{"AND",
+					[]any{"=", "d", int64(4)},
+					[]any{"=", "e", int64(5)},
+				},
+			},
+		},
+	})
+	require.True(t, Match(map[string]any{
+		"a": int64(1), "b": int64(2), "c": int64(3), "d": int64(4), "e": int64(5),
+	}, c))
+	// Innermost leaf fails → whole tree fails (recursion reaches it).
+	require.False(t, Match(map[string]any{
+		"a": int64(1), "b": int64(2), "c": int64(3), "d": int64(4), "e": int64(99),
+	}, c))
+}

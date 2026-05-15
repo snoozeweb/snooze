@@ -194,6 +194,197 @@ func TestUnmarshalFrontendShapeIsActuallyEvaluated(t *testing.T) {
 	require.False(t, Match(map[string]any{"host": "noisy-1"}, c))
 }
 
+// TestFrontendWireShape_DeeplyNested pins the wire shape for trees deeper
+// than the two-level cases above. The ConditionEditor's "Add group" button
+// (web/src/shared/condition/ConditionGroup.tsx) lets users build arbitrary
+// depth; the backend must round-trip every level correctly.
+func TestFrontendWireShape_DeeplyNested(t *testing.T) {
+	// Tree: AND(
+	//   OR(
+	//     EQUALS(host, srv-prod-1),
+	//     NOT(EXISTS(maintenance)),
+	//   ),
+	//   AND(
+	//     MATCHES(message, "CPU"),
+	//     OR(
+	//       NOT_EQUALS(severity, "info"),
+	//       GT(retries, 3),
+	//     ),
+	//   ),
+	// )
+	in := `{
+	  "type": "AND",
+	  "args": [
+	    {
+	      "type": "OR",
+	      "args": [
+	        {"type":"EQUALS","field":"host","value":"srv-prod-1"},
+	        {"type":"NOT","arg":{"type":"EXISTS","field":"maintenance"}}
+	      ]
+	    },
+	    {
+	      "type": "AND",
+	      "args": [
+	        {"type":"MATCHES","field":"message","value":"CPU"},
+	        {
+	          "type": "OR",
+	          "args": [
+	            {"type":"NOT_EQUALS","field":"severity","value":"info"},
+	            {"type":"GT","field":"retries","value":3}
+	          ]
+	        }
+	      ]
+	    }
+	  ]
+	}`
+	var got Cond
+	require.NoError(t, json.Unmarshal([]byte(in), &got))
+
+	// Walk the tree, verifying every operator was normalised.
+	require.Equal(t, OpAnd, got.Op)
+	require.Len(t, got.Children, 2)
+
+	left := got.Children[0]
+	require.Equal(t, OpOr, left.Op)
+	require.Len(t, left.Children, 2)
+	require.Equal(t, OpEq, left.Children[0].Op)
+	require.Equal(t, "host", left.Children[0].Field)
+	require.Equal(t, "srv-prod-1", left.Children[0].Value)
+	require.Equal(t, OpNot, left.Children[1].Op)
+	require.Len(t, left.Children[1].Children, 1)
+	require.Equal(t, OpExists, left.Children[1].Children[0].Op)
+	require.Equal(t, "maintenance", left.Children[1].Children[0].Field)
+
+	right := got.Children[1]
+	require.Equal(t, OpAnd, right.Op)
+	require.Len(t, right.Children, 2)
+	require.Equal(t, OpMatches, right.Children[0].Op)
+	require.Equal(t, OpOr, right.Children[1].Op)
+	require.Equal(t, OpNeq, right.Children[1].Children[0].Op)
+	require.Equal(t, OpGt, right.Children[1].Children[1].Op)
+	require.Equal(t, float64(3), right.Children[1].Children[1].Value)
+
+	// Matches a prod alert with high CPU and high retries.
+	require.True(t, Match(map[string]any{
+		"host":     "srv-prod-1",
+		"message":  "CPU usage above 95%",
+		"severity": "warning",
+		"retries":  float64(5),
+	}, got))
+
+	// Misses: severity=info AND retries<=3, despite host+message matching.
+	require.False(t, Match(map[string]any{
+		"host":     "srv-prod-1",
+		"message":  "CPU baseline drift",
+		"severity": "info",
+		"retries":  float64(1),
+	}, got))
+
+	// Maintenance set → left OR still satisfied only if host matches.
+	require.True(t, Match(map[string]any{
+		"host":        "srv-prod-1",
+		"maintenance": true,
+		"message":     "CPU baseline drift",
+		"severity":    "warning",
+		"retries":     float64(5),
+	}, got))
+
+	// Different host AND maintenance set → left OR fails, AND fails.
+	require.False(t, Match(map[string]any{
+		"host":        "srv-other",
+		"maintenance": true,
+		"message":     "CPU baseline drift",
+		"severity":    "warning",
+		"retries":     float64(5),
+	}, got))
+}
+
+// TestFrontendWireShape_DoubleNot guards double negation and NOT around a
+// nested group — the React ConditionGroup wraps groups in NOT by emitting
+// {type:"NOT", arg: <Condition>}, so NOT(AND(...)) must decode cleanly.
+func TestFrontendWireShape_DoubleNot(t *testing.T) {
+	in := `{
+	  "type":"NOT",
+	  "arg":{
+	    "type":"NOT",
+	    "arg":{
+	      "type":"AND",
+	      "args":[
+	        {"type":"EQUALS","field":"host","value":"srv-1"},
+	        {"type":"EQUALS","field":"severity","value":"critical"}
+	      ]
+	    }
+	  }
+	}`
+	var c Cond
+	require.NoError(t, json.Unmarshal([]byte(in), &c))
+	require.Equal(t, OpNot, c.Op)
+	require.Len(t, c.Children, 1)
+	require.Equal(t, OpNot, c.Children[0].Op)
+	require.Equal(t, OpAnd, c.Children[0].Children[0].Op)
+
+	// NOT(NOT(AND(host=srv-1, severity=critical))) == AND(...)
+	require.True(t, Match(map[string]any{
+		"host":     "srv-1",
+		"severity": "critical",
+	}, c))
+	require.False(t, Match(map[string]any{
+		"host":     "srv-1",
+		"severity": "info",
+	}, c))
+}
+
+// TestObjectFormDeepRoundTrip encodes a 4-level Cond using the canonical
+// `op`/`children` shape and decodes it back identically. Pins that the
+// MarshalJSON output is itself parseable by UnmarshalJSON at depth.
+func TestObjectFormDeepRoundTrip(t *testing.T) {
+	in := Cond{Op: OpAnd, Children: []Cond{
+		{Op: OpEq, Field: "host", Value: "srv-prod-1"},
+		{Op: OpOr, Children: []Cond{
+			{Op: OpNot, Children: []Cond{
+				{Op: OpAnd, Children: []Cond{
+					{Op: OpExists, Field: "maintenance"},
+					{Op: OpEq, Field: "ack", Value: true},
+				}},
+			}},
+			{Op: OpMatches, Field: "message", Value: "CPU"},
+		}},
+	}}
+	data, err := json.Marshal(in)
+	require.NoError(t, err)
+	var out Cond
+	require.NoError(t, json.Unmarshal(data, &out))
+	require.Equal(t, in, out)
+}
+
+// TestFrontendWireShape_MixedArrayAndObjectChildren covers a defensive
+// edge case: the frontend always emits object form, but the AST tolerates
+// `children` (object form) inside an otherwise object-form parent. Pin it
+// so a future refactor doesn't accidentally break the canonical path.
+func TestFrontendWireShape_CanonicalChildren(t *testing.T) {
+	in := `{
+	  "op":"AND",
+	  "children":[
+	    {"op":"OR","children":[
+	      {"op":"=","field":"a","value":"1"},
+	      {"op":"=","field":"a","value":"2"}
+	    ]},
+	    {"op":"NOT","children":[
+	      {"op":"EXISTS","field":"shelved"}
+	    ]}
+	  ]
+	}`
+	var c Cond
+	require.NoError(t, json.Unmarshal([]byte(in), &c))
+	require.Equal(t, OpAnd, c.Op)
+	require.Len(t, c.Children, 2)
+	require.Equal(t, OpOr, c.Children[0].Op)
+	require.Equal(t, OpNot, c.Children[1].Op)
+	require.Equal(t, OpExists, c.Children[1].Children[0].Op)
+	require.True(t, Match(map[string]any{"a": "1"}, c))
+	require.False(t, Match(map[string]any{"a": "1", "shelved": true}, c))
+}
+
 // FuzzCondition round-trips Parse → MarshalListJSON → Unmarshal so any
 // crash, drift, or mismatch surfaces. The corpus is seeded with the parser
 // test corpus.
