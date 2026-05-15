@@ -309,6 +309,94 @@ func (d *Driver) ComputeStats(ctx context.Context, collection string, from, to t
 	return out, nil
 }
 
+// RecordStats aggregates the `record` collection in SQL — one query for the
+// time-series (bucketed by `bucketSec`, grouped by source) and one for the
+// per-window totals (severity + environment). The two-query split keeps the
+// SQL simple enough to read at a glance; total volume is the same.
+//
+// Returns empty maps (never nil) when the collection is absent.
+func (d *Driver) RecordStats(ctx context.Context, from, to time.Time, bucketSec int64) (dbpkg.RecordStatsBuckets, error) {
+	out := dbpkg.RecordStatsBuckets{
+		Series:        map[int64]map[string]int64{},
+		BySeverity:    map[string]int64{},
+		ByEnvironment: map[string]int64{},
+	}
+	if bucketSec <= 0 {
+		return out, fmt.Errorf("bucketSec must be > 0")
+	}
+	exists, err := d.collectionExists(ctx, "record")
+	if err != nil {
+		return out, err
+	}
+	if !exists {
+		return out, nil
+	}
+	tbl, err := tableName("record")
+	if err != nil {
+		return out, err
+	}
+	fromEpoch, toEpoch := from.Unix(), to.Unix()
+
+	// Series: bucket-start (= epoch / stride * stride) and source → count.
+	seriesStmt := fmt.Sprintf(`
+		SELECT
+		  CAST(COALESCE(json_extract(data, '$.date_epoch'), 0) AS INTEGER) / ? * ? AS slot,
+		  COALESCE(json_extract(data, '$.source'), 'unknown') AS source,
+		  COUNT(*) AS n
+		FROM %s
+		WHERE COALESCE(json_extract(data, '$.date_epoch'), 0) BETWEEN ? AND ?
+		GROUP BY slot, source
+	`, quoteIdent(tbl))
+	rows, err := d.db.QueryContext(ctx, seriesStmt, bucketSec, bucketSec, fromEpoch, toEpoch)
+	if err != nil {
+		return out, fmt.Errorf("record stats: series: %w", err)
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var slot int64
+		var source string
+		var n int64
+		if err := rows.Scan(&slot, &source, &n); err != nil {
+			return out, err
+		}
+		bucket := out.Series[slot]
+		if bucket == nil {
+			bucket = map[string]int64{}
+			out.Series[slot] = bucket
+		}
+		bucket[source] = n
+	}
+	if err := rows.Err(); err != nil {
+		return out, err
+	}
+
+	// Totals: one row per (severity, environment); we reduce twice in Go.
+	totalsStmt := fmt.Sprintf(`
+		SELECT
+		  COALESCE(NULLIF(json_extract(data, '$.severity'), ''), 'info')   AS sev,
+		  COALESCE(NULLIF(json_extract(data, '$.environment'), ''), '(none)') AS env,
+		  COUNT(*) AS n
+		FROM %s
+		WHERE COALESCE(json_extract(data, '$.date_epoch'), 0) BETWEEN ? AND ?
+		GROUP BY sev, env
+	`, quoteIdent(tbl))
+	rows2, err := d.db.QueryContext(ctx, totalsStmt, fromEpoch, toEpoch)
+	if err != nil {
+		return out, fmt.Errorf("record stats: totals: %w", err)
+	}
+	defer rows2.Close()
+	for rows2.Next() {
+		var sev, env string
+		var n int64
+		if err := rows2.Scan(&sev, &env, &n); err != nil {
+			return out, err
+		}
+		out.BySeverity[sev] += n
+		out.ByEnvironment[env] += n
+	}
+	return out, rows2.Err()
+}
+
 // groupByFormats maps the high-level bucket name to a strftime format string
 // suitable for splicing into SQLite.
 var groupByFormats = map[string]string{

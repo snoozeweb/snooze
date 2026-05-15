@@ -107,10 +107,9 @@ type statsMeta struct {
 	Bucket int    `json:"bucket"`
 }
 
-// handleStats serves the dashboard's aggregate. The query is intentionally
-// generous (we fetch up to 10k records) so a single-node deployment stays
-// snappy without forcing pagination on the dashboard. Larger sites should
-// implement driver-native aggregations behind the same route.
+// handleStats serves the dashboard's aggregate. Drivers implementing the
+// optional db.RecordAggregator capability (today: SQLite) answer in SQL;
+// others fall back to fetching records and reducing in Go.
 func (p *Plugin) handleStats(host plugins.Host) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		q := r.URL.Query()
@@ -132,80 +131,54 @@ func (p *Plugin) handleStats(host plugins.Host) http.HandlerFunc {
 		if err != nil || bucketSec <= 0 {
 			bucketSec = 3600
 		}
-
-		records, _, err := host.DB().Search(r.Context(), "record", condition.Cond{}, db.Page{
-			PerPage: 10000,
-			OrderBy: "date_epoch",
-			Asc:     true,
-		})
-		if err != nil {
-			writeJSON(w, http.StatusInternalServerError, map[string]any{
-				"code": "db_error", "detail": err.Error(),
-			})
-			return
-		}
-
-		bySeverity := map[string]int{}
-		byEnvironment := map[string]int{}
-		bucketed := map[int64]map[string]int{}
-		fromEpoch, toEpoch := from.Unix(), to.Unix()
 		stride := int64(bucketSec)
+		fromEpoch, toEpoch := from.Unix(), to.Unix()
 
-		for _, rec := range records {
-			epoch, ok := recordEpoch(rec)
-			if !ok {
-				continue
-			}
-			if epoch < fromEpoch || epoch > toEpoch {
-				continue
-			}
-			sev, _ := rec["severity"].(string)
-			if sev == "" {
-				sev = "info"
-			}
-			bySeverity[sev]++
-			env, _ := rec["environment"].(string)
-			if env == "" {
-				env = "(none)"
-			}
-			byEnvironment[env]++
+		var bucketed map[int64]map[string]int64
+		var bySeverity, byEnvironment map[string]int64
 
-			source, _ := rec["source"].(string)
-			if source == "" {
-				source = "unknown"
+		if agg, ok := host.DB().(db.RecordAggregator); ok {
+			res, aggErr := agg.RecordStats(r.Context(), from, to, stride)
+			if aggErr != nil {
+				writeJSON(w, http.StatusInternalServerError, map[string]any{
+					"code": "db_error", "detail": aggErr.Error(),
+				})
+				return
 			}
-			slot := (epoch / stride) * stride
-			row := bucketed[slot]
-			if row == nil {
-				row = map[string]int{}
-				bucketed[slot] = row
+			bucketed = res.Series
+			bySeverity = res.BySeverity
+			byEnvironment = res.ByEnvironment
+		} else {
+			b, sev, env, scanErr := reduceInGo(r.Context(), host, fromEpoch, toEpoch, stride)
+			if scanErr != nil {
+				writeJSON(w, http.StatusInternalServerError, map[string]any{
+					"code": "db_error", "detail": scanErr.Error(),
+				})
+				return
 			}
-			row[source]++
+			bucketed, bySeverity, byEnvironment = b, sev, env
 		}
 
 		// Emit a continuous series so the line chart doesn't gap-jump.
-		slots := make([]int64, 0, len(bucketed))
+		series := make([]seriesBucket, 0)
 		for t := (fromEpoch / stride) * stride; t <= toEpoch; t += stride {
-			slots = append(slots, t)
-		}
-		series := make([]seriesBucket, 0, len(slots))
-		for _, t := range slots {
 			counts := bucketed[t]
-			if counts == nil {
-				counts = map[string]int{}
+			out := make(map[string]int, len(counts))
+			for k, v := range counts {
+				out[k] = int(v)
 			}
 			series = append(series, seriesBucket{
 				T:      time.Unix(t, 0).UTC().Format(time.RFC3339),
-				Counts: counts,
+				Counts: out,
 			})
 		}
 
-		resp := statsResponse{
+		writeJSON(w, http.StatusOK, statsResponse{
 			Data: statsData{
 				Series: series,
 				Totals: statsTotals{
-					BySeverity:      bySeverity,
-					ByEnvironment:   byEnvironment,
+					BySeverity:      toIntMap(bySeverity),
+					ByEnvironment:   toIntMap(byEnvironment),
 					ByActionSuccess: map[string]int{},
 					ByActionFailure: map[string]int{},
 				},
@@ -215,9 +188,66 @@ func (p *Plugin) handleStats(host plugins.Host) http.HandlerFunc {
 				To:     to.UTC().Format(time.RFC3339),
 				Bucket: bucketSec,
 			},
-		}
-		writeJSON(w, http.StatusOK, resp)
+		})
 	}
+}
+
+func toIntMap(in map[string]int64) map[string]int {
+	out := make(map[string]int, len(in))
+	for k, v := range in {
+		out[k] = int(v)
+	}
+	return out
+}
+
+// reduceInGo is the fallback for drivers that don't implement
+// db.RecordAggregator: pull up to 10k records and aggregate locally.
+func reduceInGo(ctx context.Context, host plugins.Host, fromEpoch, toEpoch, stride int64) (
+	bucketed map[int64]map[string]int64,
+	bySeverity, byEnvironment map[string]int64,
+	err error,
+) {
+	bucketed = map[int64]map[string]int64{}
+	bySeverity = map[string]int64{}
+	byEnvironment = map[string]int64{}
+
+	records, _, err := host.DB().Search(ctx, "record", condition.Cond{}, db.Page{
+		PerPage: 10000,
+		OrderBy: "date_epoch",
+		Asc:     true,
+	})
+	if err != nil {
+		return nil, nil, nil, err
+	}
+	for _, rec := range records {
+		epoch, ok := recordEpoch(rec)
+		if !ok || epoch < fromEpoch || epoch > toEpoch {
+			continue
+		}
+		sev, _ := rec["severity"].(string)
+		if sev == "" {
+			sev = "info"
+		}
+		bySeverity[sev]++
+		env, _ := rec["environment"].(string)
+		if env == "" {
+			env = "(none)"
+		}
+		byEnvironment[env]++
+
+		source, _ := rec["source"].(string)
+		if source == "" {
+			source = "unknown"
+		}
+		slot := (epoch / stride) * stride
+		row := bucketed[slot]
+		if row == nil {
+			row = map[string]int64{}
+			bucketed[slot] = row
+		}
+		row[source]++
+	}
+	return bucketed, bySeverity, byEnvironment, nil
 }
 
 func writeJSON(w http.ResponseWriter, status int, body any) {

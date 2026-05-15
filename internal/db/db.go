@@ -75,6 +75,29 @@ type KV struct {
 // fed back into driver methods that accept it. Drivers type-assert internally.
 type DriverQuery any
 
+// RecordStatsBuckets is the result of RecordAggregator.RecordStats.
+// All maps key on a string label (source / severity / environment).
+type RecordStatsBuckets struct {
+	// Series: bucket-start epoch (seconds) → label → count.
+	Series map[int64]map[string]int64
+	// Totals, summed across the whole window:
+	BySeverity    map[string]int64
+	ByEnvironment map[string]int64
+}
+
+// RecordAggregator is an optional capability some Drivers implement to
+// answer the Dashboard's stats endpoint without round-tripping every record
+// into Go memory. The stats plugin probes for it via type assertion; if a
+// backend doesn't implement it, the plugin falls back to a Search + in-Go
+// reduce.
+type RecordAggregator interface {
+	// RecordStats aggregates the record collection between [from, to]
+	// (inclusive on both ends), bucketing by `bucketSec` seconds. Both
+	// per-bucket counts (keyed by record `source`) and per-window totals
+	// (severity, environment) are returned in one pass.
+	RecordStats(ctx context.Context, from, to time.Time, bucketSec int64) (RecordStatsBuckets, error)
+}
+
 // Driver is the contract every storage backend implements. Methods that return
 // counts return -1 on a backend that cannot cheaply compute the count.
 type Driver interface {
