@@ -4,8 +4,48 @@
   flex-direction: column;
   gap: var(--space-3);
 }
-.topbar {
+.cards {
   display: flex;
-  align-items: center;
+  flex-direction: column;
+  gap: var(--space-3);
+  max-width: 720px;
+}
+.empty {
+  color: var(--text-muted);
+  font-size: var(--text-sm);
+  padding: var(--space-3);
+}
+.customCard {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-4);
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+}
+.customHeader {
+  display: flex;
+  align-items: baseline;
   justify-content: space-between;
+}
+.customName {
+  font-family: var(--font-mono);
+  font-size: var(--text-sm);
+  color: var(--text-strong);
+}
+.customJson {
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  width: 100%;
+  min-height: 80px;
+}
+.customError {
+  color: var(--severity-critical);
+  font-size: var(--text-xs);
+}
+.customActions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--space-2);
 }
