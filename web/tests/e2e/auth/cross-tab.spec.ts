@@ -32,61 +32,7 @@
 //   Same as login.spec.ts: launch regular Chrome with --remote-debugging-port
 //   and connect via connectOverCDP to work around WSL2 pipe IPC issues.
 
-import { chromium as pwChromium, expect, type Browser, type Page } from "@playwright/test";
-import { test as baseTest } from "../harness/fixtures";
-import { spawn } from "node:child_process";
-import { freePort } from "../harness/ports";
-
-const CHROME_BIN = "/home/nemega/.cache/ms-playwright/chromium-1148/chrome-linux/chrome";
-
-// Worker-scoped browser + test-scoped page fixtures (WSL2 CDP workaround).
-type ExtraWorker = { cdpBrowser: Browser };
-type ExtraTest = { page: Page };
-
-const test = baseTest.extend<ExtraTest, ExtraWorker>({
-  cdpBrowser: [
-    async ({}, use) => {
-      const port = await freePort();
-      const proc = spawn(CHROME_BIN, [
-        "--no-sandbox",
-        "--headless=new",
-        "--disable-dev-shm-usage",
-        "--disable-gpu",
-        "--disable-gpu-compositing",
-        `--remote-debugging-port=${port}`,
-        "--no-startup-window",
-      ], { stdio: "ignore" });
-      let browser: Browser | null = null;
-      for (let i = 0; i < 60; i++) {
-        await new Promise<void>((r) => setTimeout(r, 100));
-        try {
-          const r = await fetch(`http://127.0.0.1:${port}/json/version`);
-          if (r.ok) {
-            browser = await pwChromium.connectOverCDP(`http://127.0.0.1:${port}`);
-            break;
-          }
-        } catch { /* not ready yet */ }
-      }
-      if (!browser) throw new Error("Chrome did not become ready in time");
-      try {
-        await use(browser);
-      } finally {
-        await browser.close().catch(() => {});
-        proc.kill("SIGTERM");
-      }
-    },
-    { scope: "worker" },
-  ],
-  page: async ({ cdpBrowser }, use) => {
-    const ctx = await cdpBrowser.newContext();
-    const pg = await ctx.newPage();
-    try {
-      await use(pg);
-    } finally {
-      await ctx.close().catch(() => {});
-    }
-  },
-});
+import { test, expect } from "../harness/fixtures";
 
 // ────────────────────────────────────────────────────────────────────────────
 // bcrypt hash for "alice-pw" (cost 10) — same as login.spec.ts.
@@ -169,4 +115,3 @@ test("logout in one tab logs out the other", async ({ cdpBrowser, api, server })
   await ctx.close();
 });
 
-export { expect };

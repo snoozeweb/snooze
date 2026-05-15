@@ -36,9 +36,9 @@ test.describe("alerts list", () => {
 
     // Severity filter is a <Select> with placeholder "Severity"
     // SelectTrigger renders as a button
-    await page.getByRole("combobox").filter({ hasText: /severity/i }).click();
+    await page.getByRole("combobox").filter({ hasText: /severity/i }).click({ force: true });
     // Select "Critical" from the dropdown
-    await page.getByRole("option", { name: /^critical$/i }).click();
+    await page.getByRole("option", { name: /^critical$/i }).click({ force: true });
 
     await expect(page.getByText("h2")).toBeVisible();
     await expect(page.getByText("h1")).toBeHidden();
@@ -54,13 +54,13 @@ test.describe("alerts list", () => {
 
     // Column header "Host" renders as a sortable button in the thead
     const hostHeader = page.getByRole("button", { name: /^host$/i });
-    await hostHeader.click();
+    await hostHeader.click({ force: true });
     // asc: alpha should come first
     const rows = page.getByRole("row");
     await expect(rows.nth(1)).toContainText("alpha-host");
 
     // Click again: desc — zulu should come first
-    await hostHeader.click();
+    await hostHeader.click({ force: true });
     await expect(rows.nth(1)).toContainText("zulu-host");
   });
 

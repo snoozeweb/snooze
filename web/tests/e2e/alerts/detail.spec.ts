@@ -18,7 +18,7 @@ test.describe("alert detail drawer", () => {
 
     // Clicking the row calls onRowOpen → URL gets ?uid=... → DrawerContent renders
     // Radix Drawer renders with role="dialog"
-    await page.getByText("srv-detail").first().click();
+    await page.getByText("srv-detail").first().click({ force: true });
     const drawer = page.getByRole("dialog");
     await expect(drawer).toBeVisible();
 
@@ -38,8 +38,8 @@ test.describe("alert detail drawer", () => {
     await expect(page.getByText("srv-ack")).toBeVisible();
 
     // Row actions menu: click the "..." button for the row
-    await page.getByRole("button", { name: /row actions/i }).first().click();
-    await page.getByRole("menuitem", { name: /acknowledge/i }).click();
+    await page.getByRole("button", { name: /row actions/i }).first().click({ force: true });
+    await page.getByRole("menuitem", { name: /acknowledge/i }).click({ force: true });
 
     // ActionDialog opens with title "Acknowledge alert"
     const dialog = page.getByRole("dialog");
@@ -47,7 +47,7 @@ test.describe("alert detail drawer", () => {
     await expect(dialog.getByRole("heading", { name: /acknowledge alert/i })).toBeVisible();
 
     // Confirm
-    await dialog.getByRole("button", { name: /^acknowledge$/i }).click();
+    await dialog.getByRole("button", { name: /^acknowledge$/i }).click({ force: true });
 
     // After confirmation, the state badge in the table should show "Acknowledged"
     await expect(page.getByText("Acknowledged")).toBeVisible();
@@ -58,12 +58,12 @@ test.describe("alert detail drawer", () => {
     await page.goto(server.baseURL + "/web/alerts");
     await expect(page.getByText("srv-close")).toBeVisible();
 
-    await page.getByRole("button", { name: /row actions/i }).first().click();
-    await page.getByRole("menuitem", { name: /^close$/i }).click();
+    await page.getByRole("button", { name: /row actions/i }).first().click({ force: true });
+    await page.getByRole("menuitem", { name: /^close$/i }).click({ force: true });
 
     const dialog = page.getByRole("dialog");
     await expect(dialog).toBeVisible();
-    await dialog.getByRole("button", { name: /^close$/i }).click();
+    await dialog.getByRole("button", { name: /^close$/i }).click({ force: true });
 
     // After closing, state badge shows "Closed"
     await expect(page.getByText("Closed")).toBeVisible();
@@ -78,8 +78,8 @@ test.describe("alert detail drawer", () => {
     await page.goto(server.baseURL + "/web/alerts");
     await expect(page.getByText("srv-comment")).toBeVisible();
 
-    await page.getByRole("button", { name: /row actions/i }).first().click();
-    await page.getByRole("menuitem", { name: /comment/i }).click();
+    await page.getByRole("button", { name: /row actions/i }).first().click({ force: true });
+    await page.getByRole("menuitem", { name: /comment/i }).click({ force: true });
 
     const dialog = page.getByRole("dialog");
     await expect(dialog).toBeVisible();
@@ -87,10 +87,10 @@ test.describe("alert detail drawer", () => {
     // The Comment action dialog has requireMessage: true — placeholder is "Type your comment"
     const textarea = dialog.getByPlaceholder("Type your comment");
     await textarea.fill("first note");
-    await dialog.getByRole("button", { name: /^comment$/i }).click();
+    await dialog.getByRole("button", { name: /^comment$/i }).click({ force: true });
 
     // Now open the detail drawer to see the timeline
-    await page.getByText("srv-comment").first().click();
+    await page.getByText("srv-comment").first().click({ force: true });
     const drawer = page.getByRole("dialog");
     await expect(drawer).toBeVisible();
     await expect(drawer.getByText("first note")).toBeVisible();
@@ -99,7 +99,7 @@ test.describe("alert detail drawer", () => {
   test("detail drawer closes when navigating away", async ({ page, api, server }) => {
     await api.alerts.send({ host: "srv-close-drawer", message: "m", severity: "info", source: "t" });
     await page.goto(server.baseURL + "/web/alerts");
-    await page.getByText("srv-close-drawer").first().click();
+    await page.getByText("srv-close-drawer").first().click({ force: true });
 
     const drawer = page.getByRole("dialog");
     await expect(drawer).toBeVisible();

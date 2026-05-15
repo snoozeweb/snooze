@@ -33,68 +33,8 @@
 // an isolated fresh DB (file-backed), so no cross-test pollution exists.
 // The alice user is created once per worker (beforeEach is idempotent).
 
-import { chromium as pwChromium, expect, type Browser, type Page } from "@playwright/test";
-import { test as baseTest } from "../harness/fixtures";
+import { test, expect } from "../harness/fixtures";
 import { loginAsAdmin } from "../harness/auth";
-import { spawn } from "node:child_process";
-import { freePort } from "../harness/ports";
-
-// Regular Chrome binary — works with port-based CDP in WSL2.
-const CHROME_BIN = "/home/nemega/.cache/ms-playwright/chromium-1148/chrome-linux/chrome";
-
-// Fixtures: worker-scoped browser (one Chrome per worker) +
-//           test-scoped page (fresh context per test).
-type ExtraWorker = { cdpBrowser: Browser };
-type ExtraTest = { page: Page };
-
-const test = baseTest.extend<ExtraTest, ExtraWorker>({
-  // Worker-scoped: one Chrome process per Playwright worker.
-  cdpBrowser: [
-    async ({}, use) => {
-      const port = await freePort();
-      const proc = spawn(CHROME_BIN, [
-        "--no-sandbox",
-        "--headless=new",
-        "--disable-dev-shm-usage",
-        "--disable-gpu",
-        "--disable-gpu-compositing",
-        `--remote-debugging-port=${port}`,
-        "--no-startup-window",
-      ], { stdio: "ignore" });
-      // Poll until Chrome DevTools is ready.
-      let browser: Browser | null = null;
-      for (let i = 0; i < 60; i++) {
-        await new Promise<void>((r) => setTimeout(r, 100));
-        try {
-          const r = await fetch(`http://127.0.0.1:${port}/json/version`);
-          if (r.ok) {
-            browser = await pwChromium.connectOverCDP(`http://127.0.0.1:${port}`);
-            break;
-          }
-        } catch { /* not ready yet */ }
-      }
-      if (!browser) throw new Error("Chrome did not become ready in time");
-      try {
-        await use(browser);
-      } finally {
-        await browser.close().catch(() => {});
-        proc.kill("SIGTERM");
-      }
-    },
-    { scope: "worker" },
-  ],
-
-  // Test-scoped: fresh BrowserContext + Page per test.
-  page: async ({ cdpBrowser }, use) => {
-    const ctx = await cdpBrowser.newContext();
-    const pg = await ctx.newPage();
-    try {
-      await use(pg);
-    } finally {
-      await ctx.close().catch(() => {});
-    }
-  },
-});
 
 // ────────────────────────────────────────────────────────────────────────────
 // bcrypt hash for "alice-pw" (cost 10).
@@ -213,4 +153,3 @@ test.describe("login (local)", () => {
   });
 });
 
-export { expect };

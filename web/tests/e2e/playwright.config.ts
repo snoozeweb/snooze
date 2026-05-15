@@ -14,7 +14,7 @@ export default defineConfig({
   globalTeardown: "./global-teardown.ts",
   use: {
     headless: true,
-    viewport: { width: 1440, height: 900 },
+    viewport: { width: 1600, height: 1000 },
     actionTimeout: 5_000,
     navigationTimeout: 10_000,
     trace: "retain-on-failure",

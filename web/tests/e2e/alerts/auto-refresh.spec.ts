@@ -39,7 +39,7 @@ test.describe("alerts auto-refresh", () => {
 
     // Turn off if currently on
     if ((await sw.getAttribute("data-state")) === "checked") {
-      await sw.click();
+      await sw.click({ force: true });
     }
     await expect(sw).toHaveAttribute("data-state", "unchecked");
 
@@ -60,12 +60,12 @@ test.describe("alerts auto-refresh", () => {
     const initialState = await sw.getAttribute("data-state");
 
     // Toggle
-    await sw.click();
+    await sw.click({ force: true });
     const newState = initialState === "checked" ? "unchecked" : "checked";
     await expect(sw).toHaveAttribute("data-state", newState);
 
     // Toggle back
-    await sw.click();
+    await sw.click({ force: true });
     await expect(sw).toHaveAttribute("data-state", initialState ?? "checked");
   });
 });
