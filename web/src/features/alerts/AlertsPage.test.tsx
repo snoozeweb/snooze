@@ -90,7 +90,7 @@ describe("AlertsPage", () => {
     expect(calls[0]).toMatchObject({ record_uid: "r1", type: "ack" });
   });
 
-  it("clicking a row opens the detail drawer with the alert host as title", async () => {
+  it("expanding a row via the chevron renders the JSON + CommentTimeline", async () => {
     mswServer.use(
       http.get("/api/v1/record", () =>
         HttpResponse.json({
@@ -107,16 +107,6 @@ describe("AlertsPage", () => {
           meta: { count: 1, limit: 50, offset: 0, total: 1 },
         }),
       ),
-      http.get("/api/v1/record/r1", () =>
-        HttpResponse.json({
-          uid: "r1",
-          host: "srv-1",
-          severity: "info",
-          state: "open",
-          message: "boom",
-          date_epoch: 1,
-        }),
-      ),
       http.get("/api/v1/comment", () =>
         HttpResponse.json({
           data: [],
@@ -127,9 +117,14 @@ describe("AlertsPage", () => {
     const user = userEvent.setup();
     setup();
     await waitFor(() => expect(screen.getByText("srv-1")).toBeInTheDocument());
-    // Click the message cell (Code-wrapped host might intercept clicks; message is safe).
-    await user.click(screen.getByText("boom"));
-    await waitFor(() => expect(screen.getByRole("dialog", { name: /srv-1/i })).toBeInTheDocument());
+    // No drawer should mount on the bare list.
+    expect(screen.queryByRole("dialog")).toBeNull();
+    // Toggle the inline expansion.
+    await user.click(screen.getByRole("button", { name: /^Expand row /i }));
+    // The expansion panel surfaces the CommentTimeline empty state and the
+    // alert uid in the JsonViewer.
+    await waitFor(() => expect(screen.getByText(/no comments yet/i)).toBeInTheDocument());
+    expect(screen.queryByRole("dialog")).toBeNull();
   });
 
   it("bulk acknowledge: posts one comment per selected row, then clears selection", async () => {
@@ -190,5 +185,55 @@ describe("AlertsPage", () => {
     await user.click(screen.getByRole("button", { name: /^comment$/i }));
     await waitFor(() => expect(calls).toHaveLength(1));
     expect(calls[0]).toMatchObject({ record_uid: "r1", type: "comment", message: "investigating" });
+  });
+
+  it("right-click context menu shows Copy/Acknowledge/Comment/Delete items", async () => {
+    mswServer.use(
+      http.get("/api/v1/record", () =>
+        HttpResponse.json({
+          data: [{ uid: "r1", host: "srv-1", state: "open", date_epoch: 1 }],
+          meta: { count: 1, limit: 50, offset: 0, total: 1 },
+        }),
+      ),
+    );
+    const user = userEvent.setup();
+    setup();
+    await waitFor(() => expect(screen.getByText("srv-1")).toBeInTheDocument());
+    const row = screen.getByText("srv-1").closest("tr")!;
+    await user.pointer({ keys: "[MouseRight]", target: row });
+    await waitFor(() =>
+      expect(screen.getByRole("menu", { name: /row context menu/i })).toBeInTheDocument(),
+    );
+    expect(screen.getByRole("menuitem", { name: /copy as json/i })).toBeInTheDocument();
+    expect(screen.getByRole("menuitem", { name: /copy as yaml/i })).toBeInTheDocument();
+    expect(screen.getByRole("menuitem", { name: /^acknowledge$/i })).toBeInTheDocument();
+    expect(screen.getByRole("menuitem", { name: /^comment$/i })).toBeInTheDocument();
+    expect(screen.getByRole("menuitem", { name: /^delete$/i })).toBeInTheDocument();
+  });
+
+  it("context-menu Delete asks for confirmation then DELETEs /record/<uid>", async () => {
+    const dels: string[] = [];
+    mswServer.use(
+      http.get("/api/v1/record", () =>
+        HttpResponse.json({
+          data: [{ uid: "r1", host: "srv-1", state: "open", date_epoch: 1 }],
+          meta: { count: 1, limit: 50, offset: 0, total: 1 },
+        }),
+      ),
+      http.delete("/api/v1/record/:uid", ({ params }) => {
+        dels.push(String(params.uid));
+        return new HttpResponse(null, { status: 204 });
+      }),
+    );
+    const user = userEvent.setup();
+    setup();
+    await waitFor(() => expect(screen.getByText("srv-1")).toBeInTheDocument());
+    const row = screen.getByText("srv-1").closest("tr")!;
+    await user.pointer({ keys: "[MouseRight]", target: row });
+    await user.click(screen.getByRole("menuitem", { name: /^delete$/i }));
+    // Confirm dialog appears.
+    await waitFor(() => expect(screen.getByText(/Delete alert\?/i)).toBeInTheDocument());
+    await user.click(screen.getByRole("button", { name: /^delete$/i }));
+    await waitFor(() => expect(dels).toEqual(["r1"]));
   });
 });

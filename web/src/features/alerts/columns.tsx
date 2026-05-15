@@ -4,6 +4,19 @@ import { Code } from "@/shared/ui/Code";
 import { formatRelativeTime, severityBadgeVariant, stateBadgeVariant, stateLabel } from "./format";
 import type { AlertState, Record_ } from "./types";
 
+// Records carry a `duplicates` counter (int64) bumped by the aggregate-rule
+// plugin every time an incoming alert collapses into an existing row.
+// internal/pluginimpl/aggregaterule/plugin.go lines ~216–244. Read-only.
+function recordHits(r: Record_): number {
+  const v = (r as { duplicates?: unknown }).duplicates;
+  if (typeof v === "number") return v;
+  if (typeof v === "string") {
+    const n = Number(v);
+    return Number.isFinite(n) ? n : 0;
+  }
+  return 0;
+}
+
 export const alertColumns: ColumnDef<Record_>[] = [
   {
     id: "date_epoch",
@@ -30,6 +43,16 @@ export const alertColumns: ColumnDef<Record_>[] = [
     },
     sortable: true,
     width: "120px",
+  },
+  {
+    id: "hits",
+    header: "Hits",
+    cell: (r) => {
+      const n = recordHits(r);
+      return n > 1 ? <Badge variant="muted">×{n}</Badge> : <span>—</span>;
+    },
+    align: "right",
+    width: "80px",
   },
   {
     id: "host",

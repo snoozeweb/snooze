@@ -18,13 +18,14 @@ describe("severityBadgeVariant", () => {
 });
 
 describe("stateLabel + stateBadgeVariant", () => {
-  it("formats open as 'Open' with neutral variant", () => {
+  it("formats open as 'Open' with neutral variant (lifecycle, not urgency)", () => {
     expect(stateLabel("open")).toBe("Open");
     expect(stateBadgeVariant("open")).toBe("neutral");
   });
 
-  it("ack/close/shelved map to appropriate variants", () => {
+  it("ack/esc/close/shelved map to appropriate variants", () => {
     expect(stateBadgeVariant("ack")).toBe("info");
+    expect(stateBadgeVariant("esc")).toBe("warning");
     expect(stateBadgeVariant("close")).toBe("muted");
     expect(stateBadgeVariant("shelved")).toBe("muted");
   });

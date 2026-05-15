@@ -86,37 +86,39 @@ export function AlertsFilters({ value, onChange }: AlertsFiltersProps) {
 
   return (
     <div className={styles.bar}>
-      <Select
-        {...(value.state !== undefined ? { value: value.state } : {})}
-        onValueChange={handleState}
-      >
-        <SelectTrigger placeholder="State" />
-        <SelectContent>
-          {STATE_OPTIONS.map((o) => (
-            <SelectItem key={o.value} value={o.value}>
-              {o.label}
-            </SelectItem>
-          ))}
-        </SelectContent>
-      </Select>
-      <Select
-        {...(value.severity !== undefined ? { value: value.severity } : {})}
-        onValueChange={handleSeverity}
-      >
-        <SelectTrigger placeholder="Severity" />
-        <SelectContent>
-          {SEVERITY_OPTIONS.map((o) => (
-            <SelectItem key={o.value} value={o.value}>
-              {o.label}
-            </SelectItem>
-          ))}
-        </SelectContent>
-      </Select>
-      <Input
-        placeholder="Environment"
-        value={envLocal}
-        onChange={(e) => setEnvLocal(e.target.value)}
-      />
+      <div className={styles.selectRow}>
+        <Select
+          {...(value.state !== undefined ? { value: value.state } : {})}
+          onValueChange={handleState}
+        >
+          <SelectTrigger placeholder="State" />
+          <SelectContent>
+            {STATE_OPTIONS.map((o) => (
+              <SelectItem key={o.value} value={o.value}>
+                {o.label}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        <Select
+          {...(value.severity !== undefined ? { value: value.severity } : {})}
+          onValueChange={handleSeverity}
+        >
+          <SelectTrigger placeholder="Severity" />
+          <SelectContent>
+            {SEVERITY_OPTIONS.map((o) => (
+              <SelectItem key={o.value} value={o.value}>
+                {o.label}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        <Input
+          placeholder="Environment"
+          value={envLocal}
+          onChange={(e) => setEnvLocal(e.target.value)}
+        />
+      </div>
       <div className={styles.searchWrap}>
         <Input
           placeholder="Search host, message, …"

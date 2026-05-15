@@ -1,13 +1,19 @@
 import { useCallback, useState } from "react";
 import { useNavigate, useSearch } from "@tanstack/react-router";
 import { DataTable, type RowAction } from "@/shared/ui/DataTable";
+import type { ContextMenuItem } from "@/shared/ui/DataTableContextMenu";
 import { Switch } from "@/shared/ui/Switch";
 import { Tooltip } from "@/shared/ui/Tooltip";
 import { toast } from "@/shared/ui/toast/useToast";
 import { Button } from "@/shared/ui/Button";
 import { ApiError } from "@/lib/api/client";
+import {
+  ConfirmDeleteDialog,
+  useConfirmDelete,
+} from "@/shared/ui/resourceContextMenu";
+import * as YAML from "yaml";
 import { Records, useCommentRecord, useShelveRecord } from "./api";
-import { AlertDetailDrawer } from "./AlertDetailDrawer";
+import { AlertRowDetail } from "./AlertRowDetail";
 import { AlertsFilters, type AlertFilters } from "./Filters";
 import { alertColumns } from "./columns";
 import { useAutoRefresh } from "./useAutoRefresh";
@@ -19,10 +25,21 @@ type AlertsSearch = AlertFilters & {
   page?: number;
   orderby?: string;
   asc?: boolean;
-  uid?: string;
 };
 
 const PAGE_SIZE = 50;
+
+async function copyToClipboard(text: string): Promise<boolean> {
+  try {
+    if (navigator.clipboard?.writeText) {
+      await navigator.clipboard.writeText(text);
+      return true;
+    }
+  } catch {
+    /* fall through */
+  }
+  return false;
+}
 
 export function AlertsPage() {
   // useSearch with strict:false returns the validated search params; cast to local type for stronger state/severity literals.
@@ -34,11 +51,11 @@ export function AlertsPage() {
   const [selectedKeys, setSelectedKeys] = useState<Set<string>>(new Set());
   const [dialog, setDialog] = useState<{ type: ActionType; records: Record_[] } | null>(null);
   const shelveMut = useShelveRecord();
+  const removeMut = Records.useRemove();
 
   const page = search.page ?? 1;
   const orderby = search.orderby ?? "date_epoch";
   const asc = search.asc ?? false;
-  const detailUid = search.uid;
 
   const filters: AlertFilters = {
     ...(search.state !== undefined ? { state: search.state } : {}),
@@ -64,20 +81,6 @@ export function AlertsPage() {
     [navigate],
   );
 
-  const closeDrawer = useCallback(() => {
-    type NavigateFn = (opts: {
-      to: string;
-      search: (prev: AlertsSearch | undefined) => AlertsSearch;
-    }) => Promise<void>;
-    void (navigate as unknown as NavigateFn)({
-      to: "/web/alerts",
-      search: (prev: AlertsSearch | undefined) => {
-        const { uid: _uid, ...rest } = prev ?? {}; // eslint-disable-line @typescript-eslint/no-unused-vars
-        return rest as AlertsSearch;
-      },
-    });
-  }, [navigate]);
-
   const list = Records.useList(
     {
       offset: (page - 1) * PAGE_SIZE,
@@ -99,6 +102,17 @@ export function AlertsPage() {
     return true;
   });
 
+  const confirmDelete = useConfirmDelete<Record_>({
+    onDelete: (uid) => removeMut.mutateAsync(uid),
+    noun: "alert",
+    onAfter: () => setSelectedKeys(new Set()),
+  });
+
+  const openDialog = useCallback(
+    (type: ActionType, records: Record_[]) => setDialog({ type, records }),
+    [],
+  );
+
   const rowActions = useCallback(
     (row: Record_): RowAction[] => {
       const state = (row.state ?? "") as AlertState;
@@ -109,46 +123,44 @@ export function AlertsPage() {
 
       const out: RowAction[] = [];
 
-      const openDialog = (type: ActionType) => setDialog({ type, records: [row] });
-
       if (isOpen) {
         out.push({
           key: "ack",
           label: "Acknowledge",
           icon: "thumbs-up",
-          onSelect: () => openDialog("ack"),
+          onSelect: () => openDialog("ack", [row]),
         });
         out.push({
           key: "close",
           label: "Close",
           icon: "lock",
-          onSelect: () => openDialog("close"),
+          onSelect: () => openDialog("close", [row]),
         });
         out.push({
           key: "esc",
           label: "Re-escalate",
           icon: "rotate-cw",
-          onSelect: () => openDialog("esc"),
+          onSelect: () => openDialog("esc", [row]),
         });
       } else if (isAcked) {
         out.push({
           key: "close",
           label: "Close",
           icon: "lock",
-          onSelect: () => openDialog("close"),
+          onSelect: () => openDialog("close", [row]),
         });
         out.push({
           key: "esc",
           label: "Re-escalate",
           icon: "rotate-cw",
-          onSelect: () => openDialog("esc"),
+          onSelect: () => openDialog("esc", [row]),
         });
       } else if (isClosed) {
         out.push({
           key: "open",
           label: "Re-open",
           icon: "rotate-cw",
-          onSelect: () => openDialog("open"),
+          onSelect: () => openDialog("open", [row]),
         });
       }
 
@@ -156,7 +168,7 @@ export function AlertsPage() {
         key: "comment",
         label: "Comment",
         icon: "message-square",
-        onSelect: () => openDialog("comment"),
+        onSelect: () => openDialog("comment", [row]),
       });
 
       if (!isClosed) {
@@ -182,48 +194,137 @@ export function AlertsPage() {
 
       return out;
     },
-    [shelveMut],
+    [openDialog, shelveMut],
   );
 
-  const bulkActions = useCallback((rows: Record_[]) => {
-    const openBulkDialog = (type: ActionType) => setDialog({ type, records: rows });
-    return (
-      <>
-        <Button
-          size="sm"
-          variant="secondary"
-          leadingIcon="thumbs-up"
-          onClick={() => openBulkDialog("ack")}
-        >
-          Acknowledge ({rows.length})
-        </Button>
-        <Button
-          size="sm"
-          variant="secondary"
-          leadingIcon="lock"
-          onClick={() => openBulkDialog("close")}
-        >
-          Close ({rows.length})
-        </Button>
-        <Button
-          size="sm"
-          variant="secondary"
-          leadingIcon="rotate-cw"
-          onClick={() => openBulkDialog("esc")}
-        >
-          Re-escalate ({rows.length})
-        </Button>
-        <Button
-          size="sm"
-          variant="secondary"
-          leadingIcon="message-square"
-          onClick={() => openBulkDialog("comment")}
-        >
-          Comment ({rows.length})
-        </Button>
-      </>
-    );
-  }, []);
+  // Right-click context menu. The "Open" item is omitted: DataTable doesn't
+  // expose a programmatic-expand API and the chevron in the first column is
+  // the canonical way to toggle the inline panel. We keep the universal
+  // Copy-as-JSON / Copy-as-YAML pair and append the alert-specific verbs,
+  // mirroring the bulk-toolbar surface.
+  const contextMenuItems = useCallback(
+    (row: Record_): ContextMenuItem[] => {
+      const state = (row.state ?? "") as AlertState;
+      const isOpen = state === "" || state === "open";
+      const isAcked = state === "ack";
+      const isClosed = state === "close";
+
+      const items: ContextMenuItem[] = [
+        {
+          key: "copy-json",
+          label: "Copy as JSON",
+          icon: "copy",
+          onSelect: async () => {
+            const ok = await copyToClipboard(JSON.stringify(row, null, 2));
+            if (ok) toast.success("Copied JSON to clipboard");
+            else toast.error("Clipboard unavailable");
+          },
+        },
+        {
+          key: "copy-yaml",
+          label: "Copy as YAML",
+          icon: "copy",
+          onSelect: async () => {
+            const ok = await copyToClipboard(YAML.stringify(row));
+            if (ok) toast.success("Copied YAML to clipboard");
+            else toast.error("Clipboard unavailable");
+          },
+        },
+      ];
+
+      if (isOpen || isAcked) {
+        if (isOpen) {
+          items.push({
+            key: "ack",
+            label: "Acknowledge",
+            icon: "thumbs-up",
+            onSelect: () => openDialog("ack", [row]),
+          });
+        }
+        items.push({
+          key: "close",
+          label: "Close",
+          icon: "lock",
+          onSelect: () => openDialog("close", [row]),
+        });
+        items.push({
+          key: "esc",
+          label: "Re-escalate",
+          icon: "rotate-cw",
+          onSelect: () => openDialog("esc", [row]),
+        });
+      } else if (isClosed) {
+        items.push({
+          key: "open",
+          label: "Re-open",
+          icon: "rotate-cw",
+          onSelect: () => openDialog("open", [row]),
+        });
+      }
+
+      items.push({
+        key: "comment",
+        label: "Comment",
+        icon: "message-square",
+        onSelect: () => openDialog("comment", [row]),
+      });
+
+      items.push({
+        key: "delete",
+        label: "Delete",
+        icon: "trash",
+        danger: true,
+        disabled: !row.uid,
+        onSelect: () => confirmDelete.request([row]),
+      });
+
+      return items;
+    },
+    [openDialog, confirmDelete],
+  );
+
+  const bulkActions = useCallback(
+    (rows: Record_[]) => {
+      const openBulkDialog = (type: ActionType) => setDialog({ type, records: rows });
+      return (
+        <>
+          <Button
+            size="sm"
+            variant="secondary"
+            leadingIcon="thumbs-up"
+            onClick={() => openBulkDialog("ack")}
+          >
+            Acknowledge ({rows.length})
+          </Button>
+          <Button
+            size="sm"
+            variant="secondary"
+            leadingIcon="lock"
+            onClick={() => openBulkDialog("close")}
+          >
+            Close ({rows.length})
+          </Button>
+          <Button
+            size="sm"
+            variant="secondary"
+            leadingIcon="rotate-cw"
+            onClick={() => openBulkDialog("esc")}
+          >
+            Re-escalate ({rows.length})
+          </Button>
+          <Button
+            size="sm"
+            variant="secondary"
+            leadingIcon="message-square"
+            onClick={() => openBulkDialog("comment")}
+          >
+            Comment ({rows.length})
+          </Button>
+        </>
+      );
+    },
+    [],
+  );
 
   const submitDialog = useCallback(
     async ({ message }: { message: string }) => {
@@ -300,12 +401,9 @@ export function AlertsPage() {
           onChange: (next) => updateSearch({ page: next.page }),
         }}
         rowActions={rowActions}
-        onRowOpen={(row) => {
-          const uid = row.uid;
-          updateSearch(uid !== undefined ? { uid } : {});
-        }}
+        contextMenuItems={contextMenuItems}
+        renderExpanded={(row) => <AlertRowDetail row={row} />}
       />
-      <AlertDetailDrawer uid={detailUid} onClose={closeDrawer} />
       {dialog ? (
         <ActionDialog
           open
@@ -318,6 +416,11 @@ export function AlertsPage() {
           submitting={commentMut.isPending}
         />
       ) : null}
+      <ConfirmDeleteDialog
+        state={confirmDelete.state}
+        onCancel={confirmDelete.cancel}
+        onConfirm={() => void confirmDelete.confirm()}
+      />
     </div>
   );
 }

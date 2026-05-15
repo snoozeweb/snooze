@@ -17,15 +17,22 @@ const STATE_LABEL: Record<AlertState, string> = {
   // to ack/close/esc. Display them as Open so the column reads cleanly.
   "": "Open",
   open: "Open",
-  ack: "Acknowledged",
+  ack: "Ack",
+  esc: "Escalated",
   close: "Closed",
   shelved: "Shelved",
 };
 
+// Colour palette tracks lifecycle, not urgency — the Sev column already
+// signals urgency. open/empty → neutral (the default, unattended),
+// ack → info (someone owns it), esc → warning (escalated, attention),
+// close/shelved → muted (resolved / deferred). Mirrors the legacy Vue
+// palette in web/src/utils/api.js on origin/master.
 const STATE_VARIANT: Record<AlertState, BadgeVariant> = {
   "": "neutral",
   open: "neutral",
   ack: "info",
+  esc: "warning",
   close: "muted",
   shelved: "muted",
 };

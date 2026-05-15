@@ -14,17 +14,25 @@ export type Comment = {
 
 export const Comments = defineResource<Comment>("comment");
 
+export type RecordCommentsPage = {
+  limit?: number;
+  offset?: number;
+};
+
 export function useRecordComments(
   record_uid: string | undefined,
+  page: RecordCommentsPage = {},
 ): UseQueryResult<ListResponse<Comment>, ApiError> {
   const q = record_uid
     ? encodeConditionQ({ type: "EQUALS", field: "record_uid", value: record_uid })
     : undefined;
+  const limit = page.limit ?? 5;
+  const offset = page.offset ?? 0;
   return useQuery<ListResponse<Comment>, ApiError>({
-    queryKey: ["comment", "for-record", record_uid ?? ""],
+    queryKey: ["comment", "for-record", record_uid ?? "", limit, offset],
     queryFn: ({ signal }) =>
       api<ListResponse<Comment>>("GET", "/comment", {
-        query: { ...(q !== undefined ? { q } : {}), orderby: "date_epoch", asc: true, limit: 100 },
+        query: { ...(q !== undefined ? { q } : {}), orderby: "date_epoch", asc: true, limit, offset },
         signal,
       }),
     enabled: !!record_uid,

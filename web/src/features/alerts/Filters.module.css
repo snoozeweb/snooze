@@ -1,14 +1,24 @@
 .bar {
   display: flex;
-  flex-wrap: wrap;
-  align-items: center;
+  flex-direction: column;
   gap: var(--space-2);
   padding: var(--space-2) var(--space-3);
   background: var(--bg-surface);
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
 }
+/* Top row: three selects side by side — state, severity, environment. */
+.selectRow {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: var(--space-2);
+}
+@media (max-width: 720px) {
+  .selectRow {
+    grid-template-columns: 1fr;
+  }
+}
+/* Bottom row: the search field gets its own line so the input has room. */
 .searchWrap {
-  flex: 1;
-  min-width: 200px;
+  display: block;
 }
