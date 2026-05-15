@@ -1,13 +1,15 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useForm } from "react-hook-form";
 import { Button } from "@/shared/ui/Button";
 import { Drawer, DrawerBody, DrawerContent, DrawerFooter, DrawerTitle } from "@/shared/ui/Drawer";
 import { Input } from "@/shared/ui/Input";
+import { MultiCombobox } from "@/shared/ui/MultiCombobox";
 import { Spinner } from "@/shared/ui/Spinner";
 import { Textarea } from "@/shared/ui/Textarea";
 import { toast } from "@/shared/ui/toast/useToast";
 import { Select, SelectContent, SelectItem, SelectTrigger } from "@/shared/ui/Select";
 import { ApiError } from "@/lib/api/client";
+import { Roles } from "@/features/admin/roles/api";
 import { Users } from "./api";
 import type { User } from "./types";
 import styles from "./UserEditor.module.css";
@@ -15,7 +17,7 @@ import styles from "./UserEditor.module.css";
 type FormShape = {
   name: string;
   type: "local" | "ldap";
-  roles: string;
+  roles: string[];
   comment: string;
   password: string;
 };
@@ -23,7 +25,7 @@ type FormShape = {
 const EMPTY_FORM: FormShape = {
   name: "",
   type: "local",
-  roles: "",
+  roles: [],
   comment: "",
   password: "",
 };
@@ -52,7 +54,7 @@ export function UserEditor({ uid, onClose }: UserEditorProps) {
       reset({
         name: existing.data.name ?? "",
         type: existing.data.type ?? "local",
-        roles: (existing.data.roles ?? []).join(", "),
+        roles: existing.data.roles ?? [],
         comment: existing.data.comment ?? "",
         password: "",
       });
@@ -64,15 +66,10 @@ export function UserEditor({ uid, onClose }: UserEditorProps) {
   async function onSubmit(form: FormShape) {
     setSubmitting(true);
     try {
-      const rolesArray = form.roles
-        .split(",")
-        .map((r) => r.trim())
-        .filter(Boolean);
-
       const body: User = {
         name: form.name,
         type: form.type,
-        ...(rolesArray.length ? { roles: rolesArray } : {}),
+        ...(form.roles.length ? { roles: form.roles } : {}),
         ...(form.comment ? { comment: form.comment } : {}),
         ...(isCreate && form.password ? { password: form.password } : {}),
       };
@@ -93,7 +90,22 @@ export function UserEditor({ uid, onClose }: UserEditorProps) {
   }
 
   const typeValue = watch("type");
+  const rolesValue = watch("roles");
   const nameInvalid = formState.isSubmitted && !watch("name").trim();
+
+  const rolesList = Roles.useList({ limit: 500 });
+  const roleOptions = useMemo(() => {
+    const available = (rolesList.data?.data ?? []).map((r) => ({
+      value: r.name,
+      label: r.name,
+    }));
+    const known = new Set(available.map((o) => o.value));
+    const merged = [...available];
+    for (const r of rolesValue) {
+      if (!known.has(r)) merged.push({ value: r, label: r });
+    }
+    return merged;
+  }, [rolesList.data, rolesValue]);
 
   return (
     <Drawer
@@ -146,10 +158,15 @@ export function UserEditor({ uid, onClose }: UserEditorProps) {
                   </Select>
                 </div>
                 <div className={styles.field}>
-                  <label className={styles.label} htmlFor="user-roles">
-                    Roles
-                  </label>
-                  <Input id="user-roles" {...register("roles")} placeholder="e.g. admin, viewer" />
+                  <label className={styles.label}>Roles</label>
+                  <MultiCombobox
+                    aria-label="Roles"
+                    placeholder="Select one or more roles"
+                    options={roleOptions}
+                    value={rolesValue}
+                    onChange={(next) => setValue("roles", next, { shouldDirty: true })}
+                    allowCustom
+                  />
                 </div>
                 {isCreate && (
                   <div className={styles.field}>
@@ -159,18 +176,18 @@ export function UserEditor({ uid, onClose }: UserEditorProps) {
                     <Input id="user-password" type="password" {...register("password")} />
                   </div>
                 )}
-                <div className={styles.field}>
-                  <label className={styles.label} htmlFor="user-comment">
-                    Comment
-                  </label>
-                  <Textarea
-                    id="user-comment"
-                    {...register("comment")}
-                    rows={2}
-                    placeholder="Optional description"
-                  />
-                </div>
               </section>
+              <div className={styles.field}>
+                <label className={styles.label} htmlFor="user-comment">
+                  Comment
+                </label>
+                <Textarea
+                  id="user-comment"
+                  {...register("comment")}
+                  rows={2}
+                  placeholder="Optional description"
+                />
+              </div>
             </form>
           )}
         </DrawerBody>

@@ -1,25 +1,26 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useForm } from "react-hook-form";
 import { Button } from "@/shared/ui/Button";
 import { Drawer, DrawerBody, DrawerContent, DrawerFooter, DrawerTitle } from "@/shared/ui/Drawer";
 import { Input } from "@/shared/ui/Input";
+import { MultiCombobox } from "@/shared/ui/MultiCombobox";
 import { Spinner } from "@/shared/ui/Spinner";
 import { Textarea } from "@/shared/ui/Textarea";
 import { toast } from "@/shared/ui/toast/useToast";
 import { ApiError } from "@/lib/api/client";
-import { Roles } from "./api";
+import { Roles, usePermissionsCatalogue } from "./api";
 import type { Role } from "./types";
 import styles from "./RoleEditor.module.css";
 
 type FormShape = {
   name: string;
-  permissionsText: string;
+  permissions: string[];
   comment: string;
 };
 
 const EMPTY_FORM: FormShape = {
   name: "",
-  permissionsText: "",
+  permissions: [],
   comment: "",
 };
 
@@ -33,8 +34,9 @@ export function RoleEditor({ uid, onClose }: RoleEditorProps) {
   const existing = Roles.useGet(isCreate ? undefined : uid);
   const create = Roles.useCreate();
   const update = Roles.useUpdate();
+  const catalogue = usePermissionsCatalogue();
 
-  const { register, handleSubmit, reset, watch, formState } = useForm<FormShape>({
+  const { register, handleSubmit, reset, watch, setValue, formState } = useForm<FormShape>({
     defaultValues: EMPTY_FORM,
   });
 
@@ -46,7 +48,7 @@ export function RoleEditor({ uid, onClose }: RoleEditorProps) {
     if (existing.data) {
       reset({
         name: existing.data.name ?? "",
-        permissionsText: (existing.data.permissions ?? []).join("\n"),
+        permissions: existing.data.permissions ?? [],
         comment: existing.data.comment ?? "",
       });
     }
@@ -57,14 +59,9 @@ export function RoleEditor({ uid, onClose }: RoleEditorProps) {
   async function onSubmit(form: FormShape) {
     setSubmitting(true);
     try {
-      const permissions = form.permissionsText
-        .split("\n")
-        .map((p) => p.trim())
-        .filter((p) => p.length > 0);
-
       const body: Role = {
         name: form.name,
-        permissions,
+        permissions: form.permissions,
         ...(form.comment ? { comment: form.comment } : {}),
       };
       if (isCreate) {
@@ -83,6 +80,23 @@ export function RoleEditor({ uid, onClose }: RoleEditorProps) {
   }
 
   const nameInvalid = formState.isSubmitted && !watch("name").trim();
+  const permissions = watch("permissions");
+
+  // Merge the catalogue with any permissions already on the role so a
+  // legacy/unknown value still renders as a badge and survives a Save
+  // round-trip. Mirrors the pattern used by UserEditor for roles.
+  const permissionOptions = useMemo(() => {
+    const known = catalogue.data ?? [];
+    const seen = new Set(known);
+    const merged = known.map((p) => ({ value: p, label: p }));
+    for (const p of permissions) {
+      if (!seen.has(p)) {
+        merged.push({ value: p, label: p });
+        seen.add(p);
+      }
+    }
+    return merged;
+  }, [catalogue.data, permissions]);
 
   return (
     <Drawer
@@ -118,29 +132,32 @@ export function RoleEditor({ uid, onClose }: RoleEditorProps) {
                   />
                 </div>
                 <div className={styles.field}>
-                  <label className={styles.label} htmlFor="role-permissions">
+                  {/* MultiCombobox is not a native form control, so the label
+                      is associated by aria-label rather than htmlFor — the
+                      visible <label> is purely cosmetic. */}
+                  <span className={styles.label} id="role-permissions-label">
                     Permissions
-                  </label>
-                  <Textarea
-                    id="role-permissions"
-                    {...register("permissionsText")}
-                    rows={6}
-                    style={{ fontFamily: "monospace" }}
-                    placeholder="one per line, e.g. rw_rule"
-                  />
-                </div>
-                <div className={styles.field}>
-                  <label className={styles.label} htmlFor="role-comment">
-                    Comment
-                  </label>
-                  <Textarea
-                    id="role-comment"
-                    {...register("comment")}
-                    rows={2}
-                    placeholder="Optional description"
+                  </span>
+                  <MultiCombobox
+                    aria-label="Permissions"
+                    placeholder="Select one or more permissions"
+                    options={permissionOptions}
+                    value={permissions}
+                    onChange={(next) => setValue("permissions", next, { shouldDirty: true })}
                   />
                 </div>
               </section>
+              <div className={styles.field}>
+                <label className={styles.label} htmlFor="role-comment">
+                  Comment
+                </label>
+                <Textarea
+                  id="role-comment"
+                  {...register("comment")}
+                  rows={2}
+                  placeholder="Optional description"
+                />
+              </div>
             </form>
           )}
         </DrawerBody>

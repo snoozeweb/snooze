@@ -2,6 +2,13 @@ import { useCallback, useState } from "react";
 import { useNavigate, useSearch } from "@tanstack/react-router";
 import { Button } from "@/shared/ui/Button";
 import { DataTable } from "@/shared/ui/DataTable";
+import type { ContextMenuItem } from "@/shared/ui/DataTableContextMenu";
+import { RowDetailPanel } from "@/shared/ui/RowDetailPanel";
+import {
+  buildResourceContextMenu,
+  ConfirmDeleteDialog,
+  useConfirmDelete,
+} from "@/shared/ui/resourceContextMenu";
 import { Widgets } from "./api";
 import { WidgetEditor } from "./WidgetEditor";
 import { widgetColumns } from "./columns";
@@ -60,6 +67,37 @@ export function WidgetsPage() {
     orderby,
     asc,
   });
+  const remove = Widgets.useRemove();
+  const [selectedKeys, setSelectedKeys] = useState<Set<string>>(new Set());
+  const confirmDelete = useConfirmDelete<Widget>({
+    onDelete: (uid) => remove.mutateAsync(uid),
+    noun: "widget",
+    onAfter: () => setSelectedKeys(new Set()),
+  });
+  const contextMenuItems = useCallback(
+    (row: Widget): ContextMenuItem[] =>
+      buildResourceContextMenu(row, {
+        onOpen: (r) => {
+          if (r.uid) updateSearch({ uid: r.uid });
+        },
+        onDelete: (uid) => remove.mutateAsync(uid),
+        requestDelete: (r) => confirmDelete.request([r]),
+      }),
+    [updateSearch, remove, confirmDelete],
+  );
+  const bulkActions = useCallback(
+    (rows: Widget[]) => (
+      <Button
+        size="sm"
+        variant="danger"
+        leadingIcon="trash"
+        onClick={() => confirmDelete.request(rows)}
+      >
+        Delete ({rows.length})
+      </Button>
+    ),
+    [confirmDelete],
+  );
 
   return (
     <div className={styles.page}>
@@ -76,6 +114,18 @@ export function WidgetsPage() {
         columns={widgetColumns}
         rowKey={(r) => r.uid ?? r.name}
         loading={list.isPending}
+        contextMenuItems={contextMenuItems}
+        selectable
+        selectedKeys={selectedKeys}
+        onSelectionChange={setSelectedKeys}
+        bulkActions={bulkActions}
+        renderExpanded={(row) => (
+          <RowDetailPanel
+            row={row as unknown as Record<string, unknown>}
+            objectType="widget"
+            objectId={row.uid}
+          />
+        )}
         serverSort={{
           sortBy: orderby,
           order: asc ? "asc" : "desc",
@@ -96,6 +146,11 @@ export function WidgetsPage() {
         <WidgetEditor uid={detailUid} onClose={() => updateSearch({})} />
       ) : null}
       {creating ? <WidgetEditor uid={undefined} onClose={() => setCreating(false)} /> : null}
+      <ConfirmDeleteDialog
+        state={confirmDelete.state}
+        onCancel={confirmDelete.cancel}
+        onConfirm={() => void confirmDelete.confirm()}
+      />
     </div>
   );
 }

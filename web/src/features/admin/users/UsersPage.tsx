@@ -2,6 +2,13 @@ import { useCallback, useState } from "react";
 import { useNavigate, useSearch } from "@tanstack/react-router";
 import { Button } from "@/shared/ui/Button";
 import { DataTable } from "@/shared/ui/DataTable";
+import type { ContextMenuItem } from "@/shared/ui/DataTableContextMenu";
+import { RowDetailPanel } from "@/shared/ui/RowDetailPanel";
+import {
+  buildResourceContextMenu,
+  ConfirmDeleteDialog,
+  useConfirmDelete,
+} from "@/shared/ui/resourceContextMenu";
 import { Users } from "./api";
 import { UserEditor } from "./UserEditor";
 import { userColumns } from "./columns";
@@ -55,6 +62,37 @@ export function UsersPage() {
   );
 
   const list = Users.useList({ offset: (page - 1) * PAGE_SIZE, limit: PAGE_SIZE, orderby, asc });
+  const remove = Users.useRemove();
+  const [selectedKeys, setSelectedKeys] = useState<Set<string>>(new Set());
+  const confirmDelete = useConfirmDelete<User>({
+    onDelete: (uid) => remove.mutateAsync(uid),
+    noun: "user",
+    onAfter: () => setSelectedKeys(new Set()),
+  });
+  const contextMenuItems = useCallback(
+    (row: User): ContextMenuItem[] =>
+      buildResourceContextMenu(row, {
+        onOpen: (r) => {
+          if (r.uid) updateSearch({ uid: r.uid });
+        },
+        onDelete: (uid) => remove.mutateAsync(uid),
+        requestDelete: (r) => confirmDelete.request([r]),
+      }),
+    [updateSearch, remove, confirmDelete],
+  );
+  const bulkActions = useCallback(
+    (rows: User[]) => (
+      <Button
+        size="sm"
+        variant="danger"
+        leadingIcon="trash"
+        onClick={() => confirmDelete.request(rows)}
+      >
+        Delete ({rows.length})
+      </Button>
+    ),
+    [confirmDelete],
+  );
 
   return (
     <div className={styles.page}>
@@ -71,6 +109,18 @@ export function UsersPage() {
         columns={userColumns}
         rowKey={(r) => r.uid ?? r.name}
         loading={list.isPending}
+        contextMenuItems={contextMenuItems}
+        selectable
+        selectedKeys={selectedKeys}
+        onSelectionChange={setSelectedKeys}
+        bulkActions={bulkActions}
+        renderExpanded={(row) => (
+          <RowDetailPanel
+            row={row as unknown as Record<string, unknown>}
+            objectType="user"
+            objectId={row.uid}
+          />
+        )}
         serverSort={{
           sortBy: orderby,
           order: asc ? "asc" : "desc",
@@ -91,6 +141,11 @@ export function UsersPage() {
         <UserEditor uid={detailUid} onClose={() => updateSearch({})} />
       ) : null}
       {creating ? <UserEditor uid={undefined} onClose={() => setCreating(false)} /> : null}
+      <ConfirmDeleteDialog
+        state={confirmDelete.state}
+        onCancel={confirmDelete.cancel}
+        onConfirm={() => void confirmDelete.confirm()}
+      />
     </div>
   );
 }

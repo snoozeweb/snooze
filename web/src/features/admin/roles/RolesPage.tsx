@@ -2,6 +2,13 @@ import { useCallback, useState } from "react";
 import { useNavigate, useSearch } from "@tanstack/react-router";
 import { Button } from "@/shared/ui/Button";
 import { DataTable } from "@/shared/ui/DataTable";
+import type { ContextMenuItem } from "@/shared/ui/DataTableContextMenu";
+import { RowDetailPanel } from "@/shared/ui/RowDetailPanel";
+import {
+  buildResourceContextMenu,
+  ConfirmDeleteDialog,
+  useConfirmDelete,
+} from "@/shared/ui/resourceContextMenu";
 import { Roles } from "./api";
 import { RoleEditor } from "./RoleEditor";
 import { roleColumns } from "./columns";
@@ -55,6 +62,37 @@ export function RolesPage() {
   );
 
   const list = Roles.useList({ offset: (page - 1) * PAGE_SIZE, limit: PAGE_SIZE, orderby, asc });
+  const remove = Roles.useRemove();
+  const [selectedKeys, setSelectedKeys] = useState<Set<string>>(new Set());
+  const confirmDelete = useConfirmDelete<Role>({
+    onDelete: (uid) => remove.mutateAsync(uid),
+    noun: "role",
+    onAfter: () => setSelectedKeys(new Set()),
+  });
+  const contextMenuItems = useCallback(
+    (row: Role): ContextMenuItem[] =>
+      buildResourceContextMenu(row, {
+        onOpen: (r) => {
+          if (r.uid) updateSearch({ uid: r.uid });
+        },
+        onDelete: (uid) => remove.mutateAsync(uid),
+        requestDelete: (r) => confirmDelete.request([r]),
+      }),
+    [updateSearch, remove, confirmDelete],
+  );
+  const bulkActions = useCallback(
+    (rows: Role[]) => (
+      <Button
+        size="sm"
+        variant="danger"
+        leadingIcon="trash"
+        onClick={() => confirmDelete.request(rows)}
+      >
+        Delete ({rows.length})
+      </Button>
+    ),
+    [confirmDelete],
+  );
 
   return (
     <div className={styles.page}>
@@ -71,6 +109,18 @@ export function RolesPage() {
         columns={roleColumns}
         rowKey={(r) => r.uid ?? r.name}
         loading={list.isPending}
+        contextMenuItems={contextMenuItems}
+        selectable
+        selectedKeys={selectedKeys}
+        onSelectionChange={setSelectedKeys}
+        bulkActions={bulkActions}
+        renderExpanded={(row) => (
+          <RowDetailPanel
+            row={row as unknown as Record<string, unknown>}
+            objectType="role"
+            objectId={row.uid}
+          />
+        )}
         serverSort={{
           sortBy: orderby,
           order: asc ? "asc" : "desc",
@@ -91,6 +141,11 @@ export function RolesPage() {
         <RoleEditor uid={detailUid} onClose={() => updateSearch({})} />
       ) : null}
       {creating ? <RoleEditor uid={undefined} onClose={() => setCreating(false)} /> : null}
+      <ConfirmDeleteDialog
+        state={confirmDelete.state}
+        onCancel={confirmDelete.cancel}
+        onConfirm={() => void confirmDelete.confirm()}
+      />
     </div>
   );
 }
