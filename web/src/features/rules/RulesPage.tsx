@@ -2,11 +2,19 @@ import { useCallback, useState } from "react";
 import { useNavigate, useSearch } from "@tanstack/react-router";
 import { Button } from "@/shared/ui/Button";
 import { DataTable } from "@/shared/ui/DataTable";
+import type { ContextMenuItem } from "@/shared/ui/DataTableContextMenu";
+import { RowDetailPanel } from "@/shared/ui/RowDetailPanel";
 import { TabList, TabPanel, TabTrigger, Tabs } from "@/shared/ui/Tabs";
+import {
+  buildResourceContextMenu,
+  ConfirmDeleteDialog,
+  useConfirmDelete,
+} from "@/shared/ui/resourceContextMenu";
 import { AggregateRules, Rules } from "./api";
 import { RuleEditor } from "./RuleEditor";
-import { ruleColumns } from "./columns";
-import type { Rule } from "./types";
+import { RulesTreeTable } from "./RulesTreeTable";
+import { aggregateRuleColumns, ruleRowDisabled } from "./columns";
+import type { AggregateRule } from "./types";
 import styles from "./RulesPage.module.css";
 
 type RulesSearch = {
@@ -58,14 +66,51 @@ export function RulesPage() {
   );
 
   const resource = tab === "rules" ? Rules : AggregateRules;
-  const list = resource.useList({
-    offset: (page - 1) * PAGE_SIZE,
-    limit: PAGE_SIZE,
-    orderby,
-    asc,
-  });
+  // Rules tab: load the full set (limit=1000) so the tree component can
+  // build the parent/child hierarchy client-side without juggling
+  // pagination across levels. Aggregates tab keeps the paginated table.
+  const isTree = tab === "rules";
+  const list = resource.useList(
+    isTree
+      ? { limit: 1000, orderby: "tree_order", asc: true }
+      : { offset: (page - 1) * PAGE_SIZE, limit: PAGE_SIZE, orderby, asc },
+  );
 
   const editorPlugin: "rule" | "aggregaterule" = tab === "rules" ? "rule" : "aggregaterule";
+
+  const removeAggregate = AggregateRules.useRemove();
+  const [selectedKeys, setSelectedKeys] = useState<Set<string>>(new Set());
+  const confirmDelete = useConfirmDelete<AggregateRule>({
+    onDelete: (uid) => removeAggregate.mutateAsync(uid),
+    noun: "aggregate rule",
+    onAfter: () => setSelectedKeys(new Set()),
+  });
+
+  const aggregateContextMenu = useCallback(
+    (row: AggregateRule): ContextMenuItem[] =>
+      buildResourceContextMenu(row, {
+        onOpen: (r) => {
+          if (r.uid) updateSearch({ uid: r.uid });
+        },
+        onDelete: (uid) => removeAggregate.mutateAsync(uid),
+        requestDelete: (r) => confirmDelete.request([r]),
+      }),
+    [updateSearch, removeAggregate, confirmDelete],
+  );
+
+  const aggregateBulkActions = useCallback(
+    (rows: AggregateRule[]) => (
+      <Button
+        size="sm"
+        variant="danger"
+        leadingIcon="trash"
+        onClick={() => confirmDelete.request(rows)}
+      >
+        Delete ({rows.length})
+      </Button>
+    ),
+    [confirmDelete],
+  );
 
   return (
     <div className={styles.page}>
@@ -91,31 +136,53 @@ export function RulesPage() {
               New
             </Button>
           </div>
-          <DataTable<Rule>
-            data={list.data?.data ?? []}
-            columns={ruleColumns}
-            rowKey={(r) => r.uid ?? r.name}
-            loading={list.isPending}
-            serverSort={{
-              sortBy: orderby,
-              order: asc ? "asc" : "desc",
-              onChange: (next) =>
-                updateSearch({
-                  orderby: next.sortBy,
-                  asc: next.order === "asc",
-                  page: 1,
-                }),
-            }}
-            serverPagination={{
-              page,
-              pageSize: PAGE_SIZE,
-              total: list.data?.meta.total ?? 0,
-              onChange: (next) => updateSearch({ page: next.page }),
-            }}
-            onRowOpen={(row) => {
-              if (row.uid) updateSearch({ uid: row.uid });
-            }}
-          />
+          {isTree ? (
+            <RulesTreeTable
+              rules={list.data?.data ?? []}
+              onRowOpen={(row) => {
+                if (row.uid) updateSearch({ uid: row.uid });
+              }}
+            />
+          ) : (
+            <DataTable<AggregateRule>
+              data={(list.data?.data ?? []) as AggregateRule[]}
+              columns={aggregateRuleColumns}
+              rowKey={(r) => r.uid ?? r.name}
+              loading={list.isPending}
+              rowDisabled={ruleRowDisabled}
+              contextMenuItems={aggregateContextMenu}
+              selectable
+              selectedKeys={selectedKeys}
+              onSelectionChange={setSelectedKeys}
+              bulkActions={aggregateBulkActions}
+              renderExpanded={(row) => (
+                <RowDetailPanel
+                  row={row as unknown as Record<string, unknown>}
+                  objectType="aggregaterule"
+                  objectId={row.uid}
+                />
+              )}
+              serverSort={{
+                sortBy: orderby,
+                order: asc ? "asc" : "desc",
+                onChange: (next) =>
+                  updateSearch({
+                    orderby: next.sortBy,
+                    asc: next.order === "asc",
+                    page: 1,
+                  }),
+              }}
+              serverPagination={{
+                page,
+                pageSize: PAGE_SIZE,
+                total: list.data?.meta.total ?? 0,
+                onChange: (next) => updateSearch({ page: next.page }),
+              }}
+              onRowOpen={(row) => {
+                if (row.uid) updateSearch({ uid: row.uid });
+              }}
+            />
+          )}
         </TabPanel>
       </Tabs>
 
@@ -126,6 +193,11 @@ export function RulesPage() {
       {creating ? (
         <RuleEditor plugin={editorPlugin} uid={undefined} onClose={() => setCreating(false)} />
       ) : null}
+      <ConfirmDeleteDialog
+        state={confirmDelete.state}
+        onCancel={confirmDelete.cancel}
+        onConfirm={() => void confirmDelete.confirm()}
+      />
     </div>
   );
 }
