@@ -58,7 +58,7 @@
 .header {
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  gap: var(--space-2);
   padding: var(--space-3) var(--space-4);
   border-bottom: 1px solid var(--border);
 }
@@ -67,6 +67,14 @@
   font-weight: var(--weight-semibold);
   color: var(--text-strong);
   margin: 0;
+  flex: 1;
+}
+.toolbar {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: var(--text-sm);
+  color: var(--text-muted);
 }
 .body {
   padding: var(--space-4);

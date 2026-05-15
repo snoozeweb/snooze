@@ -68,6 +68,11 @@
 .row[data-selected="true"] td {
   background: var(--accent-bg);
 }
+.row[data-disabled="true"] td {
+  color: var(--text-muted);
+  opacity: 0.55;
+  font-style: italic;
+}
 .dense td,
 .dense th {
   padding-top: 4px;
@@ -82,6 +87,39 @@
   width: 32px;
   padding: 0 var(--space-2) !important;
   text-align: right;
+}
+.expandCell {
+  width: 28px;
+  padding: 0 var(--space-2) !important;
+  text-align: center;
+}
+.expandBtn {
+  background: none;
+  border: 0;
+  color: var(--text-muted);
+  cursor: pointer;
+  padding: 2px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--radius-sm);
+}
+.expandBtn:hover {
+  background: var(--bg-hover);
+  color: var(--text);
+}
+.expandedRow td {
+  background: var(--bg-canvas);
+  border-bottom: 1px solid var(--border-muted);
+}
+.expandedRow:hover td {
+  background: var(--bg-canvas);
+}
+.expandedCell {
+  padding: var(--space-3) !important;
+}
+.expandedPanel {
+  display: block;
 }
 
 .sortBtn {

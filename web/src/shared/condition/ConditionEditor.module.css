@@ -44,27 +44,33 @@
   padding: 2px 6px;
   border-radius: var(--radius-pill);
 }
+/* Flex row that never wraps; inputs collapse (min-width:0) so the
+   trash button stays on the same line as the inputs regardless of
+   which subset of cells the operator renders (ALWAYS_TRUE omits both
+   field and value, IN renders one value, etc). */
 .leaf {
   display: flex;
   align-items: center;
   gap: var(--space-2);
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
 }
 .field {
-  min-width: 180px;
+  flex: 1 1 0;
+  min-width: 0;
 }
 .op {
-  min-width: 110px;
+  flex: 0 0 auto;
+  min-width: 90px;
 }
 .value {
-  flex: 1;
-  min-width: 160px;
+  flex: 2 1 0;
+  min-width: 0;
 }
 .actions {
+  flex: 0 0 auto;
   display: inline-flex;
   align-items: center;
   gap: var(--space-1);
-  margin-left: auto;
 }
 
 /* ── Text-mode tab header ────────────────────────────────────── */

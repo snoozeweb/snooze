@@ -28,10 +28,22 @@ export function DrawerContent({
   );
 }
 
-export function DrawerTitle({ children, onClose }: { children: ReactNode; onClose?: () => void }) {
+export function DrawerTitle({
+  children,
+  onClose,
+  toolbar,
+}: {
+  children: ReactNode;
+  onClose?: () => void;
+  /** Optional content rendered in the header row, just before the close
+   *  button. Used by edit forms to place the Enabled switch where the eye
+   *  naturally lands — beside the title — instead of buried in the form. */
+  toolbar?: ReactNode;
+}) {
   return (
     <div className={styles.header}>
       <RD.Title className={styles.title}>{children}</RD.Title>
+      {toolbar !== undefined ? <span className={styles.toolbar}>{toolbar}</span> : null}
       <RD.Close asChild>
         <button type="button" className={styles.closeBtn} aria-label="Close" onClick={onClose}>
           <Icon name="x" size={16} />

@@ -7,6 +7,7 @@ import type { IconName } from "@/shared/icons/icon-names";
 import { IconButton } from "./IconButton";
 import { Menu, MenuContent, MenuItem, MenuTrigger } from "./Menu";
 import { Skeleton } from "./Skeleton";
+import { DataTableContextMenu, type ContextMenuItem } from "./DataTableContextMenu";
 import styles from "./DataTable.module.css";
 
 export type ColumnDef<T> = {
@@ -47,10 +48,18 @@ export type DataTableProps<T> = {
     onChange: (next: { page: number; pageSize: number }) => void;
   };
   rowActions?: (row: T) => RowAction[];
+  contextMenuItems?: (row: T) => ContextMenuItem[];
   bulkActions?: (rows: T[]) => ReactNode;
   emptyState?: ReactNode;
   loading?: boolean;
   onRowOpen?: (row: T) => void;
+  /** When true for a row, the row renders with muted styling — used to
+   *  indicate `enabled:false` records without dedicating a column. */
+  rowDisabled?: (row: T) => boolean;
+  /** When provided, each row gets a chevron in a dedicated first column
+   *  that toggles an inline "details" panel rendered beneath the row.
+   *  Multiple rows may be expanded at once. */
+  renderExpanded?: (row: T) => ReactNode;
 };
 
 export function DataTable<T>({
@@ -64,12 +73,26 @@ export function DataTable<T>({
   serverSort,
   serverPagination,
   rowActions,
+  contextMenuItems,
   bulkActions,
   emptyState,
   loading = false,
   onRowOpen,
+  rowDisabled,
+  renderExpanded,
 }: DataTableProps<T>) {
   const [focusedIndex, setFocusedIndex] = useState<number>(-1);
+  const [expanded, setExpanded] = useState<Set<string>>(() => new Set<string>());
+  const [ctxMenu, setCtxMenu] = useState<{ row: T; x: number; y: number } | null>(null);
+
+  const toggleExpanded = useCallback((key: string) => {
+    setExpanded((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  }, []);
 
   const selSet = useMemo(() => selectedKeys ?? new Set<string>(), [selectedKeys]);
   const allKeys = useMemo(() => data.map(rowKey), [data, rowKey]);
@@ -156,6 +179,7 @@ export function DataTable<T>({
         >
           <thead>
             <tr className={styles.headerRow}>
+              {renderExpanded ? <th className={styles.expandCell} aria-label="Expand" /> : null}
               {selectable ? (
                 <th className={styles.checkboxCell} scope="col">
                   <Checkbox
@@ -197,6 +221,7 @@ export function DataTable<T>({
             {loading ? (
               Array.from({ length: 5 }).map((_, idx) => (
                 <tr key={idx} className={styles.skeletonRow}>
+                  {renderExpanded ? <td className={styles.expandCell} /> : null}
                   {selectable ? (
                     <td className={styles.checkboxCell}>
                       <Skeleton width={14} height={14} />
@@ -212,26 +237,65 @@ export function DataTable<T>({
               ))
             ) : isEmpty ? (
               <tr>
-                <td colSpan={columns.length + (selectable ? 1 : 0) + (rowActions ? 1 : 0)}>
+                <td
+                  colSpan={
+                    columns.length +
+                    (selectable ? 1 : 0) +
+                    (rowActions ? 1 : 0) +
+                    (renderExpanded ? 1 : 0)
+                  }
+                >
                   {emptyState ?? <EmptyState icon="file-text" title="No items" />}
                 </td>
               </tr>
             ) : (
-              data.map((row, idx) => {
+              data.flatMap((row, idx) => {
                 const key = rowKey(row);
                 const isSelected = selSet.has(key);
                 const isFocused = idx === focusedIndex;
-                return (
+                const isExpanded = expanded.has(key);
+                const totalCols =
+                  columns.length +
+                  (selectable ? 1 : 0) +
+                  (rowActions ? 1 : 0) +
+                  (renderExpanded ? 1 : 0);
+                const rows: ReactNode[] = [
                   <tr
                     key={key}
                     className={styles.row}
                     {...(isFocused ? { "data-focused": "true" } : {})}
                     {...(isSelected ? { "data-selected": "true" } : {})}
+                    {...(rowDisabled?.(row) ? { "data-disabled": "true" } : {})}
                     onClick={() => {
                       setFocusedIndex(idx);
                       onRowOpen?.(row);
                     }}
+                    {...(contextMenuItems
+                      ? {
+                          onContextMenu: (e: React.MouseEvent<HTMLTableRowElement>) => {
+                            e.preventDefault();
+                            setFocusedIndex(idx);
+                            setCtxMenu({ row, x: e.clientX, y: e.clientY });
+                          },
+                        }
+                      : {})}
                   >
+                    {renderExpanded ? (
+                      <td className={styles.expandCell} onClick={(e) => e.stopPropagation()}>
+                        <button
+                          type="button"
+                          className={styles.expandBtn}
+                          aria-label={`Expand row ${key}`}
+                          aria-expanded={isExpanded}
+                          onClick={() => toggleExpanded(key)}
+                        >
+                          <Icon
+                            name={isExpanded ? "chevron-down" : "chevron-right"}
+                            size={14}
+                          />
+                        </button>
+                      </td>
+                    ) : null}
                     {selectable ? (
                       <td className={styles.checkboxCell} onClick={(e) => e.stopPropagation()}>
                         <Checkbox
@@ -254,8 +318,18 @@ export function DataTable<T>({
                         <RowActionsMenu actions={rowActions(row)} />
                       </td>
                     ) : null}
-                  </tr>
-                );
+                  </tr>,
+                ];
+                if (renderExpanded && isExpanded) {
+                  rows.push(
+                    <tr key={`${key}__expanded`} className={styles.expandedRow}>
+                      <td colSpan={totalCols} className={styles.expandedCell}>
+                        <div className={styles.expandedPanel}>{renderExpanded(row)}</div>
+                      </td>
+                    </tr>,
+                  );
+                }
+                return rows;
               })
             )}
           </tbody>
@@ -263,6 +337,15 @@ export function DataTable<T>({
       </div>
 
       {serverPagination ? <PaginationBar pag={serverPagination} /> : null}
+
+      {ctxMenu && contextMenuItems ? (
+        <DataTableContextMenu
+          items={contextMenuItems(ctxMenu.row)}
+          x={ctxMenu.x}
+          y={ctxMenu.y}
+          onClose={() => setCtxMenu(null)}
+        />
+      ) : null}
     </div>
   );
 }

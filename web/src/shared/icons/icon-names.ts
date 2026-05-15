@@ -44,6 +44,7 @@ export const ICON_NAMES = [
   "message-square",
   "download",
   "upload",
+  "grip",
 ] as const;
 
 export type IconName = (typeof ICON_NAMES)[number];

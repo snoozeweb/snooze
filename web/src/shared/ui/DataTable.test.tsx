@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 import { DataTable, type ColumnDef } from "./DataTable";
@@ -138,5 +138,213 @@ describe("DataTable", () => {
       />,
     );
     expect(screen.getByText("Selected 2")).toBeInTheDocument();
+  });
+
+  describe("context menu", () => {
+    it("right-click on a row opens the context menu", () => {
+      render(
+        <DataTable
+          data={sample}
+          columns={columns}
+          rowKey={(r) => r.id}
+          contextMenuItems={() => [
+            { key: "open", label: "Open", onSelect: vi.fn() },
+            { key: "copy", label: "Copy as JSON", onSelect: vi.fn() },
+          ]}
+        />,
+      );
+      expect(screen.queryByRole("menu", { name: /row context menu/i })).toBeNull();
+      fireEvent.contextMenu(screen.getByText("alpha"));
+      expect(screen.getByRole("menu", { name: /row context menu/i })).toBeInTheDocument();
+      expect(screen.getByRole("menuitem", { name: /open/i })).toBeInTheDocument();
+      expect(screen.getByRole("menuitem", { name: /copy as json/i })).toBeInTheDocument();
+    });
+
+    it("renders icons next to labels when provided", () => {
+      render(
+        <DataTable
+          data={sample}
+          columns={columns}
+          rowKey={(r) => r.id}
+          contextMenuItems={() => [
+            { key: "open", label: "Open", icon: "eye", onSelect: vi.fn() },
+            { key: "delete", label: "Delete", icon: "trash", danger: true, onSelect: vi.fn() },
+          ]}
+        />,
+      );
+      fireEvent.contextMenu(screen.getByText("alpha"));
+      const items = screen.getAllByRole("menuitem");
+      expect(items.length).toBe(2);
+      expect(items[0]!.querySelector("svg")).not.toBeNull();
+      expect(items[1]!.querySelector("svg")).not.toBeNull();
+    });
+
+    it("clicking a menu item calls onSelect and closes the menu", async () => {
+      const handler = vi.fn();
+      const user = userEvent.setup();
+      render(
+        <DataTable
+          data={sample}
+          columns={columns}
+          rowKey={(r) => r.id}
+          contextMenuItems={(row) => [
+            { key: "open", label: `Open ${row.name}`, onSelect: handler },
+          ]}
+        />,
+      );
+      fireEvent.contextMenu(screen.getByText("alpha"));
+      await user.click(screen.getByRole("menuitem", { name: /open alpha/i }));
+      expect(handler).toHaveBeenCalledTimes(1);
+      expect(screen.queryByRole("menu", { name: /row context menu/i })).toBeNull();
+    });
+
+    it("passes the right row to the context-menu factory", () => {
+      const factory = vi.fn(() => [{ key: "open", label: "Open", onSelect: vi.fn() }]);
+      render(
+        <DataTable
+          data={sample}
+          columns={columns}
+          rowKey={(r) => r.id}
+          contextMenuItems={factory}
+        />,
+      );
+      fireEvent.contextMenu(screen.getByText("beta"));
+      expect(factory).toHaveBeenCalledWith(sample[1]);
+    });
+
+    it("Escape closes the menu", () => {
+      render(
+        <DataTable
+          data={sample}
+          columns={columns}
+          rowKey={(r) => r.id}
+          contextMenuItems={() => [{ key: "open", label: "Open", onSelect: vi.fn() }]}
+        />,
+      );
+      fireEvent.contextMenu(screen.getByText("alpha"));
+      expect(screen.getByRole("menu", { name: /row context menu/i })).toBeInTheDocument();
+      fireEvent.keyDown(document, { key: "Escape" });
+      expect(screen.queryByRole("menu", { name: /row context menu/i })).toBeNull();
+    });
+
+    it("outside click closes the menu", () => {
+      render(
+        <div>
+          <button type="button">outside</button>
+          <DataTable
+            data={sample}
+            columns={columns}
+            rowKey={(r) => r.id}
+            contextMenuItems={() => [{ key: "open", label: "Open", onSelect: vi.fn() }]}
+          />
+        </div>,
+      );
+      fireEvent.contextMenu(screen.getByText("alpha"));
+      expect(screen.getByRole("menu", { name: /row context menu/i })).toBeInTheDocument();
+      fireEvent.mouseDown(screen.getByRole("button", { name: /outside/i }));
+      expect(screen.queryByRole("menu", { name: /row context menu/i })).toBeNull();
+    });
+
+    it("does not attach onContextMenu when contextMenuItems is omitted", () => {
+      render(<DataTable data={sample} columns={columns} rowKey={(r) => r.id} />);
+      fireEvent.contextMenu(screen.getByText("alpha"));
+      expect(screen.queryByRole("menu", { name: /row context menu/i })).toBeNull();
+    });
+
+    it("Enter activates the highlighted item", () => {
+      const first = vi.fn();
+      const second = vi.fn();
+      render(
+        <DataTable
+          data={sample}
+          columns={columns}
+          rowKey={(r) => r.id}
+          contextMenuItems={() => [
+            { key: "a", label: "First", onSelect: first },
+            { key: "b", label: "Second", onSelect: second },
+          ]}
+        />,
+      );
+      fireEvent.contextMenu(screen.getByText("alpha"));
+      fireEvent.keyDown(document, { key: "ArrowDown" });
+      fireEvent.keyDown(document, { key: "Enter" });
+      expect(second).toHaveBeenCalled();
+      expect(first).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("row expansion", () => {
+    it("does not render the expand-chevron column when renderExpanded is omitted", () => {
+      render(<DataTable data={sample} columns={columns} rowKey={(r) => r.id} />);
+      expect(screen.queryByRole("button", { name: /expand row/i })).toBeNull();
+    });
+
+    it("renders a chevron toggle per row when renderExpanded is provided", () => {
+      render(
+        <DataTable
+          data={sample}
+          columns={columns}
+          rowKey={(r) => r.id}
+          renderExpanded={(r) => <div>details for {r.name}</div>}
+        />,
+      );
+      const toggles = screen.getAllByRole("button", { name: /expand row/i });
+      expect(toggles.length).toBe(sample.length);
+    });
+
+    it("clicking the chevron toggles expansion without triggering onRowOpen", async () => {
+      const onRowOpen = vi.fn();
+      const user = userEvent.setup();
+      render(
+        <DataTable
+          data={sample}
+          columns={columns}
+          rowKey={(r) => r.id}
+          onRowOpen={onRowOpen}
+          renderExpanded={(r) => <div data-testid={`exp-${r.id}`}>details for {r.name}</div>}
+        />,
+      );
+      expect(screen.queryByTestId("exp-2")).toBeNull();
+      const toggles = screen.getAllByRole("button", { name: /expand row/i });
+      await user.click(toggles[1]!);
+      expect(screen.getByTestId("exp-2")).toBeInTheDocument();
+      expect(onRowOpen).not.toHaveBeenCalled();
+      await user.click(toggles[1]!);
+      expect(screen.queryByTestId("exp-2")).toBeNull();
+    });
+
+    it("allows multiple rows to be expanded simultaneously", async () => {
+      const user = userEvent.setup();
+      render(
+        <DataTable
+          data={sample}
+          columns={columns}
+          rowKey={(r) => r.id}
+          renderExpanded={(r) => <div data-testid={`exp-${r.id}`}>{r.name}</div>}
+        />,
+      );
+      const toggles = screen.getAllByRole("button", { name: /expand row/i });
+      await user.click(toggles[0]!);
+      await user.click(toggles[2]!);
+      expect(screen.getByTestId("exp-1")).toBeInTheDocument();
+      expect(screen.getByTestId("exp-3")).toBeInTheDocument();
+      expect(screen.queryByTestId("exp-2")).toBeNull();
+    });
+
+    it("clicking the row body still calls onRowOpen", async () => {
+      const onRowOpen = vi.fn();
+      const user = userEvent.setup();
+      render(
+        <DataTable
+          data={sample}
+          columns={columns}
+          rowKey={(r) => r.id}
+          onRowOpen={onRowOpen}
+          renderExpanded={(r) => <div>details for {r.name}</div>}
+        />,
+      );
+      await user.click(screen.getByText("beta"));
+      expect(onRowOpen).toHaveBeenCalledWith(sample[1]);
+    });
   });
 });

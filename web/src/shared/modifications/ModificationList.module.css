@@ -3,27 +3,32 @@
   flex-direction: column;
   gap: var(--space-2);
 }
+/* Flex row that never wraps. Inputs are flex:1 and allowed to shrink
+   (min-width:0) so the trash button stays inline regardless of how many
+   value inputs the modification type renders. */
 .row {
   display: flex;
   align-items: center;
   gap: var(--space-2);
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
 }
 .type {
-  min-width: 150px;
+  flex: 0 0 auto;
+  min-width: 110px;
 }
 .field {
-  min-width: 180px;
+  flex: 1 1 0;
+  min-width: 0;
 }
 .value {
-  flex: 1;
-  min-width: 160px;
+  flex: 1 1 0;
+  min-width: 0;
 }
 .actions {
+  flex: 0 0 auto;
   display: inline-flex;
   align-items: center;
   gap: var(--space-1);
-  margin-left: auto;
 }
 .empty {
   font-size: var(--text-sm);
