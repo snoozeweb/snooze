@@ -206,6 +206,128 @@ func (d *Driver) CleanupOrphans(ctx context.Context, collection string) (int, er
 	return deleted, nil
 }
 
+// CleanupSnooze deletes snooze rows whose `time_constraints.datetime` list
+// has at least one entry AND every entry's `until` is in the past. Rows
+// without any datetime constraint, or with at least one entry whose `until`
+// is in the future / absent, are kept. See db.Driver.CleanupSnooze.
+func (d *Driver) CleanupSnooze(ctx context.Context) (int, error) {
+	return d.cleanupExpiredByDatetime(ctx, "snooze")
+}
+
+// CleanupNotification mirrors CleanupSnooze for the `notification`
+// collection.
+func (d *Driver) CleanupNotification(ctx context.Context) (int, error) {
+	return d.cleanupExpiredByDatetime(ctx, "notification")
+}
+
+// cleanupExpiredByDatetime implements the shared CleanupSnooze /
+// CleanupNotification body. We pull rows that declare a non-empty
+// `time_constraints.datetime` array, evaluate each entry's `until` in Go
+// (the JSON path expressions for "every element is in the past" aren't
+// portable across the three backends), and DELETE by uid in batches.
+func (d *Driver) cleanupExpiredByDatetime(ctx context.Context, collection string) (int, error) {
+	exists, err := d.collectionExists(ctx, collection)
+	if err != nil {
+		return 0, err
+	}
+	if !exists {
+		return 0, nil
+	}
+	tbl, err := tableName(collection)
+	if err != nil {
+		return 0, err
+	}
+	q := fmt.Sprintf(
+		`SELECT uid, json_extract(data, '$.time_constraints.datetime') FROM %s
+		 WHERE json_type(data, '$.time_constraints.datetime') = 'array'
+		   AND json_array_length(json_extract(data, '$.time_constraints.datetime')) > 0`,
+		quoteIdent(tbl),
+	)
+	rows, err := d.db.QueryContext(ctx, q)
+	if err != nil {
+		return 0, err
+	}
+	defer rows.Close()
+	now := time.Now().UTC()
+	var toDelete []string
+	for rows.Next() {
+		var uid string
+		var raw []byte
+		if err := rows.Scan(&uid, &raw); err != nil {
+			return 0, err
+		}
+		if datetimeAllExpired(raw, now) {
+			toDelete = append(toDelete, uid)
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return 0, err
+	}
+	if len(toDelete) == 0 {
+		return 0, nil
+	}
+	const batch = 500
+	deleted := 0
+	for i := 0; i < len(toDelete); i += batch {
+		j := i + batch
+		if j > len(toDelete) {
+			j = len(toDelete)
+		}
+		chunk := toDelete[i:j]
+		placeholders := strings.Repeat("?,", len(chunk))
+		placeholders = strings.TrimSuffix(placeholders, ",")
+		stmt := fmt.Sprintf("DELETE FROM %s WHERE uid IN (%s)", quoteIdent(tbl), placeholders)
+		args := make([]any, len(chunk))
+		for k, s := range chunk {
+			args[k] = s
+		}
+		res, err := d.db.ExecContext(ctx, stmt, args...)
+		if err != nil {
+			return deleted, err
+		}
+		n, _ := res.RowsAffected()
+		deleted += int(n)
+	}
+	return deleted, nil
+}
+
+// datetimeAllExpired returns true when `raw` is a JSON array of {until: ...}
+// objects and every element has a valid `until` strictly before `now`. An
+// empty array, a missing `until`, an unparseable `until`, or any
+// future/equal `until` keeps the row.
+func datetimeAllExpired(raw []byte, now time.Time) bool {
+	if len(raw) == 0 {
+		return false
+	}
+	var entries []map[string]any
+	if err := json.Unmarshal(raw, &entries); err != nil || len(entries) == 0 {
+		return false
+	}
+	for _, e := range entries {
+		untilRaw, ok := e["until"]
+		if !ok {
+			return false
+		}
+		untilStr, ok := untilRaw.(string)
+		if !ok || untilStr == "" {
+			return false
+		}
+		t, err := time.Parse(time.RFC3339, untilStr)
+		if err != nil {
+			// Accept the short "YYYY-MM-DDTHH:MM" Python form too.
+			if t2, err2 := time.Parse("2006-01-02T15:04", untilStr); err2 == nil {
+				t = t2.UTC()
+			} else {
+				return false
+			}
+		}
+		if !t.Before(now) {
+			return false
+		}
+	}
+	return true
+}
+
 // CleanupAuditLogs prunes audit entries for objects whose latest event is
 // a "deleted" action older than the threshold.
 func (d *Driver) CleanupAuditLogs(ctx context.Context, olderThan time.Duration) (int, error) {

@@ -125,6 +125,115 @@ func (d *Driver) CleanupOrphans(ctx context.Context, collection string) (int, er
 	return int(res.DeletedCount), nil
 }
 
+// CleanupSnooze deletes snooze rows whose `time_constraints.datetime` array
+// is non-empty AND every element's `until` is strictly in the past. Rows
+// with no datetime constraint, or with any future/open-ended entry, are
+// kept. See db.Driver.CleanupSnooze for the contract.
+func (d *Driver) CleanupSnooze(ctx context.Context) (int, error) {
+	return d.cleanupExpiredByDatetime(ctx, "snooze")
+}
+
+// CleanupNotification mirrors CleanupSnooze for the `notification`
+// collection.
+func (d *Driver) CleanupNotification(ctx context.Context) (int, error) {
+	return d.cleanupExpiredByDatetime(ctx, "notification")
+}
+
+// cleanupExpiredByDatetime is the body shared by CleanupSnooze and
+// CleanupNotification. We scan every candidate row and evaluate the "every
+// element's until is past" predicate in Go for parity with the
+// SQLite/Postgres implementations.
+func (d *Driver) cleanupExpiredByDatetime(ctx context.Context, collection string) (int, error) {
+	coll := d.coll(collection)
+	now := time.Now().UTC()
+	cur, err := coll.Find(ctx, bson.M{
+		"time_constraints.datetime.0": bson.M{"$exists": true},
+	})
+	if err != nil {
+		return 0, fmt.Errorf("mongo: cleanupExpired %s: %w", collection, err)
+	}
+	defer cur.Close(ctx)
+	var toDelete []any
+	for cur.Next(ctx) {
+		var row bson.M
+		if err := cur.Decode(&row); err != nil {
+			return 0, err
+		}
+		entries := extractDatetime(row)
+		if datetimeAllExpired(entries, now) {
+			if uid, ok := row["uid"]; ok && uid != nil {
+				toDelete = append(toDelete, uid)
+			}
+		}
+	}
+	if err := cur.Err(); err != nil {
+		return 0, err
+	}
+	if len(toDelete) == 0 {
+		return 0, nil
+	}
+	res, err := coll.DeleteMany(ctx, bson.M{"uid": bson.M{"$in": toDelete}})
+	if err != nil {
+		return 0, fmt.Errorf("mongo: cleanupExpired %s: delete: %w", collection, err)
+	}
+	return int(res.DeletedCount), nil
+}
+
+// extractDatetime navigates the `time_constraints.datetime` array out of a
+// raw bson.M decoded row. Returns nil when the path is absent or shaped
+// unexpectedly.
+func extractDatetime(row bson.M) []map[string]any {
+	tc, ok := row["time_constraints"].(bson.M)
+	if !ok {
+		return nil
+	}
+	arr, ok := tc["datetime"].(bson.A)
+	if !ok {
+		return nil
+	}
+	out := make([]map[string]any, 0, len(arr))
+	for _, e := range arr {
+		switch m := e.(type) {
+		case bson.M:
+			out = append(out, map[string]any(m))
+		case map[string]any:
+			out = append(out, m)
+		}
+	}
+	return out
+}
+
+// datetimeAllExpired returns true when entries is non-empty and every
+// element's `until` parses to a timestamp strictly before now. Missing or
+// unparseable `until`, or any future/equal value, returns false.
+func datetimeAllExpired(entries []map[string]any, now time.Time) bool {
+	if len(entries) == 0 {
+		return false
+	}
+	for _, e := range entries {
+		untilRaw, ok := e["until"]
+		if !ok {
+			return false
+		}
+		untilStr, ok := untilRaw.(string)
+		if !ok || untilStr == "" {
+			return false
+		}
+		t, err := time.Parse(time.RFC3339, untilStr)
+		if err != nil {
+			if t2, err2 := time.Parse("2006-01-02T15:04", untilStr); err2 == nil {
+				t = t2.UTC()
+			} else {
+				return false
+			}
+		}
+		if !t.Before(now) {
+			return false
+		}
+	}
+	return true
+}
+
 // CleanupAuditLogs deletes audit entries belonging to objects whose most
 // recent action was "deleted" more than olderThan ago.
 func (d *Driver) CleanupAuditLogs(ctx context.Context, olderThan time.Duration) (int, error) {

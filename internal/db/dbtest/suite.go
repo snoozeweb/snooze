@@ -35,6 +35,7 @@ func RunDriverSuite(t *testing.T, name string, factory Factory) {
 		{"SearchNested", testSearchNested},
 		{"SearchPagination", testSearchPagination},
 		{"SearchOrderBy", testSearchOrderBy},
+		{"SearchRuleTreeOrder", testSearchRuleTreeOrder},
 		{"SearchOnlyOne", testSearchOnlyOne},
 		{"Update", testUpdate},
 		{"Replace", testReplace},
@@ -54,6 +55,8 @@ func RunDriverSuite(t *testing.T, name string, factory Factory) {
 		{"CleanupComments", testCleanupComments},
 		{"CleanupOrphans", testCleanupOrphans},
 		{"CleanupAuditLogs", testCleanupAuditLogs},
+		{"CleanupSnooze", testCleanupSnooze},
+		{"CleanupNotification", testCleanupNotification},
 		{"ComputeStats", testComputeStats},
 	}
 	for _, c := range cases {
@@ -192,6 +195,66 @@ func testSearchOrderBy(t *testing.T, drv db.Driver) {
 	require.NoError(t, err)
 	require.NotEmpty(t, docs)
 	require.Equal(t, "5", docs[0]["a"])
+}
+
+// testSearchRuleTreeOrder pins that rule sibling order is preserved across
+// every backend. The rule plugin reads its records ordered by `tree_order`
+// (see internal/pluginimpl/rule/plugin.go), and reorder UX hangs off the
+// same field. A regression here would silently scramble rule evaluation
+// order on whichever backend broke. Also exercises an `IN parents`
+// search, which is how the rule plugin loads each level of the tree.
+func testSearchRuleTreeOrder(t *testing.T, drv db.Driver) {
+	// Insert top-level rules out of declaration order so the OrderBy is the
+	// only thing that puts them back in 0,1,2,3.
+	res := mustWrite(t, drv, "rule",
+		db.Document{"name": "third", "tree_order": int64(2), "condition": []any{}},
+		db.Document{"name": "first", "tree_order": int64(0), "condition": []any{}},
+		db.Document{"name": "fourth", "tree_order": int64(3), "condition": []any{}},
+		db.Document{"name": "second", "tree_order": int64(1), "condition": []any{}},
+	)
+	require.Len(t, res.Added, 4)
+	parentUID := res.Added[1] // "first"
+
+	// Insert two children of "first" with sibling order reversed.
+	mustWrite(t, drv, "rule",
+		db.Document{"name": "child-B", "tree_order": int64(1), "parents": []any{parentUID}, "condition": []any{}},
+		db.Document{"name": "child-A", "tree_order": int64(0), "parents": []any{parentUID}, "condition": []any{}},
+	)
+
+	// Top-level rules: NOT EXISTS parents, ordered by tree_order ascending.
+	// This mirrors the plugin's load (rule/plugin.go ~line 117).
+	topLevel := condition.Not(condition.Exists("parents"))
+	docs, _, err := drv.Search(ctx(), "rule", topLevel, db.Page{OrderBy: "tree_order", Asc: true})
+	require.NoError(t, err)
+	require.Len(t, docs, 4)
+	require.Equal(t, []string{"first", "second", "third", "fourth"},
+		[]string{
+			docs[0]["name"].(string),
+			docs[1]["name"].(string),
+			docs[2]["name"].(string),
+			docs[3]["name"].(string),
+		})
+
+	// Children of "first": IN parents == parentUID, ordered by tree_order.
+	// Mirrors rule/plugin.go ~line 120-121.
+	childCond := condition.Cond{Op: condition.OpIn, Field: "parents", Value: parentUID}
+	kids, _, err := drv.Search(ctx(), "rule", childCond, db.Page{OrderBy: "tree_order", Asc: true})
+	require.NoError(t, err)
+	require.Len(t, kids, 2)
+	require.Equal(t, "child-A", kids[0]["name"])
+	require.Equal(t, "child-B", kids[1]["name"])
+
+	// Reorder via UpdateOne: swap children's tree_order. This mirrors what
+	// a drag-and-drop UX would do (PATCH each affected sibling).
+	uidA := kids[0]["uid"].(string)
+	uidB := kids[1]["uid"].(string)
+	require.NoError(t, drv.UpdateOne(ctx(), "rule", uidA, db.Document{"tree_order": int64(1)}, false))
+	require.NoError(t, drv.UpdateOne(ctx(), "rule", uidB, db.Document{"tree_order": int64(0)}, false))
+
+	kids, _, err = drv.Search(ctx(), "rule", childCond, db.Page{OrderBy: "tree_order", Asc: true})
+	require.NoError(t, err)
+	require.Equal(t, "child-B", kids[0]["name"])
+	require.Equal(t, "child-A", kids[1]["name"])
 }
 
 func testSearchOnlyOne(t *testing.T, drv db.Driver) {
@@ -398,4 +461,73 @@ func testComputeStats(t *testing.T, drv db.Driver) {
 	mustWrite(t, drv, "stats", db.Document{"date": float64(0), "key": "a_qty", "value": int64(1)})
 	_, err := drv.ComputeStats(ctx(), "stats", time.Unix(0, 0), time.Now(), "day")
 	require.NoError(t, err)
+}
+
+func testCleanupSnooze(t *testing.T, drv db.Driver) {
+	now := time.Now().UTC()
+	past := now.Add(-24 * time.Hour).Format(time.RFC3339)
+	future := now.Add(24 * time.Hour).Format(time.RFC3339)
+	// expired: every datetime.until is in the past — should be deleted.
+	expired := db.Document{
+		"name": "expired",
+		"time_constraints": map[string]any{
+			"datetime": []any{
+				map[string]any{"from": past, "until": past},
+			},
+		},
+	}
+	// future: at least one datetime.until is in the future — kept.
+	future1 := db.Document{
+		"name": "future",
+		"time_constraints": map[string]any{
+			"datetime": []any{
+				map[string]any{"from": past, "until": future},
+			},
+		},
+	}
+	// noConstraint: no datetime entries — kept.
+	noConstraint := db.Document{"name": "no_constraint"}
+	// mixed: one past, one future — kept (not every entry has expired).
+	mixed := db.Document{
+		"name": "mixed",
+		"time_constraints": map[string]any{
+			"datetime": []any{
+				map[string]any{"from": past, "until": past},
+				map[string]any{"from": past, "until": future},
+			},
+		},
+	}
+	mustWrite(t, drv, "snooze", expired, future1, noConstraint, mixed)
+	deleted, err := drv.CleanupSnooze(ctx())
+	require.NoError(t, err)
+	require.Equal(t, 1, deleted)
+	_, total, err := drv.Search(ctx(), "snooze", mustCond(t, nil), db.Page{})
+	require.NoError(t, err)
+	require.Equal(t, 3, total)
+}
+
+func testCleanupNotification(t *testing.T, drv db.Driver) {
+	now := time.Now().UTC()
+	past := now.Add(-24 * time.Hour).Format(time.RFC3339)
+	future := now.Add(24 * time.Hour).Format(time.RFC3339)
+	expired := db.Document{
+		"name": "expired",
+		"time_constraints": map[string]any{
+			"datetime": []any{
+				map[string]any{"from": past, "until": past},
+			},
+		},
+	}
+	live := db.Document{
+		"name": "live",
+		"time_constraints": map[string]any{
+			"datetime": []any{
+				map[string]any{"from": past, "until": future},
+			},
+		},
+	}
+	mustWrite(t, drv, "notification", expired, live)
+	deleted, err := drv.CleanupNotification(ctx())
+	require.NoError(t, err)
+	require.Equal(t, 1, deleted)
 }

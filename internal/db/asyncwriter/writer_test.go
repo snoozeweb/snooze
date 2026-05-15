@@ -101,16 +101,18 @@ func (s *stubDriver) PrependList(context.Context, string, map[string][]any, cond
 func (s *stubDriver) RemoveList(context.Context, string, map[string][]any, condition.Cond) (int, error) {
 	return 0, nil
 }
-func (s *stubDriver) CreateIndex(context.Context, string, []string) error      { return nil }
-func (s *stubDriver) ListCollections(context.Context) ([]string, error)        { return nil, nil }
-func (s *stubDriver) Drop(context.Context, string) error                       { return nil }
-func (s *stubDriver) Backup(context.Context, string, []string) error           { return nil }
-func (s *stubDriver) CleanupTimeout(context.Context, string) (int, error)      { return 0, nil }
-func (s *stubDriver) CleanupComments(context.Context) (int, error)             { return 0, nil }
-func (s *stubDriver) CleanupOrphans(context.Context, string) (int, error)      { return 0, nil }
+func (s *stubDriver) CreateIndex(context.Context, string, []string) error { return nil }
+func (s *stubDriver) ListCollections(context.Context) ([]string, error)   { return nil, nil }
+func (s *stubDriver) Drop(context.Context, string) error                  { return nil }
+func (s *stubDriver) Backup(context.Context, string, []string) error      { return nil }
+func (s *stubDriver) CleanupTimeout(context.Context, string) (int, error) { return 0, nil }
+func (s *stubDriver) CleanupComments(context.Context) (int, error)        { return 0, nil }
+func (s *stubDriver) CleanupOrphans(context.Context, string) (int, error) { return 0, nil }
 func (s *stubDriver) CleanupAuditLogs(context.Context, time.Duration) (int, error) {
 	return 0, nil
 }
+func (s *stubDriver) CleanupSnooze(context.Context) (int, error)       { return 0, nil }
+func (s *stubDriver) CleanupNotification(context.Context) (int, error) { return 0, nil }
 func (s *stubDriver) ComputeStats(context.Context, string, time.Time, time.Time, string) ([]db.StatsBucket, error) {
 	return nil, nil
 }

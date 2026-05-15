@@ -104,6 +104,108 @@ func (d *Driver) CleanupOrphans(ctx context.Context, collection string) (int, er
 	return int(tag.RowsAffected()), nil
 }
 
+// CleanupSnooze deletes snooze rows whose `time_constraints.datetime` JSON
+// array is non-empty AND every element's `until` parses to a timestamp
+// strictly before now. See db.Driver.CleanupSnooze for the contract.
+func (d *Driver) CleanupSnooze(ctx context.Context) (int, error) {
+	return d.cleanupExpiredByDatetime(ctx, "snooze")
+}
+
+// CleanupNotification mirrors CleanupSnooze for the `notification`
+// collection.
+func (d *Driver) CleanupNotification(ctx context.Context) (int, error) {
+	return d.cleanupExpiredByDatetime(ctx, "notification")
+}
+
+// cleanupExpiredByDatetime is the body shared by CleanupSnooze and
+// CleanupNotification. We fetch (uid, datetime array) for every candidate
+// row and evaluate the "every element's until is past" predicate in Go;
+// expressing it in pure SQL across jsonb_array_elements would be possible
+// but harder to keep in sync with the SQLite/Mongo backends.
+func (d *Driver) cleanupExpiredByDatetime(ctx context.Context, collection string) (int, error) {
+	table, err := d.tableIfExists(ctx, collection)
+	if err != nil {
+		return 0, err
+	}
+	if table == "" {
+		return 0, nil
+	}
+	qt := quoteIdent(table)
+	q := fmt.Sprintf(
+		"SELECT uid, data->'time_constraints'->'datetime' FROM %s "+
+			"WHERE jsonb_typeof(data->'time_constraints'->'datetime') = 'array' "+
+			"AND jsonb_array_length(data->'time_constraints'->'datetime') > 0",
+		qt,
+	)
+	rows, err := d.pool.Query(ctx, q)
+	if err != nil {
+		return 0, fmt.Errorf("postgres: cleanupExpired %s: %w", collection, err)
+	}
+	defer rows.Close()
+	now := time.Now().UTC()
+	var toDelete []string
+	for rows.Next() {
+		var uid string
+		var raw []byte
+		if err := rows.Scan(&uid, &raw); err != nil {
+			return 0, err
+		}
+		if datetimeAllExpired(raw, now) {
+			toDelete = append(toDelete, uid)
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return 0, err
+	}
+	if len(toDelete) == 0 {
+		return 0, nil
+	}
+	tag, err := d.pool.Exec(ctx,
+		fmt.Sprintf("DELETE FROM %s WHERE uid = ANY($1)", qt),
+		toDelete,
+	)
+	if err != nil {
+		return 0, fmt.Errorf("postgres: cleanupExpired %s: delete: %w", collection, err)
+	}
+	return int(tag.RowsAffected()), nil
+}
+
+// datetimeAllExpired matches the predicate used by CleanupSnooze /
+// CleanupNotification: every element of the JSON array must have a
+// parseable `until` strictly before `now`. Returns false for empty arrays,
+// missing/unparseable `until`s, or any future/equal `until`.
+func datetimeAllExpired(raw []byte, now time.Time) bool {
+	if len(raw) == 0 {
+		return false
+	}
+	var entries []map[string]any
+	if err := json.Unmarshal(raw, &entries); err != nil || len(entries) == 0 {
+		return false
+	}
+	for _, e := range entries {
+		untilRaw, ok := e["until"]
+		if !ok {
+			return false
+		}
+		untilStr, ok := untilRaw.(string)
+		if !ok || untilStr == "" {
+			return false
+		}
+		t, err := time.Parse(time.RFC3339, untilStr)
+		if err != nil {
+			if t2, err2 := time.Parse("2006-01-02T15:04", untilStr); err2 == nil {
+				t = t2.UTC()
+			} else {
+				return false
+			}
+		}
+		if !t.Before(now) {
+			return false
+		}
+	}
+	return true
+}
+
 // CleanupAuditLogs drops audit rows for object_ids last marked deleted
 // before now - olderThan.
 func (d *Driver) CleanupAuditLogs(ctx context.Context, olderThan time.Duration) (int, error) {

@@ -148,6 +148,65 @@ func TestSearchOrderBy(t *testing.T) {
 	require.Equal(t, "c", docs[2]["host"])
 }
 
+// TestRuleTreeOrder pins that rule sibling order is preserved against the
+// real SQLite driver. The rule plugin reads its records ordered by
+// tree_order (internal/pluginimpl/rule/plugin.go), and any reorder UX
+// (drag-and-drop or sequential PATCH) leans on the same field. Mirrors
+// dbtest/suite.go: testSearchRuleTreeOrder — duplicated here because the
+// dbtest harness is not yet wired into the SQLite driver_test.go.
+func TestRuleTreeOrder(t *testing.T) {
+	t.Parallel()
+	d := newTestDriver(t)
+	ctx := context.Background()
+
+	// Insert top-level rules out of declaration order; tree_order is the
+	// only thing that puts them back into 0,1,2,3.
+	res, err := d.Write(ctx, "rule", []dbpkg.Document{
+		{"name": "third", "tree_order": int64(2), "condition": []any{}},
+		{"name": "first", "tree_order": int64(0), "condition": []any{}},
+		{"name": "fourth", "tree_order": int64(3), "condition": []any{}},
+		{"name": "second", "tree_order": int64(1), "condition": []any{}},
+	}, dbpkg.WriteOptions{})
+	require.NoError(t, err)
+	require.Len(t, res.Added, 4)
+	parentUID := res.Added[1] // "first"
+
+	_, err = d.Write(ctx, "rule", []dbpkg.Document{
+		{"name": "child-B", "tree_order": int64(1), "parents": []any{parentUID}, "condition": []any{}},
+		{"name": "child-A", "tree_order": int64(0), "parents": []any{parentUID}, "condition": []any{}},
+	}, dbpkg.WriteOptions{})
+	require.NoError(t, err)
+
+	// Top-level: NOT EXISTS parents, ordered by tree_order ascending.
+	topLevel := condition.Not(condition.Exists("parents"))
+	docs, _, err := d.Search(ctx, "rule", topLevel, dbpkg.Page{OrderBy: "tree_order", Asc: true})
+	require.NoError(t, err)
+	require.Len(t, docs, 4)
+	require.Equal(t, "first", docs[0]["name"])
+	require.Equal(t, "second", docs[1]["name"])
+	require.Equal(t, "third", docs[2]["name"])
+	require.Equal(t, "fourth", docs[3]["name"])
+
+	// Children of "first": IN parents == parentUID.
+	childCond := condition.Cond{Op: condition.OpIn, Field: "parents", Value: parentUID}
+	kids, _, err := d.Search(ctx, "rule", childCond, dbpkg.Page{OrderBy: "tree_order", Asc: true})
+	require.NoError(t, err)
+	require.Len(t, kids, 2)
+	require.Equal(t, "child-A", kids[0]["name"])
+	require.Equal(t, "child-B", kids[1]["name"])
+
+	// Swap children's tree_order — mirrors what a drag-reorder UX would PATCH.
+	uidA := kids[0]["uid"].(string)
+	uidB := kids[1]["uid"].(string)
+	require.NoError(t, d.UpdateOne(ctx, "rule", uidA, dbpkg.Document{"tree_order": int64(1)}, false))
+	require.NoError(t, d.UpdateOne(ctx, "rule", uidB, dbpkg.Document{"tree_order": int64(0)}, false))
+
+	kids, _, err = d.Search(ctx, "rule", childCond, dbpkg.Page{OrderBy: "tree_order", Asc: true})
+	require.NoError(t, err)
+	require.Equal(t, "child-B", kids[0]["name"])
+	require.Equal(t, "child-A", kids[1]["name"])
+}
+
 func TestDeleteSafety(t *testing.T) {
 	t.Parallel()
 	d := newTestDriver(t)
@@ -442,6 +501,80 @@ func TestCleanupComments(t *testing.T) {
 	n, err := d.CleanupComments(ctx)
 	require.NoError(t, err)
 	require.Equal(t, 1, n)
+}
+
+func TestCleanupSnooze(t *testing.T) {
+	t.Parallel()
+	d := newTestDriver(t)
+	ctx := context.Background()
+
+	now := time.Now().UTC()
+	past := now.Add(-24 * time.Hour).Format(time.RFC3339)
+	future := now.Add(24 * time.Hour).Format(time.RFC3339)
+
+	// expired: every datetime.until is past.
+	_, err := d.Write(ctx, "snooze", []dbpkg.Document{
+		{
+			"name": "expired",
+			"time_constraints": map[string]any{
+				"datetime": []any{
+					map[string]any{"from": past, "until": past},
+				},
+			},
+		},
+		{
+			"name": "future",
+			"time_constraints": map[string]any{
+				"datetime": []any{
+					map[string]any{"from": past, "until": future},
+				},
+			},
+		},
+		{"name": "no_constraint"},
+	}, dbpkg.WriteOptions{})
+	require.NoError(t, err)
+
+	deleted, err := d.CleanupSnooze(ctx)
+	require.NoError(t, err)
+	require.Equal(t, 1, deleted)
+
+	_, total, err := d.Search(ctx, "snooze", condition.Cond{}, dbpkg.Page{})
+	require.NoError(t, err)
+	require.Equal(t, 2, total)
+}
+
+func TestCleanupNotification(t *testing.T) {
+	t.Parallel()
+	d := newTestDriver(t)
+	ctx := context.Background()
+
+	now := time.Now().UTC()
+	past := now.Add(-24 * time.Hour).Format(time.RFC3339)
+	future := now.Add(24 * time.Hour).Format(time.RFC3339)
+
+	_, err := d.Write(ctx, "notification", []dbpkg.Document{
+		{
+			"name": "expired",
+			"time_constraints": map[string]any{
+				"datetime": []any{
+					map[string]any{"from": past, "until": past},
+				},
+			},
+		},
+		{
+			"name": "live",
+			"time_constraints": map[string]any{
+				"datetime": []any{
+					map[string]any{"from": past, "until": future},
+				},
+			},
+		},
+	}, dbpkg.WriteOptions{})
+	require.NoError(t, err)
+
+	deleted, err := d.CleanupNotification(ctx)
+	require.NoError(t, err)
+	require.Equal(t, 1, deleted)
 }
 
 func TestCleanupOrphans(t *testing.T) {

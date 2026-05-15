@@ -129,6 +129,14 @@ type Driver interface {
 	CleanupComments(ctx context.Context) (deleted int, err error)
 	CleanupOrphans(ctx context.Context, collection string) (deleted int, err error)
 	CleanupAuditLogs(ctx context.Context, olderThan time.Duration) (deleted int, err error)
+	// CleanupSnooze deletes rows from the `snooze` collection that have at
+	// least one `time_constraints.datetime` entry and every entry's `until`
+	// is in the past. Rows with no datetime constraint, or with at least one
+	// future/open-ended entry, are kept.
+	CleanupSnooze(ctx context.Context) (deleted int, err error)
+	// CleanupNotification mirrors CleanupSnooze for the `notification`
+	// collection.
+	CleanupNotification(ctx context.Context) (deleted int, err error)
 	ComputeStats(ctx context.Context, collection string, from, to time.Time, groupBy string) ([]StatsBucket, error)
 	RenumberField(ctx context.Context, collection, field string) error
 
