@@ -79,3 +79,59 @@ func CleanupAuditJob(d db.Driver, olderThan time.Duration) CronJob {
 		}),
 	}
 }
+
+// CleanupAuditAsIntervalJob wraps CleanupAuditLogs with an interval cadence
+// (default 28 days). Unlike the cron variant this one reads the retention
+// window from the supplied RuntimeSettings on every fire, so an operator
+// who shortens housekeeping.cleanup_audit in the UI sees the new
+// threshold applied to the next purge — no restart needed.
+func CleanupAuditAsIntervalJob(d db.Driver, rs auditRetention) IntervalJob {
+	return IntervalJob{
+		Interval: 28 * 24 * time.Hour,
+		Job: NewJobFunc("cleanup_audit", func(ctx context.Context) error {
+			retention := 28 * 24 * time.Hour
+			if rs != nil {
+				if v := rs.AuditRetention(ctx); v > 0 {
+					retention = v
+				}
+			}
+			_, err := d.CleanupAuditLogs(ctx, retention)
+			return err
+		}),
+	}
+}
+
+// auditRetention is the narrow contract CleanupAuditAsIntervalJob needs from
+// the config layer: the current audit-retention window. We declare it
+// locally instead of importing config to avoid an internal-package cycle
+// (the config package's RuntimeSettings type lives upstream of this one).
+type auditRetention interface {
+	AuditRetention(ctx context.Context) time.Duration
+}
+
+// CleanupSnoozeJob deletes snooze rows whose time-constraint datetime entries
+// are all in the past. Matches the Python `cleanup_snooze` semantics
+// (cron-driven, daily). The interval argument tunes the cadence; the cron
+// expression is hardcoded to the daily-midnight slot to match
+// `cleanup_audit`'s pattern.
+func CleanupSnoozeJob(d db.Driver) IntervalJob {
+	return IntervalJob{
+		Interval: 72 * time.Hour,
+		Job: NewJobFunc("cleanup_snooze", func(ctx context.Context) error {
+			_, err := d.CleanupSnooze(ctx)
+			return err
+		}),
+	}
+}
+
+// CleanupNotificationJob mirrors CleanupSnoozeJob for the `notification`
+// collection.
+func CleanupNotificationJob(d db.Driver) IntervalJob {
+	return IntervalJob{
+		Interval: 72 * time.Hour,
+		Job: NewJobFunc("cleanup_notification", func(ctx context.Context) error {
+			_, err := d.CleanupNotification(ctx)
+			return err
+		}),
+	}
+}

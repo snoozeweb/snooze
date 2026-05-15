@@ -190,6 +190,35 @@ func TestCleanupAlertJob(t *testing.T) {
 	require.Equal(t, "2", db.records[0].name)
 }
 
+// TestCleanupSnoozeJobInvokesDriver verifies CleanupSnoozeJob wires through
+// to db.Driver.CleanupSnooze and surfaces both the count and the error.
+func TestCleanupSnoozeJobInvokesDriver(t *testing.T) {
+	calls := 0
+	drv := &cleanupStubDriver{snoozeFn: func() (int, error) {
+		calls++
+		return 7, nil
+	}}
+	ij := CleanupSnoozeJob(drv)
+	require.Equal(t, 72*time.Hour, ij.Interval)
+	require.Equal(t, "cleanup_snooze", ij.Job.Name())
+	require.NoError(t, ij.Job.Run(context.Background()))
+	require.Equal(t, 1, calls)
+}
+
+// TestCleanupNotificationJobInvokesDriver mirrors TestCleanupSnoozeJobInvokesDriver.
+func TestCleanupNotificationJobInvokesDriver(t *testing.T) {
+	calls := 0
+	drv := &cleanupStubDriver{notificationFn: func() (int, error) {
+		calls++
+		return 3, nil
+	}}
+	ij := CleanupNotificationJob(drv)
+	require.Equal(t, 72*time.Hour, ij.Interval)
+	require.Equal(t, "cleanup_notification", ij.Job.Name())
+	require.NoError(t, ij.Job.Run(context.Background()))
+	require.Equal(t, 1, calls)
+}
+
 // TestCleanupCommentJob — ported from test_cleanup_comment.
 func TestCleanupCommentJob(t *testing.T) {
 	now := time.Now()

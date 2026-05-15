@@ -32,23 +32,42 @@ type Job interface {
 }
 
 // Schedule selects between cron and fixed-interval cadence. Exactly one of
-// Cron or Interval must be set.
+// Cron, Interval, or LiveInterval must be set.
+//
+// LiveInterval is a closure that returns the current desired cadence; it is
+// consulted before every fire so the job adapts to runtime-edited settings
+// without a restart. The poll cadence is fixed at LivePollInterval (or
+// 30 seconds when zero); jobs whose live interval is shorter than the poll
+// cadence will see at most one fire per poll.
 type Schedule struct {
-	Cron     string
-	Interval time.Duration
+	Cron             string
+	Interval         time.Duration
+	LiveInterval     func(ctx context.Context) time.Duration
+	LivePollInterval time.Duration
 }
 
-// validate returns nil when exactly one shape is configured.
+// validate returns nil when exactly one schedule shape is configured.
 func (s Schedule) validate() error {
 	hasCron := s.Cron != ""
 	hasInterval := s.Interval > 0
-	switch {
-	case hasCron && hasInterval:
-		return errors.New("housekeeper: schedule has both Cron and Interval set")
-	case !hasCron && !hasInterval:
-		return errors.New("housekeeper: schedule has neither Cron nor Interval set")
-	default:
+	hasLive := s.LiveInterval != nil
+	count := 0
+	if hasCron {
+		count++
+	}
+	if hasInterval {
+		count++
+	}
+	if hasLive {
+		count++
+	}
+	switch count {
+	case 0:
+		return errors.New("housekeeper: schedule has no Cron / Interval / LiveInterval set")
+	case 1:
 		return nil
+	default:
+		return errors.New("housekeeper: schedule has multiple cadence fields set")
 	}
 }
 
@@ -78,7 +97,7 @@ func (systemClock) NewTicker(d time.Duration) Ticker {
 type realTicker struct{ t *time.Ticker }
 
 func (r realTicker) C() <-chan time.Time { return r.t.C }
-func (r realTicker) Stop()                { r.t.Stop() }
+func (r realTicker) Stop()               { r.t.Stop() }
 
 // Housekeeper holds the set of scheduled jobs and drives them.
 type Housekeeper struct {
@@ -154,6 +173,12 @@ func (h *Housekeeper) Run(ctx context.Context) error {
 	for _, e := range entries {
 		e := e
 		switch {
+		case e.schedule.LiveInterval != nil:
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+				h.runLive(ctx, e.job, e.schedule)
+			}()
 		case e.schedule.Interval > 0:
 			wg.Add(1)
 			go func() {
@@ -198,6 +223,42 @@ func (h *Housekeeper) runInterval(ctx context.Context, j Job, d time.Duration) {
 			return
 		case <-t.C():
 			h.invoke(ctx, j)
+		}
+	}
+}
+
+// runLive drives a job whose desired cadence is supplied by a closure
+// consulted at every poll. The ticker fires every poll interval (default
+// 30s) and we run the job iff at least its currently-configured interval
+// has elapsed since the last fire. Operators can therefore widen or
+// narrow a cleanup cadence from the UI and the next firing reflects the
+// new value within one poll period.
+func (h *Housekeeper) runLive(ctx context.Context, j Job, s Schedule) {
+	poll := s.LivePollInterval
+	if poll <= 0 {
+		poll = 30 * time.Second
+	}
+	var last time.Time
+	if h.triggerOnStartup {
+		h.invoke(ctx, j)
+		last = h.clock.Now()
+	}
+	t := h.clock.NewTicker(poll)
+	defer t.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case now := <-t.C():
+			interval := s.LiveInterval(ctx)
+			if interval <= 0 {
+				// Job is disabled at the moment; keep polling.
+				continue
+			}
+			if last.IsZero() || now.Sub(last) >= interval {
+				h.invoke(ctx, j)
+				last = h.clock.Now()
+			}
 		}
 	}
 }
