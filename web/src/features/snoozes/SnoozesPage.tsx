@@ -1,18 +1,39 @@
-import { useCallback, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { useNavigate, useSearch } from "@tanstack/react-router";
+import { useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/shared/ui/Button";
-import { DataTable } from "@/shared/ui/DataTable";
+import { DataTable, type RowAction } from "@/shared/ui/DataTable";
+import type { ContextMenuItem } from "@/shared/ui/DataTableContextMenu";
+import { RowDetailPanel } from "@/shared/ui/RowDetailPanel";
+import { TabList, TabPanel, TabTrigger, Tabs } from "@/shared/ui/Tabs";
+import { toast } from "@/shared/ui/toast/useToast";
+import {
+  buildResourceContextMenu,
+  ConfirmDeleteDialog,
+  useConfirmDelete,
+} from "@/shared/ui/resourceContextMenu";
+import { api as apiClient, ApiError } from "@/lib/api/client";
+import { Records } from "@/features/alerts/api";
 import { Snoozes } from "./api";
 import { SnoozeEditor } from "./SnoozeEditor";
-import { snoozeColumns } from "./columns";
+import { snoozeColumns, snoozeRowDisabled } from "./columns";
+import { snoozeState, type SnoozeState } from "./state";
 import type { Snooze } from "./types";
 import styles from "./SnoozesPage.module.css";
+
+type RetroApplyResponse = {
+  matched: number;
+  deleted?: number;
+  tagged?: number;
+  snooze: string;
+};
 
 type SnoozesSearch = {
   uid?: string;
   page?: number;
   orderby?: string;
   asc?: boolean;
+  tab?: SnoozeState;
 };
 
 // TanStack Router's navigate types are locked to the registered route tree at
@@ -24,6 +45,11 @@ type NavigateFn = (opts: {
 }) => Promise<void>;
 
 const PAGE_SIZE = 50;
+const TABS: { value: SnoozeState; label: string }[] = [
+  { value: "active", label: "Active" },
+  { value: "upcoming", label: "Upcoming" },
+  { value: "expired", label: "Expired" },
+];
 
 export function SnoozesPage() {
   // useSearch with strict:false returns the validated search params; cast for local type.
@@ -34,6 +60,7 @@ export function SnoozesPage() {
   const orderby = search.orderby ?? "name";
   const asc = search.asc ?? true;
   const detailUid = search.uid;
+  const tab: SnoozeState = search.tab ?? "active";
   const [creating, setCreating] = useState(false);
 
   const updateSearch = useCallback(
@@ -54,43 +81,197 @@ export function SnoozesPage() {
     [navigate],
   );
 
-  const list = Snoozes.useList({ offset: (page - 1) * PAGE_SIZE, limit: PAGE_SIZE, orderby, asc });
+  // Snooze state (Active/Upcoming/Expired) is computed client-side from
+  // time_constraints.datetime, so we have to fetch the full set to count
+  // each tab and filter the visible rows. For a healthy ops setup the
+  // total count is small (dozens, not thousands); if that changes we
+  // push the predicate into a server-side `q` filter.
+  const list = Snoozes.useList({ limit: 1000, orderby, asc });
+  const remove = Snoozes.useRemove();
+  const qc = useQueryClient();
+  const [selectedKeys, setSelectedKeys] = useState<Set<string>>(new Set());
+
+  const runRetroApply = useCallback(
+    async (row: Snooze) => {
+      if (!row.uid) return;
+      try {
+        const res = await apiClient<RetroApplyResponse>(
+          "POST",
+          `/snooze/${row.uid}/retro_apply`,
+        );
+        const verb = res.deleted ? "discarded" : "tagged";
+        toast.success(`${res.matched} alerts ${verb} by ${row.name}`);
+        void qc.invalidateQueries({ queryKey: Snoozes.queryKey.all });
+        void qc.invalidateQueries({ queryKey: Records.queryKey.all });
+      } catch (e) {
+        toast.error(e instanceof ApiError ? e.detail : "Retro-apply failed");
+      }
+    },
+    [qc],
+  );
+
+  const confirmDelete = useConfirmDelete<Snooze>({
+    onDelete: (uid) => remove.mutateAsync(uid),
+    noun: "snooze",
+    onAfter: () => setSelectedKeys(new Set()),
+  });
+
+  const allSnoozes = list.data?.data ?? [];
+  const counts = useMemo(() => {
+    const c: Record<SnoozeState, number> = { active: 0, upcoming: 0, expired: 0 };
+    for (const s of allSnoozes) c[snoozeState(s)] += 1;
+    return c;
+  }, [allSnoozes]);
+  const filtered = useMemo(
+    () => allSnoozes.filter((s) => snoozeState(s) === tab),
+    [allSnoozes, tab],
+  );
+  const paged = filtered.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
+
+  const rowActions = useCallback(
+    (row: Snooze): RowAction[] => {
+      if (!row.uid) return [];
+      return [
+        {
+          key: "retro-apply",
+          label: row.discard
+            ? "Retro-apply (delete matches)"
+            : "Retro-apply (tag matches)",
+          icon: "rotate-cw",
+          onSelect: () => void runRetroApply(row),
+        },
+        {
+          key: "edit",
+          label: "Edit",
+          icon: "edit",
+          onSelect: () => updateSearch({ uid: row.uid! }),
+        },
+      ];
+    },
+    [updateSearch, runRetroApply],
+  );
+
+  const contextMenuItems = useCallback(
+    (row: Snooze): ContextMenuItem[] =>
+      buildResourceContextMenu(row, {
+        onOpen: (r) => {
+          if (r.uid) updateSearch({ uid: r.uid });
+        },
+        onDelete: (uid) => remove.mutateAsync(uid),
+        requestDelete: (r) => confirmDelete.request([r]),
+        extras: (r) => [
+          {
+            key: "retro-apply",
+            label: r.discard ? "Retro-apply (delete matches)" : "Retro-apply (tag matches)",
+            icon: "rotate-cw",
+            onSelect: () => void runRetroApply(r),
+          },
+        ],
+      }),
+    [updateSearch, remove, confirmDelete, runRetroApply],
+  );
+
+  const bulkActions = useCallback(
+    (rows: Snooze[]) => (
+      <>
+        <Button
+          size="sm"
+          variant="secondary"
+          leadingIcon="rotate-cw"
+          onClick={() => {
+            void (async () => {
+              for (const r of rows) await runRetroApply(r);
+            })();
+          }}
+        >
+          Retro-apply ({rows.length})
+        </Button>
+        <Button
+          size="sm"
+          variant="danger"
+          leadingIcon="trash"
+          onClick={() => confirmDelete.request(rows)}
+        >
+          Delete ({rows.length})
+        </Button>
+      </>
+    ),
+    [confirmDelete, runRetroApply],
+  );
 
   return (
     <div className={styles.page}>
-      <div className={styles.topbar}>
-        <span style={{ color: "var(--text-muted)", fontSize: "var(--text-sm)" }}>
-          {list.data?.meta.total ?? 0} snoozes
-        </span>
-        <Button size="sm" variant="primary" leadingIcon="plus" onClick={() => setCreating(true)}>
-          New
-        </Button>
-      </div>
-      <DataTable<Snooze>
-        data={list.data?.data ?? []}
-        columns={snoozeColumns}
-        rowKey={(r) => r.uid ?? r.name}
-        loading={list.isPending}
-        serverSort={{
-          sortBy: orderby,
-          order: asc ? "asc" : "desc",
-          onChange: (next) =>
-            updateSearch({ orderby: next.sortBy, asc: next.order === "asc", page: 1 }),
-        }}
-        serverPagination={{
-          page,
-          pageSize: PAGE_SIZE,
-          total: list.data?.meta.total ?? 0,
-          onChange: (next) => updateSearch({ page: next.page }),
-        }}
-        onRowOpen={(row) => {
-          if (row.uid) updateSearch({ uid: row.uid });
-        }}
-      />
+      <Tabs
+        value={tab}
+        onValueChange={(v) => updateSearch({ tab: v as SnoozeState, page: 1 })}
+      >
+        <TabList>
+          {TABS.map((t) => (
+            <TabTrigger key={t.value} value={t.value}>
+              {t.label} ({counts[t.value]})
+            </TabTrigger>
+          ))}
+        </TabList>
+        <TabPanel value={tab}>
+          <div className={styles.topbar}>
+            <span style={{ color: "var(--text-muted)", fontSize: "var(--text-sm)" }}>
+              {filtered.length} {tab} snoozes
+            </span>
+            <Button
+              size="sm"
+              variant="primary"
+              leadingIcon="plus"
+              onClick={() => setCreating(true)}
+            >
+              New
+            </Button>
+          </div>
+          <DataTable<Snooze>
+            data={paged}
+            columns={snoozeColumns}
+            rowKey={(r) => r.uid ?? r.name}
+            rowDisabled={snoozeRowDisabled}
+            rowActions={rowActions}
+            contextMenuItems={contextMenuItems}
+            selectable
+            selectedKeys={selectedKeys}
+            onSelectionChange={setSelectedKeys}
+            bulkActions={bulkActions}
+            loading={list.isPending}
+            renderExpanded={(row) => (
+              <RowDetailPanel
+                row={row as unknown as Record<string, unknown>}
+                objectType="snooze"
+                objectId={row.uid}
+              />
+            )}
+            serverSort={{
+              sortBy: orderby,
+              order: asc ? "asc" : "desc",
+              onChange: (next) =>
+                updateSearch({ orderby: next.sortBy, asc: next.order === "asc", page: 1 }),
+            }}
+            serverPagination={{
+              page,
+              pageSize: PAGE_SIZE,
+              total: filtered.length,
+              onChange: (next) => updateSearch({ page: next.page }),
+            }}
+            onRowOpen={(row) => {
+              if (row.uid) updateSearch({ uid: row.uid });
+            }}
+          />
+        </TabPanel>
+      </Tabs>
       {detailUid !== undefined ? (
         <SnoozeEditor uid={detailUid} onClose={() => updateSearch({})} />
       ) : null}
       {creating ? <SnoozeEditor uid={undefined} onClose={() => setCreating(false)} /> : null}
+      <ConfirmDeleteDialog
+        state={confirmDelete.state}
+        onCancel={confirmDelete.cancel}
+        onConfirm={() => void confirmDelete.confirm()}
+      />
     </div>
   );
 }

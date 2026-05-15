@@ -30,5 +30,17 @@
 .stack {
   display: flex;
   flex-direction: column;
-  gap: var(--space-4);
+  gap: var(--space-3);
+}
+/* Two-column row for short fields — keeps the drawer compact so the user
+   doesn't need to scroll for typical edits. Stacks under 720px. */
+.grid2 {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--space-2);
+}
+@media (max-width: 720px) {
+  .grid2 {
+    grid-template-columns: 1fr;
+  }
 }
