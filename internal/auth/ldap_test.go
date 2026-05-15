@@ -54,17 +54,24 @@ func cfgEnabled() schema.LDAP {
 	return c
 }
 
+// staticSource returns an LDAPConfigSource that always reports cfg. Tests
+// that need to flip the live config mid-test use a closure-captured
+// pointer instead.
+func staticSource(cfg schema.LDAP) LDAPConfigSource {
+	return func(context.Context) (schema.LDAP, error) { return cfg, nil }
+}
+
 func TestLDAPProvider_Disabled(t *testing.T) {
 	t.Parallel()
 	cfg := schema.DefaultLDAP() // not enabled
-	p := NewLDAPProvider(cfg)
+	p := NewLDAPProvider(staticSource(cfg))
 	_, err := p.Authenticate(context.Background(), Credentials{Username: "alice", Password: "x"})
 	require.True(t, errors.Is(err, ErrProviderDisabled))
 }
 
 func TestLDAPProvider_EmptyCreds(t *testing.T) {
 	t.Parallel()
-	p := NewLDAPProvider(cfgEnabled())
+	p := NewLDAPProvider(staticSource(cfgEnabled()))
 	_, err := p.Authenticate(context.Background(), Credentials{})
 	require.True(t, errors.Is(err, ErrInvalidCredentials))
 }
@@ -83,7 +90,7 @@ func TestLDAPProvider_Success(t *testing.T) {
 			},
 		},
 	}
-	p := &LDAPProvider{cfg: cfg, dial: func(context.Context, string, bool, time.Duration) (ldapConn, error) { return conn, nil }}
+	p := &LDAPProvider{source: staticSource(cfg), dial: func(context.Context, string, bool, time.Duration) (ldapConn, error) { return conn, nil }}
 	id, err := p.Authenticate(context.Background(), Credentials{Username: "alice", Password: "user-pwd"})
 	require.NoError(t, err)
 	require.Equal(t, "alice", id.Username)
@@ -99,7 +106,7 @@ func TestLDAPProvider_Success(t *testing.T) {
 func TestLDAPProvider_UserNotFound(t *testing.T) {
 	t.Parallel()
 	conn := &fakeLDAP{} // no entries
-	p := &LDAPProvider{cfg: cfgEnabled(), dial: func(context.Context, string, bool, time.Duration) (ldapConn, error) { return conn, nil }}
+	p := &LDAPProvider{source: staticSource(cfgEnabled()), dial: func(context.Context, string, bool, time.Duration) (ldapConn, error) { return conn, nil }}
 	_, err := p.Authenticate(context.Background(), Credentials{Username: "ghost", Password: "x"})
 	require.True(t, errors.Is(err, ErrInvalidCredentials))
 }
@@ -118,7 +125,7 @@ func TestLDAPProvider_BadUserPassword(t *testing.T) {
 		},
 		searchEntry: &ldap.Entry{DN: "uid=alice,ou=users,dc=example,dc=com"},
 	}
-	p := &LDAPProvider{cfg: cfg, dial: func(context.Context, string, bool, time.Duration) (ldapConn, error) { return conn, nil }}
+	p := &LDAPProvider{source: staticSource(cfg), dial: func(context.Context, string, bool, time.Duration) (ldapConn, error) { return conn, nil }}
 	_, err := p.Authenticate(context.Background(), Credentials{Username: "alice", Password: "WRONG"})
 	require.True(t, errors.Is(err, ErrInvalidCredentials))
 }
@@ -126,10 +133,34 @@ func TestLDAPProvider_BadUserPassword(t *testing.T) {
 func TestLDAPProvider_ServiceBindFails(t *testing.T) {
 	t.Parallel()
 	conn := &fakeLDAP{bindErrFn: func(string, string) error { return errors.New("service bind failed") }}
-	p := &LDAPProvider{cfg: cfgEnabled(), dial: func(context.Context, string, bool, time.Duration) (ldapConn, error) { return conn, nil }}
+	p := &LDAPProvider{source: staticSource(cfgEnabled()), dial: func(context.Context, string, bool, time.Duration) (ldapConn, error) { return conn, nil }}
 	_, err := p.Authenticate(context.Background(), Credentials{Username: "alice", Password: "x"})
 	require.Error(t, err)
 	require.False(t, errors.Is(err, ErrInvalidCredentials))
+}
+
+// TestLDAPProvider_LiveConfigUpdate is the regression test for "edit a
+// setting in the UI and the LDAP backend picks it up without a restart":
+// the source closure flips Enabled between calls, and the provider must
+// honour the new value on the second Authenticate.
+func TestLDAPProvider_LiveConfigUpdate(t *testing.T) {
+	t.Parallel()
+	cfg := schema.DefaultLDAP() // disabled
+	src := func(context.Context) (schema.LDAP, error) { return cfg, nil }
+	conn := &fakeLDAP{
+		searchEntry: &ldap.Entry{DN: "uid=alice,ou=users,dc=example,dc=com"},
+	}
+	p := &LDAPProvider{source: src, dial: func(context.Context, string, bool, time.Duration) (ldapConn, error) { return conn, nil }}
+
+	// First call: disabled.
+	_, err := p.Authenticate(context.Background(), Credentials{Username: "alice", Password: "x"})
+	require.True(t, errors.Is(err, ErrProviderDisabled))
+
+	// Operator edits the UI; the cache invalidates; the source now returns
+	// the enabled snapshot.
+	cfg = cfgEnabled()
+	_, err = p.Authenticate(context.Background(), Credentials{Username: "alice", Password: "user-pwd"})
+	require.NoError(t, err)
 }
 
 func TestFilterGroups(t *testing.T) {
@@ -142,6 +173,15 @@ func TestFilterGroups(t *testing.T) {
 		"ou=groups,dc=example,dc=com",
 	)
 	require.Equal(t, []string{"admins"}, groups)
+}
+
+// TestLDAPProvider_NilSourceDisabled ensures the historical zero-value
+// behaviour (no source wired up → backend is disabled) is preserved.
+func TestLDAPProvider_NilSourceDisabled(t *testing.T) {
+	t.Parallel()
+	p := NewLDAPProvider(nil)
+	_, err := p.Authenticate(context.Background(), Credentials{Username: "a", Password: "b"})
+	require.True(t, errors.Is(err, ErrProviderDisabled))
 }
 
 func TestLDAPAddress(t *testing.T) {

@@ -13,6 +13,11 @@ import (
 	"github.com/japannext/snooze/internal/config/schema"
 )
 
+// LDAPConfigSource returns the current LDAP configuration. The production
+// implementation is “*config.RuntimeSettings.LDAP“; tests substitute a
+// closure over a hand-rolled config struct.
+type LDAPConfigSource func(ctx context.Context) (schema.LDAP, error)
+
 // LDAPMethod is the auth method string set on Identity for LDAP logins.
 const LDAPMethod = "ldap"
 
@@ -32,15 +37,42 @@ type ldapConn interface {
 // LDAPProvider authenticates against an LDAP directory by binding with the
 // configured service account, searching for the user DN, then rebinding as
 // the user with the supplied password.
+//
+// The provider reads its configuration through “source“ at every
+// Authenticate call so a runtime edit in the Settings UI (which writes to
+// the DB-backed config store and invalidates the cache) takes effect on
+// the next login attempt — no restart required.
 type LDAPProvider struct {
-	cfg  schema.LDAP
-	dial ldapDialFunc
+	source LDAPConfigSource
+	dial   ldapDialFunc
 }
 
-// NewLDAPProvider returns a configured LDAP provider. It does not dial; the
-// directory is contacted at Authenticate time.
-func NewLDAPProvider(cfg schema.LDAP) *LDAPProvider {
-	return &LDAPProvider{cfg: cfg, dial: defaultDial}
+// NewLDAPProvider returns a configured LDAP provider that reads its config
+// snapshot from source on every Authenticate call.
+func NewLDAPProvider(source LDAPConfigSource) *LDAPProvider {
+	if source == nil {
+		// A nil source keeps the LDAP backend "disabled by default" rather
+		// than crashing on Authenticate — matches the historical behaviour
+		// when the operator omitted the [ldap] section entirely.
+		source = func(context.Context) (schema.LDAP, error) {
+			return schema.DefaultLDAP(), nil
+		}
+	}
+	return &LDAPProvider{source: source, dial: defaultDial}
+}
+
+// NewLDAPProviderFromConfig is the legacy constructor kept for the
+// transition window. It binds the provider to a static config snapshot
+// (no live updates).
+//
+// Deprecated: prefer NewLDAPProvider with a *config.RuntimeSettings-backed
+// source so changes to the LDAP section in the Settings UI take effect
+// without a restart.
+func NewLDAPProviderFromConfig(cfg schema.LDAP) *LDAPProvider {
+	return &LDAPProvider{
+		source: func(context.Context) (schema.LDAP, error) { return cfg, nil },
+		dial:   defaultDial,
+	}
 }
 
 // Name returns "ldap".
@@ -51,37 +83,43 @@ func (l *LDAPProvider) Name() string { return LDAPMethod }
 // password; wraps the underlying error with %w for operational failures
 // (network, malformed config).
 func (l *LDAPProvider) Authenticate(ctx context.Context, c Credentials) (Identity, error) {
-	if !l.cfg.Enabled {
+	cfg, err := l.source(ctx)
+	if err != nil {
+		return Identity{}, fmt.Errorf("ldap: read config: %w", err)
+	}
+	if !cfg.Enabled {
 		return Identity{}, fmt.Errorf("ldap: %w", ErrProviderDisabled)
 	}
 	if c.Username == "" || c.Password == "" {
 		return Identity{}, ErrInvalidCredentials
 	}
-	if l.cfg.Host == "" || l.cfg.BaseDN == "" || l.cfg.UserFilter == "" {
+	if cfg.Host == "" || cfg.BaseDN == "" || cfg.UserFilter == "" {
 		return Identity{}, errors.New("ldap: incomplete configuration (host/base_dn/user_filter required)")
 	}
 
-	addr, useTLS := ldapAddress(l.cfg)
+	addr, useTLS := ldapAddress(cfg)
 	conn, err := l.dial(ctx, addr, useTLS, 10*time.Second)
 	if err != nil {
 		return Identity{}, fmt.Errorf("ldap dial: %w", err)
 	}
 	defer conn.Close()
 
-	if l.cfg.BindDN != "" {
-		if err := conn.Bind(l.cfg.BindDN, l.cfg.BindPassword); err != nil {
+	if cfg.BindDN != "" {
+		if err := conn.Bind(cfg.BindDN, cfg.BindPassword); err != nil {
+			// Never include bind_password in the error message — it would
+			// leak the credential into operator logs.
 			return Identity{}, fmt.Errorf("ldap service bind: %w", err)
 		}
 	}
 
-	filter := strings.ReplaceAll(l.cfg.UserFilter, "%s", ldap.EscapeFilter(c.Username))
+	filter := strings.ReplaceAll(cfg.UserFilter, "%s", ldap.EscapeFilter(c.Username))
 	attrs := []string{
-		l.cfg.MemberAttribute,
-		l.cfg.EmailAttribute,
-		l.cfg.DisplayNameAttribute,
+		cfg.MemberAttribute,
+		cfg.EmailAttribute,
+		cfg.DisplayNameAttribute,
 	}
 	req := ldap.NewSearchRequest(
-		l.cfg.BaseDN,
+		cfg.BaseDN,
 		ldap.ScopeWholeSubtree,
 		ldap.NeverDerefAliases,
 		0, 0, false,
@@ -103,7 +141,7 @@ func (l *LDAPProvider) Authenticate(ctx context.Context, c Credentials) (Identit
 		return Identity{}, ErrInvalidCredentials
 	}
 
-	groups := filterGroups(entry.GetAttributeValues(l.cfg.MemberAttribute), l.cfg.GroupDN)
+	groups := filterGroups(entry.GetAttributeValues(cfg.MemberAttribute), cfg.GroupDN)
 	return Identity{
 		Username: c.Username,
 		Method:   LDAPMethod,
@@ -128,7 +166,7 @@ func ldapAddress(cfg schema.LDAP) (string, bool) {
 }
 
 // filterGroups extracts the CN of each group DN that lives under one of the
-// configured ``group_dn`` suffixes. Matches the Python LdapAuthRoute trimming
+// configured “group_dn“ suffixes. Matches the Python LdapAuthRoute trimming
 // rule (split on ":" inside group_dn, suffix-match, return RDN value).
 func filterGroups(memberOf []string, groupDN string) []string {
 	if groupDN == "" {

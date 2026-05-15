@@ -177,6 +177,8 @@ func (f *fakeDB) CleanupOrphans(context.Context, string) (int, error) {
 func (f *fakeDB) CleanupAuditLogs(context.Context, time.Duration) (int, error) {
 	return 0, nil
 }
+func (f *fakeDB) CleanupSnooze(context.Context) (int, error)       { return 0, nil }
+func (f *fakeDB) CleanupNotification(context.Context) (int, error) { return 0, nil }
 func (f *fakeDB) ComputeStats(context.Context, string, time.Time, time.Time, string) ([]db.StatsBucket, error) {
 	return nil, nil
 }
