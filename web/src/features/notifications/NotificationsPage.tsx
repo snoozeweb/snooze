@@ -2,11 +2,19 @@ import { useCallback, useState } from "react";
 import { useNavigate, useSearch } from "@tanstack/react-router";
 import { Button } from "@/shared/ui/Button";
 import { DataTable } from "@/shared/ui/DataTable";
+import type { ContextMenuItem } from "@/shared/ui/DataTableContextMenu";
+import { RowDetailPanel } from "@/shared/ui/RowDetailPanel";
 import { TabList, TabPanel, TabTrigger, Tabs } from "@/shared/ui/Tabs";
+import {
+  buildResourceContextMenu,
+  ConfirmDeleteDialog,
+  useConfirmDelete,
+} from "@/shared/ui/resourceContextMenu";
 import { ActionEditor } from "./ActionEditor";
 import { Actions, Notifications } from "./api";
-import { actionColumns, notificationColumns } from "./columns";
+import { actionColumns, notificationColumns, notificationRowDisabled } from "./columns";
 import { NotificationEditor } from "./NotificationEditor";
+import type { Action, Notification } from "./types";
 import styles from "./NotificationsPage.module.css";
 
 type PageSearch = {
@@ -72,6 +80,71 @@ export function NotificationsPage() {
 
   const list = tab === "notifications" ? notifList : actionList;
 
+  const removeNotification = Notifications.useRemove();
+  const removeAction = Actions.useRemove();
+  const [notifSelected, setNotifSelected] = useState<Set<string>>(new Set());
+  const [actionSelected, setActionSelected] = useState<Set<string>>(new Set());
+
+  const confirmDeleteNotif = useConfirmDelete<Notification>({
+    onDelete: (uid) => removeNotification.mutateAsync(uid),
+    noun: "notification",
+    onAfter: () => setNotifSelected(new Set()),
+  });
+  const confirmDeleteAction = useConfirmDelete<Action>({
+    onDelete: (uid) => removeAction.mutateAsync(uid),
+    noun: "action",
+    onAfter: () => setActionSelected(new Set()),
+  });
+
+  const notifMenu = useCallback(
+    (row: Notification): ContextMenuItem[] =>
+      buildResourceContextMenu(row, {
+        onOpen: (r) => {
+          if (r.uid) updateSearch({ uid: r.uid });
+        },
+        onDelete: (uid) => removeNotification.mutateAsync(uid),
+        requestDelete: (r) => confirmDeleteNotif.request([r]),
+      }),
+    [updateSearch, removeNotification, confirmDeleteNotif],
+  );
+  const actionMenu = useCallback(
+    (row: Action): ContextMenuItem[] =>
+      buildResourceContextMenu(row, {
+        onOpen: (r) => {
+          if (r.uid) updateSearch({ uid: r.uid });
+        },
+        onDelete: (uid) => removeAction.mutateAsync(uid),
+        requestDelete: (r) => confirmDeleteAction.request([r]),
+      }),
+    [updateSearch, removeAction, confirmDeleteAction],
+  );
+  const notifBulk = useCallback(
+    (rows: Notification[]) => (
+      <Button
+        size="sm"
+        variant="danger"
+        leadingIcon="trash"
+        onClick={() => confirmDeleteNotif.request(rows)}
+      >
+        Delete ({rows.length})
+      </Button>
+    ),
+    [confirmDeleteNotif],
+  );
+  const actionBulk = useCallback(
+    (rows: Action[]) => (
+      <Button
+        size="sm"
+        variant="danger"
+        leadingIcon="trash"
+        onClick={() => confirmDeleteAction.request(rows)}
+      >
+        Delete ({rows.length})
+      </Button>
+    ),
+    [confirmDeleteAction],
+  );
+
   return (
     <div className={styles.page}>
       <Tabs
@@ -97,11 +170,24 @@ export function NotificationsPage() {
             </Button>
           </div>
           {tab === "notifications" ? (
-            <DataTable
+            <DataTable<Notification>
               data={notifList.data?.data ?? []}
               columns={notificationColumns}
               rowKey={(r) => r.uid ?? r.name}
+              rowDisabled={notificationRowDisabled}
               loading={notifList.isPending}
+              contextMenuItems={notifMenu}
+              selectable
+              selectedKeys={notifSelected}
+              onSelectionChange={setNotifSelected}
+              bulkActions={notifBulk}
+              renderExpanded={(row) => (
+                <RowDetailPanel
+                  row={row as unknown as Record<string, unknown>}
+                  objectType="notification"
+                  objectId={row.uid}
+                />
+              )}
               serverSort={{
                 sortBy: orderby,
                 order: asc ? "asc" : "desc",
@@ -123,11 +209,23 @@ export function NotificationsPage() {
               }}
             />
           ) : (
-            <DataTable
+            <DataTable<Action>
               data={actionList.data?.data ?? []}
               columns={actionColumns}
               rowKey={(r) => r.uid ?? r.name}
               loading={actionList.isPending}
+              contextMenuItems={actionMenu}
+              selectable
+              selectedKeys={actionSelected}
+              onSelectionChange={setActionSelected}
+              bulkActions={actionBulk}
+              renderExpanded={(row) => (
+                <RowDetailPanel
+                  row={row as unknown as Record<string, unknown>}
+                  objectType="action"
+                  objectId={row.uid}
+                />
+              )}
               serverSort={{
                 sortBy: orderby,
                 order: asc ? "asc" : "desc",
@@ -164,6 +262,16 @@ export function NotificationsPage() {
       {creating && tab === "actions" ? (
         <ActionEditor uid={undefined} onClose={() => setCreating(false)} />
       ) : null}
+      <ConfirmDeleteDialog
+        state={confirmDeleteNotif.state}
+        onCancel={confirmDeleteNotif.cancel}
+        onConfirm={() => void confirmDeleteNotif.confirm()}
+      />
+      <ConfirmDeleteDialog
+        state={confirmDeleteAction.state}
+        onCancel={confirmDeleteAction.cancel}
+        onConfirm={() => void confirmDeleteAction.confirm()}
+      />
     </div>
   );
 }

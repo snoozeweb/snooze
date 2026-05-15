@@ -1,18 +1,25 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useForm } from "react-hook-form";
 import { Button } from "@/shared/ui/Button";
+import { CollapsibleSection } from "@/shared/ui/CollapsibleSection";
+import { ConditionPreview } from "@/shared/ui/ConditionPreview";
 import { Drawer, DrawerBody, DrawerContent, DrawerFooter, DrawerTitle } from "@/shared/ui/Drawer";
+import { FrequencyEditor, summarizeFrequency } from "@/shared/ui/FrequencyEditor";
 import { Input } from "@/shared/ui/Input";
+import { MultiCombobox } from "@/shared/ui/MultiCombobox";
 import { Spinner } from "@/shared/ui/Spinner";
 import { Switch } from "@/shared/ui/Switch";
 import { Textarea } from "@/shared/ui/Textarea";
+import { TimeConstraintsCell } from "@/shared/ui/TimeConstraintsCell";
+import { TimeConstraintsEditor } from "@/shared/ui/TimeConstraintsEditor";
 import { toast } from "@/shared/ui/toast/useToast";
 import { ConditionEditor } from "@/shared/condition/ConditionEditor";
 import { ApiError } from "@/lib/api/client";
 import type { Condition } from "@/lib/condition/types";
+import type { TimeConstraintsGroup } from "@/lib/timeconstraints/types";
 import { DiffSection } from "@/shared/ui/DiffSection";
-import { Notifications } from "./api";
-import type { Notification } from "./types";
+import { Actions, Notifications } from "./api";
+import type { Frequency, Notification } from "./types";
 import styles from "./NotificationEditor.module.css";
 
 type FormShape = {
@@ -20,7 +27,9 @@ type FormShape = {
   comment: string;
   enabled: boolean;
   condition: Condition;
-  actions: string;
+  actions: string[];
+  time_constraints: TimeConstraintsGroup;
+  frequency: Frequency;
 };
 
 const EMPTY_FORM: FormShape = {
@@ -28,7 +37,9 @@ const EMPTY_FORM: FormShape = {
   comment: "",
   enabled: true,
   condition: { type: "ALWAYS_TRUE" },
-  actions: "",
+  actions: [],
+  time_constraints: {},
+  frequency: {},
 };
 
 export type NotificationEditorProps = {
@@ -57,7 +68,9 @@ export function NotificationEditor({ uid, onClose }: NotificationEditorProps) {
         comment: existing.data.comment ?? "",
         enabled: existing.data.enabled ?? true,
         condition: existing.data.condition ?? { type: "ALWAYS_TRUE" },
-        actions: (existing.data.actions ?? []).join(", "),
+        actions: existing.data.actions ?? [],
+        time_constraints: existing.data.time_constraints ?? {},
+        frequency: existing.data.frequency ?? {},
       });
     }
   }, [existing.data, isCreate, reset]);
@@ -67,16 +80,22 @@ export function NotificationEditor({ uid, onClose }: NotificationEditorProps) {
   async function onSubmit(form: FormShape) {
     setSubmitting(true);
     try {
-      const actionsArr = form.actions
-        .split(",")
-        .map((s) => s.trim())
-        .filter((s) => s.length > 0);
+      const hasTimeConstraints =
+        (form.time_constraints.datetime?.length ?? 0) > 0 ||
+        (form.time_constraints.time?.length ?? 0) > 0 ||
+        (form.time_constraints.weekdays?.length ?? 0) > 0;
+      const hasFrequency =
+        (form.frequency.total ?? 0) > 0 ||
+        (form.frequency.delay ?? 0) > 0 ||
+        (form.frequency.every ?? 0) > 0;
       const body: Notification = {
         name: form.name,
         ...(form.comment ? { comment: form.comment } : {}),
         enabled: form.enabled,
         condition: form.condition,
-        ...(actionsArr.length > 0 ? { actions: actionsArr } : {}),
+        ...(form.actions.length > 0 ? { actions: form.actions } : {}),
+        ...(hasTimeConstraints ? { time_constraints: form.time_constraints } : {}),
+        ...(hasFrequency ? { frequency: form.frequency } : {}),
       };
       if (isCreate) {
         await create.mutateAsync(body);
@@ -95,18 +114,34 @@ export function NotificationEditor({ uid, onClose }: NotificationEditorProps) {
 
   const condition = watch("condition");
   const enabled = watch("enabled");
+  const actions = watch("actions");
+  const timeConstraints = watch("time_constraints");
+  const frequency = watch("frequency");
   const nameInvalid = formState.isSubmitted && !watch("name").trim();
 
-  const actionsArr = watch("actions")
-    .split(",")
-    .map((s) => s.trim())
-    .filter((s) => s.length > 0);
+  // Action options come from the API — fall back to whatever's already
+  // on the notification so an existing reference is preserved even when
+  // the action list hasn't loaded yet.
+  const actionsList = Actions.useList({ limit: 500 });
+  const actionOptions = useMemo(() => {
+    const available = (actionsList.data?.data ?? []).map((a) => ({
+      value: a.name,
+      label: a.name,
+    }));
+    const known = new Set(available.map((o) => o.value));
+    const merged = [...available];
+    for (const a of actions) {
+      if (!known.has(a)) merged.push({ value: a, label: a });
+    }
+    return merged;
+  }, [actionsList.data, actions]);
+
   const projected: Notification = {
     name: watch("name"),
     ...(watch("comment") ? { comment: watch("comment") } : {}),
     enabled: enabled,
     condition: condition,
-    ...(actionsArr.length > 0 ? { actions: actionsArr } : {}),
+    ...(actions.length > 0 ? { actions } : {}),
   };
 
   return (
@@ -117,7 +152,20 @@ export function NotificationEditor({ uid, onClose }: NotificationEditorProps) {
       }}
     >
       <DrawerContent>
-        <DrawerTitle>{isCreate ? "New notification" : "Edit notification"}</DrawerTitle>
+        <DrawerTitle
+          toolbar={
+            <>
+              <Switch
+                checked={enabled}
+                onCheckedChange={(v) => setValue("enabled", v, { shouldDirty: true })}
+                aria-label="Enabled"
+              />
+              <span>{enabled ? "Enabled" : "Disabled"}</span>
+            </>
+          }
+        >
+          {isCreate ? "New notification" : "Edit notification"}
+        </DrawerTitle>
         <DrawerBody>
           {!isCreate && existing.isPending ? (
             <div style={{ display: "flex", justifyContent: "center", padding: "var(--space-5)" }}>
@@ -131,45 +179,29 @@ export function NotificationEditor({ uid, onClose }: NotificationEditorProps) {
             >
               <section className={styles.section}>
                 <h3 className={styles.sectionTitle}>Identity</h3>
-                <div className={styles.field}>
-                  <label className={styles.label} htmlFor="notif-name">
-                    Name
-                  </label>
-                  <Input
-                    id="notif-name"
-                    {...register("name")}
-                    invalid={nameInvalid}
-                    placeholder="e.g. page-on-call"
-                  />
-                </div>
-                <div className={styles.field}>
-                  <label className={styles.label} htmlFor="notif-comment">
-                    Comment
-                  </label>
-                  <Textarea
-                    id="notif-comment"
-                    {...register("comment")}
-                    rows={2}
-                    placeholder="Optional description"
-                  />
-                </div>
-                <div className={styles.field}>
-                  <label className={styles.label} htmlFor="notif-actions">
-                    Actions (comma-separated action names)
-                  </label>
-                  <Input
-                    id="notif-actions"
-                    {...register("actions")}
-                    placeholder="e.g. slack-prod, pagerduty"
-                  />
-                </div>
-                <div className={styles.row}>
-                  <Switch
-                    checked={enabled}
-                    onCheckedChange={(v) => setValue("enabled", v, { shouldDirty: true })}
-                    aria-label="Enabled"
-                  />
-                  <span>Enabled</span>
+                <div className={styles.grid2}>
+                  <div className={styles.field}>
+                    <label className={styles.label} htmlFor="notif-name">
+                      Name
+                    </label>
+                    <Input
+                      id="notif-name"
+                      {...register("name")}
+                      invalid={nameInvalid}
+                      placeholder="e.g. page-on-call"
+                    />
+                  </div>
+                  <div className={styles.field}>
+                    <label className={styles.label}>Actions</label>
+                    <MultiCombobox
+                      aria-label="Actions"
+                      placeholder="Select one or more action names"
+                      options={actionOptions}
+                      value={actions}
+                      onChange={(next) => setValue("actions", next, { shouldDirty: true })}
+                      allowCustom
+                    />
+                  </div>
                 </div>
               </section>
               <section className={styles.section}>
@@ -179,7 +211,49 @@ export function NotificationEditor({ uid, onClose }: NotificationEditorProps) {
                   onChange={(c) => setValue("condition", c, { shouldDirty: true })}
                   plugin="record"
                 />
+                <div style={{ marginTop: "var(--space-2)" }}>
+                  <ConditionPreview condition={condition} />
+                </div>
               </section>
+              <CollapsibleSection
+                title="Time constraints"
+                summary={<TimeConstraintsCell value={timeConstraints} />}
+                defaultOpen={
+                  (timeConstraints.weekdays?.length ?? 0) > 0 ||
+                  (timeConstraints.time?.length ?? 0) > 0 ||
+                  (timeConstraints.datetime?.length ?? 0) > 0
+                }
+              >
+                <TimeConstraintsEditor
+                  value={timeConstraints}
+                  onChange={(g) => setValue("time_constraints", g, { shouldDirty: true })}
+                />
+              </CollapsibleSection>
+              <CollapsibleSection
+                title="Frequency"
+                summary={summarizeFrequency(frequency)}
+                defaultOpen={
+                  (frequency.total ?? 0) > 0 ||
+                  (frequency.delay ?? 0) > 0 ||
+                  (frequency.every ?? 0) > 0
+                }
+              >
+                <FrequencyEditor
+                  value={frequency}
+                  onChange={(f) => setValue("frequency", f, { shouldDirty: true })}
+                />
+              </CollapsibleSection>
+              <div className={styles.field}>
+                <label className={styles.label} htmlFor="notif-comment">
+                  Comment
+                </label>
+                <Textarea
+                  id="notif-comment"
+                  {...register("comment")}
+                  rows={2}
+                  placeholder="Optional description"
+                />
+              </div>
             </form>
           )}
         </DrawerBody>

@@ -1,25 +1,33 @@
 import type { ColumnDef } from "@/shared/ui/DataTable";
 import { Badge } from "@/shared/ui/Badge";
 import { Code } from "@/shared/ui/Code";
+import { prettyCondition } from "@/lib/condition/pretty";
+import { summarizeFrequency } from "@/shared/ui/FrequencyEditor";
+import { TimeConstraintsCell } from "@/shared/ui/TimeConstraintsCell";
 import type { Action, Notification } from "./types";
 
 export const notificationColumns: ColumnDef<Notification>[] = [
+  {
+    id: "time_constraints",
+    header: "Window",
+    cell: (r) => <TimeConstraintsCell value={r.time_constraints} />,
+    width: "210px",
+  },
   {
     id: "name",
     header: "Name",
     cell: (r) => <Code>{r.name}</Code>,
     sortable: true,
-    width: "240px",
+    width: "200px",
   },
   {
-    id: "enabled",
-    header: "Enabled",
+    id: "condition",
+    header: "Condition",
     cell: (r) => (
-      <Badge variant={r.enabled !== false ? "ok" : "muted"}>
-        {r.enabled !== false ? "yes" : "no"}
-      </Badge>
+      <span style={{ fontFamily: "var(--font-mono)", fontSize: "var(--text-xs)" }}>
+        {prettyCondition(r.condition)}
+      </span>
     ),
-    width: "100px",
   },
   {
     id: "actions",
@@ -36,13 +44,37 @@ export const notificationColumns: ColumnDef<Notification>[] = [
         ) : null}
       </span>
     ),
+    width: "200px",
   },
   {
-    id: "comment",
-    header: "Comment",
-    cell: (r) => <span style={{ color: "var(--text-muted)" }}>{r.comment ?? "—"}</span>,
+    id: "frequency",
+    header: "Frequency",
+    cell: (r) => (
+      <span style={{ color: "var(--text-muted)", fontSize: "var(--text-xs)" }}>
+        {summarizeFrequency(r.frequency)}
+      </span>
+    ),
+    width: "160px",
+  },
+  {
+    id: "batch",
+    header: "Batch",
+    // Backend doesn't expose a separate "batch" boolean — frequency.total>1
+    // is the semantic signal (one delivery may carry many alerts). Surface
+    // it as a yes/no badge so the table reads at a glance.
+    cell: (r) =>
+      (r.frequency?.total ?? 0) > 1 ? (
+        <Badge variant="info">yes</Badge>
+      ) : (
+        <Badge variant="muted">no</Badge>
+      ),
+    width: "80px",
   },
 ];
+
+export function notificationRowDisabled(r: Notification): boolean {
+  return r.enabled === false;
+}
 
 export const actionColumns: ColumnDef<Action>[] = [
   {
