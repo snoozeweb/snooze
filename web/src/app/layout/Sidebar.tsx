@@ -47,9 +47,9 @@ export function Sidebar() {
       </nav>
       <div className={styles.footer}>
         <span className={styles.footerAvatar} aria-hidden="true">
-          O
+          {(claims?.sub ?? "?").charAt(0).toUpperCase()}
         </span>
-        <span>operator</span>
+        <span>{claims?.sub ?? "anonymous"}</span>
       </div>
     </aside>
   );

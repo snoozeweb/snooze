@@ -13,7 +13,9 @@ export function severityBadgeVariant(severity: AlertSeverity): BadgeVariant {
 }
 
 const STATE_LABEL: Record<AlertState, string> = {
-  "": "—",
+  // Freshly-ingested records carry an empty state until a comment moves them
+  // to ack/close/esc. Display them as Open so the column reads cleanly.
+  "": "Open",
   open: "Open",
   ack: "Acknowledged",
   close: "Closed",
@@ -21,7 +23,7 @@ const STATE_LABEL: Record<AlertState, string> = {
 };
 
 const STATE_VARIANT: Record<AlertState, BadgeVariant> = {
-  "": "muted",
+  "": "neutral",
   open: "neutral",
   ack: "info",
   close: "muted",

@@ -9,7 +9,10 @@ export const Menu = RM.Root;
 
 export const MenuTrigger = forwardRef<HTMLButtonElement, RM.DropdownMenuTriggerProps>(
   function MenuTrigger(props, ref) {
-    return <RM.Trigger {...props} ref={ref} />;
+    // asChild lets the consumer (typically <IconButton>) be the trigger
+    // rather than wrapping it in Radix's default <button>, which inherits
+    // the platform's chrome (white box in light mode, dark in dark mode).
+    return <RM.Trigger asChild {...props} ref={ref} />;
   },
 );
 

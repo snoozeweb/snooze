@@ -8,7 +8,9 @@ describe("Menu", () => {
     const user = userEvent.setup();
     render(
       <Menu>
-        <MenuTrigger>open</MenuTrigger>
+        <MenuTrigger>
+          <button type="button">open</button>
+        </MenuTrigger>
         <MenuContent>
           <MenuItem>Edit</MenuItem>
           <MenuSeparator />
@@ -26,7 +28,9 @@ describe("Menu", () => {
     const user = userEvent.setup();
     render(
       <Menu>
-        <MenuTrigger>open</MenuTrigger>
+        <MenuTrigger>
+          <button type="button">open</button>
+        </MenuTrigger>
         <MenuContent>
           <MenuItem onSelect={handler}>Run</MenuItem>
         </MenuContent>
