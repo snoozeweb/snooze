@@ -19,6 +19,7 @@ packaging/helm/.values.yaml
 
 # Playwright E2E
 web/tests/e2e/.bin/
+web/tests/e2e/.screenshots/
 web/playwright-report/
 web/test-results/
 
