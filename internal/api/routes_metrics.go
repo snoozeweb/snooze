@@ -12,7 +12,7 @@ import (
 // the provided Gatherer. When no gatherer is configured we fall back to the
 // process-wide default registry.
 func (rt *Router) mountMetrics(r chi.Router) {
-	var gatherer prometheus.Gatherer = prometheus.DefaultGatherer
+	var gatherer = prometheus.DefaultGatherer
 	if rt.MetricsGatherer != nil {
 		gatherer = rt.MetricsGatherer
 	}

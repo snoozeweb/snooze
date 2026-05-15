@@ -257,7 +257,7 @@ func buildRecord(hook promWebhook, a promAlert) snoozetypes.Record {
 }
 
 // pickHost mirrors Python's `labels.pop('host', labels.pop('instance',
-// labels.pop('exported_instance', '')))`. We do not strip a trailing port:
+// labels.pop('exported_instance', ”)))`. We do not strip a trailing port:
 // the Python `prometheus` plugin keeps the instance label verbatim. Returns
 // "" when no candidate label is set.
 func pickHost(labels map[string]json.RawMessage) string {

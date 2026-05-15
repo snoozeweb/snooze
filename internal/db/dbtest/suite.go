@@ -60,7 +60,6 @@ func RunDriverSuite(t *testing.T, name string, factory Factory) {
 		{"ComputeStats", testComputeStats},
 	}
 	for _, c := range cases {
-		c := c
 		t.Run(name+"/"+c.name, func(t *testing.T) {
 			drv, teardown := factory(t)
 			defer teardown()
@@ -120,7 +119,6 @@ func testSearchOperators(t *testing.T, drv db.Driver) {
 		{"nested_or", []any{"AND", []any{"=", "b", int64(2)}, []any{"OR", []any{"=", "d", int64(2)}, []any{"=", "d", int64(1)}}}, 1},
 	}
 	for _, c := range cases {
-		c := c
 		t.Run(c.name, func(t *testing.T) {
 			_, total := search(t, drv, "record", mustCond(t, c.cond))
 			require.Equal(t, c.count, total)

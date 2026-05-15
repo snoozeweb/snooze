@@ -21,19 +21,19 @@ func renderList(cmd *cobra.Command, rt *runtime, collection string, docs []map[s
 		return enc.Encode(docs)
 	}
 	if len(docs) == 0 {
-		fmt.Fprintln(out, "(no records)")
+		_, _ = fmt.Fprintln(out, "(no records)")
 		return nil
 	}
 	cols := columnsFor(collection, docs)
 	tw := tabwriter.NewWriter(out, 0, 0, 2, ' ', 0)
-	defer tw.Flush()
+	defer tw.Flush() //nolint:errcheck
 	fmt.Fprintln(tw, strings.Join(cols, "\t"))
 	for _, d := range docs {
 		row := make([]string, 0, len(cols))
 		for _, c := range cols {
 			row = append(row, fmt.Sprintf("%v", coerce(d[c])))
 		}
-		fmt.Fprintln(tw, strings.Join(row, "\t"))
+		_, _ = fmt.Fprintln(tw, strings.Join(row, "\t"))
 	}
 	return nil
 }
@@ -52,7 +52,7 @@ func renderDoc(cmd *cobra.Command, rt *runtime, doc map[string]any) error {
 	}
 	sort.Strings(keys)
 	for _, k := range keys {
-		fmt.Fprintf(out, "%s: %v\n", k, coerce(doc[k]))
+		_, _ = fmt.Fprintf(out, "%s: %v\n", k, coerce(doc[k]))
 	}
 	return nil
 }

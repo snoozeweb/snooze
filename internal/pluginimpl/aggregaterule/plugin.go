@@ -28,7 +28,7 @@ package aggregaterule
 
 import (
 	"context"
-	"crypto/sha1"
+	"crypto/sha1" //nolint:gosec
 	_ "embed"
 	"encoding/hex"
 	"encoding/json"
@@ -205,7 +205,7 @@ func (p *Plugin) matchAggregate(
 	ctx context.Context,
 	host plugins.Host,
 	rec map[string]any,
-	aggrName string,
+	_ string,
 	throttle int64,
 	flapping int64,
 	watch []string,
@@ -454,13 +454,13 @@ func condFromDoc(v any) (condition.Cond, error) {
 // disk hash format is opaque to consumers — only equality matters within a
 // single deployment.
 func computeHash(name string, fields []string, rec map[string]any) string {
-	h := sha1.New()
+	h := sha1.New() //nolint:gosec
 	h.Write([]byte(name))
 	for _, f := range fields {
 		v, _ := condition.Dig(rec, splitDots(f)...)
 		h.Write([]byte(f))
 		h.Write([]byte("="))
-		h.Write([]byte(fmt.Sprint(v)))
+		_, _ = fmt.Fprint(h, v)
 		h.Write([]byte("|"))
 	}
 	return hex.EncodeToString(h.Sum(nil))
@@ -469,7 +469,7 @@ func computeHash(name string, fields []string, rec map[string]any) string {
 // defaultHash hashes the entire record (sorted keys), used when no rule
 // matched. It groups records whose raw payload is identical.
 func defaultHash(rec map[string]any) string {
-	h := sha1.New()
+	h := sha1.New() //nolint:gosec
 	keys := make([]string, 0, len(rec))
 	for k := range rec {
 		if k == "hash" || k == "aggregate" || k == "uid" {
@@ -481,7 +481,7 @@ func defaultHash(rec map[string]any) string {
 	for _, k := range keys {
 		h.Write([]byte(k))
 		h.Write([]byte("="))
-		h.Write([]byte(fmt.Sprint(rec[k])))
+		_, _ = fmt.Fprint(h, rec[k])
 		h.Write([]byte("|"))
 	}
 	return hex.EncodeToString(h.Sum(nil))
@@ -609,11 +609,11 @@ func toInt64(v any, fallback int64) int64 {
 	case float64:
 		return int64(n)
 	case uint:
-		return int64(n)
+		return int64(n) //nolint:gosec
 	case uint32:
 		return int64(n)
 	case uint64:
-		return int64(n)
+		return int64(n) //nolint:gosec
 	}
 	return fallback
 }

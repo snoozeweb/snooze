@@ -1,8 +1,8 @@
 package schema
 
 // LDAP holds the configuration of the LDAP authentication backend. Required
-// fields are only enforced when ``Enabled`` is true; see the custom validator
-// in ``internal/config/validate.go``.
+// fields are only enforced when “Enabled“ is true; see the custom validator
+// in “internal/config/validate.go“.
 type LDAP struct {
 	Enabled              bool   `koanf:"enabled"`
 	BaseDN               string `koanf:"base_dn"`

@@ -42,7 +42,7 @@ func newHealthCmd() *cobra.Command {
 				}
 			} else {
 				for _, r := range results {
-					fmt.Fprintf(out, "%-12s %-3d %s\n", r.Endpoint, r.Status, r.Body)
+					_, _ = fmt.Fprintf(out, "%-12s %-3d %s\n", r.Endpoint, r.Status, r.Body)
 				}
 			}
 			for _, r := range results {
@@ -93,7 +93,7 @@ func probe(ctx context.Context, hc *http.Client, url string) probeResult {
 		res.Body = err.Error()
 		return res
 	}
-	defer resp.Body.Close()
+	defer resp.Body.Close() //nolint:errcheck
 	body, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
 	res.Status = resp.StatusCode
 	res.Body = strings.TrimSpace(string(body))

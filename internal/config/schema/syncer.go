@@ -14,7 +14,7 @@ type Syncer struct {
 }
 
 // DefaultSyncer returns the Python defaults; hostname falls back to
-// ``os.Hostname`` exactly like Python's ``socket.gethostname`` shim.
+// “os.Hostname“ exactly like Python's “socket.gethostname“ shim.
 func DefaultSyncer() Syncer {
 	host, err := os.Hostname()
 	if err != nil {

@@ -6,6 +6,7 @@
 // CLI, the component daemons) do not import it.
 package all
 
+// Register all built-in plugins by importing their init functions.
 import (
 	_ "github.com/japannext/snooze/internal/pluginimpl/action"
 	_ "github.com/japannext/snooze/internal/pluginimpl/aggregaterule"

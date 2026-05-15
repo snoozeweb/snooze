@@ -227,4 +227,3 @@ func facilityName(v uint8) string {
 	}
 	return fmt.Sprintf("facility-%d", v)
 }
-

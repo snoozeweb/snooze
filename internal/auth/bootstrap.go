@@ -21,7 +21,7 @@ const RootUsername = "root"
 // genuinely unguessable and short enough to copy from a terminal.
 const BootstrapPasswordBytes = 24
 
-// EnsureRoot creates a bcrypt-hashed ``root`` user with a random password if no
+// EnsureRoot creates a bcrypt-hashed “root“ user with a random password if no
 // user exists in the local user collection. The plaintext password is returned
 // on first boot so the caller can print it to stderr once; subsequent boots
 // return ("", nil). Any unexpected DB error is wrapped with %w.

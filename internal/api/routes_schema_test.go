@@ -21,11 +21,11 @@ type stubPlugin struct {
 	validate func(map[string]any) error
 }
 
-func (s *stubPlugin) Name() string                                 { return s.name }
-func (s *stubPlugin) Metadata() plugins.Metadata                   { return s.meta }
+func (s *stubPlugin) Name() string                                     { return s.name }
+func (s *stubPlugin) Metadata() plugins.Metadata                       { return s.meta }
 func (s *stubPlugin) PostInit(_ context.Context, _ plugins.Host) error { return nil }
-func (s *stubPlugin) Reload(_ context.Context) error               { return nil }
-func (s *stubPlugin) Schema() any                                  { return s.schema }
+func (s *stubPlugin) Reload(_ context.Context) error                   { return nil }
+func (s *stubPlugin) Schema() any                                      { return s.schema }
 func (s *stubPlugin) Validate(m map[string]any) error {
 	if s.validate == nil {
 		return nil

@@ -378,24 +378,24 @@ func (d *Driver) backupSingleCollection(ctx context.Context, dir, collection str
 	if err := rows.Err(); err != nil {
 		return fmt.Errorf("postgres: backup rows: %w", err)
 	}
-	if err := os.MkdirAll(dir, 0o755); err != nil {
+	if err := os.MkdirAll(dir, 0o750); err != nil {
 		return fmt.Errorf("postgres: backup mkdir: %w", err)
 	}
 	target := filepath.Join(dir, collection+".json")
 	tmp := target + ".tmp"
-	f, err := os.Create(tmp)
+	f, err := os.Create(tmp) //nolint:gosec
 	if err != nil {
 		return fmt.Errorf("postgres: backup create: %w", err)
 	}
 	enc := json.NewEncoder(f)
 	enc.SetIndent("", "  ")
 	if err := enc.Encode(docs); err != nil {
-		f.Close()
-		os.Remove(tmp)
+		_ = f.Close()
+		_ = os.Remove(tmp)
 		return fmt.Errorf("postgres: backup encode: %w", err)
 	}
 	if err := f.Close(); err != nil {
-		os.Remove(tmp)
+		_ = os.Remove(tmp)
 		return fmt.Errorf("postgres: backup close: %w", err)
 	}
 	if err := os.Rename(tmp, target); err != nil {

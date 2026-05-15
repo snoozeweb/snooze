@@ -18,7 +18,6 @@ type parserCase struct {
 func runParserCases(t *testing.T, cases []parserCase) {
 	t.Helper()
 	for _, c := range cases {
-		c := c
 		t.Run(c.name, func(t *testing.T) {
 			got, err := Parse(c.input)
 			if c.wantErr {

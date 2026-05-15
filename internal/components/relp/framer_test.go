@@ -43,7 +43,6 @@ func TestWriteFrameRoundTrip(t *testing.T) {
 		},
 	}
 	for _, tc := range cases {
-		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			var buf bytes.Buffer
@@ -118,7 +117,6 @@ func TestReadFrameMalformed(t *testing.T) {
 		{"missing trailer", "1 syslog 3 abcD"},
 	}
 	for _, tc := range cases {
-		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			fr := NewFrameReader(strings.NewReader(tc.wire), 1<<20)

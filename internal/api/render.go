@@ -28,7 +28,7 @@ func WriteJSON(w http.ResponseWriter, status int, body any) {
 	}
 }
 
-// ParseJSONBody reads the request body into dst, returning a *APIError on
+// ParseJSONBody reads the request body into dst, returning a *Error on
 // failure so callers can pass the error through to WriteError.
 func ParseJSONBody(r *http.Request, dst any) error {
 	if r == nil || r.Body == nil {
@@ -71,4 +71,3 @@ func ParseJSONOrArray(r *http.Request) ([]map[string]any, error) {
 	}
 	return []map[string]any{one}, nil
 }
-

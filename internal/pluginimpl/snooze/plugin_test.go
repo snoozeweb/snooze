@@ -193,7 +193,7 @@ func TestSnoozeReload(t *testing.T) {
 	t.Parallel()
 	h := newStubHost(t)
 	p := newPlugin(t, h, nil)
-	require.Empty(t, p.Rules())
+	require.Empty(t, p.cachedRules())
 
 	writeRule(t, h, db.Document{
 		"name":      "Filter 1",
@@ -208,7 +208,7 @@ func TestSnoozeReload(t *testing.T) {
 
 	// After Reload the new rule is picked up.
 	require.NoError(t, p.Reload(context.Background()))
-	require.Len(t, p.Rules(), 1)
+	require.Len(t, p.cachedRules(), 1)
 	res, err = p.Process(context.Background(), rec)
 	require.NoError(t, err)
 	require.Equal(t, plugins.ActionAbortWrite, res.Action)

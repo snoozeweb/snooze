@@ -74,7 +74,7 @@ func validateLDAP(l *schema.LDAP) error {
 }
 
 // validateDatabase covers the bits the tag system can't express because
-// ``Database`` is shaped as a flat struct with a type discriminator.
+// “Database“ is shaped as a flat struct with a type discriminator.
 func validateDatabase(d *schema.Database) error {
 	switch d.Type {
 	case "mongo":
@@ -97,7 +97,7 @@ func validateDatabase(d *schema.Database) error {
 }
 
 // ipv4Loose is a custom validator that accepts IPv4 addresses or empty
-// strings.  ``0.0.0.0`` is the legacy default and ``net.ParseIP`` honours it.
+// strings.  “0.0.0.0“ is the legacy default and “net.ParseIP“ honours it.
 func ipv4Loose(fl validator.FieldLevel) bool {
 	s := strings.TrimSpace(fl.Field().String())
 	if s == "" {

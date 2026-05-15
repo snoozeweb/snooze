@@ -156,7 +156,7 @@ func (c *Client) Login(ctx context.Context) error {
 	if c.opts.Username == "" && c.opts.Method != "anonymous" {
 		return errors.New("snoozeclient: Username is required for login")
 	}
-	body, err := json.Marshal(loginRequest{Username: c.opts.Username, Password: c.opts.Password})
+	body, err := json.Marshal(loginRequest{Username: c.opts.Username, Password: c.opts.Password}) //nolint:gosec
 	if err != nil {
 		return fmt.Errorf("snoozeclient: marshal login: %w", err)
 	}
@@ -176,7 +176,7 @@ func (c *Client) Login(ctx context.Context) error {
 			}
 			return backoff.Permanent(err)
 		}
-		defer httpResp.Body.Close()
+		defer httpResp.Body.Close() //nolint:errcheck
 		if httpResp.StatusCode >= 200 && httpResp.StatusCode < 300 {
 			if err := json.NewDecoder(httpResp.Body).Decode(&resp); err != nil {
 				return backoff.Permanent(fmt.Errorf("snoozeclient: decode login response: %w", err))
@@ -273,7 +273,7 @@ func (c *Client) Do(ctx context.Context, method, path string, body, dest any) er
 			}
 			return backoff.Permanent(err)
 		}
-		defer httpResp.Body.Close()
+		defer httpResp.Body.Close() //nolint:errcheck
 
 		if httpResp.StatusCode == http.StatusUnauthorized && !retriedAuth && c.canRelogin() {
 			retriedAuth = true

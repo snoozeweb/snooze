@@ -48,6 +48,7 @@ type WriteResult struct {
 	Rejected []Rejection
 }
 
+// Rejection records a single document that Write refused to persist.
 type Rejection struct {
 	UID     string
 	Reason  string
@@ -66,6 +67,7 @@ type StatsBucket struct {
 	Series []KV
 }
 
+// KV is a key/value pair in a StatsBucket series.
 type KV struct {
 	Key   string
 	Value float64

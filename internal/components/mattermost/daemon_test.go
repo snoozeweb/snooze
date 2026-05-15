@@ -106,17 +106,6 @@ type stubServer struct {
 	postSeq     int64
 }
 
-// emitPosted pushes a `posted` event into the WS so the daemon's loop sees it.
-func (s *stubServer) emitPosted(post postedPayload, senderName, channelName string) {
-	postRaw, _ := json.Marshal(post)
-	data := map[string]json.RawMessage{
-		"post":         mustMarshal(string(postRaw)),
-		"sender_name":  mustMarshal(senderName),
-		"channel_name": mustMarshal(channelName),
-	}
-	s.wsEvents <- wsEvent{Event: "posted", Data: data, Seq: 1}
-}
-
 func mustMarshal(v any) json.RawMessage {
 	b, _ := json.Marshal(v)
 	return b

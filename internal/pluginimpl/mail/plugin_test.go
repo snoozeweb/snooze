@@ -45,12 +45,11 @@ var _ plugins.Notifier = (*Plugin)(nil)
 // smtpCapture records the conversation a stubSMTP saw during a single
 // session. Fields are mutated under the stubSMTP's lock.
 type smtpCapture struct {
-	mu     sync.Mutex
-	helo   string
-	from   string
-	to     []string
-	data   strings.Builder
-	closed bool
+	mu   sync.Mutex
+	helo string
+	from string
+	to   []string
+	data strings.Builder
 }
 
 func (c *smtpCapture) snapshot() (helo, from string, to []string, data string) {

@@ -54,7 +54,7 @@ type Config struct {
 // LoadConfig reads a YAML config file at path and returns the parsed Config
 // with reasonable defaults applied.
 func LoadConfig(path string) (Config, error) {
-	raw, err := os.ReadFile(path)
+	raw, err := os.ReadFile(path) //nolint:gosec
 	if err != nil {
 		return Config{}, fmt.Errorf("syslog: read config %q: %w", path, err)
 	}

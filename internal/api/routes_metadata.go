@@ -33,7 +33,7 @@ func (rt *Router) mountMetadata(r chi.Router) {
 // metadata.yamls use it as a human display label, e.g. "Send email") so the
 // frontend needs a separate machine-readable handle to match `action_type`
 // against.
-func (rt *Router) handleMetadataList(w http.ResponseWriter, r *http.Request) {
+func (rt *Router) handleMetadataList(w http.ResponseWriter, _ *http.Request) {
 	names := make([]string, 0, len(rt.Plugins))
 	for name := range rt.Plugins {
 		names = append(names, name)

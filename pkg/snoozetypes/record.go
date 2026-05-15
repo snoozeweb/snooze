@@ -32,6 +32,7 @@ type ListResponse[T any] struct {
 	Meta Meta `json:"meta"`
 }
 
+// Meta holds pagination metadata for list responses.
 type Meta struct {
 	Count  int `json:"count"`
 	Limit  int `json:"limit"`
@@ -44,6 +45,7 @@ type ErrEnvelope struct {
 	Error ErrBody `json:"error"`
 }
 
+// ErrBody carries the structured error detail inside an ErrEnvelope.
 type ErrBody struct {
 	Code      string         `json:"code"`
 	Message   string         `json:"message"`

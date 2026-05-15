@@ -36,9 +36,9 @@ func TestSupervisor_CleanExit(t *testing.T) {
 	sup := &Supervisor{Logger: discardLogger()}
 	g, gctx := errgroup.WithContext(context.Background())
 	called := atomic.Int32{}
-	sup.Go(g, gctx, Job{
+	sup.Go(gctx, g, Job{
 		Name: "clean",
-		Fn: func(ctx context.Context) error {
+		Fn: func(_ context.Context) error {
 			called.Add(1)
 			return nil
 		},
@@ -55,7 +55,7 @@ func TestSupervisor_ContextCancellation(t *testing.T) {
 
 	started := make(chan struct{})
 	saw := make(chan struct{})
-	sup.Go(g, gctx, Job{
+	sup.Go(gctx, g, Job{
 		Name: "ctx-cancel",
 		Fn: func(ctx context.Context) error {
 			close(started)
@@ -84,10 +84,10 @@ func TestSupervisor_PanicRecovered(t *testing.T) {
 
 	calls := atomic.Int32{}
 	g, gctx := errgroup.WithContext(context.Background())
-	sup.Go(g, gctx, Job{
+	sup.Go(gctx, g, Job{
 		Name:    "panicker",
 		Backoff: fastBackoff(),
-		Fn: func(ctx context.Context) error {
+		Fn: func(_ context.Context) error {
 			n := calls.Add(1)
 			if n <= 2 {
 				panic("kaboom")
@@ -110,10 +110,10 @@ func TestSupervisor_BoundedRetry_NonCritical(t *testing.T) {
 
 	calls := atomic.Int32{}
 	g, gctx := errgroup.WithContext(context.Background())
-	sup.Go(g, gctx, Job{
+	sup.Go(gctx, g, Job{
 		Name:    "flaky",
 		Backoff: fastBackoff(),
-		Fn: func(ctx context.Context) error {
+		Fn: func(_ context.Context) error {
 			calls.Add(1)
 			return errors.New("nope")
 		},
@@ -131,11 +131,11 @@ func TestSupervisor_BoundedRetry_CriticalPropagates(t *testing.T) {
 	wantErr := errors.New("boom")
 	calls := atomic.Int32{}
 	g, gctx := errgroup.WithContext(context.Background())
-	sup.Go(g, gctx, Job{
+	sup.Go(gctx, g, Job{
 		Name:     "critical-flaky",
 		Critical: true,
 		Backoff:  fastBackoff(),
-		Fn: func(ctx context.Context) error {
+		Fn: func(_ context.Context) error {
 			calls.Add(1)
 			return wantErr
 		},
@@ -150,6 +150,6 @@ func TestSupervisor_NoFnIsSilent(t *testing.T) {
 	t.Parallel()
 	sup := &Supervisor{Logger: discardLogger()}
 	g, gctx := errgroup.WithContext(context.Background())
-	sup.Go(g, gctx, Job{Name: "no-fn"})
+	sup.Go(gctx, g, Job{Name: "no-fn"})
 	require.NoError(t, g.Wait())
 }

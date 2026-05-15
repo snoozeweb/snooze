@@ -32,7 +32,7 @@ func TestRecordPost(t *testing.T) {
 }
 
 func TestRecordPostJSONFlag(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		_, _ = w.Write([]byte(`{"data":[{"uid":"u-1","host":"db-1"}]}`))
 	}))
@@ -50,7 +50,7 @@ func TestRecordPostJSONFlag(t *testing.T) {
 }
 
 func TestRecordPostInvalidJSON(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	srv := httptest.NewServer(http.HandlerFunc(func(_ http.ResponseWriter, _ *http.Request) {
 		t.Fatal("server should not be called for invalid JSON args")
 	}))
 	defer srv.Close()
@@ -79,7 +79,7 @@ func TestRecordList(t *testing.T) {
 }
 
 func TestRecordListEmpty(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		_, _ = w.Write([]byte(`{"data":[]}`))
 	}))

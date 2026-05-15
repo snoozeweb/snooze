@@ -173,7 +173,7 @@ func (p *Plugin) Send(ctx context.Context, rec snoozetypes.Record, payload plugi
 	if err != nil {
 		return fmt.Errorf("webhook: do request: %w", err)
 	}
-	defer resp.Body.Close()
+	defer resp.Body.Close() //nolint:errcheck
 
 	// Drain a bounded amount so the connection can be reused if the
 	// transport is shared. We surface the prefix in the error message for
@@ -195,7 +195,7 @@ func factory(meta plugins.Metadata) (plugins.Plugin, error) {
 func defaultClient(cfg Config) *http.Client {
 	transport := &http.Transport{
 		TLSClientConfig: &tls.Config{
-			InsecureSkipVerify: cfg.TLSInsecure,
+			InsecureSkipVerify: cfg.TLSInsecure, //nolint:gosec
 			MinVersion:         tls.VersionTLS12,
 		},
 	}

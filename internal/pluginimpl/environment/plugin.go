@@ -48,10 +48,10 @@ func (p *Plugin) Schema() any {
 	return map[string]any{
 		"type": "object",
 		"properties": map[string]any{
-			"name":      map[string]any{"type": "string"},
-			"parent":    map[string]any{"type": "string"},
-			"condition": map[string]any{},
-			"color":     map[string]any{"type": "string"},
+			"name":       map[string]any{"type": "string"},
+			"parent":     map[string]any{"type": "string"},
+			"condition":  map[string]any{},
+			"color":      map[string]any{"type": "string"},
 			"tree_order": map[string]any{"type": "integer"},
 		},
 		"required":             []any{"name"},

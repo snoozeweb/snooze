@@ -16,9 +16,13 @@ linters:
     - copyloopvar
     - usestdlibvars
   exclusions:
+    paths:
+      - web/
     rules:
       - path: _test\.go
         linters: [gosec, errcheck]
+      - path: internal/pluginimpl/all/all.go
+        linters: [revive]
 formatters:
   enable:
     - gofmt

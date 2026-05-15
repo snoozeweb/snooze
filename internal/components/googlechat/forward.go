@@ -2,7 +2,6 @@ package googlechat
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -14,6 +13,7 @@ import (
 // a different endpoint and "comment" which is the catch-all for free-form text.
 type ActionType string
 
+// ActionACK is the canonical "acknowledge" command.
 const (
 	ActionACK     ActionType = "ack"
 	ActionESC     ActionType = "esc"
@@ -76,11 +76,13 @@ type ChatEvent struct {
 	Action *ChatAction `json:"action,omitempty"`
 }
 
+// ChatUser is the Google Chat user identity embedded in a ChatEvent.
 type ChatUser struct {
 	Name        string `json:"name"`
 	DisplayName string `json:"displayName"`
 }
 
+// ChatMessage is the message payload within a ChatEvent.
 type ChatMessage struct {
 	Text         string      `json:"text"`
 	ArgumentText string      `json:"argumentText"`
@@ -88,22 +90,15 @@ type ChatMessage struct {
 	Thread       ChatThread  `json:"thread"`
 }
 
+// ChatThread holds the thread resource name from a ChatMessage.
 type ChatThread struct {
 	// Name has the form "spaces/{space}/threads/{thread}".
 	Name string `json:"name"`
 }
 
+// ChatAction is the action payload for CARD_CLICKED events.
 type ChatAction struct {
 	ActionMethodName string `json:"actionMethodName"`
-}
-
-// parseEvent unmarshals a raw Pub/Sub message body into a ChatEvent.
-func parseEvent(data []byte) (ChatEvent, error) {
-	var ev ChatEvent
-	if err := json.Unmarshal(data, &ev); err != nil {
-		return ChatEvent{}, fmt.Errorf("googlechat: decode event: %w", err)
-	}
-	return ev, nil
 }
 
 // rawText reconstructs the message the user typed, mirroring the Python
@@ -136,7 +131,7 @@ func ParseCommand(raw string) ParsedCommand {
 	// is the verb; everything after (sans the separator) is args.
 	cut := len(raw)
 	for i, r := range raw {
-		if !(r == '/' || (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9')) {
+		if r != '/' && (r < 'a' || r > 'z') && (r < 'A' || r > 'Z') && (r < '0' || r > '9') {
 			cut = i
 			break
 		}
@@ -170,12 +165,12 @@ type SnoozeClient interface {
 // commentPayload mirrors the Python `client.comment_batch` body and the Go
 // server's POST /api/v1/comments shape.
 type commentPayload struct {
-	Type       string                   `json:"type,omitempty"`
-	RecordUID  string                   `json:"record_uid"`
-	Name       string                   `json:"name"`
-	Method     string                   `json:"method"`
-	Message    string                   `json:"message,omitempty"`
-	Mods       []map[string]interface{} `json:"modifications,omitempty"`
+	Type      string                   `json:"type,omitempty"`
+	RecordUID string                   `json:"record_uid"`
+	Name      string                   `json:"name"`
+	Method    string                   `json:"method"`
+	Message   string                   `json:"message,omitempty"`
+	Mods      []map[string]interface{} `json:"modifications,omitempty"`
 }
 
 // commentEndpoint is the v1 batch comment endpoint. Mirrors the Python client.

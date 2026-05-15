@@ -32,7 +32,7 @@ func (d *Driver) CleanupTimeout(ctx context.Context, collection string) (int, er
 	if err != nil {
 		return 0, err
 	}
-	stmt := fmt.Sprintf(
+	stmt := fmt.Sprintf( //nolint:gosec
 		`DELETE FROM %s WHERE
 			json_extract(data, '$.ttl') IS NOT NULL
 			AND CAST(json_extract(data, '$.ttl') AS REAL) >= 0
@@ -71,7 +71,7 @@ func (d *Driver) CleanupComments(ctx context.Context) (int, error) {
 	if err != nil {
 		return 0, err
 	}
-	stmt := fmt.Sprintf(
+	stmt := fmt.Sprintf( //nolint:gosec
 		`DELETE FROM %s WHERE json_extract(data, '$.record_uid') NOT IN
 			(SELECT json_extract(data, '$.uid') FROM %s
 			 WHERE json_extract(data, '$.uid') IS NOT NULL)`,
@@ -110,7 +110,7 @@ func (d *Driver) CleanupOrphans(ctx context.Context, collection string) (int, er
 	if err != nil {
 		return 0, err
 	}
-	defer rows.Close()
+	defer rows.Close() //nolint:errcheck
 	type rowRef struct {
 		uid     string
 		parents []string
@@ -191,7 +191,7 @@ func (d *Driver) CleanupOrphans(ctx context.Context, collection string) (int, er
 		chunk := toDelete[i:j]
 		placeholders := strings.Repeat("?,", len(chunk))
 		placeholders = strings.TrimSuffix(placeholders, ",")
-		stmt := fmt.Sprintf("DELETE FROM %s WHERE uid IN (%s)", quoteIdent(tbl), placeholders)
+		stmt := fmt.Sprintf("DELETE FROM %s WHERE uid IN (%s)", quoteIdent(tbl), placeholders) //nolint:gosec
 		args := make([]any, len(chunk))
 		for i, s := range chunk {
 			args[i] = s
@@ -237,7 +237,7 @@ func (d *Driver) cleanupExpiredByDatetime(ctx context.Context, collection string
 	if err != nil {
 		return 0, err
 	}
-	q := fmt.Sprintf(
+	q := fmt.Sprintf( //nolint:gosec
 		`SELECT uid, json_extract(data, '$.time_constraints.datetime') FROM %s
 		 WHERE json_type(data, '$.time_constraints.datetime') = 'array'
 		   AND json_array_length(json_extract(data, '$.time_constraints.datetime')) > 0`,
@@ -247,7 +247,7 @@ func (d *Driver) cleanupExpiredByDatetime(ctx context.Context, collection string
 	if err != nil {
 		return 0, err
 	}
-	defer rows.Close()
+	defer rows.Close() //nolint:errcheck
 	now := time.Now().UTC()
 	var toDelete []string
 	for rows.Next() {
@@ -276,7 +276,7 @@ func (d *Driver) cleanupExpiredByDatetime(ctx context.Context, collection string
 		chunk := toDelete[i:j]
 		placeholders := strings.Repeat("?,", len(chunk))
 		placeholders = strings.TrimSuffix(placeholders, ",")
-		stmt := fmt.Sprintf("DELETE FROM %s WHERE uid IN (%s)", quoteIdent(tbl), placeholders)
+		stmt := fmt.Sprintf("DELETE FROM %s WHERE uid IN (%s)", quoteIdent(tbl), placeholders) //nolint:gosec
 		args := make([]any, len(chunk))
 		for k, s := range chunk {
 			args[k] = s
@@ -347,6 +347,7 @@ func (d *Driver) CleanupAuditLogs(ctx context.Context, olderThan time.Duration) 
 	// object_id with a 'deleted' action older than threshold whose
 	// date_epoch is the maximum for that object_id, delete every audit
 	// row for that object_id.
+	//nolint:gosec
 	stmt := fmt.Sprintf(`
 		DELETE FROM %s
 		WHERE json_extract(data, '$.object_id') IN (
@@ -390,6 +391,7 @@ func (d *Driver) ComputeStats(ctx context.Context, collection string, from, to t
 	if !ok {
 		format = groupByFormats["hour"]
 	}
+	//nolint:gosec
 	stmt := fmt.Sprintf(`
 		SELECT strftime(?, json_extract(data, '$.date')) AS bucket,
 		       json_extract(data, '$.key') AS k,
@@ -406,7 +408,7 @@ func (d *Driver) ComputeStats(ctx context.Context, collection string, from, to t
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer rows.Close() //nolint:errcheck
 	grouped := make(map[string][]dbpkg.KV)
 	order := []string{}
 	for rows.Next() {
@@ -460,6 +462,7 @@ func (d *Driver) RecordStats(ctx context.Context, from, to time.Time, bucketSec 
 	fromEpoch, toEpoch := from.Unix(), to.Unix()
 
 	// Series: bucket-start (= epoch / stride * stride) and source → count.
+	//nolint:gosec
 	seriesStmt := fmt.Sprintf(`
 		SELECT
 		  CAST(COALESCE(json_extract(data, '$.date_epoch'), 0) AS INTEGER) / ? * ? AS slot,
@@ -473,7 +476,7 @@ func (d *Driver) RecordStats(ctx context.Context, from, to time.Time, bucketSec 
 	if err != nil {
 		return out, fmt.Errorf("record stats: series: %w", err)
 	}
-	defer rows.Close()
+	defer rows.Close() //nolint:errcheck
 	for rows.Next() {
 		var slot int64
 		var source string
@@ -493,6 +496,7 @@ func (d *Driver) RecordStats(ctx context.Context, from, to time.Time, bucketSec 
 	}
 
 	// Totals: one row per (severity, environment); we reduce twice in Go.
+	//nolint:gosec
 	totalsStmt := fmt.Sprintf(`
 		SELECT
 		  COALESCE(NULLIF(json_extract(data, '$.severity'), ''), 'info')   AS sev,
@@ -506,7 +510,7 @@ func (d *Driver) RecordStats(ctx context.Context, from, to time.Time, bucketSec 
 	if err != nil {
 		return out, fmt.Errorf("record stats: totals: %w", err)
 	}
-	defer rows2.Close()
+	defer rows2.Close() //nolint:errcheck
 	for rows2.Next() {
 		var sev, env string
 		var n int64
@@ -549,7 +553,7 @@ func (d *Driver) RenumberField(ctx context.Context, collection, field string) er
 	// each back. Doing the row_number/update in pure SQL is awkward in
 	// SQLite (no UPDATE FROM ... JOIN), and N is tiny in practice.
 	path := "$." + escapeJSONPath(field)
-	q := fmt.Sprintf(
+	q := fmt.Sprintf( //nolint:gosec
 		"SELECT uid FROM %s ORDER BY CAST(json_extract(data, '%s') AS REAL) ASC, uid ASC",
 		quoteIdent(tbl), path,
 	)
@@ -561,12 +565,12 @@ func (d *Driver) RenumberField(ctx context.Context, collection, field string) er
 	for rows.Next() {
 		var uid string
 		if err := rows.Scan(&uid); err != nil {
-			rows.Close()
+			_ = rows.Close()
 			return err
 		}
 		uids = append(uids, uid)
 	}
-	rows.Close()
+	_ = rows.Close()
 	if err := rows.Err(); err != nil {
 		return err
 	}
@@ -576,7 +580,7 @@ func (d *Driver) RenumberField(ctx context.Context, collection, field string) er
 		return err
 	}
 	defer func() { _ = tx.Rollback() }()
-	updateStmt := fmt.Sprintf(
+	updateStmt := fmt.Sprintf( //nolint:gosec
 		"UPDATE %s SET data = json_set(data, '%s', ?), "+
 			"updated_at = strftime('%%Y-%%m-%%dT%%H:%%M:%%fZ','now') WHERE uid = ?",
 		quoteIdent(tbl), path,

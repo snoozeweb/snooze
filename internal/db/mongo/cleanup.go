@@ -46,7 +46,7 @@ func (d *Driver) CleanupComments(ctx context.Context) (int, error) {
 	if err != nil {
 		return 0, fmt.Errorf("mongo: cleanup_comments aggregate: %w", err)
 	}
-	defer cur.Close(ctx)
+	defer cur.Close(ctx) //nolint:errcheck
 	var orphans []any
 	for cur.Next(ctx) {
 		var row bson.M
@@ -81,7 +81,7 @@ func (d *Driver) CleanupOrphans(ctx context.Context, collection string) (int, er
 	if err != nil {
 		return 0, fmt.Errorf("mongo: cleanup_orphans aggregate: %w", err)
 	}
-	defer cur.Close(ctx)
+	defer cur.Close(ctx) //nolint:errcheck
 	var parents []any
 	for cur.Next(ctx) {
 		var row bson.M
@@ -152,7 +152,7 @@ func (d *Driver) cleanupExpiredByDatetime(ctx context.Context, collection string
 	if err != nil {
 		return 0, fmt.Errorf("mongo: cleanupExpired %s: %w", collection, err)
 	}
-	defer cur.Close(ctx)
+	defer cur.Close(ctx) //nolint:errcheck
 	var toDelete []any
 	for cur.Next(ctx) {
 		var row bson.M
@@ -251,7 +251,7 @@ func (d *Driver) CleanupAuditLogs(ctx context.Context, olderThan time.Duration) 
 	if err != nil {
 		return 0, fmt.Errorf("mongo: cleanup_audit_logs aggregate: %w", err)
 	}
-	defer cur.Close(ctx)
+	defer cur.Close(ctx) //nolint:errcheck
 	var ids []any
 	for cur.Next(ctx) {
 		var row bson.M
@@ -296,7 +296,7 @@ func (d *Driver) RenumberField(ctx context.Context, collection, field string) er
 	if err != nil {
 		return fmt.Errorf("mongo: renumber_field: %w", err)
 	}
-	defer cur.Close(ctx)
+	defer cur.Close(ctx) //nolint:errcheck
 	// Drain to ensure the $merge stage completes.
 	for cur.Next(ctx) { //nolint:revive
 	}
@@ -329,7 +329,7 @@ func (d *Driver) ComputeStats(ctx context.Context, collection string, from, to t
 	if err != nil {
 		return nil, fmt.Errorf("mongo: compute_stats aggregate: %w", err)
 	}
-	defer cur.Close(ctx)
+	defer cur.Close(ctx) //nolint:errcheck
 	var out []dbpkg.StatsBucket
 	for cur.Next(ctx) {
 		var row bson.M
@@ -395,7 +395,7 @@ func (d *Driver) deleteByPipeline(ctx context.Context, collection string, pipeli
 	if err != nil {
 		return 0, fmt.Errorf("mongo: aggregate: %w", err)
 	}
-	defer cur.Close(ctx)
+	defer cur.Close(ctx) //nolint:errcheck
 	var ids []any
 	for cur.Next(ctx) {
 		var row bson.M
@@ -422,8 +422,8 @@ func (d *Driver) deleteByPipeline(ctx context.Context, collection string, pipeli
 // writeBackupFile is the OS-level helper for Backup. Centralised so tests can
 // override it via a build-time hook if needed.
 func writeBackupFile(dir, name string, data []byte) error {
-	if err := os.MkdirAll(dir, 0o755); err != nil {
+	if err := os.MkdirAll(dir, 0o750); err != nil {
 		return err
 	}
-	return os.WriteFile(filepath.Join(dir, name), data, 0o644)
+	return os.WriteFile(filepath.Join(dir, name), data, 0o600)
 }

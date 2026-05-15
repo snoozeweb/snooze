@@ -2,7 +2,7 @@ package schema
 
 import "strings"
 
-// General is the bootstrap mirror of the Python ``GeneralConfig`` section. The
+// General is the bootstrap mirror of the Python “GeneralConfig“ section. The
 // values can still be overridden at runtime via the DB-backed settings store.
 type General struct {
 	DefaultAuthBackend string   `koanf:"default_auth_backend" validate:"oneof=local ldap anonymous"`
@@ -24,7 +24,7 @@ func DefaultGeneral() General {
 }
 
 // Normalize folds the OK severity list to its case-folded form, matching the
-// Python ``ok_severities`` validator.
+// Python “ok_severities“ validator.
 func (g *General) Normalize() {
 	for i, s := range g.OKSeverities {
 		g.OKSeverities[i] = strings.ToLower(strings.TrimSpace(s))

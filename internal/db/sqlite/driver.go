@@ -242,7 +242,7 @@ func (d *Driver) ListCollections(ctx context.Context) ([]string, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer rows.Close() //nolint:errcheck
 	var out []string
 	for rows.Next() {
 		var name string
@@ -272,7 +272,7 @@ func (d *Driver) Drop(ctx context.Context, collection string) error {
 // Backup writes one JSON file per collection into dir. The file name is
 // "<collection>.json"; collections in exclude are skipped.
 func (d *Driver) Backup(ctx context.Context, dir string, exclude []string) error {
-	if err := os.MkdirAll(dir, 0o755); err != nil {
+	if err := os.MkdirAll(dir, 0o750); err != nil {
 		return err
 	}
 	skip := make(map[string]struct{}, len(exclude))
@@ -296,7 +296,7 @@ func (d *Driver) Backup(ctx context.Context, dir string, exclude []string) error
 			return err
 		}
 		path := filepath.Join(dir, c+".json")
-		if err := os.WriteFile(path, buf, 0o644); err != nil {
+		if err := os.WriteFile(path, buf, 0o600); err != nil {
 			return err
 		}
 	}
@@ -312,7 +312,7 @@ func (d *Driver) dumpCollection(ctx context.Context, collection string) ([]dbpkg
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer rows.Close() //nolint:errcheck
 	var out []dbpkg.Document
 	for rows.Next() {
 		var raw string
@@ -353,12 +353,12 @@ func (d *Driver) Search(ctx context.Context, collection string, cond condition.C
 	}
 
 	var total int
-	countQ := fmt.Sprintf("SELECT count(*) FROM %s WHERE %s", quoteIdent(tbl), where)
+	countQ := fmt.Sprintf("SELECT count(*) FROM %s WHERE %s", quoteIdent(tbl), where) //nolint:gosec
 	if err := d.db.QueryRowContext(ctx, countQ, args...).Scan(&total); err != nil {
 		return nil, 0, fmt.Errorf("sqlite: search count: %w", err)
 	}
 
-	q := fmt.Sprintf("SELECT data FROM %s WHERE %s", quoteIdent(tbl), where)
+	q := fmt.Sprintf("SELECT data FROM %s WHERE %s", quoteIdent(tbl), where) //nolint:gosec
 	q += " " + renderOrderBy(page)
 	if page.OnlyOne {
 		q += " LIMIT 1"
@@ -374,7 +374,7 @@ func (d *Driver) Search(ctx context.Context, collection string, cond condition.C
 	if err != nil {
 		return nil, 0, fmt.Errorf("sqlite: search: %w", err)
 	}
-	defer rows.Close()
+	defer rows.Close() //nolint:errcheck
 	var docs []dbpkg.Document
 	for rows.Next() {
 		var raw string
@@ -684,7 +684,7 @@ func (d *Driver) Delete(ctx context.Context, collection string, cond condition.C
 	}
 	defer func() { _ = tx.Rollback() }()
 
-	q := fmt.Sprintf("SELECT uid FROM %s WHERE %s", quoteIdent(tbl), where)
+	q := fmt.Sprintf("SELECT uid FROM %s WHERE %s", quoteIdent(tbl), where) //nolint:gosec
 	rows, err := tx.QueryContext(ctx, q, args...)
 	if err != nil {
 		return 0, err
@@ -693,19 +693,19 @@ func (d *Driver) Delete(ctx context.Context, collection string, cond condition.C
 	for rows.Next() {
 		var uid string
 		if err := rows.Scan(&uid); err != nil {
-			rows.Close()
+			_ = rows.Close()
 			return 0, err
 		}
 		uids = append(uids, uid)
 	}
-	rows.Close()
+	_ = rows.Close()
 	if err := rows.Err(); err != nil {
 		return 0, err
 	}
 	if len(uids) == 0 {
 		return 0, tx.Commit()
 	}
-	delQ := fmt.Sprintf("DELETE FROM %s WHERE %s", quoteIdent(tbl), where)
+	delQ := fmt.Sprintf("DELETE FROM %s WHERE %s", quoteIdent(tbl), where) //nolint:gosec
 	res, err := tx.ExecContext(ctx, delQ, args...)
 	if err != nil {
 		return 0, err
@@ -737,7 +737,7 @@ func (d *Driver) IncMany(ctx context.Context, collection, field string, cond con
 		return 0, err
 	}
 	path := "$." + escapeJSONPath(field)
-	q := fmt.Sprintf(
+	q := fmt.Sprintf( //nolint:gosec
 		"UPDATE %s SET data = json_set(data, '%s', "+
 			"COALESCE(CAST(json_extract(data, '%s') AS INTEGER), 0) + ?), "+
 			"updated_at = strftime('%%Y-%%m-%%dT%%H:%%M:%%fZ','now') WHERE %s",
@@ -843,7 +843,7 @@ func (d *Driver) updateViaPython(ctx context.Context, collection string, cond co
 	}
 	defer func() { _ = tx.Rollback() }()
 
-	q := fmt.Sprintf("SELECT uid, data FROM %s WHERE %s", quoteIdent(tbl), where)
+	q := fmt.Sprintf("SELECT uid, data FROM %s WHERE %s", quoteIdent(tbl), where) //nolint:gosec
 	rows, err := tx.QueryContext(ctx, q, args...)
 	if err != nil {
 		return 0, err
@@ -856,22 +856,22 @@ func (d *Driver) updateViaPython(ctx context.Context, collection string, cond co
 	for rows.Next() {
 		var uid, raw string
 		if err := rows.Scan(&uid, &raw); err != nil {
-			rows.Close()
+			_ = rows.Close()
 			return 0, err
 		}
 		var doc dbpkg.Document
 		if err := json.Unmarshal([]byte(raw), &doc); err != nil {
-			rows.Close()
+			_ = rows.Close()
 			return 0, err
 		}
 		batch = append(batch, pending{uid: uid, data: doc})
 	}
-	rows.Close()
+	_ = rows.Close()
 	if err := rows.Err(); err != nil {
 		return 0, err
 	}
 	updated := 0
-	updateStmt := fmt.Sprintf(
+	updateStmt := fmt.Sprintf( //nolint:gosec
 		"UPDATE %s SET data = ?, updated_at = strftime('%%Y-%%m-%%dT%%H:%%M:%%fZ','now') WHERE uid = ?",
 		quoteIdent(tbl),
 	)
@@ -923,7 +923,7 @@ func (d *Driver) findOneInTx(ctx context.Context, tx *sql.Tx, collection, tbl st
 	if err != nil {
 		return nil, err
 	}
-	q := fmt.Sprintf("SELECT uid, data FROM %s WHERE %s LIMIT 1", quoteIdent(tbl), where)
+	q := fmt.Sprintf("SELECT uid, data FROM %s WHERE %s LIMIT 1", quoteIdent(tbl), where) //nolint:gosec
 	row := tx.QueryRowContext(ctx, q, args...)
 	var uid, raw string
 	if err := row.Scan(&uid, &raw); err != nil {
@@ -957,7 +957,7 @@ func (d *Driver) insertRow(ctx context.Context, tx *sql.Tx, tbl, uid string, doc
 	// claiming the PK slot (uid is the PK). The sub-select runs in the
 	// same transaction; concurrent writers serialise on the SQLite
 	// write lock so two rows never share the same seq.
-	stmt := fmt.Sprintf(
+	stmt := fmt.Sprintf( //nolint:gosec
 		"INSERT INTO %s (uid, data, seq) VALUES (?, ?, "+
 			"COALESCE((SELECT MAX(seq) FROM %s), 0) + 1)",
 		quoteIdent(tbl), quoteIdent(tbl),

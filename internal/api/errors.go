@@ -13,10 +13,10 @@ import (
 	"github.com/japannext/snooze/pkg/snoozetypes"
 )
 
-// APIError is the typed error returned by handlers; WriteError converts it
+// Error is the typed error returned by handlers; WriteError converts it
 // into the canonical ErrEnvelope wire shape. Status is the HTTP status code
 // and Code is the stable machine-readable identifier in the envelope.
-type APIError struct {
+type Error struct {
 	Code    string
 	Status  int
 	Message string
@@ -26,7 +26,7 @@ type APIError struct {
 
 // Error implements the error interface; the cause, when present, is appended
 // after a colon so logs preserve the wrap chain.
-func (e *APIError) Error() string {
+func (e *Error) Error() string {
 	if e == nil {
 		return "<nil api error>"
 	}
@@ -43,33 +43,33 @@ func (e *APIError) Error() string {
 }
 
 // Unwrap returns the wrapped cause for errors.Is / errors.As traversal.
-func (e *APIError) Unwrap() error { return e.Cause }
+func (e *Error) Unwrap() error { return e.Cause }
 
 // Sentinel errors covering the common HTTP failure modes. WriteError checks
-// errors.As for *APIError so wrapping these via WithCause/WithDetails/etc. is
+// errors.As for *Error so wrapping these via WithCause/WithDetails/etc. is
 // fully supported.
 var (
 	// ErrBadRequest indicates malformed input the client should not retry.
-	ErrBadRequest = &APIError{Code: "bad_request", Status: http.StatusBadRequest}
+	ErrBadRequest = &Error{Code: "bad_request", Status: http.StatusBadRequest}
 	// ErrUnauthorized indicates missing or invalid credentials.
-	ErrUnauthorized = &APIError{Code: "unauthorized", Status: http.StatusUnauthorized}
+	ErrUnauthorized = &Error{Code: "unauthorized", Status: http.StatusUnauthorized}
 	// ErrForbidden indicates the credentials are valid but lack permission.
-	ErrForbidden = &APIError{Code: "forbidden", Status: http.StatusForbidden}
+	ErrForbidden = &Error{Code: "forbidden", Status: http.StatusForbidden}
 	// ErrNotFound indicates the addressed resource does not exist.
-	ErrNotFound = &APIError{Code: "not_found", Status: http.StatusNotFound}
+	ErrNotFound = &Error{Code: "not_found", Status: http.StatusNotFound}
 	// ErrConflict indicates a duplicate-key or state conflict.
-	ErrConflict = &APIError{Code: "conflict", Status: http.StatusConflict}
+	ErrConflict = &Error{Code: "conflict", Status: http.StatusConflict}
 	// ErrValidation indicates the body parsed but failed semantic validation.
-	ErrValidation = &APIError{Code: "validation_error", Status: http.StatusUnprocessableEntity}
+	ErrValidation = &Error{Code: "validation_error", Status: http.StatusUnprocessableEntity}
 	// ErrInternal is the catch-all for unexpected failures.
-	ErrInternal = &APIError{Code: "internal", Status: http.StatusInternalServerError}
+	ErrInternal = &Error{Code: "internal", Status: http.StatusInternalServerError}
 	// ErrUnavailable indicates the service is not ready to handle the request.
-	ErrUnavailable = &APIError{Code: "unavailable", Status: http.StatusServiceUnavailable}
+	ErrUnavailable = &Error{Code: "unavailable", Status: http.StatusServiceUnavailable}
 )
 
 // WithMessage returns a copy of e with the human-readable Message set. The
 // receiver is left untouched so the package-level sentinels remain reusable.
-func (e *APIError) WithMessage(msg string) *APIError {
+func (e *Error) WithMessage(msg string) *Error {
 	if e == nil {
 		return nil
 	}
@@ -80,7 +80,7 @@ func (e *APIError) WithMessage(msg string) *APIError {
 
 // WithCause returns a copy of e wrapping err. The original sentinel is
 // preserved for errors.Is comparisons via the chain.
-func (e *APIError) WithCause(err error) *APIError {
+func (e *Error) WithCause(err error) *Error {
 	if e == nil {
 		return nil
 	}
@@ -91,7 +91,7 @@ func (e *APIError) WithCause(err error) *APIError {
 
 // WithDetails returns a copy of e with structured details attached. The
 // details map is not copied; callers should not mutate it after the call.
-func (e *APIError) WithDetails(details map[string]any) *APIError {
+func (e *Error) WithDetails(details map[string]any) *Error {
 	if e == nil {
 		return nil
 	}
@@ -100,11 +100,11 @@ func (e *APIError) WithDetails(details map[string]any) *APIError {
 	return &cp
 }
 
-// WriteError emits the canonical ErrEnvelope. When err is not a *APIError it
+// WriteError emits the canonical ErrEnvelope. When err is not a *Error it
 // is wrapped under ErrInternal. The request_id and trace_id context fields
 // are injected when present so log/UI correlation works out of the box.
 func WriteError(w http.ResponseWriter, r *http.Request, err error) {
-	apiErr := asAPIError(err)
+	apiErr := asError(err)
 	envelope := snoozetypes.ErrEnvelope{
 		Error: snoozetypes.ErrBody{
 			Code:    apiErr.Code,
@@ -126,12 +126,12 @@ func WriteError(w http.ResponseWriter, r *http.Request, err error) {
 	WriteJSON(w, apiErr.Status, envelope)
 }
 
-// asAPIError extracts (or fabricates) a non-nil *APIError describing err.
-func asAPIError(err error) *APIError {
+// asError extracts (or fabricates) a non-nil *Error describing err.
+func asError(err error) *Error {
 	if err == nil {
 		return ErrInternal
 	}
-	var apiErr *APIError
+	var apiErr *Error
 	if errors.As(err, &apiErr) && apiErr != nil {
 		return apiErr
 	}

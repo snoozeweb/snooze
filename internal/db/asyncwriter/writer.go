@@ -32,7 +32,6 @@ type Writer struct {
 
 	mu       sync.Mutex
 	buckets  map[string]map[string]*aggEntry // collection → hashKey → entry
-	pending  bool
 	closing  chan struct{}
 	closed   chan struct{}
 	requests chan incRequest

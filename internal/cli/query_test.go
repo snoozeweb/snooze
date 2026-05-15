@@ -66,7 +66,7 @@ func TestQueryLimitAndOrder(t *testing.T) {
 }
 
 func TestQueryBadAscFlag(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	srv := httptest.NewServer(http.HandlerFunc(func(_ http.ResponseWriter, _ *http.Request) {
 		t.Fatal("server should not be called when --asc is invalid")
 	}))
 	defer srv.Close()

@@ -10,7 +10,6 @@ import (
 
 	"github.com/japannext/snooze/internal/condition"
 	"github.com/japannext/snooze/internal/db"
-	"github.com/japannext/snooze/internal/plugins"
 )
 
 // clusterMemberFreshOK is the max age of a `last_seen` timestamp for a node
@@ -40,7 +39,7 @@ func (rt *Router) mountHealth(r chi.Router) {
 
 // handleLive is the liveness probe: cheap, returns 200 as long as the
 // process is up.
-func (rt *Router) handleLive(w http.ResponseWriter, r *http.Request) {
+func (rt *Router) handleLive(w http.ResponseWriter, _ *http.Request) {
 	WriteJSON(w, http.StatusOK, map[string]any{"status": "ok"})
 }
 
@@ -67,10 +66,6 @@ func (rt *Router) handleReady(w http.ResponseWriter, r *http.Request) {
 // we fall back to a hardcoded standalone payload so the page is still
 // informative.
 func (rt *Router) handleClusterStatus(w http.ResponseWriter, r *http.Request) {
-	type member struct {
-		Name   string `json:"name"`
-		Status string `json:"status"`
-	}
 	type pluginInfo struct {
 		Name   string `json:"name"`
 		Loaded bool   `json:"loaded"`
@@ -175,7 +170,7 @@ func (rt *Router) handleHealthVerbose(w http.ResponseWriter, r *http.Request) {
 
 	pluginNames := make([]string, 0, len(rt.Plugins))
 	for name, p := range rt.Plugins {
-		if _, ok := p.(plugins.Plugin); ok {
+		if p != nil {
 			pluginNames = append(pluginNames, name)
 		}
 	}

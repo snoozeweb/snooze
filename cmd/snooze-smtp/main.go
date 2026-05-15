@@ -56,13 +56,17 @@ func main() {
 		os.Exit(1)
 	}
 
+	os.Exit(runSMTP(daemon))
+}
+
+func runSMTP(daemon *smtp.Daemon) int {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
-
 	if err := daemon.Run(ctx); err != nil && !errors.Is(err, context.Canceled) {
 		fmt.Fprintln(os.Stderr, "snooze-smtp:", err)
-		os.Exit(1)
+		return 1
 	}
+	return 0
 }
 
 // newLogger maps a string log level to a slog.Logger writing to stderr.

@@ -165,12 +165,12 @@ func (f *fakeDB) ListCollections(context.Context) ([]string, error) {
 	}
 	return out, nil
 }
-func (f *fakeDB) Drop(context.Context, string) error              { return nil }
-func (f *fakeDB) Backup(context.Context, string, []string) error  { return nil }
+func (f *fakeDB) Drop(context.Context, string) error             { return nil }
+func (f *fakeDB) Backup(context.Context, string, []string) error { return nil }
 func (f *fakeDB) CleanupTimeout(context.Context, string) (int, error) {
 	return 0, nil
 }
-func (f *fakeDB) CleanupComments(context.Context) (int, error)       { return 0, nil }
+func (f *fakeDB) CleanupComments(context.Context) (int, error) { return 0, nil }
 func (f *fakeDB) CleanupOrphans(context.Context, string) (int, error) {
 	return 0, nil
 }
@@ -183,5 +183,5 @@ func (f *fakeDB) ComputeStats(context.Context, string, time.Time, time.Time, str
 	return nil, nil
 }
 func (f *fakeDB) RenumberField(context.Context, string, string) error { return nil }
-func (f *fakeDB) Watcher() syncer.Bus                                  { return nil }
-func (f *fakeDB) Close() error                                         { return nil }
+func (f *fakeDB) Watcher() syncer.Bus                                 { return nil }
+func (f *fakeDB) Close() error                                        { return nil }

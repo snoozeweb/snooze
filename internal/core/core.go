@@ -104,7 +104,7 @@ func (c *Core) Run(ctx context.Context) error {
 
 	// AsyncWriter is critical: a dropped flush silently loses counter updates.
 	if c.Async != nil {
-		c.Sup.Go(g, gctx, Job{
+		c.Sup.Go(gctx, g, Job{
 			Name:     "asyncwriter",
 			Critical: true,
 			Fn:       c.Async.Run,
@@ -114,7 +114,7 @@ func (c *Core) Run(ctx context.Context) error {
 	// Housekeeper is non-critical: cleanup jobs can fail without taking the
 	// server down with them.
 	if c.HK != nil {
-		c.Sup.Go(g, gctx, Job{
+		c.Sup.Go(gctx, g, Job{
 			Name: "housekeeper",
 			Fn:   c.HK.Run,
 		})
@@ -123,7 +123,7 @@ func (c *Core) Run(ctx context.Context) error {
 	// Syncer is non-critical: a sync failure stalls plugin-reload but the
 	// hot path keeps serving alerts.
 	if c.Sync != nil {
-		c.Sup.Go(g, gctx, Job{
+		c.Sup.Go(gctx, g, Job{
 			Name: "syncer",
 			Fn:   c.Sync.Run,
 		})
@@ -132,7 +132,7 @@ func (c *Core) Run(ctx context.Context) error {
 	// NodeHeartbeat is non-critical: missing heartbeats only hurt visibility
 	// into the cluster.
 	if c.Heart != nil {
-		c.Sup.Go(g, gctx, Job{
+		c.Sup.Go(gctx, g, Job{
 			Name: "node-heartbeat",
 			Fn:   c.Heart.Run,
 		})

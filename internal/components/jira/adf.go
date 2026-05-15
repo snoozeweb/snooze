@@ -7,9 +7,9 @@ import "strings"
 // (paragraphs, headings, marked text) — the format is large but the daemon
 // never needs more than this.
 type ADF struct {
-	Type    string      `json:"type"`
-	Version int         `json:"version"`
-	Content []ADFBlock  `json:"content"`
+	Type    string     `json:"type"`
+	Version int        `json:"version"`
+	Content []ADFBlock `json:"content"`
 }
 
 // ADFBlock is one block-level node (paragraph, heading, …).

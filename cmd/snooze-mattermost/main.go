@@ -28,18 +28,13 @@ import (
 	_ "github.com/japannext/snooze/internal/runtime"
 )
 
-func main() {
-	if len(os.Args) > 1 && os.Args[1] == "version" {
-		fmt.Println("snooze-mattermost", version.String())
-		return
-	}
-
+func run() int {
 	fs := flag.NewFlagSet("snooze-mattermost", flag.ExitOnError)
 	configPath := fs.String("config", os.Getenv("SNOOZE_MATTERMOST_CONFIG"), "path to YAML config file")
 	debug := fs.Bool("debug", false, "enable debug logging")
 	if err := fs.Parse(os.Args[1:]); err != nil {
 		fmt.Fprintln(os.Stderr, err)
-		os.Exit(2)
+		return 2
 	}
 
 	level := slog.LevelInfo
@@ -51,19 +46,19 @@ func main() {
 
 	if *configPath == "" {
 		fmt.Fprintln(os.Stderr, "snooze-mattermost: -config is required (or set SNOOZE_MATTERMOST_CONFIG)")
-		os.Exit(2)
+		return 2
 	}
 
 	cfg, err := mattermost.LoadConfig(*configPath)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "snooze-mattermost: load config: %v\n", err)
-		os.Exit(1)
+		return 1
 	}
 
 	daemon, err := mattermost.NewDaemon(cfg, mattermost.WithLogger(logger))
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "snooze-mattermost: build daemon: %v\n", err)
-		os.Exit(1)
+		return 1
 	}
 
 	ctx, cancel := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
@@ -71,6 +66,15 @@ func main() {
 
 	if err := daemon.Run(ctx); err != nil && !errors.Is(err, context.Canceled) {
 		fmt.Fprintf(os.Stderr, "snooze-mattermost: %v\n", err)
-		os.Exit(1)
+		return 1
 	}
+	return 0
+}
+
+func main() {
+	if len(os.Args) > 1 && os.Args[1] == "version" {
+		fmt.Println("snooze-mattermost", version.String())
+		return
+	}
+	os.Exit(run())
 }

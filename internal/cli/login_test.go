@@ -64,7 +64,7 @@ func TestLoginPromptsForPassword(t *testing.T) {
 }
 
 func TestLoginRejectsBadCredentials(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusUnauthorized)
 		_, _ = w.Write([]byte(`{"error":{"code":"unauthorized","message":"bad creds"}}`))

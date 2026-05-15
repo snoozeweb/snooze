@@ -58,7 +58,7 @@ func TestFetchToken(t *testing.T) {
 }
 
 func TestFetchToken_errorResponse(t *testing.T) {
-	g, _ := newTestGraph(t, func(w http.ResponseWriter, r *http.Request) {
+	g, _ := newTestGraph(t, func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusUnauthorized)
 		_ = json.NewEncoder(w).Encode(map[string]any{

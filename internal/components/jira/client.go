@@ -73,7 +73,7 @@ func NewClient(opts ClientOptions) *Client {
 	}
 }
 
-// apiError captures the JIRA error envelope ({"errorMessages":[…],"errors":{}}).
+// Error captures the JIRA error envelope ({"errorMessages":[…],"errors":{}}).
 // We surface it via *Error so callers can branch on the message text (e.g.
 // the priority-as-string fallback).
 type Error struct {
@@ -159,11 +159,11 @@ func (c *Client) do(ctx context.Context, method, path string, body, dest any) er
 		}
 		if resp.StatusCode >= 200 && resp.StatusCode < 300 {
 			err := decodeResponse(resp, dest)
-			resp.Body.Close()
+			_ = resp.Body.Close()
 			return err
 		}
 		jerr := decodeError(resp, method, path)
-		resp.Body.Close()
+		_ = resp.Body.Close()
 		lastErr = jerr
 		// 4xx (except 429) are not retried — they are operator errors that
 		// retrying won't fix. 5xx and 429 get retried up to retryAttempts.
@@ -245,14 +245,14 @@ func sleepCtx(ctx context.Context, d time.Duration) bool {
 
 // CreateIssueRequest is the structured payload sent to POST /issue.
 type CreateIssueRequest struct {
-	ProjectKey   string
-	IssueType    string
-	IssueTypeID  string
-	Summary      string
-	Description  ADF
-	Priority     string
-	Labels       []string
-	ExtraFields  map[string]any
+	ProjectKey  string
+	IssueType   string
+	IssueTypeID string
+	Summary     string
+	Description ADF
+	Priority    string
+	Labels      []string
+	ExtraFields map[string]any
 }
 
 // CreateIssueResponse mirrors the relevant fields of the POST /issue reply.

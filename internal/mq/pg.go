@@ -35,8 +35,8 @@ type PGConfig struct {
 // pgBus is the Postgres LISTEN/NOTIFY + SELECT...FOR UPDATE SKIP LOCKED
 // implementation of Bus.
 type pgBus struct {
-	cfg     PGConfig
-	pool    *pgxpool.Pool
+	cfg      PGConfig
+	pool     *pgxpool.Pool
 	ownsPool bool
 
 	closeOnce sync.Once
@@ -64,10 +64,10 @@ func NewPG(ctx context.Context, cfg PGConfig) (Bus, error) {
 			return nil, fmt.Errorf("mq pg: parse dsn: %w", err)
 		}
 		if cfg.PoolMin > 0 {
-			pcfg.MinConns = int32(cfg.PoolMin)
+			pcfg.MinConns = int32(cfg.PoolMin) //nolint:gosec
 		}
 		if cfg.PoolMax > 0 {
-			pcfg.MaxConns = int32(cfg.PoolMax)
+			pcfg.MaxConns = int32(cfg.PoolMax) //nolint:gosec
 		}
 		if cfg.ApplicationName != "" {
 			if pcfg.ConnConfig.RuntimeParams == nil {

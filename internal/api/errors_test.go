@@ -14,7 +14,7 @@ import (
 	"github.com/japannext/snooze/pkg/snoozetypes"
 )
 
-func TestAPIError_Error(t *testing.T) {
+func TestError_Error(t *testing.T) {
 	e := ErrNotFound.WithMessage("user 42")
 	require.Contains(t, e.Error(), "not_found")
 	require.Contains(t, e.Error(), "user 42")
@@ -24,7 +24,7 @@ func TestAPIError_Error(t *testing.T) {
 	require.ErrorIs(t, wrapped, wrapped.Cause)
 }
 
-func TestAPIError_Unwrap(t *testing.T) {
+func TestError_Unwrap(t *testing.T) {
 	cause := fmt.Errorf("base")
 	e := ErrBadRequest.WithCause(cause)
 	require.ErrorIs(t, e, cause)
@@ -57,7 +57,7 @@ func TestWriteError_UnknownErrorFallsBackToInternal(t *testing.T) {
 
 func TestWriteError_SentinelCoverage(t *testing.T) {
 	cases := []struct {
-		e    *APIError
+		e    *Error
 		want int
 	}{
 		{ErrBadRequest, http.StatusBadRequest},
@@ -82,7 +82,7 @@ func TestWriteError_SentinelCoverage(t *testing.T) {
 	}
 }
 
-func TestAPIError_WithDetails(t *testing.T) {
+func TestError_WithDetails(t *testing.T) {
 	e := ErrValidation.WithDetails(map[string]any{"field": "email"})
 	rec := httptest.NewRecorder()
 	WriteError(rec, httptest.NewRequest(http.MethodGet, "/", nil), e)

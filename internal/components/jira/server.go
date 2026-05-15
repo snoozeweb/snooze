@@ -79,7 +79,7 @@ func (s *httpServer) Run(ctx context.Context) error {
 
 	// Cancellation: graceful shutdown when ctx is cancelled.
 	shutdownDone := make(chan error, 1)
-	go func() {
+	go func() { //nolint:gosec
 		<-ctx.Done()
 		shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()
@@ -100,7 +100,7 @@ func (s *httpServer) handleAlert(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
-	defer r.Body.Close()
+	defer r.Body.Close() //nolint:errcheck
 
 	envs, err := decodeEnvelopes(r)
 	if err != nil {

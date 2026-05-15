@@ -24,10 +24,10 @@ import (
 // crudPlugin is a minimal Plugin for CRUD wiring (no Processor/DataModel).
 type crudPlugin struct{ name string }
 
-func (p *crudPlugin) Name() string                              { return p.name }
-func (p *crudPlugin) Metadata() Metadata                        { return Metadata{Name: p.name} }
-func (p *crudPlugin) PostInit(context.Context, Host) error      { return nil }
-func (p *crudPlugin) Reload(context.Context) error              { return nil }
+func (p *crudPlugin) Name() string                         { return p.name }
+func (p *crudPlugin) Metadata() Metadata                   { return Metadata{Name: p.name} }
+func (p *crudPlugin) PostInit(context.Context, Host) error { return nil }
+func (p *crudPlugin) Reload(context.Context) error         { return nil }
 
 // validatingPlugin extends crudPlugin with DataModel + Validate.
 type validatingPlugin struct {
@@ -44,7 +44,7 @@ type routedPlugin struct {
 	called bool
 }
 
-func (p *routedPlugin) RegisterRoutes(r chi.Router, host Host) {
+func (p *routedPlugin) RegisterRoutes(r chi.Router, _ Host) {
 	p.called = true
 	r.Get("/custom", func(w http.ResponseWriter, _ *http.Request) {
 		writeJSON(w, http.StatusOK, map[string]string{"ok": "true"})

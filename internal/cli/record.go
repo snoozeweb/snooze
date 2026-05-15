@@ -102,10 +102,10 @@ func renderRecord(cmd *cobra.Command, rt *runtime, rec snoozetypes.Record) error
 		return enc.Encode(rec)
 	}
 	if rec.UID == "" && rec.Host == "" && rec.Message == "" {
-		fmt.Fprintln(out, "(record posted; server returned an empty body)")
+		_, _ = fmt.Fprintln(out, "(record posted; server returned an empty body)")
 		return nil
 	}
-	fmt.Fprintf(out, "uid=%s host=%s severity=%s message=%s\n",
+	_, _ = fmt.Fprintf(out, "uid=%s host=%s severity=%s message=%s\n",
 		rec.UID, rec.Host, rec.Severity, rec.Message)
 	return nil
 }

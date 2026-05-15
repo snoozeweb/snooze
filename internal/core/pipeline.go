@@ -27,7 +27,7 @@ const recordCollection = "record"
 //   - ActionAbortWrite: persist rec with a fresh updated_at and return.
 //   - ActionAbortUpdate: persist rec without bumping updated_at and return.
 //
-// If a plugin returns an error, the record gets an ``exception`` field
+// If a plugin returns an error, the record gets an “exception“ field
 // describing it, the record is written for forensic reasons, and Abort is
 // returned along with the wrapped error.
 //
@@ -134,8 +134,8 @@ func (c *Core) processRecordInner(ctx context.Context, rec snoozetypes.Record) (
 }
 
 // writeRecord upserts rec into the record collection. The updateTime flag
-// matches the Python ``replace_one(..., update_time=...)`` parameter and
-// controls whether the storage backend stamps ``updated_at``.
+// matches the Python “replace_one(..., update_time=...)“ parameter and
+// controls whether the storage backend stamps “updated_at“.
 func (c *Core) writeRecord(ctx context.Context, rec snoozetypes.Record, updateTime bool) error {
 	if c.Driver == nil {
 		return nil

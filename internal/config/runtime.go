@@ -73,7 +73,7 @@ func (NoopRuntimeStore) Set(context.Context, string, string, any) error { return
 func (NoopRuntimeStore) Replace(context.Context, string, map[string]any) error { return nil }
 
 // Watch implements RuntimeStore; it returns a closed channel immediately.
-func (NoopRuntimeStore) Watch(ctx context.Context, _ string) (<-chan RuntimeChange, error) {
+func (NoopRuntimeStore) Watch(_ context.Context, _ string) (<-chan RuntimeChange, error) {
 	ch := make(chan RuntimeChange)
 	close(ch)
 	return ch, nil

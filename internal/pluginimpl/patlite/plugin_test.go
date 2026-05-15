@@ -204,7 +204,7 @@ func TestPatliteSend(t *testing.T) {
 
 	t.Run("timeout_is_honoured", func(t *testing.T) {
 		// Server intentionally hangs longer than the request timeout.
-		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		srv := httptest.NewServer(http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) {
 			<-r.Context().Done()
 		}))
 		t.Cleanup(srv.Close)

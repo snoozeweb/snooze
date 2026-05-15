@@ -7,7 +7,7 @@ import (
 )
 
 // Core is the bootstrap configuration that must be present before the server
-// starts. It mirrors the Python ``CoreConfig`` model but drops the fields that
+// starts. It mirrors the Python “CoreConfig“ model but drops the fields that
 // have moved to the runtime settings store.
 type Core struct {
 	ListenAddr         string   `koanf:"listen_addr" validate:"omitempty,ip"`
@@ -26,7 +26,7 @@ type Core struct {
 }
 
 // DefaultCore returns the values used when no core.yaml file exists, matching
-// the Python defaults in ``snooze/utils/config.py::CoreConfig``.
+// the Python defaults in “snooze/utils/config.py::CoreConfig“.
 func DefaultCore() Core {
 	return Core{
 		ListenAddr:         "0.0.0.0",
@@ -46,9 +46,9 @@ func DefaultCore() Core {
 }
 
 // Database is the polymorphic database backend selector. It accepts the same
-// keys as the Python ``DatabaseConfig`` union (``mongo``, ``file``,
-// ``postgres``) plus a flat ``url`` shortcut used by the env-var
-// ``DATABASE_URL``.
+// keys as the Python “DatabaseConfig“ union (“mongo“, “file“,
+// “postgres“) plus a flat “url“ shortcut used by the env-var
+// “DATABASE_URL“.
 type Database struct {
 	Type string `koanf:"type" validate:"oneof=mongo file postgres"`
 
@@ -59,24 +59,24 @@ type Database struct {
 	// passing the raw keys to the driver in subsequent phases. The fields
 	// below cover the cases exercised by tests; anything else goes through
 	// Extra.
-	Host           any    `koanf:"host"`
-	Port           int    `koanf:"port"`
-	Username       string `koanf:"username"`
-	Password       string `koanf:"password"`
-	AuthSource     string `koanf:"authSource"`
-	ReplicaSet     string `koanf:"replicaSet"`
-	TLS            bool   `koanf:"tls"`
-	TLSCAFile      string `koanf:"tlsCAFile"`
-	Database       string `koanf:"database"`
-	DSN            string `koanf:"dsn"`
-	SSLMode        string `koanf:"sslmode"`
-	PoolMinSize    int    `koanf:"pool_min_size"`
-	PoolMaxSize    int    `koanf:"pool_max_size"`
-	URL            string `koanf:"url"`
+	Host        any    `koanf:"host"`
+	Port        int    `koanf:"port"`
+	Username    string `koanf:"username"`
+	Password    string `koanf:"password"`
+	AuthSource  string `koanf:"authSource"`
+	ReplicaSet  string `koanf:"replicaSet"`
+	TLS         bool   `koanf:"tls"`
+	TLSCAFile   string `koanf:"tlsCAFile"`
+	Database    string `koanf:"database"`
+	DSN         string `koanf:"dsn"`
+	SSLMode     string `koanf:"sslmode"`
+	PoolMinSize int    `koanf:"pool_min_size"`
+	PoolMaxSize int    `koanf:"pool_max_size"`
+	URL         string `koanf:"url"`
 }
 
 // NormalizeURL turns a DATABASE_URL value into the matching typed backend.
-// It is a no-op when ``URL`` is empty.
+// It is a no-op when “URL“ is empty.
 func (d *Database) NormalizeURL() error {
 	if d.URL == "" {
 		return nil
@@ -132,6 +132,6 @@ type CORS struct {
 	AllowCredentials string `koanf:"allow_credentials"`
 }
 
-// ResolvedListenAddr returns the address as a ``net.IP``. It is the validator's
+// ResolvedListenAddr returns the address as a “net.IP“. It is the validator's
 // canonical accessor.
 func (c Core) ResolvedListenAddr() net.IP { return net.ParseIP(c.ListenAddr) }

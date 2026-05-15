@@ -16,7 +16,7 @@ import (
 const secretsCollection = "secrets"
 
 // SecretJWTPrivateKey is the canonical secret name for the HS256 signing key.
-const SecretJWTPrivateKey = "jwt_private_key"
+const SecretJWTPrivateKey = "jwt_private_key" //nolint:gosec
 
 // SecretReloadToken is the canonical secret name for the cross-node reload
 // token.
@@ -32,7 +32,7 @@ const ReloadTokenBytes = 32
 
 // EnsureSecrets idempotently fetches (and on first boot generates) the JWT
 // signing key and the cluster reload token. The values are stored in the
-// ``secrets`` collection under ``{type: "secret", name: <name>, value: <b64>}``
+// “secrets“ collection under “{type: "secret", name: <name>, value: <b64>}“
 // rows that the Python codebase already populates.
 //
 // Returns:

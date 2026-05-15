@@ -9,13 +9,13 @@ import (
 
 // MigrateFromPython copies the Python snooze-server YAML files from srcDir
 // into the layout that the Go server expects under dstDir. The renames map is
-// intentionally identical to the ``sectionFiles`` table so that operators can
+// intentionally identical to the “sectionFiles“ table so that operators can
 // keep using the existing filenames while opting in to the new ones over time.
 //
 // This is a placeholder implementation. It copies whatever recognised YAML
 // files are present and leaves a TODO marker for the per-field translation
-// work that will land alongside the ``settings`` plugin. The migration tool
-// shipped as ``snooze-server migrate-config --from /etc/snooze/server-py``
+// work that will land alongside the “settings“ plugin. The migration tool
+// shipped as “snooze-server migrate-config --from /etc/snooze/server-py“
 // wraps this function.
 func MigrateFromPython(srcDir, dstDir string) error {
 	if srcDir == "" {
@@ -24,7 +24,7 @@ func MigrateFromPython(srcDir, dstDir string) error {
 	if dstDir == "" {
 		return fmt.Errorf("config: migrate: destination directory is empty")
 	}
-	if err := os.MkdirAll(dstDir, 0o755); err != nil {
+	if err := os.MkdirAll(dstDir, 0o750); err != nil {
 		return fmt.Errorf("config: migrate: mkdir %q: %w", dstDir, err)
 	}
 
@@ -57,12 +57,12 @@ func MigrateFromPython(srcDir, dstDir string) error {
 }
 
 func copyFile(src, dst string) error {
-	in, err := os.Open(src)
+	in, err := os.Open(src) //nolint:gosec
 	if err != nil {
 		return err
 	}
 	defer func() { _ = in.Close() }()
-	out, err := os.Create(dst)
+	out, err := os.Create(dst) //nolint:gosec
 	if err != nil {
 		return err
 	}

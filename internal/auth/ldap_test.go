@@ -116,7 +116,7 @@ func TestLDAPProvider_BadUserPassword(t *testing.T) {
 	cfg := cfgEnabled()
 	calls := 0
 	conn := &fakeLDAP{
-		bindErrFn: func(user, _ string) error {
+		bindErrFn: func(_, _ string) error {
 			calls++
 			if calls == 1 {
 				return nil // service bind ok

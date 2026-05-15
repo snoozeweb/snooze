@@ -5,8 +5,8 @@ import (
 	"strconv"
 	"strings"
 
-	dbpkg "github.com/japannext/snooze/internal/db"
 	"github.com/japannext/snooze/internal/condition"
+	dbpkg "github.com/japannext/snooze/internal/db"
 )
 
 // convertResult is the rendered SQL fragment plus its bound parameters.
@@ -32,7 +32,7 @@ func (f *fragment) writeParam(v any) {
 
 // placeholderToken is a string unlikely to appear inside SQL fragments
 // emitted by this package. Replaced with $N positional markers at the end.
-const placeholderToken = "\x01PG_PARAM\x01"
+const placeholderToken = "\x01PG_PARAM\x01" //nolint:gosec
 
 // build wires fragment text and arguments into a finalised query string with
 // $1, $2, ... placeholders.
@@ -166,7 +166,7 @@ func pathJSON(field string) string {
 
 // jsonPathLiteral renders a single path component as either an integer index
 // or a single-quoted SQL string literal. Integer detection mirrors the
-// Python ``lstrip('-').isdigit()`` rule.
+// Python “lstrip('-').isdigit()“ rule.
 func jsonPathLiteral(part string) string {
 	if isIntLiteral(part) {
 		return part
@@ -256,16 +256,17 @@ func renderNeq(f *fragment, field string, value any) error {
 	}
 	// NULL-safe inequality using IS DISTINCT FROM.
 	f.writeString("(")
-	if isNumeric(value) {
+	switch {
+	case isNumeric(value):
 		f.writeString("(")
 		f.writeString(pathText(field))
 		f.writeString(")::numeric IS DISTINCT FROM ")
 		f.writeParam(value)
-	} else if isBool(value) {
+	case isBool(value):
 		f.writeString(pathText(field))
 		f.writeString(" IS DISTINCT FROM ")
 		f.writeParam(boolText(value))
-	} else {
+	default:
 		f.writeString(pathText(field))
 		f.writeString(" IS DISTINCT FROM ")
 		f.writeParam(fmt.Sprint(value))

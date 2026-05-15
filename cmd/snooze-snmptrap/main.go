@@ -47,18 +47,21 @@ func main() {
 		os.Exit(1)
 	}
 
+	os.Exit(runSNMPTrap(daemon, logger, cfg))
+}
+
+func runSNMPTrap(daemon *snmptrap.Daemon, logger *slog.Logger, cfg snmptrap.Config) int {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
-
 	logger.Info("snooze-snmptrap: starting",
 		slog.String("version", version.String()),
 		slog.String("listen", cfg.Listen),
 		slog.String("server", cfg.Server),
 	)
-
 	if err := daemon.Run(ctx); err != nil && !errors.Is(err, context.Canceled) {
 		logger.Error("snooze-snmptrap: exited with error", slog.Any("err", err))
-		os.Exit(1)
+		return 1
 	}
 	logger.Info("snooze-snmptrap: shutdown complete")
+	return 0
 }

@@ -112,7 +112,7 @@ func (s *Server) Run(ctx context.Context) error {
 	// Close listener on ctx cancel so Accept() returns.
 	go func() {
 		<-ctx.Done()
-		s.Close()
+		_ = s.Close()
 	}()
 
 	var wg sync.WaitGroup
@@ -169,7 +169,7 @@ type session struct {
 
 // handle drives one connection from greeting to QUIT (or io error).
 func (s *Server) handle(ctx context.Context, conn net.Conn) {
-	defer conn.Close()
+	defer conn.Close() //nolint:errcheck
 	sess := &session{
 		srv:  s,
 		conn: conn,
@@ -401,9 +401,9 @@ func (s *Server) handleDATA(ctx context.Context, sess *session) {
 var errMessageTooLarge = errors.New("smtp: message exceeds max_message_bytes")
 
 // readDataBlob consumes lines until ".\r\n" and returns the concatenated body
-// with dot-stuffing reversed. It enforces max to keep adversarial senders
+// with dot-stuffing reversed. It enforces maxBytes to keep adversarial senders
 // from exhausting memory.
-func readDataBlob(br *bufio.Reader, max int64) ([]byte, error) {
+func readDataBlob(br *bufio.Reader, maxBytes int64) ([]byte, error) {
 	var out []byte
 	for {
 		line, err := br.ReadBytes('\n')
@@ -419,7 +419,7 @@ func readDataBlob(br *bufio.Reader, max int64) ([]byte, error) {
 			line = line[1:]
 		}
 		out = append(out, line...)
-		if int64(len(out)) > max {
+		if int64(len(out)) > maxBytes {
 			// Drain the rest of the message to keep the protocol sane.
 			drainUntilDot(br)
 			return nil, errMessageTooLarge
@@ -509,4 +509,3 @@ func (s *session) write(code int, msg string) {
 	_, _ = fmt.Fprintf(s.bw, "%d %s\r\n", code, msg)
 	_ = s.bw.Flush()
 }
-

@@ -175,7 +175,7 @@ func Execute() int {
 	rt := defaultRuntime()
 	root := NewRootCmd(rt)
 	if err := root.ExecuteContext(root.Context()); err != nil {
-		fmt.Fprintln(rt.errOut, "snooze:", err)
+		_, _ = fmt.Fprintln(rt.errOut, "snooze:", err)
 		return 1
 	}
 	return 0
@@ -235,7 +235,7 @@ func newVersionCmd() *cobra.Command {
 		Use:   "version",
 		Short: "Print the snooze version",
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			fmt.Fprintln(cmd.OutOrStdout(), "snooze", version.String())
+			_, _ = fmt.Fprintln(cmd.OutOrStdout(), "snooze", version.String())
 			return nil
 		},
 	}

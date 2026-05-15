@@ -19,6 +19,7 @@ package condition
 //	SEARCH       Full-text search across the record (driver-specific)
 type Op string
 
+// Op constants define the supported condition operators.
 const (
 	OpAlwaysTrue Op = ""
 	OpAnd        Op = "AND"
@@ -54,7 +55,9 @@ type Cond struct {
 }
 
 // IsZero reports whether c is the empty AlwaysTrue node.
-func (c Cond) IsZero() bool { return c.Op == OpAlwaysTrue && c.Field == "" && c.Value == nil && len(c.Children) == 0 }
+func (c Cond) IsZero() bool {
+	return c.Op == OpAlwaysTrue && c.Field == "" && c.Value == nil && len(c.Children) == 0
+}
 
 // And builds a conjunction. Single-child input is returned unwrapped.
 func And(children ...Cond) Cond {

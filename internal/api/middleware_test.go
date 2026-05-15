@@ -78,7 +78,7 @@ func TestAuthMiddleware_BearerHappyPath(t *testing.T) {
 
 func TestAuthMiddleware_Missing(t *testing.T) {
 	eng := testTokenEngine(t)
-	h := middleware.Auth(eng, nil)(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	h := middleware.Auth(eng, nil)(http.HandlerFunc(func(_ http.ResponseWriter, _ *http.Request) {
 		t.Fatal("downstream must not be reached")
 	}))
 	rec := httptest.NewRecorder()
@@ -92,7 +92,7 @@ func TestAuthMiddleware_Missing(t *testing.T) {
 
 func TestAuthMiddleware_BadSignature(t *testing.T) {
 	eng := testTokenEngine(t)
-	h := middleware.Auth(eng, nil)(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	h := middleware.Auth(eng, nil)(http.HandlerFunc(func(_ http.ResponseWriter, _ *http.Request) {
 		t.Fatal("downstream must not be reached")
 	}))
 	rec := httptest.NewRecorder()
@@ -106,7 +106,7 @@ func TestAuthMiddleware_Skip(t *testing.T) {
 	eng := testTokenEngine(t)
 	reached := false
 	skip := func(r *http.Request) bool { return strings.HasPrefix(r.URL.Path, "/healthz") }
-	h := middleware.Auth(eng, skip)(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	h := middleware.Auth(eng, skip)(http.HandlerFunc(func(_ http.ResponseWriter, _ *http.Request) {
 		reached = true
 	}))
 	rec := httptest.NewRecorder()
@@ -115,7 +115,7 @@ func TestAuthMiddleware_Skip(t *testing.T) {
 }
 
 func TestRequirePerm_Allows(t *testing.T) {
-	h := middleware.RequirePerm("rw_user")(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	h := middleware.RequirePerm("rw_user")(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusNoContent)
 	}))
 	rec := httptest.NewRecorder()
@@ -126,7 +126,7 @@ func TestRequirePerm_Allows(t *testing.T) {
 }
 
 func TestRequirePerm_WildcardAllows(t *testing.T) {
-	h := middleware.RequirePerm("rw_anything")(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	h := middleware.RequirePerm("rw_anything")(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusNoContent)
 	}))
 	rec := httptest.NewRecorder()
@@ -137,7 +137,7 @@ func TestRequirePerm_WildcardAllows(t *testing.T) {
 }
 
 func TestRequirePerm_Denies(t *testing.T) {
-	h := middleware.RequirePerm("rw_user")(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	h := middleware.RequirePerm("rw_user")(http.HandlerFunc(func(_ http.ResponseWriter, _ *http.Request) {
 		t.Fatal("must not be reached")
 	}))
 	rec := httptest.NewRecorder()
@@ -148,7 +148,7 @@ func TestRequirePerm_Denies(t *testing.T) {
 }
 
 func TestRequirePerm_NoClaims401(t *testing.T) {
-	h := middleware.RequirePerm("rw_user")(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	h := middleware.RequirePerm("rw_user")(http.HandlerFunc(func(_ http.ResponseWriter, _ *http.Request) {
 		t.Fatal("must not be reached")
 	}))
 	rec := httptest.NewRecorder()
@@ -159,7 +159,7 @@ func TestRequirePerm_NoClaims401(t *testing.T) {
 func TestRecoverer_PanicTo500Envelope(t *testing.T) {
 	reg := telemetry.NewRegistry(prometheus.NewRegistry())
 	logger := slog.New(slog.NewJSONHandler(io.Discard, nil))
-	h := middleware.Recoverer(logger, reg)(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	h := middleware.Recoverer(logger, reg)(http.HandlerFunc(func(_ http.ResponseWriter, _ *http.Request) {
 		panic("kaboom")
 	}))
 	rec := httptest.NewRecorder()
@@ -172,7 +172,7 @@ func TestRecoverer_PanicTo500Envelope(t *testing.T) {
 
 func TestCORS_AllowsAndAnswersPreflight(t *testing.T) {
 	cfg := middleware.DefaultCORS()
-	h := middleware.CORS(cfg)(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	h := middleware.CORS(cfg)(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)
 	}))
 	// Preflight.
@@ -194,7 +194,7 @@ func TestCORS_AllowsAndAnswersPreflight(t *testing.T) {
 }
 
 func TestCORS_Disabled(t *testing.T) {
-	h := middleware.CORS(middleware.CORSConfig{})(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	h := middleware.CORS(middleware.CORSConfig{})(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusTeapot)
 	}))
 	rec := httptest.NewRecorder()
@@ -209,7 +209,7 @@ func TestAudit_LogsAndSkipsExcluded(t *testing.T) {
 	var buf strings.Builder
 	logger := slog.New(slog.NewJSONHandler(&buf, &slog.HandlerOptions{Level: slog.LevelDebug}))
 	mw := middleware.Audit(logger, []string{"/metrics"})
-	h := mw(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	h := mw(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)
 	}))
 	// Excluded path → no log line.

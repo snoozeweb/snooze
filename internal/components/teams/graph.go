@@ -96,7 +96,7 @@ func (g *graphClient) fetchToken(ctx context.Context) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("teams: token request: %w", err)
 	}
-	defer resp.Body.Close()
+	defer resp.Body.Close() //nolint:errcheck
 
 	raw, err := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
 	if err != nil {
@@ -155,14 +155,14 @@ func (g *graphClient) invalidateToken() {
 // land in a json.RawMessage on the way out so callers that want them can
 // re-parse.
 type graphMessage struct {
-	ID              string             `json:"id"`
-	ReplyToID       string             `json:"replyToId,omitempty"`
-	CreatedDateTime time.Time          `json:"createdDateTime,omitempty"`
-	From            graphFrom          `json:"from"`
-	Body            graphBody          `json:"body"`
-	Mentions        []graphMention     `json:"mentions,omitempty"`
-	Raw             json.RawMessage    `json:"-"`
-	Extra           map[string]any     `json:"-"`
+	ID              string          `json:"id"`
+	ReplyToID       string          `json:"replyToId,omitempty"`
+	CreatedDateTime time.Time       `json:"createdDateTime,omitempty"`
+	From            graphFrom       `json:"from"`
+	Body            graphBody       `json:"body"`
+	Mentions        []graphMention  `json:"mentions,omitempty"`
+	Raw             json.RawMessage `json:"-"`
+	Extra           map[string]any  `json:"-"`
 }
 
 type graphFrom struct {
@@ -186,9 +186,9 @@ type graphBody struct {
 }
 
 type graphMention struct {
-	ID            int            `json:"id"`
-	MentionText   string         `json:"mentionText"`
-	Mentioned     map[string]any `json:"mentioned,omitempty"`
+	ID          int            `json:"id"`
+	MentionText string         `json:"mentionText"`
+	Mentioned   map[string]any `json:"mentioned,omitempty"`
 }
 
 // graphMessagesPage is the {"value": [...]} envelope returned by GET messages.
@@ -278,7 +278,7 @@ func (g *graphClient) doJSON(ctx context.Context, method, endpoint string, body 
 			return err
 		}
 	}
-	defer resp.Body.Close()
+	defer resp.Body.Close() //nolint:errcheck
 
 	respBody, err := io.ReadAll(io.LimitReader(resp.Body, 8<<20))
 	if err != nil {

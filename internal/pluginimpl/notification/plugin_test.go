@@ -28,9 +28,9 @@ import (
 type recordingBus struct {
 	inner mq.Bus
 
-	mu       sync.Mutex
-	calls    []recordedCall
-	total    atomic.Int64
+	mu    sync.Mutex
+	calls []recordedCall
+	total atomic.Int64
 }
 
 type recordedCall struct {

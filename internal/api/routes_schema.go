@@ -46,7 +46,7 @@ func (rt *Router) mountPermissions(r chi.Router) {
 	r.Get("/api/v1/permissions", rt.handlePermissions)
 }
 
-func (rt *Router) handlePermissions(w http.ResponseWriter, r *http.Request) {
+func (rt *Router) handlePermissions(w http.ResponseWriter, _ *http.Request) {
 	set := map[string]struct{}{
 		"rw_all": {},
 		"ro_all": {},

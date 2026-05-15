@@ -69,7 +69,7 @@ func (d *Driver) BulkIncrement(ctx context.Context, collection string, ops []dbp
 			if err != nil {
 				return err
 			}
-			stmt := fmt.Sprintf(
+			stmt := fmt.Sprintf( //nolint:gosec
 				"UPDATE %s SET data = ?, updated_at = strftime('%%Y-%%m-%%dT%%H:%%M:%%fZ','now') WHERE uid = ?",
 				quoteIdent(tbl),
 			)

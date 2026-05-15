@@ -102,7 +102,7 @@ func (l *LDAPProvider) Authenticate(ctx context.Context, c Credentials) (Identit
 	if err != nil {
 		return Identity{}, fmt.Errorf("ldap dial: %w", err)
 	}
-	defer conn.Close()
+	defer conn.Close() //nolint:errcheck
 
 	if cfg.BindDN != "" {
 		if err := conn.Bind(cfg.BindDN, cfg.BindPassword); err != nil {

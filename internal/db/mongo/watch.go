@@ -50,7 +50,7 @@ func newMongoBus(d *Driver) *mongoBus {
 // Publish does nothing here: Mongo change streams are populated by the
 // database itself. The method satisfies syncer.Bus.Publish so callers can use
 // the unified API.
-func (b *mongoBus) Publish(ctx context.Context, e syncer.Event) error { return nil }
+func (b *mongoBus) Publish(_ context.Context, _ syncer.Event) error { return nil }
 
 // Subscribe registers a topic-prefix subscriber. The returned channel is
 // closed when ctx is cancelled (subscriber-scoped) or when Close is called
@@ -106,7 +106,7 @@ func (b *mongoBus) ensureStreamLocked(collection string) {
 	if _, ok := b.streams[collection]; ok {
 		return
 	}
-	ctx, cancel := context.WithCancel(b.rootCtx)
+	ctx, cancel := context.WithCancel(b.rootCtx) //nolint:gosec
 	b.streams[collection] = cancel
 	go b.runStream(ctx, collection)
 }
@@ -124,7 +124,7 @@ func (b *mongoBus) runStream(ctx context.Context, collection string) {
 		}
 		return
 	}
-	defer stream.Close(context.Background())
+	defer stream.Close(context.Background()) //nolint:errcheck
 	for stream.Next(ctx) {
 		var raw bson.M
 		if err := stream.Decode(&raw); err != nil {

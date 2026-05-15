@@ -18,12 +18,12 @@ const roleCollection = "role"
 // aggregateRuleCollection is the storage collection for aggregate rules.
 const aggregateRuleCollection = "aggregaterule"
 
-// bootstrapMarkerField is the field name on a single ``general`` doc that, when
-// set, indicates a prior bootstrap. Matches Python's ``init_db`` flag.
+// bootstrapMarkerField is the field name on a single “general“ doc that, when
+// set, indicates a prior bootstrap. Matches Python's “init_db“ flag.
 const bootstrapMarkerField = "init_db"
 
 // defaultRoles are the canonical RBAC seed roles. Names mirror the Python
-// codebase; ``viewer`` replaces Python's ``user`` to make the read-only intent
+// codebase; “viewer“ replaces Python's “user“ to make the read-only intent
 // explicit (the legacy name is also seeded for backwards compatibility).
 func defaultRoles() []db.Document {
 	return []db.Document{
@@ -56,7 +56,7 @@ func defaultAggregateRules() []db.Document {
 
 // BootstrapDB seeds the default roles, the root user, and the default
 // aggregate rule. The seeding is idempotent: a marker document in the
-// ``general`` collection prevents subsequent runs from re-writing the seeds.
+// “general“ collection prevents subsequent runs from re-writing the seeds.
 //
 // EnsureRoot (in package auth) is invoked separately by the boot sequence;
 // BootstrapDB intentionally does not write user rows so the two responsibilities

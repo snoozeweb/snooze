@@ -203,13 +203,13 @@ func (b *mongoBus) watchAndPoll(ctx context.Context, queue string, opts Subscrib
 		}}},
 	}
 	streamCh := make(chan struct{}, 1)
-	go func() {
+	go func() { //nolint:gosec
 		stream, err := b.coll.Watch(ctx, pipeline, options.ChangeStream().SetFullDocument(options.UpdateLookup))
 		if err != nil {
 			// Change streams unavailable; rely on the timer.
 			return
 		}
-		defer stream.Close(context.Background())
+		defer stream.Close(context.Background()) //nolint:errcheck
 		for stream.Next(ctx) {
 			select {
 			case streamCh <- struct{}{}:

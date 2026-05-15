@@ -95,10 +95,10 @@ type seriesBucket struct {
 }
 
 type statsTotals struct {
-	BySeverity       map[string]int `json:"by_severity"`
-	ByEnvironment    map[string]int `json:"by_environment"`
-	ByActionSuccess  map[string]int `json:"by_action_success"`
-	ByActionFailure  map[string]int `json:"by_action_failure"`
+	BySeverity      map[string]int `json:"by_severity"`
+	ByEnvironment   map[string]int `json:"by_environment"`
+	ByActionSuccess map[string]int `json:"by_action_success"`
+	ByActionFailure map[string]int `json:"by_action_failure"`
 }
 
 type statsMeta struct {
@@ -289,4 +289,3 @@ func recordEpoch(rec db.Document) (int64, bool) {
 	}
 	return 0, false
 }
-

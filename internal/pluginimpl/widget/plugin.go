@@ -48,10 +48,10 @@ func (p *Plugin) Schema() any {
 	return map[string]any{
 		"type": "object",
 		"properties": map[string]any{
-			"name":         map[string]any{"type": "string"},
+			"name":          map[string]any{"type": "string"},
 			"vue_component": map[string]any{"type": "string"},
-			"form":         map[string]any{"type": "object"},
-			"options":      map[string]any{"type": "object"},
+			"form":          map[string]any{"type": "object"},
+			"options":       map[string]any{"type": "object"},
 		},
 		"additionalProperties": true,
 	}

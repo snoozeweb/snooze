@@ -106,4 +106,3 @@ func stringSliceField(doc db.Document, field string) []string {
 		return nil
 	}
 }
-

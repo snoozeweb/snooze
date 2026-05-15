@@ -39,9 +39,7 @@ func Load(t *testing.T, drv db.Driver, s Set) {
 			continue
 		}
 		out := make([]db.Document, 0, len(docs))
-		for _, d := range docs {
-			out = append(out, d)
-		}
+		out = append(out, docs...)
 		_, err := drv.Write(ctx, collection, out, db.WriteOptions{UpdateTime: false})
 		require.NoError(t, err, fmt.Sprintf("seed %s", collection))
 	}

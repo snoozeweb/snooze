@@ -67,7 +67,7 @@ func (rt *Router) mountLogin(r chi.Router) {
 
 // handleLoginIndex enumerates available auth backends. The default backend
 // (per general.default_auth_backend) is listed first.
-func (rt *Router) handleLoginIndex(w http.ResponseWriter, r *http.Request) {
+func (rt *Router) handleLoginIndex(w http.ResponseWriter, _ *http.Request) {
 	if rt.Providers == nil {
 		WriteJSON(w, http.StatusOK, map[string]any{"data": map[string]any{"backends": []string{}}})
 		return
@@ -300,17 +300,4 @@ func (rt *Router) resolveRoles(ctx context.Context, claims *snoozetypes.Claims) 
 	}
 	claims.Roles = roles
 	claims.Permissions = perms
-}
-
-// signFor expands id into the canonical Claims (subject + method + groups +
-// roles + permissions resolved if a resolver is attached) and signs them.
-//
-// Deprecated: kept as a thin wrapper around signSession for callers that
-// only need the access-token half of the pair.
-func (rt *Router) signFor(id auth.Identity) (string, time.Time, error) {
-	resp, err := rt.signSession(context.Background(), id)
-	if err != nil {
-		return "", time.Time{}, err
-	}
-	return resp.Token, resp.ExpiresAt, nil
 }

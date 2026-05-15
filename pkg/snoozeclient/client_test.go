@@ -110,7 +110,7 @@ func TestLogin(t *testing.T) {
 		require.EqualValues(t, 0o600, info.Mode().Perm())
 	})
 	t.Run("bad credentials surface as APIError", func(t *testing.T) {
-		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 			writeJSON(t, w, http.StatusUnauthorized, errorBody("unauthorized", "invalid credentials"))
 		}))
 		defer srv.Close()
@@ -125,7 +125,7 @@ func TestLogin(t *testing.T) {
 	})
 	t.Run("5xx retries until success", func(t *testing.T) {
 		var calls atomic.Int32
-		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 			if calls.Add(1) == 1 {
 				writeJSON(t, w, http.StatusBadGateway, errorBody("upstream", "boom"))
 				return
@@ -173,7 +173,7 @@ func TestDoGet(t *testing.T) {
 		require.Equal(t, "thing-42", got.Name)
 	})
 	t.Run("dest=nil discards body", func(t *testing.T) {
-		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 			writeJSON(t, w, http.StatusOK, map[string]any{"name": "x"})
 		}))
 		defer srv.Close()
@@ -183,7 +183,7 @@ func TestDoGet(t *testing.T) {
 	})
 	t.Run("4xx returns APIError without retry", func(t *testing.T) {
 		var calls atomic.Int32
-		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 			calls.Add(1)
 			writeJSON(t, w, http.StatusBadRequest, snoozetypes.ErrEnvelope{
 				Error: snoozetypes.ErrBody{
@@ -212,7 +212,7 @@ func TestDoGet(t *testing.T) {
 	})
 	t.Run("5xx retries then succeeds", func(t *testing.T) {
 		var calls atomic.Int32
-		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 			n := calls.Add(1)
 			if n == 1 {
 				writeJSON(t, w, http.StatusInternalServerError, errorBody("internal", "kaboom"))
@@ -230,7 +230,7 @@ func TestDoGet(t *testing.T) {
 	})
 	t.Run("5xx exhausts retries and returns APIError", func(t *testing.T) {
 		var calls atomic.Int32
-		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 			calls.Add(1)
 			writeJSON(t, w, http.StatusServiceUnavailable, errorBody("unavailable", "down"))
 		}))
@@ -256,11 +256,11 @@ func TestAutoLoginOn401(t *testing.T) {
 			loginCalls atomic.Int32
 		)
 		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			switch {
-			case r.URL.Path == "/api/v1/login/local":
+			switch r.URL.Path {
+			case "/api/v1/login/local":
 				loginCalls.Add(1)
 				writeJSON(t, w, http.StatusOK, map[string]any{"token": "fresh-token"})
-			case r.URL.Path == "/api/v1/things":
+			case "/api/v1/things":
 				n := thingCalls.Add(1)
 				if n == 1 {
 					require.Equal(t, "Bearer stale", r.Header.Get("Authorization"))
@@ -303,7 +303,7 @@ func TestAutoLoginOn401(t *testing.T) {
 		require.Contains(t, err.Error(), "re-login after 401")
 	})
 	t.Run("no relogin when credentials are absent", func(t *testing.T) {
-		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 			writeJSON(t, w, http.StatusUnauthorized, errorBody("unauthorized", "expired"))
 		}))
 		defer srv.Close()
@@ -355,7 +355,7 @@ func TestPostAlert(t *testing.T) {
 		require.Equal(t, "db-1", rec.Host)
 	})
 	t.Run("server-reported error surfaces as error", func(t *testing.T) {
-		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 			writeJSON(t, w, http.StatusOK, map[string]any{
 				"data":   []map[string]any{},
 				"errors": []string{"plugin rejected: missing host"},
@@ -373,7 +373,7 @@ func TestPostAlert(t *testing.T) {
 }
 
 func TestTokenCacheRoundtrip(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		writeJSON(t, w, http.StatusOK, map[string]any{"token": "persisted-tok"})
 	}))
 	defer srv.Close()
@@ -401,7 +401,7 @@ func TestTokenCacheRoundtrip(t *testing.T) {
 }
 
 func TestInsecureTLS(t *testing.T) {
-	srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		writeJSON(t, w, http.StatusOK, map[string]any{"ok": true})
 	}))
 	defer srv.Close()
@@ -471,7 +471,6 @@ func TestDoMethodsCoverMutators(t *testing.T) {
 		}},
 	}
 	for _, tc := range cases {
-		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				require.Equal(t, tc.method, r.Method)

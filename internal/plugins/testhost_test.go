@@ -157,13 +157,13 @@ func (m *memDB) PrependList(context.Context, string, map[string][]any, condition
 func (m *memDB) RemoveList(context.Context, string, map[string][]any, condition.Cond) (int, error) {
 	return 0, errUnsup
 }
-func (m *memDB) CreateIndex(context.Context, string, []string) error    { return nil }
-func (m *memDB) ListCollections(context.Context) ([]string, error)      { return nil, nil }
-func (m *memDB) Drop(context.Context, string) error                     { return nil }
-func (m *memDB) Backup(context.Context, string, []string) error         { return nil }
-func (m *memDB) CleanupTimeout(context.Context, string) (int, error)    { return 0, nil }
-func (m *memDB) CleanupComments(context.Context) (int, error)           { return 0, nil }
-func (m *memDB) CleanupOrphans(context.Context, string) (int, error)    { return 0, nil }
+func (m *memDB) CreateIndex(context.Context, string, []string) error { return nil }
+func (m *memDB) ListCollections(context.Context) ([]string, error)   { return nil, nil }
+func (m *memDB) Drop(context.Context, string) error                  { return nil }
+func (m *memDB) Backup(context.Context, string, []string) error      { return nil }
+func (m *memDB) CleanupTimeout(context.Context, string) (int, error) { return 0, nil }
+func (m *memDB) CleanupComments(context.Context) (int, error)        { return 0, nil }
+func (m *memDB) CleanupOrphans(context.Context, string) (int, error) { return 0, nil }
 func (m *memDB) CleanupAuditLogs(context.Context, time.Duration) (int, error) {
 	return 0, nil
 }
@@ -199,10 +199,10 @@ func newNullHost(driver db.Driver) *nullHost {
 	}
 }
 
-func (h *nullHost) DB() db.Driver               { return h.driver }
-func (h *nullHost) Bus() Bus                    { return nil }
-func (h *nullHost) Logger() *slog.Logger        { return h.logger }
-func (h *nullHost) Tracer() trace.Tracer        { return h.tracer }
+func (h *nullHost) DB() db.Driver                { return h.driver }
+func (h *nullHost) Bus() Bus                     { return nil }
+func (h *nullHost) Logger() *slog.Logger         { return h.logger }
+func (h *nullHost) Tracer() trace.Tracer         { return h.tracer }
 func (h *nullHost) Metrics() *telemetry.Registry { return h.metr }
-func (h *nullHost) Config() *config.Config      { return h.cfg }
-func (h *nullHost) Plugin(name string) Plugin   { return h.plugs[name] }
+func (h *nullHost) Config() *config.Config       { return h.cfg }
+func (h *nullHost) Plugin(name string) Plugin    { return h.plugs[name] }

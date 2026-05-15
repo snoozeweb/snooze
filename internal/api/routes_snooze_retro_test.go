@@ -182,7 +182,7 @@ func TestRetroApply_RequiresRwRecord(t *testing.T) {
 	require.Equal(t, http.StatusOK, rec.Code)
 
 	// No claims at all → 401.
-	req = httptest.NewRequest("POST", "/api/v1/snooze/"+uid+"/retro_apply", nil)
+	req = httptest.NewRequest(http.MethodPost, "/api/v1/snooze/"+uid+"/retro_apply", nil)
 	rec = httptest.NewRecorder()
 	r.ServeHTTP(rec, req)
 	require.Equal(t, http.StatusUnauthorized, rec.Code)

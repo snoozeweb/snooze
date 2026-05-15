@@ -12,7 +12,7 @@ import (
 )
 
 // RoleCollection is the collection storing role documents. Each document is
-// shaped as ``{name, permissions: [...], groups: [...]}``.
+// shaped as “{name, permissions: [...], groups: [...]}“.
 const RoleCollection = "role"
 
 // AllPermission is the wildcard permission that grants every action. It
@@ -32,9 +32,9 @@ func NewRoleResolver(driver db.Driver) *RoleResolver { return &RoleResolver{DB: 
 // is the union of:
 //
 //   - roles explicitly attached to the user document (user.roles)
-//   - roles whose ``groups`` field intersects the identity's groups
+//   - roles whose “groups“ field intersects the identity's groups
 //
-// Permissions are the deduplicated union of each role's ``permissions`` field.
+// Permissions are the deduplicated union of each role's “permissions“ field.
 // Missing collections are not fatal — the resolver returns empty slices.
 func (r *RoleResolver) Resolve(ctx context.Context, id Identity) ([]string, []string, error) {
 	if r.DB == nil {

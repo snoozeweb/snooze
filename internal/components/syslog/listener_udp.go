@@ -67,7 +67,7 @@ func (l *UDPListener) LocalAddr() net.Addr {
 // or a wrapped network error otherwise. The socket is closed before Run
 // returns.
 func (l *UDPListener) Run(ctx context.Context) error {
-	defer l.conn.Close()
+	defer l.conn.Close() //nolint:errcheck
 	buf := make([]byte, udpBufferSize)
 	for {
 		if err := ctx.Err(); err != nil {

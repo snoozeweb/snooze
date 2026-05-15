@@ -54,7 +54,6 @@ func (s *Syncer) Run(ctx context.Context) error {
 
 	g, gctx := errgroup.WithContext(ctx)
 	for name, plug := range s.Plugins {
-		name, plug := name, plug
 		g.Go(func() error {
 			s.runPlugin(gctx, name, plug, debounce, logger)
 			return nil

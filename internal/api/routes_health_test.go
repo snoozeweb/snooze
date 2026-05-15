@@ -67,13 +67,15 @@ func (f *fakeDB) PrependList(_ context.Context, _ string, _ map[string][]any, _ 
 func (f *fakeDB) RemoveList(_ context.Context, _ string, _ map[string][]any, _ condition.Cond) (int, error) {
 	return 0, nil
 }
-func (f *fakeDB) CreateIndex(_ context.Context, _ string, _ []string) error  { return nil }
-func (f *fakeDB) ListCollections(_ context.Context) ([]string, error)        { return f.collections, f.listErr }
-func (f *fakeDB) Drop(_ context.Context, _ string) error                     { return nil }
-func (f *fakeDB) Backup(_ context.Context, _ string, _ []string) error       { return nil }
-func (f *fakeDB) CleanupTimeout(_ context.Context, _ string) (int, error)    { return 0, nil }
-func (f *fakeDB) CleanupComments(_ context.Context) (int, error)             { return 0, nil }
-func (f *fakeDB) CleanupOrphans(_ context.Context, _ string) (int, error)    { return 0, nil }
+func (f *fakeDB) CreateIndex(_ context.Context, _ string, _ []string) error { return nil }
+func (f *fakeDB) ListCollections(_ context.Context) ([]string, error) {
+	return f.collections, f.listErr
+}
+func (f *fakeDB) Drop(_ context.Context, _ string) error                  { return nil }
+func (f *fakeDB) Backup(_ context.Context, _ string, _ []string) error    { return nil }
+func (f *fakeDB) CleanupTimeout(_ context.Context, _ string) (int, error) { return 0, nil }
+func (f *fakeDB) CleanupComments(_ context.Context) (int, error)          { return 0, nil }
+func (f *fakeDB) CleanupOrphans(_ context.Context, _ string) (int, error) { return 0, nil }
 func (f *fakeDB) CleanupAuditLogs(_ context.Context, _ time.Duration) (int, error) {
 	return 0, nil
 }

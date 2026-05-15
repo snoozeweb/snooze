@@ -23,18 +23,6 @@ import (
 	"github.com/japannext/snooze/pkg/snoozetypes"
 )
 
-// minimalCfg returns a Config suitable for unit tests: Listen on a random
-// port, no TLS, no auth.
-func minimalCfg(t *testing.T) Config {
-	t.Helper()
-	cfg, err := Config{
-		Server: "http://127.0.0.1:0",
-		Listen: "127.0.0.1:0",
-	}.WithDefaults()
-	require.NoError(t, err)
-	return cfg
-}
-
 func TestConfig_WithDefaults(t *testing.T) {
 	t.Run("requires server", func(t *testing.T) {
 		_, err := Config{Listen: "127.0.0.1:25"}.WithDefaults()
@@ -230,7 +218,7 @@ func newFakeAlertServer(t *testing.T) *fakeAlertServer {
 	f := &fakeAlertServer{}
 	f.loginOK.Store(true)
 	mux := http.NewServeMux()
-	mux.HandleFunc("/api/v1/login/local", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("/api/v1/login/local", func(w http.ResponseWriter, _ *http.Request) {
 		if !f.loginOK.Load() {
 			http.Error(w, "no", http.StatusUnauthorized)
 			return
@@ -358,10 +346,7 @@ func TestDaemon_EndToEnd(t *testing.T) {
 
 	// Wait briefly for the goroutine that handles DATA to finish posting.
 	deadline := time.Now().Add(2 * time.Second)
-	for {
-		if len(fake.records()) >= 1 {
-			break
-		}
+	for len(fake.records()) < 1 {
 		if time.Now().After(deadline) {
 			t.Fatal("expected alert posted within 2s")
 		}

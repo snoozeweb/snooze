@@ -116,7 +116,6 @@ func TestInfluxDB2(t *testing.T) {
 			{"unknown", "unknown", ""},
 		}
 		for _, tc := range cases {
-			tc := tc
 			t.Run(tc.level, func(t *testing.T) {
 				host := newHost()
 				p := newPlugin(t, host)

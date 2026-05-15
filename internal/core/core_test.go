@@ -89,9 +89,9 @@ func TestCore_SupervisorWiring(t *testing.T) {
 	sup := &Supervisor{Logger: slog.New(slog.NewTextHandler(io.Discard, nil))}
 	g, gctx := errgroup.WithContext(context.Background())
 	done := make(chan struct{})
-	sup.Go(g, gctx, Job{
+	sup.Go(gctx, g, Job{
 		Name: "wire",
-		Fn: func(ctx context.Context) error {
+		Fn: func(_ context.Context) error {
 			close(done)
 			return nil
 		},

@@ -68,7 +68,7 @@ type Config struct {
 
 // LoadConfig reads path, parses YAML and validates required fields.
 func LoadConfig(path string) (*Config, error) {
-	raw, err := os.ReadFile(path)
+	raw, err := os.ReadFile(path) //nolint:gosec
 	if err != nil {
 		return nil, fmt.Errorf("mattermost: read config %s: %w", path, err)
 	}

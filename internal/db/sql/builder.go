@@ -171,8 +171,7 @@ func asString(v any) string {
 	if v == nil {
 		return ""
 	}
-	switch t := v.(type) {
-	case string:
+	if t, ok := v.(string); ok {
 		return t
 	}
 	return fmt.Sprintf("%v", v)

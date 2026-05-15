@@ -31,14 +31,6 @@ type parser struct {
 
 func (p *parser) peek() token { return p.toks[p.pos] }
 
-func (p *parser) peekAt(n int) token {
-	idx := p.pos + n
-	if idx >= len(p.toks) {
-		return p.toks[len(p.toks)-1]
-	}
-	return p.toks[idx]
-}
-
 func (p *parser) advance() token {
 	t := p.toks[p.pos]
 	if t.kind != tkEOF {

@@ -58,7 +58,7 @@ type coreAdapter struct{ *core.Core }
 // ProcessRecord forwards to Core.ProcessRecordMap. The signature matches
 // api.AlertProcessor.
 func (a *coreAdapter) ProcessRecord(ctx context.Context, rec map[string]any) (map[string]any, error) {
-	return a.Core.ProcessRecordMap(ctx, rec)
+	return a.ProcessRecordMap(ctx, rec)
 }
 
 // Compile-time guarantee that the adapter satisfies api.AlertProcessor.
@@ -77,7 +77,7 @@ func run(args []string, stdout, stderr io.Writer) int {
 	if len(args) >= 1 {
 		switch args[0] {
 		case "version":
-			fmt.Fprintln(stdout, "snooze-server", version.String())
+			_, _ = fmt.Fprintln(stdout, "snooze-server", version.String())
 			return exitOK
 		case "migrate-config":
 			return runMigrateConfig(args[1:], stdout, stderr)
@@ -94,7 +94,7 @@ func run(args []string, stdout, stderr io.Writer) int {
 
 // printUsage describes the supported subcommands.
 func printUsage(w io.Writer) {
-	fmt.Fprintln(w, `snooze-server — Snooze monitoring server
+	_, _ = fmt.Fprintln(w, `snooze-server — Snooze monitoring server
 
 Usage:
   snooze-server [--config /etc/snooze/server-go]   Start the daemon
@@ -115,10 +115,10 @@ func runMigrateConfig(args []string, stdout, stderr io.Writer) int {
 		return exitUsage
 	}
 	if *from == "" {
-		fmt.Fprintln(stderr, "migrate-config: --from is required")
+		_, _ = fmt.Fprintln(stderr, "migrate-config: --from is required")
 		return exitUsage
 	}
-	fmt.Fprintln(stdout, "migrate-config: not yet implemented; the loader already accepts the legacy file names verbatim")
+	_, _ = fmt.Fprintln(stdout, "migrate-config: not yet implemented; the loader already accepts the legacy file names verbatim")
 	return exitOK
 }
 
@@ -141,18 +141,18 @@ func runRootToken(args []string, stdout, stderr io.Writer) int {
 	}
 	resp, err := hc.Get("http://admin/api/root_token")
 	if err != nil {
-		fmt.Fprintf(stderr, "root-token: dial %s: %v\n", *socket, err)
+		_, _ = fmt.Fprintf(stderr, "root-token: dial %s: %v\n", *socket, err)
 		return exitErr
 	}
-	defer resp.Body.Close()
+	defer resp.Body.Close() //nolint:errcheck
 	body, _ := io.ReadAll(resp.Body)
 	if resp.StatusCode != http.StatusOK {
-		fmt.Fprintf(stderr, "root-token: server returned %d: %s\n", resp.StatusCode, strings.TrimSpace(string(body)))
+		_, _ = fmt.Fprintf(stderr, "root-token: server returned %d: %s\n", resp.StatusCode, strings.TrimSpace(string(body)))
 		return exitErr
 	}
-	stdout.Write(body)
+	_, _ = stdout.Write(body)
 	if len(body) == 0 || body[len(body)-1] != '\n' {
-		fmt.Fprintln(stdout)
+		_, _ = fmt.Fprintln(stdout)
 	}
 	return exitOK
 }
@@ -198,7 +198,7 @@ func parseDaemonFlags(args []string, stderr io.Writer) (*daemonFlags, error) {
 // runDaemon drives the full bring-up sequence. The blocking wait for shutdown
 // signals happens inside; the function returns once every subsystem has
 // reported back.
-func runDaemon(args []string, stdout, stderr io.Writer) int {
+func runDaemon(args []string, _ io.Writer, stderr io.Writer) int {
 	f, err := parseDaemonFlags(args, stderr)
 	if err != nil {
 		// flag has already printed the message.
@@ -214,7 +214,7 @@ func runDaemon(args []string, stdout, stderr io.Writer) int {
 	defer stop()
 
 	if err := runDaemonCtx(ctx, f, stderr); err != nil {
-		fmt.Fprintf(stderr, "snooze-server: %v\n", err)
+		_, _ = fmt.Fprintf(stderr, "snooze-server: %v\n", err)
 		return exitErr
 	}
 	return exitOK
@@ -420,7 +420,7 @@ func openWebFS(dir string, logger *slog.Logger) http.FileSystem {
 	if dir == "" {
 		return nil
 	}
-	info, err := os.Stat(dir)
+	info, err := os.Stat(dir) //nolint:gosec
 	if err != nil || !info.IsDir() {
 		if logger != nil {
 			logger.Warn("web ui directory missing; serving stub",

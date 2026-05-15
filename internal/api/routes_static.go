@@ -101,4 +101,3 @@ func readSeeker(f http.File) seekableFile {
 	// http.File is io.ReadSeeker by interface, so this is a free assertion.
 	return f
 }
-

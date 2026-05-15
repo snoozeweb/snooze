@@ -54,7 +54,7 @@ func newLoginCmd() *cobra.Command {
 			if err := c.Login(cmd.Context()); err != nil {
 				return err
 			}
-			fmt.Fprintln(cmd.OutOrStdout(), "Logged in. Token cached.")
+			_, _ = fmt.Fprintln(cmd.OutOrStdout(), "Logged in. Token cached.")
 			return nil
 		},
 	}
@@ -73,9 +73,9 @@ func promptPassword(cmd *cobra.Command, rt *runtime) (string, error) {
 	if file, ok := in.(*os.File); ok {
 		fd := int(file.Fd())
 		if term.IsTerminal(fd) {
-			fmt.Fprint(cmd.ErrOrStderr(), "Password: ")
+			_, _ = fmt.Fprint(cmd.ErrOrStderr(), "Password: ")
 			raw, err := term.ReadPassword(fd)
-			fmt.Fprintln(cmd.ErrOrStderr())
+			_, _ = fmt.Fprintln(cmd.ErrOrStderr())
 			if err != nil {
 				return "", err
 			}
@@ -94,7 +94,7 @@ func promptPassword(cmd *cobra.Command, rt *runtime) (string, error) {
 // readLine prompts on stderr and reads one line from stdin (whitespace-trimmed).
 func readLine(cmd *cobra.Command, prompt string) (string, error) {
 	if prompt != "" {
-		fmt.Fprint(cmd.ErrOrStderr(), prompt)
+		_, _ = fmt.Fprint(cmd.ErrOrStderr(), prompt)
 	}
 	rd := bufio.NewReader(cmd.InOrStdin())
 	line, err := rd.ReadString('\n')

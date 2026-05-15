@@ -2,7 +2,6 @@ package core
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"log/slog"
 	"runtime/debug"
@@ -105,7 +104,7 @@ func (s *Supervisor) Status() []JobStatus {
 // Go enrolls j on g with panic recovery + bounded retry. The returned
 // goroutine respects ctx cancellation in two ways: (a) Fn must do so, and
 // (b) on Fn returning an error the supervisor checks ctx before retrying.
-func (s *Supervisor) Go(g *errgroup.Group, ctx context.Context, j Job) {
+func (s *Supervisor) Go(ctx context.Context, g *errgroup.Group, j Job) {
 	if g == nil {
 		return
 	}
@@ -233,8 +232,3 @@ func (s *Supervisor) touch(name string, mutate func(*JobStatus)) {
 	}
 	mutate(st)
 }
-
-// errJobNilFn is returned when a caller passes a Job with no Fn. Currently
-// only used in tests; production code reaches Go() through helpers that
-// would have wrapped Fn before this point.
-var errJobNilFn = errors.New("supervisor: job has nil Fn")

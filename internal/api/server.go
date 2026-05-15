@@ -109,9 +109,9 @@ func (s *Server) ListenAndServe(ctx context.Context) error {
 	go func() {
 		switch {
 		case s.tls.Enabled:
-			errCh <- s.Server.ServeTLS(ln, s.tls.CertFile, s.tls.KeyFile)
+			errCh <- s.ServeTLS(ln, s.tls.CertFile, s.tls.KeyFile)
 		default:
-			errCh <- s.Server.Serve(ln)
+			errCh <- s.Serve(ln)
 		}
 	}()
 
@@ -119,7 +119,7 @@ func (s *Server) ListenAndServe(ctx context.Context) error {
 	case <-ctx.Done():
 		shutCtx, cancel := context.WithTimeout(context.Background(), s.grace)
 		defer cancel()
-		if err := s.Server.Shutdown(shutCtx); err != nil {
+		if err := s.Shutdown(shutCtx); err != nil {
 			return fmt.Errorf("api server: shutdown: %w", err)
 		}
 		// drain Serve's exit
@@ -146,5 +146,5 @@ func (s *Server) listen() (net.Listener, error) {
 		}
 		return ln, nil
 	}
-	return net.Listen("tcp", s.Server.Addr)
+	return net.Listen("tcp", s.Addr)
 }

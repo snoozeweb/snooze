@@ -137,7 +137,7 @@ func TestAggregateRuleObject_Match(t *testing.T) {
 	require.NotEmpty(t, out.Extra["hash"])
 }
 
-// TestAggregate_Throttle ports Python's test_agreggate_throttle: same hash
+// TestAggregate_Throttle ports Python's test_aggregate_throttle: same hash
 // inside the window collapses; different hash flows through.
 func TestAggregate_Throttle(t *testing.T) {
 	t.Parallel()
@@ -174,7 +174,7 @@ func TestAggregate_Throttle(t *testing.T) {
 	require.Equal(t, int64(1), byB["0"])
 }
 
-// TestAggregate_NoThrottle ports Python's test_agreggate_nothrottle: with
+// TestAggregate_NoThrottle ports Python's test_aggregate_nothrottle: with
 // throttle <= 0 every duplicate still aggregates onto the same hash.
 func TestAggregate_NoThrottle(t *testing.T) {
 	t.Parallel()

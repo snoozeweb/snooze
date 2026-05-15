@@ -1,7 +1,7 @@
 // Package user implements the "user" data-model plugin.
 //
 // Authentication logic — including the user/role/profile reconciliation that
-// the Python ``manage_db`` helper performs — lives in internal/auth/*. This
+// the Python “manage_db“ helper performs — lives in internal/auth/*. This
 // plugin is intentionally a thin DataModel; it owns the collection schema
 // and the CRUD surface, nothing more.
 package user

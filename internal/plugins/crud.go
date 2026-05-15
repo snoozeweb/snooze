@@ -142,7 +142,7 @@ func writeError(w http.ResponseWriter, status int, code, msg string) {
 }
 
 // listHandler GET /api/v1/{plugin}
-func listHandler(host Host, p Plugin, collection string) http.HandlerFunc {
+func listHandler(host Host, _ Plugin, collection string) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		page, cond, err := decodeListParams(r)
 		if err != nil {

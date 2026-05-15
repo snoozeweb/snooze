@@ -178,7 +178,7 @@ func TestCleanupAlertJob(t *testing.T) {
 	db.writeRecord("1", float64(lastWeek.Unix()), ttl.Seconds())
 	db.writeRecord("2", float64(yesterday.Unix()), ttl.Seconds())
 
-	job := NewJobFunc("cleanup_alert", func(ctx context.Context) error {
+	job := NewJobFunc("cleanup_alert", func(_ context.Context) error {
 		db.cleanupTimeout(now)
 		return nil
 	})
@@ -235,7 +235,7 @@ func TestCleanupCommentJob(t *testing.T) {
 	db.writeComment(comment{uid: "c3", recordUID: uid2, message: "comment 3"})
 	db.writeComment(comment{uid: "c4", recordUID: "unknown", message: "comment 4"})
 
-	job := NewJobFunc("cleanup_comment", func(ctx context.Context) error {
+	job := NewJobFunc("cleanup_comment", func(_ context.Context) error {
 		db.cleanupComments()
 		return nil
 	})

@@ -99,7 +99,7 @@ func (a *mmAPI) do(ctx context.Context, method, path string, body, dest any) err
 	if err != nil {
 		return fmt.Errorf("mattermost api: %s %s: %w", method, path, err)
 	}
-	defer resp.Body.Close()
+	defer resp.Body.Close() //nolint:errcheck
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		raw, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
 		return fmt.Errorf("mattermost api: %s %s: %d: %s", method, path, resp.StatusCode, strings.TrimSpace(string(raw)))

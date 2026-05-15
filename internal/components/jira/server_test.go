@@ -13,7 +13,7 @@ import (
 )
 
 func TestServer_handleAlert_singleObject(t *testing.T) {
-	jira := newTestJira(t, func(w http.ResponseWriter, r *http.Request) {
+	jira := newTestJira(t, func(w http.ResponseWriter, _ *http.Request) {
 		_ = json.NewEncoder(w).Encode(map[string]any{"key": "OPS-1"})
 	})
 	cfg, _ := minimalCfg().WithDefaults()
@@ -32,7 +32,7 @@ func TestServer_handleAlert_singleObject(t *testing.T) {
 }
 
 func TestServer_handleAlert_batchArray(t *testing.T) {
-	jira := newTestJira(t, func(w http.ResponseWriter, r *http.Request) {
+	jira := newTestJira(t, func(w http.ResponseWriter, _ *http.Request) {
 		_ = json.NewEncoder(w).Encode(map[string]any{"key": "OPS-2"})
 	})
 	cfg, _ := minimalCfg().WithDefaults()
@@ -63,7 +63,7 @@ func TestServer_handleAlert_rejectsNonPost(t *testing.T) {
 
 func TestServer_handleAlert_rejectsEmptyBody(t *testing.T) {
 	cfg, _ := minimalCfg().WithDefaults()
-	jira := newTestJira(t, func(w http.ResponseWriter, r *http.Request) {})
+	jira := newTestJira(t, func(_ http.ResponseWriter, _ *http.Request) {})
 	f := newForwarder(cfg, jira, nil)
 	srv := newHTTPServer("127.0.0.1:0", f, nil)
 	req := httptest.NewRequest(http.MethodPost, "/alert", strings.NewReader(""))
@@ -75,7 +75,7 @@ func TestServer_handleAlert_rejectsEmptyBody(t *testing.T) {
 // integration smoke test: bind to :0, fire a real HTTP request, expect 200.
 func TestServer_run_integration(t *testing.T) {
 	var jiraHits int
-	jira := newTestJira(t, func(w http.ResponseWriter, r *http.Request) {
+	jira := newTestJira(t, func(w http.ResponseWriter, _ *http.Request) {
 		jiraHits++
 		_ = json.NewEncoder(w).Encode(map[string]any{"key": "OPS-42"})
 	})

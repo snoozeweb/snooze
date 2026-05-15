@@ -28,12 +28,7 @@ import (
 // to. The -c flag overrides it.
 const defaultConfigPath = "/etc/snooze/teams.yaml"
 
-func main() {
-	if len(os.Args) > 1 && os.Args[1] == "version" {
-		fmt.Println("snooze-teams", version.String())
-		return
-	}
-
+func run() int {
 	cfgPath := flag.String("c", defaultConfigPath, "path to teams.yaml")
 	debug := flag.Bool("debug", false, "enable debug logging")
 	flag.Parse()
@@ -48,13 +43,13 @@ func main() {
 	cfg, err := teams.LoadConfig(*cfgPath)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "snooze-teams:", err)
-		os.Exit(2)
+		return 2
 	}
 
 	d, err := teams.New(cfg, logger)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "snooze-teams:", err)
-		os.Exit(2)
+		return 2
 	}
 
 	// signal.NotifyContext gives us a context that cancels on the first
@@ -64,6 +59,15 @@ func main() {
 
 	if err := d.Run(ctx); err != nil && !errors.Is(err, context.Canceled) {
 		fmt.Fprintln(os.Stderr, "snooze-teams:", err)
-		os.Exit(1)
+		return 1
 	}
+	return 0
+}
+
+func main() {
+	if len(os.Args) > 1 && os.Args[1] == "version" {
+		fmt.Println("snooze-teams", version.String())
+		return
+	}
+	os.Exit(run())
 }

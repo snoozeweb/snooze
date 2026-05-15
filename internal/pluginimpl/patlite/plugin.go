@@ -114,12 +114,10 @@ func (c Config) withDefaults() Config {
 
 // Plugin is the patlite Notifier.
 type Plugin struct {
-	meta    plugins.Metadata
-	host    plugins.Host
-	cfg     Config // package-level fallback config (typically zero)
-	client  *http.Client
-	scheme  string // "http" or "https"; populated by buildClient
-	resolve func() *http.Client
+	meta   plugins.Metadata
+	host   plugins.Host
+	cfg    Config // package-level fallback config (typically zero)
+	client *http.Client
 }
 
 // Name returns the registry key.
@@ -165,7 +163,7 @@ func (p *Plugin) Send(ctx context.Context, rec snoozetypes.Record, payload plugi
 	if err != nil {
 		return fmt.Errorf("patlite: %s: %w", reqURL, err)
 	}
-	defer resp.Body.Close()
+	defer resp.Body.Close() //nolint:errcheck
 	if resp.StatusCode >= 400 {
 		return fmt.Errorf("patlite: %s: unexpected status %d", reqURL, resp.StatusCode)
 	}

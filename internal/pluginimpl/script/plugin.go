@@ -469,8 +469,8 @@ type capWriter struct {
 	truncated bool
 }
 
-func newCapWriter(max int) *capWriter {
-	return &capWriter{max: max}
+func newCapWriter(limit int) *capWriter {
+	return &capWriter{max: limit}
 }
 
 func (c *capWriter) Write(p []byte) (int, error) {

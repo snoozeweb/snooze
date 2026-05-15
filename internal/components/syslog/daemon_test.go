@@ -45,12 +45,12 @@ func newFakeBackend(t *testing.T) *fakeBackend {
 	mux.HandleFunc("/api/v1/alerts", func(w http.ResponseWriter, r *http.Request) {
 		body, err := io.ReadAll(r.Body)
 		if err != nil {
-			http.Error(w, err.Error(), 500)
+			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
 		var rec snoozetypes.Record
 		if err := json.Unmarshal(body, &rec); err != nil {
-			http.Error(w, err.Error(), 400)
+			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}
 		b.mu.Lock()

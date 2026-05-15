@@ -26,20 +26,20 @@ const (
 	tkComma
 	tkColon
 	// Operator keywords / symbols
-	tkEq          // =
-	tkNeq         // !=
-	tkLt          // <
-	tkLte         // <=
-	tkGt          // >
-	tkGte         // >=
-	tkMatches     // ~ or MATCHES
-	tkExistsSym   // ?
-	tkContains    // CONTAINS
-	tkIn          // IN
-	tkAnd         // & or AND
-	tkOr          // | or OR
-	tkNot         // ! or NOT
-	tkExistsKW    // EXISTS
+	tkEq        // =
+	tkNeq       // !=
+	tkLt        // <
+	tkLte       // <=
+	tkGt        // >
+	tkGte       // >=
+	tkMatches   // ~ or MATCHES
+	tkExistsSym // ?
+	tkContains  // CONTAINS
+	tkIn        // IN
+	tkAnd       // & or AND
+	tkOr        // | or OR
+	tkNot       // ! or NOT
+	tkExistsKW  // EXISTS
 )
 
 // token is a single lexer output.

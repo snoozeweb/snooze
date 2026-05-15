@@ -31,7 +31,7 @@ func newSnoozeStub(t *testing.T) *snoozeStub {
 	t.Helper()
 	s := &snoozeStub{}
 	mux := http.NewServeMux()
-	mux.HandleFunc("/api/v1/login/local", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("/api/v1/login/local", func(w http.ResponseWriter, _ *http.Request) {
 		s.loginHits.Add(1)
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(map[string]any{

@@ -34,12 +34,7 @@ import (
 // to. The -c flag overrides it.
 const defaultConfigPath = "/etc/snooze/jira.yaml"
 
-func main() {
-	if len(os.Args) > 1 && os.Args[1] == "version" {
-		fmt.Println("snooze-jira", version.String())
-		return
-	}
-
+func run() int {
 	cfgPath := flag.String("c", defaultConfigPath, "path to jira.yaml")
 	debug := flag.Bool("debug", false, "enable debug logging")
 	flag.Parse()
@@ -47,7 +42,7 @@ func main() {
 	cfg, err := jira.LoadConfig(*cfgPath)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "snooze-jira:", err)
-		os.Exit(2)
+		return 2
 	}
 
 	level := slog.LevelInfo
@@ -60,7 +55,7 @@ func main() {
 	d, err := jira.New(cfg, logger)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "snooze-jira:", err)
-		os.Exit(2)
+		return 2
 	}
 
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
@@ -68,6 +63,15 @@ func main() {
 
 	if err := d.Run(ctx); err != nil && !errors.Is(err, context.Canceled) {
 		fmt.Fprintln(os.Stderr, "snooze-jira:", err)
-		os.Exit(1)
+		return 1
 	}
+	return 0
+}
+
+func main() {
+	if len(os.Args) > 1 && os.Args[1] == "version" {
+		fmt.Println("snooze-jira", version.String())
+		return
+	}
+	os.Exit(run())
 }

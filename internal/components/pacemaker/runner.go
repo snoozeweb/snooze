@@ -205,19 +205,18 @@ func (r *Runner) Run(ctx context.Context, args []string) (int, error) {
 	//    matching the fence-agent convention (stdin is a fallback when the
 	//    parent process can't or won't set environment variables).
 	if err := r.mergeStdinParams(); err != nil {
-		fmt.Fprintln(r.stderr, "snooze-pacemaker:", err)
+		_, _ = fmt.Fprintln(r.stderr, "snooze-pacemaker:", err)
 		return 1, err
 	}
 
 	action := resolveAction(args, r.env)
 	if action == "" {
 		err := errors.New("snooze-pacemaker: no action supplied (pass as arg or set $action)")
-		fmt.Fprintln(r.stderr, err)
+		_, _ = fmt.Fprintln(r.stderr, err)
 		return 2, err
 	}
 
-	switch action {
-	case "metadata":
+	if action == "metadata" {
 		_, _ = io.WriteString(r.stdout, metadataXML)
 		return 0, nil
 	}
@@ -232,7 +231,7 @@ func (r *Runner) Run(ctx context.Context, args []string) (int, error) {
 
 	if _, ok := fenceActions[action]; !ok {
 		err := fmt.Errorf("snooze-pacemaker: unknown action %q", action)
-		fmt.Fprintln(r.stderr, err)
+		_, _ = fmt.Fprintln(r.stderr, err)
 		return 2, err
 	}
 
@@ -241,7 +240,7 @@ func (r *Runner) Run(ctx context.Context, args []string) (int, error) {
 	host := resolveHost(args, r.env)
 	if host == "" {
 		err := errors.New("snooze-pacemaker: no node name supplied (pass as arg or set $nodename)")
-		fmt.Fprintln(r.stderr, err)
+		_, _ = fmt.Fprintln(r.stderr, err)
 		return 1, err
 	}
 	reason := strings.TrimSpace(r.env["reason"])
@@ -253,13 +252,13 @@ func (r *Runner) Run(ctx context.Context, args []string) (int, error) {
 	// 3. Resolve credentials. Env overrides config.
 	opts, err := r.buildClientOptions()
 	if err != nil {
-		fmt.Fprintln(r.stderr, "snooze-pacemaker:", err)
+		_, _ = fmt.Fprintln(r.stderr, "snooze-pacemaker:", err)
 		return 1, err
 	}
 
 	client, err := snoozeclient.New(opts)
 	if err != nil {
-		fmt.Fprintln(r.stderr, "snooze-pacemaker: build client:", err)
+		_, _ = fmt.Fprintln(r.stderr, "snooze-pacemaker: build client:", err)
 		return 1, err
 	}
 
@@ -271,7 +270,7 @@ func (r *Runner) Run(ctx context.Context, args []string) (int, error) {
 		}
 	}
 	if _, err := client.PostAlert(ctx, rec); err != nil {
-		fmt.Fprintln(r.stderr, "snooze-pacemaker: post alert:", err)
+		_, _ = fmt.Fprintln(r.stderr, "snooze-pacemaker: post alert:", err)
 		return 3, fmt.Errorf("pacemaker: post alert: %w", err)
 	}
 

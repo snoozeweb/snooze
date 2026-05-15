@@ -195,7 +195,7 @@ func (d *Daemon) runOnce(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	defer ws.Close()
+	defer ws.Close() //nolint:errcheck
 	d.logger.Info("mattermost ws connected", slog.String("url", d.cfg.MattermostURL))
 
 	// Best-effort ping loop. A failed ping closes the socket, which surfaces

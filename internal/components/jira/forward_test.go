@@ -219,14 +219,14 @@ func TestForward_priorityFallbackToString(t *testing.T) {
 func TestForward_emailToAccountIDResolution(t *testing.T) {
 	var lookups atomic.Int32
 	client := newTestJira(t, func(w http.ResponseWriter, r *http.Request) {
-		switch {
-		case r.URL.Path == "/rest/api/3/user/search":
+		switch r.URL.Path {
+		case "/rest/api/3/user/search":
 			lookups.Add(1)
 			require.Equal(t, "alice@example.com", r.URL.Query().Get("query"))
 			_ = json.NewEncoder(w).Encode([]map[string]any{
 				{"accountId": "acc-alice", "emailAddress": "alice@example.com"},
 			})
-		case r.URL.Path == "/rest/api/3/issue":
+		case "/rest/api/3/issue":
 			body := readBodyMap(t, r)
 			fields := body["fields"].(map[string]any)
 			require.Equal(t, "acc-alice", fields["assignee"].(map[string]any)["id"])
@@ -248,7 +248,7 @@ func TestForward_emailToAccountIDResolution(t *testing.T) {
 
 func TestForward_messageLimitDropsExcess(t *testing.T) {
 	var creations atomic.Int32
-	client := newTestJira(t, func(w http.ResponseWriter, r *http.Request) {
+	client := newTestJira(t, func(w http.ResponseWriter, _ *http.Request) {
 		creations.Add(1)
 		_ = json.NewEncoder(w).Encode(map[string]any{"key": "OPS"})
 	})
@@ -298,7 +298,7 @@ func TestForward_userCacheConcurrent(t *testing.T) {
 	var wg sync.WaitGroup
 	for i := 0; i < 8; i++ {
 		wg.Add(1)
-		go func(i int) {
+		go func(_ int) {
 			defer wg.Done()
 			_ = f.handleEnvelopes(context.Background(), []envelope{{
 				ProjectKey: "OPS",

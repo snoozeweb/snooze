@@ -45,9 +45,6 @@ type Driver struct {
 	busCancel context.CancelFunc
 }
 
-// docColumn names the JSONB payload column on every collection table.
-const docColumn = "data"
-
 // compile-time check that *Driver satisfies the db.Driver contract.
 var _ dbpkg.Driver = (*Driver)(nil)
 
@@ -66,8 +63,8 @@ func New(ctx context.Context, cfg Config) (*Driver, error) {
 	if err != nil {
 		return nil, fmt.Errorf("postgres: parse dsn: %w", err)
 	}
-	pcfg.MinConns = int32(cfg.PoolMin)
-	pcfg.MaxConns = int32(cfg.PoolMax)
+	pcfg.MinConns = int32(cfg.PoolMin) //nolint:gosec
+	pcfg.MaxConns = int32(cfg.PoolMax) //nolint:gosec
 	if cfg.ApplicationName != "" {
 		if pcfg.ConnConfig.RuntimeParams == nil {
 			pcfg.ConnConfig.RuntimeParams = map[string]string{}
@@ -130,7 +127,7 @@ func (d *Driver) Watcher() syncer.Bus { return d.bus }
 // Search / query path
 // ---------------------------------------------------------------------------
 
-// Convert renders the condition into an opaque driver-specific query bundle
+// PreparedQuery renders the condition into an opaque driver-specific query bundle
 // that GetOne and Search can consume without redoing the work. Returned
 // value is a *PreparedQuery; downstream consumers type-assert.
 type PreparedQuery struct {
@@ -594,20 +591,21 @@ func (d *Driver) ReplaceOne(ctx context.Context, collection string, match dbpkg.
 	var uid string
 	err = tx.QueryRow(ctx, q, res.Params...).Scan(&uid)
 	matched := 0
-	if errors.Is(err, pgx.ErrNoRows) {
+	switch {
+	case errors.Is(err, pgx.ErrNoRows):
 		// Upsert path.
-		newUid, _ := newDoc["uid"].(string)
-		if newUid == "" {
-			newUid = newUID()
-			newDoc["uid"] = newUid
+		generatedUID, _ := newDoc["uid"].(string)
+		if generatedUID == "" {
+			generatedUID = newUID()
+			newDoc["uid"] = generatedUID
 		}
 		if err := insertRow(ctx, tx, qt, newDoc); err != nil {
 			return 0, err
 		}
-		uid = newUid
-	} else if err != nil {
+		uid = generatedUID
+	case err != nil:
 		return 0, fmt.Errorf("postgres: replaceOne lookup: %w", err)
-	} else {
+	default:
 		// Replace.
 		if _, ok := newDoc["uid"]; !ok {
 			newDoc["uid"] = uid

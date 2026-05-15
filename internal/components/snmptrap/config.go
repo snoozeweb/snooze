@@ -14,10 +14,10 @@ import (
 
 // Default values applied when the config file omits the corresponding key.
 const (
-	defaultListen    = "0.0.0.0:162"
-	defaultCommunity = "public"
+	defaultListen     = "0.0.0.0:162"
+	defaultCommunity  = "public"
 	defaultAuthMethod = "local"
-	defaultTimeout   = 30 * time.Second
+	defaultTimeout    = 30 * time.Second
 )
 
 // Config is the on-disk YAML shape consumed by the snmptrap daemon. Keys that

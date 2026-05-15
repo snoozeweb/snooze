@@ -42,7 +42,7 @@ func newRootTokenCmd() *cobra.Command {
 				enc.SetIndent("", "  ")
 				return enc.Encode(map[string]string{"root_token": tok})
 			}
-			fmt.Fprintln(out, tok)
+			_, _ = fmt.Fprintln(out, tok)
 			return nil
 		},
 	}
@@ -77,7 +77,7 @@ func fetchRootToken(ctx context.Context, rt *runtime, path string) (string, erro
 	if err != nil {
 		return "", fmt.Errorf("admin socket %s: %w", path, err)
 	}
-	defer resp.Body.Close()
+	defer resp.Body.Close() //nolint:errcheck
 	body, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		return "", fmt.Errorf("admin socket %s: status %d: %s", path, resp.StatusCode, string(body))

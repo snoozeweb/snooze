@@ -171,7 +171,6 @@ func (h *Housekeeper) Run(ctx context.Context) error {
 	var wg sync.WaitGroup
 
 	for _, e := range entries {
-		e := e
 		switch {
 		case e.schedule.LiveInterval != nil:
 			wg.Add(1)

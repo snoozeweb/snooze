@@ -116,7 +116,7 @@ func (d *Driver) searchFieldsFor(collection string) []string {
 // MongoDB does not need an explicit index for $regex with a leading-anchored
 // pattern to use an index, but for parity with the Python implementation the
 // fields are simply remembered here.
-func (d *Driver) CreateIndex(ctx context.Context, collection string, fields []string) error {
+func (d *Driver) CreateIndex(_ context.Context, collection string, fields []string) error {
 	cp := make([]string, len(fields))
 	copy(cp, fields)
 	d.searchFields.Store(collection, cp)
@@ -141,7 +141,7 @@ func (d *Driver) Drop(ctx context.Context, collection string) error {
 }
 
 // Convert compiles a condition.Cond into a bson.M filter suitable as a query.
-func (d *Driver) Convert(ctx context.Context, cond condition.Cond, searchFields []string) (dbpkg.DriverQuery, error) {
+func (d *Driver) Convert(_ context.Context, cond condition.Cond, searchFields []string) (dbpkg.DriverQuery, error) {
 	q, err := Convert(cond, searchFields)
 	if err != nil {
 		return nil, err
@@ -189,7 +189,7 @@ func (d *Driver) Search(ctx context.Context, collection string, cond condition.C
 	if err != nil {
 		return nil, 0, fmt.Errorf("mongo: find: %w", err)
 	}
-	defer cur.Close(ctx)
+	defer cur.Close(ctx) //nolint:errcheck
 	var docs []dbpkg.Document
 	for cur.Next(ctx) {
 		var m bson.M
@@ -516,7 +516,7 @@ func (d *Driver) backupOne(ctx context.Context, dir, collection string) error {
 	if err != nil {
 		return err
 	}
-	defer cur.Close(ctx)
+	defer cur.Close(ctx) //nolint:errcheck
 	var docs []bson.M
 	for cur.Next(ctx) {
 		var m bson.M
@@ -577,9 +577,9 @@ func buildPrimaryQuery(doc dbpkg.Document, primary []string) bson.M {
 
 // anyConstantDiffers returns true if any constant field has a different value
 // in the new vs old document.
-func anyConstantDiffers(old, new dbpkg.Document, constants []string) bool {
+func anyConstantDiffers(old, newDoc dbpkg.Document, constants []string) bool {
 	for _, c := range constants {
-		if !equalDeep(old[c], new[c]) {
+		if !equalDeep(old[c], newDoc[c]) {
 			return true
 		}
 	}

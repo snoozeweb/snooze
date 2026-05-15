@@ -103,7 +103,7 @@ func (l *TCPListener) Run(ctx context.Context) error {
 // handleConn reads newline-delimited messages from one TCP connection until
 // EOF, ctx cancellation, or a transport error.
 func (l *TCPListener) handleConn(ctx context.Context, conn net.Conn) {
-	defer conn.Close()
+	defer conn.Close() //nolint:errcheck
 	peer := conn.RemoteAddr().String()
 	scanner := bufio.NewScanner(conn)
 	scanner.Buffer(make([]byte, 0, 4096), tcpLineMax)

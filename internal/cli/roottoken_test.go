@@ -27,7 +27,7 @@ func TestRootTokenSuccess(t *testing.T) {
 }
 
 func TestRootTokenServerError(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusInternalServerError)
 		_, _ = w.Write([]byte(`{"error":{"code":"boom"}}`))
 	}))
@@ -42,7 +42,7 @@ func TestRootTokenServerError(t *testing.T) {
 }
 
 func TestRootTokenJSON(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		_, _ = w.Write([]byte(`{"root_token":"abc"}`))
 	}))
 	defer srv.Close()

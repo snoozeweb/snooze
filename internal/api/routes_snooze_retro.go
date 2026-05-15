@@ -7,15 +7,17 @@
 //
 // Semantics:
 //   - Snooze.discard == true  → delete every record matching the snooze's
-//                                condition (the legacy plugin's behaviour).
+//     condition (the legacy plugin's behaviour).
 //   - Snooze.discard == false → set `snoozed: <snooze-name>` on every
-//                                matching record so dashboards / filters
-//                                can hide them.
+//     matching record so dashboards / filters
+//     can hide them.
 //
 // The handler is gated on the `rw_record` permission because it mutates
 // the alert collection. We also bump the snooze's hit counter by the
 // number of records touched so the Hits column in the snoozes table
 // reflects retro-applied activity.
+//
+//nolint:revive
 package api
 
 import (

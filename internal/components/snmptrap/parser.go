@@ -36,7 +36,7 @@ var knownSeverities = map[string]string{
 	"err": "err", "error": "err",
 	"warn": "warning", "warning": "warning",
 	"notice": "notice",
-	"info": "info", "informational": "info",
+	"info":   "info", "informational": "info",
 	"debug": "debug",
 	"ok":    "ok", "clear": "ok", "normal": "ok",
 }

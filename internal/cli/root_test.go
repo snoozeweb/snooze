@@ -3,7 +3,6 @@ package cli
 import (
 	"bytes"
 	"context"
-	"net/http"
 	"net/http/httptest"
 	"path/filepath"
 	"testing"
@@ -102,19 +101,4 @@ func TestBuildClientUsesFactory(t *testing.T) {
 	_, err := rt.buildClient()
 	require.NoError(t, err)
 	require.True(t, called, "expected the override factory to be used")
-}
-
-// httpEcho returns an httptest.Server that records the last request it saw.
-// Useful for verifying that subcommands hit the right URL / headers.
-func httpEcho(t *testing.T, status int, body string) (*httptest.Server, *http.Request) {
-	t.Helper()
-	var last http.Request
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		last = *r
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(status)
-		_, _ = w.Write([]byte(body))
-	}))
-	t.Cleanup(srv.Close)
-	return srv, &last
 }

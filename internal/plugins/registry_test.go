@@ -18,10 +18,10 @@ type fakePlugin struct {
 	procImpl func(ctx context.Context, rec snoozetypes.Record) (Result, error)
 }
 
-func (f *fakePlugin) Name() string                              { return f.meta.Name }
-func (f *fakePlugin) Metadata() Metadata                        { return f.meta }
-func (f *fakePlugin) PostInit(ctx context.Context, h Host) error { f.post++; return nil }
-func (f *fakePlugin) Reload(ctx context.Context) error          { f.reload++; return nil }
+func (f *fakePlugin) Name() string                             { return f.meta.Name }
+func (f *fakePlugin) Metadata() Metadata                       { return f.meta }
+func (f *fakePlugin) PostInit(_ context.Context, _ Host) error { f.post++; return nil }
+func (f *fakePlugin) Reload(_ context.Context) error           { f.reload++; return nil }
 
 // fakeProcessor adds Process to fakePlugin to satisfy Processor.
 type fakeProcessor struct {
@@ -35,13 +35,13 @@ func (f *fakeProcessor) Process(ctx context.Context, rec snoozetypes.Record) (Re
 	return Result{Action: ActionContinue, Record: rec}, nil
 }
 
-func newFake(name string) Factory {
+func newFake(_ string) Factory {
 	return func(meta Metadata) (Plugin, error) {
 		return &fakePlugin{meta: meta}, nil
 	}
 }
 
-func newFakeProcessor(name string) Factory {
+func newFakeProcessor(_ string) Factory {
 	return func(meta Metadata) (Plugin, error) {
 		return &fakeProcessor{fakePlugin: fakePlugin{meta: meta}}, nil
 	}
@@ -118,7 +118,7 @@ func TestBuild_TwicePanics(t *testing.T) {
 func TestBuild_FactoryError(t *testing.T) {
 	resetForTest()
 	boom := errors.New("boom")
-	Register("bad", []byte("name: bad\n"), func(meta Metadata) (Plugin, error) {
+	Register("bad", []byte("name: bad\n"), func(_ Metadata) (Plugin, error) {
 		return nil, boom
 	})
 	_, _, err := Build(context.Background(), &nullHost{}, nil)
@@ -127,7 +127,7 @@ func TestBuild_FactoryError(t *testing.T) {
 
 func TestBuild_NilPluginIsRejected(t *testing.T) {
 	resetForTest()
-	Register("nilp", nil, func(meta Metadata) (Plugin, error) { return nil, nil })
+	Register("nilp", nil, func(_ Metadata) (Plugin, error) { return nil, nil })
 	_, _, err := Build(context.Background(), &nullHost{}, nil)
 	require.Error(t, err)
 }

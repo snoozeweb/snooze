@@ -175,8 +175,8 @@ func (p *Plugin) Process(ctx context.Context, rec snoozetypes.Record) (plugins.R
 	return plugins.Result{Action: plugins.ActionContinue, Record: rec}, nil
 }
 
-// Rules returns a copy of the current cached rule set. Test-only convenience.
-func (p *Plugin) Rules() []rule {
+// cachedRules returns a copy of the current cached rule set. Test-only convenience.
+func (p *Plugin) cachedRules() []rule {
 	p.mu.RLock()
 	defer p.mu.RUnlock()
 	out := make([]rule, len(p.rules))
@@ -349,11 +349,11 @@ func toInt64(v any) (int64, bool) {
 	case int64:
 		return n, true
 	case uint:
-		return int64(n), true
+		return int64(n), true //nolint:gosec
 	case uint32:
 		return int64(n), true
 	case uint64:
-		return int64(n), true
+		return int64(n), true //nolint:gosec
 	case float32:
 		return int64(n), true
 	case float64:

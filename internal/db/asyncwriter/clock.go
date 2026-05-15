@@ -15,14 +15,17 @@ type Clock interface {
 // SystemClock is the production Clock backed by stdlib time.
 type SystemClock struct{}
 
-func (SystemClock) Now() time.Time                         { return time.Now() }
+// Now returns the current wall-clock time.
+func (SystemClock) Now() time.Time { return time.Now() }
+
+// After returns a channel that fires after duration d.
 func (SystemClock) After(d time.Duration) <-chan time.Time { return time.After(d) }
 
 // MockClock is a deterministic in-memory clock for tests. Time advances only
 // when Advance is called.
 type MockClock struct {
-	mu    sync.Mutex
-	now   time.Time
+	mu     sync.Mutex
+	now    time.Time
 	timers []mockTimer
 }
 
@@ -36,12 +39,14 @@ func NewMockClock(now time.Time) *MockClock {
 	return &MockClock{now: now}
 }
 
+// Now returns the current simulated time.
 func (m *MockClock) Now() time.Time {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	return m.now
 }
 
+// After returns a channel that fires when the clock is advanced past d.
 func (m *MockClock) After(d time.Duration) <-chan time.Time {
 	m.mu.Lock()
 	defer m.mu.Unlock()
