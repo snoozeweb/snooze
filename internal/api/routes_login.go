@@ -9,6 +9,8 @@ import (
 	"github.com/go-chi/chi/v5"
 
 	"github.com/japannext/snooze/internal/auth"
+	"github.com/japannext/snooze/internal/condition"
+	"github.com/japannext/snooze/internal/db"
 	"github.com/japannext/snooze/pkg/snoozetypes"
 )
 
@@ -110,8 +112,38 @@ func (rt *Router) handleLogin(method string) http.HandlerFunc {
 			WriteError(w, r, ErrInternal.WithCause(err))
 			return
 		}
+		rt.updateLastLogin(r.Context(), id)
 		WriteJSON(w, http.StatusOK, loginResponse{Token: token, ExpiresAt: exp, Method: id.Method})
 	}
+}
+
+// updateLastLogin best-effort writes the current epoch into the matching
+// user record so the admin UI can show a recency badge. Failures are
+// logged and ignored — they must never break a successful authentication.
+//
+// The user record is keyed by (name, method) since the same username can
+// exist independently in local and ldap backends. For ldap-only users the
+// row may not exist yet; we don't auto-create it (admins still control
+// the user list).
+func (rt *Router) updateLastLogin(ctx context.Context, id auth.Identity) {
+	if rt.DB == nil {
+		return
+	}
+	cond := condition.And(
+		condition.Equals("name", id.Username),
+		condition.Equals("method", id.Method),
+	)
+	docs, _, err := rt.DB.Search(ctx, "user", cond, db.Page{PerPage: 1})
+	if err != nil || len(docs) == 0 {
+		return
+	}
+	uid, _ := docs[0]["uid"].(string)
+	if uid == "" {
+		return
+	}
+	_ = rt.DB.UpdateOne(ctx, "user", uid, db.Document{
+		"last_login": float64(time.Now().Unix()),
+	}, false)
 }
 
 // handleLoginAnonymous is split out because it doesn't require credentials.

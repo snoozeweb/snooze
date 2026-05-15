@@ -77,6 +77,8 @@ func (f *fakeDB) CleanupOrphans(_ context.Context, _ string) (int, error)    { r
 func (f *fakeDB) CleanupAuditLogs(_ context.Context, _ time.Duration) (int, error) {
 	return 0, nil
 }
+func (f *fakeDB) CleanupSnooze(_ context.Context) (int, error)       { return 0, nil }
+func (f *fakeDB) CleanupNotification(_ context.Context) (int, error) { return 0, nil }
 func (f *fakeDB) ComputeStats(_ context.Context, _ string, _, _ time.Time, _ string) ([]db.StatsBucket, error) {
 	return nil, nil
 }
