@@ -3,6 +3,7 @@ package api
 import (
 	"context"
 	"net/http"
+	"sort"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -20,6 +21,9 @@ func (rt *Router) mountHealth(r chi.Router) {
 	r.Get("/readyz", rt.handleReady)
 	r.Route("/api/v1/health", func(sub chi.Router) {
 		sub.Get("/", rt.handleHealthVerbose)
+	})
+	r.Route("/api/v1/cluster", func(sub chi.Router) {
+		sub.Get("/status", rt.handleClusterStatus)
 	})
 }
 
@@ -43,6 +47,39 @@ func (rt *Router) handleReady(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	WriteJSON(w, http.StatusOK, map[string]any{"status": "ok"})
+}
+
+// handleClusterStatus serves the /web/admin/status page. Today a Go snooze
+// runs as a single node (the syncer is a peer-to-peer fan-out for write
+// invalidation, not a Raft cluster); we surface the local node + every
+// loaded plugin so the page is informative even in standalone mode.
+func (rt *Router) handleClusterStatus(w http.ResponseWriter, r *http.Request) {
+	type member struct {
+		Name   string `json:"name"`
+		Status string `json:"status"`
+	}
+	type pluginInfo struct {
+		Name   string `json:"name"`
+		Loaded bool   `json:"loaded"`
+	}
+
+	pluginNames := make([]string, 0, len(rt.Plugins))
+	for name := range rt.Plugins {
+		pluginNames = append(pluginNames, name)
+	}
+	sort.Strings(pluginNames)
+	pluginRows := make([]pluginInfo, 0, len(pluginNames))
+	for _, n := range pluginNames {
+		pluginRows = append(pluginRows, pluginInfo{Name: n, Loaded: true})
+	}
+
+	WriteJSON(w, http.StatusOK, map[string]any{
+		"cluster": map[string]any{
+			"members": []member{{Name: "standalone", Status: "ok"}},
+			"leader":  "standalone",
+		},
+		"plugins": pluginRows,
+	})
 }
 
 // handleHealthVerbose returns the per-subsystem health: db status, registered
