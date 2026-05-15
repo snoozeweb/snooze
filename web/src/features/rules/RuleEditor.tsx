@@ -69,6 +69,13 @@ export function RuleEditor({ plugin, uid, onClose }: RuleEditorProps) {
   const [submitting, setSubmitting] = useState(false);
 
   async function onSubmit(form: FormShape) {
+    if (!form.name.trim()) {
+      // RHF's `register` is used without rules; enforce a non-empty name at
+      // submit so the inline invalid state has time to render before any
+      // network round-trip closes the drawer.
+      toast.error("Name is required");
+      return;
+    }
     setSubmitting(true);
     try {
       const body: Rule = {

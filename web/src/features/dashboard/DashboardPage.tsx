@@ -26,21 +26,21 @@ export function DashboardPage() {
   const stats = useStats({ from: range.from, to: range.to, bucket });
 
   const lineSeries: LineSeries[] = useMemo(() => {
-    if (!stats.data) return [];
-    const resolved = stats.data;
+    const series = stats.data?.data?.series;
+    if (!Array.isArray(series)) return [];
     const sources = new Set<string>();
-    for (const b of resolved.data.series) {
-      for (const k of Object.keys(b.counts)) sources.add(k);
+    for (const b of series) {
+      for (const k of Object.keys(b.counts ?? {})) sources.add(k);
     }
     const palette = ["#4f8cff", "#3fb950", "#d4a017", "#ef7e3a", "#f04949", "#8957e5"];
     return [...sources].map((src, i) => ({
       label: src,
       color: palette[i % palette.length]!,
-      data: resolved.data.series.map((b) => ({ x: b.t, y: b.counts[src] ?? 0 })),
+      data: series.map((b) => ({ x: b.t, y: b.counts?.[src] ?? 0 })),
     }));
   }, [stats.data]);
 
-  const totals = stats.data?.data.totals;
+  const totals = stats.data?.data?.totals;
 
   return (
     <div className={styles.page}>
