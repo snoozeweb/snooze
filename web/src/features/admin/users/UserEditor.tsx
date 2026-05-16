@@ -158,7 +158,7 @@ export function UserEditor({ uid, onClose }: UserEditorProps) {
                   </Select>
                 </div>
                 <div className={styles.field}>
-                  <label className={styles.label}>Roles</label>
+                  <span className={styles.label}>Roles</span>
                   <MultiCombobox
                     aria-label="Roles"
                     placeholder="Select one or more roles"

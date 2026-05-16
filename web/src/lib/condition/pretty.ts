@@ -34,7 +34,7 @@ function isGroup(c: Condition): c is { type: GroupOp; args: Condition[] } {
 
 function quote(v: unknown): string {
   if (typeof v === "string") return JSON.stringify(v);
-  return String(v ?? "");
+  return String((v as string | number | boolean | null | undefined) ?? "");
 }
 
 export function prettyCondition(c: Condition | undefined | null): string {

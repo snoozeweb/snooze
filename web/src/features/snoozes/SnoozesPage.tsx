@@ -71,7 +71,7 @@ export function SnoozesPage() {
           const merged = { ...(prev ?? {}), ...next };
           // exactOptionalPropertyTypes: remove keys set to undefined rather than keeping them
           if (merged.uid === undefined) {
-            const { uid: _uid, ...rest } = merged; // eslint-disable-line @typescript-eslint/no-unused-vars
+            const { uid: _uid, ...rest } = merged;
             return rest as SnoozesSearch;
           }
           return merged as SnoozesSearch;
@@ -116,7 +116,7 @@ export function SnoozesPage() {
     onAfter: () => setSelectedKeys(new Set()),
   });
 
-  const allSnoozes = list.data?.data ?? [];
+  const allSnoozes = useMemo(() => list.data?.data ?? [], [list.data]);
   const counts = useMemo(() => {
     const c: Record<SnoozeState, number> = { active: 0, upcoming: 0, expired: 0 };
     for (const s of allSnoozes) c[snoozeState(s)] += 1;

@@ -31,6 +31,7 @@ async function copyToClipboard(text: string): Promise<boolean> {
   return false;
 }
 
+// eslint-disable-next-line react-refresh/only-export-components
 export function buildResourceContextMenu<T extends WithUid>(
   row: T,
   params: ResourceMenuParams<T> & { requestDelete: (row: T) => void },
@@ -82,6 +83,7 @@ export type ConfirmState<T> = {
   busy: boolean;
 };
 
+// eslint-disable-next-line react-refresh/only-export-components
 export function useConfirmDelete<T extends WithUid>(opts: {
   onDelete: (uid: string) => Promise<unknown>;
   noun: string;

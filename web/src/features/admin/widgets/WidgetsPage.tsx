@@ -51,7 +51,7 @@ export function WidgetsPage() {
           const merged = { ...(prev ?? {}), ...next };
           // exactOptionalPropertyTypes: remove keys set to undefined rather than keeping them
           if (merged.uid === undefined) {
-            const { uid: _uid, ...rest } = merged; // eslint-disable-line @typescript-eslint/no-unused-vars
+            const { uid: _uid, ...rest } = merged;
             return rest as WidgetsSearch;
           }
           return merged as WidgetsSearch;

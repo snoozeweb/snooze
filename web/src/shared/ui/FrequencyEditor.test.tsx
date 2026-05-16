@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { summarizeFrequency } from "./FrequencyEditor";
+import { summarizeFrequency } from "./frequencyUtils";
 
 describe("summarizeFrequency", () => {
   it("returns 'Once' for undefined frequency", () => {

@@ -2,7 +2,7 @@ import type { ColumnDef } from "@/shared/ui/DataTable";
 import { Badge } from "@/shared/ui/Badge";
 import { Code } from "@/shared/ui/Code";
 import { prettyCondition } from "@/lib/condition/pretty";
-import { summarizeFrequency } from "@/shared/ui/FrequencyEditor";
+import { summarizeFrequency } from "@/shared/ui/frequencyUtils";
 import { TimeConstraintsCell } from "@/shared/ui/TimeConstraintsCell";
 import type { Action, Notification } from "./types";
 

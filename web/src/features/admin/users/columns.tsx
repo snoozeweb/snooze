@@ -5,6 +5,7 @@ import { roleBadgeVariant } from "@/lib/format/role-color";
 import { formatRelativeTime } from "@/features/alerts/format";
 import type { User } from "./types";
 
+// eslint-disable-next-line react-refresh/only-export-components
 function BadgeList({ items, palette }: { items: string[] | undefined; palette?: (s: string) => string }) {
   if (!items || items.length === 0)
     return <span style={{ color: "var(--text-muted)" }}>—</span>;

@@ -5,6 +5,7 @@ import { prettyCondition } from "@/lib/condition/pretty";
 import { secondsToHuman } from "@/lib/format/seconds";
 import type { AggregateRule, Rule } from "./types";
 
+// eslint-disable-next-line react-refresh/only-export-components
 function ConditionCell({ rule }: { rule: Rule }) {
   return (
     <span style={{ fontFamily: "var(--font-mono)", fontSize: "var(--text-xs)" }}>
@@ -13,14 +14,15 @@ function ConditionCell({ rule }: { rule: Rule }) {
   );
 }
 
+// eslint-disable-next-line react-refresh/only-export-components
 function ModificationsCell({ mods }: { mods: unknown[][] | undefined }) {
   if (!mods || mods.length === 0)
     return <span style={{ color: "var(--text-muted)" }}>—</span>;
   return (
     <span style={{ display: "inline-flex", gap: "var(--space-1)", flexWrap: "wrap" }}>
       {mods.map((m, i) => {
-        const op = String(m[0] ?? "");
-        const field = String(m[1] ?? "");
+        const op = String((m[0] as string | number | null | undefined) ?? "");
+        const field = String((m[1] as string | number | null | undefined) ?? "");
         return (
           <Badge key={i} variant="neutral">
             {op} {field}
@@ -31,6 +33,7 @@ function ModificationsCell({ mods }: { mods: unknown[][] | undefined }) {
   );
 }
 
+// eslint-disable-next-line react-refresh/only-export-components
 function StringListCell({ items }: { items: string[] | undefined }) {
   if (!items || items.length === 0)
     return <span style={{ color: "var(--text-muted)" }}>—</span>;
@@ -106,6 +109,3 @@ export const aggregateRuleColumns: ColumnDef<AggregateRule>[] = [
   },
 ];
 
-export function ruleRowDisabled(r: Rule): boolean {
-  return r.enabled === false;
-}

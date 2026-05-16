@@ -4,7 +4,8 @@ import { Button } from "@/shared/ui/Button";
 import { CollapsibleSection } from "@/shared/ui/CollapsibleSection";
 import { ConditionPreview } from "@/shared/ui/ConditionPreview";
 import { Drawer, DrawerBody, DrawerContent, DrawerFooter, DrawerTitle } from "@/shared/ui/Drawer";
-import { FrequencyEditor, summarizeFrequency } from "@/shared/ui/FrequencyEditor";
+import { FrequencyEditor } from "@/shared/ui/FrequencyEditor";
+import { summarizeFrequency } from "@/shared/ui/frequencyUtils";
 import { Input } from "@/shared/ui/Input";
 import { MultiCombobox } from "@/shared/ui/MultiCombobox";
 import { Spinner } from "@/shared/ui/Spinner";
@@ -192,7 +193,7 @@ export function NotificationEditor({ uid, onClose }: NotificationEditorProps) {
                     />
                   </div>
                   <div className={styles.field}>
-                    <label className={styles.label}>Actions</label>
+                    <span className={styles.label}>Actions</span>
                     <MultiCombobox
                       aria-label="Actions"
                       placeholder="Select one or more action names"

@@ -1,10 +1,8 @@
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
-import {
-  TimeConstraintsEditor,
-  summarizeTimeConstraints,
-} from "./TimeConstraintsEditor";
+import { TimeConstraintsEditor } from "./TimeConstraintsEditor";
+import { summarizeTimeConstraints } from "./timeConstraintsUtils";
 
 describe("TimeConstraintsEditor", () => {
   it("toggles a weekday pill into the constraint group", async () => {

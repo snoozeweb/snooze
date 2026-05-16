@@ -2,7 +2,8 @@ import { describe, expect, it, vi } from "vitest";
 import { render, screen, fireEvent } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import type { ReactNode } from "react";
-import { buildTree, parentKey, sortSiblings, RulesTreeTable } from "./RulesTreeTable";
+import { buildTree, parentKey, sortSiblings } from "./tree";
+import { RulesTreeTable } from "./RulesTreeTable";
 import type { Rule } from "./types";
 
 function wrap() {

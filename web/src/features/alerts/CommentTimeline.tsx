@@ -47,7 +47,7 @@ const PAGE_SIZE_OPTIONS = [5, 10, 20] as const;
 
 export function CommentTimeline({ recordUid }: { recordUid: string | undefined }) {
   const { claims } = useAuth();
-  const currentUser = (claims?.sub ?? "") as string;
+  const currentUser = claims?.sub ?? "";
   const canComment = hasAnyPermission(claims, ["can_comment"]);
   const canModerate = hasAnyPermission(claims, ["rw_record"]);
 
@@ -147,7 +147,7 @@ export function CommentTimeline({ recordUid }: { recordUid: string | undefined }
               variant="primary"
               loading={create.isPending}
               disabled={create.isPending || !draft.trim()}
-              onClick={handlePost}
+              onClick={() => { void handlePost(); }}
             >
               Post
             </Button>
@@ -204,7 +204,7 @@ export function CommentTimeline({ recordUid }: { recordUid: string | undefined }
                         variant="primary"
                         loading={update.isPending}
                         disabled={!editDraft.trim() || update.isPending}
-                        onClick={() => c.uid && handleSaveEdit(c.uid)}
+                        onClick={() => { if (c.uid) void handleSaveEdit(c.uid); }}
                       >
                         Save
                       </Button>

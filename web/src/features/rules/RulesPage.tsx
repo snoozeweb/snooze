@@ -13,7 +13,8 @@ import {
 import { AggregateRules, Rules } from "./api";
 import { RuleEditor } from "./RuleEditor";
 import { RulesTreeTable } from "./RulesTreeTable";
-import { aggregateRuleColumns, ruleRowDisabled } from "./columns";
+import { aggregateRuleColumns } from "./columns";
+import { ruleRowDisabled } from "./ruleUtils";
 import type { AggregateRule } from "./types";
 import styles from "./RulesPage.module.css";
 
@@ -55,7 +56,7 @@ export function RulesPage() {
           const merged = { ...(prev ?? {}), ...next };
           // exactOptionalPropertyTypes: remove keys set to undefined rather than keeping them
           if (merged.uid === undefined) {
-            const { uid: _uid, ...rest } = merged; // eslint-disable-line @typescript-eslint/no-unused-vars
+            const { uid: _uid, ...rest } = merged;
             return rest as RulesSearch;
           }
           return merged as RulesSearch;

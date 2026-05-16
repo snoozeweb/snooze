@@ -220,7 +220,7 @@ export function RuleEditor({ plugin, uid, onClose }: RuleEditorProps) {
                 <section className={styles.section}>
                   <h3 className={styles.sectionTitle}>Aggregation</h3>
                   <div className={styles.field}>
-                    <label className={styles.label}>Fields (group key)</label>
+                    <span className={styles.label}>Fields (group key)</span>
                     <MultiCombobox
                       aria-label="Aggregation fields"
                       placeholder="e.g. host, source"
@@ -231,7 +231,7 @@ export function RuleEditor({ plugin, uid, onClose }: RuleEditorProps) {
                     />
                   </div>
                   <div className={styles.field}>
-                    <label className={styles.label}>Watch (fields tracked for changes)</label>
+                    <span className={styles.label}>Watch (fields tracked for changes)</span>
                     <MultiCombobox
                       aria-label="Watch fields"
                       placeholder="e.g. severity, state"

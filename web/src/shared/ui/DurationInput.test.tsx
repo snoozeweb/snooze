@@ -7,7 +7,7 @@ describe("DurationInput", () => {
     render(<DurationInput value={3600} onChange={() => undefined} aria-label="TTL" />);
     // 3600s == "1h" — secondsToHuman()
     expect(screen.getByText("1h")).toBeInTheDocument();
-    expect((screen.getByLabelText("TTL") as HTMLInputElement).value).toBe("3600");
+    expect(screen.getByLabelText<HTMLInputElement>("TTL").value).toBe("3600");
   });
   it("emits the new number when the user types", () => {
     const onChange = vi.fn();

@@ -3,7 +3,7 @@
 // legacy Vue UI used for actions/roles/permissions). Wraps the same
 // Radix Popover primitive that Combobox uses, so the styling stays
 // consistent across the app.
-import { useMemo, useState } from "react";
+import { useId, useMemo, useState } from "react";
 import * as RP from "@radix-ui/react-popover";
 import { Icon } from "@/shared/icons/Icon";
 import styles from "./MultiCombobox.module.css";
@@ -32,6 +32,7 @@ export function MultiCombobox({
   className,
   "aria-label": ariaLabel,
 }: MultiComboboxProps) {
+  const id = useId();
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
   const [activeIndex, setActiveIndex] = useState(0);
@@ -83,8 +84,16 @@ export function MultiCombobox({
         className={[styles.wrap, className].filter(Boolean).join(" ")}
         role="combobox"
         aria-expanded={open}
+        aria-controls={`${id}-listbox`}
         aria-label={ariaLabel}
+        tabIndex={0}
         onClick={() => setOpen(true)}
+        onKeyDown={(e) => {
+          if (e.key === "Enter" || e.key === " ") {
+            e.preventDefault();
+            setOpen(true);
+          }
+        }}
       >
         {value.map((v) => {
           const opt = options.find((o) => o.value === v);
@@ -133,7 +142,7 @@ export function MultiCombobox({
               {allowCustom && query.trim() ? `Press Enter to add "${query.trim()}"` : noResultsLabel}
             </div>
           ) : (
-            <ul className={styles.list} role="listbox">
+            <ul className={styles.list} role="listbox" id={`${id}-listbox`}>
               {filtered.map((opt, i) => (
                 // eslint-disable-next-line jsx-a11y/click-events-have-key-events -- list-level keys live on the search input above (handleKeyDown delegates Enter to the active option).
                 <li

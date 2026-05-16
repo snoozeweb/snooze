@@ -1,7 +1,7 @@
 import { render, screen } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 import { TimeConstraintsCell } from "./TimeConstraintsCell";
-import { summarizeTimeConstraints } from "./TimeConstraintsEditor";
+import { summarizeTimeConstraints } from "./timeConstraintsUtils";
 
 describe("TimeConstraintsCell", () => {
   it("renders 'Forever' for undefined value", () => {

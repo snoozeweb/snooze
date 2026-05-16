@@ -37,53 +37,11 @@ import { toast } from "@/shared/ui/toast/useToast";
 import { prettyCondition } from "@/lib/condition/pretty";
 import { Rules } from "./api";
 import type { Rule } from "./types";
+import { buildTree, parentKey, sortSiblings } from "./tree";
+import type { TreeNode } from "./tree";
 import styles from "./RulesTreeTable.module.css";
 
-// __ROOT__ is the synthetic parent id used internally for top-level rules
-// (rules with no parents[]). It never travels to the wire.
-const ROOT = "__root__";
-
-export type TreeNode = {
-  rule: Rule;
-  depth: number;
-  children: TreeNode[];
-};
-
-export function parentKey(r: Rule): string {
-  return r.parents?.[0] ?? ROOT;
-}
-
-export function sortSiblings(rules: Rule[]): Rule[] {
-  return [...rules].sort((a, b) => {
-    const ao = a.tree_order ?? Number.MAX_SAFE_INTEGER;
-    const bo = b.tree_order ?? Number.MAX_SAFE_INTEGER;
-    if (ao !== bo) return ao - bo;
-    return (a.name ?? "").localeCompare(b.name ?? "");
-  });
-}
-
-export function buildTree(rules: Rule[]): { roots: TreeNode[]; byParent: Map<string, Rule[]> } {
-  const uids = new Set(rules.map((r) => r.uid).filter((u): u is string => !!u));
-  const byParent = new Map<string, Rule[]>();
-  for (const r of rules) {
-    // A rule's referenced parent might not exist in the loaded set
-    // (deleted, or filtered out). Treat orphans as top-level so they
-    // remain reachable instead of disappearing.
-    const p = r.parents?.[0];
-    const key = p && uids.has(p) ? p : ROOT;
-    const arr = byParent.get(key) ?? [];
-    arr.push(r);
-    byParent.set(key, arr);
-  }
-  function build(parent: string, depth: number): TreeNode[] {
-    return sortSiblings(byParent.get(parent) ?? []).map((rule) => ({
-      rule,
-      depth,
-      children: rule.uid ? build(rule.uid, depth + 1) : [],
-    }));
-  }
-  return { roots: build(ROOT, 0), byParent };
-}
+export type { TreeNode };
 
 export type RulesTreeTableProps = {
   rules: Rule[];
@@ -258,6 +216,15 @@ function SortableTreeRow({ node, onRowOpen, expanded, toggleExpanded }: Sortable
           if (target.closest("[data-expand-toggle]")) return;
           onRowOpen(node.rule);
         }}
+        onKeyDown={(e) => {
+          if (e.key === "Enter" || e.key === " ") {
+            const target = e.target as HTMLElement;
+            if (target.closest("[data-drag-handle]")) return;
+            if (target.closest("[data-expand-toggle]")) return;
+            onRowOpen(node.rule);
+          }
+        }}
+        tabIndex={0}
         role="row"
       >
         <button
@@ -300,7 +267,7 @@ function SortableTreeRow({ node, onRowOpen, expanded, toggleExpanded }: Sortable
           ) : (
             mods.map((m, i) => (
               <Badge key={i} variant="neutral">
-                {String(m[0] ?? "")} {String(m[1] ?? "")}
+                {String((m[0] as string | number | null | undefined) ?? "")} {String((m[1] as string | number | null | undefined) ?? "")}
               </Badge>
             ))
           )}
