@@ -50,7 +50,7 @@ describe("AppShell", () => {
 
   it("renders the Topbar, Sidebar, and the matched route's content", () => {
     setup("/web/alerts");
-    expect(screen.getByText("Snooze")).toBeInTheDocument();
+    expect(screen.getByRole("img", { name: /snooze/i })).toBeInTheDocument();
     expect(screen.getByText("Alerts page")).toBeInTheDocument();
   });
 

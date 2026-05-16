@@ -26,8 +26,22 @@ test("visual tour: seed and screenshot every menu", async ({
   rmSync(SHOTS_DIR, { recursive: true, force: true });
   mkdirSync(SHOTS_DIR, { recursive: true });
 
+  // Use a raw CDP session for screenshots. Playwright's `page.screenshot()`
+  // adds an internal `document.fonts.ready` wait that reliably hangs on
+  // WSL2 + chromium-1148 (the wait reports "fonts loaded" but the
+  // subsequent CDP `Page.captureScreenshot` call never returns). Talking
+  // to CDP directly skips that pre-wait and returns in milliseconds.
+  const cdp = await page.context().newCDPSession(page);
+  const { writeFile } = await import("node:fs/promises");
   const shoot = async (name: string) => {
-    await page.screenshot({ path: resolve(SHOTS_DIR, `${name}.png`), fullPage: false });
+    // JPEG instead of PNG — png encoding on this chromium-1148 + WSL2 combo
+    // hangs the CDP `Page.captureScreenshot` call indefinitely.
+    const { data } = await cdp.send("Page.captureScreenshot", {
+      format: "jpeg",
+      quality: 80,
+      captureBeyondViewport: false,
+    });
+    await writeFile(resolve(SHOTS_DIR, `${name}.jpg`), Buffer.from(data, "base64"));
   };
   const goto = async (route: string) => {
     await page.goto(server.baseURL + route);
@@ -35,6 +49,16 @@ test("visual tour: seed and screenshot every menu", async ({
   };
 
   // ── 1. Auth + seed ───────────────────────────────────────────────────────
+  // Screenshot the login page first, before injecting the admin token —
+  // once adminAuth() drops the JWT into localStorage, any /web/login
+  // visit redirects back to /web/alerts (see web/src/app/router.tsx).
+  await goto("/web/login");
+  // Wait for the centered logo + the Local-tab Sign-in button so we don't
+  // capture mid-mount. The tab list's Local tab is selected by default.
+  await page.getByRole("img", { name: /snooze/i }).waitFor({ state: "visible" });
+  await page.getByRole("button", { name: /sign in$/i }).waitFor({ state: "visible" });
+  await shoot("00-login");
+
   await adminAuth();
 
   await api.environments.create({

@@ -8,22 +8,15 @@
   border-bottom: 1px solid var(--border);
   flex-shrink: 0;
 }
-.brand {
+.left {
   display: inline-flex;
   align-items: center;
-  gap: var(--space-2);
-  font-weight: var(--weight-semibold);
-  color: var(--text-strong);
-}
-.divider {
-  width: 1px;
-  height: 16px;
-  background: var(--border);
-  margin: 0 var(--space-3);
+  min-width: 0;
 }
 .breadcrumb {
   font-size: var(--text-sm);
-  color: var(--text-muted);
+  font-weight: var(--weight-semibold);
+  color: var(--text-strong);
 }
 .right {
   display: inline-flex;

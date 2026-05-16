@@ -47,11 +47,6 @@ describe("Topbar", () => {
     authStore.getState().logout();
   });
 
-  it("renders the brand", () => {
-    renderTopbar({ onOpenPalette: () => undefined });
-    expect(screen.getByText("Snooze")).toBeInTheDocument();
-  });
-
   it("renders the breadcrumb when given", () => {
     renderTopbar({ breadcrumb: "Alerts", onOpenPalette: () => undefined });
     expect(screen.getByText("Alerts")).toBeInTheDocument();

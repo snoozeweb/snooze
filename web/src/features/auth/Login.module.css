@@ -21,10 +21,13 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: var(--space-2);
-  font-weight: var(--weight-semibold);
-  font-size: var(--text-lg);
-  color: var(--text-strong);
+  padding: var(--space-3) 0 var(--space-2);
+}
+.brand img {
+  display: block;
+  width: 280px;
+  max-width: 100%;
+  height: auto;
 }
 .form {
   display: flex;

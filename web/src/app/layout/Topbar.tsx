@@ -46,17 +46,8 @@ export function Topbar({ breadcrumb, onOpenPalette }: TopbarProps) {
   const { theme, toggleTheme } = useTheme();
   return (
     <header className={styles.topbar}>
-      <div style={{ display: "inline-flex", alignItems: "center" }}>
-        <span className={styles.brand}>
-          <Icon name="bell-off" size={20} />
-          <span>Snooze</span>
-        </span>
-        {breadcrumb ? (
-          <>
-            <span className={styles.divider} />
-            <span className={styles.breadcrumb}>{breadcrumb}</span>
-          </>
-        ) : null}
+      <div className={styles.left}>
+        {breadcrumb ? <span className={styles.breadcrumb}>{breadcrumb}</span> : null}
       </div>
       <div className={styles.right}>
         <button

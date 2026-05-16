@@ -1,8 +1,8 @@
 import { useState } from "react";
 import { useNavigate, useSearch } from "@tanstack/react-router";
 import { Button } from "@/shared/ui/Button";
-import { Icon } from "@/shared/icons/Icon";
 import { Input } from "@/shared/ui/Input";
+import { Logo } from "@/shared/ui/Logo";
 import { TabList, TabPanel, TabTrigger, Tabs } from "@/shared/ui/Tabs";
 import { ApiError } from "@/lib/api/client";
 import { authStore } from "@/lib/auth/store";
@@ -52,8 +52,7 @@ export function Login() {
     <div className={styles.page}>
       <div className={styles.card}>
         <div className={styles.brand}>
-          <Icon name="bell-off" size={24} />
-          <span>Snooze</span>
+          <Logo />
         </div>
         <Tabs
           value={tab}

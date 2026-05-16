@@ -7,6 +7,22 @@
   border-right: 1px solid var(--border);
   flex-shrink: 0;
 }
+.brand {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-2) var(--space-3);
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-surface);
+}
+.brand:hover {
+  background: var(--bg-hover);
+}
+.brand img {
+  display: block;
+  width: 100%;
+  height: auto;
+}
 .nav {
   flex: 1;
   padding: var(--space-2);

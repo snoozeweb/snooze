@@ -1,6 +1,7 @@
 import { Link, useLocation } from "@tanstack/react-router";
 import { Icon } from "@/shared/icons/Icon";
 import { Kbd } from "@/shared/ui/Kbd";
+import { Logo } from "@/shared/ui/Logo";
 import { GROUP_LABELS, NAV_ITEMS, type NavGroup } from "./nav-items";
 import { useAuth } from "@/lib/auth/store";
 import { hasAnyPermission } from "@/lib/auth/permissions";
@@ -15,6 +16,9 @@ export function Sidebar() {
 
   return (
     <aside className={styles.sidebar} aria-label="Primary navigation">
+      <Link to="/web/alerts" className={styles.brand} aria-label="Snooze home">
+        <Logo />
+      </Link>
       <nav className={styles.nav}>
         {GROUPS.map((group) => {
           const items = NAV_ITEMS.filter((i) => {

@@ -28,12 +28,14 @@ export function AppShell() {
 
   return (
     <div className={styles.shell}>
-      <Topbar {...(breadcrumb ? { breadcrumb } : {})} onOpenPalette={open} />
       <div className={styles.body}>
         <Sidebar />
-        <main className={styles.main}>
-          <Outlet />
-        </main>
+        <div className={styles.content}>
+          <Topbar {...(breadcrumb ? { breadcrumb } : {})} onOpenPalette={open} />
+          <main className={styles.main}>
+            <Outlet />
+          </main>
+        </div>
       </div>
       <CommandPalette open={paletteOpen} onOpenChange={setPaletteOpen} />
     </div>
