@@ -27,9 +27,9 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
-	"github.com/japannext/snooze/internal/api/middleware"
-	"github.com/japannext/snooze/internal/condition"
-	"github.com/japannext/snooze/internal/db"
+	"github.com/snoozeweb/snooze/internal/api/middleware"
+	"github.com/snoozeweb/snooze/internal/condition"
+	"github.com/snoozeweb/snooze/internal/db"
 )
 
 func (rt *Router) mountSnoozeRetro(r chi.Router) {

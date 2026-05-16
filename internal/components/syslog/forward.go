@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/japannext/snooze/pkg/snoozeclient"
-	"github.com/japannext/snooze/pkg/snoozetypes"
+	"github.com/snoozeweb/snooze/pkg/snoozeclient"
+	"github.com/snoozeweb/snooze/pkg/snoozetypes"
 )
 
 // Forwarder wraps a snoozeclient.Client and converts ParsedMessage values into

@@ -8,7 +8,7 @@ import (
 
 	"github.com/google/uuid"
 
-	"github.com/japannext/snooze/internal/telemetry"
+	"github.com/snoozeweb/snooze/internal/telemetry"
 )
 
 // RequestIDHeader is the HTTP header carrying the request correlation id.

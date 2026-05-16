@@ -9,7 +9,7 @@ import (
 	"github.com/gosnmp/gosnmp"
 	"github.com/stretchr/testify/require"
 
-	"github.com/japannext/snooze/internal/components/snmptrap"
+	"github.com/snoozeweb/snooze/internal/components/snmptrap"
 )
 
 // remoteAddr returns a fixed UDPAddr used across the parser tests so the Host

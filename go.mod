@@ -1,4 +1,4 @@
-module github.com/japannext/snooze
+module github.com/snoozeweb/snooze
 
 go 1.25.0
 

@@ -7,7 +7,7 @@ import (
 	"os"
 	"time"
 
-	"github.com/japannext/snooze/internal/version"
+	"github.com/snoozeweb/snooze/internal/version"
 )
 
 // nodesCollection names the storage collection that holds heartbeat rows.

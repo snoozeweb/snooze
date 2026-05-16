@@ -9,8 +9,8 @@ import (
 	"fmt"
 	"net/http"
 
-	"github.com/japannext/snooze/internal/telemetry"
-	"github.com/japannext/snooze/pkg/snoozetypes"
+	"github.com/snoozeweb/snooze/internal/telemetry"
+	"github.com/snoozeweb/snooze/pkg/snoozetypes"
 )
 
 // Error is the typed error returned by handlers; WriteError converts it

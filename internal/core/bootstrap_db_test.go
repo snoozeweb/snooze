@@ -6,7 +6,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/japannext/snooze/internal/db"
+	"github.com/snoozeweb/snooze/internal/db"
 )
 
 func TestBootstrapDB_FirstBoot(t *testing.T) {

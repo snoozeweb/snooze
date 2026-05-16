@@ -5,8 +5,8 @@ import (
 
 	"go.mongodb.org/mongo-driver/v2/bson"
 
-	"github.com/japannext/snooze/internal/condition"
-	dbpkg "github.com/japannext/snooze/internal/db"
+	"github.com/snoozeweb/snooze/internal/condition"
+	dbpkg "github.com/snoozeweb/snooze/internal/db"
 )
 
 // Convert translates a condition.Cond AST into a bson.M MongoDB filter.

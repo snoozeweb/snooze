@@ -8,7 +8,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/japannext/snooze/internal/components/snmptrap"
+	"github.com/snoozeweb/snooze/internal/components/snmptrap"
 )
 
 func TestLoadConfig_AppliesDefaults(t *testing.T) {

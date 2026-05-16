@@ -10,8 +10,8 @@ import (
 	"github.com/testcontainers/testcontainers-go"
 	tcmongo "github.com/testcontainers/testcontainers-go/modules/mongodb"
 
-	"github.com/japannext/snooze/internal/condition"
-	dbpkg "github.com/japannext/snooze/internal/db"
+	"github.com/snoozeweb/snooze/internal/condition"
+	dbpkg "github.com/snoozeweb/snooze/internal/db"
 )
 
 // startMongo spins up a single-node replica-set MongoDB via testcontainers and

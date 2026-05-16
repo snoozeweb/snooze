@@ -26,8 +26,8 @@ import (
 
 	"gopkg.in/yaml.v3"
 
-	"github.com/japannext/snooze/pkg/snoozeclient"
-	"github.com/japannext/snooze/pkg/snoozetypes"
+	"github.com/snoozeweb/snooze/pkg/snoozeclient"
+	"github.com/snoozeweb/snooze/pkg/snoozetypes"
 )
 
 // DefaultConfigPath is the canonical on-disk location for the helper's config.

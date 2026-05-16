@@ -9,8 +9,8 @@ import (
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/stretchr/testify/require"
 
-	"github.com/japannext/snooze/internal/config/schema"
-	"github.com/japannext/snooze/pkg/snoozetypes"
+	"github.com/snoozeweb/snooze/internal/config/schema"
+	"github.com/snoozeweb/snooze/pkg/snoozetypes"
 )
 
 // testSecret returns a 32-byte key suitable for HS256.

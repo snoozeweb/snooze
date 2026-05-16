@@ -14,13 +14,13 @@ import (
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/trace"
 
-	"github.com/japannext/snooze/internal/config"
-	"github.com/japannext/snooze/internal/db"
-	dbsqlite "github.com/japannext/snooze/internal/db/sqlite"
-	"github.com/japannext/snooze/internal/mq"
-	"github.com/japannext/snooze/internal/plugins"
-	"github.com/japannext/snooze/internal/telemetry"
-	"github.com/japannext/snooze/pkg/snoozetypes"
+	"github.com/snoozeweb/snooze/internal/config"
+	"github.com/snoozeweb/snooze/internal/db"
+	dbsqlite "github.com/snoozeweb/snooze/internal/db/sqlite"
+	"github.com/snoozeweb/snooze/internal/mq"
+	"github.com/snoozeweb/snooze/internal/plugins"
+	"github.com/snoozeweb/snooze/internal/telemetry"
+	"github.com/snoozeweb/snooze/pkg/snoozetypes"
 )
 
 // recordingBus wraps an mq.Bus and counts every Publish call. It is the

@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/japannext/snooze/internal/db"
+	"github.com/snoozeweb/snooze/internal/db"
 )
 
 // CleanupTimeoutJob deletes records past their TTL on the named collection

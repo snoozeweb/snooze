@@ -6,9 +6,9 @@ import (
 	"fmt"
 	"sort"
 
-	"github.com/japannext/snooze/internal/condition"
-	"github.com/japannext/snooze/internal/db"
-	"github.com/japannext/snooze/pkg/snoozetypes"
+	"github.com/snoozeweb/snooze/internal/condition"
+	"github.com/snoozeweb/snooze/internal/db"
+	"github.com/snoozeweb/snooze/pkg/snoozetypes"
 )
 
 // RoleCollection is the collection storing role documents. Each document is

@@ -12,9 +12,9 @@ import (
 	"go.opentelemetry.io/otel"
 	"golang.org/x/sync/errgroup"
 
-	"github.com/japannext/snooze/internal/config"
-	"github.com/japannext/snooze/internal/plugins"
-	"github.com/japannext/snooze/internal/telemetry"
+	"github.com/snoozeweb/snooze/internal/config"
+	"github.com/snoozeweb/snooze/internal/plugins"
+	"github.com/snoozeweb/snooze/internal/telemetry"
 )
 
 func TestCore_PluginAccessor(t *testing.T) {

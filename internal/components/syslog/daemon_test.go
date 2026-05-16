@@ -20,8 +20,8 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	syslogcomp "github.com/japannext/snooze/internal/components/syslog"
-	"github.com/japannext/snooze/pkg/snoozetypes"
+	syslogcomp "github.com/snoozeweb/snooze/internal/components/syslog"
+	"github.com/snoozeweb/snooze/pkg/snoozetypes"
 )
 
 // fakeBackend is an httptest server that captures every alert payload posted

@@ -101,7 +101,7 @@ field-by-field mapping and operational steps.
   (`snooze-relp`, `snooze-syslog`, `snooze-snmptrap`, `snooze-smtp`,
   `snooze-mattermost`, `snooze-googlechat`, `snooze-teams`,
   `snooze-pacemaker`) are now ten statically-linked Go binaries
-  published as `ghcr.io/japannext/snooze-<binary>` distroless images.
+  published as `ghcr.io/snoozeweb/snooze-<binary>` distroless images.
 * The plugin loader no longer accepts Python modules. Built-in plugins are
   compiled in via `internal/pluginimpl/all`; out-of-tree plugins must be
   forked into the Go tree (third-party Python plugins from
@@ -171,7 +171,7 @@ field-by-field mapping and operational steps.
   `audit`, `core`); first-class OpenTelemetry SDK + OTLP gRPC exporter
   (`--otel-endpoint`), and a Prometheus registry served at `/metrics`.
 * **Packaging**: GoReleaser-driven multi-target releases, signed distroless
-  images at `ghcr.io/japannext/snooze-<binary>`, `.deb` + `.rpm` via
+  images at `ghcr.io/snoozeweb/snooze-<binary>`, `.deb` + `.rpm` via
   nfpm, systemd units per-binary, a refreshed Helm chart with
   `database.kind: mongo | postgres | sqlite` (SQLite mode renders a
   StatefulSet + persistent volume; Postgres mode keeps the CloudNativePG

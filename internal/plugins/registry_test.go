@@ -7,7 +7,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/japannext/snooze/pkg/snoozetypes"
+	"github.com/snoozeweb/snooze/pkg/snoozetypes"
 )
 
 // fakePlugin is a minimal Plugin that records the meta it was built with.

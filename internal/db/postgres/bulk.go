@@ -9,8 +9,8 @@ import (
 
 	"github.com/jackc/pgx/v5"
 
-	"github.com/japannext/snooze/internal/condition"
-	dbpkg "github.com/japannext/snooze/internal/db"
+	"github.com/snoozeweb/snooze/internal/condition"
+	dbpkg "github.com/snoozeweb/snooze/internal/db"
 )
 
 // BulkIncrement applies a batch of (search → delta) increment operations

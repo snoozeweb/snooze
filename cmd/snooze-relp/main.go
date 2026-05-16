@@ -16,12 +16,12 @@ import (
 	"os/signal"
 	"syscall"
 
-	"github.com/japannext/snooze/internal/components/relp"
-	"github.com/japannext/snooze/internal/version"
-	"github.com/japannext/snooze/pkg/snoozeclient"
+	"github.com/snoozeweb/snooze/internal/components/relp"
+	"github.com/snoozeweb/snooze/internal/version"
+	"github.com/snoozeweb/snooze/pkg/snoozeclient"
 
 	// Blank-imported so GOMAXPROCS auto-tunes to the container CPU quota.
-	_ "github.com/japannext/snooze/internal/runtime"
+	_ "github.com/snoozeweb/snooze/internal/runtime"
 )
 
 func main() {

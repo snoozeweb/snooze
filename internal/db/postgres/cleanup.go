@@ -10,7 +10,7 @@ import (
 	"sort"
 	"time"
 
-	dbpkg "github.com/japannext/snooze/internal/db"
+	dbpkg "github.com/snoozeweb/snooze/internal/db"
 )
 
 // CleanupTimeout drops every row whose (date_epoch + ttl) is in the past.

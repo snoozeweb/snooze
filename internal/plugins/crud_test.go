@@ -15,10 +15,10 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/stretchr/testify/require"
 
-	"github.com/japannext/snooze/internal/auth"
-	"github.com/japannext/snooze/internal/condition"
-	"github.com/japannext/snooze/internal/db"
-	"github.com/japannext/snooze/pkg/snoozetypes"
+	"github.com/snoozeweb/snooze/internal/auth"
+	"github.com/snoozeweb/snooze/internal/condition"
+	"github.com/snoozeweb/snooze/internal/db"
+	"github.com/snoozeweb/snooze/pkg/snoozetypes"
 )
 
 // crudPlugin is a minimal Plugin for CRUD wiring (no Processor/DataModel).

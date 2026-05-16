@@ -7,7 +7,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/japannext/snooze/internal/plugins"
+	"github.com/snoozeweb/snooze/internal/plugins"
 )
 
 // TestRouter_BuildIncludesPublicAndPluginRoutes exercises the assembled

@@ -11,9 +11,9 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/stretchr/testify/require"
 
-	"github.com/japannext/snooze/internal/condition"
-	"github.com/japannext/snooze/internal/db"
-	"github.com/japannext/snooze/internal/syncer"
+	"github.com/snoozeweb/snooze/internal/condition"
+	"github.com/snoozeweb/snooze/internal/db"
+	"github.com/snoozeweb/snooze/internal/syncer"
 )
 
 // fakeDB is a minimal db.Driver stub used by the health and metrics tests.

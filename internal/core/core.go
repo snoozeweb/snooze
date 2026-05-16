@@ -17,15 +17,15 @@ import (
 	"go.opentelemetry.io/otel/trace"
 	"golang.org/x/sync/errgroup"
 
-	"github.com/japannext/snooze/internal/auth"
-	"github.com/japannext/snooze/internal/config"
-	"github.com/japannext/snooze/internal/db"
-	"github.com/japannext/snooze/internal/db/asyncwriter"
-	"github.com/japannext/snooze/internal/housekeeper"
-	"github.com/japannext/snooze/internal/mq"
-	"github.com/japannext/snooze/internal/plugins"
-	"github.com/japannext/snooze/internal/syncer"
-	"github.com/japannext/snooze/internal/telemetry"
+	"github.com/snoozeweb/snooze/internal/auth"
+	"github.com/snoozeweb/snooze/internal/config"
+	"github.com/snoozeweb/snooze/internal/db"
+	"github.com/snoozeweb/snooze/internal/db/asyncwriter"
+	"github.com/snoozeweb/snooze/internal/housekeeper"
+	"github.com/snoozeweb/snooze/internal/mq"
+	"github.com/snoozeweb/snooze/internal/plugins"
+	"github.com/snoozeweb/snooze/internal/syncer"
+	"github.com/snoozeweb/snooze/internal/telemetry"
 )
 
 // Core orchestrates every Snooze subsystem and implements plugins.Host.

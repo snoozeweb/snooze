@@ -391,7 +391,7 @@
   <section id="docker-deployment">
 <span id="docker"></span><h1>Docker deployment<a class="headerlink" href="#docker-deployment" title="Link to this heading">#</a></h1>
 <p>Snooze 2.0 publishes one distroless image per Go binary at
-<code class="docutils literal notranslate"><span class="pre">ghcr.io/japannext/snooze-&lt;binary&gt;:latest</span></code>. The most common starting
+<code class="docutils literal notranslate"><span class="pre">ghcr.io/snoozeweb/snooze-&lt;binary&gt;:latest</span></code>. The most common starting
 points are documented below; the repository <code class="docutils literal notranslate"><span class="pre">docker-compose.yaml</span></code>
 covers each layout end-to-end with named profiles.</p>
 <section id="single-container-sqlite">
@@ -400,7 +400,7 @@ covers each layout end-to-end with named profiles.</p>
 <span class="w">    </span>-e<span class="w"> </span><span class="nv">SNOOZE_DATABASE_TYPE</span><span class="o">=</span>sqlite<span class="w"> </span><span class="se">\</span>
 <span class="w">    </span>-e<span class="w"> </span><span class="nv">SNOOZE_DATABASE_PATH</span><span class="o">=</span>/var/lib/snooze/db.sqlite<span class="w"> </span><span class="se">\</span>
 <span class="w">    </span>-v<span class="w"> </span>snooze-data:/var/lib/snooze<span class="w"> </span><span class="se">\</span>
-<span class="w">    </span>ghcr.io/japannext/snooze-server:latest
+<span class="w">    </span>ghcr.io/snoozeweb/snooze-server:latest
 </pre></div>
 </div>
 <p>The Web interface is then available at <code class="docutils literal notranslate"><span class="pre">http://localhost:5200</span></code>. This
@@ -413,7 +413,7 @@ zero infrastructure.</p>
 <span class="gp">$ </span>docker<span class="w"> </span>run<span class="w"> </span>--name<span class="w"> </span>snooze<span class="w"> </span>-d<span class="w"> </span>-p<span class="w"> </span><span class="m">5200</span>:5200<span class="w"> </span><span class="se">\</span>
 <span class="w">    </span>-e<span class="w"> </span><span class="nv">DATABASE_URL</span><span class="o">=</span>mongodb://snooze-db:27017/snooze<span class="w"> </span><span class="se">\</span>
 <span class="w">    </span>--link<span class="w"> </span>snooze-db:snooze-db<span class="w"> </span><span class="se">\</span>
-<span class="w">    </span>ghcr.io/japannext/snooze-server:latest
+<span class="w">    </span>ghcr.io/snoozeweb/snooze-server:latest
 </pre></div>
 </div>
 </section>
@@ -427,7 +427,7 @@ zero infrastructure.</p>
 <span class="gp">$ </span>docker<span class="w"> </span>run<span class="w"> </span>--name<span class="w"> </span>snooze<span class="w"> </span>-d<span class="w"> </span>-p<span class="w"> </span><span class="m">5200</span>:5200<span class="w"> </span><span class="se">\</span>
 <span class="w">    </span>-e<span class="w"> </span><span class="nv">DATABASE_URL</span><span class="o">=</span>postgresql://snooze:snooze@snooze-pg:5432/snooze<span class="w"> </span><span class="se">\</span>
 <span class="w">    </span>--link<span class="w"> </span>snooze-pg:snooze-pg<span class="w"> </span><span class="se">\</span>
-<span class="w">    </span>ghcr.io/japannext/snooze-server:latest
+<span class="w">    </span>ghcr.io/snoozeweb/snooze-server:latest
 </pre></div>
 </div>
 </section>

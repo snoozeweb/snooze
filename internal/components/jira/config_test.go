@@ -9,7 +9,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/japannext/snooze/internal/components/jira"
+	"github.com/snoozeweb/snooze/internal/components/jira"
 )
 
 // minimal returns the smallest Config that passes WithDefaults — used as a

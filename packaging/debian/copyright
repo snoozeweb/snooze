@@ -1,16 +1,16 @@
 Format: https://www.debian.org/doc/packaging-manuals/copyright-format/1.0/
 Upstream-Name: snooze
-Upstream-Contact: Snooze maintainers <dev@japannext.com>
+Upstream-Contact: Snooze maintainers <dev@snoozeweb.com>
 Source: https://github.com/snoozeweb/snooze
 
 Files: *
-Copyright: 2017-2026 Snooze maintainers <dev@japannext.com>
+Copyright: 2017-2026 Snooze maintainers <dev@snoozeweb.com>
            2017-2022 Florian Dematraz <florian.dematraz@snoozeweb.net>
            2017-2022 Guillaume Ludinard <guillaume.ludi@gmail.com>
 License: AGPL-3+
 
 Files: debian/*
-Copyright: 2026 Snooze maintainers <dev@japannext.com>
+Copyright: 2026 Snooze maintainers <dev@snoozeweb.com>
 License: AGPL-3+
 
 License: AGPL-3+

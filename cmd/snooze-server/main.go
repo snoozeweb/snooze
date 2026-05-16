@@ -25,25 +25,25 @@ import (
 
 	"golang.org/x/sync/errgroup"
 
-	"github.com/japannext/snooze/internal/api"
-	"github.com/japannext/snooze/internal/api/middleware"
-	"github.com/japannext/snooze/internal/auth"
-	"github.com/japannext/snooze/internal/config"
-	"github.com/japannext/snooze/internal/config/schema"
-	"github.com/japannext/snooze/internal/core"
-	"github.com/japannext/snooze/internal/db"
-	"github.com/japannext/snooze/internal/db/mongo"
-	"github.com/japannext/snooze/internal/db/postgres"
-	"github.com/japannext/snooze/internal/db/sqlite"
-	"github.com/japannext/snooze/internal/telemetry"
-	"github.com/japannext/snooze/internal/version"
+	"github.com/snoozeweb/snooze/internal/api"
+	"github.com/snoozeweb/snooze/internal/api/middleware"
+	"github.com/snoozeweb/snooze/internal/auth"
+	"github.com/snoozeweb/snooze/internal/config"
+	"github.com/snoozeweb/snooze/internal/config/schema"
+	"github.com/snoozeweb/snooze/internal/core"
+	"github.com/snoozeweb/snooze/internal/db"
+	"github.com/snoozeweb/snooze/internal/db/mongo"
+	"github.com/snoozeweb/snooze/internal/db/postgres"
+	"github.com/snoozeweb/snooze/internal/db/sqlite"
+	"github.com/snoozeweb/snooze/internal/telemetry"
+	"github.com/snoozeweb/snooze/internal/version"
 
 	// Blank-imported to trigger every plugin package's init() and populate
 	// the process-wide plugin registry. Only the server binary needs this.
-	_ "github.com/japannext/snooze/internal/pluginimpl/all"
+	_ "github.com/snoozeweb/snooze/internal/pluginimpl/all"
 
 	// Blank-imported so GOMAXPROCS auto-tunes to the container CPU quota.
-	_ "github.com/japannext/snooze/internal/runtime"
+	_ "github.com/snoozeweb/snooze/internal/runtime"
 
 	"github.com/prometheus/client_golang/prometheus"
 )

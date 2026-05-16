@@ -9,7 +9,7 @@ import (
 
 	"github.com/gosnmp/gosnmp"
 
-	"github.com/japannext/snooze/pkg/snoozetypes"
+	"github.com/snoozeweb/snooze/pkg/snoozetypes"
 )
 
 // snmpTrapOID is the dotted-OID for SNMPv2-MIB::snmpTrapOID.0. v2c/v3 traps

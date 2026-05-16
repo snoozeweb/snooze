@@ -5,8 +5,8 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/japannext/snooze/internal/condition"
-	dbpkg "github.com/japannext/snooze/internal/db"
+	"github.com/snoozeweb/snooze/internal/condition"
+	dbpkg "github.com/snoozeweb/snooze/internal/db"
 )
 
 // convertResult is the rendered SQL fragment plus its bound parameters.

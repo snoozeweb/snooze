@@ -6,7 +6,7 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/japannext/snooze/pkg/snoozeclient"
+	"github.com/snoozeweb/snooze/pkg/snoozeclient"
 )
 
 // CommandKind is the discriminator for the parsed Mattermost slash-command

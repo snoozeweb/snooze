@@ -9,7 +9,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
-	"github.com/japannext/snooze/pkg/snoozetypes"
+	"github.com/snoozeweb/snooze/pkg/snoozetypes"
 )
 
 // Plugin is the base contract every Snooze plugin satisfies. A plugin can

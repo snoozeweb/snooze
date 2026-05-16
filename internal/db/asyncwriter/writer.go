@@ -10,7 +10,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/japannext/snooze/internal/db"
+	"github.com/snoozeweb/snooze/internal/db"
 )
 
 type incRequest struct {

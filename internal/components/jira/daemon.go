@@ -7,7 +7,7 @@ import (
 	"log/slog"
 	"sync"
 
-	"github.com/japannext/snooze/pkg/snoozeclient"
+	"github.com/snoozeweb/snooze/pkg/snoozeclient"
 )
 
 // Daemon ties together the JIRA REST client, the inbound webhook server,

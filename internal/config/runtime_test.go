@@ -8,8 +8,8 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/japannext/snooze/internal/db"
-	"github.com/japannext/snooze/internal/db/sqlite"
+	"github.com/snoozeweb/snooze/internal/db"
+	"github.com/snoozeweb/snooze/internal/db/sqlite"
 )
 
 // newDriver opens a per-test SQLite driver. The fresh on-disk database is

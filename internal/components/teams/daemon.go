@@ -10,8 +10,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/japannext/snooze/pkg/snoozeclient"
-	"github.com/japannext/snooze/pkg/snoozetypes"
+	"github.com/snoozeweb/snooze/pkg/snoozeclient"
+	"github.com/snoozeweb/snooze/pkg/snoozetypes"
 )
 
 // Daemon is the snooze-teams entry point. It owns:

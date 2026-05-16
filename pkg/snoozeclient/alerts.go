@@ -6,7 +6,7 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/japannext/snooze/pkg/snoozetypes"
+	"github.com/snoozeweb/snooze/pkg/snoozetypes"
 )
 
 // alertsPath is the v1 endpoint for alert ingestion.

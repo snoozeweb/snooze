@@ -7,7 +7,7 @@ to manage this project.
 
 1. Clone snooze repo
 ```bash
-git clone github.com/japannext/snooze
+git clone github.com/snoozeweb/snooze
 ```
 
 2. Install tools (python/nodejs)

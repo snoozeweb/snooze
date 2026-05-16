@@ -8,7 +8,7 @@ dotenv:
 - .env.local
 
 vars:
-  REPO: ghcr.io/japannext
+  REPO: ghcr.io/snoozeweb
 
 includes:
   web:

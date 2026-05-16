@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"log/slog"
 
-	"github.com/japannext/snooze/pkg/snoozeclient"
+	"github.com/snoozeweb/snooze/pkg/snoozeclient"
 )
 
 // Daemon owns the RELP listener and its Forwarder. Construct it with New

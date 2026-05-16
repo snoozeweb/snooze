@@ -14,7 +14,7 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
-	dbpkg "github.com/japannext/snooze/internal/db"
+	dbpkg "github.com/snoozeweb/snooze/internal/db"
 )
 
 // collectionRE matches valid logical collection names. Dots are permitted in

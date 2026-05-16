@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	dbpkg "github.com/japannext/snooze/internal/db"
+	dbpkg "github.com/snoozeweb/snooze/internal/db"
 	"github.com/stretchr/testify/require"
 )
 

@@ -9,7 +9,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/japannext/snooze/internal/db"
+	"github.com/snoozeweb/snooze/internal/db"
 )
 
 //go:embed testdata/*.json

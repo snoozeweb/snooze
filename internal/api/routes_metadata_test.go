@@ -12,7 +12,7 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/stretchr/testify/require"
 
-	"github.com/japannext/snooze/internal/plugins"
+	"github.com/snoozeweb/snooze/internal/plugins"
 )
 
 // TestMetadataRoute_ListReturnsRegisteredPlugins asserts the bulk endpoint

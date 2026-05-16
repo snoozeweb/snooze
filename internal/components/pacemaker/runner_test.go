@@ -14,8 +14,8 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/japannext/snooze/internal/components/pacemaker"
-	"github.com/japannext/snooze/pkg/snoozetypes"
+	"github.com/snoozeweb/snooze/internal/components/pacemaker"
+	"github.com/snoozeweb/snooze/pkg/snoozetypes"
 )
 
 // newSnoozeStub stands in for snooze-server. It accepts the v1 login + alerts

@@ -5,8 +5,8 @@ import (
 	"log/slog"
 	"time"
 
-	"github.com/japannext/snooze/pkg/snoozeclient"
-	"github.com/japannext/snooze/pkg/snoozetypes"
+	"github.com/snoozeweb/snooze/pkg/snoozeclient"
+	"github.com/snoozeweb/snooze/pkg/snoozetypes"
 )
 
 // alertPoster is the subset of snoozeclient.Client used by the forwarder.

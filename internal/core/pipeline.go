@@ -9,9 +9,9 @@ import (
 	"go.opentelemetry.io/otel/codes"
 	"go.opentelemetry.io/otel/trace"
 
-	"github.com/japannext/snooze/internal/db"
-	"github.com/japannext/snooze/internal/plugins"
-	"github.com/japannext/snooze/pkg/snoozetypes"
+	"github.com/snoozeweb/snooze/internal/db"
+	"github.com/snoozeweb/snooze/internal/plugins"
+	"github.com/snoozeweb/snooze/pkg/snoozetypes"
 )
 
 // recordCollection is the persistence target for processed alerts.

@@ -14,7 +14,7 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/japannext/snooze/internal/syncer"
+	"github.com/snoozeweb/snooze/internal/syncer"
 )
 
 // inprocBus is a buffered-channel fan-out used as the SQLite syncer.Bus.

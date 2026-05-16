@@ -5,9 +5,9 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/japannext/snooze/internal/auth"
-	"github.com/japannext/snooze/internal/telemetry"
-	"github.com/japannext/snooze/pkg/snoozetypes"
+	"github.com/snoozeweb/snooze/internal/auth"
+	"github.com/snoozeweb/snooze/internal/telemetry"
+	"github.com/snoozeweb/snooze/pkg/snoozetypes"
 )
 
 // SkipPredicate decides whether a request should bypass authentication.

@@ -10,8 +10,8 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/japannext/snooze/internal/telemetry"
-	"github.com/japannext/snooze/pkg/snoozetypes"
+	"github.com/snoozeweb/snooze/internal/telemetry"
+	"github.com/snoozeweb/snooze/pkg/snoozetypes"
 )
 
 func TestError_Error(t *testing.T) {

@@ -25,8 +25,8 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/japannext/snooze/internal/plugins"
-	"github.com/japannext/snooze/pkg/snoozetypes"
+	"github.com/snoozeweb/snooze/internal/plugins"
+	"github.com/snoozeweb/snooze/pkg/snoozetypes"
 )
 
 // metaYAML is the raw metadata.yaml content embedded at build time.

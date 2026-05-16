@@ -4,9 +4,9 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/japannext/snooze/internal/components/syslog"
-	"github.com/japannext/snooze/pkg/snoozeclient"
-	"github.com/japannext/snooze/pkg/snoozetypes"
+	"github.com/snoozeweb/snooze/internal/components/syslog"
+	"github.com/snoozeweb/snooze/pkg/snoozeclient"
+	"github.com/snoozeweb/snooze/pkg/snoozetypes"
 )
 
 // Forwarder converts RELP syslog payloads into snoozetypes.Record values and

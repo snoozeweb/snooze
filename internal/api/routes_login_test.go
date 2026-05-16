@@ -13,8 +13,8 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/stretchr/testify/require"
 
-	"github.com/japannext/snooze/internal/auth"
-	"github.com/japannext/snooze/pkg/snoozetypes"
+	"github.com/snoozeweb/snooze/internal/auth"
+	"github.com/snoozeweb/snooze/pkg/snoozetypes"
 )
 
 // fakeRefresh is a stub refreshIssuer for the login route tests. It records

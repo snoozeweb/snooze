@@ -7,7 +7,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/japannext/snooze/internal/condition"
+	"github.com/snoozeweb/snooze/internal/condition"
 )
 
 // mockDialect emits human-readable SQL fragments so the tests focus on

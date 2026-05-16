@@ -6,8 +6,8 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/japannext/snooze/internal/auth"
-	"github.com/japannext/snooze/internal/db"
+	"github.com/snoozeweb/snooze/internal/auth"
+	"github.com/snoozeweb/snooze/internal/db"
 )
 
 func TestEnsureSecrets_FirstBootGenerates(t *testing.T) {

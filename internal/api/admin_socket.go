@@ -12,7 +12,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
-	"github.com/japannext/snooze/internal/auth"
+	"github.com/snoozeweb/snooze/internal/auth"
 )
 
 // AdminServer is a minimal HTTP server bound to a unix socket. It exposes a

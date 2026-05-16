@@ -5,8 +5,8 @@
 package sqlite_test
 
 import (
-	"github.com/japannext/snooze/internal/db"
-	"github.com/japannext/snooze/internal/db/sqlite"
+	"github.com/snoozeweb/snooze/internal/db"
+	"github.com/snoozeweb/snooze/internal/db/sqlite"
 )
 
 var _ db.Driver = (*sqlite.Driver)(nil)

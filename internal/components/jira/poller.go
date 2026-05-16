@@ -10,8 +10,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/japannext/snooze/internal/condition"
-	"github.com/japannext/snooze/pkg/snoozeclient"
+	"github.com/snoozeweb/snooze/internal/condition"
+	"github.com/snoozeweb/snooze/pkg/snoozeclient"
 )
 
 // hashURLRegex extracts the alert hash from the value of the configured

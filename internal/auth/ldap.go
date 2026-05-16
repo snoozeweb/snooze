@@ -10,7 +10,7 @@ import (
 
 	"github.com/go-ldap/ldap/v3"
 
-	"github.com/japannext/snooze/internal/config/schema"
+	"github.com/snoozeweb/snooze/internal/config/schema"
 )
 
 // LDAPConfigSource returns the current LDAP configuration. The production

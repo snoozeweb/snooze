@@ -7,8 +7,8 @@ import (
 	"net/http"
 	"runtime/debug"
 
-	"github.com/japannext/snooze/internal/telemetry"
-	"github.com/japannext/snooze/pkg/snoozetypes"
+	"github.com/snoozeweb/snooze/internal/telemetry"
+	"github.com/snoozeweb/snooze/pkg/snoozetypes"
 )
 
 // Recoverer catches panics raised by downstream handlers, logs the panic value

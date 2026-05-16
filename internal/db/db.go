@@ -6,8 +6,8 @@ import (
 	"context"
 	"time"
 
-	"github.com/japannext/snooze/internal/condition"
-	"github.com/japannext/snooze/internal/syncer"
+	"github.com/snoozeweb/snooze/internal/condition"
+	"github.com/snoozeweb/snooze/internal/syncer"
 )
 
 // Document is a free-form record payload. The plugin layer wraps these in

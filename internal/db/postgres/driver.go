@@ -12,9 +12,9 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
-	"github.com/japannext/snooze/internal/condition"
-	dbpkg "github.com/japannext/snooze/internal/db"
-	"github.com/japannext/snooze/internal/syncer"
+	"github.com/snoozeweb/snooze/internal/condition"
+	dbpkg "github.com/snoozeweb/snooze/internal/db"
+	"github.com/snoozeweb/snooze/internal/syncer"
 )
 
 // Config controls how the Postgres driver connects to the database. DSN is

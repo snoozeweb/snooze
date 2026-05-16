@@ -12,8 +12,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/japannext/snooze/pkg/snoozeclient"
-	"github.com/japannext/snooze/pkg/snoozetypes"
+	"github.com/snoozeweb/snooze/pkg/snoozeclient"
+	"github.com/snoozeweb/snooze/pkg/snoozetypes"
 )
 
 // ReceivedMessage is the daemon's intermediate representation of an accepted

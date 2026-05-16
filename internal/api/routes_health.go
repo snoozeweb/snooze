@@ -8,8 +8,8 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
-	"github.com/japannext/snooze/internal/condition"
-	"github.com/japannext/snooze/internal/db"
+	"github.com/snoozeweb/snooze/internal/condition"
+	"github.com/snoozeweb/snooze/internal/db"
 )
 
 // clusterMemberFreshOK is the max age of a `last_seen` timestamp for a node

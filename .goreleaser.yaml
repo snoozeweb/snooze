@@ -15,9 +15,9 @@ builds:
     flags: ["-trimpath", "-tags=osusergo,netgo"]
     ldflags:
       - -s -w
-      - -X github.com/japannext/snooze/internal/version.Version={{.Version}}
-      - -X github.com/japannext/snooze/internal/version.Commit={{.Commit}}
-      - -X github.com/japannext/snooze/internal/version.Date={{.Date}}
+      - -X github.com/snoozeweb/snooze/internal/version.Version={{.Version}}
+      - -X github.com/snoozeweb/snooze/internal/version.Commit={{.Commit}}
+      - -X github.com/snoozeweb/snooze/internal/version.Date={{.Date}}
   - id: snooze
     main: ./cmd/snooze
     binary: snooze
@@ -27,9 +27,9 @@ builds:
     flags: ["-trimpath", "-tags=osusergo,netgo"]
     ldflags:
       - -s -w
-      - -X github.com/japannext/snooze/internal/version.Version={{.Version}}
-      - -X github.com/japannext/snooze/internal/version.Commit={{.Commit}}
-      - -X github.com/japannext/snooze/internal/version.Date={{.Date}}
+      - -X github.com/snoozeweb/snooze/internal/version.Version={{.Version}}
+      - -X github.com/snoozeweb/snooze/internal/version.Commit={{.Commit}}
+      - -X github.com/snoozeweb/snooze/internal/version.Date={{.Date}}
   - id: snooze-syslog
     main: ./cmd/snooze-syslog
     binary: snooze-syslog
@@ -110,7 +110,7 @@ archives:
 nfpms:
   - id: snooze-deb-rpm
     package_name: snooze
-    vendor: japannext
+    vendor: snoozeweb
     homepage: https://snoozeweb.net
     maintainer: Snooze maintainers <noreply@snoozeweb.net>
     description: Snooze monitoring server and components.

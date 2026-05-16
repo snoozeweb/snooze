@@ -10,7 +10,7 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/stretchr/testify/require"
 
-	"github.com/japannext/snooze/internal/plugins"
+	"github.com/snoozeweb/snooze/internal/plugins"
 )
 
 // stubPlugin satisfies plugins.Plugin and (optionally) plugins.DataModel.

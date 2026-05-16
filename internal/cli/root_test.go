@@ -10,7 +10,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/japannext/snooze/pkg/snoozeclient"
+	"github.com/snoozeweb/snooze/pkg/snoozeclient"
 )
 
 // newTestRuntime builds a runtime that points the client factory at srv and

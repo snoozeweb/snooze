@@ -6,7 +6,7 @@ vars:
     sh: "grep -oP '^name: \\K.*' Chart.yaml"
   CHART_VERSION:
     sh: "grep -oP '^version: \\K.*' Chart.yaml"
-  OCI_REGISTRY: ghcr.io/japannext/helm-charts
+  OCI_REGISTRY: ghcr.io/snoozeweb/helm-charts
 
 tasks:
   lint:

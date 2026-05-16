@@ -5,7 +5,7 @@
 package config
 
 import (
-	"github.com/japannext/snooze/internal/config/schema"
+	"github.com/snoozeweb/snooze/internal/config/schema"
 )
 
 // Config is the top-level bootstrap configuration object.

@@ -15,7 +15,7 @@ import (
 
 	"github.com/cenkalti/backoff/v4"
 
-	"github.com/japannext/snooze/pkg/snoozetypes"
+	"github.com/snoozeweb/snooze/pkg/snoozetypes"
 )
 
 // loginPathFor returns the v1 login endpoint for the given method.

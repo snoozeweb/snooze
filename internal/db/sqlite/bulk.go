@@ -21,7 +21,7 @@ import (
 
 	"github.com/google/uuid"
 
-	dbpkg "github.com/japannext/snooze/internal/db"
+	dbpkg "github.com/snoozeweb/snooze/internal/db"
 )
 
 // BulkIncrement applies a batch of (search, deltas) updates inside a single

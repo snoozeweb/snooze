@@ -11,8 +11,8 @@ import (
 
 	"github.com/golang-jwt/jwt/v5"
 
-	"github.com/japannext/snooze/internal/config/schema"
-	"github.com/japannext/snooze/pkg/snoozetypes"
+	"github.com/snoozeweb/snooze/internal/config/schema"
+	"github.com/snoozeweb/snooze/pkg/snoozetypes"
 )
 
 // MinSecretBytes is the minimum length of an HS256 signing key, matching the

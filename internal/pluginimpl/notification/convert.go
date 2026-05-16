@@ -4,8 +4,8 @@ import (
 	"encoding/json"
 	"time"
 
-	"github.com/japannext/snooze/internal/db"
-	"github.com/japannext/snooze/pkg/snoozetypes"
+	"github.com/snoozeweb/snooze/internal/db"
+	"github.com/snoozeweb/snooze/pkg/snoozetypes"
 )
 
 // decodeEntry converts a free-form db.Document into a typed Entry by round-

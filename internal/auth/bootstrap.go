@@ -10,7 +10,7 @@ import (
 
 	"golang.org/x/crypto/bcrypt"
 
-	"github.com/japannext/snooze/internal/db"
+	"github.com/snoozeweb/snooze/internal/db"
 )
 
 // RootUsername is the canonical bootstrap administrator account.

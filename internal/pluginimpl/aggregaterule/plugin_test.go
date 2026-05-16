@@ -11,14 +11,14 @@ import (
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/trace"
 
-	"github.com/japannext/snooze/internal/condition"
-	"github.com/japannext/snooze/internal/config"
-	"github.com/japannext/snooze/internal/db"
-	"github.com/japannext/snooze/internal/db/asyncwriter"
-	"github.com/japannext/snooze/internal/db/sqlite"
-	"github.com/japannext/snooze/internal/plugins"
-	"github.com/japannext/snooze/internal/telemetry"
-	"github.com/japannext/snooze/pkg/snoozetypes"
+	"github.com/snoozeweb/snooze/internal/condition"
+	"github.com/snoozeweb/snooze/internal/config"
+	"github.com/snoozeweb/snooze/internal/db"
+	"github.com/snoozeweb/snooze/internal/db/asyncwriter"
+	"github.com/snoozeweb/snooze/internal/db/sqlite"
+	"github.com/snoozeweb/snooze/internal/plugins"
+	"github.com/snoozeweb/snooze/internal/telemetry"
+	"github.com/snoozeweb/snooze/pkg/snoozetypes"
 )
 
 // --- test scaffolding ---

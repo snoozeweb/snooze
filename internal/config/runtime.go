@@ -9,9 +9,9 @@ import (
 	"sync"
 	"time"
 
-	"github.com/japannext/snooze/internal/condition"
-	"github.com/japannext/snooze/internal/config/schema"
-	"github.com/japannext/snooze/internal/db"
+	"github.com/snoozeweb/snooze/internal/condition"
+	"github.com/snoozeweb/snooze/internal/config/schema"
+	"github.com/snoozeweb/snooze/internal/db"
 )
 
 // RuntimeStore is the contract for the live-editable counterpart of the

@@ -22,7 +22,7 @@
               "type": "string"
             },
             "repository": {
-              "default": "ghcr.io/japannext/snooze",
+              "default": "ghcr.io/snoozeweb/snooze",
               "description": "The image to use for the snooze CLI client",
               "required": [],
               "title": "repository",
@@ -90,7 +90,7 @@
               "type": "string"
             },
             "repository": {
-              "default": "ghcr.io/japannext/snooze-googlechat",
+              "default": "ghcr.io/snoozeweb/snooze-googlechat",
               "description": "The image to use for snooze-googlechat",
               "required": [],
               "title": "repository",
@@ -272,7 +272,7 @@
               "type": "string"
             },
             "repository": {
-              "default": "ghcr.io/japannext/snooze-mattermost",
+              "default": "ghcr.io/snoozeweb/snooze-mattermost",
               "description": "The image to use for snooze-mattermost",
               "required": [],
               "title": "repository",
@@ -330,7 +330,7 @@
               "type": "string"
             },
             "repository": {
-              "default": "ghcr.io/japannext/snooze-pacemaker",
+              "default": "ghcr.io/snoozeweb/snooze-pacemaker",
               "description": "The image to use for snooze-pacemaker",
               "required": [],
               "title": "repository",
@@ -409,7 +409,7 @@
               "type": "string"
             },
             "repository": {
-              "default": "ghcr.io/japannext/snooze-relp",
+              "default": "ghcr.io/snoozeweb/snooze-relp",
               "description": "The image to use for snooze-relp",
               "required": [],
               "title": "repository",
@@ -467,7 +467,7 @@
               "type": "string"
             },
             "repository": {
-              "default": "ghcr.io/japannext/snooze-server",
+              "default": "ghcr.io/snoozeweb/snooze-server",
               "description": "The image to use for snooze-server",
               "required": [],
               "title": "repository",
@@ -656,7 +656,7 @@
               "type": "string"
             },
             "repository": {
-              "default": "ghcr.io/japannext/snooze-smtp",
+              "default": "ghcr.io/snoozeweb/snooze-smtp",
               "description": "The image to use for snooze-smtp",
               "required": [],
               "title": "repository",
@@ -707,7 +707,7 @@
               "type": "string"
             },
             "repository": {
-              "default": "ghcr.io/japannext/snooze-snmptrap",
+              "default": "ghcr.io/snoozeweb/snooze-snmptrap",
               "description": "The image to use for snooze-snmptrap",
               "required": [],
               "title": "repository",
@@ -771,7 +771,7 @@
               "type": "string"
             },
             "repository": {
-              "default": "ghcr.io/japannext/snooze-syslog",
+              "default": "ghcr.io/snoozeweb/snooze-syslog",
               "description": "The image to use for snooze-syslog",
               "required": [],
               "title": "repository",
@@ -829,7 +829,7 @@
               "type": "string"
             },
             "repository": {
-              "default": "ghcr.io/japannext/snooze-teams",
+              "default": "ghcr.io/snoozeweb/snooze-teams",
               "description": "The image to use for snooze-teams",
               "required": [],
               "title": "repository",

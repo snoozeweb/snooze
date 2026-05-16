@@ -6,8 +6,8 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/japannext/snooze/internal/db"
-	"github.com/japannext/snooze/pkg/snoozetypes"
+	"github.com/snoozeweb/snooze/internal/db"
+	"github.com/snoozeweb/snooze/pkg/snoozetypes"
 )
 
 func TestRoleResolver_Resolve_DirectRoles(t *testing.T) {

@@ -12,7 +12,7 @@
 | googlechat.httpProxy | string | `""` |  |
 | googlechat.httpsProxy | string | `""` |  |
 | googlechat.image.pullPolicy | string | `"IfNotPresent"` | Image pull policy of snooze-googlechat |
-| googlechat.image.repository | string | `"ghcr.io/japannext/snooze-googlechat"` | The image to use for snooze-googlechat |
+| googlechat.image.repository | string | `"ghcr.io/snoozeweb/snooze-googlechat"` | The image to use for snooze-googlechat |
 | googlechat.image.tag | string | `""` | A tag override for snooze-googlechat |
 | googlechat.noProxy | string | `""` |  |
 | googlechat.replicaCount | int | `2` |  |
@@ -25,7 +25,7 @@
 | mongodb.storageClassName | string | `""` |  |
 | server.config.defaultAuthBackend | string | `"ldap"` |  |
 | server.image.pullPolicy | string | `"IfNotPresent"` | Image pull policy of snooze-server |
-| server.image.repository | string | `"ghcr.io/japannext/snooze-server"` | The image to use for snooze-server |
+| server.image.repository | string | `"ghcr.io/snoozeweb/snooze-server"` | The image to use for snooze-server |
 | server.image.tag | string | `""` | A tag override for snooze-server |
 | server.ldap.baseDN | string | `""` |  |
 | server.ldap.bindDN | string | `""` | The bindDN to use for LDAP authentication |
@@ -44,14 +44,14 @@
 | server.replicaCount | int | `3` | Number of replicas of snooze-server to run |
 | snmptrap.enabled | bool | `true` | When enabled, deploy snooze-snmptrap inputs |
 | snmptrap.image.pullPolicy | string | `"IfNotPresent"` | Image pull policy of snooze-snmptrap |
-| snmptrap.image.repository | string | `"ghcr.io/japannext/snooze-snmptrap"` | The image to use for snooze-snmptrap |
+| snmptrap.image.repository | string | `"ghcr.io/snoozeweb/snooze-snmptrap"` | The image to use for snooze-snmptrap |
 | snmptrap.image.tag | string | `""` | A tag override for snooze-snmptrap |
 | snmptrap.replicaCount | int | `2` | Number of snooze-snmptrap replicas |
 | snmptrap.sendWorkers | int | `4` |  |
 | syslog.debug | bool | `false` | Enable debug logs |
 | syslog.enabled | bool | `true` | When enabled, deploy snooze-syslog inputs |
 | syslog.image.pullPolicy | string | `"IfNotPresent"` | Image pull policy of snooze-syslog |
-| syslog.image.repository | string | `"ghcr.io/japannext/snooze-syslog"` | The image to use for snooze-syslog |
+| syslog.image.repository | string | `"ghcr.io/snoozeweb/snooze-syslog"` | The image to use for snooze-syslog |
 | syslog.image.tag | string | `""` | A tag override for snooze-syslog |
 | syslog.replicaCount | int | `2` | Number of snooze-syslog replicas |
 | syslog.workers | int | `4` | Number of workers per instance |

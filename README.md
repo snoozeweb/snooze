@@ -15,7 +15,7 @@ docker run --name snoozeweb -d -p 5200:5200 \
   -e SNOOZE_DATABASE_TYPE=sqlite \
   -e SNOOZE_DATABASE_PATH=/var/lib/snooze/db.sqlite \
   -v snooze-data:/var/lib/snooze \
-  ghcr.io/japannext/snooze-server:latest
+  ghcr.io/snoozeweb/snooze-server:latest
 ```
 
 Web interface: <http://localhost:5200>. Default login: `root:root`
@@ -122,7 +122,7 @@ Snooze — log aggregation and alerting.
 
 Copyright 2018-2026 Florian Dematraz <florian.dematraz@snoozeweb.net>
 Copyright 2018-2026 Guillaume Ludinard <guillaume.ludi@gmail.com>
-Copyright 2020-     Japannext Co., Ltd. <https://www.japannext.co.jp/>
+Copyright 2020-     Japannext Co., Ltd. <https://www.snoozeweb.co.jp/>
 
 This program is free software: you can redistribute it and/or modify
 it under the terms of the GNU Affero General Public License as

@@ -10,7 +10,7 @@ import (
 	"go.mongodb.org/mongo-driver/v2/mongo"
 	"go.mongodb.org/mongo-driver/v2/mongo/options"
 
-	"github.com/japannext/snooze/internal/syncer"
+	"github.com/snoozeweb/snooze/internal/syncer"
 )
 
 // mongoBus is the syncer.Bus implementation that fans MongoDB change-stream

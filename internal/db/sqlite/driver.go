@@ -25,9 +25,9 @@ import (
 
 	"github.com/google/uuid"
 
-	"github.com/japannext/snooze/internal/condition"
-	dbpkg "github.com/japannext/snooze/internal/db"
-	"github.com/japannext/snooze/internal/syncer"
+	"github.com/snoozeweb/snooze/internal/condition"
+	dbpkg "github.com/snoozeweb/snooze/internal/db"
+	"github.com/snoozeweb/snooze/internal/syncer"
 )
 
 // Config configures the SQLite driver.

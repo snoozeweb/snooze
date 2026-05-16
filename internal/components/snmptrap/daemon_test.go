@@ -15,7 +15,7 @@ import (
 	"github.com/gosnmp/gosnmp"
 	"github.com/stretchr/testify/require"
 
-	"github.com/japannext/snooze/pkg/snoozetypes"
+	"github.com/snoozeweb/snooze/pkg/snoozetypes"
 )
 
 // This file lives in `package snmptrap` (not `_test`) so it can reach

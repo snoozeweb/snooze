@@ -11,12 +11,12 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"go.opentelemetry.io/otel/trace"
 
-	"github.com/japannext/snooze/internal/api/middleware"
-	"github.com/japannext/snooze/internal/auth"
-	"github.com/japannext/snooze/internal/config"
-	"github.com/japannext/snooze/internal/db"
-	"github.com/japannext/snooze/internal/plugins"
-	"github.com/japannext/snooze/internal/telemetry"
+	"github.com/snoozeweb/snooze/internal/api/middleware"
+	"github.com/snoozeweb/snooze/internal/auth"
+	"github.com/snoozeweb/snooze/internal/config"
+	"github.com/snoozeweb/snooze/internal/db"
+	"github.com/snoozeweb/snooze/internal/plugins"
+	"github.com/snoozeweb/snooze/internal/telemetry"
 )
 
 // AlertProcessor is the narrow surface routes_alert needs from the server's

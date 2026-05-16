@@ -15,7 +15,7 @@ import (
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 	semconv "go.opentelemetry.io/otel/semconv/v1.26.0"
 
-	"github.com/japannext/snooze/internal/version"
+	"github.com/snoozeweb/snooze/internal/version"
 )
 
 // OTLPProtocol selects the wire protocol for the OTLP trace exporter.

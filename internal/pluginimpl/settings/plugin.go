@@ -17,9 +17,9 @@ import (
 	"fmt"
 	"sync"
 
-	"github.com/japannext/snooze/internal/config"
-	"github.com/japannext/snooze/internal/db"
-	"github.com/japannext/snooze/internal/plugins"
+	"github.com/snoozeweb/snooze/internal/config"
+	"github.com/snoozeweb/snooze/internal/db"
+	"github.com/snoozeweb/snooze/internal/plugins"
 )
 
 //go:embed metadata.yaml

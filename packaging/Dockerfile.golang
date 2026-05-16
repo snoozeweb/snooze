@@ -7,12 +7,12 @@
 #   docker build -f packaging/Dockerfile.golang \
 #     --target runtime-server \
 #     --build-arg BINARY=snooze-server \
-#     -t ghcr.io/japannext/snooze-server:dev .
+#     -t ghcr.io/snoozeweb/snooze-server:dev .
 #
 #   docker build -f packaging/Dockerfile.golang \
 #     --target runtime-component \
 #     --build-arg BINARY=snooze-syslog \
-#     -t ghcr.io/japannext/snooze-syslog:dev .
+#     -t ghcr.io/snoozeweb/snooze-syslog:dev .
 #
 # Build args:
 #   BINARY      (required) name of the cmd/ subdir, e.g. `snooze-server`
@@ -55,9 +55,9 @@ RUN --mount=type=cache,target=/go/pkg/mod \
         -trimpath \
         -tags 'osusergo,netgo' \
         -ldflags "-s -w \
-          -X github.com/japannext/snooze/internal/version.Version=${VERSION} \
-          -X github.com/japannext/snooze/internal/version.Commit=${COMMIT} \
-          -X github.com/japannext/snooze/internal/version.Date=${BUILD_TIME}" \
+          -X github.com/snoozeweb/snooze/internal/version.Version=${VERSION} \
+          -X github.com/snoozeweb/snooze/internal/version.Commit=${COMMIT} \
+          -X github.com/snoozeweb/snooze/internal/version.Date=${BUILD_TIME}" \
         -o /out/${BINARY} ./cmd/${BINARY}
 
 # ---------- Stage 2: Web (React + Vite) build ----------
@@ -85,7 +85,7 @@ ARG VERSION=0.0.0-dev
 ARG COMMIT=unknown
 ARG BUILD_TIME=unknown
 LABEL org.opencontainers.image.title="snooze-server" \
-      org.opencontainers.image.source="https://github.com/japannext/snooze" \
+      org.opencontainers.image.source="https://github.com/snoozeweb/snooze" \
       org.opencontainers.image.licenses="AGPL-3.0" \
       org.opencontainers.image.version="${VERSION}" \
       org.opencontainers.image.revision="${COMMIT}" \
@@ -111,7 +111,7 @@ ARG VERSION=0.0.0-dev
 ARG COMMIT=unknown
 ARG BUILD_TIME=unknown
 LABEL org.opencontainers.image.title="${BINARY}" \
-      org.opencontainers.image.source="https://github.com/japannext/snooze" \
+      org.opencontainers.image.source="https://github.com/snoozeweb/snooze" \
       org.opencontainers.image.licenses="AGPL-3.0" \
       org.opencontainers.image.version="${VERSION}" \
       org.opencontainers.image.revision="${COMMIT}" \

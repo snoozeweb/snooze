@@ -5,8 +5,8 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/japannext/snooze/internal/condition"
-	"github.com/japannext/snooze/internal/db"
+	"github.com/snoozeweb/snooze/internal/condition"
+	"github.com/snoozeweb/snooze/internal/db"
 )
 
 // generalCollection holds the bootstrap marker doc.

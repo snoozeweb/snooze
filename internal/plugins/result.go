@@ -1,6 +1,6 @@
 package plugins
 
-import "github.com/japannext/snooze/pkg/snoozetypes"
+import "github.com/snoozeweb/snooze/pkg/snoozetypes"
 
 // Action discriminates the four terminal verdicts a Processor.Process call
 // can produce. The pipeline interprets each as follows:

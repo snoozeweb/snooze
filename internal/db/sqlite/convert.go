@@ -13,7 +13,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/japannext/snooze/internal/condition"
+	"github.com/snoozeweb/snooze/internal/condition"
 )
 
 // compile lowers cond to a parenthesised SQL boolean expression plus the

@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/japannext/snooze/internal/condition"
+	"github.com/snoozeweb/snooze/internal/condition"
 )
 
 // Builder walks a condition.Cond AST and emits parameterised SQL using the

@@ -9,7 +9,7 @@ import (
 	"github.com/go-ldap/ldap/v3"
 	"github.com/stretchr/testify/require"
 
-	"github.com/japannext/snooze/internal/config/schema"
+	"github.com/snoozeweb/snooze/internal/config/schema"
 )
 
 // fakeLDAP is an injectable ldapConn for unit testing the search-then-bind

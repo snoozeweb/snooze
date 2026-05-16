@@ -10,9 +10,9 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/japannext/snooze/internal/condition"
-	"github.com/japannext/snooze/internal/db"
-	"github.com/japannext/snooze/pkg/snoozetypes"
+	"github.com/snoozeweb/snooze/internal/condition"
+	"github.com/snoozeweb/snooze/internal/db"
+	"github.com/snoozeweb/snooze/pkg/snoozetypes"
 )
 
 // RefreshCollection is the DB collection that backs RefreshTokenStore. The

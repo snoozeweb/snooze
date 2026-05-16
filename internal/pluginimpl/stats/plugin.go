@@ -19,9 +19,9 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
-	"github.com/japannext/snooze/internal/condition"
-	"github.com/japannext/snooze/internal/db"
-	"github.com/japannext/snooze/internal/plugins"
+	"github.com/snoozeweb/snooze/internal/condition"
+	"github.com/snoozeweb/snooze/internal/db"
+	"github.com/snoozeweb/snooze/internal/plugins"
 )
 
 //go:embed metadata.yaml

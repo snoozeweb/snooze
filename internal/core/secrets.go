@@ -7,8 +7,8 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/japannext/snooze/internal/condition"
-	"github.com/japannext/snooze/internal/db"
+	"github.com/snoozeweb/snooze/internal/condition"
+	"github.com/snoozeweb/snooze/internal/db"
 )
 
 // secretsCollection is the storage collection holding the JWT private key and

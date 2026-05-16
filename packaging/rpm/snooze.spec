@@ -172,7 +172,7 @@ JIRA ticket transitions to a Done status.
 export GOFLAGS="-trimpath -tags=osusergo,netgo -mod=vendor"
 export CGO_ENABLED=0
 go build \
-    -ldflags "-s -w -X github.com/japannext/snooze/internal/version.Version=%{version}" \
+    -ldflags "-s -w -X github.com/snoozeweb/snooze/internal/version.Version=%{version}" \
     -o _build/ ./cmd/...
 
 # ============================================================================

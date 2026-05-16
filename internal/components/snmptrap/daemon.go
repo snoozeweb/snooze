@@ -8,7 +8,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/japannext/snooze/pkg/snoozeclient"
+	"github.com/snoozeweb/snooze/pkg/snoozeclient"
 )
 
 // defaultQueueSize bounds the in-process backlog of traps awaiting forwarding.

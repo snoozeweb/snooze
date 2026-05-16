@@ -10,7 +10,7 @@ import (
 
 	"golang.org/x/sync/errgroup"
 
-	"github.com/japannext/snooze/internal/telemetry"
+	"github.com/snoozeweb/snooze/internal/telemetry"
 )
 
 // Job describes a single supervised goroutine. Fn must respect ctx

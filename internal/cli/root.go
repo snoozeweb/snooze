@@ -14,8 +14,8 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/japannext/snooze/internal/version"
-	"github.com/japannext/snooze/pkg/snoozeclient"
+	"github.com/snoozeweb/snooze/internal/version"
+	"github.com/snoozeweb/snooze/pkg/snoozeclient"
 )
 
 // globalFlags captures the flags wired on the root command. They are shared

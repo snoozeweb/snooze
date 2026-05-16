@@ -8,7 +8,7 @@ import (
 	"go.mongodb.org/mongo-driver/v2/mongo"
 	"go.mongodb.org/mongo-driver/v2/mongo/options"
 
-	dbpkg "github.com/japannext/snooze/internal/db"
+	dbpkg "github.com/snoozeweb/snooze/internal/db"
 )
 
 // BulkIncrement applies a batch of search→delta operations in one BulkWrite.

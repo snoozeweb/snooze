@@ -5,9 +5,9 @@ import (
 
 	"go.opentelemetry.io/otel/trace"
 
-	"github.com/japannext/snooze/internal/config"
-	"github.com/japannext/snooze/internal/db"
-	"github.com/japannext/snooze/internal/telemetry"
+	"github.com/snoozeweb/snooze/internal/config"
+	"github.com/snoozeweb/snooze/internal/db"
+	"github.com/snoozeweb/snooze/internal/telemetry"
 )
 
 // Bus is the minimal cross-instance event publisher surface the plugin layer

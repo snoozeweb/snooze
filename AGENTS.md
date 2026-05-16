@@ -9,7 +9,7 @@
 ## Project at a glance
 
 * **What**: Clustered log-aggregation and alerting server.
-* **Repo**: `github.com/japannext/snooze`. Module path matches the import path.
+* **Repo**: `github.com/snoozeweb/snooze`. Module path matches the import path.
 * **Language floor**: Go 1.25 (`go.mod`). Build flags: `-trimpath -tags 'osusergo,netgo'`,
   `CGO_ENABLED=0`. Container images are distroless.
 * **Frontend**: React 19 SPA under `web/` (Vite 6, TypeScript strict, TanStack Router + Query, Radix UI primitives, Chart.js wrappers). The Vue 3 codebase was replaced in the M0-M8 rewrite.
@@ -131,7 +131,7 @@ Files to consult first when starting a change:
 * **Allowed without confirmation**: `git status`, `git diff`, `git log`,
   `task go:*`, `task chart:*`, `go run ./cmd/...` against a throw-away
   config, read-only queries against a local Mongo/Postgres/SQLite.
-* **Confirm first**: anything pushing images to `ghcr.io/japannext`,
+* **Confirm first**: anything pushing images to `ghcr.io/snoozeweb`,
   changes to `packaging/helm/values.yaml` defaults or `values.schema.json`,
   DB schema changes, modifications under `web/`.
 * **Forbidden**: force-pushing to `master`/`release*`, dropping DB

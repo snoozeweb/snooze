@@ -3,7 +3,7 @@ package auth
 import (
 	"context"
 
-	"github.com/japannext/snooze/pkg/snoozetypes"
+	"github.com/snoozeweb/snooze/pkg/snoozetypes"
 )
 
 // ctxKey is the unexported key type for claims storage; the unexported nature

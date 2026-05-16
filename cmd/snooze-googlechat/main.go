@@ -5,10 +5,10 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/japannext/snooze/internal/version"
+	"github.com/snoozeweb/snooze/internal/version"
 
 	// Blank-imported so GOMAXPROCS auto-tunes to the container CPU quota.
-	_ "github.com/japannext/snooze/internal/runtime"
+	_ "github.com/snoozeweb/snooze/internal/runtime"
 )
 
 func main() {

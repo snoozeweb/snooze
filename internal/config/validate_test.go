@@ -5,7 +5,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/japannext/snooze/internal/config/schema"
+	"github.com/snoozeweb/snooze/internal/config/schema"
 )
 
 func TestValidate_DefaultsAreValid(t *testing.T) {

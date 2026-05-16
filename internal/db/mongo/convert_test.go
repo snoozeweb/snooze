@@ -6,7 +6,7 @@ import (
 
 	"go.mongodb.org/mongo-driver/v2/bson"
 
-	"github.com/japannext/snooze/internal/condition"
+	"github.com/snoozeweb/snooze/internal/condition"
 )
 
 // TestConvert covers the operator-translation table that Convert is the only

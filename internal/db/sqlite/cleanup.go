@@ -15,7 +15,7 @@ import (
 	"strings"
 	"time"
 
-	dbpkg "github.com/japannext/snooze/internal/db"
+	dbpkg "github.com/snoozeweb/snooze/internal/db"
 )
 
 // CleanupTimeout deletes records whose “date_epoch + ttl“ has elapsed.

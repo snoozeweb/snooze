@@ -12,7 +12,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"golang.org/x/sync/errgroup"
 
-	"github.com/japannext/snooze/internal/telemetry"
+	"github.com/snoozeweb/snooze/internal/telemetry"
 )
 
 // fastBackoff is a 1µs / 1µs / 1ms policy used to keep the supervisor tests

@@ -6,7 +6,7 @@ import (
 
 	"github.com/go-viper/mapstructure/v2"
 
-	"github.com/japannext/snooze/internal/config/schema"
+	"github.com/snoozeweb/snooze/internal/config/schema"
 )
 
 // decoderConfig returns a mapstructure config preloaded with the hooks needed

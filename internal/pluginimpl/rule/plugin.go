@@ -20,11 +20,11 @@ import (
 	"sync"
 	"time"
 
-	"github.com/japannext/snooze/internal/condition"
-	"github.com/japannext/snooze/internal/db"
-	"github.com/japannext/snooze/internal/modification"
-	"github.com/japannext/snooze/internal/plugins"
-	"github.com/japannext/snooze/pkg/snoozetypes"
+	"github.com/snoozeweb/snooze/internal/condition"
+	"github.com/snoozeweb/snooze/internal/db"
+	"github.com/snoozeweb/snooze/internal/modification"
+	"github.com/snoozeweb/snooze/internal/plugins"
+	"github.com/snoozeweb/snooze/pkg/snoozetypes"
 )
 
 //go:embed metadata.yaml

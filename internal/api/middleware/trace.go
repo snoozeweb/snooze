@@ -6,7 +6,7 @@ import (
 	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 	"go.opentelemetry.io/otel/trace"
 
-	"github.com/japannext/snooze/internal/telemetry"
+	"github.com/snoozeweb/snooze/internal/telemetry"
 )
 
 // Trace wraps the next handler with otelhttp's instrumentation so every

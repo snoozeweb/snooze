@@ -9,7 +9,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/japannext/snooze/internal/components/teams"
+	"github.com/snoozeweb/snooze/internal/components/teams"
 )
 
 // minimal returns a Config that passes WithDefaults — used as a starting

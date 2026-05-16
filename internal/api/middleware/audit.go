@@ -6,7 +6,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/japannext/snooze/internal/telemetry"
+	"github.com/snoozeweb/snooze/internal/telemetry"
 )
 
 // Audit returns a chi-compatible middleware that logs every served request on

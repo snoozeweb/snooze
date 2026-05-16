@@ -9,7 +9,7 @@ import (
 
 	"github.com/go-playground/validator/v10"
 
-	"github.com/japannext/snooze/internal/config/schema"
+	"github.com/snoozeweb/snooze/internal/config/schema"
 )
 
 var (
