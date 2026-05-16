@@ -1,201 +1,132 @@
-## [Unreleased]
+## v2.0.0
 
-### Changed
+v2.0.0 is a ground-up rewrite of snooze from Python to Go, paired with a
+React 19 frontend. The wire contract stays close to the Python API but
+several legacy shapes are gone; see `docs/migration/python-to-go.md` for
+the field-by-field mapping.
 
-* Web UI completely rewritten in React 19 + Vite 6 + TypeScript.
-  Replaces the Vue 3 + CoreUI codebase. Feature parity preserved; IA
-  reorganised into Operate / Configure / Admin sidebar groups.
-* Rules + Aggregates merged into a single page with two tabs.
-* Notifications + Actions merged into a single page with two tabs.
-* Dashboard charts switched from CoreUI's chart wrappers to in-house
-  Chart.js wrappers (Line/Bar/Donut) reading colours from CSS tokens
-  so the theme toggle works on every chart.
+### Backend: Python → Go
 
-### Added
+* Server, CLI, and the eight auxiliary daemons (`snooze-relp`,
+  `snooze-syslog`, `snooze-snmptrap`, `snooze-smtp`, `snooze-mattermost`,
+  `snooze-googlechat`, `snooze-teams`, `snooze-pacemaker`) are now ten
+  statically-linked Go binaries, distributed as distroless images on
+  Docker Hub (`snoozeweb/snooze-<binary>`).
+* Plugin loader no longer accepts Python modules. Built-ins are
+  compiled in via `internal/pluginimpl/all`; out-of-tree plugins must
+  be forked into the Go tree. Third-party Python plugins from
+  `snoozeweb/snooze_plugins` will not load.
 
+### Frontend: Vue → React
+
+* Web UI rewritten in React 19 + Vite 6 + TypeScript, replacing the
+  Vue 3 + CoreUI codebase. Feature parity preserved; sidebar
+  reorganised into Operate / Configure / Admin groups.
+* Rules + Aggregates merged into one page with two tabs. Same for
+  Notifications + Actions.
+* Dashboard charts switched to in-house Chart.js wrappers (Line / Bar /
+  Donut) that read colours from CSS tokens, so the theme toggle works
+  everywhere.
 * Dark and light themes with a per-user toggle (defaults to dark).
 * Command palette (⌘K / Ctrl+K) for jump-to navigation.
 * Cross-tab auth sync: logging out in one tab logs out the others.
-* Auto-refresh on the Alerts page with per-user opt-out.
-* In-house SVG icon sprite (45 Lucide-derived glyphs) served as one
-  cached asset.
+* Auto-refresh on the Alerts page, opt-out per user.
+* In-house SVG icon sprite (45 Lucide-derived glyphs), one cached asset.
+* Node 22+ required (the old Node-14 pin is gone).
 
-### Backend
+### HTTP API (breaking)
 
-* Refresh-token flow for the authenticated-user session.
-  `POST /api/v1/login/{local,ldap,anonymous}` now returns
-  `refresh_token` + `refresh_expires_at` alongside the access JWT.
-  `POST /api/v1/login/refresh` exchanges a refresh token for a new
-  (access, refresh) pair — the supplied token is rotated server-side
-  (single-use). `POST /api/v1/login/logout` revokes a refresh token
-  (idempotent, always 204). Refresh tokens are opaque 32-byte random
-  values stored as SHA-256 hashes in the `refresh_token` collection;
-  raw tokens never sit at rest. Lease is configurable via
-  `auth.refresh_token_lease` (default 7 days). Roles + permissions are
-  re-resolved on every refresh so an admin's permission change takes
-  effect within the access-token lease. Web client transparently
-  retries 401 responses once via `/refresh` before surfacing the error.
-* `GET /api/v1/metadata` (and `/{plugin}`) now stamps a `plugin_name`
-  field on every entry, carrying the registry key (`Plugin.Name()`).
-  Most action plugins (mail / webhook / script) use the YAML `name:`
-  field as a human label ("Send email", "Run a script"); the frontend
-  needs a separate machine-readable handle to match a notification's
-  `action_type` against. Without this, the Action edit drawer fell back
-  to a JSON textarea for every action instead of the typed form. Also
-  fixed `script.Plugin.Name()` to hardcode "script" (matching mail /
-  webhook / patlite) — it was registering under its YAML display name.
-* `snooze-server` learned a `-web-dir` flag (defaults to
-  `/var/lib/snooze/web`, matching the existing Dockerfile copy path).
-  This wires `Router.WebFS` — declared since v2.0.0 but never
-  populated — and is the one Go-side change the rewrite required.
-* New `GET /api/v1/metadata` and `GET /api/v1/metadata/{plugin}`
-  endpoints expose each plugin's parsed `metadata.yaml`
-  (`action_form`, `widgets`, etc.) so the React frontend can render
-  typed forms for plugin-defined sub-types (Mail / Webhook / Patlite)
-  instead of free-form JSON textareas.
-* `plugins.Metadata` gained a `setting_form` map and the settings
-  plugin's `metadata.yaml` now ships a typed catalogue of the seven
-  documented runtime settings (component / default / description /
-  group). The React Settings page consumes it via the existing
-  `/api/v1/metadata/settings` endpoint instead of a hand-maintained
-  frontend constant. `FormField` also gained an optional `group:` field
-  so the frontend can bucket settings by section (general vs
-  notification).
-* LDAP and housekeeping settings are now runtime-editable. The settings
-  plugin's `metadata.yaml` exposes the full `ldap.*` and
-  `housekeeping.*` keysets as typed `setting_form` entries; the new
-  `config.RuntimeSettings` type reads them from the `settings`
-  collection with a short read-through cache, layered on top of the
-  file-config baseline. The LDAP backend re-reads its configuration on
-  every `Authenticate` call, and the housekeeper jobs consult the
-  resolver before every fire — so flipping `ldap.enabled` or shortening
-  `housekeeping.cleanup_alert` in the Settings UI takes effect on the
-  next request, no server restart required. The settings plugin
-  invalidates the cache on every create / update / delete via the new
-  `plugins.UpdateHook` / `plugins.DeleteHook` interfaces.
-* Housekeeper now expires snoozes and notifications. Two new default
-  jobs (`cleanup_snooze`, `cleanup_notification`) walk the matching
-  collections and delete rows whose `time_constraints.datetime`
-  array is non-empty and every entry's `until` is in the past. The
-  underlying `db.Driver.CleanupSnooze` / `CleanupNotification` methods
-  are implemented on all three backends (SQLite, Postgres, Mongo).
+* `Authorization: JWT <token>` is no longer accepted. Send
+  `Authorization: Bearer <token>`. Tokens are still HS256 JWTs
+  (`HS384`/`HS512` selectable in `core.yaml`).
+* Paginated responses now use an envelope:
+  `{"data": [...], "meta": {"count", "limit", "offset", "total"}}`.
+  The bare-array shape is gone.
+* Positional list URLs (`/{search}/{perpage}/{pagenb}/{orderby}/{asc}`)
+  are replaced by `GET /api/v1/{plugin}?q=&offset=&limit=&orderby=&asc=`,
+  plus `POST /api/v1/{plugin}/search` for queries that don't fit in a URL.
+* Error envelope is `{"error": {"code", "message", "details",
+  "request_id", "trace_id"}}` with stable string codes
+  (`bad_request`, `unauthorized`, `forbidden`, `not_found`, `conflict`,
+  `validation_error`, `unavailable`, `internal`).
+* CRUD verbs: `POST` to create, `PUT /{uid}` for full replace,
+  `PATCH /{uid}` for partial update, `DELETE` (with `?q=`) for bulk
+  delete. The `replace=true` query parameter is gone.
+* Refresh-token flow for sessions: `/api/v1/login/{local,ldap,anonymous}`
+  returns an access JWT plus a single-use opaque refresh token (32
+  random bytes, stored as SHA-256). `/login/refresh` rotates the pair;
+  `/login/logout` revokes (idempotent). Lease is `auth.refresh_token_lease`
+  (default 7 days). Roles and permissions re-resolve on every refresh.
+* New `GET /api/v1/metadata` and `/{plugin}` endpoints expose each
+  plugin's parsed `metadata.yaml` (forms, widgets, settings catalogue)
+  so the frontend can render typed forms instead of JSON textareas.
+* `snooze-server` gained a `-web-dir` flag (default
+  `/var/lib/snooze/web`) to serve the bundled SPA.
 
-### Removed
+### Configuration (breaking)
 
-* The Vue 3 SPA under `web/src/` and its `vue.config.js`,
-  `babel.config.js`, and `jest.config.js`. The previous Node-14
-  `.node-version` pin also went; we now require Node 22.
-
----
-
-## v2.0.0
-
-v2.0.0 is a ground-up rewrite of snooze-server from Python to Go. The wire
-contract is intentionally close to the Python API but a number of legacy
-shapes have been retired; see `docs/migration/python-to-go.md` for the
-field-by-field mapping and operational steps.
-
-### BREAKING — language / runtime
-* **Full Python → Go rewrite.** Python 3 / Falcon / Pydantic v1 / Kombu are
-  gone. The server, the CLI, and the eight auxiliary daemons
-  (`snooze-relp`, `snooze-syslog`, `snooze-snmptrap`, `snooze-smtp`,
-  `snooze-mattermost`, `snooze-googlechat`, `snooze-teams`,
-  `snooze-pacemaker`) are now ten statically-linked Go binaries
-  published as `ghcr.io/snoozeweb/snooze-<binary>` distroless images.
-* The plugin loader no longer accepts Python modules. Built-in plugins are
-  compiled in via `internal/pluginimpl/all`; out-of-tree plugins must be
-  forked into the Go tree (third-party Python plugins from
-  `snoozeweb/snooze_plugins` are not loadable at runtime).
-
-### BREAKING — HTTP API
-* **Authorization header**: `Authorization: JWT <token>` is no longer
-  accepted. Clients MUST send `Authorization: Bearer <token>`. Tokens
-  themselves are still HS256 JWTs (`HS384`/`HS512` selectable in
-  `core.yaml`).
-* **List envelope**: the bare-array response (`[{…}, {…}]`) is replaced by
-  `{"data": [...], "meta": {"count": N, "limit": L, "offset": O, "total": T}}`
-  for every paginated endpoint.
-* **List URL shape**: the positional
-  `/{search}/{perpage}/{pagenb}/{orderby}/{asc}` URL fragment is replaced
-  by the query-string form
-  `GET /api/v1/{plugin}?q=<base64url-json>&offset=&limit=&orderby=&asc=`
-  plus a richer `POST /api/v1/{plugin}/search` for queries that don't fit
-  in a URL.
-* **Error envelope** is now `{"error": {"code", "message", "details",
-  "request_id", "trace_id"}}`. The string `code` values are stable and
-  machine-readable (`bad_request`, `unauthorized`, `forbidden`,
-  `not_found`, `conflict`, `validation_error`, `unavailable`, `internal`).
-* **CRUD verbs**: `POST /api/v1/{plugin}` for create, `PUT
-  /api/v1/{plugin}/{uid}` for full replace, `PATCH /api/v1/{plugin}/{uid}`
-  for partial update, `DELETE /api/v1/{plugin}` (with `?q=`) for bulk
-  delete. The Python `replace=true` query parameter on `POST` is gone.
-
-### BREAKING — configuration
-* **No more hot-reload of YAML.** `WritableConfig`, the `filelock` dance,
-  and the on-disk-rewriting WebUI form are removed. Runtime-editable
-  settings now live in the database via the new `settings` plugin (see
-  `docs/configuration/`).
-* **Bootstrap config is YAML only.** Files in `/etc/snooze/server-go/`
+* No more YAML hot-reload. `WritableConfig`, the `filelock` dance, and
+  the on-disk-rewriting WebUI form are gone. Runtime-editable settings
+  live in the database via the `settings` plugin.
+* Bootstrap config is YAML only, in `/etc/snooze/server-go/`
   (`core.yaml`, `general.yaml`, `ldap.yaml`, `housekeeper.yaml`,
-  `notification.yaml`, `syncer.yaml`, `web.yaml`, `auth.yaml`). Legacy
-  Python file names continue to load: the koanf provider treats the old
-  `/etc/snooze/server/*.yaml` layout as a drop-in directory.
-* **Environment variables** are now `SNOOZE_<SECTION>_<KEY>` (uppercase
-  with `_` separator) — for example `SNOOZE_CORE_PORT=5201`. The flat
-  `DATABASE_URL` shortcut is preserved.
+  `notification.yaml`, `syncer.yaml`, `web.yaml`, `auth.yaml`). The
+  legacy `/etc/snooze/server/*.yaml` layout still loads.
+* Env vars are `SNOOZE_<SECTION>_<KEY>` (e.g. `SNOOZE_CORE_PORT=5201`).
+  The flat `DATABASE_URL` shortcut still works.
+* LDAP and housekeeping settings are now runtime-editable. The settings
+  plugin exposes the full `ldap.*` and `housekeeping.*` keysets; the
+  LDAP backend re-reads on every auth, and housekeeper jobs consult
+  the resolver on every fire. Changes in the Settings UI take effect
+  on the next request — no restart.
+* Removed knobs: `core.cluster_*` (replaced by the syncer, on by
+  default), `core.bootstrap` legacy keys (now seeded by the `settings`
+  plugin), `web.host_static` (the Go binary serves the SPA directly).
 
-### BREAKING — authentication
-* The Python bootstrap secret was `sha256("root")` written into the local
-  user document. The Go bootstrap now generates a 24-byte random password,
-  bcrypt-hashes it, and prints the plaintext **once** to stderr on the
-  first start. There is no longer a known default `root:root` credential.
-* Operators upgrading an existing database keep their existing local users.
-  See `docs/migration/python-to-go.md#root-user-rotation` for how to
+### Authentication (breaking)
+
+* The Python bootstrap secret was `sha256("root")`. The Go bootstrap
+  generates a 24-byte random password, bcrypt-hashes it, and prints the
+  plaintext **once** to stderr on first start. There is no longer a
+  known default `root:root` credential.
+* Existing local users from upgraded databases are preserved. See
+  `docs/migration/python-to-go.md#root-user-rotation` for how to
   re-bootstrap a fresh root via the admin Unix socket.
-* `JWT` is no longer accepted as a method name in the `Authorization`
-  header or in the audit log; the canonical wire name is `bearer`.
+* `JWT` is no longer a valid method name in the `Authorization` header
+  or the audit log; the canonical wire name is `bearer`.
 
-### New
-* **SQLite backend** via `modernc.org/sqlite` (pure-Go, no cgo) with JSON1.
-  Single-binary, single-file deployments are now possible and are the
-  default for `database.type: sqlite` (the legacy alias `file` still maps
-  to SQLite). See `docs/configuration/sqlite.rst`.
-* **Three backend-native message buses**: `inproc` (single-process fast
-  path), Postgres `LISTEN/NOTIFY`, and Mongo change streams. The Kombu /
-  amqp-on-mongo bridge is retired and the `snooze_kombu_*` collections
-  are no longer touched.
-* **Backend-native syncer**: cluster cache invalidation rides on the same
-  Postgres NOTIFY / Mongo change-stream channels; SQLite uses the inproc
-  bus. The standalone 1Hz polling loop is gone, lowering DB load.
-* **Telemetry**: structured `log/slog` JSON loggers (one each for `api`,
-  `audit`, `core`); first-class OpenTelemetry SDK + OTLP gRPC exporter
-  (`--otel-endpoint`), and a Prometheus registry served at `/metrics`.
-* **Packaging**: GoReleaser-driven multi-target releases, signed distroless
-  images at `ghcr.io/snoozeweb/snooze-<binary>`, `.deb` + `.rpm` via
-  nfpm, systemd units per-binary, a refreshed Helm chart with
-  `database.kind: mongo | postgres | sqlite` (SQLite mode renders a
-  StatefulSet + persistent volume; Postgres mode keeps the CloudNativePG
-  hand-off introduced in 1.6).
-* **OpenAPI**: a hand-curated `api/openapi.yaml` describing the v1 surface
-  ships in the repository.
+### Storage & infra
+
+* SQLite backend via `modernc.org/sqlite` (pure-Go, no cgo, JSON1).
+  Single-binary, single-file deployments are possible and are the
+  default for `database.type: sqlite` (legacy alias `file` still maps
+  here).
+* Three backend-native message buses: `inproc`, Postgres `LISTEN/NOTIFY`,
+  and Mongo change streams. The Kombu / amqp-on-mongo bridge is retired
+  and `snooze_kombu_*` collections are untouched.
+* Cluster syncer rides the same channels (or `inproc` for SQLite). The
+  standalone 1Hz polling loop is gone.
+* Telemetry: structured `log/slog` JSON loggers (`api`, `audit`, `core`),
+  OpenTelemetry SDK + OTLP gRPC exporter (`--otel-endpoint`), Prometheus
+  registry at `/metrics`.
+* Housekeeper now expires snoozes and notifications too
+  (`cleanup_snooze`, `cleanup_notification` jobs), in addition to alerts.
+* Packaging: GoReleaser-driven cross-arch releases, signed distroless
+  images, `.deb` + `.rpm` via nfpm, per-binary systemd units, refreshed
+  Helm chart with `database.kind: mongo | postgres | sqlite` (SQLite
+  mode renders a StatefulSet; Postgres keeps the CloudNativePG hand-off
+  from 1.6).
+* Hand-curated `api/openapi.yaml` describes the v1 surface.
 
 ### Dropped
+
 * TinyDB (replaced by SQLite/JSON1).
 * `WritableConfig` and the filelock-based YAML mutator.
-* Kombu (`kombu[mongodb]`) and the `snooze_kombu_*` MongoDB collections.
+* Kombu (`kombu[mongodb]`) and the `snooze_kombu_*` collections.
 * Dynamic Python plugin module loading and the `snooze.plugins.core`
   entry-point group.
-* Sphinx-based Python API doc generation (`sphinx.ext.autodoc`,
-  `sphinxcontrib.apidoc`). The narrative docs remain; the rendered Python
-  API is no longer published.
+* Sphinx-based Python API doc generation. Narrative docs remain.
 * Falcon, Pydantic v1, Waitress, the in-process clustering helper.
-
-### Removed configuration knobs
-* `core.cluster_*` (replaced by the syncer, which is enabled by default).
-* `core.bootstrap` legacy keys that mapped to `WritableConfig` (`general`
-  is now seeded by the `settings` plugin).
-* `web.host_static` (the web UI is now served directly by the Go binary or
-  not at all; nginx is no longer required for the SPA).
 
 ## v1.7.0
 
