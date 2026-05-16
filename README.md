@@ -1,3 +1,5 @@
+![Snoozeweb Logo](docs/images/logo.png)
+
 # Snooze
 
 Snooze is a clustered log-aggregation and alerting backend. It ingests
@@ -15,7 +17,7 @@ docker run --name snoozeweb -d -p 5200:5200 \
   -e SNOOZE_DATABASE_TYPE=sqlite \
   -e SNOOZE_DATABASE_PATH=/var/lib/snooze/db.sqlite \
   -v snooze-data:/var/lib/snooze \
-  ghcr.io/snoozeweb/snooze-server:latest
+  snoozeweb/snooze:latest
 ```
 
 Web interface: <http://localhost:5200>. Default login: `root:root`
