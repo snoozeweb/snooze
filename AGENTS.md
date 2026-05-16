@@ -131,7 +131,7 @@ Files to consult first when starting a change:
 * **Allowed without confirmation**: `git status`, `git diff`, `git log`,
   `task go:*`, `task chart:*`, `go run ./cmd/...` against a throw-away
   config, read-only queries against a local Mongo/Postgres/SQLite.
-* **Confirm first**: anything pushing images to `ghcr.io/snoozeweb`,
+* **Confirm first**: anything pushing images to `snoozeweb` on Docker Hub,
   changes to `packaging/helm/values.yaml` defaults or `values.schema.json`,
   DB schema changes, modifications under `web/`.
 * **Forbidden**: force-pushing to `master`/`release*`, dropping DB

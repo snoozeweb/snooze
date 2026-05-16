@@ -8,7 +8,7 @@ dotenv:
 - .env.local
 
 vars:
-  REPO: ghcr.io/snoozeweb
+  REPO: snoozeweb
 
 includes:
   web:
@@ -98,6 +98,7 @@ tasks:
       BUILD_TIME:
         sh: date -u +%Y-%m-%dT%H:%M:%SZ
       TARGET: '{{ if eq .BINARY "snooze-server" }}runtime-server{{ else }}runtime-component{{ end }}'
+      IMAGE: '{{ if eq .BINARY "snooze-server" }}snooze{{ else }}{{ .BINARY }}{{ end }}'
     cmds:
     - |
       docker build \
@@ -107,7 +108,7 @@ tasks:
         --build-arg VERSION={{ .VERSION }} \
         --build-arg COMMIT={{ .COMMIT }} \
         --build-arg BUILD_TIME={{ .BUILD_TIME }} \
-        -t {{ .REPO }}/{{ .BINARY }}:{{ .TAG }} \
+        -t {{ .REPO }}/{{ .IMAGE }}:{{ .TAG }} \
         .
     preconditions:
     - sh: test -n "{{ .BINARY }}"

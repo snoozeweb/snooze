@@ -7,12 +7,12 @@
 #   docker build -f packaging/Dockerfile.golang \
 #     --target runtime-server \
 #     --build-arg BINARY=snooze-server \
-#     -t ghcr.io/snoozeweb/snooze-server:dev .
+#     -t snoozeweb/snooze:dev .
 #
 #   docker build -f packaging/Dockerfile.golang \
 #     --target runtime-component \
 #     --build-arg BINARY=snooze-syslog \
-#     -t ghcr.io/snoozeweb/snooze-syslog:dev .
+#     -t snoozeweb/snooze-syslog:dev .
 #
 # Build args:
 #   BINARY      (required) name of the cmd/ subdir, e.g. `snooze-server`
@@ -69,7 +69,7 @@ WORKDIR /web
 # fully reproducible.
 COPY web/package.json web/package-lock.json ./
 RUN --mount=type=cache,target=/root/.npm \
-    npm ci --no-audit --no-fund
+    npm ci --no-audit --no-fund --legacy-peer-deps
 
 # Bring in the rest of the web source and produce web/dist/.
 COPY web/ ./

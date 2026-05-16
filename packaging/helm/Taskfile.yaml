@@ -6,7 +6,7 @@ vars:
     sh: "grep -oP '^name: \\K.*' Chart.yaml"
   CHART_VERSION:
     sh: "grep -oP '^version: \\K.*' Chart.yaml"
-  OCI_REGISTRY: ghcr.io/snoozeweb/helm-charts
+  OCI_REGISTRY: registry-1.docker.io/snoozeweb/helm-charts
 
 tasks:
   lint:

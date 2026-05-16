@@ -26,7 +26,7 @@ services:
       - snoozenw
 
   snooze1:
-    image: ghcr.io/snoozeweb/snooze-server:latest
+    image: snoozeweb/snooze:latest
     profiles: [mongo]
     environment:
       - DATABASE_URL=mongodb://mongo1:27017,mongo2:27017,mongo3:27017/snooze?replicaSet=rs0
@@ -39,7 +39,7 @@ services:
       - mongo1
 
   snooze2:
-    image: ghcr.io/snoozeweb/snooze-server:latest
+    image: snoozeweb/snooze:latest
     profiles: [mongo]
     environment:
       - DATABASE_URL=mongodb://mongo1:27017,mongo2:27017,mongo3:27017/snooze?replicaSet=rs0
@@ -52,7 +52,7 @@ services:
       - mongo1
 
   snooze3:
-    image: ghcr.io/snoozeweb/snooze-server:latest
+    image: snoozeweb/snooze:latest
     profiles: [mongo]
     environment:
       - DATABASE_URL=mongodb://mongo1:27017,mongo2:27017,mongo3:27017/snooze?replicaSet=rs0
@@ -100,7 +100,7 @@ services:
       - postgres-data:/var/lib/postgresql/data
 
   snooze-pg:
-    image: ghcr.io/snoozeweb/snooze-server:latest
+    image: snoozeweb/snooze:latest
     profiles: [postgres]
     environment:
       - DATABASE_URL=postgresql://snooze:snooze@postgres:5432/snooze
@@ -118,7 +118,7 @@ services:
   # volume mounted at /var/lib/snooze, matching the Helm StatefulSet
   # layout.
   snooze-sqlite:
-    image: ghcr.io/snoozeweb/snooze-server:latest
+    image: snoozeweb/snooze:latest
     profiles: [sqlite]
     environment:
       - SNOOZE_DATABASE_TYPE=sqlite

@@ -47,7 +47,7 @@ server:
   replicaCount: 3
   image:
     # -- The image to use for snooze-server
-    repository: ghcr.io/snoozeweb/snooze-server
+    repository: snoozeweb/snooze
     # -- A tag override for snooze-server
     tag: ""
     # -- Image pull policy of snooze-server
@@ -116,7 +116,7 @@ syslog:
   replicaCount: 2
   image:
     # -- The image to use for snooze-syslog
-    repository: ghcr.io/snoozeweb/snooze-syslog
+    repository: snoozeweb/snooze-syslog
     # -- A tag override for snooze-syslog
     tag: ""
     # -- Image pull policy of snooze-syslog
@@ -133,7 +133,7 @@ snmptrap:
   replicaCount: 2
   image:
     # -- The image to use for snooze-snmptrap
-    repository: ghcr.io/snoozeweb/snooze-snmptrap
+    repository: snoozeweb/snooze-snmptrap
     # -- A tag override for snooze-snmptrap
     tag: ""
     # -- Image pull policy of snooze-snmptrap
@@ -147,7 +147,7 @@ relp:
   replicaCount: 2
   image:
     # -- The image to use for snooze-relp
-    repository: ghcr.io/snoozeweb/snooze-relp
+    repository: snoozeweb/snooze-relp
     # -- A tag override for snooze-relp
     tag: ""
     # -- Image pull policy of snooze-relp
@@ -160,7 +160,7 @@ smtp:
   replicaCount: 2
   image:
     # -- The image to use for snooze-smtp
-    repository: ghcr.io/snoozeweb/snooze-smtp
+    repository: snoozeweb/snooze-smtp
     # -- A tag override for snooze-smtp
     tag: ""
     # -- Image pull policy of snooze-smtp
@@ -173,7 +173,7 @@ pacemaker:
   # from the same chart values.
   image:
     # -- The image to use for snooze-pacemaker
-    repository: ghcr.io/snoozeweb/snooze-pacemaker
+    repository: snoozeweb/snooze-pacemaker
     # -- A tag override for snooze-pacemaker
     tag: ""
     # -- Image pull policy of snooze-pacemaker
@@ -186,7 +186,7 @@ teams:
   replicaCount: 2
   image:
     # -- The image to use for snooze-teams
-    repository: ghcr.io/snoozeweb/snooze-teams
+    repository: snoozeweb/snooze-teams
     # -- A tag override for snooze-teams
     tag: ""
     # -- Image pull policy of snooze-teams
@@ -199,7 +199,7 @@ mattermost:
   replicaCount: 2
   image:
     # -- The image to use for snooze-mattermost
-    repository: ghcr.io/snoozeweb/snooze-mattermost
+    repository: snoozeweb/snooze-mattermost
     # -- A tag override for snooze-mattermost
     tag: ""
     # -- Image pull policy of snooze-mattermost
@@ -212,7 +212,7 @@ googlechat:
   replicaCount: 2
   image:
     # -- The image to use for snooze-googlechat
-    repository: ghcr.io/snoozeweb/snooze-googlechat
+    repository: snoozeweb/snooze-googlechat
     # -- A tag override for snooze-googlechat
     tag: ""
     # -- Image pull policy of snooze-googlechat
@@ -229,7 +229,7 @@ googlechat:
 client:
   image:
     # -- The image to use for the snooze CLI client
-    repository: ghcr.io/snoozeweb/snooze
+    repository: snoozeweb/snooze
     # -- A tag override for snooze
     tag: ""
     # -- Image pull policy of snooze

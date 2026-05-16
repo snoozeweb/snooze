@@ -5,7 +5,7 @@ Docker deployment
 =================
 
 Snooze 2.0 publishes one distroless image per Go binary at
-``ghcr.io/snoozeweb/snooze-<binary>:latest``. The most common starting
+``snoozeweb/snooze:latest`` (server) or ``snoozeweb/snooze-<binary>:latest`` (components). The most common starting
 points are documented below; the repository ``docker-compose.yaml``
 covers each layout end-to-end with named profiles.
 
@@ -18,7 +18,7 @@ Single container, SQLite
         -e SNOOZE_DATABASE_TYPE=sqlite \
         -e SNOOZE_DATABASE_PATH=/var/lib/snooze/db.sqlite \
         -v snooze-data:/var/lib/snooze \
-        ghcr.io/snoozeweb/snooze-server:latest
+        snoozeweb/snooze:latest
 
 The Web interface is then available at ``http://localhost:5200``. This
 is the lowest-friction layout: no external database, no replica set,
@@ -33,7 +33,7 @@ Single container, MongoDB
     $ docker run --name snooze -d -p 5200:5200 \
         -e DATABASE_URL=mongodb://snooze-db:27017/snooze \
         --link snooze-db:snooze-db \
-        ghcr.io/snoozeweb/snooze-server:latest
+        snoozeweb/snooze:latest
 
 Single container, PostgreSQL
 ============================
@@ -48,7 +48,7 @@ Single container, PostgreSQL
     $ docker run --name snooze -d -p 5200:5200 \
         -e DATABASE_URL=postgresql://snooze:snooze@snooze-pg:5432/snooze \
         --link snooze-pg:snooze-pg \
-        ghcr.io/snoozeweb/snooze-server:latest
+        snoozeweb/snooze:latest
 
 Compose stack
 =============

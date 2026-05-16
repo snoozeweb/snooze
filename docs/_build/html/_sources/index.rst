@@ -34,7 +34,7 @@ Features
 * OpenAPI 3.1 specification at ``/api/openapi.yaml``.
 * Structured ``log/slog`` JSON logs, OpenTelemetry traces, a Prometheus
   registry served at ``/metrics``.
-* Distroless container images at ``ghcr.io/snoozeweb/snooze-<binary>``.
+* Distroless container images at ``snoozeweb/snooze-<binary>``.
 * Helm chart with ``database.kind: mongo | postgres | sqlite``.
 
 .. figure:: images/web_alerts.png
