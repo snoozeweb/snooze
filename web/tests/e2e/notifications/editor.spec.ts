@@ -39,22 +39,22 @@ test.describe("action editor", () => {
     await adminAuth();
   });
 
-  test("create a script action", async ({ page, api, server }) => {
+  test("create a webhook action", async ({ page, api, server }) => {
     await page.goto(server.baseURL + "/web/notifications");
     // Switch to the Actions tab so the "New" button opens ActionEditor.
     await page.getByRole("tab", { name: /^actions$/i }).click({ force: true });
     await page.getByRole("button", { name: /^new$/i }).click({ force: true });
     await expect(page.getByRole("heading", { name: /new action/i })).toBeVisible();
 
-    await page.getByLabel("Name").fill("e2e-script-action");
-    // The Type input has label "Type" (id="action-type"). Leave default
-    // "script" — but assert by filling explicitly.
-    await page.getByLabel("Type").fill("script");
+    await page.getByLabel("Name").fill("e2e-webhook-action");
+    // #action-type is a native <select>; ActionEditor only lists plugins that
+    // expose an action_form (webhook, script, mail, patlite). Pick webhook —
+    // its required `url` field is a plain String input, easiest to drive.
+    await page.locator("#action-type").selectOption("webhook");
 
-    // Config (JSON) textarea inside the "Config (JSON)" section.
-    // Replace its content with a minimal object.
-    const cfg = page.locator('textarea[name="action_json"]');
-    await cfg.fill('{"command":"/bin/true"}');
+    // Plugin form ids follow `action-<plugin>-<field>` (see ActionEditor
+    // idPrefix={`action-${selectedPlugin.plugin_name}`} → MetadataForm fid).
+    await page.locator("#action-webhook-url").fill("https://example.invalid/hook");
 
     await page.getByRole("button", { name: /^create$/i }).click({ force: true });
     await expect(page.getByText(/action created/i).first()).toBeVisible();

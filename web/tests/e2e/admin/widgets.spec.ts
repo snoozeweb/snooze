@@ -13,7 +13,10 @@ test.describe("admin / widgets", () => {
     await expect(page.getByRole("heading", { name: /new widget/i })).toBeVisible();
 
     await page.locator("#widget-name").fill("e2e-widget");
-    await page.locator("#widget-type").fill("iframe");
+    // #widget-type is a native <select>. KNOWN_WIDGETS only ships "patlite";
+    // pick the "" (Other / free-form) option then fill the custom-type input.
+    await page.locator("#widget-type").selectOption("");
+    await page.locator("#widget-type-custom").fill("iframe");
     // Default config is {} — fine.
 
     await page.getByRole("button", { name: /^create$/i }).click({ force: true });

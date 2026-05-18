@@ -6,7 +6,7 @@ test.describe("alert detail drawer", () => {
     await adminAuth();
   });
 
-  test("opens drawer with full field map when row is clicked", async ({ page, api, server }) => {
+  test("expanded row shows the alert's full field map", async ({ page, api, server }) => {
     await api.alerts.send({
       host: "srv-detail",
       message: "disk full",
@@ -16,16 +16,18 @@ test.describe("alert detail drawer", () => {
     await page.goto(server.baseURL + "/web/alerts");
     await expect(page.getByText("srv-detail")).toBeVisible();
 
-    // Clicking the row calls onRowOpen → URL gets ?uid=... → DrawerContent renders
-    // Radix Drawer renders with role="dialog"
-    await page.getByText("srv-detail").first().click({ force: true });
-    const drawer = page.getByRole("dialog");
-    await expect(drawer).toBeVisible();
+    // AlertsPage uses DataTable's renderExpanded (AlertRowDetail), not a
+    // Drawer. Each row has a chevron button labelled "Expand row <key>" that
+    // toggles an inline panel showing the JsonViewer + CommentTimeline.
+    await page.getByRole("button", { name: /^expand row/i }).first().click({ force: true });
 
-    // DrawerTitle shows host, body shows severity badge and message
-    await expect(drawer.getByText("disk full")).toBeVisible();
-    await expect(drawer.getByText("critical")).toBeVisible();
-    await expect(drawer.getByText("prom")).toBeVisible();
+    // The inline panel renders the full record via JsonViewer; the host /
+    // message / severity / source values all appear as text nodes. Use
+    // .first() because JsonViewer renders each field twice — once in the
+    // table column (plain) and once in the JSON tree (quoted span).
+    await expect(page.getByText("disk full").first()).toBeVisible();
+    await expect(page.getByText("critical").first()).toBeVisible();
+    await expect(page.getByText("prom").first()).toBeVisible();
   });
 
   test("ack action changes alert state to Acknowledged via row actions menu", async ({
@@ -94,23 +96,22 @@ test.describe("alert detail drawer", () => {
     await textarea.fill("first note");
     await dialog.getByRole("button", { name: /^comment$/i }).click({ force: true });
 
-    // Now open the detail drawer to see the timeline
-    await page.getByText("srv-comment").first().click({ force: true });
-    const drawer = page.getByRole("dialog");
-    await expect(drawer).toBeVisible();
-    await expect(drawer.getByText("first note")).toBeVisible();
+    // Expand the row inline (no drawer here) and check the timeline.
+    await page.getByRole("button", { name: /^expand row/i }).first().click({ force: true });
+    await expect(page.getByText("first note")).toBeVisible();
   });
 
-  test("detail drawer closes when navigating away", async ({ page, api, server }) => {
+  test("expanded row collapses when chevron is toggled again", async ({ page, api, server }) => {
     await api.alerts.send({ host: "srv-close-drawer", message: "m", severity: "info", source: "t" });
     await page.goto(server.baseURL + "/web/alerts");
-    await page.getByText("srv-close-drawer").first().click({ force: true });
+    await expect(page.getByText("srv-close-drawer")).toBeVisible();
 
-    const drawer = page.getByRole("dialog");
-    await expect(drawer).toBeVisible();
+    const expandBtn = page.getByRole("button", { name: /^expand row/i }).first();
+    await expandBtn.click({ force: true });
+    await expect(expandBtn).toHaveAttribute("aria-expanded", "true");
 
-    // Pressing Escape closes the drawer (Radix Drawer handles this natively)
-    await page.keyboard.press("Escape");
-    await expect(drawer).not.toBeVisible();
+    // Clicking again collapses the inline panel.
+    await expandBtn.click({ force: true });
+    await expect(expandBtn).toHaveAttribute("aria-expanded", "false");
   });
 });

@@ -18,8 +18,16 @@ test.describe("admin / roles", () => {
     await expect(page.getByRole("heading", { name: /new role/i })).toBeVisible();
 
     await page.locator("#role-name").fill("e2e-analyst");
-    // permissionsText is a textarea — newline-separated.
-    await page.locator("#role-permissions").fill("rw_rule\nrw_snooze");
+    // Permissions is a MultiCombobox bound to /api/v1/permissions (no
+    // allowCustom — picks must exist in the catalogue). Open the popover,
+    // filter, then click the matching option for each permission.
+    const permissions = page.getByRole("combobox", { name: "Permissions" });
+    await permissions.click();
+    const search = page.getByPlaceholder("Search");
+    await search.fill("rw_rule");
+    await page.getByRole("option", { name: "rw_rule" }).click({ force: true });
+    await search.fill("rw_snooze");
+    await page.getByRole("option", { name: "rw_snooze" }).click({ force: true });
 
     await page.getByRole("button", { name: /^create$/i }).click({ force: true });
     await expect(page.getByText(/role created/i).first()).toBeVisible();
