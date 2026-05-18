@@ -105,11 +105,13 @@ func (b *mongoBus) ensureIndexes(ctx context.Context) error {
 	return nil
 }
 
-// mqDocument is the BSON shape of a queue row.
+// mqDocument is the BSON shape of a queue row. Payload is stored as a BSON
+// binary blob so the JSON bytes round-trip verbatim — same contract as the
+// PG and inproc buses (mq.Message.Payload is opaque JSON).
 type mqDocument struct {
 	ID        string            `bson:"_id"`
 	Queue     string            `bson:"queue"`
-	Payload   bson.Raw          `bson:"payload"`
+	Payload   []byte            `bson:"payload"`
 	Headers   map[string]string `bson:"headers,omitempty"`
 	LockedAt  *time.Time        `bson:"locked_at,omitempty"`
 	LockedBy  string            `bson:"locked_by,omitempty"`
@@ -123,16 +125,10 @@ func (b *mongoBus) Publish(ctx context.Context, queue string, payload any) error
 	if err != nil {
 		return fmt.Errorf("mq mongo: marshal: %w", err)
 	}
-	var raw bson.Raw
-	if err := bson.UnmarshalExtJSON(enc, true, &raw); err != nil {
-		// Wrap the json bytes as a binary value when it isn't a JSON
-		// object (e.g. a string payload).
-		raw = bson.Raw(enc)
-	}
 	doc := bson.M{
 		"_id":        uuid.NewString(),
 		"queue":      queue,
-		"payload":    raw,
+		"payload":    enc,
 		"created_at": time.Now().UTC(),
 	}
 	if _, err := b.coll.InsertOne(ctx, doc); err != nil {
@@ -250,7 +246,7 @@ func (b *mongoBus) drain(ctx context.Context, queue string, opts SubscribeOpts, 
 		msg := Message{
 			ID:        doc.ID,
 			Queue:     queue,
-			Payload:   []byte(doc.Payload),
+			Payload:   doc.Payload,
 			Headers:   doc.Headers,
 			Timestamp: doc.CreatedAt,
 		}
