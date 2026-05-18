@@ -27,6 +27,12 @@ function stubLoginEnvelope(sub: string, method: string) {
 export const handlers = [
   http.get("/api/v1/healthz", () => HttpResponse.json({ status: "ok" })),
 
+  // Login backend index — tests assume all three are enabled. Individual
+  // tests override via mswServer.use() when they need a narrower set.
+  http.get("/api/v1/login", () =>
+    HttpResponse.json({ data: { backends: ["local", "ldap", "anonymous"] } }),
+  ),
+
   http.post("/api/v1/login/local", async ({ request }) => {
     const body = (await request.json()) as { username?: string; password?: string };
     return HttpResponse.json(stubLoginEnvelope(body.username ?? "user", "local"));

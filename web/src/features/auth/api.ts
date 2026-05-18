@@ -49,6 +49,22 @@ export async function loginAnonymous(): Promise<LoginResult> {
   return unwrap(r);
 }
 
+// fetchLoginBackends returns the names of auth backends the server currently
+// advertises. The server filters out disabled providers (general.local_enabled,
+// ldap.enabled, general.anonymous_enabled), so the Login UI just renders one
+// tab per name in the response.
+export type LoginBackend = "local" | "ldap" | "anonymous";
+
+export async function fetchLoginBackends(): Promise<LoginBackend[]> {
+  const r = await api<{ data?: { backends?: string[] } }>("GET", "/login", {
+    skipAuthHandling: true,
+  });
+  const raw = r.data?.backends ?? [];
+  return raw.filter(
+    (b): b is LoginBackend => b === "local" || b === "ldap" || b === "anonymous",
+  );
+}
+
 // postRefresh exchanges an opaque refresh token for a new (access, refresh)
 // pair. The API client uses this transparently on 401; UI code should not
 // call it directly.
