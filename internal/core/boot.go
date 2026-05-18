@@ -107,8 +107,27 @@ func (c *Core) bootAsync() error {
 // bootMQ constructs the message-queue bus. The choice of backend mirrors the
 // database backend for zero-config installs.
 func (c *Core) bootMQ(ctx context.Context) error {
-	kind := mqKindForDatabase(c.Cfg.Core.Database.Type)
-	mgr, err := mq.NewManager(ctx, mq.Config{Kind: kind})
+	dbcfg := c.Cfg.Core.Database
+	kind := mqKindForDatabase(dbcfg.Type)
+	mqcfg := mq.Config{Kind: kind}
+	switch kind {
+	case mq.KindMongo:
+		uri := dbcfg.DSN
+		if uri == "" {
+			if s, ok := dbcfg.Host.(string); ok {
+				uri = s
+			}
+		}
+		mqcfg.Mongo = mq.MongoConfig{
+			URI:      uri,
+			Database: dbcfg.Database,
+		}
+	case mq.KindPG:
+		mqcfg.PG = mq.PGConfig{
+			DSN: dbcfg.DSN,
+		}
+	}
+	mgr, err := mq.NewManager(ctx, mqcfg)
 	if err != nil {
 		return fmt.Errorf("boot: mq manager: %w", err)
 	}

@@ -545,9 +545,55 @@ func cloneDoc(in dbpkg.Document) dbpkg.Document {
 }
 
 // decodeDoc strips Mongo-only fields and returns a plain Document.
+// It recursively normalises nested bson.D (ordered-document slice) and
+// bson.A (array) values to map[string]any and []any respectively, so
+// callers never see unexported BSON types in the returned map.
 func decodeDoc(m bson.M) dbpkg.Document {
 	delete(m, "_id")
-	return dbpkg.Document(m)
+	out := make(dbpkg.Document, len(m))
+	for k, v := range m {
+		out[k] = normalizeBSONValue(v)
+	}
+	return out
+}
+
+// normalizeBSONValue converts bson.D → map[string]any and bson.A → []any,
+// recursing into nested structures. Any other value is returned unchanged.
+func normalizeBSONValue(v any) any {
+	switch x := v.(type) {
+	case bson.D:
+		m := make(map[string]any, len(x))
+		for _, e := range x {
+			m[e.Key] = normalizeBSONValue(e.Value)
+		}
+		return m
+	case bson.A:
+		s := make([]any, len(x))
+		for i, elem := range x {
+			s[i] = normalizeBSONValue(elem)
+		}
+		return s
+	case bson.M:
+		m := make(map[string]any, len(x))
+		for k, val := range x {
+			m[k] = normalizeBSONValue(val)
+		}
+		return m
+	case []any:
+		s := make([]any, len(x))
+		for i, elem := range x {
+			s[i] = normalizeBSONValue(elem)
+		}
+		return s
+	case map[string]any:
+		m := make(map[string]any, len(x))
+		for k, val := range x {
+			m[k] = normalizeBSONValue(val)
+		}
+		return m
+	default:
+		return v
+	}
 }
 
 // allPrimariesPresent reports whether every dotted primary path resolves to a
