@@ -444,10 +444,16 @@ func openWebFS(dir string, logger *slog.Logger) http.FileSystem {
 // no settings-form representation today.
 func buildAuthProviders(cfg *config.Config, drv db.Driver, rs *config.RuntimeSettings) *auth.Registry {
 	reg := auth.NewRegistry()
-	reg.Register(auth.NewLocalProvider(drv))
-	// Always register the LDAP provider so a runtime ldap.enabled=true
-	// edit becomes effective without a restart. The provider itself
-	// returns ErrProviderDisabled when Enabled is false.
+	// Local is always registered so the bootstrap root user can authenticate
+	// even if the operator has hidden the Local tab from the login screen
+	// (general.local_enabled=false). The /login backend index filters it out
+	// via the EnableChecker; Authenticate keeps working.
+	local := auth.NewLocalProvider(drv)
+	local.Enabled = cfg.General.LocalEnabled
+	reg.Register(local)
+	// LDAP is always registered so a runtime ldap.enabled=true edit becomes
+	// effective without a restart. The provider's IsEnabled reads the live
+	// config so the login screen flips automatically.
 	reg.Register(auth.NewLDAPProvider(func(ctx context.Context) (schema.LDAP, error) {
 		if rs == nil {
 			return cfg.LDAP, nil

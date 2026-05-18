@@ -6,19 +6,26 @@ import "strings"
 // values can still be overridden at runtime via the DB-backed settings store.
 type General struct {
 	DefaultAuthBackend string   `koanf:"default_auth_backend" validate:"oneof=local ldap anonymous"`
+	LocalEnabled       bool     `koanf:"local_enabled"`
 	LocalUsersEnabled  bool     `koanf:"local_users_enabled"`
 	MetricsEnabled     bool     `koanf:"metrics_enabled"`
 	AnonymousEnabled   bool     `koanf:"anonymous_enabled"`
-	OKSeverities       []string `koanf:"ok_severities"`
+	// AnonymousAdmin grants the synthetic "admin" role + AllPermission
+	// wildcard to anonymous logins. Used for try / demo deploys where every
+	// anonymous visitor needs full access.
+	AnonymousAdmin bool     `koanf:"anonymous_admin"`
+	OKSeverities   []string `koanf:"ok_severities"`
 }
 
 // DefaultGeneral returns the canonical defaults.
 func DefaultGeneral() General {
 	return General{
 		DefaultAuthBackend: "local",
+		LocalEnabled:       true,
 		LocalUsersEnabled:  true,
 		MetricsEnabled:     true,
 		AnonymousEnabled:   false,
+		AnonymousAdmin:     false,
 		OKSeverities:       []string{"ok", "success"},
 	}
 }

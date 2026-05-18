@@ -24,14 +24,25 @@ const LocalMethod = "local"
 // collection of the configured db.Driver.
 type LocalProvider struct {
 	DB db.Driver
+	// Enabled gates whether the provider is offered on the /login backend
+	// list. Authentication still works regardless so the bootstrap root user
+	// can recover an install whose general.local_enabled was set to false.
+	// Default after NewLocalProvider is true.
+	Enabled bool
 }
 
 // NewLocalProvider returns a ready-to-use local provider backed by the given
-// driver.
-func NewLocalProvider(driver db.Driver) *LocalProvider { return &LocalProvider{DB: driver} }
+// driver. The provider is enabled by default.
+func NewLocalProvider(driver db.Driver) *LocalProvider {
+	return &LocalProvider{DB: driver, Enabled: true}
+}
 
 // Name returns the provider identifier.
 func (l *LocalProvider) Name() string { return LocalMethod }
+
+// IsEnabled reports whether the provider should appear on the login backend
+// list. Implements auth.EnableChecker.
+func (l *LocalProvider) IsEnabled(_ context.Context) bool { return l.Enabled }
 
 // Authenticate fetches the user document, compares the bcrypt hash, and
 // returns the resulting Identity. It returns ErrInvalidCredentials for every

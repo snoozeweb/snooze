@@ -278,9 +278,11 @@ func defaultsYAML() ([]byte, error) {
 		},
 		"general": map[string]any{
 			"default_auth_backend": d.General.DefaultAuthBackend,
+			"local_enabled":        d.General.LocalEnabled,
 			"local_users_enabled":  d.General.LocalUsersEnabled,
 			"metrics_enabled":      d.General.MetricsEnabled,
 			"anonymous_enabled":    d.General.AnonymousEnabled,
+			"anonymous_admin":      d.General.AnonymousAdmin,
 			"ok_severities":        d.General.OKSeverities,
 		},
 		"housekeeping": map[string]any{

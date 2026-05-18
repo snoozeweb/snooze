@@ -27,6 +27,10 @@ func NewAnonymousProvider(enabled bool) *AnonymousProvider {
 // Name returns "anonymous".
 func (a *AnonymousProvider) Name() string { return AnonymousMethod }
 
+// IsEnabled reports whether the provider should appear on the login backend
+// list. Implements auth.EnableChecker.
+func (a *AnonymousProvider) IsEnabled(_ context.Context) bool { return a.Enabled }
+
 // Authenticate ignores Credentials. Returns ErrProviderDisabled if the
 // anonymous backend has been turned off.
 func (a *AnonymousProvider) Authenticate(_ context.Context, _ Credentials) (Identity, error) {

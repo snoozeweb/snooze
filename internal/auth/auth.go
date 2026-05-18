@@ -52,6 +52,22 @@ type Provider interface {
 	Authenticate(ctx context.Context, c Credentials) (Identity, error)
 }
 
+// EnableChecker is optionally implemented by providers whose visibility on the
+// /api/v1/login backend index depends on runtime configuration. Providers that
+// do not implement it are always listed.
+type EnableChecker interface {
+	IsEnabled(ctx context.Context) bool
+}
+
+// ProviderEnabled reports whether p should appear on the login backend list.
+// Providers that don't implement EnableChecker are considered always-on.
+func ProviderEnabled(ctx context.Context, p Provider) bool {
+	if c, ok := p.(EnableChecker); ok {
+		return c.IsEnabled(ctx)
+	}
+	return true
+}
+
 // Registry is a name-indexed collection of Providers. It is safe for
 // concurrent use after construction.
 type Registry struct {

@@ -78,6 +78,18 @@ func NewLDAPProviderFromConfig(cfg schema.LDAP) *LDAPProvider {
 // Name returns "ldap".
 func (l *LDAPProvider) Name() string { return LDAPMethod }
 
+// IsEnabled reports whether LDAP is currently enabled in the runtime config.
+// Implements auth.EnableChecker. A failure to read the source is treated as
+// "not enabled" so a broken config source never advertises an LDAP tab on the
+// login screen.
+func (l *LDAPProvider) IsEnabled(ctx context.Context) bool {
+	cfg, err := l.source(ctx)
+	if err != nil {
+		return false
+	}
+	return cfg.Enabled
+}
+
 // Authenticate runs the search-then-bind LDAP flow. Returns
 // ErrInvalidCredentials for every failure that depends on the username or
 // password; wraps the underlying error with %w for operational failures

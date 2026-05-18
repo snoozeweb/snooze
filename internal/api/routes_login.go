@@ -65,22 +65,43 @@ func (rt *Router) mountLogin(r chi.Router) {
 	})
 }
 
-// handleLoginIndex enumerates available auth backends. The default backend
-// (per general.default_auth_backend) is listed first.
-func (rt *Router) handleLoginIndex(w http.ResponseWriter, _ *http.Request) {
+// handleLoginIndex enumerates available auth backends. Providers that
+// implement auth.EnableChecker and report IsEnabled(ctx)=false are filtered
+// out — the login UI then renders one tab per surviving backend. The default
+// backend (per general.default_auth_backend) is listed first when it survives.
+func (rt *Router) handleLoginIndex(w http.ResponseWriter, r *http.Request) {
 	if rt.Providers == nil {
 		WriteJSON(w, http.StatusOK, map[string]any{"data": map[string]any{"backends": []string{}}})
 		return
 	}
-	names := rt.Providers.Names()
-	// Surface the configured default first.
+	all := rt.Providers.Names()
+	names := make([]string, 0, len(all))
+	for _, n := range all {
+		p, err := rt.Providers.Get(n)
+		if err != nil {
+			continue
+		}
+		if !auth.ProviderEnabled(r.Context(), p) {
+			continue
+		}
+		names = append(names, n)
+	}
+	// Surface the configured default first when it survived the filter.
 	def := ""
 	if rt.Config != nil {
 		def = rt.Config.General.DefaultAuthBackend
 	}
 	if def != "" {
 		ordered := make([]string, 0, len(names))
-		ordered = append(ordered, def)
+		seen := false
+		for _, n := range names {
+			if n == def {
+				seen = true
+			}
+		}
+		if seen {
+			ordered = append(ordered, def)
+		}
 		for _, n := range names {
 			if n != def {
 				ordered = append(ordered, n)
@@ -222,6 +243,12 @@ func (rt *Router) handleRefresh(w http.ResponseWriter, r *http.Request) {
 	// Re-resolve roles+permissions so a recent admin change takes effect on
 	// the next access-token rotation (max staleness: the access-token lease).
 	rt.resolveRoles(r.Context(), &claims)
+	// Mirror signSession: refresh of an anonymous token preserves admin rights
+	// when general.anonymous_admin is on.
+	if claims.Method == auth.AnonymousMethod && rt.Config != nil && rt.Config.General.AnonymousAdmin {
+		claims.Roles = []string{"admin"}
+		claims.Permissions = []string{auth.AllPermission}
+	}
 	token, exp, err := rt.Auth.Sign(claims)
 	if err != nil {
 		WriteError(w, r, ErrInternal.WithCause(err))
@@ -266,6 +293,13 @@ func (rt *Router) signSession(ctx context.Context, id auth.Identity) (loginRespo
 		Groups:  id.Groups,
 	}
 	rt.resolveRoles(ctx, &claims)
+	// Per-deploy override: anonymous_admin grants every anonymous login the
+	// "admin" role + the AllPermission wildcard. Used by try / demo
+	// environments where every visitor needs full access.
+	if id.Method == auth.AnonymousMethod && rt.Config != nil && rt.Config.General.AnonymousAdmin {
+		claims.Roles = []string{"admin"}
+		claims.Permissions = []string{auth.AllPermission}
+	}
 	token, exp, err := rt.Auth.Sign(claims)
 	if err != nil {
 		return loginResponse{}, err

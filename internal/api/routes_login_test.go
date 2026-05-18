@@ -14,8 +14,20 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/snoozeweb/snooze/internal/auth"
+	"github.com/snoozeweb/snooze/internal/config"
+	"github.com/snoozeweb/snooze/internal/config/schema"
 	"github.com/snoozeweb/snooze/pkg/snoozetypes"
 )
+
+// gatedProvider is a fakeProvider that implements auth.EnableChecker so the
+// /login backend index can filter it. Authenticate is unused in the tests
+// that exercise the filter.
+type gatedProvider struct {
+	fakeProvider
+	visible bool
+}
+
+func (g *gatedProvider) IsEnabled(_ context.Context) bool { return g.visible }
 
 // fakeRefresh is a stub refreshIssuer for the login route tests. It records
 // every call so the test can assert on rotation / revoke behaviour without a
@@ -174,6 +186,75 @@ func TestLoginIndex_ListsBackends(t *testing.T) {
 	require.Equal(t, http.StatusOK, rec.Code)
 	require.Contains(t, rec.Body.String(), "local")
 	require.Contains(t, rec.Body.String(), "ldap")
+}
+
+// TestLoginIndex_FiltersDisabledBackends verifies that providers implementing
+// auth.EnableChecker disappear from the /login index when IsEnabled returns
+// false. Providers without EnableChecker remain visible.
+func TestLoginIndex_FiltersDisabledBackends(t *testing.T) {
+	r, _ := loginTestRouter(t,
+		&gatedProvider{fakeProvider: fakeProvider{name: "local"}, visible: false},
+		&gatedProvider{fakeProvider: fakeProvider{name: "ldap"}, visible: false},
+		&gatedProvider{fakeProvider: fakeProvider{name: "anonymous"}, visible: true},
+	)
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/login", nil)
+	r.ServeHTTP(rec, req)
+	require.Equal(t, http.StatusOK, rec.Code)
+	body := rec.Body.String()
+	require.Contains(t, body, "anonymous")
+	require.NotContains(t, body, `"local"`)
+	require.NotContains(t, body, `"ldap"`)
+}
+
+// TestLoginAnonymous_AdminGrantsWildcard verifies that the general.anonymous_admin
+// flag attaches the admin role + AllPermission wildcard to anonymous sessions.
+func TestLoginAnonymous_AdminGrantsWildcard(t *testing.T) {
+	r, rt := loginTestRouter(t, &fakeProvider{
+		name:     "anonymous",
+		enabled:  true,
+		identity: auth.Identity{Username: "anonymous", Method: "anonymous"},
+	})
+	rt.Config = &config.Config{General: schema.General{AnonymousAdmin: true}}
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/login/anonymous", bytes.NewBufferString(`{}`))
+	req.Header.Set("Content-Type", "application/json")
+	r.ServeHTTP(rec, req)
+
+	require.Equal(t, http.StatusOK, rec.Code)
+	var resp loginResponse
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &resp))
+	require.NotEmpty(t, resp.Token)
+
+	claims, err := rt.Auth.Verify(resp.Token)
+	require.NoError(t, err)
+	require.Equal(t, []string{"admin"}, claims.Roles)
+	require.Equal(t, []string{auth.AllPermission}, claims.Permissions)
+}
+
+// TestLoginAnonymous_AdminFlagOff verifies that without anonymous_admin the
+// claims still resolve normally (empty roles/perms since there's no DB here).
+func TestLoginAnonymous_AdminFlagOff(t *testing.T) {
+	r, rt := loginTestRouter(t, &fakeProvider{
+		name:     "anonymous",
+		enabled:  true,
+		identity: auth.Identity{Username: "anonymous", Method: "anonymous"},
+	})
+	rt.Config = &config.Config{General: schema.General{AnonymousAdmin: false}}
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/login/anonymous", bytes.NewBufferString(`{}`))
+	req.Header.Set("Content-Type", "application/json")
+	r.ServeHTTP(rec, req)
+	require.Equal(t, http.StatusOK, rec.Code)
+
+	var resp loginResponse
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &resp))
+	claims, err := rt.Auth.Verify(resp.Token)
+	require.NoError(t, err)
+	require.Empty(t, claims.Roles)
+	require.Empty(t, claims.Permissions)
 }
 
 func TestLoginLocal_IncludesRefreshToken(t *testing.T) {
