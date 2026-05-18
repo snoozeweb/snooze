@@ -115,3 +115,20 @@ tasks:
       msg: "BINARY is required (e.g. BINARY=snooze-server)"
     - sh: test -d cmd/{{ .BINARY }}
       msg: "cmd/{{ .BINARY }} does not exist"
+
+  # ---------- Render (try.snoozeweb.net) ----------
+
+  render:deploy:
+    desc: |
+      Build snoozeweb/snooze, push to Docker Hub, redeploy try.snoozeweb.net
+      and wait until the service reports `live`. Requires RENDER_API_KEY in
+      the environment. Pass TAG=x.y.z to override the default image tag.
+      See scripts/render-deploy.sh for the full set of knobs (SKIP_BUILD,
+      SKIP_PUSH, RENDER_SERVICE_ID, IMAGE_REPO, …).
+    vars:
+      TAG: '{{ .TAG | default "2.0.0" }}'
+    cmds:
+    - scripts/render-deploy.sh {{ .TAG }}
+    preconditions:
+    - sh: test -n "$RENDER_API_KEY"
+      msg: "RENDER_API_KEY env var is required"
