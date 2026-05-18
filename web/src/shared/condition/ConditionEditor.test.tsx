@@ -42,7 +42,7 @@ describe("ConditionEditor", () => {
     expect(screen.getByRole("button", { name: /add filter/i })).toBeInTheDocument();
   });
 
-  it("clicking Add filter emits a paired AND with two empty EQUALS leaves", async () => {
+  it("clicking Add filter emits a single empty EQUALS leaf", async () => {
     const onChange = vi.fn();
     const user = userEvent.setup();
     const Wrapper = wrap();
@@ -52,15 +52,7 @@ describe("ConditionEditor", () => {
       </Wrapper>,
     );
     await user.click(screen.getByRole("button", { name: /add filter/i }));
-    // Paired-by-default: AND/OR ship with two leaves so the user doesn't
-    // see a one-armed group on the very first click.
-    expect(onChange).toHaveBeenCalledWith({
-      type: "AND",
-      args: [
-        { type: "EQUALS", field: "", value: "" },
-        { type: "EQUALS", field: "", value: "" },
-      ],
-    });
+    expect(onChange).toHaveBeenCalledWith({ type: "EQUALS", field: "", value: "" });
   });
 
   it("trash on the root group resets to ALWAYS_TRUE", async () => {

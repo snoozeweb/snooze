@@ -58,11 +58,7 @@
    * month + the time row underneath without horizontal scroll. */
   min-width: 280px;
   padding: var(--space-3);
-  /* The picker is most often rendered inside a Drawer (which sits at
-   * --z-modal = 50). The default popover z-index (--z-popover = 30)
-   * would put the panel behind the drawer body — bump above the modal
-   * layer but below toasts (--z-toast = 60). */
-  z-index: calc(var(--z-modal) + 1);
+  z-index: var(--z-popover);
 }
 
 .calendarWrap {

@@ -59,10 +59,13 @@
   --dur-md: 160ms;
   --dur-slow: 240ms;
 
-  /* Z-index layers */
+  /* Z-index layers.
+     Popovers/dropdowns must sit above modals so Select/Combobox menus
+     opened from inside a Drawer or Dialog are not hidden by the modal
+     overlay. Toasts stay on top of everything. */
   --z-sticky: 10;
   --z-dropdown: 20;
-  --z-popover: 30;
-  --z-modal: 50;
+  --z-modal: 30;
+  --z-popover: 40;
   --z-toast: 60;
 }

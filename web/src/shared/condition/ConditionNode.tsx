@@ -3,7 +3,6 @@
 // owns an operator dropdown (for logic) or a field/op/value triplet (for
 // leaves), a (+) button to add a child or fork into AND, and a trash
 // button that delegates removal upward (root collapses to ALWAYS_TRUE).
-import { Combobox } from "@/shared/ui/Combobox";
 import { IconButton } from "@/shared/ui/IconButton";
 import { Input } from "@/shared/ui/Input";
 import { Select, SelectContent, SelectItem, SelectTrigger } from "@/shared/ui/Select";
@@ -61,7 +60,7 @@ export function ConditionNode({
           label="Add filter"
           variant="secondary"
           size="sm"
-          onClick={() => onChange({ type: "AND", args: [defaultLeaf(), defaultLeaf()] })}
+          onClick={() => onChange(defaultLeaf())}
         />
       </div>
     );
@@ -288,12 +287,19 @@ export function ConditionNode({
   return (
     <div className={styles.leaf}>
       <div className={styles.field}>
-        <Combobox
-          options={fieldOptions.map((f) => ({ value: f, label: f }))}
+        <Input
           value={fieldText}
-          onValueChange={setField}
+          onChange={(e) => setField(e.target.value)}
           placeholder="field"
+          list={fieldOptions.length > 0 ? "snooze-field-suggestions" : undefined}
         />
+        {fieldOptions.length > 0 ? (
+          <datalist id="snooze-field-suggestions">
+            {fieldOptions.map((f) => (
+              <option key={f} value={f} />
+            ))}
+          </datalist>
+        ) : null}
       </div>
       <div className={styles.op}>
         <Select value={leaf.type} onValueChange={(v) => setOperator(v as ConditionType)}>
