@@ -16,7 +16,7 @@ import type { KV } from "./types";
 import styles from "./KVPage.module.css";
 
 type KVSearch = {
-  uid?: string;
+  uid?: string | undefined;
   page?: number;
   orderby?: string;
   asc?: boolean;
@@ -101,14 +101,6 @@ export function KVPage() {
 
   return (
     <div className={styles.page}>
-      <div className={styles.topbar}>
-        <span style={{ color: "var(--text-muted)", fontSize: "var(--text-sm)" }}>
-          {list.data?.meta.total ?? 0} key-values
-        </span>
-        <Button size="sm" variant="primary" leadingIcon="plus" onClick={() => setCreating(true)}>
-          New
-        </Button>
-      </div>
       <DataTable<KV>
         data={list.data?.data ?? []}
         columns={kvColumns}
@@ -119,6 +111,17 @@ export function KVPage() {
         selectedKeys={selectedKeys}
         onSelectionChange={setSelectedKeys}
         bulkActions={bulkActions}
+        toolbarHeader={`${list.data?.meta.total ?? 0} key-values`}
+        toolbar={
+          <Button
+            size="sm"
+            variant="primary"
+            leadingIcon="plus"
+            onClick={() => setCreating(true)}
+          >
+            New
+          </Button>
+        }
         renderExpanded={(row) => (
           <RowDetailPanel
             row={row as unknown as Record<string, unknown>}
@@ -143,7 +146,7 @@ export function KVPage() {
         }}
       />
       {detailUid !== undefined ? (
-        <KVEditor uid={detailUid} onClose={() => updateSearch({})} />
+        <KVEditor uid={detailUid} onClose={() => updateSearch({ uid: undefined })} />
       ) : null}
       {creating ? <KVEditor uid={undefined} onClose={() => setCreating(false)} /> : null}
       <ConfirmDeleteDialog

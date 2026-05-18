@@ -20,7 +20,7 @@ import styles from "./RulesPage.module.css";
 
 type RulesSearch = {
   tab?: "rules" | "aggregates";
-  uid?: string;
+  uid?: string | undefined;
   page?: number;
   orderby?: string;
   asc?: boolean;
@@ -124,26 +124,28 @@ export function RulesPage() {
           <TabTrigger value="aggregates">Aggregates</TabTrigger>
         </TabList>
         <TabPanel value={tab}>
-          <div className={styles.topbar}>
-            <span style={{ color: "var(--text-muted)", fontSize: "var(--text-sm)" }}>
-              {list.data?.meta.total ?? 0} {tab === "rules" ? "rules" : "aggregate rules"}
-            </span>
-            <Button
-              size="sm"
-              variant="primary"
-              leadingIcon="plus"
-              onClick={() => setCreating(true)}
-            >
-              New
-            </Button>
-          </div>
           {isTree ? (
-            <RulesTreeTable
-              rules={list.data?.data ?? []}
-              onRowOpen={(row) => {
-                if (row.uid) updateSearch({ uid: row.uid });
-              }}
-            />
+            <>
+              <div className={styles.topbar}>
+                <span style={{ color: "var(--text-muted)", fontSize: "var(--text-sm)" }}>
+                  {list.data?.meta.total ?? 0} rules
+                </span>
+                <Button
+                  size="sm"
+                  variant="primary"
+                  leadingIcon="plus"
+                  onClick={() => setCreating(true)}
+                >
+                  New
+                </Button>
+              </div>
+              <RulesTreeTable
+                rules={list.data?.data ?? []}
+                onRowOpen={(row) => {
+                  if (row.uid) updateSearch({ uid: row.uid });
+                }}
+              />
+            </>
           ) : (
             <DataTable<AggregateRule>
               data={(list.data?.data ?? []) as AggregateRule[]}
@@ -156,6 +158,17 @@ export function RulesPage() {
               selectedKeys={selectedKeys}
               onSelectionChange={setSelectedKeys}
               bulkActions={aggregateBulkActions}
+              toolbarHeader={`${list.data?.meta.total ?? 0} aggregate rules`}
+              toolbar={
+                <Button
+                  size="sm"
+                  variant="primary"
+                  leadingIcon="plus"
+                  onClick={() => setCreating(true)}
+                >
+                  New
+                </Button>
+              }
               renderExpanded={(row) => (
                 <RowDetailPanel
                   row={row as unknown as Record<string, unknown>}
@@ -188,7 +201,7 @@ export function RulesPage() {
       </Tabs>
 
       {detailUid !== undefined ? (
-        <RuleEditor plugin={editorPlugin} uid={detailUid} onClose={() => updateSearch({})} />
+        <RuleEditor plugin={editorPlugin} uid={detailUid} onClose={() => updateSearch({ uid: undefined })} />
       ) : null}
 
       {creating ? (

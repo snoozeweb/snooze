@@ -16,7 +16,7 @@ import type { User } from "./types";
 import styles from "./UsersPage.module.css";
 
 type UsersSearch = {
-  uid?: string;
+  uid?: string | undefined;
   page?: number;
   orderby?: string;
   asc?: boolean;
@@ -96,14 +96,6 @@ export function UsersPage() {
 
   return (
     <div className={styles.page}>
-      <div className={styles.topbar}>
-        <span style={{ color: "var(--text-muted)", fontSize: "var(--text-sm)" }}>
-          {list.data?.meta.total ?? 0} users
-        </span>
-        <Button size="sm" variant="primary" leadingIcon="plus" onClick={() => setCreating(true)}>
-          New
-        </Button>
-      </div>
       <DataTable<User>
         data={list.data?.data ?? []}
         columns={userColumns}
@@ -114,6 +106,17 @@ export function UsersPage() {
         selectedKeys={selectedKeys}
         onSelectionChange={setSelectedKeys}
         bulkActions={bulkActions}
+        toolbarHeader={`${list.data?.meta.total ?? 0} users`}
+        toolbar={
+          <Button
+            size="sm"
+            variant="primary"
+            leadingIcon="plus"
+            onClick={() => setCreating(true)}
+          >
+            New
+          </Button>
+        }
         renderExpanded={(row) => (
           <RowDetailPanel
             row={row as unknown as Record<string, unknown>}
@@ -138,7 +141,7 @@ export function UsersPage() {
         }}
       />
       {detailUid !== undefined ? (
-        <UserEditor uid={detailUid} onClose={() => updateSearch({})} />
+        <UserEditor uid={detailUid} onClose={() => updateSearch({ uid: undefined })} />
       ) : null}
       {creating ? <UserEditor uid={undefined} onClose={() => setCreating(false)} /> : null}
       <ConfirmDeleteDialog

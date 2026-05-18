@@ -115,6 +115,47 @@ describe("DataTable", () => {
     expect(handler).toHaveBeenCalled();
   });
 
+  it("selectable: shift-click selects an inclusive range from the last anchor", () => {
+    let current: Set<string> = new Set<string>();
+    const onSelectionChange = (next: Set<string>) => {
+      current = next;
+    };
+    const { rerender } = render(
+      <DataTable
+        data={sample}
+        columns={columns}
+        rowKey={(r) => r.id}
+        selectable
+        selectedKeys={current}
+        onSelectionChange={onSelectionChange}
+      />,
+    );
+    // Anchor: plain click on row 1 (id "1").
+    const cells = screen
+      .getAllByRole("checkbox", { name: /select row/i })
+      .map((b) => b.closest("td")!);
+    fireEvent.click(cells[0]!);
+    rerender(
+      <DataTable
+        data={sample}
+        columns={columns}
+        rowKey={(r) => r.id}
+        selectable
+        selectedKeys={current}
+        onSelectionChange={onSelectionChange}
+      />,
+    );
+    // Shift+click on row 3 (id "3") should grow the selection to {1, 2, 3}.
+    const cellsAfter = screen
+      .getAllByRole("checkbox", { name: /select row/i })
+      .map((b) => b.closest("td")!);
+    fireEvent.click(cellsAfter[2]!, { shiftKey: true });
+    expect(current.has("1")).toBe(true);
+    expect(current.has("2")).toBe(true);
+    expect(current.has("3")).toBe(true);
+    expect(current.size).toBe(3);
+  });
+
   it("renders bulkActions slot only when selection > 0", () => {
     const { rerender } = render(
       <DataTable

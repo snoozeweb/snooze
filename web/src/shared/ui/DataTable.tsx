@@ -50,6 +50,15 @@ export type DataTableProps<T> = {
   rowActions?: (row: T) => RowAction[];
   contextMenuItems?: (row: T) => ContextMenuItem[];
   bulkActions?: (rows: T[]) => ReactNode;
+  /** Persistent toolbar rendered above the table. Lives in the same row
+   *  as the bulk-actions bar so selecting rows doesn't shift the table
+   *  vertically. Pages use this to host their "New" button, refresh
+   *  controls, and any other always-visible affordances. */
+  toolbar?: ReactNode;
+  /** Optional small text rendered at the start of the toolbar (e.g.
+   *  "42 users"). When no selection is active it sits next to `toolbar`;
+   *  bulk-action mode replaces it with "N selected". */
+  toolbarHeader?: ReactNode;
   emptyState?: ReactNode;
   loading?: boolean;
   onRowOpen?: (row: T) => void;
@@ -75,6 +84,8 @@ export function DataTable<T>({
   rowActions,
   contextMenuItems,
   bulkActions,
+  toolbar,
+  toolbarHeader,
   emptyState,
   loading = false,
   onRowOpen,
@@ -84,6 +95,9 @@ export function DataTable<T>({
   const [focusedIndex, setFocusedIndex] = useState<number>(-1);
   const [expanded, setExpanded] = useState<Set<string>>(() => new Set<string>());
   const [ctxMenu, setCtxMenu] = useState<{ row: T; x: number; y: number } | null>(null);
+  // Anchor index for shift-click range selection. Set on every plain click
+  // of a row's checkbox; consumed when the next click arrives with shift.
+  const [anchorIndex, setAnchorIndex] = useState<number | null>(null);
 
   const toggleExpanded = useCallback((key: string) => {
     setExpanded((prev) => {
@@ -114,6 +128,29 @@ export function DataTable<T>({
       onSelectionChange(next);
     },
     [onSelectionChange, selSet],
+  );
+
+  // Shift-click selects an inclusive range from the last anchor to the
+  // current row, OR-ing the range into the current selection. A plain
+  // click resets the anchor and toggles a single row.
+  const handleCheckboxClick = useCallback(
+    (key: string, index: number, shiftKey: boolean) => {
+      if (!onSelectionChange) return;
+      if (shiftKey && anchorIndex !== null && anchorIndex !== index) {
+        const [lo, hi] =
+          anchorIndex < index ? [anchorIndex, index] : [index, anchorIndex];
+        const next = new Set<string>(selSet);
+        for (let i = lo; i <= hi; i++) {
+          const k = allKeys[i];
+          if (k !== undefined) next.add(k);
+        }
+        onSelectionChange(next);
+        return;
+      }
+      setAnchorIndex(index);
+      toggleOne(key);
+    },
+    [allKeys, anchorIndex, onSelectionChange, selSet, toggleOne],
   );
 
   const handleHeaderSort = useCallback(
@@ -160,12 +197,25 @@ export function DataTable<T>({
     [data, rowKey, selSet],
   );
 
+  const hasSelection = selectable && bulkActions && selectedRows.length > 0;
+  const showToolbar = toolbar !== undefined || toolbarHeader !== undefined || hasSelection;
+
   return (
     <div className={styles.wrap}>
-      {selectable && bulkActions && selectedRows.length > 0 ? (
-        <div className={styles.toolbar} role="region" aria-label="Bulk actions">
-          <span className={styles.toolbarCount}>{selectedRows.length} selected</span>
-          <div className={styles.toolbarActions}>{bulkActions(selectedRows)}</div>
+      {showToolbar ? (
+        <div
+          className={hasSelection ? styles.toolbarSelected : styles.toolbar}
+          role="region"
+          aria-label={hasSelection ? "Bulk actions" : "Table toolbar"}
+        >
+          {hasSelection ? (
+            <span className={styles.toolbarCount}>{selectedRows.length} selected</span>
+          ) : toolbarHeader !== undefined ? (
+            <span className={styles.toolbarHeader}>{toolbarHeader}</span>
+          ) : null}
+          <div className={styles.toolbarActions}>
+            {hasSelection ? bulkActions(selectedRows) : toolbar}
+          </div>
         </div>
       ) : null}
 
@@ -297,11 +347,28 @@ export function DataTable<T>({
                       </td>
                     ) : null}
                     {selectable ? (
-                      <td className={styles.checkboxCell} onClick={(e) => e.stopPropagation()}>
+                      <td
+                        className={styles.checkboxCell}
+                        onClick={(e) => {
+                          // Swallow the row-level onClick so it doesn't also
+                          // open the row, and route through the shift-aware
+                          // selection handler.
+                          e.stopPropagation();
+                          handleCheckboxClick(key, idx, e.shiftKey);
+                        }}
+                      >
                         <Checkbox
                           aria-label={`Select row ${key}`}
                           checked={isSelected}
-                          onCheckedChange={() => toggleOne(key)}
+                          // Pointer / keyboard events on the Checkbox itself
+                          // are still routed to onCheckedChange; the parent
+                          // td handler covers shift-click on the cell area.
+                          onCheckedChange={() => {
+                            // Pure keyboard toggle from the Checkbox primitive
+                            // — clicks land on the parent td (shift-aware).
+                            setAnchorIndex(idx);
+                            toggleOne(key);
+                          }}
                         />
                       </td>
                     ) : null}

@@ -365,20 +365,6 @@ export function AlertsPage() {
           updateSearch(partial);
         }}
       />
-      <div className={styles.topbar}>
-        <span>{list.data?.meta.total ?? 0} alerts</span>
-        <Tooltip content={auto.enabled ? "Auto-refresh every 5s" : "Auto-refresh off"}>
-          {/* Switch renders as a button; use div+aria-label instead of label to satisfy a11y rules */}
-          <div className={styles.refreshToggle} role="group" aria-label="Auto refresh toggle">
-            <span aria-hidden="true">Auto refresh</span>
-            <Switch
-              checked={auto.enabled}
-              onCheckedChange={auto.setEnabled}
-              aria-label="Auto refresh"
-            />
-          </div>
-        </Tooltip>
-      </div>
       <DataTable
         data={filtered}
         columns={alertColumns}
@@ -388,6 +374,20 @@ export function AlertsPage() {
         selectedKeys={selectedKeys}
         onSelectionChange={setSelectedKeys}
         bulkActions={bulkActions}
+        toolbarHeader={`${list.data?.meta.total ?? 0} alerts`}
+        toolbar={
+          <Tooltip content={auto.enabled ? "Auto-refresh every 5s" : "Auto-refresh off"}>
+            {/* Switch renders as a button; use div+aria-label instead of label to satisfy a11y rules */}
+            <div className={styles.refreshToggle} role="group" aria-label="Auto refresh toggle">
+              <span aria-hidden="true">Auto refresh</span>
+              <Switch
+                checked={auto.enabled}
+                onCheckedChange={auto.setEnabled}
+                aria-label="Auto refresh"
+              />
+            </div>
+          </Tooltip>
+        }
         serverSort={{
           sortBy: orderby,
           order: asc ? "asc" : "desc",

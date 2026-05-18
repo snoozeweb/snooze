@@ -80,47 +80,51 @@ export function MultiCombobox({
 
   return (
     <RP.Root open={open} onOpenChange={setOpen}>
-      <div
-        className={[styles.wrap, className].filter(Boolean).join(" ")}
-        role="combobox"
-        aria-expanded={open}
-        aria-controls={`${id}-listbox`}
-        aria-label={ariaLabel}
-        tabIndex={0}
-        onClick={() => setOpen(true)}
-        onKeyDown={(e) => {
-          if (e.key === "Enter" || e.key === " ") {
-            e.preventDefault();
-            setOpen(true);
-          }
-        }}
-      >
-        {value.map((v) => {
-          const opt = options.find((o) => o.value === v);
-          return (
-            <span key={v} className={styles.pill}>
-              {opt?.label ?? v}
-              <button
-                type="button"
-                aria-label={`Remove ${opt?.label ?? v}`}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  remove(v);
-                }}
-              >
-                <Icon name="x" size={12} />
-              </button>
-            </span>
-          );
-        })}
-        <RP.Trigger asChild>
-          <button type="button" className={styles.trigger}>
-            {value.length === 0 ? <span className={styles.placeholder}>{placeholder}</span> : null}
-          </button>
-        </RP.Trigger>
-      </div>
+      <RP.Trigger asChild>
+        <button
+          type="button"
+          className={[styles.wrap, className].filter(Boolean).join(" ")}
+          role="combobox"
+          aria-expanded={open}
+          aria-controls={`${id}-listbox`}
+          aria-label={ariaLabel}
+        >
+          {value.map((v) => {
+            const opt = options.find((o) => o.value === v);
+            return (
+              <span key={v} className={styles.pill}>
+                {opt?.label ?? v}
+                <button
+                  type="button"
+                  aria-label={`Remove ${opt?.label ?? v}`}
+                  onClick={(e) => {
+                    // Don't propagate to the wrapping trigger button — clicking
+                    // the X should only delete the pill, not also toggle the
+                    // popover.
+                    e.stopPropagation();
+                    remove(v);
+                  }}
+                >
+                  <Icon name="x" size={12} />
+                </button>
+              </span>
+            );
+          })}
+          {value.length === 0 ? (
+            <span className={styles.placeholder}>{placeholder}</span>
+          ) : null}
+          <span className={styles.caret} aria-hidden="true">
+            <Icon name="chevron-down" size={14} />
+          </span>
+        </button>
+      </RP.Trigger>
       <RP.Portal>
-        <RP.Content className={styles.popContent} sideOffset={4} align="start">
+        <RP.Content
+          className={styles.popContent}
+          sideOffset={4}
+          align="start"
+          collisionPadding={8}
+        >
           <div className={styles.searchWrap}>
             {/* eslint-disable jsx-a11y/no-autofocus -- popover search auto-focus pattern, matches Combobox.tsx */}
             <input

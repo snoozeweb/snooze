@@ -34,22 +34,24 @@ export function FrequencyEditor({ value, onChange }: FrequencyEditorProps) {
       </div>
       <div>
         <div className={styles.subhead}>
-          <span>Initial delay</span>
+          <span>Initial delay (0 = disabled)</span>
         </div>
         <DurationInput
           aria-label="Frequency delay"
           value={f.delay ?? 0}
           onChange={(n) => onChange({ ...f, delay: n })}
+          zeroLabel="disabled"
         />
       </div>
       <div>
         <div className={styles.subhead}>
-          <span>Repeat every</span>
+          <span>Repeat every (0 = disabled)</span>
         </div>
         <DurationInput
           aria-label="Frequency every"
           value={f.every ?? 0}
           onChange={(n) => onChange({ ...f, every: n })}
+          zeroLabel="disabled"
         />
       </div>
     </div>

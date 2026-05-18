@@ -38,6 +38,14 @@
   z-index: var(--z-popover);
   min-width: var(--radix-select-trigger-width);
   font-size: var(--text-sm);
+  /* Shrink to whatever vertical space Radix says we have so the listbox
+     never overflows the viewport when the trigger is near an edge. */
+  max-height: min(320px, var(--radix-select-content-available-height, 320px));
+  overflow: hidden;
+}
+.viewport {
+  overflow: auto;
+  max-height: inherit;
 }
 .item {
   display: flex;

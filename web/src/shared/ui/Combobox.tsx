@@ -67,7 +67,12 @@ export function Combobox({
         <Icon name="chevron-down" size={14} />
       </RP.Trigger>
       <RP.Portal>
-        <RP.Content className={styles.content} sideOffset={4} align="start">
+        <RP.Content
+          className={styles.content}
+          sideOffset={4}
+          align="start"
+          collisionPadding={8}
+        >
           <div className={styles.searchWrap}>
             {/* eslint-disable jsx-a11y/no-autofocus -- Search field in a popover should grab focus immediately so users can type without an extra click. */}
             <input

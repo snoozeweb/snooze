@@ -4,19 +4,35 @@
   align-items: center;
   gap: var(--space-1);
   padding: var(--space-1) var(--space-2);
-  min-height: 36px;
-  background: var(--surface-2);
+  min-height: 32px;
+  background: var(--bg-surface);
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
-  cursor: text;
+  cursor: pointer;
+  text-align: left;
+  font: inherit;
+  font-size: var(--text-sm);
+  color: var(--text-strong);
+  width: 100%;
 }
-.wrap:focus-within {
+.wrap:hover {
+  border-color: var(--text-muted);
+}
+.wrap[data-state="open"],
+.wrap:focus {
   border-color: var(--accent);
-  box-shadow: 0 0 0 1px var(--accent);
+  outline: none;
 }
 .placeholder {
   color: var(--text-muted);
   font-size: var(--text-sm);
+  flex: 1;
+}
+.caret {
+  margin-left: auto;
+  color: var(--text-muted);
+  display: inline-flex;
+  align-items: center;
 }
 .pill {
   display: inline-flex;
@@ -43,49 +59,51 @@
 .pill button:hover {
   color: var(--text);
 }
-.trigger {
-  flex: 1;
-  text-align: left;
-  background: transparent;
-  border: none;
-  padding: 0;
-  font-size: var(--text-sm);
-  color: var(--text);
-  cursor: pointer;
-}
 .popContent {
   width: var(--radix-popover-trigger-width);
-  max-height: 260px;
+  /* Shrink to available height so the dropdown doesn't get clipped when
+     the trigger is near a viewport edge. */
+  max-height: min(260px, var(--radix-popover-content-available-height, 260px));
   overflow: auto;
   background: var(--surface-1);
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
   box-shadow: 0 4px 16px rgb(0 0 0 / 30%);
-  z-index: 50;
+  z-index: var(--z-popover);
+  display: flex;
+  flex-direction: column;
 }
 .searchWrap {
   padding: var(--space-2);
-  border-bottom: 1px solid var(--border);
+  border-bottom: 1px solid var(--border-muted);
+  flex: 0 0 auto;
 }
 .search {
   width: 100%;
-  background: var(--surface-2);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
-  padding: var(--space-1) var(--space-2);
+  background: transparent;
+  border: 0;
+  outline: none;
+  font: inherit;
   font-size: var(--text-sm);
-  color: var(--text);
+  color: var(--text-strong);
+}
+.search::placeholder {
+  color: var(--text-muted);
 }
 .list {
   list-style: none;
   margin: 0;
-  padding: 0;
+  padding: var(--space-1);
+  overflow: auto;
+  flex: 1 1 auto;
 }
 .option {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  gap: var(--space-2);
   padding: var(--space-1) var(--space-2);
+  border-radius: var(--radius-sm);
   cursor: pointer;
   font-size: var(--text-sm);
 }

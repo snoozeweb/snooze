@@ -29,7 +29,7 @@ type RetroApplyResponse = {
 };
 
 type SnoozesSearch = {
-  uid?: string;
+  uid?: string | undefined;
   page?: number;
   orderby?: string;
   asc?: boolean;
@@ -213,19 +213,6 @@ export function SnoozesPage() {
           ))}
         </TabList>
         <TabPanel value={tab}>
-          <div className={styles.topbar}>
-            <span style={{ color: "var(--text-muted)", fontSize: "var(--text-sm)" }}>
-              {filtered.length} {tab} snoozes
-            </span>
-            <Button
-              size="sm"
-              variant="primary"
-              leadingIcon="plus"
-              onClick={() => setCreating(true)}
-            >
-              New
-            </Button>
-          </div>
           <DataTable<Snooze>
             data={paged}
             columns={snoozeColumns}
@@ -238,6 +225,17 @@ export function SnoozesPage() {
             onSelectionChange={setSelectedKeys}
             bulkActions={bulkActions}
             loading={list.isPending}
+            toolbarHeader={`${filtered.length} ${tab} snoozes`}
+            toolbar={
+              <Button
+                size="sm"
+                variant="primary"
+                leadingIcon="plus"
+                onClick={() => setCreating(true)}
+              >
+                New
+              </Button>
+            }
             renderExpanded={(row) => (
               <RowDetailPanel
                 row={row as unknown as Record<string, unknown>}
@@ -264,7 +262,7 @@ export function SnoozesPage() {
         </TabPanel>
       </Tabs>
       {detailUid !== undefined ? (
-        <SnoozeEditor uid={detailUid} onClose={() => updateSearch({})} />
+        <SnoozeEditor uid={detailUid} onClose={() => updateSearch({ uid: undefined })} />
       ) : null}
       {creating ? <SnoozeEditor uid={undefined} onClose={() => setCreating(false)} /> : null}
       <ConfirmDeleteDialog

@@ -18,31 +18,28 @@
   display: flex;
   flex-direction: column;
   gap: var(--space-2);
-  border-left: 2px solid var(--border);
-  padding-left: var(--space-3);
 }
 .groupHeader {
   display: flex;
   align-items: center;
   gap: var(--space-2);
 }
-.groupPill {
-  font-family: var(--font-mono);
-  font-size: var(--text-xs);
-  background: var(--bg-elevated);
-  color: var(--text-strong);
-  padding: 2px 8px;
-  border-radius: var(--radius-pill);
-  border: 1px solid var(--border);
-  cursor: pointer;
+.opSelect {
+  min-width: 80px;
+  flex: 0 0 auto;
 }
-.notBadge {
-  font-family: var(--font-mono);
-  font-size: var(--text-xs);
-  background: var(--severity-warning);
-  color: var(--bg-canvas);
-  padding: 2px 6px;
-  border-radius: var(--radius-pill);
+.children {
+  list-style: none;
+  margin: 0;
+  padding: 0 0 0 var(--space-4);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  border-left: 2px solid var(--border);
+}
+.childRow {
+  margin: 0;
+  padding-left: var(--space-2);
 }
 /* Flex row that never wraps; inputs collapse (min-width:0) so the
    trash button stays on the same line as the inputs regardless of

@@ -2,7 +2,7 @@
 // rows (Weekdays / Hours / Dates) laid out as label | value pairs.
 // The label column is right-aligned muted small text; the value column
 // stacks one or more value lines.  When the group is fully empty (or
-// undefined), renders the literal "Forever" instead.
+// undefined), renders the literal "Always" instead.
 import type { TimeConstraintsGroup } from "@/lib/timeconstraints/types";
 import { WEEKDAY_LABELS } from "@/lib/timeconstraints/types";
 import styles from "./TimeConstraintsCell.module.css";
@@ -17,7 +17,7 @@ export function TimeConstraintsCell({ value }: TimeConstraintsCellProps) {
   const dates = value?.datetime ?? [];
 
   if (wd.length === 0 && time.length === 0 && dates.length === 0) {
-    return <span className={styles.muted}>Forever</span>;
+    return <span className={styles.muted}>Always</span>;
   }
 
   return (

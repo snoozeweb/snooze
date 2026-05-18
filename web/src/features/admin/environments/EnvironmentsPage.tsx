@@ -16,7 +16,7 @@ import type { Environment } from "./types";
 import styles from "./EnvironmentsPage.module.css";
 
 type EnvironmentsSearch = {
-  uid?: string;
+  uid?: string | undefined;
   page?: number;
   orderby?: string;
   asc?: boolean;
@@ -101,14 +101,6 @@ export function EnvironmentsPage() {
 
   return (
     <div className={styles.page}>
-      <div className={styles.topbar}>
-        <span style={{ color: "var(--text-muted)", fontSize: "var(--text-sm)" }}>
-          {list.data?.meta.total ?? 0} environments
-        </span>
-        <Button size="sm" variant="primary" leadingIcon="plus" onClick={() => setCreating(true)}>
-          New
-        </Button>
-      </div>
       <DataTable<Environment>
         data={list.data?.data ?? []}
         columns={environmentColumns}
@@ -119,6 +111,17 @@ export function EnvironmentsPage() {
         selectedKeys={selectedKeys}
         onSelectionChange={setSelectedKeys}
         bulkActions={bulkActions}
+        toolbarHeader={`${list.data?.meta.total ?? 0} environments`}
+        toolbar={
+          <Button
+            size="sm"
+            variant="primary"
+            leadingIcon="plus"
+            onClick={() => setCreating(true)}
+          >
+            New
+          </Button>
+        }
         renderExpanded={(row) => (
           <RowDetailPanel
             row={row as unknown as Record<string, unknown>}
@@ -143,7 +146,7 @@ export function EnvironmentsPage() {
         }}
       />
       {detailUid !== undefined ? (
-        <EnvironmentEditor uid={detailUid} onClose={() => updateSearch({})} />
+        <EnvironmentEditor uid={detailUid} onClose={() => updateSearch({ uid: undefined })} />
       ) : null}
       {creating ? <EnvironmentEditor uid={undefined} onClose={() => setCreating(false)} /> : null}
       <ConfirmDeleteDialog

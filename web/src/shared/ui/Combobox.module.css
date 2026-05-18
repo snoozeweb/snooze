@@ -41,7 +41,9 @@
   font-size: var(--text-sm);
   display: flex;
   flex-direction: column;
-  max-height: 320px;
+  /* Shrink to whatever vertical space Radix decides we have so the popover
+     never overflows the viewport when the trigger is near an edge. */
+  max-height: min(320px, var(--radix-popover-content-available-height, 320px));
   overflow: hidden;
 }
 .searchWrap {

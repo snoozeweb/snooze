@@ -1,9 +1,8 @@
 import { useEffect, useRef, useState } from "react";
 import * as Tabs from "@radix-ui/react-tabs";
-import { Button } from "@/shared/ui/Button";
 import type { Condition } from "@/lib/condition/types";
 import { encodeText, parseText } from "@/lib/condition/text";
-import { ConditionGroup } from "./ConditionGroup";
+import { ConditionNode } from "./ConditionNode";
 import { useFieldSuggestions } from "./useFieldSuggestions";
 import styles from "./ConditionEditor.module.css";
 
@@ -67,26 +66,7 @@ export function ConditionEditor({ value, onChange, plugin }: ConditionEditorProp
         </Tabs.Trigger>
       </Tabs.List>
       <Tabs.Content value="builder">
-        {value.type === "ALWAYS_TRUE" ? (
-          <div className={styles.empty}>
-            <span>Always (matches all rows).</span>
-            <Button
-              size="sm"
-              variant="secondary"
-              leadingIcon="plus"
-              onClick={() =>
-                onChange({
-                  type: "AND",
-                  args: [{ type: "EQUALS", field: "", value: "" }],
-                })
-              }
-            >
-              Add filter
-            </Button>
-          </div>
-        ) : (
-          <ConditionGroup value={value} fieldOptions={fields} onChange={onChange} isRoot />
-        )}
+        <ConditionNode value={value} fieldOptions={fields} onChange={onChange} isRoot />
       </Tabs.Content>
       <Tabs.Content value="text">
         <textarea

@@ -27,8 +27,13 @@ export const SelectTrigger = forwardRef<HTMLButtonElement, SelectTriggerProps>(
 export function SelectContent({ children }: { children: ReactNode }) {
   return (
     <RS.Portal>
-      <RS.Content className={styles.content} position="popper" sideOffset={4}>
-        <RS.Viewport>{children}</RS.Viewport>
+      <RS.Content
+        className={styles.content}
+        position="popper"
+        sideOffset={4}
+        collisionPadding={8}
+      >
+        <RS.Viewport className={styles.viewport}>{children}</RS.Viewport>
       </RS.Content>
     </RS.Portal>
   );

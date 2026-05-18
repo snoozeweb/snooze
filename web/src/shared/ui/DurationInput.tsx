@@ -13,6 +13,10 @@ export type DurationInputProps = {
   min?: number;
   step?: number;
   placeholder?: string;
+  /** Badge text when value === 0. Defaults to "forever" (TTL/throttle
+   *  semantics). Pass "disabled" for fields where zero means the feature
+   *  is turned off (frequency delay / repeat). */
+  zeroLabel?: string;
 };
 
 export function DurationInput({
@@ -23,11 +27,14 @@ export function DurationInput({
   min,
   step,
   placeholder,
+  zeroLabel,
 }: DurationInputProps) {
+  const badge =
+    value === 0 && zeroLabel !== undefined ? zeroLabel : secondsToHuman(value);
   return (
     <div className={styles.wrap}>
       <span className={styles.badge} aria-hidden="true">
-        {secondsToHuman(value)}
+        {badge}
       </span>
       <input
         id={id}

@@ -19,7 +19,7 @@ import styles from "./NotificationsPage.module.css";
 
 type PageSearch = {
   tab?: "notifications" | "actions";
-  uid?: string;
+  uid?: string | undefined;
   page?: number;
   orderby?: string;
   asc?: boolean;
@@ -156,19 +156,6 @@ export function NotificationsPage() {
           <TabTrigger value="actions">Actions</TabTrigger>
         </TabList>
         <TabPanel value={tab}>
-          <div className={styles.topbar}>
-            <span style={{ color: "var(--text-muted)", fontSize: "var(--text-sm)" }}>
-              {list.data?.meta.total ?? 0} {tab}
-            </span>
-            <Button
-              size="sm"
-              variant="primary"
-              leadingIcon="plus"
-              onClick={() => setCreating(true)}
-            >
-              New
-            </Button>
-          </div>
           {tab === "notifications" ? (
             <DataTable<Notification>
               data={notifList.data?.data ?? []}
@@ -181,6 +168,17 @@ export function NotificationsPage() {
               selectedKeys={notifSelected}
               onSelectionChange={setNotifSelected}
               bulkActions={notifBulk}
+              toolbarHeader={`${list.data?.meta.total ?? 0} ${tab}`}
+              toolbar={
+                <Button
+                  size="sm"
+                  variant="primary"
+                  leadingIcon="plus"
+                  onClick={() => setCreating(true)}
+                >
+                  New
+                </Button>
+              }
               renderExpanded={(row) => (
                 <RowDetailPanel
                   row={row as unknown as Record<string, unknown>}
@@ -219,6 +217,17 @@ export function NotificationsPage() {
               selectedKeys={actionSelected}
               onSelectionChange={setActionSelected}
               bulkActions={actionBulk}
+              toolbarHeader={`${list.data?.meta.total ?? 0} ${tab}`}
+              toolbar={
+                <Button
+                  size="sm"
+                  variant="primary"
+                  leadingIcon="plus"
+                  onClick={() => setCreating(true)}
+                >
+                  New
+                </Button>
+              }
               renderExpanded={(row) => (
                 <RowDetailPanel
                   row={row as unknown as Record<string, unknown>}
@@ -251,10 +260,10 @@ export function NotificationsPage() {
       </Tabs>
 
       {tab === "notifications" && detailUid !== undefined ? (
-        <NotificationEditor uid={detailUid} onClose={() => updateSearch({})} />
+        <NotificationEditor uid={detailUid} onClose={() => updateSearch({ uid: undefined })} />
       ) : null}
       {tab === "actions" && detailUid !== undefined ? (
-        <ActionEditor uid={detailUid} onClose={() => updateSearch({})} />
+        <ActionEditor uid={detailUid} onClose={() => updateSearch({ uid: undefined })} />
       ) : null}
       {creating && tab === "notifications" ? (
         <NotificationEditor uid={undefined} onClose={() => setCreating(false)} />

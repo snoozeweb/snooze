@@ -16,7 +16,7 @@ import type { Role } from "./types";
 import styles from "./RolesPage.module.css";
 
 type RolesSearch = {
-  uid?: string;
+  uid?: string | undefined;
   page?: number;
   orderby?: string;
   asc?: boolean;
@@ -96,14 +96,6 @@ export function RolesPage() {
 
   return (
     <div className={styles.page}>
-      <div className={styles.topbar}>
-        <span style={{ color: "var(--text-muted)", fontSize: "var(--text-sm)" }}>
-          {list.data?.meta.total ?? 0} roles
-        </span>
-        <Button size="sm" variant="primary" leadingIcon="plus" onClick={() => setCreating(true)}>
-          New
-        </Button>
-      </div>
       <DataTable<Role>
         data={list.data?.data ?? []}
         columns={roleColumns}
@@ -114,6 +106,17 @@ export function RolesPage() {
         selectedKeys={selectedKeys}
         onSelectionChange={setSelectedKeys}
         bulkActions={bulkActions}
+        toolbarHeader={`${list.data?.meta.total ?? 0} roles`}
+        toolbar={
+          <Button
+            size="sm"
+            variant="primary"
+            leadingIcon="plus"
+            onClick={() => setCreating(true)}
+          >
+            New
+          </Button>
+        }
         renderExpanded={(row) => (
           <RowDetailPanel
             row={row as unknown as Record<string, unknown>}
@@ -138,7 +141,7 @@ export function RolesPage() {
         }}
       />
       {detailUid !== undefined ? (
-        <RoleEditor uid={detailUid} onClose={() => updateSearch({})} />
+        <RoleEditor uid={detailUid} onClose={() => updateSearch({ uid: undefined })} />
       ) : null}
       {creating ? <RoleEditor uid={undefined} onClose={() => setCreating(false)} /> : null}
       <ConfirmDeleteDialog

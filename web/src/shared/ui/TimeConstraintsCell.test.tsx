@@ -4,15 +4,15 @@ import { TimeConstraintsCell } from "./TimeConstraintsCell";
 import { summarizeTimeConstraints } from "./timeConstraintsUtils";
 
 describe("TimeConstraintsCell", () => {
-  it("renders 'Forever' for undefined value", () => {
+  it("renders 'Always' for undefined value", () => {
     render(<TimeConstraintsCell value={undefined} />);
-    expect(screen.getByText("Forever")).toBeInTheDocument();
+    expect(screen.getByText("Always")).toBeInTheDocument();
     expect(screen.queryByText("—")).not.toBeInTheDocument();
   });
 
-  it("renders 'Forever' when all three families are empty", () => {
+  it("renders 'Always' when all three families are empty", () => {
     render(<TimeConstraintsCell value={{}} />);
-    expect(screen.getByText("Forever")).toBeInTheDocument();
+    expect(screen.getByText("Always")).toBeInTheDocument();
     expect(screen.queryByText("—")).not.toBeInTheDocument();
   });
 
