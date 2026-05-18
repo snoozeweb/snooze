@@ -30,9 +30,10 @@ test.describe("rule pipeline effects", () => {
     });
 
     // The syncer debounces collection-change events (~100ms default) before
-    // calling Reload on the rule plugin. Wait a beat so the rule is cached
-    // before we start ingesting alerts that should be tagged.
-    await new Promise((r) => setTimeout(r, 400));
+    // calling Reload on the rule plugin. Wait long enough for the rule to be
+    // cached — MongoDB change streams add replica-set oplog latency on top of
+    // the 100ms debounce window, so we budget 2 s to stay backend-agnostic.
+    await new Promise((r) => setTimeout(r, 2_000));
 
     await api.alerts.send({
       host: "srv-tagged",
