@@ -60,27 +60,31 @@ export function AlertsFilters({ value, onChange, rightSlot, countLabel }: Alerts
 
   return (
     <div className={styles.bar}>
-      <EnvironmentBar
-        selected={value.envs ?? []}
-        onChange={(envs) => onChange({ ...value, envs })}
-      />
-      <div role="tablist" aria-label="Alert lifecycle filter" className={styles.tabs}>
-        {ALERT_TABS.map((tab) => {
-          const active = tab.id === activeTab;
-          return (
-            <button
-              key={tab.id}
-              type="button"
-              role="tab"
-              aria-selected={active}
-              data-state={active ? "active" : "inactive"}
-              className={styles.tab}
-              onClick={() => handleTab(tab.id)}
-            >
-              {tab.label}
-            </button>
-          );
-        })}
+      <div className={styles.tabRow}>
+        <div role="tablist" aria-label="Alert lifecycle filter" className={styles.tabs}>
+          {ALERT_TABS.map((tab) => {
+            const active = tab.id === activeTab;
+            return (
+              <button
+                key={tab.id}
+                type="button"
+                role="tab"
+                aria-selected={active}
+                data-state={active ? "active" : "inactive"}
+                className={styles.tab}
+                onClick={() => handleTab(tab.id)}
+              >
+                {tab.label}
+              </button>
+            );
+          })}
+        </div>
+        <div className={styles.envSlot}>
+          <EnvironmentBar
+            selected={value.envs ?? []}
+            onChange={(envs) => onChange({ ...value, envs })}
+          />
+        </div>
       </div>
       <div className={styles.searchRow}>
         <div className={styles.searchSlot}>

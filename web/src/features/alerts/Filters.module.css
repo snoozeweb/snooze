@@ -5,6 +5,27 @@
 }
 
 /*
+ * Tab row — hosts the lifecycle tab strip on the left and the
+ * EnvironmentBar pills on the right, separated by a flex spacer so the
+ * environment pills hug the right edge while the tabs anchor left.
+ * The bottom border is on the row so it spans the full width even when
+ * the environment list is empty.
+ */
+.tabRow {
+  display: flex;
+  align-items: flex-end;
+  gap: var(--space-3);
+  border-bottom: 1px solid var(--border);
+  overflow-x: auto;
+}
+.envSlot {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  padding-bottom: var(--space-1);
+}
+
+/*
  * Tab strip — mirrors Tabs.module.css's underlined-pill style so the
  * lifecycle filter feels visually consistent with the rest of the app's
  * tabbed surfaces (Settings, Profile, etc.).
@@ -13,7 +34,6 @@
   display: flex;
   align-items: flex-end;
   gap: var(--space-1);
-  border-bottom: 1px solid var(--border);
   overflow-x: auto;
 }
 .tab {

@@ -144,17 +144,6 @@ export function EnvironmentEditor({ uid, onClose }: EnvironmentEditorProps) {
                     {...register("tree_order", { valueAsNumber: true })}
                   />
                 </div>
-                <div className={styles.field}>
-                  <label className={styles.label} htmlFor="environment-comment">
-                    Comment
-                  </label>
-                  <Textarea
-                    id="environment-comment"
-                    {...register("comment")}
-                    rows={2}
-                    placeholder="Optional description"
-                  />
-                </div>
               </section>
               <section className={styles.section}>
                 <h3 className={styles.sectionTitle}>Filter</h3>
@@ -167,6 +156,17 @@ export function EnvironmentEditor({ uid, onClose }: EnvironmentEditorProps) {
                   <ConditionPreview condition={condition} />
                 </div>
               </section>
+              <div className={styles.field}>
+                <label className={styles.label} htmlFor="environment-comment">
+                  Comment
+                </label>
+                <Textarea
+                  id="environment-comment"
+                  {...register("comment")}
+                  rows={2}
+                  placeholder="Optional description"
+                />
+              </div>
             </form>
           )}
         </DrawerBody>
