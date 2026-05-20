@@ -286,10 +286,14 @@ export function RulesTreeTable({
 
   // Drag state. `activeId` is the row being dragged; `overId` is the row
   // dnd-kit's collision detection reports under the cursor. `offsetX`
-  // tracks horizontal drift so we can project nesting depth.
+  // tracks horizontal drift so we can project nesting depth. `dropAfter`
+  // is true when the cursor is in the lower half of the over row — the
+  // drop slot becomes "after this row" rather than "before this row",
+  // which makes "drag onto X + drag right = child of X" feel natural.
   const [activeId, setActiveId] = useState<string | null>(null);
   const [overId, setOverId] = useState<string | null>(null);
   const [offsetX, setOffsetX] = useState(0);
+  const [dropAfter, setDropAfter] = useState(false);
 
   // The PointerSensor activates only after 6px of movement so plain row
   // clicks (which open the editor drawer) still work.
@@ -351,7 +355,12 @@ export function RulesTreeTable({
       const idx = projectionList.findIndex(
         (n) => (n.rule.uid ?? n.rule.name) === overId,
       );
-      slotInProjection = idx < 0 ? projectionList.length : idx;
+      // dropAfter swaps the slot from "before this row" to "after this
+      // row", which is what makes "drag onto X + drag right = child of X"
+      // produce the expected projection. Without this swap, dragging
+      // right while over X would project as a child of X's PREVIOUS
+      // sibling (because the slot would still be before X).
+      slotInProjection = idx < 0 ? projectionList.length : dropAfter ? idx + 1 : idx;
     }
     const { parentId, depth } = projectDrop(
       projectionList,
@@ -371,12 +380,13 @@ export function RulesTreeTable({
       slotInProjection,
       slotInRendered: slotInRendered < 0 ? renderedFlat.length : slotInRendered,
     };
-  }, [activeId, overId, renderedFlat, subtreeIds, offsetX]);
+  }, [activeId, overId, renderedFlat, subtreeIds, offsetX, dropAfter]);
 
   const handleDragStart = useCallback((e: DragStartEvent) => {
     setActiveId(e.active.id as string);
     setOverId(null);
     setOffsetX(0);
+    setDropAfter(false);
     // Force-close every expanded details panel — leaving them open while
     // rows are reshuffling produces the worst kind of layout thrash.
     setExpanded(new Set());
@@ -384,13 +394,27 @@ export function RulesTreeTable({
 
   const handleDragMove = useCallback((e: DragMoveEvent) => {
     setOffsetX(e.delta.x);
-    setOverId((e.over?.id as string | undefined) ?? null);
+    const id = (e.over?.id as string | undefined) ?? null;
+    setOverId(id);
+    // Cursor-in-row position decides "before" vs "after" the over row.
+    // The end-of-list sentinel is always "at the end" — there's no
+    // upper/lower half there.
+    if (id && id !== END_DROPPABLE_ID && e.over?.rect) {
+      const activator = e.activatorEvent as MouseEvent | PointerEvent;
+      const cursorY = activator.clientY + e.delta.y;
+      const overRect = e.over.rect;
+      const mid = (overRect.top + overRect.bottom) / 2;
+      setDropAfter(cursorY > mid);
+    } else {
+      setDropAfter(false);
+    }
   }, []);
 
   const handleDragCancel = useCallback(() => {
     setActiveId(null);
     setOverId(null);
     setOffsetX(0);
+    setDropAfter(false);
   }, []);
 
   const handleDragEnd = useCallback(
@@ -399,6 +423,7 @@ export function RulesTreeTable({
       setActiveId(null);
       setOverId(null);
       setOffsetX(0);
+      setDropAfter(false);
       if (!projection) return;
 
       // Reconstruct the new flat order. The active row + its subtree should
@@ -575,6 +600,7 @@ export function RulesTreeTable({
       <div
         className={styles.tableScroll}
         {...(pending ? { "data-pending": "true" } : {})}
+        {...(activeId ? { "data-dragging": "true" } : {})}
       >
         <div className={styles.headerRow} role="row">
           <span className={styles.expandCell} aria-hidden="true" />
@@ -741,15 +767,23 @@ function GhostRow({ rule, depth }: { rule: Rule; depth: number }) {
   );
 }
 
-// EndDroppable — invisible drop target appended after the last row so that
-// dragging into the empty area below the tree resolves to "drop at the very
-// end". The element only has to register a real bounding rect for
-// closestCenter to pick it as `over` when the cursor leaves the populated
-// rows. Mounted only while a drag is in flight to avoid empty space when
-// idle.
+// EndDroppable — drop zone appended after the last row so the operator
+// has an obvious, generous target for "drop at the very end of the
+// tree". Reads as a dashed accent-tinted zone with a label so it's
+// clear what dropping here does; highlights when the cursor is over it.
+// Only mounted during a drag — the table is the same height when idle.
 function EndDroppable() {
-  const { setNodeRef } = useDroppable({ id: END_DROPPABLE_ID });
-  return <div ref={setNodeRef} className={styles.endDroppable} aria-hidden="true" />;
+  const { setNodeRef, isOver } = useDroppable({ id: END_DROPPABLE_ID });
+  return (
+    <div
+      ref={setNodeRef}
+      className={styles.endDroppable}
+      role="presentation"
+      {...(isOver ? { "data-over": "true" } : {})}
+    >
+      Drop here to place as last sibling
+    </div>
+  );
 }
 
 function DragPreview({ rule }: { rule: Rule }) {

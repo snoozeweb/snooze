@@ -47,13 +47,25 @@
 .tableScroll {
   position: relative;
   width: 100%;
+  /* Explicit overflow-y: visible so the end-of-list drop sentinel can
+     extend below the table without being clipped. Browsers default
+     overflow-y to "auto" when overflow-x is "auto", which would clip
+     the sentinel and make the bottom drop target unreachable. */
   overflow-x: auto;
+  overflow-y: visible;
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
   background: var(--bg-surface);
   transition:
     background var(--dur-md) var(--ease-out),
     border-color var(--dur-md) var(--ease-out);
+}
+
+/* During a drag, suppress the hover highlight: pointerWithin already
+   tells us where the user is targeting via the ghost row + DragOverlay,
+   so the row-under-cursor changing background colour reads as noise. */
+.tableScroll[data-dragging="true"] .row:hover {
+  background: var(--bg-surface);
 }
 
 /* Pending-changes mode: subtle yellow tint on the table plus a warm border
@@ -155,19 +167,40 @@
 .ghostRow .nameCell {
   color: var(--text-strong);
 }
+/* Make the ghost row's depth indent strongly visible — operators need
+   to be able to read "is this projected as a child or a sibling?" at a
+   glance, especially while still dragging. Promote the dashed 1px line
+   to a solid 2px accent stroke. */
+.ghostRow .indent {
+  border-left: 2px solid var(--accent);
+}
 
-/* End-of-list drop sentinel. Absolutely positioned at the bottom of the
-   scroll container so closestCenter can target it (it still has a real
-   bounding rect) WITHOUT contributing to the table's layout height. The
-   tableScroll wrapper needs position: relative for this to anchor. */
+/* End-of-list drop sentinel. Sits BELOW the table in the layout (so it
+   isn't sorted next to the last row by pointerWithin's distance-to-
+   center tie-break) and reads as an explicit dashed drop zone while
+   the drag is in flight. It only mounts during the drag, so it never
+   adds layout space to the steady-state table. */
 .endDroppable {
-  position: absolute;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  height: 48px;
-  background: transparent;
+  height: 56px;
+  margin-top: var(--space-2);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px dashed var(--border);
+  border-radius: var(--radius-md);
+  background: color-mix(in oklch, var(--accent) 4%, transparent);
+  color: var(--text-muted);
+  font-size: var(--text-xs);
+  font-weight: var(--weight-medium);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
   pointer-events: auto;
+  /* Highlight when this is the projected drop target. */
+}
+.endDroppable[data-over="true"] {
+  border-color: var(--accent);
+  background: color-mix(in oklch, var(--accent) 14%, transparent);
+  color: var(--accent);
 }
 
 /* Hint banner shown when a search filter is active — explains why the
