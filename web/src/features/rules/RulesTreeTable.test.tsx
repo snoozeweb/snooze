@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { render, screen, fireEvent } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import type { ReactNode } from "react";
 import {
@@ -320,5 +321,40 @@ describe("RulesTreeTable", () => {
     );
     fireEvent.click(screen.getByLabelText("Select rule solo"));
     expect(screen.getByRole("button", { name: /Delete \(1\)/ })).toBeInTheDocument();
+  });
+
+  it("per-row + menu fires onInsert with the anchor and the chosen direction", async () => {
+    const onInsert = vi.fn();
+    const rules: Rule[] = [{ uid: "r1", name: "alpha" }];
+    const Wrapper = wrap();
+    const user = userEvent.setup();
+    render(
+      <Wrapper>
+        <RulesTreeTable rules={rules} onRowOpen={() => undefined} onInsert={onInsert} />
+      </Wrapper>,
+    );
+    // The "+ Add" button is hidden until hover but the DOM element is
+    // mounted regardless — we can target it by its accessible name.
+    await user.click(screen.getByLabelText("Add a rule near alpha"));
+    await user.click(await screen.findByRole("menuitem", { name: /add rule below/i }));
+    expect(onInsert).toHaveBeenCalledWith(rules[0], "below");
+  });
+
+  it("clicking the + menu does NOT open the row editor", async () => {
+    const onRowOpen = vi.fn();
+    const onInsert = vi.fn();
+    const rules: Rule[] = [{ uid: "r1", name: "alpha" }];
+    const Wrapper = wrap();
+    const user = userEvent.setup();
+    render(
+      <Wrapper>
+        <RulesTreeTable rules={rules} onRowOpen={onRowOpen} onInsert={onInsert} />
+      </Wrapper>,
+    );
+    await user.click(screen.getByLabelText("Add a rule near alpha"));
+    expect(onRowOpen).not.toHaveBeenCalled();
+    await user.click(await screen.findByRole("menuitem", { name: /add child rule/i }));
+    expect(onRowOpen).not.toHaveBeenCalled();
+    expect(onInsert).toHaveBeenCalledWith(rules[0], "child");
   });
 });

@@ -13,9 +13,10 @@ import {
   useConfirmDelete,
 } from "@/shared/ui/resourceContextMenu";
 import { AggregateRules, Rules } from "./api";
-import { RuleEditor } from "./RuleEditor";
-import { RulesTreeTable } from "./RulesTreeTable";
+import { RuleEditor, type RuleInsertion } from "./RuleEditor";
+import { RulesTreeTable, type InsertDirection } from "./RulesTreeTable";
 import { aggregateRuleColumns } from "./columns";
+import { ROOT } from "./tree";
 import { ruleRowDisabled } from "./ruleUtils";
 import type { AggregateRule, Rule } from "./types";
 import styles from "./RulesPage.module.css";
@@ -49,6 +50,10 @@ export function RulesPage() {
   const asc = search.asc ?? true;
   const detailUid = search.uid;
   const [creating, setCreating] = useState(false);
+  // Insertion target staged from a per-row "+ Add" menu pick. Cleared
+  // when the editor closes. When set, RuleEditor receives it as `insertion`
+  // and applies the necessary sibling shifts + parent/tree_order on POST.
+  const [pendingInsertion, setPendingInsertion] = useState<RuleInsertion | null>(null);
 
   const updateSearch = useCallback(
     (next: RulesSearch) => {
@@ -151,6 +156,55 @@ export function RulesPage() {
     [confirmDelete],
   );
 
+  // Translate a per-row "+ Add above/below/as child" click into a concrete
+  // RuleInsertion the editor can apply. Sibling shifts are computed against
+  // the currently-loaded rules — assumes the tree is fully loaded
+  // (limit=1000), which matches the Rules tab's load.
+  const handleInsert = useCallback(
+    (anchor: Rule, direction: InsertDirection) => {
+      const all = list.data?.data ?? [];
+      // For sibling moves (above / below) the new rule shares the anchor's
+      // parents and inserts at tree_order = anchor.tree_order (above) or
+      // anchor.tree_order + 1 (below). Existing siblings whose tree_order
+      // is now occupied get bumped by 1.
+      if (direction === "above" || direction === "below") {
+        const parents = anchor.parents ?? [];
+        const parentKey = parents[0] ?? ROOT;
+        const anchorOrder = anchor.tree_order ?? 0;
+        const targetOrder = direction === "above" ? anchorOrder : anchorOrder + 1;
+        const siblings = all.filter(
+          (r) => (r.parents?.[0] ?? ROOT) === parentKey && r.uid !== undefined,
+        );
+        const siblingPatches = siblings
+          .filter((r) => (r.tree_order ?? 0) >= targetOrder)
+          .map((r) => ({ uid: r.uid!, tree_order: (r.tree_order ?? 0) + 1 }));
+        setPendingInsertion({ parents, tree_order: targetOrder, siblingPatches });
+        setCreating(true);
+        return;
+      }
+      // "Add as child" — the new rule becomes the first child of the anchor.
+      // We push it to position 0 and bump existing children. (Alternative:
+      // append at the end; chose first-position so the new rule shows up
+      // immediately under its parent when the parent's row is expanded.)
+      const anchorUid = anchor.uid;
+      if (!anchorUid) return;
+      const children = all.filter(
+        (r) => (r.parents?.[0] ?? ROOT) === anchorUid && r.uid !== undefined,
+      );
+      const siblingPatches = children.map((r) => ({
+        uid: r.uid!,
+        tree_order: (r.tree_order ?? 0) + 1,
+      }));
+      setPendingInsertion({
+        parents: [anchorUid],
+        tree_order: 0,
+        siblingPatches,
+      });
+      setCreating(true);
+    },
+    [list.data],
+  );
+
   // Selected rows for the active tab — used to render bulk actions in the
   // tabbed-header right slot.
   const ruleRows = useMemo(() => list.data?.data ?? [], [list.data]);
@@ -179,17 +233,11 @@ export function RulesPage() {
         </>
       )
       : (
-        <>
-          <span className={styles.headerCount}>{list.data?.meta.total ?? 0} rules</span>
-          <Button
-            size="sm"
-            variant="primary"
-            leadingIcon="plus"
-            onClick={() => setCreating(true)}
-          >
-            New
-          </Button>
-        </>
+        // Rules are an ordered tree, so we deliberately omit the global
+        // "+ New" button — every new rule needs an explicit anchor and
+        // direction. The empty-state CTA handles the "no rules yet" case;
+        // the per-row "+ Add" menu handles every populated case.
+        <span className={styles.headerCount}>{list.data?.meta.total ?? 0} rules</span>
       )
     : selectedAggregateRows.length > 0
     ? (
@@ -229,6 +277,7 @@ export function RulesPage() {
               onRowOpen={(row) => {
                 if (row.uid) updateSearch({ uid: row.uid });
               }}
+              onInsert={handleInsert}
               selectedKeys={ruleSelected}
               onSelectionChange={setRuleSelected}
               search={ruleSearch.searchProp}
@@ -238,7 +287,14 @@ export function RulesPage() {
                   size="md"
                   variant="primary"
                   leadingIcon="plus"
-                  onClick={() => setCreating(true)}
+                  onClick={() => {
+                    setPendingInsertion({
+                      parents: [],
+                      tree_order: 0,
+                      siblingPatches: [],
+                    });
+                    setCreating(true);
+                  }}
                 >
                   New rule
                 </Button>
@@ -309,7 +365,15 @@ export function RulesPage() {
       ) : null}
 
       {creating ? (
-        <RuleEditor plugin={editorPlugin} uid={undefined} onClose={() => setCreating(false)} />
+        <RuleEditor
+          plugin={editorPlugin}
+          uid={undefined}
+          onClose={() => {
+            setCreating(false);
+            setPendingInsertion(null);
+          }}
+          {...(pendingInsertion ? { insertion: pendingInsertion } : {})}
+        />
       ) : null}
       <ConfirmDeleteDialog
         state={confirmDelete.state}

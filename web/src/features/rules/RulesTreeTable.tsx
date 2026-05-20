@@ -53,6 +53,7 @@ import { Checkbox } from "@/shared/ui/Checkbox";
 import { Code } from "@/shared/ui/Code";
 import { Icon } from "@/shared/icons/Icon";
 import { EmptyState } from "@/shared/ui/EmptyState";
+import { Menu, MenuContent, MenuItem, MenuTrigger } from "@/shared/ui/Menu";
 import { RowDetailPanel } from "@/shared/ui/RowDetailPanel";
 import { toast } from "@/shared/ui/toast/useToast";
 import { prettyCondition } from "@/lib/condition/pretty";
@@ -89,9 +90,25 @@ const END_DROPPABLE_ID = "__rules-tree-end__";
 // when crossing parent boundaries.
 const noopStrategy = () => null;
 
+/** Per-row insertion direction selected from the "+ Add" menu next to a
+ *  rule. The host page is responsible for translating this into the
+ *  concrete RuleInsertion (parents, tree_order, siblingPatches).
+ *
+ *  - "above" / "below": same-level sibling of the row, immediately before
+ *    or after it. Existing siblings whose tree_order would collide with
+ *    the new slot get bumped up by one.
+ *  - "child": appended after the row's existing children at depth+1. No
+ *    sibling shifts needed.
+ */
+export type InsertDirection = "above" | "below" | "child";
+
 export type RulesTreeTableProps = {
   rules: Rule[];
   onRowOpen: (r: Rule) => void;
+  /** Per-row "+ Add" menu callback. Fired with the anchor row and the
+   *  chosen direction; the page computes the actual RuleInsertion and
+   *  opens the editor. Omit to hide the menu (e.g. for read-only views). */
+  onInsert?: (anchor: Rule, direction: InsertDirection) => void;
   /** Persistent toolbar slot — host's "New" button etc. Bulk-selection
    *  mode replaces this with the delete action, just like DataTable.
    *  When the page renders the toolbar itself in the tabbed-header right
@@ -128,6 +145,7 @@ export type RulesTreeTableProps = {
 export function RulesTreeTable({
   rules,
   onRowOpen,
+  onInsert,
   toolbar,
   toolbarHeader,
   selectedKeys: selectedKeysProp,
@@ -499,6 +517,7 @@ export function RulesTreeTable({
           <span>Name</span>
           <span>Condition</span>
           <span>Modifications</span>
+          <span className={styles.addCell} aria-hidden="true" />
         </div>
 
         {localRules.length === 0 ? (
@@ -525,6 +544,7 @@ export function RulesTreeTable({
                 selected={isRowSelected(id)}
                 onToggleSelected={() => toggleSelection(id)}
                 onRowOpen={onRowOpen}
+                {...(onInsert ? { onInsert } : {})}
                 expanded={expanded.has(id)}
                 onToggleExpanded={() => toggleExpanded(id)}
               />
@@ -558,6 +578,7 @@ export function RulesTreeTable({
                       selected={isRowSelected(id)}
                       onToggleSelected={() => toggleSelection(id)}
                       onRowOpen={onRowOpen}
+                      {...(onInsert ? { onInsert } : {})}
                       expanded={!activeId && expanded.has(id)}
                       onToggleExpanded={() => toggleExpanded(id)}
                     />
@@ -614,6 +635,7 @@ function GhostRow({ rule, depth }: { rule: Rule; depth: number }) {
       </span>
       <span className={styles.conditionCell} />
       <span className={styles.modsCell} />
+      <span className={styles.addCell} />
     </div>
   );
 }
@@ -638,6 +660,47 @@ function DragPreview({ rule }: { rule: Rule }) {
   );
 }
 
+// AddRuleMenu — the per-row "+ Add" dropdown. Calling `onPick` fires the
+// page's onInsert callback, which is responsible for translating the
+// chosen direction into a concrete RuleInsertion (parents, tree_order,
+// siblingPatches) and opening the RuleEditor in create mode.
+function AddRuleMenu({
+  anchorName,
+  onPick,
+}: {
+  anchorName: string;
+  onPick: (direction: InsertDirection) => void;
+}) {
+  return (
+    <Menu>
+      <MenuTrigger>
+        <button
+          type="button"
+          data-add-rule
+          className={styles.addBtn}
+          aria-label={`Add a rule near ${anchorName}`}
+          // The wrapping <div role="row" onClick> opens the editor for the
+          // anchor row — we don't want that here.
+          onClick={(e) => e.stopPropagation()}
+        >
+          <Icon name="plus" size={14} />
+        </button>
+      </MenuTrigger>
+      <MenuContent>
+        <MenuItem leadingIcon="chevron-up" onSelect={() => onPick("above")}>
+          Add rule above
+        </MenuItem>
+        <MenuItem leadingIcon="chevron-down" onSelect={() => onPick("below")}>
+          Add rule below
+        </MenuItem>
+        <MenuItem leadingIcon="chevron-right" onSelect={() => onPick("child")}>
+          Add child rule
+        </MenuItem>
+      </MenuContent>
+    </Menu>
+  );
+}
+
 // StaticTreeRow — same visual as SortableTreeRow but without dnd-kit
 // hooks. Rendered when a search filter is active, since rearranging a
 // filtered subset of the tree has no well-defined semantics.
@@ -647,6 +710,7 @@ function StaticTreeRow({
   selected,
   onToggleSelected,
   onRowOpen,
+  onInsert,
   expanded,
   onToggleExpanded,
 }: Omit<SortableTreeRowProps, "id">) {
@@ -664,16 +728,24 @@ function StaticTreeRow({
         {...(!enabled ? { "data-disabled": "true" } : {})}
         {...(selected ? { "data-selected": "true" } : {})}
         onClick={(e) => {
+          // Radix dropdowns and other portals bubble their click events
+          // through the React tree, not the DOM tree, so a click on a
+          // portaled menu item lands here. Drop those — only DOM
+          // descendants of this row should open the editor.
+          if (!e.currentTarget.contains(e.target as Node)) return;
           const target = e.target as HTMLElement;
           if (target.closest("[data-expand-toggle]")) return;
           if (target.closest("[data-row-checkbox]")) return;
+          if (target.closest("[data-add-rule]")) return;
           onRowOpen(node.rule);
         }}
         onKeyDown={(e) => {
           if (e.key === "Enter" || e.key === " ") {
+            if (!e.currentTarget.contains(e.target as Node)) return;
             const target = e.target as HTMLElement;
             if (target.closest("[data-expand-toggle]")) return;
             if (target.closest("[data-row-checkbox]")) return;
+            if (target.closest("[data-add-rule]")) return;
             onRowOpen(node.rule);
           }
         }}
@@ -732,6 +804,14 @@ function StaticTreeRow({
             ))
           )}
         </span>
+        <span className={styles.addCell}>
+          {onInsert ? (
+            <AddRuleMenu
+              anchorName={node.rule.name}
+              onPick={(direction) => onInsert(node.rule, direction)}
+            />
+          ) : null}
+        </span>
       </div>
       {expanded ? (
         <div className={styles.expandedRow}>
@@ -753,6 +833,7 @@ type SortableTreeRowProps = {
   selected: boolean;
   onToggleSelected: () => void;
   onRowOpen: (r: Rule) => void;
+  onInsert?: (anchor: Rule, direction: InsertDirection) => void;
   expanded: boolean;
   onToggleExpanded: () => void;
 };
@@ -764,6 +845,7 @@ function SortableTreeRow({
   selected,
   onToggleSelected,
   onRowOpen,
+  onInsert,
   expanded,
   onToggleExpanded,
 }: SortableTreeRowProps) {
@@ -789,19 +871,25 @@ function SortableTreeRow({
         {...(selected ? { "data-selected": "true" } : {})}
         onClick={(e) => {
           // Suppress row-open when the click started on a control inside
-          // the row (drag handle, expand chevron, checkbox).
+          // the row (drag handle, expand chevron, checkbox, add menu) OR
+          // bubbled through React's tree from a portaled descendant
+          // (Radix dropdowns) — those aren't in the row's DOM subtree.
+          if (!e.currentTarget.contains(e.target as Node)) return;
           const target = e.target as HTMLElement;
           if (target.closest("[data-drag-handle]")) return;
           if (target.closest("[data-expand-toggle]")) return;
           if (target.closest("[data-row-checkbox]")) return;
+          if (target.closest("[data-add-rule]")) return;
           onRowOpen(node.rule);
         }}
         onKeyDown={(e) => {
           if (e.key === "Enter" || e.key === " ") {
+            if (!e.currentTarget.contains(e.target as Node)) return;
             const target = e.target as HTMLElement;
             if (target.closest("[data-drag-handle]")) return;
             if (target.closest("[data-expand-toggle]")) return;
             if (target.closest("[data-row-checkbox]")) return;
+            if (target.closest("[data-add-rule]")) return;
             onRowOpen(node.rule);
           }
         }}
@@ -865,6 +953,14 @@ function SortableTreeRow({
               </Badge>
             ))
           )}
+        </span>
+        <span className={styles.addCell}>
+          {onInsert ? (
+            <AddRuleMenu
+              anchorName={node.rule.name}
+              onPick={(direction) => onInsert(node.rule, direction)}
+            />
+          ) : null}
         </span>
       </div>
       {expanded ? (

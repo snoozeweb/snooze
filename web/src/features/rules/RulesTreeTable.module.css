@@ -54,7 +54,9 @@
 
 /* Single grid template shared by the header and every row, so columns line
    up even though we render as <div>s (not <table>) to keep the parent/child
-   indent + drag handles simple. */
+   indent + drag handles simple. The trailing 28px column hosts the per-row
+   "+ Add" menu, the canonical entry point for inserting a sibling or
+   child rule relative to a given row. */
 .headerRow,
 .row {
   display: grid;
@@ -64,7 +66,8 @@
     28px /* selection checkbox */
     240px /* name              */
     1fr /* condition           */
-    260px /* modifications     */;
+    260px /* modifications     */
+    28px /* add-rule menu     */;
   gap: var(--space-3);
   padding: var(--space-2) var(--space-3);
   align-items: center;
@@ -251,6 +254,39 @@
 .expandBtn:hover {
   background: var(--bg-hover);
   color: var(--text);
+}
+
+/* Per-row "+ Add" menu trigger. Sits in the trailing 28px column; visible
+   on row hover or when the menu is open. Keeping it hidden by default
+   keeps the rules table from looking busy in steady state. */
+.addCell {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.addBtn {
+  background: none;
+  border: 0;
+  color: var(--text-muted);
+  cursor: pointer;
+  padding: 2px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border-radius: var(--radius-sm);
+  opacity: 0;
+  transition: opacity var(--dur-fast) var(--ease-out);
+}
+.row:hover .addBtn,
+.addBtn[data-state="open"],
+.addBtn:focus-visible {
+  opacity: 1;
+}
+.addBtn:hover {
+  background: var(--accent-bg);
+  color: var(--accent);
 }
 
 .expandedRow {

@@ -46,13 +46,33 @@ const EMPTY_FORM: FormShape = {
   throttle: 0,
 };
 
+/** RuleInsertion captures where a brand-new rule should land in the tree
+ *  plus any sibling re-numbering needed to make room. Pages computing
+ *  insertion targets (per-row "Add above / Add below / Add as child")
+ *  pass this to the editor; the editor applies the sibling shifts first
+ *  and then creates the new rule with the matching parents + tree_order.
+ *
+ *  Only meaningful for the rule plugin — AggregateRules don't carry tree
+ *  position. When set with plugin="aggregaterule" the editor ignores it. */
+export type RuleInsertion = {
+  parents: string[];
+  tree_order: number;
+  /** Existing siblings whose tree_order has to bump up to make room for
+   *  the new rule. Empty list = no shifts needed (e.g. appending as the
+   *  last child of an existing parent). */
+  siblingPatches: Array<{ uid: string; tree_order: number }>;
+};
+
 export type RuleEditorProps = {
   plugin: "rule" | "aggregaterule";
   uid: string | undefined;
   onClose: () => void;
+  /** When set (and we're in create mode), the new rule lands at this
+   *  position; sibling shifts run first via update.mutateAsync. */
+  insertion?: RuleInsertion;
 };
 
-export function RuleEditor({ plugin, uid, onClose }: RuleEditorProps) {
+export function RuleEditor({ plugin, uid, onClose, insertion }: RuleEditorProps) {
   const isCreate = uid === undefined || uid === "";
   const resource = plugin === "rule" ? Rules : AggregateRules;
   const existing = resource.useGet(isCreate ? undefined : uid);
@@ -96,6 +116,13 @@ export function RuleEditor({ plugin, uid, onClose }: RuleEditorProps) {
     setSubmitting(true);
     try {
       const isAggregate = plugin === "aggregaterule";
+      // When the host passed an insertion target (per-row "Add above /
+      // below / as child"), the new rule gets its tree position baked into
+      // the POST body — and existing siblings get re-numbered first to
+      // make room. Aggregate rules don't carry tree position, so the
+      // insertion hint is ignored there.
+      const activeInsertion: RuleInsertion | undefined =
+        isCreate && !isAggregate ? insertion : undefined;
       const body: Rule & Partial<AggregateRule> = {
         name: form.name,
         ...(form.comment ? { comment: form.comment } : {}),
@@ -107,8 +134,23 @@ export function RuleEditor({ plugin, uid, onClose }: RuleEditorProps) {
         ...(isAggregate && form.fields.length > 0 ? { fields: form.fields } : {}),
         ...(isAggregate && form.watch.length > 0 ? { watch: form.watch } : {}),
         ...(isAggregate && form.throttle > 0 ? { throttle: form.throttle } : {}),
+        ...(activeInsertion
+          ? {
+              parents: activeInsertion.parents,
+              tree_order: activeInsertion.tree_order,
+            }
+          : {}),
       };
       if (isCreate) {
+        if (activeInsertion && activeInsertion.siblingPatches.length > 0) {
+          // Shift colliding siblings BEFORE the create so the new rule's
+          // target tree_order is unambiguous. Sequential on purpose:
+          // parallel PATCHes on the same parent occasionally race in the
+          // SQL backend's optimistic-update path.
+          for (const p of activeInsertion.siblingPatches) {
+            await update.mutateAsync({ uid: p.uid, body: { tree_order: p.tree_order } });
+          }
+        }
         await create.mutateAsync(body);
         toast.success("Created");
       } else {
@@ -165,7 +207,11 @@ export function RuleEditor({ plugin, uid, onClose }: RuleEditorProps) {
             </>
           }
         >
-          {isCreate ? `New ${labelPlugin}` : `Edit ${labelPlugin}`}
+          {isCreate
+            ? insertion && plugin === "rule"
+              ? `New ${labelPlugin} · ${insertion.parents.length > 0 ? "child" : "root"} at position ${insertion.tree_order + 1}`
+              : `New ${labelPlugin}`
+            : `Edit ${labelPlugin}`}
         </DrawerTitle>
         <DrawerBody>
           {!isCreate && existing.isPending ? (
