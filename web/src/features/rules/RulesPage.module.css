@@ -14,3 +14,8 @@
   font-weight: var(--weight-semibold);
   font-size: var(--text-sm);
 }
+.pendingCount {
+  color: var(--severity-warning);
+  font-weight: var(--weight-semibold);
+  font-size: var(--text-sm);
+}

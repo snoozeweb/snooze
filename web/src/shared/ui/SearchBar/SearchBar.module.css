@@ -146,7 +146,11 @@
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
   box-shadow: var(--shadow-pop);
-  max-height: 280px;
+  /* Smaller height than before — the popover floats over the table, so
+     we trade off "show many suggestions at once" for "leave most of the
+     table visible while typing". 4-5 suggestions remain visible; the
+     rest scroll. */
+  max-height: 160px;
   overflow: auto;
   font-family: var(--font-sans, system-ui, sans-serif);
 }

@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate, useSearch } from "@tanstack/react-router";
 import { Button } from "@/shared/ui/Button";
 import { DataTable } from "@/shared/ui/DataTable";
@@ -115,10 +115,75 @@ export function RulesPage() {
 
   const removeRule = Rules.useRemove();
   const removeAggregate = AggregateRules.useRemove();
+  const updateRule = Rules.useUpdate();
   // Selection state is held per-tab so switching between Rules and
   // Aggregates doesn't accidentally cross-contaminate.
   const [ruleSelected, setRuleSelected] = useState<Set<string>>(new Set());
   const [aggregateSelected, setAggregateSelected] = useState<Set<string>>(new Set());
+
+  // ── Drag-and-drop staging ────────────────────────────────────────────
+  // Drops accumulate as a Map keyed by uid (last write wins so dragging
+  // the same rule multiple times collapses to a single PATCH). The host
+  // displays a yellow "X pending changes" banner with Validate / Cancel
+  // until the user commits or rolls back.
+  type PendingPatch = { parents: string[]; tree_order: number };
+  const [pendingPatches, setPendingPatches] = useState<Map<string, PendingPatch>>(new Map());
+  const [savingPending, setSavingPending] = useState(false);
+  const [resetCounter, setResetCounter] = useState(0);
+  const pendingCount = pendingPatches.size;
+
+  const accumulatePatches = useCallback(
+    (patches: { uid: string; parents: string[]; tree_order: number }[]) => {
+      setPendingPatches((prev) => {
+        const next = new Map(prev);
+        for (const p of patches) {
+          next.set(p.uid, { parents: p.parents, tree_order: p.tree_order });
+        }
+        return next;
+      });
+    },
+    [],
+  );
+
+  const validatePending = useCallback(async () => {
+    if (pendingCount === 0) return;
+    setSavingPending(true);
+    try {
+      const entries = Array.from(pendingPatches.entries());
+      // Sequential rather than parallel: rule reorders all hit the same
+      // collection and the SQL backends occasionally race when N parallel
+      // PATCHes land at once (same shape of issue we hit in the per-row
+      // insertion flow).
+      for (const [uid, body] of entries) {
+        await updateRule.mutateAsync({
+          uid,
+          body: { parents: body.parents, tree_order: body.tree_order } as Partial<Rule>,
+        });
+      }
+      setPendingPatches(new Map());
+    } finally {
+      setSavingPending(false);
+    }
+  }, [pendingCount, pendingPatches, updateRule]);
+
+  const cancelPending = useCallback(() => {
+    setPendingPatches(new Map());
+    setResetCounter((c) => c + 1);
+  }, []);
+
+  // beforeunload guard — warn the user if they try to navigate away with
+  // uncommitted reorders. The browser controls the exact wording and only
+  // shows the prompt when there's recent user interaction, so this is
+  // best-effort.
+  useEffect(() => {
+    if (pendingCount === 0) return;
+    const handler = (e: BeforeUnloadEvent) => {
+      e.preventDefault();
+      e.returnValue = "";
+    };
+    window.addEventListener("beforeunload", handler);
+    return () => window.removeEventListener("beforeunload", handler);
+  }, [pendingCount]);
   const confirmDeleteRule = useConfirmDelete<Rule>({
     onDelete: (uid) => removeRule.mutateAsync(uid),
     noun: "rule",
@@ -218,7 +283,36 @@ export function RulesPage() {
     [aggregateRows, aggregateSelected],
   );
   const headerActions = isTree
-    ? selectedRuleRows.length > 0
+    ? pendingCount > 0
+      ? (
+        // Staged-drops mode replaces every other affordance — operators
+        // need to make a decision (commit or roll back) before doing
+        // anything else with the table.
+        <>
+          <span className={styles.pendingCount}>
+            {pendingCount} pending change{pendingCount === 1 ? "" : "s"}
+          </span>
+          <Button
+            size="sm"
+            variant="ghost"
+            onClick={cancelPending}
+            disabled={savingPending}
+          >
+            Cancel
+          </Button>
+          <Button
+            size="sm"
+            variant="primary"
+            leadingIcon="check"
+            onClick={() => void validatePending()}
+            loading={savingPending}
+            disabled={savingPending}
+          >
+            Save changes
+          </Button>
+        </>
+      )
+      : selectedRuleRows.length > 0
       ? (
         <>
           <span className={styles.selectionCount}>{selectedRuleRows.length} selected</span>
@@ -282,6 +376,9 @@ export function RulesPage() {
               onSelectionChange={setRuleSelected}
               search={ruleSearch.searchProp}
               searchActive={ruleSearch.q !== undefined}
+              onCommitPatches={accumulatePatches}
+              localResetCounter={resetCounter}
+              pending={pendingCount > 0}
               emptyAction={
                 <Button
                   size="md"

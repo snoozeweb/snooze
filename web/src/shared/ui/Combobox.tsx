@@ -27,17 +27,35 @@ export function Combobox({
   const [activeIndex, setActiveIndex] = useState(0);
   const contentRef = useRef<HTMLDivElement | null>(null);
 
-  // See MultiCombobox.tsx for the why — Radix Dialog's body-scroll-lock
-  // intercepts wheel events on portaled popovers and breaks mousewheel
-  // scrolling. Stop propagation at the popover content so the document-level
-  // listener never fires.
+  // See MultiCombobox.tsx for the why — Radix Dialog + Radix Popover both
+  // wrap content in react-remove-scroll, which preventDefaults any wheel
+  // event whose target isn't on a whitelisted shard. Capture-phase
+  // listener at the document level catches wheel events targeting this
+  // popover BEFORE the bubble-phase listeners fire, scrolls the list
+  // manually, and stops the event entirely.
   useEffect(() => {
     if (!open) return;
-    const el = contentRef.current;
-    if (!el) return;
-    const handler = (e: WheelEvent) => e.stopPropagation();
-    el.addEventListener("wheel", handler);
-    return () => el.removeEventListener("wheel", handler);
+    const popover = contentRef.current;
+    if (!popover) return;
+    const handler = (e: WheelEvent) => {
+      const target = e.target as Node | null;
+      if (!target || !popover.contains(target)) return;
+      let el: HTMLElement | null = target as HTMLElement;
+      while (el && el !== popover) {
+        const style = window.getComputedStyle(el);
+        const overflowY = style.overflowY;
+        if ((overflowY === "auto" || overflowY === "scroll") && el.scrollHeight > el.clientHeight) {
+          el.scrollTop += e.deltaY;
+          e.preventDefault();
+          e.stopImmediatePropagation();
+          return;
+        }
+        el = el.parentElement;
+      }
+      e.stopImmediatePropagation();
+    };
+    document.addEventListener("wheel", handler, { capture: true, passive: false });
+    return () => document.removeEventListener("wheel", handler, { capture: true });
   }, [open]);
 
   const filtered = useMemo(() => {

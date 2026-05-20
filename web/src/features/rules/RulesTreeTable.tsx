@@ -140,6 +140,19 @@ export type RulesTreeTableProps = {
    *  page's "+ New" affordance lives here so operators have a clear entry
    *  point even when the table is brand new. */
   emptyAction?: React.ReactNode;
+  /** When provided, the table defers PATCHing the new (parents, tree_order)
+   *  to the host. Return value is ignored — the host is expected to either
+   *  fire mutations directly or accumulate them for a later Validate step.
+   *  When undefined, the table fires mutations itself (legacy behavior). */
+  onCommitPatches?: (patches: Array<{ uid: string; parents: string[]; tree_order: number }>) => void;
+  /** When set, the local optimistic state resets back to the `rules` prop.
+   *  Used by the host's "Cancel" action to undo all uncommitted drops
+   *  without waiting for a server refetch. The host increments this on
+   *  each cancel; any change triggers the reset effect. */
+  localResetCounter?: number;
+  /** When true, the table renders with a "pending changes" affordance
+   *  (yellow tint, etc.) to signal that uncommitted drops are present. */
+  pending?: boolean;
 };
 
 export function RulesTreeTable({
@@ -153,6 +166,9 @@ export function RulesTreeTable({
   search,
   searchActive = false,
   emptyAction,
+  onCommitPatches,
+  localResetCounter,
+  pending = false,
 }: RulesTreeTableProps) {
   const update = Rules.useUpdate();
   const remove = Rules.useRemove();
@@ -163,6 +179,14 @@ export function RulesTreeTable({
   // reads as a flicker.
   const [localRules, setLocalRules] = useState<Rule[]>(rules);
   useEffect(() => setLocalRules(rules), [rules]);
+  // The host's "Cancel" action increments localResetCounter to roll back
+  // optimistic drops without waiting for a server refetch.
+  useEffect(() => {
+    if (localResetCounter !== undefined) setLocalRules(rules);
+    // localResetCounter is deliberately the only trigger — rules is captured
+    // by the rules-effect above.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [localResetCounter]);
 
   const { roots } = useMemo(() => buildTree(localRules), [localRules]);
   const fullFlat = useMemo(() => flattenTree(roots), [roots]);
@@ -274,17 +298,18 @@ export function RulesTreeTable({
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
   );
 
-  // The dragged row + all its descendants are hidden during the gesture —
-  // the floating preview shows the whole subtree visually, and the
-  // remaining list represents the candidate drop slots.
+  // While dragging, we render the FULL list (active subtree included) so
+  // the cursor's frame of reference doesn't shift the moment a drag begins
+  // — if we filtered the active row out, the row below it would jump up
+  // into the cursor's position and a single pixel of motion would
+  // immediately cross a row boundary. Instead we mark the active subtree
+  // with `data-in-active-subtree` and let CSS decide how to display it
+  // based on whether the cursor has committed to a different slot.
   const subtreeIds = useMemo(
     () => (activeId ? collectSubtreeIds(fullFlat, activeId) : new Set<string>()),
     [activeId, fullFlat],
   );
-  const renderedFlat = useMemo(() => {
-    if (!activeId) return fullFlat;
-    return fullFlat.filter((n) => !subtreeIds.has(n.rule.uid ?? n.rule.name));
-  }, [activeId, fullFlat, subtreeIds]);
+  const renderedFlat = fullFlat;
 
   const activeRule = useMemo(() => {
     if (!activeId) return null;
@@ -294,23 +319,55 @@ export function RulesTreeTable({
   // Project the drop target — both the slot index in `renderedFlat` (where
   // the ghost row should render) and the (parentId, depth) the active row
   // will adopt.
+  //
+  // No-move state: when the cursor is still over the active row (or any of
+  // its descendants), the user hasn't committed to moving anywhere. We
+  // surface that as projection=null upstream so the ghost row isn't
+  // rendered and the active subtree stays visible-dimmed in place.
   const projection = useMemo(() => {
     if (!activeId) return null;
-    let safeSlot: number;
+    // Cursor still over the active subtree → no-move. The ghost doesn't
+    // render in this case (handled below) and the active subtree stays
+    // visible-dimmed in its original layout slot.
+    if (overId !== null && overId !== END_DROPPABLE_ID && subtreeIds.has(overId)) {
+      return null;
+    }
+    // Sibling-shift math runs against the list AS IT WOULD BE after the
+    // active subtree is lifted out (`projectionList`). Rendering, on the
+    // other hand, happens against the FULL renderedFlat (which still
+    // contains the subtree) — so we carry two slot indices.
+    const projectionList = renderedFlat.filter(
+      (n) => !subtreeIds.has(n.rule.uid ?? n.rule.name),
+    );
+    let slotInProjection: number;
     if (overId === END_DROPPABLE_ID || overId === null) {
       // Dragging past the last row resolves to "insert at the very end".
-      // This is what makes "drop as last sibling" (or "drop as child of
-      // the last row" via offsetX) actually reachable.
-      safeSlot = renderedFlat.length;
+      slotInProjection = projectionList.length;
     } else {
-      const slotIndex = renderedFlat.findIndex(
+      const idx = projectionList.findIndex(
         (n) => (n.rule.uid ?? n.rule.name) === overId,
       );
-      safeSlot = slotIndex < 0 ? renderedFlat.length : slotIndex;
+      slotInProjection = idx < 0 ? projectionList.length : idx;
     }
-    const { parentId, depth } = projectDrop(renderedFlat, safeSlot, offsetX, INDENT_PX);
-    return { parentId, depth, slotIndex: safeSlot };
-  }, [activeId, overId, renderedFlat, offsetX]);
+    const { parentId, depth } = projectDrop(
+      projectionList,
+      slotInProjection,
+      offsetX,
+      INDENT_PX,
+    );
+    const anchorNode = projectionList[slotInProjection];
+    const slotInRendered = anchorNode
+      ? renderedFlat.findIndex(
+          (n) => (n.rule.uid ?? n.rule.name) === (anchorNode.rule.uid ?? anchorNode.rule.name),
+        )
+      : renderedFlat.length;
+    return {
+      parentId,
+      depth,
+      slotInProjection,
+      slotInRendered: slotInRendered < 0 ? renderedFlat.length : slotInRendered,
+    };
+  }, [activeId, overId, renderedFlat, subtreeIds, offsetX]);
 
   const handleDragStart = useCallback((e: DragStartEvent) => {
     setActiveId(e.active.id as string);
@@ -341,10 +398,9 @@ export function RulesTreeTable({
       if (!projection) return;
 
       // Reconstruct the new flat order. The active row + its subtree should
-      // land contiguously at the projected slot in fullFlat (slotIndex is
-      // expressed against renderedFlat — but they are 1:1 outside the
-      // subtree, so the slot translates directly into fullFlat once we strip
-      // the moving rows).
+      // land contiguously at the projected slot in the "remainder" list
+      // (fullFlat with the subtree removed). projection.slotInProjection is
+      // already expressed in those coordinates.
       const subtree = collectSubtreeIds(fullFlat, draggedId);
       const subtreeNodes = fullFlat.filter((n) =>
         subtree.has(n.rule.uid ?? n.rule.name),
@@ -374,7 +430,10 @@ export function RulesTreeTable({
         parentId: i === 0 ? projection.parentId : n.parentId,
       }));
 
-      const insertAtSafe = Math.min(Math.max(projection.slotIndex, 0), remainder.length);
+      const insertAtSafe = Math.min(
+        Math.max(projection.slotInProjection, 0),
+        remainder.length,
+      );
 
       const reordered: FlatNode[] = [
         ...remainder.slice(0, insertAtSafe),
@@ -432,22 +491,28 @@ export function RulesTreeTable({
         });
       });
 
-      for (const p of patches) {
-        update.mutate(
-          {
-            uid: p.uid,
-            body: {
-              parents: p.parents,
-              tree_order: p.tree_order,
-            } as Partial<Rule>,
-          },
-          {
-            onError: (err) => toast.error(`Reorder failed: ${err.detail}`),
-          },
-        );
+      // Defer to the host when it asked to manage commits (Validate /
+      // Cancel staging). Otherwise fire mutations inline (legacy path).
+      if (onCommitPatches) {
+        onCommitPatches(patches);
+      } else {
+        for (const p of patches) {
+          update.mutate(
+            {
+              uid: p.uid,
+              body: {
+                parents: p.parents,
+                tree_order: p.tree_order,
+              } as Partial<Rule>,
+            },
+            {
+              onError: (err) => toast.error(`Reorder failed: ${err.detail}`),
+            },
+          );
+        }
       }
     },
-    [fullFlat, projection, update],
+    [fullFlat, projection, update, onCommitPatches],
   );
 
   const isRowSelected = (id: string) => selected.has(id);
@@ -503,7 +568,10 @@ export function RulesTreeTable({
         </div>
       ) : null}
 
-      <div className={styles.tableScroll}>
+      <div
+        className={styles.tableScroll}
+        {...(pending ? { "data-pending": "true" } : {})}
+      >
         <div className={styles.headerRow} role="row">
           <span className={styles.expandCell} aria-hidden="true" />
           <span className={styles.handleCell} aria-hidden="true" />
@@ -566,9 +634,10 @@ export function RulesTreeTable({
             >
               {renderedFlat.map((n, i) => {
                 const id = n.rule.uid ?? n.rule.name;
+                const inActiveSubtree = subtreeIds.has(id);
                 return (
                   <Fragment key={id}>
-                    {projection?.slotIndex === i && activeRule ? (
+                    {projection?.slotInRendered === i && activeRule ? (
                       <GhostRow rule={activeRule} depth={projection.depth} />
                     ) : null}
                     <SortableTreeRow
@@ -581,11 +650,24 @@ export function RulesTreeTable({
                       {...(onInsert ? { onInsert } : {})}
                       expanded={!activeId && expanded.has(id)}
                       onToggleExpanded={() => toggleExpanded(id)}
+                      // Active subtree rows: when the cursor is still over
+                      // them (projection=null), stay visible-dimmed in
+                      // place; once the cursor commits to a different slot
+                      // (projection is set), collapse out of the layout so
+                      // the ghost can take their slot without growing the
+                      // table.
+                      activeSubtreeMode={
+                        !inActiveSubtree
+                          ? "none"
+                          : projection === null
+                          ? "dim"
+                          : "collapsed"
+                      }
                     />
                   </Fragment>
                 );
               })}
-              {projection?.slotIndex === renderedFlat.length && activeRule ? (
+              {projection?.slotInRendered === renderedFlat.length && activeRule ? (
                 <GhostRow rule={activeRule} depth={projection.depth} />
               ) : null}
               {/* End-of-list sentinel: a tall droppable that catches drops
@@ -836,6 +918,15 @@ type SortableTreeRowProps = {
   onInsert?: (anchor: Rule, direction: InsertDirection) => void;
   expanded: boolean;
   onToggleExpanded: () => void;
+  /** Visual mode for active-subtree rows while a drag is in flight:
+   *   - "none":      not part of the dragged subtree, render normally
+   *   - "dim":       cursor still over the subtree (no-move), stay
+   *                  visible at reduced opacity so the cursor frame
+   *                  doesn't shift
+   *   - "collapsed": cursor has committed to a different slot, hide
+   *                  via display:none so the ghost takes the freed
+   *                  vertical space and the table stays the same size */
+  activeSubtreeMode?: "none" | "dim" | "collapsed";
 };
 
 function SortableTreeRow({
@@ -848,9 +939,10 @@ function SortableTreeRow({
   onInsert,
   expanded,
   onToggleExpanded,
+  activeSubtreeMode = "none",
 }: SortableTreeRowProps) {
   const sortable = useSortable({ id });
-  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = sortable;
+  const { attributes, listeners, setNodeRef, transform, transition } = sortable;
   const style: React.CSSProperties = {
     transform: CSS.Transform.toString(transform),
     transition: transition ?? undefined,
@@ -858,11 +950,20 @@ function SortableTreeRow({
   const enabled = node.rule.enabled !== false;
   const mods = node.rule.modifications ?? [];
   return (
-    <div ref={setNodeRef} style={style} className={styles.rowOuter}>
+    <div
+      ref={setNodeRef}
+      style={style}
+      className={[
+        styles.rowOuter,
+        activeSubtreeMode === "collapsed" ? styles.rowOuterCollapsed : "",
+      ]
+        .filter(Boolean)
+        .join(" ")}
+    >
       <div
         className={[
           styles.row,
-          isDragging ? styles.rowDragging : "",
+          activeSubtreeMode === "dim" ? styles.rowDraggingDim : "",
           selected ? styles.rowSelected : "",
         ]
           .filter(Boolean)

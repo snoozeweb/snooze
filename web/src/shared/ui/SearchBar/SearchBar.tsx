@@ -81,6 +81,28 @@ export function SearchBar({
   const [activeIndex, setActiveIndex] = useState(0);
   const [error, setError] = useState<ParseError | null>(null);
 
+  // Auto-close the popover after a brief idle period so the suggestions
+  // don't permanently cover the rows the user is searching. ArrowDown /
+  // Tab / a fresh keystroke re-opens it. Tracked via a ref so we can
+  // clear+restart on every event without re-rendering.
+  const idleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const POPOVER_IDLE_MS = 1200;
+  const armIdleClose = useCallback(() => {
+    if (idleTimerRef.current) clearTimeout(idleTimerRef.current);
+    idleTimerRef.current = setTimeout(() => setOpen(false), POPOVER_IDLE_MS);
+  }, []);
+  const cancelIdleClose = useCallback(() => {
+    if (idleTimerRef.current) {
+      clearTimeout(idleTimerRef.current);
+      idleTimerRef.current = null;
+    }
+  }, []);
+  useEffect(() => {
+    return () => {
+      if (idleTimerRef.current) clearTimeout(idleTimerRef.current);
+    };
+  }, []);
+
   // Field catalog. Cached aggressively — it doesn't change between requests.
   const fields = useQuery<FieldsResponse, ApiError>({
     queryKey: ["condition", "fields", collection],
@@ -153,6 +175,10 @@ export function SearchBar({
     // keystroke even when already open — that's a no-op via setOpen.
     setOpen(true);
     setActiveIndex(0);
+    // Restart the idle timer: as long as the user is typing, the popover
+    // stays up; once they pause (POPOVER_IDLE_MS), it closes so the
+    // table underneath becomes fully visible.
+    armIdleClose();
     // The cursor moves on the next tick; defer reading it until then.
     queueMicrotask(syncCursor);
   }
@@ -183,15 +209,18 @@ export function SearchBar({
       e.preventDefault();
       setOpen(true);
       setActiveIndex(0);
+      cancelIdleClose();
       return;
     }
     if (!open) return;
     if (e.key === "ArrowDown") {
       e.preventDefault();
       setActiveIndex((i) => Math.min(suggestion.items.length - 1, i + 1));
+      cancelIdleClose();
     } else if (e.key === "ArrowUp") {
       e.preventDefault();
       setActiveIndex((i) => Math.max(0, i - 1));
+      cancelIdleClose();
     } else if (e.key === "Enter") {
       const pick = suggestion.items[activeIndex];
       if (pick) {
@@ -206,6 +235,7 @@ export function SearchBar({
       }
     } else if (e.key === "Escape") {
       setOpen(false);
+      cancelIdleClose();
     }
   }
 
@@ -298,7 +328,15 @@ export function SearchBar({
         </button>
       ) : null}
       {open && suggestion.items.length > 0 ? (
-        <div className={styles.popover} role="listbox">
+        <div
+          className={styles.popover}
+          role="listbox"
+          tabIndex={-1}
+          // Hovering the popover cancels the idle timer so it doesn't close
+          // out from under the user while they're reaching for a suggestion.
+          onMouseEnter={cancelIdleClose}
+          onMouseLeave={armIdleClose}
+        >
           <div className={styles.popoverHead}>
             {suggestion.kind === "field" && (suggestion.field ? `Field for ${suggestion.field}` : "Field name")}
             {suggestion.kind === "operator" && "Operator"}

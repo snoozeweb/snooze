@@ -45,11 +45,23 @@
 }
 
 .tableScroll {
+  position: relative;
   width: 100%;
   overflow-x: auto;
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
   background: var(--bg-surface);
+  transition:
+    background var(--dur-md) var(--ease-out),
+    border-color var(--dur-md) var(--ease-out);
+}
+
+/* Pending-changes mode: subtle yellow tint on the table plus a warm border
+   so the operator gets a passive reminder that the drag-and-drop changes
+   they made haven't been persisted yet. */
+.tableScroll[data-pending="true"] {
+  background: color-mix(in oklch, var(--severity-warning) 6%, var(--bg-surface));
+  border-color: var(--severity-warning);
 }
 
 /* Single grid template shared by the header and every row, so columns line
@@ -110,10 +122,20 @@
   /* The dnd-kit transform/transition lives on this wrapper so the row's
      visible background, hover state, and grid layout stay clean. */
 }
-.rowDragging {
-  /* Source row is hidden while a DragOverlay clone follows the cursor;
-     leaving any visible trace of the source produces a double-image. */
-  visibility: hidden;
+/* Visible-dimmed mode: the active subtree stays in its layout slot at
+   reduced opacity so the cursor's frame of reference doesn't shift on
+   the first pixel of motion. */
+.rowDraggingDim {
+  opacity: 0.4;
+  pointer-events: none;
+}
+
+/* Collapsed mode: once the cursor commits to a different slot, the
+   active subtree's outer wrapper is removed from the layout so the
+   ghost row can take its space without growing the table's total
+   height. */
+.rowOuterCollapsed {
+  display: none;
 }
 
 /* Ghost row — rendered at the projected drop slot during a drag. Uses the
@@ -134,12 +156,16 @@
   color: var(--text-strong);
 }
 
-/* End-of-list drop sentinel. Tall enough that closestCenter prefers it over
-   the last real row when the cursor is below the tree, but otherwise
-   invisible — operators shouldn't see a phantom row when not dragging. */
+/* End-of-list drop sentinel. Absolutely positioned at the bottom of the
+   scroll container so closestCenter can target it (it still has a real
+   bounding rect) WITHOUT contributing to the table's layout height. The
+   tableScroll wrapper needs position: relative for this to anchor. */
 .endDroppable {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
   height: 48px;
-  margin: 0;
   background: transparent;
   pointer-events: auto;
 }

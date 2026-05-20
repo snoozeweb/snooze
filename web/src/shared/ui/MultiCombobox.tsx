@@ -39,20 +39,46 @@ export function MultiCombobox({
   const contentRef = useRef<HTMLDivElement | null>(null);
 
   // When this popover opens inside a Drawer (Radix Dialog), the Dialog's
-  // react-remove-scroll body-lock attaches a non-passive `wheel` listener on
-  // `document` and preventDefault()s every wheel event that isn't on a
-  // whitelisted shard. Popover content portals outside the Dialog, so it is
-  // not on the shard list — the listener fires and mousewheel scrolling
-  // inside the dropdown silently dies. Attach a native wheel listener on the
-  // popover content with stopPropagation so the event never reaches that
-  // document listener.
+  // react-remove-scroll body-lock attaches a non-passive `wheel` listener
+  // on `document` (bubble phase) and preventDefault()s every wheel event
+  // that isn't on a whitelisted shard. Popover content portals outside
+  // the Dialog, so it is not on the shard list. Radix Popover itself also
+  // wraps content in its own RemoveScroll, adding a second layer.
+  //
+  // The robust fix: attach a CAPTURE-phase wheel listener at the document
+  // level that, when the event originates inside this popover's content,
+  // manually scrolls the nearest scrollable descendant and STOPS the
+  // event entirely (stopImmediatePropagation + preventDefault). Capture
+  // phase guarantees we run before any of the bubble-phase listeners
+  // RemoveScroll attaches.
   useEffect(() => {
     if (!open) return;
-    const el = contentRef.current;
-    if (!el) return;
-    const handler = (e: WheelEvent) => e.stopPropagation();
-    el.addEventListener("wheel", handler);
-    return () => el.removeEventListener("wheel", handler);
+    const popover = contentRef.current;
+    if (!popover) return;
+    const handler = (e: WheelEvent) => {
+      const target = e.target as Node | null;
+      if (!target || !popover.contains(target)) return;
+      // Find the nearest scrollable element inside the popover. The list
+      // is the obvious candidate but we walk up from the target so the
+      // search-input area or any future scrollable inside also works.
+      let el: HTMLElement | null = target as HTMLElement;
+      while (el && el !== popover) {
+        const style = window.getComputedStyle(el);
+        const overflowY = style.overflowY;
+        if ((overflowY === "auto" || overflowY === "scroll") && el.scrollHeight > el.clientHeight) {
+          el.scrollTop += e.deltaY;
+          e.preventDefault();
+          e.stopImmediatePropagation();
+          return;
+        }
+        el = el.parentElement;
+      }
+      // Nothing scrollable hit — still stop the event so the outer
+      // body-lock listener doesn't preventDefault and freeze the page.
+      e.stopImmediatePropagation();
+    };
+    document.addEventListener("wheel", handler, { capture: true, passive: false });
+    return () => document.removeEventListener("wheel", handler, { capture: true });
   }, [open]);
 
   const filtered = useMemo(() => {
