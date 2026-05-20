@@ -4,31 +4,39 @@
   gap: var(--space-2);
 }
 
-/* Toolbar — mirrors DataTable.toolbar so the page chrome stays consistent
-   between the Rules and Aggregates tabs. */
-.toolbar {
+/* Toolbar row — search bar + count/actions in the same horizontal slot.
+   Mirrors DataTable.toolbarRow so the page chrome stays consistent between
+   the Rules and Aggregates tabs. */
+.toolbarRow {
   display: flex;
   align-items: center;
   gap: var(--space-2);
-  padding: var(--space-2) var(--space-3);
-  background: var(--bg-surface);
+  min-height: 36px;
+}
+.searchSlot {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.toolbar {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: 0 var(--space-2);
   color: var(--text);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-md);
   font-size: var(--text-sm);
-  min-height: 44px;
+  flex: 0 0 auto;
 }
 .toolbarSelected {
-  display: flex;
+  display: inline-flex;
   align-items: center;
   gap: var(--space-2);
-  padding: var(--space-2) var(--space-3);
+  padding: var(--space-1) var(--space-2);
   background: var(--accent-bg);
   color: var(--accent);
   border: 1px solid var(--accent);
   border-radius: var(--radius-md);
   font-size: var(--text-sm);
-  min-height: 44px;
+  flex: 0 0 auto;
 }
 .toolbarCount {
   font-weight: var(--weight-semibold);
@@ -36,12 +44,12 @@
 .toolbarHeader {
   color: var(--text-muted);
   font-size: var(--text-sm);
+  white-space: nowrap;
 }
 .toolbarActions {
   display: inline-flex;
   align-items: center;
   gap: var(--space-2);
-  margin-left: auto;
 }
 
 .tableScroll {

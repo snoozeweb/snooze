@@ -199,6 +199,37 @@ export function RulesPage() {
     setResetCounter((c) => c + 1);
   }, []);
 
+  // Keyboard shortcuts for pending-drop mode: Esc cancels, Enter validates.
+  // Guarded against form fields so a stray Enter in the search bar / editor
+  // drawer doesn't fire the save unexpectedly.
+  useEffect(() => {
+    if (pendingCount === 0) return;
+    function onKey(e: KeyboardEvent) {
+      const target = e.target as HTMLElement | null;
+      if (target) {
+        const tag = target.tagName;
+        if (
+          tag === "INPUT" ||
+          tag === "TEXTAREA" ||
+          tag === "SELECT" ||
+          target.isContentEditable
+        ) {
+          return;
+        }
+      }
+      if (e.key === "Escape") {
+        e.preventDefault();
+        cancelPending();
+      } else if (e.key === "Enter") {
+        if (savingPending) return;
+        e.preventDefault();
+        void validatePending();
+      }
+    }
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [pendingCount, savingPending, cancelPending, validatePending]);
+
   // Selection and pending edit mode are mutually exclusive surfaces —
   // the right header slot only has room for one set of actions at a
   // time. We clear any existing row selection whenever the user enters
@@ -251,6 +282,18 @@ export function RulesPage() {
         requestDelete: (r) => confirmDelete.request([r]),
       }),
     [updateSearch, removeAggregate, confirmDelete],
+  );
+
+  const ruleContextMenu = useCallback(
+    (row: Rule): ContextMenuItem[] =>
+      buildResourceContextMenu(row, {
+        onOpen: (r) => {
+          if (r.uid) updateSearch({ uid: r.uid });
+        },
+        onDelete: (uid) => removeRule.mutateAsync(uid),
+        requestDelete: (r) => confirmDeleteRule.request([r]),
+      }),
+    [updateSearch, removeRule, confirmDeleteRule],
   );
 
   const aggregateBulkActions = useCallback(
@@ -328,76 +371,83 @@ export function RulesPage() {
     () => aggregateRows.filter((r) => aggregateSelected.has(r.uid ?? r.name)),
     [aggregateRows, aggregateSelected],
   );
-  const headerActions = isTree
-    ? pendingCount > 0
-      ? (
-        // Staged-drops mode replaces every other affordance — operators
-        // need to make a decision (commit or roll back) before doing
-        // anything else with the table.
-        <>
-          <span className={styles.pendingCount}>
-            {pendingCount} pending change{pendingCount === 1 ? "" : "s"}
-          </span>
-          <Button
-            size="sm"
-            variant="ghost"
-            onClick={cancelPending}
-            disabled={savingPending}
-          >
-            Cancel
-          </Button>
-          <Button
-            size="sm"
-            variant="primary"
-            leadingIcon="check"
-            onClick={() => void validatePending()}
-            loading={savingPending}
-            disabled={savingPending}
-          >
-            Save changes
-          </Button>
-        </>
-      )
+  // Toolbar pieces: `header` is the count-or-selection text shown to the
+  // left of `actions`; `actions` is the buttons cluster. Both sit on the
+  // same row as the SearchBar inside each tab's table component, so we no
+  // longer push them into the TabList's right slot.
+  const rulesToolbarHeader =
+    pendingCount > 0
+      ? `${pendingCount} pending change${pendingCount === 1 ? "" : "s"}`
       : selectedRuleRows.length > 0
-      ? (
-        <>
-          <span className={styles.selectionCount}>{selectedRuleRows.length} selected</span>
-          <Button
-            size="sm"
-            variant="danger"
-            leadingIcon="trash"
-            onClick={() => confirmDeleteRule.request(selectedRuleRows)}
-          >
-            Delete ({selectedRuleRows.length})
-          </Button>
-        </>
-      )
-      : (
-        // Rules are an ordered tree, so we deliberately omit the global
-        // "+ New" button — every new rule needs an explicit anchor and
-        // direction. The empty-state CTA handles the "no rules yet" case;
-        // the per-row "+ Add" menu handles every populated case.
-        <span className={styles.headerCount}>{list.data?.meta.total ?? 0} rules</span>
-      )
-    : selectedAggregateRows.length > 0
-    ? (
+      ? `${selectedRuleRows.length} selected`
+      : `${list.data?.meta.total ?? 0} rules`;
+  // Toolbar "+ New" — always available (in non-pending, non-selection
+  // states). New rules are appended at the end of the root level so the
+  // existing tree stays put; no sibling shifts are required, which keeps
+  // the no-anchor flow trivial relative to the per-row "+ Add" menu.
+  const startNewRootRule = useCallback(() => {
+    const rootCount = ruleRows.filter((r) => (r.parents?.length ?? 0) === 0).length;
+    setPendingInsertion({ parents: [], tree_order: rootCount, siblingPatches: [] });
+    setCreating(true);
+  }, [ruleRows]);
+  const rulesToolbarActions =
+    pendingCount > 0 ? (
       <>
-        <span className={styles.selectionCount}>{selectedAggregateRows.length} selected</span>
-        {aggregateBulkActions(selectedAggregateRows)}
-      </>
-    )
-    : (
-      <>
-        <span className={styles.headerCount}>{list.data?.meta.total ?? 0} aggregate rules</span>
+        <Button
+          size="sm"
+          variant="ghost"
+          onClick={cancelPending}
+          disabled={savingPending}
+        >
+          Cancel
+        </Button>
         <Button
           size="sm"
           variant="primary"
-          leadingIcon="plus"
-          onClick={() => setCreating(true)}
+          leadingIcon="check"
+          onClick={() => void validatePending()}
+          loading={savingPending}
+          disabled={savingPending}
         >
-          New
+          Save changes
         </Button>
       </>
+    ) : selectedRuleRows.length > 0 ? (
+      <Button
+        size="sm"
+        variant="danger"
+        leadingIcon="trash"
+        onClick={() => confirmDeleteRule.request(selectedRuleRows)}
+      >
+        Delete ({selectedRuleRows.length})
+      </Button>
+    ) : (
+      <Button
+        size="sm"
+        variant="primary"
+        leadingIcon="plus"
+        onClick={startNewRootRule}
+        disabled={list.isPending}
+      >
+        New
+      </Button>
+    );
+  const aggregateToolbarHeader =
+    selectedAggregateRows.length > 0
+      ? `${selectedAggregateRows.length} selected`
+      : `${list.data?.meta.total ?? 0} aggregate rules`;
+  const aggregateToolbarActions =
+    selectedAggregateRows.length > 0 ? (
+      aggregateBulkActions(selectedAggregateRows)
+    ) : (
+      <Button
+        size="sm"
+        variant="primary"
+        leadingIcon="plus"
+        onClick={() => setCreating(true)}
+      >
+        New
+      </Button>
     );
 
   return (
@@ -406,7 +456,7 @@ export function RulesPage() {
         value={tab}
         onValueChange={(v) => updateSearch({ tab: v as "rules" | "aggregates", page: 1 })}
       >
-        <TabList rightSlot={headerActions}>
+        <TabList>
           <TabTrigger value="rules">Rules</TabTrigger>
           <TabTrigger value="aggregates">Aggregates</TabTrigger>
         </TabList>
@@ -425,19 +475,15 @@ export function RulesPage() {
               onCommitPatches={accumulatePatches}
               localResetCounter={resetCounter}
               pending={pendingCount > 0}
+              toolbarHeader={rulesToolbarHeader}
+              toolbar={rulesToolbarActions}
+              contextMenuItems={ruleContextMenu}
               emptyAction={
                 <Button
                   size="md"
                   variant="primary"
                   leadingIcon="plus"
-                  onClick={() => {
-                    setPendingInsertion({
-                      parents: [],
-                      tree_order: 0,
-                      siblingPatches: [],
-                    });
-                    setCreating(true);
-                  }}
+                  onClick={startNewRootRule}
                 >
                   New rule
                 </Button>
@@ -455,6 +501,8 @@ export function RulesPage() {
               selectedKeys={aggregateSelected}
               onSelectionChange={setAggregateSelected}
               search={aggregateSearch.searchProp}
+              toolbarHeader={aggregateToolbarHeader}
+              toolbar={aggregateToolbarActions}
               emptyState={
                 <EmptyState
                   icon="file-text"

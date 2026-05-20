@@ -182,24 +182,24 @@ export function NotificationsPage() {
   );
   const activeSelectedCount =
     tab === "notifications" ? activeNotifRows.length : activeActionRows.length;
-  const headerActions =
+  // Toolbar pieces — rendered next to the SearchBar inside DataTable for
+  // both tabs so the page chrome matches every other list page.
+  const toolbarHeader =
+    activeSelectedCount > 0
+      ? `${activeSelectedCount} selected`
+      : `${list.data?.meta.total ?? 0} ${tab}`;
+  const toolbarActions =
     activeSelectedCount > 0 ? (
-      <>
-        <span className={styles.selectionCount}>{activeSelectedCount} selected</span>
-        {tab === "notifications" ? notifBulk(activeNotifRows) : actionBulk(activeActionRows)}
-      </>
+      tab === "notifications" ? notifBulk(activeNotifRows) : actionBulk(activeActionRows)
     ) : (
-      <>
-        <span className={styles.headerCount}>{list.data?.meta.total ?? 0} {tab}</span>
-        <Button
-          size="sm"
-          variant="primary"
-          leadingIcon="plus"
-          onClick={() => setCreating(true)}
-        >
-          New
-        </Button>
-      </>
+      <Button
+        size="sm"
+        variant="primary"
+        leadingIcon="plus"
+        onClick={() => setCreating(true)}
+      >
+        New
+      </Button>
     );
 
   return (
@@ -208,7 +208,7 @@ export function NotificationsPage() {
         value={tab}
         onValueChange={(v) => updateSearch({ tab: v as "notifications" | "actions", page: 1 })}
       >
-        <TabList rightSlot={headerActions}>
+        <TabList>
           <TabTrigger value="notifications">Notifications</TabTrigger>
           <TabTrigger value="actions">Actions</TabTrigger>
         </TabList>
@@ -225,6 +225,8 @@ export function NotificationsPage() {
               selectedKeys={notifSelected}
               onSelectionChange={setNotifSelected}
               search={notifSearch.searchProp}
+              toolbarHeader={toolbarHeader}
+              toolbar={toolbarActions}
               emptyState={
                 <EmptyState
                   icon="file-text"
@@ -280,6 +282,8 @@ export function NotificationsPage() {
               selectedKeys={actionSelected}
               onSelectionChange={setActionSelected}
               search={actionSearch.searchProp}
+              toolbarHeader={toolbarHeader}
+              toolbar={toolbarActions}
               emptyState={
                 <EmptyState
                   icon="file-text"

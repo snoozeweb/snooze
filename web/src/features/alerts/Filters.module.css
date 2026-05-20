@@ -42,3 +42,28 @@
   outline-offset: -2px;
   border-radius: var(--radius-sm);
 }
+
+/* Search row: SearchBar takes the flexible slot, with count + actions on
+   the right — same shape as DataTable's combined toolbar row so the
+   alerts page chrome matches every other list page. */
+.searchRow {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-height: 36px;
+}
+.searchSlot {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.count {
+  color: var(--text-muted);
+  font-size: var(--text-sm);
+  white-space: nowrap;
+}
+.actions {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex: 0 0 auto;
+}

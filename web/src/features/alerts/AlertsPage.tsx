@@ -7,14 +7,12 @@ import { Tooltip } from "@/shared/ui/Tooltip";
 import { toast } from "@/shared/ui/toast/useToast";
 import { Button } from "@/shared/ui/Button";
 import { ApiError } from "@/lib/api/client";
-import {
-  ConfirmDeleteDialog,
-  useConfirmDelete,
-} from "@/shared/ui/resourceContextMenu";
+import { ConfirmDeleteDialog, useConfirmDelete } from "@/shared/ui/resourceContextMenu";
 import * as YAML from "yaml";
 import { encodeConditionQ } from "@/lib/condition/serialize";
 import type { Condition } from "@/lib/condition/types";
 import type { ParsedCondition } from "@/shared/ui/SearchBar";
+import { Environments } from "@/features/admin/environments/api";
 import { Records, useCommentRecord, useShelveRecord } from "./api";
 import { AlertRowDetail } from "./AlertRowDetail";
 import { AlertsFilters, type AlertFilters } from "./Filters";
@@ -29,6 +27,8 @@ type AlertsSearch = AlertFilters & {
   page?: number;
   orderby?: string;
   asc?: boolean;
+  /** Comma-separated env UIDs in the URL (parsed/stringified in onChange). */
+  env?: string;
 };
 
 const PAGE_SIZE = 50;
@@ -44,13 +44,18 @@ const PAGE_SIZE = 50;
  * which the Go backend's UnmarshalJSON normalises into the canonical
  * `op` form before the database driver translates it.
  */
-function buildQueryParam(tab: TabId, dsl: ParsedCondition | null): string | undefined {
+function buildQueryParam(
+  tab: TabId,
+  dsl: ParsedCondition | null,
+  envCondition: Condition | null,
+): string | undefined {
   const parts: Condition[] = [];
   const tabCondition = tabById(tab).condition;
   if (tabCondition) parts.push(tabCondition);
   if (dsl && dsl.op !== "" && dsl.op !== "ALWAYS_TRUE") {
     parts.push(dsl as unknown as Condition);
   }
+  if (envCondition) parts.push(envCondition);
   if (parts.length === 0) return undefined;
   const combined: Condition =
     parts.length === 1 ? (parts[0] as Condition) : { type: "AND", args: parts };
@@ -88,20 +93,53 @@ export function AlertsPage() {
   const [searchCondition, setSearchCondition] = useState<ParsedCondition | null>(null);
   const activeTab: TabId = search.tab ?? "alerts";
 
+  const selectedEnvs = useMemo<string[]>(
+    () => (search.env ? search.env.split(",").filter(Boolean) : []),
+    [search.env],
+  );
+
+  // Fetch the environment definitions so we can resolve selected UIDs to
+  // their stored filter conditions. The bar fetches the same list; the
+  // shared queryKey in defineResource dedupes the request.
+  const envList = Environments.useList({
+    limit: 200,
+    orderby: "tree_order",
+    asc: true,
+  });
+
+  // OR the selected environments' conditions together. A selected env
+  // with an empty/ALWAYS_TRUE condition contributes nothing (since OR'ing
+  // it would short-circuit to ALWAYS_TRUE and filter nothing out).
+  const envCondition = useMemo<Condition | null>(() => {
+    if (selectedEnvs.length === 0) return null;
+    const byUid = new Map((envList.data?.data ?? []).map((e) => [e.uid ?? "", e]));
+    const conds: Condition[] = [];
+    for (const uid of selectedEnvs) {
+      const env = byUid.get(uid);
+      if (!env) continue;
+      if (!env.condition || env.condition.type === "ALWAYS_TRUE") continue;
+      conds.push(env.condition);
+    }
+    if (conds.length === 0) return null;
+    return conds.length === 1 ? (conds[0] as Condition) : { type: "OR", args: conds };
+  }, [selectedEnvs, envList.data]);
+
   const filters: AlertFilters = {
     tab: activeTab,
     ...(search.search !== undefined ? { search: search.search } : {}),
     searchCondition,
+    envs: selectedEnvs,
   };
 
   // Combine the active tab's preset condition with the SearchBar's DSL
-  // condition into a single AND clause sent server-side as ?q=. The "All"
-  // tab has a null preset, so a clean DSL query collapses to no filter at
-  // all — the request stays cacheable.
-  const q = useMemo(() => buildQueryParam(activeTab, searchCondition), [
-    activeTab,
-    searchCondition,
-  ]);
+  // condition and the OR'd environment filter into a single AND clause
+  // sent server-side as ?q=. The "All" tab has a null preset, so a clean
+  // DSL query with no env selection collapses to no filter at all — the
+  // request stays cacheable.
+  const q = useMemo(
+    () => buildQueryParam(activeTab, searchCondition, envCondition),
+    [activeTab, searchCondition, envCondition],
+  );
 
   const updateSearch = useCallback(
     (next: Partial<AlertsSearch>) => {
@@ -316,48 +354,45 @@ export function AlertsPage() {
     [openDialog, confirmDelete],
   );
 
-  const bulkActions = useCallback(
-    (rows: Record_[]) => {
-      const openBulkDialog = (type: ActionType) => setDialog({ type, records: rows });
-      return (
-        <>
-          <Button
-            size="sm"
-            variant="secondary"
-            leadingIcon="thumbs-up"
-            onClick={() => openBulkDialog("ack")}
-          >
-            Acknowledge ({rows.length})
-          </Button>
-          <Button
-            size="sm"
-            variant="secondary"
-            leadingIcon="lock"
-            onClick={() => openBulkDialog("close")}
-          >
-            Close ({rows.length})
-          </Button>
-          <Button
-            size="sm"
-            variant="secondary"
-            leadingIcon="rotate-cw"
-            onClick={() => openBulkDialog("esc")}
-          >
-            Re-escalate ({rows.length})
-          </Button>
-          <Button
-            size="sm"
-            variant="secondary"
-            leadingIcon="message-square"
-            onClick={() => openBulkDialog("comment")}
-          >
-            Comment ({rows.length})
-          </Button>
-        </>
-      );
-    },
-    [],
-  );
+  const bulkActions = useCallback((rows: Record_[]) => {
+    const openBulkDialog = (type: ActionType) => setDialog({ type, records: rows });
+    return (
+      <>
+        <Button
+          size="sm"
+          variant="secondary"
+          leadingIcon="thumbs-up"
+          onClick={() => openBulkDialog("ack")}
+        >
+          Acknowledge ({rows.length})
+        </Button>
+        <Button
+          size="sm"
+          variant="secondary"
+          leadingIcon="lock"
+          onClick={() => openBulkDialog("close")}
+        >
+          Close ({rows.length})
+        </Button>
+        <Button
+          size="sm"
+          variant="secondary"
+          leadingIcon="rotate-cw"
+          onClick={() => openBulkDialog("esc")}
+        >
+          Re-escalate ({rows.length})
+        </Button>
+        <Button
+          size="sm"
+          variant="secondary"
+          leadingIcon="message-square"
+          onClick={() => openBulkDialog("comment")}
+        >
+          Comment ({rows.length})
+        </Button>
+      </>
+    );
+  }, []);
 
   const submitDialog = useCallback(
     async ({ message }: { message: string }) => {
@@ -404,24 +439,16 @@ export function AlertsPage() {
           // unknown> shape sidesteps exactOptionalPropertyTypes, which
           // refuses explicit `undefined` on a typed optional property
           // even though the runtime semantics are identical.
+          const nextEnv = next.envs && next.envs.length > 0 ? next.envs.join(",") : undefined;
           updateSearch({
             page: 1,
             tab: next.tab && next.tab !== "alerts" ? next.tab : undefined,
             search: next.search || undefined,
+            env: nextEnv,
           } as Partial<AlertsSearch>);
         }}
-      />
-      <DataTable
-        data={filtered}
-        columns={alertColumns}
-        rowKey={(r) => r.uid ?? `${r.host ?? ""}-${r.date_epoch ?? 0}`}
-        loading={list.isPending}
-        selectable
-        selectedKeys={selectedKeys}
-        onSelectionChange={setSelectedKeys}
-        bulkActions={bulkActions}
-        toolbarHeader={`${list.data?.meta.total ?? 0} alerts`}
-        toolbar={
+        countLabel={`${list.data?.meta.total ?? 0} alerts`}
+        rightSlot={
           <Tooltip content={auto.enabled ? "Auto-refresh every 5s" : "Auto-refresh off"}>
             {/* Switch renders as a button; use div+aria-label instead of label to satisfy a11y rules */}
             <div className={styles.refreshToggle} role="group" aria-label="Auto refresh toggle">
@@ -434,6 +461,16 @@ export function AlertsPage() {
             </div>
           </Tooltip>
         }
+      />
+      <DataTable
+        data={filtered}
+        columns={alertColumns}
+        rowKey={(r) => r.uid ?? `${r.host ?? ""}-${r.date_epoch ?? 0}`}
+        loading={list.isPending}
+        selectable
+        selectedKeys={selectedKeys}
+        onSelectionChange={setSelectedKeys}
+        bulkActions={bulkActions}
         serverSort={{
           sortBy: orderby,
           order: asc ? "asc" : "desc",

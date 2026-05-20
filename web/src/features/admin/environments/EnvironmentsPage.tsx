@@ -124,12 +124,7 @@ export function EnvironmentsPage() {
         bulkActions={bulkActions}
         toolbarHeader={`${list.data?.meta.total ?? 0} environments`}
         toolbar={
-          <Button
-            size="sm"
-            variant="primary"
-            leadingIcon="plus"
-            onClick={() => setCreating(true)}
-          >
+          <Button size="sm" variant="primary" leadingIcon="plus" onClick={() => setCreating(true)}>
             New
           </Button>
         }

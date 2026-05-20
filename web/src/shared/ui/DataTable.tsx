@@ -215,30 +215,36 @@ export function DataTable<T>({
 
   return (
     <div className={styles.wrap}>
-      {search ? (
-        <SearchBar
-          value={search.value}
-          onChange={(c) =>
-            search.onChange({ text: c.text, condition: c.condition })
-          }
-          {...(search.collection ? { collection: search.collection } : {})}
-          {...(search.placeholder ? { placeholder: search.placeholder } : {})}
-        />
-      ) : null}
-      {showToolbar ? (
-        <div
-          className={hasSelection ? styles.toolbarSelected : styles.toolbar}
-          role="region"
-          aria-label={hasSelection ? "Bulk actions" : "Table toolbar"}
-        >
-          {hasSelection ? (
-            <span className={styles.toolbarCount}>{selectedRows.length} selected</span>
-          ) : toolbarHeader !== undefined ? (
-            <span className={styles.toolbarHeader}>{toolbarHeader}</span>
+      {search || showToolbar ? (
+        <div className={styles.toolbarRow}>
+          {search ? (
+            <div className={styles.searchSlot}>
+              <SearchBar
+                value={search.value}
+                onChange={(c) =>
+                  search.onChange({ text: c.text, condition: c.condition })
+                }
+                {...(search.collection ? { collection: search.collection } : {})}
+                {...(search.placeholder ? { placeholder: search.placeholder } : {})}
+              />
+            </div>
           ) : null}
-          <div className={styles.toolbarActions}>
-            {hasSelection ? bulkActions(selectedRows) : toolbar}
-          </div>
+          {showToolbar ? (
+            <div
+              className={hasSelection ? styles.toolbarSelected : styles.toolbar}
+              role="region"
+              aria-label={hasSelection ? "Bulk actions" : "Table toolbar"}
+            >
+              {hasSelection ? (
+                <span className={styles.toolbarCount}>{selectedRows.length} selected</span>
+              ) : toolbarHeader !== undefined ? (
+                <span className={styles.toolbarHeader}>{toolbarHeader}</span>
+              ) : null}
+              <div className={styles.toolbarActions}>
+                {hasSelection ? bulkActions(selectedRows) : toolbar}
+              </div>
+            </div>
+          ) : null}
         </div>
       ) : null}
 

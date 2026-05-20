@@ -214,30 +214,29 @@ export function SnoozesPage() {
     [confirmDelete, runRetroApply],
   );
 
-  // Render the count + actions in the tab-strip's right half: when rows are
-  // selected, we surface bulk actions; otherwise the "+ New" button.
+  // Toolbar header + actions: now rendered next to the SearchBar via the
+  // DataTable's `toolbarHeader` / `toolbar` slots so every list page shares
+  // the same horizontal chrome.
   const selectedSnoozeRows = useMemo(
     () => paged.filter((r) => selectedKeys.has(r.uid ?? r.name)),
     [paged, selectedKeys],
   );
-  const headerActions =
+  const snoozesToolbarHeader =
+    selectedSnoozeRows.length > 0
+      ? `${selectedSnoozeRows.length} selected`
+      : `${filtered.length} ${tab} snoozes`;
+  const snoozesToolbarActions =
     selectedSnoozeRows.length > 0 ? (
-      <>
-        <span className={styles.selectionCount}>{selectedSnoozeRows.length} selected</span>
-        {bulkActions(selectedSnoozeRows)}
-      </>
+      bulkActions(selectedSnoozeRows)
     ) : (
-      <>
-        <span className={styles.headerCount}>{filtered.length} {tab} snoozes</span>
-        <Button
-          size="sm"
-          variant="primary"
-          leadingIcon="plus"
-          onClick={() => setCreating(true)}
-        >
-          New
-        </Button>
-      </>
+      <Button
+        size="sm"
+        variant="primary"
+        leadingIcon="plus"
+        onClick={() => setCreating(true)}
+      >
+        New
+      </Button>
     );
 
   return (
@@ -246,7 +245,7 @@ export function SnoozesPage() {
         value={tab}
         onValueChange={(v) => updateSearch({ tab: v as SnoozeState, page: 1 })}
       >
-        <TabList rightSlot={headerActions}>
+        <TabList>
           {TABS.map((t) => (
             <TabTrigger key={t.value} value={t.value}>
               {t.label} ({counts[t.value]})
@@ -266,6 +265,8 @@ export function SnoozesPage() {
             onSelectionChange={setSelectedKeys}
             loading={list.isPending}
             search={snoozeSearch.searchProp}
+            toolbarHeader={snoozesToolbarHeader}
+            toolbar={snoozesToolbarActions}
             emptyState={
               <EmptyState
                 icon="file-text"

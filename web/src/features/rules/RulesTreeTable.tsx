@@ -60,6 +60,10 @@ import {
   ConfirmDeleteDialog,
   useConfirmDelete,
 } from "@/shared/ui/resourceContextMenu";
+import {
+  DataTableContextMenu,
+  type ContextMenuItem,
+} from "@/shared/ui/DataTableContextMenu";
 import type { ParsedCondition } from "@/shared/ui/SearchBar";
 import { SearchBar } from "@/shared/ui/SearchBar";
 import { Rules } from "./api";
@@ -149,6 +153,10 @@ export type RulesTreeTableProps = {
   /** When true, the table renders with a "pending changes" affordance
    *  (yellow tint, etc.) to signal that uncommitted drops are present. */
   pending?: boolean;
+  /** Per-row right-click menu items — same shape as DataTable's
+   *  `contextMenuItems`. Returns the items to render for the given row.
+   *  Omit to disable the right-click menu. */
+  contextMenuItems?: (row: Rule) => ContextMenuItem[];
 };
 
 export function RulesTreeTable({
@@ -165,6 +173,7 @@ export function RulesTreeTable({
   onCommitPatches,
   localResetCounter,
   pending = false,
+  contextMenuItems,
 }: RulesTreeTableProps) {
   const update = Rules.useUpdate();
   const remove = Rules.useRemove();
@@ -290,6 +299,19 @@ export function RulesTreeTable({
   const [overId, setOverId] = useState<string | null>(null);
   const [offsetX, setOffsetX] = useState(0);
   const [dropAfter, setDropAfter] = useState(false);
+
+  // Right-click context menu state — anchor position + which row was hit.
+  // Mirrors DataTable's pattern: one floating menu, rendered via portal,
+  // driven from the row-level onContextMenu handler.
+  const [ctxMenu, setCtxMenu] = useState<{ row: Rule; x: number; y: number } | null>(null);
+  const onRowContextMenu = useCallback(
+    (e: React.MouseEvent<HTMLDivElement>, row: Rule) => {
+      if (!contextMenuItems) return;
+      e.preventDefault();
+      setCtxMenu({ row, x: e.clientX, y: e.clientY });
+    },
+    [contextMenuItems],
+  );
 
   // The PointerSensor activates only after 6px of movement so plain row
   // clicks (which open the editor drawer) still work.
@@ -544,52 +566,61 @@ export function RulesTreeTable({
 
   const hasSelection = selectedRules.length > 0;
   // When selection is controlled by the host, it also renders its own
-  // bulk-action surface (typically in the tabbed-header right slot), so
-  // we skip the internal toolbar entirely to avoid double-rendering.
-  const renderToolbar =
-    !isControlled && (toolbar !== undefined || toolbarHeader !== undefined || hasSelection);
+  // bulk-action surface alongside the search bar (see toolbar prop below),
+  // so we skip the internal bulk-action segment to avoid double-rendering.
+  // The toolbar / toolbarHeader props still render — they're the page's
+  // chosen content for the right side of the search row.
+  const renderInternalBulk = !isControlled && hasSelection;
+  const showToolbarSlot =
+    toolbar !== undefined || toolbarHeader !== undefined || renderInternalBulk;
 
   return (
     <div className={styles.wrap}>
-      {search ? (
-        <SearchBar
-          value={search.value}
-          onChange={(c) => search.onChange({ text: c.text, condition: c.condition })}
-          {...(search.collection ? { collection: search.collection } : {})}
-          {...(search.placeholder ? { placeholder: search.placeholder } : {})}
-        />
+      {search || showToolbarSlot ? (
+        <div className={styles.toolbarRow}>
+          {search ? (
+            <div className={styles.searchSlot}>
+              <SearchBar
+                value={search.value}
+                onChange={(c) => search.onChange({ text: c.text, condition: c.condition })}
+                {...(search.collection ? { collection: search.collection } : {})}
+                {...(search.placeholder ? { placeholder: search.placeholder } : {})}
+              />
+            </div>
+          ) : null}
+          {showToolbarSlot ? (
+            <div
+              className={renderInternalBulk ? styles.toolbarSelected : styles.toolbar}
+              role="region"
+              aria-label={renderInternalBulk ? "Bulk actions" : "Table toolbar"}
+            >
+              {renderInternalBulk ? (
+                <span className={styles.toolbarCount}>{selectedRules.length} selected</span>
+              ) : toolbarHeader !== undefined ? (
+                <span className={styles.toolbarHeader}>{toolbarHeader}</span>
+              ) : null}
+              <div className={styles.toolbarActions}>
+                {renderInternalBulk ? (
+                  <Button
+                    size="sm"
+                    variant="danger"
+                    leadingIcon="trash"
+                    onClick={() => confirmDelete.request(selectedRules)}
+                  >
+                    Delete ({selectedRules.length})
+                  </Button>
+                ) : (
+                  toolbar
+                )}
+              </div>
+            </div>
+          ) : null}
+        </div>
       ) : null}
       {searchActive ? (
         <div className={styles.searchHint} role="status">
           Drag-and-drop reordering is disabled while a search filter is
           active — clear the search to rearrange rules.
-        </div>
-      ) : null}
-      {renderToolbar ? (
-        <div
-          className={hasSelection ? styles.toolbarSelected : styles.toolbar}
-          role="region"
-          aria-label={hasSelection ? "Bulk actions" : "Table toolbar"}
-        >
-          {hasSelection ? (
-            <span className={styles.toolbarCount}>{selectedRules.length} selected</span>
-          ) : toolbarHeader !== undefined ? (
-            <span className={styles.toolbarHeader}>{toolbarHeader}</span>
-          ) : null}
-          <div className={styles.toolbarActions}>
-            {hasSelection ? (
-              <Button
-                size="sm"
-                variant="danger"
-                leadingIcon="trash"
-                onClick={() => confirmDelete.request(selectedRules)}
-              >
-                Delete ({selectedRules.length})
-              </Button>
-            ) : (
-              toolbar
-            )}
-          </div>
         </div>
       ) : null}
 
@@ -643,6 +674,9 @@ export function RulesTreeTable({
                 expanded={expanded.has(id)}
                 onToggleExpanded={() => toggleExpanded(id)}
                 selectionLocked={pending}
+                {...(contextMenuItems
+                  ? { onContextMenu: (e) => onRowContextMenu(e, n.rule) }
+                  : {})}
               />
             );
           })
@@ -704,6 +738,9 @@ export function RulesTreeTable({
                       // slot is occupied by Cancel/Save, so bulk-action
                       // affordances aren't reachable until commit anyway.
                       selectionLocked={pending}
+                      {...(contextMenuItems
+                        ? { onContextMenu: (e) => onRowContextMenu(e, n.rule) }
+                        : {})}
                     />
                   </Fragment>
                 );
@@ -724,6 +761,15 @@ export function RulesTreeTable({
         onCancel={confirmDelete.cancel}
         onConfirm={() => void confirmDelete.confirm()}
       />
+
+      {ctxMenu && contextMenuItems ? (
+        <DataTableContextMenu
+          items={contextMenuItems(ctxMenu.row)}
+          x={ctxMenu.x}
+          y={ctxMenu.y}
+          onClose={() => setCtxMenu(null)}
+        />
+      ) : null}
     </div>
   );
 }
@@ -821,6 +867,7 @@ function StaticTreeRow({
   expanded,
   onToggleExpanded,
   selectionLocked = false,
+  onContextMenu,
 }: Omit<SortableTreeRowProps, "id">) {
   const enabled = node.rule.enabled !== false;
   const mods = node.rule.modifications ?? [];
@@ -857,6 +904,7 @@ function StaticTreeRow({
             onRowOpen(node.rule);
           }
         }}
+        {...(onContextMenu ? { onContextMenu } : {})}
         tabIndex={0}
         role="row"
       >
@@ -958,6 +1006,9 @@ type SortableTreeRowProps = {
    *  used while uncommitted drag-and-drop changes are pending so the
    *  user focuses on committing/cancelling before doing other actions. */
   selectionLocked?: boolean;
+  /** Right-click handler — the host wires this to its context-menu state.
+   *  When omitted, browsers fall back to the native context menu. */
+  onContextMenu?: (e: React.MouseEvent<HTMLDivElement>) => void;
 };
 
 function SortableTreeRow({
@@ -972,6 +1023,7 @@ function SortableTreeRow({
   onToggleExpanded,
   activeSubtreeMode = "none",
   selectionLocked = false,
+  onContextMenu,
 }: SortableTreeRowProps) {
   const sortable = useSortable({ id });
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = sortable;
@@ -1034,6 +1086,7 @@ function SortableTreeRow({
             onRowOpen(node.rule);
           }
         }}
+        {...(onContextMenu ? { onContextMenu } : {})}
         tabIndex={0}
         role="row"
       >

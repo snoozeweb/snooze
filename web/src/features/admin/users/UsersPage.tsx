@@ -156,24 +156,24 @@ export function UsersPage() {
       (list.data?.data ?? []).filter((r) => selectedKeys.has(r.uid ?? r.name)),
     [list.data, selectedKeys],
   );
-  const headerActions =
+  // Toolbar pieces — rendered next to the SearchBar inside DataTable so the
+  // surface matches every other list page.
+  const usersToolbarHeader =
+    selectedUserRows.length > 0
+      ? `${selectedUserRows.length} selected`
+      : `${list.data?.meta.total ?? 0} users`;
+  const usersToolbarActions =
     selectedUserRows.length > 0 ? (
-      <>
-        <span className={styles.selectionCount}>{selectedUserRows.length} selected</span>
-        {bulkActions(selectedUserRows)}
-      </>
+      bulkActions(selectedUserRows)
     ) : (
-      <>
-        <span className={styles.headerCount}>{list.data?.meta.total ?? 0} users</span>
-        <Button
-          size="sm"
-          variant="primary"
-          leadingIcon="plus"
-          onClick={() => setCreating(true)}
-        >
-          New
-        </Button>
-      </>
+      <Button
+        size="sm"
+        variant="primary"
+        leadingIcon="plus"
+        onClick={() => setCreating(true)}
+      >
+        New
+      </Button>
     );
 
   return (
@@ -182,7 +182,7 @@ export function UsersPage() {
         value={tab}
         onValueChange={(v) => updateSearch({ tab: v as UserTab, page: 1 })}
       >
-        <TabList rightSlot={headerActions}>
+        <TabList>
           <TabTrigger value="all">All</TabTrigger>
           <TabTrigger value="local">Local</TabTrigger>
           {ldapEnabled ? <TabTrigger value="ldap">LDAP</TabTrigger> : null}
@@ -198,6 +198,8 @@ export function UsersPage() {
         selectedKeys={selectedKeys}
         onSelectionChange={setSelectedKeys}
         search={userSearch.searchProp}
+        toolbarHeader={usersToolbarHeader}
+        toolbar={usersToolbarActions}
         emptyState={
           <EmptyState
             icon="file-text"
