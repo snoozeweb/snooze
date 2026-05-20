@@ -1,10 +1,12 @@
-import { useCallback, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { useNavigate, useSearch } from "@tanstack/react-router";
 import { Button } from "@/shared/ui/Button";
 import { DataTable } from "@/shared/ui/DataTable";
 import type { ContextMenuItem } from "@/shared/ui/DataTableContextMenu";
 import { RowDetailPanel } from "@/shared/ui/RowDetailPanel";
+import { EmptyState } from "@/shared/ui/EmptyState";
 import { TabList, TabPanel, TabTrigger, Tabs } from "@/shared/ui/Tabs";
+import { useTableSearch } from "@/shared/hooks/useTableSearch";
 import {
   buildResourceContextMenu,
   ConfirmDeleteDialog,
@@ -65,17 +67,37 @@ export function NotificationsPage() {
     [navigate],
   );
 
+  // Each tab carries its own search state. Switching tabs preserves the
+  // text in whichever tab the user typed in, but the active list endpoint
+  // only sees the filter for the currently-shown tab.
+  const notifSearch = useTableSearch({
+    collection: "notification",
+    placeholder: "name = … AND enabled = true",
+    onFilterChange: () => {
+      if (page !== 1) updateSearch({ page: 1 });
+    },
+  });
+  const actionSearch = useTableSearch({
+    collection: "action",
+    placeholder: "action_type = mail",
+    onFilterChange: () => {
+      if (page !== 1) updateSearch({ page: 1 });
+    },
+  });
+
   const notifList = Notifications.useList({
     offset: (page - 1) * PAGE_SIZE,
     limit: PAGE_SIZE,
     orderby,
     asc,
+    ...(notifSearch.q ? { q: notifSearch.q } : {}),
   });
   const actionList = Actions.useList({
     offset: (page - 1) * PAGE_SIZE,
     limit: PAGE_SIZE,
     orderby,
     asc,
+    ...(actionSearch.q ? { q: actionSearch.q } : {}),
   });
 
   const list = tab === "notifications" ? notifList : actionList;
@@ -145,13 +167,48 @@ export function NotificationsPage() {
     [confirmDeleteAction],
   );
 
+  // Tabbed header actions — bulk-action bar when rows are selected,
+  // otherwise the count + "+ New" affordance. The active tab decides
+  // which selection set drives the rendering.
+  const activeNotifRows = useMemo(
+    () =>
+      (notifList.data?.data ?? []).filter((r) => notifSelected.has(r.uid ?? r.name)),
+    [notifList.data, notifSelected],
+  );
+  const activeActionRows = useMemo(
+    () =>
+      (actionList.data?.data ?? []).filter((r) => actionSelected.has(r.uid ?? r.name)),
+    [actionList.data, actionSelected],
+  );
+  const activeSelectedCount =
+    tab === "notifications" ? activeNotifRows.length : activeActionRows.length;
+  const headerActions =
+    activeSelectedCount > 0 ? (
+      <>
+        <span className={styles.selectionCount}>{activeSelectedCount} selected</span>
+        {tab === "notifications" ? notifBulk(activeNotifRows) : actionBulk(activeActionRows)}
+      </>
+    ) : (
+      <>
+        <span className={styles.headerCount}>{list.data?.meta.total ?? 0} {tab}</span>
+        <Button
+          size="sm"
+          variant="primary"
+          leadingIcon="plus"
+          onClick={() => setCreating(true)}
+        >
+          New
+        </Button>
+      </>
+    );
+
   return (
     <div className={styles.page}>
       <Tabs
         value={tab}
         onValueChange={(v) => updateSearch({ tab: v as "notifications" | "actions", page: 1 })}
       >
-        <TabList>
+        <TabList rightSlot={headerActions}>
           <TabTrigger value="notifications">Notifications</TabTrigger>
           <TabTrigger value="actions">Actions</TabTrigger>
         </TabList>
@@ -167,17 +224,23 @@ export function NotificationsPage() {
               selectable
               selectedKeys={notifSelected}
               onSelectionChange={setNotifSelected}
-              bulkActions={notifBulk}
-              toolbarHeader={`${list.data?.meta.total ?? 0} ${tab}`}
-              toolbar={
-                <Button
-                  size="sm"
-                  variant="primary"
-                  leadingIcon="plus"
-                  onClick={() => setCreating(true)}
-                >
-                  New
-                </Button>
+              search={notifSearch.searchProp}
+              emptyState={
+                <EmptyState
+                  icon="file-text"
+                  title="No notifications yet"
+                  description="Notifications route matching alerts to one or more actions."
+                  action={
+                    <Button
+                      size="md"
+                      variant="primary"
+                      leadingIcon="plus"
+                      onClick={() => setCreating(true)}
+                    >
+                      New notification
+                    </Button>
+                  }
+                />
               }
               renderExpanded={(row) => (
                 <RowDetailPanel
@@ -216,17 +279,23 @@ export function NotificationsPage() {
               selectable
               selectedKeys={actionSelected}
               onSelectionChange={setActionSelected}
-              bulkActions={actionBulk}
-              toolbarHeader={`${list.data?.meta.total ?? 0} ${tab}`}
-              toolbar={
-                <Button
-                  size="sm"
-                  variant="primary"
-                  leadingIcon="plus"
-                  onClick={() => setCreating(true)}
-                >
-                  New
-                </Button>
+              search={actionSearch.searchProp}
+              emptyState={
+                <EmptyState
+                  icon="file-text"
+                  title="No actions yet"
+                  description="Actions describe how to deliver a notification (mail, webhook, …)."
+                  action={
+                    <Button
+                      size="md"
+                      variant="primary"
+                      leadingIcon="plus"
+                      onClick={() => setCreating(true)}
+                    >
+                      New action
+                    </Button>
+                  }
+                />
               }
               renderExpanded={(row) => (
                 <RowDetailPanel

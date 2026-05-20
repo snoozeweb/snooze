@@ -9,3 +9,13 @@
   align-items: center;
   justify-content: space-between;
 }
+
+.headerCount {
+  color: var(--text-muted);
+  font-size: var(--text-sm);
+}
+.selectionCount {
+  color: var(--accent);
+  font-weight: var(--weight-semibold);
+  font-size: var(--text-sm);
+}

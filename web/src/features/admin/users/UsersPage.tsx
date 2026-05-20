@@ -1,9 +1,16 @@
-import { useCallback, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { useNavigate, useSearch } from "@tanstack/react-router";
 import { Button } from "@/shared/ui/Button";
 import { DataTable } from "@/shared/ui/DataTable";
 import type { ContextMenuItem } from "@/shared/ui/DataTableContextMenu";
+import { EmptyState } from "@/shared/ui/EmptyState";
 import { RowDetailPanel } from "@/shared/ui/RowDetailPanel";
+import { TabList, TabPanel, TabTrigger, Tabs } from "@/shared/ui/Tabs";
+import { useTableSearch } from "@/shared/hooks/useTableSearch";
+import { fetchLoginBackends } from "@/features/auth/api";
+import { encodeConditionQ } from "@/lib/condition/serialize";
+import type { Condition } from "@/lib/condition/types";
 import {
   buildResourceContextMenu,
   ConfirmDeleteDialog,
@@ -15,11 +22,14 @@ import { userColumns } from "./columns";
 import type { User } from "./types";
 import styles from "./UsersPage.module.css";
 
+type UserTab = "all" | "local" | "ldap";
+
 type UsersSearch = {
   uid?: string | undefined;
   page?: number;
   orderby?: string;
   asc?: boolean;
+  tab?: UserTab;
 };
 
 // TanStack Router's navigate types are locked to the registered route tree at
@@ -41,7 +51,17 @@ export function UsersPage() {
   const orderby = search.orderby ?? "name";
   const asc = search.asc ?? true;
   const detailUid = search.uid;
+  const tab: UserTab = search.tab ?? "all";
   const [creating, setCreating] = useState(false);
+
+  // Login backends — drives LDAP tab visibility. Anonymous backend has no
+  // user records of its own so we never show a tab for it.
+  const backends = useQuery({
+    queryKey: ["login-backends"],
+    queryFn: fetchLoginBackends,
+    staleTime: 5 * 60_000,
+  });
+  const ldapEnabled = backends.data?.includes("ldap") ?? false;
 
   const updateSearch = useCallback(
     (next: UsersSearch) => {
@@ -61,7 +81,44 @@ export function UsersPage() {
     [navigate],
   );
 
-  const list = Users.useList({ offset: (page - 1) * PAGE_SIZE, limit: PAGE_SIZE, orderby, asc });
+  const userSearch = useTableSearch({
+    collection: "user",
+    placeholder: "name = … AND method = …",
+    onFilterChange: () => {
+      if (page !== 1) updateSearch({ page: 1 });
+    },
+  });
+
+  // Combine the active tab's `method = …` preset with the SearchBar's
+  // condition into a single ?q=. The "All" tab has no preset, so a clean
+  // search input collapses to no filter at all (the request stays cacheable).
+  const q = useMemo(() => {
+    const parts: Condition[] = [];
+    if (tab === "local") {
+      parts.push({ type: "EQUALS", field: "method", value: "local" });
+    } else if (tab === "ldap") {
+      parts.push({ type: "EQUALS", field: "method", value: "ldap" });
+    }
+    if (
+      userSearch.condition &&
+      userSearch.condition.op !== "" &&
+      userSearch.condition.op !== "ALWAYS_TRUE"
+    ) {
+      parts.push(userSearch.condition as unknown as Condition);
+    }
+    if (parts.length === 0) return undefined;
+    const combined: Condition =
+      parts.length === 1 ? (parts[0] as Condition) : { type: "AND", args: parts };
+    return encodeConditionQ(combined);
+  }, [tab, userSearch.condition]);
+
+  const list = Users.useList({
+    offset: (page - 1) * PAGE_SIZE,
+    limit: PAGE_SIZE,
+    orderby,
+    asc,
+    ...(q ? { q } : {}),
+  });
   const remove = Users.useRemove();
   const [selectedKeys, setSelectedKeys] = useState<Set<string>>(new Set());
   const confirmDelete = useConfirmDelete<User>({
@@ -94,8 +151,43 @@ export function UsersPage() {
     [confirmDelete],
   );
 
+  const selectedUserRows = useMemo(
+    () =>
+      (list.data?.data ?? []).filter((r) => selectedKeys.has(r.uid ?? r.name)),
+    [list.data, selectedKeys],
+  );
+  const headerActions =
+    selectedUserRows.length > 0 ? (
+      <>
+        <span className={styles.selectionCount}>{selectedUserRows.length} selected</span>
+        {bulkActions(selectedUserRows)}
+      </>
+    ) : (
+      <>
+        <span className={styles.headerCount}>{list.data?.meta.total ?? 0} users</span>
+        <Button
+          size="sm"
+          variant="primary"
+          leadingIcon="plus"
+          onClick={() => setCreating(true)}
+        >
+          New
+        </Button>
+      </>
+    );
+
   return (
     <div className={styles.page}>
+      <Tabs
+        value={tab}
+        onValueChange={(v) => updateSearch({ tab: v as UserTab, page: 1 })}
+      >
+        <TabList rightSlot={headerActions}>
+          <TabTrigger value="all">All</TabTrigger>
+          <TabTrigger value="local">Local</TabTrigger>
+          {ldapEnabled ? <TabTrigger value="ldap">LDAP</TabTrigger> : null}
+        </TabList>
+        <TabPanel value={tab}>
       <DataTable<User>
         data={list.data?.data ?? []}
         columns={userColumns}
@@ -105,17 +197,23 @@ export function UsersPage() {
         selectable
         selectedKeys={selectedKeys}
         onSelectionChange={setSelectedKeys}
-        bulkActions={bulkActions}
-        toolbarHeader={`${list.data?.meta.total ?? 0} users`}
-        toolbar={
-          <Button
-            size="sm"
-            variant="primary"
-            leadingIcon="plus"
-            onClick={() => setCreating(true)}
-          >
-            New
-          </Button>
+        search={userSearch.searchProp}
+        emptyState={
+          <EmptyState
+            icon="file-text"
+            title="No users yet"
+            description="Add a user to grant access to the Snooze UI."
+            action={
+              <Button
+                size="md"
+                variant="primary"
+                leadingIcon="plus"
+                onClick={() => setCreating(true)}
+              >
+                New user
+              </Button>
+            }
+          />
         }
         renderExpanded={(row) => (
           <RowDetailPanel
@@ -140,6 +238,8 @@ export function UsersPage() {
           if (row.uid) updateSearch({ uid: row.uid });
         }}
       />
+        </TabPanel>
+      </Tabs>
       {detailUid !== undefined ? (
         <UserEditor uid={detailUid} onClose={() => updateSearch({ uid: undefined })} />
       ) : null}

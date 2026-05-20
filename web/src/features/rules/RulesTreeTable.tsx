@@ -34,6 +34,7 @@ import {
   KeyboardSensor,
   PointerSensor,
   closestCenter,
+  useDroppable,
   useSensor,
   useSensors,
   type DragEndEvent,
@@ -51,6 +52,7 @@ import { Button } from "@/shared/ui/Button";
 import { Checkbox } from "@/shared/ui/Checkbox";
 import { Code } from "@/shared/ui/Code";
 import { Icon } from "@/shared/icons/Icon";
+import { EmptyState } from "@/shared/ui/EmptyState";
 import { RowDetailPanel } from "@/shared/ui/RowDetailPanel";
 import { toast } from "@/shared/ui/toast/useToast";
 import { prettyCondition } from "@/lib/condition/pretty";
@@ -58,6 +60,8 @@ import {
   ConfirmDeleteDialog,
   useConfirmDelete,
 } from "@/shared/ui/resourceContextMenu";
+import type { ParsedCondition } from "@/shared/ui/SearchBar";
+import { SearchBar } from "@/shared/ui/SearchBar";
 import { Rules } from "./api";
 import type { Rule } from "./types";
 import {
@@ -74,24 +78,64 @@ import styles from "./RulesTreeTable.module.css";
 export type { TreeNode };
 
 const INDENT_PX = 20;
+// Stable id for the "drop past the end of the list" sentinel droppable.
+// Anything reserved with __ at both ends won't collide with a real rule uid.
+const END_DROPPABLE_ID = "__rules-tree-end__";
 
 // No-op strategy: keep rows physically in place during drag. Visual feedback
-// is handled by the drop indicator line + the DragOverlay clone, not by
-// transforming the surrounding rows — that approach (verticalListSortingStrategy)
-// fights with our per-row depth changes and produces inconsistent drop
-// animations when crossing parent boundaries.
+// is handled by the ghost row + the DragOverlay clone, not by transforming
+// the surrounding rows — that approach (verticalListSortingStrategy) fights
+// with our per-row depth changes and produces inconsistent drop animations
+// when crossing parent boundaries.
 const noopStrategy = () => null;
 
 export type RulesTreeTableProps = {
   rules: Rule[];
   onRowOpen: (r: Rule) => void;
   /** Persistent toolbar slot — host's "New" button etc. Bulk-selection
-   *  mode replaces this with the delete action, just like DataTable. */
+   *  mode replaces this with the delete action, just like DataTable.
+   *  When the page renders the toolbar itself in the tabbed-header right
+   *  slot, leave this unset and pass `selectedKeys` / `onSelectionChange`
+   *  so the page can mirror the selection state up. */
   toolbar?: React.ReactNode;
   toolbarHeader?: React.ReactNode;
+  /** Controlled-selection mode: when both are provided, RulesTreeTable
+   *  uses the page's state and skips rendering its internal bulk-action
+   *  toolbar — the page is expected to render bulk actions externally
+   *  (e.g. in the TabList's rightSlot). */
+  selectedKeys?: ReadonlySet<string>;
+  onSelectionChange?: (next: Set<string>) => void;
+  /** Same shape as DataTable's `search` prop. When provided, a SearchBar
+   *  renders above the tree; rules already on the page are filtered
+   *  server-side via ?q=. */
+  search?: {
+    value: string;
+    onChange: (next: { text: string; condition: ParsedCondition | null }) => void;
+    collection?: string;
+    placeholder?: string;
+  };
+  /** When true, drag handles are hidden and the DnD context is suppressed.
+   *  Reordering a filtered subset of the tree would have indeterminate
+   *  semantics (the cursor's "between rows" position doesn't reliably
+   *  correspond to anything in the full tree), so we disable it. */
+  searchActive?: boolean;
+  /** Optional action rendered inside the "No rules yet" empty state — the
+   *  page's "+ New" affordance lives here so operators have a clear entry
+   *  point even when the table is brand new. */
+  emptyAction?: React.ReactNode;
 };
 
-export function RulesTreeTable({ rules, onRowOpen, toolbar, toolbarHeader }: RulesTreeTableProps) {
+export function RulesTreeTable({
+  rules,
+  onRowOpen,
+  toolbar,
+  toolbarHeader,
+  selectedKeys: selectedKeysProp,
+  onSelectionChange,
+  search,
+  searchActive = false,
+  emptyAction,
+}: RulesTreeTableProps) {
   const update = Rules.useUpdate();
   const remove = Rules.useRemove();
 
@@ -106,19 +150,50 @@ export function RulesTreeTable({ rules, onRowOpen, toolbar, toolbarHeader }: Rul
   const fullFlat = useMemo(() => flattenTree(roots), [roots]);
 
   // Selection state. Toggling a parent toggles its full subtree.
-  const [selected, setSelected] = useState<Set<string>>(() => new Set());
+  // Controlled (page-supplied) vs uncontrolled (internal) is decided by
+  // whether the host passed selectedKeys+onSelectionChange.
+  const isControlled = selectedKeysProp !== undefined && onSelectionChange !== undefined;
+  const [internalSelected, setInternalSelected] = useState<Set<string>>(() => new Set());
+  const selected: ReadonlySet<string> = isControlled
+    ? selectedKeysProp
+    : internalSelected;
+  const setSelected = useCallback(
+    (next: Set<string> | ((prev: ReadonlySet<string>) => Set<string>)) => {
+      if (isControlled && onSelectionChange) {
+        const resolved =
+          typeof next === "function"
+            ? next(selectedKeysProp ?? new Set<string>())
+            : next;
+        onSelectionChange(resolved);
+      } else {
+        setInternalSelected((prev) =>
+          typeof next === "function" ? next(prev) : next,
+        );
+      }
+    },
+    [isControlled, onSelectionChange, selectedKeysProp],
+  );
   // Cull stale selections when the underlying set of rules changes.
+  // Only emits a new set when something actually drops out — otherwise we'd
+  // bounce `selectedKeys` through the parent every render and trigger an
+  // infinite update loop in controlled mode.
   useEffect(() => {
     const alive = new Set(localRules.map((r) => r.uid ?? r.name));
-    setSelected((prev) => {
-      let changed = false;
-      const next = new Set<string>();
-      for (const id of prev) {
-        if (alive.has(id)) next.add(id);
-        else changed = true;
+    let needsCull = false;
+    for (const id of selected) {
+      if (!alive.has(id)) {
+        needsCull = true;
+        break;
       }
-      return changed ? next : prev;
-    });
+    }
+    if (!needsCull) return;
+    const next = new Set<string>();
+    for (const id of selected) if (alive.has(id)) next.add(id);
+    setSelected(next);
+    // selected is intentionally excluded from deps — the effect should
+    // re-evaluate against the new rule set, not whenever the parent passes
+    // a fresh Set ref for an unchanged selection.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [localRules]);
 
   const toggleSelection = useCallback(
@@ -132,7 +207,7 @@ export function RulesTreeTable({ rules, onRowOpen, toolbar, toolbarHeader }: Rul
         return next;
       });
     },
-    [fullFlat],
+    [fullFlat, setSelected],
   );
 
   const allSelected =
@@ -141,7 +216,7 @@ export function RulesTreeTable({ rules, onRowOpen, toolbar, toolbarHeader }: Rul
   const toggleAll = useCallback(() => {
     if (allSelected) setSelected(new Set());
     else setSelected(new Set(localRules.map((r) => r.uid ?? r.name)));
-  }, [allSelected, localRules]);
+  }, [allSelected, localRules, setSelected]);
 
   const selectedRules = useMemo(
     () => localRules.filter((r) => selected.has(r.uid ?? r.name)),
@@ -199,16 +274,22 @@ export function RulesTreeTable({ rules, onRowOpen, toolbar, toolbarHeader }: Rul
   }, [activeId, fullFlat]);
 
   // Project the drop target — both the slot index in `renderedFlat` (where
-  // the indicator line should render) and the (parentId, depth) the active
-  // row will adopt.
+  // the ghost row should render) and the (parentId, depth) the active row
+  // will adopt.
   const projection = useMemo(() => {
     if (!activeId) return null;
-    // `overId` is the row currently under the cursor. The drop slot is the
-    // gap immediately above that row, i.e. its index in renderedFlat.
-    const slotIndex = overId
-      ? renderedFlat.findIndex((n) => (n.rule.uid ?? n.rule.name) === overId)
-      : renderedFlat.length;
-    const safeSlot = slotIndex < 0 ? renderedFlat.length : slotIndex;
+    let safeSlot: number;
+    if (overId === END_DROPPABLE_ID || overId === null) {
+      // Dragging past the last row resolves to "insert at the very end".
+      // This is what makes "drop as last sibling" (or "drop as child of
+      // the last row" via offsetX) actually reachable.
+      safeSlot = renderedFlat.length;
+    } else {
+      const slotIndex = renderedFlat.findIndex(
+        (n) => (n.rule.uid ?? n.rule.name) === overId,
+      );
+      safeSlot = slotIndex < 0 ? renderedFlat.length : slotIndex;
+    }
     const { parentId, depth } = projectDrop(renderedFlat, safeSlot, offsetX, INDENT_PX);
     return { parentId, depth, slotIndex: safeSlot };
   }, [activeId, overId, renderedFlat, offsetX]);
@@ -354,10 +435,28 @@ export function RulesTreeTable({ rules, onRowOpen, toolbar, toolbarHeader }: Rul
   const isRowSelected = (id: string) => selected.has(id);
 
   const hasSelection = selectedRules.length > 0;
-  const renderToolbar = toolbar !== undefined || toolbarHeader !== undefined || hasSelection;
+  // When selection is controlled by the host, it also renders its own
+  // bulk-action surface (typically in the tabbed-header right slot), so
+  // we skip the internal toolbar entirely to avoid double-rendering.
+  const renderToolbar =
+    !isControlled && (toolbar !== undefined || toolbarHeader !== undefined || hasSelection);
 
   return (
     <div className={styles.wrap}>
+      {search ? (
+        <SearchBar
+          value={search.value}
+          onChange={(c) => search.onChange({ text: c.text, condition: c.condition })}
+          {...(search.collection ? { collection: search.collection } : {})}
+          {...(search.placeholder ? { placeholder: search.placeholder } : {})}
+        />
+      ) : null}
+      {searchActive ? (
+        <div className={styles.searchHint} role="status">
+          Drag-and-drop reordering is disabled while a search filter is
+          active — clear the search to rearrange rules.
+        </div>
+      ) : null}
       {renderToolbar ? (
         <div
           className={hasSelection ? styles.toolbarSelected : styles.toolbar}
@@ -403,7 +502,34 @@ export function RulesTreeTable({ rules, onRowOpen, toolbar, toolbarHeader }: Rul
         </div>
 
         {localRules.length === 0 ? (
-          <div className={styles.empty}>No rules yet.</div>
+          <div className={styles.empty}>
+            <EmptyState
+              icon="file-text"
+              title="No rules yet"
+              description="Rules transform incoming alerts. Add one to get started."
+              {...(emptyAction !== undefined ? { action: emptyAction } : {})}
+            />
+          </div>
+        ) : searchActive ? (
+          // Filtered view: skip the DndContext entirely — operators can read
+          // and edit rules, but reordering is gated until the search clears.
+          // The drag handles fall back to a static grip icon so the column
+          // grid stays consistent with the unfiltered view.
+          renderedFlat.map((n) => {
+            const id = n.rule.uid ?? n.rule.name;
+            return (
+              <StaticTreeRow
+                key={id}
+                node={n}
+                depth={n.depth}
+                selected={isRowSelected(id)}
+                onToggleSelected={() => toggleSelection(id)}
+                onRowOpen={onRowOpen}
+                expanded={expanded.has(id)}
+                onToggleExpanded={() => toggleExpanded(id)}
+              />
+            );
+          })
         ) : (
           <DndContext
             sensors={sensors}
@@ -422,8 +548,8 @@ export function RulesTreeTable({ rules, onRowOpen, toolbar, toolbarHeader }: Rul
                 const id = n.rule.uid ?? n.rule.name;
                 return (
                   <Fragment key={id}>
-                    {projection?.slotIndex === i ? (
-                      <DropIndicator depth={projection.depth} />
+                    {projection?.slotIndex === i && activeRule ? (
+                      <GhostRow rule={activeRule} depth={projection.depth} />
                     ) : null}
                     <SortableTreeRow
                       id={id}
@@ -438,9 +564,14 @@ export function RulesTreeTable({ rules, onRowOpen, toolbar, toolbarHeader }: Rul
                   </Fragment>
                 );
               })}
-              {projection?.slotIndex === renderedFlat.length ? (
-                <DropIndicator depth={projection.depth} />
+              {projection?.slotIndex === renderedFlat.length && activeRule ? (
+                <GhostRow rule={activeRule} depth={projection.depth} />
               ) : null}
+              {/* End-of-list sentinel: a tall droppable that catches drops
+                  past the last row so "as last sibling" / "as child of last"
+                  are actually reachable. Only mounted during a drag — when
+                  idle it would just add empty space. */}
+              {activeId ? <EndDroppable /> : null}
             </SortableContext>
             <DragOverlay dropAnimation={null}>
               {activeRule ? <DragPreview rule={activeRule} /> : null}
@@ -458,16 +589,44 @@ export function RulesTreeTable({ rules, onRowOpen, toolbar, toolbarHeader }: Rul
   );
 }
 
-function DropIndicator({ depth }: { depth: number }) {
+// GhostRow — a placeholder rendered at the projected drop slot. It mirrors
+// the regular row's grid layout so the surrounding columns stay aligned,
+// but its name cell shows the dragged rule's name at the *projected* depth.
+// This is the "you'll land here, at this nesting level" feedback that a
+// thin indicator line alone failed to convey.
+function GhostRow({ rule, depth }: { rule: Rule; depth: number }) {
   return (
-    <div
-      className={styles.dropIndicator}
-      style={{ paddingLeft: 28 + 28 + 28 + depth * INDENT_PX + 12 }}
-      aria-hidden="true"
-    >
-      <div className={styles.dropIndicatorLine} />
+    <div className={`${styles.row} ${styles.ghostRow}`} aria-hidden="true">
+      <span className={styles.expandCell} />
+      <span className={styles.handleCell}>
+        <Icon name="grip" size={16} />
+      </span>
+      <span className={styles.checkboxCell} />
+      <span className={styles.nameCell}>
+        {depth > 0 ? (
+          <span
+            className={styles.indent}
+            style={{ width: depth * INDENT_PX }}
+            aria-hidden="true"
+          />
+        ) : null}
+        <Code>{rule.name}</Code>
+      </span>
+      <span className={styles.conditionCell} />
+      <span className={styles.modsCell} />
     </div>
   );
+}
+
+// EndDroppable — invisible drop target appended after the last row so that
+// dragging into the empty area below the tree resolves to "drop at the very
+// end". The element only has to register a real bounding rect for
+// closestCenter to pick it as `over` when the cursor leaves the populated
+// rows. Mounted only while a drag is in flight to avoid empty space when
+// idle.
+function EndDroppable() {
+  const { setNodeRef } = useDroppable({ id: END_DROPPABLE_ID });
+  return <div ref={setNodeRef} className={styles.endDroppable} aria-hidden="true" />;
 }
 
 function DragPreview({ rule }: { rule: Rule }) {
@@ -475,6 +634,114 @@ function DragPreview({ rule }: { rule: Rule }) {
     <div className={styles.dragPreview} role="presentation">
       <Icon name="grip" size={16} />
       <Code>{rule.name}</Code>
+    </div>
+  );
+}
+
+// StaticTreeRow — same visual as SortableTreeRow but without dnd-kit
+// hooks. Rendered when a search filter is active, since rearranging a
+// filtered subset of the tree has no well-defined semantics.
+function StaticTreeRow({
+  node,
+  depth,
+  selected,
+  onToggleSelected,
+  onRowOpen,
+  expanded,
+  onToggleExpanded,
+}: Omit<SortableTreeRowProps, "id">) {
+  const enabled = node.rule.enabled !== false;
+  const mods = node.rule.modifications ?? [];
+  return (
+    <div className={styles.rowOuter}>
+      <div
+        className={[
+          styles.row,
+          selected ? styles.rowSelected : "",
+        ]
+          .filter(Boolean)
+          .join(" ")}
+        {...(!enabled ? { "data-disabled": "true" } : {})}
+        {...(selected ? { "data-selected": "true" } : {})}
+        onClick={(e) => {
+          const target = e.target as HTMLElement;
+          if (target.closest("[data-expand-toggle]")) return;
+          if (target.closest("[data-row-checkbox]")) return;
+          onRowOpen(node.rule);
+        }}
+        onKeyDown={(e) => {
+          if (e.key === "Enter" || e.key === " ") {
+            const target = e.target as HTMLElement;
+            if (target.closest("[data-expand-toggle]")) return;
+            if (target.closest("[data-row-checkbox]")) return;
+            onRowOpen(node.rule);
+          }
+        }}
+        tabIndex={0}
+        role="row"
+      >
+        <button
+          type="button"
+          data-expand-toggle
+          className={styles.expandBtn}
+          aria-label={`Expand row ${node.rule.name}`}
+          aria-expanded={expanded}
+          onClick={(e) => {
+            e.stopPropagation();
+            onToggleExpanded();
+          }}
+        >
+          <Icon name={expanded ? "chevron-down" : "chevron-right"} size={14} />
+        </button>
+        <span className={styles.handle} aria-hidden="true">
+          <Icon name="grip" size={16} />
+        </span>
+        {/* eslint-disable-next-line jsx-a11y/no-static-element-interactions, jsx-a11y/click-events-have-key-events -- Click-swallow shim so clicking the checkbox doesn't also open the editor; keyboard handling lives on the Checkbox inside. */}
+        <span
+          data-row-checkbox
+          className={styles.checkboxCell}
+          onClick={(e) => e.stopPropagation()}
+        >
+          <Checkbox
+            aria-label={`Select rule ${node.rule.name}`}
+            checked={selected}
+            onCheckedChange={onToggleSelected}
+          />
+        </span>
+        <span className={styles.nameCell}>
+          {depth > 0 ? (
+            <span
+              className={styles.indent}
+              style={{ width: depth * INDENT_PX }}
+              aria-hidden="true"
+            />
+          ) : null}
+          <Code>{node.rule.name}</Code>
+        </span>
+        <span className={styles.conditionCell}>
+          {prettyCondition(node.rule.condition)}
+        </span>
+        <span className={styles.modsCell}>
+          {mods.length === 0 ? (
+            <span className={styles.comment}>—</span>
+          ) : (
+            mods.map((m, i) => (
+              <Badge key={i} variant="neutral">
+                {String((m[0] as string | number | null | undefined) ?? "")} {String((m[1] as string | number | null | undefined) ?? "")}
+              </Badge>
+            ))
+          )}
+        </span>
+      </div>
+      {expanded ? (
+        <div className={styles.expandedRow}>
+          <RowDetailPanel
+            row={node.rule as unknown as Record<string, unknown>}
+            objectType="rule"
+            objectId={node.rule.uid}
+          />
+        </div>
+      ) : null}
     </div>
   );
 }

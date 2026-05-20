@@ -3,6 +3,28 @@
   border-bottom: 1px solid var(--border);
   gap: var(--space-1);
 }
+
+/* Split header — tab strip on the left, page-supplied actions on the right.
+   The border-bottom lives on the wrapper so the line under the tabs runs
+   the full width even when no tab is hovered/active. */
+.headerRow {
+  display: flex;
+  align-items: stretch;
+  justify-content: space-between;
+  gap: var(--space-3);
+  border-bottom: 1px solid var(--border);
+}
+.headerRow > .list {
+  border-bottom: 0;
+}
+.rightSlot {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding-bottom: var(--space-2);
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
 .trigger {
   position: relative;
   padding: var(--space-2) var(--space-3);

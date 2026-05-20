@@ -3,7 +3,9 @@ import { useNavigate, useSearch } from "@tanstack/react-router";
 import { Button } from "@/shared/ui/Button";
 import { DataTable } from "@/shared/ui/DataTable";
 import type { ContextMenuItem } from "@/shared/ui/DataTableContextMenu";
+import { EmptyState } from "@/shared/ui/EmptyState";
 import { RowDetailPanel } from "@/shared/ui/RowDetailPanel";
+import { useTableSearch } from "@/shared/hooks/useTableSearch";
 import {
   buildResourceContextMenu,
   ConfirmDeleteDialog,
@@ -61,7 +63,21 @@ export function RolesPage() {
     [navigate],
   );
 
-  const list = Roles.useList({ offset: (page - 1) * PAGE_SIZE, limit: PAGE_SIZE, orderby, asc });
+  const rolesSearch = useTableSearch({
+    collection: "role",
+    placeholder: "name = … AND permissions CONTAINS …",
+    onFilterChange: () => {
+      if (page !== 1) updateSearch({ page: 1 });
+    },
+  });
+
+  const list = Roles.useList({
+    offset: (page - 1) * PAGE_SIZE,
+    limit: PAGE_SIZE,
+    orderby,
+    asc,
+    ...(rolesSearch.q ? { q: rolesSearch.q } : {}),
+  });
   const remove = Roles.useRemove();
   const [selectedKeys, setSelectedKeys] = useState<Set<string>>(new Set());
   const confirmDelete = useConfirmDelete<Role>({
@@ -116,6 +132,24 @@ export function RolesPage() {
           >
             New
           </Button>
+        }
+        search={rolesSearch.searchProp}
+        emptyState={
+          <EmptyState
+            icon="file-text"
+            title="No roles yet"
+            description="Roles bundle permissions for one or more users."
+            action={
+              <Button
+                size="md"
+                variant="primary"
+                leadingIcon="plus"
+                onClick={() => setCreating(true)}
+              >
+                New role
+              </Button>
+            }
+          />
         }
         renderExpanded={(row) => (
           <RowDetailPanel

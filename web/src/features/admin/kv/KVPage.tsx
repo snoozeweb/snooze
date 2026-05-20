@@ -3,7 +3,9 @@ import { useNavigate, useSearch } from "@tanstack/react-router";
 import { Button } from "@/shared/ui/Button";
 import { DataTable } from "@/shared/ui/DataTable";
 import type { ContextMenuItem } from "@/shared/ui/DataTableContextMenu";
+import { EmptyState } from "@/shared/ui/EmptyState";
 import { RowDetailPanel } from "@/shared/ui/RowDetailPanel";
+import { useTableSearch } from "@/shared/hooks/useTableSearch";
 import {
   buildResourceContextMenu,
   ConfirmDeleteDialog,
@@ -61,11 +63,20 @@ export function KVPage() {
     [navigate],
   );
 
+  const kvSearch = useTableSearch({
+    collection: "kv",
+    placeholder: "namespace = … AND key MATCHES …",
+    onFilterChange: () => {
+      if (page !== 1) updateSearch({ page: 1 });
+    },
+  });
+
   const list = KVs.useList({
     offset: (page - 1) * PAGE_SIZE,
     limit: PAGE_SIZE,
     orderby,
     asc,
+    ...(kvSearch.q ? { q: kvSearch.q } : {}),
   });
   const remove = KVs.useRemove();
   const [selectedKeys, setSelectedKeys] = useState<Set<string>>(new Set());
@@ -121,6 +132,24 @@ export function KVPage() {
           >
             New
           </Button>
+        }
+        search={kvSearch.searchProp}
+        emptyState={
+          <EmptyState
+            icon="file-text"
+            title="No key-values yet"
+            description="Configuration values modifications and plugins can read at runtime."
+            action={
+              <Button
+                size="md"
+                variant="primary"
+                leadingIcon="plus"
+                onClick={() => setCreating(true)}
+              >
+                New key-value
+              </Button>
+            }
+          />
         }
         renderExpanded={(row) => (
           <RowDetailPanel

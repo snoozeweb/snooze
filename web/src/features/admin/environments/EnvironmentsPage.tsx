@@ -3,7 +3,9 @@ import { useNavigate, useSearch } from "@tanstack/react-router";
 import { Button } from "@/shared/ui/Button";
 import { DataTable } from "@/shared/ui/DataTable";
 import type { ContextMenuItem } from "@/shared/ui/DataTableContextMenu";
+import { EmptyState } from "@/shared/ui/EmptyState";
 import { RowDetailPanel } from "@/shared/ui/RowDetailPanel";
+import { useTableSearch } from "@/shared/hooks/useTableSearch";
 import {
   buildResourceContextMenu,
   ConfirmDeleteDialog,
@@ -61,11 +63,20 @@ export function EnvironmentsPage() {
     [navigate],
   );
 
+  const envSearch = useTableSearch({
+    collection: "environment",
+    placeholder: "name = …",
+    onFilterChange: () => {
+      if (page !== 1) updateSearch({ page: 1 });
+    },
+  });
+
   const list = Environments.useList({
     offset: (page - 1) * PAGE_SIZE,
     limit: PAGE_SIZE,
     orderby,
     asc,
+    ...(envSearch.q ? { q: envSearch.q } : {}),
   });
   const remove = Environments.useRemove();
   const [selectedKeys, setSelectedKeys] = useState<Set<string>>(new Set());
@@ -121,6 +132,24 @@ export function EnvironmentsPage() {
           >
             New
           </Button>
+        }
+        search={envSearch.searchProp}
+        emptyState={
+          <EmptyState
+            icon="file-text"
+            title="No environments yet"
+            description="Environment tags categorise hosts (prod, staging, …)."
+            action={
+              <Button
+                size="md"
+                variant="primary"
+                leadingIcon="plus"
+                onClick={() => setCreating(true)}
+              >
+                New environment
+              </Button>
+            }
+          />
         }
         renderExpanded={(row) => (
           <RowDetailPanel

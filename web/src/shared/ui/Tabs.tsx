@@ -24,8 +24,26 @@ export function Tabs({
   );
 }
 
-export function TabList({ children }: { children: ReactNode }) {
-  return <RT.List className={styles.list}>{children}</RT.List>;
+export function TabList({
+  children,
+  rightSlot,
+}: {
+  children: ReactNode;
+  /** Optional content rendered flush-right on the same row as the tab
+   *  triggers. Used by list pages to put the bulk-action bar / "+ New"
+   *  button next to the tab strip instead of stacking them vertically
+   *  above the table. */
+  rightSlot?: ReactNode;
+}) {
+  if (rightSlot === undefined) {
+    return <RT.List className={styles.list}>{children}</RT.List>;
+  }
+  return (
+    <div className={styles.headerRow}>
+      <RT.List className={styles.list}>{children}</RT.List>
+      <div className={styles.rightSlot}>{rightSlot}</div>
+    </div>
+  );
 }
 
 export function TabTrigger({

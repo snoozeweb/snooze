@@ -113,23 +113,43 @@
   visibility: hidden;
 }
 
-/* Insertion indicator drawn at the projected drop slot. The wrapper's
-   padding-left is set inline to match the row's offset to the start of
-   the name cell plus the per-depth indent, so the line lands exactly
-   where the dragged rule's name would render after drop. */
-.dropIndicator {
-  position: relative;
-  height: 0;
+/* Ghost row — rendered at the projected drop slot during a drag. Uses the
+   shared `.row` grid layout so the columns line up with the real rows, but
+   carries a dashed accent outline + reduced opacity to read as a placeholder.
+   The user sees both the floating DragOverlay clone (under the cursor) and
+   the ghost row (at the landing slot), which together make "what's moving"
+   and "where it lands" unambiguous. */
+.ghostRow {
+  background: color-mix(in oklch, var(--accent) 10%, transparent);
+  border: 1px dashed var(--accent);
+  border-radius: var(--radius-sm);
+  opacity: 0.85;
   pointer-events: none;
-  padding-right: var(--space-3);
+  color: var(--text-muted);
 }
-.dropIndicatorLine {
-  height: 2px;
-  background: var(--accent);
-  border-radius: 1px;
-  position: relative;
-  top: -1px;
-  box-shadow: 0 0 0 1px color-mix(in oklch, var(--accent) 30%, transparent);
+.ghostRow .nameCell {
+  color: var(--text-strong);
+}
+
+/* End-of-list drop sentinel. Tall enough that closestCenter prefers it over
+   the last real row when the cursor is below the tree, but otherwise
+   invisible — operators shouldn't see a phantom row when not dragging. */
+.endDroppable {
+  height: 48px;
+  margin: 0;
+  background: transparent;
+  pointer-events: auto;
+}
+
+/* Hint banner shown when a search filter is active — explains why the
+   familiar drag-handle gesture won't move anything in this state. */
+.searchHint {
+  padding: var(--space-2) var(--space-3);
+  background: var(--bg-elevated);
+  border: 1px dashed var(--border);
+  border-radius: var(--radius-md);
+  color: var(--text-muted);
+  font-size: var(--text-xs);
 }
 
 /* Floating preview rendered inside <DragOverlay>. A compact pill — just the

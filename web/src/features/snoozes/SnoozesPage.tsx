@@ -4,9 +4,11 @@ import { useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/shared/ui/Button";
 import { DataTable, type RowAction } from "@/shared/ui/DataTable";
 import type { ContextMenuItem } from "@/shared/ui/DataTableContextMenu";
+import { EmptyState } from "@/shared/ui/EmptyState";
 import { RowDetailPanel } from "@/shared/ui/RowDetailPanel";
 import { TabList, TabPanel, TabTrigger, Tabs } from "@/shared/ui/Tabs";
 import { toast } from "@/shared/ui/toast/useToast";
+import { useTableSearch } from "@/shared/hooks/useTableSearch";
 import {
   buildResourceContextMenu,
   ConfirmDeleteDialog,
@@ -81,12 +83,25 @@ export function SnoozesPage() {
     [navigate],
   );
 
+  const snoozeSearch = useTableSearch({
+    collection: "snooze",
+    placeholder: "name = … AND enabled = true",
+    onFilterChange: () => {
+      if (page !== 1) updateSearch({ page: 1 });
+    },
+  });
+
   // Snooze state (Active/Upcoming/Expired) is computed client-side from
   // time_constraints.datetime, so we have to fetch the full set to count
   // each tab and filter the visible rows. For a healthy ops setup the
   // total count is small (dozens, not thousands); if that changes we
   // push the predicate into a server-side `q` filter.
-  const list = Snoozes.useList({ limit: 1000, orderby, asc });
+  const list = Snoozes.useList({
+    limit: 1000,
+    orderby,
+    asc,
+    ...(snoozeSearch.q ? { q: snoozeSearch.q } : {}),
+  });
   const remove = Snoozes.useRemove();
   const qc = useQueryClient();
   const [selectedKeys, setSelectedKeys] = useState<Set<string>>(new Set());
@@ -199,13 +214,39 @@ export function SnoozesPage() {
     [confirmDelete, runRetroApply],
   );
 
+  // Render the count + actions in the tab-strip's right half: when rows are
+  // selected, we surface bulk actions; otherwise the "+ New" button.
+  const selectedSnoozeRows = useMemo(
+    () => paged.filter((r) => selectedKeys.has(r.uid ?? r.name)),
+    [paged, selectedKeys],
+  );
+  const headerActions =
+    selectedSnoozeRows.length > 0 ? (
+      <>
+        <span className={styles.selectionCount}>{selectedSnoozeRows.length} selected</span>
+        {bulkActions(selectedSnoozeRows)}
+      </>
+    ) : (
+      <>
+        <span className={styles.headerCount}>{filtered.length} {tab} snoozes</span>
+        <Button
+          size="sm"
+          variant="primary"
+          leadingIcon="plus"
+          onClick={() => setCreating(true)}
+        >
+          New
+        </Button>
+      </>
+    );
+
   return (
     <div className={styles.page}>
       <Tabs
         value={tab}
         onValueChange={(v) => updateSearch({ tab: v as SnoozeState, page: 1 })}
       >
-        <TabList>
+        <TabList rightSlot={headerActions}>
           {TABS.map((t) => (
             <TabTrigger key={t.value} value={t.value}>
               {t.label} ({counts[t.value]})
@@ -223,18 +264,24 @@ export function SnoozesPage() {
             selectable
             selectedKeys={selectedKeys}
             onSelectionChange={setSelectedKeys}
-            bulkActions={bulkActions}
             loading={list.isPending}
-            toolbarHeader={`${filtered.length} ${tab} snoozes`}
-            toolbar={
-              <Button
-                size="sm"
-                variant="primary"
-                leadingIcon="plus"
-                onClick={() => setCreating(true)}
-              >
-                New
-              </Button>
+            search={snoozeSearch.searchProp}
+            emptyState={
+              <EmptyState
+                icon="file-text"
+                title={`No ${tab} snoozes`}
+                description="Snoozes suppress alerts matching a condition for a time window."
+                action={
+                  <Button
+                    size="md"
+                    variant="primary"
+                    leadingIcon="plus"
+                    onClick={() => setCreating(true)}
+                  >
+                    New snooze
+                  </Button>
+                }
+              />
             }
             renderExpanded={(row) => (
               <RowDetailPanel

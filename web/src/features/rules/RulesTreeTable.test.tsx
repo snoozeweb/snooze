@@ -175,7 +175,7 @@ describe("RulesTreeTable", () => {
         <RulesTreeTable rules={[]} onRowOpen={() => undefined} />
       </Wrapper>,
     );
-    expect(screen.getByText("No rules yet.")).toBeInTheDocument();
+    expect(screen.getByText("No rules yet")).toBeInTheDocument();
   });
 
   it("renders rows in tree_order and shows children indented", () => {

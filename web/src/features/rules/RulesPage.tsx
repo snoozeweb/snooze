@@ -1,10 +1,12 @@
-import { useCallback, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { useNavigate, useSearch } from "@tanstack/react-router";
 import { Button } from "@/shared/ui/Button";
 import { DataTable } from "@/shared/ui/DataTable";
 import type { ContextMenuItem } from "@/shared/ui/DataTableContextMenu";
+import { EmptyState } from "@/shared/ui/EmptyState";
 import { RowDetailPanel } from "@/shared/ui/RowDetailPanel";
 import { TabList, TabPanel, TabTrigger, Tabs } from "@/shared/ui/Tabs";
+import { useTableSearch } from "@/shared/hooks/useTableSearch";
 import {
   buildResourceContextMenu,
   ConfirmDeleteDialog,
@@ -15,7 +17,7 @@ import { RuleEditor } from "./RuleEditor";
 import { RulesTreeTable } from "./RulesTreeTable";
 import { aggregateRuleColumns } from "./columns";
 import { ruleRowDisabled } from "./ruleUtils";
-import type { AggregateRule } from "./types";
+import type { AggregateRule, Rule } from "./types";
 import styles from "./RulesPage.module.css";
 
 type RulesSearch = {
@@ -67,24 +69,60 @@ export function RulesPage() {
   );
 
   const resource = tab === "rules" ? Rules : AggregateRules;
+  const isTree = tab === "rules";
+
+  // Each tab carries its own search state — switching between Rules and
+  // Aggregates preserves the query you typed in the other tab. The active
+  // tab decides which filter is actually applied.
+  const ruleSearch = useTableSearch({
+    collection: "rule",
+    placeholder: "name = … AND enabled = true",
+  });
+  const aggregateSearch = useTableSearch({
+    collection: "aggregaterule",
+    placeholder: "fields CONTAINS host",
+    onFilterChange: () => {
+      if (page !== 1) updateSearch({ page: 1 });
+    },
+  });
+
   // Rules tab: load the full set (limit=1000) so the tree component can
   // build the parent/child hierarchy client-side without juggling
   // pagination across levels. Aggregates tab keeps the paginated table.
-  const isTree = tab === "rules";
   const list = resource.useList(
     isTree
-      ? { limit: 1000, orderby: "tree_order", asc: true }
-      : { offset: (page - 1) * PAGE_SIZE, limit: PAGE_SIZE, orderby, asc },
+      ? {
+          limit: 1000,
+          orderby: "tree_order",
+          asc: true,
+          ...(ruleSearch.q ? { q: ruleSearch.q } : {}),
+        }
+      : {
+          offset: (page - 1) * PAGE_SIZE,
+          limit: PAGE_SIZE,
+          orderby,
+          asc,
+          ...(aggregateSearch.q ? { q: aggregateSearch.q } : {}),
+        },
   );
 
   const editorPlugin: "rule" | "aggregaterule" = tab === "rules" ? "rule" : "aggregaterule";
 
+  const removeRule = Rules.useRemove();
   const removeAggregate = AggregateRules.useRemove();
-  const [selectedKeys, setSelectedKeys] = useState<Set<string>>(new Set());
+  // Selection state is held per-tab so switching between Rules and
+  // Aggregates doesn't accidentally cross-contaminate.
+  const [ruleSelected, setRuleSelected] = useState<Set<string>>(new Set());
+  const [aggregateSelected, setAggregateSelected] = useState<Set<string>>(new Set());
+  const confirmDeleteRule = useConfirmDelete<Rule>({
+    onDelete: (uid) => removeRule.mutateAsync(uid),
+    noun: "rule",
+    onAfter: () => setRuleSelected(new Set()),
+  });
   const confirmDelete = useConfirmDelete<AggregateRule>({
     onDelete: (uid) => removeAggregate.mutateAsync(uid),
     noun: "aggregate rule",
-    onAfter: () => setSelectedKeys(new Set()),
+    onAfter: () => setAggregateSelected(new Set()),
   });
 
   const aggregateContextMenu = useCallback(
@@ -113,57 +151,127 @@ export function RulesPage() {
     [confirmDelete],
   );
 
+  // Selected rows for the active tab — used to render bulk actions in the
+  // tabbed-header right slot.
+  const ruleRows = useMemo(() => list.data?.data ?? [], [list.data]);
+  const aggregateRows = useMemo(() => list.data?.data ?? [], [list.data]);
+  const selectedRuleRows = useMemo(
+    () => ruleRows.filter((r) => ruleSelected.has(r.uid ?? r.name)),
+    [ruleRows, ruleSelected],
+  );
+  const selectedAggregateRows = useMemo(
+    () => aggregateRows.filter((r) => aggregateSelected.has(r.uid ?? r.name)),
+    [aggregateRows, aggregateSelected],
+  );
+  const headerActions = isTree
+    ? selectedRuleRows.length > 0
+      ? (
+        <>
+          <span className={styles.selectionCount}>{selectedRuleRows.length} selected</span>
+          <Button
+            size="sm"
+            variant="danger"
+            leadingIcon="trash"
+            onClick={() => confirmDeleteRule.request(selectedRuleRows)}
+          >
+            Delete ({selectedRuleRows.length})
+          </Button>
+        </>
+      )
+      : (
+        <>
+          <span className={styles.headerCount}>{list.data?.meta.total ?? 0} rules</span>
+          <Button
+            size="sm"
+            variant="primary"
+            leadingIcon="plus"
+            onClick={() => setCreating(true)}
+          >
+            New
+          </Button>
+        </>
+      )
+    : selectedAggregateRows.length > 0
+    ? (
+      <>
+        <span className={styles.selectionCount}>{selectedAggregateRows.length} selected</span>
+        {aggregateBulkActions(selectedAggregateRows)}
+      </>
+    )
+    : (
+      <>
+        <span className={styles.headerCount}>{list.data?.meta.total ?? 0} aggregate rules</span>
+        <Button
+          size="sm"
+          variant="primary"
+          leadingIcon="plus"
+          onClick={() => setCreating(true)}
+        >
+          New
+        </Button>
+      </>
+    );
+
   return (
     <div className={styles.page}>
       <Tabs
         value={tab}
         onValueChange={(v) => updateSearch({ tab: v as "rules" | "aggregates", page: 1 })}
       >
-        <TabList>
+        <TabList rightSlot={headerActions}>
           <TabTrigger value="rules">Rules</TabTrigger>
           <TabTrigger value="aggregates">Aggregates</TabTrigger>
         </TabList>
         <TabPanel value={tab}>
           {isTree ? (
             <RulesTreeTable
-              rules={list.data?.data ?? []}
+              rules={ruleRows}
               onRowOpen={(row) => {
                 if (row.uid) updateSearch({ uid: row.uid });
               }}
-              toolbarHeader={`${list.data?.meta.total ?? 0} rules`}
-              toolbar={
+              selectedKeys={ruleSelected}
+              onSelectionChange={setRuleSelected}
+              search={ruleSearch.searchProp}
+              searchActive={ruleSearch.q !== undefined}
+              emptyAction={
                 <Button
-                  size="sm"
+                  size="md"
                   variant="primary"
                   leadingIcon="plus"
                   onClick={() => setCreating(true)}
                 >
-                  New
+                  New rule
                 </Button>
               }
             />
           ) : (
             <DataTable<AggregateRule>
-              data={(list.data?.data ?? []) as AggregateRule[]}
+              data={aggregateRows}
               columns={aggregateRuleColumns}
               rowKey={(r) => r.uid ?? r.name}
               loading={list.isPending}
               rowDisabled={ruleRowDisabled}
               contextMenuItems={aggregateContextMenu}
               selectable
-              selectedKeys={selectedKeys}
-              onSelectionChange={setSelectedKeys}
-              bulkActions={aggregateBulkActions}
-              toolbarHeader={`${list.data?.meta.total ?? 0} aggregate rules`}
-              toolbar={
-                <Button
-                  size="sm"
-                  variant="primary"
-                  leadingIcon="plus"
-                  onClick={() => setCreating(true)}
-                >
-                  New
-                </Button>
+              selectedKeys={aggregateSelected}
+              onSelectionChange={setAggregateSelected}
+              search={aggregateSearch.searchProp}
+              emptyState={
+                <EmptyState
+                  icon="file-text"
+                  title="No aggregate rules yet"
+                  description="Aggregate rules group recurring alerts by a key field."
+                  action={
+                    <Button
+                      size="md"
+                      variant="primary"
+                      leadingIcon="plus"
+                      onClick={() => setCreating(true)}
+                    >
+                      New aggregate rule
+                    </Button>
+                  }
+                />
               }
               renderExpanded={(row) => (
                 <RowDetailPanel
@@ -207,6 +315,11 @@ export function RulesPage() {
         state={confirmDelete.state}
         onCancel={confirmDelete.cancel}
         onConfirm={() => void confirmDelete.confirm()}
+      />
+      <ConfirmDeleteDialog
+        state={confirmDeleteRule.state}
+        onCancel={confirmDeleteRule.cancel}
+        onConfirm={() => void confirmDeleteRule.confirm()}
       />
     </div>
   );

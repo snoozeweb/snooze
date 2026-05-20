@@ -6,6 +6,7 @@ import { Icon } from "@/shared/icons/Icon";
 import type { IconName } from "@/shared/icons/icon-names";
 import { IconButton } from "./IconButton";
 import { Menu, MenuContent, MenuItem, MenuTrigger } from "./Menu";
+import { SearchBar, type ParsedCondition } from "./SearchBar";
 import { Skeleton } from "./Skeleton";
 import { DataTableContextMenu, type ContextMenuItem } from "./DataTableContextMenu";
 import styles from "./DataTable.module.css";
@@ -59,6 +60,17 @@ export type DataTableProps<T> = {
    *  "42 users"). When no selection is active it sits next to `toolbar`;
    *  bulk-action mode replaces it with "N selected". */
   toolbarHeader?: ReactNode;
+  /** Optional in-table search. When provided, a SearchBar renders above
+   *  the table; pages pass through to their resource useList as ?q= for
+   *  server-side filtering. Identical surface across every table so
+   *  operators get the same DSL everywhere. */
+  search?: {
+    value: string;
+    onChange: (next: { text: string; condition: ParsedCondition | null }) => void;
+    /** Field-catalog collection (rule, snooze, user, …) for autocomplete. */
+    collection?: string;
+    placeholder?: string;
+  };
   emptyState?: ReactNode;
   loading?: boolean;
   onRowOpen?: (row: T) => void;
@@ -86,6 +98,7 @@ export function DataTable<T>({
   bulkActions,
   toolbar,
   toolbarHeader,
+  search,
   emptyState,
   loading = false,
   onRowOpen,
@@ -202,6 +215,16 @@ export function DataTable<T>({
 
   return (
     <div className={styles.wrap}>
+      {search ? (
+        <SearchBar
+          value={search.value}
+          onChange={(c) =>
+            search.onChange({ text: c.text, condition: c.condition })
+          }
+          {...(search.collection ? { collection: search.collection } : {})}
+          {...(search.placeholder ? { placeholder: search.placeholder } : {})}
+        />
+      ) : null}
       {showToolbar ? (
         <div
           className={hasSelection ? styles.toolbarSelected : styles.toolbar}

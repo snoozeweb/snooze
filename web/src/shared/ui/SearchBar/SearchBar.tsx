@@ -232,11 +232,21 @@ export function SearchBar({
   }, [tokens, value]);
 
   const onBlur = useCallback((e: React.FocusEvent<HTMLInputElement>): void => {
-    // If focus is moving into the suggestion list, keep the popover open.
+    // If focus is moving into the suggestion list or the clear button,
+    // keep the popover open (clear-button click would otherwise blur the
+    // input and the popover would race-close before we cleared).
     const next = e.relatedTarget as HTMLElement | null;
     if (next && next.closest(`.${styles.popover}`)) return;
+    if (next && next.closest(`.${styles.clearBtn}`)) return;
     setOpen(false);
   }, []);
+
+  const handleClear = useCallback(() => {
+    setError(null);
+    onChange({ text: "", condition: null, error: null });
+    setOpen(false);
+    queueMicrotask(() => inputRef.current?.focus());
+  }, [onChange]);
 
   return (
     <div className={[styles.wrap, error ? styles.invalid : null, className].filter(Boolean).join(" ")}>
@@ -271,6 +281,22 @@ export function SearchBar({
           onBlur={onBlur}
         />
       </div>
+      {value.length > 0 ? (
+        <button
+          type="button"
+          className={styles.clearBtn}
+          aria-label="Clear search"
+          // onMouseDown instead of onClick so the action lands BEFORE the
+          // input's onBlur fires — otherwise focus shifts to the button and
+          // the popover closes mid-click.
+          onMouseDown={(e) => {
+            e.preventDefault();
+            handleClear();
+          }}
+        >
+          <Icon name="x" size={14} />
+        </button>
+      ) : null}
       {open && suggestion.items.length > 0 ? (
         <div className={styles.popover} role="listbox">
           <div className={styles.popoverHead}>

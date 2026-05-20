@@ -47,7 +47,7 @@
   position: relative;
   flex: 1;
   min-width: 0;
-  height: 28px;
+  height: 32px;
 }
 
 .overlay,
@@ -59,10 +59,27 @@
   font: inherit;
   font-family: inherit;
   font-size: inherit;
-  line-height: 28px;
+  line-height: 32px;
   background: transparent;
   white-space: pre;
   overflow: hidden;
+}
+
+/* Clear button — visible only when the query is non-empty. Sits between
+   the input and the right edge so it doesn't interfere with the search
+   text or autocomplete popover. */
+.clearBtn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: 0;
+  padding: 0 var(--space-2);
+  cursor: pointer;
+  color: var(--text-muted);
+}
+.clearBtn:hover {
+  color: var(--text-strong);
 }
 
 .overlay {
