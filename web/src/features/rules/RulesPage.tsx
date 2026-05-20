@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { useNavigate, useSearch } from "@tanstack/react-router";
+import { useBlocker, useNavigate, useSearch } from "@tanstack/react-router";
 import { Button } from "@/shared/ui/Button";
 import { DataTable } from "@/shared/ui/DataTable";
 import type { ContextMenuItem } from "@/shared/ui/DataTableContextMenu";
@@ -145,6 +145,34 @@ export function RulesPage() {
     [],
   );
 
+  // Auto-cancel pending mode when the user has dragged things back to
+  // exactly the server state — every accumulated patch now matches the
+  // rule's (parents, tree_order) in the prop. Without this, dragging a
+  // rule down and then back up would leave the table in "pending" with
+  // a no-op patch list and force the user to click Cancel.
+  useEffect(() => {
+    if (pendingPatches.size === 0) return;
+    const ruleByUid = new Map((list.data?.data ?? []).map((r) => [r.uid, r] as const));
+    let allNoop = true;
+    for (const [uid, patch] of pendingPatches) {
+      const rule = ruleByUid.get(uid);
+      if (!rule) {
+        allNoop = false;
+        break;
+      }
+      const prevParents = rule.parents ?? [];
+      const sameParents =
+        prevParents.length === patch.parents.length &&
+        prevParents.every((p, i) => p === patch.parents[i]);
+      const sameOrder = (rule.tree_order ?? 0) === patch.tree_order;
+      if (!sameParents || !sameOrder) {
+        allNoop = false;
+        break;
+      }
+    }
+    if (allNoop) setPendingPatches(new Map());
+  }, [pendingPatches, list.data]);
+
   const validatePending = useCallback(async () => {
     if (pendingCount === 0) return;
     setSavingPending(true);
@@ -171,19 +199,37 @@ export function RulesPage() {
     setResetCounter((c) => c + 1);
   }, []);
 
-  // beforeunload guard — warn the user if they try to navigate away with
-  // uncommitted reorders. The browser controls the exact wording and only
-  // shows the prompt when there's recent user interaction, so this is
-  // best-effort.
+  // Selection and pending edit mode are mutually exclusive surfaces —
+  // the right header slot only has room for one set of actions at a
+  // time. We clear any existing row selection whenever the user enters
+  // pending mode so the "you have X selected" UI doesn't silently linger
+  // behind the pending banner, and we lock the checkboxes (see below)
+  // so they can't make a new selection until they Save or Cancel.
   useEffect(() => {
-    if (pendingCount === 0) return;
-    const handler = (e: BeforeUnloadEvent) => {
-      e.preventDefault();
-      e.returnValue = "";
-    };
-    window.addEventListener("beforeunload", handler);
-    return () => window.removeEventListener("beforeunload", handler);
-  }, [pendingCount]);
+    if (pendingCount > 0 && ruleSelected.size > 0) {
+      setRuleSelected(new Set());
+    }
+  }, [pendingCount, ruleSelected.size]);
+
+  // Navigation guard — for BOTH in-app routing (TanStack Router) and
+  // browser-level navigation (tab close, hard refresh, URL bar). The
+  // router blocker fires our confirm() prompt when the user clicks a
+  // sidebar link / hits Back, and `enableBeforeUnload` wires the same
+  // intent into the beforeunload event for browser nav. Both are gated
+  // on `pendingCount > 0` so unrelated navigation is unaffected.
+  useBlocker({
+    shouldBlockFn: () => {
+      if (pendingCount === 0) return false;
+      const ok = window.confirm(
+        "You have unsaved rule reorders. Leave without saving? Click Cancel to stay and review.",
+      );
+      // shouldBlockFn returns TRUE to BLOCK. The confirm dialog returns
+      // true when the user clicked "OK" (i.e. wants to leave), so we
+      // invert.
+      return !ok;
+    },
+    enableBeforeUnload: () => pendingCount > 0,
+  });
   const confirmDeleteRule = useConfirmDelete<Rule>({
     onDelete: (uid) => removeRule.mutateAsync(uid),
     noun: "rule",

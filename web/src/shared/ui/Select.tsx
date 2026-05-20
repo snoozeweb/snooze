@@ -26,22 +26,22 @@ export const SelectTrigger = forwardRef<HTMLButtonElement, SelectTriggerProps>(
 
 export function SelectContent({ children }: { children: ReactNode }) {
   const contentRef = useRef<HTMLDivElement | null>(null);
-  // See MultiCombobox.tsx for the full explanation — Radix Dialog +
-  // Radix Select both wrap content in react-remove-scroll, which
-  // preventDefaults wheel events targeting non-shard portals. Capture-
-  // phase listener at the document level catches wheel events first,
-  // scrolls the viewport manually, and stops the event entirely.
+  // See MultiCombobox.tsx for the full explanation. Window-capture wheel
+  // listener fires before any RemoveScroll listener anywhere.
   useEffect(() => {
-    const popover = contentRef.current;
-    if (!popover) return;
     const handler = (e: WheelEvent) => {
+      const popover = contentRef.current;
+      if (!popover) return;
       const target = e.target as Node | null;
       if (!target || !popover.contains(target)) return;
       let el: HTMLElement | null = target as HTMLElement;
       while (el && el !== popover) {
-        const style = window.getComputedStyle(el);
-        const overflowY = style.overflowY;
-        if ((overflowY === "auto" || overflowY === "scroll") && el.scrollHeight > el.clientHeight) {
+        const styles = window.getComputedStyle(el);
+        const overflowY = styles.overflowY;
+        if (
+          (overflowY === "auto" || overflowY === "scroll") &&
+          el.scrollHeight > el.clientHeight
+        ) {
           el.scrollTop += e.deltaY;
           e.preventDefault();
           e.stopImmediatePropagation();
@@ -51,8 +51,8 @@ export function SelectContent({ children }: { children: ReactNode }) {
       }
       e.stopImmediatePropagation();
     };
-    document.addEventListener("wheel", handler, { capture: true, passive: false });
-    return () => document.removeEventListener("wheel", handler, { capture: true });
+    window.addEventListener("wheel", handler, { capture: true, passive: false });
+    return () => window.removeEventListener("wheel", handler, { capture: true });
   }, []);
   return (
     <RS.Portal>

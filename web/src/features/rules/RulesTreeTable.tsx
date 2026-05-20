@@ -580,6 +580,7 @@ export function RulesTreeTable({
               aria-label="Select all rules"
               checked={allSelected ? true : someSelected ? "indeterminate" : false}
               onCheckedChange={toggleAll}
+              disabled={pending}
             />
           </span>
           <span>Name</span>
@@ -612,9 +613,10 @@ export function RulesTreeTable({
                 selected={isRowSelected(id)}
                 onToggleSelected={() => toggleSelection(id)}
                 onRowOpen={onRowOpen}
-                {...(onInsert ? { onInsert } : {})}
+                {...(onInsert && !pending ? { onInsert } : {})}
                 expanded={expanded.has(id)}
                 onToggleExpanded={() => toggleExpanded(id)}
+                selectionLocked={pending}
               />
             );
           })
@@ -647,7 +649,11 @@ export function RulesTreeTable({
                       selected={isRowSelected(id)}
                       onToggleSelected={() => toggleSelection(id)}
                       onRowOpen={onRowOpen}
-                      {...(onInsert ? { onInsert } : {})}
+                      // Hide the per-row "+ Add" menu while there are
+                      // uncommitted reorders — inserting a new rule mid-
+                      // edit would shift siblings the pending patches
+                      // don't account for and corrupt the staged state.
+                      {...(onInsert && !pending ? { onInsert } : {})}
                       expanded={!activeId && expanded.has(id)}
                       onToggleExpanded={() => toggleExpanded(id)}
                       // Active subtree rows: when the cursor is still over
@@ -663,6 +669,10 @@ export function RulesTreeTable({
                           ? "dim"
                           : "collapsed"
                       }
+                      // Lock selection while pending — the right header
+                      // slot is occupied by Cancel/Save, so bulk-action
+                      // affordances aren't reachable until commit anyway.
+                      selectionLocked={pending}
                     />
                   </Fragment>
                 );
@@ -795,6 +805,7 @@ function StaticTreeRow({
   onInsert,
   expanded,
   onToggleExpanded,
+  selectionLocked = false,
 }: Omit<SortableTreeRowProps, "id">) {
   const enabled = node.rule.enabled !== false;
   const mods = node.rule.modifications ?? [];
@@ -860,6 +871,7 @@ function StaticTreeRow({
             aria-label={`Select rule ${node.rule.name}`}
             checked={selected}
             onCheckedChange={onToggleSelected}
+            disabled={selectionLocked}
           />
         </span>
         <span className={styles.nameCell}>
@@ -927,6 +939,10 @@ type SortableTreeRowProps = {
    *                  via display:none so the ghost takes the freed
    *                  vertical space and the table stays the same size */
   activeSubtreeMode?: "none" | "dim" | "collapsed";
+  /** When true, the row's selection checkbox is rendered disabled —
+   *  used while uncommitted drag-and-drop changes are pending so the
+   *  user focuses on committing/cancelling before doing other actions. */
+  selectionLocked?: boolean;
 };
 
 function SortableTreeRow({
@@ -940,13 +956,22 @@ function SortableTreeRow({
   expanded,
   onToggleExpanded,
   activeSubtreeMode = "none",
+  selectionLocked = false,
 }: SortableTreeRowProps) {
   const sortable = useSortable({ id });
-  const { attributes, listeners, setNodeRef, transform, transition } = sortable;
-  const style: React.CSSProperties = {
-    transform: CSS.Transform.toString(transform),
-    transition: transition ?? undefined,
-  };
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = sortable;
+  // CRITICAL: skip the dnd-kit transform on the active (source) row. With
+  // <DragOverlay> rendering a floating clone that follows the cursor, the
+  // SOURCE row must stay at its original position — otherwise both the
+  // transform-translated source and the overlay clone race for the same
+  // screen position, producing a "row jumping to the top-left corner +
+  // flickering" effect every time the user starts a drag.
+  const style: React.CSSProperties = isDragging
+    ? {}
+    : {
+        transform: CSS.Transform.toString(transform),
+        transition: transition ?? undefined,
+      };
   const enabled = node.rule.enabled !== false;
   const mods = node.rule.modifications ?? [];
   return (
@@ -1029,6 +1054,7 @@ function SortableTreeRow({
             aria-label={`Select rule ${node.rule.name}`}
             checked={selected}
             onCheckedChange={onToggleSelected}
+            disabled={selectionLocked}
           />
         </span>
         <span className={styles.nameCell}>
