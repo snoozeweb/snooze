@@ -33,7 +33,7 @@ import {
   DragOverlay,
   KeyboardSensor,
   PointerSensor,
-  closestCenter,
+  pointerWithin,
   useDroppable,
   useSensor,
   useSensors,
@@ -326,12 +326,16 @@ export function RulesTreeTable({
   // rendered and the active subtree stays visible-dimmed in place.
   const projection = useMemo(() => {
     if (!activeId) return null;
-    // Cursor still over the active subtree → no-move. The ghost doesn't
-    // render in this case (handled below) and the active subtree stays
-    // visible-dimmed in its original layout slot.
-    if (overId !== null && overId !== END_DROPPABLE_ID && subtreeIds.has(overId)) {
-      return null;
-    }
+    // No-move state — the user hasn't committed to a target row yet:
+    //   - overId === null: drag just started, no `dragMove` event fired
+    //     yet. CRITICAL to return null here: with projection !== null,
+    //     the active row's outer wrapper goes display:none, which
+    //     collapses its bounding rect to (0,0,0,0) and makes
+    //     <DragOverlay> snap to the top-left of the window.
+    //   - cursor still over the active subtree itself: dragging onto
+    //     yourself is a no-op move.
+    if (overId === null) return null;
+    if (overId !== END_DROPPABLE_ID && subtreeIds.has(overId)) return null;
     // Sibling-shift math runs against the list AS IT WOULD BE after the
     // active subtree is lifted out (`projectionList`). Rendering, on the
     // other hand, happens against the FULL renderedFlat (which still
@@ -340,7 +344,7 @@ export function RulesTreeTable({
       (n) => !subtreeIds.has(n.rule.uid ?? n.rule.name),
     );
     let slotInProjection: number;
-    if (overId === END_DROPPABLE_ID || overId === null) {
+    if (overId === END_DROPPABLE_ID) {
       // Dragging past the last row resolves to "insert at the very end".
       slotInProjection = projectionList.length;
     } else {
@@ -623,7 +627,12 @@ export function RulesTreeTable({
         ) : (
           <DndContext
             sensors={sensors}
-            collisionDetection={closestCenter}
+            // pointerWithin avoids the closestCenter flicker at row
+            // midpoints: the "over" row is whichever rect the cursor is
+            // actually inside, not whichever rect's CENTER is closest.
+            // The result is stable across 1px movements — no oscillation
+            // between two rows whose centers happen to be equidistant.
+            collisionDetection={pointerWithin}
             onDragStart={handleDragStart}
             onDragMove={handleDragMove}
             onDragCancel={handleDragCancel}
