@@ -1,17 +1,29 @@
-// RulesTreeTable renders rules as a tree (parents[]/tree_order) with
-// drag-and-drop sibling reorder. Cross-parent moves are not supported in
-// this iteration — the user can change a rule's parent via its editor form
-// or backend API.
+// RulesTreeTable renders rules as a tree (parents[]/tree_order) with full
+// drag-and-drop reordering, including:
+//
+// - cross-parent moves (drop a child under a different parent),
+// - parent-as-child moves (drop a top-level rule onto another rule to
+//   nest it),
+// - subtree dragging (dragging a parent moves all its descendants).
+//
+// The single <DndContext> + flat <SortableContext> pattern is what enables
+// these moves: the previous per-sibling-group SortableContext setup
+// fundamentally couldn't represent a drop across levels. Drop *depth* is
+// derived from the horizontal offset the user has dragged, file-tree
+// style, via projectDrop().
 //
 // Data flow:
-//   1. RulesPage fetches all rules in one page (limit=1000) and hands them
-//      to this component, so we have the full tree client-side.
-//   2. buildTree groups by parents[0], sorts each level by tree_order ASC.
-//   3. <DndContext> wraps the whole tree; one <SortableContext> per sibling
-//      group keeps drag operations confined to a single level.
-//   4. On drop, we recompute tree_order across the affected sibling group
-//      and issue a PATCH per rule whose tree_order actually changed.
-import { useCallback, useMemo, useState } from "react";
+//   1. RulesPage fetches every rule and hands them down. We mirror that
+//      into local state so a drop can apply optimistically — without it,
+//      the row visibly snaps back to its origin before the PATCH lands
+//      and react-query re-fetches.
+//   2. buildTree groups by parents[0], sorts each level by tree_order.
+//   3. flattenTree gives the visible list. While dragging a parent, the
+//      descendants are hidden — they ride with the active row.
+//   4. On drop, we compute the new flat order + parent assignment, fire a
+//      PATCH per rule whose (parents, tree_order) changed, and apply the
+//      new order locally. The next refetch reconciles.
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   DndContext,
   KeyboardSensor,
@@ -20,41 +32,121 @@ import {
   useSensor,
   useSensors,
   type DragEndEvent,
+  type DragMoveEvent,
+  type DragStartEvent,
 } from "@dnd-kit/core";
 import {
   SortableContext,
-  arrayMove,
   sortableKeyboardCoordinates,
   useSortable,
   verticalListSortingStrategy,
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { Badge } from "@/shared/ui/Badge";
+import { Button } from "@/shared/ui/Button";
+import { Checkbox } from "@/shared/ui/Checkbox";
 import { Code } from "@/shared/ui/Code";
 import { Icon } from "@/shared/icons/Icon";
 import { RowDetailPanel } from "@/shared/ui/RowDetailPanel";
 import { toast } from "@/shared/ui/toast/useToast";
 import { prettyCondition } from "@/lib/condition/pretty";
+import {
+  ConfirmDeleteDialog,
+  useConfirmDelete,
+} from "@/shared/ui/resourceContextMenu";
 import { Rules } from "./api";
 import type { Rule } from "./types";
-import { buildTree, parentKey, sortSiblings } from "./tree";
-import type { TreeNode } from "./tree";
+import {
+  ROOT,
+  buildTree,
+  collectSubtreeIds,
+  flattenTree,
+  projectDrop,
+  type FlatNode,
+  type TreeNode,
+} from "./tree";
 import styles from "./RulesTreeTable.module.css";
 
 export type { TreeNode };
 
+const INDENT_PX = 20;
+
 export type RulesTreeTableProps = {
   rules: Rule[];
   onRowOpen: (r: Rule) => void;
+  /** Persistent toolbar slot — host's "New" button etc. Bulk-selection
+   *  mode replaces this with the delete action, just like DataTable. */
+  toolbar?: React.ReactNode;
+  toolbarHeader?: React.ReactNode;
 };
 
-export function RulesTreeTable({ rules, onRowOpen }: RulesTreeTableProps) {
+export function RulesTreeTable({ rules, onRowOpen, toolbar, toolbarHeader }: RulesTreeTableProps) {
   const update = Rules.useUpdate();
-  const { roots, byParent } = useMemo(() => buildTree(rules), [rules]);
+  const remove = Rules.useRemove();
 
-  // Per-row "details" expansion (JSON + audit) — kept separate from the
-  // tree's natural parent/child rendering (which is always-expanded today).
-  const [expanded, setExpanded] = useState<Set<string>>(() => new Set<string>());
+  // Local mirror of the prop, so we can apply drops optimistically before
+  // the network round-trip — otherwise dnd-kit animates the row back to its
+  // origin and only the post-refetch render shows the new order, which
+  // reads as a flicker.
+  const [localRules, setLocalRules] = useState<Rule[]>(rules);
+  useEffect(() => setLocalRules(rules), [rules]);
+
+  const { roots } = useMemo(() => buildTree(localRules), [localRules]);
+  const fullFlat = useMemo(() => flattenTree(roots), [roots]);
+
+  // Selection state. Toggling a parent toggles its full subtree.
+  const [selected, setSelected] = useState<Set<string>>(() => new Set());
+  // Cull stale selections when the underlying set of rules changes.
+  useEffect(() => {
+    const alive = new Set(localRules.map((r) => r.uid ?? r.name));
+    setSelected((prev) => {
+      let changed = false;
+      const next = new Set<string>();
+      for (const id of prev) {
+        if (alive.has(id)) next.add(id);
+        else changed = true;
+      }
+      return changed ? next : prev;
+    });
+  }, [localRules]);
+
+  const toggleSelection = useCallback(
+    (id: string) => {
+      setSelected((prev) => {
+        const subtree = collectSubtreeIds(fullFlat, id);
+        const next = new Set(prev);
+        const allOn = [...subtree].every((s) => prev.has(s));
+        if (allOn) for (const s of subtree) next.delete(s);
+        else for (const s of subtree) next.add(s);
+        return next;
+      });
+    },
+    [fullFlat],
+  );
+
+  const allSelected =
+    localRules.length > 0 && localRules.every((r) => selected.has(r.uid ?? r.name));
+  const someSelected = localRules.some((r) => selected.has(r.uid ?? r.name));
+  const toggleAll = useCallback(() => {
+    if (allSelected) setSelected(new Set());
+    else setSelected(new Set(localRules.map((r) => r.uid ?? r.name)));
+  }, [allSelected, localRules]);
+
+  const selectedRules = useMemo(
+    () => localRules.filter((r) => selected.has(r.uid ?? r.name)),
+    [localRules, selected],
+  );
+
+  const confirmDelete = useConfirmDelete<Rule>({
+    onDelete: (uid) => remove.mutateAsync(uid),
+    noun: "rule",
+    onAfter: () => setSelected(new Set()),
+  });
+
+  // Per-row "details" expansion. We force-close while dragging — leaving
+  // expanded panels in place produces a janky drag with rows constantly
+  // resizing, and the original Vue UI hid details during drag too.
+  const [expanded, setExpanded] = useState<Set<string>>(() => new Set());
   const toggleExpanded = useCallback((key: string) => {
     setExpanded((prev) => {
       const next = new Set(prev);
@@ -64,156 +156,370 @@ export function RulesTreeTable({ rules, onRowOpen }: RulesTreeTableProps) {
     });
   }, []);
 
-  // The PointerSensor activates only after a 6px drag so plain row clicks
-  // (to open the editor drawer) still work. The KeyboardSensor lets users
-  // reorder via keyboard for a11y.
+  // Drag state. `activeId` is the row being dragged; `overId` is the row
+  // the cursor is currently over (dnd-kit's collision target, which after
+  // verticalListSortingStrategy has reordered is the row the active will
+  // displace). `offsetX` tracks horizontal movement so we can project the
+  // drop depth.
+  const [activeId, setActiveId] = useState<string | null>(null);
+  const [overId, setOverId] = useState<string | null>(null);
+  const [offsetX, setOffsetX] = useState(0);
+
+  // The PointerSensor activates only after 6px of movement so plain row
+  // clicks (which open the editor drawer) still work.
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
   );
 
-  function handleDragEnd(e: DragEndEvent) {
-    const activeId = e.active.id as string;
-    const overId = (e.over?.id as string | undefined) ?? undefined;
-    if (!overId || activeId === overId) return;
-    const active = rules.find((r) => r.uid === activeId);
-    const over = rules.find((r) => r.uid === overId);
-    if (!active || !over) return;
-    const activeParent = parentKey(active);
-    const overParent = parentKey(over);
-    if (activeParent !== overParent) {
-      // Cross-parent moves are not allowed in this iteration. Surface a
-      // hint instead of silently doing nothing.
-      toast.info("Drop on a sibling to reorder. Cross-parent moves come from the rule editor.");
-      return;
-    }
-    const siblings = sortSiblings(byParent.get(activeParent) ?? []);
-    const oldIdx = siblings.findIndex((r) => r.uid === activeId);
-    const newIdx = siblings.findIndex((r) => r.uid === overId);
-    if (oldIdx < 0 || newIdx < 0) return;
-    const reordered = arrayMove(siblings, oldIdx, newIdx);
-    const changes = reordered
-      .map((r, i) => ({ r, i }))
-      .filter(({ r, i }) => r.tree_order !== i);
-    // Fire PATCH for every sibling whose ordinal shifted. We don't await
-    // each one serially — the queries layer batches list invalidation.
-    for (const { r, i } of changes) {
-      if (!r.uid) continue;
-      update.mutate(
-        { uid: r.uid, body: { tree_order: i } as Partial<Rule> },
-        {
-          onError: (err) => {
-            toast.error(`Failed to reorder ${r.name}: ${err.detail}`);
-          },
-        },
-      );
-    }
-  }
+  // The visible flat list during drag: descendants of the dragged item are
+  // hidden so dragging a parent visibly moves the whole subtree (the
+  // descendants will be relocated under the new position on drop).
+  const subtreeIds = useMemo(
+    () => (activeId ? collectSubtreeIds(fullFlat, activeId) : new Set<string>()),
+    [activeId, fullFlat],
+  );
+  const visibleFlat = useMemo(() => {
+    if (!activeId) return fullFlat;
+    return fullFlat.filter((n) => {
+      const id = n.rule.uid ?? n.rule.name;
+      // Keep the active row; hide its descendants.
+      return id === activeId || !subtreeIds.has(id);
+    });
+  }, [activeId, fullFlat, subtreeIds]);
 
-  if (rules.length === 0) {
-    return (
-      <div className={styles.tree}>
-        <div className={styles.empty}>No rules yet.</div>
-      </div>
-    );
-  }
+  // Project the drop target for the currently-active row, using the visible
+  // list with the active row temporarily removed.
+  const projected = useMemo(() => {
+    if (!activeId) return null;
+    const rest = visibleFlat.filter((n) => (n.rule.uid ?? n.rule.name) !== activeId);
+    // Use `overId` (the row the cursor is currently over) to find the slot.
+    // Fall back to the row's own position in the static flat list.
+    const targetId =
+      overId && overId !== activeId
+        ? overId
+        : visibleFlat[visibleFlat.findIndex((n) => (n.rule.uid ?? n.rule.name) === activeId) + 1]
+            ?.rule.uid ?? null;
+    const overIndex =
+      targetId !== null
+        ? rest.findIndex((n) => (n.rule.uid ?? n.rule.name) === targetId)
+        : rest.length;
+    const safeIndex = overIndex < 0 ? rest.length : overIndex;
+    return projectDrop(rest, safeIndex, offsetX, INDENT_PX);
+  }, [activeId, overId, visibleFlat, offsetX]);
+
+  const handleDragStart = useCallback((e: DragStartEvent) => {
+    setActiveId(e.active.id as string);
+    setOverId(null);
+    setOffsetX(0);
+    // Force-close every expanded details panel — leaving them open while
+    // rows are reshuffling produces the worst kind of layout thrash.
+    setExpanded(new Set());
+  }, []);
+
+  const handleDragMove = useCallback((e: DragMoveEvent) => {
+    setOffsetX(e.delta.x);
+    setOverId((e.over?.id as string | undefined) ?? null);
+  }, []);
+
+  const handleDragCancel = useCallback(() => {
+    setActiveId(null);
+    setOverId(null);
+    setOffsetX(0);
+  }, []);
+
+  const handleDragEnd = useCallback(
+    (e: DragEndEvent) => {
+      const draggedId = e.active.id as string;
+      const finalOverId = (e.over?.id as string | undefined) ?? null;
+      setActiveId(null);
+      setOverId(null);
+      setOffsetX(0);
+      if (!projected) return;
+
+      // Compute the new flat order. The active row + its subtree should
+      // land contiguously at the projected slot.
+      const subtree = collectSubtreeIds(fullFlat, draggedId);
+      const subtreeNodes = fullFlat.filter((n) =>
+        subtree.has(n.rule.uid ?? n.rule.name),
+      );
+      const remainder = fullFlat.filter(
+        (n) => !subtree.has(n.rule.uid ?? n.rule.name),
+      );
+
+      // Find the insertion point in `remainder` matching the drop target.
+      // The active row + its subtree should sit *before* whichever row the
+      // cursor was last over (which is the row dnd-kit displaced into the
+      // active's old slot).
+      const anchor = finalOverId && finalOverId !== draggedId ? finalOverId : null;
+      const insertAt =
+        anchor !== null
+          ? remainder.findIndex((n) => (n.rule.uid ?? n.rule.name) === anchor)
+          : remainder.length;
+      const insertAtSafe = insertAt < 0 ? remainder.length : insertAt;
+
+      // Refuse drops that would create a cycle (dragging a parent onto its
+      // own descendant).
+      if (subtree.has(projected.parentId) && projected.parentId !== ROOT) {
+        toast.info("Can't drop a rule inside its own subtree.");
+        return;
+      }
+
+      // The active row adopts the projected parent + depth; its descendants
+      // shift their depth by the same delta but keep their relative shape.
+      const activeNode = fullFlat.find(
+        (n) => (n.rule.uid ?? n.rule.name) === draggedId,
+      );
+      if (!activeNode) return;
+      const depthDelta = projected.depth - activeNode.depth;
+
+      const movedNodes: FlatNode[] = subtreeNodes.map((n, i) => ({
+        ...n,
+        depth: n.depth + depthDelta,
+        parentId:
+          i === 0
+            ? projected.parentId
+            : // descendant: parent is unchanged in the source tree, just
+              // ensure the parent reference still points at its true parent
+              // (which may also be in the moving subtree, so its uid is
+              // stable).
+              n.parentId,
+      }));
+
+      const reordered: FlatNode[] = [
+        ...remainder.slice(0, insertAtSafe),
+        ...movedNodes,
+        ...remainder.slice(insertAtSafe),
+      ];
+
+      // Compute new (parents, tree_order) per uid, grouped by their parent.
+      const byParent = new Map<string, FlatNode[]>();
+      for (const n of reordered) {
+        const arr = byParent.get(n.parentId) ?? [];
+        arr.push(n);
+        byParent.set(n.parentId, arr);
+      }
+      const patches: { uid: string; parents: string[]; tree_order: number }[] = [];
+      for (const [parent, siblings] of byParent.entries()) {
+        siblings.forEach((s, i) => {
+          if (!s.rule.uid) return;
+          const newParents = parent === ROOT ? [] : [parent];
+          const prevParents = s.rule.parents ?? [];
+          const prevOrder = s.rule.tree_order ?? -1;
+          const parentsChanged =
+            newParents.length !== prevParents.length ||
+            newParents.some((p, idx) => p !== prevParents[idx]);
+          if (parentsChanged || prevOrder !== i) {
+            patches.push({ uid: s.rule.uid, parents: newParents, tree_order: i });
+          }
+        });
+      }
+
+      if (patches.length === 0) return;
+
+      // Apply locally so the rendered order matches the user's intent
+      // immediately. The dnd-kit transform finishes animating into the
+      // visible slot, which lines up with the new tree position.
+      setLocalRules((prev) => {
+        const idx = new Map(prev.map((r) => [r.uid ?? r.name, r] as const));
+        const next: Rule[] = [];
+        for (const n of reordered) {
+          const key = n.rule.uid ?? n.rule.name;
+          const base = idx.get(key) ?? n.rule;
+          const parents = n.parentId === ROOT ? undefined : [n.parentId];
+          next.push({
+            ...base,
+            ...(parents === undefined ? { parents: [] } : { parents }),
+          });
+        }
+        // Stamp the per-parent tree_order so the next buildTree sees the
+        // optimistic order.
+        const counters = new Map<string, number>();
+        return next.map((r) => {
+          const p = r.parents?.[0] ?? ROOT;
+          const ord = counters.get(p) ?? 0;
+          counters.set(p, ord + 1);
+          return { ...r, tree_order: ord };
+        });
+      });
+
+      for (const p of patches) {
+        update.mutate(
+          {
+            uid: p.uid,
+            body: {
+              parents: p.parents,
+              tree_order: p.tree_order,
+            } as Partial<Rule>,
+          },
+          {
+            onError: (err) => toast.error(`Reorder failed: ${err.detail}`),
+          },
+        );
+      }
+    },
+    [fullFlat, projected, update],
+  );
+
+  // Compute the indicator depth for the active row during drag, so the row's
+  // visible indent updates live with the projected drop target.
+  const indicatorDepth = projected?.depth;
+
+  // Identify rows that are *bulk* selected via a parent toggle even though
+  // their own uid wasn't explicitly clicked — those still render as
+  // selected, and the parent's box shows a check (not indeterminate).
+  const isRowSelected = (id: string) => selected.has(id);
+
+  const hasSelection = selectedRules.length > 0;
+  const renderToolbar = toolbar !== undefined || toolbarHeader !== undefined || hasSelection;
 
   return (
-    <div className={styles.tree}>
-      <div className={styles.headerRow}>
-        <span />
-        <span />
-        <span>Name</span>
-        <span>Condition</span>
-        <span>Modifications</span>
+    <div className={styles.wrap}>
+      {renderToolbar ? (
+        <div
+          className={hasSelection ? styles.toolbarSelected : styles.toolbar}
+          role="region"
+          aria-label={hasSelection ? "Bulk actions" : "Table toolbar"}
+        >
+          {hasSelection ? (
+            <span className={styles.toolbarCount}>{selectedRules.length} selected</span>
+          ) : toolbarHeader !== undefined ? (
+            <span className={styles.toolbarHeader}>{toolbarHeader}</span>
+          ) : null}
+          <div className={styles.toolbarActions}>
+            {hasSelection ? (
+              <Button
+                size="sm"
+                variant="danger"
+                leadingIcon="trash"
+                onClick={() => confirmDelete.request(selectedRules)}
+              >
+                Delete ({selectedRules.length})
+              </Button>
+            ) : (
+              toolbar
+            )}
+          </div>
+        </div>
+      ) : null}
+
+      <div className={styles.tableScroll}>
+        <div className={styles.headerRow} role="row">
+          <span className={styles.expandCell} aria-hidden="true" />
+          <span className={styles.handleCell} aria-hidden="true" />
+          <span className={styles.checkboxCell}>
+            <Checkbox
+              aria-label="Select all rules"
+              checked={allSelected ? true : someSelected ? "indeterminate" : false}
+              onCheckedChange={toggleAll}
+            />
+          </span>
+          <span>Name</span>
+          <span>Condition</span>
+          <span>Modifications</span>
+        </div>
+
+        {localRules.length === 0 ? (
+          <div className={styles.empty}>No rules yet.</div>
+        ) : (
+          <DndContext
+            sensors={sensors}
+            collisionDetection={closestCenter}
+            onDragStart={handleDragStart}
+            onDragMove={handleDragMove}
+            onDragCancel={handleDragCancel}
+            onDragEnd={handleDragEnd}
+          >
+            <SortableContext
+              items={visibleFlat.map((n) => n.rule.uid ?? n.rule.name)}
+              strategy={verticalListSortingStrategy}
+            >
+              {visibleFlat.map((n) => {
+                const id = n.rule.uid ?? n.rule.name;
+                const isActive = activeId === id;
+                const displayDepth = isActive && indicatorDepth !== undefined
+                  ? indicatorDepth
+                  : n.depth;
+                return (
+                  <SortableTreeRow
+                    key={id}
+                    id={id}
+                    node={n}
+                    depth={displayDepth}
+                    selected={isRowSelected(id)}
+                    onToggleSelected={() => toggleSelection(id)}
+                    onRowOpen={onRowOpen}
+                    expanded={!activeId && expanded.has(id)}
+                    onToggleExpanded={() => toggleExpanded(id)}
+                    dragging={isActive}
+                  />
+                );
+              })}
+            </SortableContext>
+          </DndContext>
+        )}
       </div>
-      <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
-        <SiblingGroup
-          nodes={roots}
-          onRowOpen={onRowOpen}
-          expanded={expanded}
-          toggleExpanded={toggleExpanded}
-        />
-      </DndContext>
+
+      <ConfirmDeleteDialog
+        state={confirmDelete.state}
+        onCancel={confirmDelete.cancel}
+        onConfirm={() => void confirmDelete.confirm()}
+      />
     </div>
   );
 }
 
-type SiblingGroupProps = {
-  nodes: TreeNode[];
-  onRowOpen: (r: Rule) => void;
-  expanded: Set<string>;
-  toggleExpanded: (key: string) => void;
-};
-
-// SiblingGroup renders one level of the tree inside a SortableContext.
-// Each row recursively renders its own children inside their own
-// SortableContext, which means reorder operations stay scoped to a single
-// parent. The DndContext at the top level catches the drag-end and uses
-// the parents[] of the active/over rules to identify the affected group.
-function SiblingGroup({ nodes, onRowOpen, expanded, toggleExpanded }: SiblingGroupProps) {
-  const ids = nodes
-    .map((n) => n.rule.uid)
-    .filter((u): u is string => !!u);
-  return (
-    <SortableContext items={ids} strategy={verticalListSortingStrategy}>
-      <div className={styles.childList}>
-        {nodes.map((n) => (
-          <SortableTreeRow
-            key={n.rule.uid ?? n.rule.name}
-            node={n}
-            onRowOpen={onRowOpen}
-            expanded={expanded}
-            toggleExpanded={toggleExpanded}
-          />
-        ))}
-      </div>
-    </SortableContext>
-  );
-}
-
 type SortableTreeRowProps = {
-  node: TreeNode;
+  id: string;
+  node: FlatNode;
+  depth: number;
+  selected: boolean;
+  onToggleSelected: () => void;
   onRowOpen: (r: Rule) => void;
-  expanded: Set<string>;
-  toggleExpanded: (key: string) => void;
+  expanded: boolean;
+  onToggleExpanded: () => void;
+  dragging: boolean;
 };
 
-function SortableTreeRow({ node, onRowOpen, expanded, toggleExpanded }: SortableTreeRowProps) {
-  const id = node.rule.uid ?? node.rule.name;
+function SortableTreeRow({
+  id,
+  node,
+  depth,
+  selected,
+  onToggleSelected,
+  onRowOpen,
+  expanded,
+  onToggleExpanded,
+  dragging,
+}: SortableTreeRowProps) {
   const sortable = useSortable({ id });
-  const { attributes, listeners, setNodeRef, transform, transition, isDragging, isOver } = sortable;
+  const { attributes, listeners, setNodeRef, transform, transition, isOver } = sortable;
   const style: React.CSSProperties = {
     transform: CSS.Transform.toString(transform),
     transition: transition ?? undefined,
   };
-  // Depth-based indent: each level adds a fixed margin. We use a
-  // leading "twig" character (└─ for inner, ├─ for last) so the
-  // tree shape is legible even without subtle background banding.
-  const indentPx = node.depth * 16;
   const enabled = node.rule.enabled !== false;
   const mods = node.rule.modifications ?? [];
-  const rowKey = node.rule.uid ?? node.rule.name;
-  const isExpanded = expanded.has(rowKey);
   return (
-    <div>
+    <div ref={setNodeRef} style={style} className={styles.rowOuter}>
       <div
-        ref={setNodeRef}
-        style={style}
         className={[
           styles.row,
-          isDragging ? styles.rowDragging : "",
+          dragging ? styles.rowDragging : "",
           isOver ? styles.rowOver : "",
+          selected ? styles.rowSelected : "",
         ]
           .filter(Boolean)
           .join(" ")}
         {...(!enabled ? { "data-disabled": "true" } : {})}
+        {...(selected ? { "data-selected": "true" } : {})}
         onClick={(e) => {
-          // Don't open the drawer when the click started on the drag handle
-          // or the per-row details chevron.
+          // Suppress row-open when the click started on a control inside
+          // the row (drag handle, expand chevron, checkbox).
           const target = e.target as HTMLElement;
           if (target.closest("[data-drag-handle]")) return;
           if (target.closest("[data-expand-toggle]")) return;
+          if (target.closest("[data-row-checkbox]")) return;
           onRowOpen(node.rule);
         }}
         onKeyDown={(e) => {
@@ -221,6 +527,7 @@ function SortableTreeRow({ node, onRowOpen, expanded, toggleExpanded }: Sortable
             const target = e.target as HTMLElement;
             if (target.closest("[data-drag-handle]")) return;
             if (target.closest("[data-expand-toggle]")) return;
+            if (target.closest("[data-row-checkbox]")) return;
             onRowOpen(node.rule);
           }
         }}
@@ -232,14 +539,13 @@ function SortableTreeRow({ node, onRowOpen, expanded, toggleExpanded }: Sortable
           data-expand-toggle
           className={styles.expandBtn}
           aria-label={`Expand row ${node.rule.name}`}
-          aria-expanded={isExpanded}
+          aria-expanded={expanded}
           onClick={(e) => {
-            // Prevent the row's onClick (which opens the editor) from firing.
             e.stopPropagation();
-            toggleExpanded(rowKey);
+            onToggleExpanded();
           }}
         >
-          <Icon name={isExpanded ? "chevron-down" : "chevron-right"} size={14} />
+          <Icon name={expanded ? "chevron-down" : "chevron-right"} size={14} />
         </button>
         <span
           {...attributes}
@@ -250,18 +556,32 @@ function SortableTreeRow({ node, onRowOpen, expanded, toggleExpanded }: Sortable
         >
           <Icon name="grip" size={16} />
         </span>
+        {/* eslint-disable-next-line jsx-a11y/no-static-element-interactions, jsx-a11y/click-events-have-key-events -- Click-swallow shim so clicking the checkbox doesn't also open the editor; keyboard handling lives on the Checkbox inside. */}
+        <span
+          data-row-checkbox
+          className={styles.checkboxCell}
+          onClick={(e) => e.stopPropagation()}
+        >
+          <Checkbox
+            aria-label={`Select rule ${node.rule.name}`}
+            checked={selected}
+            onCheckedChange={onToggleSelected}
+          />
+        </span>
         <span className={styles.nameCell}>
-          {node.depth > 0 ? (
-            <span className={styles.indent} style={{ width: indentPx }}>
-              <span className={styles.twig}>└─ </span>
-            </span>
+          {depth > 0 ? (
+            <span
+              className={styles.indent}
+              style={{ width: depth * INDENT_PX }}
+              aria-hidden="true"
+            />
           ) : null}
           <Code>{node.rule.name}</Code>
         </span>
-        <span style={{ fontFamily: "var(--font-mono)", fontSize: "var(--text-xs)" }}>
+        <span className={styles.conditionCell}>
           {prettyCondition(node.rule.condition)}
         </span>
-        <span style={{ display: "inline-flex", gap: "var(--space-1)", flexWrap: "wrap" }}>
+        <span className={styles.modsCell}>
           {mods.length === 0 ? (
             <span className={styles.comment}>—</span>
           ) : (
@@ -273,7 +593,7 @@ function SortableTreeRow({ node, onRowOpen, expanded, toggleExpanded }: Sortable
           )}
         </span>
       </div>
-      {isExpanded ? (
+      {expanded ? (
         <div className={styles.expandedRow}>
           <RowDetailPanel
             row={node.rule as unknown as Record<string, unknown>}
@@ -281,14 +601,6 @@ function SortableTreeRow({ node, onRowOpen, expanded, toggleExpanded }: Sortable
             objectId={node.rule.uid}
           />
         </div>
-      ) : null}
-      {node.children.length > 0 ? (
-        <SiblingGroup
-          nodes={node.children}
-          onRowOpen={onRowOpen}
-          expanded={expanded}
-          toggleExpanded={toggleExpanded}
-        />
       ) : null}
     </div>
   );

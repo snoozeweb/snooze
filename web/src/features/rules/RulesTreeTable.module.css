@@ -1,57 +1,168 @@
-.tree {
+.wrap {
   display: flex;
   flex-direction: column;
+  gap: var(--space-2);
+}
+
+/* Toolbar — mirrors DataTable.toolbar so the page chrome stays consistent
+   between the Rules and Aggregates tabs. */
+.toolbar {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  background: var(--bg-surface);
+  color: var(--text);
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
-  overflow: hidden;
-  background: var(--surface-1);
+  font-size: var(--text-sm);
+  min-height: 44px;
 }
-.headerRow {
-  display: grid;
-  grid-template-columns: 28px 32px 220px 1fr 260px;
-  gap: var(--space-3);
+.toolbarSelected {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
   padding: var(--space-2) var(--space-3);
-  font-size: var(--text-xs);
-  font-weight: 500;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-  color: var(--text-muted);
-  background: var(--surface-2);
-  border-bottom: 1px solid var(--border);
+  background: var(--accent-bg);
+  color: var(--accent);
+  border: 1px solid var(--accent);
+  border-radius: var(--radius-md);
+  font-size: var(--text-sm);
+  min-height: 44px;
 }
-.empty {
-  padding: var(--space-5);
-  text-align: center;
-  color: var(--text-muted);
+.toolbarCount {
+  font-weight: var(--weight-semibold);
 }
+.toolbarHeader {
+  color: var(--text-muted);
+  font-size: var(--text-sm);
+}
+.toolbarActions {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin-left: auto;
+}
+
+.tableScroll {
+  width: 100%;
+  overflow-x: auto;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--bg-surface);
+}
+
+/* Single grid template shared by the header and every row, so columns line
+   up even though we render as <div>s (not <table>) to keep the parent/child
+   indent + drag handles simple. */
+.headerRow,
 .row {
   display: grid;
-  grid-template-columns: 28px 32px 220px 1fr 260px;
+  grid-template-columns:
+    28px /* expand chevron     */
+    28px /* drag handle        */
+    28px /* selection checkbox */
+    240px /* name              */
+    1fr /* condition           */
+    260px /* modifications     */;
   gap: var(--space-3);
   padding: var(--space-2) var(--space-3);
   align-items: center;
-  border-bottom: 1px solid var(--border-subtle, var(--border));
+}
+.headerRow {
+  background: var(--bg-canvas);
+  color: var(--text-muted);
+  font-weight: var(--weight-semibold);
+  font-size: var(--text-xs);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  border-bottom: 1px solid var(--border);
+  white-space: nowrap;
+  position: sticky;
+  top: 0;
+  z-index: var(--z-sticky);
+}
+.row {
+  border-bottom: 1px solid var(--border-muted);
   cursor: pointer;
-  background: var(--surface-1);
-  transition: background 80ms ease;
+  background: var(--bg-surface);
+  color: var(--text);
+  font-size: var(--text-sm);
+}
+.row:last-child {
+  border-bottom: 0;
+}
+.row:hover {
+  background: var(--bg-hover);
 }
 .row[data-disabled="true"] {
   color: var(--text-muted);
   opacity: 0.55;
   font-style: italic;
 }
-.row:last-child {
-  border-bottom: 0;
+.row[data-selected="true"] {
+  background: var(--accent-bg);
 }
-.row:hover {
-  background: var(--surface-2);
+.rowOuter {
+  /* The dnd-kit transform/transition lives on this wrapper so the row's
+     visible background, hover state, and grid layout stay clean. */
 }
 .rowDragging {
-  opacity: 0.4;
+  opacity: 0.5;
+  background: var(--bg-elevated);
 }
 .rowOver {
-  background: color-mix(in oklch, var(--accent) 12%, var(--surface-1));
+  outline: 1px solid var(--accent);
+  outline-offset: -1px;
 }
+
+.empty {
+  padding: var(--space-5);
+  text-align: center;
+  color: var(--text-muted);
+}
+
+/* Cell helpers ------------------------------------------------------------- */
+
+.expandCell,
+.handleCell,
+.checkboxCell {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.nameCell {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
+}
+.conditionCell {
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+.modsCell {
+  display: inline-flex;
+  gap: var(--space-1);
+  flex-wrap: wrap;
+}
+.indent {
+  display: inline-block;
+  flex-shrink: 0;
+  /* Vertical guide line — gives the tree a visible structure without the
+     ascii twig characters the previous incarnation used. */
+  border-left: 1px dashed var(--border);
+  align-self: stretch;
+  margin-right: var(--space-2);
+}
+.comment {
+  color: var(--text-muted);
+}
+
 .handle {
   display: inline-flex;
   align-items: center;
@@ -65,40 +176,12 @@
 }
 .handle:hover {
   color: var(--text);
-  background: var(--surface-3);
+  background: var(--bg-hover);
 }
 .handle:active {
   cursor: grabbing;
 }
-.nameCell {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--space-2);
-}
-.indent {
-  display: inline-block;
-  flex-shrink: 0;
-}
-.twig {
-  color: var(--text-muted);
-  font-family: var(--font-mono);
-  font-size: var(--text-xs);
-  user-select: none;
-}
-.comment {
-  color: var(--text-muted);
-  font-size: var(--text-sm);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.childList {
-  /* The child rows render inside this container; the grid alignment of
-     each row already provides the depth indentation, so this is just a
-     stack. */
-  display: flex;
-  flex-direction: column;
-}
+
 .expandBtn {
   background: none;
   border: 0;
@@ -113,11 +196,12 @@
   border-radius: var(--radius-sm);
 }
 .expandBtn:hover {
-  background: var(--surface-3);
+  background: var(--bg-hover);
   color: var(--text);
 }
+
 .expandedRow {
   padding: var(--space-3);
-  background: var(--surface-2);
-  border-bottom: 1px solid var(--border-subtle, var(--border));
+  background: var(--bg-canvas);
+  border-bottom: 1px solid var(--border-muted);
 }

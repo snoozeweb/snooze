@@ -44,8 +44,10 @@
   overflow: hidden;
 }
 .viewport {
-  overflow: auto;
+  overflow-y: auto;
+  overflow-x: hidden;
   max-height: inherit;
+  overscroll-behavior: contain;
 }
 .item {
   display: flex;

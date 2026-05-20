@@ -108,6 +108,7 @@ func (rt *Router) Build() chi.Router {
 	rt.mountSchema(r)
 	rt.mountPermissions(r)
 	rt.mountMetadata(r)
+	rt.mountCondition(r)
 
 	// --- snooze retro-apply (mounted BEFORE plugin CRUD so the more
 	//     specific `/{uid}/retro_apply` POST wins over the generic

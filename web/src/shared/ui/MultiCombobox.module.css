@@ -64,14 +64,15 @@
   /* Shrink to available height so the dropdown doesn't get clipped when
      the trigger is near a viewport edge. */
   max-height: min(260px, var(--radix-popover-content-available-height, 260px));
-  overflow: auto;
-  background: var(--surface-1);
+  overflow: hidden;
+  background: var(--bg-elevated);
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
-  box-shadow: 0 4px 16px rgb(0 0 0 / 30%);
+  box-shadow: var(--shadow-pop);
   z-index: var(--z-popover);
   display: flex;
   flex-direction: column;
+  overscroll-behavior: contain;
 }
 .searchWrap {
   padding: var(--space-2);
@@ -94,8 +95,10 @@
   list-style: none;
   margin: 0;
   padding: var(--space-1);
-  overflow: auto;
+  overflow-y: auto;
+  overflow-x: hidden;
   flex: 1 1 auto;
+  overscroll-behavior: contain;
 }
 .option {
   display: flex;

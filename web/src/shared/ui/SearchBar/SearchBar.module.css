@@ -1,0 +1,190 @@
+/*
+ * SearchBar — single-line search-DSL editor with overlay highlighter.
+ *
+ * Layout:
+ *   .wrap (relative)
+ *     .leadIcon       absolute-positioned magnifier
+ *     .inputBox       grid stack: overlay + input share the same box
+ *       .overlay      absolute, colored spans, aria-hidden
+ *       .input        transparent text on top
+ *     .popover        absolute-anchored suggestions
+ *     .error          pill under the wrap
+ *
+ * The overlay and input MUST share the same font, size, padding, and
+ * line-height so the cursor lines up over the colored spans.
+ */
+
+.wrap {
+  position: relative;
+  display: flex;
+  align-items: center;
+  width: 100%;
+  background: var(--bg-surface);
+  color: var(--text-strong);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  transition: border-color var(--dur-fast) var(--ease-out);
+  font-size: var(--text-sm);
+  font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, Consolas, monospace);
+}
+.wrap:hover {
+  border-color: var(--text-muted);
+}
+.wrap:focus-within {
+  border-color: var(--accent);
+}
+.invalid {
+  border-color: var(--severity-critical);
+}
+
+.leadIcon {
+  display: inline-flex;
+  padding: 0 var(--space-2);
+  color: var(--text-muted);
+}
+
+.inputBox {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+  height: 28px;
+}
+
+.overlay,
+.input {
+  position: absolute;
+  inset: 0;
+  padding: 0 var(--space-2);
+  border: 0;
+  font: inherit;
+  font-family: inherit;
+  font-size: inherit;
+  line-height: 28px;
+  background: transparent;
+  white-space: pre;
+  overflow: hidden;
+}
+
+.overlay {
+  pointer-events: none;
+  color: var(--text-strong);
+  /* The overlay scrolls in lockstep with the input via the JS sync. */
+}
+
+.input {
+  width: 100%;
+  outline: none;
+  color: transparent;
+  /* Native caret stays visible because color: transparent only nukes the glyphs, not the caret. */
+  caret-color: var(--text-strong);
+}
+.input::selection {
+  background: var(--accent-bg);
+  color: var(--text-strong);
+}
+
+.placeholder {
+  color: var(--text-muted);
+}
+
+/* --- Token classes ---------------------------------------------------- */
+
+.tIdent {
+  color: var(--text-strong);
+}
+.tString {
+  color: var(--severity-ok);
+}
+.tNumber {
+  color: var(--severity-info);
+}
+.tBool {
+  color: var(--severity-info);
+  font-weight: 600;
+}
+.tKeyword {
+  color: var(--accent);
+  font-weight: 600;
+}
+.tOperator {
+  color: var(--severity-warning);
+}
+.tPunct {
+  color: var(--text-muted);
+}
+.tError {
+  color: var(--severity-critical);
+  text-decoration: underline wavy var(--severity-critical);
+}
+
+/* --- Popover ---------------------------------------------------------- */
+
+.popover {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  right: 0;
+  z-index: var(--z-popover, 50);
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-pop);
+  max-height: 280px;
+  overflow: auto;
+  font-family: var(--font-sans, system-ui, sans-serif);
+}
+
+.popoverHead {
+  padding: var(--space-1) var(--space-2);
+  font-size: var(--text-xs);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-muted);
+  border-bottom: 1px solid var(--border-muted);
+}
+
+.list {
+  list-style: none;
+  margin: 0;
+  padding: var(--space-1) 0;
+}
+
+.option {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  padding: var(--space-1) var(--space-2);
+  cursor: pointer;
+  font-size: var(--text-sm);
+}
+.option:hover,
+.optionActive {
+  background: var(--bg-hover);
+}
+.optionLabel {
+  font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, Consolas, monospace);
+  color: var(--text-strong);
+}
+.optionDetail {
+  color: var(--text-muted);
+  font-size: var(--text-xs);
+}
+
+/* --- Error pill ------------------------------------------------------- */
+
+.error {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  padding: 2px var(--space-2);
+  font-size: var(--text-xs);
+  color: var(--severity-critical);
+  background: var(--bg-surface);
+  border: 1px solid var(--severity-critical);
+  border-radius: var(--radius-md);
+  z-index: calc(var(--z-popover, 50) + 1);
+}

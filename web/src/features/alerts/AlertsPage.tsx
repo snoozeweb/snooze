@@ -1,4 +1,4 @@
-import { useCallback, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { useNavigate, useSearch } from "@tanstack/react-router";
 import { DataTable, type RowAction } from "@/shared/ui/DataTable";
 import type { ContextMenuItem } from "@/shared/ui/DataTableContextMenu";
@@ -12,12 +12,16 @@ import {
   useConfirmDelete,
 } from "@/shared/ui/resourceContextMenu";
 import * as YAML from "yaml";
+import { encodeConditionQ } from "@/lib/condition/serialize";
+import type { Condition } from "@/lib/condition/types";
+import type { ParsedCondition } from "@/shared/ui/SearchBar";
 import { Records, useCommentRecord, useShelveRecord } from "./api";
 import { AlertRowDetail } from "./AlertRowDetail";
 import { AlertsFilters, type AlertFilters } from "./Filters";
 import { alertColumns } from "./columns";
 import { useAutoRefresh } from "./useAutoRefresh";
 import type { AlertState, Record_ } from "./types";
+import { tabById, type TabId } from "./tabs";
 import { ActionDialog, type ActionType } from "./ActionDialog";
 import styles from "./AlertsPage.module.css";
 
@@ -28,6 +32,30 @@ type AlertsSearch = AlertFilters & {
 };
 
 const PAGE_SIZE = 50;
+
+/**
+ * buildQueryParam combines the active lifecycle-tab preset with the
+ * SearchBar's DSL condition into a single Condition AST, then encodes it
+ * as base64url JSON for the `?q=` query parameter the CRUD layer expects.
+ * Returns undefined when both inputs are empty so the URL stays clean and
+ * react-query can cache the unfiltered list.
+ *
+ * The shape we produce is the frontend's `Condition` (type:"AND" / "EQUALS"),
+ * which the Go backend's UnmarshalJSON normalises into the canonical
+ * `op` form before the database driver translates it.
+ */
+function buildQueryParam(tab: TabId, dsl: ParsedCondition | null): string | undefined {
+  const parts: Condition[] = [];
+  const tabCondition = tabById(tab).condition;
+  if (tabCondition) parts.push(tabCondition);
+  if (dsl && dsl.op !== "" && dsl.op !== "ALWAYS_TRUE") {
+    parts.push(dsl as unknown as Condition);
+  }
+  if (parts.length === 0) return undefined;
+  const combined: Condition =
+    parts.length === 1 ? (parts[0] as Condition) : { type: "AND", args: parts };
+  return encodeConditionQ(combined);
+}
 
 async function copyToClipboard(text: string): Promise<boolean> {
   try {
@@ -57,12 +85,23 @@ export function AlertsPage() {
   const orderby = search.orderby ?? "date_epoch";
   const asc = search.asc ?? false;
 
+  const [searchCondition, setSearchCondition] = useState<ParsedCondition | null>(null);
+  const activeTab: TabId = search.tab ?? "alerts";
+
   const filters: AlertFilters = {
-    ...(search.state !== undefined ? { state: search.state } : {}),
-    ...(search.severity !== undefined ? { severity: search.severity } : {}),
-    ...(search.environment !== undefined ? { environment: search.environment } : {}),
+    tab: activeTab,
     ...(search.search !== undefined ? { search: search.search } : {}),
+    searchCondition,
   };
+
+  // Combine the active tab's preset condition with the SearchBar's DSL
+  // condition into a single AND clause sent server-side as ?q=. The "All"
+  // tab has a null preset, so a clean DSL query collapses to no filter at
+  // all — the request stays cacheable.
+  const q = useMemo(() => buildQueryParam(activeTab, searchCondition), [
+    activeTab,
+    searchCondition,
+  ]);
 
   const updateSearch = useCallback(
     (next: Partial<AlertsSearch>) => {
@@ -87,20 +126,14 @@ export function AlertsPage() {
       limit: PAGE_SIZE,
       orderby,
       asc,
-      ...(filters.search ? { search: filters.search } : {}),
+      ...(q ? { q } : {}),
     },
     {
       ...(auto.intervalMs !== undefined ? { refetchInterval: auto.intervalMs } : {}),
     },
   );
 
-  // Conditions land in M4; M3.1 post-filters state/severity/environment client-side.
-  const filtered = (list.data?.data ?? []).filter((r) => {
-    if (filters.state !== undefined && (r.state ?? "") !== filters.state) return false;
-    if (filters.severity !== undefined && r.severity !== filters.severity) return false;
-    if (filters.environment !== undefined && r.environment !== filters.environment) return false;
-    return true;
-  });
+  const filtered = list.data?.data ?? [];
 
   const confirmDelete = useConfirmDelete<Record_>({
     onDelete: (uid) => removeMut.mutateAsync(uid),
@@ -357,12 +390,25 @@ export function AlertsPage() {
       <AlertsFilters
         value={filters}
         onChange={(next) => {
-          const partial: Partial<AlertsSearch> = { page: 1 };
-          if (next.state !== undefined) partial.state = next.state;
-          if (next.severity !== undefined) partial.severity = next.severity;
-          if (next.environment !== undefined) partial.environment = next.environment;
-          if (next.search !== undefined) partial.search = next.search;
-          updateSearch(partial);
+          // The searchCondition / searchError fields are local UI state
+          // (they re-derive from the SearchBar's server round-trip on
+          // every text change), so we mirror them to React state instead
+          // of the URL search params.
+          if (next.searchCondition !== undefined) {
+            setSearchCondition(next.searchCondition);
+          }
+          // The "alerts" tab is the default landing — omit it from the
+          // URL so deep-links stay clean. Same for an empty search:
+          // setting the key to undefined tells TanStack Router to drop it
+          // from the URL on the next navigation. The Record<string,
+          // unknown> shape sidesteps exactOptionalPropertyTypes, which
+          // refuses explicit `undefined` on a typed optional property
+          // even though the runtime semantics are identical.
+          updateSearch({
+            page: 1,
+            tab: next.tab && next.tab !== "alerts" ? next.tab : undefined,
+            search: next.search || undefined,
+          } as Partial<AlertsSearch>);
         }}
       />
       <DataTable

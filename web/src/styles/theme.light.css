@@ -13,6 +13,11 @@
   --bg-elevated: #ffffff;
   --bg-hover: #f0f3f6;
 
+  /* Mirror of the dark-theme surface ladder (see theme.dark.css). */
+  --surface-1: var(--bg-surface);
+  --surface-2: var(--bg-elevated);
+  --surface-3: var(--bg-hover);
+
   /* Borders */
   --border: #d0d7de;
   --border-muted: #e4e8ed;

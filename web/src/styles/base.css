@@ -101,6 +101,17 @@ a:hover {
   border-radius: var(--radius-sm);
 }
 
+/* Text-entry form controls indicate focus via their own border-color change
+   (see Input/Textarea/Select/Combobox CSS). The global outline on top of
+   that produces a doubled "blue frame" that can clip outside small wrappers,
+   so it is suppressed for these elements. Buttons, links, checkboxes etc.
+   keep the global ring. */
+input:focus-visible,
+textarea:focus-visible,
+select:focus-visible {
+  outline: none;
+}
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,

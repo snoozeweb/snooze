@@ -1,14 +1,20 @@
-import { useEffect, useState } from "react";
-import { Input } from "@/shared/ui/Input";
-import { Select, SelectContent, SelectItem, SelectTrigger } from "@/shared/ui/Select";
-import type { AlertSeverity, AlertState } from "./types";
+import { SearchBar, type ParsedCondition, type ParseError } from "@/shared/ui/SearchBar";
+import { ALERT_TABS, type TabId } from "./tabs";
 import styles from "./Filters.module.css";
 
 export type AlertFilters = {
-  state?: AlertState;
-  severity?: AlertSeverity;
-  environment?: string;
+  /** Active lifecycle tab. Defaults to "alerts" when unset. */
+  tab?: TabId;
+  /** Raw query string from the SearchBar (URL-persisted). */
   search?: string;
+  /**
+   * Parsed AST from the SearchBar, written through onChange whenever the
+   * server parse round-trip completes. AlertsPage combines this with the
+   * active tab's preset into the final ?q= condition. Null = no DSL filter.
+   */
+  searchCondition?: ParsedCondition | null;
+  /** Last parse error, surfaced in the SearchBar pill. */
+  searchError?: ParseError | null;
 };
 
 export type AlertsFiltersProps = {
@@ -16,117 +22,61 @@ export type AlertsFiltersProps = {
   onChange: (next: AlertFilters) => void;
 };
 
-const STATE_OPTIONS = [
-  { value: "__all__", label: "All states" },
-  { value: "open", label: "Open" },
-  { value: "ack", label: "Acknowledged" },
-  { value: "close", label: "Closed" },
-  { value: "shelved", label: "Shelved" },
-] as const;
-
-const SEVERITY_OPTIONS = [
-  { value: "__all__", label: "All severities" },
-  { value: "critical", label: "Critical" },
-  { value: "error", label: "Error" },
-  { value: "warning", label: "Warning" },
-  { value: "info", label: "Info" },
-] as const;
-
+/**
+ * AlertsFilters renders the alerts page header: a horizontal tab strip
+ * keyed by lifecycle state, plus the search-DSL editor.
+ *
+ * The seven tabs mirror the Python 1.x web UI (see tabs.ts). Each tab
+ * applies a preset Condition that AND-combines with the SearchBar's DSL
+ * condition in AlertsPage. The combined Cond is sent server-side as
+ * `?q=base64url(JSON)`.
+ *
+ * No standalone state/severity/environment selects — the DSL covers them
+ * (`severity = critical AND environment = prod`).
+ */
 export function AlertsFilters({ value, onChange }: AlertsFiltersProps) {
-  const [envLocal, setEnvLocal] = useState(value.environment ?? "");
-  const [searchLocal, setSearchLocal] = useState(value.search ?? "");
+  const activeTab: TabId = value.tab ?? "alerts";
 
-  // Keep local input in sync if the parent resets the filter (e.g. via URL).
-  useEffect(() => {
-    setEnvLocal(value.environment ?? "");
-  }, [value.environment]);
-  useEffect(() => {
-    setSearchLocal(value.search ?? "");
-  }, [value.search]);
-
-  // Debounce free-text inputs.
-  useEffect(() => {
-    const t = setTimeout(() => {
-      if (envLocal !== (value.environment ?? "")) {
-        const next: AlertFilters = { ...value };
-        if (envLocal) next.environment = envLocal;
-        else delete next.environment;
-        onChange(next);
-      }
-    }, 300);
-    return () => clearTimeout(t);
-  }, [envLocal, value, onChange]);
-
-  useEffect(() => {
-    const t = setTimeout(() => {
-      if (searchLocal !== (value.search ?? "")) {
-        const next: AlertFilters = { ...value };
-        if (searchLocal) next.search = searchLocal;
-        else delete next.search;
-        onChange(next);
-      }
-    }, 300);
-    return () => clearTimeout(t);
-  }, [searchLocal, value, onChange]);
-
-  function handleState(v: string) {
-    const next: AlertFilters = { ...value };
-    if (v === "__all__") delete next.state;
-    // STATE_OPTIONS values are exactly AlertState literals; runtime-validated by the options list.
-    else next.state = v as AlertState; // narrowing from string to union
-    onChange(next);
-  }
-
-  function handleSeverity(v: string) {
-    const next: AlertFilters = { ...value };
-    if (v === "__all__") delete next.severity;
-    else next.severity = v;
-    onChange(next);
+  function handleTab(id: TabId) {
+    if (id === activeTab) return;
+    onChange({ ...value, tab: id });
   }
 
   return (
     <div className={styles.bar}>
-      <div className={styles.selectRow}>
-        <Select
-          {...(value.state !== undefined ? { value: value.state } : {})}
-          onValueChange={handleState}
-        >
-          <SelectTrigger placeholder="State" />
-          <SelectContent>
-            {STATE_OPTIONS.map((o) => (
-              <SelectItem key={o.value} value={o.value}>
-                {o.label}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-        <Select
-          {...(value.severity !== undefined ? { value: value.severity } : {})}
-          onValueChange={handleSeverity}
-        >
-          <SelectTrigger placeholder="Severity" />
-          <SelectContent>
-            {SEVERITY_OPTIONS.map((o) => (
-              <SelectItem key={o.value} value={o.value}>
-                {o.label}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-        <Input
-          placeholder="Environment"
-          value={envLocal}
-          onChange={(e) => setEnvLocal(e.target.value)}
-        />
+      <div
+        role="tablist"
+        aria-label="Alert lifecycle filter"
+        className={styles.tabs}
+      >
+        {ALERT_TABS.map((tab) => {
+          const active = tab.id === activeTab;
+          return (
+            <button
+              key={tab.id}
+              type="button"
+              role="tab"
+              aria-selected={active}
+              data-state={active ? "active" : "inactive"}
+              className={styles.tab}
+              onClick={() => handleTab(tab.id)}
+            >
+              {tab.label}
+            </button>
+          );
+        })}
       </div>
-      <div className={styles.searchWrap}>
-        <Input
-          placeholder="Search host, message, …"
-          leadingIcon="search"
-          value={searchLocal}
-          onChange={(e) => setSearchLocal(e.target.value)}
-        />
-      </div>
+      <SearchBar
+        value={value.search ?? ""}
+        onChange={(c) => {
+          const next: AlertFilters = { ...value };
+          if (c.text) next.search = c.text;
+          else delete next.search;
+          next.searchCondition = c.condition;
+          next.searchError = c.error;
+          onChange(next);
+        }}
+      />
     </div>
   );
 }

@@ -16,6 +16,13 @@
   --bg-elevated: #161b22;
   --bg-hover: #1c232c;
 
+  /* Aliases used by row/popover-style components that want a step ladder
+     (1 = base row, 2 = header / hover, 3 = pill / pressed). Keep these in
+     sync with the --bg-* tokens above. */
+  --surface-1: var(--bg-surface);
+  --surface-2: var(--bg-elevated);
+  --surface-3: var(--bg-hover);
+
   /* Borders */
   --border: #2a313a;
   --border-muted: #1c232c;

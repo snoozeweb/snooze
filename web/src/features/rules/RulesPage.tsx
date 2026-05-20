@@ -125,11 +125,13 @@ export function RulesPage() {
         </TabList>
         <TabPanel value={tab}>
           {isTree ? (
-            <>
-              <div className={styles.topbar}>
-                <span style={{ color: "var(--text-muted)", fontSize: "var(--text-sm)" }}>
-                  {list.data?.meta.total ?? 0} rules
-                </span>
+            <RulesTreeTable
+              rules={list.data?.data ?? []}
+              onRowOpen={(row) => {
+                if (row.uid) updateSearch({ uid: row.uid });
+              }}
+              toolbarHeader={`${list.data?.meta.total ?? 0} rules`}
+              toolbar={
                 <Button
                   size="sm"
                   variant="primary"
@@ -138,14 +140,8 @@ export function RulesPage() {
                 >
                   New
                 </Button>
-              </div>
-              <RulesTreeTable
-                rules={list.data?.data ?? []}
-                onRowOpen={(row) => {
-                  if (row.uid) updateSearch({ uid: row.uid });
-                }}
-              />
-            </>
+              }
+            />
           ) : (
             <DataTable<AggregateRule>
               data={(list.data?.data ?? []) as AggregateRule[]}

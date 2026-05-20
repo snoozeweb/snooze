@@ -2,23 +2,43 @@
   display: flex;
   flex-direction: column;
   gap: var(--space-2);
+}
+
+/*
+ * Tab strip — mirrors Tabs.module.css's underlined-pill style so the
+ * lifecycle filter feels visually consistent with the rest of the app's
+ * tabbed surfaces (Settings, Profile, etc.).
+ */
+.tabs {
+  display: flex;
+  align-items: flex-end;
+  gap: var(--space-1);
+  border-bottom: 1px solid var(--border);
+  overflow-x: auto;
+}
+.tab {
+  position: relative;
   padding: var(--space-2) var(--space-3);
-  background: var(--bg-surface);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-md);
+  font-size: var(--text-sm);
+  font-weight: var(--weight-medium);
+  color: var(--text-muted);
+  background: none;
+  border: 0;
+  cursor: pointer;
+  margin-bottom: -1px;
+  border-bottom: 2px solid transparent;
+  white-space: nowrap;
+  transition: color var(--dur-fast) var(--ease-out);
 }
-/* Top row: three selects side by side — state, severity, environment. */
-.selectRow {
-  display: grid;
-  grid-template-columns: 1fr 1fr 1fr;
-  gap: var(--space-2);
+.tab:hover {
+  color: var(--text-strong);
 }
-@media (max-width: 720px) {
-  .selectRow {
-    grid-template-columns: 1fr;
-  }
+.tab[data-state="active"] {
+  color: var(--text-strong);
+  border-bottom-color: var(--accent);
 }
-/* Bottom row: the search field gets its own line so the input has room. */
-.searchWrap {
-  display: block;
+.tab:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: -2px;
+  border-radius: var(--radius-sm);
 }
