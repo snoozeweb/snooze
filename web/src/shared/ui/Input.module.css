@@ -34,16 +34,16 @@
 }
 
 .sm {
-  height: 24px;
-  font-size: var(--text-xs);
-}
-.md {
   height: 28px;
   font-size: var(--text-sm);
 }
-.lg {
-  height: 34px;
+.md {
+  height: 32px;
   font-size: var(--text-md);
+}
+.lg {
+  height: 38px;
+  font-size: var(--text-lg);
 }
 
 .iconLeft {

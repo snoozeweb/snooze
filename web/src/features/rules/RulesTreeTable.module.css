@@ -108,12 +108,45 @@
      visible background, hover state, and grid layout stay clean. */
 }
 .rowDragging {
-  opacity: 0.5;
-  background: var(--bg-elevated);
+  /* Source row is hidden while a DragOverlay clone follows the cursor;
+     leaving any visible trace of the source produces a double-image. */
+  visibility: hidden;
 }
-.rowOver {
-  outline: 1px solid var(--accent);
-  outline-offset: -1px;
+
+/* Insertion indicator drawn at the projected drop slot. The wrapper's
+   padding-left is set inline to match the row's offset to the start of
+   the name cell plus the per-depth indent, so the line lands exactly
+   where the dragged rule's name would render after drop. */
+.dropIndicator {
+  position: relative;
+  height: 0;
+  pointer-events: none;
+  padding-right: var(--space-3);
+}
+.dropIndicatorLine {
+  height: 2px;
+  background: var(--accent);
+  border-radius: 1px;
+  position: relative;
+  top: -1px;
+  box-shadow: 0 0 0 1px color-mix(in oklch, var(--accent) 30%, transparent);
+}
+
+/* Floating preview rendered inside <DragOverlay>. A compact pill — just the
+   name + grip — keeps the cursor responsive and avoids hauling the full
+   row's width around the screen. */
+.dragPreview {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  background: var(--bg-elevated);
+  color: var(--text-strong);
+  border: 1px solid var(--accent);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-pop);
+  font-size: var(--text-sm);
+  cursor: grabbing;
 }
 
 .empty {

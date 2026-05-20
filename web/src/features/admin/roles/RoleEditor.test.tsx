@@ -125,9 +125,9 @@ describe("RoleEditor", () => {
     const combobox = await screen.findByRole("combobox", { name: /permissions/i });
     await user.click(combobox);
     await user.click(await screen.findByRole("option", { name: /rw_rule/ }));
-    // Reopen for the second selection (popover closes after a click on
-    // some Radix versions; tapping the wrapper reopens it).
-    await user.click(combobox);
+    // The MultiCombobox popover stays open between selections (no
+    // implicit close on option click) so the second option is selectable
+    // without reopening the dropdown.
     await user.click(await screen.findByRole("option", { name: /ro_rule/ }));
 
     await user.click(screen.getByRole("button", { name: /create/i }));

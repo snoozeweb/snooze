@@ -3,7 +3,7 @@
 // legacy Vue UI used for actions/roles/permissions). Wraps the same
 // Radix Popover primitive that Combobox uses, so the styling stays
 // consistent across the app.
-import { useId, useMemo, useState } from "react";
+import { useEffect, useId, useMemo, useRef, useState } from "react";
 import * as RP from "@radix-ui/react-popover";
 import { Icon } from "@/shared/icons/Icon";
 import styles from "./MultiCombobox.module.css";
@@ -36,6 +36,24 @@ export function MultiCombobox({
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
   const [activeIndex, setActiveIndex] = useState(0);
+  const contentRef = useRef<HTMLDivElement | null>(null);
+
+  // When this popover opens inside a Drawer (Radix Dialog), the Dialog's
+  // react-remove-scroll body-lock attaches a non-passive `wheel` listener on
+  // `document` and preventDefault()s every wheel event that isn't on a
+  // whitelisted shard. Popover content portals outside the Dialog, so it is
+  // not on the shard list — the listener fires and mousewheel scrolling
+  // inside the dropdown silently dies. Attach a native wheel listener on the
+  // popover content with stopPropagation so the event never reaches that
+  // document listener.
+  useEffect(() => {
+    if (!open) return;
+    const el = contentRef.current;
+    if (!el) return;
+    const handler = (e: WheelEvent) => e.stopPropagation();
+    el.addEventListener("wheel", handler);
+    return () => el.removeEventListener("wheel", handler);
+  }, [open]);
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -120,6 +138,7 @@ export function MultiCombobox({
       </RP.Trigger>
       <RP.Portal>
         <RP.Content
+          ref={contentRef}
           className={styles.popContent}
           sideOffset={4}
           align="start"

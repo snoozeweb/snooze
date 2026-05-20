@@ -17,16 +17,16 @@
 }
 
 .sm {
-  width: 24px;
-  height: 24px;
-}
-.md {
   width: 28px;
   height: 28px;
 }
+.md {
+  width: 32px;
+  height: 32px;
+}
 .lg {
-  width: 34px;
-  height: 34px;
+  width: 38px;
+  height: 38px;
 }
 
 .primary {

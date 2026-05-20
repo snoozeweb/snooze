@@ -1,4 +1,4 @@
-import { forwardRef } from "react";
+import { forwardRef, useEffect, useRef } from "react";
 import type { ReactNode } from "react";
 import * as RS from "@radix-ui/react-select";
 import { Icon } from "@/shared/icons/Icon";
@@ -25,9 +25,21 @@ export const SelectTrigger = forwardRef<HTMLButtonElement, SelectTriggerProps>(
 );
 
 export function SelectContent({ children }: { children: ReactNode }) {
+  const contentRef = useRef<HTMLDivElement | null>(null);
+  // Stop wheel events from bubbling to document, where Radix Dialog's
+  // react-remove-scroll listener would preventDefault() and break mousewheel
+  // scrolling on Select dropdowns opened from inside a Drawer.
+  useEffect(() => {
+    const el = contentRef.current;
+    if (!el) return;
+    const handler = (e: WheelEvent) => e.stopPropagation();
+    el.addEventListener("wheel", handler);
+    return () => el.removeEventListener("wheel", handler);
+  }, []);
   return (
     <RS.Portal>
       <RS.Content
+        ref={contentRef}
         className={styles.content}
         position="popper"
         sideOffset={4}

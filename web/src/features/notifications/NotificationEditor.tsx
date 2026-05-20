@@ -219,11 +219,7 @@ export function NotificationEditor({ uid, onClose }: NotificationEditorProps) {
               <CollapsibleSection
                 title="Time constraints"
                 summary={<TimeConstraintsCell value={timeConstraints} />}
-                defaultOpen={
-                  (timeConstraints.weekdays?.length ?? 0) > 0 ||
-                  (timeConstraints.time?.length ?? 0) > 0 ||
-                  (timeConstraints.datetime?.length ?? 0) > 0
-                }
+                defaultOpen
               >
                 <TimeConstraintsEditor
                   value={timeConstraints}
@@ -233,11 +229,7 @@ export function NotificationEditor({ uid, onClose }: NotificationEditorProps) {
               <CollapsibleSection
                 title="Frequency"
                 summary={summarizeFrequency(frequency)}
-                defaultOpen={
-                  (frequency.total ?? 0) > 0 ||
-                  (frequency.delay ?? 0) > 0 ||
-                  (frequency.every ?? 0) > 0
-                }
+                defaultOpen
               >
                 <FrequencyEditor
                   value={frequency}

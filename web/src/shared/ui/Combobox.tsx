@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import * as RP from "@radix-ui/react-popover";
 import { Icon } from "@/shared/icons/Icon";
 import styles from "./Combobox.module.css";
@@ -25,6 +25,20 @@ export function Combobox({
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
   const [activeIndex, setActiveIndex] = useState(0);
+  const contentRef = useRef<HTMLDivElement | null>(null);
+
+  // See MultiCombobox.tsx for the why — Radix Dialog's body-scroll-lock
+  // intercepts wheel events on portaled popovers and breaks mousewheel
+  // scrolling. Stop propagation at the popover content so the document-level
+  // listener never fires.
+  useEffect(() => {
+    if (!open) return;
+    const el = contentRef.current;
+    if (!el) return;
+    const handler = (e: WheelEvent) => e.stopPropagation();
+    el.addEventListener("wheel", handler);
+    return () => el.removeEventListener("wheel", handler);
+  }, [open]);
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -68,6 +82,7 @@ export function Combobox({
       </RP.Trigger>
       <RP.Portal>
         <RP.Content
+          ref={contentRef}
           className={styles.content}
           sideOffset={4}
           align="start"

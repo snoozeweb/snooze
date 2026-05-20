@@ -185,11 +185,7 @@ export function SnoozeEditor({ uid, onClose }: SnoozeEditorProps) {
               <CollapsibleSection
                 title="Time constraints"
                 summary={<TimeConstraintsCell value={tc} />}
-                defaultOpen={
-                  (tc.weekdays?.length ?? 0) > 0 ||
-                  (tc.time?.length ?? 0) > 0 ||
-                  (tc.datetime?.length ?? 0) > 0
-                }
+                defaultOpen
               >
                 <TimeConstraintsEditor
                   value={tc}
