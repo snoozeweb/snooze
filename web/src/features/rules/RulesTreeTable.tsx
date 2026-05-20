@@ -34,7 +34,6 @@ import {
   KeyboardSensor,
   PointerSensor,
   pointerWithin,
-  useDroppable,
   useSensor,
   useSensors,
   type DragEndEvent,
@@ -79,9 +78,6 @@ import styles from "./RulesTreeTable.module.css";
 export type { TreeNode };
 
 const INDENT_PX = 20;
-// Stable id for the "drop past the end of the list" sentinel droppable.
-// Anything reserved with __ at both ends won't collide with a real rule uid.
-const END_DROPPABLE_ID = "__rules-tree-end__";
 
 // No-op strategy: keep rows physically in place during drag. Visual feedback
 // is handled by the ghost row + the DragOverlay clone, not by transforming
@@ -339,7 +335,7 @@ export function RulesTreeTable({
     //   - cursor still over the active subtree itself: dragging onto
     //     yourself is a no-op move.
     if (overId === null) return null;
-    if (overId !== END_DROPPABLE_ID && subtreeIds.has(overId)) return null;
+    if (subtreeIds.has(overId)) return null;
     // Sibling-shift math runs against the list AS IT WOULD BE after the
     // active subtree is lifted out (`projectionList`). Rendering, on the
     // other hand, happens against the FULL renderedFlat (which still
@@ -347,21 +343,17 @@ export function RulesTreeTable({
     const projectionList = renderedFlat.filter(
       (n) => !subtreeIds.has(n.rule.uid ?? n.rule.name),
     );
-    let slotInProjection: number;
-    if (overId === END_DROPPABLE_ID) {
-      // Dragging past the last row resolves to "insert at the very end".
-      slotInProjection = projectionList.length;
-    } else {
-      const idx = projectionList.findIndex(
-        (n) => (n.rule.uid ?? n.rule.name) === overId,
-      );
-      // dropAfter swaps the slot from "before this row" to "after this
-      // row", which is what makes "drag onto X + drag right = child of X"
-      // produce the expected projection. Without this swap, dragging
-      // right while over X would project as a child of X's PREVIOUS
-      // sibling (because the slot would still be before X).
-      slotInProjection = idx < 0 ? projectionList.length : dropAfter ? idx + 1 : idx;
-    }
+    const idx = projectionList.findIndex(
+      (n) => (n.rule.uid ?? n.rule.name) === overId,
+    );
+    // dropAfter swaps the slot from "before this row" to "after this
+    // row" so "drag onto X + drag right" projects as "child of X"
+    // instead of "child of X's previous sibling". When the user is on
+    // the lower half of the LAST row, slot becomes projectionList.length,
+    // which is the "drop at the very end" semantic — no separate
+    // sentinel droppable required.
+    const slotInProjection =
+      idx < 0 ? projectionList.length : dropAfter ? idx + 1 : idx;
     const { parentId, depth } = projectDrop(
       projectionList,
       slotInProjection,
@@ -394,20 +386,24 @@ export function RulesTreeTable({
 
   const handleDragMove = useCallback((e: DragMoveEvent) => {
     setOffsetX(e.delta.x);
+    // Sticky overId — only adopt a new "over" target when dnd-kit reports
+    // a real row under the cursor. The cursor occasionally crosses
+    // sub-pixel gaps between adjacent row rects where pointerWithin
+    // returns no match; without this guard, projection flips to null
+    // for a frame and the ghost row disappears mid-drag.
     const id = (e.over?.id as string | undefined) ?? null;
-    setOverId(id);
-    // Cursor-in-row position decides "before" vs "after" the over row.
-    // The end-of-list sentinel is always "at the end" — there's no
-    // upper/lower half there.
-    if (id && id !== END_DROPPABLE_ID && e.over?.rect) {
+    if (id !== null && e.over?.rect) {
+      setOverId(id);
       const activator = e.activatorEvent as MouseEvent | PointerEvent;
       const cursorY = activator.clientY + e.delta.y;
       const overRect = e.over.rect;
       const mid = (overRect.top + overRect.bottom) / 2;
       setDropAfter(cursorY > mid);
-    } else {
-      setDropAfter(false);
     }
+    // When over is null we deliberately KEEP the previous overId so the
+    // projection (and ghost row) stay put while the cursor crosses the
+    // gap. Once it lands on the next row, dragMove fires again with a
+    // valid id and we adopt it.
   }, []);
 
   const handleDragCancel = useCallback(() => {
@@ -715,11 +711,6 @@ export function RulesTreeTable({
               {projection?.slotInRendered === renderedFlat.length && activeRule ? (
                 <GhostRow rule={activeRule} depth={projection.depth} />
               ) : null}
-              {/* End-of-list sentinel: a tall droppable that catches drops
-                  past the last row so "as last sibling" / "as child of last"
-                  are actually reachable. Only mounted during a drag — when
-                  idle it would just add empty space. */}
-              {activeId ? <EndDroppable /> : null}
             </SortableContext>
             <DragOverlay dropAnimation={null}>
               {activeRule ? <DragPreview rule={activeRule} /> : null}
@@ -763,25 +754,6 @@ function GhostRow({ rule, depth }: { rule: Rule; depth: number }) {
       <span className={styles.conditionCell} />
       <span className={styles.modsCell} />
       <span className={styles.addCell} />
-    </div>
-  );
-}
-
-// EndDroppable — drop zone appended after the last row so the operator
-// has an obvious, generous target for "drop at the very end of the
-// tree". Reads as a dashed accent-tinted zone with a label so it's
-// clear what dropping here does; highlights when the cursor is over it.
-// Only mounted during a drag — the table is the same height when idle.
-function EndDroppable() {
-  const { setNodeRef, isOver } = useDroppable({ id: END_DROPPABLE_ID });
-  return (
-    <div
-      ref={setNodeRef}
-      className={styles.endDroppable}
-      role="presentation"
-      {...(isOver ? { "data-over": "true" } : {})}
-    >
-      Drop here to place as last sibling
     </div>
   );
 }
