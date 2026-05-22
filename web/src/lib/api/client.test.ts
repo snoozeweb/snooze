@@ -176,6 +176,32 @@ describe("api client 401 envelope", () => {
       () =>
         new Response(
           JSON.stringify({
+            error: {
+              code: "unauthorized",
+              message: "invalid credentials",
+              request_id: "req-123",
+            },
+          }),
+          { status: 401, headers: { "Content-Type": "application/json" } },
+        ),
+    );
+    try {
+      await api("POST", "/login/local", { body: { username: "x", password: "y" } });
+      throw new Error("should have thrown");
+    } catch (e) {
+      const err = e as ApiError;
+      expect(err.status).toBe(401);
+      expect(err.code).toBe("unauthorized");
+      expect(err.detail).toBe("invalid credentials");
+      expect(err.traceId).toBe("req-123");
+    }
+  });
+
+  it("falls back to flat envelope when the server emits { code, detail }", async () => {
+    mockFetch(
+      () =>
+        new Response(
+          JSON.stringify({
             code: "invalid_credentials",
             detail: "Bad username or password",
           }),

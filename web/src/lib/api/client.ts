@@ -59,13 +59,30 @@ async function parseError(res: Response): Promise<ApiError> {
     const ct = res.headers.get("Content-Type") ?? "";
     if (ct.includes("application/json")) {
       const body = (await res.json()) as {
+        error?: {
+          code?: string;
+          message?: string;
+          request_id?: string;
+          trace_id?: string;
+        };
         code?: string;
         detail?: string;
         trace_id?: string;
       };
-      if (typeof body.code === "string") code = body.code;
-      if (typeof body.detail === "string") detail = body.detail;
-      if (typeof body.trace_id === "string") traceId = body.trace_id;
+      // Canonical server envelope is { error: { code, message, request_id,
+      // trace_id } } (snoozetypes.ErrEnvelope). Older shapes used flat
+      // { code, detail, trace_id } — keep that branch so the client stays
+      // tolerant of a server we don't fully control.
+      if (body.error && typeof body.error === "object") {
+        if (typeof body.error.code === "string") code = body.error.code;
+        if (typeof body.error.message === "string") detail = body.error.message;
+        if (typeof body.error.trace_id === "string") traceId = body.error.trace_id;
+        else if (typeof body.error.request_id === "string") traceId = body.error.request_id;
+      } else {
+        if (typeof body.code === "string") code = body.code;
+        if (typeof body.detail === "string") detail = body.detail;
+        if (typeof body.trace_id === "string") traceId = body.trace_id;
+      }
     }
   } catch {
     // body wasn't JSON; keep the fallback fields
