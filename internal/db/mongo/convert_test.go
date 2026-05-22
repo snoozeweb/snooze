@@ -79,22 +79,38 @@ func TestConvert(t *testing.T) {
 			want: bson.M{"$nor": []bson.M{{"a": 1}}},
 		},
 		{
+			// Single string value: direct $regex (NOT wrapped in $in — Mongo
+			// rejects `$in: [{$regex: …}]` with "cannot nest $ under $in"
+			// when the surrounding clause is part of an $and).
 			name: "contains_string",
 			in:   condition.Cond{Op: condition.OpContains, Field: "a", Value: "1"},
-			want: bson.M{"a": bson.M{"$in": []any{bson.M{"$regex": "1", "$options": "i"}}}},
+			want: bson.M{"a": bson.M{"$regex": "1", "$options": "i"}},
 		},
 		{
+			// Multiple string values: $or of per-value $regex clauses (still
+			// no $regex inside $in).
 			name: "contains_list",
 			in:   condition.Cond{Op: condition.OpContains, Field: "a", Value: []any{"2", "4"}},
-			want: bson.M{"a": bson.M{"$in": []any{
-				bson.M{"$regex": "2", "$options": "i"},
-				bson.M{"$regex": "4", "$options": "i"},
-			}}},
+			want: bson.M{"$or": []bson.M{
+				{"a": bson.M{"$regex": "2", "$options": "i"}},
+				{"a": bson.M{"$regex": "4", "$options": "i"}},
+			}},
 		},
 		{
+			// Single non-string value: $in (the cheap path, no regex involved).
 			name: "contains_int",
 			in:   condition.Cond{Op: condition.OpContains, Field: "a", Value: 9},
 			want: bson.M{"a": bson.M{"$in": []any{9}}},
+		},
+		{
+			// Mixed string + non-string: $or of regex clauses + a $in for
+			// the residual non-string values.
+			name: "contains_mixed",
+			in:   condition.Cond{Op: condition.OpContains, Field: "a", Value: []any{"x", 9}},
+			want: bson.M{"$or": []bson.M{
+				{"a": bson.M{"$regex": "x", "$options": "i"}},
+				{"a": bson.M{"$in": []any{9}}},
+			}},
 		},
 		{
 			name: "in_list",

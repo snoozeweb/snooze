@@ -72,19 +72,44 @@ func Convert(c condition.Cond, searchFields []string) (bson.M, error) {
 		return bson.M{c.Field: bson.M{"$exists": true}}, nil
 
 	case condition.OpContains:
-		// CONTAINS matches when the field (string or array) contains any of
-		// the supplied values. Mongo $in over case-insensitive regex objects
-		// covers both forms in a single query.
+		// CONTAINS matches when the field (string or array of strings) contains
+		// any of the supplied values via case-insensitive regex. Mongo refuses
+		// `$in: [{$regex: …}]` ("cannot nest $ under $in") so we route string
+		// values through a direct `$regex` clause (single value) or a `$or` of
+		// per-value regex clauses (multiple values). Non-string values keep
+		// the cheap `$in` form, which also works on array fields.
 		values := flatten(c.Value)
-		in := make([]any, 0, len(values))
+		var strs []string
+		var rest []any
 		for _, v := range values {
 			if s, ok := v.(string); ok {
-				in = append(in, bson.M{"$regex": s, "$options": "i"})
+				strs = append(strs, s)
 				continue
 			}
-			in = append(in, v)
+			rest = append(rest, v)
 		}
-		return bson.M{c.Field: bson.M{"$in": in}}, nil
+		switch {
+		case len(strs) == 0 && len(rest) == 0:
+			return bson.M{c.Field: bson.M{"$in": []any{}}}, nil
+		case len(strs) == 1 && len(rest) == 0:
+			return bson.M{c.Field: bson.M{"$regex": strs[0], "$options": "i"}}, nil
+		case len(strs) > 1 && len(rest) == 0:
+			or := make([]bson.M, 0, len(strs))
+			for _, s := range strs {
+				or = append(or, bson.M{c.Field: bson.M{"$regex": s, "$options": "i"}})
+			}
+			return bson.M{"$or": or}, nil
+		case len(strs) == 0:
+			return bson.M{c.Field: bson.M{"$in": rest}}, nil
+		default:
+			// Mixed values: union the regex-$or with a non-string $in.
+			or := make([]bson.M, 0, len(strs)+1)
+			for _, s := range strs {
+				or = append(or, bson.M{c.Field: bson.M{"$regex": s, "$options": "i"}})
+			}
+			or = append(or, bson.M{c.Field: bson.M{"$in": rest}})
+			return bson.M{"$or": or}, nil
+		}
 
 	case condition.OpIn:
 		// IN has two modes (matching the Python BackendDB.convert):
