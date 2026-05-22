@@ -140,17 +140,22 @@ func TestHandleWebhook_FiringAlert(t *testing.T) {
 	recs := host.Records()
 	require.Len(t, recs, 1)
 	got := recs[0]
-	require.Equal(t, "alertmanager", got.Source)
+	require.Equal(t, "AlertManager", got.Source, "Snooze 1.x rules filter on source = AlertManager")
 	require.Equal(t, "node-1.local", got.Host, "port should be stripped")
 	require.Equal(t, "warning", got.Severity)
 	require.Equal(t, "CPU is high", got.Message)
-	require.Equal(t, "HighCPU", got.Process)
+	// Process: no `process`/`service`/`alertgroup` label set → falls back
+	// to `job` per the Python order.
+	require.Equal(t, "node-exporter", got.Process)
 	require.Equal(t, ts, got.Timestamp)
 	require.Empty(t, got.State, "firing alert must have empty state")
-	require.NotNil(t, got.Raw)
-	require.Contains(t, got.Raw, "labels")
-	require.Contains(t, got.Raw, "annotations")
-	require.Equal(t, "http://prom/graph?g0=foo", got.Raw["generatorURL"])
+	// labels/annotations/generatorURL live at the top level (in Extra)
+	// like the Python plugin, not nested under raw.
+	require.NotNil(t, got.Extra)
+	require.Contains(t, got.Extra, "labels")
+	require.Contains(t, got.Extra, "annotations")
+	require.Equal(t, "http://prom/graph?g0=foo", got.Extra["generatorURL"])
+	require.Nil(t, got.Raw, "raw stays unused — labels/annotations are top-level fields")
 }
 
 func TestHandleWebhook_ResolvedAlertSetsCloseState(t *testing.T) {
@@ -214,10 +219,13 @@ func TestHandleWebhook_MissingFieldsFallBackToDefaults(t *testing.T) {
 	recs := host.Records()
 	require.Len(t, recs, 1)
 	got := recs[0]
-	require.Equal(t, "-", got.Host, "missing instance label falls back to dash")
-	require.Equal(t, "info", got.Severity, "missing severity defaults to info")
-	require.Equal(t, "MysteryAlert", got.Message, "falls back to alertname")
-	require.Equal(t, "MysteryAlert", got.Process)
+	require.Equal(t, "-", got.Host, "missing host/instance label falls back to dash")
+	require.Equal(t, "critical", got.Severity,
+		"unlabelled firing alerts default to critical (Python behaviour)")
+	require.Equal(t, "", got.Message,
+		"empty annotations + no message fallback to alertname (matches Python's ''-default)")
+	require.Equal(t, "-", got.Process,
+		"no process/service/alertgroup/job → '-' fallback")
 	require.Nil(t, got.Tags)
 	require.True(t, got.Timestamp.After(before) && got.Timestamp.Before(after),
 		"missing StartsAt is substituted with time.Now()")
@@ -273,8 +281,10 @@ func TestHandleWebhook_BatchAndTagsAndCommonLabels(t *testing.T) {
 
 	require.Equal(t, "host-b", recs[1].Host)
 	require.Equal(t, "critical", recs[1].Severity, "falls back to commonLabels.severity")
-	// No alert-level summary but alertname falls through.
-	require.Equal(t, "DiskFull", recs[1].Message)
+	// No alert-level annotations; runbook from commonAnnotations isn't
+	// in the message-fallback list, so the message stays empty (matches
+	// Python's `or ''` final default).
+	require.Equal(t, "", recs[1].Message)
 
 	// Verify the response body counts.
 	var resp struct {
@@ -286,6 +296,135 @@ func TestHandleWebhook_BatchAndTagsAndCommonLabels(t *testing.T) {
 	require.Equal(t, "ok", resp.Status)
 	require.Equal(t, 2, resp.Received)
 	require.Equal(t, 2, resp.Accepted)
+}
+
+func TestHandleWebhook_SanitizesDottedKeys(t *testing.T) {
+	// AlertManager annotation names are free-form and frequently contain
+	// dots in the wild (kubernetes.io/..., runbook.example.com/...).
+	// MongoDB-safe storage requires we replace them with underscores
+	// before the record reaches the DB layer, matching what
+	// snooze.utils.functions.sanitize did in the Python era.
+	host := &recordingHost{logger: slog.Default()}
+	p := newPlugin(t, host)
+
+	body, err := json.Marshal(am4Webhook{
+		Version: "4",
+		Status:  "firing",
+		Alerts: []am4Alert{
+			{
+				Status: "firing",
+				Labels: map[string]string{"alertname": "X", "instance": "h"},
+				Annotations: map[string]string{
+					"kubernetes.io/cluster": "prod-eu",
+					"runbook.example.com":   "https://wiki/x",
+				},
+				StartsAt: time.Now(),
+			},
+		},
+	})
+	require.NoError(t, err)
+
+	w := postJSON(t, p, body)
+	require.Equal(t, http.StatusOK, w.Code)
+
+	recs := host.Records()
+	require.Len(t, recs, 1)
+	annotations, ok := recs[0].Extra["annotations"].(map[string]any)
+	require.True(t, ok, "annotations should be a sanitized map under Extra")
+	require.Equal(t, "prod-eu", annotations["kubernetes_io/cluster"])
+	require.Equal(t, "https://wiki/x", annotations["runbook_example_com"])
+	require.NotContains(t, annotations, "kubernetes.io/cluster",
+		"dotted keys must be rewritten before they hit the DB")
+}
+
+func TestHandleWebhook_MessagePriorityMatchesPython(t *testing.T) {
+	// Python priority: annotations.message → summary → description → externalURL → "".
+	// When all four are set, `message` wins.
+	host := &recordingHost{logger: slog.Default()}
+	p := newPlugin(t, host)
+
+	body, err := json.Marshal(am4Webhook{
+		Version: "4",
+		Status:  "firing",
+		Alerts: []am4Alert{
+			{
+				Status: "firing",
+				Labels: map[string]string{"alertname": "X", "instance": "h"},
+				Annotations: map[string]string{
+					"message":     "MSG-WINS",
+					"summary":     "SUMMARY",
+					"description": "DESC",
+					"externalURL": "https://x",
+				},
+				StartsAt: time.Now(),
+			},
+		},
+	})
+	require.NoError(t, err)
+
+	w := postJSON(t, p, body)
+	require.Equal(t, http.StatusOK, w.Code)
+	require.Equal(t, "MSG-WINS", host.Records()[0].Message)
+}
+
+func TestHandleWebhook_HostPriorityMatchesPython(t *testing.T) {
+	// Python priority: labels.host → labels.instance → labels.exported_instance.
+	// host wins over instance when both are present.
+	host := &recordingHost{logger: slog.Default()}
+	p := newPlugin(t, host)
+
+	body, err := json.Marshal(am4Webhook{
+		Version: "4",
+		Status:  "firing",
+		Alerts: []am4Alert{
+			{
+				Status: "firing",
+				Labels: map[string]string{
+					"alertname": "X",
+					"host":      "explicit-host",
+					"instance":  "node-1:9100",
+				},
+				StartsAt: time.Now(),
+			},
+		},
+	})
+	require.NoError(t, err)
+
+	w := postJSON(t, p, body)
+	require.Equal(t, http.StatusOK, w.Code)
+	require.Equal(t, "explicit-host", host.Records()[0].Host,
+		"the `host` label outranks `instance` per the Python plugin")
+}
+
+func TestHandleWebhook_ProcessPriorityMatchesPython(t *testing.T) {
+	// Python priority: process → service → alertgroup → job. The `process`
+	// label outranks `alertname` (which Python never consulted).
+	host := &recordingHost{logger: slog.Default()}
+	p := newPlugin(t, host)
+
+	body, err := json.Marshal(am4Webhook{
+		Version: "4",
+		Status:  "firing",
+		Alerts: []am4Alert{
+			{
+				Status: "firing",
+				Labels: map[string]string{
+					"alertname": "HighCPU",
+					"process":   "my-proc",
+					"service":   "my-svc",
+					"job":       "my-job",
+					"instance":  "h",
+				},
+				StartsAt: time.Now(),
+			},
+		},
+	})
+	require.NoError(t, err)
+
+	w := postJSON(t, p, body)
+	require.Equal(t, http.StatusOK, w.Code)
+	require.Equal(t, "my-proc", host.Records()[0].Process,
+		"the `process` label outranks service/job and alertname is never consulted")
 }
 
 func TestHandleWebhook_MalformedJSONReturns400(t *testing.T) {

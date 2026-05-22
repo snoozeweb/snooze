@@ -97,6 +97,11 @@ type am4Alert struct {
 }
 
 // am4Webhook is the AlertManager v4 webhook envelope.
+//
+// GeneratorURL on the envelope is non-standard (AlertManager v4 only carries
+// it per-alert) but the Snooze 1.x pydantic model accepted it as a fallback,
+// and we mirror that here so a sender using the Python-era shape keeps
+// working.
 type am4Webhook struct {
 	Version           string            `json:"version"`
 	GroupKey          string            `json:"groupKey"`
@@ -105,6 +110,7 @@ type am4Webhook struct {
 	GroupLabels       map[string]string `json:"groupLabels"`
 	CommonLabels      map[string]string `json:"commonLabels"`
 	CommonAnnotations map[string]string `json:"commonAnnotations"`
+	GeneratorURL      string            `json:"generatorURL"`
 	ExternalURL       string            `json:"externalURL"`
 	Alerts            []am4Alert        `json:"alerts"`
 }
@@ -164,35 +170,46 @@ func (p *Plugin) HandleWebhook(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// buildRecord maps one AlertManager v4 alert to a snoozetypes.Record.
+// buildRecord maps one AlertManager v4 alert to a snoozetypes.Record. The
+// field layout mirrors src/snooze/plugins/core/alertmanager/falcon/route.py
+// from origin/master so Snooze 1.x rules referencing labels.foo /
+// annotations.bar / generatorURL keep matching:
 //
-// Mapping (mirrors the Python plugin where it differs):
-//
-//   - Host: labels.instance (port stripped) falling back to labels.host,
-//     labels.exported_instance, or "-".
-//   - Source: "alertmanager".
-//   - Severity: labels.severity (then commonLabels.severity); "info" default
-//     for firing alerts, "ok" for resolved alerts.
-//   - Message: annotations.summary then annotations.description then
-//     labels.alertname.
+//   - Source: "AlertManager" (capitalised — operator filters expect this).
+//   - Host: labels.host → labels.instance → labels.exported_instance → "-".
+//     We strip a trailing ":port" on the chosen value because Prometheus
+//     instance targets carry one and the Python plugin's downstream rules
+//     never wanted it; this is a Go-side improvement preserved deliberately.
+//   - Severity: labels.severity ("info" / "warning" / …) for firing alerts
+//     with a default of "critical" when unset, "ok" for resolved alerts.
+//   - Process: labels.process → labels.service → labels.alertgroup →
+//     labels.job → "-".
+//   - Message: annotations.message → annotations.summary →
+//     annotations.description → annotations.externalURL → "".
 //   - Timestamp: startsAt; falls back to time.Now() when absent.
-//   - Tags: labels["tags"] split on whitespace/commas when present, else nil.
+//   - Tags: labels["tags"] split on whitespace/commas when present.
 //   - State: "close" for resolved alerts, empty otherwise.
-//   - Raw: the merged label+annotation map (preserves data the rule plugin
-//     may reference).
-//   - Process: labels.alertname (falling back to labels.service /
-//     labels.job).
+//   - Extra (serialised as top-level fields):
+//       labels, annotations           (dot→underscore sanitized per
+//                                      utils.functions.sanitize)
+//       generatorURL, externalURL     (always present, may be "")
+//       status, fingerprint           (preserved from the payload)
 func buildRecord(hook am4Webhook, a am4Alert) snoozetypes.Record {
+	// Python merges only CommonLabels + alert.Labels. Including GroupLabels
+	// is a Go-side widening — they're a strict subset of CommonLabels for
+	// most senders and an explicit operator signal when they differ. The
+	// resulting label map still has alert.Labels winning on collisions,
+	// matching the Python precedence.
 	labels := mergeStrings(hook.CommonLabels, hook.GroupLabels, a.Labels)
 	annotations := mergeStrings(hook.CommonAnnotations, a.Annotations)
 
 	resolved := strings.EqualFold(a.Status, "resolved")
 
 	rec := snoozetypes.Record{
-		Source:    "alertmanager",
+		Source:    "AlertManager",
 		Host:      pickHost(labels),
 		Severity:  pickSeverity(labels, resolved),
-		Message:   pickMessage(annotations, labels),
+		Message:   pickMessage(annotations),
 		Process:   pickProcess(labels),
 		Timestamp: a.StartsAt,
 		Tags:      pickTags(labels),
@@ -206,27 +223,37 @@ func buildRecord(hook am4Webhook, a am4Alert) snoozetypes.Record {
 		rec.State = "close"
 	}
 
-	raw := make(map[string]any, len(labels)+len(annotations)+1)
+	// Extra holds every field the Python plugin emitted at the top level of
+	// the record JSON: labels, annotations, generatorURL, externalURL, plus
+	// the data we preserve as a Go-side improvement (status, fingerprint).
+	// The pipeline projector (internal/core/recordToDoc) folds Extra into
+	// the document with typed fields winning on collision, so any key here
+	// surfaces at the top level on the wire.
+	rec.Extra = map[string]any{}
 	if len(labels) > 0 {
-		raw["labels"] = stringMapToAny(labels)
+		rec.Extra["labels"] = sanitizeStringMap(labels)
 	}
 	if len(annotations) > 0 {
-		raw["annotations"] = stringMapToAny(annotations)
+		rec.Extra["annotations"] = sanitizeStringMap(annotations)
 	}
-	if a.GeneratorURL != "" {
-		raw["generatorURL"] = a.GeneratorURL
+	// generatorURL: per-alert first, then the (non-standard) envelope
+	// fallback the Python pydantic model accepted.
+	if g := a.GeneratorURL; g != "" {
+		rec.Extra["generatorURL"] = g
+	} else if hook.GeneratorURL != "" {
+		rec.Extra["generatorURL"] = hook.GeneratorURL
 	}
 	if hook.ExternalURL != "" {
-		raw["externalURL"] = hook.ExternalURL
-	}
-	if a.Fingerprint != "" {
-		raw["fingerprint"] = a.Fingerprint
+		rec.Extra["externalURL"] = hook.ExternalURL
 	}
 	if a.Status != "" {
-		raw["status"] = a.Status
+		rec.Extra["status"] = a.Status
 	}
-	if len(raw) > 0 {
-		rec.Raw = raw
+	if a.Fingerprint != "" {
+		rec.Extra["fingerprint"] = a.Fingerprint
+	}
+	if len(rec.Extra) == 0 {
+		rec.Extra = nil
 	}
 
 	return rec
@@ -234,9 +261,13 @@ func buildRecord(hook am4Webhook, a am4Alert) snoozetypes.Record {
 
 // pickHost extracts the host identifier from the merged label map and strips
 // a trailing ":port" if present. Returns "-" when no candidate label exists,
-// matching the Python plugin.
+// matching the Python plugin's `or '-'` fallback.
+//
+// Priority is host → instance → exported_instance (Python order); the
+// stripPort() pass on the chosen value is a Go-side improvement that
+// removes the Prometheus-target port suffix from "node-1:9100".
 func pickHost(labels map[string]string) string {
-	for _, k := range []string{"instance", "host", "exported_instance"} {
+	for _, k := range []string{"host", "instance", "exported_instance"} {
 		if v, ok := labels[k]; ok && v != "" {
 			return stripPort(v)
 		}
@@ -271,8 +302,16 @@ func allDigits(s string) bool {
 	return true
 }
 
-// pickSeverity resolves the severity label, defaulting to "ok" for resolved
-// alerts and "info" for firing alerts.
+// pickSeverity resolves the severity label, mirroring the Python:
+//
+//	severity = alert.labels.severity or commonLabels.severity or 'critical'
+//
+// for firing alerts; resolved alerts always force severity=ok. Default
+// "critical" (not "info") matches the Python behaviour: an unlabelled
+// AlertManager push is treated as an urgent unknown, not a debug ping.
+//
+// The merged `labels` map already has the alert-level value winning over
+// commonLabels (mergeStrings semantics), so a single lookup is enough.
 func pickSeverity(labels map[string]string, resolved bool) string {
 	if resolved {
 		return "ok"
@@ -280,31 +319,37 @@ func pickSeverity(labels map[string]string, resolved bool) string {
 	if v, ok := labels["severity"]; ok && v != "" {
 		return v
 	}
-	return "info"
+	return "critical"
 }
 
-// pickMessage chooses the most descriptive annotation/label for the human
-// message column.
-func pickMessage(annotations, labels map[string]string) string {
-	for _, k := range []string{"summary", "description", "message"} {
+// pickMessage chooses the most descriptive annotation for the human message
+// column. Priority matches the Python:
+//
+//	annotations.message → annotations.summary → annotations.description →
+//	annotations.externalURL → ""
+//
+// alertname is NOT a fallback here (the Python plugin never used it for the
+// message). It still surfaces in the Process column and in labels.
+func pickMessage(annotations map[string]string) string {
+	for _, k := range []string{"message", "summary", "description", "externalURL"} {
 		if v, ok := annotations[k]; ok && v != "" {
 			return v
 		}
 	}
-	if v, ok := labels["alertname"]; ok && v != "" {
-		return v
-	}
 	return ""
 }
 
-// pickProcess resolves the "process" column from the label map.
+// pickProcess resolves the "process" column from the label map. Priority and
+// fallback mirror the Python:
+//
+//	labels.process → labels.service → labels.alertgroup → labels.job → "-"
 func pickProcess(labels map[string]string) string {
-	for _, k := range []string{"alertname", "service", "job"} {
+	for _, k := range []string{"process", "service", "alertgroup", "job"} {
 		if v, ok := labels[k]; ok && v != "" {
 			return v
 		}
 	}
-	return ""
+	return "-"
 }
 
 // pickTags pulls a "tags" label and splits it on commas/whitespace. Returns
@@ -340,12 +385,21 @@ func mergeStrings(maps ...map[string]string) map[string]string {
 	return out
 }
 
-// stringMapToAny converts a string map to a generic map ready for JSON
-// embedding into Record.Raw.
-func stringMapToAny(m map[string]string) map[string]any {
+// sanitizeStringMap converts a string map to map[string]any for JSON
+// embedding, replacing "." with "_" in every key. Mirrors the Python
+// snooze.utils.functions.sanitize helper invoked by the original
+// AlertManagerV4Route.parse_webhook: MongoDB pre-5.0 forbids dotted field
+// names in sub-documents, and even on 5.0+ accessor paths like
+// labels.foo.bar break the Snooze search DSL. Sanitizing at ingest is the
+// same fix we apply to SNMP varbinds in internal/components/snmptrap.
+//
+// AlertManager labels themselves can't contain dots (Prometheus label
+// regex is [a-zA-Z_][a-zA-Z0-9_]*), but annotation names are free-form
+// and frequently include them in the wild.
+func sanitizeStringMap(m map[string]string) map[string]any {
 	out := make(map[string]any, len(m))
 	for k, v := range m {
-		out[k] = v
+		out[strings.ReplaceAll(k, ".", "_")] = v
 	}
 	return out
 }
