@@ -66,12 +66,16 @@ export function UserEditor({ uid, onClose }: UserEditorProps) {
   async function onSubmit(form: FormShape) {
     setSubmitting(true);
     try {
+      // Empty password = "do not change". The backend's WriteTransformer
+      // already drops an empty value from the PATCH, but pruning it
+      // client-side keeps the audit summary tidy (the patch field list
+      // omits `password` instead of recording a no-op write).
       const body: User = {
         name: form.name,
         type: form.type,
         ...(form.roles.length ? { roles: form.roles } : {}),
         ...(form.comment ? { comment: form.comment } : {}),
-        ...(isCreate && form.password ? { password: form.password } : {}),
+        ...(form.password ? { password: form.password } : {}),
       };
 
       if (isCreate) {
@@ -168,15 +172,21 @@ export function UserEditor({ uid, onClose }: UserEditorProps) {
                     allowCustom
                   />
                 </div>
-                {isCreate && (
-                  <div className={styles.field}>
-                    <label className={styles.label} htmlFor="user-password">
-                      Password
-                    </label>
-                    <Input id="user-password" type="password" {...register("password")} />
-                  </div>
-                )}
               </section>
+              {typeValue === "local" ? (
+                <div className={styles.field}>
+                  <label className={styles.label} htmlFor="user-password">
+                    Password
+                  </label>
+                  <Input
+                    id="user-password"
+                    type="password"
+                    autoComplete="new-password"
+                    placeholder={isCreate ? "" : "Leave blank to keep current password"}
+                    {...register("password")}
+                  />
+                </div>
+              ) : null}
               <div className={styles.field}>
                 <label className={styles.label} htmlFor="user-comment">
                   Comment

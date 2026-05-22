@@ -311,6 +311,54 @@ paths:
         '204':
           description: Logout acknowledged (idempotent).
 
+  /api/v1/user/me/password:
+    post:
+      tags: [auth]
+      summary: Self-service password change
+      description: |
+        Replaces the authenticated user's password. Only available when
+        the caller's JWT `method` claim is `local` — LDAP / anonymous
+        accounts are managed by their backing provider.
+
+        The caller MUST supply their current password; the server
+        re-runs the bcrypt comparison through the same code path as
+        `/api/v1/login/local`, so the failure mode (and timing) is
+        identical to a bad-credentials login.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [current_password, password]
+              properties:
+                current_password:
+                  type: string
+                  description: The caller's current password.
+                password:
+                  type: string
+                  description: The new password (bcrypt-hashed server-side).
+      responses:
+        '204':
+          description: Password updated.
+        '401':
+          description: Missing claims or wrong current password.
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/ErrEnvelope'}
+        '403':
+          description: |
+            Caller's auth method is not `local`; self-service password
+            change is not available for that backend.
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/ErrEnvelope'}
+        '422':
+          description: Empty body field(s).
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/ErrEnvelope'}
+
   /api/v1/alerts:
     post:
       tags: [alerts]

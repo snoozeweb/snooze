@@ -58,7 +58,7 @@ describe("UserEditor", () => {
     expect((bodies[0] as { password: string }).password).toBe("s3cr3t");
   });
 
-  it("updates an existing user without the password field", async () => {
+  it("edits an existing user; empty password is omitted from the PATCH", async () => {
     const bodies: unknown[] = [];
     mswServer.use(
       http.get("/api/v1/user/u1", () =>
@@ -81,12 +81,42 @@ describe("UserEditor", () => {
     await waitFor(() =>
       expect(screen.getByLabelText<HTMLInputElement>(/^name$/i).value).toBe("alice"),
     );
-    // Clear name and type a new one
+    // The password input is rendered for local-method users so the admin
+    // can rotate the credential — empty value here means "no change".
+    expect(screen.getByLabelText(/^password$/i)).toBeInTheDocument();
     await user.clear(screen.getByLabelText(/^name$/i));
     await user.type(screen.getByLabelText(/^name$/i), "alice-updated");
     await user.click(screen.getByRole("button", { name: /save/i }));
     await waitFor(() => expect(bodies).toHaveLength(1));
     expect((bodies[0] as { name: string }).name).toBe("alice-updated");
     expect((bodies[0] as Record<string, unknown>).password).toBeUndefined();
+  });
+
+  it("admin sets a new password on an existing user; PATCH carries it", async () => {
+    const bodies: unknown[] = [];
+    mswServer.use(
+      http.get("/api/v1/user/u1", () =>
+        HttpResponse.json({ uid: "u1", name: "alice", type: "local" }),
+      ),
+      http.patch("/api/v1/user/u1", async ({ request }) => {
+        bodies.push(await request.json());
+        return HttpResponse.json({ uid: "u1", name: "alice" });
+      }),
+    );
+    const onClose = vi.fn();
+    const Wrapper = wrap();
+    const user = userEvent.setup();
+    render(
+      <Wrapper>
+        <UserEditor uid="u1" onClose={onClose} />
+      </Wrapper>,
+    );
+    await waitFor(() =>
+      expect(screen.getByLabelText<HTMLInputElement>(/^name$/i).value).toBe("alice"),
+    );
+    await user.type(screen.getByLabelText(/^password$/i), "rotated-pw");
+    await user.click(screen.getByRole("button", { name: /save/i }));
+    await waitFor(() => expect(bodies).toHaveLength(1));
+    expect((bodies[0] as Record<string, unknown>).password).toBe("rotated-pw");
   });
 });

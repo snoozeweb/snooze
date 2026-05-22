@@ -77,6 +77,25 @@ export async function postRefresh(refreshToken: string): Promise<LoginResult> {
   return unwrap(r);
 }
 
+// changeOwnPassword replaces the authenticated user's password. The server
+// re-verifies the current password through the same code path as
+// /login/local, so a wrong current password surfaces as 401 with the same
+// generic "invalid credentials" envelope the login flow returns.
+//
+// Only callable when claims.method === "local"; LDAP / anonymous accounts
+// 403 server-side. The Profile UI gates the form on that condition too.
+export async function changeOwnPassword(input: {
+  currentPassword: string;
+  password: string;
+}): Promise<void> {
+  await api<void>("POST", "/user/me/password", {
+    body: {
+      current_password: input.currentPassword,
+      password: input.password,
+    },
+  });
+}
+
 // postLogout best-effort revokes the supplied refresh token. Server always
 // returns 204 — failures are swallowed so logging out never blocks UI flow.
 export async function postLogout(refreshToken: string | null): Promise<void> {

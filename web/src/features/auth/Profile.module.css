@@ -34,3 +34,38 @@
   flex-wrap: wrap;
   gap: var(--space-2);
 }
+.sectionTitle {
+  font-size: var(--text-xs);
+  font-weight: var(--weight-semibold);
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  margin: 0 0 var(--space-3) 0;
+}
+.formStack {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+.formRow {
+  display: flex;
+  gap: var(--space-2);
+  align-items: center;
+}
+.formLabel {
+  font-size: var(--text-xs);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-muted);
+  width: 160px;
+  flex-shrink: 0;
+}
+.formInput {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.formActions {
+  display: flex;
+  gap: var(--space-2);
+  justify-content: flex-end;
+}

@@ -115,6 +115,11 @@ func (rt *Router) Build() chi.Router {
 	//     `/{uid}` handlers chi installs) ----------------------------------
 	rt.mountSnoozeRetro(r)
 
+	// --- self-service /api/v1/user/me/* (mounted BEFORE the user plugin's
+	//     CRUD so /me/password wins over the generic /{uid} matcher chi
+	//     would otherwise route to). ----------------------------------------
+	rt.mountUser(r)
+
 	// --- webhook receivers (must precede plugin CRUD so the path-specific
 	//     /api/v1/webhook/{name} mount wins over a generic CRUD route the
 	//     same plugin might otherwise register at /api/v1/{name}). -----------

@@ -10,7 +10,11 @@ import (
 	"context"
 	_ "embed"
 	"errors"
+	"fmt"
 
+	"golang.org/x/crypto/bcrypt"
+
+	"github.com/snoozeweb/snooze/internal/auth"
 	"github.com/snoozeweb/snooze/internal/plugins"
 )
 
@@ -80,6 +84,42 @@ func (p *Plugin) Validate(obj map[string]any) error {
 		if s, _ := v.(string); s == "" {
 			return errors.New("user: method must not be empty")
 		}
+	}
+	return nil
+}
+
+// TransformWrite intercepts the `password` field on POST/PUT/PATCH bodies.
+//
+//   - An absent `password` is left as-is (PATCH partial updates rely on this).
+//   - An empty-string `password` is dropped so an admin editing other fields
+//     does not accidentally clear the credential.
+//   - A non-empty plaintext value is bcrypt-hashed and written back to the
+//     same field, so the document persisted by the CRUD layer never carries
+//     plaintext.
+//
+// Mirrors the Python 1.x UserRoute.update_password helper, except the hash
+// lives on the user document itself rather than a separate user.password
+// collection (see internal/auth/local.go for the collapsed shape).
+func (p *Plugin) TransformWrite(_ context.Context, doc map[string]any) error {
+	raw, present := doc["password"]
+	if !present {
+		return nil
+	}
+	plaintext, _ := raw.(string)
+	if plaintext == "" {
+		delete(doc, "password")
+		return nil
+	}
+	hash, err := bcrypt.GenerateFromPassword([]byte(plaintext), bcrypt.DefaultCost)
+	if err != nil {
+		return fmt.Errorf("user: hash password: %w", err)
+	}
+	doc["password"] = string(hash)
+	// A password write only makes sense against a local-method user. When
+	// the body carries an explicit method we enforce that; when it doesn't
+	// (PATCH) the existing document's method is trusted.
+	if m, ok := doc["method"].(string); ok && m != "" && m != auth.LocalMethod {
+		return fmt.Errorf("user: cannot set password on %q-method user", m)
 	}
 	return nil
 }

@@ -289,6 +289,14 @@ func createHandler(host Host, p Plugin, collection string) http.HandlerFunc {
 				}
 			}
 		}
+		if wt, ok := p.(WriteTransformer); ok {
+			for _, d := range docs {
+				if err := wt.TransformWrite(r.Context(), d); err != nil {
+					writeError(w, http.StatusUnprocessableEntity, "validation_error", err.Error())
+					return
+				}
+			}
+		}
 		writeOpts := db.WriteOptions{UpdateTime: true}
 		if pk, ok := p.(PrimaryKeyer); ok {
 			primary := pk.PrimaryKey()
@@ -341,6 +349,12 @@ func replaceHandler(host Host, p Plugin, collection string) http.HandlerFunc {
 				return
 			}
 		}
+		if wt, ok := p.(WriteTransformer); ok {
+			if err := wt.TransformWrite(r.Context(), body); err != nil {
+				writeError(w, http.StatusUnprocessableEntity, "validation_error", err.Error())
+				return
+			}
+		}
 		matched, err := host.DB().ReplaceOne(r.Context(), collection, db.Document{"uid": uid}, body, true)
 		if err != nil {
 			writeError(w, http.StatusInternalServerError, "db_error", err.Error())
@@ -376,6 +390,12 @@ func patchHandler(host Host, p Plugin, collection string) http.HandlerFunc {
 		}
 		if dm, ok := p.(DataModel); ok {
 			if err := dm.Validate(patch); err != nil {
+				writeError(w, http.StatusUnprocessableEntity, "validation_error", err.Error())
+				return
+			}
+		}
+		if wt, ok := p.(WriteTransformer); ok {
+			if err := wt.TransformWrite(r.Context(), patch); err != nil {
 				writeError(w, http.StatusUnprocessableEntity, "validation_error", err.Error())
 				return
 			}

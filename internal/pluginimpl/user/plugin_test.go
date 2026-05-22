@@ -5,11 +5,13 @@ import (
 	"log/slog"
 	"path/filepath"
 	"slices"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/require"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/trace"
+	"golang.org/x/crypto/bcrypt"
 
 	"github.com/snoozeweb/snooze/internal/config"
 	"github.com/snoozeweb/snooze/internal/db"
@@ -64,6 +66,52 @@ func TestValidate(t *testing.T) {
 	t.Run("empty method rejected", func(t *testing.T) {
 		require.Error(t, p.Validate(map[string]any{"name": "alice", "method": ""}))
 	})
+}
+
+func TestTransformWrite_HashesPlaintextPassword(t *testing.T) {
+	p := &Plugin{}
+	doc := map[string]any{
+		"name":     "alice",
+		"method":   "local",
+		"password": "s3cret",
+	}
+	require.NoError(t, p.TransformWrite(context.Background(), doc))
+	hash, ok := doc["password"].(string)
+	require.True(t, ok)
+	require.True(t, strings.HasPrefix(hash, "$2"), "expected bcrypt hash, got %q", hash)
+	require.NoError(t, bcrypt.CompareHashAndPassword([]byte(hash), []byte("s3cret")))
+}
+
+func TestTransformWrite_EmptyPasswordIsDropped(t *testing.T) {
+	// Mirrors the "admin clears the form" path: an empty string must not
+	// overwrite the existing hash.
+	p := &Plugin{}
+	doc := map[string]any{"name": "alice", "password": ""}
+	require.NoError(t, p.TransformWrite(context.Background(), doc))
+	_, present := doc["password"]
+	require.False(t, present, "empty password should be dropped from the doc")
+}
+
+func TestTransformWrite_AbsentPasswordIsNoOp(t *testing.T) {
+	// PATCH partial updates that don't touch the password field must pass through.
+	p := &Plugin{}
+	doc := map[string]any{"name": "alice", "comment": "updated"}
+	require.NoError(t, p.TransformWrite(context.Background(), doc))
+	require.Equal(t, "alice", doc["name"])
+	require.Equal(t, "updated", doc["comment"])
+	_, present := doc["password"]
+	require.False(t, present)
+}
+
+func TestTransformWrite_RejectsPasswordOnNonLocalMethod(t *testing.T) {
+	p := &Plugin{}
+	doc := map[string]any{
+		"name":     "alice",
+		"method":   "ldap",
+		"password": "s3cret",
+	}
+	err := p.TransformWrite(context.Background(), doc)
+	require.Error(t, err)
 }
 
 func TestSchemaShape(t *testing.T) {

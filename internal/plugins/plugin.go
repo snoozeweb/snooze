@@ -134,3 +134,24 @@ type PrimaryKeyer interface {
 	Plugin
 	PrimaryKey() []string
 }
+
+// WriteTransformer plugins may rewrite the document a CRUD request is about
+// to persist, between Validate and the actual DB write. The implementation
+// mutates the doc in place and returns an error to abort the write with
+// status 422.
+//
+// The contract:
+//
+//   - PATCH bodies are partial — TransformWrite must tolerate a missing field
+//     and never invent one.
+//   - The transform is invoked once per document for POST array-creates and
+//     once for PUT/PATCH single-document updates.
+//   - Returning nil with no mutation is valid.
+//
+// The canonical use is the user plugin's password-hashing path: it pulls a
+// plaintext `password` field out of the body, bcrypt-hashes it, and writes
+// the hash back so the rest of the pipeline never sees plaintext.
+type WriteTransformer interface {
+	Plugin
+	TransformWrite(ctx context.Context, doc map[string]any) error
+}
