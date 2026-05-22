@@ -4,6 +4,13 @@ import type { KV } from "./types";
 
 export const kvColumns: ColumnDef<KV>[] = [
   {
+    id: "dict",
+    header: "Dictionary",
+    cell: (r) => <Code>{r.dict}</Code>,
+    sortable: true,
+    width: "200px",
+  },
+  {
     id: "key",
     header: "Key",
     cell: (r) => <Code>{r.key}</Code>,

@@ -39,7 +39,7 @@ describe("KVEditor", () => {
     mswServer.use(
       http.post("/api/v1/kv", async ({ request }) => {
         bodies.push(await request.json());
-        return HttpResponse.json({ uid: "k-new", key: "MY_KEY" });
+        return HttpResponse.json({ uid: "k-new", dict: "colors", key: "MY_KEY" });
       }),
     );
     const onClose = vi.fn();
@@ -50,9 +50,12 @@ describe("KVEditor", () => {
         <KVEditor uid={undefined} onClose={onClose} />
       </Wrapper>,
     );
+    await user.type(screen.getByLabelText(/^dictionary$/i), "colors");
     await user.type(screen.getByLabelText(/^key$/i), "MY_KEY");
     await user.click(screen.getByRole("button", { name: /create/i }));
     await waitFor(() => expect(bodies).toHaveLength(1));
-    expect((bodies[0] as { key: string }).key).toBe("MY_KEY");
+    const body = bodies[0] as { dict: string; key: string };
+    expect(body.dict).toBe("colors");
+    expect(body.key).toBe("MY_KEY");
   });
 });

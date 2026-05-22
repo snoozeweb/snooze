@@ -58,12 +58,13 @@ describe("KVPage", () => {
     mswServer.use(
       http.get("/api/v1/kv", () =>
         HttpResponse.json({
-          data: [{ uid: "k1", key: "MY_KEY", value: "my-value" }],
+          data: [{ uid: "k1", dict: "colors", key: "MY_KEY", value: "my-value" }],
           meta: { count: 1, limit: 50, offset: 0, total: 1 },
         }),
       ),
     );
     setup();
     await waitFor(() => expect(screen.getByText("MY_KEY")).toBeInTheDocument());
+    expect(screen.getByText("colors")).toBeInTheDocument();
   });
 });

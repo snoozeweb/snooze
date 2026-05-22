@@ -65,7 +65,7 @@ export function KVPage() {
 
   const kvSearch = useTableSearch({
     collection: "kv",
-    placeholder: "namespace = … AND key MATCHES …",
+    placeholder: "dict = … AND key MATCHES …",
     onFilterChange: () => {
       if (page !== 1) updateSearch({ page: 1 });
     },

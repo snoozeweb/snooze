@@ -18,7 +18,7 @@ describe("kv.api", () => {
     mswServer.use(
       http.get("/api/v1/kv", () =>
         HttpResponse.json({
-          data: [{ uid: "k1", key: "MY_KEY", value: "my-value" }],
+          data: [{ uid: "k1", dict: "colors", key: "MY_KEY", value: "my-value" }],
           meta: { count: 1, limit: 20, offset: 0, total: 1 },
         }),
       ),

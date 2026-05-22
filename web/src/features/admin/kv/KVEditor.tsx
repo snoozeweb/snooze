@@ -12,12 +12,14 @@ import type { KV } from "./types";
 import styles from "./KVEditor.module.css";
 
 type FormShape = {
+  dict: string;
   key: string;
   value: string;
   comment: string;
 };
 
 const EMPTY_FORM: FormShape = {
+  dict: "",
   key: "",
   value: "",
   comment: "",
@@ -45,6 +47,7 @@ export function KVEditor({ uid, onClose }: KVEditorProps) {
     }
     if (existing.data) {
       reset({
+        dict: existing.data.dict ?? "",
         key: existing.data.key ?? "",
         value: existing.data.value ?? "",
         comment: existing.data.comment ?? "",
@@ -58,6 +61,7 @@ export function KVEditor({ uid, onClose }: KVEditorProps) {
     setSubmitting(true);
     try {
       const body: KV = {
+        dict: form.dict,
         key: form.key,
         ...(form.value ? { value: form.value } : {}),
         ...(form.comment ? { comment: form.comment } : {}),
@@ -77,6 +81,7 @@ export function KVEditor({ uid, onClose }: KVEditorProps) {
     }
   }
 
+  const dictInvalid = formState.isSubmitted && !watch("dict").trim();
   const keyInvalid = formState.isSubmitted && !watch("key").trim();
 
   return (
@@ -101,6 +106,17 @@ export function KVEditor({ uid, onClose }: KVEditorProps) {
             >
               <section className={styles.section}>
                 <h3 className={styles.sectionTitle}>Identity</h3>
+                <div className={styles.field}>
+                  <label className={styles.label} htmlFor="kv-dict">
+                    Dictionary
+                  </label>
+                  <Input
+                    id="kv-dict"
+                    {...register("dict")}
+                    invalid={dictInvalid}
+                    placeholder="e.g. host_owner_lookup"
+                  />
+                </div>
                 <div className={styles.field}>
                   <label className={styles.label} htmlFor="kv-key">
                     Key
