@@ -1,0 +1,35 @@
+# Single Postgres benchmark stack.
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: bench-postgres
+    environment:
+      POSTGRES_DB: snooze
+      POSTGRES_USER: snooze
+      POSTGRES_PASSWORD: snooze
+    networks: [bench]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U snooze -d snooze"]
+      interval: 2s
+      timeout: 5s
+      retries: 30
+
+  snooze:
+    image: snoozeweb/snooze:latest
+    container_name: bench-snooze-pg
+    command: ["--no-admin-socket"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      - DATABASE_URL=postgresql://snooze:snooze@postgres:5432/snooze
+      - SNOOZE_SERVER_GENERAL_ANONYMOUS_ENABLED=true
+      - SNOOZE_SERVER_GENERAL_ANONYMOUS_ADMIN=true
+      - SNOOZE_SERVER_CORE_CREATE_ROOT_USER=false
+    ports:
+      - "5200:5200"
+    networks: [bench]
+
+networks:
+  bench:
+    name: snooze-bench

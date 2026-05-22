@@ -1,0 +1,52 @@
+# Single-node Mongo benchmark stack. The replica-set initiate runs in a
+# helper container so the snooze server gets a usable rs0 on first boot.
+services:
+  mongo:
+    image: mongo:7
+    container_name: bench-mongo
+    command: ["mongod", "--replSet", "rs0", "--bind_ip_all"]
+    networks: [bench]
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand({ ping: 1 }).ok"]
+      interval: 2s
+      timeout: 5s
+      retries: 30
+
+  mongo-init:
+    image: mongo:7
+    container_name: bench-mongo-init
+    depends_on:
+      mongo:
+        condition: service_healthy
+    networks: [bench]
+    restart: "no"
+    entrypoint:
+      - bash
+      - -c
+      - |
+        set -e
+        until mongosh --host mongo --quiet --eval 'rs.status().ok' 2>/dev/null | grep -q 1; do
+          mongosh --host mongo --quiet --eval 'rs.initiate({_id:"rs0",members:[{_id:0,host:"mongo:27017"}]})' || true
+          sleep 1
+        done
+        echo "rs0 ready"
+
+  snooze:
+    image: snoozeweb/snooze:latest
+    container_name: bench-snooze-mongo
+    command: ["--no-admin-socket"]
+    depends_on:
+      mongo-init:
+        condition: service_completed_successfully
+    environment:
+      - DATABASE_URL=mongodb://mongo:27017/snooze?replicaSet=rs0
+      - SNOOZE_SERVER_GENERAL_ANONYMOUS_ENABLED=true
+      - SNOOZE_SERVER_GENERAL_ANONYMOUS_ADMIN=true
+      - SNOOZE_SERVER_CORE_CREATE_ROOT_USER=false
+    ports:
+      - "5200:5200"
+    networks: [bench]
+
+networks:
+  bench:
+    name: snooze-bench
