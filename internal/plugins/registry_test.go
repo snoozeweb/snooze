@@ -3,12 +3,45 @@ package plugins
 import (
 	"context"
 	"errors"
+	"sync"
 	"testing"
 
 	"github.com/stretchr/testify/require"
 
 	"github.com/snoozeweb/snooze/pkg/snoozetypes"
 )
+
+// recordingIndexDB wraps memDB and captures every CreateIndex call so the
+// search_fields-registration path can be asserted without a real driver.
+type recordingIndexDB struct {
+	*memDB
+	mu        sync.Mutex
+	indexCols map[string][]string
+	indexErr  error
+}
+
+func newRecordingIndexDB() *recordingIndexDB {
+	return &recordingIndexDB{
+		memDB:     newMemDB(),
+		indexCols: map[string][]string{},
+	}
+}
+
+func (r *recordingIndexDB) CreateIndex(_ context.Context, collection string, fields []string) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if r.indexErr != nil {
+		return r.indexErr
+	}
+	r.indexCols[collection] = append([]string(nil), fields...)
+	return nil
+}
+
+func (r *recordingIndexDB) indexed(collection string) []string {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return append([]string(nil), r.indexCols[collection]...)
+}
 
 // fakePlugin is a minimal Plugin that records the meta it was built with.
 type fakePlugin struct {
@@ -148,4 +181,48 @@ func TestBuild_NameFallback(t *testing.T) {
 	})
 	_, _, err := Build(context.Background(), &nullHost{}, nil)
 	require.NoError(t, err)
+}
+
+func TestBuild_RegistersSearchFieldsOnDriver(t *testing.T) {
+	// Build must thread metadata.search_fields through to driver.CreateIndex
+	// so the SEARCH condition operator (bare-word SearchBar input) can
+	// resolve against the listed fields. Without this the driver's per-
+	// collection registry stays empty and SEARCH matches nothing.
+	resetForTest()
+	Register("record", []byte(`
+name: record
+search_fields:
+  - host
+  - message
+  - source
+`), newFake("record"))
+	Register("audit", []byte(`
+name: audit
+`), newFake("audit"))
+
+	host := &nullHost{driver: newRecordingIndexDB()}
+	_, _, err := Build(context.Background(), host, nil)
+	require.NoError(t, err)
+
+	drv := host.driver.(*recordingIndexDB)
+	require.Equal(t, []string{"host", "message", "source"}, drv.indexed("record"))
+	// Plugins without search_fields must not trigger an empty CreateIndex.
+	require.Empty(t, drv.indexed("audit"))
+}
+
+func TestBuild_SearchFieldRegistrationFailureDoesNotBreakBoot(t *testing.T) {
+	// A CreateIndex failure (read-only DB, transient error) must log and
+	// continue — boot must not fail just because index creation hit a snag.
+	resetForTest()
+	Register("record", []byte(`
+name: record
+search_fields:
+  - host
+`), newFake("record"))
+
+	drv := newRecordingIndexDB()
+	drv.indexErr = errors.New("readonly db")
+	host := &nullHost{driver: drv}
+	_, _, err := Build(context.Background(), host, nil)
+	require.NoError(t, err, "CreateIndex failure must not abort boot")
 }

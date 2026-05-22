@@ -81,6 +81,7 @@ func Build(ctx context.Context, host Host, processOrder []string) (map[string]Pl
 	all := make(map[string]Plugin, len(names))
 
 	// 2. Parse metadata + run factories.
+	metas := make(map[string]Metadata, len(names))
 	for _, name := range names {
 		raw, _ := registry.Load(name)
 		e := raw.(*entry)
@@ -99,16 +100,45 @@ func Build(ctx context.Context, host Host, processOrder []string) (map[string]Pl
 			return nil, nil, fmt.Errorf("plugins.Build: factory for %s returned nil", name)
 		}
 		all[name] = p
+		metas[name] = meta
 	}
 
-	// 3. PostInit in deterministic order.
+	// 3. Register search_fields with the driver. The SEARCH condition
+	//    operator (bare-word search in the UI's SearchBar) compiles to
+	//    OR(field ~ /value/i) across the fields registered here; without
+	//    this call, the driver's per-collection registry stays empty and
+	//    SEARCH matches nothing. CreateIndex also creates a backing DB
+	//    index on Postgres for fast substring lookups.
+	//
+	//    Best-effort: a CreateIndex failure (read-only DB, transient I/O
+	//    error) logs a warning and continues. Boot must not fail just
+	//    because index creation hit a snag — the SEARCH op will degrade to
+	//    "matches nothing" until the operator retries.
+	if drv := host.DB(); drv != nil {
+		for _, name := range names {
+			meta := metas[name]
+			if len(meta.SearchFields) == 0 {
+				continue
+			}
+			if err := drv.CreateIndex(ctx, name, meta.SearchFields); err != nil {
+				if lg := host.Logger(); lg != nil {
+					lg.Warn("plugins.Build: search-field registration failed",
+						"plugin", name,
+						"fields", meta.SearchFields,
+						"err", err)
+				}
+			}
+		}
+	}
+
+	// 4. PostInit in deterministic order.
 	for _, name := range names {
 		if err := all[name].PostInit(ctx, host); err != nil {
 			return nil, nil, fmt.Errorf("plugins.Build: post-init %s: %w", name, err)
 		}
 	}
 
-	// 4. Build the ordered Processor slice.
+	// 5. Build the ordered Processor slice.
 	procs := make([]Processor, 0, len(processOrder))
 	for _, name := range processOrder {
 		p, ok := all[name]
