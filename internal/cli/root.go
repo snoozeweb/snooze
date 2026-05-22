@@ -37,6 +37,12 @@ type globalFlags struct {
 // default returned by defaultRuntime().
 type runtime struct {
 	flags *globalFlags
+	// fileConfig is the parsed /etc/snooze/client.yaml (or whichever path
+	// LoadClientConfig found). Its values seed flag defaults below env-var
+	// lookups so an operator can keep server + creds in one place. Tests
+	// inject their own to exercise the precedence chain without touching
+	// the filesystem.
+	fileConfig ClientConfig
 	// out / errOut let tests capture cobra output. Always honour cmd.OutOrStdout()
 	// inside RunE — these are convenience aliases.
 	out, errOut io.Writer
@@ -76,6 +82,7 @@ func runtimeFrom(ctx context.Context) *runtime {
 func defaultRuntime() *runtime {
 	return &runtime{
 		flags:          &globalFlags{},
+		fileConfig:     LoadClientConfig(),
 		out:            os.Stdout,
 		errOut:         os.Stderr,
 		in:             os.Stdin,
@@ -122,34 +129,46 @@ func NewRootCmd(rt *runtime) *cobra.Command {
 	// Tests pre-populate rt.flags with their own values (e.g. Server pointed
 	// at an httptest.Server URL). pflag's StringVar would clobber those at
 	// registration time, so we seed the *defaults* from whatever was already
-	// stashed and only fall back to env vars / hard-coded values when the
-	// caller left the field zero.
+	// stashed and only fall back to env vars / config-file / hard-coded
+	// values when the caller left the field zero.
+	//
+	// Precedence per flag is:
+	//
+	//   1. rt.flags pre-population (tests / programmatic callers).
+	//   2. matching SNOOZE_* env var.
+	//   3. /etc/snooze/client.yaml (via rt.fileConfig — see LoadClientConfig).
+	//   4. hard-coded fallback.
 	f := rt.flags
+	cfg := rt.fileConfig
 	pf := cmd.PersistentFlags()
 	pf.StringVar(&f.Server, "server",
-		nonEmpty(f.Server, envOrDefault("SNOOZE_SERVER", "http://localhost:9001")),
+		nonEmpty(f.Server, envOrDefault("SNOOZE_SERVER", nonEmpty(cfg.Server, "http://localhost:9001"))),
 		"Snooze server base URL")
 	pf.StringVar(&f.User, "user",
-		nonEmpty(f.User, envOrDefault("SNOOZE_USER", "")),
+		nonEmpty(f.User, envOrDefault("SNOOZE_USER", cfg.Credentials.Username)),
 		"Username for login")
 	pf.StringVar(&f.Password, "password",
-		nonEmpty(f.Password, os.Getenv("SNOOZE_PASSWORD")),
+		nonEmpty(f.Password, envOrDefault("SNOOZE_PASSWORD", cfg.Credentials.Password)),
 		"Password for login (prompts if empty)")
 	pf.StringVar(&f.Token, "token",
 		nonEmpty(f.Token, os.Getenv("SNOOZE_TOKEN")),
 		"Bearer token (skips login flow)")
-	pf.BoolVar(&f.Insecure, "insecure", f.Insecure, "Skip TLS certificate verification")
+	insecureDefault := f.Insecure || cfg.Insecure
+	pf.BoolVar(&f.Insecure, "insecure", insecureDefault, "Skip TLS certificate verification")
 	pf.StringVar(&f.Cache, "cache",
 		nonEmpty(f.Cache, os.Getenv("SNOOZE_TOKEN_CACHE")),
 		"Path to the token cache file (defaults to OS cache)")
 	timeoutDefault := f.Timeout
+	if timeoutDefault <= 0 {
+		timeoutDefault = cfg.Timeout
+	}
 	if timeoutDefault <= 0 {
 		timeoutDefault = 30 * time.Second
 	}
 	pf.DurationVar(&f.Timeout, "timeout", timeoutDefault, "HTTP request timeout")
 	pf.BoolVar(&f.JSON, "json", f.JSON, "Emit JSON instead of the human-readable format")
 	pf.StringVar(&f.Method, "method",
-		nonEmpty(f.Method, envOrDefault("SNOOZE_METHOD", "local")),
+		nonEmpty(f.Method, envOrDefault("SNOOZE_METHOD", nonEmpty(cfg.Method, "local"))),
 		"Auth method (local, ldap, anonymous)")
 
 	// Stash runtime on the command's context so RunE handlers can grab it.
