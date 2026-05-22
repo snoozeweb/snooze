@@ -125,4 +125,74 @@ describe("SearchBar", () => {
       { timeout: 1500 },
     );
   });
+
+  it("drops a stale parse response that arrives after the user has typed more", async () => {
+    // Regression for "characters get deleted when typing fast": the
+    // debounced parse for value="ab" used to resolve and call onChange
+    // with text="ab", overwriting the parent state that had already moved
+    // on to "abc". The cleanup function's `cancelled` flag must
+    // short-circuit the stale .then() callback.
+    const user = userEvent.setup();
+
+    // Hold the first parse response so we control exactly when it resolves.
+    // `resolveFirst` starts as a no-op and gets swapped to the real resolver
+    // inside the Promise constructor on the first call. The explicit no-op
+    // initial value sidesteps a control-flow narrowing quirk in strict TS
+    // that turned a `let foo: ... | null = null` into `never` at the call site.
+    type FirstResolver = (v: { condition: { op: string; value: string } }) => void;
+    let resolveFirst: FirstResolver = () => {};
+    let parseCalls = 0;
+    mswServer.use(
+      DEFAULT_FIELDS_HANDLER,
+      http.post("/api/v1/condition/parse", async ({ request }) => {
+        parseCalls += 1;
+        const body = (await request.json()) as { query: string };
+        if (body.query === "ab") {
+          // Stall: caller resolves manually below.
+          return new Promise<HttpResponse>((resolve) => {
+            resolveFirst = (v) => resolve(HttpResponse.json(v));
+          });
+        }
+        return HttpResponse.json({
+          condition: { op: "SEARCH", value: body.query },
+        });
+      }),
+    );
+
+    const { onChange, getInput } = setup();
+    await user.type(getInput(), "ab");
+
+    // Wait for the debounce to schedule the first request.
+    await waitFor(() => expect(parseCalls).toBe(1), { timeout: 1500 });
+
+    // Type more before the stalled request resolves. The cleanup flag
+    // for the "ab" effect must flip cancelled=true so the late resolve
+    // can't write back through onChange.
+    await user.type(getInput(), "c");
+
+    // Now release the stale "ab" response.
+    resolveFirst({ condition: { op: "SEARCH", value: "ab" } });
+
+    // Wait for the second parse to fire and resolve normally.
+    await waitFor(() => expect(parseCalls).toBeGreaterThanOrEqual(2), { timeout: 1500 });
+    await waitFor(
+      () => {
+        const calls = onChange.mock.calls.map((c) => c[0]);
+        // Expectations:
+        //  - SOME onChange call (the abc parse) carried condition.value === "abc".
+        //  - NO onChange call carried { text: "ab", condition: ... } that
+        //    would have rolled the input back to "ab".
+        const abcCall = calls.find((c) => c.text === "abc" && c.condition !== null);
+        expect(abcCall).toBeTruthy();
+        const stalewrite = calls.find(
+          (c) =>
+            c.text === "ab" &&
+            c.condition !== null &&
+            (c.condition as { value?: unknown }).value === "ab",
+        );
+        expect(stalewrite).toBeUndefined();
+      },
+      { timeout: 2000 },
+    );
+  });
 });

@@ -112,8 +112,18 @@ export function SearchBar({
   });
 
   // Debounced server parse — fires on text change, not on cursor moves.
+  //
+  // The `cancelled` flag short-circuits the .then() / .catch() callbacks
+  // when the effect's cleanup has already run (which happens on every new
+  // keystroke). Without this, a slow parse response could resolve after
+  // the user has typed more characters and call onChange with the stale
+  // `value` from the original closure — the parent then re-renders the
+  // input back to that stale text, wiping anything typed in between.
+  // Symptom: "characters get deleted when typing fast".
   useEffect(() => {
+    let cancelled = false;
     const handle = setTimeout(() => {
+      if (cancelled) return;
       if (!value.trim()) {
         setError(null);
         onChange({ text: value, condition: null, error: null });
@@ -121,6 +131,7 @@ export function SearchBar({
       }
       api<ParseResponse>("POST", "/condition/parse", { body: { query: value } })
         .then((res) => {
+          if (cancelled) return;
           setError(res.error ?? null);
           onChange({
             text: value,
@@ -129,6 +140,7 @@ export function SearchBar({
           });
         })
         .catch((e: unknown) => {
+          if (cancelled) return;
           // A network failure should not blank the field — keep highlighting,
           // surface the error inline.
           const msg = e instanceof Error ? e.message : "parse failed";
@@ -137,7 +149,10 @@ export function SearchBar({
           onChange({ text: value, condition: null, error: err });
         });
     }, 250);
-    return () => clearTimeout(handle);
+    return () => {
+      cancelled = true;
+      clearTimeout(handle);
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps -- onChange is set on every parent render; including it would re-fire the debounce on every keystroke. The handler is intentionally stable across the lifetime of the SearchBar; parent should memoize if it cares.
   }, [value, collection]);
 

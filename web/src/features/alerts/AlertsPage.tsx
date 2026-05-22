@@ -27,14 +27,17 @@ type AlertsSearch = AlertFilters & {
   page?: number;
   orderby?: string;
   asc?: boolean;
-  /** Raw query string from the SearchBar — persisted in the URL so a deep
-   *  link reproduces the same filter on reload. The parsed Condition is
-   *  derived locally (searchCondition useState) since it requires a
-   *  server round-trip to parse and shouldn't bloat the URL. */
-  search?: string;
   /** Comma-separated env UIDs in the URL (parsed/stringified in onChange). */
   env?: string;
 };
+
+// Note: the SearchBar's text used to live here as a URL param, but
+// TanStack Router's navigate() is async — that one-render lag let React
+// snap the controlled input back to the stale prop value mid-typing, so
+// fast keystrokes were getting dropped. The other list pages (rules,
+// users, kv …) keep search text in local React state via useTableSearch
+// for the same reason. Tab + env stay URL-persisted because they don't
+// change on every keystroke.
 
 const PAGE_SIZE = 50;
 
@@ -95,6 +98,7 @@ export function AlertsPage() {
   const orderby = search.orderby ?? "date_epoch";
   const asc = search.asc ?? false;
 
+  const [searchText, setSearchText] = useState<string>("");
   const [searchCondition, setSearchCondition] = useState<ParsedCondition | null>(null);
   const activeTab: TabId = search.tab ?? "alerts";
 
@@ -459,14 +463,17 @@ export function AlertsPage() {
         // SearchBar lives in DataTable's toolbar row so the bulk-action
         // bar that appears on row selection sits next to it instead of
         // dropping below. Matches every other list page.
+        //
+        // The text + parsed condition are both local React state so
+        // every keystroke renders synchronously — no async URL round-trip
+        // in the controlled-input path, no lost characters when typing
+        // fast. Pagination still resets to page 1 on every change.
         search={{
-          value: search.search ?? "",
+          value: searchText,
           onChange: (c) => {
+            setSearchText(c.text);
             setSearchCondition(c.condition);
-            updateSearch({
-              page: 1,
-              search: c.text || undefined,
-            } as Partial<AlertsSearch>);
+            if (page !== 1) updateSearch({ page: 1 });
           },
           collection: "record",
         }}
