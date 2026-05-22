@@ -23,6 +23,7 @@ type Daemon struct {
 	logger    *slog.Logger
 	listener  *Listener
 	forwarder *Forwarder
+	resolver  OIDResolver
 
 	queueSize int
 }
@@ -46,10 +47,25 @@ func NewDaemon(cfg Config, logger *slog.Logger) (*Daemon, error) {
 	if err != nil {
 		return nil, fmt.Errorf("snmptrap: build client: %w", err)
 	}
+	// MIB resolver — only built when the operator listed MIB modules.
+	// gosmi's state is process-global, so building this once at daemon
+	// startup is correct. Failures fall back to NoopResolver so a bad
+	// /etc/snooze/snmptrap.yaml doesn't block trap reception.
+	var resolver OIDResolver = NoopResolver{}
+	if len(cfg.MIBList) > 0 {
+		r, rerr := NewGosmiResolver(cfg.MIBDirs, cfg.MIBList, logger)
+		if rerr != nil {
+			logger.Warn("snmptrap: MIB resolver disabled — proceeding with raw OIDs",
+				"err", rerr)
+		} else {
+			resolver = r
+		}
+	}
 	d := &Daemon{
 		cfg:       cfg,
 		logger:    logger,
 		forwarder: NewForwarder(client, logger),
+		resolver:  resolver,
 		queueSize: defaultQueueSize,
 	}
 	return d, nil
@@ -66,6 +82,7 @@ func newDaemonWithDeps(cfg Config, logger *slog.Logger, poster alertPoster) *Dae
 		cfg:       cfg,
 		logger:    logger,
 		forwarder: &Forwarder{client: poster, logger: logger, now: time.Now},
+		resolver:  NoopResolver{},
 		queueSize: defaultQueueSize,
 	}
 }
@@ -77,7 +94,7 @@ func (d *Daemon) Run(ctx context.Context) error {
 	// it from queueSize so tests can shrink it when needed.
 	queue := make(chan ParsedTrap, d.queueSize)
 
-	d.listener = NewListener(d.cfg, d.logger, func(p ParsedTrap) {
+	d.listener = NewListener(d.cfg, d.logger, d.resolver, func(p ParsedTrap) {
 		select {
 		case queue <- p:
 		default:

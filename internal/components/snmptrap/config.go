@@ -50,6 +50,17 @@ type Config struct {
 
 	// Timeout caps each HTTP forward call. Defaults to 30s.
 	Timeout time.Duration `yaml:"timeout"`
+
+	// MIBDirs are filesystem paths gosmi scans for MIB module files.
+	// Mirrors the `mib_dirs` field from the Python snmptrap component.
+	// When empty the daemon skips MIB loading and stores raw dotted OIDs
+	// (with dots sanitized to underscores) as record-field keys.
+	MIBDirs []string `yaml:"mib_dirs"`
+
+	// MIBList names the MIB modules to load from the configured MIBDirs.
+	// e.g. ["SNMPv2-MIB", "IF-MIB"]. Module names are case-sensitive and
+	// must match the MIB file's MODULE-IDENTITY declaration.
+	MIBList []string `yaml:"mib_list"`
 }
 
 // V3Config bundles the USM parameters needed to authenticate SNMPv3 traps.

@@ -61,11 +61,16 @@ type ParsedTrap struct {
 
 // ParseTrap converts an inbound gosnmp packet into a ParsedTrap. The remote
 // UDPAddr is consulted for the Host field; nil is accepted (sender unknown).
+// The resolver is consulted to convert each dotted OID into a MIB-qualified
+// label; pass NoopResolver{} to skip MIB lookups.
 //
 // The function never returns an error: it always produces a best-effort record
 // so a malformed trap is still surfaced to the operator rather than silently
 // dropped.
-func ParseTrap(pkt *gosnmp.SnmpPacket, remote *net.UDPAddr) ParsedTrap {
+func ParseTrap(pkt *gosnmp.SnmpPacket, remote *net.UDPAddr, resolver OIDResolver) ParsedTrap {
+	if resolver == nil {
+		resolver = NoopResolver{}
+	}
 	out := ParsedTrap{
 		Severity: "warning",
 		Process:  "snmptrap",
@@ -82,13 +87,19 @@ func ParseTrap(pkt *gosnmp.SnmpPacket, remote *net.UDPAddr) ParsedTrap {
 
 	var trapOID string
 	for _, vb := range pkt.Variables {
-		name := normaliseOID(vb.Name)
+		dotted := normaliseOID(vb.Name)
 		value := pdoValue(vb)
-		out.Raw[name] = value
+		// Resolver gives us the MIB-qualified label when possible, the
+		// bare dotted OID (sans leading dot) otherwise. SanitizeKey then
+		// replaces "." with "_" so the key is safe to use as a BSON
+		// sub-document field — see resolver.go for the rationale.
+		key := SanitizeKey(resolver.Resolve(dotted))
+		out.Raw[key] = value
 
 		// Locate the trap OID per RFC 3416 — v2c/v3 stash it as the value of
-		// snmpTrapOID.0. Defensive: also accept the bare prefix.
-		if trapOID == "" && (name == snmpTrapOID || strings.TrimSuffix(name, ".0") == strings.TrimSuffix(snmpTrapOID, ".0")) {
+		// snmpTrapOID.0. We check against the original dotted form because
+		// the resolver may have rewritten the name into a MIB symbol.
+		if trapOID == "" && (dotted == snmpTrapOID || strings.TrimSuffix(dotted, ".0") == strings.TrimSuffix(snmpTrapOID, ".0")) {
 			if s, ok := value.(string); ok {
 				trapOID = s
 			}
@@ -96,7 +107,7 @@ func ParseTrap(pkt *gosnmp.SnmpPacket, remote *net.UDPAddr) ParsedTrap {
 
 		// First hit on a severity-looking varbind wins.
 		if out.Severity == "warning" {
-			lower := strings.ToLower(name)
+			lower := strings.ToLower(key)
 			for _, kw := range severityKeywords {
 				if strings.Contains(lower, kw) {
 					out.Severity = normaliseSeverity(stringify(value))

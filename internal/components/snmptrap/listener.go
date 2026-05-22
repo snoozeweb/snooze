@@ -18,22 +18,27 @@ type TrapHandler func(parsed ParsedTrap)
 // Listener wraps gosnmp.TrapListener with our config and decoupled handler.
 // It is single-use: call Start, then Close.
 type Listener struct {
-	cfg    Config
-	logger *slog.Logger
-	tl     *gosnmp.TrapListener
-	on     TrapHandler
+	cfg      Config
+	logger   *slog.Logger
+	tl       *gosnmp.TrapListener
+	on       TrapHandler
+	resolver OIDResolver
 }
 
 // NewListener wires a Listener but does not bind a socket. Call Start to
-// actually listen. logger may be nil (defaults to slog.Default()).
-func NewListener(cfg Config, logger *slog.Logger, handler TrapHandler) *Listener {
+// actually listen. logger may be nil (defaults to slog.Default()). resolver
+// may be nil (defaults to NoopResolver — no MIB lookup).
+func NewListener(cfg Config, logger *slog.Logger, resolver OIDResolver, handler TrapHandler) *Listener {
 	if logger == nil {
 		logger = slog.Default()
 	}
 	if handler == nil {
 		handler = func(ParsedTrap) {}
 	}
-	return &Listener{cfg: cfg, logger: logger, on: handler}
+	if resolver == nil {
+		resolver = NoopResolver{}
+	}
+	return &Listener{cfg: cfg, logger: logger, on: handler, resolver: resolver}
 }
 
 // Start binds the UDP socket and blocks until the listener errors out or the
@@ -107,7 +112,7 @@ func (l *Listener) handle(pkt *gosnmp.SnmpPacket, remote *net.UDPAddr) {
 			slog.String("from", safeAddr(remote)))
 		return
 	}
-	parsed := ParseTrap(pkt, remote)
+	parsed := ParseTrap(pkt, remote, l.resolver)
 	l.logger.Debug("snmptrap: received",
 		slog.String("from", parsed.Host),
 		slog.String("version", parsed.Version),
