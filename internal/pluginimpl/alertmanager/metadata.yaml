@@ -1,3 +1,13 @@
 ---
 name: 'alertmanager'
 desc: 'Receive Prometheus AlertManager v4 webhook notifications'
+
+# Webhook receivers are unauthenticated by design — Alertmanager etc. push
+# alerts without credentials. `write: [any]` grants every authenticated
+# caller write access too (because the authorizer adds `any` to the user's
+# permission set), so this plugin is effectively public on both axes.
+# Mirrors the 1.5.0 prometheus / grafana / kapacitor / influxdb2 policy.
+route_defaults:
+    authentication: false
+    authorization_policy:
+        write: [any]

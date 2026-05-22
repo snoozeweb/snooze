@@ -115,6 +115,11 @@ func (rt *Router) Build() chi.Router {
 	//     `/{uid}` handlers chi installs) ----------------------------------
 	rt.mountSnoozeRetro(r)
 
+	// --- webhook receivers (must precede plugin CRUD so the path-specific
+	//     /api/v1/webhook/{name} mount wins over a generic CRUD route the
+	//     same plugin might otherwise register at /api/v1/{name}). -----------
+	rt.mountWebhooks(r)
+
 	// --- plugin CRUD -------------------------------------------------------
 	for _, p := range rt.Plugins {
 		plugins.MountCRUD(r, rt.Host, p)
@@ -126,8 +131,17 @@ func (rt *Router) Build() chi.Router {
 	return r
 }
 
-// skipAuth returns the SkipPredicate used by the Auth middleware. The result
-// honours rt.SkipAuthPaths when set, else applies the canonical defaults.
+// skipAuth returns the SkipPredicate used by the Auth middleware. The
+// effective skip list is the union of:
+//
+//   - rt.SkipAuthPaths (operator override) OR the canonical defaults
+//   - every plugin whose metadata RouteDefaults.Authentication is an
+//     explicit `false` — that plugin's CRUD subtree (/api/v1/{name}) is
+//     treated as public, matching 1.5.0's per-route `authentication = False`.
+//
+// Path matching is exact OR prefix-with-trailing-slash, so adding
+// "/api/v1/webhook" skips "/api/v1/webhook/anything" but not
+// "/api/v1/webhookfoo".
 func (rt *Router) skipAuth(r *http.Request) bool {
 	if r.Method == http.MethodOptions {
 		return true
@@ -138,9 +152,17 @@ func (rt *Router) skipAuth(r *http.Request) bool {
 			"/healthz", "/readyz", "/metrics",
 			"/api/v1/login",
 			"/api/v1/health",
+			// /api/v1/alerts is the generic record-ingest endpoint
+			// (1.5.0 AlertRoute had `authentication = False`).
+			// Anything that POSTs alerts — internal jobs, lightweight
+			// integrations without a webhook-receiver plugin — should
+			// not need a Bearer token.
+			"/api/v1/alerts",
 			"/", "/web", "/web/",
 		}
 	}
+	// Plugins that declared `authentication: false` extend the public set.
+	paths = append(paths, rt.pluginPublicPaths()...)
 	for _, p := range paths {
 		if r.URL.Path == p || strings.HasPrefix(r.URL.Path, p+"/") {
 			return true
@@ -151,4 +173,61 @@ func (rt *Router) skipAuth(r *http.Request) bool {
 		return true
 	}
 	return false
+}
+
+// pluginPublicPaths walks rt.Plugins and returns the CRUD path prefix of
+// every plugin whose RouteDefaults.Authentication is explicitly `false`.
+//
+// Per-sub-path overrides (Metadata.Routes[path].Authentication) are
+// intentionally NOT consulted here: CRUD-mounted plugins live at a single
+// URL prefix and the public-or-not decision is plugin-wide. RouteProvider
+// plugins that want finer control can use AuthorizeCRUD directly on the
+// nested subrouter, but the Bearer-token middleware still defers to the
+// plugin-level flag.
+func (rt *Router) pluginPublicPaths() []string {
+	var out []string
+	for name, p := range rt.Plugins {
+		meta := p.Metadata()
+		route := meta.ResolveRoute("")
+		if route.Authentication != nil && !*route.Authentication {
+			out = append(out, "/api/v1/"+name)
+			// Webhook receivers also live under /api/v1/webhook/{name};
+			// add that prefix so the same `authentication: false` flag
+			// covers both mount points.
+			if _, ok := p.(plugins.WebhookReceiver); ok {
+				out = append(out, "/api/v1/webhook/"+name)
+			}
+		}
+	}
+	return out
+}
+
+// mountWebhooks wires every plugins.WebhookReceiver at
+//
+//	POST /api/v1/webhook/{plugin}
+//
+// The route fragment returned by WebhookPath() is treated as a sub-path
+// under the plugin name (e.g. `/alertmanager` ⇒ /api/v1/webhook/alertmanager).
+// Auth is enforced by the same AuthorizeCRUD middleware that wraps CRUD
+// subrouters; combined with `authentication: false` in the plugin's
+// metadata.yaml that mirrors 1.5.0 where `WebhookRoute.authentication = False`
+// + `authorization_policy.write: [any]` made these endpoints public.
+func (rt *Router) mountWebhooks(r chi.Router) {
+	r.Route("/api/v1/webhook", func(sub chi.Router) {
+		for name, p := range rt.Plugins {
+			wr, ok := p.(plugins.WebhookReceiver)
+			if !ok {
+				continue
+			}
+			meta := p.Metadata()
+			meta.PluginName = name
+			path := wr.WebhookPath()
+			if path == "" {
+				continue
+			}
+			// Per-plugin authorize middleware so each receiver's
+			// authorization_policy is enforced even on the webhook path.
+			sub.With(plugins.AuthorizeCRUD(meta)).Post(path, wr.HandleWebhook)
+		}
+	})
 }

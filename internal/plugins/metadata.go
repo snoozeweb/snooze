@@ -35,8 +35,15 @@ type Metadata struct {
 	// settings grouped by section (general vs notification).
 	SettingForm map[string]any `yaml:"setting_form" json:"setting_form,omitempty"`
 	Provides    []string       `yaml:"provides" json:"provides,omitempty"`
-	// Routes is keyed by route path (e.g. "/webhook/alertmanager/v4") and
-	// carries per-route overrides over the plugin's default Route.
+	// RouteDefaults is the plugin-level baseline for every route generated
+	// or registered for this plugin. Individual Routes entries override
+	// fields piecewise (see Metadata.ResolveRoute).
+	//
+	// Mirrors the Python `route_defaults:` block at the top of each
+	// plugin's metadata.yaml.
+	RouteDefaults Route `yaml:"route_defaults" json:"route_defaults,omitempty"`
+	// Routes is keyed by route path (e.g. "/user_self") and carries
+	// per-route overrides on top of RouteDefaults.
 	Routes       map[string]Route `yaml:"routes" json:"routes,omitempty"`
 	Options      map[string]any   `yaml:"options" json:"options,omitempty"`
 	SearchFields []string         `yaml:"search_fields" json:"search_fields,omitempty"`
@@ -50,13 +57,80 @@ type Metadata struct {
 	Tree       bool `yaml:"tree" json:"tree,omitempty"`
 }
 
-// Route is a single per-path override for the plugin's HTTP surface.
+// Route is a single per-path override for the plugin's HTTP surface. A nil
+// `Authentication` means "inherit from RouteDefaults (or the global default
+// of true)"; an explicit `false` opts the route out of the Bearer-token
+// requirement. AuthorizationPolicy works the same way: nil means "inherit",
+// an empty struct {} means "no extra read/write grants (defaults only)".
 type Route struct {
-	ClassName        string   `yaml:"class_name" json:"class_name,omitempty"`
-	CheckPermissions bool     `yaml:"check_permissions" json:"check_permissions,omitempty"`
-	PrimaryKey       []string `yaml:"primary_key" json:"primary_key,omitempty"`
-	DuplicatePolicy  string   `yaml:"duplicate_policy" json:"duplicate_policy,omitempty"`
-	Authentication   bool     `yaml:"authentication" json:"authentication,omitempty"`
+	ClassName           string               `yaml:"class_name" json:"class_name,omitempty"`
+	CheckPermissions    bool                 `yaml:"check_permissions" json:"check_permissions,omitempty"`
+	PrimaryKey          []string             `yaml:"primary_key" json:"primary_key,omitempty"`
+	DuplicatePolicy     string               `yaml:"duplicate_policy" json:"duplicate_policy,omitempty"`
+	Authentication      *bool                `yaml:"authentication" json:"authentication,omitempty"`
+	AuthorizationPolicy *AuthorizationPolicy `yaml:"authorization_policy" json:"authorization_policy,omitempty"`
+}
+
+// AuthorizationPolicy mirrors the Python RouteArgs.authorization_policy.
+// Each list names permissions that ALSO grant read / write access to the
+// route on top of the default `ro_<plugin>` / `rw_<plugin>` / `ro_all` /
+// `rw_all` grants. The special token `any` matches every authenticated
+// caller (because the authorizer adds `any` to the user's effective
+// permission set, mirroring 1.5.0's is_authorized).
+type AuthorizationPolicy struct {
+	Read  []string `yaml:"read" json:"read,omitempty"`
+	Write []string `yaml:"write" json:"write,omitempty"`
+}
+
+// ResolveRoute returns the effective Route for a given path under the
+// plugin. It starts from RouteDefaults and overlays the entry at
+// m.Routes[path] when present. Unset (nil-pointer / zero-value) fields on
+// the override inherit from the defaults.
+//
+// path is matched literally; callers wanting prefix-style resolution
+// should compose their own lookup on top of this helper.
+func (m Metadata) ResolveRoute(path string) Route {
+	out := m.RouteDefaults
+	override, ok := m.Routes[path]
+	if !ok {
+		return out
+	}
+	if override.ClassName != "" {
+		out.ClassName = override.ClassName
+	}
+	if override.CheckPermissions {
+		out.CheckPermissions = true
+	}
+	if len(override.PrimaryKey) > 0 {
+		out.PrimaryKey = override.PrimaryKey
+	}
+	if override.DuplicatePolicy != "" {
+		out.DuplicatePolicy = override.DuplicatePolicy
+	}
+	if override.Authentication != nil {
+		v := *override.Authentication
+		out.Authentication = &v
+	}
+	if override.AuthorizationPolicy != nil {
+		// Copy-on-overlay so future edits don't bleed back into the
+		// override map.
+		cp := *override.AuthorizationPolicy
+		out.AuthorizationPolicy = &cp
+	}
+	return out
+}
+
+// AuthenticationRequired returns true when the resolved route demands a
+// valid Bearer token. The default is `true` — only an explicit
+// `authentication: false` in metadata.yaml opts the route out. The path
+// argument is the path-key under m.Routes; pass "" to consult only the
+// defaults.
+func (m Metadata) AuthenticationRequired(path string) bool {
+	rt := m.ResolveRoute(path)
+	if rt.Authentication == nil {
+		return true
+	}
+	return *rt.Authentication
 }
 
 // ParseMetadata decodes a metadata.yaml byte slice into a Metadata value.

@@ -79,6 +79,17 @@ func doRequest(t *testing.T, r chi.Router, method, target string, body any) *htt
 	if body != nil {
 		req.Header.Set("Content-Type", "application/json")
 	}
+	// CRUD subrouters install AuthorizeCRUD; without claims every request
+	// would 401. Inject an admin-equivalent claim set so the test
+	// exercises the handler logic rather than the auth gate. Tests that
+	// want to assert auth behaviour build their own request.
+	ctx := auth.WithClaims(req.Context(), snoozetypes.Claims{
+		Subject:     "test",
+		Method:      "local",
+		Roles:       []string{"admin"},
+		Permissions: []string{"rw_all"},
+	})
+	req = req.WithContext(ctx)
 	rec := httptest.NewRecorder()
 	r.ServeHTTP(rec, req)
 	return rec

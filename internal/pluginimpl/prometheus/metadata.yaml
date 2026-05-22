@@ -1,3 +1,9 @@
 ---
 name: 'prometheus'
 desc: 'Receive Prometheus alert webhook notifications'
+
+# Webhook receivers are unauthenticated by design (same as 1.5.0).
+route_defaults:
+    authentication: false
+    authorization_policy:
+        write: [any]

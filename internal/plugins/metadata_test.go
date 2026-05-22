@@ -57,7 +57,10 @@ routes:
 	r := m.Routes["/webhook/alertmanager/v4"]
 	require.Equal(t, "AlertManagerV4Route", r.ClassName)
 	require.False(t, r.CheckPermissions)
-	require.False(t, r.Authentication)
+	// Authentication is *bool now; "authentication: false" should decode
+	// to a non-nil pointer with the explicit false value.
+	require.NotNil(t, r.Authentication)
+	require.False(t, *r.Authentication)
 	require.Equal(t, []string{"uid"}, r.PrimaryKey)
 	require.Equal(t, "update", r.DuplicatePolicy)
 }
@@ -132,7 +135,8 @@ routes:
 	require.Contains(t, m.Routes, "/custom")
 	require.Equal(t, "Custom", m.Routes["/custom"].ClassName)
 	require.True(t, m.Routes["/custom"].CheckPermissions)
-	require.True(t, m.Routes["/custom"].Authentication)
+	require.NotNil(t, m.Routes["/custom"].Authentication)
+	require.True(t, *m.Routes["/custom"].Authentication)
 	require.Equal(t, []string{"uid", "host"}, m.Routes["/custom"].PrimaryKey)
 	require.Equal(t, "replace", m.Routes["/custom"].DuplicatePolicy)
 }

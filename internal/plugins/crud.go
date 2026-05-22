@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
 	"sort"
 	"strconv"
@@ -79,16 +80,56 @@ func emitAudit(ctx context.Context, host Host, meta Metadata, collection, action
 //
 // If p implements DataModel, its Validate method is called on the body of
 // POST/PUT/PATCH requests before any database write.
+//
+// Every CRUD subrouter (and RouteProvider subrouter too) is wrapped with
+// AuthorizeCRUD(meta) so the plugin's authorization_policy is enforced
+// against the caller's claims. The auth middleware higher up is in charge
+// of deciding whether to skip the Bearer check; this layer is what enforces
+// the read/write split per plugin.
 func MountCRUD(r chi.Router, host Host, p Plugin) {
+	// Stamp PluginName on a local copy so AuthorizeCRUD can derive the
+	// implicit `ro_<plugin>` / `rw_<plugin>` permissions without each
+	// plugin having to remember to set it.
+	meta := p.Metadata()
+	meta.PluginName = p.Name()
+	authorize := AuthorizeCRUD(meta)
+
 	if rp, ok := p.(RouteProvider); ok {
 		r.Route("/api/v1/"+p.Name(), func(sub chi.Router) {
+			sub.Use(authorize)
 			rp.RegisterRoutes(sub, host)
 		})
 		return
 	}
 
+	// Pure Notifiers (mail / webhook / googlechat / mattermost), Actioners
+	// (script / patlite), and WebhookReceivers (alertmanager / grafana /
+	// prometheus / kapacitor / influxdb2) don't own a document
+	// collection — they're behaviour, not data. Their config lives in the
+	// shared `action` collection (Notifiers/Actioners) or is stateless
+	// ingestion (WebhookReceivers). Mounting generic CRUD on them
+	// produces dead endpoints AND conflicts with sibling mounts: the
+	// "webhook" Notifier would otherwise grab /api/v1/webhook before the
+	// WebhookReceiver mount registers /api/v1/webhook/<receiver> there.
+	// Skip the CRUD surface for them; routes that need a custom shape
+	// can still opt in via RouteProvider above. Plugins that are both a
+	// DataModel AND one of these behaviour interfaces keep their CRUD
+	// (the DataModel check below short-circuits the skip).
+	if _, isData := p.(DataModel); !isData {
+		if _, isNotifier := p.(Notifier); isNotifier {
+			return
+		}
+		if _, isAction := p.(Actioner); isAction {
+			return
+		}
+		if _, isWebhook := p.(WebhookReceiver); isWebhook {
+			return
+		}
+	}
+
 	collection := p.Name()
 	r.Route("/api/v1/"+collection, func(sub chi.Router) {
+		sub.Use(authorize)
 		sub.Get("/", listHandler(host, p, collection))
 		sub.Post("/", createHandler(host, p, collection))
 		sub.Delete("/", bulkDeleteHandler(host, p, collection))
@@ -132,7 +173,18 @@ func writeJSON(w http.ResponseWriter, status int, body any) {
 // writeError sends a minimal error envelope. The full envelope including
 // request_id / trace_id is the API package's responsibility; here we keep it
 // small to avoid importing the api package and creating a dep cycle.
+//
+// 5xx responses are also slog.Error'd so the underlying message lands in the
+// journal — the audit middleware only records the status code, so without
+// this hook a "500 db_error" disappears into a black box.
 func writeError(w http.ResponseWriter, status int, code, msg string) {
+	if status >= 500 {
+		slog.Error("crud error response",
+			"status", status,
+			"code", code,
+			"message", msg,
+		)
+	}
 	writeJSON(w, status, map[string]any{
 		"error": map[string]any{
 			"code":    code,
