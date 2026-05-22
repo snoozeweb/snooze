@@ -472,15 +472,24 @@ function RowActionsMenu({ actions }: { actions: RowAction[] }) {
 function PaginationBar({ pag }: { pag: NonNullable<DataTableProps<unknown>["serverPagination"]> }) {
   const totalPages = Math.max(1, Math.ceil(pag.total / pag.pageSize));
   const showing = `${(pag.page - 1) * pag.pageSize + 1}–${Math.min(pag.page * pag.pageSize, pag.total)} of ${pag.total}`;
+  const atStart = pag.page <= 1;
+  const atEnd = pag.page >= totalPages;
   return (
     <div className={styles.pagination}>
       <span>{showing}</span>
       <div className={styles.paginationActions}>
         <IconButton
+          icon="chevrons-left"
+          label="First page"
+          size="sm"
+          disabled={atStart}
+          onClick={() => pag.onChange({ page: 1, pageSize: pag.pageSize })}
+        />
+        <IconButton
           icon="chevron-left"
           label="Previous page"
           size="sm"
-          disabled={pag.page <= 1}
+          disabled={atStart}
           onClick={() => pag.onChange({ page: pag.page - 1, pageSize: pag.pageSize })}
         />
         <span>
@@ -490,8 +499,15 @@ function PaginationBar({ pag }: { pag: NonNullable<DataTableProps<unknown>["serv
           icon="chevron-right"
           label="Next page"
           size="sm"
-          disabled={pag.page >= totalPages}
+          disabled={atEnd}
           onClick={() => pag.onChange({ page: pag.page + 1, pageSize: pag.pageSize })}
+        />
+        <IconButton
+          icon="chevrons-right"
+          label="Last page"
+          size="sm"
+          disabled={atEnd}
+          onClick={() => pag.onChange({ page: totalPages, pageSize: pag.pageSize })}
         />
       </div>
     </div>

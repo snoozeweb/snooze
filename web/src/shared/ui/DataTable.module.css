@@ -18,27 +18,31 @@
 }
 /* Inline toolbar segment — sits at the right of the row. When selection is
    active the surface picks up the accent tint so the bulk-actions cluster
-   reads as a distinct state without engulfing the search bar. */
-.toolbar {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--space-2);
-  padding: 0 var(--space-2);
-  color: var(--text);
-  font-size: var(--text-sm);
-  flex: 0 0 auto;
-}
+   reads as a distinct state without engulfing the search bar.
+
+   Both states share the same outer geometry (1px border, matching padding,
+   matching radius) so toggling the class on selection never changes the
+   row height — only the colour. Without the transparent placeholder
+   border on .toolbar, selecting a row shifted the table 2px because the
+   selected variant is 1px taller on each side. */
+.toolbar,
 .toolbarSelected {
   display: inline-flex;
   align-items: center;
   gap: var(--space-2);
   padding: var(--space-1) var(--space-2);
-  background: var(--accent-bg);
-  color: var(--accent);
-  border: 1px solid var(--accent);
+  border: 1px solid transparent;
   border-radius: var(--radius-md);
   font-size: var(--text-sm);
   flex: 0 0 auto;
+}
+.toolbar {
+  color: var(--text);
+}
+.toolbarSelected {
+  background: var(--accent-bg);
+  color: var(--accent);
+  border-color: var(--accent);
 }
 .toolbarCount {
   font-weight: var(--weight-semibold);

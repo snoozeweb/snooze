@@ -3,6 +3,8 @@ export const ICON_NAMES = [
   "chevron-up",
   "chevron-right",
   "chevron-left",
+  "chevrons-right",
+  "chevrons-left",
   "x",
   "check",
   "more-horizontal",
