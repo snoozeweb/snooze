@@ -14,7 +14,15 @@ export type Modification =
   | { type: "array_delete"; field: string; value: string }
   | { type: "regex_parse"; field: string; pattern: string }
   | { type: "regex_sub"; field: string; pattern: string; replace: string }
-  | { type: "kv_set"; field: string; key: string };
+  // KV_SET wire shape (Python-era, preserved by the Go backend):
+  //   ["KV_SET", dict, key, out_field]
+  // Semantics: record[field] = kv[dict][record[key]]
+  //   * `field` is the destination column (the "out_field" in the wire form);
+  //     keeping it named `field` lets it carry across type switches in the
+  //     editor like every other modification op.
+  //   * `dict` is the kv-collection dictionary/namespace.
+  //   * `key` is the *name of a record field* whose value drives the lookup.
+  | { type: "kv_set"; field: string; dict: string; key: string };
 
 export type ModificationType = Modification["type"];
 
@@ -41,7 +49,7 @@ export function defaultModification(type: ModificationType): Modification {
     case "regex_sub":
       return { type: "regex_sub", field: "", pattern: "", replace: "" };
     case "kv_set":
-      return { type: "kv_set", field: "", key: "" };
+      return { type: "kv_set", field: "", dict: "", key: "" };
     case "set":
       return { type: "set", field: "", value: "" };
   }

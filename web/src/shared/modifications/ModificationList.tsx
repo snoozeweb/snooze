@@ -125,13 +125,22 @@ export function ModificationList({ value, onChange }: ModificationListProps) {
             </>
           ) : null}
           {mod.type === "kv_set" ? (
-            <div className={styles.value}>
-              <Input
-                placeholder="kv key"
-                value={mod.key}
-                onChange={(e) => update(i, { key: e.target.value } as Partial<Modification>)}
-              />
-            </div>
+            <>
+              <div className={styles.value}>
+                <Input
+                  placeholder="kv dict"
+                  value={mod.dict}
+                  onChange={(e) => update(i, { dict: e.target.value } as Partial<Modification>)}
+                />
+              </div>
+              <div className={styles.value}>
+                <Input
+                  placeholder="record field (lookup key)"
+                  value={mod.key}
+                  onChange={(e) => update(i, { key: e.target.value } as Partial<Modification>)}
+                />
+              </div>
+            </>
           ) : null}
           <div className={styles.actions}>
             <IconButton

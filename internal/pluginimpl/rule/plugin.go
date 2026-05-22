@@ -65,15 +65,33 @@ type ruleEntry struct {
 	modifications []modification.Modification
 	// kvSets is the list of KV_SET modifications, deferred from the
 	// internal/modification package because they require host access.
-	// Each entry holds {Field, Key} resolved at apply time.
+	// Each entry holds {Dict, Key, OutField} resolved at apply time.
 	kvSets   []kvSet
 	children []*ruleEntry
 }
 
-// kvSet captures a `KV_SET` modification: read kv[Key] and assign to rec[Field].
+// kvSet captures a `KV_SET` modification. Wire shape:
+//
+//	["KV_SET", dict, key, out_field]
+//
+// Semantics (matching the Python original in src/snooze/utils/modification.py):
+// look up kv[Dict][record[Key]] and assign the resulting value to
+// record[OutField]. `Key` is the *record field name* whose value drives the
+// kv lookup, not a literal key string.
 type kvSet struct {
-	Field string
-	Key   string
+	Dict     string
+	Key      string
+	OutField string
+}
+
+// kvGetter is the duck-typed interface the rule plugin uses to consult the
+// in-memory cache of the "kv" plugin (internal/pluginimpl/kv). Importing kv
+// directly would couple two sibling pluginimpl packages; structural typing
+// against Host.Plugin("kv") avoids that without losing the cache hit on the
+// hot path. The DB fallback in applyKVSets covers tests and edge cases where
+// the plugin handle is unavailable.
+type kvGetter interface {
+	Get(dict, key string) (any, bool)
 }
 
 // Name returns the registered plugin name.
@@ -222,32 +240,64 @@ func applyModifications(view map[string]any, mods []modification.Modification) b
 // applyKVSets implements the KV_SET op that was deferred from
 // internal/modification (it needs host access).
 //
-// For each {Field, Key} pair, it reads the stored value from the `kv`
-// collection and writes view[Field] = value. The lookup goes through the
-// "kv" plugin's Plugin() handle when it exposes a known interface; otherwise
-// it falls back to a direct GetOne on the kv collection. The fallback is
-// load-bearing because the kv plugin lives in a sibling pluginimpl package
-// and we cannot import it from here without a cycle.
+// For each {Dict, Key, OutField} entry it reads view[Key], uses that as the
+// lookup key against kv[Dict], and writes view[OutField] = looked-up value.
+// This mirrors the Python original (src/snooze/utils/modification.py KvSet):
+//
+//	record[out_field] = kv[dict][record[key]]
+//
+// The lookup prefers the kv plugin's in-memory cache (via the kvGetter
+// duck-type) so we don't pay a DB round-trip per record; the GetOne fallback
+// is here for tests and the rare boot window where PostInit hasn't yet wired
+// the kv handle.
 func (p *Plugin) applyKVSets(ctx context.Context, view map[string]any, sets []kvSet) {
 	if len(sets) == 0 {
 		return
 	}
-	if p.host == nil || p.host.DB() == nil {
+	if p.host == nil {
 		return
 	}
-	// Best-effort timeout so a slow KV backend doesn't stall a record.
-	ctx, cancel := context.WithTimeout(ctx, 2*time.Second)
-	defer cancel()
+	var getter kvGetter
+	if kp := p.host.Plugin("kv"); kp != nil {
+		getter, _ = kp.(kvGetter)
+	}
+	var dbCtx context.Context
+	var cancel context.CancelFunc
 	for _, s := range sets {
-		if s.Field == "" || s.Key == "" {
+		if s.OutField == "" || s.Key == "" {
 			continue
 		}
-		doc, err := p.host.DB().GetOne(ctx, "kv", db.Document{"key": s.Key})
+		raw, ok := view[s.Key]
+		if !ok {
+			continue
+		}
+		recordKey, ok := raw.(string)
+		if !ok {
+			recordKey = fmt.Sprint(raw)
+		}
+		if recordKey == "" {
+			continue
+		}
+		if getter != nil {
+			if v, found := getter.Get(s.Dict, recordKey); found {
+				view[s.OutField] = v
+			}
+			continue
+		}
+		if p.host.DB() == nil {
+			continue
+		}
+		if dbCtx == nil {
+			// Best-effort timeout so a slow KV backend doesn't stall a record.
+			dbCtx, cancel = context.WithTimeout(ctx, 2*time.Second)
+			defer cancel()
+		}
+		doc, err := p.host.DB().GetOne(dbCtx, "kv", db.Document{"dict": s.Dict, "key": recordKey})
 		if err != nil || doc == nil {
 			continue
 		}
 		if v, ok := doc["value"]; ok {
-			view[s.Field] = v
+			view[s.OutField] = v
 		}
 	}
 }
@@ -320,10 +370,13 @@ func parseModifications(raw any) ([]modification.Modification, []kvSet, error) {
 		}
 		if len(args) > 0 {
 			if op, ok := args[0].(string); ok && op == "KV_SET" {
-				// KV_SET[field, key] → look up kv[key].value into rec[field].
-				field, _ := safeString(args, 1)
+				// Wire form is the Python-era positional shape
+				// ["KV_SET", dict, key, out_field]: look up kv[dict][record[key]]
+				// and assign the result to record[out_field].
+				dict, _ := safeString(args, 1)
 				key, _ := safeString(args, 2)
-				kvs = append(kvs, kvSet{Field: field, Key: key})
+				outField, _ := safeString(args, 3)
+				kvs = append(kvs, kvSet{Dict: dict, Key: key, OutField: outField})
 				continue
 			}
 		}

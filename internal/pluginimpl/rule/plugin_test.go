@@ -160,6 +160,106 @@ func TestRule_Process(t *testing.T) {
 	require.Equal(t, []any{"Rule1", "SubRule1", "SubSubRule1"}, out.Record.Extra["rules"])
 }
 
+// stubKV satisfies the rule package's kvGetter duck-type with a literal map
+// so the test exercises the cached-lookup path without spinning the real kv
+// plugin.
+type stubKV struct{ data map[string]map[string]any }
+
+func (s *stubKV) Name() string                     { return "kv" }
+func (s *stubKV) Metadata() plugins.Metadata       { return plugins.Metadata{Name: "kv"} }
+func (s *stubKV) PostInit(context.Context, plugins.Host) error { return nil }
+func (s *stubKV) Reload(context.Context) error     { return nil }
+func (s *stubKV) Get(dict, key string) (any, bool) {
+	d, ok := s.data[dict]
+	if !ok {
+		return nil, false
+	}
+	v, ok := d[key]
+	return v, ok
+}
+
+func TestRule_KVSet_WireShape(t *testing.T) {
+	// Wire shape from Python: ["KV_SET", dict, key, out_field].
+	// Semantics: record[out_field] = kv[dict][record[key]].
+	t.Parallel()
+
+	host := newTestHost(t)
+	ctx := context.Background()
+	host.plugs["kv"] = &stubKV{data: map[string]map[string]any{
+		"host_owner": {"web01": "alice", "db01": "bob"},
+	}}
+
+	_, err := host.DB().Write(ctx, "rule", []db.Document{{
+		"name":          "OwnerLookup",
+		"condition":     []any{"=", "host", "web01"},
+		"modifications": []any{[]any{"KV_SET", "host_owner", "host", "owner"}},
+	}}, db.WriteOptions{})
+	require.NoError(t, err)
+
+	p := &Plugin{}
+	require.NoError(t, p.PostInit(ctx, host))
+
+	out, err := p.Process(ctx, makeRecord(map[string]any{"host": "web01"}))
+	require.NoError(t, err)
+	require.Equal(t, "alice", out.Record.Extra["owner"])
+}
+
+func TestRule_KVSet_DBFallback(t *testing.T) {
+	// When the kv plugin handle isn't registered, applyKVSets falls back to
+	// a direct lookup on the "kv" collection. The on-disk shape is the
+	// Python-era {dict, key, value} record set.
+	t.Parallel()
+
+	host := newTestHost(t)
+	ctx := context.Background()
+
+	_, err := host.DB().Write(ctx, "kv", []db.Document{
+		{"dict": "host_owner", "key": "web01", "value": "alice"},
+	}, db.WriteOptions{})
+	require.NoError(t, err)
+
+	_, err = host.DB().Write(ctx, "rule", []db.Document{{
+		"name":          "OwnerLookup",
+		"condition":     []any{"=", "host", "web01"},
+		"modifications": []any{[]any{"KV_SET", "host_owner", "host", "owner"}},
+	}}, db.WriteOptions{})
+	require.NoError(t, err)
+
+	p := &Plugin{}
+	require.NoError(t, p.PostInit(ctx, host))
+
+	out, err := p.Process(ctx, makeRecord(map[string]any{"host": "web01"}))
+	require.NoError(t, err)
+	require.Equal(t, "alice", out.Record.Extra["owner"])
+}
+
+func TestRule_KVSet_MissDoesNotMutate(t *testing.T) {
+	// A missing record[key] or a missing kv[dict][record_key] entry must
+	// leave the record untouched (matches Python's KeyError swallow).
+	t.Parallel()
+
+	host := newTestHost(t)
+	ctx := context.Background()
+	host.plugs["kv"] = &stubKV{data: map[string]map[string]any{
+		"host_owner": {"web01": "alice"},
+	}}
+
+	_, err := host.DB().Write(ctx, "rule", []db.Document{{
+		"name":          "OwnerLookup",
+		"condition":     []any{"=", "host", "unknown"},
+		"modifications": []any{[]any{"KV_SET", "host_owner", "host", "owner"}},
+	}}, db.WriteOptions{})
+	require.NoError(t, err)
+
+	p := &Plugin{}
+	require.NoError(t, p.PostInit(ctx, host))
+
+	out, err := p.Process(ctx, makeRecord(map[string]any{"host": "unknown"}))
+	require.NoError(t, err)
+	_, has := out.Record.Extra["owner"]
+	require.False(t, has)
+}
+
 func TestRule_NameAndMetadata(t *testing.T) {
 	// Sanity check the basic Plugin contract.
 	t.Parallel()

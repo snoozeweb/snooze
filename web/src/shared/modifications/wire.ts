@@ -30,7 +30,10 @@ export function toWire(m: Modification): unknown[] {
       // the round-trip with the Go side stays positional.
       return ["REGEX_SUB", m.field, m.field, m.pattern, m.replace];
     case "kv_set":
-      return ["KV_SET", m.field, m.key];
+      // Python form: ["KV_SET", dict, key, out_field]. `m.field` is the
+      // destination column (out_field); see types.ts for the field-naming
+      // rationale.
+      return ["KV_SET", m.dict, m.key, m.field];
   }
 }
 
@@ -63,8 +66,22 @@ export function fromWire(entry: unknown): Modification | null {
         replace: stringArg(entry[4]),
       };
     }
-    case "KV_SET":
-      return { type: "kv_set", field, key: stringArg(entry[2]) };
+    case "KV_SET": {
+      // Canonical Python-era wire form is 4-tuple ["KV_SET", dict, key, out_field].
+      // Older bug-for-bug data written by the early Go rewrite stored a 3-tuple
+      // ["KV_SET", out_field, key] (no dict); decode that permissively so rules
+      // saved during the bad window still surface in the editor instead of
+      // being silently dropped.
+      if (entry.length >= 4) {
+        return {
+          type: "kv_set",
+          field: stringArg(entry[3]),
+          dict: stringArg(entry[1]),
+          key: stringArg(entry[2]),
+        };
+      }
+      return { type: "kv_set", field, dict: "", key: stringArg(entry[2]) };
+    }
     default:
       return null;
   }

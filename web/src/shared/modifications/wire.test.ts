@@ -16,7 +16,7 @@ describe("modifications wire", () => {
       { type: "array_delete", field: "tags", value: "alpha" },
       { type: "regex_parse", field: "message", pattern: "^(?P<svc>\\w+):" },
       { type: "regex_sub", field: "host", pattern: "^web-", replace: "frontend-" },
-      { type: "kv_set", field: "owner", key: "host_owner_lookup" },
+      { type: "kv_set", field: "owner", dict: "host_owner", key: "host" },
     ];
     for (const c of cases) {
       const wire = toWire(c);
@@ -45,12 +45,35 @@ describe("modifications wire", () => {
     });
   });
 
-  it("decodes KV_SET and REGEX_PARSE that the previous editor dropped", () => {
-    expect(fromWire(["KV_SET", "owner", "host_lookup"])).toEqual({
+  it("decodes KV_SET in the Python-era 4-arg form", () => {
+    expect(fromWire(["KV_SET", "host_owner", "host", "owner"])).toEqual({
       type: "kv_set",
       field: "owner",
-      key: "host_lookup",
+      dict: "host_owner",
+      key: "host",
     });
+  });
+
+  it("encodes KV_SET as [KV_SET, dict, key, out_field]", () => {
+    expect(
+      toWire({ type: "kv_set", field: "owner", dict: "host_owner", key: "host" }),
+    ).toEqual(["KV_SET", "host_owner", "host", "owner"]);
+  });
+
+  it("decodes legacy 3-arg KV_SET written by the early Go rewrite", () => {
+    // Old bug-for-bug shape: ["KV_SET", out_field, key]. We pull the out_field
+    // off entry[1] (where every other op puts `field`) and accept the missing
+    // dict as empty — round-tripping through toWire will then re-emit the
+    // canonical 4-arg form.
+    expect(fromWire(["KV_SET", "owner", "host"])).toEqual({
+      type: "kv_set",
+      field: "owner",
+      dict: "",
+      key: "host",
+    });
+  });
+
+  it("decodes REGEX_PARSE that the previous editor dropped", () => {
     expect(fromWire(["REGEX_PARSE", "message", "^(?P<svc>\\w+):"])).toEqual({
       type: "regex_parse",
       field: "message",
