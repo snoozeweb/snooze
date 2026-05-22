@@ -19,8 +19,8 @@ import (
 //	credentials:
 //	  username: snooze
 //	  password: ziH6...
-//	method: local         # optional
-//	insecure: false       # optional
+//	method: local         # optional (1.x called this `auth_method` — also accepted)
+//	insecure: false       # optional (1.x used `ca_bundle: false` — also accepted)
 //	timeout: 30s          # optional
 //
 // Every field is optional. Missing fields fall through to the CLI's own
@@ -32,6 +32,17 @@ type ClientConfig struct {
 	Method      string                  `yaml:"method,omitempty"`
 	Insecure    bool                    `yaml:"insecure,omitempty"`
 	Timeout     time.Duration           `yaml:"timeout,omitempty"`
+
+	// Snooze 1.x key aliases. Held in their own fields so we can detect
+	// presence and let the canonical keys win on collision; normalised
+	// into Method / Insecure by normalize() right after Unmarshal.
+	//
+	//   auth_method   ↔ method
+	//   ca_bundle:    ↔ insecure (Python's `ca_bundle: false` meant
+	//                  "skip TLS verify"; any string value is a CA-path
+	//                  the Go CLI cannot honour, so we ignore those.)
+	AuthMethod string `yaml:"auth_method,omitempty"`
+	CABundle   any    `yaml:"ca_bundle,omitempty"`
 }
 
 // ClientConfigCredentials groups the username/password pair under the
@@ -86,9 +97,31 @@ func readClientConfig(path string) ClientConfig {
 
 // parseClientConfig decodes YAML bytes into a ClientConfig, swallowing
 // parse errors (an unreadable config file should not block a run that
-// otherwise supplies everything via flags / env).
+// otherwise supplies everything via flags / env). It then normalises the
+// Snooze 1.x key aliases so the rest of the CLI can read just Method /
+// Insecure / Timeout without caring which spelling the file used.
 func parseClientConfig(data []byte) ClientConfig {
 	var cfg ClientConfig
 	_ = yaml.Unmarshal(data, &cfg)
+	cfg.normalize()
 	return cfg
+}
+
+// normalize folds the Snooze 1.x key aliases into the canonical fields.
+// Canonical keys win on collision (an operator who set both `method:` and
+// `auth_method:` meant `method:`).
+func (c *ClientConfig) normalize() {
+	if c.Method == "" && c.AuthMethod != "" {
+		c.Method = c.AuthMethod
+	}
+	if !c.Insecure {
+		// Python 1.x convention: ca_bundle=false means "do not verify TLS".
+		// Any other value (true, a string path) is silently ignored — the
+		// Go CLI doesn't have a custom-CA-bundle knob yet, so it uses the
+		// system trust store. Operators who set `ca_bundle: /path/...` on
+		// 1.x should pass --insecure or add `insecure: true` for parity.
+		if b, ok := c.CABundle.(bool); ok && !b {
+			c.Insecure = true
+		}
+	}
 }

@@ -42,6 +42,50 @@ timeout: 5s
 	require.Equal(t, "5s", cfg.Timeout.String())
 }
 
+func TestParseClientConfig_AcceptsSnooze1xAliases(t *testing.T) {
+	// The Snooze 1.x Python client wrote `auth_method` and used
+	// `ca_bundle: false` to mean "skip TLS verify". The Go CLI must keep
+	// reading those existing files transparently — the on-disk shape on
+	// the fde workstation today is the canonical test case.
+	data := []byte(`
+server: https://snooze.egerie.eu
+auth_method: local
+credentials:
+  username: snooze
+  password: pw
+app_name: snooze_client
+token_to_disk: true
+ca_bundle: false
+`)
+	cfg := parseClientConfig(data)
+	require.Equal(t, "local", cfg.Method, "auth_method should alias method")
+	require.True(t, cfg.Insecure, "ca_bundle: false should set insecure=true")
+}
+
+func TestParseClientConfig_CanonicalKeysWinOnCollision(t *testing.T) {
+	// If both spellings are present the new canonical key wins — useful
+	// when an operator hand-edits a 1.x file to migrate to the 2.0 shape
+	// and forgets to delete the old key.
+	data := []byte(`
+method: ldap
+auth_method: local
+insecure: true
+ca_bundle: /etc/ssl/certs/custom.pem
+`)
+	cfg := parseClientConfig(data)
+	require.Equal(t, "ldap", cfg.Method)
+	require.True(t, cfg.Insecure)
+}
+
+func TestParseClientConfig_CABundlePathIsIgnored(t *testing.T) {
+	// ca_bundle as a string path is a 1.x custom-CA mechanism the Go CLI
+	// doesn't reproduce yet. Make sure we don't accidentally flip
+	// Insecure=true for it.
+	data := []byte(`ca_bundle: /etc/ssl/certs/custom.pem`)
+	cfg := parseClientConfig(data)
+	require.False(t, cfg.Insecure)
+}
+
 func TestParseClientConfig_EmptyOrInvalidYieldsZero(t *testing.T) {
 	require.Equal(t, ClientConfig{}, parseClientConfig(nil))
 	// A malformed YAML must not panic — we swallow the error.
