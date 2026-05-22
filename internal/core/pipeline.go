@@ -63,6 +63,7 @@ func (c *Core) ProcessRecord(ctx context.Context, rec snoozetypes.Record) (snooz
 // nil-tracer fast path can share the body.
 func (c *Core) processRecordInner(ctx context.Context, rec snoozetypes.Record) (snoozetypes.Record, plugins.Action, error) {
 	logger := c.Logger()
+	c.stampDefaultTTL(ctx, &rec)
 	for _, p := range c.processOrder {
 		name := p.Name()
 		rec.Plugins = append(rec.Plugins, name)
@@ -155,6 +156,38 @@ func (c *Core) recordHit(plugin string, action plugins.Action) {
 		return
 	}
 	c.Reg.AlertHit.WithLabelValues(plugin, action.String()).Inc()
+}
+
+// stampDefaultTTL fills in rec.TTL with the configured record-ttl default
+// when the caller did not set one. Mirrors src/snooze/core.py:161 from
+// Snooze 1.x: every fresh alert carries a `ttl` (seconds-from-date_epoch
+// expiry) so the housekeeper's cleanup_timeout job can prune it. Without
+// this, records ingested without an explicit TTL persist forever and the
+// "Shelved" tab's `NOT EXISTS ttl` predicate matches every alert (since
+// the recordToDoc projector elides TTL=0).
+//
+// A negative TTL means the operator deliberately shelved the alert
+// (cleanup_timeout's $match: ttl >= 0 spares those), so we leave it
+// alone. A positive TTL set by the caller (e.g. tests, integrations
+// posting a custom expiry) is also respected.
+func (c *Core) stampDefaultTTL(ctx context.Context, rec *snoozetypes.Record) {
+	if rec.TTL != 0 {
+		return
+	}
+	// Prefer the live runtime cache so an operator who edits
+	// housekeeping.record_ttl in the UI sees the new value on the next
+	// alert without restarting the server.
+	if c.Settings != nil {
+		if hk, err := c.Settings.Housekeeper(ctx); err == nil && hk.RecordTTL.AsDuration() > 0 {
+			rec.TTL = int64(hk.RecordTTL.AsDuration().Seconds())
+			return
+		}
+	}
+	// Fallback to the file-config baseline (e.g. tests construct a Core
+	// without a RuntimeSettings).
+	if c.Cfg != nil && c.Cfg.Housekeeper.RecordTTL.AsDuration() > 0 {
+		rec.TTL = int64(c.Cfg.Housekeeper.RecordTTL.AsDuration().Seconds())
+	}
 }
 
 // recordToDoc projects the typed Record into the loose Document the driver

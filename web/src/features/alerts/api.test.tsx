@@ -49,35 +49,44 @@ describe("alerts.api", () => {
 });
 
 describe("useShelveRecord", () => {
-  it("PATCHes /api/v1/record/<uid> with ttl=-1 when shelving", async () => {
+  // shelve / unshelve flip the sign on ttl, matching the old Vue
+  // toggle_ttl helper. The currentTTL field on the input carries the
+  // magnitude so unshelving restores what the user had before.
+  async function callShelve(input: { uid: string; shelve: boolean; currentTTL?: number }) {
     const bodies: unknown[] = [];
     mswServer.use(
       http.patch("/api/v1/record/r1", async ({ request }) => {
         bodies.push(await request.json());
-        return HttpResponse.json({ uid: "r1", ttl: -1 });
+        return HttpResponse.json({ uid: "r1" });
       }),
     );
     const wrapper = makeWrapper();
     const { result } = renderHook(() => useShelveRecord(), { wrapper });
     await act(async () => {
-      await result.current.mutateAsync({ uid: "r1", shelve: true });
+      await result.current.mutateAsync(input);
     });
+    return bodies;
+  }
+
+  it("shelve negates a positive ttl so the magnitude survives unshelving", async () => {
+    const bodies = await callShelve({ uid: "r1", shelve: true, currentTTL: 172800 });
+    expect(bodies[0]).toEqual({ ttl: -172800 });
+  });
+
+  it("shelve falls back to -1 when no current ttl is known", async () => {
+    const bodies = await callShelve({ uid: "r1", shelve: true });
     expect(bodies[0]).toEqual({ ttl: -1 });
   });
 
-  it("PATCHes ttl=0 when unshelving", async () => {
-    const bodies: unknown[] = [];
-    mswServer.use(
-      http.patch("/api/v1/record/r1", async ({ request }) => {
-        bodies.push(await request.json());
-        return HttpResponse.json({ uid: "r1", ttl: 0 });
-      }),
-    );
-    const wrapper = makeWrapper();
-    const { result } = renderHook(() => useShelveRecord(), { wrapper });
-    await act(async () => {
-      await result.current.mutateAsync({ uid: "r1", shelve: false });
-    });
-    expect(bodies[0]).toEqual({ ttl: 0 });
+  it("unshelve restores the magnitude from a negative ttl", async () => {
+    const bodies = await callShelve({ uid: "r1", shelve: false, currentTTL: -172800 });
+    expect(bodies[0]).toEqual({ ttl: 172800 });
+  });
+
+  it("unshelve falls back to the 48h default when ttl is missing", async () => {
+    // Pre-stamp legacy rows: shelved but with no magnitude stored. The fallback
+    // mirrors the file-config DefaultHousekeeper.RecordTTL.
+    const bodies = await callShelve({ uid: "r1", shelve: false });
+    expect(bodies[0]).toEqual({ ttl: 48 * 60 * 60 });
   });
 });

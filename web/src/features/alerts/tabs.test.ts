@@ -40,8 +40,14 @@ describe("alert tabs catalog", () => {
     });
   });
 
-  it("Shelved tab matches ttl<0 (per the Vue can_be_shelved semantics)", () => {
-    expect(tabById("shelved").condition).toEqual({ type: "LT", field: "ttl", value: 0 });
+  it("Shelved tab matches NOT EXISTS ttl OR ttl<0 (Python 1.x alert.yaml)", () => {
+    expect(tabById("shelved").condition).toEqual({
+      type: "OR",
+      args: [
+        { type: "NOT", arg: { type: "EXISTS", field: "ttl" } },
+        { type: "LT", field: "ttl", value: 0 },
+      ],
+    });
   });
 
   it("All tab applies no condition", () => {

@@ -66,13 +66,25 @@ const REESCALATED: Condition = {
 
 /**
  * "Shelved" — items the operator has soft-hidden from default views.
- * The Python YAML wrote `NOT EXISTS ttl OR ttl<0`, but the `NOT EXISTS ttl`
- * branch would match almost every fresh alert (most records never set a
- * ttl), and the Vue Record.vue's `can_be_shelved` only flips items where
- * `ttl >= 0` to negative. We keep the meaningful half (`ttl<0`) and drop
- * the noisy branch.
+ *
+ * Mirrors the original Python YAML predicate:
+ *
+ *   OR(NOT(EXISTS ttl), ttl < 0)
+ *
+ * The "no ttl field at all" branch was dropped in the early Go rewrite
+ * because the Go core was missing the per-record TTL stamp — every
+ * fresh alert had no `ttl` and would have leaked into Shelved. Now that
+ * internal/core/pipeline.go::stampDefaultTTL backfills the field at
+ * ingest, the original two-branch predicate works again and still
+ * matches pre-stamp legacy rows.
  */
-const SHELVED: Condition = { type: "LT", field: "ttl", value: 0 };
+const SHELVED: Condition = {
+  type: "OR",
+  args: [
+    { type: "NOT", arg: { type: "EXISTS", field: "ttl" } },
+    { type: "LT", field: "ttl", value: 0 },
+  ],
+};
 
 export const ALERT_TABS: TabDef[] = [
   { id: "alerts", label: "Alerts", condition: ACTIVE_ALERTS },

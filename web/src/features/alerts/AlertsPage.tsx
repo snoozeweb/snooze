@@ -27,6 +27,11 @@ type AlertsSearch = AlertFilters & {
   page?: number;
   orderby?: string;
   asc?: boolean;
+  /** Raw query string from the SearchBar — persisted in the URL so a deep
+   *  link reproduces the same filter on reload. The parsed Condition is
+   *  derived locally (searchCondition useState) since it requires a
+   *  server round-trip to parse and shouldn't bloat the URL. */
+  search?: string;
   /** Comma-separated env UIDs in the URL (parsed/stringified in onChange). */
   env?: string;
 };
@@ -126,8 +131,6 @@ export function AlertsPage() {
 
   const filters: AlertFilters = {
     tab: activeTab,
-    ...(search.search !== undefined ? { search: search.search } : {}),
-    searchCondition,
     envs: selectedEnvs,
   };
 
@@ -250,7 +253,11 @@ export function AlertsPage() {
           onSelect: () => {
             void (async () => {
               try {
-                await shelveMut.mutateAsync({ uid: row.uid ?? "", shelve: !isShelved });
+                await shelveMut.mutateAsync({
+                  uid: row.uid ?? "",
+                  shelve: !isShelved,
+                  currentTTL: row.ttl,
+                });
                 toast.success(
                   `${isShelved ? "Unshelved" : "Shelved"} • ${row.host ?? row.uid ?? ""}`,
                 );
@@ -425,15 +432,8 @@ export function AlertsPage() {
       <AlertsFilters
         value={filters}
         onChange={(next) => {
-          // The searchCondition / searchError fields are local UI state
-          // (they re-derive from the SearchBar's server round-trip on
-          // every text change), so we mirror them to React state instead
-          // of the URL search params.
-          if (next.searchCondition !== undefined) {
-            setSearchCondition(next.searchCondition);
-          }
           // The "alerts" tab is the default landing — omit it from the
-          // URL so deep-links stay clean. Same for an empty search:
+          // URL so deep-links stay clean. Same for an empty env list:
           // setting the key to undefined tells TanStack Router to drop it
           // from the URL on the next navigation. The Record<string,
           // unknown> shape sidesteps exactOptionalPropertyTypes, which
@@ -443,12 +443,35 @@ export function AlertsPage() {
           updateSearch({
             page: 1,
             tab: next.tab && next.tab !== "alerts" ? next.tab : undefined,
-            search: next.search || undefined,
             env: nextEnv,
           } as Partial<AlertsSearch>);
         }}
-        countLabel={`${list.data?.meta.total ?? 0} alerts`}
-        rightSlot={
+      />
+      <DataTable
+        data={filtered}
+        columns={alertColumns}
+        rowKey={(r) => r.uid ?? `${r.host ?? ""}-${r.date_epoch ?? 0}`}
+        loading={list.isPending}
+        selectable
+        selectedKeys={selectedKeys}
+        onSelectionChange={setSelectedKeys}
+        bulkActions={bulkActions}
+        // SearchBar lives in DataTable's toolbar row so the bulk-action
+        // bar that appears on row selection sits next to it instead of
+        // dropping below. Matches every other list page.
+        search={{
+          value: search.search ?? "",
+          onChange: (c) => {
+            setSearchCondition(c.condition);
+            updateSearch({
+              page: 1,
+              search: c.text || undefined,
+            } as Partial<AlertsSearch>);
+          },
+          collection: "record",
+        }}
+        toolbarHeader={`${list.data?.meta.total ?? 0} alerts`}
+        toolbar={
           <Tooltip content={auto.enabled ? "Auto-refresh every 5s" : "Auto-refresh off"}>
             {/* Switch renders as a button; use div+aria-label instead of label to satisfy a11y rules */}
             <div className={styles.refreshToggle} role="group" aria-label="Auto refresh toggle">
@@ -461,16 +484,6 @@ export function AlertsPage() {
             </div>
           </Tooltip>
         }
-      />
-      <DataTable
-        data={filtered}
-        columns={alertColumns}
-        rowKey={(r) => r.uid ?? `${r.host ?? ""}-${r.date_epoch ?? 0}`}
-        loading={list.isPending}
-        selectable
-        selectedKeys={selectedKeys}
-        onSelectionChange={setSelectedKeys}
-        bulkActions={bulkActions}
         serverSort={{
           sortBy: orderby,
           order: asc ? "asc" : "desc",

@@ -6,12 +6,15 @@ import (
 	"io"
 	"log/slog"
 	"testing"
+	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/testutil"
 	"github.com/stretchr/testify/require"
 	"go.opentelemetry.io/otel"
 
+	"github.com/snoozeweb/snooze/internal/config"
+	"github.com/snoozeweb/snooze/internal/config/schema"
 	"github.com/snoozeweb/snooze/internal/plugins"
 	"github.com/snoozeweb/snooze/internal/telemetry"
 	"github.com/snoozeweb/snooze/pkg/snoozetypes"
@@ -149,6 +152,44 @@ func TestProcessRecord_RecordMutationsFlowForward(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, "mutated", p2.recvRec.Message,
 		"second plugin must see the mutated record from p1")
+}
+
+func TestProcessRecord_StampsDefaultTTL(t *testing.T) {
+	// Mirrors src/snooze/core.py:161 — every fresh alert leaves the pipeline
+	// with a TTL stamped from config.Housekeeper.RecordTTL so the
+	// housekeeper's cleanup_timeout job has something to match against.
+	t.Parallel()
+	p1 := &fakeProcessor{name: "rule", result: plugins.Result{Action: plugins.ActionContinue}}
+	c, _ := newPipelineCore(t, p1)
+	c.Cfg = &config.Config{
+		Housekeeper: schema.Housekeeper{RecordTTL: schema.Duration(48 * time.Hour)},
+	}
+
+	out, _, err := c.ProcessRecord(context.Background(), snoozetypes.Record{UID: "uid-ttl"})
+	require.NoError(t, err)
+	require.Equal(t, int64(48*60*60), out.TTL)
+	// Plugin receives the stamped TTL too, so downstream rules can react.
+	require.Equal(t, int64(48*60*60), p1.recvRec.TTL)
+}
+
+func TestProcessRecord_PreservesCallerTTL(t *testing.T) {
+	// An integration posting a custom TTL (positive or negative) must keep it.
+	t.Parallel()
+	p1 := &fakeProcessor{name: "rule", result: plugins.Result{Action: plugins.ActionContinue}}
+	c, _ := newPipelineCore(t, p1)
+	c.Cfg = &config.Config{
+		Housekeeper: schema.Housekeeper{RecordTTL: schema.Duration(48 * time.Hour)},
+	}
+
+	// Positive: caller's TTL wins.
+	out, _, err := c.ProcessRecord(context.Background(), snoozetypes.Record{UID: "uid-a", TTL: 60})
+	require.NoError(t, err)
+	require.Equal(t, int64(60), out.TTL)
+
+	// Negative: shelved by the operator at ingest; stamp must not overwrite.
+	out, _, err = c.ProcessRecord(context.Background(), snoozetypes.Record{UID: "uid-b", TTL: -1})
+	require.NoError(t, err)
+	require.Equal(t, int64(-1), out.TTL)
 }
 
 func TestProcessRecord_BumpsAlertHitCounter(t *testing.T) {

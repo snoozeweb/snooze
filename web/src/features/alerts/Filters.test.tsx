@@ -32,7 +32,7 @@ function harness(initial: AlertFilters = {}) {
 }
 
 describe("AlertsFilters", () => {
-  it("renders the seven lifecycle tabs and the search bar", () => {
+  it("renders the seven lifecycle tabs", () => {
     harness();
     for (const label of [
       "Alerts",
@@ -45,7 +45,9 @@ describe("AlertsFilters", () => {
     ]) {
       expect(screen.getByRole("tab", { name: label })).toBeInTheDocument();
     }
-    expect(screen.getByRole("textbox", { name: "Search" })).toBeInTheDocument();
+    // The SearchBar lives on the DataTable, not inside Filters, so it
+    // intentionally does NOT render here.
+    expect(screen.queryByRole("textbox", { name: "Search" })).toBeNull();
   });
 
   it("marks Alerts as the default active tab when none is selected", () => {
@@ -76,14 +78,5 @@ describe("AlertsFilters", () => {
     const { onChange } = harness({ tab: "alerts" });
     await user.click(screen.getByRole("tab", { name: "Alerts" }));
     expect(onChange).not.toHaveBeenCalled();
-  });
-
-  it("SearchBar text propagates to onChange", async () => {
-    const user = userEvent.setup();
-    const { onChange } = harness();
-    await user.type(screen.getByRole("textbox", { name: "Search" }), "srv-1");
-    expect(onChange).toHaveBeenCalled();
-    const last = onChange.mock.calls.at(-1)?.[0] as AlertFilters;
-    expect(last.search).toBe("srv-1");
   });
 });
