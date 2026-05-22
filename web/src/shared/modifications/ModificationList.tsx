@@ -29,7 +29,9 @@ export function ModificationList({ value, onChange }: ModificationListProps) {
     const old = next[i];
     if (!old) return;
     const fresh = defaultModification(type);
-    if ("field" in old) {
+    // Carry the field across type switches when the new shape has one — most
+    // ops share `field` so retyping mid-edit shouldn't wipe the user's input.
+    if ("field" in old && "field" in fresh) {
       (fresh as { field: string }).field = old.field;
     }
     next[i] = fresh;
@@ -68,12 +70,39 @@ export function ModificationList({ value, onChange }: ModificationListProps) {
               onChange={(e) => update(i, { field: e.target.value } as Partial<Modification>)}
             />
           </div>
-          {mod.type === "set" || mod.type === "array_append" ? (
+          {mod.type === "set" ? (
             <div className={styles.value}>
               <Input
-                placeholder={mod.type === "array_append" ? "value to append" : "value"}
+                placeholder="value"
                 value={mod.value}
                 onChange={(e) => update(i, { value: e.target.value } as Partial<Modification>)}
+              />
+            </div>
+          ) : null}
+          {mod.type === "array_append" ? (
+            <div className={styles.value}>
+              <Input
+                placeholder="value to append"
+                value={mod.value}
+                onChange={(e) => update(i, { value: e.target.value } as Partial<Modification>)}
+              />
+            </div>
+          ) : null}
+          {mod.type === "array_delete" ? (
+            <div className={styles.value}>
+              <Input
+                placeholder="value to remove"
+                value={mod.value}
+                onChange={(e) => update(i, { value: e.target.value } as Partial<Modification>)}
+              />
+            </div>
+          ) : null}
+          {mod.type === "regex_parse" ? (
+            <div className={styles.value}>
+              <Input
+                placeholder="pattern (named groups become record fields)"
+                value={mod.pattern}
+                onChange={(e) => update(i, { pattern: e.target.value } as Partial<Modification>)}
               />
             </div>
           ) : null}
@@ -94,6 +123,15 @@ export function ModificationList({ value, onChange }: ModificationListProps) {
                 />
               </div>
             </>
+          ) : null}
+          {mod.type === "kv_set" ? (
+            <div className={styles.value}>
+              <Input
+                placeholder="kv key"
+                value={mod.key}
+                onChange={(e) => update(i, { key: e.target.value } as Partial<Modification>)}
+              />
+            </div>
           ) : null}
           <div className={styles.actions}>
             <IconButton
