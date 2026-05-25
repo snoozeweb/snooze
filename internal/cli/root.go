@@ -106,7 +106,7 @@ func NewRootCmd(rt *runtime) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:           "snooze",
 		Short:         "Snooze CLI client",
-		Long:          "The snooze CLI talks to a Snooze server's v1 REST API.",
+		Long:          "The snooze CLI talks to a Snooze server's REST API (/api/v1/*).",
 		SilenceUsage:  true,
 		SilenceErrors: true,
 		Version:       version.String(),
