@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useSearch } from "@tanstack/react-router";
 import { DataTable, type RowAction } from "@/shared/ui/DataTable";
 import type { ContextMenuItem } from "@/shared/ui/DataTableContextMenu";
@@ -29,6 +29,13 @@ type AlertsSearch = AlertFilters & {
   asc?: boolean;
   /** Comma-separated env UIDs in the URL (parsed/stringified in onChange). */
   env?: string;
+  /**
+   * Initial SearchBar DSL text. Read once on mount to seed local state,
+   * never written back from typing (see the comment block below). Used by
+   * deep-links such as the host hyperlink in Teams alert cards:
+   * `/web/alerts?search=hash%20%3D%20<hash>`.
+   */
+  search?: string;
 };
 
 // Note: the SearchBar's text used to live here as a URL param, but
@@ -90,6 +97,11 @@ export function AlertsPage() {
   const commentMut = useCommentRecord();
 
   const [selectedKeys, setSelectedKeys] = useState<Set<string>>(new Set());
+  // Counts how many inline alert details panels are currently open. When
+  // non-zero we pause the auto-refresh poll — refetching swaps the row's
+  // backing object, which can yank the timeline / JSON viewer the user is
+  // reading right out from under them.
+  const [expandedCount, setExpandedCount] = useState(0);
   const [dialog, setDialog] = useState<{ type: ActionType; records: Record_[] } | null>(null);
   const shelveMut = useShelveRecord();
   const removeMut = Records.useRemove();
@@ -98,7 +110,25 @@ export function AlertsPage() {
   const orderby = search.orderby ?? "date_epoch";
   const asc = search.asc ?? false;
 
-  const [searchText, setSearchText] = useState<string>("");
+  // Initial SearchBar text is read from `?search=` so deep-links (e.g. the
+  // host hyperlink in a Teams alert card pointing at
+  // `/web/alerts?search=hash%20%3D%20<hash>`) land with the right filter
+  // already applied. We only seed *from* URL → state; we never write the
+  // typed text back to the URL because navigate() is async and the round
+  // trip drops characters on fast typing (see the comment block above
+  // `AlertsSearch`).
+  const [searchText, setSearchText] = useState<string>(() => search.search ?? "");
+  // lastSeededRef captures the URL value last folded into local state so a
+  // *subsequent* external URL change (browser back/forward, another deep
+  // link clicked while this page is mounted) re-seeds, while pure typing
+  // (which leaves the URL untouched) does not.
+  const lastSeededRef = useRef<string | undefined>(search.search);
+  useEffect(() => {
+    if (search.search !== lastSeededRef.current) {
+      lastSeededRef.current = search.search;
+      setSearchText(search.search ?? "");
+    }
+  }, [search.search]);
   const [searchCondition, setSearchCondition] = useState<ParsedCondition | null>(null);
   const activeTab: TabId = search.tab ?? "alerts";
 
@@ -165,6 +195,13 @@ export function AlertsPage() {
     [navigate],
   );
 
+  // Pause auto-refresh while the user is reading at least one inline
+  // detail panel — same intent as the existing toggle, but driven by the
+  // user's gaze instead of an explicit click.
+  const refreshPaused = expandedCount > 0;
+  const effectiveIntervalMs =
+    auto.intervalMs !== undefined && !refreshPaused ? auto.intervalMs : undefined;
+
   const list = Records.useList(
     {
       offset: (page - 1) * PAGE_SIZE,
@@ -174,7 +211,7 @@ export function AlertsPage() {
       ...(q ? { q } : {}),
     },
     {
-      ...(auto.intervalMs !== undefined ? { refetchInterval: auto.intervalMs } : {}),
+      ...(effectiveIntervalMs !== undefined ? { refetchInterval: effectiveIntervalMs } : {}),
     },
   );
 
@@ -479,7 +516,15 @@ export function AlertsPage() {
         }}
         toolbarHeader={`${list.data?.meta.total ?? 0} alerts`}
         toolbar={
-          <Tooltip content={auto.enabled ? "Auto-refresh every 5s" : "Auto-refresh off"}>
+          <Tooltip
+            content={
+              !auto.enabled
+                ? "Auto-refresh off"
+                : refreshPaused
+                  ? "Auto-refresh paused while a row is expanded"
+                  : "Auto-refresh every 5s"
+            }
+          >
             {/* Switch renders as a button; use div+aria-label instead of label to satisfy a11y rules */}
             <div className={styles.refreshToggle} role="group" aria-label="Auto refresh toggle">
               <span aria-hidden="true">Auto refresh</span>
@@ -506,6 +551,7 @@ export function AlertsPage() {
         rowActions={rowActions}
         contextMenuItems={contextMenuItems}
         renderExpanded={(row) => <AlertRowDetail row={row} />}
+        onExpandedChange={(keys) => setExpandedCount(keys.size)}
       />
       {dialog ? (
         <ActionDialog

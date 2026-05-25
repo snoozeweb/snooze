@@ -81,6 +81,10 @@ export type DataTableProps<T> = {
    *  that toggles an inline "details" panel rendered beneath the row.
    *  Multiple rows may be expanded at once. */
   renderExpanded?: (row: T) => ReactNode;
+  /** Fires whenever the set of expanded row keys changes. Lets the parent
+   *  react to "user is actively reading a row" without pulling expansion
+   *  state out of the table (e.g. pause polling on the alerts page). */
+  onExpandedChange?: (expandedKeys: ReadonlySet<string>) => void;
 };
 
 export function DataTable<T>({
@@ -104,6 +108,7 @@ export function DataTable<T>({
   onRowOpen,
   rowDisabled,
   renderExpanded,
+  onExpandedChange,
 }: DataTableProps<T>) {
   const [focusedIndex, setFocusedIndex] = useState<number>(-1);
   const [expanded, setExpanded] = useState<Set<string>>(() => new Set<string>());
@@ -120,6 +125,13 @@ export function DataTable<T>({
       return next;
     });
   }, []);
+
+  // Surface expansion changes to the parent so it can pause polling, etc.
+  // The initial empty-set fire on mount is harmless — consumers treat
+  // size === 0 as "nothing expanded", which matches the default state.
+  useEffect(() => {
+    onExpandedChange?.(expanded);
+  }, [expanded, onExpandedChange]);
 
   const selSet = useMemo(() => selectedKeys ?? new Set<string>(), [selectedKeys]);
   const allKeys = useMemo(() => data.map(rowKey), [data, rowKey]);

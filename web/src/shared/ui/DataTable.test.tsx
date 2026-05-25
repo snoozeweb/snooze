@@ -387,5 +387,37 @@ describe("DataTable", () => {
       await user.click(screen.getByText("beta"));
       expect(onRowOpen).toHaveBeenCalledWith(sample[1]);
     });
+
+    it("fires onExpandedChange with the current set of expanded keys", async () => {
+      const onExpandedChange = vi.fn();
+      const user = userEvent.setup();
+      render(
+        <DataTable
+          data={sample}
+          columns={columns}
+          rowKey={(r) => r.id}
+          renderExpanded={(r) => <div>details for {r.name}</div>}
+          onExpandedChange={onExpandedChange}
+        />,
+      );
+      // Initial mount fires once with the empty default — consumers treat
+      // that as "nothing is expanded" so it's harmless.
+      const sizes = () =>
+        onExpandedChange.mock.calls.map(([keys]) => (keys as ReadonlySet<string>).size);
+      expect(sizes()).toEqual([0]);
+
+      const toggles = screen.getAllByRole("button", { name: /expand row/i });
+      await user.click(toggles[0]!);
+      expect(sizes()).toEqual([0, 1]);
+
+      await user.click(toggles[2]!);
+      expect(sizes()).toEqual([0, 1, 2]);
+
+      await user.click(toggles[0]!);
+      expect(sizes()).toEqual([0, 1, 2, 1]);
+
+      const last = onExpandedChange.mock.calls.at(-1)?.[0] as ReadonlySet<string>;
+      expect([...last]).toEqual(["3"]);
+    });
   });
 });
