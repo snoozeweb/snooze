@@ -257,9 +257,6 @@ func matchToCond(match dbpkg.Document) condition.Cond {
 // Write upserts the supplied documents according to opts. Returns a
 // WriteResult tracking which uids were added/updated/replaced/rejected.
 func (d *Driver) Write(ctx context.Context, collection string, docs []dbpkg.Document, opts dbpkg.WriteOptions) (dbpkg.WriteResult, error) {
-	// Per the plan (Phase 1 cashed-in item 13), Write always stamps
-	// date_epoch — UpdateTime survives on the type for symmetry with
-	// ReplaceOne/UpdateOne but is ignored here.
 	table, err := d.ensureCollection(ctx, collection)
 	if err != nil {
 		return dbpkg.WriteResult{}, err
@@ -278,7 +275,13 @@ func (d *Driver) Write(ctx context.Context, collection string, docs []dbpkg.Docu
 		// Strip Mongo-leaking metadata.
 		delete(doc, "_id")
 		delete(doc, "_old")
-		doc["date_epoch"] = float64(time.Now().Unix())
+		// Match mongo/sqlite: only stamp date_epoch when the caller opts in.
+		// Aggregaterule's throttle relies on date_epoch being preserved across
+		// ActionAbortUpdate writes (UpdateTime=false), so a blanket stamp here
+		// would collapse the throttle window on every duplicate.
+		if opts.UpdateTime {
+			doc["date_epoch"] = float64(time.Now().Unix())
+		}
 
 		var primaryUID string
 		if len(opts.Primary) > 0 && allPrimaryPresent(doc, opts.Primary) {
