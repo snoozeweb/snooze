@@ -4,6 +4,7 @@
 //
 //	snooze-teams              # use /etc/snooze/teams.yaml
 //	snooze-teams -c path.yaml # explicit config
+//	snooze-teams authorize    # one-shot OAuth2 device-code flow
 //	snooze-teams version      # print build info and exit
 package main
 
@@ -28,10 +29,14 @@ import (
 // to. The -c flag overrides it.
 const defaultConfigPath = "/etc/snooze/teams.yaml"
 
-func run() int {
-	cfgPath := flag.String("c", defaultConfigPath, "path to teams.yaml")
-	debug := flag.Bool("debug", false, "enable debug logging")
-	flag.Parse()
+// runDaemon parses the daemon flags and drives Daemon.Run until shutdown.
+func runDaemon(args []string) int {
+	fs := flag.NewFlagSet("snooze-teams", flag.ContinueOnError)
+	cfgPath := fs.String("c", defaultConfigPath, "path to teams.yaml")
+	debug := fs.Bool("debug", false, "enable debug logging")
+	if err := fs.Parse(args); err != nil {
+		return 2
+	}
 
 	level := slog.LevelInfo
 	if *debug {
@@ -64,10 +69,42 @@ func run() int {
 	return 0
 }
 
-func main() {
-	if len(os.Args) > 1 && os.Args[1] == "version" {
-		fmt.Println("snooze-teams", version.String())
-		return
+// runAuthorize parses the authorize subcommand flags and runs the OAuth2
+// device-code flow, persisting the resulting refresh token to disk.
+func runAuthorize(args []string) int {
+	fs := flag.NewFlagSet("snooze-teams authorize", flag.ContinueOnError)
+	cfgPath := fs.String("c", defaultConfigPath, "path to teams.yaml")
+	if err := fs.Parse(args); err != nil {
+		return 2
 	}
-	os.Exit(run())
+	logger := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelInfo}))
+	slog.SetDefault(logger)
+
+	cfg, err := teams.LoadConfig(*cfgPath)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "snooze-teams: load config:", err)
+		return 2
+	}
+
+	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+	defer stop()
+
+	if err := teams.Authorize(ctx, cfg, os.Stderr); err != nil {
+		fmt.Fprintln(os.Stderr, "snooze-teams: authorize:", err)
+		return 1
+	}
+	return 0
+}
+
+func main() {
+	if len(os.Args) > 1 {
+		switch os.Args[1] {
+		case "version":
+			fmt.Println("snooze-teams", version.String())
+			return
+		case "authorize":
+			os.Exit(runAuthorize(os.Args[2:]))
+		}
+	}
+	os.Exit(runDaemon(os.Args[1:]))
 }

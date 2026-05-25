@@ -2,28 +2,27 @@
 //
 // A notification entry pairs a Condition with a set of named action targets.
 // When a record matches the entry's condition (and falls inside the entry's
-// time-constraint window), the plugin publishes one message per action to the
-// process-wide message bus. Concrete delivery is performed asynchronously by
-// the matching Notifier plugins (mail/webhook/script/patlite, Phase 5).
+// time-constraint window), the plugin resolves each named action against the
+// `action` collection, picks the Notifier plugin named by `action.selected`,
+// and invokes Send synchronously on a fresh goroutine. This mirrors the
+// Python 1.x behaviour (Notification.send → ActionObject.send → action_plugin.send)
+// without the bus indirection the v2.0 rewrite scaffolded but never wired.
 //
-// # Bus-access choice
+// # Action cache
 //
-// internal/plugins.Host exposes only a narrow Bus surface (`Close() error`)
-// to avoid pulling the syncer/mq packages into the plugin contract. To publish
-// without widening that contract we runtime-assert that the value returned by
-// Host.Bus() also satisfies a local `publisher` interface (Publish(ctx, queue,
-// payload)). The internal/mq.Bus implementations all satisfy this shape.
-// If the assertion fails (e.g. a stripped-down test host), Process logs once
-// and degrades to a no-op dispatch — matching the Python behaviour of
-// gracefully skipping when a configured action plugin is not loaded.
+// Action documents are cached in-memory and refreshed on every Reload of
+// either the notification or the action collection. A miss on dispatch
+// triggers a lazy refresh once so a freshly-created action becomes
+// dispatchable without waiting for the next sync event.
 package notification
 
 import (
 	"context"
 	_ "embed"
+	"encoding/json"
 	"fmt"
+	"log/slog"
 	"sync"
-	"sync/atomic"
 	"time"
 
 	"github.com/snoozeweb/snooze/internal/condition"
@@ -41,11 +40,14 @@ var metaYAML []byte
 // collectionName is the database collection the plugin owns.
 const collectionName = "notification"
 
-// publisher is the slice of mq.Bus the dispatcher needs at runtime. The
-// notification plugin asserts Host.Bus() satisfies this — see package doc.
-type publisher interface {
-	Publish(ctx context.Context, queue string, payload any) error
-}
+// actionCollectionName is the sibling collection the dispatcher reads on every
+// match to discover (selected, subcontent) for each named action.
+const actionCollectionName = "action"
+
+// notifierSendTimeout caps a single Notifier.Send call. The pipeline goroutine
+// returns immediately, but the send goroutine itself enforces this deadline so
+// a hung HTTP target cannot leak goroutines indefinitely.
+const notifierSendTimeout = 30 * time.Second
 
 // Action is one entry in a notification's `actions` array on the wire. The
 // Python code only stores the action name (a string) — this Go port accepts
@@ -73,46 +75,40 @@ func (e Entry) IsEnabled() bool {
 }
 
 // Frequency carries the throttle parameters for repeated delivery. The values
-// are forwarded to the Notifier plugin in the bus payload — the dispatcher
-// itself does not perform throttling.
+// are forwarded to the Notifier plugin via NotificationPayload.Meta so future
+// delay/retry logic can reuse them. The dispatcher itself only honours
+// total == 0 as "skip" today.
 type Frequency struct {
 	Total int `json:"total,omitempty"`
 	Delay int `json:"delay,omitempty"`
 	Every int `json:"every,omitempty"`
 }
 
-// Payload is the structure the Notifier plugins receive over the bus. The
-// shape mirrors the `action_obj` dict the Python implementation passes to
-// `action_plugin.send`.
-type Payload struct {
-	NotificationName string             `json:"notification"`
-	Action           string             `json:"action"`
-	Record           snoozetypes.Record `json:"record"`
-	Delay            int                `json:"delay,omitempty"`
-	Every            int                `json:"every,omitempty"`
-	Total            int                `json:"total,omitempty"`
-	Retry            int                `json:"retry,omitempty"`
-	Freq             int                `json:"freq,omitempty"`
+// actionDoc is the decoded view of one row in the `action` collection.
+type actionDoc struct {
+	Name       string         `json:"name"`
+	Action     actionEnvelope `json:"action"`
+}
+
+// actionEnvelope mirrors the {selected, subcontent} pair stored at
+// `action.action` (yes, the column nests under the same name in Python).
+type actionEnvelope struct {
+	Selected   string         `json:"selected"`
+	Subcontent map[string]any `json:"subcontent"`
 }
 
 // Plugin is the notification dispatcher.
 //
-// Lifecycle: Register → factory → PostInit (loads entries from the DB) →
-// Process (per record) → Reload (re-reads entries on collection change).
-//
-// Concurrency: Process and Reload may race; entries are guarded by a RWMutex
-// and missing-bus warnings are de-duplicated via warnedNoBus.
+// Lifecycle: Register → factory → PostInit (loads entries + actions from the
+// DB) → Process (per record) → Reload (re-reads both collections on collection
+// change).
 type Plugin struct {
 	meta plugins.Metadata
 	host plugins.Host
 
 	mu      sync.RWMutex
 	entries []Entry
-
-	// warnedNoBus tracks whether we've already logged the "bus does not
-	// satisfy publisher" warning, so the warning fires once per process
-	// even when many records flow through Process.
-	warnedNoBus atomic.Bool
+	actions map[string]actionDoc
 }
 
 // Name returns the registry key. Returned lowercase so it matches the
@@ -123,48 +119,93 @@ func (p *Plugin) Name() string { return "notification" }
 // Metadata returns the parsed metadata.yaml.
 func (p *Plugin) Metadata() plugins.Metadata { return p.meta }
 
-// PostInit wires the host in and performs the initial entry load.
+// PostInit wires the host in and performs the initial entry+action load.
 func (p *Plugin) PostInit(ctx context.Context, host plugins.Host) error {
 	p.host = host
 	return p.Reload(ctx)
 }
 
-// Reload re-reads the notification collection from the database. Failures
-// surface to the syncer; on transient errors the previous cache is retained
-// to keep the pipeline running.
+// Reload re-reads both the notification and action collections. Failures on
+// either surface to the syncer; the existing caches are kept on transient
+// errors so the pipeline keeps dispatching the last-known-good state.
 func (p *Plugin) Reload(ctx context.Context) error {
 	if p.host == nil || p.host.DB() == nil {
-		// Nothing to load against; leave the cache untouched.
 		return nil
 	}
+	entries, err := p.loadEntries(ctx)
+	if err != nil {
+		return err
+	}
+	actions, err := p.loadActions(ctx)
+	if err != nil {
+		return err
+	}
+	p.mu.Lock()
+	p.entries = entries
+	p.actions = actions
+	p.mu.Unlock()
+	return nil
+}
+
+func (p *Plugin) loadEntries(ctx context.Context) ([]Entry, error) {
 	docs, _, err := p.host.DB().Search(ctx, collectionName, condition.Cond{}, db.Page{})
 	if err != nil {
-		return fmt.Errorf("notification: load entries: %w", err)
+		return nil, fmt.Errorf("notification: load entries: %w", err)
 	}
 	entries := make([]Entry, 0, len(docs))
 	for _, d := range docs {
 		e, ok := decodeEntry(d)
 		if !ok {
-			// A malformed row would otherwise wedge the cache; drop it
-			// after logging and keep going. Python silently disables.
-			if lg := p.host.Logger(); lg != nil {
+			if lg := p.logger(); lg != nil {
 				lg.Warn("notification: skipping malformed entry", "doc", d)
 			}
 			continue
 		}
 		entries = append(entries, e)
 	}
-	p.mu.Lock()
-	p.entries = entries
-	p.mu.Unlock()
-	return nil
+	return entries, nil
 }
 
-// Process inspects rec and publishes one message per matching action on the
-// bus. The verdict is always ActionContinue: notification is a side-effect,
-// not a pipeline gate.
-//
-// Records in the ack/close states are skipped to match Python.
+func (p *Plugin) loadActions(ctx context.Context) (map[string]actionDoc, error) {
+	docs, _, err := p.host.DB().Search(ctx, actionCollectionName, condition.Cond{}, db.Page{})
+	if err != nil {
+		return nil, fmt.Errorf("notification: load actions: %w", err)
+	}
+	out := make(map[string]actionDoc, len(docs))
+	for _, d := range docs {
+		ad, ok := decodeActionDoc(d)
+		if !ok {
+			continue
+		}
+		out[ad.Name] = ad
+	}
+	return out, nil
+}
+
+// decodeActionDoc round-trips a free-form action document through JSON into
+// the typed actionDoc shape. Documents missing a name or a selected notifier
+// are silently dropped — the dispatcher logs the miss at use time.
+func decodeActionDoc(d db.Document) (actionDoc, bool) {
+	if d == nil {
+		return actionDoc{}, false
+	}
+	raw, err := json.Marshal(d)
+	if err != nil {
+		return actionDoc{}, false
+	}
+	var ad actionDoc
+	if err := json.Unmarshal(raw, &ad); err != nil {
+		return actionDoc{}, false
+	}
+	if ad.Name == "" {
+		return actionDoc{}, false
+	}
+	return ad, true
+}
+
+// Process inspects rec and dispatches one Notifier.Send per matching action.
+// The verdict is always ActionContinue: notification is a side-effect, not a
+// pipeline gate. Records in the ack/close states are skipped to match Python.
 func (p *Plugin) Process(ctx context.Context, rec snoozetypes.Record) (plugins.Result, error) {
 	if rec.State == "ack" || rec.State == "close" {
 		return plugins.Result{Action: plugins.ActionContinue, Record: rec}, nil
@@ -177,11 +218,9 @@ func (p *Plugin) Process(ctx context.Context, rec snoozetypes.Record) (plugins.R
 		return plugins.Result{Action: plugins.ActionContinue, Record: rec}, nil
 	}
 
-	// Translate the typed record once for condition evaluation.
 	recMap := recordToMap(rec)
 	now := recordTime(rec)
 
-	pub := p.publisher()
 	for _, e := range entries {
 		if !e.IsEnabled() {
 			continue
@@ -192,105 +231,142 @@ func (p *Plugin) Process(ctx context.Context, rec snoozetypes.Record) (plugins.R
 		if !e.TimeConstraints.Match(now) {
 			continue
 		}
-		p.dispatch(ctx, pub, e, rec)
+		p.dispatch(ctx, e, rec)
 	}
 
 	return plugins.Result{Action: plugins.ActionContinue, Record: rec}, nil
 }
 
-// dispatch publishes one message per configured action on the entry. Missing
-// publisher (test wiring) or per-publish errors are logged once but do not
-// fail the pipeline — delivery is at-most-once best-effort by design.
-func (p *Plugin) dispatch(ctx context.Context, pub publisher, e Entry, rec snoozetypes.Record) {
+// dispatch resolves each action name against the cached action map and fires
+// the matching Notifier.Send on a detached goroutine. Errors are logged but
+// never propagate back to the pipeline — delivery is best-effort by design.
+func (p *Plugin) dispatch(ctx context.Context, e Entry, rec snoozetypes.Record) {
 	if len(e.Actions) == 0 {
 		return
 	}
-	if pub == nil {
-		if !p.warnedNoBus.Swap(true) {
-			if lg := p.host.Logger(); lg != nil {
-				lg.Warn("notification: bus does not satisfy publisher; dispatch is a no-op",
-					"plugin", p.Name())
-			}
-		}
+	if e.Frequency != nil && e.Frequency.Total == 0 {
+		// Python: action_obj['total'] == 0 means "do not send"; we honour
+		// the same convention so operators can stage a notification before
+		// flipping it on.
 		return
 	}
 
-	freqTotal, freqDelay, freqEvery := 1, 0, 0
-	if e.Frequency != nil {
-		if e.Frequency.Total > 0 {
-			freqTotal = e.Frequency.Total
-		}
-		freqDelay = e.Frequency.Delay
-		freqEvery = e.Frequency.Every
-	}
-
-	retry, every := p.configDefaults()
-
-	for _, action := range e.Actions {
-		payload := Payload{
-			NotificationName: e.Name,
-			Action:           action,
-			Record:           rec,
-			Delay:            freqDelay,
-			Every:            freqEvery,
-			Total:            freqTotal,
-			Retry:            retry,
-			Freq:             every,
-		}
-		if err := pub.Publish(ctx, busQueue(action), payload); err != nil {
-			if lg := p.host.Logger(); lg != nil {
-				lg.Warn("notification: publish failed",
+	for _, name := range e.Actions {
+		ad, ok := p.lookupAction(ctx, name)
+		if !ok {
+			if lg := p.logger(); lg != nil {
+				lg.Warn("notification: action not found",
 					"notification", e.Name,
+					"action", name)
+			}
+			continue
+		}
+		if ad.Action.Selected == "" {
+			if lg := p.logger(); lg != nil {
+				lg.Warn("notification: action missing notifier (action.selected empty)",
+					"notification", e.Name,
+					"action", name)
+			}
+			continue
+		}
+		plug := p.host.Plugin(ad.Action.Selected)
+		if plug == nil {
+			if lg := p.logger(); lg != nil {
+				lg.Warn("notification: notifier plugin not registered",
+					"notification", e.Name,
+					"action", name,
+					"selected", ad.Action.Selected)
+			}
+			continue
+		}
+		notifier, ok := plug.(plugins.Notifier)
+		if !ok {
+			if lg := p.logger(); lg != nil {
+				lg.Warn("notification: target plugin is not a Notifier",
+					"notification", e.Name,
+					"action", name,
+					"selected", ad.Action.Selected)
+			}
+			continue
+		}
+		payload := plugins.NotificationPayload{
+			Template: ad.Action.Selected,
+			Meta:     metaFromSubcontent(ad.Action.Subcontent, e, ad.Name),
+		}
+		p.fireSend(notifier, rec, payload, e.Name, name)
+	}
+}
+
+// lookupAction returns the cached action doc, refreshing the cache once on a
+// miss so freshly-created actions become dispatchable without waiting for the
+// next sync event.
+func (p *Plugin) lookupAction(ctx context.Context, name string) (actionDoc, bool) {
+	p.mu.RLock()
+	ad, ok := p.actions[name]
+	p.mu.RUnlock()
+	if ok {
+		return ad, true
+	}
+	if p.host == nil || p.host.DB() == nil {
+		return actionDoc{}, false
+	}
+	fresh, err := p.loadActions(ctx)
+	if err != nil {
+		return actionDoc{}, false
+	}
+	p.mu.Lock()
+	p.actions = fresh
+	p.mu.Unlock()
+	ad, ok = fresh[name]
+	return ad, ok
+}
+
+// metaFromSubcontent shallow-clones the action's subcontent map and stamps
+// the action name into it as `action_name` (Python places it there too, so
+// downstream notifier code can reference it).
+func metaFromSubcontent(sub map[string]any, e Entry, actionName string) map[string]any {
+	out := make(map[string]any, len(sub)+2)
+	for k, v := range sub {
+		out[k] = v
+	}
+	out["action_name"] = actionName
+	out["notification_name"] = e.Name
+	if e.Frequency != nil {
+		out["frequency"] = map[string]any{
+			"total": e.Frequency.Total,
+			"delay": e.Frequency.Delay,
+			"every": e.Frequency.Every,
+		}
+	}
+	return out
+}
+
+// fireSend launches a detached goroutine that invokes notifier.Send under a
+// fresh background context capped by notifierSendTimeout. The pipeline ctx is
+// intentionally not propagated: it is cancelled as soon as Process returns,
+// which would prematurely abort every Notifier round-trip.
+func (p *Plugin) fireSend(notifier plugins.Notifier, rec snoozetypes.Record, payload plugins.NotificationPayload, notification, action string) {
+	go func() {
+		sendCtx, cancel := context.WithTimeout(context.Background(), notifierSendTimeout)
+		defer cancel()
+		if err := notifier.Send(sendCtx, rec, payload); err != nil {
+			if lg := p.logger(); lg != nil {
+				lg.Warn("notification: notifier send failed",
+					"notification", notification,
 					"action", action,
+					"selected", payload.Template,
 					"err", err)
 			}
 		}
-	}
+	}()
 }
 
-// configDefaults pulls the notification_retry and notification_freq fallbacks
-// from the immutable bootstrap config. Returns Python defaults when the host
-// or config is unavailable.
-func (p *Plugin) configDefaults() (retry, everySeconds int) {
-	retry, everySeconds = 3, int(time.Minute/time.Second)
+// logger returns the host logger or the default if the host is missing one.
+func (p *Plugin) logger() *slog.Logger {
 	if p.host == nil {
-		return
+		return slog.Default()
 	}
-	cfg := p.host.Config()
-	if cfg == nil {
-		return
-	}
-	if cfg.Notification.NotificationRetry > 0 {
-		retry = cfg.Notification.NotificationRetry
-	}
-	if d := time.Duration(cfg.Notification.NotificationFreq); d > 0 {
-		everySeconds = int(d / time.Second)
-	}
-	return
-}
-
-// publisher returns the host bus cast to the publisher contract, or nil if
-// the bus is missing or does not satisfy it.
-func (p *Plugin) publisher() publisher {
-	if p.host == nil {
-		return nil
-	}
-	b := p.host.Bus()
-	if b == nil {
-		return nil
-	}
-	pub, ok := any(b).(publisher)
-	if !ok {
-		return nil
-	}
-	return pub
-}
-
-// busQueue returns the topic an action's worker consumes. The naming scheme
-// is "notification.<action-name>" — flat, predictable, and trivially
-// shardable per action plugin.
-func busQueue(action string) string {
-	return "notification." + action
+	return p.host.Logger()
 }
 
 // factory is the plugins.Factory entry-point.

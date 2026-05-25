@@ -249,6 +249,41 @@ func TestAuthValidation(t *testing.T) {
 	require.Contains(t, err.Error(), "unsupported auth type")
 }
 
+// TestSendLegacyPythonPayload verifies the Python-era idioms still produce
+// the right body. The action records ported from 1.x use `payload` instead
+// of `body`, and embed `{{ __self__ | tojson() }}` to inline the record.
+func TestSendLegacyPythonPayload(t *testing.T) {
+	var captured struct {
+		body        []byte
+		contentType string
+	}
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		captured.body, _ = io.ReadAll(r.Body)
+		captured.contentType = r.Header.Get("Content-Type")
+		w.WriteHeader(http.StatusOK)
+	}))
+	t.Cleanup(srv.Close)
+
+	p := newPluginForTest(t)
+	rec := sampleRecord()
+	err := p.Send(context.Background(), rec, plugins.NotificationPayload{
+		Meta: map[string]any{
+			"url": srv.URL + "/alert",
+			"payload": `{"channels": ["teams/abc/channels/def"], "alert": {{ __self__  | tojson() }} }`,
+		},
+	})
+	require.NoError(t, err)
+	require.Equal(t, "application/json", captured.contentType)
+
+	var got map[string]any
+	require.NoError(t, json.Unmarshal(captured.body, &got))
+	require.Equal(t, []any{"teams/abc/channels/def"}, got["channels"])
+	alert, ok := got["alert"].(map[string]any)
+	require.True(t, ok, "alert key should decode to an object")
+	require.Equal(t, rec.Host, alert["host"])
+	require.Equal(t, rec.Severity, alert["severity"])
+}
+
 func TestPluginInterfaceContract(t *testing.T) {
 	var _ plugins.Plugin = (*Plugin)(nil)
 	var _ plugins.Notifier = (*Plugin)(nil)

@@ -19,9 +19,26 @@ import (
 // time it lands.
 const graphTokenSkew = 60 * time.Second
 
+// authMode discriminates the OAuth2 flow the daemon uses to talk to Graph.
+//
+//   - authModeApp: client_credentials with a confidential client secret. Used
+//     historically and still appropriate for read-only scopes the tenant has
+//     granted as application permissions.
+//   - authModeDelegated: refresh_token rotation against a refresh token
+//     obtained one-shot via the device-code flow (see authorize.go). Required
+//     for ChannelMessage.Send, which Microsoft does not expose as an
+//     application permission.
+type authMode int
+
+const (
+	authModeApp authMode = iota
+	authModeDelegated
+)
+
 // graphClient is a tiny Microsoft Graph wrapper. It handles:
 //
-//   - OAuth2 client_credentials token acquisition (with caching + auto-refresh).
+//   - OAuth2 token acquisition under either authModeApp (client_credentials)
+//     or authModeDelegated (refresh_token), with caching + auto-refresh.
 //   - POST /teams/{team}/channels/{channel}/messages.
 //   - GET  /teams/{team}/channels/{channel}/messages (paged "value" envelope).
 //
@@ -29,10 +46,14 @@ const graphTokenSkew = 60 * time.Second
 type graphClient struct {
 	httpc *http.Client
 
+	mode authMode
+
 	tenantID     string
 	clientID     string
-	clientSecret string
+	clientSecret string // app mode only
 	scope        string
+
+	store *tokenStore // delegated mode only
 
 	loginBase string
 	graphBase string
@@ -44,26 +65,46 @@ type graphClient struct {
 
 // newGraphClient builds a graph client from Config. It does not perform any
 // network I/O; the first FetchToken / API call triggers the OAuth2 round trip.
+// When cfg.AuthMode is "delegated", the returned client reads its refresh
+// token from cfg.TokenFile via a tokenStore — that file must already have
+// been populated by `snooze-teams authorize`.
 func newGraphClient(cfg Config, httpc *http.Client) *graphClient {
 	if httpc == nil {
 		httpc = &http.Client{Timeout: cfg.RequestTimeout}
 	}
+	mode := authModeApp
+	var store *tokenStore
+	scope := cfg.Scope
+	if strings.EqualFold(cfg.AuthMode, "delegated") {
+		mode = authModeDelegated
+		store = newTokenStore(cfg.TokenFile)
+		// For delegated refresh_token grants we re-request the delegated
+		// scope list, not the .default app scope. Joining with spaces
+		// matches the AAD v2 token endpoint's wire format.
+		scope = strings.Join(cfg.Scopes, " ")
+	}
 	return &graphClient{
 		httpc:        httpc,
+		mode:         mode,
 		tenantID:     cfg.TenantID,
 		clientID:     cfg.ClientID,
 		clientSecret: cfg.ClientSecret,
-		scope:        cfg.Scope,
+		scope:        scope,
+		store:        store,
 		loginBase:    cfg.LoginBase,
 		graphBase:    cfg.GraphBase,
 	}
 }
 
-// graphTokenResponse mirrors the wire shape of the v2 token endpoint.
+// graphTokenResponse mirrors the wire shape of the v2 token endpoint. The
+// refresh_token field is empty for client_credentials responses and populated
+// (subject to AAD rotation policy) for refresh_token responses.
 type graphTokenResponse struct {
-	TokenType   string `json:"token_type"`
-	ExpiresIn   int    `json:"expires_in"`
-	AccessToken string `json:"access_token"`
+	TokenType    string `json:"token_type"`
+	ExpiresIn    int    `json:"expires_in"`
+	AccessToken  string `json:"access_token"`
+	RefreshToken string `json:"refresh_token,omitempty"`
+	Scope        string `json:"scope,omitempty"`
 }
 
 // graphTokenError mirrors the AAD error envelope: an opaque code plus a
@@ -73,58 +114,149 @@ type graphTokenError struct {
 	ErrorDescription string `json:"error_description"`
 }
 
-// fetchToken hits https://login.microsoftonline.com/{tenant}/oauth2/v2.0/token
-// with the client_credentials grant and stores the result in memory. It is
-// safe to call concurrently — callers normally use bearerToken which lazily
-// refreshes on first call and within `graphTokenSkew` of expiry.
+// fetchToken acquires a fresh access token from AAD, choosing the grant type
+// based on the client's configured auth mode. The result is cached on the
+// client and, for delegated mode, persisted to the token store so the next
+// daemon restart can reuse it without burning a refresh round-trip.
 func (g *graphClient) fetchToken(ctx context.Context) (string, error) {
+	if g.mode == authModeDelegated {
+		return g.fetchDelegatedToken(ctx)
+	}
+	return g.fetchAppToken(ctx)
+}
+
+// fetchAppToken runs the client_credentials grant against AAD. This is the
+// classic 1.x-era flow and remains valid for read-only application scopes.
+func (g *graphClient) fetchAppToken(ctx context.Context) (string, error) {
 	form := url.Values{}
 	form.Set("grant_type", "client_credentials")
 	form.Set("client_id", g.clientID)
 	form.Set("client_secret", g.clientSecret)
 	form.Set("scope", g.scope)
 
+	tr, err := g.postTokenForm(ctx, form)
+	if err != nil {
+		return "", err
+	}
+	g.cacheAccessToken(tr.AccessToken, tr.ExpiresIn)
+	return tr.AccessToken, nil
+}
+
+// fetchDelegatedToken refreshes the cached delegated grant. AAD may rotate
+// the refresh_token on every call (the default for confidential clients with
+// refresh-token rotation enabled), so a new token gets written back to the
+// store as soon as it is acquired.
+func (g *graphClient) fetchDelegatedToken(ctx context.Context) (string, error) {
+	if g.store == nil {
+		return "", errors.New("teams: delegated mode requires a token file path")
+	}
+	cached, err := g.store.Load()
+	if err != nil {
+		return "", err
+	}
+	// If the cached access token is still valid, reuse it — this keeps the
+	// daemon warm across short restarts without an extra refresh round-trip.
+	if cached.AccessToken != "" && time.Now().Before(cached.ExpiresAt.Add(-graphTokenSkew)) {
+		g.cacheAccessTokenAt(cached.AccessToken, cached.ExpiresAt)
+		return cached.AccessToken, nil
+	}
+
+	form := url.Values{}
+	form.Set("grant_type", "refresh_token")
+	form.Set("refresh_token", cached.RefreshToken)
+	form.Set("client_id", g.clientID)
+	if g.clientSecret != "" {
+		form.Set("client_secret", g.clientSecret)
+	}
+	if g.scope != "" {
+		form.Set("scope", g.scope)
+	}
+
+	tr, err := g.postTokenForm(ctx, form)
+	if err != nil {
+		return "", fmt.Errorf("teams: refresh token grant failed (run `snooze-teams authorize` if revoked): %w", err)
+	}
+
+	expiresAt := time.Now().Add(time.Duration(tr.ExpiresIn) * time.Second)
+	newRefresh := tr.RefreshToken
+	if newRefresh == "" {
+		// AAD did not rotate the refresh token — keep the previous one
+		// rather than wiping it.
+		newRefresh = cached.RefreshToken
+	}
+	saved := cachedToken{
+		AccessToken:  tr.AccessToken,
+		RefreshToken: newRefresh,
+		ExpiresAt:    expiresAt,
+		Scope:        tr.Scope,
+		ObtainedAt:   time.Now(),
+		TenantID:     cached.TenantID,
+		ClientID:     cached.ClientID,
+	}
+	if err := g.store.Save(saved); err != nil {
+		// A failure to persist is not fatal — we still have the in-memory
+		// access token. Surface it so operators notice the cache is wedged.
+		return tr.AccessToken, fmt.Errorf("teams: token persisted in memory only (disk save failed: %w)", err)
+	}
+	g.cacheAccessTokenAt(tr.AccessToken, expiresAt)
+	return tr.AccessToken, nil
+}
+
+// postTokenForm submits form to the v2.0 token endpoint and returns the
+// parsed body, or a structured error containing AAD's `error` /
+// `error_description` pair when AAD rejects the request.
+func (g *graphClient) postTokenForm(ctx context.Context, form url.Values) (graphTokenResponse, error) {
 	endpoint := fmt.Sprintf("%s/%s/oauth2/v2.0/token", g.loginBase, g.tenantID)
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, strings.NewReader(form.Encode()))
 	if err != nil {
-		return "", fmt.Errorf("teams: build token request: %w", err)
+		return graphTokenResponse{}, fmt.Errorf("teams: build token request: %w", err)
 	}
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	req.Header.Set("Accept", "application/json")
 
 	resp, err := g.httpc.Do(req)
 	if err != nil {
-		return "", fmt.Errorf("teams: token request: %w", err)
+		return graphTokenResponse{}, fmt.Errorf("teams: token request: %w", err)
 	}
 	defer resp.Body.Close() //nolint:errcheck
 
 	raw, err := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
 	if err != nil {
-		return "", fmt.Errorf("teams: read token response: %w", err)
+		return graphTokenResponse{}, fmt.Errorf("teams: read token response: %w", err)
 	}
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		var apiErr graphTokenError
 		if jerr := json.Unmarshal(raw, &apiErr); jerr == nil && apiErr.Error != "" {
-			return "", fmt.Errorf("teams: token %d %s: %s", resp.StatusCode, apiErr.Error, apiErr.ErrorDescription)
+			return graphTokenResponse{}, fmt.Errorf("teams: token %d %s: %s", resp.StatusCode, apiErr.Error, apiErr.ErrorDescription)
 		}
-		return "", fmt.Errorf("teams: token %d: %s", resp.StatusCode, strings.TrimSpace(string(raw)))
+		return graphTokenResponse{}, fmt.Errorf("teams: token %d: %s", resp.StatusCode, strings.TrimSpace(string(raw)))
 	}
 	var tr graphTokenResponse
 	if err := json.Unmarshal(raw, &tr); err != nil {
-		return "", fmt.Errorf("teams: decode token response: %w", err)
+		return graphTokenResponse{}, fmt.Errorf("teams: decode token response: %w", err)
 	}
 	if tr.AccessToken == "" {
-		return "", errors.New("teams: token response missing access_token")
+		return graphTokenResponse{}, errors.New("teams: token response missing access_token")
 	}
-	ttl := time.Duration(tr.ExpiresIn) * time.Second
+	return tr, nil
+}
+
+// cacheAccessToken stores tok in memory with a deadline derived from
+// expiresIn (subject to graphTokenSkew). expiresIn ≤ 0 falls back to 1h.
+func (g *graphClient) cacheAccessToken(tok string, expiresIn int) {
+	ttl := time.Duration(expiresIn) * time.Second
 	if ttl <= 0 {
 		ttl = time.Hour
 	}
+	g.cacheAccessTokenAt(tok, time.Now().Add(ttl))
+}
+
+// cacheAccessTokenAt stores tok in memory with an explicit expiry instant.
+func (g *graphClient) cacheAccessTokenAt(tok string, expiresAt time.Time) {
 	g.mu.Lock()
-	g.token = tr.AccessToken
-	g.expiresAt = time.Now().Add(ttl - graphTokenSkew)
+	g.token = tok
+	g.expiresAt = expiresAt.Add(-graphTokenSkew)
 	g.mu.Unlock()
-	return tr.AccessToken, nil
 }
 
 // bearerToken returns a non-expired token, refreshing it transparently when
@@ -142,7 +274,8 @@ func (g *graphClient) bearerToken(ctx context.Context) (string, error) {
 
 // invalidateToken forces the next bearerToken call to round-trip. Used when
 // a 401 from Graph suggests the cached token is stale despite our clock-skew
-// safety margin (e.g. tenant admin rotated the secret).
+// safety margin (e.g. tenant admin rotated the secret or revoked the
+// refresh-token family).
 func (g *graphClient) invalidateToken() {
 	g.mu.Lock()
 	g.token = ""
@@ -196,15 +329,32 @@ type graphMessagesPage struct {
 	Value []graphMessage `json:"value"`
 }
 
-// sendMessage POSTs a chatMessage to the configured channel. body is rendered
-// as HTML and posted under /v1.0/teams/{team}/channels/{channel}/messages.
-func (g *graphClient) sendMessage(ctx context.Context, teamID, channelID, htmlBody string) (graphMessage, error) {
+// chatAttachment is a single entry in the chatMessage `attachments` array.
+// For Adaptive Cards, contentType is "application/vnd.microsoft.card.adaptive"
+// and content is the serialized card JSON (a string, not a nested object —
+// that's a Graph quirk).
+type chatAttachment struct {
+	ID           string  `json:"id"`
+	ContentType  string  `json:"contentType"`
+	ContentURL   *string `json:"contentUrl"`
+	Content      string  `json:"content"`
+	Name         *string `json:"name"`
+	ThumbnailURL *string `json:"thumbnailUrl"`
+}
+
+// sendMessage POSTs a chatMessage to the configured channel. htmlBody is the
+// outer body content; attachments, when non-empty, are referenced from
+// htmlBody via `<attachment id="..."></attachment>` placeholders.
+func (g *graphClient) sendMessage(ctx context.Context, teamID, channelID, htmlBody string, attachments ...chatAttachment) (graphMessage, error) {
 	endpoint := fmt.Sprintf("%s/teams/%s/channels/%s/messages", g.graphBase, teamID, channelID)
 	payload := map[string]any{
 		"body": map[string]any{
 			"contentType": "html",
 			"content":     htmlBody,
 		},
+	}
+	if len(attachments) > 0 {
+		payload["attachments"] = attachments
 	}
 	raw, err := json.Marshal(payload)
 	if err != nil {

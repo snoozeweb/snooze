@@ -84,6 +84,39 @@ type Config struct {
 	// BotName is the @mention name the daemon listens for in channel
 	// messages. Defaults to "SnoozeBot".
 	BotName string `yaml:"bot_name"`
+
+	// ListenAddr is the address the legacy bridge HTTP endpoint binds to.
+	// snooze-server's webhook plugin posts here when a notification action
+	// is configured to "forward to Teams" — keeping the Python 1.x wire
+	// contract so action records continue to dispatch unchanged.
+	//
+	// Empty disables the listener; set to e.g. "0.0.0.0:5202" (the Python
+	// default) or ":5202" to re-enable. Operators wiring the daemon behind
+	// a sidecar may prefer "127.0.0.1:5202".
+	ListenAddr string `yaml:"listen_addr"`
+
+	// AuthMode selects the Graph OAuth2 flow.
+	//
+	//   - "delegated" (default): refresh_token grant against a token
+	//     obtained one-shot via `snooze-teams authorize`. Required for
+	//     ChannelMessage.Send — Microsoft does not expose it as an
+	//     application permission.
+	//   - "client_credentials": legacy app-only flow. Still valid for
+	//     read-only scopes that the tenant has granted as application
+	//     permissions, but cannot post channel messages.
+	AuthMode string `yaml:"auth_mode"`
+
+	// TokenFile is where the delegated refresh token is persisted between
+	// daemon restarts. Defaults to /var/lib/snooze/teams-token.json (which
+	// systemd already lists in ReadWritePaths). Ignored when AuthMode is
+	// "client_credentials".
+	TokenFile string `yaml:"token_file"`
+
+	// Scopes is the OAuth2 scope list requested by `snooze-teams authorize`.
+	// Defaults mirror the Python 1.x client: ChannelMessage.Send is the
+	// load-bearing one; offline_access makes AAD return a refresh token;
+	// the rest cover the polling reads.
+	Scopes []string `yaml:"scopes"`
 }
 
 // ErrMissingConfig is the sentinel returned for missing required fields. The
@@ -116,8 +149,11 @@ func (c Config) WithDefaults() (Config, error) {
 	if strings.TrimSpace(c.ClientID) == "" {
 		return c, fmt.Errorf("%w: client_id", ErrMissingConfig)
 	}
-	if strings.TrimSpace(c.ClientSecret) == "" {
-		return c, fmt.Errorf("%w: client_secret", ErrMissingConfig)
+	// client_secret is only required for the legacy app-only flow.
+	// Delegated mode uses a refresh token persisted by `authorize`; many
+	// public-client AAD apps don't have a secret at all.
+	if strings.EqualFold(c.AuthMode, "client_credentials") && strings.TrimSpace(c.ClientSecret) == "" {
+		return c, fmt.Errorf("%w: client_secret (required for auth_mode=client_credentials)", ErrMissingConfig)
 	}
 	if strings.TrimSpace(c.TeamID) == "" {
 		return c, fmt.Errorf("%w: team_id", ErrMissingConfig)
@@ -150,6 +186,25 @@ func (c Config) WithDefaults() (Config, error) {
 	}
 	if c.BotName == "" {
 		c.BotName = "SnoozeBot"
+	}
+	if c.AuthMode == "" {
+		c.AuthMode = "delegated"
+	}
+	if c.TokenFile == "" {
+		c.TokenFile = "/var/lib/snooze/teams-token.json"
+	}
+	if len(c.Scopes) == 0 {
+		// Mirror the Python 1.x scope list. ChannelMessage.Send is the
+		// permission Microsoft only grants to delegated tokens; the read
+		// scopes back the polling loop.
+		c.Scopes = []string{
+			"offline_access",
+			"ChannelMessage.Send",
+			"ChannelMessage.Read.All",
+			"Team.ReadBasic.All",
+			"Channel.ReadBasic.All",
+			"Chat.ReadBasic",
+		}
 	}
 	return c, nil
 }

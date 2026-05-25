@@ -27,6 +27,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"regexp"
 	"strings"
 	"text/template"
 	"time"
@@ -235,6 +236,14 @@ func configFromPayload(p plugins.NotificationPayload) (Config, error) {
 	if v, ok := p.Meta["body"].(string); ok && v != "" {
 		cfg.Body = v
 	}
+	// Python's webhook plugin spelled the body template `payload`. Accept it
+	// as a fallback so action records ported from 1.x keep dispatching
+	// without an operator-side migration.
+	if cfg.Body == "" {
+		if v, ok := p.Meta["payload"].(string); ok && v != "" {
+			cfg.Body = v
+		}
+	}
 	if v, ok := p.Meta["tls_insecure"].(bool); ok {
 		cfg.TLSInsecure = v
 	}
@@ -302,7 +311,9 @@ func stringField(m map[string]any, k string) string {
 }
 
 // renderTemplate executes a Go text/template over the record. Empty input
-// yields an empty string with no error.
+// yields an empty string with no error. Python-era Jinja2 idioms commonly
+// used in legacy webhook templates are normalised before parsing — see
+// translatePythonIdioms.
 func renderTemplate(name, tmpl string, rec snoozetypes.Record) (string, error) {
 	if tmpl == "" {
 		return "", nil
@@ -313,7 +324,8 @@ func renderTemplate(name, tmpl string, rec snoozetypes.Record) (string, error) {
 		// path segments (none today, but cheap insurance).
 		return tmpl, nil
 	}
-	t, err := template.New(name).Option("missingkey=zero").Parse(tmpl)
+	tmpl = translatePythonIdioms(tmpl)
+	t, err := template.New(name).Option("missingkey=zero").Funcs(templateFuncs()).Parse(tmpl)
 	if err != nil {
 		return "", err
 	}
@@ -322,6 +334,38 @@ func renderTemplate(name, tmpl string, rec snoozetypes.Record) (string, error) {
 		return "", err
 	}
 	return buf.String(), nil
+}
+
+// pythonSelfTojson matches the most common Python idiom found in legacy
+// action records: `{{ __self__ | tojson() }}`. We tolerate optional
+// whitespace and the `()` Jinja filter-call form.
+var pythonSelfTojson = regexp.MustCompile(`\{\{\s*__self__\s*\|\s*tojson(?:\(\))?\s*\}\}`)
+
+// pythonSelfBare matches a standalone `{{ __self__ }}` reference.
+var pythonSelfBare = regexp.MustCompile(`\{\{\s*__self__\s*\}\}`)
+
+// translatePythonIdioms rewrites the Jinja2 expressions that the Python 1.x
+// webhook plugin accepted into the Go text/template equivalents this plugin
+// understands. Only the idioms our deployed action records use are handled —
+// anything else flows through unchanged and fails loudly at parse time so the
+// gap is visible rather than silently producing the wrong body.
+func translatePythonIdioms(tmpl string) string {
+	tmpl = pythonSelfTojson.ReplaceAllString(tmpl, `{{ tojson .Record }}`)
+	tmpl = pythonSelfBare.ReplaceAllString(tmpl, `{{ tojson .Record }}`)
+	return tmpl
+}
+
+// templateFuncs returns the function map exposed to webhook templates.
+func templateFuncs() template.FuncMap {
+	return template.FuncMap{
+		"tojson": func(v any) (string, error) {
+			raw, err := json.Marshal(v)
+			if err != nil {
+				return "", err
+			}
+			return string(raw), nil
+		},
+	}
 }
 
 // templateData wraps the record so callers can write `{{.Record.Host}}`

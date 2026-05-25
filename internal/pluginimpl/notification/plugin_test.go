@@ -2,7 +2,6 @@ package notification
 
 import (
 	"context"
-	"encoding/json"
 	"log/slog"
 	"path/filepath"
 	"sync"
@@ -17,97 +16,91 @@ import (
 	"github.com/snoozeweb/snooze/internal/config"
 	"github.com/snoozeweb/snooze/internal/db"
 	dbsqlite "github.com/snoozeweb/snooze/internal/db/sqlite"
-	"github.com/snoozeweb/snooze/internal/mq"
 	"github.com/snoozeweb/snooze/internal/plugins"
 	"github.com/snoozeweb/snooze/internal/telemetry"
 	"github.com/snoozeweb/snooze/pkg/snoozetypes"
 )
 
-// recordingBus wraps an mq.Bus and counts every Publish call. It is the
-// fake Notifier-side endpoint the tests assert against.
-type recordingBus struct {
-	inner mq.Bus
+// recordingNotifier captures every Send call the dispatcher makes. It is the
+// fake outbound endpoint the tests assert against.
+type recordingNotifier struct {
+	name string
 
 	mu    sync.Mutex
-	calls []recordedCall
+	calls []notifierCall
 	total atomic.Int64
 }
 
-type recordedCall struct {
-	Queue   string
-	Payload Payload
+type notifierCall struct {
+	Record  snoozetypes.Record
+	Payload plugins.NotificationPayload
 }
 
-func (b *recordingBus) Publish(ctx context.Context, queue string, payload any) error {
-	// Round-trip the payload through JSON so the test sees what a
-	// downstream consumer would deserialize, not the in-memory pointer.
-	raw, err := json.Marshal(payload)
-	if err != nil {
-		return err
-	}
-	var p Payload
-	if err := json.Unmarshal(raw, &p); err != nil {
-		return err
-	}
-	b.mu.Lock()
-	b.calls = append(b.calls, recordedCall{Queue: queue, Payload: p})
-	b.mu.Unlock()
-	b.total.Add(1)
-	return b.inner.Publish(ctx, queue, payload)
+func (n *recordingNotifier) Name() string                              { return n.name }
+func (n *recordingNotifier) Metadata() plugins.Metadata                { return plugins.Metadata{Name: n.name} }
+func (n *recordingNotifier) PostInit(context.Context, plugins.Host) error { return nil }
+func (n *recordingNotifier) Reload(context.Context) error              { return nil }
+
+func (n *recordingNotifier) Send(_ context.Context, rec snoozetypes.Record, payload plugins.NotificationPayload) error {
+	n.mu.Lock()
+	n.calls = append(n.calls, notifierCall{Record: rec, Payload: payload})
+	n.mu.Unlock()
+	n.total.Add(1)
+	return nil
 }
 
-func (b *recordingBus) Subscribe(ctx context.Context, queue string, opts mq.SubscribeOpts, h mq.Handler) error {
-	return b.inner.Subscribe(ctx, queue, opts, h)
-}
-
-func (b *recordingBus) Close() error { return b.inner.Close() }
-
-func (b *recordingBus) Calls() []recordedCall {
-	b.mu.Lock()
-	defer b.mu.Unlock()
-	out := make([]recordedCall, len(b.calls))
-	copy(out, b.calls)
+func (n *recordingNotifier) Calls() []notifierCall {
+	n.mu.Lock()
+	defer n.mu.Unlock()
+	out := make([]notifierCall, len(n.calls))
+	copy(out, n.calls)
 	return out
 }
 
 // testHost is a minimal plugins.Host suitable for the notification plugin.
 type testHost struct {
-	driver db.Driver
-	bus    mq.Bus
-	logger *slog.Logger
-	cfg    *config.Config
-	metr   *telemetry.Registry
-	tracer trace.Tracer
+	driver  db.Driver
+	logger  *slog.Logger
+	cfg     *config.Config
+	metr    *telemetry.Registry
+	tracer  trace.Tracer
+	plugins map[string]plugins.Plugin
 }
 
 func (h *testHost) DB() db.Driver                { return h.driver }
-func (h *testHost) Bus() plugins.Bus             { return h.bus }
+func (h *testHost) Bus() plugins.Bus             { return nil }
 func (h *testHost) Logger() *slog.Logger         { return h.logger }
 func (h *testHost) Tracer() trace.Tracer         { return h.tracer }
 func (h *testHost) Metrics() *telemetry.Registry { return h.metr }
 func (h *testHost) Config() *config.Config       { return h.cfg }
-func (h *testHost) Plugin(string) plugins.Plugin { return nil }
+func (h *testHost) Plugin(name string) plugins.Plugin {
+	if h.plugins == nil {
+		return nil
+	}
+	return h.plugins[name]
+}
 
-// newHost wires a fresh SQLite driver + recording bus.
-func newHost(t *testing.T) (*testHost, *recordingBus) {
+// newHost wires a fresh SQLite driver and an empty plugin registry.
+func newHost(t *testing.T) *testHost {
 	t.Helper()
 	dbPath := filepath.Join(t.TempDir(), "snooze.db")
 	drv, err := dbsqlite.New(context.Background(), dbsqlite.Config{Path: dbPath})
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = drv.Close() })
 
-	inner := mq.NewInproc(mq.InprocConfig{QueueBuffer: 64})
-	t.Cleanup(func() { _ = inner.Close() })
-	rb := &recordingBus{inner: inner}
-
 	return &testHost{
-		driver: drv,
-		bus:    rb,
-		logger: slog.Default(),
-		cfg:    config.Default(),
-		metr:   telemetry.NewRegistry(nil),
-		tracer: otel.Tracer("notification-test"),
-	}, rb
+		driver:  drv,
+		logger:  slog.Default(),
+		cfg:     config.Default(),
+		metr:    telemetry.NewRegistry(nil),
+		tracer:  otel.Tracer("notification-test"),
+		plugins: map[string]plugins.Plugin{},
+	}
+}
+
+// registerNotifier installs n into the host's plugin registry under its name.
+func (h *testHost) registerNotifier(n *recordingNotifier) {
+	h.plugins[n.name] = n
 }
 
 // writeEntries seeds the notification collection with raw entry documents.
@@ -121,6 +114,17 @@ func writeEntries(t *testing.T, h *testHost, entries []map[string]any) {
 	require.NoError(t, err)
 }
 
+// writeActions seeds the action collection.
+func writeActions(t *testing.T, h *testHost, actions []map[string]any) {
+	t.Helper()
+	docs := make([]db.Document, 0, len(actions))
+	for _, a := range actions {
+		docs = append(docs, db.Document(a))
+	}
+	_, err := h.driver.Write(context.Background(), actionCollectionName, docs, db.WriteOptions{UpdateTime: true})
+	require.NoError(t, err)
+}
+
 func newPlugin(t *testing.T, h *testHost) *Plugin {
 	t.Helper()
 	p := &Plugin{meta: plugins.Metadata{Name: "notification"}}
@@ -128,11 +132,35 @@ func newPlugin(t *testing.T, h *testHost) *Plugin {
 	return p
 }
 
+// waitForCalls polls until the recorder has at least want calls or fails the
+// test on timeout. Sends are dispatched on a detached goroutine so the test
+// cannot assume synchronous completion of Process.
+func waitForCalls(t *testing.T, n *recordingNotifier, want int, timeout time.Duration) []notifierCall {
+	t.Helper()
+	deadline := time.Now().Add(timeout)
+	for time.Now().Before(deadline) {
+		calls := n.Calls()
+		if len(calls) >= want {
+			return calls
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+	t.Fatalf("notifier %q recorded %d calls, want %d within %s", n.name, len(n.Calls()), want, timeout)
+	return nil
+}
+
 func TestNotification(t *testing.T) {
-	t.Run("notification_echo_publishes_one_per_action", func(t *testing.T) {
-		// Mirrors test_notification_echo: a single matching notification
-		// with a single action emits exactly one bus message.
-		host, bus := newHost(t)
+	t.Run("dispatches_to_notifier_for_matching_action", func(t *testing.T) {
+		host := newHost(t)
+		writeActions(t, host, []map[string]any{
+			{
+				"name": "Script",
+				"action": map[string]any{
+					"selected":   "script",
+					"subcontent": map[string]any{"path": "/usr/bin/true"},
+				},
+			},
+		})
 		writeEntries(t, host, []map[string]any{
 			{
 				"name":      "Notification1",
@@ -140,6 +168,8 @@ func TestNotification(t *testing.T) {
 				"actions":   []any{"Script"},
 			},
 		})
+		notifier := &recordingNotifier{name: "script"}
+		host.registerNotifier(notifier)
 
 		p := newPlugin(t, host)
 
@@ -154,31 +184,29 @@ func TestNotification(t *testing.T) {
 		require.Equal(t, plugins.ActionContinue, res.Action)
 		require.Equal(t, rec, res.Record)
 
-		calls := bus.Calls()
+		calls := waitForCalls(t, notifier, 1, time.Second)
 		require.Len(t, calls, 1)
-		require.Equal(t, "notification.Script", calls[0].Queue)
-		require.Equal(t, "Notification1", calls[0].Payload.NotificationName)
-		require.Equal(t, "Script", calls[0].Payload.Action)
-		require.Equal(t, "myhost01", calls[0].Payload.Record.Host)
+		require.Equal(t, "myhost01", calls[0].Record.Host)
+		require.Equal(t, "Script", calls[0].Payload.Meta["action_name"])
+		require.Equal(t, "Notification1", calls[0].Payload.Meta["notification_name"])
+		require.Equal(t, "/usr/bin/true", calls[0].Payload.Meta["path"])
+		require.Equal(t, "script", calls[0].Payload.Template)
 	})
 
-	t.Run("match_true_with_time_constraint", func(t *testing.T) {
-		// Mirrors test_match_true: a record arriving inside the daily
-		// time-window and on an allowed weekday is dispatched, while a
-		// record outside either family is skipped. We seed two
-		// notifications to exercise both branches in one DB round-trip.
-		host, bus := newHost(t)
+	t.Run("respects_time_constraint", func(t *testing.T) {
+		host := newHost(t)
+		writeActions(t, host, []map[string]any{
+			{"name": "Script", "action": map[string]any{"selected": "script", "subcontent": map[string]any{}}},
+		})
 
-		// Wednesday 2021-07-07 11:00 UTC — inside the Time window
-		// (10:00 -> 14:00) and on a Wednesday (weekday=3 in
-		// Sun=0..Sat=6).
+		// Wednesday 2021-07-07 11:00 UTC — inside the window.
 		inside := time.Date(2021, 7, 7, 11, 0, 0, 0, time.UTC)
-		// Same daily window but a Saturday → weekday match fails.
+		// Saturday 2021-07-10 11:00 UTC — weekday match fails.
 		outside := time.Date(2021, 7, 10, 11, 0, 0, 0, time.UTC)
 
 		writeEntries(t, host, []map[string]any{
 			{
-				"name":      "Notification 1",
+				"name":      "N1",
 				"condition": []any{"=", "host", "myhost01"},
 				"time_constraints": map[string]any{
 					"weekdays": []any{
@@ -191,52 +219,101 @@ func TestNotification(t *testing.T) {
 				"actions": []any{"Script"},
 			},
 		})
+		notifier := &recordingNotifier{name: "script"}
+		host.registerNotifier(notifier)
 
 		p := newPlugin(t, host)
 
-		// In-window record dispatches.
-		_, err := p.Process(context.Background(), snoozetypes.Record{
-			UID:       "uid-in",
-			Host:      "myhost01",
-			Message:   "my message",
-			Timestamp: inside,
-		})
+		_, err := p.Process(context.Background(), snoozetypes.Record{UID: "in", Host: "myhost01", Timestamp: inside})
+		require.NoError(t, err)
+		_, err = p.Process(context.Background(), snoozetypes.Record{UID: "out", Host: "myhost01", Timestamp: outside})
 		require.NoError(t, err)
 
-		// Out-of-window record does not.
-		_, err = p.Process(context.Background(), snoozetypes.Record{
-			UID:       "uid-out",
-			Host:      "myhost01",
-			Message:   "my message",
-			Timestamp: outside,
-		})
-		require.NoError(t, err)
-
-		calls := bus.Calls()
-		require.Len(t, calls, 1, "expected exactly one dispatch for the in-window record")
-		require.Equal(t, "uid-in", calls[0].Payload.Record.UID)
+		calls := waitForCalls(t, notifier, 1, time.Second)
+		// Sleep a little longer to confirm the outside-window record didn't
+		// sneak in late.
+		time.Sleep(50 * time.Millisecond)
+		require.Len(t, notifier.Calls(), 1, "only the in-window record should dispatch")
+		require.Equal(t, "in", calls[0].Record.UID)
 	})
 
 	t.Run("ack_close_records_skip_dispatch", func(t *testing.T) {
-		// Python's `process` short-circuits on state in {'ack','close'}.
-		host, bus := newHost(t)
-		writeEntries(t, host, []map[string]any{
-			{
-				"name":      "Always",
-				"condition": []any{}, // AlwaysTrue
-				"actions":   []any{"Script"},
-			},
+		host := newHost(t)
+		writeActions(t, host, []map[string]any{
+			{"name": "Always", "action": map[string]any{"selected": "script", "subcontent": map[string]any{}}},
 		})
+		writeEntries(t, host, []map[string]any{
+			{"name": "AlwaysFires", "condition": []any{}, "actions": []any{"Always"}},
+		})
+		notifier := &recordingNotifier{name: "script"}
+		host.registerNotifier(notifier)
+
 		p := newPlugin(t, host)
 
 		for _, state := range []string{"ack", "close"} {
-			_, err := p.Process(context.Background(), snoozetypes.Record{
-				UID:       "uid-" + state,
-				State:     state,
-				Timestamp: time.Now(),
-			})
+			_, err := p.Process(context.Background(), snoozetypes.Record{UID: "uid-" + state, State: state, Timestamp: time.Now()})
 			require.NoError(t, err)
 		}
-		require.Empty(t, bus.Calls(), "no dispatch expected for ack/close records")
+		// Allow time for any erroneous dispatch to fire.
+		time.Sleep(50 * time.Millisecond)
+		require.Empty(t, notifier.Calls(), "no dispatch expected for ack/close records")
+	})
+
+	t.Run("missing_action_logs_and_skips", func(t *testing.T) {
+		host := newHost(t)
+		// No action documents — the lookup miss should be tolerated.
+		writeEntries(t, host, []map[string]any{
+			{"name": "N1", "condition": []any{}, "actions": []any{"DoesNotExist"}},
+		})
+		notifier := &recordingNotifier{name: "script"}
+		host.registerNotifier(notifier)
+
+		p := newPlugin(t, host)
+		_, err := p.Process(context.Background(), snoozetypes.Record{UID: "x", Host: "h", Timestamp: time.Now()})
+		require.NoError(t, err)
+		time.Sleep(50 * time.Millisecond)
+		require.Empty(t, notifier.Calls())
+	})
+
+	t.Run("missing_notifier_plugin_logs_and_skips", func(t *testing.T) {
+		host := newHost(t)
+		writeActions(t, host, []map[string]any{
+			{"name": "X", "action": map[string]any{"selected": "nonexistent", "subcontent": map[string]any{}}},
+		})
+		writeEntries(t, host, []map[string]any{
+			{"name": "N1", "condition": []any{}, "actions": []any{"X"}},
+		})
+		// Do not register a "nonexistent" notifier.
+		notifier := &recordingNotifier{name: "script"}
+		host.registerNotifier(notifier)
+
+		p := newPlugin(t, host)
+		_, err := p.Process(context.Background(), snoozetypes.Record{UID: "x", Host: "h", Timestamp: time.Now()})
+		require.NoError(t, err)
+		time.Sleep(50 * time.Millisecond)
+		require.Empty(t, notifier.Calls())
+	})
+
+	t.Run("frequency_total_zero_skips", func(t *testing.T) {
+		host := newHost(t)
+		writeActions(t, host, []map[string]any{
+			{"name": "Script", "action": map[string]any{"selected": "script", "subcontent": map[string]any{}}},
+		})
+		writeEntries(t, host, []map[string]any{
+			{
+				"name":      "N1",
+				"condition": []any{},
+				"actions":   []any{"Script"},
+				"frequency": map[string]any{"total": 0},
+			},
+		})
+		notifier := &recordingNotifier{name: "script"}
+		host.registerNotifier(notifier)
+
+		p := newPlugin(t, host)
+		_, err := p.Process(context.Background(), snoozetypes.Record{UID: "x", Host: "h", Timestamp: time.Now()})
+		require.NoError(t, err)
+		time.Sleep(50 * time.Millisecond)
+		require.Empty(t, notifier.Calls(), "frequency.total == 0 must suppress the send")
 	})
 }

@@ -36,6 +36,11 @@ func TestWithDefaults_fillsDefaults(t *testing.T) {
 	require.Equal(t, 10*time.Second, cfg.PollInterval)
 	require.Equal(t, time.Minute, cfg.PollLookback)
 	require.Equal(t, 15*time.Second, cfg.RequestTimeout)
+	require.Equal(t, "delegated", cfg.AuthMode)
+	require.Equal(t, "/var/lib/snooze/teams-token.json", cfg.TokenFile)
+	require.NotEmpty(t, cfg.Scopes, "Scopes should default to the Python 1.x list")
+	require.Contains(t, cfg.Scopes, "ChannelMessage.Send")
+	require.Contains(t, cfg.Scopes, "offline_access")
 }
 
 func TestWithDefaults_requiresFields(t *testing.T) {
@@ -47,7 +52,6 @@ func TestWithDefaults_requiresFields(t *testing.T) {
 		{"server", func(c *teams.Config) { c.Server = "" }, "server"},
 		{"tenant", func(c *teams.Config) { c.TenantID = "" }, "tenant_id"},
 		{"client_id", func(c *teams.Config) { c.ClientID = "" }, "client_id"},
-		{"client_secret", func(c *teams.Config) { c.ClientSecret = "" }, "client_secret"},
 		{"team_id", func(c *teams.Config) { c.TeamID = "" }, "team_id"},
 		{"channel_id", func(c *teams.Config) { c.ChannelID = "" }, "channel_id"},
 	}
@@ -61,6 +65,28 @@ func TestWithDefaults_requiresFields(t *testing.T) {
 			require.Contains(t, err.Error(), tc.field)
 		})
 	}
+}
+
+// TestWithDefaults_clientSecretRequiredOnlyForAppMode confirms that the
+// client_secret field is no longer mandatory in delegated mode (most public
+// AAD apps don't have one), but still required for the legacy app-only flow.
+func TestWithDefaults_clientSecretRequiredOnlyForAppMode(t *testing.T) {
+	t.Run("delegated tolerates missing client_secret", func(t *testing.T) {
+		c := minimal()
+		c.ClientSecret = ""
+		c.AuthMode = "delegated"
+		_, err := c.WithDefaults()
+		require.NoError(t, err)
+	})
+	t.Run("client_credentials requires client_secret", func(t *testing.T) {
+		c := minimal()
+		c.ClientSecret = ""
+		c.AuthMode = "client_credentials"
+		_, err := c.WithDefaults()
+		require.Error(t, err)
+		require.ErrorIs(t, err, teams.ErrMissingConfig)
+		require.Contains(t, err.Error(), "client_secret")
+	})
 }
 
 func TestWithDefaults_trimsTrailingSlash(t *testing.T) {

@@ -2,11 +2,14 @@ package teams
 
 import (
 	"context"
+	"crypto/rand"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"html"
 	"log/slog"
 	"net/http"
+	"strings"
 	"sync"
 	"time"
 
@@ -82,10 +85,11 @@ func New(cfg Config, logger *slog.Logger) (*Daemon, error) {
 	return d, nil
 }
 
-// Run drives the polling loop until ctx is cancelled. It performs an eager
-// Snooze login (best-effort: a login failure is logged but does not abort —
-// the lazy /api/v1/alerts path will retry on demand) then starts polling
-// Graph for new channel messages every PollInterval.
+// Run drives the polling loop and the legacy /alert HTTP listener until ctx
+// is cancelled. It performs an eager Snooze login (best-effort: a login
+// failure is logged but does not abort — the lazy /api/v1/alerts path will
+// retry on demand) then runs both subsystems under a single errgroup so a
+// failure in either tears the daemon down for the supervisor to restart.
 //
 // Token acquisition for Graph is lazy: the first sendMessage / fetchMessages
 // triggers fetchToken.
@@ -100,21 +104,48 @@ func (d *Daemon) Run(ctx context.Context) error {
 		slog.String("graph_base", d.cfg.GraphBase),
 		slog.String("team_id", d.cfg.TeamID),
 		slog.String("channel_id", d.cfg.ChannelID),
-		slog.Duration("poll_interval", d.cfg.PollInterval))
+		slog.Duration("poll_interval", d.cfg.PollInterval),
+		slog.String("listen_addr", d.cfg.ListenAddr))
 
+	pollErrCh := make(chan error, 1)
+	listenErrCh := make(chan error, 1)
+	subCtx, cancel := context.WithCancel(ctx)
+	defer cancel()
+
+	go func() { pollErrCh <- d.runPollLoop(subCtx) }()
+	go func() { listenErrCh <- d.runListener(subCtx) }()
+
+	var firstErr error
+	for i := 0; i < 2; i++ {
+		select {
+		case err := <-pollErrCh:
+			if err != nil && !errors.Is(err, context.Canceled) && firstErr == nil {
+				firstErr = err
+			}
+			cancel()
+		case err := <-listenErrCh:
+			if err != nil && !errors.Is(err, context.Canceled) && firstErr == nil {
+				firstErr = err
+			}
+			cancel()
+		}
+	}
+	d.logger.Info("teams: daemon stopping", slog.Any("cause", ctx.Err()))
+	return firstErr
+}
+
+// runPollLoop drives the inbound Graph poller. Extracted from Run so the new
+// errgroup-style supervision in Run stays readable.
+func (d *Daemon) runPollLoop(ctx context.Context) error {
 	ticker := time.NewTicker(d.cfg.PollInterval)
 	defer ticker.Stop()
 
-	// Drive one immediate poll before entering the tick loop so the daemon
-	// is responsive on boot rather than waiting a full interval.
 	if err := d.pollOnce(ctx); err != nil && !errors.Is(err, context.Canceled) {
 		d.logger.Warn("teams: initial poll failed", slog.Any("err", err))
 	}
-
 	for {
 		select {
 		case <-ctx.Done():
-			d.logger.Info("teams: daemon stopping", slog.Any("cause", ctx.Err()))
 			return nil
 		case <-ticker.C:
 			if err := d.pollOnce(ctx); err != nil && !errors.Is(err, context.Canceled) {
@@ -199,41 +230,207 @@ func (d *Daemon) markSeen(id string) bool {
 	return false
 }
 
-// SendAlert formats record as an HTML chatMessage and POSTs it to the
-// configured channel. It is exported so other components (e.g. snooze-server
-// notification routes hitting an in-process bridge) can reuse it; the polling
-// loop does not call this directly.
+// SendAlert formats record as an Adaptive Card chatMessage and POSTs it to
+// the configured channel. It is exported so other components (e.g.
+// snooze-server notification routes hitting an in-process bridge) can reuse
+// it; the polling loop does not call this directly.
 func (d *Daemon) SendAlert(ctx context.Context, rec snoozetypes.Record) error {
-	body := formatAlertHTML(rec)
-	if _, err := d.graph.sendMessage(ctx, d.cfg.TeamID, d.cfg.ChannelID, body); err != nil {
+	body, att := formatAlertCard(rec, d.cfg.Server)
+	if _, err := d.graph.sendMessage(ctx, d.cfg.TeamID, d.cfg.ChannelID, body, att); err != nil {
 		return fmt.Errorf("teams: post alert: %w", err)
 	}
 	return nil
 }
 
-// formatAlertHTML renders a snooze Record as a minimal HTML message. It
-// emits the bot marker first so the poll loop's self-detection works.
-func formatAlertHTML(rec snoozetypes.Record) string {
-	var b []byte
-	b = append(b, botMarker...)
-	b = append(b, "<b>New alert</b><br>"...)
-	if rec.Host != "" {
-		b = append(b, "Host: <code>"...)
-		b = append(b, html.EscapeString(rec.Host)...)
-		b = append(b, "</code><br>"...)
+// alertTimestampFormat mirrors the Python plugin's `date_format` default —
+// "Mon, May 25, 2026 at 10:30 AM" — so messages render identically to the
+// 1.x bot.
+const alertTimestampFormat = "Mon, Jan 2, 2006 at 3:04 PM"
+
+// recordHash returns the duplicate-detection hash from the record, with a
+// best-effort fallback to the Extra map (the API exposes `hash` there until
+// it earns a typed home on snoozetypes.Record).
+func recordHash(rec snoozetypes.Record) string {
+	if rec.Extra != nil {
+		if v, ok := rec.Extra["hash"].(string); ok && v != "" {
+			return v
+		}
+	}
+	return ""
+}
+
+// alertTimestamp returns the record's timestamp formatted with
+// alertTimestampFormat, falling back through Timestamp → DateEpoch → now.
+func alertTimestamp(rec snoozetypes.Record) string {
+	t := rec.Timestamp
+	if t.IsZero() && rec.DateEpoch != 0 {
+		t = time.Unix(rec.DateEpoch, 0)
+	}
+	if t.IsZero() {
+		t = time.Now()
+	}
+	return t.Local().Format(alertTimestampFormat)
+}
+
+// recordWebLink returns the hyperlinked host name pointing at the snooze web
+// UI's hash-filtered record view, matching the Python plugin's layout. When
+// either the snooze base URL or the hash is missing, we emit just the
+// (escaped) host so the message still renders cleanly.
+func recordWebLink(rec snoozetypes.Record, snoozeURL string) string {
+	host := rec.Host
+	if host == "" {
+		host = "Unknown"
+	}
+	escHost := html.EscapeString(host)
+	hash := recordHash(rec)
+	if snoozeURL == "" || hash == "" {
+		return escHost
+	}
+	href := fmt.Sprintf("%s/web/?#/record?tab=All&s=hash%%3D%s",
+		strings.TrimRight(snoozeURL, "/"), html.EscapeString(hash))
+	return fmt.Sprintf(`<a href="%s">%s</a>`, href, escHost)
+}
+
+// formatAlertCard renders rec as an Adaptive Card 1.4 chatMessage payload —
+// a Graph message body that points at one attached AdaptiveCard JSON
+// document. The card layout mirrors the Python 1.x bot:
+//
+//   - bold header "⚠️ Received alert ⚠️"
+//   - subtle timestamp underneath
+//   - FactSet with Host/Source/Process/Severity (auto-aligned columns)
+//   - emphasis Container holding the alert message in a larger, bolded
+//     TextBlock so it visually anchors the card
+//
+// Returned htmlBody contains the `<attachment id="..."></attachment>` ref
+// the Graph API uses to associate the body with the card, plus the
+// snooze-bot marker so the poll loop's self-detection (forward.go) still
+// works. The caller passes both to sendMessage.
+func formatAlertCard(rec snoozetypes.Record, snoozeURL string) (htmlBody string, attachment chatAttachment) {
+	id := newAttachmentID()
+	card := buildAlertCard(rec, snoozeURL)
+	cardJSON, _ := json.Marshal(card)
+	attachment = chatAttachment{
+		ID:          id,
+		ContentType: "application/vnd.microsoft.card.adaptive",
+		Content:     string(cardJSON),
+	}
+	htmlBody = `<attachment id="` + id + `"></attachment>` + botMarker
+	return htmlBody, attachment
+}
+
+// buildAlertCard assembles the AdaptiveCard 1.4 body. Kept separate from
+// formatAlertCard so tests can assert on the card shape without serialising
+// it through chatAttachment.
+func buildAlertCard(rec snoozetypes.Record, snoozeURL string) map[string]any {
+	body := []map[string]any{
+		{
+			"type":   "TextBlock",
+			"text":   "⚠️ Received alert ⚠️",
+			"weight": "Bolder",
+			"size":   "Medium",
+			"wrap":   true,
+		},
+		{
+			"type":     "TextBlock",
+			"text":     alertTimestamp(rec),
+			"isSubtle": true,
+			"spacing":  "None",
+			"wrap":     true,
+		},
+	}
+
+	facts := []map[string]any{
+		{"title": "Host", "value": recordFactValue(rec, snoozeURL)},
 	}
 	if rec.Source != "" {
-		b = append(b, "Source: <code>"...)
-		b = append(b, html.EscapeString(rec.Source)...)
-		b = append(b, "</code><br>"...)
+		facts = append(facts, map[string]any{"title": "Source", "value": rec.Source})
+	}
+	if rec.Process != "" {
+		facts = append(facts, map[string]any{"title": "Process", "value": rec.Process})
 	}
 	if rec.Severity != "" {
-		b = append(b, "Severity: <code>"...)
-		b = append(b, html.EscapeString(rec.Severity)...)
-		b = append(b, "</code><br>"...)
+		facts = append(facts, map[string]any{"title": "Severity", "value": rec.Severity})
 	}
+	body = append(body, map[string]any{
+		"type":  "FactSet",
+		"facts": facts,
+	})
+
 	if rec.Message != "" {
-		b = append(b, html.EscapeString(rec.Message)...)
+		body = append(body, map[string]any{
+			"type":  "Container",
+			"style": "emphasis",
+			"items": []map[string]any{
+				{
+					"type":   "TextBlock",
+					"text":   rec.Message,
+					"weight": "Bolder",
+					"size":   "Medium",
+					"color":  severityColor(rec.Severity),
+					"wrap":   true,
+				},
+			},
+		})
 	}
-	return string(b)
+
+	return map[string]any{
+		"$schema": "http://adaptivecards.io/schemas/adaptive-card.json",
+		"type":    "AdaptiveCard",
+		"version": "1.4",
+		"msteams": map[string]any{"width": "full"},
+		"body":    body,
+	}
+}
+
+// recordFactValue returns the host string used inside the FactSet. When the
+// snooze URL + record hash are both known, the host is rendered as a
+// Markdown link to the record view; AdaptiveCard FactSet values render
+// Markdown inline. Otherwise we return the bare host so it still looks
+// clean.
+func recordFactValue(rec snoozetypes.Record, snoozeURL string) string {
+	host := rec.Host
+	if host == "" {
+		host = "Unknown"
+	}
+	hash := recordHash(rec)
+	if snoozeURL == "" || hash == "" {
+		return host
+	}
+	return fmt.Sprintf("[%s](%s/web/?#/record?tab=All&s=hash%%3D%s)",
+		host,
+		strings.TrimRight(snoozeURL, "/"),
+		hash)
+}
+
+// severityColor maps a snooze severity to the AdaptiveCard TextBlock color
+// taxonomy ("Default" / "Accent" / "Good" / "Warning" / "Attention").
+// Unknown / empty severities fall through to "Default".
+func severityColor(severity string) string {
+	switch strings.ToLower(severity) {
+	case "critical", "emergency", "alert":
+		return "Attention"
+	case "warning", "warn":
+		return "Warning"
+	case "info", "informational", "notice":
+		return "Accent"
+	case "ok", "success":
+		return "Good"
+	}
+	return "Default"
+}
+
+// newAttachmentID returns a hex UUIDv4-shaped identifier suitable for the
+// `<attachment id>` placeholder. Match the Python plugin's `uuid.uuid4().hex`.
+func newAttachmentID() string {
+	var b [16]byte
+	if _, err := rand.Read(b[:]); err != nil {
+		// Fall back to a timestamp-derived id so we never block on a
+		// degraded RNG; collisions in the attachment id are bounded to
+		// the single chatMessage we're constructing.
+		return fmt.Sprintf("%x", time.Now().UnixNano())
+	}
+	// Set RFC 4122 v4 bits.
+	b[6] = (b[6] & 0x0f) | 0x40
+	b[8] = (b[8] & 0x3f) | 0x80
+	return fmt.Sprintf("%x", b)
 }
