@@ -148,8 +148,8 @@ func ParseCommand(raw string) ParsedCommand {
 	return ParsedCommand{Verb: ActionComment, Args: raw}
 }
 
-// recordSearchHits mirrors the lightweight search response the daemon needs
-// from /api/v1/records?in=<thread>. Only UID is required to dispatch an action.
+// recordSearchHit is the slice of a Snooze record the daemon needs to
+// dispatch an action. Only UID is required; hash is kept for logging.
 type recordSearchHit struct {
 	UID  string `json:"uid"`
 	Hash string `json:"hash,omitempty"`
@@ -159,7 +159,6 @@ type recordSearchHit struct {
 // It exists to keep the unit-test boundary small — tests inject a fake.
 type SnoozeClient interface {
 	Post(ctx context.Context, path string, body, dest any) error
-	Get(ctx context.Context, path string, dest any) error
 }
 
 // commentPayload mirrors the Python `client.comment_batch` body and the Go
@@ -178,11 +177,19 @@ type commentPayload struct {
 // the AfterCreate hook that applies the state transition on the linked record.
 const commentEndpoint = "/api/v1/comment"
 
-// recordSearchEndpoint searches records by thread name (substring match). The
-// real query syntax is implemented server-side; we send the thread name as a
-// "thread" query parameter which the server resolves to the same condition
-// the Python client used (IN thread snooze_webhook_responses.content.threads).
-const recordSearchEndpoint = "/api/v1/records"
+// recordSearchEndpoint is the canonical structured-search route. Body shape:
+// `{"condition": <Cond>}`. We mirror the Python query (IN thread
+// snooze_webhook_responses.content.threads) with a nested-IN condition:
+// for every entry in snooze_webhook_responses, check whether content.threads
+// contains the thread name we're looking for.
+//
+// TODO: snooze_webhook_responses is read here and in the jira component but
+// nothing in this codebase writes it yet — the googlechat notifier plugin
+// that would record the thread name after sending a Chat message has not
+// been ported from Python. Until that lands this lookup will return zero
+// hits in any real deployment, and the user-facing reply will be "cannot
+// find the corresponding alert!".
+const recordSearchEndpoint = "/api/v1/record/search"
 
 // Forwarder owns the business logic that turns a ChatEvent into one or more
 // Snooze record-action calls plus a reply string suitable for posting back to
@@ -263,16 +270,30 @@ func (f *Forwarder) Handle(ctx context.Context, ev ChatEvent) (string, error) {
 }
 
 // lookupRecords resolves the records associated with the given thread name.
+// It POSTs a structured condition to /api/v1/record/search that says:
+//
+//	IN snooze_webhook_responses where content.threads contains <thread>
+//
+// The wire form is the legacy nested-list shape the server's condition
+// parser accepts; the outer IN's value is itself a list-form condition,
+// which the IN evaluator runs against each element of the
+// snooze_webhook_responses array.
 func (f *Forwarder) lookupRecords(ctx context.Context, thread string) ([]recordSearchHit, error) {
 	if thread == "" {
 		return nil, errors.New("empty thread")
+	}
+	body := map[string]any{
+		"condition": []any{
+			"IN",
+			[]any{"IN", thread, "content.threads"},
+			"snooze_webhook_responses",
+		},
 	}
 	type envelope struct {
 		Data []recordSearchHit `json:"data"`
 	}
 	var env envelope
-	path := recordSearchEndpoint + "?thread=" + urlQueryEscape(thread)
-	if err := f.Client.Get(ctx, path, &env); err != nil {
+	if err := f.Client.Post(ctx, recordSearchEndpoint, body, &env); err != nil {
 		return nil, err
 	}
 	return env.Data, nil
@@ -330,25 +351,3 @@ func (f *Forwarder) errorReply(displayName, why string) string {
 	return fmt.Sprintf(":x: `%s`: %s", displayName, why)
 }
 
-// urlQueryEscape escapes s for use as a single query-string value. It is
-// kept inline to avoid pulling net/url just for a one-liner; the rules we
-// need are the standard RFC3986 unreserved set plus percent-encoding.
-func urlQueryEscape(s string) string {
-	const upperhex = "0123456789ABCDEF"
-	var b strings.Builder
-	b.Grow(len(s))
-	for i := 0; i < len(s); i++ {
-		c := s[i]
-		switch {
-		case (c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9'):
-			b.WriteByte(c)
-		case c == '-' || c == '_' || c == '.' || c == '~':
-			b.WriteByte(c)
-		default:
-			b.WriteByte('%')
-			b.WriteByte(upperhex[c>>4])
-			b.WriteByte(upperhex[c&0x0f])
-		}
-	}
-	return b.String()
-}
