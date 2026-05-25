@@ -28,7 +28,7 @@ package aggregaterule
 
 import (
 	"context"
-	"crypto/sha1" //nolint:gosec
+	"crypto/md5" //nolint:gosec
 	_ "embed"
 	"encoding/hex"
 	"encoding/json"
@@ -450,11 +450,11 @@ func condFromDoc(v any) (condition.Cond, error) {
 // --- hashing ---
 
 // computeHash mirrors Python: md5(name + join('field=value', sorted-fields)).
-// We use SHA-1 here (cheaper and collision-safe for our cardinality); the on-
-// disk hash format is opaque to consumers — only equality matters within a
-// single deployment.
+// MD5 is required (not just historical) — pre-existing alert records carry
+// MD5-encoded hashes from the Snooze 1.x Python era, and switching algorithms
+// breaks dedup continuity for every still-open legacy record after upgrade.
 func computeHash(name string, fields []string, rec map[string]any) string {
-	h := sha1.New() //nolint:gosec
+	h := md5.New() //nolint:gosec
 	h.Write([]byte(name))
 	for _, f := range fields {
 		v, _ := condition.Dig(rec, splitDots(f)...)
@@ -469,7 +469,7 @@ func computeHash(name string, fields []string, rec map[string]any) string {
 // defaultHash hashes the entire record (sorted keys), used when no rule
 // matched. It groups records whose raw payload is identical.
 func defaultHash(rec map[string]any) string {
-	h := sha1.New() //nolint:gosec
+	h := md5.New() //nolint:gosec
 	keys := make([]string, 0, len(rec))
 	for k := range rec {
 		if k == "hash" || k == "aggregate" || k == "uid" {
