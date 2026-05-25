@@ -36,7 +36,7 @@ export type FormField = {
 export type Metadata = {
   // plugin_name is the registry key (Plugin.Name() on the server) — a stable
   // machine-readable identifier injected by the metadata HTTP handler. Use
-  // this to match an Action's `action_type` against the plugin catalogue.
+  // this to match an Action's `action.selected` against the plugin catalogue.
   // The separate `name` field is a human label taken from the plugin's
   // YAML `name:` (e.g. "Send email", "Run a script"), which can't be relied
   // on for matching.

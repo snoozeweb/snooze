@@ -25,6 +25,7 @@ import (
 	"os"
 	"os/exec"
 	"strings"
+	"sync"
 	"text/template"
 	"time"
 
@@ -52,9 +53,20 @@ func factory(meta plugins.Metadata) (plugins.Plugin, error) {
 }
 
 // Plugin is the script notifier.
+//
+// Batching: actions with `batch: true` accumulate rendered per-record state
+// (stdin, argv, cwd, env) in per-action buckets in `buckets`, flushing on
+// the first of batch_maxsize or batch_timer. The flush runs the command
+// once using the first record's argv/cwd/env, with stdin set to either a
+// JSON array of the queued stdins (when each parses as JSON — typical when
+// stdin is templated with `{{ .RecordJSON }}`) or to the newline-joined
+// concatenation otherwise. See batch.go.
 type Plugin struct {
 	meta plugins.Metadata
 	host plugins.Host
+
+	bMu     sync.Mutex
+	buckets map[string]*batchBucket
 }
 
 // Name returns the registry key. We hardcode "script" (matching mail /
@@ -124,26 +136,41 @@ func (p *Plugin) Send(ctx context.Context, rec snoozetypes.Record, payload plugi
 		renderedEnv[k] = val
 	}
 
+	// Batched dispatch: queue the rendered per-record state and return
+	// immediately. The flusher invokes the command once using the first
+	// record's argv/cwd/env, with stdin joined across records.
+	if cfg.batch {
+		p.queueForBatch(cfg, rawArgs, stdinData, renderedCWD, renderedEnv)
+		return nil
+	}
+
+	return p.runCommand(ctx, cfg, rawArgs, stdinData, renderedCWD, renderedEnv)
+}
+
+// runCommand executes the child process with pre-rendered arguments. Used by
+// both Send (per-record) and the batch flush. Error semantics match the
+// previous monolithic Send: ExecError on exit/timeout/exec failures.
+func (p *Plugin) runCommand(ctx context.Context, cfg scriptConfig, argv []string, stdinData, cwd string, env map[string]string) error {
 	// Bound the child process with both the caller context and a wall clock.
 	execCtx, cancel := context.WithTimeout(ctx, cfg.timeout)
 	defer cancel()
 
-	cmd := exec.CommandContext(execCtx, rawArgs[0], rawArgs[1:]...) //nolint:gosec // argv is intentionally user-controlled
+	cmd := exec.CommandContext(execCtx, argv[0], argv[1:]...) //nolint:gosec // argv is intentionally user-controlled
 	// WaitDelay caps the time Run() spends waiting for inherited stdout/
 	// stderr pipes after the process exits — without it, a grandchild that
 	// inherited our pipes (e.g. `sh -c "sleep 60"`) would keep Run() blocked
 	// even after exec.CommandContext kills the direct child.
 	cmd.WaitDelay = 250 * time.Millisecond
 
-	if renderedCWD != "" {
-		cmd.Dir = renderedCWD
+	if cwd != "" {
+		cmd.Dir = cwd
 	}
 
-	if len(renderedEnv) > 0 {
+	if len(env) > 0 {
 		// Prepend so user-set values win over inherited ones.
 		base := os.Environ()
-		merged := make([]string, 0, len(renderedEnv)+len(base))
-		for k, v := range renderedEnv {
+		merged := make([]string, 0, len(env)+len(base))
+		for k, v := range env {
 			merged = append(merged, k+"="+v)
 		}
 		merged = append(merged, base...)
@@ -189,8 +216,8 @@ func (p *Plugin) Send(ctx context.Context, rec snoozetypes.Record, payload plugi
 
 	if lg := p.logger(); lg != nil {
 		lg.Debug("script: command succeeded",
-			"argv0", rawArgs[0],
-			"argc", len(rawArgs),
+			"argv0", argv[0],
+			"argc", len(argv),
 			"output_bytes", len(output),
 		)
 	}
@@ -241,6 +268,15 @@ type scriptConfig struct {
 	stdin     string
 	timeout   time.Duration
 	maxOutput int
+
+	// Batch knobs (mirror the webhook plugin). Batch coalesces multiple
+	// records into one process invocation; the first record's argv/cwd/env
+	// is used, with stdin joined across records. Degenerate config (batch
+	// true but bounds <= 0) silently falls back to immediate execution.
+	batch        bool
+	batchMaxsize int
+	batchTimer   time.Duration
+	batchKey     string // action_name; only set when batch is true
 }
 
 func parseConfig(meta map[string]any) (scriptConfig, error) {
@@ -310,6 +346,31 @@ func parseConfig(meta map[string]any) (scriptConfig, error) {
 			return cfg, errors.New("script: max_output must be positive")
 		}
 		cfg.maxOutput = int(n)
+	}
+
+	if v, ok := meta["batch"].(bool); ok {
+		cfg.batch = v
+	}
+	if v, ok := meta["batch_maxsize"]; ok {
+		n, err := toFloat(v)
+		if err == nil && n > 0 {
+			cfg.batchMaxsize = int(n)
+		}
+	}
+	if v, ok := meta["batch_timer"]; ok {
+		n, err := toFloat(v)
+		if err == nil && n > 0 {
+			cfg.batchTimer = time.Duration(n * float64(time.Second))
+		}
+	}
+	// Degenerate config: silently disable batching rather than buffer forever.
+	if cfg.batch && (cfg.batchMaxsize <= 1 || cfg.batchTimer <= 0) {
+		cfg.batch = false
+	}
+	if cfg.batch {
+		if name, ok := meta["action_name"].(string); ok {
+			cfg.batchKey = name
+		}
 	}
 
 	return cfg, nil

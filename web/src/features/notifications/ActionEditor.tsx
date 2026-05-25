@@ -17,15 +17,21 @@ import styles from "./NotificationEditor.module.css";
 type FormShape = {
   name: string;
   comment: string;
-  action_type: string;
-  action_json: string;
+  // `selected` is the notifier plugin registry key (mail / webhook / script /
+  // …). It is stored at action.selected on the backend doc; we hoist it into
+  // the form for the type-picker.
+  selected: string;
+  // JSON fallback for actions whose plugin isn't in /metadata (legacy or
+  // third-party). When the plugin IS known we render its action_form via
+  // MetadataForm and ignore this field.
+  subcontent_json: string;
 };
 
 const EMPTY_FORM: FormShape = {
   name: "",
   comment: "",
-  action_type: "",
-  action_json: "{}",
+  selected: "",
+  subcontent_json: "{}",
 };
 
 export type ActionEditorProps = {
@@ -53,22 +59,25 @@ export function ActionEditor({ uid, onClose }: ActionEditorProps) {
 
   // Subcontent for the typed form is kept outside react-hook-form because it's
   // a free-form object the MetadataForm renderer owns end-to-end.
-  const [action, setAction] = useState<Record<string, unknown>>({});
+  const [subcontent, setSubcontent] = useState<Record<string, unknown>>({});
 
   useEffect(() => {
     if (isCreate) {
       reset(EMPTY_FORM);
-      setAction({});
+      setSubcontent({});
       return;
     }
     if (existing.data) {
+      const env = existing.data.action ?? {};
+      const selected = env.selected ?? "";
+      const sub = env.subcontent ?? {};
       reset({
         name: existing.data.name ?? "",
         comment: existing.data.comment ?? "",
-        action_type: existing.data.action_type ?? "",
-        action_json: JSON.stringify(existing.data.action ?? {}, null, 2),
+        selected,
+        subcontent_json: JSON.stringify(sub, null, 2),
       });
-      setAction(existing.data.action ?? {});
+      setSubcontent(sub);
     }
   }, [existing.data, isCreate, reset]);
 
@@ -76,31 +85,31 @@ export function ActionEditor({ uid, onClose }: ActionEditorProps) {
   const [jsonError, setJsonError] = useState<string | null>(null);
 
   const formPlugins = useMemo(() => plugins_with_form(metadata.data), [metadata.data]);
-  const action_type = watch("action_type");
+  const selected = watch("selected");
   // Match against plugin_name (the registry key) rather than name. Most
   // action plugins' YAML `name:` is a human label ("Send email", "Run a
-  // script") that wouldn't match the Action's `action_type` ("mail",
+  // script") that wouldn't match the Action's `action.selected` ("mail",
   // "script"). plugin_name is stamped by the metadata handler.
   const selectedPlugin = useMemo(
-    () => formPlugins.find((m) => m.plugin_name === action_type),
-    [formPlugins, action_type],
+    () => formPlugins.find((m) => m.plugin_name === selected),
+    [formPlugins, selected],
   );
-  // If we have an action_type but no matching plugin in metadata, fall back
+  // If we have a selected type but no matching plugin in metadata, fall back
   // to the JSON textarea so legacy/unknown configs remain editable.
   const useJsonFallback =
-    !!action_type && !selectedPlugin && !metadata.isPending;
+    !!selected && !selectedPlugin && !metadata.isPending;
 
   async function onSubmit(form: FormShape) {
     setSubmitting(true);
     setJsonError(null);
     try {
-      let payload: Record<string, unknown>;
+      let sub: Record<string, unknown>;
       if (selectedPlugin) {
-        payload = action;
+        sub = subcontent;
       } else {
         try {
-          payload = JSON.parse(form.action_json) as Record<string, unknown>;
-          if (typeof payload !== "object" || payload === null || Array.isArray(payload)) {
+          sub = JSON.parse(form.subcontent_json) as Record<string, unknown>;
+          if (typeof sub !== "object" || sub === null || Array.isArray(sub)) {
             throw new Error("expected a JSON object");
           }
         } catch (e) {
@@ -112,8 +121,10 @@ export function ActionEditor({ uid, onClose }: ActionEditorProps) {
       const body: Action = {
         name: form.name,
         ...(form.comment ? { comment: form.comment } : {}),
-        action_type: form.action_type,
-        action: payload,
+        action: {
+          selected: form.selected,
+          subcontent: sub,
+        },
       };
       if (isCreate) {
         await create.mutateAsync(body);
@@ -171,13 +182,13 @@ export function ActionEditor({ uid, onClose }: ActionEditorProps) {
                   </label>
                   <select
                     id="action-type"
-                    value={action_type}
+                    value={selected}
                     onChange={(e) => {
                       const next = e.target.value;
-                      setValue("action_type", next, { shouldDirty: true });
+                      setValue("selected", next, { shouldDirty: true });
                       // Switching plugin resets the typed subcontent so we
                       // don't carry stale fields between plugin schemas.
-                      setAction({});
+                      setSubcontent({});
                     }}
                     style={{
                       height: 28,
@@ -194,14 +205,17 @@ export function ActionEditor({ uid, onClose }: ActionEditorProps) {
                       Select an action type…
                     </option>
                     {formPlugins.map((m) => (
+                      // `||` (not `??`) — `display_name` comes from the YAML
+                      // `desc:` field, which is `""` for some plugins (mail).
+                      // Falling back to `name` keeps the option visible.
                       <option key={m.plugin_name} value={m.plugin_name}>
-                        {m.display_name ?? m.name}
+                        {m.display_name || m.name}
                       </option>
                     ))}
-                    {/* Preserve unknown action_type so we don't silently drop it. */}
-                    {action_type && !selectedPlugin ? (
-                      <option key={action_type} value={action_type}>
-                        {action_type}
+                    {/* Preserve unknown selected so we don't silently drop it. */}
+                    {selected && !selectedPlugin ? (
+                      <option key={selected} value={selected}>
+                        {selected}
                       </option>
                     ) : null}
                   </select>
@@ -212,8 +226,8 @@ export function ActionEditor({ uid, onClose }: ActionEditorProps) {
                   <h3 className={styles.sectionTitle}>Config</h3>
                   <MetadataForm
                     fields={selectedPlugin.action_form}
-                    value={action}
-                    onChange={setAction}
+                    value={subcontent}
+                    onChange={setSubcontent}
                     idPrefix={`action-${selectedPlugin.plugin_name}`}
                   />
                 </section>
@@ -221,7 +235,7 @@ export function ActionEditor({ uid, onClose }: ActionEditorProps) {
                 <section className={styles.section}>
                   <h3 className={styles.sectionTitle}>Config (JSON)</h3>
                   <Textarea
-                    {...register("action_json")}
+                    {...register("subcontent_json")}
                     rows={10}
                     invalid={!!jsonError}
                     style={{ fontFamily: "var(--font-mono)" }}

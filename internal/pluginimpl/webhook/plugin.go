@@ -27,6 +27,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"regexp"
 	"strings"
 	"sync"
@@ -67,6 +68,17 @@ type Config struct {
 	Timeout     time.Duration
 	TLSInsecure bool
 	Auth        Auth
+
+	// Proxy is an optional HTTP/HTTPS/SOCKS proxy URL. When non-empty the
+	// http.Transport routes the outbound request through it. Mirrors the
+	// Python `proxy` action_form field.
+	Proxy string
+
+	// InjectResponse, when true, parses the HTTP response body (as JSON if
+	// it parses, otherwise as a string) and stamps it onto the originating
+	// record under `response_<action_name>` via payload.Inject. Mirrors the
+	// Python `inject_response` action_form field.
+	InjectResponse bool
 
 	// Batch accumulates rendered request bodies and flushes them to the
 	// configured URL as a single `[obj1, obj2, ...]` JSON array. Mirrors
@@ -140,14 +152,14 @@ func (p *Plugin) Send(ctx context.Context, rec snoozetypes.Record, payload plugi
 		return fmt.Errorf("webhook: config: %w", err)
 	}
 
-	url, err := renderTemplate("url", cfg.URL, rec)
+	urlRendered, err := renderTemplate("url", cfg.URL, rec)
 	if err != nil {
 		return fmt.Errorf("webhook: render url: %w", err)
 	}
-	if url == "" {
+	if urlRendered == "" {
 		return errors.New("webhook: url is empty after rendering")
 	}
-	cfg.URL = url // store the rendered URL so deliver / batch flush reuse it
+	cfg.URL = urlRendered // store the rendered URL so deliver / batch flush reuse it
 
 	body, contentType, err := renderBody(cfg.Body, rec, payload)
 	if err != nil {
@@ -159,18 +171,28 @@ func (p *Plugin) Send(ctx context.Context, rec snoozetypes.Record, payload plugi
 	// reaches batch_maxsize or batch_timer expires (whichever first).
 	// Falls back to the immediate path when the rendered body cannot be
 	// safely concatenated as a JSON array element (non-JSON template).
-	if cfg.Batch && bodyIsJSON(body) {
+	//
+	// Batched dispatch and inject_response are mutually exclusive: by the
+	// time the bucket flushes the originating record map has been forgotten,
+	// so there is no sensible field to stamp the shared response onto.
+	// Inject_response forces the immediate path.
+	if cfg.Batch && !cfg.InjectResponse && bodyIsJSON(body) {
 		p.queueForBatch(cfg, body)
 		return nil
 	}
 
-	return p.deliver(ctx, cfg, body, contentType, rec)
+	return p.deliver(ctx, cfg, body, contentType, rec, payload)
 }
 
 // deliver POSTs body to cfg.URL. Used by both the immediate Send path and the
 // batch flush. The record is only consulted for templated headers — pass a
 // zero-value Record when calling from the flush path.
-func (p *Plugin) deliver(ctx context.Context, cfg Config, body []byte, contentType string, rec snoozetypes.Record) error {
+//
+// The payload argument is the per-record NotificationPayload from Send (or
+// a zero value when called from the batch flush, where no single record
+// "owns" the response). It is only consulted for the Inject closure that
+// implements `inject_response`.
+func (p *Plugin) deliver(ctx context.Context, cfg Config, body []byte, contentType string, rec snoozetypes.Record, payload plugins.NotificationPayload) error {
 	method := strings.ToUpper(strings.TrimSpace(cfg.Method))
 	if method == "" {
 		method = http.MethodPost
@@ -219,6 +241,28 @@ func (p *Plugin) deliver(ctx context.Context, cfg Config, body []byte, contentTy
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		return fmt.Errorf("webhook: HTTP %d: %s", resp.StatusCode, truncate(preview, 200))
 	}
+
+	// inject_response: stamp the response onto the originating record under
+	// `response_<action_name>`. We try to JSON-decode first so downstream
+	// consumers see structured data; on failure we fall back to the raw
+	// string. The action_name lives in Meta — same place the notification
+	// dispatcher placed it via metaFromSubcontent.
+	if cfg.InjectResponse {
+		actionName, _ := payload.Meta["action_name"].(string)
+		if actionName == "" {
+			actionName = "webhook"
+		}
+		field := "response_" + actionName
+		var parsed any
+		if json.Valid(bytes.TrimSpace(preview)) {
+			if err := json.Unmarshal(preview, &parsed); err != nil {
+				parsed = string(preview)
+			}
+		} else {
+			parsed = string(preview)
+		}
+		plugins.InjectField(payload.Inject, field, parsed)
+	}
 	return nil
 }
 
@@ -245,6 +289,16 @@ func defaultClient(cfg Config) *http.Client {
 			InsecureSkipVerify: cfg.TLSInsecure, //nolint:gosec
 			MinVersion:         tls.VersionTLS12,
 		},
+	}
+	if cfg.Proxy != "" {
+		// url.Parse is permissive (it accepts scheme-less hosts); the resulting
+		// proxy is what http.Transport ends up dialling. Parse failure falls
+		// back to direct dial and surfaces in the logs only via the proxy
+		// being silently absent — operators get an obvious "request went
+		// direct" symptom rather than an opaque transport error.
+		if u, err := url.Parse(cfg.Proxy); err == nil && u.Scheme != "" {
+			transport.Proxy = http.ProxyURL(u)
+		}
 	}
 	// We rely on the per-request context for the deadline, but set a
 	// belt-and-braces client timeout in case a future caller forgets to
@@ -292,6 +346,12 @@ func configFromPayload(p plugins.NotificationPayload) (Config, error) {
 	}
 	if v, ok := p.Meta["tls_insecure"].(bool); ok {
 		cfg.TLSInsecure = v
+	}
+	if v, ok := p.Meta["proxy"].(string); ok && strings.TrimSpace(v) != "" {
+		cfg.Proxy = strings.TrimSpace(v)
+	}
+	if v, ok := p.Meta["inject_response"].(bool); ok {
+		cfg.InjectResponse = v
 	}
 
 	switch h := p.Meta["headers"].(type) {

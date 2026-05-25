@@ -31,7 +31,7 @@ func (rt *Router) mountMetadata(r chi.Router) {
 // Every entry's PluginName is stamped with the registry key before
 // serialisation. We can't rely on the YAML `name:` field (most action plugin
 // metadata.yamls use it as a human display label, e.g. "Send email") so the
-// frontend needs a separate machine-readable handle to match `action_type`
+// frontend needs a separate machine-readable handle to match `action.selected`
 // against.
 func (rt *Router) handleMetadataList(w http.ResponseWriter, _ *http.Request) {
 	names := make([]string, 0, len(rt.Plugins))

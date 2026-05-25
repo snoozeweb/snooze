@@ -185,10 +185,13 @@ var notificationFields = []fieldInfo{
 	{Name: "uid", Type: "string", Description: "Unique notification id"},
 }
 
-// actionFields — searchable shape for actions (notifier configs).
+// actionFields — searchable shape for actions (notifier configs). The
+// notifier plugin name lives at `action.selected` on the stored document
+// (mirroring the Python ActionObject layout — see pluginimpl/notification/
+// plugin.go::actionEnvelope), so that's the path the DSL must use.
 var actionFields = []fieldInfo{
 	{Name: "name", Type: "string", Description: "Action name"},
-	{Name: "action_type", Type: "string", Description: "Notifier plugin (mail, webhook, …)"},
+	{Name: "action.selected", Type: "string", Description: "Notifier plugin (mail, webhook, …)"},
 	{Name: "comment", Type: "string", Description: "Free-form description"},
 	{Name: "uid", Type: "string", Description: "Unique action id"},
 }

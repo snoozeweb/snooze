@@ -121,10 +121,13 @@ describe("ActionEditor", () => {
     await user.type(url, "https://example.com");
     await user.click(screen.getByRole("button", { name: /create/i }));
     await waitFor(() => expect(bodies).toHaveLength(1));
-    const body = bodies[0] as { name: string; action_type: string; action: Record<string, unknown> };
+    const body = bodies[0] as {
+      name: string;
+      action: { selected: string; subcontent: Record<string, unknown> };
+    };
     expect(body.name).toBe("hook-prod");
-    expect(body.action_type).toBe("webhook");
-    expect(body.action).toMatchObject({
+    expect(body.action.selected).toBe("webhook");
+    expect(body.action.subcontent).toMatchObject({
       url: "https://example.com",
       method: "POST",
     });
@@ -160,7 +163,7 @@ describe("ActionEditor", () => {
   it("renders the typed form when the plugin's name differs from its plugin_name (registry key)", async () => {
     // Regression: most action plugins use the YAML `name:` field as a human
     // display label ("Send email", "Run a script") that doesn't equal the
-    // Action's `action_type` (the registry key). The editor must match on
+    // Action's `action.selected` (the registry key). The editor must match on
     // plugin_name, not name, so the typed form renders for "mail" / "script"
     // / "webhook" instead of falling back to a JSON textarea.
     mswServer.use(
@@ -186,8 +189,9 @@ describe("ActionEditor", () => {
         HttpResponse.json({
           uid: "a1",
           name: "smtp-prod",
-          action_type: "mail", // registry key, not the YAML label
-          action: { host: "smtp.example.com" },
+          // Wire shape: action.selected is the registry key (not the YAML
+          // label) and the form payload lives under action.subcontent.
+          action: { selected: "mail", subcontent: { host: "smtp.example.com" } },
         }),
       ),
     );
@@ -204,19 +208,18 @@ describe("ActionEditor", () => {
     expect((host as HTMLInputElement).value).toBe("smtp.example.com");
     // And the JSON fallback must NOT be present.
     expect(
-      document.querySelector('textarea[name="action_json"]'),
+      document.querySelector('textarea[name="subcontent_json"]'),
     ).toBeNull();
   });
 
-  it("falls back to a JSON textarea when the action_type plugin isn't in metadata", async () => {
+  it("falls back to a JSON textarea when the selected plugin isn't in metadata", async () => {
     mswServer.use(
       http.get("/api/v1/metadata", () => HttpResponse.json(metadataPayload())),
       http.get("/api/v1/action/a1", () =>
         HttpResponse.json({
           uid: "a1",
           name: "legacy",
-          action_type: "unknown-plugin",
-          action: { foo: "bar" },
+          action: { selected: "unknown-plugin", subcontent: { foo: "bar" } },
         }),
       ),
     );
@@ -228,7 +231,7 @@ describe("ActionEditor", () => {
     );
     // The raw JSON textarea is the safety net for unknown plugins.
     const ta = await waitFor(() => {
-      const el = document.querySelector<HTMLTextAreaElement>('textarea[name="action_json"]');
+      const el = document.querySelector<HTMLTextAreaElement>('textarea[name="subcontent_json"]');
       if (!el) throw new Error("not yet");
       return el;
     });

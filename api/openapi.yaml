@@ -925,7 +925,7 @@ components:
             Registry key (machine-readable identifier; matches `Plugin.Name()`
             on the server). Injected by the metadata HTTP handler — stable
             across plugins regardless of what their YAML `name:` field carries.
-            Use this (not `name`) to match a notification action's `action_type`.
+            Use this (not `name`) to match a notification action's `action.selected`.
         name: {type: string, description: "Display label taken from the plugin's YAML `name:` field (e.g. \"Send email\", \"Run a script\"). Use `plugin_name` for machine matching."}
         display_name: {type: string, description: "Human-readable label (YAML `desc`)."}
         icon: {type: string, description: "Icon glyph name."}

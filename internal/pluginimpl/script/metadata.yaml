@@ -10,6 +10,10 @@ options:
         hidden: false
         timer: 10
         maxsize: 100
+# Field order mirrors origin/master's Python plugin (script → arguments →
+# json), folded into Go's unified `command` argv list plus cwd/env, with
+# stdin pre-filled with the record JSON to mimic the old json-on-stdin
+# behaviour. timeout / max_output / batch knobs trail.
 action_form:
     command:
         display_name: Command
@@ -27,7 +31,8 @@ action_form:
     stdin:
         display_name: Stdin
         component: Text
-        description: 'Optional template rendered and fed to the child process stdin (e.g. JSON of the record).'
+        default_value: '{{ .RecordJSON }}'
+        description: 'Template rendered and fed to the child process stdin. Defaults to the JSON-encoded record (matches the old `json: true` behaviour). Clear it to send nothing.'
     timeout:
         display_name: Timeout (seconds)
         component: Number
@@ -38,3 +43,21 @@ action_form:
         component: Number
         default_value: 65536
         description: 'Cap on the combined stdout+stderr captured by the server. Default 64 KiB.'
+    batch:
+        display_name: Batch
+        component: Switch
+        default_value: false
+        description: >-
+            Accumulate matching alerts into a single command invocation. The
+            flush uses the first queued alert's argv; stdins are joined as a
+            JSON array (when each is valid JSON) or with newlines otherwise.
+    batch_maxsize:
+        display_name: Batch max size
+        component: Number
+        default_value: 100
+        description: 'Flush the batch when it reaches this many alerts'
+    batch_timer:
+        display_name: Batch timer (seconds)
+        component: Number
+        default_value: 10
+        description: 'Flush the batch when it is at least this old'

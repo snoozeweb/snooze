@@ -44,6 +44,11 @@ const collectionName = "notification"
 // match to discover (selected, subcontent) for each named action.
 const actionCollectionName = "action"
 
+// recordCollectionName is the alert/record collection. Used by the
+// inject_response path to UpdateOne the record with a notifier-supplied
+// field (e.g. webhook's parsed HTTP response).
+const recordCollectionName = "record"
+
 // notifierSendTimeout caps a single Notifier.Send call. The pipeline goroutine
 // returns immediately, but the send goroutine itself enforces this deadline so
 // a hung HTTP target cannot leak goroutines indefinitely.
@@ -292,6 +297,7 @@ func (p *Plugin) dispatch(ctx context.Context, e Entry, rec snoozetypes.Record) 
 		payload := plugins.NotificationPayload{
 			Template: ad.Action.Selected,
 			Meta:     metaFromSubcontent(ad.Action.Subcontent, e, ad.Name),
+			Inject:   p.injectFunc(rec),
 		}
 		p.fireSend(notifier, rec, payload, e.Name, name)
 	}
@@ -339,6 +345,33 @@ func metaFromSubcontent(sub map[string]any, e Entry, actionName string) map[stri
 		}
 	}
 	return out
+}
+
+// injectFunc returns the closure handed to Notifier.Send via
+// NotificationPayload.Inject. Notifiers (today: only webhook with
+// `inject_response: true`) call it to stamp `response_<action_name>`-style
+// fields back onto the record DB row. The write happens via DB.UpdateOne so
+// concurrent updates from the pipeline aren't clobbered. The closure is
+// best-effort: an empty UID or DB error is logged and swallowed.
+//
+// Returns nil when there is no UID to update or no DB handle — both cases
+// short-circuit any inject call to a no-op via plugins.InjectField.
+func (p *Plugin) injectFunc(rec snoozetypes.Record) plugins.InjectFunc {
+	if rec.UID == "" || p.host == nil || p.host.DB() == nil {
+		return nil
+	}
+	uid := rec.UID
+	return func(field string, value any) {
+		ctx, cancel := context.WithTimeout(context.Background(), notifierSendTimeout)
+		defer cancel()
+		patch := db.Document{field: value}
+		if err := p.host.DB().UpdateOne(ctx, recordCollectionName, uid, patch, false); err != nil {
+			if lg := p.logger(); lg != nil {
+				lg.Warn("notification: inject_response: UpdateOne failed",
+					"uid", uid, "field", field, "err", err)
+			}
+		}
+	}
 }
 
 // fireSend launches a detached goroutine that invokes notifier.Send under a

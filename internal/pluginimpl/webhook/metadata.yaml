@@ -4,6 +4,10 @@ desc: 'HTTP request to an arbitrary URL'
 icon: 'link'
 provides:
     - notifier
+# Field order mirrors origin/master's Python plugin (url → payload-stuff →
+# proxy → ssl_verify → inject_response), with the Go-port additions (method,
+# headers, auth, timeout, batch knobs) slotted in alongside their semantic
+# neighbours.
 action_form:
     url:
         display_name: URL
@@ -12,9 +16,17 @@ action_form:
         required: true
     method:
         display_name: Method
-        component: String
-        description: 'HTTP method (default POST)'
+        component: Selector
+        description: 'HTTP method'
         default_value: 'POST'
+        options:
+            - {text: POST, value: POST}
+            - {text: GET, value: GET}
+            - {text: PUT, value: PUT}
+            - {text: PATCH, value: PATCH}
+            - {text: DELETE, value: DELETE}
+            - {text: HEAD, value: HEAD}
+            - {text: OPTIONS, value: OPTIONS}
     headers:
         display_name: Headers
         component: Arguments
@@ -26,17 +38,44 @@ action_form:
         display_name: Body
         component: Text
         description: 'Request body (Go text/template over .Record). Defaults to a JSON-encoded record.'
-    timeout:
-        display_name: Timeout
+    proxy:
+        display_name: Proxy URI
         component: String
-        description: 'Request timeout as a Go duration (default 10s)'
-        default_value: '10s'
+        description: 'Send the request through a proxy server (e.g. http://proxy.local:3128)'
     tls_insecure:
         display_name: TLS Insecure
         component: Switch
         default_value: false
         description: 'Skip TLS certificate verification when calling HTTPS endpoints'
+    inject_response:
+        display_name: Inject Response
+        component: Switch
+        default_value: false
+        description: 'Inject the HTTP response into the record as response_<action_name> (parsed as JSON when possible)'
     auth:
         display_name: Authentication
         component: Object
         description: 'Optional auth: {type: bearer|basic, token|username|password}'
+    timeout:
+        display_name: Timeout
+        component: String
+        description: 'Request timeout as a Go duration (default 10s)'
+        default_value: '10s'
+    batch:
+        display_name: Batch
+        component: Switch
+        default_value: false
+        description: >-
+            Accumulate rendered JSON bodies and POST them together as a single
+            array. Only effective when the rendered body is valid JSON. Ignored
+            when Inject Response is on.
+    batch_maxsize:
+        display_name: Batch max size
+        component: Number
+        default_value: 100
+        description: 'Flush the batch when it reaches this many records'
+    batch_timer:
+        display_name: Batch timer (seconds)
+        component: Number
+        default_value: 10
+        description: 'Flush the batch when it is at least this old'

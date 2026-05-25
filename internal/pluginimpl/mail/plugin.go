@@ -48,6 +48,7 @@ import (
 	"net/smtp"
 	"strconv"
 	"strings"
+	"sync"
 	texttmpl "text/template"
 	"time"
 
@@ -67,9 +68,16 @@ func factory(meta plugins.Metadata) (plugins.Plugin, error) {
 }
 
 // Plugin is the mail Notifier implementation.
+//
+// Batching: actions with `batch: true` accumulate rendered subject+body pairs
+// in per-action buckets in `buckets`, flushing on the first of batch_maxsize
+// or batch_timer. See batch.go.
 type Plugin struct {
 	meta plugins.Metadata
 	host plugins.Host
+
+	bMu     sync.Mutex
+	buckets map[string]*batchBucket
 }
 
 // Name returns the registry key.
@@ -88,7 +96,8 @@ func (p *Plugin) PostInit(_ context.Context, host plugins.Host) error {
 // Reload is a no-op for mail (no in-process cache to refresh).
 func (p *Plugin) Reload(_ context.Context) error { return nil }
 
-// Send dispatches one rendered email.
+// Send dispatches one rendered email — or queues the rendered content for a
+// later batch flush when the action has batch enabled.
 func (p *Plugin) Send(ctx context.Context, rec snoozetypes.Record, payload plugins.NotificationPayload) error {
 	cfg, err := parseConfig(payload.Meta)
 	if err != nil {
@@ -105,6 +114,14 @@ func (p *Plugin) Send(ctx context.Context, rec snoozetypes.Record, payload plugi
 	subject, body, err := renderContent(rec, payload, cfg)
 	if err != nil {
 		return fmt.Errorf("mail: render: %w", err)
+	}
+
+	// Batched dispatch: queue the rendered subject+body for later. The
+	// flusher sends one SMTP message containing all queued bodies, using
+	// the first record's subject as the message subject.
+	if cfg.batch {
+		p.queueForBatch(cfg, subject, body)
+		return nil
 	}
 
 	msg := buildMessage(cfg, to, cc, subject, body)
@@ -130,6 +147,15 @@ type smtpConfig struct {
 	username string
 	password string
 	timeout  time.Duration
+
+	// Batch knobs (mirror the webhook plugin). Batch coalesces multiple
+	// records into one SMTP message; the subject is taken from the first
+	// record and bodies are joined with a separator. Degenerate config
+	// (batch true but bounds <= 0) silently falls back to immediate send.
+	batch        bool
+	batchMaxsize int
+	batchTimer   time.Duration
+	batchKey     string // action_name; only set when batch is true
 }
 
 func parseConfig(meta map[string]any) (smtpConfig, error) {
@@ -184,6 +210,23 @@ func parseConfig(meta map[string]any) (smtpConfig, error) {
 	c.password, _ = metaString(meta, "password")
 	if v, ok := metaInt(meta, "timeout"); ok && v > 0 {
 		c.timeout = time.Duration(v) * time.Second
+	}
+
+	if v, ok := meta["batch"].(bool); ok {
+		c.batch = v
+	}
+	if v, ok := metaInt(meta, "batch_maxsize"); ok && v > 0 {
+		c.batchMaxsize = v
+	}
+	if v, ok := metaInt(meta, "batch_timer"); ok && v > 0 {
+		c.batchTimer = time.Duration(v) * time.Second
+	}
+	// Degenerate config: silently disable batching rather than buffer forever.
+	if c.batch && (c.batchMaxsize <= 1 || c.batchTimer <= 0) {
+		c.batch = false
+	}
+	if c.batch {
+		c.batchKey, _ = metaString(meta, "action_name")
 	}
 	return c, nil
 }

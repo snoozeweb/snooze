@@ -450,3 +450,109 @@ func TestBatchDegenerateConfigFallsBackToImmediate(t *testing.T) {
 	require.NoError(t, json.Unmarshal(captured.snapshot()[0], &obj))
 	require.Equal(t, []any{"teams/T/channels/C"}, obj["channels"])
 }
+
+// --- proxy + inject_response ----------------------------------------------
+
+func TestProxyWiresIntoTransport(t *testing.T) {
+	// The proxy server records hits; the destination server records hits too.
+	// We expect the request to land on the proxy, not the destination, when
+	// `proxy` is set in the action_form.
+	var proxyHits, destHits int32
+	proxy := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		atomic.AddInt32(&proxyHits, 1)
+		w.WriteHeader(http.StatusOK)
+	}))
+	t.Cleanup(proxy.Close)
+	dest := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		atomic.AddInt32(&destHits, 1)
+		w.WriteHeader(http.StatusOK)
+	}))
+	t.Cleanup(dest.Close)
+
+	p, err := factory(plugins.Metadata{Name: "webhook"})
+	require.NoError(t, err)
+	wp := p.(*Plugin)
+	// Use the real defaultClient so the proxy plumbing actually runs.
+	require.NoError(t, p.PostInit(context.Background(), nil))
+
+	require.NoError(t, wp.Send(context.Background(), sampleRecord(), plugins.NotificationPayload{
+		Meta: map[string]any{
+			"url":   dest.URL + "/hook",
+			"proxy": proxy.URL,
+		},
+	}))
+	require.EqualValues(t, 1, atomic.LoadInt32(&proxyHits), "proxy should have been hit")
+	require.EqualValues(t, 0, atomic.LoadInt32(&destHits), "destination must not be hit directly")
+}
+
+func TestInjectResponseCallsInjectFunc(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{"ok": true, "id": 42}`))
+	}))
+	t.Cleanup(srv.Close)
+
+	p := newPluginForTest(t)
+	var (
+		mu     sync.Mutex
+		gotF   string
+		gotV   any
+		called int
+	)
+	inject := func(field string, value any) {
+		mu.Lock()
+		defer mu.Unlock()
+		gotF = field
+		gotV = value
+		called++
+	}
+	err := p.Send(context.Background(), sampleRecord(), plugins.NotificationPayload{
+		Meta: map[string]any{
+			"url":             srv.URL + "/hook",
+			"inject_response": true,
+			"action_name":     "my-hook",
+		},
+		Inject: inject,
+	})
+	require.NoError(t, err)
+
+	mu.Lock()
+	defer mu.Unlock()
+	require.Equal(t, 1, called)
+	require.Equal(t, "response_my-hook", gotF)
+	asMap, ok := gotV.(map[string]any)
+	require.True(t, ok, "response should decode as a JSON object: %T", gotV)
+	require.Equal(t, true, asMap["ok"])
+	require.Equal(t, float64(42), asMap["id"])
+}
+
+func TestInjectResponseDisablesBatch(t *testing.T) {
+	// When inject_response is on, batching is forced off so the response can
+	// be stamped onto the originating record (which the batch flush has
+	// already forgotten).
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{}`))
+	}))
+	t.Cleanup(srv.Close)
+
+	p := newPluginForTest(t)
+	var injected int32
+	inject := func(_ string, _ any) { atomic.AddInt32(&injected, 1) }
+
+	err := p.Send(context.Background(), sampleRecord(), plugins.NotificationPayload{
+		Meta: map[string]any{
+			"url":             srv.URL + "/hook",
+			"batch":           true,
+			"batch_maxsize":   3,
+			"batch_timer":     60,
+			"inject_response": true,
+			"action_name":     "h",
+		},
+		Inject: inject,
+	})
+	require.NoError(t, err)
+	require.EqualValues(t, 1, atomic.LoadInt32(&injected),
+		"inject_response forces immediate dispatch even when batch is on")
+}

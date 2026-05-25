@@ -21,6 +21,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/snoozeweb/snooze/internal/plugins"
 	"github.com/snoozeweb/snooze/pkg/snoozetypes"
 )
 
@@ -95,7 +96,7 @@ func (p *Plugin) flushBucket(key, reason string) {
 		lg.Info("webhook: flushing batch",
 			"key", key, "reason", reason, "count", len(bodies), "bytes", len(payload))
 	}
-	if err := p.deliver(ctx, b.cfg, payload, "application/json", snoozetypes.Record{}); err != nil {
+	if err := p.deliver(ctx, b.cfg, payload, "application/json", snoozetypes.Record{}, plugins.NotificationPayload{}); err != nil {
 		if lg := p.logger(); lg != nil {
 			lg.Warn("webhook: batch flush failed",
 				"key", key, "reason", reason, "count", len(bodies), "err", err)

@@ -216,14 +216,12 @@ test("visual tour: seed and screenshot every menu", async ({
 
   await api.actions.create({
     name: "slack-alerts",
-    action_type: "script",
-    action: { command: "/usr/local/bin/post-slack" },
+    action: { selected: "script", subcontent: { command: ["/usr/local/bin/post-slack"] } },
     comment: "Posts to #alerts via webhook",
   });
   await api.actions.create({
     name: "pagerduty",
-    action_type: "script",
-    action: { command: "/usr/local/bin/pd-trigger" },
+    action: { selected: "script", subcontent: { command: ["/usr/local/bin/pd-trigger"] } },
   });
   await api.notifications.create({
     name: "critical-page-oncall",

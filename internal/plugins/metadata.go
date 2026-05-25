@@ -28,12 +28,18 @@ type Metadata struct {
 	DefaultOrdering string         `yaml:"default_ordering" json:"default_ordering,omitempty"`
 	AutoReload      bool           `yaml:"auto_reload" json:"auto_reload,omitempty"`
 	Widgets         map[string]any `yaml:"widgets" json:"widgets,omitempty"`
-	ActionForm      map[string]any `yaml:"action_form" json:"action_form,omitempty"`
+	// ActionForm is a YAML-ordered map of (field name → descriptor). Order
+	// matters: the React frontend renders fields in the order they appear
+	// here, which is the order they were declared in metadata.yaml. A plain
+	// map[string]any would lose that order on JSON marshal (Go sorts keys),
+	// hence OrderedFields. See orderedfields.go.
+	ActionForm OrderedFields `yaml:"action_form" json:"action_form,omitempty"`
 	// SettingForm describes the typed catalogue of runtime settings the
 	// "settings" plugin advertises. Same FormField shape as ActionForm, with
 	// an optional per-field `group:` key the React frontend uses to render
-	// settings grouped by section (general vs notification).
-	SettingForm map[string]any `yaml:"setting_form" json:"setting_form,omitempty"`
+	// settings grouped by section (general vs notification). Same ordering
+	// concerns apply.
+	SettingForm OrderedFields `yaml:"setting_form" json:"setting_form,omitempty"`
 	Provides    []string       `yaml:"provides" json:"provides,omitempty"`
 	// RouteDefaults is the plugin-level baseline for every route generated
 	// or registered for this plugin. Individual Routes entries override

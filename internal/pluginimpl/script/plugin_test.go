@@ -257,3 +257,109 @@ func TestCapWriter(t *testing.T) {
 		require.Equal(t, "abcde"+truncatedMarker, w.String())
 	})
 }
+
+// --- batched dispatch ------------------------------------------------------
+
+// runScriptBatchSync drives the test by writing the captured stdin to a
+// temp file the test can read back. Returns the temp-file path.
+func batchScriptMeta(t *testing.T, outFile string, maxsize, timerSec int, stdin string) map[string]any {
+	t.Helper()
+	return map[string]any{
+		// Append stdin to outFile so the test can inspect what one process
+		// run received as input.
+		"command":       []any{"/bin/sh", "-c", "cat >> " + outFile},
+		"stdin":         stdin,
+		"timeout":       5,
+		"batch":         true,
+		"batch_maxsize": maxsize,
+		"batch_timer":   timerSec,
+		"action_name":   "test-batch",
+	}
+}
+
+func TestBatchScript_JSONStdinJoinsAsArray(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("POSIX-only")
+	}
+	out := t.TempDir() + "/stdin.txt"
+	p := newPlugin(t)
+	// Each record's stdin is `{"host":"<host>"}` — valid JSON, so the batch
+	// flush should join them as `[ {…}, {…}, {…} ]`.
+	meta := batchScriptMeta(t, out, 3, 60, `{"host":"{{ .Record.Host }}"}`)
+
+	for i := 0; i < 3; i++ {
+		rec := snoozetypes.Record{Host: "h" + string(rune('A'+i))}
+		require.NoError(t, p.Send(context.Background(), rec, plugins.NotificationPayload{Meta: meta}))
+	}
+
+	require.Eventually(t, func() bool {
+		b, err := os.ReadFile(out)
+		return err == nil && strings.HasPrefix(strings.TrimSpace(string(b)), "[") &&
+			strings.Contains(string(b), `"host":"hA"`) &&
+			strings.Contains(string(b), `"host":"hC"`)
+	}, time.Second, 10*time.Millisecond, "size-triggered flush should land as JSON array")
+
+	b, err := os.ReadFile(out)
+	require.NoError(t, err)
+	got := strings.TrimSpace(string(b))
+	require.True(t, strings.HasPrefix(got, "["), "got %q", got)
+	require.True(t, strings.HasSuffix(got, "]"), "got %q", got)
+}
+
+func TestBatchScript_NonJSONStdinJoinsWithNewlines(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("POSIX-only")
+	}
+	out := t.TempDir() + "/stdin.txt"
+	p := newPlugin(t)
+	// Plain text stdin — falls back to newline-joined.
+	meta := batchScriptMeta(t, out, 3, 60, "alert: {{ .Record.Host }}")
+
+	for i := 0; i < 3; i++ {
+		rec := snoozetypes.Record{Host: "h" + string(rune('A'+i))}
+		require.NoError(t, p.Send(context.Background(), rec, plugins.NotificationPayload{Meta: meta}))
+	}
+
+	require.Eventually(t, func() bool {
+		b, err := os.ReadFile(out)
+		return err == nil && strings.Count(string(b), "alert: ") == 3
+	}, time.Second, 10*time.Millisecond)
+
+	b, err := os.ReadFile(out)
+	require.NoError(t, err)
+	lines := strings.Split(strings.TrimRight(string(b), "\n"), "\n")
+	require.Equal(t, []string{"alert: hA", "alert: hB", "alert: hC"}, lines)
+}
+
+func TestBatchScript_StopDrains(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("POSIX-only")
+	}
+	out := t.TempDir() + "/stdin.txt"
+	p := newPlugin(t)
+	meta := batchScriptMeta(t, out, 99, 60, "x: {{ .Record.Host }}") // size won't trigger
+	require.NoError(t, p.Send(context.Background(), snoozetypes.Record{Host: "alpha"}, plugins.NotificationPayload{Meta: meta}))
+	require.NoError(t, p.Send(context.Background(), snoozetypes.Record{Host: "beta"}, plugins.NotificationPayload{Meta: meta}))
+
+	require.NoError(t, p.Stop(context.Background()))
+
+	require.Eventually(t, func() bool {
+		b, err := os.ReadFile(out)
+		return err == nil && strings.Contains(string(b), "alpha") && strings.Contains(string(b), "beta")
+	}, time.Second, 10*time.Millisecond, "Stop should drain the pending bucket")
+}
+
+func TestBatchScript_DegenerateConfigFallsBackToImmediate(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("POSIX-only")
+	}
+	out := t.TempDir() + "/stdin.txt"
+	p := newPlugin(t)
+	// maxsize=1 → degenerate; should fall back to immediate per-record send.
+	meta := batchScriptMeta(t, out, 1, 60, "now: {{ .Record.Host }}")
+	require.NoError(t, p.Send(context.Background(), snoozetypes.Record{Host: "alpha"}, plugins.NotificationPayload{Meta: meta}))
+
+	b, err := os.ReadFile(out)
+	require.NoError(t, err)
+	require.Equal(t, "now: alpha", strings.TrimSpace(string(b)))
+}

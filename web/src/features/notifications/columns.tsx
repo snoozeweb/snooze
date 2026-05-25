@@ -76,24 +76,82 @@ export function notificationRowDisabled(r: Notification): boolean {
   return r.enabled === false;
 }
 
+// summarizeSubcontent picks 1-3 short hints from the subcontent map so the
+// "Action" column reads at a glance ("url=…", "command=…", "host=…") instead
+// of just showing the plugin name twice. Mirrors the Python "pprint" cell.
+function summarizeSubcontent(sub: Record<string, unknown> | undefined): string {
+  if (!sub) return "";
+  const preferred = ["url", "command", "script", "host", "to", "channel"];
+  const parts: string[] = [];
+  for (const key of preferred) {
+    const v = sub[key];
+    if (v === undefined || v === null || v === "") continue;
+    parts.push(`${key}=${shortValue(v)}`);
+    if (parts.length === 2) break;
+  }
+  return parts.join(" • ");
+}
+
+function shortValue(v: unknown): string {
+  if (Array.isArray(v)) {
+    return v
+      .slice(0, 3)
+      .map((x) => (typeof x === "string" ? x : JSON.stringify(x)))
+      .join(" ");
+  }
+  if (typeof v === "object") return "{…}";
+  if (typeof v === "string") return v.length > 60 ? v.slice(0, 60) + "…" : v;
+  if (typeof v === "number" || typeof v === "boolean") return String(v);
+  return "";
+}
+
 export const actionColumns: ColumnDef<Action>[] = [
   {
     id: "name",
     header: "Name",
     cell: (r) => <Code>{r.name}</Code>,
     sortable: true,
-    width: "240px",
+    width: "200px",
   },
   {
-    id: "action_type",
+    id: "selected",
     header: "Type",
-    cell: (r) => <Badge variant="neutral">{r.action_type ?? "—"}</Badge>,
-    sortable: true,
-    width: "140px",
+    // `action.selected` is the notifier plugin (mail / webhook / …). The
+    // backend wire shape nests it under `action`, mirroring the Python
+    // ActionObject layout. See pluginimpl/notification/plugin.go.
+    cell: (r) => <Badge variant="neutral">{r.action?.selected ?? "—"}</Badge>,
+    width: "120px",
+  },
+  {
+    id: "action",
+    header: "Action",
+    cell: (r) => {
+      const s = summarizeSubcontent(r.action?.subcontent);
+      return s ? (
+        <span style={{ fontFamily: "var(--font-mono)", fontSize: "var(--text-xs)" }}>{s}</span>
+      ) : (
+        <span style={{ color: "var(--text-muted)" }}>—</span>
+      );
+    },
   },
   {
     id: "comment",
     header: "Comment",
     cell: (r) => <span style={{ color: "var(--text-muted)" }}>{r.comment ?? "—"}</span>,
+    width: "240px",
+  },
+  {
+    id: "batch",
+    header: "Batch",
+    // Batch lives in subcontent.batch (the notifier plugins read it via
+    // NotificationPayload.Meta). Surface as a yes/no badge to match the
+    // notification table's batch column.
+    cell: (r) =>
+      r.action?.subcontent?.batch === true ? (
+        <Badge variant="info">yes</Badge>
+      ) : (
+        <Badge variant="muted">no</Badge>
+      ),
+    width: "80px",
   },
 ];

@@ -1,6 +1,6 @@
 ---
 name: 'Send email'
-desc: ''
+desc: 'Send an email via SMTP'
 icon: 'envelope'
 default_route:
     class_name: ~
@@ -10,6 +10,10 @@ options:
         hidden: false
         timer: 10
         maxsize: 100
+# Field order mirrors origin/master's Python plugin (host → port → from →
+# to → priority → subject → message → type), with cc/bcc next to to, the
+# Go-port-only knobs (TLS / auth / timeout) after the content fields, and
+# the batch knobs at the end.
 action_form:
     host:
         display_name: Host
@@ -89,3 +93,21 @@ action_form:
         component: Number
         default_value: 10
         description: 'SMTP timeout in seconds'
+    batch:
+        display_name: Batch
+        component: Switch
+        default_value: false
+        description: >-
+            Accumulate matching alerts into a single email instead of sending
+            one email per alert. The flush uses the first queued alert's
+            subject; bodies are joined with a separator.
+    batch_maxsize:
+        display_name: Batch max size
+        component: Number
+        default_value: 100
+        description: 'Flush the batch when it reaches this many alerts'
+    batch_timer:
+        display_name: Batch timer (seconds)
+        component: Number
+        default_value: 10
+        description: 'Flush the batch when it is at least this old'

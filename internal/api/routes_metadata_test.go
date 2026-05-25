@@ -24,11 +24,13 @@ func TestMetadataRoute_ListReturnsRegisteredPlugins(t *testing.T) {
 		Name:        "mail",
 		DisplayName: "Send email",
 		Icon:        "envelope",
-		ActionForm: map[string]any{
-			"host": map[string]any{
-				"display_name":  "Host",
-				"component":     "String",
-				"default_value": "localhost",
+		ActionForm: plugins.OrderedFields{
+			Pairs: []plugins.OrderedField{
+				{Key: "host", Value: map[string]any{
+					"display_name":  "Host",
+					"component":     "String",
+					"default_value": "localhost",
+				}},
 			},
 		},
 	}

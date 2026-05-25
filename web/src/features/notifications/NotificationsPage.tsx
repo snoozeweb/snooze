@@ -79,7 +79,7 @@ export function NotificationsPage() {
   });
   const actionSearch = useTableSearch({
     collection: "action",
-    placeholder: "action_type = mail",
+    placeholder: "action.selected = mail",
     onFilterChange: () => {
       if (page !== 1) updateSearch({ page: 1 });
     },

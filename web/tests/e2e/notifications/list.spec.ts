@@ -34,8 +34,7 @@ test.describe("notifications list", () => {
     });
     await api.actions.create({
       name: "act-y",
-      action_type: "script",
-      action: { command: "/bin/true" },
+      action: { selected: "script", subcontent: { command: ["/bin/true"] } },
     });
     await page.goto(server.baseURL + "/web/notifications");
     await expect(page.getByText("notif-x")).toBeVisible();

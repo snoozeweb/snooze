@@ -485,3 +485,83 @@ func portAvailable(port int) bool {
 	_ = c.Close()
 	return false
 }
+
+// --- batched dispatch ------------------------------------------------------
+
+// batchMailMeta returns the meta map for a batched mail action. timer is in
+// seconds, maxsize is the record threshold for size-based flush.
+func batchMailMeta(host string, port, maxsize, timerSec int, action string) map[string]any {
+	return map[string]any{
+		"host":          host,
+		"port":          port,
+		"from":          "noc@example.com",
+		"to":            "ops@example.com",
+		"subject":       "Alert: {{ .Host }}",
+		"message":       "Body: {{ .Message }}",
+		"batch":         true,
+		"batch_maxsize": maxsize,
+		"batch_timer":   timerSec,
+		"action_name":   action,
+	}
+}
+
+func TestBatchMail_FlushOnMaxsize(t *testing.T) {
+	srv := newStubSMTP(t, "")
+	host, port := srv.hostPort()
+
+	p := &Plugin{}
+	require.NoError(t, p.PostInit(context.Background(), nullHost{}))
+	meta := batchMailMeta(host, port, 3, 60, "ops") // long timer — size must fire
+
+	for i := 0; i < 3; i++ {
+		rec := snoozetypes.Record{Host: "h" + strconv.Itoa(i), Message: "boom-" + strconv.Itoa(i)}
+		require.NoError(t, p.Send(context.Background(), rec, plugins.NotificationPayload{Meta: meta}))
+	}
+
+	require.Eventually(t, func() bool {
+		_, _, _, data := srv.cap.snapshot()
+		return strings.Contains(data, "boom-0") && strings.Contains(data, "boom-2")
+	}, time.Second, 10*time.Millisecond, "all 3 bodies should land in a single message")
+
+	_, _, _, data := srv.cap.snapshot()
+	// First record's subject wins, decorated with the batch count.
+	require.Contains(t, data, "Subject: [3] Alert: h0")
+	require.Contains(t, data, "boom-0")
+	require.Contains(t, data, "boom-1")
+	require.Contains(t, data, "boom-2")
+}
+
+func TestBatchMail_StopDrains(t *testing.T) {
+	srv := newStubSMTP(t, "")
+	host, port := srv.hostPort()
+
+	p := &Plugin{}
+	require.NoError(t, p.PostInit(context.Background(), nullHost{}))
+	meta := batchMailMeta(host, port, 5, 60, "ops") // threshold not reached
+
+	for i := 0; i < 2; i++ {
+		rec := snoozetypes.Record{Host: "h" + strconv.Itoa(i), Message: "pending-" + strconv.Itoa(i)}
+		require.NoError(t, p.Send(context.Background(), rec, plugins.NotificationPayload{Meta: meta}))
+	}
+	require.NoError(t, p.Stop(context.Background()))
+
+	require.Eventually(t, func() bool {
+		_, _, _, data := srv.cap.snapshot()
+		return strings.Contains(data, "pending-0") && strings.Contains(data, "pending-1")
+	}, time.Second, 10*time.Millisecond, "Stop should drain the pending bucket into one message")
+}
+
+func TestBatchMail_DegenerateConfigFallsBackToImmediate(t *testing.T) {
+	srv := newStubSMTP(t, "")
+	host, port := srv.hostPort()
+	p := &Plugin{}
+	require.NoError(t, p.PostInit(context.Background(), nullHost{}))
+	// maxsize=1 collapses to "immediate" semantics, just like webhook.
+	meta := batchMailMeta(host, port, 1, 10, "ops")
+
+	require.NoError(t, p.Send(context.Background(), snoozetypes.Record{Host: "alpha", Message: "now"}, plugins.NotificationPayload{Meta: meta}))
+
+	_, _, _, data := srv.cap.snapshot()
+	require.Contains(t, data, "Subject: Alert: alpha", "non-batched subject (no [N] prefix)")
+	require.Contains(t, data, "Body: now")
+}

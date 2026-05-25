@@ -17,7 +17,13 @@ type Core struct {
 	NoLogin            bool     `koanf:"no_login"`
 	AuditExcludedPaths []string `koanf:"audit_excluded_paths"`
 	ProcessPlugins     []string `koanf:"process_plugins"`
-	Database           Database `koanf:"database" validate:"required"`
+	// EnabledOptionalPlugins is the explicit allow-list of opt-in plugins that
+	// would otherwise be filtered out at boot. The set of "optional" plugins
+	// is defined by core.optionalPlugins (currently just `patlite`); any name
+	// in this list joins the active set, anything outside it stays disabled
+	// even if its package is blank-imported.
+	EnabledOptionalPlugins []string `koanf:"enabled_optional_plugins"`
+	Database               Database `koanf:"database" validate:"required"`
 	InitSleep          int      `koanf:"init_sleep" validate:"min=0"`
 	CreateRootUser     bool     `koanf:"create_root_user"`
 	SSL                SSL      `koanf:"ssl"`

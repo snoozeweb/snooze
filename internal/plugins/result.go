@@ -56,6 +56,28 @@ type NotificationPayload struct {
 	Body string
 	// Meta holds notifier-specific knobs (e.g. mime type, priority).
 	Meta map[string]any
+	// Inject is an optional callback the notifier may invoke to stamp a
+	// field onto the originating record. Used by webhook's `inject_response`
+	// to write the parsed HTTP response into `response_<action_name>`.
+	// nil for notifiers that don't need it; calls on a nil pointer are
+	// no-ops via the InjectField helper.
+	Inject InjectFunc
+}
+
+// InjectFunc writes one field onto the originating record. The dispatcher
+// builds a closure that calls DB.UpdateOne against the record's collection.
+// Errors are logged at the call site; the notifier doesn't need to handle
+// them.
+type InjectFunc func(field string, value any)
+
+// InjectField is the nil-safe call helper. Notifiers should use this rather
+// than dereferencing payload.Inject directly so that a nil callback (the
+// default for non-dispatcher callers, e.g. tests) is silently ignored.
+func InjectField(fn InjectFunc, field string, value any) {
+	if fn == nil {
+		return
+	}
+	fn(field, value)
 }
 
 // ActionOpts carries per-invocation options for Action.Execute.

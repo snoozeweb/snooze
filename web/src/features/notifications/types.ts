@@ -21,10 +21,20 @@ export type Notification = {
   frequency?: Frequency;
 };
 
+// ActionEnvelope mirrors the {selected, subcontent} pair the backend stores at
+// `action.action`. `selected` is the registry key of the notifier plugin
+// (mail / webhook / script / …); `subcontent` is the action_form payload the
+// notifier consumes via NotificationPayload.Meta. See
+// internal/pluginimpl/notification/plugin.go:actionEnvelope and the
+// Python-era plugins/core/action layout this replaces.
+export type ActionEnvelope = {
+  selected?: string;
+  subcontent?: Record<string, unknown>;
+};
+
 export type Action = {
   uid?: string;
   name: string;
   comment?: string;
-  action_type?: string;
-  action?: Record<string, unknown>;
+  action?: ActionEnvelope;
 };

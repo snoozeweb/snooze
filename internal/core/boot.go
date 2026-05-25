@@ -160,16 +160,46 @@ func (c *Core) bootRuntimeSettings() error {
 	return nil
 }
 
+// optionalPlugins lists plugins that are registered (blank-imported in
+// pluginimpl/all) but disabled by default — operators opt in via
+// core.enabled_optional_plugins. Anything in this set that the operator did
+// not enable is dropped from c.plugins after plugins.Build, which hides it
+// from the /metadata endpoint, the CRUD router, and the notification
+// dispatcher (which logs "notifier plugin not registered" if a notification
+// references it). Add to this map deliberately — most plugins should be on
+// by default.
+var optionalPlugins = map[string]bool{
+	"patlite": true,
+}
+
 // bootPlugins instantiates the registered plugin set and captures the ordered
-// processor slice.
+// processor slice. Optional plugins not present in
+// Cfg.Core.EnabledOptionalPlugins are filtered out before the plugin map is
+// stored on Core.
 func (c *Core) bootPlugins(ctx context.Context) error {
 	all, procs, err := plugins.Build(ctx, c, c.Cfg.Core.ProcessPlugins)
 	if err != nil {
 		return fmt.Errorf("boot: plugins: %w", err)
 	}
-	c.plugins = all
+	c.plugins = filterOptionalPlugins(all, c.Cfg.Core.EnabledOptionalPlugins)
 	c.processOrder = procs
 	return nil
+}
+
+// filterOptionalPlugins drops entries that appear in optionalPlugins unless
+// they were named in the enabled-list. Returned map shares keys with the
+// input (the input map is mutated in place).
+func filterOptionalPlugins(all map[string]plugins.Plugin, enabledList []string) map[string]plugins.Plugin {
+	enabled := make(map[string]bool, len(enabledList))
+	for _, name := range enabledList {
+		enabled[name] = true
+	}
+	for name := range all {
+		if optionalPlugins[name] && !enabled[name] {
+			delete(all, name)
+		}
+	}
+	return all
 }
 
 // bootSyncer constructs the per-driver syncer and the node heartbeat.
