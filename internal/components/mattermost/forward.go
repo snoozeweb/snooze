@@ -122,7 +122,7 @@ type snoozeAPI interface {
 	Do(ctx context.Context, method, path string, body, dest any) error
 }
 
-// commentRequest mirrors the wire shape POST /api/v1/comments accepts.
+// commentRequest mirrors the wire shape POST /api/v1/comment accepts.
 // We keep it loose (map-ish) to avoid coupling the Mattermost component
 // to a future commentstypes package.
 type commentRequest struct {
@@ -161,10 +161,10 @@ func Forward(ctx context.Context, sc snoozeAPI, c Command, user string) string {
 		Method:    "mattermost",
 		Message:   c.Message,
 	}
-	// /api/v1/comments is the canonical endpoint exercised by every
-	// snooze chat bot — both the legacy Python implementations and the
-	// Go client expose it through the generic Post/Do helpers.
-	if err := sc.Do(ctx, http.MethodPost, "/api/v1/comments", req, nil); err != nil {
+	// /api/v1/comment is where the comment plugin mounts (singular —
+	// MountCRUD uses p.Name() = "comment"). The plugin's AfterCreate hook
+	// turns a typed comment into a state transition on the linked record.
+	if err := sc.Do(ctx, http.MethodPost, "/api/v1/comment", req, nil); err != nil {
 		return fmt.Sprintf(":x: Snooze API rejected `%s %s`: %v", verbName(c.Kind), c.UID, err)
 	}
 	switch c.Kind {

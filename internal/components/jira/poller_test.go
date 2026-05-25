@@ -108,7 +108,7 @@ func TestPoller_cycleClosesDisappearedTickets(t *testing.T) {
 	// First call should be the record search by hash.
 	require.Equal(t, "/api/v1/record/search", fake.calls[0].Path)
 	// Second call should be the close-comment.
-	require.Equal(t, "/api/v1/comments", fake.calls[1].Path)
+	require.Equal(t, "/api/v1/comment", fake.calls[1].Path)
 	payload, ok := fake.calls[1].Body.([]closeSnoozePayload)
 	require.True(t, ok)
 	require.Len(t, payload, 1)

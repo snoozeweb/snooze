@@ -154,7 +154,7 @@ func extractHash(value string) string {
 	return value
 }
 
-// closeSnoozePayload mirrors POST /api/v1/comments shape used to apply a
+// closeSnoozePayload mirrors POST /api/v1/comment shape used to apply a
 // "close" action to a record.
 type closeSnoozePayload struct {
 	Type      string `json:"type"`
@@ -205,7 +205,7 @@ func (p *poller) closeSnoozeRecord(ctx context.Context, alertHash, issueKey stri
 	if len(payloads) == 0 {
 		return nil
 	}
-	return p.snooze.Post(ctx, "/api/v1/comments", payloads, nil)
+	return p.snooze.Post(ctx, "/api/v1/comment", payloads, nil)
 }
 
 // snoozeClientAdapter unwraps the concrete snoozeclient.Client into the

@@ -243,8 +243,8 @@ func TestDaemonHandshakeAndForward(t *testing.T) {
 		t.Fatalf("handleEvent: %v", err)
 	}
 
-	if sc.method != "POST" || sc.path != "/api/v1/comments" {
-		t.Fatalf("expected snooze POST /api/v1/comments, got %s %s", sc.method, sc.path)
+	if sc.method != "POST" || sc.path != "/api/v1/comment" {
+		t.Fatalf("expected snooze POST /api/v1/comment, got %s %s", sc.method, sc.path)
 	}
 
 	select {

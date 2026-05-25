@@ -163,7 +163,7 @@ type SnoozeClient interface {
 }
 
 // commentPayload mirrors the Python `client.comment_batch` body and the Go
-// server's POST /api/v1/comments shape.
+// server's POST /api/v1/comment shape.
 type commentPayload struct {
 	Type      string                   `json:"type,omitempty"`
 	RecordUID string                   `json:"record_uid"`
@@ -173,8 +173,10 @@ type commentPayload struct {
 	Mods      []map[string]interface{} `json:"modifications,omitempty"`
 }
 
-// commentEndpoint is the v1 batch comment endpoint. Mirrors the Python client.
-const commentEndpoint = "/api/v1/comments"
+// commentEndpoint is the v1 batch comment endpoint where the comment plugin
+// mounts CRUD (p.Name() = "comment"). POSTing a typed comment here triggers
+// the AfterCreate hook that applies the state transition on the linked record.
+const commentEndpoint = "/api/v1/comment"
 
 // recordSearchEndpoint searches records by thread name (substring match). The
 // real query syntax is implemented server-side; we send the thread name as a

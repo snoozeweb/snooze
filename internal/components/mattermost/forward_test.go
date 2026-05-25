@@ -80,12 +80,12 @@ func TestForward(t *testing.T) {
 		}
 	})
 
-	t.Run("ack hits /api/v1/comments", func(t *testing.T) {
+	t.Run("ack hits /api/v1/comment", func(t *testing.T) {
 		sc := &fakeSnooze{}
 		cmd := ParseCommand("/snooze ack abc123 looking")
 		reply := Forward(context.Background(), sc, cmd, "alice")
-		if sc.method != "POST" || sc.path != "/api/v1/comments" {
-			t.Fatalf("expected POST /api/v1/comments, got %s %s", sc.method, sc.path)
+		if sc.method != "POST" || sc.path != "/api/v1/comment" {
+			t.Fatalf("expected POST /api/v1/comment, got %s %s", sc.method, sc.path)
 		}
 		body, ok := sc.body.(commentRequest)
 		if !ok {
