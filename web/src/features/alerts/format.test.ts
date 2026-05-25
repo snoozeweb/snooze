@@ -10,16 +10,40 @@ import {
 
 describe("severityBadgeVariant", () => {
   it.each([
+    // syslog top of the ladder collapses to the red `critical` badge so
+    // emergencies don't slip into muted/black like they did before.
+    ["emerg", "critical"],
+    ["emergency", "critical"],
+    ["EMERGENCY", "critical"],
+    ["panic", "critical"],
+    ["alert", "critical"],
+    ["fatal", "critical"],
+    ["crit", "critical"],
     ["critical", "critical"],
+    ["Critical", "critical"],
+    ["err", "error"],
     ["error", "error"],
+    ["ERROR", "error"],
+    ["fail", "error"],
+    ["failure", "error"],
+    ["warn", "warning"],
     ["warning", "warning"],
+    ["Warning", "warning"],
+    ["notice", "info"],
     ["info", "info"],
+    ["informational", "info"],
+    ["ok", "ok"],
+    ["okay", "ok"],
+    ["success", "ok"],
+    // Surrounding whitespace shouldn't kick a known severity into muted.
+    ["  warning  ", "warning"],
   ] as const)("maps %s to %s", (sev, expected) => {
     expect(severityBadgeVariant(sev)).toBe(expected);
   });
 
-  it("falls back to muted for unknown severities", () => {
+  it("falls back to muted for unknown / empty severities", () => {
     expect(severityBadgeVariant("debug")).toBe("muted");
+    expect(severityBadgeVariant("trace")).toBe("muted");
     expect(severityBadgeVariant("")).toBe("muted");
   });
 });

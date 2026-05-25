@@ -1,15 +1,34 @@
 import type { BadgeVariant } from "@/shared/ui/Badge";
 import type { AlertSeverity, AlertState } from "./types";
 
+// Severity aliases follow the RFC 5424 / syslog ladder (emerg, alert, crit,
+// err, warning, notice, info, debug) plus common upstream-monitor synonyms
+// (panic, fatal, fail, ok, success). Everything at or above "crit" collapses
+// to the red `critical` badge so emergencies don't render as muted.
 const SEVERITY_MAP: Record<string, BadgeVariant> = {
+  emerg: "critical",
+  emergency: "critical",
+  panic: "critical",
+  alert: "critical",
+  fatal: "critical",
+  crit: "critical",
   critical: "critical",
+  err: "error",
   error: "error",
+  fail: "error",
+  failure: "error",
+  warn: "warning",
   warning: "warning",
+  notice: "info",
   info: "info",
+  informational: "info",
+  ok: "ok",
+  okay: "ok",
+  success: "ok",
 };
 
 export function severityBadgeVariant(severity: AlertSeverity): BadgeVariant {
-  return SEVERITY_MAP[severity.toLowerCase()] ?? "muted";
+  return SEVERITY_MAP[severity.toLowerCase().trim()] ?? "muted";
 }
 
 const STATE_LABEL: Record<AlertState, string> = {
