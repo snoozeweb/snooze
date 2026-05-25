@@ -433,6 +433,9 @@ func recordToMap(rec snoozetypes.Record) map[string]any {
 	if rec.Environment != "" {
 		d["environment"] = rec.Environment
 	}
+	if rec.Hash != "" {
+		d["hash"] = rec.Hash
+	}
 	if len(rec.Tags) > 0 {
 		d["tags"] = rec.Tags
 	}
@@ -496,6 +499,8 @@ func mapToRecord(_ snoozetypes.Record, view map[string]any) snoozetypes.Record {
 			}
 		case "state":
 			out.State, _ = v.(string)
+		case "hash":
+			out.Hash, _ = v.(string)
 		case "plugins":
 			out.Plugins = toStringSlice(v)
 		default:

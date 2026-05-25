@@ -224,6 +224,9 @@ func recordToDoc(rec snoozetypes.Record) db.Document {
 	if rec.Environment != "" {
 		d["environment"] = rec.Environment
 	}
+	if rec.Hash != "" {
+		d["hash"] = rec.Hash
+	}
 	if len(rec.Tags) > 0 {
 		d["tags"] = rec.Tags
 	}

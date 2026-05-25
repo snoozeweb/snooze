@@ -134,7 +134,7 @@ func TestAggregateRuleObject_Match(t *testing.T) {
 	out, action := runProcess(t, p, host, rec)
 	require.Equal(t, plugins.ActionContinue, action)
 	require.Equal(t, "Agg1", out.Extra["aggregate"])
-	require.NotEmpty(t, out.Extra["hash"])
+	require.NotEmpty(t, out.Hash)
 }
 
 // TestAggregate_Throttle ports Python's test_aggregate_throttle: same hash

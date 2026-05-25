@@ -86,6 +86,7 @@ var knownRecordKeys = map[string]struct{}{
 	"date_epoch":  {},
 	"ttl":         {},
 	"environment": {},
+	"hash":        {},
 	"tags":        {},
 	"raw":         {},
 	"state":       {},

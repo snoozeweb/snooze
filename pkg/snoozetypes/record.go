@@ -17,6 +17,10 @@ type Record struct {
 	DateEpoch   int64          `json:"date_epoch,omitempty"`
 	TTL         int64          `json:"ttl,omitempty"`
 	Environment string         `json:"environment,omitempty"`
+	// Hash is the aggregaterule-computed duplicate-detection key. Lives as a
+	// typed field so it survives the snooze-server → snooze-teams JSON hop;
+	// stuffing it into Extra would silently drop it because Extra is `json:"-"`.
+	Hash        string         `json:"hash,omitempty"`
 	Tags        []string       `json:"tags,omitempty"`
 	Raw         map[string]any `json:"raw,omitempty"`
 	State       string         `json:"state,omitempty"`

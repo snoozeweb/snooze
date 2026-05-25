@@ -523,6 +523,9 @@ func recordToMap(rec snoozetypes.Record) map[string]any {
 	if rec.Environment != "" {
 		m["environment"] = rec.Environment
 	}
+	if rec.Hash != "" {
+		m["hash"] = rec.Hash
+	}
 	if len(rec.Tags) > 0 {
 		m["tags"] = rec.Tags
 	}
@@ -578,6 +581,10 @@ func mergeMapIntoRecord(rec *snoozetypes.Record, m map[string]any) {
 		case "state":
 			if s, ok := v.(string); ok {
 				rec.State = s
+			}
+		case "hash":
+			if s, ok := v.(string); ok {
+				rec.Hash = s
 			}
 		case "date_epoch":
 			rec.DateEpoch = toInt64(v, rec.DateEpoch)

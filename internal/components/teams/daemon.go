@@ -263,10 +263,15 @@ func (d *Daemon) SendAlert(ctx context.Context, rec snoozetypes.Record) error {
 // 1.x bot.
 const alertTimestampFormat = "Mon, Jan 2, 2006 at 3:04 PM"
 
-// recordHash returns the duplicate-detection hash from the record, with a
-// best-effort fallback to the Extra map (the API exposes `hash` there until
-// it earns a typed home on snoozetypes.Record).
+// recordHash returns the duplicate-detection hash from the record. The
+// canonical home is the typed snoozetypes.Record.Hash field — it survives the
+// snooze-server → snooze-teams JSON hop (Extra is `json:"-"` and silently
+// drops). The Extra fallback is kept for in-process callers that haven't
+// migrated, but the wire-arriving path always lands on rec.Hash.
 func recordHash(rec snoozetypes.Record) string {
+	if rec.Hash != "" {
+		return rec.Hash
+	}
 	if rec.Extra != nil {
 		if v, ok := rec.Extra["hash"].(string); ok && v != "" {
 			return v
@@ -302,9 +307,12 @@ func recordWebURL(rec snoozetypes.Record, snoozeURL string) string {
 	if snoozeURL == "" || hash == "" {
 		return ""
 	}
-	// url.QueryEscape encodes the spaces around `=` and the `=` itself so the
-	// DSL string survives transit through query-param parsing untouched.
-	q := url.QueryEscape("hash = " + hash)
+	// url.QueryEscape emits `+` for spaces (form-encoding). TanStack Router's
+	// search parser surfaces the raw query value to AlertsPage without doing
+	// the `+` → space conversion, which leaves a literal `hash+=+<hash>` in
+	// the SearchBar instead of `hash = <hash>`. Use %20 for the spaces so the
+	// SearchBar lands with the DSL the human can read and edit.
+	q := strings.ReplaceAll(url.QueryEscape("hash = "+hash), "+", "%20")
 	return fmt.Sprintf("%s/web/alerts?search=%s",
 		strings.TrimRight(snoozeURL, "/"), q)
 }

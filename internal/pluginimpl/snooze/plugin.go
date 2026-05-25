@@ -320,6 +320,9 @@ func recordToMap(rec snoozetypes.Record) map[string]any {
 	if rec.Environment != "" {
 		m["environment"] = rec.Environment
 	}
+	if rec.Hash != "" {
+		m["hash"] = rec.Hash
+	}
 	if len(rec.Tags) > 0 {
 		m["tags"] = rec.Tags
 	}
