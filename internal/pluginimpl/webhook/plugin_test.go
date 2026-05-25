@@ -8,6 +8,7 @@ import (
 	"net/http/httptest"
 	"slices"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -292,4 +293,160 @@ func TestPluginInterfaceContract(t *testing.T) {
 	require.Equal(t, "webhook", p.Name())
 	require.NoError(t, p.PostInit(context.Background(), nil))
 	require.NoError(t, p.Reload(context.Background()))
+}
+
+// --- batched dispatch -----------------------------------------------------
+
+// batchRecorder is the goroutine-safe collector that recordingBatchServer
+// hands back to the test. Capturing through a mutex (rather than reading a
+// shared slice directly from the test) keeps `go test -race` clean.
+type batchRecorder struct {
+	mu       sync.Mutex
+	captured [][]byte
+}
+
+func (b *batchRecorder) add(body []byte) {
+	b.mu.Lock()
+	b.captured = append(b.captured, body)
+	b.mu.Unlock()
+}
+
+func (b *batchRecorder) snapshot() [][]byte {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	out := make([][]byte, len(b.captured))
+	copy(out, b.captured)
+	return out
+}
+
+func (b *batchRecorder) len() int {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return len(b.captured)
+}
+
+// recordingBatchServer captures POST bodies. The test fires N Sends and then
+// inspects how many requests landed and what each request's array contained.
+func recordingBatchServer(t *testing.T) (*httptest.Server, *batchRecorder) {
+	t.Helper()
+	rec := &batchRecorder{}
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, _ := io.ReadAll(r.Body)
+		rec.add(body)
+		w.WriteHeader(http.StatusOK)
+	}))
+	t.Cleanup(srv.Close)
+	return srv, rec
+}
+
+func batchMeta(url, action string, maxsize int, timerSec int) map[string]any {
+	return map[string]any{
+		"url":           url,
+		"payload":       `{"channels": ["teams/T/channels/C"], "alert": {{ __self__  | tojson() }} }`,
+		"batch":         true,
+		"batch_maxsize": maxsize,
+		"batch_timer":   timerSec,
+		"action_name":   action,
+	}
+}
+
+func TestBatchFlushesOnMaxsize(t *testing.T) {
+	srv, captured := recordingBatchServer(t)
+	p := newPluginForTest(t)
+	meta := batchMeta(srv.URL+"/alert", "Teams VM", 3, 60) // long timer — size must fire
+
+	for i := 0; i < 3; i++ {
+		rec := sampleRecord()
+		rec.UID = "rec-" + string(rune('A'+i))
+		require.NoError(t, p.Send(context.Background(), rec, plugins.NotificationPayload{Meta: meta}))
+	}
+
+	require.Eventually(t, func() bool { return captured.len() == 1 },
+		2*time.Second, 10*time.Millisecond, "expected exactly one batched POST after 3rd record")
+
+	// The body should be a JSON array with 3 elements, each shaped like the
+	// rendered template.
+	var arr []map[string]any
+	require.NoError(t, json.Unmarshal(captured.snapshot()[0], &arr))
+	require.Len(t, arr, 3, "expected three records in the flush")
+	for _, item := range arr {
+		require.Equal(t, []any{"teams/T/channels/C"}, item["channels"])
+		_, ok := item["alert"].(map[string]any)
+		require.True(t, ok)
+	}
+}
+
+func TestBatchFlushesOnTimer(t *testing.T) {
+	srv, captured := recordingBatchServer(t)
+	p := newPluginForTest(t)
+	meta := batchMeta(srv.URL+"/alert", "Teams VM", 100, 0) // 0 → fallback; need >0
+	meta["batch_timer"] = 1                                 // 1 second; tests still finish fast
+
+	require.NoError(t, p.Send(context.Background(), sampleRecord(), plugins.NotificationPayload{Meta: meta}))
+	require.NoError(t, p.Send(context.Background(), sampleRecord(), plugins.NotificationPayload{Meta: meta}))
+
+	// Should fire roughly 1s later, well before the size threshold of 100.
+	require.Eventually(t, func() bool { return captured.len() == 1 },
+		2500*time.Millisecond, 20*time.Millisecond, "expected one timer-driven flush")
+
+	var arr []map[string]any
+	require.NoError(t, json.Unmarshal(captured.snapshot()[0], &arr))
+	require.Len(t, arr, 2)
+}
+
+func TestBatchKeyIsolation(t *testing.T) {
+	srv, captured := recordingBatchServer(t)
+	p := newPluginForTest(t)
+	a := batchMeta(srv.URL+"/alert", "Action A", 2, 60)
+	b := batchMeta(srv.URL+"/alert", "Action B", 2, 60)
+
+	require.NoError(t, p.Send(context.Background(), sampleRecord(), plugins.NotificationPayload{Meta: a}))
+	require.NoError(t, p.Send(context.Background(), sampleRecord(), plugins.NotificationPayload{Meta: b}))
+
+	// One record in each bucket so far — no flush yet.
+	time.Sleep(50 * time.Millisecond)
+	require.Equal(t, 0, captured.len())
+
+	require.NoError(t, p.Send(context.Background(), sampleRecord(), plugins.NotificationPayload{Meta: a}))
+	require.Eventually(t, func() bool { return captured.len() == 1 },
+		time.Second, 10*time.Millisecond, "Action A should flush first")
+
+	require.NoError(t, p.Send(context.Background(), sampleRecord(), plugins.NotificationPayload{Meta: b}))
+	require.Eventually(t, func() bool { return captured.len() == 2 },
+		time.Second, 10*time.Millisecond, "Action B should flush after its second record")
+}
+
+func TestBatchStopDrains(t *testing.T) {
+	srv, captured := recordingBatchServer(t)
+	p := newPluginForTest(t)
+	meta := batchMeta(srv.URL+"/alert", "Teams VM", 100, 60) // both bounds far away
+
+	for i := 0; i < 3; i++ {
+		require.NoError(t, p.Send(context.Background(), sampleRecord(), plugins.NotificationPayload{Meta: meta}))
+	}
+	require.Equal(t, 0, captured.len(), "no flush expected before Stop")
+
+	require.NoError(t, p.Stop(context.Background()))
+
+	require.Eventually(t, func() bool { return captured.len() == 1 },
+		time.Second, 10*time.Millisecond, "Stop should drain the pending bucket")
+	var arr []map[string]any
+	require.NoError(t, json.Unmarshal(captured.snapshot()[0], &arr))
+	require.Len(t, arr, 3)
+}
+
+func TestBatchDegenerateConfigFallsBackToImmediate(t *testing.T) {
+	srv, captured := recordingBatchServer(t)
+	p := newPluginForTest(t)
+	// maxsize=1 is treated as degenerate (a "batch of one" is just an
+	// immediate send). The plugin must fall back to per-record dispatch.
+	meta := batchMeta(srv.URL+"/alert", "Teams VM", 1, 10)
+	require.NoError(t, p.Send(context.Background(), sampleRecord(), plugins.NotificationPayload{Meta: meta}))
+	require.Eventually(t, func() bool { return captured.len() == 1 },
+		time.Second, 10*time.Millisecond, "immediate dispatch expected")
+	// And the body should be the rendered object directly, not wrapped in an
+	// array — proves we took the non-batched path.
+	var obj map[string]any
+	require.NoError(t, json.Unmarshal(captured.snapshot()[0], &obj))
+	require.Equal(t, []any{"teams/T/channels/C"}, obj["channels"])
 }

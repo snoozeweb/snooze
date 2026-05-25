@@ -318,6 +318,131 @@ func formatAlertCard(rec snoozetypes.Record, snoozeURL string) (htmlBody string,
 	return htmlBody, attachment
 }
 
+// formatAlertsCard renders one or more alerts targeting the same channel as
+// a single Adaptive Card. With one record it falls back to formatAlertCard;
+// with multiple it composes a "Received N alerts" header followed by one
+// emphasis Container per alert. Splitting per-channel is the caller's job
+// (see listener.handleAlert) — this helper makes no assumption about the
+// destination.
+func formatAlertsCard(records []snoozetypes.Record, snoozeURL string) (htmlBody string, attachment chatAttachment) {
+	if len(records) == 1 {
+		return formatAlertCard(records[0], snoozeURL)
+	}
+	id := newAttachmentID()
+	card := buildAlertsCard(records, snoozeURL)
+	cardJSON, _ := json.Marshal(card)
+	attachment = chatAttachment{
+		ID:          id,
+		ContentType: "application/vnd.microsoft.card.adaptive",
+		Content:     string(cardJSON),
+	}
+	htmlBody = `<attachment id="` + id + `"></attachment>` + botMarker
+	return htmlBody, attachment
+}
+
+// buildAlertsCard composes the multi-alert AdaptiveCard body: a "Received N
+// alerts" header (with the timestamp of the latest record), then one
+// emphasis Container per record. Each container packs the alert into three
+// stacked TextBlocks — host link, subtle source · process · severity, and
+// the bolded message — so the channel sees the whole batch without losing
+// the visual anchor the single-alert card provides.
+func buildAlertsCard(records []snoozetypes.Record, snoozeURL string) map[string]any {
+	body := []map[string]any{
+		{
+			"type":   "TextBlock",
+			"text":   fmt.Sprintf("⚠️ Received %d alerts ⚠️", len(records)),
+			"weight": "Bolder",
+			"size":   "Medium",
+			"wrap":   true,
+		},
+		{
+			"type":     "TextBlock",
+			"text":     alertTimestamp(latestAlert(records)),
+			"isSubtle": true,
+			"spacing":  "None",
+			"wrap":     true,
+		},
+	}
+	for _, r := range records {
+		body = append(body, buildAlertContainer(r, snoozeURL))
+	}
+	return map[string]any{
+		"$schema": "http://adaptivecards.io/schemas/adaptive-card.json",
+		"type":    "AdaptiveCard",
+		"version": "1.4",
+		"msteams": map[string]any{"width": "full"},
+		"body":    body,
+	}
+}
+
+// buildAlertContainer renders one record as a stacked, emphasis-tinted
+// Container suitable for use inside a multi-alert card. The same shape is
+// used for every record so the visual rhythm of the card stays predictable
+// regardless of how many alerts arrived in the batch.
+func buildAlertContainer(rec snoozetypes.Record, snoozeURL string) map[string]any {
+	meta := make([]string, 0, 3)
+	if rec.Source != "" {
+		meta = append(meta, rec.Source)
+	}
+	if rec.Process != "" {
+		meta = append(meta, rec.Process)
+	}
+	if rec.Severity != "" {
+		meta = append(meta, rec.Severity)
+	}
+	items := []map[string]any{
+		{
+			"type":   "TextBlock",
+			"text":   recordFactValue(rec, snoozeURL),
+			"weight": "Bolder",
+			"wrap":   true,
+		},
+	}
+	if len(meta) > 0 {
+		items = append(items, map[string]any{
+			"type":     "TextBlock",
+			"text":     strings.Join(meta, " · "),
+			"isSubtle": true,
+			"color":    severityColor(rec.Severity),
+			"spacing":  "None",
+			"wrap":     true,
+		})
+	}
+	if rec.Message != "" {
+		items = append(items, map[string]any{
+			"type":    "TextBlock",
+			"text":    rec.Message,
+			"weight":  "Bolder",
+			"spacing": "Small",
+			"wrap":    true,
+		})
+	}
+	return map[string]any{
+		"type":    "Container",
+		"style":   "emphasis",
+		"spacing": "Medium",
+		"items":   items,
+	}
+}
+
+// latestAlert returns the record with the most recent timestamp from
+// records, falling back to records[0]. Used by buildAlertsCard to stamp
+// the header with the freshest alert's time.
+func latestAlert(records []snoozetypes.Record) snoozetypes.Record {
+	if len(records) == 0 {
+		return snoozetypes.Record{}
+	}
+	latest := records[0]
+	for _, r := range records[1:] {
+		if r.Timestamp.After(latest.Timestamp) {
+			latest = r
+		} else if r.Timestamp.IsZero() && r.DateEpoch > latest.DateEpoch {
+			latest = r
+		}
+	}
+	return latest
+}
+
 // buildAlertCard assembles the AdaptiveCard 1.4 body. Kept separate from
 // formatAlertCard so tests can assert on the card shape without serialising
 // it through chatAttachment.

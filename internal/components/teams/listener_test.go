@@ -11,6 +11,7 @@ import (
 	"net/http/httptest"
 	"net/url"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -297,6 +298,139 @@ func TestHandleAlert_RejectsNonPOST(t *testing.T) {
 func TestRunListener_DisabledNoOp(t *testing.T) {
 	d := newTestDaemonWithGraph(t, "", func(http.ResponseWriter, *http.Request) {})
 	require.NoError(t, d.runListener(context.Background()))
+}
+
+// TestHandleAlert_FanInPerChannel exercises the batched-array branch of
+// decodeAlertBody. With 3 alerts in the request — two of them targeting
+// channel A, one of them targeting channels A *and* B — the listener
+// must emit exactly two Graph POSTs:
+//
+//   - one to channel A containing all 3 alerts in a multi-alert card
+//   - one to channel B containing only the single alert that targeted it
+//
+// This proves the per-channel splitting works: no alert leaks into a
+// channel it wasn't addressed to.
+func TestHandleAlert_FanInPerChannel(t *testing.T) {
+	type capturedPost struct {
+		path string
+		body map[string]any
+	}
+	var mu sync.Mutex
+	var captured []capturedPost
+	graphHandler := func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case strings.HasSuffix(r.URL.Path, "/oauth2/v2.0/token"):
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{"access_token":"AT","expires_in":3600}`))
+			return
+		case strings.Contains(r.URL.Path, "/teams/") && strings.HasSuffix(r.URL.Path, "/messages"):
+			raw, _ := io.ReadAll(r.Body)
+			var body map[string]any
+			_ = json.Unmarshal(raw, &body)
+			mu.Lock()
+			captured = append(captured, capturedPost{path: r.URL.Path, body: body})
+			mu.Unlock()
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{"id":"msg1"}`))
+			return
+		default:
+			http.NotFound(w, r)
+		}
+	}
+	addr := pickFreePort(t)
+	d := newTestDaemonWithGraph(t, addr, graphHandler)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	listenErr := make(chan error, 1)
+	go func() { listenErr <- d.runListener(ctx) }()
+	require.Eventually(t, func() bool {
+		c, err := net.DialTimeout("tcp", addr, 100*time.Millisecond)
+		if err != nil {
+			return false
+		}
+		_ = c.Close()
+		return true
+	}, time.Second, 10*time.Millisecond, "listener not ready")
+
+	// Two records target channel A, one targets both A and B.
+	body := `[
+	  {"channels":["teams/team-A/channels/19:aaa@thread.tacv2"],
+	   "alert":{"host":"host-1","severity":"critical","message":"first"}},
+	  {"channels":["teams/team-A/channels/19:aaa@thread.tacv2"],
+	   "alert":{"host":"host-2","severity":"critical","message":"second"}},
+	  {"channels":["teams/team-A/channels/19:aaa@thread.tacv2",
+	               "teams/team-B/channels/19:bbb@thread.tacv2"],
+	   "alert":{"host":"host-3","severity":"emergency","message":"third"}}
+	]`
+	resp, err := http.Post("http://"+addr+"/alert", "application/json", bytes.NewBufferString(body))
+	require.NoError(t, err)
+	defer resp.Body.Close()
+	require.Equal(t, http.StatusOK, resp.StatusCode)
+
+	var decoded alertResponse
+	require.NoError(t, json.NewDecoder(resp.Body).Decode(&decoded))
+	require.ElementsMatch(t, []string{
+		"teams/team-A/channels/19:aaa@thread.tacv2",
+		"teams/team-B/channels/19:bbb@thread.tacv2",
+	}, decoded.Delivered)
+	require.Empty(t, decoded.Failed)
+
+	require.Eventually(t, func() bool {
+		mu.Lock()
+		defer mu.Unlock()
+		return len(captured) == 2
+	}, time.Second, 10*time.Millisecond)
+
+	mu.Lock()
+	snap := append([]capturedPost(nil), captured...)
+	mu.Unlock()
+
+	// Pick out the post for each channel and assert which alerts each saw.
+	var aCard, bCard map[string]any
+	for _, c := range snap {
+		switch {
+		case strings.Contains(c.path, "team-A"):
+			aCard = extractCardJSON(t, c.body)
+		case strings.Contains(c.path, "team-B"):
+			bCard = extractCardJSON(t, c.body)
+		default:
+			t.Fatalf("unexpected captured path: %s", c.path)
+		}
+	}
+	require.NotNil(t, aCard, "expected a post to team-A")
+	require.NotNil(t, bCard, "expected a post to team-B")
+
+	// Channel A: three alerts → multi-alert card with "Received 3 alerts" header.
+	aSerialized, _ := json.Marshal(aCard)
+	require.Contains(t, string(aSerialized), "Received 3 alerts")
+	require.Contains(t, string(aSerialized), "host-1")
+	require.Contains(t, string(aSerialized), "host-2")
+	require.Contains(t, string(aSerialized), "host-3")
+
+	// Channel B: one alert → single-alert card, only host-3 present.
+	bSerialized, _ := json.Marshal(bCard)
+	require.Contains(t, string(bSerialized), "Received alert")
+	require.Contains(t, string(bSerialized), "host-3")
+	require.NotContains(t, string(bSerialized), "host-1")
+	require.NotContains(t, string(bSerialized), "host-2")
+
+	cancel()
+	require.NoError(t, <-listenErr)
+}
+
+// extractCardJSON pulls the AdaptiveCard JSON out of a captured Graph
+// chatMessage POST body. Returns nil if the message has no attachment
+// (the test caller asserts on that).
+func extractCardJSON(t *testing.T, body map[string]any) map[string]any {
+	t.Helper()
+	atts, _ := body["attachments"].([]any)
+	require.Len(t, atts, 1)
+	att, _ := atts[0].(map[string]any)
+	require.Equal(t, "application/vnd.microsoft.card.adaptive", att["contentType"])
+	content, _ := att["content"].(string)
+	var card map[string]any
+	require.NoError(t, json.Unmarshal([]byte(content), &card))
+	return card
 }
 
 // quiet the linter about unused imports if the test file is later edited.

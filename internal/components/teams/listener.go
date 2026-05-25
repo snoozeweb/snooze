@@ -113,6 +113,18 @@ func (d *Daemon) handleAlert(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Group alerts by destination channel — when the request contains
+	// multiple alerts (the webhook plugin's batched JSON-array form), each
+	// channel should see ONE chatMessage covering only the alerts that
+	// actually target it. This mirrors the Python plugin's per-channel
+	// fan-in while making sure a channel never sees alerts meant for a
+	// different team/channel.
+	type chanGroup struct {
+		teamID, channelID, ref string
+		alerts                 []snoozetypes.Record
+	}
+	groups := make(map[string]*chanGroup)
+	order := make([]string, 0)
 	resp := alertResponse{Failed: map[string]string{}}
 	for _, m := range medias {
 		for _, ch := range m.Channels {
@@ -122,17 +134,31 @@ func (d *Daemon) handleAlert(w http.ResponseWriter, r *http.Request) {
 				d.logger.Warn("teams: /alert bad channel", slog.String("channel", ch), slog.Any("err", err))
 				continue
 			}
-			body, att := formatAlertCard(m.Alert, d.cfg.Server)
-			if _, err := d.graph.sendMessage(r.Context(), teamID, channelID, body, att); err != nil {
-				resp.Failed[ch] = err.Error()
-				d.logger.Warn("teams: /alert post failed",
-					slog.String("team", teamID),
-					slog.String("channel", channelID),
-					slog.Any("err", err))
-				continue
+			g, ok := groups[ch]
+			if !ok {
+				g = &chanGroup{teamID: teamID, channelID: channelID, ref: ch}
+				groups[ch] = g
+				order = append(order, ch)
 			}
-			resp.Delivered = append(resp.Delivered, ch)
+			g.alerts = append(g.alerts, m.Alert)
 		}
+	}
+	for _, ch := range order {
+		g := groups[ch]
+		body, att := formatAlertsCard(g.alerts, d.cfg.Server)
+		if _, err := d.graph.sendMessage(r.Context(), g.teamID, g.channelID, body, att); err != nil {
+			resp.Failed[ch] = err.Error()
+			d.logger.Warn("teams: /alert post failed",
+				slog.String("team", g.teamID),
+				slog.String("channel", g.channelID),
+				slog.Int("alerts", len(g.alerts)),
+				slog.Any("err", err))
+			continue
+		}
+		d.logger.Info("teams: /alert delivered",
+			slog.String("channel", g.channelID),
+			slog.Int("alerts", len(g.alerts)))
+		resp.Delivered = append(resp.Delivered, ch)
 	}
 
 	w.Header().Set("Content-Type", "application/json")

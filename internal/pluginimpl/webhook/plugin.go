@@ -29,6 +29,7 @@ import (
 	"net/http"
 	"regexp"
 	"strings"
+	"sync"
 	"text/template"
 	"time"
 
@@ -66,6 +67,15 @@ type Config struct {
 	Timeout     time.Duration
 	TLSInsecure bool
 	Auth        Auth
+
+	// Batch accumulates rendered request bodies and flushes them to the
+	// configured URL as a single `[obj1, obj2, ...]` JSON array. Mirrors
+	// the Python webhook plugin's `batch` knob. When false, every call to
+	// Send fires its own HTTP request.
+	Batch        bool
+	BatchMaxsize int           // flush when bucket reaches this many records
+	BatchTimer   time.Duration // flush when bucket is at least this old
+	BatchKey     string        // dispatch-bucket key (URL + action_name); only set when Batch is true
 }
 
 // Auth carries the optional auth header settings.
@@ -82,6 +92,10 @@ type Auth struct {
 // per-call because the per-action TLS / timeout knobs differ between
 // invocations; production volume is bounded by the notification worker
 // concurrency, not by transport reuse.
+//
+// Batching: actions with `batch: true` accumulate rendered bodies in
+// per-(URL, action) buckets in `buckets`, flushing on the first of
+// batch_maxsize or batch_timer. See batch.go.
 type Plugin struct {
 	meta plugins.Metadata
 	host plugins.Host
@@ -89,6 +103,9 @@ type Plugin struct {
 	// newClient is the http.Client builder. It is overridable from tests
 	// (httptest's transport already satisfies the default behaviour).
 	newClient func(cfg Config) *http.Client
+
+	bMu     sync.Mutex
+	buckets map[string]*batchBucket
 }
 
 // Name returns the registry key.
@@ -130,12 +147,30 @@ func (p *Plugin) Send(ctx context.Context, rec snoozetypes.Record, payload plugi
 	if url == "" {
 		return errors.New("webhook: url is empty after rendering")
 	}
+	cfg.URL = url // store the rendered URL so deliver / batch flush reuse it
 
 	body, contentType, err := renderBody(cfg.Body, rec, payload)
 	if err != nil {
 		return fmt.Errorf("webhook: render body: %w", err)
 	}
 
+	// Batched dispatch: queue the rendered body and return immediately. The
+	// flusher posts a `[body1, body2, ...]` JSON array when the bucket
+	// reaches batch_maxsize or batch_timer expires (whichever first).
+	// Falls back to the immediate path when the rendered body cannot be
+	// safely concatenated as a JSON array element (non-JSON template).
+	if cfg.Batch && bodyIsJSON(body) {
+		p.queueForBatch(cfg, body)
+		return nil
+	}
+
+	return p.deliver(ctx, cfg, body, contentType, rec)
+}
+
+// deliver POSTs body to cfg.URL. Used by both the immediate Send path and the
+// batch flush. The record is only consulted for templated headers — pass a
+// zero-value Record when calling from the flush path.
+func (p *Plugin) deliver(ctx context.Context, cfg Config, body []byte, contentType string, rec snoozetypes.Record) error {
 	method := strings.ToUpper(strings.TrimSpace(cfg.Method))
 	if method == "" {
 		method = http.MethodPost
@@ -153,7 +188,7 @@ func (p *Plugin) Send(ctx context.Context, rec snoozetypes.Record, payload plugi
 	reqCtx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 
-	req, err := http.NewRequestWithContext(reqCtx, method, url, bodyReader)
+	req, err := http.NewRequestWithContext(reqCtx, method, cfg.URL, bodyReader)
 	if err != nil {
 		return fmt.Errorf("webhook: build request: %w", err)
 	}
@@ -185,6 +220,17 @@ func (p *Plugin) Send(ctx context.Context, rec snoozetypes.Record, payload plugi
 		return fmt.Errorf("webhook: HTTP %d: %s", resp.StatusCode, truncate(preview, 200))
 	}
 	return nil
+}
+
+// bodyIsJSON returns true when body is a valid JSON value. Used to gate
+// batched dispatch — concatenating non-JSON bodies into a `[...]` array
+// would corrupt the wire shape.
+func bodyIsJSON(body []byte) bool {
+	trimmed := bytes.TrimSpace(body)
+	if len(trimmed) == 0 {
+		return false
+	}
+	return json.Valid(trimmed)
 }
 
 // factory builds the plugin instance.
@@ -273,7 +319,47 @@ func configFromPayload(p plugins.NotificationPayload) (Config, error) {
 		}
 	}
 
+	// Batch knobs (mirror the Python plugin's `batch`/`batch_maxsize`/
+	// `batch_timer` action fields). Only honoured when batch is explicitly
+	// true and both bounds are positive; otherwise we send immediately.
+	if v, ok := p.Meta["batch"].(bool); ok {
+		cfg.Batch = v
+	}
+	if v, ok := intField(p.Meta["batch_maxsize"]); ok {
+		cfg.BatchMaxsize = v
+	}
+	if v, ok := intField(p.Meta["batch_timer"]); ok {
+		cfg.BatchTimer = time.Duration(v) * time.Second
+	}
+	if cfg.Batch && (cfg.BatchMaxsize <= 1 || cfg.BatchTimer <= 0) {
+		// Degenerate config — fall back to per-record dispatch rather than
+		// silently buffering forever.
+		cfg.Batch = false
+	}
+	if cfg.Batch {
+		cfg.BatchKey = cfg.URL + "|" + stringField(p.Meta, "action_name")
+	}
+
 	return cfg, nil
+}
+
+// intField extracts an int from a map[string]any value that may be int,
+// int64, float64, or a decimal string. Returns (0, false) on anything else.
+func intField(v any) (int, bool) {
+	switch x := v.(type) {
+	case int:
+		return x, true
+	case int64:
+		return int(x), true
+	case float64:
+		return int(x), true
+	case string:
+		n, err := time.ParseDuration(x + "s") // accept "10" → 10s
+		if err == nil {
+			return int(n / time.Second), true
+		}
+	}
+	return 0, false
 }
 
 // parseTimeout accepts a duration string, a number of seconds (int or
