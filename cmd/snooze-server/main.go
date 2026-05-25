@@ -263,7 +263,7 @@ func runDaemonCtx(ctx context.Context, f *daemonFlags, stderr io.Writer) error {
 	promReg := prometheus.NewRegistry()
 	metrics := telemetry.NewRegistry(promReg)
 
-	drv, err := openDB(ctx, cfg.Core.Database)
+	drv, err := openDB(ctx, cfg.Core.Database, loggers.Snooze)
 	if err != nil {
 		return fmt.Errorf("open database: %w", err)
 	}
@@ -381,7 +381,7 @@ func splitHostPort(s string) (string, int, bool) {
 // openDB dispatches to the configured database driver. The "file" backend is
 // the legacy Python alias for SQLite — the Go port stores documents in
 // SQLite/JSON1 regardless of whether the operator wrote "file" or "sqlite".
-func openDB(ctx context.Context, dbcfg schema.Database) (db.Driver, error) {
+func openDB(ctx context.Context, dbcfg schema.Database, logger *slog.Logger) (db.Driver, error) {
 	switch strings.ToLower(strings.TrimSpace(dbcfg.Type)) {
 	case "", "file", "sqlite":
 		path := dbcfg.Path
@@ -406,6 +406,7 @@ func openDB(ctx context.Context, dbcfg schema.Database) (db.Driver, error) {
 		return mongo.New(ctx, mongo.Config{
 			URI:      uri,
 			Database: dbcfg.Database,
+			Logger:   logger,
 		})
 	default:
 		return nil, fmt.Errorf("unknown database type %q", dbcfg.Type)

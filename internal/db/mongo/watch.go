@@ -2,6 +2,7 @@ package mongo
 
 import (
 	"context"
+	"log/slog"
 	"strings"
 	"sync"
 	"time"
@@ -13,21 +14,43 @@ import (
 	"github.com/snoozeweb/snooze/internal/syncer"
 )
 
+// changeStream is the slice of *mongo.ChangeStream that runStream needs.
+// Defined as an interface (rather than using the concrete type directly) so
+// tests can substitute a stub via mongoBus.open — see watch_test.go.
+type changeStream interface {
+	Next(ctx context.Context) bool
+	Decode(v any) error
+	Close(ctx context.Context) error
+}
+
 // mongoBus is the syncer.Bus implementation that fans MongoDB change-stream
 // events out to in-process subscribers.
 //
 // IMPORTANT: change streams require the connected MongoDB to be a replica set
-// or a sharded cluster. Against a standalone mongod the watch call fails.
+// or a sharded cluster. Against a standalone mongod the watch call fails. The
+// bus then retries with exponential backoff so the system self-heals if the
+// operator promotes mongod to a replica set without restarting snooze-server.
 //
 // Streams are opened lazily on first Subscribe call per collection.
 type mongoBus struct {
 	d        *Driver
+	logger   *slog.Logger
 	mu       sync.Mutex
 	subs     []*subscription
 	streams  map[string]context.CancelFunc // collection -> stop fn for that watcher
 	closed   bool
 	rootCtx  context.Context
 	rootStop context.CancelFunc
+
+	// open is the function runStream calls to open a change stream. Default
+	// wraps the live mongo driver; tests replace it with a stub.
+	open func(ctx context.Context, collection string) (changeStream, error)
+
+	// retryInitial / retryMax bound the exponential backoff applied between
+	// failed Watch attempts. Fields rather than constants so tests can
+	// shrink them to keep the test fast.
+	retryInitial time.Duration
+	retryMax     time.Duration
 }
 
 type subscription struct {
@@ -37,14 +60,31 @@ type subscription struct {
 }
 
 // newMongoBus constructs an unstarted bus tied to the given driver.
-func newMongoBus(d *Driver) *mongoBus {
-	ctx, cancel := context.WithCancel(context.Background())
-	return &mongoBus{
-		d:        d,
-		streams:  make(map[string]context.CancelFunc),
-		rootCtx:  ctx,
-		rootStop: cancel,
+func newMongoBus(d *Driver, logger *slog.Logger) *mongoBus {
+	if logger == nil {
+		logger = slog.Default()
 	}
+	ctx, cancel := context.WithCancel(context.Background())
+	b := &mongoBus{
+		d:            d,
+		logger:       logger,
+		streams:      make(map[string]context.CancelFunc),
+		rootCtx:      ctx,
+		rootStop:     cancel,
+		retryInitial: 2 * time.Second,
+		retryMax:     30 * time.Second,
+	}
+	b.open = b.openLiveStream
+	return b
+}
+
+// openLiveStream is the production implementation of mongoBus.open: it asks
+// the underlying mongo.Collection for a change stream configured to deliver
+// the full document on updates (so dispatch can extract uids without an
+// extra round-trip).
+func (b *mongoBus) openLiveStream(ctx context.Context, collection string) (changeStream, error) {
+	opts := options.ChangeStream().SetFullDocument(options.UpdateLookup)
+	return b.d.coll(collection).Watch(ctx, mongo.Pipeline{}, opts)
 }
 
 // Publish does nothing here: Mongo change streams are populated by the
@@ -112,22 +152,54 @@ func (b *mongoBus) ensureStreamLocked(collection string) {
 }
 
 // runStream reads change events from one collection and dispatches them.
+// Watch failures (the common one: mongod is standalone, no change streams) are
+// logged at ERROR and retried with exponential backoff so the bus self-heals
+// when the operator later promotes mongod to a replica set without restarting
+// snooze-server. Returns only on ctx cancellation.
 func (b *mongoBus) runStream(ctx context.Context, collection string) {
-	opts := options.ChangeStream().SetFullDocument(options.UpdateLookup)
-	stream, err := b.d.coll(collection).Watch(ctx, mongo.Pipeline{}, opts)
-	if err != nil {
-		// Replica set not configured (or transient). Backoff once.
-		select {
-		case <-ctx.Done():
+	backoff := b.retryInitial
+	for {
+		if ctx.Err() != nil {
 			return
-		case <-time.After(2 * time.Second):
 		}
-		return
+		stream, err := b.open(ctx, collection)
+		if err != nil {
+			b.logger.Error("mongo: change-stream watch failed; retrying",
+				slog.String("collection", collection),
+				slog.Duration("retry_in", backoff),
+				slog.Any("err", err))
+			select {
+			case <-ctx.Done():
+				return
+			case <-time.After(backoff):
+			}
+			if backoff < b.retryMax {
+				backoff *= 2
+				if backoff > b.retryMax {
+					backoff = b.retryMax
+				}
+			}
+			continue
+		}
+		// Successful watch — reset backoff so the next failure starts fresh.
+		backoff = b.retryInitial
+		b.consumeStream(ctx, collection, stream)
+		// consumeStream returned: either ctx is done or the stream broke.
+		// Loop will re-check ctx and either return or re-Watch.
 	}
+}
+
+// consumeStream drains one already-open change stream and dispatches events
+// until the stream errors out or ctx is cancelled. Always closes the stream
+// before returning.
+func (b *mongoBus) consumeStream(ctx context.Context, collection string, stream changeStream) {
 	defer stream.Close(context.Background()) //nolint:errcheck
 	for stream.Next(ctx) {
 		var raw bson.M
 		if err := stream.Decode(&raw); err != nil {
+			b.logger.Warn("mongo: change-stream decode failed; skipping event",
+				slog.String("collection", collection),
+				slog.Any("err", err))
 			continue
 		}
 		ev := changeEventToSyncerEvent(raw, collection)

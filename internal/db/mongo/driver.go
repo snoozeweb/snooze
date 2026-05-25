@@ -16,6 +16,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"strings"
 	"sync"
 	"time"
@@ -40,6 +41,10 @@ type Config struct {
 	// ServerSelectionTimeout caps the time the driver waits for a usable
 	// server before returning an error; defaults to 10s when zero.
 	ServerSelectionTimeout time.Duration
+	// Logger receives the driver's own diagnostic messages — replica-set
+	// detection at boot, change-stream watcher errors and backoff retries.
+	// Nil falls back to slog.Default().
+	Logger *slog.Logger
 }
 
 // Driver is the MongoDB implementation of db.Driver.
@@ -48,6 +53,7 @@ type Driver struct {
 	db           *mongo.Database
 	searchFields sync.Map // collection (string) -> []string
 	bus          *mongoBus
+	logger       *slog.Logger
 	closeOnce    sync.Once
 }
 
@@ -75,12 +81,48 @@ func New(ctx context.Context, cfg Config) (*Driver, error) {
 		_ = client.Disconnect(context.Background())
 		return nil, fmt.Errorf("mongo: ping: %w", err)
 	}
+	logger := cfg.Logger
+	if logger == nil {
+		logger = slog.Default()
+	}
 	d := &Driver{
 		client: client,
 		db:     client.Database(cfg.Database),
+		logger: logger,
 	}
-	d.bus = newMongoBus(d)
+	d.bus = newMongoBus(d, logger)
+	d.probeReplication(pingCtx)
 	return d, nil
+}
+
+// probeReplication runs a `hello` admin command and emits an ERROR log when
+// the connected mongod is a standalone (no `setName`). On standalone, change
+// streams are not available — the change-stream-driven hot-reload of plugin
+// caches will not work, and rule/notification/snooze mutations only take
+// effect after a snooze-server restart. The log is the only signal the
+// operator gets, so it's intentionally verbose with the remediation steps.
+//
+// Errors talking to the admin database are demoted to a single-line WARN: a
+// snooze-server with an unreachable admin DB has bigger problems than
+// hot-reload, and they'll surface elsewhere.
+func (d *Driver) probeReplication(ctx context.Context) {
+	res := d.client.Database("admin").RunCommand(ctx, bson.D{{Key: "hello", Value: 1}})
+	if err := res.Err(); err != nil {
+		d.logger.Warn("mongo: replication probe failed; cannot determine if change streams are available",
+			slog.Any("err", err))
+		return
+	}
+	var doc bson.M
+	if err := res.Decode(&doc); err != nil {
+		d.logger.Warn("mongo: replication probe: decode failed",
+			slog.Any("err", err))
+		return
+	}
+	setName, _ := doc["setName"].(string)
+	msg, _ := doc["msg"].(string)
+	if setName == "" && msg != "isdbgrid" {
+		d.logger.Error("mongo: connected mongod is standalone — change streams are disabled, plugin caches will NOT hot-reload on rule/notification/snooze mutations; restart snooze-server after every config change, or promote mongod to a single-node replica set (`replication: { replSetName: rs0 }` + `rs.initiate()`) and add `?replicaSet=rs0` to the connection URI")
+	}
 }
 
 // Close disconnects from MongoDB. Idempotent.
