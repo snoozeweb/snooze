@@ -51,6 +51,11 @@ type graphClient struct {
 	tenantID     string
 	clientID     string
 	clientSecret string // app mode only
+	// publicClient is true when the AAD app registration is configured for
+	// the "Mobile and desktop applications" platform. AAD then rejects any
+	// token request that carries a client_secret with AADSTS700025; we
+	// suppress the field for delegated-mode refresh calls in that case.
+	publicClient bool
 	scope        string
 
 	store *tokenStore // delegated mode only
@@ -89,6 +94,7 @@ func newGraphClient(cfg Config, httpc *http.Client) *graphClient {
 		tenantID:     cfg.TenantID,
 		clientID:     cfg.ClientID,
 		clientSecret: cfg.ClientSecret,
+		publicClient: cfg.PublicClient,
 		scope:        scope,
 		store:        store,
 		loginBase:    cfg.LoginBase,
@@ -112,6 +118,49 @@ type graphTokenResponse struct {
 type graphTokenError struct {
 	Error            string `json:"error"`
 	ErrorDescription string `json:"error_description"`
+}
+
+// tokenErr is the structured error postTokenForm returns when AAD rejects a
+// token request. The `code` field is the AAD `error` token (invalid_client,
+// invalid_grant, …) and `desc` is the long description that usually carries
+// an `AADSTSnnnnn:` prefix. refreshHint walks the description for codes we
+// know how to translate into actionable advice.
+type tokenErr struct {
+	status int
+	code   string
+	desc   string
+}
+
+func (e *tokenErr) Error() string {
+	return fmt.Sprintf("teams: token %d %s: %s", e.status, e.code, e.desc)
+}
+
+// refreshHint wraps a postTokenForm error with a one-line, operator-actionable
+// hint when the AAD failure code is one we recognise. Otherwise it returns
+// err unchanged. The hint replaces the prior blanket "run `snooze-teams
+// authorize` if revoked" suggestion, which was misleading for the common
+// AADSTS700025 (public-client / client_secret mismatch) and AADSTS700082
+// (refresh token expired) cases.
+func refreshHint(err error) error {
+	var te *tokenErr
+	if !errors.As(err, &te) {
+		return err
+	}
+	switch {
+	case strings.Contains(te.desc, "AADSTS700025"):
+		// "Client is public so neither client_assertion nor client_secret should be presented"
+		return fmt.Errorf("%w (hint: the AAD app is a public client — set public_client: true in teams.yaml, or remove client_secret)", err)
+	case strings.Contains(te.desc, "AADSTS700082"), strings.Contains(te.desc, "AADSTS700081"):
+		// Refresh token expired or revoked.
+		return fmt.Errorf("%w (hint: refresh token expired — re-run `snooze-teams authorize`)", err)
+	case strings.Contains(te.desc, "AADSTS7000215"), strings.Contains(te.desc, "AADSTS7000222"):
+		// Wrong / expired client_secret.
+		return fmt.Errorf("%w (hint: client_secret is wrong or expired — rotate it in Azure and update teams.yaml)", err)
+	case te.code == "invalid_grant":
+		return fmt.Errorf("%w (hint: the cached refresh token is no longer accepted — re-run `snooze-teams authorize`)", err)
+	default:
+		return err
+	}
 }
 
 // fetchToken acquires a fresh access token from AAD, choosing the grant type
@@ -165,7 +214,12 @@ func (g *graphClient) fetchDelegatedToken(ctx context.Context) (string, error) {
 	form.Set("grant_type", "refresh_token")
 	form.Set("refresh_token", cached.RefreshToken)
 	form.Set("client_id", g.clientID)
-	if g.clientSecret != "" {
+	// Public-client AAD apps reject token requests that include a
+	// client_secret (AADSTS700025). The operator declares the app's
+	// platform via the public_client flag; we honour it strictly so a
+	// stale or copy-pasted client_secret in teams.yaml stops being
+	// silently appended to every refresh.
+	if !g.publicClient && g.clientSecret != "" {
 		form.Set("client_secret", g.clientSecret)
 	}
 	if g.scope != "" {
@@ -174,7 +228,7 @@ func (g *graphClient) fetchDelegatedToken(ctx context.Context) (string, error) {
 
 	tr, err := g.postTokenForm(ctx, form)
 	if err != nil {
-		return "", fmt.Errorf("teams: refresh token grant failed (run `snooze-teams authorize` if revoked): %w", err)
+		return "", fmt.Errorf("teams: refresh token grant failed: %w", refreshHint(err))
 	}
 
 	expiresAt := time.Now().Add(time.Duration(tr.ExpiresIn) * time.Second)
@@ -227,7 +281,11 @@ func (g *graphClient) postTokenForm(ctx context.Context, form url.Values) (graph
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		var apiErr graphTokenError
 		if jerr := json.Unmarshal(raw, &apiErr); jerr == nil && apiErr.Error != "" {
-			return graphTokenResponse{}, fmt.Errorf("teams: token %d %s: %s", resp.StatusCode, apiErr.Error, apiErr.ErrorDescription)
+			return graphTokenResponse{}, &tokenErr{
+				status: resp.StatusCode,
+				code:   apiErr.Error,
+				desc:   apiErr.ErrorDescription,
+			}
 		}
 		return graphTokenResponse{}, fmt.Errorf("teams: token %d: %s", resp.StatusCode, strings.TrimSpace(string(raw)))
 	}
@@ -342,19 +400,40 @@ type chatAttachment struct {
 	ThumbnailURL *string `json:"thumbnailUrl"`
 }
 
+// sendOpts bundles the optional knobs of sendMessage. Kept as a struct so
+// the call sites stay readable when several fields are set.
+type sendOpts struct {
+	// Attachments, when non-empty, are referenced from htmlBody via
+	// `<attachment id="..."></attachment>` placeholders.
+	Attachments []chatAttachment
+	// ReplyToID, when non-empty, posts the message as a reply to the
+	// channel message with that id. Targets the Graph
+	// `/teams/{t}/channels/{c}/messages/{root}/replies` endpoint, which
+	// behaves the same as the top-level endpoint except that the new
+	// message lands in the thread under {root} instead of as a new thread.
+	ReplyToID string
+}
+
 // sendMessage POSTs a chatMessage to the configured channel. htmlBody is the
-// outer body content; attachments, when non-empty, are referenced from
-// htmlBody via `<attachment id="..."></attachment>` placeholders.
-func (g *graphClient) sendMessage(ctx context.Context, teamID, channelID, htmlBody string, attachments ...chatAttachment) (graphMessage, error) {
-	endpoint := fmt.Sprintf("%s/teams/%s/channels/%s/messages", g.graphBase, teamID, channelID)
+// outer body content. When opts.ReplyToID is set, the message becomes a
+// reply under that root and lands on the Graph `/replies` endpoint.
+func (g *graphClient) sendMessage(ctx context.Context, teamID, channelID, htmlBody string, opts sendOpts) (graphMessage, error) {
+	var endpoint string
+	if opts.ReplyToID != "" {
+		endpoint = fmt.Sprintf("%s/teams/%s/channels/%s/messages/%s/replies",
+			g.graphBase, teamID, channelID, opts.ReplyToID)
+	} else {
+		endpoint = fmt.Sprintf("%s/teams/%s/channels/%s/messages",
+			g.graphBase, teamID, channelID)
+	}
 	payload := map[string]any{
 		"body": map[string]any{
 			"contentType": "html",
 			"content":     htmlBody,
 		},
 	}
-	if len(attachments) > 0 {
-		payload["attachments"] = attachments
+	if len(opts.Attachments) > 0 {
+		payload["attachments"] = opts.Attachments
 	}
 	raw, err := json.Marshal(payload)
 	if err != nil {

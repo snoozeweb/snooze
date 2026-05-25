@@ -236,4 +236,25 @@ describe("AlertsPage", () => {
     await user.click(screen.getByRole("button", { name: /^delete$/i }));
     await waitFor(() => expect(dels).toEqual(["r1"]));
   });
+
+  // Deep-link from the snooze-teams alert card: the host hyperlink points at
+  // /web/alerts?search=hash%20%3D%20<hash>. The page must seed the SearchBar
+  // from the URL on mount so the operator lands on the filtered view rather
+  // than the full alerts list.
+  it("seeds the SearchBar from ?search= on initial navigation", async () => {
+    mswServer.use(
+      http.get("/api/v1/record", () =>
+        HttpResponse.json({
+          data: [],
+          meta: { count: 0, limit: 50, offset: 0, total: 0 },
+        }),
+      ),
+    );
+    setup("/web/alerts?search=hash%20%3D%20abc123");
+    // SearchBar's <input> defaults to aria-label="Search" (see
+    // shared/ui/SearchBar.tsx:312); querying by that role is more stable
+    // than the placeholder text which can change.
+    const input = await screen.findByRole("textbox", { name: /search/i });
+    expect((input as HTMLInputElement).value).toBe("hash = abc123");
+  });
 });

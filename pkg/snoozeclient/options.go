@@ -23,7 +23,6 @@ package snoozeclient
 import (
 	"crypto/tls"
 	"errors"
-	"fmt"
 	"log/slog"
 	"net/http"
 	"os"
@@ -143,19 +142,61 @@ func (o Options) buildHTTPClient() *http.Client {
 }
 
 // resolveCachePath picks the on-disk location for the token cache. Order:
-//  1. Explicit override.
+//  1. Explicit override (returned verbatim — caller's responsibility).
 //  2. os.UserCacheDir() + "/snooze/token".
 //  3. $HOME/.snooze-token.
 //  4. /tmp/.snooze-token as a last-resort fallback.
+//
+// Candidates 2 and 3 are *probed* by ensuring the parent directory exists and
+// is writable. The earlier version returned the os.UserCacheDir() path even
+// when its parent ($HOME/.cache) wasn't writable — which is the common case
+// for systemd-launched daemons whose user has no home directory. The
+// resulting writeTokenFile mkdir then failed at startup and surfaced a noisy
+// WARN. Probing here returns a path the caller can actually write to and
+// keeps the tmp fallback silent.
 func resolveCachePath(override string) (string, error) {
 	if override != "" {
 		return override, nil
 	}
 	if dir, err := os.UserCacheDir(); err == nil && dir != "" {
-		return filepath.Join(dir, "snooze", "token"), nil
+		candidate := filepath.Join(dir, "snooze", "token")
+		if canWriteDir(filepath.Dir(candidate)) {
+			return candidate, nil
+		}
 	}
 	if home, err := os.UserHomeDir(); err == nil && home != "" {
-		return filepath.Join(home, ".snooze-token"), nil
+		candidate := filepath.Join(home, ".snooze-token")
+		if canWriteDir(filepath.Dir(candidate)) {
+			return candidate, nil
+		}
 	}
-	return filepath.Join(os.TempDir(), ".snooze-token"), fmt.Errorf("snoozeclient: no usable cache dir; falling back to tmp")
+	// /tmp is world-writable on every POSIX system we deploy on; treat it as
+	// the no-error fallback so daemons without a home dir don't trigger the
+	// "cache fallback" warning in client.New on every restart.
+	return filepath.Join(os.TempDir(), ".snooze-token"), nil
 }
+
+// canWriteDir returns true when dir already exists and is writable, OR can
+// be MkdirAll-ed and the caller can write to it. Used by resolveCachePath
+// to verify a candidate before handing it back to the caller. Any error
+// (permission denied, ENOSPC, parent missing on a read-only volume) yields
+// false so the next candidate gets a shot.
+func canWriteDir(dir string) bool {
+	if dir == "" {
+		return false
+	}
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		return false
+	}
+	// MkdirAll succeeded — confirm writability via a probe file rather than
+	// trusting permissions alone (NFS / overlayfs can mkdir-but-not-write).
+	f, err := os.CreateTemp(dir, ".snooze-probe-*")
+	if err != nil {
+		return false
+	}
+	name := f.Name()
+	_ = f.Close()
+	_ = os.Remove(name)
+	return true
+}
+

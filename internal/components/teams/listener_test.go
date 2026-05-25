@@ -435,3 +435,127 @@ func extractCardJSON(t *testing.T, body map[string]any) map[string]any {
 
 // quiet the linter about unused imports if the test file is later edited.
 var _ snoozetypes.Record
+
+// TestHandleAlert_ReplyChain exercises the inject_response-driven reply
+// flow: the bridge accepts a reply_to_ids map, posts to the Graph replies
+// endpoint, and returns the new message id so the webhook plugin can stamp
+// it onto the record for the next firing.
+func TestHandleAlert_ReplyChain(t *testing.T) {
+	var (
+		hits     atomic.Int32
+		seenPath atomic.Pointer[string]
+	)
+	graphHandler := func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case strings.HasSuffix(r.URL.Path, "/oauth2/v2.0/token"):
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{"access_token":"AT","expires_in":3600}`))
+			return
+		case strings.Contains(r.URL.Path, "/replies"):
+			hits.Add(1)
+			p := r.URL.Path
+			seenPath.Store(&p)
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{"id":"reply-msg-99"}`))
+			return
+		case strings.HasSuffix(r.URL.Path, "/messages"):
+			t.Fatalf("expected /replies but got top-level /messages: %s", r.URL.Path)
+		default:
+			http.NotFound(w, r)
+		}
+	}
+	addr := pickFreePort(t)
+	d := newTestDaemonWithGraph(t, addr, graphHandler)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	listenErr := make(chan error, 1)
+	go func() { listenErr <- d.runListener(ctx) }()
+	require.Eventually(t, func() bool {
+		c, err := net.DialTimeout("tcp", addr, 100*time.Millisecond)
+		if err != nil {
+			return false
+		}
+		_ = c.Close()
+		return true
+	}, time.Second, 10*time.Millisecond)
+
+	// Channel must match the parseChannelRef shape and the reply_to_ids key
+	// must use the same string.
+	channel := "teams/team-A/channels/19:aaa@thread.tacv2"
+	body := `{
+		"channels": ["` + channel + `"],
+		"alert": {"host": "myhost", "severity": "warning", "message": "disk full"},
+		"reply_to_ids": {"` + channel + `": "root-msg-42"}
+	}`
+	resp, err := http.Post("http://"+addr+"/alert", "application/json", bytes.NewBufferString(body))
+	require.NoError(t, err)
+	defer resp.Body.Close()
+	require.Equal(t, http.StatusOK, resp.StatusCode)
+
+	var decoded alertResponse
+	require.NoError(t, json.NewDecoder(resp.Body).Decode(&decoded))
+	require.Equal(t, []string{channel}, decoded.Delivered)
+	require.Empty(t, decoded.Failed)
+	require.Equal(t, "reply-msg-99", decoded.MessageIDs[channel],
+		"the bridge must surface the new message id so inject_response can capture it")
+
+	require.Eventually(t, func() bool { return hits.Load() == 1 }, time.Second, 10*time.Millisecond)
+	require.Contains(t, *seenPath.Load(), "/messages/root-msg-42/replies",
+		"the bridge must POST to the replies endpoint when reply_to_ids is set")
+
+	cancel()
+	require.NoError(t, <-listenErr)
+}
+
+// TestHandleAlert_FirstSendCapturesMessageID is the "no reply_to_ids yet"
+// path: the bridge posts a fresh top-level message and surfaces its id so the
+// first inject_response stamps a root the second firing can chain off.
+func TestHandleAlert_FirstSendCapturesMessageID(t *testing.T) {
+	graphHandler := func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case strings.HasSuffix(r.URL.Path, "/oauth2/v2.0/token"):
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{"access_token":"AT","expires_in":3600}`))
+			return
+		case strings.Contains(r.URL.Path, "/replies"):
+			t.Fatalf("first send must NOT hit /replies")
+		case strings.HasSuffix(r.URL.Path, "/messages"):
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{"id":"root-msg-77"}`))
+			return
+		default:
+			http.NotFound(w, r)
+		}
+	}
+	addr := pickFreePort(t)
+	d := newTestDaemonWithGraph(t, addr, graphHandler)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	listenErr := make(chan error, 1)
+	go func() { listenErr <- d.runListener(ctx) }()
+	require.Eventually(t, func() bool {
+		c, err := net.DialTimeout("tcp", addr, 100*time.Millisecond)
+		if err != nil {
+			return false
+		}
+		_ = c.Close()
+		return true
+	}, time.Second, 10*time.Millisecond)
+
+	channel := "teams/team-A/channels/19:aaa@thread.tacv2"
+	body := `{
+		"channels": ["` + channel + `"],
+		"alert": {"host": "myhost", "severity": "warning"}
+	}`
+	resp, err := http.Post("http://"+addr+"/alert", "application/json", bytes.NewBufferString(body))
+	require.NoError(t, err)
+	defer resp.Body.Close()
+	require.Equal(t, http.StatusOK, resp.StatusCode)
+	var decoded alertResponse
+	require.NoError(t, json.NewDecoder(resp.Body).Decode(&decoded))
+	require.Equal(t, "root-msg-77", decoded.MessageIDs[channel])
+
+	cancel()
+	require.NoError(t, <-listenErr)
+}

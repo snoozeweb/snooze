@@ -32,14 +32,31 @@ type alertRequest struct {
 	Alert        snoozetypes.Record `json:"alert"`
 	Message      string             `json:"message,omitempty"`
 	MessageGroup string             `json:"message_group,omitempty"`
-	Reply        string             `json:"reply,omitempty"`
+	// Reply is kept for wire-compat with operators who supply a free-form
+	// reply text; the bridge does not act on it today.
+	Reply string `json:"reply,omitempty"`
+	// ReplyToIDs maps a channel ref (`teams/<teamID>/channels/<channelID>`)
+	// to the Graph message id this alert should be posted as a reply under.
+	// Populated by the webhook payload template after a previous send
+	// landed and the webhook plugin captured the bridge's response via
+	// `inject_response`. When unset for a given channel, the message lands
+	// as a new top-level thread.
+	ReplyToIDs map[string]string `json:"reply_to_ids,omitempty"`
 }
 
 // alertResponse is the per-channel delivery outcome surfaced back to the
-// caller for diagnostics.
+// caller for diagnostics. When the webhook plugin's `inject_response` is on,
+// MessageIDs is what gets stamped onto the record so the *next* firing of
+// the same alert can supply ReplyToIDs and chain the conversation.
 type alertResponse struct {
-	Delivered []string           `json:"delivered"`
-	Failed    map[string]string  `json:"failed,omitempty"`
+	Delivered []string          `json:"delivered"`
+	Failed    map[string]string `json:"failed,omitempty"`
+	// MessageIDs maps a channel ref to the Graph message id the bridge
+	// just posted there. For replies the id is the reply's own id (not
+	// the root), so a chain of N records produces a chain of N ids — the
+	// webhook payload template typically only needs the *first* (root) id,
+	// which is the one captured on the alert's first firing.
+	MessageIDs map[string]string `json:"message_ids,omitempty"`
 }
 
 // runListener starts the HTTP receiver and blocks until ctx is cancelled. It
@@ -119,12 +136,19 @@ func (d *Daemon) handleAlert(w http.ResponseWriter, r *http.Request) {
 	// actually target it. This mirrors the Python plugin's per-channel
 	// fan-in while making sure a channel never sees alerts meant for a
 	// different team/channel.
+	//
+	// replyTo carries the per-channel reply pointer. When ANY incoming
+	// alertRequest in this batch named a ReplyToIDs[ch] entry, that id is
+	// used as the thread root for the consolidated chatMessage on ch. The
+	// "last writer wins" rule is harmless: in the common case (one alert,
+	// one channel, one pointer) there's only one value.
 	type chanGroup struct {
 		teamID, channelID, ref string
 		alerts                 []snoozetypes.Record
 	}
 	groups := make(map[string]*chanGroup)
 	order := make([]string, 0)
+	replyTo := make(map[string]string)
 	resp := alertResponse{Failed: map[string]string{}}
 	for _, m := range medias {
 		for _, ch := range m.Channels {
@@ -141,24 +165,54 @@ func (d *Daemon) handleAlert(w http.ResponseWriter, r *http.Request) {
 				order = append(order, ch)
 			}
 			g.alerts = append(g.alerts, m.Alert)
+			if id, ok := m.ReplyToIDs[ch]; ok && id != "" {
+				replyTo[ch] = id
+			}
 		}
 	}
 	for _, ch := range order {
 		g := groups[ch]
 		body, att := formatAlertsCard(g.alerts, d.cfg.Server)
-		if _, err := d.graph.sendMessage(r.Context(), g.teamID, g.channelID, body, att); err != nil {
+		opts := sendOpts{Attachments: []chatAttachment{att}, ReplyToID: replyTo[ch]}
+		msg, err := d.graph.sendMessage(r.Context(), g.teamID, g.channelID, body, opts)
+		if err != nil {
 			resp.Failed[ch] = err.Error()
 			d.logger.Warn("teams: /alert post failed",
 				slog.String("team", g.teamID),
 				slog.String("channel", g.channelID),
 				slog.Int("alerts", len(g.alerts)),
+				slog.String("reply_to", replyTo[ch]),
 				slog.Any("err", err))
 			continue
 		}
+		// Cache (channel, message_id) → record_uid for the chat-handler's
+		// thread→record lookup. We populate from every alert in the batch
+		// so a Teams reply on any of them resolves to its source record.
+		// `g.alerts[0].UID` is the per-record uid the snooze server
+		// stamped on the inbound /alert payload; subsequent alerts in
+		// the batch share the same thread root because the bridge
+		// collapses them into one chatMessage (see the chanGroup logic
+		// above).
+		if d.threads != nil && msg.ID != "" {
+			for _, a := range g.alerts {
+				if a.UID == "" {
+					continue
+				}
+				d.threads.Put(ch, msg.ID, a.UID)
+			}
+		}
 		d.logger.Info("teams: /alert delivered",
 			slog.String("channel", g.channelID),
-			slog.Int("alerts", len(g.alerts)))
+			slog.Int("alerts", len(g.alerts)),
+			slog.String("reply_to", replyTo[ch]),
+			slog.String("message_id", msg.ID))
 		resp.Delivered = append(resp.Delivered, ch)
+		if msg.ID != "" {
+			if resp.MessageIDs == nil {
+				resp.MessageIDs = make(map[string]string, len(order))
+			}
+			resp.MessageIDs[ch] = msg.ID
+		}
 	}
 
 	w.Header().Set("Content-Type", "application/json")

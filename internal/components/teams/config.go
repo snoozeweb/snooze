@@ -106,6 +106,17 @@ type Config struct {
 	//     permissions, but cannot post channel messages.
 	AuthMode string `yaml:"auth_mode"`
 
+	// PublicClient, when true, suppresses `client_secret` on the refresh
+	// token grant even if the YAML still sets one. AAD app registrations
+	// configured for the "Mobile and desktop applications" platform are
+	// public clients: sending a client_secret with them is rejected with
+	// `AADSTS700025: Client is public…`. The Microsoft device-code +
+	// `ChannelMessage.Send` flow requires this platform, so most snooze-
+	// teams deployments end up as public clients. Setting public_client
+	// explicitly is the recommended way to declare intent; the legacy
+	// "leave client_secret blank" path still works for back-compat.
+	PublicClient bool `yaml:"public_client"`
+
 	// TokenFile is where the delegated refresh token is persisted between
 	// daemon restarts. Defaults to /var/lib/snooze/teams-token.json (which
 	// systemd already lists in ReadWritePaths). Ignored when AuthMode is

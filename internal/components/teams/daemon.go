@@ -6,9 +6,9 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"html"
 	"log/slog"
 	"net/http"
+	"net/url"
 	"strings"
 	"sync"
 	"time"
@@ -33,6 +33,17 @@ type Daemon struct {
 	graph     *graphClient
 	snooze    *snoozeclient.Client
 	forwarder *forwarder
+	// threads is the (channel, thread_root) → record_uid cache the chat
+	// handler consults when an operator replies in an alert thread with
+	// `ack` / `close` / `snooze` / … . Populated by listener.handleAlert
+	// after a successful Graph sendMessage. See threadcache.go.
+	threads *threadCache
+	// chat is the inbound-command dispatcher. It owns the snoozeclient
+	// (for POSTing comments / snoozes) and a back-reference to graph (for
+	// the in-thread confirmation reply). nil disables chat interaction —
+	// kept that way so a bridge configured without the inbound listener
+	// can still ship outbound alerts.
+	chat *handler
 
 	// seenMu guards seen — the polling loop's de-dup memory. We bound the
 	// set with seenMax LRU-style to avoid unbounded growth on busy channels.
@@ -77,11 +88,13 @@ func New(cfg Config, logger *slog.Logger) (*Daemon, error) {
 		logger:  logger,
 		graph:   newGraphClient(cfg, httpc),
 		snooze:  sc,
+		threads: newThreadCache(0),
 		seen:    make(map[string]time.Time),
 		seenMax: 2048,
 		since:   time.Now().Add(-cfg.PollLookback),
 	}
 	d.forwarder = newForwarder(sc, cfg.TeamID, cfg.ChannelID)
+	d.chat = newHandler(sc, d.graph, d.threads, cfg.TeamID, cfg.ChannelID, cfg.BotName, logger)
 	return d, nil
 }
 
@@ -181,16 +194,19 @@ func (d *Daemon) pollOnce(ctx context.Context) error {
 		if cmd.Verb == "" {
 			continue
 		}
-		if _, err := d.forwarder.forwardCommand(ctx, cmd); err != nil {
-			d.logger.Warn("teams: forward command failed",
-				slog.String("verb", cmd.Verb),
-				slog.String("speaker", cmd.Speaker),
-				slog.Any("err", err))
-			continue
+		// chat.Handle dispatches the action (ack / close / snooze / esc /
+		// comment / help) and posts a confirmation reply in the same
+		// thread. It does its own error reporting back to the channel and
+		// returns false only for empty verbs (already filtered above) — we
+		// never need to inspect the bool here, but keep it explicit for
+		// readability.
+		if d.chat != nil {
+			_ = d.chat.Handle(ctx, cmd)
 		}
-		d.logger.Info("teams: forwarded command",
+		d.logger.Info("teams: handled command",
 			slog.String("verb", cmd.Verb),
-			slog.String("speaker", cmd.Speaker))
+			slog.String("speaker", cmd.Speaker),
+			slog.String("thread", cmd.ThreadID))
 		if !m.CreatedDateTime.IsZero() && m.CreatedDateTime.After(d.since) {
 			d.since = m.CreatedDateTime
 		}
@@ -236,7 +252,7 @@ func (d *Daemon) markSeen(id string) bool {
 // it; the polling loop does not call this directly.
 func (d *Daemon) SendAlert(ctx context.Context, rec snoozetypes.Record) error {
 	body, att := formatAlertCard(rec, d.cfg.Server)
-	if _, err := d.graph.sendMessage(ctx, d.cfg.TeamID, d.cfg.ChannelID, body, att); err != nil {
+	if _, err := d.graph.sendMessage(ctx, d.cfg.TeamID, d.cfg.ChannelID, body, sendOpts{Attachments: []chatAttachment{att}}); err != nil {
 		return fmt.Errorf("teams: post alert: %w", err)
 	}
 	return nil
@@ -272,23 +288,25 @@ func alertTimestamp(rec snoozetypes.Record) string {
 	return t.Local().Format(alertTimestampFormat)
 }
 
-// recordWebLink returns the hyperlinked host name pointing at the snooze web
-// UI's hash-filtered record view, matching the Python plugin's layout. When
-// either the snooze base URL or the hash is missing, we emit just the
-// (escaped) host so the message still renders cleanly.
-func recordWebLink(rec snoozetypes.Record, snoozeURL string) string {
-	host := rec.Host
-	if host == "" {
-		host = "Unknown"
-	}
-	escHost := html.EscapeString(host)
+// recordWebURL returns the Snooze web URL that filters the alerts list
+// down to records matching rec.hash. Empty string when either the base URL
+// or the hash is missing.
+//
+// URL shape: `<snoozeURL>/web/alerts?search=hash%20%3D%20<hash>`. AlertsPage
+// reads the `search` query param once on mount and seeds the SearchBar so
+// the alerts list filters down to the matching record(s). The legacy Python
+// URL `/web/?#/record?tab=All&s=hash%3D<hash>` no longer exists on the new
+// hash-less React router.
+func recordWebURL(rec snoozetypes.Record, snoozeURL string) string {
 	hash := recordHash(rec)
 	if snoozeURL == "" || hash == "" {
-		return escHost
+		return ""
 	}
-	href := fmt.Sprintf("%s/web/?#/record?tab=All&s=hash%%3D%s",
-		strings.TrimRight(snoozeURL, "/"), html.EscapeString(hash))
-	return fmt.Sprintf(`<a href="%s">%s</a>`, href, escHost)
+	// url.QueryEscape encodes the spaces around `=` and the `=` itself so the
+	// DSL string survives transit through query-param parsing untouched.
+	q := url.QueryEscape("hash = " + hash)
+	return fmt.Sprintf("%s/web/alerts?search=%s",
+		strings.TrimRight(snoozeURL, "/"), q)
 }
 
 // formatAlertCard renders rec as an Adaptive Card 1.4 chatMessage payload —
@@ -393,7 +411,7 @@ func buildAlertContainer(rec snoozetypes.Record, snoozeURL string) map[string]an
 	items := []map[string]any{
 		{
 			"type":   "TextBlock",
-			"text":   recordFactValue(rec, snoozeURL),
+			"text":   hostText(rec, snoozeURL),
 			"weight": "Bolder",
 			"wrap":   true,
 		},
@@ -464,8 +482,14 @@ func buildAlertCard(rec snoozetypes.Record, snoozeURL string) map[string]any {
 		},
 	}
 
+	// FactSet carries the standard four-field summary from the Python 1.x
+	// card: Host / Source / Process / Severity. Markdown is accepted inside
+	// fact values per the AdaptiveCards spec, so the host value is rendered
+	// as a `[host](url)` link — *but* some Teams renderers strip Markdown
+	// from FactSet values silently. The card-level Action.OpenUrl below is
+	// the reliable fallback that always shows up as a clickable button.
 	facts := []map[string]any{
-		{"title": "Host", "value": recordFactValue(rec, snoozeURL)},
+		{"title": "Host", "value": hostText(rec, snoozeURL)},
 	}
 	if rec.Source != "" {
 		facts = append(facts, map[string]any{"title": "Source", "value": rec.Source})
@@ -498,33 +522,48 @@ func buildAlertCard(rec snoozetypes.Record, snoozeURL string) map[string]any {
 		})
 	}
 
-	return map[string]any{
+	card := map[string]any{
 		"$schema": "http://adaptivecards.io/schemas/adaptive-card.json",
 		"type":    "AdaptiveCard",
 		"version": "1.4",
 		"msteams": map[string]any{"width": "full"},
 		"body":    body,
 	}
+	// Card-level actions are the only guaranteed-clickable element in
+	// Microsoft Teams' AdaptiveCard renderer — Markdown links inside
+	// TextBlock or FactSet values render inconsistently across desktop,
+	// web, and mobile clients (and can be silently disabled by tenant
+	// policy). Action.OpenUrl renders as a real button at the bottom of
+	// the card on every client. We add it whenever a per-record URL is
+	// available so operators always have a way to jump to the alert.
+	if href := recordWebURL(rec, snoozeURL); href != "" {
+		card["actions"] = []map[string]any{
+			{
+				"type":  "Action.OpenUrl",
+				"title": "View in Snooze",
+				"url":   href,
+			},
+		}
+	}
+	return card
 }
 
-// recordFactValue returns the host string used inside the FactSet. When the
-// snooze URL + record hash are both known, the host is rendered as a
-// Markdown link to the record view; AdaptiveCard FactSet values render
-// Markdown inline. Otherwise we return the bare host so it still looks
-// clean.
-func recordFactValue(rec snoozetypes.Record, snoozeURL string) string {
+// hostText returns the host as Markdown — either a `[host](url)` link when
+// a snooze URL and a record hash are both available, or the bare host
+// otherwise. Microsoft Teams renders Markdown in FactSet values per the
+// AdaptiveCards spec, but some clients (web Teams, certain mobile builds,
+// tenants with Markdown disabled via policy) silently strip it; the card
+// also carries an Action.OpenUrl button as a guaranteed-clickable fallback.
+func hostText(rec snoozetypes.Record, snoozeURL string) string {
 	host := rec.Host
 	if host == "" {
 		host = "Unknown"
 	}
-	hash := recordHash(rec)
-	if snoozeURL == "" || hash == "" {
+	href := recordWebURL(rec, snoozeURL)
+	if href == "" {
 		return host
 	}
-	return fmt.Sprintf("[%s](%s/web/?#/record?tab=All&s=hash%%3D%s)",
-		host,
-		strings.TrimRight(snoozeURL, "/"),
-		hash)
+	return fmt.Sprintf("[%s](%s)", host, href)
 }
 
 // severityColor maps a snooze severity to the AdaptiveCard TextBlock color
