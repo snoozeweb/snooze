@@ -102,9 +102,14 @@ type recordingPlugin struct {
 	count     int64
 	reloadErr error
 	hook      func()
+	deps      []string // extra collections this plugin's state derives from
 }
 
 func (p *recordingPlugin) Name() string { return p.name }
+
+// ReloadCollections satisfies the syncer's ReloadDeps interface. Returns nil
+// (no extra subscriptions) unless the test populated deps.
+func (p *recordingPlugin) ReloadCollections() []string { return p.deps }
 
 func (p *recordingPlugin) Reload(_ context.Context) error {
 	atomic.AddInt64(&p.count, 1)
@@ -149,6 +154,43 @@ func TestSyncer_ReloadOnCollectionEvent(t *testing.T) {
 
 	require.Eventually(t, func() bool { return plug.Count() == 1 },
 		time.Second, 5*time.Millisecond, "reload not invoked")
+
+	cancel()
+	require.NoError(t, <-done)
+}
+
+// TestSyncer_ReloadOnDependencyCollectionEvent verifies that a plugin which
+// declares extra collection dependencies (via ReloadCollections) is reloaded
+// when one of those collections changes — not just its own. The notification
+// plugin relies on this: it caches the `action` collection, so an action edit
+// must refresh it even though it owns the `notification` collection.
+func TestSyncer_ReloadOnDependencyCollectionEvent(t *testing.T) {
+	bus := newFakeBus()
+	defer bus.Close()
+	plug := &recordingPlugin{name: "notification", deps: []string{"action"}}
+	s := &Syncer{
+		Bus:      bus,
+		Plugins:  map[string]Pluggable{plug.Name(): plug},
+		Debounce: 20 * time.Millisecond,
+		Logger:   quietLogger(),
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	done := make(chan error, 1)
+	go func() { done <- s.Run(ctx) }()
+
+	// Three subscriptions expected: plugin.notification, collection.notification,
+	// and the declared dependency collection.action.
+	require.Eventually(t, func() bool {
+		bus.mu.Lock()
+		defer bus.mu.Unlock()
+		return len(bus.subs) >= 3
+	}, time.Second, 5*time.Millisecond, "dependency collection subscription not registered")
+
+	require.NoError(t, bus.Publish(ctx, Event{Topic: "collection.action", Op: "write", Collection: "action"}))
+	require.Eventually(t, func() bool { return plug.Count() == 1 },
+		time.Second, 5*time.Millisecond, "reload not invoked on dependency collection event")
 
 	cancel()
 	require.NoError(t, <-done)

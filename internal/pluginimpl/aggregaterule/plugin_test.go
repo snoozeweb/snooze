@@ -301,6 +301,44 @@ func TestAggregate_Burst(t *testing.T) {
 	require.Equal(t, plugins.ActionAbortUpdate, action2)
 }
 
+// TestAggregate_CarriesForwardInjectedResponse mirrors Snooze 1.x's full-record
+// merge (plugin.py:73 `dict(aggregate.items() + record.items())`): on a
+// duplicate match, a `response_<action>` field a previous notification injected
+// onto the stored aggregate must ride forward onto the in-memory record. The
+// notification/webhook reads it to thread the Teams follow-up under the recorded
+// message; the incoming alert never carries it, so without carry-forward it is
+// invisible to the pipeline.
+func TestAggregate_CarriesForwardInjectedResponse(t *testing.T) {
+	t.Parallel()
+
+	host := newTestHost(t)
+	writeRule(t, host, db.Document{
+		"name":      "Agg1",
+		"condition": []any{"=", "a", "1"},
+		"fields":    []string{"a"},
+		"throttle":  int64(900),
+	})
+	p := freshPlugin(t, host)
+
+	// First fire creates the aggregate row.
+	out1, _ := runProcess(t, p, host, snoozetypes.Record{Extra: map[string]any{"a": "1"}})
+	require.NotEmpty(t, out1.Hash)
+
+	// A prior notification injects a response onto the stored row, keyed by
+	// hash — exactly what the notification plugin's inject closure does.
+	injected := map[string]any{"message_ids": map[string]any{"teams/x/channels/y": "1700000000001"}}
+	_, err := host.driver.SetFields(context.Background(), recordCollection,
+		db.Document{"response_Teams": injected},
+		condition.Equals("hash", out1.Hash))
+	require.NoError(t, err)
+
+	// Duplicate fire: the in-memory record must carry response_Teams forward
+	// from the stored aggregate.
+	out2, _ := runProcess(t, p, host, snoozetypes.Record{Extra: map[string]any{"a": "1"}})
+	require.NotNil(t, out2.Extra["response_Teams"],
+		"response_Teams must be carried forward from the existing aggregate onto the record")
+}
+
 // TestPostInit_SeedsDefault verifies that PostInit writes the `_default`
 // aggregate rule with fingerprint [host, source, message] when the
 // `aggregaterule` collection is empty.

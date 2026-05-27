@@ -243,6 +243,20 @@ type pluggableShim struct {
 func (p pluggableShim) Name() string                     { return p.name }
 func (p pluggableShim) Reload(ctx context.Context) error { return p.plugin.Reload(ctx) }
 
+// ReloadCollections forwards the wrapped plugin's reload dependencies so the
+// syncer (which sees only the shim) still subscribes the plugin to the extra
+// collections it declares. Plugins that don't implement the optional contract
+// yield nil — no extra subscriptions. Without this forwarding the shim would
+// mask the underlying plugin's ReloadCollections from the syncer's type
+// assertion, silently dropping cross-collection reloads (e.g. notification's
+// dependency on the `action` collection).
+func (p pluggableShim) ReloadCollections() []string {
+	if d, ok := p.plugin.(interface{ ReloadCollections() []string }); ok {
+		return d.ReloadCollections()
+	}
+	return nil
+}
+
 // bootHousekeeper registers the default cleanup/renumber jobs.
 //
 // Cadence is sourced from “c.Settings“ so that an operator who edits a

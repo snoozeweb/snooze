@@ -269,7 +269,7 @@ func TestSendLegacyPythonPayload(t *testing.T) {
 	rec := sampleRecord()
 	err := p.Send(context.Background(), rec, plugins.NotificationPayload{
 		Meta: map[string]any{
-			"url": srv.URL + "/alert",
+			"url":     srv.URL + "/alert",
 			"payload": `{"channels": ["teams/abc/channels/def"], "alert": {{ __self__  | tojson() }} }`,
 		},
 	})
@@ -525,6 +525,64 @@ func TestInjectResponseCallsInjectFunc(t *testing.T) {
 	require.True(t, ok, "response should decode as a JSON object: %T", gotV)
 	require.Equal(t, true, asMap["ok"])
 	require.Equal(t, float64(42), asMap["id"])
+}
+
+// TestSendBodyTemplateReplyToIDs verifies the body template can emit the Teams
+// reply pointers via the computed `.ReplyToIDs` variable. The action name has
+// spaces ("Teams Kube Prod"), which a `.Record` field path could not address —
+// the variable is derived in Go from `response_<action_name>.message_ids`, so
+// the template stays free of the action name. This is what makes the follow-up
+// thread under the recorded message.
+func TestSendBodyTemplateReplyToIDs(t *testing.T) {
+	var body string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		b, _ := io.ReadAll(r.Body)
+		body = string(b)
+		w.WriteHeader(http.StatusOK)
+	}))
+	t.Cleanup(srv.Close)
+
+	p := newPluginForTest(t)
+	rec := sampleRecord()
+	// A previous send's inject_response carried forward onto the record.
+	rec.Extra = map[string]any{
+		"response_Teams Kube Prod": map[string]any{
+			"message_ids": map[string]any{"teams/x/channels/y": "1700000000001"},
+		},
+	}
+	err := p.Send(context.Background(), rec, plugins.NotificationPayload{
+		Meta: map[string]any{
+			"url":         srv.URL + "/alert",
+			"action_name": "Teams Kube Prod",
+			"body":        `{"reply_to_ids": {{ .ReplyToIDs | tojson }}}`,
+		},
+	})
+	require.NoError(t, err)
+	require.JSONEq(t, `{"reply_to_ids": {"teams/x/channels/y": "1700000000001"}}`, body)
+}
+
+// TestSendBodyTemplateReplyToIDsAbsent verifies that when the record has no
+// prior response for this action, `.ReplyToIDs` renders as JSON null so the
+// bridge posts a fresh root message rather than erroring.
+func TestSendBodyTemplateReplyToIDsAbsent(t *testing.T) {
+	var body string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		b, _ := io.ReadAll(r.Body)
+		body = string(b)
+		w.WriteHeader(http.StatusOK)
+	}))
+	t.Cleanup(srv.Close)
+
+	p := newPluginForTest(t)
+	err := p.Send(context.Background(), sampleRecord(), plugins.NotificationPayload{
+		Meta: map[string]any{
+			"url":         srv.URL + "/alert",
+			"action_name": "Teams Kube Prod",
+			"body":        `{"reply_to_ids": {{ .ReplyToIDs | tojson }}}`,
+		},
+	})
+	require.NoError(t, err)
+	require.JSONEq(t, `{"reply_to_ids": null}`, body)
 }
 
 func TestInjectResponseDisablesBatch(t *testing.T) {

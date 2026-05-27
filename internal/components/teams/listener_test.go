@@ -438,8 +438,12 @@ var _ snoozetypes.Record
 
 // TestHandleAlert_ReplyChain exercises the inject_response-driven reply
 // flow: the bridge accepts a reply_to_ids map, posts to the Graph replies
-// endpoint, and returns the new message id so the webhook plugin can stamp
-// it onto the record for the next firing.
+// endpoint, and — crucially — keeps surfacing the THREAD ROOT id (not the
+// reply's own id). MS Graph only allows replies one level deep, under a root
+// message, so a chain of N follow-ups must all target the same root. Recording
+// the reply's id instead would make the next firing POST to
+// /messages/<reply-id>/replies, which Graph rejects. Snooze 1.x stored
+// resp.root_id for exactly this reason.
 func TestHandleAlert_ReplyChain(t *testing.T) {
 	var (
 		hits     atomic.Int32
@@ -497,8 +501,10 @@ func TestHandleAlert_ReplyChain(t *testing.T) {
 	require.NoError(t, json.NewDecoder(resp.Body).Decode(&decoded))
 	require.Equal(t, []string{channel}, decoded.Delivered)
 	require.Empty(t, decoded.Failed)
-	require.Equal(t, "reply-msg-99", decoded.MessageIDs[channel],
-		"the bridge must surface the new message id so inject_response can capture it")
+	require.Equal(t, "root-msg-42", decoded.MessageIDs[channel],
+		"a reply must keep recording the THREAD ROOT id, not the reply's own id: "+
+			"the next follow-up must target root-msg-42 again (Graph forbids replying "+
+			"to reply-msg-99)")
 
 	require.Eventually(t, func() bool { return hits.Load() == 1 }, time.Second, 10*time.Millisecond)
 	require.Contains(t, *seenPath.Load(), "/messages/root-msg-42/replies",

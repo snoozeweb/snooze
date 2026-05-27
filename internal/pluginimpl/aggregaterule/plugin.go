@@ -229,6 +229,25 @@ func (p *Plugin) matchAggregate(
 		return rec, plugins.ActionContinue, nil
 	}
 
+	// Carry forward server-injected fields the incoming alert can't supply.
+	// Snooze 1.x merged the entire existing record onto the incoming one
+	// (src/snooze/plugins/core/aggregaterule/plugin.py:73,
+	// `dict(aggregate.items() + record.items())`). The Go port keeps the
+	// identity handling explicit below, but must still ferry `response_<action>`
+	// fields forward: they are stamped by a previous notification's
+	// inject_response and never appear on the incoming alert, so without this
+	// the notification/webhook can't read the recorded Teams message ids to
+	// thread a follow-up reply. Incoming keys win on collision — the alert
+	// payload stays authoritative for everything it does carry.
+	for k, v := range existing {
+		if !strings.HasPrefix(k, "response_") {
+			continue
+		}
+		if _, ok := rec[k]; !ok {
+			rec[k] = v
+		}
+	}
+
 	// Merge fields: existing values win for identity (uid, date_epoch,
 	// state, duplicates) but the incoming record's payload otherwise
 	// overwrites.

@@ -461,6 +461,13 @@ func stringField(m map[string]any, k string) string {
 // used in legacy webhook templates are normalised before parsing — see
 // translatePythonIdioms.
 func renderTemplate(name, tmpl string, rec snoozetypes.Record) (string, error) {
+	return renderTemplateData(name, tmpl, templateData(rec))
+}
+
+// renderTemplateData executes a Go text/template over an arbitrary data value.
+// renderTemplate wraps it with the default {Record, Now} data; renderBody adds
+// the computed .ReplyToIDs sibling.
+func renderTemplateData(name, tmpl string, data any) (string, error) {
 	if tmpl == "" {
 		return "", nil
 	}
@@ -476,7 +483,7 @@ func renderTemplate(name, tmpl string, rec snoozetypes.Record) (string, error) {
 		return "", err
 	}
 	var buf bytes.Buffer
-	if err := t.Execute(&buf, templateData(rec)); err != nil {
+	if err := t.Execute(&buf, data); err != nil {
 		return "", err
 	}
 	return buf.String(), nil
@@ -524,12 +531,36 @@ func templateData(rec snoozetypes.Record) map[string]any {
 	}
 }
 
+// replyToIDs returns the per-channel message ids a previous inject_response
+// stamped onto the record under `response_<actionName>.message_ids`, or nil
+// when absent. It is exposed to the body template as `.ReplyToIDs` so a Teams
+// action can emit `"reply_to_ids": {{ .ReplyToIDs | tojson }}` to thread the
+// follow-up under the recorded message — computing the (possibly
+// space-containing) `response_<actionName>` key in Go means the template never
+// has to name the action, sidestepping text/template's identifier rules.
+// `response_*` survives onto the record because aggregaterule carries it
+// forward on a duplicate match (see internal/pluginimpl/aggregaterule).
+//
+// The lookup tolerates the absence of any layer: a first fire, an action with
+// no recorded response yet, or a malformed response all yield nil → the
+// template renders JSON null and the bridge posts a fresh root message.
+func replyToIDs(rec snoozetypes.Record, actionName string) any {
+	if actionName == "" || rec.Extra == nil {
+		return nil
+	}
+	resp, ok := rec.Extra["response_"+actionName].(map[string]any)
+	if !ok {
+		return nil
+	}
+	return resp["message_ids"]
+}
+
 // renderBody returns (body, contentType). When the config body is empty,
 // it falls back to a JSON-encoded record and sets Content-Type. Otherwise
 // it renders the body template and lets the caller's headers govern the
 // content type (defaulting to application/json when the body looks like
 // JSON).
-func renderBody(tmpl string, rec snoozetypes.Record, _ plugins.NotificationPayload) ([]byte, string, error) {
+func renderBody(tmpl string, rec snoozetypes.Record, payload plugins.NotificationPayload) ([]byte, string, error) {
 	if tmpl == "" {
 		data, err := json.Marshal(rec)
 		if err != nil {
@@ -537,7 +568,10 @@ func renderBody(tmpl string, rec snoozetypes.Record, _ plugins.NotificationPaylo
 		}
 		return data, "application/json", nil
 	}
-	rendered, err := renderTemplate("body", tmpl, rec)
+	data := templateData(rec)
+	actionName, _ := payload.Meta["action_name"].(string)
+	data["ReplyToIDs"] = replyToIDs(rec, actionName)
+	rendered, err := renderTemplateData("body", tmpl, data)
 	if err != nil {
 		return nil, "", err
 	}

@@ -91,8 +91,8 @@ type Frequency struct {
 
 // actionDoc is the decoded view of one row in the `action` collection.
 type actionDoc struct {
-	Name       string         `json:"name"`
-	Action     actionEnvelope `json:"action"`
+	Name   string         `json:"name"`
+	Action actionEnvelope `json:"action"`
 }
 
 // actionEnvelope mirrors the {selected, subcontent} pair stored at
@@ -128,6 +128,17 @@ func (p *Plugin) Metadata() plugins.Metadata { return p.meta }
 func (p *Plugin) PostInit(ctx context.Context, host plugins.Host) error {
 	p.host = host
 	return p.Reload(ctx)
+}
+
+// ReloadCollections declares the `action` collection as a reload dependency
+// (the syncer's ReloadDeps interface). The dispatcher caches action documents
+// in memory but owns only the `notification` collection, so without this an
+// edit to an action (url/payload/inject_response/…) would not reach the running
+// dispatcher until a restart, a notification-collection change, or a cache miss
+// on a brand-new action name. Declaring the dependency makes action edits take
+// effect immediately, cluster-wide.
+func (p *Plugin) ReloadCollections() []string {
+	return []string{actionCollectionName}
 }
 
 // Reload re-reads both the notification and action collections. Failures on
@@ -350,21 +361,45 @@ func metaFromSubcontent(sub map[string]any, e Entry, actionName string) map[stri
 // injectFunc returns the closure handed to Notifier.Send via
 // NotificationPayload.Inject. Notifiers (today: only webhook with
 // `inject_response: true`) call it to stamp `response_<action_name>`-style
-// fields back onto the record DB row. The write happens via DB.UpdateOne so
-// concurrent updates from the pipeline aren't clobbered. The closure is
-// best-effort: an empty UID or DB error is logged and swallowed.
+// fields back onto the record DB row. The closure is best-effort: an empty
+// identity or DB error is logged and swallowed.
 //
-// Returns nil when there is no UID to update or no DB handle — both cases
-// short-circuit any inject call to a no-op via plugins.InjectField.
+// The write keys on `hash`, not `uid`, mirroring Snooze 1.x's
+// `db.write('record', succeeded, 'hash')`. This matters on a record's FIRST
+// fire: aggregaterule only mints a uid when it finds an existing aggregate, so
+// the in-memory record dispatched on a first occurrence has no uid yet (the DB
+// assigns one in the pipeline's final write). It always has a hash by the time
+// the notification plugin runs, so a hash-keyed SetFields lands the response
+// even on the first fire. SetFields is a field-targeted merge, so concurrent
+// updates from the pipeline aren't clobbered.
+//
+// Returns nil when there is neither a hash nor a uid to target, or no DB
+// handle — all cases short-circuit any inject call to a no-op via
+// plugins.InjectField.
 func (p *Plugin) injectFunc(rec snoozetypes.Record) plugins.InjectFunc {
-	if rec.UID == "" || p.host == nil || p.host.DB() == nil {
+	if p.host == nil || p.host.DB() == nil {
 		return nil
 	}
+	hash := rec.Hash
 	uid := rec.UID
+	if hash == "" && uid == "" {
+		return nil
+	}
 	return func(field string, value any) {
 		ctx, cancel := context.WithTimeout(context.Background(), notifierSendTimeout)
 		defer cancel()
 		patch := db.Document{field: value}
+		if hash != "" {
+			if _, err := p.host.DB().SetFields(ctx, recordCollectionName, patch, condition.Equals("hash", hash)); err != nil {
+				if lg := p.logger(); lg != nil {
+					lg.Warn("notification: inject_response: SetFields by hash failed",
+						"hash", hash, "field", field, "err", err)
+				}
+			}
+			return
+		}
+		// No hash (record never went through aggregaterule) — fall back to the
+		// uid-keyed update.
 		if err := p.host.DB().UpdateOne(ctx, recordCollectionName, uid, patch, false); err != nil {
 			if lg := p.logger(); lg != nil {
 				lg.Warn("notification: inject_response: UpdateOne failed",

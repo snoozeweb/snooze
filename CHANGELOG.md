@@ -128,6 +128,33 @@ the field-by-field mapping.
 * Sphinx-based Python API doc generation. Narrative docs remain.
 * Falcon, Pydantic v1, Waitress, the in-process clustering helper.
 
+### Bug fixes
+
+* **Microsoft Teams reply threading restored.** Follow-up notifications now
+  post as replies under the originating alert's Teams message instead of new
+  top-level messages, matching the 1.x bot. Four pipeline gaps were closed:
+  * `notification`: `inject_response` (`response_<action>`) is now stamped on a
+    record's *first* firing. It was keyed on the not-yet-assigned `uid`, so
+    alerts that never re-notified — e.g. `critical` aggregates with a long
+    throttle window — never recorded their Teams message id, and the `response`
+    field was simply absent.
+  * `aggregaterule`: server-injected `response_<action>` fields are carried
+    forward onto the in-memory record on a duplicate match (Python parity), so
+    the notifier can read the recorded message ids. The incoming alert never
+    carries them, so without this they were invisible to the pipeline.
+  * `webhook`: a new `.ReplyToIDs` body-template variable exposes the recorded
+    per-channel message ids, so a Teams action emits `reply_to_ids` without
+    naming the (possibly space-containing) action in the template.
+  * `snooze-teams`: the bridge records the thread *root* id across a reply
+    chain rather than each reply's own id, so every follow-up keeps threading
+    under the original message (Microsoft Graph only allows one reply level).
+* **Action edits apply without a server restart.** The notification dispatcher
+  caches the `action` collection in memory but only subscribed to its own
+  collection's change events, so edits to an action (URL, payload,
+  `inject_response`, …) silently took effect only after a restart. The syncer
+  now also reloads a plugin when a collection it declares as a dependency
+  changes (`ReloadDeps`); the notification plugin declares `action`.
+
 ## v1.7.0
 
 ### Changes

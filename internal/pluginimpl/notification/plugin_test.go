@@ -36,10 +36,10 @@ type notifierCall struct {
 	Payload plugins.NotificationPayload
 }
 
-func (n *recordingNotifier) Name() string                              { return n.name }
-func (n *recordingNotifier) Metadata() plugins.Metadata                { return plugins.Metadata{Name: n.name} }
+func (n *recordingNotifier) Name() string                                 { return n.name }
+func (n *recordingNotifier) Metadata() plugins.Metadata                   { return plugins.Metadata{Name: n.name} }
 func (n *recordingNotifier) PostInit(context.Context, plugins.Host) error { return nil }
-func (n *recordingNotifier) Reload(context.Context) error              { return nil }
+func (n *recordingNotifier) Reload(context.Context) error                 { return nil }
 
 func (n *recordingNotifier) Send(_ context.Context, rec snoozetypes.Record, payload plugins.NotificationPayload) error {
 	n.mu.Lock()
@@ -55,6 +55,25 @@ func (n *recordingNotifier) Calls() []notifierCall {
 	out := make([]notifierCall, len(n.calls))
 	copy(out, n.calls)
 	return out
+}
+
+// injectingNotifier is a fake Notifier that calls payload.Inject exactly once
+// per Send, simulating webhook's `inject_response`. Tests use it to assert the
+// dispatcher's inject closure writes the field back onto the originating record.
+type injectingNotifier struct {
+	name  string
+	field string
+	value any
+}
+
+func (n *injectingNotifier) Name() string                                 { return n.name }
+func (n *injectingNotifier) Metadata() plugins.Metadata                   { return plugins.Metadata{Name: n.name} }
+func (n *injectingNotifier) PostInit(context.Context, plugins.Host) error { return nil }
+func (n *injectingNotifier) Reload(context.Context) error                 { return nil }
+
+func (n *injectingNotifier) Send(_ context.Context, _ snoozetypes.Record, payload plugins.NotificationPayload) error {
+	plugins.InjectField(payload.Inject, n.field, n.value)
+	return nil
 }
 
 // testHost is a minimal plugins.Host suitable for the notification plugin.
@@ -292,6 +311,56 @@ func TestNotification(t *testing.T) {
 		require.NoError(t, err)
 		time.Sleep(50 * time.Millisecond)
 		require.Empty(t, notifier.Calls())
+	})
+
+	t.Run("declares_action_collection_as_reload_dependency", func(t *testing.T) {
+		// The dispatcher caches the `action` collection in memory; it owns the
+		// `notification` collection. Without declaring `action` as a reload
+		// dependency, an action edit (URL/payload/…) silently never reaches the
+		// running dispatcher until a restart. The syncer reads this list.
+		p := &Plugin{meta: plugins.Metadata{Name: "notification"}}
+		require.Contains(t, p.ReloadCollections(), actionCollectionName)
+	})
+
+	t.Run("injects_response_by_hash_on_first_fire_without_uid", func(t *testing.T) {
+		host := newHost(t)
+		// Simulate the pipeline's final write: the record row exists, keyed by
+		// hash, with a DB-minted uid. On a genuine first fire the in-memory
+		// record handed to Process has NO uid yet (aggregaterule mints it only
+		// when an existing aggregate is found), so the inject must key on hash.
+		_, err := host.driver.Write(context.Background(), recordCollectionName,
+			[]db.Document{{"hash": "h-first", "host": "myhost01", "message": "boom"}},
+			db.WriteOptions{Primary: []string{"hash"}, UpdateTime: true})
+		require.NoError(t, err)
+
+		writeActions(t, host, []map[string]any{
+			{"name": "Teams", "action": map[string]any{"selected": "webhook", "subcontent": map[string]any{}}},
+		})
+		writeEntries(t, host, []map[string]any{
+			{"name": "N1", "condition": []any{"=", "host", "myhost01"}, "actions": []any{"Teams"}},
+		})
+		injectVal := map[string]any{"message_ids": map[string]any{"ch": "42"}}
+		host.plugins["webhook"] = &injectingNotifier{name: "webhook", field: "response_Teams", value: injectVal}
+
+		p := newPlugin(t, host)
+
+		// First-fire shape: hash present, uid empty.
+		rec := snoozetypes.Record{Hash: "h-first", Host: "myhost01", Message: "boom", Timestamp: time.Now()}
+		_, err = p.Process(context.Background(), rec)
+		require.NoError(t, err)
+
+		// The inject runs on a detached goroutine; poll the row by hash.
+		deadline := time.Now().Add(time.Second)
+		var got db.Document
+		for time.Now().Before(deadline) {
+			got, err = host.driver.GetOne(context.Background(), recordCollectionName, db.Document{"hash": "h-first"})
+			require.NoError(t, err)
+			if got["response_Teams"] != nil {
+				break
+			}
+			time.Sleep(5 * time.Millisecond)
+		}
+		require.NotNil(t, got["response_Teams"], "response_Teams must be injected on the first fire (keyed by hash)")
 	})
 
 	t.Run("frequency_total_zero_skips", func(t *testing.T) {

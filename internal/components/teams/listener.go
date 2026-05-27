@@ -51,11 +51,12 @@ type alertRequest struct {
 type alertResponse struct {
 	Delivered []string          `json:"delivered"`
 	Failed    map[string]string `json:"failed,omitempty"`
-	// MessageIDs maps a channel ref to the Graph message id the bridge
-	// just posted there. For replies the id is the reply's own id (not
-	// the root), so a chain of N records produces a chain of N ids — the
-	// webhook payload template typically only needs the *first* (root) id,
-	// which is the one captured on the alert's first firing.
+	// MessageIDs maps a channel ref to the THREAD ROOT message id for that
+	// channel. On a fresh send it is the id Graph assigned the new top-level
+	// message; on a reply it is the root the reply landed under (the id from
+	// the request's reply_to_ids), NOT the reply's own id. Keeping the root
+	// stable lets inject_response stamp it back so every subsequent firing
+	// threads under the same root — Graph only supports one level of replies.
 	MessageIDs map[string]string `json:"message_ids,omitempty"`
 }
 
@@ -207,11 +208,22 @@ func (d *Daemon) handleAlert(w http.ResponseWriter, r *http.Request) {
 			slog.String("reply_to", replyTo[ch]),
 			slog.String("message_id", msg.ID))
 		resp.Delivered = append(resp.Delivered, ch)
-		if msg.ID != "" {
+		// Record the THREAD ROOT id for this channel so the next firing chains
+		// onto the same thread. When we just posted a reply, the root is the id
+		// we replied under (replyTo[ch]) — NOT msg.ID, which is the reply's own
+		// id. MS Graph only allows replies one level deep, so the next
+		// follow-up must target the original root again; recording the reply id
+		// would make it POST /messages/<reply>/replies, which Graph rejects.
+		// When we posted a fresh top-level message, msg.ID *is* the root.
+		rootID := msg.ID
+		if replyTo[ch] != "" {
+			rootID = replyTo[ch]
+		}
+		if rootID != "" {
 			if resp.MessageIDs == nil {
 				resp.MessageIDs = make(map[string]string, len(order))
 			}
-			resp.MessageIDs[ch] = msg.ID
+			resp.MessageIDs[ch] = rootID
 		}
 	}
 

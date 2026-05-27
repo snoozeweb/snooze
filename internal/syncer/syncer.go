@@ -21,6 +21,15 @@ type Pluggable interface {
 	Reload(ctx context.Context) error
 }
 
+// ReloadDeps is an optional interface a Pluggable implements when its in-memory
+// state derives from collections other than its own. The Syncer subscribes such
+// a plugin to those collections' change topics too, so an edit to a dependency
+// collection triggers the plugin's Reload. Returning nil/empty means "no extra
+// dependencies" (the default for plugins that only watch their own collection).
+type ReloadDeps interface {
+	ReloadCollections() []string
+}
+
 // Syncer wires a Bus to a set of Pluggable consumers: any event matching a
 // plugin's collection topic triggers a debounced Reload on that plugin.
 type Syncer struct {
@@ -72,6 +81,20 @@ func (s *Syncer) runPlugin(ctx context.Context, name string, plug Pluggable, deb
 	topics := []string{
 		"plugin." + name,
 		"collection." + name,
+	}
+	// A plugin whose in-memory state derives from other collections (e.g. the
+	// notification plugin caches the `action` collection) declares them via
+	// ReloadDeps so an edit to a dependency collection also triggers its Reload.
+	// Without this, edits to those collections only take effect on restart, on
+	// the plugin's own collection changing, or on a cache miss for a *new* key —
+	// never on an edit to an existing one.
+	if dep, ok := plug.(ReloadDeps); ok {
+		for _, c := range dep.ReloadCollections() {
+			if c == "" || c == name {
+				continue // own collection already covered
+			}
+			topics = append(topics, "collection."+c)
+		}
 	}
 	merged := make(chan Event, 64)
 
