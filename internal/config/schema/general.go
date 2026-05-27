@@ -5,11 +5,11 @@ import "strings"
 // General is the bootstrap mirror of the Python “GeneralConfig“ section. The
 // values can still be overridden at runtime via the DB-backed settings store.
 type General struct {
-	DefaultAuthBackend string   `koanf:"default_auth_backend" validate:"oneof=local ldap anonymous"`
-	LocalEnabled       bool     `koanf:"local_enabled"`
-	LocalUsersEnabled  bool     `koanf:"local_users_enabled"`
-	MetricsEnabled     bool     `koanf:"metrics_enabled"`
-	AnonymousEnabled   bool     `koanf:"anonymous_enabled"`
+	DefaultAuthBackend string `koanf:"default_auth_backend" validate:"oneof=local ldap anonymous"`
+	LocalEnabled       bool   `koanf:"local_enabled"`
+	LocalUsersEnabled  bool   `koanf:"local_users_enabled"`
+	MetricsEnabled     bool   `koanf:"metrics_enabled"`
+	AnonymousEnabled   bool   `koanf:"anonymous_enabled"`
 	// AnonymousAdmin grants the synthetic "admin" role + AllPermission
 	// wildcard to anonymous logins. Used for try / demo deploys where every
 	// anonymous visitor needs full access.

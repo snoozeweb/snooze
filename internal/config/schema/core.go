@@ -24,11 +24,11 @@ type Core struct {
 	// even if its package is blank-imported.
 	EnabledOptionalPlugins []string `koanf:"enabled_optional_plugins"`
 	Database               Database `koanf:"database" validate:"required"`
-	InitSleep          int      `koanf:"init_sleep" validate:"min=0"`
-	CreateRootUser     bool     `koanf:"create_root_user"`
-	SSL                SSL      `koanf:"ssl"`
-	Backup             Backup   `koanf:"backup"`
-	CORS               CORS     `koanf:"cors"`
+	InitSleep              int      `koanf:"init_sleep" validate:"min=0"`
+	CreateRootUser         bool     `koanf:"create_root_user"`
+	SSL                    SSL      `koanf:"ssl"`
+	Backup                 Backup   `koanf:"backup"`
+	CORS                   CORS     `koanf:"cors"`
 }
 
 // DefaultCore returns the values used when no core.yaml file exists, matching

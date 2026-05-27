@@ -40,7 +40,7 @@ type Metadata struct {
 	// settings grouped by section (general vs notification). Same ordering
 	// concerns apply.
 	SettingForm OrderedFields `yaml:"setting_form" json:"setting_form,omitempty"`
-	Provides    []string       `yaml:"provides" json:"provides,omitempty"`
+	Provides    []string      `yaml:"provides" json:"provides,omitempty"`
 	// RouteDefaults is the plugin-level baseline for every route generated
 	// or registered for this plugin. Individual Routes entries override
 	// fields piecewise (see Metadata.ResolveRoute).

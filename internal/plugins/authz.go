@@ -15,6 +15,7 @@
 //
 // The `root` JWT method (issued by the admin unix socket) and a server-wide
 // `no_login` flag both short-circuit the check.
+
 package plugins
 
 import (
