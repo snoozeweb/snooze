@@ -47,6 +47,15 @@ tasks:
     cmds:
     - go test -short -race -count=1 ./...
 
+  go:test:e2e:
+    desc: |
+      Run the env-gated end-to-end integration tests for the input/output
+      integrations. Each test self-skips unless its SNOOZE_E2E_* credentials
+      are exported (see each integration's docs page under
+      docs/general/integrations/ for the required variables).
+    cmds:
+    - go test -run E2E -count=1 ./...
+
   go:build:
     desc: Build every Go binary under cmd/ into ./bin/
     cmds:

@@ -1,0 +1,32 @@
+---
+name: 'Send a Google Chat message'
+desc: 'Post an alert to a Google Chat space via Incoming Webhook'
+icon: 'google'
+provides:
+    - notifier
+# Field order: webhook first, then content knobs, then threading, then timeout.
+action_form:
+    webhook_url:
+        display_name: Webhook URL
+        component: String
+        description: 'Google Chat Incoming Webhook URL (https://chat.googleapis.com/v1/spaces/.../messages?key=...&token=...)'
+        required: true
+    message:
+        display_name: Message
+        component: Text
+        default_value: '*{{ .Severity }}* on {{ .Host }}: {{ .Message }}'
+        description: 'Message text (Go text/template over the record fields: .UID .Host .Source .Process .Severity .Message .State .Timestamp .Tags)'
+    use_card:
+        display_name: Use Card
+        component: Switch
+        default_value: true
+        description: 'Send a cardsV2 card instead of a plain text message'
+    thread_key:
+        display_name: Thread Key
+        component: String
+        description: 'When set, replies are threaded under this key (Go text/template). Use {{ .Hash }} to group duplicates.'
+    timeout:
+        display_name: Timeout
+        component: String
+        default_value: '10s'
+        description: 'Request timeout as a Go duration (default 10s)'

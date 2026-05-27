@@ -1,0 +1,56 @@
+---
+name: 'Send a Twilio SMS or voice call'
+desc: 'Deliver an alert via Twilio SMS or voice call (TwiML <Say>)'
+icon: 'phone'
+provides:
+    - notifier
+# Field order: credentials first, then routing, then content, then timeout.
+action_form:
+    account_sid:
+        display_name: Account SID
+        component: String
+        description: 'Twilio Account SID (ACxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx)'
+        required: true
+    auth_token:
+        display_name: Auth Token
+        component: Password
+        description: 'Twilio Auth Token (found in the Twilio Console dashboard)'
+        required: true
+    from:
+        display_name: From (Twilio number)
+        component: String
+        description: 'Your Twilio phone number in E.164 format (e.g. +15005550006)'
+        required: true
+    to:
+        display_name: To (recipients)
+        component: Text
+        description: 'Comma-separated list of destination phone numbers in E.164 format (e.g. +15005550007,+15005550008)'
+        required: true
+    mode:
+        display_name: Mode
+        component: Selector
+        default_value: 'sms'
+        description: 'Delivery mode: sms sends a text message; voice places a call with a <Say> TwiML response'
+        options:
+            - {text: SMS, value: sms}
+            - {text: Voice, value: voice}
+    message:
+        display_name: Message (SMS body)
+        component: Text
+        default_value: '{{ .Severity }} on {{ .Host }}: {{ .Message }}'
+        description: 'SMS body text (Go text/template over the record fields: .UID .Host .Source .Process .Severity .Message .State .Timestamp .Tags). Used in sms mode.'
+    voice_message:
+        display_name: Voice message (<Say> text)
+        component: Text
+        default_value: 'Snooze alert. {{ .Severity }} on {{ .Host }}. {{ .Message }}'
+        description: 'Text spoken via TwiML <Say> in voice mode (Go text/template over the record fields). XML-special characters are automatically escaped.'
+    api_base:
+        display_name: API base URL
+        component: String
+        default_value: 'https://api.twilio.com'
+        description: 'Twilio REST API base URL. Override for testing or private deployments.'
+    timeout:
+        display_name: Timeout
+        component: String
+        default_value: '10s'
+        description: 'HTTP request timeout as a Go duration (default 10s)'

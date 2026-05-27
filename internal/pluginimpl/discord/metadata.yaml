@@ -1,0 +1,36 @@
+---
+name: 'Send a Discord message'
+desc: 'Post an alert to a Discord channel via Incoming Webhook'
+icon: 'discord'
+provides:
+    - notifier
+# Field order: credentials first, then content, then cosmetic, then timeout.
+action_form:
+    webhook_url:
+        display_name: Webhook URL
+        component: String
+        description: 'Discord Incoming Webhook URL (https://discord.com/api/webhooks/...)'
+        required: true
+    username:
+        display_name: Username
+        component: String
+        description: 'Display name override for the bot (e.g. "Snooze Alerts").'
+    avatar_url:
+        display_name: Avatar URL
+        component: String
+        description: 'URL of an image to use as the bot avatar.'
+    message:
+        display_name: Message
+        component: Text
+        default_value: "**{{ .Severity }}** on {{ .Host }}: {{ .Message }}"
+        description: 'Message text (Go text/template over the record fields: .UID .Host .Source .Process .Severity .Message .State .Timestamp .Tags). Used as embed description when use_embed is true, or as plain content otherwise.'
+    use_embed:
+        display_name: Use Embed
+        component: Switch
+        default_value: true
+        description: 'When enabled, send a rich Discord embed with title, description, colour, and a timestamp. When disabled, send a plain text message.'
+    timeout:
+        display_name: Timeout
+        component: String
+        default_value: '10s'
+        description: 'Request timeout as a Go duration (default 10s)'

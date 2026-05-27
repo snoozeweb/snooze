@@ -1,0 +1,38 @@
+---
+name: 'Send a Slack message'
+desc: 'Post an alert to a Slack channel via Incoming Webhook or bot token'
+icon: 'slack'
+provides:
+    - notifier
+# Field order: credentials first, then content, then cosmetic, then timeout.
+action_form:
+    webhook_url:
+        display_name: Webhook URL
+        component: String
+        description: 'Slack Incoming Webhook URL (https://hooks.slack.com/services/...). Required unless bot_token is set.'
+    bot_token:
+        display_name: Bot Token
+        component: Password
+        description: 'Slack Bot OAuth token (xoxb-...). When set, uses chat.postMessage instead of the Incoming Webhook.'
+    channel:
+        display_name: Channel
+        component: String
+        description: 'Channel ID or name (e.g. #alerts or C01234ABCDE). Required when using bot_token mode.'
+    message:
+        display_name: Message
+        component: Text
+        default_value: "*{{ .Severity }}* on `{{ .Host }}`: {{ .Message }}"
+        description: 'Message text (Go text/template over the record fields: .UID .Host .Source .Process .Severity .Message .State .Timestamp .Tags)'
+    username:
+        display_name: Username
+        component: String
+        description: 'Display name override for the bot (Incoming Webhook mode only).'
+    icon_emoji:
+        display_name: Icon Emoji
+        component: String
+        description: 'Emoji to use as the bot icon, e.g. :robot_face: (Incoming Webhook mode only).'
+    timeout:
+        display_name: Timeout
+        component: String
+        default_value: '10s'
+        description: 'Request timeout as a Go duration (default 10s)'

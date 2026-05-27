@@ -1,0 +1,13 @@
+---
+name: 'datadog'
+desc: 'Receive Datadog monitor-alert webhook notifications'
+
+# Webhook receivers are unauthenticated by design — Datadog pushes alerts
+# without credentials. `write: [any]` grants every authenticated caller
+# write access too (the authorizer adds `any` to the user's permission set),
+# so this plugin is effectively public on both axes.
+# Mirrors the grafana / alertmanager / kapacitor receiver policy.
+route_defaults:
+    authentication: false
+    authorization_policy:
+        write: [any]

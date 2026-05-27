@@ -1,0 +1,54 @@
+---
+name: 'Publish to Amazon SNS'
+desc: 'Publish an alert to an Amazon SNS topic (fan-out output)'
+icon: 'aws'
+provides:
+    - notifier
+# Field order: region/topic first (what to publish to), then credentials, then
+# the rendered content (subject/message), then the testing/operational knobs
+# (endpoint override, timeout). Credentials live in the action_form rather than
+# the environment so each notification action can target a distinct topic/role.
+action_form:
+    region:
+        display_name: Region
+        component: String
+        description: 'AWS region of the SNS topic (e.g. eu-west-1)'
+        required: true
+    topic_arn:
+        display_name: Topic ARN
+        component: String
+        description: 'ARN of the SNS topic to publish to (arn:aws:sns:region:account:name)'
+        required: true
+    access_key_id:
+        display_name: Access Key ID
+        component: String
+        description: 'AWS access key ID of an IAM principal allowed to call sns:Publish'
+        required: true
+    secret_access_key:
+        display_name: Secret Access Key
+        component: Password
+        description: 'AWS secret access key paired with the access key ID'
+        required: true
+    session_token:
+        display_name: Session Token
+        component: Password
+        description: 'Optional STS session token when using temporary credentials'
+    subject:
+        display_name: Subject
+        component: String
+        default_value: '{{ .Severity }} on {{ .Host }}'
+        description: 'SNS message subject (Go text/template over .Record; omitted when empty)'
+    message:
+        display_name: Message
+        component: Text
+        default_value: '{{ .Message }}'
+        description: 'SNS message body (Go text/template over .Record)'
+    endpoint:
+        display_name: Endpoint
+        component: String
+        description: 'Override the SNS endpoint base URL (e.g. http://localhost:4566 for LocalStack). Defaults to https://sns.<region>.amazonaws.com/'
+    timeout:
+        display_name: Timeout
+        component: String
+        default_value: '10s'
+        description: 'Request timeout as a Go duration'

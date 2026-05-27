@@ -180,27 +180,30 @@ func (rt *Router) skipAuth(r *http.Request) bool {
 	return false
 }
 
-// pluginPublicPaths walks rt.Plugins and returns the CRUD path prefix of
-// every plugin whose RouteDefaults.Authentication is explicitly `false`.
+// pluginPublicPaths walks rt.Plugins and returns the path prefixes that should
+// bypass the Bearer-token middleware. Two mount points are resolved
+// independently so a plugin can mix authenticated CRUD with a public ingest
+// path:
 //
-// Per-sub-path overrides (Metadata.Routes[path].Authentication) are
-// intentionally NOT consulted here: CRUD-mounted plugins live at a single
-// URL prefix and the public-or-not decision is plugin-wide. RouteProvider
-// plugins that want finer control can use AuthorizeCRUD directly on the
-// nested subrouter, but the Bearer-token middleware still defers to the
-// plugin-level flag.
+//   - CRUD subtree (/api/v1/{name}) is public when the plugin-level default
+//     (ResolveRoute("")) is `authentication: false`.
+//   - A webhook receiver's mount (/api/v1/webhook + WebhookPath()) is public
+//     when ResolveRoute(WebhookPath()) is `authentication: false` — that
+//     consults the per-path Routes override and falls back to RouteDefaults.
+//     This is what lets the heartbeat plugin keep its `heartbeat` collection
+//     authenticated while exposing a public ping at /api/v1/webhook/heartbeat.
 func (rt *Router) pluginPublicPaths() []string {
 	var out []string
 	for name, p := range rt.Plugins {
 		meta := p.Metadata()
-		route := meta.ResolveRoute("")
-		if route.Authentication != nil && !*route.Authentication {
+		if route := meta.ResolveRoute(""); route.Authentication != nil && !*route.Authentication {
 			out = append(out, "/api/v1/"+name)
-			// Webhook receivers also live under /api/v1/webhook/{name};
-			// add that prefix so the same `authentication: false` flag
-			// covers both mount points.
-			if _, ok := p.(plugins.WebhookReceiver); ok {
-				out = append(out, "/api/v1/webhook/"+name)
+		}
+		if wr, ok := p.(plugins.WebhookReceiver); ok {
+			if wp := wr.WebhookPath(); wp != "" {
+				if route := meta.ResolveRoute(wp); route.Authentication != nil && !*route.Authentication {
+					out = append(out, "/api/v1/webhook"+wp)
+				}
 			}
 		}
 	}
@@ -219,6 +222,15 @@ func (rt *Router) pluginPublicPaths() []string {
 // + `authorization_policy.write: [any]` made these endpoints public.
 func (rt *Router) mountWebhooks(r chi.Router) {
 	r.Route("/api/v1/webhook", func(sub chi.Router) {
+		// Optional shared-secret gate for ALL inbound webhook traffic. A
+		// no-op unless config.ingest.token is set (middleware.IngestToken),
+		// so existing unauthenticated receivers keep working by default.
+		ingestToken := ""
+		if rt.Config != nil {
+			ingestToken = rt.Config.Ingest.Token
+		}
+		sub.Use(middleware.IngestToken(ingestToken))
+
 		for name, p := range rt.Plugins {
 			wr, ok := p.(plugins.WebhookReceiver)
 			if !ok {
@@ -230,9 +242,10 @@ func (rt *Router) mountWebhooks(r chi.Router) {
 			if path == "" {
 				continue
 			}
-			// Per-plugin authorize middleware so each receiver's
-			// authorization_policy is enforced even on the webhook path.
-			sub.With(plugins.AuthorizeCRUD(meta)).Post(path, wr.HandleWebhook)
+			// Per-route authorize middleware so each receiver's
+			// authentication flag and authorization_policy are resolved for
+			// its specific webhook path (not the plugin-wide default).
+			sub.With(plugins.AuthorizeRoute(meta, path)).Post(path, wr.HandleWebhook)
 		}
 	})
 }

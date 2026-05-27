@@ -1,0 +1,67 @@
+---
+name: 'Send a Pushover notification'
+desc: 'Deliver a mobile push notification via the Pushover API'
+icon: 'bell'
+provides:
+    - notifier
+# Field order: credentials first (token, user), then content (title, message),
+# then delivery knobs (priority, sound, url, url_title), then API knobs
+# (api_base, timeout).
+action_form:
+    token:
+        display_name: App Token
+        component: Password
+        description: 'Pushover application API token (from https://pushover.net/apps)'
+        required: true
+    user:
+        display_name: User/Group Key
+        component: String
+        description: 'Pushover user or group key (from https://pushover.net)'
+        required: true
+    title:
+        display_name: Title
+        component: String
+        default_value: '{{ .Severity }} on {{ .Host }}'
+        description: 'Notification title (Go text/template over the record)'
+    message:
+        display_name: Message
+        component: Text
+        default_value: '{{ .Message }}'
+        description: 'Notification body (Go text/template over the record)'
+    priority:
+        display_name: Priority
+        component: Selector
+        default_value: 'auto'
+        description: >-
+            Delivery priority. "auto" maps severity→priority (info→-1,
+            warning→0, error→1, critical/emergency→2). Priority 2 (emergency)
+            automatically adds retry=60 and expire=3600.
+        options:
+            - {text: 'Auto (from severity)', value: 'auto'}
+            - {text: 'Lowest (-2)',           value: '-2'}
+            - {text: 'Low (-1)',              value: '-1'}
+            - {text: 'Normal (0)',            value: '0'}
+            - {text: 'High (1)',              value: '1'}
+            - {text: 'Emergency (2)',         value: '2'}
+    sound:
+        display_name: Sound
+        component: String
+        description: 'Pushover sound name (e.g. "alien", "bike", "classical"). Leave empty for the user default.'
+    url:
+        display_name: URL
+        component: String
+        description: 'Supplementary URL to attach to the notification'
+    url_title:
+        display_name: URL Title
+        component: String
+        description: 'Title for the supplementary URL'
+    api_base:
+        display_name: API Base URL
+        component: String
+        default_value: 'https://api.pushover.net'
+        description: 'Pushover API base URL (override for testing)'
+    timeout:
+        display_name: Timeout
+        component: String
+        default_value: '10s'
+        description: 'Request timeout as a Go duration (default 10s)'

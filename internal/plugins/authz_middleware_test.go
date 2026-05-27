@@ -20,7 +20,7 @@ func TestAuthorizeCRUD_NoClaims_AuthRequired_Returns401(t *testing.T) {
 	meta := Metadata{Name: "rule", PluginName: "rule"}
 	mw := AuthorizeCRUD(meta)(http.HandlerFunc(ok200))
 	rec := httptest.NewRecorder()
-	mw.ServeHTTP(rec, httptest.NewRequest("GET", "/api/v1/rule", nil))
+	mw.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/v1/rule", nil))
 	require.Equal(t, http.StatusUnauthorized, rec.Code)
 }
 
@@ -37,7 +37,7 @@ func TestAuthorizeCRUD_NoClaims_AuthDisabled_PassesThrough(t *testing.T) {
 	}
 	mw := AuthorizeCRUD(meta)(http.HandlerFunc(ok200))
 	rec := httptest.NewRecorder()
-	mw.ServeHTTP(rec, httptest.NewRequest("POST", "/api/v1/alertmanager", nil))
+	mw.ServeHTTP(rec, httptest.NewRequest(http.MethodPost, "/api/v1/alertmanager", nil))
 	require.Equal(t, http.StatusOK, rec.Code)
 }
 
@@ -46,7 +46,7 @@ func TestAuthorizeCRUD_ClaimsWithoutPermission_Returns403(t *testing.T) {
 	meta := Metadata{Name: "rule", PluginName: "rule"}
 	mw := AuthorizeCRUD(meta)(http.HandlerFunc(ok200))
 
-	req := httptest.NewRequest("POST", "/api/v1/rule", nil)
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/rule", nil)
 	req = req.WithContext(auth.WithClaims(req.Context(), snoozetypes.Claims{
 		Subject: "alice",
 		Method:  "local",
@@ -62,7 +62,7 @@ func TestAuthorizeCRUD_ClaimsWithMatchingPermission_PassesThrough(t *testing.T) 
 	meta := Metadata{Name: "rule", PluginName: "rule"}
 	mw := AuthorizeCRUD(meta)(http.HandlerFunc(ok200))
 
-	req := httptest.NewRequest("POST", "/api/v1/rule", nil)
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/rule", nil)
 	req = req.WithContext(auth.WithClaims(req.Context(), snoozetypes.Claims{
 		Subject:     "alice",
 		Method:      "local",
@@ -83,7 +83,7 @@ func TestAuthorizeCRUD_RootMethodAlwaysPasses(t *testing.T) {
 	}
 	mw := AuthorizeCRUD(meta)(http.HandlerFunc(ok200))
 
-	req := httptest.NewRequest("DELETE", "/api/v1/rule/u1", nil)
+	req := httptest.NewRequest(http.MethodDelete, "/api/v1/rule/u1", nil)
 	req = req.WithContext(auth.WithClaims(req.Context(), snoozetypes.Claims{
 		Subject: "root", Method: "root", Permissions: nil,
 	}))
@@ -105,7 +105,7 @@ func TestAuthorizeCRUD_GetWithReadAnyPolicy_AllowsAuthenticatedNoPermCallers(t *
 	}
 	mw := AuthorizeCRUD(meta)(http.HandlerFunc(ok200))
 
-	get := httptest.NewRequest("GET", "/api/v1/comment", nil)
+	get := httptest.NewRequest(http.MethodGet, "/api/v1/comment", nil)
 	get = get.WithContext(auth.WithClaims(get.Context(), snoozetypes.Claims{
 		Subject: "alice", Method: "local",
 	}))
@@ -113,7 +113,7 @@ func TestAuthorizeCRUD_GetWithReadAnyPolicy_AllowsAuthenticatedNoPermCallers(t *
 	mw.ServeHTTP(rec, get)
 	require.Equal(t, http.StatusOK, rec.Code)
 
-	post := httptest.NewRequest("POST", "/api/v1/comment", nil)
+	post := httptest.NewRequest(http.MethodPost, "/api/v1/comment", nil)
 	post = post.WithContext(auth.WithClaims(post.Context(), snoozetypes.Claims{
 		Subject: "alice", Method: "local",
 	}))

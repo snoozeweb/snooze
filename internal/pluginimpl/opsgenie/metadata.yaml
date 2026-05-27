@@ -1,0 +1,53 @@
+---
+name: 'Send an Opsgenie alert'
+desc: 'Create or close an Opsgenie alert via the Alert API'
+icon: 'opsgenie'
+provides:
+    - notifier
+# Fields: credentials first, then routing/priority, then content, then timeout.
+action_form:
+    api_key:
+        display_name: API Key
+        component: Password
+        description: 'Opsgenie API Integration key (GenieKey). Required.'
+        required: true
+    region:
+        display_name: Region
+        component: Selector
+        default_value: 'us'
+        description: 'Opsgenie region. "us" → api.opsgenie.com; "eu" → api.eu.opsgenie.com.'
+        options:
+            - {text: US, value: us}
+            - {text: EU, value: eu}
+    priority:
+        display_name: Priority
+        component: Selector
+        default_value: 'auto'
+        description: >-
+            Alert priority. "auto" maps severity → P1..P5
+            (emergency/critical→P1, error→P2, warning→P3, notice→P4, info/debug→P5).
+        options:
+            - {text: Auto, value: auto}
+            - {text: P1 – Critical, value: P1}
+            - {text: P2 – High, value: P2}
+            - {text: P3 – Moderate, value: P3}
+            - {text: P4 – Low, value: P4}
+            - {text: P5 – Informational, value: P5}
+    source:
+        display_name: Source
+        component: String
+        default_value: 'Snooze'
+        description: 'Alert source field sent to Opsgenie (defaults to "Snooze").'
+    tags:
+        display_name: Tags
+        component: String
+        description: 'Optional comma-separated list of tags to attach to the alert.'
+    api_base:
+        display_name: API Base URL
+        component: String
+        description: 'Override the Opsgenie API base URL (e.g. for on-prem / EU). Overrides the region selector.'
+    timeout:
+        display_name: Timeout
+        component: String
+        default_value: '10s'
+        description: 'Request timeout as a Go duration (default 10s).'

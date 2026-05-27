@@ -1,0 +1,61 @@
+---
+name: 'Post to Atlassian Statuspage'
+desc: 'Create or resolve a Statuspage incident when an alert fires or closes'
+icon: 'statuspage'
+provides:
+    - notifier
+# Field order: credentials → incident identity → incident detail → advanced.
+action_form:
+    api_key:
+        display_name: API Key
+        component: Password
+        description: 'Statuspage API key (OAuth token). Obtain from Statuspage → Profile → API info.'
+        required: true
+    page_id:
+        display_name: Page ID
+        component: String
+        description: 'Statuspage page identifier (visible in the page URL or Settings → Page Information).'
+        required: true
+    component_id:
+        display_name: Component ID
+        component: String
+        description: 'Optional Statuspage component to associate with the incident and mark as impacted.'
+    initial_status:
+        display_name: Incident Status
+        component: Selector
+        description: 'Initial incident status when a new incident is created.'
+        default_value: 'investigating'
+        options:
+            - {text: Investigating, value: investigating}
+            - {text: Identified,    value: identified}
+            - {text: Monitoring,    value: monitoring}
+    name:
+        display_name: Incident Name
+        component: String
+        description: 'Incident title (Go text/template over the record). Default: "{{ .Severity }}: {{ .Host }}"'
+        default_value: '{{ .Severity }}: {{ .Host }}'
+    body:
+        display_name: Incident Body
+        component: Text
+        description: 'Incident message body (Go text/template over the record). Default: "{{ .Message }}"'
+        default_value: '{{ .Message }}'
+    impact:
+        display_name: Impact Override
+        component: Selector
+        description: 'Optional impact level to set on the incident. Leave empty to let Statuspage infer from components.'
+        default_value: ''
+        options:
+            - {text: '(none)',    value: ''}
+            - {text: Minor,    value: minor}
+            - {text: Major,    value: major}
+            - {text: Critical, value: critical}
+    api_base:
+        display_name: API Base URL
+        component: String
+        description: 'Statuspage API base URL. Override only for self-hosted Statuspage installations.'
+        default_value: 'https://api.statuspage.io'
+    timeout:
+        display_name: Timeout
+        component: String
+        description: 'HTTP request timeout as a Go duration (default 10s).'
+        default_value: '10s'

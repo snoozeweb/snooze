@@ -1,0 +1,42 @@
+---
+name: 'Send a PagerDuty alert'
+desc: 'Forward a Snooze alert to PagerDuty via the Events API v2'
+icon: 'pagerduty'
+provides:
+    - notifier
+action_form:
+    routing_key:
+        display_name: Routing Key
+        component: Password
+        description: 'PagerDuty integration key (Events API v2 service integration)'
+        required: true
+    severity:
+        display_name: Severity
+        component: Selector
+        description: 'PagerDuty severity override (auto derives from the Snooze record severity)'
+        default_value: 'auto'
+        options:
+            - {text: Auto (derive from record), value: auto}
+            - {text: Critical, value: critical}
+            - {text: Error, value: error}
+            - {text: Warning, value: warning}
+            - {text: Info, value: info}
+    client:
+        display_name: Client
+        component: String
+        description: 'Name of the client sending the event (shown in PagerDuty UI)'
+        default_value: 'Snooze'
+    client_url:
+        display_name: Client URL
+        component: String
+        description: 'URL of the client sending the event (optional, shown in PagerDuty UI)'
+    api_base:
+        display_name: API Base URL
+        component: String
+        description: 'PagerDuty Events API base URL (override for private service regions)'
+        default_value: 'https://events.pagerduty.com'
+    timeout:
+        display_name: Timeout
+        component: String
+        description: 'Request timeout as a Go duration (default 10s)'
+        default_value: '10s'

@@ -1,3 +1,51 @@
+## [Unreleased]
+
+### New integrations
+
+A large batch of input and output integrations. Each ships mock unit tests plus
+an env-gated end-to-end test (`task go:test:e2e`) and a documentation page under
+`docs/general/integrations/`. New plugins use `net/http`/stdlib only — no new
+module dependencies.
+
+**Inputs**
+
+* `cloudwatch` — Amazon CloudWatch Alarms via SNS HTTP(S) delivery webhook receiver (auto-confirms subscriptions).
+* `datadog` — Datadog monitor-alert webhook receiver.
+* `azuremonitor` — Azure Monitor Common Alert Schema webhook receiver.
+* `sentry` — Sentry webhook receiver (legacy plugin + modern Integration payloads).
+* `newrelic` — New Relic Alerts webhook receiver (workflow + legacy condition shapes).
+* `heartbeat` — dead-man's-switch plugin: a `heartbeat` collection, an unauthenticated ping endpoint (`/api/v1/webhook/heartbeat?name=<name>`), and a background scanner that fires one alert per missed heartbeat.
+* `snooze-otlp` — daemon: OTLP/HTTP (JSON) receiver converting OpenTelemetry log records into alerts (logs only; HTTP+JSON, no gRPC/protobuf).
+* `snooze-k8s-events` — daemon: watches the Kubernetes core/v1 Event API over plain HTTP (no client-go) and forwards Warning events as alerts, with in-cluster auto-detection and watch reconnect/410 handling.
+
+**Outputs**
+
+* `slack` — Slack notifier (Incoming Webhook + bot token, Block Kit, severity colours, resolve styling).
+* `telegram` — Telegram Bot API notifier (HTML/MarkdownV2).
+* `discord` — Discord webhook notifier (embeds + plain text).
+* `googlechat` — Google Chat outbound notifier (cardsV2 + thread grouping).
+* `pushover` — Pushover mobile-push notifier (severity→priority, emergency retry/expire).
+* `ntfy` — ntfy notifier (public or self-hosted push, bearer/basic auth).
+* `pagerduty` — PagerDuty Events API v2 notifier (trigger/resolve, dedup key from record hash).
+* `opsgenie` — Opsgenie Alert API notifier (create/close by alias, us/eu region).
+* `servicenow` — ServiceNow incident notifier (Table API, Basic auth, create + resolve).
+* `statuspage` — Atlassian Statuspage notifier (create/resolve public incidents).
+* `twilio` — Twilio SMS and automated voice-call notifier (multi-recipient).
+* `sns` — Amazon SNS publish notifier, signed with a hand-rolled AWS SigV4 (stdlib only, no AWS SDK).
+
+**AI / agents**
+
+* `snooze-mcp` — daemon: a Model Context Protocol (MCP) stdio server exposing Snooze alerts and ack/close/comment/snooze actions as tools to AI assistants (Claude Desktop, Cursor).
+
+### Ingest authentication
+
+* Route authentication is now resolved **per path**: a single plugin can keep its CRUD subtree authenticated while exposing a public sub-path. `AuthorizeRoute(meta, path)` and the webhook mount honour `Metadata.Routes[path].Authentication` instead of only the plugin-wide default.
+* New optional `ingest` bootstrap config section (all fields off by default → 1.5.0 parity):
+  * `ingest.token` — a shared secret required on every `/api/v1/webhook/*` request (`Authorization: Bearer <token>` or `?token=`).
+  * `ingest.sns_verify` — verify Amazon SNS message signatures on the `cloudwatch` receiver (with a SigningCertURL host allow-list / SSRF guard).
+  * `ingest.sentry_secret` — verify the Sentry `sentry-hook-signature` HMAC-SHA256 on the `sentry` receiver.
+* `heartbeat` is now secured properly: its CRUD collection requires operator auth, and the ping (`POST /api/v1/webhook/heartbeat?name=<name>&token=<token>`) is gated by an unguessable per-heartbeat token generated on create.
+
 ## v2.0.0
 
 v2.0.0 is a ground-up rewrite of snooze from Python to Go, paired with a

@@ -1,0 +1,32 @@
+---
+name: 'heartbeat'
+desc: 'Dead-man''s-switch: alert when an expected periodic ping stops arriving'
+icon: 'heartbeat'
+search_fields:
+    - name
+    - environment
+    - severity
+
+# Auth layout
+# -----------
+# CRUD (GET/POST/PUT/PATCH/DELETE /api/v1/heartbeat) → authenticated: true
+#   The operator must present a valid Bearer token to manage heartbeat records.
+#   The effective write policy is the default rw_heartbeat / rw_all grants
+#   (no authorization_policy override at the route_defaults level).
+#
+# Ping endpoint (POST /api/v1/webhook/heartbeat) → authentication: false
+#   External jobs may ping without a Bearer token.  Per-heartbeat token-based
+#   authentication is enforced at the application layer instead (see
+#   HandleWebhook): every ping must carry the ?token=<token> that was
+#   server-generated when the record was created.
+#
+# The router calls AuthorizeRoute(meta, WebhookPath()) for the webhook mount
+# and AuthorizeCRUD(meta) (≡ AuthorizeRoute(meta, "")) for CRUD, so the
+# per-path override in `routes:` is fully enforced by the existing middleware.
+route_defaults:
+    authentication: true
+routes:
+    /heartbeat:                 # must equal WebhookPath() — "/heartbeat"
+        authentication: false
+        authorization_policy:
+            write: [any]

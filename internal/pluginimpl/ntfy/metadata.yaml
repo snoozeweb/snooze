@@ -1,0 +1,67 @@
+---
+name: 'Send an ntfy notification'
+desc: 'Deliver a mobile push notification via a self-hosted or public ntfy server'
+icon: 'bell'
+provides:
+    - notifier
+action_form:
+    server:
+        display_name: Server
+        component: String
+        default_value: 'https://ntfy.sh'
+        description: 'ntfy server base URL (e.g. https://ntfy.sh or https://ntfy.example.com)'
+    topic:
+        display_name: Topic
+        component: String
+        description: 'ntfy topic to publish to (required)'
+        required: true
+    title:
+        display_name: Title
+        component: String
+        default_value: '{{ .Severity }} on {{ .Host }}'
+        description: 'Notification title (Go text/template over the alert record)'
+    message:
+        display_name: Message
+        component: Text
+        default_value: '{{ .Message }}'
+        description: 'Notification body (Go text/template over the alert record)'
+    priority:
+        display_name: Priority
+        component: Selector
+        default_value: 'auto'
+        description: 'ntfy priority (auto derives from severity)'
+        options:
+            - {text: Auto (derive from severity), value: auto}
+            - {text: 'Min (1)',     value: '1'}
+            - {text: 'Low (2)',     value: '2'}
+            - {text: 'Default (3)', value: '3'}
+            - {text: 'High (4)',    value: '4'}
+            - {text: 'Max (5)',     value: '5'}
+    tags:
+        display_name: Tags
+        component: String
+        description: >-
+            Comma-separated list of ntfy tag names (emoji shortcodes).
+            When left empty, tags are derived from the alert severity.
+            Example: warning,skull
+    click:
+        display_name: Click URL
+        component: String
+        description: 'Optional URL to open when the user taps the notification'
+    token:
+        display_name: Token
+        component: Password
+        description: 'Bearer token for ntfy access control (mutually exclusive with username/password)'
+    username:
+        display_name: Username
+        component: String
+        description: 'HTTP Basic auth username (used when token is empty)'
+    password:
+        display_name: Password
+        component: Password
+        description: 'HTTP Basic auth password'
+    timeout:
+        display_name: Timeout
+        component: String
+        default_value: '10s'
+        description: 'HTTP request timeout as a Go duration (e.g. 10s, 500ms)'

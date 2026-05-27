@@ -102,6 +102,30 @@ builds:
     goarch: [amd64, arm64]
     flags: ["-trimpath", "-tags=osusergo,netgo"]
     ldflags: ["-s -w"]
+  - id: snooze-otlp
+    main: ./cmd/snooze-otlp
+    binary: snooze-otlp
+    env: [CGO_ENABLED=0]
+    goos: [linux]
+    goarch: [amd64, arm64]
+    flags: ["-trimpath", "-tags=osusergo,netgo"]
+    ldflags: ["-s -w"]
+  - id: snooze-k8s-events
+    main: ./cmd/snooze-k8s-events
+    binary: snooze-k8s-events
+    env: [CGO_ENABLED=0]
+    goos: [linux]
+    goarch: [amd64, arm64]
+    flags: ["-trimpath", "-tags=osusergo,netgo"]
+    ldflags: ["-s -w"]
+  - id: snooze-mcp
+    main: ./cmd/snooze-mcp
+    binary: snooze-mcp
+    env: [CGO_ENABLED=0]
+    goos: [linux]
+    goarch: [amd64, arm64]
+    flags: ["-trimpath", "-tags=osusergo,netgo"]
+    ldflags: ["-s -w"]
 
 archives:
   - formats: [tar.gz]

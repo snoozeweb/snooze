@@ -24,9 +24,21 @@ import (
 // the chain before reaching this handler). Tests can still exercise the
 // no-login branch via IsAuthorized directly.
 func AuthorizeCRUD(meta Metadata) func(http.Handler) http.Handler {
+	return AuthorizeRoute(meta, "")
+}
+
+// AuthorizeRoute is the path-aware form of AuthorizeCRUD: it resolves the
+// effective `authentication` flag and `authorization_policy` for one specific
+// route path (the key under Metadata.Routes; pass "" for the plugin-level
+// RouteDefaults). This lets a single plugin mix an authenticated CRUD subtree
+// with a public sub-path — e.g. the heartbeat plugin keeps its `heartbeat`
+// collection behind auth while exposing a public ping at
+// /api/v1/webhook/heartbeat. The webhook mount passes WebhookPath() here so
+// each receiver resolves its own flag instead of the plugin-wide default.
+func AuthorizeRoute(meta Metadata, routePath string) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			rt := meta.ResolveRoute("") // CRUD endpoints use plugin-level defaults.
+			rt := meta.ResolveRoute(routePath)
 			authRequired := rt.Authentication == nil || *rt.Authentication
 
 			claims, hasClaims := auth.ClaimsFrom(r.Context())
@@ -42,6 +54,7 @@ func AuthorizeCRUD(meta Metadata) func(http.Handler) http.Handler {
 			ok := IsAuthorized(meta, AuthzContext{
 				PluginName: meta.PluginName,
 				Method:     r.Method,
+				RoutePath:  routePath,
 				Claims:     claims,
 			})
 			if !ok {

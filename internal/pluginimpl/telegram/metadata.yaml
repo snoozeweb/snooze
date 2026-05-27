@@ -1,0 +1,46 @@
+---
+name: 'Send a Telegram message'
+desc: 'Post an alert to a Telegram chat via the Bot API'
+icon: 'telegram'
+provides:
+    - notifier
+action_form:
+    bot_token:
+        display_name: Bot Token
+        component: Password
+        description: 'Telegram bot token (from @BotFather, e.g. 123456789:ABC…)'
+        required: true
+    chat_id:
+        display_name: Chat ID
+        component: String
+        description: 'Telegram chat_id: a private chat, group, supergroup, or channel ID (e.g. -100123456789)'
+        required: true
+    message:
+        display_name: Message
+        component: Text
+        default_value: "<b>{{ .Severity }}</b> on {{ .Host }}\n{{ .Message }}"
+        description: 'Message text (Go text/template over the record; HTML tags are safe with parse_mode HTML)'
+    parse_mode:
+        display_name: Parse Mode
+        component: Selector
+        default_value: 'HTML'
+        description: 'Telegram message formatting mode'
+        options:
+            - {text: HTML, value: HTML}
+            - {text: MarkdownV2, value: MarkdownV2}
+            - {text: None (plain text), value: none}
+    disable_notification:
+        display_name: Disable Notification
+        component: Switch
+        default_value: false
+        description: 'Send the message silently — the recipient receives no notification sound'
+    api_base:
+        display_name: API Base URL
+        component: String
+        default_value: 'https://api.telegram.org'
+        description: 'Base URL of the Telegram Bot API server; override to point at a self-hosted instance'
+    timeout:
+        display_name: Timeout
+        component: String
+        default_value: '10s'
+        description: 'Request timeout as a Go duration (default 10s)'

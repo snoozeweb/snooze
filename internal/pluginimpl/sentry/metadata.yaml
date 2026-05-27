@@ -1,0 +1,9 @@
+---
+name: 'sentry'
+desc: 'Receive Sentry webhook notifications (legacy webhook plugin and modern issue/event alerts)'
+
+# Webhook receivers are unauthenticated by design (same as grafana/alertmanager).
+route_defaults:
+    authentication: false
+    authorization_policy:
+        write: [any]

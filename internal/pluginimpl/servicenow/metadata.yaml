@@ -1,0 +1,61 @@
+---
+name: 'Create a ServiceNow incident'
+desc: 'Open (and optionally resolve) a ServiceNow incident via the Table API'
+icon: 'servicenow'
+provides:
+    - notifier
+# Field order: instance / auth first, then incident fields, then knobs.
+action_form:
+    instance_url:
+        display_name: Instance URL
+        component: String
+        description: 'ServiceNow instance base URL (e.g. https://dev12345.service-now.com)'
+        required: true
+    username:
+        display_name: Username
+        component: String
+        description: 'ServiceNow user with itil and rest_api_explorer roles'
+        required: true
+    password:
+        display_name: Password
+        component: Password
+        description: 'Password for the ServiceNow user (Basic auth)'
+        required: true
+    table:
+        display_name: Table
+        component: String
+        default_value: 'incident'
+        description: 'ServiceNow table to write records to (default: incident)'
+    urgency:
+        display_name: Urgency
+        component: Selector
+        default_value: 'auto'
+        description: 'Incident urgency (auto derives from Snooze severity)'
+        options:
+            - {text: 'Auto (from severity)', value: 'auto'}
+            - {text: '1 – High',   value: '1'}
+            - {text: '2 – Medium', value: '2'}
+            - {text: '3 – Low',    value: '3'}
+    impact:
+        display_name: Impact
+        component: Selector
+        default_value: 'auto'
+        description: 'Incident impact (auto derives from Snooze severity)'
+        options:
+            - {text: 'Auto (from severity)', value: 'auto'}
+            - {text: '1 – High',   value: '1'}
+            - {text: '2 – Medium', value: '2'}
+            - {text: '3 – Low',    value: '3'}
+    category:
+        display_name: Category
+        component: String
+        description: 'Incident category (e.g. software, hardware). Leave blank to omit.'
+    caller_id:
+        display_name: Caller ID
+        component: String
+        description: 'sys_id or user_name of the ServiceNow user to set as caller. Leave blank to omit.'
+    timeout:
+        display_name: Timeout
+        component: String
+        default_value: '10s'
+        description: 'Request timeout as a Go duration (default 10s)'

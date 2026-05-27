@@ -20,6 +20,7 @@ type Config struct {
 	Web          schema.Web          `koanf:"web"`
 	Auth         schema.Auth         `koanf:"auth"`
 	Syncer       schema.Syncer       `koanf:"syncer"`
+	Ingest       schema.Ingest       `koanf:"ingest"`
 }
 
 // Default returns a Config populated with the canonical default values for
@@ -35,6 +36,7 @@ func Default() *Config {
 		Web:          schema.DefaultWeb(),
 		Auth:         schema.DefaultAuth(),
 		Syncer:       schema.DefaultSyncer(),
+		Ingest:       schema.DefaultIngest(),
 	}
 }
 
