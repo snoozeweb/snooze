@@ -173,8 +173,22 @@ func (d *Daemon) handleAlert(w http.ResponseWriter, r *http.Request) {
 	}
 	for _, ch := range order {
 		g := groups[ch]
-		body, att := formatAlertsCard(g.alerts, d.cfg.Server)
-		opts := sendOpts{Attachments: []chatAttachment{att}, ReplyToID: replyTo[ch]}
+		// A follow-up threaded under an existing root gets a succinct HTML
+		// reply — the root already shows the full Adaptive Card, so repeating
+		// it on every re-notification just bloats the thread. A fresh top-level
+		// message gets the full card.
+		var (
+			body string
+			opts sendOpts
+		)
+		if replyTo[ch] != "" {
+			body = formatEscalationReply(g.alerts, d.cfg.Server)
+			opts = sendOpts{ReplyToID: replyTo[ch]}
+		} else {
+			var att chatAttachment
+			body, att = formatAlertsCard(g.alerts, d.cfg.Server)
+			opts = sendOpts{Attachments: []chatAttachment{att}}
+		}
 		msg, err := d.graph.sendMessage(r.Context(), g.teamID, g.channelID, body, opts)
 		if err != nil {
 			resp.Failed[ch] = err.Error()
@@ -291,4 +305,3 @@ func parseChannelRef(ref string) (teamID, channelID string, err error) {
 	}
 	return parts[1], parts[3], nil
 }
-

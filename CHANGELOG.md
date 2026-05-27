@@ -148,6 +148,10 @@ the field-by-field mapping.
   * `snooze-teams`: the bridge records the thread *root* id across a reply
     chain rather than each reply's own id, so every follow-up keeps threading
     under the original message (Microsoft Graph only allows one reply level).
+  * `snooze-teams`: a threaded follow-up posts a succinct text reply
+    (`New escalation on <time>` + the alert message) instead of repeating the
+    full Adaptive Card the thread root already shows, matching the 1.x bot and
+    Teams' plain-text reply convention.
 * **Action edits apply without a server restart.** The notification dispatcher
   caches the `action` collection in memory but only subscribed to its own
   collection's change events, so edits to an action (URL, payload,

@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"html"
 	"log/slog"
 	"net/http"
 	"net/url"
@@ -342,6 +343,49 @@ func formatAlertCard(rec snoozetypes.Record, snoozeURL string) (htmlBody string,
 	}
 	htmlBody = `<attachment id="` + id + `"></attachment>` + botMarker
 	return htmlBody, attachment
+}
+
+// formatEscalationReply renders the succinct HTML body posted as a follow-up
+// reply under an alert's existing Teams thread. The thread root already carries
+// the full Adaptive Card (host / source / severity / message via FactSet), so a
+// reply must NOT repeat it — it only flags the re-escalation and restates the
+// (possibly updated) message. This mirrors Snooze 1.x's threaded "New
+// escalation" reply and Microsoft Teams' own convention of plain-text thread
+// replies rather than re-posting the card on every re-notification.
+//
+// Returns an HTML body (contentType=html) with the snooze-bot marker so the
+// poll loop's self-detection skips it. No attachment is produced — the caller
+// passes empty sendOpts.Attachments.
+func formatEscalationReply(records []snoozetypes.Record, snoozeURL string) string {
+	var b strings.Builder
+	switch len(records) {
+	case 0:
+		b.WriteString("⚠️ <b>New escalation</b> ⚠️")
+	case 1:
+		rec := records[0]
+		b.WriteString("⚠️ <b>New escalation</b> on ")
+		b.WriteString(html.EscapeString(alertTimestamp(rec)))
+		b.WriteString(" ⚠️")
+		if rec.Message != "" {
+			b.WriteString("<br>")
+			b.WriteString(html.EscapeString(rec.Message))
+		}
+	default:
+		fmt.Fprintf(&b, "⚠️ <b>%d new escalations</b> ⚠️", len(records))
+		for _, rec := range records {
+			host := rec.Host
+			if host == "" {
+				host = "Unknown"
+			}
+			b.WriteString("<br>• ")
+			b.WriteString(html.EscapeString(host))
+			if rec.Message != "" {
+				b.WriteString(": ")
+				b.WriteString(html.EscapeString(rec.Message))
+			}
+		}
+	}
+	return "<p>" + b.String() + "</p>" + botMarker
 }
 
 // formatAlertsCard renders one or more alerts targeting the same channel as

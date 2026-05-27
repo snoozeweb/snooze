@@ -32,17 +32,17 @@ func newTestDaemonWithGraph(t *testing.T, listenAddr string, graphHandler http.H
 	require.NoError(t, err)
 
 	cfg := Config{
-		Server:       "http://snooze.invalid",
-		Method:       "local",
-		TenantID:     "tenant",
-		ClientID:     "client",
-		ClientSecret: "secret",
-		TeamID:       "team",
-		ChannelID:    "channel",
-		GraphBase:    "http://" + u.Host,
-		LoginBase:    "http://" + u.Host,
-		PollInterval: time.Hour, // keep the poll loop idle for these tests
-		PollLookback: time.Minute,
+		Server:         "http://snooze.invalid",
+		Method:         "local",
+		TenantID:       "tenant",
+		ClientID:       "client",
+		ClientSecret:   "secret",
+		TeamID:         "team",
+		ChannelID:      "channel",
+		GraphBase:      "http://" + u.Host,
+		LoginBase:      "http://" + u.Host,
+		PollInterval:   time.Hour, // keep the poll loop idle for these tests
+		PollLookback:   time.Minute,
 		RequestTimeout: 2 * time.Second,
 		BotName:        "SnoozeBot",
 		ListenAddr:     listenAddr,
@@ -436,6 +436,46 @@ func extractCardJSON(t *testing.T, body map[string]any) map[string]any {
 // quiet the linter about unused imports if the test file is later edited.
 var _ snoozetypes.Record
 
+// TestFormatEscalationReply_Succinct verifies a follow-up reply is a short HTML
+// message — not a repeat of the full Adaptive Card. The root message already
+// carries host/source/severity/message in its card; a reply only flags the
+// re-escalation and restates the (possibly updated) message, mirroring Snooze
+// 1.x's threaded "New escalation" reply.
+func TestFormatEscalationReply_Succinct(t *testing.T) {
+	rec := snoozetypes.Record{
+		Host:      "srv-x",
+		Source:    "syslog",
+		Process:   "Kubernetes",
+		Severity:  "critical",
+		Message:   "disk full on /var",
+		Timestamp: time.Date(2026, 5, 27, 9, 30, 0, 0, time.UTC),
+	}
+	body := formatEscalationReply([]snoozetypes.Record{rec}, "https://snooze.egerie.eu")
+
+	require.Contains(t, body, "scalation", "reply must flag the re-escalation")
+	require.Contains(t, body, "disk full on /var", "reply must restate the alert message")
+	// Must NOT repeat the full card the root already shows.
+	require.NotContains(t, body, "<attachment", "reply must not attach an Adaptive Card")
+	require.NotContains(t, body, "FactSet")
+	require.NotContains(t, body, "Received alert")
+	require.Contains(t, body, botMarker, "reply must carry the bot marker for self-detection")
+}
+
+// TestFormatEscalationReply_MultipleAlerts verifies a batched reply lists each
+// alert on its own succinct line rather than emitting one card per alert.
+func TestFormatEscalationReply_MultipleAlerts(t *testing.T) {
+	recs := []snoozetypes.Record{
+		{Host: "h1", Message: "first"},
+		{Host: "h2", Message: "second"},
+	}
+	body := formatEscalationReply(recs, "https://snooze.egerie.eu")
+	require.Contains(t, body, "h1")
+	require.Contains(t, body, "first")
+	require.Contains(t, body, "h2")
+	require.Contains(t, body, "second")
+	require.NotContains(t, body, "<attachment")
+}
+
 // TestHandleAlert_ReplyChain exercises the inject_response-driven reply
 // flow: the bridge accepts a reply_to_ids map, posts to the Graph replies
 // endpoint, and — crucially — keeps surfacing the THREAD ROOT id (not the
@@ -509,6 +549,64 @@ func TestHandleAlert_ReplyChain(t *testing.T) {
 	require.Eventually(t, func() bool { return hits.Load() == 1 }, time.Second, 10*time.Millisecond)
 	require.Contains(t, *seenPath.Load(), "/messages/root-msg-42/replies",
 		"the bridge must POST to the replies endpoint when reply_to_ids is set")
+
+	cancel()
+	require.NoError(t, <-listenErr)
+}
+
+// TestHandleAlert_ReplyBodyIsSuccinct verifies that a threaded follow-up posts
+// a short HTML body with NO Adaptive Card attachment — the root already carries
+// the card. A new top-level message (no reply_to_ids) still gets the full card,
+// covered by the other handleAlert tests.
+func TestHandleAlert_ReplyBodyIsSuccinct(t *testing.T) {
+	var replyBody atomic.Pointer[map[string]any]
+	graphHandler := func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case strings.HasSuffix(r.URL.Path, "/oauth2/v2.0/token"):
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{"access_token":"AT","expires_in":3600}`))
+			return
+		case strings.Contains(r.URL.Path, "/replies"):
+			raw, _ := io.ReadAll(r.Body)
+			var body map[string]any
+			_ = json.Unmarshal(raw, &body)
+			replyBody.Store(&body)
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{"id":"reply-1"}`))
+			return
+		default:
+			http.NotFound(w, r)
+		}
+	}
+	addr := pickFreePort(t)
+	d := newTestDaemonWithGraph(t, addr, graphHandler)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	listenErr := make(chan error, 1)
+	go func() { listenErr <- d.runListener(ctx) }()
+	require.Eventually(t, func() bool {
+		c, err := net.DialTimeout("tcp", addr, 100*time.Millisecond)
+		if err != nil {
+			return false
+		}
+		_ = c.Close()
+		return true
+	}, time.Second, 10*time.Millisecond)
+
+	channel := "teams/team-A/channels/19:aaa@thread.tacv2"
+	body := `{"channels":["` + channel + `"],"alert":{"host":"myhost","severity":"warning","message":"disk full"},"reply_to_ids":{"` + channel + `":"root-1"}}`
+	resp, err := http.Post("http://"+addr+"/alert", "application/json", bytes.NewBufferString(body))
+	require.NoError(t, err)
+	defer resp.Body.Close()
+	require.Equal(t, http.StatusOK, resp.StatusCode)
+
+	require.Eventually(t, func() bool { return replyBody.Load() != nil }, time.Second, 10*time.Millisecond)
+	rb := *replyBody.Load()
+	require.NotContains(t, rb, "attachments", "a threaded reply must not attach an Adaptive Card")
+	bodyMap, _ := rb["body"].(map[string]any)
+	content, _ := bodyMap["content"].(string)
+	require.Contains(t, content, "disk full", "reply should restate the message")
+	require.NotContains(t, content, "<attachment", "reply body must not reference a card attachment")
 
 	cancel()
 	require.NoError(t, <-listenErr)
