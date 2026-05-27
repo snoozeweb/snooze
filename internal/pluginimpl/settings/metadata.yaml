@@ -17,7 +17,7 @@ routes:
 #
 # The `group:` field on each entry lets the React frontend render the picker
 # grouped by section (general vs notification). Description text is the
-# canonical copy from docs/configuration/{general,notifications}.rst.
+# canonical copy from docs/content/configuration/{general,notifications}.md.
 setting_form:
     default_auth_backend:
         display_name: 'Default authentication backend'

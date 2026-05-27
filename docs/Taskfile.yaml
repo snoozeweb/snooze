@@ -1,0 +1,32 @@
+---
+# Documentation site (Docusaurus 3 + TypeScript).
+# Invoked from the root Taskfile as `task docs:<name>`.
+
+version: '3'
+
+tasks:
+  install:
+    desc: Install npm dependencies (npm ci, reproducible)
+    cmds:
+    - npm ci --no-audit --no-fund
+
+  serve:
+    desc: Run the Docusaurus dev server on :3000 (live reload)
+    cmds:
+    - npm start
+
+  build:
+    desc: Build the static documentation site into docs/build/
+    cmds:
+    - npm ci --no-audit --no-fund
+    - npm run build
+
+  typecheck:
+    desc: Type-check the Docusaurus config/components
+    cmds:
+    - npm run typecheck
+
+  clean:
+    desc: Remove build output and Docusaurus cache
+    cmds:
+    - rm -rf build .docusaurus

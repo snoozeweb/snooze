@@ -91,15 +91,15 @@ and `runtime-component` targets.
 
 ## Documentation
 
-User documentation: <https://docs.snoozeweb.net> (mirrors
-`docs/index.rst`).
+User documentation: <https://docs.snoozeweb.net> (Docusaurus site built
+from `docs/content/`; published to GitHub Pages by `.github/workflows/docs.yml`).
 
 Repo-internal pointers:
 
 * `AGENTS.md` — conventions for human and AI contributors.
 * `CHANGELOG.md` — release history.
 * `ROADMAP.md` — direction of travel.
-* `docs/migration/python-to-go.md` — upgrading from 1.x.
+* `docs/content/migration/python-to-go.md` — upgrading from 1.x.
 
 ### What ships in v2
 

@@ -66,7 +66,7 @@ snooze/
 │   └── snoozetypes/             # Alert/Record/User/etc. struct definitions
 ├── web/                          # React 19 SPA (M0-M8 rewrite, see docs/superpowers/)
 ├── api/openapi.yaml              # v1 HTTP contract (single source of truth)
-├── docs/                         # Sphinx documentation (regenerated for Go)
+├── docs/                         # Docusaurus documentation site (Markdown under content/, builds to GitHub Pages)
 ├── examples/                     # Example configs (one per DB backend)
 ├── packaging/
 │   ├── Dockerfile.golang        # Multi-stage build: web + binaries, distroless runtime
@@ -156,7 +156,8 @@ Files to consult first when starting a change:
    - REFACTOR: tidy while staying green.
 3. Use the `dbtest` harness when a change spans more than one backend.
    Tests parameterised over Mongo+Postgres+SQLite live there.
-4. Significant user-facing features go in `docs/` (Sphinx); update
+4. Significant user-facing features go in `docs/` (Docusaurus — Markdown
+   under `docs/content/`, run `task docs:build` to verify); update
    `api/openapi.yaml` if you touch an HTTP route; add an entry under
    `[Unreleased]` in `CHANGELOG.md`.
 

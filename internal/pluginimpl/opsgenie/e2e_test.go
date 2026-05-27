@@ -4,7 +4,7 @@ package opsgenie
 //
 // Gate: the test is skipped unless SNOOZE_E2E_OPSGENIE_API_KEY is set.
 // It performs one real create followed by one real close against the
-// configured Opsgenie region. See docs/general/integrations/opsgenie.rst
+// configured Opsgenie region. See docs/content/general/integrations/opsgenie.md
 // for setup instructions.
 
 import (

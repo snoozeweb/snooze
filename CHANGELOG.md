@@ -1,5 +1,16 @@
 ## [Unreleased]
 
+### Documentation
+
+* Migrated the documentation site from Sphinx (reStructuredText) to
+  **Docusaurus 3** (Markdown under `docs/content/`). All pages were converted
+  from RST, cross-references rewritten, and the build enforces zero broken
+  links/anchors (`onBrokenLinks`/`onBrokenAnchors: throw`). Local offline
+  search, and the OpenAPI 3.1 contract rendered as an interactive Redoc page
+  at `/api/`. A new `.github/workflows/docs.yml` builds on every PR and
+  deploys to GitHub Pages on push to `master`. Build locally with
+  `task docs:build` / preview with `task docs:serve`.
+
 ### New integrations
 
 A large batch of input and output integrations. Each ships mock unit tests plus

@@ -14,6 +14,9 @@ includes:
   web:
     taskfile: ./web/Taskfile.yaml
     dir: ./web
+  docs:
+    taskfile: ./docs/Taskfile.yaml
+    dir: ./docs
   chart:
     taskfile: ./packaging/helm/Taskfile.yaml
     dir: ./packaging/helm
@@ -52,7 +55,7 @@ tasks:
       Run the env-gated end-to-end integration tests for the input/output
       integrations. Each test self-skips unless its SNOOZE_E2E_* credentials
       are exported (see each integration's docs page under
-      docs/general/integrations/ for the required variables).
+      docs/content/general/integrations/ for the required variables).
     cmds:
     - go test -run E2E -count=1 ./...
 

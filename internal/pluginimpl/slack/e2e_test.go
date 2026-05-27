@@ -4,7 +4,7 @@ package slack
 // relevant environment variables are set; they are safe to run as part of
 // `go test ./...` because `t.Skip` fires at the top of each test.
 //
-// To run them, export the required variables (see docs/general/integrations/slack.rst)
+// To run them, export the required variables (see docs/content/general/integrations/slack.md)
 // and then:
 //
 //	go test -v -run E2E ./internal/pluginimpl/slack/...

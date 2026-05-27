@@ -1,0 +1,28 @@
+/**
+ * Snooze documentation theme. Infima CSS variables drive the default theme;
+ * the palette below is derived from the Snooze brand blue.
+ */
+
+:root {
+  --ifm-color-primary: #1f6feb;
+  --ifm-color-primary-dark: #1862d4;
+  --ifm-color-primary-darker: #175dc8;
+  --ifm-color-primary-darkest: #134ca5;
+  --ifm-color-primary-light: #387cee;
+  --ifm-color-primary-lighter: #4585ef;
+  --ifm-color-primary-lightest: #6b9ff2;
+  --ifm-code-font-size: 95%;
+  --docusaurus-highlighted-code-line-bg: rgba(0, 0, 0, 0.1);
+}
+
+/* Dark mode palette */
+[data-theme='dark'] {
+  --ifm-color-primary: #58a6ff;
+  --ifm-color-primary-dark: #3f97ff;
+  --ifm-color-primary-darker: #318fff;
+  --ifm-color-primary-darkest: #0578ff;
+  --ifm-color-primary-light: #71b5ff;
+  --ifm-color-primary-lighter: #7fbdff;
+  --ifm-color-primary-lightest: #abd3ff;
+  --docusaurus-highlighted-code-line-bg: rgba(0, 0, 0, 0.3);
+}

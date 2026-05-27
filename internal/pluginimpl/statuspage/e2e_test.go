@@ -7,7 +7,7 @@ package statuspage
 // incident and immediately resolves it, which is visible briefly in the
 // Statuspage UI.
 //
-// See docs/general/integrations/statuspage.rst for setup instructions.
+// See docs/content/general/integrations/statuspage.md for setup instructions.
 
 import (
 	"context"
