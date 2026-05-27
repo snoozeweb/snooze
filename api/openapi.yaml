@@ -35,9 +35,11 @@ info:
     * `PATCH  /api/v1/{plugin}/{uid}` — partial update.
     * `DELETE /api/v1/{plugin}/{uid}` — delete one.
 
-    A handful of plugins (`alertmanager`, `grafana`, `influxdb2`,
-    `kapacitor`, `prometheus`) replace the generic CRUD with an
-    inbound webhook surface under `/api/v1/webhook/{name}`.
+    A number of plugins (`alertmanager`, `azuremonitor`, `cloudwatch`,
+    `datadog`, `grafana`, `influxdb2`, `kapacitor`, `newrelic`,
+    `prometheus`, `sentry`) replace the generic CRUD with an inbound
+    webhook surface under `/api/v1/webhook/{name}`; the `heartbeat`
+    plugin exposes a token-gated ping at `/api/v1/webhook/heartbeat`.
 
     ## Conditions (the `q` parameter)
 
@@ -402,6 +404,10 @@ paths:
         more Snooze records and submit them to the pipeline. The
         payload schema is source-specific; see each integration's
         documentation for the wire format.
+
+        Receivers are unauthenticated by default. When `ingest.token` is
+        configured every request must carry it as
+        `Authorization: Bearer <token>` or `?token=<token>`.
       security: []
       parameters:
         - name: webhook
@@ -411,10 +417,15 @@ paths:
             type: string
             enum:
               - alertmanager
+              - azuremonitor
+              - cloudwatch
+              - datadog
               - grafana
               - influxdb2
               - kapacitor
+              - newrelic
               - prometheus
+              - sentry
       requestBody:
         required: true
         content:
@@ -433,6 +444,35 @@ paths:
                   data:
                     type: array
                     items: {$ref: '#/components/schemas/Record'}
+
+  /api/v1/webhook/heartbeat:
+    post:
+      tags: [webhooks]
+      summary: Heartbeat ping (dead-man's-switch)
+      description: |
+        Keep a heartbeat alive: stamps the named heartbeat's `last_seen`
+        to now. Public, but each ping must present the heartbeat's
+        server-generated per-record token (a configured `ingest.token`
+        applies on top). `GET` is also accepted.
+      security: []
+      parameters:
+        - name: name
+          in: query
+          required: true
+          schema: {type: string}
+          description: The heartbeat name.
+        - name: token
+          in: query
+          required: true
+          schema: {type: string}
+          description: The heartbeat's server-generated secret token.
+      responses:
+        '200':
+          description: Heartbeat stamped.
+        '401':
+          description: Missing or invalid token.
+        '404':
+          description: No heartbeat with that name.
 
   /api/v1/permissions:
     get:
@@ -714,24 +754,42 @@ components:
           - aggregaterule
           - alertmanager
           - audit
+          - azuremonitor
+          - cloudwatch
           - comment
+          - datadog
+          - discord
           - environment
+          - googlechat
           - grafana
+          - heartbeat
           - influxdb2
           - kapacitor
           - kv
           - mail
+          - newrelic
           - notification
+          - ntfy
+          - opsgenie
+          - pagerduty
           - patlite
           - profile
           - prometheus
+          - pushover
           - record
           - role
           - rule
           - script
+          - sentry
+          - servicenow
           - settings
+          - slack
           - snooze
+          - sns
           - stats
+          - statuspage
+          - telegram
+          - twilio
           - user
           - webhook
           - widget
@@ -1003,4 +1061,3 @@ components:
               text: {type: string}
               value: {}
       additionalProperties: true
-        trace_id:   {type: string}
