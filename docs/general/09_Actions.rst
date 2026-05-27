@@ -14,6 +14,11 @@ Overview
 
 Execute a command when called. Right now only :ref:`Notifications <notifications>` can call an Action.
 
+.. seealso::
+
+   The built-in action types (mail, generic webhook, script, Patlite) and every
+   other output integration are documented under :ref:`integrations`.
+
 Internal Actions are already included in ``snooze-server`` package.
 
 External Actions can be found and installed from `Snooze Plugins Repository <https://github.com/snoozeweb/snooze_plugins>`_

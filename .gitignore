@@ -33,5 +33,6 @@ docs/configuration/*.rst
 !docs/configuration/housekeeping.rst
 !docs/configuration/notifications.rst
 !docs/configuration/syncer.rst
+!docs/configuration/ingest.rst
 !docs/configuration/sqlite.rst
 !docs/configuration/postgres.rst

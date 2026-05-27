@@ -9,12 +9,17 @@ Inject logs into Snooze server
 
     Architecture - Inputs
 
-To receive alert from different sources, Snooze server uses a plugin system.
-Snooze server exposes a HTTP API and each plugin uses this API to create new alerts.
+To receive alerts from different sources, Snooze server exposes an HTTP API;
+each input forwards alerts to it (directly, via a webhook receiver, or via a
+standalone collector daemon).
 
-The following plugins are officially supported:
-* Syslog
-* CLI
+.. seealso::
+
+   The full catalogue of input integrations — REST API, Prometheus,
+   Alertmanager, Grafana, CloudWatch, Datadog, Azure Monitor, Sentry, New Relic,
+   InfluxDB 2, Kapacitor, Syslog, SNMP traps, RELP, SMTP, OpenTelemetry,
+   Kubernetes events, heartbeats and Pacemaker — with per-integration setup —
+   lives under :ref:`integrations`.
 
 Client configuration
 ====================

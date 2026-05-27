@@ -31,6 +31,7 @@ Bootstrap YAML files
     housekeeping
     notifications
     syncer
+    ingest
     sqlite
     postgres
 

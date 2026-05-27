@@ -8,3 +8,4 @@ This section lists various documents related to SnoozeWeb usage on a daily basis
     :glob:
 
     *
+    integrations/index

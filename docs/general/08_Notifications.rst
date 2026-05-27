@@ -9,6 +9,12 @@ Notifications
 
     Architecture - Notifications plugin
 
+.. seealso::
+
+   For the catalogue of notification destinations — Slack, Microsoft Teams,
+   email, Google Chat, Mattermost, PagerDuty, Opsgenie, ServiceNow, Twilio,
+   webhooks and more — see :ref:`integrations`.
+
 Call a list of :ref:`Actions <actions>` which are alerting scripts.
 
 Alerts have to match the Notification's condition and time constraint in order to being processed.
