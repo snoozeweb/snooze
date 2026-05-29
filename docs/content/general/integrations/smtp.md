@@ -51,7 +51,7 @@ The first match in the order above wins. Subjects with no recognisable keyword p
 
 ## Configuration
 
-`snooze-smtp` reads `/etc/snooze/smtp.yaml` by default; override the path with `-config`.
+`snooze-smtp` reads `/etc/snooze/smtp.yaml` by default; override the path with `-c`.
 
 ``` yaml
 # --- Snooze server (where alerts are POSTed) ---
@@ -125,7 +125,7 @@ Wants=network-online.target
 Type=simple
 User=snooze
 Group=snooze
-ExecStart=/usr/bin/snooze-smtp -config /etc/snooze/smtp.yaml
+ExecStart=/usr/bin/snooze-smtp -c /etc/snooze/smtp.yaml
 Restart=on-failure
 RestartSec=5s
 

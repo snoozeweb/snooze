@@ -49,7 +49,7 @@ Out-of-range severity values default to `info`.
 
 ## Configuration
 
-`snooze-syslog` reads `/etc/snooze/syslog.yaml` by default; override the path with `-config`. At least one of `listen_udp` or `listen_tcp` must be set.
+`snooze-syslog` reads `/etc/snooze/syslog.yaml` by default; override the path with `-c`. At least one of `listen_udp` or `listen_tcp` must be set.
 
 ``` yaml
 # --- Snooze server (where alerts are POSTed) ---
@@ -98,7 +98,7 @@ Wants=network-online.target
 Type=simple
 User=snooze
 Group=snooze
-ExecStart=/usr/bin/snooze-syslog -config /etc/snooze/syslog.yaml
+ExecStart=/usr/bin/snooze-syslog -c /etc/snooze/syslog.yaml
 Restart=on-failure
 RestartSec=5s
 

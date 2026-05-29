@@ -8,7 +8,7 @@ Wants=network-online.target
 Type=simple
 User=snooze
 Group=snooze
-ExecStart=/usr/bin/snooze-mattermost -config /etc/snooze/mattermost.yaml
+ExecStart=/usr/bin/snooze-mattermost -c /etc/snooze/mattermost.yaml
 Restart=on-failure
 RestartSec=5s
 

@@ -30,7 +30,7 @@ Each RELP `syslog` frame becomes one `snoozetypes.Record`. The field mapping is 
 
 ## Configuration
 
-`snooze-relp` reads `/etc/snooze/relp.yaml` by default. Override the path with `-config` or the `SNOOZE_RELP_CONFIG` environment variable.
+`snooze-relp` reads `/etc/snooze/relp.yaml` by default. Override the path with `-c` or the `SNOOZE_RELP_CONFIG` environment variable.
 
 ``` yaml
 # --- Snooze server (where alerts are POSTed) ---
@@ -81,7 +81,7 @@ Wants=network-online.target
 Type=simple
 User=snooze
 Group=snooze
-ExecStart=/usr/bin/snooze-relp -config /etc/snooze/relp.yaml
+ExecStart=/usr/bin/snooze-relp -c /etc/snooze/relp.yaml
 Restart=on-failure
 RestartSec=5s
 

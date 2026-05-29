@@ -43,7 +43,7 @@ Non-zero exits from fence helpers are interpreted by stonith-ng as probe or acti
 
 ## Configuration
 
-`snooze-pacemaker` reads `/etc/snooze/pacemaker.yaml` by default. The config file is optional — all fields can be supplied via environment variables instead (useful in stonith resource configurations). Override the path with `-config` or the `SNOOZE_PACEMAKER_CONFIG` environment variable.
+`snooze-pacemaker` reads `/etc/snooze/pacemaker.yaml` by default. The config file is optional — all fields can be supplied via environment variables instead (useful in stonith resource configurations). Override the path with `-c` or the `SNOOZE_PACEMAKER_CONFIG` environment variable.
 
 ``` yaml
 # --- Snooze server (where fence alerts are POSTed) ---
@@ -133,7 +133,7 @@ Run the helper directly to verify credentials and connectivity before wiring it 
 
 ``` console
 # Passive probe — exits 0, prints metadata XML
-$ snooze-pacemaker -config /etc/snooze/pacemaker.yaml metadata
+$ snooze-pacemaker -c /etc/snooze/pacemaker.yaml metadata
 
 # Dry-run a fence-off event for node-01
 $ SNOOZE_SERVER=https://snooze.example.com \
@@ -150,7 +150,7 @@ You can also simulate the stdin-driven invocation that stonith-ng uses:
 
 ``` console
 $ printf 'action=off\nnodename=node-01\nreason=node unresponsive\n' \
-    | snooze-pacemaker -config /etc/snooze/pacemaker.yaml
+    | snooze-pacemaker -c /etc/snooze/pacemaker.yaml
 ```
 
 ## Notes & limitations

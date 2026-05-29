@@ -1,5 +1,16 @@
 ## [Unreleased]
 
+### Changed
+- **Breaking (CLI):** the auxiliary `snooze-*` daemons now share one entry-point
+  contract — config path is `-c` (the old `-config` is removed), `-debug`
+  replaces `-log-level`, logs are text on stderr, and a `version` subcommand is
+  standard. Update any systemd units or scripts that passed `-config`/`-log-level`.
+  (This also fixes units that were already broken by the `-c`/`-config` mismatch.)
+
+### Internal
+- New `internal/daemon` harness backs every auxiliary binary; `internal/runtime`
+  removed (its `automaxprocs` side effect folded into `internal/daemon`).
+
 ### Documentation
 
 * Migrated the documentation site from Sphinx (reStructuredText) to

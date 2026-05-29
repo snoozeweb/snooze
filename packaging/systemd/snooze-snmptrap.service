@@ -8,7 +8,7 @@ Wants=network-online.target
 Type=simple
 User=snooze
 Group=snooze
-ExecStart=/usr/bin/snooze-snmptrap -config /etc/snooze/snmptrap.yaml
+ExecStart=/usr/bin/snooze-snmptrap -c /etc/snooze/snmptrap.yaml
 Restart=on-failure
 RestartSec=5s
 

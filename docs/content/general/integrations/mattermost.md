@@ -21,7 +21,7 @@ The WebSocket connection is managed independently: on startup the daemon resolve
 
 ## Configuration
 
-snooze-mattermost reads the config file path from the `-config` flag or the `SNOOZE_MATTERMOST_CONFIG` environment variable. There is no default path — the flag or variable is required.
+snooze-mattermost reads `/etc/snooze/mattermost.yaml` by default. Override the path with the `-c` flag or the `SNOOZE_MATTERMOST_CONFIG` environment variable.
 
 ``` yaml
 # --- Snooze server connection ---
@@ -82,7 +82,7 @@ Wants=network-online.target
 Type=simple
 User=snooze
 Group=snooze
-ExecStart=/usr/bin/snooze-mattermost -config /etc/snooze/mattermost.yaml
+ExecStart=/usr/bin/snooze-mattermost -c /etc/snooze/mattermost.yaml
 Restart=on-failure
 RestartSec=5s
 
@@ -176,7 +176,7 @@ The alert UID is displayed in the Snooze web UI on the alert detail page and is 
 Start the daemon manually and watch stderr:
 
 ``` console
-$ snooze-mattermost -config /etc/snooze/mattermost.yaml -debug
+$ snooze-mattermost -c /etc/snooze/mattermost.yaml -debug
 ```
 
 On a successful startup you should see a line like:

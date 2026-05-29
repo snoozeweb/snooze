@@ -8,7 +8,7 @@ Wants=network-online.target
 Type=simple
 User=snooze
 Group=snooze
-ExecStart=/usr/bin/snooze-teams -config /etc/snooze/teams.yaml
+ExecStart=/usr/bin/snooze-teams -c /etc/snooze/teams.yaml
 Restart=on-failure
 RestartSec=5s
 
