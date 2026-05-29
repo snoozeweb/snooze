@@ -296,11 +296,14 @@ func alertTimestamp(rec snoozetypes.Record) string {
 // down to records matching rec.hash. Empty string when either the base URL
 // or the hash is missing.
 //
-// URL shape: `<snoozeURL>/web/alerts?search=hash%20%3D%20<hash>`. AlertsPage
-// reads the `search` query param once on mount and seeds the SearchBar so
-// the alerts list filters down to the matching record(s). The legacy Python
-// URL `/web/?#/record?tab=All&s=hash%3D<hash>` no longer exists on the new
-// hash-less React router.
+// URL shape: `<snoozeURL>/web/alerts?tab=all&search=hash%20%3D%20<hash>`.
+// AlertsPage reads `tab` and `search` on mount: `tab=all` lands the recipient
+// on the All tab (whose preset condition is null) and `search` seeds the
+// SearchBar. We pin the All tab on purpose — by the time a Teams recipient
+// clicks through, the alert may have been acked, closed, or snoozed, all of
+// which hide it from the default Alerts tab; All always shows the record. The
+// legacy Python URL `/web/?#/record?tab=All&s=hash%3D<hash>` no longer exists
+// on the new hash-less React router.
 func recordWebURL(rec snoozetypes.Record, snoozeURL string) string {
 	hash := recordHash(rec)
 	if snoozeURL == "" || hash == "" {
@@ -312,7 +315,7 @@ func recordWebURL(rec snoozetypes.Record, snoozeURL string) string {
 	// the SearchBar instead of `hash = <hash>`. Use %20 for the spaces so the
 	// SearchBar lands with the DSL the human can read and edit.
 	q := strings.ReplaceAll(url.QueryEscape("hash = "+hash), "+", "%20")
-	return fmt.Sprintf("%s/web/alerts?search=%s",
+	return fmt.Sprintf("%s/web/alerts?tab=all&search=%s",
 		strings.TrimRight(snoozeURL, "/"), q)
 }
 

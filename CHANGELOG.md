@@ -29,6 +29,11 @@
   integration tests.
 
 ### Changed
+- **Teams notifications link to the All tab.** The `snooze-teams` "View in
+  Snooze" button and host link now point at `/web/alerts?tab=all&search=…`
+  instead of the default Alerts tab. By the time a recipient clicks through, the
+  alert may have been acked, closed, or snoozed — all hidden from the Alerts
+  tab — so the All tab guarantees the record is visible.
 - **Breaking (CLI):** the auxiliary `snooze-*` daemons now share one entry-point
   contract — config path is `-c` (the old `-config` is removed), `-debug`
   replaces `-log-level`, logs are text on stderr, and a `version` subcommand is

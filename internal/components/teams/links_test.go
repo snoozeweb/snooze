@@ -18,16 +18,17 @@ func recWithHash(host, hash string) snoozetypes.Record {
 }
 
 // TestRecordWebURL_NewReactRoute locks in the URL shape the React 2.0 web
-// router understands. AlertsPage at /web/alerts reads the `search` query
-// param once on mount and seeds the SearchBar, so the recipient lands on
-// the alerts list filtered to the matching hash.
+// router understands. AlertsPage at /web/alerts reads `tab` and `search`
+// query params; we pin tab=all so the recipient lands on the All tab,
+// filtered to the matching hash, regardless of the alert's lifecycle state
+// (an acked/closed/snoozed alert is hidden from the default Alerts tab).
 //
 // The legacy `/web/?#/record?tab=All&s=hash%3D…` Vue URL is dead — the new
 // router has no hash-routing and no `/web/record` route.
 func TestRecordWebURL_NewReactRoute(t *testing.T) {
 	got := recordWebURL(recWithHash("db-1.example.com", "abc123"), "https://snooze.example.com/")
-	require.Equal(t, "https://snooze.example.com/web/alerts?search=hash%20%3D%20abc123", got,
-		"trailing slashes get trimmed and `hash = <hash>` is url-escaped")
+	require.Equal(t, "https://snooze.example.com/web/alerts?tab=all&search=hash%20%3D%20abc123", got,
+		"links to the All tab; trailing slashes trimmed and `hash = <hash>` url-escaped")
 }
 
 func TestRecordWebURL_Empty(t *testing.T) {
@@ -44,7 +45,7 @@ func TestRecordWebURL_Empty(t *testing.T) {
 // silently stripped by Teams; this test guards against that regression.
 func TestHostText_MarkdownLink(t *testing.T) {
 	got := hostText(recWithHash("db-1.example.com", "abc123"), "https://snooze.example.com")
-	require.Equal(t, "[db-1.example.com](https://snooze.example.com/web/alerts?search=hash%20%3D%20abc123)", got)
+	require.Equal(t, "[db-1.example.com](https://snooze.example.com/web/alerts?tab=all&search=hash%20%3D%20abc123)", got)
 }
 
 func TestHostText_BareWhenURLOrHashMissing(t *testing.T) {
@@ -94,7 +95,7 @@ func TestBuildAlertCard_HostFactAndOpenUrlAction(t *testing.T) {
 	require.Equal(t, "Host", facts[0]["title"], "Host must be the first labelled fact")
 	hostValue := facts[0]["value"].(string)
 	require.Contains(t, hostValue, "srv-x.example.com")
-	require.Contains(t, hostValue, "/web/alerts?search=hash%20%3D%20deadbeef",
+	require.Contains(t, hostValue, "/web/alerts?tab=all&search=hash%20%3D%20deadbeef",
 		"fact value carries the Markdown link for renderers that honor it")
 
 	// Spot-check the remaining facts.
@@ -111,7 +112,7 @@ func TestBuildAlertCard_HostFactAndOpenUrlAction(t *testing.T) {
 	require.Len(t, actions, 1)
 	require.Equal(t, "Action.OpenUrl", actions[0]["type"])
 	require.Equal(t, "View in Snooze", actions[0]["title"])
-	require.Equal(t, "https://snooze.example.com/web/alerts?search=hash%20%3D%20deadbeef", actions[0]["url"])
+	require.Equal(t, "https://snooze.example.com/web/alerts?tab=all&search=hash%20%3D%20deadbeef", actions[0]["url"])
 }
 
 // TestBuildAlertCard_NoActionWhenHashMissing exercises the degraded path:
