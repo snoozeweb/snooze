@@ -39,6 +39,14 @@
   replaces `-log-level`, logs are text on stderr, and a `version` subcommand is
   standard. Update any systemd units or scripts that passed `-config`/`-log-level`.
   (This also fixes units that were already broken by the `-c`/`-config` mismatch.)
+- **Aggregate identity is now severity-independent.** Throttle accepts a scalar
+  **or** a `{value: seconds, …, default: seconds}` map matched against the rule's
+  `watch` values (first match wins). This lets one severity-agnostic rule per
+  problem keep per-value throttle, so `ok`/resolved events reliably close the
+  matching open aggregate instead of leaking into `default`. Creating/updating a
+  rule whose `fields` duplicate another enabled rule's is now rejected (422); the
+  server logs existing duplicates at startup. Merging severity tiers into one
+  rule re-forks those aggregates once.
 
 ### Internal
 - New `internal/daemon` harness backs every auxiliary binary; `internal/runtime`
