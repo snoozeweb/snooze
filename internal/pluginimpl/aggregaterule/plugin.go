@@ -34,6 +34,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"slices"
 	"sort"
 	"strings"
 	"sync"
@@ -64,6 +65,7 @@ func init() {
 }
 
 var _ plugins.DataModel = (*Plugin)(nil)
+var _ plugins.WriteTransformer = (*Plugin)(nil)
 
 func factory(meta plugins.Metadata) (plugins.Plugin, error) {
 	return &Plugin{meta: meta}, nil
@@ -151,6 +153,61 @@ func (p *Plugin) Validate(obj map[string]any) error {
 			if n < 0 {
 				return errors.New("aggregaterule: throttle must be >= 0")
 			}
+		}
+	}
+	return nil
+}
+
+// TransformWrite blocks creating/updating a rule whose `fields` exactly match
+// (as a set) another ENABLED rule's fields — the duplicate-fields footgun that
+// fragments one alert's identity across rules. Returning an error aborts the
+// CRUD write with HTTP 422. The rule being edited is excluded by uid or name.
+//
+// Partial PATCH bodies that omit `fields` are not checked (identity unchanged).
+func (p *Plugin) TransformWrite(ctx context.Context, doc map[string]any) error {
+	raw, present := doc["fields"]
+	if !present {
+		return nil
+	}
+	newFields := toStringSlice(raw)
+	if len(newFields) == 0 {
+		return nil // emptiness is Validate's job
+	}
+	if en, ok := doc["enabled"].(bool); ok && !en {
+		return nil // a disabled rule does not claim identity
+	}
+	sort.Strings(newFields)
+
+	p.mu.RLock()
+	host := p.host
+	p.mu.RUnlock()
+	if host == nil || host.DB() == nil {
+		return nil
+	}
+	selfUID, _ := doc["uid"].(string)
+	selfName, _ := doc["name"].(string)
+
+	docs, _, err := host.DB().Search(ctx, ruleCollection, condition.Cond{}, db.Page{})
+	if err != nil {
+		return nil // best-effort: never block a write on a transient read error
+	}
+	for _, d := range docs {
+		if en, ok := d["enabled"].(bool); ok && !en {
+			continue
+		}
+		if u, _ := d["uid"].(string); u != "" && u == selfUID {
+			continue
+		}
+		if n, _ := d["name"].(string); n != "" && n == selfName {
+			continue
+		}
+		other := toStringSlice(d["fields"])
+		sort.Strings(other)
+		if slices.Equal(other, newFields) {
+			name, _ := d["name"].(string)
+			return fmt.Errorf(
+				"aggregate fields %v are already used by enabled rule %q — merge them into one rule with a per-value throttle map, or add a discriminator field",
+				newFields, name)
 		}
 	}
 	return nil

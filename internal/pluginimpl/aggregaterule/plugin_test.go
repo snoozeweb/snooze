@@ -707,6 +707,37 @@ func TestAggregate_Validate(t *testing.T) {
 		"negative scalar throttle rejected")
 }
 
+func TestAggregate_TransformWrite_DuplicateFields(t *testing.T) {
+	t.Parallel()
+	host := newTestHost(t)
+	writeRule(t, host, db.Document{
+		"name": "A", "condition": []any{"EXISTS", "tarpit_message"},
+		"fields": []string{"host", "tarpit_message"}, "enabled": true,
+	})
+	p := freshPlugin(t, host)
+
+	// New rule with the same fields (order-independent) -> rejected.
+	err := p.TransformWrite(context.Background(), map[string]any{
+		"name": "B", "fields": []any{"tarpit_message", "host"}, "enabled": true})
+	require.Error(t, err)
+
+	// Editing rule A itself (same name) -> allowed.
+	require.NoError(t, p.TransformWrite(context.Background(), map[string]any{
+		"name": "A", "uid": "uid-a", "fields": []any{"host", "tarpit_message"}, "enabled": true}))
+
+	// Distinct fields -> allowed.
+	require.NoError(t, p.TransformWrite(context.Background(), map[string]any{
+		"name": "C", "fields": []any{"host", "message"}, "enabled": true}))
+
+	// A disabled new rule with duplicate fields -> allowed (disabled rules don't claim identity).
+	require.NoError(t, p.TransformWrite(context.Background(), map[string]any{
+		"name": "D", "fields": []any{"host", "tarpit_message"}, "enabled": false}))
+
+	// PATCH that doesn't touch fields -> allowed.
+	require.NoError(t, p.TransformWrite(context.Background(), map[string]any{
+		"name": "B", "comment": "x"}))
+}
+
 // TestAsyncWriter_Increments verifies the plugin queues a `duplicates`
 // increment via the host's async writer for an already-closed record.
 func TestAsyncWriter_Increments(t *testing.T) {
