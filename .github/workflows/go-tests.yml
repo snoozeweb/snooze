@@ -17,9 +17,9 @@ jobs:
         with:
           go-version: "1.25"
           cache: true
-      - uses: golangci/golangci-lint-action@v6
+      - uses: golangci/golangci-lint-action@v8
         with:
-          version: v1.61
+          version: v2.12.2
   test:
     runs-on: ubuntu-latest
     steps:
