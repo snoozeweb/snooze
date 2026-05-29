@@ -607,6 +607,56 @@ func TestAggregate_ThrottleByWatchedValue(t *testing.T) {
 	require.Equal(t, plugins.ActionContinue, action, "emergency change must re-escalate, not throttle")
 }
 
+// TestAggregate_ResolutionClosesAcrossSeverity checks two complementary cases:
+// a severity-agnostic rule correctly routes a `close` to the open row (same
+// hash), while a severity-gated rule lets the resolution fall to the default
+// bucket (the known orphan-row behaviour documented below).
+func TestAggregate_ResolutionClosesAcrossSeverity(t *testing.T) {
+	t.Parallel()
+
+	t.Run("severity-agnostic rule: ok closes the open row", func(t *testing.T) {
+		t.Parallel()
+		host := newTestHost(t)
+		writeRule(t, host, db.Document{
+			"name": "PVC", "condition": []any{"EXISTS", "tarpit_message"},
+			"fields": []string{"host", "tarpit_message"}, "throttle": int64(0),
+		})
+		p := freshPlugin(t, host)
+
+		out, _ := runProcess(t, p, host, snoozetypes.Record{Severity: "emergency",
+			Extra: map[string]any{"host": "h", "tarpit_message": "m"}})
+		require.NotEmpty(t, out.Hash)
+
+		out2, action := runProcess(t, p, host, snoozetypes.Record{Severity: "ok", State: "close",
+			Extra: map[string]any{"host": "h", "tarpit_message": "m"}})
+		require.Equal(t, plugins.ActionContinue, action)
+		require.Equal(t, out.Hash, out2.Hash, "same identity across severity")
+
+		results := recordsByAggregate(t, host, "PVC")
+		require.Len(t, results, 1, "one row, not an orphan default")
+		require.Equal(t, "close", results[0]["state"])
+	})
+
+	t.Run("severity-gated rule: ok misses (the bug we are removing)", func(t *testing.T) {
+		t.Parallel()
+		host := newTestHost(t)
+		writeRule(t, host, db.Document{
+			"name": "EmergencyOnly",
+			"condition": []any{"=", "severity", "emergency"},
+			"fields":    []string{"host", "tarpit_message"}, "throttle": int64(0),
+		})
+		p := freshPlugin(t, host)
+
+		runProcess(t, p, host, snoozetypes.Record{Severity: "emergency",
+			Extra: map[string]any{"host": "h", "tarpit_message": "m"}})
+		out2, _ := runProcess(t, p, host, snoozetypes.Record{Severity: "ok", State: "close",
+			Extra: map[string]any{"host": "h", "tarpit_message": "m"}})
+
+		require.Equal(t, "default", out2.Extra["aggregate"],
+			"severity-gated rule lets the resolution fall to default — the orphan-row bug")
+	})
+}
+
 // TestAsyncWriter_Increments verifies the plugin queues a `duplicates`
 // increment via the host's async writer for an already-closed record.
 func TestAsyncWriter_Increments(t *testing.T) {
