@@ -689,6 +689,24 @@ func TestAggregate_WatchSeverityReEscalates(t *testing.T) {
 	require.Contains(t, comments[len(comments)-1]["message"], "watchlist")
 }
 
+func TestAggregate_Validate(t *testing.T) {
+	t.Parallel()
+	p := &Plugin{meta: plugins.Metadata{Name: "aggregaterule"}}
+
+	require.NoError(t, p.Validate(map[string]any{"name": "ok", "fields": []any{"host"}, "throttle": float64(120)}))
+	require.NoError(t, p.Validate(map[string]any{"name": "ok", "fields": []any{"host"},
+		"throttle": map[string]any{"emergency": float64(120), "default": float64(3600)}}))
+	require.NoError(t, p.Validate(map[string]any{"name": "patch-only-comment"})) // partial PATCH tolerated
+
+	require.Error(t, p.Validate(map[string]any{"name": "x", "fields": []any{}}), "empty fields rejected")
+	require.Error(t, p.Validate(map[string]any{"name": "x", "throttle": map[string]any{"emergency": "soon"}}),
+		"non-numeric throttle value rejected")
+	require.Error(t, p.Validate(map[string]any{"name": "x", "throttle": map[string]any{"emergency": float64(-5)}}),
+		"negative throttle rejected")
+	require.Error(t, p.Validate(map[string]any{"name": "x", "throttle": float64(-5)}),
+		"negative scalar throttle rejected")
+}
+
 // TestAsyncWriter_Increments verifies the plugin queues a `duplicates`
 // increment via the host's async writer for an already-closed record.
 func TestAsyncWriter_Increments(t *testing.T) {

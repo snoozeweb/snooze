@@ -63,6 +63,8 @@ func init() {
 	plugins.Register("aggregaterule", metaYAML, factory)
 }
 
+var _ plugins.DataModel = (*Plugin)(nil)
+
 func factory(meta plugins.Metadata) (plugins.Plugin, error) {
 	return &Plugin{meta: meta}, nil
 }
@@ -94,6 +96,65 @@ func (p *Plugin) Name() string { return "aggregaterule" }
 
 // Metadata returns the static descriptor parsed from metadata.yaml.
 func (p *Plugin) Metadata() plugins.Metadata { return p.meta }
+
+// Schema returns the JSON Schema for an aggregate-rule document. `throttle`
+// accepts a scalar (seconds) or a {value: seconds} map (with an optional
+// "default" key); both are honored by parseThrottle.
+func (p *Plugin) Schema() any {
+	return map[string]any{
+		"type": "object",
+		"properties": map[string]any{
+			"name":      map[string]any{"type": "string"},
+			"condition": map[string]any{},
+			"fields":    map[string]any{"type": "array", "items": map[string]any{"type": "string"}},
+			"watch":     map[string]any{"type": "array", "items": map[string]any{"type": "string"}},
+			"throttle": map[string]any{"oneOf": []any{
+				map[string]any{"type": "integer"},
+				map[string]any{"type": "object", "additionalProperties": map[string]any{"type": "integer"}},
+			}},
+			"flapping": map[string]any{"type": "integer"},
+			"enabled":  map[string]any{"type": "boolean"},
+		},
+		"additionalProperties": true,
+	}
+}
+
+// Validate enforces structural rules. Partial PATCH bodies are tolerated: a
+// field is only checked when present.
+func (p *Plugin) Validate(obj map[string]any) error {
+	if len(obj) == 0 {
+		return nil
+	}
+	if raw, ok := obj["fields"]; ok {
+		if len(toStringSlice(raw)) == 0 {
+			return errors.New("aggregaterule: fields must not be empty")
+		}
+	}
+	if raw, ok := obj["throttle"]; ok {
+		switch x := raw.(type) {
+		case nil:
+		case map[string]any:
+			for k, v := range x {
+				n, isNum := toInt64WithOk(v)
+				if !isNum {
+					return fmt.Errorf("aggregaterule: throttle[%q] must be a number", k)
+				}
+				if n < 0 {
+					return fmt.Errorf("aggregaterule: throttle[%q] must be >= 0", k)
+				}
+			}
+		default:
+			n, isNum := toInt64WithOk(raw)
+			if !isNum {
+				return errors.New("aggregaterule: throttle must be a number or a map of value -> seconds")
+			}
+			if n < 0 {
+				return errors.New("aggregaterule: throttle must be >= 0")
+			}
+		}
+	}
+	return nil
+}
 
 // PostInit seeds the default aggregate rule when the collection is empty and
 // then loads the rules snapshot. It is called once by the plugin registry
