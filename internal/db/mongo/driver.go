@@ -425,12 +425,20 @@ func (d *Driver) ReplaceOne(ctx context.Context, collection string, match dbpkg.
 func (d *Driver) UpdateOne(ctx context.Context, collection, uid string, patch dbpkg.Document, updateTime bool) error {
 	newDoc := cloneDoc(patch)
 	delete(newDoc, "_id")
+	// uid is the immutable identity: it's the match filter and is set via
+	// $setOnInsert below. Letting it into $set makes Mongo reject the write
+	// ("Updating the path 'uid' would create a conflict at 'uid'") when a caller
+	// includes uid in the patch (e.g. the CRUD layer stamps it for Validate /
+	// WriteTransformer). A patch never changes identity, so drop it from $set.
+	delete(newDoc, "uid")
 	if updateTime {
 		newDoc["date_epoch"] = float64(time.Now().UTC().Unix())
 	}
-	update := bson.M{
-		"$set":         bson.M(newDoc),
-		"$setOnInsert": bson.M{"uid": uid},
+	update := bson.M{"$setOnInsert": bson.M{"uid": uid}}
+	// Guard against an empty $set (e.g. a uid-only patch with updateTime=false),
+	// which Mongo also rejects.
+	if len(newDoc) > 0 {
+		update["$set"] = bson.M(newDoc)
 	}
 	if _, err := d.coll(collection).UpdateOne(ctx, bson.M{"uid": uid}, update, options.UpdateOne().SetUpsert(true)); err != nil {
 		return fmt.Errorf("mongo: update_one: %w", err)

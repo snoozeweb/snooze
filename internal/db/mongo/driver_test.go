@@ -136,3 +136,29 @@ func TestDriver_UnsetFields(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, 0, n)
 }
+
+// TestDriver_UpdateOneToleratesUIDInPatch guards a mongo-only regression: the
+// CRUD layer stamps the record uid onto the patch (so Validate/WriteTransformer
+// can identify the row), and UpdateOne sets uid via $setOnInsert. If $set ALSO
+// carries uid, Mongo rejects the write with "Updating the path 'uid' would
+// create a conflict at 'uid'". UpdateOne must not $set the identity field.
+func TestDriver_UpdateOneToleratesUIDInPatch(t *testing.T) {
+	if testing.Short() {
+		t.Skip("integration: skipping under -short")
+	}
+	d, cleanup := startMongo(t)
+	defer cleanup()
+	ctx := context.Background()
+
+	_, err := d.Write(ctx, "record", []dbpkg.Document{{"uid": "u1", "x": int64(1)}}, dbpkg.WriteOptions{})
+	require.NoError(t, err)
+
+	// A patch that includes uid (matching the row) must NOT error.
+	require.NoError(t, d.UpdateOne(ctx, "record", "u1", dbpkg.Document{"uid": "u1", "x": int64(2)}, true))
+
+	docs, total, err := d.Search(ctx, "record", condition.Equals("uid", "u1"), dbpkg.Page{})
+	require.NoError(t, err)
+	require.Equal(t, 1, total, "must update the existing row, not insert a second")
+	require.EqualValues(t, 2, docs[0]["x"])
+	require.Equal(t, "u1", docs[0]["uid"])
+}
