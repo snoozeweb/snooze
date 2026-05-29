@@ -573,6 +573,40 @@ func TestThrottleSpec_Resolve(t *testing.T) {
 	require.Equal(t, int64(900), parseThrottle(float64(900)).resolve(nil, nil))
 }
 
+// TestAggregate_ThrottleByWatchedValue verifies that when `throttle` is a
+// severity-keyed map the correct window is applied per watched value:
+//   - a second `critical` within 86400 s → ActionAbortUpdate (throttled)
+//   - the same record escalating to `emergency` → ActionContinue (watch change)
+func TestAggregate_ThrottleByWatchedValue(t *testing.T) {
+	t.Parallel()
+	host := newTestHost(t)
+	writeRule(t, host, db.Document{
+		"name": "PVC", "condition": []any{"EXISTS", "tarpit_message"},
+		"fields": []string{"host", "tarpit_message"}, "watch": []string{"severity"},
+		"throttle": map[string]any{"emergency": float64(120), "critical": float64(86400), "default": float64(3600)},
+	})
+	// freshPlugin freezes the clock at time.Unix(1_700_000_000, 0), which is in
+	// the past relative to real wall-clock time (the DB stamps date_epoch at real
+	// time on write, currently ~1748000000). This guarantees now-prevDate < 0,
+	// which is always less than any positive throttle window, so every same-hash
+	// duplicate is throttled regardless of the time offset added below.
+	// Advancing the clock by a few minutes therefore doesn't change the throttle
+	// verdict for the critical→critical step; it only matters for the watch-change
+	// step where severity changes and the watch path fires (ignoring throttle).
+	p := freshPlugin(t, host)
+
+	runProcess(t, p, host, snoozetypes.Record{Severity: "critical",
+		Extra: map[string]any{"host": "h", "tarpit_message": "m"}})
+
+	_, action := runProcess(t, p, host, snoozetypes.Record{Severity: "critical",
+		Extra: map[string]any{"host": "h", "tarpit_message": "m"}})
+	require.Equal(t, plugins.ActionAbortUpdate, action, "critical within 86400s must throttle")
+
+	_, action = runProcess(t, p, host, snoozetypes.Record{Severity: "emergency",
+		Extra: map[string]any{"host": "h", "tarpit_message": "m"}})
+	require.Equal(t, plugins.ActionContinue, action, "emergency change must re-escalate, not throttle")
+}
+
 // TestAsyncWriter_Increments verifies the plugin queues a `duplicates`
 // increment via the host's async writer for an already-closed record.
 func TestAsyncWriter_Increments(t *testing.T) {
