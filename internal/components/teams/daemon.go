@@ -31,9 +31,8 @@ type Daemon struct {
 	cfg    Config
 	logger *slog.Logger
 
-	graph     *graphClient
-	snooze    *snoozeclient.Client
-	forwarder *forwarder
+	graph  *graphClient
+	snooze *snoozeclient.Client
 	// threads is the (channel, thread_root) → record_uid cache the chat
 	// handler consults when an operator replies in an alert thread with
 	// `ack` / `close` / `snooze` / … . Populated by listener.handleAlert
@@ -94,7 +93,6 @@ func New(cfg Config, logger *slog.Logger) (*Daemon, error) {
 		seenMax: 2048,
 		since:   time.Now().Add(-cfg.PollLookback),
 	}
-	d.forwarder = newForwarder(sc, cfg.TeamID, cfg.ChannelID)
 	d.chat = newHandler(sc, d.graph, d.threads, cfg.TeamID, cfg.ChannelID, cfg.BotName, logger)
 	return d, nil
 }
@@ -170,7 +168,7 @@ func (d *Daemon) runPollLoop(ctx context.Context) error {
 }
 
 // pollOnce fetches the latest batch of channel messages and dispatches each
-// new one through parseCommand → forwardCommand. Errors at the message level
+// new one through parseCommand → chat.Handle. Errors at the message level
 // are logged but do not abort the batch — one malformed message must not
 // prevent the next from being processed.
 func (d *Daemon) pollOnce(ctx context.Context) error {
@@ -356,7 +354,7 @@ func formatAlertCard(rec snoozetypes.Record, snoozeURL string) (htmlBody string,
 // Returns an HTML body (contentType=html) with the snooze-bot marker so the
 // poll loop's self-detection skips it. No attachment is produced — the caller
 // passes empty sendOpts.Attachments.
-func formatEscalationReply(records []snoozetypes.Record, snoozeURL string) string {
+func formatEscalationReply(records []snoozetypes.Record, _ string) string {
 	var b strings.Builder
 	switch len(records) {
 	case 0:

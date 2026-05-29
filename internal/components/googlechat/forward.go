@@ -350,4 +350,3 @@ func (f *Forwarder) snoozeReply(displayName, args string) string {
 func (f *Forwarder) errorReply(displayName, why string) string {
 	return fmt.Sprintf(":x: `%s`: %s", displayName, why)
 }
-

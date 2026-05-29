@@ -458,12 +458,12 @@ func TestProxyWiresIntoTransport(t *testing.T) {
 	// We expect the request to land on the proxy, not the destination, when
 	// `proxy` is set in the action_form.
 	var proxyHits, destHits int32
-	proxy := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	proxy := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		atomic.AddInt32(&proxyHits, 1)
 		w.WriteHeader(http.StatusOK)
 	}))
 	t.Cleanup(proxy.Close)
-	dest := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	dest := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		atomic.AddInt32(&destHits, 1)
 		w.WriteHeader(http.StatusOK)
 	}))
@@ -486,7 +486,7 @@ func TestProxyWiresIntoTransport(t *testing.T) {
 }
 
 func TestInjectResponseCallsInjectFunc(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write([]byte(`{"ok": true, "id": 42}`))
@@ -589,7 +589,7 @@ func TestInjectResponseDisablesBatch(t *testing.T) {
 	// When inject_response is on, batching is forced off so the response can
 	// be stamped onto the originating record (which the batch flush has
 	// already forgotten).
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write([]byte(`{}`))
 	}))

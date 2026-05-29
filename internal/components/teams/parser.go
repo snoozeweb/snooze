@@ -133,6 +133,7 @@ var modificationRE = regexp.MustCompile(`^\s*([a-zA-Z_][a-zA-Z0-9_.]*)\s*(\+=|-=
 // number/bool coercion to keep the wire shape predictable).
 func parseModifications(args string) (mods [][]any, comment string) {
 	cursor := args
+parse:
 	for {
 		m := modificationRE.FindStringSubmatch(cursor)
 		if m == nil {
@@ -150,9 +151,10 @@ func parseModifications(args string) (mods [][]any, comment string) {
 			op = "ARRAY_DELETE"
 		default:
 			// Defensive — the regex grouping above only accepts the three
-			// operators we handle, so reaching here means the regex
-			// changed without this switch keeping pace.
-			break
+			// operators we handle, so reaching here means the regex changed
+			// without this switch keeping pace. Bail out of the loop rather
+			// than appending a modification with an empty op.
+			break parse
 		}
 		mods = append(mods, []any{op, field, valTok})
 		cursor = cursor[len(m[0]):]

@@ -1,15 +1,9 @@
 package teams
 
 import (
-	"context"
-	"fmt"
 	"html"
 	"regexp"
 	"strings"
-	"time"
-
-	"github.com/snoozeweb/snooze/pkg/snoozeclient"
-	"github.com/snoozeweb/snooze/pkg/snoozetypes"
 )
 
 // botMarker is embedded as an HTML comment in every outbound message so the
@@ -125,70 +119,4 @@ func isSelfMessage(msg graphMessage, selfUserID, selfUserName, botName string) b
 		}
 	}
 	return false
-}
-
-// alertPoster is the minimal slice of snoozeclient.Client used by the
-// forwarder. Tests inject a fake implementation; production code passes the
-// real *snoozeclient.Client.
-type alertPoster interface {
-	PostAlert(ctx context.Context, rec snoozetypes.Record) (snoozetypes.Record, error)
-}
-
-// Compile-time check: snoozeclient.Client satisfies alertPoster.
-var _ alertPoster = (*snoozeclient.Client)(nil)
-
-// forwarder owns the inbound-to-snooze bridge: it turns a parsed command into
-// a Snooze record (via PostAlert) carrying the action verb in Tags, the
-// argument body in Message, and the channel/thread context in Raw.
-//
-// The Snooze server then routes the synthetic record through its normal alert
-// pipeline — rule + aggregaterule + notification plugins — exactly as if it
-// had come from an external monitoring system. This keeps the daemon dumb
-// (no direct ack/close API calls) and pushes auth + rate limiting into the
-// server.
-type forwarder struct {
-	client    alertPoster
-	channelID string
-	teamID    string
-	source    string
-}
-
-// newForwarder wires up the bridge. source becomes the Source field of every
-// synthetic record so operators can route Teams-originated commands distinctly
-// from other inputs.
-func newForwarder(client alertPoster, teamID, channelID string) *forwarder {
-	return &forwarder{
-		client:    client,
-		teamID:    teamID,
-		channelID: channelID,
-		source:    "teams",
-	}
-}
-
-// forwardCommand turns cmd into a Snooze record and posts it to /api/v1/alerts.
-// The resulting Record has Tags=[verb], Process=verb, Message=args, and the
-// Teams thread id stashed in Raw so server-side plugins can correlate.
-func (f *forwarder) forwardCommand(ctx context.Context, cmd command) (snoozetypes.Record, error) {
-	if cmd.Verb == "" {
-		// An empty verb shouldn't reach here (parseCommand returns ok=false
-		// for empty messages); guard defensively so a bad input can't post
-		// a useless record.
-		return snoozetypes.Record{}, fmt.Errorf("teams: empty command")
-	}
-	rec := snoozetypes.Record{
-		Source:    f.source,
-		Process:   cmd.Verb,
-		Message:   cmd.Args,
-		Timestamp: time.Now().UTC(),
-		Tags:      []string{cmd.Verb},
-		Raw: map[string]any{
-			"speaker":    cmd.Speaker,
-			"thread_id":  cmd.ThreadID,
-			"team_id":    f.teamID,
-			"channel_id": f.channelID,
-			"verb":       cmd.Verb,
-			"args":       cmd.Args,
-		},
-	}
-	return f.client.PostAlert(ctx, rec)
 }

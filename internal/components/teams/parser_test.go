@@ -51,8 +51,8 @@ func TestParseSnoozeArgs_Invalid(t *testing.T) {
 
 func TestParseModifications(t *testing.T) {
 	cases := []struct {
-		in         string
-		wantMods   [][]any
+		in          string
+		wantMods    [][]any
 		wantComment string
 	}{
 		{

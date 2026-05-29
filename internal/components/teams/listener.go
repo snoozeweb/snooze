@@ -256,7 +256,7 @@ func (d *Daemon) handleAlert(w http.ResponseWriter, r *http.Request) {
 // or a JSON array of them. The Python webhook plugin batched multiple records
 // into the array form; the non-batched path produces a bare object.
 func decodeAlertBody(body []byte) ([]alertRequest, error) {
-	trimmed := bytes_trimSpace(body)
+	trimmed := bytesTrimSpace(body)
 	if len(trimmed) == 0 {
 		return nil, errors.New("empty body")
 	}
@@ -278,9 +278,9 @@ func decodeAlertBody(body []byte) ([]alertRequest, error) {
 	}
 }
 
-// bytes_trimSpace is a tiny stdlib-free trim used by decodeAlertBody so we
+// bytesTrimSpace is a tiny stdlib-free trim used by decodeAlertBody so we
 // don't pull `bytes` into the package just for one call site.
-func bytes_trimSpace(b []byte) []byte {
+func bytesTrimSpace(b []byte) []byte {
 	start := 0
 	for start < len(b) && (b[start] == ' ' || b[start] == '\t' || b[start] == '\r' || b[start] == '\n') {
 		start++

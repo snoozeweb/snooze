@@ -68,9 +68,9 @@ func Authorize(ctx context.Context, cfg Config, out io.Writer) error {
 	}
 
 	if dc.Message != "" {
-		fmt.Fprintln(out, dc.Message)
+		_, _ = fmt.Fprintln(out, dc.Message)
 	} else {
-		fmt.Fprintf(out, "Open %s in a browser and enter code %s.\n", dc.VerificationURI, dc.UserCode)
+		_, _ = fmt.Fprintf(out, "Open %s in a browser and enter code %s.\n", dc.VerificationURI, dc.UserCode)
 	}
 
 	tok, err := pollForToken(ctx, httpc, cfg, dc)
@@ -93,7 +93,7 @@ func Authorize(ctx context.Context, cfg Config, out io.Writer) error {
 	if err := newTokenStore(cfg.TokenFile).Save(saved); err != nil {
 		return fmt.Errorf("teams: persist token: %w", err)
 	}
-	fmt.Fprintf(out, "Authorization complete. Refresh token persisted to %s.\n", cfg.TokenFile)
+	_, _ = fmt.Fprintf(out, "Authorization complete. Refresh token persisted to %s.\n", cfg.TokenFile)
 	return nil
 }
 

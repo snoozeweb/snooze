@@ -190,10 +190,10 @@ func (p *Plugin) HandleWebhook(w http.ResponseWriter, r *http.Request) {
 //   - Tags: labels["tags"] split on whitespace/commas when present.
 //   - State: "close" for resolved alerts, empty otherwise.
 //   - Extra (serialised as top-level fields):
-//       labels, annotations           (dot→underscore sanitized per
-//                                      utils.functions.sanitize)
-//       generatorURL, externalURL     (always present, may be "")
-//       status, fingerprint           (preserved from the payload)
+//     labels, annotations           (dot→underscore sanitized per
+//     utils.functions.sanitize)
+//     generatorURL, externalURL     (always present, may be "")
+//     status, fingerprint           (preserved from the payload)
 func buildRecord(hook am4Webhook, a am4Alert) snoozetypes.Record {
 	// Python merges only CommonLabels + alert.Labels. Including GroupLabels
 	// is a Go-side widening — they're a strict subset of CommonLabels for

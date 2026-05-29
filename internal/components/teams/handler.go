@@ -46,14 +46,14 @@ type replyPoster interface {
 // reply. It is stateless apart from the references it holds; concurrent
 // Handle calls are safe.
 type handler struct {
-	cli       commentClient
-	graph     replyPoster
-	cache     *threadCache
-	teamID    string
-	channelID string
+	cli        commentClient
+	graph      replyPoster
+	cache      *threadCache
+	teamID     string
+	channelID  string
 	channelRef string // "teams/<team>/channels/<channel>" — cache lookups
-	botName   string
-	logger    *slog.Logger
+	botName    string
+	logger     *slog.Logger
 }
 
 // newHandler wires the dependencies. teamID/channelID double as both the

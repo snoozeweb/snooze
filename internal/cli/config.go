@@ -68,16 +68,14 @@ func LoadClientConfig() ClientConfig {
 		return readClientConfig(p)
 	}
 	home, _ := os.UserHomeDir()
-	candidates := []string{
-		filepath.Join(home, ".config", "snooze", "client.yaml"),
-		"/etc/snooze/client.yaml",
+	var candidates []string
+	if home != "" {
+		// Only consider the user-local candidate when UserHomeDir succeeded;
+		// when it fails (sandbox / no $HOME) the /etc fallback still applies.
+		candidates = append(candidates, filepath.Join(home, ".config", "snooze", "client.yaml"))
 	}
+	candidates = append(candidates, "/etc/snooze/client.yaml")
 	for _, p := range candidates {
-		if home == "" && filepath.HasPrefix(p, home) {
-			// UserHomeDir failed (sandbox / no $HOME); skip the
-			// user-local candidate but keep /etc.
-			continue
-		}
 		if _, err := os.Stat(p); err == nil {
 			return readClientConfig(p)
 		}

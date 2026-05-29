@@ -12,6 +12,7 @@
 // the host logger but never propagate back to the notification dispatcher,
 // which has already returned by the time the bucket flushes. This mirrors
 // the Python plugin's behaviour.
+
 package webhook
 
 import (

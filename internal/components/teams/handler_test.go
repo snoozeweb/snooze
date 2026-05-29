@@ -16,10 +16,10 @@ import (
 // stubCommentClient captures every PostComment / CreateSnooze call so the
 // tests can assert on the exact wire shape the handler builds.
 type stubCommentClient struct {
-	mu       sync.Mutex
-	comments []snoozeclient.Comment
-	snoozes  []snoozeclient.Snooze
-	postErr  error
+	mu        sync.Mutex
+	comments  []snoozeclient.Comment
+	snoozes   []snoozeclient.Snooze
+	postErr   error
 	snoozeErr error
 }
 
@@ -47,8 +47,8 @@ func (s *stubCommentClient) CreateSnooze(_ context.Context, sn snoozeclient.Snoo
 // assert the handler posts the right confirmation message and that
 // ReplyToID threads it correctly under the user's command.
 type stubReplyPoster struct {
-	mu     sync.Mutex
-	posts  []stubReply
+	mu      sync.Mutex
+	posts   []stubReply
 	sendErr error
 }
 

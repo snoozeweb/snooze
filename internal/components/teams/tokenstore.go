@@ -87,11 +87,11 @@ func (s *tokenStore) Save(tok cachedToken) error {
 	if tok.RefreshToken == "" {
 		return errors.New("teams: refusing to save token without refresh_token")
 	}
-	raw, err := json.MarshalIndent(tok, "", "  ")
+	raw, err := json.MarshalIndent(tok, "", "  ") //nolint:gosec // G117: persisting the OAuth token is this store's purpose; it is written to a 0o600 file in a 0o700 dir
 	if err != nil {
 		return fmt.Errorf("teams: encode token: %w", err)
 	}
-	if err := os.MkdirAll(filepath.Dir(s.path), 0o755); err != nil {
+	if err := os.MkdirAll(filepath.Dir(s.path), 0o700); err != nil {
 		return fmt.Errorf("teams: mkdir token dir: %w", err)
 	}
 	tmp := s.path + ".tmp"

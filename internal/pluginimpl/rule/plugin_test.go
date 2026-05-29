@@ -165,10 +165,10 @@ func TestRule_Process(t *testing.T) {
 // plugin.
 type stubKV struct{ data map[string]map[string]any }
 
-func (s *stubKV) Name() string                     { return "kv" }
-func (s *stubKV) Metadata() plugins.Metadata       { return plugins.Metadata{Name: "kv"} }
+func (s *stubKV) Name() string                                 { return "kv" }
+func (s *stubKV) Metadata() plugins.Metadata                   { return plugins.Metadata{Name: "kv"} }
 func (s *stubKV) PostInit(context.Context, plugins.Host) error { return nil }
-func (s *stubKV) Reload(context.Context) error     { return nil }
+func (s *stubKV) Reload(context.Context) error                 { return nil }
 func (s *stubKV) Get(dict, key string) (any, bool) {
 	d, ok := s.data[dict]
 	if !ok {

@@ -63,7 +63,7 @@ func TestRunStream_RetriesAndLogsOnWatchFailure(t *testing.T) {
 
 	buf := &bytes.Buffer{}
 	b := newTestBus(t, captureLogger(buf))
-	b.open = func(ctx context.Context, collection string) (changeStream, error) {
+	b.open = func(_ context.Context, _ string) (changeStream, error) {
 		attempts.Add(1)
 		return nil, stubErr
 	}
@@ -106,7 +106,7 @@ func TestRunStream_BackoffGrows(t *testing.T) {
 	b := newTestBus(t, captureLogger(buf))
 	b.retryInitial = 1 * time.Millisecond
 	b.retryMax = 8 * time.Millisecond
-	b.open = func(ctx context.Context, collection string) (changeStream, error) {
+	b.open = func(_ context.Context, _ string) (changeStream, error) {
 		return nil, stubErr
 	}
 
@@ -167,7 +167,7 @@ func TestRunStream_ResetsBackoffAfterSuccess(t *testing.T) {
 
 	var phase atomic.Int32 // 0: fail, 1: succeed once, 2: fail again
 	successOnce := make(chan struct{}, 1)
-	b.open = func(ctx context.Context, collection string) (changeStream, error) {
+	b.open = func(ctx context.Context, _ string) (changeStream, error) {
 		switch phase.Load() {
 		case 0:
 			return nil, stubErr
@@ -222,7 +222,7 @@ func TestRunStream_ConsumesAndDispatches(t *testing.T) {
 			{"operationType": "delete", "documentKey": bson.M{"uid": "uid-1"}},
 		},
 	}
-	b.open = func(ctx context.Context, collection string) (changeStream, error) {
+	b.open = func(_ context.Context, _ string) (changeStream, error) {
 		return stream, nil
 	}
 

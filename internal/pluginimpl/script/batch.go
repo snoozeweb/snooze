@@ -19,6 +19,7 @@
 // logger but never propagate back to the notification dispatcher, which has
 // already returned by the time the bucket flushes. This mirrors the webhook
 // and mail plugins' batch.go.
+
 package script
 
 import (

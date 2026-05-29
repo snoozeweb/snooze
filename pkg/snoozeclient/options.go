@@ -199,4 +199,3 @@ func canWriteDir(dir string) bool {
 	_ = os.Remove(name)
 	return true
 }
-

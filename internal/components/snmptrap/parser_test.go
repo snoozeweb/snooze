@@ -157,9 +157,9 @@ func TestParseTrap_ResolverRenamesKeys(t *testing.T) {
 	// Verifies the full happy path: dotted OID → resolved name → sanitized
 	// key in Raw. Mirrors the Python `_process_mib` + `record[key.replace(".", "_")]` chain.
 	resolver := fakeResolver{
-		".1.3.6.1.2.1.1.3.0":         "SNMPv2-MIB::sysUpTime.0",
-		".1.3.6.1.6.3.1.1.4.1.0":     "SNMPv2-MIB::snmpTrapOID.0",
-		".1.3.6.1.4.1.8072.2.3.2.1":  "NET-SNMP-EXAMPLES-MIB::netSnmpExampleHeartbeatName",
+		".1.3.6.1.2.1.1.3.0":        "SNMPv2-MIB::sysUpTime.0",
+		".1.3.6.1.6.3.1.1.4.1.0":    "SNMPv2-MIB::snmpTrapOID.0",
+		".1.3.6.1.4.1.8072.2.3.2.1": "NET-SNMP-EXAMPLES-MIB::netSnmpExampleHeartbeatName",
 	}
 	pkt := &gosnmp.SnmpPacket{
 		Version: gosnmp.Version2c,
