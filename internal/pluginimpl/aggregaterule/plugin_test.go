@@ -573,10 +573,6 @@ func TestThrottleSpec_Resolve(t *testing.T) {
 	require.Equal(t, int64(900), parseThrottle(float64(900)).resolve(nil, nil))
 }
 
-// TestAggregate_ThrottleByWatchedValue verifies that when `throttle` is a
-// severity-keyed map the correct window is applied per watched value:
-//   - a second `critical` within 86400 s → ActionAbortUpdate (throttled)
-//   - the same record escalating to `emergency` → ActionContinue (watch change)
 func TestAggregate_ThrottleByWatchedValue(t *testing.T) {
 	t.Parallel()
 	host := newTestHost(t)
@@ -585,26 +581,36 @@ func TestAggregate_ThrottleByWatchedValue(t *testing.T) {
 		"fields": []string{"host", "tarpit_message"}, "watch": []string{"severity"},
 		"throttle": map[string]any{"emergency": float64(120), "critical": float64(86400), "default": float64(3600)},
 	})
-	// freshPlugin freezes the clock at time.Unix(1_700_000_000, 0), which is in
-	// the past relative to real wall-clock time (the DB stamps date_epoch at real
-	// time on write, currently ~1748000000). This guarantees now-prevDate < 0,
-	// which is always less than any positive throttle window, so every same-hash
-	// duplicate is throttled regardless of the time offset added below.
-	// Advancing the clock by a few minutes therefore doesn't change the throttle
-	// verdict for the critical→critical step; it only matters for the watch-change
-	// step where severity changes and the watch path fires (ignoring throttle).
-	p := freshPlugin(t, host)
+	p := freshPlugin(t, host) // clock frozen at time.Unix(1_700_000_000, 0)
+	const now = int64(1_700_000_000)
 
-	runProcess(t, p, host, snoozetypes.Record{Severity: "critical",
-		Extra: map[string]any{"host": "h", "tarpit_message": "m"}})
+	// Seed an aggregate at a constant severity, then backdate its date_epoch so
+	// the next occurrence sits a fixed 500s before the frozen clock. 500s is
+	// INSIDE the critical window (86400) but OUTSIDE the emergency window (120),
+	// so the SAME gap discriminates the two throttle-map values. Each severity
+	// uses a distinct tarpit_message → distinct hash → no cross-contamination,
+	// and severity is constant within each aggregate so there is no watch-change
+	// confound — the only thing that varies is which throttle value applies.
+	seed := func(sev, tm string) {
+		out, _ := runProcess(t, p, host, snoozetypes.Record{Severity: sev,
+			Extra: map[string]any{"host": "h", "tarpit_message": tm}})
+		require.NotEmpty(t, out.Hash)
+		_, err := host.driver.SetFields(context.Background(), recordCollection,
+			db.Document{"date_epoch": now - 500}, condition.Equals("hash", out.Hash))
+		require.NoError(t, err)
+	}
 
+	// critical: 500s is inside the 86400s window -> throttled (drop the duplicate).
+	seed("critical", "mc")
 	_, action := runProcess(t, p, host, snoozetypes.Record{Severity: "critical",
-		Extra: map[string]any{"host": "h", "tarpit_message": "m"}})
-	require.Equal(t, plugins.ActionAbortUpdate, action, "critical within 86400s must throttle")
+		Extra: map[string]any{"host": "h", "tarpit_message": "mc"}})
+	require.Equal(t, plugins.ActionAbortUpdate, action, "critical(86400s): a 500s-later duplicate is throttled")
 
+	// emergency: the SAME 500s gap is outside the 120s window -> not throttled.
+	seed("emergency", "me")
 	_, action = runProcess(t, p, host, snoozetypes.Record{Severity: "emergency",
-		Extra: map[string]any{"host": "h", "tarpit_message": "m"}})
-	require.Equal(t, plugins.ActionContinue, action, "emergency change must re-escalate, not throttle")
+		Extra: map[string]any{"host": "h", "tarpit_message": "me"}})
+	require.Equal(t, plugins.ActionContinue, action, "emergency(120s): a 500s-later duplicate re-escalates")
 }
 
 // TestAggregate_ResolutionClosesAcrossSeverity checks two complementary cases:
