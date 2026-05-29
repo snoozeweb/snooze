@@ -1,6 +1,7 @@
 package aggregaterule
 
 import (
+	"bytes"
 	"context"
 	"log/slog"
 	"path/filepath"
@@ -736,6 +737,23 @@ func TestAggregate_TransformWrite_DuplicateFields(t *testing.T) {
 	// PATCH that doesn't touch fields -> allowed.
 	require.NoError(t, p.TransformWrite(context.Background(), map[string]any{
 		"name": "B", "comment": "x"}))
+}
+
+func TestAggregate_WarnsOnDuplicateFields(t *testing.T) {
+	t.Parallel()
+	host := newTestHost(t)
+	var buf bytes.Buffer
+	host.logger = slog.New(slog.NewTextHandler(&buf, &slog.HandlerOptions{Level: slog.LevelWarn}))
+	writeRule(t, host, db.Document{"name": "Emergency",
+		"condition": []any{"=", "severity", "emergency"}, "fields": []string{"host", "tarpit_message"}, "enabled": true})
+	writeRule(t, host, db.Document{"name": "Critical",
+		"condition": []any{"=", "severity", "critical"}, "fields": []string{"host", "tarpit_message"}, "enabled": true})
+
+	_ = freshPlugin(t, host) // PostInit -> Reload runs the check
+
+	require.Contains(t, buf.String(), "duplicate aggregate fields")
+	require.Contains(t, buf.String(), "Emergency")
+	require.Contains(t, buf.String(), "Critical")
 }
 
 // TestAsyncWriter_Increments verifies the plugin queues a `duplicates`

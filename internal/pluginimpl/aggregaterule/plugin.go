@@ -255,7 +255,32 @@ func (p *Plugin) Reload(ctx context.Context) error {
 	p.mu.Lock()
 	p.rules = rules
 	p.mu.Unlock()
+	warnDuplicateFields(host, rules)
 	return nil
+}
+
+// warnDuplicateFields logs once per Reload when two or more enabled rules share
+// the same `fields` set — the configuration that fragments an alert's identity
+// across rules (and which TransformWrite now blocks for new writes). Existing
+// rules are not auto-changed; this points operators at what to merge.
+func warnDuplicateFields(host plugins.Host, rules []*compiledRule) {
+	if host == nil || host.Logger() == nil {
+		return
+	}
+	byKey := map[string][]string{}
+	for _, r := range rules {
+		if !r.enabled || len(r.fields) == 0 {
+			continue
+		}
+		key := strings.Join(r.fields, "\x00") // fields are already sorted in compileRule
+		byKey[key] = append(byKey[key], r.name)
+	}
+	for key, names := range byKey {
+		if len(names) > 1 {
+			host.Logger().Warn("aggregaterule: duplicate aggregate fields across enabled rules",
+				"fields", strings.Split(key, "\x00"), "rules", names)
+		}
+	}
 }
 
 // Process implements plugins.Processor. It assigns the record a hash based on
