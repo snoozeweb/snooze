@@ -1,67 +1,28 @@
-// Command snooze-snmptrap receives SNMP traps and forwards to snooze-server.
+// Command snooze-snmptrap receives SNMP traps and forwards them to a Snooze
+// server's /api/v1/alerts endpoint.
 package main
 
 import (
-	"context"
-	"errors"
-	"flag"
-	"fmt"
 	"log/slog"
-	"os"
-	"os/signal"
-	"syscall"
 
 	"github.com/snoozeweb/snooze/internal/components/snmptrap"
-	"github.com/snoozeweb/snooze/internal/version"
-
-	// Blank-imported so GOMAXPROCS auto-tunes to the container CPU quota.
-	_ "github.com/snoozeweb/snooze/internal/runtime"
+	"github.com/snoozeweb/snooze/internal/daemon"
 )
 
 func main() {
-	if len(os.Args) > 1 && os.Args[1] == "version" {
-		fmt.Println("snooze-snmptrap", version.String())
-		return
-	}
-
-	var cfgPath string
-	fs := flag.NewFlagSet("snooze-snmptrap", flag.ExitOnError)
-	fs.StringVar(&cfgPath, "c", "/etc/snooze/snmptrap.yaml", "path to the snmptrap YAML config")
-	if err := fs.Parse(os.Args[1:]); err != nil {
-		fmt.Fprintln(os.Stderr, "snooze-snmptrap:", err)
-		os.Exit(2)
-	}
-
-	logger := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelInfo}))
-	slog.SetDefault(logger)
-
-	cfg, err := snmptrap.LoadConfig(cfgPath)
-	if err != nil {
-		logger.Error("snooze-snmptrap: config load", slog.Any("err", err))
-		os.Exit(1)
-	}
-
-	daemon, err := snmptrap.NewDaemon(cfg, logger)
-	if err != nil {
-		logger.Error("snooze-snmptrap: build daemon", slog.Any("err", err))
-		os.Exit(1)
-	}
-
-	os.Exit(runSNMPTrap(daemon, logger, cfg))
-}
-
-func runSNMPTrap(daemon *snmptrap.Daemon, logger *slog.Logger, cfg snmptrap.Config) int {
-	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
-	defer stop()
-	logger.Info("snooze-snmptrap: starting",
-		slog.String("version", version.String()),
-		slog.String("listen", cfg.Listen),
-		slog.String("server", cfg.Server),
-	)
-	if err := daemon.Run(ctx); err != nil && !errors.Is(err, context.Canceled) {
-		logger.Error("snooze-snmptrap: exited with error", slog.Any("err", err))
-		return 1
-	}
-	logger.Info("snooze-snmptrap: shutdown complete")
-	return 0
+	daemon.Main(daemon.Config{
+		Name:          "snooze-snmptrap",
+		DefaultConfig: "/etc/snooze/snmptrap.yaml",
+		Build: func(cfgPath string, log *slog.Logger) (daemon.Runnable, error) {
+			cfg, err := snmptrap.LoadConfig(cfgPath)
+			if err != nil {
+				return nil, err
+			}
+			d, err := snmptrap.NewDaemon(cfg, log)
+			if err != nil {
+				return nil, err
+			}
+			return d, nil
+		},
+	})
 }

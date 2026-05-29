@@ -1,19 +1,16 @@
-// Command snooze-googlechat bridges Google Chat with snooze-server.
+// Command snooze-googlechat will bridge Google Chat with snooze-server.
+// The daemon is a rewrite-in-progress; only the version subcommand works today.
 package main
 
 import (
 	"fmt"
 	"os"
 
-	"github.com/snoozeweb/snooze/internal/version"
-
-	// Blank-imported so GOMAXPROCS auto-tunes to the container CPU quota.
-	_ "github.com/snoozeweb/snooze/internal/runtime"
+	"github.com/snoozeweb/snooze/internal/daemon"
 )
 
 func main() {
-	if len(os.Args) > 1 && os.Args[1] == "version" {
-		fmt.Println("snooze-googlechat", version.String())
+	if daemon.HandleVersion("snooze-googlechat", os.Args[1:], os.Stdout) {
 		return
 	}
 	fmt.Fprintln(os.Stderr, "snooze-googlechat: not implemented yet (rewrite in progress)")

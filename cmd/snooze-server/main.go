@@ -43,7 +43,7 @@ import (
 	_ "github.com/snoozeweb/snooze/internal/pluginimpl/all"
 
 	// Blank-imported so GOMAXPROCS auto-tunes to the container CPU quota.
-	_ "github.com/snoozeweb/snooze/internal/runtime"
+	_ "go.uber.org/automaxprocs"
 
 	"github.com/prometheus/client_golang/prometheus"
 )
