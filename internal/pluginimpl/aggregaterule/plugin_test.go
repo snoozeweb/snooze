@@ -648,7 +648,7 @@ func TestAggregate_ResolutionClosesAcrossSeverity(t *testing.T) {
 		t.Parallel()
 		host := newTestHost(t)
 		writeRule(t, host, db.Document{
-			"name": "EmergencyOnly",
+			"name":      "EmergencyOnly",
 			"condition": []any{"=", "severity", "emergency"},
 			"fields":    []string{"host", "tarpit_message"}, "throttle": int64(0),
 		})
