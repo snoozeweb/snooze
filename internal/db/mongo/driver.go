@@ -481,6 +481,29 @@ func (d *Driver) SetFields(ctx context.Context, collection string, fields dbpkg.
 	return int(res.MatchedCount), nil
 }
 
+// UnsetFields removes the named fields from every document matching cond via
+// `$unset`. ModifiedCount (not MatchedCount) is returned so the result counts
+// only documents that actually carried one of the fields — consistent with the
+// SQL backends' row-rewrite path.
+func (d *Driver) UnsetFields(ctx context.Context, collection string, fields []string, cond condition.Cond) (int, error) {
+	if len(fields) == 0 {
+		return 0, nil
+	}
+	filter, err := Convert(cond, d.searchFieldsFor(collection))
+	if err != nil {
+		return 0, err
+	}
+	unset := bson.M{}
+	for _, f := range fields {
+		unset[f] = ""
+	}
+	res, err := d.coll(collection).UpdateMany(ctx, filter, bson.M{"$unset": unset})
+	if err != nil {
+		return 0, fmt.Errorf("mongo: unset_fields: %w", err)
+	}
+	return int(res.ModifiedCount), nil
+}
+
 // AppendList pushes each value to the named list field for matching documents.
 func (d *Driver) AppendList(ctx context.Context, collection string, fields map[string][]any, cond condition.Cond) (int, error) {
 	filter, err := Convert(cond, d.searchFieldsFor(collection))

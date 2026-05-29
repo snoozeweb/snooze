@@ -118,6 +118,14 @@ type Driver interface {
 	BulkIncrement(ctx context.Context, collection string, ops []IncrementOp, upsert bool) error
 	IncMany(ctx context.Context, collection, field string, cond condition.Cond, delta int64) (matched int, err error)
 	SetFields(ctx context.Context, collection string, fields Document, cond condition.Cond) (matched int, err error)
+	// UnsetFields removes the named top-level fields from every document
+	// matching cond and returns the number of documents actually modified
+	// (those that carried at least one of the fields). A field that is already
+	// absent is a no-op, not an error. Unlike a merge write — which preserves
+	// keys it does not mention — this truly deletes the key, so `EXISTS field`
+	// stops matching on all three backends (Mongo `$unset`, Postgres/SQLite
+	// rewrite the row payload without the key).
+	UnsetFields(ctx context.Context, collection string, fields []string, cond condition.Cond) (matched int, err error)
 	AppendList(ctx context.Context, collection string, fields map[string][]any, cond condition.Cond) (matched int, err error)
 	PrependList(ctx context.Context, collection string, fields map[string][]any, cond condition.Cond) (matched int, err error)
 	RemoveList(ctx context.Context, collection string, fields map[string][]any, cond condition.Cond) (matched int, err error)

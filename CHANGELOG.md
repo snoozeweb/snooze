@@ -1,5 +1,33 @@
 ## [Unreleased]
 
+### Fixed
+- **Aggregate timeline / `comment_count` drift.** The aggregate-rule processor
+  bumped a record's `comment_count` on every lifecycle transition (auto-close,
+  auto-reopen, watch-field re-escalation, re-escalation outside the throttle
+  window) but no longer wrote the matching `comment` document — so the alert
+  timeline (which reads real comment docs by `record_uid`) stayed empty while
+  `comment_count` inflated without bound. Restored the Snooze 1.x behaviour of
+  writing an automatic comment in lockstep with each counter bump, so these
+  transitions show up in the timeline again. (Pre-existing records keep their
+  historical inflated `comment_count`; only events from this release forward
+  produce timeline entries.)
+- **Snoozed alerts stuck out of the Alerts tab after escalating.** An alert
+  snoozed under one severity (e.g. matched a `warning` snooze filter) kept its
+  `snoozed` attribution after re-aggregating into a higher severity, so it
+  stayed hidden from the Alerts tab even though it no longer matched any filter.
+  The aggregate-rule processor now clears a stale `snoozed` whenever a record
+  re-aggregates and continues to the snooze plugin (non-throttled), so the
+  snooze plugin re-asserts it only if the current record still matches.
+  Throttled / flapping / already-closed duplicates abort before the snooze
+  plugin runs and deliberately keep their prior attribution.
+
+### Added
+- `db.Driver.UnsetFields(ctx, collection, fields, cond)` — a portable field
+  delete (`$unset` / jsonb `-` / `json_remove`) implemented across all three
+  backends. Unlike a merge write, it truly removes the key so `EXISTS field`
+  stops matching everywhere; covered by the shared dbtest suite and per-backend
+  integration tests.
+
 ### Changed
 - **Breaking (CLI):** the auxiliary `snooze-*` daemons now share one entry-point
   contract — config path is `-c` (the old `-config` is removed), `-debug`

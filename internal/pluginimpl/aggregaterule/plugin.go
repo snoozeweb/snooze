@@ -210,7 +210,7 @@ func (p *Plugin) matchAggregate(
 	flapping int64,
 	watch []string,
 	now time.Time,
-) (map[string]any, plugins.Action, error) {
+) (outRec map[string]any, outAction plugins.Action, outErr error) {
 	if host == nil || host.DB() == nil {
 		// In tests with no DB the plugin is a no-op pass-through.
 		rec["duplicates"] = int64(1)
@@ -258,6 +258,28 @@ func (p *Plugin) matchAggregate(
 	commentCount := toInt64(existing["comment_count"], 0)
 	flappingCountdown, hasFlap := toInt64WithOk(existing["flapping_countdown"])
 
+	// If this record carried a stale `snoozed` attribution and is about to
+	// continue to the snooze plugin (ActionContinue → next in the pipeline),
+	// clear it so snooze re-evaluates the *current* record and re-asserts
+	// `snoozed` only if it still matches a filter. Without this, an alert
+	// snoozed as a warning keeps `snoozed` after escalating to emergency and
+	// never returns to the Alerts tab. Paths that abort (throttled, flapping,
+	// already-closed) never reach snooze, so their attribution is left intact.
+	// The merge write at pipeline end cannot remove a key, hence the explicit
+	// UnsetFields against the existing row.
+	if _, hadSnoozed := existing["snoozed"]; hadSnoozed && prevUID != "" {
+		defer func() {
+			if outErr != nil || outAction != plugins.ActionContinue {
+				return
+			}
+			if _, err := host.DB().UnsetFields(ctx, recordCollection,
+				[]string{"snoozed"}, condition.Equals("uid", prevUID)); err != nil && host.Logger() != nil {
+				host.Logger().Warn("aggregaterule: clear stale snoozed",
+					"uid", prevUID, "error", err)
+			}
+		}()
+	}
+
 	incomingState, _ := rec["state"].(string)
 	rec["uid"] = prevUID
 	rec["duplicates"] = prevDup + 1
@@ -272,6 +294,10 @@ func (p *Plugin) matchAggregate(
 		if prevState != "close" {
 			rec["state"] = "close"
 			rec["comment_count"] = commentCount + 1
+			prevSeverity, _ := existing["severity"].(string)
+			newSeverity, _ := rec["severity"].(string)
+			p.writeAutoComment(ctx, host, prevUID, "close",
+				fmt.Sprintf("Auto closed: Severity %s => %s", prevSeverity, newSeverity), now)
 			return rec, plugins.ActionContinue, nil
 		}
 		// Already closed.
@@ -282,17 +308,16 @@ func (p *Plugin) matchAggregate(
 	}
 
 	// Watch-field changes trigger re-escalation / flapping.
-	changed := false
+	var changedFields []string
 	for _, w := range watch {
 		oldVal, _ := condition.Dig(existing, splitDots(w)...)
 		newVal, _ := condition.Dig(rec, splitDots(w)...)
 		if !valueEquals(oldVal, newVal) {
-			changed = true
-			break
+			changedFields = append(changedFields, fmt.Sprintf("%s (%v => %v)", w, oldVal, newVal))
 		}
 	}
 
-	if changed {
+	if len(changedFields) > 0 {
 		// Decrement the flapping countdown and re-open if necessary.
 		fc := flappingCountdown
 		if !hasFlap {
@@ -301,18 +326,26 @@ func (p *Plugin) matchAggregate(
 		fc--
 		rec["flapping_countdown"] = fc
 		rec["comment_count"] = commentCount + 1
+		fields := strings.Join(changedFields, ", ")
+		var ctype, msg string
 		switch prevState {
 		case "close":
 			rec["state"] = "open"
+			ctype, msg = "open", "Auto re-opened from watchlist: "+fields
 		case "ack":
 			rec["state"] = "esc"
+			ctype, msg = "esc", "Auto re-escalated from watchlist: "+fields
 		default:
 			rec["state"] = prevState
+			ctype, msg = "comment", "New escalation from watchlist: "+fields
 		}
 		if fc <= 0 {
 			// Flapping: discard with a write so the counter / countdown stick.
+			msg += "\n" + flappingNote(throttle, now.Unix()-prevDate)
+			p.writeAutoComment(ctx, host, prevUID, ctype, msg, now)
 			return rec, plugins.ActionAbortUpdate, nil
 		}
+		p.writeAutoComment(ctx, host, prevUID, ctype, msg, now)
 		return rec, plugins.ActionContinue, nil
 	}
 
@@ -326,9 +359,13 @@ func (p *Plugin) matchAggregate(
 		rec["state"] = "open"
 		rec["flapping_countdown"] = fc
 		rec["comment_count"] = commentCount + 1
+		msg := "Auto re-opened"
 		if fc <= 0 {
+			msg += "\n" + flappingNote(throttle, now.Unix()-prevDate)
+			p.writeAutoComment(ctx, host, prevUID, "open", msg, now)
 			return rec, plugins.ActionAbortUpdate, nil
 		}
+		p.writeAutoComment(ctx, host, prevUID, "open", msg, now)
 		return rec, plugins.ActionContinue, nil
 	}
 
@@ -341,12 +378,15 @@ func (p *Plugin) matchAggregate(
 
 	// Outside the throttle window: pass-through (continue), incrementing the
 	// counter, possibly re-escalating from ack.
+	ctype := "comment"
 	if prevState == "ack" {
 		rec["state"] = "esc"
+		ctype = "esc"
 	} else {
 		rec["state"] = prevState
 	}
 	rec["comment_count"] = commentCount + 1
+	p.writeAutoComment(ctx, host, prevUID, ctype, "New escalation", now)
 	return rec, plugins.ActionContinue, nil
 }
 
@@ -375,6 +415,50 @@ func (p *Plugin) queueIncrement(host plugins.Host, hash string, delta int64) {
 // about asyncwriter directly.
 type asyncWriterHost interface {
 	AsyncWriter() *asyncwriter.Writer
+}
+
+// writeAutoComment persists an automatic lifecycle comment onto the `comment`
+// collection so a record's timeline reflects the state transitions the
+// aggregate pipeline performs (close, re-open, re-escalation, watch-field
+// changes).
+//
+// Snooze 1.x wrote such a comment on every comment_count bump
+// (src/snooze/plugins/core/aggregaterule/plugin.py:`self.db.write('comment', …)`).
+// The Go port kept the counter increment but dropped the write, so
+// comment_count inflated unbounded while the timeline — which reads real
+// comment docs by record_uid — stayed empty. This restores the 1:1 invariant.
+//
+// The write goes straight to the driver, not through POST /api/v1/comment, so
+// the comment plugin's AfterCreate hook does NOT fire and does NOT double-count
+// (the caller already bumps comment_count on the record). Failures are
+// best-effort logged: a missing timeline entry must never drop the alert.
+func (p *Plugin) writeAutoComment(ctx context.Context, host plugins.Host, recordUID, ctype, message string, now time.Time) {
+	if host == nil || host.DB() == nil || recordUID == "" || message == "" {
+		return
+	}
+	doc := db.Document{
+		"record_uid": recordUID,
+		"type":       ctype,
+		"message":    message,
+		"date_epoch": now.Unix(),
+		"auto":       true,
+	}
+	if _, err := host.DB().Write(ctx, "comment", []db.Document{doc}, db.WriteOptions{UpdateTime: true}); err != nil {
+		if host.Logger() != nil {
+			host.Logger().Warn("aggregaterule: write auto comment",
+				"record_uid", recordUID, "type", ctype, "error", err)
+		}
+	}
+}
+
+// flappingNote renders the "stopped notifications until throttle expires" line
+// Snooze 1.x appended to a comment when the flapping countdown hit zero.
+func flappingNote(throttle, elapsed int64) string {
+	left := throttle - elapsed
+	if left < 0 {
+		left = 0
+	}
+	return fmt.Sprintf("Flapping detected. Stopped notifications until throttle expires (%ds left)", left)
 }
 
 // seedDefault writes a `_default` aggregate rule with fingerprint

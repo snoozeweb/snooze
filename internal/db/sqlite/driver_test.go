@@ -391,6 +391,39 @@ func TestIncManySetFields(t *testing.T) {
 	}
 }
 
+func TestUnsetFields(t *testing.T) {
+	t.Parallel()
+	d := newTestDriver(t)
+	ctx := context.Background()
+
+	_, err := d.Write(ctx, "record", []dbpkg.Document{
+		{"host": "h", "snoozed": "Warnings"},
+		{"host": "h", "snoozed": "Warnings"},
+		{"host": "h"}, // already has no snoozed
+	}, dbpkg.WriteOptions{})
+	require.NoError(t, err)
+
+	_, total, err := d.Search(ctx, "record", condition.Exists("snoozed"), dbpkg.Page{})
+	require.NoError(t, err)
+	require.Equal(t, 2, total)
+
+	n, err := d.UnsetFields(ctx, "record", []string{"snoozed"}, condition.Equals("host", "h"))
+	require.NoError(t, err)
+	require.Equal(t, 2, n)
+
+	// The key is truly gone — EXISTS no longer matches. A merge write cannot
+	// achieve this (it preserves omitted keys); that gap is the bug
+	// UnsetFields fixes.
+	_, total, err = d.Search(ctx, "record", condition.Exists("snoozed"), dbpkg.Page{})
+	require.NoError(t, err)
+	require.Equal(t, 0, total)
+
+	// Idempotent: nothing left to remove.
+	n, err = d.UnsetFields(ctx, "record", []string{"snoozed"}, condition.Equals("host", "h"))
+	require.NoError(t, err)
+	require.Equal(t, 0, n)
+}
+
 func TestAppendPrependRemoveList(t *testing.T) {
 	t.Parallel()
 	d := newTestDriver(t)

@@ -83,6 +83,28 @@ func (m *memDB) SetFields(_ context.Context, _ string, fields db.Document, cond 
 	return matched, nil
 }
 
+func (m *memDB) UnsetFields(_ context.Context, _ string, fields []string, cond condition.Cond) (int, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	matched := 0
+	for _, d := range m.docs {
+		if !condMatches(cond, d) {
+			continue
+		}
+		changed := false
+		for _, k := range fields {
+			if _, ok := d[k]; ok {
+				delete(d, k)
+				changed = true
+			}
+		}
+		if changed {
+			matched++
+		}
+	}
+	return matched, nil
+}
+
 // condMatches handles the only condition shapes the plugin issues: an empty
 // (AlwaysTrue) condition and a single `name = <value>` equality.
 func condMatches(cond condition.Cond, doc db.Document) bool {

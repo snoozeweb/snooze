@@ -762,6 +762,22 @@ func (d *Driver) SetFields(ctx context.Context, collection string, fields dbpkg.
 	})
 }
 
+// UnsetFields removes the named fields from every matching row. The
+// read-modify-write callback rewrites the whole `data` payload, so deleting a
+// key from the in-memory doc persists (equivalent to json_remove).
+func (d *Driver) UnsetFields(ctx context.Context, collection string, fields []string, cond condition.Cond) (int, error) {
+	return d.updateViaPython(ctx, collection, cond, func(doc dbpkg.Document) bool {
+		changed := false
+		for _, k := range fields {
+			if _, ok := doc[k]; ok {
+				delete(doc, k)
+				changed = true
+			}
+		}
+		return changed
+	})
+}
+
 // AppendList appends values to each named array field on every document
 // matching cond. Missing fields are treated as empty lists; non-array
 // fields are skipped (matches Mongo's $push semantics).

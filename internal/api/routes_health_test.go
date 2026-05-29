@@ -58,6 +58,9 @@ func (f *fakeDB) IncMany(_ context.Context, _, _ string, _ condition.Cond, _ int
 func (f *fakeDB) SetFields(_ context.Context, _ string, _ db.Document, _ condition.Cond) (int, error) {
 	return 0, nil
 }
+func (f *fakeDB) UnsetFields(_ context.Context, _ string, _ []string, _ condition.Cond) (int, error) {
+	return 0, nil
+}
 func (f *fakeDB) AppendList(_ context.Context, _ string, _ map[string][]any, _ condition.Cond) (int, error) {
 	return 0, nil
 }

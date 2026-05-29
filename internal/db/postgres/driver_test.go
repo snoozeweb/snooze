@@ -191,3 +191,34 @@ func TestCollectionFromTable(t *testing.T) {
 	require.Equal(t, "a.b", collectionFromTable("snooze_a__b"))
 	require.Equal(t, "", collectionFromTable("other_table"))
 }
+
+// TestDriver_UnsetFields verifies UnsetFields truly removes the jsonb key so
+// `EXISTS field` stops matching — the behaviour a merge write (jsonb `||`)
+// cannot provide.
+func TestDriver_UnsetFields(t *testing.T) {
+	d := newTestDriver(t)
+	ctx := context.Background()
+
+	_, err := d.Write(ctx, "record", []dbpkg.Document{
+		{"host": "h", "snoozed": "Warnings"},
+		{"host": "h", "snoozed": "Warnings"},
+		{"host": "h"},
+	}, dbpkg.WriteOptions{})
+	require.NoError(t, err)
+
+	_, total, err := d.Search(ctx, "record", condition.Exists("snoozed"), dbpkg.Page{})
+	require.NoError(t, err)
+	require.Equal(t, 2, total)
+
+	n, err := d.UnsetFields(ctx, "record", []string{"snoozed"}, condition.Equals("host", "h"))
+	require.NoError(t, err)
+	require.Equal(t, 2, n)
+
+	_, total, err = d.Search(ctx, "record", condition.Exists("snoozed"), dbpkg.Page{})
+	require.NoError(t, err)
+	require.Equal(t, 0, total)
+
+	n, err = d.UnsetFields(ctx, "record", []string{"snoozed"}, condition.Equals("host", "h"))
+	require.NoError(t, err)
+	require.Equal(t, 0, n)
+}

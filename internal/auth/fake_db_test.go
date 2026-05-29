@@ -143,6 +143,10 @@ func (f *fakeDB) SetFields(context.Context, string, db.Document, condition.Cond)
 	return 0, errors.New("fakeDB: not implemented")
 }
 
+func (f *fakeDB) UnsetFields(context.Context, string, []string, condition.Cond) (int, error) {
+	return 0, errors.New("fakeDB: not implemented")
+}
+
 func (f *fakeDB) AppendList(context.Context, string, map[string][]any, condition.Cond) (int, error) {
 	return 0, errors.New("fakeDB: not implemented")
 }

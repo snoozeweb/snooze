@@ -148,6 +148,9 @@ func (m *memDB) IncMany(context.Context, string, string, condition.Cond, int64) 
 func (m *memDB) SetFields(context.Context, string, db.Document, condition.Cond) (int, error) {
 	return 0, errUnsup
 }
+func (m *memDB) UnsetFields(context.Context, string, []string, condition.Cond) (int, error) {
+	return 0, errUnsup
+}
 func (m *memDB) AppendList(context.Context, string, map[string][]any, condition.Cond) (int, error) {
 	return 0, errUnsup
 }

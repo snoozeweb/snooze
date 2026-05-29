@@ -182,6 +182,22 @@ func (d *Driver) SetFields(ctx context.Context, collection string, fields dbpkg.
 	})
 }
 
+// UnsetFields removes the named fields from every matching row. The
+// read-modify-write callback rewrites the whole `data` payload, so deleting a
+// key from the in-memory doc persists (no jsonb `-` needed at the SQL layer).
+func (d *Driver) UnsetFields(ctx context.Context, collection string, fields []string, cond condition.Cond) (int, error) {
+	return d.updateRowsViaCallback(ctx, collection, cond, func(doc dbpkg.Document) bool {
+		changed := false
+		for _, k := range fields {
+			if _, ok := doc[k]; ok {
+				delete(doc, k)
+				changed = true
+			}
+		}
+		return changed
+	})
+}
+
 // AppendList appends each value list to the named field on every match.
 // Skips rows whose target field is already non-list (mirrors Mongo's
 // silent-no-op semantics).

@@ -101,3 +101,38 @@ func TestDriver_BulkIncrementUpsert(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, docs, 3)
 }
+
+// TestDriver_UnsetFields verifies $unset truly removes the key so a subsequent
+// EXISTS ($exists:true) query no longer matches — the portable field-delete a
+// $set merge cannot provide.
+func TestDriver_UnsetFields(t *testing.T) {
+	if testing.Short() {
+		t.Skip("integration: skipping under -short")
+	}
+	d, cleanup := startMongo(t)
+	defer cleanup()
+	ctx := context.Background()
+
+	_, err := d.Write(ctx, "record", []dbpkg.Document{
+		{"host": "h", "snoozed": "Warnings"},
+		{"host": "h", "snoozed": "Warnings"},
+		{"host": "h"},
+	}, dbpkg.WriteOptions{})
+	require.NoError(t, err)
+
+	_, total, err := d.Search(ctx, "record", condition.Exists("snoozed"), dbpkg.Page{})
+	require.NoError(t, err)
+	require.Equal(t, 2, total)
+
+	n, err := d.UnsetFields(ctx, "record", []string{"snoozed"}, condition.Equals("host", "h"))
+	require.NoError(t, err)
+	require.Equal(t, 2, n)
+
+	_, total, err = d.Search(ctx, "record", condition.Exists("snoozed"), dbpkg.Page{})
+	require.NoError(t, err)
+	require.Equal(t, 0, total)
+
+	n, err = d.UnsetFields(ctx, "record", []string{"snoozed"}, condition.Equals("host", "h"))
+	require.NoError(t, err)
+	require.Equal(t, 0, n)
+}

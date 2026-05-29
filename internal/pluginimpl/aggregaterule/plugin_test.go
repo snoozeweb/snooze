@@ -114,6 +114,26 @@ func recordsByAggregate(t *testing.T, host *testHost, name string) []db.Document
 	return docs
 }
 
+// commentsByRecord lists every `comment` document attached to a record uid —
+// the same query the web timeline issues (record_uid match).
+func commentsByRecord(t *testing.T, host *testHost, uid string) []db.Document {
+	t.Helper()
+	docs, _, err := host.driver.Search(context.Background(), "comment",
+		condition.Equals("record_uid", uid), db.Page{})
+	require.NoError(t, err)
+	return docs
+}
+
+// aggregateUID returns the persisted uid for the single record under name.
+func aggregateUID(t *testing.T, host *testHost, name string) string {
+	t.Helper()
+	results := recordsByAggregate(t, host, name)
+	require.Len(t, results, 1)
+	uid, _ := results[0]["uid"].(string)
+	require.NotEmpty(t, uid)
+	return uid
+}
+
 // --- tests ---
 
 // TestAggregateRuleObject_Match mirrors Python's TestAggregate.test_match: a
@@ -243,6 +263,153 @@ func TestAggregate_OK(t *testing.T) {
 	require.Len(t, results, 1)
 	require.Equal(t, int64(2), toInt64(results[0]["duplicates"], 0))
 	require.Equal(t, "close", results[0]["state"])
+}
+
+// TestAggregate_WritesLifecycleComments is the regression guard for the
+// comment_count / empty-timeline drift. Snooze 1.x wrote a real `comment`
+// document on every comment_count bump (close, watch-change, auto-reopen,
+// re-escalation); the Go port kept the counter but dropped the write, so
+// comment_count inflated while the timeline (which reads comment docs by
+// record_uid) stayed empty. Each transition below must persist exactly one
+// comment doc in lockstep with the counter.
+func TestAggregate_WritesLifecycleComments(t *testing.T) {
+	t.Parallel()
+
+	t.Run("close", func(t *testing.T) {
+		t.Parallel()
+		host := newTestHost(t)
+		writeRule(t, host, db.Document{
+			"name": "AggC", "condition": []any{"=", "a", "1"},
+			"fields": []string{"a"}, "throttle": int64(900),
+		})
+		p := freshPlugin(t, host)
+
+		runProcess(t, p, host, snoozetypes.Record{State: "open", Severity: "critical", Extra: map[string]any{"a": "1"}})
+		runProcess(t, p, host, snoozetypes.Record{State: "close", Severity: "ok", Extra: map[string]any{"a": "1"}})
+
+		uid := aggregateUID(t, host, "AggC")
+		comments := commentsByRecord(t, host, uid)
+		require.Len(t, comments, 1, "close must write one comment doc")
+		require.Equal(t, "close", comments[0]["type"])
+		require.Equal(t, int64(1), toInt64(recordsByAggregate(t, host, "AggC")[0]["comment_count"], 0),
+			"comment_count must stay in lockstep with comment docs")
+	})
+
+	t.Run("watch-change", func(t *testing.T) {
+		t.Parallel()
+		host := newTestHost(t)
+		writeRule(t, host, db.Document{
+			"name": "AggW", "condition": []any{"=", "a", "4"},
+			"fields": []string{"a", "b"}, "watch": []string{"c"},
+			"throttle": int64(900), "flapping": int64(3),
+		})
+		p := freshPlugin(t, host)
+
+		runProcess(t, p, host, snoozetypes.Record{Extra: map[string]any{"a": "4", "b": "2", "c": "3"}})
+		runProcess(t, p, host, snoozetypes.Record{Extra: map[string]any{"a": "4", "b": "2", "c": "4"}})
+
+		uid := aggregateUID(t, host, "AggW")
+		comments := commentsByRecord(t, host, uid)
+		require.Len(t, comments, 1, "watch-field change must write one comment doc")
+		require.Contains(t, comments[0]["message"], "watchlist")
+	})
+
+	t.Run("re-escalation-outside-throttle", func(t *testing.T) {
+		t.Parallel()
+		host := newTestHost(t)
+		writeRule(t, host, db.Document{
+			"name": "AggE", "condition": []any{"=", "a", "1"},
+			"fields": []string{"a"}, "throttle": int64(10),
+		})
+		// Clock fixed far in the future so the second occurrence lands well
+		// outside the throttle window (the persisted date_epoch is stamped at
+		// real wall-clock time on write), forcing the re-escalation path.
+		p := &Plugin{meta: plugins.Metadata{Name: "aggregaterule"}}
+		p.clock = func() time.Time { return time.Unix(32_000_000_000, 0) }
+		require.NoError(t, p.PostInit(context.Background(), host))
+
+		runProcess(t, p, host, snoozetypes.Record{Extra: map[string]any{"a": "1"}})
+		runProcess(t, p, host, snoozetypes.Record{Extra: map[string]any{"a": "1"}})
+
+		uid := aggregateUID(t, host, "AggE")
+		comments := commentsByRecord(t, host, uid)
+		require.Len(t, comments, 1, "re-escalation outside throttle must write one comment doc")
+		require.Equal(t, "New escalation", comments[0]["message"])
+	})
+}
+
+// TestAggregate_ClearsStaleSnoozed guards the warning→emergency regression: a
+// record snoozed under one severity must drop its `snoozed` attribution when it
+// re-aggregates non-throttled, so the snooze plugin (next in the real pipeline)
+// re-evaluates it against the *current* record. Throttled duplicates abort
+// before snooze runs, so they must keep the prior `snoozed`.
+//
+// These call Process directly (not runProcess) and inspect the DB immediately:
+// runProcess persists via ReplaceOne (full replace), which would itself drop
+// the field and mask whether aggregaterule actually unset it.
+func TestAggregate_ClearsStaleSnoozed(t *testing.T) {
+	t.Parallel()
+
+	snoozedCount := func(t *testing.T, host *testHost) int {
+		t.Helper()
+		_, total, err := host.driver.Search(context.Background(), recordCollection,
+			condition.Exists("snoozed"), db.Page{})
+		require.NoError(t, err)
+		return total
+	}
+
+	t.Run("non-throttled-reaggregation-clears", func(t *testing.T) {
+		t.Parallel()
+		host := newTestHost(t)
+		writeRule(t, host, db.Document{
+			"name": "AggS", "condition": []any{"=", "a", "1"},
+			"fields": []string{"a"}, "watch": []string{"c"},
+			"throttle": int64(900), "flapping": int64(3),
+		})
+		p := freshPlugin(t, host)
+
+		out, _ := runProcess(t, p, host, snoozetypes.Record{Extra: map[string]any{"a": "1", "c": "1"}})
+		require.NotEmpty(t, out.Hash)
+
+		// Simulate the snooze plugin having snoozed it in the warning era.
+		_, err := host.driver.SetFields(context.Background(), recordCollection,
+			db.Document{"snoozed": "Warnings"}, condition.Equals("hash", out.Hash))
+		require.NoError(t, err)
+		require.Equal(t, 1, snoozedCount(t, host))
+
+		// Re-aggregate with a watched-field change → non-throttled ActionContinue.
+		res, err := p.Process(context.Background(), snoozetypes.Record{Extra: map[string]any{"a": "1", "c": "2"}})
+		require.NoError(t, err)
+		require.Equal(t, plugins.ActionContinue, res.Action)
+
+		require.Equal(t, 0, snoozedCount(t, host),
+			"stale snoozed must be cleared so snooze re-evaluates the escalated record")
+	})
+
+	t.Run("throttled-duplicate-keeps-snoozed", func(t *testing.T) {
+		t.Parallel()
+		host := newTestHost(t)
+		writeRule(t, host, db.Document{
+			"name": "AggT", "condition": []any{"=", "a", "1"},
+			"fields": []string{"a"}, "throttle": int64(900),
+		})
+		p := freshPlugin(t, host)
+
+		out, _ := runProcess(t, p, host, snoozetypes.Record{Extra: map[string]any{"a": "1"}})
+		_, err := host.driver.SetFields(context.Background(), recordCollection,
+			db.Document{"snoozed": "Warnings"}, condition.Equals("hash", out.Hash))
+		require.NoError(t, err)
+		require.Equal(t, 1, snoozedCount(t, host))
+
+		// Plain duplicate inside the throttle window → ActionAbortUpdate, never
+		// reaches snooze, so its snoozed attribution must survive.
+		res, err := p.Process(context.Background(), snoozetypes.Record{Extra: map[string]any{"a": "1"}})
+		require.NoError(t, err)
+		require.Equal(t, plugins.ActionAbortUpdate, res.Action)
+
+		require.Equal(t, 1, snoozedCount(t, host),
+			"throttled duplicate must keep snoozed (snooze never re-runs to re-assert it)")
+	})
 }
 
 // TestAggregate_Flapping ports test_aggregate_flapping: state churn decrements

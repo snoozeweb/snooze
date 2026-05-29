@@ -92,6 +92,9 @@ func (s *stubDriver) IncMany(context.Context, string, string, condition.Cond, in
 func (s *stubDriver) SetFields(context.Context, string, db.Document, condition.Cond) (int, error) {
 	return 0, nil
 }
+func (s *stubDriver) UnsetFields(context.Context, string, []string, condition.Cond) (int, error) {
+	return 0, nil
+}
 func (s *stubDriver) AppendList(context.Context, string, map[string][]any, condition.Cond) (int, error) {
 	return 0, nil
 }

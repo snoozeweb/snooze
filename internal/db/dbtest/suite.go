@@ -45,6 +45,7 @@ func RunDriverSuite(t *testing.T, name string, factory Factory) {
 		{"BulkIncrementUpsert", testBulkIncrementUpsert},
 		{"IncMany", testIncMany},
 		{"SetFields", testSetFields},
+		{"UnsetFields", testUnsetFields},
 		{"AppendList", testAppendList},
 		{"PrependList", testPrependList},
 		{"RemoveList", testRemoveList},
@@ -363,6 +364,35 @@ func testSetFields(t *testing.T, drv db.Driver) {
 		db.Document{"c": "2", "d": "1"}, mustCond(t, []any{"=", "b", "1"}))
 	require.NoError(t, err)
 	require.Equal(t, 2, matched)
+}
+
+func testUnsetFields(t *testing.T, drv db.Driver) {
+	mustWrite(t, drv, "record",
+		db.Document{"host": "h", "snoozed": "Warnings"},
+		db.Document{"host": "h", "snoozed": "Warnings"},
+		db.Document{"host": "h"}, // already has no snoozed
+	)
+	// Two records currently satisfy EXISTS snoozed.
+	_, total := search(t, drv, "record", mustCond(t, []any{"EXISTS", "snoozed"}))
+	require.Equal(t, 2, total)
+
+	// Unsetting it modifies only the two that carry it.
+	matched, err := drv.UnsetFields(ctx(), "record",
+		[]string{"snoozed"}, mustCond(t, []any{"=", "host", "h"}))
+	require.NoError(t, err)
+	require.Equal(t, 2, matched)
+
+	// The key is truly gone — EXISTS snoozed now matches nothing on every
+	// backend. (A merge write cannot achieve this: it preserves keys it does
+	// not mention, which is the bug UnsetFields exists to fix.)
+	_, total = search(t, drv, "record", mustCond(t, []any{"EXISTS", "snoozed"}))
+	require.Equal(t, 0, total)
+
+	// Idempotent: re-running modifies nothing.
+	matched, err = drv.UnsetFields(ctx(), "record",
+		[]string{"snoozed"}, mustCond(t, []any{"=", "host", "h"}))
+	require.NoError(t, err)
+	require.Equal(t, 0, matched)
 }
 
 func testAppendList(t *testing.T, drv db.Driver) {
