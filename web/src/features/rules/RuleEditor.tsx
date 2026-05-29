@@ -22,6 +22,7 @@ import {
 import { DiffSection } from "@/shared/ui/DiffSection";
 import { Rules, AggregateRules } from "./api";
 import type { AggregateRule, Rule } from "./types";
+import { throttleFromWire, throttleToWire, type ThrottleOverride } from "./throttle";
 import styles from "./RuleEditor.module.css";
 
 type FormShape = {
@@ -32,7 +33,8 @@ type FormShape = {
   modifications: Modification[];
   fields: string[];
   watch: string[];
-  throttle: number;
+  throttleDefault: number;
+  throttleOverrides: ThrottleOverride[];
 };
 
 const EMPTY_FORM: FormShape = {
@@ -43,7 +45,8 @@ const EMPTY_FORM: FormShape = {
   modifications: [],
   fields: [],
   watch: [],
-  throttle: 0,
+  throttleDefault: 0,
+  throttleOverrides: [],
 };
 
 /** RuleInsertion captures where a brand-new rule should land in the tree
@@ -90,6 +93,7 @@ export function RuleEditor({ plugin, uid, onClose, insertion }: RuleEditorProps)
     }
     if (existing.data) {
       const agg = existing.data as AggregateRule;
+      const t = throttleFromWire(agg.throttle);
       reset({
         name: existing.data.name ?? "",
         comment: existing.data.comment ?? "",
@@ -98,7 +102,8 @@ export function RuleEditor({ plugin, uid, onClose, insertion }: RuleEditorProps)
         modifications: modificationsFromWire(existing.data.modifications),
         fields: agg.fields ?? [],
         watch: agg.watch ?? [],
-        throttle: agg.throttle ?? 0,
+        throttleDefault: t.defaultSeconds,
+        throttleOverrides: t.overrides,
       });
     }
   }, [existing.data, isCreate, reset]);
@@ -123,6 +128,13 @@ export function RuleEditor({ plugin, uid, onClose, insertion }: RuleEditorProps)
       // insertion hint is ignored there.
       const activeInsertion: RuleInsertion | undefined =
         isCreate && !isAggregate ? insertion : undefined;
+      const throttleWire = throttleToWire({
+        defaultSeconds: form.throttleDefault,
+        overrides: form.throttleOverrides,
+      });
+      const includeThrottle =
+        isAggregate &&
+        (typeof throttleWire === "number" ? throttleWire > 0 : Object.keys(throttleWire).length > 0);
       const body: Rule & Partial<AggregateRule> = {
         name: form.name,
         ...(form.comment ? { comment: form.comment } : {}),
@@ -133,12 +145,9 @@ export function RuleEditor({ plugin, uid, onClose, insertion }: RuleEditorProps)
           : {}),
         ...(isAggregate && form.fields.length > 0 ? { fields: form.fields } : {}),
         ...(isAggregate && form.watch.length > 0 ? { watch: form.watch } : {}),
-        ...(isAggregate && form.throttle > 0 ? { throttle: form.throttle } : {}),
+        ...(includeThrottle ? { throttle: throttleWire } : {}),
         ...(activeInsertion
-          ? {
-              parents: activeInsertion.parents,
-              tree_order: activeInsertion.tree_order,
-            }
+          ? { parents: activeInsertion.parents, tree_order: activeInsertion.tree_order }
           : {}),
       };
       if (isCreate) {
@@ -170,7 +179,8 @@ export function RuleEditor({ plugin, uid, onClose, insertion }: RuleEditorProps)
   const enabled = watch("enabled");
   const fields = watch("fields");
   const watchFields = watch("watch");
-  const throttle = watch("throttle");
+  const throttleDefault = watch("throttleDefault");
+  const throttleOverrides = watch("throttleOverrides");
   const isAggregate = plugin === "aggregaterule";
   const nameInvalid = formState.isSubmitted && !watch("name").trim();
   const labelPlugin = plugin === "rule" ? "rule" : "aggregate rule";
@@ -289,13 +299,71 @@ export function RuleEditor({ plugin, uid, onClose, insertion }: RuleEditorProps)
                   </div>
                   <div className={styles.field}>
                     <label className={styles.label} htmlFor="rule-throttle">
-                      Throttle (0 = unlimited)
+                      Throttle — default (0 = unlimited)
                     </label>
                     <DurationInput
                       id="rule-throttle"
-                      value={throttle}
-                      onChange={(n) => setValue("throttle", n, { shouldDirty: true })}
+                      value={throttleDefault}
+                      onChange={(n) => setValue("throttleDefault", n, { shouldDirty: true })}
                     />
+                    <div style={{ marginTop: "var(--space-2)" }}>
+                      <span className={styles.label}>Overrides</span>
+                      <p style={{ margin: "var(--space-1) 0", color: "var(--text-muted)", fontSize: "var(--font-sm)" }}>
+                        {watchFields.length > 0
+                          ? `Matched against watch values (${watchFields.join(", ")}) — first match wins.`
+                          : "Add fields to Watch above so overrides can match a value."}
+                      </p>
+                      {throttleOverrides.map((row, i) => (
+                        <div key={i} style={{ display: "flex", gap: "var(--space-2)", alignItems: "center", marginBottom: "var(--space-1)" }}>
+                          <Input
+                            aria-label={`Override value ${i + 1}`}
+                            placeholder="e.g. emergency"
+                            value={row.value}
+                            onChange={(e) => {
+                              const next = throttleOverrides.slice();
+                              next[i] = { ...next[i], value: e.target.value };
+                              setValue("throttleOverrides", next, { shouldDirty: true });
+                            }}
+                          />
+                          <DurationInput
+                            aria-label={`Override duration ${i + 1}`}
+                            value={row.seconds}
+                            onChange={(n) => {
+                              const next = throttleOverrides.slice();
+                              next[i] = { ...next[i], seconds: n };
+                              setValue("throttleOverrides", next, { shouldDirty: true });
+                            }}
+                          />
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            aria-label={`Remove override ${i + 1}`}
+                            onClick={() =>
+                              setValue(
+                                "throttleOverrides",
+                                throttleOverrides.filter((_, j) => j !== i),
+                                { shouldDirty: true },
+                              )
+                            }
+                          >
+                            ×
+                          </Button>
+                        </div>
+                      ))}
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        onClick={() =>
+                          setValue(
+                            "throttleOverrides",
+                            [...throttleOverrides, { value: "", seconds: 0 }],
+                            { shouldDirty: true },
+                          )
+                        }
+                      >
+                        + Add override
+                      </Button>
+                    </div>
                   </div>
                 </section>
               ) : null}
