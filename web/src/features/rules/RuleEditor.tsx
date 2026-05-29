@@ -321,7 +321,7 @@ export function RuleEditor({ plugin, uid, onClose, insertion }: RuleEditorProps)
                             value={row.value}
                             onChange={(e) => {
                               const next = throttleOverrides.slice();
-                              next[i] = { ...next[i], value: e.target.value };
+                              next[i] = { ...next[i], value: e.target.value } as ThrottleOverride;
                               setValue("throttleOverrides", next, { shouldDirty: true });
                             }}
                           />
@@ -330,7 +330,7 @@ export function RuleEditor({ plugin, uid, onClose, insertion }: RuleEditorProps)
                             value={row.seconds}
                             onChange={(n) => {
                               const next = throttleOverrides.slice();
-                              next[i] = { ...next[i], seconds: n };
+                              next[i] = { ...next[i], seconds: n } as ThrottleOverride;
                               setValue("throttleOverrides", next, { shouldDirty: true });
                             }}
                           />

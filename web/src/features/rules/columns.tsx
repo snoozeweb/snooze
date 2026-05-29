@@ -100,12 +100,17 @@ export const aggregateRuleColumns: ColumnDef<AggregateRule>[] = [
   {
     id: "throttle",
     header: "Throttle",
-    cell: (r) => (
-      <Badge variant={r.throttle ? "muted" : "neutral"}>
-        {r.throttle ? secondsToHuman(r.throttle) : "—"}
-      </Badge>
-    ),
-    width: "120px",
+    cell: (r) => {
+      const t = r.throttle;
+      if (t === undefined || t === null) return <Badge variant="neutral">—</Badge>;
+      if (typeof t === "number") {
+        return <Badge variant={t ? "muted" : "neutral"}>{t ? secondsToHuman(t) : "—"}</Badge>;
+      }
+      const overrides = Object.keys(t).filter((k) => k !== "default").length;
+      const def = typeof t.default === "number" ? secondsToHuman(t.default) : "—";
+      return <Badge variant="muted">{`${overrides} override${overrides === 1 ? "" : "s"} · default ${def}`}</Badge>;
+    },
+    width: "160px",
   },
 ];
 
