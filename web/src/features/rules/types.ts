@@ -21,5 +21,7 @@ export type Rule = {
 export type AggregateRule = Rule & {
   fields?: string[];
   watch?: string[];
-  throttle?: number;
+  // Scalar seconds (applies always) or a { value: seconds, …, default: seconds }
+  // map matched against the rule's `watch` field values (first match wins).
+  throttle?: number | Record<string, number>;
 };
