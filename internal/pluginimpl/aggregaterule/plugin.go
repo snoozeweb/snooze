@@ -85,7 +85,7 @@ type compiledRule struct {
 	cond     *condition.Compiled
 	fields   []string
 	watch    []string
-	throttle int64
+	throttle throttleSpec
 	flapping int64
 }
 
@@ -172,7 +172,7 @@ func (p *Plugin) Process(ctx context.Context, rec snoozetypes.Record) (plugins.R
 		matched = r
 		aggrName = r.name
 		fields = r.fields
-		throttle = r.throttle
+		throttle = r.throttle.resolve(recMap, r.watch)
 		flapping = r.flapping
 		watchKeys = r.watch
 		break
@@ -515,7 +515,7 @@ func compileRule(d db.Document) (*compiledRule, error) {
 		cond:     cp,
 		fields:   fields,
 		watch:    toStringSlice(d["watch"]),
-		throttle: toInt64(d["throttle"], defaultThrottle),
+		throttle: parseThrottle(d["throttle"]),
 		flapping: toInt64(d["flapping"], defaultFlapping),
 	}
 	return r, nil
@@ -552,10 +552,16 @@ func condFromDoc(v any) (condition.Cond, error) {
 
 // --- hashing ---
 
-// computeHash mirrors Python: md5(name + join('field=value', sorted-fields)).
-// MD5 is required (not just historical) — pre-existing alert records carry
-// MD5-encoded hashes from the Snooze 1.x Python era, and switching algorithms
-// breaks dedup continuity for every still-open legacy record after upgrade.
+// computeHash builds the aggregate identity: md5 of the rule name followed by
+// each sorted `field=value|` pair (note the `|` separator and the trailing `|`).
+//
+// This is NOT byte-compatible with the Snooze 1.x Python hash, which joined the
+// pairs with `.` and no trailing separator — verified by reproduction: the same
+// record+rule yields a different digest under each scheme. MD5 is retained as
+// the digest function, but the differing serialization means open aggregates do
+// NOT keep their hash across a Python→Go migration; they re-form on the first
+// post-migration occurrence. Keep this serialization stable from here on:
+// changing it re-forks every currently-open aggregate.
 func computeHash(name string, fields []string, rec map[string]any) string {
 	h := md5.New() //nolint:gosec
 	h.Write([]byte(name))
@@ -705,6 +711,54 @@ func mergeMapIntoRecord(rec *snoozetypes.Record, m map[string]any) {
 }
 
 // --- value helpers ---
+
+// throttleSpec is a rule's throttle policy. A scalar throttle compiles to
+// {def, nil}; a map compiles to per-value overrides plus a default. resolve
+// matches the rule's watch-field values (in order) against the overrides and
+// returns the first hit, else def. This generalizes per-severity throttling to
+// any watched field.
+type throttleSpec struct {
+	def     int64
+	byValue map[string]int64
+}
+
+// parseThrottle accepts the stored `throttle` field in either form:
+//   - a scalar number  -> applies always
+//   - a map[string]any -> {value: seconds, …} plus an optional "default" key
+func parseThrottle(v any) throttleSpec {
+	switch x := v.(type) {
+	case nil:
+		return throttleSpec{def: defaultThrottle}
+	case map[string]any:
+		ts := throttleSpec{def: defaultThrottle, byValue: make(map[string]int64, len(x))}
+		for k, raw := range x {
+			n := toInt64(raw, defaultThrottle)
+			if k == "default" {
+				ts.def = n
+				continue
+			}
+			ts.byValue[k] = n
+		}
+		return ts
+	default:
+		return throttleSpec{def: toInt64(v, defaultThrottle)}
+	}
+}
+
+// resolve picks the throttle (seconds) for rec: the first watched field whose
+// value is an override key wins; otherwise def.
+// Values are compared by their string form (fmt.Sprint), so map keys must be strings (as JSON/YAML object keys always are).
+func (t throttleSpec) resolve(rec map[string]any, watch []string) int64 {
+	if len(t.byValue) > 0 {
+		for _, w := range watch {
+			v, _ := condition.Dig(rec, splitDots(w)...)
+			if secs, ok := t.byValue[fmt.Sprint(v)]; ok {
+				return secs
+			}
+		}
+	}
+	return t.def
+}
 
 func toInt64(v any, fallback int64) int64 {
 	switch n := v.(type) {

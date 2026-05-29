@@ -543,6 +543,36 @@ func TestPostInit_DoesNotReseed(t *testing.T) {
 	require.Equal(t, "Custom", all[0]["name"])
 }
 
+func TestThrottleSpec_Resolve(t *testing.T) {
+	t.Parallel()
+	// scalar form: always the same value, ignores watch.
+	scalar := parseThrottle(int64(900))
+	require.Equal(t, int64(900), scalar.resolve(map[string]any{"severity": "emergency"}, []string{"severity"}))
+
+	// map form: first watched value that is a key wins, else default.
+	spec := parseThrottle(map[string]any{
+		"emergency": float64(120), "critical": float64(86400), "default": float64(3600),
+	})
+	require.Equal(t, int64(120), spec.resolve(map[string]any{"severity": "emergency"}, []string{"severity"}))
+	require.Equal(t, int64(86400), spec.resolve(map[string]any{"severity": "critical"}, []string{"severity"}))
+	require.Equal(t, int64(3600), spec.resolve(map[string]any{"severity": "warning"}, []string{"severity"}), "no key match -> default")
+	require.Equal(t, int64(3600), spec.resolve(map[string]any{}, []string{"severity"}), "missing field -> default")
+
+	// multi-watch: first listed watched value that matches wins.
+	require.Equal(t, int64(120),
+		spec.resolve(map[string]any{"severity": "emergency", "environment": "critical"}, []string{"severity", "environment"}))
+
+	// map with no "default" key falls back to the package default.
+	noDef := parseThrottle(map[string]any{"emergency": float64(120)})
+	require.Equal(t, defaultThrottle, noDef.resolve(map[string]any{"severity": "warning"}, []string{"severity"}))
+
+	// nil -> package default scalar.
+	require.Equal(t, defaultThrottle, parseThrottle(nil).resolve(nil, nil))
+
+	// scalar delivered as float64 (the JSON/DB representation) also works.
+	require.Equal(t, int64(900), parseThrottle(float64(900)).resolve(nil, nil))
+}
+
 // TestAsyncWriter_Increments verifies the plugin queues a `duplicates`
 // increment via the host's async writer for an already-closed record.
 func TestAsyncWriter_Increments(t *testing.T) {
