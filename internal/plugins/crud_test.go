@@ -51,6 +51,18 @@ func (p *routedPlugin) RegisterRoutes(r chi.Router, _ Host) {
 	})
 }
 
+// transformingPlugin records the doc passed to its WriteTransformer hook, so a
+// test can assert the CRUD layer supplies the URL uid on update.
+type transformingPlugin struct {
+	crudPlugin
+	lastDoc map[string]any
+}
+
+func (p *transformingPlugin) TransformWrite(_ context.Context, doc map[string]any) error {
+	p.lastDoc = doc
+	return nil
+}
+
 // mount builds a chi router with MountCRUD and returns it ready for httptest.
 func mount(t *testing.T, p Plugin, driver db.Driver) (chi.Router, *nullHost) {
 	t.Helper()
@@ -171,6 +183,37 @@ func TestCRUD_PostListGetPatchDelete(t *testing.T) {
 	// Delete missing
 	rec = doRequest(t, r, "DELETE", "/api/v1/thing/u3", nil)
 	require.Equal(t, http.StatusNotFound, rec.Code)
+}
+
+// TestCRUD_TransformWriteGetsURLUIDOnUpdate is the regression guard for the
+// rename bug: PUT/PATCH take the uid from the URL but did not put it in the
+// body, so a WriteTransformer (e.g. the aggregate duplicate-fields guard) that
+// excludes "self" by uid could not recognise the row being renamed and wrongly
+// rejected the save. The update handlers must supply the URL uid to the hook.
+func TestCRUD_TransformWriteGetsURLUIDOnUpdate(t *testing.T) {
+	t.Parallel()
+	memo := newMemDB()
+	p := &transformingPlugin{crudPlugin: crudPlugin{name: "thing"}}
+	r, _ := mount(t, p, memo)
+
+	rec := doRequest(t, r, "POST", "/api/v1/thing",
+		db.Document{"uid": "u1", "name": "A", "fields": []string{"host"}})
+	require.Equal(t, http.StatusCreated, rec.Code, rec.Body.String())
+
+	// PUT a rename: body carries the NEW name and NO uid (mirrors the web client).
+	p.lastDoc = nil
+	rec = doRequest(t, r, "PUT", "/api/v1/thing/u1",
+		db.Document{"name": "Renamed", "fields": []string{"host"}})
+	require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
+	require.Equal(t, "u1", p.lastDoc["uid"],
+		"PUT must supply the URL uid to TransformWrite so self-exclusion survives a rename")
+
+	// PATCH likewise.
+	p.lastDoc = nil
+	rec = doRequest(t, r, "PATCH", "/api/v1/thing/u1", db.Document{"name": "Renamed2"})
+	require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
+	require.Equal(t, "u1", p.lastDoc["uid"],
+		"PATCH must supply the URL uid to TransformWrite")
 }
 
 func TestCRUD_BulkDeleteWithQuery(t *testing.T) {

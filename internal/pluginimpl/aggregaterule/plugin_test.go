@@ -726,6 +726,18 @@ func TestAggregate_TransformWrite_DuplicateFields(t *testing.T) {
 	require.NoError(t, p.TransformWrite(context.Background(), map[string]any{
 		"name": "A", "uid": "uid-a", "fields": []any{"host", "tarpit_message"}, "enabled": true}))
 
+	// Renaming A -> allowed. The CRUD layer supplies A's real uid, so
+	// self-exclusion must hold even though the name changed (the reported bug).
+	aDocs, _, ferr := host.driver.Search(context.Background(), ruleCollection,
+		condition.Equals("name", "A"), db.Page{})
+	require.NoError(t, ferr)
+	require.Len(t, aDocs, 1)
+	aUID, _ := aDocs[0]["uid"].(string)
+	require.NotEmpty(t, aUID)
+	require.NoError(t, p.TransformWrite(context.Background(), map[string]any{
+		"name": "A renamed", "uid": aUID, "fields": []any{"host", "tarpit_message"}, "enabled": true}),
+		"renaming a rule (same uid, same fields) must not trip the duplicate guard")
+
 	// Distinct fields -> allowed.
 	require.NoError(t, p.TransformWrite(context.Background(), map[string]any{
 		"name": "C", "fields": []any{"host", "message"}, "enabled": true}))

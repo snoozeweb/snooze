@@ -343,6 +343,12 @@ func replaceHandler(host Host, p Plugin, collection string) http.HandlerFunc {
 			writeError(w, http.StatusBadRequest, "bad_request", err.Error())
 			return
 		}
+		// The uid comes from the URL, not the body. Stamp it on the document so
+		// DataModel.Validate / WriteTransformer see the identity of the row being
+		// updated — e.g. a duplicate-guard that excludes "self" by uid must still
+		// match when the request renames the row — and so the replacement keeps
+		// its uid even if the client omitted it.
+		body["uid"] = uid
 		if dm, ok := p.(DataModel); ok {
 			if err := dm.Validate(body); err != nil {
 				writeError(w, http.StatusUnprocessableEntity, "validation_error", err.Error())
@@ -388,6 +394,10 @@ func patchHandler(host Host, p Plugin, collection string) http.HandlerFunc {
 			writeError(w, http.StatusBadRequest, "bad_request", err.Error())
 			return
 		}
+		// Stamp the URL uid so Validate / WriteTransformer can identify the row
+		// being patched (e.g. a duplicate-guard that excludes self by uid). uid
+		// is excluded from the audit summary and is a no-op on the merge.
+		patch["uid"] = uid
 		if dm, ok := p.(DataModel); ok {
 			if err := dm.Validate(patch); err != nil {
 				writeError(w, http.StatusUnprocessableEntity, "validation_error", err.Error())
