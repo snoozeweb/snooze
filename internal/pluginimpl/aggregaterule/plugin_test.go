@@ -657,6 +657,32 @@ func TestAggregate_ResolutionClosesAcrossSeverity(t *testing.T) {
 	})
 }
 
+// TestAggregate_WatchSeverityReEscalates verifies that when `watch` includes
+// `severity` an escalation (critical → emergency) is treated as a watch-field
+// change: the plugin returns ActionContinue and writes a "watchlist" comment.
+func TestAggregate_WatchSeverityReEscalates(t *testing.T) {
+	t.Parallel()
+	host := newTestHost(t)
+	writeRule(t, host, db.Document{
+		"name": "PVC", "condition": []any{"EXISTS", "tarpit_message"},
+		"fields": []string{"host", "tarpit_message"}, "watch": []string{"severity"},
+		"throttle": int64(900), "flapping": int64(3),
+	})
+	p := freshPlugin(t, host)
+
+	runProcess(t, p, host, snoozetypes.Record{Severity: "critical",
+		Extra: map[string]any{"host": "h", "tarpit_message": "m"}})
+
+	_, action := runProcess(t, p, host, snoozetypes.Record{Severity: "emergency",
+		Extra: map[string]any{"host": "h", "tarpit_message": "m"}})
+	require.Equal(t, plugins.ActionContinue, action)
+
+	uid := aggregateUID(t, host, "PVC")
+	comments := commentsByRecord(t, host, uid)
+	require.GreaterOrEqual(t, len(comments), 1)
+	require.Contains(t, comments[len(comments)-1]["message"], "watchlist")
+}
+
 // TestAsyncWriter_Increments verifies the plugin queues a `duplicates`
 // increment via the host's async writer for an already-closed record.
 func TestAsyncWriter_Increments(t *testing.T) {
