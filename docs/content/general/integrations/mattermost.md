@@ -216,3 +216,39 @@ The bot should reply with the command list within a few seconds. If there is no 
 - **Reconnect back-off.** On WebSocket disconnect the daemon waits `reconnect_initial_backoff` before the first retry, doubling each attempt up to `reconnect_max_backoff`. During a reconnect window inbound commands are not processed; outbound alert delivery (if the webhook path is also used) is unaffected as it goes through the REST API directly.
 - **No SDK dependency.** The daemon implements only the WebSocket message shapes it needs (`posted` events) hand-rolled against the Mattermost v4 wire format. Some Mattermost versions stringify the `post` field inside the `posted` event data; the daemon handles both the stringified and inline- object forms for robustness.
 
+## In-process notifier (Incoming Webhook)
+
+Besides the standalone `snooze-mattermost` daemon, snooze-server ships a
+lightweight **in-process `mattermost` notifier** for the simple "push a message
+to a channel" case (no separate process, no bidirectional command handling).
+
+It posts to a Mattermost **Incoming Webhook** URL using the Slack-compatible
+attachment payload. Configure it as a notification **action** from the web UI
+(Notifications → Actions → New → *Mattermost*), or directly:
+
+```json
+{
+  "name": "mattermost-prod",
+  "action": {
+    "selected": "mattermost",
+    "subcontent": {
+      "webhook_url": "https://mattermost.example.com/hooks/xxxxxxxx",
+      "channel": "alerts",
+      "message": "*{{ .Severity }}* on `{{ .Host }}`: {{ .Message }}"
+    }
+  }
+}
+```
+
+| Field | Required | Description |
+|-------|----------|-------------|
+| `webhook_url` | yes | Mattermost Incoming Webhook URL. |
+| `channel` | no | Channel override (defaults to the webhook's configured channel). |
+| `username` | no | Display-name override for the posting bot. |
+| `icon_url` | no | Avatar URL for the posting bot. |
+| `message` | no | Go `text/template` over the record (default ``*{{ .Severity }}* on `{{ .Host }}`: {{ .Message }}``). |
+| `timeout` | no | Request timeout as a Go duration (default `10s`). |
+
+The attachment colour follows severity; a resolved alert renders green with a
+`✅ Resolved` prefix. Use the **Send test** button in the Actions editor to verify
+delivery.

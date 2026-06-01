@@ -43,6 +43,12 @@
   backends. Unlike a merge write, it truly removes the key so `EXISTS field`
   stops matching everywhere; covered by the shared dbtest suite and per-backend
   integration tests.
+- In-process **Microsoft Teams** and **Mattermost** notifier plugins (Incoming
+  Webhook), so chat integrations no longer require a hand-written generic
+  `webhook` action.
+- Branded **integration gallery** in the Actions editor, plus a per-integration
+  **Send test** button (`POST /api/v1/action/test`) and a **setup-docs link**
+  (`doc_url` / `category` plugin metadata).
 
 ### Changed
 - **Teams notifications link to the All tab.** The `snooze-teams` "View in

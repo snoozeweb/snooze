@@ -238,3 +238,49 @@ A successful post returns a JSON body with `"delivered"` listing the channel ref
 - **Self-message detection.** The daemon embeds an HTML comment marker (`<!-- snooze-bot -->`) in every message it posts so the polling loop can skip its own output. Removing or filtering that comment will cause a feedback loop.
 - **Markdown in FactSet values.** The Adaptive Card specification allows Markdown links inside FactSet `value` fields, but some Teams clients (web, certain mobile builds, tenants with Markdown disabled by policy) strip them silently. The card also includes an `Action.OpenUrl` button as a reliable clickable fallback.
 
+## In-process notifier (Incoming Webhook)
+
+Besides the standalone `snooze-teams` daemon described above, snooze-server ships
+a lightweight **in-process `teams` notifier**. Use it when you only need to push
+an alert card to a Teams channel and don't need the daemon's interactive
+threading / @-mention triage.
+
+It posts an **Adaptive Card** to a Teams **Incoming Webhook / Workflows** URL — no
+Graph API, no OAuth, no separate process. Configure it as a notification
+**action** from the web UI (Notifications → Actions → New → *Microsoft Teams*),
+or directly as an action document:
+
+```json
+{
+  "name": "teams-prod",
+  "action": {
+    "selected": "teams",
+    "subcontent": {
+      "webhook_url": "https://<org>.webhook.office.com/webhookb2/...",
+      "title": "{{ .Severity }} on {{ .Host }}",
+      "message": "{{ .Message }}"
+    }
+  }
+}
+```
+
+| Field | Required | Description |
+|-------|----------|-------------|
+| `webhook_url` | yes | Teams Incoming Webhook / Workflows URL. |
+| `title` | no | Card title; Go `text/template` over the record (default `{{ .Severity }} on {{ .Host }}`). |
+| `message` | no | Card body; Go `text/template` over the record (default `{{ .Message }}`). |
+| `timeout` | no | Request timeout as a Go duration (default `10s`). |
+
+The card's accent colour follows severity (Good / Warning / Attention); a
+resolved alert (`state: close`) renders green with a `✅ Resolved` prefix. Use the
+**Send test** button in the Actions editor to post a sample card and confirm the
+webhook URL works end-to-end.
+
+### Daemon vs. in-process notifier
+
+- **`snooze-teams` daemon** — bidirectional: posts cards via Graph and reads
+  channel replies as triage commands (`ack`, `close`, `snooze`). Choose this when
+  operators act on alerts from within Teams.
+- **`teams` in-process notifier** — outbound only, zero extra processes. Choose
+  this for simple "tell the channel" notifications.
+
