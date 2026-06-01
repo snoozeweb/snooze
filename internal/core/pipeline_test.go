@@ -15,6 +15,7 @@ import (
 
 	"github.com/snoozeweb/snooze/internal/config"
 	"github.com/snoozeweb/snooze/internal/config/schema"
+	"github.com/snoozeweb/snooze/internal/db/asyncwriter"
 	"github.com/snoozeweb/snooze/internal/plugins"
 	"github.com/snoozeweb/snooze/internal/telemetry"
 	"github.com/snoozeweb/snooze/pkg/snoozetypes"
@@ -200,4 +201,68 @@ func TestProcessRecord_BumpsAlertHitCounter(t *testing.T) {
 	require.NoError(t, err)
 	got := testutil.ToFloat64(c.Reg.AlertHit.WithLabelValues("rule", "abort"))
 	require.InDelta(t, 1.0, got, 0.0001)
+}
+
+// TestProcessRecord_AlertHitStat verifies that ProcessRecord enqueues 4
+// alert_hit increment ops (one per dim: source, severity, environment, host),
+// all bucketed to the UTC-hour containing the record's date_epoch.
+func TestProcessRecord_AlertHitStat(t *testing.T) {
+	t.Parallel()
+	drv := newFakeDB()
+	reg := telemetry.NewRegistry(prometheus.NewRegistry())
+	mc := asyncwriter.NewMockClock(time.Unix(0, 0))
+	aw := asyncwriter.New(drv, time.Hour, mc)
+	c := &Core{
+		Driver: drv,
+		Reg:    reg,
+		Trc:    otel.Tracer("test"),
+		Loggers: &telemetry.Loggers{
+			Snooze: slog.New(slog.NewTextHandler(io.Discard, nil)),
+		},
+		Async: aw,
+		Cfg: &config.Config{
+			General: schema.General{MetricsEnabled: true},
+		},
+	}
+	// Empty processOrder: falls straight through to the ActionContinue terminal.
+
+	rec := snoozetypes.Record{
+		Source:      "syslog",
+		Severity:    "critical",
+		Environment: "prod",
+		Host:        "h1",
+		DateEpoch:   1780302245,
+	}
+	_, _, err := c.ProcessRecord(context.Background(), rec)
+	require.NoError(t, err)
+
+	require.NoError(t, c.Async.Flush(context.Background()))
+
+	// 1780302245 truncated to the UTC hour:
+	// 1780302245 / 3600 = 494528.4, floor → 494528 * 3600 = 1780300800
+	const wantBucket int64 = 1780300800
+
+	ops := drv.capturedIncrements("stats")
+	require.Len(t, ops, 4, "expected one alert_hit op per dim")
+
+	wantDims := map[string]string{
+		"source":      "syslog",
+		"severity":    "critical",
+		"environment": "prod",
+		"host":        "h1",
+	}
+	gotDims := map[string]string{}
+	for _, ci := range ops {
+		search := ci.op.Search
+		metric, _ := search["metric"].(string)
+		require.Equal(t, "alert_hit", metric, "unexpected metric")
+		bucket, _ := search["bucket"].(int64)
+		require.Equal(t, wantBucket, bucket, "wrong hour bucket")
+		dim, _ := search["dim"].(string)
+		key, _ := search["key"].(string)
+		gotDims[dim] = key
+		delta, _ := ci.op.Deltas["value"]
+		require.Equal(t, int64(1), delta, "expected delta 1 for dim %s", dim)
+	}
+	require.Equal(t, wantDims, gotDims)
 }

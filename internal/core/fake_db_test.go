@@ -13,6 +13,12 @@ import (
 	"github.com/snoozeweb/snooze/internal/syncer"
 )
 
+// capturedIncrement records a single BulkIncrement op captured by fakeDB.
+type capturedIncrement struct {
+	collection string
+	op         db.IncrementOp
+}
+
 // fakeDB is a minimal in-memory db.Driver good enough for the core tests.
 // It supports Search/GetOne/Write with primary-key upsert; everything else
 // returns errUnsup or a sensible zero value.
@@ -20,6 +26,7 @@ type fakeDB struct {
 	mu          sync.Mutex
 	collections map[string][]db.Document
 	writes      map[string]int // collection → write call count
+	increments  []capturedIncrement
 }
 
 var errUnsup = errors.New("fakeDB: not implemented")
@@ -153,8 +160,27 @@ func (f *fakeDB) UpdateOne(context.Context, string, string, db.Document, bool) e
 func (f *fakeDB) Delete(context.Context, string, condition.Cond, bool) (int, error) {
 	return 0, errUnsup
 }
-func (f *fakeDB) BulkIncrement(context.Context, string, []db.IncrementOp, bool) error {
+func (f *fakeDB) BulkIncrement(_ context.Context, collection string, ops []db.IncrementOp, _ bool) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	for _, op := range ops {
+		f.increments = append(f.increments, capturedIncrement{collection: collection, op: op})
+	}
 	return nil
+}
+
+// capturedIncrements returns a snapshot of all BulkIncrement ops for
+// the given collection.
+func (f *fakeDB) capturedIncrements(collection string) []capturedIncrement {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	var out []capturedIncrement
+	for _, ci := range f.increments {
+		if ci.collection == collection {
+			out = append(out, ci)
+		}
+	}
+	return out
 }
 func (f *fakeDB) IncMany(context.Context, string, string, condition.Cond, int64) (int, error) {
 	return 0, nil

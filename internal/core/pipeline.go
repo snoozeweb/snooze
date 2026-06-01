@@ -98,6 +98,7 @@ func (c *Core) processRecordInner(ctx context.Context, rec snoozetypes.Record) (
 					"plugin", name, "err", werr)
 			}
 			c.recordHit(name, plugins.ActionAbort)
+			c.recordStatHit(rec)
 			return rec, plugins.ActionAbort, fmt.Errorf("pipeline: plugin %q: %w", name, perr)
 		}
 
@@ -107,21 +108,25 @@ func (c *Core) processRecordInner(ctx context.Context, rec snoozetypes.Record) (
 			continue
 		case plugins.ActionAbort:
 			c.recordHit(name, plugins.ActionAbort)
+			c.recordStatHit(rec)
 			return rec, plugins.ActionAbort, nil
 		case plugins.ActionAbortWrite:
 			if err := c.writeRecord(ctx, rec, true); err != nil {
 				return rec, plugins.ActionAbortWrite, fmt.Errorf("pipeline: write after abort_write: %w", err)
 			}
 			c.recordHit(name, plugins.ActionAbortWrite)
+			c.recordStatHit(rec)
 			return rec, plugins.ActionAbortWrite, nil
 		case plugins.ActionAbortUpdate:
 			if err := c.writeRecord(ctx, rec, false); err != nil {
 				return rec, plugins.ActionAbortUpdate, fmt.Errorf("pipeline: write after abort_update: %w", err)
 			}
 			c.recordHit(name, plugins.ActionAbortUpdate)
+			c.recordStatHit(rec)
 			return rec, plugins.ActionAbortUpdate, nil
 		default:
 			c.recordHit(name, res.Action)
+			c.recordStatHit(rec)
 			return rec, res.Action, fmt.Errorf("pipeline: plugin %q returned unknown action %d", name, res.Action)
 		}
 	}
@@ -131,6 +136,7 @@ func (c *Core) processRecordInner(ctx context.Context, rec snoozetypes.Record) (
 		return rec, plugins.ActionContinue, fmt.Errorf("pipeline: final write: %w", err)
 	}
 	c.recordHit("__final__", plugins.ActionContinue)
+	c.recordStatHit(rec)
 	return rec, plugins.ActionContinue, nil
 }
 
@@ -156,6 +162,19 @@ func (c *Core) recordHit(plugin string, action plugins.Action) {
 		return
 	}
 	c.Reg.AlertHit.WithLabelValues(plugin, action.String()).Inc()
+}
+
+// recordStatHit bumps the persisted alert_hit counter for a terminal record,
+// labelled by its final source/severity/environment/host. Bucketed by the
+// alert's own date_epoch so the dashboard groups by occurrence time, not
+// processing time. No-ops when metrics are disabled (see plugins.RecordStat).
+func (c *Core) recordStatHit(rec snoozetypes.Record) {
+	plugins.RecordStat(c, rec.DateEpoch, "alert_hit", map[string]string{
+		"source":      rec.Source,
+		"severity":    rec.Severity,
+		"environment": rec.Environment,
+		"host":        rec.Host,
+	}, 1)
 }
 
 // stampDefaultTTL fills in rec.TTL with the configured record-ttl default
