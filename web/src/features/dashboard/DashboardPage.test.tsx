@@ -183,6 +183,24 @@ describe("DashboardPage", () => {
     expect(screen.getByText("By weekday")).toBeInTheDocument();
   });
 
+  it("prefixes each pane title with its content icon", async () => {
+    mswServer.use(
+      http.get("/api/v1/stats", () => HttpResponse.json(FULL_STATS_RESPONSE)),
+      http.get("/api/v1/comment", () => HttpResponse.json(COMMENTS_RESPONSE)),
+    );
+    setup();
+    await screen.findByText("Top hosts");
+
+    const iconFor = (title: string) =>
+      screen.getByText(title).querySelector("use")?.getAttribute("href");
+
+    expect(iconFor("Recent activity")).toBe("/web/icons.svg#icon-message-square");
+    expect(iconFor("By severity")).toBe("/web/icons.svg#icon-alert-triangle");
+    expect(iconFor("Top hosts")).toBe("/web/icons.svg#icon-server");
+    expect(iconFor("Snoozed by filter")).toBe("/web/icons.svg#icon-bell-off");
+    expect(iconFor("By weekday")).toBe("/web/icons.svg#icon-calendar");
+  });
+
   it("renders charts when stats data is non-empty", async () => {
     mswServer.use(
       http.get("/api/v1/stats", () => HttpResponse.json(FULL_STATS_RESPONSE)),

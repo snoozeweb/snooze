@@ -6,6 +6,8 @@ import { BarChart } from "@/shared/chart/BarChart";
 import { DonutChart } from "@/shared/chart/DonutChart";
 import { LineChart, type LineSeries } from "@/shared/chart/LineChart";
 import { severityColors } from "@/lib/format/severity-color";
+import { Icon } from "@/shared/icons/Icon";
+import type { IconName } from "@/shared/icons/icon-names";
 import { useStats } from "./api";
 import { TimeRangePicker } from "./TimeRangePicker";
 import { presetToRange, type TimeRange } from "./time-range";
@@ -26,6 +28,15 @@ const LINE_COLORS: Record<string, string> = {
 
 const WEEKDAY_LABELS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"] as const;
 const WEEKDAY_KEYS = ["1", "2", "3", "4", "5", "6", "0"] as const;
+
+function CardTitle({ icon, children }: { icon: IconName; children: string }) {
+  return (
+    <h2 className={styles.cardTitle}>
+      <Icon name={icon} size={14} />
+      {children}
+    </h2>
+  );
+}
 
 export function DashboardPage() {
   const navigate = useNavigate();
@@ -95,7 +106,7 @@ export function DashboardPage() {
           {/* Row 1: hero chart + activity feed */}
           <div className={styles.row1}>
             <Card padded>
-              <h2 className={styles.cardTitle}>Alerts over time</h2>
+              <CardTitle icon="activity">Alerts over time</CardTitle>
               {lineSeries.length === 0 ? (
                 <div className={styles.empty}>No data.</div>
               ) : (
@@ -108,7 +119,7 @@ export function DashboardPage() {
               )}
             </Card>
             <Card padded>
-              <h2 className={styles.cardTitle}>Recent activity</h2>
+              <CardTitle icon="message-square">Recent activity</CardTitle>
               <ActivityFeed />
             </Card>
           </div>
@@ -116,7 +127,7 @@ export function DashboardPage() {
           {/* Row 2: 4 donut/bar panels */}
           <div className={styles.row2}>
             <Card padded>
-              <h2 className={styles.cardTitle}>By severity</h2>
+              <CardTitle icon="alert-triangle">By severity</CardTitle>
               {Object.keys(data.totals.by_severity).length > 0 ? (
                 <DonutChart
                   data={data.totals.by_severity}
@@ -128,7 +139,7 @@ export function DashboardPage() {
             </Card>
 
             <Card padded>
-              <h2 className={styles.cardTitle}>By environment</h2>
+              <CardTitle icon="layers">By environment</CardTitle>
               {Object.keys(data.totals.by_environment).length > 0 ? (
                 <DonutChart data={data.totals.by_environment} />
               ) : (
@@ -137,7 +148,7 @@ export function DashboardPage() {
             </Card>
 
             <Card padded>
-              <h2 className={styles.cardTitle}>By state</h2>
+              <CardTitle icon="check-circle">By state</CardTitle>
               {Object.keys(data.snapshot.by_state).length > 0 ? (
                 <DonutChart data={data.snapshot.by_state} />
               ) : (
@@ -146,10 +157,12 @@ export function DashboardPage() {
             </Card>
 
             <Card padded>
-              <h2 className={styles.cardTitle}>Top hosts</h2>
+              <CardTitle icon="server">Top hosts</CardTitle>
               {Object.keys(data.totals.by_host).length > 0 ? (
                 <BarChart
                   horizontal
+                  sort="value"
+                  height={Math.max(240, Object.keys(data.totals.by_host).length * 28)}
                   series={[{ label: "Hosts", color: "#4f8cff", data: data.totals.by_host }]}
                 />
               ) : (
@@ -161,7 +174,7 @@ export function DashboardPage() {
           {/* Row 3: 4 bar panels */}
           <div className={styles.row3}>
             <Card padded>
-              <h2 className={styles.cardTitle}>Actions</h2>
+              <CardTitle icon="megaphone">Actions</CardTitle>
               {Object.keys(data.totals.by_action_success).length > 0 ||
               Object.keys(data.totals.by_action_failure).length > 0 ? (
                 <BarChart
@@ -184,7 +197,7 @@ export function DashboardPage() {
             </Card>
 
             <Card padded>
-              <h2 className={styles.cardTitle}>Throttled by rule</h2>
+              <CardTitle icon="filter">Throttled by rule</CardTitle>
               {Object.keys(data.totals.by_throttled).length > 0 ? (
                 <BarChart
                   series={[
@@ -197,7 +210,7 @@ export function DashboardPage() {
             </Card>
 
             <Card padded>
-              <h2 className={styles.cardTitle}>Snoozed by filter</h2>
+              <CardTitle icon="bell-off">Snoozed by filter</CardTitle>
               {Object.keys(data.totals.by_snoozed).length > 0 ? (
                 <BarChart
                   series={[{ label: "Snoozed", color: "#d4a017", data: data.totals.by_snoozed }]}
@@ -208,7 +221,7 @@ export function DashboardPage() {
             </Card>
 
             <Card padded>
-              <h2 className={styles.cardTitle}>By weekday</h2>
+              <CardTitle icon="calendar">By weekday</CardTitle>
               {Object.values(weekdayData).some((v) => v > 0) ? (
                 <BarChart series={[{ label: "Alerts", color: "#4f8cff", data: weekdayData }]} />
               ) : (
