@@ -50,10 +50,16 @@ type Plugin struct {
 	newClient func(timeout time.Duration) *http.Client
 }
 
-func (p *Plugin) Name() string                   { return "mattermost" }
-func (p *Plugin) Metadata() plugins.Metadata     { return p.meta }
+// Name returns the registry key used in the action_form and all.go.
+func (p *Plugin) Name() string { return "mattermost" }
+
+// Metadata returns the parsed metadata.yaml descriptor.
+func (p *Plugin) Metadata() plugins.Metadata { return p.meta }
+
+// Reload is a no-op: the plugin carries no cached state between calls.
 func (p *Plugin) Reload(_ context.Context) error { return nil }
 
+// PostInit stores the host reference and ensures the HTTP client builder is set.
 func (p *Plugin) PostInit(_ context.Context, host plugins.Host) error {
 	p.host = host
 	if p.newClient == nil {
@@ -62,6 +68,7 @@ func (p *Plugin) PostInit(_ context.Context, host plugins.Host) error {
 	return nil
 }
 
+// Send renders the message and POSTs it to the configured webhook URL.
 func (p *Plugin) Send(ctx context.Context, rec snoozetypes.Record, payload plugins.NotificationPayload) error {
 	cfg, err := configFromMeta(payload.Meta)
 	if err != nil {
