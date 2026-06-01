@@ -4,6 +4,7 @@ import (
 	"context"
 	"log/slog"
 	"path/filepath"
+	"sync"
 	"testing"
 	"time"
 
@@ -11,23 +12,129 @@ import (
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/trace"
 
+	"github.com/snoozeweb/snooze/internal/condition"
 	"github.com/snoozeweb/snooze/internal/config"
 	"github.com/snoozeweb/snooze/internal/db"
+	"github.com/snoozeweb/snooze/internal/db/asyncwriter"
 	"github.com/snoozeweb/snooze/internal/db/sqlite"
 	"github.com/snoozeweb/snooze/internal/plugins"
+	"github.com/snoozeweb/snooze/internal/syncer"
 	"github.com/snoozeweb/snooze/internal/telemetry"
 	"github.com/snoozeweb/snooze/pkg/snoozetypes"
 )
 
+// capturedInc records one BulkIncrement operation for assertion in tests.
+type capturedInc struct {
+	metric string
+	dim    string
+	key    string
+	bucket int64
+	delta  int64
+}
+
+// captureDrv is a no-op db.Driver whose only live method is BulkIncrement;
+// it records every op into the shared slice pointed to by calls.
+type captureDrv struct {
+	mu    sync.Mutex
+	calls *[]capturedInc
+}
+
+func newCaptureDrv() (*captureDrv, *[]capturedInc) {
+	calls := &[]capturedInc{}
+	return &captureDrv{calls: calls}, calls
+}
+
+func (d *captureDrv) BulkIncrement(_ context.Context, _ string, ops []db.IncrementOp, _ bool) error {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	for _, op := range ops {
+		metric, _ := op.Search["metric"].(string)
+		dim, _ := op.Search["dim"].(string)
+		key, _ := op.Search["key"].(string)
+		bucket, _ := op.Search["bucket"].(int64)
+		for _, delta := range op.Deltas {
+			*d.calls = append(*d.calls, capturedInc{
+				metric: metric,
+				dim:    dim,
+				key:    key,
+				bucket: bucket,
+				delta:  delta,
+			})
+		}
+	}
+	return nil
+}
+
+// Remaining Driver stubs — none are called by the asyncwriter.Writer path.
+func (d *captureDrv) Search(context.Context, string, condition.Cond, db.Page) ([]db.Document, int, error) {
+	return nil, 0, nil
+}
+func (d *captureDrv) GetOne(context.Context, string, db.Document) (db.Document, error) {
+	return nil, nil
+}
+func (d *captureDrv) Write(context.Context, string, []db.Document, db.WriteOptions) (db.WriteResult, error) {
+	return db.WriteResult{}, nil
+}
+func (d *captureDrv) ReplaceOne(context.Context, string, db.Document, db.Document, bool) (int, error) {
+	return 0, nil
+}
+func (d *captureDrv) UpdateOne(context.Context, string, string, db.Document, bool) error {
+	return nil
+}
+func (d *captureDrv) Delete(context.Context, string, condition.Cond, bool) (int, error) {
+	return 0, nil
+}
+func (d *captureDrv) Convert(context.Context, condition.Cond, []string) (db.DriverQuery, error) {
+	return nil, nil
+}
+func (d *captureDrv) IncMany(context.Context, string, string, condition.Cond, int64) (int, error) {
+	return 0, nil
+}
+func (d *captureDrv) SetFields(context.Context, string, db.Document, condition.Cond) (int, error) {
+	return 0, nil
+}
+func (d *captureDrv) UnsetFields(context.Context, string, []string, condition.Cond) (int, error) {
+	return 0, nil
+}
+func (d *captureDrv) AppendList(context.Context, string, map[string][]any, condition.Cond) (int, error) {
+	return 0, nil
+}
+func (d *captureDrv) PrependList(context.Context, string, map[string][]any, condition.Cond) (int, error) {
+	return 0, nil
+}
+func (d *captureDrv) RemoveList(context.Context, string, map[string][]any, condition.Cond) (int, error) {
+	return 0, nil
+}
+func (d *captureDrv) CreateIndex(context.Context, string, []string) error { return nil }
+func (d *captureDrv) ListCollections(context.Context) ([]string, error)   { return nil, nil }
+func (d *captureDrv) Drop(context.Context, string) error                  { return nil }
+func (d *captureDrv) Backup(context.Context, string, []string) error      { return nil }
+func (d *captureDrv) CleanupTimeout(context.Context, string) (int, error) { return 0, nil }
+func (d *captureDrv) CleanupComments(context.Context) (int, error)        { return 0, nil }
+func (d *captureDrv) CleanupOrphans(context.Context, string) (int, error) { return 0, nil }
+func (d *captureDrv) CleanupAuditLogs(context.Context, time.Duration) (int, error) {
+	return 0, nil
+}
+func (d *captureDrv) CleanupSnooze(context.Context) (int, error)       { return 0, nil }
+func (d *captureDrv) CleanupNotification(context.Context) (int, error) { return 0, nil }
+func (d *captureDrv) ComputeStats(context.Context, string, time.Time, time.Time, string) ([]db.StatsBucket, error) {
+	return nil, nil
+}
+func (d *captureDrv) RenumberField(context.Context, string, string) error { return nil }
+func (d *captureDrv) Watcher() syncer.Bus                                 { return nil }
+func (d *captureDrv) Close() error                                        { return nil }
+
 // stubHost is a Host that only wires the bits the snooze plugin reads: the
 // driver, a logger, the metrics registry, the OTEL tracer and the immutable
 // config. Bus is unused; sibling-plugin lookup is unused.
+// asyncWriter is optional; when set the host also satisfies AsyncWriterHost.
 type stubHost struct {
-	driver db.Driver
-	logger *slog.Logger
-	cfg    *config.Config
-	metr   *telemetry.Registry
-	tracer trace.Tracer
+	driver      db.Driver
+	logger      *slog.Logger
+	cfg         *config.Config
+	metr        *telemetry.Registry
+	tracer      trace.Tracer
+	asyncWriter *asyncwriter.Writer
 }
 
 func newStubHost(t *testing.T) *stubHost {
@@ -52,6 +159,9 @@ func (h *stubHost) Tracer() trace.Tracer         { return h.tracer }
 func (h *stubHost) Metrics() *telemetry.Registry { return h.metr }
 func (h *stubHost) Config() *config.Config       { return h.cfg }
 func (h *stubHost) Plugin(string) plugins.Plugin { return nil }
+
+// AsyncWriter satisfies plugins.AsyncWriterHost when an asyncWriter is set.
+func (h *stubHost) AsyncWriter() *asyncwriter.Writer { return h.asyncWriter }
 
 // writeRule inserts a snooze record built from a free-form Document. Returns
 // the assigned uid so tests can poke at the row afterwards.
@@ -237,4 +347,42 @@ func TestSnoozeHitsCounter(t *testing.T) {
 	hits, ok := toInt64(got["hits"])
 	require.True(t, ok, "hits field missing or non-numeric: %#v", got["hits"])
 	require.EqualValues(t, 3, hits)
+}
+
+// TestSnoozeAlertSnoozedCounter verifies that Process enqueues an
+// alert_snoozed increment (metric="alert_snoozed", dim="name",
+// key=<filter name>, bucket=hour-truncated epoch) via RecordStat whenever a
+// filter matches.
+func TestSnoozeAlertSnoozedCounter(t *testing.T) {
+	t.Parallel()
+
+	// Build a host with metrics enabled and a capturing async writer.
+	h := newStubHost(t)
+	// config.Default() already has MetricsEnabled:true via schema.DefaultGeneral.
+	capDrv, calls := newCaptureDrv()
+	h.asyncWriter = asyncwriter.New(capDrv, time.Hour,
+		asyncwriter.NewMockClock(time.Unix(0, 0)),
+		asyncwriter.WithUpsert(true))
+
+	writeRule(t, h, db.Document{
+		"name":      "Maintenance",
+		"condition": []any{"=", "host", "h1"},
+	})
+	p := newPlugin(t, h, nil)
+
+	// rec.DateEpoch=1780302245 → hour bucket 1780300800.
+	rec := snoozetypes.Record{Host: "h1", DateEpoch: 1780302245}
+	_, err := p.Process(context.Background(), rec)
+	require.NoError(t, err)
+
+	// Flush queued increments to the capture driver.
+	require.NoError(t, h.asyncWriter.Flush(context.Background()))
+
+	require.Len(t, *calls, 1, "expected exactly one alert_snoozed increment")
+	c := (*calls)[0]
+	require.Equal(t, "alert_snoozed", c.metric)
+	require.Equal(t, "name", c.dim)
+	require.Equal(t, "Maintenance", c.key)
+	require.Equal(t, int64(1780300800), c.bucket)
+	require.Equal(t, int64(1), c.delta)
 }
