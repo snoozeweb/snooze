@@ -10,6 +10,7 @@ import (
 	"errors"
 	"fmt"
 
+	"github.com/snoozeweb/snooze/internal/auth"
 	"github.com/snoozeweb/snooze/internal/db"
 	"github.com/snoozeweb/snooze/internal/plugins"
 )
@@ -30,6 +31,15 @@ type Plugin struct {
 	meta plugins.Metadata
 	host plugins.Host
 }
+
+// Compile-time guarantees that the plugin keeps satisfying the optional
+// interfaces the CRUD layer detects by assertion — so a signature drift fails
+// the build rather than silently disabling the hook.
+var (
+	_ plugins.DataModel        = (*Plugin)(nil)
+	_ plugins.WriteTransformer = (*Plugin)(nil)
+	_ plugins.CreateHook       = (*Plugin)(nil)
+)
 
 // Name returns the registered plugin name and collection identifier.
 func (p *Plugin) Name() string { return "comment" }
@@ -53,6 +63,7 @@ func (p *Plugin) Schema() any {
 		"properties": map[string]any{
 			"record_uid": map[string]any{"type": "string"},
 			"name":       map[string]any{"type": "string"},
+			"user":       map[string]any{"type": "string"},
 			"method":     map[string]any{"type": "string"},
 			"message":    map[string]any{"type": "string"},
 			"type":       map[string]any{"type": "string"},
@@ -77,6 +88,29 @@ func (p *Plugin) Validate(obj map[string]any) error {
 	if v, ok := obj["record_uid"]; ok {
 		if s, _ := v.(string); s == "" {
 			return errors.New("comment: record_uid must not be empty")
+		}
+	}
+	return nil
+}
+
+// TransformWrite stamps the authenticated principal onto a human-created
+// comment so the alert timeline and dashboard activity feed can attribute it.
+// `user` is server-authoritative — any client-supplied value is overwritten
+// with the request's verified subject (whatever the auth method, including
+// "anonymous" when that provider is enabled: an anonymous human action is still
+// a human action, not a system event). `method` is only filled in from the
+// claims when the caller didn't set one, so the chat-ops bridges
+// (snooze-teams/-jira/-mcp), which post as a service account but record the
+// originating channel in `method` ("teams"/"jira"/"mcp"), keep that channel.
+// Auto-comments written by the aggregate-rule processor go straight to the
+// driver and bypass this hook, so they alone stay user-less — and a user-less
+// comment is exactly what the dashboard activity feed filters out as a system
+// event.
+func (p *Plugin) TransformWrite(ctx context.Context, doc map[string]any) error {
+	if claims, ok := auth.ClaimsFrom(ctx); ok && claims.Subject != "" {
+		doc["user"] = claims.Subject
+		if m, _ := doc["method"].(string); m == "" {
+			doc["method"] = claims.Method
 		}
 	}
 	return nil
