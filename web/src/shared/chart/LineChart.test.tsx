@@ -97,23 +97,18 @@ describe("LineChart", () => {
     render(<LineChart series={series} onPointClick={onPointClick} />);
 
     expect(captured.config).not.toBeNull();
-    // captured.config is `unknown`; we must cast to reach Chart.js options.
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-member-access
-    const onClick = ((captured.config as any).options as {
-      onClick?: (
-        evt: unknown,
-        elements: Array<{ datasetIndex: number; index: number }>,
-        chart: unknown,
-      ) => void;
-    } | undefined)?.onClick;
+    // captured.config is `unknown`; cast to the minimal Chart.js config shape we care about.
+    type ChartOnClick = (
+      evt: unknown,
+      elements: Array<{ datasetIndex: number; index: number }>,
+      chart: unknown,
+    ) => void;
+    type ChartConfig = { options?: { onClick?: ChartOnClick } };
+    const onClick = (captured.config as ChartConfig).options?.onClick;
     expect(onClick).toBeDefined();
 
     // Simulate a Chart.js click event on dataset 0, point 0
-    onClick?.(
-      /* event */ {},
-      [{ datasetIndex: 0, index: 0 }],
-      /* chart instance */ {},
-    );
+    onClick?.(/* event */ {}, [{ datasetIndex: 0, index: 0 }], /* chart instance */ {});
 
     expect(onPointClick).toHaveBeenCalledWith("Alerts", "2026-06-01T00:00:00Z");
   });

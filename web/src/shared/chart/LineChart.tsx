@@ -43,7 +43,12 @@ export type LineChartProps = {
   toggleableLegend?: boolean;
 };
 
-export function LineChart({ series, height = 240, onPointClick, toggleableLegend }: LineChartProps) {
+export function LineChart({
+  series,
+  height = 240,
+  onPointClick,
+  toggleableLegend,
+}: LineChartProps) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const chartRef = useRef<Chart | null>(null);
 
@@ -86,10 +91,7 @@ export function LineChart({ series, height = 240, onPointClick, toggleableLegend
         },
       },
       ...(onPointClick != null && {
-        onClick(
-          _evt: unknown,
-          elements: Array<{ datasetIndex: number; index: number }>,
-        ) {
+        onClick(_evt: unknown, elements: Array<{ datasetIndex: number; index: number }>) {
           if (!elements.length) return;
           const { datasetIndex, index } = elements[0]!;
           const seriesLabel = series[datasetIndex]?.label;

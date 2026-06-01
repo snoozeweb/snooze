@@ -200,9 +200,7 @@ describe("alertsSearchForBucket", () => {
     const bucket = 3600;
     const from = Math.floor(Date.parse(x) / 1000);
     const to = from + bucket;
-    expect(alertsSearchForBucket(x, bucket)).toBe(
-      `date_epoch > ${from} and date_epoch < ${to}`,
-    );
+    expect(alertsSearchForBucket(x, bucket)).toBe(`date_epoch > ${from} and date_epoch < ${to}`);
   });
 
   it("handles a 6-hour bucket correctly", () => {
@@ -210,8 +208,6 @@ describe("alertsSearchForBucket", () => {
     const bucket = 21600;
     const from = Math.floor(Date.parse(x) / 1000);
     const to = from + bucket;
-    expect(alertsSearchForBucket(x, bucket)).toBe(
-      `date_epoch > ${from} and date_epoch < ${to}`,
-    );
+    expect(alertsSearchForBucket(x, bucket)).toBe(`date_epoch > ${from} and date_epoch < ${to}`);
   });
 });

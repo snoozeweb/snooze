@@ -187,7 +187,9 @@ export function DashboardPage() {
               <h2 className={styles.cardTitle}>Throttled by rule</h2>
               {Object.keys(data.totals.by_throttled).length > 0 ? (
                 <BarChart
-                  series={[{ label: "Throttled", color: "#8957e5", data: data.totals.by_throttled }]}
+                  series={[
+                    { label: "Throttled", color: "#8957e5", data: data.totals.by_throttled },
+                  ]}
                 />
               ) : (
                 <div className={styles.empty}>No data.</div>
@@ -208,9 +210,7 @@ export function DashboardPage() {
             <Card padded>
               <h2 className={styles.cardTitle}>By weekday</h2>
               {Object.values(weekdayData).some((v) => v > 0) ? (
-                <BarChart
-                  series={[{ label: "Alerts", color: "#4f8cff", data: weekdayData }]}
-                />
+                <BarChart series={[{ label: "Alerts", color: "#4f8cff", data: weekdayData }]} />
               ) : (
                 <div className={styles.empty}>No data.</div>
               )}
@@ -229,4 +229,3 @@ function bucketFromRange(range: TimeRange["range"]): number {
   if (range === "1y") return 86400; // 1d buckets
   return 3600;
 }
-

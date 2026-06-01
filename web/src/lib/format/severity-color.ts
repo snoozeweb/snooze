@@ -7,15 +7,26 @@
 type Variant = "critical" | "error" | "warning" | "info" | "ok" | "muted";
 
 const RANK: Record<string, number> = {
-  emerg: 0, emergency: 0, panic: 0,
+  emerg: 0,
+  emergency: 0,
+  panic: 0,
   alert: 1,
-  crit: 2, critical: 2, fatal: 2,
-  err: 3, error: 3, fail: 3, failure: 3,
-  warn: 4, warning: 4,
+  crit: 2,
+  critical: 2,
+  fatal: 2,
+  err: 3,
+  error: 3,
+  fail: 3,
+  failure: 3,
+  warn: 4,
+  warning: 4,
   notice: 5,
-  info: 6, informational: 6,
+  info: 6,
+  informational: 6,
   debug: 7,
-  ok: 8, okay: 8, success: 8,
+  ok: 8,
+  okay: 8,
+  success: 8,
 };
 
 function variantOf(label: string): Variant {
@@ -29,7 +40,12 @@ function variantOf(label: string): Variant {
 }
 
 const CANONICAL_RANK: Record<Variant, number> = {
-  critical: 2, error: 3, warning: 4, info: 6, ok: 8, muted: -1,
+  critical: 2,
+  error: 3,
+  warning: 4,
+  info: 6,
+  ok: 8,
+  muted: -1,
 };
 
 const TOKEN: Record<Variant, string> = {
@@ -69,7 +85,10 @@ function hexToRgb(hex: string): [number, number, number] {
   return [parseInt(h.slice(0, 2), 16), parseInt(h.slice(2, 4), 16), parseInt(h.slice(4, 6), 16)];
 }
 function rgbToHex(r: number, g: number, b: number): string {
-  const c = (n: number) => Math.max(0, Math.min(255, Math.round(n))).toString(16).padStart(2, "0");
+  const c = (n: number) =>
+    Math.max(0, Math.min(255, Math.round(n)))
+      .toString(16)
+      .padStart(2, "0");
   return `#${c(r)}${c(g)}${c(b)}`;
 }
 function darken(hex: string, t: number): string {

@@ -27,7 +27,9 @@ describe("severityColor", () => {
   });
   it("alert sits between critical and emergency", () => {
     expect(luminance(severityColor("alert"))).toBeLessThan(luminance(severityColor("critical")));
-    expect(luminance(severityColor("alert"))).toBeGreaterThan(luminance(severityColor("emergency")));
+    expect(luminance(severityColor("alert"))).toBeGreaterThan(
+      luminance(severityColor("emergency")),
+    );
   });
   it("error stays orange, never folded into the reds (option X)", () => {
     expect(severityColor("error").toLowerCase()).toBe("#ef7e3a");
@@ -39,6 +41,8 @@ describe("severityColor", () => {
 
 function luminance(hex: string): number {
   const h = hex.replace("#", "");
-  const r = parseInt(h.slice(0, 2), 16), g = parseInt(h.slice(2, 4), 16), b = parseInt(h.slice(4, 6), 16);
+  const r = parseInt(h.slice(0, 2), 16),
+    g = parseInt(h.slice(2, 4), 16),
+    b = parseInt(h.slice(4, 6), 16);
   return 0.2126 * r + 0.7152 * g + 0.0722 * b;
 }

@@ -33,11 +33,11 @@ const TYPE_LABEL: Record<Comment["type"], string> = {
 // Color palette: see web/src/utils/api.js:230-243 on origin/master for
 // the legacy mapping. Mapped to the current Badge variants.
 const TYPE_VARIANT: Record<Comment["type"], BadgeVariant> = {
-  comment: "info",      // blue
-  ack: "ok",            // green
-  esc: "warning",       // yellow
-  close: "muted",       // gray
-  open: "neutral",      // gray/blue
+  comment: "info", // blue
+  ack: "ok", // green
+  esc: "warning", // yellow
+  close: "muted", // gray
+  open: "neutral", // gray/blue
   shelve: "muted",
   unshelve: "neutral",
 };
@@ -147,7 +147,9 @@ export function CommentTimeline({ recordUid }: { recordUid: string | undefined }
               variant="primary"
               loading={create.isPending}
               disabled={create.isPending || !draft.trim()}
-              onClick={() => { void handlePost(); }}
+              onClick={() => {
+                void handlePost();
+              }}
             >
               Post
             </Button>
@@ -204,7 +206,9 @@ export function CommentTimeline({ recordUid }: { recordUid: string | undefined }
                         variant="primary"
                         loading={update.isPending}
                         disabled={!editDraft.trim() || update.isPending}
-                        onClick={() => { if (c.uid) void handleSaveEdit(c.uid); }}
+                        onClick={() => {
+                          if (c.uid) void handleSaveEdit(c.uid);
+                        }}
                       >
                         Save
                       </Button>
