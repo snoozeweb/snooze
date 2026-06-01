@@ -4,26 +4,42 @@
   flex-direction: column;
   gap: var(--space-4);
 }
+
 .header {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: var(--space-3);
 }
+
 .title {
   font-size: var(--text-xl);
   font-weight: var(--weight-semibold);
   color: var(--text-strong);
   margin: 0;
 }
-.grid {
+
+/* Row 1: hero chart (2fr) + activity feed (1fr) */
+.row1 {
   display: grid;
-  grid-template-columns: repeat(2, 1fr);
+  grid-template-columns: 2fr 1fr;
   gap: var(--space-3);
 }
-.full {
-  grid-column: 1 / -1;
+
+/* Row 2: 4 equal columns — donuts + top hosts */
+.row2 {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: var(--space-3);
 }
+
+/* Row 3: 4 equal columns — bar charts */
+.row3 {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: var(--space-3);
+}
+
 .cardTitle {
   font-size: var(--text-xs);
   text-transform: uppercase;
@@ -31,6 +47,7 @@
   color: var(--text-muted);
   margin: 0 0 var(--space-2) 0;
 }
+
 .empty {
   display: flex;
   align-items: center;
