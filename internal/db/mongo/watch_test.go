@@ -233,14 +233,6 @@ func TestRunStream_ConsumesAndDispatches(t *testing.T) {
 	ch, err := b.Subscribe(subCtx, "collection.aggregaterule")
 	require.NoError(t, err)
 
-	runCtx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-	done := make(chan struct{})
-	go func() {
-		b.runStream(runCtx, "aggregaterule")
-		close(done)
-	}()
-
 	select {
 	case ev := <-ch:
 		require.Equal(t, "collection.aggregaterule", ev.Topic)
