@@ -37,9 +37,13 @@ export type LineSeries = {
 export type LineChartProps = {
   series: LineSeries[];
   height?: number;
+  /** Called when a data point is clicked, with the series label and point's x value. */
+  onPointClick?: (seriesLabel: string, x: string) => void;
+  /** When true, the Chart.js built-in legend is shown and supports click-toggling datasets. */
+  toggleableLegend?: boolean;
 };
 
-export function LineChart({ series, height = 240 }: LineChartProps) {
+export function LineChart({ series, height = 240, onPointClick, toggleableLegend }: LineChartProps) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const chartRef = useRef<Chart | null>(null);
 
@@ -62,7 +66,11 @@ export function LineChart({ series, height = 240 }: LineChartProps) {
       maintainAspectRatio: false,
       interaction: { intersect: false, mode: "index" },
       plugins: {
-        legend: { position: "bottom", labels: { boxWidth: 10, boxHeight: 10 } },
+        legend: {
+          display: toggleableLegend === true ? true : undefined,
+          position: "bottom",
+          labels: { boxWidth: 10, boxHeight: 10 },
+        },
         tooltip: { mode: "index", intersect: false },
       },
       scales: {
@@ -77,6 +85,20 @@ export function LineChart({ series, height = 240 }: LineChartProps) {
           beginAtZero: true,
         },
       },
+      ...(onPointClick != null && {
+        onClick(
+          _evt: unknown,
+          elements: Array<{ datasetIndex: number; index: number }>,
+        ) {
+          if (!elements.length) return;
+          const { datasetIndex, index } = elements[0]!;
+          const seriesLabel = series[datasetIndex]?.label;
+          const x = series[datasetIndex]?.data[index]?.x;
+          if (seriesLabel != null && x != null) {
+            onPointClick(seriesLabel, x);
+          }
+        },
+      }),
     };
     chartRef.current?.destroy();
     chartRef.current = new Chart(canvasRef.current, {
@@ -88,7 +110,7 @@ export function LineChart({ series, height = 240 }: LineChartProps) {
       chartRef.current?.destroy();
       chartRef.current = null;
     };
-  }, [series]);
+  }, [series, onPointClick, toggleableLegend]);
 
   return (
     <div className={styles.wrap} style={{ height }}>
