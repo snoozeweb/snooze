@@ -34,6 +34,7 @@ import (
 	_ "github.com/snoozeweb/snooze/internal/pluginimpl/discord"
 	_ "github.com/snoozeweb/snooze/internal/pluginimpl/googlechat"
 	_ "github.com/snoozeweb/snooze/internal/pluginimpl/mail"
+	_ "github.com/snoozeweb/snooze/internal/pluginimpl/mattermost"
 	_ "github.com/snoozeweb/snooze/internal/pluginimpl/ntfy"
 	_ "github.com/snoozeweb/snooze/internal/pluginimpl/opsgenie"
 	_ "github.com/snoozeweb/snooze/internal/pluginimpl/pagerduty"

@@ -1,0 +1,36 @@
+---
+name: 'Send a Mattermost message'
+desc: 'Post an alert to a Mattermost channel via an Incoming Webhook'
+icon: 'mattermost'
+category: 'chat'
+doc_url: 'https://snoozeweb.github.io/snooze/general/integrations/mattermost'
+provides:
+    - notifier
+action_form:
+    webhook_url:
+        display_name: Webhook URL
+        component: String
+        description: 'Mattermost Incoming Webhook URL to POST the message to.'
+        required: true
+    channel:
+        display_name: Channel
+        component: String
+        description: 'Optional channel override (e.g. town-square). Defaults to the webhook''s configured channel.'
+    username:
+        display_name: Username
+        component: String
+        description: 'Optional display-name override for the posting bot.'
+    icon_url:
+        display_name: Icon URL
+        component: String
+        description: 'Optional avatar URL for the posting bot.'
+    message:
+        display_name: Message
+        component: Text
+        default_value: "*{{ .Severity }}* on `{{ .Host }}`: {{ .Message }}"
+        description: 'Message text (Go text/template over the record fields: .Host .Severity .Message .State .Source …).'
+    timeout:
+        display_name: Timeout
+        component: String
+        default_value: '10s'
+        description: 'Request timeout as a Go duration (default 10s).'
