@@ -1,6 +1,7 @@
 import { render, screen } from "@testing-library/react";
 import { http, HttpResponse } from "msw";
 import { describe, expect, it } from "vitest";
+import { encodeConditionQ } from "@/lib/condition/serialize";
 import {
   createMemoryHistory,
   createRootRoute,
@@ -71,6 +72,20 @@ describe("ActivityFeed", () => {
     expect(screen.queryByText(/^\d+[smhd]$/)).not.toBeInTheDocument();
     const links = screen.getAllByRole("link");
     expect(links[0]!.getAttribute("href")).toContain("/web/alerts");
+  });
+
+  it("requests only attributed (real-user) comments via an EXISTS user filter", async () => {
+    let capturedUrl = "";
+    mswServer.use(
+      http.get("/api/v1/comment", ({ request }) => {
+        capturedUrl = request.url;
+        return HttpResponse.json({ data: [], meta: { count: 0, limit: 15, offset: 0, total: 0 } });
+      }),
+    );
+    setup();
+    await screen.findByText("No recent activity.");
+    const q = new URL(capturedUrl).searchParams.get("q");
+    expect(q).toBe(encodeConditionQ({ type: "EXISTS", field: "user" }));
   });
 
   it("shows an empty state when there are no actions", async () => {

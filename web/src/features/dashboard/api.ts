@@ -2,12 +2,20 @@ import { useQuery, type UseQueryResult } from "@tanstack/react-query";
 import { api, type ApiError } from "@/lib/api/client";
 import { Comments, type Comment } from "@/features/alerts/comments";
 import type { ListResponse } from "@/lib/api/resource";
+import { encodeConditionQ } from "@/lib/condition/serialize";
 import type { StatsResponse } from "./types";
 
-/** Recent user actions across all alerts — the dashboard activity feed. */
+/** Recent *attributed* user actions across all alerts — the dashboard activity
+ * feed. System/auto comments (escalations, auto-close) carry no `user`, so an
+ * `EXISTS user` filter drops them server-side. */
 export function useRecentActivity(limit = 15): UseQueryResult<ListResponse<Comment>, ApiError> {
   return Comments.useList(
-    { orderby: "date_epoch", asc: false, limit },
+    {
+      q: encodeConditionQ({ type: "EXISTS", field: "user" }),
+      orderby: "date_epoch",
+      asc: false,
+      limit,
+    },
     { refetchInterval: 30_000 },
   );
 }
