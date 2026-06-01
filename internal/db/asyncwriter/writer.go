@@ -166,6 +166,13 @@ func (w *Writer) flush(ctx context.Context) error {
 	return nil
 }
 
+// Flush drains queued increments to the driver synchronously. Primarily a test
+// seam; the Run loop flushes on its own cadence in production.
+func (w *Writer) Flush(ctx context.Context) error {
+	w.drain()
+	return w.flush(ctx)
+}
+
 // hashSearch returns a stable hash key for a search dict. Keys are sorted,
 // values are stringified — collisions are vanishingly unlikely for the
 // typical {name:str} or {key:str} searches that Snooze uses.

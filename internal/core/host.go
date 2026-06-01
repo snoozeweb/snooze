@@ -53,4 +53,5 @@ func (c *Core) AsyncWriter() *asyncwriter.Writer { return c.Async }
 var (
 	_ plugins.Host                = (*Core)(nil)
 	_ plugins.RuntimeSettingsHost = (*Core)(nil)
+	_ plugins.AsyncWriterHost     = (*Core)(nil)
 )
