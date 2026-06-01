@@ -16,7 +16,7 @@ import { useAuth } from "@/lib/auth/store";
 import { hasAnyPermission } from "@/lib/auth/permissions";
 import { toast } from "@/shared/ui/toast/useToast";
 import { ApiError } from "@/lib/api/client";
-import { formatRelativeTime } from "./format";
+import { trimDate } from "./format";
 import { Comments, useRecordComments, type Comment } from "./comments";
 import styles from "./CommentTimeline.module.css";
 
@@ -214,7 +214,7 @@ export function CommentTimeline({ recordUid }: { recordUid: string | undefined }
                   <>
                     {c.message ? <p className={styles.message}>{c.message}</p> : null}
                     <span className={styles.meta}>
-                      {c.user ?? "system"} · {formatRelativeTime(c.date_epoch)}
+                      {c.user ?? "system"} · {trimDate(c.date_epoch)}
                     </span>
                   </>
                 )}
