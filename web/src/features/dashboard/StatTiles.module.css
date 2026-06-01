@@ -1,0 +1,4 @@
+.strip { display: grid; grid-template-columns: repeat(6, 1fr); gap: var(--space-3); }
+.tile { border: 1px solid var(--border); border-radius: var(--radius-md); padding: var(--space-3); background: var(--bg-elevated); }
+.value { font-size: var(--text-xl); color: var(--text-strong); display: block; }
+.label { font-size: var(--text-xs); text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-muted); }
