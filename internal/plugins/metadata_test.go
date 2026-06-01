@@ -146,3 +146,12 @@ func TestParseMetadata_Invalid(t *testing.T) {
 	_, err := ParseMetadata([]byte("not: valid: yaml: ::"))
 	require.Error(t, err)
 }
+
+func TestParseMetadataCategoryAndDocURL(t *testing.T) {
+	t.Parallel()
+	data := []byte("name: Teams\ncategory: chat\ndoc_url: https://snoozeweb.github.io/snooze/general/integrations/teams\n")
+	m, err := ParseMetadata(data)
+	require.NoError(t, err)
+	require.Equal(t, "chat", m.Category)
+	require.Equal(t, "https://snoozeweb.github.io/snooze/general/integrations/teams", m.DocURL)
+}

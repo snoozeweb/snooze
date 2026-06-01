@@ -20,10 +20,16 @@ type Metadata struct {
 	// field (which is a human display label in most plugins, e.g. "Send
 	// email" / "Run a script"). The `yaml:"-"` tag keeps it out of the
 	// YAML round-trip.
-	PluginName      string         `yaml:"-" json:"plugin_name"`
-	Name            string         `yaml:"name" json:"name"`
-	DisplayName     string         `yaml:"desc" json:"display_name"`
-	Icon            string         `yaml:"icon" json:"icon,omitempty"`
+	PluginName  string `yaml:"-" json:"plugin_name"`
+	Name        string `yaml:"name" json:"name"`
+	DisplayName string `yaml:"desc" json:"display_name"`
+	Icon        string `yaml:"icon" json:"icon,omitempty"`
+	// Category and DocURL drive the frontend integration gallery. Category
+	// buckets the plugin (chat|oncall|ticketing|push|sms|generic; empty →
+	// "generic"); DocURL is the canonical setup-docs page, shown as a "Docs"
+	// link in the Actions editor.
+	Category        string         `yaml:"category" json:"category,omitempty"`
+	DocURL          string         `yaml:"doc_url" json:"doc_url,omitempty"`
 	DefaultSorting  string         `yaml:"default_sorting" json:"default_sorting,omitempty"`
 	DefaultOrdering string         `yaml:"default_ordering" json:"default_ordering,omitempty"`
 	AutoReload      bool           `yaml:"auto_reload" json:"auto_reload,omitempty"`
