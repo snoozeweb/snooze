@@ -1,0 +1,29 @@
+---
+name: 'Send a Microsoft Teams message'
+desc: 'Post an alert to a Teams channel via an Incoming Webhook (Adaptive Card)'
+icon: 'teams'
+category: 'chat'
+doc_url: 'https://snoozeweb.github.io/snooze/general/integrations/teams'
+provides:
+    - notifier
+action_form:
+    webhook_url:
+        display_name: Webhook URL
+        component: String
+        description: 'Teams Incoming Webhook / Workflows URL to POST the Adaptive Card to.'
+        required: true
+    title:
+        display_name: Title
+        component: String
+        default_value: '{{ .Severity }} on {{ .Host }}'
+        description: 'Card title (Go text/template over the record fields: .Host .Severity .Message .State .Source …).'
+    message:
+        display_name: Message
+        component: Text
+        default_value: '{{ .Message }}'
+        description: 'Card body text (Go text/template over the record fields).'
+    timeout:
+        display_name: Timeout
+        component: String
+        default_value: '10s'
+        description: 'Request timeout as a Go duration (default 10s).'

@@ -44,6 +44,7 @@ import (
 	_ "github.com/snoozeweb/snooze/internal/pluginimpl/slack"
 	_ "github.com/snoozeweb/snooze/internal/pluginimpl/sns"
 	_ "github.com/snoozeweb/snooze/internal/pluginimpl/statuspage"
+	_ "github.com/snoozeweb/snooze/internal/pluginimpl/teams"
 	_ "github.com/snoozeweb/snooze/internal/pluginimpl/telegram"
 	_ "github.com/snoozeweb/snooze/internal/pluginimpl/twilio"
 	_ "github.com/snoozeweb/snooze/internal/pluginimpl/webhook"
