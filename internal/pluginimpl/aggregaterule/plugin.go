@@ -424,6 +424,7 @@ func (p *Plugin) matchAggregate(
 	}
 
 	incomingState, _ := rec["state"].(string)
+	incomingDateEpoch := toInt64(rec["date_epoch"], now.Unix())
 	rec["uid"] = prevUID
 	rec["duplicates"] = prevDup + 1
 	rec["date_epoch"] = prevDate
@@ -515,6 +516,8 @@ func (p *Plugin) matchAggregate(
 	if throttling {
 		// Throttled duplicate: queue the counter bump but drop notifications.
 		p.queueIncrement(host, hashStr, 1)
+		ruleName, _ := rec["aggregate"].(string)
+		plugins.RecordStat(host, incomingDateEpoch, "alert_throttled", map[string]string{"name": ruleName}, 1)
 		rec["state"] = prevState
 		return rec, plugins.ActionAbortUpdate, nil
 	}

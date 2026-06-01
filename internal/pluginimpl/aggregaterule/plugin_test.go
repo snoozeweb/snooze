@@ -24,6 +24,34 @@ import (
 
 // --- test scaffolding ---
 
+// statCaptureDriver wraps a real db.Driver and captures every BulkIncrement
+// call directed at the stats collection so tests can assert on them without
+// needing a full production pipeline.
+type statCaptureDriver struct {
+	db.Driver
+	calls *[]statIncCall
+}
+
+type statIncCall struct {
+	collection string
+	search     db.Document
+	delta      int64
+}
+
+func (d *statCaptureDriver) BulkIncrement(ctx context.Context, collection string, ops []db.IncrementOp, upsert bool) error {
+	for _, op := range ops {
+		for _, delta := range op.Deltas {
+			doc := make(db.Document, len(op.Search))
+			for k, v := range op.Search {
+				doc[k] = v
+			}
+			*d.calls = append(*d.calls, statIncCall{collection: collection, search: doc, delta: delta})
+		}
+	}
+	// Also forward to the real driver so existing behaviour is unchanged.
+	return d.Driver.BulkIncrement(ctx, collection, ops, upsert)
+}
+
 type testHost struct {
 	driver db.Driver
 	writer *asyncwriter.Writer
@@ -813,4 +841,94 @@ func TestAsyncWriter_Increments(t *testing.T) {
 
 	cancel()
 	<-done
+}
+
+// TestAggregate_ThrottleRecordsStat verifies that a throttled duplicate
+// increments the "alert_throttled" counter in the stats collection, labelled
+// with the matching rule's name and bucketed to the UTC hour containing the
+// record's DateEpoch.
+//
+// DateEpoch=1780302245 -> hour bucket 1780300800 (verified in
+// TestRecordStat_WritesOneDocPerLabel_HourBucketed in the plugins package).
+func TestAggregate_ThrottleRecordsStat(t *testing.T) {
+	t.Parallel()
+
+	// Use a capture driver so BulkIncrement calls for "stats" are recorded.
+	calls := &[]statIncCall{}
+	path := filepath.Join(t.TempDir(), "snooze-throttlestat.db")
+	baseDriver, err := sqlite.New(context.Background(), sqlite.Config{Path: path})
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = baseDriver.Close() })
+	capDriver := &statCaptureDriver{Driver: baseDriver, calls: calls}
+
+	host := &testHost{
+		driver: capDriver,
+		cfg:    config.Default(), // MetricsEnabled=true by DefaultGeneral
+		logger: slog.Default(),
+		tracer: otel.Tracer("aggregaterule-throttlestat-test"),
+		metr:   telemetry.NewRegistry(nil),
+		plugs:  map[string]plugins.Plugin{},
+	}
+
+	// Wire an async writer so RecordStat can enqueue increments.
+	w := asyncwriter.New(capDriver, time.Hour, asyncwriter.NewMockClock(time.Unix(0, 0)),
+		asyncwriter.WithUpsert(true))
+	host.writer = w
+
+	writeRule(t, host, db.Document{
+		"name":      "ThrottleRule",
+		"condition": []any{"=", "a", "throttle-test"},
+		"fields":    []string{"a"},
+		"throttle":  int64(900),
+	})
+
+	p := freshPlugin(t, host) // clock frozen at 1_700_000_000
+
+	const dateEpoch = int64(1780302245)
+	const wantBucket = int64(1780300800)
+
+	// First occurrence: creates the aggregate (ActionContinue). The plugin
+	// assigns date_epoch from the DB-written row, but we seed it here so the
+	// throttle calc is deterministic.
+	rec := snoozetypes.Record{DateEpoch: dateEpoch, Extra: map[string]any{"a": "throttle-test"}}
+	out1, action1 := runProcess(t, p, host, rec)
+	require.Equal(t, plugins.ActionContinue, action1, "first occurrence must pass through")
+	require.NotEmpty(t, out1.Hash)
+
+	// Second occurrence: same hash, within the 900 s throttle window
+	// (clock is fixed; date_epoch in DB is also set to the first write's time,
+	// which is far from the frozen clock, but the throttle decision uses
+	// the stored date_epoch—backdate it to just before the frozen clock so it
+	// is inside the window).
+	_, err = capDriver.SetFields(context.Background(), recordCollection,
+		db.Document{"date_epoch": int64(1_699_999_500)}, // 500 s before frozen clock (1_700_000_000)
+		condition.Equals("hash", out1.Hash))
+	require.NoError(t, err)
+
+	// Also update DateEpoch on the record to our test value so RecordStat
+	// buckets correctly.
+	rec2 := snoozetypes.Record{DateEpoch: dateEpoch, Extra: map[string]any{"a": "throttle-test"}}
+	_, action2 := runProcess(t, p, host, rec2)
+	require.Equal(t, plugins.ActionAbortUpdate, action2, "second occurrence must be throttled")
+
+	// Flush the async writer so BulkIncrement fires.
+	require.NoError(t, w.Flush(context.Background()))
+
+	// Find the alert_throttled stat increment.
+	var throttledCalls []statIncCall
+	for _, c := range *calls {
+		if c.collection == plugins.StatsCollection {
+			metric, _ := c.search["metric"].(string)
+			if metric == "alert_throttled" {
+				throttledCalls = append(throttledCalls, c)
+			}
+		}
+	}
+	require.Len(t, throttledCalls, 1, "exactly one alert_throttled increment expected")
+	c := throttledCalls[0]
+	require.Equal(t, "alert_throttled", c.search["metric"])
+	require.Equal(t, "name", c.search["dim"])
+	require.Equal(t, "ThrottleRule", c.search["key"])
+	require.Equal(t, wantBucket, c.search["bucket"])
+	require.Equal(t, int64(1), c.delta)
 }
