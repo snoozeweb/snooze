@@ -120,6 +120,11 @@ func (rt *Router) Build() chi.Router {
 	//     would otherwise route to). ----------------------------------------
 	rt.mountUser(r)
 
+	// --- action test-send (mounted BEFORE plugin CRUD so the static
+	//     /api/v1/action/test segment wins over the action plugin's generic
+	//     /{uid} routes). -----------------------------------------------------
+	rt.mountActionTest(r)
+
 	// --- webhook receivers (must precede plugin CRUD so the path-specific
 	//     /api/v1/webhook/{name} mount wins over a generic CRUD route the
 	//     same plugin might otherwise register at /api/v1/{name}). -----------
