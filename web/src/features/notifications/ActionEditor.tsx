@@ -10,20 +10,17 @@ import { ApiError } from "@/lib/api/client";
 import { MetadataForm } from "@/shared/forms/MetadataForm";
 import { useAllMetadata } from "@/shared/forms/useMetadata";
 import type { Metadata } from "@/shared/forms/types";
-import { Actions } from "./api";
+import { IntegrationGallery } from "./IntegrationGallery";
+import { Actions, useTestAction } from "./api";
 import type { Action } from "./types";
 import styles from "./NotificationEditor.module.css";
 
 type FormShape = {
   name: string;
   comment: string;
-  // `selected` is the notifier plugin registry key (mail / webhook / script /
-  // …). It is stored at action.selected on the backend doc; we hoist it into
-  // the form for the type-picker.
+  // `selected` is the notifier plugin registry key (mail / webhook / teams / …).
   selected: string;
-  // JSON fallback for actions whose plugin isn't in /metadata (legacy or
-  // third-party). When the plugin IS known we render its action_form via
-  // MetadataForm and ignore this field.
+  // JSON fallback for actions whose plugin isn't in /metadata (legacy / 3rd-party).
   subcontent_json: string;
 };
 
@@ -52,6 +49,11 @@ export function ActionEditor({ uid, onClose }: ActionEditorProps) {
   const create = Actions.useCreate();
   const update = Actions.useUpdate();
   const metadata = useAllMetadata();
+  const testAction = useTestAction();
+
+  // Wizard step: new actions start by picking an integration; edits jump
+  // straight to the config form (the type is already chosen).
+  const [step, setStep] = useState<"pick" | "configure">(isCreate ? "pick" : "configure");
 
   const { register, handleSubmit, reset, formState, watch, setValue } = useForm<FormShape>({
     defaultValues: EMPTY_FORM,
@@ -65,6 +67,7 @@ export function ActionEditor({ uid, onClose }: ActionEditorProps) {
     if (isCreate) {
       reset(EMPTY_FORM);
       setSubcontent({});
+      setStep("pick");
       return;
     }
     if (existing.data) {
@@ -78,6 +81,7 @@ export function ActionEditor({ uid, onClose }: ActionEditorProps) {
         subcontent_json: JSON.stringify(sub, null, 2),
       });
       setSubcontent(sub);
+      setStep("configure");
     }
   }, [existing.data, isCreate, reset]);
 
@@ -86,18 +90,28 @@ export function ActionEditor({ uid, onClose }: ActionEditorProps) {
 
   const formPlugins = useMemo(() => plugins_with_form(metadata.data), [metadata.data]);
   const selected = watch("selected");
-  // Match against plugin_name (the registry key) rather than name. Most
-  // action plugins' YAML `name:` is a human label ("Send email", "Run a
-  // script") that wouldn't match the Action's `action.selected` ("mail",
-  // "script"). plugin_name is stamped by the metadata handler.
+  // Match against plugin_name (the registry key), not the YAML `name:` label.
   const selectedPlugin = useMemo(
     () => formPlugins.find((m) => m.plugin_name === selected),
     [formPlugins, selected],
   );
-  // If we have a selected type but no matching plugin in metadata, fall back
-  // to the JSON textarea so legacy/unknown configs remain editable.
-  const useJsonFallback =
-    !!selected && !selectedPlugin && !metadata.isPending;
+  const useJsonFallback = !!selected && !selectedPlugin && !metadata.isPending;
+
+  function pickIntegration(pluginName: string) {
+    setValue("selected", pluginName, { shouldDirty: true });
+    setSubcontent({});
+    setStep("configure");
+  }
+
+  async function onTest() {
+    if (!selected) return;
+    try {
+      await testAction.mutateAsync({ selected, subcontent });
+      toast.success("Test notification sent");
+    } catch (e) {
+      toast.error(e instanceof ApiError ? e.detail : "Test failed");
+    }
+  }
 
   async function onSubmit(form: FormShape) {
     setSubmitting(true);
@@ -142,6 +156,12 @@ export function ActionEditor({ uid, onClose }: ActionEditorProps) {
   }
 
   const nameInvalid = formState.isSubmitted && !watch("name").trim();
+  const picking = step === "pick";
+  const heading = picking
+    ? "Choose an integration"
+    : isCreate
+      ? `New ${selectedPlugin?.name || selected} action`
+      : "Edit action";
 
   return (
     <Drawer
@@ -151,9 +171,17 @@ export function ActionEditor({ uid, onClose }: ActionEditorProps) {
       }}
     >
       <DrawerContent>
-        <DrawerTitle>{isCreate ? "New action" : "Edit action"}</DrawerTitle>
+        <DrawerTitle>{heading}</DrawerTitle>
         <DrawerBody>
-          {!isCreate && existing.isPending ? (
+          {picking ? (
+            metadata.isPending ? (
+              <div style={{ display: "flex", justifyContent: "center", padding: "var(--space-5)" }}>
+                <Spinner size={20} />
+              </div>
+            ) : (
+              <IntegrationGallery plugins={formPlugins} onPick={pickIntegration} />
+            )
+          ) : !isCreate && existing.isPending ? (
             <div style={{ display: "flex", justifyContent: "center", padding: "var(--space-5)" }}>
               <Spinner size={20} />
             </div>
@@ -164,7 +192,28 @@ export function ActionEditor({ uid, onClose }: ActionEditorProps) {
               onSubmit={(e) => void handleSubmit(onSubmit)(e)}
             >
               <section className={styles.section}>
-                <h3 className={styles.sectionTitle}>Identity</h3>
+                <div className={styles.row} style={{ justifyContent: "space-between" }}>
+                  <h3 className={styles.sectionTitle}>
+                    {selectedPlugin?.name || selected || "Action"}
+                  </h3>
+                  <div className={styles.row}>
+                    {selectedPlugin?.doc_url ? (
+                      <a
+                        className={styles.docLink}
+                        href={selectedPlugin.doc_url}
+                        target="_blank"
+                        rel="noreferrer"
+                      >
+                        Docs ↗
+                      </a>
+                    ) : null}
+                    {isCreate ? (
+                      <Button type="button" variant="ghost" onClick={() => setStep("pick")}>
+                        Change
+                      </Button>
+                    ) : null}
+                  </div>
+                </div>
                 <div className={styles.field}>
                   <label className={styles.label} htmlFor="action-name">
                     Name
@@ -176,51 +225,8 @@ export function ActionEditor({ uid, onClose }: ActionEditorProps) {
                     placeholder="e.g. slack-prod"
                   />
                 </div>
-                <div className={styles.field}>
-                  <label className={styles.label} htmlFor="action-type">
-                    Type
-                  </label>
-                  <select
-                    id="action-type"
-                    value={selected}
-                    onChange={(e) => {
-                      const next = e.target.value;
-                      setValue("selected", next, { shouldDirty: true });
-                      // Switching plugin resets the typed subcontent so we
-                      // don't carry stale fields between plugin schemas.
-                      setSubcontent({});
-                    }}
-                    style={{
-                      height: 28,
-                      fontSize: "var(--text-sm)",
-                      background: "var(--bg-surface)",
-                      color: "var(--text-strong)",
-                      border: "1px solid var(--border)",
-                      borderRadius: "var(--radius-md)",
-                      padding: "0 var(--space-2)",
-                      width: "100%",
-                    }}
-                  >
-                    <option value="" disabled hidden>
-                      Select an action type…
-                    </option>
-                    {formPlugins.map((m) => (
-                      // `||` (not `??`) — `display_name` comes from the YAML
-                      // `desc:` field, which is `""` for some plugins (mail).
-                      // Falling back to `name` keeps the option visible.
-                      <option key={m.plugin_name} value={m.plugin_name}>
-                        {m.display_name || m.name}
-                      </option>
-                    ))}
-                    {/* Preserve unknown selected so we don't silently drop it. */}
-                    {selected && !selectedPlugin ? (
-                      <option key={selected} value={selected}>
-                        {selected}
-                      </option>
-                    ) : null}
-                  </select>
-                </div>
               </section>
+
               {selectedPlugin && selectedPlugin.action_form ? (
                 <section className={styles.section}>
                   <h3 className={styles.sectionTitle}>Config</h3>
@@ -247,6 +253,7 @@ export function ActionEditor({ uid, onClose }: ActionEditorProps) {
                   ) : null}
                 </section>
               ) : null}
+
               <div className={styles.field}>
                 <label className={styles.label} htmlFor="action-comment">
                   Comment
@@ -256,20 +263,41 @@ export function ActionEditor({ uid, onClose }: ActionEditorProps) {
             </form>
           )}
         </DrawerBody>
-        <DrawerFooter>
-          <Button variant="ghost" onClick={onClose}>
-            Cancel
-          </Button>
-          <Button
-            type="submit"
-            form="action-form"
-            variant="primary"
-            loading={submitting}
-            disabled={submitting}
-          >
-            {isCreate ? "Create" : "Save"}
-          </Button>
-        </DrawerFooter>
+        {picking ? (
+          <DrawerFooter>
+            <div style={{ flex: 1 }} />
+            <Button variant="ghost" onClick={onClose}>
+              Cancel
+            </Button>
+          </DrawerFooter>
+        ) : (
+          <DrawerFooter>
+            {selectedPlugin ? (
+              <Button
+                type="button"
+                variant="ghost"
+                onClick={() => void onTest()}
+                loading={testAction.isPending}
+                disabled={testAction.isPending || !selected}
+              >
+                Send test
+              </Button>
+            ) : null}
+            <div style={{ flex: 1 }} />
+            <Button variant="ghost" onClick={onClose}>
+              Cancel
+            </Button>
+            <Button
+              type="submit"
+              form="action-form"
+              variant="primary"
+              loading={submitting}
+              disabled={submitting}
+            >
+              {isCreate ? "Create" : "Save"}
+            </Button>
+          </DrawerFooter>
+        )}
       </DrawerContent>
     </Drawer>
   );

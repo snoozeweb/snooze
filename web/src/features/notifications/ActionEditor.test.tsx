@@ -112,11 +112,11 @@ describe("ActionEditor", () => {
         <ActionEditor uid={undefined} onClose={onClose} />
       </Wrapper>,
     );
+    // Step 1: pick the integration from the gallery (card label = metadata `name`).
+    const card = await screen.findByRole("button", { name: /Call a webhook/ });
+    await user.click(card);
+    // Step 2: the config form appears.
     await user.type(screen.getByLabelText(/^name$/i), "hook-prod");
-    // Wait for metadata to populate the subtype select.
-    const subtype = await screen.findByLabelText(/type/i);
-    await user.selectOptions(subtype, "webhook");
-    // Once webhook is selected, the URL field should appear.
     const url = await screen.findByLabelText(/URL/);
     await user.type(url, "https://example.com");
     await user.click(screen.getByRole("button", { name: /create/i }));
@@ -134,7 +134,7 @@ describe("ActionEditor", () => {
     expect(onClose).toHaveBeenCalled();
   });
 
-  it("lists only plugins that have an action_form in the subtype dropdown", async () => {
+  it("shows only plugins that have an action_form as gallery cards", async () => {
     mswServer.use(
       http.get("/api/v1/metadata", () => HttpResponse.json(metadataPayload())),
     );
@@ -144,20 +144,11 @@ describe("ActionEditor", () => {
         <ActionEditor uid={undefined} onClose={() => undefined} />
       </Wrapper>,
     );
-    const select = await screen.findByLabelText(/type/i);
-    await waitFor(() => {
-      const texts = Array.from(select.querySelectorAll("option")).map((o) =>
-        o.textContent?.trim(),
-      );
-      expect(texts).toContain("Run a script");
-    });
-    const optionTexts = Array.from(select.querySelectorAll("option")).map((o) =>
-      o.textContent?.trim(),
-    );
-    expect(optionTexts).toContain("Run a script");
-    expect(optionTexts).toContain("Call a webhook");
-    // The record plugin has no action_form and must NOT appear.
-    expect(optionTexts).not.toContain("Record");
+    // Cards are labelled by the metadata `name`.
+    expect(await screen.findByRole("button", { name: /Run a script/ })).toBeTruthy();
+    expect(screen.getByRole("button", { name: /Call a webhook/ })).toBeTruthy();
+    // The record plugin has no action_form and must NOT appear as a card.
+    expect(screen.queryByRole("button", { name: /^Record$/ })).toBeNull();
   });
 
   it("renders the typed form when the plugin's name differs from its plugin_name (registry key)", async () => {
