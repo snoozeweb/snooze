@@ -2,6 +2,8 @@
 name: 'Send a Twilio SMS or voice call'
 desc: 'Deliver an alert via Twilio SMS or voice call (TwiML <Say>)'
 icon: 'phone'
+category: 'sms'
+doc_url: 'https://snoozeweb.github.io/snooze/general/integrations/twilio'
 provides:
     - notifier
 # Field order: credentials first, then routing, then content, then timeout.

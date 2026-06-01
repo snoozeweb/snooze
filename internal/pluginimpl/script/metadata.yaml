@@ -2,6 +2,8 @@
 name: 'Run a script'
 desc: 'Execute a local command/script as a notification target'
 icon: 'terminal'
+category: 'generic'
+doc_url: 'https://snoozeweb.github.io/snooze/general/integrations/script'
 route_defaults:
     class_name: ~
 options:

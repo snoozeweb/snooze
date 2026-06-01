@@ -2,6 +2,8 @@
 name: 'Post to Atlassian Statuspage'
 desc: 'Create or resolve a Statuspage incident when an alert fires or closes'
 icon: 'statuspage'
+category: 'ticketing'
+doc_url: 'https://snoozeweb.github.io/snooze/general/integrations/statuspage'
 provides:
     - notifier
 # Field order: credentials → incident identity → incident detail → advanced.

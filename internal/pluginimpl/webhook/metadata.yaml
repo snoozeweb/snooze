@@ -2,6 +2,8 @@
 name: 'Call a webhook'
 desc: 'HTTP request to an arbitrary URL'
 icon: 'link'
+category: 'generic'
+doc_url: 'https://snoozeweb.github.io/snooze/general/integrations/webhook'
 provides:
     - notifier
 # Field order mirrors origin/master's Python plugin (url → payload-stuff →

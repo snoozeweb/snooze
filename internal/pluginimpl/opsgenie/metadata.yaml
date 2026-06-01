@@ -2,6 +2,8 @@
 name: 'Send an Opsgenie alert'
 desc: 'Create or close an Opsgenie alert via the Alert API'
 icon: 'opsgenie'
+category: 'oncall'
+doc_url: 'https://snoozeweb.github.io/snooze/general/integrations/opsgenie'
 provides:
     - notifier
 # Fields: credentials first, then routing/priority, then content, then timeout.

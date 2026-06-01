@@ -2,6 +2,8 @@
 name: 'Send a Google Chat message'
 desc: 'Post an alert to a Google Chat space via Incoming Webhook'
 icon: 'google'
+category: 'chat'
+doc_url: 'https://snoozeweb.github.io/snooze/general/integrations/googlechat'
 provides:
     - notifier
 # Field order: webhook first, then content knobs, then threading, then timeout.

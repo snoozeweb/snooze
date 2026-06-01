@@ -2,6 +2,8 @@
 name: 'Publish to Amazon SNS'
 desc: 'Publish an alert to an Amazon SNS topic (fan-out output)'
 icon: 'aws'
+category: 'generic'
+doc_url: 'https://snoozeweb.github.io/snooze/general/integrations/sns'
 provides:
     - notifier
 # Field order: region/topic first (what to publish to), then credentials, then

@@ -2,6 +2,8 @@
 name: 'Send a Telegram message'
 desc: 'Post an alert to a Telegram chat via the Bot API'
 icon: 'telegram'
+category: 'chat'
+doc_url: 'https://snoozeweb.github.io/snooze/general/integrations/telegram'
 provides:
     - notifier
 action_form:

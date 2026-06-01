@@ -2,6 +2,8 @@
 name: 'Send a Pushover notification'
 desc: 'Deliver a mobile push notification via the Pushover API'
 icon: 'bell'
+category: 'oncall'
+doc_url: 'https://snoozeweb.github.io/snooze/general/integrations/pushover'
 provides:
     - notifier
 # Field order: credentials first (token, user), then content (title, message),

@@ -2,6 +2,8 @@
 name: 'Send an ntfy notification'
 desc: 'Deliver a mobile push notification via a self-hosted or public ntfy server'
 icon: 'bell'
+category: 'push'
+doc_url: 'https://snoozeweb.github.io/snooze/general/integrations/ntfy'
 provides:
     - notifier
 action_form:

@@ -2,6 +2,8 @@
 name: 'Send a Slack message'
 desc: 'Post an alert to a Slack channel via Incoming Webhook or bot token'
 icon: 'slack'
+category: 'chat'
+doc_url: 'https://snoozeweb.github.io/snooze/general/integrations/slack'
 provides:
     - notifier
 # Field order: credentials first, then content, then cosmetic, then timeout.

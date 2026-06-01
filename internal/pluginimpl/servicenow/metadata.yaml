@@ -2,6 +2,8 @@
 name: 'Create a ServiceNow incident'
 desc: 'Open (and optionally resolve) a ServiceNow incident via the Table API'
 icon: 'servicenow'
+category: 'ticketing'
+doc_url: 'https://snoozeweb.github.io/snooze/general/integrations/servicenow'
 provides:
     - notifier
 # Field order: instance / auth first, then incident fields, then knobs.

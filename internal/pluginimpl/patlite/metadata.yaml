@@ -2,6 +2,8 @@
 name: 'patlite'
 desc: 'Set the light and alarm of a Patlite tower-light device over HTTP'
 icon: 'traffic-light'
+category: 'generic'
+doc_url: 'https://snoozeweb.github.io/snooze/general/integrations/patlite'
 auto_reload: false
 action_form:
     host:

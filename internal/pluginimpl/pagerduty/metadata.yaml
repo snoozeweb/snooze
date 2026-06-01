@@ -2,6 +2,8 @@
 name: 'Send a PagerDuty alert'
 desc: 'Forward a Snooze alert to PagerDuty via the Events API v2'
 icon: 'pagerduty'
+category: 'oncall'
+doc_url: 'https://snoozeweb.github.io/snooze/general/integrations/pagerduty'
 provides:
     - notifier
 action_form:

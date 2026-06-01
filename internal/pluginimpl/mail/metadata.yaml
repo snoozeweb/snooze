@@ -2,6 +2,8 @@
 name: 'Send email'
 desc: 'Send an email via SMTP'
 icon: 'envelope'
+category: 'generic'
+doc_url: 'https://snoozeweb.github.io/snooze/general/integrations/mail'
 default_route:
     class_name: ~
 options:

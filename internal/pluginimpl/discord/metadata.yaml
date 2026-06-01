@@ -2,6 +2,8 @@
 name: 'Send a Discord message'
 desc: 'Post an alert to a Discord channel via Incoming Webhook'
 icon: 'discord'
+category: 'chat'
+doc_url: 'https://snoozeweb.github.io/snooze/general/integrations/discord'
 provides:
     - notifier
 # Field order: credentials first, then content, then cosmetic, then timeout.
