@@ -1,6 +1,16 @@
 import { useQuery, type UseQueryResult } from "@tanstack/react-query";
 import { api, type ApiError } from "@/lib/api/client";
+import { Comments, type Comment } from "@/features/alerts/comments";
+import type { ListResponse } from "@/lib/api/resource";
 import type { StatsResponse } from "./types";
+
+/** Recent user actions across all alerts — the dashboard activity feed. */
+export function useRecentActivity(limit = 15): UseQueryResult<ListResponse<Comment>, ApiError> {
+  return Comments.useList(
+    { orderby: "date_epoch", asc: false, limit },
+    { refetchInterval: 30_000 },
+  );
+}
 
 export type StatsParams = {
   from: string;
