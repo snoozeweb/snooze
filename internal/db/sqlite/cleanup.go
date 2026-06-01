@@ -444,6 +444,7 @@ func (d *Driver) RecordStats(ctx context.Context, from, to time.Time, bucketSec 
 		Series:        map[int64]map[string]int64{},
 		BySeverity:    map[string]int64{},
 		ByEnvironment: map[string]int64{},
+		ByState:       map[string]int64{},
 	}
 	if bucketSec <= 0 {
 		return out, fmt.Errorf("bucketSec must be > 0")
@@ -495,16 +496,17 @@ func (d *Driver) RecordStats(ctx context.Context, from, to time.Time, bucketSec 
 		return out, err
 	}
 
-	// Totals: one row per (severity, environment); we reduce twice in Go.
+	// Totals: one row per (severity, environment, state); we reduce in Go.
 	//nolint:gosec
 	totalsStmt := fmt.Sprintf(`
 		SELECT
-		  COALESCE(NULLIF(json_extract(data, '$.severity'), ''), 'info')   AS sev,
-		  COALESCE(NULLIF(json_extract(data, '$.environment'), ''), '(none)') AS env,
+		  COALESCE(NULLIF(json_extract(data, '$.severity'), ''), 'info')      AS sev,
+		  COALESCE(NULLIF(json_extract(data, '$.environment'), ''), '(none)')  AS env,
+		  COALESCE(NULLIF(json_extract(data, '$.state'), ''), 'open')          AS st,
 		  COUNT(*) AS n
 		FROM %s
 		WHERE COALESCE(json_extract(data, '$.date_epoch'), 0) BETWEEN ? AND ?
-		GROUP BY sev, env
+		GROUP BY sev, env, st
 	`, quoteIdent(tbl))
 	rows2, err := d.db.QueryContext(ctx, totalsStmt, fromEpoch, toEpoch)
 	if err != nil {
@@ -512,13 +514,14 @@ func (d *Driver) RecordStats(ctx context.Context, from, to time.Time, bucketSec 
 	}
 	defer rows2.Close() //nolint:errcheck
 	for rows2.Next() {
-		var sev, env string
+		var sev, env, st string
 		var n int64
-		if err := rows2.Scan(&sev, &env, &n); err != nil {
+		if err := rows2.Scan(&sev, &env, &st, &n); err != nil {
 			return out, err
 		}
 		out.BySeverity[sev] += n
 		out.ByEnvironment[env] += n
+		out.ByState[st] += n
 	}
 	return out, rows2.Err()
 }

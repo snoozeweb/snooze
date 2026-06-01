@@ -97,6 +97,7 @@ type seriesBucket struct {
 type statsTotals struct {
 	BySeverity      map[string]int `json:"by_severity"`
 	ByEnvironment   map[string]int `json:"by_environment"`
+	ByState         map[string]int `json:"by_state"`
 	ByActionSuccess map[string]int `json:"by_action_success"`
 	ByActionFailure map[string]int `json:"by_action_failure"`
 }
@@ -135,7 +136,7 @@ func (p *Plugin) handleStats(host plugins.Host) http.HandlerFunc {
 		fromEpoch, toEpoch := from.Unix(), to.Unix()
 
 		var bucketed map[int64]map[string]int64
-		var bySeverity, byEnvironment map[string]int64
+		var bySeverity, byEnvironment, byState map[string]int64
 
 		if agg, ok := host.DB().(db.RecordAggregator); ok {
 			res, aggErr := agg.RecordStats(r.Context(), from, to, stride)
@@ -148,15 +149,16 @@ func (p *Plugin) handleStats(host plugins.Host) http.HandlerFunc {
 			bucketed = res.Series
 			bySeverity = res.BySeverity
 			byEnvironment = res.ByEnvironment
+			byState = res.ByState
 		} else {
-			b, sev, env, scanErr := reduceInGo(r.Context(), host, fromEpoch, toEpoch, stride)
+			b, sev, env, st, scanErr := reduceInGo(r.Context(), host, fromEpoch, toEpoch, stride)
 			if scanErr != nil {
 				writeJSON(w, http.StatusInternalServerError, map[string]any{
 					"code": "db_error", "detail": scanErr.Error(),
 				})
 				return
 			}
-			bucketed, bySeverity, byEnvironment = b, sev, env
+			bucketed, bySeverity, byEnvironment, byState = b, sev, env, st
 		}
 
 		// Emit a continuous series so the line chart doesn't gap-jump.
@@ -179,6 +181,7 @@ func (p *Plugin) handleStats(host plugins.Host) http.HandlerFunc {
 				Totals: statsTotals{
 					BySeverity:      toIntMap(bySeverity),
 					ByEnvironment:   toIntMap(byEnvironment),
+					ByState:         toIntMap(byState),
 					ByActionSuccess: map[string]int{},
 					ByActionFailure: map[string]int{},
 				},
@@ -204,12 +207,13 @@ func toIntMap(in map[string]int64) map[string]int {
 // db.RecordAggregator: pull up to 10k records and aggregate locally.
 func reduceInGo(ctx context.Context, host plugins.Host, fromEpoch, toEpoch, stride int64) (
 	bucketed map[int64]map[string]int64,
-	bySeverity, byEnvironment map[string]int64,
+	bySeverity, byEnvironment, byState map[string]int64,
 	err error,
 ) {
 	bucketed = map[int64]map[string]int64{}
 	bySeverity = map[string]int64{}
 	byEnvironment = map[string]int64{}
+	byState = map[string]int64{}
 
 	records, _, err := host.DB().Search(ctx, "record", condition.Cond{}, db.Page{
 		PerPage: 10000,
@@ -217,7 +221,7 @@ func reduceInGo(ctx context.Context, host plugins.Host, fromEpoch, toEpoch, stri
 		Asc:     true,
 	})
 	if err != nil {
-		return nil, nil, nil, err
+		return nil, nil, nil, nil, err
 	}
 	for _, rec := range records {
 		epoch, ok := recordEpoch(rec)
@@ -234,6 +238,11 @@ func reduceInGo(ctx context.Context, host plugins.Host, fromEpoch, toEpoch, stri
 			env = "(none)"
 		}
 		byEnvironment[env]++
+		st, _ := rec["state"].(string)
+		if st == "" {
+			st = "open"
+		}
+		byState[st]++
 
 		source, _ := rec["source"].(string)
 		if source == "" {
@@ -247,7 +256,7 @@ func reduceInGo(ctx context.Context, host plugins.Host, fromEpoch, toEpoch, stri
 		}
 		row[source]++
 	}
-	return bucketed, bySeverity, byEnvironment, nil
+	return bucketed, bySeverity, byEnvironment, byState, nil
 }
 
 func writeJSON(w http.ResponseWriter, status int, body any) {

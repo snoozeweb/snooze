@@ -85,6 +85,9 @@ type RecordStatsBuckets struct {
 	// Totals, summed across the whole window:
 	BySeverity    map[string]int64
 	ByEnvironment map[string]int64
+	// ByState: count of records in the window grouped by their current state
+	// (empty state normalized to "open").
+	ByState map[string]int64
 }
 
 // RecordAggregator is an optional capability some Drivers implement to
