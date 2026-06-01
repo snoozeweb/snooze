@@ -44,6 +44,10 @@ export type Metadata = {
   name: string;
   display_name?: string;
   icon?: string;
+  // Gallery bucket: chat|oncall|ticketing|push|sms|generic (empty → generic).
+  category?: string;
+  // Canonical setup-docs URL, rendered as a "Docs" link in the editor.
+  doc_url?: string;
   desc?: string;
   action_form?: Record<string, FormField>;
   setting_form?: Record<string, FormField>;

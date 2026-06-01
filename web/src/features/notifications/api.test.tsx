@@ -4,7 +4,7 @@ import { http, HttpResponse } from "msw";
 import { describe, expect, it } from "vitest";
 import type { ReactNode } from "react";
 import { mswServer } from "@/tests/msw/server";
-import { Actions, Notifications } from "./api";
+import { Actions, Notifications, useTestAction } from "./api";
 
 function wrap() {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
@@ -40,5 +40,24 @@ describe("notifications.api", () => {
     const { result } = renderHook(() => Actions.useList(), { wrapper: wrap() });
     await waitFor(() => expect(result.current.isSuccess).toBe(true));
     expect(result.current.data?.data[0]?.name).toBe("Slack-prod");
+  });
+
+  it("useTestAction POSTs the config to /api/v1/action/test", async () => {
+    let received: unknown;
+    mswServer.use(
+      http.post("/api/v1/action/test", async ({ request }) => {
+        received = await request.json();
+        return HttpResponse.json({ ok: true });
+      }),
+    );
+    const { result } = renderHook(() => useTestAction(), { wrapper: wrap() });
+    await result.current.mutateAsync({
+      selected: "teams",
+      subcontent: { webhook_url: "https://example.com" },
+    });
+    expect(received).toMatchObject({
+      selected: "teams",
+      subcontent: { webhook_url: "https://example.com" },
+    });
   });
 });

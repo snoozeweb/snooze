@@ -577,6 +577,82 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/action/test": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Send a test notification for an action config
+         * @description Delivers a single synthetic alert through the notifier named by
+         *     `selected`, using `subcontent` as its action_form configuration. The
+         *     config does NOT need to be persisted first — this powers the
+         *     "Send test" button in the Actions editor. The notifier's real Send
+         *     path runs, so a 200 proves end-to-end delivery (URL, auth, payload).
+         *     No record is mutated.
+         *
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": {
+                        /** @description Notifier plugin registry key (teams, slack, webhook, …). */
+                        selected: string;
+                        /** @description The action_form values for that notifier. */
+                        subcontent?: {
+                            [key: string]: unknown;
+                        };
+                    };
+                };
+            };
+            responses: {
+                /** @description Test notification delivered. */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            ok?: boolean;
+                        };
+                    };
+                };
+                /** @description Unknown plugin. */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrEnvelope"];
+                    };
+                };
+                /** @description Plugin is not a notifier, or upstream delivery failed. */
+                422: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrEnvelope"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/alerts": {
         parameters: {
             query?: never;
