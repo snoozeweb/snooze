@@ -20,6 +20,10 @@
   snooze plugin re-asserts it only if the current record still matches.
   Throttled / flapping / already-closed duplicates abort before the snooze
   plugin runs and deliberately keep their prior attribution.
+- **Comments now record their author.** Human ack/close/comment actions stamp the
+  authenticated user (and auth method) onto the `comment` document, so the alert
+  timeline shows who acted and "edit your own comment" works. Auto-generated
+  escalation/auto-close comments remain system events (no author).
 
 ### Added
 - **Restore dashboard stat counters.** The dashboard now shows DB-persisted
@@ -30,6 +34,10 @@
   `general.metrics_enabled`. Operator-configurable retention via
   `housekeeping.cleanup_stats` (default `9600h` = 400 days), editable in
   **Settings → Housekeeping** without a restart.
+- **Dashboard activity feed = real users only.** The "Recent activity" pane now
+  filters to attributed user actions (`EXISTS user`), so escalation/auto-close
+  noise no longer floods it. Every dashboard pane title gained a content icon,
+  and the "Top hosts" pane now ranks hosts by count with legible labels.
 - `db.Driver.UnsetFields(ctx, collection, fields, cond)` — a portable field
   delete (`$unset` / jsonb `-` / `json_remove`) implemented across all three
   backends. Unlike a merge write, it truly removes the key so `EXISTS field`
