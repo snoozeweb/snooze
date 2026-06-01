@@ -45,9 +45,7 @@ export function IntegrationGallery({ plugins, onPick }: IntegrationGalleryProps)
       map.set(b, arr);
     }
     for (const arr of map.values()) {
-      arr.sort((a, b) =>
-        (a.name || a.plugin_name).localeCompare(b.name || b.plugin_name),
-      );
+      arr.sort((a, b) => (a.name || a.plugin_name).localeCompare(b.name || b.plugin_name));
     }
     return map;
   }, [plugins]);

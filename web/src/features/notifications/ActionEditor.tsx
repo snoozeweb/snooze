@@ -38,9 +38,7 @@ export type ActionEditorProps = {
 
 function plugins_with_form(list: Metadata[] | undefined): Metadata[] {
   if (!list) return [];
-  return list.filter(
-    (m) => m.action_form && Object.keys(m.action_form).length > 0,
-  );
+  return list.filter((m) => m.action_form && Object.keys(m.action_form).length > 0);
 }
 
 export function ActionEditor({ uid, onClose }: ActionEditorProps) {

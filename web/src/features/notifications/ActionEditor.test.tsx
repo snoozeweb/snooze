@@ -135,9 +135,7 @@ describe("ActionEditor", () => {
   });
 
   it("shows only plugins that have an action_form as gallery cards", async () => {
-    mswServer.use(
-      http.get("/api/v1/metadata", () => HttpResponse.json(metadataPayload())),
-    );
+    mswServer.use(http.get("/api/v1/metadata", () => HttpResponse.json(metadataPayload())));
     const Wrapper = wrap();
     render(
       <Wrapper>
@@ -198,9 +196,7 @@ describe("ActionEditor", () => {
     const host = await screen.findByLabelText(/host/i);
     expect((host as HTMLInputElement).value).toBe("smtp.example.com");
     // And the JSON fallback must NOT be present.
-    expect(
-      document.querySelector('textarea[name="subcontent_json"]'),
-    ).toBeNull();
+    expect(document.querySelector('textarea[name="subcontent_json"]')).toBeNull();
   });
 
   it("falls back to a JSON textarea when the selected plugin isn't in metadata", async () => {

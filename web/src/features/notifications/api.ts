@@ -15,11 +15,7 @@ export type ActionTestResult = { ok: boolean };
 
 // useTestAction delivers one synthetic alert through the named notifier using
 // the (possibly unsaved) action config. Powers the "Send test" button.
-export function useTestAction(): UseMutationResult<
-  ActionTestResult,
-  ApiError,
-  ActionTestRequest
-> {
+export function useTestAction(): UseMutationResult<ActionTestResult, ApiError, ActionTestRequest> {
   return useMutation<ActionTestResult, ApiError, ActionTestRequest>({
     mutationFn: (body) => api<ActionTestResult>("POST", "/action/test", { body }),
   });
