@@ -5,6 +5,7 @@
 }
 .tile {
   border: 1px solid var(--border);
+  border-left: 3px solid var(--tile-accent, var(--border));
   border-radius: var(--radius-md);
   padding: var(--space-3);
   background: var(--bg-elevated);
@@ -15,8 +16,16 @@
   display: block;
 }
 .label {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
   font-size: var(--text-xs);
   text-transform: uppercase;
   letter-spacing: 0.05em;
   color: var(--text-muted);
+}
+/* Inherits --tile-accent set on the tile; the Icon's stroke uses currentColor. */
+.icon {
+  display: inline-flex;
+  color: var(--tile-accent, var(--text-muted));
 }
