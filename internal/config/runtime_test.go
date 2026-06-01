@@ -98,6 +98,25 @@ func TestRuntimeSettingsCacheServesStaleUntilInvalidate(t *testing.T) {
 	require.Equal(t, "v2.example.com", refreshed.Host)
 }
 
+// TestStatsRetention_OverrideFromDB checks that a DB override for
+// "housekeeping.cleanup_stats" is surfaced by StatsRetention.
+func TestStatsRetention_OverrideFromDB(t *testing.T) {
+	d := newDriver(t)
+	writeSetting(t, d, "housekeeping.cleanup_stats", "240h")
+
+	rs := NewRuntimeSettings(d, Default(), time.Minute)
+	require.Equal(t, 240*time.Hour, rs.StatsRetention(context.Background()))
+}
+
+// TestStatsRetention_FallsBackToBaseline checks that when no DB override is
+// present StatsRetention returns the 400-day default.
+func TestStatsRetention_FallsBackToBaseline(t *testing.T) {
+	d := newDriver(t)
+
+	rs := NewRuntimeSettings(d, Default(), time.Minute)
+	require.Equal(t, 400*24*time.Hour, rs.StatsRetention(context.Background()))
+}
+
 // TestRuntimeSettingsEmptyDBReturnsBaseline checks the cold-start case: no
 // settings rows means every accessor returns the bootstrap baseline as-is.
 func TestRuntimeSettingsEmptyDBReturnsBaseline(t *testing.T) {

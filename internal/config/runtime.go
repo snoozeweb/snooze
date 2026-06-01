@@ -178,6 +178,19 @@ func (r *RuntimeSettings) AuditRetention(ctx context.Context) time.Duration {
 	return hk.CleanupAudit.AsDuration()
 }
 
+// StatsRetention returns the current housekeeping.cleanup_stats window, or the
+// 400-day baseline when unset. Consumed by the cleanup_stats housekeeper job.
+func (r *RuntimeSettings) StatsRetention(ctx context.Context) time.Duration {
+	if r == nil {
+		return schema.DefaultHousekeeper().CleanupStats.AsDuration()
+	}
+	hk, err := r.Housekeeper(ctx)
+	if err != nil {
+		return schema.DefaultHousekeeper().CleanupStats.AsDuration()
+	}
+	return hk.CleanupStats.AsDuration()
+}
+
 // Housekeeper returns the current housekeeper configuration with the same
 // "baseline + DB overrides" layering as LDAP.
 func (r *RuntimeSettings) Housekeeper(ctx context.Context) (HousekeeperConfig, error) {
@@ -338,6 +351,7 @@ func applyHousekeeperOverrides(out *HousekeeperConfig, values map[string]any) {
 	overlayDuration(values, "housekeeping.cleanup_snooze", &out.CleanupSnooze)
 	overlayDuration(values, "housekeeping.cleanup_notification", &out.CleanupNotification)
 	overlayDuration(values, "housekeeping.cleanup_audit", &out.CleanupAudit)
+	overlayDuration(values, "housekeeping.cleanup_stats", &out.CleanupStats)
 	overlayDuration(values, "housekeeping.cleanup_orphans", &out.CleanupOrphans)
 }
 

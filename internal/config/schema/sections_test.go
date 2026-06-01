@@ -18,6 +18,7 @@ func TestHousekeeper_Defaults(t *testing.T) {
 	require.Equal(t, 48*time.Hour, h.RecordTTL.AsDuration())
 	require.Equal(t, 5*time.Minute, h.CleanupAlert.AsDuration())
 	require.True(t, h.TriggerOnStartup)
+	require.Equal(t, 400*24*time.Hour, h.CleanupStats.AsDuration())
 }
 
 func TestNotification_Defaults(t *testing.T) {

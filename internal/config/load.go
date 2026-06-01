@@ -293,6 +293,7 @@ func defaultsYAML() ([]byte, error) {
 			"cleanup_comment":      d.Housekeeper.CleanupComment.String(),
 			"cleanup_orphans":      d.Housekeeper.CleanupOrphans.String(),
 			"cleanup_audit":        d.Housekeeper.CleanupAudit.String(),
+			"cleanup_stats":        d.Housekeeper.CleanupStats.String(),
 			"cleanup_snooze":       d.Housekeeper.CleanupSnooze.String(),
 			"cleanup_notification": d.Housekeeper.CleanupNotification.String(),
 			"renumber_field":       d.Housekeeper.RenumberField.String(),

@@ -13,6 +13,7 @@ type Housekeeper struct {
 	CleanupComment      Duration `koanf:"cleanup_comment"`
 	CleanupOrphans      Duration `koanf:"cleanup_orphans"`
 	CleanupAudit        Duration `koanf:"cleanup_audit"`
+	CleanupStats        Duration `koanf:"cleanup_stats"`
 	CleanupSnooze       Duration `koanf:"cleanup_snooze"`
 	CleanupNotification Duration `koanf:"cleanup_notification"`
 	RenumberField       Duration `koanf:"renumber_field"`
@@ -28,6 +29,7 @@ func DefaultHousekeeper() Housekeeper {
 		CleanupComment:      Duration(24 * time.Hour),
 		CleanupOrphans:      Duration(24 * time.Hour),
 		CleanupAudit:        Duration(28 * 24 * time.Hour),
+		CleanupStats:        Duration(400 * 24 * time.Hour),
 		CleanupSnooze:       Duration(3 * 24 * time.Hour),
 		CleanupNotification: Duration(3 * 24 * time.Hour),
 		RenumberField:       Duration(24 * time.Hour),
