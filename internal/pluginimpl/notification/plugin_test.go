@@ -150,11 +150,11 @@ func (h *metricsTestHost) AsyncWriter() *asyncwriter.Writer { return h.writer }
 func newMetricsHost(t *testing.T) (*metricsTestHost, *incCaptureDriver) {
 	t.Helper()
 	inner := newHost(t)
-	cap := &incCaptureDriver{Driver: inner.driver}
-	inner.driver = cap
-	w := asyncwriter.New(cap, time.Hour, asyncwriter.NewMockClock(time.Unix(0, 0)),
+	capDrv := &incCaptureDriver{Driver: inner.driver}
+	inner.driver = capDrv
+	w := asyncwriter.New(capDrv, time.Hour, asyncwriter.NewMockClock(time.Unix(0, 0)),
 		asyncwriter.WithUpsert(true))
-	return &metricsTestHost{testHost: inner, writer: w}, cap
+	return &metricsTestHost{testHost: inner, writer: w}, capDrv
 }
 
 // testHost is a minimal plugins.Host suitable for the notification plugin.
@@ -472,7 +472,7 @@ func TestNotification(t *testing.T) {
 // per matched notification entry, and action_success / action_error once per
 // action (keyed by action name) after each Notifier.Send returns.
 func TestNotificationStats(t *testing.T) {
-	host, cap := newMetricsHost(t)
+	host, capDrv := newMetricsHost(t)
 
 	// Two actions: one whose notifier succeeds, one whose notifier fails.
 	writeActions(t, host.testHost, []map[string]any{
@@ -501,8 +501,8 @@ func TestNotificationStats(t *testing.T) {
 
 	good := &recordingNotifier{name: "good-notifier"}
 	bad := &failingNotifier{name: "bad-notifier"}
-	host.testHost.plugins["good-notifier"] = good
-	host.testHost.plugins["bad-notifier"] = bad
+	host.plugins["good-notifier"] = good
+	host.plugins["bad-notifier"] = bad
 
 	p := &Plugin{meta: plugins.Metadata{Name: "notification"}}
 	require.NoError(t, p.PostInit(context.Background(), host))
@@ -510,11 +510,11 @@ func TestNotificationStats(t *testing.T) {
 	// eventEpoch 1780302245 → UTC hour bucket 1780300800
 	const eventEpoch = int64(1780302245)
 	rec := snoozetypes.Record{
-		UID:        "uid-stats-test",
-		Host:       "myhost01",
-		Message:    "stats test",
-		Timestamp:  time.Now(),
-		DateEpoch:  eventEpoch,
+		UID:       "uid-stats-test",
+		Host:      "myhost01",
+		Message:   "stats test",
+		Timestamp: time.Now(),
+		DateEpoch: eventEpoch,
 	}
 
 	_, err := p.Process(context.Background(), rec)
@@ -534,7 +534,7 @@ func TestNotificationStats(t *testing.T) {
 	// Flush the async writer so the incCaptureDriver sees all BulkIncrement ops.
 	require.NoError(t, host.writer.Flush(context.Background()))
 
-	ops := cap.Captured()
+	ops := capDrv.Captured()
 
 	// Helper: find ops matching a given metric+name combination.
 	find := func(metric, nameKey string) []capturedInc {

@@ -335,11 +335,3 @@ func liveIntervalReg(ij housekeeper.IntervalJob, resolver func(ctx context.Conte
 		},
 	}
 }
-
-func cronReg(cj housekeeper.CronJob) registration {
-	return registration{
-		name:  cj.Job.Name(),
-		job:   cj.Job,
-		sched: housekeeper.Schedule{Cron: cj.Cron},
-	}
-}

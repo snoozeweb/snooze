@@ -261,7 +261,7 @@ func TestProcessRecord_AlertHitStat(t *testing.T) {
 		dim, _ := search["dim"].(string)
 		key, _ := search["key"].(string)
 		gotDims[dim] = key
-		delta, _ := ci.op.Deltas["value"]
+		delta := ci.op.Deltas["value"]
 		require.Equal(t, int64(1), delta, "expected delta 1 for dim %s", dim)
 	}
 	require.Equal(t, wantDims, gotDims)

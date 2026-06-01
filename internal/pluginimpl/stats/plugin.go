@@ -88,10 +88,10 @@ type statsResponse struct {
 }
 
 type statsData struct {
-	Series  []seriesBucket `json:"series"`
-	Totals  statsTotals    `json:"totals"`
+	Series   []seriesBucket `json:"series"`
+	Totals   statsTotals    `json:"totals"`
 	Snapshot statsSnapshot  `json:"snapshot"`
-	Weekday map[string]int `json:"weekday"`
+	Weekday  map[string]int `json:"weekday"`
 }
 
 type seriesBucket struct {
@@ -313,10 +313,10 @@ func (p *Plugin) handleStats(host plugins.Host) http.HandlerFunc {
 
 		writeJSON(w, http.StatusOK, statsResponse{
 			Data: statsData{
-				Series:  series,
-				Totals:  totals,
+				Series:   series,
+				Totals:   totals,
 				Snapshot: snapshot,
-				Weekday: weekday,
+				Weekday:  weekday,
 			},
 			Meta: statsMeta{
 				From:   from.UTC().Format(time.RFC3339),

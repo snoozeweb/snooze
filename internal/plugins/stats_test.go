@@ -109,16 +109,16 @@ func TestRecordStat_NoopWhenMetricsDisabled(t *testing.T) {
 	require.Empty(t, *calls)
 }
 
-func TestRecordStat_NoopWhenNoAsyncWriter(t *testing.T) {
+func TestRecordStat_NoopWhenNoAsyncWriter(_ *testing.T) {
 	// noAsyncWriterHost does not implement AsyncWriterHost, so RecordStat must
 	// return early at the type-assertion guard without panicking.
 	h := &noAsyncWriterHost{}
 	h.nullHost = *newNullHost(newMemDB())
-	h.nullHost.cfg.General.MetricsEnabled = true
+	h.cfg.General.MetricsEnabled = true
 	RecordStat(h, 1, "alert_hit", map[string]string{"source": "x"}, 1)
 }
 
-func TestRecordStat_NoopWhenWriterNil(t *testing.T) {
+func TestRecordStat_NoopWhenWriterNil(_ *testing.T) {
 	// statTestHost implements AsyncWriterHost but returns a nil Writer.
 	h := &statTestHost{writer: nil, metricsEnabled: true}
 	RecordStat(h, 1, "alert_hit", map[string]string{"source": "x"}, 1)

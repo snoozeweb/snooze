@@ -48,7 +48,7 @@ func TestRecordStats(t *testing.T) {
 	require.Equal(t, int64(2), res.ByEnvironment["production"])
 	require.Equal(t, int64(2), res.ByEnvironment["(none)"])
 	// State: empty-string state normalises to "open"; 4 in-window rows.
-	require.Equal(t, int64(2), res.ByState["open"])  // explicit "open" + empty ""
+	require.Equal(t, int64(2), res.ByState["open"]) // explicit "open" + empty ""
 	require.Equal(t, int64(1), res.ByState["ack"])
 	require.Equal(t, int64(1), res.ByState["close"])
 }
