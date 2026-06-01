@@ -361,6 +361,52 @@ paths:
             application/json:
               schema: {$ref: '#/components/schemas/ErrEnvelope'}
 
+  /api/v1/action/test:
+    post:
+      tags: [crud]
+      summary: Send a test notification for an action config
+      description: |
+        Delivers a single synthetic alert through the notifier named by
+        `selected`, using `subcontent` as its action_form configuration. The
+        config does NOT need to be persisted first — this powers the
+        "Send test" button in the Actions editor. The notifier's real Send
+        path runs, so a 200 proves end-to-end delivery (URL, auth, payload).
+        No record is mutated.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [selected]
+              properties:
+                selected:
+                  type: string
+                  description: Notifier plugin registry key (teams, slack, webhook, …).
+                subcontent:
+                  type: object
+                  additionalProperties: true
+                  description: The action_form values for that notifier.
+      responses:
+        '200':
+          description: Test notification delivered.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok: {type: boolean}
+        '404':
+          description: Unknown plugin.
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/ErrEnvelope'}
+        '422':
+          description: Plugin is not a notifier, or upstream delivery failed.
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/ErrEnvelope'}
+
   /api/v1/alerts:
     post:
       tags: [alerts]
