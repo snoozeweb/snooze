@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/snoozeweb/snooze/internal/condition"
 	"github.com/snoozeweb/snooze/internal/db"
 )
 
@@ -131,6 +132,33 @@ func CleanupNotificationJob(d db.Driver) IntervalJob {
 		Interval: 72 * time.Hour,
 		Job: NewJobFunc("cleanup_notification", func(ctx context.Context) error {
 			_, err := d.CleanupNotification(ctx)
+			return err
+		}),
+	}
+}
+
+// statsRetention is the narrow contract the cleanup_stats job needs from the
+// config layer (declared locally to avoid importing config, like auditRetention).
+type statsRetention interface {
+	StatsRetention(ctx context.Context) time.Duration
+}
+
+// CleanupStatsAsIntervalJob deletes counter docs in the `stats` collection
+// whose hour bucket is older than the operator-configured retention window
+// (default 400d), read fresh from RuntimeSettings on each fire. Daily cadence.
+func CleanupStatsAsIntervalJob(d db.Driver, rs statsRetention) IntervalJob {
+	return IntervalJob{
+		Interval: 24 * time.Hour,
+		Job: NewJobFunc("cleanup_stats", func(ctx context.Context) error {
+			retention := 400 * 24 * time.Hour
+			if rs != nil {
+				if v := rs.StatsRetention(ctx); v > 0 {
+					retention = v
+				}
+			}
+			cutoff := time.Now().Add(-retention).Unix()
+			cond := condition.Cond{Op: condition.OpLt, Field: "bucket", Value: cutoff}
+			_, err := d.Delete(ctx, "stats", cond, true)
 			return err
 		}),
 	}

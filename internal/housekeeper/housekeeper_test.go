@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/snoozeweb/snooze/internal/condition"
 	"github.com/stretchr/testify/require"
 )
 
@@ -414,4 +415,53 @@ func TestRun_CronExpressionAcceptsFiveField(t *testing.T) {
 	case <-time.After(2 * time.Second):
 		t.Fatal("Run did not return after cancel")
 	}
+}
+
+// ---------------------------------------------------------------------------
+// CleanupStatsAsIntervalJob tests
+// ---------------------------------------------------------------------------
+
+// fixedStatsRetention is a tiny test stub implementing the statsRetention
+// interface with a constant retention value.
+type fixedStatsRetention struct{ d time.Duration }
+
+func (f fixedStatsRetention) StatsRetention(_ context.Context) time.Duration { return f.d }
+
+// TestCleanupStatsJobInvokesDriver verifies that CleanupStatsAsIntervalJob
+// wires through to d.Delete("stats", …, force=true) with a condition that
+// filters on bucket < cutoff using OpLt.
+func TestCleanupStatsJobInvokesDriver(t *testing.T) {
+	type deleteCall struct {
+		collection string
+		cond       condition.Cond
+		force      bool
+	}
+	var calls []deleteCall
+
+	drv := &cleanupStubDriver{
+		deleteFn: func(_ context.Context, col string, cond condition.Cond, force bool) (int, error) {
+			calls = append(calls, deleteCall{col, cond, force})
+			return 1, nil
+		},
+	}
+
+	retention := 400 * 24 * time.Hour
+	ij := CleanupStatsAsIntervalJob(drv, fixedStatsRetention{retention})
+
+	require.Equal(t, 24*time.Hour, ij.Interval)
+	require.Equal(t, "cleanup_stats", ij.Job.Name())
+	require.NoError(t, ij.Job.Run(context.Background()))
+	require.Len(t, calls, 1)
+
+	got := calls[0]
+	require.Equal(t, "stats", got.collection)
+	require.True(t, got.force)
+	require.Equal(t, condition.OpLt, got.cond.Op)
+	require.Equal(t, "bucket", got.cond.Field)
+
+	// The cutoff must be approximately now minus the retention window.
+	expectedCutoff := time.Now().Add(-retention).Unix()
+	cutoff, ok := got.cond.Value.(int64)
+	require.True(t, ok, "cond.Value must be int64, got %T", got.cond.Value)
+	require.InDelta(t, float64(expectedCutoff), float64(cutoff), 5, "cutoff should be within 5s of expected")
 }

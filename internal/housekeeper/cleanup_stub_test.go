@@ -10,13 +10,15 @@ import (
 )
 
 // cleanupStubDriver is the narrowest db.Driver implementation that lets the
-// CleanupSnoozeJob / CleanupNotificationJob unit tests assert "the factory
-// called the right driver method" without standing up a real backend.
-// snoozeFn / notificationFn capture the per-test expectation; every other
-// method is a zero-value passthrough.
+// CleanupSnoozeJob / CleanupNotificationJob / CleanupStatsAsIntervalJob unit
+// tests assert "the factory called the right driver method" without standing
+// up a real backend.
+// snoozeFn / notificationFn / deleteFn capture the per-test expectation; every
+// other method is a zero-value passthrough.
 type cleanupStubDriver struct {
 	snoozeFn       func() (int, error)
 	notificationFn func() (int, error)
+	deleteFn       func(ctx context.Context, collection string, cond condition.Cond, force bool) (int, error)
 }
 
 func (c *cleanupStubDriver) Search(context.Context, string, condition.Cond, db.Page) ([]db.Document, int, error) {
@@ -37,7 +39,10 @@ func (c *cleanupStubDriver) ReplaceOne(context.Context, string, db.Document, db.
 func (c *cleanupStubDriver) UpdateOne(context.Context, string, string, db.Document, bool) error {
 	return nil
 }
-func (c *cleanupStubDriver) Delete(context.Context, string, condition.Cond, bool) (int, error) {
+func (c *cleanupStubDriver) Delete(ctx context.Context, collection string, cond condition.Cond, force bool) (int, error) {
+	if c.deleteFn != nil {
+		return c.deleteFn(ctx, collection, cond, force)
+	}
 	return 0, nil
 }
 func (c *cleanupStubDriver) BulkIncrement(context.Context, string, []db.IncrementOp, bool) error {
