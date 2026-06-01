@@ -267,6 +267,10 @@ func (p *Plugin) dispatch(ctx context.Context, e Entry, rec snoozetypes.Record) 
 		return
 	}
 
+	// Count one notification_sent per matched notification entry dispatch.
+	plugins.RecordStat(p.host, rec.DateEpoch, "notification_sent",
+		map[string]string{"name": e.Name}, 1)
+
 	for _, name := range e.Actions {
 		ad, ok := p.lookupAction(ctx, name)
 		if !ok {
@@ -413,19 +417,32 @@ func (p *Plugin) injectFunc(rec snoozetypes.Record) plugins.InjectFunc {
 // fresh background context capped by notifierSendTimeout. The pipeline ctx is
 // intentionally not propagated: it is cancelled as soon as Process returns,
 // which would prematurely abort every Notifier round-trip.
+//
+// notification, action, and rec.DateEpoch are passed as named parameters (value
+// copies), so the goroutine closure captures them safely even when fireSend is
+// called inside a loop over e.Actions — no loop-variable capture bug.
 func (p *Plugin) fireSend(notifier plugins.Notifier, rec snoozetypes.Record, payload plugins.NotificationPayload, notification, action string) {
+	host := p.host
+	eventEpoch := rec.DateEpoch
 	go func() {
 		sendCtx, cancel := context.WithTimeout(context.Background(), notifierSendTimeout)
 		defer cancel()
-		if err := notifier.Send(sendCtx, rec, payload); err != nil {
+		sendErr := notifier.Send(sendCtx, rec, payload)
+		if sendErr != nil {
 			if lg := p.logger(); lg != nil {
 				lg.Warn("notification: notifier send failed",
 					"notification", notification,
 					"action", action,
 					"selected", payload.Template,
-					"err", err)
+					"err", sendErr)
 			}
 		}
+		metric := "action_success"
+		if sendErr != nil {
+			metric = "action_error"
+		}
+		plugins.RecordStat(host, eventEpoch, metric,
+			map[string]string{"name": action}, 1)
 	}()
 }
 

@@ -2,6 +2,7 @@ package notification
 
 import (
 	"context"
+	"errors"
 	"log/slog"
 	"path/filepath"
 	"sync"
@@ -15,6 +16,7 @@ import (
 
 	"github.com/snoozeweb/snooze/internal/config"
 	"github.com/snoozeweb/snooze/internal/db"
+	"github.com/snoozeweb/snooze/internal/db/asyncwriter"
 	dbsqlite "github.com/snoozeweb/snooze/internal/db/sqlite"
 	"github.com/snoozeweb/snooze/internal/plugins"
 	"github.com/snoozeweb/snooze/internal/telemetry"
@@ -74,6 +76,85 @@ func (n *injectingNotifier) Reload(context.Context) error                 { retu
 func (n *injectingNotifier) Send(_ context.Context, _ snoozetypes.Record, payload plugins.NotificationPayload) error {
 	plugins.InjectField(payload.Inject, n.field, n.value)
 	return nil
+}
+
+// failingNotifier is a fake Notifier whose Send always returns a non-nil error.
+// It counts calls via the same atomic counter used by recordingNotifier so that
+// waitForCalls cannot be used on it (it has no Calls slice), but callers can
+// wait on Total() directly.
+type failingNotifier struct {
+	name  string
+	total atomic.Int64
+}
+
+func (n *failingNotifier) Name() string                                 { return n.name }
+func (n *failingNotifier) Metadata() plugins.Metadata                   { return plugins.Metadata{Name: n.name} }
+func (n *failingNotifier) PostInit(context.Context, plugins.Host) error { return nil }
+func (n *failingNotifier) Reload(context.Context) error                 { return nil }
+
+func (n *failingNotifier) Send(_ context.Context, _ snoozetypes.Record, _ plugins.NotificationPayload) error {
+	n.total.Add(1)
+	return errors.New("send: simulated failure")
+}
+
+// incCaptureDriver wraps the SQLite driver and overrides BulkIncrement to
+// capture increment operations so tests can inspect what RecordStat emits.
+type incCaptureDriver struct {
+	db.Driver
+	mu    sync.Mutex
+	calls []capturedInc
+}
+
+type capturedInc struct {
+	collection, field string
+	search            db.Document
+	delta             int64
+}
+
+func (d *incCaptureDriver) BulkIncrement(ctx context.Context, collection string, ops []db.IncrementOp, upsert bool) error {
+	d.mu.Lock()
+	for _, op := range ops {
+		for field, delta := range op.Deltas {
+			d.calls = append(d.calls, capturedInc{
+				collection: collection,
+				field:      field,
+				search:     op.Search,
+				delta:      delta,
+			})
+		}
+	}
+	d.mu.Unlock()
+	// Also write through so the test SQLite driver stays consistent.
+	return d.Driver.BulkIncrement(ctx, collection, ops, upsert)
+}
+
+func (d *incCaptureDriver) Captured() []capturedInc {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	out := make([]capturedInc, len(d.calls))
+	copy(out, d.calls)
+	return out
+}
+
+// metricsTestHost extends testHost with AsyncWriter support so that
+// plugins.RecordStat routes writes through the capturing driver.
+type metricsTestHost struct {
+	*testHost
+	writer *asyncwriter.Writer
+}
+
+func (h *metricsTestHost) AsyncWriter() *asyncwriter.Writer { return h.writer }
+
+// newMetricsHost wires a fresh SQLite driver wrapped in incCaptureDriver,
+// then builds a metricsTestHost whose asyncwriter.Writer flushes into it.
+func newMetricsHost(t *testing.T) (*metricsTestHost, *incCaptureDriver) {
+	t.Helper()
+	inner := newHost(t)
+	cap := &incCaptureDriver{Driver: inner.driver}
+	inner.driver = cap
+	w := asyncwriter.New(cap, time.Hour, asyncwriter.NewMockClock(time.Unix(0, 0)),
+		asyncwriter.WithUpsert(true))
+	return &metricsTestHost{testHost: inner, writer: w}, cap
 }
 
 // testHost is a minimal plugins.Host suitable for the notification plugin.
@@ -385,4 +466,108 @@ func TestNotification(t *testing.T) {
 		time.Sleep(50 * time.Millisecond)
 		require.Empty(t, notifier.Calls(), "frequency.total == 0 must suppress the send")
 	})
+}
+
+// TestNotificationStats verifies that Process increments notification_sent once
+// per matched notification entry, and action_success / action_error once per
+// action (keyed by action name) after each Notifier.Send returns.
+func TestNotificationStats(t *testing.T) {
+	host, cap := newMetricsHost(t)
+
+	// Two actions: one whose notifier succeeds, one whose notifier fails.
+	writeActions(t, host.testHost, []map[string]any{
+		{
+			"name": "GoodAction",
+			"action": map[string]any{
+				"selected":   "good-notifier",
+				"subcontent": map[string]any{},
+			},
+		},
+		{
+			"name": "BadAction",
+			"action": map[string]any{
+				"selected":   "bad-notifier",
+				"subcontent": map[string]any{},
+			},
+		},
+	})
+	writeEntries(t, host.testHost, []map[string]any{
+		{
+			"name":      "MyNotification",
+			"condition": []any{},
+			"actions":   []any{"GoodAction", "BadAction"},
+		},
+	})
+
+	good := &recordingNotifier{name: "good-notifier"}
+	bad := &failingNotifier{name: "bad-notifier"}
+	host.testHost.plugins["good-notifier"] = good
+	host.testHost.plugins["bad-notifier"] = bad
+
+	p := &Plugin{meta: plugins.Metadata{Name: "notification"}}
+	require.NoError(t, p.PostInit(context.Background(), host))
+
+	// eventEpoch 1780302245 → UTC hour bucket 1780300800
+	const eventEpoch = int64(1780302245)
+	rec := snoozetypes.Record{
+		UID:        "uid-stats-test",
+		Host:       "myhost01",
+		Message:    "stats test",
+		Timestamp:  time.Now(),
+		DateEpoch:  eventEpoch,
+	}
+
+	_, err := p.Process(context.Background(), rec)
+	require.NoError(t, err)
+
+	// Wait for the good send to complete, then also wait for the bad send.
+	waitForCalls(t, good, 1, time.Second)
+	deadline := time.Now().Add(time.Second)
+	for time.Now().Before(deadline) {
+		if bad.total.Load() >= 1 {
+			break
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+	require.GreaterOrEqual(t, bad.total.Load(), int64(1), "bad notifier should have been called")
+
+	// Flush the async writer so the incCaptureDriver sees all BulkIncrement ops.
+	require.NoError(t, host.writer.Flush(context.Background()))
+
+	ops := cap.Captured()
+
+	// Helper: find ops matching a given metric+name combination.
+	find := func(metric, nameKey string) []capturedInc {
+		var found []capturedInc
+		for _, op := range ops {
+			if op.search["metric"] == metric &&
+				op.search["dim"] == "name" &&
+				op.search["key"] == nameKey {
+				found = append(found, op)
+			}
+		}
+		return found
+	}
+
+	const wantBucket = int64(1780300800)
+
+	// Exactly one notification_sent for "MyNotification".
+	sentOps := find("notification_sent", "MyNotification")
+	require.Len(t, sentOps, 1, "expected exactly 1 notification_sent op for MyNotification")
+	require.Equal(t, "stats", sentOps[0].collection)
+	require.Equal(t, "value", sentOps[0].field)
+	require.Equal(t, int64(1), sentOps[0].delta)
+	require.Equal(t, wantBucket, sentOps[0].search["bucket"])
+
+	// Exactly one action_success for "GoodAction".
+	successOps := find("action_success", "GoodAction")
+	require.Len(t, successOps, 1, "expected exactly 1 action_success op for GoodAction")
+	require.Equal(t, int64(1), successOps[0].delta)
+	require.Equal(t, wantBucket, successOps[0].search["bucket"])
+
+	// Exactly one action_error for "BadAction".
+	errorOps := find("action_error", "BadAction")
+	require.Len(t, errorOps, 1, "expected exactly 1 action_error op for BadAction")
+	require.Equal(t, int64(1), errorOps[0].delta)
+	require.Equal(t, wantBucket, errorOps[0].search["bucket"])
 }
