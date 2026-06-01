@@ -176,6 +176,12 @@ setting_form:
         description: 'Retention window for audit log entries (Go duration string).'
         default_value: '672h'
         group: 'housekeeping'
+    housekeeping.cleanup_stats:
+        display_name: 'Stats retention'
+        component: 'String'
+        description: 'Retention window for dashboard stat counters (Go duration string, e.g. "9600h" = 400d).'
+        default_value: '9600h'
+        group: 'housekeeping'
     housekeeping.cleanup_orphans:
         display_name: 'Orphan cleanup interval'
         component: 'String'
