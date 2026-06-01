@@ -562,6 +562,43 @@ paths:
             application/json:
               schema: {$ref: '#/components/schemas/ErrEnvelope'}
 
+  /api/v1/stats:
+    get:
+      tags: [crud]
+      summary: Dashboard aggregate statistics
+      description: |
+        Returns time-series counters, per-dimension totals, a live record
+        snapshot and a weekday distribution for the requested time window.
+        `from` and `to` are RFC3339 timestamps (or Unix epoch seconds);
+        `bucket` is the series resolution in seconds (default 3600).
+      parameters:
+        - name: from
+          in: query
+          required: true
+          schema: {type: string}
+          description: Window start — RFC3339 or Unix epoch seconds.
+        - name: to
+          in: query
+          required: true
+          schema: {type: string}
+          description: Window end — RFC3339 or Unix epoch seconds.
+        - name: bucket
+          in: query
+          required: false
+          schema: {type: integer, default: 3600}
+          description: Series bucket size in seconds.
+      responses:
+        '200':
+          description: Aggregated statistics.
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/StatsResponse'}
+        '400':
+          description: Bad `from` or `to` parameter.
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/ErrEnvelope'}
+
   /api/v1/{plugin}:
     parameters:
       - {$ref: '#/components/parameters/PluginPath'}
@@ -1061,3 +1098,117 @@ components:
               text: {type: string}
               value: {}
       additionalProperties: true
+
+    StatsResponse:
+      type: object
+      required: [data, meta]
+      properties:
+        data:
+          $ref: '#/components/schemas/StatsData'
+        meta:
+          $ref: '#/components/schemas/StatsMeta'
+
+    StatsData:
+      type: object
+      required: [series, totals, snapshot, weekday]
+      properties:
+        series:
+          type: array
+          items:
+            $ref: '#/components/schemas/SeriesBucket'
+        totals:
+          $ref: '#/components/schemas/StatsTotals'
+        snapshot:
+          $ref: '#/components/schemas/StatsSnapshot'
+        weekday:
+          type: object
+          description: "Alert counts keyed by weekday (\"0\" = Sunday … \"6\" = Saturday)."
+          additionalProperties: {type: integer}
+
+    SeriesBucket:
+      type: object
+      required: [t, counts]
+      properties:
+        t:
+          type: string
+          format: date-time
+          description: "Bucket start timestamp (RFC3339)."
+        counts:
+          type: object
+          description: "Per-series alert counts for this bucket."
+          additionalProperties: {type: integer}
+
+    StatsTotals:
+      type: object
+      required:
+        - by_severity
+        - by_environment
+        - by_host
+        - by_action_success
+        - by_action_failure
+        - by_throttled
+        - by_snoozed
+        - by_notification
+      properties:
+        by_severity:
+          type: object
+          additionalProperties: {type: integer}
+        by_environment:
+          type: object
+          additionalProperties: {type: integer}
+        by_host:
+          type: object
+          description: "Top-10 hosts by alert count."
+          additionalProperties: {type: integer}
+        by_action_success:
+          type: object
+          additionalProperties: {type: integer}
+        by_action_failure:
+          type: object
+          additionalProperties: {type: integer}
+        by_throttled:
+          type: object
+          additionalProperties: {type: integer}
+        by_snoozed:
+          type: object
+          additionalProperties: {type: integer}
+        by_notification:
+          type: object
+          additionalProperties: {type: integer}
+
+    StatsSnapshot:
+      type: object
+      required: [by_state, total_hits, open, ack, closed]
+      properties:
+        by_state:
+          type: object
+          description: "Alert counts keyed by state string."
+          additionalProperties: {type: integer}
+        total_hits:
+          type: integer
+          description: "Total alert hits in the requested window."
+        open:
+          type: integer
+          description: "Count of records currently in the open state."
+        ack:
+          type: integer
+          description: "Count of records currently in the ack state."
+        closed:
+          type: integer
+          description: "Count of records currently in the close state."
+
+    StatsMeta:
+      type: object
+      required: [from, to, bucket]
+      properties:
+        from:
+          type: string
+          format: date-time
+          description: "Actual window start used by the server (RFC3339)."
+        to:
+          type: string
+          format: date-time
+          description: "Actual window end used by the server (RFC3339)."
+        bucket:
+          type: integer
+          description: "Series bucket size in seconds."

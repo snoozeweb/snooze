@@ -386,6 +386,197 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/login/refresh": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Exchange a refresh token for a new access+refresh pair
+         * @description Validates the supplied refresh token, revokes it, and issues a
+         *     fresh access token alongside a rotated refresh token. The caller
+         *     must replace its stored pair with the new one — the previous
+         *     refresh token is no longer valid. An invalid, expired, revoked
+         *     or unknown token returns 401 with a generic message.
+         *
+         *     Roles and permissions are re-resolved on every refresh so an
+         *     admin's revocation of a permission takes effect within the
+         *     access-token lease (default 1 hour).
+         *
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["RefreshRequest"];
+                };
+            };
+            responses: {
+                /** @description New access + refresh pair. */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["LoginResponse"];
+                    };
+                };
+                /** @description Invalid, expired, revoked or unknown refresh token. */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrEnvelope"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/login/logout": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Revoke a refresh token
+         * @description Best-effort revocation of the supplied refresh token. Unknown or
+         *     already-revoked tokens are treated as no-ops — the endpoint
+         *     always returns 204 so a client cleaning up state never sees a
+         *     500. The access token (Bearer JWT) is not revoked: it continues
+         *     to be valid until its own expiry. Clients should drop both
+         *     tokens client-side after calling this endpoint.
+         *
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: {
+                content: {
+                    "application/json": components["schemas"]["RefreshRequest"];
+                };
+            };
+            responses: {
+                /** @description Logout acknowledged (idempotent). */
+                204: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/user/me/password": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Self-service password change
+         * @description Replaces the authenticated user's password. Only available when
+         *     the caller's JWT `method` claim is `local` — LDAP / anonymous
+         *     accounts are managed by their backing provider.
+         *
+         *     The caller MUST supply their current password; the server
+         *     re-runs the bcrypt comparison through the same code path as
+         *     `/api/v1/login/local`, so the failure mode (and timing) is
+         *     identical to a bad-credentials login.
+         *
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": {
+                        /** @description The caller's current password. */
+                        current_password: string;
+                        /** @description The new password (bcrypt-hashed server-side). */
+                        password: string;
+                    };
+                };
+            };
+            responses: {
+                /** @description Password updated. */
+                204: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description Missing claims or wrong current password. */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrEnvelope"];
+                    };
+                };
+                /** @description Caller's auth method is not `local`; self-service password
+                 *     change is not available for that backend.
+                 *      */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrEnvelope"];
+                    };
+                };
+                /** @description Empty body field(s). */
+                422: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrEnvelope"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/alerts": {
         parameters: {
             query?: never;
@@ -452,13 +643,17 @@ export interface paths {
          *     payload schema is source-specific; see each integration's
          *     documentation for the wire format.
          *
+         *     Receivers are unauthenticated by default. When `ingest.token` is
+         *     configured every request must carry it as
+         *     `Authorization: Bearer <token>` or `?token=<token>`.
+         *
          */
         post: {
             parameters: {
                 query?: never;
                 header?: never;
                 path: {
-                    webhook: "alertmanager" | "grafana" | "influxdb2" | "kapacitor" | "prometheus";
+                    webhook: "alertmanager" | "azuremonitor" | "cloudwatch" | "datadog" | "grafana" | "influxdb2" | "kapacitor" | "newrelic" | "prometheus" | "sentry";
                 };
                 cookie?: never;
             };
@@ -480,6 +675,66 @@ export interface paths {
                             data?: components["schemas"]["Record"][];
                         };
                     };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/webhook/heartbeat": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Heartbeat ping (dead-man's-switch)
+         * @description Keep a heartbeat alive: stamps the named heartbeat's `last_seen`
+         *     to now. Public, but each ping must present the heartbeat's
+         *     server-generated per-record token (a configured `ingest.token`
+         *     applies on top). `GET` is also accepted.
+         *
+         */
+        post: {
+            parameters: {
+                query: {
+                    /** @description The heartbeat name. */
+                    name: string;
+                    /** @description The heartbeat's server-generated secret token. */
+                    token: string;
+                };
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Heartbeat stamped. */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description Missing or invalid token. */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description No heartbeat with that name. */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
                 };
             };
         };
@@ -570,6 +825,165 @@ export interface paths {
                 };
                 /** @description Plugin has no schema. */
                 404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrEnvelope"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/metadata": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List every registered plugin's metadata
+         * @description Returns the parsed `metadata.yaml` of every registered plugin
+         *     (name / display_name / icon / action_form / widgets / etc.).
+         *     The React frontend uses this to render plugin-defined typed
+         *     forms — e.g. the Action sub-types (Mail, Webhook, Patlite) —
+         *     instead of free-form JSON textareas.
+         *
+         *     Plugins are sorted by name so the payload is deterministic.
+         *
+         */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Plugin metadata list. */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            data?: components["schemas"]["Metadata"][];
+                        };
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/metadata/{plugin}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Fetch a single plugin's metadata */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    /** @description Plugin / collection name. The built-in set is enumerated in
+                     *     `internal/pluginimpl/all/all.go`.
+                     *      */
+                    plugin: components["parameters"]["PluginPath"];
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Plugin metadata. */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            data?: components["schemas"]["Metadata"];
+                        };
+                    };
+                };
+                /** @description Plugin not registered. */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrEnvelope"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/stats": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Dashboard aggregate statistics
+         * @description Returns time-series counters, per-dimension totals, a live record
+         *     snapshot and a weekday distribution for the requested time window.
+         *     `from` and `to` are RFC3339 timestamps (or Unix epoch seconds);
+         *     `bucket` is the series resolution in seconds (default 3600).
+         *
+         */
+        get: {
+            parameters: {
+                query: {
+                    /** @description Window start — RFC3339 or Unix epoch seconds. */
+                    from: string;
+                    /** @description Window end — RFC3339 or Unix epoch seconds. */
+                    to: string;
+                    /** @description Series bucket size in seconds. */
+                    bucket?: number;
+                };
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Aggregated statistics. */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["StatsResponse"];
+                    };
+                };
+                /** @description Bad `from` or `to` parameter. */
+                400: {
                     headers: {
                         [name: string]: unknown;
                     };
@@ -961,12 +1375,32 @@ export interface components {
             password: string;
         };
         LoginResponse: {
-            /** @description HS256 JWT. Send as `Authorization: Bearer <token>`. */
+            /** @description HS256 JWT access token. Send as `Authorization: Bearer <token>`. */
             token: string;
-            /** Format: date-time */
+            /**
+             * Format: date-time
+             * @description Absolute expiry of the access token.
+             */
             expires_at: string;
+            /** @description Opaque refresh token. Present on initial login and on every
+             *     `/api/v1/login/refresh` response. Store securely on the client;
+             *     POST it to `/api/v1/login/refresh` to mint a new access token
+             *     and POST it to `/api/v1/login/logout` to revoke the session.
+             *     Each refresh rotates the token — the previous value is revoked
+             *     server-side and a new one is returned.
+             *      */
+            refresh_token?: string;
+            /**
+             * Format: date-time
+             * @description Absolute expiry of the refresh token.
+             */
+            refresh_expires_at?: string;
             /** @enum {string} */
             method: "local" | "ldap" | "anonymous";
+        };
+        RefreshRequest: {
+            /** @description The refresh token returned by a prior login or refresh. */
+            refresh_token: string;
         };
         /** @description The canonical alert document moving through the Snooze
          *     pipeline. Mirrors `pkg/snoozetypes.Record`. Fields are
@@ -1020,7 +1454,166 @@ export interface components {
                 [key: string]: unknown;
             };
             request_id?: string;
-            trace_id?: string;
+        };
+        /** @description Parsed `metadata.yaml` for a registered plugin. Mirrors
+         *     `plugins.Metadata` in Go. Field keys are snake_case (JSON tags
+         *     align with the YAML keys so the frontend reads the document
+         *     verbatim).
+         *      */
+        Metadata: {
+            /** @description Registry key (machine-readable identifier; matches `Plugin.Name()`
+             *     on the server). Injected by the metadata HTTP handler — stable
+             *     across plugins regardless of what their YAML `name:` field carries.
+             *     Use this (not `name`) to match a notification action's `action.selected`.
+             *      */
+            plugin_name: string;
+            /** @description Display label taken from the plugin's YAML `name:` field (e.g. "Send email", "Run a script"). Use `plugin_name` for machine matching. */
+            name: string;
+            /** @description Human-readable label (YAML `desc`). */
+            display_name?: string;
+            /** @description Icon glyph name. */
+            icon?: string;
+            default_sorting?: string;
+            default_ordering?: string;
+            auto_reload?: boolean;
+            /** @description Free-form per-plugin widget descriptors. */
+            widgets?: {
+                [key: string]: unknown;
+            };
+            /** @description Per-field form descriptor keyed by field name. */
+            action_form?: {
+                [key: string]: components["schemas"]["FormField"];
+            };
+            /** @description Typed catalogue of runtime settings (settings plugin only). Same
+             *     FormField shape as `action_form`; the optional `group` field on
+             *     each entry lets the frontend render the picker grouped by section.
+             *      */
+            setting_form?: {
+                [key: string]: components["schemas"]["FormField"];
+            };
+            /** @description Permission strings the plugin contributes. */
+            provides?: string[];
+            /** @description Per-route overrides, keyed by route path. */
+            routes?: {
+                [key: string]: {
+                    class_name?: string;
+                    check_permissions?: boolean;
+                    primary_key?: string[];
+                    duplicate_policy?: string;
+                    authentication?: boolean;
+                };
+            };
+            options?: {
+                [key: string]: unknown;
+            };
+            search_fields?: string[];
+            audit?: boolean;
+            force_order?: number;
+            tree?: boolean;
+        } & {
+            [key: string]: unknown;
+        };
+        /** @description One field of a plugin's `action_form`. The React frontend renders
+         *     a typed input based on `component`; `options` populates choice
+         *     widgets (Selector, Radio).
+         *      */
+        FormField: {
+            display_name?: string;
+            /** @description Widget kind (e.g. String, Number, Text, Selector, Radio, Password). */
+            component?: string;
+            description?: string;
+            required?: boolean;
+            default_value?: unknown;
+            /** @description Logical section the field belongs to (e.g. "general" or
+             *     "notification" for settings). Used by the frontend to render
+             *     grouped pickers; ignored by the server.
+             *      */
+            group?: string;
+            options?: {
+                text?: string;
+                value?: unknown;
+            }[];
+        } & {
+            [key: string]: unknown;
+        };
+        StatsResponse: {
+            data: components["schemas"]["StatsData"];
+            meta: components["schemas"]["StatsMeta"];
+        };
+        StatsData: {
+            series: components["schemas"]["SeriesBucket"][];
+            totals: components["schemas"]["StatsTotals"];
+            snapshot: components["schemas"]["StatsSnapshot"];
+            /** @description Alert counts keyed by weekday ("0" = Sunday … "6" = Saturday). */
+            weekday: {
+                [key: string]: number;
+            };
+        };
+        SeriesBucket: {
+            /**
+             * Format: date-time
+             * @description Bucket start timestamp (RFC3339).
+             */
+            t: string;
+            /** @description Per-series alert counts for this bucket. */
+            counts: {
+                [key: string]: number;
+            };
+        };
+        StatsTotals: {
+            by_severity: {
+                [key: string]: number;
+            };
+            by_environment: {
+                [key: string]: number;
+            };
+            /** @description Top-10 hosts by alert count. */
+            by_host: {
+                [key: string]: number;
+            };
+            by_action_success: {
+                [key: string]: number;
+            };
+            by_action_failure: {
+                [key: string]: number;
+            };
+            by_throttled: {
+                [key: string]: number;
+            };
+            by_snoozed: {
+                [key: string]: number;
+            };
+            by_notification: {
+                [key: string]: number;
+            };
+        };
+        StatsSnapshot: {
+            /** @description Alert counts keyed by state string. */
+            by_state: {
+                [key: string]: number;
+            };
+            /** @description Total alert hits in the requested window. */
+            total_hits: number;
+            /** @description Count of records currently in the open state. */
+            open: number;
+            /** @description Count of records currently in the ack state. */
+            ack: number;
+            /** @description Count of records currently in the close state. */
+            closed: number;
+        };
+        StatsMeta: {
+            /**
+             * Format: date-time
+             * @description Actual window start used by the server (RFC3339).
+             */
+            from: string;
+            /**
+             * Format: date-time
+             * @description Actual window end used by the server (RFC3339).
+             */
+            to: string;
+            /** @description Series bucket size in seconds. */
+            bucket: number;
         };
     };
     responses: never;
@@ -1028,7 +1621,7 @@ export interface components {
         /** @description Plugin / collection name. The built-in set is enumerated in
          *     `internal/pluginimpl/all/all.go`.
          *      */
-        PluginPath: "action" | "aggregaterule" | "alertmanager" | "audit" | "comment" | "environment" | "grafana" | "influxdb2" | "kapacitor" | "kv" | "mail" | "notification" | "patlite" | "profile" | "prometheus" | "record" | "role" | "rule" | "script" | "settings" | "snooze" | "stats" | "user" | "webhook" | "widget";
+        PluginPath: "action" | "aggregaterule" | "alertmanager" | "audit" | "azuremonitor" | "cloudwatch" | "comment" | "datadog" | "discord" | "environment" | "googlechat" | "grafana" | "heartbeat" | "influxdb2" | "kapacitor" | "kv" | "mail" | "newrelic" | "notification" | "ntfy" | "opsgenie" | "pagerduty" | "patlite" | "profile" | "prometheus" | "pushover" | "record" | "role" | "rule" | "script" | "sentry" | "servicenow" | "settings" | "slack" | "snooze" | "sns" | "stats" | "statuspage" | "telegram" | "twilio" | "user" | "webhook" | "widget";
         /** @description Base64url-encoded JSON condition. Empty (or absent) selects
          *     every document. Use `POST /{plugin}/search` for queries that
          *     won't fit in a URL.
