@@ -98,9 +98,11 @@ func (c *Core) bootRoot(ctx context.Context) error {
 }
 
 // bootAsync constructs the async writer. The goroutine launches when Run is
-// called.
+// called. upsert=true is required so that the first increment for a new
+// {metric,dim,key,bucket} tuple inserts the counter doc rather than being
+// silently dropped by BulkIncrement's no-match skip path.
 func (c *Core) bootAsync() error {
-	c.Async = asyncwriter.New(c.Driver, asyncFlushInterval, nil)
+	c.Async = asyncwriter.New(c.Driver, asyncFlushInterval, nil, asyncwriter.WithUpsert(true))
 	return nil
 }
 
@@ -303,7 +305,6 @@ func (c *Core) bootHousekeeper() error {
 			liveInterval(func(h config.HousekeeperConfig) time.Duration { return h.CleanupAudit.AsDuration() }, 28*24*time.Hour)),
 		liveIntervalReg(housekeeper.CleanupStatsAsIntervalJob(c.Driver, c.Settings),
 			liveInterval(func(h config.HousekeeperConfig) time.Duration { return h.CleanupStats.AsDuration() }, 400*24*time.Hour)),
-		cronReg(housekeeper.RenumberJob(c.Driver, "stats", "date_epoch")),
 	}
 
 	for _, j := range jobs {
