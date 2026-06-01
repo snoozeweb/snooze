@@ -81,7 +81,43 @@ Total number of notification actions that failed.
 
 Snooze web interface has a few built-in charts displaying these metrics under its dashboard section.
 
-### Alerts
+### Dashboard stat counters
+
+The dashboard reads **DB-persisted hourly counter buckets** that the server
+writes as alerts flow through the pipeline. This means:
+
+- **History is forward-only.** Counters begin accumulating from the moment the
+  server first runs after upgrade. No data exists for periods before that.
+- **Resolution is hourly.** Each bucket covers one clock-hour; chart points are
+  aggregated from those buckets.
+- **Gate:** all counter writes (and the dashboard) are disabled when
+  `general.metrics_enabled` is `false`. See
+  [General configuration](../configuration/general.md#metrics_enabled).
+
+The following counter series are tracked:
+
+| Series | What it counts |
+|--------|---------------|
+| `alert_hit` | Alerts that completed the processing pipeline (one increment per alert, at each terminal outcome) |
+| `alert_throttled` | Alerts suppressed by an aggregate rule's throttle window |
+| `alert_snoozed` | Alerts matched by a snooze filter |
+| `notification_sent` | Notifications dispatched by the notification plugin |
+| `action_success` | Individual notification actions that completed successfully |
+| `action_error` | Individual notification actions that failed |
+
+Each series also carries a **by-state breakdown** (open / ack / close / …) and
+a **top-host breakdown** so the dashboard can surface which hosts generate the
+most traffic.
+
+### Retention
+
+Counter buckets older than the configured retention window are pruned by the
+housekeeper. The retention period defaults to **400 days** (`9600h`) and is
+tunable via `housekeeping.cleanup_stats` — editable in **Settings →
+Housekeeping** without a restart. See
+[Housekeeper configuration](../configuration/housekeeping.md#cleanup_stats).
+
+### Alerts chart
 
 ![](./images/web_dashboard.png)
 
@@ -89,15 +125,13 @@ The time interval for displaying the metrics can be changed freely. It has a few
 
 :::tip
 
-Hint
-
-:::
-
 Clicking on a point of the chart will redirect to the alert section showing only alerts during around this period.
 
 Clicking on a label will filter it in/out.
 
-Changing the time interval will also affect all other charts time inteval as well.
+Changing the time interval will also affect all other charts time interval as well.
+
+:::
 
 ### Other charts
 

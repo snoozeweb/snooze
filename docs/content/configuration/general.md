@@ -50,7 +50,9 @@ The Go schema lives in `internal/config/schema/general.go`.
 > Default  
 > `True`
 >
-> Enable Prometheus metrics
+> Enable Prometheus metrics (the `/metrics` scrape endpoint) **and** dashboard
+> stat counter writes. When set to `false`, no counter buckets are persisted and
+> the dashboard charts will be empty.
 
 ### anonymous_enabled
 

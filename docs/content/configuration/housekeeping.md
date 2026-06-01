@@ -112,6 +112,19 @@ The Go schema lives in `internal/config/schema/housekeeper.go`.
 >
 > Cleanup notifications that have been expired for the given duration (in seconds). Run daily
 
+### cleanup_stats
+
+> Type  
+> string (Go duration)
+>
+> Default  
+> `"9600h"` (400 days)
+>
+> Retention window for dashboard stat counter buckets. Buckets older than
+> this duration are pruned by the housekeeper. Accepts Go duration strings
+> (e.g. `"720h"`, `"4320h"`). Editable at runtime in **Settings →
+> Housekeeping** without a server restart.
+
 ### renumber_field
 
 > Type  

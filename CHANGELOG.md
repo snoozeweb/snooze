@@ -22,6 +22,14 @@
   plugin runs and deliberately keep their prior attribution.
 
 ### Added
+- **Restore dashboard stat counters.** The dashboard now shows DB-persisted
+  hourly counter series for hits / throttled / snoozed / notifications /
+  action success / action errors, with by-state and top-host breakdowns.
+  Counters accrue forward-only from the first run after upgrade; chart
+  resolution is hourly. Counter writes and the dashboard are gated on
+  `general.metrics_enabled`. Operator-configurable retention via
+  `housekeeping.cleanup_stats` (default `9600h` = 400 days), editable in
+  **Settings → Housekeeping** without a restart.
 - `db.Driver.UnsetFields(ctx, collection, fields, cond)` — a portable field
   delete (`$unset` / jsonb `-` / `json_remove`) implemented across all three
   backends. Unlike a merge write, it truly removes the key so `EXISTS field`
