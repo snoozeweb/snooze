@@ -5,6 +5,7 @@ import (
 
 	"github.com/snoozeweb/snooze/internal/config"
 	"github.com/snoozeweb/snooze/internal/db"
+	"github.com/snoozeweb/snooze/internal/db/asyncwriter"
 	"github.com/snoozeweb/snooze/internal/plugins"
 	"github.com/snoozeweb/snooze/internal/telemetry"
 )
@@ -41,6 +42,12 @@ func (c *Core) Bus() plugins.Bus {
 // DB-stored settings. Implements plugins.RuntimeSettingsHost so the
 // settings plugin can invalidate the cache after a write.
 func (c *Core) RuntimeSettings() *config.RuntimeSettings { return c.Settings }
+
+// AsyncWriter returns the batched-increment coalescer built at boot. Plugins
+// reach it through the optional plugins.AsyncWriterHost capability rather than
+// the base Host contract. Returns nil in tests that construct a Core without
+// bootAsync().
+func (c *Core) AsyncWriter() *asyncwriter.Writer { return c.Async }
 
 // Compile-time guarantee that *Core satisfies plugins.Host.
 var (
