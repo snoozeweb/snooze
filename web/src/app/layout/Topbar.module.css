@@ -40,3 +40,9 @@
   background: var(--bg-hover);
   color: var(--text-strong);
 }
+.sep {
+  width: 1px;
+  height: 16px;
+  background: var(--border);
+  flex-shrink: 0;
+}

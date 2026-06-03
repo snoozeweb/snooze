@@ -8,6 +8,7 @@ import {
   createRouter,
   RouterProvider,
 } from "@tanstack/react-router";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { authStore } from "@/lib/auth/store";
 import { Topbar } from "./Topbar";
 
@@ -23,13 +24,23 @@ function renderTopbar(props: Parameters<typeof Topbar>[0]) {
     path: "/web/login",
     component: () => <p>Login</p>,
   });
-  const tree = root.addChildren([profile, login]);
+  const alerts = createRoute({
+    getParentRoute: () => root,
+    path: "/web/alerts",
+    component: () => <p>Alerts</p>,
+  });
+  const tree = root.addChildren([profile, login, alerts]);
   /* eslint-disable @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-assignment */
   const router = createRouter({
     routeTree: tree,
     history: createMemoryHistory({ initialEntries: ["/"] }),
   }) as any;
-  return render(<RouterProvider router={router} />);
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  return render(
+    <QueryClientProvider client={client}>
+      <RouterProvider router={router} />
+    </QueryClientProvider>,
+  );
   /* eslint-enable @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-assignment */
 }
 
@@ -74,5 +85,10 @@ describe("Topbar", () => {
     renderTopbar({ onOpenPalette: () => undefined });
     await user.click(screen.getByRole("button", { name: /signed in as alice/i }));
     expect(screen.getByRole("menuitem", { name: /profile.*alice/i })).toBeInTheDocument();
+  });
+
+  it("renders the How to button", () => {
+    renderTopbar({ onOpenPalette: () => undefined });
+    expect(screen.getByRole("button", { name: /how to/i })).toBeInTheDocument();
   });
 });

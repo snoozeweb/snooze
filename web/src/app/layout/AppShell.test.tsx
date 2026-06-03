@@ -8,6 +8,7 @@ import {
   createMemoryHistory,
   Outlet,
 } from "@tanstack/react-router";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { authStore } from "@/lib/auth/store";
 import { AppShell } from "./AppShell";
 
@@ -38,7 +39,12 @@ function setup(pathname = "/web/alerts") {
     routeTree: tree,
     history: createMemoryHistory({ initialEntries: [pathname] }),
   }) as any;
-  return render(<RouterProvider router={router} />);
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  return render(
+    <QueryClientProvider client={client}>
+      <RouterProvider router={router} />
+    </QueryClientProvider>,
+  );
   /* eslint-enable @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-assignment */
 }
 

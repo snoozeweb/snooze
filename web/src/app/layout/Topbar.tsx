@@ -5,6 +5,7 @@ import { Kbd } from "@/shared/ui/Kbd";
 import { Menu, MenuContent, MenuItem, MenuSeparator, MenuTrigger } from "@/shared/ui/Menu";
 import { useTheme } from "@/shared/hooks/useTheme";
 import { useAuth } from "@/lib/auth/store";
+import { HowToMenu } from "./HowToMenu";
 import styles from "./Topbar.module.css";
 
 export type TopbarProps = {
@@ -60,6 +61,8 @@ export function Topbar({ breadcrumb, onOpenPalette }: TopbarProps) {
           <span>Search…</span>
           <Kbd>⌘K</Kbd>
         </button>
+        <HowToMenu />
+        <span className={styles.sep} aria-hidden="true" />
         <IconButton
           icon={theme === "dark" ? "sun" : "moon"}
           label={theme === "dark" ? "Switch to light theme" : "Switch to dark theme"}
