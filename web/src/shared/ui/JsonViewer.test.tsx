@@ -19,9 +19,7 @@ describe("JsonViewer", () => {
     // userEvent.setup() installs a clipboard polyfill on navigator; spy on
     // its writeText so we capture the same instance the component sees.
     const user = userEvent.setup();
-    const writeText = vi
-      .spyOn(navigator.clipboard, "writeText")
-      .mockResolvedValue(undefined);
+    const writeText = vi.spyOn(navigator.clipboard, "writeText").mockResolvedValue(undefined);
     render(<JsonViewer value={value} />);
     await user.click(screen.getByRole("button", { name: /copy/i }));
     expect(writeText).toHaveBeenCalledWith(JSON.stringify(value, null, 2));

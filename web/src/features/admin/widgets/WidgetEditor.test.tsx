@@ -79,7 +79,11 @@ describe("WidgetEditor", () => {
     await user.type(host, "192.0.2.10");
     await user.click(screen.getByRole("button", { name: /create/i }));
     await waitFor(() => expect(bodies).toHaveLength(1));
-    const body = bodies[0] as { name: string; widget_type: string; config: Record<string, unknown> };
+    const body = bodies[0] as {
+      name: string;
+      widget_type: string;
+      config: Record<string, unknown>;
+    };
     expect(body.name).toBe("patlite-floor1");
     expect(body.widget_type).toBe("patlite");
     expect(body.config).toEqual({ host: "192.0.2.10", port: 80 });
@@ -114,7 +118,11 @@ describe("WidgetEditor", () => {
     await user.type(jsonTextarea!, '{{"url":"https://example.com"}');
     await user.click(screen.getByRole("button", { name: /create/i }));
     await waitFor(() => expect(bodies).toHaveLength(1));
-    const body = bodies[0] as { name: string; widget_type?: string; config: Record<string, unknown> };
+    const body = bodies[0] as {
+      name: string;
+      widget_type?: string;
+      config: Record<string, unknown>;
+    };
     expect(body.name).toBe("custom-widget");
     expect(body.widget_type).toBe("iframe");
     expect(body.config).toEqual({ url: "https://example.com" });

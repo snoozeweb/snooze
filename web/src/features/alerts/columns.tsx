@@ -1,13 +1,7 @@
 import type { ColumnDef } from "@/shared/ui/DataTable";
 import { Badge } from "@/shared/ui/Badge";
 import { Code } from "@/shared/ui/Code";
-import {
-  formatTTL,
-  severityBadgeVariant,
-  stateBadgeVariant,
-  stateLabel,
-  trimDate,
-} from "./format";
+import { formatTTL, severityBadgeVariant, stateBadgeVariant, stateLabel, trimDate } from "./format";
 import type { AlertState, Record_ } from "./types";
 
 // Records carry a `duplicates` counter (int64) bumped by the aggregate-rule

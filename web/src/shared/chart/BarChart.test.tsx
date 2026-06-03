@@ -26,7 +26,9 @@ vi.mock("chart.js", async (importOriginal) => {
 
 type Cfg = {
   data: { labels: string[] };
-  options: { scales: { x: { ticks?: { autoSkip?: boolean } }; y: { ticks?: { autoSkip?: boolean } } } };
+  options: {
+    scales: { x: { ticks?: { autoSkip?: boolean } }; y: { ticks?: { autoSkip?: boolean } } };
+  };
 };
 
 describe("BarChart", () => {
@@ -38,13 +40,20 @@ describe("BarChart", () => {
 
   it("orders categories by descending value when sort='value'", () => {
     captured.config = null;
-    render(<BarChart sort="value" series={[{ label: "Hosts", color: "#000", data: { b: 9, a: 1, c: 5 } }]} />);
+    render(
+      <BarChart
+        sort="value"
+        series={[{ label: "Hosts", color: "#000", data: { b: 9, a: 1, c: 5 } }]}
+      />,
+    );
     expect((captured.config as Cfg).data.labels).toEqual(["b", "c", "a"]);
   });
 
   it("disables auto-skip on the category axis for horizontal charts", () => {
     captured.config = null;
-    render(<BarChart horizontal series={[{ label: "Hosts", color: "#000", data: { a: 1, b: 2 } }]} />);
+    render(
+      <BarChart horizontal series={[{ label: "Hosts", color: "#000", data: { a: 1, b: 2 } }]} />,
+    );
     // horizontal → category axis is y
     expect((captured.config as Cfg).options.scales.y.ticks?.autoSkip).toBe(false);
   });
@@ -63,7 +72,9 @@ describe("BarChart", () => {
     render(<BarChart series={[{ label: "Hosts", color: "#000", data: { alpha: 9, beta: 1 } }]} />);
     type TooltipCfg = {
       options: {
-        plugins: { tooltip: { callbacks: { title: (items: Array<{ dataIndex: number }>) => string } } };
+        plugins: {
+          tooltip: { callbacks: { title: (items: Array<{ dataIndex: number }>) => string } };
+        };
       };
     };
     const title = (captured.config as TooltipCfg).options.plugins.tooltip.callbacks.title;

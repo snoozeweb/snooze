@@ -102,12 +102,7 @@ function ChangePasswordForm() {
         </div>
       </div>
       <div className={styles.formActions}>
-        <Button
-          type="submit"
-          variant="primary"
-          disabled={!canSubmit}
-          loading={submitting}
-        >
+        <Button type="submit" variant="primary" disabled={!canSubmit} loading={submitting}>
           Update password
         </Button>
       </div>

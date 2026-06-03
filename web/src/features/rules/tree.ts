@@ -127,12 +127,10 @@ export function projectDrop(
     // ancestor at the target depth.
     let cursor: FlatNode | undefined = prev;
     while (cursor && cursor.depth >= depth) {
-      const parent = rest.find(
-        (n) => (n.rule.uid ?? n.rule.name) === cursor!.parentId,
-      );
+      const parent = rest.find((n) => (n.rule.uid ?? n.rule.name) === cursor!.parentId);
       cursor = parent;
     }
-    parentId = cursor ? cursor.rule.uid ?? cursor.rule.name : ROOT;
+    parentId = cursor ? (cursor.rule.uid ?? cursor.rule.name) : ROOT;
   }
   return { parentId, depth };
 }

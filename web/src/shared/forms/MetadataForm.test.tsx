@@ -160,11 +160,7 @@ describe("MetadataForm", () => {
     };
     const user = userEvent.setup();
     render(
-      <Harness
-        fields={fields}
-        initial={{ headers: { "X-Token": "abc" } }}
-        onChange={onChange}
-      />,
+      <Harness fields={fields} initial={{ headers: { "X-Token": "abc" } }} onChange={onChange} />,
     );
     // initial row should be visible
     expect(screen.getByDisplayValue("X-Token")).toBeInTheDocument();
@@ -242,10 +238,7 @@ describe("MetadataForm", () => {
       const onChange = vi.fn();
       const user = userEvent.setup();
       render(
-        <FieldHarness
-          field={{ display_name: "URL", component: "String" }}
-          onChange={onChange}
-        />,
+        <FieldHarness field={{ display_name: "URL", component: "String" }} onChange={onChange} />,
       );
       await user.type(document.getElementById("mf-test") as HTMLInputElement, "ab");
       expect(onChange).toHaveBeenLastCalledWith("ab");

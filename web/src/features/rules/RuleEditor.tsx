@@ -15,10 +15,7 @@ import { ModificationList } from "@/shared/modifications/ModificationList";
 import { ApiError } from "@/lib/api/client";
 import type { Condition } from "@/lib/condition/types";
 import type { Modification } from "@/shared/modifications/types";
-import {
-  modificationsFromWire,
-  modificationsToWire,
-} from "@/shared/modifications/wire";
+import { modificationsFromWire, modificationsToWire } from "@/shared/modifications/wire";
 import { DiffSection } from "@/shared/ui/DiffSection";
 import { Rules, AggregateRules } from "./api";
 import type { AggregateRule, Rule } from "./types";
@@ -134,7 +131,9 @@ export function RuleEditor({ plugin, uid, onClose, insertion }: RuleEditorProps)
       });
       const includeThrottle =
         isAggregate &&
-        (typeof throttleWire === "number" ? throttleWire > 0 : Object.keys(throttleWire).length > 0);
+        (typeof throttleWire === "number"
+          ? throttleWire > 0
+          : Object.keys(throttleWire).length > 0);
       const body: Rule & Partial<AggregateRule> = {
         name: form.name,
         ...(form.comment ? { comment: form.comment } : {}),
@@ -192,9 +191,7 @@ export function RuleEditor({ plugin, uid, onClose, insertion }: RuleEditorProps)
     ...(watch("comment") ? { comment: watch("comment") } : {}),
     enabled: enabled,
     condition: condition,
-    ...(modifications.length > 0
-      ? { modifications: modificationsToWire(modifications) }
-      : {}),
+    ...(modifications.length > 0 ? { modifications: modificationsToWire(modifications) } : {}),
   };
 
   return (
@@ -308,13 +305,27 @@ export function RuleEditor({ plugin, uid, onClose, insertion }: RuleEditorProps)
                     />
                     <div style={{ marginTop: "var(--space-2)" }}>
                       <span className={styles.label}>Overrides</span>
-                      <p style={{ margin: "var(--space-1) 0", color: "var(--text-muted)", fontSize: "var(--font-sm)" }}>
+                      <p
+                        style={{
+                          margin: "var(--space-1) 0",
+                          color: "var(--text-muted)",
+                          fontSize: "var(--font-sm)",
+                        }}
+                      >
                         {watchFields.length > 0
                           ? `Matched against watch values (${watchFields.join(", ")}) — first match wins.`
                           : "Add fields to Watch above so overrides can match a value."}
                       </p>
                       {throttleOverrides.map((row, i) => (
-                        <div key={i} style={{ display: "flex", gap: "var(--space-2)", alignItems: "center", marginBottom: "var(--space-1)" }}>
+                        <div
+                          key={i}
+                          style={{
+                            display: "flex",
+                            gap: "var(--space-2)",
+                            alignItems: "center",
+                            marginBottom: "var(--space-1)",
+                          }}
+                        >
                           <Input
                             aria-label={`Override value ${i + 1}`}
                             placeholder="e.g. emergency"

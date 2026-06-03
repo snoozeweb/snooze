@@ -187,14 +187,8 @@ export function DateTimeRangePicker({
 
   // ── datetime mode change handlers ─────────────────────────────────────
   function emitDatetimeTime(side: "from" | "until", nextTime: string) {
-    const fromIso =
-      side === "from"
-        ? composeIsoLocal(fromDate, nextTime)
-        : value.from;
-    const untilIso =
-      side === "until"
-        ? composeIsoLocal(untilDate, nextTime)
-        : value.until;
+    const fromIso = side === "from" ? composeIsoLocal(fromDate, nextTime) : value.from;
+    const untilIso = side === "until" ? composeIsoLocal(untilDate, nextTime) : value.until;
     onChange({
       ...(fromIso !== undefined ? { from: fromIso } : {}),
       ...(untilIso !== undefined ? { until: untilIso } : {}),
@@ -208,12 +202,8 @@ export function DateTimeRangePicker({
     }
     // Preserve the existing time-of-day when the user only picked dates;
     // default to 00:00 / 23:59 when there's no prior value.
-    const newFrom = range.from
-      ? composeIsoLocal(range.from, fromTime || "00:00")
-      : undefined;
-    const newUntil = range.to
-      ? composeIsoLocal(range.to, untilTime || "23:59")
-      : undefined;
+    const newFrom = range.from ? composeIsoLocal(range.from, fromTime || "00:00") : undefined;
+    const newUntil = range.to ? composeIsoLocal(range.to, untilTime || "23:59") : undefined;
     onChange({
       ...(newFrom !== undefined ? { from: newFrom } : {}),
       ...(newUntil !== undefined ? { until: newUntil } : {}),
@@ -251,7 +241,7 @@ export function DateTimeRangePicker({
           <input
             className={styles.timeInput}
             type="time"
-            value={mode === "time" ? value.from ?? "" : fromTime}
+            value={mode === "time" ? (value.from ?? "") : fromTime}
             aria-label={ariaLabelFrom}
             onChange={(e) => {
               if (mode === "time") {
@@ -261,11 +251,13 @@ export function DateTimeRangePicker({
               }
             }}
           />
-          <span aria-hidden="true" className={styles.timeSep}>–</span>
+          <span aria-hidden="true" className={styles.timeSep}>
+            –
+          </span>
           <input
             className={styles.timeInput}
             type="time"
-            value={mode === "time" ? value.until ?? "" : untilTime}
+            value={mode === "time" ? (value.until ?? "") : untilTime}
             aria-label={ariaLabelUntil}
             onChange={(e) => {
               if (mode === "time") {

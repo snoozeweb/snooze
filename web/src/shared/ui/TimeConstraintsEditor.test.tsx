@@ -16,12 +16,7 @@ describe("TimeConstraintsEditor", () => {
   it("removes a weekday when toggled off", async () => {
     const user = userEvent.setup();
     const onChange = vi.fn();
-    render(
-      <TimeConstraintsEditor
-        value={{ weekdays: [{ weekdays: [1] }] }}
-        onChange={onChange}
-      />,
-    );
+    render(<TimeConstraintsEditor value={{ weekdays: [{ weekdays: [1] }] }} onChange={onChange} />);
     await user.click(screen.getByRole("button", { name: "Mon", pressed: true }));
     // Empty group — the weekdays family is dropped entirely.
     expect(onChange).toHaveBeenCalledWith({});
@@ -44,8 +39,8 @@ describe("summarizeTimeConstraints", () => {
   });
 
   it("calls out the every-day case explicitly", () => {
-    expect(
-      summarizeTimeConstraints({ weekdays: [{ weekdays: [0, 1, 2, 3, 4, 5, 6] }] }),
-    ).toBe("every day");
+    expect(summarizeTimeConstraints({ weekdays: [{ weekdays: [0, 1, 2, 3, 4, 5, 6] }] })).toBe(
+      "every day",
+    );
   });
 });

@@ -39,11 +39,7 @@ function wrap() {
 const CATALOGUE = ["ro_all", "ro_record", "ro_rule", "rw_all", "rw_record", "rw_rule"];
 
 function stubCatalogue() {
-  mswServer.use(
-    http.get("/api/v1/permissions", () =>
-      HttpResponse.json({ data: CATALOGUE }),
-    ),
-  );
+  mswServer.use(http.get("/api/v1/permissions", () => HttpResponse.json({ data: CATALOGUE })));
 }
 
 describe("RoleEditor", () => {

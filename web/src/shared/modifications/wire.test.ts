@@ -1,11 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { Modification } from "./types";
-import {
-  fromWire,
-  modificationsFromWire,
-  modificationsToWire,
-  toWire,
-} from "./wire";
+import { fromWire, modificationsFromWire, modificationsToWire, toWire } from "./wire";
 
 describe("modifications wire", () => {
   it("round-trips each variant", () => {
@@ -30,9 +25,13 @@ describe("modifications wire", () => {
   });
 
   it("encodes REGEX_SUB with src=dst (Python's 5-arg positional form)", () => {
-    expect(
-      toWire({ type: "regex_sub", field: "host", pattern: "^web-", replace: "f-" }),
-    ).toEqual(["REGEX_SUB", "host", "host", "^web-", "f-"]);
+    expect(toWire({ type: "regex_sub", field: "host", pattern: "^web-", replace: "f-" })).toEqual([
+      "REGEX_SUB",
+      "host",
+      "host",
+      "^web-",
+      "f-",
+    ]);
   });
 
   it("decodes legacy REGEX_SUB with separate src/dst fields", () => {
@@ -55,9 +54,12 @@ describe("modifications wire", () => {
   });
 
   it("encodes KV_SET as [KV_SET, dict, key, out_field]", () => {
-    expect(
-      toWire({ type: "kv_set", field: "owner", dict: "host_owner", key: "host" }),
-    ).toEqual(["KV_SET", "host_owner", "host", "owner"]);
+    expect(toWire({ type: "kv_set", field: "owner", dict: "host_owner", key: "host" })).toEqual([
+      "KV_SET",
+      "host_owner",
+      "host",
+      "owner",
+    ]);
   });
 
   it("decodes legacy 3-arg KV_SET written by the early Go rewrite", () => {

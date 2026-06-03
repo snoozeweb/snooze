@@ -16,8 +16,7 @@ function ConditionCell({ rule }: { rule: Rule }) {
 
 // eslint-disable-next-line react-refresh/only-export-components
 function ModificationsCell({ mods }: { mods: unknown[][] | undefined }) {
-  if (!mods || mods.length === 0)
-    return <span style={{ color: "var(--text-muted)" }}>—</span>;
+  if (!mods || mods.length === 0) return <span style={{ color: "var(--text-muted)" }}>—</span>;
   return (
     <span style={{ display: "inline-flex", gap: "var(--space-1)", flexWrap: "wrap" }}>
       {mods.map((m, i) => {
@@ -35,8 +34,7 @@ function ModificationsCell({ mods }: { mods: unknown[][] | undefined }) {
 
 // eslint-disable-next-line react-refresh/only-export-components
 function StringListCell({ items }: { items: string[] | undefined }) {
-  if (!items || items.length === 0)
-    return <span style={{ color: "var(--text-muted)" }}>—</span>;
+  if (!items || items.length === 0) return <span style={{ color: "var(--text-muted)" }}>—</span>;
   return (
     <span style={{ display: "inline-flex", gap: "var(--space-1)", flexWrap: "wrap" }}>
       {items.map((v) => (
@@ -108,9 +106,10 @@ export const aggregateRuleColumns: ColumnDef<AggregateRule>[] = [
       }
       const overrides = Object.keys(t).filter((k) => k !== "default").length;
       const def = typeof t.default === "number" ? secondsToHuman(t.default) : "—";
-      return <Badge variant="muted">{`${overrides} override${overrides === 1 ? "" : "s"} · default ${def}`}</Badge>;
+      return (
+        <Badge variant="muted">{`${overrides} override${overrides === 1 ? "" : "s"} · default ${def}`}</Badge>
+      );
     },
     width: "160px",
   },
 ];
-

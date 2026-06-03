@@ -84,7 +84,9 @@ describe("NotificationsPage", () => {
       ),
       http.get("/api/v1/action", () =>
         HttpResponse.json({
-          data: [{ uid: "a1", name: "Slack-prod", action: { selected: "webhook", subcontent: {} } }],
+          data: [
+            { uid: "a1", name: "Slack-prod", action: { selected: "webhook", subcontent: {} } },
+          ],
           meta: { count: 1, limit: 50, offset: 0, total: 1 },
         }),
       ),

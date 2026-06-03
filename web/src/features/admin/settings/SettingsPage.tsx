@@ -82,10 +82,7 @@ export function SettingsPage() {
     return records.filter((r) => !(r.name in catalogue));
   }, [records, catalogue]);
 
-  const groups = useMemo(
-    () => (catalogue ? buildGroups(catalogue) : []),
-    [catalogue],
-  );
+  const groups = useMemo(() => (catalogue ? buildGroups(catalogue) : []), [catalogue]);
 
   // Default to the first available tab so the page never opens to a panel
   // with no content. Falls back to "general" while the catalogue loads.
@@ -172,13 +169,7 @@ export function SettingsPage() {
   );
 }
 
-function CustomSettingCard({
-  record,
-  onChange,
-}: {
-  record: Setting;
-  onChange: () => void;
-}) {
+function CustomSettingCard({ record, onChange }: { record: Setting; onChange: () => void }) {
   const update = Settings.useUpdate();
   const remove = Settings.useRemove();
   const initialJson = useMemo(() => {

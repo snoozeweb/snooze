@@ -31,9 +31,7 @@ export const snoozeColumns: ColumnDef<Snooze>[] = [
   {
     id: "user",
     header: "User",
-    cell: (r) => (
-      <span style={{ color: "var(--text-muted)" }}>{r.name_create ?? "—"}</span>
-    ),
+    cell: (r) => <span style={{ color: "var(--text-muted)" }}>{r.name_create ?? "—"}</span>,
     width: "120px",
   },
   {

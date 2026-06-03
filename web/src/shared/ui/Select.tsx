@@ -38,10 +38,7 @@ export function SelectContent({ children }: { children: ReactNode }) {
       while (el && el !== popover) {
         const styles = window.getComputedStyle(el);
         const overflowY = styles.overflowY;
-        if (
-          (overflowY === "auto" || overflowY === "scroll") &&
-          el.scrollHeight > el.clientHeight
-        ) {
+        if ((overflowY === "auto" || overflowY === "scroll") && el.scrollHeight > el.clientHeight) {
           el.scrollTop += e.deltaY;
           e.preventDefault();
           e.stopImmediatePropagation();

@@ -56,35 +56,23 @@ describe("Login", () => {
   it("defaults to the Local tab", async () => {
     setup();
     // The backend list is fetched async; the tab list only renders once it resolves.
-    expect(
-      await screen.findByRole("tab", { name: "Local", selected: true }),
-    ).toBeInTheDocument();
+    expect(await screen.findByRole("tab", { name: "Local", selected: true })).toBeInTheDocument();
   });
 
   it("only renders backends advertised by /api/v1/login", async () => {
     mswServer.use(
-      http.get("/api/v1/login", () =>
-        HttpResponse.json({ data: { backends: ["anonymous"] } }),
-      ),
+      http.get("/api/v1/login", () => HttpResponse.json({ data: { backends: ["anonymous"] } })),
     );
     setup();
-    expect(
-      await screen.findByRole("tab", { name: "Anonymous" }),
-    ).toBeInTheDocument();
+    expect(await screen.findByRole("tab", { name: "Anonymous" })).toBeInTheDocument();
     expect(screen.queryByRole("tab", { name: "Local" })).not.toBeInTheDocument();
     expect(screen.queryByRole("tab", { name: "LDAP" })).not.toBeInTheDocument();
   });
 
   it("shows a message when no backends are enabled", async () => {
-    mswServer.use(
-      http.get("/api/v1/login", () =>
-        HttpResponse.json({ data: { backends: [] } }),
-      ),
-    );
+    mswServer.use(http.get("/api/v1/login", () => HttpResponse.json({ data: { backends: [] } })));
     setup();
-    expect(
-      await screen.findByText(/no authentication backend is enabled/i),
-    ).toBeInTheDocument();
+    expect(await screen.findByText(/no authentication backend is enabled/i)).toBeInTheDocument();
   });
 
   it("submits Local credentials and stores the returned token", async () => {

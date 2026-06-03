@@ -65,10 +65,7 @@ export function MultiCombobox({
       while (el && el !== popover) {
         const styles = window.getComputedStyle(el);
         const overflowY = styles.overflowY;
-        if (
-          (overflowY === "auto" || overflowY === "scroll") &&
-          el.scrollHeight > el.clientHeight
-        ) {
+        if ((overflowY === "auto" || overflowY === "scroll") && el.scrollHeight > el.clientHeight) {
           el.scrollTop += e.deltaY;
           e.preventDefault();
           e.stopImmediatePropagation();
@@ -157,9 +154,7 @@ export function MultiCombobox({
               </span>
             );
           })}
-          {value.length === 0 ? (
-            <span className={styles.placeholder}>{placeholder}</span>
-          ) : null}
+          {value.length === 0 ? <span className={styles.placeholder}>{placeholder}</span> : null}
           <span className={styles.caret} aria-hidden="true">
             <Icon name="chevron-down" size={14} />
           </span>
@@ -191,7 +186,9 @@ export function MultiCombobox({
           </div>
           {filtered.length === 0 ? (
             <div className={styles.empty}>
-              {allowCustom && query.trim() ? `Press Enter to add "${query.trim()}"` : noResultsLabel}
+              {allowCustom && query.trim()
+                ? `Press Enter to add "${query.trim()}"`
+                : noResultsLabel}
             </div>
           ) : (
             <ul className={styles.list} role="listbox" id={`${id}-listbox`}>

@@ -11,9 +11,7 @@ export function summarizeTimeConstraints(g: TimeConstraintsGroup | undefined): s
       parts.push(wd.map((i) => WEEKDAY_LABELS[i]).join(","));
     }
   }
-  const tw = (g.time ?? [])
-    .map((t) => `${t.from ?? "00:00"}-${t.until ?? "23:59"}`)
-    .join(", ");
+  const tw = (g.time ?? []).map((t) => `${t.from ?? "00:00"}-${t.until ?? "23:59"}`).join(", ");
   if (tw) parts.push(tw);
   const dw = (g.datetime ?? []).length;
   if (dw > 0) parts.push(`${dw} date range${dw > 1 ? "s" : ""}`);

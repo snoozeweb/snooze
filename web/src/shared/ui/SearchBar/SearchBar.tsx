@@ -106,8 +106,7 @@ export function SearchBar({
   // Field catalog. Cached aggressively — it doesn't change between requests.
   const fields = useQuery<FieldsResponse, ApiError>({
     queryKey: ["condition", "fields", collection],
-    queryFn: () =>
-      api<FieldsResponse>("GET", "/condition/fields", { query: { collection } }),
+    queryFn: () => api<FieldsResponse>("GET", "/condition/fields", { query: { collection } }),
     staleTime: 5 * 60_000,
   });
 
@@ -294,13 +293,19 @@ export function SearchBar({
   }, [onChange]);
 
   return (
-    <div className={[styles.wrap, error ? styles.invalid : null, className].filter(Boolean).join(" ")}>
+    <div
+      className={[styles.wrap, error ? styles.invalid : null, className].filter(Boolean).join(" ")}
+    >
       <span className={styles.leadIcon} aria-hidden="true">
         <Icon name="search" size={14} />
       </span>
       <div className={styles.inputBox}>
         <div ref={overlayRef} className={styles.overlay} aria-hidden="true">
-          {value.length > 0 ? renderTokens() : <span className={styles.placeholder}>{placeholder}</span>}
+          {value.length > 0 ? (
+            renderTokens()
+          ) : (
+            <span className={styles.placeholder}>{placeholder}</span>
+          )}
         </div>
         <input
           ref={inputRef}
@@ -353,9 +358,11 @@ export function SearchBar({
           onMouseLeave={armIdleClose}
         >
           <div className={styles.popoverHead}>
-            {suggestion.kind === "field" && (suggestion.field ? `Field for ${suggestion.field}` : "Field name")}
+            {suggestion.kind === "field" &&
+              (suggestion.field ? `Field for ${suggestion.field}` : "Field name")}
             {suggestion.kind === "operator" && "Operator"}
-            {suggestion.kind === "value" && (suggestion.field ? `Value for ${suggestion.field}` : "Value")}
+            {suggestion.kind === "value" &&
+              (suggestion.field ? `Value for ${suggestion.field}` : "Value")}
             {suggestion.kind === "keyword" && "Combinator"}
           </div>
           <ul className={styles.list}>

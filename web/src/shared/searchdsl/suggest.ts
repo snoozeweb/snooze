@@ -192,9 +192,7 @@ function finalize(
   kind: SuggestionKind,
 ): SuggestContext {
   const lower = partial.toLowerCase();
-  const filtered = lower
-    ? items.filter((s) => s.label.toLowerCase().includes(lower))
-    : items;
+  const filtered = lower ? items.filter((s) => s.label.toLowerCase().includes(lower)) : items;
   return { kind, items: filtered, replaceFrom, replaceTo };
 }
 
@@ -329,11 +327,7 @@ function findTokenAt(tokens: Token[], cursor: number): number {
   return -1;
 }
 
-type Context =
-  | { kind: "field" }
-  | { kind: "operator" }
-  | { kind: "value" }
-  | { kind: "keyword" };
+type Context = { kind: "field" } | { kind: "operator" } | { kind: "value" } | { kind: "keyword" };
 
 /**
  * fieldFromPreviousComparison walks the token stream backwards from the
@@ -364,12 +358,7 @@ export function fieldFromPreviousComparison(text: string, cursor: number): strin
     }
     // Any literal / paren / combinator before the op means we've already
     // closed the previous comparison.
-    if (
-      t.kind === "ident" ||
-      t.kind === "string" ||
-      t.kind === "number" ||
-      t.kind === "bool"
-    )
+    if (t.kind === "ident" || t.kind === "string" || t.kind === "number" || t.kind === "bool")
       continue;
     if (
       t.kind === "lparen" ||

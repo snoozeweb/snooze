@@ -146,7 +146,9 @@ describe("SettingsPage", () => {
       ),
     );
     setup();
-    await waitFor(() => expect(screen.getByText("Default authentication backend")).toBeInTheDocument());
+    await waitFor(() =>
+      expect(screen.getByText("Default authentication backend")).toBeInTheDocument(),
+    );
     expect(screen.getByText("Metrics enabled")).toBeInTheDocument();
   });
 
@@ -194,9 +196,7 @@ describe("SettingsPage", () => {
     // ldap.enabled is rendered, the rest are hidden.
     await waitFor(() => expect(screen.getByText("LDAP enabled")).toBeInTheDocument());
     expect(screen.queryByText("LDAP host")).not.toBeInTheDocument();
-    expect(
-      screen.getByText(/Enable LDAP above to configure connection/i),
-    ).toBeInTheDocument();
+    expect(screen.getByText(/Enable LDAP above to configure connection/i)).toBeInTheDocument();
   });
 
   it("a Card's Save POSTs the right body when no record exists", async () => {

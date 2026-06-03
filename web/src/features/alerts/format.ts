@@ -81,8 +81,18 @@ export function formatRelativeTime(dateEpochSec: number | undefined): string {
 }
 
 const SHORT_MONTHS = [
-  "Jan", "Feb", "Mar", "Apr", "May", "Jun",
-  "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
+  "Jan",
+  "Feb",
+  "Mar",
+  "Apr",
+  "May",
+  "Jun",
+  "Jul",
+  "Aug",
+  "Sep",
+  "Oct",
+  "Nov",
+  "Dec",
 ] as const;
 
 function ordinal(n: number): string {
@@ -142,10 +152,7 @@ export function trimDate(dateEpochSec: number | undefined): string {
  * The `dateEpoch` parameter is required to compute the expiry — alerts
  * expire at `date_epoch + ttl`, not "ttl seconds from now".
  */
-export function formatTTL(
-  ttl: number | undefined,
-  dateEpochSec: number | undefined,
-): string {
+export function formatTTL(ttl: number | undefined, dateEpochSec: number | undefined): string {
   if (ttl === undefined) return "—";
   if (ttl < 0) return "shelved";
   if (dateEpochSec === undefined || dateEpochSec === 0) return "—";

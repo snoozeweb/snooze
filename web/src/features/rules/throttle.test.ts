@@ -26,8 +26,6 @@ describe("throttle wire", () => {
     ).toEqual({ emergency: 120, default: 3600 });
   });
   it("drops blank-value override rows when emitting", () => {
-    expect(
-      throttleToWire({ defaultSeconds: 0, overrides: [{ value: "  ", seconds: 5 }] }),
-    ).toBe(0);
+    expect(throttleToWire({ defaultSeconds: 0, overrides: [{ value: "  ", seconds: 5 }] })).toBe(0);
   });
 });

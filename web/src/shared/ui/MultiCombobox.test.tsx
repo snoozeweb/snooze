@@ -41,14 +41,7 @@ describe("MultiCombobox", () => {
   it("appends a new value via the search popover", async () => {
     const user = userEvent.setup();
     const onChange = vi.fn();
-    render(
-      <MultiCombobox
-        options={OPTIONS}
-        value={[]}
-        onChange={onChange}
-        aria-label="Roles"
-      />,
-    );
+    render(<MultiCombobox options={OPTIONS} value={[]} onChange={onChange} aria-label="Roles" />);
     // Open the popover.
     await user.click(screen.getByRole("combobox", { name: "Roles" }));
     // Click the "viewer" option in the popover.

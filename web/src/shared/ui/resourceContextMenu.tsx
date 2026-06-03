@@ -1,13 +1,7 @@
 import { useCallback, useState } from "react";
 import * as YAML from "yaml";
 import { Button } from "@/shared/ui/Button";
-import {
-  Dialog,
-  DialogBody,
-  DialogContent,
-  DialogFooter,
-  DialogTitle,
-} from "@/shared/ui/Dialog";
+import { Dialog, DialogBody, DialogContent, DialogFooter, DialogTitle } from "@/shared/ui/Dialog";
 import { toast } from "@/shared/ui/toast/useToast";
 import type { ContextMenuItem } from "@/shared/ui/DataTableContextMenu";
 

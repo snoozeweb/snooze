@@ -19,8 +19,6 @@ describe("summarizeFrequency", () => {
   });
 
   it("summarizes total + every + delay in canonical order", () => {
-    expect(summarizeFrequency({ total: 2, delay: 30, every: 600 })).toBe(
-      "×2 every 600s +30s",
-    );
+    expect(summarizeFrequency({ total: 2, delay: 30, every: 600 })).toBe("×2 every 600s +30s");
   });
 });

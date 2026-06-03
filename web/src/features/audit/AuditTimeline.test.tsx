@@ -32,9 +32,7 @@ describe("AuditTimeline", () => {
         <AuditTimeline objectType="rule" objectId={undefined} />
       </Wrapper>,
     );
-    expect(
-      screen.getByText(/Audit log appears here once the rule is saved/i),
-    ).toBeInTheDocument();
+    expect(screen.getByText(/Audit log appears here once the rule is saved/i)).toBeInTheDocument();
   });
 
   it("renders the empty state when the server returns no rows", async () => {

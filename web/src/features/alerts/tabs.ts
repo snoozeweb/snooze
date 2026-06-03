@@ -15,14 +15,7 @@ import type { Condition } from "@/lib/condition/types";
  * TabId is the URL-safe identifier persisted in `?tab=…`. Stable: do not
  * rename without a migration shim.
  */
-export type TabId =
-  | "alerts"
-  | "snoozed"
-  | "ack"
-  | "esc"
-  | "closed"
-  | "shelved"
-  | "all";
+export type TabId = "alerts" | "snoozed" | "ack" | "esc" | "closed" | "shelved" | "all";
 
 export type TabDef = {
   id: TabId;

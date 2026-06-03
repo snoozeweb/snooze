@@ -171,13 +171,11 @@ export function NotificationsPage() {
   // otherwise the count + "+ New" affordance. The active tab decides
   // which selection set drives the rendering.
   const activeNotifRows = useMemo(
-    () =>
-      (notifList.data?.data ?? []).filter((r) => notifSelected.has(r.uid ?? r.name)),
+    () => (notifList.data?.data ?? []).filter((r) => notifSelected.has(r.uid ?? r.name)),
     [notifList.data, notifSelected],
   );
   const activeActionRows = useMemo(
-    () =>
-      (actionList.data?.data ?? []).filter((r) => actionSelected.has(r.uid ?? r.name)),
+    () => (actionList.data?.data ?? []).filter((r) => actionSelected.has(r.uid ?? r.name)),
     [actionList.data, actionSelected],
   );
   const activeSelectedCount =
@@ -190,14 +188,13 @@ export function NotificationsPage() {
       : `${list.data?.meta.total ?? 0} ${tab}`;
   const toolbarActions =
     activeSelectedCount > 0 ? (
-      tab === "notifications" ? notifBulk(activeNotifRows) : actionBulk(activeActionRows)
+      tab === "notifications" ? (
+        notifBulk(activeNotifRows)
+      ) : (
+        actionBulk(activeActionRows)
+      )
     ) : (
-      <Button
-        size="sm"
-        variant="primary"
-        leadingIcon="plus"
-        onClick={() => setCreating(true)}
-      >
+      <Button size="sm" variant="primary" leadingIcon="plus" onClick={() => setCreating(true)}>
         New
       </Button>
     );

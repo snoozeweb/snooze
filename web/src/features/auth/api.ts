@@ -60,9 +60,7 @@ export async function fetchLoginBackends(): Promise<LoginBackend[]> {
     skipAuthHandling: true,
   });
   const raw = r.data?.backends ?? [];
-  return raw.filter(
-    (b): b is LoginBackend => b === "local" || b === "ldap" || b === "anonymous",
-  );
+  return raw.filter((b): b is LoginBackend => b === "local" || b === "ldap" || b === "anonymous");
 }
 
 // postRefresh exchanges an opaque refresh token for a new (access, refresh)

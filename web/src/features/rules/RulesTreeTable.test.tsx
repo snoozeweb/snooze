@@ -94,12 +94,7 @@ describe("flattenTree + collectSubtreeIds", () => {
 
   it("flattens to a depth-aware ordered list with parent links", () => {
     const flat = flattenTree(buildTree(rules).roots);
-    expect(flat.map((n) => n.rule.name)).toEqual([
-      "root-a",
-      "child-a",
-      "grandchild",
-      "root-b",
-    ]);
+    expect(flat.map((n) => n.rule.name)).toEqual(["root-a", "child-a", "grandchild", "root-b"]);
     expect(flat.map((n) => n.depth)).toEqual([0, 1, 2, 0]);
     expect(flat.map((n) => n.parentId)).toEqual([ROOT, "r1", "r2", ROOT]);
   });

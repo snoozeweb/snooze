@@ -110,10 +110,7 @@ export function SnoozesPage() {
     async (row: Snooze) => {
       if (!row.uid) return;
       try {
-        const res = await apiClient<RetroApplyResponse>(
-          "POST",
-          `/snooze/${row.uid}/retro_apply`,
-        );
+        const res = await apiClient<RetroApplyResponse>("POST", `/snooze/${row.uid}/retro_apply`);
         const verb = res.deleted ? "discarded" : "tagged";
         toast.success(`${res.matched} alerts ${verb} by ${row.name}`);
         void qc.invalidateQueries({ queryKey: Snoozes.queryKey.all });
@@ -149,9 +146,7 @@ export function SnoozesPage() {
       return [
         {
           key: "retro-apply",
-          label: row.discard
-            ? "Retro-apply (delete matches)"
-            : "Retro-apply (tag matches)",
+          label: row.discard ? "Retro-apply (delete matches)" : "Retro-apply (tag matches)",
           icon: "rotate-cw",
           onSelect: () => void runRetroApply(row),
         },
@@ -229,22 +224,14 @@ export function SnoozesPage() {
     selectedSnoozeRows.length > 0 ? (
       bulkActions(selectedSnoozeRows)
     ) : (
-      <Button
-        size="sm"
-        variant="primary"
-        leadingIcon="plus"
-        onClick={() => setCreating(true)}
-      >
+      <Button size="sm" variant="primary" leadingIcon="plus" onClick={() => setCreating(true)}>
         New
       </Button>
     );
 
   return (
     <div className={styles.page}>
-      <Tabs
-        value={tab}
-        onValueChange={(v) => updateSearch({ tab: v as SnoozeState, page: 1 })}
-      >
+      <Tabs value={tab} onValueChange={(v) => updateSearch({ tab: v as SnoozeState, page: 1 })}>
         <TabList>
           {TABS.map((t) => (
             <TabTrigger key={t.value} value={t.value}>

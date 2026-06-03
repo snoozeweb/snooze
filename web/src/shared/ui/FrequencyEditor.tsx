@@ -57,4 +57,3 @@ export function FrequencyEditor({ value, onChange }: FrequencyEditorProps) {
     </div>
   );
 }
-

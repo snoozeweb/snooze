@@ -205,12 +205,7 @@ export function ConditionNode({
       onChange({ ...leaf, field });
       return;
     }
-    if (
-      leaf.type === "LT" ||
-      leaf.type === "GT" ||
-      leaf.type === "LE" ||
-      leaf.type === "GE"
-    ) {
+    if (leaf.type === "LT" || leaf.type === "GT" || leaf.type === "LE" || leaf.type === "GE") {
       onChange({ ...leaf, field });
       return;
     }
@@ -326,10 +321,7 @@ export function ConditionNode({
           />
         ) : null}
         {shape === "number" &&
-        (leaf.type === "LT" ||
-          leaf.type === "GT" ||
-          leaf.type === "LE" ||
-          leaf.type === "GE") ? (
+        (leaf.type === "LT" || leaf.type === "GT" || leaf.type === "LE" || leaf.type === "GE") ? (
           <Input
             type="number"
             value={String(leaf.value)}
@@ -346,13 +338,7 @@ export function ConditionNode({
         ) : null}
       </div>
       <div className={styles.actions}>
-        <IconButton
-          icon="plus"
-          label="Add filter"
-          variant="ghost"
-          size="sm"
-          onClick={fork}
-        />
+        <IconButton icon="plus" label="Add filter" variant="ghost" size="sm" onClick={fork} />
         <IconButton
           icon="trash"
           label="Remove"

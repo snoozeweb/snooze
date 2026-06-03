@@ -60,10 +60,7 @@ describe("AlertsFilters", () => {
 
   it("respects an explicit value.tab", () => {
     harness({ tab: "closed" });
-    expect(screen.getByRole("tab", { name: "Closed" })).toHaveAttribute(
-      "aria-selected",
-      "true",
-    );
+    expect(screen.getByRole("tab", { name: "Closed" })).toHaveAttribute("aria-selected", "true");
   });
 
   it("emits onChange with the next tab id when a tab is clicked", async () => {

@@ -228,11 +228,7 @@ export function WidgetEditor({ uid, onClose }: WidgetEditorProps) {
                   <label className={styles.label} htmlFor="widget-type">
                     Widget type
                   </label>
-                  <select
-                    id="widget-type"
-                    {...register("subtypeSelection")}
-                    style={selectStyle}
-                  >
+                  <select id="widget-type" {...register("subtypeSelection")} style={selectStyle}>
                     {KNOWN_WIDGETS.map((w) => (
                       <option key={w.type} value={w.type}>
                         {w.displayName}
@@ -264,11 +260,7 @@ export function WidgetEditor({ uid, onClose }: WidgetEditorProps) {
                 <section className={styles.section}>
                   <h3 className={styles.sectionTitle}>Config</h3>
                   {selectedDef.fields.map((field) => (
-                    <TypedFieldInput
-                      key={field.name}
-                      field={field}
-                      register={register}
-                    />
+                    <TypedFieldInput key={field.name} field={field} register={register} />
                   ))}
                 </section>
               ) : (

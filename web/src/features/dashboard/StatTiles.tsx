@@ -16,8 +16,18 @@ export function StatTiles({ snapshot, totals }: { snapshot: StatsSnapshot; total
     { label: "Open", value: snapshot.open, icon: "bell", accent: "var(--severity-warning)" },
     { label: "Ack", value: snapshot.ack, icon: "check", accent: "var(--state-ack)" },
     { label: "Closed", value: snapshot.closed, icon: "check-circle", accent: "var(--severity-ok)" },
-    { label: "Throttled", value: sum(totals.by_throttled), icon: "filter", accent: "var(--severity-error)" },
-    { label: "Snoozed", value: sum(totals.by_snoozed), icon: "bell-off", accent: "var(--state-snooze)" },
+    {
+      label: "Throttled",
+      value: sum(totals.by_throttled),
+      icon: "filter",
+      accent: "var(--severity-error)",
+    },
+    {
+      label: "Snoozed",
+      value: sum(totals.by_snoozed),
+      icon: "bell-off",
+      accent: "var(--state-snooze)",
+    },
   ];
   return (
     <div className={styles.strip}>

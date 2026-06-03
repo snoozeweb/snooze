@@ -29,10 +29,7 @@ export function Login() {
     queryFn: fetchLoginBackends,
     staleTime: 60_000,
   });
-  const backends = useMemo<LoginBackend[]>(
-    () => backendsQuery.data ?? [],
-    [backendsQuery.data],
-  );
+  const backends = useMemo<LoginBackend[]>(() => backendsQuery.data ?? [], [backendsQuery.data]);
 
   const [tab, setTab] = useState<LoginBackend | null>(null);
   const [username, setUsername] = useState("");
@@ -119,12 +116,8 @@ export function Login() {
           }}
         >
           <TabList>
-            {backends.includes("local") ? (
-              <TabTrigger value="local">Local</TabTrigger>
-            ) : null}
-            {backends.includes("ldap") ? (
-              <TabTrigger value="ldap">LDAP</TabTrigger>
-            ) : null}
+            {backends.includes("local") ? <TabTrigger value="local">Local</TabTrigger> : null}
+            {backends.includes("ldap") ? <TabTrigger value="ldap">LDAP</TabTrigger> : null}
             {backends.includes("anonymous") ? (
               <TabTrigger value="anonymous">Anonymous</TabTrigger>
             ) : null}

@@ -183,7 +183,6 @@
   border-left: 2px solid var(--accent);
 }
 
-
 /* Hint banner shown when a search filter is active — explains why the
    familiar drag-handle gesture won't move anything in this state. */
 .searchHint {

@@ -208,12 +208,7 @@ export function RulesPage() {
       const target = e.target as HTMLElement | null;
       if (target) {
         const tag = target.tagName;
-        if (
-          tag === "INPUT" ||
-          tag === "TEXTAREA" ||
-          tag === "SELECT" ||
-          target.isContentEditable
-        ) {
+        if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT" || target.isContentEditable) {
           return;
         }
       }
@@ -379,8 +374,8 @@ export function RulesPage() {
     pendingCount > 0
       ? `${pendingCount} pending change${pendingCount === 1 ? "" : "s"}`
       : selectedRuleRows.length > 0
-      ? `${selectedRuleRows.length} selected`
-      : `${list.data?.meta.total ?? 0} rules`;
+        ? `${selectedRuleRows.length} selected`
+        : `${list.data?.meta.total ?? 0} rules`;
   // Toolbar "+ New" — always available (in non-pending, non-selection
   // states). New rules are appended at the end of the root level so the
   // existing tree stays put; no sibling shifts are required, which keeps
@@ -393,12 +388,7 @@ export function RulesPage() {
   const rulesToolbarActions =
     pendingCount > 0 ? (
       <>
-        <Button
-          size="sm"
-          variant="ghost"
-          onClick={cancelPending}
-          disabled={savingPending}
-        >
+        <Button size="sm" variant="ghost" onClick={cancelPending} disabled={savingPending}>
           Cancel
         </Button>
         <Button
@@ -440,12 +430,7 @@ export function RulesPage() {
     selectedAggregateRows.length > 0 ? (
       aggregateBulkActions(selectedAggregateRows)
     ) : (
-      <Button
-        size="sm"
-        variant="primary"
-        leadingIcon="plus"
-        onClick={() => setCreating(true)}
-      >
+      <Button size="sm" variant="primary" leadingIcon="plus" onClick={() => setCreating(true)}>
         New
       </Button>
     );
@@ -479,12 +464,7 @@ export function RulesPage() {
               toolbar={rulesToolbarActions}
               contextMenuItems={ruleContextMenu}
               emptyAction={
-                <Button
-                  size="md"
-                  variant="primary"
-                  leadingIcon="plus"
-                  onClick={startNewRootRule}
-                >
+                <Button size="md" variant="primary" leadingIcon="plus" onClick={startNewRootRule}>
                   New rule
                 </Button>
               }
@@ -552,7 +532,11 @@ export function RulesPage() {
       </Tabs>
 
       {detailUid !== undefined ? (
-        <RuleEditor plugin={editorPlugin} uid={detailUid} onClose={() => updateSearch({ uid: undefined })} />
+        <RuleEditor
+          plugin={editorPlugin}
+          uid={detailUid}
+          onClose={() => updateSearch({ uid: undefined })}
+        />
       ) : null}
 
       {creating ? (

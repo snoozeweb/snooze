@@ -29,8 +29,7 @@ export function DurationInput({
   placeholder,
   zeroLabel,
 }: DurationInputProps) {
-  const badge =
-    value === 0 && zeroLabel !== undefined ? zeroLabel : secondsToHuman(value);
+  const badge = value === 0 && zeroLabel !== undefined ? zeroLabel : secondsToHuman(value);
   return (
     <div className={styles.wrap}>
       <span className={styles.badge} aria-hidden="true">

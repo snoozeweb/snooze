@@ -31,17 +31,14 @@ describe("TimeConstraintsCell", () => {
     expect(screen.getByText("Dates")).toBeInTheDocument();
     expect(screen.getByText("Mon · Tue · Wed · Thu · Fri")).toBeInTheDocument();
     expect(screen.getByText("09:00 – 17:00")).toBeInTheDocument();
-    expect(
-      screen.getByText("2026-01-01 08:00 → 2026-01-02 18:00"),
-    ).toBeInTheDocument();
+    expect(screen.getByText("2026-01-01 08:00 → 2026-01-02 18:00")).toBeInTheDocument();
 
     // Inline layout: each label sits in the same block as its value(s),
     // and label appears before value in DOM order (label-left, value-right).
     const weekdaysLabel = screen.getByText("Weekdays");
     const weekdaysValue = screen.getByText("Mon · Tue · Wed · Thu · Fri");
     expect(
-      weekdaysLabel.compareDocumentPosition(weekdaysValue) &
-        Node.DOCUMENT_POSITION_FOLLOWING,
+      weekdaysLabel.compareDocumentPosition(weekdaysValue) & Node.DOCUMENT_POSITION_FOLLOWING,
     ).toBeTruthy();
     // Label and its value column are siblings under the same block.
     const hoursLabel = screen.getByText("Hours");
@@ -71,49 +68,29 @@ describe("TimeConstraintsCell", () => {
   });
 
   it("renders 'Every day' when all seven weekdays are present", () => {
-    render(
-      <TimeConstraintsCell
-        value={{ weekdays: [{ weekdays: [0, 1, 2, 3, 4, 5, 6] }] }}
-      />,
-    );
+    render(<TimeConstraintsCell value={{ weekdays: [{ weekdays: [0, 1, 2, 3, 4, 5, 6] }] }} />);
     expect(screen.getByText("Every day")).toBeInTheDocument();
   });
 
   it("sorts weekdays into Sunday-first order", () => {
-    render(
-      <TimeConstraintsCell
-        value={{ weekdays: [{ weekdays: [3, 0, 6, 1] }] }}
-      />,
-    );
+    render(<TimeConstraintsCell value={{ weekdays: [{ weekdays: [3, 0, 6, 1] }] }} />);
     expect(screen.getByText("Sun · Mon · Wed · Sat")).toBeInTheDocument();
   });
 
   it("omits the weekdays block when weekdays are empty", () => {
-    render(
-      <TimeConstraintsCell
-        value={{ time: [{ from: "09:00", until: "17:00" }] }}
-      />,
-    );
+    render(<TimeConstraintsCell value={{ time: [{ from: "09:00", until: "17:00" }] }} />);
     expect(screen.queryByText("Weekdays")).not.toBeInTheDocument();
     expect(screen.getByText("Hours")).toBeInTheDocument();
   });
 
   it("omits the hours block when time is empty", () => {
-    render(
-      <TimeConstraintsCell
-        value={{ weekdays: [{ weekdays: [1] }] }}
-      />,
-    );
+    render(<TimeConstraintsCell value={{ weekdays: [{ weekdays: [1] }] }} />);
     expect(screen.queryByText("Hours")).not.toBeInTheDocument();
     expect(screen.getByText("Weekdays")).toBeInTheDocument();
   });
 
   it("omits the dates block when datetime is empty", () => {
-    render(
-      <TimeConstraintsCell
-        value={{ weekdays: [{ weekdays: [1] }] }}
-      />,
-    );
+    render(<TimeConstraintsCell value={{ weekdays: [{ weekdays: [1] }] }} />);
     expect(screen.queryByText("Dates")).not.toBeInTheDocument();
   });
 
@@ -145,11 +122,7 @@ describe("TimeConstraintsCell", () => {
   });
 
   it("strips seconds from time ranges with HH:MM:SS input", () => {
-    render(
-      <TimeConstraintsCell
-        value={{ time: [{ from: "09:00:00", until: "17:30:00" }] }}
-      />,
-    );
+    render(<TimeConstraintsCell value={{ time: [{ from: "09:00:00", until: "17:30:00" }] }} />);
     expect(screen.getByText("09:00 – 17:30")).toBeInTheDocument();
   });
 
@@ -164,22 +137,15 @@ describe("TimeConstraintsCell", () => {
         }}
       />,
     );
-    expect(
-      screen.getByText("2026-01-01 08:00 → 2026-01-02 18:00"),
-    ).toBeInTheDocument();
-    expect(
-      screen.getByText("2026-02-10 00:00 → 2026-02-11 23:59"),
-    ).toBeInTheDocument();
+    expect(screen.getByText("2026-01-01 08:00 → 2026-01-02 18:00")).toBeInTheDocument();
+    expect(screen.getByText("2026-02-10 00:00 → 2026-02-11 23:59")).toBeInTheDocument();
   });
 
   it("renders half-open date ranges with from/until prefix", () => {
     render(
       <TimeConstraintsCell
         value={{
-          datetime: [
-            { from: "2026-01-01T08:00:00Z" },
-            { until: "2026-02-01T18:00:00Z" },
-          ],
+          datetime: [{ from: "2026-01-01T08:00:00Z" }, { until: "2026-02-01T18:00:00Z" }],
         }}
       />,
     );

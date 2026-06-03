@@ -55,13 +55,7 @@ function deepEqual(a: unknown, b: unknown): boolean {
   return false;
 }
 
-export function SettingCard({
-  field,
-  name,
-  initialValue,
-  recordUid,
-  onChange,
-}: SettingCardProps) {
+export function SettingCard({ field, name, initialValue, recordUid, onChange }: SettingCardProps) {
   // Local editor state mirrors `initialValue` until the user edits. Seeded
   // with the catalogue's default when no record exists so the rendered input
   // shows the server-side default rather than an empty control.
@@ -131,16 +125,9 @@ export function SettingCard({
           <span className={`${styles.indicator} ${styles.indicatorDirty}`}>modified</span>
         ) : null}
       </div>
-      {field.description ? (
-        <p className={styles.description}>{field.description}</p>
-      ) : null}
+      {field.description ? <p className={styles.description}>{field.description}</p> : null}
       <div className={styles.control}>
-        <MetadataField
-          id={fieldId}
-          field={field}
-          value={value}
-          onChange={(v) => setValue(v)}
-        />
+        <MetadataField id={fieldId} field={field} value={value} onChange={(v) => setValue(v)} />
       </div>
       <div className={styles.actions}>
         {recordUid !== undefined ? (
@@ -155,12 +142,7 @@ export function SettingCard({
             Revert to default
           </Button>
         ) : null}
-        <Button
-          size="sm"
-          variant="ghost"
-          onClick={handleReset}
-          disabled={!dirty || submitting}
-        >
+        <Button size="sm" variant="ghost" onClick={handleReset} disabled={!dirty || submitting}>
           Reset
         </Button>
         <Button

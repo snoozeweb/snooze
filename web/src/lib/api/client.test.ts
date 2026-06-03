@@ -244,9 +244,7 @@ describe("api client refresh-on-401", () => {
 
   function makeFreshToken(sub: string): string {
     const header = btoa(JSON.stringify({ alg: "HS256", typ: "JWT" }));
-    const body = btoa(
-      JSON.stringify({ sub, exp: Math.floor(Date.now() / 1000) + 3600 }),
-    );
+    const body = btoa(JSON.stringify({ sub, exp: Math.floor(Date.now() / 1000) + 3600 }));
     return `${header}.${body}.sig`;
   }
 
@@ -262,10 +260,10 @@ describe("api client refresh-on-401", () => {
       const auth = (init?.headers as Record<string, string> | undefined)?.["Authorization"];
       calls.push({ url: u, auth });
       if (u.endsWith("/api/v1/login/refresh")) {
-        return new Response(
-          JSON.stringify({ token: rotated, refresh_token: "rotated-refresh" }),
-          { status: 200, headers: { "Content-Type": "application/json" } },
-        );
+        return new Response(JSON.stringify({ token: rotated, refresh_token: "rotated-refresh" }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        });
       }
       // Original request: 401 on the first hit, 200 once retried.
       if (!original401) {

@@ -40,11 +40,7 @@ import {
   type DragMoveEvent,
   type DragStartEvent,
 } from "@dnd-kit/core";
-import {
-  SortableContext,
-  sortableKeyboardCoordinates,
-  useSortable,
-} from "@dnd-kit/sortable";
+import { SortableContext, sortableKeyboardCoordinates, useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { Badge } from "@/shared/ui/Badge";
 import { Button } from "@/shared/ui/Button";
@@ -56,14 +52,8 @@ import { Menu, MenuContent, MenuItem, MenuTrigger } from "@/shared/ui/Menu";
 import { RowDetailPanel } from "@/shared/ui/RowDetailPanel";
 import { toast } from "@/shared/ui/toast/useToast";
 import { prettyCondition } from "@/lib/condition/pretty";
-import {
-  ConfirmDeleteDialog,
-  useConfirmDelete,
-} from "@/shared/ui/resourceContextMenu";
-import {
-  DataTableContextMenu,
-  type ContextMenuItem,
-} from "@/shared/ui/DataTableContextMenu";
+import { ConfirmDeleteDialog, useConfirmDelete } from "@/shared/ui/resourceContextMenu";
+import { DataTableContextMenu, type ContextMenuItem } from "@/shared/ui/DataTableContextMenu";
 import type { ParsedCondition } from "@/shared/ui/SearchBar";
 import { SearchBar } from "@/shared/ui/SearchBar";
 import { Rules } from "./api";
@@ -144,7 +134,9 @@ export type RulesTreeTableProps = {
    *  to the host. Return value is ignored — the host is expected to either
    *  fire mutations directly or accumulate them for a later Validate step.
    *  When undefined, the table fires mutations itself (legacy behavior). */
-  onCommitPatches?: (patches: Array<{ uid: string; parents: string[]; tree_order: number }>) => void;
+  onCommitPatches?: (
+    patches: Array<{ uid: string; parents: string[]; tree_order: number }>,
+  ) => void;
   /** When set, the local optimistic state resets back to the `rules` prop.
    *  Used by the host's "Cancel" action to undo all uncommitted drops
    *  without waiting for a server refetch. The host increments this on
@@ -201,21 +193,15 @@ export function RulesTreeTable({
   // whether the host passed selectedKeys+onSelectionChange.
   const isControlled = selectedKeysProp !== undefined && onSelectionChange !== undefined;
   const [internalSelected, setInternalSelected] = useState<Set<string>>(() => new Set());
-  const selected: ReadonlySet<string> = isControlled
-    ? selectedKeysProp
-    : internalSelected;
+  const selected: ReadonlySet<string> = isControlled ? selectedKeysProp : internalSelected;
   const setSelected = useCallback(
     (next: Set<string> | ((prev: ReadonlySet<string>) => Set<string>)) => {
       if (isControlled && onSelectionChange) {
         const resolved =
-          typeof next === "function"
-            ? next(selectedKeysProp ?? new Set<string>())
-            : next;
+          typeof next === "function" ? next(selectedKeysProp ?? new Set<string>()) : next;
         onSelectionChange(resolved);
       } else {
-        setInternalSelected((prev) =>
-          typeof next === "function" ? next(prev) : next,
-        );
+        setInternalSelected((prev) => (typeof next === "function" ? next(prev) : next));
       }
     },
     [isControlled, onSelectionChange, selectedKeysProp],
@@ -362,26 +348,16 @@ export function RulesTreeTable({
     // active subtree is lifted out (`projectionList`). Rendering, on the
     // other hand, happens against the FULL renderedFlat (which still
     // contains the subtree) — so we carry two slot indices.
-    const projectionList = renderedFlat.filter(
-      (n) => !subtreeIds.has(n.rule.uid ?? n.rule.name),
-    );
-    const idx = projectionList.findIndex(
-      (n) => (n.rule.uid ?? n.rule.name) === overId,
-    );
+    const projectionList = renderedFlat.filter((n) => !subtreeIds.has(n.rule.uid ?? n.rule.name));
+    const idx = projectionList.findIndex((n) => (n.rule.uid ?? n.rule.name) === overId);
     // dropAfter swaps the slot from "before this row" to "after this
     // row" so "drag onto X + drag right" projects as "child of X"
     // instead of "child of X's previous sibling". When the user is on
     // the lower half of the LAST row, slot becomes projectionList.length,
     // which is the "drop at the very end" semantic — no separate
     // sentinel droppable required.
-    const slotInProjection =
-      idx < 0 ? projectionList.length : dropAfter ? idx + 1 : idx;
-    const { parentId, depth } = projectDrop(
-      projectionList,
-      slotInProjection,
-      offsetX,
-      INDENT_PX,
-    );
+    const slotInProjection = idx < 0 ? projectionList.length : dropAfter ? idx + 1 : idx;
+    const { parentId, depth } = projectDrop(projectionList, slotInProjection, offsetX, INDENT_PX);
     const anchorNode = projectionList[slotInProjection];
     const slotInRendered = anchorNode
       ? renderedFlat.findIndex(
@@ -449,12 +425,8 @@ export function RulesTreeTable({
       // (fullFlat with the subtree removed). projection.slotInProjection is
       // already expressed in those coordinates.
       const subtree = collectSubtreeIds(fullFlat, draggedId);
-      const subtreeNodes = fullFlat.filter((n) =>
-        subtree.has(n.rule.uid ?? n.rule.name),
-      );
-      const remainder = fullFlat.filter(
-        (n) => !subtree.has(n.rule.uid ?? n.rule.name),
-      );
+      const subtreeNodes = fullFlat.filter((n) => subtree.has(n.rule.uid ?? n.rule.name));
+      const remainder = fullFlat.filter((n) => !subtree.has(n.rule.uid ?? n.rule.name));
 
       // Refuse drops that would create a cycle (dragging a parent onto its
       // own descendant).
@@ -465,9 +437,7 @@ export function RulesTreeTable({
 
       // The active row adopts the projected parent + depth; its descendants
       // shift their depth by the same delta but keep their relative shape.
-      const activeNode = fullFlat.find(
-        (n) => (n.rule.uid ?? n.rule.name) === draggedId,
-      );
+      const activeNode = fullFlat.find((n) => (n.rule.uid ?? n.rule.name) === draggedId);
       if (!activeNode) return;
       const depthDelta = projection.depth - activeNode.depth;
 
@@ -477,10 +447,7 @@ export function RulesTreeTable({
         parentId: i === 0 ? projection.parentId : n.parentId,
       }));
 
-      const insertAtSafe = Math.min(
-        Math.max(projection.slotInProjection, 0),
-        remainder.length,
-      );
+      const insertAtSafe = Math.min(Math.max(projection.slotInProjection, 0), remainder.length);
 
       const reordered: FlatNode[] = [
         ...remainder.slice(0, insertAtSafe),
@@ -619,8 +586,8 @@ export function RulesTreeTable({
       ) : null}
       {searchActive ? (
         <div className={styles.searchHint} role="status">
-          Drag-and-drop reordering is disabled while a search filter is
-          active — clear the search to rearrange rules.
+          Drag-and-drop reordering is disabled while a search filter is active — clear the search to
+          rearrange rules.
         </div>
       ) : null}
 
@@ -674,9 +641,7 @@ export function RulesTreeTable({
                 expanded={expanded.has(id)}
                 onToggleExpanded={() => toggleExpanded(id)}
                 selectionLocked={pending}
-                {...(contextMenuItems
-                  ? { onContextMenu: (e) => onRowContextMenu(e, n.rule) }
-                  : {})}
+                {...(contextMenuItems ? { onContextMenu: (e) => onRowContextMenu(e, n.rule) } : {})}
               />
             );
           })
@@ -728,11 +693,7 @@ export function RulesTreeTable({
                       // the ghost can take their slot without growing the
                       // table.
                       activeSubtreeMode={
-                        !inActiveSubtree
-                          ? "none"
-                          : projection === null
-                          ? "dim"
-                          : "collapsed"
+                        !inActiveSubtree ? "none" : projection === null ? "dim" : "collapsed"
                       }
                       // Lock selection while pending — the right header
                       // slot is occupied by Cancel/Save, so bulk-action
@@ -789,11 +750,7 @@ function GhostRow({ rule, depth }: { rule: Rule; depth: number }) {
       <span className={styles.checkboxCell} />
       <span className={styles.nameCell}>
         {depth > 0 ? (
-          <span
-            className={styles.indent}
-            style={{ width: depth * INDENT_PX }}
-            aria-hidden="true"
-          />
+          <span className={styles.indent} style={{ width: depth * INDENT_PX }} aria-hidden="true" />
         ) : null}
         <Code>{rule.name}</Code>
       </span>
@@ -874,12 +831,7 @@ function StaticTreeRow({
   return (
     <div className={styles.rowOuter}>
       <div
-        className={[
-          styles.row,
-          selected ? styles.rowSelected : "",
-        ]
-          .filter(Boolean)
-          .join(" ")}
+        className={[styles.row, selected ? styles.rowSelected : ""].filter(Boolean).join(" ")}
         {...(!enabled ? { "data-disabled": "true" } : {})}
         {...(selected ? { "data-selected": "true" } : {})}
         onClick={(e) => {
@@ -947,16 +899,15 @@ function StaticTreeRow({
           ) : null}
           <Code>{node.rule.name}</Code>
         </span>
-        <span className={styles.conditionCell}>
-          {prettyCondition(node.rule.condition)}
-        </span>
+        <span className={styles.conditionCell}>{prettyCondition(node.rule.condition)}</span>
         <span className={styles.modsCell}>
           {mods.length === 0 ? (
             <span className={styles.comment}>—</span>
           ) : (
             mods.map((m, i) => (
               <Badge key={i} variant="neutral">
-                {String((m[0] as string | number | null | undefined) ?? "")} {String((m[1] as string | number | null | undefined) ?? "")}
+                {String((m[0] as string | number | null | undefined) ?? "")}{" "}
+                {String((m[1] as string | number | null | undefined) ?? "")}
               </Badge>
             ))
           )}
@@ -1135,16 +1086,15 @@ function SortableTreeRow({
           ) : null}
           <Code>{node.rule.name}</Code>
         </span>
-        <span className={styles.conditionCell}>
-          {prettyCondition(node.rule.condition)}
-        </span>
+        <span className={styles.conditionCell}>{prettyCondition(node.rule.condition)}</span>
         <span className={styles.modsCell}>
           {mods.length === 0 ? (
             <span className={styles.comment}>—</span>
           ) : (
             mods.map((m, i) => (
               <Badge key={i} variant="neutral">
-                {String((m[0] as string | number | null | undefined) ?? "")} {String((m[1] as string | number | null | undefined) ?? "")}
+                {String((m[0] as string | number | null | undefined) ?? "")}{" "}
+                {String((m[1] as string | number | null | undefined) ?? "")}
               </Badge>
             ))
           )}

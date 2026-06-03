@@ -20,9 +20,7 @@ export function useAllMetadata(): UseQueryResult<Metadata[], ApiError> {
   });
 }
 
-export function usePluginMetadata(
-  name: string | undefined,
-): UseQueryResult<Metadata, ApiError> {
+export function usePluginMetadata(name: string | undefined): UseQueryResult<Metadata, ApiError> {
   return useQuery<Metadata, ApiError>({
     queryKey: name ? KEY_ONE(name) : ["metadata", "__disabled__"],
     queryFn: async ({ signal }) => {

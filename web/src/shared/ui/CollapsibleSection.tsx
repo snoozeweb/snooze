@@ -32,17 +32,12 @@ export function CollapsibleSection({
         onClick={() => setOpen((o) => !o)}
       >
         <span className={styles.title}>
-          <span
-            className={styles.chevron}
-            style={{ transform: open ? "rotate(90deg)" : "none" }}
-          >
+          <span className={styles.chevron} style={{ transform: open ? "rotate(90deg)" : "none" }}>
             <Icon name="chevron-right" size={12} />
           </span>
           {title}
         </span>
-        {summary !== undefined && !open ? (
-          <span className={styles.summary}>{summary}</span>
-        ) : null}
+        {summary !== undefined && !open ? <span className={styles.summary}>{summary}</span> : null}
       </button>
       {open ? <div className={styles.body}>{children}</div> : null}
     </section>

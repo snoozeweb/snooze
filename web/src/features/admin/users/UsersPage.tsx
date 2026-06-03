@@ -152,8 +152,7 @@ export function UsersPage() {
   );
 
   const selectedUserRows = useMemo(
-    () =>
-      (list.data?.data ?? []).filter((r) => selectedKeys.has(r.uid ?? r.name)),
+    () => (list.data?.data ?? []).filter((r) => selectedKeys.has(r.uid ?? r.name)),
     [list.data, selectedKeys],
   );
   // Toolbar pieces — rendered next to the SearchBar inside DataTable so the
@@ -166,80 +165,72 @@ export function UsersPage() {
     selectedUserRows.length > 0 ? (
       bulkActions(selectedUserRows)
     ) : (
-      <Button
-        size="sm"
-        variant="primary"
-        leadingIcon="plus"
-        onClick={() => setCreating(true)}
-      >
+      <Button size="sm" variant="primary" leadingIcon="plus" onClick={() => setCreating(true)}>
         New
       </Button>
     );
 
   return (
     <div className={styles.page}>
-      <Tabs
-        value={tab}
-        onValueChange={(v) => updateSearch({ tab: v as UserTab, page: 1 })}
-      >
+      <Tabs value={tab} onValueChange={(v) => updateSearch({ tab: v as UserTab, page: 1 })}>
         <TabList>
           <TabTrigger value="all">All</TabTrigger>
           <TabTrigger value="local">Local</TabTrigger>
           {ldapEnabled ? <TabTrigger value="ldap">LDAP</TabTrigger> : null}
         </TabList>
         <TabPanel value={tab}>
-      <DataTable<User>
-        data={list.data?.data ?? []}
-        columns={userColumns}
-        rowKey={(r) => r.uid ?? r.name}
-        loading={list.isPending}
-        contextMenuItems={contextMenuItems}
-        selectable
-        selectedKeys={selectedKeys}
-        onSelectionChange={setSelectedKeys}
-        search={userSearch.searchProp}
-        toolbarHeader={usersToolbarHeader}
-        toolbar={usersToolbarActions}
-        emptyState={
-          <EmptyState
-            icon="file-text"
-            title="No users yet"
-            description="Add a user to grant access to the Snooze UI."
-            action={
-              <Button
-                size="md"
-                variant="primary"
-                leadingIcon="plus"
-                onClick={() => setCreating(true)}
-              >
-                New user
-              </Button>
+          <DataTable<User>
+            data={list.data?.data ?? []}
+            columns={userColumns}
+            rowKey={(r) => r.uid ?? r.name}
+            loading={list.isPending}
+            contextMenuItems={contextMenuItems}
+            selectable
+            selectedKeys={selectedKeys}
+            onSelectionChange={setSelectedKeys}
+            search={userSearch.searchProp}
+            toolbarHeader={usersToolbarHeader}
+            toolbar={usersToolbarActions}
+            emptyState={
+              <EmptyState
+                icon="file-text"
+                title="No users yet"
+                description="Add a user to grant access to the Snooze UI."
+                action={
+                  <Button
+                    size="md"
+                    variant="primary"
+                    leadingIcon="plus"
+                    onClick={() => setCreating(true)}
+                  >
+                    New user
+                  </Button>
+                }
+              />
             }
+            renderExpanded={(row) => (
+              <RowDetailPanel
+                row={row as unknown as Record<string, unknown>}
+                objectType="user"
+                objectId={row.uid}
+              />
+            )}
+            serverSort={{
+              sortBy: orderby,
+              order: asc ? "asc" : "desc",
+              onChange: (next) =>
+                updateSearch({ orderby: next.sortBy, asc: next.order === "asc", page: 1 }),
+            }}
+            serverPagination={{
+              page,
+              pageSize: PAGE_SIZE,
+              total: list.data?.meta.total ?? 0,
+              onChange: (next) => updateSearch({ page: next.page }),
+            }}
+            onRowOpen={(row) => {
+              if (row.uid) updateSearch({ uid: row.uid });
+            }}
           />
-        }
-        renderExpanded={(row) => (
-          <RowDetailPanel
-            row={row as unknown as Record<string, unknown>}
-            objectType="user"
-            objectId={row.uid}
-          />
-        )}
-        serverSort={{
-          sortBy: orderby,
-          order: asc ? "asc" : "desc",
-          onChange: (next) =>
-            updateSearch({ orderby: next.sortBy, asc: next.order === "asc", page: 1 }),
-        }}
-        serverPagination={{
-          page,
-          pageSize: PAGE_SIZE,
-          total: list.data?.meta.total ?? 0,
-          onChange: (next) => updateSearch({ page: next.page }),
-        }}
-        onRowOpen={(row) => {
-          if (row.uid) updateSearch({ uid: row.uid });
-        }}
-      />
         </TabPanel>
       </Tabs>
       {detailUid !== undefined ? (

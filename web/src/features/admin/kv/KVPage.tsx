@@ -124,12 +124,7 @@ export function KVPage() {
         bulkActions={bulkActions}
         toolbarHeader={`${list.data?.meta.total ?? 0} key-values`}
         toolbar={
-          <Button
-            size="sm"
-            variant="primary"
-            leadingIcon="plus"
-            onClick={() => setCreating(true)}
-          >
+          <Button size="sm" variant="primary" leadingIcon="plus" onClick={() => setCreating(true)}>
             New
           </Button>
         }

@@ -18,7 +18,9 @@ describe("searchdsl tokenize", () => {
 
   it("recognises operators by symbol and keyword", () => {
     const toks = tokenize("a=1 b!=2 c<3 d<=4 e>5 f>=6 g~x h?");
-    const ops = toks.filter((t) => ["eq", "neq", "lt", "lte", "gt", "gte", "matches", "exists_sym"].includes(t.kind));
+    const ops = toks.filter((t) =>
+      ["eq", "neq", "lt", "lte", "gt", "gte", "matches", "exists_sym"].includes(t.kind),
+    );
     expect(ops.map((t) => t.kind)).toEqual([
       "eq",
       "neq",

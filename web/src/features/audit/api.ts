@@ -34,7 +34,13 @@ export function useObjectAudit(
     queryKey: ["audit", objectType, objectId ?? "", limit, offset],
     queryFn: ({ signal }) =>
       api<ListResponse<AuditEntry>>("GET", "/audit", {
-        query: { ...(q !== undefined ? { q } : {}), orderby: "date_epoch", asc: true, limit, offset },
+        query: {
+          ...(q !== undefined ? { q } : {}),
+          orderby: "date_epoch",
+          asc: true,
+          limit,
+          offset,
+        },
         signal,
       }),
     enabled: !!objectId,

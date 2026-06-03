@@ -27,9 +27,9 @@ describe("prettyCondition", () => {
     ).toBe(`(host = "a" AND severity = "critical")`);
   });
   it("renders NOT prefix", () => {
-    expect(
-      prettyCondition({ type: "NOT", arg: { type: "EXISTS", field: "shelved" } }),
-    ).toBe("NOT shelved?");
+    expect(prettyCondition({ type: "NOT", arg: { type: "EXISTS", field: "shelved" } })).toBe(
+      "NOT shelved?",
+    );
   });
   it("collapses a single-arg group to its child", () => {
     expect(

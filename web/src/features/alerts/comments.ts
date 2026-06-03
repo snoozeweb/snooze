@@ -32,7 +32,13 @@ export function useRecordComments(
     queryKey: ["comment", "for-record", record_uid ?? "", limit, offset],
     queryFn: ({ signal }) =>
       api<ListResponse<Comment>>("GET", "/comment", {
-        query: { ...(q !== undefined ? { q } : {}), orderby: "date_epoch", asc: true, limit, offset },
+        query: {
+          ...(q !== undefined ? { q } : {}),
+          orderby: "date_epoch",
+          asc: true,
+          limit,
+          offset,
+        },
         signal,
       }),
     enabled: !!record_uid,

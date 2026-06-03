@@ -58,9 +58,7 @@ export function MetadataForm({
               onChange={(v) => setField(key, v)}
               disabled={disabled}
             />
-            {field.description ? (
-              <span className={styles.help}>{field.description}</span>
-            ) : null}
+            {field.description ? <span className={styles.help}>{field.description}</span> : null}
           </div>
         );
       })}
@@ -103,13 +101,7 @@ export function MetadataField({
   // followed by re-typing snap back to the default mid-edit.
   const fid = id ?? `mf-${field.display_name.replace(/\s+/g, "-").toLowerCase()}`;
   return (
-    <FieldControl
-      id={fid}
-      field={field}
-      value={value}
-      onChange={onChange}
-      disabled={disabled}
-    />
+    <FieldControl id={fid} field={field} value={value} onChange={onChange} disabled={disabled} />
   );
 }
 
@@ -215,18 +207,11 @@ function FieldControl({ id, field, value, onChange, disabled }: ControlProps) {
       );
     case "Arguments":
       return (
-        <ArgumentsControl
-          field={field}
-          value={value}
-          onChange={onChange}
-          disabled={disabled}
-        />
+        <ArgumentsControl field={field} value={value} onChange={onChange} disabled={disabled} />
       );
     case "Object":
     default:
-      return (
-        <ObjectControl id={id} value={value} onChange={onChange} disabled={disabled} />
-      );
+      return <ObjectControl id={id} value={value} onChange={onChange} disabled={disabled} />;
   }
 }
 
@@ -380,9 +365,7 @@ function ArgumentsControl({
   }
 
   const ph = typeof field.placeholder === "string" ? field.placeholder : "value";
-  const list: string[] = Array.isArray(value)
-    ? (value as unknown[]).map((x) => asString(x))
-    : [];
+  const list: string[] = Array.isArray(value) ? (value as unknown[]).map((x) => asString(x)) : [];
 
   function commit(next: string[]) {
     onChange(next);

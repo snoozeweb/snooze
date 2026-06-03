@@ -162,8 +162,7 @@ export function DataTable<T>({
     (key: string, index: number, shiftKey: boolean) => {
       if (!onSelectionChange) return;
       if (shiftKey && anchorIndex !== null && anchorIndex !== index) {
-        const [lo, hi] =
-          anchorIndex < index ? [anchorIndex, index] : [index, anchorIndex];
+        const [lo, hi] = anchorIndex < index ? [anchorIndex, index] : [index, anchorIndex];
         const next = new Set<string>(selSet);
         for (let i = lo; i <= hi; i++) {
           const k = allKeys[i];
@@ -233,9 +232,7 @@ export function DataTable<T>({
             <div className={styles.searchSlot}>
               <SearchBar
                 value={search.value}
-                onChange={(c) =>
-                  search.onChange({ text: c.text, condition: c.condition })
-                }
+                onChange={(c) => search.onChange({ text: c.text, condition: c.condition })}
                 {...(search.collection ? { collection: search.collection } : {})}
                 {...(search.placeholder ? { placeholder: search.placeholder } : {})}
               />
@@ -380,10 +377,7 @@ export function DataTable<T>({
                           aria-expanded={isExpanded}
                           onClick={() => toggleExpanded(key)}
                         >
-                          <Icon
-                            name={isExpanded ? "chevron-down" : "chevron-right"}
-                            size={14}
-                          />
+                          <Icon name={isExpanded ? "chevron-down" : "chevron-right"} size={14} />
                         </button>
                       </td>
                     ) : null}

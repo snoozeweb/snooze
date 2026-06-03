@@ -33,7 +33,12 @@ export type BarChartProps = {
   sort?: "value" | "label";
 };
 
-export function BarChart({ series, height = 240, horizontal = false, sort = "label" }: BarChartProps) {
+export function BarChart({
+  series,
+  height = 240,
+  horizontal = false,
+  sort = "label",
+}: BarChartProps) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const chartRef = useRef<Chart | null>(null);
 
@@ -89,7 +94,11 @@ export function BarChart({ series, height = 240, horizontal = false, sort = "lab
     };
 
     chartRef.current?.destroy();
-    chartRef.current = new Chart(canvasRef.current, { type: "bar", data: { labels, datasets }, options });
+    chartRef.current = new Chart(canvasRef.current, {
+      type: "bar",
+      data: { labels, datasets },
+      options,
+    });
     return () => {
       chartRef.current?.destroy();
       chartRef.current = null;
