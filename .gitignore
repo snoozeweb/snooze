@@ -39,3 +39,6 @@ docs/configuration/*.rst
 
 # Visual brainstorm companion scratch dir
 .superpowers/
+
+# Local brainstorm/plan/spec artifacts — kept on disk, never committed
+docs/superpowers/
