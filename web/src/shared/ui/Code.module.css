@@ -16,7 +16,8 @@
   border-radius: var(--radius-md);
   padding: var(--space-3);
   color: var(--text-strong);
-  overflow: auto;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
   margin: 0;
 }
 .copyBtn {

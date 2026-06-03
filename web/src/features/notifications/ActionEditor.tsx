@@ -174,7 +174,7 @@ export function ActionEditor({ uid, onClose }: ActionEditorProps) {
     >
       <DrawerContent>
         <DrawerTitle>{heading}</DrawerTitle>
-        <DrawerBody>
+        <DrawerBody key={step}>
           {picking ? (
             metadata.isPending ? (
               <div style={{ display: "flex", justifyContent: "center", padding: "var(--space-5)" }}>
@@ -289,7 +289,7 @@ export function ActionEditor({ uid, onClose }: ActionEditorProps) {
               </Button>
             ) : null}
             <div style={{ flex: 1 }} />
-            <Button variant="ghost" onClick={onClose}>
+            <Button variant="ghost" onClick={isCreate ? () => setStep("pick") : onClose}>
               Cancel
             </Button>
             <Button
