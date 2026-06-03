@@ -26,6 +26,13 @@
   escalation/auto-close comments remain system events (no author).
 
 ### Added
+- **"How to inject alerts" guide on the empty Alerts page.** When no alerts have
+  been ingested yet, the Alerts table now offers a **How to inject alerts**
+  button that opens a modal with copy-pasteable setup snippets for every
+  injection endpoint (REST API, webhook receivers, daemon inputs), each linking
+  to its documentation page. A new "Send your first alert" quickstart page backs
+  it. A filtered or searched empty result shows a distinct "no matches" message
+  instead.
 - **Restore dashboard stat counters.** The dashboard now shows DB-persisted
   hourly counter series for hits / throttled / snoozed / notifications /
   action success / action errors, with by-state and top-host breakdowns.

@@ -257,4 +257,39 @@ describe("AlertsPage", () => {
     const input = await screen.findByRole("textbox", { name: /search/i });
     expect((input as HTMLInputElement).value).toBe("hash = abc123");
   });
+
+  it("genuinely-empty list shows the inject CTA and opens the dialog", async () => {
+    mswServer.use(
+      http.get("/api/v1/record", () =>
+        HttpResponse.json({
+          data: [],
+          meta: { count: 0, limit: 50, offset: 0, total: 0 },
+        }),
+      ),
+    );
+    const user = userEvent.setup();
+    setup();
+    await waitFor(() => expect(screen.getByText(/no alerts yet/i)).toBeInTheDocument());
+    await user.click(screen.getByRole("button", { name: /how to inject alerts/i }));
+    await waitFor(() =>
+      expect(screen.getByRole("dialog", { name: /how to inject alerts/i })).toBeInTheDocument(),
+    );
+    expect(screen.getByText(/curl -s -X POST/)).toBeInTheDocument();
+  });
+
+  it("filtered-empty list shows a no-match message, not the inject CTA", async () => {
+    mswServer.use(
+      http.get("/api/v1/record", () =>
+        HttpResponse.json({
+          data: [],
+          meta: { count: 0, limit: 50, offset: 0, total: 0 },
+        }),
+      ),
+    );
+    setup("/web/alerts?search=host%20%3D%20nope");
+    await waitFor(() =>
+      expect(screen.getByText(/no alerts match your filters/i)).toBeInTheDocument(),
+    );
+    expect(screen.queryByRole("button", { name: /how to inject alerts/i })).toBeNull();
+  });
 });

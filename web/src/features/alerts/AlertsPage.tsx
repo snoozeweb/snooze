@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useSearch } from "@tanstack/react-router";
 import { DataTable, type RowAction } from "@/shared/ui/DataTable";
 import type { ContextMenuItem } from "@/shared/ui/DataTableContextMenu";
+import { EmptyState } from "@/shared/ui/EmptyState";
 import { Switch } from "@/shared/ui/Switch";
 import { Tooltip } from "@/shared/ui/Tooltip";
 import { toast } from "@/shared/ui/toast/useToast";
@@ -21,6 +22,7 @@ import { useAutoRefresh } from "./useAutoRefresh";
 import type { AlertState, Record_ } from "./types";
 import { tabById, type TabId } from "./tabs";
 import { ActionDialog, type ActionType } from "./ActionDialog";
+import { InjectAlertsDialog } from "./InjectAlertsDialog";
 import styles from "./AlertsPage.module.css";
 
 type AlertsSearch = AlertFilters & {
@@ -103,6 +105,7 @@ export function AlertsPage() {
   // reading right out from under them.
   const [expandedCount, setExpandedCount] = useState(0);
   const [dialog, setDialog] = useState<{ type: ActionType; records: Record_[] } | null>(null);
+  const [injectOpen, setInjectOpen] = useState(false);
   const shelveMut = useShelveRecord();
   const removeMut = Records.useRemove();
 
@@ -468,6 +471,35 @@ export function AlertsPage() {
     [commentMut, dialog],
   );
 
+  // Distinguish a genuinely empty install (no alerts ingested yet) from a
+  // filter/search/tab that simply matches nothing. Only the former offers the
+  // "how to inject alerts" guidance; the latter nudges the operator to widen
+  // their filter. The default "alerts" tab preset does not count as a filter.
+  const hasActiveFilters =
+    searchText.trim() !== "" ||
+    searchCondition !== null ||
+    selectedEnvs.length > 0 ||
+    activeTab !== "alerts";
+
+  const emptyState = hasActiveFilters ? (
+    <EmptyState
+      icon="search"
+      title="No alerts match your filters"
+      description="Try widening your search, clearing the environment filter, or switching tabs."
+    />
+  ) : (
+    <EmptyState
+      icon="bell-off"
+      title="No alerts yet"
+      description="Snooze hasn't received any alerts. Connect a monitoring source to start ingesting."
+      action={
+        <Button variant="primary" leadingIcon="book" onClick={() => setInjectOpen(true)}>
+          How to inject alerts
+        </Button>
+      }
+    />
+  );
+
   return (
     <div className={styles.page}>
       <AlertsFilters
@@ -493,6 +525,7 @@ export function AlertsPage() {
         columns={alertColumns}
         rowKey={(r) => r.uid ?? `${r.host ?? ""}-${r.date_epoch ?? 0}`}
         loading={list.isPending}
+        emptyState={emptyState}
         selectable
         selectedKeys={selectedKeys}
         onSelectionChange={setSelectedKeys}
@@ -570,6 +603,7 @@ export function AlertsPage() {
         onCancel={confirmDelete.cancel}
         onConfirm={() => void confirmDelete.confirm()}
       />
+      <InjectAlertsDialog open={injectOpen} onOpenChange={setInjectOpen} />
     </div>
   );
 }

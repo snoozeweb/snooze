@@ -1,0 +1,79 @@
+/* Wider than the default Dialog (440px) — the modal carries tabs, a source
+   picker, and code snippets. */
+.content {
+  width: min(720px, calc(100vw - 32px));
+}
+
+.browser {
+  display: grid;
+  grid-template-columns: 160px 1fr;
+  gap: var(--space-4);
+}
+
+.picker {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  border-right: 1px solid var(--border-muted);
+  padding-right: var(--space-2);
+}
+
+.pickerItem,
+.pickerItemActive {
+  text-align: left;
+  padding: var(--space-1) var(--space-2);
+  font-size: var(--text-sm);
+  border: 0;
+  border-radius: var(--radius-md);
+  background: none;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+
+.pickerItem:hover {
+  background: var(--bg-hover);
+  color: var(--text-strong);
+}
+
+.pickerItemActive {
+  background: var(--accent-bg);
+  color: var(--accent-fg);
+  font-weight: var(--weight-medium);
+}
+
+.panel {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  min-width: 0;
+}
+
+.endpoint {
+  margin: 0;
+}
+
+.summary {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: var(--text-sm);
+  line-height: var(--leading-normal);
+}
+
+.docLink,
+.guideLink {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  font-size: var(--text-sm);
+  color: var(--accent);
+  text-decoration: none;
+}
+
+.docLink:hover,
+.guideLink:hover {
+  text-decoration: underline;
+}
+
+.guideLink {
+  margin-right: auto;
+}

@@ -33,7 +33,8 @@ Plugin **CRUD** endpoints (rules, snoozes, notifications, heartbeats, …) are u
 
 ## Inputs
 
-
+New here? Start with **[Send your first alert](./sending-alerts.md)** for the
+fastest paths to get alerts flowing, then see the per-integration pages below.
 
 ## Outputs
 
