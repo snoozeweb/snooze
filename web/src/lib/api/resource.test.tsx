@@ -58,6 +58,21 @@ describe("defineResource — list", () => {
     expect(seen[0]).toContain("orderby=name");
     expect(seen[0]).toContain("asc=false");
   });
+
+  it("stays idle and never fetches when enabled is false", async () => {
+    let fetched = false;
+    mswServer.use(
+      http.get("/api/v1/rule", () => {
+        fetched = true;
+        return HttpResponse.json({ data: [], meta: { count: 0, limit: 1, offset: 0, total: 0 } });
+      }),
+    );
+    const wrapper = makeWrapper();
+    const { result } = renderHook(() => Rules.useList({ limit: 1 }, { enabled: false }), { wrapper });
+    await new Promise((r) => setTimeout(r, 80));
+    expect(fetched).toBe(false);
+    expect(result.current.fetchStatus).toBe("idle");
+  });
 });
 
 describe("defineResource — get", () => {

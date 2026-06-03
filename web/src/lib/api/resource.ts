@@ -40,7 +40,7 @@ export type ResourceHooks<T, Create, Update> = {
   };
   useList: (
     params?: SearchParams,
-    options?: { refetchInterval?: number },
+    options?: { refetchInterval?: number; enabled?: boolean },
   ) => UseQueryResult<ListResponse<T>, ApiError>;
   useGet: (uid: string | undefined) => UseQueryResult<T, ApiError>;
   useCreate: () => UseMutationResult<T, ApiError, Create>;
@@ -86,6 +86,7 @@ export function defineResource<T, Create = Partial<T>, Update = Partial<T>>(
         ...(options?.refetchInterval !== undefined
           ? { refetchInterval: options.refetchInterval }
           : {}),
+        ...(options?.enabled !== undefined ? { enabled: options.enabled } : {}),
       });
     },
 
