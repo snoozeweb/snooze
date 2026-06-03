@@ -36,3 +36,6 @@ docs/configuration/*.rst
 !docs/configuration/ingest.rst
 !docs/configuration/sqlite.rst
 !docs/configuration/postgres.rst
+
+# Visual brainstorm companion scratch dir
+.superpowers/
