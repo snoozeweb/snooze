@@ -1,0 +1,46 @@
+.howToBtn {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  height: 24px;
+  padding: 0 var(--space-2);
+  background: var(--bg-canvas);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.howToBtn:hover {
+  background: var(--bg-hover);
+  color: var(--text-strong);
+}
+
+.dangerBadge {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  height: 22px;
+  padding: 0 var(--space-2);
+  background: rgb(240 73 73 / 0.12);
+  border: 1px solid var(--severity-critical);
+  border-radius: var(--radius-md);
+  font-size: var(--text-xs);
+  color: var(--severity-critical);
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.dangerBadge:hover {
+  background: rgb(240 73 73 / 0.2);
+}
+
+.dot {
+  width: 6px;
+  height: 6px;
+  background: var(--severity-critical);
+  border-radius: var(--radius-full);
+  flex-shrink: 0;
+}
