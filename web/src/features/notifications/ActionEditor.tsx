@@ -10,6 +10,8 @@ import { ApiError } from "@/lib/api/client";
 import { MetadataForm } from "@/shared/forms/MetadataForm";
 import { useAllMetadata } from "@/shared/forms/useMetadata";
 import type { Metadata } from "@/shared/forms/types";
+import { BrandIcon } from "@/shared/icons/BrandIcon";
+import { brandFor } from "@/shared/icons/brand-names";
 import { IntegrationGallery } from "./IntegrationGallery";
 import { Actions, useTestAction } from "./api";
 import type { Action } from "./types";
@@ -94,6 +96,8 @@ export function ActionEditor({ uid, onClose }: ActionEditorProps) {
     [formPlugins, selected],
   );
   const useJsonFallback = !!selected && !selectedPlugin && !metadata.isPending;
+  // `selected` is the notifier registry key, so it doubles as the brand id.
+  const headerBrand = brandFor(selected);
 
   function pickIntegration(pluginName: string) {
     setValue("selected", pluginName, { shouldDirty: true });
@@ -191,9 +195,12 @@ export function ActionEditor({ uid, onClose }: ActionEditorProps) {
             >
               <section className={styles.section}>
                 <div className={styles.row} style={{ justifyContent: "space-between" }}>
-                  <h3 className={styles.sectionTitle}>
-                    {selectedPlugin?.name || selected || "Action"}
-                  </h3>
+                  <div className={styles.row}>
+                    {headerBrand ? <BrandIcon name={headerBrand} size={20} /> : null}
+                    <h3 className={styles.sectionTitle}>
+                      {selectedPlugin?.name || selected || "Action"}
+                    </h3>
+                  </div>
                   <div className={styles.row}>
                     {selectedPlugin?.doc_url ? (
                       <a

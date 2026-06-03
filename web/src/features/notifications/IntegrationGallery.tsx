@@ -1,5 +1,7 @@
 import { useMemo } from "react";
 import { Icon } from "@/shared/icons/Icon";
+import { BrandIcon } from "@/shared/icons/BrandIcon";
+import { brandFor } from "@/shared/icons/brand-names";
 import type { IconName } from "@/shared/icons/icon-names";
 import type { Metadata } from "@/shared/forms/types";
 import styles from "./IntegrationGallery.module.css";
@@ -14,8 +16,9 @@ const CATEGORY_ORDER: { key: string; label: string }[] = [
   { key: "generic", label: "Generic" },
 ];
 
-// Each bucket maps to a monochrome glyph from the existing icon sprite
-// (web/public/icons.svg). Brand logos are intentionally out of scope.
+// Branded notifiers (Slack, Teams, PagerDuty, …) render their brand glyph from
+// web/public/brands.svg via brandFor(); everything else falls back to the
+// bucket's monochrome glyph from the icon sprite (web/public/icons.svg).
 const CATEGORY_ICON: Record<string, IconName> = {
   chat: "message-square",
   oncall: "bell",
@@ -59,20 +62,27 @@ export function IntegrationGallery({ plugins, onPick }: IntegrationGalleryProps)
           <section key={key} className={styles.group}>
             <h3 className={styles.groupTitle}>{label}</h3>
             <div className={styles.grid}>
-              {items.map((m) => (
-                <button
-                  key={m.plugin_name}
-                  type="button"
-                  className={styles.card}
-                  onClick={() => onPick(m.plugin_name)}
-                >
-                  <Icon name={CATEGORY_ICON[key] ?? "plug"} size={24} />
-                  <span className={styles.cardName}>{m.name || m.plugin_name}</span>
-                  {m.display_name ? (
-                    <span className={styles.cardDesc}>{m.display_name}</span>
-                  ) : null}
-                </button>
-              ))}
+              {items.map((m) => {
+                const brand = brandFor(m.plugin_name);
+                return (
+                  <button
+                    key={m.plugin_name}
+                    type="button"
+                    className={styles.card}
+                    onClick={() => onPick(m.plugin_name)}
+                  >
+                    {brand ? (
+                      <BrandIcon name={brand} size={24} />
+                    ) : (
+                      <Icon name={CATEGORY_ICON[key] ?? "plug"} size={24} />
+                    )}
+                    <span className={styles.cardName}>{m.name || m.plugin_name}</span>
+                    {m.display_name ? (
+                      <span className={styles.cardDesc}>{m.display_name}</span>
+                    ) : null}
+                  </button>
+                );
+              })}
             </div>
           </section>
         );

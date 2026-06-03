@@ -60,4 +60,21 @@ describe("IntegrationGallery", () => {
     await user.click(screen.getByRole("button", { name: /Microsoft Teams/ }));
     expect(onPick).toHaveBeenCalledWith("teams");
   });
+
+  it("shows the brand glyph for a branded notifier", () => {
+    render(<IntegrationGallery plugins={PLUGINS} onPick={() => undefined} />);
+    const slack = screen.getByRole("button", { name: /Slack/ });
+    expect(slack.querySelector("use")?.getAttribute("href")).toBe("/web/brands.svg#brand-slack");
+    const pagerduty = screen.getByRole("button", { name: /PagerDuty/ });
+    expect(pagerduty.querySelector("use")?.getAttribute("href")).toBe(
+      "/web/brands.svg#brand-pagerduty",
+    );
+  });
+
+  it("falls back to the category glyph for a notifier without a brand logo", () => {
+    render(<IntegrationGallery plugins={PLUGINS} onPick={() => undefined} />);
+    // webhook is generic and has no vendored brand mark.
+    const webhook = screen.getByRole("button", { name: /Webhook/ });
+    expect(webhook.querySelector("use")?.getAttribute("href")).toBe("/web/icons.svg#icon-plug");
+  });
 });

@@ -49,6 +49,14 @@
 - Branded **integration gallery** in the Actions editor, plus a per-integration
   **Send test** button (`POST /api/v1/action/test`) and a **setup-docs link**
   (`doc_url` / `category` plugin metadata).
+- **Brand logos in the Actions integration picker.** The integration gallery and
+  the config-step header now show each notifier's brand mark — Slack, Mattermost,
+  Microsoft Teams, Discord, Telegram, Google Chat, PagerDuty, Opsgenie,
+  Statuspage, Amazon SNS, Twilio, ntfy — instead of a generic category glyph.
+  The marks are vendored single-path glyphs from Simple Icons (CC0) in
+  `web/public/brands.svg`, rendered monochrome in the current theme color (no
+  hard-coded brand colors, so dark/light theming is preserved). Notifiers with no
+  brand mark (mail, webhook, script, …) keep their category glyph.
 
 ### Changed
 - **Teams notifications link to the All tab.** The `snooze-teams` "View in
