@@ -1,0 +1,78 @@
+.cards {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  margin-top: var(--space-1);
+}
+
+.card {
+  padding: var(--space-3);
+  background: var(--bg-canvas);
+  border-radius: var(--radius-lg);
+  border-left: 3px solid var(--border);
+}
+
+.warn {
+  border-left-color: var(--severity-critical);
+}
+
+.ok {
+  border-left-color: var(--severity-ok);
+}
+
+.cardTop {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: var(--space-2);
+}
+
+.stepLabel {
+  font-size: var(--text-xs);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--text-muted);
+}
+
+.countBadge {
+  font-size: var(--text-xs);
+  padding: 2px var(--space-2);
+  border-radius: var(--radius-pill);
+}
+
+.countWarn {
+  background: rgb(240 73 73 / 0.15);
+  color: var(--severity-critical);
+}
+
+.countOk {
+  background: rgb(63 185 80 / 0.15);
+  color: var(--severity-ok);
+}
+
+.cardTitle {
+  font-size: var(--text-sm);
+  font-weight: var(--weight-semibold);
+  color: var(--text-strong);
+  margin-bottom: var(--space-1);
+}
+
+.cardDesc {
+  font-size: var(--text-sm);
+  color: var(--text-muted);
+  line-height: var(--leading-normal);
+  margin-bottom: var(--space-3);
+}
+
+.cta {
+  background: none;
+  border: none;
+  padding: 0;
+  font-size: var(--text-sm);
+  color: var(--accent);
+  cursor: pointer;
+}
+
+.cta:hover {
+  text-decoration: underline;
+}
