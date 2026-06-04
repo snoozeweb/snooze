@@ -347,6 +347,7 @@ func applyHousekeeperOverrides(out *HousekeeperConfig, values map[string]any) {
 	}
 	overlayDuration(values, "housekeeping.record_ttl", &out.RecordTTL)
 	overlayDuration(values, "housekeeping.cleanup_alert", &out.CleanupAlert)
+	overlayDuration(values, "housekeeping.cleanup_aggregate", &out.CleanupAggregate)
 	overlayDuration(values, "housekeeping.cleanup_comment", &out.CleanupComment)
 	overlayDuration(values, "housekeeping.cleanup_snooze", &out.CleanupSnooze)
 	overlayDuration(values, "housekeeping.cleanup_notification", &out.CleanupNotification)

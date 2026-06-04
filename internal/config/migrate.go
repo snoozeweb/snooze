@@ -14,9 +14,11 @@ import (
 //
 // This is a placeholder implementation. It copies whatever recognised YAML
 // files are present and leaves a TODO marker for the per-field translation
-// work that will land alongside the “settings“ plugin. The migration tool
-// shipped as “snooze-server migrate-config --from /etc/snooze/server-py“
-// wraps this function.
+// work that will land alongside the “settings“ plugin. It is not yet wired into the
+// “snooze-server migrate-config“ subcommand, which is currently a deferred
+// stub (see runMigrateConfig); the loader already accepts the legacy file
+// names verbatim via the shared sectionFiles table, so the standalone
+// migration step is on the roadmap rather than the critical path.
 func MigrateFromPython(srcDir, dstDir string) error {
 	if srcDir == "" {
 		return fmt.Errorf("config: migrate: source directory is empty")

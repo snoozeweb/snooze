@@ -13,9 +13,11 @@ import (
 )
 
 // Plugin is the base contract every Snooze plugin satisfies. A plugin can
-// additionally implement one or more of the optional interfaces in this file
-// (Processor, Notifier, Action, WebhookReceiver, DataModel, RouteProvider,
-// LifecycleHook) to participate in the corresponding subsystem.
+// additionally implement one or more of the optional interfaces defined below
+// (Processor, Notifier, Actioner, WebhookReceiver, DataModel, RouteProvider,
+// LifecycleHook, plus the DataModel refinements CreateHook/UpdateHook/
+// DeleteHook/PrimaryKeyer/WriteTransformer) to participate in the corresponding
+// subsystem.
 type Plugin interface {
 	// Name returns the stable plugin identifier (matches Metadata().Name and
 	// the registry key). Must be a valid URL path segment.
@@ -112,9 +114,15 @@ type CreateHook interface {
 // UpdateHook plugins run side effects after a successful PUT/PATCH on a
 // document. The hook fires after the DB write has succeeded. Same
 // best-effort semantics as CreateHook.
+//
+// NOTE: the third argument is NOT uniformly a partial. On PATCH it is the
+// partial patch body; on PUT (full replacement) it is the entire replacement
+// document (with uid stamped). A hook that diffs to detect changed fields will
+// see every field on a PUT.
 type UpdateHook interface {
 	Plugin
-	AfterUpdate(ctx context.Context, uid string, patch map[string]any) error
+	// doc reflects the request body: a partial on PATCH, the full document on PUT.
+	AfterUpdate(ctx context.Context, uid string, doc map[string]any) error
 }
 
 // DeleteHook plugins run side effects after a successful DELETE on one or

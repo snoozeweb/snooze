@@ -16,4 +16,4 @@ override_dh_auto_install:
 override_dh_auto_test:
 	# Tests are run separately via the CI pipeline (`task test`). Skip during
 	# the package build so the Debian build chroot does not need to spin up
-	# MongoDB / PostgreSQL / Redis fixtures.
+	# MongoDB / PostgreSQL fixtures.

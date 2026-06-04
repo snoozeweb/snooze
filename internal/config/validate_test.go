@@ -55,3 +55,19 @@ func TestValidate_AcceptsPostgresDSN(t *testing.T) {
 	c.Core.Database = schema.Database{Type: "postgres", DSN: "postgres://u:p@host/db"}
 	require.NoError(t, c.Validate())
 }
+
+// The validator must accept every spelling the openDB dispatch understands,
+// so a config copied from the docs (`type: sqlite`) does not hard-fail at boot.
+func TestValidate_AcceptsDriverTypeAliases(t *testing.T) {
+	cases := []schema.Database{
+		{Type: "sqlite"},                               // canonical SQLite spelling
+		{Type: "sqlite", Path: "/tmp/db.sqlite"},       // with an explicit path
+		{Type: "mongodb", Host: "mongodb://localhost"}, // mongo alias
+		{Type: "pg", DSN: "postgres://u:p@host/db"},    // postgres alias
+	}
+	for _, db := range cases {
+		c := Default()
+		c.Core.Database = db
+		require.NoErrorf(t, c.Validate(), "type %q should validate", db.Type)
+	}
+}

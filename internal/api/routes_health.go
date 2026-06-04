@@ -98,8 +98,9 @@ func (rt *Router) handleClusterStatus(w http.ResponseWriter, r *http.Request) {
 // alphabetically-first ok member — Snooze has no real leader election,
 // every node serves writes against the shared DB.
 //
-// Returns the same `member` shape inlined here as the caller (must be a
-// fresh declaration here so the slice element type is exported via JSON).
+// Each member is a {"name", "status"} map (status one of ok/degraded/down);
+// when no nodes are known it returns a single synthetic {"name":"standalone",
+// "status":"ok"} entry with leader "standalone".
 func (rt *Router) discoverMembers(ctx context.Context) (members []map[string]string, leader string) {
 	standalone := []map[string]string{{"name": "standalone", "status": "ok"}}
 	if rt.DB == nil {

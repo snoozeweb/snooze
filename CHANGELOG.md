@@ -24,6 +24,24 @@
   authenticated user (and auth method) onto the `comment` document, so the alert
   timeline shows who acted and "edit your own comment" works. Auto-generated
   escalation/auto-close comments remain system events (no author).
+- **`database.type: sqlite` no longer fails to boot.** Config validation only
+  accepted `mongo`/`file`/`postgres` and rejected the documented `sqlite`
+  spelling (plus the `pg`/`mongodb` aliases) that the driver layer already
+  supports, so a config copied from the quickstart aborted at startup with a
+  `oneof` error. Validation now accepts every spelling the driver dispatches on.
+- **CLI now defaults to the right server port.** `snooze --server` fell back to
+  `http://localhost:9001` while the server listens on `5200`, so out-of-the-box
+  CLI commands failed to connect. The default (and the `runtime-server` image's
+  `EXPOSE`) are now `5200`.
+- **Runtime `housekeeping.cleanup_aggregate` override is honoured.** Editing the
+  aggregate-cleanup interval in the Settings UI was silently dropped and the
+  live job stayed pinned to the file-config baseline; the override now applies.
+- **`core.enabled_optional_plugins` env override splits on commas.** Setting
+  `SNOOZE_SERVER_CORE_ENABLED_OPTIONAL_PLUGINS=a,b` previously yielded a single
+  `"a,b"` element; it now parses as a list like the other list-valued fields.
+- **`auth.token_algorithm` validation matches the engine.** The schema accepted
+  `HS384`/`HS512`, but the token engine implements only `HS256` and aborted at
+  boot; validation now rejects the unsupported values up front.
 
 ### Added
 - **"How to inject alerts" guide on the empty Alerts page.** When no alerts have

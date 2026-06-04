@@ -24,7 +24,7 @@ import (
 //	timeout: 30s          # optional
 //
 // Every field is optional. Missing fields fall through to the CLI's own
-// defaults (env vars first, then the hard-coded "http://localhost:9001",
+// defaults (env vars first, then the hard-coded "http://localhost:5200",
 // etc.). Precedence in the CLI is: flag > env var > config file > built-in.
 type ClientConfig struct {
 	Server      string                  `yaml:"server"`

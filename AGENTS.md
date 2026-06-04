@@ -31,18 +31,18 @@ snooze/
 │   ├── snooze-smtp/             # Input: SMTP
 │   ├── snooze-otlp/             # Input: OTLP/HTTP JSON logs
 │   ├── snooze-k8s-events/       # Input: Kubernetes Event API watch
-│   ├── snooze-googlechat/       # Output notifier: Google Chat
-│   ├── snooze-mattermost/       # Output notifier: Mattermost
-│   ├── snooze-teams/            # Output notifier: MS Teams
-│   ├── snooze-jira/             # Output notifier: Jira issues
+│   ├── snooze-googlechat/       # Bridge (in+out): Google Chat (STUB — rewrite in progress; only `version` works)
+│   ├── snooze-mattermost/       # Bridge (in+out): Mattermost slash-commands ⇄ records
+│   ├── snooze-teams/            # Bridge (in+out): MS Teams (Graph poll + /alert listener)
+│   ├── snooze-jira/             # Bridge (in+out): Jira webhook + bidirectional poller
 │   ├── snooze-mcp/              # MCP server (exposes Snooze to AI agents)
-│   └── snooze-pacemaker/        # Pacemaker HA integration helper
+│   └── snooze-pacemaker/        # Pacemaker HA integration helper (one-shot, no Run loop)
 ├── internal/                     # Private application packages
 │   ├── api/                     # chi router, middleware, REST handlers, admin socket
-│   ├── auth/                    # JWT, LDAP, local auth
+│   ├── auth/                    # Pluggable providers (local/LDAP/anon), JWT, RBAC resolver, refresh-token store
 │   ├── cli/                     # Cobra commands powering cmd/snooze
 │   ├── components/              # Daemon bodies behind the cmd/snooze-* input & bidirectional binaries
-│   ├── condition/               # AST + evaluator for the `["=", "host", "foo"]` DSL
+│   ├── condition/               # AST + evaluator + string query DSL (legacy-list, object, frontend & `host = foo AND …` shapes)
 │   ├── config/                  # Two-tier config: file + DB-backed runtime overrides
 │   │   └── schema/             # Per-section Go structs (koanf tags) + Config.Validate()
 │   ├── core/                    # Boot, supervisor, pipeline, alertprocessor
@@ -56,12 +56,12 @@ snooze/
 │   │   └── asyncwriter/        # Batched bulk-write coalescer
 │   ├── housekeeper/             # TTL / retention worker
 │   ├── modification/            # Field mutation engine (set/delete/regex_sub/…)
-│   ├── mq/                      # In-process broker (Kombu replacement)
+│   ├── mq/                      # Message queue: inproc / Postgres / Mongo bus, picked by DB type (Kombu replacement; see note)
 │   ├── plugins/                 # Plugin interfaces, registry, CRUD mounter, cache
 │   ├── pluginimpl/              # Concrete plugins (40+, one per package; set in all/)
 │   │   └── all/                # Blank-import aggregator for snooze-server
 │   ├── syncer/                  # DB-level config sync between cluster members
-│   ├── telemetry/               # OpenTelemetry tracer/meter setup
+│   ├── telemetry/               # OpenTelemetry tracing + Prometheus metrics registry (no OTel meter)
 │   ├── timeconstraints/         # Time-window matching (weekdays, dates, periods)
 │   └── version/                 # Build-time -ldflags version metadata
 ├── pkg/                          # Public types used by external tooling
@@ -70,15 +70,18 @@ snooze/
 ├── web/                          # React 19 SPA — working rules in web/AGENTS.md
 ├── api/openapi.yaml              # v1 HTTP contract (single source of truth)
 ├── docs/                         # Docusaurus site — authoring rules in docs/AGENTS.md (content/ holds the Markdown)
-├── examples/                     # Example configs (one per DB backend)
+├── examples/                     # Example DB configs (legacy 1.x single-file layout; `--config` wants a directory of section files)
 ├── packaging/
 │   ├── Dockerfile.golang        # Multi-stage build: web + binaries, distroless runtime
+│   ├── files/                   # Per-section example server config (core.yaml, general.yaml, …) for /etc/snooze
 │   ├── helm/                    # Kubernetes chart
 │   ├── systemd/                 # Unit files + tmpfiles
 │   ├── debian/                  # .deb metadata
 │   └── rpm/                     # .rpm spec
+├── scripts/                      # render-deploy.sh and other dev/release helpers
+├── CHANGELOG.md                  # Keep-a-Changelog; add an [Unreleased] entry per user-visible change
 ├── docker-compose.yaml           # Mongo / Postgres / SQLite profiles
-├── Taskfile.yaml                 # Root task runner (go:*, docs:*, chart:*, docker:*, goreleaser:*)
+├── Taskfile.yaml                 # Root task runner (go:*, web:*, docs:*, chart:*, docker:build, goreleaser:*, render:deploy)
 ├── .goreleaser.yaml              # Cross-arch release config
 ├── .golangci.yml                 # Linter config
 └── go.mod / go.sum
@@ -95,8 +98,9 @@ Files to consult first when starting a change:
 | `internal/pluginimpl/AGENTS.md`               | Plugin-authoring recipe, interface menu, taxonomy        |
 | `internal/db/db.go` + each backend subpackage | The `db.Driver` abstraction surface                      |
 | `internal/db/AGENTS.md`                       | Driver contract, the three backends, the dbtest plan     |
-| `internal/config/load.go`                     | File-config loader (the only place env defaults live)    |
+| `internal/config/load.go`                     | File-config loader: directory of section YAMLs + `SNOOZE_SERVER_*` env overrides |
 | `internal/config/schema/*.go`                 | Typed file-config sections (koanf) — add fields here     |
+| `internal/daemon/daemon.go`                   | Entry-point harness every `cmd/snooze-*` aux binary wires through (`daemon.Main`) |
 | `pkg/snoozetypes/`                            | Canonical Alert / Record / User shapes                   |
 | `api/openapi.yaml`                            | Authoritative HTTP contract — keep this in lockstep      |
 | `Taskfile.yaml`                               | Every command an agent should ever need to run (`task --list`) |
@@ -168,9 +172,10 @@ Files to consult first when starting a change:
    - RED: write the failing `*_test.go` first (`go test -run …`).
    - GREEN: minimum implementation to pass.
    - REFACTOR: tidy while staying green.
-3. When a change spans more than one backend, test all three. The shared
-   `internal/db/dbtest` suite is being adopted for this; today the driver
-   tests are still hand-rolled per backend (see `internal/db/AGENTS.md`).
+3. When a change spans more than one backend, test all three. A shared
+   `internal/db/dbtest` suite exists for this but is **not yet wired in** —
+   today the driver tests are still hand-rolled per backend, and they have
+   known cross-backend divergences (see `internal/db/AGENTS.md`).
 4. **Every user-facing change ships its docs.** A new flag, route, plugin,
    or integration is not "done" until it has a page under `docs/content/`
    — `docs/AGENTS.md` says where each kind goes and how to verify
@@ -192,10 +197,19 @@ task goreleaser:snapshot                 # local cross-arch build
 Running locally (SQLite, fastest dev loop):
 
 ```bash
-SNOOZE_DATABASE_TYPE=sqlite \
-SNOOZE_DATABASE_PATH=/tmp/snooze.db \
-./bin/snooze-server --config examples/default_config.yaml
+# `--config` takes a DIRECTORY of section files (core.yaml, general.yaml, …),
+# NOT a single file — default /etc/snooze/server-go. A missing/empty dir just
+# means "defaults + env". File-config env overrides use the prefix
+# SNOOZE_SERVER_<SECTION>_<KEY>; `file` is the legacy alias for SQLite (default).
+mkdir -p /tmp/snooze-conf
+SNOOZE_SERVER_CORE_DATABASE_TYPE=file \
+SNOOZE_SERVER_CORE_DATABASE_PATH=/tmp/snooze.db \
+./bin/snooze-server --config /tmp/snooze-conf
 ```
+
+> Note: `examples/*.yaml` are the legacy 1.x single-file layout (a top-level
+> `database:`/`api:` block); they are **not** picked up by `--config`, which
+> only reads the section basenames in `internal/config/load.go`'s `sectionFiles`.
 
 The full clustered stack:
 
@@ -257,15 +271,21 @@ in `internal/db/*`. They are gated by `testing.Short()`.
 
 | Backend  | Driver / library                               | When operators pick it                                 |
 |----------|------------------------------------------------|--------------------------------------------------------|
-| MongoDB  | `go.mongodb.org/mongo-driver/mongo`            | Existing 1.x deployments; replica-set clustering.       |
+| MongoDB  | `go.mongodb.org/mongo-driver/v2/mongo`         | Existing 1.x deployments; replica-set clustering.       |
 | Postgres | `github.com/jackc/pgx/v5` (+ pgxpool, jsonb)   | Greenfield deploys; SQL operators; CNPG operator.       |
 | SQLite   | `modernc.org/sqlite` (pure-Go, no CGO)         | Single-node / appliance deploys. Single-writer.         |
+
+The default backend is **SQLite**, selected by `type: file` (the legacy 1.x
+alias) or `type: sqlite`; `mongo`/`mongodb` and `postgres`/`pg`/`postgresql`
+are the other accepted spellings, or set `DATABASE_URL`. The selector is
+`core.database.type`.
 
 The `asyncwriter` package batches increments to avoid write storms — it
 sits between the pipeline and the driver and is the same for all three
 backends. `internal/db/dbtest` holds a shared driver-test suite
-(`RunDriverSuite`) meant to run identically across all three; adoption is
-in progress (see `internal/db/AGENTS.md`).
+(`RunDriverSuite`) meant to run identically across all three; it is fully
+implemented but **not yet wired into any driver test** (see
+`internal/db/AGENTS.md`).
 
 ### Two-tier config
 
@@ -279,13 +299,23 @@ in progress (see `internal/db/AGENTS.md`).
 
 A field belongs in exactly one tier. Adding it requires a schema update.
 
+File config is read from a **directory** of per-section YAML files — one
+basename per section (`core.yaml`, `general.yaml`, `housekeeping.yaml`,
+`notification.yaml`, `ldap_auth.yaml`, `web.yaml`, `auth.yaml`, `syncer.yaml`)
+— and every field can be overridden by an env var named
+`SNOOZE_SERVER_<SECTION>_<KEY>` (e.g. `SNOOZE_SERVER_CORE_DATABASE_TYPE`); the
+legacy `DATABASE_URL` shortcut is also honoured. A bare `SNOOZE_DATABASE_*`
+(no `SNOOZE_SERVER_` prefix) is silently ignored. A new **list-valued** field
+must be added to `isListField` in `load.go` so its env value comma-splits.
+
 ### Inbound integrations: webhook receivers + opt-in ingest auth
 
 Monitoring systems push alerts in over HTTP. Any plugin implementing
 `WebhookReceiver` is auto-mounted under `/api/v1/webhook/{name}` by
 `mountWebhooks()` in `internal/api/router.go` (Grafana, AlertManager,
-Datadog, CloudWatch/SNS, Sentry, New Relic, Azure Monitor, Prometheus,
-InfluxDB2, Kapacitor, heartbeat). Receivers are **unauthenticated by
+Datadog, CloudWatch, Sentry, New Relic, Azure Monitor, Prometheus,
+InfluxDB2, Kapacitor, heartbeat — the 11 `WebhookReceiver`s; `sns` is an
+*outbound* notifier, not a receiver). Receivers are **unauthenticated by
 default** (1.5.0 parity). The `ingest` section
 (`internal/config/schema/ingest.go`) adds opt-in, defense-in-depth
 hardening: a shared `Authorization: Bearer`/`?token=`, AWS SNS signature
@@ -299,8 +329,53 @@ are belt-and-braces. New integration → new plugin (interface above) +
 (`snooze-syslog`, notifiers, …) is single-purpose, blank-imports only
 the packages it needs, and is shipped as its own distroless image.
 
-The supervisor in `internal/core/supervisor.go` runs each subsystem on
-a restart-on-panic goroutine, with a context cancel for shutdown.
+The supervisor in `internal/core/supervisor.go` runs each subsystem on a
+restart-on-panic goroutine behind a backoff policy (default 3 tries / 60s
+window, 1s doubling to 30s). Panics are recovered, logged with a stack, and
+counted as a failure. A **non-critical** subsystem that exhausts its retries
+gives up silently and the server keeps running; a **critical** one propagates
+and cancels the whole errgroup, taking the process down. Today only
+`asyncwriter` is critical — housekeeper, syncer and the node-heartbeat are not.
+
+### Auxiliary daemons share an entry-point harness
+
+Every `cmd/snooze-*` input/bridge binary (but **not** `snooze-server` or the
+`snooze` CLI) wires through `internal/daemon`: implement
+`LoadConfig(path) → Config`, a `New(cfg, logger) → (*Daemon, error)`
+constructor, and `Daemon.Run(ctx) error`, then call
+`daemon.Main(daemon.Config{Name, DefaultConfig, Build, Subcommands})` from
+`main`. The harness owns the `version` subcommand, the `-c`/`-debug` flags,
+signal-driven shutdown, and fixed exit codes (0 clean incl. `context.Canceled`,
+2 usage, 1 runtime). One-shot binaries with no run loop (`snooze-pacemaker`,
+the `snooze-googlechat` stub) call `daemon.HandleVersion` and parse their own
+flags instead. Three daemons honour a `SNOOZE_<NAME>_CONFIG` env override of
+the config path via `daemon.EnvOr` (relp, mattermost, pacemaker). Logs go to
+stderr through `daemon.NewLogger` (text handler, debug-gated level). A
+constructor-naming wart persists: most packages export `New`, but `smtp` and
+`snmptrap` export `NewDaemon` for the same shape.
+
+### First-boot seeding writes secrets and a root password to the DB
+
+On an empty database `internal/core` seeds: an HS256 JWT signing key and a
+reload token (64/32 random bytes via `crypto/rand`) in the `secrets`
+collection; a bcrypt `root` user whose generated password is logged **once at
+WARN to stderr**; the default roles (admin / viewer / notifications) and a
+default "Host and Message" aggregate rule — all guarded by an `init_db` marker
+doc. The JWT key always comes from the DB; `auth.token_secret` in the file
+config is currently **not** wired in (a known gap).
+
+### Two buses, easily confused
+
+`*Core.MQ()` returns the **message queue** (`internal/mq`), whose backend
+tracks the DB type: `inproc` (buffered channels, used for the SQLite/file
+default), `pg` (LISTEN/NOTIFY + an `mq_messages` table) or `mongo`
+(change-streams + an `mq_messages` collection), chosen by `mqKindForDatabase`.
+`plugins.Host.Bus()` returns something different — the per-driver **syncer**
+change-feed (`Driver.Watcher()`) used to propagate config reloads. Plugins get
+the syncer bus, never the mq bus. (As of now the mq bus has **no production
+publisher or subscriber** — it is built at boot but carries no traffic, and on
+pg/mongo it dials a second connection and runs `mq_messages` DDL for nothing.
+Treat it as not-yet-wired infrastructure.)
 
 ### Plugin discovery is compile-time, by package init
 
@@ -308,6 +383,12 @@ There is no `entry_points` group, no `dlopen`, no Wasm sandbox. A plugin
 is registered when its package's `init()` runs, which happens when
 something imports the package. `internal/pluginimpl/all/all.go` is the
 canonical blank-import set; binaries opt in by importing it.
+
+A registered plugin can still be **disabled by default**: `optionalPlugins`
+in `internal/core/boot.go` (currently just `patlite`) is dropped from the live
+plugin map — hidden from `/metadata`, the CRUD router, and the notification
+dispatcher — unless the operator lists it in `core.enabled_optional_plugins`.
+So the ~45 blank-imported plugins are not all served by a default install.
 
 ### chi over net/http, slog over logrus
 

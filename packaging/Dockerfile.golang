@@ -75,7 +75,7 @@ RUN --mount=type=cache,target=/root/.npm \
 COPY web/ ./
 RUN npm run build
 
-# ---------- Stage 3: runtime-server (server + Vue assets) ----------
+# ---------- Stage 3: runtime-server (server + React/Vite assets) ----------
 FROM gcr.io/distroless/static-debian12:nonroot AS runtime-server
 
 ARG BINARY=snooze-server
@@ -99,7 +99,7 @@ COPY --from=gobuilder /out/${BINARY} /usr/local/bin/snooze-server
 COPY --from=webbuilder --chown=nonroot:nonroot /web/dist/ /var/lib/snooze/web/
 
 USER nonroot:nonroot
-EXPOSE 9001
+EXPOSE 5200
 ENTRYPOINT ["/usr/local/bin/snooze-server"]
 
 # ---------- Stage 4: runtime-component (single binary, no web assets) ----------
@@ -117,9 +117,10 @@ LABEL org.opencontainers.image.title="${BINARY}" \
       org.opencontainers.image.revision="${COMMIT}" \
       org.opencontainers.image.created="${BUILD_TIME}"
 
-# Keep the binary under its original name so the entrypoint reflects the
-# component (snooze-syslog, snooze-smtp, ...). Distroless static has no
-# shell, so the ENTRYPOINT is the literal path.
+# Binary lands under a canonical generic name regardless of BINARY value, so
+# the entrypoint is stable across components (snooze-syslog, snooze-smtp, ...);
+# the component identity is carried by the org.opencontainers.image.title label
+# above. Distroless static has no shell, so the ENTRYPOINT is the literal path.
 COPY --from=gobuilder /out/${BINARY} /usr/local/bin/snooze-component
 
 USER nonroot:nonroot

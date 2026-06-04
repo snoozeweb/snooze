@@ -18,7 +18,9 @@ check with the user before reworking UI.
 * **Zustand** for the little client-side state there is (auth session).
 * **Radix UI** primitives, wrapped in-house under `src/shared/ui/`.
 * **CSS Modules + design tokens** — no Tailwind, no utility CSS.
-* Chart.js (via `react-chartjs-2`), `react-hook-form`, `date-fns`, `yaml`.
+* Chart.js (via `react-chartjs-2`), `react-hook-form`, `react-day-picker`
+  (date-range calendar), `date-fns`, `yaml`, `jwt-decode` (token claims),
+  `@dnd-kit/*` (drag-reorder, e.g. the rules tree), `diff` (the rules diff view).
 
 ---
 
@@ -43,16 +45,24 @@ not edit" header. So:
 ```
 web/src/
 ├── main.tsx          # entry: mounts the router, loads styles/base.css
-├── app/              # router.tsx (route tree), AppShell layout, QueryClient
+├── app/              # router.tsx (route tree + the QueryClient + providers);
+│                     #   layout/ (AppShell, Sidebar, Topbar, CommandPalette, HowToMenu)
 ├── features/         # one folder per feature: page + api.ts hooks + types
-│   ├── alerts/ rules/ snoozes/ notifications/ dashboard/ auth/ audit/
+│   ├── alerts/ rules/ snoozes/ notifications/ dashboard/ auth/ audit/ dev/
 │   └── admin/        #   users, roles, environments, widgets, kv, settings, status
-├── shared/           # cross-feature: ui/ (Radix wrappers), forms/, chart/,
-│                     #   condition/, searchdsl/, hooks/, icons/
-├── lib/              # non-component logic: api/, auth/, condition/, format/…
+├── shared/           # cross-feature: ui/ (Radix wrappers), forms/, chart/, condition/,
+│                     #   searchdsl/, hooks/, icons/, auth/ (RequirePerm), modifications/
+├── lib/              # non-component logic: api/, auth/, condition/, format/, timeconstraints/
 ├── styles/           # base.css + tokens.css + theme.{dark,light}.css
-└── tests/            # Vitest setup + MSW server + global a11y audit
+└── tests/            # Vitest setup + MSW server + global a11y audit (NOT e2e — see below)
 ```
+
+> `app/layout/AppShell.tsx` is the layout; the `QueryClient` is instantiated
+> inline in `router.tsx` (there is no standalone file for it). `features/dev/`
+> is a developer-only showroom (`PrimitivesPage` UI gallery + `ResourcePage`
+> demo): route-wired at `/web/dev/*` but unlinked from nav, and it currently
+> **ships in production builds** — gate it behind `import.meta.env.DEV` if that
+> is not intended.
 
 | You're adding…                         | Put it in…                                                      |
 |----------------------------------------|-----------------------------------------------------------------|
@@ -95,9 +105,17 @@ task web:format:check   # prettier --check
 task web:build          # tsc -b && vite build → web/dist/ (shipped by snooze-server)
 ```
 
-E2E (Playwright, builds a real `snooze-server` and drives the UI) lives in
-`tests/e2e/`: `npm run e2e` (or `e2e:headed`). Run it when a change touches a
-critical user flow.
+`npm run codegen` (no `task` wrapper) regenerates `types.gen.ts` from the spec.
+`task web:preview` serves a built bundle on :4173; `task web:test:watch` is the
+watch-mode runner.
+
+E2E (Playwright) lives in the **top-level `web/tests/e2e/`** (not `src/tests/`).
+First build the harness with `npm run e2e:build` (runs `vite build` **and**
+`go build ./cmd/snooze-server` into `tests/e2e/.bin/`), then `npm run e2e`
+(or `e2e:headed`) — plain `e2e` does not rebuild the server. The harness boots a
+real server against a pluggable DB chosen by `SNOOZE_TEST_DB`
+(`sqlite` default | `postgres` | `mongo`) and keeps a committed screenshot
+baseline. Run it when a change touches a critical user flow.
 
 ---
 
@@ -108,3 +126,8 @@ critical user flow.
 * Let the SPA and `../api/openapi.yaml` drift — regenerate instead.
 * Reach for Tailwind, a second state library, or file-based routing; match the
   patterns already in `features/` and `shared/ui/`.
+* Casually edit the `manualChunks` vendor-splitting in `vite.config.ts` — the
+  ordering is load-bearing (its comments record real prod failures: react-table
+  must match before the generic react check; Radix/floating-ui must co-locate;
+  scheduler/use-sync-external-store must land in vendor-react). Reordering can
+  break startup in headless Chromium.

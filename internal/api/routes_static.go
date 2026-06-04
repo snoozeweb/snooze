@@ -8,8 +8,8 @@ import (
 )
 
 // stubIndexHTML is the minimal landing page returned when the embedded web
-// bundle is unavailable. Keeps integration tests passing before the Vue
-// build step has run.
+// bundle is unavailable. Keeps integration tests passing before the React
+// (Vite) build step has run.
 const stubIndexHTML = `<!doctype html>
 <html lang="en">
 <head>
@@ -48,7 +48,7 @@ func (rt *Router) redirectWeb(w http.ResponseWriter, r *http.Request) {
 }
 
 // handleWeb serves files under /web/ from rt.WebFS, falling back to the SPA
-// index.html for unmatched paths (so the Vue router can take over).
+// index.html for unmatched paths (so the client-side SPA router can take over).
 func (rt *Router) handleWeb(w http.ResponseWriter, r *http.Request) {
 	if rt.WebFS == nil {
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
@@ -88,10 +88,9 @@ func (rt *Router) serveFile(w http.ResponseWriter, r *http.Request, path string)
 	http.ServeContent(w, r, info.Name(), info.ModTime(), readSeeker(f))
 }
 
-// readSeeker is a tiny adapter so http.ServeContent gets a *bytes.Reader when
-// the underlying file does not directly implement io.ReadSeeker. We use the
-// type-asserting path first to avoid copying when the FS supports seeking
-// natively (which the http.Dir/embed.FS do).
+// seekableFile narrows an http.File to just the Read/Seek methods that
+// http.ServeContent needs. http.File already embeds io.Reader and io.Seeker,
+// so readSeeker below is a free interface narrowing — no copying involved.
 type seekableFile interface {
 	Read([]byte) (int, error)
 	Seek(int64, int) (int64, error)

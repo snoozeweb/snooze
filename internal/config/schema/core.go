@@ -1,7 +1,6 @@
 package schema
 
 import (
-	"net"
 	"net/url"
 	"strings"
 )
@@ -56,7 +55,7 @@ func DefaultCore() Core {
 // “postgres“) plus a flat “url“ shortcut used by the env-var
 // “DATABASE_URL“.
 type Database struct {
-	Type string `koanf:"type" validate:"oneof=mongo file postgres"`
+	Type string `koanf:"type" validate:"omitempty,oneof=mongo mongodb file sqlite postgres pg"`
 
 	// File backend.
 	Path string `koanf:"path"`
@@ -137,7 +136,3 @@ type CORS struct {
 	AllowOrigins     string `koanf:"allow_origins"`
 	AllowCredentials string `koanf:"allow_credentials"`
 }
-
-// ResolvedListenAddr returns the address as a “net.IP“. It is the validator's
-// canonical accessor.
-func (c Core) ResolvedListenAddr() net.IP { return net.ParseIP(c.ListenAddr) }

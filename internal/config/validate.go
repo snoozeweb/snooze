@@ -76,8 +76,9 @@ func validateLDAP(l *schema.LDAP) error {
 // validateDatabase covers the bits the tag system can't express because
 // “Database“ is shaped as a flat struct with a type discriminator.
 func validateDatabase(d *schema.Database) error {
+	// Accept exactly the spellings the driver dispatch (openDB) understands.
 	switch d.Type {
-	case "mongo":
+	case "mongo", "mongodb":
 		// Host can be a string or a list; only check that something was set.
 		// An empty host falls back to localhost in pymongo so we don't reject it.
 		return nil
@@ -86,7 +87,11 @@ func validateDatabase(d *schema.Database) error {
 			return errors.New("file backend requires path")
 		}
 		return nil
-	case "postgres":
+	case "sqlite", "":
+		// SQLite (and the empty default). openDB defaults an empty path to
+		// ./db.sqlite, so no field is strictly required here.
+		return nil
+	case "postgres", "pg":
 		if d.DSN == "" && d.Host == nil {
 			return errors.New("postgres backend requires either dsn or host")
 		}

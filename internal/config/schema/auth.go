@@ -7,7 +7,7 @@ import "time"
 // strictly mandatory value.
 type Auth struct {
 	TokenSecret       string   `koanf:"token_secret"`
-	TokenAlgorithm    string   `koanf:"token_algorithm" validate:"omitempty,oneof=HS256 HS384 HS512"`
+	TokenAlgorithm    string   `koanf:"token_algorithm" validate:"omitempty,oneof=HS256"`
 	TokenLease        Duration `koanf:"token_lease"`
 	RefreshTokenLease Duration `koanf:"refresh_token_lease"`
 	TokenIssuer       string   `koanf:"token_issuer"`

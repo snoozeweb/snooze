@@ -57,13 +57,23 @@ capability interfaces you need.
 natural key for upserts) and `WriteTransformer` (rewrite a document before
 persist — e.g. the `user` plugin hashing a password).
 
+> `Actioner` has **no concrete implementation** in `internal/pluginimpl/` yet,
+> so there is no "copy the nearest plugin" example for it — implementing one is
+> breaking new ground. `UpdateHook.AfterUpdate`'s third argument is the *full*
+> document on PUT but only the *partial* on PATCH — don't assume it lists only
+> changed fields.
+
 ---
 
 ## Talking to the rest of the server
 
 Everything a plugin needs comes from the `plugins.Host` captured in `PostInit`:
-`DB() db.Driver`, `Bus()`, `Logger()`, `Tracer()`, `Metrics()`, `Config()`,
-`RuntimeSettings()`, `Plugin(name)`.
+`DB() db.Driver`, `Logger()`, `Tracer()`, `Metrics()`, `Config()`,
+`Plugin(name)` (plus `Bus()`, which today only exposes `Close()` — no plugin
+uses it). **`RuntimeSettings()` is *not* a `Host` method** — it lives on the
+optional `plugins.RuntimeSettingsHost` interface; type-assert
+`host.(plugins.RuntimeSettingsHost)` and handle absence (it is nil in tests and
+the migration tool). The `settings` plugin is the canonical user.
 
 * **Storage** is `host.DB()` → `db.Driver`. Import `internal/db` for its value
   types (`db.Document`, `db.Page`, `db.WriteOptions`). **Never** import a
@@ -74,17 +84,52 @@ Everything a plugin needs comes from the `plugins.Host` captured in `PostInit`:
 
 ---
 
+## Framework behaviours worth knowing
+
+Non-obvious rules baked into `internal/plugins` that bite plugin authors:
+
+* **Generic CRUD is gated on `DataModel`.** `MountCRUD` mounts the REST
+  endpoints (`/api/v1/<name>`, `/search`, `/{uid}`, …) **only** for plugins
+  implementing `DataModel`. A pure `Notifier`/`Actioner`/`WebhookReceiver` gets
+  no CRUD surface (its config lives in the shared `action` collection); combine
+  it with `DataModel` to re-enable CRUD.
+* **Auditing is on by default.** `Metadata` defaults `audit: true`, so every
+  CRUD write on a data-model emits an audit event
+  (`object_type/object_id/action/username/method/summary/date_epoch`). Noisy
+  collections opt out with `audit: false` (audit, comment, kv do).
+* **`search_fields:` in `metadata.yaml` is load-bearing.** Declaring it makes
+  `Build` call `Driver.CreateIndex` per collection — registering the fields for
+  the SearchBar's bare-word `SEARCH` operator and creating a backing index.
+  Without it, `SEARCH` over that collection is ill-defined (and differs per
+  backend — see `internal/db/AGENTS.md`).
+* **Dashboard stats.** A `Processor`/`Notifier` feeds dashboard time-series via
+  `plugins.RecordStat(host, epoch, metric, labels, n)` (needs the optional
+  `AsyncWriterHost`); see `snooze` / `notification` / `aggregaterule` emitting
+  `alert_snoozed` / `notification_sent` / `alert_throttled`.
+* **`Build` order.** Factories then `PostInit` run in lexicographic
+  plugin-name order with no dependency graph, and `Build` runs once per process.
+  A `PostInit` cannot assume a sibling's `PostInit` has already run
+  (`host.Plugin(name)` returns the instance, possibly pre-`PostInit`).
+
+---
+
 ## The catalog & its taxonomy
 
-The 43 plugins fall into roles (mirrored as comment groups in `all/all.go`):
+The 45 plugins fall into roles by the capability interfaces they implement
+(grouped the same way in `all/all.go`). Counts are once-per-plugin — a
+multi-role plugin is counted only under "Multi-role":
 
 | Role | Count | Examples |
 |------|------:|----------|
-| Data models (CRUD collections) | 12 | record, user, role, kv, widget, settings |
-| Pipeline processors            | 3  | rule, aggregaterule, snooze |
-| Notifiers (outbound)           | 16 | slack, mail, telegram, pagerduty, webhook |
-| Webhook receivers (inbound)    | 10 | grafana, alertmanager, datadog, prometheus |
-| Multi-role                     | 2  | heartbeat (webhook+model), notification (notifier+processor) |
+| Data models (CRUD collections) | 12 | record, user, role, kv, widget, settings, action, audit, comment, environment, profile, stats |
+| Pipeline processors            | 3  | rule, snooze, notification |
+| Notifiers (outbound)           | 18 | slack, mail, telegram, pagerduty, webhook, discord, googlechat, mattermost, ntfy, opsgenie, patlite, pushover, script, servicenow, sns, statuspage, teams, twilio |
+| Webhook receivers (inbound)    | 10 | grafana, alertmanager, datadog, prometheus, azuremonitor, cloudwatch, influxdb2, kapacitor, newrelic, sentry |
+| Multi-role                     | 2  | aggregaterule (model+processor), heartbeat (model+webhook+lifecycle) |
+
+(`notification` is a **processor**, not a notifier — outbound delivery is done
+by the `Notifier` plugins it dispatches to; its only `Send` methods are test
+fakes. Total: 12 + 3 + 18 + 10 + 2 = 45.)
 
 When you add a plugin, drop its blank import into the matching group in
 `internal/pluginimpl/all/all.go` (the grouping is documentation only — order

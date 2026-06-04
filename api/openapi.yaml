@@ -416,6 +416,10 @@ paths:
         record is run through the configured `core.process_plugins`
         pipeline; the response includes the post-pipeline records and
         any per-record processing errors.
+
+        This endpoint is unauthenticated by default (1.5.0 parity); the
+        `ingest.token` knob only gates the `/api/v1/webhook/*` receivers.
+      security: []
       requestBody:
         required: true
         content:

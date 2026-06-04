@@ -26,7 +26,7 @@ import (
 	_ "github.com/snoozeweb/snooze/internal/pluginimpl/widget"
 
 	// Pipeline processors — transform / gate alerts as they flow through.
-	_ "github.com/snoozeweb/snooze/internal/pluginimpl/aggregaterule"
+	_ "github.com/snoozeweb/snooze/internal/pluginimpl/notification"
 	_ "github.com/snoozeweb/snooze/internal/pluginimpl/rule"
 	_ "github.com/snoozeweb/snooze/internal/pluginimpl/snooze"
 
@@ -64,6 +64,6 @@ import (
 	_ "github.com/snoozeweb/snooze/internal/pluginimpl/sentry"
 
 	// Multi-role — implement more than one of the roles above.
-	_ "github.com/snoozeweb/snooze/internal/pluginimpl/heartbeat"    // inbound webhook + data model
-	_ "github.com/snoozeweb/snooze/internal/pluginimpl/notification" // notifier + pipeline processor
+	_ "github.com/snoozeweb/snooze/internal/pluginimpl/aggregaterule" // data model + pipeline processor
+	_ "github.com/snoozeweb/snooze/internal/pluginimpl/heartbeat"     // data model + inbound webhook + lifecycle
 )

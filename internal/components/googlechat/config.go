@@ -4,16 +4,22 @@
 // against the Snooze v1 API, and posts a reply back to the originating thread
 // via the Chat REST API.
 //
-// The daemon is intentionally split into small, testable pieces:
+// NOTE: this rewrite is in progress. cmd/snooze-googlechat is still a stub
+// (version subcommand only) and nothing imports this package outside its
+// tests, so none of this code ships in a binary yet.
 //
-//   - forward.go  — pure command parsing + dispatch against snoozeclient.Client.
-//   - pubsub.go   — Pub/Sub subscriber; one goroutine per message via the
-//     SDK's internal scheduler. ack on success, nack on failure.
-//   - chat.go     — Chat REST sender (replies to a thread).
-//   - daemon.go   — Daemon glue: config → clients → Run(ctx) loop.
+// Current pieces:
 //
-// GCP clients are constructed lazily on Run so unit tests can exercise the
-// Daemon struct without service-account credentials.
+//   - config.go   — YAML config schema + defaults/validation.
+//   - forward.go  — command parsing + dispatch against the Snooze v1 API
+//     (Forwarder). Unit-tested; see forward_test.go.
+//   - pubsub.go   — EventHandler callback type (Pub/Sub subscriber not yet
+//     implemented).
+//   - chat.go     — ChatSender interface (Chat REST sender not yet implemented).
+//
+// Still missing before the daemon can run: a daemon.go with New/Run wiring
+// config → GCP clients → loop, mirroring internal/components/mattermost, and
+// wiring cmd/snooze-googlechat to daemon.Main.
 package googlechat
 
 import (

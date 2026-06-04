@@ -98,7 +98,7 @@ tasks:
     desc: |
       Build a Go binary image with packaging/Dockerfile.golang.
       Pass BINARY=snooze-X (required). The `snooze-server` binary
-      uses the `runtime-server` target (carries the Vue bundle);
+      uses the `runtime-server` target (carries the React/Vite bundle);
       every other binary uses `runtime-component`.
       Optional: TAG=dev, VERSION=0.0.0-dev.
     vars:

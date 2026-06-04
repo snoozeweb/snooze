@@ -547,6 +547,9 @@ func decodeBody(r *http.Request, into any) error {
 
 // decodeWriteBody accepts either a single object or an array of objects.
 func decodeWriteBody(r *http.Request) ([]db.Document, error) {
+	if r.Body == nil {
+		return nil, errors.New("empty body")
+	}
 	raw, err := io.ReadAll(r.Body)
 	if err != nil {
 		return nil, fmt.Errorf("read body: %w", err)

@@ -3,7 +3,7 @@ Description=Snooze main server daemon
 Documentation=https://github.com/snoozeweb/snooze
 After=network-online.target
 Wants=network-online.target
-# Snooze supports MongoDB, PostgreSQL and file backends. The packaging
+# Snooze supports MongoDB, PostgreSQL and SQLite backends. The packaging
 # does not pin a specific database service here so any of the three may
 # be used. If your deployment uses a co-located DB, add an override:
 #   systemctl edit snooze-server

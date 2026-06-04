@@ -20,7 +20,12 @@ lands (or grows) under `docs/content/`.
   right folder *is* how it appears. Order within a folder is controlled by the
   `sidebar_position` frontmatter key.
 * The API reference is **not** written by hand: it renders from
-  `../api/openapi.yaml`. Touch a route there, not in Markdown.
+  `../api/openapi.yaml`. Touch a route there, not in Markdown. Rendering is a
+  **static Redoc page** (`static/api/index.html` embeds `<redoc spec-url>`), not
+  a Docusaurus/MDX render: `scripts/copy-api-assets.mjs` (run via npm
+  `prebuild`/`prestart`) copies `../api/openapi.yaml` + the Redoc bundle into
+  `static/`, exposed at the navbar link `pathname:///api/`. Don't hand-edit
+  `static/api/` or `static/openapi.yaml` — they're regenerated on build.
 
 ---
 
@@ -33,8 +38,9 @@ docs/content/
 │   │                  #   clustering, inputs, notifications, query language…
 │   └── integrations/  # ONE page per integration (input / output / webhook)
 ├── configuration/     # one page per file-config section
-│   │                  #   (core, postgres, sqlite, ingest, ldap_auth,
-│   │                  #    notifications, housekeeping, syncer, general)
+│   │                  #   (core, general, ingest, ldap_auth [LDAP only],
+│   │                  #    notifications, housekeeping, syncer; postgres &
+│   │                  #    sqlite are narrative companions for core.database)
 └── migration/         # Python 1.x → Go upgrade notes
 ```
 
@@ -43,14 +49,28 @@ Decision table for "I added X, where does it document?":
 | You added…                                   | Document in…                                                  |
 |----------------------------------------------|---------------------------------------------------------------|
 | A new integration (input daemon / notifier / `WebhookReceiver`) | `general/integrations/<name>.md`, and link it from `general/inputs.md` or `general/notifications.md` |
-| A new file-config field / section            | the matching `configuration/<section>.md` (mirror the `schema/*.go` struct) |
+| A new file-config field / section            | the matching `configuration/<section>.md` (mirror the `schema/*.go` struct; see the section↔page caveats below) |
 | A new concept / pipeline behaviour           | a page under `general/`                                       |
 | A new or changed HTTP route                  | `../api/openapi.yaml` (the API reference auto-renders it)     |
 | A new install path / first-run step          | `getting_started/`                                            |
 
-Keep `general/integrations/` in lockstep with the plugin set in
-`../internal/pluginimpl/all/all.go` and the `cmd/snooze-*` input/output
-daemons — every shipped integration should have exactly one page.
+Keep `general/integrations/` in lockstep with the **integration** plugins in
+`../internal/pluginimpl/all/all.go` (the notifiers + webhook receivers) and the
+`cmd/snooze-*` input/bridge daemons — every shipped integration should have
+exactly one page. The internal CRUD/core plugins (action, audit, comment,
+environment, kv, profile, record, role, rule, settings, stats, user, widget,
+plus the pipeline plugins aggregaterule/notification/snooze) are **not**
+integrations and get no `integrations/` page.
+
+> **Section ↔ page gaps.** The real koanf sections
+> (`../internal/config/config.go`) are core, general, housekeeping, notification,
+> ldap, web, auth, syncer, ingest. `configuration/ldap_auth.md` documents only
+> the **ldap** section; the **web** and **auth** sections (the latter holds
+> `token_secret` / `token_algorithm` / `token_lease` / …) currently have **no
+> page** — add `web.md` / `auth.md` when you touch them. `postgres.md` /
+> `sqlite.md` are the exception to "mirror the `schema/*.go` struct": their
+> fields live in `core.go`'s polymorphic `Database` struct, not a standalone
+> section file.
 
 ---
 
@@ -75,5 +95,9 @@ task docs:build       # MUST pass — build fails on broken links / bad MDX
 task docs:typecheck   # type-check config + custom components
 ```
 
-`task docs:build` green (no broken-link warnings) is the bar. Don't hand-edit
-`docs/build/` or `docs/.docusaurus/` — they're generated.
+`task docs:build` green is the bar — `onBrokenLinks`, `onBrokenAnchors` and
+`onBrokenMarkdownLinks` are all set to `throw`, so a bad link/anchor **fails**
+the build (not just a warning). Pages are parsed as **CommonMark**
+(`markdown.format: 'detect'`), not MDX, so the migrated docs' raw HTML tables
+and `<token>` / `{brace}` prose pass through. Don't hand-edit `docs/build/` or
+`docs/.docusaurus/` — they're generated.

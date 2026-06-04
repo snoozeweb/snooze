@@ -142,7 +142,7 @@ func NewRootCmd(rt *runtime) *cobra.Command {
 	cfg := rt.fileConfig
 	pf := cmd.PersistentFlags()
 	pf.StringVar(&f.Server, "server",
-		nonEmpty(f.Server, envOrDefault("SNOOZE_SERVER", nonEmpty(cfg.Server, "http://localhost:9001"))),
+		nonEmpty(f.Server, envOrDefault("SNOOZE_SERVER", nonEmpty(cfg.Server, "http://localhost:5200"))),
 		"Snooze server base URL")
 	pf.StringVar(&f.User, "user",
 		nonEmpty(f.User, envOrDefault("SNOOZE_USER", cfg.Credentials.Username)),

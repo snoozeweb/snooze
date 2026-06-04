@@ -235,6 +235,7 @@ func isListField(path string) bool {
 	switch path {
 	case "core.audit_excluded_paths",
 		"core.process_plugins",
+		"core.enabled_optional_plugins",
 		"core.backup.excludes",
 		"general.ok_severities":
 		return true
