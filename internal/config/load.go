@@ -322,10 +322,8 @@ func defaultsYAML() ([]byte, error) {
 			"token_audience":      d.Auth.TokenAudience,
 		},
 		"syncer": map[string]any{
-			"hostname":         d.Syncer.Hostname,
-			"total":            d.Syncer.Total,
-			"sync_interval":    d.Syncer.SyncInterval.String(),
-			"sync_interval_ms": d.Syncer.SyncIntervalMS,
+			"hostname":      d.Syncer.Hostname,
+			"sync_interval": d.Syncer.SyncInterval.String(),
 		},
 	}
 	return yamlv3.Marshal(m)

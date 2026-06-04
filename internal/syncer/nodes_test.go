@@ -8,6 +8,8 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/require"
+
+	"github.com/snoozeweb/snooze/internal/config/schema"
 )
 
 // recordingPersister captures Persist invocations for assertions.
@@ -97,8 +99,10 @@ func TestNodeHeartbeat_FirstWriteThenTicks(t *testing.T) {
 	}
 }
 
-// TestNodeHeartbeat_DefaultsHostname verifies that an empty Node defaults
-// to the OS hostname (or "unknown" if that fails).
+// TestNodeHeartbeat_DefaultsHostname verifies that an empty Node defaults to
+// schema.DefaultHostname() — the single source of truth shared with the config
+// layer (OS hostname, falling back to "snooze"). This guards against the prior
+// mismatch where the heartbeat fell back to "unknown".
 func TestNodeHeartbeat_DefaultsHostname(t *testing.T) {
 	rp := newRecordingPersister()
 	hb := &NodeHeartbeat{
@@ -115,6 +119,8 @@ func TestNodeHeartbeat_DefaultsHostname(t *testing.T) {
 		time.Second, 5*time.Millisecond)
 	last, _ := rp.Last()
 	require.NotEmpty(t, last.Doc["node"])
+	require.Equal(t, schema.DefaultHostname(), last.Doc["node"],
+		"empty Node must fall back to the shared schema.DefaultHostname")
 	require.NotEmpty(t, last.Doc["version"]) // defaults to version.String()
 
 	cancel()

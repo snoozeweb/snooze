@@ -4,9 +4,9 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
-	"os"
 	"time"
 
+	"github.com/snoozeweb/snooze/internal/config/schema"
 	"github.com/snoozeweb/snooze/internal/version"
 )
 
@@ -50,11 +50,11 @@ func (n *NodeHeartbeat) Run(ctx context.Context) error {
 	}
 	node := n.Node
 	if node == "" {
-		host, err := os.Hostname()
-		if err != nil || host == "" {
-			host = "unknown"
-		}
-		node = host
+		// Fall back to the same identity the config layer would have
+		// defaulted to (schema.DefaultHostname). Keeping a single source of
+		// truth avoids the previous mismatch where the config defaulted to
+		// "snooze" but a Node-less heartbeat advertised "unknown".
+		node = schema.DefaultHostname()
 	}
 	ver := n.Version
 	if ver == "" {

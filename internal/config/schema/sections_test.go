@@ -50,5 +50,5 @@ func TestAuth_Defaults(t *testing.T) {
 func TestSyncer_Defaults(t *testing.T) {
 	s := DefaultSyncer()
 	require.NotEmpty(t, s.Hostname)
-	require.Equal(t, 1, s.Total)
+	require.Equal(t, time.Second, s.SyncInterval.AsDuration())
 }

@@ -66,13 +66,19 @@ REST API or the WebUI).
 | `ldap_auth.bind_dn` / `…`                         | `ldap.bind_dn` / `…`                                                  | Renamed section, field names unchanged                                  |
 | `housekeeping.*`                                 | `housekeeper.*`                                                       | Durations accept both bare seconds and Go-style `"5m"`                 |
 | `notification.notification_freq` (seconds)       | `notification.notification_freq` (Duration; `60s` or `60`)            | Stringly typed → Duration                                              |
-| `syncer.interval_ms`                             | `syncer.sync_interval` (Duration) — `sync_interval_ms` still accepted | Both spellings load                                                    |
-| New                                              | `auth.token_secret`, `auth.token_lease`, `auth.token_algorithm`       | Replaces the auto-generated secret stored in the DB by Python          |
+| `syncer.interval_ms`                             | `syncer.sync_interval` (Duration)                                    | Single knob now; the legacy `sync_interval_ms` was dropped             |
+| New                                              | `auth.token_secret`, `auth.token_lease`, `auth.token_algorithm`       | `token_secret` overrides the DB-generated JWT key (≥32 bytes)          |
 
-Environment variables follow `SNOOZE_<SECTION>_<KEY>` with `_` as the
-separator: e.g. `SNOOZE_CORE_PORT=5201` overrides `core.port`,
-`SNOOZE_AUTH_TOKEN_SECRET=…` overrides `auth.token_secret`. The flat
+Environment variables follow `SNOOZE_SERVER_<SECTION>_<KEY>` with `_` as the
+separator: e.g. `SNOOZE_SERVER_CORE_PORT=5201` overrides `core.port`,
+`SNOOZE_SERVER_AUTH_TOKEN_SECRET=…` overrides `auth.token_secret`. The flat
 `DATABASE_URL` shortcut is preserved.
+
+When `auth.token_secret` (env `SNOOZE_SERVER_AUTH_TOKEN_SECRET`) is set it
+becomes the HS256 signing key, taking precedence over the random key Snooze
+otherwise generates and stores in the `secrets` collection. The value must be
+at least 32 bytes or the server refuses to boot. Leave it empty to keep the
+auto-generated, per-install key (the default).
 
 ### Runtime-editable settings (the `settings` plugin)
 

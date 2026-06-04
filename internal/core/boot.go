@@ -64,10 +64,24 @@ func (c *Core) bootstrap(ctx context.Context) error {
 // bootSecrets runs EnsureSecrets and constructs the TokenEngine plus the
 // refresh-token store. The latter persists hashed refresh tokens in the
 // "refresh_token" collection; the lease is sourced from cfg.Auth.
+//
+// When the operator supplies auth.token_secret (env
+// SNOOZE_SERVER_AUTH_TOKEN_SECRET) it overrides the DB-generated key from
+// EnsureSecrets, so the signing key is stable and operator-controlled across
+// rotations of the secrets collection. The configured secret must meet the
+// same minimum length NewTokenEngine enforces; we check it here too so the
+// failure is a clear boot error rather than a generic engine error.
 func (c *Core) bootSecrets(ctx context.Context) error {
 	jwtKey, _, err := EnsureSecrets(ctx, c.Driver)
 	if err != nil {
 		return fmt.Errorf("boot: ensure secrets: %w", err)
+	}
+	if secret := c.Cfg.Auth.TokenSecret; secret != "" {
+		if len(secret) < auth.MinSecretBytes {
+			return fmt.Errorf("boot: auth.token_secret must be at least %d bytes (got %d)",
+				auth.MinSecretBytes, len(secret))
+		}
+		jwtKey = []byte(secret)
 	}
 	engine, err := auth.NewTokenEngine(jwtKey, c.Cfg.Auth)
 	if err != nil {
@@ -204,8 +218,18 @@ func filterOptionalPlugins(all map[string]plugins.Plugin, enabledList []string) 
 	return all
 }
 
-// bootSyncer constructs the per-driver syncer and the node heartbeat.
+// bootSyncer constructs the per-driver syncer and the node heartbeat, wiring
+// in the operator-supplied cfg.Syncer values:
+//
+//   - Hostname     → NodeHeartbeat.Node (the identity advertised on `nodes`).
+//   - SyncInterval → NodeHeartbeat.Interval (heartbeat cadence) and the
+//     Syncer's reload-debounce window.
+//
+// SyncInterval is the single source of truth for both cadences; a zero value
+// lets each subsystem apply its own internal default.
 func (c *Core) bootSyncer() error {
+	interval := c.Cfg.Syncer.SyncInterval.AsDuration()
+
 	bus := c.Driver.Watcher()
 	if bus == nil {
 		// No watcher (e.g. tests, unsupported driver) — skip the syncer.
@@ -216,9 +240,10 @@ func (c *Core) bootSyncer() error {
 			plugMap[name] = pluggableShim{name: name, plugin: p}
 		}
 		c.Sync = &syncer.Syncer{
-			Bus:     bus,
-			Plugins: plugMap,
-			Logger:  c.Logger(),
+			Bus:      bus,
+			Plugins:  plugMap,
+			Debounce: interval,
+			Logger:   c.Logger(),
 		}
 	}
 
@@ -230,7 +255,9 @@ func (c *Core) bootSyncer() error {
 			})
 			return err
 		},
-		Logger: c.Logger(),
+		Node:     c.Cfg.Syncer.Hostname,
+		Interval: interval,
+		Logger:   c.Logger(),
 	}
 	return nil
 }

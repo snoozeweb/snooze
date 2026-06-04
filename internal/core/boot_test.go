@@ -4,13 +4,17 @@ import (
 	"context"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 
+	"github.com/snoozeweb/snooze/internal/auth"
 	"github.com/snoozeweb/snooze/internal/config"
+	"github.com/snoozeweb/snooze/internal/config/schema"
 	"github.com/snoozeweb/snooze/internal/db/sqlite"
 	"github.com/snoozeweb/snooze/internal/plugins"
 	"github.com/snoozeweb/snooze/internal/syncer"
+	"github.com/snoozeweb/snooze/pkg/snoozetypes"
 )
 
 // fakeProcessorWithDeps is a fakeProcessor that also declares reload
@@ -132,3 +136,119 @@ func TestBootAsync_UpsertEnabled_StatsCountersPersist(t *testing.T) {
 	require.EqualValues(t, 1, doc["value"],
 		"counter value must equal the increment delta")
 }
+
+// TestBootSecrets_PrefersConfiguredTokenSecret is the production-wiring
+// regression for FEATURE 1: when auth.token_secret is set the TokenEngine must
+// be built from THAT key, not the DB-generated one from EnsureSecrets. We prove
+// it by signing a token at boot and verifying it succeeds with an independent
+// engine built from the configured secret AND fails with an engine built from
+// a different secret. If bootSecrets reverts to always using the DB key, the
+// configured-secret verify fails and the test catches it.
+func TestBootSecrets_PrefersConfiguredTokenSecret(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+
+	const configured = "this-is-a-stable-operator-supplied-secret-key" // ≥32 bytes
+	cfg := config.Default()
+	cfg.Auth.TokenSecret = configured
+
+	c := &Core{Cfg: cfg, Driver: newFakeDB()}
+	require.NoError(t, c.bootSecrets(ctx))
+	require.NotNil(t, c.Tokens)
+
+	tok, _, err := c.Tokens.Sign(snoozetypes.Claims{Subject: "alice", Method: "local"})
+	require.NoError(t, err)
+
+	// An engine built from the configured secret must accept the token.
+	want, err := auth.NewTokenEngine([]byte(configured), cfg.Auth)
+	require.NoError(t, err)
+	claims, err := want.Verify(tok)
+	require.NoError(t, err, "token signed at boot must verify with the configured secret")
+	require.Equal(t, "alice", claims.Subject)
+
+	// An engine built from a *different* secret must reject it — proving the
+	// boot engine did not silently fall back to the DB-generated key.
+	other, err := auth.NewTokenEngine([]byte("a-completely-different-32byte-secret!!"), cfg.Auth)
+	require.NoError(t, err)
+	_, err = other.Verify(tok)
+	require.Error(t, err, "token must NOT verify under an unrelated secret")
+}
+
+// TestBootSecrets_RejectsShortTokenSecret asserts the boot-time length guard:
+// a configured secret below auth.MinSecretBytes must abort boot with a clear,
+// attributable error rather than a generic engine failure.
+func TestBootSecrets_RejectsShortTokenSecret(t *testing.T) {
+	t.Parallel()
+	cfg := config.Default()
+	cfg.Auth.TokenSecret = "too-short"
+
+	c := &Core{Cfg: cfg, Driver: newFakeDB()}
+	err := c.bootSecrets(context.Background())
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "auth.token_secret")
+}
+
+// TestBootSecrets_EmptyTokenSecretUsesDBKey guards the default path: with no
+// configured secret, the engine is built from the EnsureSecrets DB key and the
+// boot still succeeds (the configured-secret override is opt-in only).
+func TestBootSecrets_EmptyTokenSecretUsesDBKey(t *testing.T) {
+	t.Parallel()
+	cfg := config.Default()
+	require.Empty(t, cfg.Auth.TokenSecret)
+
+	c := &Core{Cfg: cfg, Driver: newFakeDB()}
+	require.NoError(t, c.bootSecrets(context.Background()))
+	require.NotNil(t, c.Tokens)
+}
+
+// TestBootSyncer_HonorsConfig is the production-wiring regression for FEATURE
+// 2: bootSyncer must propagate cfg.Syncer into the NodeHeartbeat (Node +
+// Interval). The fakeDB's Watcher returns nil, so c.Sync is skipped while
+// c.Heart is still constructed — exactly the surface this test pins.
+func TestBootSyncer_HonorsConfig(t *testing.T) {
+	t.Parallel()
+	cfg := config.Default()
+	cfg.Syncer.Hostname = "node-XYZ"
+	cfg.Syncer.SyncInterval = schema.Duration(7 * time.Second)
+
+	c := &Core{Cfg: cfg, Driver: newFakeDB()}
+	require.NoError(t, c.bootSyncer())
+
+	require.NotNil(t, c.Heart)
+	require.Equal(t, "node-XYZ", c.Heart.Node,
+		"heartbeat Node must come from cfg.Syncer.Hostname")
+	require.Equal(t, 7*time.Second, c.Heart.Interval,
+		"heartbeat Interval must come from cfg.Syncer.SyncInterval")
+}
+
+// TestBootSyncer_PropagatesDebounce pins that the configured interval also
+// drives the Syncer's reload-debounce window when a watcher bus is present.
+func TestBootSyncer_PropagatesDebounce(t *testing.T) {
+	t.Parallel()
+	cfg := config.Default()
+	cfg.Syncer.SyncInterval = schema.Duration(3 * time.Second)
+
+	c := &Core{Cfg: cfg, Driver: busFakeDB{newFakeDB()}}
+	require.NoError(t, c.bootSyncer())
+
+	require.NotNil(t, c.Sync, "a non-nil Watcher must yield a live Syncer")
+	require.Equal(t, 3*time.Second, c.Sync.Debounce,
+		"syncer debounce must come from cfg.Syncer.SyncInterval")
+}
+
+// busFakeDB is a fakeDB whose Watcher returns a non-nil bus so bootSyncer
+// takes the Syncer-construction branch. The embedded fakeDB supplies every
+// other Driver method.
+type busFakeDB struct{ *fakeDB }
+
+func (b busFakeDB) Watcher() syncer.Bus { return stubBus{} }
+
+// stubBus is a no-op syncer.Bus used only to make Watcher non-nil; the test
+// never publishes or subscribes through it.
+type stubBus struct{}
+
+func (stubBus) Publish(context.Context, syncer.Event) error { return nil }
+func (stubBus) Subscribe(context.Context, string) (<-chan syncer.Event, error) {
+	return nil, nil
+}
+func (stubBus) Close() error { return nil }
