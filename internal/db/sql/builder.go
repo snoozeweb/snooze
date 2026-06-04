@@ -2,184 +2,99 @@ package sql
 
 import (
 	"fmt"
-	"strings"
 
 	"github.com/snoozeweb/snooze/internal/condition"
 )
 
-// Builder walks a condition.Cond AST and emits parameterised SQL using the
-// dialect for backend-specific quoting.
+// Builder walks a condition.Cond AST and emits parameterised SQL. It owns the
+// boolean tree (AlwaysTrue / AND / OR / NOT, paren grouping, empty-set literals)
+// and the placeholder/arg bookkeeping; every per-dialect leaf fragment lives
+// behind the Dialect.
 type Builder struct {
 	Dialect Dialect
 }
 
-// Convert returns a WHERE-clause fragment and the bound parameters for cond.
-// searchFields is the list of fields that SEARCH expands across.
+// Convert returns a WHERE-clause boolean fragment and the bound parameters for
+// cond. searchFields is the list of fields the SEARCH operator expands across;
+// an empty list makes SEARCH full-scan the serialised document (the live SQL
+// backends never match "nothing" on a bare SEARCH).
 func (b *Builder) Convert(cond condition.Cond, searchFields []string) (string, []any, error) {
 	if b.Dialect == nil {
 		return "", nil, fmt.Errorf("sql: nil dialect")
 	}
 	w := walker{dialect: b.Dialect, searchFields: searchFields}
+	w.binder.dialect = b.Dialect
 	sqlStr, err := w.walk(cond)
 	if err != nil {
 		return "", nil, err
 	}
-	if sqlStr == "" {
-		// AlwaysTrue: emit a trivially true predicate so callers can append it.
-		return "1=1", nil, nil
-	}
-	return sqlStr, w.args, nil
+	return sqlStr, w.binder.args, nil
 }
 
 type walker struct {
 	dialect      Dialect
-	args         []any
+	binder       Binder
 	searchFields []string
 }
 
-func (w *walker) bind(v any) string {
-	w.args = append(w.args, v)
-	return w.dialect.Placeholder(len(w.args))
-}
-
 func (w *walker) walk(c condition.Cond) (string, error) {
+	// AlwaysTrue (zero value) matches everything.
+	if c.IsZero() {
+		return w.dialect.AlwaysTrue(), nil
+	}
 	switch c.Op {
 	case condition.OpAlwaysTrue:
-		return "", nil
+		return w.dialect.AlwaysTrue(), nil
 	case condition.OpAnd:
-		return w.combine(c.Children, "AND")
+		return w.combine(c.Children, "AND", w.dialect.EmptyAnd())
 	case condition.OpOr:
-		return w.combine(c.Children, "OR")
+		return w.combine(c.Children, "OR", w.dialect.EmptyOr())
 	case condition.OpNot:
-		if len(c.Children) != 1 {
-			return "", fmt.Errorf("sql: NOT expects one child, got %d", len(c.Children))
+		if len(c.Children) == 0 {
+			return "", fmt.Errorf("sql: NOT requires one child")
 		}
 		inner, err := w.walk(c.Children[0])
 		if err != nil {
 			return "", err
 		}
-		if inner == "" {
-			return "FALSE", nil
-		}
-		return "NOT (" + inner + ")", nil
+		return "(NOT " + inner + ")", nil
 	case condition.OpEq:
-		return w.binaryScalar(c, "=")
+		return w.dialect.Eq(c.Field, c.Value, &w.binder), nil
 	case condition.OpNeq:
-		return w.binaryScalar(c, "<>")
-	case condition.OpGt:
-		return w.binaryScalar(c, ">")
-	case condition.OpGte:
-		return w.binaryScalar(c, ">=")
-	case condition.OpLt:
-		return w.binaryScalar(c, "<")
-	case condition.OpLte:
-		return w.binaryScalar(c, "<=")
+		return w.dialect.Neq(c.Field, c.Value, &w.binder), nil
+	case condition.OpGt, condition.OpGte, condition.OpLt, condition.OpLte:
+		return w.dialect.Compare(c.Field, string(c.Op), c.Value, &w.binder), nil
 	case condition.OpMatches:
-		path := splitPath(c.Field)
-		left := w.dialect.PathText(path)
-		pat := unsugarRegex(asString(c.Value))
-		ph := w.bind(pat)
-		return w.dialect.RegexMatch(left, ph), nil
+		return w.dialect.Matches(c.Field, c.Value, &w.binder), nil
 	case condition.OpExists:
-		path := splitPath(c.Field)
-		return w.dialect.PathText(path) + " IS NOT NULL", nil
+		return w.dialect.Exists(c.Field, &w.binder), nil
 	case condition.OpContains:
-		path := splitPath(c.Field)
-		jsonExpr := w.dialect.PathJSON(path)
-		ph := w.bind(c.Value)
-		return w.dialect.ArrayContains(jsonExpr, ph), nil
+		return w.dialect.Contains(c.Field, c.Value, &w.binder), nil
 	case condition.OpIn:
-		path := splitPath(c.Field)
-		jsonExpr := w.dialect.PathJSON(path)
-		ph := w.bind(c.Value)
-		return w.dialect.ArrayContains(jsonExpr, ph), nil
+		return w.dialect.In(c.Field, c.Value, &w.binder, w.walk)
 	case condition.OpSearch:
-		return w.search(c.Value)
+		return w.dialect.Search(c.Value, w.searchFields, &w.binder), nil
 	}
 	return "", fmt.Errorf("sql: unsupported op %q", c.Op)
 }
 
-func (w *walker) combine(kids []condition.Cond, glue string) (string, error) {
-	parts := make([]string, 0, len(kids))
-	for _, k := range kids {
+// combine renders an AND/OR group. The group is always parenthesised — even a
+// single child — to match the live per-backend translators byte-for-byte. An
+// empty group lowers to the dialect's truthy (AND) / falsy (OR) literal.
+func (w *walker) combine(kids []condition.Cond, glue, empty string) (string, error) {
+	if len(kids) == 0 {
+		return empty, nil
+	}
+	out := "("
+	for i, k := range kids {
+		if i > 0 {
+			out += " " + glue + " "
+		}
 		s, err := w.walk(k)
 		if err != nil {
 			return "", err
 		}
-		if s == "" {
-			continue
-		}
-		parts = append(parts, s)
+		out += s
 	}
-	switch len(parts) {
-	case 0:
-		return "", nil
-	case 1:
-		return parts[0], nil
-	}
-	return "(" + strings.Join(parts, " "+glue+" ") + ")", nil
-}
-
-func (w *walker) binaryScalar(c condition.Cond, op string) (string, error) {
-	path := splitPath(c.Field)
-	left := w.dialect.PathText(path)
-	if c.Value == nil {
-		if op == "=" {
-			return left + " IS NULL", nil
-		}
-		if op == "<>" {
-			return left + " IS NOT NULL", nil
-		}
-	}
-	right := w.bind(asString(c.Value))
-	return left + " " + op + " " + right, nil
-}
-
-func (w *walker) search(value any) (string, error) {
-	if len(w.searchFields) == 0 {
-		// SEARCH with no registered fields matches nothing: well-defined,
-		// per the plan's "Drop Mongo $where SEARCH" rule.
-		return "FALSE", nil
-	}
-	pat := "%" + asString(value) + "%"
-	ph := w.bind(pat)
-	parts := make([]string, 0, len(w.searchFields))
-	for _, f := range w.searchFields {
-		parts = append(parts, w.dialect.PathText(splitPath(f))+" ILIKE "+ph)
-	}
-	return "(" + strings.Join(parts, " OR ") + ")", nil
-}
-
-// splitPath converts "a.b.c" into ["a","b","c"]. Numeric components are
-// preserved as text — the dialect handles type-driven indexing.
-func splitPath(s string) []string {
-	if s == "" {
-		return nil
-	}
-	parts := make([]string, 0, 4)
-	start := 0
-	for i := 0; i < len(s); i++ {
-		if s[i] == '.' {
-			parts = append(parts, s[start:i])
-			start = i + 1
-		}
-	}
-	return append(parts, s[start:])
-}
-
-func asString(v any) string {
-	if v == nil {
-		return ""
-	}
-	if t, ok := v.(string); ok {
-		return t
-	}
-	return fmt.Sprintf("%v", v)
-}
-
-func unsugarRegex(s string) string {
-	if len(s) >= 2 && s[0] == '/' && s[len(s)-1] == '/' {
-		return s[1 : len(s)-1]
-	}
-	return s
+	return out + ")", nil
 }

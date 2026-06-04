@@ -46,17 +46,24 @@ type assertion with an in-Go fallback — `RecordAggregator` is the pattern: the
 | `sqlite/`   | `modernc.org/sqlite` (pure Go)    | Single-writer; in-process `Watcher`.    |
 
 Per-backend file shape is consistent: `driver.go` (the `Driver` impl — the big
-one), `convert.go` (`condition.Cond` → query), `cleanup.go` (retention),
-`bulk.go`, plus the watcher (`mongo/watch.go`, `postgres/listen.go`,
+one), `convert.go` (`condition.Cond` → query) plus a `dialect.go` for the two
+SQL backends (the per-dialect leaf SQL behind the shared builder), `cleanup.go`
+(retention), `bulk.go`, plus the watcher (`mongo/watch.go`, `postgres/listen.go`,
 `sqlite/bus.go`). The two SQL backends additionally carry `schema.go`
 (table/index DDL); Mongo, being schemaless, has none.
 
-`sql/` (builder.go, dialect.go, maintenance.go) was *meant* to be a shared
-query-builder for the two SQL backends, but it is **unadopted dead code** — it
-has zero importers and has already drifted from the live translators (e.g. its
-empty-`searchFields` SEARCH returns `FALSE`, while the live backends full-scan).
-Don't reach for `sql/`; each backend hand-rolls its own `convert.go`. Either
-finish the consolidation or delete `sql/` — until then it is a trap.
+`sql/` (builder.go, dialect.go, maintenance.go) is the **shared Cond → WHERE
+builder** for the two SQL backends. `Builder.Convert` owns the boolean tree walk
+(AlwaysTrue / AND / OR / NOT, paren grouping, empty-set literals, sub-condition
+recursion, placeholder bookkeeping); every per-dialect leaf fragment (JSON path
+extraction, type-aware casts, regex op, array/scalar two-branch unions,
+full-scan SEARCH) lives behind the `Dialect` interface, implemented in
+`postgres/dialect.go` and `sqlite/dialect.go`. Each backend's `convert.go` wires
+its `dialect` into the shared `Builder` and keeps only the non-WHERE pieces
+(ORDER BY, LIMIT/OFFSET, query assembly) plus its JSON-path helpers. The
+builder full-scans an empty-`searchFields` SEARCH (matching the live backends),
+so the historical "`FALSE`" drift is gone. Mongo keeps its own hand-rolled
+translator (it is not SQL).
 
 `asyncwriter/` sits between the pipeline and the driver, coalescing increment
 storms into batched `BulkIncrement` calls — identical for all three backends.
