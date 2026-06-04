@@ -57,18 +57,6 @@ func CleanupOrphansJob(d db.Driver, collection string) IntervalJob {
 	}
 }
 
-// RenumberJob renumbers the integer-typed `field` on the named collection
-// every day at midnight, ensuring a dense ordering.
-func RenumberJob(d db.Driver, collection, field string) CronJob {
-	name := fmt.Sprintf("renumber/%s/%s", collection, field)
-	return CronJob{
-		Cron: "0 0 * * *",
-		Job: NewJobFunc(name, func(ctx context.Context) error {
-			return d.RenumberField(ctx, collection, field)
-		}),
-	}
-}
-
 // CleanupAuditJob purges audit-log rows older than `olderThan` every day at
 // midnight.
 func CleanupAuditJob(d db.Driver, olderThan time.Duration) CronJob {

@@ -119,9 +119,8 @@ func (s *stubDriver) CleanupNotification(context.Context) (int, error) { return 
 func (s *stubDriver) ComputeStats(context.Context, string, time.Time, time.Time, string) ([]db.StatsBucket, error) {
 	return nil, nil
 }
-func (s *stubDriver) RenumberField(context.Context, string, string) error { return nil }
-func (s *stubDriver) Watcher() syncer.Bus                                 { return nil }
-func (s *stubDriver) Close() error                                        { return nil }
+func (s *stubDriver) Watcher() syncer.Bus { return nil }
+func (s *stubDriver) Close() error        { return nil }
 
 func TestWriter_MergesDeltas(t *testing.T) {
 	d := newStubDriver()

@@ -124,14 +124,3 @@ The Go schema lives in `internal/config/schema/housekeeper.go`.
 > this duration are pruned by the housekeeper. Accepts Go duration strings
 > (e.g. `"720h"`, `"4320h"`). Editable at runtime in **Settings →
 > Housekeeping** without a server restart.
-
-### renumber_field
-
-> Type  
-> number (time-delta)
->
-> Default  
-> `86400.0`
->
-> Renumber given field from 0 to count(collection)-1
-

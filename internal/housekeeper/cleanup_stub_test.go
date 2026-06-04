@@ -91,6 +91,5 @@ func (c *cleanupStubDriver) CleanupNotification(context.Context) (int, error) {
 func (c *cleanupStubDriver) ComputeStats(context.Context, string, time.Time, time.Time, string) ([]db.StatsBucket, error) {
 	return nil, nil
 }
-func (c *cleanupStubDriver) RenumberField(context.Context, string, string) error { return nil }
-func (c *cleanupStubDriver) Watcher() syncer.Bus                                 { return nil }
-func (c *cleanupStubDriver) Close() error                                        { return nil }
+func (c *cleanupStubDriver) Watcher() syncer.Bus { return nil }
+func (c *cleanupStubDriver) Close() error        { return nil }

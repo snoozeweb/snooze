@@ -27,7 +27,7 @@ import (
 //  5. MQ Bus        — inproc/pg/mongo depending on config.
 //  6. Plugins       — plugins.Build with the configured process order.
 //  7. Syncer        — c.Driver.Watcher() as its event bus + NodeHeartbeat.
-//  8. Housekeeper   — default cleanup/renumber jobs.
+//  8. Housekeeper   — default cleanup jobs.
 func (c *Core) bootstrap(ctx context.Context) error {
 	if err := c.bootSecrets(ctx); err != nil {
 		return err
@@ -286,7 +286,7 @@ func (p pluggableShim) ReloadCollections() []string {
 	return nil
 }
 
-// bootHousekeeper registers the default cleanup/renumber jobs.
+// bootHousekeeper registers the default cleanup jobs.
 //
 // Cadence is sourced from “c.Settings“ so that an operator who edits a
 // housekeeping.* setting in the Settings UI sees the new interval applied

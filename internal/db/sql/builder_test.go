@@ -146,6 +146,35 @@ func TestBuilder_AlwaysTrue(t *testing.T) {
 	require.Empty(t, args)
 }
 
+// A malformed condition with an empty Op but a populated field/value/children
+// must be rejected, NOT lowered to "match everything" — otherwise a stored bad
+// condition fed to a discarding snooze Delete would wipe the whole collection.
+func TestBuilder_EmptyOpWithFieldRejected(t *testing.T) {
+	b := &Builder{Dialect: mockDialect{}}
+	for _, c := range []condition.Cond{
+		{Field: "x"},
+		{Value: "y"},
+		{Children: []condition.Cond{{Op: condition.OpEq, Field: "a", Value: 1}}},
+	} {
+		_, _, err := b.Convert(c, nil)
+		require.Error(t, err, "empty-op cond %+v must be rejected", c)
+	}
+}
+
+// NOT must carry exactly one child; >1 (reachable via object-form JSON) was
+// silently truncated before and is now rejected on both SQL backends.
+func TestBuilder_NotRequiresExactlyOneChild(t *testing.T) {
+	b := &Builder{Dialect: mockDialect{}}
+	two := condition.Cond{Op: condition.OpNot, Children: []condition.Cond{
+		{Op: condition.OpEq, Field: "a", Value: 1},
+		{Op: condition.OpEq, Field: "b", Value: 2},
+	}}
+	_, _, err := b.Convert(two, nil)
+	require.Error(t, err)
+	_, _, err = b.Convert(condition.Cond{Op: condition.OpNot}, nil)
+	require.Error(t, err)
+}
+
 func TestBuilder_SearchNoFields(t *testing.T) {
 	b := &Builder{Dialect: mockDialect{}}
 	sql, args, err := b.Convert(condition.Cond{Op: condition.OpSearch, Value: "abc"}, nil)

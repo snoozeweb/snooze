@@ -19,7 +19,7 @@ The syncer keeps each replica's in-memory plugin caches consistent. In 2.0 the c
 - PostgreSQL — `LISTEN/NOTIFY` (one channel per collection)
 - SQLite — an in-process channel (single-replica, no fan-out needed)
 
-The settings below are mostly status-reporting knobs; the standalone 1-second polling loop used by Python 1.x is gone.
+The two settings below configure this node's heartbeat identity and cadence; the standalone 1-second polling loop used by Python 1.x is gone.
 
 The Go schema lives in `internal/config/schema/syncer.go`.
 
@@ -31,27 +31,17 @@ The Go schema lives in `internal/config/schema/syncer.go`.
 > string
 >
 > Default  
-> `os.Hostname()`
+> OS hostname, falling back to `snooze`
 >
-> Identity of this node in the cluster heartbeat document. Set different values per replica.
+> Identity of this node in the cluster heartbeat document — the name the heartbeat runner writes. Set different values per replica.
 
-### total
-
-> Type  
-> integer
->
-> Default  
-> `1`
->
-> Expected number of replicas (used by the verbose health endpoint to flag degraded clusters).
-
-### sync_interval / sync_interval_ms
+### sync_interval
 
 > Type  
-> Duration / integer (ms)
+> Duration
 >
 > Default  
-> `1s` / `1000`
+> `1s`
 >
-> Heartbeat interval. The actual cache invalidation does not rely on this loop in 2.0 — it is driven by the backend's change feed — but the heartbeat document is still written at this cadence so the cluster page in the WebUI reflects liveness.
+> Cadence of the node heartbeat and the debounce window the syncer applies to change-feed events. Cache invalidation itself is driven by the backend's change feed, not a polling loop, but the heartbeat document is rewritten at this cadence so the cluster page in the WebUI reflects liveness. (The legacy `sync_interval_ms` and the `total` replica-count knob were removed in 2.0.)
 

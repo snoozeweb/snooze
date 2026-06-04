@@ -14,9 +14,6 @@ data:
     unix_socket: /app/snooze.socket
     no_login: false
 
-    syncer:
-      total: {{ .Values.server.replicaCount }}
-
     core_plugins:
     - record
     - action

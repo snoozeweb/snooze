@@ -151,7 +151,6 @@ type Driver interface {
 	// collection.
 	CleanupNotification(ctx context.Context) (deleted int, err error)
 	ComputeStats(ctx context.Context, collection string, from, to time.Time, groupBy string) ([]StatsBucket, error)
-	RenumberField(ctx context.Context, collection, field string) error
 
 	// Watcher returns the per-driver event bus used by the syncer. SQLite returns
 	// an in-process bus; Postgres a LISTEN/NOTIFY-backed bus; Mongo a

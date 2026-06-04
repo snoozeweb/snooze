@@ -323,27 +323,6 @@ func (d *Driver) CleanupAuditLogs(ctx context.Context, olderThan time.Duration) 
 	return int(res.DeletedCount), nil
 }
 
-// RenumberField rewrites a numeric field in ascending order starting at 0.
-func (d *Driver) RenumberField(ctx context.Context, collection, field string) error {
-	coll := d.coll(collection)
-	pipeline := mongo.Pipeline{
-		bson.D{{Key: "$sort", Value: bson.M{field: 1}}},
-		bson.D{{Key: "$group", Value: bson.M{"_id": 1, "tmp_items": bson.M{"$push": "$$ROOT"}}}},
-		bson.D{{Key: "$unwind", Value: bson.M{"path": "$tmp_items", "includeArrayIndex": field}}},
-		bson.D{{Key: "$replaceWith", Value: bson.M{"$mergeObjects": []any{"$tmp_items", bson.M{field: "$" + field}}}}},
-		bson.D{{Key: "$merge", Value: bson.M{"into": collection, "on": "_id", "whenMatched": "replace"}}},
-	}
-	cur, err := coll.Aggregate(ctx, pipeline)
-	if err != nil {
-		return fmt.Errorf("mongo: renumber_field: %w", err)
-	}
-	defer cur.Close(ctx) //nolint:errcheck
-	// Drain to ensure the $merge stage completes.
-	for cur.Next(ctx) { //nolint:revive
-	}
-	return cur.Err()
-}
-
 // ComputeStats aggregates counter buckets by hour/day/month/year/week/weekday.
 func (d *Driver) ComputeStats(ctx context.Context, collection string, from, to time.Time, groupBy string) ([]dbpkg.StatsBucket, error) {
 	dateFormat := groupByFormat(groupBy)

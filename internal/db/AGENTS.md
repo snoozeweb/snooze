@@ -22,7 +22,7 @@ documented divergences (see "Known cross-backend divergences"). Methods group as
   named top-level keys so `EXISTS field` stops matching — distinct from a merge
   write that preserves unmentioned keys), `AppendList`/`PrependList`/`RemoveList`.
 * **Maintenance** — `CreateIndex`, `ListCollections`, `Drop`, `Backup`, the
-  `Cleanup*` retention sweeps, `ComputeStats`, `RenumberField`.
+  `Cleanup*` retention sweeps, `ComputeStats`.
 * **`Watcher() syncer.Bus`** — the change feed the syncer rides (see below).
 * **`Close()`** — idempotent.
 
@@ -41,7 +41,7 @@ type assertion with an in-Go fallback — `RecordAggregator` is the pattern: the
 
 | Dir         | Driver / library                  | Notes                                   |
 |-------------|-----------------------------------|-----------------------------------------|
-| `mongo/`    | `go.mongodb.org/mongo-driver`     | Change-stream `Watcher`; replica sets.  |
+| `mongo/`    | `go.mongodb.org/mongo-driver/v2`  | Change-stream `Watcher`; replica sets.  |
 | `postgres/` | `jackc/pgx/v5` (+ pgxpool, jsonb) | `LISTEN/NOTIFY` `Watcher`.              |
 | `sqlite/`   | `modernc.org/sqlite` (pure Go)    | Single-writer; in-process `Watcher`.    |
 
@@ -76,8 +76,10 @@ identically (e.g. `int64(1)` vs `float64(1)`) merge into one op.
 
 ## Known cross-backend divergences
 
-The "identical" goal isn't fully met yet. Splits a contributor must know (the
-unwired `dbtest` suite is exactly what would catch these):
+A few intentional/known splits remain (the shared `dbtest` suite — now wired
+into all three driver tests — guards against new ones). The `CleanupTimeout`
+and `CleanupAuditLogs` divergences noted in earlier revisions are now
+reconciled across backends.
 
 * **SEARCH with no registered fields.** Mongo matches *nothing*; the two SQL
   backends fall back to a full-row regex scan (`data::text ~* needle` /
@@ -87,12 +89,6 @@ unwired `dbtest` suite is exactly what would catch these):
   (`jsonb_array_elements` recursion) support a `Cond` sub-form; SQLite does
   **not** — a `Cond` value degrades to literal `fmt.Sprint` membership. Postgres
   additionally errors on the legacy *list*-form nested cond.
-* **`CleanupTimeout` on a record with `ttl` but no `date_epoch`.** SQL backends
-  delete it (missing `date_epoch` ⇒ 0); Mongo keeps it (`$add` over a missing
-  field ⇒ null ⇒ no `$lte` match). Mongo mirrors the legacy Python pipeline.
-* **`CleanupAuditLogs` recency key.** SQLite keys on `date_epoch` (the field the
-  audit writer actually populates); Mongo/Postgres sort by a `timestamp` field
-  that nothing writes, so "latest event per object" is non-deterministic there.
 * **Cleanup change-feed events.** Mongo cleanup deletes surface in the change
   stream; Postgres emits a notify only from `CleanupTimeout`; SQLite publishes
   nothing. Peer caches may not invalidate after a retention sweep on the SQL
@@ -109,12 +105,13 @@ Backend tests are **integration tests**: `mongo`/`postgres` spin up a real
 server via testcontainers (Docker required); `sqlite` uses a fresh in-memory DB
 per test. They're gated by `testing.Short()` — `go test -short` skips them.
 
-`dbtest/` is a **shared driver-test suite in progress**, not yet wired in:
-`RunDriverSuite(t, name, factory)` plus `Load`/`LoadEmbedded` fixtures exist,
-but the three `driver_test.go` files are still hand-rolled and don't call it
-yet (the comments mark where they'll delegate). **Direction:** when you touch
-cross-backend behaviour, add the case to the shared suite and have each driver
-test delegate to `RunDriverSuite`, rather than copy-pasting a fourth variant.
+`dbtest/` is the **shared cross-backend conformance suite**. `RunDriverSuite(t,
+name, factory)` runs the backend-agnostic cases, and each backend's
+`driver_test.go` wires it via `TestDriverSuite` (sqlite uses a fresh in-memory
+DB; postgres/mongo share one testcontainer per suite, dropping collections
+between cases). **When you touch cross-backend behaviour, add the case there**
+rather than copy-pasting a per-backend variant; the hand-rolled per-backend
+tests now cover only backend-specific cases (ping, backup, dialect quirks).
 
 ```bash
 go test -short ./internal/db/...           # skip the container-backed paths

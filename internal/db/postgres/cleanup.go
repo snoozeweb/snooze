@@ -247,38 +247,6 @@ func (d *Driver) CleanupAuditLogs(ctx context.Context, olderThan time.Duration) 
 	return int(tag.RowsAffected()), nil
 }
 
-// RenumberField re-packs an integer-valued field so its values form a
-// contiguous 0-based sequence ordered by the field's current numeric value.
-func (d *Driver) RenumberField(ctx context.Context, collection, field string) error {
-	table, err := d.tableIfExists(ctx, collection)
-	if err != nil {
-		return err
-	}
-	if table == "" {
-		return nil
-	}
-	qt := quoteIdent(table)
-	// field is a single key, not a dotted path — same as the Python helper.
-	if field == "" {
-		return fmt.Errorf("%w: renumberField needs a non-empty field", dbpkg.ErrValidation)
-	}
-	q := fmt.Sprintf(
-		"WITH ranked AS ("+
-			" SELECT uid, row_number() OVER ("+
-			"  ORDER BY (data->>$1)::numeric ASC NULLS LAST, uid ASC"+
-			" ) - 1 AS new_pos FROM %s"+
-			") "+
-			"UPDATE %s t SET "+
-			"data = jsonb_set(t.data, ARRAY[$1], to_jsonb(r.new_pos), true), "+
-			"updated_at = clock_timestamp() FROM ranked r WHERE r.uid = t.uid",
-		qt, qt,
-	)
-	if _, err := d.pool.Exec(ctx, q, field); err != nil {
-		return fmt.Errorf("postgres: renumberField: %w", err)
-	}
-	return nil
-}
-
 // ComputeStats aggregates the per-bucket totals for stat-shaped records
 // (date/key/value). Output buckets are formatted using the same
 // "YYYY-MM-DDTHH:MM:OF" template as the Python backend.

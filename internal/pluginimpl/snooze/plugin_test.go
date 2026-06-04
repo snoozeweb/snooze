@@ -120,9 +120,8 @@ func (d *captureDrv) CleanupNotification(context.Context) (int, error) { return 
 func (d *captureDrv) ComputeStats(context.Context, string, time.Time, time.Time, string) ([]db.StatsBucket, error) {
 	return nil, nil
 }
-func (d *captureDrv) RenumberField(context.Context, string, string) error { return nil }
-func (d *captureDrv) Watcher() syncer.Bus                                 { return nil }
-func (d *captureDrv) Close() error                                        { return nil }
+func (d *captureDrv) Watcher() syncer.Bus { return nil }
+func (d *captureDrv) Close() error        { return nil }
 
 // stubHost is a Host that only wires the bits the snooze plugin reads: the
 // driver, a logger, the metrics registry, the OTEL tracer and the immutable

@@ -44,14 +44,23 @@ func (w *walker) walk(c condition.Cond) (string, error) {
 	}
 	switch c.Op {
 	case condition.OpAlwaysTrue:
+		// A genuinely-empty Cond was already handled by the IsZero fast-path
+		// above. Reaching here with an empty Op but a populated field/value/
+		// children is a malformed condition — reject it rather than silently
+		// lowering to "match everything", which on a Delete would wipe the
+		// whole collection (the pre-consolidation Postgres translator errored
+		// here too).
+		if c.Field != "" || c.Value != nil || len(c.Children) != 0 {
+			return "", fmt.Errorf("sql: empty operator with populated field/value/children")
+		}
 		return w.dialect.AlwaysTrue(), nil
 	case condition.OpAnd:
 		return w.combine(c.Children, "AND", w.dialect.EmptyAnd())
 	case condition.OpOr:
 		return w.combine(c.Children, "OR", w.dialect.EmptyOr())
 	case condition.OpNot:
-		if len(c.Children) == 0 {
-			return "", fmt.Errorf("sql: NOT requires one child")
+		if len(c.Children) != 1 {
+			return "", fmt.Errorf("sql: NOT expects 1 child, got %d", len(c.Children))
 		}
 		inner, err := w.walk(c.Children[0])
 		if err != nil {

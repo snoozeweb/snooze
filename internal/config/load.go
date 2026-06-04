@@ -297,7 +297,6 @@ func defaultsYAML() ([]byte, error) {
 			"cleanup_stats":        d.Housekeeper.CleanupStats.String(),
 			"cleanup_snooze":       d.Housekeeper.CleanupSnooze.String(),
 			"cleanup_notification": d.Housekeeper.CleanupNotification.String(),
-			"renumber_field":       d.Housekeeper.RenumberField.String(),
 		},
 		"notification": map[string]any{
 			"notification_freq":  d.Notification.NotificationFreq.String(),

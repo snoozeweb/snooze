@@ -87,9 +87,8 @@ func (f *fakeDB) CleanupNotification(_ context.Context) (int, error) { return 0,
 func (f *fakeDB) ComputeStats(_ context.Context, _ string, _, _ time.Time, _ string) ([]db.StatsBucket, error) {
 	return nil, nil
 }
-func (f *fakeDB) RenumberField(_ context.Context, _, _ string) error { return nil }
-func (f *fakeDB) Watcher() syncer.Bus                                { return nil }
-func (f *fakeDB) Close() error                                       { return nil }
+func (f *fakeDB) Watcher() syncer.Bus { return nil }
+func (f *fakeDB) Close() error        { return nil }
 
 func TestHealthz_OK(t *testing.T) {
 	rt := &Router{}

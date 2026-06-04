@@ -162,9 +162,8 @@ func (m *memDB) CleanupNotification(context.Context) (int, error) { return 0, ni
 func (m *memDB) ComputeStats(context.Context, string, time.Time, time.Time, string) ([]db.StatsBucket, error) {
 	return nil, nil
 }
-func (m *memDB) RenumberField(context.Context, string, string) error { return nil }
-func (m *memDB) Watcher() syncer.Bus                                 { return nil }
-func (m *memDB) Close() error                                        { return nil }
+func (m *memDB) Watcher() syncer.Bus { return nil }
+func (m *memDB) Close() error        { return nil }
 
 // fakeHost is a plugins.Host that also satisfies the plugin's recordProcessor
 // runtime assertion. It carries a memDB and captures every injected record.

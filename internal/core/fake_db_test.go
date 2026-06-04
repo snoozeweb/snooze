@@ -230,6 +230,5 @@ func (f *fakeDB) CleanupNotification(context.Context) (int, error) { return 0, n
 func (f *fakeDB) ComputeStats(context.Context, string, time.Time, time.Time, string) ([]db.StatsBucket, error) {
 	return nil, nil
 }
-func (f *fakeDB) RenumberField(context.Context, string, string) error { return nil }
-func (f *fakeDB) Watcher() syncer.Bus                                 { return nil }
-func (f *fakeDB) Close() error                                        { return nil }
+func (f *fakeDB) Watcher() syncer.Bus { return nil }
+func (f *fakeDB) Close() error        { return nil }

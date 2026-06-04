@@ -130,10 +130,24 @@
   rule whose `fields` duplicate another enabled rule's is now rejected (422); the
   server logs existing duplicates at startup. Merging severity tiers into one
   rule re-forks those aggregates once.
+- **`auth.token_secret` now takes effect.** Setting it (file config or
+  `SNOOZE_SERVER_AUTH_TOKEN_SECRET`, ≥32 bytes) overrides the auto-generated
+  DB-stored JWT signing key — previously the field was silently ignored. Lets
+  operators pin a shared signing key across a fleet or rotate after a suspected
+  compromise.
+- **`syncer.hostname` and `syncer.sync_interval` now take effect** — they set
+  the cluster-heartbeat node identity and cadence (and the syncer debounce
+  window); both were previously inert. The redundant `syncer.sync_interval_ms`,
+  the unused `syncer.total`, and the inert `housekeeping.renumber_field` knobs
+  were removed (all three were silently ignored at runtime).
 
 ### Internal
 - New `internal/daemon` harness backs every auxiliary binary; `internal/runtime`
   removed (its `automaxprocs` side effect folded into `internal/daemon`).
+- The Cond→SQL WHERE translation for the Postgres and SQLite backends is now one
+  shared builder (`internal/db/sql`) wired with per-backend dialects, replacing
+  the two duplicated translators; the `internal/db/dbtest` conformance suite is
+  wired into all three driver tests.
 
 ### Documentation
 

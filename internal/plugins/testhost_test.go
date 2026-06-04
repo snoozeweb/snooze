@@ -175,9 +175,8 @@ func (m *memDB) CleanupNotification(context.Context) (int, error) { return 0, ni
 func (m *memDB) ComputeStats(context.Context, string, time.Time, time.Time, string) ([]db.StatsBucket, error) {
 	return nil, nil
 }
-func (m *memDB) RenumberField(context.Context, string, string) error { return nil }
-func (m *memDB) Watcher() syncer.Bus                                 { return nil }
-func (m *memDB) Close() error                                        { return nil }
+func (m *memDB) Watcher() syncer.Bus { return nil }
+func (m *memDB) Close() error        { return nil }
 
 // nullHost is a Host implementation that returns minimal/no-op deps. Plugins
 // in this package's tests never invoke Bus, Tracer, Metrics or Config, so
