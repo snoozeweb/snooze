@@ -273,6 +273,9 @@ func runDaemonCtx(ctx context.Context, f *daemonFlags, stderr io.Writer) error {
 	if err != nil {
 		return fmt.Errorf("core: %w", err)
 	}
+	// Closes the mq manager (and its pg/mongo pool/client). Runs before the
+	// deferred drv.Close() above (LIFO), the correct teardown order.
+	defer func() { _ = c.Close() }()
 
 	providers := buildAuthProviders(cfg, drv, c.Settings)
 

@@ -191,11 +191,11 @@ func (b *inprocBus) Close() error {
 		return nil
 	}
 	b.closed = true
-	// Close every queue so workers reading on it observe end-of-stream
-	// and exit cleanly.
-	for _, ch := range b.queues {
-		close(ch)
-	}
+	// Do NOT close the queue channels here: a concurrent Publish may have
+	// captured a channel and released b.mu before its send, so closing would
+	// panic with "send on closed channel". Workers instead exit via
+	// b.cancel()/rootCtx (see Subscribe/runWorker ctx.Done()), which the
+	// b.wg.Wait() below awaits.
 	b.queues = nil
 	b.mu.Unlock()
 	b.cancel()

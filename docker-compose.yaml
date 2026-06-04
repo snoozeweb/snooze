@@ -121,8 +121,10 @@ services:
     image: snoozeweb/snooze:latest
     profiles: [sqlite]
     environment:
-      - SNOOZE_DATABASE_TYPE=sqlite
-      - SNOOZE_DATABASE_PATH=/var/lib/snooze/db.sqlite
+      # Env overrides need the SNOOZE_SERVER_ prefix + dotted struct path, or the
+      # loader ignores them. `file` is the legacy alias for the SQLite backend.
+      - SNOOZE_SERVER_CORE_DATABASE_TYPE=file
+      - SNOOZE_SERVER_CORE_DATABASE_PATH=/var/lib/snooze/db.sqlite
     ports:
       - "5220:5200"
     networks:

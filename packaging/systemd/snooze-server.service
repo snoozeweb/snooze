@@ -13,7 +13,14 @@ Wants=network-online.target
 Type=simple
 User=snooze
 Group=snooze
-ExecStart=/usr/bin/snooze-server -config /etc/snooze/server.yaml
+# The default SQLite/file backend writes a relative ./db.sqlite; root the CWD at
+# the writable state dir (also a ReadWritePath below) so the file lands there
+# rather than in the read-only / under ProtectSystem=strict.
+WorkingDirectory=/var/lib/snooze
+# -config takes a DIRECTORY of section YAML files (core.yaml, general.yaml, …),
+# not a single file. An empty dir is fine: the server boots on defaults + env
+# (the default SQLite DB then lives at /var/lib/snooze/db.sqlite).
+ExecStart=/usr/bin/snooze-server -config /etc/snooze/server
 Restart=on-failure
 RestartSec=5s
 

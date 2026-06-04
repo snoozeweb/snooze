@@ -451,9 +451,10 @@ func testCleanupTimeout(t *testing.T, drv db.Driver) {
 	)
 	deleted, err := drv.CleanupTimeout(ctx(), "record")
 	require.NoError(t, err)
-	// Drivers may differ on ttl=1 / no date_epoch handling; we only assert
-	// that the obvious-expired pair is removed.
-	require.GreaterOrEqual(t, deleted, 2)
+	// All three backends keep a record that has ttl but no date_epoch (matching
+	// the legacy Python pipeline), so only the {a,b} pair (ttl=0, date_epoch=0)
+	// is removed. Record c (ttl, no date_epoch) and d (no ttl) are kept.
+	require.Equal(t, 2, deleted)
 }
 
 func testCleanupComments(t *testing.T, drv db.Driver) {
@@ -477,18 +478,35 @@ func testCleanupOrphans(t *testing.T, drv db.Driver) {
 }
 
 func testCleanupAuditLogs(t *testing.T, drv db.Driver) {
+	// Resolved by date_epoch (the field audit writers populate) on every
+	// backend; the action verb is "delete"/"create" (what crud.go emits), not
+	// the UI's "deleted" label. An object is pruned when its max-epoch event set
+	// includes a delete and that max is older than the threshold.
+	//   obj1: latest (200) is delete       -> prune both rows
+	//   obj2: latest (300) is create       -> keep
+	//   obj3: create+delete tie at max 500 -> delete-at-max present -> prune both
 	mustWrite(t, drv, "audit",
-		db.Document{"id": "a", "date_epoch": float64(100)},
-		db.Document{"id": "b", "date_epoch": float64(200)},
+		db.Document{"object_id": "obj1", "action": "create", "date_epoch": float64(100)},
+		db.Document{"object_id": "obj1", "action": "delete", "date_epoch": float64(200)},
+		db.Document{"object_id": "obj2", "action": "delete", "date_epoch": float64(100)},
+		db.Document{"object_id": "obj2", "action": "create", "date_epoch": float64(300)},
+		db.Document{"object_id": "obj3", "action": "create", "date_epoch": float64(500)},
+		db.Document{"object_id": "obj3", "action": "delete", "date_epoch": float64(500)},
 	)
-	_, err := drv.CleanupAuditLogs(ctx(), time.Minute)
+	n, err := drv.CleanupAuditLogs(ctx(), time.Minute)
 	require.NoError(t, err)
+	require.Equal(t, 4, n) // obj1 (2) + obj3 (2); obj2 kept
 }
 
 func testComputeStats(t *testing.T, drv db.Driver) {
-	mustWrite(t, drv, "stats", db.Document{"date": float64(0), "key": "a_qty", "value": int64(1)})
-	_, err := drv.ComputeStats(ctx(), "stats", time.Unix(0, 0), time.Now(), "day")
+	// `date` is a timestamp, not a bare number: the SQL backends cast it
+	// (`::timestamptz` / strftime) and Mongo stores/compares it as a BSON Date.
+	// A time.Time round-trips correctly through every backend's Write.
+	when := time.Now().Add(-24 * time.Hour).UTC()
+	mustWrite(t, drv, "stats", db.Document{"date": when, "key": "a_qty", "value": int64(1)})
+	buckets, err := drv.ComputeStats(ctx(), "stats", time.Unix(0, 0), time.Now(), "day")
 	require.NoError(t, err)
+	require.NotEmpty(t, buckets)
 }
 
 func testCleanupSnooze(t *testing.T, drv db.Driver) {

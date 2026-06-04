@@ -61,20 +61,6 @@ func NewLDAPProvider(source LDAPConfigSource) *LDAPProvider {
 	return &LDAPProvider{source: source, dial: defaultDial}
 }
 
-// NewLDAPProviderFromConfig is the legacy constructor kept for the
-// transition window. It binds the provider to a static config snapshot
-// (no live updates).
-//
-// Deprecated: prefer NewLDAPProvider with a *config.RuntimeSettings-backed
-// source so changes to the LDAP section in the Settings UI take effect
-// without a restart.
-func NewLDAPProviderFromConfig(cfg schema.LDAP) *LDAPProvider {
-	return &LDAPProvider{
-		source: func(context.Context) (schema.LDAP, error) { return cfg, nil },
-		dial:   defaultDial,
-	}
-}
-
 // Name returns "ldap".
 func (l *LDAPProvider) Name() string { return LDAPMethod }
 

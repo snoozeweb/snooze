@@ -1147,7 +1147,7 @@ func allPrimaryPresent(doc dbpkg.Document, primary []string) bool {
 
 func violatesConstant(existing, incoming dbpkg.Document, constant []string) bool {
 	for _, c := range constant {
-		if existing[c] != incoming[c] {
+		if !equalDeep(existing[c], incoming[c]) {
 			// Treat absent-vs-empty-string the way the Python code does.
 			if existing[c] == nil && incoming[c] == "" {
 				continue
@@ -1159,6 +1159,16 @@ func violatesConstant(existing, incoming dbpkg.Document, constant []string) bool
 		}
 	}
 	return false
+}
+
+// equalDeep is a panic-safe equality for constant-field change detection.
+// Values come from JSON, so they may be uncomparable ([]any, map[string]any)
+// and a bare != would panic. Mirrors the mongo/postgres backends' equalDeep.
+func equalDeep(a, b any) bool {
+	if a == nil || b == nil {
+		return a == b
+	}
+	return fmt.Sprintf("%v", a) == fmt.Sprintf("%v", b)
 }
 
 func ensureUID(doc dbpkg.Document) string {

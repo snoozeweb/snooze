@@ -504,11 +504,21 @@ func constantViolation(existing, incoming dbpkg.Document, constant []string) str
 		return ""
 	}
 	for _, k := range constant {
-		if existing[k] != incoming[k] {
+		if !equalDeep(existing[k], incoming[k]) {
 			return fmt.Sprintf("constant field %q changed", k)
 		}
 	}
 	return ""
+}
+
+// equalDeep is a panic-safe equality for constant-field change detection.
+// Values come from JSON, so they may be uncomparable ([]any, map[string]any)
+// and a bare != would panic. Mirrors the mongo backend's equalDeep.
+func equalDeep(a, b any) bool {
+	if a == nil || b == nil {
+		return a == b
+	}
+	return fmt.Sprintf("%v", a) == fmt.Sprintf("%v", b)
 }
 
 // insertRow inserts a brand-new row. The caller is responsible for setting

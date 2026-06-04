@@ -12,7 +12,23 @@ import (
 
 	"github.com/snoozeweb/snooze/internal/condition"
 	dbpkg "github.com/snoozeweb/snooze/internal/db"
+	"github.com/snoozeweb/snooze/internal/db/dbtest"
 )
+
+// TestDriverSuite runs the shared cross-backend conformance suite. One
+// container serves the whole suite; collections are dropped before each case
+// for isolation (spinning a container per case would be far too slow).
+func TestDriverSuite(t *testing.T) {
+	drv := newTestDriver(t) // skips under -short
+	dbtest.RunDriverSuite(t, "postgres", func(t *testing.T) (dbpkg.Driver, func()) {
+		cols, err := drv.ListCollections(context.Background())
+		require.NoError(t, err)
+		for _, c := range cols {
+			require.NoError(t, drv.Drop(context.Background(), c))
+		}
+		return drv, func() {}
+	})
+}
 
 // newTestDriver spins up a postgres container and returns a connected
 // Driver. The container is cleaned up via t.Cleanup. Tests that hit this

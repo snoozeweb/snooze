@@ -162,6 +162,17 @@ func (c *Core) Logger() *slog.Logger {
 // host.go); the mq bus is reachable to non-plugin callers via this getter.
 func (c *Core) MQ() mq.Bus { return c.MsgBus }
 
+// Close releases subsystems that own external resources. Currently that is the
+// mq manager, which on the Postgres/Mongo backends owns its own connection
+// pool/client; without this it leaked for the process lifetime. Idempotent and
+// nil-safe; safe to defer right after a successful New.
+func (c *Core) Close() error {
+	if c == nil || c.mqManager == nil {
+		return nil
+	}
+	return c.mqManager.Close()
+}
+
 // Plugins returns a snapshot map of every registered plugin keyed by name.
 func (c *Core) Plugins() map[string]plugins.Plugin {
 	out := make(map[string]plugins.Plugin, len(c.plugins))

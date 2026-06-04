@@ -58,7 +58,7 @@ export function SendAlertsDialog({ open, onOpenChange }: SendAlertsDialogProps) 
 
   function goTo(to: string, search?: Record<string, string>) {
     onOpenChange(false);
-    void navigate({ to: to as string, ...(search ? { search: search as Record<string, string> } : {}) });
+    void navigate({ to, ...(search ? { search } : {}) });
   }
 
   return (

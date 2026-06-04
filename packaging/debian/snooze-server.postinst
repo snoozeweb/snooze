@@ -4,6 +4,8 @@ set -e
 case "$1" in
     configure)
         install -d -o snooze -g snooze -m 0750 /etc/snooze
+        # snooze-server reads a DIRECTORY of section YAMLs via -config.
+        install -d -o snooze -g snooze -m 0750 /etc/snooze/server
         install -d -o snooze -g snooze -m 0750 /var/lib/snooze
         install -d -o snooze -g snooze -m 0750 /var/log/snooze
         ;;

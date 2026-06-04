@@ -180,27 +180,57 @@ func (d *Driver) cleanupExpiredByDatetime(ctx context.Context, collection string
 }
 
 // extractDatetime navigates the `time_constraints.datetime` array out of a
-// raw bson.M decoded row. Returns nil when the path is absent or shaped
-// unexpectedly.
+// raw decoded row. Returns nil when the path is absent or shaped unexpectedly.
+//
+// Decoding a document into bson.M yields nested documents as bson.D (ordered),
+// not bson.M, so every level must tolerate bson.D / bson.M / map[string]any —
+// otherwise the datetime entries are silently dropped and expiry cleanup
+// never deletes anything.
 func extractDatetime(row bson.M) []map[string]any {
-	tc, ok := row["time_constraints"].(bson.M)
+	tc, ok := asBSONMap(row["time_constraints"])
 	if !ok {
 		return nil
 	}
-	arr, ok := tc["datetime"].(bson.A)
-	if !ok {
+	var arr bson.A
+	switch a := tc["datetime"].(type) {
+	case bson.A:
+		arr = a
+	case []any:
+		arr = bson.A(a)
+	default:
 		return nil
 	}
 	out := make([]map[string]any, 0, len(arr))
 	for _, e := range arr {
-		switch m := e.(type) {
-		case bson.M:
-			out = append(out, map[string]any(m))
-		case map[string]any:
-			out = append(out, m)
+		m, ok := asBSONMap(e)
+		if !ok {
+			// A non-document element means the list is malformed. The SQL
+			// backends fail to unmarshal such a list and keep the row; match
+			// that by bailing out (nil entries -> datetimeAllExpired == false).
+			return nil
 		}
+		out = append(out, m)
 	}
 	return out
+}
+
+// asBSONMap normalises a value decoded by the bson library into a
+// map[string]any, accepting bson.M, bson.D (ordered docs — the default for
+// nested documents when decoding into bson.M) and plain map[string]any.
+func asBSONMap(v any) (map[string]any, bool) {
+	switch m := v.(type) {
+	case bson.M:
+		return map[string]any(m), true
+	case map[string]any:
+		return m, true
+	case bson.D:
+		out := make(map[string]any, len(m))
+		for _, e := range m {
+			out[e.Key] = e.Value
+		}
+		return out, true
+	}
+	return nil, false
 }
 
 // datetimeAllExpired returns true when entries is non-empty and every
@@ -235,17 +265,35 @@ func datetimeAllExpired(entries []map[string]any, now time.Time) bool {
 }
 
 // CleanupAuditLogs deletes audit entries belonging to objects whose most
-// recent action was "deleted" more than olderThan ago.
+// recent event is a "delete" older than olderThan. ("delete" is the verb the
+// audit emitter writes — see internal/plugins/crud.go; the UI relabels it
+// "deleted".)
 func (d *Driver) CleanupAuditLogs(ctx context.Context, olderThan time.Duration) (int, error) {
 	now := float64(time.Now().UTC().Unix())
 	threshold := now - olderThan.Seconds()
+	// Prune every object whose max date_epoch is below the threshold AND has a
+	// "delete" event at that max epoch. Using "a delete exists at the max epoch"
+	// (rather than picking one arbitrary latest row) is deterministic and
+	// matches the SQL backends on same-epoch create+delete ties. date_epoch is
+	// the field audit writers populate.
 	pipeline := mongo.Pipeline{
-		bson.D{{Key: "$sort", Value: bson.M{"timestamp": -1}}},
 		bson.D{{Key: "$group", Value: bson.M{
-			"_id":        "$object_id",
-			"action":     bson.M{"$first": "$action"},
-			"date_epoch": bson.M{"$first": "$date_epoch"},
+			"_id":      "$object_id",
+			"maxEpoch": bson.M{"$max": "$date_epoch"},
+			"events":   bson.M{"$push": bson.M{"action": "$action", "de": "$date_epoch"}},
 		}}},
+		bson.D{{Key: "$match", Value: bson.M{"maxEpoch": bson.M{"$lt": threshold}}}},
+		bson.D{{Key: "$match", Value: bson.M{"$expr": bson.M{"$gt": bson.A{
+			bson.M{"$size": bson.M{"$filter": bson.M{
+				"input": "$events",
+				"as":    "e",
+				"cond": bson.M{"$and": bson.A{
+					bson.M{"$eq": bson.A{"$$e.action", "delete"}},
+					bson.M{"$eq": bson.A{"$$e.de", "$maxEpoch"}},
+				}},
+			}}},
+			0,
+		}}}}},
 	}
 	cur, err := d.coll("audit").Aggregate(ctx, pipeline)
 	if err != nil {
@@ -257,13 +305,6 @@ func (d *Driver) CleanupAuditLogs(ctx context.Context, olderThan time.Duration) 
 		var row bson.M
 		if err := cur.Decode(&row); err != nil {
 			return 0, err
-		}
-		if action, _ := row["action"].(string); action != "deleted" {
-			continue
-		}
-		dateEpoch, ok := numeric(row["date_epoch"])
-		if !ok || dateEpoch >= threshold {
-			continue
 		}
 		if id, ok := row["_id"]; ok && id != nil {
 			ids = append(ids, id)

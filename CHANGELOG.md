@@ -42,6 +42,34 @@
 - **`auth.token_algorithm` validation matches the engine.** The schema accepted
   `HS384`/`HS512`, but the token engine implements only `HS256` and aborted at
   boot; validation now rejects the unsupported values up front.
+- **Audit-log retention never ran.** The housekeeper's audit cleanup matched
+  `action: "deleted"`, but the API writes the verb `"delete"`, so on every
+  backend `CleanupAuditLogs` matched nothing and the `audit` collection grew
+  unbounded. Fixed the literal; cleanup now prunes a deleted object's trail.
+- **Snooze/notification auto-expiry broken on MongoDB.** The expiry sweep
+  decoded nested documents as `bson.D` but only handled `bson.M`, so it silently
+  found no expired entries and deleted nothing. Expired snoozes and
+  notifications are now cleaned up on Mongo.
+- **Cross-backend retention parity.** `CleanupTimeout` now uniformly keeps a
+  record that has `ttl` but no `date_epoch` (matching the legacy pipeline), and
+  `CleanupAuditLogs` resolves "latest event" by the populated `date_epoch` with
+  identical same-epoch tie semantics across SQLite/Postgres/Mongo (Postgres was
+  previously non-deterministic).
+- **Helm: the server never loaded its mounted config.** The chart set
+  `SNOOZE_SERVER_CONFIG` (which the binary ignores) instead of passing
+  `-config /config`, so the mounted ConfigMap was dead; the SQLite
+  StatefulSet and `docker-compose` also used `SNOOZE_DATABASE_*` env vars the
+  loader drops. Both now use the `-config` flag and the
+  `SNOOZE_SERVER_CORE_DATABASE_*` names.
+- **systemd: the server unit pointed `-config` at a file and SQLite couldn't
+  write.** `-config` now targets the `/etc/snooze/server` directory (created by
+  the rpm/deb packages) and `WorkingDirectory=/var/lib/snooze` lets the default
+  SQLite database land on the writable volume.
+- **Postgres/SQLite immutable-field (`Constant`) check could panic** on a JSON
+  array/object-valued field; the comparison is now panic-safe.
+- **`snooze-server` leaked the message-queue connection at shutdown** (the
+  Postgres/Mongo bus owned a pool/client held for the process lifetime); it is
+  now closed.
 
 ### Added
 - **"How to inject alerts" guide on the empty Alerts page.** When no alerts have

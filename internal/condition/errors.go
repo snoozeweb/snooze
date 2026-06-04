@@ -8,7 +8,6 @@ import (
 // Sentinel errors. Wrap with %w in ParseError/EvalError when raised.
 var (
 	ErrParse           = errors.New("condition: parse error")
-	ErrUnsupportedOp   = errors.New("condition: unsupported operation")
 	ErrInvalidArgument = errors.New("condition: invalid argument")
 )
 

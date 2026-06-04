@@ -12,7 +12,27 @@ import (
 
 	"github.com/snoozeweb/snooze/internal/condition"
 	dbpkg "github.com/snoozeweb/snooze/internal/db"
+	"github.com/snoozeweb/snooze/internal/db/dbtest"
 )
+
+// TestDriverSuite runs the shared cross-backend conformance suite. One
+// container serves the whole suite; collections are dropped before each case
+// for isolation (spinning a container per case would be far too slow).
+func TestDriverSuite(t *testing.T) {
+	if testing.Short() {
+		t.Skip("integration: skipping under -short")
+	}
+	drv, cleanup := startMongo(t)
+	defer cleanup()
+	dbtest.RunDriverSuite(t, "mongo", func(t *testing.T) (dbpkg.Driver, func()) {
+		cols, err := drv.ListCollections(context.Background())
+		require.NoError(t, err)
+		for _, c := range cols {
+			require.NoError(t, drv.Drop(context.Background(), c))
+		}
+		return drv, func() {}
+	})
+}
 
 // startMongo spins up a single-node replica-set MongoDB via testcontainers and
 // returns a connected Driver plus a cleanup function. Change-stream support

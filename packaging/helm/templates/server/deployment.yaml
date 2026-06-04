@@ -33,12 +33,13 @@ spec:
         ports:
         - containerPort: 5200
           name: http
+        # snooze-server reads its config directory from the -config flag, not an
+        # env var; without this the mounted /config configMap is never loaded.
+        args: ["-config", "/config"]
         volumeMounts:
         - name: config
           mountPath: /config
         env:
-        - name: SNOOZE_SERVER_CONFIG
-          value: /config
         - name: DATABASE_URL
           valueFrom:
             secretKeyRef:

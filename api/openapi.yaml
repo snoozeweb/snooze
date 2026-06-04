@@ -445,6 +445,136 @@ paths:
                     type: array
                     items: {type: string}
 
+  /api/v1/cluster/status:
+    get:
+      tags: [health]
+      summary: Cluster + plugin status
+      description: |
+        Cluster member list (graded ok/degraded/down from the `nodes`
+        heartbeat collection; leader = alphabetically-first ok member — Snooze
+        has no real leader election) plus the loaded-plugin roster. Falls back
+        to a synthetic `standalone` member on a single-node deploy. Backs the
+        admin Status page.
+      responses:
+        '200':
+          description: Cluster status snapshot.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  cluster:
+                    type: object
+                    properties:
+                      members:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            name: {type: string}
+                            status: {type: string, enum: [ok, degraded, down]}
+                      leader: {type: string}
+                  plugins:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        name: {type: string}
+                        loaded: {type: boolean}
+
+  /api/v1/condition/parse:
+    post:
+      tags: [crud]
+      summary: Parse a search-bar query string into a Condition AST
+      description: |
+        Always returns 200 (even on a query parse error) so the SearchBar can
+        render an inline marker. A 400 is returned only when the JSON envelope
+        itself is malformed. Exactly one of `condition` / `error` is set.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [query]
+              properties:
+                query: {type: string}
+      responses:
+        '200':
+          description: Parse result.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  condition: {type: object, additionalProperties: true}
+                  error:
+                    type: object
+                    properties:
+                      pos: {type: integer}
+                      token: {type: string}
+                      message: {type: string}
+
+  /api/v1/condition/fields:
+    get:
+      tags: [crud]
+      summary: Field catalog for SearchBar autocomplete
+      parameters:
+        - name: collection
+          in: query
+          required: false
+          schema: {type: string, default: record}
+      responses:
+        '200':
+          description: Field catalog (empty array for unknown collections).
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        name: {type: string}
+                        type: {type: string}
+                        description: {type: string}
+                        values: {type: array, items: {type: string}}
+
+  /api/v1/snooze/{uid}/retro_apply:
+    post:
+      tags: [crud]
+      summary: Replay a stored snooze against existing records
+      description: |
+        Applies the snooze's condition to the `record` collection: deletes
+        matches when `discard` is true, otherwise tags them `snoozed:<name>`.
+        Requires the `rw_record` permission.
+      parameters:
+        - name: uid
+          in: path
+          required: true
+          schema: {type: string}
+      responses:
+        '200':
+          description: Retro-apply counts.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [matched, snooze]
+                properties:
+                  matched: {type: integer}
+                  deleted: {type: integer}
+                  tagged: {type: integer}
+                  snooze: {type: string}
+        '404':
+          description: Snooze not found.
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/ErrEnvelope'}
+
   /api/v1/webhook/{webhook}:
     post:
       tags: [webhooks]

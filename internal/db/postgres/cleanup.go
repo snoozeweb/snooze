@@ -27,8 +27,9 @@ func (d *Driver) CleanupTimeout(ctx context.Context, collection string) (int, er
 	q := fmt.Sprintf(
 		"DELETE FROM %s WHERE "+
 			"(data->>'ttl')::numeric >= 0 AND "+
-			"(COALESCE((data->>'date_epoch')::numeric, 0) + "+
-			" COALESCE((data->>'ttl')::numeric, 0)) <= extract(epoch from now())",
+			"data ? 'date_epoch' AND "+
+			"((data->>'date_epoch')::numeric + (data->>'ttl')::numeric) "+
+			"<= extract(epoch from now())",
 		qt,
 	)
 	tag, err := d.pool.Exec(ctx, q)
@@ -222,20 +223,22 @@ func (d *Driver) CleanupAuditLogs(ctx context.Context, olderThan time.Duration) 
 	}
 	qt := quoteIdent(at)
 	threshold := float64(time.Now().Add(-olderThan).Unix())
+	// Prune every object whose max date_epoch is below the threshold AND has a
+	// 'delete' event at that max epoch. The "delete-at-max exists" form (rather
+	// than picking one arbitrary latest row) is deterministic and matches the
+	// SQLite/Mongo backends on same-epoch create+delete ties. 'delete' is the
+	// verb the audit emitter writes (internal/plugins/crud.go).
 	q := fmt.Sprintf(
-		"WITH latest AS ("+
-			"  SELECT DISTINCT ON (data->>'object_id') "+
-			"    data->>'object_id' AS oid, "+
-			"    data->>'action' AS action, "+
-			"    COALESCE((data->>'date_epoch')::numeric, 0) AS de "+
-			"  FROM %s "+
-			"  ORDER BY data->>'object_id', (data->>'timestamp')::timestamptz DESC NULLS LAST"+
-			") "+
-			"DELETE FROM %s WHERE data ? 'object_id' AND "+
-			"data->>'object_id' IN ("+
-			"  SELECT oid FROM latest WHERE action = 'deleted' AND de < $1"+
+		"DELETE FROM %s WHERE data->>'object_id' IN ("+
+			"  SELECT a.data->>'object_id' FROM %s a"+
+			"  WHERE a.data->>'action' = 'delete'"+
+			"    AND COALESCE((a.data->>'date_epoch')::numeric, 0) < $1"+
+			"    AND COALESCE((a.data->>'date_epoch')::numeric, 0) = ("+
+			"      SELECT MAX(COALESCE((b.data->>'date_epoch')::numeric, 0))"+
+			"      FROM %s b WHERE b.data->>'object_id' = a.data->>'object_id'"+
+			"    )"+
 			")",
-		qt, qt,
+		qt, qt, qt,
 	)
 	tag, err := d.pool.Exec(ctx, q, threshold)
 	if err != nil {

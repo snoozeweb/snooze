@@ -19,7 +19,8 @@ import (
 )
 
 // CleanupTimeout deletes records whose “date_epoch + ttl“ has elapsed.
-// Records without a “ttl“ field or with a negative ttl are kept.
+// Records without a “ttl“ field, without a “date_epoch“, or with a
+// negative ttl are kept (matching the Mongo/legacy-Python contract).
 func (d *Driver) CleanupTimeout(ctx context.Context, collection string) (int, error) {
 	exists, err := d.collectionExists(ctx, collection)
 	if err != nil {
@@ -36,8 +37,9 @@ func (d *Driver) CleanupTimeout(ctx context.Context, collection string) (int, er
 		`DELETE FROM %s WHERE
 			json_extract(data, '$.ttl') IS NOT NULL
 			AND CAST(json_extract(data, '$.ttl') AS REAL) >= 0
-			AND (COALESCE(CAST(json_extract(data, '$.date_epoch') AS REAL), 0)
-				+ COALESCE(CAST(json_extract(data, '$.ttl') AS REAL), 0))
+			AND json_extract(data, '$.date_epoch') IS NOT NULL
+			AND (CAST(json_extract(data, '$.date_epoch') AS REAL)
+				+ CAST(json_extract(data, '$.ttl') AS REAL))
 			<= CAST(strftime('%%s','now') AS REAL)`,
 		quoteIdent(tbl),
 	)
@@ -329,7 +331,8 @@ func datetimeAllExpired(raw []byte, now time.Time) bool {
 }
 
 // CleanupAuditLogs prunes audit entries for objects whose latest event is
-// a "deleted" action older than the threshold.
+// a "delete" action older than the threshold. ("delete" is the verb the audit
+// emitter writes — see internal/plugins/crud.go; the UI relabels it "deleted".)
 func (d *Driver) CleanupAuditLogs(ctx context.Context, olderThan time.Duration) (int, error) {
 	exists, err := d.collectionExists(ctx, "audit")
 	if err != nil {
@@ -344,7 +347,7 @@ func (d *Driver) CleanupAuditLogs(ctx context.Context, olderThan time.Duration) 
 	}
 	threshold := float64(time.Now().Add(-olderThan).Unix())
 	// SQLite has no DISTINCT ON; emulate via a sub-query: for every
-	// object_id with a 'deleted' action older than threshold whose
+	// object_id with a 'delete' action older than threshold whose
 	// date_epoch is the maximum for that object_id, delete every audit
 	// row for that object_id.
 	//nolint:gosec
@@ -352,7 +355,7 @@ func (d *Driver) CleanupAuditLogs(ctx context.Context, olderThan time.Duration) 
 		DELETE FROM %s
 		WHERE json_extract(data, '$.object_id') IN (
 			SELECT json_extract(a.data, '$.object_id') FROM %s a
-			WHERE json_extract(a.data, '$.action') = 'deleted'
+			WHERE json_extract(a.data, '$.action') = 'delete'
 			  AND COALESCE(CAST(json_extract(a.data, '$.date_epoch') AS REAL), 0) < ?
 			  AND COALESCE(CAST(json_extract(a.data, '$.date_epoch') AS REAL), 0) = (
 				SELECT MAX(COALESCE(CAST(json_extract(b.data, '$.date_epoch') AS REAL), 0))

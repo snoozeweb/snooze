@@ -205,8 +205,10 @@ install -p -m 0644 packaging/systemd/snooze-mattermost.service  %{buildroot}%{_u
 install -p -m 0644 packaging/systemd/snooze-teams.service       %{buildroot}%{_unitdir}/snooze-teams.service
 install -p -m 0644 packaging/systemd/snooze-jira.service        %{buildroot}%{_unitdir}/snooze-jira.service
 
-# Example configuration directory (kept empty; operators drop their own files).
+# Example configuration directories (kept empty; operators drop their own files).
+# snooze-server reads a DIRECTORY of section YAMLs via `-config /etc/snooze/server`.
 install -d -m 0755 %{buildroot}%{_sysconfdir}/snooze
+install -d -m 0755 %{buildroot}%{_sysconfdir}/snooze/server
 
 # ============================================================================
 # Files
@@ -215,6 +217,7 @@ install -d -m 0755 %{buildroot}%{_sysconfdir}/snooze
 %{_bindir}/snooze-server
 %{_unitdir}/snooze-server.service
 %dir %{_sysconfdir}/snooze
+%dir %{_sysconfdir}/snooze/server
 
 %files -n snooze
 %{_bindir}/snooze

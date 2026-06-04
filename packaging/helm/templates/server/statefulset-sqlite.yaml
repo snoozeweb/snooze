@@ -42,19 +42,21 @@ spec:
         ports:
         - containerPort: 5200
           name: http
+        # snooze-server reads its config directory from the -config flag, not an
+        # env var; without this the mounted /config configMap is never loaded.
+        args: ["-config", "/config"]
         volumeMounts:
         - name: config
           mountPath: /config
         - name: data
           mountPath: /var/lib/snooze
         env:
-        - name: SNOOZE_SERVER_CONFIG
-          value: /config
-        # SQLite does not use DATABASE_URL; the server reads the path
-        # from config (database.path: /var/lib/snooze/db.sqlite).
-        - name: SNOOZE_DATABASE_TYPE
-          value: sqlite
-        - name: SNOOZE_DATABASE_PATH
+        # SQLite path override. Env overrides MUST use the SNOOZE_SERVER_ prefix
+        # + dotted struct path, or the loader silently ignores them. `file` is
+        # the legacy alias the driver maps to the SQLite backend.
+        - name: SNOOZE_SERVER_CORE_DATABASE_TYPE
+          value: file
+        - name: SNOOZE_SERVER_CORE_DATABASE_PATH
           value: "{{ .Values.database.sqlite.path }}"
         {{- with .Values.timeZone }}
         - name: TZ

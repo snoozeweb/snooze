@@ -463,18 +463,6 @@ const dashboardRoute = createRoute({
   component: DashboardPage,
 });
 
-const primitivesRoute = createRoute({
-  getParentRoute: () => webLayoutRoute,
-  path: "/web/dev/primitives",
-  component: PrimitivesPage,
-});
-
-const resourcePageRoute = createRoute({
-  getParentRoute: () => webLayoutRoute,
-  path: "/web/dev/resource",
-  component: ResourcePage,
-});
-
 const profileRoute = createRoute({
   getParentRoute: () => webLayoutRoute,
   path: "/web/profile",
@@ -521,6 +509,25 @@ const rulesRoute = createRoute({
   },
 });
 
+// Dev-only showroom routes (component gallery + defineResource demo). Built
+// only under Vite's DEV flag: in production `import.meta.env.DEV` folds to
+// false, so Rollup drops these routes AND the PrimitivesPage/ResourcePage
+// modules from the bundle.
+const devRoutes = import.meta.env.DEV
+  ? [
+      createRoute({
+        getParentRoute: () => webLayoutRoute,
+        path: "/web/dev/primitives",
+        component: PrimitivesPage,
+      }),
+      createRoute({
+        getParentRoute: () => webLayoutRoute,
+        path: "/web/dev/resource",
+        component: ResourcePage,
+      }),
+    ]
+  : [];
+
 const routeTree = rootRoute.addChildren([
   indexRoute,
   loginRoute,
@@ -538,8 +545,7 @@ const routeTree = rootRoute.addChildren([
     kvRoute,
     settingsRoute,
     statusRoute,
-    primitivesRoute,
-    resourcePageRoute,
+    ...devRoutes,
     profileRoute,
   ]),
 ]);

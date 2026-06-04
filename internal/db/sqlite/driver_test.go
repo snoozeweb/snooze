@@ -2,9 +2,10 @@
 // per test (each gets its own ``file::memory:?cache=<unique>`` URI so
 // concurrent t.Parallel runs don't share state).
 //
-// When the shared internal/db/dbtest suite lands, call
-// ``dbtest.RunDriverSuite(t, "sqlite", factory)`` from here to delegate
-// the full coverage matrix.
+// The shared backend-agnostic cases live in internal/db/dbtest; TestDriverSuite
+// below delegates to dbtest.RunDriverSuite so SQLite is held to the same
+// contract as Postgres/Mongo. The hand-rolled cases that follow add
+// SQLite-specific coverage (ping, backup, bus fan-out, identifier validation).
 
 package sqlite
 
@@ -19,7 +20,16 @@ import (
 
 	"github.com/snoozeweb/snooze/internal/condition"
 	dbpkg "github.com/snoozeweb/snooze/internal/db"
+	"github.com/snoozeweb/snooze/internal/db/dbtest"
 )
+
+// TestDriverSuite runs the shared cross-backend conformance suite against a
+// fresh SQLite driver.
+func TestDriverSuite(t *testing.T) {
+	dbtest.RunDriverSuite(t, "sqlite", func(t *testing.T) (dbpkg.Driver, func()) {
+		return newTestDriver(t), func() {}
+	})
+}
 
 // newTestDriver opens a fresh on-disk database under the test's temp dir.
 // We avoid the ":memory:" form because every sql.DB connection then sees

@@ -1,7 +1,12 @@
-// Package mq is the pluggable message-queue layer used by Snooze's async
-// pipelines (notifications, webhook fan-out). It abstracts the queue
+// Package mq is the pluggable message-queue layer intended to back Snooze's
+// async pipelines (notifications, webhook fan-out). It abstracts the queue
 // transport so the choice of DB does not lock the deployment into one
 // queue technology; backends are selected via Config.Kind on Manager.
+//
+// NOTE: this layer is not yet wired into a pipeline — nothing publishes to or
+// subscribes from the bus today. It is constructed at boot and closed on
+// shutdown (see core.Core.Close), but carries no traffic until a producer and
+// consumer are added.
 package mq
 
 import (
