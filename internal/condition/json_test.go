@@ -422,3 +422,49 @@ func FuzzCondition(f *testing.F) {
 		require.JSONEq(t, string(blob1), string(blob2))
 	})
 }
+
+// TestUnmarshalJSON_RejectsMalformed pins the decode-boundary validation added
+// to reject conditions that would otherwise reach a backend translator and
+// either "match everything" (an empty operator carrying a field — a DELETE
+// hazard), silently drop part of a NOT, or carry an unknown operator. Children
+// re-enter UnmarshalJSON, so a malformed node nested inside a valid tree is
+// rejected too.
+func TestUnmarshalJSON_RejectsMalformed(t *testing.T) {
+	bad := []string{
+		`{"field":"host"}`,                                        // empty op + field
+		`{"op":"","field":"host","value":"x"}`,                    // explicit empty op + field/value
+		`{"op":"","children":[{"op":"=","field":"a","value":1}]}`, // empty op + children
+		`{"op":"NOT","children":[{"op":"=","field":"a","value":1},{"op":"=","field":"b","value":2}]}`, // NOT, 2 children
+		`{"op":"NOT"}`, // NOT, 0 children
+		`{"op":"BOGUS","field":"host","value":"x"}`,                                                                   // unknown op
+		`{"type":"REGEX","field":"host","value":"x"}`,                                                                 // unknown frontend op (not mapped)
+		`{"op":"AND","children":[{"op":"NOT","children":[{"op":"EXISTS","field":"a"},{"op":"EXISTS","field":"b"}]}]}`, // malformed NOT nested in AND
+	}
+	for _, in := range bad {
+		var c Cond
+		err := json.Unmarshal([]byte(in), &c)
+		require.Errorf(t, err, "expected %s to be rejected, got %+v", in, c)
+		require.ErrorIs(t, err, ErrInvalidArgument, "input %s", in)
+	}
+}
+
+// TestUnmarshalJSON_AcceptsValidEdgeShapes guards against over-rejection: a
+// genuinely-empty AlwaysTrue, an empty AND/OR (the builder lowers these to a
+// truthy/falsy literal), a leaf op (field requirement is left to the engine),
+// and the frontend NOT-via-arg shape must all still decode.
+func TestUnmarshalJSON_AcceptsValidEdgeShapes(t *testing.T) {
+	ok := []string{
+		`{"op":""}`,                 // AlwaysTrue
+		`{"type":"ALWAYS_TRUE"}`,    // frontend AlwaysTrue
+		`{"op":"AND"}`,              // empty AND (-> TRUE in the builder)
+		`{"op":"OR","children":[]}`, // empty OR
+		`{"op":"AND","children":[{"op":"=","field":"a","value":1}]}`, // single-child AND
+		`{"type":"NOT","arg":{"type":"EXISTS","field":"tags"}}`,      // frontend NOT
+		`{"op":"SEARCH","value":"needle"}`,                           // SEARCH (no field)
+		`{"op":"EXISTS","field":"tags"}`,                             // EXISTS
+	}
+	for _, in := range ok {
+		var c Cond
+		require.NoErrorf(t, json.Unmarshal([]byte(in), &c), "input %s should decode", in)
+	}
+}

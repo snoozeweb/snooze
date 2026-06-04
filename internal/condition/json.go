@@ -91,10 +91,47 @@ func (c *Cond) UnmarshalJSON(data []byte) error {
 			}
 			out.Children = []Cond{arg}
 		}
+		if err := out.validate(); err != nil {
+			return err
+		}
 		*c = out
 		return nil
 	}
 	return fmt.Errorf("condition: unsupported JSON shape: %s", string(trimmed))
+}
+
+// validate rejects malformed object-form conditions at the decode boundary so a
+// bad condition cannot reach a backend translator/evaluator. It guards the
+// current node only — each child re-enters UnmarshalJSON and is validated on
+// its own, and the legacy list form is validated structurally by FromList.
+//
+// The three rejections mirror what the shared SQL builder refuses:
+//   - an empty operator that carries a field/value/children (a bare "" Op is
+//     AlwaysTrue and must be otherwise empty — otherwise it would lower to
+//     "match everything", e.g. DELETE … WHERE TRUE);
+//   - NOT without exactly one child (object form can carry several; the engine
+//     would silently use only the first);
+//   - any operator outside the known set (post-mapping, every valid frontend op
+//     is one of these, so unknown means malformed).
+//
+// Finer per-op arity (a leaf op needs a field, AND/OR may be empty) is left to
+// the builder/evaluator, matching FromList and the engine's existing tolerance.
+func (c Cond) validate() error {
+	switch c.Op {
+	case OpAlwaysTrue:
+		if c.Field != "" || c.Value != nil || len(c.Children) != 0 {
+			return &InvalidConditionError{Op: string(c.Op), Args: c, Message: "empty operator must not carry a field, value, or children"}
+		}
+	case OpNot:
+		if len(c.Children) != 1 {
+			return &InvalidConditionError{Op: string(c.Op), Args: c, Message: fmt.Sprintf("NOT expects exactly one child, got %d", len(c.Children))}
+		}
+	case OpAnd, OpOr, OpEq, OpNeq, OpGt, OpGte, OpLt, OpLte, OpMatches, OpExists, OpContains, OpIn, OpSearch:
+		// Known operators; finer arity is deferred to the builder/evaluator.
+	default:
+		return &InvalidConditionError{Op: string(c.Op), Args: c, Message: "unsupported operator"}
+	}
+	return nil
 }
 
 // MarshalListJSON encodes the Cond in the legacy nested-list form. Returns
