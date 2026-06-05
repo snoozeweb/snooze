@@ -32,6 +32,14 @@ func TestDriverSuite(t *testing.T) {
 	})
 }
 
+// TestTenantIsolationSuite runs the cross-tenant isolation and fail-closed
+// conformance suite against a fresh SQLite driver.
+func TestTenantIsolationSuite(t *testing.T) {
+	dbtest.RunTenantIsolationSuite(t, "sqlite", func(t *testing.T) (dbpkg.Driver, func()) {
+		return newTestDriver(t), func() {}
+	})
+}
+
 // newTestDriver opens a fresh on-disk database under the test's temp dir.
 // We avoid the ":memory:" form because every sql.DB connection then sees
 // its own private database, which breaks the schemaCache invariant

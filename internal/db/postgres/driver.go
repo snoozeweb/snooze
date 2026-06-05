@@ -152,6 +152,13 @@ func (d *Driver) Convert(ctx context.Context, cond condition.Cond, searchFields 
 // payloads plus the total match count. The total is -1 when only-one mode
 // short-circuits the count.
 func (d *Driver) Search(ctx context.Context, collection string, cond condition.Cond, page dbpkg.Page) ([]dbpkg.Document, int, error) {
+	// Fail-closed before the table-exist check: a scoped collection with
+	// neither a tenant nor platform scope must error even when the table does
+	// not yet exist (which short-circuits convert below). Tenant injection
+	// itself is handled inside convert via TenantScope.
+	if _, _, err := dbpkg.TenantScope(ctx, collection); err != nil {
+		return nil, 0, fmt.Errorf("postgres: search: %w", err)
+	}
 	table, err := d.tableIfExists(ctx, collection)
 	if err != nil {
 		return nil, 0, err

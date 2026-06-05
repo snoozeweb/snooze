@@ -340,6 +340,13 @@ func (d *Driver) dumpCollection(ctx context.Context, collection string) ([]dbpkg
 // When the collection does not exist yet the result is empty rather than
 // an error, matching the Mongo/Postgres behaviour.
 func (d *Driver) Search(ctx context.Context, collection string, cond condition.Cond, page dbpkg.Page) ([]dbpkg.Document, int, error) {
+	// Fail-closed before the table-exist check: a scoped collection with
+	// neither a tenant nor platform scope must error even when the table does
+	// not yet exist (which short-circuits compileWith below). Tenant injection
+	// itself is handled inside compileWith via TenantScope.
+	if _, _, err := dbpkg.TenantScope(ctx, collection); err != nil {
+		return nil, 0, fmt.Errorf("sqlite: search: %w", err)
+	}
 	exists, err := d.collectionExists(ctx, collection)
 	if err != nil {
 		return nil, 0, err

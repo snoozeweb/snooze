@@ -5,6 +5,7 @@ package dbtest
 
 import (
 	"context"
+	"errors"
 	"testing"
 	"time"
 
@@ -744,4 +745,94 @@ func testWriteUpsertTenantFenced(t *testing.T, drv db.Driver) {
 	require.NoError(t, err)
 	require.Len(t, docsB, 1)
 	require.Equal(t, "b", docsB[0]["val"])
+}
+
+// RunTenantIsolationSuite executes the full cross-tenant isolation and
+// fail-closed suite against the driver produced by factory. Separate from
+// RunDriverSuite so backends that haven't been updated yet don't block CI.
+func RunTenantIsolationSuite(t *testing.T, name string, factory Factory) {
+	t.Helper()
+	cases := []struct {
+		name string
+		run  func(*testing.T, db.Driver)
+	}{
+		{"TenantABIsolation", testTenantABIsolation},
+		{"PlatformScopeSeesAll", testPlatformScopeSeesAll},
+		{"NakedContextErrors", testNakedContextErrors},
+		{"GlobalCollectionNoInjection", testGlobalCollectionNoInjection},
+	}
+	for _, c := range cases {
+		t.Run(name+"/"+c.name, func(t *testing.T) {
+			drv, teardown := factory(t)
+			defer teardown()
+			c.run(t, drv)
+		})
+	}
+}
+
+func testTenantABIsolation(t *testing.T, drv db.Driver) {
+	ctxA := snoozetypes.WithTenant(context.Background(), "alpha")
+	ctxB := snoozetypes.WithTenant(context.Background(), "beta")
+
+	mustWriteCtx(t, drv, ctxA, "record", db.Document{"msg": "from-a"})
+	mustWriteCtx(t, drv, ctxB, "record", db.Document{"msg": "from-b"})
+
+	docsA, totalA, err := drv.Search(ctxA, "record", condition.Cond{}, db.Page{})
+	require.NoError(t, err)
+	require.Equal(t, 1, totalA)
+	require.Equal(t, "from-a", docsA[0]["msg"])
+
+	docsB, totalB, err := drv.Search(ctxB, "record", condition.Cond{}, db.Page{})
+	require.NoError(t, err)
+	require.Equal(t, 1, totalB)
+	require.Equal(t, "from-b", docsB[0]["msg"])
+}
+
+func testPlatformScopeSeesAll(t *testing.T, drv db.Driver) {
+	ctxA := snoozetypes.WithTenant(context.Background(), "alpha")
+	ctxB := snoozetypes.WithTenant(context.Background(), "beta")
+	ctxPlat := snoozetypes.WithPlatformScope(context.Background())
+
+	mustWriteCtx(t, drv, ctxA, "record", db.Document{"msg": "from-a"})
+	mustWriteCtx(t, drv, ctxB, "record", db.Document{"msg": "from-b"})
+
+	docs, total, err := drv.Search(ctxPlat, "record", condition.Cond{}, db.Page{})
+	require.NoError(t, err)
+	require.Equal(t, 2, total)
+	require.Len(t, docs, 2)
+}
+
+func testNakedContextErrors(t *testing.T, drv db.Driver) {
+	naked := context.Background()
+
+	// Search on a scoped collection must error.
+	_, _, err := drv.Search(naked, "record", condition.Cond{}, db.Page{})
+	require.Error(t, err)
+	require.True(t, errors.Is(err, snoozetypes.ErrNoTenant),
+		"Search on naked ctx: error must wrap ErrNoTenant, got: %v", err)
+
+	// Write on a scoped collection must error.
+	_, err = drv.Write(naked, "record", []db.Document{{"msg": "x"}}, db.WriteOptions{})
+	require.Error(t, err)
+	require.True(t, errors.Is(err, snoozetypes.ErrNoTenant),
+		"Write on naked ctx: error must wrap ErrNoTenant, got: %v", err)
+}
+
+func testGlobalCollectionNoInjection(t *testing.T, drv db.Driver) {
+	naked := context.Background()
+
+	// "tenant" is a global collection — naked ctx must NOT error.
+	_, err := drv.Write(naked, "tenant", []db.Document{{"id": "test-org", "display_name": "Test"}}, db.WriteOptions{Primary: []string{"id"}})
+	require.NoError(t, err, "global collection write must succeed on naked ctx")
+
+	docs, _, err := drv.Search(naked, "tenant", condition.Cond{}, db.Page{})
+	require.NoError(t, err, "global collection search must succeed on naked ctx")
+	require.NotEmpty(t, docs)
+}
+
+func mustWriteCtx(t *testing.T, drv db.Driver, ctx context.Context, collection string, docs ...db.Document) db.WriteResult {
+	t.Helper()
+	res, err := drv.Write(ctx, collection, docs, db.WriteOptions{UpdateTime: false})
+	require.NoError(t, err)
+	return res
 }
