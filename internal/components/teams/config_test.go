@@ -126,3 +126,17 @@ func TestLoadConfig_missingFile(t *testing.T) {
 	// signal rather than a YAML decoding failure.
 	require.True(t, errors.Is(err, os.ErrNotExist), "expected os.ErrNotExist, got %v", err)
 }
+
+func TestTeamsConfig_IngestTokenRoundTrips(t *testing.T) {
+	cfg := teams.Config{
+		Server:      "https://snooze.example/",
+		TenantID:    "azure-tid",
+		ClientID:    "azure-cid",
+		TeamID:      "team-guid",
+		ChannelID:   "chan-id",
+		IngestToken: "snooze-ingest-tok",
+	}
+	out, err := cfg.WithDefaults()
+	require.NoError(t, err)
+	require.Equal(t, "snooze-ingest-tok", out.IngestToken)
+}

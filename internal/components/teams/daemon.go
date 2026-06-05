@@ -70,14 +70,15 @@ func New(cfg Config, logger *slog.Logger) (*Daemon, error) {
 	httpc := &http.Client{Timeout: cfg.RequestTimeout}
 
 	sc, err := snoozeclient.New(snoozeclient.Options{
-		BaseURL:  cfg.Server,
-		Username: cfg.Username,
-		Password: cfg.Password,
-		Method:   cfg.Method,
-		Token:    cfg.Token,
-		Insecure: cfg.Insecure,
-		Logger:   logger,
-		Timeout:  cfg.RequestTimeout,
+		BaseURL:     cfg.Server,
+		Username:    cfg.Username,
+		Password:    cfg.Password,
+		Method:      cfg.Method,
+		Token:       cfg.Token,
+		IngestToken: cfg.IngestToken,
+		Insecure:    cfg.Insecure,
+		Logger:      logger,
+		Timeout:     cfg.RequestTimeout,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("teams: build snooze client: %w", err)
