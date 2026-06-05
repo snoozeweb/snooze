@@ -140,10 +140,17 @@ func (w *Writer) accept(r incRequest) {
 	entry.deltas[r.field] += r.delta
 }
 
-// flush drains the pending buckets to the driver. Each collection's
-// BulkIncrement runs under a context derived from the tenant baked into its
-// search docs (or platform scope when none is present), so the caller's ctx is
-// intentionally unused here.
+// flush drains the pending buckets to the driver. A single collection bucket can
+// hold entries for MULTIPLE tenants (the Writer is a process-wide singleton, and
+// cloneDocWithTenant bakes each request's tenant_id into its own search doc), so
+// ops must be partitioned by their per-op tenant before being handed to the
+// driver. BulkIncrement folds the ctx tenant onto every op it receives, so a
+// single call may only ever carry ops belonging to one tenant — otherwise a
+// non-matching tenant's op resolves to `tenant_id="X" AND tenant_id="Y"` and is
+// silently dropped (or, with upsert, mis-stamped). We therefore issue one
+// BulkIncrement per (tenant, collection), each under a ctx scoped to that
+// tenant (or platform scope when an entry carries no tenant_id). The caller's
+// ctx is intentionally unused.
 func (w *Writer) flush(_ context.Context) error {
 	w.mu.Lock()
 	if len(w.buckets) == 0 {
@@ -154,17 +161,10 @@ func (w *Writer) flush(_ context.Context) error {
 	w.buckets = map[string]map[string]*aggEntry{}
 	w.mu.Unlock()
 	for collection, entries := range pending {
-		ops := make([]db.IncrementOp, 0, len(entries))
-		var flushCtx context.Context
+		// Partition this collection's entries by the tenant baked into each
+		// search doc. "" is the platform/global bucket (no tenant_id present).
+		opsByTenant := map[string][]db.IncrementOp{}
 		for _, e := range entries {
-			// Extract the tenant baked into the search doc by cloneDocWithTenant
-			// so BulkIncrement's own TenantScope resolves the right tenant. All
-			// entries in a bucket that share a tenant_id key carry the same value.
-			if flushCtx == nil {
-				if t, ok := e.search["tenant_id"].(string); ok && t != "" {
-					flushCtx = snoozetypes.WithTenant(context.Background(), t)
-				}
-			}
 			// Skip zero-net updates: matches Python's `if value > 0` short-circuit,
 			// generalised to any non-zero delta (we accept negative deltas too).
 			hasNonZero := false
@@ -177,19 +177,26 @@ func (w *Writer) flush(_ context.Context) error {
 			if !hasNonZero {
 				continue
 			}
-			ops = append(ops, db.IncrementOp{Search: e.search, Deltas: e.deltas})
+			tenant, _ := e.search["tenant_id"].(string)
+			opsByTenant[tenant] = append(opsByTenant[tenant], db.IncrementOp{Search: e.search, Deltas: e.deltas})
 		}
-		if len(ops) == 0 {
-			continue
-		}
-		// No tenant baked into the search docs (global collection or platform
-		// scope at enqueue time): flush under platform scope so BulkIncrement
-		// does not fail closed.
-		if flushCtx == nil {
-			flushCtx = snoozetypes.WithPlatformScope(context.Background())
-		}
-		if err := w.d.BulkIncrement(flushCtx, collection, ops, w.upsert); err != nil {
-			return err
+		for tenant, ops := range opsByTenant {
+			if len(ops) == 0 {
+				continue
+			}
+			// No tenant baked into the search docs (global collection or platform
+			// scope at enqueue time): flush under platform scope so BulkIncrement
+			// does not fail closed. Otherwise scope to the partition's tenant so
+			// BulkIncrement's own TenantScope fences each op against the right tenant.
+			var flushCtx context.Context
+			if tenant == "" {
+				flushCtx = snoozetypes.WithPlatformScope(context.Background())
+			} else {
+				flushCtx = snoozetypes.WithTenant(context.Background(), tenant)
+			}
+			if err := w.d.BulkIncrement(flushCtx, collection, ops, w.upsert); err != nil {
+				return err
+			}
 		}
 	}
 	return nil

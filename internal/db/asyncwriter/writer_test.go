@@ -11,6 +11,7 @@ import (
 	"github.com/snoozeweb/snooze/internal/condition"
 	"github.com/snoozeweb/snooze/internal/db"
 	"github.com/snoozeweb/snooze/internal/syncer"
+	"github.com/snoozeweb/snooze/pkg/snoozetypes"
 )
 
 // stubDriver implements just enough of db.Driver to record BulkIncrement calls.
@@ -24,13 +25,15 @@ type bulkCall struct {
 	collection string
 	ops        []db.IncrementOp
 	upsert     bool
+	tenant     string // tenant slug resolved from the call's ctx ("" when none)
 }
 
 func newStubDriver() *stubDriver { return &stubDriver{signal: make(chan struct{}, 16)} }
 
-func (s *stubDriver) BulkIncrement(_ context.Context, collection string, ops []db.IncrementOp, upsert bool) error {
+func (s *stubDriver) BulkIncrement(ctx context.Context, collection string, ops []db.IncrementOp, upsert bool) error {
+	tenant, _ := snoozetypes.TenantFrom(ctx)
 	s.mu.Lock()
-	s.calls = append(s.calls, bulkCall{collection: collection, ops: cloneOps(ops), upsert: upsert})
+	s.calls = append(s.calls, bulkCall{collection: collection, ops: cloneOps(ops), upsert: upsert, tenant: tenant})
 	s.mu.Unlock()
 	select {
 	case s.signal <- struct{}{}:
@@ -164,6 +167,63 @@ func TestWriter_MergesDeltas(t *testing.T) {
 	cancel()
 	err := <-doneCh
 	require.NoError(t, err)
+}
+
+// TestWriter_PartitionsFlushByTenant reproduces the cross-tenant data-loss bug:
+// when two tenants increment the SAME collection within one flush period, the
+// flusher must issue a separate, tenant-scoped BulkIncrement per tenant. If it
+// instead lumps both tenants' ops into a single BulkIncrement under only the
+// first tenant's context, the downstream driver fences the other tenant's op
+// against the wrong tenant_id and silently drops it.
+func TestWriter_PartitionsFlushByTenant(t *testing.T) {
+	d := newStubDriver()
+	clock := NewMockClock(time.Unix(0, 0))
+	w := New(d, time.Second, clock)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	doneCh := make(chan error, 1)
+	go func() { doneCh <- w.Run(ctx) }()
+
+	ctxAlpha := snoozetypes.WithTenant(context.Background(), "alpha")
+	ctxBeta := snoozetypes.WithTenant(context.Background(), "beta")
+
+	// Same collection, same search, two different tenants, one flush window.
+	w.Increment(ctxAlpha, "stats", "count", db.Document{"name": "hits"}, 5)
+	w.Increment(ctxBeta, "stats", "count", db.Document{"name": "hits"}, 9)
+	require.Eventually(t, func() bool {
+		w.mu.Lock()
+		defer w.mu.Unlock()
+		return len(w.buckets["stats"]) == 2
+	}, time.Second, time.Millisecond)
+	clock.Advance(time.Second)
+
+	select {
+	case <-d.signal:
+	case <-time.After(time.Second):
+		t.Fatal("flush did not fire")
+	}
+	// Wait until both per-tenant BulkIncrements have landed.
+	require.Eventually(t, func() bool {
+		return len(d.Snapshot()) == 2
+	}, time.Second, time.Millisecond)
+
+	cancel()
+	require.NoError(t, <-doneCh)
+
+	// Every op must be carried under a ctx scoped to the tenant baked into its
+	// own search doc — never another tenant's. Collect (tenant -> delta).
+	gotByTenant := map[string]int64{}
+	for _, call := range d.Snapshot() {
+		require.Equal(t, "stats", call.collection)
+		for _, op := range call.ops {
+			baked, _ := op.Search["tenant_id"].(string)
+			require.NotEmpty(t, call.tenant, "BulkIncrement issued with no tenant scope")
+			require.Equal(t, baked, call.tenant,
+				"op baked tenant_id %q flushed under ctx tenant %q (cross-tenant leak)", baked, call.tenant)
+			gotByTenant[call.tenant] += op.Deltas["count"]
+		}
+	}
+	require.Equal(t, map[string]int64{"alpha": 5, "beta": 9}, gotByTenant)
 }
 
 func TestWriter_DrainOnShutdown(t *testing.T) {

@@ -12,6 +12,7 @@ import (
 
 	"github.com/snoozeweb/snooze/internal/condition"
 	"github.com/snoozeweb/snooze/internal/db"
+	"github.com/snoozeweb/snooze/internal/db/asyncwriter"
 	"github.com/snoozeweb/snooze/pkg/snoozetypes"
 )
 
@@ -63,6 +64,7 @@ func RunDriverSuite(t *testing.T, name string, factory Factory) {
 		{"WriteStampsTenantID", testWriteStampsTenantID},
 		{"WriteUpsertTenantFenced", testWriteUpsertTenantFenced},
 		{"BulkIncrementTenantIsolation", testBulkIncrementTenantIsolation},
+		{"AsyncWriterTenantIsolation", testAsyncWriterTenantIsolation},
 	}
 	for _, c := range cases {
 		t.Run(name+"/"+c.name, func(t *testing.T) {
@@ -662,6 +664,40 @@ func testBulkIncrementTenantIsolation(t *testing.T, drv db.Driver) {
 	require.NoError(t, err)
 	require.Len(t, docsB, 1)
 	require.EqualValues(t, 0, toNumber(docsB[0]["count"]))
+}
+
+// testAsyncWriterTenantIsolation drives a real driver through the process-wide
+// asyncwriter.Writer (a singleton that serves all tenants) and proves that two
+// tenants incrementing the SAME scoped collection within one flush window do not
+// clobber or drop each other's deltas. This is the end-to-end reproduction of
+// the cross-tenant data-loss bug: alpha.Increment(+5) then beta.Increment(+9) on
+// collection "stats" in one flush must leave alpha=5 AND beta=9 (not beta=0).
+func testAsyncWriterTenantIsolation(t *testing.T, drv db.Driver) {
+	ctxAlpha := snoozetypes.WithTenant(context.Background(), "alpha")
+	ctxBeta := snoozetypes.WithTenant(context.Background(), "beta")
+
+	// Seed one "hits" row per tenant.
+	opts := db.WriteOptions{Primary: []string{"name"}, UpdateTime: false}
+	_, err := drv.Write(ctxAlpha, "stats", []db.Document{{"name": "hits", "count": float64(0)}}, opts)
+	require.NoError(t, err)
+	_, err = drv.Write(ctxBeta, "stats", []db.Document{{"name": "hits", "count": float64(0)}}, opts)
+	require.NoError(t, err)
+
+	// One process-wide writer; long period so we control the flush explicitly.
+	w := asyncwriter.New(drv, time.Hour, nil)
+	w.Increment(ctxAlpha, "stats", "count", db.Document{"name": "hits"}, 5)
+	w.Increment(ctxBeta, "stats", "count", db.Document{"name": "hits"}, 9)
+	require.NoError(t, w.Flush(snoozetypes.WithPlatformScope(context.Background())))
+
+	docsA, _, err := drv.Search(ctxAlpha, "stats", condition.Equals("name", "hits"), db.Page{})
+	require.NoError(t, err)
+	require.Len(t, docsA, 1)
+	require.EqualValues(t, 5, toNumber(docsA[0]["count"]))
+
+	docsB, _, err := drv.Search(ctxBeta, "stats", condition.Equals("name", "hits"), db.Page{})
+	require.NoError(t, err)
+	require.Len(t, docsB, 1)
+	require.EqualValues(t, 9, toNumber(docsB[0]["count"]))
 }
 
 func toNumber(v any) float64 {
