@@ -67,9 +67,7 @@ describe("SendAlertsDialog", () => {
       ),
     );
     setup();
-    await waitFor(() =>
-      expect(screen.getAllByText("⚠ None configured")).toHaveLength(2),
-    );
+    await waitFor(() => expect(screen.getAllByText("⚠ None configured")).toHaveLength(2));
   });
 
   it("shows ok badge for step 1 when action count is > 0", async () => {

@@ -91,9 +91,7 @@ describe("TenantEditor edit", () => {
       </Wrapper>,
     );
     await waitFor(() =>
-      expect(
-        screen.getByLabelText<HTMLInputElement>(/display name/i).value,
-      ).toBe("Acme Corp"),
+      expect(screen.getByLabelText<HTMLInputElement>(/display name/i).value).toBe("Acme Corp"),
     );
     // Slug field is read-only in edit mode (id is immutable).
     expect(screen.getByLabelText<HTMLInputElement>(/slug/i).disabled).toBe(true);

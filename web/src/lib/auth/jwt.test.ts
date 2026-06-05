@@ -81,9 +81,7 @@ describe("JwtClaims.tenant_id", () => {
 
   it("tenant_id is undefined when absent (legacy token)", () => {
     const header = btoa(JSON.stringify({ alg: "HS256", typ: "JWT" }));
-    const payload = btoa(
-      JSON.stringify({ sub: "bob", exp: Math.floor(Date.now() / 1000) + 3600 }),
-    );
+    const payload = btoa(JSON.stringify({ sub: "bob", exp: Math.floor(Date.now() / 1000) + 3600 }));
     const token = `${header}.${payload}.sig`;
     const claims = decodeJwt(token);
     expect(claims?.tenant_id).toBeUndefined();

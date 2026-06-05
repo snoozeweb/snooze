@@ -68,7 +68,9 @@ describe("defineResource — list", () => {
       }),
     );
     const wrapper = makeWrapper();
-    const { result } = renderHook(() => Rules.useList({ limit: 1 }, { enabled: false }), { wrapper });
+    const { result } = renderHook(() => Rules.useList({ limit: 1 }, { enabled: false }), {
+      wrapper,
+    });
     await new Promise((r) => setTimeout(r, 80));
     expect(fetched).toBe(false);
     expect(result.current.fetchStatus).toBe("idle");

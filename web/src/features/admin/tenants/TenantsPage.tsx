@@ -72,18 +72,15 @@ export function TenantsPage() {
   });
   const contextMenuItems = useCallback(
     (row: Tenant): ContextMenuItem[] =>
-      buildResourceContextMenu(
-        { ...row, uid: row.id } as Tenant & { uid?: string },
-        {
-          onOpen: (r) => {
-            const uid = (r as Tenant & { uid?: string }).uid ?? row.id;
-            if (uid) updateSearch({ uid });
-          },
-          onDelete: (uid) => remove.mutateAsync(uid),
-          requestDelete: (r) =>
-            confirmDelete.request([{ ...r, uid: (r as Tenant & { uid?: string }).uid ?? row.id }]),
+      buildResourceContextMenu({ ...row, uid: row.id } as Tenant & { uid?: string }, {
+        onOpen: (r) => {
+          const uid = (r as Tenant & { uid?: string }).uid ?? row.id;
+          if (uid) updateSearch({ uid });
         },
-      ),
+        onDelete: (uid) => remove.mutateAsync(uid),
+        requestDelete: (r) =>
+          confirmDelete.request([{ ...r, uid: (r as Tenant & { uid?: string }).uid ?? row.id }]),
+      }),
     [updateSearch, remove, confirmDelete],
   );
   const bulkActions = useCallback(
