@@ -22,6 +22,12 @@ import (
 	"sync/atomic"
 	"testing"
 	"time"
+
+	"github.com/snoozeweb/snooze/internal/auth"
+	"github.com/snoozeweb/snooze/internal/condition"
+	"github.com/snoozeweb/snooze/internal/db"
+	"github.com/snoozeweb/snooze/internal/db/sqlite"
+	"github.com/snoozeweb/snooze/pkg/snoozetypes"
 )
 
 // freeTCPPort picks an ephemeral port by binding and immediately closing. The
@@ -233,6 +239,90 @@ func runDaemonBootTest(t *testing.T) {
 	if runErr != nil {
 		t.Fatalf("runDaemonCtx: %v", runErr)
 	}
+
+	// Multitenancy boot assertions: re-open the on-disk DB and confirm the
+	// first-boot seeds landed under default-tenant scope. If boot ran the seeds
+	// on the naked ctx these collections would be empty (writes fail-close with
+	// ErrNoTenant) and the daemon would have exited before /healthz ever
+	// answered — but we assert the positive shape explicitly to lock the wiring.
+	assertBootSeeds(t, dbPath)
+}
+
+// assertBootSeeds opens the post-boot SQLite file and verifies the default
+// tenant doc, the platform_admin role, and the root user (stamped
+// tenant_id=default, granted platform_admin) all exist.
+func assertBootSeeds(t *testing.T, dbPath string) {
+	t.Helper()
+	ctx := snoozetypes.WithPlatformScope(context.Background())
+	drv, err := sqlite.New(ctx, sqlite.Config{Path: dbPath})
+	if err != nil {
+		t.Fatalf("reopen db: %v", err)
+	}
+	defer drv.Close()
+
+	tenants, _, err := drv.Search(ctx, auth.TenantCollection, condition.Cond{}, db.Page{})
+	if err != nil {
+		t.Fatalf("search tenants: %v", err)
+	}
+	var hasDefault bool
+	for _, d := range tenants {
+		if d["id"] == snoozetypes.DefaultTenant {
+			hasDefault = true
+		}
+	}
+	if !hasDefault {
+		t.Fatalf("default tenant doc missing after boot; tenants=%v", tenants)
+	}
+
+	roles, _, err := drv.Search(ctx, auth.RoleCollection, condition.Cond{}, db.Page{})
+	if err != nil {
+		t.Fatalf("search roles: %v", err)
+	}
+	var hasPlatformAdmin bool
+	for _, r := range roles {
+		if r["name"] == auth.PlatformAdminRole {
+			hasPlatformAdmin = true
+		}
+	}
+	if !hasPlatformAdmin {
+		t.Fatalf("platform_admin role missing after boot; roles=%v", roles)
+	}
+
+	root, err := drv.GetOne(ctx, auth.LocalCollection, db.Document{
+		"name":   auth.RootUsername,
+		"method": auth.LocalMethod,
+	})
+	if err != nil {
+		t.Fatalf("get root user: %v", err)
+	}
+	if root == nil {
+		t.Fatal("root user missing after boot")
+	}
+	if root["tenant_id"] != snoozetypes.DefaultTenant {
+		t.Fatalf("root tenant_id = %v, want %q", root["tenant_id"], snoozetypes.DefaultTenant)
+	}
+	if !containsString(root["roles"], auth.PlatformAdminRole) {
+		t.Fatalf("root roles = %v, want to include %q", root["roles"], auth.PlatformAdminRole)
+	}
+}
+
+// containsString reports whether the []string / []any value holds want.
+func containsString(v any, want string) bool {
+	switch t := v.(type) {
+	case []string:
+		for _, s := range t {
+			if s == want {
+				return true
+			}
+		}
+	case []any:
+		for _, e := range t {
+			if s, ok := e.(string); ok && s == want {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 // waitForHealthOrExit polls the URL until it returns 200, the deadline

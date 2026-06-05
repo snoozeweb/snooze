@@ -14,25 +14,55 @@ import (
 	"github.com/snoozeweb/snooze/internal/mq"
 	"github.com/snoozeweb/snooze/internal/plugins"
 	"github.com/snoozeweb/snooze/internal/syncer"
+	"github.com/snoozeweb/snooze/pkg/snoozetypes"
 )
 
 // bootstrap wires every Core subsystem in dependency order. The implementation
 // is split into helper methods so individual phases can be tested in isolation.
 //
+// Multitenancy note: every first-boot seed writes to either a global collection
+// (tenant, secrets — bypass tenant injection) or a tenant-scoped collection
+// (role, general, aggregaterule, user — fail-closed with ErrNoTenant on a naked
+// context). We therefore derive a single seedCtx scoped to the reserved default
+// tenant and run ALL seeding under it: global writes still pass, and
+// default-tenant writes are stamped/injected correctly instead of fail-closing.
+//
 // Phases:
 //  1. EnsureSecrets — JWT key + reload token (crypto/rand on first boot).
-//  2. EnsureRoot    — bcrypt root user, log generated password to stderr.
-//  3. TokenEngine.
-//  4. AsyncWriter   — background DB-batch goroutine, not started yet.
-//  5. MQ Bus        — inproc/pg/mongo depending on config.
-//  6. Plugins       — plugins.Build with the configured process order.
-//  7. Syncer        — c.Driver.Watcher() as its event bus + NodeHeartbeat.
-//  8. Housekeeper   — default cleanup jobs.
+//  2. auth.BootstrapDB — default tenant doc (global) + platform_admin role
+//     (default-tenant role collection). MUST run before EnsureRoot so the role
+//     exists when root is granted it.
+//  3. core.BootstrapDB — default RBAC roles + aggregate rule + init marker.
+//  4. EnsureRoot    — bcrypt root user, log generated password to stderr.
+//  5. AsyncWriter   — background DB-batch goroutine, not started yet.
+//  6. MQ Bus        — inproc/pg/mongo depending on config.
+//  7. Plugins       — plugins.Build (default-tenant scope) + per-tenant cache
+//     hydration for every active tenant.
+//  8. Syncer        — c.Driver.Watcher() as its event bus + NodeHeartbeat.
+//  9. Housekeeper   — default cleanup jobs.
 func (c *Core) bootstrap(ctx context.Context) error {
+	// seedCtx scopes all first-boot seeding to the reserved default tenant so
+	// tenant-scoped writes are stamped instead of fail-closing on ErrNoTenant.
+	seedCtx := snoozetypes.WithTenant(ctx, snoozetypes.DefaultTenant)
+
+	// bootSecrets stays on the plain ctx: it only touches the global "secrets"
+	// collection, which bypasses tenant injection.
 	if err := c.bootSecrets(ctx); err != nil {
 		return err
 	}
-	if err := c.bootRoot(ctx); err != nil {
+	if c.Cfg.Core.BootstrapDB {
+		// Seed the default tenant doc + platform_admin role FIRST so the role
+		// exists when EnsureRoot grants it to root below.
+		if err := auth.BootstrapDB(seedCtx, c.Driver); err != nil {
+			return fmt.Errorf("boot: auth bootstrap db: %w", err)
+		}
+		// Seed default RBAC roles + aggregate rule + init marker under the
+		// default tenant.
+		if err := BootstrapDB(seedCtx, c.Driver); err != nil {
+			return fmt.Errorf("boot: bootstrap db: %w", err)
+		}
+	}
+	if err := c.bootRoot(seedCtx); err != nil {
 		return err
 	}
 	if err := c.bootAsync(); err != nil {
@@ -41,15 +71,10 @@ func (c *Core) bootstrap(ctx context.Context) error {
 	if err := c.bootMQ(ctx); err != nil {
 		return err
 	}
-	if c.Cfg.Core.BootstrapDB {
-		if err := BootstrapDB(ctx, c.Driver); err != nil {
-			return fmt.Errorf("boot: bootstrap db: %w", err)
-		}
-	}
 	if err := c.bootRuntimeSettings(); err != nil {
 		return err
 	}
-	if err := c.bootPlugins(ctx); err != nil {
+	if err := c.bootPlugins(ctx, seedCtx); err != nil {
 		return err
 	}
 	if err := c.bootSyncer(); err != nil {
@@ -94,6 +119,10 @@ func (c *Core) bootSecrets(ctx context.Context) error {
 
 // bootRoot runs auth.EnsureRoot and logs the generated password once to the
 // snooze logger at WARN level (which routes to stderr in JSON or text mode).
+//
+// ctx MUST be scoped to the default tenant (the caller passes seedCtx): the
+// root user lands in the tenant-scoped "user" collection, so a naked context
+// fail-closes with ErrNoTenant.
 func (c *Core) bootRoot(ctx context.Context) error {
 	if !c.Cfg.Core.CreateRootUser {
 		return nil
@@ -192,13 +221,51 @@ var optionalPlugins = map[string]bool{
 // processor slice. Optional plugins not present in
 // Cfg.Core.EnabledOptionalPlugins are filtered out before the plugin map is
 // stored on Core.
-func (c *Core) bootPlugins(ctx context.Context) error {
-	all, procs, err := plugins.Build(ctx, c, c.Cfg.Core.ProcessPlugins)
+//
+// Multitenancy: processor plugins keep per-tenant in-memory caches and each
+// Reload(ctx) only refreshes the tenant in TenantFrom(ctx). plugins.Build runs
+// every plugin's PostInit (which typically calls Reload), so it MUST run under a
+// tenant-scoped context or those reloads fail-close — we use seedCtx (the
+// default tenant). After Build + optional-plugin filtering we walk every active
+// tenant and reload each processor under that tenant's scope so the in-memory
+// caches are warm for all tenants, not just the default one. Reloading the
+// default tenant twice is harmless (Reload is idempotent).
+//
+// ctx is the plain (unscoped) boot context used only to list tenants via
+// housekeeper.ForEachTenant, which lifts to platform scope internally and hands
+// fn a per-tenant scoped context.
+func (c *Core) bootPlugins(ctx, seedCtx context.Context) error {
+	all, procs, err := plugins.Build(seedCtx, c, c.Cfg.Core.ProcessPlugins)
 	if err != nil {
 		return fmt.Errorf("boot: plugins: %w", err)
 	}
 	c.plugins = filterOptionalPlugins(all, c.Cfg.Core.EnabledOptionalPlugins)
 	c.processOrder = procs
+
+	// Hydrate every active tenant's processor caches. A per-tenant reload error
+	// is logged and skipped so one broken tenant cannot block boot; a failure
+	// reloading the default tenant is fatal (its caches back the bootstrap data
+	// the server itself relies on).
+	if err := housekeeper.ForEachTenant(ctx, c.Driver, func(tctx context.Context, tid string) error {
+		for _, p := range c.processOrder {
+			if rerr := p.Reload(tctx); rerr != nil {
+				if tid == snoozetypes.DefaultTenant {
+					return fmt.Errorf("reload %s for default tenant: %w", p.Name(), rerr)
+				}
+				c.Logger().Warn("boot: per-tenant plugin reload failed; skipping tenant",
+					"plugin", p.Name(),
+					"tenant", tid,
+					"err", rerr,
+				)
+				// Stop reloading the remaining processors for this broken
+				// tenant but continue with the next tenant.
+				return nil
+			}
+		}
+		return nil
+	}); err != nil {
+		return fmt.Errorf("boot: hydrate tenant caches: %w", err)
+	}
 	return nil
 }
 

@@ -9,8 +9,10 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/snoozeweb/snooze/internal/auth"
+	"github.com/snoozeweb/snooze/internal/condition"
 	"github.com/snoozeweb/snooze/internal/config"
 	"github.com/snoozeweb/snooze/internal/config/schema"
+	"github.com/snoozeweb/snooze/internal/db"
 	"github.com/snoozeweb/snooze/internal/db/sqlite"
 	"github.com/snoozeweb/snooze/internal/plugins"
 	"github.com/snoozeweb/snooze/internal/syncer"
@@ -256,3 +258,144 @@ func (stubBus) Subscribe(context.Context, string) (<-chan syncer.Event, error) {
 	return nil, nil
 }
 func (stubBus) Close() error { return nil }
+
+// runSeedPhase replays the exact first-boot seeding order that bootstrap()
+// performs under seedCtx (auth.BootstrapDB → core.BootstrapDB → EnsureRoot),
+// against the supplied driver. It deliberately does NOT touch plugins.Build
+// (one-shot per process), keeping this test re-runnable to prove idempotency.
+func runSeedPhase(t *testing.T, ctx context.Context, drv db.Driver) string {
+	t.Helper()
+	seedCtx := snoozetypes.WithTenant(ctx, snoozetypes.DefaultTenant)
+	require.NoError(t, auth.BootstrapDB(seedCtx, drv))
+	require.NoError(t, BootstrapDB(seedCtx, drv))
+	pwd, err := auth.EnsureRoot(seedCtx, drv)
+	require.NoError(t, err)
+	return pwd
+}
+
+// TestBootstrapSeed_RunsUnderDefaultTenantScope is the regression test for the
+// boot wiring fix: every first-boot seed (the default tenant doc, the
+// platform_admin role, the default RBAC roles, the init marker, and the root
+// user) must succeed against the real tenancy-enforcing SQLite driver, which
+// fail-closes with ErrNoTenant on tenant-scoped collections under a naked
+// context. The presence of these docs proves seeding ran under a context scoped
+// to the default tenant, not the naked boot ctx.
+func TestBootstrapSeed_RunsUnderDefaultTenantScope(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+
+	path := filepath.Join(t.TempDir(), "snooze.db")
+	drv, err := sqlite.New(ctx, sqlite.Config{Path: path})
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = drv.Close() })
+
+	pwd := runSeedPhase(t, ctx, drv)
+	require.NotEmpty(t, pwd, "first boot must mint a root password")
+
+	// Read everything back under platform scope so the driver does not filter by
+	// tenant; this lets us inspect the stamped tenant_id directly.
+	platform := snoozetypes.WithPlatformScope(ctx)
+
+	// 1. Default tenant doc exists in the global tenant collection.
+	tenants, _, err := drv.Search(platform, auth.TenantCollection, condition.Cond{}, db.Page{})
+	require.NoError(t, err)
+	var foundDefault bool
+	for _, d := range tenants {
+		if d["id"] == snoozetypes.DefaultTenant {
+			foundDefault = true
+			require.Equal(t, "active", d["status"])
+		}
+	}
+	require.True(t, foundDefault, "default tenant doc must be seeded")
+
+	// 2. platform_admin role exists, stamped with tenant_id=default and holding
+	//    the tenant read/write permissions.
+	roles, _, err := drv.Search(platform, auth.RoleCollection, condition.Cond{}, db.Page{})
+	require.NoError(t, err)
+	roleByName := map[string]db.Document{}
+	for _, r := range roles {
+		if n, ok := r["name"].(string); ok {
+			roleByName[n] = r
+		}
+	}
+	pa, ok := roleByName[auth.PlatformAdminRole]
+	require.True(t, ok, "platform_admin role must be seeded")
+	require.Equal(t, snoozetypes.DefaultTenant, pa["tenant_id"],
+		"platform_admin role must be stamped with the default tenant")
+	require.Contains(t, toStrings(pa["permissions"]), auth.PermReadTenant)
+	require.Contains(t, toStrings(pa["permissions"]), auth.PermWriteTenant)
+
+	// 3. Default RBAC roles from core.BootstrapDB are present.
+	require.Contains(t, roleByName, "admin")
+	require.Contains(t, roleByName, "viewer")
+	require.Contains(t, roleByName, "notifications")
+
+	// 4. Root user exists, stamped tenant_id=default, granted platform_admin.
+	root, err := drv.GetOne(platform, auth.LocalCollection, db.Document{
+		"name":   auth.RootUsername,
+		"method": auth.LocalMethod,
+	})
+	require.NoError(t, err)
+	require.NotNil(t, root)
+	require.Equal(t, snoozetypes.DefaultTenant, root["tenant_id"],
+		"root user must be stamped with the default tenant")
+	require.Contains(t, toStrings(root["roles"]), auth.PlatformAdminRole)
+	require.Contains(t, toStrings(root["roles"]), "admin")
+}
+
+// TestBootstrapSeed_Idempotent proves the seed phase is a no-op on a second run:
+// the root password is empty (user already exists) and no duplicate tenant /
+// role / user docs are created.
+func TestBootstrapSeed_Idempotent(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+
+	path := filepath.Join(t.TempDir(), "snooze.db")
+	drv, err := sqlite.New(ctx, sqlite.Config{Path: path})
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = drv.Close() })
+
+	require.NotEmpty(t, runSeedPhase(t, ctx, drv), "first run mints a password")
+
+	platform := snoozetypes.WithPlatformScope(ctx)
+	tenantsBefore, _, err := drv.Search(platform, auth.TenantCollection, condition.Cond{}, db.Page{})
+	require.NoError(t, err)
+	rolesBefore, _, err := drv.Search(platform, auth.RoleCollection, condition.Cond{}, db.Page{})
+	require.NoError(t, err)
+	usersBefore, _, err := drv.Search(platform, auth.LocalCollection, condition.Cond{}, db.Page{})
+	require.NoError(t, err)
+
+	// Second run: must be a no-op.
+	pwd2 := runSeedPhase(t, ctx, drv)
+	require.Empty(t, pwd2, "re-running the seed phase must not mint a new root password")
+
+	tenantsAfter, _, err := drv.Search(platform, auth.TenantCollection, condition.Cond{}, db.Page{})
+	require.NoError(t, err)
+	rolesAfter, _, err := drv.Search(platform, auth.RoleCollection, condition.Cond{}, db.Page{})
+	require.NoError(t, err)
+	usersAfter, _, err := drv.Search(platform, auth.LocalCollection, condition.Cond{}, db.Page{})
+	require.NoError(t, err)
+
+	require.Len(t, tenantsAfter, len(tenantsBefore), "no duplicate tenant docs")
+	require.Len(t, rolesAfter, len(rolesBefore), "no duplicate role docs")
+	require.Len(t, usersAfter, len(usersBefore), "no duplicate user docs")
+}
+
+// toStrings normalises a []string / []any value read back from the driver into
+// a []string for membership assertions.
+func toStrings(v any) []string {
+	switch t := v.(type) {
+	case []string:
+		return t
+	case []any:
+		out := make([]string, 0, len(t))
+		for _, e := range t {
+			if s, ok := e.(string); ok {
+				out = append(out, s)
+			}
+		}
+		return out
+	default:
+		return nil
+	}
+}
