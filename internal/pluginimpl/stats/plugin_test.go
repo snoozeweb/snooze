@@ -16,11 +16,13 @@ import (
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/trace"
 
+	"github.com/snoozeweb/snooze/internal/auth"
 	"github.com/snoozeweb/snooze/internal/config"
 	"github.com/snoozeweb/snooze/internal/db"
 	"github.com/snoozeweb/snooze/internal/db/sqlite"
 	"github.com/snoozeweb/snooze/internal/plugins"
 	"github.com/snoozeweb/snooze/internal/telemetry"
+	"github.com/snoozeweb/snooze/pkg/snoozetypes"
 )
 
 type testHost struct{ drv *sqlite.Driver }
@@ -67,6 +69,7 @@ func callStatsHandler(t *testing.T, host plugins.Host, from, to string) statsRes
 	p := &Plugin{meta: plugins.Metadata{Name: "stats"}, host: host}
 	req := httptest.NewRequest(http.MethodGet,
 		fmt.Sprintf("/stats?from=%s&to=%s&bucket=3600", from, to), nil)
+	req = req.WithContext(auth.WithTenant(req.Context(), snoozetypes.DefaultTenant))
 	w := httptest.NewRecorder()
 	p.handleStats(host)(w, req)
 	require.Equal(t, http.StatusOK, w.Code, "handler returned non-200: %s", w.Body.String())
@@ -85,7 +88,7 @@ func callStatsHandler(t *testing.T, host plugins.Host, from, to string) statsRes
 //   - Weekday has a nonzero entry for the bucket's weekday
 func TestHandleStats_CounterSeriesAndTotals(t *testing.T) {
 	t.Parallel()
-	ctx := context.Background()
+	ctx := auth.WithTenant(context.Background(), snoozetypes.DefaultTenant)
 	host := newTestHost(t)
 
 	// A fixed hour-aligned bucket inside our query window.
@@ -180,7 +183,7 @@ func TestHandleStats_CounterSeriesAndTotals(t *testing.T) {
 // hosts by hit count.
 func TestHandleStats_TopHostCapping(t *testing.T) {
 	t.Parallel()
-	ctx := context.Background()
+	ctx := auth.WithTenant(context.Background(), snoozetypes.DefaultTenant)
 	host := newTestHost(t)
 
 	const bucket = int64(1705312800)

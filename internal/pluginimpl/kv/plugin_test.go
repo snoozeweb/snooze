@@ -11,11 +11,13 @@ import (
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/trace"
 
+	"github.com/snoozeweb/snooze/internal/auth"
 	"github.com/snoozeweb/snooze/internal/config"
 	"github.com/snoozeweb/snooze/internal/db"
 	"github.com/snoozeweb/snooze/internal/db/sqlite"
 	"github.com/snoozeweb/snooze/internal/plugins"
 	"github.com/snoozeweb/snooze/internal/telemetry"
+	"github.com/snoozeweb/snooze/pkg/snoozetypes"
 )
 
 type testHost struct{ drv *sqlite.Driver }
@@ -43,7 +45,7 @@ func TestRegistration(t *testing.T) {
 
 func TestPostInitHydratesCache(t *testing.T) {
 	host := newTestHost(t)
-	ctx := context.Background()
+	ctx := auth.WithTenant(context.Background(), snoozetypes.DefaultTenant)
 	_, err := host.DB().Write(ctx, "kv", []db.Document{
 		{"dict": "colors", "key": "red", "value": "#f00"},
 		{"dict": "colors", "key": "green", "value": "#0f0"},

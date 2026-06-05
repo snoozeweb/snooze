@@ -12,6 +12,7 @@ import (
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/trace"
 
+	"github.com/snoozeweb/snooze/internal/auth"
 	"github.com/snoozeweb/snooze/internal/config"
 	"github.com/snoozeweb/snooze/internal/db"
 	"github.com/snoozeweb/snooze/internal/db/sqlite"
@@ -65,7 +66,11 @@ func TestValidate(t *testing.T) {
 
 func TestSetGetRoundtrip(t *testing.T) {
 	p, _ := newReadyPlugin(t)
-	ctx := context.Background()
+	// The settings plugin upserts via ReplaceOne, whose write-side tenant_id
+	// stamping is not yet implemented in the driver (see internal/db/dbtest
+	// suite: upsert paths run under platform scope). Use platform scope so the
+	// fail-closed driver accepts the round-trip.
+	ctx := auth.WithPlatformScope(context.Background())
 
 	// Missing key -> (nil, false, nil).
 	v, ok, err := p.Get(ctx, "general", "anonymous_enabled")
@@ -91,7 +96,9 @@ func TestSetGetRoundtrip(t *testing.T) {
 
 func TestReplaceAndGetSettings(t *testing.T) {
 	p, _ := newReadyPlugin(t)
-	ctx := context.Background()
+	// Platform scope: ReplaceOne upsert does not yet stamp tenant_id (deferred
+	// driver task); the fail-closed driver requires tenant or platform scope.
+	ctx := auth.WithPlatformScope(context.Background())
 	require.NoError(t, p.Replace(ctx, "ldap", map[string]any{"host": "ldap.example.com", "port": float64(389)}))
 
 	out, err := p.GetSettings(ctx, "ldap")
@@ -109,7 +116,9 @@ func TestReplaceAndGetSettings(t *testing.T) {
 
 func TestGetSectionUnmarshal(t *testing.T) {
 	p, _ := newReadyPlugin(t)
-	ctx := context.Background()
+	// Platform scope: ReplaceOne upsert does not yet stamp tenant_id (deferred
+	// driver task); the fail-closed driver requires tenant or platform scope.
+	ctx := auth.WithPlatformScope(context.Background())
 	require.NoError(t, p.Set(ctx, "general", "anonymous_enabled", true))
 	var dst struct {
 		AnonymousEnabled bool `json:"anonymous_enabled"`
@@ -132,7 +141,9 @@ func TestWatchFanout(t *testing.T) {
 
 	ch, err := p.Watch(ctx, "general")
 	require.NoError(t, err)
-	require.NoError(t, p.Set(context.Background(), "general", "k", "v"))
+	// Platform scope: ReplaceOne upsert does not yet stamp tenant_id (deferred
+	// driver task); the fail-closed driver requires tenant or platform scope.
+	require.NoError(t, p.Set(auth.WithPlatformScope(context.Background()), "general", "k", "v"))
 
 	select {
 	case evt := <-ch:

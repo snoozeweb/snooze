@@ -28,7 +28,7 @@ func newDriver(t *testing.T) db.Driver {
 // writeSetting persists a settings row under ctx. The settings collection is
 // tenant-scoped, so ctx must carry a tenant (auth.WithTenant) or platform scope
 // for the fail-closed driver to accept the write; the driver stamps tenant_id.
-func writeSetting(t *testing.T, ctx context.Context, d db.Driver, name string, value any) {
+func writeSetting(ctx context.Context, t *testing.T, d db.Driver, name string, value any) {
 	t.Helper()
 	_, err := d.Write(ctx, settingsCollection, []db.Document{
 		{"name": name, "value": value},
@@ -47,10 +47,10 @@ func TestRuntimeSettingsLDAPOverridesBaseline(t *testing.T) {
 	baseline.LDAP.Port = 389
 	baseline.LDAP.BaseDN = "dc=example,dc=com"
 
-	writeSetting(t, ctx, d, "ldap.enabled", true)
-	writeSetting(t, ctx, d, "ldap.host", "override.example.com")
-	writeSetting(t, ctx, d, "ldap.port", 636)
-	writeSetting(t, ctx, d, "ldap.bind_dn", "cn=svc,dc=example,dc=com")
+	writeSetting(ctx, t, d, "ldap.enabled", true)
+	writeSetting(ctx, t, d, "ldap.host", "override.example.com")
+	writeSetting(ctx, t, d, "ldap.port", 636)
+	writeSetting(ctx, t, d, "ldap.bind_dn", "cn=svc,dc=example,dc=com")
 
 	rs := NewRuntimeSettings(d, baseline, time.Minute)
 	got, err := rs.LDAP(ctx)
@@ -69,9 +69,9 @@ func TestRuntimeSettingsLDAPOverridesBaseline(t *testing.T) {
 func TestRuntimeSettingsHousekeeperOverridesDuration(t *testing.T) {
 	d := newDriver(t)
 	ctx := auth.WithTenant(context.Background(), snoozetypes.DefaultTenant)
-	writeSetting(t, ctx, d, "housekeeping.trigger_on_startup", true)
-	writeSetting(t, ctx, d, "housekeeping.cleanup_snooze", "1h30m")
-	writeSetting(t, ctx, d, "housekeeping.cleanup_notification", "45m")
+	writeSetting(ctx, t, d, "housekeeping.trigger_on_startup", true)
+	writeSetting(ctx, t, d, "housekeeping.cleanup_snooze", "1h30m")
+	writeSetting(ctx, t, d, "housekeeping.cleanup_notification", "45m")
 
 	rs := NewRuntimeSettings(d, Default(), time.Minute)
 	got, err := rs.Housekeeper(ctx)
@@ -87,7 +87,7 @@ func TestRuntimeSettingsHousekeeperOverridesDuration(t *testing.T) {
 func TestRuntimeSettingsCacheServesStaleUntilInvalidate(t *testing.T) {
 	d := newDriver(t)
 	ctx := auth.WithTenant(context.Background(), snoozetypes.DefaultTenant)
-	writeSetting(t, ctx, d, "ldap.host", "v1.example.com")
+	writeSetting(ctx, t, d, "ldap.host", "v1.example.com")
 
 	rs := NewRuntimeSettings(d, Default(), time.Hour) // long TTL, so cache wins
 	first, err := rs.LDAP(ctx)
@@ -95,7 +95,7 @@ func TestRuntimeSettingsCacheServesStaleUntilInvalidate(t *testing.T) {
 	require.Equal(t, "v1.example.com", first.Host)
 
 	// Mutate the DB row directly and observe the cache is still serving.
-	writeSetting(t, ctx, d, "ldap.host", "v2.example.com")
+	writeSetting(ctx, t, d, "ldap.host", "v2.example.com")
 	cached, err := rs.LDAP(ctx)
 	require.NoError(t, err)
 	require.Equal(t, "v1.example.com", cached.Host, "cache should be stale before Invalidate")
@@ -111,7 +111,7 @@ func TestRuntimeSettingsCacheServesStaleUntilInvalidate(t *testing.T) {
 func TestStatsRetention_OverrideFromDB(t *testing.T) {
 	d := newDriver(t)
 	ctx := auth.WithTenant(context.Background(), snoozetypes.DefaultTenant)
-	writeSetting(t, ctx, d, "housekeeping.cleanup_stats", "240h")
+	writeSetting(ctx, t, d, "housekeeping.cleanup_stats", "240h")
 
 	rs := NewRuntimeSettings(d, Default(), time.Minute)
 	require.Equal(t, 240*time.Hour, rs.StatsRetention(ctx))
@@ -152,8 +152,8 @@ func TestRuntimeSettings_TenantPartitioned(t *testing.T) {
 	ctxA := auth.WithTenant(context.Background(), "acme")
 	ctxB := auth.WithTenant(context.Background(), "beta")
 
-	writeSetting(t, ctxA, dA, "ldap.host", "ldap-acme.example.com")
-	writeSetting(t, ctxB, dB, "ldap.host", "ldap-beta.example.com")
+	writeSetting(ctxA, t, dA, "ldap.host", "ldap-acme.example.com")
+	writeSetting(ctxB, t, dB, "ldap.host", "ldap-beta.example.com")
 
 	rs := NewRuntimeSettings(dA, Default(), time.Minute)
 
@@ -176,14 +176,14 @@ func TestRuntimeSettings_TenantPartitioned(t *testing.T) {
 func TestRuntimeSettings_InvalidateAll(t *testing.T) {
 	d := newDriver(t)
 	ctx := auth.WithTenant(context.Background(), "acme")
-	writeSetting(t, ctx, d, "ldap.host", "v1.example.com")
+	writeSetting(ctx, t, d, "ldap.host", "v1.example.com")
 
 	rs := NewRuntimeSettings(d, Default(), time.Hour) // long TTL
 
 	_, err := rs.LDAP(ctx)
 	require.NoError(t, err)
 
-	writeSetting(t, ctx, d, "ldap.host", "v2.example.com")
+	writeSetting(ctx, t, d, "ldap.host", "v2.example.com")
 	rs.Invalidate() // clears all
 
 	got, err := rs.LDAP(ctx)
