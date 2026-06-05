@@ -1,12 +1,12 @@
 name: docs
 
 # Build the Docusaurus documentation site on every PR that touches it, and
-# deploy to GitHub Pages on push to master. Requires the repo's Pages source
-# to be set to "GitHub Actions" (Settings → Pages).
+# deploy to GitHub Pages on push to main (or a manual run). Requires the repo's
+# Pages source to be set to "GitHub Actions" (Settings → Pages).
 
 on:
   push:
-    branches: [master]
+    branches: [main]
     paths:
       - 'docs/**'
       - 'api/openapi.yaml'
@@ -16,6 +16,7 @@ on:
       - 'docs/**'
       - 'api/openapi.yaml'
       - '.github/workflows/docs.yml'
+  workflow_dispatch: {}
 
 permissions:
   contents: read
@@ -44,8 +45,8 @@ jobs:
           path: docs/build
 
   deploy:
-    # Publish only from master; PRs run the build job above as a check.
-    if: github.event_name == 'push'
+    # Publish from main pushes and manual runs; PRs only run the build check.
+    if: github.event_name != 'pull_request'
     needs: build
     runs-on: ubuntu-latest
     permissions:

@@ -1,0 +1,83 @@
+name: Release
+
+# Cut a release whenever a v* tag is pushed. The job gates on the test suite,
+# builds the React/Vite web bundle (so it can be packaged into the rpm/deb at
+# /var/lib/snooze/web), then runs GoReleaser to cross-compile every binary,
+# build the .deb/.rpm packages and tar.gz archives, and publish a GitHub
+# Release. The release body reuses the curated CHANGELOG.md section for the tag
+# (same formatting as the 1.x `invoke changelog` flow), not GoReleaser's
+# commit-derived changelog.
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write   # create the GitHub Release and upload its assets
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.25"
+          cache: true
+      - name: go vet
+        run: go vet ./...
+      - name: Unit tests
+        run: go test -race -shuffle=on -count=1 ./...
+
+  release:
+    needs: [test]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # Full history so GoReleaser can compute the previous tag.
+          fetch-depth: 0
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      - name: Build web UI bundle
+        # snooze-server serves the SPA from --web-dir (default
+        # /var/lib/snooze/web); GoReleaser ships web/dist there in the
+        # rpm/deb, so the bundle must exist before GoReleaser runs.
+        working-directory: web
+        run: |
+          npm ci --no-audit --no-fund --legacy-peer-deps
+          npm run build
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.25"
+          cache: true
+
+      - name: Extract changelog section for ${{ github.ref_name }}
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          awk -v v="$version" '
+            /^## / { if (found) exit; if (index($0, v)) { found=1; next } }
+            found { print }
+          ' CHANGELOG.md > release_notes.md
+          if [ ! -s release_notes.md ]; then
+            printf "Release %s\n" "${GITHUB_REF_NAME}" > release_notes.md
+          fi
+          echo "----- release notes -----"
+          cat release_notes.md
+
+      - name: Run GoReleaser
+        uses: goreleaser/goreleaser-action@v6
+        with:
+          distribution: goreleaser
+          version: "~> v2"
+          args: release --clean --release-notes=release_notes.md
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

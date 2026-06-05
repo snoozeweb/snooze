@@ -127,8 +127,66 @@ builds:
     flags: ["-trimpath", "-tags=osusergo,netgo"]
     ldflags: ["-s -w"]
 
+# One tar.gz per binary per platform. Per-binary (rather than a single grouped
+# archive) keeps the {{ .Binary }} naming and avoids the "different binary count
+# per platform" error: snooze-server/snooze ship linux+darwin while the
+# auxiliary daemons are linux-only.
 archives:
-  - formats: [tar.gz]
+  - id: snooze-server
+    ids: [snooze-server]
+    formats: [tar.gz]
+    name_template: "{{ .Binary }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+  - id: snooze
+    ids: [snooze]
+    formats: [tar.gz]
+    name_template: "{{ .Binary }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+  - id: snooze-syslog
+    ids: [snooze-syslog]
+    formats: [tar.gz]
+    name_template: "{{ .Binary }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+  - id: snooze-snmptrap
+    ids: [snooze-snmptrap]
+    formats: [tar.gz]
+    name_template: "{{ .Binary }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+  - id: snooze-smtp
+    ids: [snooze-smtp]
+    formats: [tar.gz]
+    name_template: "{{ .Binary }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+  - id: snooze-relp
+    ids: [snooze-relp]
+    formats: [tar.gz]
+    name_template: "{{ .Binary }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+  - id: snooze-googlechat
+    ids: [snooze-googlechat]
+    formats: [tar.gz]
+    name_template: "{{ .Binary }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+  - id: snooze-mattermost
+    ids: [snooze-mattermost]
+    formats: [tar.gz]
+    name_template: "{{ .Binary }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+  - id: snooze-teams
+    ids: [snooze-teams]
+    formats: [tar.gz]
+    name_template: "{{ .Binary }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+  - id: snooze-pacemaker
+    ids: [snooze-pacemaker]
+    formats: [tar.gz]
+    name_template: "{{ .Binary }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+  - id: snooze-jira
+    ids: [snooze-jira]
+    formats: [tar.gz]
+    name_template: "{{ .Binary }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+  - id: snooze-otlp
+    ids: [snooze-otlp]
+    formats: [tar.gz]
+    name_template: "{{ .Binary }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+  - id: snooze-k8s-events
+    ids: [snooze-k8s-events]
+    formats: [tar.gz]
+    name_template: "{{ .Binary }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+  - id: snooze-mcp
+    ids: [snooze-mcp]
+    formats: [tar.gz]
     name_template: "{{ .Binary }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
 
 nfpms:
@@ -137,16 +195,53 @@ nfpms:
     vendor: snoozeweb
     homepage: https://snoozeweb.net
     maintainer: Snooze maintainers <noreply@snoozeweb.net>
-    description: Snooze monitoring server and components.
+    description: |-
+      Snooze — clustered log-aggregation and alerting server.
+      Ships the API/UI server (with its React web bundle) plus the syslog,
+      SNMP-trap, RELP, SMTP, OTLP and Kubernetes-events inputs and the
+      Google Chat / Mattermost / Teams / Jira bridges, each with a systemd unit.
     license: AGPL-3.0
+    section: net
+    bindir: /usr/bin
     formats: [deb, rpm]
     contents:
+      # React/Vite web UI: snooze-server serves it from --web-dir
+      # (default /var/lib/snooze/web). Built by CI before GoReleaser runs.
+      - src: web/dist
+        dst: /var/lib/snooze/web
+        type: tree
+      # systemd units for the server and every auxiliary daemon.
       - src: packaging/systemd/snooze-server.service
         dst: /usr/lib/systemd/system/snooze-server.service
       - src: packaging/systemd/snooze-syslog.service
         dst: /usr/lib/systemd/system/snooze-syslog.service
       - src: packaging/systemd/snooze-snmptrap.service
         dst: /usr/lib/systemd/system/snooze-snmptrap.service
+      - src: packaging/systemd/snooze-smtp.service
+        dst: /usr/lib/systemd/system/snooze-smtp.service
+      - src: packaging/systemd/snooze-relp.service
+        dst: /usr/lib/systemd/system/snooze-relp.service
+      - src: packaging/systemd/snooze-otlp.service
+        dst: /usr/lib/systemd/system/snooze-otlp.service
+      - src: packaging/systemd/snooze-k8s-events.service
+        dst: /usr/lib/systemd/system/snooze-k8s-events.service
+      - src: packaging/systemd/snooze-googlechat.service
+        dst: /usr/lib/systemd/system/snooze-googlechat.service
+      - src: packaging/systemd/snooze-mattermost.service
+        dst: /usr/lib/systemd/system/snooze-mattermost.service
+      - src: packaging/systemd/snooze-teams.service
+        dst: /usr/lib/systemd/system/snooze-teams.service
+      - src: packaging/systemd/snooze-jira.service
+        dst: /usr/lib/systemd/system/snooze-jira.service
+      # Operator config directory. Shipped empty on purpose: the server boots
+      # on built-in defaults (SQLite at /var/lib/snooze) when -config is empty.
+      - dst: /etc/snooze/server
+        type: dir
+        file_info:
+          mode: 0750
+    scripts:
+      postinstall: packaging/nfpm/postinstall.sh
+      postremove: packaging/nfpm/postremove.sh
 
 checksum:
   name_template: "checksums.txt"

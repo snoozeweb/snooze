@@ -1,9 +1,9 @@
 name: Go tests
 on:
   pull_request:
-    branches: [master, "release*"]
+    branches: [main, "release*"]
   push:
-    branches: [master, "release*"]
+    branches: [main, "release*"]
 
 permissions:
   contents: read
