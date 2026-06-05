@@ -114,6 +114,58 @@ func TestAuthMiddleware_Skip(t *testing.T) {
 	require.True(t, reached)
 }
 
+func TestAuthMiddleware_SetsTenantFromClaim(t *testing.T) {
+	t.Parallel()
+	eng := testTokenEngine(t)
+	tok, _, err := eng.Sign(snoozetypes.Claims{
+		Subject:  "alice",
+		Method:   "local",
+		TenantID: "acme",
+	})
+	require.NoError(t, err)
+
+	var capturedTenantID string
+	var capturedOK bool
+	h := middleware.Auth(eng, nil)(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		capturedTenantID, capturedOK = auth.TenantFrom(r.Context())
+		w.WriteHeader(http.StatusOK)
+	}))
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	req.Header.Set("Authorization", "Bearer "+tok)
+	h.ServeHTTP(rec, req)
+
+	require.Equal(t, http.StatusOK, rec.Code)
+	require.True(t, capturedOK, "TenantFrom must find a tenant in ctx after Auth middleware")
+	require.Equal(t, "acme", capturedTenantID)
+}
+
+func TestAuthMiddleware_SetsDefaultTenantForLegacyToken(t *testing.T) {
+	t.Parallel()
+	eng := testTokenEngine(t)
+	// Sign a token with no TenantID (simulates a legacy/pre-multitenancy token).
+	tok, _, err := eng.Sign(snoozetypes.Claims{
+		Subject: "bob",
+		Method:  "local",
+		// TenantID deliberately omitted
+	})
+	require.NoError(t, err)
+
+	var capturedTenantID string
+	h := middleware.Auth(eng, nil)(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		capturedTenantID, _ = auth.TenantFrom(r.Context())
+		w.WriteHeader(http.StatusOK)
+	}))
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	req.Header.Set("Authorization", "Bearer "+tok)
+	h.ServeHTTP(rec, req)
+
+	require.Equal(t, http.StatusOK, rec.Code)
+	require.Equal(t, snoozetypes.DefaultTenant, capturedTenantID,
+		"empty TenantID claim must fall back to DefaultTenant")
+}
+
 func TestRequirePerm_Allows(t *testing.T) {
 	h := middleware.RequirePerm("rw_user")(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusNoContent)

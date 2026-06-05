@@ -17,8 +17,9 @@ type SkipPredicate func(r *http.Request) bool
 
 // Auth returns a chi middleware that validates the Authorization: Bearer
 // token via engine, then stores the resulting Claims on the request context
-// (auth.WithClaims). A missing or invalid token yields a 401 ErrEnvelope.
-// skip lets the caller bypass the check for public endpoints.
+// (auth.WithClaims) and stamps the tenant slug (auth.WithTenant). A missing
+// or invalid token yields a 401 ErrEnvelope. skip lets the caller bypass the
+// check for public endpoints.
 func Auth(engine *auth.TokenEngine, skip SkipPredicate) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -45,7 +46,15 @@ func Auth(engine *auth.TokenEngine, skip SkipPredicate) func(http.Handler) http.
 				writeUnauthorized(w, r, "invalid token")
 				return
 			}
+			// Stamp claims on context (existing behaviour).
 			ctx := auth.WithClaims(r.Context(), claims)
+			// Stamp tenant on context (D3). Empty claim (legacy token) falls
+			// back to DefaultTenant.
+			tenantID := claims.TenantID
+			if tenantID == "" {
+				tenantID = snoozetypes.DefaultTenant
+			}
+			ctx = auth.WithTenant(ctx, tenantID)
 			next.ServeHTTP(w, r.WithContext(ctx))
 		})
 	}
