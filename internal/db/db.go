@@ -4,11 +4,40 @@ package db
 
 import (
 	"context"
+	"sync"
 	"time"
 
 	"github.com/snoozeweb/snooze/internal/condition"
 	"github.com/snoozeweb/snooze/internal/syncer"
 )
+
+// globalCollections are NOT tenant-scoped: queries against them never receive a
+// tenant_id predicate and never fail-close on a missing tenant. Seeded with the
+// platform-global collections; RegisterGlobalCollection adds more at boot.
+var globalCollections = map[string]struct{}{
+	"tenant":    {}, // tenant registry itself
+	"secrets":   {}, // cluster secrets
+	"nodes":     {}, // cluster node registry (syncer)
+	"heartbeat": {}, // cluster heartbeat
+}
+
+var globalCollectionsMu sync.RWMutex
+
+// RegisterGlobalCollection marks name as global. Idempotent; call at boot before
+// the HTTP server starts.
+func RegisterGlobalCollection(name string) {
+	globalCollectionsMu.Lock()
+	globalCollections[name] = struct{}{}
+	globalCollectionsMu.Unlock()
+}
+
+// IsGlobalCollection reports whether name bypasses tenant injection.
+func IsGlobalCollection(name string) bool {
+	globalCollectionsMu.RLock()
+	_, ok := globalCollections[name]
+	globalCollectionsMu.RUnlock()
+	return ok
+}
 
 // Document is a free-form record payload. The plugin layer wraps these in
 // typed views (e.g. snoozetypes.Record) at the API boundary.
