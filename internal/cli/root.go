@@ -183,6 +183,7 @@ func NewRootCmd(rt *runtime) *cobra.Command {
 		newRootTokenCmd(),
 		newQueryCmd(),
 		newVersionCmd(),
+		newTenantCmd(),
 	)
 	return cmd
 }
