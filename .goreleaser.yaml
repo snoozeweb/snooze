@@ -1,9 +1,9 @@
 version: 2
 project_name: snooze
 
-before:
-  hooks:
-    - go mod tidy
+# No `before` hooks: `go mod tidy` would mutate go.mod mid-release and trip
+# GoReleaser's dirty-tree check. go.sum is committed, so the build is
+# self-contained without it.
 
 builds:
   - id: snooze-server

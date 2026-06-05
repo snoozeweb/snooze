@@ -61,23 +61,26 @@ jobs:
           cache: true
 
       - name: Extract changelog section for ${{ github.ref_name }}
+        # Write outside the work tree: GoReleaser validates the git state and
+        # aborts on any untracked file ("git is in a dirty state").
         run: |
           version="${GITHUB_REF_NAME#v}"
+          notes="${RUNNER_TEMP}/release_notes.md"
           awk -v v="$version" '
             /^## / { if (found) exit; if (index($0, v)) { found=1; next } }
             found { print }
-          ' CHANGELOG.md > release_notes.md
-          if [ ! -s release_notes.md ]; then
-            printf "Release %s\n" "${GITHUB_REF_NAME}" > release_notes.md
+          ' CHANGELOG.md > "$notes"
+          if [ ! -s "$notes" ]; then
+            printf "Release %s\n" "${GITHUB_REF_NAME}" > "$notes"
           fi
           echo "----- release notes -----"
-          cat release_notes.md
+          cat "$notes"
 
       - name: Run GoReleaser
         uses: goreleaser/goreleaser-action@v6
         with:
           distribution: goreleaser
           version: "~> v2"
-          args: release --clean --release-notes=release_notes.md
+          args: release --clean --release-notes=${{ runner.temp }}/release_notes.md
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
