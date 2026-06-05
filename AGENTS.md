@@ -1,8 +1,7 @@
 # AGENTS.md
 
 > Read by every agent that touches this repo (Claude, Cursor, Copilot, Codex…).
-> Snooze is a **Go codebase** since v2.0.0. Anything you remember about the
-> Python 1.x server is stale.
+> Snooze is a **Go codebase**. The Python 1.x server is not in this repo.
 
 ---
 
@@ -12,9 +11,11 @@
 * **Repo**: `github.com/snoozeweb/snooze`. Module path matches the import path.
 * **Language floor**: Go 1.25 (`go.mod`). Build flags: `-trimpath -tags 'osusergo,netgo'`,
   `CGO_ENABLED=0`. Container images are distroless.
-* **Frontend**: React 19 SPA under `web/` (Vite 6, TypeScript strict, TanStack Router + Query, Radix UI primitives, Chart.js wrappers). The Vue 3 codebase was replaced in the M0-M8 rewrite.
-* **Versioning**: `git tag vX.Y.Z` on `master`. The user manages all git
-  operations — never `commit`, `push`, or `tag` without explicit instruction.
+* **Frontend**: React 19 SPA under `web/` (Vite 6, TypeScript strict, TanStack Router + Query, Radix UI primitives, Chart.js wrappers).
+* **Versioning**: `git tag vX.Y.Z` on `main` (the default branch). Pushing a `v*`
+  tag triggers the GoReleaser release workflow (see **Releasing** under **How to
+  work**). The user manages all git operations — never `commit`, `push`, or `tag`
+  without explicit instruction.
 
 ---
 
@@ -56,7 +57,7 @@ snooze/
 │   │   └── asyncwriter/        # Batched bulk-write coalescer
 │   ├── housekeeper/             # TTL / retention worker
 │   ├── modification/            # Field mutation engine (set/delete/regex_sub/…)
-│   ├── mq/                      # Message queue: inproc / Postgres / Mongo bus, picked by DB type (Kombu replacement; see note)
+│   ├── mq/                      # Message queue: inproc / Postgres / Mongo bus, picked by DB type (see note)
 │   ├── plugins/                 # Plugin interfaces, registry, CRUD mounter, cache
 │   ├── pluginimpl/              # Concrete plugins (40+, one per package; set in all/)
 │   │   └── all/                # Blank-import aggregator for snooze-server
@@ -73,16 +74,18 @@ snooze/
 ├── examples/                     # Example DB configs (legacy 1.x single-file layout; `--config` wants a directory of section files)
 ├── packaging/
 │   ├── Dockerfile.golang        # Multi-stage build: web + binaries, distroless runtime
-│   ├── files/                   # Per-section example server config (core.yaml, general.yaml, …) for /etc/snooze
+│   ├── files/                   # 1.x-style example config; partly stale vs the Go schema (the rpm/deb ship an EMPTY /etc/snooze/server instead — see Releasing)
 │   ├── helm/                    # Kubernetes chart
-│   ├── systemd/                 # Unit files + tmpfiles
-│   ├── debian/                  # .deb metadata
-│   └── rpm/                     # .rpm spec
+│   ├── systemd/                 # Unit files (one per binary) + README
+│   ├── nfpm/                    # deb/rpm postinstall/postremove scriptlets (consumed by GoReleaser nfpm)
+│   ├── debian/                  # LEGACY Python .deb metadata (dpkg-buildpackage) — the Go deb/rpm come from GoReleaser/nfpm, NOT this
+│   └── rpm/                     # LEGACY Python .rpm spec — see above
 ├── scripts/                      # render-deploy.sh and other dev/release helpers
 ├── CHANGELOG.md                  # Keep-a-Changelog; add an [Unreleased] entry per user-visible change
 ├── docker-compose.yaml           # Mongo / Postgres / SQLite profiles
 ├── Taskfile.yaml                 # Root task runner (go:*, web:*, docs:*, chart:*, docker:build, goreleaser:*, render:deploy)
-├── .goreleaser.yaml              # Cross-arch release config
+├── .goreleaser.yaml              # GoReleaser: cross-arch binaries + per-binary tar.gz + deb/rpm (nfpm) + checksums
+├── .github/workflows/            # CI: go-tests (lint/test/build), docs (build + Pages deploy from main), release (v* tag → GoReleaser)
 ├── .golangci.yml                 # Linter config
 └── go.mod / go.sum
 ```
@@ -152,7 +155,7 @@ Files to consult first when starting a change:
 * **Confirm first**: anything pushing images to `snoozeweb` on Docker Hub,
   changes to `packaging/helm/values.yaml` defaults or `values.schema.json`,
   DB schema changes, modifications under `web/`.
-* **Forbidden**: force-pushing to `master`/`release*`, dropping DB
+* **Forbidden**: force-pushing to `main`/`release*`, dropping DB
   collections/tables on shared dev hosts, committing `.env.local` or
   `.ca-bundle/`.
 
@@ -173,9 +176,9 @@ Files to consult first when starting a change:
    - GREEN: minimum implementation to pass.
    - REFACTOR: tidy while staying green.
 3. When a change spans more than one backend, test all three. A shared
-   `internal/db/dbtest` suite exists for this but is **not yet wired in** —
-   today the driver tests are still hand-rolled per backend, and they have
-   known cross-backend divergences (see `internal/db/AGENTS.md`).
+   `internal/db/dbtest` holds a shared driver suite (`RunDriverSuite`), now
+   wired into every backend's `driver_test.go` via `TestDriverSuite`; some
+   known cross-backend divergences remain (see `internal/db/AGENTS.md`).
 4. **Every user-facing change ships its docs.** A new flag, route, plugin,
    or integration is not "done" until it has a page under `docs/content/`
    — `docs/AGENTS.md` says where each kind goes and how to verify
@@ -218,6 +221,38 @@ docker compose --profile mongo    up   # 3× snooze + 3× mongo + nginx
 docker compose --profile postgres up
 docker compose --profile sqlite   up
 ```
+
+### Releasing
+
+Releases are GoReleaser-driven and **tag-triggered**. The user tags; you don't
+(hard rule 3).
+
+1. Land the change set on `main`; move the `CHANGELOG.md` `[Unreleased]` heading
+   to `## vX.Y.Z`.
+2. The user pushes an annotated `vX.Y.Z` tag (keep the `v` prefix — the historical
+   `2.0.0` tag has none and never produced a release). That fires
+   `.github/workflows/release.yml`: a `go vet` + race-test gate → `npm run build` of
+   the web bundle → `goreleaser release`.
+3. GoReleaser publishes a GitHub Release with per-binary `tar.gz` archives, a **deb
+   and rpm for linux amd64+arm64**, and `checksums.txt`. The release body is the
+   curated `CHANGELOG.md` section for the tag (via `--release-notes`), not
+   GoReleaser's commit log.
+
+The deb/rpm ship every binary in `/usr/bin`, the React bundle in
+`/var/lib/snooze/web` (the server's `--web-dir` default — the SPA is **not**
+embedded, so the bundle is built before GoReleaser runs), all systemd units, and
+an **empty** `/etc/snooze/server` (the server boots on defaults + SQLite; the 1.x
+example configs in `packaging/files/` are deliberately not shipped — keys like
+`ssl.enabled: true` with no certs fail the Go validator). `packaging/nfpm/`
+holds the install scriptlets (create the `snooze` user + state dirs).
+
+Gotchas (learned cutting v2.1.0):
+- GoReleaser aborts on a dirty tree — anything the workflow generates (e.g. the
+  extracted release notes) must live **outside** the work tree, and there is no
+  `before: go mod tidy` hook (it mutates `go.mod`).
+- `internal/db/postgres` `TestListenNotifyRoundTrip` is flaky under CI load (a 5s
+  `pg_notify` round-trip timeout); if the release test gate fails *only* there,
+  re-run the job — it's not a regression.
 
 ### Adding a plugin
 
@@ -283,8 +318,8 @@ are the other accepted spellings, or set `DATABASE_URL`. The selector is
 The `asyncwriter` package batches increments to avoid write storms — it
 sits between the pipeline and the driver and is the same for all three
 backends. `internal/db/dbtest` holds a shared driver-test suite
-(`RunDriverSuite`) meant to run identically across all three; it is fully
-implemented but **not yet wired into any driver test** (see
+(`RunDriverSuite`) meant to run identically across all three; it is wired
+into every backend's `driver_test.go` via `TestDriverSuite` (see
 `internal/db/AGENTS.md`).
 
 ### Two-tier config
@@ -316,7 +351,7 @@ Monitoring systems push alerts in over HTTP. Any plugin implementing
 Datadog, CloudWatch, Sentry, New Relic, Azure Monitor, Prometheus,
 InfluxDB2, Kapacitor, heartbeat — the 11 `WebhookReceiver`s; `sns` is an
 *outbound* notifier, not a receiver). Receivers are **unauthenticated by
-default** (1.5.0 parity). The `ingest` section
+default**. The `ingest` section
 (`internal/config/schema/ingest.go`) adds opt-in, defense-in-depth
 hardening: a shared `Authorization: Bearer`/`?token=`, AWS SNS signature
 verification, and Sentry HMAC. Network isolation stays the baseline; these
@@ -361,8 +396,10 @@ reload token (64/32 random bytes via `crypto/rand`) in the `secrets`
 collection; a bcrypt `root` user whose generated password is logged **once at
 WARN to stderr**; the default roles (admin / viewer / notifications) and a
 default "Host and Message" aggregate rule — all guarded by an `init_db` marker
-doc. The JWT key always comes from the DB; `auth.token_secret` in the file
-config is currently **not** wired in (a known gap).
+doc. The JWT key comes from the DB by default (the seeded HS256 key); if
+`auth.token_secret` is set in the file config (or `SNOOZE_SERVER_AUTH_TOKEN_SECRET`),
+`bootSecrets` overrides the DB key with it — it must be ≥ `auth.MinSecretBytes`
+(32) bytes or boot fails.
 
 ### Two buses, easily confused
 
@@ -402,7 +439,7 @@ So the ~45 blank-imported plugins are not all served by a default install.
 
 | Anti-pattern                                        | Why we avoid it |
 |------------------------------------------------------|-----------------|
-| Resurrect any code from `src/snooze/`                | Deleted in Phase 9. Reference only via `git log`. |
+| Resurrect any code from `src/snooze/`                | It's deleted — reference only via `git log`. |
 | Pull in the legacy Python adapters                   | They live in the sibling `snooze_plugins` repo on a separate cadence; this module has native Go listeners under `cmd/snooze-*`. |
 | Add a fourth DB backend                              | Three backends is already a heavy test matrix. New storage goes through one of them or via a plugin. |
 | Couple plugins to a specific DB driver               | Plugins use the `db.Driver` from `host.DB()`; production plugin code never imports `internal/db/{mongo,postgres,sqlite}` (a plugin's `_test.go` may, to spin up a real backend). |
