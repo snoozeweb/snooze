@@ -1,3 +1,83 @@
+## [Unreleased]
+
+### Added
+
+- **Multi-tenancy (D1–D10).** A single `snooze-server` now hosts multiple
+  isolated organizations (tenants). Every alert, rule, snooze filter, user,
+  role, notification, and settings document is scoped to a `tenant_id` slug;
+  data from different tenants is never mixed at query time.
+
+- **`default` tenant.** A reserved `default` tenant is seeded automatically
+  at first boot. All single-tenant deployments continue to work without
+  change — existing data is already in `default`. No migration is required.
+
+- **`POST /api/v1/tenant`** — create a new tenant (requires `rw_tenant`).
+- **`GET /api/v1/tenant`** — list all tenants (requires `ro_tenant`).
+- **`GET /api/v1/tenant/{id}`** — fetch one tenant (requires `ro_tenant`).
+- **`PATCH /api/v1/tenant/{id}`** — update display name, status, or ingest
+  token (requires `rw_tenant`).
+- **`DELETE /api/v1/tenant/{id}`** — delete a tenant registry document
+  (requires `rw_tenant`; the `default` tenant is undeletable).
+
+- **Per-tenant ingest tokens.** Each tenant carries an opaque `ingest_token`.
+  Supply it as `Authorization: Bearer <token>` (or `?token=<token>`) on
+  `POST /api/v1/alerts` and `POST /api/v1/webhook/*` to route unauthenticated
+  ingestion to that tenant. Absent or unknown tokens fall back to `default`.
+
+- **Login `org` field.** All login endpoints (`/api/v1/login/local`, `/ldap`,
+  `/anonymous`) accept an optional `"org"` field to scope the issued JWT to a
+  specific tenant. Omitting `org` scopes to `default`.
+
+- **`tenant_id` JWT claim.** Issued tokens carry a `tenant_id` claim. Legacy
+  tokens without the claim are accepted and treated as `default`.
+
+- **Platform-tier permissions** `rw_tenant` / `ro_tenant` gate the
+  `/api/v1/tenant` registry routes, independent of any tenant.
+
+- **`platform_admin` seeded role** (holds `rw_tenant` + `ro_tenant`). The root
+  user is assigned this role at bootstrap.
+
+- **`snooze tenant` CLI** with subcommands `create`, `list`, `get`, `update`,
+  `delete`.
+
+- **LDAP per-tenant.** LDAP settings are stored in the `settings` collection
+  and are therefore tenant-scoped; each tenant can point to a different
+  directory.
+
+- **Tenant-partitioned plugin caches.** Rule, snooze-filter, aggregate-rule,
+  and notification processor caches are partitioned by tenant; a reload for
+  tenant A does not flush tenant B's cache.
+
+- **`db.Driver.Writer.Increment` gains a leading `ctx context.Context`.**
+  Asyncwriter coalescing is now tenant-partitioned: stats from different
+  tenants are never merged into the same counter bucket.
+
+- **`RuntimeSettings.InvalidateForTenant(tenantID string)`.** Lets the
+  settings plugin invalidate only the cache partition for the tenant that
+  changed, rather than flushing the entire settings cache.
+
+- **`syncer.Event.Tenant` field.** Syncer events carry the tenant slug;
+  topic names follow the convention `collection.<collection>.<tenant>` for
+  tenant-scoped events and `collection.<collection>` for global events.
+
+- **`housekeeper.ForEachTenant`.** Cleanup jobs iterate active tenants and
+  re-scope per tenant so one tenant's slow cleanup cannot block another.
+
+### Changed
+
+- **`sql.Builder.Convert` and `mongo.Convert`** gain leading `ctx context.Context`
+  and `collection string` parameters. The new parameters drive automatic
+  `tenant_id` predicate injection at the driver layer. All callers updated.
+
+- **Refresh token primary key** is now `["tenant_id", "token_hash"]` so a
+  refresh token in org A cannot clobber a token in org B.
+
+- **User primary key** is `["tenant_id", "name", "method"]`; role PK is
+  `["tenant_id", "name"]`.
+
+- **Settings PK** is `["tenant_id", "name"]`; the settings cache is
+  partitioned by tenant.
+
 ## v2.1.0
 
 ### Fixed
