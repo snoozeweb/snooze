@@ -16,6 +16,7 @@ package migrate
 import (
 	"context"
 	"fmt"
+	"log/slog"
 
 	"github.com/snoozeweb/snooze/internal/condition"
 	"github.com/snoozeweb/snooze/internal/db"
@@ -85,4 +86,77 @@ func writeSentinel(ctx context.Context, drv db.Driver) error {
 		return fmt.Errorf("migrate: write sentinel: %w", err)
 	}
 	return nil
+}
+
+// globalMigrationCollections is the set of collections that are
+// platform-global and must never receive a tenant_id stamp. Mirrors
+// db.IsGlobalCollection but kept local so the migrate package can run
+// without importing the driver's registry state (which may not be
+// initialized in a standalone migration binary).
+var globalMigrationCollections = map[string]struct{}{
+	"tenant":    {},
+	"secrets":   {},
+	"nodes":     {},
+	"heartbeat": {},
+}
+
+// isGlobalForMigration reports whether the named collection is platform-global
+// and must be excluded from backfill.
+func isGlobalForMigration(name string) bool {
+	_, ok := globalMigrationCollections[name]
+	return ok
+}
+
+// backfillTenantID iterates TenantScopedCollections that exist in the DB,
+// finds every document without a tenant_id field, and stamps it with
+// tenantID. It returns the count of documents actually modified.
+// ctx must carry WithPlatformScope.
+func backfillTenantID(ctx context.Context, drv db.Driver, tenantID string) (int, error) {
+	existing, err := drv.ListCollections(ctx)
+	if err != nil {
+		return 0, fmt.Errorf("migrate: list collections: %w", err)
+	}
+	existingSet := make(map[string]struct{}, len(existing))
+	for _, c := range existing {
+		existingSet[c] = struct{}{}
+	}
+
+	total := 0
+	for _, col := range TenantScopedCollections {
+		if isGlobalForMigration(col) {
+			continue
+		}
+		if _, ok := existingSet[col]; !ok {
+			continue
+		}
+		docs, _, err := drv.Search(ctx, col, condition.Cond{}, db.Page{})
+		if err != nil {
+			return total, fmt.Errorf("migrate: search %s: %w", col, err)
+		}
+		var toUpdate []db.Document
+		for _, d := range docs {
+			if tid, ok := d["tenant_id"]; ok && tid != "" {
+				continue
+			}
+			cp := make(db.Document, len(d))
+			for k, v := range d {
+				cp[k] = v
+			}
+			cp["tenant_id"] = tenantID
+			toUpdate = append(toUpdate, cp)
+		}
+		if len(toUpdate) == 0 {
+			continue
+		}
+		if _, err := drv.Write(ctx, col, toUpdate, db.WriteOptions{
+			Primary:    []string{"uid"},
+			UpdateTime: false,
+		}); err != nil {
+			return total, fmt.Errorf("migrate: write %s: %w", col, err)
+		}
+		n := len(toUpdate)
+		slog.Info("migrate: backfilled collection", "collection", col, "count", n)
+		total += n
+	}
+	return total, nil
 }
