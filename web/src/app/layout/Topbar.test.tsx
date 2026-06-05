@@ -87,6 +87,25 @@ describe("Topbar", () => {
     expect(screen.getByRole("menuitem", { name: /profile.*alice/i })).toBeInTheDocument();
   });
 
+  it("user menu shows the tenant slug when token carries tenant_id", async () => {
+    const header = btoa(JSON.stringify({ alg: "HS256", typ: "JWT" }));
+    const body = btoa(
+      JSON.stringify({
+        sub: "alice",
+        tenant_id: "acme",
+        exp: Math.floor(Date.now() / 1000) + 3600,
+        permissions: [],
+      }),
+    );
+    authStore.getState().login(`${header}.${body}.sig`);
+    const user = userEvent.setup();
+    renderTopbar({ onOpenPalette: () => undefined });
+    await user.click(screen.getByRole("button", { name: /signed in as alice/i }));
+    expect(screen.getByRole("menuitem", { name: /profile.*alice/i })).toBeInTheDocument();
+    // Org slug is shown inside the menu
+    expect(screen.getByText(/acme/)).toBeInTheDocument();
+  });
+
   it("renders the How to button", () => {
     renderTopbar({ onOpenPalette: () => undefined });
     expect(screen.getByRole("button", { name: /how to/i })).toBeInTheDocument();

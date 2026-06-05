@@ -84,6 +84,21 @@ describe("Sidebar", () => {
     const link = screen.getByRole("link", { name: /dashboard/i });
     expect(link).toHaveAttribute("aria-current", "page");
   });
+
+  it("sidebar footer shows the tenant slug when present in claims", () => {
+    const header = btoa(JSON.stringify({ alg: "HS256", typ: "JWT" }));
+    const body = btoa(
+      JSON.stringify({
+        sub: "alice",
+        tenant_id: "acme",
+        exp: Math.floor(Date.now() / 1000) + 3600,
+        permissions: [],
+      }),
+    );
+    authStore.getState().login(`${header}.${body}.sig`);
+    setup();
+    expect(screen.getByText("acme")).toBeInTheDocument();
+  });
 });
 
 describe("Sidebar permission filtering", () => {

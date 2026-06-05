@@ -54,6 +54,11 @@ export function Sidebar() {
           {(claims?.sub ?? "?").charAt(0).toUpperCase()}
         </span>
         <span>{claims?.sub ?? "anonymous"}</span>
+        {claims?.tenant_id ? (
+          <span className={styles.footerTenant} aria-label="Organization">
+            {claims.tenant_id}
+          </span>
+        ) : null}
       </div>
     </aside>
   );

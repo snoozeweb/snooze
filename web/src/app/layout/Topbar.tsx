@@ -17,6 +17,7 @@ function UserMenu() {
   const { claims, logout } = useAuth();
   const navigate = useNavigate();
   const username = claims?.sub ?? "anonymous";
+  const tenant = claims?.tenant_id || "default";
 
   return (
     <Menu>
@@ -26,6 +27,9 @@ function UserMenu() {
       <MenuContent>
         <MenuItem leadingIcon="sliders" onSelect={() => void navigate({ to: "/web/profile" })}>
           Profile · {username}
+        </MenuItem>
+        <MenuItem leadingIcon="briefcase" disabled>
+          Org: {tenant}
         </MenuItem>
         <MenuSeparator />
         <MenuItem
