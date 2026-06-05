@@ -252,3 +252,55 @@ server: https://snooze.example/
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "listen_udp")
 }
+
+func TestSyslogConfig_IngestTokenPassedToClient(t *testing.T) {
+	// Verify that when ingest_token is set in config, the daemon sends it as
+	// the Authorization header on alert POST requests.
+	var gotAuth string
+	var mu sync.Mutex
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/api/v1/alerts" {
+			mu.Lock()
+			gotAuth = r.Header.Get("Authorization")
+			mu.Unlock()
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{"data":[{"uid":"u1"}]}`))
+			return
+		}
+		w.WriteHeader(http.StatusNotFound)
+	}))
+	defer srv.Close()
+
+	cfg := syslogcomp.Config{
+		Server:         srv.URL,
+		IngestToken:    "my-ingest-tok",
+		ListenUDP:      "127.0.0.1:0",
+		RequestTimeout: 2 * time.Second,
+	}
+	d, err := syslogcomp.New(cfg, quietLogger())
+	require.NoError(t, err)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan error, 1)
+	go func() { done <- d.Run(ctx) }()
+
+	udpAddr, err := net.ResolveUDPAddr("udp", d.UDPAddr())
+	require.NoError(t, err)
+	conn, err := net.DialUDP("udp", nil, udpAddr)
+	require.NoError(t, err)
+	defer conn.Close() //nolint:errcheck
+
+	_, err = conn.Write([]byte(`<13>1 2024-01-01T00:00:00Z host app - - - hello ingest`))
+	require.NoError(t, err)
+
+	require.Eventually(t, func() bool {
+		mu.Lock()
+		defer mu.Unlock()
+		return gotAuth != ""
+	}, 2*time.Second, 20*time.Millisecond)
+
+	cancel()
+	<-done
+
+	require.Equal(t, "Bearer my-ingest-tok", gotAuth)
+}

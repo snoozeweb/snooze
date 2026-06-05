@@ -33,6 +33,13 @@ type Config struct {
 	// token directly. Useful for service accounts with long-lived tokens.
 	Token string `yaml:"token"`
 
+	// IngestToken, when set, is forwarded verbatim as `Authorization: Bearer
+	// <IngestToken>` on every alert POST, bypassing the username/password login
+	// flow. Corresponds to the per-tenant ingest token stored in the tenant
+	// registry (D4). When both Token and IngestToken are set, IngestToken wins
+	// on outbound requests.
+	IngestToken string `yaml:"ingest_token"`
+
 	// Insecure disables TLS verification for the Snooze HTTPS client.
 	Insecure bool `yaml:"insecure"`
 
