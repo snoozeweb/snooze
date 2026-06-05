@@ -250,9 +250,19 @@ func changeEventToSyncerEvent(raw bson.M, collection string) syncer.Event {
 		op = "delete"
 	}
 	uids := []string{}
+	var tenant string
 	if doc, ok := raw["fullDocument"].(bson.M); ok {
 		if uid, ok := doc["uid"].(string); ok && uid != "" {
 			uids = append(uids, uid)
+		}
+		// Resolve the tenant from the stored doc so the syncer can route the
+		// reload to the right per-tenant plugin. Global collections carry no
+		// tenant_id, leaving tenant empty (the bare topic). UpdateLookup makes
+		// fullDocument available on inserts/updates/replaces; deletes have no
+		// fullDocument and so carry no tenant (a delete still triggers a reload
+		// via the bare-prefix subscription, just without a tenant context).
+		if tid, ok := doc["tenant_id"].(string); ok {
+			tenant = tid
 		}
 	}
 	if dk, ok := raw["documentKey"].(bson.M); ok {
@@ -261,9 +271,10 @@ func changeEventToSyncerEvent(raw bson.M, collection string) syncer.Event {
 		}
 	}
 	return syncer.Event{
-		Topic:      "collection." + collection,
+		Topic:      syncer.CollectionTopic(collection, tenant),
 		Op:         op,
 		Collection: collection,
+		Tenant:     tenant,
 		UIDs:       uids,
 		At:         time.Now().UTC(),
 	}

@@ -143,18 +143,23 @@ func (s *Syncer) runPlugin(ctx context.Context, name string, plug Pluggable, deb
 	<-closeDone
 }
 
-// dispatchLoop coalesces a burst of events into a single Reload using a debounce
+// dispatchLoop coalesces a burst of events into Reload calls using a debounce
 // window. The timer is started on the first event after an idle period and
-// reset whenever a fresh event arrives within the window. The most recently
-// seen Event.Tenant is threaded into the Reload context via
+// reset whenever a fresh event arrives within the window. When the window
+// closes, the loop reloads once per distinct tenant seen during the window —
+// NOT once total for whichever tenant arrived last. This matters under
+// concurrent multi-tenant writes: an edit in tenant A and an edit in tenant B
+// landing inside the same window must both refresh their respective per-tenant
+// caches. Each tenant's Event.Tenant is threaded into the Reload context via
 // snoozetypes.WithTenant so tenant-scoped driver queries inside Reload are
-// correctly injected. When Tenant is empty (global collection event or
-// plugin-level event) no tenant is set.
+// correctly injected. The empty tenant (global collection event or
+// plugin-level event) is a valid key on its own and reloads with a naked ctx.
 func (s *Syncer) dispatchLoop(ctx context.Context, name string, plug Pluggable, in <-chan Event, debounce time.Duration, logger *slog.Logger) {
 	var timer *time.Timer
 	var timerC <-chan time.Time
-	pending := false
-	var lastTenant string
+	// pending is the set of distinct tenants whose reload is owed this window.
+	// The empty string is a legitimate member (global / plugin-level events).
+	pending := make(map[string]struct{})
 
 	stopTimer := func() {
 		if timer != nil {
@@ -178,8 +183,7 @@ func (s *Syncer) dispatchLoop(ctx context.Context, name string, plug Pluggable, 
 				stopTimer()
 				return
 			}
-			pending = true
-			lastTenant = ev.Tenant
+			pending[ev.Tenant] = struct{}{}
 			if timer == nil {
 				timer = time.NewTimer(debounce)
 				timerC = timer.C
@@ -193,16 +197,19 @@ func (s *Syncer) dispatchLoop(ctx context.Context, name string, plug Pluggable, 
 				timer.Reset(debounce)
 			}
 		case <-timerC:
-			if !pending {
+			if len(pending) == 0 {
 				continue
 			}
-			pending = false
-			reloadCtx := ctx
-			if lastTenant != "" {
-				reloadCtx = snoozetypes.WithTenant(ctx, lastTenant)
-			}
-			if err := plug.Reload(reloadCtx); err != nil {
-				logger.Warn("syncer: reload failed", "plugin", name, "err", err)
+			tenants := pending
+			pending = make(map[string]struct{})
+			for tenant := range tenants {
+				reloadCtx := ctx
+				if tenant != "" {
+					reloadCtx = snoozetypes.WithTenant(ctx, tenant)
+				}
+				if err := plug.Reload(reloadCtx); err != nil {
+					logger.Warn("syncer: reload failed", "plugin", name, "tenant", tenant, "err", err)
+				}
 			}
 		}
 	}

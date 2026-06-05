@@ -21,6 +21,7 @@ import (
 	"github.com/snoozeweb/snooze/internal/condition"
 	dbpkg "github.com/snoozeweb/snooze/internal/db"
 	"github.com/snoozeweb/snooze/internal/db/dbtest"
+	"github.com/snoozeweb/snooze/internal/syncer"
 	"github.com/snoozeweb/snooze/pkg/snoozetypes"
 )
 
@@ -676,6 +677,62 @@ func TestBusFanout(t *testing.T) {
 		require.Equal(t, "write", ev.Op)
 		require.Equal(t, "record", ev.Collection)
 		require.Len(t, ev.UIDs, 1)
+	case <-time.After(time.Second):
+		t.Fatal("expected event on bus")
+	}
+}
+
+// TestBusFanoutTenantStamped is the H2 regression guard: a write under a
+// tenant context must publish a change event whose Tenant field is set and
+// whose Topic is the per-tenant topic (collection.<coll>.<tenant>). Without
+// this the syncer's per-tenant Reload short-circuits on the empty tenant and
+// live cache reloads break (edits only apply after a full restart).
+func TestBusFanoutTenantStamped(t *testing.T) {
+	t.Parallel()
+	d := newTestDriver(t)
+	ctx, cancel := context.WithCancel(snoozetypes.WithTenant(context.Background(), "acme"))
+	defer cancel()
+
+	// Subscribe on the bare collection prefix; the per-tenant topic must still
+	// match because the syncer subscribes with HasPrefix semantics.
+	ch, err := d.Watcher().Subscribe(ctx, "collection.rule")
+	require.NoError(t, err)
+
+	_, err = d.Write(ctx, "rule", []dbpkg.Document{{"name": "owned"}}, dbpkg.WriteOptions{})
+	require.NoError(t, err)
+
+	select {
+	case ev := <-ch:
+		require.Equal(t, "write", ev.Op)
+		require.Equal(t, "rule", ev.Collection)
+		require.Equal(t, "acme", ev.Tenant, "event must carry the writing tenant")
+		require.Equal(t, syncer.CollectionTopic("rule", "acme"), ev.Topic,
+			"event topic must be the per-tenant topic")
+	case <-time.After(time.Second):
+		t.Fatal("expected event on bus")
+	}
+}
+
+// TestBusFanoutGlobalCollectionNoTenant confirms a write to a global
+// collection (no tenant injection) still publishes the bare topic with an
+// empty Tenant — the fix must not regress global collections.
+func TestBusFanoutGlobalCollectionNoTenant(t *testing.T) {
+	t.Parallel()
+	d := newTestDriver(t)
+	ctx, cancel := context.WithCancel(snoozetypes.WithPlatformScope(context.Background()))
+	defer cancel()
+
+	ch, err := d.Watcher().Subscribe(ctx, "collection.tenant")
+	require.NoError(t, err)
+
+	_, err = d.Write(ctx, "tenant", []dbpkg.Document{{"name": "acme"}}, dbpkg.WriteOptions{})
+	require.NoError(t, err)
+
+	select {
+	case ev := <-ch:
+		require.Equal(t, "tenant", ev.Collection)
+		require.Empty(t, ev.Tenant, "global collection event must carry no tenant")
+		require.Equal(t, "collection.tenant", ev.Topic)
 	case <-time.After(time.Second):
 		t.Fatal("expected event on bus")
 	}

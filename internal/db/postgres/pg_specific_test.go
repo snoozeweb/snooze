@@ -44,6 +44,38 @@ func TestListenNotifyRoundTrip(t *testing.T) {
 	}
 }
 
+// TestListenNotifyTenantStamped is the H2 regression guard for postgres: a
+// write under a tenant context must round-trip a notify whose Tenant field is
+// set and whose Topic is the per-tenant topic. Without the tenant on the
+// payload the receiving instance's per-tenant Reload short-circuits.
+func TestListenNotifyTenantStamped(t *testing.T) {
+	drv := newTestDriver(t) // skips under -short
+	ctx, cancel := context.WithTimeout(
+		snoozetypes.WithTenant(context.Background(), "acme"), 30*time.Second)
+	defer cancel()
+
+	bus := drv.Watcher()
+	subCtx, subCancel := context.WithCancel(ctx)
+	defer subCancel()
+	// Subscribe on the bare collection prefix; the per-tenant topic must still
+	// match because subscriptions use HasPrefix semantics.
+	ch, err := bus.Subscribe(subCtx, "collection.rule")
+	require.NoError(t, err)
+
+	_, err = drv.Write(ctx, "rule", []dbpkg.Document{{"name": "owned"}}, dbpkg.WriteOptions{})
+	require.NoError(t, err)
+
+	select {
+	case ev := <-ch:
+		require.Equal(t, "rule", ev.Collection)
+		require.Equal(t, "acme", ev.Tenant, "notify must carry the writing tenant")
+		require.Equal(t, syncer.CollectionTopic("rule", "acme"), ev.Topic,
+			"event topic must be the per-tenant topic")
+	case <-time.After(5 * time.Second):
+		t.Fatal("timeout waiting for collection.rule event")
+	}
+}
+
 // TestGINIndexUsage runs EXPLAIN on a containment query to confirm Postgres
 // chooses the GIN index we create at table-bootstrap time. The check is
 // resilient to small plan-format differences across Postgres versions.

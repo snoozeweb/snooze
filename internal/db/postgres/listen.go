@@ -12,6 +12,7 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	dbpkg "github.com/snoozeweb/snooze/internal/db"
 	"github.com/snoozeweb/snooze/internal/syncer"
 )
 
@@ -25,6 +26,25 @@ type notifyPayload struct {
 	Collection string   `json:"collection"`
 	Op         string   `json:"op"`
 	UIDs       []string `json:"uids,omitempty"`
+	// Tenant carries the per-tenant slug for tenant-scoped writes so the
+	// receiving instance can route the reload to the right per-tenant plugin.
+	// Empty for global collections / platform scope. omitempty keeps the wire
+	// format backward-compatible with older publishers.
+	Tenant string `json:"tenant,omitempty"`
+}
+
+// resolveNotifyTenant returns the tenant slug a change event for collection
+// should carry, given the writing context. It mirrors the driver-layer scope
+// rule: empty for global collections and platform scope, the per-tenant slug
+// for a scoped collection under a tenant. A fail-closed ErrNoTenant cannot
+// happen here because the write that triggered the notify already passed the
+// same scope check; we still treat any error as "no tenant" defensively.
+func resolveNotifyTenant(ctx context.Context, collection string) string {
+	tenant, inject, err := dbpkg.TenantScope(ctx, collection)
+	if err != nil || !inject {
+		return ""
+	}
+	return tenant
 }
 
 // pgBus is the Postgres LISTEN/NOTIFY-backed implementation of syncer.Bus.
@@ -79,6 +99,7 @@ func (b *pgBus) Publish(ctx context.Context, e syncer.Event) error {
 		Collection: e.Collection,
 		Op:         e.Op,
 		UIDs:       e.UIDs,
+		Tenant:     e.Tenant,
 	}
 	enc, err := json.Marshal(payload)
 	if err != nil {
@@ -250,9 +271,10 @@ func (b *pgBus) runListen(parentCtx context.Context) error {
 			continue
 		}
 		event := syncer.Event{
-			Topic:      "collection." + p.Collection,
+			Topic:      syncer.CollectionTopic(p.Collection, p.Tenant),
 			Op:         p.Op,
 			Collection: p.Collection,
+			Tenant:     p.Tenant,
 			UIDs:       p.UIDs,
 			At:         time.Now(),
 		}
@@ -264,7 +286,12 @@ func (b *pgBus) runListen(parentCtx context.Context) error {
 // notification ships only on commit. Callers running outside a transaction
 // can use the pgBus.Publish path instead.
 func notifyTx(ctx context.Context, tx pgx.Tx, collection, op string, uids []string) error {
-	payload := notifyPayload{Collection: collection, Op: op, UIDs: uids}
+	payload := notifyPayload{
+		Collection: collection,
+		Op:         op,
+		UIDs:       uids,
+		Tenant:     resolveNotifyTenant(ctx, collection),
+	}
 	enc, err := json.Marshal(payload)
 	if err != nil {
 		return fmt.Errorf("postgres notify: marshal: %w", err)
@@ -277,7 +304,12 @@ func notifyTx(ctx context.Context, tx pgx.Tx, collection, op string, uids []stri
 
 // notifyExec writes a pg_notify directly via the pool (no enclosing tx).
 func notifyExec(ctx context.Context, pool *pgxpool.Pool, collection, op string, uids []string) error {
-	payload := notifyPayload{Collection: collection, Op: op, UIDs: uids}
+	payload := notifyPayload{
+		Collection: collection,
+		Op:         op,
+		UIDs:       uids,
+		Tenant:     resolveNotifyTenant(ctx, collection),
+	}
 	enc, err := json.Marshal(payload)
 	if err != nil {
 		return fmt.Errorf("postgres notify: marshal: %w", err)

@@ -243,6 +243,72 @@ func TestRunStream_ConsumesAndDispatches(t *testing.T) {
 	}
 }
 
+// TestChangeEventToSyncerEvent_TenantStamped is the H2 regression guard for
+// mongo: a change event whose fullDocument carries tenant_id must produce a
+// syncer.Event with that Tenant and the per-tenant Topic. Without it the
+// receiving instance's per-tenant Reload short-circuits on the empty tenant.
+func TestChangeEventToSyncerEvent_TenantStamped(t *testing.T) {
+	raw := bson.M{
+		"operationType": "update",
+		"fullDocument":  bson.M{"uid": "uid-1", "tenant_id": "acme", "name": "owned"},
+		"documentKey":   bson.M{"uid": "uid-1"},
+	}
+	ev := changeEventToSyncerEvent(raw, "rule")
+	require.Equal(t, "rule", ev.Collection)
+	require.Equal(t, "write", ev.Op)
+	require.Equal(t, "acme", ev.Tenant, "event must carry the doc's tenant_id")
+	require.Equal(t, "collection.rule.acme", ev.Topic, "topic must be the per-tenant topic")
+	require.Equal(t, []string{"uid-1"}, ev.UIDs)
+}
+
+// TestChangeEventToSyncerEvent_GlobalNoTenant confirms a doc without tenant_id
+// (a global collection) still produces the bare topic with no tenant — the fix
+// must not invent a tenant for global collections.
+func TestChangeEventToSyncerEvent_GlobalNoTenant(t *testing.T) {
+	raw := bson.M{
+		"operationType": "insert",
+		"fullDocument":  bson.M{"uid": "uid-2", "name": "acme"},
+	}
+	ev := changeEventToSyncerEvent(raw, "tenant")
+	require.Equal(t, "tenant", ev.Collection)
+	require.Empty(t, ev.Tenant)
+	require.Equal(t, "collection.tenant", ev.Topic)
+}
+
+// TestRunStream_DispatchesTenantStampedEvent drives a tenant-stamped change
+// through the stub stream and asserts the dispatched event reaches a
+// bare-prefix subscriber carrying the per-tenant topic.
+func TestRunStream_DispatchesTenantStampedEvent(t *testing.T) {
+	buf := &bytes.Buffer{}
+	b := newTestBus(t, captureLogger(buf))
+
+	stream := &stubStream{
+		events: []bson.M{
+			{
+				"operationType": "update",
+				"fullDocument":  bson.M{"uid": "uid-1", "tenant_id": "acme"},
+				"documentKey":   bson.M{"uid": "uid-1"},
+			},
+		},
+	}
+	b.open = func(_ context.Context, _ string) (changeStream, error) { return stream, nil }
+
+	subCtx, subCancel := context.WithCancel(context.Background())
+	defer subCancel()
+	ch, err := b.Subscribe(subCtx, "collection.rule")
+	require.NoError(t, err)
+
+	select {
+	case ev := <-ch:
+		require.Equal(t, "collection.rule.acme", ev.Topic)
+		require.Equal(t, "acme", ev.Tenant)
+		require.Equal(t, "write", ev.Op)
+		require.Equal(t, []string{"uid-1"}, ev.UIDs)
+	case <-time.After(time.Second):
+		t.Fatal("did not receive dispatched event")
+	}
+}
+
 // ---------------------------------------------------------------------------
 // stubStream — minimal changeStream implementation for tests
 // ---------------------------------------------------------------------------

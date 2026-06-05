@@ -442,3 +442,84 @@ func TestSyncer_TenantContextOnReload(t *testing.T) {
 	cancel()
 	require.NoError(t, <-done)
 }
+
+// multiTenantPlugin records the set of tenant slugs it has been reloaded with.
+type multiTenantPlugin struct {
+	name string
+	mu   sync.Mutex
+	seen map[string]int
+}
+
+func (p *multiTenantPlugin) Name() string { return p.name }
+func (p *multiTenantPlugin) Reload(ctx context.Context) error {
+	tenant, _ := snoozetypes.TenantFrom(ctx)
+	p.mu.Lock()
+	if p.seen == nil {
+		p.seen = make(map[string]int)
+	}
+	p.seen[tenant]++
+	p.mu.Unlock()
+	return nil
+}
+func (p *multiTenantPlugin) seenTenants() map[string]int {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	out := make(map[string]int, len(p.seen))
+	for k, v := range p.seen {
+		out[k] = v
+	}
+	return out
+}
+
+// TestSyncer_ConcurrentMultiTenantReloadsAllFire is the MED regression guard:
+// when writes for several tenants land inside one debounce window, the syncer
+// must reload the plugin once per distinct (collection, tenant) — NOT coalesce
+// them all into a single reload for whichever tenant happened to arrive last.
+// The old dispatchLoop kept a single lastTenant, so concurrent multi-tenant
+// edits were silently dropped (only the last tenant's cache refreshed).
+func TestSyncer_ConcurrentMultiTenantReloadsAllFire(t *testing.T) {
+	bus := newFakeBus()
+	defer bus.Close()
+
+	plug := &multiTenantPlugin{name: "rule"}
+	s := &Syncer{
+		Bus:      bus,
+		Plugins:  map[string]Pluggable{plug.Name(): plug},
+		Debounce: 40 * time.Millisecond,
+		Logger:   quietLogger(),
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	done := make(chan error, 1)
+	go func() { done <- s.Run(ctx) }()
+
+	require.Eventually(t, func() bool {
+		bus.mu.Lock()
+		defer bus.mu.Unlock()
+		return len(bus.subs) >= 2
+	}, time.Second, 5*time.Millisecond, "subscriptions not registered")
+
+	// Publish writes for three tenants well inside one debounce window.
+	for _, tenant := range []string{"acme", "globex", "initech"} {
+		require.NoError(t, bus.Publish(ctx, Event{
+			Topic:      CollectionTopic("rule", tenant),
+			Op:         "write",
+			Collection: "rule",
+			Tenant:     tenant,
+		}))
+		time.Sleep(2 * time.Millisecond)
+	}
+
+	// All three tenants must each get reloaded exactly once.
+	require.Eventually(t, func() bool {
+		seen := plug.seenTenants()
+		return seen["acme"] >= 1 && seen["globex"] >= 1 && seen["initech"] >= 1
+	}, 2*time.Second, 5*time.Millisecond, "not every tenant was reloaded: %v", plug.seenTenants())
+
+	// And no stray empty-tenant reload should occur.
+	require.Zero(t, plug.seenTenants()[""], "no reload with empty tenant expected")
+
+	cancel()
+	require.NoError(t, <-done)
+}

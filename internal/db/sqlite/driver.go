@@ -1117,10 +1117,19 @@ func (d *Driver) collectionExists(ctx context.Context, collection string) (bool,
 }
 
 func (d *Driver) publishMutation(ctx context.Context, collection, op string, uids []string) {
+	// Resolve the tenant the write happened under so the syncer can route the
+	// reload to the right per-tenant plugin. TenantScope returns inject=false
+	// (empty tenant) for global collections and platform scope, and the
+	// per-tenant slug for a scoped collection — exactly the routing key we want.
+	tenant, inject, err := dbpkg.TenantScope(ctx, collection)
+	if err != nil || !inject {
+		tenant = ""
+	}
 	_ = d.bus.Publish(ctx, syncer.Event{
-		Topic:      "collection." + collection,
+		Topic:      syncer.CollectionTopic(collection, tenant),
 		Op:         op,
 		Collection: collection,
+		Tenant:     tenant,
 		UIDs:       append([]string(nil), uids...),
 		At:         time.Now(),
 	})
