@@ -30,17 +30,23 @@ var slugRE = regexp.MustCompile(`^[a-z0-9][a-z0-9\-]*[a-z0-9]$|^[a-z0-9]$`)
 //	DELETE /api/v1/tenant/{id}      — delete; "default" is undeletable (rw_tenant)
 func (rt *Router) mountTenant(r chi.Router) {
 	r.Route("/api/v1/tenant", func(sub chi.Router) {
+		// Control-plane routes are platform-gated: RequirePlatformPerm does a
+		// LITERAL permission check (rw_all is NOT honored) and requires the
+		// caller to be authenticated against the default tenant (D5). This
+		// closes C4 — a tenant admin seeded with rw_all can no longer touch the
+		// global tenant registry.
+		//
 		// Read endpoints (ro_tenant or rw_tenant).
-		sub.With(middleware.RequirePerm(auth.PermReadTenant, auth.PermWriteTenant)).
+		sub.With(middleware.RequirePlatformPerm(auth.PermReadTenant, auth.PermWriteTenant)).
 			Get("/", rt.handleTenantList)
-		sub.With(middleware.RequirePerm(auth.PermReadTenant, auth.PermWriteTenant)).
+		sub.With(middleware.RequirePlatformPerm(auth.PermReadTenant, auth.PermWriteTenant)).
 			Get("/{id}", rt.handleTenantGet)
 		// Write endpoints (rw_tenant only).
-		sub.With(middleware.RequirePerm(auth.PermWriteTenant)).
+		sub.With(middleware.RequirePlatformPerm(auth.PermWriteTenant)).
 			Post("/", rt.handleTenantCreate)
-		sub.With(middleware.RequirePerm(auth.PermWriteTenant)).
+		sub.With(middleware.RequirePlatformPerm(auth.PermWriteTenant)).
 			Patch("/{id}", rt.handleTenantUpdate)
-		sub.With(middleware.RequirePerm(auth.PermWriteTenant)).
+		sub.With(middleware.RequirePlatformPerm(auth.PermWriteTenant)).
 			Delete("/{id}", rt.handleTenantDelete)
 	})
 }

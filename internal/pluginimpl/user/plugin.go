@@ -16,6 +16,7 @@ import (
 
 	"github.com/snoozeweb/snooze/internal/auth"
 	"github.com/snoozeweb/snooze/internal/plugins"
+	"github.com/snoozeweb/snooze/pkg/snoozetypes"
 )
 
 //go:embed metadata.yaml
@@ -89,7 +90,47 @@ func (p *Plugin) Validate(obj map[string]any) error {
 			return errors.New("user: method must not be empty")
 		}
 	}
+	// Reserved-role allowlist (C5): a tenant-local user must not reference the
+	// platform_admin role. Scope is read from the doc's tenant_id here (default
+	// tenant = platform path); the authoritative guard keyed off the trusted
+	// request context lives in TransformWrite.
+	tenantID, _ := obj["tenant_id"].(string)
+	if tenantID == snoozetypes.DefaultTenant {
+		return nil
+	}
+	return checkReservedUserRoles(obj)
+}
+
+// checkReservedUserRoles rejects a user document that references the
+// platform_admin role via roles or static_roles.
+func checkReservedUserRoles(obj map[string]any) error {
+	for _, field := range []string{"roles", "static_roles"} {
+		for _, role := range stringSlice(obj[field]) {
+			if auth.IsReservedPlatformRole(role) {
+				return fmt.Errorf("user: role %q is reserved for the platform control plane and cannot be assigned to a tenant user", role)
+			}
+		}
+	}
 	return nil
+}
+
+// stringSlice coerces a JSON array field (decoded as []any or []string) into a
+// []string, ignoring non-string elements.
+func stringSlice(v any) []string {
+	switch s := v.(type) {
+	case []string:
+		return s
+	case []any:
+		out := make([]string, 0, len(s))
+		for _, e := range s {
+			if str, ok := e.(string); ok {
+				out = append(out, str)
+			}
+		}
+		return out
+	default:
+		return nil
+	}
 }
 
 // TransformWrite intercepts the `password` field on POST/PUT/PATCH bodies.
@@ -104,7 +145,19 @@ func (p *Plugin) Validate(obj map[string]any) error {
 // Mirrors the Python 1.x UserRoute.update_password helper, except the hash
 // lives on the user document itself rather than a separate user.password
 // collection (see internal/auth/local.go for the collapsed shape).
-func (p *Plugin) TransformWrite(_ context.Context, doc map[string]any) error {
+func (p *Plugin) TransformWrite(ctx context.Context, doc map[string]any) error {
+	// Authoritative C5 guard: a tenant-local user write may not reference the
+	// platform_admin role. Scope is taken from the trusted request context, so
+	// a forged/omitted tenant_id field on the body cannot bypass it. Platform
+	// scope and the default tenant are exempt.
+	if !snoozetypes.IsPlatformScope(ctx) {
+		if tenantID, ok := snoozetypes.TenantFrom(ctx); !ok || tenantID != snoozetypes.DefaultTenant {
+			if err := checkReservedUserRoles(doc); err != nil {
+				return err
+			}
+		}
+	}
+
 	raw, present := doc["password"]
 	if !present {
 		return nil

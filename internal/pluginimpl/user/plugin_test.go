@@ -13,11 +13,13 @@ import (
 	"go.opentelemetry.io/otel/trace"
 	"golang.org/x/crypto/bcrypt"
 
+	"github.com/snoozeweb/snooze/internal/auth"
 	"github.com/snoozeweb/snooze/internal/config"
 	"github.com/snoozeweb/snooze/internal/db"
 	"github.com/snoozeweb/snooze/internal/db/sqlite"
 	"github.com/snoozeweb/snooze/internal/plugins"
 	"github.com/snoozeweb/snooze/internal/telemetry"
+	"github.com/snoozeweb/snooze/pkg/snoozetypes"
 )
 
 type testHost struct{ drv *sqlite.Driver }
@@ -144,4 +146,72 @@ func TestUserPlugin_Validate_RejectsMissingName(t *testing.T) {
 	t.Parallel()
 	p := &Plugin{}
 	require.Error(t, p.Validate(map[string]any{"name": "", "method": "local"}))
+}
+
+// TestUserPlugin_Validate_RejectsPlatformAdminRoleForTenant reproduces the
+// user-side of C5: a tenant-scoped user document that references the
+// platform_admin role (via roles or static_roles) must be rejected. Before the
+// fix a tenant user with rw_user could self-assign platform_admin and escalate.
+func TestUserPlugin_Validate_RejectsPlatformAdminRoleForTenant(t *testing.T) {
+	t.Parallel()
+	p := &Plugin{}
+	t.Run("roles", func(t *testing.T) {
+		err := p.Validate(map[string]any{
+			"tenant_id": "acme",
+			"name":      "mallory",
+			"method":    "local",
+			"roles":     []any{"platform_admin"},
+		})
+		require.Error(t, err)
+	})
+	t.Run("static_roles", func(t *testing.T) {
+		err := p.Validate(map[string]any{
+			"tenant_id":    "acme",
+			"name":         "mallory",
+			"method":       "local",
+			"static_roles": []any{"platform_admin"},
+		})
+		require.Error(t, err)
+	})
+}
+
+// TestUserPlugin_Validate_AllowsPlatformAdminRoleForDefaultTenant: the
+// default-tenant path may assign platform_admin (this is how root is managed).
+func TestUserPlugin_Validate_AllowsPlatformAdminRoleForDefaultTenant(t *testing.T) {
+	t.Parallel()
+	p := &Plugin{}
+	require.NoError(t, p.Validate(map[string]any{
+		"tenant_id": "default",
+		"name":      "root",
+		"method":    "local",
+		"roles":     []any{"admin", "platform_admin"},
+	}))
+}
+
+// TestUserPlugin_TransformWrite_RejectsPlatformAdminRoleInTenantCtx is the
+// trusted runtime guard keyed off the request context.
+func TestUserPlugin_TransformWrite_RejectsPlatformAdminRoleInTenantCtx(t *testing.T) {
+	t.Parallel()
+	p := &Plugin{}
+	ctx := auth.WithTenant(context.Background(), "acme")
+	doc := map[string]any{
+		"name":   "mallory",
+		"method": "local",
+		"roles":  []any{"platform_admin"},
+	}
+	require.Error(t, p.TransformWrite(ctx, doc))
+}
+
+// TestUserPlugin_TransformWrite_AllowsPlatformAdminRoleInDefaultCtx: a
+// default-tenant context permits assigning the platform_admin role.
+func TestUserPlugin_TransformWrite_AllowsPlatformAdminRoleInDefaultCtx(t *testing.T) {
+	t.Parallel()
+	p := &Plugin{}
+	ctx := auth.WithTenant(context.Background(), snoozetypes.DefaultTenant)
+	doc := map[string]any{
+		"name":   "root",
+		"method": "local",
+		"roles":  []any{"admin", "platform_admin"},
+	}
+	require.NoError(t, p.TransformWrite(ctx, doc))
 }

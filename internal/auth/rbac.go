@@ -107,6 +107,21 @@ func (r *RoleResolver) Resolve(ctx context.Context, id Identity) ([]string, []st
 	return sortedKeys(roleSet), sortedKeys(permSet), nil
 }
 
+// IsReservedPlatformPerm reports whether p is a platform-only permission that a
+// tenant-local role/user write must never carry. These permissions gate the
+// /api/v1/tenant control plane (C5): folding them into a tenant role would let a
+// tenant user self-escalate to platform admin on re-login.
+func IsReservedPlatformPerm(p string) bool {
+	return p == PermReadTenant || p == PermWriteTenant
+}
+
+// IsReservedPlatformRole reports whether name is a platform-only role that a
+// tenant-local user write must never reference (via roles/static_roles) and a
+// tenant-local role write must never create/name.
+func IsReservedPlatformRole(name string) bool {
+	return name == PlatformAdminRole
+}
+
 // HasPermission returns true when the claim set carries either the requested
 // permission or the AllPermission wildcard.
 func HasPermission(claims snoozetypes.Claims, want string) bool {

@@ -81,8 +81,12 @@ func tenantRouter(t *testing.T, tdb *tenantDB, perms ...string) (chi.Router, *Ro
 	r.Use(func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
 			ctx := auth.WithClaims(req.Context(), snoozetypes.Claims{
-				Subject:     "admin",
-				Method:      "local",
+				Subject: "admin",
+				Method:  "local",
+				// Platform admins live in the default tenant (D5). The tenant
+				// registry is platform-gated, so these tests model an operator
+				// authenticated against the default tenant.
+				TenantID:    snoozetypes.DefaultTenant,
 				Permissions: perms,
 			})
 			req = req.WithContext(ctx)
@@ -91,6 +95,95 @@ func tenantRouter(t *testing.T, tdb *tenantDB, perms ...string) (chi.Router, *Ro
 	})
 	rt.mountTenant(r)
 	return r, rt
+}
+
+// tenantRouterClaims is like tenantRouter but injects a full Claims value so
+// the test can control the TenantID origin (platform-permission gating).
+func tenantRouterClaims(t *testing.T, tdb *tenantDB, claims snoozetypes.Claims) chi.Router {
+	t.Helper()
+	rt := &Router{
+		Auth: testTokenEngine(t),
+		DB:   tdb,
+	}
+	r := chi.NewRouter()
+	r.Use(func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+			ctx := auth.WithClaims(req.Context(), claims)
+			next.ServeHTTP(w, req.WithContext(ctx))
+		})
+	})
+	rt.mountTenant(r)
+	return r
+}
+
+// TestTenant_TenantAdminRwAllForbidden reproduces C4: a tenant admin seeded
+// with the rw_all wildcard but living in a non-default tenant must be denied
+// on every /api/v1/tenant verb. Before the fix, RequirePerm honored rw_all and
+// let them list/create/delete every org on the global tenant collection.
+func TestTenant_TenantAdminRwAllForbidden(t *testing.T) {
+	claims := snoozetypes.Claims{
+		Subject:     "acme-admin",
+		TenantID:    "acme",
+		Permissions: []string{auth.AllPermission},
+	}
+
+	t.Run("GET list", func(t *testing.T) {
+		tdb := &tenantDB{docs: []db.Document{{"id": "acme"}}}
+		r := tenantRouterClaims(t, tdb, claims)
+		rec := httptest.NewRecorder()
+		r.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/v1/tenant", nil))
+		require.Equal(t, http.StatusForbidden, rec.Code)
+	})
+
+	t.Run("POST create", func(t *testing.T) {
+		tdb := &tenantDB{}
+		r := tenantRouterClaims(t, tdb, claims)
+		body := bytes.NewBufferString(`{"id":"evil","display_name":"Evil"}`)
+		req := httptest.NewRequest(http.MethodPost, "/api/v1/tenant", body)
+		req.Header.Set("Content-Type", "application/json")
+		rec := httptest.NewRecorder()
+		r.ServeHTTP(rec, req)
+		require.Equal(t, http.StatusForbidden, rec.Code)
+		require.Empty(t, tdb.written, "no tenant doc may be written by a tenant admin")
+	})
+
+	t.Run("DELETE", func(t *testing.T) {
+		tdb := &tenantDB{docs: []db.Document{{"id": "beta"}}}
+		r := tenantRouterClaims(t, tdb, claims)
+		rec := httptest.NewRecorder()
+		r.ServeHTTP(rec, httptest.NewRequest(http.MethodDelete, "/api/v1/tenant/beta", nil))
+		require.Equal(t, http.StatusForbidden, rec.Code)
+	})
+}
+
+// TestTenant_DefaultTenantPlatformAdminAllowed is path (b): a default-tenant
+// admin carrying the literal platform permission may operate the registry.
+func TestTenant_DefaultTenantPlatformAdminAllowed(t *testing.T) {
+	claims := snoozetypes.Claims{
+		Subject:     "root",
+		TenantID:    snoozetypes.DefaultTenant,
+		Permissions: []string{auth.PermWriteTenant},
+	}
+
+	t.Run("GET list", func(t *testing.T) {
+		tdb := &tenantDB{docs: []db.Document{{"id": "acme"}}}
+		r := tenantRouterClaims(t, tdb, claims)
+		rec := httptest.NewRecorder()
+		r.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/v1/tenant", nil))
+		require.Equal(t, http.StatusOK, rec.Code)
+	})
+
+	t.Run("POST create", func(t *testing.T) {
+		tdb := &tenantDB{}
+		r := tenantRouterClaims(t, tdb, claims)
+		body := bytes.NewBufferString(`{"id":"acme","display_name":"Acme"}`)
+		req := httptest.NewRequest(http.MethodPost, "/api/v1/tenant", body)
+		req.Header.Set("Content-Type", "application/json")
+		rec := httptest.NewRecorder()
+		r.ServeHTTP(rec, req)
+		require.Equal(t, http.StatusCreated, rec.Code)
+		require.Len(t, tdb.written, 1)
+	})
 }
 
 func TestTenantCreate_RequiresWritePerm(t *testing.T) {

@@ -11,11 +11,13 @@ import (
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/trace"
 
+	"github.com/snoozeweb/snooze/internal/auth"
 	"github.com/snoozeweb/snooze/internal/config"
 	"github.com/snoozeweb/snooze/internal/db"
 	"github.com/snoozeweb/snooze/internal/db/sqlite"
 	"github.com/snoozeweb/snooze/internal/plugins"
 	"github.com/snoozeweb/snooze/internal/telemetry"
+	"github.com/snoozeweb/snooze/pkg/snoozetypes"
 )
 
 type testHost struct{ drv *sqlite.Driver }
@@ -69,4 +71,87 @@ func TestRolePlugin_Validate_AcceptsValidDoc(t *testing.T) {
 		"tenant_id": "acme",
 		"name":      "admin",
 	}))
+}
+
+// TestRolePlugin_Validate_RejectsReservedPermForTenant reproduces C5: a
+// tenant-scoped role document that folds a reserved platform permission must be
+// rejected by Validate. Before the fix Validate accepted any free-form
+// permissions[] verbatim, so a tenant user with rw_role could mint a role
+// {permissions:[rw_tenant]}, self-assign and escalate to platform admin.
+func TestRolePlugin_Validate_RejectsReservedPermForTenant(t *testing.T) {
+	t.Parallel()
+	p := &Plugin{}
+	for _, perm := range []string{"rw_tenant", "ro_tenant"} {
+		err := p.Validate(map[string]any{
+			"tenant_id":   "acme",
+			"name":        "sneaky",
+			"permissions": []any{perm},
+		})
+		require.Error(t, err, "tenant role carrying %q must be rejected", perm)
+	}
+}
+
+// TestRolePlugin_Validate_RejectsPlatformAdminNameForTenant: a tenant cannot
+// create or impersonate the platform_admin role.
+func TestRolePlugin_Validate_RejectsPlatformAdminNameForTenant(t *testing.T) {
+	t.Parallel()
+	p := &Plugin{}
+	err := p.Validate(map[string]any{
+		"tenant_id": "acme",
+		"name":      "platform_admin",
+	})
+	require.Error(t, err)
+}
+
+// TestRolePlugin_Validate_AllowsReservedPermForDefaultTenant is the
+// default-tenant/platform path: the doc tenant_id is the default tenant, so the
+// reserved permission is allowed.
+func TestRolePlugin_Validate_AllowsReservedPermForDefaultTenant(t *testing.T) {
+	t.Parallel()
+	p := &Plugin{}
+	require.NoError(t, p.Validate(map[string]any{
+		"tenant_id":   "default",
+		"name":        "platform_admin",
+		"permissions": []any{"rw_tenant", "ro_tenant"},
+	}))
+}
+
+// TestRolePlugin_TransformWrite_RejectsReservedPermInTenantCtx is the trusted
+// runtime guard: the request context (not the client-supplied tenant_id field)
+// decides. A tenant-scoped context must reject a reserved permission.
+func TestRolePlugin_TransformWrite_RejectsReservedPermInTenantCtx(t *testing.T) {
+	t.Parallel()
+	p := &Plugin{}
+	ctx := auth.WithTenant(context.Background(), "acme")
+	doc := map[string]any{
+		"name":        "sneaky",
+		"permissions": []any{"rw_tenant"},
+	}
+	require.Error(t, p.TransformWrite(ctx, doc))
+}
+
+// TestRolePlugin_TransformWrite_AllowsReservedPermInDefaultCtx: a default-tenant
+// context (platform admin) may write the reserved permission.
+func TestRolePlugin_TransformWrite_AllowsReservedPermInDefaultCtx(t *testing.T) {
+	t.Parallel()
+	p := &Plugin{}
+	ctx := auth.WithTenant(context.Background(), snoozetypes.DefaultTenant)
+	doc := map[string]any{
+		"name":        "platform_admin",
+		"permissions": []any{"rw_tenant", "ro_tenant"},
+	}
+	require.NoError(t, p.TransformWrite(ctx, doc))
+}
+
+// TestRolePlugin_TransformWrite_AllowsReservedPermUnderPlatformScope: the
+// platform-scope escape hatch is honored.
+func TestRolePlugin_TransformWrite_AllowsReservedPermUnderPlatformScope(t *testing.T) {
+	t.Parallel()
+	p := &Plugin{}
+	ctx := auth.WithPlatformScope(context.Background())
+	doc := map[string]any{
+		"name":        "platform_admin",
+		"permissions": []any{"rw_tenant"},
+	}
+	require.NoError(t, p.TransformWrite(ctx, doc))
 }
