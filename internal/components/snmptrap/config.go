@@ -33,6 +33,11 @@ type Config struct {
 	Password string `yaml:"password"`
 	Method   string `yaml:"method"`
 
+	// IngestToken, when set, is forwarded as `Authorization: Bearer <IngestToken>`
+	// on every outbound alert POST, bypassing the username/password login flow.
+	// Use the per-tenant ingest token from the tenant registry (D4).
+	IngestToken string `yaml:"ingest_token"`
+
 	// Insecure disables TLS verification when calling the Snooze API.
 	Insecure bool `yaml:"insecure"`
 

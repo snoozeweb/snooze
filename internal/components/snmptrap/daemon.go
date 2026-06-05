@@ -36,13 +36,14 @@ func NewDaemon(cfg Config, logger *slog.Logger) (*Daemon, error) {
 		logger = slog.Default()
 	}
 	client, err := snoozeclient.New(snoozeclient.Options{
-		BaseURL:  cfg.Server,
-		Username: cfg.Username,
-		Password: cfg.Password,
-		Method:   cfg.Method,
-		Insecure: cfg.Insecure,
-		Timeout:  cfg.Timeout,
-		Logger:   logger,
+		BaseURL:     cfg.Server,
+		Username:    cfg.Username,
+		Password:    cfg.Password,
+		Method:      cfg.Method,
+		IngestToken: cfg.IngestToken,
+		Insecure:    cfg.Insecure,
+		Timeout:     cfg.Timeout,
+		Logger:      logger,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("snmptrap: build client: %w", err)

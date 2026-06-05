@@ -77,3 +77,14 @@ v3:
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "v3.user")
 }
+
+func TestLoadConfig_IngestTokenRoundTrips(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "snmptrap.yaml")
+	body := "server: https://snooze.example/\ningest_token: tok-abc\n"
+	require.NoError(t, os.WriteFile(path, []byte(body), 0o600))
+
+	cfg, err := snmptrap.LoadConfig(path)
+	require.NoError(t, err)
+	require.Equal(t, "tok-abc", cfg.IngestToken)
+}
