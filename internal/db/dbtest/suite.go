@@ -774,8 +774,8 @@ func testTenantABIsolation(t *testing.T, drv db.Driver) {
 	ctxA := snoozetypes.WithTenant(context.Background(), "alpha")
 	ctxB := snoozetypes.WithTenant(context.Background(), "beta")
 
-	mustWriteCtx(t, drv, ctxA, "record", db.Document{"msg": "from-a"})
-	mustWriteCtx(t, drv, ctxB, "record", db.Document{"msg": "from-b"})
+	mustWriteCtx(ctxA, t, drv, "record", db.Document{"msg": "from-a"})
+	mustWriteCtx(ctxB, t, drv, "record", db.Document{"msg": "from-b"})
 
 	docsA, totalA, err := drv.Search(ctxA, "record", condition.Cond{}, db.Page{})
 	require.NoError(t, err)
@@ -793,8 +793,8 @@ func testPlatformScopeSeesAll(t *testing.T, drv db.Driver) {
 	ctxB := snoozetypes.WithTenant(context.Background(), "beta")
 	ctxPlat := snoozetypes.WithPlatformScope(context.Background())
 
-	mustWriteCtx(t, drv, ctxA, "record", db.Document{"msg": "from-a"})
-	mustWriteCtx(t, drv, ctxB, "record", db.Document{"msg": "from-b"})
+	mustWriteCtx(ctxA, t, drv, "record", db.Document{"msg": "from-a"})
+	mustWriteCtx(ctxB, t, drv, "record", db.Document{"msg": "from-b"})
 
 	docs, total, err := drv.Search(ctxPlat, "record", condition.Cond{}, db.Page{})
 	require.NoError(t, err)
@@ -830,7 +830,7 @@ func testGlobalCollectionNoInjection(t *testing.T, drv db.Driver) {
 	require.NotEmpty(t, docs)
 }
 
-func mustWriteCtx(t *testing.T, drv db.Driver, ctx context.Context, collection string, docs ...db.Document) db.WriteResult {
+func mustWriteCtx(ctx context.Context, t *testing.T, drv db.Driver, collection string, docs ...db.Document) db.WriteResult {
 	t.Helper()
 	res, err := drv.Write(ctx, collection, docs, db.WriteOptions{UpdateTime: false})
 	require.NoError(t, err)
