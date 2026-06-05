@@ -1,6 +1,7 @@
 package plugins
 
 import (
+	"context"
 	"time"
 
 	"github.com/snoozeweb/snooze/internal/db"
@@ -43,7 +44,10 @@ func RecordStat(host Host, eventEpoch int64, metric string, labels map[string]st
 		if key == "" {
 			continue
 		}
-		w.Increment(StatsCollection, "value", db.Document{
+		// RecordStat has no ctx of its own; the tenant-scoped stats wiring lands
+		// in a later phase. Until then, enqueue under a tenant-less context so the
+		// async writer flushes these counters under platform scope.
+		w.Increment(context.Background(), StatsCollection, "value", db.Document{
 			"metric": metric,
 			"dim":    dim,
 			"key":    key,

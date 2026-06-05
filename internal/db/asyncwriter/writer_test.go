@@ -132,9 +132,9 @@ func TestWriter_MergesDeltas(t *testing.T) {
 	go func() { doneCh <- w.Run(ctx) }()
 
 	// Enqueue increments before advancing.
-	w.Increment("snooze", "hits", db.Document{"name": "rule 01"}, 1)
-	w.Increment("snooze", "hits", db.Document{"name": "rule 01"}, 2)
-	w.Increment("snooze", "hits", db.Document{"name": "rule 02"}, 5)
+	w.Increment(context.Background(), "snooze", "hits", db.Document{"name": "rule 01"}, 1)
+	w.Increment(context.Background(), "snooze", "hits", db.Document{"name": "rule 01"}, 2)
+	w.Increment(context.Background(), "snooze", "hits", db.Document{"name": "rule 02"}, 5)
 	// Spin until accept has drained the queue, otherwise advancing the clock
 	// would race the Increment send.
 	require.Eventually(t, func() bool {
@@ -175,7 +175,7 @@ func TestWriter_DrainOnShutdown(t *testing.T) {
 	doneCh := make(chan error, 1)
 	go func() { doneCh <- w.Run(ctx) }()
 
-	w.Increment("snooze", "hits", db.Document{"name": "rule"}, 7)
+	w.Increment(context.Background(), "snooze", "hits", db.Document{"name": "rule"}, 7)
 	require.Eventually(t, func() bool {
 		w.mu.Lock()
 		defer w.mu.Unlock()

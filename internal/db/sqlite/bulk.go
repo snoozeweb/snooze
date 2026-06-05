@@ -37,6 +37,12 @@ func (d *Driver) BulkIncrement(ctx context.Context, collection string, ops []dbp
 	if err != nil {
 		return err
 	}
+	// findOneInTx goes through compileWith -> TenantScope, so existing rows are
+	// already tenant-fenced; we only need the stamp for the upsert-insert path.
+	tenantID, injectTenant, tenantErr := dbpkg.TenantScope(ctx, collection)
+	if tenantErr != nil {
+		return tenantErr
+	}
 	tx, err := d.db.BeginTx(ctx, nil)
 	if err != nil {
 		return err
@@ -89,6 +95,9 @@ func (d *Driver) BulkIncrement(ctx context.Context, collection string, ops []dbp
 		}
 		for k, v := range op.Deltas {
 			doc[k] = float64(v)
+		}
+		if injectTenant {
+			doc["tenant_id"] = tenantID
 		}
 		if _, ok := doc["uid"].(string); !ok {
 			doc["uid"] = uuid.NewString()

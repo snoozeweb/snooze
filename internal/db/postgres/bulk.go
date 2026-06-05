@@ -31,6 +31,12 @@ func (d *Driver) BulkIncrement(ctx context.Context, collection string, ops []dbp
 		return err
 	}
 	qt := quoteIdent(table)
+	// The match path goes through convert -> TenantScope, so existing rows are
+	// already tenant-fenced; we only need the stamp for the upsert-insert path.
+	tenantID, injectTenant, tenantErr := dbpkg.TenantScope(ctx, collection)
+	if tenantErr != nil {
+		return fmt.Errorf("postgres: BulkIncrement: %w", tenantErr)
+	}
 	tx, err := d.pool.BeginTx(ctx, pgx.TxOptions{})
 	if err != nil {
 		return fmt.Errorf("postgres: begin BulkIncrement: %w", err)
@@ -61,6 +67,9 @@ func (d *Driver) BulkIncrement(ctx context.Context, collection string, ops []dbp
 			}
 			for f, dv := range op.Deltas {
 				newDoc[f] = dv
+			}
+			if injectTenant {
+				newDoc["tenant_id"] = tenantID
 			}
 			if _, ok := newDoc["uid"].(string); !ok {
 				newDoc["uid"] = newUID()

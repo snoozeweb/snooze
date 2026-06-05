@@ -17,18 +17,33 @@ func (d *Driver) BulkIncrement(ctx context.Context, collection string, ops []dbp
 	if len(ops) == 0 {
 		return nil
 	}
+	// BulkIncrement filters are built directly from op.Search (not via Convert),
+	// so tenant isolation must be injected by hand into both the match filter and
+	// the $setOnInsert payload.
+	tenantID, injectTenant, tenantErr := dbpkg.TenantScope(ctx, collection)
+	if tenantErr != nil {
+		return fmt.Errorf("mongo: BulkIncrement: %w", tenantErr)
+	}
 	models := make([]mongo.WriteModel, 0, len(ops))
 	for _, op := range ops {
+		filter := bson.M(cloneDoc(op.Search))
+		if injectTenant {
+			filter["tenant_id"] = tenantID
+		}
 		deltas := bson.M{}
 		for f, v := range op.Deltas {
 			deltas[f] = v
 		}
 		update := bson.M{"$inc": deltas}
 		if upsert {
-			update["$setOnInsert"] = bson.M(op.Search)
+			setOnInsert := bson.M(cloneDoc(op.Search))
+			if injectTenant {
+				setOnInsert["tenant_id"] = tenantID
+			}
+			update["$setOnInsert"] = setOnInsert
 		}
 		m := mongo.NewUpdateOneModel().
-			SetFilter(bson.M(op.Search)).
+			SetFilter(filter).
 			SetUpdate(update).
 			SetUpsert(upsert)
 		models = append(models, m)

@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/snoozeweb/snooze/internal/db"
+	"github.com/snoozeweb/snooze/pkg/snoozetypes"
 )
 
 type incRequest struct {
@@ -18,6 +19,7 @@ type incRequest struct {
 	field      string
 	search     db.Document
 	delta      int64
+	ctx        context.Context // carries tenant slug for partitioned coalescing
 }
 
 // Writer batches increment mutations and flushes them periodically. Pass
@@ -70,12 +72,20 @@ func New(d db.Driver, period time.Duration, clock Clock, opts ...Option) *Writer
 }
 
 // Increment queues a single (collection, search, field, delta) update.
-// Returns immediately; merges happen inside the flusher.
-func (w *Writer) Increment(collection, field string, search db.Document, delta int64) {
+// ctx must carry the tenant (via snoozetypes.WithTenant) for tenant-partitioned
+// coalescing and for the downstream BulkIncrement call. Returns immediately;
+// merges happen inside the flusher.
+func (w *Writer) Increment(ctx context.Context, collection, field string, search db.Document, delta int64) {
 	select {
 	case <-w.closing:
 		return
-	case w.requests <- incRequest{collection: collection, field: field, search: search, delta: delta}:
+	case w.requests <- incRequest{
+		collection: collection,
+		field:      field,
+		search:     cloneDocWithTenant(ctx, search),
+		delta:      delta,
+		ctx:        ctx,
+	}:
 	}
 }
 
@@ -130,7 +140,11 @@ func (w *Writer) accept(r incRequest) {
 	entry.deltas[r.field] += r.delta
 }
 
-func (w *Writer) flush(ctx context.Context) error {
+// flush drains the pending buckets to the driver. Each collection's
+// BulkIncrement runs under a context derived from the tenant baked into its
+// search docs (or platform scope when none is present), so the caller's ctx is
+// intentionally unused here.
+func (w *Writer) flush(_ context.Context) error {
 	w.mu.Lock()
 	if len(w.buckets) == 0 {
 		w.mu.Unlock()
@@ -141,7 +155,16 @@ func (w *Writer) flush(ctx context.Context) error {
 	w.mu.Unlock()
 	for collection, entries := range pending {
 		ops := make([]db.IncrementOp, 0, len(entries))
+		var flushCtx context.Context
 		for _, e := range entries {
+			// Extract the tenant baked into the search doc by cloneDocWithTenant
+			// so BulkIncrement's own TenantScope resolves the right tenant. All
+			// entries in a bucket that share a tenant_id key carry the same value.
+			if flushCtx == nil {
+				if t, ok := e.search["tenant_id"].(string); ok && t != "" {
+					flushCtx = snoozetypes.WithTenant(context.Background(), t)
+				}
+			}
 			// Skip zero-net updates: matches Python's `if value > 0` short-circuit,
 			// generalised to any non-zero delta (we accept negative deltas too).
 			hasNonZero := false
@@ -159,7 +182,13 @@ func (w *Writer) flush(ctx context.Context) error {
 		if len(ops) == 0 {
 			continue
 		}
-		if err := w.d.BulkIncrement(ctx, collection, ops, w.upsert); err != nil {
+		// No tenant baked into the search docs (global collection or platform
+		// scope at enqueue time): flush under platform scope so BulkIncrement
+		// does not fail closed.
+		if flushCtx == nil {
+			flushCtx = snoozetypes.WithPlatformScope(context.Background())
+		}
+		if err := w.d.BulkIncrement(flushCtx, collection, ops, w.upsert); err != nil {
 			return err
 		}
 	}
@@ -201,6 +230,17 @@ func cloneDoc(d db.Document) db.Document {
 	out := make(db.Document, len(d))
 	for k, v := range d {
 		out[k] = v
+	}
+	return out
+}
+
+// cloneDocWithTenant clones the search doc and bakes tenant_id into it (when ctx
+// carries a tenant) so hashSearch partitions coalescing by tenant automatically
+// and the downstream BulkIncrement filter is tenant-scoped.
+func cloneDocWithTenant(ctx context.Context, d db.Document) db.Document {
+	out := cloneDoc(d)
+	if t, ok := snoozetypes.TenantFrom(ctx); ok && t != "" {
+		out["tenant_id"] = t
 	}
 	return out
 }

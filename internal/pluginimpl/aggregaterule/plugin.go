@@ -447,7 +447,7 @@ func (p *Plugin) matchAggregate(
 		// Already closed.
 		rec["state"] = "close"
 		// Bump duplicates via async writer if available.
-		p.queueIncrement(host, hashStr, 1)
+		p.queueIncrement(ctx, host, hashStr, 1)
 		return rec, plugins.ActionAbortUpdate, nil
 	}
 
@@ -515,7 +515,7 @@ func (p *Plugin) matchAggregate(
 
 	if throttling {
 		// Throttled duplicate: queue the counter bump but drop notifications.
-		p.queueIncrement(host, hashStr, 1)
+		p.queueIncrement(ctx, host, hashStr, 1)
 		ruleName, _ := rec["aggregate"].(string)
 		plugins.RecordStat(host, incomingDateEpoch, "alert_throttled", map[string]string{"name": ruleName}, 1)
 		rec["state"] = prevState
@@ -540,13 +540,13 @@ func (p *Plugin) matchAggregate(
 // record. If no async writer is wired into the host, the call is a no-op —
 // the in-line ActionContinue / ActionAbortUpdate writes still persist the
 // updated count we placed on rec.
-func (p *Plugin) queueIncrement(host plugins.Host, hash string, delta int64) {
+func (p *Plugin) queueIncrement(ctx context.Context, host plugins.Host, hash string, delta int64) {
 	if host == nil {
 		return
 	}
 	if w, ok := host.(asyncWriterHost); ok {
 		if writer := w.AsyncWriter(); writer != nil {
-			writer.Increment(recordCollection, "duplicates",
+			writer.Increment(ctx, recordCollection, "duplicates",
 				db.Document{"hash": hash}, delta)
 			return
 		}

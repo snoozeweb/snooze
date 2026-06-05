@@ -62,6 +62,7 @@ func RunDriverSuite(t *testing.T, name string, factory Factory) {
 		{"ComputeStats", testComputeStats},
 		{"WriteStampsTenantID", testWriteStampsTenantID},
 		{"WriteUpsertTenantFenced", testWriteUpsertTenantFenced},
+		{"BulkIncrementTenantIsolation", testBulkIncrementTenantIsolation},
 	}
 	for _, c := range cases {
 		t.Run(name+"/"+c.name, func(t *testing.T) {
@@ -629,6 +630,50 @@ func testWriteStampsTenantID(t *testing.T, drv db.Driver) {
 	require.NoError(t, err)
 	require.Equal(t, 0, total)
 	require.Empty(t, docs)
+}
+
+// testBulkIncrementTenantIsolation verifies that a BulkIncrement issued under
+// one tenant only touches that tenant's rows, even when both tenants hold a row
+// with the same primary-key value.
+func testBulkIncrementTenantIsolation(t *testing.T, drv db.Driver) {
+	ctxA := snoozetypes.WithTenant(context.Background(), "alpha")
+	ctxB := snoozetypes.WithTenant(context.Background(), "beta")
+
+	// Seed one row per tenant via Write.
+	opts := db.WriteOptions{Primary: []string{"name"}, UpdateTime: false}
+	_, err := drv.Write(ctxA, "stats", []db.Document{{"name": "hits", "count": float64(0)}}, opts)
+	require.NoError(t, err)
+	_, err = drv.Write(ctxB, "stats", []db.Document{{"name": "hits", "count": float64(0)}}, opts)
+	require.NoError(t, err)
+
+	// BulkIncrement under alpha.
+	err = drv.BulkIncrement(ctxA, "stats", []db.IncrementOp{
+		{Search: db.Document{"name": "hits"}, Deltas: map[string]int64{"count": 5}},
+	}, false)
+	require.NoError(t, err)
+
+	// Alpha count = 5, beta count = 0.
+	docsA, _, err := drv.Search(ctxA, "stats", condition.Equals("name", "hits"), db.Page{})
+	require.NoError(t, err)
+	require.Len(t, docsA, 1)
+	require.EqualValues(t, 5, toNumber(docsA[0]["count"]))
+
+	docsB, _, err := drv.Search(ctxB, "stats", condition.Equals("name", "hits"), db.Page{})
+	require.NoError(t, err)
+	require.Len(t, docsB, 1)
+	require.EqualValues(t, 0, toNumber(docsB[0]["count"]))
+}
+
+func toNumber(v any) float64 {
+	switch n := v.(type) {
+	case float64:
+		return n
+	case int64:
+		return float64(n)
+	case int:
+		return float64(n)
+	}
+	return 0
 }
 
 // testWriteUpsertTenantFenced verifies that an upsert in tenant A cannot
