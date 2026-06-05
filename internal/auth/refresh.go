@@ -61,6 +61,7 @@ func (s *RefreshTokenStore) Issue(ctx context.Context, c snoozetypes.Claims) (st
 	now := s.now().UTC()
 	exp := now.Add(s.lease)
 	doc := db.Document{
+		"tenant_id":   c.TenantID,
 		"token_hash":  hashToken(raw),
 		"subject":     c.Subject,
 		"method":      c.Method,
@@ -72,7 +73,7 @@ func (s *RefreshTokenStore) Issue(ctx context.Context, c snoozetypes.Claims) (st
 		"revoked_at":  float64(0),
 	}
 	if _, err := s.driver.Write(ctx, RefreshCollection, []db.Document{doc}, db.WriteOptions{
-		Primary:    []string{"token_hash"},
+		Primary:    []string{"tenant_id", "token_hash"},
 		UpdateTime: true,
 	}); err != nil {
 		return "", time.Time{}, fmt.Errorf("refresh: persist: %w", err)
@@ -141,13 +142,23 @@ func (s *RefreshTokenStore) checkActive(doc db.Document) error {
 }
 
 func (s *RefreshTokenStore) markRevoked(ctx context.Context, raw string) error {
+	// We need the tenant_id so the upsert primary ["tenant_id","token_hash"]
+	// matches correctly. Look it up from the stored doc via lookup, which
+	// already fetches the full doc. Since markRevoked is always called after
+	// a successful lookup, we re-derive tenant from the existing doc.
 	hash := hashToken(raw)
+	doc, err := s.driver.GetOne(ctx, RefreshCollection, db.Document{"token_hash": hash})
+	tenantID := ""
+	if err == nil && doc != nil {
+		tenantID, _ = doc["tenant_id"].(string)
+	}
 	patch := db.Document{
+		"tenant_id":  tenantID,
 		"token_hash": hash,
 		"revoked_at": float64(s.now().UTC().Unix()),
 	}
-	_, err := s.driver.Write(ctx, RefreshCollection, []db.Document{patch}, db.WriteOptions{
-		Primary:    []string{"token_hash"},
+	_, err = s.driver.Write(ctx, RefreshCollection, []db.Document{patch}, db.WriteOptions{
+		Primary:    []string{"tenant_id", "token_hash"},
 		UpdateTime: true,
 	})
 	return err
@@ -220,9 +231,11 @@ func anyToStrings(v any) []string {
 func claimsFromDoc(doc db.Document) snoozetypes.Claims {
 	sub, _ := doc["subject"].(string)
 	method, _ := doc["method"].(string)
+	tenantID, _ := doc["tenant_id"].(string)
 	return snoozetypes.Claims{
 		Subject:     sub,
 		Method:      method,
+		TenantID:    tenantID,
 		Roles:       anyToStrings(doc["roles"]),
 		Permissions: anyToStrings(doc["permissions"]),
 		Groups:      anyToStrings(doc["groups"]),

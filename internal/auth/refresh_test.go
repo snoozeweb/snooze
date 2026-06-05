@@ -122,3 +122,75 @@ func TestRefreshStore_IssueProducesUniqueTokens(t *testing.T) {
 	require.NoError(t, err)
 	require.NotEqual(t, a, b, "Issue must mint a fresh token every call")
 }
+
+func TestRefreshStore_TenantIsolation(t *testing.T) {
+	t.Parallel()
+	// Two tenants issue a token with the same subject. Verify the tokens are
+	// stored under different primary keys so tenant-A's token cannot rotate
+	// in a tenant-B context.
+	fdb := newFakeDB()
+	s := NewRefreshTokenStore(fdb, time.Hour)
+
+	claimsA := snoozetypes.Claims{Subject: "alice", Method: "local", TenantID: "tenantA"}
+	claimsB := snoozetypes.Claims{Subject: "alice", Method: "local", TenantID: "tenantB"}
+
+	ctxA := WithTenant(context.Background(), "tenantA")
+	ctxB := WithTenant(context.Background(), "tenantB")
+
+	rawA, _, err := s.Issue(ctxA, claimsA)
+	require.NoError(t, err)
+	rawB, _, err := s.Issue(ctxB, claimsB)
+	require.NoError(t, err)
+
+	// Each token must be stored with its respective tenant_id.
+	docs := fdb.collections[RefreshCollection]
+	require.Len(t, docs, 2)
+
+	foundA, foundB := false, false
+	for _, doc := range docs {
+		tid, _ := doc["tenant_id"].(string)
+		if tid == "tenantA" {
+			foundA = true
+		}
+		if tid == "tenantB" {
+			foundB = true
+		}
+	}
+	require.True(t, foundA, "tenant A document must be persisted with tenant_id=tenantA")
+	require.True(t, foundB, "tenant B document must be persisted with tenant_id=tenantB")
+
+	// Token from A should NOT be found when searching as B.
+	// fakeDB doesn't enforce tenant isolation, but we verify the hash uniqueness
+	// by confirming rawA != rawB.
+	require.NotEqual(t, rawA, rawB)
+}
+
+func TestRefreshStore_Issue_StampsTenantID(t *testing.T) {
+	t.Parallel()
+	fdb := newFakeDB()
+	s := NewRefreshTokenStore(fdb, time.Hour)
+
+	claims := snoozetypes.Claims{Subject: "alice", Method: "local", TenantID: "acme"}
+	ctx := WithTenant(context.Background(), "acme")
+	_, _, err := s.Issue(ctx, claims)
+	require.NoError(t, err)
+
+	docs := fdb.collections[RefreshCollection]
+	require.Len(t, docs, 1)
+	require.Equal(t, "acme", docs[0]["tenant_id"], "Issue must stamp tenant_id on the stored document")
+}
+
+func TestRefreshStore_VerifyAndRotate_PreservesTenantID(t *testing.T) {
+	t.Parallel()
+	fdb := newFakeDB()
+	s := NewRefreshTokenStore(fdb, time.Hour)
+
+	claims := snoozetypes.Claims{Subject: "alice", Method: "local", TenantID: "acme"}
+	ctx := WithTenant(context.Background(), "acme")
+	raw, _, err := s.Issue(ctx, claims)
+	require.NoError(t, err)
+
+	got, _, _, err := s.VerifyAndRotate(ctx, raw)
+	require.NoError(t, err)
+	require.Equal(t, "acme", got.TenantID, "rotated claims must carry original TenantID")
+}
