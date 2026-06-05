@@ -1,4 +1,3 @@
-// internal/api/middleware/tenant_resolver.go
 package middleware
 
 import (
@@ -23,7 +22,7 @@ type TenantResolver struct {
 func NewTenantResolver() *TenantResolver {
 	r := &TenantResolver{}
 	m := make(map[string]string)
-	atomic.StorePointer(&r.p, unsafe.Pointer(&m))
+	atomic.StorePointer(&r.p, unsafe.Pointer(&m)) //nolint:gosec // atomic pointer swap of an *map for the lock-free read path
 	return r
 }
 
@@ -36,7 +35,7 @@ func (r *TenantResolver) Replace(m map[string]string) {
 	for k, v := range m {
 		cp[k] = v
 	}
-	atomic.StorePointer(&r.p, unsafe.Pointer(&cp))
+	atomic.StorePointer(&r.p, unsafe.Pointer(&cp)) //nolint:gosec // atomic pointer swap of an *map for the lock-free read path
 }
 
 // Lookup returns the tenant slug for the given ingest token.

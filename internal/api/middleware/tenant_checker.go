@@ -1,4 +1,3 @@
-// internal/api/middleware/tenant_checker.go
 package middleware
 
 import (

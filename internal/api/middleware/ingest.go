@@ -1,4 +1,3 @@
-// internal/api/middleware/ingest.go
 package middleware
 
 import (
@@ -92,7 +91,7 @@ func ingestPresentedToken(r *http.Request) string {
 }
 
 // writeSuspended writes a 503 response for a suspended tenant.
-func writeSuspended(w http.ResponseWriter, r *http.Request, tenantID string) {
+func writeSuspended(w http.ResponseWriter, _ *http.Request, tenantID string) {
 	_ = tenantID // used for logging by callers; kept as parameter for future audit
 	envelope := snoozetypes.ErrEnvelope{
 		Error: snoozetypes.ErrBody{
