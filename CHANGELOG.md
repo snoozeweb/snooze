@@ -1,4 +1,4 @@
-## [Unreleased]
+## v2.1.0
 
 ### Fixed
 - **Aggregate timeline / `comment_count` drift.** The aggregate-rule processor

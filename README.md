@@ -1,4 +1,4 @@
-![Snoozeweb Logo](docs/images/logo.png)
+![Snoozeweb Logo](docs/content/images/logo.png)
 
 # Snooze
 
@@ -7,6 +7,10 @@ events from many input sources (syslog, RELP, SNMP traps, SMTP,
 webhooks, Grafana, AlertManager, …), runs them through a pipeline of
 aggregations, rules, snoozes and notifications, and routes the
 survivors to chat, email, ticketing or arbitrary webhook destinations.
+
+Try it now on: https://try.snoozeweb.net
+
+![Alerts](docs/content/images/web_alerts.png)
 
 ## Install
 
@@ -36,15 +40,16 @@ docker compose --profile sqlite   up    # SQLite on a named volume
 
 ### Native packages
 
-`.rpm` and `.deb` packages are published on every release; install
-them and `systemctl enable --now snooze-server`:
-
 ```bash
 # RHEL / CentOS / Rocky
-sudo dnf install ./snooze-server-<version>.x86_64.rpm
+wget https://rpm.snoozeweb.net -O snooze-server-latest.rpm
+sudo dnf install ./snooze-server-latest.rpm
+sudo systemctl enable --now snooze-server
 
 # Debian / Ubuntu
-sudo apt install ./snooze-server_<version>_amd64.deb
+wget https://deb.snoozeweb.net -O snooze-server-latest.deb
+sudo apt install ./snooze-server-latest.deb
+sudo systemctl enable --now snooze-server
 ```
 
 The systemd units, default config, and tmpfiles rules live in
@@ -92,7 +97,6 @@ and `runtime-component` targets.
 ## Documentation
 
 User documentation: <https://docs.snoozeweb.net> (Docusaurus site built
-from `docs/content/`; published to GitHub Pages by `.github/workflows/docs.yml`).
 
 Repo-internal pointers:
 
@@ -100,22 +104,6 @@ Repo-internal pointers:
 * `CHANGELOG.md` — release history.
 * `ROADMAP.md` — direction of travel.
 * `docs/content/migration/python-to-go.md` — upgrading from 1.x.
-
-### What ships in v2
-
-| Binary               | Role                                                  |
-|----------------------|-------------------------------------------------------|
-| `snooze-server`      | HTTP API + React web UI + pipeline workers            |
-| `snooze`             | Operator CLI (login, root-token, query)               |
-| `snooze-syslog`      | Syslog (RFC 3164 / 5424) listener                     |
-| `snooze-snmptrap`    | SNMP trap receiver                                    |
-| `snooze-relp`        | RELP listener                                         |
-| `snooze-smtp`        | SMTP submission listener                              |
-| `snooze-googlechat`  | Google Chat output notifier                           |
-| `snooze-mattermost`  | Mattermost output notifier                            |
-| `snooze-teams`       | Microsoft Teams output notifier                       |
-| `snooze-jira`        | Atlassian Jira output notifier                        |
-| `snooze-pacemaker`   | Pacemaker cluster integration helper                  |
 
 ## License
 
