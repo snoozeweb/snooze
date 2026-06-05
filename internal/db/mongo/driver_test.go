@@ -114,7 +114,11 @@ func TestDriver_GetOneNotFound(t *testing.T) {
 	}
 	d, cleanup := startMongo(t)
 	defer cleanup()
-	_, err := d.GetOne(context.Background(), "record", dbpkg.Document{"uid": "does-not-exist"})
+	// record is a tenant-scoped collection: GetOne now routes through Convert and
+	// fails closed on a naked context, so run under platform scope to exercise the
+	// sentinel mapping (mongo.ErrNoDocuments → db.ErrNotFound) itself.
+	ctx := snoozetypes.WithPlatformScope(context.Background())
+	_, err := d.GetOne(ctx, "record", dbpkg.Document{"uid": "does-not-exist"})
 	require.Error(t, err)
 	require.True(t, errors.Is(err, dbpkg.ErrNotFound), "want ErrNotFound, got %v", err)
 }

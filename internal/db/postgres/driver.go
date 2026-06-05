@@ -313,8 +313,20 @@ func (d *Driver) Write(ctx context.Context, collection string, docs []dbpkg.Docu
 			}
 		}
 
+		// fence is the tenant_id that mergeRow/replaceRow must match on the
+		// existing row before overwriting it (empty under platform scope / global
+		// collections). It gates the by-uid ON CONFLICT so a uid owned by ANOTHER
+		// tenant is never merged into or replaced. [C1]
+		fence := ""
+		if injectTenant {
+			fence = tenantID
+		}
+
 		if rawUID, ok := doc["uid"].(string); ok && rawUID != "" {
-			existing, err := d.findOneByUID(ctx, tx, qt, rawUID)
+			// findOneByUID is tenant-scoped: a uid owned by another tenant is
+			// invisible here, so the by-uid write falls through to the "uid not
+			// found" rejection (matching SQLite) and never touches that row. [C1]
+			existing, err := d.findOneByUID(ctx, tx, qt, collection, rawUID)
 			if err != nil {
 				return out, err
 			}
@@ -338,12 +350,12 @@ func (d *Driver) Write(ctx context.Context, collection string, docs []dbpkg.Docu
 			}
 			switch opts.DuplicatePolicy {
 			case "replace":
-				if err := replaceRow(ctx, tx, qt, rawUID, doc); err != nil {
+				if err := replaceRow(ctx, tx, qt, rawUID, doc, fence); err != nil {
 					return out, err
 				}
 				out.Replaced = append(out.Replaced, rawUID)
 			default:
-				if err := mergeRow(ctx, tx, qt, rawUID, doc, ""); err != nil {
+				if err := mergeRow(ctx, tx, qt, rawUID, doc, fence); err != nil {
 					return out, err
 				}
 				out.Updated = append(out.Updated, rawUID)
@@ -351,9 +363,11 @@ func (d *Driver) Write(ctx context.Context, collection string, docs []dbpkg.Docu
 			continue
 		}
 
-		// No uid in payload.
+		// No uid in payload. primaryUID came from the tenant-scoped
+		// findOneUIDByPrimary, so it is always an in-tenant uid; the by-uid lookup
+		// and the replace/merge below are fenced to the same tenant for safety.
 		if len(opts.Primary) > 0 && primaryUID != "" {
-			existing, err := d.findOneByUID(ctx, tx, qt, primaryUID)
+			existing, err := d.findOneByUID(ctx, tx, qt, collection, primaryUID)
 			if err != nil {
 				return out, err
 			}
@@ -376,12 +390,12 @@ func (d *Driver) Write(ctx context.Context, collection string, docs []dbpkg.Docu
 				})
 			case "replace":
 				doc["uid"] = primaryUID
-				if err := replaceRow(ctx, tx, qt, primaryUID, doc); err != nil {
+				if err := replaceRow(ctx, tx, qt, primaryUID, doc, fence); err != nil {
 					return out, err
 				}
 				out.Replaced = append(out.Replaced, primaryUID)
 			default:
-				if err := mergeRow(ctx, tx, qt, primaryUID, doc, ""); err != nil {
+				if err := mergeRow(ctx, tx, qt, primaryUID, doc, fence); err != nil {
 					return out, err
 				}
 				out.Updated = append(out.Updated, primaryUID)
@@ -500,12 +514,20 @@ func (d *Driver) findOneUIDByPrimary(ctx context.Context, tx pgx.Tx, qt, collect
 	return uid, nil
 }
 
-// findOneByUID returns the JSONB payload for uid, or nil if absent.
-func (d *Driver) findOneByUID(ctx context.Context, tx pgx.Tx, qt, uid string) (dbpkg.Document, error) {
-	q := fmt.Sprintf("SELECT data FROM %s WHERE uid = $1", qt)
-	row := tx.QueryRow(ctx, q, uid)
+// findOneByUID returns the JSONB payload for uid, or nil if absent. The lookup
+// is routed through convert(ctx, collection, ...) so it carries the tenant_id
+// predicate for a scoped collection: a uid owned by another tenant is invisible
+// here, which is what makes the by-uid Write path fail-closed instead of
+// reading/overwriting across the tenant boundary. [C1]
+func (d *Driver) findOneByUID(ctx context.Context, tx pgx.Tx, qt, collection, uid string) (dbpkg.Document, error) {
+	res, err := convert(ctx, collection, condition.Equals("uid", uid), d.getSearchFields(collection))
+	if err != nil {
+		return nil, err
+	}
+	q := fmt.Sprintf("SELECT data FROM %s WHERE %s LIMIT 1", qt, res.SQL)
+	row := tx.QueryRow(ctx, q, res.Params...)
 	var raw []byte
-	err := row.Scan(&raw)
+	err = row.Scan(&raw)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, nil
 	}
@@ -558,17 +580,29 @@ func insertRow(ctx context.Context, tx pgx.Tx, qt string, doc dbpkg.Document) er
 }
 
 // replaceRow performs an UPSERT that overwrites data entirely with doc.
-func replaceRow(ctx context.Context, tx pgx.Tx, qt, uid string, doc dbpkg.Document) error {
+//
+// When fence is non-empty the ON CONFLICT DO UPDATE is gated on the existing
+// row's tenant_id matching fence (same guard as mergeRow): a uid owned by
+// another tenant therefore makes the conflict a no-op, so a foreign-tenant row
+// is never overwritten and the global uid PK is never violated. A genuinely
+// free uid still inserts the (tenant-stamped) doc. [C1]
+func replaceRow(ctx context.Context, tx pgx.Tx, qt, uid string, doc dbpkg.Document, fence string) error {
 	raw, err := json.Marshal(doc)
 	if err != nil {
 		return fmt.Errorf("postgres: marshal: %w", err)
 	}
+	args := []any{uid, raw}
+	where := ""
+	if fence != "" {
+		where = fmt.Sprintf(" WHERE %s.data->>'tenant_id' = $3", qt)
+		args = append(args, fence)
+	}
 	q := fmt.Sprintf(
 		"INSERT INTO %s (uid, data) VALUES ($1, $2::jsonb) "+
-			"ON CONFLICT (uid) DO UPDATE SET data = EXCLUDED.data, updated_at = clock_timestamp()",
-		qt,
+			"ON CONFLICT (uid) DO UPDATE SET data = EXCLUDED.data, updated_at = clock_timestamp()%s",
+		qt, where,
 	)
-	if _, err := tx.Exec(ctx, q, uid, raw); err != nil {
+	if _, err := tx.Exec(ctx, q, args...); err != nil {
 		return fmt.Errorf("postgres: replace: %w", err)
 	}
 	return nil
@@ -664,11 +698,16 @@ func (d *Driver) ReplaceOne(ctx context.Context, collection string, match dbpkg.
 	case err != nil:
 		return 0, fmt.Errorf("postgres: replaceOne lookup: %w", err)
 	default:
-		// Replace.
+		// Replace. The uid was found through the tenant-scoped lookup above, so
+		// it is in-tenant; fence the upsert to that tenant for safety.
 		if _, ok := newDoc["uid"]; !ok {
 			newDoc["uid"] = uid
 		}
-		if err := replaceRow(ctx, tx, qt, uid, newDoc); err != nil {
+		fence := ""
+		if injectTenant {
+			fence = tenantID
+		}
+		if err := replaceRow(ctx, tx, qt, uid, newDoc, fence); err != nil {
 			return 0, err
 		}
 		matched = 1
@@ -734,6 +773,12 @@ func (d *Driver) UpdateOne(ctx context.Context, collection, uid string, patch db
 // Delete drops every row matching cond. force=true must be set when cond is
 // empty, otherwise the call no-ops (mirrors the Python guard rail).
 func (d *Driver) Delete(ctx context.Context, collection string, cond condition.Cond, force bool) (int, error) {
+	// Fail-closed before the existence / force checks: a scoped collection with a
+	// naked context must error, never silently no-op. Tenant injection into the
+	// predicate is handled by convert below.
+	if _, _, err := dbpkg.TenantScope(ctx, collection); err != nil {
+		return 0, fmt.Errorf("postgres: delete: %w", err)
+	}
 	table, err := d.tableIfExists(ctx, collection)
 	if err != nil {
 		return 0, err

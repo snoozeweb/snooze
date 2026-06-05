@@ -764,6 +764,18 @@ func RunTenantIsolationSuite(t *testing.T, name string, factory Factory) {
 		{"ReplaceOnePreservesTenant", testReplaceOnePreservesTenant},
 		{"UpdateOneTenantFenced", testUpdateOneTenantFenced},
 		{"ReplaceUpdateNakedContextErrors", testReplaceUpdateNakedContextErrors},
+		{"GetOneCrossTenant", testGetOneCrossTenant},
+		{"WriteForeignUIDCrossTenant", testWriteForeignUIDCrossTenant},
+		{"DeleteCrossTenant", testDeleteCrossTenant},
+		{"MutatorsCrossTenant", testMutatorsCrossTenant},
+		{"CleanupPerTenant", testCleanupPerTenant},
+		{"CleanupTimeoutPerTenant", testCleanupTimeoutPerTenant},
+		{"CleanupCommentsPerTenant", testCleanupCommentsPerTenant},
+		{"CleanupAuditLogsPerTenant", testCleanupAuditLogsPerTenant},
+		{"CleanupNotificationPerTenant", testCleanupNotificationPerTenant},
+		{"ComputeStatsPerTenant", testComputeStatsPerTenant},
+		{"ReadWriteNakedContextFailClosed", testReadWriteNakedContextFailClosed},
+		{"CleanupNakedContextFailClosed", testCleanupNakedContextFailClosed},
 	}
 	for _, c := range cases {
 		t.Run(name+"/"+c.name, func(t *testing.T) {
@@ -951,4 +963,478 @@ func mustWriteCtx(ctx context.Context, t *testing.T, drv db.Driver, collection s
 	res, err := drv.Write(ctx, collection, docs, db.WriteOptions{UpdateTime: false})
 	require.NoError(t, err)
 	return res
+}
+
+// testGetOneCrossTenant proves that a GetOne issued under tenant B cannot read a
+// document owned by tenant A, even when B supplies the exact match A used. The
+// driver must fence GetOne by tenant_id and return ErrNotFound for B. [C3]
+func testGetOneCrossTenant(t *testing.T, drv db.Driver) {
+	ctxA := snoozetypes.WithTenant(context.Background(), "alpha")
+	ctxB := snoozetypes.WithTenant(context.Background(), "beta")
+
+	// A writes a doc keyed by name; capture its uid.
+	resA := mustWriteCtx(ctxA, t, drv, "rule", db.Document{"name": "secret", "val": "a"})
+	require.Len(t, resA.Added, 1)
+	uidA := resA.Added[0]
+
+	// A can read its own doc by name and by uid.
+	got, err := drv.GetOne(ctxA, "rule", db.Document{"name": "secret"})
+	require.NoError(t, err)
+	require.Equal(t, "a", got["val"])
+
+	// B GetOne by the SAME name match must MISS — not leak A's row.
+	_, err = drv.GetOne(ctxB, "rule", db.Document{"name": "secret"})
+	require.ErrorIs(t, err, db.ErrNotFound,
+		"GetOne under beta by alpha's name match must return ErrNotFound, not alpha's doc")
+
+	// B GetOne by A's uid must also MISS.
+	_, err = drv.GetOne(ctxB, "rule", db.Document{"uid": uidA})
+	require.ErrorIs(t, err, db.ErrNotFound,
+		"GetOne under beta by alpha's uid must return ErrNotFound, not alpha's doc")
+}
+
+// testWriteForeignUIDCrossTenant proves that a Write under tenant B that carries
+// a uid belonging to tenant A neither overwrites A's row nor re-stamps it to B.
+// B's scoped find misses A's uid, so the write must land as a fresh B-scoped row
+// (mirroring SQLite) and A's row stays byte-for-byte under tenant A. [C1/C2]
+func testWriteForeignUIDCrossTenant(t *testing.T, drv db.Driver) {
+	ctxA := snoozetypes.WithTenant(context.Background(), "alpha")
+	ctxB := snoozetypes.WithTenant(context.Background(), "beta")
+
+	// A writes a doc; capture its uid U.
+	resA := mustWriteCtx(ctxA, t, drv, "rule", db.Document{"name": "owned", "val": "a"})
+	require.Len(t, resA.Added, 1)
+	uidA := resA.Added[0]
+
+	// B writes {uid: U, ...} — a by-uid write under beta.
+	_, err := drv.Write(ctxB, "rule",
+		[]db.Document{{"uid": uidA, "name": "owned", "val": "hijacked"}},
+		db.WriteOptions{UpdateTime: false})
+	require.NoError(t, err)
+
+	// A's row is UNCHANGED: still val=="a", still tenant alpha.
+	docsA, _, err := drv.Search(ctxA, "rule", condition.Equals("name", "owned"), db.Page{})
+	require.NoError(t, err)
+	require.Len(t, docsA, 1, "alpha must still see exactly its own row")
+	require.Equal(t, "a", docsA[0]["val"], "alpha's value must NOT be overwritten by beta's by-uid write")
+	require.Equal(t, "alpha", docsA[0]["tenant_id"], "alpha's row must NOT be re-stamped to beta")
+	require.Equal(t, uidA, docsA[0]["uid"])
+
+	// Platform scope: alpha's uid must still be owned by alpha, never re-stamped
+	// to beta. (Whatever beta landed, if anything, is its own row.)
+	plat := snoozetypes.WithPlatformScope(context.Background())
+	all, _, err := drv.Search(plat, "rule", condition.Equals("uid", uidA), db.Page{})
+	require.NoError(t, err)
+	require.Len(t, all, 1, "uid U must resolve to exactly one row globally")
+	require.Equal(t, "alpha", all[0]["tenant_id"], "uid U must still belong to alpha")
+	require.Equal(t, "a", all[0]["val"])
+}
+
+// testDeleteCrossTenant proves that a Delete issued under tenant B with a
+// condition matching tenant A's doc deletes nothing and leaves A intact.
+func testDeleteCrossTenant(t *testing.T, drv db.Driver) {
+	ctxA := snoozetypes.WithTenant(context.Background(), "alpha")
+	ctxB := snoozetypes.WithTenant(context.Background(), "beta")
+
+	mustWriteCtx(ctxA, t, drv, "record", db.Document{"host": "srv", "msg": "from-a"})
+
+	deleted, err := drv.Delete(ctxB, "record", condition.Equals("host", "srv"), false)
+	require.NoError(t, err)
+	require.Equal(t, 0, deleted, "Delete under beta must not touch alpha's row")
+
+	docsA, totalA, err := drv.Search(ctxA, "record", condition.Cond{}, db.Page{})
+	require.NoError(t, err)
+	require.Equal(t, 1, totalA, "alpha's row must survive beta's Delete")
+	require.Equal(t, "from-a", docsA[0]["msg"])
+}
+
+// testMutatorsCrossTenant proves that every in-place mutator (IncMany, SetFields,
+// UnsetFields, AppendList, PrependList, RemoveList) issued under tenant B with a
+// condition matching tenant A's doc matches zero rows and leaves A untouched.
+func testMutatorsCrossTenant(t *testing.T, drv db.Driver) {
+	ctxA := snoozetypes.WithTenant(context.Background(), "alpha")
+	ctxB := snoozetypes.WithTenant(context.Background(), "beta")
+
+	// Each subtest shares the `record` collection (dropped only between top-level
+	// cases, not subtests), so each uses a distinct host value to scope its own
+	// row and avoid cross-subtest accumulation.
+	t.Run("IncMany", func(t *testing.T) {
+		cond := condition.Equals("host", "inc")
+		mustWriteCtx(ctxA, t, drv, "record", db.Document{"host": "inc", "count": int64(1)})
+		matched, err := drv.IncMany(ctxB, "record", "count", cond, 100)
+		require.NoError(t, err)
+		require.Equal(t, 0, matched, "IncMany under beta must match 0 of alpha's rows")
+		docsA, _, err := drv.Search(ctxA, "record", cond, db.Page{})
+		require.NoError(t, err)
+		require.Len(t, docsA, 1)
+		require.EqualValues(t, 1, toNumber(docsA[0]["count"]), "alpha's count must be untouched")
+	})
+
+	t.Run("SetFields", func(t *testing.T) {
+		cond := condition.Equals("host", "set")
+		mustWriteCtx(ctxA, t, drv, "record", db.Document{"host": "set", "val": "a"})
+		matched, err := drv.SetFields(ctxB, "record", db.Document{"val": "hijacked"}, cond)
+		require.NoError(t, err)
+		require.Equal(t, 0, matched, "SetFields under beta must match 0 of alpha's rows")
+		docsA, _, err := drv.Search(ctxA, "record", cond, db.Page{})
+		require.NoError(t, err)
+		require.Len(t, docsA, 1)
+		require.Equal(t, "a", docsA[0]["val"], "alpha's val must be untouched")
+	})
+
+	t.Run("UnsetFields", func(t *testing.T) {
+		cond := condition.Equals("host", "unset")
+		mustWriteCtx(ctxA, t, drv, "record", db.Document{"host": "unset", "val": "a"})
+		matched, err := drv.UnsetFields(ctxB, "record", []string{"val"}, cond)
+		require.NoError(t, err)
+		require.Equal(t, 0, matched, "UnsetFields under beta must match 0 of alpha's rows")
+		docsA, _, err := drv.Search(ctxA, "record", cond, db.Page{})
+		require.NoError(t, err)
+		require.Len(t, docsA, 1)
+		require.Equal(t, "a", docsA[0]["val"], "alpha's val must still be present")
+	})
+
+	t.Run("AppendList", func(t *testing.T) {
+		cond := condition.Equals("host", "append")
+		mustWriteCtx(ctxA, t, drv, "record", db.Document{"host": "append", "tags": []any{"a"}})
+		matched, err := drv.AppendList(ctxB, "record", map[string][]any{"tags": {"x"}}, cond)
+		require.NoError(t, err)
+		require.Equal(t, 0, matched, "AppendList under beta must match 0 of alpha's rows")
+		docsA, _, err := drv.Search(ctxA, "record", cond, db.Page{})
+		require.NoError(t, err)
+		require.Len(t, docsA, 1)
+		require.Len(t, docsA[0]["tags"], 1, "alpha's tags must be untouched")
+	})
+
+	t.Run("PrependList", func(t *testing.T) {
+		cond := condition.Equals("host", "prepend")
+		mustWriteCtx(ctxA, t, drv, "record", db.Document{"host": "prepend", "tags": []any{"a"}})
+		matched, err := drv.PrependList(ctxB, "record", map[string][]any{"tags": {"x"}}, cond)
+		require.NoError(t, err)
+		require.Equal(t, 0, matched, "PrependList under beta must match 0 of alpha's rows")
+		docsA, _, err := drv.Search(ctxA, "record", cond, db.Page{})
+		require.NoError(t, err)
+		require.Len(t, docsA, 1)
+		require.Len(t, docsA[0]["tags"], 1, "alpha's tags must be untouched")
+	})
+
+	t.Run("RemoveList", func(t *testing.T) {
+		cond := condition.Equals("host", "remove")
+		mustWriteCtx(ctxA, t, drv, "record", db.Document{"host": "remove", "tags": []any{"a", "b"}})
+		matched, err := drv.RemoveList(ctxB, "record", map[string][]any{"tags": {"a"}}, cond)
+		require.NoError(t, err)
+		require.Equal(t, 0, matched, "RemoveList under beta must match 0 of alpha's rows")
+		docsA, _, err := drv.Search(ctxA, "record", cond, db.Page{})
+		require.NoError(t, err)
+		require.Len(t, docsA, 1)
+		require.Len(t, docsA[0]["tags"], 2, "alpha's tags must be untouched")
+	})
+}
+
+// testCleanupPerTenant covers CleanupOrphans and CleanupSnooze under WithTenant:
+// each must remove only the calling tenant's eligible rows and leave the other
+// tenant's rows intact. [H3]
+func testCleanupPerTenant(t *testing.T, drv db.Driver) {
+	ctxA := snoozetypes.WithTenant(context.Background(), "alpha")
+	ctxB := snoozetypes.WithTenant(context.Background(), "beta")
+	plat := snoozetypes.WithPlatformScope(context.Background())
+
+	t.Run("Snooze", func(t *testing.T) {
+		now := time.Now().UTC()
+		past := now.Add(-24 * time.Hour).Format(time.RFC3339)
+		expired := func(name string) db.Document {
+			return db.Document{
+				"name": name,
+				"time_constraints": map[string]any{
+					"datetime": []any{map[string]any{"from": past, "until": past}},
+				},
+			}
+		}
+		mustWriteCtx(ctxA, t, drv, "snooze", expired("a-expired"))
+		mustWriteCtx(ctxB, t, drv, "snooze", expired("b-expired"))
+
+		deleted, err := drv.CleanupSnooze(ctxA)
+		require.NoError(t, err)
+		require.Equal(t, 1, deleted, "CleanupSnooze under alpha must remove only alpha's expired row")
+
+		// Alpha's expired row is gone.
+		_, totalA, err := drv.Search(ctxA, "snooze", condition.Cond{}, db.Page{})
+		require.NoError(t, err)
+		require.Equal(t, 0, totalA, "alpha's expired snooze must be deleted")
+
+		// Beta's expired row survives — alpha's cleanup must not cross the boundary.
+		docsB, totalB, err := drv.Search(ctxB, "snooze", condition.Cond{}, db.Page{})
+		require.NoError(t, err)
+		require.Equal(t, 1, totalB, "beta's snooze must survive alpha's cleanup")
+		require.Equal(t, "b-expired", docsB[0]["name"])
+
+		// Platform scope: exactly beta's row remains globally.
+		_, totalAll, err := drv.Search(plat, "snooze", condition.Cond{}, db.Page{})
+		require.NoError(t, err)
+		require.Equal(t, 1, totalAll)
+	})
+
+	t.Run("Orphans", func(t *testing.T) {
+		// Each tenant has a child row pointing at a missing parent uid.
+		mustWriteCtx(ctxA, t, drv, "node", db.Document{"name": "a-child", "parents": []any{"missing-a"}})
+		mustWriteCtx(ctxB, t, drv, "node", db.Document{"name": "b-child", "parents": []any{"missing-b"}})
+
+		deleted, err := drv.CleanupOrphans(ctxA, "node")
+		require.NoError(t, err)
+		require.Equal(t, 1, deleted, "CleanupOrphans under alpha must remove only alpha's orphan")
+
+		_, totalA, err := drv.Search(ctxA, "node", condition.Cond{}, db.Page{})
+		require.NoError(t, err)
+		require.Equal(t, 0, totalA, "alpha's orphan must be deleted")
+
+		docsB, totalB, err := drv.Search(ctxB, "node", condition.Cond{}, db.Page{})
+		require.NoError(t, err)
+		require.Equal(t, 1, totalB, "beta's orphan must survive alpha's cleanup")
+		require.Equal(t, "b-child", docsB[0]["name"])
+	})
+}
+
+// testCleanupTimeoutPerTenant proves CleanupTimeout under WithTenant(A) removes
+// only A's timed-out rows. [H3]
+func testCleanupTimeoutPerTenant(t *testing.T, drv db.Driver) {
+	ctxA := snoozetypes.WithTenant(context.Background(), "alpha")
+	ctxB := snoozetypes.WithTenant(context.Background(), "beta")
+
+	timedOut := db.Document{"host": "h", "ttl": int64(0), "date_epoch": float64(0)}
+	mustWriteCtx(ctxA, t, drv, "record", timedOut)
+	mustWriteCtx(ctxB, t, drv, "record", timedOut)
+
+	deleted, err := drv.CleanupTimeout(ctxA, "record")
+	require.NoError(t, err)
+	require.Equal(t, 1, deleted, "CleanupTimeout under alpha must remove only alpha's timed-out row")
+
+	_, totalA, err := drv.Search(ctxA, "record", condition.Cond{}, db.Page{})
+	require.NoError(t, err)
+	require.Equal(t, 0, totalA, "alpha's timed-out record must be deleted")
+
+	_, totalB, err := drv.Search(ctxB, "record", condition.Cond{}, db.Page{})
+	require.NoError(t, err)
+	require.Equal(t, 1, totalB, "beta's timed-out record must survive alpha's cleanup")
+}
+
+// testCleanupCommentsPerTenant proves CleanupComments under WithTenant(A) only
+// prunes A's orphaned comments. A comment whose record_uid belongs to B's still
+// existing record (visible only under B) must NOT be pruned by A's run, and B's
+// own orphaned comment must survive A's run entirely. [H3]
+func testCleanupCommentsPerTenant(t *testing.T, drv db.Driver) {
+	ctxA := snoozetypes.WithTenant(context.Background(), "alpha")
+	ctxB := snoozetypes.WithTenant(context.Background(), "beta")
+
+	// A: one live record + a comment on it, plus one orphaned comment.
+	recA := mustWriteCtx(ctxA, t, drv, "record", db.Document{"msg": "a-record"})
+	require.Len(t, recA.Added, 1)
+	mustWriteCtx(ctxA, t, drv, "comment", db.Document{"record_uid": recA.Added[0], "text": "a-live"})
+	mustWriteCtx(ctxA, t, drv, "comment", db.Document{"record_uid": "gone-a", "text": "a-orphan"})
+
+	// B: one orphaned comment.
+	mustWriteCtx(ctxB, t, drv, "comment", db.Document{"record_uid": "gone-b", "text": "b-orphan"})
+
+	deleted, err := drv.CleanupComments(ctxA)
+	require.NoError(t, err)
+	require.Equal(t, 1, deleted, "CleanupComments under alpha must prune only alpha's orphan")
+
+	// A keeps its live comment, drops its orphan.
+	docsA, totalA, err := drv.Search(ctxA, "comment", condition.Cond{}, db.Page{})
+	require.NoError(t, err)
+	require.Equal(t, 1, totalA, "alpha must keep its live comment, drop its orphan")
+	require.Equal(t, "a-live", docsA[0]["text"])
+
+	// B's orphan survives alpha's run.
+	docsB, totalB, err := drv.Search(ctxB, "comment", condition.Cond{}, db.Page{})
+	require.NoError(t, err)
+	require.Equal(t, 1, totalB, "beta's comment must survive alpha's cleanup")
+	require.Equal(t, "b-orphan", docsB[0]["text"])
+}
+
+// testCleanupAuditLogsPerTenant proves CleanupAuditLogs under WithTenant(A)
+// prunes only A's eligible audit rows. [H3]
+func testCleanupAuditLogsPerTenant(t *testing.T, drv db.Driver) {
+	ctxA := snoozetypes.WithTenant(context.Background(), "alpha")
+	ctxB := snoozetypes.WithTenant(context.Background(), "beta")
+
+	// Both tenants own an object whose latest event is a delete in the deep past.
+	mustWriteCtx(ctxA, t, drv, "audit",
+		db.Document{"object_id": "obj", "action": "create", "date_epoch": float64(100)},
+		db.Document{"object_id": "obj", "action": "delete", "date_epoch": float64(200)},
+	)
+	mustWriteCtx(ctxB, t, drv, "audit",
+		db.Document{"object_id": "obj", "action": "create", "date_epoch": float64(100)},
+		db.Document{"object_id": "obj", "action": "delete", "date_epoch": float64(200)},
+	)
+
+	deleted, err := drv.CleanupAuditLogs(ctxA, time.Minute)
+	require.NoError(t, err)
+	require.Equal(t, 2, deleted, "CleanupAuditLogs under alpha must prune only alpha's 2 rows")
+
+	_, totalA, err := drv.Search(ctxA, "audit", condition.Cond{}, db.Page{})
+	require.NoError(t, err)
+	require.Equal(t, 0, totalA, "alpha's audit rows must be pruned")
+
+	_, totalB, err := drv.Search(ctxB, "audit", condition.Cond{}, db.Page{})
+	require.NoError(t, err)
+	require.Equal(t, 2, totalB, "beta's audit rows must survive alpha's cleanup")
+}
+
+// testCleanupNotificationPerTenant proves CleanupNotification under
+// WithTenant(A) removes only A's expired notification rows. [H3]
+func testCleanupNotificationPerTenant(t *testing.T, drv db.Driver) {
+	ctxA := snoozetypes.WithTenant(context.Background(), "alpha")
+	ctxB := snoozetypes.WithTenant(context.Background(), "beta")
+
+	now := time.Now().UTC()
+	past := now.Add(-24 * time.Hour).Format(time.RFC3339)
+	expired := func(name string) db.Document {
+		return db.Document{
+			"name": name,
+			"time_constraints": map[string]any{
+				"datetime": []any{map[string]any{"from": past, "until": past}},
+			},
+		}
+	}
+	mustWriteCtx(ctxA, t, drv, "notification", expired("a"))
+	mustWriteCtx(ctxB, t, drv, "notification", expired("b"))
+
+	deleted, err := drv.CleanupNotification(ctxA)
+	require.NoError(t, err)
+	require.Equal(t, 1, deleted, "CleanupNotification under alpha must remove only alpha's row")
+
+	_, totalA, err := drv.Search(ctxA, "notification", condition.Cond{}, db.Page{})
+	require.NoError(t, err)
+	require.Equal(t, 0, totalA)
+
+	_, totalB, err := drv.Search(ctxB, "notification", condition.Cond{}, db.Page{})
+	require.NoError(t, err)
+	require.Equal(t, 1, totalB, "beta's notification must survive alpha's cleanup")
+}
+
+// testComputeStatsPerTenant proves ComputeStats under WithTenant(A) aggregates
+// only A's stats rows, excluding B's. Alpha and beta write rows on DISTINCT days
+// (hence distinct buckets), so alpha's result must contain alpha's bucket and
+// must NOT contain beta's bucket — a robust isolation check independent of the
+// per-backend series-decode shape. Platform scope must see both buckets. [H4]
+func testComputeStatsPerTenant(t *testing.T, drv db.Driver) {
+	ctxA := snoozetypes.WithTenant(context.Background(), "alpha")
+	ctxB := snoozetypes.WithTenant(context.Background(), "beta")
+	plat := snoozetypes.WithPlatformScope(context.Background())
+
+	now := time.Now().UTC()
+	dayA := now.Add(-48 * time.Hour)
+	dayB := now.Add(-120 * time.Hour) // 5 days ago — a different day bucket
+	mustWriteCtx(ctxA, t, drv, "stats", db.Document{"date": dayA, "key": "qty", "value": int64(3)})
+	mustWriteCtx(ctxB, t, drv, "stats", db.Document{"date": dayB, "key": "qty", "value": int64(7)})
+
+	bucketsOf := func(buckets []db.StatsBucket) map[string]struct{} {
+		set := map[string]struct{}{}
+		for _, b := range buckets {
+			set[b.Bucket] = struct{}{}
+		}
+		return set
+	}
+
+	// Platform scope: both days present.
+	bAll, err := drv.ComputeStats(plat, "stats", time.Unix(0, 0), time.Now(), "day")
+	require.NoError(t, err)
+	allSet := bucketsOf(bAll)
+	require.Len(t, allSet, 2, "platform scope must see both tenants' day buckets")
+
+	// Identify alpha's and beta's bucket labels from the platform run.
+	bucketA, err := drv.ComputeStats(ctxA, "stats", time.Unix(0, 0), time.Now(), "day")
+	require.NoError(t, err)
+	aSet := bucketsOf(bucketA)
+	require.Len(t, aSet, 1, "ComputeStats under alpha must see exactly alpha's single day bucket, not beta's")
+
+	bucketB, err := drv.ComputeStats(ctxB, "stats", time.Unix(0, 0), time.Now(), "day")
+	require.NoError(t, err)
+	bSet := bucketsOf(bucketB)
+	require.Len(t, bSet, 1, "ComputeStats under beta must see exactly beta's single day bucket, not alpha's")
+
+	// Alpha's bucket and beta's bucket must be disjoint — alpha never sees beta's.
+	for label := range aSet {
+		_, leak := bSet[label]
+		require.False(t, leak, "alpha's stats bucket %q must not also appear under beta", label)
+	}
+}
+
+// testReadWriteNakedContextFailClosed proves GetOne, Delete, the in-place
+// mutators, and a by-uid Write all fail closed (ErrNoTenant) on a scoped
+// collection when ctx carries neither a tenant nor platform scope.
+func testReadWriteNakedContextFailClosed(t *testing.T, drv db.Driver) {
+	naked := context.Background()
+
+	_, err := drv.GetOne(naked, "record", db.Document{"uid": "x"})
+	require.ErrorIs(t, err, snoozetypes.ErrNoTenant, "GetOne on naked ctx must fail closed, got: %v", err)
+
+	_, err = drv.Delete(naked, "record", condition.Equals("a", "1"), false)
+	require.ErrorIs(t, err, snoozetypes.ErrNoTenant, "Delete on naked ctx must fail closed, got: %v", err)
+
+	_, err = drv.IncMany(naked, "record", "n", condition.Equals("a", "1"), 1)
+	require.ErrorIs(t, err, snoozetypes.ErrNoTenant, "IncMany on naked ctx must fail closed, got: %v", err)
+
+	_, err = drv.SetFields(naked, "record", db.Document{"n": "1"}, condition.Equals("a", "1"))
+	require.ErrorIs(t, err, snoozetypes.ErrNoTenant, "SetFields on naked ctx must fail closed, got: %v", err)
+
+	_, err = drv.UnsetFields(naked, "record", []string{"n"}, condition.Equals("a", "1"))
+	require.ErrorIs(t, err, snoozetypes.ErrNoTenant, "UnsetFields on naked ctx must fail closed, got: %v", err)
+
+	_, err = drv.AppendList(naked, "record", map[string][]any{"l": {"x"}}, condition.Equals("a", "1"))
+	require.ErrorIs(t, err, snoozetypes.ErrNoTenant, "AppendList on naked ctx must fail closed, got: %v", err)
+
+	_, err = drv.PrependList(naked, "record", map[string][]any{"l": {"x"}}, condition.Equals("a", "1"))
+	require.ErrorIs(t, err, snoozetypes.ErrNoTenant, "PrependList on naked ctx must fail closed, got: %v", err)
+
+	_, err = drv.RemoveList(naked, "record", map[string][]any{"l": {"x"}}, condition.Equals("a", "1"))
+	require.ErrorIs(t, err, snoozetypes.ErrNoTenant, "RemoveList on naked ctx must fail closed, got: %v", err)
+
+	// Write carrying a uid on a scoped collection must also fail closed.
+	_, err = drv.Write(naked, "record",
+		[]db.Document{{"uid": "x", "msg": "y"}}, db.WriteOptions{UpdateTime: false})
+	require.ErrorIs(t, err, snoozetypes.ErrNoTenant, "by-uid Write on naked ctx must fail closed, got: %v", err)
+}
+
+// testCleanupNakedContextFailClosed proves every Cleanup* and ComputeStats fails
+// closed (ErrNoTenant) on a scoped collection with a naked context. The
+// housekeeper always invokes these under a per-tenant ctx, so a naked-ctx call is
+// a programming error that must never silently operate cross-tenant. [H3/H4]
+func testCleanupNakedContextFailClosed(t *testing.T, drv db.Driver) {
+	naked := context.Background()
+	// Seed via platform scope so the collections exist (a non-existent collection
+	// short-circuits to a no-op before the fail-closed check on some backends).
+	plat := snoozetypes.WithPlatformScope(context.Background())
+	mustWriteCtx(plat, t, drv, "record", db.Document{"host": "h", "ttl": int64(0), "date_epoch": float64(0)})
+	mustWriteCtx(plat, t, drv, "comment", db.Document{"record_uid": "gone"})
+	mustWriteCtx(plat, t, drv, "audit",
+		db.Document{"object_id": "o", "action": "delete", "date_epoch": float64(1)})
+	mustWriteCtx(plat, t, drv, "snooze", db.Document{"name": "s",
+		"time_constraints": map[string]any{"datetime": []any{map[string]any{"until": "2000-01-01T00:00:00Z"}}}})
+	mustWriteCtx(plat, t, drv, "notification", db.Document{"name": "n",
+		"time_constraints": map[string]any{"datetime": []any{map[string]any{"until": "2000-01-01T00:00:00Z"}}}})
+	mustWriteCtx(plat, t, drv, "node", db.Document{"name": "c", "parents": []any{"missing"}})
+	mustWriteCtx(plat, t, drv, "stats",
+		db.Document{"date": time.Now().Add(-time.Hour).UTC(), "key": "k", "value": int64(1)})
+
+	_, err := drv.CleanupTimeout(naked, "record")
+	require.ErrorIs(t, err, snoozetypes.ErrNoTenant, "CleanupTimeout on naked ctx must fail closed, got: %v", err)
+
+	_, err = drv.CleanupComments(naked)
+	require.ErrorIs(t, err, snoozetypes.ErrNoTenant, "CleanupComments on naked ctx must fail closed, got: %v", err)
+
+	_, err = drv.CleanupOrphans(naked, "node")
+	require.ErrorIs(t, err, snoozetypes.ErrNoTenant, "CleanupOrphans on naked ctx must fail closed, got: %v", err)
+
+	_, err = drv.CleanupAuditLogs(naked, time.Minute)
+	require.ErrorIs(t, err, snoozetypes.ErrNoTenant, "CleanupAuditLogs on naked ctx must fail closed, got: %v", err)
+
+	_, err = drv.CleanupSnooze(naked)
+	require.ErrorIs(t, err, snoozetypes.ErrNoTenant, "CleanupSnooze on naked ctx must fail closed, got: %v", err)
+
+	_, err = drv.CleanupNotification(naked)
+	require.ErrorIs(t, err, snoozetypes.ErrNoTenant, "CleanupNotification on naked ctx must fail closed, got: %v", err)
+
+	_, err = drv.ComputeStats(naked, "stats", time.Unix(0, 0), time.Now(), "day")
+	require.ErrorIs(t, err, snoozetypes.ErrNoTenant, "ComputeStats on naked ctx must fail closed, got: %v", err)
 }

@@ -255,10 +255,18 @@ func (d *Driver) Search(ctx context.Context, collection string, cond condition.C
 	return docs, int(total), nil
 }
 
-// GetOne returns the first document matching match, or db.ErrNotFound.
+// GetOne returns the first document matching match, or db.ErrNotFound. The
+// match is routed through Convert (matchToCond) so the bson filter carries the
+// tenant_id predicate for a scoped collection (mirroring Search); a naked
+// context on a scoped collection fails closed with ErrNoTenant. Without this,
+// GetOne would read across the tenant boundary by uid or primary key. [C3]
 func (d *Driver) GetOne(ctx context.Context, collection string, match dbpkg.Document) (dbpkg.Document, error) {
+	filter, err := Convert(ctx, collection, matchToCond(match), d.searchFieldsFor(collection))
+	if err != nil {
+		return nil, err
+	}
 	var out bson.M
-	err := d.coll(collection).FindOne(ctx, bson.M(match)).Decode(&out)
+	err = d.coll(collection).FindOne(ctx, filter).Decode(&out)
 	if errors.Is(err, mongo.ErrNoDocuments) {
 		return nil, dbpkg.ErrNotFound
 	}
@@ -266,6 +274,24 @@ func (d *Driver) GetOne(ctx context.Context, collection string, match dbpkg.Docu
 		return nil, fmt.Errorf("mongo: get_one: %w", err)
 	}
 	return decodeDoc(out), nil
+}
+
+// matchToCond converts a {k: v, ...} equality match map into an AND-of-equals
+// condition.Cond. An empty map evaluates to AlwaysTrue. Mirrors the SQL
+// backends' searchDictToCondition / matchToCond so GetOne shares Search's
+// tenant-injection path.
+func matchToCond(match dbpkg.Document) condition.Cond {
+	if len(match) == 0 {
+		return condition.Cond{}
+	}
+	children := make([]condition.Cond, 0, len(match))
+	for k, v := range match {
+		children = append(children, condition.Equals(k, v))
+	}
+	if len(children) == 1 {
+		return children[0]
+	}
+	return condition.And(children...)
 }
 
 // Write inserts/updates/replaces a batch of documents. Implements the
@@ -317,8 +343,17 @@ func (d *Driver) Write(ctx context.Context, collection string, docs []dbpkg.Docu
 		}
 		add := false
 		if uidVal, ok := tobj["uid"].(string); ok && uidVal != "" {
+			// Fence the uid existence lookup AND the subsequent replace/update
+			// filters by tenant_id: a uid owned by ANOTHER tenant must be invisible
+			// here so it is neither read, overwritten, nor re-stamped. The scoped
+			// miss falls through to the "UID not found" rejection, leaving the
+			// other tenant's row untouched. [C2]
+			uidFilter := bson.M{"uid": uidVal}
+			if injectTenant {
+				uidFilter["tenant_id"] = tenantID
+			}
 			existing := bson.M{}
-			err := coll.FindOne(ctx, bson.M{"uid": uidVal}).Decode(&existing)
+			err := coll.FindOne(ctx, uidFilter).Decode(&existing)
 			if errors.Is(err, mongo.ErrNoDocuments) {
 				rej := dbpkg.Rejection{
 					UID:     uidVal,
@@ -348,12 +383,12 @@ func (d *Driver) Write(ctx context.Context, collection string, docs []dbpkg.Docu
 				continue
 			}
 			if policy == "replace" {
-				if _, err := coll.ReplaceOne(ctx, bson.M{"uid": uidVal}, bson.M(tobj)); err != nil {
+				if _, err := coll.ReplaceOne(ctx, uidFilter, bson.M(tobj)); err != nil {
 					return res, fmt.Errorf("mongo: replace: %w", err)
 				}
 				res.Replaced = append(res.Replaced, uidVal)
 			} else {
-				if _, err := coll.UpdateOne(ctx, bson.M{"uid": uidVal}, bson.M{"$set": bson.M(tobj)}); err != nil {
+				if _, err := coll.UpdateOne(ctx, uidFilter, bson.M{"$set": bson.M(tobj)}); err != nil {
 					return res, fmt.Errorf("mongo: update: %w", err)
 				}
 				res.Updated = append(res.Updated, uidVal)
@@ -498,6 +533,12 @@ func (d *Driver) UpdateOne(ctx context.Context, collection, uid string, patch db
 // Delete removes every document matching cond. When the condition is empty
 // (AlwaysTrue) and force is false the call refuses to wipe the collection.
 func (d *Driver) Delete(ctx context.Context, collection string, cond condition.Cond, force bool) (int, error) {
+	// Fail-closed before the empty-cond guard: a scoped collection with a naked
+	// context must error, never silently no-op. Tenant injection into the filter
+	// is handled by Convert below.
+	if _, _, err := dbpkg.TenantScope(ctx, collection); err != nil {
+		return 0, fmt.Errorf("mongo: delete: %w", err)
+	}
 	if cond.IsZero() && !force {
 		return 0, nil
 	}

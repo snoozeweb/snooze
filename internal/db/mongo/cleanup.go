@@ -13,11 +13,59 @@ import (
 	dbpkg "github.com/snoozeweb/snooze/internal/db"
 )
 
+// tenantFilter resolves the tenant scope for collection under ctx. It returns
+// (filter, ok, err): ok=true with a {tenant_id: <slug>} bson filter for a scoped
+// collection under a tenant; ok=false (nil filter) under platform scope or for a
+// global collection; err=ErrNoTenant (fail-closed) for a scoped collection with
+// a naked context.
+func tenantFilter(ctx context.Context, collection string) (bson.M, bool, error) {
+	tenantID, inject, err := dbpkg.TenantScope(ctx, collection)
+	if err != nil {
+		return nil, false, err
+	}
+	if !inject {
+		return nil, false, nil
+	}
+	return bson.M{"tenant_id": tenantID}, true, nil
+}
+
+// prependMatch returns a pipeline with a leading {$match: filter} stage when
+// filter is non-nil, so cleanup aggregations only see the calling tenant's rows.
+func prependMatch(filter bson.M, pipeline mongo.Pipeline) mongo.Pipeline {
+	if filter == nil {
+		return pipeline
+	}
+	out := make(mongo.Pipeline, 0, len(pipeline)+1)
+	out = append(out, bson.D{{Key: "$match", Value: filter}})
+	out = append(out, pipeline...)
+	return out
+}
+
+// mergeFilter ANDs the tenant filter (when non-nil) into base.
+func mergeFilter(base, tenant bson.M) bson.M {
+	if tenant == nil {
+		return base
+	}
+	out := bson.M{}
+	for k, v := range base {
+		out[k] = v
+	}
+	for k, v := range tenant {
+		out[k] = v
+	}
+	return out
+}
+
 // CleanupTimeout deletes every document whose `date_epoch + ttl` is past now.
 // Mirrors Python's cleanup_timeout aggregation pipeline.
 func (d *Driver) CleanupTimeout(ctx context.Context, collection string) (int, error) {
+	// Fail-closed; restrict the candidate scan to the calling tenant. [H3]
+	tf, _, err := tenantFilter(ctx, collection)
+	if err != nil {
+		return 0, fmt.Errorf("mongo: cleanupTimeout %s: %w", collection, err)
+	}
 	now := float64(time.Now().UTC().Unix())
-	pipeline := mongo.Pipeline{
+	pipeline := prependMatch(tf, mongo.Pipeline{
 		bson.D{{Key: "$match", Value: bson.M{"ttl": bson.M{"$gte": 0}}}},
 		bson.D{{Key: "$project", Value: bson.M{
 			"date_epoch": 1,
@@ -25,22 +73,40 @@ func (d *Driver) CleanupTimeout(ctx context.Context, collection string) (int, er
 			"timeout":    bson.M{"$add": []any{"$date_epoch", "$ttl"}},
 		}}},
 		bson.D{{Key: "$match", Value: bson.M{"timeout": bson.M{"$lte": now}}}},
-	}
+	})
 	return d.deleteByPipeline(ctx, collection, pipeline)
 }
 
 // CleanupComments removes audit comments whose parent record has been deleted.
 func (d *Driver) CleanupComments(ctx context.Context) (int, error) {
-	pipeline := mongo.Pipeline{
+	// Fail-closed: comment/record are tenant-scoped. We scan only the calling
+	// tenant's comments, and the liveness $lookup is restricted to records of the
+	// same tenant (the pipeline form of $lookup adds the tenant_id match on the
+	// record side). A comment whose record lives in another tenant must therefore
+	// be treated as orphaned, never kept alive across the boundary. [H3]
+	commentTF, _, err := tenantFilter(ctx, "comment")
+	if err != nil {
+		return 0, fmt.Errorf("mongo: cleanup_comments: %w", err)
+	}
+	recordTF, recordInject, err := tenantFilter(ctx, "record")
+	if err != nil {
+		return 0, fmt.Errorf("mongo: cleanup_comments: %w", err)
+	}
+	// Build the $lookup, scoping the foreign (record) side by tenant when needed.
+	lookupMatch := bson.M{"$expr": bson.M{"$eq": bson.A{"$uid", "$$ruid"}}}
+	if recordInject {
+		lookupMatch["tenant_id"] = recordTF["tenant_id"]
+	}
+	pipeline := prependMatch(commentTF, mongo.Pipeline{
 		bson.D{{Key: "$group", Value: bson.M{"_id": "$record_uid"}}},
 		bson.D{{Key: "$lookup", Value: bson.M{
-			"from":         "record",
-			"foreignField": "uid",
-			"localField":   "_id",
-			"as":           "matched",
+			"from":     "record",
+			"let":      bson.M{"ruid": "$_id"},
+			"pipeline": mongo.Pipeline{bson.D{{Key: "$match", Value: lookupMatch}}},
+			"as":       "matched",
 		}}},
 		bson.D{{Key: "$match", Value: bson.M{"matched": bson.M{"$eq": []any{}}}}},
-	}
+	})
 	coll := d.coll("comment")
 	cur, err := coll.Aggregate(ctx, pipeline)
 	if err != nil {
@@ -63,7 +129,10 @@ func (d *Driver) CleanupComments(ctx context.Context) (int, error) {
 	if len(orphans) == 0 {
 		return 0, nil
 	}
-	res, err := coll.DeleteMany(ctx, bson.M{"record_uid": bson.M{"$in": orphans}})
+	// Scope the delete to the calling tenant's comments (orphan record_uids may in
+	// principle be shared across tenants).
+	delFilter := mergeFilter(bson.M{"record_uid": bson.M{"$in": orphans}}, commentTF)
+	res, err := coll.DeleteMany(ctx, delFilter)
 	if err != nil {
 		return 0, fmt.Errorf("mongo: cleanup_comments delete: %w", err)
 	}
@@ -72,11 +141,19 @@ func (d *Driver) CleanupComments(ctx context.Context) (int, error) {
 
 // CleanupOrphans deletes documents whose declared parent uid is missing.
 func (d *Driver) CleanupOrphans(ctx context.Context, collection string) (int, error) {
+	// Fail-closed; every reference to the collection is tenant-scoped: the
+	// candidate scan, the parent-existence probe and the final delete all stay
+	// within the calling tenant. A parent uid that exists only in another tenant
+	// must count as missing here. [H3]
+	tf, _, err := tenantFilter(ctx, collection)
+	if err != nil {
+		return 0, fmt.Errorf("mongo: cleanup_orphans: %w", err)
+	}
 	coll := d.coll(collection)
-	pipeline := mongo.Pipeline{
+	pipeline := prependMatch(tf, mongo.Pipeline{
 		bson.D{{Key: "$addFields", Value: bson.M{"parent": bson.M{"$last": "$parents"}}}},
 		bson.D{{Key: "$group", Value: bson.M{"_id": nil, "parents": bson.M{"$addToSet": "$parent"}}}},
-	}
+	})
 	cur, err := coll.Aggregate(ctx, pipeline)
 	if err != nil {
 		return 0, fmt.Errorf("mongo: cleanup_orphans aggregate: %w", err)
@@ -105,7 +182,7 @@ func (d *Driver) CleanupOrphans(ctx context.Context, collection string) (int, er
 	}
 	var toDelete []any
 	for _, parent := range parents {
-		err := coll.FindOne(ctx, bson.M{"uid": parent}).Err()
+		err := coll.FindOne(ctx, mergeFilter(bson.M{"uid": parent}, tf)).Err()
 		if err == nil {
 			continue
 		}
@@ -118,7 +195,7 @@ func (d *Driver) CleanupOrphans(ctx context.Context, collection string) (int, er
 	if len(toDelete) == 0 {
 		return 0, nil
 	}
-	res, err := coll.DeleteMany(ctx, bson.M{"parents": bson.M{"$in": toDelete}})
+	res, err := coll.DeleteMany(ctx, mergeFilter(bson.M{"parents": bson.M{"$in": toDelete}}, tf))
 	if err != nil {
 		return 0, fmt.Errorf("mongo: cleanup_orphans delete: %w", err)
 	}
@@ -144,11 +221,16 @@ func (d *Driver) CleanupNotification(ctx context.Context) (int, error) {
 // element's until is past" predicate in Go for parity with the
 // SQLite/Postgres implementations.
 func (d *Driver) cleanupExpiredByDatetime(ctx context.Context, collection string) (int, error) {
+	// Fail-closed; the candidate scan and the delete are tenant-scoped. [H3]
+	tf, _, err := tenantFilter(ctx, collection)
+	if err != nil {
+		return 0, fmt.Errorf("mongo: cleanupExpired %s: %w", collection, err)
+	}
 	coll := d.coll(collection)
 	now := time.Now().UTC()
-	cur, err := coll.Find(ctx, bson.M{
+	cur, err := coll.Find(ctx, mergeFilter(bson.M{
 		"time_constraints.datetime.0": bson.M{"$exists": true},
-	})
+	}, tf))
 	if err != nil {
 		return 0, fmt.Errorf("mongo: cleanupExpired %s: %w", collection, err)
 	}
@@ -172,7 +254,7 @@ func (d *Driver) cleanupExpiredByDatetime(ctx context.Context, collection string
 	if len(toDelete) == 0 {
 		return 0, nil
 	}
-	res, err := coll.DeleteMany(ctx, bson.M{"uid": bson.M{"$in": toDelete}})
+	res, err := coll.DeleteMany(ctx, mergeFilter(bson.M{"uid": bson.M{"$in": toDelete}}, tf))
 	if err != nil {
 		return 0, fmt.Errorf("mongo: cleanupExpired %s: delete: %w", collection, err)
 	}
@@ -269,6 +351,12 @@ func datetimeAllExpired(entries []map[string]any, now time.Time) bool {
 // audit emitter writes — see internal/plugins/crud.go; the UI relabels it
 // "deleted".)
 func (d *Driver) CleanupAuditLogs(ctx context.Context, olderThan time.Duration) (int, error) {
+	// Fail-closed; restrict both the aggregation and the delete to the calling
+	// tenant (object_id is namespaced per tenant). [H3]
+	tf, _, err := tenantFilter(ctx, "audit")
+	if err != nil {
+		return 0, fmt.Errorf("mongo: cleanup_audit_logs: %w", err)
+	}
 	now := float64(time.Now().UTC().Unix())
 	threshold := now - olderThan.Seconds()
 	// Prune every object whose max date_epoch is below the threshold AND has a
@@ -276,7 +364,7 @@ func (d *Driver) CleanupAuditLogs(ctx context.Context, olderThan time.Duration) 
 	// (rather than picking one arbitrary latest row) is deterministic and
 	// matches the SQL backends on same-epoch create+delete ties. date_epoch is
 	// the field audit writers populate.
-	pipeline := mongo.Pipeline{
+	pipeline := prependMatch(tf, mongo.Pipeline{
 		bson.D{{Key: "$group", Value: bson.M{
 			"_id":      "$object_id",
 			"maxEpoch": bson.M{"$max": "$date_epoch"},
@@ -294,7 +382,7 @@ func (d *Driver) CleanupAuditLogs(ctx context.Context, olderThan time.Duration) 
 			}}},
 			0,
 		}}}}},
-	}
+	})
 	cur, err := d.coll("audit").Aggregate(ctx, pipeline)
 	if err != nil {
 		return 0, fmt.Errorf("mongo: cleanup_audit_logs aggregate: %w", err)
@@ -316,7 +404,7 @@ func (d *Driver) CleanupAuditLogs(ctx context.Context, olderThan time.Duration) 
 	if len(ids) == 0 {
 		return 0, nil
 	}
-	res, err := d.coll("audit").DeleteMany(ctx, bson.M{"object_id": bson.M{"$in": ids}})
+	res, err := d.coll("audit").DeleteMany(ctx, mergeFilter(bson.M{"object_id": bson.M{"$in": ids}}, tf))
 	if err != nil {
 		return 0, fmt.Errorf("mongo: cleanup_audit_logs delete: %w", err)
 	}
@@ -325,9 +413,14 @@ func (d *Driver) CleanupAuditLogs(ctx context.Context, olderThan time.Duration) 
 
 // ComputeStats aggregates counter buckets by hour/day/month/year/week/weekday.
 func (d *Driver) ComputeStats(ctx context.Context, collection string, from, to time.Time, groupBy string) ([]dbpkg.StatsBucket, error) {
+	// Fail-closed; aggregate only the calling tenant's stats rows. [H4]
+	tf, _, err := tenantFilter(ctx, collection)
+	if err != nil {
+		return nil, fmt.Errorf("mongo: compute_stats: %w", err)
+	}
 	dateFormat := groupByFormat(groupBy)
 	zone := from.Format("-0700")
-	pipeline := mongo.Pipeline{
+	pipeline := prependMatch(tf, mongo.Pipeline{
 		bson.D{{Key: "$match", Value: bson.M{"$and": []bson.M{
 			{"date": bson.M{"$gte": from}},
 			{"date": bson.M{"$lte": to}},
@@ -344,7 +437,7 @@ func (d *Driver) ComputeStats(ctx context.Context, collection string, from, to t
 			"data": bson.M{"$push": bson.M{"key": "$_id.key", "value": "$value"}},
 		}}},
 		bson.D{{Key: "$sort", Value: bson.M{"_id": 1}}},
-	}
+	})
 	cur, err := d.coll(collection).Aggregate(ctx, pipeline)
 	if err != nil {
 		return nil, fmt.Errorf("mongo: compute_stats aggregate: %w", err)

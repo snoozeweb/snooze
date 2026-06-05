@@ -22,6 +22,12 @@ import (
 // Records without a “ttl“ field, without a “date_epoch“, or with a
 // negative ttl are kept (matching the Mongo/legacy-Python contract).
 func (d *Driver) CleanupTimeout(ctx context.Context, collection string) (int, error) {
+	// Fail-closed before the existence check: a scoped collection with a naked
+	// context must error, never silently run cross-tenant. [H3]
+	tenantClause, tenantArgs, err := tenantPredicate(ctx, collection)
+	if err != nil {
+		return 0, fmt.Errorf("sqlite: cleanupTimeout: %w", err)
+	}
 	exists, err := d.collectionExists(ctx, collection)
 	if err != nil {
 		return 0, err
@@ -40,10 +46,10 @@ func (d *Driver) CleanupTimeout(ctx context.Context, collection string) (int, er
 			AND json_extract(data, '$.date_epoch') IS NOT NULL
 			AND (CAST(json_extract(data, '$.date_epoch') AS REAL)
 				+ CAST(json_extract(data, '$.ttl') AS REAL))
-			<= CAST(strftime('%%s','now') AS REAL)`,
-		quoteIdent(tbl),
+			<= CAST(strftime('%%s','now') AS REAL)%s`,
+		quoteIdent(tbl), tenantClause,
 	)
-	res, err := d.db.ExecContext(ctx, stmt)
+	res, err := d.db.ExecContext(ctx, stmt, tenantArgs...)
 	if err != nil {
 		return 0, err
 	}
@@ -51,9 +57,45 @@ func (d *Driver) CleanupTimeout(ctx context.Context, collection string) (int, er
 	return int(n), nil
 }
 
+// tenantPredicate resolves the tenant scope for collection under ctx and returns
+// a SQL fragment plus its args to AND into a WHERE clause. inject=false (platform
+// scope or global collection) yields an empty clause; a naked context on a scoped
+// collection fails closed with ErrNoTenant. The fragment selects the current
+// table's tenant_id; supply tableAlias to qualify it (e.g. "a") when the query
+// joins the same table to itself.
+func tenantPredicate(ctx context.Context, collection string) (clause string, args []any, err error) {
+	return tenantPredicateAlias(ctx, collection, "")
+}
+
+func tenantPredicateAlias(ctx context.Context, collection, alias string) (clause string, args []any, err error) {
+	tenantID, inject, err := dbpkg.TenantScope(ctx, collection)
+	if err != nil {
+		return "", nil, err
+	}
+	if !inject {
+		return "", nil, nil
+	}
+	col := "data"
+	if alias != "" {
+		col = alias + ".data"
+	}
+	return fmt.Sprintf(" AND json_extract(%s, '$.tenant_id') = ?", col), []any{tenantID}, nil
+}
+
 // CleanupComments drops comment rows whose record_uid no longer resolves to
 // an existing record. A no-op if either collection is missing.
 func (d *Driver) CleanupComments(ctx context.Context) (int, error) {
+	// Fail-closed: comment/record are tenant-scoped. Both the comments being
+	// pruned and the records consulted for liveness must stay within the calling
+	// tenant. [H3]
+	commentClause, commentArgs, err := tenantPredicate(ctx, "comment")
+	if err != nil {
+		return 0, fmt.Errorf("sqlite: cleanupComments: %w", err)
+	}
+	recordClause, recordArgs, err := tenantPredicate(ctx, "record")
+	if err != nil {
+		return 0, fmt.Errorf("sqlite: cleanupComments: %w", err)
+	}
 	cExists, err := d.collectionExists(ctx, "comment")
 	if err != nil {
 		return 0, err
@@ -76,10 +118,13 @@ func (d *Driver) CleanupComments(ctx context.Context) (int, error) {
 	stmt := fmt.Sprintf( //nolint:gosec
 		`DELETE FROM %s WHERE json_extract(data, '$.record_uid') NOT IN
 			(SELECT json_extract(data, '$.uid') FROM %s
-			 WHERE json_extract(data, '$.uid') IS NOT NULL)`,
-		quoteIdent(ct), quoteIdent(rt),
+			 WHERE json_extract(data, '$.uid') IS NOT NULL%s)%s`,
+		quoteIdent(ct), quoteIdent(rt), recordClause, commentClause,
 	)
-	res, err := d.db.ExecContext(ctx, stmt)
+	// Args bind in statement order: the record sub-query predicate first, then
+	// the outer comment predicate.
+	args := append(append([]any{}, recordArgs...), commentArgs...)
+	res, err := d.db.ExecContext(ctx, stmt, args...)
 	if err != nil {
 		return 0, err
 	}
@@ -90,6 +135,13 @@ func (d *Driver) CleanupComments(ctx context.Context) (int, error) {
 // CleanupOrphans drops rows whose “parents“ array references a non-existent
 // ancestor in the same collection.
 func (d *Driver) CleanupOrphans(ctx context.Context, collection string) (int, error) {
+	// Fail-closed before the existence check. The candidate scan below is
+	// tenant-scoped so only the calling tenant's rows are considered; the
+	// parent-existence probe (d.GetOne) is itself tenant-scoped via Search. [H3]
+	tenantClause, tenantArgs, err := tenantPredicate(ctx, collection)
+	if err != nil {
+		return 0, fmt.Errorf("sqlite: cleanupOrphans: %w", err)
+	}
 	exists, err := d.collectionExists(ctx, collection)
 	if err != nil {
 		return 0, err
@@ -106,9 +158,9 @@ func (d *Driver) CleanupOrphans(ctx context.Context, collection string) (int, er
 	// the single-statement form messy.
 	rows, err := d.db.QueryContext(ctx, fmt.Sprintf(
 		"SELECT uid, json_extract(data, '$.parents') FROM %s "+
-			"WHERE json_type(data, '$.parents') = 'array'",
-		quoteIdent(tbl),
-	))
+			"WHERE json_type(data, '$.parents') = 'array'%s",
+		quoteIdent(tbl), tenantClause,
+	), tenantArgs...)
 	if err != nil {
 		return 0, err
 	}
@@ -228,6 +280,12 @@ func (d *Driver) CleanupNotification(ctx context.Context) (int, error) {
 // (the JSON path expressions for "every element is in the past" aren't
 // portable across the three backends), and DELETE by uid in batches.
 func (d *Driver) cleanupExpiredByDatetime(ctx context.Context, collection string) (int, error) {
+	// Fail-closed before the existence check; the candidate scan is tenant-scoped
+	// so only the calling tenant's rows are considered. [H3]
+	tenantClause, tenantArgs, err := tenantPredicate(ctx, collection)
+	if err != nil {
+		return 0, fmt.Errorf("sqlite: cleanupExpired %s: %w", collection, err)
+	}
 	exists, err := d.collectionExists(ctx, collection)
 	if err != nil {
 		return 0, err
@@ -242,10 +300,10 @@ func (d *Driver) cleanupExpiredByDatetime(ctx context.Context, collection string
 	q := fmt.Sprintf( //nolint:gosec
 		`SELECT uid, json_extract(data, '$.time_constraints.datetime') FROM %s
 		 WHERE json_type(data, '$.time_constraints.datetime') = 'array'
-		   AND json_array_length(json_extract(data, '$.time_constraints.datetime')) > 0`,
-		quoteIdent(tbl),
+		   AND json_array_length(json_extract(data, '$.time_constraints.datetime')) > 0%s`,
+		quoteIdent(tbl), tenantClause,
 	)
-	rows, err := d.db.QueryContext(ctx, q)
+	rows, err := d.db.QueryContext(ctx, q, tenantArgs...)
 	if err != nil {
 		return 0, err
 	}
@@ -334,6 +392,21 @@ func datetimeAllExpired(raw []byte, now time.Time) bool {
 // a "delete" action older than the threshold. ("delete" is the verb the audit
 // emitter writes — see internal/plugins/crud.go; the UI relabels it "deleted".)
 func (d *Driver) CleanupAuditLogs(ctx context.Context, olderThan time.Duration) (int, error) {
+	// Fail-closed. audit is tenant-scoped: an object_id is namespaced per tenant,
+	// so the outer DELETE, the candidate sub-query (alias a) and the
+	// max-epoch correlated sub-query (alias b) all carry the tenant predicate. [H3]
+	outerClause, outerArgs, err := tenantPredicate(ctx, "audit")
+	if err != nil {
+		return 0, fmt.Errorf("sqlite: cleanupAuditLogs: %w", err)
+	}
+	aClause, aArgs, err := tenantPredicateAlias(ctx, "audit", "a")
+	if err != nil {
+		return 0, fmt.Errorf("sqlite: cleanupAuditLogs: %w", err)
+	}
+	bClause, bArgs, err := tenantPredicateAlias(ctx, "audit", "b")
+	if err != nil {
+		return 0, fmt.Errorf("sqlite: cleanupAuditLogs: %w", err)
+	}
 	exists, err := d.collectionExists(ctx, "audit")
 	if err != nil {
 		return 0, err
@@ -361,11 +434,17 @@ func (d *Driver) CleanupAuditLogs(ctx context.Context, olderThan time.Duration) 
 				SELECT MAX(COALESCE(CAST(json_extract(b.data, '$.date_epoch') AS REAL), 0))
 				FROM %s b
 				WHERE json_extract(b.data, '$.object_id')
-				  = json_extract(a.data, '$.object_id')
-			  )
-		)
-	`, quoteIdent(tbl), quoteIdent(tbl), quoteIdent(tbl))
-	res, err := d.db.ExecContext(ctx, stmt, threshold)
+				  = json_extract(a.data, '$.object_id')%s
+			  )%s
+		)%s
+	`, quoteIdent(tbl), quoteIdent(tbl), quoteIdent(tbl), bClause, aClause, outerClause)
+	// Args bind in statement order: threshold (?), then inner b-predicate, then
+	// candidate a-predicate, then the outer DELETE predicate.
+	args := []any{threshold}
+	args = append(args, bArgs...)
+	args = append(args, aArgs...)
+	args = append(args, outerArgs...)
+	res, err := d.db.ExecContext(ctx, stmt, args...)
 	if err != nil {
 		return 0, err
 	}
@@ -376,6 +455,11 @@ func (d *Driver) CleanupAuditLogs(ctx context.Context, olderThan time.Duration) 
 // ComputeStats aggregates a stats collection into time buckets. Result shape
 // matches Mongo/Postgres so the API surface doesn't branch on driver.
 func (d *Driver) ComputeStats(ctx context.Context, collection string, from, to time.Time, groupBy string) ([]dbpkg.StatsBucket, error) {
+	// Fail-closed; aggregate only the calling tenant's stats rows. [H4]
+	tenantClause, tenantArgs, err := tenantPredicate(ctx, collection)
+	if err != nil {
+		return nil, fmt.Errorf("sqlite: computeStats: %w", err)
+	}
 	exists, err := d.collectionExists(ctx, collection)
 	if err != nil {
 		return nil, err
@@ -400,14 +484,14 @@ func (d *Driver) ComputeStats(ctx context.Context, collection string, from, to t
 		       json_extract(data, '$.key') AS k,
 		       SUM(COALESCE(CAST(json_extract(data, '$.value') AS REAL), 0)) AS v
 		FROM %s
-		WHERE json_extract(data, '$.date') BETWEEN ? AND ?
+		WHERE json_extract(data, '$.date') BETWEEN ? AND ?%s
 		GROUP BY bucket, k
 		ORDER BY bucket
-	`, quoteIdent(tbl))
+	`, quoteIdent(tbl), tenantClause)
 	fromS := from.UTC().Format(time.RFC3339)
 	toS := to.UTC().Format(time.RFC3339)
 
-	rows, err := d.db.QueryContext(ctx, stmt, format, fromS, toS)
+	rows, err := d.db.QueryContext(ctx, stmt, append([]any{format, fromS, toS}, tenantArgs...)...)
 	if err != nil {
 		return nil, err
 	}

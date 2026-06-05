@@ -709,6 +709,12 @@ func (d *Driver) UpdateOne(ctx context.Context, collection, uid string, patch db
 // empty condition with force=false is refused (returns 0, no error) to
 // match the Python safety guard.
 func (d *Driver) Delete(ctx context.Context, collection string, cond condition.Cond, force bool) (int, error) {
+	// Fail-closed before the existence / force checks: a scoped collection with a
+	// naked context must error, never silently no-op. Tenant injection into the
+	// predicate is handled by compileWith below.
+	if _, _, err := dbpkg.TenantScope(ctx, collection); err != nil {
+		return 0, fmt.Errorf("sqlite: delete: %w", err)
+	}
 	exists, err := d.collectionExists(ctx, collection)
 	if err != nil {
 		return 0, err

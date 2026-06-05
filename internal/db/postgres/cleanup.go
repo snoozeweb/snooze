@@ -13,9 +13,36 @@ import (
 	dbpkg "github.com/snoozeweb/snooze/internal/db"
 )
 
+// tenantPredicate resolves the tenant scope for collection under ctx and returns
+// a SQL fragment plus its single arg to AND into a WHERE clause, using the
+// supplied placeholder index ($N). inject=false (platform scope or global
+// collection) yields an empty clause; a naked context on a scoped collection
+// fails closed with ErrNoTenant. Supply tableAlias to qualify the data column
+// (e.g. "a") when the query joins the same table to itself.
+func tenantPredicate(ctx context.Context, collection, alias string, placeholder int) (clause string, args []any, err error) {
+	tenantID, inject, err := dbpkg.TenantScope(ctx, collection)
+	if err != nil {
+		return "", nil, err
+	}
+	if !inject {
+		return "", nil, nil
+	}
+	col := "data"
+	if alias != "" {
+		col = alias + ".data"
+	}
+	return fmt.Sprintf(" AND %s->>'tenant_id' = $%d", col, placeholder), []any{tenantID}, nil
+}
+
 // CleanupTimeout drops every row whose (date_epoch + ttl) is in the past.
 // Mirrors snooze.db.postgres.database.cleanup_timeout.
 func (d *Driver) CleanupTimeout(ctx context.Context, collection string) (int, error) {
+	// Fail-closed before the existence check: a scoped collection with a naked
+	// context must error, never run cross-tenant. [H3]
+	tenantClause, tenantArgs, err := tenantPredicate(ctx, collection, "", 1)
+	if err != nil {
+		return 0, fmt.Errorf("postgres: cleanupTimeout %s: %w", collection, err)
+	}
 	table, err := d.tableIfExists(ctx, collection)
 	if err != nil {
 		return 0, err
@@ -29,10 +56,10 @@ func (d *Driver) CleanupTimeout(ctx context.Context, collection string) (int, er
 			"(data->>'ttl')::numeric >= 0 AND "+
 			"data ? 'date_epoch' AND "+
 			"((data->>'date_epoch')::numeric + (data->>'ttl')::numeric) "+
-			"<= extract(epoch from now())",
-		qt,
+			"<= extract(epoch from now())%s",
+		qt, tenantClause,
 	)
-	tag, err := d.pool.Exec(ctx, q)
+	tag, err := d.pool.Exec(ctx, q, tenantArgs...)
 	if err != nil {
 		return 0, fmt.Errorf("postgres: cleanupTimeout %s: %w", collection, err)
 	}
@@ -46,6 +73,18 @@ func (d *Driver) CleanupTimeout(ctx context.Context, collection string) (int, er
 // CleanupComments drops every comment row whose record_uid no longer
 // resolves to a record.
 func (d *Driver) CleanupComments(ctx context.Context) (int, error) {
+	// Fail-closed: comment/record are tenant-scoped. Both the comments being
+	// pruned and the records consulted for liveness stay within the calling
+	// tenant. The record sub-query predicate appears first in the SQL text ($1),
+	// the outer comment predicate second ($2). [H3]
+	recordClause, recordArgs, err := tenantPredicate(ctx, "record", "", 1)
+	if err != nil {
+		return 0, fmt.Errorf("postgres: cleanupComments: %w", err)
+	}
+	commentClause, commentArgs, err := tenantPredicate(ctx, "comment", "", len(recordArgs)+1)
+	if err != nil {
+		return 0, fmt.Errorf("postgres: cleanupComments: %w", err)
+	}
 	cols, err := d.ListCollections(ctx)
 	if err != nil {
 		return 0, err
@@ -63,10 +102,11 @@ func (d *Driver) CleanupComments(ctx context.Context) (int, error) {
 	}
 	q := fmt.Sprintf(
 		"DELETE FROM %s WHERE data->>'record_uid' NOT IN "+
-			"(SELECT data->>'uid' FROM %s WHERE data ? 'uid')",
-		quoteIdent(ct), quoteIdent(rt),
+			"(SELECT data->>'uid' FROM %s WHERE data ? 'uid'%s)%s",
+		quoteIdent(ct), quoteIdent(rt), recordClause, commentClause,
 	)
-	tag, err := d.pool.Exec(ctx, q)
+	args := append(append([]any{}, recordArgs...), commentArgs...)
+	tag, err := d.pool.Exec(ctx, q, args...)
 	if err != nil {
 		return 0, fmt.Errorf("postgres: cleanupComments: %w", err)
 	}
@@ -76,6 +116,22 @@ func (d *Driver) CleanupComments(ctx context.Context) (int, error) {
 // CleanupOrphans drops every row whose `parents` array references a uid
 // that no longer exists in the same collection. Mirrors the Python CTE.
 func (d *Driver) CleanupOrphans(ctx context.Context, collection string) (int, error) {
+	// Fail-closed; every reference to the table is tenant-scoped so only the
+	// calling tenant's rows define both the parent set and the deletion set. The
+	// three predicates bind in SQL-text order: parents CTE ($1), the missing-CTE
+	// uid sub-query ($2), the outer DELETE ($3). [H3]
+	parentsClause, parentsArgs, err := tenantPredicate(ctx, collection, "", 1)
+	if err != nil {
+		return 0, fmt.Errorf("postgres: cleanupOrphans %s: %w", collection, err)
+	}
+	uidClause, uidArgs, err := tenantPredicate(ctx, collection, "", len(parentsArgs)+1)
+	if err != nil {
+		return 0, fmt.Errorf("postgres: cleanupOrphans %s: %w", collection, err)
+	}
+	delClause, delArgs, err := tenantPredicate(ctx, collection, "", len(parentsArgs)+len(uidArgs)+1)
+	if err != nil {
+		return 0, fmt.Errorf("postgres: cleanupOrphans %s: %w", collection, err)
+	}
 	table, err := d.tableIfExists(ctx, collection)
 	if err != nil {
 		return 0, err
@@ -88,17 +144,18 @@ func (d *Driver) CleanupOrphans(ctx context.Context, collection string) (int, er
 		"WITH parents AS ("+
 			" SELECT DISTINCT (data->'parents'->-1) #>> '{}' AS parent FROM %s"+
 			" WHERE jsonb_typeof(data->'parents') = 'array'"+
-			" AND jsonb_array_length(data->'parents') > 0"+
+			" AND jsonb_array_length(data->'parents') > 0%s"+
 			"), missing AS ("+
 			" SELECT parent FROM parents WHERE parent IS NOT NULL AND parent NOT IN ("+
-			" SELECT data->>'uid' FROM %s WHERE data ? 'uid'"+
+			" SELECT data->>'uid' FROM %s WHERE data ? 'uid'%s"+
 			" ))"+
 			" DELETE FROM %s WHERE EXISTS ("+
 			" SELECT 1 FROM jsonb_array_elements_text(data->'parents') p, missing m"+
-			" WHERE p = m.parent)",
-		qt, qt, qt,
+			" WHERE p = m.parent)%s",
+		qt, parentsClause, qt, uidClause, qt, delClause,
 	)
-	tag, err := d.pool.Exec(ctx, q)
+	args := append(append(append([]any{}, parentsArgs...), uidArgs...), delArgs...)
+	tag, err := d.pool.Exec(ctx, q, args...)
 	if err != nil {
 		return 0, fmt.Errorf("postgres: cleanupOrphans %s: %w", collection, err)
 	}
@@ -124,6 +181,12 @@ func (d *Driver) CleanupNotification(ctx context.Context) (int, error) {
 // expressing it in pure SQL across jsonb_array_elements would be possible
 // but harder to keep in sync with the SQLite/Mongo backends.
 func (d *Driver) cleanupExpiredByDatetime(ctx context.Context, collection string) (int, error) {
+	// Fail-closed; the candidate scan is tenant-scoped, so only the calling
+	// tenant's rows can be deleted (the DELETE keys on the collected uids). [H3]
+	tenantClause, tenantArgs, err := tenantPredicate(ctx, collection, "", 1)
+	if err != nil {
+		return 0, fmt.Errorf("postgres: cleanupExpired %s: %w", collection, err)
+	}
 	table, err := d.tableIfExists(ctx, collection)
 	if err != nil {
 		return 0, err
@@ -135,10 +198,10 @@ func (d *Driver) cleanupExpiredByDatetime(ctx context.Context, collection string
 	q := fmt.Sprintf(
 		"SELECT uid, data->'time_constraints'->'datetime' FROM %s "+
 			"WHERE jsonb_typeof(data->'time_constraints'->'datetime') = 'array' "+
-			"AND jsonb_array_length(data->'time_constraints'->'datetime') > 0",
-		qt,
+			"AND jsonb_array_length(data->'time_constraints'->'datetime') > 0%s",
+		qt, tenantClause,
 	)
-	rows, err := d.pool.Query(ctx, q)
+	rows, err := d.pool.Query(ctx, q, tenantArgs...)
 	if err != nil {
 		return 0, fmt.Errorf("postgres: cleanupExpired %s: %w", collection, err)
 	}
@@ -210,6 +273,22 @@ func datetimeAllExpired(raw []byte, now time.Time) bool {
 // CleanupAuditLogs drops audit rows for object_ids last marked deleted
 // before now - olderThan.
 func (d *Driver) CleanupAuditLogs(ctx context.Context, olderThan time.Duration) (int, error) {
+	// Fail-closed. audit is tenant-scoped and object_id is namespaced per tenant,
+	// so the outer DELETE, the candidate sub-query (alias a) and the max-epoch
+	// correlated sub-query (alias b) all carry the tenant predicate. Placeholders:
+	// $1 threshold, $2 inner-b, $3 candidate-a, $4 outer DELETE. [H3]
+	bClause, bArgs, err := tenantPredicate(ctx, "audit", "b", 2)
+	if err != nil {
+		return 0, fmt.Errorf("postgres: cleanupAuditLogs: %w", err)
+	}
+	aClause, aArgs, err := tenantPredicate(ctx, "audit", "a", 2+len(bArgs))
+	if err != nil {
+		return 0, fmt.Errorf("postgres: cleanupAuditLogs: %w", err)
+	}
+	outerClause, outerArgs, err := tenantPredicate(ctx, "audit", "", 2+len(bArgs)+len(aArgs))
+	if err != nil {
+		return 0, fmt.Errorf("postgres: cleanupAuditLogs: %w", err)
+	}
 	cols, err := d.ListCollections(ctx)
 	if err != nil {
 		return 0, err
@@ -235,12 +314,16 @@ func (d *Driver) CleanupAuditLogs(ctx context.Context, olderThan time.Duration) 
 			"    AND COALESCE((a.data->>'date_epoch')::numeric, 0) < $1"+
 			"    AND COALESCE((a.data->>'date_epoch')::numeric, 0) = ("+
 			"      SELECT MAX(COALESCE((b.data->>'date_epoch')::numeric, 0))"+
-			"      FROM %s b WHERE b.data->>'object_id' = a.data->>'object_id'"+
-			"    )"+
-			")",
-		qt, qt, qt,
+			"      FROM %s b WHERE b.data->>'object_id' = a.data->>'object_id'%s"+
+			"    )%s"+
+			")%s",
+		qt, qt, qt, bClause, aClause, outerClause,
 	)
-	tag, err := d.pool.Exec(ctx, q, threshold)
+	args := []any{threshold}
+	args = append(args, bArgs...)
+	args = append(args, aArgs...)
+	args = append(args, outerArgs...)
+	tag, err := d.pool.Exec(ctx, q, args...)
 	if err != nil {
 		return 0, fmt.Errorf("postgres: cleanupAuditLogs: %w", err)
 	}
@@ -251,6 +334,12 @@ func (d *Driver) CleanupAuditLogs(ctx context.Context, olderThan time.Duration) 
 // (date/key/value). Output buckets are formatted using the same
 // "YYYY-MM-DDTHH:MM:OF" template as the Python backend.
 func (d *Driver) ComputeStats(ctx context.Context, collection string, from, to time.Time, groupBy string) ([]dbpkg.StatsBucket, error) {
+	// Fail-closed; aggregate only the calling tenant's stats rows. The predicate
+	// lands inside the src CTE WHERE clause as $4 (after from/to/trunc). [H4]
+	tenantClause, tenantArgs, err := tenantPredicate(ctx, collection, "", 4)
+	if err != nil {
+		return nil, fmt.Errorf("postgres: computeStats: %w", err)
+	}
 	table, err := d.tableIfExists(ctx, collection)
 	if err != nil {
 		return nil, err
@@ -266,13 +355,13 @@ func (d *Driver) ComputeStats(ctx context.Context, collection string, from, to t
 			" SELECT (data->>'date')::timestamptz AS d, "+
 			"        data->>'key' AS k, "+
 			"        COALESCE((data->>'value')::numeric, 0) AS v "+
-			" FROM %s WHERE (data->>'date')::timestamptz BETWEEN $1 AND $2"+
+			" FROM %s WHERE (data->>'date')::timestamptz BETWEEN $1 AND $2%s"+
 			") "+
 			"SELECT to_char(date_trunc($3, d), 'YYYY-MM-DD\"T\"HH24:MI:OF') AS bucket, "+
 			"k AS key, SUM(v) AS value FROM src GROUP BY bucket, k ORDER BY bucket",
-		qt,
+		qt, tenantClause,
 	)
-	rows, err := d.pool.Query(ctx, q, from, to, trunc)
+	rows, err := d.pool.Query(ctx, q, append([]any{from, to, trunc}, tenantArgs...)...)
 	if err != nil {
 		return nil, fmt.Errorf("postgres: computeStats: %w", err)
 	}
