@@ -62,14 +62,15 @@ func New(cfg Config, logger *slog.Logger) (*Daemon, error) {
 			return nil, fmt.Errorf("%w: server (required when polling)", ErrMissingConfig)
 		}
 		sc, err := snoozeclient.New(snoozeclient.Options{
-			BaseURL:  cfg.Server,
-			Username: cfg.Username,
-			Password: cfg.Password,
-			Method:   cfg.Method,
-			Token:    cfg.Token,
-			Insecure: cfg.Insecure,
-			Timeout:  cfg.RequestTimeout,
-			Logger:   logger,
+			BaseURL:     cfg.Server,
+			Username:    cfg.Username,
+			Password:    cfg.Password,
+			Method:      cfg.Method,
+			Token:       cfg.Token,
+			IngestToken: cfg.IngestToken,
+			Insecure:    cfg.Insecure,
+			Timeout:     cfg.RequestTimeout,
+			Logger:      logger,
 		})
 		if err != nil {
 			return nil, fmt.Errorf("jira: build snooze client: %w", err)

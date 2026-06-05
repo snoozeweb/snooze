@@ -115,3 +115,16 @@ func TestLoadConfig_missingFile(t *testing.T) {
 	require.Error(t, err)
 	require.True(t, errors.Is(err, os.ErrNotExist), "expected os.ErrNotExist, got %v", err)
 }
+
+func TestJiraConfig_IngestTokenRoundTrips(t *testing.T) {
+	cfg := jira.Config{
+		JiraURL:      "https://company.atlassian.net",
+		JiraEmail:    "bot@company.com",
+		JiraAPIToken: "api-tok",
+		ProjectKey:   "OPS",
+		IngestToken:  "snooze-ingest-tok",
+	}
+	out, err := cfg.WithDefaults()
+	require.NoError(t, err)
+	require.Equal(t, "snooze-ingest-tok", out.IngestToken)
+}
