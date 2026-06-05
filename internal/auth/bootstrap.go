@@ -11,6 +11,7 @@ import (
 	"golang.org/x/crypto/bcrypt"
 
 	"github.com/snoozeweb/snooze/internal/db"
+	"github.com/snoozeweb/snooze/pkg/snoozetypes"
 )
 
 // RootUsername is the canonical bootstrap administrator account.
@@ -21,10 +22,16 @@ const RootUsername = "root"
 // genuinely unguessable and short enough to copy from a terminal.
 const BootstrapPasswordBytes = 24
 
+// TenantCollection is the global collection holding tenant registry documents.
+// This mirrors the constant in internal/pluginimpl/tenant (defined in Phase 4);
+// we declare it here so bootstrap has no import cycle.
+const TenantCollection = "tenant"
+
 // EnsureRoot creates a bcrypt-hashed “root“ user with a random password if no
-// user exists in the local user collection. The plaintext password is returned
-// on first boot so the caller can print it to stderr once; subsequent boots
-// return ("", nil). Any unexpected DB error is wrapped with %w.
+// user exists in the local user collection. It stamps the root user with
+// tenant_id=DefaultTenant and grants the platform_admin role. The plaintext
+// password is returned on first boot so the caller can print it to stderr once;
+// subsequent boots return ("", nil). Any unexpected DB error is wrapped with %w.
 func EnsureRoot(ctx context.Context, driver db.Driver) (string, error) {
 	if driver == nil {
 		return "", errors.New("bootstrap: nil db driver")
@@ -54,11 +61,12 @@ func EnsureRoot(ctx context.Context, driver db.Driver) (string, error) {
 
 	now := time.Now().UTC().Format(time.RFC3339)
 	doc := db.Document{
+		"tenant_id":  snoozetypes.DefaultTenant,
 		"name":       RootUsername,
 		"method":     LocalMethod,
 		"enabled":    true,
 		"password":   string(hash),
-		"roles":      []string{"admin"},
+		"roles":      []string{"admin", PlatformAdminRole},
 		"groups":     []string{},
 		"created_at": now,
 	}
@@ -70,6 +78,49 @@ func EnsureRoot(ctx context.Context, driver db.Driver) (string, error) {
 		return "", fmt.Errorf("bootstrap: write root user: %w", err)
 	}
 	return password, nil
+}
+
+// BootstrapDB ensures the default tenant document and the platform_admin role
+// exist. It is idempotent and safe to call on every boot. It must be called
+// before EnsureRoot so the role exists when root is seeded.
+func BootstrapDB(ctx context.Context, driver db.Driver) error {
+	if driver == nil {
+		return errors.New("bootstrap: nil db driver")
+	}
+
+	// Upsert the "default" tenant document (global collection).
+	defaultTenant := db.Document{
+		"id":           snoozetypes.DefaultTenant,
+		"display_name": "Default",
+		"status":       "active",
+	}
+	if _, err := driver.Write(ctx, TenantCollection, []db.Document{defaultTenant}, db.WriteOptions{
+		Primary:    []string{"id"},
+		UpdateTime: true,
+	}); err != nil {
+		return fmt.Errorf("bootstrap: upsert default tenant: %w", err)
+	}
+
+	// Upsert the platform_admin role. Roles live in the role collection which
+	// is tenant-scoped in Phase 3; for bootstrap we operate under the root ctx
+	// which carries platform scope or default-tenant scope. The upsert key is
+	// "name" (pre-Phase 3); after Phase 3 driver enforcement it becomes
+	// ["tenant_id","name"] but that is handled by the role plugin's PrimaryKey.
+	platformAdminRole := db.Document{
+		"name":        PlatformAdminRole,
+		"tenant_id":   snoozetypes.DefaultTenant,
+		"permissions": []string{PermReadTenant, PermWriteTenant},
+		"groups":      []string{},
+		"description": "Platform administrator — manages the tenant registry",
+	}
+	if _, err := driver.Write(ctx, RoleCollection, []db.Document{platformAdminRole}, db.WriteOptions{
+		Primary:    []string{"name"},
+		UpdateTime: true,
+	}); err != nil {
+		return fmt.Errorf("bootstrap: upsert platform_admin role: %w", err)
+	}
+
+	return nil
 }
 
 // generatePassword returns a base64url-encoded random secret of the given raw
