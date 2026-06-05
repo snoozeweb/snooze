@@ -10,61 +10,72 @@ import (
 )
 
 // CleanupTimeoutJob deletes records past their TTL on the named collection
-// every 5 minutes. Mirrors the Python `cleanup_alert` job (record-only).
+// every 5 minutes, iterating every active tenant. Mirrors the Python
+// `cleanup_alert` job (record-only).
 func CleanupTimeoutJob(d db.Driver, collection string) IntervalJob {
 	name := fmt.Sprintf("cleanup_timeout/%s", collection)
 	return IntervalJob{
 		Interval: 5 * time.Minute,
 		Job: NewJobFunc(name, func(ctx context.Context) error {
-			_, err := d.CleanupTimeout(ctx, collection)
-			return err
+			return ForEachTenant(ctx, d, func(tctx context.Context, _ string) error {
+				_, err := d.CleanupTimeout(tctx, collection)
+				return err
+			})
 		}),
 	}
 }
 
-// CleanupAggregateJob drops the `aggregate` collection every minute, matching
-// the Python `cleanup_aggregate` semantics (the collection is recomputed
-// continuously by the aggregate plugin).
+// CleanupAggregateJob drops the `aggregate` collection per tenant every minute,
+// matching the Python `cleanup_aggregate` semantics (the collection is
+// recomputed continuously by the aggregate plugin).
 func CleanupAggregateJob(d db.Driver) IntervalJob {
 	return IntervalJob{
 		Interval: time.Minute,
 		Job: NewJobFunc("cleanup_aggregate", func(ctx context.Context) error {
-			return d.Drop(ctx, "aggregate")
+			return ForEachTenant(ctx, d, func(tctx context.Context, _ string) error {
+				return d.Drop(tctx, "aggregate")
+			})
 		}),
 	}
 }
 
-// CleanupCommentsJob removes orphaned comments daily.
+// CleanupCommentsJob removes orphaned comments daily, per tenant.
 func CleanupCommentsJob(d db.Driver) IntervalJob {
 	return IntervalJob{
 		Interval: 24 * time.Hour,
 		Job: NewJobFunc("cleanup_comments", func(ctx context.Context) error {
-			_, err := d.CleanupComments(ctx)
-			return err
+			return ForEachTenant(ctx, d, func(tctx context.Context, _ string) error {
+				_, err := d.CleanupComments(tctx)
+				return err
+			})
 		}),
 	}
 }
 
-// CleanupOrphansJob removes orphaned rows from the named collection daily.
+// CleanupOrphansJob removes orphaned rows from the named collection daily, per tenant.
 func CleanupOrphansJob(d db.Driver, collection string) IntervalJob {
 	name := fmt.Sprintf("cleanup_orphans/%s", collection)
 	return IntervalJob{
 		Interval: 24 * time.Hour,
 		Job: NewJobFunc(name, func(ctx context.Context) error {
-			_, err := d.CleanupOrphans(ctx, collection)
-			return err
+			return ForEachTenant(ctx, d, func(tctx context.Context, _ string) error {
+				_, err := d.CleanupOrphans(tctx, collection)
+				return err
+			})
 		}),
 	}
 }
 
 // CleanupAuditJob purges audit-log rows older than `olderThan` every day at
-// midnight.
+// midnight, per tenant.
 func CleanupAuditJob(d db.Driver, olderThan time.Duration) CronJob {
 	return CronJob{
 		Cron: "0 0 * * *",
 		Job: NewJobFunc("cleanup_audit", func(ctx context.Context) error {
-			_, err := d.CleanupAuditLogs(ctx, olderThan)
-			return err
+			return ForEachTenant(ctx, d, func(tctx context.Context, _ string) error {
+				_, err := d.CleanupAuditLogs(tctx, olderThan)
+				return err
+			})
 		}),
 	}
 }
@@ -78,14 +89,16 @@ func CleanupAuditAsIntervalJob(d db.Driver, rs auditRetention) IntervalJob {
 	return IntervalJob{
 		Interval: 28 * 24 * time.Hour,
 		Job: NewJobFunc("cleanup_audit", func(ctx context.Context) error {
-			retention := 28 * 24 * time.Hour
-			if rs != nil {
-				if v := rs.AuditRetention(ctx); v > 0 {
-					retention = v
+			return ForEachTenant(ctx, d, func(tctx context.Context, _ string) error {
+				retention := 28 * 24 * time.Hour
+				if rs != nil {
+					if v := rs.AuditRetention(tctx); v > 0 {
+						retention = v
+					}
 				}
-			}
-			_, err := d.CleanupAuditLogs(ctx, retention)
-			return err
+				_, err := d.CleanupAuditLogs(tctx, retention)
+				return err
+			})
 		}),
 	}
 }
@@ -107,8 +120,10 @@ func CleanupSnoozeJob(d db.Driver) IntervalJob {
 	return IntervalJob{
 		Interval: 72 * time.Hour,
 		Job: NewJobFunc("cleanup_snooze", func(ctx context.Context) error {
-			_, err := d.CleanupSnooze(ctx)
-			return err
+			return ForEachTenant(ctx, d, func(tctx context.Context, _ string) error {
+				_, err := d.CleanupSnooze(tctx)
+				return err
+			})
 		}),
 	}
 }
@@ -119,8 +134,10 @@ func CleanupNotificationJob(d db.Driver) IntervalJob {
 	return IntervalJob{
 		Interval: 72 * time.Hour,
 		Job: NewJobFunc("cleanup_notification", func(ctx context.Context) error {
-			_, err := d.CleanupNotification(ctx)
-			return err
+			return ForEachTenant(ctx, d, func(tctx context.Context, _ string) error {
+				_, err := d.CleanupNotification(tctx)
+				return err
+			})
 		}),
 	}
 }
@@ -138,16 +155,18 @@ func CleanupStatsAsIntervalJob(d db.Driver, rs statsRetention) IntervalJob {
 	return IntervalJob{
 		Interval: 24 * time.Hour,
 		Job: NewJobFunc("cleanup_stats", func(ctx context.Context) error {
-			retention := 400 * 24 * time.Hour
-			if rs != nil {
-				if v := rs.StatsRetention(ctx); v > 0 {
-					retention = v
+			return ForEachTenant(ctx, d, func(tctx context.Context, _ string) error {
+				retention := 400 * 24 * time.Hour
+				if rs != nil {
+					if v := rs.StatsRetention(tctx); v > 0 {
+						retention = v
+					}
 				}
-			}
-			cutoff := time.Now().Add(-retention).Unix()
-			cond := condition.Cond{Op: condition.OpLt, Field: "bucket", Value: cutoff}
-			_, err := d.Delete(ctx, "stats", cond, true)
-			return err
+				cutoff := time.Now().Add(-retention).Unix()
+				cond := condition.Cond{Op: condition.OpLt, Field: "bucket", Value: cutoff}
+				_, err := d.Delete(tctx, "stats", cond, true)
+				return err
+			})
 		}),
 	}
 }

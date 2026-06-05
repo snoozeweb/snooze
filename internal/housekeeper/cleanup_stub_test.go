@@ -21,7 +21,14 @@ type cleanupStubDriver struct {
 	deleteFn       func(ctx context.Context, collection string, cond condition.Cond, force bool) (int, error)
 }
 
-func (c *cleanupStubDriver) Search(context.Context, string, condition.Cond, db.Page) ([]db.Document, int, error) {
+// Search returns a single active tenant for the global "tenant" collection so
+// that ForEachTenant (which now wraps every cleanup job) iterates exactly once
+// and the wrapped driver method under test is actually invoked. Any other
+// collection yields nothing.
+func (c *cleanupStubDriver) Search(_ context.Context, collection string, _ condition.Cond, _ db.Page) ([]db.Document, int, error) {
+	if collection == "tenant" {
+		return []db.Document{{"id": "default", "status": "active"}}, 1, nil
+	}
 	return nil, 0, nil
 }
 func (c *cleanupStubDriver) GetOne(context.Context, string, db.Document) (db.Document, error) {
