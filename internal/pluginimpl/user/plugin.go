@@ -50,6 +50,10 @@ func (p *Plugin) PostInit(_ context.Context, host plugins.Host) error {
 // Reload is a no-op for the user plugin.
 func (p *Plugin) Reload(_ context.Context) error { return nil }
 
+// PrimaryKey satisfies plugins.PrimaryKeyer. The tenant_id prefix ensures
+// that users with the same (name, method) in different tenants do not collide.
+func (p *Plugin) PrimaryKey() []string { return []string{"tenant_id", "name", "method"} }
+
 // Schema returns the JSON Schema for a user document. Mirrors the Python
 // route_defaults.primary ([name, method]) plus the conventional fields.
 func (p *Plugin) Schema() any {

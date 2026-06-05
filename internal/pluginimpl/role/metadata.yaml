@@ -2,6 +2,6 @@
 name: 'Role'
 desc: 'An endpoint to store roles'
 route_defaults:
-    primary: [name]
+    primary: [tenant_id, name]
     duplicate_policy: 'reject'
     check_permissions: true

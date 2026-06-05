@@ -3,7 +3,7 @@ name: 'User'
 desc: 'An endpoint to store users'
 route_defaults:
     class_name: UserRoute
-    primary: [name, method]
+    primary: [tenant_id, name, method]
     check_permissions: true
     duplicate_policy: 'reject'
 routes:

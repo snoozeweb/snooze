@@ -121,3 +121,27 @@ func TestSchemaShape(t *testing.T) {
 	require.Contains(t, props, "name")
 	require.Contains(t, props, "method")
 }
+
+func TestUserPlugin_PrimaryKey(t *testing.T) {
+	t.Parallel()
+	p := &Plugin{}
+	pk, ok := any(p).(interface{ PrimaryKey() []string })
+	require.True(t, ok, "user.Plugin must implement PrimaryKey()")
+	require.Equal(t, []string{"tenant_id", "name", "method"}, pk.PrimaryKey())
+}
+
+func TestUserPlugin_Validate_AcceptsValidDoc(t *testing.T) {
+	t.Parallel()
+	p := &Plugin{}
+	require.NoError(t, p.Validate(map[string]any{
+		"tenant_id": "acme",
+		"name":      "alice",
+		"method":    "local",
+	}))
+}
+
+func TestUserPlugin_Validate_RejectsMissingName(t *testing.T) {
+	t.Parallel()
+	p := &Plugin{}
+	require.Error(t, p.Validate(map[string]any{"name": "", "method": "local"}))
+}

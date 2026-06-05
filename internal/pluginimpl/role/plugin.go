@@ -43,10 +43,9 @@ func (p *Plugin) PostInit(_ context.Context, host plugins.Host) error {
 // Reload is a no-op for the role plugin.
 func (p *Plugin) Reload(_ context.Context) error { return nil }
 
-// PrimaryKey lets the generic CRUD createHandler reject duplicates whose
-// `name` already exists in the collection. Mirrors metadata.yaml's
-// route_defaults.primary in the Python codebase.
-func (p *Plugin) PrimaryKey() []string { return []string{"name"} }
+// PrimaryKey satisfies plugins.PrimaryKeyer. The tenant_id prefix ensures
+// that roles with the same name in different tenants do not collide.
+func (p *Plugin) PrimaryKey() []string { return []string{"tenant_id", "name"} }
 
 // Schema returns the JSON Schema for a role document.
 func (p *Plugin) Schema() any {

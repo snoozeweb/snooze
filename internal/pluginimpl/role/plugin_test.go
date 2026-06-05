@@ -55,3 +55,18 @@ func TestValidate(t *testing.T) {
 	require.NoError(t, p.Validate(nil))
 	require.Error(t, p.Validate(map[string]any{"name": ""}))
 }
+
+func TestRolePlugin_PrimaryKey(t *testing.T) {
+	t.Parallel()
+	p := &Plugin{}
+	require.Equal(t, []string{"tenant_id", "name"}, p.PrimaryKey())
+}
+
+func TestRolePlugin_Validate_AcceptsValidDoc(t *testing.T) {
+	t.Parallel()
+	p := &Plugin{}
+	require.NoError(t, p.Validate(map[string]any{
+		"tenant_id": "acme",
+		"name":      "admin",
+	}))
+}
