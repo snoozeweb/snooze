@@ -30,6 +30,7 @@ import (
 	"github.com/snoozeweb/snooze/internal/condition"
 	dbpkg "github.com/snoozeweb/snooze/internal/db"
 	"github.com/snoozeweb/snooze/internal/syncer"
+	"github.com/snoozeweb/snooze/pkg/snoozetypes"
 )
 
 // Config holds the connection parameters of the MongoDB Driver.
@@ -183,8 +184,12 @@ func (d *Driver) Drop(ctx context.Context, collection string) error {
 }
 
 // Convert compiles a condition.Cond into a bson.M filter suitable as a query.
-func (d *Driver) Convert(_ context.Context, cond condition.Cond, searchFields []string) (dbpkg.DriverQuery, error) {
-	q, err := Convert(cond, searchFields)
+//
+// The public Convert on the db.Driver interface takes no collection; use
+// platform scope to avoid fail-closing on callers that pre-compile queries
+// without a collection context.
+func (d *Driver) Convert(ctx context.Context, cond condition.Cond, searchFields []string) (dbpkg.DriverQuery, error) {
+	q, err := Convert(snoozetypes.WithPlatformScope(ctx), "", cond, searchFields)
 	if err != nil {
 		return nil, err
 	}
@@ -194,7 +199,7 @@ func (d *Driver) Convert(_ context.Context, cond condition.Cond, searchFields []
 // Search runs a find against the collection. Returns the page of documents and
 // the total count.
 func (d *Driver) Search(ctx context.Context, collection string, cond condition.Cond, page dbpkg.Page) ([]dbpkg.Document, int, error) {
-	filter, err := Convert(cond, d.searchFieldsFor(collection))
+	filter, err := Convert(ctx, collection, cond, d.searchFieldsFor(collection))
 	if err != nil {
 		return nil, 0, err
 	}
@@ -452,7 +457,7 @@ func (d *Driver) Delete(ctx context.Context, collection string, cond condition.C
 	if cond.IsZero() && !force {
 		return 0, nil
 	}
-	filter, err := Convert(cond, d.searchFieldsFor(collection))
+	filter, err := Convert(ctx, collection, cond, d.searchFieldsFor(collection))
 	if err != nil {
 		return 0, err
 	}
@@ -465,7 +470,7 @@ func (d *Driver) Delete(ctx context.Context, collection string, cond condition.C
 
 // IncMany increments a field on every document matching cond.
 func (d *Driver) IncMany(ctx context.Context, collection, field string, cond condition.Cond, delta int64) (int, error) {
-	filter, err := Convert(cond, d.searchFieldsFor(collection))
+	filter, err := Convert(ctx, collection, cond, d.searchFieldsFor(collection))
 	if err != nil {
 		return 0, err
 	}
@@ -478,7 +483,7 @@ func (d *Driver) IncMany(ctx context.Context, collection, field string, cond con
 
 // SetFields sets every (field -> value) pair on the documents matching cond.
 func (d *Driver) SetFields(ctx context.Context, collection string, fields dbpkg.Document, cond condition.Cond) (int, error) {
-	filter, err := Convert(cond, d.searchFieldsFor(collection))
+	filter, err := Convert(ctx, collection, cond, d.searchFieldsFor(collection))
 	if err != nil {
 		return 0, err
 	}
@@ -497,7 +502,7 @@ func (d *Driver) UnsetFields(ctx context.Context, collection string, fields []st
 	if len(fields) == 0 {
 		return 0, nil
 	}
-	filter, err := Convert(cond, d.searchFieldsFor(collection))
+	filter, err := Convert(ctx, collection, cond, d.searchFieldsFor(collection))
 	if err != nil {
 		return 0, err
 	}
@@ -514,7 +519,7 @@ func (d *Driver) UnsetFields(ctx context.Context, collection string, fields []st
 
 // AppendList pushes each value to the named list field for matching documents.
 func (d *Driver) AppendList(ctx context.Context, collection string, fields map[string][]any, cond condition.Cond) (int, error) {
-	filter, err := Convert(cond, d.searchFieldsFor(collection))
+	filter, err := Convert(ctx, collection, cond, d.searchFieldsFor(collection))
 	if err != nil {
 		return 0, err
 	}
@@ -531,7 +536,7 @@ func (d *Driver) AppendList(ctx context.Context, collection string, fields map[s
 
 // PrependList inserts each value at position 0 of the named list field.
 func (d *Driver) PrependList(ctx context.Context, collection string, fields map[string][]any, cond condition.Cond) (int, error) {
-	filter, err := Convert(cond, d.searchFieldsFor(collection))
+	filter, err := Convert(ctx, collection, cond, d.searchFieldsFor(collection))
 	if err != nil {
 		return 0, err
 	}
@@ -548,7 +553,7 @@ func (d *Driver) PrependList(ctx context.Context, collection string, fields map[
 
 // RemoveList removes each value from the named list field.
 func (d *Driver) RemoveList(ctx context.Context, collection string, fields map[string][]any, cond condition.Cond) (int, error) {
-	filter, err := Convert(cond, d.searchFieldsFor(collection))
+	filter, err := Convert(ctx, collection, cond, d.searchFieldsFor(collection))
 	if err != nil {
 		return 0, err
 	}

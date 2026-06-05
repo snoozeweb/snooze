@@ -1,12 +1,15 @@
 package mongo
 
 import (
+	"context"
+	"errors"
 	"reflect"
 	"testing"
 
 	"go.mongodb.org/mongo-driver/v2/bson"
 
 	"github.com/snoozeweb/snooze/internal/condition"
+	"github.com/snoozeweb/snooze/pkg/snoozetypes"
 )
 
 // TestConvert covers the operator-translation table that Convert is the only
@@ -144,14 +147,58 @@ func TestConvert(t *testing.T) {
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			got, err := Convert(tc.in, tc.fields)
+			got, err := convertCond(tc.in, tc.fields)
 			if (err != nil) != tc.wantErr {
-				t.Fatalf("Convert err=%v wantErr=%v", err, tc.wantErr)
+				t.Fatalf("convertCond err=%v wantErr=%v", err, tc.wantErr)
 			}
 			if !reflect.DeepEqual(got, tc.want) {
-				t.Fatalf("Convert mismatch\n got: %#v\nwant: %#v", got, tc.want)
+				t.Fatalf("convertCond mismatch\n got: %#v\nwant: %#v", got, tc.want)
 			}
 		})
+	}
+}
+
+func TestConvert_tenantInjected(t *testing.T) {
+	ctx := snoozetypes.WithTenant(context.Background(), "acme")
+	filter, err := Convert(ctx, "record", condition.Equals("host", "srv1"), nil)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	// The filter must be an $and wrapping both host=srv1 and tenant_id=acme.
+	and, ok := filter["$and"]
+	if !ok {
+		t.Fatalf("expected $and in filter, got: %v", filter)
+	}
+	parts, ok := and.([]bson.M)
+	if !ok {
+		t.Fatalf("$and value must be []bson.M, got %T", and)
+	}
+	if len(parts) != 2 {
+		t.Fatalf("$and must have 2 children, got %d: %v", len(parts), parts)
+	}
+}
+
+func TestConvert_globalCollectionNoInjection(t *testing.T) {
+	ctx := snoozetypes.WithTenant(context.Background(), "acme")
+	filter, err := Convert(ctx, "tenant", condition.Cond{}, nil)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if _, ok := filter["tenant_id"]; ok {
+		t.Fatalf("global collection must not inject tenant_id; got: %v", filter)
+	}
+	if _, ok := filter["$and"]; ok {
+		t.Fatalf("global collection must not inject $and; got: %v", filter)
+	}
+}
+
+func TestConvert_failClosed(t *testing.T) {
+	_, err := Convert(context.Background(), "record", condition.Cond{}, nil)
+	if err == nil {
+		t.Fatal("naked context on scoped collection: expected error")
+	}
+	if !errors.Is(err, snoozetypes.ErrNoTenant) {
+		t.Fatalf("error must wrap ErrNoTenant, got: %v", err)
 	}
 }
 

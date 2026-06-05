@@ -1,6 +1,7 @@
 package mongo
 
 import (
+	"context"
 	"fmt"
 
 	"go.mongodb.org/mongo-driver/v2/bson"
@@ -11,11 +12,33 @@ import (
 
 // Convert translates a condition.Cond AST into a bson.M MongoDB filter.
 //
+// ctx and collection drive tenant injection (D1): for a tenant-scoped
+// collection with a tenant in ctx the result is wrapped in an $and with a
+// tenant_id predicate; platform scope and global collections skip injection;
+// a naked context on a scoped collection fails closed with ErrNoTenant.
+//
 // SearchFields is used by the SEARCH operator: when non-empty, SEARCH compiles
 // to an $or of indexable case-insensitive regex matches over those fields;
 // when empty, SEARCH compiles to an "always false" filter (matches nothing)
 // rather than the slow $where JavaScript deep-iterate used by Python.
-func Convert(c condition.Cond, searchFields []string) (bson.M, error) {
+func Convert(ctx context.Context, collection string, c condition.Cond, searchFields []string) (bson.M, error) {
+	tenantID, inject, err := dbpkg.TenantScope(ctx, collection)
+	if err != nil {
+		return nil, fmt.Errorf("mongo: %w", err)
+	}
+	result, err := convertCond(c, searchFields)
+	if err != nil {
+		return nil, err
+	}
+	if inject {
+		return bson.M{"$and": []bson.M{{"tenant_id": bson.M{"$eq": tenantID}}, result}}, nil
+	}
+	return result, nil
+}
+
+// convertCond is the internal recursive translator (was Convert before tenant
+// injection). It performs no tenant injection.
+func convertCond(c condition.Cond, searchFields []string) (bson.M, error) {
 	switch c.Op {
 	case condition.OpAlwaysTrue:
 		return bson.M{}, nil
@@ -23,7 +46,7 @@ func Convert(c condition.Cond, searchFields []string) (bson.M, error) {
 	case condition.OpAnd:
 		args := make([]bson.M, 0, len(c.Children))
 		for _, child := range c.Children {
-			q, err := Convert(child, searchFields)
+			q, err := convertCond(child, searchFields)
 			if err != nil {
 				return nil, err
 			}
@@ -34,7 +57,7 @@ func Convert(c condition.Cond, searchFields []string) (bson.M, error) {
 	case condition.OpOr:
 		args := make([]bson.M, 0, len(c.Children))
 		for _, child := range c.Children {
-			q, err := Convert(child, searchFields)
+			q, err := convertCond(child, searchFields)
 			if err != nil {
 				return nil, err
 			}
@@ -46,7 +69,7 @@ func Convert(c condition.Cond, searchFields []string) (bson.M, error) {
 		if len(c.Children) == 0 {
 			return nil, fmt.Errorf("%w: NOT without child", dbpkg.ErrBadCondition)
 		}
-		q, err := Convert(c.Children[0], searchFields)
+		q, err := convertCond(c.Children[0], searchFields)
 		if err != nil {
 			return nil, err
 		}
@@ -117,7 +140,7 @@ func Convert(c condition.Cond, searchFields []string) (bson.M, error) {
 		//   - Value is a list  ⇒ $in over Field.
 		// Anything else collapses to a single-element $in (single membership test).
 		if sub, ok := c.Value.(condition.Cond); ok {
-			inner, err := Convert(sub, searchFields)
+			inner, err := convertCond(sub, searchFields)
 			if err != nil {
 				return nil, err
 			}

@@ -13,6 +13,7 @@ import (
 	"github.com/snoozeweb/snooze/internal/condition"
 	dbpkg "github.com/snoozeweb/snooze/internal/db"
 	"github.com/snoozeweb/snooze/internal/db/dbtest"
+	"github.com/snoozeweb/snooze/pkg/snoozetypes"
 )
 
 // TestDriverSuite runs the shared cross-backend conformance suite. One
@@ -70,7 +71,7 @@ func TestDriver_WriteSearchDelete(t *testing.T) {
 	}
 	d, cleanup := startMongo(t)
 	defer cleanup()
-	ctx := context.Background()
+	ctx := snoozetypes.WithPlatformScope(context.Background())
 	_, err := d.Write(ctx, "record", []dbpkg.Document{
 		{"a": "1", "b": "2"},
 	}, dbpkg.WriteOptions{UpdateTime: true})
@@ -106,7 +107,7 @@ func TestDriver_BulkIncrementUpsert(t *testing.T) {
 	}
 	d, cleanup := startMongo(t)
 	defer cleanup()
-	ctx := context.Background()
+	ctx := snoozetypes.WithPlatformScope(context.Background())
 	_, err := d.Write(ctx, "stat", []dbpkg.Document{
 		{"name": "stat 1", "hits": int64(0)},
 		{"name": "stat 2", "hits": int64(40)},
@@ -131,7 +132,7 @@ func TestDriver_UnsetFields(t *testing.T) {
 	}
 	d, cleanup := startMongo(t)
 	defer cleanup()
-	ctx := context.Background()
+	ctx := snoozetypes.WithPlatformScope(context.Background())
 
 	_, err := d.Write(ctx, "record", []dbpkg.Document{
 		{"host": "h", "snoozed": "Warnings"},
@@ -168,7 +169,7 @@ func TestDriver_UpdateOneToleratesUIDInPatch(t *testing.T) {
 	}
 	d, cleanup := startMongo(t)
 	defer cleanup()
-	ctx := context.Background()
+	ctx := snoozetypes.WithPlatformScope(context.Background())
 
 	_, err := d.Write(ctx, "record", []dbpkg.Document{{"uid": "u1", "x": int64(1)}}, dbpkg.WriteOptions{})
 	require.NoError(t, err)
