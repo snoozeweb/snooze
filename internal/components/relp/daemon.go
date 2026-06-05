@@ -27,6 +27,22 @@ type Options struct {
 	Logger *slog.Logger
 }
 
+// NewClientFromConfig builds a snoozeclient.Client from cfg. Extracted so the
+// main binary and tests share the same Options construction.
+func NewClientFromConfig(cfg Config, logger *slog.Logger) (*snoozeclient.Client, error) {
+	return snoozeclient.New(snoozeclient.Options{
+		BaseURL:     cfg.Server,
+		Username:    cfg.Username,
+		Password:    cfg.Password,
+		Method:      cfg.Method,
+		Token:       cfg.Token,
+		IngestToken: cfg.IngestToken,
+		Insecure:    cfg.Insecure,
+		Timeout:     cfg.RequestTimeout,
+		Logger:      logger,
+	})
+}
+
 // New builds a Daemon. It validates Config, constructs the Forwarder and
 // pre-binds the Listener wiring. It does NOT bind the TCP socket — that
 // happens in Run.

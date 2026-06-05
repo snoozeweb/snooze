@@ -39,3 +39,12 @@ func TestConfigValidates(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, "rfc5424", cfg.Parser)
 }
+
+func TestConfigIngestTokenRoundTrips(t *testing.T) {
+	t.Parallel()
+	path := filepath.Join(t.TempDir(), "relp.yaml")
+	require.NoError(t, os.WriteFile(path, []byte("server: https://x/\ningest_token: tok-relp\n"), 0o600))
+	cfg, err := LoadConfig(path)
+	require.NoError(t, err)
+	require.Equal(t, "tok-relp", cfg.IngestToken)
+}
