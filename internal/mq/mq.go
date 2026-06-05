@@ -73,3 +73,18 @@ func defaults(opts SubscribeOpts) SubscribeOpts {
 	}
 	return opts
 }
+
+// TenantQueue returns the canonical queue name for a given base name and tenant
+// slug. The convention is "<base>.<tenant>" for tenant-scoped queues (e.g.
+// "notifications.acme") and the plain base name for global or unscoped queues
+// (tenant == "").
+//
+// This encoding keeps tenant traffic logically isolated on shared queue
+// backends (Postgres, Mongo) without requiring separate tables or collections
+// per tenant.
+func TenantQueue(base, tenant string) string {
+	if tenant == "" {
+		return base
+	}
+	return base + "." + tenant
+}
