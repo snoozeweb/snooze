@@ -64,21 +64,25 @@ curl -s -X POST \
   http://localhost:5200/api/v1/tenant | jq .
 ```
 
-Response (excerpt):
+Response:
 ```json
 {
-  "data": {
-    "id": "acme",
-    "display_name": "ACME Corp",
-    "status": "active",
-    "ingest_token": "a3f8b2c1...",
-    "created_at": 1717545700
-  }
+  "Added": ["3f2a9c7e-1b4d-4e8a-9c6f-2d1e0a5b7c93"],
+  "Updated": null,
+  "Replaced": null,
+  "Rejected": null
 }
 ```
 
-Store the `ingest_token` value securely — it is only returned in full on the
-create response and on a subsequent `GET /api/v1/tenant/{id}`.
+The create endpoint returns a bare write result whose `Added` array holds the
+internal `uid` of the new document — it does **not** echo back the stored
+tenant fields. Fetch the full record (including any `ingest_token`) with
+`GET /api/v1/tenant/{id}` after creating it.
+
+The server does **not** auto-generate an ingest token on create. A tenant has
+an `ingest_token` only if you supply one in the create body or set it later via
+`PATCH /api/v1/tenant/{id}` (see [Rotate the ingest token](#rotate-the-ingest-token)).
+A tenant with no token routes ingest via the default-tenant fallback.
 
 CLI equivalent:
 ```bash
@@ -159,8 +163,8 @@ curl -s -X PATCH \
 ```
 
 After suspension:
-- New logins with `"org":"acme"` return 401.
-- Alert ingestion for tenant `acme`'s ingest token returns 401.
+- New logins with `"org":"acme"` return `403 Forbidden` (`{"error":{"code":"forbidden","message":"tenant is suspended"}}`).
+- Alert ingestion for tenant `acme`'s ingest token returns `503 Service Unavailable` with error code `tenant_suspended`.
 - Existing valid JWTs continue to work until they expire.
 - All data is retained and visible to platform admins.
 
