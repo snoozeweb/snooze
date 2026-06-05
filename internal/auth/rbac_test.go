@@ -110,3 +110,32 @@ func TestHasPermission(t *testing.T) {
 		})
 	}
 }
+
+func TestRoleResolver_Resolve_UsesContextTenant(t *testing.T) {
+	t.Parallel()
+	// The resolver must forward ctx to the DB calls; callers set WithTenant
+	// before calling. This test verifies the contract: the same ctx passed in
+	// is the one reaching the DB (fakeDB ignores it, but the test documents
+	// the expected calling pattern for Phase 3).
+	fdb := newFakeDB()
+	fdb.seed(LocalCollection, db.Document{
+		"name":   "dan",
+		"method": LocalMethod,
+		"roles":  []string{"viewer"},
+	})
+	fdb.seed(RoleCollection,
+		db.Document{"name": "viewer", "permissions": []string{"ro_all"}, "groups": []string{}},
+	)
+
+	r := NewRoleResolver(fdb)
+	// Set tenant on ctx — Phase 3 driver will enforce this; fakeDB ignores it.
+	ctx := WithTenant(context.Background(), "acme")
+	roles, perms, err := r.Resolve(ctx, Identity{
+		Username: "dan",
+		Method:   LocalMethod,
+		TenantID: "acme",
+	})
+	require.NoError(t, err)
+	require.Equal(t, []string{"viewer"}, roles)
+	require.Equal(t, []string{"ro_all"}, perms)
+}

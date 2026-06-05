@@ -29,7 +29,11 @@ func authReq(method, target string, body []byte, perms ...string) *http.Request 
 	if body != nil {
 		req.Header.Set("Content-Type", "application/json")
 	}
-	ctx := auth.WithClaims(req.Context(), snoozetypes.Claims{
+	// The real Auth middleware sets WithTenant from the verified JWT claim; here
+	// we stamp the default tenant so the handler's tenant-scoped DB calls don't
+	// fail-closed in this single-tenant test store.
+	ctx := snoozetypes.WithTenant(req.Context(), snoozetypes.DefaultTenant)
+	ctx = auth.WithClaims(ctx, snoozetypes.Claims{
 		Subject:     "tester",
 		Method:      "local",
 		Permissions: perms,
@@ -42,7 +46,7 @@ func authReq(method, target string, body []byte, perms ...string) *http.Request 
 // the route only needs DB access.
 func retroApplyHarness(t *testing.T) (chi.Router, db.Driver) {
 	t.Helper()
-	ctx := context.Background()
+	ctx := snoozetypes.WithTenant(context.Background(), snoozetypes.DefaultTenant)
 	d, err := sqlite.New(ctx, sqlite.Config{Path: filepath.Join(t.TempDir(), "snooze.db")})
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = d.Close() })
@@ -70,7 +74,7 @@ func writeJSONReq(t *testing.T, r chi.Router, method, target string, body any) *
 func TestRetroApply_TagsMatchingRecords(t *testing.T) {
 	t.Parallel()
 	r, d := retroApplyHarness(t)
-	ctx := context.Background()
+	ctx := snoozetypes.WithTenant(context.Background(), snoozetypes.DefaultTenant)
 
 	// Seed a non-discard snooze + a few records (one matches).
 	res, err := d.Write(ctx, "snooze", []db.Document{{
@@ -115,7 +119,7 @@ func TestRetroApply_TagsMatchingRecords(t *testing.T) {
 func TestRetroApply_DeletesWhenDiscard(t *testing.T) {
 	t.Parallel()
 	r, d := retroApplyHarness(t)
-	ctx := context.Background()
+	ctx := snoozetypes.WithTenant(context.Background(), snoozetypes.DefaultTenant)
 
 	res, err := d.Write(ctx, "snooze", []db.Document{{
 		"name":      "drop-flap",
@@ -160,7 +164,7 @@ func TestRetroApply_UnknownUidReturns404(t *testing.T) {
 func TestRetroApply_RequiresRwRecord(t *testing.T) {
 	t.Parallel()
 	r, d := retroApplyHarness(t)
-	ctx := context.Background()
+	ctx := snoozetypes.WithTenant(context.Background(), snoozetypes.DefaultTenant)
 
 	res, err := d.Write(ctx, "snooze", []db.Document{{
 		"name":      "any",
@@ -191,7 +195,7 @@ func TestRetroApply_RequiresRwRecord(t *testing.T) {
 func TestRetroApply_BumpsHitCount(t *testing.T) {
 	t.Parallel()
 	r, d := retroApplyHarness(t)
-	ctx := context.Background()
+	ctx := snoozetypes.WithTenant(context.Background(), snoozetypes.DefaultTenant)
 
 	res, err := d.Write(ctx, "snooze", []db.Document{{
 		"name":      "bump",

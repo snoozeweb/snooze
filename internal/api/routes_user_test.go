@@ -30,9 +30,12 @@ func newUserTestRouter(t *testing.T) (chi.Router, *Router, string) {
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = drv.Close() })
 
+	// Tenant-scoped collections fail-closed without a tenant in ctx; this is a
+	// single-tenant test store, so scope the seed write to the default tenant.
+	tctx := snoozetypes.WithTenant(context.Background(), snoozetypes.DefaultTenant)
 	hash, err := bcrypt.GenerateFromPassword([]byte("secret"), bcrypt.MinCost)
 	require.NoError(t, err)
-	res, err := drv.Write(context.Background(), auth.LocalCollection, []db.Document{{
+	res, err := drv.Write(tctx, auth.LocalCollection, []db.Document{{
 		"name":     "alice",
 		"method":   auth.LocalMethod,
 		"enabled":  true,
@@ -48,7 +51,11 @@ func newUserTestRouter(t *testing.T) (chi.Router, *Router, string) {
 }
 
 func withClaims(req *http.Request, c snoozetypes.Claims) *http.Request {
-	return req.WithContext(auth.WithClaims(req.Context(), c))
+	// The real Auth middleware sets WithTenant from the verified JWT claim; here
+	// we stamp the default tenant so the handler's tenant-scoped DB calls don't
+	// fail-closed in this single-tenant test store.
+	ctx := snoozetypes.WithTenant(req.Context(), snoozetypes.DefaultTenant)
+	return req.WithContext(auth.WithClaims(ctx, c))
 }
 
 func TestSelfPasswordChange_Success(t *testing.T) {
@@ -64,19 +71,21 @@ func TestSelfPasswordChange_Success(t *testing.T) {
 	r.ServeHTTP(rec, req)
 	require.Equal(t, http.StatusNoContent, rec.Code, "body=%s", rec.Body.String())
 
-	// New password authenticates; old does not.
+	// New password authenticates; old does not. Tenant-scoped reads need a
+	// tenant in ctx (single-tenant test store → default tenant).
+	tctx := snoozetypes.WithTenant(context.Background(), snoozetypes.DefaultTenant)
 	provider := auth.NewLocalProvider(rt.DB)
-	_, err := provider.Authenticate(context.Background(), auth.Credentials{
+	_, err := provider.Authenticate(tctx, auth.Credentials{
 		Username: "alice", Password: "newpass1",
 	})
 	require.NoError(t, err)
-	_, err = provider.Authenticate(context.Background(), auth.Credentials{
+	_, err = provider.Authenticate(tctx, auth.Credentials{
 		Username: "alice", Password: "secret",
 	})
 	require.Error(t, err)
 
 	// The stored document was updated by uid (sanity-check).
-	doc, err := rt.DB.GetOne(context.Background(), auth.LocalCollection, db.Document{"uid": uid})
+	doc, err := rt.DB.GetOne(tctx, auth.LocalCollection, db.Document{"uid": uid})
 	require.NoError(t, err)
 	require.NotEmpty(t, doc["password"])
 }

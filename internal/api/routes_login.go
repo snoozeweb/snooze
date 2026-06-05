@@ -317,16 +317,22 @@ func (rt *Router) signSession(ctx context.Context, id auth.Identity) (loginRespo
 }
 
 // resolveRoles populates claims.Roles and claims.Permissions from the user
-// record. Failures fall through silently — a malformed role collection
-// should not break login outright.
+// record. The ctx passed to Resolve carries the tenant so the driver (Phase 3)
+// injects the tenant predicate automatically. Failures fall through silently.
 func (rt *Router) resolveRoles(ctx context.Context, claims *snoozetypes.Claims) {
 	if rt.DB == nil {
 		return
 	}
+	tenantID := claims.TenantID
+	if tenantID == "" {
+		tenantID = snoozetypes.DefaultTenant
+	}
+	tctx := auth.WithTenant(ctx, tenantID)
 	resolver := auth.NewRoleResolver(rt.DB)
-	roles, perms, err := resolver.Resolve(ctx, auth.Identity{
+	roles, perms, err := resolver.Resolve(tctx, auth.Identity{
 		Username: claims.Subject,
 		Method:   claims.Method,
+		TenantID: tenantID,
 		Groups:   claims.Groups,
 	})
 	if err != nil {
