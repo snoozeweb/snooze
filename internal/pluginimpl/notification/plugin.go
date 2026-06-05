@@ -25,6 +25,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/snoozeweb/snooze/internal/auth"
 	"github.com/snoozeweb/snooze/internal/condition"
 	"github.com/snoozeweb/snooze/internal/db"
 	"github.com/snoozeweb/snooze/internal/plugins"
@@ -112,8 +113,8 @@ type Plugin struct {
 	host plugins.Host
 
 	mu      sync.RWMutex
-	entries []Entry
-	actions map[string]actionDoc
+	entries map[string][]Entry              // tenantID → entries
+	actions map[string]map[string]actionDoc // tenantID → name → actionDoc
 }
 
 // Name returns the registry key. Returned lowercase so it matches the
@@ -148,6 +149,10 @@ func (p *Plugin) Reload(ctx context.Context) error {
 	if p.host == nil || p.host.DB() == nil {
 		return nil
 	}
+	tenantID, ok := auth.TenantFrom(ctx)
+	if !ok || tenantID == "" {
+		return nil
+	}
 	entries, err := p.loadEntries(ctx)
 	if err != nil {
 		return err
@@ -157,8 +162,14 @@ func (p *Plugin) Reload(ctx context.Context) error {
 		return err
 	}
 	p.mu.Lock()
-	p.entries = entries
-	p.actions = actions
+	if p.entries == nil {
+		p.entries = make(map[string][]Entry)
+	}
+	if p.actions == nil {
+		p.actions = make(map[string]map[string]actionDoc)
+	}
+	p.entries[tenantID] = entries
+	p.actions[tenantID] = actions
 	p.mu.Unlock()
 	return nil
 }
@@ -227,8 +238,10 @@ func (p *Plugin) Process(ctx context.Context, rec snoozetypes.Record) (plugins.R
 		return plugins.Result{Action: plugins.ActionContinue, Record: rec}, nil
 	}
 
+	tenantID, _ := auth.TenantFrom(ctx)
+
 	p.mu.RLock()
-	entries := p.entries
+	entries := p.entries[tenantID]
 	p.mu.RUnlock()
 	if len(entries) == 0 {
 		return plugins.Result{Action: plugins.ActionContinue, Record: rec}, nil
@@ -312,7 +325,7 @@ func (p *Plugin) dispatch(ctx context.Context, e Entry, rec snoozetypes.Record) 
 		payload := plugins.NotificationPayload{
 			Template: ad.Action.Selected,
 			Meta:     metaFromSubcontent(ad.Action.Subcontent, e, ad.Name),
-			Inject:   p.injectFunc(rec),
+			Inject:   p.injectFunc(ctx, rec),
 		}
 		p.fireSend(notifier, rec, payload, e.Name, name)
 	}
@@ -322,8 +335,10 @@ func (p *Plugin) dispatch(ctx context.Context, e Entry, rec snoozetypes.Record) 
 // miss so freshly-created actions become dispatchable without waiting for the
 // next sync event.
 func (p *Plugin) lookupAction(ctx context.Context, name string) (actionDoc, bool) {
+	tenantID, _ := auth.TenantFrom(ctx)
+
 	p.mu.RLock()
-	ad, ok := p.actions[name]
+	ad, ok := p.actions[tenantID][name]
 	p.mu.RUnlock()
 	if ok {
 		return ad, true
@@ -336,7 +351,10 @@ func (p *Plugin) lookupAction(ctx context.Context, name string) (actionDoc, bool
 		return actionDoc{}, false
 	}
 	p.mu.Lock()
-	p.actions = fresh
+	if p.actions == nil {
+		p.actions = make(map[string]map[string]actionDoc)
+	}
+	p.actions[tenantID] = fresh
 	p.mu.Unlock()
 	ad, ok = fresh[name]
 	return ad, ok
@@ -380,7 +398,13 @@ func metaFromSubcontent(sub map[string]any, e Entry, actionName string) map[stri
 // Returns nil when there is neither a hash nor a uid to target, or no DB
 // handle — all cases short-circuit any inject call to a no-op via
 // plugins.InjectField.
-func (p *Plugin) injectFunc(rec snoozetypes.Record) plugins.InjectFunc {
+//
+// The inject runs on the notifier's detached goroutine, so the closure rebuilds
+// a fresh background context (the pipeline ctx is long cancelled by then) and
+// re-stamps the tenant captured from the dispatch ctx via auth.WithTenant, so
+// the tenant-scoped record write lands in the originating tenant's partition
+// instead of fail-closing on a naked context.
+func (p *Plugin) injectFunc(ctx context.Context, rec snoozetypes.Record) plugins.InjectFunc {
 	if p.host == nil || p.host.DB() == nil {
 		return nil
 	}
@@ -389,9 +413,13 @@ func (p *Plugin) injectFunc(rec snoozetypes.Record) plugins.InjectFunc {
 	if hash == "" && uid == "" {
 		return nil
 	}
+	tenantID, _ := auth.TenantFrom(ctx)
 	return func(field string, value any) {
 		ctx, cancel := context.WithTimeout(context.Background(), notifierSendTimeout)
 		defer cancel()
+		if tenantID != "" {
+			ctx = auth.WithTenant(ctx, tenantID)
+		}
 		patch := db.Document{field: value}
 		if hash != "" {
 			if _, err := p.host.DB().SetFields(ctx, recordCollectionName, patch, condition.Equals("hash", hash)); err != nil {

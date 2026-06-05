@@ -14,6 +14,7 @@ import (
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/trace"
 
+	"github.com/snoozeweb/snooze/internal/auth"
 	"github.com/snoozeweb/snooze/internal/config"
 	"github.com/snoozeweb/snooze/internal/db"
 	"github.com/snoozeweb/snooze/internal/db/asyncwriter"
@@ -22,6 +23,15 @@ import (
 	"github.com/snoozeweb/snooze/internal/telemetry"
 	"github.com/snoozeweb/snooze/pkg/snoozetypes"
 )
+
+// tctx returns a context scoped to the reserved default tenant. The driver
+// layer fail-closes on tenant-scoped collections (notification, action, record,
+// stats) when neither a tenant nor platform scope is present, so every test
+// DB/plugin call that exercises a scoped collection must carry one. This mirrors
+// real single-tenant behaviour.
+func tctx() context.Context {
+	return auth.WithTenant(context.Background(), snoozetypes.DefaultTenant)
+}
 
 // recordingNotifier captures every Send call the dispatcher makes. It is the
 // fake outbound endpoint the tests assert against.
@@ -210,7 +220,7 @@ func writeEntries(t *testing.T, h *testHost, entries []map[string]any) {
 	for _, e := range entries {
 		docs = append(docs, db.Document(e))
 	}
-	_, err := h.driver.Write(context.Background(), collectionName, docs, db.WriteOptions{UpdateTime: true})
+	_, err := h.driver.Write(tctx(), collectionName, docs, db.WriteOptions{UpdateTime: true})
 	require.NoError(t, err)
 }
 
@@ -221,14 +231,14 @@ func writeActions(t *testing.T, h *testHost, actions []map[string]any) {
 	for _, a := range actions {
 		docs = append(docs, db.Document(a))
 	}
-	_, err := h.driver.Write(context.Background(), actionCollectionName, docs, db.WriteOptions{UpdateTime: true})
+	_, err := h.driver.Write(tctx(), actionCollectionName, docs, db.WriteOptions{UpdateTime: true})
 	require.NoError(t, err)
 }
 
 func newPlugin(t *testing.T, h *testHost) *Plugin {
 	t.Helper()
 	p := &Plugin{meta: plugins.Metadata{Name: "notification"}}
-	require.NoError(t, p.PostInit(context.Background(), h))
+	require.NoError(t, p.PostInit(tctx(), h))
 	return p
 }
 
@@ -279,7 +289,7 @@ func TestNotification(t *testing.T) {
 			Message:   "hello",
 			Timestamp: time.Now(),
 		}
-		res, err := p.Process(context.Background(), rec)
+		res, err := p.Process(tctx(), rec)
 		require.NoError(t, err)
 		require.Equal(t, plugins.ActionContinue, res.Action)
 		require.Equal(t, rec, res.Record)
@@ -324,9 +334,9 @@ func TestNotification(t *testing.T) {
 
 		p := newPlugin(t, host)
 
-		_, err := p.Process(context.Background(), snoozetypes.Record{UID: "in", Host: "myhost01", Timestamp: inside})
+		_, err := p.Process(tctx(), snoozetypes.Record{UID: "in", Host: "myhost01", Timestamp: inside})
 		require.NoError(t, err)
-		_, err = p.Process(context.Background(), snoozetypes.Record{UID: "out", Host: "myhost01", Timestamp: outside})
+		_, err = p.Process(tctx(), snoozetypes.Record{UID: "out", Host: "myhost01", Timestamp: outside})
 		require.NoError(t, err)
 
 		calls := waitForCalls(t, notifier, 1, time.Second)
@@ -351,7 +361,7 @@ func TestNotification(t *testing.T) {
 		p := newPlugin(t, host)
 
 		for _, state := range []string{"ack", "close"} {
-			_, err := p.Process(context.Background(), snoozetypes.Record{UID: "uid-" + state, State: state, Timestamp: time.Now()})
+			_, err := p.Process(tctx(), snoozetypes.Record{UID: "uid-" + state, State: state, Timestamp: time.Now()})
 			require.NoError(t, err)
 		}
 		// Allow time for any erroneous dispatch to fire.
@@ -369,7 +379,7 @@ func TestNotification(t *testing.T) {
 		host.registerNotifier(notifier)
 
 		p := newPlugin(t, host)
-		_, err := p.Process(context.Background(), snoozetypes.Record{UID: "x", Host: "h", Timestamp: time.Now()})
+		_, err := p.Process(tctx(), snoozetypes.Record{UID: "x", Host: "h", Timestamp: time.Now()})
 		require.NoError(t, err)
 		time.Sleep(50 * time.Millisecond)
 		require.Empty(t, notifier.Calls())
@@ -388,7 +398,7 @@ func TestNotification(t *testing.T) {
 		host.registerNotifier(notifier)
 
 		p := newPlugin(t, host)
-		_, err := p.Process(context.Background(), snoozetypes.Record{UID: "x", Host: "h", Timestamp: time.Now()})
+		_, err := p.Process(tctx(), snoozetypes.Record{UID: "x", Host: "h", Timestamp: time.Now()})
 		require.NoError(t, err)
 		time.Sleep(50 * time.Millisecond)
 		require.Empty(t, notifier.Calls())
@@ -409,7 +419,7 @@ func TestNotification(t *testing.T) {
 		// hash, with a DB-minted uid. On a genuine first fire the in-memory
 		// record handed to Process has NO uid yet (aggregaterule mints it only
 		// when an existing aggregate is found), so the inject must key on hash.
-		_, err := host.driver.Write(context.Background(), recordCollectionName,
+		_, err := host.driver.Write(tctx(), recordCollectionName,
 			[]db.Document{{"hash": "h-first", "host": "myhost01", "message": "boom"}},
 			db.WriteOptions{Primary: []string{"hash"}, UpdateTime: true})
 		require.NoError(t, err)
@@ -427,14 +437,14 @@ func TestNotification(t *testing.T) {
 
 		// First-fire shape: hash present, uid empty.
 		rec := snoozetypes.Record{Hash: "h-first", Host: "myhost01", Message: "boom", Timestamp: time.Now()}
-		_, err = p.Process(context.Background(), rec)
+		_, err = p.Process(tctx(), rec)
 		require.NoError(t, err)
 
 		// The inject runs on a detached goroutine; poll the row by hash.
 		deadline := time.Now().Add(time.Second)
 		var got db.Document
 		for time.Now().Before(deadline) {
-			got, err = host.driver.GetOne(context.Background(), recordCollectionName, db.Document{"hash": "h-first"})
+			got, err = host.driver.GetOne(tctx(), recordCollectionName, db.Document{"hash": "h-first"})
 			require.NoError(t, err)
 			if got["response_Teams"] != nil {
 				break
@@ -461,7 +471,7 @@ func TestNotification(t *testing.T) {
 		host.registerNotifier(notifier)
 
 		p := newPlugin(t, host)
-		_, err := p.Process(context.Background(), snoozetypes.Record{UID: "x", Host: "h", Timestamp: time.Now()})
+		_, err := p.Process(tctx(), snoozetypes.Record{UID: "x", Host: "h", Timestamp: time.Now()})
 		require.NoError(t, err)
 		time.Sleep(50 * time.Millisecond)
 		require.Empty(t, notifier.Calls(), "frequency.total == 0 must suppress the send")
@@ -505,7 +515,7 @@ func TestNotificationStats(t *testing.T) {
 	host.plugins["bad-notifier"] = bad
 
 	p := &Plugin{meta: plugins.Metadata{Name: "notification"}}
-	require.NoError(t, p.PostInit(context.Background(), host))
+	require.NoError(t, p.PostInit(tctx(), host))
 
 	// eventEpoch 1780302245 → UTC hour bucket 1780300800
 	const eventEpoch = int64(1780302245)
@@ -517,7 +527,7 @@ func TestNotificationStats(t *testing.T) {
 		DateEpoch: eventEpoch,
 	}
 
-	_, err := p.Process(context.Background(), rec)
+	_, err := p.Process(tctx(), rec)
 	require.NoError(t, err)
 
 	// Wait for the good send to complete, then also wait for the bad send.
@@ -570,4 +580,36 @@ func TestNotificationStats(t *testing.T) {
 	require.Len(t, errorOps, 1, "expected exactly 1 action_error op for BadAction")
 	require.Equal(t, int64(1), errorOps[0].delta)
 	require.Equal(t, wantBucket, errorOps[0].search["bucket"])
+}
+
+// TestNotification_TenantIsolation verifies that entries and actions loaded for
+// tenant A are not visible when Reload is called for tenant B.
+func TestNotification_TenantIsolation(t *testing.T) {
+	t.Parallel()
+	h := newHost(t)
+
+	ctxA := auth.WithTenant(context.Background(), "acme")
+	ctxB := auth.WithTenant(context.Background(), "beta")
+
+	_, err := h.DB().Write(ctxA, "notification", []db.Document{{
+		"name":    "notify-acme",
+		"enabled": true,
+		"actions": []any{},
+	}}, db.WriteOptions{Primary: []string{"name"}, UpdateTime: false})
+	require.NoError(t, err)
+
+	p := &Plugin{meta: plugins.Metadata{}}
+	p.host = h
+	require.NoError(t, p.Reload(ctxA))
+
+	p.mu.RLock()
+	acmeEntries := p.entries["acme"]
+	p.mu.RUnlock()
+	require.Len(t, acmeEntries, 1)
+
+	require.NoError(t, p.Reload(ctxB))
+	p.mu.RLock()
+	betaEntries := p.entries["beta"]
+	p.mu.RUnlock()
+	require.Empty(t, betaEntries)
 }
