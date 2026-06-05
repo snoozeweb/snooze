@@ -439,6 +439,14 @@ func (d *Driver) Write(ctx context.Context, collection string, docs []dbpkg.Docu
 	// The WriteOptions zero-value gives false; we can't distinguish set vs
 	// unset here without a *bool, so we follow the field as supplied.
 
+	// Tenant injection: resolve once (ctx+collection are constant across docs).
+	// The primary-key lookups in findOneInTx already fence by tenant via
+	// compileWith -> TenantScope, so we only need to stamp the stored doc here.
+	tenantID, injectTenant, tenantErr := dbpkg.TenantScope(ctx, collection)
+	if tenantErr != nil {
+		return dbpkg.WriteResult{}, fmt.Errorf("sqlite: write: %w", tenantErr)
+	}
+
 	tx, err := d.db.BeginTx(ctx, nil)
 	if err != nil {
 		return dbpkg.WriteResult{}, err
@@ -454,6 +462,9 @@ func (d *Driver) Write(ctx context.Context, collection string, docs []dbpkg.Docu
 		delete(doc, "_id")
 		if updateTime {
 			doc["date_epoch"] = float64(time.Now().Unix())
+		}
+		if injectTenant {
+			doc["tenant_id"] = tenantID
 		}
 
 		var primaryRow *existingRow

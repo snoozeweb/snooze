@@ -6,13 +6,17 @@ import (
 	"time"
 
 	dbpkg "github.com/snoozeweb/snooze/internal/db"
+	"github.com/snoozeweb/snooze/pkg/snoozetypes"
 	"github.com/stretchr/testify/require"
 )
 
 func TestRecordStats(t *testing.T) {
 	t.Parallel()
 	d := newTestDriver(t)
-	ctx := context.Background()
+	// "record" is tenant-scoped, so the Write fail-closes on a naked context
+	// (Task 1.8). Scope to a single tenant: all seeded rows live under it and
+	// the aggregation assertions are unaffected.
+	ctx := snoozetypes.WithTenant(context.Background(), "default")
 
 	// Seed: 6 records at known epochs (UTC). The bucket window is 60s so we
 	// know exactly which slot each row lands in.

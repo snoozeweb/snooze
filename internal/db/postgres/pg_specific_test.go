@@ -11,13 +11,17 @@ import (
 	"github.com/snoozeweb/snooze/internal/condition"
 	dbpkg "github.com/snoozeweb/snooze/internal/db"
 	"github.com/snoozeweb/snooze/internal/syncer"
+	"github.com/snoozeweb/snooze/pkg/snoozetypes"
 )
 
 // TestListenNotifyRoundTrip verifies that a mutation made via the driver is
 // observed by a subscriber on the watcher bus.
 func TestListenNotifyRoundTrip(t *testing.T) {
 	drv := newTestDriver(t)
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	// "record" is tenant-scoped, so the Write fail-closes on a naked context
+	// (Task 1.8). Scope to a tenant for the write/seed.
+	ctx, cancel := context.WithTimeout(
+		snoozetypes.WithTenant(context.Background(), "default"), 30*time.Second)
 	defer cancel()
 
 	bus := drv.Watcher()
@@ -45,7 +49,10 @@ func TestListenNotifyRoundTrip(t *testing.T) {
 // resilient to small plan-format differences across Postgres versions.
 func TestGINIndexUsage(t *testing.T) {
 	drv := newTestDriver(t)
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	// "record" is tenant-scoped, so the Write fail-closes on a naked context
+	// (Task 1.8). Scope to a tenant for the write/seed.
+	ctx, cancel := context.WithTimeout(
+		snoozetypes.WithTenant(context.Background(), "default"), 30*time.Second)
 	defer cancel()
 
 	// Seed enough rows that the planner reaches for the index.

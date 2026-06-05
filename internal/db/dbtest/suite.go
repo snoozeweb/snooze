@@ -60,6 +60,8 @@ func RunDriverSuite(t *testing.T, name string, factory Factory) {
 		{"CleanupSnooze", testCleanupSnooze},
 		{"CleanupNotification", testCleanupNotification},
 		{"ComputeStats", testComputeStats},
+		{"WriteStampsTenantID", testWriteStampsTenantID},
+		{"WriteUpsertTenantFenced", testWriteUpsertTenantFenced},
 	}
 	for _, c := range cases {
 		t.Run(name+"/"+c.name, func(t *testing.T) {
@@ -599,4 +601,66 @@ func testCleanupNotification(t *testing.T, drv db.Driver) {
 	deleted, err := drv.CleanupNotification(ctx())
 	require.NoError(t, err)
 	require.Equal(t, 1, deleted)
+}
+
+// testWriteStampsTenantID verifies that Write injects tenant_id into the stored
+// document and that a Search under the same tenant returns it, while a Search
+// under a different tenant returns nothing.
+func testWriteStampsTenantID(t *testing.T, drv db.Driver) {
+	ctxA := snoozetypes.WithTenant(context.Background(), "alpha")
+	ctxB := snoozetypes.WithTenant(context.Background(), "beta")
+
+	// Write under tenant alpha.
+	res, err := drv.Write(ctxA, "record",
+		[]db.Document{{"host": "srv-a"}},
+		db.WriteOptions{UpdateTime: false},
+	)
+	require.NoError(t, err)
+	require.Len(t, res.Added, 1)
+
+	// Search under alpha: must see it.
+	docs, total, err := drv.Search(ctxA, "record", condition.Cond{}, db.Page{})
+	require.NoError(t, err)
+	require.Equal(t, 1, total)
+	require.Equal(t, "alpha", docs[0]["tenant_id"])
+
+	// Search under beta: must see nothing.
+	docs, total, err = drv.Search(ctxB, "record", condition.Cond{}, db.Page{})
+	require.NoError(t, err)
+	require.Equal(t, 0, total)
+	require.Empty(t, docs)
+}
+
+// testWriteUpsertTenantFenced verifies that an upsert in tenant A cannot
+// match or overwrite a row written by tenant B when they share the same
+// primary key value.
+func testWriteUpsertTenantFenced(t *testing.T, drv db.Driver) {
+	ctxA := snoozetypes.WithTenant(context.Background(), "alpha")
+	ctxB := snoozetypes.WithTenant(context.Background(), "beta")
+
+	opts := db.WriteOptions{Primary: []string{"name"}, UpdateTime: false}
+
+	// Both tenants write a doc with name="shared".
+	resA, err := drv.Write(ctxA, "rule", []db.Document{{"name": "shared", "val": "a"}}, opts)
+	require.NoError(t, err)
+	require.Len(t, resA.Added, 1)
+
+	resB, err := drv.Write(ctxB, "rule", []db.Document{{"name": "shared", "val": "b"}}, opts)
+	require.NoError(t, err)
+	require.Len(t, resB.Added, 1)
+
+	// Different uids — these are distinct rows in different tenants.
+	require.NotEqual(t, resA.Added[0], resB.Added[0])
+
+	// Alpha sees its own val.
+	docsA, _, err := drv.Search(ctxA, "rule", condition.Equals("name", "shared"), db.Page{})
+	require.NoError(t, err)
+	require.Len(t, docsA, 1)
+	require.Equal(t, "a", docsA[0]["val"])
+
+	// Beta sees its own val.
+	docsB, _, err := drv.Search(ctxB, "rule", condition.Equals("name", "shared"), db.Page{})
+	require.NoError(t, err)
+	require.Len(t, docsB, 1)
+	require.Equal(t, "b", docsB[0]["val"])
 }

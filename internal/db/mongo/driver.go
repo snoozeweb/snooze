@@ -283,6 +283,13 @@ func (d *Driver) Write(ctx context.Context, collection string, docs []dbpkg.Docu
 	constants := opts.Constant
 	var toInsert []any
 	now := time.Now().UTC().Unix()
+
+	// Tenant injection: resolve once (ctx+collection are constant across docs).
+	tenantID, injectTenant, tenantErr := dbpkg.TenantScope(ctx, collection)
+	if tenantErr != nil {
+		return res, fmt.Errorf("mongo: write: %w", tenantErr)
+	}
+
 	for _, raw := range docs {
 		tobj := cloneDoc(raw)
 		delete(tobj, "_id")
@@ -290,10 +297,16 @@ func (d *Driver) Write(ctx context.Context, collection string, docs []dbpkg.Docu
 		if updateTime {
 			tobj["date_epoch"] = float64(now)
 		}
+		if injectTenant {
+			tobj["tenant_id"] = tenantID
+		}
 		var primaryQuery bson.M
 		var primaryResult bson.M
 		if len(primary) > 0 && allPrimariesPresent(tobj, primary) {
 			primaryQuery = buildPrimaryQuery(tobj, primary)
+			if injectTenant && primaryQuery != nil {
+				primaryQuery["tenant_id"] = tenantID
+			}
 			pr := bson.M{}
 			err := coll.FindOne(ctx, primaryQuery).Decode(&pr)
 			if err == nil {
