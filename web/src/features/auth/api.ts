@@ -1,6 +1,9 @@
 import { api } from "@/lib/api/client";
 
-type LoginCredentials = { username: string; password: string };
+// org is `string | undefined` (not just optional) so call sites can pass an
+// already-resolved `org.trim() || undefined` under the project's
+// exactOptionalPropertyTypes setting.
+type LoginCredentials = { username: string; password: string; org?: string | undefined };
 
 // LoginEnvelope mirrors the LoginResponse component in api/openapi.yaml.
 // refresh_token / refresh_expires_at are optional so a server that doesn't
@@ -26,24 +29,30 @@ function unwrap(env: LoginEnvelope): LoginResult {
 }
 
 export async function loginLocal(creds: LoginCredentials): Promise<LoginResult> {
+  const body: Record<string, string> = { username: creds.username, password: creds.password };
+  if (creds.org) body["org"] = creds.org;
   const r = await api<LoginEnvelope>("POST", "/login/local", {
-    body: creds,
+    body,
     skipAuthHandling: true,
   });
   return unwrap(r);
 }
 
 export async function loginLdap(creds: LoginCredentials): Promise<LoginResult> {
+  const body: Record<string, string> = { username: creds.username, password: creds.password };
+  if (creds.org) body["org"] = creds.org;
   const r = await api<LoginEnvelope>("POST", "/login/ldap", {
-    body: creds,
+    body,
     skipAuthHandling: true,
   });
   return unwrap(r);
 }
 
-export async function loginAnonymous(): Promise<LoginResult> {
+export async function loginAnonymous(org?: string): Promise<LoginResult> {
+  const body: Record<string, string> = {};
+  if (org) body["org"] = org;
   const r = await api<LoginEnvelope>("POST", "/login/anonymous", {
-    body: {},
+    body,
     skipAuthHandling: true,
   });
   return unwrap(r);

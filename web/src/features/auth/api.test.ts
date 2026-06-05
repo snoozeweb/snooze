@@ -1,5 +1,15 @@
 import { describe, expect, it } from "vitest";
+import { http, HttpResponse } from "msw";
+import { mswServer } from "@/tests/msw/server";
 import { loginAnonymous, loginLdap, loginLocal, postLogout, postRefresh } from "./api";
+
+function makeStubToken(sub: string): string {
+  const header = btoa(JSON.stringify({ alg: "HS256", typ: "JWT" }));
+  const body = btoa(
+    JSON.stringify({ sub, exp: Math.floor(Date.now() / 1000) + 3600, tenant_id: "acme" }),
+  );
+  return `${header}.${body}.sig`;
+}
 
 describe("login API", () => {
   it("loginLocal returns a token + refresh token from MSW", async () => {
@@ -30,5 +40,57 @@ describe("login API", () => {
   it("postLogout never throws", async () => {
     await expect(postLogout("seed-refresh")).resolves.toBeUndefined();
     await expect(postLogout(null)).resolves.toBeUndefined();
+  });
+});
+
+describe("loginLocal with org", () => {
+  it("sends org in the request body when provided", async () => {
+    const bodies: unknown[] = [];
+    mswServer.use(
+      http.post("/api/v1/login/local", async ({ request }) => {
+        bodies.push(await request.json());
+        return HttpResponse.json({
+          token: makeStubToken("alice"),
+          expires_at: new Date(Date.now() + 3600000).toISOString(),
+          method: "local",
+        });
+      }),
+    );
+    await loginLocal({ username: "alice", password: "pw", org: "acme" });
+    expect((bodies[0] as { org?: string }).org).toBe("acme");
+  });
+
+  it("omits org when not provided", async () => {
+    const bodies: unknown[] = [];
+    mswServer.use(
+      http.post("/api/v1/login/local", async ({ request }) => {
+        bodies.push(await request.json());
+        return HttpResponse.json({
+          token: makeStubToken("alice"),
+          expires_at: new Date(Date.now() + 3600000).toISOString(),
+          method: "local",
+        });
+      }),
+    );
+    await loginLocal({ username: "alice", password: "pw" });
+    expect((bodies[0] as { org?: string }).org).toBeUndefined();
+  });
+});
+
+describe("loginLdap with org", () => {
+  it("sends org in the request body when provided", async () => {
+    const bodies: unknown[] = [];
+    mswServer.use(
+      http.post("/api/v1/login/ldap", async ({ request }) => {
+        bodies.push(await request.json());
+        return HttpResponse.json({
+          token: makeStubToken("ldap-user"),
+          expires_at: new Date(Date.now() + 3600000).toISOString(),
+          method: "ldap",
+        });
+      }),
+    );
+    await loginLdap({ username: "ldap-user", password: "pw", org: "acme" });
+    expect((bodies[0] as { org?: string }).org).toBe("acme");
   });
 });

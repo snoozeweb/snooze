@@ -15,9 +15,14 @@ import { mswServer } from "@/tests/msw/server";
 import { authStore } from "@/lib/auth/store";
 import { Login } from "./Login";
 
-function setup(returnTo?: string) {
+function setup(returnTo?: string, multiTenant = false) {
   const root = createRootRoute({ component: () => <Outlet /> });
-  const login = createRoute({ getParentRoute: () => root, path: "/web/login", component: Login });
+  const LoginWithProp = () => <Login multiTenant={multiTenant} />;
+  const login = createRoute({
+    getParentRoute: () => root,
+    path: "/web/login",
+    component: LoginWithProp,
+  });
   const alerts = createRoute({
     getParentRoute: () => root,
     path: "/web/alerts",
@@ -108,5 +113,43 @@ describe("Login", () => {
     await user.click(screen.getByRole("button", { name: /sign in$/i }));
     expect(await screen.findByText(/bad username or password/i)).toBeInTheDocument();
     expect(authStore.getState().isAuthenticated).toBe(false);
+  });
+
+  it("renders the Organization field when multiTenant prop is true", async () => {
+    setup(undefined, true);
+    expect(await screen.findByLabelText(/organization/i)).toBeInTheDocument();
+  });
+
+  it("does not render the Organization field by default (single-tenant)", async () => {
+    setup();
+    await screen.findByRole("tab", { name: "Local", selected: true });
+    expect(screen.queryByLabelText(/organization/i)).not.toBeInTheDocument();
+  });
+
+  it("sends org slug when the Organization field is filled", async () => {
+    const bodies: unknown[] = [];
+    mswServer.use(
+      http.post("/api/v1/login/local", async ({ request }) => {
+        bodies.push(await request.json());
+        return HttpResponse.json({
+          token:
+            btoa(JSON.stringify({ alg: "HS256", typ: "JWT" })) +
+            "." +
+            btoa(JSON.stringify({ sub: "alice", exp: Math.floor(Date.now() / 1000) + 3600 })) +
+            ".sig",
+          expires_at: new Date(Date.now() + 3600000).toISOString(),
+          method: "local",
+        });
+      }),
+    );
+    const user = userEvent.setup();
+    setup(undefined, true);
+    await user.type(await screen.findByLabelText(/username/i), "alice");
+    await user.type(screen.getByLabelText(/password/i), "pw");
+    await user.clear(screen.getByLabelText(/organization/i));
+    await user.type(screen.getByLabelText(/organization/i), "acme");
+    await user.click(screen.getByRole("button", { name: /sign in$/i }));
+    await waitFor(() => expect(bodies).toHaveLength(1));
+    expect((bodies[0] as { org?: string }).org).toBe("acme");
   });
 });

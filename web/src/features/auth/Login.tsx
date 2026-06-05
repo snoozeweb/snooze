@@ -16,7 +16,14 @@ import {
 } from "./api";
 import styles from "./Login.module.css";
 
-export function Login() {
+export type LoginProps = {
+  /** When true, shows the optional Organization slug field. Set to true on
+   *  multi-tenant deployments so users can choose which org they log into.
+   *  Omitted (default false) for single-tenant deployments. */
+  multiTenant?: boolean;
+};
+
+export function Login({ multiTenant = false }: LoginProps) {
   const navigate = useNavigate();
   const search = useSearch({ strict: false }) as unknown as { return_to?: string };
   const returnTo = search.return_to ? decodeURIComponent(search.return_to) : "/web/alerts";
@@ -34,6 +41,7 @@ export function Login() {
   const [tab, setTab] = useState<LoginBackend | null>(null);
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
+  const [org, setOrg] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -51,14 +59,15 @@ export function Login() {
     e.preventDefault();
     setError(null);
     setSubmitting(true);
+    const orgSlug = org.trim() || undefined;
     try {
       let result: { token: string; refreshToken: string | null };
       if (tab === "anonymous") {
-        result = await loginAnonymous();
+        result = await loginAnonymous(orgSlug);
       } else if (tab === "ldap") {
-        result = await loginLdap({ username, password });
+        result = await loginLdap({ username, password, org: orgSlug });
       } else {
-        result = await loginLocal({ username, password });
+        result = await loginLocal({ username, password, org: orgSlug });
       }
       authStore.getState().login(result.token, result.refreshToken);
       await navigate({ to: returnTo });
@@ -101,6 +110,22 @@ export function Login() {
       </div>
     );
   }
+
+  /** Shared org field rendered inside each tab form when multiTenant is on. */
+  const orgField = multiTenant ? (
+    <div className={`${styles.field} ${styles.orgField}`}>
+      <label htmlFor="login-org" className={styles.label}>
+        Organization
+      </label>
+      <Input
+        id="login-org"
+        value={org}
+        onChange={(e) => setOrg(e.target.value)}
+        placeholder="default"
+        autoComplete="organization"
+      />
+    </div>
+  ) : null;
 
   return (
     <div className={styles.page}>
@@ -155,6 +180,7 @@ export function Login() {
                     required
                   />
                 </div>
+                {orgField}
                 {error ? (
                   <div className={styles.error} role="alert">
                     {error}
@@ -199,6 +225,7 @@ export function Login() {
                     required
                   />
                 </div>
+                {orgField}
                 {error ? (
                   <div className={styles.error} role="alert">
                     {error}
@@ -221,6 +248,7 @@ export function Login() {
                 <p className={styles.anonymous}>
                   Sign in without credentials. Some servers disable this.
                 </p>
+                {orgField}
                 {error ? (
                   <div className={styles.error} role="alert">
                     {error}
