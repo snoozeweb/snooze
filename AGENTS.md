@@ -249,8 +249,8 @@ holds the install scriptlets (create the `snooze` user + state dirs).
 On the same `v*` tag, `docker.yml` builds the `snooze-server` image from
 `packaging/Dockerfile.golang` (target `runtime-server`) and pushes
 `snoozeweb/snooze:<version>` + `:latest` to Docker Hub — amd64, server-only
-(matching 1.x and 2.0.0). Needs the `DOCKERHUB_USERNAME`/`DOCKERHUB_TOKEN` repo
-secrets; can also be run via `workflow_dispatch`.
+(matching 1.x and 2.0.0). Auth uses the `snoozeweb` org secrets
+`DOCKER_USERNAME`/`DOCKER_PASSWORD`; can also be run via `workflow_dispatch`.
 
 Gotchas (learned cutting v2.1.0):
 - GoReleaser aborts on a dirty tree — anything the workflow generates (e.g. the
