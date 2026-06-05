@@ -21,6 +21,24 @@ info:
     The Python 1.x `Authorization: JWT <token>` scheme is no longer
     accepted.
 
+    ## Multi-tenancy
+
+    Snooze supports multiple isolated organizations (tenants) on a single
+    server. Every authenticated request is scoped to the tenant encoded in
+    the `tenant_id` JWT claim. Pass the `org` field in the login request
+    body to obtain a token scoped to a specific tenant; omit `org` (or leave
+    it blank) to land in the `default` tenant.
+
+    **Ingest routing** — unauthenticated alert ingestion (`POST /api/v1/alerts`,
+    `POST /api/v1/webhook/*`) is routed to a tenant by the `Authorization:
+    Bearer <ingest_token>` header, where `<ingest_token>` is the per-tenant
+    opaque token stored in the tenant document. When no token is supplied or
+    the token is unknown, the request falls back to the `default` tenant.
+
+    **Platform permissions** — the `ro_tenant` and `rw_tenant` permissions gate
+    the `/api/v1/tenant` registry endpoints. These are platform-tier permissions,
+    independent of any tenant. The seeded `platform_admin` role holds both.
+
     ## CRUD shape
 
     Most plugins expose the same six verbs under
@@ -1286,6 +1304,11 @@ components:
         method:
           type: string
           enum: [local, ldap, anonymous]
+        tenant_id:
+          type: string
+          description: |
+            Tenant slug the token is scoped to. Mirrors the `tenant_id` JWT
+            claim. Empty on legacy tokens — treated as `default` by the server.
 
     RefreshRequest:
       type: object
