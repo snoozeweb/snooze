@@ -224,6 +224,73 @@ func TestTenantDelete_Success(t *testing.T) {
 	require.Equal(t, http.StatusOK, rec.Code)
 }
 
+func TestLogin_SuspendedTenantBlocked(t *testing.T) {
+	// A tenant with status=suspended must block login for that org.
+	tdb := &tenantDB{
+		docs: []db.Document{
+			{"id": "acme", "status": "suspended"},
+		},
+	}
+	localProvider := &fakeProvider{
+		name:     "local",
+		wantUser: "alice",
+		wantPass: "secret",
+		enabled:  true,
+		identity: auth.Identity{Username: "alice", Method: "local", TenantID: "acme"},
+	}
+	reg := auth.NewRegistry()
+	reg.Register(localProvider)
+
+	rt := &Router{
+		Auth:      testTokenEngine(t),
+		Refresh:   &fakeRefresh{},
+		Providers: reg,
+		DB:        tdb,
+	}
+	r := chi.NewRouter()
+	rt.mountLogin(r)
+
+	body := bytes.NewBufferString(`{"username":"alice","password":"secret","org":"acme"}`)
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/login/local", body)
+	req.Header.Set("Content-Type", "application/json")
+	r.ServeHTTP(rec, req)
+	require.Equal(t, http.StatusForbidden, rec.Code)
+}
+
+func TestLogin_ActiveTenantAllowed(t *testing.T) {
+	tdb := &tenantDB{
+		docs: []db.Document{
+			{"id": "acme", "status": "active"},
+		},
+	}
+	localProvider := &fakeProvider{
+		name:     "local",
+		wantUser: "alice",
+		wantPass: "secret",
+		enabled:  true,
+		identity: auth.Identity{Username: "alice", Method: "local", TenantID: "acme"},
+	}
+	reg := auth.NewRegistry()
+	reg.Register(localProvider)
+
+	rt := &Router{
+		Auth:      testTokenEngine(t),
+		Refresh:   &fakeRefresh{},
+		Providers: reg,
+		DB:        tdb,
+	}
+	r := chi.NewRouter()
+	rt.mountLogin(r)
+
+	body := bytes.NewBufferString(`{"username":"alice","password":"secret","org":"acme"}`)
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/login/local", body)
+	req.Header.Set("Content-Type", "application/json")
+	r.ServeHTTP(rec, req)
+	require.Equal(t, http.StatusOK, rec.Code)
+}
+
 func TestTenantRoutes_RegisteredInBuild(t *testing.T) {
 	rt := &Router{Auth: testTokenEngine(t)}
 	h := rt.Build()

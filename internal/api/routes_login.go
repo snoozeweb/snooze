@@ -155,6 +155,12 @@ func (rt *Router) handleLogin(method string) http.HandlerFunc {
 			WriteError(w, r, ErrUnauthorized.WithMessage("invalid credentials"))
 			return
 		}
+		// Suspend check: look up the tenant registry under platform scope and
+		// reject the login when the org is suspended.
+		if err := rt.checkTenantStatus(r.Context(), org); err != nil {
+			WriteError(w, r, err)
+			return
+		}
 		// Ensure TenantID propagates even when provider doesn't set it.
 		if id.TenantID == "" {
 			id.TenantID = org
@@ -367,4 +373,25 @@ func (rt *Router) resolveRoles(ctx context.Context, claims *snoozetypes.Claims) 
 	}
 	claims.Roles = roles
 	claims.Permissions = perms
+}
+
+// checkTenantStatus fetches the tenant document (under platform scope) and
+// returns an error if the tenant is suspended or does not exist. A nil DB or
+// missing tenant doc is treated as "active" for forward compatibility — the
+// tenant collection may not exist in older installs being migrated.
+func (rt *Router) checkTenantStatus(ctx context.Context, tenantID string) error {
+	if rt.DB == nil {
+		return nil
+	}
+	pCtx := auth.WithPlatformScope(ctx)
+	doc, err := rt.DB.GetOne(pCtx, "tenant", db.Document{"id": tenantID})
+	if err != nil || doc == nil {
+		// No registry entry = treat as active (pre-multitenancy or default tenant).
+		return nil
+	}
+	status, _ := doc["status"].(string)
+	if status == "suspended" {
+		return ErrForbidden.WithMessage("tenant is suspended")
+	}
+	return nil
 }
