@@ -63,6 +63,16 @@ func (c *Core) ProcessRecord(ctx context.Context, rec snoozetypes.Record) (snooz
 // nil-tracer fast path can share the body.
 func (c *Core) processRecordInner(ctx context.Context, rec snoozetypes.Record) (snoozetypes.Record, plugins.Action, error) {
 	logger := c.Logger()
+	// Tenant assertion: a record is tenant-scoped data. Without a tenant in the
+	// context the driver would fail-close on the final write (ErrNoTenant) deep
+	// in the pipeline, or — under platform scope — persist a tenant-less record.
+	// Fail loudly up front instead so a background scanner (e.g. heartbeat) that
+	// calls ProcessRecord without stamping a tenant surfaces the bug rather than
+	// silently losing the alert. Platform scope is intentionally NOT accepted:
+	// records always belong to exactly one tenant.
+	if tenant, ok := snoozetypes.TenantFrom(ctx); !ok || tenant == "" {
+		return rec, plugins.ActionAbort, fmt.Errorf("pipeline: refusing to process record without a tenant: %w", snoozetypes.ErrNoTenant)
+	}
 	c.stampDefaultTTL(ctx, &rec)
 	for _, p := range c.processOrder {
 		name := p.Name()

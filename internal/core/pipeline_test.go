@@ -49,6 +49,14 @@ func (f *fakeProcessor) Process(_ context.Context, rec snoozetypes.Record) (plug
 	return res, nil
 }
 
+// pctx returns a context scoped to the default tenant. ProcessRecord now
+// requires a tenant (records are tenant-scoped data), so every pipeline test
+// that drives a record through must carry one — mirroring the real ingest path,
+// which always stamps a tenant before reaching the pipeline.
+func pctx() context.Context {
+	return snoozetypes.WithTenant(context.Background(), snoozetypes.DefaultTenant)
+}
+
 func newPipelineCore(t *testing.T, procs ...plugins.Processor) (*Core, *fakeDB) {
 	t.Helper()
 	drv := newFakeDB()
@@ -63,6 +71,24 @@ func newPipelineCore(t *testing.T, procs ...plugins.Processor) (*Core, *fakeDB) 
 	return c, drv
 }
 
+// TestProcessRecord_RejectsNakedContext is the regression test for the pipeline
+// tenant assertion: ProcessRecord must fail loudly (clear error, no persisted
+// record) when the caller supplies a context with no tenant. Background scanners
+// such as heartbeat that call ProcessRecord without stamping a tenant would
+// otherwise silently lose the alert (or, worse, write a tenant-less record).
+func TestProcessRecord_RejectsNakedContext(t *testing.T) {
+	t.Parallel()
+	p1 := &fakeProcessor{name: "rule", result: plugins.Result{Action: plugins.ActionContinue}}
+	c, drv := newPipelineCore(t, p1)
+
+	_, _, err := c.ProcessRecord(context.Background(), snoozetypes.Record{UID: "uid-naked"})
+	require.Error(t, err, "ProcessRecord must reject a context with no tenant")
+	require.ErrorIs(t, err, snoozetypes.ErrNoTenant)
+	require.Equal(t, 0, p1.calls, "no plugin should run without a tenant")
+	require.Equal(t, 0, drv.writeCount(recordCollection),
+		"a tenant-less record must never be persisted")
+}
+
 func TestProcessRecord_AllContinue_WritesFinal(t *testing.T) {
 	t.Parallel()
 	p1 := &fakeProcessor{name: "rule", result: plugins.Result{Action: plugins.ActionContinue}}
@@ -70,7 +96,7 @@ func TestProcessRecord_AllContinue_WritesFinal(t *testing.T) {
 	c, drv := newPipelineCore(t, p1, p2)
 
 	rec := snoozetypes.Record{UID: "uid-1", Message: "hello"}
-	out, action, err := c.ProcessRecord(context.Background(), rec)
+	out, action, err := c.ProcessRecord(pctx(), rec)
 	require.NoError(t, err)
 	require.Equal(t, plugins.ActionContinue, action)
 	require.Equal(t, []string{"rule", "snooze"}, out.Plugins)
@@ -86,7 +112,7 @@ func TestProcessRecord_Abort_DoesNotWrite(t *testing.T) {
 	c, drv := newPipelineCore(t, p1, p2)
 
 	rec := snoozetypes.Record{UID: "uid-2"}
-	out, action, err := c.ProcessRecord(context.Background(), rec)
+	out, action, err := c.ProcessRecord(pctx(), rec)
 	require.NoError(t, err)
 	require.Equal(t, plugins.ActionAbort, action)
 	require.Equal(t, []string{"rule"}, out.Plugins)
@@ -101,7 +127,7 @@ func TestProcessRecord_AbortWrite_Persists(t *testing.T) {
 	c, drv := newPipelineCore(t, p1, p2)
 
 	rec := snoozetypes.Record{UID: "uid-3"}
-	out, action, err := c.ProcessRecord(context.Background(), rec)
+	out, action, err := c.ProcessRecord(pctx(), rec)
 	require.NoError(t, err)
 	require.Equal(t, plugins.ActionAbortWrite, action)
 	require.Equal(t, []string{"rule"}, out.Plugins)
@@ -114,7 +140,7 @@ func TestProcessRecord_AbortUpdate_PersistsWithoutTimestamp(t *testing.T) {
 	p1 := &fakeProcessor{name: "rule", result: plugins.Result{Action: plugins.ActionAbortUpdate}}
 	c, drv := newPipelineCore(t, p1)
 
-	_, action, err := c.ProcessRecord(context.Background(), snoozetypes.Record{UID: "uid-4"})
+	_, action, err := c.ProcessRecord(pctx(), snoozetypes.Record{UID: "uid-4"})
 	require.NoError(t, err)
 	require.Equal(t, plugins.ActionAbortUpdate, action)
 	require.Equal(t, 1, drv.writeCount(recordCollection))
@@ -125,7 +151,7 @@ func TestProcessRecord_PluginError_AttachesExceptionField(t *testing.T) {
 	p1 := &fakeProcessor{name: "rule", err: errors.New("dropped")}
 	c, drv := newPipelineCore(t, p1)
 
-	out, action, err := c.ProcessRecord(context.Background(), snoozetypes.Record{UID: "uid-5"})
+	out, action, err := c.ProcessRecord(pctx(), snoozetypes.Record{UID: "uid-5"})
 	require.Error(t, err)
 	require.Equal(t, plugins.ActionAbort, action)
 	require.NotNil(t, out.Extra)
@@ -149,7 +175,7 @@ func TestProcessRecord_RecordMutationsFlowForward(t *testing.T) {
 	p2 := &fakeProcessor{name: "snooze", result: plugins.Result{Action: plugins.ActionContinue}}
 	c, _ := newPipelineCore(t, p1, p2)
 
-	_, _, err := c.ProcessRecord(context.Background(), snoozetypes.Record{UID: "uid-6"})
+	_, _, err := c.ProcessRecord(pctx(), snoozetypes.Record{UID: "uid-6"})
 	require.NoError(t, err)
 	require.Equal(t, "mutated", p2.recvRec.Message,
 		"second plugin must see the mutated record from p1")
@@ -166,7 +192,7 @@ func TestProcessRecord_StampsDefaultTTL(t *testing.T) {
 		Housekeeper: schema.Housekeeper{RecordTTL: schema.Duration(48 * time.Hour)},
 	}
 
-	out, _, err := c.ProcessRecord(context.Background(), snoozetypes.Record{UID: "uid-ttl"})
+	out, _, err := c.ProcessRecord(pctx(), snoozetypes.Record{UID: "uid-ttl"})
 	require.NoError(t, err)
 	require.Equal(t, int64(48*60*60), out.TTL)
 	// Plugin receives the stamped TTL too, so downstream rules can react.
@@ -183,12 +209,12 @@ func TestProcessRecord_PreservesCallerTTL(t *testing.T) {
 	}
 
 	// Positive: caller's TTL wins.
-	out, _, err := c.ProcessRecord(context.Background(), snoozetypes.Record{UID: "uid-a", TTL: 60})
+	out, _, err := c.ProcessRecord(pctx(), snoozetypes.Record{UID: "uid-a", TTL: 60})
 	require.NoError(t, err)
 	require.Equal(t, int64(60), out.TTL)
 
 	// Negative: shelved by the operator at ingest; stamp must not overwrite.
-	out, _, err = c.ProcessRecord(context.Background(), snoozetypes.Record{UID: "uid-b", TTL: -1})
+	out, _, err = c.ProcessRecord(pctx(), snoozetypes.Record{UID: "uid-b", TTL: -1})
 	require.NoError(t, err)
 	require.Equal(t, int64(-1), out.TTL)
 }
@@ -197,7 +223,7 @@ func TestProcessRecord_BumpsAlertHitCounter(t *testing.T) {
 	t.Parallel()
 	p1 := &fakeProcessor{name: "rule", result: plugins.Result{Action: plugins.ActionAbort}}
 	c, _ := newPipelineCore(t, p1)
-	_, _, err := c.ProcessRecord(context.Background(), snoozetypes.Record{UID: "uid-7"})
+	_, _, err := c.ProcessRecord(pctx(), snoozetypes.Record{UID: "uid-7"})
 	require.NoError(t, err)
 	got := testutil.ToFloat64(c.Reg.AlertHit.WithLabelValues("rule", "abort"))
 	require.InDelta(t, 1.0, got, 0.0001)
@@ -233,7 +259,7 @@ func TestProcessRecord_AlertHitStat(t *testing.T) {
 		Host:        "h1",
 		DateEpoch:   1780302245,
 	}
-	_, _, err := c.ProcessRecord(context.Background(), rec)
+	_, _, err := c.ProcessRecord(pctx(), rec)
 	require.NoError(t, err)
 
 	require.NoError(t, c.Async.Flush(context.Background()))

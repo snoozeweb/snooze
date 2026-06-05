@@ -214,12 +214,20 @@ func audienceMatches(got, want []string) bool {
 // /api/root_token bootstrap token. It grants rw_all and identifies the
 // principal as method="root" so audit logs can distinguish it from a regular
 // login.
+//
+// The token is scoped to the default tenant and carries the LITERAL platform
+// permissions (ro_tenant + rw_tenant) so the privileged unix-socket operator can
+// actually manage the tenant registry. RequirePlatformPerm is strict on two axes
+// — default-tenant origin AND a literal platform permission (rw_all is NOT
+// honored) — so without these the socket-minted root token would be locked out
+// of /api/v1/tenant despite being the most privileged principal in the system.
 func (e *TokenEngine) RootClaims() snoozetypes.Claims {
 	return snoozetypes.Claims{
 		Subject:     "root",
 		Method:      "root",
-		Roles:       []string{"admin"},
-		Permissions: []string{"rw_all"},
+		TenantID:    snoozetypes.DefaultTenant,
+		Roles:       []string{"admin", PlatformAdminRole},
+		Permissions: []string{AllPermission, PermReadTenant, PermWriteTenant},
 	}
 }
 

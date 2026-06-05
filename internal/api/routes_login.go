@@ -233,6 +233,12 @@ func (rt *Router) handleLoginAnonymous(w http.ResponseWriter, r *http.Request) {
 		WriteError(w, r, ErrUnauthorized.WithMessage("anonymous login refused").WithCause(err))
 		return
 	}
+	// Suspend check: mirror handleLogin so an anonymous session cannot be
+	// issued against a suspended org.
+	if err := rt.checkTenantStatus(r.Context(), org); err != nil {
+		WriteError(w, r, err)
+		return
+	}
 	if id.TenantID == "" {
 		id.TenantID = org
 	}

@@ -101,6 +101,47 @@ func TestEnsureRoot_SeedsRootAsPlatformAdmin(t *testing.T) {
 		"root user must hold the platform_admin role")
 }
 
+// TestEnsureRoot_ConsistentWithoutBootstrapDB reproduces the boot-flag coupling
+// hole: with core.bootstrap_db=false but create_root_user=true, only EnsureRoot
+// runs. Before the fix it stamped the root user with the platform_admin role and
+// tenant_id=default but NEVER created the platform_admin role doc or the default
+// tenant doc — leaving root with a dangling role grant and no default tenant in
+// the registry. EnsureRoot must make first boot consistent regardless of the
+// bootstrap_db flag.
+func TestEnsureRoot_ConsistentWithoutBootstrapDB(t *testing.T) {
+	t.Parallel()
+	fdb := newFakeDB()
+	// Simulate bootstrap_db=false: BootstrapDB is NOT called, only EnsureRoot.
+	_, err := EnsureRoot(context.Background(), fdb)
+	require.NoError(t, err)
+
+	// The root user holds the platform_admin role...
+	root, err := fdb.GetOne(context.Background(), LocalCollection, db.Document{
+		"name":   RootUsername,
+		"method": LocalMethod,
+	})
+	require.NoError(t, err)
+	require.Contains(t, stringSliceField(root, "roles"), PlatformAdminRole)
+
+	// ...so the platform_admin role doc must actually exist (not dangling).
+	role, err := fdb.GetOne(context.Background(), RoleCollection, db.Document{
+		"name": PlatformAdminRole,
+	})
+	require.NoError(t, err)
+	require.NotNil(t, role, "platform_admin role must exist even when bootstrap_db=false")
+	perms := stringSliceField(role, "permissions")
+	require.Contains(t, perms, PermReadTenant)
+	require.Contains(t, perms, PermWriteTenant)
+
+	// ...and the default tenant doc must exist in the registry.
+	tenant, err := fdb.GetOne(context.Background(), TenantCollection, db.Document{
+		"id": snoozetypes.DefaultTenant,
+	})
+	require.NoError(t, err)
+	require.NotNil(t, tenant, "default tenant doc must exist even when bootstrap_db=false")
+	require.Equal(t, "active", tenant["status"])
+}
+
 func TestBootstrapDB_CreatesPlatformAdminRole(t *testing.T) {
 	t.Parallel()
 	fdb := newFakeDB()

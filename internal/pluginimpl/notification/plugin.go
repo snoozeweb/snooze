@@ -327,7 +327,7 @@ func (p *Plugin) dispatch(ctx context.Context, e Entry, rec snoozetypes.Record) 
 			Meta:     metaFromSubcontent(ad.Action.Subcontent, e, ad.Name),
 			Inject:   p.injectFunc(ctx, rec),
 		}
-		p.fireSend(notifier, rec, payload, e.Name, name)
+		p.fireSend(ctx, notifier, rec, payload, e.Name, name)
 	}
 }
 
@@ -449,9 +449,17 @@ func (p *Plugin) injectFunc(ctx context.Context, rec snoozetypes.Record) plugins
 // notification, action, and rec.DateEpoch are passed as named parameters (value
 // copies), so the goroutine closure captures them safely even when fireSend is
 // called inside a loop over e.Actions — no loop-variable capture bug.
-func (p *Plugin) fireSend(notifier plugins.Notifier, rec snoozetypes.Record, payload plugins.NotificationPayload, notification, action string) {
+//
+// ctx is the dispatch context (carries the tenant). The detached goroutine does
+// NOT keep ctx alive (it is cancelled when Process returns), but we capture its
+// tenant slug up-front and re-stamp it on the fresh send context via
+// auth.WithTenant. Without this, the action_success / action_error counters
+// would flush under a naked context.Background() with no tenant_id and leak into
+// the platform partition instead of the originating tenant's.
+func (p *Plugin) fireSend(ctx context.Context, notifier plugins.Notifier, rec snoozetypes.Record, payload plugins.NotificationPayload, notification, action string) {
 	host := p.host
 	eventEpoch := rec.DateEpoch
+	tenantID, _ := auth.TenantFrom(ctx)
 	go func() {
 		sendCtx, cancel := context.WithTimeout(context.Background(), notifierSendTimeout)
 		defer cancel()
@@ -469,11 +477,13 @@ func (p *Plugin) fireSend(notifier plugins.Notifier, rec snoozetypes.Record, pay
 		if sendErr != nil {
 			metric = "action_error"
 		}
-		// The pipeline ctx is intentionally not propagated into this goroutine
-		// (see the doc comment), so RecordStat runs under sendCtx — a fresh
-		// background context with no tenant. These delivery-outcome counters
-		// therefore flush under platform scope rather than a tenant partition.
-		plugins.RecordStat(sendCtx, host, eventEpoch, metric,
+		// Re-stamp the dispatch tenant so these delivery-outcome counters land
+		// in the originating tenant's partition rather than the platform bucket.
+		statCtx := sendCtx
+		if tenantID != "" {
+			statCtx = auth.WithTenant(sendCtx, tenantID)
+		}
+		plugins.RecordStat(statCtx, host, eventEpoch, metric,
 			map[string]string{"name": action}, 1)
 	}()
 }

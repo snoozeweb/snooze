@@ -32,6 +32,14 @@ const TenantCollection = "tenant"
 // tenant_id=DefaultTenant and grants the platform_admin role. The plaintext
 // password is returned on first boot so the caller can print it to stderr once;
 // subsequent boots return ("", nil). Any unexpected DB error is wrapped with %w.
+//
+// Boot-flag coupling: the root user is granted the platform_admin role and
+// scoped to the default tenant, both of which only exist if BootstrapDB ran. An
+// operator who sets core.bootstrap_db=false but core.create_root_user=true would
+// otherwise leave root with a dangling role grant and no default tenant doc in
+// the registry. To make first boot always consistent regardless of the
+// bootstrap_db flag, EnsureRoot calls BootstrapDB (idempotent) before seeding the
+// root user. Re-running when BootstrapDB already ran via boot() is harmless.
 func EnsureRoot(ctx context.Context, driver db.Driver) (string, error) {
 	if driver == nil {
 		return "", errors.New("bootstrap: nil db driver")
@@ -47,6 +55,13 @@ func EnsureRoot(ctx context.Context, driver db.Driver) (string, error) {
 	if err == nil && existing != nil {
 		// Already provisioned.
 		return "", nil
+	}
+
+	// Ensure the default tenant doc + platform_admin role exist before granting
+	// root the platform_admin role. Idempotent, so this is a no-op when the boot
+	// sequence already seeded them via BootstrapDB.
+	if err := BootstrapDB(ctx, driver); err != nil {
+		return "", fmt.Errorf("bootstrap: ensure registry seed: %w", err)
 	}
 
 	// Generate a fresh password.

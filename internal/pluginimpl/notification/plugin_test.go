@@ -582,6 +582,97 @@ func TestNotificationStats(t *testing.T) {
 	require.Equal(t, wantBucket, errorOps[0].search["bucket"])
 }
 
+// TestNotificationStats_TenantPartition verifies that the delivery-outcome
+// counters (action_success / action_error) emitted from fireSend's detached
+// goroutine land in the DISPATCH tenant's partition, not the platform/global
+// bucket. Before the fix fireSend used a naked context.Background(), so
+// cloneDocWithTenant baked no tenant_id and the counters leaked into the
+// platform partition (tenant_id="") instead of the originating tenant's.
+func TestNotificationStats_TenantPartition(t *testing.T) {
+	host, capDrv := newMetricsHost(t)
+
+	const tenant = "acme"
+	tenantCtx := auth.WithTenant(context.Background(), tenant)
+
+	writeActionsCtx := func(ctx context.Context, actions []map[string]any) {
+		docs := make([]db.Document, 0, len(actions))
+		for _, a := range actions {
+			docs = append(docs, db.Document(a))
+		}
+		_, err := host.driver.Write(ctx, actionCollectionName, docs, db.WriteOptions{UpdateTime: true})
+		require.NoError(t, err)
+	}
+	writeEntriesCtx := func(ctx context.Context, entries []map[string]any) {
+		docs := make([]db.Document, 0, len(entries))
+		for _, e := range entries {
+			docs = append(docs, db.Document(e))
+		}
+		_, err := host.driver.Write(ctx, collectionName, docs, db.WriteOptions{UpdateTime: true})
+		require.NoError(t, err)
+	}
+
+	writeActionsCtx(tenantCtx, []map[string]any{
+		{"name": "GoodAction", "action": map[string]any{"selected": "good-notifier", "subcontent": map[string]any{}}},
+		{"name": "BadAction", "action": map[string]any{"selected": "bad-notifier", "subcontent": map[string]any{}}},
+	})
+	writeEntriesCtx(tenantCtx, []map[string]any{
+		{"name": "MyNotification", "condition": []any{}, "actions": []any{"GoodAction", "BadAction"}},
+	})
+
+	good := &recordingNotifier{name: "good-notifier"}
+	bad := &failingNotifier{name: "bad-notifier"}
+	host.plugins["good-notifier"] = good
+	host.plugins["bad-notifier"] = bad
+
+	p := &Plugin{meta: plugins.Metadata{Name: "notification"}}
+	require.NoError(t, p.PostInit(tenantCtx, host))
+
+	const eventEpoch = int64(1780302245)
+	rec := snoozetypes.Record{
+		UID:       "uid-tenant-stats",
+		Host:      "myhost01",
+		Message:   "stats test",
+		Timestamp: time.Now(),
+		DateEpoch: eventEpoch,
+	}
+
+	_, err := p.Process(tenantCtx, rec)
+	require.NoError(t, err)
+
+	waitForCalls(t, good, 1, time.Second)
+	deadline := time.Now().Add(time.Second)
+	for time.Now().Before(deadline) {
+		if bad.total.Load() >= 1 {
+			break
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+	require.GreaterOrEqual(t, bad.total.Load(), int64(1), "bad notifier should have been called")
+
+	require.NoError(t, host.writer.Flush(context.Background()))
+
+	ops := capDrv.Captured()
+	find := func(metric, nameKey string) []capturedInc {
+		var found []capturedInc
+		for _, op := range ops {
+			if op.search["metric"] == metric && op.search["dim"] == "name" && op.search["key"] == nameKey {
+				found = append(found, op)
+			}
+		}
+		return found
+	}
+
+	successOps := find("action_success", "GoodAction")
+	require.Len(t, successOps, 1, "expected exactly 1 action_success op for GoodAction")
+	require.Equal(t, tenant, successOps[0].search["tenant_id"],
+		"action_success counter must land in the dispatch tenant's partition, not the platform bucket")
+
+	errorOps := find("action_error", "BadAction")
+	require.Len(t, errorOps, 1, "expected exactly 1 action_error op for BadAction")
+	require.Equal(t, tenant, errorOps[0].search["tenant_id"],
+		"action_error counter must land in the dispatch tenant's partition, not the platform bucket")
+}
+
 // TestNotification_TenantIsolation verifies that entries and actions loaded for
 // tenant A are not visible when Reload is called for tenant B.
 func TestNotification_TenantIsolation(t *testing.T) {

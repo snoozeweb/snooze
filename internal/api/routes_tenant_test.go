@@ -357,6 +357,41 @@ func TestLogin_SuspendedTenantBlocked(t *testing.T) {
 	require.Equal(t, http.StatusForbidden, rec.Code)
 }
 
+func TestLoginAnonymous_SuspendedTenantBlocked(t *testing.T) {
+	// Anonymous login must honour the same suspended-tenant gate as the
+	// credentialed path: an anonymous session against a suspended org would
+	// otherwise be issued a valid token and walk straight past the suspension.
+	tdb := &tenantDB{
+		docs: []db.Document{
+			{"id": "acme", "status": "suspended"},
+		},
+	}
+	anonProvider := &fakeProvider{
+		name:     "anonymous",
+		enabled:  true,
+		identity: auth.Identity{Username: "anonymous", Method: "anonymous", TenantID: "acme"},
+	}
+	reg := auth.NewRegistry()
+	reg.Register(anonProvider)
+
+	rt := &Router{
+		Auth:      testTokenEngine(t),
+		Refresh:   &fakeRefresh{},
+		Providers: reg,
+		DB:        tdb,
+	}
+	r := chi.NewRouter()
+	rt.mountLogin(r)
+
+	body := bytes.NewBufferString(`{"org":"acme"}`)
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/login/anonymous", body)
+	req.Header.Set("Content-Type", "application/json")
+	r.ServeHTTP(rec, req)
+	require.Equal(t, http.StatusForbidden, rec.Code,
+		"anonymous login against a suspended tenant must be refused")
+}
+
 func TestLogin_ActiveTenantAllowed(t *testing.T) {
 	tdb := &tenantDB{
 		docs: []db.Document{

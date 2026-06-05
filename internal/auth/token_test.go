@@ -198,6 +198,38 @@ func TestTokenEngine_RootClaims(t *testing.T) {
 	require.Contains(t, got.Permissions, "rw_all")
 }
 
+// TestTokenEngine_RootClaims_PlatformScoped asserts the unix-socket root token
+// can actually manage the tenant registry. The control-plane gate
+// (RequirePlatformPerm) is strict on two axes: the caller must be on the default
+// tenant AND carry a LITERAL platform permission (rw_all is NOT honored). A root
+// token with TenantID="" and only rw_all therefore fails the gate — the operator
+// who minted it via the privileged socket cannot touch /api/v1/tenant.
+func TestTokenEngine_RootClaims_PlatformScoped(t *testing.T) {
+	t.Parallel()
+	eng, err := NewTokenEngine(testSecret(), testCfg())
+	require.NoError(t, err)
+	c := eng.RootClaims()
+
+	// Must originate from the default tenant (where platform admins live).
+	require.Equal(t, snoozetypes.DefaultTenant, c.TenantID,
+		"root token must be scoped to the default tenant to pass the platform gate")
+
+	// Must carry the LITERAL platform permissions; rw_all alone is insufficient
+	// because RequirePlatformPerm does not honor the wildcard.
+	require.Contains(t, c.Permissions, PermReadTenant,
+		"root token must carry the literal ro_tenant permission")
+	require.Contains(t, c.Permissions, PermWriteTenant,
+		"root token must carry the literal rw_tenant permission")
+
+	// Survives a Sign/Verify round-trip with the platform scope intact.
+	tok, _, err := eng.Sign(c)
+	require.NoError(t, err)
+	got, err := eng.Verify(tok)
+	require.NoError(t, err)
+	require.Equal(t, snoozetypes.DefaultTenant, got.TenantID)
+	require.Contains(t, got.Permissions, PermWriteTenant)
+}
+
 func TestTokenEngine_TenantID_RoundTrip(t *testing.T) {
 	t.Parallel()
 	eng, err := NewTokenEngine(testSecret(), testCfg())
