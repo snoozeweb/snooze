@@ -9,9 +9,6 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// migrateRunnerFunc is a stand-in for the RunMultitenancyMigration dependency.
-type migrateRunnerFunc func(ctx context.Context) error
-
 func TestMigrateMultitenancyCmd_Success(t *testing.T) {
 	var stdout, stderr bytes.Buffer
 	called := false
