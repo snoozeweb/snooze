@@ -38,8 +38,32 @@ Read and Write for X. Full privileges on resource X.
 ro_X  
 Read Only for X. Can view everything on resource X but cannot add/edit/delete it.
 
+rw_tenant  
+Read and Write for the **tenant registry**. Allows creating, updating, and
+deleting tenant documents via `/api/v1/tenant`. This is a **platform-tier**
+permission, independent of any specific tenant. Carried by the
+`platform_admin` role.
+
+ro_tenant  
+Read Only for the **tenant registry**. Allows listing and inspecting tenant
+documents. Also a platform-tier permission.
+
 can_comment  
 Allow to acknowledge, re-escalate or comment any received alert. [More on Alerts](./alerts.md)
+
+### The `platform_admin` role
+
+A special seeded role named `platform_admin` is created at first boot. It
+holds `rw_tenant` and `ro_tenant`. The root user is assigned this role at
+bootstrap. Assign `platform_admin` to any user who needs to manage
+organizations in a multi-tenant deployment.
+
+Platform-tier permissions are checked against **platform scope** — they gate
+only `/api/v1/tenant` routes and are not evaluated for per-tenant plugin
+CRUD. A user can hold `platform_admin` in addition to per-tenant roles such
+as `admin` or `viewer`.
+
+See [Tenant management](./tenant_management.md) for the operator workflow.
 
 ## Users
 
