@@ -12,6 +12,7 @@ import (
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/trace"
 
+	"github.com/snoozeweb/snooze/internal/auth"
 	"github.com/snoozeweb/snooze/internal/condition"
 	"github.com/snoozeweb/snooze/internal/config"
 	"github.com/snoozeweb/snooze/internal/db"
@@ -23,6 +24,15 @@ import (
 )
 
 // --- test scaffolding ---
+
+// tctx returns a context scoped to the reserved default tenant. The driver
+// layer fail-closes on tenant-scoped collections (aggregaterule, record,
+// comment) when neither a tenant nor platform scope is present, so every test
+// DB/plugin call that exercises a scoped collection must carry one. This
+// mirrors real single-tenant behaviour.
+func tctx() context.Context {
+	return auth.WithTenant(context.Background(), snoozetypes.DefaultTenant)
+}
 
 // statCaptureDriver wraps a real db.Driver and captures every BulkIncrement
 // call directed at the stats collection so tests can assert on them without
@@ -92,7 +102,7 @@ func (h *testHost) AsyncWriter() *asyncwriter.Writer { return h.writer }
 // writeRule persists an aggregate-rule definition.
 func writeRule(t *testing.T, host *testHost, rule db.Document) {
 	t.Helper()
-	_, err := host.driver.Write(context.Background(), ruleCollection,
+	_, err := host.driver.Write(tctx(), ruleCollection,
 		[]db.Document{rule}, db.WriteOptions{Primary: []string{"name"}, UpdateTime: true})
 	require.NoError(t, err)
 }
@@ -102,7 +112,7 @@ func writeRule(t *testing.T, host *testHost, rule db.Document) {
 // pipeline does on ActionContinue / AbortUpdate.
 func runProcess(t *testing.T, p *Plugin, host *testHost, in snoozetypes.Record) (snoozetypes.Record, plugins.Action) {
 	t.Helper()
-	res, err := p.Process(context.Background(), in)
+	res, err := p.Process(tctx(), in)
 	require.NoError(t, err)
 	if res.Action == plugins.ActionContinue || res.Action == plugins.ActionAbortWrite || res.Action == plugins.ActionAbortUpdate {
 		doc := recordToMap(res.Record)
@@ -117,7 +127,14 @@ func runProcess(t *testing.T, p *Plugin, host *testHost, in snoozetypes.Record) 
 		if h, ok := doc["hash"].(string); ok {
 			match["hash"] = h
 		}
-		_, err := host.driver.ReplaceOne(context.Background(), recordCollection, match, doc, true)
+		// ReplaceOne does not auto-stamp tenant_id (it is not on the
+		// Convert-fenced write path). The real pipeline persists records via
+		// Write, which stamps the tenant. Mirror that here so the stored row is
+		// discoverable under the same tenant-scoped reads (GetOne/Search inject
+		// tenant_id) the plugin and the assertions use.
+		doc["tenant_id"] = snoozetypes.DefaultTenant
+		match["tenant_id"] = snoozetypes.DefaultTenant
+		_, err := host.driver.ReplaceOne(tctx(), recordCollection, match, doc, true)
 		require.NoError(t, err)
 	}
 	return res.Record, res.Action
@@ -129,7 +146,7 @@ func freshPlugin(t *testing.T, host *testHost) *Plugin {
 	// Override the clock so throttle checks are deterministic.
 	frozen := time.Unix(1_700_000_000, 0)
 	p.clock = func() time.Time { return frozen }
-	require.NoError(t, p.PostInit(context.Background(), host))
+	require.NoError(t, p.PostInit(tctx(), host))
 	return p
 }
 
@@ -137,7 +154,7 @@ func freshPlugin(t *testing.T, host *testHost) *Plugin {
 // equals name, in seq order.
 func recordsByAggregate(t *testing.T, host *testHost, name string) []db.Document {
 	t.Helper()
-	docs, _, err := host.driver.Search(context.Background(), recordCollection,
+	docs, _, err := host.driver.Search(tctx(), recordCollection,
 		condition.Equals("aggregate", name), db.Page{})
 	require.NoError(t, err)
 	return docs
@@ -147,7 +164,7 @@ func recordsByAggregate(t *testing.T, host *testHost, name string) []db.Document
 // the same query the web timeline issues (record_uid match).
 func commentsByRecord(t *testing.T, host *testHost, uid string) []db.Document {
 	t.Helper()
-	docs, _, err := host.driver.Search(context.Background(), "comment",
+	docs, _, err := host.driver.Search(tctx(), "comment",
 		condition.Equals("record_uid", uid), db.Page{})
 	require.NoError(t, err)
 	return docs
@@ -355,7 +372,7 @@ func TestAggregate_WritesLifecycleComments(t *testing.T) {
 		// real wall-clock time on write), forcing the re-escalation path.
 		p := &Plugin{meta: plugins.Metadata{Name: "aggregaterule"}}
 		p.clock = func() time.Time { return time.Unix(32_000_000_000, 0) }
-		require.NoError(t, p.PostInit(context.Background(), host))
+		require.NoError(t, p.PostInit(tctx(), host))
 
 		runProcess(t, p, host, snoozetypes.Record{Extra: map[string]any{"a": "1"}})
 		runProcess(t, p, host, snoozetypes.Record{Extra: map[string]any{"a": "1"}})
@@ -381,7 +398,7 @@ func TestAggregate_ClearsStaleSnoozed(t *testing.T) {
 
 	snoozedCount := func(t *testing.T, host *testHost) int {
 		t.Helper()
-		_, total, err := host.driver.Search(context.Background(), recordCollection,
+		_, total, err := host.driver.Search(tctx(), recordCollection,
 			condition.Exists("snoozed"), db.Page{})
 		require.NoError(t, err)
 		return total
@@ -401,13 +418,13 @@ func TestAggregate_ClearsStaleSnoozed(t *testing.T) {
 		require.NotEmpty(t, out.Hash)
 
 		// Simulate the snooze plugin having snoozed it in the warning era.
-		_, err := host.driver.SetFields(context.Background(), recordCollection,
+		_, err := host.driver.SetFields(tctx(), recordCollection,
 			db.Document{"snoozed": "Warnings"}, condition.Equals("hash", out.Hash))
 		require.NoError(t, err)
 		require.Equal(t, 1, snoozedCount(t, host))
 
 		// Re-aggregate with a watched-field change → non-throttled ActionContinue.
-		res, err := p.Process(context.Background(), snoozetypes.Record{Extra: map[string]any{"a": "1", "c": "2"}})
+		res, err := p.Process(tctx(), snoozetypes.Record{Extra: map[string]any{"a": "1", "c": "2"}})
 		require.NoError(t, err)
 		require.Equal(t, plugins.ActionContinue, res.Action)
 
@@ -425,14 +442,14 @@ func TestAggregate_ClearsStaleSnoozed(t *testing.T) {
 		p := freshPlugin(t, host)
 
 		out, _ := runProcess(t, p, host, snoozetypes.Record{Extra: map[string]any{"a": "1"}})
-		_, err := host.driver.SetFields(context.Background(), recordCollection,
+		_, err := host.driver.SetFields(tctx(), recordCollection,
 			db.Document{"snoozed": "Warnings"}, condition.Equals("hash", out.Hash))
 		require.NoError(t, err)
 		require.Equal(t, 1, snoozedCount(t, host))
 
 		// Plain duplicate inside the throttle window → ActionAbortUpdate, never
 		// reaches snooze, so its snoozed attribution must survive.
-		res, err := p.Process(context.Background(), snoozetypes.Record{Extra: map[string]any{"a": "1"}})
+		res, err := p.Process(tctx(), snoozetypes.Record{Extra: map[string]any{"a": "1"}})
 		require.NoError(t, err)
 		require.Equal(t, plugins.ActionAbortUpdate, res.Action)
 
@@ -523,7 +540,7 @@ func TestAggregate_CarriesForwardInjectedResponse(t *testing.T) {
 	// A prior notification injects a response onto the stored row, keyed by
 	// hash — exactly what the notification plugin's inject closure does.
 	injected := map[string]any{"message_ids": map[string]any{"teams/x/channels/y": "1700000000001"}}
-	_, err := host.driver.SetFields(context.Background(), recordCollection,
+	_, err := host.driver.SetFields(tctx(), recordCollection,
 		db.Document{"response_Teams": injected},
 		condition.Equals("hash", out1.Hash))
 	require.NoError(t, err)
@@ -543,7 +560,7 @@ func TestPostInit_SeedsDefault(t *testing.T) {
 	host := newTestHost(t)
 	_ = freshPlugin(t, host)
 
-	docs, _, err := host.driver.Search(context.Background(), ruleCollection,
+	docs, _, err := host.driver.Search(tctx(), ruleCollection,
 		condition.Equals("name", "_default"), db.Page{})
 	require.NoError(t, err)
 	require.Len(t, docs, 1)
@@ -565,7 +582,7 @@ func TestPostInit_DoesNotReseed(t *testing.T) {
 	})
 	_ = freshPlugin(t, host)
 
-	all, _, err := host.driver.Search(context.Background(), ruleCollection,
+	all, _, err := host.driver.Search(tctx(), ruleCollection,
 		condition.Cond{}, db.Page{})
 	require.NoError(t, err)
 	require.Len(t, all, 1)
@@ -624,7 +641,7 @@ func TestAggregate_ThrottleByWatchedValue(t *testing.T) {
 		out, _ := runProcess(t, p, host, snoozetypes.Record{Severity: sev,
 			Extra: map[string]any{"host": "h", "tarpit_message": tm}})
 		require.NotEmpty(t, out.Hash)
-		_, err := host.driver.SetFields(context.Background(), recordCollection,
+		_, err := host.driver.SetFields(tctx(), recordCollection,
 			db.Document{"date_epoch": now - 500}, condition.Equals("hash", out.Hash))
 		require.NoError(t, err)
 	}
@@ -746,36 +763,36 @@ func TestAggregate_TransformWrite_DuplicateFields(t *testing.T) {
 	p := freshPlugin(t, host)
 
 	// New rule with the same fields (order-independent) -> rejected.
-	err := p.TransformWrite(context.Background(), map[string]any{
+	err := p.TransformWrite(tctx(), map[string]any{
 		"name": "B", "fields": []any{"tarpit_message", "host"}, "enabled": true})
 	require.Error(t, err)
 
 	// Editing rule A itself (same name) -> allowed.
-	require.NoError(t, p.TransformWrite(context.Background(), map[string]any{
+	require.NoError(t, p.TransformWrite(tctx(), map[string]any{
 		"name": "A", "uid": "uid-a", "fields": []any{"host", "tarpit_message"}, "enabled": true}))
 
 	// Renaming A -> allowed. The CRUD layer supplies A's real uid, so
 	// self-exclusion must hold even though the name changed (the reported bug).
-	aDocs, _, ferr := host.driver.Search(context.Background(), ruleCollection,
+	aDocs, _, ferr := host.driver.Search(tctx(), ruleCollection,
 		condition.Equals("name", "A"), db.Page{})
 	require.NoError(t, ferr)
 	require.Len(t, aDocs, 1)
 	aUID, _ := aDocs[0]["uid"].(string)
 	require.NotEmpty(t, aUID)
-	require.NoError(t, p.TransformWrite(context.Background(), map[string]any{
+	require.NoError(t, p.TransformWrite(tctx(), map[string]any{
 		"name": "A renamed", "uid": aUID, "fields": []any{"host", "tarpit_message"}, "enabled": true}),
 		"renaming a rule (same uid, same fields) must not trip the duplicate guard")
 
 	// Distinct fields -> allowed.
-	require.NoError(t, p.TransformWrite(context.Background(), map[string]any{
+	require.NoError(t, p.TransformWrite(tctx(), map[string]any{
 		"name": "C", "fields": []any{"host", "message"}, "enabled": true}))
 
 	// A disabled new rule with duplicate fields -> allowed (disabled rules don't claim identity).
-	require.NoError(t, p.TransformWrite(context.Background(), map[string]any{
+	require.NoError(t, p.TransformWrite(tctx(), map[string]any{
 		"name": "D", "fields": []any{"host", "tarpit_message"}, "enabled": false}))
 
 	// PATCH that doesn't touch fields -> allowed.
-	require.NoError(t, p.TransformWrite(context.Background(), map[string]any{
+	require.NoError(t, p.TransformWrite(tctx(), map[string]any{
 		"name": "B", "comment": "x"}))
 }
 
@@ -900,7 +917,7 @@ func TestAggregate_ThrottleRecordsStat(t *testing.T) {
 	// which is far from the frozen clock, but the throttle decision uses
 	// the stored date_epoch—backdate it to just before the frozen clock so it
 	// is inside the window).
-	_, err = capDriver.SetFields(context.Background(), recordCollection,
+	_, err = capDriver.SetFields(tctx(), recordCollection,
 		db.Document{"date_epoch": int64(1_699_999_500)}, // 500 s before frozen clock (1_700_000_000)
 		condition.Equals("hash", out1.Hash))
 	require.NoError(t, err)
@@ -931,4 +948,38 @@ func TestAggregate_ThrottleRecordsStat(t *testing.T) {
 	require.Equal(t, "ThrottleRule", c.search["key"])
 	require.Equal(t, wantBucket, c.search["bucket"])
 	require.Equal(t, int64(1), c.delta)
+}
+
+// TestAggregateRule_TenantIsolation verifies that aggregate rules loaded for
+// one tenant are not visible when processing records for another.
+func TestAggregateRule_TenantIsolation(t *testing.T) {
+	t.Parallel()
+	h := newTestHost(t)
+
+	ctxA := auth.WithTenant(context.Background(), "acme")
+	ctxB := auth.WithTenant(context.Background(), "beta")
+
+	// Seed an aggregaterule for acme.
+	_, err := h.DB().Write(ctxA, "aggregaterule", []db.Document{{
+		"name":    "acme-rule",
+		"fields":  []string{"host", "source", "message"},
+		"enabled": true,
+	}}, db.WriteOptions{Primary: []string{"name"}, UpdateTime: false})
+	require.NoError(t, err)
+
+	p := &Plugin{meta: plugins.Metadata{}, clock: time.Now}
+	require.NoError(t, p.PostInit(ctxA, h))
+
+	// Rules for acme are loaded.
+	p.mu.RLock()
+	acmeRules := p.rules["acme"]
+	p.mu.RUnlock()
+	require.Len(t, acmeRules, 1)
+
+	// Load for beta — should be empty (no rules written for beta).
+	require.NoError(t, p.Reload(ctxB))
+	p.mu.RLock()
+	betaRules := p.rules["beta"]
+	p.mu.RUnlock()
+	require.Empty(t, betaRules)
 }

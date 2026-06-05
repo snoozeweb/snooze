@@ -40,6 +40,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/snoozeweb/snooze/internal/auth"
 	"github.com/snoozeweb/snooze/internal/condition"
 	"github.com/snoozeweb/snooze/internal/db"
 	"github.com/snoozeweb/snooze/internal/db/asyncwriter"
@@ -76,7 +77,7 @@ type Plugin struct {
 	meta plugins.Metadata
 
 	mu    sync.RWMutex
-	rules []*compiledRule
+	rules map[string][]*compiledRule // tenantID → compiled rules
 	host  plugins.Host
 	// clock is overrideable for tests.
 	clock func() time.Time
@@ -229,12 +230,16 @@ func (p *Plugin) PostInit(ctx context.Context, host plugins.Host) error {
 	return p.Reload(ctx)
 }
 
-// Reload refreshes the in-memory aggregate-rule snapshot from the database.
+// Reload refreshes the in-memory aggregate-rule snapshot for the tenant in ctx.
 func (p *Plugin) Reload(ctx context.Context) error {
 	p.mu.RLock()
 	host := p.host
 	p.mu.RUnlock()
 	if host == nil || host.DB() == nil {
+		return nil
+	}
+	tenantID, ok := auth.TenantFrom(ctx)
+	if !ok || tenantID == "" {
 		return nil
 	}
 	docs, _, err := host.DB().Search(ctx, ruleCollection, condition.Cond{}, db.Page{})
@@ -253,7 +258,10 @@ func (p *Plugin) Reload(ctx context.Context) error {
 		rules = append(rules, r)
 	}
 	p.mu.Lock()
-	p.rules = rules
+	if p.rules == nil {
+		p.rules = make(map[string][]*compiledRule)
+	}
+	p.rules[tenantID] = rules
 	p.mu.Unlock()
 	warnDuplicateFields(host, rules)
 	return nil
@@ -286,8 +294,10 @@ func warnDuplicateFields(host plugins.Host, rules []*compiledRule) {
 // Process implements plugins.Processor. It assigns the record a hash based on
 // the first matching rule (or a default-bucket hash) and decides the verdict.
 func (p *Plugin) Process(ctx context.Context, rec snoozetypes.Record) (plugins.Result, error) {
+	tenantID, _ := auth.TenantFrom(ctx)
+
 	p.mu.RLock()
-	rules := p.rules
+	rules := p.rules[tenantID]
 	host := p.host
 	now := p.clock
 	p.mu.RUnlock()
