@@ -10,9 +10,10 @@ import (
 
 // Event is the unit of cross-instance change notification.
 type Event struct {
-	Topic      string    // e.g. "collection.record" or "plugin.rule"
+	Topic      string    // e.g. "collection.rule.acme" or "plugin.rule"
 	Op         string    // "write" | "delete" | "replace" | "reload"
 	Collection string    // empty for plugin-level events
+	Tenant     string    // NEW — tenant slug for tenant-scoped events; "" for global
 	UIDs       []string  // optional, may be empty
 	At         time.Time // wall-clock when the publisher emitted the event
 }
@@ -28,4 +29,16 @@ type Bus interface {
 	Subscribe(ctx context.Context, topicPrefix string) (<-chan Event, error)
 	// Close releases all resources. Idempotent.
 	Close() error
+}
+
+// CollectionTopic builds the canonical topic string for a collection event.
+// For tenant-scoped events, the topic is "collection.<collection>.<tenant>".
+// For global collections (tenant == ""), the topic is "collection.<collection>".
+// Syncer subscriptions use the prefix "collection.<collection>" which matches
+// both forms because Subscribe uses HasPrefix semantics.
+func CollectionTopic(collection, tenant string) string {
+	if tenant == "" {
+		return "collection." + collection
+	}
+	return "collection." + collection + "." + tenant
 }
