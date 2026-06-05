@@ -149,3 +149,74 @@ func TestRewriteUserRolePKs_Idempotent(t *testing.T) {
 		require.Equal(t, snoozetypes.DefaultTenant, doc["tenant_id"])
 	}
 }
+
+func TestEnsureDefaultTenant_CreatesTenantDoc(t *testing.T) {
+	t.Parallel()
+	drv := newFakeDriver()
+	pctx := auth.WithPlatformScope(context.Background())
+	require.NoError(t, ensureDefaultTenant(pctx, drv))
+
+	tenantDocs := drv.docs("tenant")
+	require.Len(t, tenantDocs, 1)
+	require.Equal(t, snoozetypes.DefaultTenant, tenantDocs[0]["id"])
+	require.Equal(t, "active", tenantDocs[0]["status"])
+}
+
+func TestEnsureDefaultTenant_Idempotent(t *testing.T) {
+	t.Parallel()
+	drv := newFakeDriver()
+	drv.seed("tenant", db.Document{
+		"id":     snoozetypes.DefaultTenant,
+		"status": "active",
+	})
+	pctx := auth.WithPlatformScope(context.Background())
+	require.NoError(t, ensureDefaultTenant(pctx, drv))
+
+	tenantDocs := drv.docs("tenant")
+	require.Len(t, tenantDocs, 1, "must not create duplicate tenant docs")
+}
+
+func TestEnsurePlatformAdminRole_CreatesRole(t *testing.T) {
+	t.Parallel()
+	drv := newFakeDriver()
+	pctx := auth.WithPlatformScope(context.Background())
+	require.NoError(t, ensurePlatformAdminRole(pctx, drv))
+
+	roles := drv.docs("role")
+	var found db.Document
+	for _, r := range roles {
+		if r["name"] == auth.PlatformAdminRole {
+			found = r
+			break
+		}
+	}
+	require.NotNil(t, found, "platform_admin role must be created")
+
+	perms, _ := found["permissions"].([]any)
+	permSet := make(map[string]struct{}, len(perms))
+	for _, p := range perms {
+		permSet[p.(string)] = struct{}{}
+	}
+	require.Contains(t, permSet, auth.PermReadTenant)
+	require.Contains(t, permSet, auth.PermWriteTenant)
+}
+
+func TestEnsurePlatformAdminRole_Idempotent(t *testing.T) {
+	t.Parallel()
+	drv := newFakeDriver()
+	drv.seed("role", db.Document{
+		"name":        auth.PlatformAdminRole,
+		"permissions": []any{auth.PermReadTenant, auth.PermWriteTenant},
+	})
+	pctx := auth.WithPlatformScope(context.Background())
+	require.NoError(t, ensurePlatformAdminRole(pctx, drv))
+
+	roles := drv.docs("role")
+	count := 0
+	for _, r := range roles {
+		if r["name"] == auth.PlatformAdminRole {
+			count++
+		}
+	}
+	require.Equal(t, 1, count, "must not duplicate platform_admin role")
+}

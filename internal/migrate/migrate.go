@@ -18,8 +18,10 @@ import (
 	"fmt"
 	"log/slog"
 
+	"github.com/snoozeweb/snooze/internal/auth"
 	"github.com/snoozeweb/snooze/internal/condition"
 	"github.com/snoozeweb/snooze/internal/db"
+	"github.com/snoozeweb/snooze/pkg/snoozetypes"
 )
 
 // migrationMarkerCollection is where the idempotency sentinel lives.
@@ -213,5 +215,49 @@ func rewriteUserRolePKs(ctx context.Context, drv db.Driver, tenantID string) err
 		}
 		slog.Info("migrate: rewrote PKs", "collection", target.col, "count", len(toWrite))
 	}
+	return nil
+}
+
+// ensureDefaultTenant upserts the reserved "default" tenant doc into the
+// global tenant registry collection. Idempotent: upsert on PK ["id"].
+// ctx must carry WithPlatformScope (tenant is a global collection, but we
+// pass platform scope for consistency with the rest of the migration path).
+func ensureDefaultTenant(ctx context.Context, drv db.Driver) error {
+	_, err := drv.Write(ctx, "tenant", []db.Document{
+		{
+			"id":           snoozetypes.DefaultTenant,
+			"display_name": "Default",
+			"status":       "active",
+		},
+	}, db.WriteOptions{
+		Primary:    []string{"id"},
+		UpdateTime: true,
+	})
+	if err != nil {
+		return fmt.Errorf("migrate: ensure default tenant: %w", err)
+	}
+	slog.Info("migrate: default tenant ensured")
+	return nil
+}
+
+// ensurePlatformAdminRole upserts the platform_admin role with
+// rw_tenant + ro_tenant permissions into the (global-under-platform-scope)
+// role collection. The role is NOT tenant-scoped; it carries no tenant_id.
+// Idempotent: upsert on PK ["name"].
+// ctx must carry WithPlatformScope.
+func ensurePlatformAdminRole(ctx context.Context, drv db.Driver) error {
+	_, err := drv.Write(ctx, "role", []db.Document{
+		{
+			"name":        auth.PlatformAdminRole,
+			"permissions": []any{auth.PermReadTenant, auth.PermWriteTenant},
+		},
+	}, db.WriteOptions{
+		Primary:    []string{"name"},
+		UpdateTime: true,
+	})
+	if err != nil {
+		return fmt.Errorf("migrate: ensure platform_admin role: %w", err)
+	}
+	slog.Info("migrate: platform_admin role ensured")
 	return nil
 }
