@@ -268,7 +268,7 @@ func (p *Plugin) dispatch(ctx context.Context, e Entry, rec snoozetypes.Record) 
 	}
 
 	// Count one notification_sent per matched notification entry dispatch.
-	plugins.RecordStat(p.host, rec.DateEpoch, "notification_sent",
+	plugins.RecordStat(ctx, p.host, rec.DateEpoch, "notification_sent",
 		map[string]string{"name": e.Name}, 1)
 
 	for _, name := range e.Actions {
@@ -441,7 +441,11 @@ func (p *Plugin) fireSend(notifier plugins.Notifier, rec snoozetypes.Record, pay
 		if sendErr != nil {
 			metric = "action_error"
 		}
-		plugins.RecordStat(host, eventEpoch, metric,
+		// The pipeline ctx is intentionally not propagated into this goroutine
+		// (see the doc comment), so RecordStat runs under sendCtx — a fresh
+		// background context with no tenant. These delivery-outcome counters
+		// therefore flush under platform scope rather than a tenant partition.
+		plugins.RecordStat(sendCtx, host, eventEpoch, metric,
 			map[string]string{"name": action}, 1)
 	}()
 }

@@ -8,6 +8,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
+	"github.com/snoozeweb/snooze/internal/auth"
 	"github.com/snoozeweb/snooze/internal/condition"
 	"github.com/snoozeweb/snooze/internal/db"
 	"github.com/snoozeweb/snooze/internal/syncer"
@@ -224,6 +225,64 @@ func TestWriter_PartitionsFlushByTenant(t *testing.T) {
 		}
 	}
 	require.Equal(t, map[string]int64{"alpha": 5, "beta": 9}, gotByTenant)
+}
+
+func TestWriter_TenantPartitionedSearch(t *testing.T) {
+	// Two tenants enqueue increments for the same logical (collection, field,
+	// search). The writer must partition them by tenant_id so the two increments
+	// land in distinct buckets and are not coalesced.
+	d := newStubDriver()
+	clock := NewMockClock(time.Unix(0, 0))
+	w := New(d, time.Second, clock)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	doneCh := make(chan error, 1)
+	go func() { doneCh <- w.Run(ctx) }()
+
+	ctxA := auth.WithTenant(context.Background(), "acme")
+	ctxB := auth.WithTenant(context.Background(), "beta")
+
+	w.Increment(ctxA, "stats", "value", db.Document{"metric": "alert_hit", "dim": "source", "key": "syslog", "bucket": int64(0)}, 1)
+	w.Increment(ctxB, "stats", "value", db.Document{"metric": "alert_hit", "dim": "source", "key": "syslog", "bucket": int64(0)}, 1)
+
+	require.Eventually(t, func() bool {
+		w.mu.Lock()
+		defer w.mu.Unlock()
+		return len(w.buckets["stats"]) == 2
+	}, time.Second, time.Millisecond)
+	clock.Advance(time.Second)
+
+	select {
+	case <-d.signal:
+	case <-time.After(time.Second):
+		t.Fatal("flush did not fire")
+	}
+
+	// The flusher partitions each collection's ops by their baked-in tenant_id
+	// and issues one tenant-scoped BulkIncrement per tenant (see
+	// TestWriter_PartitionsFlushByTenant and the cross-tenant data-loss fix), so
+	// two tenants yield two single-op calls rather than one two-op call. Wait for
+	// both to land, then assert exactly two ops total, one per tenant, each
+	// carrying its own tenant_id in the search doc.
+	require.Eventually(t, func() bool {
+		return len(d.Snapshot()) == 2
+	}, time.Second, time.Millisecond)
+
+	tenants := map[string]bool{}
+	ops := 0
+	for _, call := range d.Snapshot() {
+		for _, op := range call.ops {
+			ops++
+			tid, ok := op.Search["tenant_id"].(string)
+			require.True(t, ok, "tenant_id must be present in search")
+			tenants[tid] = true
+		}
+	}
+	require.Equal(t, 2, ops, "the two tenants' increments must not coalesce")
+	require.Equal(t, map[string]bool{"acme": true, "beta": true}, tenants)
+
+	cancel()
+	require.NoError(t, <-doneCh)
 }
 
 func TestWriter_DrainOnShutdown(t *testing.T) {

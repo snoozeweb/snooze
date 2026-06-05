@@ -160,7 +160,7 @@ func (p *Plugin) Process(ctx context.Context, rec snoozetypes.Record) (plugins.R
 		rec.Extra["snoozed"] = r.Name
 
 		// Persist alert_snoozed metric for dashboard aggregation.
-		plugins.RecordStat(host, rec.DateEpoch, "alert_snoozed", map[string]string{"name": r.Name}, 1)
+		plugins.RecordStat(ctx, host, rec.DateEpoch, "alert_snoozed", map[string]string{"name": r.Name}, 1)
 
 		// Best-effort hit counter bump (synchronous UpdateOne).
 		if r.HitsEnabled && host != nil && host.DB() != nil && r.UID != "" {

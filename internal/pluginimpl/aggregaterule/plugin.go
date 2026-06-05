@@ -517,7 +517,7 @@ func (p *Plugin) matchAggregate(
 		// Throttled duplicate: queue the counter bump but drop notifications.
 		p.queueIncrement(ctx, host, hashStr, 1)
 		ruleName, _ := rec["aggregate"].(string)
-		plugins.RecordStat(host, incomingDateEpoch, "alert_throttled", map[string]string{"name": ruleName}, 1)
+		plugins.RecordStat(ctx, host, incomingDateEpoch, "alert_throttled", map[string]string{"name": ruleName}, 1)
 		rec["state"] = prevState
 		return rec, plugins.ActionAbortUpdate, nil
 	}

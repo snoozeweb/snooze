@@ -121,7 +121,7 @@ func TestBootAsync_UpsertEnabled_StatsCountersPersist(t *testing.T) {
 
 	// Enqueue one stat increment through the same call path that the alert
 	// pipeline uses. eventEpoch 1780302245 → hour bucket 1780300800.
-	plugins.RecordStat(c, 1780302245, "alert_hit", map[string]string{"source": "syslog"}, 1)
+	plugins.RecordStat(ctx, c, 1780302245, "alert_hit", map[string]string{"source": "syslog"}, 1)
 
 	// Flush synchronously so we don't need to start the Run goroutine.
 	require.NoError(t, c.Async.Flush(ctx))

@@ -77,7 +77,7 @@ func TestRecordStat_WritesOneDocPerLabel_HourBucketed(t *testing.T) {
 	w, calls := newCapturingWriter()
 	h := &statTestHost{writer: w, metricsEnabled: true}
 	// eventEpoch 1780302245 -> hour bucket 1780300800
-	RecordStat(h, 1780302245, "alert_hit", map[string]string{
+	RecordStat(context.Background(), h, 1780302245, "alert_hit", map[string]string{
 		"source":      "syslog",
 		"severity":    "critical",
 		"environment": "", // empty -> skipped
@@ -104,7 +104,7 @@ func TestRecordStat_WritesOneDocPerLabel_HourBucketed(t *testing.T) {
 func TestRecordStat_NoopWhenMetricsDisabled(t *testing.T) {
 	w, calls := newCapturingWriter()
 	h := &statTestHost{writer: w, metricsEnabled: false}
-	RecordStat(h, 1780302245, "alert_snoozed", map[string]string{"name": "f"}, 1)
+	RecordStat(context.Background(), h, 1780302245, "alert_snoozed", map[string]string{"name": "f"}, 1)
 	require.NoError(t, w.Flush(context.Background()))
 	require.Empty(t, *calls)
 }
@@ -115,11 +115,11 @@ func TestRecordStat_NoopWhenNoAsyncWriter(_ *testing.T) {
 	h := &noAsyncWriterHost{}
 	h.nullHost = *newNullHost(newMemDB())
 	h.cfg.General.MetricsEnabled = true
-	RecordStat(h, 1, "alert_hit", map[string]string{"source": "x"}, 1)
+	RecordStat(context.Background(), h, 1, "alert_hit", map[string]string{"source": "x"}, 1)
 }
 
 func TestRecordStat_NoopWhenWriterNil(_ *testing.T) {
 	// statTestHost implements AsyncWriterHost but returns a nil Writer.
 	h := &statTestHost{writer: nil, metricsEnabled: true}
-	RecordStat(h, 1, "alert_hit", map[string]string{"source": "x"}, 1)
+	RecordStat(context.Background(), h, 1, "alert_hit", map[string]string{"source": "x"}, 1)
 }

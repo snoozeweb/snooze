@@ -22,8 +22,10 @@ type AsyncWriterHost interface {
 // `stats` collection, bucketed to the UTC hour containing eventEpoch. No-op
 // when metrics are disabled or the host exposes no async writer, so call sites
 // never need to guard. Doc shape: {metric, dim, key, bucket, value}; the upsert
-// search is {metric, dim, key, bucket} and `value` is incremented by n.
-func RecordStat(host Host, eventEpoch int64, metric string, labels map[string]string, n int64) {
+// search is {metric, dim, key, bucket} and `value` is incremented by n. The
+// tenant is extracted from ctx by the asyncwriter so stats counter rows are
+// tenant-partitioned automatically.
+func RecordStat(ctx context.Context, host Host, eventEpoch int64, metric string, labels map[string]string, n int64) {
 	if host == nil || metric == "" || n == 0 {
 		return
 	}
@@ -44,10 +46,7 @@ func RecordStat(host Host, eventEpoch int64, metric string, labels map[string]st
 		if key == "" {
 			continue
 		}
-		// RecordStat has no ctx of its own; the tenant-scoped stats wiring lands
-		// in a later phase. Until then, enqueue under a tenant-less context so the
-		// async writer flushes these counters under platform scope.
-		w.Increment(context.Background(), StatsCollection, "value", db.Document{
+		w.Increment(ctx, StatsCollection, "value", db.Document{
 			"metric": metric,
 			"dim":    dim,
 			"key":    key,
