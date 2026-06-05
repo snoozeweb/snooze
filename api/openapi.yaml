@@ -87,6 +87,8 @@ tags:
     description: Generic per-plugin REST CRUD surface.
   - name: schema
     description: JSON Schema discovery + permission enumeration.
+  - name: platform
+    description: Platform-level tenant registry CRUD (requires ro_tenant / rw_tenant).
 
 paths:
 
@@ -575,6 +577,145 @@ paths:
             application/json:
               schema: {$ref: '#/components/schemas/ErrEnvelope'}
 
+  /api/v1/tenant:
+    get:
+      tags: [platform]
+      summary: List tenants
+      description: |
+        Returns all tenant records. Requires `ro_tenant` or `rw_tenant`.
+        Evaluated against platform scope, not any individual tenant.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: offset
+          in: query
+          schema: {type: integer, default: 0}
+        - name: limit
+          in: query
+          schema: {type: integer, default: 20}
+        - name: orderby
+          in: query
+          schema: {type: string}
+        - name: asc
+          in: query
+          schema: {type: boolean, default: true}
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data, meta]
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Tenant'
+                  meta:
+                    $ref: '#/components/schemas/ListMeta'
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+    post:
+      tags: [platform]
+      summary: Create tenant
+      description: Requires `rw_tenant`.
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Tenant'
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Tenant'
+        '400': {$ref: '#/components/responses/BadRequest'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+
+  /api/v1/tenant/{id}:
+    get:
+      tags: [platform]
+      summary: Get tenant by id
+      description: Requires `ro_tenant` or `rw_tenant`.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: {type: string}
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Tenant'
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {$ref: '#/components/responses/NotFound'}
+    patch:
+      tags: [platform]
+      summary: Update tenant display_name / status / ingest_token
+      description: Requires `rw_tenant`. `id` is immutable.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: {type: string}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                display_name: {type: string}
+                status:
+                  type: string
+                  enum: [active, suspended]
+                ingest_token: {type: string}
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Tenant'
+        '400': {$ref: '#/components/responses/BadRequest'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {$ref: '#/components/responses/NotFound'}
+    delete:
+      tags: [platform]
+      summary: Delete tenant
+      description: |
+        Requires `rw_tenant`. The reserved "default" tenant cannot be deleted
+        (server returns 409).
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: {type: string}
+      responses:
+        '204':
+          description: Deleted
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {$ref: '#/components/responses/NotFound'}
+        '409': {$ref: '#/components/responses/Conflict'}
+
   /api/v1/webhook/{webhook}:
     post:
       tags: [webhooks]
@@ -1050,6 +1191,38 @@ components:
         type: boolean
         default: true
 
+  responses:
+    BadRequest:
+      description: Malformed request body or parameters.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrEnvelope'
+    Unauthorized:
+      description: Missing or invalid credentials.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrEnvelope'
+    Forbidden:
+      description: Authenticated but lacking the required permission.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrEnvelope'
+    NotFound:
+      description: Resource not found.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrEnvelope'
+    Conflict:
+      description: Conflict (e.g. attempt to delete a reserved resource).
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrEnvelope'
+
   schemas:
     StatusOK:
       type: object
@@ -1067,6 +1240,12 @@ components:
       properties:
         username: {type: string}
         password: {type: string, format: password}
+        org:
+          type: string
+          description: |
+            Optional tenant slug. Omitted or empty defaults to "default".
+            Pass when the server hosts multiple organizations and the user
+            wants to log in to a specific one (D10).
 
     LoginResponse:
       type: object
@@ -1103,6 +1282,33 @@ components:
         refresh_token:
           type: string
           description: "The refresh token returned by a prior login or refresh."
+
+    Tenant:
+      type: object
+      required: [id, display_name, status]
+      description: |
+        One organization (tenant). id is the immutable URL/login-safe slug
+        stamped as tenant_id on every scoped document. display_name is mutable.
+      properties:
+        id:
+          type: string
+          description: "Immutable slug, used as tenant_id on all scoped documents."
+        display_name:
+          type: string
+          description: "Human-readable label; mutable."
+        status:
+          type: string
+          enum: [active, suspended]
+          description: "'suspended' blocks login + ingest but retains data."
+        ingest_token:
+          type: string
+          description: "Per-tenant ingest token for unauthenticated ingress (D4)."
+        created_at:
+          type: integer
+          format: int64
+        updated_at:
+          type: integer
+          format: int64
 
     Record:
       type: object

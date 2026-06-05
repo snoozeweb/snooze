@@ -669,6 +669,9 @@ export interface paths {
          *     pipeline; the response includes the post-pipeline records and
          *     any per-record processing errors.
          *
+         *     This endpoint is unauthenticated by default (1.5.0 parity); the
+         *     `ingest.token` knob only gates the `/api/v1/webhook/*` receivers.
+         *
          */
         post: {
             parameters: {
@@ -701,6 +704,415 @@ export interface paths {
         options?: never;
         head?: never;
         patch?: never;
+        trace?: never;
+    };
+    "/api/v1/cluster/status": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Cluster + plugin status
+         * @description Cluster member list (graded ok/degraded/down from the `nodes`
+         *     heartbeat collection; leader = alphabetically-first ok member — Snooze
+         *     has no real leader election) plus the loaded-plugin roster. Falls back
+         *     to a synthetic `standalone` member on a single-node deploy. Backs the
+         *     admin Status page.
+         *
+         */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Cluster status snapshot. */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            cluster?: {
+                                members?: {
+                                    name?: string;
+                                    /** @enum {string} */
+                                    status?: "ok" | "degraded" | "down";
+                                }[];
+                                leader?: string;
+                            };
+                            plugins?: {
+                                name?: string;
+                                loaded?: boolean;
+                            }[];
+                        };
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/condition/parse": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Parse a search-bar query string into a Condition AST
+         * @description Always returns 200 (even on a query parse error) so the SearchBar can
+         *     render an inline marker. A 400 is returned only when the JSON envelope
+         *     itself is malformed. Exactly one of `condition` / `error` is set.
+         *
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": {
+                        query: string;
+                    };
+                };
+            };
+            responses: {
+                /** @description Parse result. */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            condition?: {
+                                [key: string]: unknown;
+                            };
+                            error?: {
+                                pos?: number;
+                                token?: string;
+                                message?: string;
+                            };
+                        };
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/condition/fields": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Field catalog for SearchBar autocomplete */
+        get: {
+            parameters: {
+                query?: {
+                    collection?: string;
+                };
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Field catalog (empty array for unknown collections). */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            data: {
+                                name?: string;
+                                type?: string;
+                                description?: string;
+                                values?: string[];
+                            }[];
+                        };
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/snooze/{uid}/retro_apply": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Replay a stored snooze against existing records
+         * @description Applies the snooze's condition to the `record` collection: deletes
+         *     matches when `discard` is true, otherwise tags them `snoozed:<name>`.
+         *     Requires the `rw_record` permission.
+         *
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    uid: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Retro-apply counts. */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            matched: number;
+                            deleted?: number;
+                            tagged?: number;
+                            snooze: string;
+                        };
+                    };
+                };
+                /** @description Snooze not found. */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrEnvelope"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/tenant": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List tenants
+         * @description Returns all tenant records. Requires `ro_tenant` or `rw_tenant`.
+         *     Evaluated against platform scope, not any individual tenant.
+         *
+         */
+        get: {
+            parameters: {
+                query?: {
+                    offset?: number;
+                    limit?: number;
+                    orderby?: string;
+                    asc?: boolean;
+                };
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            data: components["schemas"]["Tenant"][];
+                            meta: components["schemas"]["ListMeta"];
+                        };
+                    };
+                };
+                401: components["responses"]["Unauthorized"];
+                403: components["responses"]["Forbidden"];
+            };
+        };
+        put?: never;
+        /**
+         * Create tenant
+         * @description Requires `rw_tenant`.
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["Tenant"];
+                };
+            };
+            responses: {
+                /** @description Created */
+                201: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Tenant"];
+                    };
+                };
+                400: components["responses"]["BadRequest"];
+                401: components["responses"]["Unauthorized"];
+                403: components["responses"]["Forbidden"];
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/tenant/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get tenant by id
+         * @description Requires `ro_tenant` or `rw_tenant`.
+         */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Tenant"];
+                    };
+                };
+                401: components["responses"]["Unauthorized"];
+                403: components["responses"]["Forbidden"];
+                404: components["responses"]["NotFound"];
+            };
+        };
+        put?: never;
+        post?: never;
+        /**
+         * Delete tenant
+         * @description Requires `rw_tenant`. The reserved "default" tenant cannot be deleted
+         *     (server returns 409).
+         *
+         */
+        delete: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Deleted */
+                204: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                401: components["responses"]["Unauthorized"];
+                403: components["responses"]["Forbidden"];
+                404: components["responses"]["NotFound"];
+                409: components["responses"]["Conflict"];
+            };
+        };
+        options?: never;
+        head?: never;
+        /**
+         * Update tenant display_name / status / ingest_token
+         * @description Requires `rw_tenant`. `id` is immutable.
+         */
+        patch: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": {
+                        display_name?: string;
+                        /** @enum {string} */
+                        status?: "active" | "suspended";
+                        ingest_token?: string;
+                    };
+                };
+            };
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Tenant"];
+                    };
+                };
+                400: components["responses"]["BadRequest"];
+                401: components["responses"]["Unauthorized"];
+                403: components["responses"]["Forbidden"];
+                404: components["responses"]["NotFound"];
+            };
+        };
         trace?: never;
     };
     "/api/v1/webhook/{webhook}": {
@@ -1449,6 +1861,11 @@ export interface components {
             username: string;
             /** Format: password */
             password: string;
+            /** @description Optional tenant slug. Omitted or empty defaults to "default".
+             *     Pass when the server hosts multiple organizations and the user
+             *     wants to log in to a specific one (D10).
+             *      */
+            org?: string;
         };
         LoginResponse: {
             /** @description HS256 JWT access token. Send as `Authorization: Bearer <token>`. */
@@ -1477,6 +1894,26 @@ export interface components {
         RefreshRequest: {
             /** @description The refresh token returned by a prior login or refresh. */
             refresh_token: string;
+        };
+        /** @description One organization (tenant). id is the immutable URL/login-safe slug
+         *     stamped as tenant_id on every scoped document. display_name is mutable.
+         *      */
+        Tenant: {
+            /** @description Immutable slug, used as tenant_id on all scoped documents. */
+            id: string;
+            /** @description Human-readable label; mutable. */
+            display_name: string;
+            /**
+             * @description 'suspended' blocks login + ingest but retains data.
+             * @enum {string}
+             */
+            status: "active" | "suspended";
+            /** @description Per-tenant ingest token for unauthenticated ingress (D4). */
+            ingest_token?: string;
+            /** Format: int64 */
+            created_at?: number;
+            /** Format: int64 */
+            updated_at?: number;
         };
         /** @description The canonical alert document moving through the Snooze
          *     pipeline. Mirrors `pkg/snoozetypes.Record`. Fields are
@@ -1692,7 +2129,53 @@ export interface components {
             bucket: number;
         };
     };
-    responses: never;
+    responses: {
+        /** @description Malformed request body or parameters. */
+        BadRequest: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/json": components["schemas"]["ErrEnvelope"];
+            };
+        };
+        /** @description Missing or invalid credentials. */
+        Unauthorized: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/json": components["schemas"]["ErrEnvelope"];
+            };
+        };
+        /** @description Authenticated but lacking the required permission. */
+        Forbidden: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/json": components["schemas"]["ErrEnvelope"];
+            };
+        };
+        /** @description Resource not found. */
+        NotFound: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/json": components["schemas"]["ErrEnvelope"];
+            };
+        };
+        /** @description Conflict (e.g. attempt to delete a reserved resource). */
+        Conflict: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/json": components["schemas"]["ErrEnvelope"];
+            };
+        };
+    };
     parameters: {
         /** @description Plugin / collection name. The built-in set is enumerated in
          *     `internal/pluginimpl/all/all.go`.
