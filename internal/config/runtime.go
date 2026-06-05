@@ -9,6 +9,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/snoozeweb/snooze/internal/auth"
 	"github.com/snoozeweb/snooze/internal/condition"
 	"github.com/snoozeweb/snooze/internal/config/schema"
 	"github.com/snoozeweb/snooze/internal/db"
@@ -101,8 +102,10 @@ type HousekeeperConfig = schema.Housekeeper
 const settingsCollection = "settings"
 
 // RuntimeSettings reads DB-backed settings with a small read-through cache.
-// The PATCH/POST/PUT/DELETE handler for the “settings“ collection calls
-// “Invalidate“ so an edit in the UI takes effect on the next read.
+// The cache is tenant-partitioned: each tenant gets its own snapshot, keyed by
+// tenant slug. The PATCH/POST/PUT/DELETE handler for the “settings“ collection
+// calls Invalidate (all partitions) or InvalidateForTenant (one partition) so
+// an edit in the UI takes effect on the next read for that tenant.
 //
 // Layered defaulting: the bootstrap Config provides the baseline; values
 // stored in the DB override per-key. Keys use the dotted-prefix
@@ -112,7 +115,11 @@ type RuntimeSettings struct {
 	baseline *Config
 	cacheTTL time.Duration
 
-	mu        sync.RWMutex
+	mu         sync.RWMutex
+	partitions map[string]*settingsPartition // tenantID → partition
+}
+
+type settingsPartition struct {
 	cached    map[string]any
 	cachedAt  time.Time
 	expiresAt time.Time
@@ -129,21 +136,32 @@ func NewRuntimeSettings(drv db.Driver, baseline *Config, cacheTTL time.Duration)
 		baseline = Default()
 	}
 	return &RuntimeSettings{
-		drv:      drv,
-		baseline: baseline,
-		cacheTTL: cacheTTL,
+		drv:        drv,
+		baseline:   baseline,
+		cacheTTL:   cacheTTL,
+		partitions: make(map[string]*settingsPartition),
 	}
 }
 
-// Invalidate forces the next read to refresh from the DB. Safe to call
-// concurrently with any other RuntimeSettings method.
+// Invalidate forces the next read for every tenant to refresh from the DB.
+// Safe to call concurrently with any other RuntimeSettings method.
 func (r *RuntimeSettings) Invalidate() {
 	if r == nil {
 		return
 	}
 	r.mu.Lock()
-	r.cached = nil
-	r.expiresAt = time.Time{}
+	r.partitions = make(map[string]*settingsPartition)
+	r.mu.Unlock()
+}
+
+// InvalidateForTenant forces the next read for tenantID to refresh from the DB.
+// Other tenants' cached partitions are unaffected.
+func (r *RuntimeSettings) InvalidateForTenant(tenantID string) {
+	if r == nil || tenantID == "" {
+		return
+	}
+	r.mu.Lock()
+	delete(r.partitions, tenantID)
 	r.mu.Unlock()
 }
 
@@ -221,13 +239,23 @@ func (r *RuntimeSettings) Get(ctx context.Context, key string) (any, bool, error
 	return v, ok, nil
 }
 
-// load fetches the cached catalogue or refreshes it from the DB. We hold an
-// RLock for the cache-hit fast path and upgrade to a Lock only when the
-// cache has expired.
+// load fetches the cached catalogue for the tenant in ctx, or refreshes it.
+// Uses platform scope as a fallback when no tenant is set (housekeeper, admin):
+// the empty-string partition serves baseline-only values with no DB override.
+// We hold an RLock for the cache-hit fast path and upgrade to a Lock only when
+// the partition is missing or expired.
 func (r *RuntimeSettings) load(ctx context.Context) (map[string]any, error) {
+	tenantID, _ := auth.TenantFrom(ctx)
+	// Under platform scope or no-tenant contexts use the empty-string partition
+	// (baseline-only; no DB override applied for cross-tenant reads).
+	if tenantID == "" {
+		return map[string]any{}, nil
+	}
+
 	r.mu.RLock()
-	if r.cached != nil && time.Now().Before(r.expiresAt) {
-		out := r.cached
+	part, ok := r.partitions[tenantID]
+	if ok && time.Now().Before(part.expiresAt) {
+		out := part.cached
 		r.mu.RUnlock()
 		return out, nil
 	}
@@ -236,22 +264,25 @@ func (r *RuntimeSettings) load(ctx context.Context) (map[string]any, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	// Re-check under the write lock — another goroutine may have refreshed.
-	if r.cached != nil && time.Now().Before(r.expiresAt) {
-		return r.cached, nil
+	if part, ok = r.partitions[tenantID]; ok && time.Now().Before(part.expiresAt) {
+		return part.cached, nil
 	}
 	values, err := r.readAll(ctx)
 	if err != nil {
 		return nil, err
 	}
-	r.cached = values
-	r.cachedAt = time.Now()
-	r.expiresAt = r.cachedAt.Add(r.cacheTTL)
+	now := time.Now()
+	r.partitions[tenantID] = &settingsPartition{
+		cached:    values,
+		cachedAt:  now,
+		expiresAt: now.Add(r.cacheTTL),
+	}
 	return values, nil
 }
 
 // readAll scans every row in the settings collection and folds it into a
-// flat map keyed by `name`. Missing collection / empty collection both
-// return an empty map.
+// flat map keyed by `name`. The driver injects tenant_id via ctx automatically.
+// Missing collection / empty collection both return an empty map.
 func (r *RuntimeSettings) readAll(ctx context.Context) (map[string]any, error) {
 	if r.drv == nil {
 		return map[string]any{}, nil
