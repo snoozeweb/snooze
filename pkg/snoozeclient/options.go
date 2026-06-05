@@ -64,6 +64,12 @@ type Options struct {
 	// later session can reuse the value.
 	Token string
 
+	// IngestToken, when non-empty, is sent as `Authorization: Bearer <IngestToken>`
+	// on every outbound request instead of the Login-obtained bearer token. Use
+	// this to authenticate daemons against a specific Snooze tenant's ingest token
+	// (D4) without going through the user login flow.
+	IngestToken string
+
 	// Timeout is applied to every HTTP request. Defaults to DefaultTimeout.
 	Timeout time.Duration
 

@@ -263,7 +263,9 @@ func (c *Client) Do(ctx context.Context, method, path string, body, dest any) er
 			req.Header.Set("Content-Type", "application/json")
 		}
 		req.Header.Set("Accept", "application/json")
-		if tok := c.Token(); tok != "" {
+		if c.opts.IngestToken != "" {
+			req.Header.Set("Authorization", "Bearer "+c.opts.IngestToken)
+		} else if tok := c.Token(); tok != "" {
 			req.Header.Set("Authorization", "Bearer "+tok)
 		}
 		httpResp, err := c.http.Do(req)
