@@ -8,6 +8,8 @@ import (
 	"time"
 
 	"golang.org/x/sync/errgroup"
+
+	"github.com/snoozeweb/snooze/pkg/snoozetypes"
 )
 
 // defaultDebounce is the burst-coalescing window applied between an event and
@@ -143,11 +145,16 @@ func (s *Syncer) runPlugin(ctx context.Context, name string, plug Pluggable, deb
 
 // dispatchLoop coalesces a burst of events into a single Reload using a debounce
 // window. The timer is started on the first event after an idle period and
-// reset whenever a fresh event arrives within the window.
+// reset whenever a fresh event arrives within the window. The most recently
+// seen Event.Tenant is threaded into the Reload context via
+// snoozetypes.WithTenant so tenant-scoped driver queries inside Reload are
+// correctly injected. When Tenant is empty (global collection event or
+// plugin-level event) no tenant is set.
 func (s *Syncer) dispatchLoop(ctx context.Context, name string, plug Pluggable, in <-chan Event, debounce time.Duration, logger *slog.Logger) {
 	var timer *time.Timer
 	var timerC <-chan time.Time
 	pending := false
+	var lastTenant string
 
 	stopTimer := func() {
 		if timer != nil {
@@ -166,12 +173,13 @@ func (s *Syncer) dispatchLoop(ctx context.Context, name string, plug Pluggable, 
 		case <-ctx.Done():
 			stopTimer()
 			return
-		case _, ok := <-in:
+		case ev, ok := <-in:
 			if !ok {
 				stopTimer()
 				return
 			}
 			pending = true
+			lastTenant = ev.Tenant
 			if timer == nil {
 				timer = time.NewTimer(debounce)
 				timerC = timer.C
@@ -189,7 +197,11 @@ func (s *Syncer) dispatchLoop(ctx context.Context, name string, plug Pluggable, 
 				continue
 			}
 			pending = false
-			if err := plug.Reload(ctx); err != nil {
+			reloadCtx := ctx
+			if lastTenant != "" {
+				reloadCtx = snoozetypes.WithTenant(ctx, lastTenant)
+			}
+			if err := plug.Reload(reloadCtx); err != nil {
 				logger.Warn("syncer: reload failed", "plugin", name, "err", err)
 			}
 		}

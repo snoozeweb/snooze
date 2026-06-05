@@ -12,6 +12,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/snoozeweb/snooze/pkg/snoozetypes"
 	"github.com/stretchr/testify/require"
 )
 
@@ -379,4 +380,65 @@ func TestSyncer_NilBus(t *testing.T) {
 	s := &Syncer{}
 	err := s.Run(context.Background())
 	require.Error(t, err)
+}
+
+// tenantCapturingPlugin is like recordingPlugin but also extracts and reports
+// the tenant slug from the Reload context.
+type tenantCapturingPlugin struct {
+	name     string
+	tenantCh chan string
+}
+
+func (p *tenantCapturingPlugin) Name() string { return p.name }
+func (p *tenantCapturingPlugin) Reload(ctx context.Context) error {
+	t, _ := snoozetypes.TenantFrom(ctx)
+	select {
+	case p.tenantCh <- t:
+	default:
+	}
+	return nil
+}
+
+// TestSyncer_TenantContextOnReload verifies that when an event carries a
+// Tenant slug the Syncer's Reload is called with that tenant in context.
+func TestSyncer_TenantContextOnReload(t *testing.T) {
+	bus := newFakeBus()
+	defer bus.Close()
+
+	capturedTenant := make(chan string, 1)
+	plug := &tenantCapturingPlugin{name: "rule", tenantCh: capturedTenant}
+	s := &Syncer{
+		Bus:      bus,
+		Plugins:  map[string]Pluggable{plug.Name(): plug},
+		Debounce: 20 * time.Millisecond,
+		Logger:   quietLogger(),
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	done := make(chan error, 1)
+	go func() { done <- s.Run(ctx) }()
+
+	require.Eventually(t, func() bool {
+		bus.mu.Lock()
+		defer bus.mu.Unlock()
+		return len(bus.subs) >= 2
+	}, time.Second, 5*time.Millisecond, "subscriptions not registered")
+
+	require.NoError(t, bus.Publish(ctx, Event{
+		Topic:      CollectionTopic("rule", "acme"),
+		Op:         "write",
+		Collection: "rule",
+		Tenant:     "acme",
+	}))
+
+	select {
+	case got := <-capturedTenant:
+		require.Equal(t, "acme", got)
+	case <-time.After(time.Second):
+		t.Fatal("reload not invoked with tenant context")
+	}
+
+	cancel()
+	require.NoError(t, <-done)
 }
