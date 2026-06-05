@@ -669,8 +669,12 @@ export interface paths {
          *     pipeline; the response includes the post-pipeline records and
          *     any per-record processing errors.
          *
-         *     This endpoint is unauthenticated by default (1.5.0 parity); the
-         *     `ingest.token` knob only gates the `/api/v1/webhook/*` receivers.
+         *     **Multi-tenant routing** — in a multi-tenant deployment, supply
+         *     `Authorization: Bearer <ingest_token>` (the per-tenant opaque token
+         *     from `GET /api/v1/tenant/{id}`) to route ingestion to a specific
+         *     tenant. When no token is present or the token is unknown, the request
+         *     falls back to the `default` tenant. Single-tenant deployments need no
+         *     token (existing behaviour preserved).
          *
          */
         post: {
@@ -969,7 +973,12 @@ export interface paths {
         put?: never;
         /**
          * Create tenant
-         * @description Requires `rw_tenant`.
+         * @description Creates a new organization and seeds its default roles (`admin`,
+         *     `viewer`, `notifications`). Requires `rw_tenant`. The `id` slug must be
+         *     unique and must not be `default`. If `ingest_token` is omitted a random
+         *     token is generated and returned in the response — this is the only
+         *     opportunity to retrieve it.
+         *
          */
         post: {
             parameters: {
@@ -980,7 +989,7 @@ export interface paths {
             };
             requestBody: {
                 content: {
-                    "application/json": components["schemas"]["Tenant"];
+                    "application/json": components["schemas"]["TenantCreate"];
                 };
             };
             responses: {
@@ -1089,12 +1098,7 @@ export interface paths {
             };
             requestBody: {
                 content: {
-                    "application/json": {
-                        display_name?: string;
-                        /** @enum {string} */
-                        status?: "active" | "suspended";
-                        ingest_token?: string;
-                    };
+                    "application/json": components["schemas"]["TenantUpdate"];
                 };
             };
             responses: {
@@ -1134,6 +1138,11 @@ export interface paths {
          *     Receivers are unauthenticated by default. When `ingest.token` is
          *     configured every request must carry it as
          *     `Authorization: Bearer <token>` or `?token=<token>`.
+         *
+         *     **Multi-tenant routing** — supply a per-tenant `ingest_token` (from
+         *     `GET /api/v1/tenant/{id}`) to route webhook payloads to a specific
+         *     tenant. Falls back to `default` when absent or unknown. The global
+         *     `ingest.token` guard (if configured) is evaluated first.
          *
          */
         post: {
@@ -1890,6 +1899,10 @@ export interface components {
             refresh_expires_at?: string;
             /** @enum {string} */
             method: "local" | "ldap" | "anonymous";
+            /** @description Tenant slug the token is scoped to. Mirrors the `tenant_id` JWT
+             *     claim. Empty on legacy tokens — treated as `default` by the server.
+             *      */
+            tenant_id?: string;
         };
         RefreshRequest: {
             /** @description The refresh token returned by a prior login or refresh. */
@@ -2127,6 +2140,38 @@ export interface components {
             to: string;
             /** @description Series bucket size in seconds. */
             bucket: number;
+        };
+        /** @description Request body for POST /api/v1/tenant. */
+        TenantCreate: {
+            /** @description Immutable slug. Must be unique. Reserved value `default` is rejected. */
+            id: string;
+            /** @description Human-readable label. */
+            display_name: string;
+            /**
+             * @default active
+             * @enum {string}
+             */
+            status: "active" | "suspended";
+            /** @description Per-tenant ingest token. If omitted the server generates a random
+             *     24-byte hex token and returns it in the response body. Store it:
+             *     this is the only time the plaintext is returned.
+             *      */
+            ingest_token?: string;
+        };
+        /** @description Request body for PATCH /api/v1/tenant/{id}. All fields optional. */
+        TenantUpdate: {
+            /** @description New human-readable label. */
+            display_name?: string;
+            /**
+             * @description Change the lifecycle state.
+             * @enum {string}
+             */
+            status?: "active" | "suspended";
+            /** @description Rotate the ingest token. Supply a new value or an empty string to
+             *     disable unauthenticated ingestion for this tenant. The server does
+             *     NOT auto-generate a new token on update — supply one explicitly.
+             *      */
+            ingest_token?: string;
         };
     };
     responses: {
