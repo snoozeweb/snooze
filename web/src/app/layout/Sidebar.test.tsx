@@ -29,6 +29,7 @@ const ALL_PERMS = [
   "ro_widget",
   "ro_kv",
   "ro_settings",
+  "ro_tenant",
 ];
 
 function setup(pathname = "/web/alerts") {
@@ -56,7 +57,7 @@ describe("Sidebar", () => {
     expect(screen.getByText("Admin")).toBeInTheDocument();
   });
 
-  it("renders all 12 nav items", () => {
+  it("renders all 13 nav items", () => {
     loginWithPerms(ALL_PERMS);
     setup();
     const expected = [
@@ -72,6 +73,7 @@ describe("Sidebar", () => {
       "Key-values",
       "Settings",
       "Status",
+      "Tenants",
     ];
     for (const label of expected) {
       expect(screen.getByText(label)).toBeInTheDocument();
@@ -98,6 +100,18 @@ describe("Sidebar", () => {
     authStore.getState().login(`${header}.${body}.sig`);
     setup();
     expect(screen.getByText("acme")).toBeInTheDocument();
+  });
+
+  it("shows the Tenants nav item when the user has ro_tenant", () => {
+    loginWithPerms(["ro_tenant"]);
+    setup();
+    expect(screen.getByText("Tenants")).toBeInTheDocument();
+  });
+
+  it("hides the Tenants nav item when the user lacks ro_tenant and rw_tenant", () => {
+    loginWithPerms(["ro_record"]);
+    setup();
+    expect(screen.queryByText("Tenants")).toBeNull();
   });
 });
 

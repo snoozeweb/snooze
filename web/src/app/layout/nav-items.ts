@@ -95,6 +95,13 @@ export const NAV_ITEMS: NavItem[] = [
     permissions: ["ro_settings", "rw_settings"],
   },
   { to: "/web/admin/status", label: "Status", icon: "activity", group: "admin" },
+  {
+    to: "/web/admin/tenants",
+    label: "Tenants",
+    icon: "layers",
+    group: "admin",
+    permissions: ["ro_tenant", "rw_tenant"],
+  },
 ];
 
 export const GROUP_LABELS: Record<NavGroup, string> = {

@@ -23,6 +23,7 @@ import { WidgetsPage } from "@/features/admin/widgets/WidgetsPage";
 import { KVPage } from "@/features/admin/kv/KVPage";
 import { SettingsPage } from "@/features/admin/settings/SettingsPage";
 import { StatusPage } from "@/features/admin/status/StatusPage";
+import { TenantsPage } from "@/features/admin/tenants/TenantsPage";
 import { authStore } from "@/lib/auth/store";
 import { Login } from "@/features/auth/Login";
 import { Profile } from "@/features/auth/Profile";
@@ -334,6 +335,43 @@ const statusRoute = createRoute({
   component: StatusPage,
 });
 
+type TenantsSearchParams = {
+  uid?: string;
+  page?: number;
+  orderby?: string;
+  asc?: boolean;
+};
+
+const tenantsRoute = createRoute({
+  getParentRoute: () => webLayoutRoute,
+  path: "/web/admin/tenants",
+  component: TenantsPage,
+  validateSearch: (raw): TenantsSearchParams => {
+    const out: Record<string, unknown> = {};
+    if (typeof raw["uid"] === "string") out["uid"] = raw["uid"];
+    const pageRaw = raw["page"];
+    const page =
+      typeof pageRaw === "number"
+        ? pageRaw
+        : typeof pageRaw === "string" && /^\d+$/.test(pageRaw)
+          ? Number(pageRaw)
+          : undefined;
+    if (page !== undefined) out["page"] = page;
+    if (typeof raw["orderby"] === "string") out["orderby"] = raw["orderby"];
+    const ascRaw = raw["asc"];
+    const asc =
+      typeof ascRaw === "boolean"
+        ? ascRaw
+        : ascRaw === "true"
+          ? true
+          : ascRaw === "false"
+            ? false
+            : undefined;
+    if (asc !== undefined) out["asc"] = asc;
+    return out as TenantsSearchParams;
+  },
+});
+
 type AlertsSearchParams = {
   state?: string;
   severity?: string;
@@ -545,6 +583,7 @@ const routeTree = rootRoute.addChildren([
     kvRoute,
     settingsRoute,
     statusRoute,
+    tenantsRoute,
     ...devRoutes,
     profileRoute,
   ]),

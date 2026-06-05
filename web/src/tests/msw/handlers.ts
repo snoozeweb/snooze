@@ -57,6 +57,13 @@ export const handlers = [
 
   http.post("/api/v1/login/logout", () => new HttpResponse(null, { status: 204 })),
 
+  http.get("/api/v1/tenant", () =>
+    HttpResponse.json({
+      data: [],
+      meta: { count: 0, limit: 20, offset: 0, total: 0 },
+    }),
+  ),
+
   // Catch-all list endpoint for resource-factory smoke tests.
   http.get("/api/v1/:plugin", ({ params }) => {
     return HttpResponse.json({
