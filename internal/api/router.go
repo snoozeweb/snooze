@@ -135,6 +135,13 @@ func (rt *Router) Build() chi.Router {
 
 	// --- plugin CRUD -------------------------------------------------------
 	for _, p := range rt.Plugins {
+		// The tenant registry is mounted explicitly above (mountTenant) with
+		// platform scope + rw_tenant/ro_tenant gating and bespoke create/delete
+		// (role seeding + cascade purge). Skip its generic CRUD mount to avoid a
+		// duplicate /api/v1/tenant registration (chi panics on double Mount).
+		if p.Name() == auth.TenantCollection {
+			continue
+		}
 		plugins.MountCRUD(r, rt.Host, p)
 	}
 
