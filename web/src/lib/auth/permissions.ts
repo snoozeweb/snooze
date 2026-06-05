@@ -5,6 +5,17 @@ import type { JwtClaims } from "./jwt";
 // satisfies any required permission check, just like on the server.
 const WILDCARD_PERMISSION = "rw_all";
 
+// Platform-tier permissions (Shared Contract §4.3, D5). These are evaluated
+// against platform scope — they gate /api/v1/tenant registry CRUD and are
+// independent of any tenant. Mirrored from internal/auth.PermReadTenant and
+// PermWriteTenant.
+const PLATFORM_PERMISSIONS = new Set(["ro_tenant", "rw_tenant"]);
+
+/** Returns true when p is a platform-tier permission (ro_tenant / rw_tenant). */
+export function isPlatformPermission(p: string): boolean {
+  return PLATFORM_PERMISSIONS.has(p);
+}
+
 function getPerms(claims: JwtClaims | null): readonly string[] {
   if (!claims) return [];
   return Array.isArray(claims.permissions) ? claims.permissions : [];

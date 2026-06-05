@@ -1,3 +1,4 @@
+import { isPlatformPermission } from "@/lib/auth/permissions";
 import type { ColumnDef } from "@/shared/ui/DataTable";
 import { Badge, type BadgeVariant } from "@/shared/ui/Badge";
 import { Code } from "@/shared/ui/Code";
@@ -5,7 +6,10 @@ import type { Role } from "./types";
 
 // Hint at what the permission grants. rw_* (full read+write) → critical,
 // ro_* → info, audit/admin-only → warning, deny_* → muted.
+// Platform-tier permissions (ro_tenant / rw_tenant) → "warning" to signal
+// they operate above the tenant boundary and should be granted with care.
 function permissionVariant(p: string): BadgeVariant {
+  if (isPlatformPermission(p)) return "warning";
   if (p === "rw_all" || p.startsWith("admin_")) return "critical";
   if (p.startsWith("rw_") || p.startsWith("can_")) return "warning";
   if (p.startsWith("ro_")) return "info";

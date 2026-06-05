@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { hasAllPermissions, hasAnyPermission, hasPermission } from "./permissions";
+import {
+  hasAllPermissions,
+  hasAnyPermission,
+  hasPermission,
+  isPlatformPermission,
+} from "./permissions";
 import type { JwtClaims } from "./jwt";
 
 const adminClaims: JwtClaims = { sub: "admin", permissions: ["rw_rule", "rw_record", "ro_user"] };
@@ -46,5 +51,20 @@ describe("hasAllPermissions", () => {
   });
   it("returns true on empty list (vacuous)", () => {
     expect(hasAllPermissions(adminClaims, [])).toBe(true);
+  });
+});
+
+describe("isPlatformPermission", () => {
+  it("returns true for ro_tenant", () => {
+    expect(isPlatformPermission("ro_tenant")).toBe(true);
+  });
+  it("returns true for rw_tenant", () => {
+    expect(isPlatformPermission("rw_tenant")).toBe(true);
+  });
+  it("returns false for ro_record", () => {
+    expect(isPlatformPermission("ro_record")).toBe(false);
+  });
+  it("returns false for rw_all", () => {
+    expect(isPlatformPermission("rw_all")).toBe(false);
   });
 });
