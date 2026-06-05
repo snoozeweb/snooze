@@ -1,0 +1,83 @@
+name: Docker
+
+# Build the snooze-server image (API + React web UI + pipeline workers) from
+# packaging/Dockerfile.golang and push it to Docker Hub as snoozeweb/snooze,
+# mirroring the 1.x release flow. Runs on every v* tag, and can be triggered
+# manually (workflow_dispatch) to (re)publish a specific version.
+#
+# REQUIRES two repo secrets (Settings -> Secrets and variables -> Actions):
+#   DOCKERHUB_USERNAME  - the Docker Hub account (e.g. snoozeweb)
+#   DOCKERHUB_TOKEN     - a Docker Hub access token with push scope
+# Without them the login step fails. The image is amd64 (matching the 1.x and
+# 2.0.0 images); add linux/arm64 to `platforms` for multi-arch.
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Image version tag (e.g. 2.1.0). Defaults to the git tag.'
+        required: false
+        default: ''
+      push_latest:
+        description: 'Also update the :latest tag'
+        type: boolean
+        required: false
+        default: true
+
+permissions:
+  contents: read
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Resolve image metadata
+        id: meta
+        env:
+          IN_VERSION: ${{ inputs.version }}
+          IN_LATEST: ${{ inputs.push_latest }}
+          REF_NAME: ${{ github.ref_name }}
+        run: |
+          version="$IN_VERSION"
+          if [ -z "$version" ]; then version="${REF_NAME#v}"; fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "build_time=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_OUTPUT"
+          tags="snoozeweb/snooze:${version}"
+          # push_latest is empty on a tag push (treat as true) and "true"/"false"
+          # on a manual run.
+          if [ "$IN_LATEST" != "false" ]; then
+            tags="${tags}"$'\n'"snoozeweb/snooze:latest"
+          fi
+          {
+            echo 'tags<<EOF'
+            printf '%s\n' "$tags"
+            echo 'EOF'
+          } >> "$GITHUB_OUTPUT"
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Build and push snoozeweb/snooze
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: packaging/Dockerfile.golang
+          target: runtime-server
+          build-args: |
+            BINARY=snooze-server
+            VERSION=${{ steps.meta.outputs.version }}
+            COMMIT=${{ github.sha }}
+            BUILD_TIME=${{ steps.meta.outputs.build_time }}
+          platforms: linux/amd64
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}

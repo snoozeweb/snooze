@@ -85,7 +85,7 @@ snooze/
 ├── docker-compose.yaml           # Mongo / Postgres / SQLite profiles
 ├── Taskfile.yaml                 # Root task runner (go:*, web:*, docs:*, chart:*, docker:build, goreleaser:*, render:deploy)
 ├── .goreleaser.yaml              # GoReleaser: cross-arch binaries + per-binary tar.gz + deb/rpm (nfpm) + checksums
-├── .github/workflows/            # CI: go-tests (lint/test/build), docs (build + Pages deploy from main), release (v* tag → GoReleaser)
+├── .github/workflows/            # CI: go-tests (lint/test/build), docs (Pages deploy from main), release (v* tag → GoReleaser), docker (v* tag → Docker Hub)
 ├── .golangci.yml                 # Linter config
 └── go.mod / go.sum
 ```
@@ -245,6 +245,12 @@ an **empty** `/etc/snooze/server` (the server boots on defaults + SQLite; the 1.
 example configs in `packaging/files/` are deliberately not shipped — keys like
 `ssl.enabled: true` with no certs fail the Go validator). `packaging/nfpm/`
 holds the install scriptlets (create the `snooze` user + state dirs).
+
+On the same `v*` tag, `docker.yml` builds the `snooze-server` image from
+`packaging/Dockerfile.golang` (target `runtime-server`) and pushes
+`snoozeweb/snooze:<version>` + `:latest` to Docker Hub — amd64, server-only
+(matching 1.x and 2.0.0). Needs the `DOCKERHUB_USERNAME`/`DOCKERHUB_TOKEN` repo
+secrets; can also be run via `workflow_dispatch`.
 
 Gotchas (learned cutting v2.1.0):
 - GoReleaser aborts on a dirty tree — anything the workflow generates (e.g. the
