@@ -21,8 +21,7 @@ user JWT, the server inspects the `Authorization: Bearer` header (or the
 1. Token present and matches a tenant's `ingest_token` → request is
    processed as that tenant.
 2. Token present but unknown → falls back to the `default` tenant (no error
-   is returned to the caller; the fallback is intentional and logged at debug
-   level).
+   is returned to the caller; the fallback is intentional and silent).
 3. No token → falls back to the `default` tenant.
 
 This means a single-tenant deployment with no ingest token configured
@@ -39,8 +38,17 @@ tokens cannot substitute for the global guard.
 
 ## Retrieving the ingest token
 
-The `ingest_token` field is returned in the create response and in
-`GET /api/v1/tenant/{id}`. It is omitted from the list endpoint for security.
+The create endpoint (`POST /api/v1/tenant`) returns a bare write result and
+does **not** echo back any tenant fields, so the `ingest_token` is **not**
+available from the create response. Fetch it afterward with
+`GET /api/v1/tenant/{id}`, which returns the full tenant document at the top
+level (no `{data:...}` envelope).
+
+The token is also present in the `GET /api/v1/tenant` list response — there is
+no server-side redaction. Both the list and get endpoints are gated behind the
+`ro_tenant`/`rw_tenant` platform permissions, so treat that gate as the only
+control protecting the token: anyone holding those permissions can read every
+tenant's `ingest_token`.
 
 ```bash
 # Platform-admin token required
@@ -50,7 +58,7 @@ TOKEN=$(curl -s -X POST \
   http://localhost:5200/api/v1/login/local | jq -r .token)
 
 curl -H "Authorization: Bearer $TOKEN" \
-     http://localhost:5200/api/v1/tenant/acme | jq .data.ingest_token
+     http://localhost:5200/api/v1/tenant/acme | jq .ingest_token
 ```
 
 ## Sending alerts to a specific tenant
