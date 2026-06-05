@@ -158,6 +158,51 @@ func TestIsAuthorized_RouteOverrideTakesPrecedence(t *testing.T) {
 	}))
 }
 
+func TestIsAuthorized_PlatformPermissions_GatesPlatformRoutes(t *testing.T) {
+	t.Parallel()
+	// A caller with rw_tenant must be authorized on a platform-tier route
+	// (one that requires rw_tenant), but NOT on a normal plugin route.
+	meta := Metadata{} // empty — no plugin name, no policy
+	ctx := AuthzContext{
+		PluginName: "",
+		Method:     "POST",
+		RoutePath:  "",
+		Claims:     snoozetypes.Claims{Permissions: []string{"rw_tenant"}},
+	}
+	// Platform route: PluginName="" + policy explicitly lists rw_tenant.
+	platformMeta := Metadata{}
+	platformMeta.RouteDefaults.AuthorizationPolicy = &AuthorizationPolicy{
+		Write: []string{"rw_tenant"},
+		Read:  []string{"ro_tenant", "rw_tenant"},
+	}
+	require.True(t, IsAuthorized(platformMeta, ctx), "rw_tenant holder must pass a platform write route")
+
+	// Normal plugin route: PluginName="rule", no special policy — rw_tenant alone must NOT grant access.
+	ctx2 := AuthzContext{
+		PluginName: "rule",
+		Method:     "POST",
+		RoutePath:  "",
+		Claims:     snoozetypes.Claims{Permissions: []string{"rw_tenant"}},
+	}
+	require.False(t, IsAuthorized(meta, ctx2), "rw_tenant must not grant write on plugin routes")
+}
+
+func TestIsAuthorized_PlatformRead_AllowedWithRoTenant(t *testing.T) {
+	t.Parallel()
+	platformMeta := Metadata{}
+	platformMeta.RouteDefaults.AuthorizationPolicy = &AuthorizationPolicy{
+		Write: []string{"rw_tenant"},
+		Read:  []string{"ro_tenant", "rw_tenant"},
+	}
+	ctx := AuthzContext{
+		PluginName: "",
+		Method:     "GET",
+		RoutePath:  "",
+		Claims:     snoozetypes.Claims{Permissions: []string{"ro_tenant"}},
+	}
+	require.True(t, IsAuthorized(platformMeta, ctx))
+}
+
 func TestResolveRoute_OverlaySemantics(t *testing.T) {
 	t.Parallel()
 	meta := Metadata{

@@ -19,6 +19,18 @@ const RoleCollection = "role"
 // matches the Python codebase's "rw_all" semantics.
 const AllPermission = "rw_all"
 
+const (
+	// PermReadTenant gates read access to the /api/v1/tenant registry. It is
+	// evaluated against platform scope, independent of any tenant (D5).
+	PermReadTenant = "ro_tenant"
+	// PermWriteTenant gates CRUD on the /api/v1/tenant registry (D5).
+	PermWriteTenant = "rw_tenant"
+)
+
+// PlatformAdminRole is the seeded role that holds PermReadTenant +
+// PermWriteTenant. Assigned to the root user at first boot (D5).
+const PlatformAdminRole = "platform_admin"
+
 // RoleResolver expands an Identity into the role and permission lists used by
 // the claims payload, by reading the role and user collections from db.Driver.
 type RoleResolver struct {
