@@ -6,6 +6,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
+	"github.com/snoozeweb/snooze/internal/db"
 	"github.com/snoozeweb/snooze/internal/pluginimpl/tenant"
 	"github.com/snoozeweb/snooze/internal/plugins"
 )
@@ -83,4 +84,11 @@ func TestPostInit_NilHostOK(t *testing.T) {
 	p := tenant.New()
 	err := p.PostInit(context.Background(), nil)
 	require.NoError(t, err)
+}
+
+func TestTenantCollectionIsGlobal(t *testing.T) {
+	// The tenant collection must be registered as global so the driver
+	// skips tenant_id injection for registry queries.
+	require.True(t, db.IsGlobalCollection(tenant.Collection),
+		"tenant collection must be in the global set")
 }
