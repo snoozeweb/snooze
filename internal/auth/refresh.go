@@ -24,9 +24,10 @@ const DefaultRefreshLease = 7 * 24 * time.Hour
 
 // Sentinel errors. Callers identify outcomes via errors.Is.
 var (
-	ErrRefreshNotFound = errors.New("refresh token not found")
-	ErrRefreshExpired  = errors.New("refresh token expired")
-	ErrRefreshRevoked  = errors.New("refresh token revoked")
+	ErrRefreshNotFound       = errors.New("refresh token not found")
+	ErrRefreshExpired        = errors.New("refresh token expired")
+	ErrRefreshRevoked        = errors.New("refresh token revoked")
+	ErrRefreshTenantMismatch = errors.New("refresh token tenant mismatch")
 )
 
 // RefreshTokenStore issues, verifies, rotates and revokes long-lived refresh
@@ -85,19 +86,41 @@ func (s *RefreshTokenStore) Issue(ctx context.Context, c snoozetypes.Claims) (st
 // carrying the same claims. The returned claims are reconstructed from the
 // stored record — they do not include Issuer / Audience / NotBefore (those
 // belong to the access-token JWT, not the refresh record).
+//
+// refresh_token is a tenant-scoped collection, but /login/refresh sits on the
+// auth-skip path and therefore arrives with a naked (tenant-less) context. The
+// stored row's tenant_id is exactly what the query needs to find — a
+// chicken-and-egg the per-tenant predicate cannot resolve. Because token_hash
+// is a 256-bit, globally unique value, looking it up cross-tenant under
+// platform scope is safe: an attacker still cannot forge a hash. We then
+// re-stamp the rotation strictly with the tenant_id read off the stored row, so
+// a session can never rotate into a different tenant than it was minted for.
 func (s *RefreshTokenStore) VerifyAndRotate(ctx context.Context, raw string) (snoozetypes.Claims, string, time.Time, error) {
-	doc, err := s.lookup(ctx, raw)
+	pctx := WithPlatformScope(ctx)
+	doc, err := s.lookup(pctx, raw)
 	if err != nil {
 		return snoozetypes.Claims{}, "", time.Time{}, err
 	}
 	if err := s.checkActive(doc); err != nil {
 		return snoozetypes.Claims{}, "", time.Time{}, err
 	}
+	// Claims (incl. TenantID) come from the stored row, not the caller's ctx.
+	// The rotated token is minted under the row's own tenant_id, so a naked or
+	// mismatched context cannot move the session across tenants.
 	claims := claimsFromDoc(doc)
-	if err := s.markRevoked(ctx, raw); err != nil {
+	// Fail-closed re-assertion: the claims we are about to re-mint must inherit
+	// exactly the stored row's tenant. claims.TenantID already comes from the
+	// row, so this can only diverge if a future change mutated it between read
+	// and mint — in which case we refuse rather than rotate a session into a
+	// different tenant than the one it was issued for.
+	rowTenant, _ := doc["tenant_id"].(string)
+	if claims.TenantID != rowTenant {
+		return snoozetypes.Claims{}, "", time.Time{}, ErrRefreshTenantMismatch
+	}
+	if err := s.markRevoked(pctx, raw); err != nil {
 		return snoozetypes.Claims{}, "", time.Time{}, fmt.Errorf("refresh: revoke old: %w", err)
 	}
-	newRaw, exp, err := s.Issue(ctx, claims)
+	newRaw, exp, err := s.Issue(pctx, claims)
 	if err != nil {
 		return snoozetypes.Claims{}, "", time.Time{}, err
 	}
@@ -106,15 +129,21 @@ func (s *RefreshTokenStore) VerifyAndRotate(ctx context.Context, raw string) (sn
 
 // Revoke marks raw as revoked. Unknown or already-revoked tokens are not
 // treated as errors so logout against a stale token never returns 500.
+//
+// Like VerifyAndRotate, logout runs with a naked context (auth-skip path), so
+// the high-entropy token_hash is looked up under platform scope to reach the
+// tenant-scoped row. Without this the lookup fails closed (ErrNoTenant) and the
+// revoke silently no-ops, leaving the token usable.
 func (s *RefreshTokenStore) Revoke(ctx context.Context, raw string) error {
-	_, err := s.lookup(ctx, raw)
+	pctx := WithPlatformScope(ctx)
+	_, err := s.lookup(pctx, raw)
 	if err != nil {
 		if errors.Is(err, ErrRefreshNotFound) {
 			return nil
 		}
 		return err
 	}
-	return s.markRevoked(ctx, raw)
+	return s.markRevoked(pctx, raw)
 }
 
 // --- internals --------------------------------------------------------------

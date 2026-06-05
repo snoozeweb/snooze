@@ -263,13 +263,22 @@ func (rt *Router) handleRefresh(w http.ResponseWriter, r *http.Request) {
 		WriteError(w, r, ErrUnauthorized.WithMessage("invalid refresh token"))
 		return
 	}
-	claims, newRefresh, refreshExp, err := rt.Refresh.VerifyAndRotate(r.Context(), body.RefreshToken)
+	// refresh_token is a tenant-scoped collection, but this endpoint is on the
+	// auth-skip path so r.Context() carries no tenant. The token_hash is a
+	// 256-bit globally-unique value, so we look it up under platform scope; the
+	// store then re-mints the rotation strictly under the stored row's tenant_id
+	// (it never trusts the request context for the tenant). Without this the
+	// driver fails closed (ErrNoTenant) and every refresh returns 401.
+	pctx := auth.WithPlatformScope(r.Context())
+	claims, newRefresh, refreshExp, err := rt.Refresh.VerifyAndRotate(pctx, body.RefreshToken)
 	if err != nil {
 		WriteError(w, r, ErrUnauthorized.WithMessage("invalid refresh token").WithCause(err))
 		return
 	}
 	// Re-resolve roles+permissions so a recent admin change takes effect on
 	// the next access-token rotation (max staleness: the access-token lease).
+	// resolveRoles re-scopes to the token's own tenant internally, so the
+	// access token keeps its original tenant_id claim.
 	rt.resolveRoles(r.Context(), &claims)
 	// Mirror signSession: refresh of an anonymous token preserves admin rights
 	// when general.anonymous_admin is on.
@@ -306,7 +315,13 @@ func (rt *Router) handleLogout(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if body.RefreshToken != "" {
-		_ = rt.Refresh.Revoke(r.Context(), body.RefreshToken)
+		// Logout is on the auth-skip path (naked context) and refresh_token is
+		// tenant-scoped, so revoke under platform scope — otherwise the lookup
+		// fails closed (ErrNoTenant) and the revoke silently no-ops, leaving the
+		// token usable. The store fences the actual revoke by the high-entropy
+		// token_hash.
+		pctx := auth.WithPlatformScope(r.Context())
+		_ = rt.Refresh.Revoke(pctx, body.RefreshToken)
 	}
 	w.WriteHeader(http.StatusNoContent)
 }
