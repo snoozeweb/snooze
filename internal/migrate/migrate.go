@@ -13,6 +13,14 @@
 // time and have no tenant_id yet).
 package migrate
 
+import (
+	"context"
+	"fmt"
+
+	"github.com/snoozeweb/snooze/internal/condition"
+	"github.com/snoozeweb/snooze/internal/db"
+)
+
 // migrationMarkerCollection is where the idempotency sentinel lives.
 const migrationMarkerCollection = "general"
 
@@ -46,4 +54,35 @@ var TenantScopedCollections = []string{
 	"widget",
 	"aggregate",
 	"general",
+}
+
+// isAlreadyMigrated returns true when the migration sentinel is present. ctx
+// must carry WithPlatformScope so the driver's global-or-platform bypass is
+// active (general is in TenantScopedCollections; we read it under platform
+// scope to avoid the fail-closed guard before migration has set any tenant_id).
+func isAlreadyMigrated(ctx context.Context, drv db.Driver) (bool, error) {
+	docs, _, err := drv.Search(ctx, migrationMarkerCollection, condition.Cond{}, db.Page{})
+	if err != nil {
+		return false, fmt.Errorf("migrate: check sentinel: %w", err)
+	}
+	for _, d := range docs {
+		if v, ok := d[migrationMarkerField]; ok {
+			if b, _ := v.(bool); b {
+				return true, nil
+			}
+		}
+	}
+	return false, nil
+}
+
+// writeSentinel stamps the migration-complete marker. It upserts (no primary
+// given, so uid-based) so re-runs don't accumulate duplicate docs.
+func writeSentinel(ctx context.Context, drv db.Driver) error {
+	_, err := drv.Write(ctx, migrationMarkerCollection, []db.Document{
+		{migrationMarkerField: true},
+	}, db.WriteOptions{UpdateTime: true})
+	if err != nil {
+		return fmt.Errorf("migrate: write sentinel: %w", err)
+	}
+	return nil
 }

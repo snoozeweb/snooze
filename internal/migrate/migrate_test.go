@@ -2,9 +2,13 @@
 package migrate
 
 import (
+	"context"
 	"testing"
 
 	"github.com/stretchr/testify/require"
+
+	"github.com/snoozeweb/snooze/internal/auth"
+	"github.com/snoozeweb/snooze/internal/db"
 )
 
 func TestScopedCollections_DoesNotContainGlobals(t *testing.T) {
@@ -33,4 +37,23 @@ func TestScopedCollections_ContainsExpected(t *testing.T) {
 		_, ok := have[want]
 		require.True(t, ok, "TenantScopedCollections must include %q", want)
 	}
+}
+
+func TestIsAlreadyMigrated_False(t *testing.T) {
+	t.Parallel()
+	drv := newFakeDriver()
+	pctx := auth.WithPlatformScope(context.Background())
+	done, err := isAlreadyMigrated(pctx, drv)
+	require.NoError(t, err)
+	require.False(t, done)
+}
+
+func TestIsAlreadyMigrated_True(t *testing.T) {
+	t.Parallel()
+	drv := newFakeDriver()
+	drv.seed(migrationMarkerCollection, db.Document{migrationMarkerField: true})
+	pctx := auth.WithPlatformScope(context.Background())
+	done, err := isAlreadyMigrated(pctx, drv)
+	require.NoError(t, err)
+	require.True(t, done)
 }
