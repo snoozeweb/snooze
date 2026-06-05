@@ -61,3 +61,19 @@ sns_verify: true
 sentry_secret: "your-sentry-client-secret"
 ```
 
+## Multi-tenant ingest
+
+In a multi-tenant deployment the `ingest.token` field acts as a **global
+guard** — every inbound request must carry it. Per-tenant routing happens via
+a separate per-tenant ingest token stored in the tenant document (not in this
+YAML file). The two mechanisms compose:
+
+1. If a global `ingest.token` is set, the request is rejected with `401`
+   unless it carries that token.
+2. After the global guard passes, the per-tenant ingest token (if present) is
+   used to route the request to the correct tenant. If absent or unknown, the
+   request lands in `default`.
+
+Configure per-tenant tokens via `PATCH /api/v1/tenant/{id}` — see
+[Per-tenant ingest tokens](../general/ingest_tokens.md).
+
