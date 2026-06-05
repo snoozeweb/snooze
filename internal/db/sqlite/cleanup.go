@@ -463,7 +463,22 @@ func (d *Driver) RecordStats(ctx context.Context, from, to time.Time, bucketSec 
 	if err != nil {
 		return out, err
 	}
+
+	// Resolve tenant scope for the "record" collection.
+	tenantID, injectTenant, tenantErr := dbpkg.TenantScope(ctx, "record")
+	if tenantErr != nil {
+		return out, fmt.Errorf("sqlite: RecordStats: %w", tenantErr)
+	}
+
 	fromEpoch, toEpoch := from.Unix(), to.Unix()
+
+	// Build optional tenant predicate, appended to both WHERE clauses.
+	tenantClause := ""
+	var tenantArgs []any
+	if injectTenant {
+		tenantClause = " AND json_extract(data, '$.tenant_id') = ?"
+		tenantArgs = []any{tenantID}
+	}
 
 	// Series: bucket-start (= epoch / stride * stride) and source → count.
 	//nolint:gosec
@@ -473,10 +488,10 @@ func (d *Driver) RecordStats(ctx context.Context, from, to time.Time, bucketSec 
 		  COALESCE(json_extract(data, '$.source'), 'unknown') AS source,
 		  COUNT(*) AS n
 		FROM %s
-		WHERE COALESCE(json_extract(data, '$.date_epoch'), 0) BETWEEN ? AND ?
+		WHERE COALESCE(json_extract(data, '$.date_epoch'), 0) BETWEEN ? AND ?%s
 		GROUP BY slot, source
-	`, quoteIdent(tbl))
-	rows, err := d.db.QueryContext(ctx, seriesStmt, bucketSec, bucketSec, fromEpoch, toEpoch)
+	`, quoteIdent(tbl), tenantClause)
+	rows, err := d.db.QueryContext(ctx, seriesStmt, append([]any{bucketSec, bucketSec, fromEpoch, toEpoch}, tenantArgs...)...)
 	if err != nil {
 		return out, fmt.Errorf("record stats: series: %w", err)
 	}
@@ -508,10 +523,10 @@ func (d *Driver) RecordStats(ctx context.Context, from, to time.Time, bucketSec 
 		  COALESCE(NULLIF(json_extract(data, '$.state'), ''), 'open')          AS st,
 		  COUNT(*) AS n
 		FROM %s
-		WHERE COALESCE(json_extract(data, '$.date_epoch'), 0) BETWEEN ? AND ?
+		WHERE COALESCE(json_extract(data, '$.date_epoch'), 0) BETWEEN ? AND ?%s
 		GROUP BY sev, env, st
-	`, quoteIdent(tbl))
-	rows2, err := d.db.QueryContext(ctx, totalsStmt, fromEpoch, toEpoch)
+	`, quoteIdent(tbl), tenantClause)
+	rows2, err := d.db.QueryContext(ctx, totalsStmt, append([]any{fromEpoch, toEpoch}, tenantArgs...)...)
 	if err != nil {
 		return out, fmt.Errorf("record stats: totals: %w", err)
 	}

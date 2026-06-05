@@ -57,6 +57,50 @@ func TestRecordStats(t *testing.T) {
 	require.Equal(t, int64(1), res.ByState["close"])
 }
 
+func TestRecordStatsTenantIsolation(t *testing.T) {
+	d := newTestDriver(t)
+	ctxA := snoozetypes.WithTenant(context.Background(), "alpha")
+	ctxB := snoozetypes.WithTenant(context.Background(), "beta")
+
+	now := time.Now().Unix()
+	opts := dbpkg.WriteOptions{UpdateTime: false}
+
+	// Seed one record per tenant.
+	_, err := d.Write(ctxA, "record", []dbpkg.Document{
+		{"source": "src-a", "date_epoch": float64(now), "severity": "crit", "environment": "prod"},
+	}, opts)
+	require.NoError(t, err)
+	_, err = d.Write(ctxB, "record", []dbpkg.Document{
+		{"source": "src-b", "date_epoch": float64(now), "severity": "warn", "environment": "test"},
+	}, opts)
+	require.NoError(t, err)
+
+	from := time.Unix(now-10, 0)
+	to := time.Unix(now+10, 0)
+
+	// RecordStats under alpha must only see src-a.
+	resA, err := d.RecordStats(ctxA, from, to, 60)
+	require.NoError(t, err)
+	for _, bucket := range resA.Series {
+		if _, ok := bucket["src-b"]; ok {
+			t.Fatal("alpha RecordStats must not see src-b")
+		}
+	}
+	_, hasCrit := resA.BySeverity["crit"]
+	require.True(t, hasCrit, "alpha must see crit severity")
+
+	// RecordStats under beta must only see src-b.
+	resB, err := d.RecordStats(ctxB, from, to, 60)
+	require.NoError(t, err)
+	for _, bucket := range resB.Series {
+		if _, ok := bucket["src-a"]; ok {
+			t.Fatal("beta RecordStats must not see src-a")
+		}
+	}
+	_, hasWarn := resB.BySeverity["warn"]
+	require.True(t, hasWarn, "beta must see warn severity")
+}
+
 func TestRecordStatsEmptyCollection(t *testing.T) {
 	t.Parallel()
 	d := newTestDriver(t)
