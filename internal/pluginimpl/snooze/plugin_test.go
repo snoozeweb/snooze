@@ -12,6 +12,7 @@ import (
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/trace"
 
+	"github.com/snoozeweb/snooze/internal/auth"
 	"github.com/snoozeweb/snooze/internal/condition"
 	"github.com/snoozeweb/snooze/internal/config"
 	"github.com/snoozeweb/snooze/internal/db"
@@ -166,7 +167,8 @@ func (h *stubHost) AsyncWriter() *asyncwriter.Writer { return h.asyncWriter }
 // the assigned uid so tests can poke at the row afterwards.
 func writeRule(t *testing.T, h *stubHost, doc db.Document) string {
 	t.Helper()
-	res, err := h.driver.Write(context.Background(), "snooze",
+	ctx := auth.WithTenant(context.Background(), snoozetypes.DefaultTenant)
+	res, err := h.driver.Write(ctx, "snooze",
 		[]db.Document{doc}, db.WriteOptions{Primary: []string{"name"}, UpdateTime: true})
 	require.NoError(t, err)
 	require.Len(t, res.Added, 1)
@@ -176,8 +178,9 @@ func writeRule(t *testing.T, h *stubHost, doc db.Document) string {
 // newPlugin builds a Plugin wired to h, with an injectable clock.
 func newPlugin(t *testing.T, h *stubHost, now func() time.Time) *Plugin {
 	t.Helper()
+	ctx := auth.WithTenant(context.Background(), snoozetypes.DefaultTenant)
 	p := &Plugin{Now: now}
-	require.NoError(t, p.PostInit(context.Background(), h))
+	require.NoError(t, p.PostInit(ctx, h))
 	return p
 }
 
@@ -193,8 +196,9 @@ func TestSnoozeMatch_AbortWrite(t *testing.T) {
 	})
 	p := newPlugin(t, h, nil)
 
+	ctx := auth.WithTenant(context.Background(), snoozetypes.DefaultTenant)
 	rec := snoozetypes.Record{Extra: map[string]any{"a": "1", "b": "2"}}
-	res, err := p.Process(context.Background(), rec)
+	res, err := p.Process(ctx, rec)
 	require.NoError(t, err)
 	require.Equal(t, plugins.ActionAbortWrite, res.Action)
 	require.Equal(t, "Filter 1", res.Record.Extra["snoozed"])
@@ -216,8 +220,9 @@ func TestSnoozeMiss_Continue(t *testing.T) {
 	})
 	p := newPlugin(t, h, nil)
 
+	ctx := auth.WithTenant(context.Background(), snoozetypes.DefaultTenant)
 	rec := snoozetypes.Record{Extra: map[string]any{"a": "2", "b": "2"}}
-	res, err := p.Process(context.Background(), rec)
+	res, err := p.Process(ctx, rec)
 	require.NoError(t, err)
 	require.Equal(t, plugins.ActionContinue, res.Action)
 	require.Nil(t, res.Record.Extra["snoozed"])
@@ -235,8 +240,9 @@ func TestSnoozeDiscard_Abort(t *testing.T) {
 	})
 	p := newPlugin(t, h, nil)
 
+	ctx := auth.WithTenant(context.Background(), snoozetypes.DefaultTenant)
 	rec := snoozetypes.Record{Extra: map[string]any{"a": "3", "b": "2"}}
-	res, err := p.Process(context.Background(), rec)
+	res, err := p.Process(ctx, rec)
 	require.NoError(t, err)
 	require.Equal(t, plugins.ActionAbort, res.Action)
 	require.Equal(t, "Filter 2", res.Record.Extra["snoozed"])
@@ -254,8 +260,9 @@ func TestSnoozeDisabled(t *testing.T) {
 	})
 	p := newPlugin(t, h, nil)
 
+	ctx := auth.WithTenant(context.Background(), snoozetypes.DefaultTenant)
 	rec := snoozetypes.Record{Extra: map[string]any{"a": "1"}}
-	res, err := p.Process(context.Background(), rec)
+	res, err := p.Process(ctx, rec)
 	require.NoError(t, err)
 	require.Equal(t, plugins.ActionContinue, res.Action)
 }
@@ -278,12 +285,13 @@ func TestSnoozeTimeConstraints(t *testing.T) {
 		},
 	})
 
+	ctx := auth.WithTenant(context.Background(), snoozetypes.DefaultTenant)
 	rec := snoozetypes.Record{Host: "myhost01"}
 
 	// 2021-07-07 was a Wednesday (weekday 3).
 	wed := time.Date(2021, 7, 7, 12, 0, 0, 0, time.UTC)
 	p := newPlugin(t, h, func() time.Time { return wed })
-	res, err := p.Process(context.Background(), rec)
+	res, err := p.Process(ctx, rec)
 	require.NoError(t, err)
 	require.Equal(t, plugins.ActionAbortWrite, res.Action)
 	require.Equal(t, "Snooze rule 1", res.Record.Extra["snoozed"])
@@ -291,7 +299,7 @@ func TestSnoozeTimeConstraints(t *testing.T) {
 	// 2021-07-10 was a Saturday (weekday 6) - outside the window.
 	sat := time.Date(2021, 7, 10, 12, 0, 0, 0, time.UTC)
 	p2 := newPlugin(t, h, func() time.Time { return sat })
-	res2, err := p2.Process(context.Background(), rec)
+	res2, err := p2.Process(ctx, rec)
 	require.NoError(t, err)
 	require.Equal(t, plugins.ActionContinue, res2.Action)
 }
@@ -301,8 +309,9 @@ func TestSnoozeTimeConstraints(t *testing.T) {
 func TestSnoozeReload(t *testing.T) {
 	t.Parallel()
 	h := newStubHost(t)
+	ctx := auth.WithTenant(context.Background(), snoozetypes.DefaultTenant)
 	p := newPlugin(t, h, nil)
-	require.Empty(t, p.cachedRules())
+	require.Empty(t, p.cachedRules(snoozetypes.DefaultTenant))
 
 	writeRule(t, h, db.Document{
 		"name":      "Filter 1",
@@ -311,16 +320,50 @@ func TestSnoozeReload(t *testing.T) {
 
 	// Stale cache: no match yet.
 	rec := snoozetypes.Record{Extra: map[string]any{"a": "1"}}
-	res, err := p.Process(context.Background(), rec)
+	res, err := p.Process(ctx, rec)
 	require.NoError(t, err)
 	require.Equal(t, plugins.ActionContinue, res.Action)
 
 	// After Reload the new rule is picked up.
-	require.NoError(t, p.Reload(context.Background()))
-	require.Len(t, p.cachedRules(), 1)
-	res, err = p.Process(context.Background(), rec)
+	require.NoError(t, p.Reload(ctx))
+	require.Len(t, p.cachedRules(snoozetypes.DefaultTenant), 1)
+	res, err = p.Process(ctx, rec)
 	require.NoError(t, err)
 	require.Equal(t, plugins.ActionAbortWrite, res.Action)
+}
+
+// TestSnooze_TenantIsolation verifies that a snooze rule for tenant A does not
+// affect records processed under tenant B.
+func TestSnooze_TenantIsolation(t *testing.T) {
+	t.Parallel()
+	h := newStubHost(t)
+
+	ctxA := auth.WithTenant(context.Background(), "acme")
+	ctxB := auth.WithTenant(context.Background(), "beta")
+
+	_, err := h.DB().Write(ctxA, "snooze", []db.Document{{
+		"name":    "silence-all",
+		"enabled": true,
+	}}, db.WriteOptions{Primary: []string{"name"}, UpdateTime: false})
+	require.NoError(t, err)
+
+	p := &Plugin{meta: plugins.Metadata{}, Now: time.Now}
+	require.NoError(t, p.PostInit(ctxA, h))
+
+	resA, err := p.Process(ctxA, snoozetypes.Record{Source: "syslog"})
+	require.NoError(t, err)
+	require.NotEqual(t, plugins.ActionContinue, resA.Action, "rule should fire for acme")
+
+	// beta has no rules — must pass through.
+	require.NoError(t, p.Reload(ctxB))
+	resB, err := p.Process(ctxB, snoozetypes.Record{Source: "syslog"})
+	require.NoError(t, err)
+	require.Equal(t, plugins.ActionContinue, resB.Action)
+
+	// Reloading beta's (empty) partition must not evict acme's rules.
+	resA2, err := p.Process(ctxA, snoozetypes.Record{Source: "syslog"})
+	require.NoError(t, err)
+	require.NotEqual(t, plugins.ActionContinue, resA2.Action, "acme rules must survive beta reload")
 }
 
 // TestSnoozeHitsCounter covers the synchronous hit-counter bump performed on
@@ -335,13 +378,14 @@ func TestSnoozeHitsCounter(t *testing.T) {
 	})
 	p := newPlugin(t, h, nil)
 
+	ctx := auth.WithTenant(context.Background(), snoozetypes.DefaultTenant)
 	rec := snoozetypes.Record{Extra: map[string]any{"a": "1"}}
 	for i := 0; i < 3; i++ {
-		_, err := p.Process(context.Background(), rec)
+		_, err := p.Process(ctx, rec)
 		require.NoError(t, err)
 	}
 
-	got, err := h.driver.GetOne(context.Background(), "snooze", db.Document{"uid": uid})
+	got, err := h.driver.GetOne(ctx, "snooze", db.Document{"uid": uid})
 	require.NoError(t, err)
 	hits, ok := toInt64(got["hits"])
 	require.True(t, ok, "hits field missing or non-numeric: %#v", got["hits"])
@@ -369,9 +413,10 @@ func TestSnoozeAlertSnoozedCounter(t *testing.T) {
 	})
 	p := newPlugin(t, h, nil)
 
+	ctx := auth.WithTenant(context.Background(), snoozetypes.DefaultTenant)
 	// rec.DateEpoch=1780302245 → hour bucket 1780300800.
 	rec := snoozetypes.Record{Host: "h1", DateEpoch: 1780302245}
-	_, err := p.Process(context.Background(), rec)
+	_, err := p.Process(ctx, rec)
 	require.NoError(t, err)
 
 	// Flush queued increments to the capture driver.

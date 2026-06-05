@@ -24,6 +24,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/snoozeweb/snooze/internal/auth"
 	"github.com/snoozeweb/snooze/internal/condition"
 	"github.com/snoozeweb/snooze/internal/db"
 	"github.com/snoozeweb/snooze/internal/plugins"
@@ -81,7 +82,7 @@ type Plugin struct {
 	Now func() time.Time
 
 	mu    sync.RWMutex
-	rules []rule
+	rules map[string][]rule // tenantID → rules
 	host  plugins.Host
 }
 
@@ -99,7 +100,8 @@ func (p *Plugin) PostInit(ctx context.Context, host plugins.Host) error {
 	return p.Reload(ctx)
 }
 
-// Reload refreshes the in-memory rule cache from the snooze collection.
+// Reload refreshes the in-memory rule cache for the tenant in ctx from the
+// snooze collection. A context with no tenant is silently skipped.
 func (p *Plugin) Reload(ctx context.Context) error {
 	p.mu.RLock()
 	host := p.host
@@ -109,6 +111,10 @@ func (p *Plugin) Reload(ctx context.Context) error {
 		p.mu.Lock()
 		p.rules = nil
 		p.mu.Unlock()
+		return nil
+	}
+	tenantID, ok := auth.TenantFrom(ctx)
+	if !ok || tenantID == "" {
 		return nil
 	}
 	docs, _, err := host.DB().Search(ctx, collectionName, condition.Cond{}, db.Page{})
@@ -128,7 +134,10 @@ func (p *Plugin) Reload(ctx context.Context) error {
 		rules = append(rules, r)
 	}
 	p.mu.Lock()
-	p.rules = rules
+	if p.rules == nil {
+		p.rules = make(map[string][]rule)
+	}
+	p.rules[tenantID] = rules
 	p.mu.Unlock()
 	return nil
 }
@@ -144,8 +153,10 @@ func (p *Plugin) Process(ctx context.Context, rec snoozetypes.Record) (plugins.R
 	now := p.now()
 	asMap := recordToMap(rec)
 
+	tenantID, _ := auth.TenantFrom(ctx)
+
 	p.mu.RLock()
-	rules := p.rules
+	rules := p.rules[tenantID]
 	host := p.host
 	p.mu.RUnlock()
 
@@ -178,12 +189,12 @@ func (p *Plugin) Process(ctx context.Context, rec snoozetypes.Record) (plugins.R
 	return plugins.Result{Action: plugins.ActionContinue, Record: rec}, nil
 }
 
-// cachedRules returns a copy of the current cached rule set. Test-only convenience.
-func (p *Plugin) cachedRules() []rule {
+// cachedRules returns a copy of the cached rule set for tenantID. Test-only convenience.
+func (p *Plugin) cachedRules(tenantID string) []rule {
 	p.mu.RLock()
 	defer p.mu.RUnlock()
-	out := make([]rule, len(p.rules))
-	copy(out, p.rules)
+	out := make([]rule, len(p.rules[tenantID]))
+	copy(out, p.rules[tenantID])
 	return out
 }
 
