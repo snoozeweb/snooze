@@ -143,9 +143,14 @@ func (rt *Router) Build() chi.Router {
 	// --- plugin CRUD -------------------------------------------------------
 	for _, p := range rt.Plugins {
 		// The tenant registry is mounted explicitly above (mountTenant) with
-		// platform scope + rw_tenant/ro_tenant gating and bespoke create/delete
-		// (role seeding + cascade purge). Skip its generic CRUD mount to avoid a
-		// duplicate /api/v1/tenant registration (chi panics on double Mount).
+		// platform-scope + literal rw_tenant/ro_tenant gating. Because that
+		// mount bypasses the generic CRUD path, it also bypasses the tenant
+		// plugin's AfterCreate hook; handleTenantCreate therefore seeds the new
+		// tenant's default roles + init_db marker itself (seedTenant), and
+		// handleTenantDelete suspends-then-cascade-purges every tenant-scoped
+		// collection before removing the registry doc (see routes_tenant.go).
+		// Skip the generic CRUD mount here to avoid a duplicate
+		// /api/v1/tenant registration (chi panics on double Mount).
 		if p.Name() == auth.TenantCollection {
 			continue
 		}

@@ -1,6 +1,7 @@
 package api
 
 import (
+	"context"
 	"net/http"
 	"regexp"
 	"time"
@@ -11,11 +12,39 @@ import (
 	"github.com/snoozeweb/snooze/internal/auth"
 	"github.com/snoozeweb/snooze/internal/condition"
 	"github.com/snoozeweb/snooze/internal/db"
+	"github.com/snoozeweb/snooze/internal/migrate"
 	"github.com/snoozeweb/snooze/pkg/snoozetypes"
 )
 
 // slugRE is the canonical slug validator for tenant IDs.
 var slugRE = regexp.MustCompile(`^[a-z0-9][a-z0-9\-]*[a-z0-9]$|^[a-z0-9]$`)
+
+// tenantGeneralCollection holds the per-tenant bootstrap marker (init_db),
+// mirroring core.BootstrapDB's "general" sentinel collection.
+const tenantGeneralCollection = "general"
+
+// defaultTenantRoles are the RBAC roles seeded into every freshly-created
+// tenant's scope. They mirror pluginimpl/tenant.defaultRoles so a tenant born
+// through the platform-scoped control plane is identical to one born through
+// the generic CRUD AfterCreate hook. Note these are deliberately tenant-local:
+// none of them carries the reserved platform permissions (rw_tenant/ro_tenant).
+var defaultTenantRoles = []db.Document{
+	{
+		"name":        "admin",
+		"permissions": []string{auth.AllPermission},
+		"description": "Full access within the tenant",
+	},
+	{
+		"name":        "viewer",
+		"permissions": []string{"ro_all"},
+		"description": "Read-only access within the tenant",
+	},
+	{
+		"name":        "notifications",
+		"permissions": []string{"rw_notification", "ro_all"},
+		"description": "Manage notifications within the tenant",
+	},
+}
 
 // mountTenant wires the platform-permission-gated tenant registry under
 // /api/v1/tenant. Every handler runs under auth.WithPlatformScope so the
@@ -64,6 +93,12 @@ func (rt *Router) handleTenantCreate(w http.ResponseWriter, r *http.Request) {
 		WriteError(w, r, ErrUnavailable.WithMessage("database not configured"))
 		return
 	}
+	// Keep the pre-platform context as the seeding base: WithPlatformScope is
+	// sticky (there is no un-set), and platform scope OUTRANKS a layered tenant
+	// in the driver's TenantScope precedence — so seeding under
+	// WithTenant(platformCtx, id) would silently skip tenant_id stamping and
+	// write NULL-tenant rows. Seed from the bare request context instead.
+	baseCtx := r.Context()
 	r = rt.platformCtx(r)
 
 	var doc db.Document
@@ -103,7 +138,58 @@ func (rt *Router) handleTenantCreate(w http.ResponseWriter, r *http.Request) {
 		WriteError(w, r, ErrConflict.WithMessage(res.Rejected[0].Reason))
 		return
 	}
+
+	// Seed the new tenant under its OWN scope. The platform-scoped control
+	// plane bypasses the tenant plugin's generic-CRUD AfterCreate hook (the
+	// router skips that mount, see router.go), so the seeding that AfterCreate
+	// would have done must happen here — otherwise a brand-new tenant comes up
+	// with zero roles and no admin and is unusable (H5). Idempotent: re-seeding
+	// an existing tenant updates the same docs in place rather than duplicating.
+	if err := rt.seedTenant(baseCtx, id); err != nil {
+		WriteError(w, r, ErrInternal.WithCause(err))
+		return
+	}
+
 	WriteJSON(w, http.StatusCreated, res)
+}
+
+// seedTenant provisions the baseline data a freshly-created tenant needs to be
+// usable: the default RBAC roles and the per-tenant init_db marker. All writes
+// run under auth.WithTenant(ctx, tenantID) so the driver stamps tenant_id on
+// every seeded document. The caller MUST pass a context that does NOT carry
+// platform scope (platform scope outranks a layered tenant in TenantScope, so
+// it would suppress the tenant_id stamp). Idempotent.
+func (rt *Router) seedTenant(ctx context.Context, tenantID string) error {
+	scoped := auth.WithTenant(ctx, tenantID)
+
+	// Default roles (admin / viewer / notifications). Upsert by name so a
+	// re-seed updates rather than duplicates.
+	roles := make([]db.Document, len(defaultTenantRoles))
+	for i, r := range defaultTenantRoles {
+		cp := make(db.Document, len(r))
+		for k, v := range r {
+			cp[k] = v
+		}
+		roles[i] = cp
+	}
+	if _, err := rt.DB.Write(scoped, auth.RoleCollection, roles, db.WriteOptions{
+		Primary:    []string{"name"},
+		UpdateTime: true,
+	}); err != nil {
+		return err
+	}
+
+	// Per-tenant init_db marker (mirrors core.BootstrapDB's bootstrap sentinel)
+	// so housekeeping/bootstrap logic recognises the tenant as provisioned.
+	if _, err := rt.DB.Write(scoped, tenantGeneralCollection, []db.Document{
+		{"init_db": true},
+	}, db.WriteOptions{
+		Primary:    []string{"init_db"},
+		UpdateTime: true,
+	}); err != nil {
+		return err
+	}
+	return nil
 }
 
 // handleTenantList GET /api/v1/tenant
@@ -224,7 +310,14 @@ func (rt *Router) handleTenantUpdate(w http.ResponseWriter, r *http.Request) {
 }
 
 // handleTenantDelete DELETE /api/v1/tenant/{id}
-// The reserved "default" tenant cannot be deleted.
+//
+// Deletion is destructive and irreversible, so it follows suspend-first
+// semantics: the tenant is first flipped to status=suspended (closing logins
+// and ingestion for that org), then its data is cascade-purged across every
+// tenant-scoped collection, its refresh tokens are revoked (the refresh_token
+// collection is itself tenant-scoped and is purged in the same sweep), and
+// finally the registry doc is removed. The reserved "default" tenant can never
+// be deleted (its purge would wipe the platform's own roles/users).
 func (rt *Router) handleTenantDelete(w http.ResponseWriter, r *http.Request) {
 	if rt.DB == nil {
 		WriteError(w, r, ErrUnavailable.WithMessage("database not configured"))
@@ -242,6 +335,46 @@ func (rt *Router) handleTenantDelete(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// The tenant must exist before we touch anything.
+	existing, err := rt.DB.GetOne(r.Context(), "tenant", db.Document{"id": id})
+	if err != nil || existing == nil {
+		WriteError(w, r, ErrNotFound.WithMessage("tenant not found: "+id))
+		return
+	}
+
+	// 1. Suspend first (idempotent): close the org before purging so no new
+	//    rows can be written into a collection we are about to wipe.
+	if status, _ := existing["status"].(string); status != "suspended" {
+		uid, _ := existing["uid"].(string)
+		if uid == "" {
+			uid = id
+		}
+		if err := rt.DB.UpdateOne(r.Context(), "tenant", uid, db.Document{
+			"status":     "suspended",
+			"updated_at": time.Now().Unix(),
+		}, true); err != nil {
+			WriteError(w, r, ErrInternal.WithCause(err))
+			return
+		}
+	}
+
+	// 2. Cascade-purge every tenant-scoped collection. We run under platform
+	//    scope (the request ctx) but AND an explicit tenant_id predicate so the
+	//    delete is fenced to this tenant only — never a naked global wipe.
+	tenantCond := condition.Equals("tenant_id", id)
+	purged := 0
+	for _, col := range migrate.TenantScopedCollections {
+		n, derr := rt.DB.Delete(r.Context(), col, tenantCond, true)
+		if derr != nil {
+			WriteError(w, r, ErrInternal.WithCause(derr))
+			return
+		}
+		if n > 0 {
+			purged += n
+		}
+	}
+
+	// 3. Finally remove the registry doc (global collection, by id).
 	deleted, err := rt.DB.Delete(r.Context(), "tenant",
 		condition.Equals("id", id), false)
 	if err != nil {
@@ -252,5 +385,5 @@ func (rt *Router) handleTenantDelete(w http.ResponseWriter, r *http.Request) {
 		WriteError(w, r, ErrNotFound.WithMessage("tenant not found: "+id))
 		return
 	}
-	WriteJSON(w, http.StatusOK, map[string]any{"deleted": deleted})
+	WriteJSON(w, http.StatusOK, map[string]any{"deleted": deleted, "purged": purged})
 }

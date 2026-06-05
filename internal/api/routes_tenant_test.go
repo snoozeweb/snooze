@@ -182,7 +182,11 @@ func TestTenant_DefaultTenantPlatformAdminAllowed(t *testing.T) {
 		rec := httptest.NewRecorder()
 		r.ServeHTTP(rec, req)
 		require.Equal(t, http.StatusCreated, rec.Code)
-		require.Len(t, tdb.written, 1)
+		// The registry doc is written first; seedTenant then adds the default
+		// roles + init_db marker (H5), so written is >= 1 with the tenant doc
+		// at index 0.
+		require.NotEmpty(t, tdb.written)
+		require.Equal(t, "acme", tdb.written[0]["id"])
 	})
 }
 
@@ -207,7 +211,9 @@ func TestTenantCreate_Success(t *testing.T) {
 	req.Header.Set("Content-Type", "application/json")
 	r.ServeHTTP(rec, req)
 	require.Equal(t, http.StatusCreated, rec.Code)
-	require.Len(t, tdb.written, 1)
+	// The tenant registry doc is the first write; seedTenant then writes the
+	// default roles + init_db marker (H5).
+	require.NotEmpty(t, tdb.written)
 	require.Equal(t, "acme", tdb.written[0]["id"])
 	// status must be seeded as "active"
 	require.Equal(t, "active", tdb.written[0]["status"])
