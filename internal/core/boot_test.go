@@ -263,7 +263,7 @@ func (stubBus) Close() error { return nil }
 // performs under seedCtx (auth.BootstrapDB → core.BootstrapDB → EnsureRoot),
 // against the supplied driver. It deliberately does NOT touch plugins.Build
 // (one-shot per process), keeping this test re-runnable to prove idempotency.
-func runSeedPhase(t *testing.T, ctx context.Context, drv db.Driver) string {
+func runSeedPhase(ctx context.Context, t *testing.T, drv db.Driver) string {
 	t.Helper()
 	seedCtx := snoozetypes.WithTenant(ctx, snoozetypes.DefaultTenant)
 	require.NoError(t, auth.BootstrapDB(seedCtx, drv))
@@ -289,7 +289,7 @@ func TestBootstrapSeed_RunsUnderDefaultTenantScope(t *testing.T) {
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = drv.Close() })
 
-	pwd := runSeedPhase(t, ctx, drv)
+	pwd := runSeedPhase(ctx, t, drv)
 	require.NotEmpty(t, pwd, "first boot must mint a root password")
 
 	// Read everything back under platform scope so the driver does not filter by
@@ -355,7 +355,7 @@ func TestBootstrapSeed_Idempotent(t *testing.T) {
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = drv.Close() })
 
-	require.NotEmpty(t, runSeedPhase(t, ctx, drv), "first run mints a password")
+	require.NotEmpty(t, runSeedPhase(ctx, t, drv), "first run mints a password")
 
 	platform := snoozetypes.WithPlatformScope(ctx)
 	tenantsBefore, _, err := drv.Search(platform, auth.TenantCollection, condition.Cond{}, db.Page{})
@@ -366,7 +366,7 @@ func TestBootstrapSeed_Idempotent(t *testing.T) {
 	require.NoError(t, err)
 
 	// Second run: must be a no-op.
-	pwd2 := runSeedPhase(t, ctx, drv)
+	pwd2 := runSeedPhase(ctx, t, drv)
 	require.Empty(t, pwd2, "re-running the seed phase must not mint a new root password")
 
 	tenantsAfter, _, err := drv.Search(platform, auth.TenantCollection, condition.Cond{}, db.Page{})

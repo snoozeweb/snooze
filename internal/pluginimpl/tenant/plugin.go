@@ -60,8 +60,13 @@ type Plugin struct {
 	host plugins.Host
 }
 
-func (p *Plugin) Name() string                   { return "tenant" }
-func (p *Plugin) Metadata() plugins.Metadata     { return p.meta }
+// Name returns the registered plugin name.
+func (p *Plugin) Name() string { return "tenant" }
+
+// Metadata returns the parsed metadata descriptor.
+func (p *Plugin) Metadata() plugins.Metadata { return p.meta }
+
+// Reload is a no-op; the tenant collection has no in-memory cache.
 func (p *Plugin) Reload(_ context.Context) error { return nil }
 
 // PostInit captures the host; the tenant collection has no in-memory cache.

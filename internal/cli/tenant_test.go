@@ -81,7 +81,7 @@ func TestTenantList_JSONFlag(t *testing.T) {
 	_, _, err := executeCmd(t, rt, "--json", "tenant", "list")
 	require.NoError(t, err)
 	var got []map[string]any
-	require.NoError(t, json.Unmarshal([]byte(out.String()), &got))
+	require.NoError(t, json.Unmarshal(out.Bytes(), &got))
 	require.Len(t, got, 1)
 	require.Equal(t, "acme", got[0]["id"])
 }

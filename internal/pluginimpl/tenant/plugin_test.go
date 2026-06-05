@@ -17,7 +17,7 @@ func TestPluginConstants(t *testing.T) {
 	require.Equal(t, "suspended", tenant.StatusSuspended)
 }
 
-func TestPluginImplementsInterfaces(t *testing.T) {
+func TestPluginImplementsInterfaces(_ *testing.T) {
 	p := tenant.New()
 	var _ plugins.Plugin = p
 	var _ plugins.DataModel = p
