@@ -40,7 +40,7 @@ func (d *Driver) BulkIncrement(ctx context.Context, collection string, ops []dbp
 	affected := make([]string, 0, len(ops))
 	for _, op := range ops {
 		cond := matchToCond(op.Search)
-		res, err := convert(cond, d.getSearchFields(collection))
+		res, err := convert(ctx, collection, cond, d.getSearchFields(collection))
 		if err != nil {
 			return err
 		}
@@ -141,7 +141,7 @@ func (d *Driver) IncMany(ctx context.Context, collection, field string, cond con
 		return 0, err
 	}
 	qt := quoteIdent(table)
-	res, err := convert(cond, d.getSearchFields(collection))
+	res, err := convert(ctx, collection, cond, d.getSearchFields(collection))
 	if err != nil {
 		return 0, err
 	}
@@ -265,7 +265,7 @@ func (d *Driver) updateRowsViaCallback(ctx context.Context, collection string, c
 		return 0, err
 	}
 	qt := quoteIdent(table)
-	res, err := convert(cond, d.getSearchFields(collection))
+	res, err := convert(ctx, collection, cond, d.getSearchFields(collection))
 	if err != nil {
 		return 0, err
 	}

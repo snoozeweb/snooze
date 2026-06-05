@@ -21,6 +21,7 @@ import (
 	"github.com/snoozeweb/snooze/internal/condition"
 	dbpkg "github.com/snoozeweb/snooze/internal/db"
 	"github.com/snoozeweb/snooze/internal/db/dbtest"
+	"github.com/snoozeweb/snooze/pkg/snoozetypes"
 )
 
 // TestDriverSuite runs the shared cross-backend conformance suite against a
@@ -57,7 +58,7 @@ func TestNewAndPing(t *testing.T) {
 func TestWriteAndGetOne(t *testing.T) {
 	t.Parallel()
 	d := newTestDriver(t)
-	ctx := context.Background()
+	ctx := snoozetypes.WithPlatformScope(context.Background())
 
 	doc := dbpkg.Document{"host": "alpha", "severity": "err"}
 	res, err := d.Write(ctx, "record", []dbpkg.Document{doc}, dbpkg.WriteOptions{UpdateTime: true})
@@ -74,7 +75,7 @@ func TestWriteAndGetOne(t *testing.T) {
 func TestWriteUpdateByUID(t *testing.T) {
 	t.Parallel()
 	d := newTestDriver(t)
-	ctx := context.Background()
+	ctx := snoozetypes.WithPlatformScope(context.Background())
 
 	res, err := d.Write(ctx, "record", []dbpkg.Document{{"host": "alpha"}}, dbpkg.WriteOptions{})
 	require.NoError(t, err)
@@ -98,7 +99,7 @@ func TestWriteUpdateByUID(t *testing.T) {
 func TestGetOneNotFound(t *testing.T) {
 	t.Parallel()
 	d := newTestDriver(t)
-	ctx := context.Background()
+	ctx := snoozetypes.WithPlatformScope(context.Background())
 	require.NoError(t, d.ensure(ctx, "record"))
 	_, err := d.GetOne(ctx, "record", dbpkg.Document{"uid": "nope"})
 	require.ErrorIs(t, err, dbpkg.ErrNotFound)
@@ -107,7 +108,7 @@ func TestGetOneNotFound(t *testing.T) {
 func TestSearchPagination(t *testing.T) {
 	t.Parallel()
 	d := newTestDriver(t)
-	ctx := context.Background()
+	ctx := snoozetypes.WithPlatformScope(context.Background())
 
 	for i := 0; i < 5; i++ {
 		_, err := d.Write(ctx, "stats",
@@ -140,7 +141,7 @@ func TestSearchPagination(t *testing.T) {
 func TestSearchOrderBy(t *testing.T) {
 	t.Parallel()
 	d := newTestDriver(t)
-	ctx := context.Background()
+	ctx := snoozetypes.WithPlatformScope(context.Background())
 
 	for _, h := range []string{"c", "a", "b"} {
 		_, err := d.Write(ctx, "record", []dbpkg.Document{{"host": h}}, dbpkg.WriteOptions{})
@@ -167,7 +168,7 @@ func TestSearchOrderBy(t *testing.T) {
 func TestRuleTreeOrder(t *testing.T) {
 	t.Parallel()
 	d := newTestDriver(t)
-	ctx := context.Background()
+	ctx := snoozetypes.WithPlatformScope(context.Background())
 
 	// Insert top-level rules out of declaration order; tree_order is the
 	// only thing that puts them back into 0,1,2,3.
@@ -220,7 +221,7 @@ func TestRuleTreeOrder(t *testing.T) {
 func TestDeleteSafety(t *testing.T) {
 	t.Parallel()
 	d := newTestDriver(t)
-	ctx := context.Background()
+	ctx := snoozetypes.WithPlatformScope(context.Background())
 
 	_, err := d.Write(ctx, "record", []dbpkg.Document{{"host": "x"}}, dbpkg.WriteOptions{})
 	require.NoError(t, err)
@@ -236,7 +237,7 @@ func TestDeleteSafety(t *testing.T) {
 func TestConditionEvaluation(t *testing.T) {
 	t.Parallel()
 	d := newTestDriver(t)
-	ctx := context.Background()
+	ctx := snoozetypes.WithPlatformScope(context.Background())
 
 	for _, h := range []string{"alpha", "beta", "alphabet"} {
 		_, err := d.Write(ctx, "record",
@@ -289,7 +290,7 @@ func TestConditionEvaluation(t *testing.T) {
 func TestUpdateOneUpsert(t *testing.T) {
 	t.Parallel()
 	d := newTestDriver(t)
-	ctx := context.Background()
+	ctx := snoozetypes.WithPlatformScope(context.Background())
 
 	err := d.UpdateOne(ctx, "record", "u1", dbpkg.Document{"host": "alpha"}, true)
 	require.NoError(t, err)
@@ -308,7 +309,7 @@ func TestUpdateOneUpsert(t *testing.T) {
 func TestReplaceOneInsertAndReplace(t *testing.T) {
 	t.Parallel()
 	d := newTestDriver(t)
-	ctx := context.Background()
+	ctx := snoozetypes.WithPlatformScope(context.Background())
 
 	matched, err := d.ReplaceOne(ctx, "record",
 		dbpkg.Document{"host": "alpha"},
@@ -336,7 +337,7 @@ func TestReplaceOneInsertAndReplace(t *testing.T) {
 func TestBulkIncrement(t *testing.T) {
 	t.Parallel()
 	d := newTestDriver(t)
-	ctx := context.Background()
+	ctx := snoozetypes.WithPlatformScope(context.Background())
 
 	// No existing row + upsert=true -> insert (search ∪ deltas).
 	err := d.BulkIncrement(ctx, "stats", []dbpkg.IncrementOp{{
@@ -371,7 +372,7 @@ func TestBulkIncrement(t *testing.T) {
 func TestIncManySetFields(t *testing.T) {
 	t.Parallel()
 	d := newTestDriver(t)
-	ctx := context.Background()
+	ctx := snoozetypes.WithPlatformScope(context.Background())
 
 	for i := 0; i < 3; i++ {
 		_, err := d.Write(ctx, "stats",
@@ -404,7 +405,7 @@ func TestIncManySetFields(t *testing.T) {
 func TestUnsetFields(t *testing.T) {
 	t.Parallel()
 	d := newTestDriver(t)
-	ctx := context.Background()
+	ctx := snoozetypes.WithPlatformScope(context.Background())
 
 	_, err := d.Write(ctx, "record", []dbpkg.Document{
 		{"host": "h", "snoozed": "Warnings"},
@@ -437,7 +438,7 @@ func TestUnsetFields(t *testing.T) {
 func TestAppendPrependRemoveList(t *testing.T) {
 	t.Parallel()
 	d := newTestDriver(t)
-	ctx := context.Background()
+	ctx := snoozetypes.WithPlatformScope(context.Background())
 
 	_, err := d.Write(ctx, "r",
 		[]dbpkg.Document{{"key": "x", "tags": []any{"a"}}},
@@ -476,7 +477,7 @@ func TestAppendPrependRemoveList(t *testing.T) {
 func TestListAndDropCollections(t *testing.T) {
 	t.Parallel()
 	d := newTestDriver(t)
-	ctx := context.Background()
+	ctx := snoozetypes.WithPlatformScope(context.Background())
 
 	_, err := d.Write(ctx, "alpha", []dbpkg.Document{{"x": 1}}, dbpkg.WriteOptions{})
 	require.NoError(t, err)
@@ -497,7 +498,7 @@ func TestListAndDropCollections(t *testing.T) {
 func TestInvalidCollectionName(t *testing.T) {
 	t.Parallel()
 	d := newTestDriver(t)
-	ctx := context.Background()
+	ctx := snoozetypes.WithPlatformScope(context.Background())
 	_, err := d.Write(ctx, "1bad", []dbpkg.Document{{"x": 1}}, dbpkg.WriteOptions{})
 	require.Error(t, err)
 	_, err = d.Write(ctx, "ok; DROP TABLE foo --", []dbpkg.Document{{"x": 1}}, dbpkg.WriteOptions{})
@@ -507,7 +508,7 @@ func TestInvalidCollectionName(t *testing.T) {
 func TestCleanupTimeout(t *testing.T) {
 	t.Parallel()
 	d := newTestDriver(t)
-	ctx := context.Background()
+	ctx := snoozetypes.WithPlatformScope(context.Background())
 
 	expired := dbpkg.Document{"date_epoch": float64(time.Now().Add(-2 * time.Hour).Unix()), "ttl": float64(3600)}
 	live := dbpkg.Document{"date_epoch": float64(time.Now().Unix()), "ttl": float64(3600)}
@@ -527,7 +528,7 @@ func TestCleanupTimeout(t *testing.T) {
 func TestCleanupComments(t *testing.T) {
 	t.Parallel()
 	d := newTestDriver(t)
-	ctx := context.Background()
+	ctx := snoozetypes.WithPlatformScope(context.Background())
 
 	// Two records, three comments — one points to a missing record_uid.
 	// Use UpdateOne (upsert) to seed records with controlled uids;
@@ -549,7 +550,7 @@ func TestCleanupComments(t *testing.T) {
 func TestCleanupSnooze(t *testing.T) {
 	t.Parallel()
 	d := newTestDriver(t)
-	ctx := context.Background()
+	ctx := snoozetypes.WithPlatformScope(context.Background())
 
 	now := time.Now().UTC()
 	past := now.Add(-24 * time.Hour).Format(time.RFC3339)
@@ -589,7 +590,7 @@ func TestCleanupSnooze(t *testing.T) {
 func TestCleanupNotification(t *testing.T) {
 	t.Parallel()
 	d := newTestDriver(t)
-	ctx := context.Background()
+	ctx := snoozetypes.WithPlatformScope(context.Background())
 
 	now := time.Now().UTC()
 	past := now.Add(-24 * time.Hour).Format(time.RFC3339)
@@ -623,7 +624,7 @@ func TestCleanupNotification(t *testing.T) {
 func TestCleanupOrphans(t *testing.T) {
 	t.Parallel()
 	d := newTestDriver(t)
-	ctx := context.Background()
+	ctx := snoozetypes.WithPlatformScope(context.Background())
 
 	// Seed with controlled uids via UpdateOne (Write rejects unknown uids).
 	require.NoError(t, d.UpdateOne(ctx, "rule", "p1", dbpkg.Document{"uid": "p1"}, false))
@@ -640,7 +641,7 @@ func TestCleanupOrphans(t *testing.T) {
 func TestBackup(t *testing.T) {
 	t.Parallel()
 	d := newTestDriver(t)
-	ctx := context.Background()
+	ctx := snoozetypes.WithPlatformScope(context.Background())
 	dir := t.TempDir()
 
 	_, err := d.Write(ctx, "record", []dbpkg.Document{{"host": "a"}, {"host": "b"}}, dbpkg.WriteOptions{})
@@ -652,7 +653,7 @@ func TestBackup(t *testing.T) {
 func TestBusFanout(t *testing.T) {
 	t.Parallel()
 	d := newTestDriver(t)
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel := context.WithCancel(snoozetypes.WithPlatformScope(context.Background()))
 	defer cancel()
 
 	ch, err := d.Watcher().Subscribe(ctx, "collection.record")
@@ -684,7 +685,7 @@ func TestCloseIdempotent(t *testing.T) {
 func TestRegexpUDFErrorBubbles(t *testing.T) {
 	t.Parallel()
 	d := newTestDriver(t)
-	ctx := context.Background()
+	ctx := snoozetypes.WithPlatformScope(context.Background())
 
 	_, err := d.Write(ctx, "record", []dbpkg.Document{{"host": "x"}}, dbpkg.WriteOptions{})
 	require.NoError(t, err)

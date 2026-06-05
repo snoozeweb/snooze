@@ -12,6 +12,7 @@ import (
 
 	"github.com/snoozeweb/snooze/internal/condition"
 	"github.com/snoozeweb/snooze/internal/db"
+	"github.com/snoozeweb/snooze/pkg/snoozetypes"
 )
 
 // Factory returns a freshly initialised driver and a teardown closure. The
@@ -69,7 +70,16 @@ func RunDriverSuite(t *testing.T, name string, factory Factory) {
 	}
 }
 
-func ctx() context.Context { return context.Background() }
+// ctx runs the backend-mechanics conformance suite under platform scope so the
+// driver skips tenant_id injection entirely (no predicate on reads, no stamp on
+// writes). These cases exercise the boolean translator, pagination, bulk
+// mutators and cleanup jobs — not tenancy — so a naked tenant context would
+// either fail closed (scoped collection, no tenant) or require write-side
+// stamping that lands in a later task. Cross-tenant isolation and the
+// fail-closed contract are covered separately by RunTenantIsolationSuite.
+func ctx() context.Context {
+	return snoozetypes.WithPlatformScope(context.Background())
+}
 
 func mustCond(t *testing.T, v any) condition.Cond {
 	t.Helper()

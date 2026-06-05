@@ -1,9 +1,11 @@
 package sql
 
 import (
+	"context"
 	"fmt"
 
 	"github.com/snoozeweb/snooze/internal/condition"
+	"github.com/snoozeweb/snooze/internal/db"
 )
 
 // Builder walks a condition.Cond AST and emits parameterised SQL. It owns the
@@ -15,12 +17,25 @@ type Builder struct {
 }
 
 // Convert returns a WHERE-clause boolean fragment and the bound parameters for
-// cond. searchFields is the list of fields the SEARCH operator expands across;
-// an empty list makes SEARCH full-scan the serialised document (the live SQL
-// backends never match "nothing" on a bare SEARCH).
-func (b *Builder) Convert(cond condition.Cond, searchFields []string) (string, []any, error) {
+// cond. collection is used to resolve tenant injection (D1): a tenant-scoped
+// collection under a tenant context gets a tenant_id predicate folded in, a
+// global collection or platform-scoped context gets none, and a scoped
+// collection with a naked context fails closed with ErrNoTenant. searchFields
+// is the list of fields the SEARCH operator expands across; an empty list makes
+// SEARCH full-scan the serialised document (the live SQL backends never match
+// "nothing" on a bare SEARCH).
+func (b *Builder) Convert(ctx context.Context, collection string, cond condition.Cond, searchFields []string) (string, []any, error) {
 	if b.Dialect == nil {
 		return "", nil, fmt.Errorf("sql: nil dialect")
+	}
+	// Resolve tenant injection before walking the tree so a fail-closed scoped
+	// collection never emits SQL.
+	tenantID, inject, err := db.TenantScope(ctx, collection)
+	if err != nil {
+		return "", nil, fmt.Errorf("sql: %w", err)
+	}
+	if inject {
+		cond = db.WithTenantCond(cond, tenantID)
 	}
 	w := walker{dialect: b.Dialect, searchFields: searchFields}
 	w.binder.dialect = b.Dialect

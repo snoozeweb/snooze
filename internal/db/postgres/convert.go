@@ -1,6 +1,7 @@
 package postgres
 
 import (
+	"context"
 	"fmt"
 	"strings"
 
@@ -27,8 +28,10 @@ var builder = sqlbuilder.Builder{Dialect: dialect{}}
 // (one walker for both SQL backends); Postgres-specific leaf SQL is provided by
 // the dialect in dialect.go. ORDER BY, LIMIT/OFFSET and query assembly stay in
 // this package (renderOrderBy / renderPagination and the driver).
-func convert(c condition.Cond, searchFields []string) (convertResult, error) {
-	sql, params, err := builder.Convert(c, searchFields)
+// ctx and collection are required for tenant injection (resolved inside
+// builder.Convert via db.TenantScope).
+func convert(ctx context.Context, collection string, c condition.Cond, searchFields []string) (convertResult, error) {
+	sql, params, err := builder.Convert(ctx, collection, c, searchFields)
 	if err != nil {
 		return convertResult{}, err
 	}

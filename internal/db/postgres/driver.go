@@ -15,6 +15,7 @@ import (
 	"github.com/snoozeweb/snooze/internal/condition"
 	dbpkg "github.com/snoozeweb/snooze/internal/db"
 	"github.com/snoozeweb/snooze/internal/syncer"
+	"github.com/snoozeweb/snooze/pkg/snoozetypes"
 )
 
 // Config controls how the Postgres driver connects to the database. DSN is
@@ -135,10 +136,12 @@ type PreparedQuery struct {
 	Params []any
 }
 
-// Convert returns a PreparedQuery suitable for use under WHERE.
+// Convert returns a PreparedQuery suitable for use under WHERE. The db.Driver
+// interface signature carries no collection, so this pre-compilation tool runs
+// under platform scope (no tenant injection); callers that know the collection
+// go through Search/Delete/etc. which thread it for injection.
 func (d *Driver) Convert(ctx context.Context, cond condition.Cond, searchFields []string) (dbpkg.DriverQuery, error) {
-	_ = ctx
-	res, err := convert(cond, searchFields)
+	res, err := convert(snoozetypes.WithPlatformScope(ctx), "", cond, searchFields)
 	if err != nil {
 		return nil, err
 	}
@@ -156,7 +159,7 @@ func (d *Driver) Search(ctx context.Context, collection string, cond condition.C
 	if table == "" {
 		return nil, 0, nil
 	}
-	res, err := convert(cond, d.getSearchFields(collection))
+	res, err := convert(ctx, collection, cond, d.getSearchFields(collection))
 	if err != nil {
 		return nil, 0, err
 	}
@@ -461,7 +464,7 @@ func (d *Driver) findOneUIDByPrimary(ctx context.Context, tx pgx.Tx, qt, collect
 		children = append(children, condition.Equals(k, v))
 	}
 	cond := condition.And(children...)
-	res, err := convert(cond, d.getSearchFields(collection))
+	res, err := convert(ctx, collection, cond, d.getSearchFields(collection))
 	if err != nil {
 		return "", err
 	}
@@ -589,7 +592,7 @@ func (d *Driver) ReplaceOne(ctx context.Context, collection string, match dbpkg.
 	}
 
 	cond := matchToCond(match)
-	res, err := convert(cond, d.getSearchFields(collection))
+	res, err := convert(ctx, collection, cond, d.getSearchFields(collection))
 	if err != nil {
 		return 0, err
 	}
@@ -684,7 +687,7 @@ func (d *Driver) Delete(ctx context.Context, collection string, cond condition.C
 		return 0, nil
 	}
 	qt := quoteIdent(table)
-	res, err := convert(cond, d.getSearchFields(collection))
+	res, err := convert(ctx, collection, cond, d.getSearchFields(collection))
 	if err != nil {
 		return 0, err
 	}

@@ -1,6 +1,8 @@
 package sql
 
 import (
+	"context"
+	"errors"
 	"fmt"
 	"strings"
 	"testing"
@@ -8,7 +10,17 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/snoozeweb/snooze/internal/condition"
+	"github.com/snoozeweb/snooze/pkg/snoozetypes"
 )
+
+// gcol is a global (NOT tenant-scoped) collection name; using it for the
+// boolean-tree tests means TenantScope never injects a tenant_id predicate, so
+// the rendered SQL stays purely a function of the input condition.
+const gcol = "tenant"
+
+// gctx returns a plain context for the boolean-tree tests. Paired with gcol
+// (a global collection) it never fails closed and never injects a tenant.
+func gctx() context.Context { return context.Background() }
 
 // mockDialect emits human-readable SQL fragments so the tests focus on the
 // boolean-tree shape the Builder owns, not on exact backend leaf syntax. Leaf
@@ -69,7 +81,7 @@ func unsugarRegex(s string) string {
 
 func TestBuilder_Equality(t *testing.T) {
 	b := &Builder{Dialect: mockDialect{}}
-	sql, args, err := b.Convert(condition.Cond{Op: condition.OpEq, Field: "host", Value: "foo"}, nil)
+	sql, args, err := b.Convert(gctx(), gcol, condition.Cond{Op: condition.OpEq, Field: "host", Value: "foo"}, nil)
 	require.NoError(t, err)
 	require.Equal(t, "host = $1", sql)
 	require.Equal(t, []any{"foo"}, args)
@@ -84,7 +96,7 @@ func TestBuilder_NestedAndOr(t *testing.T) {
 			{Op: condition.OpEq, Field: "source", Value: "snmptrap"},
 		}},
 	}}
-	sql, args, err := b.Convert(cond, nil)
+	sql, args, err := b.Convert(gctx(), gcol, cond, nil)
 	require.NoError(t, err)
 	require.Equal(t, "(host = $1 AND (source = $2 OR source = $3))", sql)
 	require.Equal(t, []any{"foo", "syslog", "snmptrap"}, args)
@@ -92,7 +104,7 @@ func TestBuilder_NestedAndOr(t *testing.T) {
 
 func TestBuilder_Not(t *testing.T) {
 	b := &Builder{Dialect: mockDialect{}}
-	sql, _, err := b.Convert(condition.Cond{
+	sql, _, err := b.Convert(gctx(), gcol, condition.Cond{
 		Op:       condition.OpNot,
 		Children: []condition.Cond{{Op: condition.OpEq, Field: "x", Value: 1}},
 	}, nil)
@@ -102,14 +114,14 @@ func TestBuilder_Not(t *testing.T) {
 
 func TestBuilder_Exists(t *testing.T) {
 	b := &Builder{Dialect: mockDialect{}}
-	sql, _, err := b.Convert(condition.Cond{Op: condition.OpExists, Field: "tags"}, nil)
+	sql, _, err := b.Convert(gctx(), gcol, condition.Cond{Op: condition.OpExists, Field: "tags"}, nil)
 	require.NoError(t, err)
 	require.Equal(t, "tags IS NOT NULL", sql)
 }
 
 func TestBuilder_Matches(t *testing.T) {
 	b := &Builder{Dialect: mockDialect{}}
-	sql, args, err := b.Convert(condition.Cond{Op: condition.OpMatches, Field: "msg", Value: "/foo/"}, nil)
+	sql, args, err := b.Convert(gctx(), gcol, condition.Cond{Op: condition.OpMatches, Field: "msg", Value: "/foo/"}, nil)
 	require.NoError(t, err)
 	require.Equal(t, "msg REGEX $1", sql)
 	require.Equal(t, []any{"foo"}, args)
@@ -117,7 +129,7 @@ func TestBuilder_Matches(t *testing.T) {
 
 func TestBuilder_Contains(t *testing.T) {
 	b := &Builder{Dialect: mockDialect{}}
-	sql, args, err := b.Convert(condition.Cond{Op: condition.OpContains, Field: "tags", Value: "p1"}, nil)
+	sql, args, err := b.Convert(gctx(), gcol, condition.Cond{Op: condition.OpContains, Field: "tags", Value: "p1"}, nil)
 	require.NoError(t, err)
 	require.Equal(t, "CONTAINS(tags, $1)", sql)
 	require.Equal(t, []any{"p1"}, args)
@@ -125,7 +137,7 @@ func TestBuilder_Contains(t *testing.T) {
 
 func TestBuilder_In(t *testing.T) {
 	b := &Builder{Dialect: mockDialect{}}
-	sql, args, err := b.Convert(condition.Cond{Op: condition.OpIn, Field: "tags", Value: []any{"a", "b"}}, nil)
+	sql, args, err := b.Convert(gctx(), gcol, condition.Cond{Op: condition.OpIn, Field: "tags", Value: []any{"a", "b"}}, nil)
 	require.NoError(t, err)
 	require.Equal(t, "IN(tags, $1)", sql)
 	require.Equal(t, []any{[]any{"a", "b"}}, args)
@@ -133,14 +145,14 @@ func TestBuilder_In(t *testing.T) {
 
 func TestBuilder_NestedPath(t *testing.T) {
 	b := &Builder{Dialect: mockDialect{}}
-	sql, _, err := b.Convert(condition.Cond{Op: condition.OpEq, Field: "a.b.c", Value: 1}, nil)
+	sql, _, err := b.Convert(gctx(), gcol, condition.Cond{Op: condition.OpEq, Field: "a.b.c", Value: 1}, nil)
 	require.NoError(t, err)
 	require.Equal(t, "a.b.c = $1", sql)
 }
 
 func TestBuilder_AlwaysTrue(t *testing.T) {
 	b := &Builder{Dialect: mockDialect{}}
-	sql, args, err := b.Convert(condition.Cond{}, nil)
+	sql, args, err := b.Convert(gctx(), gcol, condition.Cond{}, nil)
 	require.NoError(t, err)
 	require.Equal(t, "TRUE", sql)
 	require.Empty(t, args)
@@ -156,7 +168,7 @@ func TestBuilder_EmptyOpWithFieldRejected(t *testing.T) {
 		{Value: "y"},
 		{Children: []condition.Cond{{Op: condition.OpEq, Field: "a", Value: 1}}},
 	} {
-		_, _, err := b.Convert(c, nil)
+		_, _, err := b.Convert(gctx(), gcol, c, nil)
 		require.Error(t, err, "empty-op cond %+v must be rejected", c)
 	}
 }
@@ -169,15 +181,15 @@ func TestBuilder_NotRequiresExactlyOneChild(t *testing.T) {
 		{Op: condition.OpEq, Field: "a", Value: 1},
 		{Op: condition.OpEq, Field: "b", Value: 2},
 	}}
-	_, _, err := b.Convert(two, nil)
+	_, _, err := b.Convert(gctx(), gcol, two, nil)
 	require.Error(t, err)
-	_, _, err = b.Convert(condition.Cond{Op: condition.OpNot}, nil)
+	_, _, err = b.Convert(gctx(), gcol, condition.Cond{Op: condition.OpNot}, nil)
 	require.Error(t, err)
 }
 
 func TestBuilder_SearchNoFields(t *testing.T) {
 	b := &Builder{Dialect: mockDialect{}}
-	sql, args, err := b.Convert(condition.Cond{Op: condition.OpSearch, Value: "abc"}, nil)
+	sql, args, err := b.Convert(gctx(), gcol, condition.Cond{Op: condition.OpSearch, Value: "abc"}, nil)
 	require.NoError(t, err)
 	// The live SQL backends full-scan a fieldless SEARCH (never "match
 	// nothing"); the mock dialect mirrors that with a document-wide regex.
@@ -188,6 +200,7 @@ func TestBuilder_SearchNoFields(t *testing.T) {
 func TestBuilder_SearchOverFields(t *testing.T) {
 	b := &Builder{Dialect: mockDialect{}}
 	sql, args, err := b.Convert(
+		gctx(), gcol,
 		condition.Cond{Op: condition.OpSearch, Value: "abc"},
 		[]string{"host", "message"},
 	)
@@ -198,7 +211,7 @@ func TestBuilder_SearchOverFields(t *testing.T) {
 
 func TestBuilder_NilValueIsNull(t *testing.T) {
 	b := &Builder{Dialect: mockDialect{}}
-	sql, args, err := b.Convert(condition.Cond{Op: condition.OpEq, Field: "x", Value: nil}, nil)
+	sql, args, err := b.Convert(gctx(), gcol, condition.Cond{Op: condition.OpEq, Field: "x", Value: nil}, nil)
 	require.NoError(t, err)
 	require.Equal(t, "x IS NULL", sql)
 	require.Empty(t, args)
@@ -206,10 +219,10 @@ func TestBuilder_NilValueIsNull(t *testing.T) {
 
 func TestBuilder_EmptyAndOr(t *testing.T) {
 	b := &Builder{Dialect: mockDialect{}}
-	sql, _, err := b.Convert(condition.Cond{Op: condition.OpAnd}, nil)
+	sql, _, err := b.Convert(gctx(), gcol, condition.Cond{Op: condition.OpAnd}, nil)
 	require.NoError(t, err)
 	require.Equal(t, "TRUE", sql)
-	sql, _, err = b.Convert(condition.Cond{Op: condition.OpOr}, nil)
+	sql, _, err = b.Convert(gctx(), gcol, condition.Cond{Op: condition.OpOr}, nil)
 	require.NoError(t, err)
 	require.Equal(t, "FALSE", sql)
 }
@@ -217,4 +230,65 @@ func TestBuilder_EmptyAndOr(t *testing.T) {
 func TestTableName(t *testing.T) {
 	require.Equal(t, "snooze_record", TableName("record"))
 	require.Equal(t, "snooze_audit__rule", TableName("audit.rule"))
+}
+
+// containsArg reports whether want appears among the bound parameters. Tenant
+// injection binds the slug as a positional placeholder, so the test asserts on
+// the arg list rather than parsing the placeholder syntax.
+func containsArg(args []any, want any) bool {
+	for _, a := range args {
+		if a == want {
+			return true
+		}
+	}
+	return false
+}
+
+// A tenant-scoped collection under a tenant context must fold a tenant_id
+// predicate into the WHERE clause, binding the slug as a parameter alongside
+// the user's own predicate.
+func TestBuilderConvert_tenantInjected(t *testing.T) {
+	b := Builder{Dialect: mockDialect{}}
+	ctx := snoozetypes.WithTenant(context.Background(), "acme")
+	sql, args, err := b.Convert(ctx, "record", condition.Equals("host", "srv1"), nil)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !strings.Contains(sql, "tenant_id") {
+		t.Fatalf("sql missing tenant_id: %s", sql)
+	}
+	if !containsArg(args, "acme") {
+		t.Fatalf("args missing tenant value %q: %v", "acme", args)
+	}
+	// host=srv1 predicate must also be present
+	if !containsArg(args, "srv1") {
+		t.Fatalf("args missing host value: %v", args)
+	}
+}
+
+// A global collection never receives a tenant_id predicate, even under a
+// tenant context.
+func TestBuilderConvert_globalCollectionNoInjection(t *testing.T) {
+	b := Builder{Dialect: mockDialect{}}
+	ctx := snoozetypes.WithTenant(context.Background(), "acme")
+	sql, _, err := b.Convert(ctx, "tenant", condition.Cond{}, nil)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if strings.Contains(sql, "tenant_id") {
+		t.Fatalf("global collection must not inject tenant_id; got: %s", sql)
+	}
+}
+
+// A scoped collection with neither a tenant nor platform scope in context must
+// fail closed with ErrNoTenant before emitting any SQL.
+func TestBuilderConvert_failClosed(t *testing.T) {
+	b := Builder{Dialect: mockDialect{}}
+	_, _, err := b.Convert(context.Background(), "record", condition.Cond{}, nil)
+	if err == nil {
+		t.Fatal("naked context on scoped collection: expected error")
+	}
+	if !errors.Is(err, snoozetypes.ErrNoTenant) {
+		t.Fatalf("error must wrap ErrNoTenant, got: %v", err)
+	}
 }

@@ -28,6 +28,7 @@ import (
 	"github.com/snoozeweb/snooze/internal/condition"
 	dbpkg "github.com/snoozeweb/snooze/internal/db"
 	"github.com/snoozeweb/snooze/internal/syncer"
+	"github.com/snoozeweb/snooze/pkg/snoozetypes"
 )
 
 // Config configures the SQLite driver.
@@ -199,8 +200,11 @@ func (d *Driver) Watcher() syncer.Bus { return d.bus }
 // callers can pass back unchanged. For SQLite the compiled form is just
 // the SQL where clause plus its bound args, ready for splicing under
 // `WHERE`.
-func (d *Driver) Convert(_ context.Context, cond condition.Cond, searchFields []string) (dbpkg.DriverQuery, error) {
-	clause, args, err := compile(cond, searchFields)
+func (d *Driver) Convert(ctx context.Context, cond condition.Cond, searchFields []string) (dbpkg.DriverQuery, error) {
+	// The db.Driver interface carries no collection here, so this
+	// pre-compilation tool runs under platform scope (no tenant injection);
+	// callers that know the collection go through Search/Delete/etc.
+	clause, args, err := compile(snoozetypes.WithPlatformScope(ctx), "", cond, searchFields)
 	if err != nil {
 		return nil, err
 	}
@@ -347,7 +351,7 @@ func (d *Driver) Search(ctx context.Context, collection string, cond condition.C
 	if err != nil {
 		return nil, 0, err
 	}
-	where, args, err := d.compileWith(collection, cond)
+	where, args, err := d.compileWith(ctx, collection, cond)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -672,7 +676,7 @@ func (d *Driver) Delete(ctx context.Context, collection string, cond condition.C
 	if err != nil {
 		return 0, err
 	}
-	where, args, err := d.compileWith(collection, cond)
+	where, args, err := d.compileWith(ctx, collection, cond)
 	if err != nil {
 		return 0, err
 	}
@@ -732,7 +736,7 @@ func (d *Driver) IncMany(ctx context.Context, collection, field string, cond con
 	if err != nil {
 		return 0, err
 	}
-	where, args, err := d.compileWith(collection, cond)
+	where, args, err := d.compileWith(ctx, collection, cond)
 	if err != nil {
 		return 0, err
 	}
@@ -849,7 +853,7 @@ func (d *Driver) updateViaPython(ctx context.Context, collection string, cond co
 	if err != nil {
 		return 0, err
 	}
-	where, args, err := d.compileWith(collection, cond)
+	where, args, err := d.compileWith(ctx, collection, cond)
 	if err != nil {
 		return 0, err
 	}
@@ -935,7 +939,7 @@ type existingRow struct {
 }
 
 func (d *Driver) findOneInTx(ctx context.Context, tx *sql.Tx, collection, tbl string, cond condition.Cond) (*existingRow, error) {
-	where, args, err := d.compileWith(collection, cond)
+	where, args, err := d.compileWith(ctx, collection, cond)
 	if err != nil {
 		return nil, err
 	}
@@ -955,12 +959,12 @@ func (d *Driver) findOneInTx(ctx context.Context, tx *sql.Tx, collection, tbl st
 	return &existingRow{uid: uid, data: data}, nil
 }
 
-func (d *Driver) compileWith(collection string, cond condition.Cond) (string, []any, error) {
+func (d *Driver) compileWith(ctx context.Context, collection string, cond condition.Cond) (string, []any, error) {
 	var fields []string
 	if v, ok := d.searchFields.Load(collection); ok {
 		fields = v.([]string)
 	}
-	return compile(cond, fields)
+	return compile(ctx, collection, cond, fields)
 }
 
 func (d *Driver) insertRow(ctx context.Context, tx *sql.Tx, tbl, uid string, doc dbpkg.Document) error {

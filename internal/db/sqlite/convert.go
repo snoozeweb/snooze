@@ -10,6 +10,7 @@
 package sqlite
 
 import (
+	"context"
 	"strconv"
 	"strings"
 
@@ -22,8 +23,10 @@ var builder = sqlbuilder.Builder{Dialect: dialect{}}
 
 // compile lowers cond to a parenthesised SQL boolean expression plus the
 // arguments to bind. An empty (zero) condition lowers to "1" (always true).
-func compile(c condition.Cond, searchFields []string) (string, []any, error) {
-	return builder.Convert(c, searchFields)
+// ctx and collection are required for tenant injection (resolved inside
+// builder.Convert via db.TenantScope).
+func compile(ctx context.Context, collection string, c condition.Cond, searchFields []string) (string, []any, error) {
+	return builder.Convert(ctx, collection, c, searchFields)
 }
 
 // pathExpr produces a json_extract() reference to a dotted field. “terminal“

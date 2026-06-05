@@ -93,7 +93,11 @@ func TestFilterOptionalPlugins_UnknownNameInEnabledIsIgnored(t *testing.T) {
 // non-matching searches when upsert=false, leaving the stats collection empty.
 func TestBootAsync_UpsertEnabled_StatsCountersPersist(t *testing.T) {
 	t.Parallel()
-	ctx := context.Background()
+	// Platform scope: this exercises the stats counter pipeline (a tenant-scoped
+	// collection) through the real driver, which now resolves tenancy via
+	// db.TenantScope. Platform scope bypasses tenant_id injection so the test
+	// stays about asyncwriter upsert wiring, not tenancy.
+	ctx := snoozetypes.WithPlatformScope(context.Background())
 
 	// Open a real SQLite database in a per-test temp file (same pattern as
 	// internal/db/sqlite/driver_test.go newTestDriver).

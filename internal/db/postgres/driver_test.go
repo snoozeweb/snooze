@@ -13,6 +13,7 @@ import (
 	"github.com/snoozeweb/snooze/internal/condition"
 	dbpkg "github.com/snoozeweb/snooze/internal/db"
 	"github.com/snoozeweb/snooze/internal/db/dbtest"
+	"github.com/snoozeweb/snooze/pkg/snoozetypes"
 )
 
 // TestDriverSuite runs the shared cross-backend conformance suite. One
@@ -77,7 +78,7 @@ func newTestDriver(t *testing.T) *Driver {
 // to dbtest.RunDriverSuite(t, "postgres", ...).
 func TestDriver_BasicCRUD(t *testing.T) {
 	drv := newTestDriver(t)
-	ctx := context.Background()
+	ctx := snoozetypes.WithPlatformScope(context.Background())
 
 	wr, err := drv.Write(ctx, "record", []dbpkg.Document{
 		{"host": "h1", "severity": "err", "count": 1},
@@ -108,7 +109,7 @@ func TestDriver_BasicCRUD(t *testing.T) {
 
 func TestDriver_UpdateAndReplace(t *testing.T) {
 	drv := newTestDriver(t)
-	ctx := context.Background()
+	ctx := snoozetypes.WithPlatformScope(context.Background())
 
 	wr, err := drv.Write(ctx, "rule", []dbpkg.Document{
 		{"name": "rule-1", "value": 1},
@@ -135,7 +136,7 @@ func TestDriver_UpdateAndReplace(t *testing.T) {
 
 func TestDriver_BulkIncrement(t *testing.T) {
 	drv := newTestDriver(t)
-	ctx := context.Background()
+	ctx := snoozetypes.WithPlatformScope(context.Background())
 
 	_, err := drv.Write(ctx, "stats", []dbpkg.Document{
 		{"key": "k1", "value": 0},
@@ -158,7 +159,7 @@ func TestDriver_BulkIncrement(t *testing.T) {
 
 func TestDriver_ListCollections(t *testing.T) {
 	drv := newTestDriver(t)
-	ctx := context.Background()
+	ctx := snoozetypes.WithPlatformScope(context.Background())
 	_, err := drv.Write(ctx, "a", []dbpkg.Document{{"x": 1}}, dbpkg.WriteOptions{})
 	require.NoError(t, err)
 	_, err = drv.Write(ctx, "b.c", []dbpkg.Document{{"x": 2}}, dbpkg.WriteOptions{})
@@ -213,7 +214,7 @@ func TestCollectionFromTable(t *testing.T) {
 // cannot provide.
 func TestDriver_UnsetFields(t *testing.T) {
 	d := newTestDriver(t)
-	ctx := context.Background()
+	ctx := snoozetypes.WithPlatformScope(context.Background())
 
 	_, err := d.Write(ctx, "record", []dbpkg.Document{
 		{"host": "h", "snoozed": "Warnings"},

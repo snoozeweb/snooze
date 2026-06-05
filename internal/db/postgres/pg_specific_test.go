@@ -106,7 +106,9 @@ func TestConvertEqualityMatches(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			res, err := convert(tc.cond, nil)
+			// "tenant" is a global collection → no tenant injection, so the
+			// rendered SQL stays byte-identical to the pre-multitenancy output.
+			res, err := convert(context.Background(), "tenant", tc.cond, nil)
 			require.NoError(t, err)
 			require.Contains(t, res.SQL, tc.wantIn, "got: %s", res.SQL)
 			require.True(t, strings.Count(res.SQL, "$") <= len(res.Params)*3+1)
@@ -117,7 +119,8 @@ func TestConvertEqualityMatches(t *testing.T) {
 // TestConvertSearchWithFields exercises the SEARCH branch when explicit
 // search fields are registered.
 func TestConvertSearchWithFields(t *testing.T) {
-	res, err := convert(condition.Cond{Op: condition.OpSearch, Value: "needle"},
+	res, err := convert(context.Background(), "tenant",
+		condition.Cond{Op: condition.OpSearch, Value: "needle"},
 		[]string{"host", "tags.0"})
 	require.NoError(t, err)
 	require.Contains(t, res.SQL, "data->>'host' ~* ")
@@ -132,7 +135,7 @@ func TestConvertPlaceholderNumbering(t *testing.T) {
 		condition.Equals("b", "y"),
 		condition.Equals("c", "z"),
 	)
-	res, err := convert(c, nil)
+	res, err := convert(context.Background(), "tenant", c, nil)
 	require.NoError(t, err)
 	require.Equal(t, 3, len(res.Params))
 	require.Contains(t, res.SQL, "$1")
