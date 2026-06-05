@@ -87,15 +87,25 @@ func (f *fakeDriver) Write(_ context.Context, collection string, docs []db.Docum
 	defer f.mu.Unlock()
 	var res db.WriteResult
 	for _, doc := range docs {
-		var matchFilter db.Document
-		if len(opts.Primary) > 0 {
-			matchFilter = make(db.Document, len(opts.Primary))
+		idx := -1
+		// Mirror the real backends: when the doc carries a uid that already
+		// exists, update that row in place by uid regardless of the Primary
+		// set (the Primary only governs uid-less upserts). This is what lets a
+		// PK-rewrite write (Primary excludes uid) update a pre-existing row
+		// instead of inserting a duplicate.
+		if uid, ok := doc["uid"].(string); ok && uid != "" {
+			for i, existing := range f.collections[collection] {
+				if eu, eok := existing["uid"].(string); eok && eu == uid {
+					idx = i
+					break
+				}
+			}
+		}
+		if idx < 0 && len(opts.Primary) > 0 {
+			matchFilter := make(db.Document, len(opts.Primary))
 			for _, k := range opts.Primary {
 				matchFilter[k] = doc[k]
 			}
-		}
-		idx := -1
-		if matchFilter != nil {
 			for i, existing := range f.collections[collection] {
 				ok := true
 				for k, want := range matchFilter {

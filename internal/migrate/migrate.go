@@ -160,3 +160,58 @@ func backfillTenantID(ctx context.Context, drv db.Driver, tenantID string) (int,
 	}
 	return total, nil
 }
+
+// rewriteUserRolePKs stamps tenant_id on every user and role document so their
+// compound PK [tenant_id, name, method] (user) or [tenant_id, name] (role)
+// is complete. After Phase 2, new writes already carry tenant_id; this is the
+// one-shot backfill for pre-migration rows.
+// ctx must carry WithPlatformScope.
+func rewriteUserRolePKs(ctx context.Context, drv db.Driver, tenantID string) error {
+	type collPK struct {
+		col     string
+		primary []string
+	}
+	targets := []collPK{
+		{"user", []string{"tenant_id", "name", "method"}},
+		{"role", []string{"tenant_id", "name"}},
+	}
+
+	existing, err := drv.ListCollections(ctx)
+	if err != nil {
+		return fmt.Errorf("migrate: rewrite PKs: list collections: %w", err)
+	}
+	existingSet := make(map[string]struct{}, len(existing))
+	for _, c := range existing {
+		existingSet[c] = struct{}{}
+	}
+
+	for _, target := range targets {
+		if _, ok := existingSet[target.col]; !ok {
+			continue
+		}
+		docs, _, err := drv.Search(ctx, target.col, condition.Cond{}, db.Page{})
+		if err != nil {
+			return fmt.Errorf("migrate: rewrite PKs: search %s: %w", target.col, err)
+		}
+		if len(docs) == 0 {
+			continue
+		}
+		toWrite := make([]db.Document, 0, len(docs))
+		for _, d := range docs {
+			cp := make(db.Document, len(d))
+			for k, v := range d {
+				cp[k] = v
+			}
+			cp["tenant_id"] = tenantID
+			toWrite = append(toWrite, cp)
+		}
+		if _, err := drv.Write(ctx, target.col, toWrite, db.WriteOptions{
+			Primary:    target.primary,
+			UpdateTime: false,
+		}); err != nil {
+			return fmt.Errorf("migrate: rewrite PKs: write %s: %w", target.col, err)
+		}
+		slog.Info("migrate: rewrote PKs", "collection", target.col, "count", len(toWrite))
+	}
+	return nil
+}
