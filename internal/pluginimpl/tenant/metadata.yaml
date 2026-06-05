@@ -1,0 +1,8 @@
+---
+name: 'Tenant'
+desc: 'Tenant registry — one document per organization'
+route_defaults:
+    primary: [id]
+    duplicate_policy: 'reject'
+    check_permissions: true
+audit: true
