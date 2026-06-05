@@ -343,7 +343,7 @@ func (d *Driver) Write(ctx context.Context, collection string, docs []dbpkg.Docu
 				}
 				out.Replaced = append(out.Replaced, rawUID)
 			default:
-				if err := mergeRow(ctx, tx, qt, rawUID, doc); err != nil {
+				if err := mergeRow(ctx, tx, qt, rawUID, doc, ""); err != nil {
 					return out, err
 				}
 				out.Updated = append(out.Updated, rawUID)
@@ -381,7 +381,7 @@ func (d *Driver) Write(ctx context.Context, collection string, docs []dbpkg.Docu
 				}
 				out.Replaced = append(out.Replaced, primaryUID)
 			default:
-				if err := mergeRow(ctx, tx, qt, primaryUID, doc); err != nil {
+				if err := mergeRow(ctx, tx, qt, primaryUID, doc, ""); err != nil {
 					return out, err
 				}
 				out.Updated = append(out.Updated, primaryUID)
@@ -576,17 +576,29 @@ func replaceRow(ctx context.Context, tx pgx.Tx, qt, uid string, doc dbpkg.Docume
 
 // mergeRow merges doc into the existing payload via the jsonb || operator.
 // Top-level keys in doc overwrite those in the existing row.
-func mergeRow(ctx context.Context, tx pgx.Tx, qt, uid string, doc dbpkg.Document) error {
+//
+// When fence is non-empty the ON CONFLICT DO UPDATE is gated on the existing
+// row's tenant_id matching fence: a uid owned by another tenant therefore makes
+// the conflict a no-op (Postgres does not raise when the DO UPDATE WHERE is
+// false), so another tenant's row is never merged into and the global uid PK is
+// never violated. A genuinely free uid still inserts the (tenant-stamped) doc.
+func mergeRow(ctx context.Context, tx pgx.Tx, qt, uid string, doc dbpkg.Document, fence string) error {
 	raw, err := json.Marshal(doc)
 	if err != nil {
 		return fmt.Errorf("postgres: marshal: %w", err)
 	}
+	args := []any{uid, raw}
+	where := ""
+	if fence != "" {
+		where = fmt.Sprintf(" WHERE %s.data->>'tenant_id' = $3", qt)
+		args = append(args, fence)
+	}
 	q := fmt.Sprintf(
 		"INSERT INTO %s (uid, data) VALUES ($1, $2::jsonb) "+
-			"ON CONFLICT (uid) DO UPDATE SET data = %s.data || EXCLUDED.data, updated_at = clock_timestamp()",
-		qt, qt,
+			"ON CONFLICT (uid) DO UPDATE SET data = %s.data || EXCLUDED.data, updated_at = clock_timestamp()%s",
+		qt, qt, where,
 	)
-	if _, err := tx.Exec(ctx, q, uid, raw); err != nil {
+	if _, err := tx.Exec(ctx, q, args...); err != nil {
 		return fmt.Errorf("postgres: merge: %w", err)
 	}
 	return nil
@@ -601,6 +613,14 @@ func (d *Driver) ReplaceOne(ctx context.Context, collection string, match dbpkg.
 	}
 	qt := quoteIdent(table)
 
+	// Tenant injection: resolve once. The find side fences by tenant via
+	// convert -> TenantScope, so we only need to stamp the stored doc here
+	// (mirrors Write). Fail closed before touching storage.
+	tenantID, injectTenant, tenantErr := dbpkg.TenantScope(ctx, collection)
+	if tenantErr != nil {
+		return 0, fmt.Errorf("postgres: replaceone: %w", tenantErr)
+	}
+
 	newDoc := cloneDoc(doc)
 	delete(newDoc, "_id")
 	for k, v := range match {
@@ -608,6 +628,9 @@ func (d *Driver) ReplaceOne(ctx context.Context, collection string, match dbpkg.
 	}
 	if updateTime {
 		newDoc["date_epoch"] = float64(time.Now().Unix())
+	}
+	if injectTenant {
+		newDoc["tenant_id"] = tenantID
 	}
 
 	cond := matchToCond(match)
@@ -667,6 +690,11 @@ func (d *Driver) UpdateOne(ctx context.Context, collection, uid string, patch db
 		return err
 	}
 	qt := quoteIdent(table)
+	// Tenant injection: resolve once. Fail closed before touching storage.
+	tenantID, injectTenant, tenantErr := dbpkg.TenantScope(ctx, collection)
+	if tenantErr != nil {
+		return fmt.Errorf("postgres: updateone: %w", tenantErr)
+	}
 	newDoc := cloneDoc(patch)
 	delete(newDoc, "_id")
 	if updateTime {
@@ -675,12 +703,23 @@ func (d *Driver) UpdateOne(ctx context.Context, collection, uid string, patch db
 	if _, ok := newDoc["uid"]; !ok {
 		newDoc["uid"] = uid
 	}
+	if injectTenant {
+		newDoc["tenant_id"] = tenantID
+	}
 	tx, err := d.pool.BeginTx(ctx, pgx.TxOptions{})
 	if err != nil {
 		return fmt.Errorf("postgres: begin updateOne: %w", err)
 	}
 	defer tx.Rollback(ctx) //nolint:errcheck
-	if err := mergeRow(ctx, tx, qt, uid, newDoc); err != nil {
+	// mergeRow upserts on the global uid PK. Under a tenant scope the ON CONFLICT
+	// DO UPDATE must be fenced so an existing row owned by ANOTHER tenant is never
+	// merged into (the conflict becomes a no-op); a genuinely free uid still
+	// inserts a tenant-stamped row.
+	fence := ""
+	if injectTenant {
+		fence = tenantID
+	}
+	if err := mergeRow(ctx, tx, qt, uid, newDoc, fence); err != nil {
 		return err
 	}
 	if err := notifyTx(ctx, tx, collection, "write", []string{uid}); err != nil {

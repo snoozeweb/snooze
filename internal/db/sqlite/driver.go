@@ -589,6 +589,13 @@ func (d *Driver) ReplaceOne(ctx context.Context, collection string, match dbpkg.
 	if err != nil {
 		return 0, err
 	}
+	// Tenant injection: resolve once. The find side fences by tenant via
+	// findOneInTx -> compileWith -> TenantScope, so we only need to stamp the
+	// stored doc here (mirrors Write). Fail closed before touching storage.
+	tenantID, injectTenant, tenantErr := dbpkg.TenantScope(ctx, collection)
+	if tenantErr != nil {
+		return 0, fmt.Errorf("sqlite: replaceone: %w", tenantErr)
+	}
 	newObj := cloneDoc(doc)
 	delete(newObj, "_id")
 	for k, v := range match {
@@ -596,6 +603,9 @@ func (d *Driver) ReplaceOne(ctx context.Context, collection string, match dbpkg.
 	}
 	if updateTime {
 		newObj["date_epoch"] = float64(time.Now().Unix())
+	}
+	if injectTenant {
+		newObj["tenant_id"] = tenantID
 	}
 	cond := searchDictToCondition(match)
 	tx, err := d.db.BeginTx(ctx, nil)
@@ -641,6 +651,13 @@ func (d *Driver) UpdateOne(ctx context.Context, collection, uid string, patch db
 	if err != nil {
 		return err
 	}
+	// Tenant injection: resolve once. The uid lookup fences by tenant via
+	// findOneInTx -> compileWith -> TenantScope, so we only need to stamp the
+	// stored doc here (mirrors Write). Fail closed before touching storage.
+	tenantID, injectTenant, tenantErr := dbpkg.TenantScope(ctx, collection)
+	if tenantErr != nil {
+		return fmt.Errorf("sqlite: updateone: %w", tenantErr)
+	}
 	merged := cloneDoc(patch)
 	delete(merged, "_id")
 	if updateTime {
@@ -648,6 +665,9 @@ func (d *Driver) UpdateOne(ctx context.Context, collection, uid string, patch db
 	}
 	if _, ok := merged["uid"].(string); !ok {
 		merged["uid"] = uid
+	}
+	if injectTenant {
+		merged["tenant_id"] = tenantID
 	}
 
 	tx, err := d.db.BeginTx(ctx, nil)
@@ -661,7 +681,16 @@ func (d *Driver) UpdateOne(ctx context.Context, collection, uid string, patch db
 		return err
 	}
 	if row == nil {
-		if err := d.insertRow(ctx, tx, tbl, uid, merged); err != nil {
+		// Upsert-insert. Under a tenant scope the scoped find above misses a uid
+		// owned by ANOTHER tenant (uid is the global PK), so a plain insert would
+		// either collide on the PK or — worse — must never overwrite that row.
+		// Insert only when the uid is genuinely free; a foreign-tenant uid
+		// conflict is a safe no-op (the other tenant's row is left untouched).
+		if injectTenant {
+			if err := d.insertRowIgnoreConflict(ctx, tx, tbl, uid, merged); err != nil {
+				return err
+			}
+		} else if err := d.insertRow(ctx, tx, tbl, uid, merged); err != nil {
 			return err
 		}
 	} else {
@@ -998,6 +1027,27 @@ func (d *Driver) insertRow(ctx context.Context, tx *sql.Tx, tbl, uid string, doc
 	stmt := fmt.Sprintf( //nolint:gosec
 		"INSERT INTO %s (uid, data, seq) VALUES (?, ?, "+
 			"COALESCE((SELECT MAX(seq) FROM %s), 0) + 1)",
+		quoteIdent(tbl), quoteIdent(tbl),
+	)
+	_, err = tx.ExecContext(ctx, stmt, uid, string(buf))
+	return err
+}
+
+// insertRowIgnoreConflict inserts a brand-new row but treats a uid PK conflict
+// as a no-op (ON CONFLICT DO NOTHING). Used by the tenant-scoped UpdateOne
+// upsert path: when a uid is already owned by another tenant the scoped find
+// misses it, and we must neither collide on the global uid PK nor clobber the
+// other tenant's row.
+func (d *Driver) insertRowIgnoreConflict(ctx context.Context, tx *sql.Tx, tbl, uid string, doc dbpkg.Document) error {
+	doc["uid"] = uid
+	buf, err := json.Marshal(doc)
+	if err != nil {
+		return err
+	}
+	stmt := fmt.Sprintf( //nolint:gosec
+		"INSERT INTO %s (uid, data, seq) VALUES (?, ?, "+
+			"COALESCE((SELECT MAX(seq) FROM %s), 0) + 1) "+
+			"ON CONFLICT(uid) DO NOTHING",
 		quoteIdent(tbl), quoteIdent(tbl),
 	)
 	_, err = tx.ExecContext(ctx, stmt, uid, string(buf))

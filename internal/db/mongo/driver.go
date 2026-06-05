@@ -424,6 +424,14 @@ func (d *Driver) Write(ctx context.Context, collection string, docs []dbpkg.Docu
 
 // ReplaceOne replaces a document. Returns the matched count.
 func (d *Driver) ReplaceOne(ctx context.Context, collection string, match dbpkg.Document, doc dbpkg.Document, updateTime bool) (int, error) {
+	// Tenant injection: resolve once. Fail closed before touching storage.
+	// Unlike the SQL backends, mongo's filter is built directly from match (it
+	// does not route through Convert), so we must fence BOTH the doc we write and
+	// the match filter by tenant_id here.
+	tenantID, injectTenant, tenantErr := dbpkg.TenantScope(ctx, collection)
+	if tenantErr != nil {
+		return 0, fmt.Errorf("mongo: replace_one: %w", tenantErr)
+	}
 	newDoc := cloneDoc(doc)
 	delete(newDoc, "_id")
 	for k, v := range match {
@@ -432,7 +440,12 @@ func (d *Driver) ReplaceOne(ctx context.Context, collection string, match dbpkg.
 	if updateTime {
 		newDoc["date_epoch"] = float64(time.Now().UTC().Unix())
 	}
-	res, err := d.coll(collection).ReplaceOne(ctx, bson.M(match), bson.M(newDoc), options.Replace().SetUpsert(true))
+	filter := bson.M(cloneDoc(match))
+	if injectTenant {
+		newDoc["tenant_id"] = tenantID
+		filter["tenant_id"] = tenantID
+	}
+	res, err := d.coll(collection).ReplaceOne(ctx, filter, bson.M(newDoc), options.Replace().SetUpsert(true))
 	if err != nil {
 		return 0, fmt.Errorf("mongo: replace_one: %w", err)
 	}
@@ -441,6 +454,15 @@ func (d *Driver) ReplaceOne(ctx context.Context, collection string, match dbpkg.
 
 // UpdateOne upserts a partial patch by uid.
 func (d *Driver) UpdateOne(ctx context.Context, collection, uid string, patch dbpkg.Document, updateTime bool) error {
+	// Tenant injection: resolve once. Fail closed before touching storage.
+	// mongo's filter is built directly (not via Convert), so we must fence BOTH
+	// the match filter and the inserted identity by tenant_id here. A uid owned
+	// by another tenant therefore misses this tenant's filter and the upsert
+	// creates a fresh tenant-scoped row instead of clobbering theirs.
+	tenantID, injectTenant, tenantErr := dbpkg.TenantScope(ctx, collection)
+	if tenantErr != nil {
+		return fmt.Errorf("mongo: update_one: %w", tenantErr)
+	}
 	newDoc := cloneDoc(patch)
 	delete(newDoc, "_id")
 	// uid is the immutable identity: it's the match filter and is set via
@@ -449,16 +471,25 @@ func (d *Driver) UpdateOne(ctx context.Context, collection, uid string, patch db
 	// includes uid in the patch (e.g. the CRUD layer stamps it for Validate /
 	// WriteTransformer). A patch never changes identity, so drop it from $set.
 	delete(newDoc, "uid")
+	// tenant_id is fenced via the filter and stamped via $setOnInsert; keep it
+	// out of $set for the same reason as uid (it is immutable identity).
+	delete(newDoc, "tenant_id")
 	if updateTime {
 		newDoc["date_epoch"] = float64(time.Now().UTC().Unix())
 	}
-	update := bson.M{"$setOnInsert": bson.M{"uid": uid}}
+	filter := bson.M{"uid": uid}
+	setOnInsert := bson.M{"uid": uid}
+	if injectTenant {
+		filter["tenant_id"] = tenantID
+		setOnInsert["tenant_id"] = tenantID
+	}
+	update := bson.M{"$setOnInsert": setOnInsert}
 	// Guard against an empty $set (e.g. a uid-only patch with updateTime=false),
 	// which Mongo also rejects.
 	if len(newDoc) > 0 {
 		update["$set"] = bson.M(newDoc)
 	}
-	if _, err := d.coll(collection).UpdateOne(ctx, bson.M{"uid": uid}, update, options.UpdateOne().SetUpsert(true)); err != nil {
+	if _, err := d.coll(collection).UpdateOne(ctx, filter, update, options.UpdateOne().SetUpsert(true)); err != nil {
 		return fmt.Errorf("mongo: update_one: %w", err)
 	}
 	return nil

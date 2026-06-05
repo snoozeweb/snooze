@@ -760,6 +760,10 @@ func RunTenantIsolationSuite(t *testing.T, name string, factory Factory) {
 		{"PlatformScopeSeesAll", testPlatformScopeSeesAll},
 		{"NakedContextErrors", testNakedContextErrors},
 		{"GlobalCollectionNoInjection", testGlobalCollectionNoInjection},
+		{"ReplaceOneTenantFenced", testReplaceOneTenantFenced},
+		{"ReplaceOnePreservesTenant", testReplaceOnePreservesTenant},
+		{"UpdateOneTenantFenced", testUpdateOneTenantFenced},
+		{"ReplaceUpdateNakedContextErrors", testReplaceUpdateNakedContextErrors},
 	}
 	for _, c := range cases {
 		t.Run(name+"/"+c.name, func(t *testing.T) {
@@ -828,6 +832,118 @@ func testGlobalCollectionNoInjection(t *testing.T, drv db.Driver) {
 	docs, _, err := drv.Search(naked, "tenant", condition.Cond{}, db.Page{})
 	require.NoError(t, err, "global collection search must succeed on naked ctx")
 	require.NotEmpty(t, docs)
+}
+
+// testReplaceOneTenantFenced proves that a ReplaceOne issued under tenant B with
+// the same match used by tenant A neither modifies A's document nor leaks across
+// the tenant boundary: A keeps its original row, and B gets its own scoped row.
+func testReplaceOneTenantFenced(t *testing.T, drv db.Driver) {
+	ctxA := snoozetypes.WithTenant(context.Background(), "alpha")
+	ctxB := snoozetypes.WithTenant(context.Background(), "beta")
+
+	// Tenant A writes a doc keyed by name.
+	opts := db.WriteOptions{Primary: []string{"name"}, UpdateTime: false}
+	resA, err := drv.Write(ctxA, "rule", []db.Document{{"name": "shared", "val": "a"}}, opts)
+	require.NoError(t, err)
+	require.Len(t, resA.Added, 1)
+
+	// Tenant B ReplaceOne with the SAME match. B's scoped find must MISS A's
+	// row, so this becomes a B-scoped upsert-insert; A's row is untouched.
+	matched, err := drv.ReplaceOne(ctxB, "rule", db.Document{"name": "shared"}, db.Document{"name": "shared", "val": "b"}, false)
+	require.NoError(t, err)
+	require.Equal(t, 0, matched, "ReplaceOne under beta must not match alpha's row")
+
+	// A still sees its original, unmodified value.
+	docsA, _, err := drv.Search(ctxA, "rule", condition.Equals("name", "shared"), db.Page{})
+	require.NoError(t, err)
+	require.Len(t, docsA, 1, "alpha must still see exactly its own row")
+	require.Equal(t, "a", docsA[0]["val"], "alpha's value must be untouched")
+	require.Equal(t, "alpha", docsA[0]["tenant_id"])
+
+	// B sees its own freshly-created row.
+	docsB, _, err := drv.Search(ctxB, "rule", condition.Equals("name", "shared"), db.Page{})
+	require.NoError(t, err)
+	require.Len(t, docsB, 1, "beta must see its own row")
+	require.Equal(t, "b", docsB[0]["val"])
+	require.Equal(t, "beta", docsB[0]["tenant_id"])
+}
+
+// testReplaceOnePreservesTenant proves that replacing A's row under tenant A
+// keeps it visible to A — the stored tenant_id must not be dropped by the
+// replace (a full-document overwrite).
+func testReplaceOnePreservesTenant(t *testing.T, drv db.Driver) {
+	ctxA := snoozetypes.WithTenant(context.Background(), "alpha")
+
+	opts := db.WriteOptions{Primary: []string{"name"}, UpdateTime: false}
+	resA, err := drv.Write(ctxA, "rule", []db.Document{{"name": "keep", "val": "old"}}, opts)
+	require.NoError(t, err)
+	require.Len(t, resA.Added, 1)
+	uid := resA.Added[0]
+
+	// Replace by uid under tenant A. The replacement doc carries no tenant_id;
+	// the driver must stamp it so the row stays visible to A.
+	matched, err := drv.ReplaceOne(ctxA, "rule", db.Document{"uid": uid}, db.Document{"name": "keep", "val": "new"}, false)
+	require.NoError(t, err)
+	require.Equal(t, 1, matched)
+
+	docsA, _, err := drv.Search(ctxA, "rule", condition.Equals("name", "keep"), db.Page{})
+	require.NoError(t, err)
+	require.Len(t, docsA, 1, "replaced row must remain visible to alpha")
+	require.Equal(t, "new", docsA[0]["val"])
+	require.Equal(t, "alpha", docsA[0]["tenant_id"], "tenant_id must survive the replace")
+}
+
+// testUpdateOneTenantFenced proves that UpdateOne by a uid belonging to tenant A,
+// executed under tenant B, does NOT modify A's document. B's scoped find misses
+// A's uid, so the call upserts a B-scoped row (or no-ops); A's row is unchanged.
+func testUpdateOneTenantFenced(t *testing.T, drv db.Driver) {
+	ctxA := snoozetypes.WithTenant(context.Background(), "alpha")
+	ctxB := snoozetypes.WithTenant(context.Background(), "beta")
+
+	opts := db.WriteOptions{Primary: []string{"name"}, UpdateTime: false}
+	resA, err := drv.Write(ctxA, "rule", []db.Document{{"name": "owned", "val": "a"}}, opts)
+	require.NoError(t, err)
+	require.Len(t, resA.Added, 1)
+	uidA := resA.Added[0]
+
+	// Tenant B updates A's uid. Must not touch A's row.
+	err = drv.UpdateOne(ctxB, "rule", uidA, db.Document{"val": "hijacked"}, false)
+	require.NoError(t, err)
+
+	// A's row is unchanged and still belongs to alpha.
+	docsA, _, err := drv.Search(ctxA, "rule", condition.Equals("name", "owned"), db.Page{})
+	require.NoError(t, err)
+	require.Len(t, docsA, 1, "alpha must still see its row")
+	require.Equal(t, "a", docsA[0]["val"], "alpha's value must be untouched by beta's UpdateOne")
+	require.Equal(t, "alpha", docsA[0]["tenant_id"])
+
+	// Whatever B created (if anything) must not be the hijacked alpha row: A
+	// owns exactly one row with val=="a".
+	plat := snoozetypes.WithPlatformScope(context.Background())
+	all, _, err := drv.Search(plat, "rule", condition.Equals("name", "owned"), db.Page{})
+	require.NoError(t, err)
+	for _, d := range all {
+		if d["tenant_id"] == "alpha" {
+			require.Equal(t, "a", d["val"], "alpha's row must never carry beta's patch")
+		}
+	}
+}
+
+// testReplaceUpdateNakedContextErrors proves that ReplaceOne and UpdateOne on a
+// scoped collection fail closed (ErrNoTenant) when the context carries no tenant
+// and no platform scope.
+func testReplaceUpdateNakedContextErrors(t *testing.T, drv db.Driver) {
+	naked := context.Background()
+
+	_, err := drv.ReplaceOne(naked, "record", db.Document{"uid": "x"}, db.Document{"a": "1"}, false)
+	require.Error(t, err)
+	require.True(t, errors.Is(err, snoozetypes.ErrNoTenant),
+		"ReplaceOne on naked ctx: error must wrap ErrNoTenant, got: %v", err)
+
+	err = drv.UpdateOne(naked, "record", "x", db.Document{"a": "1"}, false)
+	require.Error(t, err)
+	require.True(t, errors.Is(err, snoozetypes.ErrNoTenant),
+		"UpdateOne on naked ctx: error must wrap ErrNoTenant, got: %v", err)
 }
 
 func mustWriteCtx(ctx context.Context, t *testing.T, drv db.Driver, collection string, docs ...db.Document) db.WriteResult {

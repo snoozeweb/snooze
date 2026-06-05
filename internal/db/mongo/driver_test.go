@@ -35,6 +35,25 @@ func TestDriverSuite(t *testing.T) {
 	})
 }
 
+// TestTenantIsolationSuite runs the shared cross-tenant isolation + fail-closed
+// suite against a real mongo backend. Same one-container / drop-between-cases
+// pattern as TestDriverSuite.
+func TestTenantIsolationSuite(t *testing.T) {
+	if testing.Short() {
+		t.Skip("integration: skipping under -short")
+	}
+	drv, cleanup := startMongo(t)
+	defer cleanup()
+	dbtest.RunTenantIsolationSuite(t, "mongo", func(t *testing.T) (dbpkg.Driver, func()) {
+		cols, err := drv.ListCollections(context.Background())
+		require.NoError(t, err)
+		for _, c := range cols {
+			require.NoError(t, drv.Drop(context.Background(), c))
+		}
+		return drv, func() {}
+	})
+}
+
 // startMongo spins up a single-node replica-set MongoDB via testcontainers and
 // returns a connected Driver plus a cleanup function. Change-stream support
 // (used by Watcher) requires the replica-set flag, so we always enable it.

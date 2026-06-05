@@ -31,6 +31,21 @@ func TestDriverSuite(t *testing.T) {
 	})
 }
 
+// TestTenantIsolationSuite runs the shared cross-tenant isolation + fail-closed
+// suite against a real postgres backend. Same one-container / drop-between-cases
+// pattern as TestDriverSuite.
+func TestTenantIsolationSuite(t *testing.T) {
+	drv := newTestDriver(t) // skips under -short
+	dbtest.RunTenantIsolationSuite(t, "postgres", func(t *testing.T) (dbpkg.Driver, func()) {
+		cols, err := drv.ListCollections(context.Background())
+		require.NoError(t, err)
+		for _, c := range cols {
+			require.NoError(t, drv.Drop(context.Background(), c))
+		}
+		return drv, func() {}
+	})
+}
+
 // newTestDriver spins up a postgres container and returns a connected
 // Driver. The container is cleaned up via t.Cleanup. Tests that hit this
 // helper must run with `go test` (no -short).
