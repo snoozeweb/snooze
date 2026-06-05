@@ -62,6 +62,7 @@ type ErrBody struct {
 type Claims struct {
 	Subject     string   `json:"sub"`
 	Method      string   `json:"method"`
+	TenantID    string   `json:"tenant_id,omitempty"` // tenant slug (D3); empty on legacy tokens
 	Roles       []string `json:"roles,omitempty"`
 	Permissions []string `json:"permissions,omitempty"`
 	Groups      []string `json:"groups,omitempty"`

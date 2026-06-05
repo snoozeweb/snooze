@@ -198,6 +198,48 @@ func TestTokenEngine_RootClaims(t *testing.T) {
 	require.Contains(t, got.Permissions, "rw_all")
 }
 
+func TestTokenEngine_TenantID_RoundTrip(t *testing.T) {
+	t.Parallel()
+	eng, err := NewTokenEngine(testSecret(), testCfg())
+	require.NoError(t, err)
+
+	in := snoozetypes.Claims{
+		Subject:  "alice",
+		Method:   "local",
+		TenantID: "acme",
+	}
+	tok, _, err := eng.Sign(in)
+	require.NoError(t, err)
+
+	out, err := eng.Verify(tok)
+	require.NoError(t, err)
+	require.Equal(t, "acme", out.TenantID, "TenantID must survive Sign/Verify round-trip")
+}
+
+func TestTokenEngine_TenantID_EmptyOnLegacyToken(t *testing.T) {
+	t.Parallel()
+	eng, err := NewTokenEngine(testSecret(), testCfg())
+	require.NoError(t, err)
+
+	// Mint a token that has no tenant_id field (simulates a legacy token).
+	claims := jwt.MapClaims{
+		"sub":    "bob",
+		"method": "local",
+		"iss":    "snooze",
+		"aud":    jwt.ClaimStrings{"snooze"},
+		"exp":    time.Now().Add(time.Hour).Unix(),
+		"nbf":    time.Now().Unix(),
+		"iat":    time.Now().Unix(),
+	}
+	tok := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
+	signed, err := tok.SignedString(testSecret())
+	require.NoError(t, err)
+
+	out, err := eng.Verify(signed)
+	require.NoError(t, err)
+	require.Empty(t, out.TenantID, "legacy token with no tenant_id must decode to empty string")
+}
+
 func TestTokenEngine_Verify_MultiAudienceMatches(t *testing.T) {
 	t.Parallel()
 	cfg := testCfg()

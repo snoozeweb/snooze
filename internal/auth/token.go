@@ -90,6 +90,7 @@ func (e *TokenEngine) Lease() time.Duration { return e.lease }
 // snoozetypes.Claims at the engine boundary.
 type jwtClaims struct {
 	Method      string   `json:"method"`
+	TenantID    string   `json:"tenant_id,omitempty"`
 	Roles       []string `json:"roles,omitempty"`
 	Permissions []string `json:"permissions,omitempty"`
 	Groups      []string `json:"groups,omitempty"`
@@ -111,6 +112,7 @@ func (e *TokenEngine) Sign(c snoozetypes.Claims) (string, time.Time, error) {
 
 	claims := jwtClaims{
 		Method:      c.Method,
+		TenantID:    c.TenantID,
 		Roles:       c.Roles,
 		Permissions: c.Permissions,
 		Groups:      c.Groups,
@@ -169,6 +171,7 @@ func (e *TokenEngine) Verify(token string) (snoozetypes.Claims, error) {
 	out := snoozetypes.Claims{
 		Subject:     c.Subject,
 		Method:      c.Method,
+		TenantID:    c.TenantID,
 		Roles:       c.Roles,
 		Permissions: c.Permissions,
 		Groups:      c.Groups,
