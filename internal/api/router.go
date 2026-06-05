@@ -103,6 +103,9 @@ func (rt *Router) Build() chi.Router {
 	rt.mountMetrics(r)
 	rt.mountLogin(r)
 
+	// --- platform-gated tenant registry -----------------------------------
+	rt.mountTenant(r)
+
 	// --- versioned endpoints -----------------------------------------------
 	rt.mountAlerts(r)
 	rt.mountSchema(r)
