@@ -35,6 +35,7 @@ import (
 	"github.com/snoozeweb/snooze/internal/db/mongo"
 	"github.com/snoozeweb/snooze/internal/db/postgres"
 	"github.com/snoozeweb/snooze/internal/db/sqlite"
+	"github.com/snoozeweb/snooze/internal/syncer"
 	"github.com/snoozeweb/snooze/internal/telemetry"
 	"github.com/snoozeweb/snooze/internal/version"
 
@@ -280,6 +281,7 @@ func runDaemonCtx(ctx context.Context, f *daemonFlags, stderr io.Writer) error {
 	providers := buildAuthProviders(cfg, drv, c.Settings)
 
 	adapter := &coreAdapter{Core: c}
+	ingestResolver := middleware.NewTenantResolver()
 	rt := &api.Router{
 		Auth:            c.Tokens,
 		Refresh:         c.Refresh,
@@ -296,6 +298,8 @@ func runDaemonCtx(ctx context.Context, f *daemonFlags, stderr io.Writer) error {
 		Processor:       adapter,
 		CORSConfig:      corsFromConfig(cfg.Core.CORS),
 		WebFS:           openWebFS(f.webDir, loggers.API),
+		TenantResolver:  ingestResolver,
+		TenantChecker:   middleware.NewDbTenantStatusChecker(drv),
 	}
 	handler := rt.Build()
 
@@ -303,6 +307,33 @@ func runDaemonCtx(ctx context.Context, f *daemonFlags, stderr io.Writer) error {
 	httpSrv := api.NewServer(httpCfg, handler, loggers.API)
 
 	g, gctx := errgroup.WithContext(ctx)
+
+	// Per-tenant ingest token resolution: load the token→tenant table at
+	// startup and live-reload it on any change to the global `tenant`
+	// collection (org create/delete, token rotation). A nil change-feed
+	// (driver without a watcher) degrades to a one-time load at startup.
+	g.Go(func() error {
+		var sub <-chan struct{}
+		if bus := drv.Watcher(); bus != nil {
+			evs, err := bus.Subscribe(gctx, syncer.CollectionTopic(auth.TenantCollection, ""))
+			if err != nil {
+				loggers.API.Warn("ingest: subscribe to tenant changes failed; ingest tokens load once at startup", slog.Any("err", err))
+			} else {
+				s := make(chan struct{}, 1)
+				go func() {
+					for range evs {
+						select {
+						case s <- struct{}{}:
+						default:
+						}
+					}
+				}()
+				sub = s
+			}
+		}
+		api.StartIngestTokenReloader(gctx, drv, ingestResolver, sub, loggers.API)
+		return nil
+	})
 
 	// Public HTTP listener.
 	if !f.skipHTTP {
