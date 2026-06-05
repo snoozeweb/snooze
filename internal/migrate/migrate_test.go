@@ -220,3 +220,61 @@ func TestEnsurePlatformAdminRole_Idempotent(t *testing.T) {
 	}
 	require.Equal(t, 1, count, "must not duplicate platform_admin role")
 }
+
+func TestGrantRootPlatformAdmin_AddsRole(t *testing.T) {
+	t.Parallel()
+	drv := newFakeDriver()
+	// Seed a root user that already has a "roles" list.
+	drv.seed("user", db.Document{
+		"name":      auth.RootUsername,
+		"method":    auth.LocalMethod,
+		"tenant_id": snoozetypes.DefaultTenant,
+		"roles":     []any{"admin"},
+	})
+
+	pctx := auth.WithPlatformScope(context.Background())
+	require.NoError(t, grantRootPlatformAdmin(pctx, drv))
+
+	users := drv.docs("user")
+	require.Len(t, users, 1)
+	roles, _ := users[0]["roles"].([]any)
+	roleSet := make(map[string]struct{}, len(roles))
+	for _, r := range roles {
+		roleSet[r.(string)] = struct{}{}
+	}
+	require.Contains(t, roleSet, auth.PlatformAdminRole,
+		"root user must have platform_admin role")
+	require.Contains(t, roleSet, "admin", "root user must keep existing roles")
+}
+
+func TestGrantRootPlatformAdmin_Idempotent(t *testing.T) {
+	t.Parallel()
+	drv := newFakeDriver()
+	drv.seed("user", db.Document{
+		"name":      auth.RootUsername,
+		"method":    auth.LocalMethod,
+		"tenant_id": snoozetypes.DefaultTenant,
+		"roles":     []any{"admin", auth.PlatformAdminRole},
+	})
+
+	pctx := auth.WithPlatformScope(context.Background())
+	require.NoError(t, grantRootPlatformAdmin(pctx, drv))
+
+	users := drv.docs("user")
+	roles, _ := users[0]["roles"].([]any)
+	count := 0
+	for _, r := range roles {
+		if r.(string) == auth.PlatformAdminRole {
+			count++
+		}
+	}
+	require.Equal(t, 1, count, "platform_admin must appear exactly once")
+}
+
+func TestGrantRootPlatformAdmin_NoRootUser_NoError(t *testing.T) {
+	t.Parallel()
+	drv := newFakeDriver()
+	pctx := auth.WithPlatformScope(context.Background())
+	// No root user seeded: must not error (pre-boot environments).
+	require.NoError(t, grantRootPlatformAdmin(pctx, drv))
+}

@@ -261,3 +261,54 @@ func ensurePlatformAdminRole(ctx context.Context, drv db.Driver) error {
 	slog.Info("migrate: platform_admin role ensured")
 	return nil
 }
+
+// grantRootPlatformAdmin adds the platform_admin role to the root user in the
+// default tenant if the user exists and does not already hold the role.
+// A missing root user is not an error (e.g. a clean-slate migration before
+// first boot). ctx must carry WithPlatformScope.
+func grantRootPlatformAdmin(ctx context.Context, drv db.Driver) error {
+	root, err := drv.GetOne(ctx, "user", db.Document{
+		"name":      auth.RootUsername,
+		"method":    auth.LocalMethod,
+		"tenant_id": snoozetypes.DefaultTenant,
+	})
+	if err != nil {
+		// Not found is not fatal; log and skip.
+		slog.Info("migrate: root user not found, skipping platform_admin grant")
+		return nil
+	}
+
+	// Build deduplicated roles list.
+	existingRoles, _ := root["roles"].([]any)
+	roleSet := make(map[string]struct{}, len(existingRoles)+1)
+	for _, r := range existingRoles {
+		if s, ok := r.(string); ok {
+			roleSet[s] = struct{}{}
+		}
+	}
+	if _, already := roleSet[auth.PlatformAdminRole]; already {
+		slog.Info("migrate: root already has platform_admin, nothing to do")
+		return nil
+	}
+	roleSet[auth.PlatformAdminRole] = struct{}{}
+
+	newRoles := make([]any, 0, len(roleSet))
+	for r := range roleSet {
+		newRoles = append(newRoles, r)
+	}
+
+	cp := make(db.Document, len(root))
+	for k, v := range root {
+		cp[k] = v
+	}
+	cp["roles"] = newRoles
+
+	if _, err := drv.Write(ctx, "user", []db.Document{cp}, db.WriteOptions{
+		Primary:    []string{"tenant_id", "name", "method"},
+		UpdateTime: false,
+	}); err != nil {
+		return fmt.Errorf("migrate: grant platform_admin: %w", err)
+	}
+	slog.Info("migrate: granted platform_admin to root")
+	return nil
+}
