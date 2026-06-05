@@ -15,6 +15,7 @@ package migrate
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 
@@ -310,5 +311,63 @@ func grantRootPlatformAdmin(ctx context.Context, drv db.Driver) error {
 		return fmt.Errorf("migrate: grant platform_admin: %w", err)
 	}
 	slog.Info("migrate: granted platform_admin to root")
+	return nil
+}
+
+// RunMultitenancyMigration is the public entry point. It runs the full
+// one-shot migration under platform scope and writes the completion sentinel.
+// Safe to call multiple times; subsequent calls return immediately when the
+// sentinel is already present.
+//
+// Steps:
+//  1. Check sentinel — return if already done.
+//  2. Ensure the "default" tenant doc in the tenant registry.
+//  3. Ensure the platform_admin role.
+//  4. Backfill tenant_id = "default" on all tenant-scoped collections.
+//  5. Rewrite user and role PKs to include tenant_id.
+//  6. Grant root the platform_admin role.
+//  7. Write the completion sentinel.
+func RunMultitenancyMigration(ctx context.Context, drv db.Driver) error {
+	if drv == nil {
+		return errors.New("migrate: nil db driver")
+	}
+	// All operations run under platform scope so the driver's
+	// fail-closed tenant guard is bypassed (pre-migration docs have no
+	// tenant_id yet).
+	pctx := auth.WithPlatformScope(ctx)
+
+	done, err := isAlreadyMigrated(pctx, drv)
+	if err != nil {
+		return err
+	}
+	if done {
+		slog.Info("migrate: multitenancy migration already complete, skipping")
+		return nil
+	}
+
+	slog.Info("migrate: starting multitenancy migration")
+
+	if err := ensureDefaultTenant(pctx, drv); err != nil {
+		return err
+	}
+	if err := ensurePlatformAdminRole(pctx, drv); err != nil {
+		return err
+	}
+	n, err := backfillTenantID(pctx, drv, snoozetypes.DefaultTenant)
+	if err != nil {
+		return err
+	}
+	slog.Info("migrate: backfill complete", "total_docs_stamped", n)
+
+	if err := rewriteUserRolePKs(pctx, drv, snoozetypes.DefaultTenant); err != nil {
+		return err
+	}
+	if err := grantRootPlatformAdmin(pctx, drv); err != nil {
+		return err
+	}
+	if err := writeSentinel(pctx, drv); err != nil {
+		return err
+	}
+	slog.Info("migrate: multitenancy migration complete")
 	return nil
 }

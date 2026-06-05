@@ -278,3 +278,63 @@ func TestGrantRootPlatformAdmin_NoRootUser_NoError(t *testing.T) {
 	// No root user seeded: must not error (pre-boot environments).
 	require.NoError(t, grantRootPlatformAdmin(pctx, drv))
 }
+
+func TestRunMultitenancyMigration_FullRun(t *testing.T) {
+	t.Parallel()
+	drv := newFakeDriver()
+	drv.seed("record", db.Document{"host": "h1"}, db.Document{"host": "h2"})
+	drv.seed("rule", db.Document{"name": "r1"})
+	drv.seed("user", db.Document{
+		"name": auth.RootUsername, "method": auth.LocalMethod,
+		"roles": []any{"admin"},
+	})
+	drv.seed("role", db.Document{"name": "admin", "permissions": []any{"rw_all"}})
+
+	require.NoError(t, RunMultitenancyMigration(context.Background(), drv))
+
+	// Sentinel must be set.
+	pctx := auth.WithPlatformScope(context.Background())
+	done, err := isAlreadyMigrated(pctx, drv)
+	require.NoError(t, err)
+	require.True(t, done)
+
+	// Default tenant doc must exist.
+	tenantDocs := drv.docs("tenant")
+	require.Len(t, tenantDocs, 1)
+
+	// Records must have tenant_id.
+	for _, doc := range drv.docs("record") {
+		require.Equal(t, snoozetypes.DefaultTenant, doc["tenant_id"])
+	}
+
+	// Root must have platform_admin.
+	userDocs := drv.docs("user")
+	require.Len(t, userDocs, 1)
+	roles, _ := userDocs[0]["roles"].([]any)
+	roleSet := make(map[string]struct{})
+	for _, r := range roles {
+		roleSet[r.(string)] = struct{}{}
+	}
+	require.Contains(t, roleSet, auth.PlatformAdminRole)
+}
+
+func TestRunMultitenancyMigration_Idempotent(t *testing.T) {
+	t.Parallel()
+	drv := newFakeDriver()
+	drv.seed("record", db.Document{"host": "h1"})
+	drv.seed("user", db.Document{
+		"name": auth.RootUsername, "method": auth.LocalMethod,
+		"tenant_id": snoozetypes.DefaultTenant,
+		"roles":     []any{"admin", auth.PlatformAdminRole},
+	})
+
+	require.NoError(t, RunMultitenancyMigration(context.Background(), drv))
+	require.NoError(t, RunMultitenancyMigration(context.Background(), drv))
+
+	pctx := auth.WithPlatformScope(context.Background())
+	done, _ := isAlreadyMigrated(pctx, drv)
+	require.True(t, done)
+
+	tenantDocs := drv.docs("tenant")
+	require.Len(t, tenantDocs, 1, "second run must not duplicate tenant doc")
+}
