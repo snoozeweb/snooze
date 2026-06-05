@@ -18,6 +18,7 @@ import (
 type loginRequest struct {
 	Username string `json:"username"`
 	Password string `json:"password"`
+	Org      string `json:"org,omitempty"` // optional tenant slug (D10); omitted => DefaultTenant
 }
 
 // refreshRequest is the JSON body accepted by /login/refresh and /login/logout.
@@ -133,7 +134,12 @@ func (rt *Router) handleLogin(method string) http.HandlerFunc {
 			WriteError(w, r, ErrNotFound.WithMessage("unknown auth backend").WithCause(err))
 			return
 		}
-		id, err := provider.Authenticate(r.Context(), auth.Credentials{
+		org := body.Org
+		if org == "" {
+			org = snoozetypes.DefaultTenant
+		}
+		authCtx := auth.WithTenant(r.Context(), org)
+		id, err := provider.Authenticate(authCtx, auth.Credentials{
 			Username: body.Username,
 			Password: body.Password,
 		})
@@ -149,12 +155,16 @@ func (rt *Router) handleLogin(method string) http.HandlerFunc {
 			WriteError(w, r, ErrUnauthorized.WithMessage("invalid credentials"))
 			return
 		}
-		resp, err := rt.signSession(r.Context(), id)
+		// Ensure TenantID propagates even when provider doesn't set it.
+		if id.TenantID == "" {
+			id.TenantID = org
+		}
+		resp, err := rt.signSession(authCtx, id)
 		if err != nil {
 			WriteError(w, r, ErrInternal.WithCause(err))
 			return
 		}
-		rt.updateLastLogin(r.Context(), id)
+		rt.updateLastLogin(authCtx, id)
 		WriteJSON(w, http.StatusOK, resp)
 	}
 }
@@ -194,12 +204,21 @@ func (rt *Router) handleLoginAnonymous(w http.ResponseWriter, r *http.Request) {
 		WriteError(w, r, ErrUnavailable.WithMessage("auth not configured"))
 		return
 	}
+	// Anonymous login may carry an optional "org" field (D10).
+	var body loginRequest
+	_ = ParseJSONBody(r, &body) // best-effort; empty body is valid
+	org := body.Org
+	if org == "" {
+		org = snoozetypes.DefaultTenant
+	}
+	authCtx := auth.WithTenant(r.Context(), org)
+
 	provider, err := rt.Providers.Get("anonymous")
 	if err != nil {
 		WriteError(w, r, ErrNotFound.WithMessage("anonymous backend disabled").WithCause(err))
 		return
 	}
-	id, err := provider.Authenticate(r.Context(), auth.Credentials{})
+	id, err := provider.Authenticate(authCtx, auth.Credentials{})
 	if err != nil {
 		if errors.Is(err, auth.ErrProviderDisabled) {
 			WriteError(w, r, ErrConflict.WithMessage("backend disabled"))
@@ -208,7 +227,10 @@ func (rt *Router) handleLoginAnonymous(w http.ResponseWriter, r *http.Request) {
 		WriteError(w, r, ErrUnauthorized.WithMessage("anonymous login refused").WithCause(err))
 		return
 	}
-	resp, err := rt.signSession(r.Context(), id)
+	if id.TenantID == "" {
+		id.TenantID = org
+	}
+	resp, err := rt.signSession(authCtx, id)
 	if err != nil {
 		WriteError(w, r, ErrInternal.WithCause(err))
 		return
@@ -287,10 +309,15 @@ func (rt *Router) handleLogout(w http.ResponseWriter, r *http.Request) {
 // client on a successful login. The refresh token is omitted when no store
 // is wired (tests, single-binary deployments without DB-backed sessions).
 func (rt *Router) signSession(ctx context.Context, id auth.Identity) (loginResponse, error) {
+	tenantID := id.TenantID
+	if tenantID == "" {
+		tenantID = snoozetypes.DefaultTenant
+	}
 	claims := snoozetypes.Claims{
-		Subject: id.Username,
-		Method:  id.Method,
-		Groups:  id.Groups,
+		Subject:  id.Username,
+		Method:   id.Method,
+		TenantID: tenantID,
+		Groups:   id.Groups,
 	}
 	rt.resolveRoles(ctx, &claims)
 	// Per-deploy override: anonymous_admin grants every anonymous login the

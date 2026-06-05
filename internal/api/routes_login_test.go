@@ -364,3 +364,78 @@ func TestLogout_EmptyBodyStillSucceeds(t *testing.T) {
 	require.Empty(t, rt.Refresh.(*fakeRefresh).revoked,
 		"empty body must be a no-op, not a revoke of \"\"")
 }
+
+func TestLogin_OrgFieldSetsTenantID(t *testing.T) {
+	t.Parallel()
+	r, rt := loginTestRouter(t, &fakeProvider{
+		name:     "local",
+		wantUser: "alice",
+		wantPass: "secret",
+		enabled:  true,
+		identity: auth.Identity{Username: "alice", Method: "local"},
+	})
+
+	body := bytes.NewBufferString(`{"username":"alice","password":"secret","org":"acme"}`)
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/login/local", body)
+	req.Header.Set("Content-Type", "application/json")
+	r.ServeHTTP(rec, req)
+
+	require.Equal(t, http.StatusOK, rec.Code)
+	var resp loginResponse
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &resp))
+	require.NotEmpty(t, resp.Token)
+
+	// The access token must carry tenant_id = "acme".
+	claims, err := rt.Auth.Verify(resp.Token)
+	require.NoError(t, err)
+	require.Equal(t, "acme", claims.TenantID, "token must carry the org slug")
+}
+
+func TestLogin_OrgFieldOmittedDefaultsToDefaultTenant(t *testing.T) {
+	t.Parallel()
+	r, rt := loginTestRouter(t, &fakeProvider{
+		name:     "local",
+		wantUser: "alice",
+		wantPass: "secret",
+		enabled:  true,
+		identity: auth.Identity{Username: "alice", Method: "local"},
+	})
+
+	body := bytes.NewBufferString(`{"username":"alice","password":"secret"}`)
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/login/local", body)
+	req.Header.Set("Content-Type", "application/json")
+	r.ServeHTTP(rec, req)
+
+	require.Equal(t, http.StatusOK, rec.Code)
+	var resp loginResponse
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &resp))
+
+	claims, err := rt.Auth.Verify(resp.Token)
+	require.NoError(t, err)
+	require.Equal(t, snoozetypes.DefaultTenant, claims.TenantID, "omitted org must default to DefaultTenant")
+}
+
+func TestLoginAnonymous_OrgFieldSetsTenantID(t *testing.T) {
+	t.Parallel()
+	r, rt := loginTestRouter(t, &fakeProvider{
+		name:     "anonymous",
+		enabled:  true,
+		identity: auth.Identity{Username: "anonymous", Method: "anonymous"},
+	})
+
+	body := bytes.NewBufferString(`{"org":"customers"}`)
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/login/anonymous", body)
+	req.Header.Set("Content-Type", "application/json")
+	r.ServeHTTP(rec, req)
+
+	require.Equal(t, http.StatusOK, rec.Code)
+	var resp loginResponse
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &resp))
+
+	claims, err := rt.Auth.Verify(resp.Token)
+	require.NoError(t, err)
+	require.Equal(t, "customers", claims.TenantID)
+}
