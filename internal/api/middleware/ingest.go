@@ -1,14 +1,25 @@
+// internal/api/middleware/ingest.go
 package middleware
 
 import (
 	"context"
 	"crypto/subtle"
+	"encoding/json"
 	"net/http"
 	"strings"
 
 	"github.com/snoozeweb/snooze/internal/auth"
 	"github.com/snoozeweb/snooze/pkg/snoozetypes"
 )
+
+// TenantStatusChecker is the narrow interface the IngestTenant middleware uses
+// to check whether a resolved tenant is active or suspended. The concrete
+// implementation reads from the tenant collection via db.Driver under platform
+// scope. Nil disables the check (tests and single-tenant deploys that don't
+// wire the tenant plugin).
+type TenantStatusChecker interface {
+	TenantStatus(ctx context.Context, tenantID string) (string, error)
+}
 
 // IngestToken returns a middleware that gates inbound webhook requests on a
 // shared secret. When token is empty the middleware is a no-op — webhook
@@ -34,62 +45,36 @@ func IngestToken(token string) func(http.Handler) http.Handler {
 	}
 }
 
-// TenantLookup resolves a per-tenant ingest token to the tenant it belongs to.
-// The concrete implementation queries the global tenant collection via db.Driver.
-type TenantLookup interface {
-	// LookupByIngestToken returns the tenantID and status for the given token.
-	// Returns ("", "", nil) when no tenant owns that token (fall through to default).
-	LookupByIngestToken(ctx context.Context, token string) (tenantID, status string, err error)
-}
-
-// IngestTokenWithLookup extends the basic IngestToken middleware with per-tenant
-// token lookup and suspension enforcement (D4). It:
-//  1. Checks the global shared token (staticToken) — if it matches, falls through.
-//  2. Calls lookup.LookupByIngestToken to resolve a per-tenant token.
-//  3. If the resolved tenant is suspended, returns 403.
-//  4. Stamps auth.WithTenant on the context with the resolved tenant (or DefaultTenant
-//     when no/unknown token is found).
+// IngestTenant returns a middleware that resolves the ingest tenant from the
+// presented Bearer token (or query param `token`) using resolver, stamps the
+// result onto the request context via auth.WithTenant, and optionally checks
+// whether the tenant is suspended via checker.
 //
-// When lookup is nil, behaviour degrades to the existing IngestToken logic with
-// DefaultTenant stamped on every request.
-func IngestTokenWithLookup(staticToken string, lookup TenantLookup) func(http.Handler) http.Handler {
+// Resolution rules (D4):
+//   - Known token → use the mapped tenant slug.
+//   - Unknown or absent token → fall back to snoozetypes.DefaultTenant.
+//
+// Suspended-tenant rejection: when checker is non-nil and returns status
+// "suspended" for the resolved tenant, the middleware returns 503 Service
+// Unavailable before reaching the handler. Active tenants pass through.
+// A checker error is treated as "active" (fail-open on checker errors so a
+// flaky DB read does not block all ingest).
+func IngestTenant(resolver *TenantResolver, checker TenantStatusChecker) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			token := r.Header.Get("X-Snooze-Token")
-			ctx := r.Context()
+			token := ingestPresentedToken(r)
+			tenantID, _ := resolver.Lookup(token)
+			// tenantID is always non-empty: Lookup falls back to DefaultTenant.
 
-			if token == "" {
-				// No token → default tenant (D4 fallback).
-				ctx = auth.WithTenant(ctx, snoozetypes.DefaultTenant)
-				next.ServeHTTP(w, r.WithContext(ctx))
-				return
-			}
-
-			// Static global token takes priority.
-			if staticToken != "" && token == staticToken {
-				ctx = auth.WithTenant(ctx, snoozetypes.DefaultTenant)
-				next.ServeHTTP(w, r.WithContext(ctx))
-				return
+			if checker != nil {
+				status, err := checker.TenantStatus(r.Context(), tenantID)
+				if err == nil && status == snoozetypes.TenantStatusSuspended {
+					writeSuspended(w, r, tenantID)
+					return
+				}
 			}
 
-			if lookup == nil {
-				ctx = auth.WithTenant(ctx, snoozetypes.DefaultTenant)
-				next.ServeHTTP(w, r.WithContext(ctx))
-				return
-			}
-
-			tenantID, status, err := lookup.LookupByIngestToken(ctx, token)
-			if err != nil || tenantID == "" {
-				// Unknown token → default tenant (D4 fallback).
-				ctx = auth.WithTenant(ctx, snoozetypes.DefaultTenant)
-				next.ServeHTTP(w, r.WithContext(ctx))
-				return
-			}
-			if status == "suspended" {
-				writeForbidden(w, r)
-				return
-			}
-			ctx = auth.WithTenant(ctx, tenantID)
+			ctx := auth.WithTenant(r.Context(), tenantID)
 			next.ServeHTTP(w, r.WithContext(ctx))
 		})
 	}
@@ -104,4 +89,23 @@ func ingestPresentedToken(r *http.Request) string {
 		}
 	}
 	return r.URL.Query().Get("token")
+}
+
+// writeSuspended writes a 503 response for a suspended tenant.
+func writeSuspended(w http.ResponseWriter, r *http.Request, tenantID string) {
+	_ = tenantID // used for logging by callers; kept as parameter for future audit
+	envelope := snoozetypes.ErrEnvelope{
+		Error: snoozetypes.ErrBody{
+			Code:    "tenant_suspended",
+			Message: "this tenant is suspended; ingest is disabled",
+		},
+	}
+	w.Header().Set("Content-Type", "application/json; charset=utf-8")
+	w.WriteHeader(http.StatusServiceUnavailable)
+	_ = encodeJSON(w, envelope)
+}
+
+// encodeJSON writes v as JSON to w, ignoring encode errors (headers already sent).
+func encodeJSON(w http.ResponseWriter, v any) error {
+	return json.NewEncoder(w).Encode(v)
 }

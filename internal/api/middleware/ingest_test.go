@@ -1,3 +1,4 @@
+// internal/api/middleware/ingest_test.go
 package middleware
 
 import (
@@ -6,9 +7,10 @@ import (
 	"net/http/httptest"
 	"testing"
 
+	"github.com/stretchr/testify/require"
+
 	"github.com/snoozeweb/snooze/internal/auth"
 	"github.com/snoozeweb/snooze/pkg/snoozetypes"
-	"github.com/stretchr/testify/require"
 )
 
 func ingestOK() http.Handler {
@@ -55,65 +57,113 @@ func TestIngestToken_Wrong_Returns401(t *testing.T) {
 	require.Equal(t, http.StatusUnauthorized, rec.Code)
 }
 
-func TestIngestToken_SuspendedTenantRejected(t *testing.T) {
-	// When a per-tenant token resolves to a suspended tenant, the request
-	// must be rejected with 403. This requires a TenantLookup to be wired.
-	lookup := &fakeTenantLookup{
-		tenantID: "acme",
-		status:   "suspended",
-	}
-	h := IngestTokenWithLookup("", lookup)(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		w.WriteHeader(http.StatusOK)
-	}))
+// --- new tests for per-tenant IngestTenant middleware ---
+
+// tenantCapture is a handler that records the tenant slug from context.
+type tenantCapture struct {
+	tenant string
+	ok     bool
+}
+
+func (tc *tenantCapture) ServeHTTP(_ http.ResponseWriter, r *http.Request) {
+	tc.tenant, tc.ok = auth.TenantFrom(r.Context())
+}
+
+func TestIngestTenant_KnownToken_SetsTenant(t *testing.T) {
+	resolver := NewTenantResolver()
+	resolver.Replace(map[string]string{"tok-acme": "acme"})
+
+	tc := &tenantCapture{}
+	mw := IngestTenant(resolver, nil)(tc)
+	req := httptest.NewRequest(http.MethodPost, "/", nil)
+	req.Header.Set("Authorization", "Bearer tok-acme")
+	mw.ServeHTTP(httptest.NewRecorder(), req)
+
+	require.True(t, tc.ok)
+	require.Equal(t, "acme", tc.tenant)
+}
+
+func TestIngestTenant_UnknownToken_FallsBackToDefault(t *testing.T) {
+	resolver := NewTenantResolver()
+	resolver.Replace(map[string]string{"tok-acme": "acme"})
+
+	tc := &tenantCapture{}
+	mw := IngestTenant(resolver, nil)(tc)
+	req := httptest.NewRequest(http.MethodPost, "/", nil)
+	req.Header.Set("Authorization", "Bearer unknown-tok")
+	mw.ServeHTTP(httptest.NewRecorder(), req)
+
+	require.True(t, tc.ok)
+	require.Equal(t, snoozetypes.DefaultTenant, tc.tenant)
+}
+
+func TestIngestTenant_NoToken_FallsBackToDefault(t *testing.T) {
+	resolver := NewTenantResolver()
+	resolver.Replace(map[string]string{"tok-acme": "acme"})
+
+	tc := &tenantCapture{}
+	mw := IngestTenant(resolver, nil)(tc)
+	req := httptest.NewRequest(http.MethodPost, "/", nil)
+	mw.ServeHTTP(httptest.NewRecorder(), req)
+
+	require.True(t, tc.ok)
+	require.Equal(t, snoozetypes.DefaultTenant, tc.tenant)
+}
+
+// statusChecker is a TenantStatusChecker that returns the pre-configured status.
+type stubStatusChecker func(ctx context.Context, tenantID string) (string, error)
+
+func (f stubStatusChecker) TenantStatus(ctx context.Context, tenantID string) (string, error) {
+	return f(ctx, tenantID)
+}
+
+func TestIngestTenant_SuspendedTenant_Returns503(t *testing.T) {
+	resolver := NewTenantResolver()
+	resolver.Replace(map[string]string{"tok-acme": "acme"})
+
+	checker := stubStatusChecker(func(_ context.Context, _ string) (string, error) {
+		return "suspended", nil
+	})
+
+	tc := &tenantCapture{}
+	mw := IngestTenant(resolver, checker)(tc)
+	req := httptest.NewRequest(http.MethodPost, "/", nil)
+	req.Header.Set("Authorization", "Bearer tok-acme")
 	rec := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodPost, "/api/v1/alerts", nil)
-	req.Header.Set("X-Snooze-Token", "some-ingest-token")
-	h.ServeHTTP(rec, req)
-	require.Equal(t, http.StatusForbidden, rec.Code)
+	mw.ServeHTTP(rec, req)
+
+	require.Equal(t, http.StatusServiceUnavailable, rec.Code)
+	require.False(t, tc.ok, "handler must not run for suspended tenant")
 }
 
-func TestIngestToken_ActiveTenantPasses(t *testing.T) {
-	lookup := &fakeTenantLookup{
-		tenantID: "acme",
-		status:   "active",
-	}
-	h := IngestTokenWithLookup("", lookup)(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		tenantID, ok := auth.TenantFrom(r.Context())
-		require.True(t, ok)
-		require.Equal(t, "acme", tenantID)
-		w.WriteHeader(http.StatusOK)
-	}))
-	rec := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodPost, "/api/v1/alerts", nil)
-	req.Header.Set("X-Snooze-Token", "acme-token")
-	h.ServeHTTP(rec, req)
-	require.Equal(t, http.StatusOK, rec.Code)
+func TestIngestTenant_ActiveTenant_Passes(t *testing.T) {
+	resolver := NewTenantResolver()
+	resolver.Replace(map[string]string{"tok-acme": "acme"})
+
+	checker := stubStatusChecker(func(_ context.Context, _ string) (string, error) {
+		return "active", nil
+	})
+
+	tc := &tenantCapture{}
+	mw := IngestTenant(resolver, checker)(tc)
+	req := httptest.NewRequest(http.MethodPost, "/", nil)
+	req.Header.Set("Authorization", "Bearer tok-acme")
+	mw.ServeHTTP(httptest.NewRecorder(), req)
+
+	require.True(t, tc.ok)
+	require.Equal(t, "acme", tc.tenant)
 }
 
-func TestIngestToken_NoTokenFallsBackToDefault(t *testing.T) {
-	lookup := &fakeTenantLookup{
-		tenantID: "",
-		status:   "",
-	}
-	h := IngestTokenWithLookup("", lookup)(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		tenantID, ok := auth.TenantFrom(r.Context())
-		require.True(t, ok)
-		require.Equal(t, snoozetypes.DefaultTenant, tenantID)
-		w.WriteHeader(http.StatusOK)
-	}))
-	rec := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodPost, "/api/v1/alerts", nil)
-	// No X-Snooze-Token header → falls back to default tenant.
-	h.ServeHTTP(rec, req)
-	require.Equal(t, http.StatusOK, rec.Code)
-}
+func TestIngestTenant_NilChecker_SkipsStatusCheck(t *testing.T) {
+	resolver := NewTenantResolver()
+	resolver.Replace(map[string]string{"tok-acme": "acme"})
 
-// fakeTenantLookup is a stub TenantLookup for ingest middleware tests.
-type fakeTenantLookup struct {
-	tenantID string
-	status   string
-}
+	tc := &tenantCapture{}
+	mw := IngestTenant(resolver, nil)(tc)
+	req := httptest.NewRequest(http.MethodPost, "/", nil)
+	req.Header.Set("Authorization", "Bearer tok-acme")
+	mw.ServeHTTP(httptest.NewRecorder(), req)
 
-func (f *fakeTenantLookup) LookupByIngestToken(_ context.Context, _ string) (tenantID, status string, err error) {
-	return f.tenantID, f.status, nil
+	require.True(t, tc.ok)
+	require.Equal(t, "acme", tc.tenant)
 }
