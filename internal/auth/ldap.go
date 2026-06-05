@@ -139,10 +139,12 @@ func (l *LDAPProvider) Authenticate(ctx context.Context, c Credentials) (Identit
 		return Identity{}, ErrInvalidCredentials
 	}
 
+	tenantID, _ := TenantFrom(ctx)
 	groups := filterGroups(entry.GetAttributeValues(cfg.MemberAttribute), cfg.GroupDN)
 	return Identity{
 		Username: c.Username,
 		Method:   LDAPMethod,
+		TenantID: tenantID,
 		Groups:   groups,
 	}, nil
 }

@@ -33,13 +33,15 @@ func (a *AnonymousProvider) IsEnabled(_ context.Context) bool { return a.Enabled
 
 // Authenticate ignores Credentials. Returns ErrProviderDisabled if the
 // anonymous backend has been turned off.
-func (a *AnonymousProvider) Authenticate(_ context.Context, _ Credentials) (Identity, error) {
+func (a *AnonymousProvider) Authenticate(ctx context.Context, _ Credentials) (Identity, error) {
 	if !a.Enabled {
 		return Identity{}, fmt.Errorf("anonymous: %w", ErrProviderDisabled)
 	}
+	tenantID, _ := TenantFrom(ctx)
 	return Identity{
 		Username: AnonymousUsername,
 		Method:   AnonymousMethod,
+		TenantID: tenantID,
 		Groups:   nil,
 	}, nil
 }

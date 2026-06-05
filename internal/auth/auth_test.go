@@ -6,9 +6,20 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
+	"golang.org/x/crypto/bcrypt"
 
+	"github.com/snoozeweb/snooze/internal/db"
 	"github.com/snoozeweb/snooze/pkg/snoozetypes"
 )
+
+// mustBcrypt is a test helper that bcrypt-hashes plaintext or panics.
+func mustBcrypt(plaintext string) string {
+	hash, err := bcrypt.GenerateFromPassword([]byte(plaintext), bcrypt.MinCost)
+	if err != nil {
+		panic(err)
+	}
+	return string(hash)
+}
 
 func TestRegistry_RegisterAndGet(t *testing.T) {
 	t.Parallel()
@@ -71,4 +82,41 @@ func TestCtx_AbsentClaims(t *testing.T) {
 	t.Parallel()
 	_, ok := ClaimsFrom(context.Background())
 	require.False(t, ok)
+}
+
+func TestIdentity_HasTenantID_Field(t *testing.T) {
+	t.Parallel()
+	id := Identity{
+		Username: "alice",
+		Method:   "local",
+		TenantID: "acme",
+		Groups:   []string{"ops"},
+	}
+	require.Equal(t, "acme", id.TenantID)
+}
+
+func TestLocalProvider_Authenticate_CarriesTenantID(t *testing.T) {
+	t.Parallel()
+	fdb := newFakeDB()
+	fdb.seed(LocalCollection, db.Document{
+		"name":      "alice",
+		"method":    LocalMethod,
+		"enabled":   true,
+		"password":  mustBcrypt("secret"),
+		"tenant_id": "acme",
+	})
+	p := NewLocalProvider(fdb)
+	ctx := WithTenant(context.Background(), "acme")
+	id, err := p.Authenticate(ctx, Credentials{Username: "alice", Password: "secret"})
+	require.NoError(t, err)
+	require.Equal(t, "acme", id.TenantID)
+}
+
+func TestAnonymousProvider_Authenticate_CarriesTenantID(t *testing.T) {
+	t.Parallel()
+	p := NewAnonymousProvider(true)
+	ctx := WithTenant(context.Background(), "default")
+	id, err := p.Authenticate(ctx, Credentials{})
+	require.NoError(t, err)
+	require.Equal(t, "default", id.TenantID)
 }

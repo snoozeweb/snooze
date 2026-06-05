@@ -81,9 +81,11 @@ func (l *LocalProvider) Authenticate(ctx context.Context, c Credentials) (Identi
 		return Identity{}, ErrInvalidCredentials
 	}
 
+	tenantID, _ := TenantFrom(ctx)
 	id := Identity{
 		Username: c.Username,
 		Method:   LocalMethod,
+		TenantID: tenantID,
 		Groups:   stringSliceField(user, "groups"),
 	}
 	// Constant-time username compare against the doc to guard against any

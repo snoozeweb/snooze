@@ -42,6 +42,7 @@ type Credentials struct {
 type Identity struct {
 	Username string
 	Method   string
+	TenantID string // tenant slug extracted from the login request's org field (D3/D10)
 	Groups   []string
 }
 
