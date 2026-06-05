@@ -111,8 +111,7 @@ func (b *pgBus) Subscribe(ctx context.Context, topicPrefix string) (<-chan synce
 	b.mu.Unlock()
 	go func() {
 		<-ctx.Done()
-		b.removeSubscription(sub)
-		close(sub.ch)
+		b.unsubscribe(sub)
 	}()
 	return sub.ch, nil
 }
@@ -136,25 +135,36 @@ func (b *pgBus) Close() error {
 	return nil
 }
 
-func (b *pgBus) removeSubscription(target *subscription) {
+// unsubscribe removes the subscription and closes its channel atomically under
+// the write lock. Because deliverLocal sends under the read lock, taking the
+// write lock here guarantees no send is in flight when we close, and removing
+// the subscription in the same critical section means no later deliverLocal
+// observes the closed channel. Runs exactly once per subscription (its ctx
+// goroutine), so the close happens at most once.
+func (b *pgBus) unsubscribe(target *subscription) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	for i, s := range b.subscribers {
 		if s == target {
 			b.subscribers = append(b.subscribers[:i], b.subscribers[i+1:]...)
-			return
+			break
 		}
 	}
+	close(target.ch)
 }
 
 // deliverLocal fans an event out to every matching subscriber. Drops events
 // on full channels rather than blocking — the contract is "non-blocking up
 // to a reasonable backpressure threshold" (syncer.Bus.Publish).
+//
+// The read lock is held across the whole loop: the sends are non-blocking, so
+// this never blocks while holding it, and it makes every send mutually
+// exclusive with unsubscribe's close (which holds the write lock) — closing a
+// channel concurrently with a send is a data race and can panic.
 func (b *pgBus) deliverLocal(e syncer.Event) {
 	b.mu.RLock()
-	subs := append([]*subscription(nil), b.subscribers...)
-	b.mu.RUnlock()
-	for _, s := range subs {
+	defer b.mu.RUnlock()
+	for _, s := range b.subscribers {
 		if s.prefix != "" && !strings.HasPrefix(e.Topic, s.prefix) {
 			continue
 		}

@@ -39,16 +39,16 @@ func newInprocBus() *inprocBus { return &inprocBus{} }
 // event topic. Slow subscribers drop the event rather than block the
 // mutation path.
 func (b *inprocBus) Publish(_ context.Context, e syncer.Event) error {
+	// Hold the lock across the fan-out. The sends are non-blocking, so this
+	// never blocks while locked; holding it makes every send mutually exclusive
+	// with the close in unsubscribe/Close — closing a channel concurrently with
+	// a send is a data race and can panic with "send on closed channel".
 	b.mu.Lock()
+	defer b.mu.Unlock()
 	if b.closed {
-		b.mu.Unlock()
 		return nil
 	}
-	// Snapshot subscribers so we don't hold the lock during sends.
-	subs := make([]*subscription, len(b.subs))
-	copy(subs, b.subs)
-	b.mu.Unlock()
-	for _, s := range subs {
+	for _, s := range b.subs {
 		if s.prefix != "" && !strings.HasPrefix(e.Topic, s.prefix) {
 			continue
 		}
@@ -90,13 +90,15 @@ func (b *inprocBus) Subscribe(ctx context.Context, topicPrefix string) (<-chan s
 // Safe to call multiple times.
 func (b *inprocBus) unsubscribe(s *subscription) {
 	b.mu.Lock()
+	defer b.mu.Unlock()
 	for i, cur := range b.subs {
 		if cur == s {
 			b.subs = append(b.subs[:i], b.subs[i+1:]...)
 			break
 		}
 	}
-	b.mu.Unlock()
+	// Close under the lock so it can't race a Publish send. once guards against
+	// the double-close when Close already closed this channel.
 	s.once.Do(func() { close(s.ch) })
 }
 
@@ -104,16 +106,15 @@ func (b *inprocBus) unsubscribe(s *subscription) {
 // Idempotent.
 func (b *inprocBus) Close() error {
 	b.mu.Lock()
+	defer b.mu.Unlock()
 	if b.closed {
-		b.mu.Unlock()
 		return nil
 	}
 	b.closed = true
-	subs := b.subs
-	b.subs = nil
-	b.mu.Unlock()
-	for _, s := range subs {
+	// Close under the lock so closes can't race a Publish send.
+	for _, s := range b.subs {
 		s.once.Do(func() { close(s.ch) })
 	}
+	b.subs = nil
 	return nil
 }
