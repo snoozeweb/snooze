@@ -59,6 +59,13 @@ type Router struct {
 	SkipAuthPaths []string
 	// WebFS serves the static web UI; nil leaves /web disabled.
 	WebFS http.FileSystem
+	// TenantResolver maps ingest tokens to tenant slugs for the IngestTenant
+	// middleware on /api/v1/webhook/* and /api/v1/alerts. Nil means every
+	// unauthenticated request lands in the default tenant (zero-config single-org).
+	TenantResolver *middleware.TenantResolver
+	// TenantChecker verifies that the resolved ingest tenant is not suspended.
+	// Nil disables the check (tests; single-tenant deploys without the tenant plugin).
+	TenantChecker middleware.TenantStatusChecker
 }
 
 // Build assembles the chi router with the canonical middleware chain. The
@@ -237,14 +244,22 @@ func (rt *Router) pluginPublicPaths() []string {
 // + `authorization_policy.write: [any]` made these endpoints public.
 func (rt *Router) mountWebhooks(r chi.Router) {
 	r.Route("/api/v1/webhook", func(sub chi.Router) {
-		// Optional shared-secret gate for ALL inbound webhook traffic. A
-		// no-op unless config.ingest.token is set (middleware.IngestToken),
-		// so existing unauthenticated receivers keep working by default.
+		// 1. Legacy shared-secret gate (backward compat, optional). A no-op
+		//    unless config.ingest.token is set (middleware.IngestToken), so
+		//    existing unauthenticated receivers keep working by default.
 		ingestToken := ""
 		if rt.Config != nil {
 			ingestToken = rt.Config.Ingest.Token
 		}
 		sub.Use(middleware.IngestToken(ingestToken))
+
+		// 2. Per-tenant token resolution — always applied, even when no
+		//    TenantResolver is wired (nil resolver falls back to DefaultTenant).
+		resolver := rt.TenantResolver
+		if resolver == nil {
+			resolver = middleware.NewTenantResolver()
+		}
+		sub.Use(middleware.IngestTenant(resolver, rt.TenantChecker))
 
 		for name, p := range rt.Plugins {
 			wr, ok := p.(plugins.WebhookReceiver)

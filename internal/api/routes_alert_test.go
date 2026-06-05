@@ -15,10 +15,14 @@ import (
 // fakeProcessor is the AlertProcessor used in tests. It captures every
 // inbound record and returns a synthetic ack envelope.
 type fakeProcessor struct {
-	got []map[string]any
+	got        []map[string]any
+	captureCtx func(context.Context)
 }
 
-func (f *fakeProcessor) ProcessRecord(_ context.Context, rec map[string]any) (map[string]any, error) {
+func (f *fakeProcessor) ProcessRecord(ctx context.Context, rec map[string]any) (map[string]any, error) {
+	if f.captureCtx != nil {
+		f.captureCtx(ctx)
+	}
 	f.got = append(f.got, rec)
 	out := map[string]any{"uid": "u-1"}
 	for k, v := range rec {

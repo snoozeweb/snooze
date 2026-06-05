@@ -4,6 +4,8 @@ import (
 	"net/http"
 
 	"github.com/go-chi/chi/v5"
+
+	"github.com/snoozeweb/snooze/internal/api/middleware"
 )
 
 // mountAlerts wires POST /api/v1/alerts.
@@ -14,7 +16,12 @@ func (rt *Router) mountAlerts(r chi.Router) {
 	if rt.Processor == nil {
 		return
 	}
+	resolver := rt.TenantResolver
+	if resolver == nil {
+		resolver = middleware.NewTenantResolver()
+	}
 	r.Route("/api/v1/alerts", func(sub chi.Router) {
+		sub.Use(middleware.IngestTenant(resolver, rt.TenantChecker))
 		sub.Post("/", rt.handleAlertPost)
 	})
 }

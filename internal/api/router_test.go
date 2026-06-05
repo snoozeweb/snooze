@@ -122,14 +122,19 @@ func TestRouter_PluginAuthenticationFalse(t *testing.T) {
 // reached the handler" from "route mounted but never reached".
 type webhookStub struct {
 	stubPlugin
-	called  bool
-	wantSeg string
+	wantSeg  string
+	called   bool
+	handleFn func(http.ResponseWriter, *http.Request)
 }
 
 func (w *webhookStub) WebhookPath() string { return w.wantSeg }
 
-func (w *webhookStub) HandleWebhook(rw http.ResponseWriter, _ *http.Request) {
+func (w *webhookStub) HandleWebhook(rw http.ResponseWriter, r *http.Request) {
 	w.called = true
+	if w.handleFn != nil {
+		w.handleFn(rw, r)
+		return
+	}
 	rw.WriteHeader(http.StatusOK)
 }
 
