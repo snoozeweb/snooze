@@ -19,6 +19,7 @@ import (
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/trace"
 
+	"github.com/snoozeweb/snooze/internal/auth"
 	"github.com/snoozeweb/snooze/internal/condition"
 	"github.com/snoozeweb/snooze/internal/config"
 	"github.com/snoozeweb/snooze/internal/db"
@@ -113,7 +114,7 @@ func TestRule_Process(t *testing.T) {
 	t.Parallel()
 
 	host := newTestHost(t)
-	ctx := context.Background()
+	ctx := auth.WithTenant(context.Background(), snoozetypes.DefaultTenant)
 
 	// Insert top-level rule.
 	res, err := host.DB().Write(ctx, "rule", []db.Document{{
@@ -184,7 +185,7 @@ func TestRule_KVSet_WireShape(t *testing.T) {
 	t.Parallel()
 
 	host := newTestHost(t)
-	ctx := context.Background()
+	ctx := auth.WithTenant(context.Background(), snoozetypes.DefaultTenant)
 	host.plugs["kv"] = &stubKV{data: map[string]map[string]any{
 		"host_owner": {"web01": "alice", "db01": "bob"},
 	}}
@@ -211,7 +212,7 @@ func TestRule_KVSet_DBFallback(t *testing.T) {
 	t.Parallel()
 
 	host := newTestHost(t)
-	ctx := context.Background()
+	ctx := auth.WithTenant(context.Background(), snoozetypes.DefaultTenant)
 
 	_, err := host.DB().Write(ctx, "kv", []db.Document{
 		{"dict": "host_owner", "key": "web01", "value": "alice"},
@@ -239,7 +240,7 @@ func TestRule_KVSet_MissDoesNotMutate(t *testing.T) {
 	t.Parallel()
 
 	host := newTestHost(t)
-	ctx := context.Background()
+	ctx := auth.WithTenant(context.Background(), snoozetypes.DefaultTenant)
 	host.plugs["kv"] = &stubKV{data: map[string]map[string]any{
 		"host_owner": {"web01": "alice"},
 	}}
@@ -258,6 +259,46 @@ func TestRule_KVSet_MissDoesNotMutate(t *testing.T) {
 	require.NoError(t, err)
 	_, has := out.Record.Extra["owner"]
 	require.False(t, has)
+}
+
+// TestRule_TenantIsolation verifies that Reload and Process use per-tenant
+// rule partitions: rules loaded for tenant A do not appear when processing
+// tenant B.
+func TestRule_TenantIsolation(t *testing.T) {
+	t.Parallel()
+	h := newTestHost(t)
+
+	ctxA := auth.WithTenant(context.Background(), "acme")
+	ctxB := auth.WithTenant(context.Background(), "beta")
+
+	// Write a rule visible only under tenant acme.
+	_, err := h.DB().Write(ctxA, "rule", []db.Document{{
+		"name":          "tag-acme",
+		"enabled":       true,
+		"condition":     []any{},
+		"modifications": []any{[]any{"SET", "env", "acme-env"}},
+	}}, db.WriteOptions{Primary: []string{"name"}, UpdateTime: false})
+	require.NoError(t, err)
+
+	p := &Plugin{meta: plugins.Metadata{}}
+	require.NoError(t, p.PostInit(ctxA, h))
+
+	// Process under acme: the rule fires.
+	resA, err := p.Process(ctxA, snoozetypes.Record{})
+	require.NoError(t, err)
+	require.Equal(t, "acme-env", resA.Record.Extra["env"])
+
+	// Process under beta: no rules loaded for beta, record is unchanged.
+	require.NoError(t, p.Reload(ctxB))
+	resB, err := p.Process(ctxB, snoozetypes.Record{})
+	require.NoError(t, err)
+	require.Nil(t, resB.Record.Extra["env"])
+
+	// Reloading beta's (empty) partition must not evict acme's rules: a flat
+	// cache would have been clobbered by the beta reload above.
+	resA2, err := p.Process(ctxA, snoozetypes.Record{})
+	require.NoError(t, err)
+	require.Equal(t, "acme-env", resA2.Record.Extra["env"])
 }
 
 func TestRule_NameAndMetadata(t *testing.T) {

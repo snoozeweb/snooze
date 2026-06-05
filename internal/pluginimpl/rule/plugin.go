@@ -20,6 +20,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/snoozeweb/snooze/internal/auth"
 	"github.com/snoozeweb/snooze/internal/condition"
 	"github.com/snoozeweb/snooze/internal/db"
 	"github.com/snoozeweb/snooze/internal/modification"
@@ -53,7 +54,7 @@ type Plugin struct {
 	host plugins.Host
 
 	mu    sync.RWMutex
-	rules []*ruleEntry
+	rules map[string][]*ruleEntry // tenantID → rule tree
 }
 
 // ruleEntry is a single node in the in-memory rule tree.
@@ -106,13 +107,19 @@ func (p *Plugin) PostInit(ctx context.Context, host plugins.Host) error {
 	return p.Reload(ctx)
 }
 
-// Reload rebuilds the cached rule tree from the database.
+// Reload rebuilds the cached rule tree for one tenant (identified by ctx) from
+// the database. If ctx carries no tenant and no platform scope, the load is
+// skipped (fail-closed: no tenant means no rules).
 func (p *Plugin) Reload(ctx context.Context) error {
 	if p.host == nil || p.host.DB() == nil {
-		// No DB wired (test fast path) — start empty.
 		p.mu.Lock()
 		p.rules = nil
 		p.mu.Unlock()
+		return nil
+	}
+	tenantID, ok := auth.TenantFrom(ctx)
+	if !ok || tenantID == "" {
+		// No tenant in ctx; nothing to load for an unscoped context.
 		return nil
 	}
 	tree, err := p.loadChildren(ctx, "")
@@ -120,7 +127,10 @@ func (p *Plugin) Reload(ctx context.Context) error {
 		return fmt.Errorf("rule: reload: %w", err)
 	}
 	p.mu.Lock()
-	p.rules = tree
+	if p.rules == nil {
+		p.rules = make(map[string][]*ruleEntry)
+	}
+	p.rules[tenantID] = tree
 	p.mu.Unlock()
 	return nil
 }
@@ -191,10 +201,12 @@ func (p *Plugin) buildEntry(ctx context.Context, doc db.Document) (*ruleEntry, e
 	return e, nil
 }
 
-// Process walks the cached rule tree against rec.
+// Process walks the cached rule tree for the tenant in ctx against rec.
 func (p *Plugin) Process(ctx context.Context, rec snoozetypes.Record) (plugins.Result, error) {
+	tenantID, _ := auth.TenantFrom(ctx)
+
 	p.mu.RLock()
-	rules := p.rules
+	rules := p.rules[tenantID]
 	p.mu.RUnlock()
 
 	view := recordToMap(rec)
