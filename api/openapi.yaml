@@ -1097,6 +1097,18 @@ components:
         HS256 JWT. The Python 1.x `Authorization: JWT <token>` scheme
         is rejected. Obtain a token via `POST /api/v1/login/local`.
 
+    ingestToken:
+      type: http
+      scheme: bearer
+      description: |
+        Per-tenant ingest token. Opaque random string stored in the tenant
+        document (`ingest_token` field). Supply as `Authorization: Bearer
+        <ingest_token>` or `?token=<ingest_token>`. When absent or unknown,
+        the middleware falls back to the `default` tenant (D4). This scheme
+        gates `/api/v1/alerts` and `/api/v1/webhook/*` in multi-tenant
+        deployments; single-tenant deployments leave ingest open (existing
+        behaviour preserved).
+
   parameters:
     PluginPath:
       name: plugin
