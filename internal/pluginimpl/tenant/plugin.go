@@ -34,8 +34,14 @@ type Tenant struct {
 	DisplayName string `json:"display_name"`
 	Status      string `json:"status"`
 	IngestToken string `json:"ingest_token,omitempty"`
-	CreatedAt   int64  `json:"created_at,omitempty"`
-	UpdatedAt   int64  `json:"updated_at,omitempty"`
+	// Listed controls whether the tenant appears in the public login list.
+	// A missing field is treated as true (see the login index handler).
+	Listed bool `json:"listed"`
+	// LoginKey is an opaque, rotatable discovery secret used to reach this
+	// tenant's login page directly without exposing the tenant list.
+	LoginKey  string `json:"login_key,omitempty"`
+	CreatedAt int64  `json:"created_at,omitempty"`
+	UpdatedAt int64  `json:"updated_at,omitempty"`
 }
 
 // slugRE matches valid tenant slugs: lowercase alphanumeric and hyphens,
@@ -87,6 +93,8 @@ func (p *Plugin) Schema() any {
 			"display_name": map[string]any{"type": "string"},
 			"status":       map[string]any{"type": "string", "enum": []any{"active", "suspended"}},
 			"ingest_token": map[string]any{"type": "string"},
+			"listed":       map[string]any{"type": "boolean", "default": true},
+			"login_key":    map[string]any{"type": "string"},
 		},
 		"required":             []any{"id"},
 		"additionalProperties": true,

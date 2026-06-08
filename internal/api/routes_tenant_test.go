@@ -190,6 +190,32 @@ func TestTenant_DefaultTenantPlatformAdminAllowed(t *testing.T) {
 	})
 }
 
+func TestHandleTenantCreate_GeneratesLoginKeyAndListedDefault(t *testing.T) {
+	tdb := &tenantDB{}
+	r, _ := tenantRouter(t, tdb, auth.PermWriteTenant)
+	body := bytes.NewBufferString(`{"id":"acme","display_name":"Acme","create_admin":false}`)
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/tenant", body)
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	r.ServeHTTP(rec, req)
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("status = %d, want 201 (body=%s)", rec.Code, rec.Body.String())
+	}
+	// The tenant registry doc is the first write (index 0).
+	if len(tdb.written) == 0 {
+		t.Fatalf("no documents written")
+	}
+	got := tdb.written[0]
+	key, _ := got["login_key"].(string)
+	const wantKeyLen = 32 // base64.RawURLEncoding.EncodedLen(24)
+	if len(key) != wantKeyLen {
+		t.Fatalf("login_key len = %d, want %d (got %q)", len(key), wantKeyLen, key)
+	}
+	if listed, ok := got["listed"].(bool); !ok || !listed {
+		t.Fatalf("listed = %v, want true by default", got["listed"])
+	}
+}
+
 func TestTenantCreate_RequiresWritePerm(t *testing.T) {
 	tdb := &tenantDB{}
 	r, _ := tenantRouter(t, tdb /* no permissions */)

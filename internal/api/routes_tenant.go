@@ -2,6 +2,8 @@ package api
 
 import (
 	"context"
+	"crypto/rand"
+	"encoding/base64"
 	"net/http"
 	"regexp"
 	"time"
@@ -18,6 +20,15 @@ import (
 
 // slugRE is the canonical slug validator for tenant IDs.
 var slugRE = regexp.MustCompile(`^[a-z0-9][a-z0-9\-]*[a-z0-9]$|^[a-z0-9]$`)
+
+// generateLoginKey returns a URL-safe 192-bit (24-byte) opaque discovery key.
+func generateLoginKey() (string, error) {
+	buf := make([]byte, 24)
+	if _, err := rand.Read(buf); err != nil {
+		return "", err
+	}
+	return base64.RawURLEncoding.EncodeToString(buf), nil
+}
 
 // tenantGeneralCollection holds the per-tenant bootstrap marker (init_db),
 // mirroring core.BootstrapDB's "general" sentinel collection.
@@ -143,6 +154,15 @@ func (rt *Router) handleTenantCreate(w http.ResponseWriter, r *http.Request) {
 	if _, ok := doc["status"]; !ok {
 		doc["status"] = "active"
 	}
+	if _, ok := doc["listed"]; !ok {
+		doc["listed"] = true
+	}
+	key, err := generateLoginKey()
+	if err != nil {
+		WriteError(w, r, ErrInternal.WithCause(err))
+		return
+	}
+	doc["login_key"] = key
 	now := time.Now().Unix()
 	doc["created_at"] = now
 	doc["updated_at"] = now
