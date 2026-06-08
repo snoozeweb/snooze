@@ -109,3 +109,18 @@ describe("Tenants.useResetAdmin", () => {
     expect(cred.username).toBe("ops");
   });
 });
+
+describe("Tenants.useRotateLoginKey", () => {
+  it("POSTs to /api/v1/tenant/{id}/rotate-login-key and returns the new key", async () => {
+    const rotateResponse = { id: "acme", login_key: "NEW-KEY" };
+    mswServer.use(
+      http.post("/api/v1/tenant/acme/rotate-login-key", () => {
+        return HttpResponse.json(rotateResponse, { status: 200 });
+      }),
+    );
+    const { result } = renderHook(() => Tenants.useRotateLoginKey(), { wrapper: wrap() });
+    const res = await result.current.mutateAsync("acme");
+    expect(res.id).toBe("acme");
+    expect(res.login_key).toBe("NEW-KEY");
+  });
+});

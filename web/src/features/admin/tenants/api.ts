@@ -31,6 +31,7 @@ export type TenantUpdateBody = {
   display_name?: string;
   status?: string;
   ingest_token?: string;
+  listed?: boolean;
 };
 
 export const Tenants = {
@@ -96,6 +97,18 @@ export const Tenants = {
         api<AdminCredential>("POST", `/tenant/${id}/admin`, {
           body: username ? { username } : {},
         }),
+    });
+  },
+
+  useRotateLoginKey(): UseMutationResult<{ id: string; login_key: string }, ApiError, string> {
+    const qc = useQueryClient();
+    return useMutation<{ id: string; login_key: string }, ApiError, string>({
+      mutationFn: (id) =>
+        api<{ id: string; login_key: string }>("POST", `/tenant/${id}/rotate-login-key`, { body: {} }),
+      onSuccess: (_d, id) => {
+        void qc.invalidateQueries({ queryKey: QUERY_KEY_ALL });
+        void qc.invalidateQueries({ queryKey: QUERY_KEY_ONE(id) });
+      },
     });
   },
 

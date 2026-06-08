@@ -6,6 +6,8 @@ export type Tenant = {
   /** "active" | "suspended" */
   status: string;
   ingest_token?: string;
+  listed?: boolean;
+  login_key?: string;
   created_at?: number;
   updated_at?: number;
 };
