@@ -10,10 +10,13 @@ import {
   ConfirmDeleteDialog,
   useConfirmDelete,
 } from "@/shared/ui/resourceContextMenu";
+import { toast } from "@/shared/ui/toast/useToast";
+import { ApiError } from "@/lib/api/client";
 import { Tenants } from "./api";
+import { AdminCredentialDialog } from "./AdminCredentialDialog";
 import { TenantEditor } from "./TenantEditor";
 import { tenantColumns } from "./columns";
-import type { Tenant } from "./types";
+import type { AdminCredential, Tenant } from "./types";
 import styles from "./TenantsPage.module.css";
 
 type TenantsSearch = {
@@ -64,6 +67,8 @@ export function TenantsPage() {
     asc,
   });
   const remove = Tenants.useRemove();
+  const resetAdmin = Tenants.useResetAdmin();
+  const [revealed, setRevealed] = useState<AdminCredential | null>(null);
   const [selectedKeys, setSelectedKeys] = useState<Set<string>>(new Set());
   const confirmDelete = useConfirmDelete<Tenant & { uid?: string }>({
     onDelete: (id) => remove.mutateAsync(id),
@@ -97,11 +102,41 @@ export function TenantsPage() {
     [confirmDelete],
   );
 
+  const columnsWithActions = useCallback(
+    () => [
+      ...tenantColumns,
+      {
+        id: "_reset_admin",
+        header: "",
+        cell: (tenant: Tenant) => (
+          <Button
+            type="button"
+            size="sm"
+            variant="ghost"
+            onClick={() => {
+              resetAdmin.mutate(
+                { id: tenant.id },
+                {
+                  onSuccess: (cred) => setRevealed(cred),
+                  onError: (e) =>
+                    toast.error(e instanceof ApiError ? e.detail : "Reset failed"),
+                },
+              );
+            }}
+          >
+            Reset admin password
+          </Button>
+        ),
+      },
+    ],
+    [resetAdmin],
+  );
+
   return (
     <div className={styles.page}>
       <DataTable<Tenant>
         data={list.data?.data ?? []}
-        columns={tenantColumns}
+        columns={columnsWithActions()}
         rowKey={(r) => r.id}
         loading={list.isPending}
         contextMenuItems={contextMenuItems}
@@ -162,6 +197,7 @@ export function TenantsPage() {
         onCancel={confirmDelete.cancel}
         onConfirm={() => void confirmDelete.confirm()}
       />
+      <AdminCredentialDialog credential={revealed} onClose={() => setRevealed(null)} />
     </div>
   );
 }

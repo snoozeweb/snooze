@@ -1,4 +1,5 @@
 import { render, screen, waitFor } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import { describe, expect, it, beforeAll } from "vitest";
 import {
@@ -83,5 +84,29 @@ describe("TenantsPage", () => {
   it("renders a New button", async () => {
     setup();
     await waitFor(() => expect(screen.getByRole("button", { name: /new/i })).toBeInTheDocument());
+  });
+
+  it("shows the one-time password after clicking Reset admin password", async () => {
+    mswServer.use(
+      http.get("/api/v1/tenant", () =>
+        HttpResponse.json({
+          data: [{ id: "acme", display_name: "Acme Corp", status: "active" }],
+          meta: { count: 1, limit: 50, offset: 0, total: 1 },
+        }),
+      ),
+      http.post("/api/v1/tenant/:id/admin", () =>
+        HttpResponse.json({
+          username: "admin",
+          password: "NEWPWNEWPWNEWPWNEWPWNEWPWNEWPWNE",
+          method: "local",
+          created: false,
+        }),
+      ),
+    );
+    setup();
+    await userEvent.click(
+      (await screen.findAllByRole("button", { name: /reset admin password/i }))[0]!,
+    );
+    expect(await screen.findByText("NEWPWNEWPWNEWPWNEWPWNEWPWNEWPWNE")).toBeInTheDocument();
   });
 });
