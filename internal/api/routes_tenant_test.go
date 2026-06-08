@@ -634,3 +634,44 @@ func TestTenantAdminReset_CustomUsername(t *testing.T) {
 	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &cred))
 	require.Equal(t, "ops", cred.Username)
 }
+
+func TestHandleTenantRotateLoginKey(t *testing.T) {
+	// Seed the tenant with an existing login_key so we can assert it changes.
+	tdb := &tenantDB{docs: []db.Document{{"id": "acme", "login_key": "OLD-KEY"}}}
+	r, _ := tenantRouter(t, tdb, auth.PermWriteTenant)
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/tenant/acme/rotate-login-key", nil)
+	r.ServeHTTP(rec, req)
+	require.Equal(t, http.StatusOK, rec.Code, "body: %s", rec.Body.String())
+
+	var resp struct {
+		ID       string `json:"id"`
+		LoginKey string `json:"login_key"`
+	}
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &resp))
+	require.NotEmpty(t, resp.LoginKey, "rotated key must be non-empty")
+	require.NotEqual(t, "OLD-KEY", resp.LoginKey, "rotated key must differ from the old one")
+	require.Equal(t, "acme", resp.ID)
+
+	// The patch written via UpdateOne must carry the same new key.
+	var patchDoc db.Document
+	for _, d := range tdb.written {
+		if _, ok := d["login_key"]; ok {
+			patchDoc = d
+			break
+		}
+	}
+	require.NotNil(t, patchDoc, "no patch with login_key written; written=%v", tdb.written)
+	require.Equal(t, resp.LoginKey, patchDoc["login_key"], "persisted key must match returned key")
+}
+
+func TestHandleTenantRotateLoginKey_UnknownTenant(t *testing.T) {
+	tdb := &tenantDB{docs: nil} // empty — tenant does not exist
+	r, _ := tenantRouter(t, tdb, auth.PermWriteTenant)
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/tenant/nope/rotate-login-key", nil)
+	r.ServeHTTP(rec, req)
+	require.Equal(t, http.StatusNotFound, rec.Code)
+}

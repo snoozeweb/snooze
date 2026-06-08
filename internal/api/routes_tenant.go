@@ -82,12 +82,13 @@ type tenantCreateResponse struct {
 //
 // Routes:
 //
-//	POST   /api/v1/tenant           — create (rw_tenant)
-//	GET    /api/v1/tenant           — list   (ro_tenant)
-//	GET    /api/v1/tenant/{id}      — get one (ro_tenant)
-//	POST   /api/v1/tenant/{id}/admin — ensure/reset the tenant's local admin (rw_tenant)
-//	PATCH  /api/v1/tenant/{id}      — update display_name/status/ingest_token (rw_tenant)
-//	DELETE /api/v1/tenant/{id}      — delete; "default" is undeletable (rw_tenant)
+//	POST   /api/v1/tenant                        — create (rw_tenant)
+//	GET    /api/v1/tenant                        — list   (ro_tenant)
+//	GET    /api/v1/tenant/{id}                   — get one (ro_tenant)
+//	POST   /api/v1/tenant/{id}/admin             — ensure/reset the tenant's local admin (rw_tenant)
+//	PATCH  /api/v1/tenant/{id}                   — update display_name/status/ingest_token/listed (rw_tenant)
+//	DELETE /api/v1/tenant/{id}                   — delete; "default" is undeletable (rw_tenant)
+//	POST   /api/v1/tenant/{id}/rotate-login-key  — generate a fresh login_key (rw_tenant)
 func (rt *Router) mountTenant(r chi.Router) {
 	r.Route("/api/v1/tenant", func(sub chi.Router) {
 		// Control-plane routes are platform-gated: RequirePlatformPerm does a
@@ -106,6 +107,8 @@ func (rt *Router) mountTenant(r chi.Router) {
 			Post("/", rt.handleTenantCreate)
 		sub.With(middleware.RequirePlatformPerm(auth.PermWriteTenant)).
 			Post("/{id}/admin", rt.handleTenantAdminReset)
+		sub.With(middleware.RequirePlatformPerm(auth.PermWriteTenant)).
+			Post("/{id}/rotate-login-key", rt.handleTenantRotateLoginKey)
 		sub.With(middleware.RequirePlatformPerm(auth.PermWriteTenant)).
 			Patch("/{id}", rt.handleTenantUpdate)
 		sub.With(middleware.RequirePlatformPerm(auth.PermWriteTenant)).
@@ -514,4 +517,43 @@ func (rt *Router) handleTenantDelete(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	WriteJSON(w, http.StatusOK, map[string]any{"deleted": deleted, "purged": purged})
+}
+
+// handleTenantRotateLoginKey POST /api/v1/tenant/{id}/rotate-login-key
+// Generates a fresh opaque login_key (invalidating the previous link) and
+// returns it. Also serves as the generation path for a pre-existing tenant
+// that has no login_key yet.
+func (rt *Router) handleTenantRotateLoginKey(w http.ResponseWriter, r *http.Request) {
+	if rt.DB == nil {
+		WriteError(w, r, ErrUnavailable.WithMessage("database not configured"))
+		return
+	}
+	r = rt.platformCtx(r)
+	id := chi.URLParam(r, "id")
+	if id == "" {
+		WriteError(w, r, ErrValidation.WithMessage("missing id"))
+		return
+	}
+	existing, err := rt.DB.GetOne(r.Context(), "tenant", db.Document{"id": id})
+	if err != nil || existing == nil {
+		WriteError(w, r, ErrNotFound.WithMessage("tenant not found: "+id))
+		return
+	}
+	key, err := generateLoginKey()
+	if err != nil {
+		WriteError(w, r, ErrInternal.WithCause(err))
+		return
+	}
+	uid, _ := existing["uid"].(string)
+	if uid == "" {
+		uid = id
+	}
+	if err := rt.DB.UpdateOne(r.Context(), "tenant", uid, db.Document{
+		"login_key":  key,
+		"updated_at": time.Now().Unix(),
+	}, true); err != nil {
+		WriteError(w, r, ErrInternal.WithCause(err))
+		return
+	}
+	WriteJSON(w, http.StatusOK, map[string]any{"id": id, "login_key": key})
 }
