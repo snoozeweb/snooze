@@ -70,7 +70,7 @@ func (f *fakeDB) GetOne(_ context.Context, collection string, match db.Document)
 			return cp, nil
 		}
 	}
-	return nil, errors.New("not found")
+	return nil, db.ErrNotFound
 }
 
 func (f *fakeDB) Convert(context.Context, condition.Cond, []string) (db.DriverQuery, error) {
