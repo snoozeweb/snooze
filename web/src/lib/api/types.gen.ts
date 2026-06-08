@@ -999,12 +999,69 @@ export interface paths {
                         [name: string]: unknown;
                     };
                     content: {
-                        "application/json": components["schemas"]["Tenant"];
+                        "application/json": components["schemas"]["TenantCreateResponse"];
                     };
                 };
                 400: components["responses"]["BadRequest"];
                 401: components["responses"]["Unauthorized"];
                 403: components["responses"]["Forbidden"];
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/tenant/{id}/admin": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Ensure/reset a tenant's local admin password
+         * @description Provisions or resets the local admin for the given tenant. If the
+         *     user identified by `username` (default "admin") already exists its
+         *     password is rotated; otherwise a new local user is created with the
+         *     `admin` role. Requires `rw_tenant`. The returned `password` is shown
+         *     exactly once — store it immediately.
+         *
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    /** @description Tenant slug. */
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: {
+                content: {
+                    "application/json": {
+                        /** @description Admin username to provision or reset (default "admin"). */
+                        username?: string;
+                    };
+                };
+            };
+            responses: {
+                /** @description Admin credential (password shown once). */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["AdminCredential"];
+                    };
+                };
+                401: components["responses"]["Unauthorized"];
+                403: components["responses"]["Forbidden"];
+                404: components["responses"]["NotFound"];
             };
         };
         delete?: never;
@@ -2141,6 +2198,26 @@ export interface components {
             /** @description Series bucket size in seconds. */
             bucket: number;
         };
+        /** @description Provisioned local-admin credential. The `password` is shown exactly
+         *     once (it is not stored in plaintext); save it immediately.
+         *      */
+        AdminCredential: {
+            /** @description Login username of the provisioned admin. */
+            username: string;
+            /** @description Plaintext password shown once. Store it securely. */
+            password: string;
+            /** @description Authentication method used (always 'local' for provisioned admins). */
+            method: string;
+            /** @description True if the user was newly created; false if the password was reset on an existing user. */
+            created: boolean;
+        };
+        /** @description Response body for POST /api/v1/tenant. */
+        TenantCreateResponse: {
+            /** @description List of created tenant id(s). */
+            added: string[];
+            /** @description Present only when a first admin was provisioned (create_admin was not false). */
+            admin?: components["schemas"]["AdminCredential"];
+        };
         /** @description Request body for POST /api/v1/tenant. */
         TenantCreate: {
             /** @description Immutable slug. Must be unique. Reserved value `default` is rejected. */
@@ -2157,6 +2234,10 @@ export interface components {
              *     this is the only time the plaintext is returned.
              *      */
             ingest_token?: string;
+            /** @description Provision a first local admin (default true). Set false for LDAP/SSO-only tenants. */
+            create_admin?: boolean;
+            /** @description Username for the first admin (default "admin"). */
+            admin_username?: string;
         };
         /** @description Request body for PATCH /api/v1/tenant/{id}. All fields optional. */
         TenantUpdate: {

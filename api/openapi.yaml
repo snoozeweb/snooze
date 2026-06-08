@@ -663,10 +663,49 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Tenant'
+                $ref: '#/components/schemas/TenantCreateResponse'
         '400': {$ref: '#/components/responses/BadRequest'}
         '401': {$ref: '#/components/responses/Unauthorized'}
         '403': {$ref: '#/components/responses/Forbidden'}
+
+  /api/v1/tenant/{id}/admin:
+    post:
+      tags: [platform]
+      summary: Ensure/reset a tenant's local admin password
+      description: |
+        Provisions or resets the local admin for the given tenant. If the
+        user identified by `username` (default "admin") already exists its
+        password is rotated; otherwise a new local user is created with the
+        `admin` role. Requires `rw_tenant`. The returned `password` is shown
+        exactly once — store it immediately.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: {type: string}
+          description: "Tenant slug."
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                username:
+                  type: string
+                  description: "Admin username to provision or reset (default \"admin\")."
+      responses:
+        '200':
+          description: Admin credential (password shown once).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AdminCredential'
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {$ref: '#/components/responses/NotFound'}
 
   /api/v1/tenant/{id}:
     get:
@@ -1646,6 +1685,39 @@ components:
           type: integer
           description: "Series bucket size in seconds."
 
+    AdminCredential:
+      type: object
+      required: [username, password, method, created]
+      description: |
+        Provisioned local-admin credential. The `password` is shown exactly
+        once (it is not stored in plaintext); save it immediately.
+      properties:
+        username:
+          type: string
+          description: "Login username of the provisioned admin."
+        password:
+          type: string
+          description: "Plaintext password shown once. Store it securely."
+        method:
+          type: string
+          description: "Authentication method used (always 'local' for provisioned admins)."
+        created:
+          type: boolean
+          description: "True if the user was newly created; false if the password was reset on an existing user."
+
+    TenantCreateResponse:
+      type: object
+      required: [added]
+      description: "Response body for POST /api/v1/tenant."
+      properties:
+        added:
+          type: array
+          items: {type: string}
+          description: "List of created tenant id(s)."
+        admin:
+          $ref: '#/components/schemas/AdminCredential'
+          description: "Present only when a first admin was provisioned (create_admin was not false)."
+
     TenantCreate:
       type: object
       required: [id, display_name]
@@ -1668,6 +1740,12 @@ components:
             Per-tenant ingest token. If omitted the server generates a random
             24-byte hex token and returns it in the response body. Store it:
             this is the only time the plaintext is returned.
+        create_admin:
+          type: boolean
+          description: "Provision a first local admin (default true). Set false for LDAP/SSO-only tenants."
+        admin_username:
+          type: string
+          description: "Username for the first admin (default \"admin\")."
 
     TenantUpdate:
       type: object
