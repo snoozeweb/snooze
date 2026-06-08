@@ -86,7 +86,7 @@ describe("TenantsPage", () => {
     await waitFor(() => expect(screen.getByRole("button", { name: /new/i })).toBeInTheDocument());
   });
 
-  it("shows the one-time password after clicking Reset admin password", async () => {
+  it("confirms, then shows the one-time password after Reset admin password", async () => {
     mswServer.use(
       http.get("/api/v1/tenant", () =>
         HttpResponse.json({
@@ -105,8 +105,38 @@ describe("TenantsPage", () => {
     );
     setup();
     await userEvent.click(
-      (await screen.findAllByRole("button", { name: /reset admin password/i }))[0]!,
+      (await screen.findAllByRole("button", { name: "Reset admin password" }))[0]!,
     );
+    // A confirmation dialog appears first; the password is NOT revealed yet.
+    expect(await screen.findByText(/reset admin password\?/i)).toBeInTheDocument();
+    expect(screen.queryByText("NEWPWNEWPWNEWPWNEWPWNEWPWNEWPWNE")).not.toBeInTheDocument();
+    // Confirming performs the reset and reveals the new password.
+    await userEvent.click(await screen.findByRole("button", { name: /reset password/i }));
     expect(await screen.findByText("NEWPWNEWPWNEWPWNEWPWNEWPWNEWPWNE")).toBeInTheDocument();
+  });
+
+  it("does not reset when the confirmation is cancelled", async () => {
+    mswServer.use(
+      http.get("/api/v1/tenant", () =>
+        HttpResponse.json({
+          data: [{ id: "acme", display_name: "Acme Corp", status: "active" }],
+          meta: { count: 1, limit: 50, offset: 0, total: 1 },
+        }),
+      ),
+      http.post("/api/v1/tenant/:id/admin", () =>
+        HttpResponse.json({
+          username: "admin",
+          password: "SHOULD-NOT-APPEAR",
+          method: "local",
+          created: false,
+        }),
+      ),
+    );
+    setup();
+    await userEvent.click(
+      (await screen.findAllByRole("button", { name: "Reset admin password" }))[0]!,
+    );
+    await userEvent.click(await screen.findByRole("button", { name: "Cancel" }));
+    expect(screen.queryByText("SHOULD-NOT-APPEAR")).not.toBeInTheDocument();
   });
 });

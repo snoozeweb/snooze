@@ -2,6 +2,7 @@ import { useCallback, useState } from "react";
 import { useNavigate, useSearch } from "@tanstack/react-router";
 import { Button } from "@/shared/ui/Button";
 import { DataTable } from "@/shared/ui/DataTable";
+import { Dialog, DialogContent, DialogTitle, DialogBody, DialogFooter } from "@/shared/ui/Dialog";
 import type { ContextMenuItem } from "@/shared/ui/DataTableContextMenu";
 import { EmptyState } from "@/shared/ui/EmptyState";
 import { RowDetailPanel } from "@/shared/ui/RowDetailPanel";
@@ -69,6 +70,7 @@ export function TenantsPage() {
   const remove = Tenants.useRemove();
   const resetAdmin = Tenants.useResetAdmin();
   const [revealed, setRevealed] = useState<AdminCredential | null>(null);
+  const [resetTarget, setResetTarget] = useState<Tenant | null>(null);
   const [selectedKeys, setSelectedKeys] = useState<Set<string>>(new Set());
   const confirmDelete = useConfirmDelete<Tenant & { uid?: string }>({
     onDelete: (id) => remove.mutateAsync(id),
@@ -113,16 +115,9 @@ export function TenantsPage() {
             type="button"
             size="sm"
             variant="ghost"
-            disabled={resetAdmin.isPending}
-            onClick={() => {
-              resetAdmin.mutate(
-                { id: tenant.id },
-                {
-                  onSuccess: (cred) => setRevealed(cred),
-                  onError: (e) =>
-                    toast.error(e instanceof ApiError ? e.detail : "Reset failed"),
-                },
-              );
+            onClick={(e) => {
+              e.stopPropagation();
+              setResetTarget(tenant);
             }}
           >
             Reset admin password
@@ -130,7 +125,7 @@ export function TenantsPage() {
         ),
       },
     ],
-    [resetAdmin],
+    [],
   );
 
   return (
@@ -198,6 +193,51 @@ export function TenantsPage() {
         onCancel={confirmDelete.cancel}
         onConfirm={() => void confirmDelete.confirm()}
       />
+      <Dialog
+        open={resetTarget !== null}
+        onOpenChange={(o) => (!o ? setResetTarget(null) : undefined)}
+      >
+        <DialogContent>
+          <DialogTitle>Reset admin password?</DialogTitle>
+          <DialogBody>
+            This generates a new local-admin password for{" "}
+            {resetTarget?.display_name || resetTarget?.id} and invalidates the current one. The new
+            password is shown only once.
+          </DialogBody>
+          <DialogFooter>
+            <Button
+              variant="secondary"
+              onClick={() => setResetTarget(null)}
+              disabled={resetAdmin.isPending}
+            >
+              Cancel
+            </Button>
+            <Button
+              variant="primary"
+              disabled={resetAdmin.isPending}
+              onClick={() => {
+                const target = resetTarget;
+                if (!target) return;
+                resetAdmin.mutate(
+                  { id: target.id },
+                  {
+                    onSuccess: (cred) => {
+                      setResetTarget(null);
+                      setRevealed(cred);
+                    },
+                    onError: (e) => {
+                      setResetTarget(null);
+                      toast.error(e instanceof ApiError ? e.detail : "Reset failed");
+                    },
+                  },
+                );
+              }}
+            >
+              {resetAdmin.isPending ? "Resetting…" : "Reset password"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
       <AdminCredentialDialog credential={revealed} onClose={() => setRevealed(null)} />
     </div>
   );
