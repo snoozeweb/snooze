@@ -72,6 +72,44 @@ export async function fetchLoginBackends(): Promise<LoginBackend[]> {
   return raw.filter((b): b is LoginBackend => b === "local" || b === "ldap" || b === "anonymous");
 }
 
+// PublicTenant is the minimal tenant shape the public login index returns.
+// The server never includes login_key in the public list.
+export type PublicTenant = { id: string; display_name: string };
+
+// LoginConfig bundles the backends list and the public tenant list returned
+// by GET /api/v1/login so callers only need one request on page load.
+export type LoginConfig = { backends: LoginBackend[]; tenants: PublicTenant[] };
+
+// fetchLoginConfig fetches both the auth backends and the public tenant list
+// from GET /api/v1/login in a single call.
+export async function fetchLoginConfig(): Promise<LoginConfig> {
+  const r = await api<{ data?: { backends?: string[]; tenants?: PublicTenant[] } }>("GET", "/login", {
+    skipAuthHandling: true,
+  });
+  const backends = (r.data?.backends ?? []).filter(
+    (b): b is LoginBackend => b === "local" || b === "ldap" || b === "anonymous",
+  );
+  const tenants = (r.data?.tenants ?? []).filter(
+    (t): t is PublicTenant => !!t && typeof t.id === "string",
+  );
+  return { backends, tenants };
+}
+
+// resolveTenantByKey resolves an opaque per-tenant login key to its
+// {id, display_name}. Returns null on any error (unknown key, suspended
+// tenant, network error) — never reveals whether a tenant exists.
+export async function resolveTenantByKey(key: string): Promise<PublicTenant | null> {
+  try {
+    const r = await api<{ data?: PublicTenant }>("GET", "/login/tenant", {
+      query: { key },
+      skipAuthHandling: true,
+    });
+    return r.data ?? null;
+  } catch {
+    return null; // never reveal whether a key/tenant exists
+  }
+}
+
 // postRefresh exchanges an opaque refresh token for a new (access, refresh)
 // pair. The API client uses this transparently on 401; UI code should not
 // call it directly.
