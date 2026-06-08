@@ -3,7 +3,7 @@ import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { http, HttpResponse } from "msw";
-import { describe, expect, it, vi, beforeAll } from "vitest";
+import { describe, expect, it, vi, beforeAll, beforeEach } from "vitest";
 import type { ReactNode } from "react";
 import { mswServer } from "@/tests/msw/server";
 import { TooltipProvider } from "@/shared/ui/Tooltip";
@@ -33,6 +33,57 @@ function wrap() {
     </QueryClientProvider>
   );
 }
+
+describe("TenantEditor create — admin provisioning", () => {
+  beforeEach(() => {
+    mswServer.use(
+      http.post("/api/v1/tenant", async ({ request }) => {
+        // Capture the body to return the admin block
+        await request.json();
+        return HttpResponse.json(
+          {
+            added: ["acme"],
+            admin: {
+              username: "admin",
+              password: "PWPWPWPWPWPWPWPWPWPWPWPWPWPWPWPW",
+              method: "local",
+              created: true,
+            },
+          },
+          { status: 201 },
+        );
+      }),
+    );
+  });
+
+  it("shows create-admin checkbox (checked) and admin-username field in create mode", async () => {
+    const Wrapper = wrap();
+    render(
+      <Wrapper>
+        <TenantEditor id={undefined} onClose={vi.fn()} />
+      </Wrapper>,
+    );
+    expect(await screen.findByLabelText(/create admin user/i)).toBeChecked();
+    expect(screen.getByLabelText(/admin username/i)).toBeInTheDocument();
+  });
+
+  it("shows the one-time credential reveal after create returns an admin block", async () => {
+    const onClose = vi.fn();
+    const Wrapper = wrap();
+    const user = userEvent.setup();
+    render(
+      <Wrapper>
+        <TenantEditor id={undefined} onClose={onClose} />
+      </Wrapper>,
+    );
+    await user.type(await screen.findByLabelText(/slug/i), "acme");
+    await user.type(screen.getByLabelText(/display name/i), "Acme");
+    await user.click(screen.getByRole("button", { name: /create/i }));
+    expect(await screen.findByText("PWPWPWPWPWPWPWPWPWPWPWPWPWPWPWPW")).toBeInTheDocument();
+    // onClose must NOT be called yet — drawer should remain open until dialog is dismissed
+    expect(onClose).not.toHaveBeenCalled();
+  });
+});
 
 describe("TenantEditor create", () => {
   it("renders a slug field and a display_name field", async () => {

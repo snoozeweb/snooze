@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { useForm } from "react-hook-form";
 import { Button } from "@/shared/ui/Button";
+import { Checkbox } from "@/shared/ui/Checkbox";
 import { Drawer, DrawerBody, DrawerContent, DrawerFooter, DrawerTitle } from "@/shared/ui/Drawer";
 import { Input } from "@/shared/ui/Input";
 import { Select, SelectContent, SelectItem, SelectTrigger } from "@/shared/ui/Select";
@@ -8,7 +9,8 @@ import { Spinner } from "@/shared/ui/Spinner";
 import { toast } from "@/shared/ui/toast/useToast";
 import { ApiError } from "@/lib/api/client";
 import { Tenants } from "./api";
-import type { Tenant } from "./types";
+import { AdminCredentialDialog } from "./AdminCredentialDialog";
+import type { AdminCredential, CreateTenantBody } from "./types";
 import styles from "./TenantEditor.module.css";
 
 // The reserved slug that must never be deleted. Mirrors snoozetypes.DefaultTenant.
@@ -18,12 +20,16 @@ type FormShape = {
   id: string;
   display_name: string;
   status: "active" | "suspended";
+  create_admin: boolean;
+  admin_username: string;
 };
 
 const EMPTY_FORM: FormShape = {
   id: "",
   display_name: "",
   status: "active",
+  create_admin: true,
+  admin_username: "admin",
 };
 
 export type TenantEditorProps = {
@@ -59,6 +65,7 @@ export function TenantEditor({ id, onClose }: TenantEditorProps) {
 
   const [submitting, setSubmitting] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [revealed, setRevealed] = useState<AdminCredential | null>(null);
 
   const currentId = watch("id");
   const isDefault = !isCreate && id === DEFAULT_TENANT;
@@ -67,13 +74,23 @@ export function TenantEditor({ id, onClose }: TenantEditorProps) {
     setSubmitting(true);
     try {
       if (isCreate) {
-        const body: Omit<Tenant, "created_at" | "updated_at"> = {
+        const body: CreateTenantBody = {
           id: form.id.trim(),
           display_name: form.display_name.trim(),
           status: form.status,
+          create_admin: form.create_admin,
+          ...(form.create_admin && form.admin_username.trim()
+            ? { admin_username: form.admin_username.trim() }
+            : {}),
         };
-        await create.mutateAsync(body);
+        const res = await create.mutateAsync(body);
         toast.success("Tenant created");
+        if (res.admin) {
+          setRevealed(res.admin);
+          return;
+        }
+        onClose();
+        return;
       } else {
         await update.mutateAsync({
           uid: id,
@@ -110,6 +127,14 @@ export function TenantEditor({ id, onClose }: TenantEditorProps) {
   const displayNameInvalid = formState.isSubmitted && !watch("display_name").trim();
 
   return (
+    <>
+    <AdminCredentialDialog
+      credential={revealed}
+      onClose={() => {
+        setRevealed(null);
+        onClose();
+      }}
+    />
     <Drawer
       open
       onOpenChange={(o) => {
@@ -172,6 +197,37 @@ export function TenantEditor({ id, onClose }: TenantEditorProps) {
                   </Select>
                 </div>
               </section>
+              {isCreate ? (
+                <section className={styles.section}>
+                  <h3 className={styles.sectionTitle}>Admin provisioning</h3>
+                  <div className={styles.field}>
+                    <Checkbox
+                      id="tenant-create-admin"
+                      checked={watch("create_admin")}
+                      onCheckedChange={(v) =>
+                        setValue("create_admin", v === true, { shouldDirty: true })
+                      }
+                      aria-label="Create admin user"
+                    />
+                    <label className={styles.label} htmlFor="tenant-create-admin">
+                      Create admin user
+                    </label>
+                  </div>
+                  {watch("create_admin") ? (
+                    <div className={styles.field}>
+                      <label className={styles.label} htmlFor="tenant-admin-username">
+                        Admin username
+                      </label>
+                      <Input
+                        id="tenant-admin-username"
+                        {...register("admin_username")}
+                        aria-label="Admin username"
+                        placeholder="admin"
+                      />
+                    </div>
+                  ) : null}
+                </section>
+              ) : null}
               {!isCreate ? (
                 <div className={styles.dangerZone}>
                   <Button
@@ -206,5 +262,6 @@ export function TenantEditor({ id, onClose }: TenantEditorProps) {
         </DrawerFooter>
       </DrawerContent>
     </Drawer>
+    </>
   );
 }
