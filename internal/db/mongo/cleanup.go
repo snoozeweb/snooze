@@ -352,19 +352,25 @@ func (d *Driver) ComputeStats(ctx context.Context, collection string, from, to t
 	defer cur.Close(ctx) //nolint:errcheck
 	var out []dbpkg.StatsBucket
 	for cur.Next(ctx) {
-		var row bson.M
+		// Decode into a typed shape: the final $group emits a string _id (the
+		// formatted date bucket) and a `data` array of {key, value} documents.
+		// Decoding into a bson.M instead surfaces each array element as a
+		// bson.D rather than a bson.M, so a map-style type-assert silently
+		// drops every entry and the series comes back empty. The driver also
+		// coerces any BSON numeric ($sum can return int or double) into float64.
+		var row struct {
+			Bucket string `bson:"_id"`
+			Data   []struct {
+				Key   string  `bson:"key"`
+				Value float64 `bson:"value"`
+			} `bson:"data"`
+		}
 		if err := cur.Decode(&row); err != nil {
 			return nil, err
 		}
-		bucket := dbpkg.StatsBucket{Bucket: fmt.Sprintf("%v", row["_id"])}
-		if arr, ok := row["data"].(bson.A); ok {
-			for _, e := range arr {
-				if m, ok := e.(bson.M); ok {
-					k, _ := m["key"].(string)
-					v, _ := numeric(m["value"])
-					bucket.Series = append(bucket.Series, dbpkg.KV{Key: k, Value: v})
-				}
-			}
+		bucket := dbpkg.StatsBucket{Bucket: row.Bucket}
+		for _, e := range row.Data {
+			bucket.Series = append(bucket.Series, dbpkg.KV{Key: e.Key, Value: e.Value})
 		}
 		out = append(out, bucket)
 	}
@@ -388,23 +394,6 @@ func groupByFormat(groupBy string) string {
 	default:
 		return "%Y-%m-%dT%H:00%z"
 	}
-}
-
-// numeric coerces a few common BSON numeric representations to float64.
-func numeric(v any) (float64, bool) {
-	switch x := v.(type) {
-	case float64:
-		return x, true
-	case float32:
-		return float64(x), true
-	case int:
-		return float64(x), true
-	case int32:
-		return float64(x), true
-	case int64:
-		return float64(x), true
-	}
-	return 0, false
 }
 
 // deleteByPipeline runs an aggregation pipeline and deletes every _id it

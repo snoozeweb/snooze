@@ -503,10 +503,23 @@ func testComputeStats(t *testing.T, drv db.Driver) {
 	// (`::timestamptz` / strftime) and Mongo stores/compares it as a BSON Date.
 	// A time.Time round-trips correctly through every backend's Write.
 	when := time.Now().Add(-24 * time.Hour).UTC()
-	mustWrite(t, drv, "stats", db.Document{"date": when, "key": "a_qty", "value": int64(1)})
+	mustWrite(t, drv, "stats",
+		db.Document{"date": when, "key": "a_qty", "value": int64(1)},
+		db.Document{"date": when, "key": "a_qty", "value": int64(2)},
+		db.Document{"date": when, "key": "b_qty", "value": int64(5)},
+	)
 	buckets, err := drv.ComputeStats(ctx(), "stats", time.Unix(0, 0), time.Now(), "day")
 	require.NoError(t, err)
-	require.NotEmpty(t, buckets)
+	require.Len(t, buckets, 1)
+	// The per-bucket series must actually be populated, with $sum aggregating
+	// repeated keys. This guards the Mongo decode path: nested $push'd documents
+	// come back as bson.D (not bson.M), so a naive `e.(bson.M)` type-assert
+	// silently drops every entry and yields an empty series.
+	series := map[string]float64{}
+	for _, kv := range buckets[0].Series {
+		series[kv.Key] = kv.Value
+	}
+	require.Equal(t, map[string]float64{"a_qty": 3, "b_qty": 5}, series)
 }
 
 func testCleanupSnooze(t *testing.T, drv db.Driver) {
