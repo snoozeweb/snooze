@@ -437,3 +437,80 @@ func TestTenantRoutes_RegisteredInBuild(t *testing.T) {
 	require.NotEqual(t, http.StatusNotFound, resp.StatusCode,
 		"/api/v1/tenant must be mounted")
 }
+
+func TestTenantCreate_ProvisionsAdminByDefault(t *testing.T) {
+	tdb := &tenantDB{}
+	r, _ := tenantRouter(t, tdb, auth.PermWriteTenant)
+	body := bytes.NewBufferString(`{"id":"acme","display_name":"Acme"}`)
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/tenant", body)
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	r.ServeHTTP(rec, req)
+	require.Equal(t, http.StatusCreated, rec.Code)
+
+	var resp struct {
+		Admin *struct {
+			Username string `json:"username"`
+			Password string `json:"password"`
+			Method   string `json:"method"`
+			Created  bool   `json:"created"`
+		} `json:"admin"`
+	}
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &resp))
+	require.NotNil(t, resp.Admin, "admin block must be present by default")
+	require.Equal(t, "admin", resp.Admin.Username)
+	require.Equal(t, "local", resp.Admin.Method)
+	require.True(t, resp.Admin.Created)
+	require.GreaterOrEqual(t, len(resp.Admin.Password), 32)
+
+	var sawAdminUser bool
+	for _, d := range tdb.written {
+		if d["name"] == "admin" && d["method"] == "local" {
+			sawAdminUser = true
+			require.Equal(t, []string{"admin"}, d["roles"])
+			require.NotEmpty(t, d["password"])
+		}
+	}
+	require.True(t, sawAdminUser, "an admin user doc must be written")
+}
+
+func TestTenantCreate_NoAdminWhenSuppressed(t *testing.T) {
+	tdb := &tenantDB{}
+	r, _ := tenantRouter(t, tdb, auth.PermWriteTenant)
+	body := bytes.NewBufferString(`{"id":"acme","create_admin":false}`)
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/tenant", body)
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	r.ServeHTTP(rec, req)
+	require.Equal(t, http.StatusCreated, rec.Code)
+
+	var resp map[string]any
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &resp))
+	_, hasAdmin := resp["admin"]
+	require.False(t, hasAdmin, "no admin block when create_admin=false")
+	for _, d := range tdb.written {
+		if d["method"] == "local" {
+			require.NotEqual(t, "admin", d["name"], "no admin user when suppressed")
+		}
+	}
+}
+
+func TestTenantCreate_CustomAdminUsername(t *testing.T) {
+	tdb := &tenantDB{}
+	r, _ := tenantRouter(t, tdb, auth.PermWriteTenant)
+	body := bytes.NewBufferString(`{"id":"acme","admin_username":"ops"}`)
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/tenant", body)
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	r.ServeHTTP(rec, req)
+	require.Equal(t, http.StatusCreated, rec.Code)
+
+	var resp struct {
+		Admin *struct {
+			Username string `json:"username"`
+		} `json:"admin"`
+	}
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &resp))
+	require.NotNil(t, resp.Admin)
+	require.Equal(t, "ops", resp.Admin.Username)
+}

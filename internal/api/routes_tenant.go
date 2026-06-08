@@ -46,6 +46,25 @@ var defaultTenantRoles = []db.Document{
 	},
 }
 
+// adminCredential is the one-time credential returned when a tenant's first
+// local admin is provisioned (or its password is regenerated).
+type adminCredential struct {
+	Username string `json:"username"`
+	Password string `json:"password"`
+	Method   string `json:"method"`
+	Created  bool   `json:"created"`
+}
+
+// tenantCreateResponse is the create response: the written tenant id(s) and,
+// when an admin was provisioned, the one-time admin credential. We expose an
+// explicit lowercase `added` rather than embedding db.WriteResult (whose fields
+// have no json tags and would serialize PascalCase) so the JSON shape is
+// consistent with the lowercase `admin` field and the web/CLI clients.
+type tenantCreateResponse struct {
+	Added []string         `json:"added,omitempty"`
+	Admin *adminCredential `json:"admin,omitempty"`
+}
+
 // mountTenant wires the platform-permission-gated tenant registry under
 // /api/v1/tenant. Every handler runs under auth.WithPlatformScope so the
 // driver bypasses per-tenant injection for the global "tenant" collection.
@@ -150,7 +169,38 @@ func (rt *Router) handleTenantCreate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	WriteJSON(w, http.StatusCreated, res)
+	out := tenantCreateResponse{Added: res.Added}
+
+	// Provision a first local admin unless explicitly suppressed. This is the
+	// only isolation-preserving way to seed a brand-new tenant's first admin
+	// (the platform admin cannot write users into another tenant). LDAP/SSO-only
+	// tenants opt out with create_admin:false.
+	createAdmin := true
+	if v, ok := doc["create_admin"].(bool); ok {
+		createAdmin = v
+	}
+	if createAdmin {
+		username, _ := doc["admin_username"].(string)
+		adm, err := auth.EnsureTenantAdmin(auth.WithTenant(baseCtx, id), rt.DB, username, false)
+		if err != nil {
+			// The tenant + roles are already written; surface the id so the
+			// operator can recover via the reset endpoint rather than seeing an
+			// opaque 500.
+			WriteError(w, r, ErrInternal.WithMessage(
+				"tenant "+id+" created but admin provisioning failed; recover via POST /api/v1/tenant/"+id+"/admin").WithCause(err))
+			return
+		}
+		if adm.Created {
+			out.Admin = &adminCredential{
+				Username: adm.Username,
+				Password: adm.Password,
+				Method:   auth.LocalMethod,
+				Created:  true,
+			}
+		}
+	}
+
+	WriteJSON(w, http.StatusCreated, out)
 }
 
 // seedTenant provisions the baseline data a freshly-created tenant needs to be
