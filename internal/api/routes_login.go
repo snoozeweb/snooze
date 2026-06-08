@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"net/http"
+	"sort"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -110,8 +111,38 @@ func (rt *Router) handleLoginIndex(w http.ResponseWriter, r *http.Request) {
 		}
 		names = ordered
 	}
+	// Build the public tenant list: active+listed only, never login_key.
+	type pubTenant struct {
+		ID          string `json:"id"`
+		DisplayName string `json:"display_name"`
+	}
+	tenants := []pubTenant{}
+	if rt.DB != nil {
+		pctx := auth.WithPlatformScope(r.Context())
+		docs, _, err := rt.DB.Search(pctx, "tenant",
+			condition.Equals("status", "active"), db.Page{})
+		if err == nil {
+			for _, d := range docs {
+				// Filter suspended tenants — also handled by the DB condition,
+				// but re-checked here so in-memory stubs (tests) stay correct.
+				if status, _ := d["status"].(string); status == "suspended" {
+					continue
+				}
+				if listed, ok := d["listed"].(bool); ok && !listed {
+					continue // explicit listed:false hides the tenant
+				}
+				id, _ := d["id"].(string)
+				if id == "" {
+					continue
+				}
+				dn, _ := d["display_name"].(string)
+				tenants = append(tenants, pubTenant{ID: id, DisplayName: dn})
+			}
+			sort.SliceStable(tenants, func(i, j int) bool { return tenants[i].DisplayName < tenants[j].DisplayName })
+		}
+	}
 	WriteJSON(w, http.StatusOK, map[string]any{
-		"data": map[string]any{"backends": names},
+		"data": map[string]any{"backends": names, "tenants": tenants},
 	})
 }
 

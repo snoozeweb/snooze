@@ -16,6 +16,7 @@ import (
 	"github.com/snoozeweb/snooze/internal/auth"
 	"github.com/snoozeweb/snooze/internal/config"
 	"github.com/snoozeweb/snooze/internal/config/schema"
+	"github.com/snoozeweb/snooze/internal/db"
 	"github.com/snoozeweb/snooze/pkg/snoozetypes"
 )
 
@@ -438,4 +439,54 @@ func TestLoginAnonymous_OrgFieldSetsTenantID(t *testing.T) {
 	claims, err := rt.Auth.Verify(resp.Token)
 	require.NoError(t, err)
 	require.Equal(t, "customers", claims.TenantID)
+}
+
+// TestHandleLoginIndex_ListsActiveListedTenants verifies that GET /api/v1/login
+// includes an active+listed tenants array (never login_key), excludes
+// suspended or explicitly unlisted tenants, and treats a missing listed field
+// as true.
+func TestHandleLoginIndex_ListsActiveListedTenants(t *testing.T) {
+	// Build a login router; give it a tenantDB pre-seeded with four docs that
+	// exercise every filtering branch.
+	tdb := &tenantDB{
+		docs: []db.Document{
+			{"id": "acme", "display_name": "Acme", "status": "active", "listed": true, "login_key": "secret-key"},
+			{"id": "globex", "display_name": "Globex", "status": "active", "listed": false},
+			{"id": "initech", "display_name": "Initech", "status": "suspended", "listed": true},
+			{"id": "legacy", "display_name": "Legacy", "status": "active"}, // no listed field → treated as listed
+		},
+	}
+	_, rt := loginTestRouter(t, &fakeProvider{name: "local", enabled: true})
+	rt.DB = tdb
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/login", nil)
+	// Re-mount so the new rt (with DB) handles the request.
+	r2 := chi.NewRouter()
+	rt.mountLogin(r2)
+	r2.ServeHTTP(rec, req)
+
+	require.Equal(t, http.StatusOK, rec.Code)
+
+	var resp struct {
+		Data struct {
+			Backends []string `json:"backends"`
+			Tenants  []struct {
+				ID          string `json:"id"`
+				DisplayName string `json:"display_name"`
+				LoginKey    string `json:"login_key"`
+			} `json:"tenants"`
+		} `json:"data"`
+	}
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &resp))
+
+	ids := map[string]bool{}
+	for _, tn := range resp.Data.Tenants {
+		ids[tn.ID] = true
+		require.Empty(t, tn.LoginKey, "login_key must never appear in the public list (tenant %s)", tn.ID)
+	}
+	require.True(t, ids["acme"], "active+listed tenant acme must appear")
+	require.True(t, ids["legacy"], "active tenant with no listed field must appear")
+	require.False(t, ids["globex"], "explicitly unlisted tenant globex must be excluded")
+	require.False(t, ids["initech"], "suspended tenant initech must be excluded")
 }
