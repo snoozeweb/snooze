@@ -1845,6 +1845,13 @@ components:
           type: string
           enum: [active, suspended]
           default: active
+        listed:
+          type: boolean
+          default: true
+          description: |
+            Whether the tenant appears in the public login page's tenant list.
+            Set false for SaaS-style deployments where tenants reach their login
+            page via their opaque login link instead.
         ingest_token:
           type: string
           description: |

@@ -2373,6 +2373,14 @@ export interface components {
              * @enum {string}
              */
             status: "active" | "suspended";
+            /**
+             * @description Whether the tenant appears in the public login page's tenant list.
+             *     Set false for SaaS-style deployments where tenants reach their login
+             *     page via their opaque login link instead.
+             *
+             * @default true
+             */
+            listed: boolean;
             /** @description Per-tenant ingest token. If omitted the server generates a random
              *     24-byte hex token and returns it in the response body. Store it:
              *     this is the only time the plaintext is returned.
