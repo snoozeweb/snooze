@@ -138,10 +138,56 @@ func (c *Core) Run(ctx context.Context) error {
 		})
 	}
 
+	// Heartbeat scanner is non-critical: it ticks on the plugin's interval and,
+	// per tick, scans every active tenant's heartbeats under that tenant's scope.
+	if hb, ok := any(c.Plugin("heartbeat")).(tenantScanner); ok {
+		interval := hb.ScanInterval()
+		c.Sup.Go(gctx, g, Job{
+			Name: "heartbeat",
+			Fn: func(ctx context.Context) error {
+				ticker := time.NewTicker(interval)
+				defer ticker.Stop()
+				for {
+					select {
+					case <-ctx.Done():
+						return nil
+					case <-ticker.C:
+						if err := scanAllTenants(ctx, c.Driver, hb, c.Logger()); err != nil {
+							c.Logger().Warn("heartbeat: scan pass failed", "err", err)
+						}
+					}
+				}
+			},
+		})
+	}
+
 	if err := g.Wait(); err != nil {
 		return fmt.Errorf("core: run: %w", err)
 	}
 	return nil
+}
+
+// tenantScanner is the slice of the heartbeat plugin the core heartbeat job
+// drives. The concrete *heartbeat.Plugin satisfies it; resolving via a runtime
+// assertion (like recordProcessor) keeps internal/core free of a plugin import.
+type tenantScanner interface {
+	ScanTenant(ctx context.Context) error
+	ScanInterval() time.Duration
+}
+
+// scanAllTenants runs one scan pass: it fans out over active tenants and calls
+// scanner.ScanTenant under each tenant's scope. A per-tenant error is logged
+// (via lg, which may be nil in tests) and swallowed; only a failure to list
+// tenants is returned.
+func scanAllTenants(ctx context.Context, drv db.Driver, scanner tenantScanner, lg *slog.Logger) error {
+	return housekeeper.ForEachTenant(ctx, drv, func(tctx context.Context, tid string) error {
+		if err := scanner.ScanTenant(tctx); err != nil {
+			if lg != nil {
+				lg.Warn("heartbeat: per-tenant scan failed", "tenant", tid, "err", err)
+			}
+		}
+		return nil // never abort the fan-out on a single tenant's failure
+	})
 }
 
 // Plugin returns the registered plugin by name, or nil when absent. Part of
