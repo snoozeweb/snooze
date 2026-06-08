@@ -31,8 +31,9 @@ import (
 // zero value. Documents are matched on a single `name = <value>` equality,
 // which is all the plugin's queries use.
 type memDB struct {
-	mu   sync.Mutex
-	docs []db.Document
+	mu      sync.Mutex
+	docs    []db.Document
+	indexes [][]string // recorded CreateIndex field-sets
 }
 
 func (m *memDB) add(doc db.Document) {
@@ -147,7 +148,25 @@ func (m *memDB) PrependList(context.Context, string, map[string][]any, condition
 func (m *memDB) RemoveList(context.Context, string, map[string][]any, condition.Cond) (int, error) {
 	return 0, nil
 }
-func (m *memDB) CreateIndex(context.Context, string, []string) error { return nil }
+func (m *memDB) CreateIndex(_ context.Context, _ string, fields []string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.indexes = append(m.indexes, append([]string(nil), fields...))
+	return nil
+}
+
+func (m *memDB) hasIndexOn(field string) bool {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	for _, idx := range m.indexes {
+		for _, f := range idx {
+			if f == field {
+				return true
+			}
+		}
+	}
+	return false
+}
 func (m *memDB) ListCollections(context.Context) ([]string, error)   { return nil, nil }
 func (m *memDB) Drop(context.Context, string) error                  { return nil }
 func (m *memDB) Backup(context.Context, string, []string) error      { return nil }
@@ -378,7 +397,7 @@ func ping(t *testing.T, p *Plugin, method, name, token string) *httptest.Respons
 func TestPingUpdatesLastSeen(t *testing.T) {
 	const tok = "test-token-abc123"
 	host := newHost()
-	host.driver.add(db.Document{"name": "hb1", "interval": float64(60), "token": tok})
+	host.driver.add(db.Document{"name": "hb1", "interval": float64(60), "token": tok, "tenant_id": "default"})
 
 	fixed := time.Date(2026, 5, 27, 12, 0, 0, 0, time.UTC)
 	p := newPlugin(t, host)
@@ -399,19 +418,67 @@ func TestPingUpdatesLastSeen(t *testing.T) {
 func TestPingGETAlsoWorks(t *testing.T) {
 	const tok = "test-token-get"
 	host := newHost()
-	host.driver.add(db.Document{"name": "hb1", "interval": float64(60), "token": tok})
+	host.driver.add(db.Document{"name": "hb1", "interval": float64(60), "token": tok, "tenant_id": "default"})
 	p := newPlugin(t, host)
 
 	w := ping(t, p, http.MethodGet, "hb1", tok)
 	require.Equal(t, http.StatusOK, w.Code)
 }
 
-func TestPingUnknownHeartbeat404(t *testing.T) {
+func TestPingUnknownHeartbeatIs401(t *testing.T) {
 	host := newHost()
 	p := newPlugin(t, host)
-	// name does not exist; token is non-empty so we reach the lookup step.
+	// name does not exist and the token matches nothing → 401.
 	w := ping(t, p, http.MethodPost, "nope", "some-token")
-	require.Equal(t, http.StatusNotFound, w.Code)
+	require.Equal(t, http.StatusUnauthorized, w.Code)
+}
+
+// TestPostInitCreatesTokenIndex verifies PostInit asks the driver for an index
+// on the token field (backs the platform-scope ping lookup).
+func TestPostInitCreatesTokenIndex(t *testing.T) {
+	host := newHost()
+	newPlugin(t, host) // PostInit runs inside newPlugin
+	require.True(t, host.driver.hasIndexOn("token"),
+		"PostInit must create an index on the heartbeat token field")
+}
+
+// TestPingResolvesTenantFromToken verifies the ping looks the heartbeat up by
+// its token (names are no longer globally unique) and stamps last_seen.
+func TestPingResolvesTenantFromToken(t *testing.T) {
+	const tok = "tenant-resolving-token"
+	host := newHost()
+	host.driver.add(db.Document{
+		"name": "hb1", "interval": float64(60), "token": tok, "tenant_id": "acme",
+	})
+	fixed := time.Date(2026, 6, 8, 12, 0, 0, 0, time.UTC)
+	p := newPlugin(t, host)
+	p.now = func() time.Time { return fixed }
+
+	w := ping(t, p, http.MethodPost, "hb1", tok)
+	require.Equal(t, http.StatusOK, w.Code)
+	require.Equal(t, fixed.Format(time.RFC3339), host.driver.get("hb1")["last_seen"])
+}
+
+// TestPingUnknownTokenIs401 verifies that a token that matches no heartbeat is
+// rejected 401 (do not reveal whether the name exists).
+func TestPingUnknownTokenIs401(t *testing.T) {
+	host := newHost()
+	p := newPlugin(t, host)
+	w := ping(t, p, http.MethodPost, "nope", "no-such-token")
+	require.Equal(t, http.StatusUnauthorized, w.Code)
+}
+
+// TestPingNameMismatchIs401 verifies that a valid token whose stored name does
+// not match the supplied ?name= is rejected.
+func TestPingNameMismatchIs401(t *testing.T) {
+	const tok = "valid-token-mismatch"
+	host := newHost()
+	host.driver.add(db.Document{
+		"name": "real-name", "interval": float64(60), "token": tok, "tenant_id": "acme",
+	})
+	p := newPlugin(t, host)
+	w := ping(t, p, http.MethodPost, "wrong-name", tok)
+	require.Equal(t, http.StatusUnauthorized, w.Code)
 }
 
 func TestPingMissingName400(t *testing.T) {
@@ -540,6 +607,7 @@ func TestFreshPingClearsFiringState(t *testing.T) {
 		"enabled":   true,
 		"last_seen": now.Add(-5 * time.Minute).UTC().Format(time.RFC3339),
 		"token":     tok,
+		"tenant_id": "default",
 	})
 
 	p := newPlugin(t, host)
@@ -702,6 +770,20 @@ func TestPostInitNilDBDoesNotPanic(t *testing.T) {
 		err := hp.PostInit(context.Background(), host)
 		require.NoError(t, err)
 	})
+}
+
+// TestPingMissingTenantIDIs500 verifies that a heartbeat whose document carries
+// no tenant_id (e.g. a row that escaped migration) yields an explicit 500 rather
+// than silently stamping under an empty tenant.
+func TestPingMissingTenantIDIs500(t *testing.T) {
+	const tok = "tokenless-tenant"
+	host := newHost()
+	// Note: no tenant_id on this doc.
+	host.driver.add(db.Document{"name": "hb1", "interval": float64(60), "token": tok})
+	p := newPlugin(t, host)
+
+	w := ping(t, p, http.MethodPost, "hb1", tok)
+	require.Equal(t, http.StatusInternalServerError, w.Code)
 }
 
 // nilDBHost is a plugins.Host whose DB() returns nil.

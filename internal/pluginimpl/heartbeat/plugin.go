@@ -24,12 +24,13 @@
 // token required) but is protected at the application layer by a per-heartbeat
 // secret token generated at record creation time. Every ping must supply both
 // ?name=<name> and ?token=<token>; a missing or wrong token is rejected 401.
+// A token that resolves to a heartbeat whose stored name does not match the
+// supplied ?name= is also rejected 401.
 package heartbeat
 
 import (
 	"context"
 	"crypto/rand"
-	"crypto/subtle"
 	_ "embed"
 	"encoding/base64"
 	"encoding/json"
@@ -154,6 +155,14 @@ func (p *Plugin) PostInit(ctx context.Context, host plugins.Host) error {
 		return nil
 	}
 
+	// Index the token field: the unauthenticated ping resolves a heartbeat (and
+	// thus its tenant) by token under platform scope.
+	if err := driver.CreateIndex(ctx, collection, []string{"token"}); err != nil {
+		if lg := p.logger(); lg != nil {
+			lg.Warn("heartbeat: PostInit create token index failed", "err", err)
+		}
+	}
+
 	docs, _, err := driver.Search(ctx, collection, condition.Cond{}, db.Page{})
 	if err != nil {
 		if lg := p.logger(); lg != nil {
@@ -247,33 +256,54 @@ func (p *Plugin) HandleWebhook(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Look up the heartbeat by name to validate the token.
+	// Resolve the heartbeat by its token under platform scope: the token is a
+	// 24-byte crypto-random secret and is the only globally unique key now that
+	// heartbeat names are per-tenant. The exact-token match *is* the auth check.
 	driver := p.db()
 	if driver == nil {
 		http.Error(w, "heartbeat: no database available", http.StatusInternalServerError)
 		return
 	}
-	docs, _, err := driver.Search(r.Context(), collection, condition.Equals("name", name), db.Page{})
+	docs, _, err := driver.Search(
+		snoozetypes.WithPlatformScope(r.Context()),
+		collection, condition.Equals("token", suppliedToken), db.Page{})
 	if err != nil {
 		if lg := p.logger(); lg != nil {
-			lg.Warn("heartbeat: ping lookup failed", "name", name, "err", err)
+			lg.Warn("heartbeat: ping lookup failed", "err", err)
 		}
 		http.Error(w, fmt.Sprintf("heartbeat ping failed: %v", err), http.StatusInternalServerError)
 		return
 	}
 	if len(docs) == 0 {
-		http.Error(w, fmt.Sprintf("unknown heartbeat %q", name), http.StatusNotFound)
-		return
-	}
-
-	// Constant-time token comparison prevents timing attacks.
-	storedToken, _ := docs[0]["token"].(string)
-	if subtle.ConstantTimeCompare([]byte(suppliedToken), []byte(storedToken)) != 1 {
+		// Unknown token: do not reveal whether the name exists.
 		http.Error(w, "invalid heartbeat token", http.StatusUnauthorized)
 		return
 	}
+	if len(docs) > 1 {
+		// Astronomically unlikely token collision across tenants.
+		if lg := p.logger(); lg != nil {
+			lg.Warn("heartbeat: token resolved to multiple heartbeats", "count", len(docs))
+		}
+		http.Error(w, "heartbeat token is ambiguous", http.StatusInternalServerError)
+		return
+	}
+	hbDoc := docs[0]
+	storedName, _ := hbDoc["name"].(string)
+	if storedName != name {
+		http.Error(w, "invalid heartbeat token", http.StatusUnauthorized)
+		return
+	}
+	tenantID, _ := hbDoc["tenant_id"].(string)
+	if tenantID == "" {
+		if lg := p.logger(); lg != nil {
+			lg.Warn("heartbeat: matched heartbeat has no tenant_id; migration incomplete?", "name", name)
+		}
+		http.Error(w, "heartbeat: tenant not resolved", http.StatusInternalServerError)
+		return
+	}
+	tenantCtx := snoozetypes.WithTenant(r.Context(), tenantID)
 
-	matched, err := p.touch(r.Context(), name)
+	matched, err := p.touch(tenantCtx, name)
 	if err != nil {
 		if lg := p.logger(); lg != nil {
 			lg.Warn("heartbeat: ping update failed", "name", name, "err", err)
