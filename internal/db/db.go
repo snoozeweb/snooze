@@ -15,10 +15,9 @@ import (
 // tenant_id predicate and never fail-close on a missing tenant. Seeded with the
 // platform-global collections; RegisterGlobalCollection adds more at boot.
 var globalCollections = map[string]struct{}{
-	"tenant":    {}, // tenant registry itself
-	"secrets":   {}, // cluster secrets
-	"nodes":     {}, // cluster node registry (syncer)
-	"heartbeat": {}, // cluster heartbeat
+	"tenant":  {}, // tenant registry itself
+	"secrets": {}, // cluster secrets
+	"nodes":   {}, // cluster node registry (syncer)
 }
 
 var globalCollectionsMu sync.RWMutex

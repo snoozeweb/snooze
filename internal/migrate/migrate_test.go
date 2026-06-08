@@ -15,10 +15,9 @@ import (
 func TestScopedCollections_DoesNotContainGlobals(t *testing.T) {
 	t.Parallel()
 	globals := map[string]struct{}{
-		"tenant":    {},
-		"secrets":   {},
-		"nodes":     {},
-		"heartbeat": {},
+		"tenant":  {},
+		"secrets": {},
+		"nodes":   {},
 	}
 	for _, c := range TenantScopedCollections {
 		_, isGlobal := globals[c]
@@ -29,7 +28,7 @@ func TestScopedCollections_DoesNotContainGlobals(t *testing.T) {
 func TestScopedCollections_ContainsExpected(t *testing.T) {
 	t.Parallel()
 	required := []string{"record", "rule", "user", "role", "snooze", "aggregaterule",
-		"notification", "audit", "stats", "settings", "refresh_token"}
+		"notification", "audit", "stats", "settings", "refresh_token", "heartbeat"}
 	have := make(map[string]struct{}, len(TenantScopedCollections))
 	for _, c := range TenantScopedCollections {
 		have[c] = struct{}{}
@@ -91,6 +90,22 @@ func TestBackfillTenantID_SkipsAlreadyStamped(t *testing.T) {
 	require.NoError(t, err)
 	// Only h2 lacked tenant_id.
 	require.Equal(t, 1, n)
+}
+
+func TestBackfillTenantID_StampsHeartbeat(t *testing.T) {
+	t.Parallel()
+	drv := newFakeDriver()
+	drv.seed("heartbeat", db.Document{"name": "nightly", "interval": float64(60)})
+
+	pctx := auth.WithPlatformScope(context.Background())
+	n, err := backfillTenantID(pctx, drv, snoozetypes.DefaultTenant)
+	require.NoError(t, err)
+	require.Equal(t, 1, n, "the pre-existing heartbeat row must be stamped")
+
+	for _, doc := range drv.docs("heartbeat") {
+		require.Equal(t, snoozetypes.DefaultTenant, doc["tenant_id"],
+			"heartbeat row must receive tenant_id=default")
+	}
 }
 
 func TestBackfillTenantID_SkipsGlobalCollections(t *testing.T) {

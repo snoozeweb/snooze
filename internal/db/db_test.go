@@ -7,7 +7,7 @@ import (
 )
 
 func TestIsGlobalCollection_seeded(t *testing.T) {
-	for _, name := range []string{"tenant", "secrets", "nodes", "heartbeat"} {
+	for _, name := range []string{"tenant", "secrets", "nodes"} {
 		if !db.IsGlobalCollection(name) {
 			t.Errorf("IsGlobalCollection(%q): expected true", name)
 		}
@@ -15,7 +15,7 @@ func TestIsGlobalCollection_seeded(t *testing.T) {
 }
 
 func TestIsGlobalCollection_tenantScoped(t *testing.T) {
-	for _, name := range []string{"record", "rule", "user", "role", "snooze", "notification"} {
+	for _, name := range []string{"record", "rule", "user", "role", "snooze", "notification", "heartbeat"} {
 		if db.IsGlobalCollection(name) {
 			t.Errorf("IsGlobalCollection(%q): expected false for tenant-scoped collection", name)
 		}

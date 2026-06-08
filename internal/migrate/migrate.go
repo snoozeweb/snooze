@@ -33,8 +33,7 @@ const migrationMarkerField = "multitenancy_v1"
 
 // TenantScopedCollections is the complete, canonical list of collections that
 // must receive tenant_id = DefaultTenant during migration. Global collections
-// (tenant, secrets, nodes, heartbeat) are excluded; they never carry
-// tenant_id.
+// (tenant, secrets, nodes) are excluded; they never carry tenant_id.
 //
 // Keep this list in sync with §2 / §4 of the Shared Contract whenever a new
 // plugin adds a collection.
@@ -58,6 +57,7 @@ var TenantScopedCollections = []string{
 	"widget",
 	"aggregate",
 	"general",
+	"heartbeat",
 }
 
 // isAlreadyMigrated returns true when the migration sentinel is present. ctx
@@ -97,10 +97,9 @@ func writeSentinel(ctx context.Context, drv db.Driver) error {
 // without importing the driver's registry state (which may not be
 // initialized in a standalone migration binary).
 var globalMigrationCollections = map[string]struct{}{
-	"tenant":    {},
-	"secrets":   {},
-	"nodes":     {},
-	"heartbeat": {},
+	"tenant":  {},
+	"secrets": {},
+	"nodes":   {},
 }
 
 // isGlobalForMigration reports whether the named collection is platform-global
