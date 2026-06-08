@@ -10,6 +10,12 @@ import { TooltipProvider } from "@/shared/ui/Tooltip";
 import { ToastProvider, Toaster } from "@/shared/ui/Toast";
 import { TenantEditor } from "./TenantEditor";
 
+// Convenience: suppress clipboard errors in jsdom
+Object.defineProperty(navigator, "clipboard", {
+  value: { writeText: vi.fn().mockResolvedValue(undefined) },
+  configurable: true,
+});
+
 beforeAll(() => {
   if (typeof window !== "undefined" && !window.ResizeObserver) {
     window.ResizeObserver = class ResizeObserver {
@@ -125,6 +131,118 @@ describe("TenantEditor create", () => {
     expect(sent.display_name).toBe("Acme Corp");
     expect(sent.status).toBe("active");
     await waitFor(() => expect(onClose).toHaveBeenCalled());
+  });
+});
+
+describe("TenantEditor edit — listed toggle", () => {
+  it("toggling Listed sends listed in the update body", async () => {
+    mswServer.use(
+      http.get("/api/v1/tenant/acme", () =>
+        HttpResponse.json({ id: "acme", display_name: "Acme Corp", status: "active", listed: true }),
+      ),
+    );
+    const bodies: unknown[] = [];
+    mswServer.use(
+      http.patch("/api/v1/tenant/acme", async ({ request }) => {
+        bodies.push(await request.json());
+        return HttpResponse.json({ id: "acme", display_name: "Acme Corp", status: "active", listed: false });
+      }),
+    );
+    const onClose = vi.fn();
+    const Wrapper = wrap();
+    const user = userEvent.setup();
+    render(
+      <Wrapper>
+        <TenantEditor id="acme" onClose={onClose} />
+      </Wrapper>,
+    );
+    // Wait for form to load
+    await waitFor(() =>
+      expect(screen.getByLabelText<HTMLInputElement>(/display name/i).value).toBe("Acme Corp"),
+    );
+    // The Listed checkbox should be checked (listed:true)
+    const listedCheckbox = screen.getByRole("checkbox", { name: /listed/i });
+    expect(listedCheckbox).toBeChecked();
+    // Toggle it off
+    await user.click(listedCheckbox);
+    expect(listedCheckbox).not.toBeChecked();
+    // Save
+    await user.click(screen.getByRole("button", { name: /save/i }));
+    await waitFor(() => expect(bodies).toHaveLength(1));
+    expect((bodies[0] as { listed?: boolean }).listed).toBe(false);
+  });
+});
+
+describe("TenantEditor edit — login link block", () => {
+  it("shows the login link and a Rotate action when login_key is present", async () => {
+    mswServer.use(
+      http.get("/api/v1/tenant/acme", () =>
+        HttpResponse.json({ id: "acme", display_name: "Acme Corp", status: "active", login_key: "KEY-abc" }),
+      ),
+    );
+    const Wrapper = wrap();
+    render(
+      <Wrapper>
+        <TenantEditor id="acme" onClose={vi.fn()} />
+      </Wrapper>,
+    );
+    // Wait for form to load
+    await waitFor(() =>
+      expect(screen.getByLabelText<HTMLInputElement>(/display name/i).value).toBe("Acme Corp"),
+    );
+    // The readonly input should show the login link value
+    expect(screen.getByDisplayValue(/\/web\/login\?key=KEY-abc/)).toBeInTheDocument();
+    // A Rotate button must be visible
+    expect(screen.getByRole("button", { name: /rotate/i })).toBeInTheDocument();
+  });
+
+  it("shows 'Generate login link' button when login_key is absent", async () => {
+    mswServer.use(
+      http.get("/api/v1/tenant/acme", () =>
+        HttpResponse.json({ id: "acme", display_name: "Acme Corp", status: "active" }),
+      ),
+    );
+    const Wrapper = wrap();
+    render(
+      <Wrapper>
+        <TenantEditor id="acme" onClose={vi.fn()} />
+      </Wrapper>,
+    );
+    await waitFor(() =>
+      expect(screen.getByLabelText<HTMLInputElement>(/display name/i).value).toBe("Acme Corp"),
+    );
+    expect(screen.getByRole("button", { name: /generate login link/i })).toBeInTheDocument();
+  });
+
+  it("calls useRotateLoginKey when Rotate is clicked and confirmed", async () => {
+    let rotateCalls = 0;
+    mswServer.use(
+      http.get("/api/v1/tenant/acme", () =>
+        HttpResponse.json({ id: "acme", display_name: "Acme Corp", status: "active", login_key: "KEY-abc" }),
+      ),
+      http.post("/api/v1/tenant/acme/rotate-login-key", () => {
+        rotateCalls++;
+        return HttpResponse.json({ id: "acme", login_key: "NEW-KEY" });
+      }),
+    );
+    const Wrapper = wrap();
+    const user = userEvent.setup();
+    render(
+      <Wrapper>
+        <TenantEditor id="acme" onClose={vi.fn()} />
+      </Wrapper>,
+    );
+    await waitFor(() =>
+      expect(screen.getByLabelText<HTMLInputElement>(/display name/i).value).toBe("Acme Corp"),
+    );
+    await user.click(screen.getByRole("button", { name: /rotate/i }));
+    // Confirm dialog should appear
+    expect(screen.getByRole("button", { name: /rotate login key/i })).toBeInTheDocument();
+    // Confirm
+    await user.click(screen.getByRole("button", { name: /rotate login key/i }));
+    // The rotate endpoint must actually be hit (guards against a silently
+    // throwing handler that would otherwise let this test pass vacuously).
+    await waitFor(() => expect(rotateCalls).toBe(1));
   });
 });
 

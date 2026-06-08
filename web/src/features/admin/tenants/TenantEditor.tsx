@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { useForm } from "react-hook-form";
 import { Button } from "@/shared/ui/Button";
 import { Checkbox } from "@/shared/ui/Checkbox";
+import { Dialog, DialogContent, DialogTitle, DialogBody, DialogFooter } from "@/shared/ui/Dialog";
 import { Drawer, DrawerBody, DrawerContent, DrawerFooter, DrawerTitle } from "@/shared/ui/Drawer";
 import { Input } from "@/shared/ui/Input";
 import { Select, SelectContent, SelectItem, SelectTrigger } from "@/shared/ui/Select";
@@ -22,6 +23,7 @@ type FormShape = {
   status: "active" | "suspended";
   create_admin: boolean;
   admin_username: string;
+  listed: boolean;
 };
 
 const EMPTY_FORM: FormShape = {
@@ -30,6 +32,7 @@ const EMPTY_FORM: FormShape = {
   status: "active",
   create_admin: true,
   admin_username: "admin",
+  listed: true,
 };
 
 export type TenantEditorProps = {
@@ -44,6 +47,7 @@ export function TenantEditor({ id, onClose }: TenantEditorProps) {
   const create = Tenants.useCreate();
   const update = Tenants.useUpdate();
   const remove = Tenants.useRemove();
+  const rotateLoginKey = Tenants.useRotateLoginKey();
 
   const { register, handleSubmit, reset, watch, setValue, formState } = useForm<FormShape>({
     defaultValues: EMPTY_FORM,
@@ -59,6 +63,7 @@ export function TenantEditor({ id, onClose }: TenantEditorProps) {
         id: existing.data.id,
         display_name: existing.data.display_name,
         status: existing.data.status === "suspended" ? "suspended" : "active",
+        listed: existing.data.listed !== false,
       });
     }
   }, [existing.data, isCreate, reset]);
@@ -66,6 +71,8 @@ export function TenantEditor({ id, onClose }: TenantEditorProps) {
   const [submitting, setSubmitting] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [revealed, setRevealed] = useState<AdminCredential | null>(null);
+  const [confirmRotate, setConfirmRotate] = useState(false);
+  const [rotating, setRotating] = useState(false);
 
   const currentId = watch("id");
   const isDefault = !isCreate && id === DEFAULT_TENANT;
@@ -97,6 +104,7 @@ export function TenantEditor({ id, onClose }: TenantEditorProps) {
           body: {
             display_name: form.display_name.trim(),
             status: form.status,
+            listed: form.listed,
           },
         });
         toast.success("Tenant saved");
@@ -123,6 +131,25 @@ export function TenantEditor({ id, onClose }: TenantEditorProps) {
     }
   }
 
+  async function handleRotateConfirmed() {
+    if (!id) return;
+    setRotating(true);
+    try {
+      await rotateLoginKey.mutateAsync(id);
+      setConfirmRotate(false);
+      toast.success("Login key rotated");
+    } catch (e) {
+      toast.error(e instanceof ApiError ? e.detail : "Rotate failed");
+    } finally {
+      setRotating(false);
+    }
+  }
+
+  const loginKey = existing.data?.login_key;
+  const loginLink = loginKey
+    ? `${window.location.origin}/web/login?key=${loginKey}`
+    : null;
+
   const idInvalid = formState.isSubmitted && !currentId.trim();
   const displayNameInvalid = formState.isSubmitted && !watch("display_name").trim();
 
@@ -135,6 +162,31 @@ export function TenantEditor({ id, onClose }: TenantEditorProps) {
         onClose();
       }}
     />
+    <Dialog open={confirmRotate} onOpenChange={(o) => { if (!o) setConfirmRotate(false); }}>
+      <DialogContent>
+        <DialogTitle>Rotate login key?</DialogTitle>
+        <DialogBody>
+          This generates a new login link for{" "}
+          {existing.data?.display_name || id}. The previous link will stop working immediately.
+        </DialogBody>
+        <DialogFooter>
+          <Button
+            variant="secondary"
+            onClick={() => setConfirmRotate(false)}
+            disabled={rotating}
+          >
+            Cancel
+          </Button>
+          <Button
+            variant="primary"
+            disabled={rotating}
+            onClick={() => void handleRotateConfirmed()}
+          >
+            {rotating ? "Rotating…" : "Rotate login key"}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
     <Drawer
       open
       onOpenChange={(o) => {
@@ -196,7 +248,71 @@ export function TenantEditor({ id, onClose }: TenantEditorProps) {
                     </SelectContent>
                   </Select>
                 </div>
+                <div className={styles.field} style={{ flexDirection: "row", alignItems: "center", gap: "var(--space-2)" }}>
+                  <Checkbox
+                    id="tenant-listed"
+                    checked={watch("listed")}
+                    onCheckedChange={(v) =>
+                      setValue("listed", v === true, { shouldDirty: true })
+                    }
+                    aria-label="Listed"
+                  />
+                  <label className={styles.label} htmlFor="tenant-listed">
+                    Listed
+                  </label>
+                </div>
               </section>
+              {!isCreate ? (
+                <section className={styles.section}>
+                  <h3 className={styles.sectionTitle}>Login link</h3>
+                  {loginLink ? (
+                    <>
+                      <div className={styles.field}>
+                        <span className={styles.label}>Shareable link</span>
+                        <div style={{ display: "flex", gap: "var(--space-2)", alignItems: "center" }}>
+                          <Input
+                            readOnly
+                            value={loginLink}
+                            aria-label="Login link"
+                            style={{ flex: 1, fontFamily: "monospace", fontSize: "var(--font-size-sm)" }}
+                          />
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="ghost"
+                            onClick={() => void navigator.clipboard?.writeText(loginLink)}
+                          >
+                            Copy
+                          </Button>
+                        </div>
+                      </div>
+                      <div>
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="secondary"
+                          onClick={() => setConfirmRotate(true)}
+                          disabled={rotating}
+                        >
+                          Rotate
+                        </Button>
+                      </div>
+                    </>
+                  ) : (
+                    <div>
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="secondary"
+                        onClick={() => setConfirmRotate(true)}
+                        disabled={rotating}
+                      >
+                        Generate login link
+                      </Button>
+                    </div>
+                  )}
+                </section>
+              ) : null}
               {isCreate ? (
                 <section className={styles.section}>
                   <h3 className={styles.sectionTitle}>Admin provisioning</h3>
