@@ -124,4 +124,62 @@ func TestTenantRootHelp_IncludesTenant(t *testing.T) {
 	require.Contains(t, out.String(), "create")
 	require.Contains(t, out.String(), "list")
 	require.Contains(t, out.String(), "delete")
+	require.Contains(t, out.String(), "reset-admin")
+}
+
+func TestTenantCreate_SendsAdminFlags(t *testing.T) {
+	var captured map[string]any
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		require.NoError(t, json.NewDecoder(r.Body).Decode(&captured))
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusCreated)
+		_, _ = w.Write([]byte(`{"added":["acme"],"admin":{"username":"ops","password":"SECRET123456789012345678901234","method":"local","created":true}}`))
+	}))
+	defer srv.Close()
+
+	rt, out, _ := newTestRuntime(t, srv)
+	rt.flags.Token = "tok"
+	rt.flags.Server = srv.URL
+	_, _, err := executeCmd(t, rt, "tenant", "create", "--id", "acme", "--admin-username", "ops")
+	require.NoError(t, err)
+	require.Equal(t, "ops", captured["admin_username"])
+	// create_admin is NOT sent when the admin is created (default true on the server).
+	_, sentCreateAdmin := captured["create_admin"]
+	require.False(t, sentCreateAdmin)
+	// The generated password and username are printed once to stdout.
+	require.Contains(t, out.String(), "SECRET123456789012345678901234")
+	require.Contains(t, out.String(), "ops")
+}
+
+func TestTenantCreate_NoAdminSendsFalse(t *testing.T) {
+	var captured map[string]any
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		require.NoError(t, json.NewDecoder(r.Body).Decode(&captured))
+		w.WriteHeader(http.StatusCreated)
+		_, _ = w.Write([]byte(`{"added":["acme"]}`))
+	}))
+	defer srv.Close()
+	rt, out, _ := newTestRuntime(t, srv)
+	rt.flags.Token = "tok"
+	rt.flags.Server = srv.URL
+	_, _, err := executeCmd(t, rt, "tenant", "create", "--id", "acme", "--no-admin")
+	require.NoError(t, err)
+	require.Equal(t, false, captured["create_admin"])
+	require.NotContains(t, out.String(), "Password")
+}
+
+func TestTenantResetAdmin_PrintsPassword(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		require.Equal(t, http.MethodPost, r.Method)
+		require.Equal(t, "/api/v1/tenant/acme/admin", r.URL.Path)
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"username":"admin","password":"NEWPW12345678901234567890123456","method":"local","created":false}`))
+	}))
+	defer srv.Close()
+	rt, out, _ := newTestRuntime(t, srv)
+	rt.flags.Token = "tok"
+	rt.flags.Server = srv.URL
+	_, _, err := executeCmd(t, rt, "tenant", "reset-admin", "--id", "acme")
+	require.NoError(t, err)
+	require.Contains(t, out.String(), "NEWPW12345678901234567890123456")
 }

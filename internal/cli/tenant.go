@@ -9,7 +9,7 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// newTenantCmd builds the `snooze tenant …` subtree: create, list, delete.
+// newTenantCmd builds the `snooze tenant …` subtree: create, list, delete, reset-admin.
 func newTenantCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "tenant",
@@ -19,19 +19,24 @@ func newTenantCmd() *cobra.Command {
 		newTenantCreateCmd(),
 		newTenantListCmd(),
 		newTenantDeleteCmd(),
+		newTenantResetAdminCmd(),
 	)
 	return cmd
 }
 
-// newTenantCreateCmd implements `snooze tenant create --id <slug> [--display-name <name>]`.
+// newTenantCreateCmd implements `snooze tenant create --id <slug> [--display-name <name>] [--no-admin] [--admin-username <name>]`.
 func newTenantCreateCmd() *cobra.Command {
-	var id, displayName string
+	var id, displayName, adminUsername string
+	var noAdmin bool
 	c := &cobra.Command{
 		Use:   "create",
 		Short: "Create a new tenant",
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			if id == "" {
 				return errors.New("tenant create: --id is required")
+			}
+			if noAdmin && adminUsername != "" {
+				return errors.New("tenant create: --admin-username cannot be used with --no-admin")
 			}
 			rt := runtimeFrom(cmd.Context())
 			cl, err := rt.buildClient()
@@ -42,7 +47,19 @@ func newTenantCreateCmd() *cobra.Command {
 			if displayName != "" {
 				body["display_name"] = displayName
 			}
-			var resp any
+			if noAdmin {
+				body["create_admin"] = false
+			}
+			if adminUsername != "" {
+				body["admin_username"] = adminUsername
+			}
+			var resp struct {
+				Added []string `json:"added"`
+				Admin *struct {
+					Username string `json:"username"`
+					Password string `json:"password"`
+				} `json:"admin"`
+			}
 			if err := cl.Post(cmd.Context(), "/api/v1/tenant", body, &resp); err != nil {
 				return err
 			}
@@ -52,11 +69,18 @@ func newTenantCreateCmd() *cobra.Command {
 				return enc.Encode(resp)
 			}
 			_, _ = fmt.Fprintf(cmd.OutOrStdout(), "Created tenant %s\n", id)
+			if resp.Admin != nil {
+				_, _ = fmt.Fprintf(cmd.OutOrStdout(),
+					"Admin user: %s (local)\nPassword:   %s   — shown once; store it now.\n",
+					resp.Admin.Username, resp.Admin.Password)
+			}
 			return nil
 		},
 	}
 	c.Flags().StringVar(&id, "id", "", "Tenant slug (lowercase, URL-safe) [required]")
 	c.Flags().StringVar(&displayName, "display-name", "", "Human-readable name for the tenant")
+	c.Flags().BoolVar(&noAdmin, "no-admin", false, "Do not create a first admin user (e.g. LDAP/SSO-only tenants)")
+	c.Flags().StringVar(&adminUsername, "admin-username", "", "Username for the first admin user (default \"admin\")")
 	return c
 }
 
@@ -120,4 +144,46 @@ func newTenantDeleteCmd() *cobra.Command {
 			return nil
 		},
 	}
+}
+
+// newTenantResetAdminCmd implements `snooze tenant reset-admin --id <id> [--admin-username <name>]`.
+func newTenantResetAdminCmd() *cobra.Command {
+	var id, adminUsername string
+	c := &cobra.Command{
+		Use:   "reset-admin",
+		Short: "Generate a new password for a tenant's local admin (creates it if absent)",
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			if id == "" {
+				return errors.New("tenant reset-admin: --id is required")
+			}
+			rt := runtimeFrom(cmd.Context())
+			cl, err := rt.buildClient()
+			if err != nil {
+				return err
+			}
+			body := map[string]any{}
+			if adminUsername != "" {
+				body["username"] = adminUsername
+			}
+			var resp struct {
+				Username string `json:"username"`
+				Password string `json:"password"`
+			}
+			if err := cl.Post(cmd.Context(), "/api/v1/tenant/"+id+"/admin", body, &resp); err != nil {
+				return err
+			}
+			if rt.flags != nil && rt.flags.JSON {
+				enc := json.NewEncoder(cmd.OutOrStdout())
+				enc.SetIndent("", "  ")
+				return enc.Encode(resp)
+			}
+			_, _ = fmt.Fprintf(cmd.OutOrStdout(),
+				"Admin user: %s (local)\nPassword:   %s   — shown once; store it now.\n",
+				resp.Username, resp.Password)
+			return nil
+		},
+	}
+	c.Flags().StringVar(&id, "id", "", "Tenant slug [required]")
+	c.Flags().StringVar(&adminUsername, "admin-username", "", "Admin username to reset (default \"admin\")")
+	return c
 }
