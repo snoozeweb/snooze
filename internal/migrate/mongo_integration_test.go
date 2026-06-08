@@ -2,11 +2,11 @@
 //
 // Real-MongoDB coverage for the multitenancy migration. The unit suite
 // (migrate_test.go) runs against a fake driver and sqlite_integration_test.go
-// against SQLite; this file exercises the same backfill + user/role PK rewrite
-// against a live mongod, which is what the production deployment actually runs.
-// The PK rewrite is the riskiest step on Mongo (writing user/role docs back
-// under a new compound key could duplicate rows), so the assertions check the
-// row counts explicitly rather than just the stamped field.
+// against SQLite; this file exercises the in-place tenant_id backfill against a
+// live mongod, which is what the production deployment actually runs. The
+// backfill must never duplicate rows, so the assertions check row counts
+// explicitly rather than just the stamped field — including the uid-less case
+// (stats counters, Python-era users) that caused a production incident.
 package migrate
 
 import (
@@ -17,6 +17,9 @@ import (
 	"github.com/stretchr/testify/require"
 	"github.com/testcontainers/testcontainers-go"
 	tcmongo "github.com/testcontainers/testcontainers-go/modules/mongodb"
+	"go.mongodb.org/mongo-driver/v2/bson"
+	mongodriver "go.mongodb.org/mongo-driver/v2/mongo"
+	"go.mongodb.org/mongo-driver/v2/mongo/options"
 
 	"github.com/snoozeweb/snooze/internal/auth"
 	"github.com/snoozeweb/snooze/internal/condition"
@@ -25,10 +28,15 @@ import (
 	"github.com/snoozeweb/snooze/pkg/snoozetypes"
 )
 
+// mongoTestDB is the database name used by the migration integration tests.
+const mongoTestDB = "snoozetest"
+
 // newMongoDriver spins up a single-node replica-set MongoDB via testcontainers
-// and returns a connected driver. Mirrors internal/db/mongo's startMongo
-// helper (unexported in that package's _test.go, so duplicated here).
-func newMongoDriver(t *testing.T) *mongo.Driver {
+// and returns a connected driver plus the connection URI (so a raw client can
+// insert documents the driver's own Write would never produce, e.g. uid-less
+// rows). Mirrors internal/db/mongo's startMongo helper (unexported in that
+// package's _test.go, so duplicated here).
+func newMongoDriver(t *testing.T) (*mongo.Driver, string) {
 	t.Helper()
 	if testing.Short() {
 		t.Skip("integration: skipping under -short")
@@ -42,7 +50,7 @@ func newMongoDriver(t *testing.T) *mongo.Driver {
 	require.NoError(t, err)
 	drv, err := mongo.New(ctx, mongo.Config{
 		URI:                    uri,
-		Database:               "snoozetest",
+		Database:               mongoTestDB,
 		ServerSelectionTimeout: 15 * time.Second,
 	})
 	if err != nil {
@@ -53,11 +61,11 @@ func newMongoDriver(t *testing.T) *mongo.Driver {
 		_ = drv.Close()
 		_ = testcontainers.TerminateContainer(container)
 	})
-	return drv
+	return drv, uri
 }
 
 func TestRunMultitenancyMigration_Mongo_FullRun(t *testing.T) {
-	drv := newMongoDriver(t)
+	drv, _ := newMongoDriver(t)
 	ctx := context.Background()
 	pctx := auth.WithPlatformScope(ctx)
 
@@ -137,11 +145,65 @@ func TestRunMultitenancyMigration_Mongo_FullRun(t *testing.T) {
 }
 
 func TestRunMultitenancyMigration_Mongo_EmptyDB(t *testing.T) {
-	drv := newMongoDriver(t)
+	drv, _ := newMongoDriver(t)
 	require.NoError(t, RunMultitenancyMigration(context.Background(), drv))
 
 	pctx := auth.WithPlatformScope(context.Background())
 	done, err := isAlreadyMigrated(pctx, drv)
 	require.NoError(t, err)
 	require.True(t, done)
+}
+
+// TestBackfillTenantID_Mongo_NoUidDocsNotDuplicated is the regression test for
+// the production incident: documents WITHOUT a uid field (stats counters,
+// Python-era user rows) were DUPLICATED by the backfill on every run. The old
+// implementation read each doc and re-wrote it upserting on ["uid"]; a uid-less
+// doc gets a fresh uid on write, so the upsert filter never matched an existing
+// row and a copy was inserted instead. On the live host stats went 286k → 860k
+// across runs. The backfill must instead stamp tenant_id in place.
+func TestBackfillTenantID_Mongo_NoUidDocsNotDuplicated(t *testing.T) {
+	drv, uri := newMongoDriver(t)
+	ctx := context.Background()
+	pctx := auth.WithPlatformScope(ctx)
+
+	// Insert uid-less documents via a raw client — the driver's own Write always
+	// assigns a uid, so it cannot reproduce the production shape.
+	cli, err := mongodriver.Connect(options.Client().ApplyURI(uri))
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = cli.Disconnect(ctx) })
+	mdb := cli.Database(mongoTestDB)
+
+	var statsDocs []any
+	for i := 0; i < 5; i++ {
+		statsDocs = append(statsDocs, bson.M{
+			"metric": "alert_hit", "dim": "severity", "key": "warning",
+			"bucket": int64(1000 + i), "value": int64(i),
+		})
+	}
+	_, err = mdb.Collection("stats").InsertMany(ctx, statsDocs)
+	require.NoError(t, err)
+	_, err = mdb.Collection("user").InsertOne(ctx, bson.M{"name": "svc-bot", "method": "local"})
+	require.NoError(t, err)
+
+	// Backfill twice: the first run stamps, the second must be a pure no-op.
+	// The old uid-upsert inserted a fresh copy of every uid-less doc on each
+	// call; the in-place path must leave the counts unchanged.
+	_, err = backfillTenantID(pctx, drv, snoozetypes.DefaultTenant)
+	require.NoError(t, err)
+	_, err = backfillTenantID(pctx, drv, snoozetypes.DefaultTenant)
+	require.NoError(t, err)
+
+	statsTotal, err := mdb.Collection("stats").CountDocuments(ctx, bson.M{})
+	require.NoError(t, err)
+	require.Equal(t, int64(5), statsTotal, "uid-less stats must not be duplicated by the backfill")
+	statsStamped, err := mdb.Collection("stats").CountDocuments(ctx, bson.M{"tenant_id": snoozetypes.DefaultTenant})
+	require.NoError(t, err)
+	require.Equal(t, int64(5), statsStamped, "every stats doc must be stamped tenant_id=default")
+
+	botCount, err := mdb.Collection("user").CountDocuments(ctx, bson.M{"name": "svc-bot"})
+	require.NoError(t, err)
+	require.Equal(t, int64(1), botCount, "uid-less user must not be duplicated")
+	botStamped, err := mdb.Collection("user").CountDocuments(ctx, bson.M{"name": "svc-bot", "tenant_id": snoozetypes.DefaultTenant})
+	require.NoError(t, err)
+	require.Equal(t, int64(1), botStamped, "uid-less user must be stamped tenant_id=default")
 }

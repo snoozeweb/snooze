@@ -123,48 +123,6 @@ func TestBackfillTenantID_SkipsGlobalCollections(t *testing.T) {
 	}
 }
 
-func TestRewriteUserRolePKs_AddsTenantID(t *testing.T) {
-	t.Parallel()
-	drv := newFakeDriver()
-	drv.seed("user",
-		db.Document{"name": "alice", "method": "local"},
-		db.Document{"name": "bob", "method": "ldap"},
-	)
-	drv.seed("role",
-		db.Document{"name": "admin", "permissions": []any{"rw_all"}},
-		db.Document{"name": "viewer", "permissions": []any{"ro_all"}},
-	)
-
-	pctx := auth.WithPlatformScope(context.Background())
-	require.NoError(t, rewriteUserRolePKs(pctx, drv, snoozetypes.DefaultTenant))
-
-	for _, doc := range drv.docs("user") {
-		require.Equal(t, snoozetypes.DefaultTenant, doc["tenant_id"],
-			"user %q missing tenant_id", doc["name"])
-	}
-	for _, doc := range drv.docs("role") {
-		require.Equal(t, snoozetypes.DefaultTenant, doc["tenant_id"],
-			"role %q missing tenant_id", doc["name"])
-	}
-}
-
-func TestRewriteUserRolePKs_Idempotent(t *testing.T) {
-	t.Parallel()
-	drv := newFakeDriver()
-	drv.seed("user",
-		db.Document{"name": "root", "method": "local", "tenant_id": snoozetypes.DefaultTenant},
-	)
-	drv.seed("role",
-		db.Document{"name": "admin", "tenant_id": snoozetypes.DefaultTenant},
-	)
-	pctx := auth.WithPlatformScope(context.Background())
-	require.NoError(t, rewriteUserRolePKs(pctx, drv, snoozetypes.DefaultTenant))
-	// tenant_id must still be DefaultTenant, not doubled.
-	for _, doc := range drv.docs("user") {
-		require.Equal(t, snoozetypes.DefaultTenant, doc["tenant_id"])
-	}
-}
-
 func TestEnsureDefaultTenant_CreatesTenantDoc(t *testing.T) {
 	t.Parallel()
 	drv := newFakeDriver()

@@ -109,10 +109,22 @@ func isGlobalForMigration(name string) bool {
 	return ok
 }
 
-// backfillTenantID iterates TenantScopedCollections that exist in the DB,
-// finds every document without a tenant_id field, and stamps it with
-// tenantID. It returns the count of documents actually modified.
-// ctx must carry WithPlatformScope.
+// backfillTenantID stamps tenant_id = tenantID, IN PLACE, on every document of
+// every existing tenant-scoped collection that does not already carry one. It
+// returns the total number of documents stamped.
+//
+// It uses Driver.SetFields (a native in-place `$set` / `UPDATE ... WHERE`)
+// rather than a read-modify-upsert. This is critical for correctness: many
+// collections — notably `stats` counters and pre-Go (Python-era) `user` rows —
+// have no `uid` field, and an upsert keyed on `uid` assigns a fresh uid to each
+// rewritten document, so the upsert filter never matches the original and a
+// duplicate is INSERTED on every run (this duplicated the production stats
+// collection 286k → 860k). SetFields mutates only the matched rows, so it is
+// dedup-safe, idempotent, and does not load whole collections into memory.
+//
+// ctx must carry WithPlatformScope so the driver does not fold a tenant
+// predicate into the match condition (the migration must see every tenant's
+// data, and pre-migration rows have no tenant_id yet).
 func backfillTenantID(ctx context.Context, drv db.Driver, tenantID string) (int, error) {
 	existing, err := drv.ListCollections(ctx)
 	if err != nil {
@@ -123,6 +135,9 @@ func backfillTenantID(ctx context.Context, drv db.Driver, tenantID string) (int,
 		existingSet[c] = struct{}{}
 	}
 
+	// Match documents that do not yet carry a tenant_id field.
+	missingTenant := condition.Not(condition.Exists("tenant_id"))
+
 	total := 0
 	for _, col := range TenantScopedCollections {
 		if isGlobalForMigration(col) {
@@ -131,91 +146,16 @@ func backfillTenantID(ctx context.Context, drv db.Driver, tenantID string) (int,
 		if _, ok := existingSet[col]; !ok {
 			continue
 		}
-		docs, _, err := drv.Search(ctx, col, condition.Cond{}, db.Page{})
+		n, err := drv.SetFields(ctx, col, db.Document{"tenant_id": tenantID}, missingTenant)
 		if err != nil {
-			return total, fmt.Errorf("migrate: search %s: %w", col, err)
+			return total, fmt.Errorf("migrate: set tenant_id on %s: %w", col, err)
 		}
-		var toUpdate []db.Document
-		for _, d := range docs {
-			if tid, ok := d["tenant_id"]; ok && tid != "" {
-				continue
-			}
-			cp := make(db.Document, len(d))
-			for k, v := range d {
-				cp[k] = v
-			}
-			cp["tenant_id"] = tenantID
-			toUpdate = append(toUpdate, cp)
+		if n > 0 {
+			slog.Info("migrate: backfilled collection", "collection", col, "count", n)
+			total += n
 		}
-		if len(toUpdate) == 0 {
-			continue
-		}
-		if _, err := drv.Write(ctx, col, toUpdate, db.WriteOptions{
-			Primary:    []string{"uid"},
-			UpdateTime: false,
-		}); err != nil {
-			return total, fmt.Errorf("migrate: write %s: %w", col, err)
-		}
-		n := len(toUpdate)
-		slog.Info("migrate: backfilled collection", "collection", col, "count", n)
-		total += n
 	}
 	return total, nil
-}
-
-// rewriteUserRolePKs stamps tenant_id on every user and role document so their
-// compound PK [tenant_id, name, method] (user) or [tenant_id, name] (role)
-// is complete. After Phase 2, new writes already carry tenant_id; this is the
-// one-shot backfill for pre-migration rows.
-// ctx must carry WithPlatformScope.
-func rewriteUserRolePKs(ctx context.Context, drv db.Driver, tenantID string) error {
-	type collPK struct {
-		col     string
-		primary []string
-	}
-	targets := []collPK{
-		{"user", []string{"tenant_id", "name", "method"}},
-		{"role", []string{"tenant_id", "name"}},
-	}
-
-	existing, err := drv.ListCollections(ctx)
-	if err != nil {
-		return fmt.Errorf("migrate: rewrite PKs: list collections: %w", err)
-	}
-	existingSet := make(map[string]struct{}, len(existing))
-	for _, c := range existing {
-		existingSet[c] = struct{}{}
-	}
-
-	for _, target := range targets {
-		if _, ok := existingSet[target.col]; !ok {
-			continue
-		}
-		docs, _, err := drv.Search(ctx, target.col, condition.Cond{}, db.Page{})
-		if err != nil {
-			return fmt.Errorf("migrate: rewrite PKs: search %s: %w", target.col, err)
-		}
-		if len(docs) == 0 {
-			continue
-		}
-		toWrite := make([]db.Document, 0, len(docs))
-		for _, d := range docs {
-			cp := make(db.Document, len(d))
-			for k, v := range d {
-				cp[k] = v
-			}
-			cp["tenant_id"] = tenantID
-			toWrite = append(toWrite, cp)
-		}
-		if _, err := drv.Write(ctx, target.col, toWrite, db.WriteOptions{
-			Primary:    target.primary,
-			UpdateTime: false,
-		}); err != nil {
-			return fmt.Errorf("migrate: rewrite PKs: write %s: %w", target.col, err)
-		}
-		slog.Info("migrate: rewrote PKs", "collection", target.col, "count", len(toWrite))
-	}
-	return nil
 }
 
 // ensureDefaultTenant upserts the reserved "default" tenant doc into the
@@ -322,10 +262,10 @@ func grantRootPlatformAdmin(ctx context.Context, drv db.Driver) error {
 //  1. Check sentinel — return if already done.
 //  2. Ensure the "default" tenant doc in the tenant registry.
 //  3. Ensure the platform_admin role.
-//  4. Backfill tenant_id = "default" on all tenant-scoped collections.
-//  5. Rewrite user and role PKs to include tenant_id.
-//  6. Grant root the platform_admin role.
-//  7. Write the completion sentinel.
+//  4. Backfill tenant_id = "default" in place on all tenant-scoped collections
+//     (this also stamps user and role rows, completing their compound PKs).
+//  5. Grant root the platform_admin role.
+//  6. Write the completion sentinel.
 func RunMultitenancyMigration(ctx context.Context, drv db.Driver) error {
 	if drv == nil {
 		return errors.New("migrate: nil db driver")
@@ -358,9 +298,6 @@ func RunMultitenancyMigration(ctx context.Context, drv db.Driver) error {
 	}
 	slog.Info("migrate: backfill complete", "total_docs_stamped", n)
 
-	if err := rewriteUserRolePKs(pctx, drv, snoozetypes.DefaultTenant); err != nil {
-		return err
-	}
 	if err := grantRootPlatformAdmin(pctx, drv); err != nil {
 		return err
 	}

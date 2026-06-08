@@ -50,11 +50,12 @@ func newMigrateMultitenancyCmd() *cobra.Command {
 
   1. Creates the 'default' tenant registry document.
   2. Creates the 'platform_admin' role with rw_tenant/ro_tenant permissions.
-  3. Stamps tenant_id="default" on every document in tenant-scoped collections.
-  4. Rewrites user and role PKs to include tenant_id.
-  5. Grants the root user the platform_admin role.
+  3. Stamps tenant_id="default" in place on every document in tenant-scoped
+     collections (users and roles included, completing their compound keys).
+  4. Grants the root user the platform_admin role.
 
-The migration is idempotent. A completion sentinel prevents re-execution.
+The migration is idempotent and dedup-safe (it updates rows in place rather
+than rewriting them). A completion sentinel prevents re-execution.
 
 This operator CLI talks to the server over HTTP and has no direct database
 connection, so it cannot run the migration itself. Run it on the server host,

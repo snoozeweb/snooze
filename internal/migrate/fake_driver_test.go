@@ -140,16 +140,55 @@ func (f *fakeDriver) Write(_ context.Context, collection string, docs []db.Docum
 	return res, nil
 }
 
-func (f *fakeDriver) SetFields(_ context.Context, collection string, fields db.Document, _ condition.Cond) (int, error) {
+// SetFields sets fields in place on every row matching cond, returning the
+// count of matched rows. It honors the condition (unlike a naive set-all) so
+// the migration's "only stamp rows lacking tenant_id" semantics are exercised —
+// this is what keeps the dedup/idempotency tests meaningful.
+func (f *fakeDriver) SetFields(_ context.Context, collection string, fields db.Document, cond condition.Cond) (int, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	rows := f.collections[collection]
+	matched := 0
 	for i := range rows {
+		if !condMatches(cond, rows[i]) {
+			continue
+		}
 		for k, v := range fields {
 			rows[i][k] = v
 		}
+		matched++
 	}
-	return len(rows), nil
+	return matched, nil
+}
+
+// condMatches is a minimal evaluator covering the operators the migration uses
+// (the zero/AlwaysTrue match-all, NOT, EXISTS, =, AND). Anything else matches
+// all rows so the fake never silently under-stamps.
+func condMatches(c condition.Cond, doc db.Document) bool {
+	switch c.Op {
+	case condition.OpAlwaysTrue:
+		return true
+	case condition.OpExists:
+		_, ok := doc[c.Field]
+		return ok
+	case condition.OpNot:
+		if len(c.Children) == 0 {
+			return true
+		}
+		return !condMatches(c.Children[0], doc)
+	case condition.OpEq:
+		v, ok := doc[c.Field]
+		return ok && v == c.Value
+	case condition.OpAnd:
+		for _, ch := range c.Children {
+			if !condMatches(ch, doc) {
+				return false
+			}
+		}
+		return true
+	default:
+		return true
+	}
 }
 
 func (f *fakeDriver) ListCollections(_ context.Context) ([]string, error) {

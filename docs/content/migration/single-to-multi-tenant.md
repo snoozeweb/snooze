@@ -63,12 +63,13 @@ and:
 
 1. Creates the `default` tenant registry document.
 2. Creates the `platform_admin` role (`rw_tenant` + `ro_tenant`).
-3. Stamps `tenant_id="default"` on every document in tenant-scoped collections.
-4. Rewrites user and role primary keys to include `tenant_id`.
-5. Grants the `root` user the `platform_admin` role.
+3. Stamps `tenant_id="default"` **in place** on every document in tenant-scoped
+   collections (users and roles included, completing their compound keys).
+4. Grants the `root` user the `platform_admin` role.
 
-It is **idempotent**: a completion sentinel is written to the `general`
-collection, so re-running it is a safe no-op. On success it prints
+It is **idempotent and dedup-safe**: the backfill updates rows in place (it does
+not rewrite or re-insert documents), and a completion sentinel is written to the
+`general` collection, so re-running it is a safe no-op. On success it prints
 `multitenancy migration complete`.
 
 ### 4. Start the upgraded server

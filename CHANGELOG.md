@@ -42,12 +42,12 @@
 - **`snooze tenant` CLI** with subcommands `create`, `list`, `get`, `update`,
   `delete`.
 
-- **`snooze-server migrate multitenancy`** — one-shot, idempotent migration
-  that opens the configured database and backfills `tenant_id="default"` across
-  every tenant-scoped collection, rewrites user/role primary keys, seeds the
-  `default` tenant document + `platform_admin` role, and grants the root user
-  `platform_admin`. A completion sentinel makes re-runs no-ops. Run it once
-  against an existing pre-multitenancy database before starting the upgraded
+- **`snooze-server migrate multitenancy`** — one-shot, idempotent, dedup-safe
+  migration that opens the configured database and backfills `tenant_id="default"`
+  **in place** across every tenant-scoped collection (users and roles included),
+  seeds the `default` tenant document + `platform_admin` role, and grants the
+  root user `platform_admin`. A completion sentinel makes re-runs no-ops. Run it
+  once against an existing pre-multitenancy database before starting the upgraded
   server.
 
 - **LDAP per-tenant.** LDAP settings are stored in the `settings` collection
