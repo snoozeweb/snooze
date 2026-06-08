@@ -203,6 +203,31 @@ func TestIsAuthorized_PlatformRead_AllowedWithRoTenant(t *testing.T) {
 	require.True(t, IsAuthorized(platformMeta, ctx))
 }
 
+func TestIsAuthorized_PlatformWrite_PutPatchGatedByRwTenant(t *testing.T) {
+	t.Parallel()
+	// PUT/PATCH on a platform route (the tenant registry CRUD) are write
+	// verbs, exactly like POST: they require rw_tenant. A read-only platform
+	// caller (ro_tenant) must be rejected — otherwise it could mutate the
+	// registry through PUT/PATCH even though it can only read it.
+	platformMeta := Metadata{}
+	platformMeta.RouteDefaults.AuthorizationPolicy = &AuthorizationPolicy{
+		Write: []string{"rw_tenant"},
+		Read:  []string{"ro_tenant", "rw_tenant"},
+	}
+	for _, method := range []string{"PUT", "PATCH"} {
+		require.True(t, IsAuthorized(platformMeta, AuthzContext{
+			PluginName: "",
+			Method:     method,
+			Claims:     snoozetypes.Claims{Permissions: []string{"rw_tenant"}},
+		}), "%s with rw_tenant must be allowed on a platform write route", method)
+		require.False(t, IsAuthorized(platformMeta, AuthzContext{
+			PluginName: "",
+			Method:     method,
+			Claims:     snoozetypes.Claims{Permissions: []string{"ro_tenant"}},
+		}), "%s with only ro_tenant must be denied on a platform write route", method)
+	}
+}
+
 func TestResolveRoute_OverlaySemantics(t *testing.T) {
 	t.Parallel()
 	meta := Metadata{

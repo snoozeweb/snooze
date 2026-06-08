@@ -766,6 +766,7 @@ func RunTenantIsolationSuite(t *testing.T, name string, factory Factory) {
 		{"ReplaceUpdateNakedContextErrors", testReplaceUpdateNakedContextErrors},
 		{"GetOneCrossTenant", testGetOneCrossTenant},
 		{"WriteForeignUIDCrossTenant", testWriteForeignUIDCrossTenant},
+		{"WriteSameTenantUIDCollision", testWriteSameTenantUIDCollision},
 		{"DeleteCrossTenant", testDeleteCrossTenant},
 		{"MutatorsCrossTenant", testMutatorsCrossTenant},
 		{"CleanupPerTenant", testCleanupPerTenant},
@@ -1028,6 +1029,42 @@ func testWriteForeignUIDCrossTenant(t *testing.T, drv db.Driver) {
 	require.Len(t, all, 1, "uid U must resolve to exactly one row globally")
 	require.Equal(t, "alpha", all[0]["tenant_id"], "uid U must still belong to alpha")
 	require.Equal(t, "a", all[0]["val"])
+}
+
+// testWriteSameTenantUIDCollision is the positive counterpart to
+// testWriteForeignUIDCrossTenant: a by-uid write that targets the SAME tenant's
+// existing row must still merge into it. On Postgres this exercises the
+// `ON CONFLICT (uid) DO UPDATE ... WHERE data->>'tenant_id' = fence` clause —
+// the fence must match the row's own tenant, so a legitimate same-tenant update
+// is applied rather than silently dropped as a no-op. [C1 positive path]
+func testWriteSameTenantUIDCollision(t *testing.T, drv db.Driver) {
+	ctxA := snoozetypes.WithTenant(context.Background(), "alpha")
+
+	// Insert a row (uid auto-assigned) and capture its uid U.
+	resA := mustWriteCtx(ctxA, t, drv, "rule",
+		db.Document{"name": "owned", "val": "a", "keep": "orig"})
+	require.Len(t, resA.Added, 1)
+	uidA := resA.Added[0]
+
+	// Same tenant, same uid U: a by-uid merge. `val` is overwritten, `keep`
+	// is preserved (merge, not replace), `added` is new.
+	res, err := drv.Write(ctxA, "rule",
+		[]db.Document{{"uid": uidA, "val": "b", "added": "new"}},
+		db.WriteOptions{UpdateTime: false})
+	require.NoError(t, err)
+	require.Equal(t, []string{uidA}, res.Updated, "same-tenant by-uid write must merge, not reject")
+	require.Empty(t, res.Rejected, "same-tenant by-uid write must not be rejected")
+
+	// Exactly one row, carrying the merged payload, still stamped to alpha.
+	docsA, total, err := drv.Search(ctxA, "rule", condition.Equals("uid", uidA), db.Page{})
+	require.NoError(t, err)
+	require.Equal(t, 1, total)
+	require.Len(t, docsA, 1)
+	require.Equal(t, "b", docsA[0]["val"], "touched key must be overwritten by the same-tenant merge")
+	require.Equal(t, "orig", docsA[0]["keep"], "untouched key must be preserved by the merge")
+	require.Equal(t, "new", docsA[0]["added"], "new key must be added by the merge")
+	require.Equal(t, "owned", docsA[0]["name"], "pre-existing key must be preserved")
+	require.Equal(t, "alpha", docsA[0]["tenant_id"], "row must stay stamped to its own tenant")
 }
 
 // testDeleteCrossTenant proves that a Delete issued under tenant B with a
