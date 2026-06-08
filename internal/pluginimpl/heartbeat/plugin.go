@@ -218,9 +218,14 @@ var (
 //  1. Method check (POST or GET only; anything else → 405).
 //  2. name required (→ 400 when absent).
 //  3. token required (→ 401 when absent).
-//  4. Heartbeat must exist by name (→ 404).
-//  5. Supplied token must match the stored token in constant time (→ 401 on mismatch).
-//  6. On success: stamp last_seen, clear fired state, return 200.
+//  4. Resolve the heartbeat by its token under platform scope: 0 matches → 401
+//     (an unknown token does not reveal whether the name exists); >1 match →
+//     500 (token collision).
+//  5. The stored name must equal the supplied name (→ 401 on mismatch).
+//  6. The matched heartbeat must carry a tenant_id (→ 500 if absent; indicates
+//     an incomplete migration).
+//  7. On success: stamp last_seen and clear fired state under the resolved
+//     tenant, return 200.
 //
 // NOTE: the standard webhook router (internal/api/router.go mountWebhooks) only
 // mounts POST on the webhook path, so GET pings reach this handler only when a
