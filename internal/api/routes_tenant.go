@@ -371,7 +371,7 @@ func (rt *Router) handleTenantGet(w http.ResponseWriter, r *http.Request) {
 }
 
 // handleTenantUpdate PATCH /api/v1/tenant/{id}
-// Allowed fields: display_name, status, ingest_token. The id slug is immutable.
+// Allowed fields: display_name, status, ingest_token, listed. The id slug is immutable.
 func (rt *Router) handleTenantUpdate(w http.ResponseWriter, r *http.Request) {
 	if rt.DB == nil {
 		WriteError(w, r, ErrUnavailable.WithMessage("database not configured"))
@@ -405,6 +405,7 @@ func (rt *Router) handleTenantUpdate(w http.ResponseWriter, r *http.Request) {
 		"display_name": {},
 		"status":       {},
 		"ingest_token": {},
+		"listed":       {},
 	}
 	for k := range patch {
 		if _, ok := allowed[k]; !ok {

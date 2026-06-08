@@ -216,6 +216,34 @@ func TestHandleTenantCreate_GeneratesLoginKeyAndListedDefault(t *testing.T) {
 	}
 }
 
+func TestHandleTenantUpdate_TogglesListed(t *testing.T) {
+	// Seed the tenant in docs so GetOne (used by PATCH) can find it.
+	tdb := &tenantDB{docs: []db.Document{{"id": "acme", "display_name": "Acme", "listed": true}}}
+	r, _ := tenantRouter(t, tdb, auth.PermWriteTenant)
+	body := bytes.NewBufferString(`{"listed":false}`)
+	req := httptest.NewRequest(http.MethodPatch, "/api/v1/tenant/acme", body)
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	r.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200 (body=%s)", rec.Code, rec.Body.String())
+	}
+	// UpdateOne appends the patch to tdb.written; find the patch doc.
+	var patchDoc db.Document
+	for _, d := range tdb.written {
+		if _, ok := d["listed"]; ok {
+			patchDoc = d
+			break
+		}
+	}
+	if patchDoc == nil {
+		t.Fatalf("no patch doc with 'listed' written; written=%v", tdb.written)
+	}
+	if listed, ok := patchDoc["listed"].(bool); !ok || listed {
+		t.Fatalf("listed = %v, want false after patch", patchDoc["listed"])
+	}
+}
+
 func TestTenantCreate_RequiresWritePerm(t *testing.T) {
 	tdb := &tenantDB{}
 	r, _ := tenantRouter(t, tdb /* no permissions */)
