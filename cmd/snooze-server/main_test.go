@@ -96,6 +96,92 @@ func TestMigrateConfigPlaceholder(t *testing.T) {
 	}
 }
 
+// TestMigrateMultitenancySubcommand drives `snooze-server migrate multitenancy`
+// against an on-disk SQLite database seeded with a pre-migration record (no
+// tenant_id) and asserts the migration actually ran: the record is stamped
+// tenant_id=default and the default tenant registry doc exists. This locks the
+// wiring that opens the configured driver and calls
+// migrate.RunMultitenancyMigration — the subcommand is the only supported way
+// to backfill an existing pre-multitenancy database before deploy.
+func TestMigrateMultitenancySubcommand(t *testing.T) {
+	dir := t.TempDir()
+	dbPath := filepath.Join(dir, "snooze.db")
+
+	// Seed a pre-migration record (no tenant_id) via a direct driver, then
+	// close it so the subcommand's own connection has exclusive access (SQLite
+	// is single-writer).
+	pctx := snoozetypes.WithPlatformScope(context.Background())
+	seed, err := sqlite.New(pctx, sqlite.Config{Path: dbPath})
+	if err != nil {
+		t.Fatalf("seed open: %v", err)
+	}
+	if _, err := seed.Write(pctx, "record",
+		[]db.Document{{"host": "h1", "message": "pre-migration"}},
+		db.WriteOptions{UpdateTime: false}); err != nil {
+		t.Fatalf("seed write: %v", err)
+	}
+	_ = seed.Close()
+
+	// Steer config.Load at the temp SQLite file via env (the config dir is
+	// empty, so the loader falls back to defaults + env overrides).
+	t.Setenv("SNOOZE_SERVER_CORE_DATABASE_PATH", dbPath)
+	t.Setenv("SNOOZE_SERVER_CORE_DATABASE_TYPE", "file")
+
+	var stdout, stderr bytes.Buffer
+	code := run([]string{"migrate", "multitenancy", "--config", dir}, &stdout, &stderr)
+	if code != exitOK {
+		t.Fatalf("code = %d, want 0 (stderr=%q)", code, stderr.String())
+	}
+	if !strings.Contains(stdout.String(), "multitenancy migration complete") {
+		t.Fatalf("stdout = %q, want completion notice", stdout.String())
+	}
+
+	// Reopen and assert the migration landed.
+	drv, err := sqlite.New(pctx, sqlite.Config{Path: dbPath})
+	if err != nil {
+		t.Fatalf("reopen: %v", err)
+	}
+	defer drv.Close()
+
+	records, _, err := drv.Search(pctx, "record", condition.Cond{}, db.Page{})
+	if err != nil {
+		t.Fatalf("search record: %v", err)
+	}
+	if len(records) != 1 || records[0]["tenant_id"] != snoozetypes.DefaultTenant {
+		t.Fatalf("record tenant_id not backfilled: %v", records)
+	}
+
+	tenants, _, err := drv.Search(pctx, auth.TenantCollection, condition.Cond{}, db.Page{})
+	if err != nil {
+		t.Fatalf("search tenant: %v", err)
+	}
+	var hasDefault bool
+	for _, d := range tenants {
+		if d["id"] == snoozetypes.DefaultTenant {
+			hasDefault = true
+		}
+	}
+	if !hasDefault {
+		t.Fatalf("default tenant doc missing: %v", tenants)
+	}
+}
+
+// TestMigrateSubcommandErrors covers the usage surface: a bare `migrate` with
+// no migration name and an unknown migration name must both exit with the
+// usage code rather than starting the daemon.
+func TestMigrateSubcommandErrors(t *testing.T) {
+	var stdout, stderr bytes.Buffer
+	if code := run([]string{"migrate"}, &stdout, &stderr); code != exitUsage {
+		t.Fatalf("missing migration name: code = %d, want %d (stderr=%q)", code, exitUsage, stderr.String())
+	}
+
+	stdout.Reset()
+	stderr.Reset()
+	if code := run([]string{"migrate", "bogus"}, &stdout, &stderr); code != exitUsage {
+		t.Fatalf("unknown migration: code = %d, want %d (stderr=%q)", code, exitUsage, stderr.String())
+	}
+}
+
 // TestSplitHostPort exercises the small flag helper in isolation.
 func TestSplitHostPort(t *testing.T) {
 	cases := []struct {

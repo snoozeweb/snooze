@@ -6,14 +6,28 @@ sidebar_position: 2
 
 If you are running Snooze 2.x in single-tenant mode (the default before
 2.2.0) and want to add additional organizations, this guide walks you
-through the transition. No data migration is required — existing data is
-already in the `default` tenant.
+through the transition.
+
+:::danger A one-shot data migration is required
+From 2.2.0 the storage layer is **fail-closed**: every read and write is
+scoped to a `tenant_id`, and a query for the `default` tenant matches only
+documents whose `tenant_id` field equals `"default"`. Your existing
+(pre-2.2.0) documents have **no** `tenant_id` field, so they will be
+**invisible** until they are backfilled.
+
+You **must** run `snooze-server migrate multitenancy` against the existing
+database **before** starting the upgraded server. If you start the new
+server first, it will treat the database as empty: it re-seeds a fresh root
+user (with a new password) and the default roles, while all your historical
+records, rules, snoozes, notifications, and users remain orphaned. Run the
+migration first.
+:::
 
 ## What changes in 2.2.0
 
 | Area | Before | After |
 |---|---|---|
-| Database documents | No `tenant_id` field | Every scoped document gains a `tenant_id` column/field stamped `default` on first write after upgrade |
+| Database documents | No `tenant_id` field | Every scoped document carries a `tenant_id`; the migration stamps existing documents with `default` |
 | JWT claims | No `tenant_id` claim | New tokens carry `tenant_id: "default"` (or the chosen org). Legacy tokens without the claim are treated as `default`. |
 | Login API | `{"username":…,"password":…}` | Optionally `{"username":…,"password":…,"org":"acme"}` — `org` is optional, defaults to `"default"` |
 | Alert ingestion | Always `default` | Routed by per-tenant ingest token; falls back to `default` when absent |
@@ -21,15 +35,50 @@ already in the `default` tenant.
 
 ## Upgrade procedure
 
-### 1. Run the standard upgrade
+### 1. Back up the database
 
-Follow the [Installation](../getting_started/installation.md) guide for
-your deployment method (binary, Docker, Helm). The server performs an
-automatic schema migration on startup — this adds the `tenant_id`
-index/column to existing tenant-scoped collections and seeds the `default`
-tenant document if it does not already exist.
+The migration rewrites the primary keys of every user and role document and
+stamps `tenant_id` on every scoped document. Take a backup first
+(`mongodump`, `pg_dump`, or a copy of the SQLite file) so you can roll back.
 
-### 2. Verify the default tenant exists
+### 2. Install the new binaries, but do not start the server yet
+
+Follow the [Installation](../getting_started/installation.md) guide for your
+deployment method (binary, Docker, Helm) to put the 2.2.0 binaries in place,
+but **stop the running `snooze-server` (and pause alert ingestion) before the
+new server boots**. The migration must run against the database while the new
+server is **not** serving, so a half-started server does not re-seed over your
+data.
+
+### 3. Run the backfill migration
+
+```bash
+# Uses the same config directory as the daemon (default /etc/snooze/server-go),
+# so it resolves the same database DSN/credentials the server uses.
+snooze-server migrate multitenancy --config /etc/snooze/server-go
+```
+
+The command opens the configured database directly (no running server needed)
+and:
+
+1. Creates the `default` tenant registry document.
+2. Creates the `platform_admin` role (`rw_tenant` + `ro_tenant`).
+3. Stamps `tenant_id="default"` on every document in tenant-scoped collections.
+4. Rewrites user and role primary keys to include `tenant_id`.
+5. Grants the `root` user the `platform_admin` role.
+
+It is **idempotent**: a completion sentinel is written to the `general`
+collection, so re-running it is a safe no-op. On success it prints
+`multitenancy migration complete`.
+
+### 4. Start the upgraded server
+
+Start `snooze-server` normally. Because the migration already stamped the
+`init_db` marker and the root/admin users with `tenant_id="default"`, boot
+finds them under the default tenant and **skips** re-seeding — your existing
+root password and data are preserved.
+
+### 5. Verify the default tenant exists
 
 ```bash
 TOKEN=$(curl -s -X POST \
@@ -43,33 +92,33 @@ curl -H "Authorization: Bearer $TOKEN" \
 
 Expected: a `200` response with `"id": "default"`, `"status": "active"`.
 
-### 3. Verify existing data is accessible
+### 6. Verify existing data is accessible
 
 ```bash
 curl -H "Authorization: Bearer $TOKEN" \
      'http://localhost:5200/api/v1/record?limit=5' | jq .meta.total
 ```
 
-All existing records remain accessible. The `tenant_id: "default"` field is
-backfilled lazily on the first write after upgrade (reads still work without
-the field while Postgres/Mongo/SQLite enforce no NOT-NULL constraint on it
-during the transition window).
+Your existing records, rules, snoozes and notifications are accessible again
+because the migration stamped them with `tenant_id="default"`. (If this count
+is `0` and you expected data, the migration did not run — stop the server and
+run `snooze-server migrate multitenancy` as described in step 3.)
 
-### 4. No changes needed for existing alert senders
+### 7. No changes needed for existing alert senders
 
 Existing alert senders (cURL scripts, Alertmanager webhooks, Prometheus
 remote-write, etc.) continue to work. All traffic without an ingest token
 is automatically routed to `default`. You do not need to configure per-tenant
 tokens unless you add a second tenant.
 
-### 5. Verify existing API tokens still work
+### 8. Verify existing API tokens still work
 
 Legacy JWTs (issued before 2.2.0, no `tenant_id` claim) are accepted and
 treated as `default`. Users do not need to log out and back in. When tokens
 naturally expire and users log in again, the new tokens will carry
 `tenant_id: "default"`.
 
-### 6. Add tenants (optional)
+### 9. Add tenants (optional)
 
 If you want to onboard additional organizations, follow the
 [Tenant management](../general/tenant_management.md) guide. No changes to
@@ -87,24 +136,33 @@ If you need to roll back to a pre-2.2.0 binary:
    role are unknown to older code; the RBAC check falls through to the normal
    permission table and the routes are simply not mounted.
 
-There is no destructive migration step, so a rollback is safe. Data written
-after the upgrade (with `tenant_id` stamped) will be visible to older code
-but without tenant isolation — treat older code as having platform-scope
-access semantics.
+The migration only adds a `tenant_id` field and re-writes each document in
+place under the same logical identity (user/role names are unchanged); it
+deletes nothing. A rollback to the pre-2.2.0 binary is therefore safe — the
+extra `tenant_id` field is simply ignored by older code. If you want a
+byte-for-byte pre-migration state, restore the backup you took in step 1.
 
-## Data isolation for existing collections (Postgres / SQLite)
+## Indexing `tenant_id` (large deployments)
 
-A background index is created at boot on each tenant-scoped collection:
+The migration does **not** create a dedicated `tenant_id` index. For typical
+deployments this is fine — tenant predicates ride along with the existing
+search indexes. For very large collections (millions of rows) you may add one
+manually after the migration:
 
 ```sql
--- Postgres / SQLite (created automatically)
-CREATE INDEX IF NOT EXISTS idx_<collection>_tenant_id
-    ON <collection>((data->>'tenant_id'));
+-- Postgres
+CREATE INDEX IF NOT EXISTS idx_record_tenant_id
+    ON record ((data->>'tenant_id'));
 ```
 
-For large collections (millions of rows), index creation may take a few
-minutes. The server remains available during this time; queries are
-unaffected (the index is not required for correctness, only performance).
+```sql
+-- SQLite
+CREATE INDEX IF NOT EXISTS idx_record_tenant_id
+    ON record (json_extract(data, '$.tenant_id'));
+```
+
+On MongoDB, add the field to the relevant collection index with
+`db.<collection>.createIndex({ tenant_id: 1 })`.
 
 ## Frequently asked questions
 

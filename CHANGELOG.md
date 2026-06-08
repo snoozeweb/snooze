@@ -8,8 +8,10 @@
   data from different tenants is never mixed at query time.
 
 - **`default` tenant.** A reserved `default` tenant is seeded automatically
-  at first boot. All single-tenant deployments continue to work without
-  change — existing data is already in `default`. No migration is required.
+  at first boot. A brand-new (empty) install needs no migration. An **existing
+  pre-multitenancy database must be backfilled once** with `snooze-server
+  migrate multitenancy` *before* starting the upgraded server — the fail-closed
+  tenant scoping otherwise hides every un-stamped document (see below).
 
 - **`POST /api/v1/tenant`** — create a new tenant (requires `rw_tenant`).
 - **`GET /api/v1/tenant`** — list all tenants (requires `ro_tenant`).
@@ -39,6 +41,14 @@
 
 - **`snooze tenant` CLI** with subcommands `create`, `list`, `get`, `update`,
   `delete`.
+
+- **`snooze-server migrate multitenancy`** — one-shot, idempotent migration
+  that opens the configured database and backfills `tenant_id="default"` across
+  every tenant-scoped collection, rewrites user/role primary keys, seeds the
+  `default` tenant document + `platform_admin` role, and grants the root user
+  `platform_admin`. A completion sentinel makes re-runs no-ops. Run it once
+  against an existing pre-multitenancy database before starting the upgraded
+  server.
 
 - **LDAP per-tenant.** LDAP settings are stored in the `settings` collection
   and are therefore tenant-scoped; each tenant can point to a different

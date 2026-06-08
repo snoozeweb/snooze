@@ -35,6 +35,7 @@ import (
 	"github.com/snoozeweb/snooze/internal/db/mongo"
 	"github.com/snoozeweb/snooze/internal/db/postgres"
 	"github.com/snoozeweb/snooze/internal/db/sqlite"
+	"github.com/snoozeweb/snooze/internal/migrate"
 	"github.com/snoozeweb/snooze/internal/syncer"
 	"github.com/snoozeweb/snooze/internal/telemetry"
 	"github.com/snoozeweb/snooze/internal/version"
@@ -82,6 +83,8 @@ func run(args []string, stdout, stderr io.Writer) int {
 			return exitOK
 		case "migrate-config":
 			return runMigrateConfig(args[1:], stdout, stderr)
+		case "migrate":
+			return runMigrate(args[1:], stdout, stderr)
 		case "root-token":
 			return runRootToken(args[1:], stdout, stderr)
 		case "help", "-h", "--help":
@@ -101,7 +104,77 @@ Usage:
   snooze-server [--config /etc/snooze/server-go]   Start the daemon
   snooze-server version                            Print version and exit
   snooze-server migrate-config --from <dir>        Convert legacy Python config (placeholder)
+  snooze-server migrate multitenancy [--config <dir>]  Backfill tenant_id on an existing DB (one-shot)
   snooze-server root-token [--socket <path>]       Read the one-shot root token`)
+}
+
+// runMigrate dispatches the one-shot database migrations. The migration name is
+// the first positional argument (e.g. "multitenancy") so per-migration flags
+// can follow it; this mirrors the `snooze migrate <name>` CLI shape and leaves
+// room for future migrations.
+func runMigrate(args []string, stdout, stderr io.Writer) int {
+	if len(args) == 0 {
+		_, _ = fmt.Fprintln(stderr, "migrate: a migration name is required (e.g. 'multitenancy')")
+		return exitUsage
+	}
+	name := args[0]
+	switch name {
+	case "multitenancy":
+		return runMigrateMultitenancy(args[1:], stdout, stderr)
+	default:
+		_, _ = fmt.Fprintf(stderr, "migrate: unknown migration %q (known: multitenancy)\n", name)
+		return exitUsage
+	}
+}
+
+// runMigrateMultitenancy opens the configured database driver and runs the
+// idempotent multitenancy backfill (migrate.RunMultitenancyMigration). It is
+// the only supported way to migrate an existing pre-multitenancy database: it
+// stamps tenant_id="default" across every tenant-scoped collection, rewrites
+// user/role PKs, seeds the default tenant + platform_admin role, and writes a
+// completion sentinel so re-runs are no-ops. Run it once against the live DB
+// before starting the multitenancy server, otherwise the fail-closed tenant
+// scoping hides all pre-migration data.
+func runMigrateMultitenancy(args []string, stdout, stderr io.Writer) int {
+	fs := flag.NewFlagSet("migrate multitenancy", flag.ContinueOnError)
+	fs.SetOutput(stderr)
+	configDir := fs.String("config", "/etc/snooze/server-go", "directory containing YAML config files")
+	if err := fs.Parse(args); err != nil {
+		if errors.Is(err, flag.ErrHelp) {
+			return exitOK
+		}
+		return exitUsage
+	}
+
+	// Honour SIGINT/SIGTERM so a long backfill can be interrupted cleanly.
+	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+	defer stop()
+
+	cfg, err := config.Load(*configDir)
+	if err != nil {
+		_, _ = fmt.Fprintf(stderr, "migrate: load config: %v\n", err)
+		return exitErr
+	}
+
+	// The migration logs progress via slog's default logger; route it to the
+	// same stderr the rest of the process uses. openDB only consults this
+	// logger for the Mongo backend.
+	logger := slog.New(slog.NewTextHandler(stderr, &slog.HandlerOptions{Level: slog.LevelInfo}))
+	slog.SetDefault(logger)
+
+	drv, err := openDB(ctx, cfg.Core.Database, logger)
+	if err != nil {
+		_, _ = fmt.Fprintf(stderr, "migrate: open database: %v\n", err)
+		return exitErr
+	}
+	defer func() { _ = drv.Close() }()
+
+	if err := migrate.RunMultitenancyMigration(ctx, drv); err != nil {
+		_, _ = fmt.Fprintf(stderr, "migrate: %v\n", err)
+		return exitErr
+	}
+	_, _ = fmt.Fprintln(stdout, "multitenancy migration complete")
+	return exitOK
 }
 
 // runMigrateConfig is a deferred placeholder: the legacy Python config layout

@@ -2,11 +2,10 @@ package cli
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	"github.com/spf13/cobra"
-
-	"github.com/snoozeweb/snooze/internal/migrate"
 )
 
 // migrateRunnerKey is the unexported context key holding an optional migration
@@ -36,21 +35,18 @@ func newMigrateCmd() *cobra.Command {
 }
 
 // newMigrateMultitenancyCmd returns the `snooze migrate multitenancy` command.
-// In production it opens the configured database driver and calls
-// migrate.RunMultitenancyMigration. Tests inject a runner override via
-// withMigrateRunner.
 //
-// NOTE: In the full production wiring (once the server config + driver boot
-// path is available) this command should open the driver via the same
-// configuration loader used by snooze-server. The current implementation
-// delegates entirely to an injectable runner so the CLI layer is testable
-// without a live database; a follow-up task wires the real driver for the
-// `snooze-server migrate` invocation path.
+// The migration needs a direct database connection, which this operator CLI
+// (an HTTP client to a remote server) does not have. The real entry point is
+// `snooze-server migrate multitenancy`, which loads the server config, opens
+// the configured driver, and calls migrate.RunMultitenancyMigration. This
+// command therefore redirects the operator there. Tests inject a runner
+// override via withMigrateRunner to exercise the success/error reporting.
 func newMigrateMultitenancyCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "multitenancy",
 		Short: "Backfill tenant_id='default' on all existing documents (one-shot, idempotent)",
-		Long: `Runs the multitenancy migration against the configured database:
+		Long: `Backfills the multitenancy schema on an existing database:
 
   1. Creates the 'default' tenant registry document.
   2. Creates the 'platform_admin' role with rw_tenant/ro_tenant permissions.
@@ -60,26 +56,23 @@ func newMigrateMultitenancyCmd() *cobra.Command {
 
 The migration is idempotent. A completion sentinel prevents re-execution.
 
-For Postgres/Mongo backends, point snooze-server at the correct DSN via its
-usual configuration file and invoke this command from the same process that
-owns the database connection.`,
+This operator CLI talks to the server over HTTP and has no direct database
+connection, so it cannot run the migration itself. Run it on the server host,
+where the database DSN/credentials live:
+
+    snooze-server migrate multitenancy --config /etc/snooze/server-go`,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			ctx := cmd.Context()
 
-			// Production path: the migrate.RunMultitenancyMigration function
-			// takes a db.Driver. In the standalone CLI the runner is wired by
-			// withMigrateRunner (tests) or falls back to a default that
-			// requires a driver to be provided via the server's boot sequence.
-			//
-			// When the runner is not injected (production without a wired
-			// driver), we return a clear error directing the operator.
+			// Tests inject a runner to exercise the success/error reporting
+			// without a live database. Production has no runner: the operator
+			// CLI has no DB connection, so we point them at the server command.
 			runner := migrateRunnerFrom(ctx)
 			if runner == nil {
-				// No injected runner: use migrate.RunMultitenancyMigration
-				// with a nil driver — the function returns a clear error.
-				runner = func(ctx context.Context) error {
-					return migrate.RunMultitenancyMigration(ctx, nil)
-				}
+				return errors.New(
+					"this operator CLI has no direct database connection; " +
+						"run the migration on the server host instead: " +
+						"snooze-server migrate multitenancy --config /etc/snooze/server-go")
 			}
 
 			if err := runner(ctx); err != nil {
