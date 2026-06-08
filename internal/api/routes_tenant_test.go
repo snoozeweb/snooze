@@ -45,11 +45,16 @@ func (t *tenantDB) Search(_ context.Context, _ string, _ condition.Cond, _ db.Pa
 }
 
 func (t *tenantDB) GetOne(_ context.Context, _ string, match db.Document) (db.Document, error) {
-	if id, ok := match["id"].(string); ok {
-		for _, d := range t.docs {
-			if d["id"] == id {
-				return d, nil
+	for _, d := range t.docs {
+		ok := true
+		for k, v := range match {
+			if d[k] != v {
+				ok = false
+				break
 			}
+		}
+		if ok {
+			return d, nil
 		}
 	}
 	return nil, nil

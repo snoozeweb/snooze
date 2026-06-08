@@ -490,3 +490,58 @@ func TestHandleLoginIndex_ListsActiveListedTenants(t *testing.T) {
 	require.False(t, ids["globex"], "explicitly unlisted tenant globex must be excluded")
 	require.False(t, ids["initech"], "suspended tenant initech must be excluded")
 }
+
+// TestHandleLoginResolveTenant verifies GET /api/v1/login/tenant?key=<login_key>.
+// A valid key for an active tenant resolves to {id, display_name}. An empty
+// key, unknown key, or suspended tenant all return a generic 404 — the endpoint
+// never resolves by slug, so it cannot be used to enumerate tenants.
+func TestHandleLoginResolveTenant(t *testing.T) {
+	tdb := &tenantDB{
+		docs: []db.Document{
+			{"id": "acme", "display_name": "Acme", "status": "active", "login_key": "KEY-acme"},
+			{"id": "susp", "display_name": "Susp", "status": "suspended", "login_key": "KEY-susp"},
+		},
+	}
+	_, rt := loginTestRouter(t, &fakeProvider{name: "local", enabled: true})
+	rt.DB = tdb
+
+	r2 := chi.NewRouter()
+	rt.mountLogin(r2)
+
+	// Valid key resolves to id + display_name.
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/login/tenant?key=KEY-acme", nil)
+	r2.ServeHTTP(rec, req)
+	require.Equal(t, http.StatusOK, rec.Code, "valid key: body=%s", rec.Body.String())
+
+	var resp struct {
+		Data struct {
+			ID          string `json:"id"`
+			DisplayName string `json:"display_name"`
+		} `json:"data"`
+	}
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &resp))
+	require.Equal(t, "acme", resp.Data.ID)
+	require.Equal(t, "Acme", resp.Data.DisplayName)
+
+	// Unknown key, empty key, and missing key all return 404.
+	for _, path := range []string{
+		"/api/v1/login/tenant?key=NOPE",
+		"/api/v1/login/tenant?key=",
+		"/api/v1/login/tenant",
+	} {
+		rec2 := httptest.NewRecorder()
+		r2.ServeHTTP(rec2, httptest.NewRequest(http.MethodGet, path, nil))
+		require.Equal(t, http.StatusNotFound, rec2.Code, "path %q: want 404, got %d (body=%s)", path, rec2.Code, rec2.Body.String())
+	}
+
+	// Suspended tenant returns 404 (not 200).
+	rec3 := httptest.NewRecorder()
+	r2.ServeHTTP(rec3, httptest.NewRequest(http.MethodGet, "/api/v1/login/tenant?key=KEY-susp", nil))
+	require.Equal(t, http.StatusNotFound, rec3.Code, "suspended tenant: want 404, got %d", rec3.Code)
+
+	// Slug cannot be used — querying by id value must not resolve.
+	rec4 := httptest.NewRecorder()
+	r2.ServeHTTP(rec4, httptest.NewRequest(http.MethodGet, "/api/v1/login/tenant?key=acme", nil))
+	require.Equal(t, http.StatusNotFound, rec4.Code, "slug must not resolve (key=acme is not a login_key)")
+}

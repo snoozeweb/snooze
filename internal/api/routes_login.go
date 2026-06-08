@@ -50,15 +50,17 @@ type refreshIssuer interface {
 //
 // We expose:
 //
+//	GET  /api/v1/login                    (lists enabled backends + active/listed tenants)
+//	GET  /api/v1/login/tenant?key=<key>   (resolve an opaque login key to tenant {id, display_name})
 //	POST /api/v1/login/local
 //	POST /api/v1/login/ldap
 //	POST /api/v1/login/anonymous   (only when configured)
 //	POST /api/v1/login/refresh     (exchange a refresh token for a new pair)
 //	POST /api/v1/login/logout      (revoke a refresh token)
-//	GET  /api/v1/login              (lists enabled backends)
 func (rt *Router) mountLogin(r chi.Router) {
 	r.Route("/api/v1/login", func(sub chi.Router) {
 		sub.Get("/", rt.handleLoginIndex)
+		sub.Get("/tenant", rt.handleLoginResolveTenant)
 		sub.Post("/local", rt.handleLogin("local"))
 		sub.Post("/ldap", rt.handleLogin("ldap"))
 		sub.Post("/anonymous", rt.handleLoginAnonymous)
@@ -446,4 +448,31 @@ func (rt *Router) checkTenantStatus(ctx context.Context, tenantID string) error 
 		return ErrForbidden.WithMessage("tenant is suspended")
 	}
 	return nil
+}
+
+// handleLoginResolveTenant GET /api/v1/login/tenant?key=<login_key>
+// Resolves an opaque per-tenant login key to {id, display_name}. Returns a
+// generic 404 on empty/unknown key or a suspended tenant — it never resolves
+// by slug, so it cannot be used to enumerate tenants.
+func (rt *Router) handleLoginResolveTenant(w http.ResponseWriter, r *http.Request) {
+	key := r.URL.Query().Get("key")
+	if key == "" || rt.DB == nil {
+		WriteError(w, r, ErrNotFound.WithMessage("unknown tenant"))
+		return
+	}
+	pctx := auth.WithPlatformScope(r.Context())
+	doc, err := rt.DB.GetOne(pctx, "tenant", db.Document{"login_key": key})
+	if err != nil || doc == nil {
+		WriteError(w, r, ErrNotFound.WithMessage("unknown tenant"))
+		return
+	}
+	if status, _ := doc["status"].(string); status == "suspended" {
+		WriteError(w, r, ErrNotFound.WithMessage("unknown tenant"))
+		return
+	}
+	id, _ := doc["id"].(string)
+	dn, _ := doc["display_name"].(string)
+	WriteJSON(w, http.StatusOK, map[string]any{
+		"data": map[string]any{"id": id, "display_name": dn},
+	})
 }
