@@ -191,14 +191,16 @@ paths:
   /api/v1/login:
     get:
       tags: [auth]
-      summary: List enabled authentication backends
+      summary: List enabled authentication backends and public tenants
       description: |
         Returns the names of registered authentication providers, with
-        the configured `general.default_auth_backend` first.
+        the configured `general.default_auth_backend` first, plus the
+        list of active tenants whose `listed` flag is true (or absent).
+        The `login_key` is never included here.
       security: []
       responses:
         '200':
-          description: Backend list.
+          description: Backend list and public tenant list.
           content:
             application/json:
               schema:
@@ -210,6 +212,64 @@ paths:
                       backends:
                         type: array
                         items: {type: string}
+                      tenants:
+                        type: array
+                        description: |
+                          Active tenants with listed:true (or absent). Sorted
+                          by display_name. Empty array when there is only the
+                          default tenant or none are listed.
+                        items:
+                          type: object
+                          required: [id, display_name]
+                          properties:
+                            id:
+                              type: string
+                              description: "Tenant slug."
+                            display_name:
+                              type: string
+                              description: "Human-readable label."
+
+  /api/v1/login/tenant:
+    get:
+      tags: [auth]
+      summary: Resolve an opaque per-tenant login key
+      description: |
+        Resolves a per-tenant `login_key` to the tenant's `id` and
+        `display_name`. Returns a generic 404 for an empty, unknown, or
+        suspended tenant — it never resolves by slug, so it cannot be
+        used to enumerate tenants. Used by the login page when the URL
+        carries `?key=<login_key>`.
+      security: []
+      parameters:
+        - name: key
+          in: query
+          required: true
+          schema: {type: string}
+          description: "The opaque per-tenant login key."
+      responses:
+        '200':
+          description: Tenant identity for the given key.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    type: object
+                    required: [id, display_name]
+                    properties:
+                      id:
+                        type: string
+                        description: "Tenant slug."
+                      display_name:
+                        type: string
+                        description: "Human-readable label."
+        '404':
+          description: Key not found, empty, or tenant suspended.
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/ErrEnvelope'}
 
   /api/v1/login/local:
     post:
@@ -707,6 +767,43 @@ paths:
         '403': {$ref: '#/components/responses/Forbidden'}
         '404': {$ref: '#/components/responses/NotFound'}
 
+  /api/v1/tenant/{id}/rotate-login-key:
+    post:
+      tags: [platform]
+      summary: Rotate a tenant's login key
+      description: |
+        Generates a fresh opaque `login_key` for the tenant, invalidating
+        any previously shared login links. Also bootstraps a key for tenants
+        that were created before this feature was introduced. Requires
+        `rw_tenant`. The new key is returned in the response — update any
+        shared login links immediately.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: {type: string}
+          description: "Tenant slug."
+      responses:
+        '200':
+          description: New login key.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [id, login_key]
+                properties:
+                  id:
+                    type: string
+                    description: "Tenant slug."
+                  login_key:
+                    type: string
+                    description: "Freshly generated opaque login key."
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {$ref: '#/components/responses/NotFound'}
+
   /api/v1/tenant/{id}:
     get:
       tags: [platform]
@@ -731,7 +828,7 @@ paths:
         '404': {$ref: '#/components/responses/NotFound'}
     patch:
       tags: [platform]
-      summary: Update tenant display_name / status / ingest_token
+      summary: Update tenant display_name / status / ingest_token / listed
       description: Requires `rw_tenant`. `id` is immutable.
       security:
         - bearerAuth: []
@@ -1389,6 +1486,20 @@ components:
         ingest_token:
           type: string
           description: "Per-tenant ingest token for unauthenticated ingress (D4)."
+        listed:
+          type: boolean
+          default: true
+          description: |
+            Controls whether this tenant appears in the public login list
+            returned by GET /api/v1/login. Default true. Set to false for
+            SaaS tenants reached only via their per-tenant login_key link.
+        login_key:
+          type: string
+          description: |
+            Opaque, rotatable per-tenant discovery secret. Share
+            /web/login?key=<login_key> to let users reach this tenant's login
+            page without exposing the tenant list. Never included in the public
+            login index. Rotate via POST /api/v1/tenant/{id}/rotate-login-key.
         created_at:
           type: integer
           format: int64
@@ -1764,3 +1875,9 @@ components:
             Rotate the ingest token. Supply a new value or an empty string to
             disable unauthenticated ingestion for this tenant. The server does
             NOT auto-generate a new token on update — supply one explicitly.
+        listed:
+          type: boolean
+          description: |
+            Toggle public visibility in the login tenant list. Set to false
+            to hide the tenant from the public login dropdown; share the
+            per-tenant login_key link instead.

@@ -192,9 +192,11 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * List enabled authentication backends
+         * List enabled authentication backends and public tenants
          * @description Returns the names of registered authentication providers, with
-         *     the configured `general.default_auth_backend` first.
+         *     the configured `general.default_auth_backend` first, plus the
+         *     list of active tenants whose `listed` flag is true (or absent).
+         *     The `login_key` is never included here.
          *
          */
         get: {
@@ -206,7 +208,7 @@ export interface paths {
             };
             requestBody?: never;
             responses: {
-                /** @description Backend list. */
+                /** @description Backend list and public tenant list. */
                 200: {
                     headers: {
                         [name: string]: unknown;
@@ -215,8 +217,81 @@ export interface paths {
                         "application/json": {
                             data?: {
                                 backends?: string[];
+                                /** @description Active tenants with listed:true (or absent). Sorted
+                                 *     by display_name. Empty array when there is only the
+                                 *     default tenant or none are listed.
+                                 *      */
+                                tenants?: {
+                                    /** @description Tenant slug. */
+                                    id: string;
+                                    /** @description Human-readable label. */
+                                    display_name: string;
+                                }[];
                             };
                         };
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/login/tenant": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Resolve an opaque per-tenant login key
+         * @description Resolves a per-tenant `login_key` to the tenant's `id` and
+         *     `display_name`. Returns a generic 404 for an empty, unknown, or
+         *     suspended tenant — it never resolves by slug, so it cannot be
+         *     used to enumerate tenants. Used by the login page when the URL
+         *     carries `?key=<login_key>`.
+         *
+         */
+        get: {
+            parameters: {
+                query: {
+                    /** @description The opaque per-tenant login key. */
+                    key: string;
+                };
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Tenant identity for the given key. */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            data: {
+                                /** @description Tenant slug. */
+                                id: string;
+                                /** @description Human-readable label. */
+                                display_name: string;
+                            };
+                        };
+                    };
+                };
+                /** @description Key not found, empty, or tenant suspended. */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrEnvelope"];
                     };
                 };
             };
@@ -1070,6 +1145,61 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/tenant/{id}/rotate-login-key": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Rotate a tenant's login key
+         * @description Generates a fresh opaque `login_key` for the tenant, invalidating
+         *     any previously shared login links. Also bootstraps a key for tenants
+         *     that were created before this feature was introduced. Requires
+         *     `rw_tenant`. The new key is returned in the response — update any
+         *     shared login links immediately.
+         *
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    /** @description Tenant slug. */
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description New login key. */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            /** @description Tenant slug. */
+                            id: string;
+                            /** @description Freshly generated opaque login key. */
+                            login_key: string;
+                        };
+                    };
+                };
+                401: components["responses"]["Unauthorized"];
+                403: components["responses"]["Forbidden"];
+                404: components["responses"]["NotFound"];
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/tenant/{id}": {
         parameters: {
             query?: never;
@@ -1141,7 +1271,7 @@ export interface paths {
         options?: never;
         head?: never;
         /**
-         * Update tenant display_name / status / ingest_token
+         * Update tenant display_name / status / ingest_token / listed
          * @description Requires `rw_tenant`. `id` is immutable.
          */
         patch: {
@@ -1980,6 +2110,20 @@ export interface components {
             status: "active" | "suspended";
             /** @description Per-tenant ingest token for unauthenticated ingress (D4). */
             ingest_token?: string;
+            /**
+             * @description Controls whether this tenant appears in the public login list
+             *     returned by GET /api/v1/login. Default true. Set to false for
+             *     SaaS tenants reached only via their per-tenant login_key link.
+             *
+             * @default true
+             */
+            listed: boolean;
+            /** @description Opaque, rotatable per-tenant discovery secret. Share
+             *     /web/login?key=<login_key> to let users reach this tenant's login
+             *     page without exposing the tenant list. Never included in the public
+             *     login index. Rotate via POST /api/v1/tenant/{id}/rotate-login-key.
+             *      */
+            login_key?: string;
             /** Format: int64 */
             created_at?: number;
             /** Format: int64 */
@@ -2253,6 +2397,11 @@ export interface components {
              *     NOT auto-generate a new token on update — supply one explicitly.
              *      */
             ingest_token?: string;
+            /** @description Toggle public visibility in the login tenant list. Set to false
+             *     to hide the tenant from the public login dropdown; share the
+             *     per-tenant login_key link instead.
+             *      */
+            listed?: boolean;
         };
     };
     responses: {
