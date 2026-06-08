@@ -90,11 +90,11 @@ const loginRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/web/login",
   component: Login,
-  validateSearch: (search): { return_to?: string } => {
-    if (typeof search["return_to"] === "string") {
-      return { return_to: search["return_to"] };
-    }
-    return {};
+  validateSearch: (search): { return_to?: string; key?: string } => {
+    const out: { return_to?: string; key?: string } = {};
+    if (typeof search["return_to"] === "string") out.return_to = search["return_to"];
+    if (typeof search["key"] === "string") out.key = search["key"];
+    return out;
   },
 });
 

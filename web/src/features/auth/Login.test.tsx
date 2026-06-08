@@ -15,13 +15,12 @@ import { mswServer } from "@/tests/msw/server";
 import { authStore } from "@/lib/auth/store";
 import { Login } from "./Login";
 
-function setup(returnTo?: string, multiTenant = false) {
+function setup(returnTo?: string, searchParams?: Record<string, string>) {
   const root = createRootRoute({ component: () => <Outlet /> });
-  const LoginWithProp = () => <Login multiTenant={multiTenant} />;
   const login = createRoute({
     getParentRoute: () => root,
     path: "/web/login",
-    component: LoginWithProp,
+    component: Login,
   });
   const alerts = createRoute({
     getParentRoute: () => root,
@@ -29,14 +28,23 @@ function setup(returnTo?: string, multiTenant = false) {
     component: () => <p>Alerts</p>,
   });
   const tree = root.addChildren([login, alerts]);
+
+  // Build the initial URL with any extra search params
+  let initialPath = "/web/login";
+  const params = new URLSearchParams();
+  if (returnTo) params.set("return_to", encodeURIComponent(returnTo));
+  if (searchParams) {
+    for (const [k, v] of Object.entries(searchParams)) {
+      params.set(k, v);
+    }
+  }
+  const qs = params.toString();
+  if (qs) initialPath = `${initialPath}?${qs}`;
+
   /* eslint-disable @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-argument, @typescript-eslint/no-unsafe-assignment */
   const router = createRouter({
     routeTree: tree,
-    history: createMemoryHistory({
-      initialEntries: [
-        returnTo ? `/web/login?return_to=${encodeURIComponent(returnTo)}` : "/web/login",
-      ],
-    }),
+    history: createMemoryHistory({ initialEntries: [initialPath] }),
   } as any);
   // Disable retries in tests — backend-list errors must not delay assertions.
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
@@ -46,6 +54,10 @@ function setup(returnTo?: string, multiTenant = false) {
     </QueryClientProvider>,
   );
   /* eslint-enable @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-argument, @typescript-eslint/no-unsafe-assignment */
+}
+
+function setupWithSearch(searchParams: Record<string, string>) {
+  return setup(undefined, searchParams);
 }
 
 describe("Login", () => {
@@ -115,41 +127,101 @@ describe("Login", () => {
     expect(authStore.getState().isAuthenticated).toBe(false);
   });
 
-  it("renders the Organization field when multiTenant prop is true", async () => {
-    setup(undefined, true);
-    expect(await screen.findByLabelText(/organization/i)).toBeInTheDocument();
-  });
-
-  it("does not render the Organization field by default (single-tenant)", async () => {
+  it("does not render the Organization dropdown by default (0 tenants)", async () => {
     setup();
     await screen.findByRole("tab", { name: "Local", selected: true });
-    expect(screen.queryByLabelText(/organization/i)).not.toBeInTheDocument();
+    expect(screen.queryByRole("combobox", { name: /organization/i })).not.toBeInTheDocument();
   });
 
-  it("sends org slug when the Organization field is filled", async () => {
+  it("shows an Organization dropdown when more than one tenant is listed", async () => {
+    mswServer.use(
+      http.get("/api/v1/login", () =>
+        HttpResponse.json({
+          data: {
+            backends: ["local"],
+            tenants: [
+              { id: "acme", display_name: "Acme" },
+              { id: "globex", display_name: "Globex" },
+            ],
+          },
+        }),
+      ),
+    );
+    setup();
+    expect(await screen.findByRole("combobox", { name: /organization/i })).toBeInTheDocument();
+  });
+
+  it("uses a single listed tenant implicitly (no picker)", async () => {
+    mswServer.use(
+      http.get("/api/v1/login", () =>
+        HttpResponse.json({
+          data: {
+            backends: ["local"],
+            tenants: [{ id: "acme", display_name: "Acme" }],
+          },
+        }),
+      ),
+    );
+    setup();
+    await screen.findByLabelText(/username/i);
+    expect(screen.queryByRole("combobox", { name: /organization/i })).not.toBeInTheDocument();
+  });
+
+  it("resolves ?key= and locks the org to that tenant", async () => {
+    mswServer.use(
+      http.get("/api/v1/login", () =>
+        HttpResponse.json({ data: { backends: ["local"], tenants: [] } }),
+      ),
+      http.get("/api/v1/login/tenant", ({ request }) => {
+        const url = new URL(request.url);
+        if (url.searchParams.get("key") === "KEY-acme") {
+          return HttpResponse.json({ data: { id: "acme", display_name: "Acme Corp" } });
+        }
+        return new HttpResponse(null, { status: 404 });
+      }),
+    );
+    setupWithSearch({ key: "KEY-acme" });
+    expect(await screen.findByText(/Acme Corp/)).toBeInTheDocument();
+    expect(screen.queryByRole("combobox", { name: /organization/i })).not.toBeInTheDocument();
+  });
+
+  it("sends org slug when submitting with two listed tenants", async () => {
     const bodies: unknown[] = [];
     mswServer.use(
+      http.get("/api/v1/login", () =>
+        HttpResponse.json({
+          data: {
+            backends: ["local"],
+            tenants: [
+              { id: "acme", display_name: "Acme" },
+              { id: "globex", display_name: "Globex" },
+            ],
+          },
+        }),
+      ),
       http.post("/api/v1/login/local", async ({ request }) => {
         bodies.push(await request.json());
+        const now = Math.floor(Date.now() / 1000);
         return HttpResponse.json({
           token:
             btoa(JSON.stringify({ alg: "HS256", typ: "JWT" })) +
             "." +
-            btoa(JSON.stringify({ sub: "alice", exp: Math.floor(Date.now() / 1000) + 3600 })) +
+            btoa(JSON.stringify({ sub: "alice", exp: now + 3600 })) +
             ".sig",
-          expires_at: new Date(Date.now() + 3600000).toISOString(),
+          expires_at: new Date((now + 3600) * 1000).toISOString(),
           method: "local",
         });
       }),
     );
     const user = userEvent.setup();
-    setup(undefined, true);
+    setup();
+    // Wait for dropdown to appear and select Globex
+    const select = await screen.findByRole("combobox", { name: /organization/i });
+    await user.selectOptions(select, "globex");
     await user.type(await screen.findByLabelText(/username/i), "alice");
     await user.type(screen.getByLabelText(/password/i), "pw");
-    await user.clear(screen.getByLabelText(/organization/i));
-    await user.type(screen.getByLabelText(/organization/i), "acme");
     await user.click(screen.getByRole("button", { name: /sign in$/i }));
     await waitFor(() => expect(bodies).toHaveLength(1));
-    expect((bodies[0] as { org?: string }).org).toBe("acme");
+    expect((bodies[0] as { org?: string }).org).toBe("globex");
   });
 });

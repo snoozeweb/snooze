@@ -8,42 +8,59 @@ import { TabList, TabPanel, TabTrigger, Tabs } from "@/shared/ui/Tabs";
 import { ApiError } from "@/lib/api/client";
 import { authStore } from "@/lib/auth/store";
 import {
-  fetchLoginBackends,
+  fetchLoginConfig,
   loginAnonymous,
   loginLdap,
   loginLocal,
+  resolveTenantByKey,
   type LoginBackend,
 } from "./api";
 import styles from "./Login.module.css";
 
-export type LoginProps = {
-  /** When true, shows the optional Organization slug field. Set to true on
-   *  multi-tenant deployments so users can choose which org they log into.
-   *  Omitted (default false) for single-tenant deployments. */
-  multiTenant?: boolean;
-};
-
-export function Login({ multiTenant = false }: LoginProps) {
+export function Login() {
   const navigate = useNavigate();
-  const search = useSearch({ strict: false }) as unknown as { return_to?: string };
+  const search = useSearch({ strict: false }) as unknown as {
+    return_to?: string;
+    key?: string;
+  };
   const returnTo = search.return_to ? decodeURIComponent(search.return_to) : "/web/alerts";
 
-  // Backends the server currently exposes. Falls back to ["local","ldap","anonymous"]
-  // until the query resolves so a slow /api/v1/login fetch doesn't briefly render
-  // an empty card. The actual UI is gated on the resolved value below.
-  const backendsQuery = useQuery({
-    queryKey: ["login", "backends"],
-    queryFn: fetchLoginBackends,
+  // Fetch backends + public tenant list in a single call.
+  const cfgQuery = useQuery({
+    queryKey: ["login", "config"],
+    queryFn: fetchLoginConfig,
     staleTime: 60_000,
   });
-  const backends = useMemo<LoginBackend[]>(() => backendsQuery.data ?? [], [backendsQuery.data]);
+  const backends = useMemo<LoginBackend[]>(() => cfgQuery.data?.backends ?? [], [cfgQuery.data]);
+  const tenants = cfgQuery.data?.tenants ?? [];
+
+  // Resolve an opaque ?key= param to a tenant (SaaS per-tenant login link).
+  const keyQuery = useQuery({
+    queryKey: ["login", "tenant-by-key", search.key],
+    queryFn: () => resolveTenantByKey(search.key!),
+    enabled: !!search.key,
+    staleTime: 60_000,
+  });
+  const lockedTenant = keyQuery.data ?? null;
 
   const [tab, setTab] = useState<LoginBackend | null>(null);
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
-  const [org, setOrg] = useState("");
+  // orgSel is used only when the picker is visible (tenants.length > 1, no locked tenant).
+  const [orgSel, setOrgSel] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // Derive the effective org:
+  // 1. Locked tenant (from ?key=) → use its id.
+  // 2. Exactly one listed tenant → use it implicitly.
+  // 3. More than one listed tenant → use the picker value (orgSel).
+  // 4. No tenants → empty string (server defaults to "default" tenant).
+  const org = lockedTenant
+    ? lockedTenant.id
+    : tenants.length === 1
+      ? tenants[0]!.id
+      : orgSel;
 
   // Default-select the first advertised backend. Re-runs when the backend
   // list resolves; only sets when the previously-selected tab is no longer
@@ -82,8 +99,10 @@ export function Login({ multiTenant = false }: LoginProps) {
     }
   }
 
-  // Loading state: nothing to render yet.
-  if (backendsQuery.isPending) {
+  // Loading state: nothing to render yet. When a ?key= is present we also wait
+  // for the tenant resolve so the locked-org view doesn't flash the picker /
+  // default first.
+  if (cfgQuery.isPending || (!!search.key && keyQuery.isPending)) {
     return (
       <div className={styles.page}>
         <div className={styles.card}>
@@ -111,21 +130,30 @@ export function Login({ multiTenant = false }: LoginProps) {
     );
   }
 
-  /** Shared org field rendered inside each tab form when multiTenant is on. */
-  const orgField = multiTenant ? (
-    <div className={`${styles.field} ${styles.orgField}`}>
-      <label htmlFor="login-org" className={styles.label}>
-        Organization
-      </label>
-      <Input
-        id="login-org"
-        value={org}
-        onChange={(e) => setOrg(e.target.value)}
-        placeholder="default"
-        autoComplete="organization"
-      />
-    </div>
-  ) : null;
+  /** Organization picker — shown only when there are >1 tenants and no locked tenant. */
+  const orgField =
+    !lockedTenant && tenants.length > 1 ? (
+      <div className={`${styles.field} ${styles.orgField}`}>
+        <label htmlFor="login-org" className={styles.label}>
+          Organization
+        </label>
+        <select
+          id="login-org"
+          value={orgSel}
+          onChange={(e) => setOrgSel(e.target.value)}
+          className={styles.input}
+        >
+          <option value="" disabled>
+            Select your organization…
+          </option>
+          {tenants.map((t) => (
+            <option key={t.id} value={t.id}>
+              {t.display_name || t.id}
+            </option>
+          ))}
+        </select>
+      </div>
+    ) : null;
 
   return (
     <div className={styles.page}>
@@ -133,6 +161,11 @@ export function Login({ multiTenant = false }: LoginProps) {
         <div className={styles.brand}>
           <Logo />
         </div>
+        {lockedTenant ? (
+          <p className={styles.tenantHeader}>
+            Sign in to {lockedTenant.display_name || lockedTenant.id}
+          </p>
+        ) : null}
         <Tabs
           value={tab ?? backends[0] ?? "local"}
           onValueChange={(v) => {
