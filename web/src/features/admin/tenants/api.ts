@@ -7,7 +7,7 @@ import {
 } from "@tanstack/react-query";
 import { api, type ApiError } from "@/lib/api/client";
 import type { ListResponse } from "@/lib/api/resource";
-import type { Tenant } from "./types";
+import type { Tenant, CreateTenantBody, CreateTenantResult, AdminCredential } from "./types";
 
 // The tenant registry lives at /api/v1/tenant, gated on ro_tenant / rw_tenant.
 // It is NOT a standard plugin resource (its collection is global, not tenant-
@@ -69,10 +69,10 @@ export const Tenants = {
     });
   },
 
-  useCreate(): UseMutationResult<Tenant, ApiError, Omit<Tenant, "created_at" | "updated_at">> {
+  useCreate(): UseMutationResult<CreateTenantResult, ApiError, CreateTenantBody> {
     const qc = useQueryClient();
-    return useMutation<Tenant, ApiError, Omit<Tenant, "created_at" | "updated_at">>({
-      mutationFn: (body) => api<Tenant>("POST", "/tenant", { body }),
+    return useMutation<CreateTenantResult, ApiError, CreateTenantBody>({
+      mutationFn: (body) => api<CreateTenantResult>("POST", "/tenant", { body }),
       onSuccess: () => {
         void qc.invalidateQueries({ queryKey: QUERY_KEY_ALL });
       },
@@ -87,6 +87,15 @@ export const Tenants = {
         void qc.invalidateQueries({ queryKey: QUERY_KEY_ALL });
         void qc.invalidateQueries({ queryKey: QUERY_KEY_ONE(vars.uid) });
       },
+    });
+  },
+
+  useResetAdmin(): UseMutationResult<AdminCredential, ApiError, { id: string; username?: string }> {
+    return useMutation<AdminCredential, ApiError, { id: string; username?: string }>({
+      mutationFn: ({ id, username }) =>
+        api<AdminCredential>("POST", `/tenant/${id}/admin`, {
+          body: username ? { username } : {},
+        }),
     });
   },
 

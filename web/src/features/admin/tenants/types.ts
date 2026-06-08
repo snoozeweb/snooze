@@ -9,3 +9,27 @@ export type Tenant = {
   created_at?: number;
   updated_at?: number;
 };
+
+/** One-time admin credential returned by tenant create / reset-admin. */
+export type AdminCredential = {
+  username: string;
+  password: string;
+  method: string;
+  created: boolean;
+};
+
+/** Body for POST /tenant (create). */
+export type CreateTenantBody = {
+  id: string;
+  display_name: string;
+  status: string;
+  /** default true on the server; false suppresses first-admin provisioning. */
+  create_admin?: boolean;
+  admin_username?: string;
+};
+
+/** Response from POST /tenant — the write result plus an optional one-time admin credential. */
+export type CreateTenantResult = {
+  added?: string[];
+  admin?: AdminCredential;
+};

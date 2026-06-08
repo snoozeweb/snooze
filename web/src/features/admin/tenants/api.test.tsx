@@ -6,6 +6,7 @@ import type { ReactNode } from "react";
 import { mswServer } from "@/tests/msw/server";
 import { Tenants } from "./api";
 import type { Tenant } from "./types";
+import type { CreateTenantResult, AdminCredential } from "./types";
 
 function wrap() {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
@@ -38,17 +39,30 @@ describe("Tenants.useList", () => {
 });
 
 describe("Tenants.useCreate", () => {
-  it("POSTs to /api/v1/tenant", async () => {
-    const bodies: unknown[] = [];
+  it("POSTs to /api/v1/tenant and returns CreateTenantResult with admin credential", async () => {
+    const adminResponse: CreateTenantResult = {
+      added: ["acme"],
+      admin: {
+        username: "ops",
+        password: "PWPWPWPWPWPWPWPWPWPWPWPWPWPWPWPW",
+        method: "local",
+        created: true,
+      },
+    };
     mswServer.use(
-      http.post("/api/v1/tenant", async ({ request }) => {
-        bodies.push(await request.json());
-        return HttpResponse.json({ ...SAMPLE }, { status: 201 });
+      http.post("/api/v1/tenant", () => {
+        return HttpResponse.json(adminResponse, { status: 201 });
       }),
     );
     const { result } = renderHook(() => Tenants.useCreate(), { wrapper: wrap() });
-    await result.current.mutateAsync({ id: "acme", display_name: "Acme Corp", status: "active" });
-    expect(bodies).toHaveLength(1);
+    const res = await result.current.mutateAsync({
+      id: "acme",
+      display_name: "Acme Corp",
+      status: "active",
+      admin_username: "ops",
+    });
+    expect(res.admin?.username).toBe("ops");
+    expect(res.admin?.password).toBeTruthy();
   });
 });
 
@@ -74,5 +88,24 @@ describe("Tenants.useRemove", () => {
     );
     const { result } = renderHook(() => Tenants.useRemove(), { wrapper: wrap() });
     await expect(result.current.mutateAsync("acme")).resolves.not.toThrow();
+  });
+});
+
+describe("Tenants.useResetAdmin", () => {
+  it("POSTs to /api/v1/tenant/{id}/admin and returns AdminCredential", async () => {
+    const credResponse: AdminCredential = {
+      username: "ops",
+      password: "NEWNEWNEWNEWNEWNEWNEWNEWNEWNEWNE",
+      method: "local",
+      created: false,
+    };
+    mswServer.use(
+      http.post("/api/v1/tenant/acme/admin", () => {
+        return HttpResponse.json(credResponse, { status: 200 });
+      }),
+    );
+    const { result } = renderHook(() => Tenants.useResetAdmin(), { wrapper: wrap() });
+    const cred = await result.current.mutateAsync({ id: "acme", username: "ops" });
+    expect(cred.username).toBe("ops");
   });
 });
