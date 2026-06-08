@@ -165,8 +165,9 @@ func (rt *Router) handleTenantCreate(w http.ResponseWriter, r *http.Request) {
 	// plane bypasses the tenant plugin's generic-CRUD AfterCreate hook (the
 	// router skips that mount, see router.go), so the seeding that AfterCreate
 	// would have done must happen here — otherwise a brand-new tenant comes up
-	// with zero roles and no admin and is unusable (H5). Idempotent: re-seeding
-	// an existing tenant updates the same docs in place rather than duplicating.
+	// with zero roles and no admin and is unusable (H5). A duplicate tenant id
+	// is already rejected above (409), so this only runs for a genuinely new
+	// tenant; seedTenant is itself idempotent for retry-after-partial-failure.
 	if err := rt.seedTenant(baseCtx, id); err != nil {
 		WriteError(w, r, ErrInternal.WithCause(err))
 		return

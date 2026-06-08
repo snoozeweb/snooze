@@ -113,6 +113,7 @@ export function TenantsPage() {
             type="button"
             size="sm"
             variant="ghost"
+            disabled={resetAdmin.isPending}
             onClick={() => {
               resetAdmin.mutate(
                 { id: tenant.id },
