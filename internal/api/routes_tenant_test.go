@@ -514,3 +514,69 @@ func TestTenantCreate_CustomAdminUsername(t *testing.T) {
 	require.NotNil(t, resp.Admin)
 	require.Equal(t, "ops", resp.Admin.Username)
 }
+
+func TestTenantAdminReset_RequiresWritePerm(t *testing.T) {
+	tdb := &tenantDB{docs: []db.Document{{"id": "acme"}}}
+	r, _ := tenantRouter(t, tdb, auth.PermReadTenant /* read only */)
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/tenant/acme/admin", nil)
+	r.ServeHTTP(rec, req)
+	require.Equal(t, http.StatusForbidden, rec.Code)
+}
+
+func TestTenantAdminReset_UnknownTenant404(t *testing.T) {
+	tdb := &tenantDB{docs: nil}
+	r, _ := tenantRouter(t, tdb, auth.PermWriteTenant)
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/tenant/ghost/admin", nil)
+	r.ServeHTTP(rec, req)
+	require.Equal(t, http.StatusNotFound, rec.Code)
+}
+
+func TestTenantAdminReset_ReturnsPassword(t *testing.T) {
+	tdb := &tenantDB{docs: []db.Document{{"id": "acme"}}}
+	r, _ := tenantRouter(t, tdb, auth.PermWriteTenant)
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/tenant/acme/admin", nil)
+	r.ServeHTTP(rec, req)
+	require.Equal(t, http.StatusOK, rec.Code)
+
+	var cred struct {
+		Username string `json:"username"`
+		Password string `json:"password"`
+		Method   string `json:"method"`
+		Created  bool   `json:"created"`
+	}
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &cred))
+	require.Equal(t, "admin", cred.Username)
+	require.Equal(t, "local", cred.Method)
+	require.GreaterOrEqual(t, len(cred.Password), 32)
+	require.True(t, cred.Created, "the stub has no existing admin user, so the reset creates one")
+}
+
+func TestTenantAdminReset_BadBody(t *testing.T) {
+	tdb := &tenantDB{docs: []db.Document{{"id": "acme"}}}
+	r, _ := tenantRouter(t, tdb, auth.PermWriteTenant)
+	body := bytes.NewBufferString(`{bad`)
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/tenant/acme/admin", body)
+	req.Header.Set("Content-Type", "application/json")
+	r.ServeHTTP(rec, req)
+	require.Equal(t, http.StatusBadRequest, rec.Code)
+}
+
+func TestTenantAdminReset_CustomUsername(t *testing.T) {
+	tdb := &tenantDB{docs: []db.Document{{"id": "acme"}}}
+	r, _ := tenantRouter(t, tdb, auth.PermWriteTenant)
+	body := bytes.NewBufferString(`{"username":"ops"}`)
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/tenant/acme/admin", body)
+	req.Header.Set("Content-Type", "application/json")
+	r.ServeHTTP(rec, req)
+	require.Equal(t, http.StatusOK, rec.Code)
+	var cred struct {
+		Username string `json:"username"`
+	}
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &cred))
+	require.Equal(t, "ops", cred.Username)
+}

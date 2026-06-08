@@ -74,6 +74,7 @@ type tenantCreateResponse struct {
 //	POST   /api/v1/tenant           — create (rw_tenant)
 //	GET    /api/v1/tenant           — list   (ro_tenant)
 //	GET    /api/v1/tenant/{id}      — get one (ro_tenant)
+//	POST   /api/v1/tenant/{id}/admin — ensure/reset the tenant's local admin (rw_tenant)
 //	PATCH  /api/v1/tenant/{id}      — update display_name/status/ingest_token (rw_tenant)
 //	DELETE /api/v1/tenant/{id}      — delete; "default" is undeletable (rw_tenant)
 func (rt *Router) mountTenant(r chi.Router) {
@@ -92,6 +93,8 @@ func (rt *Router) mountTenant(r chi.Router) {
 		// Write endpoints (rw_tenant only).
 		sub.With(middleware.RequirePlatformPerm(auth.PermWriteTenant)).
 			Post("/", rt.handleTenantCreate)
+		sub.With(middleware.RequirePlatformPerm(auth.PermWriteTenant)).
+			Post("/{id}/admin", rt.handleTenantAdminReset)
 		sub.With(middleware.RequirePlatformPerm(auth.PermWriteTenant)).
 			Patch("/{id}", rt.handleTenantUpdate)
 		sub.With(middleware.RequirePlatformPerm(auth.PermWriteTenant)).
@@ -201,6 +204,59 @@ func (rt *Router) handleTenantCreate(w http.ResponseWriter, r *http.Request) {
 	}
 
 	WriteJSON(w, http.StatusCreated, out)
+}
+
+// handleTenantAdminReset POST /api/v1/tenant/{id}/admin
+//
+// Ensure a local admin for tenant {id}: create it if absent, otherwise reset
+// its password. Returns the one-time credential. Body is optional:
+// {"username":"admin"}. The recovery path for a lost create-time password and
+// the later-provisioning path for a tenant created with create_admin:false.
+func (rt *Router) handleTenantAdminReset(w http.ResponseWriter, r *http.Request) {
+	if rt.DB == nil {
+		WriteError(w, r, ErrUnavailable.WithMessage("database not configured"))
+		return
+	}
+	baseCtx := r.Context()
+	r = rt.platformCtx(r)
+
+	id := chi.URLParam(r, "id")
+	if id == "" {
+		WriteError(w, r, ErrValidation.WithMessage("missing id"))
+		return
+	}
+
+	// The tenant must exist in the registry. Mirror handleTenantGet: a real
+	// driver returns db.ErrNotFound on miss, so treat (err != nil || nil-doc)
+	// as 404 rather than 500.
+	existing, err := rt.DB.GetOne(r.Context(), "tenant", db.Document{"id": id})
+	if err != nil || existing == nil {
+		WriteError(w, r, ErrNotFound.WithMessage("tenant not found: "+id))
+		return
+	}
+
+	// Optional username override.
+	var body struct {
+		Username string `json:"username"`
+	}
+	if r.Body != nil && r.ContentLength != 0 {
+		if err := ParseJSONBody(r, &body); err != nil {
+			WriteError(w, r, err)
+			return
+		}
+	}
+
+	adm, err := auth.EnsureTenantAdmin(auth.WithTenant(baseCtx, id), rt.DB, body.Username, true)
+	if err != nil {
+		WriteError(w, r, ErrInternal.WithCause(err))
+		return
+	}
+	WriteJSON(w, http.StatusOK, adminCredential{
+		Username: adm.Username,
+		Password: adm.Password,
+		Method:   auth.LocalMethod,
+		Created:  adm.Created,
+	})
 }
 
 // seedTenant provisions the baseline data a freshly-created tenant needs to be
