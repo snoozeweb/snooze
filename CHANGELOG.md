@@ -58,6 +58,14 @@
   and notification processor caches are partitioned by tenant; a reload for
   tenant A does not flush tenant B's cache.
 
+- **Tenant-aware login.** The login page is always multi-tenant aware. Tenants
+  carry a `listed` flag (default true): same-org deployments get an Organization
+  dropdown when more than one tenant is listed; SaaS deployments unlist tenants
+  and share a per-tenant opaque login link (`/web/login?key=…`, rotatable from
+  the tenant page) so the tenant list is never exposed to anonymous visitors.
+  New endpoints: `GET /api/v1/login/tenant?key=` and
+  `POST /api/v1/tenant/{id}/rotate-login-key`.
+
 - **`db.Driver.Writer.Increment` gains a leading `ctx context.Context`.**
   Asyncwriter coalescing is now tenant-partitioned: stats from different
   tenants are never merged into the same counter bucket.
