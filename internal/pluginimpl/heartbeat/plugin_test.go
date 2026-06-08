@@ -187,9 +187,10 @@ func (m *memDB) Close() error        { return nil }
 // fakeHost is a plugins.Host that also satisfies the plugin's recordProcessor
 // runtime assertion. It carries a memDB and captures every injected record.
 type fakeHost struct {
-	driver  *memDB
-	mu      sync.Mutex
-	records []snoozetypes.Record
+	driver     *memDB
+	mu         sync.Mutex
+	records    []snoozetypes.Record
+	recTenants []string
 }
 
 func (h *fakeHost) DB() db.Driver                { return h.driver }
@@ -200,10 +201,12 @@ func (h *fakeHost) Metrics() *telemetry.Registry { return telemetry.NewRegistry(
 func (h *fakeHost) Config() *config.Config       { return config.Default() }
 func (h *fakeHost) Plugin(string) plugins.Plugin { return nil }
 
-func (h *fakeHost) ProcessRecord(_ context.Context, rec snoozetypes.Record) (snoozetypes.Record, plugins.Action, error) {
+func (h *fakeHost) ProcessRecord(ctx context.Context, rec snoozetypes.Record) (snoozetypes.Record, plugins.Action, error) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	h.records = append(h.records, rec)
+	tid, _ := snoozetypes.TenantFrom(ctx)
+	h.recTenants = append(h.recTenants, tid)
 	return rec, plugins.ActionContinue, nil
 }
 
@@ -212,6 +215,14 @@ func (h *fakeHost) seen() []snoozetypes.Record {
 	defer h.mu.Unlock()
 	out := make([]snoozetypes.Record, len(h.records))
 	copy(out, h.records)
+	return out
+}
+
+func (h *fakeHost) seenTenants() []string {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	out := make([]string, len(h.recTenants))
+	copy(out, h.recTenants)
 	return out
 }
 
@@ -250,7 +261,6 @@ func TestEmbeddedMetadataParses(t *testing.T) {
 func TestPluginContract(t *testing.T) {
 	var (
 		_ plugins.DataModel        = (*Plugin)(nil)
-		_ plugins.LifecycleHook    = (*Plugin)(nil)
 		_ plugins.WebhookReceiver  = (*Plugin)(nil)
 		_ plugins.WriteTransformer = (*Plugin)(nil)
 	)
@@ -537,7 +547,7 @@ func TestScanFiresOnceForOverdueHeartbeat(t *testing.T) {
 	p := newPlugin(t, host)
 	p.now = func() time.Time { return now }
 
-	p.scan(context.Background())
+	require.NoError(t, p.ScanTenant(snoozetypes.WithTenant(context.Background(), "default")))
 	recs := host.seen()
 	require.Len(t, recs, 1)
 	require.Equal(t, "heartbeat", recs[0].Source)
@@ -547,7 +557,7 @@ func TestScanFiresOnceForOverdueHeartbeat(t *testing.T) {
 	require.Equal(t, "hb1", recs[0].Raw["name"])
 
 	// Second scan with the SAME last_seen must not re-fire.
-	p.scan(context.Background())
+	require.NoError(t, p.ScanTenant(snoozetypes.WithTenant(context.Background(), "default")))
 	require.Len(t, host.seen(), 1)
 }
 
@@ -560,7 +570,7 @@ func TestScanDoesNotFireForFreshHeartbeat(t *testing.T) {
 	p := newPlugin(t, host)
 	p.now = func() time.Time { return now }
 
-	p.scan(context.Background())
+	require.NoError(t, p.ScanTenant(snoozetypes.WithTenant(context.Background(), "default")))
 	require.Empty(t, host.seen())
 }
 
@@ -573,7 +583,7 @@ func TestScanRespectsGrace(t *testing.T) {
 	p := newPlugin(t, host)
 	p.now = func() time.Time { return now }
 
-	p.scan(context.Background())
+	require.NoError(t, p.ScanTenant(snoozetypes.WithTenant(context.Background(), "default")))
 	require.Empty(t, host.seen())
 }
 
@@ -590,7 +600,7 @@ func TestScanSkipsDisabled(t *testing.T) {
 	p := newPlugin(t, host)
 	p.now = func() time.Time { return now }
 
-	p.scan(context.Background())
+	require.NoError(t, p.ScanTenant(snoozetypes.WithTenant(context.Background(), "default")))
 	require.Empty(t, host.seen())
 }
 
@@ -614,7 +624,7 @@ func TestFreshPingClearsFiringState(t *testing.T) {
 	p.now = func() time.Time { return now }
 
 	// First scan fires.
-	p.scan(context.Background())
+	require.NoError(t, p.ScanTenant(snoozetypes.WithTenant(context.Background(), "default")))
 	require.Len(t, host.seen(), 1)
 
 	// A fresh ping at `now` updates last_seen and clears the fired mark.
@@ -624,7 +634,7 @@ func TestFreshPingClearsFiringState(t *testing.T) {
 	// Advance time well past interval again so the new window is overdue.
 	later := now.Add(5 * time.Minute)
 	p.now = func() time.Time { return later }
-	p.scan(context.Background())
+	require.NoError(t, p.ScanTenant(snoozetypes.WithTenant(context.Background(), "default")))
 
 	// A new miss alert must have fired for the new window.
 	require.Len(t, host.seen(), 2)
@@ -644,7 +654,55 @@ func TestScanNoProcessorIsNoOp(t *testing.T) {
 	p := newPlugin(t, host)
 	p.now = func() time.Time { return now }
 	// Must not panic and must return promptly.
-	p.scan(context.Background())
+	require.NoError(t, p.ScanTenant(snoozetypes.WithTenant(context.Background(), "default")))
+}
+
+func TestScanTenantFiresUnderContextTenant(t *testing.T) {
+	host := newHost()
+	now := time.Date(2026, 6, 8, 12, 0, 0, 0, time.UTC)
+	overdueDoc(host, "hb1", 60, 0, now.Add(-5*time.Minute))
+
+	p := newPlugin(t, host)
+	p.now = func() time.Time { return now }
+
+	require.NoError(t, p.ScanTenant(snoozetypes.WithTenant(context.Background(), "alpha")))
+	require.Equal(t, []string{"alpha"}, host.seenTenants(),
+		"the miss alert must be processed under the scanning tenant")
+}
+
+func TestScanTenantDedupIsPerTenant(t *testing.T) {
+	host := newHost()
+	now := time.Date(2026, 6, 8, 12, 0, 0, 0, time.UTC)
+	// One heartbeat named hb1; memDB is tenant-blind so both tenants "see" it,
+	// which is exactly what lets us prove the (tenant,name) dedup keying.
+	overdueDoc(host, "hb1", 60, 0, now.Add(-5*time.Minute))
+
+	p := newPlugin(t, host)
+	p.now = func() time.Time { return now }
+
+	ctxA := snoozetypes.WithTenant(context.Background(), "alpha")
+	ctxB := snoozetypes.WithTenant(context.Background(), "beta")
+
+	require.NoError(t, p.ScanTenant(ctxA)) // fires for (alpha,hb1)
+	require.NoError(t, p.ScanTenant(ctxB)) // fires for (beta,hb1)
+	require.NoError(t, p.ScanTenant(ctxA)) // dedup: (alpha,hb1) already fired
+
+	require.Equal(t, []string{"alpha", "beta"}, host.seenTenants(),
+		"each tenant fires once for the same heartbeat name; the second alpha scan dedups")
+}
+
+func TestScanTenantNoTenantContextIsNoOp(t *testing.T) {
+	host := newHost()
+	now := time.Date(2026, 6, 8, 12, 0, 0, 0, time.UTC)
+	overdueDoc(host, "hb1", 60, 0, now.Add(-5*time.Minute))
+
+	p := newPlugin(t, host)
+	p.now = func() time.Time { return now }
+
+	// A bare context carries no tenant. ScanTenant must fail closed — skip rather
+	// than fire a miss alert under an empty-tenant dedup key.
+	require.NoError(t, p.ScanTenant(context.Background()))
+	require.Empty(t, host.seen(), "ScanTenant without a tenant in context must not fire")
 }
 
 // nakedHost is a plugins.Host that does NOT satisfy recordProcessor.
@@ -657,51 +715,6 @@ func (h *nakedHost) Tracer() trace.Tracer         { return otel.Tracer("heartbea
 func (h *nakedHost) Metrics() *telemetry.Registry { return telemetry.NewRegistry(nil) }
 func (h *nakedHost) Config() *config.Config       { return config.Default() }
 func (h *nakedHost) Plugin(string) plugins.Plugin { return nil }
-
-// ---- lifecycle -------------------------------------------------------------
-
-func TestStartStop(t *testing.T) {
-	host := newHost()
-	p := newPlugin(t, host)
-	p.interval = 5 * time.Millisecond
-
-	require.NoError(t, p.Start(context.Background()))
-	// Give the ticker a chance to fire a couple of times.
-	time.Sleep(25 * time.Millisecond)
-
-	done := make(chan struct{})
-	go func() {
-		_ = p.Stop(context.Background())
-		close(done)
-	}()
-	select {
-	case <-done:
-	case <-time.After(time.Second):
-		t.Fatal("Stop did not return promptly")
-	}
-
-	// Stop again is a no-op and must not block or panic.
-	require.NoError(t, p.Stop(context.Background()))
-}
-
-func TestStartStopFiresViaTicker(t *testing.T) {
-	host := newHost()
-	now := time.Date(2026, 5, 27, 12, 0, 0, 0, time.UTC)
-	overdueDoc(host, "hb1", 60, 0, now.Add(-5*time.Minute))
-
-	p := newPlugin(t, host)
-	p.now = func() time.Time { return now }
-	p.interval = 5 * time.Millisecond
-
-	require.NoError(t, p.Start(context.Background()))
-	require.Eventually(t, func() bool {
-		return len(host.seen()) >= 1
-	}, time.Second, 5*time.Millisecond)
-	require.NoError(t, p.Stop(context.Background()))
-
-	// Even after many ticks, only one alert fired (dedup).
-	require.Len(t, host.seen(), 1)
-}
 
 // ---- PostInit backfill (Follow-up A) ----------------------------------------
 

@@ -10,92 +10,32 @@ import (
 	"github.com/snoozeweb/snooze/pkg/snoozetypes"
 )
 
-// ---- LifecycleHook: the scanner -------------------------------------------
-
-// Start launches the single background scanner goroutine. It returns promptly;
-// the goroutine ticks on p.interval and stops when Stop cancels it (or the
-// supplied context is cancelled). Calling Start twice without an intervening
-// Stop is a no-op on the second call (the first goroutine keeps running).
-func (p *Plugin) Start(ctx context.Context) error {
-	p.mu.Lock()
-	if p.cancel != nil {
-		// Already running.
-		p.mu.Unlock()
-		return nil
-	}
-	runCtx, cancel := context.WithCancel(ctx)
-	done := make(chan struct{})
-	p.cancel = cancel
-	p.done = done
-	interval := p.interval
-	p.mu.Unlock()
-
-	if lg := p.logger(); lg != nil {
-		lg.Info("heartbeat: scanner started", "interval", interval.String())
-	}
-
-	go p.loop(runCtx, done, interval)
-	return nil
-}
-
-// Stop cancels the scanner and blocks until the goroutine has exited. It is
-// safe to call when Start was never called, and safe to call more than once.
-func (p *Plugin) Stop(_ context.Context) error {
-	p.mu.Lock()
-	cancel := p.cancel
-	done := p.done
-	p.cancel = nil
-	p.done = nil
-	p.mu.Unlock()
-
-	if cancel == nil {
-		return nil
-	}
-	cancel()
-	if done != nil {
-		<-done
-	}
-	if lg := p.logger(); lg != nil {
-		lg.Info("heartbeat: scanner stopped")
-	}
-	return nil
-}
-
-// loop is the scanner goroutine body. It ticks on a time.Ticker and calls scan
-// once per tick until its context is cancelled. It never busy-loops and returns
-// promptly on cancellation by closing done.
-func (p *Plugin) loop(ctx context.Context, done chan struct{}, interval time.Duration) {
-	defer close(done)
-	ticker := time.NewTicker(interval)
-	defer ticker.Stop()
-	for {
-		select {
-		case <-ctx.Done():
-			return
-		case <-ticker.C:
-			p.scan(ctx)
-		}
-	}
-}
-
-// scan reads the enabled heartbeats and, for each one that has been silent
-// longer than its interval+grace, injects exactly one miss alert (deduped via
-// the fired set). It is the unit the tests drive directly with a fake clock.
-func (p *Plugin) scan(ctx context.Context) {
+// ScanTenant reads the calling tenant's enabled heartbeats and, for each one
+// silent longer than interval+grace, injects exactly one miss alert into that
+// tenant's pipeline (deduped per (tenant,name)). It is driven once per active
+// tenant per tick by the core heartbeat job. The tenant is taken from ctx.
+func (p *Plugin) ScanTenant(ctx context.Context) error {
 	driver := p.db()
 	if driver == nil {
-		return
+		return nil
+	}
+	tenant, ok := snoozetypes.TenantFrom(ctx)
+	if !ok {
+		// Called without a tenant in context — a programmer error. Fail closed:
+		// skip rather than fire alerts under an empty-tenant dedup key.
+		if lg := p.logger(); lg != nil {
+			lg.Warn("heartbeat: ScanTenant called without a tenant in context; skipping")
+		}
+		return nil
 	}
 
-	// enabled defaults to true, so we cannot simply filter `enabled = true`
-	// at the DB layer (a document that omits the field would be excluded).
-	// Fetch all heartbeats and apply the enabled rule in Go.
+	// enabled defaults to true, so fetch all and apply the rule in Go.
 	docs, _, err := driver.Search(ctx, collection, condition.Cond{}, db.Page{})
 	if err != nil {
 		if lg := p.logger(); lg != nil {
-			lg.Warn("heartbeat: scan search failed", "err", err)
+			lg.Warn("heartbeat: scan search failed", "tenant", tenant, "err", err)
 		}
-		return
+		return err
 	}
 
 	proc := p.recordProcessor()
@@ -109,8 +49,7 @@ func (p *Plugin) scan(ctx context.Context) {
 		if !p.isOverdue(hb, now) {
 			continue
 		}
-		// Dedup: fire once per (name, last_seen) window.
-		if !p.markFired(hb.Name, hb.LastSeenRaw) {
+		if !p.markFired(tenant, hb.Name, hb.LastSeenRaw) {
 			continue
 		}
 		rec := buildMissRecord(hb, now)
@@ -125,13 +64,22 @@ func (p *Plugin) scan(ctx context.Context) {
 		}
 		if _, _, perr := proc.ProcessRecord(ctx, rec); perr != nil {
 			if lg := p.logger(); lg != nil {
-				lg.Warn("heartbeat: pipeline rejected miss alert", "name", hb.Name, "err", perr)
+				lg.Warn("heartbeat: pipeline rejected miss alert", "tenant", tenant, "name", hb.Name, "err", perr)
 			}
 			// Leave the fired mark in place: ProcessRecord is best-effort and
 			// re-firing every tick on a persistent pipeline error would be
 			// noisier than a single dropped alert.
 		}
 	}
+	return nil
+}
+
+// ScanInterval is the per-tenant scan cadence the core heartbeat job ticks on.
+func (p *Plugin) ScanInterval() time.Duration {
+	if p.interval <= 0 {
+		return defaultScanInterval
+	}
+	return p.interval
 }
 
 // isOverdue reports whether the heartbeat has been silent for longer than
@@ -144,16 +92,21 @@ func (p *Plugin) isOverdue(hb heartbeat, now time.Time) bool {
 	return now.After(deadline)
 }
 
-// markFired records that a miss for (name, lastSeen) has been fired and reports
-// whether this call is the one that did the recording (true) or a duplicate
-// within the same window (false).
-func (p *Plugin) markFired(name, lastSeen string) bool {
+// firedKey composes the dedup key. NUL separates the parts so a tenant id and a
+// name can never alias across the boundary.
+func firedKey(tenant, name string) string { return tenant + "\x00" + name }
+
+// markFired records that a miss for (tenant, name, lastSeen) has been fired and
+// reports whether this call did the recording (true) or is a duplicate within
+// the same window (false).
+func (p *Plugin) markFired(tenant, name, lastSeen string) bool {
 	p.mu.Lock()
 	defer p.mu.Unlock()
-	if p.fired[name] == lastSeen {
+	k := firedKey(tenant, name)
+	if p.fired[k] == lastSeen {
 		return false
 	}
-	p.fired[name] = lastSeen
+	p.fired[k] = lastSeen
 	return true
 }
 

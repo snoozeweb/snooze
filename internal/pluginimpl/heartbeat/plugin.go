@@ -8,14 +8,11 @@
 // /api/v1/webhook/heartbeat?name=<name>&token=<token>, which stamps `last_seen`
 // to now (the plugin is a plugins.WebhookReceiver).
 //
-// A single background goroutine (plugins.LifecycleHook) scans the enabled
-// heartbeats on a ticker. For every heartbeat whose silence exceeds
-// interval+grace it injects one alert into the processing pipeline via the
-// host's runtime-asserted recordProcessor (the same indirection grafana and
-// alertmanager use to avoid an import cycle). A heartbeat fires at most once per
-// missed window: the scanner remembers what it has already fired (keyed by
-// name+last_seen) and a fresh ping clears that memory so the next miss fires
-// again.
+// The core server drives a per-tenant scan on a ticker, calling the plugin's
+// ScanTenant for each active tenant. For every heartbeat silent past
+// interval+grace it injects one miss alert into that tenant's pipeline; dedup
+// is per (tenant,name) and a fresh ping clears it so the next missed window
+// fires again.
 //
 // # Auth
 //
@@ -86,9 +83,9 @@ type recordProcessor interface {
 
 // Plugin is the heartbeat dead-man's-switch.
 //
-// Lifecycle: Register → factory → PostInit (captures the host) → Start (launches
-// the scanner goroutine). HandleWebhook services pings; the scanner injects miss
-// alerts. Stop cancels the scanner and waits for it to exit.
+// Lifecycle: Register → factory → PostInit (captures the host). HandleWebhook
+// services pings; ScanTenant is invoked once per active tenant per tick by the
+// core heartbeat job, injecting a miss alert into that tenant's pipeline.
 type Plugin struct {
 	meta plugins.Metadata
 	host plugins.Host
@@ -98,17 +95,13 @@ type Plugin struct {
 	// interval is the scanner tick period. Defaults to defaultScanInterval.
 	interval time.Duration
 
-	// mu guards fired and the scanner-control fields.
+	// mu guards fired and warnedNoProcessor.
 	mu sync.Mutex
-	// fired remembers, per heartbeat name, the last_seen value (RFC3339) we
+	// fired remembers, per (tenant,name) pair, the last_seen value (RFC3339) we
 	// already fired a miss alert for. This dedups repeated firing across ticks
 	// for the same silent window. A fresh ping rewrites last_seen, so the next
 	// scan sees a different value and re-arms.
 	fired map[string]string
-
-	// cancel stops the scanner goroutine; done is closed when it has exited.
-	cancel context.CancelFunc
-	done   chan struct{}
 
 	// warnedNoProcessor ensures the "host has no recordProcessor" warning fires
 	// at most once even when many scans run.
@@ -211,7 +204,6 @@ func (p *Plugin) WebhookPath() string { return "/heartbeat" }
 var (
 	_ plugins.Plugin           = (*Plugin)(nil)
 	_ plugins.DataModel        = (*Plugin)(nil)
-	_ plugins.LifecycleHook    = (*Plugin)(nil)
 	_ plugins.WebhookReceiver  = (*Plugin)(nil)
 	_ plugins.WriteTransformer = (*Plugin)(nil)
 )
@@ -318,7 +310,7 @@ func (p *Plugin) HandleWebhook(w http.ResponseWriter, r *http.Request) {
 
 	// A successful ping re-arms the heartbeat: forget any miss we already fired
 	// so the next silent window fires again.
-	p.clearFired(name)
+	p.clearFired(tenantID, name)
 
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
 	w.WriteHeader(http.StatusOK)
@@ -414,8 +406,8 @@ func (p *Plugin) logger() interface {
 	return lg
 }
 
-func (p *Plugin) clearFired(name string) {
+func (p *Plugin) clearFired(tenant, name string) {
 	p.mu.Lock()
-	delete(p.fired, name)
+	delete(p.fired, firedKey(tenant, name))
 	p.mu.Unlock()
 }
