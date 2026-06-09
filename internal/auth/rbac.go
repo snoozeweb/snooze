@@ -122,6 +122,36 @@ func IsReservedPlatformRole(name string) bool {
 	return name == PlatformAdminRole
 }
 
+// RogueReservedRoles returns "tenant_id/name" identifiers of roles that carry a
+// reserved platform permission (ro_tenant/rw_tenant) yet are NOT the seeded
+// platform_admin role. These can only exist on databases written before the
+// reserved-perm lock; the caller should WARN so an operator can remove them.
+func RogueReservedRoles(ctx context.Context, driver db.Driver) ([]string, error) {
+	if driver == nil {
+		return nil, errors.New("rbac: nil db driver")
+	}
+	roles, _, err := driver.Search(ctx, RoleCollection, condition.Cond{Op: condition.OpAlwaysTrue}, db.Page{})
+	if err != nil {
+		return nil, fmt.Errorf("rbac: search roles: %w", err)
+	}
+	var rogue []string
+	for _, r := range roles {
+		name, _ := r["name"].(string)
+		if IsReservedPlatformRole(name) {
+			continue
+		}
+		for _, perm := range stringSliceField(r, "permissions") {
+			if IsReservedPlatformPerm(perm) {
+				tid, _ := r["tenant_id"].(string)
+				rogue = append(rogue, tid+"/"+name)
+				break
+			}
+		}
+	}
+	sort.Strings(rogue)
+	return rogue, nil
+}
+
 // HasPermission returns true when the claim set carries either the requested
 // permission or the AllPermission wildcard.
 func HasPermission(claims snoozetypes.Claims, want string) bool {

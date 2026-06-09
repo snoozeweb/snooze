@@ -2,11 +2,13 @@ package auth
 
 import (
 	"context"
+	"path/filepath"
 	"testing"
 
 	"github.com/stretchr/testify/require"
 
 	"github.com/snoozeweb/snooze/internal/db"
+	"github.com/snoozeweb/snooze/internal/db/sqlite"
 	"github.com/snoozeweb/snooze/pkg/snoozetypes"
 )
 
@@ -138,6 +140,25 @@ func TestRoleResolver_Resolve_UsesContextTenant(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, []string{"viewer"}, roles)
 	require.Equal(t, []string{"ro_all"}, perms)
+}
+
+func TestRogueReservedRoles(t *testing.T) {
+	ctx := context.Background()
+	drv, err := sqlite.New(ctx, sqlite.Config{Path: filepath.Join(t.TempDir(), "s.db")})
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = drv.Close() })
+
+	pctx := snoozetypes.WithPlatformScope(ctx)
+	_, err = drv.Write(pctx, RoleCollection, []db.Document{
+		{"tenant_id": "default", "name": "platform_admin", "permissions": []any{"rw_tenant"}}, // legit, ignored
+		{"tenant_id": "default", "name": "evil", "permissions": []any{"rw_tenant"}},            // rogue
+		{"tenant_id": "default", "name": "ops", "permissions": []any{"rw_record"}},             // clean
+	}, db.WriteOptions{Primary: []string{"tenant_id", "name"}})
+	require.NoError(t, err)
+
+	rogue, err := RogueReservedRoles(pctx, drv)
+	require.NoError(t, err)
+	require.Equal(t, []string{"default/evil"}, rogue)
 }
 
 func TestHasLiteralPermission(t *testing.T) {

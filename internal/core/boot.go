@@ -62,6 +62,12 @@ func (c *Core) bootstrap(ctx context.Context) error {
 			return fmt.Errorf("boot: bootstrap db: %w", err)
 		}
 	}
+	if rogue, err := auth.RogueReservedRoles(snoozetypes.WithPlatformScope(ctx), c.Driver); err != nil {
+		c.Logger().Warn("boot: rogue reserved-role audit failed", "err", err)
+	} else if len(rogue) > 0 {
+		c.Logger().Warn("boot: roles carry reserved platform permissions but are not platform_admin; "+
+			"they grant platform access and should be removed", "roles", rogue)
+	}
 	if err := c.bootRoot(seedCtx); err != nil {
 		return err
 	}
