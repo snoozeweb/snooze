@@ -123,7 +123,7 @@ func checkReservedRole(obj map[string]any) error {
 // entry that the RBAC resolver would group-map users into, or changing its
 // permissions. Only the bootstrap path (a direct driver write under platform
 // scope) writes it. Closes the group-mapping escalation route into rw_tenant.
-func (p *Plugin) GuardWrite(ctx context.Context, uid string, doc map[string]any) error {
+func (p *Plugin) GuardWrite(ctx context.Context, uid string, doc map[string]any, _ bool) error {
 	if snoozetypes.IsPlatformScope(ctx) {
 		return nil
 	}

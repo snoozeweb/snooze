@@ -194,11 +194,11 @@ func TestRolePlugin_GuardWrite_PlatformAdminRoleImmutable(t *testing.T) {
 
 	// Editing the platform_admin role (e.g. adding a group that would group-map
 	// users into it) must be blocked.
-	require.Error(t, p.GuardWrite(ctx, paUID, map[string]any{"groups": []any{"pwned"}}))
+	require.Error(t, p.GuardWrite(ctx, paUID, map[string]any{"groups": []any{"pwned"}}, false))
 	// Creating/naming platform_admin via the body is blocked (belt-and-braces vs Validate).
-	require.Error(t, p.GuardWrite(ctx, "", map[string]any{"name": "platform_admin", "groups": []any{"x"}}))
+	require.Error(t, p.GuardWrite(ctx, "", map[string]any{"name": "platform_admin", "groups": []any{"x"}}, false))
 	// Ordinary roles remain editable.
-	require.NoError(t, p.GuardWrite(ctx, opsUID, map[string]any{"groups": []any{"x"}}))
+	require.NoError(t, p.GuardWrite(ctx, opsUID, map[string]any{"groups": []any{"x"}}, false))
 	// Platform scope (bootstrap) is exempt.
-	require.NoError(t, p.GuardWrite(auth.WithPlatformScope(context.Background()), paUID, map[string]any{"groups": []any{"x"}}))
+	require.NoError(t, p.GuardWrite(auth.WithPlatformScope(context.Background()), paUID, map[string]any{"groups": []any{"x"}}, false))
 }

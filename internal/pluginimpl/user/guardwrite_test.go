@@ -41,8 +41,8 @@ func TestGuardWrite_GrantPlatformAdmin_RequiresLiteralRwTenant(t *testing.T) {
 	p, host := newGuardPlugin(t)
 	uids := seedUsers(t, host, db.Document{"tenant_id": "default", "name": "bob", "method": "local", "enabled": true, "roles": []any{"admin"}})
 	bob := uids[0]
-	require.Error(t, p.GuardWrite(defCtx(rwAllOnly), bob, map[string]any{"roles": []any{"admin", "platform_admin"}}))
-	require.NoError(t, p.GuardWrite(defCtx(rwTenant), bob, map[string]any{"roles": []any{"admin", "platform_admin"}}))
+	require.Error(t, p.GuardWrite(defCtx(rwAllOnly), bob, map[string]any{"roles": []any{"admin", "platform_admin"}}, false))
+	require.NoError(t, p.GuardWrite(defCtx(rwTenant), bob, map[string]any{"roles": []any{"admin", "platform_admin"}}, false))
 }
 
 func TestGuardWrite_RemovePlatformAdmin_RequiresRwTenant_AndBlocksSelfAndLast(t *testing.T) {
@@ -52,9 +52,9 @@ func TestGuardWrite_RemovePlatformAdmin_RequiresRwTenant_AndBlocksSelfAndLast(t 
 		db.Document{"tenant_id": "default", "name": "two", "method": "local", "enabled": true, "roles": []any{"platform_admin"}},
 	)
 	root, two := uids[0], uids[1]
-	require.Error(t, p.GuardWrite(defCtx(rwAllOnly), two, map[string]any{"roles": []any{}}))
-	require.NoError(t, p.GuardWrite(defCtx(rwTenant), two, map[string]any{"roles": []any{}}))
-	require.Error(t, p.GuardWrite(defCtx(rwTenant), root, map[string]any{"roles": []any{}})) // self-removal blocked
+	require.Error(t, p.GuardWrite(defCtx(rwAllOnly), two, map[string]any{"roles": []any{}}, false))
+	require.NoError(t, p.GuardWrite(defCtx(rwTenant), two, map[string]any{"roles": []any{}}, false))
+	require.Error(t, p.GuardWrite(defCtx(rwTenant), root, map[string]any{"roles": []any{}}, false)) // self-removal blocked
 }
 
 func TestGuardWrite_RemoveLastPlatformAdmin_Blocked(t *testing.T) {
@@ -62,25 +62,57 @@ func TestGuardWrite_RemoveLastPlatformAdmin_Blocked(t *testing.T) {
 	uids := seedUsers(t, host, db.Document{"tenant_id": "default", "name": "root", "method": "local", "enabled": true, "roles": []any{"platform_admin"}})
 	root := uids[0]
 	other := snoozetypes.Claims{Subject: "ops", Method: "local", TenantID: "default", Permissions: []string{"rw_tenant"}}
-	require.Error(t, p.GuardWrite(defCtx(other), root, map[string]any{"roles": []any{}}))
+	require.Error(t, p.GuardWrite(defCtx(other), root, map[string]any{"roles": []any{}}, false))
 }
 
 func TestGuardWrite_DisableLastPlatformAdmin_Blocked(t *testing.T) {
 	p, host := newGuardPlugin(t)
 	uids := seedUsers(t, host, db.Document{"tenant_id": "default", "name": "root", "method": "local", "enabled": true, "roles": []any{"platform_admin"}})
 	root := uids[0]
-	require.Error(t, p.GuardWrite(defCtx(rwTenant), root, map[string]any{"enabled": false}))
+	require.Error(t, p.GuardWrite(defCtx(rwTenant), root, map[string]any{"enabled": false}, false))
 }
 
 func TestGuardWrite_NonPlatformWritesUnaffected(t *testing.T) {
 	p, host := newGuardPlugin(t)
 	uids := seedUsers(t, host, db.Document{"tenant_id": "default", "name": "bob", "method": "local", "enabled": true, "roles": []any{"admin"}})
 	bob := uids[0]
-	require.NoError(t, p.GuardWrite(defCtx(rwAllOnly), bob, map[string]any{"email": "b@x.io"}))
+	require.NoError(t, p.GuardWrite(defCtx(rwAllOnly), bob, map[string]any{"email": "b@x.io"}, false))
 }
 
 func TestGuardWrite_PlatformScopeExempt(t *testing.T) {
 	p, _ := newGuardPlugin(t)
 	ctx := auth.WithPlatformScope(context.Background())
-	require.NoError(t, p.GuardWrite(ctx, "", map[string]any{"roles": []any{"platform_admin"}}))
+	require.NoError(t, p.GuardWrite(ctx, "", map[string]any{"roles": []any{"platform_admin"}}, false))
+}
+
+func TestGuardWrite_ReplaceOmittingRoles_IsTreatedAsRemoval(t *testing.T) {
+	p, host := newGuardPlugin(t)
+	uids := seedUsers(t, host,
+		db.Document{"tenant_id": "default", "name": "root", "method": "local", "enabled": true, "roles": []any{"platform_admin"}},
+		db.Document{"tenant_id": "default", "name": "two", "method": "local", "enabled": true, "roles": []any{"platform_admin"}},
+	)
+	two := uids[1]
+	// PUT (replace=true) omitting roles strips platform_admin -> treated as removal.
+	// rw_all-only caller is blocked (removal needs literal rw_tenant).
+	require.Error(t, p.GuardWrite(defCtx(rwAllOnly), two, map[string]any{"name": "two", "method": "local"}, true))
+	// rw_tenant caller may remove it from a non-last holder.
+	require.NoError(t, p.GuardWrite(defCtx(rwTenant), two, map[string]any{"name": "two", "method": "local"}, true))
+}
+
+func TestGuardWrite_ReplaceOmittingRoles_LastAdmin_Blocked(t *testing.T) {
+	p, host := newGuardPlugin(t)
+	uids := seedUsers(t, host, db.Document{"tenant_id": "default", "name": "root", "method": "local", "enabled": true, "roles": []any{"platform_admin"}})
+	root := uids[0]
+	other := snoozetypes.Claims{Subject: "ops", Method: "local", TenantID: "default", Permissions: []string{"rw_tenant"}}
+	// Even a rw_tenant caller cannot strip the LAST admin via PUT-omit-roles.
+	require.Error(t, p.GuardWrite(defCtx(other), root, map[string]any{"name": "root", "method": "local"}, true))
+}
+
+func TestGuardWrite_PatchOmittingRoles_NoFalseRemoval(t *testing.T) {
+	p, host := newGuardPlugin(t)
+	uids := seedUsers(t, host, db.Document{"tenant_id": "default", "name": "root", "method": "local", "enabled": true, "roles": []any{"platform_admin"}})
+	root := uids[0]
+	// PATCH (replace=false) omitting roles inherits prior -> NOT a removal; an
+	// unrelated field edit by an rw_all admin is fine.
+	require.NoError(t, p.GuardWrite(defCtx(rwAllOnly), root, map[string]any{"email": "r@x.io"}, false))
 }

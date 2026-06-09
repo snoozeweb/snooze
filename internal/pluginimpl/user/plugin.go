@@ -141,7 +141,7 @@ func stringSlice(v any) []string {
 // rw_tenant permission (rw_all does NOT count); a caller may never strip
 // platform_admin from their own account; and the system must always retain at
 // least one enabled platform_admin holder.
-func (p *Plugin) GuardWrite(ctx context.Context, uid string, doc map[string]any) error {
+func (p *Plugin) GuardWrite(ctx context.Context, uid string, doc map[string]any, replace bool) error {
 	if snoozetypes.IsPlatformScope(ctx) {
 		return nil
 	}
@@ -153,7 +153,7 @@ func (p *Plugin) GuardWrite(ctx context.Context, uid string, doc map[string]any)
 	}
 
 	priorAdmin := docHasPlatformAdmin(prior)
-	newAdmin := newHasPlatformAdmin(doc, prior)
+	newAdmin := newHasPlatformAdmin(doc, prior, replace)
 	claims, _ := auth.ClaimsFrom(ctx)
 
 	if newAdmin != priorAdmin {
@@ -199,15 +199,16 @@ func docHasPlatformAdmin(doc map[string]any) bool {
 	return false
 }
 
-// newHasPlatformAdmin computes post-write platform_admin membership: a field
-// present in doc replaces the prior value (PUT/PATCH overwrite array fields), an
-// absent field inherits prior.
-func newHasPlatformAdmin(doc, prior map[string]any) bool {
+// newHasPlatformAdmin computes post-write platform_admin membership. For a PATCH
+// (replace=false) an absent roles/static_roles field inherits the prior value
+// (merge semantics); for a PUT (replace=true) the body is authoritative, so an
+// absent field means the role set is being cleared.
+func newHasPlatformAdmin(doc, prior map[string]any, replace bool) bool {
 	effective := map[string]any{}
 	for _, field := range []string{"roles", "static_roles"} {
 		if _, ok := doc[field]; ok {
 			effective[field] = doc[field]
-		} else if prior != nil {
+		} else if !replace && prior != nil {
 			effective[field] = prior[field]
 		}
 	}

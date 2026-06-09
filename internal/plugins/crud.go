@@ -299,7 +299,7 @@ func createHandler(host Host, p Plugin, collection string) http.HandlerFunc {
 		}
 		if g, ok := p.(WriteGuard); ok {
 			for _, d := range docs {
-				if err := g.GuardWrite(r.Context(), "", d); err != nil {
+				if err := g.GuardWrite(r.Context(), "", d, false); err != nil {
 					writeError(w, http.StatusForbidden, "forbidden", err.Error())
 					return
 				}
@@ -370,7 +370,7 @@ func replaceHandler(host Host, p Plugin, collection string) http.HandlerFunc {
 			}
 		}
 		if g, ok := p.(WriteGuard); ok {
-			if err := g.GuardWrite(r.Context(), uid, body); err != nil {
+			if err := g.GuardWrite(r.Context(), uid, body, true); err != nil {
 				writeError(w, http.StatusForbidden, "forbidden", err.Error())
 				return
 			}
@@ -425,7 +425,7 @@ func patchHandler(host Host, p Plugin, collection string) http.HandlerFunc {
 			}
 		}
 		if g, ok := p.(WriteGuard); ok {
-			if err := g.GuardWrite(r.Context(), uid, patch); err != nil {
+			if err := g.GuardWrite(r.Context(), uid, patch, false); err != nil {
 				writeError(w, http.StatusForbidden, "forbidden", err.Error())
 				return
 			}

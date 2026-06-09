@@ -139,9 +139,14 @@ type DeleteHook interface {
 // doc; it exists for identity- and prior-state-aware integrity checks (e.g. who
 // may grant a reserved role) that Validate (body-only) and TransformWrite (no
 // uid) cannot express.
+//
+// replace is true for PUT (full replacement: the stored document becomes the
+// body alone) and false for POST (create) and PATCH (merge). Implementations
+// that inspect absent fields must treat them as empty when replace=true rather
+// than inheriting the prior stored value.
 type WriteGuard interface {
 	Plugin
-	GuardWrite(ctx context.Context, uid string, doc map[string]any) error
+	GuardWrite(ctx context.Context, uid string, doc map[string]any, replace bool) error
 }
 
 // DeleteGuard plugins authorize a delete BEFORE it happens, receiving the uids

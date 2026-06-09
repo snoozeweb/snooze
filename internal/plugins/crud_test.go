@@ -563,7 +563,7 @@ type guardingPlugin struct {
 	gotDelUIDs  []string
 }
 
-func (p *guardingPlugin) GuardWrite(_ context.Context, uid string, _ map[string]any) error {
+func (p *guardingPlugin) GuardWrite(_ context.Context, uid string, _ map[string]any, _ bool) error {
 	p.gotWriteUID = uid
 	return p.writeErr
 }
