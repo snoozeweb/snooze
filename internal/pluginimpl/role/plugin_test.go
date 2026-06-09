@@ -178,3 +178,27 @@ func TestRolePlugin_TransformWrite_AllowsReservedPermUnderPlatformScope(t *testi
 	}
 	require.NoError(t, p.TransformWrite(ctx, doc))
 }
+
+func TestRolePlugin_GuardWrite_PlatformAdminRoleImmutable(t *testing.T) {
+	host := newTestHost(t)
+	p := &Plugin{meta: plugins.Metadata{Name: "role"}}
+	require.NoError(t, p.PostInit(context.Background(), host))
+	ctx := auth.WithTenant(context.Background(), snoozetypes.DefaultTenant)
+
+	res, err := host.drv.Write(ctx, "role", []db.Document{
+		{"tenant_id": "default", "name": "platform_admin", "permissions": []any{"rw_tenant"}},
+		{"tenant_id": "default", "name": "ops"},
+	}, db.WriteOptions{Primary: []string{"tenant_id", "name"}})
+	require.NoError(t, err)
+	paUID, opsUID := res.Added[0], res.Added[1]
+
+	// Editing the platform_admin role (e.g. adding a group that would group-map
+	// users into it) must be blocked.
+	require.Error(t, p.GuardWrite(ctx, paUID, map[string]any{"groups": []any{"pwned"}}))
+	// Creating/naming platform_admin via the body is blocked (belt-and-braces vs Validate).
+	require.Error(t, p.GuardWrite(ctx, "", map[string]any{"name": "platform_admin", "groups": []any{"x"}}))
+	// Ordinary roles remain editable.
+	require.NoError(t, p.GuardWrite(ctx, opsUID, map[string]any{"groups": []any{"x"}}))
+	// Platform scope (bootstrap) is exempt.
+	require.NoError(t, p.GuardWrite(auth.WithPlatformScope(context.Background()), paUID, map[string]any{"groups": []any{"x"}}))
+}

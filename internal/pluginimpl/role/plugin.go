@@ -118,6 +118,28 @@ func checkReservedRole(obj map[string]any) error {
 	return nil
 }
 
+// GuardWrite makes the reserved platform_admin role API-immutable. It may not be
+// created, named, or edited through the CRUD API — including adding a `groups`
+// entry that the RBAC resolver would group-map users into, or changing its
+// permissions. Only the bootstrap path (a direct driver write under platform
+// scope) writes it. Closes the group-mapping escalation route into rw_tenant.
+func (p *Plugin) GuardWrite(ctx context.Context, uid string, doc map[string]any) error {
+	if snoozetypes.IsPlatformScope(ctx) {
+		return nil
+	}
+	if name, _ := doc["name"].(string); auth.IsReservedPlatformRole(name) {
+		return fmt.Errorf("role %q is reserved platform infrastructure and cannot be created or modified", auth.PlatformAdminRole)
+	}
+	if uid != "" {
+		if d, err := p.host.DB().GetOne(ctx, "role", db.Document{"uid": uid}); err == nil && d != nil {
+			if name, _ := d["name"].(string); auth.IsReservedPlatformRole(name) {
+				return fmt.Errorf("role %q is reserved platform infrastructure and cannot be modified", auth.PlatformAdminRole)
+			}
+		}
+	}
+	return nil
+}
+
 // GuardDelete blocks deletion of the reserved platform_admin role; it is seeded
 // infrastructure and must remain (every holder would otherwise lose rw_tenant).
 func (p *Plugin) GuardDelete(ctx context.Context, uids []string) error {
