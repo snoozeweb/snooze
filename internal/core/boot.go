@@ -58,7 +58,11 @@ func (c *Core) bootstrap(ctx context.Context) error {
 		}
 		// Seed default RBAC roles + aggregate rule + init marker under the
 		// default tenant.
-		if err := BootstrapDB(seedCtx, c.Driver); err != nil {
+		adminGroup := ""
+		if c.Cfg.OIDC.Enabled {
+			adminGroup = c.Cfg.OIDC.AdminRoleValue
+		}
+		if err := BootstrapDB(seedCtx, c.Driver, adminGroup); err != nil {
 			return fmt.Errorf("boot: bootstrap db: %w", err)
 		}
 	}

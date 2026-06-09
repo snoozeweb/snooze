@@ -267,7 +267,7 @@ func runSeedPhase(ctx context.Context, t *testing.T, drv db.Driver) string {
 	t.Helper()
 	seedCtx := snoozetypes.WithTenant(ctx, snoozetypes.DefaultTenant)
 	require.NoError(t, auth.BootstrapDB(seedCtx, drv))
-	require.NoError(t, BootstrapDB(seedCtx, drv))
+	require.NoError(t, BootstrapDB(seedCtx, drv, ""))
 	pwd, err := auth.EnsureRoot(seedCtx, drv)
 	require.NoError(t, err)
 	return pwd
