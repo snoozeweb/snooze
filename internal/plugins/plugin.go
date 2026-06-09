@@ -133,6 +133,25 @@ type DeleteHook interface {
 	AfterDelete(ctx context.Context, uids []string) error
 }
 
+// WriteGuard plugins authorize a create/replace/patch BEFORE the DB write, with
+// the trusted request context and the target uid ("" on create). A non-nil
+// error aborts the write with 403. Unlike WriteTransformer it must NOT mutate
+// doc; it exists for identity- and prior-state-aware integrity checks (e.g. who
+// may grant a reserved role) that Validate (body-only) and TransformWrite (no
+// uid) cannot express.
+type WriteGuard interface {
+	Plugin
+	GuardWrite(ctx context.Context, uid string, doc map[string]any) error
+}
+
+// DeleteGuard plugins authorize a delete BEFORE it happens, receiving the uids
+// that would be removed. A non-nil error aborts the delete with 403. Used to
+// protect must-not-vanish rows (e.g. the last platform admin).
+type DeleteGuard interface {
+	Plugin
+	GuardDelete(ctx context.Context, uids []string) error
+}
+
 // PrimaryKeyer plugins advertise a natural primary-key field set that the
 // generic CRUD createHandler uses to enforce duplicate-policy at the DB
 // layer. Returning an empty slice means "no extra primary beyond uid".

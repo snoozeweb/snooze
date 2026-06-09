@@ -297,6 +297,14 @@ func createHandler(host Host, p Plugin, collection string) http.HandlerFunc {
 				}
 			}
 		}
+		if g, ok := p.(WriteGuard); ok {
+			for _, d := range docs {
+				if err := g.GuardWrite(r.Context(), "", d); err != nil {
+					writeError(w, http.StatusForbidden, "forbidden", err.Error())
+					return
+				}
+			}
+		}
 		writeOpts := db.WriteOptions{UpdateTime: true}
 		if pk, ok := p.(PrimaryKeyer); ok {
 			primary := pk.PrimaryKey()
@@ -361,6 +369,12 @@ func replaceHandler(host Host, p Plugin, collection string) http.HandlerFunc {
 				return
 			}
 		}
+		if g, ok := p.(WriteGuard); ok {
+			if err := g.GuardWrite(r.Context(), uid, body); err != nil {
+				writeError(w, http.StatusForbidden, "forbidden", err.Error())
+				return
+			}
+		}
 		matched, err := host.DB().ReplaceOne(r.Context(), collection, db.Document{"uid": uid}, body, true)
 		if err != nil {
 			writeError(w, http.StatusInternalServerError, "db_error", err.Error())
@@ -407,6 +421,12 @@ func patchHandler(host Host, p Plugin, collection string) http.HandlerFunc {
 		if wt, ok := p.(WriteTransformer); ok {
 			if err := wt.TransformWrite(r.Context(), patch); err != nil {
 				writeError(w, http.StatusUnprocessableEntity, "validation_error", err.Error())
+				return
+			}
+		}
+		if g, ok := p.(WriteGuard); ok {
+			if err := g.GuardWrite(r.Context(), uid, patch); err != nil {
+				writeError(w, http.StatusForbidden, "forbidden", err.Error())
 				return
 			}
 		}
@@ -458,6 +478,12 @@ func deleteOneHandler(host Host, p Plugin, collection string) http.HandlerFunc {
 			writeError(w, http.StatusBadRequest, "bad_request", "missing uid")
 			return
 		}
+		if g, ok := p.(DeleteGuard); ok {
+			if err := g.GuardDelete(r.Context(), []string{uid}); err != nil {
+				writeError(w, http.StatusForbidden, "forbidden", err.Error())
+				return
+			}
+		}
 		deleted, err := host.DB().Delete(r.Context(), collection,
 			condition.Equals("uid", uid), false)
 		if err != nil {
@@ -487,24 +513,38 @@ func bulkDeleteHandler(host Host, p Plugin, collection string) http.HandlerFunc 
 			writeError(w, http.StatusBadRequest, "bad_request", err.Error())
 			return
 		}
-		// For audit, we want a uid per deleted row. Search first; this costs
-		// one extra round-trip but bulk-delete is a rare admin operation and
-		// the auditor wants per-row traceability. If the search fails we
-		// proceed without audit rather than blocking the user.
-		var uids []string
 		meta := p.Metadata()
-		if meta.Audit && collection != auditCollection {
+		_, hasGuard := p.(DeleteGuard)
+		auditing := meta.Audit && collection != auditCollection
+
+		// Search once for both the guard and the audit log. Plugins that
+		// implement neither pay nothing; plugins that implement both avoid
+		// the duplicate round-trip the original code incurred.
+		var uids []string
+		if hasGuard || auditing {
 			docs, _, serr := host.DB().Search(r.Context(), collection, cond, db.Page{PerPage: 0})
-			if serr == nil {
+			if serr != nil {
+				if hasGuard {
+					// A guard must see an accurate list; fail closed rather than
+					// risk deleting protected rows (e.g. the last platform admin).
+					writeError(w, http.StatusInternalServerError, "db_error", serr.Error())
+					return
+				}
+				host.Logger().Warn("plugins: pre-delete search for audit failed",
+					"collection", collection, "err", serr)
+			} else {
 				uids = make([]string, 0, len(docs))
 				for _, d := range docs {
 					if u, ok := d["uid"].(string); ok && u != "" {
 						uids = append(uids, u)
 					}
 				}
-			} else {
-				host.Logger().Warn("plugins: pre-delete search for audit failed",
-					"collection", collection, "err", serr)
+			}
+		}
+		if g, ok := p.(DeleteGuard); ok {
+			if err := g.GuardDelete(r.Context(), uids); err != nil {
+				writeError(w, http.StatusForbidden, "forbidden", err.Error())
+				return
 			}
 		}
 		deleted, err := host.DB().Delete(r.Context(), collection, cond, false)

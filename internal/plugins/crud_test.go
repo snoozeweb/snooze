@@ -554,3 +554,69 @@ func TestMetadata_AuditRespectsExplicitFalse(t *testing.T) {
 	require.NoError(t, err)
 	require.False(t, m.Audit)
 }
+
+type guardingPlugin struct {
+	crudPlugin
+	writeErr    error
+	deleteErr   error
+	gotWriteUID string
+	gotDelUIDs  []string
+}
+
+func (p *guardingPlugin) GuardWrite(_ context.Context, uid string, _ map[string]any) error {
+	p.gotWriteUID = uid
+	return p.writeErr
+}
+
+func (p *guardingPlugin) GuardDelete(_ context.Context, uids []string) error {
+	p.gotDelUIDs = uids
+	return p.deleteErr
+}
+
+func TestCRUD_WriteGuard_BlocksPatchAndReceivesURLUID(t *testing.T) {
+	t.Parallel()
+	plug := &guardingPlugin{crudPlugin: crudPlugin{name: "thing"}, writeErr: errors.New("nope")}
+	r, _ := mount(t, plug, newMemDB())
+	rec := doRequest(t, r, http.MethodPatch, "/api/v1/thing/abc", map[string]any{"x": 1})
+	require.Equal(t, http.StatusForbidden, rec.Code)
+	require.Equal(t, "abc", plug.gotWriteUID)
+}
+
+func TestCRUD_WriteGuard_AllowsOnNilAndUIDEmptyOnCreate(t *testing.T) {
+	t.Parallel()
+	plug := &guardingPlugin{crudPlugin: crudPlugin{name: "thing"}}
+	r, _ := mount(t, plug, newMemDB())
+	rec := doRequest(t, r, http.MethodPost, "/api/v1/thing", map[string]any{"name": "n"})
+	require.Equal(t, http.StatusCreated, rec.Code)
+	require.Equal(t, "", plug.gotWriteUID)
+}
+
+func TestCRUD_DeleteGuard_BlocksAndReceivesUID(t *testing.T) {
+	t.Parallel()
+	plug := &guardingPlugin{crudPlugin: crudPlugin{name: "thing"}, deleteErr: errors.New("nope")}
+	r, _ := mount(t, plug, newMemDB())
+	rec := doRequest(t, r, http.MethodDelete, "/api/v1/thing/abc", nil)
+	require.Equal(t, http.StatusForbidden, rec.Code)
+	require.Equal(t, []string{"abc"}, plug.gotDelUIDs)
+}
+
+func TestCRUD_WriteGuard_BlocksReplace(t *testing.T) {
+	t.Parallel()
+	plug := &guardingPlugin{crudPlugin: crudPlugin{name: "thing"}, writeErr: errors.New("nope")}
+	r, _ := mount(t, plug, newMemDB())
+	rec := doRequest(t, r, http.MethodPut, "/api/v1/thing/xyz", map[string]any{"x": 1})
+	require.Equal(t, http.StatusForbidden, rec.Code)
+	require.Equal(t, "xyz", plug.gotWriteUID)
+}
+
+func TestCRUD_BulkDeleteGuard_BlocksAndCollectsUIDs(t *testing.T) {
+	t.Parallel()
+	plug := &guardingPlugin{crudPlugin: crudPlugin{name: "thing"}, deleteErr: errors.New("nope")}
+	r, _ := mount(t, plug, newMemDB())
+	// Seed a row so the pre-delete Search returns at least one uid.
+	require.Equal(t, http.StatusCreated, doRequest(t, r, http.MethodPost, "/api/v1/thing", map[string]any{"name": "n"}).Code)
+	// Bulk delete (no uid in path) → bulkDeleteHandler; guard error must block.
+	rec := doRequest(t, r, http.MethodDelete, "/api/v1/thing", nil)
+	require.Equal(t, http.StatusForbidden, rec.Code)
+	require.NotEmpty(t, plug.gotDelUIDs, "guard must receive the matched uids before delete")
+}
