@@ -4,7 +4,11 @@ import { Kbd } from "@/shared/ui/Kbd";
 import { Logo } from "@/shared/ui/Logo";
 import { GROUP_LABELS, NAV_ITEMS, type NavGroup } from "./nav-items";
 import { useAuth } from "@/lib/auth/store";
-import { hasAnyPermission } from "@/lib/auth/permissions";
+import {
+  hasAnyPermission,
+  hasPlatformPermission,
+  isPlatformPermission,
+} from "@/lib/auth/permissions";
 import styles from "./Sidebar.module.css";
 
 const GROUPS: NavGroup[] = ["operate", "configure", "admin"];
@@ -24,6 +28,13 @@ export function Sidebar() {
           const items = NAV_ITEMS.filter((i) => {
             if (i.group !== group) return false;
             if (!i.permissions || i.permissions.length === 0) return true;
+            // Platform-tier items (e.g. Tenants) mirror the backend's
+            // RequirePlatformPerm: literal perm (rw_all does NOT count) AND
+            // default-tenant origin. Gating them with hasAnyPermission would
+            // show a menu whose API 403s rw_all admins and non-default tenants.
+            if (i.permissions.some(isPlatformPermission)) {
+              return hasPlatformPermission(claims, i.permissions);
+            }
             return hasAnyPermission(claims, i.permissions);
           });
           if (items.length === 0) return null;

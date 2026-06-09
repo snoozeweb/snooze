@@ -17,6 +17,14 @@ function loginWithPerms(perms: string[]) {
   authStore.getState().login(`${header}.${body}.sig`);
 }
 
+function loginWithClaims(extra: Record<string, unknown>) {
+  const header = btoa(JSON.stringify({ alg: "HS256", typ: "JWT" }));
+  const body = btoa(
+    JSON.stringify({ sub: "x", exp: Math.floor(Date.now() / 1000) + 3600, ...extra }),
+  );
+  authStore.getState().login(`${header}.${body}.sig`);
+}
+
 const ALL_PERMS = [
   "ro_record",
   "ro_stats",
@@ -112,6 +120,30 @@ describe("Sidebar", () => {
     loginWithPerms(["ro_record"]);
     setup();
     expect(screen.queryByText("Tenants")).toBeNull();
+  });
+
+  // The Tenants registry is a platform-tier route gated by RequirePlatformPerm:
+  // literal ro_tenant/rw_tenant (rw_all does NOT count) AND default-tenant origin.
+  // The sidebar must mirror that, or it shows a menu whose API 403s the user.
+  it("hides the Tenants nav item for an rw_all admin without a literal tenant perm", () => {
+    loginWithClaims({ tenant_id: "default", permissions: ["rw_all"] });
+    setup();
+    // rw_all still reveals ordinary admin items…
+    expect(screen.getByText("Settings")).toBeInTheDocument();
+    // …but not the platform-tier tenant registry.
+    expect(screen.queryByText("Tenants")).toBeNull();
+  });
+
+  it("hides the Tenants nav item for a non-default tenant even with rw_tenant", () => {
+    loginWithClaims({ tenant_id: "acme", permissions: ["rw_tenant"] });
+    setup();
+    expect(screen.queryByText("Tenants")).toBeNull();
+  });
+
+  it("shows the Tenants nav item for a default-tenant user with a literal ro_tenant", () => {
+    loginWithClaims({ tenant_id: "default", permissions: ["ro_tenant"] });
+    setup();
+    expect(screen.getByText("Tenants")).toBeInTheDocument();
   });
 });
 

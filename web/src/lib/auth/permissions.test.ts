@@ -3,6 +3,7 @@ import {
   hasAllPermissions,
   hasAnyPermission,
   hasPermission,
+  hasPlatformPermission,
   isPlatformPermission,
 } from "./permissions";
 import type { JwtClaims } from "./jwt";
@@ -66,5 +67,39 @@ describe("isPlatformPermission", () => {
   });
   it("returns false for rw_all", () => {
     expect(isPlatformPermission("rw_all")).toBe(false);
+  });
+});
+
+// hasPlatformPermission mirrors the backend's RequirePlatformPerm
+// (internal/api/middleware/permission.go): literal perm membership (rw_all does
+// NOT satisfy it) AND default-tenant origin.
+describe("hasPlatformPermission", () => {
+  const platformPerms = ["ro_tenant", "rw_tenant"];
+  const defaultAdmin: JwtClaims = {
+    sub: "root",
+    tenant_id: "default",
+    permissions: ["ro_tenant", "rw_tenant"],
+  };
+  const wildcardOnly: JwtClaims = { sub: "admin", tenant_id: "default", permissions: ["rw_all"] };
+  const otherTenant: JwtClaims = { sub: "alice", tenant_id: "acme", permissions: ["rw_tenant"] };
+  const legacyNoTenant: JwtClaims = { sub: "legacy", permissions: ["ro_tenant"] };
+
+  it("returns true for a default-tenant user holding a literal platform perm", () => {
+    expect(hasPlatformPermission(defaultAdmin, platformPerms)).toBe(true);
+  });
+  it("returns false for rw_all without a literal platform perm (wildcard is not honored)", () => {
+    expect(hasPlatformPermission(wildcardOnly, platformPerms)).toBe(false);
+  });
+  it("returns false for a non-default tenant even with rw_tenant", () => {
+    expect(hasPlatformPermission(otherTenant, platformPerms)).toBe(false);
+  });
+  it("treats a missing tenant_id as the default tenant", () => {
+    expect(hasPlatformPermission(legacyNoTenant, platformPerms)).toBe(true);
+  });
+  it("returns false on null claims", () => {
+    expect(hasPlatformPermission(null, platformPerms)).toBe(false);
+  });
+  it("returns false on an empty permission list", () => {
+    expect(hasPlatformPermission(defaultAdmin, [])).toBe(false);
   });
 });

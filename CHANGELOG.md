@@ -101,6 +101,15 @@
   of the last page. The pager gained **« first page** and **» last page** jump
   buttons alongside the existing previous/next controls.
 
+### Fixed
+
+- **Tenants nav item (web UI)** is now gated by the same rule the backend
+  enforces on `/api/v1/tenant` (`RequirePlatformPerm`): it appears only for
+  users authenticated against the `default` tenant who hold a *literal*
+  `ro_tenant`/`rw_tenant` permission. Previously the sidebar honored the
+  `rw_all` wildcard and ignored tenant origin, so `rw_all` admins and
+  non-default-tenant users saw a Tenants menu whose API calls returned 403.
+
 ## v2.1.0
 
 ### Fixed
