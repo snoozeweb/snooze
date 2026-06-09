@@ -94,7 +94,7 @@ func (e *TokenEngine) Lease() time.Duration { return e.lease }
 // cluster nodes — without exposing the raw signing secret.
 func (e *TokenEngine) DeriveKey(label string) []byte {
 	h := hmac.New(sha256.New, e.secret)
-	h.Write([]byte(label))
+	_, _ = h.Write([]byte(label))
 	return h.Sum(nil)
 }
 
