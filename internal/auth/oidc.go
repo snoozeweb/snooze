@@ -57,9 +57,11 @@ func (p *OIDCProvider) Name() string { return p.cfg.Method }
 // IsEnabled implements auth.EnableChecker.
 func (p *OIDCProvider) IsEnabled(_ context.Context) bool { return p.cfg.Enabled }
 
-// DisplayName / Icon implement RedirectProvider.
+// DisplayName implements RedirectProvider; it is the login button label.
 func (p *OIDCProvider) DisplayName() string { return p.cfg.DisplayName }
-func (p *OIDCProvider) Icon() string        { return p.cfg.Icon }
+
+// Icon implements RedirectProvider; it is the login button icon key.
+func (p *OIDCProvider) Icon() string { return p.cfg.Icon }
 
 // Authenticate signals callers to use the redirect flow.
 func (p *OIDCProvider) Authenticate(context.Context, Credentials) (Identity, error) {

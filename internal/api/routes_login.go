@@ -578,7 +578,7 @@ func (rt *Router) handleOIDCStart(rp auth.RedirectProvider) http.HandlerFunc {
 			redirectLoginError(w, r, "could not start sign-in")
 			return
 		}
-		http.SetCookie(w, &http.Cookie{
+		http.SetCookie(w, &http.Cookie{ //nolint:gosec // G124: Secure is set dynamically via secureCookies(r) (TLS / X-Forwarded-Proto); HttpOnly + SameSite=Lax are always set.
 			Name:     oidcStateCookie,
 			Value:    cookieVal,
 			Path:     "/api/v1/login",
@@ -602,7 +602,7 @@ func (rt *Router) handleOIDCStart(rp auth.RedirectProvider) http.HandlerFunc {
 func (rt *Router) handleOIDCCallback(rp auth.RedirectProvider) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		// Always clear the state cookie.
-		http.SetCookie(w, &http.Cookie{
+		http.SetCookie(w, &http.Cookie{ //nolint:gosec // G124: Secure is set dynamically via secureCookies(r) (TLS / X-Forwarded-Proto); HttpOnly + SameSite=Lax are always set.
 			Name: oidcStateCookie, Value: "", Path: "/api/v1/login", MaxAge: -1,
 			HttpOnly: true, Secure: rt.secureCookies(r), SameSite: http.SameSiteLaxMode,
 		})
