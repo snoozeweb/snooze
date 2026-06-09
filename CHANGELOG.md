@@ -96,6 +96,11 @@
 - **Settings PK** is `["tenant_id", "name"]`; the settings cache is
   partitioned by tenant.
 
+- **Alert comment timeline (web UI)** now lists activity newest-first
+  (reverse-chronological), so the most recent comments land on page 1 instead
+  of the last page. The pager gained **« first page** and **» last page** jump
+  buttons alongside the existing previous/next controls.
+
 ## v2.1.0
 
 ### Fixed

@@ -43,6 +43,23 @@ describe("useRecordComments", () => {
     expect(seen[0]?.searchParams.get("q")).toBeTruthy();
   });
 
+  it("requests reverse-chronological order (newest first)", async () => {
+    const seen: URL[] = [];
+    mswServer.use(
+      http.get("/api/v1/comment", ({ request }) => {
+        seen.push(new URL(request.url));
+        return HttpResponse.json({
+          data: [],
+          meta: { count: 0, limit: 5, offset: 0, total: 0 },
+        });
+      }),
+    );
+    const { result } = renderHook(() => useRecordComments("r1"), { wrapper: wrap() });
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+    expect(seen[0]?.searchParams.get("orderby")).toBe("date_epoch");
+    expect(seen[0]?.searchParams.get("asc")).toBe("false");
+  });
+
   it("is disabled when uid is undefined", () => {
     const { result } = renderHook(() => useRecordComments(undefined), { wrapper: wrap() });
     expect(result.current.fetchStatus).toBe("idle");

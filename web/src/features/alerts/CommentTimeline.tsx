@@ -6,7 +6,9 @@
 //       open    → neutral       shelve  → muted    unshelve → neutral
 //   - Edit + delete affordances on the user's own comments, or for any
 //     comment if the user holds rw_record / rw_all.
-//   - Page controls (5 / 10 / 20 per page).
+//   - Newest activity first (reverse-chronological): page 1 is the most
+//     recent, the last page the oldest.
+//   - Page controls (5 / 10 / 20 per page) with first/last page jumps.
 import { useState } from "react";
 import { Badge, type BadgeVariant } from "@/shared/ui/Badge";
 import { Button } from "@/shared/ui/Button";
@@ -273,6 +275,14 @@ export function CommentTimeline({ recordUid }: { recordUid: string | undefined }
               </button>
             ))}
             <IconButton
+              icon="chevrons-left"
+              label="First page"
+              size="sm"
+              variant="ghost"
+              disabled={page <= 1}
+              onClick={() => setPage(1)}
+            />
+            <IconButton
               icon="chevron-left"
               label="Previous page"
               size="sm"
@@ -287,6 +297,14 @@ export function CommentTimeline({ recordUid }: { recordUid: string | undefined }
               variant="ghost"
               disabled={page >= pageCount}
               onClick={() => setPage((p) => Math.min(pageCount, p + 1))}
+            />
+            <IconButton
+              icon="chevrons-right"
+              label="Last page"
+              size="sm"
+              variant="ghost"
+              disabled={page >= pageCount}
+              onClick={() => setPage(pageCount)}
             />
           </span>
         </div>

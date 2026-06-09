@@ -35,7 +35,9 @@ export function useRecordComments(
         query: {
           ...(q !== undefined ? { q } : {}),
           orderby: "date_epoch",
-          asc: true,
+          // Reverse-chronological: newest comments first, so the most recent
+          // activity lands on page 1 instead of the last page.
+          asc: false,
           limit,
           offset,
         },
