@@ -10,6 +10,7 @@ import (
 	"fmt"
 
 	"github.com/snoozeweb/snooze/internal/auth"
+	"github.com/snoozeweb/snooze/internal/db"
 	"github.com/snoozeweb/snooze/internal/plugins"
 	"github.com/snoozeweb/snooze/pkg/snoozetypes"
 )
@@ -68,13 +69,6 @@ func (p *Plugin) Schema() any {
 // Validate enforces the primary-key field ([name]) on writes and applies the
 // reserved-permission/role allowlist (C5). PATCH partials without a name field
 // are tolerated.
-//
-// The reserved guard here is keyed off the document's own tenant_id field, so a
-// stored role carrying a reserved platform permission (rw_tenant/ro_tenant) or
-// named platform_admin is rejected unless the document is scoped to the default
-// tenant. This is the structural check; the authoritative runtime guard lives
-// in TransformWrite, which keys off the trusted request context rather than a
-// client-supplied tenant_id.
 func (p *Plugin) Validate(obj map[string]any) error {
 	if len(obj) == 0 {
 		return nil
@@ -84,11 +78,11 @@ func (p *Plugin) Validate(obj map[string]any) error {
 			return errors.New("role: name must not be empty")
 		}
 	}
-	// Determine scope from the doc's tenant_id (default tenant = platform path).
-	tenantID, _ := obj["tenant_id"].(string)
-	if tenantID == snoozetypes.DefaultTenant {
-		return nil
-	}
+	// Reserved-perm/role lock (C5, hardened): no role written through the API may
+	// carry a reserved platform permission or be named platform_admin, regardless
+	// of tenant. The real platform_admin role is seeded by a direct driver write
+	// (bypassing this plugin), so seeding is unaffected; this makes platform_admin
+	// API-immutable and confines ro_tenant/rw_tenant to it.
 	return checkReservedRole(obj)
 }
 
@@ -119,6 +113,24 @@ func checkReservedRole(obj map[string]any) error {
 	for _, perm := range stringSlice(obj["permissions"]) {
 		if auth.IsReservedPlatformPerm(perm) {
 			return fmt.Errorf("role: permission %q is reserved for the platform control plane and cannot be granted to a tenant role", perm)
+		}
+	}
+	return nil
+}
+
+// GuardDelete blocks deletion of the reserved platform_admin role; it is seeded
+// infrastructure and must remain (every holder would otherwise lose rw_tenant).
+func (p *Plugin) GuardDelete(ctx context.Context, uids []string) error {
+	if snoozetypes.IsPlatformScope(ctx) {
+		return nil
+	}
+	for _, uid := range uids {
+		doc, err := p.host.DB().GetOne(ctx, "role", db.Document{"uid": uid})
+		if err != nil || doc == nil {
+			continue
+		}
+		if name, _ := doc["name"].(string); auth.IsReservedPlatformRole(name) {
+			return fmt.Errorf("role %q is reserved platform infrastructure and cannot be deleted", name)
 		}
 	}
 	return nil

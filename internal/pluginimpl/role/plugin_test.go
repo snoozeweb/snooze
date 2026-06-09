@@ -103,17 +103,40 @@ func TestRolePlugin_Validate_RejectsPlatformAdminNameForTenant(t *testing.T) {
 	require.Error(t, err)
 }
 
-// TestRolePlugin_Validate_AllowsReservedPermForDefaultTenant is the
-// default-tenant/platform path: the doc tenant_id is the default tenant, so the
-// reserved permission is allowed.
-func TestRolePlugin_Validate_AllowsReservedPermForDefaultTenant(t *testing.T) {
+// Reserved perms are locked to the seeded platform_admin role: the API rejects
+// them on ANY role, including default-tenant docs. (Bootstrap bypasses Validate.)
+func TestRolePlugin_Validate_RejectsReservedPermEvenForDefaultTenant(t *testing.T) {
 	t.Parallel()
 	p := &Plugin{}
-	require.NoError(t, p.Validate(map[string]any{
+	require.Error(t, p.Validate(map[string]any{
 		"tenant_id":   "default",
-		"name":        "platform_admin",
-		"permissions": []any{"rw_tenant", "ro_tenant"},
+		"name":        "evil",
+		"permissions": []any{"rw_tenant"},
 	}))
+	require.Error(t, p.Validate(map[string]any{
+		"tenant_id": "default",
+		"name":      "platform_admin",
+	}))
+}
+
+func TestRolePlugin_GuardDelete_ProtectsPlatformAdminRole(t *testing.T) {
+	host := newTestHost(t)
+	p := &Plugin{meta: plugins.Metadata{Name: "role"}}
+	require.NoError(t, p.PostInit(context.Background(), host))
+	ctx := auth.WithTenant(context.Background(), snoozetypes.DefaultTenant)
+
+	res, err := host.drv.Write(ctx, "role", []db.Document{
+		{"name": "platform_admin", "permissions": []any{"rw_tenant"}},
+		{"name": "ops"},
+	}, db.WriteOptions{Primary: []string{"tenant_id", "name"}})
+	require.NoError(t, err)
+	require.Len(t, res.Added, 2)
+
+	uidPA := res.Added[0]
+	uidOps := res.Added[1]
+
+	require.Error(t, p.GuardDelete(ctx, []string{uidPA}), "platform_admin role must be undeletable")
+	require.NoError(t, p.GuardDelete(ctx, []string{uidOps}), "ordinary roles delete normally")
 }
 
 // TestRolePlugin_TransformWrite_RejectsReservedPermInTenantCtx is the trusted
