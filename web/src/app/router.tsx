@@ -26,6 +26,7 @@ import { StatusPage } from "@/features/admin/status/StatusPage";
 import { TenantsPage } from "@/features/admin/tenants/TenantsPage";
 import { authStore } from "@/lib/auth/store";
 import { Login } from "@/features/auth/Login";
+import { LoginCallback } from "@/features/auth/LoginCallback";
 import { Profile } from "@/features/auth/Profile";
 import { setUnauthorizedHandler } from "@/lib/api/client";
 
@@ -90,12 +91,19 @@ const loginRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/web/login",
   component: Login,
-  validateSearch: (search): { return_to?: string; key?: string } => {
-    const out: { return_to?: string; key?: string } = {};
+  validateSearch: (search): { return_to?: string; key?: string; sso_error?: string } => {
+    const out: { return_to?: string; key?: string; sso_error?: string } = {};
     if (typeof search["return_to"] === "string") out.return_to = search["return_to"];
     if (typeof search["key"] === "string") out.key = search["key"];
+    if (typeof search["sso_error"] === "string") out.sso_error = search["sso_error"];
     return out;
   },
+});
+
+const loginCallbackRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/web/login/callback",
+  component: LoginCallback,
 });
 
 const webIndexRoute = createRoute({
@@ -571,6 +579,7 @@ const devRoutes = import.meta.env.DEV
 const routeTree = rootRoute.addChildren([
   indexRoute,
   loginRoute,
+  loginCallbackRoute,
   webLayoutRoute.addChildren([
     webIndexRoute,
     alertsRoute,
