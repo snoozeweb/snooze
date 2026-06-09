@@ -260,6 +260,7 @@ type KVSearchParams = {
   page?: number;
   orderby?: string;
   asc?: boolean;
+  dict?: string;
 };
 
 const kvRoute = createRoute({
@@ -288,6 +289,7 @@ const kvRoute = createRoute({
             ? false
             : undefined;
     if (asc !== undefined) out["asc"] = asc;
+    if (typeof raw["dict"] === "string") out["dict"] = raw["dict"];
     return out as KVSearchParams;
   },
 });

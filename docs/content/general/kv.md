@@ -14,6 +14,12 @@ Being used as a **Modification** in [Rules](./rules.md#key-value-mapping), **Key
 
 ![](./images/web_kv.png)
 
+When more than one dictionary exists, a tab bar appears above the search bar:
+an **All** tab that lists every key-value, followed by one tab per dictionary.
+Selecting a dictionary tab filters the list down to that dictionary (and still
+combines with anything typed in the search bar). With a single dictionary the
+tab bar is hidden, since there is nothing to switch between.
+
 Dictionary\*  
 Name of the dictionary
 

@@ -81,6 +81,11 @@
 - **`housekeeper.ForEachTenant`.** Cleanup jobs iterate active tenants and
   re-scope per tenant so one tenant's slow cleanup cannot block another.
 
+- **Key-values dictionary tabs (web).** The admin **Key-values** page now shows
+  a tab bar above the search bar — an **All** tab plus one tab per discovered
+  dictionary — that filters the list to the selected dictionary. The bar is
+  hidden when only a single dictionary exists.
+
 ### Changed
 
 - **`sql.Builder.Convert` and `mongo.Convert`** gain leading `ctx context.Context`
