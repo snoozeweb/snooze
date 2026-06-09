@@ -211,7 +211,14 @@ paths:
                     properties:
                       backends:
                         type: array
-                        items: {type: string}
+                        items:
+                          type: object
+                          required: [name, kind]
+                          properties:
+                            name: {type: string, example: microsoft}
+                            kind: {type: string, enum: [password, redirect]}
+                            display_name: {type: string, example: "Microsoft 365"}
+                            icon: {type: string, example: microsoft}
                       tenants:
                         type: array
                         description: |
@@ -270,6 +277,72 @@ paths:
           content:
             application/json:
               schema: {$ref: '#/components/schemas/ErrEnvelope'}
+
+  /api/v1/login/{provider}/start:
+    get:
+      tags: [auth]
+      summary: Begin an OIDC redirect login
+      description: |
+        Initiates an OAuth 2.0 / OIDC authorization-code flow for the named
+        provider (e.g. `microsoft`). Sets a short-lived signed state cookie
+        and issues a 302 redirect to the identity provider's authorize endpoint.
+      security: []
+      parameters:
+        - name: provider
+          in: path
+          required: true
+          schema: {type: string}
+          description: "The configured `method` value (e.g. `microsoft`)."
+        - name: return_to
+          in: query
+          required: false
+          schema: {type: string}
+          description: "Relative SPA path to return to after sign-in. If omitted, the SPA lands on /web/alerts."
+        - name: org
+          in: query
+          required: false
+          schema: {type: string}
+          description: "Tenant slug. Omit to use the default tenant."
+      responses:
+        '302':
+          description: Redirect to the identity provider's authorize endpoint. Sets a short-lived signed state cookie.
+
+  /api/v1/login/{provider}/callback:
+    get:
+      tags: [auth]
+      summary: OIDC redirect callback
+      description: |
+        Receives the authorization-code callback from the identity provider.
+        Exchanges the code for tokens, validates the ID token, resolves or
+        creates the Snooze user, and issues a signed session JWT.
+
+        On success, redirects to `/web/login/callback#token=<jwt>`.
+        On failure, redirects to `/web/login?sso_error=<message>`.
+      security: []
+      parameters:
+        - name: provider
+          in: path
+          required: true
+          schema: {type: string}
+          description: "The configured `method` value (e.g. `microsoft`)."
+        - name: code
+          in: query
+          required: false
+          schema: {type: string}
+          description: "Authorization code returned by the identity provider."
+        - name: state
+          in: query
+          required: false
+          schema: {type: string}
+          description: "CSRF state token. Must match the signed state cookie."
+        - name: error
+          in: query
+          required: false
+          schema: {type: string}
+          description: "Error code returned by the identity provider on failure."
+      responses:
+        '302':
+          description: On success, redirect to /web/login/callback with the session token in the URL fragment. On failure, redirect to /web/login?sso_error=...
 
   /api/v1/login/local:
     post:

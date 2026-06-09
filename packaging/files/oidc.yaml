@@ -1,0 +1,54 @@
+---
+# OpenID Connect (e.g. Microsoft 365 / Entra) authentication.
+# File-config only. Leave client_secret out of version control — supply it via
+# SNOOZE_SERVER_OIDC_CLIENT_SECRET or a secret file.
+
+# Enabled (boolean)
+# Enable or disable OIDC Authentication
+enabled: false
+
+# Issuer (string)
+# OpenID Connect issuer URL. Discovery document fetched from {issuer}/.well-known/openid-configuration.
+# For Microsoft Entra ID: https://login.microsoftonline.com/<tenant-id>/v2.0
+issuer: "https://login.microsoftonline.com/<tenant-id>/v2.0"
+
+# Client ID (string)
+# Application (client) ID from the app registration.
+client_id: "<application-client-id>"
+
+# Client secret (string)
+# Environment variable: SNOOZE_SERVER_OIDC_CLIENT_SECRET
+# Do not set this value in a file committed to version control.
+client_secret: ""
+
+# Redirect URL (string)
+# Must match the Redirect URI registered on the identity provider exactly.
+redirect_url: "https://<snooze-host>/api/v1/login/microsoft/callback"
+
+# Scopes ([]string)
+# OAuth 2.0 scopes to request. openid is required.
+scopes: ["openid", "profile", "email"]
+
+# Method (string)
+# Provider identifier used in login route paths (/api/v1/login/{method}/start).
+method: "microsoft"
+
+# Display name (string)
+# Human-readable label shown on the login-page button.
+display_name: "Microsoft 365"
+
+# Icon (string)
+# Icon identifier for the login-page frontend.
+icon: "microsoft"
+
+# Roles claim (string)
+# ID-token claim that carries the list of app roles assigned to the user.
+roles_claim: "roles"
+
+# Groups claim (string)
+# ID-token claim that carries the list of group object IDs the user belongs to.
+groups_claim: "groups"
+
+# Admin role value (string)
+# Value in the roles claim that maps to the Snooze admin role on a fresh install.
+admin_role_value: "Admin"

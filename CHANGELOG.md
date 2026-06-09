@@ -2,6 +2,12 @@
 
 ### Added
 
+- **OpenID Connect authentication backend** (Microsoft 365 / Entra ID supported
+  out of the box). Configure via the `oidc` file-config section. Entra App Roles
+  map to Snooze roles through the existing group→role mapping (`Admin` → `admin`).
+- **Login page redesigned:** each enabled auth method is now a button (primary
+  credential form with SSO/alternate methods below) instead of tabs.
+
 - **Multi-tenancy (D1–D10).** A single `snooze-server` now hosts multiple
   isolated organizations (tenants). Every alert, rule, snooze filter, user,
   role, notification, and settings document is scoped to a `tenant_id` slug;
@@ -87,6 +93,9 @@
   hidden when only a single dictionary exists.
 
 ### Changed
+
+- **`GET /api/v1/login`** now returns backend descriptor objects
+  (`{name, kind, display_name, icon}`) instead of a list of strings.
 
 - **`sql.Builder.Convert` and `mongo.Convert`** gain leading `ctx context.Context`
   and `collection string` parameters. The new parameters drive automatic

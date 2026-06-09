@@ -51,7 +51,21 @@ The 1.x `Authorization: JWT <token>` scheme is **no longer accepted**. Use:
 Authorization: Bearer <token>
 ```
 
+## Single sign-on methods
+
+When one or more SSO backends are enabled (LDAP, OIDC / Microsoft 365, or
+anonymous), the login page shows the primary credential form at the top and a
+button per additional method below it — for example "Continue with Microsoft
+365" or "Continue as anonymous". Clicking an SSO button redirects the browser
+to the identity provider; after a successful authentication you are returned
+to Snooze already signed in with a fresh session token stored in the URL
+fragment and then handed off to the application.
+
 ## LDAP Authentication
 
 [Configure LDAP Authentication](../configuration/ldap_auth.md)
+
+## OIDC / Microsoft 365 Authentication
+
+[Configure OIDC Authentication](../configuration/oidc_auth.md)
 
