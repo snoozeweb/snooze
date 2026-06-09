@@ -12,13 +12,13 @@ import (
 
 func TestGuardDelete_LastPlatformAdmin_Blocked(t *testing.T) {
 	p, host := newGuardPlugin(t)
-	uids := seedUsers(t, host, defCtx(rwTenant), db.Document{"tenant_id": "default", "name": "root", "method": "local", "enabled": true, "roles": []any{"platform_admin"}})
+	uids := seedUsers(t, host, db.Document{"tenant_id": "default", "name": "root", "method": "local", "enabled": true, "roles": []any{"platform_admin"}})
 	require.Error(t, p.GuardDelete(defCtx(rwTenant), []string{uids[0]}))
 }
 
 func TestGuardDelete_NonLastPlatformAdmin_Allowed(t *testing.T) {
 	p, host := newGuardPlugin(t)
-	uids := seedUsers(t, host, defCtx(rwTenant),
+	uids := seedUsers(t, host,
 		db.Document{"tenant_id": "default", "name": "root", "method": "local", "enabled": true, "roles": []any{"platform_admin"}},
 		db.Document{"tenant_id": "default", "name": "two", "method": "local", "enabled": true, "roles": []any{"platform_admin"}},
 	)
@@ -27,7 +27,7 @@ func TestGuardDelete_NonLastPlatformAdmin_Allowed(t *testing.T) {
 
 func TestGuardDelete_DeletingAllPlatformAdminsAtOnce_Blocked(t *testing.T) {
 	p, host := newGuardPlugin(t)
-	uids := seedUsers(t, host, defCtx(rwTenant),
+	uids := seedUsers(t, host,
 		db.Document{"tenant_id": "default", "name": "root", "method": "local", "enabled": true, "roles": []any{"platform_admin"}},
 		db.Document{"tenant_id": "default", "name": "two", "method": "local", "enabled": true, "roles": []any{"platform_admin"}},
 	)
@@ -38,7 +38,7 @@ func TestGuardDelete_DeletingAllPlatformAdminsAtOnce_Blocked(t *testing.T) {
 
 func TestGuardDelete_NonAdminUser_Allowed(t *testing.T) {
 	p, host := newGuardPlugin(t)
-	uids := seedUsers(t, host, defCtx(rwTenant), db.Document{"tenant_id": "default", "name": "bob", "method": "local", "enabled": true, "roles": []any{"admin"}})
+	uids := seedUsers(t, host, db.Document{"tenant_id": "default", "name": "bob", "method": "local", "enabled": true, "roles": []any{"admin"}})
 	require.NoError(t, p.GuardDelete(defCtx(rwTenant), []string{uids[0]}))
 }
 

@@ -151,8 +151,8 @@ func TestRogueReservedRoles(t *testing.T) {
 	pctx := snoozetypes.WithPlatformScope(ctx)
 	_, err = drv.Write(pctx, RoleCollection, []db.Document{
 		{"tenant_id": "default", "name": "platform_admin", "permissions": []any{"rw_tenant"}}, // legit, ignored
-		{"tenant_id": "default", "name": "evil", "permissions": []any{"rw_tenant"}},            // rogue
-		{"tenant_id": "default", "name": "ops", "permissions": []any{"rw_record"}},             // clean
+		{"tenant_id": "default", "name": "evil", "permissions": []any{"rw_tenant"}},           // rogue
+		{"tenant_id": "default", "name": "ops", "permissions": []any{"rw_record"}},            // clean
 	}, db.WriteOptions{Primary: []string{"tenant_id", "name"}})
 	require.NoError(t, err)
 

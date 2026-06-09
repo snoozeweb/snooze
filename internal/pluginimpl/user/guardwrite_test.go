@@ -22,8 +22,9 @@ func newGuardPlugin(t *testing.T) (*Plugin, *testHost) {
 
 // seedUsers writes users letting the driver assign uids (the sqlite driver
 // rejects pre-set uids) and returns the assigned uids in write order.
-func seedUsers(t *testing.T, host *testHost, ctx context.Context, docs ...db.Document) []string {
+func seedUsers(t *testing.T, host *testHost, docs ...db.Document) []string {
 	t.Helper()
+	ctx := auth.WithTenant(context.Background(), snoozetypes.DefaultTenant)
 	res, err := host.drv.Write(ctx, "user", docs, db.WriteOptions{Primary: []string{"tenant_id", "name", "method"}})
 	require.NoError(t, err)
 	return res.Added
@@ -38,7 +39,7 @@ var rwAllOnly = snoozetypes.Claims{Subject: "alice", Method: "local", TenantID: 
 
 func TestGuardWrite_GrantPlatformAdmin_RequiresLiteralRwTenant(t *testing.T) {
 	p, host := newGuardPlugin(t)
-	uids := seedUsers(t, host, defCtx(rwTenant), db.Document{"tenant_id": "default", "name": "bob", "method": "local", "enabled": true, "roles": []any{"admin"}})
+	uids := seedUsers(t, host, db.Document{"tenant_id": "default", "name": "bob", "method": "local", "enabled": true, "roles": []any{"admin"}})
 	bob := uids[0]
 	require.Error(t, p.GuardWrite(defCtx(rwAllOnly), bob, map[string]any{"roles": []any{"admin", "platform_admin"}}))
 	require.NoError(t, p.GuardWrite(defCtx(rwTenant), bob, map[string]any{"roles": []any{"admin", "platform_admin"}}))
@@ -46,7 +47,7 @@ func TestGuardWrite_GrantPlatformAdmin_RequiresLiteralRwTenant(t *testing.T) {
 
 func TestGuardWrite_RemovePlatformAdmin_RequiresRwTenant_AndBlocksSelfAndLast(t *testing.T) {
 	p, host := newGuardPlugin(t)
-	uids := seedUsers(t, host, defCtx(rwTenant),
+	uids := seedUsers(t, host,
 		db.Document{"tenant_id": "default", "name": "root", "method": "local", "enabled": true, "roles": []any{"platform_admin"}},
 		db.Document{"tenant_id": "default", "name": "two", "method": "local", "enabled": true, "roles": []any{"platform_admin"}},
 	)
@@ -58,7 +59,7 @@ func TestGuardWrite_RemovePlatformAdmin_RequiresRwTenant_AndBlocksSelfAndLast(t 
 
 func TestGuardWrite_RemoveLastPlatformAdmin_Blocked(t *testing.T) {
 	p, host := newGuardPlugin(t)
-	uids := seedUsers(t, host, defCtx(rwTenant), db.Document{"tenant_id": "default", "name": "root", "method": "local", "enabled": true, "roles": []any{"platform_admin"}})
+	uids := seedUsers(t, host, db.Document{"tenant_id": "default", "name": "root", "method": "local", "enabled": true, "roles": []any{"platform_admin"}})
 	root := uids[0]
 	other := snoozetypes.Claims{Subject: "ops", Method: "local", TenantID: "default", Permissions: []string{"rw_tenant"}}
 	require.Error(t, p.GuardWrite(defCtx(other), root, map[string]any{"roles": []any{}}))
@@ -66,14 +67,14 @@ func TestGuardWrite_RemoveLastPlatformAdmin_Blocked(t *testing.T) {
 
 func TestGuardWrite_DisableLastPlatformAdmin_Blocked(t *testing.T) {
 	p, host := newGuardPlugin(t)
-	uids := seedUsers(t, host, defCtx(rwTenant), db.Document{"tenant_id": "default", "name": "root", "method": "local", "enabled": true, "roles": []any{"platform_admin"}})
+	uids := seedUsers(t, host, db.Document{"tenant_id": "default", "name": "root", "method": "local", "enabled": true, "roles": []any{"platform_admin"}})
 	root := uids[0]
 	require.Error(t, p.GuardWrite(defCtx(rwTenant), root, map[string]any{"enabled": false}))
 }
 
 func TestGuardWrite_NonPlatformWritesUnaffected(t *testing.T) {
 	p, host := newGuardPlugin(t)
-	uids := seedUsers(t, host, defCtx(rwAllOnly), db.Document{"tenant_id": "default", "name": "bob", "method": "local", "enabled": true, "roles": []any{"admin"}})
+	uids := seedUsers(t, host, db.Document{"tenant_id": "default", "name": "bob", "method": "local", "enabled": true, "roles": []any{"admin"}})
 	bob := uids[0]
 	require.NoError(t, p.GuardWrite(defCtx(rwAllOnly), bob, map[string]any{"email": "b@x.io"}))
 }
