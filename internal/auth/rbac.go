@@ -136,6 +136,19 @@ func HasPermission(claims snoozetypes.Claims, want string) bool {
 	return false
 }
 
+// HasLiteralPermission reports whether the claim set carries perm verbatim.
+// Unlike HasPermission, the rw_all wildcard does NOT satisfy it — this mirrors
+// the platform-gate semantics of RequirePlatformPerm and must be used for the
+// reserved platform permissions (ro_tenant/rw_tenant).
+func HasLiteralPermission(claims snoozetypes.Claims, perm string) bool {
+	for _, p := range claims.Permissions {
+		if p == perm {
+			return true
+		}
+	}
+	return false
+}
+
 // sortedKeys turns a set into a deterministic slice. Stable output keeps
 // audit logs and tests reproducible.
 func sortedKeys(m map[string]struct{}) []string {

@@ -139,3 +139,13 @@ func TestRoleResolver_Resolve_UsesContextTenant(t *testing.T) {
 	require.Equal(t, []string{"viewer"}, roles)
 	require.Equal(t, []string{"ro_all"}, perms)
 }
+
+func TestHasLiteralPermission(t *testing.T) {
+	literal := snoozetypes.Claims{Permissions: []string{"ro_tenant", "rw_record"}}
+	wildcard := snoozetypes.Claims{Permissions: []string{"rw_all"}}
+	require.True(t, HasLiteralPermission(literal, "ro_tenant"))
+	require.False(t, HasLiteralPermission(literal, "rw_tenant"))
+	// The rw_all wildcard must NOT satisfy a literal platform-perm check.
+	require.False(t, HasLiteralPermission(wildcard, "rw_tenant"))
+	require.False(t, HasLiteralPermission(snoozetypes.Claims{}, "rw_tenant"))
+}
