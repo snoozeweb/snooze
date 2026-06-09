@@ -1,7 +1,9 @@
 package auth
 
 import (
+	"crypto/hmac"
 	"crypto/rand"
+	"crypto/sha256"
 	"crypto/subtle"
 	"encoding/hex"
 	"errors"
@@ -85,6 +87,16 @@ func splitAudience(s string) []string {
 
 // Lease returns the configured token lease.
 func (e *TokenEngine) Lease() time.Duration { return e.lease }
+
+// DeriveKey returns a 32-byte key derived from the signing secret and a label
+// via HMAC-SHA256. It lets other subsystems (e.g. the OIDC state-cookie codec)
+// authenticate data with a key that is stable across a deploy and shared across
+// cluster nodes — without exposing the raw signing secret.
+func (e *TokenEngine) DeriveKey(label string) []byte {
+	h := hmac.New(sha256.New, e.secret)
+	h.Write([]byte(label))
+	return h.Sum(nil)
+}
 
 // jwtClaims is the in-flight claim payload. We translate to/from
 // snoozetypes.Claims at the engine boundary.

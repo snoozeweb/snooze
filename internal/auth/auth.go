@@ -26,6 +26,10 @@ var (
 	// ErrProviderDisabled is returned when an anonymous (or otherwise gated)
 	// provider is queried but configuration has it turned off.
 	ErrProviderDisabled = errors.New("auth provider disabled")
+	// ErrRedirectProvider is returned by RedirectProvider.Authenticate to signal
+	// that the provider uses the browser-redirect flow (Start/Callback), not a
+	// password POST. The login routes special-case these providers.
+	ErrRedirectProvider = errors.New("auth provider uses redirect flow")
 )
 
 // Credentials carry the inputs to Provider.Authenticate. The Extra map is
@@ -67,6 +71,23 @@ func ProviderEnabled(ctx context.Context, p Provider) bool {
 		return c.IsEnabled(ctx)
 	}
 	return true
+}
+
+// RedirectProvider is implemented by browser-redirect (OIDC/OAuth) backends.
+// They appear on the login index like password providers but are driven by the
+// /api/v1/login/{name}/start and /callback routes instead of a password POST.
+type RedirectProvider interface {
+	Provider
+	// DisplayName is the human label rendered on the login button.
+	DisplayName() string
+	// Icon is the icon key rendered on the login button.
+	Icon() string
+	// AuthCodeURL builds the IdP authorize URL carrying state, nonce and a PKCE
+	// (S256) challenge derived from pkceVerifier.
+	AuthCodeURL(ctx context.Context, state, nonce, pkceVerifier string) (string, error)
+	// ExchangeAndVerify exchanges the authorization code, verifies the ID token
+	// (signature/iss/aud/exp) and the nonce, and returns the resolved Identity.
+	ExchangeAndVerify(ctx context.Context, code, nonce, pkceVerifier string) (Identity, error)
 }
 
 // Registry is a name-indexed collection of Providers. It is safe for

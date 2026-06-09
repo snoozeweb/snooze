@@ -286,3 +286,15 @@ func TestTokenEngine_Verify_MultiAudienceMatches(t *testing.T) {
 	require.NoError(t, err)
 	require.ElementsMatch(t, []string{"a", "b", "c"}, out.Audience)
 }
+
+func TestTokenEngine_DeriveKey(t *testing.T) {
+	t.Parallel()
+	e, err := NewTokenEngine(testSecret(), testCfg())
+	require.NoError(t, err)
+	k1 := e.DeriveKey("oidc-state-v1")
+	k2 := e.DeriveKey("oidc-state-v1")
+	k3 := e.DeriveKey("other-label")
+	require.Len(t, k1, 32)
+	require.Equal(t, k1, k2, "DeriveKey must be deterministic for the same label")
+	require.NotEqual(t, k1, k3, "DeriveKey must differ per label")
+}
