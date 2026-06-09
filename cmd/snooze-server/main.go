@@ -571,6 +571,9 @@ func buildAuthProviders(cfg *config.Config, drv db.Driver, rs *config.RuntimeSet
 	if cfg.General.AnonymousEnabled {
 		reg.Register(auth.NewAnonymousProvider(true))
 	}
+	if cfg.OIDC.Enabled {
+		reg.Register(auth.NewOIDCProvider(cfg.OIDC))
+	}
 	return reg
 }
 
