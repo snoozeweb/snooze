@@ -470,8 +470,11 @@ func TestHandleLoginIndex_ListsActiveListedTenants(t *testing.T) {
 
 	var resp struct {
 		Data struct {
-			Backends []string `json:"backends"`
-			Tenants  []struct {
+			Backends []struct {
+				Name string `json:"name"`
+				Kind string `json:"kind"`
+			} `json:"backends"`
+			Tenants []struct {
 				ID          string `json:"id"`
 				DisplayName string `json:"display_name"`
 				LoginKey    string `json:"login_key"`
@@ -489,6 +492,42 @@ func TestHandleLoginIndex_ListsActiveListedTenants(t *testing.T) {
 	require.True(t, ids["legacy"], "active tenant with no listed field must appear")
 	require.False(t, ids["globex"], "explicitly unlisted tenant globex must be excluded")
 	require.False(t, ids["initech"], "suspended tenant initech must be excluded")
+}
+
+func TestLoginIndex_Descriptors(t *testing.T) {
+	local := &fakeProvider{name: "local", enabled: true}
+	ms := &fakeRedirectProvider{name: "microsoft", enabled: true}
+	r, _ := loginTestRouter(t, local, ms)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/login", nil)
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+	require.Equal(t, http.StatusOK, w.Code)
+
+	var body struct {
+		Data struct {
+			Backends []struct {
+				Name        string `json:"name"`
+				Kind        string `json:"kind"`
+				DisplayName string `json:"display_name"`
+				Icon        string `json:"icon"`
+			} `json:"backends"`
+		} `json:"data"`
+	}
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &body))
+
+	byName := map[string]string{}
+	disp := map[string]string{}
+	icons := map[string]string{}
+	for _, b := range body.Data.Backends {
+		byName[b.Name] = b.Kind
+		disp[b.Name] = b.DisplayName
+		icons[b.Name] = b.Icon
+	}
+	require.Equal(t, "password", byName["local"])
+	require.Equal(t, "redirect", byName["microsoft"])
+	require.Equal(t, "Microsoft 365", disp["microsoft"])
+	require.Equal(t, "microsoft", icons["microsoft"])
 }
 
 // TestHandleLoginResolveTenant verifies GET /api/v1/login/tenant?key=<login_key>.
@@ -544,4 +583,28 @@ func TestHandleLoginResolveTenant(t *testing.T) {
 	rec4 := httptest.NewRecorder()
 	r2.ServeHTTP(rec4, httptest.NewRequest(http.MethodGet, "/api/v1/login/tenant?key=acme", nil))
 	require.Equal(t, http.StatusNotFound, rec4.Code, "slug must not resolve (key=acme is not a login_key)")
+}
+
+func TestLoginIndex_DefaultBackendFirst(t *testing.T) {
+	local := &fakeProvider{name: "local", enabled: true}
+	ldap := &fakeProvider{name: "ldap", enabled: true}
+	r, rt := loginTestRouter(t, local, ldap)
+	rt.Config = &config.Config{}
+	rt.Config.General.DefaultAuthBackend = "ldap"
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/login", nil)
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+	require.Equal(t, http.StatusOK, w.Code)
+
+	var body struct {
+		Data struct {
+			Backends []struct {
+				Name string `json:"name"`
+			} `json:"backends"`
+		} `json:"data"`
+	}
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &body))
+	require.NotEmpty(t, body.Data.Backends)
+	require.Equal(t, "ldap", body.Data.Backends[0].Name, "configured default_auth_backend must be listed first")
 }

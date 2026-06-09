@@ -19,6 +19,16 @@ import (
 	"github.com/snoozeweb/snooze/pkg/snoozetypes"
 )
 
+// backendInfo is one entry in the GET /api/v1/login backends list. kind is
+// "password" (local/ldap/anonymous — credential POST or one-click) or
+// "redirect" (OIDC/OAuth — handled by /start + /callback).
+type backendInfo struct {
+	Name        string `json:"name"`
+	Kind        string `json:"kind"`
+	DisplayName string `json:"display_name,omitempty"`
+	Icon        string `json:"icon,omitempty"`
+}
+
 // loginRequest is the JSON body accepted by /login/local and /login/ldap.
 type loginRequest struct {
 	Username string `json:"username"`
@@ -93,7 +103,7 @@ func (rt *Router) mountLogin(r chi.Router) {
 // backend (per general.default_auth_backend) is listed first when it survives.
 func (rt *Router) handleLoginIndex(w http.ResponseWriter, r *http.Request) {
 	if rt.Providers == nil {
-		WriteJSON(w, http.StatusOK, map[string]any{"data": map[string]any{"backends": []string{}}})
+		WriteJSON(w, http.StatusOK, map[string]any{"data": map[string]any{"backends": []backendInfo{}}})
 		return
 	}
 	all := rt.Providers.Names()
@@ -161,8 +171,22 @@ func (rt *Router) handleLoginIndex(w http.ResponseWriter, r *http.Request) {
 			sort.SliceStable(tenants, func(i, j int) bool { return tenants[i].DisplayName < tenants[j].DisplayName })
 		}
 	}
+	infos := make([]backendInfo, 0, len(names))
+	for _, n := range names {
+		p, err := rt.Providers.Get(n)
+		if err != nil {
+			continue
+		}
+		bi := backendInfo{Name: n, Kind: "password"}
+		if rp, ok := p.(auth.RedirectProvider); ok {
+			bi.Kind = "redirect"
+			bi.DisplayName = rp.DisplayName()
+			bi.Icon = rp.Icon()
+		}
+		infos = append(infos, bi)
+	}
 	WriteJSON(w, http.StatusOK, map[string]any{
-		"data": map[string]any{"backends": names, "tenants": tenants},
+		"data": map[string]any{"backends": infos, "tenants": tenants},
 	})
 }
 
