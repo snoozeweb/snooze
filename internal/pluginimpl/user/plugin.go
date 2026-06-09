@@ -273,6 +273,39 @@ func enabledPlatformAdminExists(ctx context.Context, drv db.Driver, exclude map[
 	return false, nil
 }
 
+// GuardDelete blocks deleting the last enabled platform_admin holder, including
+// the case where a bulk delete would remove every holder at once.
+func (p *Plugin) GuardDelete(ctx context.Context, uids []string) error {
+	if snoozetypes.IsPlatformScope(ctx) {
+		return nil
+	}
+	deleting := make(map[string]struct{}, len(uids))
+	for _, u := range uids {
+		deleting[u] = struct{}{}
+	}
+	survives, err := enabledPlatformAdminExists(ctx, p.host.DB(), deleting)
+	if err != nil {
+		return fmt.Errorf("user: platform-admin invariant check: %w", err)
+	}
+	if survives {
+		return nil
+	}
+	// No holder survives the batch: block iff the batch actually removes one.
+	for _, uid := range uids {
+		d, err := p.host.DB().GetOne(ctx, auth.LocalCollection, db.Document{"uid": uid})
+		if err != nil || d == nil {
+			continue
+		}
+		if en, ok := d["enabled"].(bool); ok && !en {
+			continue
+		}
+		if docHasPlatformAdmin(d) {
+			return errors.New("user: cannot delete the last platform admin")
+		}
+	}
+	return nil
+}
+
 // TransformWrite intercepts the `password` field on POST/PUT/PATCH bodies.
 //
 //   - An absent `password` is left as-is (PATCH partial updates rely on this).
