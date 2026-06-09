@@ -56,11 +56,7 @@ export function Login() {
   // 2. Exactly one listed tenant → use it implicitly.
   // 3. More than one listed tenant → use the picker value (orgSel).
   // 4. No tenants → empty string (server defaults to "default" tenant).
-  const org = lockedTenant
-    ? lockedTenant.id
-    : tenants.length === 1
-      ? tenants[0]!.id
-      : orgSel;
+  const org = lockedTenant ? lockedTenant.id : tenants.length === 1 ? tenants[0]!.id : orgSel;
 
   // Default-select the first advertised backend. Re-runs when the backend
   // list resolves; only sets when the previously-selected tab is no longer

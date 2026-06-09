@@ -138,14 +138,24 @@ describe("TenantEditor edit — listed toggle", () => {
   it("toggling Listed sends listed in the update body", async () => {
     mswServer.use(
       http.get("/api/v1/tenant/acme", () =>
-        HttpResponse.json({ id: "acme", display_name: "Acme Corp", status: "active", listed: true }),
+        HttpResponse.json({
+          id: "acme",
+          display_name: "Acme Corp",
+          status: "active",
+          listed: true,
+        }),
       ),
     );
     const bodies: unknown[] = [];
     mswServer.use(
       http.patch("/api/v1/tenant/acme", async ({ request }) => {
         bodies.push(await request.json());
-        return HttpResponse.json({ id: "acme", display_name: "Acme Corp", status: "active", listed: false });
+        return HttpResponse.json({
+          id: "acme",
+          display_name: "Acme Corp",
+          status: "active",
+          listed: false,
+        });
       }),
     );
     const onClose = vi.fn();
@@ -177,7 +187,12 @@ describe("TenantEditor edit — login link block", () => {
   it("shows the login link and a Rotate action when login_key is present", async () => {
     mswServer.use(
       http.get("/api/v1/tenant/acme", () =>
-        HttpResponse.json({ id: "acme", display_name: "Acme Corp", status: "active", login_key: "KEY-abc" }),
+        HttpResponse.json({
+          id: "acme",
+          display_name: "Acme Corp",
+          status: "active",
+          login_key: "KEY-abc",
+        }),
       ),
     );
     const Wrapper = wrap();
@@ -218,7 +233,12 @@ describe("TenantEditor edit — login link block", () => {
     let rotateCalls = 0;
     mswServer.use(
       http.get("/api/v1/tenant/acme", () =>
-        HttpResponse.json({ id: "acme", display_name: "Acme Corp", status: "active", login_key: "KEY-abc" }),
+        HttpResponse.json({
+          id: "acme",
+          display_name: "Acme Corp",
+          status: "active",
+          login_key: "KEY-abc",
+        }),
       ),
       http.post("/api/v1/tenant/acme/rotate-login-key", () => {
         rotateCalls++;

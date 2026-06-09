@@ -104,7 +104,9 @@ export const Tenants = {
     const qc = useQueryClient();
     return useMutation<{ id: string; login_key: string }, ApiError, string>({
       mutationFn: (id) =>
-        api<{ id: string; login_key: string }>("POST", `/tenant/${id}/rotate-login-key`, { body: {} }),
+        api<{ id: string; login_key: string }>("POST", `/tenant/${id}/rotate-login-key`, {
+          body: {},
+        }),
       onSuccess: (_d, id) => {
         void qc.invalidateQueries({ queryKey: QUERY_KEY_ALL });
         void qc.invalidateQueries({ queryKey: QUERY_KEY_ONE(id) });

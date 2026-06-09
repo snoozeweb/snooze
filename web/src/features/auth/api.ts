@@ -83,9 +83,13 @@ export type LoginConfig = { backends: LoginBackend[]; tenants: PublicTenant[] };
 // fetchLoginConfig fetches both the auth backends and the public tenant list
 // from GET /api/v1/login in a single call.
 export async function fetchLoginConfig(): Promise<LoginConfig> {
-  const r = await api<{ data?: { backends?: string[]; tenants?: PublicTenant[] } }>("GET", "/login", {
-    skipAuthHandling: true,
-  });
+  const r = await api<{ data?: { backends?: string[]; tenants?: PublicTenant[] } }>(
+    "GET",
+    "/login",
+    {
+      skipAuthHandling: true,
+    },
+  );
   const backends = (r.data?.backends ?? []).filter(
     (b): b is LoginBackend => b === "local" || b === "ldap" || b === "anonymous",
   );

@@ -146,146 +146,165 @@ export function TenantEditor({ id, onClose }: TenantEditorProps) {
   }
 
   const loginKey = existing.data?.login_key;
-  const loginLink = loginKey
-    ? `${window.location.origin}/web/login?key=${loginKey}`
-    : null;
+  const loginLink = loginKey ? `${window.location.origin}/web/login?key=${loginKey}` : null;
 
   const idInvalid = formState.isSubmitted && !currentId.trim();
   const displayNameInvalid = formState.isSubmitted && !watch("display_name").trim();
 
   return (
     <>
-    <AdminCredentialDialog
-      credential={revealed}
-      onClose={() => {
-        setRevealed(null);
-        onClose();
-      }}
-    />
-    <Dialog open={confirmRotate} onOpenChange={(o) => { if (!o) setConfirmRotate(false); }}>
-      <DialogContent>
-        <DialogTitle>Rotate login key?</DialogTitle>
-        <DialogBody>
-          This generates a new login link for{" "}
-          {existing.data?.display_name || id}. The previous link will stop working immediately.
-        </DialogBody>
-        <DialogFooter>
-          <Button
-            variant="secondary"
-            onClick={() => setConfirmRotate(false)}
-            disabled={rotating}
-          >
-            Cancel
-          </Button>
-          <Button
-            variant="primary"
-            disabled={rotating}
-            onClick={() => void handleRotateConfirmed()}
-          >
-            {rotating ? "Rotating…" : "Rotate login key"}
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
-    <Drawer
-      open
-      onOpenChange={(o) => {
-        if (!o) onClose();
-      }}
-    >
-      <DrawerContent>
-        <DrawerTitle>{isCreate ? "New tenant" : "Edit tenant"}</DrawerTitle>
-        <DrawerBody>
-          {!isCreate && existing.isPending ? (
-            <div style={{ display: "flex", justifyContent: "center", padding: "var(--space-5)" }}>
-              <Spinner size={20} />
-            </div>
-          ) : (
-            <form
-              id="tenant-form"
-              className={styles.stack}
-              onSubmit={(e) => void handleSubmit(onSubmit)(e)}
+      <AdminCredentialDialog
+        credential={revealed}
+        onClose={() => {
+          setRevealed(null);
+          onClose();
+        }}
+      />
+      <Dialog
+        open={confirmRotate}
+        onOpenChange={(o) => {
+          if (!o) setConfirmRotate(false);
+        }}
+      >
+        <DialogContent>
+          <DialogTitle>Rotate login key?</DialogTitle>
+          <DialogBody>
+            This generates a new login link for {existing.data?.display_name || id}. The previous
+            link will stop working immediately.
+          </DialogBody>
+          <DialogFooter>
+            <Button variant="secondary" onClick={() => setConfirmRotate(false)} disabled={rotating}>
+              Cancel
+            </Button>
+            <Button
+              variant="primary"
+              disabled={rotating}
+              onClick={() => void handleRotateConfirmed()}
             >
-              <section className={styles.section}>
-                <h3 className={styles.sectionTitle}>Identity</h3>
-                <div className={styles.field}>
-                  <label className={styles.label} htmlFor="tenant-id">
-                    Slug
-                  </label>
-                  <Input
-                    id="tenant-id"
-                    {...register("id")}
-                    invalid={idInvalid}
-                    placeholder="e.g. acme"
-                    disabled={!isCreate}
-                  />
-                </div>
-                <div className={styles.field}>
-                  <label className={styles.label} htmlFor="tenant-display-name">
-                    Display Name
-                  </label>
-                  <Input
-                    id="tenant-display-name"
-                    {...register("display_name")}
-                    invalid={displayNameInvalid}
-                    placeholder="e.g. Acme Corp"
-                  />
-                </div>
-                <div className={styles.field}>
-                  <span className={styles.label} id="tenant-status-label">
-                    Status
-                  </span>
-                  <Select
-                    value={watch("status")}
-                    onValueChange={(v) =>
-                      setValue("status", v as "active" | "suspended", { shouldDirty: true })
-                    }
-                  >
-                    <SelectTrigger />
-                    <SelectContent>
-                      <SelectItem value="active">Active</SelectItem>
-                      <SelectItem value="suspended">Suspended</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className={styles.field} style={{ flexDirection: "row", alignItems: "center", gap: "var(--space-2)" }}>
-                  <Checkbox
-                    id="tenant-listed"
-                    checked={watch("listed")}
-                    onCheckedChange={(v) =>
-                      setValue("listed", v === true, { shouldDirty: true })
-                    }
-                    aria-label="Listed"
-                  />
-                  <label className={styles.label} htmlFor="tenant-listed">
-                    Listed
-                  </label>
-                </div>
-              </section>
-              {!isCreate ? (
+              {rotating ? "Rotating…" : "Rotate login key"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+      <Drawer
+        open
+        onOpenChange={(o) => {
+          if (!o) onClose();
+        }}
+      >
+        <DrawerContent>
+          <DrawerTitle>{isCreate ? "New tenant" : "Edit tenant"}</DrawerTitle>
+          <DrawerBody>
+            {!isCreate && existing.isPending ? (
+              <div style={{ display: "flex", justifyContent: "center", padding: "var(--space-5)" }}>
+                <Spinner size={20} />
+              </div>
+            ) : (
+              <form
+                id="tenant-form"
+                className={styles.stack}
+                onSubmit={(e) => void handleSubmit(onSubmit)(e)}
+              >
                 <section className={styles.section}>
-                  <h3 className={styles.sectionTitle}>Login link</h3>
-                  {loginLink ? (
-                    <>
-                      <div className={styles.field}>
-                        <span className={styles.label}>Shareable link</span>
-                        <div style={{ display: "flex", gap: "var(--space-2)", alignItems: "center" }}>
-                          <Input
-                            readOnly
-                            value={loginLink}
-                            aria-label="Login link"
-                            style={{ flex: 1, fontFamily: "monospace", fontSize: "var(--font-size-sm)" }}
-                          />
+                  <h3 className={styles.sectionTitle}>Identity</h3>
+                  <div className={styles.field}>
+                    <label className={styles.label} htmlFor="tenant-id">
+                      Slug
+                    </label>
+                    <Input
+                      id="tenant-id"
+                      {...register("id")}
+                      invalid={idInvalid}
+                      placeholder="e.g. acme"
+                      disabled={!isCreate}
+                    />
+                  </div>
+                  <div className={styles.field}>
+                    <label className={styles.label} htmlFor="tenant-display-name">
+                      Display Name
+                    </label>
+                    <Input
+                      id="tenant-display-name"
+                      {...register("display_name")}
+                      invalid={displayNameInvalid}
+                      placeholder="e.g. Acme Corp"
+                    />
+                  </div>
+                  <div className={styles.field}>
+                    <span className={styles.label} id="tenant-status-label">
+                      Status
+                    </span>
+                    <Select
+                      value={watch("status")}
+                      onValueChange={(v) =>
+                        setValue("status", v as "active" | "suspended", { shouldDirty: true })
+                      }
+                    >
+                      <SelectTrigger />
+                      <SelectContent>
+                        <SelectItem value="active">Active</SelectItem>
+                        <SelectItem value="suspended">Suspended</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div
+                    className={styles.field}
+                    style={{ flexDirection: "row", alignItems: "center", gap: "var(--space-2)" }}
+                  >
+                    <Checkbox
+                      id="tenant-listed"
+                      checked={watch("listed")}
+                      onCheckedChange={(v) => setValue("listed", v === true, { shouldDirty: true })}
+                      aria-label="Listed"
+                    />
+                    <label className={styles.label} htmlFor="tenant-listed">
+                      Listed
+                    </label>
+                  </div>
+                </section>
+                {!isCreate ? (
+                  <section className={styles.section}>
+                    <h3 className={styles.sectionTitle}>Login link</h3>
+                    {loginLink ? (
+                      <>
+                        <div className={styles.field}>
+                          <span className={styles.label}>Shareable link</span>
+                          <div
+                            style={{ display: "flex", gap: "var(--space-2)", alignItems: "center" }}
+                          >
+                            <Input
+                              readOnly
+                              value={loginLink}
+                              aria-label="Login link"
+                              style={{
+                                flex: 1,
+                                fontFamily: "monospace",
+                                fontSize: "var(--font-size-sm)",
+                              }}
+                            />
+                            <Button
+                              type="button"
+                              size="sm"
+                              variant="ghost"
+                              onClick={() => void navigator.clipboard?.writeText(loginLink)}
+                            >
+                              Copy
+                            </Button>
+                          </div>
+                        </div>
+                        <div>
                           <Button
                             type="button"
                             size="sm"
-                            variant="ghost"
-                            onClick={() => void navigator.clipboard?.writeText(loginLink)}
+                            variant="secondary"
+                            onClick={() => setConfirmRotate(true)}
+                            disabled={rotating}
                           >
-                            Copy
+                            Rotate
                           </Button>
                         </div>
-                      </div>
+                      </>
+                    ) : (
                       <div>
                         <Button
                           type="button"
@@ -294,90 +313,77 @@ export function TenantEditor({ id, onClose }: TenantEditorProps) {
                           onClick={() => setConfirmRotate(true)}
                           disabled={rotating}
                         >
-                          Rotate
+                          Generate login link
                         </Button>
                       </div>
-                    </>
-                  ) : (
-                    <div>
-                      <Button
-                        type="button"
-                        size="sm"
-                        variant="secondary"
-                        onClick={() => setConfirmRotate(true)}
-                        disabled={rotating}
-                      >
-                        Generate login link
-                      </Button>
-                    </div>
-                  )}
-                </section>
-              ) : null}
-              {isCreate ? (
-                <section className={styles.section}>
-                  <h3 className={styles.sectionTitle}>Admin provisioning</h3>
-                  <div className={styles.field}>
-                    <Checkbox
-                      id="tenant-create-admin"
-                      checked={watch("create_admin")}
-                      onCheckedChange={(v) =>
-                        setValue("create_admin", v === true, { shouldDirty: true })
-                      }
-                      aria-label="Create admin user"
-                    />
-                    <label className={styles.label} htmlFor="tenant-create-admin">
-                      Create admin user
-                    </label>
-                  </div>
-                  {watch("create_admin") ? (
+                    )}
+                  </section>
+                ) : null}
+                {isCreate ? (
+                  <section className={styles.section}>
+                    <h3 className={styles.sectionTitle}>Admin provisioning</h3>
                     <div className={styles.field}>
-                      <label className={styles.label} htmlFor="tenant-admin-username">
-                        Admin username
-                      </label>
-                      <Input
-                        id="tenant-admin-username"
-                        {...register("admin_username")}
-                        aria-label="Admin username"
-                        placeholder="admin"
+                      <Checkbox
+                        id="tenant-create-admin"
+                        checked={watch("create_admin")}
+                        onCheckedChange={(v) =>
+                          setValue("create_admin", v === true, { shouldDirty: true })
+                        }
+                        aria-label="Create admin user"
                       />
+                      <label className={styles.label} htmlFor="tenant-create-admin">
+                        Create admin user
+                      </label>
                     </div>
-                  ) : null}
-                </section>
-              ) : null}
-              {!isCreate ? (
-                <div className={styles.dangerZone}>
-                  <Button
-                    type="button"
-                    variant="danger"
-                    leadingIcon="trash"
-                    size="sm"
-                    onClick={() => void handleDelete()}
-                    loading={deleting}
-                    disabled={isDefault || deleting}
-                  >
-                    Delete tenant
-                  </Button>
-                </div>
-              ) : null}
-            </form>
-          )}
-        </DrawerBody>
-        <DrawerFooter>
-          <Button variant="ghost" onClick={onClose}>
-            Cancel
-          </Button>
-          <Button
-            type="submit"
-            form="tenant-form"
-            variant="primary"
-            loading={submitting}
-            disabled={submitting}
-          >
-            {isCreate ? "Create" : "Save"}
-          </Button>
-        </DrawerFooter>
-      </DrawerContent>
-    </Drawer>
+                    {watch("create_admin") ? (
+                      <div className={styles.field}>
+                        <label className={styles.label} htmlFor="tenant-admin-username">
+                          Admin username
+                        </label>
+                        <Input
+                          id="tenant-admin-username"
+                          {...register("admin_username")}
+                          aria-label="Admin username"
+                          placeholder="admin"
+                        />
+                      </div>
+                    ) : null}
+                  </section>
+                ) : null}
+                {!isCreate ? (
+                  <div className={styles.dangerZone}>
+                    <Button
+                      type="button"
+                      variant="danger"
+                      leadingIcon="trash"
+                      size="sm"
+                      onClick={() => void handleDelete()}
+                      loading={deleting}
+                      disabled={isDefault || deleting}
+                    >
+                      Delete tenant
+                    </Button>
+                  </div>
+                ) : null}
+              </form>
+            )}
+          </DrawerBody>
+          <DrawerFooter>
+            <Button variant="ghost" onClick={onClose}>
+              Cancel
+            </Button>
+            <Button
+              type="submit"
+              form="tenant-form"
+              variant="primary"
+              loading={submitting}
+              disabled={submitting}
+            >
+              {isCreate ? "Create" : "Save"}
+            </Button>
+          </DrawerFooter>
+        </DrawerContent>
+      </Drawer>
     </>
   );
 }

@@ -1,7 +1,15 @@
 import { describe, expect, it } from "vitest";
 import { http, HttpResponse } from "msw";
 import { mswServer } from "@/tests/msw/server";
-import { fetchLoginConfig, loginAnonymous, loginLdap, loginLocal, postLogout, postRefresh, resolveTenantByKey } from "./api";
+import {
+  fetchLoginConfig,
+  loginAnonymous,
+  loginLdap,
+  loginLocal,
+  postLogout,
+  postRefresh,
+  resolveTenantByKey,
+} from "./api";
 
 function makeStubToken(sub: string): string {
   const header = btoa(JSON.stringify({ alg: "HS256", typ: "JWT" }));
@@ -126,9 +134,7 @@ describe("auth api tenant discovery", () => {
   });
 
   it("resolveTenantByKey returns null on error (no leak)", async () => {
-    mswServer.use(
-      http.get("/api/v1/login/tenant", () => new HttpResponse(null, { status: 404 })),
-    );
+    mswServer.use(http.get("/api/v1/login/tenant", () => new HttpResponse(null, { status: 404 })));
     expect(await resolveTenantByKey("BAD")).toBeNull();
   });
 });
