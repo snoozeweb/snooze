@@ -2,12 +2,16 @@ package api
 
 import (
 	"context"
+	"crypto/subtle"
 	"errors"
 	"net/http"
+	"net/url"
 	"sort"
+	"strings"
 	"time"
 
 	"github.com/go-chi/chi/v5"
+	"golang.org/x/oauth2"
 
 	"github.com/snoozeweb/snooze/internal/auth"
 	"github.com/snoozeweb/snooze/internal/condition"
@@ -66,6 +70,20 @@ func (rt *Router) mountLogin(r chi.Router) {
 		sub.Post("/anonymous", rt.handleLoginAnonymous)
 		sub.Post("/refresh", rt.handleRefresh)
 		sub.Post("/logout", rt.handleLogout)
+
+		// Redirect (OIDC/OAuth) providers get a /start + /callback pair each.
+		if rt.Providers != nil {
+			for _, name := range rt.Providers.Names() {
+				p, err := rt.Providers.Get(name)
+				if err != nil {
+					continue
+				}
+				if rp, ok := p.(auth.RedirectProvider); ok {
+					sub.Get("/"+name+"/start", rt.handleOIDCStart(rp))
+					sub.Get("/"+name+"/callback", rt.handleOIDCCallback(rp))
+				}
+			}
+		}
 	})
 }
 
@@ -475,4 +493,155 @@ func (rt *Router) handleLoginResolveTenant(w http.ResponseWriter, r *http.Reques
 	WriteJSON(w, http.StatusOK, map[string]any{
 		"data": map[string]any{"id": id, "display_name": dn},
 	})
+}
+
+// oidcStateKey derives the HMAC key for the OIDC state cookie from the JWT
+// signing secret (stable per deploy, shared across cluster nodes).
+func (rt *Router) oidcStateKey() ([]byte, error) {
+	if rt.Auth == nil {
+		return nil, errors.New("oidc: token engine not configured")
+	}
+	return rt.Auth.DeriveKey(oidcStateLabel), nil
+}
+
+// secureCookies reports whether the Secure cookie flag should be set: true when
+// the request arrived over TLS directly (r.TLS), via a TLS-terminating proxy
+// that set X-Forwarded-Proto: https, or when the server terminates TLS itself
+// (core.ssl.enabled). The OIDC state cookie carries a PKCE verifier + nonce, so
+// it must be Secure whenever the browser reached us over https.
+func (rt *Router) secureCookies(r *http.Request) bool {
+	if r.TLS != nil {
+		return true
+	}
+	if strings.EqualFold(r.Header.Get("X-Forwarded-Proto"), "https") {
+		return true
+	}
+	return rt.Config != nil && rt.Config.Core.SSL.Enabled
+}
+
+// redirectLoginError sends the browser back to the SPA login page with a
+// user-safe error message. Never leaks provider internals.
+func redirectLoginError(w http.ResponseWriter, r *http.Request, msg string) {
+	http.Redirect(w, r, "/web/login?sso_error="+url.QueryEscape(msg), http.StatusFound)
+}
+
+// handleOIDCStart begins the auth-code flow: generate state/nonce/PKCE, store
+// them in a signed cookie, and redirect to the IdP authorize endpoint.
+func (rt *Router) handleOIDCStart(rp auth.RedirectProvider) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		key, err := rt.oidcStateKey()
+		if err != nil {
+			redirectLoginError(w, r, "single sign-on is not configured")
+			return
+		}
+		state, err1 := randURLToken(24)
+		nonce, err2 := randURLToken(24)
+		verifier := oauth2.GenerateVerifier()
+		if err1 != nil || err2 != nil {
+			redirectLoginError(w, r, "could not start sign-in")
+			return
+		}
+		st := oidcState{
+			State:    state,
+			Nonce:    nonce,
+			Verifier: verifier,
+			ReturnTo: r.URL.Query().Get("return_to"),
+			Org:      r.URL.Query().Get("org"),
+			Exp:      time.Now().Add(10 * time.Minute).Unix(),
+		}
+		cookieVal := encodeOIDCState(key, st)
+		if cookieVal == "" {
+			redirectLoginError(w, r, "could not start sign-in")
+			return
+		}
+		http.SetCookie(w, &http.Cookie{
+			Name:     oidcStateCookie,
+			Value:    cookieVal,
+			Path:     "/api/v1/login",
+			MaxAge:   600,
+			HttpOnly: true,
+			Secure:   rt.secureCookies(r),
+			SameSite: http.SameSiteLaxMode,
+		})
+		authURL, err := rp.AuthCodeURL(r.Context(), state, nonce, verifier)
+		if err != nil {
+			redirectLoginError(w, r, "single sign-on is unavailable")
+			return
+		}
+		http.Redirect(w, r, authURL, http.StatusFound)
+	}
+}
+
+// handleOIDCCallback completes the auth-code flow: validate state, exchange the
+// code, verify the ID token, mint a Snooze session, and redirect to the SPA
+// callback with the token in the URL fragment.
+func (rt *Router) handleOIDCCallback(rp auth.RedirectProvider) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		// Always clear the state cookie.
+		http.SetCookie(w, &http.Cookie{
+			Name: oidcStateCookie, Value: "", Path: "/api/v1/login", MaxAge: -1,
+			HttpOnly: true, Secure: rt.secureCookies(r), SameSite: http.SameSiteLaxMode,
+		})
+		if e := r.URL.Query().Get("error"); e != "" {
+			redirectLoginError(w, r, "sign-in was cancelled or failed")
+			return
+		}
+		key, err := rt.oidcStateKey()
+		if err != nil {
+			redirectLoginError(w, r, "single sign-on is not configured")
+			return
+		}
+		c, err := r.Cookie(oidcStateCookie)
+		if err != nil {
+			redirectLoginError(w, r, "your sign-in session expired, please try again")
+			return
+		}
+		st, err := decodeOIDCState(key, c.Value)
+		if err != nil {
+			redirectLoginError(w, r, "invalid sign-in session, please try again")
+			return
+		}
+		if subtle.ConstantTimeCompare([]byte(st.State), []byte(r.URL.Query().Get("state"))) != 1 {
+			redirectLoginError(w, r, "sign-in could not be verified, please try again")
+			return
+		}
+		code := r.URL.Query().Get("code")
+		if code == "" {
+			redirectLoginError(w, r, "sign-in failed")
+			return
+		}
+		org := st.Org
+		if org == "" {
+			org = snoozetypes.DefaultTenant
+		}
+		authCtx := auth.WithTenant(r.Context(), org)
+		id, err := rp.ExchangeAndVerify(authCtx, code, st.Nonce, st.Verifier)
+		if err != nil {
+			redirectLoginError(w, r, "sign-in failed")
+			return
+		}
+		if err := rt.checkTenantStatus(r.Context(), org); err != nil {
+			redirectLoginError(w, r, "your organization is not allowed to sign in")
+			return
+		}
+		if id.TenantID == "" {
+			id.TenantID = org
+		}
+		resp, err := rt.signSession(authCtx, id)
+		if err != nil {
+			redirectLoginError(w, r, "sign-in failed")
+			return
+		}
+		rt.updateLastLogin(authCtx, id)
+
+		frag := url.Values{}
+		frag.Set("token", resp.Token)
+		if resp.RefreshToken != "" {
+			frag.Set("refresh_token", resp.RefreshToken)
+		}
+		if st.ReturnTo != "" {
+			frag.Set("return_to", st.ReturnTo)
+		}
+		http.Redirect(w, r, "/web/login/callback#"+frag.Encode(), http.StatusFound)
+	}
 }
