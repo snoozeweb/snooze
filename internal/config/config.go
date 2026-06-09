@@ -21,6 +21,7 @@ type Config struct {
 	Auth         schema.Auth         `koanf:"auth"`
 	Syncer       schema.Syncer       `koanf:"syncer"`
 	Ingest       schema.Ingest       `koanf:"ingest"`
+	OIDC         schema.OIDC         `koanf:"oidc"`
 }
 
 // Default returns a Config populated with the canonical default values for
@@ -37,6 +38,7 @@ func Default() *Config {
 		Auth:         schema.DefaultAuth(),
 		Syncer:       schema.DefaultSyncer(),
 		Ingest:       schema.DefaultIngest(),
+		OIDC:         schema.DefaultOIDC(),
 	}
 }
 

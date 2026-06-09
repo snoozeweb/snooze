@@ -42,6 +42,37 @@ func validate(c *Config) error {
 	if err := validateLDAP(&c.LDAP); err != nil {
 		return fmt.Errorf("config: ldap: %w", err)
 	}
+	if err := validateOIDC(&c.OIDC); err != nil {
+		return fmt.Errorf("config: oidc: %w", err)
+	}
+	return nil
+}
+
+// validateOIDC enforces that, when OIDC is enabled, the discovery + client
+// settings are present and the issuer is an https URL.
+func validateOIDC(o *schema.OIDC) error {
+	if !o.Enabled {
+		return nil
+	}
+	var missing []string
+	if o.Issuer == "" {
+		missing = append(missing, "issuer")
+	}
+	if o.ClientID == "" {
+		missing = append(missing, "client_id")
+	}
+	if o.ClientSecret == "" {
+		missing = append(missing, "client_secret")
+	}
+	if o.RedirectURL == "" {
+		missing = append(missing, "redirect_url")
+	}
+	if len(missing) > 0 {
+		return fmt.Errorf("missing required fields when enabled: %s", strings.Join(missing, ", "))
+	}
+	if !strings.HasPrefix(o.Issuer, "https://") {
+		return fmt.Errorf("issuer must be an https URL, got %q", o.Issuer)
+	}
 	return nil
 }
 

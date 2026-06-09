@@ -32,6 +32,7 @@ var sectionFiles = map[string]string{
 	"web":           "web",
 	"auth":          "auth",
 	"syncer":        "syncer",
+	"oidc":          "oidc",
 }
 
 // Load reads every known section YAML file under basedir, layers environment
@@ -237,7 +238,8 @@ func isListField(path string) bool {
 		"core.process_plugins",
 		"core.enabled_optional_plugins",
 		"core.backup.excludes",
-		"general.ok_severities":
+		"general.ok_severities",
+		"oidc.scopes":
 		return true
 	}
 	return false
@@ -323,6 +325,16 @@ func defaultsYAML() ([]byte, error) {
 		"syncer": map[string]any{
 			"hostname":      d.Syncer.Hostname,
 			"sync_interval": d.Syncer.SyncInterval.String(),
+		},
+		"oidc": map[string]any{
+			"enabled":          d.OIDC.Enabled,
+			"scopes":           d.OIDC.Scopes,
+			"method":           d.OIDC.Method,
+			"display_name":     d.OIDC.DisplayName,
+			"icon":             d.OIDC.Icon,
+			"roles_claim":      d.OIDC.RolesClaim,
+			"groups_claim":     d.OIDC.GroupsClaim,
+			"admin_role_value": d.OIDC.AdminRoleValue,
 		},
 	}
 	return yamlv3.Marshal(m)
