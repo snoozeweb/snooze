@@ -2,7 +2,7 @@
 //   - Inline composer for users with the can_comment permission.
 //   - Per-type colored badge matching the legacy Vue palette:
 //       comment → info (blue)   ack     → ok       (green)
-//       esc     → warning (yel) close   → muted    (gray)
+//       esc     → warning (yel) close   → closed   (muted purple)
 //       open    → neutral       shelve  → muted    unshelve → neutral
 //   - Edit + delete affordances on the user's own comments, or for any
 //     comment if the user holds rw_record / rw_all.
@@ -38,7 +38,7 @@ const TYPE_VARIANT: Record<Comment["type"], BadgeVariant> = {
   comment: "info", // blue
   ack: "ok", // green
   esc: "warning", // yellow
-  close: "muted", // gray
+  close: "closed", // purple (muted)
   open: "neutral", // gray/blue
   shelve: "muted",
   unshelve: "neutral",

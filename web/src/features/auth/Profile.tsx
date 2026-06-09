@@ -7,6 +7,7 @@ import { EmptyState } from "@/shared/ui/EmptyState";
 import { Input } from "@/shared/ui/Input";
 import { toast } from "@/shared/ui/toast/useToast";
 import { ApiError } from "@/lib/api/client";
+import { permissionBadgeVariant } from "@/lib/format/permission-color";
 import { secondsUntilExpiry } from "@/lib/auth/jwt";
 import { useAuth } from "@/lib/auth/store";
 import { changeOwnPassword } from "./api";
@@ -157,7 +158,7 @@ export function Profile() {
                 <Badge variant="muted">none</Badge>
               ) : (
                 perms.map((p) => (
-                  <Badge key={p} variant="info">
+                  <Badge key={p} variant={permissionBadgeVariant(p)}>
                     {p}
                   </Badge>
                 ))

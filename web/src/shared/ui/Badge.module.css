@@ -45,3 +45,18 @@
   color: var(--severity-ok);
   border: 1px solid var(--severity-ok);
 }
+/* closed: a low-emphasis "resolved" chip — purple text on the quiet muted
+   surface (elevated bg + muted border), so it reads as muted-purple rather
+   than a loud filled pill. */
+.closed {
+  background: var(--bg-elevated);
+  color: var(--state-closed);
+  border: 1px solid var(--border-muted);
+}
+/* platform: the reserved platform_admin role — a distinct violet, set apart
+   from the red `admin`/`critical` badges. */
+.platform {
+  background: rgb(192 132 252 / 0.15);
+  color: var(--role-platform);
+  border: 1px solid var(--role-platform);
+}

@@ -46,8 +46,13 @@
 
   /* Alert lifecycle states */
   --state-ack: #8957e5;
+  --state-closed: #8957e5;
   --state-snooze: #6b7785;
   --state-shelve: #4a6fa5;
+
+  /* Reserved-role accent — platform_admin (the platform super-role). A
+     distinct violet, set apart from the red `admin` badge. */
+  --role-platform: #c084fc;
 
   /* Focus ring */
   --focus-ring: #4f8cff;

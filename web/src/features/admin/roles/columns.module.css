@@ -1,0 +1,5 @@
+/* platform_admin name in the roles table — the reserved super-role accent. */
+.platformName {
+  color: var(--role-platform);
+  font-weight: var(--weight-medium);
+}

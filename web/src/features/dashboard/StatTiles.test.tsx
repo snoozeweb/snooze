@@ -46,3 +46,16 @@ it("gives each tile a semantic icon and a left accent color", () => {
   // Each tile carries its accent as a CSS custom property driving the bar + icon.
   expect(container.querySelectorAll('[style*="--tile-accent"]')).toHaveLength(6);
 });
+
+it("inverts the ack/closed accents — ack is green, closed is purple", () => {
+  render(
+    <StatTiles
+      snapshot={{ by_state: {}, total_hits: 1284, open: 312, ack: 97, closed: 875 }}
+      totals={totals}
+    />,
+  );
+  const ackTile = screen.getByText("Ack").closest("div[style]");
+  const closedTile = screen.getByText("Closed").closest("div[style]");
+  expect(ackTile?.getAttribute("style")).toContain("var(--severity-ok)");
+  expect(closedTile?.getAttribute("style")).toContain("var(--state-closed)");
+});

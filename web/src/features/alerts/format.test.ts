@@ -57,7 +57,8 @@ describe("stateLabel + stateBadgeVariant", () => {
   it("ack/esc/close/shelved map to appropriate variants", () => {
     expect(stateBadgeVariant("ack")).toBe("info");
     expect(stateBadgeVariant("esc")).toBe("warning");
-    expect(stateBadgeVariant("close")).toBe("muted");
+    // close → the muted-purple "closed" variant; shelved stays muted gray.
+    expect(stateBadgeVariant("close")).toBe("closed");
     expect(stateBadgeVariant("shelved")).toBe("muted");
   });
 });

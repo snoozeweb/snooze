@@ -101,6 +101,16 @@
   of the last page. The pager gained **« first page** and **» last page** jump
   buttons alongside the existing previous/next controls.
 
+- **Web UI colour consistency.** The Profile page now colours permissions with
+  the same code as the Roles table (read-write `rw_*` amber vs read-only `ro_*`
+  blue, instead of a flat blue list). Alert-page severity badges use the
+  dashboard's gradated per-severity palette so each severity renders as its own
+  shade. The dashboard "Ack" and "Closed" stat-tile accents are swapped (Ack
+  green, Closed purple), and the "closed" lifecycle now renders as a muted
+  purple badge in the recent-activity feed, the alert state column, and the
+  comment timeline. The reserved `platform_admin` role gets a distinct violet
+  accent in the roles and users tables.
+
 ### Fixed
 
 - **Tenants nav item (web UI)** is now gated by the same rule the backend

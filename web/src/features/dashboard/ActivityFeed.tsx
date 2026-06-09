@@ -20,7 +20,7 @@ const TYPE_VARIANT: Record<Comment["type"], BadgeVariant> = {
   comment: "info",
   ack: "ok",
   esc: "warning",
-  close: "muted",
+  close: "closed", // purple (muted)
   open: "neutral",
   shelve: "muted",
   unshelve: "neutral",

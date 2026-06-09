@@ -14,8 +14,13 @@ export function StatTiles({ snapshot, totals }: { snapshot: StatsSnapshot; total
   const tiles: Tile[] = [
     { label: "Total", value: snapshot.total_hits, icon: "layers", accent: "var(--accent)" },
     { label: "Open", value: snapshot.open, icon: "bell", accent: "var(--severity-warning)" },
-    { label: "Ack", value: snapshot.ack, icon: "check", accent: "var(--state-ack)" },
-    { label: "Closed", value: snapshot.closed, icon: "check-circle", accent: "var(--severity-ok)" },
+    { label: "Ack", value: snapshot.ack, icon: "check", accent: "var(--severity-ok)" },
+    {
+      label: "Closed",
+      value: snapshot.closed,
+      icon: "check-circle",
+      accent: "var(--state-closed)",
+    },
     {
       label: "Throttled",
       value: sum(totals.by_throttled),

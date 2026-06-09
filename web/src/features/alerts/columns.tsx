@@ -1,7 +1,8 @@
 import type { ColumnDef } from "@/shared/ui/DataTable";
 import { Badge } from "@/shared/ui/Badge";
 import { Code } from "@/shared/ui/Code";
-import { formatTTL, severityBadgeVariant, stateBadgeVariant, stateLabel, trimDate } from "./format";
+import { severityColor } from "@/lib/format/severity-color";
+import { formatTTL, stateBadgeVariant, stateLabel, trimDate } from "./format";
 import type { AlertState, Record_ } from "./types";
 
 // Records carry a `duplicates` counter (int64) bumped by the aggregate-rule
@@ -27,10 +28,11 @@ export const alertColumns: ColumnDef<Record_>[] = [
   },
   {
     id: "severity",
+    // Gradated per-severity tint from the dashboard palette (severityColor),
+    // so e.g. emerg/crit/alert render as distinct red shades — matching the
+    // dashboard's "By severity" chart instead of the flat variant buckets.
     header: "Sev",
-    cell: (r) => (
-      <Badge variant={severityBadgeVariant(r.severity ?? "")}>{r.severity ?? "—"}</Badge>
-    ),
+    cell: (r) => <Badge color={severityColor(r.severity ?? "")}>{r.severity ?? "—"}</Badge>,
     sortable: true,
     width: "100px",
   },

@@ -41,8 +41,12 @@
 
   /* Alert lifecycle states */
   --state-ack: #6639ba;
+  --state-closed: #6639ba;
   --state-snooze: #57606a;
   --state-shelve: #2a5687;
+
+  /* Reserved-role accent — platform_admin. Deeper violet for AA on white. */
+  --role-platform: #7c3aed;
 
   /* Focus ring */
   --focus-ring: #0969da;

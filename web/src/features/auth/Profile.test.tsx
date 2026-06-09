@@ -81,6 +81,16 @@ describe("Profile", () => {
     expect(screen.getByText("ro_record")).toBeInTheDocument();
   });
 
+  it("colours rw_ and ro_ permissions with the same (distinct) code as the roles table", () => {
+    loginWith(["rw_rule", "ro_record"]);
+    setup();
+    // rw_* (warning) must not share a class with ro_* (info) — the Profile
+    // page now reuses permissionBadgeVariant instead of a flat blue badge.
+    const rw = screen.getByText("rw_rule").className;
+    const ro = screen.getByText("ro_record").className;
+    expect(rw).not.toBe(ro);
+  });
+
   it("Logout clears the store and routes to /web/login", async () => {
     loginWith(["rw_rule"]);
     const user = userEvent.setup();

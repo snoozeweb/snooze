@@ -1,27 +1,20 @@
-import { isPlatformPermission } from "@/lib/auth/permissions";
+import { permissionBadgeVariant } from "@/lib/format/permission-color";
+import { isPlatformRole } from "@/lib/format/role-color";
 import type { ColumnDef } from "@/shared/ui/DataTable";
-import { Badge, type BadgeVariant } from "@/shared/ui/Badge";
+import { Badge } from "@/shared/ui/Badge";
 import { Code } from "@/shared/ui/Code";
 import type { Role } from "./types";
-
-// Hint at what the permission grants. rw_* (full read+write) → critical,
-// ro_* → info, audit/admin-only → warning, deny_* → muted.
-// Platform-tier permissions (ro_tenant / rw_tenant) → "warning" to signal
-// they operate above the tenant boundary and should be granted with care.
-function permissionVariant(p: string): BadgeVariant {
-  if (isPlatformPermission(p)) return "warning";
-  if (p === "rw_all" || p.startsWith("admin_")) return "critical";
-  if (p.startsWith("rw_") || p.startsWith("can_")) return "warning";
-  if (p.startsWith("ro_")) return "info";
-  if (p.startsWith("deny_") || p === "anonymous") return "muted";
-  return "neutral";
-}
+import styles from "./columns.module.css";
 
 export const roleColumns: ColumnDef<Role>[] = [
   {
     id: "name",
     header: "Name",
-    cell: (r) => <Code>{r.name}</Code>,
+    // The reserved platform_admin super-role gets the violet --role-platform
+    // accent so it stands out from ordinary roles in the list.
+    cell: (r) => (
+      <Code {...(isPlatformRole(r.name) ? { className: styles.platformName } : {})}>{r.name}</Code>
+    ),
     sortable: true,
     width: "200px",
   },
@@ -34,7 +27,7 @@ export const roleColumns: ColumnDef<Role>[] = [
       return (
         <span style={{ display: "inline-flex", gap: "var(--space-1)", flexWrap: "wrap" }}>
           {perms.map((p) => (
-            <Badge key={p} variant={permissionVariant(p)}>
+            <Badge key={p} variant={permissionBadgeVariant(p)}>
               {p}
             </Badge>
           ))}
