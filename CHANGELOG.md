@@ -110,6 +110,21 @@
   `rw_all` wildcard and ignored tenant origin, so `rw_all` admins and
   non-default-tenant users saw a Tenants menu whose API calls returned 403.
 
+### Security
+
+- **Platform-admin integrity (hardening).** Granting or removing the
+  `platform_admin` role now requires a *literal* `rw_tenant` permission (the
+  `rw_all` wildcard no longer suffices); the reserved permissions
+  `rw_tenant`/`ro_tenant` are confined to the seeded `platform_admin` role,
+  which is now API-immutable — it cannot be created, edited (including its
+  group mappings), or deleted through the API; and the server refuses to
+  remove, disable, or delete the last enabled platform admin. Together these
+  close a path by which a default-tenant `rw_all` admin could escalate to
+  platform admin (directly, or indirectly by group-mapping users into the
+  `platform_admin` role) or lock the tenant registry out. Boot logs a warning
+  about any pre-existing role that carries reserved permissions outside
+  `platform_admin`.
+
 ## v2.1.0
 
 ### Fixed
