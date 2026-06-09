@@ -15,6 +15,8 @@ import (
 	"golang.org/x/crypto/bcrypt"
 
 	"github.com/snoozeweb/snooze/internal/auth"
+	"github.com/snoozeweb/snooze/internal/condition"
+	"github.com/snoozeweb/snooze/internal/db"
 	"github.com/snoozeweb/snooze/internal/plugins"
 	"github.com/snoozeweb/snooze/pkg/snoozetypes"
 )
@@ -131,6 +133,144 @@ func stringSlice(v any) []string {
 	default:
 		return nil
 	}
+}
+
+// GuardWrite enforces platform-admin integrity on user writes (C5, hardened),
+// running with the trusted request context before the DB write. Granting or
+// removing the platform_admin role requires the caller to hold a *literal*
+// rw_tenant permission (rw_all does NOT count); a caller may never strip
+// platform_admin from their own account; and the system must always retain at
+// least one enabled platform_admin holder.
+func (p *Plugin) GuardWrite(ctx context.Context, uid string, doc map[string]any) error {
+	if snoozetypes.IsPlatformScope(ctx) {
+		return nil
+	}
+	var prior map[string]any
+	if uid != "" {
+		if d, err := p.host.DB().GetOne(ctx, auth.LocalCollection, db.Document{"uid": uid}); err == nil && d != nil {
+			prior = d
+		}
+	}
+
+	priorAdmin := docHasPlatformAdmin(prior)
+	newAdmin := newHasPlatformAdmin(doc, prior)
+	claims, _ := auth.ClaimsFrom(ctx)
+
+	if newAdmin != priorAdmin {
+		if !auth.HasLiteralPermission(claims, auth.PermWriteTenant) {
+			return fmt.Errorf("user: assigning or removing the %q role requires the %q permission",
+				auth.PlatformAdminRole, auth.PermWriteTenant)
+		}
+		if !newAdmin { // removal
+			if isSelf(claims, prior) {
+				return fmt.Errorf("user: cannot remove the %q role from your own account", auth.PlatformAdminRole)
+			}
+			if other, err := enabledPlatformAdminExists(ctx, p.host.DB(), map[string]struct{}{uid: {}}); err != nil {
+				return fmt.Errorf("user: platform-admin invariant check: %w", err)
+			} else if !other {
+				return errors.New("user: cannot remove the last platform admin")
+			}
+		}
+	}
+
+	if priorAdmin && disablesUser(doc, prior) {
+		if other, err := enabledPlatformAdminExists(ctx, p.host.DB(), map[string]struct{}{uid: {}}); err != nil {
+			return fmt.Errorf("user: platform-admin invariant check: %w", err)
+		} else if !other {
+			return errors.New("user: cannot disable the last platform admin")
+		}
+	}
+	return nil
+}
+
+// docHasPlatformAdmin reports whether a user doc references platform_admin via
+// roles or static_roles.
+func docHasPlatformAdmin(doc map[string]any) bool {
+	if doc == nil {
+		return false
+	}
+	for _, field := range []string{"roles", "static_roles"} {
+		for _, r := range stringSlice(doc[field]) {
+			if auth.IsReservedPlatformRole(r) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// newHasPlatformAdmin computes post-write platform_admin membership: a field
+// present in doc replaces the prior value (PUT/PATCH overwrite array fields), an
+// absent field inherits prior.
+func newHasPlatformAdmin(doc, prior map[string]any) bool {
+	effective := map[string]any{}
+	for _, field := range []string{"roles", "static_roles"} {
+		if _, ok := doc[field]; ok {
+			effective[field] = doc[field]
+		} else if prior != nil {
+			effective[field] = prior[field]
+		}
+	}
+	return docHasPlatformAdmin(effective)
+}
+
+// isSelf reports whether prior is the caller's own user record.
+func isSelf(claims snoozetypes.Claims, prior map[string]any) bool {
+	if prior == nil {
+		return false
+	}
+	name, _ := prior["name"].(string)
+	method, _ := prior["method"].(string)
+	tenant, _ := prior["tenant_id"].(string)
+	if tenant == "" {
+		tenant = snoozetypes.DefaultTenant
+	}
+	ct := claims.TenantID
+	if ct == "" {
+		ct = snoozetypes.DefaultTenant
+	}
+	return claims.Subject == name && claims.Method == method && ct == tenant
+}
+
+// disablesUser reports whether the write turns a previously-enabled user off.
+func disablesUser(doc, prior map[string]any) bool {
+	v, ok := doc["enabled"]
+	if !ok {
+		return false
+	}
+	if enabled, _ := v.(bool); enabled {
+		return false
+	}
+	if prior == nil {
+		return true
+	}
+	if pe, ok := prior["enabled"].(bool); ok {
+		return pe // only an enabled->disabled transition counts
+	}
+	return true // absent prior enabled is treated as enabled
+}
+
+// enabledPlatformAdminExists reports whether any enabled platform_admin holder
+// exists in the current tenant scope whose uid is NOT in exclude.
+func enabledPlatformAdminExists(ctx context.Context, drv db.Driver, exclude map[string]struct{}) (bool, error) {
+	docs, _, err := drv.Search(ctx, auth.LocalCollection, condition.Cond{Op: condition.OpAlwaysTrue}, db.Page{})
+	if err != nil {
+		return false, err
+	}
+	for _, d := range docs {
+		if u, _ := d["uid"].(string); u != "" {
+			if _, skip := exclude[u]; skip {
+				continue
+			}
+		}
+		if en, ok := d["enabled"].(bool); ok && !en {
+			continue
+		}
+		if docHasPlatformAdmin(d) {
+			return true, nil
+		}
+	}
+	return false, nil
 }
 
 // TransformWrite intercepts the `password` field on POST/PUT/PATCH bodies.
