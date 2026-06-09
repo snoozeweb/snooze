@@ -82,3 +82,37 @@
   color: var(--text-primary);
   cursor: pointer;
 }
+
+.ssoSection {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  margin-top: 1rem;
+}
+
+.divider {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  color: var(--text-muted);
+  font-size: 0.8125rem;
+}
+.divider::before,
+.divider::after {
+  content: "";
+  flex: 1;
+  height: 1px;
+  background: var(--border);
+}
+
+.ssoButtons {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.ssoLabel {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+}

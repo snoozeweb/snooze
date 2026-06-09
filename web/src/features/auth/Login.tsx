@@ -4,7 +4,7 @@ import { useNavigate, useSearch } from "@tanstack/react-router";
 import { Button } from "@/shared/ui/Button";
 import { Input } from "@/shared/ui/Input";
 import { Logo } from "@/shared/ui/Logo";
-import { TabList, TabPanel, TabTrigger, Tabs } from "@/shared/ui/Tabs";
+import { Icon } from "@/shared/icons/Icon";
 import { ApiError } from "@/lib/api/client";
 import { authStore } from "@/lib/auth/store";
 import {
@@ -13,19 +13,27 @@ import {
   loginLdap,
   loginLocal,
   resolveTenantByKey,
+  ssoStartUrl,
   type LoginBackend,
 } from "./api";
+import { MicrosoftLogo } from "./MicrosoftLogo";
 import styles from "./Login.module.css";
+
+type CredentialMethod = "local" | "ldap";
+
+function isCredential(b: LoginBackend): boolean {
+  return b.kind === "password" && (b.name === "local" || b.name === "ldap");
+}
 
 export function Login() {
   const navigate = useNavigate();
   const search = useSearch({ strict: false }) as unknown as {
     return_to?: string;
     key?: string;
+    sso_error?: string;
   };
   const returnTo = search.return_to ? decodeURIComponent(search.return_to) : "/web/alerts";
 
-  // Fetch backends + public tenant list in a single call.
   const cfgQuery = useQuery({
     queryKey: ["login", "config"],
     queryFn: fetchLoginConfig,
@@ -34,7 +42,6 @@ export function Login() {
   const backends = useMemo<LoginBackend[]>(() => cfgQuery.data?.backends ?? [], [cfgQuery.data]);
   const tenants = cfgQuery.data?.tenants ?? [];
 
-  // Resolve an opaque ?key= param to a tenant (SaaS per-tenant login link).
   const keyQuery = useQuery({
     queryKey: ["login", "tenant-by-key", search.key],
     queryFn: () => resolveTenantByKey(search.key!),
@@ -43,30 +50,27 @@ export function Login() {
   });
   const lockedTenant = keyQuery.data ?? null;
 
-  const [tab, setTab] = useState<LoginBackend | null>(null);
+  const credentialBackends = useMemo(() => backends.filter(isCredential), [backends]);
+
+  // Primary credential method: prefer "local" if present, else "ldap", else null.
+  const defaultPrimary: CredentialMethod | null = credentialBackends.some((b) => b.name === "local")
+    ? "local"
+    : credentialBackends.some((b) => b.name === "ldap")
+      ? "ldap"
+      : null;
+
+  const [primary, setPrimary] = useState<CredentialMethod | null>(defaultPrimary);
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
-  // orgSel is used only when the picker is visible (tenants.length > 1, no locked tenant).
   const [orgSel, setOrgSel] = useState("");
   const [submitting, setSubmitting] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(search.sso_error ?? null);
 
-  // Derive the effective org:
-  // 1. Locked tenant (from ?key=) → use its id.
-  // 2. Exactly one listed tenant → use it implicitly.
-  // 3. More than one listed tenant → use the picker value (orgSel).
-  // 4. No tenants → empty string (server defaults to "default" tenant).
   const org = lockedTenant ? lockedTenant.id : tenants.length === 1 ? tenants[0]!.id : orgSel;
 
-  // Default-select the first advertised backend. Re-runs when the backend
-  // list resolves; only sets when the previously-selected tab is no longer
-  // valid (e.g. server reconfig between renders).
   useEffect(() => {
-    if (backends.length === 0) return;
-    if (tab === null || !backends.includes(tab)) {
-      setTab(backends[0] ?? null);
-    }
-  }, [backends, tab]);
+    if (primary === null && defaultPrimary !== null) setPrimary(defaultPrimary);
+  }, [defaultPrimary, primary]);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -74,30 +78,40 @@ export function Login() {
     setSubmitting(true);
     const orgSlug = org.trim() || undefined;
     try {
-      let result: { token: string; refreshToken: string | null };
-      if (tab === "anonymous") {
-        result = await loginAnonymous(orgSlug);
-      } else if (tab === "ldap") {
-        result = await loginLdap({ username, password, org: orgSlug });
-      } else {
-        result = await loginLocal({ username, password, org: orgSlug });
-      }
+      const result =
+        primary === "ldap"
+          ? await loginLdap({ username, password, org: orgSlug })
+          : await loginLocal({ username, password, org: orgSlug });
       authStore.getState().login(result.token, result.refreshToken);
       await navigate({ to: returnTo });
-    } catch (e) {
-      if (e instanceof ApiError) {
-        setError(e.detail);
-      } else {
-        setError("Sign-in failed. Please try again.");
-      }
+    } catch (err) {
+      setError(err instanceof ApiError ? err.detail : "Sign-in failed. Please try again.");
     } finally {
       setSubmitting(false);
     }
   }
 
-  // Loading state: nothing to render yet. When a ?key= is present we also wait
-  // for the tenant resolve so the locked-org view doesn't flash the picker /
-  // default first.
+  async function handleAnonymous() {
+    setError(null);
+    setSubmitting(true);
+    try {
+      const result = await loginAnonymous(org.trim() || undefined);
+      authStore.getState().login(result.token, result.refreshToken);
+      await navigate({ to: returnTo });
+    } catch (err) {
+      setError(err instanceof ApiError ? err.detail : "Sign-in failed. Please try again.");
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  function startSso(name: string) {
+    const orgSlug = org.trim() || undefined;
+    const opts: { org?: string; returnTo?: string } = { returnTo };
+    if (orgSlug) opts.org = orgSlug;
+    window.location.assign(ssoStartUrl(name, opts));
+  }
+
   if (cfgQuery.isPending || (!!search.key && keyQuery.isPending)) {
     return (
       <div className={styles.page}>
@@ -110,7 +124,6 @@ export function Login() {
     );
   }
 
-  // No backends advertised → the operator has turned everything off.
   if (backends.length === 0) {
     return (
       <div className={styles.page}>
@@ -126,7 +139,6 @@ export function Login() {
     );
   }
 
-  /** Organization picker — shown only when there are >1 tenants and no locked tenant. */
   const orgField =
     !lockedTenant && tenants.length > 1 ? (
       <div className={`${styles.field} ${styles.orgField}`}>
@@ -151,6 +163,8 @@ export function Login() {
       </div>
     ) : null;
 
+  const altBackends = backends.filter((b) => !(isCredential(b) && b.name === primary));
+
   return (
     <div className={styles.page}>
       <div className={styles.card}>
@@ -162,134 +176,108 @@ export function Login() {
             Sign in to {lockedTenant.display_name || lockedTenant.id}
           </p>
         ) : null}
-        <Tabs
-          value={tab ?? backends[0] ?? "local"}
-          onValueChange={(v) => {
-            setTab(v as LoginBackend);
-            setError(null);
-          }}
-        >
-          <TabList>
-            {backends.includes("local") ? <TabTrigger value="local">Local</TabTrigger> : null}
-            {backends.includes("ldap") ? <TabTrigger value="ldap">LDAP</TabTrigger> : null}
-            {backends.includes("anonymous") ? (
-              <TabTrigger value="anonymous">Anonymous</TabTrigger>
-            ) : null}
-          </TabList>
-          {backends.includes("local") ? (
-            <TabPanel value="local">
-              <form
-                className={styles.form}
-                onSubmit={(e) => {
-                  void handleSubmit(e);
-                }}
-              >
-                <div className={styles.field}>
-                  <label htmlFor="login-username-local" className={styles.label}>
-                    Username
-                  </label>
-                  <Input
-                    id="login-username-local"
-                    value={username}
-                    onChange={(e) => setUsername(e.target.value)}
-                    autoComplete="username"
-                    required
-                  />
-                </div>
-                <div className={styles.field}>
-                  <label htmlFor="login-password-local" className={styles.label}>
-                    Password
-                  </label>
-                  <Input
-                    id="login-password-local"
-                    type="password"
-                    value={password}
-                    onChange={(e) => setPassword(e.target.value)}
-                    autoComplete="current-password"
-                    required
-                  />
-                </div>
-                {orgField}
-                {error ? (
-                  <div className={styles.error} role="alert">
-                    {error}
-                  </div>
-                ) : null}
-                <Button type="submit" variant="primary" loading={submitting} fullWidth>
-                  Sign in
-                </Button>
-              </form>
-            </TabPanel>
-          ) : null}
-          {backends.includes("ldap") ? (
-            <TabPanel value="ldap">
-              <form
-                className={styles.form}
-                onSubmit={(e) => {
-                  void handleSubmit(e);
-                }}
-              >
-                <div className={styles.field}>
-                  <label htmlFor="login-username-ldap" className={styles.label}>
-                    Username
-                  </label>
-                  <Input
-                    id="login-username-ldap"
-                    value={username}
-                    onChange={(e) => setUsername(e.target.value)}
-                    autoComplete="username"
-                    required
-                  />
-                </div>
-                <div className={styles.field}>
-                  <label htmlFor="login-password-ldap" className={styles.label}>
-                    Password
-                  </label>
-                  <Input
-                    id="login-password-ldap"
-                    type="password"
-                    value={password}
-                    onChange={(e) => setPassword(e.target.value)}
-                    autoComplete="current-password"
-                    required
-                  />
-                </div>
-                {orgField}
-                {error ? (
-                  <div className={styles.error} role="alert">
-                    {error}
-                  </div>
-                ) : null}
-                <Button type="submit" variant="primary" loading={submitting} fullWidth>
-                  Sign in via LDAP
-                </Button>
-              </form>
-            </TabPanel>
-          ) : null}
-          {backends.includes("anonymous") ? (
-            <TabPanel value="anonymous">
-              <form
-                className={styles.form}
-                onSubmit={(e) => {
-                  void handleSubmit(e);
-                }}
-              >
-                <p className={styles.anonymous}>
-                  Sign in without credentials. Some servers disable this.
-                </p>
-                {orgField}
-                {error ? (
-                  <div className={styles.error} role="alert">
-                    {error}
-                  </div>
-                ) : null}
-                <Button type="submit" variant="primary" loading={submitting} fullWidth>
-                  Continue as anonymous
-                </Button>
-              </form>
-            </TabPanel>
-          ) : null}
-        </Tabs>
+
+        {error ? (
+          <div className={styles.error} role="alert">
+            {error}
+          </div>
+        ) : null}
+
+        {primary ? (
+          <form
+            className={styles.form}
+            onSubmit={(e) => {
+              void handleSubmit(e);
+            }}
+          >
+            <div className={styles.field}>
+              <label htmlFor="login-username" className={styles.label}>
+                Username
+              </label>
+              <Input
+                id="login-username"
+                value={username}
+                onChange={(e) => setUsername(e.target.value)}
+                autoComplete="username"
+                required
+              />
+            </div>
+            <div className={styles.field}>
+              <label htmlFor="login-password" className={styles.label}>
+                Password
+              </label>
+              <Input
+                id="login-password"
+                type="password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                autoComplete="current-password"
+                required
+              />
+            </div>
+            {orgField}
+            <Button type="submit" variant="primary" loading={submitting} fullWidth>
+              {primary === "ldap" ? "Sign in via LDAP" : "Sign in"}
+            </Button>
+          </form>
+        ) : (
+          <>{orgField}</>
+        )}
+
+        {altBackends.length > 0 ? (
+          <div className={styles.ssoSection}>
+            {primary ? <div className={styles.divider}>or continue with</div> : null}
+            <div className={styles.ssoButtons}>
+              {altBackends.map((b) => {
+                if (b.kind === "redirect") {
+                  return (
+                    <Button
+                      key={b.name}
+                      variant="secondary"
+                      fullWidth
+                      disabled={submitting}
+                      onClick={() => startSso(b.name)}
+                    >
+                      <span className={styles.ssoLabel}>
+                        {b.icon === "microsoft" ? <MicrosoftLogo /> : <Icon name="lock" />}
+                        {b.display_name || b.name}
+                      </span>
+                    </Button>
+                  );
+                }
+                if (b.name === "anonymous") {
+                  return (
+                    <Button
+                      key={b.name}
+                      variant="secondary"
+                      fullWidth
+                      loading={submitting}
+                      onClick={() => {
+                        void handleAnonymous();
+                      }}
+                    >
+                      Continue as anonymous
+                    </Button>
+                  );
+                }
+                return (
+                  <Button
+                    key={b.name}
+                    variant="ghost"
+                    fullWidth
+                    disabled={submitting}
+                    onClick={() => {
+                      setError(null);
+                      setPrimary(b.name as CredentialMethod);
+                    }}
+                  >
+                    {b.name === "ldap" ? "Sign in via LDAP" : "Sign in with a local account"}
+                  </Button>
+                );
+              })}
+            </div>
+          </div>
+        ) : null}
       </div>
     </div>
   );
