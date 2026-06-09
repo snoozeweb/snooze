@@ -58,18 +58,48 @@ export async function loginAnonymous(org?: string): Promise<LoginResult> {
   return unwrap(r);
 }
 
-// fetchLoginBackends returns the names of auth backends the server currently
-// advertises. The server filters out disabled providers (general.local_enabled,
-// ldap.enabled, general.anonymous_enabled), so the Login UI just renders one
-// tab per name in the response.
-export type LoginBackend = "local" | "ldap" | "anonymous";
+// A login backend descriptor as returned by GET /api/v1/login.
+// kind: "password" => local/ldap (credential form) or anonymous (one-click);
+//       "redirect"  => OIDC/OAuth (button -> /start).
+export type BackendKind = "password" | "redirect";
+export type LoginBackend = {
+  name: string;
+  kind: BackendKind;
+  display_name?: string;
+  icon?: string;
+};
 
-export async function fetchLoginBackends(): Promise<LoginBackend[]> {
-  const r = await api<{ data?: { backends?: string[] } }>("GET", "/login", {
-    skipAuthHandling: true,
-  });
-  const raw = r.data?.backends ?? [];
-  return raw.filter((b): b is LoginBackend => b === "local" || b === "ldap" || b === "anonymous");
+const KNOWN_PASSWORD = new Set(["local", "ldap", "anonymous"]);
+
+// parseBackends accepts the descriptor list and, defensively, the legacy
+// string list a pre-upgrade server might still return.
+export function parseBackends(raw: unknown): LoginBackend[] {
+  if (!Array.isArray(raw)) return [];
+  const out: LoginBackend[] = [];
+  for (const entry of raw) {
+    if (typeof entry === "string") {
+      if (KNOWN_PASSWORD.has(entry)) out.push({ name: entry, kind: "password" });
+      continue;
+    }
+    if (entry && typeof entry === "object" && typeof (entry as { name?: unknown }).name === "string") {
+      const e = entry as { name: string; kind?: string; display_name?: string; icon?: string };
+      const b: LoginBackend = { name: e.name, kind: e.kind === "redirect" ? "redirect" : "password" };
+      if (e.display_name) b.display_name = e.display_name;
+      if (e.icon) b.icon = e.icon;
+      out.push(b);
+    }
+  }
+  return out;
+}
+
+// ssoStartUrl builds the absolute browser-navigation URL that begins an OIDC
+// redirect login. It is NOT fetched — the SPA sets window.location to it.
+export function ssoStartUrl(name: string, opts: { org?: string; returnTo?: string }): string {
+  const params = new URLSearchParams();
+  if (opts.org) params.set("org", opts.org);
+  if (opts.returnTo) params.set("return_to", opts.returnTo);
+  const qs = params.toString();
+  return `/api/v1/login/${encodeURIComponent(name)}/start${qs ? `?${qs}` : ""}`;
 }
 
 // PublicTenant is the minimal tenant shape the public login index returns.
@@ -83,16 +113,10 @@ export type LoginConfig = { backends: LoginBackend[]; tenants: PublicTenant[] };
 // fetchLoginConfig fetches both the auth backends and the public tenant list
 // from GET /api/v1/login in a single call.
 export async function fetchLoginConfig(): Promise<LoginConfig> {
-  const r = await api<{ data?: { backends?: string[]; tenants?: PublicTenant[] } }>(
-    "GET",
-    "/login",
-    {
-      skipAuthHandling: true,
-    },
-  );
-  const backends = (r.data?.backends ?? []).filter(
-    (b): b is LoginBackend => b === "local" || b === "ldap" || b === "anonymous",
-  );
+  const r = await api<{ data?: { backends?: unknown; tenants?: PublicTenant[] } }>("GET", "/login", {
+    skipAuthHandling: true,
+  });
+  const backends = parseBackends(r.data?.backends);
   const tenants = (r.data?.tenants ?? []).filter(
     (t): t is PublicTenant => !!t && typeof t.id === "string",
   );

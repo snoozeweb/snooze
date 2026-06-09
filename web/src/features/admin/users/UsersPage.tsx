@@ -8,7 +8,7 @@ import { EmptyState } from "@/shared/ui/EmptyState";
 import { RowDetailPanel } from "@/shared/ui/RowDetailPanel";
 import { TabList, TabPanel, TabTrigger, Tabs } from "@/shared/ui/Tabs";
 import { useTableSearch } from "@/shared/hooks/useTableSearch";
-import { fetchLoginBackends } from "@/features/auth/api";
+import { fetchLoginConfig } from "@/features/auth/api";
 import { encodeConditionQ } from "@/lib/condition/serialize";
 import type { Condition } from "@/lib/condition/types";
 import {
@@ -58,10 +58,10 @@ export function UsersPage() {
   // user records of its own so we never show a tab for it.
   const backends = useQuery({
     queryKey: ["login-backends"],
-    queryFn: fetchLoginBackends,
+    queryFn: fetchLoginConfig,
     staleTime: 5 * 60_000,
   });
-  const ldapEnabled = backends.data?.includes("ldap") ?? false;
+  const ldapEnabled = backends.data?.backends.some((b) => b.name === "ldap") ?? false;
 
   const updateSearch = useCallback(
     (next: UsersSearch) => {

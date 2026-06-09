@@ -6,10 +6,43 @@ import {
   loginAnonymous,
   loginLdap,
   loginLocal,
+  parseBackends,
   postLogout,
   postRefresh,
   resolveTenantByKey,
+  ssoStartUrl,
 } from "./api";
+
+describe("parseBackends", () => {
+  it("parses descriptor objects", () => {
+    const out = parseBackends([
+      { name: "local", kind: "password" },
+      { name: "microsoft", kind: "redirect", display_name: "Microsoft 365", icon: "microsoft" },
+    ]);
+    expect(out).toHaveLength(2);
+    expect(out[1]).toMatchObject({ name: "microsoft", kind: "redirect", display_name: "Microsoft 365" });
+  });
+
+  it("tolerates the legacy string shape", () => {
+    const out = parseBackends(["local", "ldap"]);
+    expect(out.map((b) => b.name)).toEqual(["local", "ldap"]);
+    expect(out.every((b) => b.kind === "password")).toBe(true);
+  });
+});
+
+describe("ssoStartUrl", () => {
+  it("builds an absolute start URL with org + return_to", () => {
+    const u = ssoStartUrl("microsoft", { org: "acme", returnTo: "/web/alerts" });
+    expect(u).toContain("/api/v1/login/microsoft/start");
+    expect(u).toContain("org=acme");
+    expect(u).toContain("return_to=%2Fweb%2Falerts");
+  });
+
+  it("omits empty params", () => {
+    const u = ssoStartUrl("microsoft", {});
+    expect(u).toBe("/api/v1/login/microsoft/start");
+  });
+});
 
 function makeStubToken(sub: string): string {
   const header = btoa(JSON.stringify({ alg: "HS256", typ: "JWT" }));
@@ -113,14 +146,16 @@ describe("auth api tenant discovery", () => {
       ),
     );
     const cfg = await fetchLoginConfig();
-    expect(cfg.backends).toEqual(["local", "ldap"]);
+    expect(cfg.backends.map((b) => b.name)).toEqual(["local", "ldap"]);
+    expect(cfg.backends.every((b) => b.kind === "password")).toBe(true);
     expect(cfg.tenants).toEqual([{ id: "acme", display_name: "Acme" }]);
   });
 
   it("fetchLoginConfig returns empty tenants when server omits the field", async () => {
     // default MSW handler returns no tenants field — fetchLoginConfig must still work
     const cfg = await fetchLoginConfig();
-    expect(cfg.backends).toEqual(["local", "ldap", "anonymous"]);
+    expect(cfg.backends.map((b) => b.name)).toEqual(["local", "ldap", "anonymous"]);
+    expect(cfg.backends.every((b) => b.kind === "password")).toBe(true);
     expect(cfg.tenants).toEqual([]);
   });
 
