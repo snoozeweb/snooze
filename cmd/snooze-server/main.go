@@ -246,6 +246,7 @@ type daemonFlags struct {
 	skipHTTP     bool
 	otelEndpoint string
 	webDir       string
+	webDirSet    bool // -web-dir was explicitly passed (flag wins over file config)
 }
 
 // parseDaemonFlags parses the no-subcommand path. Unknown flags surface as an
@@ -262,10 +263,15 @@ func parseDaemonFlags(args []string, stderr io.Writer) (*daemonFlags, error) {
 	fs.BoolVar(&f.skipAdmin, "no-admin-socket", false, "disable the admin Unix socket")
 	fs.BoolVar(&f.skipHTTP, "no-http", false, "disable the public HTTP listener (debug only)")
 	fs.StringVar(&f.otelEndpoint, "otel-endpoint", "", "OTLP trace exporter endpoint (defaults: disabled)")
-	fs.StringVar(&f.webDir, "web-dir", "/var/lib/snooze/web", "directory containing the built web UI (web/dist contents); empty disables /web")
+	fs.StringVar(&f.webDir, "web-dir", "/var/lib/snooze/web", "directory containing the built web UI (web/dist contents); empty disables /web; overrides the web config section")
 	if err := fs.Parse(args); err != nil {
 		return nil, err
 	}
+	fs.Visit(func(fl *flag.Flag) {
+		if fl.Name == "web-dir" {
+			f.webDirSet = true
+		}
+	})
 	return f, nil
 }
 
@@ -370,7 +376,7 @@ func runDaemonCtx(ctx context.Context, f *daemonFlags, stderr io.Writer) error {
 		Providers:       providers,
 		Processor:       adapter,
 		CORSConfig:      corsFromConfig(cfg.Core.CORS),
-		WebFS:           openWebFS(f.webDir, loggers.API),
+		WebFS:           openWebFS(webDirFromConfig(cfg.Web), loggers.API),
 		TenantResolver:  ingestResolver,
 		TenantChecker:   middleware.NewDbTenantStatusChecker(drv),
 	}
@@ -466,6 +472,19 @@ func applyFlagOverrides(cfg *config.Config, f *daemonFlags) {
 			cfg.Core.Port = port
 		}
 	}
+	if f.webDirSet {
+		cfg.Web.Enabled = f.webDir != ""
+		cfg.Web.Path = f.webDir
+	}
+}
+
+// webDirFromConfig resolves the web section into the directory openWebFS
+// should serve. Disabled (or an empty path) means "no web UI".
+func webDirFromConfig(w schema.Web) string {
+	if !w.Enabled {
+		return ""
+	}
+	return w.Path
 }
 
 // splitHostPort parses host:port into its components. Invalid input returns

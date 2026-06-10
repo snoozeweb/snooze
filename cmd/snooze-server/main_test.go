@@ -25,6 +25,8 @@ import (
 
 	"github.com/snoozeweb/snooze/internal/auth"
 	"github.com/snoozeweb/snooze/internal/condition"
+	"github.com/snoozeweb/snooze/internal/config"
+	"github.com/snoozeweb/snooze/internal/config/schema"
 	"github.com/snoozeweb/snooze/internal/db"
 	"github.com/snoozeweb/snooze/internal/db/sqlite"
 	"github.com/snoozeweb/snooze/pkg/snoozetypes"
@@ -534,4 +536,89 @@ func TestOpenWebFS(t *testing.T) {
 			t.Fatalf("expected nil, got %T", fs)
 		}
 	})
+}
+
+// TestParseDaemonFlags_WebDirSet asserts webDirSet tracks whether the operator
+// explicitly passed -web-dir, independent of the value (empty included).
+func TestParseDaemonFlags_WebDirSet(t *testing.T) {
+	var buf bytes.Buffer
+
+	f, err := parseDaemonFlags([]string{"-web-dir", "/srv/ui"}, &buf)
+	if err != nil {
+		t.Fatalf("parse: %v", err)
+	}
+	if !f.webDirSet || f.webDir != "/srv/ui" {
+		t.Errorf("explicit -web-dir: got webDirSet=%v webDir=%q", f.webDirSet, f.webDir)
+	}
+
+	f, err = parseDaemonFlags([]string{"-web-dir", ""}, &buf)
+	if err != nil {
+		t.Fatalf("parse: %v", err)
+	}
+	if !f.webDirSet || f.webDir != "" {
+		t.Errorf("explicit empty -web-dir: got webDirSet=%v webDir=%q", f.webDirSet, f.webDir)
+	}
+
+	f, err = parseDaemonFlags(nil, &buf)
+	if err != nil {
+		t.Fatalf("parse: %v", err)
+	}
+	if f.webDirSet {
+		t.Errorf("no -web-dir: webDirSet should be false")
+	}
+}
+
+// TestApplyFlagOverrides_WebDir covers the flag-over-file precedence: an
+// explicitly set -web-dir folds into cfg.Web (empty = disable); an unset flag
+// leaves the file/env values alone.
+func TestApplyFlagOverrides_WebDir(t *testing.T) {
+	cases := []struct {
+		name string
+		f    daemonFlags
+		in   schema.Web
+		want schema.Web
+	}{
+		{
+			name: "explicit flag wins over file",
+			f:    daemonFlags{webDir: "/srv/ui", webDirSet: true},
+			in:   schema.Web{Enabled: true, Path: "/from/file"},
+			want: schema.Web{Enabled: true, Path: "/srv/ui"},
+		},
+		{
+			name: "explicit empty flag disables",
+			f:    daemonFlags{webDir: "", webDirSet: true},
+			in:   schema.Web{Enabled: true, Path: "/from/file"},
+			want: schema.Web{Enabled: false, Path: ""},
+		},
+		{
+			name: "unset flag keeps file values",
+			f:    daemonFlags{webDir: "/var/lib/snooze/web", webDirSet: false},
+			in:   schema.Web{Enabled: false, Path: "/from/file"},
+			want: schema.Web{Enabled: false, Path: "/from/file"},
+		},
+	}
+	for _, c := range cases {
+		cfg := &config.Config{Web: c.in}
+		applyFlagOverrides(cfg, &c.f)
+		if cfg.Web != c.want {
+			t.Errorf("%s: got %+v, want %+v", c.name, cfg.Web, c.want)
+		}
+	}
+}
+
+// TestWebDirFromConfig covers the cfg.Web → serve-directory resolution.
+func TestWebDirFromConfig(t *testing.T) {
+	cases := []struct {
+		in   schema.Web
+		want string
+	}{
+		{schema.Web{Enabled: true, Path: "/srv/ui"}, "/srv/ui"},
+		{schema.Web{Enabled: false, Path: "/srv/ui"}, ""},
+		{schema.Web{Enabled: true, Path: ""}, ""},
+	}
+	for _, c := range cases {
+		if got := webDirFromConfig(c.in); got != c.want {
+			t.Errorf("webDirFromConfig(%+v) = %q, want %q", c.in, got, c.want)
+		}
+	}
 }

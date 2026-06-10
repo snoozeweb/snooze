@@ -45,7 +45,7 @@ REST API or the WebUI).
 | `/etc/snooze/server/ldap_auth.yaml`              | `/etc/snooze/server-go/ldap.yaml`                                     | Renamed; field names unchanged                                         |
 | `/etc/snooze/server/housekeeping.yaml`           | `/etc/snooze/server-go/housekeeper.yaml`                              | Renamed                                                                |
 | `/etc/snooze/server/notification.yaml`           | `/etc/snooze/server-go/notification.yaml`                             | Unchanged                                                              |
-| `/etc/snooze/server/web.yaml`                    | `/etc/snooze/server-go/web.yaml`                                      | Unchanged                                                              |
+| `/etc/snooze/server/web.yaml`                    | `/etc/snooze/server-go/web.yaml`                                      | Same fields, but **drop or update a 1.x `path`**: `/opt/snooze/web` is the obsolete Python bundle; the Go default is `/var/lib/snooze/web` |
 | WebUI Settings → General                         | `settings` collection in the DB                                        | Editable via `PATCH /api/v1/settings/{key}` or the WebUI               |
 | WebUI Settings → Notifications                   | `settings` collection (`notification_*` keys)                          | Editable via API                                                       |
 | `DATABASE_URL=mongodb://…`                       | `DATABASE_URL=mongodb://…`                                            | Unchanged                                                              |

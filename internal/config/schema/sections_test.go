@@ -37,7 +37,7 @@ func TestLDAP_Defaults(t *testing.T) {
 func TestWeb_Defaults(t *testing.T) {
 	w := DefaultWeb()
 	require.True(t, w.Enabled)
-	require.Equal(t, "/opt/snooze/web", w.Path)
+	require.Equal(t, "/var/lib/snooze/web", w.Path)
 }
 
 func TestAuth_Defaults(t *testing.T) {
