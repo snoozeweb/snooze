@@ -54,8 +54,12 @@ capability interfaces you need.
 
 `DataModel` plugins can additionally opt into refinements: `CreateHook` /
 `UpdateHook` / `DeleteHook` (post-write side effects), `PrimaryKeyer` (declare a
-natural key for upserts) and `WriteTransformer` (rewrite a document before
-persist — e.g. the `user` plugin hashing a password).
+natural key for upserts), `WriteTransformer` (rewrite a document before
+persist — e.g. the `user` plugin hashing a password), and the **pre-write veto
+guards** `WriteGuard` (`GuardWrite(ctx, uid, doc, replace)` — `replace` is true
+on PUT, false on POST/PATCH; non-nil error → 403) and `DeleteGuard`
+(`GuardDelete(ctx, uids)` — protects must-not-vanish rows, e.g. the last
+platform admin).
 
 > `Actioner` has **no concrete implementation** in `internal/pluginimpl/` yet,
 > so there is no "copy the nearest plugin" example for it — implementing one is
@@ -115,13 +119,13 @@ Non-obvious rules baked into `internal/plugins` that bite plugin authors:
 
 ## The catalog & its taxonomy
 
-The 45 plugins fall into roles by the capability interfaces they implement
+The 46 plugins fall into roles by the capability interfaces they implement
 (grouped the same way in `all/all.go`). Counts are once-per-plugin — a
 multi-role plugin is counted only under "Multi-role":
 
 | Role | Count | Examples |
 |------|------:|----------|
-| Data models (CRUD collections) | 12 | record, user, role, kv, widget, settings, action, audit, comment, environment, profile, stats |
+| Data models (CRUD collections) | 13 | record, user, role, kv, widget, settings, action, audit, comment, environment, profile, stats, tenant |
 | Pipeline processors            | 3  | rule, snooze, notification |
 | Notifiers (outbound)           | 18 | slack, mail, telegram, pagerduty, webhook, discord, googlechat, mattermost, ntfy, opsgenie, patlite, pushover, script, servicenow, sns, statuspage, teams, twilio |
 | Webhook receivers (inbound)    | 10 | grafana, alertmanager, datadog, prometheus, azuremonitor, cloudwatch, influxdb2, kapacitor, newrelic, sentry |
@@ -129,7 +133,7 @@ multi-role plugin is counted only under "Multi-role":
 
 (`notification` is a **processor**, not a notifier — outbound delivery is done
 by the `Notifier` plugins it dispatches to; its only `Send` methods are test
-fakes. Total: 12 + 3 + 18 + 10 + 2 = 45.)
+fakes. Total: 13 + 3 + 18 + 10 + 2 = 46.)
 
 When you add a plugin, drop its blank import into the matching group in
 `internal/pluginimpl/all/all.go` (the grouping is documentation only — order

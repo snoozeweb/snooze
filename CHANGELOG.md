@@ -127,6 +127,21 @@
 
 ### Fixed
 
+- **`ingest` section now loadable from `ingest.yaml`.** The config loader's
+  `sectionFiles` map was missing an `ingest` entry, so an `ingest.yaml` dropped
+  in the `--config` directory was silently ignored and the section could only be
+  set via `SNOOZE_SERVER_INGEST_*` env vars. It now layers from file like every
+  other section.
+
+- **`web` config section is now honored.** `web.enabled` / `web.path` (and
+  `SNOOZE_SERVER_WEB_*`) were parsed but never consumed — the UI directory came
+  solely from the `--web-dir` flag. The server now serves the UI from the
+  config section; an explicitly passed `--web-dir` still wins (and
+  `--web-dir=""` still disables the UI). The section's default `path` changed
+  from the Python 1.x location `/opt/snooze/web` to `/var/lib/snooze/web`,
+  matching where the deb/rpm install the bundle — migrated 1.x `web.yaml`
+  files carrying the old path should drop or update it.
+
 - **Tenants nav item (web UI)** is now gated by the same rule the backend
   enforces on `/api/v1/tenant` (`RequirePlatformPerm`): it appears only for
   users authenticated against the `default` tenant who hold a *literal*

@@ -40,7 +40,7 @@ snooze/
 │   └── snooze-pacemaker/        # Pacemaker HA integration helper (one-shot, no Run loop)
 ├── internal/                     # Private application packages
 │   ├── api/                     # chi router, middleware, REST handlers, admin socket
-│   ├── auth/                    # Pluggable providers (local/LDAP/anon), JWT, RBAC resolver, refresh-token store
+│   ├── auth/                    # Pluggable providers (local/LDAP/anon/OIDC), JWT, RBAC resolver, refresh-token store
 │   ├── cli/                     # Cobra commands powering cmd/snooze
 │   ├── components/              # Daemon bodies behind the cmd/snooze-* input & bidirectional binaries
 │   ├── condition/               # AST + evaluator + string query DSL (legacy-list, object, frontend & `host = foo AND …` shapes)
@@ -56,6 +56,7 @@ snooze/
 │   │   ├── dbtest/             # Cross-backend table-test harness
 │   │   └── asyncwriter/        # Batched bulk-write coalescer
 │   ├── housekeeper/             # TTL / retention worker
+│   ├── migrate/                 # One-shot data migrations (`snooze-server migrate multitenancy` backfills tenant_id)
 │   ├── modification/            # Field mutation engine (set/delete/regex_sub/…)
 │   ├── mq/                      # Message queue: inproc / Postgres / Mongo bus, picked by DB type (see note)
 │   ├── plugins/                 # Plugin interfaces, registry, CRUD mounter, cache
@@ -328,6 +329,18 @@ backends. `internal/db/dbtest` holds a shared driver-test suite
 into every backend's `driver_test.go` via `TestDriverSuite` (see
 `internal/db/AGENTS.md`).
 
+### Shared-schema multitenancy, enforced at the driver line
+
+Tenancy is shared-schema: scoped collections carry a `tenant_id` field and every
+driver injects the predicate/stamp itself via `db.TenantScope(ctx, collection)`
+— **fail-closed**: a scoped collection queried with a naked context (no tenant,
+not platform scope) errors with `ErrNoTenant` instead of leaking cross-tenant
+rows. Collections registered global (`tenant`, `secrets`, `nodes`, plus
+boot-time `db.RegisterGlobalCollection`) bypass injection. The tenant registry
+is the `tenant` plugin; existing single-tenant data is backfilled by
+`snooze-server migrate multitenancy` (`internal/migrate`). Details in
+`internal/db/AGENTS.md`.
+
 ### Two-tier config
 
 * **File config** (`internal/config/load.go`): parsed once at boot from
@@ -342,8 +355,9 @@ A field belongs in exactly one tier. Adding it requires a schema update.
 
 File config is read from a **directory** of per-section YAML files — one
 basename per section (`core.yaml`, `general.yaml`, `housekeeping.yaml`,
-`notification.yaml`, `ldap_auth.yaml`, `web.yaml`, `auth.yaml`, `syncer.yaml`)
-— and every field can be overridden by an env var named
+`notification.yaml`, `ldap_auth.yaml`, `web.yaml`, `auth.yaml`, `syncer.yaml`,
+`ingest.yaml`, `oidc.yaml`) — and every field can be overridden by
+an env var named
 `SNOOZE_SERVER_<SECTION>_<KEY>` (e.g. `SNOOZE_SERVER_CORE_DATABASE_TYPE`); the
 legacy `DATABASE_URL` shortcut is also honoured. A bare `SNOOZE_DATABASE_*`
 (no `SNOOZE_SERVER_` prefix) is silently ignored. A new **list-valued** field
@@ -402,7 +416,7 @@ reload token (64/32 random bytes via `crypto/rand`) in the `secrets`
 collection; a bcrypt `root` user whose generated password is logged **once at
 WARN to stderr**; the default roles (admin / viewer / notifications) and a
 default "Host and Message" aggregate rule — all guarded by an `init_db` marker
-doc. The JWT key comes from the DB by default (the seeded HS256 key); if
+doc and seeded under the reserved `default` tenant. The JWT key comes from the DB by default (the seeded HS256 key); if
 `auth.token_secret` is set in the file config (or `SNOOZE_SERVER_AUTH_TOKEN_SECRET`),
 `bootSecrets` overrides the DB key with it — it must be ≥ `auth.MinSecretBytes`
 (32) bytes or boot fails.
@@ -431,7 +445,7 @@ A registered plugin can still be **disabled by default**: `optionalPlugins`
 in `internal/core/boot.go` (currently just `patlite`) is dropped from the live
 plugin map — hidden from `/metadata`, the CRUD router, and the notification
 dispatcher — unless the operator lists it in `core.enabled_optional_plugins`.
-So the ~45 blank-imported plugins are not all served by a default install.
+So the ~46 blank-imported plugins are not all served by a default install.
 
 ### chi over net/http, slog over logrus
 

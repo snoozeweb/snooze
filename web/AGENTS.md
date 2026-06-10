@@ -49,7 +49,7 @@ web/src/
 │                     #   layout/ (AppShell, Sidebar, Topbar, CommandPalette, HowToMenu)
 ├── features/         # one folder per feature: page + api.ts hooks + types
 │   ├── alerts/ rules/ snoozes/ notifications/ dashboard/ auth/ audit/ dev/
-│   └── admin/        #   users, roles, environments, widgets, kv, settings, status
+│   └── admin/        #   users, roles, environments, widgets, kv, settings, status, tenants
 ├── shared/           # cross-feature: ui/ (Radix wrappers), forms/, chart/, condition/,
 │                     #   searchdsl/, hooks/, icons/, auth/ (RequirePerm), modifications/
 ├── lib/              # non-component logic: api/, auth/, condition/, format/, timeconstraints/
@@ -60,9 +60,13 @@ web/src/
 > `app/layout/AppShell.tsx` is the layout; the `QueryClient` is instantiated
 > inline in `router.tsx` (there is no standalone file for it). `features/dev/`
 > is a developer-only showroom (`PrimitivesPage` UI gallery + `ResourcePage`
-> demo): route-wired at `/web/dev/*` but unlinked from nav, and it currently
-> **ships in production builds** — gate it behind `import.meta.env.DEV` if that
-> is not intended.
+> demo): route-wired at `/web/dev/*` but unlinked from nav, and built **only
+> under `import.meta.env.DEV`** — Rollup drops the routes and modules from
+> production bundles; keep new dev-only routes inside that gate.
+> `features/auth/` owns the login flow: `Login.tsx` renders one button per
+> backend descriptor (form-first + SSO via `parseBackends()`/`ssoStartUrl()` in
+> its `api.ts`), and `LoginCallback.tsx` handles the OIDC return at
+> `/web/login/callback`.
 
 | You're adding…                         | Put it in…                                                      |
 |----------------------------------------|-----------------------------------------------------------------|

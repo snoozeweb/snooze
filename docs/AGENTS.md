@@ -38,7 +38,8 @@ docs/content/
 │   │                  #   clustering, inputs, notifications, query language…
 │   └── integrations/  # ONE page per integration (input / output / webhook)
 ├── configuration/     # one page per file-config section
-│   │                  #   (core, general, ingest, ldap_auth [LDAP only],
+│   │                  #   (core, general, auth, web, ingest,
+│   │                  #    ldap_auth [LDAP only], oidc_auth [OIDC/Entra],
 │   │                  #    notifications, housekeeping, syncer; postgres &
 │   │                  #    sqlite are narrative companions for core.database)
 └── migration/         # Python 1.x → Go upgrade notes
@@ -64,13 +65,14 @@ integrations and get no `integrations/` page.
 
 > **Section ↔ page gaps.** The real koanf sections
 > (`../internal/config/config.go`) are core, general, housekeeping, notification,
-> ldap, web, auth, syncer, ingest. `configuration/ldap_auth.md` documents only
-> the **ldap** section; the **web** and **auth** sections (the latter holds
-> `token_secret` / `token_algorithm` / `token_lease` / …) currently have **no
-> page** — add `web.md` / `auth.md` when you touch them. `postgres.md` /
-> `sqlite.md` are the exception to "mirror the `schema/*.go` struct": their
-> fields live in `core.go`'s polymorphic `Database` struct, not a standalone
-> section file.
+> ldap, web, auth, syncer, ingest, oidc — and each now has its own page.
+> `configuration/ldap_auth.md` documents the **ldap** section and `oidc_auth.md`
+> the **oidc** section; the **auth** section (the JWT token knobs: `token_secret`
+> / `token_algorithm` / `token_lease` / …) is `auth.md`, and the **web** section
+> is `web.md` (an explicitly passed `--web-dir` flag overrides the section).
+> `postgres.md` / `sqlite.md` are the exception to "mirror the
+> `schema/*.go` struct": their fields live in `core.go`'s polymorphic `Database`
+> struct, not a standalone section file.
 
 ---
 

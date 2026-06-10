@@ -74,6 +74,34 @@ identically (e.g. `int64(1)` vs `float64(1)`) merge into one op.
 
 ---
 
+## Tenant scoping (fail-closed, enforced here)
+
+Multitenancy is shared-schema: scoped collections carry a `tenant_id` field,
+and **every driver enforces it itself** — callers never add the predicate by
+hand. The pieces (all in this package, used identically by the three backends):
+
+* `TenantScope(ctx, collection)` (`tenant.go`) resolves what to enforce:
+  global collection or platform-scope ctx → no predicate; tenant ctx → that
+  slug; scoped collection + naked ctx → **`ErrNoTenant`, the operation fails**
+  rather than leaking cross-tenant rows. Writes stamp `tenant_id`; reads,
+  updates, deletes and the `Cleanup*` sweeps AND-in the predicate
+  (`WithTenantCond` for Cond paths; per-backend `tenantPredicate`/`tenantFilter`
+  in each `cleanup.go`).
+* The global-collection registry (`db.go`): `tenant`, `secrets`, `nodes` are
+  seeded; plugins opt out of scoping with `RegisterGlobalCollection(name)` at
+  boot. Everything else is tenant-scoped by default.
+* `asyncwriter` partitions its coalescing by tenant (`cloneDocWithTenant`), so
+  increment batches never merge across tenants.
+* `dbtest` carries tenant-isolation conformance cases — a new driver behaviour
+  must keep them green on all three backends.
+* Backfill of pre-tenancy data is `internal/migrate`
+  (`snooze-server migrate multitenancy`), idempotent, in-place.
+
+When adding a Driver method or a new query path, route it through
+`TenantScope` first — a path that skips it is a cross-tenant data leak.
+
+---
+
 ## Known cross-backend divergences
 
 A few intentional/known splits remain (the shared `dbtest` suite — now wired
