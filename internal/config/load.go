@@ -32,6 +32,7 @@ var sectionFiles = map[string]string{
 	"web":           "web",
 	"auth":          "auth",
 	"syncer":        "syncer",
+	"ingest":        "ingest",
 	"oidc":          "oidc",
 }
 

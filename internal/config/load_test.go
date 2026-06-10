@@ -172,6 +172,28 @@ user_filter: '()'
 	require.Equal(t, "my-secret-password123", cfg.LDAP.BindPassword)
 }
 
+func TestIngestConfig_Empty(t *testing.T) {
+	cfg, err := Load(t.TempDir())
+	require.NoError(t, err)
+	require.Empty(t, cfg.Ingest.Token)
+	require.False(t, cfg.Ingest.SNSVerify)
+	require.Empty(t, cfg.Ingest.SentrySecret)
+}
+
+func TestIngestConfig_Read(t *testing.T) {
+	dir := t.TempDir()
+	writeYAML(t, dir, "ingest", `---
+token: super-secret-ingest-token
+sns_verify: true
+sentry_secret: sentry-hmac-secret
+`)
+	cfg, err := Load(dir)
+	require.NoError(t, err)
+	require.Equal(t, "super-secret-ingest-token", cfg.Ingest.Token)
+	require.True(t, cfg.Ingest.SNSVerify)
+	require.Equal(t, "sentry-hmac-secret", cfg.Ingest.SentrySecret)
+}
+
 func TestEnv_GeneralMetrics(t *testing.T) {
 	t.Setenv("SNOOZE_SERVER_GENERAL_METRICS_ENABLED", "false")
 	cfg, err := Load(t.TempDir())
