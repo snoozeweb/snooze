@@ -590,9 +590,16 @@ func buildAuthProviders(cfg *config.Config, drv db.Driver, rs *config.RuntimeSet
 	if cfg.General.AnonymousEnabled {
 		reg.Register(auth.NewAnonymousProvider(true))
 	}
-	if cfg.OIDC.Enabled {
-		reg.Register(auth.NewOIDCProvider(cfg.OIDC))
-	}
+	// OIDC is always registered (like LDAP) so a runtime oidc.enabled=true edit
+	// takes effect without a restart. The provider reads its live config from
+	// RuntimeSettings (issuer/client_id/redirect_url/scopes/claims/enabled);
+	// the client_secret + method stay in the file-config baseline.
+	reg.Register(auth.NewOIDCProvider(cfg.OIDC, func(ctx context.Context) (schema.OIDC, error) {
+		if rs == nil {
+			return cfg.OIDC, nil
+		}
+		return rs.OIDC(ctx)
+	}))
 	return reg
 }
 

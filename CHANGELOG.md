@@ -2,6 +2,32 @@
 
 ### Added
 
+- **SSO users are now visible and manageable.** OIDC/Microsoft 365 users are
+  provisioned just-in-time on their first login (previously they existed only
+  inside the issued token), so they appear on the Users page under a per-backend
+  tab (e.g. *Microsoft 365*) next to Local/LDAP. Re-login refreshes their groups
+  and last-login without clobbering admin-assigned roles. The Users list shows
+  **effective roles** — group-derived (SSO/LDAP) roles in addition to explicitly
+  assigned ones — so an SSO admin no longer appears role-less, and the Groups
+  column is capped (`+N more`) so a user with many directory groups stays
+  readable.
+- **Enable / disable any user.** Each user carries an `enabled` flag, toggled
+  from the user editor and shown as a Status badge in the list. A disabled user
+  is blocked at login (local **and** SSO) and can no longer refresh an existing
+  session, so access is cut off within the access-token lease. The last enabled
+  `platform_admin` is protected from being disabled.
+- **Group → role mapping is now editable in the UI.** The Role editor gained a
+  **Groups** field (and the roles list a Groups column), so admins can map
+  auth-backend groups / OIDC App Roles (e.g. `GrafanaAdmin`) to a Snooze role
+  from the web UI — previously this field existed only in the database.
+- **OIDC config is now runtime-editable (Settings → OIDC / SSO).** The OIDC
+  connection + claim fields (`enabled`, `issuer`, `client_id`, `redirect_url`,
+  `scopes`, `roles_claim`, `groups_claim`) moved to DB-backed runtime settings
+  with live reload, mirroring the LDAP tab. The `client_secret` stays a
+  file/env secret (never written to the DB) and `method` stays file-config. The
+  login index now evaluates backends under the default tenant so a runtime
+  `enabled` toggle (OIDC or LDAP) surfaces on the login page without a restart.
+
 - **OpenID Connect authentication backend** (Microsoft 365 / Entra ID supported
   out of the box). Configure via the `oidc` file-config section. Entra App Roles
   map to Snooze roles through the existing group→role mapping (`Admin` → `admin`).

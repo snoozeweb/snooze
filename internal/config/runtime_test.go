@@ -63,6 +63,38 @@ func TestRuntimeSettingsLDAPOverridesBaseline(t *testing.T) {
 	require.Equal(t, "dc=example,dc=com", got.BaseDN)
 }
 
+// TestRuntimeSettingsOIDCOverridesExceptSecret locks in that the OIDC connection
+// + claim fields are DB-overridable, while client_secret and method stay
+// file-config-only (a stray DB row for either must be ignored).
+func TestRuntimeSettingsOIDCOverridesExceptSecret(t *testing.T) {
+	d := newDriver(t)
+	ctx := auth.WithTenant(context.Background(), snoozetypes.DefaultTenant)
+	baseline := Default()
+	baseline.OIDC.Method = "microsoft"
+	baseline.OIDC.ClientSecret = "file-secret"
+	baseline.OIDC.Issuer = "https://baseline/v2.0"
+
+	writeSetting(ctx, t, d, "oidc.enabled", true)
+	writeSetting(ctx, t, d, "oidc.issuer", "https://login.microsoftonline.com/tid/v2.0")
+	writeSetting(ctx, t, d, "oidc.client_id", "cid-123")
+	writeSetting(ctx, t, d, "oidc.scopes", "openid profile email User.Read")
+	writeSetting(ctx, t, d, "oidc.roles_claim", "roles")
+	// A stray oidc.client_secret / oidc.method row in the DB must be IGNORED —
+	// the secret stays file/env, the method is fixed.
+	writeSetting(ctx, t, d, "oidc.client_secret", "db-secret-should-be-ignored")
+	writeSetting(ctx, t, d, "oidc.method", "evil")
+
+	rs := NewRuntimeSettings(d, baseline, time.Minute)
+	got, err := rs.OIDC(ctx)
+	require.NoError(t, err)
+	require.True(t, got.Enabled)
+	require.Equal(t, "https://login.microsoftonline.com/tid/v2.0", got.Issuer)
+	require.Equal(t, "cid-123", got.ClientID)
+	require.Equal(t, []string{"openid", "profile", "email", "User.Read"}, got.Scopes)
+	require.Equal(t, "file-secret", got.ClientSecret, "client_secret must never come from the DB")
+	require.Equal(t, "microsoft", got.Method, "method must never come from the DB")
+}
+
 // TestRuntimeSettingsHousekeeperOverridesDuration locks in that string-form
 // Go durations stored in the DB are parsed correctly when overlaying onto
 // the schema.Duration-typed housekeeper config.

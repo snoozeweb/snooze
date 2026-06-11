@@ -74,4 +74,67 @@ describe("UsersPage", () => {
     await user.click(screen.getByText("alice"));
     await waitFor(() => expect(screen.getByText("Edit user")).toBeInTheDocument());
   });
+
+  it("renders a tab for each redirect (SSO) backend", async () => {
+    mswServer.use(
+      http.get("/api/v1/login", () =>
+        HttpResponse.json({
+          data: {
+            backends: [
+              { name: "local", kind: "password" },
+              {
+                name: "microsoft",
+                kind: "redirect",
+                display_name: "Microsoft 365",
+                icon: "microsoft",
+              },
+            ],
+            tenants: [],
+          },
+        }),
+      ),
+      http.get("/api/v1/user", () =>
+        HttpResponse.json({
+          data: [{ uid: "u1", name: "alice@egerie.eu", method: "microsoft", enabled: true }],
+          meta: { count: 1, limit: 50, offset: 0, total: 1 },
+        }),
+      ),
+    );
+    setup();
+    // The SSO backend's display_name becomes a tab.
+    await waitFor(() =>
+      expect(screen.getByRole("tab", { name: "Microsoft 365" })).toBeInTheDocument(),
+    );
+    expect(screen.getByRole("tab", { name: "Local" })).toBeInTheDocument();
+  });
+
+  it("shows group-derived roles in the Roles column even when roles[] is empty", async () => {
+    mswServer.use(
+      http.get("/api/v1/role", () =>
+        HttpResponse.json({
+          data: [{ uid: "r1", name: "admin", groups: ["GrafanaAdmin"] }],
+          meta: { count: 1, limit: 500, offset: 0, total: 1 },
+        }),
+      ),
+      http.get("/api/v1/user", () =>
+        HttpResponse.json({
+          data: [
+            {
+              uid: "u1",
+              name: "florian@egerie.eu",
+              method: "microsoft",
+              enabled: true,
+              roles: [],
+              groups: ["GrafanaAdmin", "0165f82e-1673-4d3c-b96a-3c83ce2b057f"],
+            },
+          ],
+          meta: { count: 1, limit: 50, offset: 0, total: 1 },
+        }),
+      ),
+    );
+    setup();
+    await waitFor(() => expect(screen.getByText("florian@egerie.eu")).toBeInTheDocument());
+    // `admin` is granted via the GrafanaAdmin group → it shows despite roles:[].
+    await waitFor(() => expect(screen.getByText("admin")).toBeInTheDocument());
+  });
 });

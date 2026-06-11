@@ -146,6 +146,24 @@ func TestLoginLocal_BadCreds(t *testing.T) {
 	require.Equal(t, http.StatusUnauthorized, rec.Code)
 }
 
+// TestLoginLocal_DisabledAccountReturns403 verifies that a provider returning
+// auth.ErrUserDisabled surfaces as a 403 "account disabled", distinct from the
+// generic 401 used for bad credentials.
+func TestLoginLocal_DisabledAccountReturns403(t *testing.T) {
+	r, _ := loginTestRouter(t, &fakeProvider{
+		name:      "local",
+		enabled:   true,
+		failError: auth.ErrUserDisabled,
+	})
+	body := bytes.NewBufferString(`{"username":"alice","password":"s3cret"}`)
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/login/local", body)
+	req.Header.Set("Content-Type", "application/json")
+	r.ServeHTTP(rec, req)
+	require.Equal(t, http.StatusForbidden, rec.Code, "body=%s", rec.Body.String())
+	require.Contains(t, rec.Body.String(), "account disabled")
+}
+
 func TestLoginLocal_UnknownBackend(t *testing.T) {
 	r, _ := loginTestRouter(t /* no providers */)
 	body := bytes.NewBufferString(`{"username":"x","password":"y"}`)
@@ -319,6 +337,32 @@ func TestRefresh_Success(t *testing.T) {
 	require.Equal(t, first.RefreshToken,
 		rt.Refresh.(*fakeRefresh).rotatedFrom,
 		"refresh handler must call VerifyAndRotate on the supplied token")
+}
+
+// TestRefresh_DisabledUserRevokedAnd401 verifies a user disabled after login
+// cannot refresh: the rotated token is revoked and the request returns 401.
+func TestRefresh_DisabledUserRevokedAnd401(t *testing.T) {
+	store := &userStoreDB{}
+	store.seedUser(db.Document{
+		"name": "alice", "method": "local", "tenant_id": "default", "enabled": false,
+	})
+	_, rt := loginTestRouter(t, &fakeProvider{name: "local", enabled: true})
+	rt.DB = store
+	fr := rt.Refresh.(*fakeRefresh)
+	fr.verifyClaims = snoozetypes.Claims{Subject: "alice", Method: "local", TenantID: "default"}
+
+	r2 := chi.NewRouter()
+	rt.mountLogin(r2)
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/login/refresh",
+		bytes.NewBufferString(`{"refresh_token":"refresh-alice"}`))
+	req.Header.Set("Content-Type", "application/json")
+	r2.ServeHTTP(rec, req)
+
+	require.Equal(t, http.StatusUnauthorized, rec.Code, "body=%s", rec.Body.String())
+	require.Contains(t, rec.Body.String(), "account disabled")
+	require.NotEmpty(t, fr.revoked, "the rotated refresh token must be revoked")
 }
 
 func TestRefresh_InvalidTokenReturns401(t *testing.T) {
@@ -607,4 +651,26 @@ func TestLoginIndex_DefaultBackendFirst(t *testing.T) {
 	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &body))
 	require.NotEmpty(t, body.Data.Backends)
 	require.Equal(t, "ldap", body.Data.Backends[0].Name, "configured default_auth_backend must be listed first")
+}
+
+// tenantGatedProvider is enabled only when the context carries the default
+// tenant. It models a RuntimeSettings-backed provider (LDAP/OIDC) whose enabled
+// flag lives in the DB under the default tenant.
+type tenantGatedProvider struct{ fakeProvider }
+
+func (g *tenantGatedProvider) IsEnabled(ctx context.Context) bool {
+	tid, _ := auth.TenantFrom(ctx)
+	return tid == snoozetypes.DefaultTenant
+}
+
+// TestLoginIndex_RuntimeEnabledSurfacesUnderDefaultTenant verifies the login
+// index evaluates provider-enabled under the default tenant, so a backend whose
+// enabled state is DB-stored (LDAP/OIDC) appears on the tenant-less login page.
+func TestLoginIndex_RuntimeEnabledSurfacesUnderDefaultTenant(t *testing.T) {
+	r, _ := loginTestRouter(t, &tenantGatedProvider{fakeProvider: fakeProvider{name: "ldap"}})
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/login", nil)
+	r.ServeHTTP(rec, req)
+	require.Equal(t, http.StatusOK, rec.Code)
+	require.Contains(t, rec.Body.String(), `"ldap"`, "a default-tenant runtime-enabled backend must appear on the login index")
 }

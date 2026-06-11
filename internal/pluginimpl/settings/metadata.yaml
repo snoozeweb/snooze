@@ -133,6 +133,53 @@ setting_form:
         description: 'Base DN for groups.'
         default_value: ''
         group: 'ldap'
+    # --- OIDC (Microsoft 365 / Entra ID) -------------------------------------
+    # The client_secret is intentionally NOT exposed here: it stays a file/env
+    # secret (oidc.yaml client_secret / SNOOZE_SERVER_OIDC_CLIENT_SECRET). The
+    # login method ("microsoft") is also fixed in file-config. Map auth-backend
+    # groups (App Roles) to Snooze roles on the Roles page.
+    oidc.enabled:
+        display_name: 'OIDC enabled'
+        component: 'Switch'
+        description: 'Enable OpenID Connect (Microsoft 365 / Entra) single sign-on.'
+        default_value: false
+        group: 'oidc'
+    oidc.issuer:
+        display_name: 'Issuer URL'
+        component: 'String'
+        description: 'OIDC issuer (e.g. https://login.microsoftonline.com/<tenant>/v2.0). Must be https.'
+        default_value: ''
+        group: 'oidc'
+    oidc.client_id:
+        display_name: 'Client ID'
+        component: 'String'
+        description: 'Application (client) ID registered with the identity provider.'
+        default_value: ''
+        group: 'oidc'
+    oidc.redirect_url:
+        display_name: 'Redirect URL'
+        component: 'String'
+        description: 'Absolute callback URL; must be registered as a Redirect URI on the IdP (…/api/v1/login/microsoft/callback).'
+        default_value: ''
+        group: 'oidc'
+    oidc.scopes:
+        display_name: 'Scopes'
+        component: 'String'
+        description: 'Space-separated OAuth scopes requested at sign-in.'
+        default_value: 'openid profile email'
+        group: 'oidc'
+    oidc.roles_claim:
+        display_name: 'Roles claim'
+        component: 'String'
+        description: 'ID-token claim carrying App Roles, mapped to Snooze roles via the Roles page Groups field.'
+        default_value: 'roles'
+        group: 'oidc'
+    oidc.groups_claim:
+        display_name: 'Groups claim'
+        component: 'String'
+        description: 'Optional second ID-token claim carrying group memberships.'
+        default_value: 'groups'
+        group: 'oidc'
     # --- Housekeeping --------------------------------------------------------
     housekeeping.trigger_on_startup:
         display_name: 'Trigger on startup'

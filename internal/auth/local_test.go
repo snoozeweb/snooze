@@ -83,6 +83,26 @@ func TestLocalProvider_Authenticate_Disabled(t *testing.T) {
 	require.True(t, errors.Is(err, ErrUserDisabled), "got: %v", err)
 }
 
+// TestLocalProvider_Authenticate_DisabledWrongPassword locks the
+// anti-enumeration ordering: a disabled account with a *wrong* password must
+// surface as ErrInvalidCredentials, never ErrUserDisabled, so a guesser cannot
+// learn that the account exists (and is disabled) without knowing the password.
+func TestLocalProvider_Authenticate_DisabledWrongPassword(t *testing.T) {
+	t.Parallel()
+	fdb := newFakeDB()
+	fdb.seed(LocalCollection, db.Document{
+		"name":     "alice",
+		"method":   LocalMethod,
+		"enabled":  false,
+		"password": mustHash(t, "s3cret"),
+	})
+	p := NewLocalProvider(fdb)
+	_, err := p.Authenticate(context.Background(), Credentials{Username: "alice", Password: "WRONG"})
+	require.Error(t, err)
+	require.True(t, errors.Is(err, ErrInvalidCredentials), "got: %v", err)
+	require.False(t, errors.Is(err, ErrUserDisabled), "must not leak disabled state to a wrong-password attempt")
+}
+
 func TestLocalProvider_Authenticate_EmptyCreds(t *testing.T) {
 	t.Parallel()
 	fdb := newFakeDB()

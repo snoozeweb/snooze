@@ -5,6 +5,7 @@ import { Drawer, DrawerBody, DrawerContent, DrawerFooter, DrawerTitle } from "@/
 import { Input } from "@/shared/ui/Input";
 import { MultiCombobox } from "@/shared/ui/MultiCombobox";
 import { Spinner } from "@/shared/ui/Spinner";
+import { Switch } from "@/shared/ui/Switch";
 import { Textarea } from "@/shared/ui/Textarea";
 import { toast } from "@/shared/ui/toast/useToast";
 import { Select, SelectContent, SelectItem, SelectTrigger } from "@/shared/ui/Select";
@@ -16,18 +17,22 @@ import styles from "./UserEditor.module.css";
 
 type FormShape = {
   name: string;
-  type: "local" | "ldap";
+  // Canonical auth method: "local"/"ldap" for create, plus any OIDC method
+  // (e.g. "microsoft") shown read-only when editing an SSO user.
+  method: string;
   roles: string[];
   comment: string;
   password: string;
+  enabled: boolean;
 };
 
 const EMPTY_FORM: FormShape = {
   name: "",
-  type: "local",
+  method: "local",
   roles: [],
   comment: "",
   password: "",
+  enabled: true,
 };
 
 export type UserEditorProps = {
@@ -53,10 +58,12 @@ export function UserEditor({ uid, onClose }: UserEditorProps) {
     if (existing.data) {
       reset({
         name: existing.data.name ?? "",
-        type: existing.data.type ?? "local",
+        method: existing.data.method ?? existing.data.type ?? "local",
         roles: existing.data.roles ?? [],
         comment: existing.data.comment ?? "",
         password: "",
+        // Absent enabled is treated as enabled (legacy/seeded docs).
+        enabled: existing.data.enabled ?? true,
       });
     }
   }, [existing.data, isCreate, reset]);
@@ -72,13 +79,16 @@ export function UserEditor({ uid, onClose }: UserEditorProps) {
       // omits `password` instead of recording a no-op write).
       const body: User = {
         name: form.name,
-        type: form.type,
         ...(form.roles.length ? { roles: form.roles } : {}),
         ...(form.comment ? { comment: form.comment } : {}),
         ...(form.password ? { password: form.password } : {}),
+        enabled: form.enabled,
       };
 
       if (isCreate) {
+        // method is the canonical backend field; it is the user's immutable
+        // identity component, so it is set on create and never sent on edit.
+        body.method = form.method;
         await create.mutateAsync(body);
         toast.success("User created");
       } else {
@@ -93,7 +103,8 @@ export function UserEditor({ uid, onClose }: UserEditorProps) {
     }
   }
 
-  const typeValue = watch("type");
+  const methodValue = watch("method");
+  const enabledValue = watch("enabled");
   const rolesValue = watch("roles");
   const nameInvalid = formState.isSubmitted && !watch("name").trim();
 
@@ -148,18 +159,22 @@ export function UserEditor({ uid, onClose }: UserEditorProps) {
                   <label className={styles.label} htmlFor="user-type">
                     Type
                   </label>
-                  <Select
-                    value={typeValue}
-                    onValueChange={(v) =>
-                      setValue("type", v as "local" | "ldap", { shouldDirty: true })
-                    }
-                  >
-                    <SelectTrigger />
-                    <SelectContent>
-                      <SelectItem value="local">local</SelectItem>
-                      <SelectItem value="ldap">ldap</SelectItem>
-                    </SelectContent>
-                  </Select>
+                  {isCreate ? (
+                    <Select
+                      value={methodValue}
+                      onValueChange={(v) => setValue("method", v, { shouldDirty: true })}
+                    >
+                      <SelectTrigger />
+                      <SelectContent>
+                        <SelectItem value="local">local</SelectItem>
+                        <SelectItem value="ldap">ldap</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  ) : (
+                    // A user's auth method is immutable, so it is read-only when
+                    // editing — including SSO users (e.g. "microsoft").
+                    <Input id="user-type" value={methodValue} readOnly disabled />
+                  )}
                 </div>
                 <div className={styles.field}>
                   <span className={styles.label}>Roles</span>
@@ -172,8 +187,29 @@ export function UserEditor({ uid, onClose }: UserEditorProps) {
                     allowCustom
                   />
                 </div>
+                <div className={styles.field}>
+                  <span className={styles.label}>Status</span>
+                  <div
+                    style={{
+                      display: "flex",
+                      flexDirection: "row",
+                      alignItems: "center",
+                      gap: "var(--space-2)",
+                    }}
+                  >
+                    <Switch
+                      id="user-enabled"
+                      checked={enabledValue}
+                      onCheckedChange={(v) => setValue("enabled", v, { shouldDirty: true })}
+                      aria-label="Enabled"
+                    />
+                    <label className={styles.label} htmlFor="user-enabled" style={{ margin: 0 }}>
+                      {enabledValue ? "Enabled" : "Disabled — login blocked"}
+                    </label>
+                  </div>
+                </div>
               </section>
-              {typeValue === "local" ? (
+              {methodValue === "local" ? (
                 <div className={styles.field}>
                   <label className={styles.label} htmlFor="user-password">
                     Password

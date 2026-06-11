@@ -76,7 +76,32 @@ Roles
 List of roles assigned to the user.
 
 Password\*  
-When creating a user, this field is required to set up the user's first password. When editing a user, leave it blank to apply no changes to it. Note: for LDAP users, passwords are not displayed.
+When creating a user, this field is required to set up the user's first password. When editing a user, leave it blank to apply no changes to it. Note: for LDAP and SSO users, no password field is shown — those credentials are owned by the external backend.
+
+Status (Enabled)  
+A user can be enabled or disabled from the user editor. A **disabled** user is
+blocked from logging in (local, LDAP and SSO alike) and an existing session
+cannot be refreshed — the account is cut off within the access-token lease.
+Re-enable the user to restore access. The user list shows an **Enabled** /
+**Disabled** badge per account.
+
+> The last remaining enabled `platform_admin` cannot be disabled (or stripped of
+> the role) — the server always keeps at least one platform administrator.
+
+### Single sign-on (SSO) users
+
+Users who sign in through an OIDC backend such as **Microsoft 365 / Entra ID**
+are provisioned automatically on their **first successful login** (just-in-time).
+From then on they appear in the user list under a tab named after the backend
+(e.g. *Microsoft 365*), alongside the **All**, **Local** and **LDAP** tabs.
+
+Their effective roles come from the [group → role mapping](./users.md#static-roles)
+(Entra App Roles delivered in the token), not from a per-user role assignment,
+so the **Roles** column may be empty while the **Groups** column lists the
+claims. An administrator can still open an SSO user to assign extra roles or to
+disable the account. The auth method is fixed and shown read-only.
+
+See [OIDC authentication](../configuration/oidc_auth.md) for backend setup.
 
 ### Static Roles
 

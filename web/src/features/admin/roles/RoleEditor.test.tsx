@@ -131,4 +131,39 @@ describe("RoleEditor", () => {
     const sent = bodies[0] as { permissions: string[] };
     expect(sent.permissions).toEqual(["rw_rule", "ro_rule"]);
   });
+
+  it("hydrates and round-trips the group→role mapping (groups) field", async () => {
+    stubCatalogue();
+    const bodies: unknown[] = [];
+    mswServer.use(
+      http.get("/api/v1/role/r2", () =>
+        HttpResponse.json({
+          uid: "r2",
+          name: "admin",
+          permissions: ["rw_all"],
+          groups: ["GrafanaAdmin"],
+        }),
+      ),
+      http.patch("/api/v1/role/r2", async ({ request }) => {
+        bodies.push(await request.json());
+        return HttpResponse.json({ uid: "r2", name: "admin" });
+      }),
+    );
+    const onClose = vi.fn();
+    const Wrapper = wrap();
+    const user = userEvent.setup();
+    render(
+      <Wrapper>
+        <RoleEditor uid="r2" onClose={onClose} />
+      </Wrapper>,
+    );
+    await waitFor(() =>
+      expect(screen.getByLabelText<HTMLInputElement>(/^name$/i).value).toBe("admin"),
+    );
+    // The mapped group renders as a removable badge in the Groups combobox.
+    expect(screen.getByLabelText("Remove GrafanaAdmin")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: /save/i }));
+    await waitFor(() => expect(bodies).toHaveLength(1));
+    expect((bodies[0] as { groups: string[] }).groups).toEqual(["GrafanaAdmin"]);
+  });
 });

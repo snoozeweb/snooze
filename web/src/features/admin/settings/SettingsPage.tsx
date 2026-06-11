@@ -14,12 +14,13 @@ import styles from "./SettingsPage.module.css";
 
 // Canonical tab order. Anything in the catalogue with a `group:` key not
 // listed here is appended at the end, title-cased.
-const TAB_ORDER = ["general", "notifications", "ldap", "housekeeping"] as const;
+const TAB_ORDER = ["general", "notifications", "ldap", "oidc", "housekeeping"] as const;
 
 const TAB_LABELS: Record<string, string> = {
   general: "General",
   notifications: "Notifications",
   ldap: "LDAP",
+  oidc: "OIDC / SSO",
   housekeeping: "Housekeeping",
 };
 

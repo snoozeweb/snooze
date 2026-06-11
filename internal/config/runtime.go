@@ -96,6 +96,11 @@ type LDAPConfig = schema.LDAP
 // snapshot. Same field set as “schema.Housekeeper“.
 type HousekeeperConfig = schema.Housekeeper
 
+// OIDCConfig is the runtime-readable OIDC configuration snapshot. Same field
+// set as “schema.OIDC“; the “client_secret“ and “method“ fields are never
+// sourced from the DB (see applyOIDCOverrides).
+type OIDCConfig = schema.OIDC
+
 // settingsCollection is the DB collection holding the flat key/value
 // catalogue rows (“{uid, name, value, comment}“) the React Settings page
 // writes to.
@@ -178,6 +183,24 @@ func (r *RuntimeSettings) LDAP(ctx context.Context) (LDAPConfig, error) {
 	}
 	out := r.baseline.LDAP
 	applyLDAPOverrides(&out, values)
+	return out, nil
+}
+
+// OIDC returns the current OIDC configuration: the file-config baseline with
+// any DB-stored “oidc.*“ keys overlaid. The “client_secret“ and “method“ are
+// intentionally NOT overridable from the DB — the secret stays a file/env
+// secret, and the method is the login URL segment + identity claim. The
+// returned value is a copy; callers may mutate it freely.
+func (r *RuntimeSettings) OIDC(ctx context.Context) (OIDCConfig, error) {
+	if r == nil {
+		return schema.DefaultOIDC(), nil
+	}
+	values, err := r.load(ctx)
+	if err != nil {
+		return OIDCConfig{}, err
+	}
+	out := r.baseline.OIDC
+	applyOIDCOverrides(&out, values)
 	return out, nil
 }
 
@@ -366,6 +389,50 @@ func applyLDAPOverrides(out *LDAPConfig, values map[string]any) {
 	}
 }
 
+// applyOIDCOverrides overlays the dotted-prefix DB values onto a baseline OIDC
+// config. The connection + claim-mapping fields are runtime-editable; the
+// client_secret and method are deliberately left untouched (secret stays in
+// the file/env, method is fixed). scopes is stored as a space-separated string
+// (mirroring grafana.ini's "scopes = openid email profile"). Unknown keys are
+// ignored.
+func applyOIDCOverrides(out *schema.OIDC, values map[string]any) {
+	if v, ok := values["oidc.enabled"]; ok {
+		if b, ok := asBool(v); ok {
+			out.Enabled = b
+		}
+	}
+	if v, ok := values["oidc.issuer"]; ok {
+		if s, ok := asString(v); ok {
+			out.Issuer = s
+		}
+	}
+	if v, ok := values["oidc.client_id"]; ok {
+		if s, ok := asString(v); ok {
+			out.ClientID = s
+		}
+	}
+	if v, ok := values["oidc.redirect_url"]; ok {
+		if s, ok := asString(v); ok {
+			out.RedirectURL = s
+		}
+	}
+	if v, ok := values["oidc.scopes"]; ok {
+		if ss, ok := asStringSlice(v); ok {
+			out.Scopes = ss
+		}
+	}
+	if v, ok := values["oidc.roles_claim"]; ok {
+		if s, ok := asString(v); ok {
+			out.RolesClaim = s
+		}
+	}
+	if v, ok := values["oidc.groups_claim"]; ok {
+		if s, ok := asString(v); ok {
+			out.GroupsClaim = s
+		}
+	}
+}
+
 // applyHousekeeperOverrides overlays the dotted-prefix DB values onto a
 // baseline HousekeeperConfig. Durations are passed through schema.Duration's
 // text unmarshaller so the same wire format works for both file-config and
@@ -439,6 +506,31 @@ func asString(v any) (string, bool) {
 		return x.String(), true
 	}
 	return "", false
+}
+
+// asStringSlice coerces a settings value into a []string. It accepts a native
+// list ([]string / []any) or a single string split on whitespace and commas —
+// so "openid profile email" and "openid,profile,email" both work.
+func asStringSlice(v any) ([]string, bool) {
+	switch x := v.(type) {
+	case []string:
+		return x, true
+	case []any:
+		out := make([]string, 0, len(x))
+		for _, e := range x {
+			if s, ok := e.(string); ok && s != "" {
+				out = append(out, s)
+			}
+		}
+		return out, true
+	case string:
+		fields := strings.FieldsFunc(x, func(r rune) bool { return r == ' ' || r == ',' || r == '\t' || r == '\n' })
+		if len(fields) == 0 {
+			return nil, false
+		}
+		return fields, true
+	}
+	return nil, false
 }
 
 func asInt(v any) (int, bool) {

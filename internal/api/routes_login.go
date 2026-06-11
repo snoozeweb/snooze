@@ -106,6 +106,11 @@ func (rt *Router) handleLoginIndex(w http.ResponseWriter, r *http.Request) {
 		WriteJSON(w, http.StatusOK, map[string]any{"data": map[string]any{"backends": []backendInfo{}}})
 		return
 	}
+	// Evaluate each backend's enabled state under the default tenant. The login
+	// index is a pre-auth, tenant-less request, but providers whose IsEnabled
+	// reads RuntimeSettings (LDAP, OIDC) need a tenant to see DB-stored toggles —
+	// without this a runtime "enabled" edit would never surface on the login page.
+	idxCtx := auth.WithTenant(r.Context(), snoozetypes.DefaultTenant)
 	all := rt.Providers.Names()
 	names := make([]string, 0, len(all))
 	for _, n := range all {
@@ -113,7 +118,7 @@ func (rt *Router) handleLoginIndex(w http.ResponseWriter, r *http.Request) {
 		if err != nil {
 			continue
 		}
-		if !auth.ProviderEnabled(r.Context(), p) {
+		if !auth.ProviderEnabled(idxCtx, p) {
 			continue
 		}
 		names = append(names, n)
@@ -223,6 +228,14 @@ func (rt *Router) handleLogin(method string) http.HandlerFunc {
 				WriteError(w, r, ErrConflict.WithMessage("backend disabled"))
 				return
 			}
+			// A disabled account is surfaced distinctly (403) so the user gets a
+			// clear reason. The provider only returns ErrUserDisabled once the
+			// password has already verified, so this does not let an anonymous
+			// guesser enumerate account state.
+			if errors.Is(err, auth.ErrUserDisabled) {
+				WriteError(w, r, ErrForbidden.WithMessage("account disabled"))
+				return
+			}
 			// Single canonical failure message across the "no user" and
 			// "wrong password" branches so a timing-cheap caller cannot
 			// distinguish them. The underlying Provider also uses
@@ -277,6 +290,81 @@ func (rt *Router) updateLastLogin(ctx context.Context, id auth.Identity) {
 	_ = rt.DB.UpdateOne(ctx, "user", uid, db.Document{
 		"last_login": float64(time.Now().Unix()),
 	}, false)
+}
+
+// provisionOIDCUser ensures a user record exists for a redirect-provider (OIDC)
+// login so SSO users are visible and manageable on the Users page, and enforces
+// the `enabled` flag. It returns blocked=true when the user already exists and
+// is disabled — the caller MUST abort the login (issue no session) in that case.
+//
+// All writes are best-effort: a provisioning write failure is swallowed and
+// never breaks an otherwise-valid login. Only an explicit `enabled:false`
+// blocks. The created/updated record carries no roles (effective roles come
+// from group→role resolution), so a JIT row can never self-escalate; admin
+// edits still flow through the user plugin's GuardWrite via the CRUD API.
+func (rt *Router) provisionOIDCUser(ctx context.Context, id auth.Identity) (blocked bool) {
+	if rt.DB == nil {
+		return false
+	}
+	now := float64(time.Now().Unix())
+	existing, err := rt.DB.GetOne(ctx, auth.LocalCollection, db.Document{
+		"name":   id.Username,
+		"method": id.Method,
+	})
+	if err == nil && existing != nil {
+		if enabled, ok := existing["enabled"].(bool); ok && !enabled {
+			return true // disabled — block the login before any token is minted
+		}
+		uid, _ := existing["uid"].(string)
+		if uid != "" {
+			// Refresh display/audit fields only; never touch enabled or roles.
+			_ = rt.DB.UpdateOne(ctx, auth.LocalCollection, uid, db.Document{
+				"groups":     id.Groups,
+				"last_login": now,
+			}, false)
+		}
+		return false
+	}
+	// First login: create the record (enabled by default). tenant_id is stamped
+	// by the driver from ctx, so it is deliberately omitted from the document.
+	doc := db.Document{
+		"name":       id.Username,
+		"method":     id.Method,
+		"groups":     id.Groups,
+		"enabled":    true,
+		"last_login": now,
+		"created_at": now,
+	}
+	_, _ = rt.DB.Write(ctx, auth.LocalCollection, []db.Document{doc}, db.WriteOptions{
+		Primary:    []string{"tenant_id", "name", "method"},
+		UpdateTime: true,
+	})
+	return false
+}
+
+// userDisabled reports whether the user named in the claims has been disabled.
+// It is used to fail a refresh-token rotation for a user disabled after their
+// session was minted (the refresh token alone would otherwise keep producing
+// access tokens until it expired). Methods with no user record (e.g. anonymous)
+// are never considered disabled.
+func (rt *Router) userDisabled(ctx context.Context, c snoozetypes.Claims) bool {
+	if rt.DB == nil {
+		return false
+	}
+	tenantID := c.TenantID
+	if tenantID == "" {
+		tenantID = snoozetypes.DefaultTenant
+	}
+	tctx := auth.WithTenant(ctx, tenantID)
+	doc, err := rt.DB.GetOne(tctx, auth.LocalCollection, db.Document{
+		"name":   c.Subject,
+		"method": c.Method,
+	})
+	if err != nil || doc == nil {
+		return false
+	}
+	enabled, ok := doc["enabled"].(bool)
+	return ok && !enabled
 }
 
 // handleLoginAnonymous is split out because it doesn't require credentials.
@@ -354,6 +442,14 @@ func (rt *Router) handleRefresh(w http.ResponseWriter, r *http.Request) {
 	claims, newRefresh, refreshExp, err := rt.Refresh.VerifyAndRotate(pctx, body.RefreshToken)
 	if err != nil {
 		WriteError(w, r, ErrUnauthorized.WithMessage("invalid refresh token").WithCause(err))
+		return
+	}
+	// Block a user disabled since login: revoke the just-rotated token and
+	// refuse, so a disabled account cannot keep minting access tokens for the
+	// remainder of the refresh lease.
+	if rt.userDisabled(r.Context(), claims) {
+		_ = rt.Refresh.Revoke(pctx, newRefresh)
+		WriteError(w, r, ErrUnauthorized.WithMessage("account disabled"))
 		return
 	}
 	// Re-resolve roles+permissions so a recent admin change takes effect on
@@ -651,12 +747,19 @@ func (rt *Router) handleOIDCCallback(rp auth.RedirectProvider) http.HandlerFunc 
 		if id.TenantID == "" {
 			id.TenantID = org
 		}
+		// JIT-provision the SSO user (so it appears on the Users page) and
+		// enforce the enabled flag. A disabled user is blocked here, before any
+		// session is issued. provisionOIDCUser also refreshes last_login/groups,
+		// so the OIDC path does not call updateLastLogin separately.
+		if rt.provisionOIDCUser(authCtx, id) {
+			redirectLoginError(w, r, "your account has been disabled")
+			return
+		}
 		resp, err := rt.signSession(authCtx, id)
 		if err != nil {
 			redirectLoginError(w, r, "sign-in failed")
 			return
 		}
-		rt.updateLastLogin(authCtx, id)
 
 		frag := url.Values{}
 		frag.Set("token", resp.Token)

@@ -36,6 +36,24 @@ export const roleColumns: ColumnDef<Role>[] = [
     },
   },
   {
+    id: "groups",
+    header: "Groups",
+    cell: (r) => {
+      const groups = r.groups ?? [];
+      if (groups.length === 0) return <span style={{ color: "var(--text-muted)" }}>—</span>;
+      return (
+        <span style={{ display: "inline-flex", gap: "var(--space-1)", flexWrap: "wrap" }}>
+          {groups.map((g) => (
+            <Badge key={g} variant="neutral">
+              {g}
+            </Badge>
+          ))}
+        </span>
+      );
+    },
+    width: "200px",
+  },
+  {
     id: "comment",
     header: "Comment",
     cell: (r) => <span style={{ color: "var(--text-muted)" }}>{r.comment ?? "—"}</span>,

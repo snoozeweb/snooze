@@ -65,10 +65,6 @@ func (l *LocalProvider) Authenticate(ctx context.Context, c Credentials) (Identi
 		return Identity{}, fmt.Errorf("local auth lookup: %w", ErrInvalidCredentials)
 	}
 
-	if enabled, ok := user["enabled"].(bool); ok && !enabled {
-		return Identity{}, ErrUserDisabled
-	}
-
 	hash, _ := user["password"].(string)
 	if hash == "" {
 		// Constant-time dummy compare to keep timing flat between
@@ -79,6 +75,15 @@ func (l *LocalProvider) Authenticate(ctx context.Context, c Credentials) (Identi
 
 	if err := bcrypt.CompareHashAndPassword([]byte(hash), []byte(c.Password)); err != nil {
 		return Identity{}, ErrInvalidCredentials
+	}
+
+	// The enabled check runs *after* the password compare on purpose: a wrong
+	// password against a disabled account must be indistinguishable from any
+	// other bad-credential attempt, so a guesser cannot enumerate which
+	// accounts exist or are disabled. Only a correct password reveals the
+	// distinct ErrUserDisabled.
+	if enabled, ok := user["enabled"].(bool); ok && !enabled {
+		return Identity{}, ErrUserDisabled
 	}
 
 	tenantID, _ := TenantFrom(ctx)

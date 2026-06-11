@@ -17,12 +17,15 @@ import {
   useConfirmDelete,
 } from "@/shared/ui/resourceContextMenu";
 import { Users } from "./api";
+import { Roles } from "@/features/admin/roles/api";
 import { UserEditor } from "./UserEditor";
-import { userColumns } from "./columns";
+import { makeUserColumns } from "./columns";
 import type { User } from "./types";
 import styles from "./UsersPage.module.css";
 
-type UserTab = "all" | "local" | "ldap";
+// A tab is either "all" or an auth-method name (local/ldap or an OIDC method
+// such as "microsoft"). It maps directly to the `method` filter value.
+type UserTab = string;
 
 type UsersSearch = {
   uid?: string | undefined;
@@ -62,6 +65,29 @@ export function UsersPage() {
     staleTime: 5 * 60_000,
   });
   const ldapEnabled = backends.data?.backends.some((b) => b.name === "ldap") ?? false;
+  // Redirect (OIDC/OAuth) backends — e.g. Microsoft 365 — each get their own
+  // tab so admins can browse the SSO users provisioned on first login.
+  const redirectBackends = useMemo(
+    () => backends.data?.backends.filter((b) => b.kind === "redirect") ?? [],
+    [backends.data],
+  );
+
+  // Roles + their Groups feed the group→role mapping. We index group value →
+  // role names so the Roles column can show the roles a user effectively holds
+  // via their auth-backend groups (an SSO admin carries no explicit `roles`).
+  const rolesList = Roles.useList({ limit: 500 });
+  const roleGroupIndex = useMemo(() => {
+    const index = new Map<string, string[]>();
+    for (const role of rolesList.data?.data ?? []) {
+      for (const g of role.groups ?? []) {
+        const arr = index.get(g);
+        if (arr) arr.push(role.name);
+        else index.set(g, [role.name]);
+      }
+    }
+    return index;
+  }, [rolesList.data]);
+  const columns = useMemo(() => makeUserColumns(roleGroupIndex), [roleGroupIndex]);
 
   const updateSearch = useCallback(
     (next: UsersSearch) => {
@@ -94,10 +120,9 @@ export function UsersPage() {
   // search input collapses to no filter at all (the request stays cacheable).
   const q = useMemo(() => {
     const parts: Condition[] = [];
-    if (tab === "local") {
-      parts.push({ type: "EQUALS", field: "method", value: "local" });
-    } else if (tab === "ldap") {
-      parts.push({ type: "EQUALS", field: "method", value: "ldap" });
+    // Every non-"all" tab is an auth method; filter the list to that method.
+    if (tab !== "all") {
+      parts.push({ type: "EQUALS", field: "method", value: tab });
     }
     if (
       userSearch.condition &&
@@ -172,16 +197,21 @@ export function UsersPage() {
 
   return (
     <div className={styles.page}>
-      <Tabs value={tab} onValueChange={(v) => updateSearch({ tab: v as UserTab, page: 1 })}>
+      <Tabs value={tab} onValueChange={(v) => updateSearch({ tab: v, page: 1 })}>
         <TabList>
           <TabTrigger value="all">All</TabTrigger>
           <TabTrigger value="local">Local</TabTrigger>
           {ldapEnabled ? <TabTrigger value="ldap">LDAP</TabTrigger> : null}
+          {redirectBackends.map((b) => (
+            <TabTrigger key={b.name} value={b.name}>
+              {b.display_name || b.name}
+            </TabTrigger>
+          ))}
         </TabList>
         <TabPanel value={tab}>
           <DataTable<User>
             data={list.data?.data ?? []}
-            columns={userColumns}
+            columns={columns}
             rowKey={(r) => r.uid ?? r.name}
             loading={list.isPending}
             contextMenuItems={contextMenuItems}

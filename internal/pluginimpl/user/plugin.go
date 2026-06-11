@@ -68,7 +68,11 @@ func (p *Plugin) Schema() any {
 			"groups":       map[string]any{"type": "array", "items": map[string]any{"type": "string"}},
 			"roles":        map[string]any{"type": "array", "items": map[string]any{"type": "string"}},
 			"static_roles": map[string]any{"type": "array", "items": map[string]any{"type": "string"}},
-			"last_login":   map[string]any{"type": "string"},
+			// enabled gates login: a disabled user is rejected at the login and
+			// refresh paths (see internal/auth/local.go + internal/api/routes_login.go).
+			"enabled":      map[string]any{"type": "boolean"},
+			"last_login":   map[string]any{"type": "number"},
+			"created_at":   map[string]any{"type": "number"},
 			"display_name": map[string]any{"type": "string"},
 			"email":        map[string]any{"type": "string"},
 		},

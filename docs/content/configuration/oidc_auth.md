@@ -8,27 +8,43 @@ sidebar_position: 4
 > `/etc/snooze/server-go/oidc.yaml` (Go canonical)
 >
 > Loader  
-> `internal/config` (koanf)
+> `internal/config` (koanf) for the file baseline; DB-backed runtime overrides
+> via the **Settings → OIDC / SSO** tab
 >
 > Live reload  
-> `False` (restart the server to re-read)
+> **Partial.** `issuer`, `client_id`, `redirect_url`, `scopes`, `roles_claim`,
+> `groups_claim`, and `enabled` are editable in the web UI and take effect on the
+> next sign-in (no restart). `client_secret` and `method` are file-config only.
 
 Snooze ships a generic OpenID Connect authentication backend that works with any
 compliant identity provider and is pre-configured for **Microsoft 365 / Entra ID**
 by default.
 
-When enabled, the backend registers two public routes:
+The backend always registers two public routes (it is gated by `enabled`, not by
+whether it is mounted):
 
 - `GET /api/v1/login/{method}/start` — redirects the browser to the identity
   provider's authorize endpoint.
 - `GET /api/v1/login/{method}/callback` — receives the authorization-code
   callback, validates the ID token, and issues a Snooze session JWT.
 
-Because the configuration contains a `client_secret`, it **must be file-config
-only** and never checked into version control. Supply the secret at runtime via
-the `SNOOZE_SERVER_OIDC_CLIENT_SECRET` environment variable (see below).
+**Two-tier configuration.** Like LDAP, OIDC follows the file-baseline +
+DB-override model. The connection and claim fields can be edited live from
+**Settings → OIDC / SSO** in the web UI (stored per-tenant in the DB). Two fields
+are deliberately kept in file-config only:
 
-The Go schema lives in `internal/config/schema/oidc.go`.
+- **`client_secret`** — a secret, never stored in the database. Supply it via the
+  `SNOOZE_SERVER_OIDC_CLIENT_SECRET` environment variable (or `oidc.yaml`).
+- **`method`** — the login URL segment + the identity/JWT method claim stamped on
+  every provisioned user; changing it at runtime would orphan users and break the
+  registered Redirect URI.
+
+So the minimal bootstrap is: set `client_secret` (and optionally `method`) in
+`oidc.yaml`/env once, then configure issuer / client_id / redirect_url / scopes /
+claims and flip `enabled` from the web UI.
+
+The Go schema lives in `internal/config/schema/oidc.go`; the runtime overlay in
+`internal/config/runtime.go` (`RuntimeSettings.OIDC`).
 
 ## Properties
 
@@ -40,8 +56,9 @@ The Go schema lives in `internal/config/schema/oidc.go`.
 > Default  
 > `false`
 >
-> Enable or disable the OIDC authentication backend. When `false` no routes are
-> registered and the backend does not appear in `GET /api/v1/login`.
+> Enable or disable the OIDC authentication backend. When `false` the backend
+> does not appear in `GET /api/v1/login` and sign-in is refused (the routes stay
+> mounted but inert). Editable live from **Settings → OIDC / SSO**.
 
 ### issuer
 
@@ -186,6 +203,18 @@ roles_claim: "roles"
 groups_claim: "groups"
 admin_role_value: "Admin"
 ```
+
+## Editing OIDC settings in the web UI
+
+Open **Settings → OIDC / SSO** (requires write access to settings). The tab
+exposes the live, DB-backed fields — `enabled`, `issuer`, `client_id`,
+`redirect_url`, `scopes` (space-separated), `roles_claim`, and `groups_claim` —
+and edits take effect on the next sign-in without a restart (the server rebuilds
+its OIDC discovery when the issuer/client/scopes/redirect change).
+
+`client_secret` and `method` are **not** shown here by design (see the two-tier
+note above): set them in `oidc.yaml`/env. The group→role mapping itself is
+managed on the **Roles** page (each role's **Groups** field), not here.
 
 ## Microsoft Entra app registration walkthrough
 

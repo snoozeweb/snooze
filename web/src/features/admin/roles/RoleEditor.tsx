@@ -15,12 +15,14 @@ import styles from "./RoleEditor.module.css";
 type FormShape = {
   name: string;
   permissions: string[];
+  groups: string[];
   comment: string;
 };
 
 const EMPTY_FORM: FormShape = {
   name: "",
   permissions: [],
+  groups: [],
   comment: "",
 };
 
@@ -49,6 +51,7 @@ export function RoleEditor({ uid, onClose }: RoleEditorProps) {
       reset({
         name: existing.data.name ?? "",
         permissions: existing.data.permissions ?? [],
+        groups: existing.data.groups ?? [],
         comment: existing.data.comment ?? "",
       });
     }
@@ -62,6 +65,7 @@ export function RoleEditor({ uid, onClose }: RoleEditorProps) {
       const body: Role = {
         name: form.name,
         permissions: form.permissions,
+        groups: form.groups,
         ...(form.comment ? { comment: form.comment } : {}),
       };
       if (isCreate) {
@@ -81,6 +85,13 @@ export function RoleEditor({ uid, onClose }: RoleEditorProps) {
 
   const nameInvalid = formState.isSubmitted && !watch("name").trim();
   const permissions = watch("permissions");
+  const groups = watch("groups");
+
+  // Groups are free-form values from the auth backend (LDAP CNs, OIDC app-role
+  // / group-claim strings). There is no server catalogue, so the options are
+  // just whatever the role already has; allowCustom lets the admin type new
+  // ones (e.g. "GrafanaAdmin").
+  const groupOptions = useMemo(() => groups.map((g) => ({ value: g, label: g })), [groups]);
 
   // Merge the catalogue with any permissions already on the role so a
   // legacy/unknown value still renders as a badge and survives a Save
@@ -144,6 +155,19 @@ export function RoleEditor({ uid, onClose }: RoleEditorProps) {
                     options={permissionOptions}
                     value={permissions}
                     onChange={(next) => setValue("permissions", next, { shouldDirty: true })}
+                  />
+                </div>
+                <div className={styles.field}>
+                  <span className={styles.label} id="role-groups-label">
+                    Groups
+                  </span>
+                  <MultiCombobox
+                    aria-label="Groups"
+                    placeholder="Map auth-backend groups (e.g. GrafanaAdmin) to this role"
+                    options={groupOptions}
+                    value={groups}
+                    onChange={(next) => setValue("groups", next, { shouldDirty: true })}
+                    allowCustom
                   />
                 </div>
               </section>

@@ -119,4 +119,55 @@ describe("UserEditor", () => {
     await waitFor(() => expect(bodies).toHaveLength(1));
     expect((bodies[0] as Record<string, unknown>).password).toBe("rotated-pw");
   });
+
+  it("toggling Enabled off sends enabled:false on the PATCH", async () => {
+    const bodies: unknown[] = [];
+    mswServer.use(
+      http.get("/api/v1/user/u1", () =>
+        HttpResponse.json({ uid: "u1", name: "alice", method: "local", enabled: true }),
+      ),
+      http.patch("/api/v1/user/u1", async ({ request }) => {
+        bodies.push(await request.json());
+        return HttpResponse.json({ uid: "u1", name: "alice", enabled: false });
+      }),
+    );
+    const onClose = vi.fn();
+    const Wrapper = wrap();
+    const user = userEvent.setup();
+    render(
+      <Wrapper>
+        <UserEditor uid="u1" onClose={onClose} />
+      </Wrapper>,
+    );
+    await waitFor(() =>
+      expect(screen.getByLabelText<HTMLInputElement>(/^name$/i).value).toBe("alice"),
+    );
+    // The Enabled switch starts on; toggle it off, then save.
+    const toggle = screen.getByRole("switch", { name: /enabled/i });
+    expect(toggle).toHaveAttribute("aria-checked", "true");
+    await user.click(toggle);
+    await user.click(screen.getByRole("button", { name: /save/i }));
+    await waitFor(() => expect(bodies).toHaveLength(1));
+    expect((bodies[0] as Record<string, unknown>).enabled).toBe(false);
+  });
+
+  it("hides the password field for an SSO (microsoft) user and shows the method read-only", async () => {
+    mswServer.use(
+      http.get("/api/v1/user/u2", () =>
+        HttpResponse.json({ uid: "u2", name: "bob@egerie.eu", method: "microsoft", enabled: true }),
+      ),
+    );
+    const onClose = vi.fn();
+    const Wrapper = wrap();
+    render(
+      <Wrapper>
+        <UserEditor uid="u2" onClose={onClose} />
+      </Wrapper>,
+    );
+    await waitFor(() =>
+      expect(screen.getByLabelText<HTMLInputElement>(/^name$/i).value).toBe("bob@egerie.eu"),
+    );
+    expect(screen.queryByLabelText(/^password$/i)).not.toBeInTheDocument();
+    expect(screen.getByLabelText<HTMLInputElement>(/^type$/i).value).toBe("microsoft");
+  });
 });

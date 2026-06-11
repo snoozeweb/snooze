@@ -45,7 +45,7 @@ func testOIDCCfg() schema.OIDC {
 
 func TestOIDCProvider_IdentityFromClaims(t *testing.T) {
 	p := &OIDCProvider{cfg: testOIDCCfg()}
-	id := p.identityFromClaims(context.Background(), map[string]any{
+	id := p.identityFromClaims(context.Background(), p.cfg, map[string]any{
 		"sub":                "abc",
 		"preferred_username": "alice@egerie.eu",
 		"email":              "alice@egerie.eu",
@@ -59,8 +59,31 @@ func TestOIDCProvider_IdentityFromClaims(t *testing.T) {
 
 func TestOIDCProvider_UsernameFallback(t *testing.T) {
 	p := &OIDCProvider{cfg: testOIDCCfg()}
-	id := p.identityFromClaims(context.Background(), map[string]any{"sub": "only-sub"})
+	id := p.identityFromClaims(context.Background(), p.cfg, map[string]any{"sub": "only-sub"})
 	require.Equal(t, "only-sub", id.Username)
+}
+
+// TestOIDCProvider_IsEnabledReadsSource verifies the live config-source drives
+// IsEnabled (so a runtime settings toggle takes effect without a restart),
+// independent of the file-config baseline.
+func TestOIDCProvider_IsEnabledReadsSource(t *testing.T) {
+	base := testOIDCCfg()
+	base.Enabled = false // file says disabled...
+	enabled := base
+	enabled.Enabled = true // ...but the live source says enabled
+	p := NewOIDCProvider(base, func(context.Context) (schema.OIDC, error) { return enabled, nil })
+	require.True(t, p.IsEnabled(context.Background()))
+}
+
+// TestOIDCProvider_EffectiveFallsBackOnSourceError verifies that a failing
+// source never hard-breaks the provider: it falls back to the file baseline.
+func TestOIDCProvider_EffectiveFallsBackOnSourceError(t *testing.T) {
+	base := testOIDCCfg() // baseline Enabled=true
+	p := NewOIDCProvider(base, func(context.Context) (schema.OIDC, error) {
+		return schema.OIDC{}, errors.New("settings read failed")
+	})
+	// Falls back to baseline (enabled), not the zero-value (disabled).
+	require.True(t, p.IsEnabled(context.Background()))
 }
 
 func TestOIDCProvider_ExchangeAndVerify_Success(t *testing.T) {
