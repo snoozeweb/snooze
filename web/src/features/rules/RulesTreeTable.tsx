@@ -27,7 +27,7 @@
 //   4. On drop, we compute the new flat order + parent assignment, fire a
 //      PATCH per rule whose (parents, tree_order) changed, and apply the
 //      new order locally. The next refetch reconciles.
-import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
+import { Fragment, memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   DndContext,
   DragOverlay,
@@ -72,6 +72,29 @@ import styles from "./RulesTreeTable.module.css";
 export type { TreeNode };
 
 const INDENT_PX = 20;
+
+// prettyCondition is a pure function of the condition AST, but it walks the
+// whole tree per call. The rows are memoized, yet a memo only helps if the
+// props it compares are identity-stable across re-renders — and a string
+// recomputed inside each row render is a fresh value every time. So we
+// memoize the rendered string by the condition OBJECT identity (which
+// react-query's structural sharing keeps stable across refetches) in a
+// module-level WeakMap. Computed once per condition object, the resulting
+// string is then handed to the row as a plain prop, so a tree re-render
+// (e.g. during a drag-move) compares the same string reference and the
+// memoized row bails out. null/undefined conditions can't key a WeakMap, but
+// prettyCondition maps them all to the same constant, so we return it
+// directly without caching.
+const ALWAYS = prettyCondition(undefined);
+const prettyCache = new WeakMap<object, string>();
+function cachedPretty(condition: Rule["condition"]): string {
+  if (!condition) return ALWAYS;
+  const cached = prettyCache.get(condition);
+  if (cached !== undefined) return cached;
+  const computed = prettyCondition(condition);
+  prettyCache.set(condition, computed);
+  return computed;
+}
 
 // No-op strategy: keep rows physically in place during drag. Visual feedback
 // is handled by the ghost row + the DragOverlay clone, not by transforming
@@ -174,15 +197,42 @@ export function RulesTreeTable({
   // the network round-trip — otherwise dnd-kit animates the row back to its
   // origin and only the post-refetch render shows the new order, which
   // reads as a flicker.
+  //
+  // Sync the mirror during render (the "adjust state while rendering"
+  // pattern from the React docs) rather than in an effect: a refetch hands
+  // us a fresh `rules` reference, we notice it differs from the previous
+  // one, and reset the mirror in the SAME render. The old effect-based
+  // mirror rendered once with the stale list, committed, then fired the
+  // effect and re-rendered — two renders and a visible stale frame per
+  // refetch. React restarts the render immediately when setState is called
+  // during render, before committing anything to the DOM, so there's no
+  // wasted commit and no stale frame.
   const [localRules, setLocalRules] = useState<Rule[]>(rules);
-  useEffect(() => setLocalRules(rules), [rules]);
+  const [prevRules, setPrevRules] = useState<Rule[]>(rules);
+  if (rules !== prevRules) {
+    setPrevRules(rules);
+    setLocalRules(rules);
+  }
   // The host's "Cancel" action increments localResetCounter to roll back
-  // optimistic drops without waiting for a server refetch.
+  // optimistic drops without waiting for a server refetch. The `rules`
+  // reference is unchanged across a cancel (same fetch), so the render-time
+  // compare above won't fire — this effect is the only path that resets the
+  // mirror back to the prop after optimistic edits with no intervening
+  // refetch.
+  //
+  // It must fire ONLY on an actual counter change, never on mount: the old
+  // mount run captured the initial (often empty) `rules` and, with no
+  // rules-effect left to correct it, would clobber `localRules` back to that
+  // stale value right after the first data render. We track the previous
+  // counter value to distinguish a real change from the mount, and read the
+  // current `rules` through a ref so the reset always uses the latest prop.
+  const rulesRef = useRef(rules);
+  rulesRef.current = rules;
+  const prevResetCounter = useRef(localResetCounter);
   useEffect(() => {
-    if (localResetCounter !== undefined) setLocalRules(rules);
-    // localResetCounter is deliberately the only trigger — rules is captured
-    // by the rules-effect above.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    if (localResetCounter === prevResetCounter.current) return;
+    prevResetCounter.current = localResetCounter;
+    setLocalRules(rulesRef.current);
   }, [localResetCounter]);
 
   const { roots } = useMemo(() => buildTree(localRules), [localRules]);
@@ -276,14 +326,16 @@ export function RulesTreeTable({
   }, []);
 
   // Drag state. `activeId` is the row being dragged; `overId` is the row
-  // dnd-kit's collision detection reports under the cursor. `offsetX`
-  // tracks horizontal drift so we can project nesting depth. `dropAfter`
-  // is true when the cursor is in the lower half of the over row — the
-  // drop slot becomes "after this row" rather than "before this row",
-  // which makes "drag onto X + drag right = child of X" feel natural.
+  // dnd-kit's collision detection reports under the cursor. `depthDelta`
+  // tracks horizontal drift QUANTIZED to whole indent levels (the only
+  // resolution the projection cares about — see handleDragMove) so we can
+  // project nesting depth. `dropAfter` is true when the cursor is in the
+  // lower half of the over row — the drop slot becomes "after this row"
+  // rather than "before this row", which makes "drag onto X + drag right =
+  // child of X" feel natural.
   const [activeId, setActiveId] = useState<string | null>(null);
   const [overId, setOverId] = useState<string | null>(null);
-  const [offsetX, setOffsetX] = useState(0);
+  const [depthDelta, setDepthDelta] = useState(0);
   const [dropAfter, setDropAfter] = useState(false);
 
   // Right-click context menu state — anchor position + which row was hit.
@@ -357,7 +409,7 @@ export function RulesTreeTable({
     // which is the "drop at the very end" semantic — no separate
     // sentinel droppable required.
     const slotInProjection = idx < 0 ? projectionList.length : dropAfter ? idx + 1 : idx;
-    const { parentId, depth } = projectDrop(projectionList, slotInProjection, offsetX, INDENT_PX);
+    const { parentId, depth } = projectDrop(projectionList, slotInProjection, depthDelta);
     const anchorNode = projectionList[slotInProjection];
     const slotInRendered = anchorNode
       ? renderedFlat.findIndex(
@@ -370,12 +422,12 @@ export function RulesTreeTable({
       slotInProjection,
       slotInRendered: slotInRendered < 0 ? renderedFlat.length : slotInRendered,
     };
-  }, [activeId, overId, renderedFlat, subtreeIds, offsetX, dropAfter]);
+  }, [activeId, overId, renderedFlat, subtreeIds, depthDelta, dropAfter]);
 
   const handleDragStart = useCallback((e: DragStartEvent) => {
     setActiveId(e.active.id as string);
     setOverId(null);
-    setOffsetX(0);
+    setDepthDelta(0);
     setDropAfter(false);
     // Force-close every expanded details panel — leaving them open while
     // rows are reshuffling produces the worst kind of layout thrash.
@@ -383,7 +435,14 @@ export function RulesTreeTable({
   }, []);
 
   const handleDragMove = useCallback((e: DragMoveEvent) => {
-    setOffsetX(e.delta.x);
+    // Store the QUANTIZED depth delta, not the raw pixel offset. The only
+    // consumer is the projection memo, and projectDrop snaps the horizontal
+    // drift to whole indent levels (Math.round(offsetX / INDENT_PX)) — the
+    // projected depth changes once every ~20px, not every pixel. Rounding
+    // here means setState receives the SAME value for every pointer-move
+    // within a single indent band, so React bails out of re-rendering the
+    // whole tree until the cursor actually crosses into the next band.
+    setDepthDelta(Math.round(e.delta.x / INDENT_PX));
     // Sticky overId — only adopt a new "over" target when dnd-kit reports
     // a real row under the cursor. The cursor occasionally crosses
     // sub-pixel gaps between adjacent row rects where pointerWithin
@@ -407,7 +466,7 @@ export function RulesTreeTable({
   const handleDragCancel = useCallback(() => {
     setActiveId(null);
     setOverId(null);
-    setOffsetX(0);
+    setDepthDelta(0);
     setDropAfter(false);
   }, []);
 
@@ -416,7 +475,7 @@ export function RulesTreeTable({
       const draggedId = e.active.id as string;
       setActiveId(null);
       setOverId(null);
-      setOffsetX(0);
+      setDepthDelta(0);
       setDropAfter(false);
       if (!projection) return;
 
@@ -634,14 +693,16 @@ export function RulesTreeTable({
                 key={id}
                 node={n}
                 depth={n.depth}
+                prettyCond={cachedPretty(n.rule.condition)}
                 selected={isRowSelected(id)}
-                onToggleSelected={() => toggleSelection(id)}
+                onToggleSelected={toggleSelection}
                 onRowOpen={onRowOpen}
-                {...(onInsert && !pending ? { onInsert } : {})}
+                canInsert={onInsert !== undefined && !pending}
+                {...(onInsert ? { onInsert } : {})}
                 expanded={expanded.has(id)}
-                onToggleExpanded={() => toggleExpanded(id)}
+                onToggleExpanded={toggleExpanded}
                 selectionLocked={pending}
-                {...(contextMenuItems ? { onContextMenu: (e) => onRowContextMenu(e, n.rule) } : {})}
+                {...(contextMenuItems ? { onContextMenu: onRowContextMenu } : {})}
               />
             );
           })
@@ -676,16 +737,22 @@ export function RulesTreeTable({
                       id={id}
                       node={n}
                       depth={n.depth}
+                      prettyCond={cachedPretty(n.rule.condition)}
                       selected={isRowSelected(id)}
-                      onToggleSelected={() => toggleSelection(id)}
+                      // Pass the stable callbacks straight through — the row
+                      // binds its own id/rule internally. Inline closures
+                      // here would be a fresh identity every render and
+                      // defeat SortableTreeRow's memo during a drag-move.
+                      onToggleSelected={toggleSelection}
                       onRowOpen={onRowOpen}
                       // Hide the per-row "+ Add" menu while there are
                       // uncommitted reorders — inserting a new rule mid-
                       // edit would shift siblings the pending patches
                       // don't account for and corrupt the staged state.
-                      {...(onInsert && !pending ? { onInsert } : {})}
+                      canInsert={onInsert !== undefined && !pending}
+                      {...(onInsert ? { onInsert } : {})}
                       expanded={!activeId && expanded.has(id)}
-                      onToggleExpanded={() => toggleExpanded(id)}
+                      onToggleExpanded={toggleExpanded}
                       // Active subtree rows: when the cursor is still over
                       // them (projection=null), stay visible-dimmed in
                       // place; once the cursor commits to a different slot
@@ -699,9 +766,7 @@ export function RulesTreeTable({
                       // slot is occupied by Cancel/Save, so bulk-action
                       // affordances aren't reachable until commit anyway.
                       selectionLocked={pending}
-                      {...(contextMenuItems
-                        ? { onContextMenu: (e) => onRowContextMenu(e, n.rule) }
-                        : {})}
+                      {...(contextMenuItems ? { onContextMenu: onRowContextMenu } : {})}
                     />
                   </Fragment>
                 );
@@ -814,18 +879,26 @@ function AddRuleMenu({
 // StaticTreeRow — same visual as SortableTreeRow but without dnd-kit
 // hooks. Rendered when a search filter is active, since rearranging a
 // filtered subset of the tree has no well-defined semantics.
-function StaticTreeRow({
+//
+// memo()-wrapped (see export below) for the same reason SortableTreeRow is:
+// the parent re-renders the whole list on many interactions, and a row whose
+// props didn't change should skip re-rendering rather than re-walk its
+// condition and rebuild its badge list.
+function StaticTreeRowInner({
   node,
   depth,
+  prettyCond,
   selected,
   onToggleSelected,
   onRowOpen,
   onInsert,
+  canInsert = true,
   expanded,
   onToggleExpanded,
   selectionLocked = false,
   onContextMenu,
 }: Omit<SortableTreeRowProps, "id">) {
+  const id = node.rule.uid ?? node.rule.name;
   const enabled = node.rule.enabled !== false;
   const mods = node.rule.modifications ?? [];
   return (
@@ -856,7 +929,7 @@ function StaticTreeRow({
             onRowOpen(node.rule);
           }
         }}
-        {...(onContextMenu ? { onContextMenu } : {})}
+        {...(onContextMenu ? { onContextMenu: (e) => onContextMenu(e, node.rule) } : {})}
         tabIndex={0}
         role="row"
       >
@@ -868,7 +941,7 @@ function StaticTreeRow({
           aria-expanded={expanded}
           onClick={(e) => {
             e.stopPropagation();
-            onToggleExpanded();
+            onToggleExpanded(id);
           }}
         >
           <Icon name={expanded ? "chevron-down" : "chevron-right"} size={14} />
@@ -885,7 +958,7 @@ function StaticTreeRow({
           <Checkbox
             aria-label={`Select rule ${node.rule.name}`}
             checked={selected}
-            onCheckedChange={onToggleSelected}
+            onCheckedChange={() => onToggleSelected(id)}
             disabled={selectionLocked}
           />
         </span>
@@ -904,7 +977,7 @@ function StaticTreeRow({
             </span>
           ) : null}
         </span>
-        <span className={styles.conditionCell}>{prettyCondition(node.rule.condition)}</span>
+        <span className={styles.conditionCell}>{prettyCond}</span>
         <span className={styles.modsCell}>
           {mods.length === 0 ? (
             <span className={styles.comment}>—</span>
@@ -918,7 +991,7 @@ function StaticTreeRow({
           )}
         </span>
         <span className={styles.addCell}>
-          {onInsert ? (
+          {canInsert && onInsert ? (
             <AddRuleMenu
               anchorName={node.rule.name}
               onPick={(direction) => onInsert(node.rule, direction)}
@@ -939,16 +1012,30 @@ function StaticTreeRow({
   );
 }
 
+const StaticTreeRow = memo(StaticTreeRowInner);
+
 type SortableTreeRowProps = {
   id: string;
   node: FlatNode;
   depth: number;
+  /** Pre-rendered condition string, computed once per condition object by
+   *  the parent (cachedPretty) so it's identity-stable across re-renders and
+   *  doesn't re-walk the AST inside every row render. */
+  prettyCond: string;
   selected: boolean;
-  onToggleSelected: () => void;
+  /** Selection toggle — receives this row's id. Passed straight from the
+   *  parent (stable identity) and bound to `id` inside the row, so the prop
+   *  identity survives drag-move re-renders and the memo can bail out. */
+  onToggleSelected: (id: string) => void;
   onRowOpen: (r: Rule) => void;
   onInsert?: (anchor: Rule, direction: InsertDirection) => void;
+  /** Whether the per-row "+ Add" menu should render. A plain scalar (rather
+   *  than gating via the `onInsert` spread) so it stays identity-stable
+   *  across drag-move re-renders. */
+  canInsert?: boolean;
   expanded: boolean;
-  onToggleExpanded: () => void;
+  /** Expansion toggle — receives this row's id (see onToggleSelected). */
+  onToggleExpanded: (id: string) => void;
   /** Visual mode for active-subtree rows while a drag is in flight:
    *   - "none":      not part of the dragged subtree, render normally
    *   - "dim":       cursor still over the subtree (no-move), stay
@@ -963,18 +1050,21 @@ type SortableTreeRowProps = {
    *  user focuses on committing/cancelling before doing other actions. */
   selectionLocked?: boolean;
   /** Right-click handler — the host wires this to its context-menu state.
-   *  When omitted, browsers fall back to the native context menu. */
-  onContextMenu?: (e: React.MouseEvent<HTMLDivElement>) => void;
+   *  Receives the event and this row's rule. When omitted, browsers fall
+   *  back to the native context menu. */
+  onContextMenu?: (e: React.MouseEvent<HTMLDivElement>, rule: Rule) => void;
 };
 
-function SortableTreeRow({
+function SortableTreeRowInner({
   id,
   node,
   depth,
+  prettyCond,
   selected,
   onToggleSelected,
   onRowOpen,
   onInsert,
+  canInsert = true,
   expanded,
   onToggleExpanded,
   activeSubtreeMode = "none",
@@ -1042,7 +1132,7 @@ function SortableTreeRow({
             onRowOpen(node.rule);
           }
         }}
-        {...(onContextMenu ? { onContextMenu } : {})}
+        {...(onContextMenu ? { onContextMenu: (e) => onContextMenu(e, node.rule) } : {})}
         tabIndex={0}
         role="row"
       >
@@ -1054,7 +1144,7 @@ function SortableTreeRow({
           aria-expanded={expanded}
           onClick={(e) => {
             e.stopPropagation();
-            onToggleExpanded();
+            onToggleExpanded(id);
           }}
         >
           <Icon name={expanded ? "chevron-down" : "chevron-right"} size={14} />
@@ -1077,7 +1167,7 @@ function SortableTreeRow({
           <Checkbox
             aria-label={`Select rule ${node.rule.name}`}
             checked={selected}
-            onCheckedChange={onToggleSelected}
+            onCheckedChange={() => onToggleSelected(id)}
             disabled={selectionLocked}
           />
         </span>
@@ -1096,7 +1186,7 @@ function SortableTreeRow({
             </span>
           ) : null}
         </span>
-        <span className={styles.conditionCell}>{prettyCondition(node.rule.condition)}</span>
+        <span className={styles.conditionCell}>{prettyCond}</span>
         <span className={styles.modsCell}>
           {mods.length === 0 ? (
             <span className={styles.comment}>—</span>
@@ -1110,7 +1200,7 @@ function SortableTreeRow({
           )}
         </span>
         <span className={styles.addCell}>
-          {onInsert ? (
+          {canInsert && onInsert ? (
             <AddRuleMenu
               anchorName={node.rule.name}
               onPick={(direction) => onInsert(node.rule, direction)}
@@ -1130,3 +1220,13 @@ function SortableTreeRow({
     </div>
   );
 }
+
+// memo() with the default shallow comparison. The parent keeps every prop
+// identity-stable across drag-move re-renders (stable callbacks bound to the
+// row's id internally, FlatNode identity preserved by the flatten memo, the
+// pre-rendered prettyCond string cached by condition identity), so a row
+// whose visual state didn't change skips re-rendering entirely while the
+// cursor drifts — only the rows whose activeSubtreeMode flips actually
+// re-run. useSortable runs inside the memoized body, which is fine: memo only
+// gates prop-driven re-renders, and dnd-kit drives its own subscriptions.
+const SortableTreeRow = memo(SortableTreeRowInner);

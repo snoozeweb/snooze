@@ -87,8 +87,15 @@ export function collectSubtreeIds(items: FlatNode[], id: string): Set<string> {
 /** Decide where a row should land when dragged.
  *
  *  Given the flat list with the active item *removed*, the index it would
- *  occupy after drop, and the horizontal offset (px) the user has dragged,
- *  returns the target parent uid + depth.
+ *  occupy after drop, and the depth delta (in whole indent levels) the user
+ *  has dragged horizontally, returns the target parent uid + depth.
+ *
+ *  `dragDepthDelta` is pre-quantized by the caller — the number of indent
+ *  levels the cursor has crossed horizontally (e.g. +1 = one level right,
+ *  -2 = two levels left). Quantizing upstream lets the drag-move handler
+ *  store the render-relevant value (which only changes every ~20px) instead
+ *  of raw pixels (which change every pixel), so React can bail out of
+ *  re-rendering the tree while the cursor stays within a single indent band.
  *
  *  Behaviour mirrors the file-tree pattern: snap to the previous row's depth
  *  by default, but allow indenting one level deeper (becomes a child of the
@@ -97,14 +104,12 @@ export function collectSubtreeIds(items: FlatNode[], id: string): Set<string> {
 export function projectDrop(
   rest: FlatNode[],
   overIndex: number,
-  offsetX: number,
-  indentPx = 20,
+  dragDepthDelta: number,
 ): { parentId: string; depth: number } {
   const prev = overIndex > 0 ? rest[overIndex - 1] : undefined;
   const next = rest[overIndex];
   if (!prev && !next) return { parentId: ROOT, depth: 0 };
 
-  const dragDepthDelta = Math.round(offsetX / indentPx);
   const projected = (prev ? prev.depth : 0) + dragDepthDelta;
   // Allowed range: at most prev.depth + 1, at least next.depth (so we don't
   // tear the next row away from its own parent), and not less than 0.

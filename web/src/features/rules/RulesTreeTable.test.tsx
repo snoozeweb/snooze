@@ -107,9 +107,13 @@ describe("flattenTree + collectSubtreeIds", () => {
 });
 
 describe("projectDrop", () => {
+  // projectDrop now takes a pre-quantized depth delta (whole indent levels)
+  // rather than raw pixels — the caller rounds offsetX / INDENT_PX before
+  // calling. The delta values below are what that rounding produces for the
+  // pixel offsets these cases used to express (e.g. 25px / 20px → 1).
   it("snaps to the previous row's depth by default", () => {
     // [a (depth 0), b (depth 0)] — dropping at index 1 (between a and b)
-    // with no horizontal drift lands flush with a at root depth.
+    // with no horizontal drift (delta 0) lands flush with a at root depth.
     const flat = flattenTree(
       buildTree([
         { uid: "a", name: "a", tree_order: 0 },
@@ -120,15 +124,15 @@ describe("projectDrop", () => {
     expect(out).toEqual({ parentId: ROOT, depth: 0 });
   });
 
-  it("indenting past the threshold makes the dropped row a child of the previous row", () => {
+  it("indenting one level makes the dropped row a child of the previous row", () => {
     const flat = flattenTree(
       buildTree([
         { uid: "a", name: "a", tree_order: 0 },
         { uid: "b", name: "b", tree_order: 1 },
       ]).roots,
     );
-    // 25px past the 20px indent threshold → become a child of "a".
-    const out = projectDrop(flat, 1, 25);
+    // One indent level to the right → become a child of "a".
+    const out = projectDrop(flat, 1, 1);
     expect(out).toEqual({ parentId: "a", depth: 1 });
   });
 
@@ -141,8 +145,8 @@ describe("projectDrop", () => {
       ]).roots,
     );
     // Between b (depth 1) and c (depth 0). c sits at root depth — strong
-    // leftward drag should land at root.
-    const out = projectDrop(flat, 2, -40);
+    // leftward drag (delta -2) should land at root.
+    const out = projectDrop(flat, 2, -2);
     expect(out.depth).toBe(0);
     expect(out.parentId).toBe(ROOT);
   });
