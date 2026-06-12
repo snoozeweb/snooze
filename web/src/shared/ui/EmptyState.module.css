@@ -9,7 +9,9 @@
   gap: var(--space-3);
 }
 .iconWrap {
-  color: var(--text-muted);
+  /* Faint amber tint so the empty-state glyph picks up the signal accent
+     without shouting. Mixed heavily toward muted so it stays quiet. */
+  color: color-mix(in srgb, var(--accent) 35%, var(--text-muted));
   opacity: 0.6;
 }
 .title {

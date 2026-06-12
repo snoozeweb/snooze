@@ -8,8 +8,10 @@ test.describe("alerts list", () => {
 
   test("empty state when no alerts", async ({ page, server }) => {
     await page.goto(server.baseURL + "/web/alerts");
-    // DataTable default emptyState renders EmptyState with title="No items"
-    await expect(page.getByText("No items")).toBeVisible();
+    // AlertsPage passes a custom EmptyState (not DataTable's "No items"): a
+    // genuinely-empty install gets the "No alerts yet" guidance + inject CTA.
+    await expect(page.getByText(/no alerts yet/i)).toBeVisible();
+    await expect(page.getByRole("button", { name: /how to inject alerts/i })).toBeVisible();
   });
 
   test("ingested alert appears in the table", async ({ page, api, server }) => {
@@ -36,7 +38,10 @@ test.describe("alerts list", () => {
 
     // Severity filter is a <Select> with placeholder "Severity"
     // SelectTrigger renders as a button
-    await page.getByRole("combobox").filter({ hasText: /severity/i }).click({ force: true });
+    await page
+      .getByRole("combobox")
+      .filter({ hasText: /severity/i })
+      .click({ force: true });
     // Select "Critical" from the dropdown
     await page.getByRole("option", { name: /^critical$/i }).click({ force: true });
 

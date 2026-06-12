@@ -1,0 +1,76 @@
+/*
+ * ActiveFilters chip strip — sits between the tab/env band and the table.
+ * Reads as a quiet summary row: surface-tinted chips, an amber-keyline-free
+ * look so it doesn't compete with the active-tab underline above it.
+ */
+.strip {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  padding: 2px 2px 2px var(--space-2);
+  font-size: var(--text-xs);
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  color: var(--text);
+  white-space: nowrap;
+}
+
+/* The "Env" / "Tab" / "Search" key — muted, mono-uppercase to read as a label. */
+.chipLabel {
+  font-family: var(--font-mono);
+  font-size: var(--text-2xs, 10px);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-muted);
+}
+
+.chipValue {
+  color: var(--text-strong);
+  font-weight: var(--weight-medium);
+}
+
+/* Search DSL text is rendered mono so the query reads as code, with the
+   numeric features the rest of the app uses for aligned digits. */
+.chipValueMono {
+  color: var(--text-strong);
+  font-family: var(--font-mono);
+  font-feature-settings: var(--font-features-numeric);
+  max-width: 320px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.chipRemove {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--text-muted);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: color var(--dur-fast) var(--ease-out);
+}
+.chipRemove:hover {
+  color: var(--text-strong);
+  background: var(--bg-hover);
+}
+.chipRemove:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 1px;
+}
+
+.clearAll {
+  margin-left: var(--space-1);
+}

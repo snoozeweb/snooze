@@ -27,6 +27,15 @@ export function Toaster() {
             <RT.Description className={styles.description}>{t.description}</RT.Description>
             {t.traceId ? <span className={styles.trace}>trace {t.traceId}</span> : null}
           </div>
+          {t.action ? (
+            <RT.Action
+              className={styles.actionBtn}
+              altText={t.action.label}
+              onClick={t.action.onSelect}
+            >
+              {t.action.label}
+            </RT.Action>
+          ) : null}
           <RT.Close className={styles.closeBtn} aria-label="Dismiss">
             <Icon name="x" size={14} />
           </RT.Close>

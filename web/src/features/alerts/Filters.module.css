@@ -18,11 +18,20 @@
   border-bottom: 1px solid var(--border);
   overflow-x: auto;
 }
+/*
+ * envSlot — the EnvironmentBar pills, folded into the same horizontal band
+ * as the lifecycle tabs. A subtle left keyline (border-left) reads as a
+ * divider between the two filter groups, so the tab strip and env pills feel
+ * like one unified control surface rather than two stacked bars. The padding
+ * gives the divider breathing room from the last tab.
+ */
 .envSlot {
   margin-left: auto;
   display: flex;
   align-items: center;
   padding-bottom: var(--space-1);
+  padding-left: var(--space-3);
+  border-left: 1px solid var(--border-muted);
 }
 
 /*

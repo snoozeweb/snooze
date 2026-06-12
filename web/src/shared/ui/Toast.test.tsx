@@ -1,5 +1,6 @@
 import { render, screen, waitFor } from "@testing-library/react";
-import { afterEach, describe, expect, it } from "vitest";
+import userEvent from "@testing-library/user-event";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { act } from "react";
 import { Toaster, ToastProvider } from "./Toast";
 import { toast, toastStore } from "./toast/useToast";
@@ -41,5 +42,20 @@ describe("Toaster", () => {
       toast.dismiss(id);
     });
     await waitFor(() => expect(screen.queryByText("Boom")).toBeNull());
+  });
+
+  it("renders an action button and fires + dismisses on click (toast.undo)", async () => {
+    const onUndo = vi.fn();
+    const user = userEvent.setup();
+    setup();
+    act(() => {
+      toast.undo("Acknowledged alpha", onUndo);
+    });
+    expect(await screen.findByText("Acknowledged alpha")).toBeInTheDocument();
+    const action = screen.getByRole("button", { name: /undo/i });
+    await user.click(action);
+    expect(onUndo).toHaveBeenCalledTimes(1);
+    // The action dismisses its own toast.
+    await waitFor(() => expect(screen.queryByText("Acknowledged alpha")).toBeNull());
   });
 });

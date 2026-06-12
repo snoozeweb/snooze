@@ -59,3 +59,17 @@
   color: var(--text-muted);
   font-size: var(--text-sm);
 }
+
+/* Skeleton-only: mirror the StatTiles 6-up KPI strip + tile shell so the
+   loading layout matches the real grid (no jump when data arrives). */
+.strip {
+  display: grid;
+  grid-template-columns: repeat(6, 1fr);
+  gap: var(--space-3);
+}
+.tileSkeleton {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: var(--space-3);
+  background: var(--bg-elevated);
+}

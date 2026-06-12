@@ -1,6 +1,6 @@
 // web/src/lib/format/severity-color.test.ts
 import { describe, it, expect, beforeEach } from "vitest";
-import { severityColor } from "./severity-color";
+import { severityColor, severityToken } from "./severity-color";
 
 beforeEach(() => {
   const root = document.documentElement;
@@ -36,6 +36,27 @@ describe("severityColor", () => {
   });
   it("unknown labels fall back to muted", () => {
     expect(severityColor("banana").toLowerCase()).toBe("#6b7785");
+  });
+});
+
+describe("severityToken", () => {
+  it("maps canonical labels to their raw var(--severity-*) token", () => {
+    expect(severityToken("critical")).toBe("var(--severity-critical)");
+    expect(severityToken("error")).toBe("var(--severity-error)");
+    expect(severityToken("warning")).toBe("var(--severity-warning)");
+    expect(severityToken("info")).toBe("var(--severity-info)");
+    expect(severityToken("ok")).toBe("var(--severity-ok)");
+  });
+  it("collapses syslog aliases to the same token as their variant (no tint)", () => {
+    // emergency/alert all sit in the `critical` variant — unlike severityColor
+    // they share one token (the tint is intentionally dropped for accents).
+    expect(severityToken("emergency")).toBe("var(--severity-critical)");
+    expect(severityToken("alert")).toBe("var(--severity-critical)");
+    expect(severityToken("crit")).toBe("var(--severity-critical)");
+  });
+  it("returns undefined for unknown/blank labels (no accent strip)", () => {
+    expect(severityToken("banana")).toBeUndefined();
+    expect(severityToken("")).toBeUndefined();
   });
 });
 

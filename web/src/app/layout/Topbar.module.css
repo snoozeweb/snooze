@@ -15,6 +15,22 @@
 }
 .breadcrumb {
   font-size: var(--text-sm);
+  display: inline-flex;
+  align-items: baseline;
+  gap: 0;
+}
+.breadcrumbGroup {
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-muted);
+}
+.breadcrumbSep {
+  color: var(--text-muted);
+  font-size: var(--text-xs);
+}
+.breadcrumbLabel {
   font-weight: var(--weight-semibold);
   color: var(--text-strong);
 }

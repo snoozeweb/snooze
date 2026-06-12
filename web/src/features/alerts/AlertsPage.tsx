@@ -13,9 +13,11 @@ import * as YAML from "yaml";
 import { encodeConditionQ } from "@/lib/condition/serialize";
 import type { Condition } from "@/lib/condition/types";
 import type { ParsedCondition } from "@/shared/ui/SearchBar";
+import { severityToken } from "@/lib/format/severity-color";
 import { Environments } from "@/features/admin/environments/api";
 import { Records, useCommentRecord, useShelveRecord } from "./api";
 import { AlertRowDetail } from "./AlertRowDetail";
+import { ActiveFilters } from "./ActiveFilters";
 import { AlertsFilters, type AlertFilters } from "./Filters";
 import { alertColumns } from "./columns";
 import { useAutoRefresh } from "./useAutoRefresh";
@@ -24,6 +26,11 @@ import { tabById, type TabId } from "./tabs";
 import { ActionDialog, type ActionType } from "./ActionDialog";
 import { InjectAlertsDialog } from "./InjectAlertsDialog";
 import styles from "./AlertsPage.module.css";
+
+/** Short human label for a record used in undo-toast copy ("Acknowledged X"). */
+function recordLabel(r: Record_): string {
+  return r.host ?? r.message ?? r.uid ?? "alert";
+}
 
 type AlertsSearch = AlertFilters & {
   page?: number;
@@ -302,9 +309,23 @@ export function AlertsPage() {
                   shelve: !isShelved,
                   currentTTL: row.ttl,
                 });
-                toast.success(
-                  `${isShelved ? "Unshelved" : "Shelved"} • ${row.host ?? row.uid ?? ""}`,
-                );
+                // Upgrade the old success toast to an undo: the inverse is a
+                // single shelve call flipping `shelve` back, restoring the
+                // record's prior TTL magnitude.
+                toast.undo(`${isShelved ? "Unshelved" : "Shelved"} • ${recordLabel(row)}`, () => {
+                  void (async () => {
+                    try {
+                      await shelveMut.mutateAsync({
+                        uid: row.uid ?? "",
+                        shelve: isShelved,
+                        currentTTL: row.ttl,
+                      });
+                    } catch (e) {
+                      const detail = e instanceof ApiError ? e.detail : "Undo failed";
+                      toast.error(detail);
+                    }
+                  })();
+                });
               } catch (e) {
                 const detail = e instanceof ApiError ? e.detail : "Action failed";
                 toast.error(detail);
@@ -317,6 +338,103 @@ export function AlertsPage() {
       return out;
     },
     [openDialog, shelveMut],
+  );
+
+  // inlineAction fires an ack/close comment mutation *directly*, skipping the
+  // confirm dialog the kebab/bulk paths use. On success it raises an undo
+  // toast whose inverse re-opens the record (type:"open").
+  //
+  // The undo is a COMPENSATING event, not a delete: ack then undo leaves two
+  // entries on the record's timeline (the ack and the re-open). We never
+  // silently rewrite history — the operator can still see they acked it and
+  // then reverted. This matches how the backend's /comment endpoint models
+  // state: every transition is an append-only event.
+  const inlineAction = useCallback(
+    (row: Record_, type: "ack" | "close") => {
+      const uid = row.uid ?? "";
+      if (!uid) return;
+      void (async () => {
+        try {
+          await commentMut.mutateAsync({ record_uid: uid, type });
+          const verb = type === "ack" ? "Acknowledged" : "Closed";
+          toast.undo(`${verb} ${recordLabel(row)}`, () => {
+            void (async () => {
+              try {
+                // Compensating re-open — keeps both events on the timeline.
+                await commentMut.mutateAsync({ record_uid: uid, type: "open" });
+              } catch (e) {
+                const detail = e instanceof ApiError ? e.detail : "Undo failed";
+                toast.error(detail);
+              }
+            })();
+          });
+        } catch (e) {
+          const detail = e instanceof ApiError ? e.detail : "Action failed";
+          toast.error(detail);
+        }
+      })();
+    },
+    [commentMut],
+  );
+
+  // quickActions — the hover/focus-revealed inline IconButtons rendered before
+  // the kebab. Derived from the same lifecycle state machine as rowActions,
+  // capped at ack / close / comment (the three highest-frequency verbs).
+  // ack/close run inline via inlineAction (no dialog); comment still opens the
+  // dialog because it requires a message.
+  const quickActions = useCallback(
+    (row: Record_): RowAction[] => {
+      const state = (row.state ?? "") as AlertState;
+      const isOpen = state === "" || state === "open";
+      const isAcked = state === "ack";
+      const isClosed = state === "close";
+
+      const out: RowAction[] = [];
+      if (isOpen) {
+        out.push({
+          key: "ack",
+          label: "Acknowledge",
+          icon: "thumbs-up",
+          onSelect: () => inlineAction(row, "ack"),
+        });
+      }
+      if (isOpen || isAcked) {
+        out.push({
+          key: "close",
+          label: "Close",
+          icon: "lock",
+          onSelect: () => inlineAction(row, "close"),
+        });
+      }
+      if (!isClosed) {
+        out.push({
+          key: "comment",
+          label: "Comment",
+          icon: "message-square",
+          onSelect: () => openDialog("comment", [row]),
+        });
+      }
+      return out;
+    },
+    [inlineAction, openDialog],
+  );
+
+  // rowKeyBindings — per-row keyboard shortcuts surfaced through DataTable:
+  //   a → inline ack (only when the state machine allows it; open rows)
+  //   c → open the comment dialog for the focused row
+  // `e` (expand) is handled by DataTable itself. Bindings only fire when a
+  // row is focused and the user isn't typing into a field.
+  const rowKeyBindings = useCallback(
+    (row: Record_): Record<string, () => void> => {
+      const state = (row.state ?? "") as AlertState;
+      const isOpen = state === "" || state === "open";
+      const bindings: Record<string, () => void> = {
+        c: () => openDialog("comment", [row]),
+      };
+      if (isOpen) bindings.a = () => inlineAction(row, "ack");
+      return bindings;
+    },
+    [inlineAction, openDialog],
   );
 
   // Right-click context menu. The "Open" item is omitted: DataTable doesn't
@@ -461,7 +579,29 @@ export function AlertsPage() {
       const ok = results.filter((r) => r.status === "fulfilled").length;
       const failed = results.length - ok;
       if (failed === 0) {
-        toast.success(`${ok} alert${ok === 1 ? "" : "s"} updated`);
+        // Bulk ack/close keep the confirm dialog but gain the same undo
+        // affordance as the inline path: a single re-open of every uid that
+        // succeeded (compensating events — the ack/close stays on each
+        // record's timeline). esc/comment have no meaningful single-step
+        // inverse, so they keep the plain success toast.
+        const undoableUids =
+          type === "ack" || type === "close" ? records.map((r) => r.uid ?? "").filter(Boolean) : [];
+        if (undoableUids.length > 0) {
+          const verb = type === "ack" ? "Acknowledged" : "Closed";
+          toast.undo(`${verb} ${ok} alert${ok === 1 ? "" : "s"}`, () => {
+            void (async () => {
+              const undoResults = await Promise.allSettled(
+                undoableUids.map((uid) =>
+                  commentMut.mutateAsync({ record_uid: uid, type: "open" }),
+                ),
+              );
+              const undoFailed = undoResults.filter((r) => r.status === "rejected").length;
+              if (undoFailed > 0) toast.error(`Undo failed for ${undoFailed} alerts`);
+            })();
+          });
+        } else {
+          toast.success(`${ok} alert${ok === 1 ? "" : "s"} updated`);
+        }
         setDialog(null);
         setSelectedKeys(new Set());
       } else {
@@ -480,6 +620,48 @@ export function AlertsPage() {
     searchCondition !== null ||
     selectedEnvs.length > 0 ||
     activeTab !== "alerts";
+
+  // Resolve an env UID to its display name for the ActiveFilters chips. Falls
+  // back to the UID when the env list hasn't loaded or the env was deleted.
+  const envName = useCallback(
+    (uid: string) => {
+      const env = (envList.data?.data ?? []).find((e) => e.uid === uid);
+      return env?.name ?? uid;
+    },
+    [envList.data],
+  );
+
+  // ActiveFilters chip removers. Tab + env live in the URL (one updateSearch
+  // each); the DSL search lives in local state (clear both the text and the
+  // parsed condition). "Clear all" resets every source in a single navigation.
+  const removeEnv = useCallback(
+    (uid: string) => {
+      const next = selectedEnvs.filter((u) => u !== uid);
+      // Cast through unknown: exactOptionalPropertyTypes refuses an explicit
+      // `undefined` on a typed optional prop even though the runtime
+      // drop-the-key semantics are exactly what we want (TanStack Router
+      // omits undefined keys from the URL). Same trick the onChange handler
+      // below uses for its env reset.
+      updateSearch({
+        page: 1,
+        env: next.length > 0 ? next.join(",") : undefined,
+      } as unknown as Partial<AlertsSearch>);
+    },
+    [selectedEnvs, updateSearch],
+  );
+  const clearTab = useCallback(() => {
+    updateSearch({ page: 1, tab: undefined } as unknown as Partial<AlertsSearch>);
+  }, [updateSearch]);
+  const clearSearchText = useCallback(() => {
+    setSearchText("");
+    setSearchCondition(null);
+    if (page !== 1) updateSearch({ page: 1 });
+  }, [page, updateSearch]);
+  const clearAllFilters = useCallback(() => {
+    setSearchText("");
+    setSearchCondition(null);
+    updateSearch({ page: 1, tab: undefined, env: undefined } as unknown as Partial<AlertsSearch>);
+  }, [updateSearch]);
 
   const emptyState = hasActiveFilters ? (
     <EmptyState
@@ -520,6 +702,18 @@ export function AlertsPage() {
           } as Partial<AlertsSearch>);
         }}
       />
+      {hasActiveFilters ? (
+        <ActiveFilters
+          tab={activeTab}
+          envs={selectedEnvs}
+          envName={envName}
+          search={searchText}
+          onRemoveEnv={removeEnv}
+          onClearTab={clearTab}
+          onClearSearch={clearSearchText}
+          onClearAll={clearAllFilters}
+        />
+      ) : null}
       <DataTable
         data={filtered}
         columns={alertColumns}
@@ -582,8 +776,16 @@ export function AlertsPage() {
           onChange: (next) => updateSearch({ page: next.page }),
         }}
         rowActions={rowActions}
+        quickActions={quickActions}
+        rowKeyBindings={rowKeyBindings}
+        rowAccent={(r) => severityToken(r.severity ?? "")}
         contextMenuItems={contextMenuItems}
         renderExpanded={(row) => <AlertRowDetail row={row} />}
+        // Uncontrolled expansion (Phase 2's default path): DataTable owns the
+        // expanded set and reports size changes here so we can pause polling
+        // while the operator reads an inline panel. Keeping the uncontrolled
+        // path means the `e`-to-expand shortcut and chevron both keep working
+        // without AlertsPage tracking the key set.
         onExpandedChange={(keys) => setExpandedCount(keys.size)}
       />
       {dialog ? (

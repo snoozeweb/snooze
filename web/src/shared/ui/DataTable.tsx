@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import type { ReactNode } from "react";
+import type { CSSProperties, ReactNode } from "react";
 import { Checkbox } from "./Checkbox";
 import { EmptyState } from "./EmptyState";
 import { Icon } from "@/shared/icons/Icon";
@@ -8,6 +8,7 @@ import { IconButton } from "./IconButton";
 import { Menu, MenuContent, MenuItem, MenuTrigger } from "./Menu";
 import { SearchBar, type ParsedCondition } from "./SearchBar";
 import { Skeleton } from "./Skeleton";
+import { isEditable } from "@/shared/hooks/useShortcut";
 import { DataTableContextMenu, type ContextMenuItem } from "./DataTableContextMenu";
 import styles from "./DataTable.module.css";
 
@@ -49,6 +50,15 @@ export type DataTableProps<T> = {
     onChange: (next: { page: number; pageSize: number }) => void;
   };
   rowActions?: (row: T) => RowAction[];
+  /** Inline IconButtons revealed on row hover/focus, rendered in their own
+   *  column just before the kebab. Hidden by default (opacity), so showing
+   *  them never shifts layout, and reachable via :focus-within. The kebab
+   *  (`rowActions`) and context menu are unchanged — these are the
+   *  one-click shortcuts for the most common per-row operations. */
+  quickActions?: (row: T) => RowAction[];
+  /** Returns a CSS colour (e.g. `var(--severity-critical)`) painted as a 3px
+   *  inset strip on the left edge of the row. Undefined → no strip. */
+  rowAccent?: (row: T) => string | undefined;
   contextMenuItems?: (row: T) => ContextMenuItem[];
   bulkActions?: (rows: T[]) => ReactNode;
   /** Persistent toolbar rendered above the table. Lives in the same row
@@ -81,10 +91,20 @@ export type DataTableProps<T> = {
    *  that toggles an inline "details" panel rendered beneath the row.
    *  Multiple rows may be expanded at once. */
   renderExpanded?: (row: T) => ReactNode;
+  /** Controlled expansion. When supplied, the table renders exactly this set
+   *  and routes every toggle through `onExpandedChange` instead of keeping
+   *  its own state. Omit it for the (unchanged) uncontrolled default. */
+  expandedKeys?: ReadonlySet<string>;
   /** Fires whenever the set of expanded row keys changes. Lets the parent
    *  react to "user is actively reading a row" without pulling expansion
-   *  state out of the table (e.g. pause polling on the alerts page). */
+   *  state out of the table (e.g. pause polling on the alerts page). Also
+   *  the write channel for controlled expansion (`expandedKeys`). */
   onExpandedChange?: (expandedKeys: ReadonlySet<string>) => void;
+  /** Per-row keyboard shortcuts for the focused row, keyed by lowercase
+   *  single key (e.g. `{ a: ackFn, c: commentFn }`). Bindings are ignored
+   *  while the user is typing into an editable field. Reserved keys
+   *  (arrows, j/k, e, x, Enter) are handled by the table and win. */
+  rowKeyBindings?: (row: T) => Record<string, () => void>;
 };
 
 export function DataTable<T>({
@@ -98,6 +118,8 @@ export function DataTable<T>({
   serverSort,
   serverPagination,
   rowActions,
+  quickActions,
+  rowAccent,
   contextMenuItems,
   bulkActions,
   toolbar,
@@ -108,30 +130,53 @@ export function DataTable<T>({
   onRowOpen,
   rowDisabled,
   renderExpanded,
+  expandedKeys,
   onExpandedChange,
+  rowKeyBindings,
 }: DataTableProps<T>) {
   const [focusedIndex, setFocusedIndex] = useState<number>(-1);
-  const [expanded, setExpanded] = useState<Set<string>>(() => new Set<string>());
+  // Uncontrolled expansion store. Ignored when `expandedKeys` is supplied —
+  // the controlled path reads from the prop and never touches this. The
+  // uncontrolled default path is therefore byte-identical in behaviour.
+  const [expandedInner, setExpandedInner] = useState<Set<string>>(() => new Set<string>());
+  const isControlledExpansion = expandedKeys !== undefined;
+  const expanded = isControlledExpansion ? expandedKeys : expandedInner;
   const [ctxMenu, setCtxMenu] = useState<{ row: T; x: number; y: number } | null>(null);
   // Anchor index for shift-click range selection. Set on every plain click
   // of a row's checkbox; consumed when the next click arrives with shift.
   const [anchorIndex, setAnchorIndex] = useState<number | null>(null);
 
-  const toggleExpanded = useCallback((key: string) => {
-    setExpanded((prev) => {
-      const next = new Set(prev);
-      if (next.has(key)) next.delete(key);
-      else next.add(key);
-      return next;
-    });
-  }, []);
+  const toggleExpanded = useCallback(
+    (key: string) => {
+      if (isControlledExpansion) {
+        // Controlled: compute the next set off the current prop and hand it
+        // back; the parent owns the state.
+        const next = new Set(expandedKeys);
+        if (next.has(key)) next.delete(key);
+        else next.add(key);
+        onExpandedChange?.(next);
+        return;
+      }
+      setExpandedInner((prev) => {
+        const next = new Set(prev);
+        if (next.has(key)) next.delete(key);
+        else next.add(key);
+        return next;
+      });
+    },
+    [expandedKeys, isControlledExpansion, onExpandedChange],
+  );
 
   // Surface expansion changes to the parent so it can pause polling, etc.
+  // Only the uncontrolled path fires from here — in the controlled path the
+  // parent already owns the set and toggleExpanded calls onExpandedChange
+  // directly, so re-firing on every render would double-notify.
   // The initial empty-set fire on mount is harmless — consumers treat
   // size === 0 as "nothing expanded", which matches the default state.
   useEffect(() => {
-    onExpandedChange?.(expanded);
-  }, [expanded, onExpandedChange]);
+    if (isControlledExpansion) return;
+    onExpandedChange?.(expandedInner);
+  }, [expandedInner, isControlledExpansion, onExpandedChange]);
 
   const selSet = useMemo(() => selectedKeys ?? new Set<string>(), [selectedKeys]);
   const allKeys = useMemo(() => data.map(rowKey), [data, rowKey]);
@@ -188,10 +233,15 @@ export function DataTable<T>({
 
   const onKeyDown = useCallback(
     (e: React.KeyboardEvent<HTMLTableElement>) => {
-      if (e.key === "ArrowDown") {
+      // Don't hijack keys the user is typing into a field that happens to
+      // live inside the grid (e.g. an inline editor or the search bar).
+      if (isEditable(e.target)) return;
+      const key = e.key.toLowerCase();
+      // j/k vim aliases mirror ArrowDown/ArrowUp.
+      if (e.key === "ArrowDown" || key === "j") {
         e.preventDefault();
         setFocusedIndex((i) => Math.min(data.length - 1, i + 1));
-      } else if (e.key === "ArrowUp") {
+      } else if (e.key === "ArrowUp" || key === "k") {
         e.preventDefault();
         setFocusedIndex((i) => Math.max(0, i - 1));
       } else if (e.key === "Enter") {
@@ -200,15 +250,42 @@ export function DataTable<T>({
           e.preventDefault();
           onRowOpen(row);
         }
-      } else if (e.key.toLowerCase() === "x" && selectable) {
+      } else if (key === "e" && renderExpanded) {
+        const row = data[focusedIndex];
+        if (row) {
+          e.preventDefault();
+          toggleExpanded(rowKey(row));
+        }
+      } else if (key === "x" && selectable) {
         const row = data[focusedIndex];
         if (row) {
           e.preventDefault();
           toggleOne(rowKey(row));
         }
+      } else if (rowKeyBindings) {
+        // Consumer-supplied per-row bindings (a=ack, c=comment, …). These run
+        // after the reserved keys above so the table's own shortcuts win.
+        const row = data[focusedIndex];
+        if (row) {
+          const binding = rowKeyBindings(row)[key];
+          if (binding) {
+            e.preventDefault();
+            binding();
+          }
+        }
       }
     },
-    [data, focusedIndex, onRowOpen, rowKey, selectable, toggleOne],
+    [
+      data,
+      focusedIndex,
+      onRowOpen,
+      renderExpanded,
+      rowKey,
+      rowKeyBindings,
+      selectable,
+      toggleExpanded,
+      toggleOne,
+    ],
   );
 
   useEffect(() => {
@@ -223,6 +300,15 @@ export function DataTable<T>({
 
   const hasSelection = selectable && bulkActions && selectedRows.length > 0;
   const showToolbar = toolbar !== undefined || toolbarHeader !== undefined || hasSelection;
+
+  // Total rendered columns — kept in one place so the empty-state colspan,
+  // the expanded-panel colspan, and the header all stay in sync.
+  const totalCols =
+    columns.length +
+    (selectable ? 1 : 0) +
+    (renderExpanded ? 1 : 0) +
+    (quickActions ? 1 : 0) +
+    (rowActions ? 1 : 0);
 
   return (
     <div className={styles.wrap}>
@@ -302,6 +388,9 @@ export function DataTable<T>({
                   )}
                 </th>
               ))}
+              {quickActions ? (
+                <th className={styles.quickActionsCell} aria-label="Quick actions" />
+              ) : null}
               {rowActions ? <th className={styles.actionsCell} aria-label="Actions" /> : null}
             </tr>
           </thead>
@@ -320,19 +409,13 @@ export function DataTable<T>({
                       <Skeleton height={12} />
                     </td>
                   ))}
+                  {quickActions ? <td className={styles.quickActionsCell} /> : null}
                   {rowActions ? <td className={styles.actionsCell} /> : null}
                 </tr>
               ))
             ) : isEmpty ? (
               <tr>
-                <td
-                  colSpan={
-                    columns.length +
-                    (selectable ? 1 : 0) +
-                    (rowActions ? 1 : 0) +
-                    (renderExpanded ? 1 : 0)
-                  }
-                >
+                <td colSpan={totalCols}>
                   {emptyState ?? <EmptyState icon="file-text" title="No items" />}
                 </td>
               </tr>
@@ -342,11 +425,7 @@ export function DataTable<T>({
                 const isSelected = selSet.has(key);
                 const isFocused = idx === focusedIndex;
                 const isExpanded = expanded.has(key);
-                const totalCols =
-                  columns.length +
-                  (selectable ? 1 : 0) +
-                  (rowActions ? 1 : 0) +
-                  (renderExpanded ? 1 : 0);
+                const accent = rowAccent?.(row);
                 const rows: ReactNode[] = [
                   <tr
                     key={key}
@@ -354,6 +433,12 @@ export function DataTable<T>({
                     {...(isFocused ? { "data-focused": "true" } : {})}
                     {...(isSelected ? { "data-selected": "true" } : {})}
                     {...(rowDisabled?.(row) ? { "data-disabled": "true" } : {})}
+                    {...(accent
+                      ? {
+                          "data-accent": "true",
+                          style: { "--row-accent": accent } as CSSProperties,
+                        }
+                      : {})}
                     onClick={() => {
                       setFocusedIndex(idx);
                       onRowOpen?.(row);
@@ -415,6 +500,23 @@ export function DataTable<T>({
                         {col.cell(row)}
                       </td>
                     ))}
+                    {quickActions ? (
+                      <td className={styles.quickActionsCell} onClick={(e) => e.stopPropagation()}>
+                        <div className={styles.quickActions}>
+                          {quickActions(row).map((a) => (
+                            <IconButton
+                              key={a.key}
+                              icon={a.icon ?? "more-horizontal"}
+                              label={a.label}
+                              size="sm"
+                              {...(a.danger ? { variant: "danger" as const } : {})}
+                              {...(a.disabled ? { disabled: true } : {})}
+                              onClick={a.onSelect}
+                            />
+                          ))}
+                        </div>
+                      </td>
+                    ) : null}
                     {rowActions ? (
                       <td className={styles.actionsCell} onClick={(e) => e.stopPropagation()}>
                         <RowActionsMenu actions={rowActions(row)} />

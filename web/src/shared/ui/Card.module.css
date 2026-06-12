@@ -1,7 +1,24 @@
 .card {
+  position: relative;
   background: var(--bg-surface);
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
+}
+/* Machined top hairline: a 1px brighter line just inside the top edge,
+   tinted toward the accent. Reads as a precision-milled lip in the dark
+   ops theme; near-invisible in light. Painted on a pseudo-element so it
+   follows the card's radius and never affects layout. */
+.card::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: var(--radius-md);
+  right: var(--radius-md);
+  height: 1px;
+  background: color-mix(in srgb, var(--accent) 22%, var(--border));
+  border-top-left-radius: inherit;
+  border-top-right-radius: inherit;
+  pointer-events: none;
 }
 .elevated {
   box-shadow: var(--shadow-md);

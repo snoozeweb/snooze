@@ -39,6 +39,10 @@ type NavigateFn = (opts: {
 
 const PAGE_SIZE = 50;
 
+// Design decision (Phase 6 plan): no virtualization and no branch collapse.
+// Realistic rule counts are in the tens, so TanStack Virtual overhead is not
+// warranted. Branch collapse was audited and rejected: operators rely on
+// seeing the full rule tree at a glance to reason about evaluation order.
 export function RulesPage() {
   // useSearch with strict:false returns the validated search params; cast for local type.
   const search = useSearch({ strict: false }) as unknown as RulesSearch;

@@ -2,16 +2,18 @@
  * Light theme — overrides via [data-theme="light"].
  *
  * Mirror of theme.dark.css's semantic names, with values tuned for
- * AA contrast against a white canvas. Accent and severity hues are
- * deeper so they sit on white without vibrating.
+ * AA contrast against a white canvas. Accent is deep amber-brown
+ * (#8a5600) — bright amber fails contrast on white. Severity hues are
+ * deeper so they sit on white without vibrating. Atmosphere tokens are
+ * nulled (no halos or canvas texture in light theme).
  */
 
 [data-theme="light"] {
   /* Surfaces */
-  --bg-canvas: #f6f8fa;
+  --bg-canvas: #f4f5f7;
   --bg-surface: #ffffff;
   --bg-elevated: #ffffff;
-  --bg-hover: #f0f3f6;
+  --bg-hover: #eef0f3;
 
   /* Mirror of the dark-theme surface ladder (see theme.dark.css). */
   --surface-1: var(--bg-surface);
@@ -19,25 +21,28 @@
   --surface-3: var(--bg-hover);
 
   /* Borders */
-  --border: #d0d7de;
-  --border-muted: #e4e8ed;
+  --border: #d3d9df;
+  --border-muted: #e5e9ed;
 
   /* Text */
-  --text-strong: #1f2328;
-  --text: #424a53;
-  --text-muted: #6a737d;
+  --text-strong: #1c2127;
+  --text: #404953;
+  --text-muted: #636e7a;
 
-  /* Accent */
-  --accent: #0969da;
-  --accent-bg: #ddf4ff;
+  /* Accent — deep amber-brown for AA on white. */
+  --accent: #8a5600;
+  --accent-bg: #fff3d6;
   --accent-fg: #ffffff;
 
   /* Severity */
   --severity-critical: #c4241c;
-  --severity-error: #b75d20;
-  --severity-warning: #9a6700;
+  --severity-error: #a85a17;
+  --severity-warning: #8a6400;
   --severity-info: #0969da;
   --severity-ok: #1a7f37;
+
+  /* White text on solid critical fills passes AA in light theme. */
+  --severity-critical-fg: #ffffff;
 
   /* Alert lifecycle states */
   --state-ack: #6639ba;
@@ -49,5 +54,10 @@
   --role-platform: #7c3aed;
 
   /* Focus ring */
-  --focus-ring: #0969da;
+  --focus-ring: #8a5600;
+
+  /* Atmosphere — no halos or canvas texture in light theme. */
+  --glow-strength: 0%;
+  --canvas-glow: none;
+  --canvas-grid: none;
 }

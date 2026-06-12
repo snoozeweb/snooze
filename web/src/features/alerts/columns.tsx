@@ -1,8 +1,9 @@
 import type { ColumnDef } from "@/shared/ui/DataTable";
 import { Badge } from "@/shared/ui/Badge";
 import { Code } from "@/shared/ui/Code";
+import { TimeCell } from "@/shared/ui/TimeCell";
 import { severityColor } from "@/lib/format/severity-color";
-import { formatTTL, stateBadgeVariant, stateLabel, trimDate } from "./format";
+import { formatTTL, stateBadgeVariant, stateLabel } from "./format";
 import type { AlertState, Record_ } from "./types";
 
 // Records carry a `duplicates` counter (int64) bumped by the aggregate-rule
@@ -22,9 +23,12 @@ export const alertColumns: ColumnDef<Record_>[] = [
   {
     id: "date_epoch",
     header: "When",
-    cell: (r) => <span>{trimDate(r.date_epoch)}</span>,
+    // TimeCell: same trimDate text as before, now mono-tabular with a full
+    // timestamp tooltip and a "Nm ago" prefix while the alert is <1h old.
+    // Width bumped 140→160px so the relative prefix doesn't wrap on fresh rows.
+    cell: (r) => <TimeCell epoch={r.date_epoch} />,
     sortable: true,
-    width: "140px",
+    width: "160px",
   },
   {
     id: "severity",

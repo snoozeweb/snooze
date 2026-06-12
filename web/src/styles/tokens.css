@@ -26,10 +26,16 @@
   --radius-lg: 10px;
   --radius-pill: 9999px;
 
-  /* Font families */
-  --font-sans: "Inter", "Inter Fallback", system-ui, -apple-system, "Segoe UI", "Helvetica Neue",
-    sans-serif;
-  --font-mono: "JetBrains Mono", ui-monospace, "Cascadia Code", "Consolas", "Roboto Mono", monospace;
+  /* Font families — IBM Plex superfamily (self-hosted via @fontsource,
+     imported in main.tsx). Sans and mono share skeletons and vertical
+     metrics, so mixed label + mono-timestamp rows align without hacks. */
+  --font-sans: "IBM Plex Sans Variable", "IBM Plex Sans", system-ui, -apple-system, "Segoe UI",
+    "Helvetica Neue", sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, "Cascadia Code", "Consolas", "Roboto Mono", monospace;
+
+  /* Numeric OpenType features for counts, IDs and timestamps: tabular
+     figures (columns align) + slashed zero (0 vs O at a glance). */
+  --font-features-numeric: "tnum" 1, "zero" 1;
 
   /* Type scale (compact, observability-tool density) */
   --text-xs: 12px;
@@ -47,6 +53,12 @@
   --weight-regular: 400;
   --weight-medium: 500;
   --weight-semibold: 600;
+
+  /* Theme-independent ink for text on arbitrary solid fills (e.g. an
+     environment's own colour). These must NOT flip with the theme — the
+     fill underneath doesn't. */
+  --ink-dark: #14181c;
+  --ink-light: #f5f7fa;
 
   /* Elevation — subtle, no skeuomorphism */
   --shadow-sm: 0 1px 0 rgb(0 0 0 / 0.04);

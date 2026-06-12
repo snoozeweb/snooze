@@ -74,6 +74,23 @@ export function severityColors(labels: string[]): Record<string, string> {
   return Object.fromEntries(labels.map((l) => [l, severityColor(l)]));
 }
 
+/**
+ * severityToken maps a raw severity label to the *unresolved* CSS custom
+ * property string (e.g. `var(--severity-critical)`), mirroring the same
+ * label→variant ladder severityColor uses. Returns undefined for labels that
+ * fall through to muted, so callers can opt out of an accent strip for
+ * unknown/blank severities (the alerts DataTable's `rowAccent`).
+ *
+ * Unlike severityColor it does NOT resolve to a hex or apply the syslog-rank
+ * tint — it hands back the theme token so the value re-themes with light/dark
+ * automatically (no getComputedStyle read, no stale colour on theme toggle).
+ */
+export function severityToken(label: string): string | undefined {
+  const variant = variantOf(label);
+  if (variant === "muted") return undefined;
+  return `var(${TOKEN[variant]})`;
+}
+
 function readToken(name: string): string {
   if (typeof document === "undefined") return "";
   const v = getComputedStyle(document.documentElement).getPropertyValue(name).trim();

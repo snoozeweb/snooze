@@ -58,8 +58,17 @@ describe("Topbar", () => {
     authStore.getState().logout();
   });
 
-  it("renders the breadcrumb when given", () => {
-    renderTopbar({ breadcrumb: "Alerts", onOpenPalette: () => undefined });
+  it("renders the breadcrumb label when given", () => {
+    renderTopbar({ breadcrumb: { label: "Alerts" }, onOpenPalette: () => undefined });
+    expect(screen.getByText("Alerts")).toBeInTheDocument();
+  });
+
+  it("renders group and label in breadcrumb when group is provided", () => {
+    renderTopbar({
+      breadcrumb: { group: "Operate", label: "Alerts" },
+      onOpenPalette: () => undefined,
+    });
+    expect(screen.getByText("Operate")).toBeInTheDocument();
     expect(screen.getByText("Alerts")).toBeInTheDocument();
   });
 

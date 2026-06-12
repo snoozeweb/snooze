@@ -1,8 +1,8 @@
 import type { ColumnDef } from "@/shared/ui/DataTable";
 import { Badge } from "@/shared/ui/Badge";
 import { Code } from "@/shared/ui/Code";
+import { TimeCell } from "@/shared/ui/TimeCell";
 import { roleBadgeVariant } from "@/lib/format/role-color";
-import { formatRelativeTime } from "@/features/alerts/format";
 import type { User } from "./types";
 
 // BadgeList renders a wrapping list of badges, capped at `max` with a "+N more"
@@ -78,7 +78,10 @@ function RolesCell({
         </Badge>
       ))}
       {[...derived].map((r) => (
-        <span key={r} title="Granted automatically via an auth-backend group (not directly editable)">
+        <span
+          key={r}
+          title="Granted automatically via an auth-backend group (not directly editable)"
+        >
           <Badge variant={roleBadgeVariant(r) as never}>{r}</Badge>
         </span>
       ))}
@@ -135,7 +138,7 @@ export function makeUserColumns(roleGroupIndex: Map<string, string[]>): ColumnDe
       header: "Last login",
       cell: (r) =>
         r.last_login ? (
-          <span style={{ color: "var(--text-muted)" }}>{formatRelativeTime(r.last_login)}</span>
+          <TimeCell epoch={r.last_login} />
         ) : (
           <span style={{ color: "var(--text-muted)" }}>never</span>
         ),

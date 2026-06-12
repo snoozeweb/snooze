@@ -6,10 +6,11 @@ import { Menu, MenuContent, MenuItem, MenuSeparator, MenuTrigger } from "@/share
 import { useTheme } from "@/shared/hooks/useTheme";
 import { useAuth } from "@/lib/auth/store";
 import { HowToMenu } from "./HowToMenu";
+import type { Breadcrumb } from "./breadcrumb";
 import styles from "./Topbar.module.css";
 
 export type TopbarProps = {
-  breadcrumb?: string;
+  breadcrumb?: Breadcrumb;
   onOpenPalette: () => void;
 };
 
@@ -52,7 +53,20 @@ export function Topbar({ breadcrumb, onOpenPalette }: TopbarProps) {
   return (
     <header className={styles.topbar}>
       <div className={styles.left}>
-        {breadcrumb ? <span className={styles.breadcrumb}>{breadcrumb}</span> : null}
+        {breadcrumb ? (
+          <span className={styles.breadcrumb}>
+            {breadcrumb.group ? (
+              <>
+                <span className={styles.breadcrumbGroup}>{breadcrumb.group}</span>
+                <span className={styles.breadcrumbSep} aria-hidden="true">
+                  {" "}
+                  /{" "}
+                </span>
+              </>
+            ) : null}
+            <span className={styles.breadcrumbLabel}>{breadcrumb.label}</span>
+          </span>
+        ) : null}
       </div>
       <div className={styles.right}>
         <button

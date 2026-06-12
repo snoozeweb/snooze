@@ -9,6 +9,10 @@
   letter-spacing: 0.02em;
   line-height: 1;
   white-space: nowrap;
+  /* Severity glow: a faint bloom in the badge's own text colour. Works for
+     inline color-prop badges (currentColor) AND the variant classes below.
+     --glow-strength is 0% in the light theme, so the glow self-disables. */
+  box-shadow: 0 0 8px 0 color-mix(in srgb, currentColor var(--glow-strength), transparent);
 }
 .neutral {
   background: var(--bg-elevated);
@@ -26,22 +30,22 @@
   border: 1px solid var(--accent);
 }
 .warning {
-  background: rgb(212 160 23 / 0.15);
+  background: color-mix(in srgb, var(--severity-warning) 14%, transparent);
   color: var(--severity-warning);
   border: 1px solid var(--severity-warning);
 }
 .error {
-  background: rgb(239 126 58 / 0.15);
+  background: color-mix(in srgb, var(--severity-error) 14%, transparent);
   color: var(--severity-error);
   border: 1px solid var(--severity-error);
 }
 .critical {
-  background: rgb(240 73 73 / 0.15);
+  background: color-mix(in srgb, var(--severity-critical) 14%, transparent);
   color: var(--severity-critical);
   border: 1px solid var(--severity-critical);
 }
 .ok {
-  background: rgb(63 185 80 / 0.15);
+  background: color-mix(in srgb, var(--severity-ok) 14%, transparent);
   color: var(--severity-ok);
   border: 1px solid var(--severity-ok);
 }
@@ -56,7 +60,7 @@
 /* platform: the reserved platform_admin role — a distinct violet, set apart
    from the red `admin`/`critical` badges. */
 .platform {
-  background: rgb(192 132 252 / 0.15);
+  background: color-mix(in srgb, var(--role-platform) 14%, transparent);
   color: var(--role-platform);
   border: 1px solid var(--role-platform);
 }

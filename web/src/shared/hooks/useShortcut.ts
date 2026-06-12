@@ -24,7 +24,13 @@ function parseCombo(combo: string): {
   };
 }
 
-function isEditable(target: EventTarget | null): boolean {
+/**
+ * isEditable reports whether an event target is a text-editing surface
+ * (input/textarea/select/contenteditable). Exported so other keyboard
+ * handlers — e.g. DataTable's row key bindings — can apply the same guard
+ * and not steal keystrokes the user is typing into a field.
+ */
+export function isEditable(target: EventTarget | null): boolean {
   if (!(target instanceof HTMLElement)) return false;
   const tag = target.tagName;
   if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return true;

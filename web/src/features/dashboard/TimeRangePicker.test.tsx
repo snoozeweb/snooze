@@ -22,10 +22,11 @@ describe("TimeRangePicker", () => {
     expect(arg.from).toMatch(/^\d{4}-\d{2}-\d{2}T/);
   });
 
-  it("shows date inputs when range=custom", () => {
+  it("shows the shared datetime range picker trigger when range=custom", () => {
     const value: TimeRange = { range: "custom", from: "", to: "" };
     render(<TimeRangePicker value={value} onChange={() => undefined} />);
-    // Two date Inputs, each renders a textbox-with-type=date.
-    expect(screen.getAllByDisplayValue("").length).toBeGreaterThanOrEqual(2);
+    // The shared DateTimeRangePicker renders a single trigger button whose
+    // accessible name embeds both From/Until aria labels.
+    expect(screen.getByRole("button", { name: /From \/ Until/ })).toBeInTheDocument();
   });
 });

@@ -26,7 +26,18 @@ export type StatsParams = {
   bucket: number;
 };
 
-export function useStats(params: StatsParams): UseQueryResult<StatsResponse, ApiError> {
+export type UseStatsOptions = {
+  /** Defaults to true; pass false (e.g. empty bounds) to keep the query idle. */
+  enabled?: boolean;
+};
+
+export function useStats(
+  params: StatsParams,
+  options: UseStatsOptions = {},
+): UseQueryResult<StatsResponse, ApiError> {
+  // Bounds must be present for /stats to mean anything; an explicit
+  // enabled:false (or a missing from/to) keeps the prior-window query idle.
+  const enabled = (options.enabled ?? true) && params.from !== "" && params.to !== "";
   return useQuery<StatsResponse, ApiError>({
     queryKey: ["stats", params.from, params.to, params.bucket],
     queryFn: ({ signal }) =>
@@ -35,5 +46,6 @@ export function useStats(params: StatsParams): UseQueryResult<StatsResponse, Api
         signal,
       }),
     refetchInterval: 30_000,
+    enabled,
   });
 }

@@ -1,7 +1,7 @@
 .overlay {
   position: fixed;
   inset: 0;
-  background: rgb(0 0 0 / 0.4);
+  background: rgb(0 0 0 / 0.6);
   z-index: var(--z-modal);
 }
 .overlay[data-state="open"] {
@@ -60,7 +60,9 @@
   align-items: center;
   gap: var(--space-2);
   padding: var(--space-3) var(--space-4);
-  border-bottom: 1px solid var(--border);
+  /* Amber keyline under the header: a thin border in a quiet accent mix so
+     the title band reads as a distinct "chrome" zone above the body. */
+  border-bottom: 1px solid color-mix(in srgb, var(--accent) 45%, var(--border));
 }
 .title {
   font-size: var(--text-lg);

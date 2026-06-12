@@ -35,7 +35,7 @@ export type TabDef = {
  *
  *   AND(NOT(state=ack), NOT(state=close), NOT(EXISTS snoozed))
  */
-const ACTIVE_ALERTS: Condition = {
+export const ACTIVE_ALERTS: Condition = {
   type: "AND",
   args: [
     { type: "NOT", arg: { type: "EQUALS", field: "state", value: "ack" } },

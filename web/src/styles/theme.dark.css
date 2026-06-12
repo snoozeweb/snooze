@@ -5,16 +5,18 @@
  * data-theme is never set. theme.light.css overrides these via the
  * [data-theme="light"] selector.
  *
- * Inspired by GitHub Dark — high contrast on a near-black canvas,
- * with one cool-blue accent and a small severity/state set.
+ * "Mission control" register: near-black, slightly warm-neutral
+ * surfaces with one amber signal accent (classic amber-phosphor CRT).
+ * Blue is reserved exclusively for --severity-info so accent and
+ * severity never collide. All text roles hold AA on --bg-surface.
  */
 
 :root {
-  /* Surfaces */
-  --bg-canvas: #0b0d10;
-  --bg-surface: #11151a;
-  --bg-elevated: #161b22;
-  --bg-hover: #1c232c;
+  /* Surfaces — deepened, warm-neutral so the amber accent sits naturally */
+  --bg-canvas: #0a0c0e;
+  --bg-surface: #101418;
+  --bg-elevated: #161b21;
+  --bg-hover: #1d242c;
 
   /* Aliases used by row/popover-style components that want a step ladder
      (1 = base row, 2 = header / hover, 3 = pill / pressed). Keep these in
@@ -24,36 +26,55 @@
   --surface-3: var(--bg-hover);
 
   /* Borders */
-  --border: #2a313a;
-  --border-muted: #1c232c;
+  --border: #2a323c;
+  --border-muted: #1b2128;
 
   /* Text */
-  --text-strong: #e6edf3;
-  --text: #b6bfca;
-  --text-muted: #7d8590;
+  --text-strong: #eef2f6;
+  --text: #b8c1cc;
+  --text-muted: #8b96a3;
 
-  /* Accent (used sparingly) */
-  --accent: #4f8cff;
-  --accent-bg: #16243f;
-  --accent-fg: #ffffff;
+  /* Accent — the one signal color (amber). Confined to interactive
+     chrome: buttons, links, active nav, focus. Never used for severity. */
+  --accent: #ffb000;
+  --accent-bg: #2a2008;
+  --accent-fg: #160f02;
 
   /* Severity (used on alerts/rows; AA against bg-surface) */
-  --severity-critical: #f04949;
-  --severity-error: #ef7e3a;
-  --severity-warning: #d4a017;
-  --severity-info: #4f8cff;
+  --severity-critical: #ff5952;
+  --severity-error: #f0883e;
+  --severity-warning: #e3b341;
+  --severity-info: #58a6ff;
   --severity-ok: #3fb950;
 
+  /* Dark foreground for solid severity-critical fills (danger buttons),
+     where white text would fail contrast on the brightened red. */
+  --severity-critical-fg: #1a0908;
+
   /* Alert lifecycle states */
-  --state-ack: #8957e5;
-  --state-closed: #8957e5;
-  --state-snooze: #6b7785;
-  --state-shelve: #4a6fa5;
+  --state-ack: #a371f7;
+  --state-closed: #a371f7;
+  --state-snooze: #768390;
+  --state-shelve: #84a8cf;
 
   /* Reserved-role accent — platform_admin (the platform super-role). A
      distinct violet, set apart from the red `admin` badge. */
   --role-platform: #c084fc;
 
   /* Focus ring */
-  --focus-ring: #4f8cff;
+  --focus-ring: #ffb000;
+
+  /* Atmosphere — badge halo intensity and the layered canvas texture.
+     Both are nulled in the light theme. The glow/grid alphas are tuned
+     to read as depth, not color; opaque --bg-surface panels sit on top,
+     so texture only shows in gutters. */
+  --glow-strength: 30%;
+  --canvas-glow: radial-gradient(1100px 700px at 18% -8%, rgb(255 176 0 / 0.045), transparent 60%);
+  --canvas-grid: repeating-linear-gradient(
+    to bottom,
+    rgb(255 255 255 / 0.015) 0,
+    rgb(255 255 255 / 0.015) 1px,
+    transparent 1px,
+    transparent 32px
+  );
 }

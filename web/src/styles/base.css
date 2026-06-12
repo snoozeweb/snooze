@@ -31,8 +31,9 @@ body,
   margin: 0;
 }
 
+/* body never scrolls (main scrolls internally) so the layered texture paints once. */
 body {
-  background: var(--bg-canvas);
+  background: var(--canvas-glow, none), var(--canvas-grid, none), var(--bg-canvas);
   color: var(--text);
   font-family: var(--font-sans);
   font-size: var(--text-md);
@@ -76,6 +77,7 @@ kbd,
 samp {
   font-family: var(--font-mono);
   font-size: 0.95em;
+  font-feature-settings: var(--font-features-numeric);
 }
 
 button,

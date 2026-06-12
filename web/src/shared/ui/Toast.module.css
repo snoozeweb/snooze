@@ -52,14 +52,26 @@
   }
 }
 
+/* Edge glow per variant: a faint colored bloom off the accent border so the
+   toast reads as "live signal" in the dark ops theme. color-mix keeps it
+   self-disabling — --glow-strength is 0% in the light theme. */
 .success {
   border-left-color: var(--severity-ok);
+  box-shadow:
+    var(--shadow-pop),
+    -2px 0 12px -2px color-mix(in srgb, var(--severity-ok) var(--glow-strength), transparent);
 }
 .error {
   border-left-color: var(--severity-critical);
+  box-shadow:
+    var(--shadow-pop),
+    -2px 0 12px -2px color-mix(in srgb, var(--severity-critical) var(--glow-strength), transparent);
 }
 .info {
   border-left-color: var(--accent);
+  box-shadow:
+    var(--shadow-pop),
+    -2px 0 12px -2px color-mix(in srgb, var(--accent) var(--glow-strength), transparent);
 }
 
 .body {
@@ -80,6 +92,26 @@
   font-size: var(--text-xs);
   color: var(--text-muted);
   margin-top: var(--space-1);
+}
+
+/* Undo / action button — amber chip styled like a small secondary button,
+   sized to the toast's row height so it doesn't grow the toast. */
+.actionBtn {
+  align-self: center;
+  flex: 0 0 auto;
+  background: var(--accent-bg);
+  color: var(--accent);
+  border: 1px solid var(--accent);
+  border-radius: var(--radius-sm);
+  padding: var(--space-1) var(--space-2);
+  font: inherit;
+  font-weight: var(--weight-semibold);
+  font-size: var(--text-xs);
+  cursor: pointer;
+  white-space: nowrap;
+}
+.actionBtn:hover {
+  filter: brightness(1.1);
 }
 
 .closeBtn {

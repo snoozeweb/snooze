@@ -5,7 +5,13 @@
 // never resolves), so we spawn full Chrome with --remote-debugging-port
 // and connect via chromium.connectOverCDP(). Test-scoped `page` provides
 // a fresh BrowserContext per test.
-import { test as base, expect, chromium as pwChromium, type Browser, type Page } from "@playwright/test";
+import {
+  test as base,
+  expect,
+  chromium as pwChromium,
+  type Browser,
+  type Page,
+} from "@playwright/test";
 import { spawn, type ChildProcess } from "node:child_process";
 import { startServer, type ServerHandle } from "./server";
 import { mintRootToken, createApi, type SnoozeApi } from "./api";
@@ -13,9 +19,8 @@ import { createDbLauncher, type DbLauncher } from "./db";
 import { loginAsAdmin } from "./auth";
 import { freePort } from "./ports";
 
-const CHROME_BIN =
-  process.env.E2E_CHROME_BIN ??
-  "/home/nemega/.cache/ms-playwright/chromium-1148/chrome-linux/chrome";
+// Falls back to the Chromium binary that Playwright installed for this project.
+const CHROME_BIN = process.env.E2E_CHROME_BIN ?? pwChromium.executablePath();
 
 type WorkerFixtures = {
   dbLauncher: DbLauncher;

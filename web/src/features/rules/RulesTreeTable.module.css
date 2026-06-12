@@ -258,6 +258,15 @@
   color: var(--text-muted);
 }
 
+/* Child-count chip rendered as a separate element from the rule name so
+   exact-text selectors (e.g. getByText("parent-rule")) still match. */
+.childCount {
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+  flex-shrink: 0;
+}
+
 .handle {
   display: inline-flex;
   align-items: center;

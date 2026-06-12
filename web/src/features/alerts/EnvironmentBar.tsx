@@ -19,6 +19,30 @@ export type EnvironmentBarProps = {
   onChange: (next: string[]) => void;
 };
 
+/**
+ * readableTextOn picks a readable foreground (near-black vs near-white) for
+ * text sitting on a solid `bg` fill. Active env pills paint the environment's
+ * own colour as the background, so a hardcoded `#fff` text failed contrast on
+ * light env colours (e.g. a yellow or pale-blue environment). We compute
+ * contrast off the bg's relative luminance using WCAG-style coefficients,
+ * the same as the severity-color luminance test uses.
+ *
+ * Returns theme-independent ink tokens (--ink-dark / --ink-light) because the
+ * background is arbitrary user data that never changes with the theme. Non-
+ * #rrggbb inputs (CSS vars, named colours) fall back to the strong text token.
+ */
+function readableTextOn(bg: string): string {
+  const m = /^#([0-9a-f]{6})$/i.exec(bg.trim());
+  if (!m) return "var(--text-strong)";
+  const hex = m[1]!;
+  const r = parseInt(hex.slice(0, 2), 16);
+  const g = parseInt(hex.slice(2, 4), 16);
+  const b = parseInt(hex.slice(4, 6), 16);
+  const lum = 0.2126 * r + 0.7152 * g + 0.0722 * b;
+  // Threshold ~140/255: above → dark ink, below → light ink.
+  return lum > 140 ? "var(--ink-dark)" : "var(--ink-light)";
+}
+
 function isAdmin(): boolean {
   try {
     const raw = localStorage.getItem("permissions") || "[]";
@@ -79,7 +103,7 @@ export function EnvironmentBar({ selected, onChange }: EnvironmentBarProps) {
             data-state={active ? "active" : "inactive"}
             style={
               active
-                ? { background: color, borderColor: color, color: "#fff" }
+                ? { background: color, borderColor: color, color: readableTextOn(color) }
                 : { borderColor: color, color }
             }
             onClick={() => toggle(env.uid)}

@@ -352,4 +352,26 @@ describe("RulesTreeTable", () => {
     expect(onRowOpen).not.toHaveBeenCalled();
     expect(onInsert).toHaveBeenCalledWith(rules[0], "child");
   });
+
+  it("parent row shows a child-count chip separate from the rule name", () => {
+    const rules: Rule[] = [
+      { uid: "p1", name: "parent-rule", tree_order: 0 },
+      { uid: "c1", name: "child-one", parents: ["p1"], tree_order: 0 },
+      { uid: "c2", name: "child-two", parents: ["p1"], tree_order: 1 },
+    ];
+    const Wrapper = wrap();
+    render(
+      <Wrapper>
+        <RulesTreeTable rules={rules} onRowOpen={() => undefined} />
+      </Wrapper>,
+    );
+    // The rule name must be independently selectable — exact-text match.
+    expect(screen.getByText("parent-rule")).toBeInTheDocument();
+    // The chip is rendered in a separate element — verify it can be found
+    // and that the exact name text is NOT mixed with the count.
+    expect(screen.getByText("(2)")).toBeInTheDocument();
+    expect(screen.getByText("parent-rule").textContent).toBe("parent-rule");
+    // Leaf rows should NOT carry a chip.
+    expect(screen.queryByText("(0)")).not.toBeInTheDocument();
+  });
 });

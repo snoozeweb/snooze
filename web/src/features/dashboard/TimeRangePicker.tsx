@@ -1,6 +1,6 @@
-import { Input } from "@/shared/ui/Input";
+import { DateTimeRangePicker } from "@/shared/ui/DateTimeRangePicker";
 import type { StatsRange } from "./types";
-import { presetToRange, type TimeRange } from "./time-range";
+import { isoToLocalInput, localInputToIso, presetToRange, type TimeRange } from "./time-range";
 import styles from "./TimeRangePicker.module.css";
 
 export type { TimeRange } from "./time-range";
@@ -21,6 +21,15 @@ export function TimeRangePicker({ value, onChange }: TimeRangePickerProps) {
   function handlePreset(p: StatsRange) {
     const r = presetToRange(p);
     onChange({ range: p, ...r });
+  }
+
+  // The shared picker speaks "YYYY-MM-DDTHH:MM"; TimeRange holds UTC ISO.
+  function handleCustom(next: { from?: string; until?: string }) {
+    onChange({
+      range: "custom",
+      from: next.from ? localInputToIso(next.from) : "",
+      to: next.until ? localInputToIso(next.until) : "",
+    });
   }
 
   return (
@@ -46,16 +55,15 @@ export function TimeRangePicker({ value, onChange }: TimeRangePickerProps) {
       </button>
       {value.range === "custom" ? (
         <div className={styles.custom}>
-          <Input
-            type="date"
-            value={value.from.slice(0, 10)}
-            onChange={(e) => onChange({ ...value, from: new Date(e.target.value).toISOString() })}
-          />
-          <span style={{ color: "var(--text-muted)" }}>—</span>
-          <Input
-            type="date"
-            value={value.to.slice(0, 10)}
-            onChange={(e) => onChange({ ...value, to: new Date(e.target.value).toISOString() })}
+          <DateTimeRangePicker
+            mode="datetime"
+            value={{
+              ...(value.from ? { from: isoToLocalInput(value.from) } : {}),
+              ...(value.to ? { until: isoToLocalInput(value.to) } : {}),
+            }}
+            onChange={handleCustom}
+            ariaLabelFrom="From"
+            ariaLabelUntil="Until"
           />
         </div>
       ) : null}

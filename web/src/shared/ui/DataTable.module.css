@@ -74,15 +74,21 @@
 .headerRow th {
   position: sticky;
   top: 0;
+  z-index: var(--z-sticky);
   background: var(--bg-canvas);
   color: var(--text-muted);
+  font-family: var(--font-mono);
   font-weight: var(--weight-semibold);
   font-size: var(--text-xs);
   text-transform: uppercase;
   letter-spacing: 0.05em;
   padding: var(--space-2) var(--space-3);
   text-align: left;
+  /* The border-bottom doesn't travel with a sticky cell on every browser, so
+     a box-shadow hairline keeps the header separated from rows scrolled
+     beneath it. */
   border-bottom: 1px solid var(--border);
+  box-shadow: 0 1px 0 0 var(--border);
   white-space: nowrap;
 }
 .row td {
@@ -99,8 +105,25 @@
 .row[data-focused="true"] td {
   background: var(--bg-hover);
 }
+/* Selected-row amber wash. Slightly stronger than the bare token so a
+   selected row stays legible even under the hover highlight. */
 .row[data-selected="true"] td {
-  background: var(--accent-bg);
+  background: color-mix(in srgb, var(--accent-bg) 85%, var(--bg-surface));
+}
+
+/* Row accent strip: a 3px inset bar painted on the first cell from the
+   --row-accent custom property the consumer sets on the <tr>. Inset
+   (box-shadow) rather than border so it never shifts column widths, and
+   only paints when --row-accent is supplied. */
+.row[data-accent] td:first-child {
+  box-shadow: inset 3px 0 0 0 var(--row-accent);
+}
+
+/* Cells holding counts / IDs / timestamps. Font stays sans (TimeCell swaps
+   to mono itself); this just turns on tabular + slashed-zero figures so
+   numbers line up column-to-column. */
+.numCell {
+  font-feature-settings: var(--font-features-numeric);
 }
 .row[data-disabled="true"] td {
   color: var(--text-muted);
@@ -121,6 +144,29 @@
   width: 32px;
   padding: 0 var(--space-2) !important;
   text-align: right;
+}
+
+/* Quick-actions cell: a fixed-width cluster of inline IconButtons rendered
+   before the kebab. Hidden by default (opacity, not display) so revealing
+   them on hover/focus never reflows the row or shifts columns. */
+.quickActionsCell {
+  padding: 0 var(--space-1) !important;
+  text-align: right;
+  white-space: nowrap;
+}
+.quickActions {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  opacity: 0;
+  transition: opacity var(--dur-fast) var(--ease-out);
+}
+/* Reveal on row hover, on keyboard focus of the row, and whenever a quick
+   action itself holds focus (so it stays reachable via the keyboard). */
+.row:hover .quickActions,
+.row[data-focused="true"] .quickActions,
+.quickActions:focus-within {
+  opacity: 1;
 }
 .expandCell {
   width: 28px;
@@ -184,6 +230,13 @@
   padding: var(--space-2) var(--space-3);
   font-size: var(--text-sm);
   color: var(--text-muted);
+}
+/* Mono tabular figures for the "1–25 of 312" / "page X / Y" counters so the
+   numbers don't jitter as pages change. */
+.pagination > span,
+.paginationActions > span {
+  font-family: var(--font-mono);
+  font-feature-settings: var(--font-features-numeric);
 }
 .paginationActions {
   display: inline-flex;

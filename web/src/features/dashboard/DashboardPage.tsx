@@ -1,30 +1,35 @@
 import { useMemo, useState } from "react";
 import { useNavigate } from "@tanstack/react-router";
 import { Card } from "@/shared/ui/Card";
-import { Spinner } from "@/shared/ui/Spinner";
+import { useTheme } from "@/shared/hooks/useTheme";
 import { BarChart } from "@/shared/chart/BarChart";
-import { DonutChart } from "@/shared/chart/DonutChart";
+import { DistributionBar, type DistributionDatum } from "@/shared/chart/DistributionBar";
 import { LineChart, type LineSeries } from "@/shared/chart/LineChart";
-import { severityColors } from "@/lib/format/severity-color";
+import { seriesColor } from "@/shared/chart/theme";
+import { severityColor } from "@/lib/format/severity-color";
+import { Environments } from "@/features/admin/environments/api";
+import { tabById, type TabId } from "@/features/alerts/tabs";
 import { Icon } from "@/shared/icons/Icon";
 import type { IconName } from "@/shared/icons/icon-names";
 import { useStats } from "./api";
 import { TimeRangePicker } from "./TimeRangePicker";
 import { presetToRange, type TimeRange } from "./time-range";
-import { StatTiles } from "./StatTiles";
+import { StatTiles, type TileId } from "./StatTiles";
+import { DashboardSkeleton } from "./DashboardSkeleton";
 import { ActivityFeed } from "./ActivityFeed";
 import { alertsSearchForBucket } from "./bucket-utils";
 import styles from "./DashboardPage.module.css";
 
-// Keys must match the exact series-key strings the backend /stats emits in series[].counts —
-// a backend rename will silently drop the series here, making the mismatch visible.
-const LINE_COLORS: Record<string, string> = {
-  Alerts: "#4f8cff",
-  Throttled: "#8957e5",
-  Snoozed: "#d4a017",
-  "Notification sent": "#3fb950",
-  "Action error": "#f04949",
-};
+// Series keys must match the exact strings the backend /stats emits in
+// series[].counts — a backend rename silently drops the series here, making
+// the mismatch visible. Order is canonical (matches seriesColor()'s map).
+const LINE_SERIES_KEYS = [
+  "Alerts",
+  "Throttled",
+  "Snoozed",
+  "Notification sent",
+  "Action error",
+] as const;
 
 const WEEKDAY_LABELS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"] as const;
 const WEEKDAY_KEYS = ["1", "2", "3", "4", "5", "6", "0"] as const;
@@ -40,6 +45,7 @@ function CardTitle({ icon, children }: { icon: IconName; children: string }) {
 
 export function DashboardPage() {
   const navigate = useNavigate();
+  const { theme } = useTheme();
   const [range, setRange] = useState<TimeRange>(() => {
     const r = presetToRange("1d");
     return { range: "1d", from: r.from, to: r.to };
@@ -47,32 +53,114 @@ export function DashboardPage() {
   const bucket = bucketFromRange(range.range);
   const stats = useStats({ from: range.from, to: range.to, bucket });
 
+  // Prior window of equal length immediately before [from, to], used purely
+  // for the range-scoped trend deltas. Disabled until we have both bounds.
+  const prior = useMemo(() => priorWindow(range.from, range.to), [range.from, range.to]);
+  const prevStats = useStats({ from: prior.from, to: prior.to, bucket });
+
   const data = stats.data?.data;
 
+  // Environment name → uid, so a "By environment" segment can drill into
+  // the alerts page's ?env=<uid> contract. Cached app-wide via the resource.
+  const envList = Environments.useList({ limit: 200, orderby: "tree_order", asc: true });
+  const envUidByName = useMemo(() => {
+    const m = new Map<string, string>();
+    for (const e of envList.data?.data ?? []) {
+      if (e.uid) m.set(e.name, e.uid);
+    }
+    return m;
+  }, [envList.data]);
+
+  // Re-resolve token-driven colours whenever the theme toggles.
   const lineSeries: LineSeries[] = useMemo(() => {
     const series = data?.series;
     if (!Array.isArray(series) || series.length === 0) return [];
-    // Collect all keys that appear in any bucket, in fixed order
     const keysPresent = new Set<string>();
     for (const b of series) {
       for (const k of Object.keys(b.counts ?? {})) keysPresent.add(k);
     }
-    // Emit only keys that have a known color, in the canonical fixed order
-    return Object.keys(LINE_COLORS)
-      .filter((k) => keysPresent.has(k))
-      .map((key) => ({
-        label: key,
-        color: LINE_COLORS[key]!,
-        data: series.map((b) => ({ x: b.t, y: b.counts[key] ?? 0 })),
-      }));
-  }, [data]);
+    return LINE_SERIES_KEYS.filter((k) => keysPresent.has(k)).map((key, i) => ({
+      label: key,
+      color: seriesColor(key, i),
+      data: series.map((b) => ({ x: b.t, y: b.counts[key] ?? 0 })),
+    }));
+    // theme is a dep so the resolved colours refresh on toggle.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [data, theme]);
 
-  // Any series/point click navigates to the alerts in that time bucket (series-agnostic).
+  // Severity / environment / state distributions, coloured from tokens.
+  const severityDist: DistributionDatum[] = useMemo(() => {
+    const by = data?.totals.by_severity ?? {};
+    return Object.entries(by).map(([label, value]) => ({
+      label,
+      value,
+      color: severityColor(label),
+    }));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [data, theme]);
+
+  const environmentDist: DistributionDatum[] = useMemo(() => {
+    const by = data?.totals.by_environment ?? {};
+    return Object.entries(by).map(([label, value], i) => ({
+      label,
+      value,
+      color: seriesColor(label, i),
+    }));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [data, theme]);
+
+  const stateDist: DistributionDatum[] = useMemo(() => {
+    const by = data?.snapshot.by_state ?? {};
+    return Object.entries(by).map(([label, value], i) => ({
+      label,
+      value,
+      color: seriesColor(label, i),
+    }));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [data, theme]);
+
+  // Trend deltas vs the prior window. Only range-scoped summed series
+  // (throttled, snoozed) get a delta; live snapshot tiles are point-in-time.
+  const deltas: Partial<Record<TileId, number | null>> = useMemo(() => {
+    const prev = prevStats.data?.data?.totals;
+    if (!data || !prev) return {};
+    return {
+      throttled: pctDelta(sum(data.totals.by_throttled), sum(prev.by_throttled)),
+      snoozed: pctDelta(sum(data.totals.by_snoozed), sum(prev.by_snoozed)),
+    };
+  }, [data, prevStats.data]);
+
+  // Any series/point click navigates to the alerts in that time bucket.
   const handlePointClick = (_seriesLabel: string, x: string) => {
     void navigate({
       to: "/web/alerts",
       search: { search: alertsSearchForBucket(x, bucket) },
     });
+  };
+
+  const handleSeverityClick = (label: string) => {
+    void navigate({ to: "/web/alerts", search: { search: `severity = ${label}` } });
+  };
+
+  // State buckets map to an alerts lifecycle tab where one matches the
+  // state value; otherwise fall back to a DSL search on `state`.
+  const handleStateClick = (label: string) => {
+    const tab = tabForState(label);
+    if (tab) {
+      void navigate({ to: "/web/alerts", search: { tab } });
+    } else {
+      void navigate({ to: "/web/alerts", search: { search: `state = ${label}` } });
+    }
+  };
+
+  const handleEnvClick = (label: string) => {
+    const uid = envUidByName.get(label);
+    if (uid) {
+      void navigate({ to: "/web/alerts", search: { env: uid } });
+    } else {
+      // No matching environment resource — best-effort DSL fallback.
+      void navigate({ to: "/web/alerts", search: { search: `environment = ${label}` } });
+    }
   };
 
   const weekdayData: Record<string, number> = useMemo(() => {
@@ -92,16 +180,19 @@ export function DashboardPage() {
         <TimeRangePicker value={range} onChange={setRange} />
       </div>
 
-      {/* KPI strip */}
+      {/* First-load skeleton (isPending only — background refetch keeps prior data). */}
       {stats.isPending ? (
-        <div className={styles.empty}>
-          <Spinner size={20} />
-        </div>
+        <DashboardSkeleton />
       ) : stats.isError ? (
         <div className={styles.empty}>Failed to load dashboard stats.</div>
       ) : data ? (
         <>
-          <StatTiles snapshot={data.snapshot} totals={data.totals} />
+          <StatTiles
+            snapshot={data.snapshot}
+            totals={data.totals}
+            deltas={deltas}
+            onTileClick={(tab) => void navigate({ to: "/web/alerts", search: { tab } })}
+          />
 
           {/* Row 1: hero chart + activity feed */}
           <div className={styles.row1}>
@@ -114,6 +205,7 @@ export function DashboardPage() {
                   series={lineSeries}
                   height={280}
                   toggleableLegend
+                  theme={theme}
                   onPointClick={handlePointClick}
                 />
               )}
@@ -124,14 +216,15 @@ export function DashboardPage() {
             </Card>
           </div>
 
-          {/* Row 2: 4 donut/bar panels */}
+          {/* Row 2: distribution bars + top hosts */}
           <div className={styles.row2}>
             <Card padded>
               <CardTitle icon="alert-triangle">By severity</CardTitle>
-              {Object.keys(data.totals.by_severity).length > 0 ? (
-                <DonutChart
-                  data={data.totals.by_severity}
-                  colors={severityColors(Object.keys(data.totals.by_severity))}
+              {severityDist.length > 0 ? (
+                <DistributionBar
+                  data={severityDist}
+                  ariaLabel="By severity"
+                  onSegmentClick={handleSeverityClick}
                 />
               ) : (
                 <div className={styles.empty}>No data.</div>
@@ -140,8 +233,12 @@ export function DashboardPage() {
 
             <Card padded>
               <CardTitle icon="layers">By environment</CardTitle>
-              {Object.keys(data.totals.by_environment).length > 0 ? (
-                <DonutChart data={data.totals.by_environment} />
+              {environmentDist.length > 0 ? (
+                <DistributionBar
+                  data={environmentDist}
+                  ariaLabel="By environment"
+                  onSegmentClick={handleEnvClick}
+                />
               ) : (
                 <div className={styles.empty}>No data.</div>
               )}
@@ -149,8 +246,12 @@ export function DashboardPage() {
 
             <Card padded>
               <CardTitle icon="check-circle">By state</CardTitle>
-              {Object.keys(data.snapshot.by_state).length > 0 ? (
-                <DonutChart data={data.snapshot.by_state} />
+              {stateDist.length > 0 ? (
+                <DistributionBar
+                  data={stateDist}
+                  ariaLabel="By state"
+                  onSegmentClick={handleStateClick}
+                />
               ) : (
                 <div className={styles.empty}>No data.</div>
               )}
@@ -162,8 +263,11 @@ export function DashboardPage() {
                 <BarChart
                   horizontal
                   sort="value"
+                  theme={theme}
                   height={Math.max(240, Object.keys(data.totals.by_host).length * 28)}
-                  series={[{ label: "Hosts", color: "#4f8cff", data: data.totals.by_host }]}
+                  series={[
+                    { label: "Hosts", color: seriesColor("Hosts"), data: data.totals.by_host },
+                  ]}
                 />
               ) : (
                 <div className={styles.empty}>No data.</div>
@@ -178,15 +282,16 @@ export function DashboardPage() {
               {Object.keys(data.totals.by_action_success).length > 0 ||
               Object.keys(data.totals.by_action_failure).length > 0 ? (
                 <BarChart
+                  theme={theme}
                   series={[
                     {
                       label: "Successful",
-                      color: "#3fb950",
+                      color: seriesColor("Successful"),
                       data: data.totals.by_action_success,
                     },
                     {
                       label: "Failed",
-                      color: "#f04949",
+                      color: seriesColor("Failed"),
                       data: data.totals.by_action_failure,
                     },
                   ]}
@@ -200,8 +305,13 @@ export function DashboardPage() {
               <CardTitle icon="filter">Throttled by rule</CardTitle>
               {Object.keys(data.totals.by_throttled).length > 0 ? (
                 <BarChart
+                  theme={theme}
                   series={[
-                    { label: "Throttled", color: "#8957e5", data: data.totals.by_throttled },
+                    {
+                      label: "Throttled",
+                      color: seriesColor("Throttled"),
+                      data: data.totals.by_throttled,
+                    },
                   ]}
                 />
               ) : (
@@ -213,7 +323,14 @@ export function DashboardPage() {
               <CardTitle icon="bell-off">Snoozed by filter</CardTitle>
               {Object.keys(data.totals.by_snoozed).length > 0 ? (
                 <BarChart
-                  series={[{ label: "Snoozed", color: "#d4a017", data: data.totals.by_snoozed }]}
+                  theme={theme}
+                  series={[
+                    {
+                      label: "Snoozed",
+                      color: seriesColor("Snoozed"),
+                      data: data.totals.by_snoozed,
+                    },
+                  ]}
                 />
               ) : (
                 <div className={styles.empty}>No data.</div>
@@ -223,7 +340,10 @@ export function DashboardPage() {
             <Card padded>
               <CardTitle icon="calendar">By weekday</CardTitle>
               {Object.values(weekdayData).some((v) => v > 0) ? (
-                <BarChart series={[{ label: "Alerts", color: "#4f8cff", data: weekdayData }]} />
+                <BarChart
+                  theme={theme}
+                  series={[{ label: "Alerts", color: seriesColor("Alerts"), data: weekdayData }]}
+                />
               ) : (
                 <div className={styles.empty}>No data.</div>
               )}
@@ -233,6 +353,49 @@ export function DashboardPage() {
       ) : null}
     </div>
   );
+}
+
+const sum = (m: Record<string, number>) => Object.values(m).reduce((a, b) => a + b, 0);
+
+/**
+ * Percentage change of `current` vs `previous`. Returns null when the prior
+ * period is empty/zero (no meaningful baseline → the tile omits the badge),
+ * or when the values are identical.
+ */
+function pctDelta(current: number, previous: number): number | null {
+  if (previous <= 0) return null;
+  if (current === previous) return null;
+  return ((current - previous) / previous) * 100;
+}
+
+/**
+ * The window of equal length ending exactly where the current one begins:
+ * prevFrom = from - (to - from), prevTo = from. Returns empty strings when
+ * either bound is missing (custom range not yet picked) so useStats stays
+ * idle-but-harmless.
+ */
+function priorWindow(from: string, to: string): { from: string; to: string } {
+  const f = Date.parse(from);
+  const t = Date.parse(to);
+  if (Number.isNaN(f) || Number.isNaN(t) || t <= f) return { from: "", to: "" };
+  const span = t - f;
+  return { from: new Date(f - span).toISOString(), to: new Date(f).toISOString() };
+}
+
+// Map a snapshot state value to an alerts lifecycle tab when one matches by
+// the tab's preset EQUALS condition on `state`. Returns undefined otherwise.
+function tabForState(state: string): TabId | undefined {
+  const direct: Record<string, TabId> = {
+    open: "alerts",
+    ack: "ack",
+    close: "closed",
+    closed: "closed",
+    shelved: "shelved",
+    esc: "esc",
+  };
+  const tab = direct[state.toLowerCase()];
+  // Guard against a future tab-id rename: only return a tab that still exists.
+  return tab && tabById(tab).id === tab ? tab : undefined;
 }
 
 function bucketFromRange(range: TimeRange["range"]): number {

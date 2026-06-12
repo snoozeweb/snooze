@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 import {
   createRootRoute,
@@ -6,6 +6,9 @@ import {
   RouterProvider,
   createMemoryHistory,
 } from "@tanstack/react-router";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { http, HttpResponse } from "msw";
+import { mswServer } from "@/tests/msw/server";
 import { authStore } from "@/lib/auth/store";
 import { Sidebar } from "./Sidebar";
 
@@ -47,7 +50,12 @@ function setup(pathname = "/web/alerts") {
     routeTree: root,
     history: createMemoryHistory({ initialEntries: [pathname] }),
   }) as any;
-  return render(<RouterProvider router={router} />);
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  return render(
+    <QueryClientProvider client={client}>
+      <RouterProvider router={router} />
+    </QueryClientProvider>,
+  );
   /* eslint-enable @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-assignment */
 }
 
@@ -107,7 +115,8 @@ describe("Sidebar", () => {
     );
     authStore.getState().login(`${header}.${body}.sig`);
     setup();
-    expect(screen.getByText("acme")).toBeInTheDocument();
+    // Footer now shows "org:acme" (the tenant line in mono)
+    expect(screen.getByText("org:acme")).toBeInTheDocument();
   });
 
   it("shows the Tenants nav item when the user has ro_tenant", () => {
@@ -144,6 +153,68 @@ describe("Sidebar", () => {
     loginWithClaims({ tenant_id: "default", permissions: ["ro_tenant"] });
     setup();
     expect(screen.getByText("Tenants")).toBeInTheDocument();
+  });
+});
+
+describe("Sidebar alert count badge", () => {
+  afterEach(() => {
+    localStorage.clear();
+    authStore.getState().logout();
+  });
+
+  it("renders the badge with the alert count when total > 0", async () => {
+    mswServer.use(
+      http.get("/api/v1/record", () =>
+        HttpResponse.json({
+          data: [],
+          meta: { count: 0, limit: 1, offset: 0, total: 42 },
+        }),
+      ),
+    );
+    loginWithPerms(["ro_record"]);
+    setup();
+    // Badge should appear once the query resolves
+    await waitFor(() => {
+      expect(screen.getByLabelText("42 active alerts")).toBeInTheDocument();
+    });
+    expect(screen.getByLabelText("42 active alerts")).toHaveTextContent("42");
+  });
+
+  it("does not render the badge when total is 0", async () => {
+    mswServer.use(
+      http.get("/api/v1/record", () =>
+        HttpResponse.json({
+          data: [],
+          meta: { count: 0, limit: 1, offset: 0, total: 0 },
+        }),
+      ),
+    );
+    loginWithPerms(["ro_record"]);
+    setup();
+    // Give the query time to settle
+    await waitFor(() => {
+      // The catch-all handler returns total:0, which is also 0 — badge absent
+      expect(screen.queryByRole("region", { name: /active alerts/i })).toBeNull();
+    });
+    // No badge element present
+    expect(screen.queryByLabelText(/active alerts/)).toBeNull();
+  });
+
+  it("caps the badge display at 999+", async () => {
+    mswServer.use(
+      http.get("/api/v1/record", () =>
+        HttpResponse.json({
+          data: [],
+          meta: { count: 0, limit: 1, offset: 0, total: 1234 },
+        }),
+      ),
+    );
+    loginWithPerms(["ro_record"]);
+    setup();
+    await waitFor(() => {
+      expect(screen.getByLabelText("1234 active alerts")).toBeInTheDocument();
+    });
+    expect(screen.getByLabelText("1234 active alerts")).toHaveTextContent("999+");
   });
 });
 

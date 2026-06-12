@@ -15,6 +15,9 @@ export type ConditionNodeProps = {
   fieldOptions: string[];
   onChange: (next: Condition) => void;
   onDelete?: () => void;
+  /** Clones this node's subtree and inserts it as a sibling immediately
+   *  after this position. Supplied by the parent node — absent on the root. */
+  onDuplicate?: () => void;
   isRoot?: boolean;
 };
 
@@ -43,11 +46,17 @@ function childArgsOf(c: Condition): Condition[] {
   return [];
 }
 
+/** Deep-clone a Condition node so the duplicate is structurally independent. */
+function cloneCondition(c: Condition): Condition {
+  return JSON.parse(JSON.stringify(c)) as Condition;
+}
+
 export function ConditionNode({
   value,
   fieldOptions,
   onChange,
   onDelete,
+  onDuplicate,
   isRoot = false,
 }: ConditionNodeProps) {
   // ── Empty (ALWAYS_TRUE) ────────────────────────────────────────
@@ -135,6 +144,13 @@ export function ConditionNode({
       onChange({ type: logic.type, args: nextArgs });
     }
 
+    function duplicateChild(i: number) {
+      if (logic.type === "NOT") return;
+      const clone = cloneCondition(logic.args[i]!);
+      const next = [...logic.args.slice(0, i + 1), clone, ...logic.args.slice(i + 1)];
+      onChange({ type: logic.type, args: next });
+    }
+
     return (
       <div className={styles.group}>
         <div className={styles.groupHeader}>
@@ -162,6 +178,15 @@ export function ConditionNode({
               onClick={addChild}
             />
           ) : null}
+          {onDuplicate ? (
+            <IconButton
+              icon="copy"
+              label="Duplicate group"
+              variant="ghost"
+              size="sm"
+              onClick={onDuplicate}
+            />
+          ) : null}
           <IconButton
             icon="trash"
             label={isRoot ? "Clear" : "Remove group"}
@@ -178,6 +203,7 @@ export function ConditionNode({
                 fieldOptions={fieldOptions}
                 onChange={(next) => updateChild(i, next)}
                 onDelete={() => deleteChild(i)}
+                {...(logic.type !== "NOT" ? { onDuplicate: () => duplicateChild(i) } : {})}
               />
             </li>
           ))}
@@ -339,6 +365,15 @@ export function ConditionNode({
       </div>
       <div className={styles.actions}>
         <IconButton icon="plus" label="Add filter" variant="ghost" size="sm" onClick={fork} />
+        {onDuplicate ? (
+          <IconButton
+            icon="copy"
+            label="Duplicate"
+            variant="ghost"
+            size="sm"
+            onClick={onDuplicate}
+          />
+        ) : null}
         <IconButton
           icon="trash"
           label="Remove"

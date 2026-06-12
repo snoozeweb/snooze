@@ -1,0 +1,18 @@
+.cell {
+  display: inline-flex;
+  align-items: baseline;
+  gap: var(--space-1);
+  font-family: var(--font-mono);
+  font-feature-settings: var(--font-features-numeric);
+  font-size: var(--text-sm);
+  color: var(--text);
+  white-space: nowrap;
+  cursor: default;
+}
+
+/* The "Nm ago" prefix is a quieter, lighter hint sitting in front of the
+   absolute timestamp — it answers "how recent" without crowding the date. */
+.relative {
+  color: var(--text-muted);
+  font-size: var(--text-xs);
+}

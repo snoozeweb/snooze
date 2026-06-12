@@ -10,6 +10,7 @@ import {
   LinearScale,
   Tooltip,
 } from "chart.js";
+import { applyChartDefaults, chartToken } from "./theme";
 import styles from "./chart.module.css";
 
 Chart.register(BarController, BarElement, CategoryScale, LinearScale, Tooltip, Legend);
@@ -31,6 +32,12 @@ export type BarChartProps = {
   horizontal?: boolean;
   /** Category ordering. "label" (default) = alphabetical; "value" = descending by summed value. */
   sort?: "value" | "label";
+  /**
+   * Current theme name. Not read directly — passed only so the render
+   * effect re-runs (and re-resolves the token-driven axis/grid colours)
+   * when the user toggles light/dark with the chart mounted.
+   */
+  theme?: string;
 };
 
 export function BarChart({
@@ -38,12 +45,14 @@ export function BarChart({
   height = 240,
   horizontal = false,
   sort = "label",
+  theme,
 }: BarChartProps) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const chartRef = useRef<Chart | null>(null);
 
   useEffect(() => {
     if (!canvasRef.current) return;
+    applyChartDefaults();
     const labels = orderedLabels(series, sort);
     const datasets: ChartDataset<"bar">[] = series.map((s) => ({
       label: s.label,
@@ -60,14 +69,14 @@ export function BarChart({
     // chart.js' default auto-skip to avoid crowding the x-axis with high-
     // cardinality rule/action names.
     const hCategoryTicks = {
-      color: cssVar("--text-muted"),
+      color: chartToken("--text-muted"),
       autoSkip: false,
       callback(_value: unknown, index: number) {
         return ellipsize(labels[index] ?? "");
       },
     };
-    const plainTicks = { color: cssVar("--text-muted") };
-    const gridMuted = { color: cssVar("--border-muted") };
+    const plainTicks = { color: chartToken("--text-muted") };
+    const gridMuted = { color: chartToken("--border-muted") };
 
     const options: ChartOptions<"bar"> = {
       responsive: true,
@@ -103,7 +112,9 @@ export function BarChart({
       chartRef.current?.destroy();
       chartRef.current = null;
     };
-  }, [series, horizontal, sort]);
+    // `theme` is intentionally a dep: toggling light/dark must re-resolve the
+    // token-driven axis/grid colours even though the series data is unchanged.
+  }, [series, horizontal, sort, theme]);
 
   return (
     <div className={styles.wrap} style={{ height }}>
@@ -122,10 +133,4 @@ function orderedLabels(series: BarSeries[], sort: "value" | "label"): string[] {
     return labels.sort((a, b) => (totals.get(b) ?? 0) - (totals.get(a) ?? 0));
   }
   return labels.sort();
-}
-
-function cssVar(name: string): string {
-  if (typeof window === "undefined") return "#999";
-  const v = getComputedStyle(document.documentElement).getPropertyValue(name).trim();
-  return v || "#999";
 }

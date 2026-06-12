@@ -2,8 +2,21 @@ import { useMutation, useQueryClient, type UseMutationResult } from "@tanstack/r
 import { api, type ApiError } from "@/lib/api/client";
 import { defineResource } from "@/lib/api/resource";
 import type { Record_ } from "./types";
+import { encodeConditionQ } from "@/lib/condition/serialize";
+import { ACTIVE_ALERTS } from "./tabs";
 
 export const Records = defineResource<Record_>("record");
+
+/**
+ * Returns the total count of active alerts (not ack'd, not closed, not snoozed).
+ * Polls every 30 s when enabled. Consumers read `data?.meta.total`.
+ */
+export function useActiveAlertCount(enabled: boolean) {
+  return Records.useList(
+    { limit: 1, q: encodeConditionQ(ACTIVE_ALERTS) },
+    { refetchInterval: 30_000, enabled },
+  );
+}
 
 export type CommentInput = {
   record_uid: string;

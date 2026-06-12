@@ -9,14 +9,23 @@ import {
   hasPlatformPermission,
   isPlatformPermission,
 } from "@/lib/auth/permissions";
+import { useActiveAlertCount } from "@/features/alerts/api";
 import styles from "./Sidebar.module.css";
 
 const GROUPS: NavGroup[] = ["operate", "configure", "admin"];
+
+// Permission set that gates the Alerts nav item — mirrors NAV_ITEMS definition.
+const ALERTS_PERMS = ["ro_record", "rw_record"];
 
 export function Sidebar() {
   const location = useLocation();
   const currentPath = location.pathname;
   const { claims } = useAuth();
+
+  // Live alert-count badge: only fetch when the user can see the Alerts item.
+  const canSeeAlerts = hasAnyPermission(claims, ALERTS_PERMS);
+  const { data: alertCountData } = useActiveAlertCount(canSeeAlerts);
+  const alertTotal = alertCountData?.meta.total ?? 0;
 
   return (
     <aside className={styles.sidebar} aria-label="Primary navigation">
@@ -43,6 +52,9 @@ export function Sidebar() {
               <span className={styles.groupLabel}>{GROUP_LABELS[group]}</span>
               {items.map((item) => {
                 const active = currentPath === item.to || currentPath.startsWith(item.to + "/");
+                const isAlertsItem = item.to === "/web/alerts";
+                const showBadge = isAlertsItem && alertTotal > 0;
+                const badgeLabel = alertTotal > 999 ? "999+" : String(alertTotal);
                 return (
                   <Link
                     key={item.to}
@@ -52,6 +64,11 @@ export function Sidebar() {
                   >
                     <Icon name={item.icon} size={16} />
                     <span className={styles.label}>{item.label}</span>
+                    {showBadge ? (
+                      <span className={styles.badge} aria-label={`${alertTotal} active alerts`}>
+                        {badgeLabel}
+                      </span>
+                    ) : null}
                     {item.shortcut ? <Kbd>{shortcutLabel(item.shortcut)}</Kbd> : null}
                   </Link>
                 );
@@ -61,13 +78,15 @@ export function Sidebar() {
         })}
       </nav>
       <div className={styles.footer}>
-        <span className={styles.footerAvatar} aria-hidden="true">
-          {(claims?.sub ?? "?").charAt(0).toUpperCase()}
-        </span>
-        <span>{claims?.sub ?? "anonymous"}</span>
+        <div className={styles.footerRow1}>
+          <span className={styles.footerAvatar} aria-hidden="true">
+            {(claims?.sub ?? "?").charAt(0).toUpperCase()}
+          </span>
+          <span className={styles.footerUsername}>{claims?.sub ?? "anonymous"}</span>
+        </div>
         {claims?.tenant_id ? (
           <span className={styles.footerTenant} aria-label="Organization">
-            {claims.tenant_id}
+            org:{claims.tenant_id}
           </span>
         ) : null}
       </div>

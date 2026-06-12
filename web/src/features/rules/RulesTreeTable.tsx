@@ -898,6 +898,11 @@ function StaticTreeRow({
             />
           ) : null}
           <Code>{node.rule.name}</Code>
+          {node.childIds.length > 0 ? (
+            <span className={styles.childCount} aria-label={`${node.childIds.length} children`}>
+              ({node.childIds.length})
+            </span>
+          ) : null}
         </span>
         <span className={styles.conditionCell}>{prettyCondition(node.rule.condition)}</span>
         <span className={styles.modsCell}>
@@ -1085,6 +1090,11 @@ function SortableTreeRow({
             />
           ) : null}
           <Code>{node.rule.name}</Code>
+          {node.childIds.length > 0 ? (
+            <span className={styles.childCount} aria-label={`${node.childIds.length} children`}>
+              ({node.childIds.length})
+            </span>
+          ) : null}
         </span>
         <span className={styles.conditionCell}>{prettyCondition(node.rule.condition)}</span>
         <span className={styles.modsCell}>

@@ -4,7 +4,7 @@ import { Sidebar } from "./Sidebar";
 import { Topbar } from "./Topbar";
 import { CommandPalette } from "./CommandPalette";
 import { useShortcut } from "@/shared/hooks/useShortcut";
-import { NAV_ITEMS } from "./nav-items";
+import { pickBreadcrumb } from "./breadcrumb";
 import styles from "./AppShell.module.css";
 
 export function AppShell() {
@@ -40,12 +40,4 @@ export function AppShell() {
       <CommandPalette open={paletteOpen} onOpenChange={setPaletteOpen} />
     </div>
   );
-}
-
-function pickBreadcrumb(matches: ReturnType<typeof useMatches>): string | undefined {
-  const last = matches[matches.length - 1];
-  if (!last) return undefined;
-  const path = last.pathname;
-  const navItem = NAV_ITEMS.find((i) => path === i.to || path.startsWith(i.to + "/"));
-  return navItem?.label;
 }

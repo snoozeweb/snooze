@@ -13,6 +13,7 @@ import {
   TimeScale,
   Tooltip,
 } from "chart.js";
+import { applyChartDefaults, chartToken } from "./theme";
 import styles from "./chart.module.css";
 
 Chart.register(
@@ -41,6 +42,12 @@ export type LineChartProps = {
   onPointClick?: (seriesLabel: string, x: string) => void;
   /** When true, the Chart.js built-in legend is shown and supports click-toggling datasets. */
   toggleableLegend?: boolean;
+  /**
+   * Current theme name. Not read directly — passed only so the render
+   * effect re-runs (and re-resolves the token-driven axis/grid colours)
+   * when the user toggles light/dark with the chart mounted.
+   */
+  theme?: string;
 };
 
 export function LineChart({
@@ -48,19 +55,21 @@ export function LineChart({
   height = 240,
   onPointClick,
   toggleableLegend,
+  theme,
 }: LineChartProps) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const chartRef = useRef<Chart | null>(null);
 
   useEffect(() => {
     if (!canvasRef.current) return;
+    applyChartDefaults();
     const datasets: ChartDataset<"line">[] = series.map((s) => ({
       label: s.label,
       // Chart.js accepts {x: string, y: number} when using category scale; cast
       // needed because the TS overload expects x: number (scatter/time scale).
       data: s.data as unknown as ChartDataset<"line">["data"],
       borderColor: s.color,
-      backgroundColor: hexToRgba(s.color, 0.18),
+      backgroundColor: toRgba(s.color, 0.18),
       fill: true,
       pointRadius: 0,
       tension: 0.3,
@@ -82,11 +91,11 @@ export function LineChart({
         x: {
           type: "category",
           grid: { display: false },
-          ticks: { color: cssVar("--text-muted"), maxRotation: 0 },
+          ticks: { color: chartToken("--text-muted"), maxRotation: 0 },
         },
         y: {
-          grid: { color: cssVar("--border-muted") },
-          ticks: { color: cssVar("--text-muted") },
+          grid: { color: chartToken("--border-muted") },
+          ticks: { color: chartToken("--text-muted") },
           beginAtZero: true,
         },
       },
@@ -112,7 +121,9 @@ export function LineChart({
       chartRef.current?.destroy();
       chartRef.current = null;
     };
-  }, [series, onPointClick, toggleableLegend]);
+    // `theme` is intentionally a dep: toggling light/dark must re-resolve the
+    // token-driven axis/grid colours even though the series data is unchanged.
+  }, [series, onPointClick, toggleableLegend, theme]);
 
   return (
     <div className={styles.wrap} style={{ height }}>
@@ -121,23 +132,22 @@ export function LineChart({
   );
 }
 
-function hexToRgba(hex: string, alpha: number): string {
-  const trimmed = hex.replace("#", "");
+// Build a translucent fill colour from a series colour. Handles 3/6-digit
+// hex (the common case) and falls back to color-mix for any other CSS
+// colour string the caller might pass (e.g. a resolved rgb()).
+function toRgba(color: string, alpha: number): string {
+  const hex = color.trim();
+  const m = /^#([0-9a-f]{3}|[0-9a-f]{6})$/i.exec(hex);
+  if (!m) return `color-mix(in srgb, ${color} ${Math.round(alpha * 100)}%, transparent)`;
   const full =
-    trimmed.length === 3
-      ? trimmed
+    m[1]!.length === 3
+      ? m[1]!
           .split("")
           .map((c) => c + c)
           .join("")
-      : trimmed;
+      : m[1]!;
   const r = parseInt(full.slice(0, 2), 16);
   const g = parseInt(full.slice(2, 4), 16);
   const b = parseInt(full.slice(4, 6), 16);
   return `rgba(${r}, ${g}, ${b}, ${alpha})`;
-}
-
-function cssVar(name: string): string {
-  if (typeof window === "undefined") return "#999";
-  const v = getComputedStyle(document.documentElement).getPropertyValue(name).trim();
-  return v || "#999";
 }

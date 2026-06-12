@@ -1,4 +1,5 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import { describe, expect, it } from "vitest";
 import {
@@ -94,17 +95,29 @@ const COMMENTS_RESPONSE = {
   meta: { count: 2, limit: 15, offset: 0, total: 2 },
 };
 
+// Mirror the real alerts route's search allowlist so drill-down deep-links
+// (?search=, ?tab=, ?env=) round-trip in these tests just as they do live.
+function alertsValidateSearch(raw: Record<string, unknown>): {
+  search?: string;
+  tab?: string;
+  env?: string;
+} {
+  const out: { search?: string; tab?: string; env?: string } = {};
+  if (typeof raw["search"] === "string") out.search = raw["search"];
+  if (typeof raw["tab"] === "string") out.tab = raw["tab"];
+  if (typeof raw["env"] === "string") out.env = raw["env"];
+  return out;
+}
+
 function setup() {
   const root = createRootRoute({ component: () => <Outlet /> });
-  // Add /web/alerts route so ActivityFeed's <Link to="/web/alerts"> resolves.
+  // Add /web/alerts route so ActivityFeed's <Link to="/web/alerts"> resolves
+  // and so drill-down navigations land somewhere with the search preserved.
   const alertsRoute = createRoute({
     getParentRoute: () => root,
     path: "/web/alerts",
     component: () => <div>alerts</div>,
-    validateSearch: (raw): { search?: string } => {
-      if (typeof raw["search"] === "string") return { search: raw["search"] };
-      return {};
-    },
+    validateSearch: alertsValidateSearch,
   });
   const route = createRoute({
     getParentRoute: () => root,
@@ -119,7 +132,7 @@ function setup() {
   } as any);
   /* eslint-enable @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-argument */
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-  return render(
+  const utils = render(
     <QueryClientProvider client={client}>
       <TooltipProvider>
         <ToastProvider>
@@ -129,6 +142,24 @@ function setup() {
         </ToastProvider>
       </TooltipProvider>
     </QueryClientProvider>,
+  );
+  return { ...utils, router };
+}
+
+// Two environments so the "By environment" drill-down can resolve name→uid.
+const ENV_RESPONSE = {
+  data: [
+    { uid: "env-prod", name: "prod", tree_order: 0 },
+    { uid: "env-staging", name: "staging", tree_order: 1 },
+  ],
+  meta: { count: 2, limit: 200, offset: 0, total: 2 },
+};
+
+function mockFullDashboard() {
+  mswServer.use(
+    http.get("/api/v1/stats", () => HttpResponse.json(FULL_STATS_RESPONSE)),
+    http.get("/api/v1/comment", () => HttpResponse.json(COMMENTS_RESPONSE)),
+    http.get("/api/v1/environment", () => HttpResponse.json(ENV_RESPONSE)),
   );
 }
 
@@ -208,6 +239,95 @@ describe("DashboardPage", () => {
     );
     const { container } = setup();
     await waitFor(() => expect(container.querySelectorAll("canvas").length).toBeGreaterThan(0));
+  });
+});
+
+describe("DashboardPage — loading + drill-downs + deltas", () => {
+  it("shows the skeleton while stats are pending, not a lone spinner", () => {
+    // No MSW handler resolves immediately → query stays pending.
+    mswServer.use(
+      http.get("/api/v1/stats", () => new Promise(() => {})),
+      http.get("/api/v1/comment", () => HttpResponse.json(COMMENTS_RESPONSE)),
+      http.get("/api/v1/environment", () => HttpResponse.json(ENV_RESPONSE)),
+    );
+    const { getByTestId } = setup();
+    expect(getByTestId("dashboard-skeleton")).toBeInTheDocument();
+  });
+
+  it("drills a severity segment into ?search=severity = <label>", async () => {
+    mockFullDashboard();
+    const user = userEvent.setup();
+    const { router } = setup();
+    // The severity DistributionBar renders a clickable legend row per label;
+    // scope to the card so the matching bar segment doesn't make it ambiguous.
+    const sevCard = (await screen.findByText("By severity")).closest("section")!;
+    // Both the bar segment and the legend row fire onSegmentClick; click either.
+    const criticalBtn = within(sevCard).getAllByRole("button", { name: /critical/ })[0]!;
+    await user.click(criticalBtn);
+    await waitFor(() => expect(router.state.location.pathname).toBe("/web/alerts"));
+    expect((router.state.location.search as { search?: string }).search).toBe(
+      "severity = critical",
+    );
+  });
+
+  it("drills a state segment into the matching lifecycle ?tab=", async () => {
+    mockFullDashboard();
+    const user = userEvent.setup();
+    const { router } = setup();
+    // by_state has open/ack/closed; the "ack" segment maps to the ack tab.
+    // Scope to the "By state" card so we don't hit the "Ack" KPI tile.
+    const stateCard = (await screen.findByText("By state")).closest("section")!;
+    const ackBtn = within(stateCard).getAllByRole("button", { name: /ack/ })[0]!;
+    await user.click(ackBtn);
+    await waitFor(() => expect(router.state.location.pathname).toBe("/web/alerts"));
+    expect((router.state.location.search as { tab?: string }).tab).toBe("ack");
+  });
+
+  it("drills an environment segment into ?env=<uid> resolved from the env list", async () => {
+    mockFullDashboard();
+    const user = userEvent.setup();
+    const { router } = setup();
+    const envCard = (await screen.findByText("By environment")).closest("section")!;
+    // "prod" resolves to env-prod via the Environments list.
+    const prodBtn = within(envCard).getAllByRole("button", { name: /prod/ })[0]!;
+    await user.click(prodBtn);
+    await waitFor(() => expect(router.state.location.pathname).toBe("/web/alerts"));
+    expect((router.state.location.search as { env?: string }).env).toBe("env-prod");
+  });
+
+  it("navigates a KPI tile to its lifecycle ?tab=", async () => {
+    mockFullDashboard();
+    const user = userEvent.setup();
+    const { router } = setup();
+    await user.click(await screen.findByText("Snoozed"));
+    await waitFor(() => expect(router.state.location.pathname).toBe("/web/alerts"));
+    expect((router.state.location.search as { tab?: string }).tab).toBe("snoozed");
+  });
+
+  it("renders a trend delta badge when the prior window differs", async () => {
+    // Differentiate the two windows by their `from` query param: the current
+    // window's `from` is ~1 day before now; the prior window's is ~2 days.
+    const now = Date.now();
+    mswServer.use(
+      http.get("/api/v1/stats", ({ request }) => {
+        const from = new URL(request.url).searchParams.get("from") ?? "";
+        const ageDays = (now - Date.parse(from)) / 86_400_000;
+        // Prior window (older `from`) reports fewer throttles than current.
+        const throttled = ageDays > 1.5 ? { r: 2 } : { r: 4 };
+        return HttpResponse.json({
+          ...FULL_STATS_RESPONSE,
+          data: {
+            ...FULL_STATS_RESPONSE.data,
+            totals: { ...FULL_STATS_RESPONSE.data.totals, by_throttled: throttled },
+          },
+        });
+      }),
+      http.get("/api/v1/comment", () => HttpResponse.json(COMMENTS_RESPONSE)),
+      http.get("/api/v1/environment", () => HttpResponse.json(ENV_RESPONSE)),
+    );
+    setup();
+    // current 4 vs prior 2 → +100%.
+    expect(await screen.findByLabelText(/\+100% vs prior period/)).toBeInTheDocument();
   });
 });
 

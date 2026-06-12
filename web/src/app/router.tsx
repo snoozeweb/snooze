@@ -391,6 +391,12 @@ type AlertsSearchParams = {
   orderby?: string;
   asc?: boolean;
   uid?: string;
+  // Lifecycle tab id and comma-separated environment UIDs. AlertsPage drives
+  // its filter state off these (and the dashboard drill-downs deep-link to
+  // them), so validateSearch must preserve them — otherwise they'd be
+  // stripped on every navigation through this route.
+  tab?: string;
+  env?: string;
 };
 
 const alertsRoute = createRoute({
@@ -424,6 +430,8 @@ const alertsRoute = createRoute({
     setIf("orderby", s("orderby"));
     setIf("asc", b("asc"));
     setIf("uid", s("uid"));
+    setIf("tab", s("tab"));
+    setIf("env", s("env"));
     return out as AlertsSearchParams;
   },
 });

@@ -419,5 +419,151 @@ describe("DataTable", () => {
       const last = onExpandedChange.mock.calls.at(-1)?.[0] as ReadonlySet<string>;
       expect([...last]).toEqual(["3"]);
     });
+
+    it("controlled expansion renders exactly expandedKeys and routes toggles through onExpandedChange", async () => {
+      const onExpandedChange = vi.fn();
+      const user = userEvent.setup();
+      const { rerender } = render(
+        <DataTable
+          data={sample}
+          columns={columns}
+          rowKey={(r) => r.id}
+          renderExpanded={(r) => <div data-testid={`exp-${r.id}`}>{r.name}</div>}
+          expandedKeys={new Set(["2"])}
+          onExpandedChange={onExpandedChange}
+        />,
+      );
+      // Only the controlled key is expanded — internal state is bypassed.
+      expect(screen.getByTestId("exp-2")).toBeInTheDocument();
+      expect(screen.queryByTestId("exp-1")).toBeNull();
+
+      // Clicking another chevron must NOT self-expand; it asks the parent.
+      const toggles = screen.getAllByRole("button", { name: /expand row/i });
+      await user.click(toggles[0]!);
+      expect(screen.queryByTestId("exp-1")).toBeNull();
+      const next = onExpandedChange.mock.calls.at(-1)?.[0] as ReadonlySet<string>;
+      expect([...next].sort()).toEqual(["1", "2"]);
+
+      // Parent applies the new set → row 1 now renders expanded.
+      rerender(
+        <DataTable
+          data={sample}
+          columns={columns}
+          rowKey={(r) => r.id}
+          renderExpanded={(r) => <div data-testid={`exp-${r.id}`}>{r.name}</div>}
+          expandedKeys={new Set(["1", "2"])}
+          onExpandedChange={onExpandedChange}
+        />,
+      );
+      expect(screen.getByTestId("exp-1")).toBeInTheDocument();
+      expect(screen.getByTestId("exp-2")).toBeInTheDocument();
+    });
+  });
+
+  describe("quick actions", () => {
+    it("renders a quick-action IconButton per row and fires onSelect", async () => {
+      const handler = vi.fn();
+      const user = userEvent.setup();
+      render(
+        <DataTable
+          data={[sample[0]!]}
+          columns={columns}
+          rowKey={(r) => r.id}
+          quickActions={(r) => [
+            { key: "ack", label: `Ack ${r.name}`, icon: "check", onSelect: handler },
+          ]}
+        />,
+      );
+      const btn = screen.getByRole("button", { name: /ack alpha/i });
+      await user.click(btn);
+      expect(handler).toHaveBeenCalledTimes(1);
+    });
+
+    it("does not render quick actions when the prop is omitted", () => {
+      render(<DataTable data={sample} columns={columns} rowKey={(r) => r.id} />);
+      expect(screen.queryByRole("button", { name: /ack/i })).toBeNull();
+    });
+
+    it("renders quick actions alongside the kebab without replacing it", () => {
+      render(
+        <DataTable
+          data={[sample[0]!]}
+          columns={columns}
+          rowKey={(r) => r.id}
+          quickActions={(r) => [{ key: "ack", label: `Ack ${r.name}`, onSelect: vi.fn() }]}
+          rowActions={(r) => [{ key: "edit", label: `Edit ${r.name}`, onSelect: vi.fn() }]}
+        />,
+      );
+      expect(screen.getByRole("button", { name: /ack alpha/i })).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: /row actions/i })).toBeInTheDocument();
+    });
+  });
+
+  describe("row accent", () => {
+    it("sets data-accent and the --row-accent custom property when rowAccent returns a colour", () => {
+      render(
+        <DataTable
+          data={[sample[0]!, sample[1]!]}
+          columns={columns}
+          rowKey={(r) => r.id}
+          rowAccent={(r) => (r.id === "1" ? "var(--severity-critical)" : undefined)}
+        />,
+      );
+      const accented = screen.getByText("alpha").closest("tr")!;
+      expect(accented).toHaveAttribute("data-accent", "true");
+      expect(accented.style.getPropertyValue("--row-accent")).toBe("var(--severity-critical)");
+
+      const plain = screen.getByText("beta").closest("tr")!;
+      expect(plain).not.toHaveAttribute("data-accent");
+    });
+  });
+
+  describe("keyboard navigation", () => {
+    it("j / k move the focused row down / up like ArrowDown / ArrowUp", () => {
+      render(<DataTable data={sample} columns={columns} rowKey={(r) => r.id} />);
+      const table = screen.getByRole("grid");
+      table.focus();
+      fireEvent.keyDown(table, { key: "j" });
+      expect(screen.getByText("alpha").closest("tr")).toHaveAttribute("data-focused", "true");
+      fireEvent.keyDown(table, { key: "j" });
+      expect(screen.getByText("beta").closest("tr")).toHaveAttribute("data-focused", "true");
+      fireEvent.keyDown(table, { key: "k" });
+      expect(screen.getByText("alpha").closest("tr")).toHaveAttribute("data-focused", "true");
+    });
+
+    it("e toggles expansion of the focused row when renderExpanded is set", () => {
+      render(
+        <DataTable
+          data={sample}
+          columns={columns}
+          rowKey={(r) => r.id}
+          renderExpanded={(r) => <div data-testid={`exp-${r.id}`}>{r.name}</div>}
+        />,
+      );
+      const table = screen.getByRole("grid");
+      table.focus();
+      fireEvent.keyDown(table, { key: "j" }); // focus row 1
+      fireEvent.keyDown(table, { key: "e" });
+      expect(screen.getByTestId("exp-1")).toBeInTheDocument();
+      fireEvent.keyDown(table, { key: "e" });
+      expect(screen.queryByTestId("exp-1")).toBeNull();
+    });
+
+    it("rowKeyBindings fire for the focused row and skip reserved keys", () => {
+      const ack = vi.fn();
+      render(
+        <DataTable
+          data={sample}
+          columns={columns}
+          rowKey={(r) => r.id}
+          rowKeyBindings={() => ({ a: ack })}
+        />,
+      );
+      const table = screen.getByRole("grid");
+      table.focus();
+      fireEvent.keyDown(table, { key: "j" }); // focus row 1
+      fireEvent.keyDown(table, { key: "a" });
+      expect(ack).toHaveBeenCalledTimes(1);
+    });
   });
 });

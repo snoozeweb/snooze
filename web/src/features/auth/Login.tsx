@@ -118,6 +118,7 @@ export function Login() {
         <div className={styles.card}>
           <div className={styles.brand}>
             <Logo />
+            <span className={styles.tagline}>Alert Console</span>
           </div>
         </div>
       </div>
@@ -130,6 +131,7 @@ export function Login() {
         <div className={styles.card}>
           <div className={styles.brand}>
             <Logo />
+            <span className={styles.tagline}>Alert Console</span>
           </div>
           <div className={styles.error} role="alert">
             No authentication backend is enabled on this server.
@@ -170,6 +172,7 @@ export function Login() {
       <div className={styles.card}>
         <div className={styles.brand}>
           <Logo />
+          <span className={styles.tagline}>Alert Console</span>
         </div>
         {lockedTenant ? (
           <p className={styles.tenantHeader}>

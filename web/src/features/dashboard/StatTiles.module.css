@@ -9,11 +9,49 @@
   border-radius: var(--radius-md);
   padding: var(--space-3);
   background: var(--bg-elevated);
+  /* Buttons reset: tiles read identically whether <div> or <button>. */
+  font: inherit;
+  color: inherit;
+  text-align: left;
+  width: 100%;
+  display: block;
+}
+/* Clickable tiles get a pointer + hover/focus affordance via tokens. */
+.clickable {
+  cursor: pointer;
+  transition:
+    background var(--dur-fast) var(--ease-out),
+    border-color var(--dur-fast) var(--ease-out);
+}
+.clickable:hover {
+  background: var(--bg-hover);
+  border-color: var(--tile-accent, var(--border));
+}
+.clickable:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
 }
 .value {
   font-size: var(--text-xl);
+  font-family: var(--font-mono);
+  font-feature-settings: var(--font-features-numeric);
   color: var(--text-strong);
   display: block;
+}
+/* Trend delta vs the prior window — mono, colour by direction. */
+.delta {
+  display: inline-block;
+  margin-top: 2px;
+  font-family: var(--font-mono);
+  font-feature-settings: var(--font-features-numeric);
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+}
+.delta[data-dir="up"] {
+  color: var(--severity-critical);
+}
+.delta[data-dir="down"] {
+  color: var(--severity-ok);
 }
 .label {
   display: inline-flex;

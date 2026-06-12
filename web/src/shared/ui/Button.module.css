@@ -72,7 +72,7 @@
 
 .danger {
   background: var(--severity-critical);
-  color: #ffffff;
+  color: var(--severity-critical-fg);
   border-color: var(--severity-critical);
 }
 .danger:hover:not(:disabled) {
