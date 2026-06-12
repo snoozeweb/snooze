@@ -98,7 +98,7 @@ export function ConditionPreview({ condition, pageSize = 5 }: ConditionPreviewPr
               <span className={styles.controlButtons}>
                 <button
                   type="button"
-                  className={styles.headerLeft}
+                  className={styles.pageBtn}
                   disabled={page <= 1}
                   onClick={() => setPage((p) => Math.max(1, p - 1))}
                   aria-label="Previous page"
@@ -107,7 +107,7 @@ export function ConditionPreview({ condition, pageSize = 5 }: ConditionPreviewPr
                 </button>
                 <button
                   type="button"
-                  className={styles.headerLeft}
+                  className={styles.pageBtn}
                   disabled={page >= pageCount}
                   onClick={() => setPage((p) => Math.min(pageCount, p + 1))}
                   aria-label="Next page"

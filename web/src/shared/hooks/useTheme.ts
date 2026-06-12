@@ -5,13 +5,27 @@ export type Theme = "dark" | "light";
 const THEME_KEY = "snooze.theme";
 const DEFAULT_THEME: Theme = "dark";
 
+// Browser-chrome color per theme. Literals mirror --bg-canvas in
+// src/styles/theme.{dark,light}.css (a <meta> tag can't read CSS vars).
+// The initial value is set in index.html; this keeps it in sync on toggle.
+const THEME_COLOR: Record<Theme, string> = {
+  dark: "#0a0c0e",
+  light: "#f4f5f7",
+};
+
 function readDomTheme(): Theme {
   const value = document.documentElement.getAttribute("data-theme");
   return value === "light" || value === "dark" ? value : DEFAULT_THEME;
 }
 
+function applyThemeColorMeta(theme: Theme): void {
+  const meta = document.querySelector('meta[name="theme-color"]');
+  if (meta) meta.setAttribute("content", THEME_COLOR[theme]);
+}
+
 function applyDomTheme(theme: Theme): void {
   document.documentElement.setAttribute("data-theme", theme);
+  applyThemeColorMeta(theme);
 }
 
 function persistTheme(theme: Theme): void {
@@ -40,6 +54,7 @@ export function useTheme(): {
   useEffect(() => {
     const observer = new MutationObserver(() => {
       const next = readDomTheme();
+      applyThemeColorMeta(next);
       setThemeState((prev) => (prev === next ? prev : next));
     });
     observer.observe(document.documentElement, {

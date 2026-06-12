@@ -652,134 +652,140 @@ export function RulesTreeTable({
 
       <div
         className={styles.tableScroll}
+        role="treegrid"
+        aria-label="Rules tree"
         {...(pending ? { "data-pending": "true" } : {})}
         {...(activeId ? { "data-dragging": "true" } : {})}
       >
-        <div className={styles.headerRow} role="row">
-          <span className={styles.expandCell} aria-hidden="true" />
-          <span className={styles.handleCell} aria-hidden="true" />
-          <span className={styles.checkboxCell}>
-            <Checkbox
-              aria-label="Select all rules"
-              checked={allSelected ? true : someSelected ? "indeterminate" : false}
-              onCheckedChange={toggleAll}
-              disabled={pending}
-            />
-          </span>
-          <span>Name</span>
-          <span>Condition</span>
-          <span>Modifications</span>
-          <span className={styles.addCell} aria-hidden="true" />
+        <div role="rowgroup">
+          <div className={styles.headerRow} role="row">
+            <span className={styles.expandCell} aria-hidden="true" />
+            <span className={styles.handleCell} aria-hidden="true" />
+            <span className={styles.checkboxCell}>
+              <Checkbox
+                aria-label="Select all rules"
+                checked={allSelected ? true : someSelected ? "indeterminate" : false}
+                onCheckedChange={toggleAll}
+                disabled={pending}
+              />
+            </span>
+            <span>Name</span>
+            <span>Condition</span>
+            <span>Modifications</span>
+            <span className={styles.addCell} aria-hidden="true" />
+          </div>
         </div>
 
-        {localRules.length === 0 ? (
-          <div className={styles.empty}>
-            <EmptyState
-              icon="file-text"
-              title="No rules yet"
-              description="Rules transform incoming alerts. Add one to get started."
-              {...(emptyAction !== undefined ? { action: emptyAction } : {})}
-            />
-          </div>
-        ) : searchActive ? (
-          // Filtered view: skip the DndContext entirely — operators can read
-          // and edit rules, but reordering is gated until the search clears.
-          // The drag handles fall back to a static grip icon so the column
-          // grid stays consistent with the unfiltered view.
-          renderedFlat.map((n) => {
-            const id = n.rule.uid ?? n.rule.name;
-            return (
-              <StaticTreeRow
-                key={id}
-                node={n}
-                depth={n.depth}
-                prettyCond={cachedPretty(n.rule.condition)}
-                selected={isRowSelected(id)}
-                onToggleSelected={toggleSelection}
-                onRowOpen={onRowOpen}
-                canInsert={onInsert !== undefined && !pending}
-                {...(onInsert ? { onInsert } : {})}
-                expanded={expanded.has(id)}
-                onToggleExpanded={toggleExpanded}
-                selectionLocked={pending}
-                {...(contextMenuItems ? { onContextMenu: onRowContextMenu } : {})}
+        <div role="rowgroup">
+          {localRules.length === 0 ? (
+            <div className={styles.empty}>
+              <EmptyState
+                icon="file-text"
+                title="No rules yet"
+                description="Rules transform incoming alerts. Add one to get started."
+                {...(emptyAction !== undefined ? { action: emptyAction } : {})}
               />
-            );
-          })
-        ) : (
-          <DndContext
-            sensors={sensors}
-            // pointerWithin avoids the closestCenter flicker at row
-            // midpoints: the "over" row is whichever rect the cursor is
-            // actually inside, not whichever rect's CENTER is closest.
-            // The result is stable across 1px movements — no oscillation
-            // between two rows whose centers happen to be equidistant.
-            collisionDetection={pointerWithin}
-            onDragStart={handleDragStart}
-            onDragMove={handleDragMove}
-            onDragCancel={handleDragCancel}
-            onDragEnd={handleDragEnd}
-            autoScroll={{ enabled: true, threshold: { x: 0, y: 0.2 } }}
-          >
-            <SortableContext
-              items={renderedFlat.map((n) => n.rule.uid ?? n.rule.name)}
-              strategy={noopStrategy}
+            </div>
+          ) : searchActive ? (
+            // Filtered view: skip the DndContext entirely — operators can read
+            // and edit rules, but reordering is gated until the search clears.
+            // The drag handles fall back to a static grip icon so the column
+            // grid stays consistent with the unfiltered view.
+            renderedFlat.map((n) => {
+              const id = n.rule.uid ?? n.rule.name;
+              return (
+                <StaticTreeRow
+                  key={id}
+                  node={n}
+                  depth={n.depth}
+                  prettyCond={cachedPretty(n.rule.condition)}
+                  selected={isRowSelected(id)}
+                  onToggleSelected={toggleSelection}
+                  onRowOpen={onRowOpen}
+                  canInsert={onInsert !== undefined && !pending}
+                  {...(onInsert ? { onInsert } : {})}
+                  expanded={expanded.has(id)}
+                  onToggleExpanded={toggleExpanded}
+                  selectionLocked={pending}
+                  {...(contextMenuItems ? { onContextMenu: onRowContextMenu } : {})}
+                />
+              );
+            })
+          ) : (
+            <DndContext
+              sensors={sensors}
+              // pointerWithin avoids the closestCenter flicker at row
+              // midpoints: the "over" row is whichever rect the cursor is
+              // actually inside, not whichever rect's CENTER is closest.
+              // The result is stable across 1px movements — no oscillation
+              // between two rows whose centers happen to be equidistant.
+              collisionDetection={pointerWithin}
+              onDragStart={handleDragStart}
+              onDragMove={handleDragMove}
+              onDragCancel={handleDragCancel}
+              onDragEnd={handleDragEnd}
+              autoScroll={{ enabled: true, threshold: { x: 0, y: 0.2 } }}
             >
-              {renderedFlat.map((n, i) => {
-                const id = n.rule.uid ?? n.rule.name;
-                const inActiveSubtree = subtreeIds.has(id);
-                return (
-                  <Fragment key={id}>
-                    {projection?.slotInRendered === i && activeRule ? (
-                      <GhostRow rule={activeRule} depth={projection.depth} />
-                    ) : null}
-                    <SortableTreeRow
-                      id={id}
-                      node={n}
-                      depth={n.depth}
-                      prettyCond={cachedPretty(n.rule.condition)}
-                      selected={isRowSelected(id)}
-                      // Pass the stable callbacks straight through — the row
-                      // binds its own id/rule internally. Inline closures
-                      // here would be a fresh identity every render and
-                      // defeat SortableTreeRow's memo during a drag-move.
-                      onToggleSelected={toggleSelection}
-                      onRowOpen={onRowOpen}
-                      // Hide the per-row "+ Add" menu while there are
-                      // uncommitted reorders — inserting a new rule mid-
-                      // edit would shift siblings the pending patches
-                      // don't account for and corrupt the staged state.
-                      canInsert={onInsert !== undefined && !pending}
-                      {...(onInsert ? { onInsert } : {})}
-                      expanded={!activeId && expanded.has(id)}
-                      onToggleExpanded={toggleExpanded}
-                      // Active subtree rows: when the cursor is still over
-                      // them (projection=null), stay visible-dimmed in
-                      // place; once the cursor commits to a different slot
-                      // (projection is set), collapse out of the layout so
-                      // the ghost can take their slot without growing the
-                      // table.
-                      activeSubtreeMode={
-                        !inActiveSubtree ? "none" : projection === null ? "dim" : "collapsed"
-                      }
-                      // Lock selection while pending — the right header
-                      // slot is occupied by Cancel/Save, so bulk-action
-                      // affordances aren't reachable until commit anyway.
-                      selectionLocked={pending}
-                      {...(contextMenuItems ? { onContextMenu: onRowContextMenu } : {})}
-                    />
-                  </Fragment>
-                );
-              })}
-              {projection?.slotInRendered === renderedFlat.length && activeRule ? (
-                <GhostRow rule={activeRule} depth={projection.depth} />
-              ) : null}
-            </SortableContext>
-            <DragOverlay dropAnimation={null}>
-              {activeRule ? <DragPreview rule={activeRule} /> : null}
-            </DragOverlay>
-          </DndContext>
-        )}
+              <SortableContext
+                items={renderedFlat.map((n) => n.rule.uid ?? n.rule.name)}
+                strategy={noopStrategy}
+              >
+                {renderedFlat.map((n, i) => {
+                  const id = n.rule.uid ?? n.rule.name;
+                  const inActiveSubtree = subtreeIds.has(id);
+                  return (
+                    <Fragment key={id}>
+                      {projection?.slotInRendered === i && activeRule ? (
+                        <GhostRow rule={activeRule} depth={projection.depth} />
+                      ) : null}
+                      <SortableTreeRow
+                        id={id}
+                        node={n}
+                        depth={n.depth}
+                        prettyCond={cachedPretty(n.rule.condition)}
+                        selected={isRowSelected(id)}
+                        // Pass the stable callbacks straight through — the row
+                        // binds its own id/rule internally. Inline closures
+                        // here would be a fresh identity every render and
+                        // defeat SortableTreeRow's memo during a drag-move.
+                        onToggleSelected={toggleSelection}
+                        onRowOpen={onRowOpen}
+                        // Hide the per-row "+ Add" menu while there are
+                        // uncommitted reorders — inserting a new rule mid-
+                        // edit would shift siblings the pending patches
+                        // don't account for and corrupt the staged state.
+                        canInsert={onInsert !== undefined && !pending}
+                        {...(onInsert ? { onInsert } : {})}
+                        expanded={!activeId && expanded.has(id)}
+                        onToggleExpanded={toggleExpanded}
+                        // Active subtree rows: when the cursor is still over
+                        // them (projection=null), stay visible-dimmed in
+                        // place; once the cursor commits to a different slot
+                        // (projection is set), collapse out of the layout so
+                        // the ghost can take their slot without growing the
+                        // table.
+                        activeSubtreeMode={
+                          !inActiveSubtree ? "none" : projection === null ? "dim" : "collapsed"
+                        }
+                        // Lock selection while pending — the right header
+                        // slot is occupied by Cancel/Save, so bulk-action
+                        // affordances aren't reachable until commit anyway.
+                        selectionLocked={pending}
+                        {...(contextMenuItems ? { onContextMenu: onRowContextMenu } : {})}
+                      />
+                    </Fragment>
+                  );
+                })}
+                {projection?.slotInRendered === renderedFlat.length && activeRule ? (
+                  <GhostRow rule={activeRule} depth={projection.depth} />
+                ) : null}
+              </SortableContext>
+              <DragOverlay dropAnimation={null}>
+                {activeRule ? <DragPreview rule={activeRule} /> : null}
+              </DragOverlay>
+            </DndContext>
+          )}
+        </div>
       </div>
 
       <ConfirmDeleteDialog
@@ -932,6 +938,7 @@ function StaticTreeRowInner({
         {...(onContextMenu ? { onContextMenu: (e) => onContextMenu(e, node.rule) } : {})}
         tabIndex={0}
         role="row"
+        aria-level={depth + 1}
       >
         <button
           type="button"
@@ -1135,6 +1142,7 @@ function SortableTreeRowInner({
         {...(onContextMenu ? { onContextMenu: (e) => onContextMenu(e, node.rule) } : {})}
         tabIndex={0}
         role="row"
+        aria-level={depth + 1}
       >
         <button
           type="button"

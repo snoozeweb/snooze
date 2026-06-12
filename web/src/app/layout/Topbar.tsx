@@ -69,12 +69,7 @@ export function Topbar({ breadcrumb, onOpenPalette }: TopbarProps) {
         ) : null}
       </div>
       <div className={styles.right}>
-        <button
-          type="button"
-          className={styles.paletteOpener}
-          onClick={onOpenPalette}
-          aria-label="Open command palette"
-        >
+        <button type="button" className={styles.paletteOpener} onClick={onOpenPalette}>
           <Icon name="search" size={12} />
           <span>Search…</span>
           <Kbd>⌘K</Kbd>

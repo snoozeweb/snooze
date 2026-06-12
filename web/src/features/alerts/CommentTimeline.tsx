@@ -130,7 +130,7 @@ export function CommentTimeline({ recordUid }: { recordUid: string | undefined }
             onChange={(e) => setDraft(e.target.value)}
           />
           <div className={styles.composerRow}>
-            <span className={styles.composerType} role="radiogroup" aria-label="Comment type">
+            <span className={styles.composerType} role="group" aria-label="Comment type">
               {COMPOSER_TYPES.map((t) => (
                 <button
                   key={t}
@@ -266,6 +266,7 @@ export function CommentTimeline({ recordUid }: { recordUid: string | undefined }
                 type="button"
                 className={styles.typeChip}
                 data-active={pageSize === n || undefined}
+                aria-pressed={pageSize === n}
                 onClick={() => {
                   setPageSize(n);
                   setPage(1);

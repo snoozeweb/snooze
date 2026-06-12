@@ -153,6 +153,8 @@ export function UserEditor({ uid, onClose }: UserEditorProps) {
                     {...register("name")}
                     invalid={nameInvalid}
                     placeholder="e.g. alice"
+                    autoComplete="username"
+                    spellCheck={false}
                   />
                 </div>
                 <div className={styles.field}>
@@ -164,7 +166,7 @@ export function UserEditor({ uid, onClose }: UserEditorProps) {
                       value={methodValue}
                       onValueChange={(v) => setValue("method", v, { shouldDirty: true })}
                     >
-                      <SelectTrigger />
+                      <SelectTrigger id="user-type" />
                       <SelectContent>
                         <SelectItem value="local">local</SelectItem>
                         <SelectItem value="ldap">ldap</SelectItem>

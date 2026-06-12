@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useNavigate, useSearch } from "@tanstack/react-router";
 import { Button } from "@/shared/ui/Button";
@@ -65,12 +65,20 @@ export function Login() {
   const [orgSel, setOrgSel] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(search.sso_error ?? null);
+  const errorRef = useRef<HTMLDivElement | null>(null);
 
   const org = lockedTenant ? lockedTenant.id : tenants.length === 1 ? tenants[0]!.id : orgSel;
 
   useEffect(() => {
     if (primary === null && defaultPrimary !== null) setPrimary(defaultPrimary);
   }, [defaultPrimary, primary]);
+
+  // On a sign-in failure, pull keyboard + screen-reader focus to the error
+  // banner so the failure is announced and the user lands next to it rather
+  // than leaving focus on the now-stale submit button.
+  useEffect(() => {
+    if (error) errorRef.current?.focus();
+  }, [error]);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -181,7 +189,7 @@ export function Login() {
         ) : null}
 
         {error ? (
-          <div className={styles.error} role="alert">
+          <div className={styles.error} role="alert" tabIndex={-1} ref={errorRef}>
             {error}
           </div>
         ) : null}
@@ -202,6 +210,8 @@ export function Login() {
                 value={username}
                 onChange={(e) => setUsername(e.target.value)}
                 autoComplete="username"
+                spellCheck={false}
+                autoCapitalize="none"
                 required
               />
             </div>

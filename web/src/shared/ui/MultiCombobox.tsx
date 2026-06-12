@@ -174,9 +174,10 @@ export function MultiCombobox({
             <input
               type="text"
               autoFocus
+              aria-label="Search options"
               className={styles.search}
               value={query}
-              placeholder={allowCustom ? "Search or type a new value…" : "Search"}
+              placeholder={allowCustom ? "Search or type a new value…" : "Search…"}
               onChange={(e) => {
                 setQuery(e.target.value);
                 setActiveIndex(0);

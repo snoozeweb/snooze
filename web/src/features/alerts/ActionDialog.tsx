@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   Dialog,
   DialogBody,
@@ -83,6 +83,7 @@ export function ActionDialog({
   const meta = META[actionType];
   const [message, setMessage] = useState("");
   const [touched, setTouched] = useState(false);
+  const messageRef = useRef<HTMLTextAreaElement>(null);
 
   useEffect(() => {
     if (open) {
@@ -96,7 +97,13 @@ export function ActionDialog({
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setTouched(true);
-    if (messageInvalid) return;
+    if (messageInvalid) {
+      // Move focus to the message field so keyboard/screen-reader users land
+      // on the control that blocked the submit instead of being stranded on
+      // the (now no-op) confirm button.
+      messageRef.current?.focus();
+      return;
+    }
     void onConfirm({ message: message.trim() });
   }
 
@@ -126,6 +133,7 @@ export function ActionDialog({
                 Message{meta.requireMessage ? "" : " (optional)"}
               </span>
               <Textarea
+                ref={messageRef}
                 placeholder={actionType === "comment" ? "Type your comment" : "Optional context"}
                 value={message}
                 onChange={(e) => setMessage(e.target.value)}

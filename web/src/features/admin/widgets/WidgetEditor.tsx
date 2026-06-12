@@ -228,7 +228,12 @@ export function WidgetEditor({ uid, onClose }: WidgetEditorProps) {
                   <label className={styles.label} htmlFor="widget-type">
                     Widget type
                   </label>
-                  <select id="widget-type" {...register("subtypeSelection")} style={selectStyle}>
+                  <select
+                    id="widget-type"
+                    {...register("subtypeSelection")}
+                    style={selectStyle}
+                    className={styles.widgetTypeSelect}
+                  >
                     {KNOWN_WIDGETS.map((w) => (
                       <option key={w.type} value={w.type}>
                         {w.displayName}
@@ -271,6 +276,7 @@ export function WidgetEditor({ uid, onClose }: WidgetEditorProps) {
                     rows={10}
                     invalid={!!jsonError}
                     style={{ fontFamily: "var(--font-mono)" }}
+                    aria-label="Config (JSON)"
                   />
                   {jsonError ? (
                     <span style={{ color: "var(--severity-critical)", fontSize: "var(--text-xs)" }}>

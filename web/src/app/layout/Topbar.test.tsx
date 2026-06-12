@@ -76,7 +76,7 @@ describe("Topbar", () => {
     const handler = vi.fn();
     const user = userEvent.setup();
     renderTopbar({ onOpenPalette: handler });
-    await user.click(screen.getByRole("button", { name: /open command palette/i }));
+    await user.click(screen.getByRole("button", { name: /^search/i }));
     expect(handler).toHaveBeenCalledTimes(1);
   });
 

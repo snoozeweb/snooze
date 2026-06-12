@@ -250,6 +250,7 @@ export function ActionEditor({ uid, onClose }: ActionEditorProps) {
                     rows={10}
                     invalid={!!jsonError}
                     style={{ fontFamily: "var(--font-mono)" }}
+                    aria-label="Config (JSON)"
                   />
                   {jsonError ? (
                     <span style={{ color: "var(--severity-critical)", fontSize: "var(--text-xs)" }}>

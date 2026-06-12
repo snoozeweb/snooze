@@ -83,6 +83,7 @@ export function EnvironmentBar({ selected, onChange }: EnvironmentBarProps) {
         type="button"
         className={styles.pill}
         data-state={allActive ? "active" : "inactive"}
+        aria-pressed={allActive}
         onClick={selectAll}
       >
         All
@@ -96,6 +97,7 @@ export function EnvironmentBar({ selected, onChange }: EnvironmentBarProps) {
             type="button"
             className={styles.pill}
             data-state={active ? "active" : "inactive"}
+            aria-pressed={active}
             style={
               active
                 ? { background: color, borderColor: color, color: readableTextOn(color) }

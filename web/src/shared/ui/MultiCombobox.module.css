@@ -23,6 +23,10 @@
   border-color: var(--accent);
   outline: none;
 }
+.wrap:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 1px;
+}
 .placeholder {
   color: var(--text-muted);
   font-size: var(--text-sm);

@@ -81,6 +81,7 @@
 .body {
   padding: var(--space-4);
   overflow: auto;
+  overscroll-behavior: contain;
   flex: 1;
 }
 .footer {

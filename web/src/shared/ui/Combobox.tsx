@@ -111,9 +111,10 @@ export function Combobox({
             <input
               type="text"
               autoFocus
+              aria-label="Search options"
               className={styles.search}
               value={query}
-              placeholder="Search"
+              placeholder="Search…"
               onChange={(e) => {
                 setQuery(e.target.value);
                 setActiveIndex(0);

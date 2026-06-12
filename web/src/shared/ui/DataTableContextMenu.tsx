@@ -98,11 +98,20 @@ export function DataTableContextMenu({ items, x, y, onClose }: DataTableContextM
     if (first !== -1) setFocused(first);
   }, [items]);
 
+  // Focus the menu container on mount so keyboard events are captured
+  // immediately. The document-level keydown listener handles Arrow/Enter/Escape
+  // regardless of which element has focus, but focusing the container ensures
+  // AT announces the menu and gives a sensible return target on close.
+  useEffect(() => {
+    ref.current?.focus({ preventScroll: true });
+  }, []);
+
   const menu = (
     <ul
       ref={ref}
       role="menu"
       aria-label="Row context menu"
+      tabIndex={-1}
       className={styles.menu}
       style={{ left: pos.left, top: pos.top }}
     >

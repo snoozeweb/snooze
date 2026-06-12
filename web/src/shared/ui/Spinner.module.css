@@ -6,6 +6,8 @@
 
 .spinner {
   display: inline-block;
+  transform-box: fill-box;
+  transform-origin: center;
   animation: spinner-rotate var(--dur-slow) linear infinite;
 }
 

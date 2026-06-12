@@ -27,3 +27,9 @@
   flex-direction: column;
   gap: var(--space-4);
 }
+
+/* Restore the focus ring suppressed by base.css for the color input */
+input[type="color"]:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
+}

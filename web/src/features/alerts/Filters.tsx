@@ -51,7 +51,9 @@ export function AlertsFilters({ value, onChange }: AlertsFiltersProps) {
                 key={tab.id}
                 type="button"
                 role="tab"
+                id={`alerts-tab-${tab.id}`}
                 aria-selected={active}
+                aria-controls="alerts-panel"
                 data-state={active ? "active" : "inactive"}
                 className={styles.tab}
                 onClick={() => handleTab(tab.id)}

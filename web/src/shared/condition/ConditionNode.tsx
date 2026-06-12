@@ -350,6 +350,7 @@ export function ConditionNode({
         (leaf.type === "LT" || leaf.type === "GT" || leaf.type === "LE" || leaf.type === "GE") ? (
           <Input
             type="number"
+            inputMode="decimal"
             value={String(leaf.value)}
             onChange={(e) => setNumberValue(Number(e.target.value))}
             placeholder="number"

@@ -65,3 +65,24 @@
   display: inline-flex;
   gap: var(--space-1);
 }
+.pageBtn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text-muted);
+  cursor: pointer;
+  padding: 2px var(--space-1);
+  font: inherit;
+}
+.pageBtn:hover:not(:disabled) {
+  background: var(--bg-hover);
+  color: var(--text-strong);
+  border-color: var(--accent);
+}
+.pageBtn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}

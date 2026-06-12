@@ -761,68 +761,70 @@ export function AlertsPage() {
           onClearAll={clearAllFilters}
         />
       ) : null}
-      <DataTable
-        data={filtered}
-        columns={alertColumns}
-        rowKey={rowKey}
-        loading={list.isPending}
-        stale={list.isPlaceholderData}
-        emptyState={emptyState}
-        selectable
-        selectedKeys={selectedKeys}
-        onSelectionChange={setSelectedKeys}
-        bulkActions={bulkActions}
-        // SearchBar lives in DataTable's toolbar row so the bulk-action
-        // bar that appears on row selection sits next to it instead of
-        // dropping below. Matches every other list page.
-        //
-        // The text + parsed condition are both local React state. The
-        // SearchBar owns the draft and notifies at parse-resolution cadence,
-        // so the parent re-renders when a parse lands — not per keystroke.
-        // Pagination still resets to page 1 on every change.
-        search={searchProp}
-        toolbarHeader={`${list.data?.meta.total ?? 0} alerts`}
-        toolbar={
-          <Tooltip
-            content={
-              !auto.enabled
-                ? "Auto-refresh off"
-                : refreshPaused
-                  ? "Auto-refresh paused while a row is expanded"
-                  : "Auto-refresh every 5s"
-            }
-          >
-            {/* Switch renders as a button; use div+aria-label instead of label to satisfy a11y rules */}
-            <div className={styles.refreshToggle} role="group" aria-label="Auto refresh toggle">
-              <span aria-hidden="true">Auto refresh</span>
-              <Switch
-                checked={auto.enabled}
-                onCheckedChange={auto.setEnabled}
-                aria-label="Auto refresh"
-              />
-            </div>
-          </Tooltip>
-        }
-        serverSort={serverSort}
-        serverPagination={{
-          page,
-          pageSize: PAGE_SIZE,
-          total: list.data?.meta.total ?? 0,
-          onChange: handlePageChange,
-        }}
-        rowActions={rowActions}
-        quickActions={quickActions}
-        rowKeyBindings={rowKeyBindings}
-        rowAccent={rowAccent}
-        contextMenuItems={contextMenuItems}
-        renderExpanded={renderExpanded}
-        // Uncontrolled expansion (Phase 2's default path): DataTable owns the
-        // expanded set and reports size changes here so we can pause polling
-        // while the operator reads an inline panel. Keeping the uncontrolled
-        // path means the `e`-to-expand shortcut and chevron both keep working
-        // without AlertsPage tracking the key set.
-        onExpandedChange={handleExpandedChange}
-      />
+      <div id="alerts-panel" role="tabpanel" aria-labelledby={`alerts-tab-${activeTab}`}>
+        <DataTable
+          data={filtered}
+          columns={alertColumns}
+          rowKey={rowKey}
+          loading={list.isPending}
+          stale={list.isPlaceholderData}
+          emptyState={emptyState}
+          selectable
+          selectedKeys={selectedKeys}
+          onSelectionChange={setSelectedKeys}
+          bulkActions={bulkActions}
+          // SearchBar lives in DataTable's toolbar row so the bulk-action
+          // bar that appears on row selection sits next to it instead of
+          // dropping below. Matches every other list page.
+          //
+          // The text + parsed condition are both local React state. The
+          // SearchBar owns the draft and notifies at parse-resolution cadence,
+          // so the parent re-renders when a parse lands — not per keystroke.
+          // Pagination still resets to page 1 on every change.
+          search={searchProp}
+          toolbarHeader={`${list.data?.meta.total ?? 0} alerts`}
+          toolbar={
+            <Tooltip
+              content={
+                !auto.enabled
+                  ? "Auto-refresh off"
+                  : refreshPaused
+                    ? "Auto-refresh paused while a row is expanded"
+                    : "Auto-refresh every 5s"
+              }
+            >
+              {/* Switch renders as a button; use div+aria-label instead of label to satisfy a11y rules */}
+              <div className={styles.refreshToggle} role="group" aria-label="Auto refresh toggle">
+                <span aria-hidden="true">Auto refresh</span>
+                <Switch
+                  checked={auto.enabled}
+                  onCheckedChange={auto.setEnabled}
+                  aria-label="Auto refresh"
+                />
+              </div>
+            </Tooltip>
+          }
+          serverSort={serverSort}
+          serverPagination={{
+            page,
+            pageSize: PAGE_SIZE,
+            total: list.data?.meta.total ?? 0,
+            onChange: handlePageChange,
+          }}
+          rowActions={rowActions}
+          quickActions={quickActions}
+          rowKeyBindings={rowKeyBindings}
+          rowAccent={rowAccent}
+          contextMenuItems={contextMenuItems}
+          renderExpanded={renderExpanded}
+          // Uncontrolled expansion (Phase 2's default path): DataTable owns the
+          // expanded set and reports size changes here so we can pause polling
+          // while the operator reads an inline panel. Keeping the uncontrolled
+          // path means the `e`-to-expand shortcut and chevron both keep working
+          // without AlertsPage tracking the key set.
+          onExpandedChange={handleExpandedChange}
+        />
+      </div>
       {dialog ? (
         <ActionDialog
           open

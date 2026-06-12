@@ -55,6 +55,13 @@
   padding: var(--space-3);
   border-bottom: 1px solid color-mix(in srgb, var(--accent) 25%, var(--border));
 }
+/* The input itself has `outline: none` (and base.css strips input focus
+   rings globally), so surface keyboard focus on the row instead: a solid
+   accent underline plus a soft glow when the palette input is focused. */
+.searchRow:focus-within {
+  border-bottom-color: var(--accent);
+  box-shadow: inset 0 -1px 0 0 var(--accent);
+}
 .searchIcon {
   color: var(--text-muted);
   display: inline-flex;

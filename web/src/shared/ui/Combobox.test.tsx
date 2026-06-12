@@ -21,7 +21,7 @@ describe("Combobox", () => {
     const user = userEvent.setup();
     render(<Combobox options={options} placeholder="…" onValueChange={() => undefined} />);
     await user.click(screen.getByRole("combobox"));
-    await user.type(screen.getByPlaceholderText("Search"), "sev");
+    await user.type(screen.getByPlaceholderText("Search…"), "sev");
     expect(screen.queryByRole("option", { name: "host" })).toBeNull();
     expect(screen.getByRole("option", { name: "severity" })).toBeInTheDocument();
   });

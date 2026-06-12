@@ -22,13 +22,15 @@ export function DiffSection({ original, current }: DiffSectionProps) {
   if (original === undefined) return null;
   return (
     <div className={styles.wrap}>
+      {/* Accessible name stays "Diff" (tests and AT rely on it); the state is
+          conveyed by aria-expanded, so the triangle glyph is decoration. */}
       <button
         type="button"
         className={styles.toggle}
         onClick={() => setOpen((o) => !o)}
         aria-expanded={open}
       >
-        Diff {open ? "▲" : "▼"}
+        Diff <span aria-hidden="true">{open ? "▲" : "▼"}</span>
       </button>
       {open ? (
         <div className={styles.body}>

@@ -13,6 +13,15 @@ export type CommandPaletteProps = {
 
 const GROUPS: NavGroup[] = ["operate", "configure", "admin"];
 
+const LISTBOX_ID = "command-palette-listbox";
+
+// Stable per-option DOM id derived from the route path. `to` values like
+// "/web/alerts" are sanitized to "cmdpalette-opt-web-alerts" so they can
+// serve as aria-activedescendant targets.
+function optionId(to: string): string {
+  return `cmdpalette-opt-${to.replace(/[^a-zA-Z0-9]+/g, "-").replace(/^-|-$/g, "")}`;
+}
+
 export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
   const navigate = useNavigate();
   const [query, setQuery] = useState("");
@@ -59,6 +68,9 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
 
   const visibleGroups = GROUPS.filter((g) => filtered.some((i) => i.group === g));
 
+  const activeItem = filtered[activeIndex];
+  const activeDescendant = activeItem ? optionId(activeItem.to) : undefined;
+
   return (
     <RD.Root open={open} onOpenChange={onOpenChange}>
       <RD.Portal>
@@ -82,6 +94,12 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
             <input
               ref={inputRef}
               type="text"
+              role="combobox"
+              aria-label="Command palette search"
+              aria-expanded={filtered.length > 0}
+              aria-controls={LISTBOX_ID}
+              aria-autocomplete="list"
+              {...(activeDescendant ? { "aria-activedescendant": activeDescendant } : {})}
               className={styles.search}
               placeholder="Jump to…"
               value={query}
@@ -93,7 +111,7 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
           {filtered.length === 0 ? (
             <div className={styles.empty}>No matches</div>
           ) : (
-            <ul className={styles.list} role="listbox">
+            <ul className={styles.list} role="listbox" id={LISTBOX_ID}>
               {visibleGroups.map((group) => {
                 const groupItems = filtered.filter((i) => i.group === group);
                 return (
@@ -106,6 +124,7 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
                           /* eslint-disable-next-line jsx-a11y/click-events-have-key-events */
                           <li
                             key={item.to}
+                            id={optionId(item.to)}
                             role="option"
                             aria-selected={globalIndex === activeIndex}
                             className={styles.option}

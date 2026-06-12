@@ -28,11 +28,14 @@ export function AppShell() {
 
   return (
     <div className={styles.shell}>
+      <a href="#main-content" className={styles.skipLink}>
+        Skip to content
+      </a>
       <div className={styles.body}>
         <Sidebar />
         <div className={styles.content}>
           <Topbar {...(breadcrumb ? { breadcrumb } : {})} onOpenPalette={open} />
-          <main className={styles.main}>
+          <main id="main-content" tabIndex={-1} className={styles.main}>
             <Outlet />
           </main>
         </div>
