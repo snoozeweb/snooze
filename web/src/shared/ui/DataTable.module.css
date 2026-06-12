@@ -70,6 +70,12 @@
   border-collapse: separate;
   border-spacing: 0;
   font-size: var(--text-sm);
+  transition: opacity var(--dur-fast) var(--ease-out, ease-out);
+}
+/* Stale data: previous rows remain visible but dimmed while the new query
+   loads (keepPreviousData / placeholderData). aria-busy is set in JSX. */
+.table[data-stale="true"] {
+  opacity: 0.6;
 }
 .headerRow th {
   position: sticky;

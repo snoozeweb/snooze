@@ -83,6 +83,10 @@ export type DataTableProps<T> = {
   };
   emptyState?: ReactNode;
   loading?: boolean;
+  /** When true the table shows its previous rows while a new query is in
+   *  flight (TanStack Query keepPreviousData / placeholderData). The table
+   *  dims to signal staleness and sets aria-busy="true". */
+  stale?: boolean;
   onRowOpen?: (row: T) => void;
   /** When true for a row, the row renders with muted styling — used to
    *  indicate `enabled:false` records without dedicating a column. */
@@ -127,6 +131,7 @@ export function DataTable<T>({
   search,
   emptyState,
   loading = false,
+  stale = false,
   onRowOpen,
   rowDisabled,
   renderExpanded,
@@ -403,6 +408,7 @@ export function DataTable<T>({
           onKeyDown={onKeyDown}
           aria-label="Data table"
           className={`${styles.table} ${density === "compact" ? styles.dense : ""}`}
+          {...(stale ? { "data-stale": "true", "aria-busy": "true" } : {})}
         >
           <thead>
             <tr className={styles.headerRow}>

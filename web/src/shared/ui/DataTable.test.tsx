@@ -518,6 +518,34 @@ describe("DataTable", () => {
     });
   });
 
+  describe("stale prop", () => {
+    it("sets data-stale and aria-busy on the table when stale=true", () => {
+      render(<DataTable data={sample} columns={columns} rowKey={(r) => r.id} stale />);
+      const table = screen.getByRole("grid");
+      expect(table).toHaveAttribute("data-stale", "true");
+      expect(table).toHaveAttribute("aria-busy", "true");
+    });
+
+    it("does not set data-stale or aria-busy when stale is omitted", () => {
+      render(<DataTable data={sample} columns={columns} rowKey={(r) => r.id} />);
+      const table = screen.getByRole("grid");
+      expect(table).not.toHaveAttribute("data-stale");
+      expect(table).not.toHaveAttribute("aria-busy");
+    });
+
+    it("clears data-stale and aria-busy when stale switches from true to false", () => {
+      const { rerender } = render(
+        <DataTable data={sample} columns={columns} rowKey={(r) => r.id} stale />,
+      );
+      const table = screen.getByRole("grid");
+      expect(table).toHaveAttribute("data-stale", "true");
+
+      rerender(<DataTable data={sample} columns={columns} rowKey={(r) => r.id} stale={false} />);
+      expect(table).not.toHaveAttribute("data-stale");
+      expect(table).not.toHaveAttribute("aria-busy");
+    });
+  });
+
   describe("keyboard navigation", () => {
     it("j / k move the focused row down / up like ArrowDown / ArrowUp", () => {
       render(<DataTable data={sample} columns={columns} rowKey={(r) => r.id} />);

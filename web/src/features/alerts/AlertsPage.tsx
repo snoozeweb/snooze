@@ -766,6 +766,7 @@ export function AlertsPage() {
         columns={alertColumns}
         rowKey={rowKey}
         loading={list.isPending}
+        stale={list.isPlaceholderData}
         emptyState={emptyState}
         selectable
         selectedKeys={selectedKeys}
