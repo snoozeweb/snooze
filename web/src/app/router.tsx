@@ -2,32 +2,26 @@ import {
   createRoute,
   createRootRoute,
   createRouter,
+  lazyRouteComponent,
   Outlet,
   redirect,
 } from "@tanstack/react-router";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { TooltipProvider } from "@/shared/ui/Tooltip";
 import { ToastProvider, Toaster } from "@/shared/ui/Toast";
+import { Spinner } from "@/shared/ui/Spinner";
 import { AppShell } from "./layout/AppShell";
-import { AlertsPage } from "@/features/alerts/AlertsPage";
-import { RulesPage } from "@/features/rules/RulesPage";
-import { SnoozesPage } from "@/features/snoozes/SnoozesPage";
-import { NotificationsPage } from "@/features/notifications/NotificationsPage";
-import { DashboardPage } from "@/features/dashboard/DashboardPage";
+// Dev-only showroom pages stay statically imported: they live behind the
+// `import.meta.env.DEV` route block below, which Rollup dead-code-eliminates
+// (along with these modules) from production builds. See devRoutes.
 import { PrimitivesPage } from "@/features/dev/PrimitivesPage";
 import { ResourcePage } from "@/features/dev/ResourcePage";
-import { UsersPage } from "@/features/admin/users/UsersPage";
-import { RolesPage } from "@/features/admin/roles/RolesPage";
-import { EnvironmentsPage } from "@/features/admin/environments/EnvironmentsPage";
-import { WidgetsPage } from "@/features/admin/widgets/WidgetsPage";
-import { KVPage } from "@/features/admin/kv/KVPage";
-import { SettingsPage } from "@/features/admin/settings/SettingsPage";
-import { StatusPage } from "@/features/admin/status/StatusPage";
-import { TenantsPage } from "@/features/admin/tenants/TenantsPage";
 import { authStore } from "@/lib/auth/store";
+// First-paint auth path stays eager so the login screen renders without a
+// chunk round-trip. Every other production page is lazy-loaded below via
+// lazyRouteComponent so it ships as its own route chunk.
 import { Login } from "@/features/auth/Login";
 import { LoginCallback } from "@/features/auth/LoginCallback";
-import { Profile } from "@/features/auth/Profile";
 import { setUnauthorizedHandler } from "@/lib/api/client";
 
 const queryClient = new QueryClient({
@@ -125,7 +119,7 @@ type UsersSearchParams = {
 const usersRoute = createRoute({
   getParentRoute: () => webLayoutRoute,
   path: "/web/admin/users",
-  component: UsersPage,
+  component: lazyRouteComponent(() => import("@/features/admin/users/UsersPage"), "UsersPage"),
   validateSearch: (raw): UsersSearchParams => {
     const out: Record<string, unknown> = {};
     if (typeof raw["uid"] === "string") out["uid"] = raw["uid"];
@@ -162,7 +156,7 @@ type RolesSearchParams = {
 const rolesRoute = createRoute({
   getParentRoute: () => webLayoutRoute,
   path: "/web/admin/roles",
-  component: RolesPage,
+  component: lazyRouteComponent(() => import("@/features/admin/roles/RolesPage"), "RolesPage"),
   validateSearch: (raw): RolesSearchParams => {
     const out: Record<string, unknown> = {};
     if (typeof raw["uid"] === "string") out["uid"] = raw["uid"];
@@ -199,7 +193,10 @@ type EnvironmentsSearchParams = {
 const environmentsRoute = createRoute({
   getParentRoute: () => webLayoutRoute,
   path: "/web/admin/environments",
-  component: EnvironmentsPage,
+  component: lazyRouteComponent(
+    () => import("@/features/admin/environments/EnvironmentsPage"),
+    "EnvironmentsPage",
+  ),
   validateSearch: (raw): EnvironmentsSearchParams => {
     const out: Record<string, unknown> = {};
     if (typeof raw["uid"] === "string") out["uid"] = raw["uid"];
@@ -236,7 +233,10 @@ type WidgetsSearchParams = {
 const widgetsRoute = createRoute({
   getParentRoute: () => webLayoutRoute,
   path: "/web/admin/widgets",
-  component: WidgetsPage,
+  component: lazyRouteComponent(
+    () => import("@/features/admin/widgets/WidgetsPage"),
+    "WidgetsPage",
+  ),
   validateSearch: (raw): WidgetsSearchParams => {
     const out: Record<string, unknown> = {};
     if (typeof raw["uid"] === "string") out["uid"] = raw["uid"];
@@ -274,7 +274,7 @@ type KVSearchParams = {
 const kvRoute = createRoute({
   getParentRoute: () => webLayoutRoute,
   path: "/web/admin/kv",
-  component: KVPage,
+  component: lazyRouteComponent(() => import("@/features/admin/kv/KVPage"), "KVPage"),
   validateSearch: (raw): KVSearchParams => {
     const out: Record<string, unknown> = {};
     if (typeof raw["uid"] === "string") out["uid"] = raw["uid"];
@@ -312,7 +312,10 @@ type SettingsSearchParams = {
 const settingsRoute = createRoute({
   getParentRoute: () => webLayoutRoute,
   path: "/web/admin/settings",
-  component: SettingsPage,
+  component: lazyRouteComponent(
+    () => import("@/features/admin/settings/SettingsPage"),
+    "SettingsPage",
+  ),
   validateSearch: (raw): SettingsSearchParams => {
     const out: Record<string, unknown> = {};
     if (typeof raw["uid"] === "string") out["uid"] = raw["uid"];
@@ -342,7 +345,7 @@ const settingsRoute = createRoute({
 const statusRoute = createRoute({
   getParentRoute: () => webLayoutRoute,
   path: "/web/admin/status",
-  component: StatusPage,
+  component: lazyRouteComponent(() => import("@/features/admin/status/StatusPage"), "StatusPage"),
 });
 
 type TenantsSearchParams = {
@@ -355,7 +358,10 @@ type TenantsSearchParams = {
 const tenantsRoute = createRoute({
   getParentRoute: () => webLayoutRoute,
   path: "/web/admin/tenants",
-  component: TenantsPage,
+  component: lazyRouteComponent(
+    () => import("@/features/admin/tenants/TenantsPage"),
+    "TenantsPage",
+  ),
   validateSearch: (raw): TenantsSearchParams => {
     const out: Record<string, unknown> = {};
     if (typeof raw["uid"] === "string") out["uid"] = raw["uid"];
@@ -402,7 +408,7 @@ type AlertsSearchParams = {
 const alertsRoute = createRoute({
   getParentRoute: () => webLayoutRoute,
   path: "/web/alerts",
-  component: AlertsPage,
+  component: lazyRouteComponent(() => import("@/features/alerts/AlertsPage"), "AlertsPage"),
   validateSearch: (raw): AlertsSearchParams => {
     const out: Record<string, unknown> = {};
     const s = (k: string) => (typeof raw[k] === "string" ? raw[k] : undefined);
@@ -446,7 +452,7 @@ type SnoozesSearchParams = {
 const snoozesRoute = createRoute({
   getParentRoute: () => webLayoutRoute,
   path: "/web/snoozes",
-  component: SnoozesPage,
+  component: lazyRouteComponent(() => import("@/features/snoozes/SnoozesPage"), "SnoozesPage"),
   validateSearch: (raw): SnoozesSearchParams => {
     const out: Record<string, unknown> = {};
     if (typeof raw["uid"] === "string") out["uid"] = raw["uid"];
@@ -484,7 +490,10 @@ type NotificationsSearchParams = {
 const notificationsRoute = createRoute({
   getParentRoute: () => webLayoutRoute,
   path: "/web/notifications",
-  component: NotificationsPage,
+  component: lazyRouteComponent(
+    () => import("@/features/notifications/NotificationsPage"),
+    "NotificationsPage",
+  ),
   validateSearch: (raw): NotificationsSearchParams => {
     const out: Record<string, unknown> = {};
     const tab = typeof raw["tab"] === "string" ? raw["tab"] : undefined;
@@ -516,13 +525,16 @@ const notificationsRoute = createRoute({
 const dashboardRoute = createRoute({
   getParentRoute: () => webLayoutRoute,
   path: "/web/dashboard",
-  component: DashboardPage,
+  component: lazyRouteComponent(
+    () => import("@/features/dashboard/DashboardPage"),
+    "DashboardPage",
+  ),
 });
 
 const profileRoute = createRoute({
   getParentRoute: () => webLayoutRoute,
   path: "/web/profile",
-  component: Profile,
+  component: lazyRouteComponent(() => import("@/features/auth/Profile"), "Profile"),
 });
 
 type RulesSearchParams = {
@@ -536,7 +548,7 @@ type RulesSearchParams = {
 const rulesRoute = createRoute({
   getParentRoute: () => webLayoutRoute,
   path: "/web/rules",
-  component: RulesPage,
+  component: lazyRouteComponent(() => import("@/features/rules/RulesPage"), "RulesPage"),
   validateSearch: (raw): RulesSearchParams => {
     const out: Record<string, unknown> = {};
     const tab = typeof raw["tab"] === "string" ? raw["tab"] : undefined;
@@ -608,7 +620,27 @@ const routeTree = rootRoute.addChildren([
   ]),
 ]);
 
-export const router = createRouter({ routeTree });
+export const router = createRouter({
+  routeTree,
+  // Prefetch a route's lazy chunk on link hover/focus so the chunk is usually
+  // resident by the time the user clicks. The pending component shows only
+  // when a click outruns the in-flight fetch past defaultPendingMs (so fast
+  // chunk loads never flash it) — kept minimal: a centered Spinner over the
+  // route outlet area.
+  defaultPreload: "intent",
+  defaultPendingComponent: () => (
+    <div
+      style={{
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        minHeight: "40vh",
+      }}
+    >
+      <Spinner size={20} label="Loading page" />
+    </div>
+  ),
+});
 
 setUnauthorizedHandler(() => {
   authStore.getState().logout();
