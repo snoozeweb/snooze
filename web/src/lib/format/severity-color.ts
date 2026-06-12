@@ -60,10 +60,11 @@ const TOKEN: Record<Variant, string> = {
 const STEP = 0.14;
 
 export function severityColor(label: string): string {
-  const variant = variantOf(label);
+  const norm = label.toLowerCase().trim();
+  const variant = variantOf(norm);
   const base = readToken(TOKEN[variant]) || "#6b7785";
   if (variant === "muted") return base;
-  const rank = RANK[label.toLowerCase().trim()] ?? CANONICAL_RANK[variant];
+  const rank = RANK[norm] ?? CANONICAL_RANK[variant];
   const shift = CANONICAL_RANK[variant] - rank;
   if (shift === 0) return base;
   return shift > 0 ? darken(base, shift * STEP) : lighten(base, -shift * STEP);
@@ -91,10 +92,24 @@ export function severityToken(label: string): string | undefined {
   return `var(${TOKEN[variant]})`;
 }
 
+// Resolved-token cache. severityColor runs once per Sev badge per render
+// (50×/keystroke on the alerts table), and each call hit getComputedStyle —
+// a forced style recalc. We cache the resolved hex keyed by token name +
+// current theme. The theme is read cheaply via a data-theme attribute lookup
+// (a plain attribute read, no style recalc), so the cache self-invalidates on
+// theme toggle without needing a MutationObserver.
+const tokenCache = new Map<string, string>();
+
 function readToken(name: string): string {
   if (typeof document === "undefined") return "";
-  const v = getComputedStyle(document.documentElement).getPropertyValue(name).trim();
-  return v.startsWith("#") ? v : v ? toHex(v) : "";
+  const theme = document.documentElement.getAttribute("data-theme") ?? "dark";
+  const cacheKey = `${theme}:${name}`;
+  const cached = tokenCache.get(cacheKey);
+  if (cached !== undefined) return cached;
+  const raw = getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+  const resolved = raw.startsWith("#") ? raw : raw ? toHex(raw) : "";
+  tokenCache.set(cacheKey, resolved);
+  return resolved;
 }
 
 function hexToRgb(hex: string): [number, number, number] {

@@ -1,4 +1,5 @@
 import {
+  keepPreviousData,
   useMutation,
   useQuery,
   useQueryClient,
@@ -83,6 +84,10 @@ export function defineResource<T, Create = Partial<T>, Update = Partial<T>>(
             ...(query ? { query } : {}),
             signal,
           }),
+        // Render the previous page's rows while a new query key (filter,
+        // sort, page) loads instead of unmounting to skeletons. Pairs with
+        // structural sharing so unchanged row objects keep their identity.
+        placeholderData: keepPreviousData,
         ...(options?.refetchInterval !== undefined
           ? { refetchInterval: options.refetchInterval }
           : {}),

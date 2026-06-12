@@ -62,9 +62,13 @@ type ParseResponse = {
  *   - The catalog at /api/v1/condition/fields feeds the autocomplete
  *     popover with field names, enum values, and operator hints.
  *
- * The component is uncontrolled w.r.t. the cursor (it lives in the DOM)
- * but controlled w.r.t. the text via `value` / `onChange`. Parent owns the
- * text, the SearchBar owns the parser handshake.
+ * The component is uncontrolled w.r.t. the cursor (it lives in the DOM) and
+ * owns the *draft* text locally so per-keystroke typing never re-renders the
+ * parent. `value` seeds the draft and re-seeds it on external changes (chip
+ * dismissal, clear-all); `onChange` fires only at parse-resolution cadence —
+ * carrying the previously-parsed condition while the user is mid-type, and a
+ * fresh condition (or null on empty) once a parse resolves. Parent stores
+ * that condition; the SearchBar owns the parser handshake.
  */
 export function SearchBar({
   value,
@@ -80,6 +84,29 @@ export function SearchBar({
   const [open, setOpen] = useState(false);
   const [activeIndex, setActiveIndex] = useState(0);
   const [error, setError] = useState<ParseError | null>(null);
+
+  // Draft text lives here, not in the parent. Typing mutates only this local
+  // state, so the parent re-renders at parse cadence rather than per
+  // keystroke. The `value` prop seeds it and re-seeds on external changes
+  // (chip dismissal, clear-all) — detected by comparing against the value we
+  // last folded in. Pure typing leaves `value` untouched, so it doesn't
+  // clobber the draft.
+  const [draft, setDraft] = useState(value);
+  const lastSyncedValueRef = useRef(value);
+  if (value !== lastSyncedValueRef.current) {
+    lastSyncedValueRef.current = value;
+    if (value !== draft) setDraft(value);
+  }
+
+  // Latest-ref for onChange: the debounce effect reads through this instead
+  // of closing over the prop, so a parent that passes a fresh onChange every
+  // render doesn't re-fire the debounce — and the resolved parse always calls
+  // the current handler, never a stale one. (React 19 has no useEffectEvent
+  // yet, so a ref is the idiomatic stand-in.)
+  const onChangeRef = useRef(onChange);
+  useEffect(() => {
+    onChangeRef.current = onChange;
+  });
 
   // Auto-close the popover after a brief idle period so the suggestions
   // don't permanently cover the rows the user is searching. ArrowDown /
@@ -110,62 +137,72 @@ export function SearchBar({
     staleTime: 5 * 60_000,
   });
 
-  // Debounced server parse — fires on text change, not on cursor moves.
+  // Debounced server parse — fires on draft text change, not on cursor moves.
   //
-  // The `cancelled` flag short-circuits the .then() / .catch() callbacks
-  // when the effect's cleanup has already run (which happens on every new
-  // keystroke). Without this, a slow parse response could resolve after
-  // the user has typed more characters and call onChange with the stale
-  // `value` from the original closure — the parent then re-renders the
-  // input back to that stale text, wiping anything typed in between.
-  // Symptom: "characters get deleted when typing fast".
+  // Cadence contract: while the user types, the previously-parsed condition
+  // stays in effect (we DON'T emit per keystroke), so consumers that derive a
+  // list-query key from the condition don't flip the table to the unfiltered
+  // list mid-refinement. A new condition is emitted only when a parse
+  // resolves — or immediately as `null` the moment the text is cleared to
+  // empty.
+  //
+  // The request is aborted on cleanup (the client's api() forwards the
+  // AbortSignal to fetch), and an `aborted` guard short-circuits any callback
+  // that still slips through. Without this a slow parse for an older draft
+  // could resolve after the user typed more and call onChange with stale
+  // text/condition — symptom: "characters get deleted when typing fast".
   useEffect(() => {
-    let cancelled = false;
+    if (!draft.trim()) {
+      // Empty query: emit null immediately (no debounce, no request) so the
+      // filter clears the instant the field empties.
+      setError(null);
+      onChangeRef.current({ text: draft, condition: null, error: null });
+      return;
+    }
+    const controller = new AbortController();
+    let aborted = false;
     const handle = setTimeout(() => {
-      if (cancelled) return;
-      if (!value.trim()) {
-        setError(null);
-        onChange({ text: value, condition: null, error: null });
-        return;
-      }
-      api<ParseResponse>("POST", "/condition/parse", { body: { query: value } })
+      api<ParseResponse>("POST", "/condition/parse", {
+        body: { query: draft },
+        signal: controller.signal,
+      })
         .then((res) => {
-          if (cancelled) return;
+          if (aborted) return;
           setError(res.error ?? null);
-          onChange({
-            text: value,
+          onChangeRef.current({
+            text: draft,
             condition: res.condition ?? null,
             error: res.error ?? null,
           });
         })
         .catch((e: unknown) => {
-          if (cancelled) return;
+          if (aborted) return;
           // A network failure should not blank the field — keep highlighting,
           // surface the error inline.
           const msg = e instanceof Error ? e.message : "parse failed";
           const err: ParseError = { pos: 0, message: msg };
           setError(err);
-          onChange({ text: value, condition: null, error: err });
+          onChangeRef.current({ text: draft, condition: null, error: err });
         });
     }, 250);
     return () => {
-      cancelled = true;
+      aborted = true;
+      controller.abort();
       clearTimeout(handle);
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- onChange is set on every parent render; including it would re-fire the debounce on every keystroke. The handler is intentionally stable across the lifetime of the SearchBar; parent should memoize if it cares.
-  }, [value, collection]);
+  }, [draft, collection]);
 
-  // Syntax-highlight tokens for the overlay. Re-runs only when the text
+  // Syntax-highlight tokens for the overlay. Re-runs only when the draft
   // changes (cheap; the lexer is O(n) and called once per keystroke).
-  const tokens = useMemo(() => tokenize(value), [value]);
+  const tokens = useMemo(() => tokenize(draft), [draft]);
 
-  // Compute autocomplete suggestions whenever text or cursor moves.
+  // Compute autocomplete suggestions whenever the draft or cursor moves.
   const suggestion = useMemo(() => {
-    return suggest(value, cursor, fields.data?.data ?? []);
+    return suggest(draft, cursor, fields.data?.data ?? []);
     // We deliberately include `fields.data?.data` so the popover refreshes
     // after the catalog arrives. The reference is stable across queries
     // when the data hasn't changed (react-query gives identical refs).
-  }, [value, cursor, fields.data?.data]);
+  }, [draft, cursor, fields.data?.data]);
 
   // Keep the overlay scroll offset aligned with the input's. Without this,
   // typing past the visible width leaves the highlight visibly out of sync
@@ -175,7 +212,7 @@ export function SearchBar({
     const ov = overlayRef.current;
     if (!input || !ov) return;
     ov.scrollLeft = input.scrollLeft;
-  }, [value, cursor]);
+  }, [draft, cursor]);
 
   function syncCursor(): void {
     const el = inputRef.current;
@@ -184,7 +221,9 @@ export function SearchBar({
   }
 
   function handleChange(e: React.ChangeEvent<HTMLInputElement>): void {
-    onChange({ text: e.target.value, condition: null, error });
+    // Update only the local draft — the parent is not notified per keystroke.
+    // The debounce effect emits the parsed condition once it resolves.
+    setDraft(e.target.value);
     // Open the popover as soon as the user types. We re-open on every
     // keystroke even when already open — that's a no-op via setOpen.
     setOpen(true);
@@ -198,14 +237,15 @@ export function SearchBar({
   }
 
   function handleSelect(s: Suggestion): void {
-    const before = value.slice(0, suggestion.replaceFrom);
-    const after = value.slice(suggestion.replaceTo);
+    const before = draft.slice(0, suggestion.replaceFrom);
+    const after = draft.slice(suggestion.replaceTo);
     // Always include a trailing space after a field, operator or value so
     // typing continues naturally without a manual space.
     const inserted = s.value + (s.kind === "value" || s.kind === "keyword" ? " " : " ");
     const next = before + inserted + after;
     const newCursor = before.length + inserted.length;
-    onChange({ text: next, condition: null, error });
+    // Local draft only; the debounce effect re-parses the new text.
+    setDraft(next);
     setOpen(true);
     setActiveIndex(0);
     // Focus + caret position need to apply after React commits the new value.
@@ -261,19 +301,19 @@ export function SearchBar({
     for (const t of tokens) {
       if (t.kind === "eof") break;
       if (t.pos > pos) {
-        nodes.push(value.slice(pos, t.pos));
+        nodes.push(draft.slice(pos, t.pos));
       }
       const cls = tokenClass(t);
       nodes.push(
         <span key={`${t.pos}-${t.kind}`} className={cls}>
-          {value.slice(t.pos, t.pos + t.len)}
+          {draft.slice(t.pos, t.pos + t.len)}
         </span>,
       );
       pos = t.pos + t.len;
     }
-    if (pos < value.length) nodes.push(value.slice(pos));
+    if (pos < draft.length) nodes.push(draft.slice(pos));
     return nodes;
-  }, [tokens, value]);
+  }, [tokens, draft]);
 
   const onBlur = useCallback((e: React.FocusEvent<HTMLInputElement>): void => {
     // If focus is moving into the suggestion list or the clear button,
@@ -287,10 +327,12 @@ export function SearchBar({
 
   const handleClear = useCallback(() => {
     setError(null);
-    onChange({ text: "", condition: null, error: null });
+    // Emptying the draft triggers the debounce effect's immediate
+    // null-condition emit, so we don't call onChange here directly.
+    setDraft("");
     setOpen(false);
     queueMicrotask(() => inputRef.current?.focus());
-  }, [onChange]);
+  }, []);
 
   return (
     <div
@@ -301,7 +343,7 @@ export function SearchBar({
       </span>
       <div className={styles.inputBox}>
         <div ref={overlayRef} className={styles.overlay} aria-hidden="true">
-          {value.length > 0 ? (
+          {draft.length > 0 ? (
             renderTokens()
           ) : (
             <span className={styles.placeholder}>{placeholder}</span>
@@ -318,7 +360,7 @@ export function SearchBar({
           {...(error
             ? { "aria-invalid": true as const, "aria-describedby": "searchbar-error" }
             : {})}
-          value={value}
+          value={draft}
           onChange={handleChange}
           onKeyDown={handleKeyDown}
           onKeyUp={syncCursor}
@@ -331,7 +373,7 @@ export function SearchBar({
           onBlur={onBlur}
         />
       </div>
-      {value.length > 0 ? (
+      {draft.length > 0 ? (
         <button
           type="button"
           className={styles.clearBtn}

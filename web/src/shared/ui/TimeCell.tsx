@@ -11,6 +11,14 @@ export type TimeCellProps = {
 
 const HOUR_SECONDS = 3600;
 
+// Hoisted so the tooltip string doesn't construct a fresh Intl.DateTimeFormat
+// per cell per render. One shared formatter, locale-default like
+// toLocaleString() but with explicit medium date+time styles.
+const tooltipFormat = new Intl.DateTimeFormat(undefined, {
+  dateStyle: "medium",
+  timeStyle: "medium",
+});
+
 /**
  * TimeCell renders a Snooze epoch (seconds) the way the alerts table does —
  * `trimDate` smart text ("Today 14:32", "Nov 5th 14:32", "Jan 1st 2024") — in
@@ -33,7 +41,7 @@ export function TimeCell({ epoch, side = "top" }: TimeCellProps) {
   }
 
   const iso = date.toISOString();
-  const full = date.toLocaleString();
+  const full = tooltipFormat.format(date);
   const now = Math.floor(Date.now() / 1000);
   const ageSeconds = now - epoch;
   // "Nm ago" prefix only for fresh, past events (< 1h old). Future epochs and

@@ -4,6 +4,7 @@ import { severityColor, severityToken } from "./severity-color";
 
 beforeEach(() => {
   const root = document.documentElement;
+  root.removeAttribute("data-theme");
   root.style.setProperty("--severity-critical", "#f04949");
   root.style.setProperty("--severity-error", "#ef7e3a");
   root.style.setProperty("--severity-warning", "#d4a017");
@@ -36,6 +37,23 @@ describe("severityColor", () => {
   });
   it("unknown labels fall back to muted", () => {
     expect(severityColor("banana").toLowerCase()).toBe("#6b7785");
+  });
+});
+
+describe("severityColor token cache", () => {
+  it("re-reads the token when the data-theme attribute changes", () => {
+    const root = document.documentElement;
+    // Default (no data-theme → treated as "dark") resolves to the value set
+    // in beforeEach.
+    expect(severityColor("critical").toLowerCase()).toBe("#f04949");
+    // Switch theme AND the token value. A new theme means a new cache key, so
+    // the fresh value is read rather than the previously-cached one.
+    root.setAttribute("data-theme", "light");
+    root.style.setProperty("--severity-critical", "#aa0000");
+    expect(severityColor("critical").toLowerCase()).toBe("#aa0000");
+    // Flip back to the original theme: the original value is still cached.
+    root.removeAttribute("data-theme");
+    expect(severityColor("critical").toLowerCase()).toBe("#f04949");
   });
 });
 

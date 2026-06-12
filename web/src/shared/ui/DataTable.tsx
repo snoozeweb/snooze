@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { CSSProperties, ReactNode } from "react";
 import { Checkbox } from "./Checkbox";
 import { EmptyState } from "./EmptyState";
@@ -146,26 +146,42 @@ export function DataTable<T>({
   // of a row's checkbox; consumed when the next click arrives with shift.
   const [anchorIndex, setAnchorIndex] = useState<number | null>(null);
 
-  const toggleExpanded = useCallback(
-    (key: string) => {
-      if (isControlledExpansion) {
-        // Controlled: compute the next set off the current prop and hand it
-        // back; the parent owns the state.
-        const next = new Set(expandedKeys);
-        if (next.has(key)) next.delete(key);
-        else next.add(key);
-        onExpandedChange?.(next);
-        return;
-      }
-      setExpandedInner((prev) => {
-        const next = new Set(prev);
-        if (next.has(key)) next.delete(key);
-        else next.add(key);
-        return next;
-      });
-    },
-    [expandedKeys, isControlledExpansion, onExpandedChange],
-  );
+  // Per-row memoization (see DataTableRow below) only pays off when the
+  // handlers handed to each row keep a stable identity across internal-state
+  // changes (focus moves, selection toggles). The callbacks below therefore
+  // read mutable values through refs and use functional setState, so they can
+  // be created once with empty deps. A single render-time ref-sync keeps the
+  // refs current without resurrecting the callbacks.
+  const selSetRef = useRef<ReadonlySet<string>>(new Set<string>());
+  const anchorIndexRef = useRef<number | null>(anchorIndex);
+  const allKeysRef = useRef<string[]>([]);
+  const dataRef = useRef<T[]>(data);
+  const focusedIndexRef = useRef<number>(focusedIndex);
+  const expandedKeysRef = useRef<ReadonlySet<string> | undefined>(expandedKeys);
+  const onSelectionChangeRef = useRef(onSelectionChange);
+  const onExpandedChangeRef = useRef(onExpandedChange);
+  const onRowOpenRef = useRef(onRowOpen);
+  const rowKeyRef = useRef(rowKey);
+  const rowKeyBindingsRef = useRef(rowKeyBindings);
+  const isControlledExpansionRef = useRef(isControlledExpansion);
+
+  const toggleExpanded = useCallback((key: string) => {
+    if (isControlledExpansionRef.current) {
+      // Controlled: compute the next set off the current prop and hand it
+      // back; the parent owns the state.
+      const next = new Set(expandedKeysRef.current);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      onExpandedChangeRef.current?.(next);
+      return;
+    }
+    setExpandedInner((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  }, []);
 
   // Surface expansion changes to the parent so it can pause polling, etc.
   // Only the uncontrolled path fires from here — in the controlled path the
@@ -183,43 +199,63 @@ export function DataTable<T>({
   const allSelected = selectable && allKeys.length > 0 && allKeys.every((k) => selSet.has(k));
   const someSelected = selectable && allKeys.some((k) => selSet.has(k));
 
-  const toggleAll = useCallback(() => {
-    if (!onSelectionChange) return;
-    const next = new Set<string>(allSelected ? [] : allKeys);
-    onSelectionChange(next);
-  }, [allSelected, allKeys, onSelectionChange]);
+  // Keep the refs the stable callbacks read in sync with the current render.
+  // Assigning during render is safe here: these refs are only ever read from
+  // event handlers (never during render), so there's no tearing.
+  selSetRef.current = selSet;
+  anchorIndexRef.current = anchorIndex;
+  allKeysRef.current = allKeys;
+  dataRef.current = data;
+  focusedIndexRef.current = focusedIndex;
+  expandedKeysRef.current = expandedKeys;
+  onSelectionChangeRef.current = onSelectionChange;
+  onExpandedChangeRef.current = onExpandedChange;
+  onRowOpenRef.current = onRowOpen;
+  rowKeyRef.current = rowKey;
+  rowKeyBindingsRef.current = rowKeyBindings;
+  isControlledExpansionRef.current = isControlledExpansion;
 
-  const toggleOne = useCallback(
-    (key: string) => {
-      if (!onSelectionChange) return;
-      const next = new Set<string>(selSet);
-      if (next.has(key)) next.delete(key);
-      else next.add(key);
-      onSelectionChange(next);
-    },
-    [onSelectionChange, selSet],
-  );
+  const toggleAll = useCallback(() => {
+    const onSel = onSelectionChangeRef.current;
+    if (!onSel) return;
+    const keys = allKeysRef.current;
+    const sel = selSetRef.current;
+    const allOn = keys.length > 0 && keys.every((k) => sel.has(k));
+    onSel(new Set<string>(allOn ? [] : keys));
+  }, []);
+
+  const toggleOne = useCallback((key: string) => {
+    const onSel = onSelectionChangeRef.current;
+    if (!onSel) return;
+    const next = new Set<string>(selSetRef.current);
+    if (next.has(key)) next.delete(key);
+    else next.add(key);
+    onSel(next);
+  }, []);
 
   // Shift-click selects an inclusive range from the last anchor to the
   // current row, OR-ing the range into the current selection. A plain
   // click resets the anchor and toggles a single row.
   const handleCheckboxClick = useCallback(
     (key: string, index: number, shiftKey: boolean) => {
-      if (!onSelectionChange) return;
-      if (shiftKey && anchorIndex !== null && anchorIndex !== index) {
-        const [lo, hi] = anchorIndex < index ? [anchorIndex, index] : [index, anchorIndex];
-        const next = new Set<string>(selSet);
+      const onSel = onSelectionChangeRef.current;
+      if (!onSel) return;
+      const anchor = anchorIndexRef.current;
+      if (shiftKey && anchor !== null && anchor !== index) {
+        const [lo, hi] = anchor < index ? [anchor, index] : [index, anchor];
+        const next = new Set<string>(selSetRef.current);
+        const keys = allKeysRef.current;
         for (let i = lo; i <= hi; i++) {
-          const k = allKeys[i];
+          const k = keys[i];
           if (k !== undefined) next.add(k);
         }
-        onSelectionChange(next);
+        onSel(next);
         return;
       }
       setAnchorIndex(index);
       toggleOne(key);
     },
-    [allKeys, anchorIndex, onSelectionChange, selSet, toggleOne],
+    [toggleOne],
   );
 
   const handleHeaderSort = useCallback(
@@ -231,43 +267,70 @@ export function DataTable<T>({
     [serverSort],
   );
 
+  // onClick / onContextMenu handlers handed to every row. Stable so they
+  // don't bust the row memo; the row passes back its own index/coords.
+  const handleRowClick = useCallback((index: number) => {
+    setFocusedIndex(index);
+    const row = dataRef.current[index];
+    if (row) onRowOpenRef.current?.(row);
+  }, []);
+
+  const handleRowContextMenu = useCallback((index: number, x: number, y: number) => {
+    setFocusedIndex(index);
+    const row = dataRef.current[index];
+    if (row) setCtxMenu({ row, x, y });
+  }, []);
+
+  const handleCheckboxToggle = useCallback(
+    (key: string, index: number) => {
+      // Pure keyboard toggle from the Checkbox primitive — clicks land on the
+      // parent td (shift-aware).
+      setAnchorIndex(index);
+      toggleOne(key);
+    },
+    [toggleOne],
+  );
+
   const onKeyDown = useCallback(
     (e: React.KeyboardEvent<HTMLTableElement>) => {
       // Don't hijack keys the user is typing into a field that happens to
       // live inside the grid (e.g. an inline editor or the search bar).
       if (isEditable(e.target)) return;
       const key = e.key.toLowerCase();
+      const rows = dataRef.current;
+      const focused = focusedIndexRef.current;
+      const rk = rowKeyRef.current;
       // j/k vim aliases mirror ArrowDown/ArrowUp.
       if (e.key === "ArrowDown" || key === "j") {
         e.preventDefault();
-        setFocusedIndex((i) => Math.min(data.length - 1, i + 1));
+        setFocusedIndex((i) => Math.min(rows.length - 1, i + 1));
       } else if (e.key === "ArrowUp" || key === "k") {
         e.preventDefault();
         setFocusedIndex((i) => Math.max(0, i - 1));
       } else if (e.key === "Enter") {
-        const row = data[focusedIndex];
-        if (row && onRowOpen) {
+        const row = rows[focused];
+        if (row && onRowOpenRef.current) {
           e.preventDefault();
-          onRowOpen(row);
+          onRowOpenRef.current(row);
         }
       } else if (key === "e" && renderExpanded) {
-        const row = data[focusedIndex];
+        const row = rows[focused];
         if (row) {
           e.preventDefault();
-          toggleExpanded(rowKey(row));
+          toggleExpanded(rk(row));
         }
       } else if (key === "x" && selectable) {
-        const row = data[focusedIndex];
+        const row = rows[focused];
         if (row) {
           e.preventDefault();
-          toggleOne(rowKey(row));
+          toggleOne(rk(row));
         }
-      } else if (rowKeyBindings) {
+      } else if (rowKeyBindingsRef.current) {
         // Consumer-supplied per-row bindings (a=ack, c=comment, …). These run
         // after the reserved keys above so the table's own shortcuts win.
-        const row = data[focusedIndex];
+        const row = rows[focused];
         if (row) {
-          const binding = rowKeyBindings(row)[key];
+          const binding = rowKeyBindingsRef.current(row)[key];
           if (binding) {
             e.preventDefault();
             binding();
@@ -275,17 +338,7 @@ export function DataTable<T>({
         }
       }
     },
-    [
-      data,
-      focusedIndex,
-      onRowOpen,
-      renderExpanded,
-      rowKey,
-      rowKeyBindings,
-      selectable,
-      toggleExpanded,
-      toggleOne,
-    ],
+    [renderExpanded, selectable, toggleExpanded, toggleOne],
   );
 
   useEffect(() => {
@@ -420,120 +473,33 @@ export function DataTable<T>({
                 </td>
               </tr>
             ) : (
-              data.flatMap((row, idx) => {
+              data.map((row, idx) => {
                 const key = rowKey(row);
-                const isSelected = selSet.has(key);
-                const isFocused = idx === focusedIndex;
-                const isExpanded = expanded.has(key);
-                const accent = rowAccent?.(row);
-                const rows: ReactNode[] = [
-                  <tr
+                return (
+                  <DataTableRow<T>
                     key={key}
-                    className={styles.row}
-                    {...(isFocused ? { "data-focused": "true" } : {})}
-                    {...(isSelected ? { "data-selected": "true" } : {})}
-                    {...(rowDisabled?.(row) ? { "data-disabled": "true" } : {})}
-                    {...(accent
-                      ? {
-                          "data-accent": "true",
-                          style: { "--row-accent": accent } as CSSProperties,
-                        }
-                      : {})}
-                    onClick={() => {
-                      setFocusedIndex(idx);
-                      onRowOpen?.(row);
-                    }}
-                    {...(contextMenuItems
-                      ? {
-                          onContextMenu: (e: React.MouseEvent<HTMLTableRowElement>) => {
-                            e.preventDefault();
-                            setFocusedIndex(idx);
-                            setCtxMenu({ row, x: e.clientX, y: e.clientY });
-                          },
-                        }
-                      : {})}
-                  >
-                    {renderExpanded ? (
-                      <td className={styles.expandCell} onClick={(e) => e.stopPropagation()}>
-                        <button
-                          type="button"
-                          className={styles.expandBtn}
-                          aria-label={`Expand row ${key}`}
-                          aria-expanded={isExpanded}
-                          onClick={() => toggleExpanded(key)}
-                        >
-                          <Icon name={isExpanded ? "chevron-down" : "chevron-right"} size={14} />
-                        </button>
-                      </td>
-                    ) : null}
-                    {selectable ? (
-                      <td
-                        className={styles.checkboxCell}
-                        onClick={(e) => {
-                          // Swallow the row-level onClick so it doesn't also
-                          // open the row, and route through the shift-aware
-                          // selection handler.
-                          e.stopPropagation();
-                          handleCheckboxClick(key, idx, e.shiftKey);
-                        }}
-                      >
-                        <Checkbox
-                          aria-label={`Select row ${key}`}
-                          checked={isSelected}
-                          // Pointer / keyboard events on the Checkbox itself
-                          // are still routed to onCheckedChange; the parent
-                          // td handler covers shift-click on the cell area.
-                          onCheckedChange={() => {
-                            // Pure keyboard toggle from the Checkbox primitive
-                            // — clicks land on the parent td (shift-aware).
-                            setAnchorIndex(idx);
-                            toggleOne(key);
-                          }}
-                        />
-                      </td>
-                    ) : null}
-                    {columns.map((col) => (
-                      <td
-                        key={col.id}
-                        {...(col.align === "right" ? { style: { textAlign: "right" } } : {})}
-                      >
-                        {col.cell(row)}
-                      </td>
-                    ))}
-                    {quickActions ? (
-                      <td className={styles.quickActionsCell} onClick={(e) => e.stopPropagation()}>
-                        <div className={styles.quickActions}>
-                          {quickActions(row).map((a) => (
-                            <IconButton
-                              key={a.key}
-                              icon={a.icon ?? "more-horizontal"}
-                              label={a.label}
-                              size="sm"
-                              {...(a.danger ? { variant: "danger" as const } : {})}
-                              {...(a.disabled ? { disabled: true } : {})}
-                              onClick={a.onSelect}
-                            />
-                          ))}
-                        </div>
-                      </td>
-                    ) : null}
-                    {rowActions ? (
-                      <td className={styles.actionsCell} onClick={(e) => e.stopPropagation()}>
-                        <RowActionsMenu actions={rowActions(row)} />
-                      </td>
-                    ) : null}
-                  </tr>,
-                ];
-                if (renderExpanded && isExpanded) {
-                  rows.push(
-                    <tr key={`${key}__expanded`} className={styles.expandedRow}>
-                      <td colSpan={totalCols} className={styles.expandedCell}>
-                        <div className={styles.expandedPanel}>{renderExpanded(row)}</div>
-                      </td>
-                    </tr>,
-                  );
-                }
-                return rows;
+                    row={row}
+                    rowKeyValue={key}
+                    index={idx}
+                    columns={columns}
+                    selectable={selectable}
+                    isSelected={selSet.has(key)}
+                    isFocused={idx === focusedIndex}
+                    isExpanded={expanded.has(key)}
+                    isDisabled={rowDisabled?.(row) ?? false}
+                    accent={rowAccent?.(row)}
+                    totalCols={totalCols}
+                    hasContextMenu={contextMenuItems !== undefined}
+                    quickActions={quickActions}
+                    rowActions={rowActions}
+                    renderExpanded={renderExpanded}
+                    onRowClick={handleRowClick}
+                    onRowContextMenu={handleRowContextMenu}
+                    onToggleExpanded={toggleExpanded}
+                    onCheckboxCellClick={handleCheckboxClick}
+                    onCheckboxToggle={handleCheckboxToggle}
+                  />
+                );
               })
             )}
           </tbody>
@@ -553,6 +519,158 @@ export function DataTable<T>({
     </div>
   );
 }
+
+type DataTableRowProps<T> = {
+  row: T;
+  rowKeyValue: string;
+  index: number;
+  columns: ColumnDef<T>[];
+  selectable: boolean;
+  isSelected: boolean;
+  isFocused: boolean;
+  isExpanded: boolean;
+  isDisabled: boolean;
+  accent: string | undefined;
+  totalCols: number;
+  hasContextMenu: boolean;
+  quickActions: ((row: T) => RowAction[]) | undefined;
+  rowActions: ((row: T) => RowAction[]) | undefined;
+  renderExpanded: ((row: T) => ReactNode) | undefined;
+  onRowClick: (index: number) => void;
+  onRowContextMenu: (index: number, x: number, y: number) => void;
+  onToggleExpanded: (key: string) => void;
+  onCheckboxCellClick: (key: string, index: number, shiftKey: boolean) => void;
+  onCheckboxToggle: (key: string, index: number) => void;
+};
+
+// One table row, memoized with the DEFAULT shallow comparison. Function props
+// (columns, quickActions, rowActions, renderExpanded, the handlers) take part
+// in equality, so the parent must keep them stable — which it does via
+// useCallback for its internal handlers and which consumers do for their
+// row-builder props. The payoff: a focus move or a single selection toggle
+// changes one row's `isFocused`/`isSelected` prop and re-renders only that
+// row, not all 50. Structural sharing from react-query keeps `row` identity
+// stable across refetches, so the 5s poll skips unchanged rows too.
+function DataTableRowInner<T>({
+  row,
+  rowKeyValue: key,
+  index,
+  columns,
+  selectable,
+  isSelected,
+  isFocused,
+  isExpanded,
+  isDisabled,
+  accent,
+  totalCols,
+  hasContextMenu,
+  quickActions,
+  rowActions,
+  renderExpanded,
+  onRowClick,
+  onRowContextMenu,
+  onToggleExpanded,
+  onCheckboxCellClick,
+  onCheckboxToggle,
+}: DataTableRowProps<T>) {
+  return (
+    <>
+      <tr
+        className={styles.row}
+        {...(isFocused ? { "data-focused": "true" } : {})}
+        {...(isSelected ? { "data-selected": "true" } : {})}
+        {...(isDisabled ? { "data-disabled": "true" } : {})}
+        {...(accent
+          ? {
+              "data-accent": "true",
+              style: { "--row-accent": accent } as CSSProperties,
+            }
+          : {})}
+        onClick={() => onRowClick(index)}
+        {...(hasContextMenu
+          ? {
+              onContextMenu: (e: React.MouseEvent<HTMLTableRowElement>) => {
+                e.preventDefault();
+                onRowContextMenu(index, e.clientX, e.clientY);
+              },
+            }
+          : {})}
+      >
+        {renderExpanded ? (
+          <td className={styles.expandCell} onClick={(e) => e.stopPropagation()}>
+            <button
+              type="button"
+              className={styles.expandBtn}
+              aria-label={`Expand row ${key}`}
+              aria-expanded={isExpanded}
+              onClick={() => onToggleExpanded(key)}
+            >
+              <Icon name={isExpanded ? "chevron-down" : "chevron-right"} size={14} />
+            </button>
+          </td>
+        ) : null}
+        {selectable ? (
+          <td
+            className={styles.checkboxCell}
+            onClick={(e) => {
+              // Swallow the row-level onClick so it doesn't also open the row,
+              // and route through the shift-aware selection handler.
+              e.stopPropagation();
+              onCheckboxCellClick(key, index, e.shiftKey);
+            }}
+          >
+            <Checkbox
+              aria-label={`Select row ${key}`}
+              checked={isSelected}
+              // Pointer / keyboard events on the Checkbox itself are still
+              // routed to onCheckedChange; the parent td handler covers
+              // shift-click on the cell area.
+              onCheckedChange={() => onCheckboxToggle(key, index)}
+            />
+          </td>
+        ) : null}
+        {columns.map((col) => (
+          <td key={col.id} {...(col.align === "right" ? { style: { textAlign: "right" } } : {})}>
+            {col.cell(row)}
+          </td>
+        ))}
+        {quickActions ? (
+          <td className={styles.quickActionsCell} onClick={(e) => e.stopPropagation()}>
+            <div className={styles.quickActions}>
+              {quickActions(row).map((a) => (
+                <IconButton
+                  key={a.key}
+                  icon={a.icon ?? "more-horizontal"}
+                  label={a.label}
+                  size="sm"
+                  {...(a.danger ? { variant: "danger" as const } : {})}
+                  {...(a.disabled ? { disabled: true } : {})}
+                  onClick={a.onSelect}
+                />
+              ))}
+            </div>
+          </td>
+        ) : null}
+        {rowActions ? (
+          <td className={styles.actionsCell} onClick={(e) => e.stopPropagation()}>
+            <RowActionsMenu actions={rowActions(row)} />
+          </td>
+        ) : null}
+      </tr>
+      {renderExpanded && isExpanded ? (
+        <tr className={styles.expandedRow}>
+          <td colSpan={totalCols} className={styles.expandedCell}>
+            <div className={styles.expandedPanel}>{renderExpanded(row)}</div>
+          </td>
+        </tr>
+      ) : null}
+    </>
+  );
+}
+
+// memo() erases the generic, so cast back to a generic component type. The
+// default shallow comparator is intentional (see DataTableRowInner's note).
+const DataTableRow = memo(DataTableRowInner) as typeof DataTableRowInner;
 
 function RowActionsMenu({ actions }: { actions: RowAction[] }) {
   return (

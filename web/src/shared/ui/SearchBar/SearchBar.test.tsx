@@ -53,12 +53,23 @@ describe("SearchBar", () => {
     expect(screen.getByText(/host = …/)).toBeInTheDocument();
   });
 
-  it("calls onChange with the typed text", async () => {
+  it("calls onChange with the typed text once the parse resolves", async () => {
+    // The SearchBar owns the draft locally and only notifies the parent at
+    // parse-resolution cadence, so onChange lands after the debounced parse —
+    // not synchronously per keystroke.
     const user = userEvent.setup();
-    mswServer.use(DEFAULT_FIELDS_HANDLER);
+    mswServer.use(
+      DEFAULT_FIELDS_HANDLER,
+      http.post("/api/v1/condition/parse", () =>
+        HttpResponse.json({ condition: { op: "SEARCH", value: "host" } }),
+      ),
+    );
     const { onChange, getInput } = setup();
     await user.type(getInput(), "host");
-    expect(onChange).toHaveBeenLastCalledWith(expect.objectContaining({ text: "host" }));
+    await waitFor(
+      () => expect(onChange).toHaveBeenCalledWith(expect.objectContaining({ text: "host" })),
+      { timeout: 1500 },
+    );
   });
 
   it("opens an autocomplete popover with field suggestions when focused", async () => {
@@ -122,6 +133,52 @@ describe("SearchBar", () => {
         const withCond = calls.find((c) => c.condition !== null);
         expect(withCond?.condition).toEqual({ op: "=", field: "host", value: "srv-1" });
       },
+      { timeout: 1500 },
+    );
+  });
+
+  it("does not emit a null condition on every keystroke while typing", async () => {
+    // Regression for "table flips to the unfiltered list mid-refinement":
+    // the SearchBar must NOT fire onChange({ condition: null }) for each
+    // keystroke. It emits only when a parse resolves (carrying the parsed
+    // condition) or immediately when the text is cleared to empty.
+    const user = userEvent.setup();
+    mswServer.use(
+      DEFAULT_FIELDS_HANDLER,
+      http.post("/api/v1/condition/parse", async ({ request }) => {
+        const body = (await request.json()) as { query: string };
+        return HttpResponse.json({ condition: { op: "SEARCH", value: body.query } });
+      }),
+    );
+    const { onChange, getInput } = setup();
+    await user.type(getInput(), "host = a");
+    await waitFor(
+      () => expect(onChange).toHaveBeenCalledWith(expect.objectContaining({ text: "host = a" })),
+      { timeout: 1500 },
+    );
+    // No emitted call carried a null condition for non-empty text — every
+    // notification while typing carried a resolved condition.
+    const nullForNonEmpty = onChange.mock.calls
+      .map((c) => c[0])
+      .find((c) => c.text.trim() !== "" && c.condition === null && c.error === null);
+    expect(nullForNonEmpty).toBeUndefined();
+  });
+
+  it("emits a null condition immediately when the field is cleared", async () => {
+    const user = userEvent.setup();
+    mswServer.use(
+      DEFAULT_FIELDS_HANDLER,
+      http.post("/api/v1/condition/parse", () =>
+        HttpResponse.json({ condition: { op: "SEARCH", value: "x" } }),
+      ),
+    );
+    const { onChange, getInput } = setup("host = srv-1");
+    await user.clear(getInput());
+    await waitFor(
+      () =>
+        expect(onChange).toHaveBeenLastCalledWith(
+          expect.objectContaining({ text: "", condition: null }),
+        ),
       { timeout: 1500 },
     );
   });

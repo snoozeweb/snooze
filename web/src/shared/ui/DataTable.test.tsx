@@ -549,6 +549,40 @@ describe("DataTable", () => {
       expect(screen.queryByTestId("exp-1")).toBeNull();
     });
 
+    it("moving focus re-renders only the affected rows, not the whole table", () => {
+      // Probe: count how many times each row's cell renders. With the per-row
+      // memo, a j/k focus move should re-render only the row that gained focus
+      // and the one that lost it — never every row.
+      const renders: Record<string, number> = {};
+      const probeColumns: ColumnDef<Row>[] = [
+        {
+          id: "name",
+          header: "Name",
+          cell: (r) => {
+            renders[r.id] = (renders[r.id] ?? 0) + 1;
+            return r.name;
+          },
+        },
+      ];
+      render(<DataTable data={sample} columns={probeColumns} rowKey={(r) => r.id} />);
+      // Initial render: each row's cell ran once.
+      expect(renders).toEqual({ "1": 1, "2": 1, "3": 1 });
+
+      const table = screen.getByRole("grid");
+      table.focus();
+      fireEvent.keyDown(table, { key: "j" }); // focus row 1 (id "1")
+      // Only row "1" changed (gained focus); rows "2"/"3" are untouched.
+      expect(renders["1"]).toBe(2);
+      expect(renders["2"]).toBe(1);
+      expect(renders["3"]).toBe(1);
+
+      fireEvent.keyDown(table, { key: "j" }); // focus row 2 (id "2")
+      // Row "1" lost focus and row "2" gained it; row "3" still untouched.
+      expect(renders["1"]).toBe(3);
+      expect(renders["2"]).toBe(2);
+      expect(renders["3"]).toBe(1);
+    });
+
     it("rowKeyBindings fire for the focused row and skip reserved keys", () => {
       const ack = vi.fn();
       render(

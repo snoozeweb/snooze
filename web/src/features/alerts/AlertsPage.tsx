@@ -9,7 +9,6 @@ import { toast } from "@/shared/ui/toast/useToast";
 import { Button } from "@/shared/ui/Button";
 import { ApiError } from "@/lib/api/client";
 import { ConfirmDeleteDialog, useConfirmDelete } from "@/shared/ui/resourceContextMenu";
-import * as YAML from "yaml";
 import { encodeConditionQ } from "@/lib/condition/serialize";
 import type { Condition } from "@/lib/condition/types";
 import type { ParsedCondition } from "@/shared/ui/SearchBar";
@@ -465,7 +464,10 @@ export function AlertsPage() {
           label: "Copy as YAML",
           icon: "copy",
           onSelect: async () => {
-            const ok = await copyToClipboard(YAML.stringify(row));
+            // Lazily pull in the yaml library — it's only needed for this
+            // one rarely-used action, so it stays out of the main bundle.
+            const { stringify } = await import("yaml");
+            const ok = await copyToClipboard(stringify(row));
             if (ok) toast.success("Copied YAML to clipboard");
             else toast.error("Clipboard unavailable");
           },
@@ -666,6 +668,48 @@ export function AlertsPage() {
     updateSearch({ page: 1, tab: undefined, env: undefined } as unknown as Partial<AlertsSearch>);
   }, [updateSearch]);
 
+  // Stable function props for DataTable. Each is memoized so the row-level
+  // memo in DataTable holds across AlertsPage re-renders (poll refetches,
+  // selection/expansion changes) — otherwise a fresh closure every render
+  // would defeat the shallow row comparison and re-render all 50 rows.
+  const rowKey = useCallback((r: Record_) => r.uid ?? `${r.host ?? ""}-${r.date_epoch ?? 0}`, []);
+  const rowAccent = useCallback((r: Record_) => severityToken(r.severity ?? ""), []);
+  const renderExpanded = useCallback((row: Record_) => <AlertRowDetail row={row} />, []);
+  const handleExpandedChange = useCallback(
+    (keys: ReadonlySet<string>) => setExpandedCount(keys.size),
+    [],
+  );
+  const handleSearchChange = useCallback(
+    (c: { text: string; condition: ParsedCondition | null }) => {
+      setSearchText(c.text);
+      setSearchCondition(c.condition);
+      if (page !== 1) updateSearch({ page: 1 });
+    },
+    [page, updateSearch],
+  );
+  const handleSortChange = useCallback(
+    (next: { sortBy: string; order: "asc" | "desc" }) =>
+      updateSearch({ orderby: next.sortBy, asc: next.order === "asc", page: 1 }),
+    [updateSearch],
+  );
+  const handlePageChange = useCallback(
+    (next: { page: number }) => updateSearch({ page: next.page }),
+    [updateSearch],
+  );
+  const searchProp = useMemo(
+    () => ({ value: searchText, onChange: handleSearchChange, collection: "record" }),
+    [searchText, handleSearchChange],
+  );
+  const sortOrder: "asc" | "desc" = asc ? "asc" : "desc";
+  const serverSort = useMemo(
+    () => ({
+      sortBy: orderby,
+      order: sortOrder,
+      onChange: handleSortChange,
+    }),
+    [orderby, sortOrder, handleSortChange],
+  );
+
   const emptyState = hasActiveFilters ? (
     <EmptyState
       icon="search"
@@ -720,7 +764,7 @@ export function AlertsPage() {
       <DataTable
         data={filtered}
         columns={alertColumns}
-        rowKey={(r) => r.uid ?? `${r.host ?? ""}-${r.date_epoch ?? 0}`}
+        rowKey={rowKey}
         loading={list.isPending}
         emptyState={emptyState}
         selectable
@@ -731,19 +775,11 @@ export function AlertsPage() {
         // bar that appears on row selection sits next to it instead of
         // dropping below. Matches every other list page.
         //
-        // The text + parsed condition are both local React state so
-        // every keystroke renders synchronously — no async URL round-trip
-        // in the controlled-input path, no lost characters when typing
-        // fast. Pagination still resets to page 1 on every change.
-        search={{
-          value: searchText,
-          onChange: (c) => {
-            setSearchText(c.text);
-            setSearchCondition(c.condition);
-            if (page !== 1) updateSearch({ page: 1 });
-          },
-          collection: "record",
-        }}
+        // The text + parsed condition are both local React state. The
+        // SearchBar owns the draft and notifies at parse-resolution cadence,
+        // so the parent re-renders when a parse lands — not per keystroke.
+        // Pagination still resets to page 1 on every change.
+        search={searchProp}
         toolbarHeader={`${list.data?.meta.total ?? 0} alerts`}
         toolbar={
           <Tooltip
@@ -766,30 +802,25 @@ export function AlertsPage() {
             </div>
           </Tooltip>
         }
-        serverSort={{
-          sortBy: orderby,
-          order: asc ? "asc" : "desc",
-          onChange: (next) =>
-            updateSearch({ orderby: next.sortBy, asc: next.order === "asc", page: 1 }),
-        }}
+        serverSort={serverSort}
         serverPagination={{
           page,
           pageSize: PAGE_SIZE,
           total: list.data?.meta.total ?? 0,
-          onChange: (next) => updateSearch({ page: next.page }),
+          onChange: handlePageChange,
         }}
         rowActions={rowActions}
         quickActions={quickActions}
         rowKeyBindings={rowKeyBindings}
-        rowAccent={(r) => severityToken(r.severity ?? "")}
+        rowAccent={rowAccent}
         contextMenuItems={contextMenuItems}
-        renderExpanded={(row) => <AlertRowDetail row={row} />}
+        renderExpanded={renderExpanded}
         // Uncontrolled expansion (Phase 2's default path): DataTable owns the
         // expanded set and reports size changes here so we can pause polling
         // while the operator reads an inline panel. Keeping the uncontrolled
         // path means the `e`-to-expand shortcut and chevron both keep working
         // without AlertsPage tracking the key set.
-        onExpandedChange={(keys) => setExpandedCount(keys.size)}
+        onExpandedChange={handleExpandedChange}
       />
       {dialog ? (
         <ActionDialog
