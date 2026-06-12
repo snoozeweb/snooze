@@ -40,6 +40,7 @@ export function TimeRangePicker({ value, onChange }: TimeRangePickerProps) {
           type="button"
           className={styles.preset}
           data-active={value.range === p.value}
+          aria-pressed={value.range === p.value}
           onClick={() => handlePreset(p.value)}
         >
           {p.label}
@@ -49,6 +50,7 @@ export function TimeRangePicker({ value, onChange }: TimeRangePickerProps) {
         type="button"
         className={styles.preset}
         data-active={value.range === "custom"}
+        aria-pressed={value.range === "custom"}
         onClick={() => onChange({ ...value, range: "custom" })}
       >
         Custom

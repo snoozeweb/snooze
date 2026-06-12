@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useNavigate } from "@tanstack/react-router";
+import { useBlocker, useNavigate } from "@tanstack/react-router";
 import { Badge } from "@/shared/ui/Badge";
 import { Button } from "@/shared/ui/Button";
 import { Card } from "@/shared/ui/Card";
@@ -33,6 +33,27 @@ function ChangePasswordForm() {
 
   const mismatch = confirm !== "" && confirm !== next;
   const canSubmit = current !== "" && next !== "" && !mismatch && !submitting;
+
+  // The form is dirty while any field holds text. submit() clears all three
+  // on success, which drops `dirty` back to false and lifts the guard.
+  const dirty = current !== "" || next !== "" || confirm !== "";
+
+  // Navigation guard — mirrors the RulesPage useBlocker idiom: a confirm()
+  // prompt on in-app routing plus a beforeunload listener for tab close /
+  // hard refresh / URL bar. Both gated on `dirty` so an empty form never
+  // blocks navigation.
+  useBlocker({
+    shouldBlockFn: () => {
+      if (!dirty) return false;
+      const ok = window.confirm(
+        "You have unsaved password changes. Leave without saving? Click Cancel to stay.",
+      );
+      // shouldBlockFn returns TRUE to BLOCK; confirm() returns true when the
+      // user clicked OK (wants to leave), so invert.
+      return !ok;
+    },
+    enableBeforeUnload: () => dirty,
+  });
 
   async function submit() {
     if (!canSubmit) return;

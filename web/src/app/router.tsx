@@ -303,6 +303,11 @@ const kvRoute = createRoute({
 });
 
 type SettingsSearchParams = {
+  // Active settings tab (a catalogue group key, or "__custom__"). The tab set
+  // is catalogue-driven, so route-level validation only enforces "is a
+  // string"; SettingsPage falls back to the first real tab when the value
+  // doesn't match an available group.
+  tab?: string;
   uid?: string;
   page?: number;
   orderby?: string;
@@ -318,6 +323,7 @@ const settingsRoute = createRoute({
   ),
   validateSearch: (raw): SettingsSearchParams => {
     const out: Record<string, unknown> = {};
+    if (typeof raw["tab"] === "string") out["tab"] = raw["tab"];
     if (typeof raw["uid"] === "string") out["uid"] = raw["uid"];
     const pageRaw = raw["page"];
     const page =
@@ -522,6 +528,17 @@ const notificationsRoute = createRoute({
   },
 });
 
+// Dashboard time-range deep-link. `range` is the picker preset key; for the
+// "custom" preset, `from`/`to` carry the window bounds as epoch milliseconds.
+// All optional — no params means the page's default 1d range, exactly as
+// before. Types are validated defensively (numeric strings coerced to number)
+// so a hand-edited URL can't poison the picker.
+type DashboardSearchParams = {
+  range?: "1d" | "1w" | "1m" | "1y" | "custom";
+  from?: number;
+  to?: number;
+};
+
 const dashboardRoute = createRoute({
   getParentRoute: () => webLayoutRoute,
   path: "/web/dashboard",
@@ -529,6 +546,30 @@ const dashboardRoute = createRoute({
     () => import("@/features/dashboard/DashboardPage"),
     "DashboardPage",
   ),
+  validateSearch: (raw): DashboardSearchParams => {
+    const out: Record<string, unknown> = {};
+    const rangeRaw = raw["range"];
+    if (
+      rangeRaw === "1d" ||
+      rangeRaw === "1w" ||
+      rangeRaw === "1m" ||
+      rangeRaw === "1y" ||
+      rangeRaw === "custom"
+    ) {
+      out["range"] = rangeRaw;
+    }
+    const num = (k: string) => {
+      const v = raw[k];
+      if (typeof v === "number" && Number.isFinite(v)) return v;
+      if (typeof v === "string" && /^\d+$/.test(v)) return Number(v);
+      return undefined;
+    };
+    const from = num("from");
+    if (from !== undefined) out["from"] = from;
+    const to = num("to");
+    if (to !== undefined) out["to"] = to;
+    return out as DashboardSearchParams;
+  },
 });
 
 const profileRoute = createRoute({

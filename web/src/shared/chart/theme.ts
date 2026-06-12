@@ -87,3 +87,19 @@ export function applyChartDefaults(): void {
   defaults.font.family = chartToken("--font-mono", "monospace");
   defaults.color = chartToken("--text-muted");
 }
+
+/**
+ * Whether the user has requested reduced motion. The global CSS
+ * prefers-reduced-motion override can't reach Chart.js canvas animations,
+ * so the wrappers read this at construction time to disable Chart.js'
+ * `options.animation`. Guarded for jsdom, where `window.matchMedia` may be
+ * absent or stubbed: any throw or missing API resolves to `false` (animate).
+ */
+export function prefersReducedMotion(): boolean {
+  if (typeof window === "undefined" || typeof window.matchMedia !== "function") return false;
+  try {
+    return window.matchMedia("(prefers-reduced-motion: reduce)").matches === true;
+  } catch {
+    return false;
+  }
+}

@@ -1,10 +1,12 @@
-import { useMemo, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
+import { useNavigate, useSearch } from "@tanstack/react-router";
 import { useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/shared/ui/Button";
 import { Spinner } from "@/shared/ui/Spinner";
 import { TabList, TabPanel, TabTrigger, Tabs } from "@/shared/ui/Tabs";
 import { Textarea } from "@/shared/ui/Textarea";
 import { toast } from "@/shared/ui/toast/useToast";
+import { ConfirmDeleteDialog, useConfirmDelete } from "@/shared/ui/resourceContextMenu";
 import { ApiError } from "@/lib/api/client";
 import type { FormField } from "@/shared/forms/types";
 import { Settings, useSettingsCatalogue, useSettingsList } from "./api";
@@ -72,10 +74,22 @@ function buildGroups(catalogue: Record<string, FormField>): Group[] {
   return ordered;
 }
 
+// useSearch with strict:false returns the validated search params; cast for
+// local type. TanStack Router's navigate types are locked to the registered
+// route tree at build time; casting through unknown avoids type errors when
+// the route is locally constructed in tests and still works when registered.
+type SettingsSearch = { tab?: string };
+type NavigateFn = (opts: {
+  to: string;
+  search: (prev: SettingsSearch | undefined) => SettingsSearch;
+}) => Promise<void>;
+
 export function SettingsPage() {
   const { catalogue, isLoading: catalogueLoading } = useSettingsCatalogue();
   const { byName, records, isLoading: recordsLoading } = useSettingsList();
   const queryClient = useQueryClient();
+  const search = useSearch({ strict: false }) as unknown as SettingsSearch;
+  const navigate = useNavigate();
 
   // Custom-key bucket: any Setting record whose name isn't in the catalogue.
   const customRecords = useMemo(() => {
@@ -85,10 +99,30 @@ export function SettingsPage() {
 
   const groups = useMemo(() => (catalogue ? buildGroups(catalogue) : []), [catalogue]);
 
+  const showCustomTab = customRecords.length > 0;
+
   // Default to the first available tab so the page never opens to a panel
   // with no content. Falls back to "general" while the catalogue loads.
   const firstTab = groups[0]?.key ?? "general";
-  const [tab, setTab] = useState<string>(firstTab);
+  // The tab is URL-driven (?tab=). Fall back to the first real tab whenever
+  // the URL value doesn't match an available group / the Custom tab — this
+  // covers a stale deep-link or a hand-edited URL.
+  const validTabs = useMemo(() => {
+    const keys = groups.map((g) => g.key);
+    if (showCustomTab) keys.push("__custom__");
+    return new Set(keys);
+  }, [groups, showCustomTab]);
+  const tab = search.tab && validTabs.has(search.tab) ? search.tab : firstTab;
+
+  const setTab = useCallback(
+    (next: string) => {
+      void (navigate as unknown as NavigateFn)({
+        to: "/web/admin/settings",
+        search: (prev) => ({ ...(prev ?? {}), tab: next }),
+      });
+    },
+    [navigate],
+  );
 
   function refreshList() {
     void queryClient.invalidateQueries({ queryKey: ["settings"] });
@@ -103,8 +137,6 @@ export function SettingsPage() {
       </div>
     );
   }
-
-  const showCustomTab = customRecords.length > 0;
 
   return (
     <div className={styles.page}>
@@ -173,6 +205,13 @@ export function SettingsPage() {
 function CustomSettingCard({ record, onChange }: { record: Setting; onChange: () => void }) {
   const update = Settings.useUpdate();
   const remove = Settings.useRemove();
+  // Match the other admin pages: deletes route through the shared confirm
+  // dialog rather than firing immediately on the Delete click.
+  const confirmDelete = useConfirmDelete<Setting>({
+    onDelete: (uid) => remove.mutateAsync(uid),
+    noun: "setting",
+    onAfter: onChange,
+  });
   const initialJson = useMemo(() => {
     try {
       return JSON.stringify(record.value ?? null, null, 2);
@@ -204,17 +243,6 @@ function CustomSettingCard({ record, onChange }: { record: Setting; onChange: ()
     }
   }
 
-  async function del() {
-    try {
-      if (record.uid === undefined) return;
-      await remove.mutateAsync(record.uid);
-      toast.success(`Deleted ${record.name}`);
-      onChange();
-    } catch (e) {
-      toast.error(e instanceof ApiError ? e.detail : "Delete failed");
-    }
-  }
-
   return (
     <section className={styles.customCard}>
       <div className={styles.customHeader}>
@@ -231,6 +259,7 @@ function CustomSettingCard({ record, onChange }: { record: Setting; onChange: ()
           if (err) setErr(null);
         }}
         invalid={!!err}
+        aria-label={`Raw JSON for ${record.name}`}
         className={styles.customJson}
       />
       {err ? <span className={styles.customError}>{err}</span> : null}
@@ -239,7 +268,7 @@ function CustomSettingCard({ record, onChange }: { record: Setting; onChange: ()
           size="sm"
           variant="danger"
           leadingIcon="trash"
-          onClick={() => void del()}
+          onClick={() => confirmDelete.request([record])}
           loading={remove.isPending}
         >
           Delete
@@ -254,6 +283,11 @@ function CustomSettingCard({ record, onChange }: { record: Setting; onChange: ()
           Save
         </Button>
       </div>
+      <ConfirmDeleteDialog
+        state={confirmDelete.state}
+        onCancel={confirmDelete.cancel}
+        onConfirm={() => void confirmDelete.confirm()}
+      />
     </section>
   );
 }

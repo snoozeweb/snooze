@@ -13,7 +13,7 @@ import {
   TimeScale,
   Tooltip,
 } from "chart.js";
-import { applyChartDefaults, chartToken } from "./theme";
+import { applyChartDefaults, chartToken, prefersReducedMotion } from "./theme";
 import styles from "./chart.module.css";
 
 Chart.register(
@@ -43,6 +43,12 @@ export type LineChartProps = {
   /** When true, the Chart.js built-in legend is shown and supports click-toggling datasets. */
   toggleableLegend?: boolean;
   /**
+   * Accessible name for the canvas, exposed as aria-label + role="img" so
+   * the chart is announced as a single labelled image rather than an
+   * unlabelled graphic. Describe what the chart shows (e.g. "Alerts over time").
+   */
+  ariaLabel: string;
+  /**
    * Current theme name. Not read directly — passed only so the render
    * effect re-runs (and re-resolves the token-driven axis/grid colours)
    * when the user toggles light/dark with the chart mounted.
@@ -55,6 +61,7 @@ export function LineChart({
   height = 240,
   onPointClick,
   toggleableLegend,
+  ariaLabel,
   theme,
 }: LineChartProps) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -111,6 +118,9 @@ export function LineChart({
         },
       }),
     };
+    // The global CSS reduced-motion override can't reach canvas animations,
+    // so disable Chart.js' own animation when the user prefers reduced motion.
+    if (prefersReducedMotion()) options.animation = false;
     chartRef.current?.destroy();
     chartRef.current = new Chart(canvasRef.current, {
       type: "line",
@@ -127,7 +137,7 @@ export function LineChart({
 
   return (
     <div className={styles.wrap} style={{ height }}>
-      <canvas ref={canvasRef} />
+      <canvas ref={canvasRef} role="img" aria-label={ariaLabel} />
     </div>
   );
 }

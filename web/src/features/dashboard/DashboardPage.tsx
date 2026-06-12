@@ -1,5 +1,5 @@
-import { useMemo, useState } from "react";
-import { useNavigate } from "@tanstack/react-router";
+import { useCallback, useMemo } from "react";
+import { useNavigate, useSearch } from "@tanstack/react-router";
 import { Card } from "@/shared/ui/Card";
 import { useTheme } from "@/shared/hooks/useTheme";
 import { BarChart } from "@/shared/chart/BarChart";
@@ -43,13 +43,66 @@ function CardTitle({ icon, children }: { icon: IconName; children: string }) {
   );
 }
 
+// Search params backing the time-range picker. Mirrors the dashboard route's
+// validateSearch (router.tsx): `range` preset key plus epoch-ms `from`/`to`
+// for the custom window.
+type DashboardSearch = {
+  range?: TimeRange["range"];
+  from?: number;
+  to?: number;
+};
+
+// TanStack Router's navigate types are locked to the registered route tree at
+// build time. Casting through unknown avoids type errors when the route is
+// locally constructed in tests and still works when fully registered.
+type NavigateFn = (opts: {
+  to: string;
+  search: (prev: DashboardSearch | undefined) => DashboardSearch;
+}) => Promise<void>;
+
 export function DashboardPage() {
   const navigate = useNavigate();
   const { theme } = useTheme();
-  const [range, setRange] = useState<TimeRange>(() => {
-    const r = presetToRange("1d");
-    return { range: "1d", from: r.from, to: r.to };
-  });
+  // useSearch with strict:false returns the validated search params; cast for local type.
+  const search = useSearch({ strict: false }) as unknown as DashboardSearch;
+
+  // Derive the picker value from the URL. No `range` param → today's default
+  // (a 1d preset window). For a custom range we read the epoch-ms bounds back
+  // out as ISO strings (TimeRange's wire shape); a preset recomputes its
+  // rolling window from "now" on every render, exactly as the old state did.
+  const range: TimeRange = useMemo(() => {
+    const key = search.range ?? "1d";
+    if (key === "custom") {
+      return {
+        range: "custom",
+        from: search.from !== undefined ? new Date(search.from).toISOString() : "",
+        to: search.to !== undefined ? new Date(search.to).toISOString() : "",
+      };
+    }
+    const r = presetToRange(key);
+    return { range: key, from: r.from, to: r.to };
+  }, [search.range, search.from, search.to]);
+
+  // Write picker changes to the URL. Presets drop from/to (the window is
+  // recomputed from "now"); custom carries the bounds as epoch ms.
+  const setRange = useCallback(
+    (next: TimeRange) => {
+      const nextSearch: DashboardSearch =
+        next.range === "custom"
+          ? {
+              range: "custom",
+              ...(next.from ? { from: Date.parse(next.from) } : {}),
+              ...(next.to ? { to: Date.parse(next.to) } : {}),
+            }
+          : { range: next.range };
+      void (navigate as unknown as NavigateFn)({
+        to: "/web/dashboard",
+        search: () => nextSearch,
+      });
+    },
+    [navigate],
+  );
+
   const bucket = bucketFromRange(range.range);
   const stats = useStats({ from: range.from, to: range.to, bucket });
 
@@ -206,6 +259,7 @@ export function DashboardPage() {
                   height={280}
                   toggleableLegend
                   theme={theme}
+                  ariaLabel="Alerts over time by series"
                   onPointClick={handlePointClick}
                 />
               )}
@@ -264,6 +318,7 @@ export function DashboardPage() {
                   horizontal
                   sort="value"
                   theme={theme}
+                  ariaLabel="Alert count by host"
                   height={Math.max(240, Object.keys(data.totals.by_host).length * 28)}
                   series={[
                     { label: "Hosts", color: seriesColor("Hosts"), data: data.totals.by_host },
@@ -283,6 +338,7 @@ export function DashboardPage() {
               Object.keys(data.totals.by_action_failure).length > 0 ? (
                 <BarChart
                   theme={theme}
+                  ariaLabel="Action runs by name, successful versus failed"
                   series={[
                     {
                       label: "Successful",
@@ -306,6 +362,7 @@ export function DashboardPage() {
               {Object.keys(data.totals.by_throttled).length > 0 ? (
                 <BarChart
                   theme={theme}
+                  ariaLabel="Throttled alert count by rule"
                   series={[
                     {
                       label: "Throttled",
@@ -324,6 +381,7 @@ export function DashboardPage() {
               {Object.keys(data.totals.by_snoozed).length > 0 ? (
                 <BarChart
                   theme={theme}
+                  ariaLabel="Snoozed alert count by filter"
                   series={[
                     {
                       label: "Snoozed",
@@ -342,6 +400,7 @@ export function DashboardPage() {
               {Object.values(weekdayData).some((v) => v > 0) ? (
                 <BarChart
                   theme={theme}
+                  ariaLabel="Alert count by weekday"
                   series={[{ label: "Alerts", color: seriesColor("Alerts"), data: weekdayData }]}
                 />
               ) : (

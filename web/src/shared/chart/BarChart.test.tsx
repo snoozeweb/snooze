@@ -34,7 +34,12 @@ type Cfg = {
 describe("BarChart", () => {
   it("keeps categories in alphabetical order by default", () => {
     captured.config = null;
-    render(<BarChart series={[{ label: "Hosts", color: "#000", data: { b: 9, a: 1, c: 5 } }]} />);
+    render(
+      <BarChart
+        ariaLabel="Hosts"
+        series={[{ label: "Hosts", color: "#000", data: { b: 9, a: 1, c: 5 } }]}
+      />,
+    );
     expect((captured.config as Cfg).data.labels).toEqual(["a", "b", "c"]);
   });
 
@@ -43,6 +48,7 @@ describe("BarChart", () => {
     render(
       <BarChart
         sort="value"
+        ariaLabel="Hosts"
         series={[{ label: "Hosts", color: "#000", data: { b: 9, a: 1, c: 5 } }]}
       />,
     );
@@ -52,7 +58,11 @@ describe("BarChart", () => {
   it("disables auto-skip on the category axis for horizontal charts", () => {
     captured.config = null;
     render(
-      <BarChart horizontal series={[{ label: "Hosts", color: "#000", data: { a: 1, b: 2 } }]} />,
+      <BarChart
+        horizontal
+        ariaLabel="Hosts"
+        series={[{ label: "Hosts", color: "#000", data: { a: 1, b: 2 } }]}
+      />,
     );
     // horizontal → category axis is y
     expect((captured.config as Cfg).options.scales.y.ticks?.autoSkip).toBe(false);
@@ -60,7 +70,12 @@ describe("BarChart", () => {
 
   it("does not force auto-skip on either axis for vertical charts", () => {
     captured.config = null;
-    render(<BarChart series={[{ label: "Hosts", color: "#000", data: { a: 1, b: 2 } }]} />);
+    render(
+      <BarChart
+        ariaLabel="Hosts"
+        series={[{ label: "Hosts", color: "#000", data: { a: 1, b: 2 } }]}
+      />,
+    );
     // autoSkip:false is reserved for the horizontal (Top-hosts) category axis;
     // vertical charts keep chart.js' default auto-skip on both axes.
     expect((captured.config as Cfg).options.scales.x.ticks?.autoSkip).toBeUndefined();
@@ -69,7 +84,12 @@ describe("BarChart", () => {
 
   it("tooltip title shows the full label at the hovered index, and nothing when empty", () => {
     captured.config = null;
-    render(<BarChart series={[{ label: "Hosts", color: "#000", data: { alpha: 9, beta: 1 } }]} />);
+    render(
+      <BarChart
+        ariaLabel="Hosts"
+        series={[{ label: "Hosts", color: "#000", data: { alpha: 9, beta: 1 } }]}
+      />,
+    );
     type TooltipCfg = {
       options: {
         plugins: {

@@ -8,6 +8,7 @@ import {
 } from "react-hook-form";
 import { Button } from "@/shared/ui/Button";
 import { ConditionPreview } from "@/shared/ui/ConditionPreview";
+import { Dialog, DialogBody, DialogContent, DialogFooter, DialogTitle } from "@/shared/ui/Dialog";
 import { Drawer, DrawerBody, DrawerContent, DrawerFooter, DrawerTitle } from "@/shared/ui/Drawer";
 import { DurationInput } from "@/shared/ui/DurationInput";
 import { Input } from "@/shared/ui/Input";
@@ -88,6 +89,27 @@ export function RuleEditor({ plugin, uid, onClose, insertion }: RuleEditorProps)
   const { register, handleSubmit, reset, control, setValue } = useForm<FormShape>({
     defaultValues: EMPTY_FORM,
   });
+
+  // Subscribe to the form's dirty flag so closing the drawer with unsaved
+  // edits prompts a confirm step instead of silently discarding them.
+  // `isDirty` toggles false→true on the first edit and then stays true, so
+  // this subscription costs at most one extra drawer re-render per editing
+  // session — it does not re-render per keystroke (name/comment remain
+  // uncontrolled `register` inputs; see the useWatch note below).
+  const { isDirty } = useFormState({ control });
+  const [confirmDiscardOpen, setConfirmDiscardOpen] = useState(false);
+
+  // The save path calls onClose() directly (see onSubmit) and never routes
+  // through here, so a successful Create/Save closes without the guard. Only
+  // the user-initiated close affordances (Escape / X / Cancel / overlay) hit
+  // requestClose, and only a dirty form raises the confirm.
+  function requestClose() {
+    if (isDirty) {
+      setConfirmDiscardOpen(true);
+      return;
+    }
+    onClose();
+  }
 
   useEffect(() => {
     if (isCreate) {
@@ -198,7 +220,7 @@ export function RuleEditor({ plugin, uid, onClose, insertion }: RuleEditorProps)
     <Drawer
       open
       onOpenChange={(o) => {
-        if (!o) onClose();
+        if (!o) requestClose();
       }}
     >
       <DrawerContent>
@@ -391,7 +413,7 @@ export function RuleEditor({ plugin, uid, onClose, insertion }: RuleEditorProps)
           <div style={{ flex: 1 }}>
             <RuleDiff control={control} original={isCreate ? undefined : existing.data} />
           </div>
-          <Button variant="ghost" onClick={onClose}>
+          <Button variant="ghost" onClick={requestClose}>
             Cancel
           </Button>
           <Button
@@ -405,6 +427,26 @@ export function RuleEditor({ plugin, uid, onClose, insertion }: RuleEditorProps)
           </Button>
         </DrawerFooter>
       </DrawerContent>
+      <Dialog open={confirmDiscardOpen} onOpenChange={setConfirmDiscardOpen}>
+        <DialogContent>
+          <DialogTitle>Discard changes?</DialogTitle>
+          <DialogBody>You have unsaved changes. Closing now will discard them.</DialogBody>
+          <DialogFooter>
+            <Button variant="secondary" onClick={() => setConfirmDiscardOpen(false)}>
+              Keep editing
+            </Button>
+            <Button
+              variant="danger"
+              onClick={() => {
+                setConfirmDiscardOpen(false);
+                onClose();
+              }}
+            >
+              Discard
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </Drawer>
   );
 }

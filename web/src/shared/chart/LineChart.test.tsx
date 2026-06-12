@@ -69,6 +69,7 @@ describe("LineChart", () => {
   it("renders a canvas without crashing", () => {
     const { container } = render(
       <LineChart
+        ariaLabel="Alerts over time"
         series={[
           {
             label: "Alerts",
@@ -94,7 +95,7 @@ describe("LineChart", () => {
         data: [{ x: "2026-06-01T00:00:00Z", y: 5 }],
       },
     ];
-    render(<LineChart series={series} onPointClick={onPointClick} />);
+    render(<LineChart ariaLabel="Alerts over time" series={series} onPointClick={onPointClick} />);
 
     expect(captured.config).not.toBeNull();
     // captured.config is `unknown`; cast to the minimal Chart.js config shape we care about.
