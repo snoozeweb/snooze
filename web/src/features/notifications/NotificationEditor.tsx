@@ -1,24 +1,20 @@
-import { useEffect, useMemo, useState } from "react";
-import { useForm } from "react-hook-form";
-import { Button } from "@/shared/ui/Button";
+import { useMemo, type ReactNode } from "react";
+import { useWatch, type Control, type UseFormSetValue } from "react-hook-form";
 import { CollapsibleSection } from "@/shared/ui/CollapsibleSection";
 import { ConditionPreview } from "@/shared/ui/ConditionPreview";
-import { Drawer, DrawerBody, DrawerContent, DrawerFooter, DrawerTitle } from "@/shared/ui/Drawer";
 import { FrequencyEditor } from "@/shared/ui/FrequencyEditor";
 import { summarizeFrequency } from "@/shared/ui/frequencyUtils";
 import { Input } from "@/shared/ui/Input";
 import { MultiCombobox } from "@/shared/ui/MultiCombobox";
-import { Spinner } from "@/shared/ui/Spinner";
 import { Switch } from "@/shared/ui/Switch";
 import { Textarea } from "@/shared/ui/Textarea";
 import { TimeConstraintsCell } from "@/shared/ui/TimeConstraintsCell";
 import { TimeConstraintsEditor } from "@/shared/ui/TimeConstraintsEditor";
-import { toast } from "@/shared/ui/toast/useToast";
 import { ConditionEditor } from "@/shared/condition/ConditionEditor";
-import { ApiError } from "@/lib/api/client";
 import type { Condition } from "@/lib/condition/types";
 import type { TimeConstraintsGroup } from "@/lib/timeconstraints/types";
 import { DiffSection } from "@/shared/ui/DiffSection";
+import { EditorDrawer, useFieldInvalid, type EditorBodyProps } from "@/shared/forms/EditorDrawer";
 import { Actions, Notifications } from "./api";
 import type { Frequency, Notification } from "./types";
 import styles from "./NotificationEditor.module.css";
@@ -50,75 +46,113 @@ export type NotificationEditorProps = {
 
 export function NotificationEditor({ uid, onClose }: NotificationEditorProps) {
   const isCreate = uid === undefined || uid === "";
-  const existing = Notifications.useGet(isCreate ? undefined : uid);
+  const get = Notifications.useGet(isCreate ? undefined : uid);
   const create = Notifications.useCreate();
   const update = Notifications.useUpdate();
 
-  const { register, handleSubmit, reset, watch, setValue, formState } = useForm<FormShape>({
-    defaultValues: EMPTY_FORM,
-  });
+  return (
+    <EditorDrawer<FormShape, Notification>
+      uid={uid}
+      onClose={onClose}
+      get={get}
+      create={create}
+      update={update}
+      emptyForm={EMPTY_FORM}
+      recordToForm={(n) => ({
+        name: n.name ?? "",
+        comment: n.comment ?? "",
+        enabled: n.enabled ?? true,
+        condition: n.condition ?? { type: "ALWAYS_TRUE" },
+        actions: n.actions ?? [],
+        time_constraints: n.time_constraints ?? {},
+        frequency: n.frequency ?? {},
+      })}
+      formToBody={(form) => {
+        const hasTimeConstraints =
+          (form.time_constraints.datetime?.length ?? 0) > 0 ||
+          (form.time_constraints.time?.length ?? 0) > 0 ||
+          (form.time_constraints.weekdays?.length ?? 0) > 0;
+        const hasFrequency =
+          (form.frequency.total ?? 0) > 0 ||
+          (form.frequency.delay ?? 0) > 0 ||
+          (form.frequency.every ?? 0) > 0;
+        const body: Notification = {
+          name: form.name,
+          ...(form.comment ? { comment: form.comment } : {}),
+          enabled: form.enabled,
+          condition: form.condition,
+          ...(form.actions.length > 0 ? { actions: form.actions } : {}),
+          ...(hasTimeConstraints ? { time_constraints: form.time_constraints } : {}),
+          ...(hasFrequency ? { frequency: form.frequency } : {}),
+        };
+        return body;
+      }}
+      title={(c): ReactNode => (c ? "New notification" : "Edit notification")}
+      titleToolbar={({ control, setValue }) => (
+        <NotificationEnabledToggle control={control} setValue={setValue} />
+      )}
+      footerStart={({ control }) => (
+        <NotificationDiff control={control} original={isCreate ? undefined : get.data} />
+      )}
+      successMessage={{ create: "Notification created", update: "Notification saved" }}
+      formId="notif-form"
+      formClassName={styles.stack}
+    >
+      {(body) => <NotificationFields {...body} />}
+    </EditorDrawer>
+  );
+}
 
-  useEffect(() => {
-    if (isCreate) {
-      reset(EMPTY_FORM);
-      return;
-    }
-    if (existing.data) {
-      reset({
-        name: existing.data.name ?? "",
-        comment: existing.data.comment ?? "",
-        enabled: existing.data.enabled ?? true,
-        condition: existing.data.condition ?? { type: "ALWAYS_TRUE" },
-        actions: existing.data.actions ?? [],
-        time_constraints: existing.data.time_constraints ?? {},
-        frequency: existing.data.frequency ?? {},
-      });
-    }
-  }, [existing.data, isCreate, reset]);
+/** Enabled switch scoped to its own subscription. */
+function NotificationEnabledToggle({
+  control,
+  setValue,
+}: {
+  control: Control<FormShape>;
+  setValue: UseFormSetValue<FormShape>;
+}) {
+  const enabled = useWatch({ control, name: "enabled" });
+  return (
+    <>
+      <Switch
+        checked={enabled}
+        onCheckedChange={(v) => setValue("enabled", v, { shouldDirty: true })}
+        aria-label="Enabled"
+      />
+      <span>{enabled ? "Enabled" : "Disabled"}</span>
+    </>
+  );
+}
 
-  const [submitting, setSubmitting] = useState(false);
+/** Diff scoped to its own subscriptions. */
+function NotificationDiff({
+  control,
+  original,
+}: {
+  control: Control<FormShape>;
+  original: Notification | undefined;
+}) {
+  const name = useWatch({ control, name: "name" });
+  const comment = useWatch({ control, name: "comment" });
+  const enabled = useWatch({ control, name: "enabled" });
+  const condition = useWatch({ control, name: "condition" });
+  const actions = useWatch({ control, name: "actions" });
+  const projected: Notification = {
+    name,
+    ...(comment ? { comment } : {}),
+    enabled,
+    condition,
+    ...(actions.length > 0 ? { actions } : {}),
+  };
+  return <DiffSection original={original} current={projected} />;
+}
 
-  async function onSubmit(form: FormShape) {
-    setSubmitting(true);
-    try {
-      const hasTimeConstraints =
-        (form.time_constraints.datetime?.length ?? 0) > 0 ||
-        (form.time_constraints.time?.length ?? 0) > 0 ||
-        (form.time_constraints.weekdays?.length ?? 0) > 0;
-      const hasFrequency =
-        (form.frequency.total ?? 0) > 0 ||
-        (form.frequency.delay ?? 0) > 0 ||
-        (form.frequency.every ?? 0) > 0;
-      const body: Notification = {
-        name: form.name,
-        ...(form.comment ? { comment: form.comment } : {}),
-        enabled: form.enabled,
-        condition: form.condition,
-        ...(form.actions.length > 0 ? { actions: form.actions } : {}),
-        ...(hasTimeConstraints ? { time_constraints: form.time_constraints } : {}),
-        ...(hasFrequency ? { frequency: form.frequency } : {}),
-      };
-      if (isCreate) {
-        await create.mutateAsync(body);
-        toast.success("Notification created");
-      } else {
-        await update.mutateAsync({ uid, body });
-        toast.success("Notification saved");
-      }
-      onClose();
-    } catch (e) {
-      toast.error(e instanceof ApiError ? e.detail : "Save failed");
-    } finally {
-      setSubmitting(false);
-    }
-  }
-
-  const condition = watch("condition");
-  const enabled = watch("enabled");
-  const actions = watch("actions");
-  const timeConstraints = watch("time_constraints");
-  const frequency = watch("frequency");
-  const nameInvalid = formState.isSubmitted && !watch("name").trim();
+function NotificationFields({ control, register, setValue }: EditorBodyProps<FormShape>) {
+  const nameInvalid = useFieldInvalid(control, "name");
+  const condition = useWatch({ control, name: "condition" });
+  const actions = useWatch({ control, name: "actions" });
+  const timeConstraints = useWatch({ control, name: "time_constraints" });
+  const frequency = useWatch({ control, name: "frequency" });
 
   // Action options come from the API — fall back to whatever's already
   // on the notification so an existing reference is preserved even when
@@ -137,137 +171,73 @@ export function NotificationEditor({ uid, onClose }: NotificationEditorProps) {
     return merged;
   }, [actionsList.data, actions]);
 
-  const projected: Notification = {
-    name: watch("name"),
-    ...(watch("comment") ? { comment: watch("comment") } : {}),
-    enabled: enabled,
-    condition: condition,
-    ...(actions.length > 0 ? { actions } : {}),
-  };
-
   return (
-    <Drawer
-      open
-      onOpenChange={(o) => {
-        if (!o) onClose();
-      }}
-    >
-      <DrawerContent>
-        <DrawerTitle
-          toolbar={
-            <>
-              <Switch
-                checked={enabled}
-                onCheckedChange={(v) => setValue("enabled", v, { shouldDirty: true })}
-                aria-label="Enabled"
-              />
-              <span>{enabled ? "Enabled" : "Disabled"}</span>
-            </>
-          }
-        >
-          {isCreate ? "New notification" : "Edit notification"}
-        </DrawerTitle>
-        <DrawerBody>
-          {!isCreate && existing.isPending ? (
-            <div style={{ display: "flex", justifyContent: "center", padding: "var(--space-5)" }}>
-              <Spinner size={20} />
-            </div>
-          ) : (
-            <form
-              id="notif-form"
-              className={styles.stack}
-              onSubmit={(e) => void handleSubmit(onSubmit)(e)}
-            >
-              <section className={styles.section}>
-                <h3 className={styles.sectionTitle}>Identity</h3>
-                <div className={styles.grid2}>
-                  <div className={styles.field}>
-                    <label className={styles.label} htmlFor="notif-name">
-                      Name
-                    </label>
-                    <Input
-                      id="notif-name"
-                      {...register("name")}
-                      invalid={nameInvalid}
-                      placeholder="e.g. page-on-call"
-                    />
-                  </div>
-                  <div className={styles.field}>
-                    <span className={styles.label}>Actions</span>
-                    <MultiCombobox
-                      aria-label="Actions"
-                      placeholder="Select one or more action names"
-                      options={actionOptions}
-                      value={actions}
-                      onChange={(next) => setValue("actions", next, { shouldDirty: true })}
-                      allowCustom
-                    />
-                  </div>
-                </div>
-              </section>
-              <section className={styles.section}>
-                <h3 className={styles.sectionTitle}>Condition</h3>
-                <ConditionEditor
-                  value={condition}
-                  onChange={(c) => setValue("condition", c, { shouldDirty: true })}
-                  plugin="record"
-                />
-                <div style={{ marginTop: "var(--space-2)" }}>
-                  <ConditionPreview condition={condition} />
-                </div>
-              </section>
-              <CollapsibleSection
-                title="Time constraints"
-                summary={<TimeConstraintsCell value={timeConstraints} />}
-                defaultOpen
-              >
-                <TimeConstraintsEditor
-                  value={timeConstraints}
-                  onChange={(g) => setValue("time_constraints", g, { shouldDirty: true })}
-                />
-              </CollapsibleSection>
-              <CollapsibleSection
-                title="Frequency"
-                summary={summarizeFrequency(frequency)}
-                defaultOpen
-              >
-                <FrequencyEditor
-                  value={frequency}
-                  onChange={(f) => setValue("frequency", f, { shouldDirty: true })}
-                />
-              </CollapsibleSection>
-              <div className={styles.field}>
-                <label className={styles.label} htmlFor="notif-comment">
-                  Comment
-                </label>
-                <Textarea
-                  id="notif-comment"
-                  {...register("comment")}
-                  rows={2}
-                  placeholder="Optional description"
-                />
-              </div>
-            </form>
-          )}
-        </DrawerBody>
-        <DrawerFooter>
-          <div style={{ flex: 1 }}>
-            <DiffSection original={isCreate ? undefined : existing.data} current={projected} />
+    <>
+      <section className={styles.section}>
+        <h3 className={styles.sectionTitle}>Identity</h3>
+        <div className={styles.grid2}>
+          <div className={styles.field}>
+            <label className={styles.label} htmlFor="notif-name">
+              Name
+            </label>
+            <Input
+              id="notif-name"
+              {...register("name")}
+              invalid={nameInvalid}
+              placeholder="e.g. page-on-call"
+            />
           </div>
-          <Button variant="ghost" onClick={onClose}>
-            Cancel
-          </Button>
-          <Button
-            type="submit"
-            form="notif-form"
-            variant="primary"
-            loading={submitting}
-            disabled={submitting}
-          >
-            {isCreate ? "Create" : "Save"}
-          </Button>
-        </DrawerFooter>
-      </DrawerContent>
-    </Drawer>
+          <div className={styles.field}>
+            <span className={styles.label}>Actions</span>
+            <MultiCombobox
+              aria-label="Actions"
+              placeholder="Select one or more action names"
+              options={actionOptions}
+              value={actions}
+              onChange={(next) => setValue("actions", next, { shouldDirty: true })}
+              allowCustom
+            />
+          </div>
+        </div>
+      </section>
+      <section className={styles.section}>
+        <h3 className={styles.sectionTitle}>Condition</h3>
+        <ConditionEditor
+          value={condition}
+          onChange={(c) => setValue("condition", c, { shouldDirty: true })}
+          plugin="record"
+        />
+        <div style={{ marginTop: "var(--space-2)" }}>
+          <ConditionPreview condition={condition} />
+        </div>
+      </section>
+      <CollapsibleSection
+        title="Time constraints"
+        summary={<TimeConstraintsCell value={timeConstraints} />}
+        defaultOpen
+      >
+        <TimeConstraintsEditor
+          value={timeConstraints}
+          onChange={(g) => setValue("time_constraints", g, { shouldDirty: true })}
+        />
+      </CollapsibleSection>
+      <CollapsibleSection title="Frequency" summary={summarizeFrequency(frequency)} defaultOpen>
+        <FrequencyEditor
+          value={frequency}
+          onChange={(f) => setValue("frequency", f, { shouldDirty: true })}
+        />
+      </CollapsibleSection>
+      <div className={styles.field}>
+        <label className={styles.label} htmlFor="notif-comment">
+          Comment
+        </label>
+        <Textarea
+          id="notif-comment"
+          {...register("comment")}
+          rows={2}
+          placeholder="Optional description"
+        />
+      </div>
+    </>
   );
 }
