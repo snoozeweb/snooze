@@ -139,7 +139,7 @@ func TestConvertEqualityMatches(t *testing.T) {
 			` AND `},
 		{"or", condition.Or(condition.Equals("a", 1), condition.Equals("b", 2)),
 			` OR `},
-		{"not", condition.Not(condition.Equals("a", 1)), `(NOT `},
+		{"not", condition.Not(condition.Equals("a", 1)), `) IS NOT TRUE)`},
 		{"search-no-fields", condition.Cond{Op: condition.OpSearch, Value: "x"},
 			`data::text ~* $`},
 	}

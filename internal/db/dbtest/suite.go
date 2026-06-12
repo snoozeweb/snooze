@@ -32,6 +32,7 @@ func RunDriverSuite(t *testing.T, name string, factory Factory) {
 	}{
 		{"Write", testWrite},
 		{"SearchOperators", testSearchOperators},
+		{"SearchNotMissingField", testSearchNotMissingField},
 		{"SearchAndOr", testSearchAndOr},
 		{"SearchContains", testSearchContains},
 		{"SearchIn", testSearchIn},
@@ -141,6 +142,63 @@ func testSearchOperators(t *testing.T, drv db.Driver) {
 			require.Equal(t, c.count, total)
 		})
 	}
+}
+
+// testSearchNotMissingField pins the canonical two-valued semantics of NOT over
+// a MISSING field, matching the in-memory evaluator (internal/condition:
+// EQUALS-on-missing is false, so its NOT is true). The SQL backends used to
+// translate NOT as plain "(NOT <inner>)"; for a leaf predicate over an absent
+// JSON key the inner fragment is SQL NULL/UNKNOWN, and "NOT UNKNOWN" is UNKNOWN,
+// which silently dropped the row from the WHERE clause. This is the exact shape
+// the web alerts tab sends — AND(NOT EQ state ack, NOT EQ state close, NOT
+// EXISTS snoozed) — so every fresh alert (no `state` key yet) vanished from the
+// list on the sqlite/postgres backends. The null-safe "(<inner>) IS NOT TRUE"
+// negation in internal/db/sql/builder.go fixes it. Mongo's $nor matches missing
+// fields natively, so it was already correct; this case guards all three.
+func testSearchNotMissingField(t *testing.T, drv db.Driver) {
+	// fresh: an alert with no `state` key (and not snoozed) — must survive the
+	// alerts-tab filter. acked: state == "ack" — must be excluded.
+	mustWrite(t, drv, "record",
+		db.Document{"host": "fresh", "message": "boom"},
+		db.Document{"host": "acked", "message": "boom", "state": "ack"},
+	)
+
+	t.Run("not_eq_missing_returned", func(t *testing.T) {
+		docs, total := search(t, drv, "record", mustCond(t, []any{"NOT", []any{"=", "state", "ack"}}))
+		require.Equal(t, 1, total)
+		require.Len(t, docs, 1)
+		require.Equal(t, "fresh", docs[0]["host"])
+	})
+
+	t.Run("alerts_tab_default_returns_fresh", func(t *testing.T) {
+		// The live default condition of the web alerts tab.
+		cond := mustCond(t, []any{"AND",
+			[]any{"NOT", []any{"=", "state", "ack"}},
+			[]any{"NOT", []any{"=", "state", "close"}},
+			[]any{"NOT", []any{"EXISTS", "snoozed"}},
+		})
+		docs, total := search(t, drv, "record", cond)
+		require.Equal(t, 1, total)
+		require.Len(t, docs, 1)
+		require.Equal(t, "fresh", docs[0]["host"])
+	})
+
+	t.Run("acked_doc_excluded", func(t *testing.T) {
+		// A doc WITH state == "ack" must NOT match NOT(EQ state ack).
+		docs, total := search(t, drv, "record", mustCond(t, []any{"NOT", []any{"=", "state", "ack"}}))
+		require.Equal(t, 1, total)
+		for _, d := range docs {
+			require.NotEqual(t, "acked", d["host"])
+		}
+	})
+
+	t.Run("not_eq_present_value_returned", func(t *testing.T) {
+		// Sanity: NOT(EQ state "close") returns both docs — fresh (missing) and
+		// acked (state=="ack", which is != "close"). Confirms the fix doesn't
+		// over-match: a present-but-different value still negates to true.
+		_, total := search(t, drv, "record", mustCond(t, []any{"NOT", []any{"=", "state", "close"}}))
+		require.Equal(t, 2, total)
+	})
 }
 
 func testSearchAndOr(t *testing.T, drv db.Driver) {

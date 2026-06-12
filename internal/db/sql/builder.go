@@ -81,7 +81,21 @@ func (w *walker) walk(c condition.Cond) (string, error) {
 		if err != nil {
 			return "", err
 		}
-		return "(NOT " + inner + ")", nil
+		// Null-safe negation. A leaf predicate over a MISSING JSON field
+		// evaluates to SQL NULL/UNKNOWN — e.g. EQUALS on an absent key renders
+		// json_extract(...) = 'ack' (sqlite) / data->>'state' = 'ack'
+		// (postgres), both NULL when the key is absent. Plain "NOT <inner>"
+		// would then yield NULL, dropping the row from the WHERE clause. But the
+		// canonical in-memory evaluator (internal/condition/evaluator.go OpNot/
+		// OpEq) treats EQUALS-on-missing as false and its NOT as true — the row
+		// must match. "(<inner>) IS NOT TRUE" folds UNKNOWN to "not matched",
+		// giving the evaluator's two-valued result for every nested AND/OR/NOT
+		// combination (Kleene logic only diverges from two-valued logic at
+		// UNKNOWN, which IS NOT TRUE collapses to the evaluator's false). The
+		// dialects' direct Neq emitters are already NULL-safe (sqlite IS NOT,
+		// postgres IS DISTINCT FROM); this fixes the shared NOT walker to match.
+		// Supported by Postgres and SQLite >= 3.23.
+		return "((" + inner + ") IS NOT TRUE)", nil
 	case condition.OpEq:
 		return w.dialect.Eq(c.Field, c.Value, &w.binder), nil
 	case condition.OpNeq:

@@ -102,6 +102,11 @@ func TestBuilder_NestedAndOr(t *testing.T) {
 	require.Equal(t, []any{"foo", "syslog", "snmptrap"}, args)
 }
 
+// NOT emits a null-safe negation: "((<inner>) IS NOT TRUE)". This maps SQL
+// UNKNOWN (the result of a leaf predicate over a MISSING JSON field) to "row
+// matched", matching the in-memory evaluator (EQUALS-on-missing is false, so
+// its NOT is true). A plain "(NOT <inner>)" would propagate NULL and silently
+// drop the row. See builder.go's OpNot case for the full rationale.
 func TestBuilder_Not(t *testing.T) {
 	b := &Builder{Dialect: mockDialect{}}
 	sql, _, err := b.Convert(gctx(), gcol, condition.Cond{
@@ -109,7 +114,40 @@ func TestBuilder_Not(t *testing.T) {
 		Children: []condition.Cond{{Op: condition.OpEq, Field: "x", Value: 1}},
 	}, nil)
 	require.NoError(t, err)
-	require.Equal(t, "(NOT x = $1)", sql)
+	require.Equal(t, "((x = $1) IS NOT TRUE)", sql)
+}
+
+// A NOT wrapping a nested boolean group keeps the inner group's own parens and
+// adds the null-safe IS NOT TRUE guard around the whole thing.
+func TestBuilder_NotNested(t *testing.T) {
+	b := &Builder{Dialect: mockDialect{}}
+	cond := condition.Cond{Op: condition.OpNot, Children: []condition.Cond{
+		{Op: condition.OpAnd, Children: []condition.Cond{
+			{Op: condition.OpEq, Field: "state", Value: "ack"},
+			{Op: condition.OpExists, Field: "snoozed"},
+		}},
+	}}
+	sql, _, err := b.Convert(gctx(), gcol, cond, nil)
+	require.NoError(t, err)
+	require.Equal(t, "(((state = $1 AND snoozed IS NOT NULL)) IS NOT TRUE)", sql)
+}
+
+// The alerts-tab default condition — AND(NOT EQ state ack, NOT EQ state close,
+// NOT EXISTS snoozed) — is the live shape that triggered the bug. Each NOT-leaf
+// must wear the IS NOT TRUE guard so a fresh alert with no `state` key (inner
+// EQUALS → UNKNOWN) still matches.
+func TestBuilder_AlertsTabDefault(t *testing.T) {
+	b := &Builder{Dialect: mockDialect{}}
+	cond := condition.Cond{Op: condition.OpAnd, Children: []condition.Cond{
+		{Op: condition.OpNot, Children: []condition.Cond{{Op: condition.OpEq, Field: "state", Value: "ack"}}},
+		{Op: condition.OpNot, Children: []condition.Cond{{Op: condition.OpEq, Field: "state", Value: "close"}}},
+		{Op: condition.OpNot, Children: []condition.Cond{{Op: condition.OpExists, Field: "snoozed"}}},
+	}}
+	sql, _, err := b.Convert(gctx(), gcol, cond, nil)
+	require.NoError(t, err)
+	require.Equal(t,
+		"(((state = $1) IS NOT TRUE) AND ((state = $2) IS NOT TRUE) AND ((snoozed IS NOT NULL) IS NOT TRUE))",
+		sql)
 }
 
 func TestBuilder_Exists(t *testing.T) {
