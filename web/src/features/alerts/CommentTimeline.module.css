@@ -100,7 +100,7 @@
 }
 .typeChip[data-active="true"] {
   background: var(--accent);
-  color: var(--accent-foreground, white);
+  color: var(--accent-fg);
   border-color: var(--accent);
 }
 .editArea {

@@ -339,4 +339,37 @@ describe("TenantEditor edit", () => {
     }
     // If there is no delete button at all for "default" that is also acceptable.
   });
+
+  it("shows a confirmation dialog before deleting a non-default tenant", async () => {
+    let deleteCalls = 0;
+    mswServer.use(
+      http.get("/api/v1/tenant/acme", () =>
+        HttpResponse.json({ id: "acme", display_name: "Acme Corp", status: "active" }),
+      ),
+      http.delete("/api/v1/tenant/acme", () => {
+        deleteCalls++;
+        return HttpResponse.json({ deleted: ["acme"] });
+      }),
+    );
+    const onClose = vi.fn();
+    const Wrapper = wrap();
+    const user = userEvent.setup();
+    render(
+      <Wrapper>
+        <TenantEditor id="acme" onClose={onClose} />
+      </Wrapper>,
+    );
+    await waitFor(() =>
+      expect(screen.getByLabelText<HTMLInputElement>(/slug/i).value).toBe("acme"),
+    );
+    // Click the danger button — must not delete yet (confirmation required)
+    await user.click(screen.getByRole("button", { name: /delete tenant/i }));
+    expect(deleteCalls).toBe(0);
+    // The confirmation dialog must appear with irreversibility copy
+    expect(screen.getByText(/cannot be undone/i)).toBeInTheDocument();
+    // Confirm
+    await user.click(screen.getByRole("button", { name: /^delete tenant$/i }));
+    await waitFor(() => expect(deleteCalls).toBe(1));
+    await waitFor(() => expect(onClose).toHaveBeenCalled());
+  });
 });

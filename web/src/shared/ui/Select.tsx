@@ -9,12 +9,20 @@ export const Select = RS.Root;
 export type SelectTriggerProps = {
   placeholder?: string;
   className?: string;
+  /** Forwarded to the underlying button so a <label htmlFor> can target it. */
+  id?: string;
+  "aria-label"?: string;
+  "aria-labelledby"?: string;
 };
 
 export const SelectTrigger = forwardRef<HTMLButtonElement, SelectTriggerProps>(
-  function SelectTrigger({ placeholder, className }, ref) {
+  function SelectTrigger({ placeholder, className, ...rest }, ref) {
     return (
-      <RS.Trigger ref={ref} className={[styles.trigger, className].filter(Boolean).join(" ")}>
+      <RS.Trigger
+        ref={ref}
+        className={[styles.trigger, className].filter(Boolean).join(" ")}
+        {...rest}
+      >
         <RS.Value placeholder={placeholder ?? "Select…"} />
         <RS.Icon>
           <Icon name="chevron-down" size={14} />

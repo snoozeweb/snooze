@@ -132,7 +132,10 @@ describe("MetadataForm", () => {
     };
     const user = userEvent.setup();
     render(<Harness fields={fields} onChange={onChange} />);
-    await user.click(screen.getByRole("switch", { name: /TLS/ }));
+    // The switch must be accessible by name (label id -> aria-labelledby)
+    const sw = screen.getByRole("switch", { name: /TLS/ });
+    expect(sw).toBeInTheDocument();
+    await user.click(sw);
     expect(onChange).toHaveBeenLastCalledWith({ tls: true });
   });
 

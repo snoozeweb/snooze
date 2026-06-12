@@ -9,6 +9,7 @@ import {
 } from "@/shared/ui/Dialog";
 import { Button } from "@/shared/ui/Button";
 import type { AdminCredential } from "./types";
+import styles from "./AdminCredentialDialog.module.css";
 
 export type AdminCredentialDialogProps = {
   /** null = closed/no credential. */
@@ -36,11 +37,12 @@ export function AdminCredentialDialog({ credential, onClose }: AdminCredentialDi
             <dd>{credential.username}</dd>
             <dt>Password</dt>
             <dd>
-              <code>{credential.password}</code>
+              <code className={styles.password}>{credential.password}</code>
               <Button
                 type="button"
                 size="sm"
                 variant="ghost"
+                aria-label="Copy password"
                 onClick={() => void navigator.clipboard?.writeText(credential.password)}
               >
                 Copy

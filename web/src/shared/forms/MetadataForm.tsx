@@ -47,7 +47,7 @@ export function MetadataForm({
         const current = value[key] ?? field.default_value;
         return (
           <div key={key} className={styles.field}>
-            <label className={styles.label} htmlFor={fid}>
+            <label className={styles.label} htmlFor={fid} id={`label-${fid}`}>
               {field.display_name}
               {field.required ? <span className={styles.required}>*</span> : null}
             </label>

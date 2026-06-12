@@ -73,6 +73,7 @@ export function TenantEditor({ id, onClose }: TenantEditorProps) {
   const [revealed, setRevealed] = useState<AdminCredential | null>(null);
   const [confirmRotate, setConfirmRotate] = useState(false);
   const [rotating, setRotating] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState(false);
 
   const currentId = watch("id");
   const isDefault = !isCreate && id === DEFAULT_TENANT;
@@ -117,7 +118,7 @@ export function TenantEditor({ id, onClose }: TenantEditorProps) {
     }
   }
 
-  async function handleDelete() {
+  async function handleDeleteConfirmed() {
     if (isDefault) return;
     setDeleting(true);
     try {
@@ -128,6 +129,7 @@ export function TenantEditor({ id, onClose }: TenantEditorProps) {
       toast.error(e instanceof ApiError ? e.detail : "Delete failed");
     } finally {
       setDeleting(false);
+      setConfirmDelete(false);
     }
   }
 
@@ -186,6 +188,32 @@ export function TenantEditor({ id, onClose }: TenantEditorProps) {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+      <Dialog
+        open={confirmDelete}
+        onOpenChange={(o) => {
+          if (!o) setConfirmDelete(false);
+        }}
+      >
+        <DialogContent>
+          <DialogTitle>Delete tenant?</DialogTitle>
+          <DialogBody>
+            Delete tenant <strong>{existing.data?.display_name || id}</strong>? All its data becomes
+            inaccessible. This action cannot be undone.
+          </DialogBody>
+          <DialogFooter>
+            <Button variant="secondary" onClick={() => setConfirmDelete(false)} disabled={deleting}>
+              Cancel
+            </Button>
+            <Button
+              variant="danger"
+              disabled={deleting}
+              onClick={() => void handleDeleteConfirmed()}
+            >
+              {deleting ? "Deleting…" : "Delete tenant"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
       <Drawer
         open
         onOpenChange={(o) => {
@@ -240,7 +268,7 @@ export function TenantEditor({ id, onClose }: TenantEditorProps) {
                         setValue("status", v as "active" | "suspended", { shouldDirty: true })
                       }
                     >
-                      <SelectTrigger />
+                      <SelectTrigger aria-labelledby="tenant-status-label" />
                       <SelectContent>
                         <SelectItem value="active">Active</SelectItem>
                         <SelectItem value="suspended">Suspended</SelectItem>
@@ -357,7 +385,7 @@ export function TenantEditor({ id, onClose }: TenantEditorProps) {
                       variant="danger"
                       leadingIcon="trash"
                       size="sm"
-                      onClick={() => void handleDelete()}
+                      onClick={() => setConfirmDelete(true)}
                       loading={deleting}
                       disabled={isDefault || deleting}
                     >
