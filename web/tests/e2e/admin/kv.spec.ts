@@ -12,6 +12,8 @@ test.describe("admin / kv", () => {
     await page.getByRole("button", { name: /^new$/i }).click({ force: true });
     await expect(page.getByRole("heading", { name: /new key-value/i })).toBeVisible();
 
+    // dict + key are both required by the server (kv plugin Validate rejects empty dict).
+    await page.locator("#kv-dict").fill("e2e_dict");
     await page.locator("#kv-key").fill("E2E_KEY");
     await page.locator("#kv-value").fill("a-value");
 

@@ -24,8 +24,10 @@
 //   "snooze-claims" — decoded payload (cleared together for a clean logout)
 //
 // User creation:
-//   The /api/v1/user endpoint stores documents as-is. The local-auth provider
-//   expects a bcrypt-hashed password + method:"local" + enabled:true.
+//   The /api/v1/user endpoint runs the user plugin's WriteTransformer, which
+//   bcrypt-hashes a non-empty plaintext `password` on write (same path the web
+//   UI uses). So we seed the PLAINTEXT password + method:"local" + enabled:true;
+//   the stored hash is what the local-auth provider verifies at login.
 //   No api.reset() — each worker has an isolated fresh DB.
 //
 // WSL2 / headless_shell workaround:
@@ -35,10 +37,10 @@
 import { test, expect } from "../harness/fixtures";
 
 // ────────────────────────────────────────────────────────────────────────────
-// bcrypt hash for "alice-pw" (cost 10) — same as login.spec.ts.
+// alice's plaintext password — same as login.spec.ts. The user plugin's
+// WriteTransformer bcrypt-hashes it server-side on create.
 // ────────────────────────────────────────────────────────────────────────────
 const ALICE_PW = "alice-pw";
-const ALICE_PW_HASH = "$2a$10$xcejb8fDY6p6MAkj7JtDXuyL/fE.NoSRY3DkuF03OdmF7CMBnowCu";
 
 // Mirrors the addInitScript body in harness/auth.ts: writes snooze-token +
 // snooze-claims so the store considers the session authenticated.
@@ -67,7 +69,7 @@ test("logout in one tab logs out the other", async ({ cdpBrowser, api, server })
     name: "alice",
     method: "local",
     enabled: true,
-    password: ALICE_PW_HASH,
+    password: ALICE_PW,
     roles: ["admin"],
     groups: [],
   });
@@ -114,4 +116,3 @@ test("logout in one tab logs out the other", async ({ cdpBrowser, api, server })
 
   await ctx.close();
 });
-

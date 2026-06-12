@@ -44,15 +44,18 @@ test.describe("action editor", () => {
     // Switch to the Actions tab so the "New" button opens ActionEditor.
     await page.getByRole("tab", { name: /^actions$/i }).click({ force: true });
     await page.getByRole("button", { name: /^new$/i }).click({ force: true });
-    await expect(page.getByRole("heading", { name: /new action/i })).toBeVisible();
+    // ActionEditor opens in the "pick" step — it shows an IntegrationGallery
+    // (heading: "Choose an integration") before the config form. We must click
+    // through the gallery to select a provider before the form appears.
+    await expect(page.getByRole("heading", { name: /choose an integration/i })).toBeVisible();
+    // The gallery renders one <button> per plugin; webhook's display name is
+    // "Call a webhook" (metadata.yaml name field, plugin_name = "webhook").
+    await page.getByRole("button", { name: /call a webhook/i }).click({ force: true });
+    // After picking, the editor advances to the config form.
+    await expect(page.getByRole("heading", { name: /new call a webhook action/i })).toBeVisible();
 
     await page.getByLabel("Name").fill("e2e-webhook-action");
-    // #action-type is a native <select>; ActionEditor only lists plugins that
-    // expose an action_form (webhook, script, mail, patlite). Pick webhook —
-    // its required `url` field is a plain String input, easiest to drive.
-    await page.locator("#action-type").selectOption("webhook");
-
-    // Plugin form ids follow `action-<plugin>-<field>` (see ActionEditor
+    // Plugin form ids follow `action-<plugin_name>-<field>` (see ActionEditor
     // idPrefix={`action-${selectedPlugin.plugin_name}`} → MetadataForm fid).
     await page.locator("#action-webhook-url").fill("https://example.invalid/hook");
 

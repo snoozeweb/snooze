@@ -38,9 +38,11 @@ test.describe("rules tree reorder", () => {
 
     await page.goto(server.baseURL + "/web/rules");
     const rows = page.getByRole("row");
-    await expect(rows.nth(0)).toContainText("alpha");
-    await expect(rows.nth(1)).toContainText("bravo");
-    await expect(rows.nth(2)).toContainText("charlie");
+    // RulesTreeTable renders its header with role=row, so nth(0) is the
+    // header ("Name Condition Modifications"). Data rows start at nth(1).
+    await expect(rows.nth(1)).toContainText("alpha");
+    await expect(rows.nth(2)).toContainText("bravo");
+    await expect(rows.nth(3)).toContainText("charlie");
 
     // PATCH each sibling with a new tree_order, identical to what the
     // RulesTreeTable's onDragEnd handler dispatches.
@@ -59,8 +61,8 @@ test.describe("rules tree reorder", () => {
     });
 
     await page.reload();
-    await expect(rows.nth(0)).toContainText("bravo");
-    await expect(rows.nth(1)).toContainText("charlie");
-    await expect(rows.nth(2)).toContainText("alpha");
+    await expect(rows.nth(1)).toContainText("bravo");
+    await expect(rows.nth(2)).toContainText("charlie");
+    await expect(rows.nth(3)).toContainText("alpha");
   });
 });

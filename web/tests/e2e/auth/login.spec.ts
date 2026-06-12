@@ -15,10 +15,13 @@
 //   "snooze-claims" — JSON-stringified decoded JWT payload
 //
 // User creation:
-//   The /api/v1/user endpoint stores documents as-is. The local-auth provider
-//   (internal/auth/local.go) expects a bcrypt-hashed password. We therefore
-//   pass a pre-computed bcrypt hash for "alice-pw" (cost 10) rather than the
-//   plaintext. The document must also include method:"local" and enabled:true,
+//   The /api/v1/user endpoint runs the user plugin's WriteTransformer hook
+//   (internal/pluginimpl/user/plugin.go TransformWrite), which bcrypt-hashes a
+//   non-empty plaintext `password` on write — the same path the web UI's
+//   UserEditor uses (it POSTs the plaintext, the backend hashes it). So we seed
+//   the PLAINTEXT password; the stored document ends up with a single bcrypt
+//   hash that the local-auth provider (internal/auth/local.go) verifies at
+//   login. The document must also include method:"local" and enabled:true,
 //   mirroring what bootstrap.go writes for the root user.
 //
 // WSL2 / headless_shell workaround:
@@ -37,12 +40,10 @@ import { test, expect } from "../harness/fixtures";
 import { loginAsAdmin } from "../harness/auth";
 
 // ────────────────────────────────────────────────────────────────────────────
-// bcrypt hash for "alice-pw" (cost 10).
-// Generated via: go run -modfile=go.mod -run . <inline program using bcrypt>
-// Verified: bcrypt.CompareHashAndPassword(hash, "alice-pw") == nil
+// alice's plaintext password. The user plugin's WriteTransformer bcrypt-hashes
+// it server-side on create (same as the web UI), so we never pass a hash here.
 // ────────────────────────────────────────────────────────────────────────────
 const ALICE_PW = "alice-pw";
-const ALICE_PW_HASH = "$2a$10$xcejb8fDY6p6MAkj7JtDXuyL/fE.NoSRY3DkuF03OdmF7CMBnowCu";
 
 test.describe("login (local)", () => {
   // Create the alice user before each test. Idempotent: 409-conflict errors
@@ -53,7 +54,7 @@ test.describe("login (local)", () => {
         name: "alice",
         method: "local",
         enabled: true,
-        password: ALICE_PW_HASH,
+        password: ALICE_PW,
         roles: ["admin"],
         groups: [],
       });
@@ -152,4 +153,3 @@ test.describe("login (local)", () => {
     await expect(page).toHaveURL(/\/web\/login/);
   });
 });
-

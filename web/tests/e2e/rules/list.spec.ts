@@ -21,8 +21,8 @@ test.describe("rules list", () => {
 
   test("empty state renders when no rules exist", async ({ page, server }) => {
     await page.goto(server.baseURL + "/web/rules");
-    // RulesTreeTable empty state — verbatim from RulesTreeTable.tsx.
-    await expect(page.getByText("No rules yet.")).toBeVisible();
+    // RulesTreeTable empty state — verbatim from RulesTreeTable.tsx (no trailing period).
+    await expect(page.getByText("No rules yet")).toBeVisible();
   });
 
   test("rules appear in the table after API create", async ({ page, api, server }) => {
@@ -78,10 +78,11 @@ test.describe("rules list", () => {
     await page.goto(server.baseURL + "/web/rules");
 
     const rows = page.getByRole("row");
-    // RulesTreeTable's header is a plain div, so only data rows carry role=row.
-    await expect(rows.nth(0)).toContainText("first");
-    await expect(rows.nth(1)).toContainText("second");
-    await expect(rows.nth(2)).toContainText("third");
+    // RulesTreeTable renders its header with role=row, so nth(0) is the
+    // header ("Name Condition Modifications"). Data rows start at nth(1).
+    await expect(rows.nth(1)).toContainText("first");
+    await expect(rows.nth(2)).toContainText("second");
+    await expect(rows.nth(3)).toContainText("third");
   });
 
   test("aggregates tab still supports name column sort", async ({ page, api, server }) => {
