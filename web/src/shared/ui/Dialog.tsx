@@ -1,15 +1,15 @@
-import { forwardRef } from "react";
 import type { ReactNode } from "react";
+import type React from "react";
 import * as RD from "@radix-ui/react-dialog";
 import styles from "./Dialog.module.css";
 
 export const Dialog = RD.Root;
 
-export const DialogTrigger = forwardRef<HTMLButtonElement, RD.DialogTriggerProps>(
-  function DialogTrigger(props, ref) {
-    return <RD.Trigger asChild {...props} ref={ref} />;
-  },
-);
+export type DialogTriggerProps = RD.DialogTriggerProps & { ref?: React.Ref<HTMLButtonElement> };
+
+export function DialogTrigger({ ref, ...props }: DialogTriggerProps) {
+  return <RD.Trigger asChild {...props} ref={ref} />;
+}
 
 export function DialogContent({
   children,

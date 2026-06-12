@@ -1,5 +1,5 @@
-import { forwardRef } from "react";
 import type { ButtonHTMLAttributes } from "react";
+import type React from "react";
 import { Icon } from "@/shared/icons/Icon";
 import type { IconName } from "@/shared/icons/icon-names";
 import type { ButtonSize, ButtonVariant } from "./Button";
@@ -15,22 +15,21 @@ export type IconButtonProps = Omit<
   size?: ButtonSize;
   loading?: boolean;
   type?: "button" | "submit" | "reset";
+  ref?: React.Ref<HTMLButtonElement>;
 };
 
-export const IconButton = forwardRef<HTMLButtonElement, IconButtonProps>(function IconButton(
-  {
-    icon,
-    label,
-    variant = "ghost",
-    size = "md",
-    loading,
-    type = "button",
-    disabled,
-    className,
-    ...rest
-  },
+export function IconButton({
+  icon,
+  label,
+  variant = "ghost",
+  size = "md",
+  loading,
+  type = "button",
+  disabled,
+  className,
   ref,
-) {
+  ...rest
+}: IconButtonProps) {
   const classes = [styles.iconButton, styles[size], styles[variant], className]
     .filter(Boolean)
     .join(" ");
@@ -49,4 +48,4 @@ export const IconButton = forwardRef<HTMLButtonElement, IconButtonProps>(functio
       <Icon name={icon} size={iconSize} />
     </button>
   );
-});
+}

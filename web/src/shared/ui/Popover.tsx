@@ -1,15 +1,15 @@
-import { forwardRef } from "react";
 import type { ReactNode } from "react";
+import type React from "react";
 import * as RP from "@radix-ui/react-popover";
 import styles from "./Popover.module.css";
 
 export const Popover = RP.Root;
 
-export const PopoverTrigger = forwardRef<HTMLButtonElement, RP.PopoverTriggerProps>(
-  function PopoverTrigger(props, ref) {
-    return <RP.Trigger {...props} ref={ref} />;
-  },
-);
+export type PopoverTriggerProps = RP.PopoverTriggerProps & { ref?: React.Ref<HTMLButtonElement> };
+
+export function PopoverTrigger({ ref, ...props }: PopoverTriggerProps) {
+  return <RP.Trigger {...props} ref={ref} />;
+}
 
 export type PopoverContentProps = {
   side?: "top" | "right" | "bottom" | "left";

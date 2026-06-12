@@ -1,5 +1,5 @@
-import { forwardRef } from "react";
 import type { ReactNode } from "react";
+import type React from "react";
 import * as RM from "@radix-ui/react-dropdown-menu";
 import { Icon } from "@/shared/icons/Icon";
 import type { IconName } from "@/shared/icons/icon-names";
@@ -7,14 +7,16 @@ import styles from "./Menu.module.css";
 
 export const Menu = RM.Root;
 
-export const MenuTrigger = forwardRef<HTMLButtonElement, RM.DropdownMenuTriggerProps>(
-  function MenuTrigger(props, ref) {
-    // asChild lets the consumer (typically <IconButton>) be the trigger
-    // rather than wrapping it in Radix's default <button>, which inherits
-    // the platform's chrome (white box in light mode, dark in dark mode).
-    return <RM.Trigger asChild {...props} ref={ref} />;
-  },
-);
+export type MenuTriggerProps = RM.DropdownMenuTriggerProps & {
+  ref?: React.Ref<HTMLButtonElement>;
+};
+
+export function MenuTrigger({ ref, ...props }: MenuTriggerProps) {
+  // asChild lets the consumer (typically <IconButton>) be the trigger
+  // rather than wrapping it in Radix's default <button>, which inherits
+  // the platform's chrome (white box in light mode, dark in dark mode).
+  return <RM.Trigger asChild {...props} ref={ref} />;
+}
 
 export function MenuContent({
   children,

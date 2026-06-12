@@ -1,16 +1,16 @@
-import { forwardRef } from "react";
 import type { ReactNode } from "react";
+import type React from "react";
 import * as RD from "@radix-ui/react-dialog";
 import { Icon } from "@/shared/icons/Icon";
 import styles from "./Drawer.module.css";
 
 export const Drawer = RD.Root;
 
-export const DrawerTrigger = forwardRef<HTMLButtonElement, RD.DialogTriggerProps>(
-  function DrawerTrigger(props, ref) {
-    return <RD.Trigger asChild {...props} ref={ref} />;
-  },
-);
+export type DrawerTriggerProps = RD.DialogTriggerProps & { ref?: React.Ref<HTMLButtonElement> };
+
+export function DrawerTrigger({ ref, ...props }: DrawerTriggerProps) {
+  return <RD.Trigger asChild {...props} ref={ref} />;
+}
 
 export function DrawerContent({
   children,

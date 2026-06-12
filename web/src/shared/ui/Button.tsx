@@ -1,5 +1,5 @@
-import { forwardRef } from "react";
 import type { ButtonHTMLAttributes, ReactNode } from "react";
+import type React from "react";
 import { Icon } from "@/shared/icons/Icon";
 import type { IconName } from "@/shared/icons/icon-names";
 import { Spinner } from "./Spinner";
@@ -17,24 +17,23 @@ export type ButtonProps = Omit<ButtonHTMLAttributes<HTMLButtonElement>, "type"> 
   fullWidth?: boolean;
   type?: "button" | "submit" | "reset";
   children?: ReactNode;
+  ref?: React.Ref<HTMLButtonElement>;
 };
 
-export const Button = forwardRef<HTMLButtonElement, ButtonProps>(function Button(
-  {
-    variant = "secondary",
-    size = "md",
-    loading = false,
-    leadingIcon,
-    trailingIcon,
-    fullWidth = false,
-    type = "button",
-    disabled,
-    className,
-    children,
-    ...rest
-  },
+export function Button({
+  variant = "secondary",
+  size = "md",
+  loading = false,
+  leadingIcon,
+  trailingIcon,
+  fullWidth = false,
+  type = "button",
+  disabled,
+  className,
+  children,
   ref,
-) {
+  ...rest
+}: ButtonProps) {
   const classes = [
     styles.button,
     styles[size],
@@ -73,4 +72,4 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(function Button
       ) : null}
     </button>
   );
-});
+}
