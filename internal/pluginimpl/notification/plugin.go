@@ -460,7 +460,7 @@ func (p *Plugin) fireSend(ctx context.Context, notifier plugins.Notifier, rec sn
 	host := p.host
 	eventEpoch := rec.DateEpoch
 	tenantID, _ := auth.TenantFrom(ctx)
-	go func() {
+	go func() { //nolint:gosec // context.Background() is intentional: goroutine outlives the request; request ctx is already cancelled on return
 		sendCtx, cancel := context.WithTimeout(context.Background(), notifierSendTimeout)
 		defer cancel()
 		sendErr := notifier.Send(sendCtx, rec, payload)

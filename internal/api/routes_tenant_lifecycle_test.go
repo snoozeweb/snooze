@@ -280,13 +280,13 @@ func (f *lifecycleDB) PrependList(context.Context, string, map[string][]any, con
 func (f *lifecycleDB) RemoveList(context.Context, string, map[string][]any, condition.Cond) (int, error) {
 	return 0, nil
 }
-func (f *lifecycleDB) CreateIndex(context.Context, string, []string) error      { return nil }
-func (f *lifecycleDB) ListCollections(context.Context) ([]string, error)        { return nil, nil }
-func (f *lifecycleDB) Drop(context.Context, string) error                       { return nil }
-func (f *lifecycleDB) Backup(context.Context, string, []string) error           { return nil }
-func (f *lifecycleDB) CleanupTimeout(context.Context, string) (int, error)      { return 0, nil }
-func (f *lifecycleDB) CleanupComments(context.Context) (int, error)             { return 0, nil }
-func (f *lifecycleDB) CleanupOrphans(context.Context, string) (int, error)      { return 0, nil }
+func (f *lifecycleDB) CreateIndex(context.Context, string, []string) error { return nil }
+func (f *lifecycleDB) ListCollections(context.Context) ([]string, error)   { return nil, nil }
+func (f *lifecycleDB) Drop(context.Context, string) error                  { return nil }
+func (f *lifecycleDB) Backup(context.Context, string, []string) error      { return nil }
+func (f *lifecycleDB) CleanupTimeout(context.Context, string) (int, error) { return 0, nil }
+func (f *lifecycleDB) CleanupComments(context.Context) (int, error)        { return 0, nil }
+func (f *lifecycleDB) CleanupOrphans(context.Context, string) (int, error) { return 0, nil }
 func (f *lifecycleDB) CleanupAuditLogs(context.Context, time.Duration) (int, error) {
 	return 0, nil
 }

@@ -175,7 +175,7 @@ func newTenantResetAdminCmd() *cobra.Command {
 			if rt.flags != nil && rt.flags.JSON {
 				enc := json.NewEncoder(cmd.OutOrStdout())
 				enc.SetIndent("", "  ")
-				return enc.Encode(resp)
+				return enc.Encode(resp) //nolint:gosec // intentional: printing the generated password to stdout for the operator to copy
 			}
 			_, _ = fmt.Fprintf(cmd.OutOrStdout(),
 				"Admin user: %s (local)\nPassword:   %s   — shown once; store it now.\n",
