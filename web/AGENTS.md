@@ -18,9 +18,41 @@ check with the user before reworking UI.
 * **Zustand** for the little client-side state there is (auth session).
 * **Radix UI** primitives, wrapped in-house under `src/shared/ui/`.
 * **CSS Modules + design tokens** — no Tailwind, no utility CSS.
+* **IBM Plex Sans Variable + IBM Plex Mono**, self-hosted via
+  `@fontsource-variable/ibm-plex-sans` / `@fontsource/ibm-plex-mono` and
+  imported in `main.tsx` before the base styles.
 * Chart.js (via `react-chartjs-2`), `react-hook-form`, `react-day-picker`
   (date-range calendar), `date-fns`, `yaml`, `jwt-decode` (token claims),
   `@dnd-kit/*` (drag-reorder, e.g. the rules tree), `diff` (the rules diff view).
+
+---
+
+## Design language
+
+"Mission control" register: near-black warm-neutral surfaces with one amber
+signal accent. The shell owns scrolling — `body` never scrolls (the layered
+canvas texture paints once); `main` scrolls internally.
+
+* **Tokens only.** Components read `var(--token-name)` — never hex/px
+  literals. Color tokens live in `styles/theme.{dark,light}.css`;
+  `styles/tokens.css` is theme-independent (space, radius, type, motion,
+  shadow, z-index, fonts).
+* **Dark is the default.** `theme.dark.css` sits on `:root`;
+  `theme.light.css` overrides via `[data-theme="light"]`, toggled from the
+  Topbar (`useTheme()`) — a hard-coded color breaks one of the two themes.
+* **Amber = interactive chrome only.** `--accent` (#ffb000) drives buttons,
+  links, active nav, focus. Never use it for severity; blue is reserved
+  exclusively for `--severity-info`, so accent and severity never collide.
+* **Timestamps**: render epoch-second values with `shared/ui/TimeCell` —
+  semantic `<time>` + full-locale tooltip + relative "Nm ago" prefix while
+  under an hour old, in mono tabular figures (`--font-features-numeric`).
+  The underlying helpers (`formatRelativeTime`, `trimDate`) live in
+  `lib/format/time.ts`.
+* **Charts**: Chart.js paints to canvas and can't resolve `var(--x)` — take
+  colors from `shared/chart/theme.ts` (`chartToken()` resolves tokens via
+  `getComputedStyle`, with jsdom/SSR fallbacks) so charts re-theme with
+  light/dark. `DistributionBar` is the pure-CSS distribution strip (there is
+  no donut chart).
 
 ---
 
@@ -44,29 +76,43 @@ not edit" header. So:
 
 ```
 web/src/
-├── main.tsx          # entry: mounts the router, loads styles/base.css
+├── main.tsx          # entry: mounts the router, loads fonts then styles/base.css
 ├── app/              # router.tsx (route tree + the QueryClient + providers);
-│                     #   layout/ (AppShell, Sidebar, Topbar, CommandPalette, HowToMenu)
+│                     #   layout/ (AppShell, Sidebar, Topbar, CommandPalette,
+│                     #            HowToMenu, nav-items.ts, breadcrumb.ts)
 ├── features/         # one folder per feature: page + api.ts hooks + types
 │   ├── alerts/ rules/ snoozes/ notifications/ dashboard/ auth/ audit/ dev/
 │   └── admin/        #   users, roles, environments, widgets, kv, settings, status, tenants
-├── shared/           # cross-feature: ui/ (Radix wrappers), forms/, chart/, condition/,
+├── shared/           # cross-feature: ui/ (Radix wrappers + TimeCell), forms/,
+│                     #   chart/ (theme.ts + Chart.js wrappers), condition/,
 │                     #   searchdsl/, hooks/, icons/, auth/ (RequirePerm), modifications/
 ├── lib/              # non-component logic: api/, auth/, condition/, format/, timeconstraints/
-├── styles/           # base.css + tokens.css + theme.{dark,light}.css
+├── styles/           # base.css + tokens.css + theme.dark.css (default) + theme.light.css
 └── tests/            # Vitest setup + MSW server + global a11y audit (NOT e2e — see below)
 ```
 
 > `app/layout/AppShell.tsx` is the layout; the `QueryClient` is instantiated
-> inline in `router.tsx` (there is no standalone file for it). `features/dev/`
-> is a developer-only showroom (`PrimitivesPage` UI gallery + `ResourcePage`
-> demo): route-wired at `/web/dev/*` but unlinked from nav, and built **only
-> under `import.meta.env.DEV`** — Rollup drops the routes and modules from
+> inline in `router.tsx` (there is no standalone file for it).
+> `app/layout/breadcrumb.ts` (`pickBreadcrumb()`) maps router matches to the
+> nav group + label the Topbar renders. `features/dev/` is a developer-only
+> showroom (`PrimitivesPage` UI gallery + `ResourcePage` demo): route-wired at
+> `/web/dev/*` but unlinked from nav, and built **only under
+> `import.meta.env.DEV`** — Rollup drops the routes and modules from
 > production bundles; keep new dev-only routes inside that gate.
 > `features/auth/` owns the login flow: `Login.tsx` renders one button per
 > backend descriptor (form-first + SSO via `parseBackends()`/`ssoStartUrl()` in
 > its `api.ts`), and `LoginCallback.tsx` handles the OIDC return at
 > `/web/login/callback`.
+
+> Page anatomy: `features/alerts/` composes lifecycle tabs (`tabs.ts`), the
+> `EnvironmentBar`, the `ActiveFilters` chip strip (one dismissable chip per
+> active constraint) and hover-revealed inline row actions (ack/close without
+> the dialog). `features/dashboard/` is `StatTiles` + charts behind a
+> `DashboardSkeleton`, driven by `TimeRangePicker`/`time-range.ts`.
+> `features/admin/` covers user management (`UserEditor`), role → LDAP/OIDC
+> group mapping (`RoleEditor`), and `settings/`, which renders the backend
+> settings catalogue as grouped tabs (general, notifications, ldap, oidc,
+> housekeeping) — OIDC/SSO and LDAP are configurable from the web UI.
 
 | You're adding…                         | Put it in…                                                      |
 |----------------------------------------|-----------------------------------------------------------------|
@@ -87,8 +133,8 @@ web/src/
   to the component.
 * Server state lives in TanStack Query (invalidate on mutation success), not in
   component state or Zustand. Zustand is for the auth session only.
-* Style with CSS Modules + the custom properties in `styles/tokens.css` (so
-  dark/light themes keep working) — don't hard-code colors.
+* Style with CSS Modules + the design tokens (see **Design language**) — don't
+  hard-code colors.
 
 ---
 
@@ -118,8 +164,11 @@ First build the harness with `npm run e2e:build` (runs `vite build` **and**
 `go build ./cmd/snooze-server` into `tests/e2e/.bin/`), then `npm run e2e`
 (or `e2e:headed`) — plain `e2e` does not rebuild the server. The harness boots a
 real server against a pluggable DB chosen by `SNOOZE_TEST_DB`
-(`sqlite` default | `postgres` | `mongo`) and keeps a committed screenshot
-baseline. Run it when a change touches a critical user flow.
+(`sqlite` default | `postgres` | `mongo`). Functional specs live under domain
+directories; run them when a change touches a critical user flow. A separate
+visual tour (`tests/e2e/tour.spec.ts`) seeds varied data, walks every
+top-level route and screenshots each into `tests/e2e/.screenshots/`
+(gitignored); it is skipped by default — opt in with `SNOOZE_TOUR=1`.
 
 ---
 
@@ -130,6 +179,7 @@ baseline. Run it when a change touches a critical user flow.
 * Let the SPA and `../api/openapi.yaml` drift — regenerate instead.
 * Reach for Tailwind, a second state library, or file-based routing; match the
   patterns already in `features/` and `shared/ui/`.
+* Use `--accent` for severity, or hard-code colors anywhere — tokens only.
 * Casually edit the `manualChunks` vendor-splitting in `vite.config.ts` — the
   ordering is load-bearing (its comments record real prod failures: react-table
   must match before the generic react check; Radix/floating-ui must co-locate;
