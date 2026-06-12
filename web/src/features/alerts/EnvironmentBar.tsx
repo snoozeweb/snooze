@@ -11,6 +11,8 @@ import { Link } from "@tanstack/react-router";
 import { Icon } from "@/shared/icons/Icon";
 import { Environments } from "@/features/admin/environments/api";
 import type { Environment } from "@/features/admin/environments/types";
+import { useAuth } from "@/lib/auth/store";
+import { hasAnyPermission } from "@/lib/auth/permissions";
 import styles from "./EnvironmentBar.module.css";
 
 export type EnvironmentBarProps = {
@@ -43,18 +45,11 @@ function readableTextOn(bg: string): string {
   return lum > 140 ? "var(--ink-dark)" : "var(--ink-light)";
 }
 
-function isAdmin(): boolean {
-  try {
-    const raw = localStorage.getItem("permissions") || "[]";
-    const perms = JSON.parse(raw) as unknown;
-    if (!Array.isArray(perms)) return false;
-    return perms.includes("rw_all") || perms.includes("rw_environment");
-  } catch {
-    return false;
-  }
-}
+const ENV_MANAGE_PERMS = ["rw_all", "rw_environment"] as const;
 
 export function EnvironmentBar({ selected, onChange }: EnvironmentBarProps) {
+  const { claims } = useAuth();
+  const canManage = hasAnyPermission(claims, ENV_MANAGE_PERMS);
   const list = Environments.useList({
     limit: 200,
     orderby: "tree_order",
@@ -113,7 +108,7 @@ export function EnvironmentBar({ selected, onChange }: EnvironmentBarProps) {
           </button>
         );
       })}
-      {isAdmin() ? (
+      {canManage ? (
         <Link
           to="/web/admin/environments"
           className={styles.cog}
