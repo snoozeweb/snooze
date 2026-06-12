@@ -13,16 +13,21 @@ check with the user before reworking UI.
 ## Stack
 
 * React 19 + Vite 6, **TypeScript strict**. Node ≥ 22.
-* **TanStack Router** for routing (code-based — see below), **TanStack Query**
-  for server state, **TanStack Table** for grids.
+* **TanStack Router** for routing (code-based — see below; pages are
+  lazy-loaded route chunks), **TanStack Query** for server state. Grids are
+  the in-house `shared/ui/DataTable` — there is **no** table library.
 * **Zustand** for the little client-side state there is (auth session).
+  There is **zero React Context** in the SPA — don't introduce one for form
+  state either; react-hook-form is the form-state provider.
 * **Radix UI** primitives, wrapped in-house under `src/shared/ui/`.
 * **CSS Modules + design tokens** — no Tailwind, no utility CSS.
 * **IBM Plex Sans Variable + IBM Plex Mono**, self-hosted via
   `@fontsource-variable/ibm-plex-sans` / `@fontsource/ibm-plex-mono` and
-  imported in `main.tsx` before the base styles.
-* Chart.js (via `react-chartjs-2`), `react-hook-form`, `react-day-picker`
-  (date-range calendar), `date-fns`, `yaml`, `jwt-decode` (token claims),
+  imported in `main.tsx` before the base styles (the primary latin woff2 is
+  preloaded by an inline plugin in `vite.config.ts`).
+* Chart.js (wrapped directly in `shared/chart/` — no react-chartjs-2),
+  `react-hook-form`, `react-day-picker` (date-range calendar), `date-fns`,
+  `yaml` (dynamic-imported in copy handlers), `jwt-decode` (token claims),
   `@dnd-kit/*` (drag-reorder, e.g. the rules tree), `diff` (the rules diff view).
 
 ---
@@ -117,9 +122,11 @@ web/src/
 | You're adding…                         | Put it in…                                                      |
 |----------------------------------------|-----------------------------------------------------------------|
 | A new page / feature view              | `src/features/<feature>/` (page component + `api.ts` Query hooks) |
+| A list page over a resource            | build on `shared/hooks/useResourceListPage` (URL-sync, selection, confirm-delete, context menu) + your own `<DataTable>` — `UsersPage` is the worked example |
+| A record editor (create/edit drawer)   | build on `shared/forms/EditorDrawer` (chrome, lifecycle, toasts, dirty-close guard) — `UserEditor` is the worked example; `ActionEditor` is the one deliberate exception (it's a wizard) |
 | A reusable UI primitive                | `src/shared/ui/` (wrap Radix, co-locate `<Name>.module.css`)    |
 | An API call                            | a TanStack Query hook over `api()` from `@/lib/api`; **regen `types.gen.ts` if the contract changed** |
-| A route                                | register it in `src/app/router.tsx` (code-based — there is **no** `routeTree.gen.ts`) |
+| A route                                | register it in `src/app/router.tsx` (code-based — there is **no** `routeTree.gen.ts`); pages are `lazyRouteComponent` chunks — keep new pages lazy (the router preloads on intent) |
 | Cross-cutting logic (parsing, format)  | `src/lib/<domain>/`                                             |
 | Auth / permission logic               | `src/lib/auth/` (Zustand `authStore` + `useAuth()`)             |
 
@@ -133,6 +140,17 @@ web/src/
   to the component.
 * Server state lives in TanStack Query (invalidate on mutation success), not in
   component state or Zustand. Zustand is for the auth session only.
+* **Shareable UI state lives in the URL** — tabs, filters, pagination, the
+  dashboard time range all round-trip through typed route search params
+  (`validateSearch` in `router.tsx`), never in bare `useState`.
+* React 19: `ref` is a regular prop — **no `forwardRef`** (the whole codebase
+  was converted; don't reintroduce it).
+* **Never `window.confirm`** — Playwright auto-dismisses it, so guarded flows
+  silently break in e2e. Use an in-DOM dialog (`EditorDrawer`'s discard guard
+  is the pattern).
+* Function props that reach `DataTable` (and memoized rows generally) must be
+  identity-stable — `useCallback`/`useMemo` or the `useResourceListPage`
+  return values, never fresh inline closures per render.
 * Style with CSS Modules + the design tokens (see **Design language**) — don't
   hard-code colors.
 
@@ -176,12 +194,16 @@ top-level route and screenshots each into `tests/e2e/.screenshots/`
 
 * Hand-edit `src/lib/api/types.gen.ts`, or any compiled config artifact
   (`vite.config.js`/`.d.ts`, `tsconfig.tsbuildinfo`) — they're generated/ignored.
+  Worse: a stale `vite.config.js` left in `web/` **silently shadows
+  `vite.config.ts`** (Vite resolves `.js` first) — if config changes don't
+  take effect, delete it.
 * Let the SPA and `../api/openapi.yaml` drift — regenerate instead.
 * Reach for Tailwind, a second state library, or file-based routing; match the
   patterns already in `features/` and `shared/ui/`.
 * Use `--accent` for severity, or hard-code colors anywhere — tokens only.
 * Casually edit the `manualChunks` vendor-splitting in `vite.config.ts` — the
-  ordering is load-bearing (its comments record real prod failures: react-table
-  must match before the generic react check; Radix/floating-ui must co-locate;
+  ordering is load-bearing (its comments record real prod failures: any package
+  whose name contains "react" — react-table, **react-day-picker** — must match
+  before the generic react check; Radix/floating-ui must co-locate;
   scheduler/use-sync-external-store must land in vendor-react). Reordering can
   break startup in headless Chromium.
