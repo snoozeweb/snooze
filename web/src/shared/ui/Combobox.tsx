@@ -30,7 +30,11 @@ export function Combobox({
   // See MultiCombobox.tsx for the full explanation. Window-capture wheel
   // listener fires before any RemoveScroll listener anywhere — when the
   // event targets this popover, scroll manually and stop the event.
+  // Gated on `open` so we only hold a non-passive capture listener while
+  // the popover is actually visible; effects run post-commit so the portal
+  // content ref is already populated when the effect attaches.
   useEffect(() => {
+    if (!open) return;
     const handler = (e: WheelEvent) => {
       const popover = contentRef.current;
       if (!popover) return;
@@ -52,7 +56,7 @@ export function Combobox({
     };
     window.addEventListener("wheel", handler, { capture: true, passive: false });
     return () => window.removeEventListener("wheel", handler, { capture: true });
-  }, []);
+  }, [open]);
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();

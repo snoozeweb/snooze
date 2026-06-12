@@ -1,5 +1,4 @@
 import { useCallback, useState } from "react";
-import * as YAML from "yaml";
 import { Button } from "@/shared/ui/Button";
 import { Dialog, DialogBody, DialogContent, DialogFooter, DialogTitle } from "@/shared/ui/Dialog";
 import { toast } from "@/shared/ui/toast/useToast";
@@ -52,7 +51,8 @@ export function buildResourceContextMenu<T extends WithUid>(
       label: "Copy as YAML",
       icon: "copy",
       onSelect: async () => {
-        const ok = await copyToClipboard(YAML.stringify(row));
+        const { stringify } = await import("yaml");
+        const ok = await copyToClipboard(stringify(row));
         if (ok) toast.success("Copied YAML to clipboard");
         else toast.error("Clipboard unavailable");
       },

@@ -52,10 +52,11 @@ export function MultiCombobox({
   // scrollable descendant's scrollTop, then stopImmediatePropagation +
   // preventDefault so nothing downstream interferes.
   //
-  // The listener stays attached for the lifetime of the component (not
-  // gated on `open`) so we never miss it because of a render-timing race
-  // with Radix's portal mount.
+  // Gated on `open` so the non-passive capture listener is only live while
+  // the popover is visible. Effects run post-commit so the portal content
+  // ref is already populated when the effect attaches — no timing race.
   useEffect(() => {
+    if (!open) return;
     const handler = (e: WheelEvent) => {
       const popover = contentRef.current;
       if (!popover) return;
@@ -79,7 +80,7 @@ export function MultiCombobox({
     };
     window.addEventListener("wheel", handler, { capture: true, passive: false });
     return () => window.removeEventListener("wheel", handler, { capture: true });
-  }, []);
+  }, [open]);
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();

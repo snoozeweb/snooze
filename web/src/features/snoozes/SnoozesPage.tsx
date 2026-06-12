@@ -190,7 +190,25 @@ export function SnoozesPage() {
           leadingIcon="rotate-cw"
           onClick={() => {
             void (async () => {
-              for (const r of rows) await runRetroApply(r);
+              const results = await Promise.allSettled(
+                rows.map(async (r) => {
+                  if (!r.uid) throw new Error("no uid");
+                  return apiClient<RetroApplyResponse>("POST", `/snooze/${r.uid}/retro_apply`);
+                }),
+              );
+              const ok = results.filter((r) => r.status === "fulfilled").length;
+              const failed = results.length - ok;
+              if (failed === 0) {
+                toast.success(`Retro-applied ${ok} snooze${ok === 1 ? "" : "s"}`);
+              } else if (ok === 0) {
+                toast.error(
+                  `Retro-apply failed for all ${failed} snooze${failed === 1 ? "" : "s"}`,
+                );
+              } else {
+                toast.error(`Retro-apply: ${ok} succeeded, ${failed} failed`);
+              }
+              void qc.invalidateQueries({ queryKey: Snoozes.queryKey.all });
+              void qc.invalidateQueries({ queryKey: Records.queryKey.all });
             })();
           }}
         >
@@ -206,7 +224,7 @@ export function SnoozesPage() {
         </Button>
       </>
     ),
-    [confirmDelete, runRetroApply],
+    [confirmDelete, qc],
   );
 
   // Toolbar header + actions: now rendered next to the SearchBar via the
