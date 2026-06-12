@@ -1,50 +1,33 @@
-import { useCallback, useMemo, useState } from "react";
-import { useNavigate, useSearch } from "@tanstack/react-router";
+import { useMemo, useState } from "react";
+import { useSearch } from "@tanstack/react-router";
 import { Button } from "@/shared/ui/Button";
 import { DataTable } from "@/shared/ui/DataTable";
-import type { ContextMenuItem } from "@/shared/ui/DataTableContextMenu";
 import { EmptyState } from "@/shared/ui/EmptyState";
 import { RowDetailPanel } from "@/shared/ui/RowDetailPanel";
 import { TabList, TabPanel, TabTrigger, Tabs } from "@/shared/ui/Tabs";
 import { useTableSearch } from "@/shared/hooks/useTableSearch";
+import { useResourceListPage, type BaseListSearch } from "@/shared/hooks/useResourceListPage";
 import { encodeConditionQ } from "@/lib/condition/serialize";
 import type { Condition } from "@/lib/condition/types";
-import {
-  buildResourceContextMenu,
-  ConfirmDeleteDialog,
-  useConfirmDelete,
-} from "@/shared/ui/resourceContextMenu";
+import { ConfirmDeleteDialog } from "@/shared/ui/resourceContextMenu";
 import { KVs } from "./api";
 import { KVEditor } from "./KVEditor";
 import { kvColumns } from "./columns";
 import type { KV } from "./types";
 import styles from "./KVPage.module.css";
 
-type KVSearch = {
-  uid?: string | undefined;
-  page?: number;
-  orderby?: string;
-  asc?: boolean;
+type KVSearch = BaseListSearch & {
   /** Active dictionary tab. Undefined / "" means the "All" tab. The backend
    *  rejects an empty dict, so "" is a safe sentinel that can never collide
    *  with a real dictionary name. */
   dict?: string | undefined;
 };
 
-// TanStack Router's navigate types are locked to the registered route tree at
-// build time. Casting through unknown avoids type errors when the route is
-// locally constructed in tests and still works when fully registered.
-type NavigateFn = (opts: {
-  to: string;
-  search: (prev: KVSearch | undefined) => KVSearch;
-}) => Promise<void>;
-
 const PAGE_SIZE = 50;
 
 export function KVPage() {
   // useSearch with strict:false returns the validated search params; cast for local type.
   const search = useSearch({ strict: false }) as unknown as KVSearch;
-  const navigate = useNavigate();
 
   const page = search.page ?? 1;
   const orderby = search.orderby ?? "key";
@@ -53,24 +36,19 @@ export function KVPage() {
   const activeDict = search.dict ?? "";
   const [creating, setCreating] = useState(false);
 
-  const updateSearch = useCallback(
-    (next: KVSearch) => {
-      void (navigate as unknown as NavigateFn)({
-        to: "/web/admin/kv",
-        search: (prev: KVSearch | undefined) => {
-          const merged: Record<string, unknown> = { ...(prev ?? {}), ...next };
-          // exactOptionalPropertyTypes: drop keys explicitly set to undefined
-          // rather than carrying them through (e.g. closing the detail panel
-          // or returning to the "All" tab).
-          for (const key of Object.keys(merged)) {
-            if (merged[key] === undefined) delete merged[key];
-          }
-          return merged as KVSearch;
-        },
-      });
-    },
-    [navigate],
-  );
+  const remove = KVs.useRemove();
+  const {
+    updateSearch,
+    selectedKeys,
+    setSelectedKeys,
+    confirmDelete,
+    contextMenuItems,
+    bulkActions,
+  } = useResourceListPage<KV, KVSearch>({
+    to: "/web/admin/kv",
+    remove,
+    noun: "key-value",
+  });
 
   // Discover every dictionary so we can show one tab per dict. This is a
   // separate, unbounded list (no ?q, no pagination) because the main list is
@@ -126,37 +104,6 @@ export function KVPage() {
     asc,
     ...(q ? { q } : {}),
   });
-  const remove = KVs.useRemove();
-  const [selectedKeys, setSelectedKeys] = useState<Set<string>>(new Set());
-  const confirmDelete = useConfirmDelete<KV>({
-    onDelete: (uid) => remove.mutateAsync(uid),
-    noun: "key-value",
-    onAfter: () => setSelectedKeys(new Set()),
-  });
-  const contextMenuItems = useCallback(
-    (row: KV): ContextMenuItem[] =>
-      buildResourceContextMenu(row, {
-        onOpen: (r) => {
-          if (r.uid) updateSearch({ uid: r.uid });
-        },
-        onDelete: (uid) => remove.mutateAsync(uid),
-        requestDelete: (r) => confirmDelete.request([r]),
-      }),
-    [updateSearch, remove, confirmDelete],
-  );
-  const bulkActions = useCallback(
-    (rows: KV[]) => (
-      <Button
-        size="sm"
-        variant="danger"
-        leadingIcon="trash"
-        onClick={() => confirmDelete.request(rows)}
-      >
-        Delete ({rows.length})
-      </Button>
-    ),
-    [confirmDelete],
-  );
 
   const table = (
     <DataTable<KV>

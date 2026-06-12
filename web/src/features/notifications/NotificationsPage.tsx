@@ -1,17 +1,13 @@
-import { useCallback, useMemo, useState } from "react";
-import { useNavigate, useSearch } from "@tanstack/react-router";
+import { useMemo, useState } from "react";
+import { useSearch } from "@tanstack/react-router";
 import { Button } from "@/shared/ui/Button";
 import { DataTable } from "@/shared/ui/DataTable";
-import type { ContextMenuItem } from "@/shared/ui/DataTableContextMenu";
 import { RowDetailPanel } from "@/shared/ui/RowDetailPanel";
 import { EmptyState } from "@/shared/ui/EmptyState";
 import { TabList, TabPanel, TabTrigger, Tabs } from "@/shared/ui/Tabs";
 import { useTableSearch } from "@/shared/hooks/useTableSearch";
-import {
-  buildResourceContextMenu,
-  ConfirmDeleteDialog,
-  useConfirmDelete,
-} from "@/shared/ui/resourceContextMenu";
+import { useResourceListPage, type BaseListSearch } from "@/shared/hooks/useResourceListPage";
+import { ConfirmDeleteDialog } from "@/shared/ui/resourceContextMenu";
 import { ActionEditor } from "./ActionEditor";
 import { Actions, Notifications } from "./api";
 import { actionColumns, notificationColumns, notificationRowDisabled } from "./columns";
@@ -19,28 +15,15 @@ import { NotificationEditor } from "./NotificationEditor";
 import type { Action, Notification } from "./types";
 import styles from "./NotificationsPage.module.css";
 
-type PageSearch = {
+type PageSearch = BaseListSearch & {
   tab?: "notifications" | "actions";
-  uid?: string | undefined;
-  page?: number;
-  orderby?: string;
-  asc?: boolean;
 };
-
-// TanStack Router's navigate types are locked to the registered route tree at
-// build time. Casting through unknown avoids type errors when the route is
-// locally constructed in tests and still works when fully registered.
-type NavigateFn = (opts: {
-  to: string;
-  search: (prev: PageSearch | undefined) => PageSearch;
-}) => Promise<void>;
 
 const PAGE_SIZE = 50;
 
 export function NotificationsPage() {
   // useSearch with strict:false returns the validated search params; cast for local type.
   const search = useSearch({ strict: false }) as unknown as PageSearch;
-  const navigate = useNavigate();
 
   const tab = search.tab ?? "notifications";
   const page = search.page ?? 1;
@@ -49,23 +32,22 @@ export function NotificationsPage() {
   const detailUid = search.uid;
   const [creating, setCreating] = useState(false);
 
-  const updateSearch = useCallback(
-    (next: PageSearch) => {
-      void (navigate as unknown as NavigateFn)({
-        to: "/web/notifications",
-        search: (prev: PageSearch | undefined) => {
-          const merged = { ...(prev ?? {}), ...next };
-          // exactOptionalPropertyTypes: remove keys set to undefined rather than keeping them
-          if (merged.uid === undefined) {
-            const { uid: _uid, ...rest } = merged;
-            return rest as PageSearch;
-          }
-          return merged as PageSearch;
-        },
-      });
-    },
-    [navigate],
-  );
+  // Each tab is its own resource with its own selection + delete state, so we
+  // wire the shared scaffolding once per resource. Both share the page's URL,
+  // so either `updateSearch` is interchangeable — we use the notification one.
+  const removeNotification = Notifications.useRemove();
+  const removeAction = Actions.useRemove();
+  const notif = useResourceListPage<Notification, PageSearch>({
+    to: "/web/notifications",
+    remove: removeNotification,
+    noun: "notification",
+  });
+  const action = useResourceListPage<Action, PageSearch>({
+    to: "/web/notifications",
+    remove: removeAction,
+    noun: "action",
+  });
+  const updateSearch = notif.updateSearch;
 
   // Each tab carries its own search state. Switching tabs preserves the
   // text in whichever tab the user typed in, but the active list endpoint
@@ -102,81 +84,16 @@ export function NotificationsPage() {
 
   const list = tab === "notifications" ? notifList : actionList;
 
-  const removeNotification = Notifications.useRemove();
-  const removeAction = Actions.useRemove();
-  const [notifSelected, setNotifSelected] = useState<Set<string>>(new Set());
-  const [actionSelected, setActionSelected] = useState<Set<string>>(new Set());
-
-  const confirmDeleteNotif = useConfirmDelete<Notification>({
-    onDelete: (uid) => removeNotification.mutateAsync(uid),
-    noun: "notification",
-    onAfter: () => setNotifSelected(new Set()),
-  });
-  const confirmDeleteAction = useConfirmDelete<Action>({
-    onDelete: (uid) => removeAction.mutateAsync(uid),
-    noun: "action",
-    onAfter: () => setActionSelected(new Set()),
-  });
-
-  const notifMenu = useCallback(
-    (row: Notification): ContextMenuItem[] =>
-      buildResourceContextMenu(row, {
-        onOpen: (r) => {
-          if (r.uid) updateSearch({ uid: r.uid });
-        },
-        onDelete: (uid) => removeNotification.mutateAsync(uid),
-        requestDelete: (r) => confirmDeleteNotif.request([r]),
-      }),
-    [updateSearch, removeNotification, confirmDeleteNotif],
-  );
-  const actionMenu = useCallback(
-    (row: Action): ContextMenuItem[] =>
-      buildResourceContextMenu(row, {
-        onOpen: (r) => {
-          if (r.uid) updateSearch({ uid: r.uid });
-        },
-        onDelete: (uid) => removeAction.mutateAsync(uid),
-        requestDelete: (r) => confirmDeleteAction.request([r]),
-      }),
-    [updateSearch, removeAction, confirmDeleteAction],
-  );
-  const notifBulk = useCallback(
-    (rows: Notification[]) => (
-      <Button
-        size="sm"
-        variant="danger"
-        leadingIcon="trash"
-        onClick={() => confirmDeleteNotif.request(rows)}
-      >
-        Delete ({rows.length})
-      </Button>
-    ),
-    [confirmDeleteNotif],
-  );
-  const actionBulk = useCallback(
-    (rows: Action[]) => (
-      <Button
-        size="sm"
-        variant="danger"
-        leadingIcon="trash"
-        onClick={() => confirmDeleteAction.request(rows)}
-      >
-        Delete ({rows.length})
-      </Button>
-    ),
-    [confirmDeleteAction],
-  );
-
   // Tabbed header actions — bulk-action bar when rows are selected,
   // otherwise the count + "+ New" affordance. The active tab decides
   // which selection set drives the rendering.
   const activeNotifRows = useMemo(
-    () => (notifList.data?.data ?? []).filter((r) => notifSelected.has(r.uid ?? r.name)),
-    [notifList.data, notifSelected],
+    () => (notifList.data?.data ?? []).filter((r) => notif.selectedKeys.has(r.uid ?? r.name)),
+    [notifList.data, notif.selectedKeys],
   );
   const activeActionRows = useMemo(
-    () => (actionList.data?.data ?? []).filter((r) => actionSelected.has(r.uid ?? r.name)),
-    [actionList.data, actionSelected],
+    () => (actionList.data?.data ?? []).filter((r) => action.selectedKeys.has(r.uid ?? r.name)),
+    [actionList.data, action.selectedKeys],
   );
   const activeSelectedCount =
     tab === "notifications" ? activeNotifRows.length : activeActionRows.length;
@@ -189,9 +106,9 @@ export function NotificationsPage() {
   const toolbarActions =
     activeSelectedCount > 0 ? (
       tab === "notifications" ? (
-        notifBulk(activeNotifRows)
+        notif.bulkActions(activeNotifRows)
       ) : (
-        actionBulk(activeActionRows)
+        action.bulkActions(activeActionRows)
       )
     ) : (
       <Button size="sm" variant="primary" leadingIcon="plus" onClick={() => setCreating(true)}>
@@ -217,10 +134,10 @@ export function NotificationsPage() {
               rowKey={(r) => r.uid ?? r.name}
               rowDisabled={notificationRowDisabled}
               loading={notifList.isPending}
-              contextMenuItems={notifMenu}
+              contextMenuItems={notif.contextMenuItems}
               selectable
-              selectedKeys={notifSelected}
-              onSelectionChange={setNotifSelected}
+              selectedKeys={notif.selectedKeys}
+              onSelectionChange={notif.setSelectedKeys}
               search={notifSearch.searchProp}
               toolbarHeader={toolbarHeader}
               toolbar={toolbarActions}
@@ -274,10 +191,10 @@ export function NotificationsPage() {
               columns={actionColumns}
               rowKey={(r) => r.uid ?? r.name}
               loading={actionList.isPending}
-              contextMenuItems={actionMenu}
+              contextMenuItems={action.contextMenuItems}
               selectable
-              selectedKeys={actionSelected}
-              onSelectionChange={setActionSelected}
+              selectedKeys={action.selectedKeys}
+              onSelectionChange={action.setSelectedKeys}
               search={actionSearch.searchProp}
               toolbarHeader={toolbarHeader}
               toolbar={toolbarActions}
@@ -342,14 +259,14 @@ export function NotificationsPage() {
         <ActionEditor uid={undefined} onClose={() => setCreating(false)} />
       ) : null}
       <ConfirmDeleteDialog
-        state={confirmDeleteNotif.state}
-        onCancel={confirmDeleteNotif.cancel}
-        onConfirm={() => void confirmDeleteNotif.confirm()}
+        state={notif.confirmDelete.state}
+        onCancel={notif.confirmDelete.cancel}
+        onConfirm={() => void notif.confirmDelete.confirm()}
       />
       <ConfirmDeleteDialog
-        state={confirmDeleteAction.state}
-        onCancel={confirmDeleteAction.cancel}
-        onConfirm={() => void confirmDeleteAction.confirm()}
+        state={action.confirmDelete.state}
+        onCancel={action.confirmDelete.cancel}
+        onConfirm={() => void action.confirmDelete.confirm()}
       />
     </div>
   );

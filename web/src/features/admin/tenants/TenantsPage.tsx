@@ -1,16 +1,13 @@
 import { useCallback, useState } from "react";
-import { useNavigate, useSearch } from "@tanstack/react-router";
+import { useSearch } from "@tanstack/react-router";
 import { Button } from "@/shared/ui/Button";
 import { DataTable } from "@/shared/ui/DataTable";
 import { Dialog, DialogContent, DialogTitle, DialogBody, DialogFooter } from "@/shared/ui/Dialog";
 import type { ContextMenuItem } from "@/shared/ui/DataTableContextMenu";
 import { EmptyState } from "@/shared/ui/EmptyState";
 import { RowDetailPanel } from "@/shared/ui/RowDetailPanel";
-import {
-  buildResourceContextMenu,
-  ConfirmDeleteDialog,
-  useConfirmDelete,
-} from "@/shared/ui/resourceContextMenu";
+import { useResourceListPage, type BaseListSearch } from "@/shared/hooks/useResourceListPage";
+import { buildResourceContextMenu, ConfirmDeleteDialog } from "@/shared/ui/resourceContextMenu";
 import { toast } from "@/shared/ui/toast/useToast";
 import { ApiError } from "@/lib/api/client";
 import { Tenants } from "./api";
@@ -20,23 +17,12 @@ import { tenantColumns } from "./columns";
 import type { AdminCredential, Tenant } from "./types";
 import styles from "./TenantsPage.module.css";
 
-type TenantsSearch = {
-  uid?: string | undefined;
-  page?: number;
-  orderby?: string;
-  asc?: boolean;
-};
-
-type NavigateFn = (opts: {
-  to: string;
-  search: (prev: TenantsSearch | undefined) => TenantsSearch;
-}) => Promise<void>;
+type TenantsSearch = BaseListSearch;
 
 const PAGE_SIZE = 50;
 
 export function TenantsPage() {
   const search = useSearch({ strict: false }) as unknown as TenantsSearch;
-  const navigate = useNavigate();
 
   const page = search.page ?? 1;
   const orderby = search.orderby ?? "id";
@@ -44,38 +30,28 @@ export function TenantsPage() {
   const detailUid = search.uid;
   const [creating, setCreating] = useState(false);
 
-  const updateSearch = useCallback(
-    (next: TenantsSearch) => {
-      void (navigate as unknown as NavigateFn)({
-        to: "/web/admin/tenants",
-        search: (prev: TenantsSearch | undefined) => {
-          const merged = { ...(prev ?? {}), ...next };
-          if (merged.uid === undefined) {
-            const { uid: _uid, ...rest } = merged;
-            return rest as TenantsSearch;
-          }
-          return merged as TenantsSearch;
-        },
-      });
-    },
-    [navigate],
-  );
+  const remove = Tenants.useRemove();
+  const resetAdmin = Tenants.useResetAdmin();
+  const [revealed, setRevealed] = useState<AdminCredential | null>(null);
+  const [resetTarget, setResetTarget] = useState<Tenant | null>(null);
+
+  // Tenants key their rows on `id` (not `uid`). The shared hook handles the
+  // URL, selection set, and confirm-delete machine over `Tenant & { uid }`;
+  // the context menu + bulk actions stay inline so they can map id → uid.
+  const { updateSearch, selectedKeys, setSelectedKeys, confirmDelete } = useResourceListPage<
+    Tenant & { uid?: string },
+    TenantsSearch
+  >({
+    to: "/web/admin/tenants",
+    remove,
+    noun: "tenant",
+  });
 
   const list = Tenants.useList({
     offset: (page - 1) * PAGE_SIZE,
     limit: PAGE_SIZE,
     orderby,
     asc,
-  });
-  const remove = Tenants.useRemove();
-  const resetAdmin = Tenants.useResetAdmin();
-  const [revealed, setRevealed] = useState<AdminCredential | null>(null);
-  const [resetTarget, setResetTarget] = useState<Tenant | null>(null);
-  const [selectedKeys, setSelectedKeys] = useState<Set<string>>(new Set());
-  const confirmDelete = useConfirmDelete<Tenant & { uid?: string }>({
-    onDelete: (id) => remove.mutateAsync(id),
-    noun: "tenant",
-    onAfter: () => setSelectedKeys(new Set()),
   });
   const contextMenuItems = useCallback(
     (row: Tenant): ContextMenuItem[] =>

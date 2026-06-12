@@ -1,5 +1,5 @@
 import { useCallback, useMemo, useState } from "react";
-import { useNavigate, useSearch } from "@tanstack/react-router";
+import { useSearch } from "@tanstack/react-router";
 import { useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/shared/ui/Button";
 import { DataTable, type RowAction } from "@/shared/ui/DataTable";
@@ -9,11 +9,8 @@ import { RowDetailPanel } from "@/shared/ui/RowDetailPanel";
 import { TabList, TabPanel, TabTrigger, Tabs } from "@/shared/ui/Tabs";
 import { toast } from "@/shared/ui/toast/useToast";
 import { useTableSearch } from "@/shared/hooks/useTableSearch";
-import {
-  buildResourceContextMenu,
-  ConfirmDeleteDialog,
-  useConfirmDelete,
-} from "@/shared/ui/resourceContextMenu";
+import { useResourceListPage, type BaseListSearch } from "@/shared/hooks/useResourceListPage";
+import { ConfirmDeleteDialog } from "@/shared/ui/resourceContextMenu";
 import { api as apiClient, ApiError } from "@/lib/api/client";
 import { Records } from "@/features/alerts/api";
 import { Snoozes } from "./api";
@@ -30,21 +27,9 @@ type RetroApplyResponse = {
   snooze: string;
 };
 
-type SnoozesSearch = {
-  uid?: string | undefined;
-  page?: number;
-  orderby?: string;
-  asc?: boolean;
+type SnoozesSearch = BaseListSearch & {
   tab?: SnoozeState;
 };
-
-// TanStack Router's navigate types are locked to the registered route tree at
-// build time. Casting through unknown avoids type errors when the route is
-// locally constructed in tests and still works when fully registered.
-type NavigateFn = (opts: {
-  to: string;
-  search: (prev: SnoozesSearch | undefined) => SnoozesSearch;
-}) => Promise<void>;
 
 const PAGE_SIZE = 50;
 const TABS: { value: SnoozeState; label: string }[] = [
@@ -56,7 +41,6 @@ const TABS: { value: SnoozeState; label: string }[] = [
 export function SnoozesPage() {
   // useSearch with strict:false returns the validated search params; cast for local type.
   const search = useSearch({ strict: false }) as unknown as SnoozesSearch;
-  const navigate = useNavigate();
 
   const page = search.page ?? 1;
   const orderby = search.orderby ?? "name";
@@ -65,23 +49,45 @@ export function SnoozesPage() {
   const tab: SnoozeState = search.tab ?? "active";
   const [creating, setCreating] = useState(false);
 
-  const updateSearch = useCallback(
-    (next: SnoozesSearch) => {
-      void (navigate as unknown as NavigateFn)({
-        to: "/web/snoozes",
-        search: (prev: SnoozesSearch | undefined) => {
-          const merged = { ...(prev ?? {}), ...next };
-          // exactOptionalPropertyTypes: remove keys set to undefined rather than keeping them
-          if (merged.uid === undefined) {
-            const { uid: _uid, ...rest } = merged;
-            return rest as SnoozesSearch;
-          }
-          return merged as SnoozesSearch;
-        },
-      });
+  const remove = Snoozes.useRemove();
+  const qc = useQueryClient();
+
+  const runRetroApply = useCallback(
+    async (row: Snooze) => {
+      if (!row.uid) return;
+      try {
+        const res = await apiClient<RetroApplyResponse>("POST", `/snooze/${row.uid}/retro_apply`);
+        const verb = res.deleted ? "discarded" : "tagged";
+        toast.success(`${res.matched} alerts ${verb} by ${row.name}`);
+        void qc.invalidateQueries({ queryKey: Snoozes.queryKey.all });
+        void qc.invalidateQueries({ queryKey: Records.queryKey.all });
+      } catch (e) {
+        toast.error(e instanceof ApiError ? e.detail : "Retro-apply failed");
+      }
     },
-    [navigate],
+    [qc],
   );
+
+  // Inject a retro-apply item into the standard resource context menu.
+  const contextMenuExtras = useCallback(
+    (r: Snooze): ContextMenuItem[] => [
+      {
+        key: "retro-apply",
+        label: r.discard ? "Retro-apply (delete matches)" : "Retro-apply (tag matches)",
+        icon: "rotate-cw",
+        onSelect: () => void runRetroApply(r),
+      },
+    ],
+    [runRetroApply],
+  );
+
+  const { updateSearch, selectedKeys, setSelectedKeys, confirmDelete, contextMenuItems } =
+    useResourceListPage<Snooze, SnoozesSearch>({
+      to: "/web/snoozes",
+      remove,
+      noun: "snooze",
+      contextMenuExtras,
+    });
 
   const snoozeSearch = useTableSearch({
     collection: "snooze",
@@ -101,31 +107,6 @@ export function SnoozesPage() {
     orderby,
     asc,
     ...(snoozeSearch.q ? { q: snoozeSearch.q } : {}),
-  });
-  const remove = Snoozes.useRemove();
-  const qc = useQueryClient();
-  const [selectedKeys, setSelectedKeys] = useState<Set<string>>(new Set());
-
-  const runRetroApply = useCallback(
-    async (row: Snooze) => {
-      if (!row.uid) return;
-      try {
-        const res = await apiClient<RetroApplyResponse>("POST", `/snooze/${row.uid}/retro_apply`);
-        const verb = res.deleted ? "discarded" : "tagged";
-        toast.success(`${res.matched} alerts ${verb} by ${row.name}`);
-        void qc.invalidateQueries({ queryKey: Snoozes.queryKey.all });
-        void qc.invalidateQueries({ queryKey: Records.queryKey.all });
-      } catch (e) {
-        toast.error(e instanceof ApiError ? e.detail : "Retro-apply failed");
-      }
-    },
-    [qc],
-  );
-
-  const confirmDelete = useConfirmDelete<Snooze>({
-    onDelete: (uid) => remove.mutateAsync(uid),
-    noun: "snooze",
-    onAfter: () => setSelectedKeys(new Set()),
   });
 
   const allSnoozes = useMemo(() => list.data?.data ?? [], [list.data]);
@@ -159,26 +140,6 @@ export function SnoozesPage() {
       ];
     },
     [updateSearch, runRetroApply],
-  );
-
-  const contextMenuItems = useCallback(
-    (row: Snooze): ContextMenuItem[] =>
-      buildResourceContextMenu(row, {
-        onOpen: (r) => {
-          if (r.uid) updateSearch({ uid: r.uid });
-        },
-        onDelete: (uid) => remove.mutateAsync(uid),
-        requestDelete: (r) => confirmDelete.request([r]),
-        extras: (r) => [
-          {
-            key: "retro-apply",
-            label: r.discard ? "Retro-apply (delete matches)" : "Retro-apply (tag matches)",
-            icon: "rotate-cw",
-            onSelect: () => void runRetroApply(r),
-          },
-        ],
-      }),
-    [updateSearch, remove, confirmDelete, runRetroApply],
   );
 
   const bulkActions = useCallback(

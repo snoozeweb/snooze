@@ -1,43 +1,25 @@
-import { useCallback, useState } from "react";
-import { useNavigate, useSearch } from "@tanstack/react-router";
+import { useState } from "react";
+import { useSearch } from "@tanstack/react-router";
 import { Button } from "@/shared/ui/Button";
 import { DataTable } from "@/shared/ui/DataTable";
-import type { ContextMenuItem } from "@/shared/ui/DataTableContextMenu";
 import { EmptyState } from "@/shared/ui/EmptyState";
 import { RowDetailPanel } from "@/shared/ui/RowDetailPanel";
 import { useTableSearch } from "@/shared/hooks/useTableSearch";
-import {
-  buildResourceContextMenu,
-  ConfirmDeleteDialog,
-  useConfirmDelete,
-} from "@/shared/ui/resourceContextMenu";
+import { useResourceListPage, type BaseListSearch } from "@/shared/hooks/useResourceListPage";
+import { ConfirmDeleteDialog } from "@/shared/ui/resourceContextMenu";
 import { Environments } from "./api";
 import { EnvironmentEditor } from "./EnvironmentEditor";
 import { environmentColumns } from "./columns";
 import type { Environment } from "./types";
 import styles from "./EnvironmentsPage.module.css";
 
-type EnvironmentsSearch = {
-  uid?: string | undefined;
-  page?: number;
-  orderby?: string;
-  asc?: boolean;
-};
-
-// TanStack Router's navigate types are locked to the registered route tree at
-// build time. Casting through unknown avoids type errors when the route is
-// locally constructed in tests and still works when fully registered.
-type NavigateFn = (opts: {
-  to: string;
-  search: (prev: EnvironmentsSearch | undefined) => EnvironmentsSearch;
-}) => Promise<void>;
+type EnvironmentsSearch = BaseListSearch;
 
 const PAGE_SIZE = 50;
 
 export function EnvironmentsPage() {
   // useSearch with strict:false returns the validated search params; cast for local type.
   const search = useSearch({ strict: false }) as unknown as EnvironmentsSearch;
-  const navigate = useNavigate();
 
   const page = search.page ?? 1;
   const orderby = search.orderby ?? "name";
@@ -45,23 +27,19 @@ export function EnvironmentsPage() {
   const detailUid = search.uid;
   const [creating, setCreating] = useState(false);
 
-  const updateSearch = useCallback(
-    (next: EnvironmentsSearch) => {
-      void (navigate as unknown as NavigateFn)({
-        to: "/web/admin/environments",
-        search: (prev: EnvironmentsSearch | undefined) => {
-          const merged = { ...(prev ?? {}), ...next };
-          // exactOptionalPropertyTypes: remove keys set to undefined rather than keeping them
-          if (merged.uid === undefined) {
-            const { uid: _uid, ...rest } = merged;
-            return rest as EnvironmentsSearch;
-          }
-          return merged as EnvironmentsSearch;
-        },
-      });
-    },
-    [navigate],
-  );
+  const remove = Environments.useRemove();
+  const {
+    updateSearch,
+    selectedKeys,
+    setSelectedKeys,
+    confirmDelete,
+    contextMenuItems,
+    bulkActions,
+  } = useResourceListPage<Environment, EnvironmentsSearch>({
+    to: "/web/admin/environments",
+    remove,
+    noun: "environment",
+  });
 
   const envSearch = useTableSearch({
     collection: "environment",
@@ -78,37 +56,6 @@ export function EnvironmentsPage() {
     asc,
     ...(envSearch.q ? { q: envSearch.q } : {}),
   });
-  const remove = Environments.useRemove();
-  const [selectedKeys, setSelectedKeys] = useState<Set<string>>(new Set());
-  const confirmDelete = useConfirmDelete<Environment>({
-    onDelete: (uid) => remove.mutateAsync(uid),
-    noun: "environment",
-    onAfter: () => setSelectedKeys(new Set()),
-  });
-  const contextMenuItems = useCallback(
-    (row: Environment): ContextMenuItem[] =>
-      buildResourceContextMenu(row, {
-        onOpen: (r) => {
-          if (r.uid) updateSearch({ uid: r.uid });
-        },
-        onDelete: (uid) => remove.mutateAsync(uid),
-        requestDelete: (r) => confirmDelete.request([r]),
-      }),
-    [updateSearch, remove, confirmDelete],
-  );
-  const bulkActions = useCallback(
-    (rows: Environment[]) => (
-      <Button
-        size="sm"
-        variant="danger"
-        leadingIcon="trash"
-        onClick={() => confirmDelete.request(rows)}
-      >
-        Delete ({rows.length})
-      </Button>
-    ),
-    [confirmDelete],
-  );
 
   return (
     <div className={styles.page}>

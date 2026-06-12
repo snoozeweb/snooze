@@ -1,21 +1,17 @@
-import { useCallback, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { useNavigate, useSearch } from "@tanstack/react-router";
+import { useSearch } from "@tanstack/react-router";
 import { Button } from "@/shared/ui/Button";
 import { DataTable } from "@/shared/ui/DataTable";
-import type { ContextMenuItem } from "@/shared/ui/DataTableContextMenu";
 import { EmptyState } from "@/shared/ui/EmptyState";
 import { RowDetailPanel } from "@/shared/ui/RowDetailPanel";
 import { TabList, TabPanel, TabTrigger, Tabs } from "@/shared/ui/Tabs";
 import { useTableSearch } from "@/shared/hooks/useTableSearch";
+import { useResourceListPage, type BaseListSearch } from "@/shared/hooks/useResourceListPage";
+import { ConfirmDeleteDialog } from "@/shared/ui/resourceContextMenu";
 import { fetchLoginConfig } from "@/features/auth/api";
 import { encodeConditionQ } from "@/lib/condition/serialize";
 import type { Condition } from "@/lib/condition/types";
-import {
-  buildResourceContextMenu,
-  ConfirmDeleteDialog,
-  useConfirmDelete,
-} from "@/shared/ui/resourceContextMenu";
 import { Users } from "./api";
 import { Roles } from "@/features/admin/roles/api";
 import { UserEditor } from "./UserEditor";
@@ -27,28 +23,15 @@ import styles from "./UsersPage.module.css";
 // such as "microsoft"). It maps directly to the `method` filter value.
 type UserTab = string;
 
-type UsersSearch = {
-  uid?: string | undefined;
-  page?: number;
-  orderby?: string;
-  asc?: boolean;
+type UsersSearch = BaseListSearch & {
   tab?: UserTab;
 };
-
-// TanStack Router's navigate types are locked to the registered route tree at
-// build time. Casting through unknown avoids type errors when the route is
-// locally constructed in tests and still works when fully registered.
-type NavigateFn = (opts: {
-  to: string;
-  search: (prev: UsersSearch | undefined) => UsersSearch;
-}) => Promise<void>;
 
 const PAGE_SIZE = 50;
 
 export function UsersPage() {
   // useSearch with strict:false returns the validated search params; cast for local type.
   const search = useSearch({ strict: false }) as unknown as UsersSearch;
-  const navigate = useNavigate();
 
   const page = search.page ?? 1;
   const orderby = search.orderby ?? "name";
@@ -56,6 +39,20 @@ export function UsersPage() {
   const detailUid = search.uid;
   const tab: UserTab = search.tab ?? "all";
   const [creating, setCreating] = useState(false);
+
+  const remove = Users.useRemove();
+  const {
+    updateSearch,
+    selectedKeys,
+    setSelectedKeys,
+    confirmDelete,
+    contextMenuItems,
+    bulkActions,
+  } = useResourceListPage<User, UsersSearch>({
+    to: "/web/admin/users",
+    remove,
+    noun: "user",
+  });
 
   // Login backends — drives LDAP tab visibility. Anonymous backend has no
   // user records of its own so we never show a tab for it.
@@ -88,24 +85,6 @@ export function UsersPage() {
     return index;
   }, [rolesList.data]);
   const columns = useMemo(() => makeUserColumns(roleGroupIndex), [roleGroupIndex]);
-
-  const updateSearch = useCallback(
-    (next: UsersSearch) => {
-      void (navigate as unknown as NavigateFn)({
-        to: "/web/admin/users",
-        search: (prev: UsersSearch | undefined) => {
-          const merged = { ...(prev ?? {}), ...next };
-          // exactOptionalPropertyTypes: remove keys set to undefined rather than keeping them
-          if (merged.uid === undefined) {
-            const { uid: _uid, ...rest } = merged;
-            return rest as UsersSearch;
-          }
-          return merged as UsersSearch;
-        },
-      });
-    },
-    [navigate],
-  );
 
   const userSearch = useTableSearch({
     collection: "user",
@@ -144,37 +123,6 @@ export function UsersPage() {
     asc,
     ...(q ? { q } : {}),
   });
-  const remove = Users.useRemove();
-  const [selectedKeys, setSelectedKeys] = useState<Set<string>>(new Set());
-  const confirmDelete = useConfirmDelete<User>({
-    onDelete: (uid) => remove.mutateAsync(uid),
-    noun: "user",
-    onAfter: () => setSelectedKeys(new Set()),
-  });
-  const contextMenuItems = useCallback(
-    (row: User): ContextMenuItem[] =>
-      buildResourceContextMenu(row, {
-        onOpen: (r) => {
-          if (r.uid) updateSearch({ uid: r.uid });
-        },
-        onDelete: (uid) => remove.mutateAsync(uid),
-        requestDelete: (r) => confirmDelete.request([r]),
-      }),
-    [updateSearch, remove, confirmDelete],
-  );
-  const bulkActions = useCallback(
-    (rows: User[]) => (
-      <Button
-        size="sm"
-        variant="danger"
-        leadingIcon="trash"
-        onClick={() => confirmDelete.request(rows)}
-      >
-        Delete ({rows.length})
-      </Button>
-    ),
-    [confirmDelete],
-  );
 
   const selectedUserRows = useMemo(
     () => (list.data?.data ?? []).filter((r) => selectedKeys.has(r.uid ?? r.name)),
