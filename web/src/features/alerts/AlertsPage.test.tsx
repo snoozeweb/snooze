@@ -162,6 +162,13 @@ describe("AlertsPage", () => {
     await waitFor(() => expect(calls).toHaveLength(2));
     const types = (calls as Array<{ type: string }>).map((c) => c.type);
     expect(types.every((t) => t === "ack")).toBe(true);
+
+    // Bulk ack raises a count-bearing undo toast ("N alerts updated") that
+    // still carries the Undo affordance (re-opens every succeeded uid).
+    await waitFor(() => {
+      const toasts = toastStore.getSnapshot();
+      expect(toasts.some((t) => /2 alerts updated/i.test(t.description) && t.action)).toBe(true);
+    });
   });
 
   it("comment-only: requires a message and posts type=comment", async () => {

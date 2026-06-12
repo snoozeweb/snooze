@@ -36,14 +36,12 @@ test.describe("alerts list", () => {
     await expect(page.getByText("h1")).toBeVisible();
     await expect(page.getByText("h2")).toBeVisible();
 
-    // Severity filter is a <Select> with placeholder "Severity"
-    // SelectTrigger renders as a button
-    await page
-      .getByRole("combobox")
-      .filter({ hasText: /severity/i })
-      .click({ force: true });
-    // Select "Critical" from the dropdown
-    await page.getByRole("option", { name: /^critical$/i }).click({ force: true });
+    // The current Filters UI has no severity <Select>: narrowing is done
+    // through the search DSL. Type `severity = critical` into the SearchBar
+    // (aria-label "Search"); the Go parser turns it into a server-side ?q=
+    // EQUALS clause, so only the critical row survives.
+    const search = page.getByRole("textbox", { name: /^search$/i });
+    await search.fill("severity = critical");
 
     await expect(page.getByText("h2")).toBeVisible();
     await expect(page.getByText("h1")).toBeHidden();

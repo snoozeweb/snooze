@@ -587,8 +587,11 @@ export function AlertsPage() {
         const undoableUids =
           type === "ack" || type === "close" ? records.map((r) => r.uid ?? "").filter(Boolean) : [];
         if (undoableUids.length > 0) {
-          const verb = type === "ack" ? "Acknowledged" : "Closed";
-          toast.undo(`${verb} ${ok} alert${ok === 1 ? "" : "s"}`, () => {
+          // Keep the documented count-bearing copy ("N alerts updated") AND the
+          // undo affordance: the description states how many records changed,
+          // the Undo button re-opens every uid that succeeded (compensating
+          // events). esc/comment fall through to the plain success toast below.
+          toast.undo(`${ok} alert${ok === 1 ? "" : "s"} updated`, () => {
             void (async () => {
               const undoResults = await Promise.allSettled(
                 undoableUids.map((uid) =>
