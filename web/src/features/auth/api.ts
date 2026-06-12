@@ -81,9 +81,16 @@ export function parseBackends(raw: unknown): LoginBackend[] {
       if (KNOWN_PASSWORD.has(entry)) out.push({ name: entry, kind: "password" });
       continue;
     }
-    if (entry && typeof entry === "object" && typeof (entry as { name?: unknown }).name === "string") {
+    if (
+      entry &&
+      typeof entry === "object" &&
+      typeof (entry as { name?: unknown }).name === "string"
+    ) {
       const e = entry as { name: string; kind?: string; display_name?: string; icon?: string };
-      const b: LoginBackend = { name: e.name, kind: e.kind === "redirect" ? "redirect" : "password" };
+      const b: LoginBackend = {
+        name: e.name,
+        kind: e.kind === "redirect" ? "redirect" : "password",
+      };
       if (e.display_name) b.display_name = e.display_name;
       if (e.icon) b.icon = e.icon;
       out.push(b);
@@ -113,9 +120,13 @@ export type LoginConfig = { backends: LoginBackend[]; tenants: PublicTenant[] };
 // fetchLoginConfig fetches both the auth backends and the public tenant list
 // from GET /api/v1/login in a single call.
 export async function fetchLoginConfig(): Promise<LoginConfig> {
-  const r = await api<{ data?: { backends?: unknown; tenants?: PublicTenant[] } }>("GET", "/login", {
-    skipAuthHandling: true,
-  });
+  const r = await api<{ data?: { backends?: unknown; tenants?: PublicTenant[] } }>(
+    "GET",
+    "/login",
+    {
+      skipAuthHandling: true,
+    },
+  );
   const backends = parseBackends(r.data?.backends);
   const tenants = (r.data?.tenants ?? []).filter(
     (t): t is PublicTenant => !!t && typeof t.id === "string",

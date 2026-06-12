@@ -20,7 +20,11 @@ describe("parseBackends", () => {
       { name: "microsoft", kind: "redirect", display_name: "Microsoft 365", icon: "microsoft" },
     ]);
     expect(out).toHaveLength(2);
-    expect(out[1]).toMatchObject({ name: "microsoft", kind: "redirect", display_name: "Microsoft 365" });
+    expect(out[1]).toMatchObject({
+      name: "microsoft",
+      kind: "redirect",
+      display_name: "Microsoft 365",
+    });
   });
 
   it("tolerates the legacy string shape", () => {
