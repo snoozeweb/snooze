@@ -12,6 +12,12 @@
   max-height: 320px;
   white-space: pre;
 }
+.row {
+  /* Skip layout/paint for offscreen rows in huge diffs. The intrinsic
+     size matches one line: --text-xs (12px) * line-height 1.5 = 18px. */
+  content-visibility: auto;
+  contain-intrinsic-size: 0 18px;
+}
 .add {
   color: var(--severity-ok);
 }

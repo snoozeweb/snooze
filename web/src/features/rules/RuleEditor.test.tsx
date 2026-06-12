@@ -9,6 +9,11 @@ import { TooltipProvider } from "@/shared/ui/Tooltip";
 import { ToastProvider, Toaster } from "@/shared/ui/Toast";
 import { RuleEditor } from "./RuleEditor";
 
+// Spy on the (expensive) deep-sort + YAML stringify so we can assert the
+// diff section never runs it while collapsed — the crux of the perf fix.
+const yamlSpy = vi.hoisted(() => vi.fn((obj: unknown) => JSON.stringify(obj)));
+vi.mock("@/lib/yaml", () => ({ stableYaml: yamlSpy }));
+
 // Radix UI's BubbleInput (used by Select) calls ResizeObserver in jsdom.
 beforeAll(() => {
   if (typeof window !== "undefined" && !window.ResizeObserver) {
@@ -153,6 +158,41 @@ describe("RuleEditor", () => {
       </Wrapper>,
     );
     expect(await screen.findByRole("button", { name: /^diff/i })).toBeInTheDocument();
+  });
+
+  it("does not run stableYaml while typing in Name with the diff collapsed", async () => {
+    mswServer.use(
+      http.get("/api/v1/rule/rl1", () =>
+        HttpResponse.json({
+          uid: "rl1",
+          name: "Old name",
+          enabled: true,
+          condition: { type: "ALWAYS_TRUE" },
+        }),
+      ),
+      http.get("/api/v1/record", () =>
+        HttpResponse.json({
+          data: [],
+          meta: { count: 0, limit: 50, offset: 0, total: 0 },
+        }),
+      ),
+    );
+    const Wrapper = wrap();
+    const user = userEvent.setup();
+    render(
+      <Wrapper>
+        <RuleEditor plugin="rule" uid="rl1" onClose={() => undefined} />
+      </Wrapper>,
+    );
+    const nameInput = await screen.findByDisplayValue("Old name");
+    yamlSpy.mockClear();
+    // Diff is collapsed by default; typing the Name must not recompute YAML.
+    await user.type(nameInput, " edited");
+    expect(yamlSpy).not.toHaveBeenCalled();
+    // Expanding the diff computes both sides (old + new) exactly once.
+    await user.click(screen.getByRole("button", { name: /^diff/i }));
+    await waitFor(() => expect(yamlSpy.mock.calls.length).toBeGreaterThan(0));
+    expect(screen.getByLabelText(/^Diff$/)).toBeInTheDocument();
   });
 
   it("hides the Diff section when creating", () => {

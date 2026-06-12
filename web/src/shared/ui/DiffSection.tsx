@@ -11,8 +11,14 @@ export type DiffSectionProps = {
 
 export function DiffSection({ original, current }: DiffSectionProps) {
   const [open, setOpen] = useState(false);
-  const oldText = useMemo(() => (original === undefined ? "" : stableYaml(original)), [original]);
-  const newText = useMemo(() => stableYaml(current), [current]);
+  // stableYaml deep-sorts then YAML-stringifies the whole object; only pay
+  // for it while the section is expanded. Collapsed = no work at all, even
+  // as `current` changes identity on every keystroke upstream.
+  const oldText = useMemo(
+    () => (open && original !== undefined ? stableYaml(original) : ""),
+    [open, original],
+  );
+  const newText = useMemo(() => (open ? stableYaml(current) : ""), [open, current]);
   if (original === undefined) return null;
   return (
     <div className={styles.wrap}>

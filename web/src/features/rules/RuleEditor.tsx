@@ -1,5 +1,11 @@
-import { useEffect, useState } from "react";
-import { useForm } from "react-hook-form";
+import { useEffect, useMemo, useState } from "react";
+import {
+  useForm,
+  useFormState,
+  useWatch,
+  type Control,
+  type UseFormRegister,
+} from "react-hook-form";
 import { Button } from "@/shared/ui/Button";
 import { ConditionPreview } from "@/shared/ui/ConditionPreview";
 import { Drawer, DrawerBody, DrawerContent, DrawerFooter, DrawerTitle } from "@/shared/ui/Drawer";
@@ -79,7 +85,7 @@ export function RuleEditor({ plugin, uid, onClose, insertion }: RuleEditorProps)
   const create = resource.useCreate();
   const update = resource.useUpdate();
 
-  const { register, handleSubmit, reset, watch, setValue, formState } = useForm<FormShape>({
+  const { register, handleSubmit, reset, control, setValue } = useForm<FormShape>({
     defaultValues: EMPTY_FORM,
   });
 
@@ -173,26 +179,20 @@ export function RuleEditor({ plugin, uid, onClose, insertion }: RuleEditorProps)
     }
   }
 
-  const condition = watch("condition");
-  const modifications = watch("modifications");
-  const enabled = watch("enabled");
-  const fields = watch("fields");
-  const watchFields = watch("watch");
-  const throttleDefault = watch("throttleDefault");
-  const throttleOverrides = watch("throttleOverrides");
+  // Scoped subscriptions: each useWatch re-renders only this component when
+  // its field changes. Name/comment are intentionally NOT watched here —
+  // they're uncontrolled `register` inputs, so typing in them must not
+  // re-render the drawer (and thus ConditionEditor / ModificationList / the
+  // diff). The Name field owns its own invalid state in a child below.
+  const condition = useWatch({ control, name: "condition" });
+  const modifications = useWatch({ control, name: "modifications" });
+  const enabled = useWatch({ control, name: "enabled" });
+  const fields = useWatch({ control, name: "fields" });
+  const watchFields = useWatch({ control, name: "watch" });
+  const throttleDefault = useWatch({ control, name: "throttleDefault" });
+  const throttleOverrides = useWatch({ control, name: "throttleOverrides" });
   const isAggregate = plugin === "aggregaterule";
-  const nameInvalid = formState.isSubmitted && !watch("name").trim();
   const labelPlugin = plugin === "rule" ? "rule" : "aggregate rule";
-
-  // The Diff section compares against the server payload, so the projected
-  // value must use the same wire shape (positional modifications).
-  const projected: Rule = {
-    name: watch("name"),
-    ...(watch("comment") ? { comment: watch("comment") } : {}),
-    enabled: enabled,
-    condition: condition,
-    ...(modifications.length > 0 ? { modifications: modificationsToWire(modifications) } : {}),
-  };
 
   return (
     <Drawer
@@ -243,12 +243,7 @@ export function RuleEditor({ plugin, uid, onClose, insertion }: RuleEditorProps)
                   <label className={styles.label} htmlFor="rule-name">
                     Name
                   </label>
-                  <Input
-                    id="rule-name"
-                    {...register("name")}
-                    invalid={nameInvalid}
-                    placeholder="e.g. tag-prod-hosts"
-                  />
+                  <RuleNameField control={control} register={register} />
                 </div>
               </section>
               <section className={styles.section}>
@@ -394,7 +389,7 @@ export function RuleEditor({ plugin, uid, onClose, insertion }: RuleEditorProps)
         </DrawerBody>
         <DrawerFooter>
           <div style={{ flex: 1 }}>
-            <DiffSection original={isCreate ? undefined : existing.data} current={projected} />
+            <RuleDiff control={control} original={isCreate ? undefined : existing.data} />
           </div>
           <Button variant="ghost" onClick={onClose}>
             Cancel
@@ -412,4 +407,53 @@ export function RuleEditor({ plugin, uid, onClose, insertion }: RuleEditorProps)
       </DrawerContent>
     </Drawer>
   );
+}
+
+/** Name input scoped to its own subscriptions. Typing here re-renders only
+ *  this component (and the invalid border after a failed submit), never the
+ *  whole drawer — `name` is otherwise read only at submit time. */
+function RuleNameField({
+  control,
+  register,
+}: {
+  control: Control<FormShape>;
+  register: UseFormRegister<FormShape>;
+}) {
+  const name = useWatch({ control, name: "name" });
+  const { isSubmitted } = useFormState({ control });
+  const invalid = isSubmitted && !name.trim();
+  return (
+    <Input
+      id="rule-name"
+      {...register("name")}
+      invalid={invalid}
+      placeholder="e.g. tag-prod-hosts"
+    />
+  );
+}
+
+/** Diff scoped to its own subscriptions. Building `projected` here (instead
+ *  of in the parent) keeps name/comment keystrokes from re-rendering
+ *  ConditionEditor / ConditionPreview / ModificationList. The projected
+ *  object is memoized so DiffSection's `current` only changes identity when
+ *  a field that actually feeds the wire payload changes. */
+function RuleDiff({ control, original }: { control: Control<FormShape>; original: unknown }) {
+  const name = useWatch({ control, name: "name" });
+  const comment = useWatch({ control, name: "comment" });
+  const enabled = useWatch({ control, name: "enabled" });
+  const condition = useWatch({ control, name: "condition" });
+  const modifications = useWatch({ control, name: "modifications" });
+  // The Diff section compares against the server payload, so the projected
+  // value must use the same wire shape (positional modifications).
+  const projected = useMemo<Rule>(
+    () => ({
+      name,
+      ...(comment ? { comment } : {}),
+      enabled,
+      condition,
+      ...(modifications.length > 0 ? { modifications: modificationsToWire(modifications) } : {}),
+    }),
+    [name, comment, enabled, condition, modifications],
+  );
+  return <DiffSection original={original} current={projected} />;
 }
