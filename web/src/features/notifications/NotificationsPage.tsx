@@ -62,6 +62,9 @@ export function NotificationsPage() {
   const actionSearch = useTableSearch({
     collection: "action",
     placeholder: "action.selected = mail",
+    // Distinct URL key so the Notifications-tab and Actions-tab queries don't
+    // collide in the address bar (both bars persist independently).
+    paramKey: "actionSearch",
     onFilterChange: () => {
       if (page !== 1) updateSearch({ page: 1 });
     },

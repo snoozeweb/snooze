@@ -34,6 +34,15 @@ export type SearchBarChange = {
 export type SearchBarProps = {
   value: string;
   onChange: (next: SearchBarChange) => void;
+  /**
+   * Fired when the user *commits* the query — pressing Enter with no
+   * autocomplete suggestion highlighted, or clearing the field. The text is
+   * only forwarded once it parses cleanly (an invalid query keeps its inline
+   * error and is not committed); clearing always commits the empty string.
+   * Parents typically persist this to the URL so the search is shareable and
+   * survives a reload, without paying the per-keystroke navigate() cost.
+   */
+  onSubmit?: (text: string) => void;
   /** Backing collection name (drives the field autocomplete catalog). */
   collection?: string;
   placeholder?: string;
@@ -69,10 +78,18 @@ type ParseResponse = {
  * carrying the previously-parsed condition while the user is mid-type, and a
  * fresh condition (or null on empty) once a parse resolves. Parent stores
  * that condition; the SearchBar owns the parser handshake.
+ *
+ * `onSubmit` (optional) is the *commit* signal, separate from the typing
+ * cadence: it fires when the user presses Enter without an autocomplete
+ * suggestion highlighted (or clears the field), and only carries text that
+ * parsed cleanly. Parents use it to persist the query to the URL on a discrete
+ * action, side-stepping the dropped-keystroke problem of per-keystroke
+ * navigation.
  */
 export function SearchBar({
   value,
   onChange,
+  onSubmit,
   collection = "record",
   placeholder = "host = … AND severity = …",
   className,
@@ -107,6 +124,12 @@ export function SearchBar({
   useEffect(() => {
     onChangeRef.current = onChange;
   });
+  // Same latest-ref treatment for onSubmit so the Enter/clear commit path
+  // always calls the current handler without re-creating callbacks per render.
+  const onSubmitRef = useRef(onSubmit);
+  useEffect(() => {
+    onSubmitRef.current = onSubmit;
+  });
 
   // Auto-close the popover after a brief idle period so the suggestions
   // don't permanently cover the rows the user is searching. ArrowDown /
@@ -137,6 +160,45 @@ export function SearchBar({
     staleTime: 5 * 60_000,
   });
 
+  // Parse `text` against the server and emit the result through onChange.
+  // Shared by the debounced typing path and the Enter/clear commit path, so
+  // there is exactly one place that talks to /condition/parse. Returns the
+  // parse error (or `null` when the query is valid or empty) so the caller can
+  // decide whether to commit. Aborted requests resolve to `null` and emit
+  // nothing — the `signal.aborted` guards short-circuit any callback that
+  // slips through after cleanup, so a slow parse for an older draft can't land
+  // stale text/condition (symptom: "characters get deleted when typing fast").
+  const runParse = useCallback(
+    async (text: string, signal: AbortSignal): Promise<ParseError | null> => {
+      if (!text.trim()) {
+        setError(null);
+        onChangeRef.current({ text, condition: null, error: null });
+        return null;
+      }
+      try {
+        const res = await api<ParseResponse>("POST", "/condition/parse", {
+          body: { query: text },
+          signal,
+        });
+        if (signal.aborted) return null;
+        const err = res.error ?? null;
+        setError(err);
+        onChangeRef.current({ text, condition: res.condition ?? null, error: err });
+        return err;
+      } catch (e: unknown) {
+        if (signal.aborted) return null;
+        // A network failure should not blank the field — keep highlighting,
+        // surface the error inline.
+        const msg = e instanceof Error ? e.message : "parse failed";
+        const err: ParseError = { pos: 0, message: msg };
+        setError(err);
+        onChangeRef.current({ text, condition: null, error: err });
+        return err;
+      }
+    },
+    [],
+  );
+
   // Debounced server parse — fires on draft text change, not on cursor moves.
   //
   // Cadence contract: while the user types, the previously-parsed condition
@@ -145,12 +207,6 @@ export function SearchBar({
   // list mid-refinement. A new condition is emitted only when a parse
   // resolves — or immediately as `null` the moment the text is cleared to
   // empty.
-  //
-  // The request is aborted on cleanup (the client's api() forwards the
-  // AbortSignal to fetch), and an `aborted` guard short-circuits any callback
-  // that still slips through. Without this a slow parse for an older draft
-  // could resolve after the user typed more and call onChange with stale
-  // text/condition — symptom: "characters get deleted when typing fast".
   useEffect(() => {
     if (!draft.trim()) {
       // Empty query: emit null immediately (no debounce, no request) so the
@@ -160,37 +216,27 @@ export function SearchBar({
       return;
     }
     const controller = new AbortController();
-    let aborted = false;
     const handle = setTimeout(() => {
-      api<ParseResponse>("POST", "/condition/parse", {
-        body: { query: draft },
-        signal: controller.signal,
-      })
-        .then((res) => {
-          if (aborted) return;
-          setError(res.error ?? null);
-          onChangeRef.current({
-            text: draft,
-            condition: res.condition ?? null,
-            error: res.error ?? null,
-          });
-        })
-        .catch((e: unknown) => {
-          if (aborted) return;
-          // A network failure should not blank the field — keep highlighting,
-          // surface the error inline.
-          const msg = e instanceof Error ? e.message : "parse failed";
-          const err: ParseError = { pos: 0, message: msg };
-          setError(err);
-          onChangeRef.current({ text: draft, condition: null, error: err });
-        });
+      void runParse(draft, controller.signal);
     }, 250);
     return () => {
-      aborted = true;
       controller.abort();
       clearTimeout(handle);
     };
-  }, [draft, collection]);
+  }, [draft, runParse]);
+
+  // commit — the Enter / clear path. Forces an immediate parse (bypassing the
+  // 250ms typing debounce) and, only when it comes back clean, notifies the
+  // parent via onSubmit so it can persist the query (e.g. to the URL). An
+  // invalid query keeps its inline error and is not committed. Reading the
+  // live input value keeps this callback identity-stable across keystrokes.
+  const commit = useCallback(() => {
+    const text = inputRef.current?.value ?? "";
+    const controller = new AbortController();
+    void runParse(text, controller.signal).then((err) => {
+      if (err === null) onSubmitRef.current?.(text);
+    });
+  }, [runParse]);
 
   // Syntax-highlight tokens for the overlay. Re-runs only when the draft
   // changes (cheap; the lexer is O(n) and called once per keystroke).
@@ -259,6 +305,22 @@ export function SearchBar({
   }
 
   function handleKeyDown(e: React.KeyboardEvent<HTMLInputElement>): void {
+    if (e.key === "Enter") {
+      // With a suggestion highlighted, Enter accepts it (unchanged). Otherwise
+      // — popover closed, or open with nothing to pick — Enter commits the
+      // query to the parent (onSubmit), which is how the search lands in the
+      // URL. Always preventDefault so a stray Enter never submits a form.
+      e.preventDefault();
+      const pick = open ? suggestion.items[activeIndex] : undefined;
+      if (pick) {
+        handleSelect(pick);
+      } else {
+        setOpen(false);
+        cancelIdleClose();
+        commit();
+      }
+      return;
+    }
     if (!open && (e.key === "ArrowDown" || e.key === "ArrowUp")) {
       e.preventDefault();
       setOpen(true);
@@ -275,12 +337,6 @@ export function SearchBar({
       e.preventDefault();
       setActiveIndex((i) => Math.max(0, i - 1));
       cancelIdleClose();
-    } else if (e.key === "Enter") {
-      const pick = suggestion.items[activeIndex];
-      if (pick) {
-        e.preventDefault();
-        handleSelect(pick);
-      }
     } else if (e.key === "Tab" && suggestion.items.length > 0) {
       const pick = suggestion.items[activeIndex];
       if (pick) {
@@ -331,6 +387,9 @@ export function SearchBar({
     // null-condition emit, so we don't call onChange here directly.
     setDraft("");
     setOpen(false);
+    // Clearing is a commit-to-empty: forward it so any persisted query (e.g.
+    // the URL's ?search=) is dropped too, keeping the field and the URL aligned.
+    onSubmitRef.current?.("");
     queueMicrotask(() => inputRef.current?.focus());
   }, []);
 

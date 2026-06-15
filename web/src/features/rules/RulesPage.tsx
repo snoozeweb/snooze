@@ -90,6 +90,9 @@ export function RulesPage() {
   const aggregateSearch = useTableSearch({
     collection: "aggregaterule",
     placeholder: "fields CONTAINS host",
+    // Distinct URL key so the Rules-tab and Aggregates-tab queries don't
+    // collide in the address bar (both bars persist independently).
+    paramKey: "aggSearch",
     onFilterChange: () => {
       if (page !== 1) updateSearch({ page: 1 });
     },

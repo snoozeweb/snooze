@@ -38,21 +38,23 @@ type AlertsSearch = AlertFilters & {
   /** Comma-separated env UIDs in the URL (parsed/stringified in onChange). */
   env?: string;
   /**
-   * Initial SearchBar DSL text. Read once on mount to seed local state,
-   * never written back from typing (see the comment block below). Used by
-   * deep-links such as the host hyperlink in Teams alert cards:
-   * `/web/alerts?search=hash%20%3D%20<hash>`.
+   * SearchBar DSL text. Seeds local state on mount and re-seeds on external
+   * URL changes (browser nav, deep-links such as the host hyperlink in Teams
+   * alert cards: `/web/alerts?search=hash%20%3D%20<hash>`). It is *not* written
+   * per-keystroke (see the note below) — only on a discrete commit (Enter /
+   * clear), handled by `handleSearchSubmit`.
    */
   search?: string;
 };
 
-// Note: the SearchBar's text used to live here as a URL param, but
-// TanStack Router's navigate() is async — that one-render lag let React
-// snap the controlled input back to the stale prop value mid-typing, so
-// fast keystrokes were getting dropped. The other list pages (rules,
-// users, kv …) keep search text in local React state via useTableSearch
-// for the same reason. Tab + env stay URL-persisted because they don't
-// change on every keystroke.
+// Note: the SearchBar's text is NOT written to the URL on every keystroke.
+// TanStack Router's navigate() is async — that one-render lag let React snap
+// the controlled input back to the stale prop value mid-typing, so fast
+// keystrokes were getting dropped. Instead we commit on a discrete action:
+// pressing Enter (with no autocomplete pick) or clearing the field, via the
+// SearchBar's onSubmit. That's safe because the draft is stable at that point.
+// The other list pages (rules, users, kv …) still keep search text in local
+// React state via useTableSearch. Tab + env are URL-persisted the same way.
 
 const PAGE_SIZE = 50;
 
@@ -122,9 +124,10 @@ export function AlertsPage() {
   // Initial SearchBar text is read from `?search=` so deep-links (e.g. the
   // host hyperlink in a Teams alert card pointing at
   // `/web/alerts?search=hash%20%3D%20<hash>`) land with the right filter
-  // already applied. We only seed *from* URL → state; we never write the
-  // typed text back to the URL because navigate() is async and the round
-  // trip drops characters on fast typing (see the comment block above
+  // already applied. URL → state seeding happens here and in the effect below;
+  // state → URL happens only on a committed query (Enter / clear) via
+  // handleSearchSubmit, never on per-keystroke typing (navigate() is async and
+  // the round trip drops characters — see the comment block above
   // `AlertsSearch`).
   const [searchText, setSearchText] = useState<string>(() => search.search ?? "");
   // lastSeededRef captures the URL value last folded into local state so a
@@ -673,7 +676,12 @@ export function AlertsPage() {
   const clearAllFilters = useCallback(() => {
     setSearchText("");
     setSearchCondition(null);
-    updateSearch({ page: 1, tab: undefined, env: undefined } as unknown as Partial<AlertsSearch>);
+    updateSearch({
+      page: 1,
+      tab: undefined,
+      env: undefined,
+      search: undefined,
+    } as unknown as Partial<AlertsSearch>);
   }, [updateSearch]);
 
   // Stable function props for DataTable. Each is memoized so the row-level
@@ -695,6 +703,21 @@ export function AlertsPage() {
     },
     [page, updateSearch],
   );
+  // Commit-on-Enter (and clear): the SearchBar only fires this once the query
+  // parses cleanly, so we can safely fold the text into the URL as ?search=.
+  // This is the deliberate exception to "search text is never written back" —
+  // a discrete action, not per-keystroke, so navigate()'s async lag can't drop
+  // characters. An empty commit drops the key, keeping deep-links clean.
+  const handleSearchSubmit = useCallback(
+    (text: string) => {
+      const trimmed = text.trim();
+      updateSearch({
+        search: trimmed ? text : undefined,
+        page: 1,
+      } as unknown as Partial<AlertsSearch>);
+    },
+    [updateSearch],
+  );
   const handleSortChange = useCallback(
     (next: { sortBy: string; order: "asc" | "desc" }) =>
       updateSearch({ orderby: next.sortBy, asc: next.order === "asc", page: 1 }),
@@ -705,8 +728,13 @@ export function AlertsPage() {
     [updateSearch],
   );
   const searchProp = useMemo(
-    () => ({ value: searchText, onChange: handleSearchChange, collection: "record" }),
-    [searchText, handleSearchChange],
+    () => ({
+      value: searchText,
+      onChange: handleSearchChange,
+      onSubmit: handleSearchSubmit,
+      collection: "record",
+    }),
+    [searchText, handleSearchChange, handleSearchSubmit],
   );
   const sortOrder: "asc" | "desc" = asc ? "asc" : "desc";
   const serverSort = useMemo(

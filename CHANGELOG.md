@@ -29,6 +29,16 @@
   strip dropped the *Search* chip (the search box already displays the query and
   has its own clear button); the strip now appears only for tab / environment
   filters.
+- **Web — list-page search is now shareable via the URL.** Pressing Enter on a
+  search query (once it parses cleanly) writes it to the address bar as
+  `?search=…` alongside any other filters, so the filtered view can be
+  bookmarked, shared, and survives a reload; clearing the box drops the
+  parameter. This now applies to **every** list page (Alerts, Rules,
+  Notifications, Snoozes, Users, Roles, Environments, Widgets, Key-Value), not
+  just Alerts — the two tabbed pages (Rules, Notifications) keep an independent
+  query per tab (`?search=` + `?aggSearch=` / `?actionSearch=`). Typing is still
+  kept out of the URL per-keystroke — only the discrete Enter/clear commit
+  updates history, sidestepping the async-navigation dropped-character problem.
 
 ### Added (web)
 

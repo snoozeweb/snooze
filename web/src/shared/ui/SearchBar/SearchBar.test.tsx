@@ -9,6 +9,7 @@ import { SearchBar, type SearchBarChange } from "./SearchBar";
 
 function setup(initial = "") {
   const onChange = vi.fn<(c: SearchBarChange) => void>();
+  const onSubmit = vi.fn<(text: string) => void>();
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
 
   function Wrapper() {
@@ -21,12 +22,13 @@ function setup(initial = "") {
             setValue(c.text);
             onChange(c);
           }}
+          onSubmit={onSubmit}
         />
       </QueryClientProvider>
     );
   }
   render(<Wrapper />);
-  return { onChange, getInput: () => screen.getByRole("textbox") };
+  return { onChange, onSubmit, getInput: () => screen.getByRole("textbox") };
 }
 
 const DEFAULT_FIELDS_HANDLER = http.get("/api/v1/condition/fields", () =>
@@ -181,6 +183,75 @@ describe("SearchBar", () => {
         ),
       { timeout: 1500 },
     );
+  });
+
+  it("commits the typed query via onSubmit on Enter when it parses cleanly", async () => {
+    // The commit path: pressing Enter with no autocomplete suggestion
+    // highlighted forces an immediate parse and, on success, hands the text to
+    // onSubmit — that's how the search lands in the URL.
+    const user = userEvent.setup();
+    mswServer.use(
+      DEFAULT_FIELDS_HANDLER,
+      http.post("/api/v1/condition/parse", () =>
+        HttpResponse.json({ condition: { op: "=", field: "host", value: "srv-1" } }),
+      ),
+    );
+    const { onSubmit, getInput } = setup();
+    await user.type(getInput(), "host = srv-1");
+    // Close the autocomplete popover so Enter commits instead of picking a
+    // suggestion.
+    await user.keyboard("{Escape}");
+    await user.keyboard("{Enter}");
+    await waitFor(() => expect(onSubmit).toHaveBeenCalledWith("host = srv-1"), { timeout: 1500 });
+  });
+
+  it("does not commit an invalid query on Enter", async () => {
+    // An invalid query keeps its inline error and is NOT forwarded to onSubmit,
+    // so the URL never picks up an unparseable ?search=.
+    const user = userEvent.setup();
+    mswServer.use(
+      DEFAULT_FIELDS_HANDLER,
+      http.post("/api/v1/condition/parse", () =>
+        HttpResponse.json({ error: { pos: 7, token: "=", message: "expected literal" } }),
+      ),
+    );
+    const { onSubmit, getInput } = setup();
+    await user.type(getInput(), "host = ");
+    await user.keyboard("{Escape}");
+    await user.keyboard("{Enter}");
+    await waitFor(() => expect(screen.getByText(/expected literal/)).toBeInTheDocument(), {
+      timeout: 1500,
+    });
+    expect(onSubmit).not.toHaveBeenCalled();
+  });
+
+  it("commits an empty query via onSubmit when the field is cleared", async () => {
+    // Clearing is a commit-to-empty so any persisted ?search= is dropped too.
+    const user = userEvent.setup();
+    mswServer.use(
+      DEFAULT_FIELDS_HANDLER,
+      http.post("/api/v1/condition/parse", () =>
+        HttpResponse.json({ condition: { op: "SEARCH", value: "x" } }),
+      ),
+    );
+    const { onSubmit } = setup("host = srv-1");
+    // The clear button only renders while the field has text.
+    await user.click(screen.getByRole("button", { name: "Clear search" }));
+    await waitFor(() => expect(onSubmit).toHaveBeenCalledWith(""), { timeout: 1500 });
+  });
+
+  it("accepts the highlighted suggestion on Enter rather than committing", async () => {
+    // Enter still belongs to autocomplete when a suggestion is highlighted: it
+    // accepts the pick and must NOT commit.
+    const user = userEvent.setup();
+    mswServer.use(DEFAULT_FIELDS_HANDLER);
+    const { onSubmit, getInput } = setup();
+    await user.click(getInput());
+    await waitFor(() => expect(screen.getByRole("listbox")).toBeInTheDocument());
+    await user.keyboard("{Enter}");
+    // A field suggestion was inserted and nothing was committed.
+    await waitFor(() => expect((getInput() as HTMLInputElement).value.length).toBeGreaterThan(0));
+    expect(onSubmit).not.toHaveBeenCalled();
   });
 
   it("drops a stale parse response that arrives after the user has typed more", async () => {

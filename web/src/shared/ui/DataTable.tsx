@@ -82,6 +82,8 @@ export type DataTableProps<T> = {
   search?: {
     value: string;
     onChange: (next: { text: string; condition: ParsedCondition | null }) => void;
+    /** Committed on Enter / clear — pages persist this to the URL's ?search=. */
+    onSubmit?: (text: string) => void;
     /** Field-catalog collection (rule, snooze, user, …) for autocomplete. */
     collection?: string;
     placeholder?: string;
@@ -383,6 +385,7 @@ export function DataTable<T>({
               <SearchBar
                 value={search.value}
                 onChange={(c) => search.onChange({ text: c.text, condition: c.condition })}
+                {...(search.onSubmit ? { onSubmit: search.onSubmit } : {})}
                 {...(search.collection ? { collection: search.collection } : {})}
                 {...(search.placeholder ? { placeholder: search.placeholder } : {})}
               />

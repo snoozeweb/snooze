@@ -114,6 +114,7 @@ type UsersSearchParams = {
   page?: number;
   orderby?: string;
   asc?: boolean;
+  search?: string;
 };
 
 const usersRoute = createRoute({
@@ -142,6 +143,7 @@ const usersRoute = createRoute({
             ? false
             : undefined;
     if (asc !== undefined) out["asc"] = asc;
+    if (typeof raw["search"] === "string") out["search"] = raw["search"];
     return out as UsersSearchParams;
   },
 });
@@ -151,6 +153,7 @@ type RolesSearchParams = {
   page?: number;
   orderby?: string;
   asc?: boolean;
+  search?: string;
 };
 
 const rolesRoute = createRoute({
@@ -179,6 +182,7 @@ const rolesRoute = createRoute({
             ? false
             : undefined;
     if (asc !== undefined) out["asc"] = asc;
+    if (typeof raw["search"] === "string") out["search"] = raw["search"];
     return out as RolesSearchParams;
   },
 });
@@ -188,6 +192,7 @@ type EnvironmentsSearchParams = {
   page?: number;
   orderby?: string;
   asc?: boolean;
+  search?: string;
 };
 
 const environmentsRoute = createRoute({
@@ -219,6 +224,7 @@ const environmentsRoute = createRoute({
             ? false
             : undefined;
     if (asc !== undefined) out["asc"] = asc;
+    if (typeof raw["search"] === "string") out["search"] = raw["search"];
     return out as EnvironmentsSearchParams;
   },
 });
@@ -228,6 +234,7 @@ type WidgetsSearchParams = {
   page?: number;
   orderby?: string;
   asc?: boolean;
+  search?: string;
 };
 
 const widgetsRoute = createRoute({
@@ -259,6 +266,7 @@ const widgetsRoute = createRoute({
             ? false
             : undefined;
     if (asc !== undefined) out["asc"] = asc;
+    if (typeof raw["search"] === "string") out["search"] = raw["search"];
     return out as WidgetsSearchParams;
   },
 });
@@ -269,6 +277,7 @@ type KVSearchParams = {
   orderby?: string;
   asc?: boolean;
   dict?: string;
+  search?: string;
 };
 
 const kvRoute = createRoute({
@@ -298,6 +307,7 @@ const kvRoute = createRoute({
             : undefined;
     if (asc !== undefined) out["asc"] = asc;
     if (typeof raw["dict"] === "string") out["dict"] = raw["dict"];
+    if (typeof raw["search"] === "string") out["search"] = raw["search"];
     return out as KVSearchParams;
   },
 });
@@ -453,6 +463,7 @@ type SnoozesSearchParams = {
   page?: number;
   orderby?: string;
   asc?: boolean;
+  search?: string;
 };
 
 const snoozesRoute = createRoute({
@@ -481,6 +492,7 @@ const snoozesRoute = createRoute({
             ? false
             : undefined;
     if (asc !== undefined) out["asc"] = asc;
+    if (typeof raw["search"] === "string") out["search"] = raw["search"];
     return out as SnoozesSearchParams;
   },
 });
@@ -491,6 +503,10 @@ type NotificationsSearchParams = {
   page?: number;
   orderby?: string;
   asc?: boolean;
+  // Per-tab search queries: `search` for the Notifications tab, `actionSearch`
+  // for the Actions tab — distinct keys so they don't collide in the URL.
+  search?: string;
+  actionSearch?: string;
 };
 
 const notificationsRoute = createRoute({
@@ -524,6 +540,8 @@ const notificationsRoute = createRoute({
             ? false
             : undefined;
     if (asc !== undefined) out["asc"] = asc;
+    if (typeof raw["search"] === "string") out["search"] = raw["search"];
+    if (typeof raw["actionSearch"] === "string") out["actionSearch"] = raw["actionSearch"];
     return out as NotificationsSearchParams;
   },
 });
@@ -584,6 +602,10 @@ type RulesSearchParams = {
   page?: number;
   orderby?: string;
   asc?: boolean;
+  // Per-tab search queries: `search` for the Rules tab, `aggSearch` for the
+  // Aggregates tab — distinct keys so they don't collide in the URL.
+  search?: string;
+  aggSearch?: string;
 };
 
 const rulesRoute = createRoute({
@@ -614,6 +636,8 @@ const rulesRoute = createRoute({
             ? false
             : undefined;
     if (asc !== undefined) out["asc"] = asc;
+    if (typeof raw["search"] === "string") out["search"] = raw["search"];
+    if (typeof raw["aggSearch"] === "string") out["aggSearch"] = raw["aggSearch"];
     return out as RulesSearchParams;
   },
 });
