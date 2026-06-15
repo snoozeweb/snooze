@@ -28,15 +28,7 @@ export type ActiveFiltersProps = {
   onClearAll: () => void;
 };
 
-function Chip({
-  label,
-  value,
-  onRemove,
-}: {
-  label: string;
-  value: string;
-  onRemove: () => void;
-}) {
+function Chip({ label, value, onRemove }: { label: string; value: string; onRemove: () => void }) {
   return (
     <span className={styles.chip}>
       <span className={styles.chipLabel}>{label}</span>

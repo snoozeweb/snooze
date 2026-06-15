@@ -169,7 +169,9 @@ export function SettingsPage() {
           // the master toggle visible, hide the rest until it's enabled.
           const gate = GATED_GROUPS[g.key];
           const gateEnabled = gate
-            ? Boolean(byName[gate.toggle]?.value ?? catalogue?.[gate.toggle]?.default_value ?? false)
+            ? Boolean(
+                byName[gate.toggle]?.value ?? catalogue?.[gate.toggle]?.default_value ?? false,
+              )
             : true;
           return (
             <TabPanel key={g.key} value={g.key}>

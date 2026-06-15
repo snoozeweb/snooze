@@ -702,8 +702,7 @@ function RowActionsMenu({
   // isn't a sighted-only signal. Radix MenuTrigger is asChild → the IconButton
   // must stay its direct child, so the pill is an absolutely-positioned
   // sibling (pointer-events:none) anchored by the relative wrapper.
-  const triggerLabel =
-    showBadge && badge?.label ? `Row actions, ${badge.label}` : "Row actions";
+  const triggerLabel = showBadge && badge?.label ? `Row actions, ${badge.label}` : "Row actions";
   const menu = (
     <Menu>
       <MenuTrigger>
