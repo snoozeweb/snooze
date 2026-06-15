@@ -91,7 +91,7 @@ note "Triggering redeploy on $SERVICE_ID..."
 deploy_resp=$(curl -fsS -X POST \
   -H "Authorization: Bearer $RENDER_API_KEY" \
   -H "Content-Type: application/json" \
-  -d '{}' \
+  -d "{\"imageUrl\":\"docker.io/$IMAGE_REPO:$TAG\"}" \
   "$RENDER_API/services/$SERVICE_ID/deploys")
 deploy_id=$(printf '%s' "$deploy_resp" | python3 -c 'import sys,json; print(json.load(sys.stdin)["id"])')
 note "Deploy ID: $deploy_id"
