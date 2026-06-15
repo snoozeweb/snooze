@@ -4,7 +4,6 @@ import (
 	"context"
 	"crypto/md5" //nolint:gosec
 	"encoding/hex"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"regexp"
@@ -21,6 +20,9 @@ import (
 
 // demoMarkerField is the general-collection field that prevents a second seed run.
 const demoMarkerField = "demo_db"
+
+// statsCollection mirrors plugins.StatsCollection without importing the package.
+const demoStatsCollection = "stats"
 
 // demoHostRE mirrors the "Parse Host Components" rule: ^<service>-<tier>-<instance_num>.
 var demoHostRE = regexp.MustCompile(`^(?P<service>[a-z]+)-(?P<tier>[a-z]+)-(?P<instance_num>\d+)`)
@@ -80,6 +82,9 @@ func SeedDemoData(ctx context.Context, drv db.Driver) error {
 	if err := seedDemoComments(ctx, drv, now, rUIDs); err != nil {
 		return fmt.Errorf("demo_db: comments: %w", err)
 	}
+	if err := seedDemoStats(ctx, drv, now); err != nil {
+		return fmt.Errorf("demo_db: stats: %w", err)
+	}
 
 	if _, err := drv.Write(ctx, generalCollection, []db.Document{{demoMarkerField: true}},
 		db.WriteOptions{UpdateTime: true}); err != nil {
@@ -91,23 +96,28 @@ func SeedDemoData(ctx context.Context, drv db.Driver) error {
 // --- environments ---
 
 func seedDemoEnvironments(ctx context.Context, drv db.Driver) error {
+	// Conditions use the frontend's discriminated-union shape {type, field, value}
+	// so the condition editor renders them correctly when viewing the environment.
+	eq := func(field, value string) map[string]any {
+		return map[string]any{"type": "EQUALS", "field": field, "value": value}
+	}
 	envs := []db.Document{
 		{
 			"name":       "production",
 			"color":      "#e53935",
-			"condition":  condition.Equals("environment", "production").ToList(),
+			"condition":  eq("environment", "production"),
 			"tree_order": 1,
 		},
 		{
 			"name":       "staging",
 			"color":      "#fb8c00",
-			"condition":  condition.Equals("environment", "staging").ToList(),
+			"condition":  eq("environment", "staging"),
 			"tree_order": 2,
 		},
 		{
 			"name":       "development",
 			"color":      "#43a047",
-			"condition":  condition.Equals("environment", "development").ToList(),
+			"condition":  eq("environment", "development"),
 			"tree_order": 3,
 		},
 	}
@@ -158,39 +168,37 @@ func seedDemoUsers(ctx context.Context, drv db.Driver) error {
 // --- rules ---
 
 func seedDemoRules(ctx context.Context, drv db.Driver) error {
-	// Conditions stored in the list form that the rule plugin's parseCondition
-	// accepts via condition.FromList.
-	matchesCond := func(field, regex string) any {
-		return condition.Cond{Op: condition.OpMatches, Field: field, Value: regex}.ToList()
+	// Conditions use frontend shape so the condition editor shows them correctly.
+	matches := func(field, regex string) map[string]any {
+		return map[string]any{"type": "MATCHES", "field": field, "value": regex}
 	}
 	rules := []db.Document{
 		{
 			// Mirrors the "Parse Host Components" rule: REGEX_PARSE on host
 			// sets service, tier, instance_num on every passing alert.
-			"name":       "Parse Host Components",
-			"enabled":    true,
-			"condition":  []any{},
+			"name":    "Parse Host Components",
+			"enabled": true,
+			"condition": map[string]any{"type": "ALWAYS_TRUE"},
 			"modifications": []any{
 				[]any{"REGEX_PARSE", "host", `^(?P<service>[a-z]+)-(?P<tier>[a-z]+)-(?P<instance_num>\d+)`},
 			},
 			"tree_order": 1,
 		},
 		{
-			// Mirrors the "Day Shift" rule: MATCHES on timestamp's Go string
-			// representation ("2006-01-02 15:04:05 +0000 UTC") for hours 08–19.
+			// Day Shift: hours 08–19.
 			"name":    "Day Shift",
 			"enabled": true,
-			"condition": matchesCond("timestamp", ` (0[89]|1[0-9]):`),
+			"condition": matches("timestamp", ` (0[89]|1[0-9]):`),
 			"modifications": []any{
 				[]any{"SET", "period", "day"},
 			},
 			"tree_order": 2,
 		},
 		{
-			// Mirrors the "Night Shift" rule: hours 00–07 and 20–23.
+			// Night Shift: hours 00–07 and 20–23.
 			"name":    "Night Shift",
 			"enabled": true,
-			"condition": matchesCond("timestamp", ` (0[0-7]|2[0-3]):`),
+			"condition": matches("timestamp", ` (0[0-7]|2[0-3]):`),
 			"modifications": []any{
 				[]any{"SET", "period", "night"},
 			},
@@ -239,24 +247,29 @@ func seedDemoActions(ctx context.Context, drv db.Driver) error {
 // --- notifications ---
 
 func seedDemoNotifications(ctx context.Context, drv db.Driver) error {
-	// Notification conditions use the JSON object form because decodeEntry
-	// round-trips through json.Marshal/Unmarshal into condition.Cond.
-	criticalCond := condAsMap(condition.Equals("severity", "critical"))
-	prodCriticalCond := condAsMap(condition.And(
-		condition.Equals("environment", "production"),
-		condition.Equals("severity", "critical"),
-	))
+	// Conditions use frontend shape ({type, field, value}) so the condition
+	// editor renders them correctly when viewing / editing a notification.
+	eq := func(field, value string) map[string]any {
+		return map[string]any{"type": "EQUALS", "field": field, "value": value}
+	}
+	and := func(children ...map[string]any) map[string]any {
+		args := make([]any, len(children))
+		for i, c := range children {
+			args[i] = c
+		}
+		return map[string]any{"type": "AND", "args": args}
+	}
 	notifications := []db.Document{
 		{
 			"name":      "Critical Alerts",
 			"enabled":   true,
-			"condition": criticalCond,
+			"condition": eq("severity", "critical"),
 			"actions":   []string{"Slack #ops-alerts"},
 		},
 		{
 			"name":      "Production Incidents",
 			"enabled":   true,
-			"condition": prodCriticalCond,
+			"condition": and(eq("environment", "production"), eq("severity", "critical")),
 			"actions":   []string{"Email Operations"},
 		},
 	}
@@ -270,19 +283,24 @@ func seedDemoNotifications(ctx context.Context, drv db.Driver) error {
 // --- snooze filters ---
 
 func seedDemoSnoozes(ctx context.Context, drv db.Driver) error {
-	warnCond := condition.Equals("severity", "warning").ToList()
-	devInfoCond := condition.And(
-		condition.Equals("environment", "development"),
-		condition.Equals("severity", "info"),
-	).ToList()
-	stagingCond := condition.Equals("environment", "staging").ToList()
+	// Conditions use frontend shape so the condition editor renders them correctly.
+	eq := func(field, value string) map[string]any {
+		return map[string]any{"type": "EQUALS", "field": field, "value": value}
+	}
+	and := func(children ...map[string]any) map[string]any {
+		args := make([]any, len(children))
+		for i, c := range children {
+			args[i] = c
+		}
+		return map[string]any{"type": "AND", "args": args}
+	}
 
 	snoozes := []db.Document{
 		{
 			"name":      "Night Warning Suppression",
 			"enabled":   true,
 			"discard":   false,
-			"condition": warnCond,
+			"condition": eq("severity", "warning"),
 			"time_constraints": map[string]any{
 				"time": []any{
 					map[string]any{"from": "20:00", "until": "08:00"},
@@ -295,15 +313,15 @@ func seedDemoSnoozes(ctx context.Context, drv db.Driver) error {
 			"name":         "Dev Noise Reduction",
 			"enabled":      true,
 			"discard":      false,
-			"condition":    devInfoCond,
+			"condition":    and(eq("environment", "development"), eq("severity", "info")),
 			"hits_enabled": true,
 			"hits":         int64(0),
 		},
 		{
-			"name":      "Staging Weekend Maintenance",
-			"enabled":   true,
-			"discard":   false,
-			"condition": stagingCond,
+			"name":    "Staging Weekend Maintenance",
+			"enabled": true,
+			"discard": false,
+			"condition": eq("environment", "staging"),
 			"time_constraints": map[string]any{
 				// Sunday=0, Saturday=6 (Go's time.Weekday).
 				"weekdays": []any{
@@ -331,6 +349,10 @@ func seedDemoSnoozes(ctx context.Context, drv db.Driver) error {
 //
 // Snoozed records additionally carry a snoozed field matching the name of the
 // first snooze filter that would have matched them at processing time.
+//
+// Records are written via ReplaceOne (upsert) so that pre-assigned UIDs are
+// honoured on first boot — Write rejects documents whose uid does not already
+// exist in the collection, which would silently drop all records.
 func seedDemoRecords(ctx context.Context, drv db.Driver, now time.Time, rUIDs []string) error {
 	today := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, time.UTC)
 	yesterday := today.AddDate(0, 0, -1)
@@ -471,7 +493,6 @@ func seedDemoRecords(ctx context.Context, drv db.Driver, now time.Time, rUIDs []
 		},
 	}
 
-	docs := make([]db.Document, 0, len(defs))
 	for i, def := range defs {
 		doc := db.Document{
 			"uid":         rUIDs[i],
@@ -495,14 +516,14 @@ func seedDemoRecords(ctx context.Context, drv db.Driver, now time.Time, rUIDs []
 		if def.snoozeRule != "" {
 			doc["snoozed"] = def.snoozeRule
 		}
-		docs = append(docs, doc)
+		// ReplaceOne upserts by uid so pre-assigned UIDs work on first boot.
+		// Write rejects documents whose uid doesn't already exist, which would
+		// silently drop every record.
+		if _, err := drv.ReplaceOne(ctx, "record", db.Document{"uid": rUIDs[i]}, doc, true); err != nil {
+			return fmt.Errorf("record %d: %w", i, err)
+		}
 	}
-
-	_, err := drv.Write(ctx, "record", docs, db.WriteOptions{
-		Primary:    []string{"uid"},
-		UpdateTime: true,
-	})
-	return err
+	return nil
 }
 
 // --- comments ---
@@ -562,10 +583,10 @@ func seedDemoComments(ctx context.Context, drv db.Driver, now time.Time, rUIDs [
 		},
 	}
 
-	docs := make([]db.Document, 0, len(defs))
 	for _, def := range defs {
+		uid := uuid.NewString()
 		doc := db.Document{
-			"uid":        uuid.NewString(),
+			"uid":        uid,
 			"record_uid": def.recordUID,
 			"user":       def.user,
 			"method":     auth.LocalMethod,
@@ -575,14 +596,150 @@ func seedDemoComments(ctx context.Context, drv db.Driver, now time.Time, rUIDs [
 		if def.commentType != "" {
 			doc["type"] = def.commentType
 		}
-		docs = append(docs, doc)
+		// ReplaceOne upserts by uid — same reason as records above.
+		if _, err := drv.ReplaceOne(ctx, "comment", db.Document{"uid": uid}, doc, false); err != nil {
+			return fmt.Errorf("comment: %w", err)
+		}
+	}
+	return nil
+}
+
+// --- stats (dashboard time-series) ---
+
+// seedDemoStats populates the `stats` counter collection with 14 days of
+// hourly alert metrics so the dashboard renders non-empty charts on first
+// visit. The data mirrors what RecordStat / the alert pipeline would have
+// written for a realistic workload: alert_hit (by severity / environment /
+// source), alert_snoozed, and notification_sent.
+//
+// Stats docs are keyed on (metric, dim, key, bucket); Write with those
+// as Primary fields upserts correctly because the docs carry no uid.
+func seedDemoStats(ctx context.Context, drv db.Driver, now time.Time) error {
+	today := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, time.UTC)
+
+	var docs []db.Document
+
+	for dayOffset := 1; dayOffset <= 14; dayOffset++ {
+		day := today.AddDate(0, 0, -dayOffset)
+		isWeekend := day.Weekday() == time.Saturday || day.Weekday() == time.Sunday
+
+		for hour := 0; hour < 24; hour++ {
+			bucket := day.Add(time.Duration(hour) * time.Hour).Unix()
+			base := demoHourlyBase(hour)
+			if isWeekend {
+				base = base * 3 / 10 // weekends are quieter
+			}
+			if base == 0 {
+				continue
+			}
+
+			// Severity split: 20% critical, 50% warning, 30% info
+			crit := max64(1, base*2/10)
+			warn := max64(1, base*5/10)
+			info := max64(1, base*3/10)
+
+			docs = append(docs,
+				demoStatDoc("alert_hit", "severity", "critical", bucket, crit),
+				demoStatDoc("alert_hit", "severity", "warning", bucket, warn),
+				demoStatDoc("alert_hit", "severity", "info", bucket, info),
+			)
+
+			// Environment split: 40% prod, 35% staging, 25% dev
+			prod := max64(1, base*4/10)
+			stag := max64(1, base*35/100)
+			dev := max64(1, base*25/100)
+
+			docs = append(docs,
+				demoStatDoc("alert_hit", "environment", "production", bucket, prod),
+				demoStatDoc("alert_hit", "environment", "staging", bucket, stag),
+				demoStatDoc("alert_hit", "environment", "development", bucket, dev),
+			)
+
+			// Source split (drives the Alerts series line): 60% prometheus,
+			// 30% alertmanager, 10% grafana.
+			prom := max64(1, base*6/10)
+			am := max64(1, base*3/10)
+			graf := max64(1, base*1/10)
+
+			docs = append(docs,
+				demoStatDoc("alert_hit", "source", "prometheus", bucket, prom),
+				demoStatDoc("alert_hit", "source", "alertmanager", bucket, am),
+				demoStatDoc("alert_hit", "source", "grafana", bucket, graf),
+			)
+
+			// Snoozed: ~30% of warnings are suppressed at night (hours 20–7)
+			if hour >= 20 || hour < 8 {
+				snoozed := max64(1, warn*3/10)
+				docs = append(docs,
+					demoStatDoc("alert_snoozed", "name", "Night Warning Suppression", bucket, snoozed),
+				)
+			}
+
+			// Dev info alerts are always snoozed by Dev Noise Reduction
+			docs = append(docs,
+				demoStatDoc("alert_snoozed", "name", "Dev Noise Reduction", bucket, info*25/100+1),
+			)
+
+			// Notifications sent for critical alerts
+			if crit > 0 {
+				docs = append(docs,
+					demoStatDoc("notification_sent", "name", "Critical Alerts", bucket, crit),
+					demoStatDoc("notification_sent", "name", "Production Incidents", bucket, max64(1, crit*4/10)),
+				)
+			}
+		}
 	}
 
-	_, err := drv.Write(ctx, "comment", docs, db.WriteOptions{
-		Primary:    []string{"uid"},
-		UpdateTime: true,
+	if len(docs) == 0 {
+		return nil
+	}
+	_, err := drv.Write(ctx, demoStatsCollection, docs, db.WriteOptions{
+		Primary:    []string{"metric", "dim", "key", "bucket"},
+		UpdateTime: false,
 	})
 	return err
+}
+
+// demoStatDoc builds one stats counter document.
+func demoStatDoc(metric, dim, key string, bucket, value int64) db.Document {
+	return db.Document{
+		"metric": metric,
+		"dim":    dim,
+		"key":    key,
+		"bucket": bucket,
+		"value":  float64(value),
+	}
+}
+
+// demoHourlyBase returns the expected alert count for a given UTC hour,
+// modelling a business-hours traffic pattern (peak midday, quiet nights).
+func demoHourlyBase(hour int) int64 {
+	switch {
+	case hour < 6:
+		return 0
+	case hour < 8:
+		return 2
+	case hour < 10:
+		return int64(3 + hour - 8) // 3, 4
+	case hour < 13:
+		return int64(5 + hour - 10) // 5, 6, 7
+	case hour == 13:
+		return 8 // peak
+	case hour < 18:
+		return int64(8 - (hour - 13)) // 7, 6, 5, 4
+	case hour < 20:
+		return 3
+	default:
+		return 1
+	}
+}
+
+// max64 returns the larger of a and b.
+func max64(a, b int64) int64 {
+	if a > b {
+		return a
+	}
+	return b
 }
 
 // --- helpers ---
@@ -647,14 +804,4 @@ func demoLastSaturday(now time.Time) time.Time {
 		daysAgo = (wd + 1) % 7 // Sun→1, Mon→2, …, Fri→6
 	}
 	return today.AddDate(0, 0, -daysAgo).Add(14*time.Hour + 30*time.Minute)
-}
-
-// condAsMap serializes a condition.Cond to map[string]any via a JSON
-// round-trip. The notification plugin's decodeEntry deserializes via the same
-// path (json.Marshal → json.Unmarshal into Entry.Condition).
-func condAsMap(c condition.Cond) map[string]any {
-	raw, _ := json.Marshal(c)
-	var m map[string]any
-	_ = json.Unmarshal(raw, &m)
-	return m
 }

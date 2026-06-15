@@ -8,8 +8,10 @@
   development with colours and conditions), three extra users (alice.martin,
   bob.chen, charlie.ops), three rules (Parse Host Components, Day Shift, Night
   Shift), two actions, two notifications, three snooze filters, 17 alert records
-  in mixed states enriched as if they passed through the full pipeline, and five
-  comments. The seed is idempotent — re-running with the flag enabled is a
+  in mixed states enriched as if they passed through the full pipeline, five
+  comments, and 14 days of hourly stats counters (alert_hit, alert_snoozed,
+  notification_sent) so the dashboard charts render non-empty time-series on
+  first visit. The seed is idempotent — re-running with the flag enabled is a
   no-op. Designed for the Render try.snoozeweb.net deployment.
 
 ---
