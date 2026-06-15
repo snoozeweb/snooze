@@ -142,6 +142,8 @@ export type RulesTreeTableProps = {
   search?: {
     value: string;
     onChange: (next: { text: string; condition: ParsedCondition | null }) => void;
+    /** Committed on Enter / clear — pages persist this to the URL's ?search=. */
+    onSubmit?: (text: string) => void;
     collection?: string;
     placeholder?: string;
   };
@@ -610,6 +612,7 @@ export function RulesTreeTable({
               <SearchBar
                 value={search.value}
                 onChange={(c) => search.onChange({ text: c.text, condition: c.condition })}
+                {...(search.onSubmit ? { onSubmit: search.onSubmit } : {})}
                 {...(search.collection ? { collection: search.collection } : {})}
                 {...(search.placeholder ? { placeholder: search.placeholder } : {})}
               />
