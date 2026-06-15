@@ -131,7 +131,7 @@ export function makeUserColumns(roleGroupIndex: Map<string, string[]>): ColumnDe
       id: "groups",
       header: "Groups",
       cell: (r) => <BadgeList items={r.groups} max={6} />,
-      width: "220px",
+      width: "280px",
     },
     {
       id: "last_login",
