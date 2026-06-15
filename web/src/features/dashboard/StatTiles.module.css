@@ -41,7 +41,6 @@
 /* Trend delta vs the prior window — mono, colour by direction. */
 .delta {
   display: inline-block;
-  margin-top: 2px;
   font-family: var(--font-mono);
   font-feature-settings: var(--font-features-numeric);
   font-size: var(--text-xs);

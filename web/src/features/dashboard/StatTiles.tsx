@@ -103,12 +103,12 @@ export function StatTiles({ snapshot, totals, onTileClick, deltas }: StatTilesPr
         const body = (
           <>
             <b className={styles.value}>{t.value}</b>
-            {delta != null ? <Delta pct={delta} /> : null}
             <span className={styles.label}>
               <span className={styles.icon}>
                 <Icon name={t.icon} size={14} />
               </span>
               {t.label}
+              {delta != null ? <Delta pct={delta} /> : null}
             </span>
           </>
         );
