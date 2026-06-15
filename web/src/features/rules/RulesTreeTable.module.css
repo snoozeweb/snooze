@@ -97,7 +97,7 @@
     28px /* drag handle        */
     28px /* selection checkbox */
     240px /* name              */
-    1fr /* condition           */
+    minmax(0, 1fr) /* condition   */
     260px /* modifications     */
     28px /* add-rule menu     */;
   gap: var(--space-3);
