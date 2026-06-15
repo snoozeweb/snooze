@@ -26,6 +26,21 @@ const TAB_LABELS: Record<string, string> = {
   housekeeping: "Housekeeping",
 };
 
+// Auth-provider tabs use progressive disclosure: the master `<provider>.enabled`
+// toggle is always shown, and the rest of the section's fields appear only once
+// it's switched on. Keyed by group → the enabling setting + the hint shown
+// while it's off.
+const GATED_GROUPS: Record<string, { toggle: string; hint: string }> = {
+  ldap: {
+    toggle: "ldap.enabled",
+    hint: "Enable LDAP above to configure connection, user, and group settings.",
+  },
+  oidc: {
+    toggle: "oidc.enabled",
+    hint: "Enable OIDC / SSO above to configure the provider, client, and claim settings.",
+  },
+};
+
 /**
  * Normalize the group key so the catalogue's singular `notification` and
  * the canonical plural `notifications` both bucket into the same tab.
@@ -150,9 +165,12 @@ export function SettingsPage() {
           {showCustomTab ? <TabTrigger value="__custom__">Custom</TabTrigger> : null}
         </TabList>
         {groups.map((g) => {
-          const ldapEnabledRecord = byName["ldap.enabled"];
-          const ldapEnabledDefault = catalogue?.["ldap.enabled"]?.default_value;
-          const ldapEnabled = Boolean(ldapEnabledRecord?.value ?? ldapEnabledDefault ?? false);
+          // Progressive disclosure for the gated auth tabs (LDAP, OIDC): keep
+          // the master toggle visible, hide the rest until it's enabled.
+          const gate = GATED_GROUPS[g.key];
+          const gateEnabled = gate
+            ? Boolean(byName[gate.toggle]?.value ?? catalogue?.[gate.toggle]?.default_value ?? false)
+            : true;
           return (
             <TabPanel key={g.key} value={g.key}>
               <div className={styles.cards}>
@@ -161,9 +179,9 @@ export function SettingsPage() {
                 ) : (
                   g.entries
                     .filter(([name]) => {
-                      if (g.key !== "ldap") return true;
-                      if (name === "ldap.enabled") return true;
-                      return ldapEnabled;
+                      if (!gate) return true;
+                      if (name === gate.toggle) return true;
+                      return gateEnabled;
                     })
                     .map(([name, field]) => {
                       const record = byName[name];
@@ -179,11 +197,7 @@ export function SettingsPage() {
                       );
                     })
                 )}
-                {g.key === "ldap" && !ldapEnabled ? (
-                  <div className={styles.empty}>
-                    Enable LDAP above to configure connection, user, and group settings.
-                  </div>
-                ) : null}
+                {gate && !gateEnabled ? <div className={styles.empty}>{gate.hint}</div> : null}
               </div>
             </TabPanel>
           );

@@ -56,6 +56,11 @@ export type DataTableProps<T> = {
    *  (`rowActions`) and context menu are unchanged — these are the
    *  one-click shortcuts for the most common per-row operations. */
   quickActions?: (row: T) => RowAction[];
+  /** Optional count badge overlaid on the top-right corner of the row-actions
+   *  kebab. Returns `{ count, label }` for a row that should carry a pill
+   *  (count > 0), or undefined for none. `label` is folded into the kebab's
+   *  accessible name (e.g. "Row actions, 2 comments"). Requires `rowActions`. */
+  rowActionsBadge?: (row: T) => { count: number; label?: string } | undefined;
   /** Returns a CSS colour (e.g. `var(--severity-critical)`) painted as a 3px
    *  inset strip on the left edge of the row. Undefined → no strip. */
   rowAccent?: (row: T) => string | undefined;
@@ -122,6 +127,7 @@ export function DataTable<T>({
   serverSort,
   serverPagination,
   rowActions,
+  rowActionsBadge,
   quickActions,
   rowAccent,
   contextMenuItems,
@@ -498,6 +504,7 @@ export function DataTable<T>({
                     hasContextMenu={contextMenuItems !== undefined}
                     quickActions={quickActions}
                     rowActions={rowActions}
+                    rowActionsBadge={rowActionsBadge}
                     renderExpanded={renderExpanded}
                     onRowClick={handleRowClick}
                     onRowContextMenu={handleRowContextMenu}
@@ -541,6 +548,7 @@ type DataTableRowProps<T> = {
   hasContextMenu: boolean;
   quickActions: ((row: T) => RowAction[]) | undefined;
   rowActions: ((row: T) => RowAction[]) | undefined;
+  rowActionsBadge: ((row: T) => { count: number; label?: string } | undefined) | undefined;
   renderExpanded: ((row: T) => ReactNode) | undefined;
   onRowClick: (index: number) => void;
   onRowContextMenu: (index: number, x: number, y: number) => void;
@@ -572,6 +580,7 @@ function DataTableRowInner<T>({
   hasContextMenu,
   quickActions,
   rowActions,
+  rowActionsBadge,
   renderExpanded,
   onRowClick,
   onRowContextMenu,
@@ -659,7 +668,7 @@ function DataTableRowInner<T>({
         ) : null}
         {rowActions ? (
           <td className={styles.actionsCell} onClick={(e) => e.stopPropagation()}>
-            <RowActionsMenu actions={rowActions(row)} />
+            <RowActionsMenu actions={rowActions(row)} badge={rowActionsBadge?.(row)} />
           </td>
         ) : null}
       </tr>
@@ -678,11 +687,24 @@ function DataTableRowInner<T>({
 // default shallow comparator is intentional (see DataTableRowInner's note).
 const DataTableRow = memo(DataTableRowInner) as typeof DataTableRowInner;
 
-function RowActionsMenu({ actions }: { actions: RowAction[] }) {
-  return (
+function RowActionsMenu({
+  actions,
+  badge,
+}: {
+  actions: RowAction[];
+  badge?: { count: number; label?: string } | undefined;
+}) {
+  const showBadge = !!badge && badge.count > 0;
+  // Fold the badge meaning into the trigger's accessible name so the pill
+  // isn't a sighted-only signal. Radix MenuTrigger is asChild → the IconButton
+  // must stay its direct child, so the pill is an absolutely-positioned
+  // sibling (pointer-events:none) anchored by the relative wrapper.
+  const triggerLabel =
+    showBadge && badge?.label ? `Row actions, ${badge.label}` : "Row actions";
+  const menu = (
     <Menu>
       <MenuTrigger>
-        <IconButton icon="more-horizontal" label="Row actions" size="sm" />
+        <IconButton icon="more-horizontal" label={triggerLabel} size="sm" />
       </MenuTrigger>
       <MenuContent>
         {actions.map((a) => (
@@ -698,6 +720,15 @@ function RowActionsMenu({ actions }: { actions: RowAction[] }) {
         ))}
       </MenuContent>
     </Menu>
+  );
+  if (!showBadge) return menu;
+  return (
+    <span className={styles.actionsBadgeWrap}>
+      {menu}
+      <span className={styles.actionsBadge} aria-hidden="true">
+        {badge.count > 99 ? "99+" : badge.count}
+      </span>
+    </span>
   );
 }
 

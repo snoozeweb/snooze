@@ -76,6 +76,20 @@ function settingsMetadata() {
           default_value: "",
           group: "ldap",
         },
+        "oidc.enabled": {
+          display_name: "OIDC enabled",
+          component: "Switch",
+          description: "Enable OIDC backend.",
+          default_value: false,
+          group: "oidc",
+        },
+        "oidc.issuer": {
+          display_name: "OIDC issuer",
+          component: "String",
+          description: "OIDC issuer URL.",
+          default_value: "",
+          group: "oidc",
+        },
         "housekeeping.cleanup_snooze": {
           display_name: "Cleanup snooze",
           component: "String",
@@ -132,6 +146,7 @@ describe("SettingsPage", () => {
     await waitFor(() => expect(screen.getByRole("tab", { name: "General" })).toBeInTheDocument());
     expect(screen.getByRole("tab", { name: "Notifications" })).toBeInTheDocument();
     expect(screen.getByRole("tab", { name: "LDAP" })).toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: "OIDC / SSO" })).toBeInTheDocument();
     expect(screen.getByRole("tab", { name: "Housekeeping" })).toBeInTheDocument();
   });
 
@@ -197,6 +212,53 @@ describe("SettingsPage", () => {
     await waitFor(() => expect(screen.getByText("LDAP enabled")).toBeInTheDocument());
     expect(screen.queryByText("LDAP host")).not.toBeInTheDocument();
     expect(screen.getByText(/Enable LDAP above to configure connection/i)).toBeInTheDocument();
+  });
+
+  it("hides non-enabled OIDC cards when oidc.enabled is false", async () => {
+    mswServer.use(
+      http.get("/api/v1/metadata/settings", () => HttpResponse.json(settingsMetadata())),
+      http.get("/api/v1/settings", () =>
+        HttpResponse.json({
+          data: [],
+          meta: { count: 0, limit: 500, offset: 0, total: 0 },
+        }),
+      ),
+    );
+    setup();
+    const user = userEvent.setup();
+    await waitFor(() =>
+      expect(screen.getByRole("tab", { name: "OIDC / SSO" })).toBeInTheDocument(),
+    );
+    await user.click(screen.getByRole("tab", { name: "OIDC / SSO" }));
+    // oidc.enabled is rendered; the rest are hidden behind the toggle, just
+    // like the LDAP tab.
+    await waitFor(() => expect(screen.getByText("OIDC enabled")).toBeInTheDocument());
+    expect(screen.queryByText("OIDC issuer")).not.toBeInTheDocument();
+    expect(screen.getByText(/Enable OIDC \/ SSO above to configure/i)).toBeInTheDocument();
+  });
+
+  it("reveals the OIDC cards once oidc.enabled is true", async () => {
+    mswServer.use(
+      http.get("/api/v1/metadata/settings", () => HttpResponse.json(settingsMetadata())),
+      http.get("/api/v1/settings", () =>
+        HttpResponse.json({
+          data: [
+            { uid: "s-oidc-enabled", name: "oidc.enabled", value: true },
+            { uid: "s-oidc-issuer", name: "oidc.issuer", value: "https://issuer.example" },
+          ],
+          meta: { count: 2, limit: 500, offset: 0, total: 2 },
+        }),
+      ),
+    );
+    setup();
+    const user = userEvent.setup();
+    await waitFor(() =>
+      expect(screen.getByRole("tab", { name: "OIDC / SSO" })).toBeInTheDocument(),
+    );
+    await user.click(screen.getByRole("tab", { name: "OIDC / SSO" }));
+    await waitFor(() => expect(screen.getByText("OIDC issuer")).toBeInTheDocument());
+    const input = screen.getByLabelText<HTMLInputElement>("OIDC issuer");
+    expect(input.value).toBe("https://issuer.example");
   });
 
   it("a Card's Save POSTs the right body when no record exists", async () => {

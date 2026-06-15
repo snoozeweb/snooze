@@ -152,6 +152,36 @@
   text-align: right;
 }
 
+/* Count pill overlaid on the row-actions kebab (e.g. unread comment count).
+   The wrap is the positioning context; the kebab IconButton fills it and the
+   pill sits in the top-right corner with clicks falling through to the
+   button. */
+.actionsBadgeWrap {
+  position: relative;
+  display: inline-flex;
+}
+.actionsBadge {
+  position: absolute;
+  /* Tuck the pill into the very corner (mostly outside the 28px kebab) so it
+     reads as a badge and doesn't cover the centred ⋯ dots. */
+  top: -5px;
+  right: -5px;
+  min-width: 13px;
+  height: 13px;
+  padding: 0 3px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--radius-pill);
+  background: var(--accent);
+  color: var(--accent-fg);
+  font-size: 9px;
+  font-weight: 600;
+  line-height: 1;
+  font-feature-settings: var(--font-features-numeric);
+  pointer-events: none;
+}
+
 /* Quick-actions cell: a fixed-width cluster of inline IconButtons rendered
    before the kebab. Hidden by default (opacity, not display) so revealing
    them on hover/focus never reflows the row or shifts columns. */

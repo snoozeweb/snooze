@@ -1,12 +1,13 @@
-// ActiveFilters — a dismissable chip strip summarising every filter currently
-// narrowing the alerts list. Rendered by AlertsPage only when
-// `hasActiveFilters` is true. Each chip removes exactly one constraint; the
-// "Clear all" button wipes them in a single navigation.
+// ActiveFilters — a dismissable chip strip summarising the tab + environment
+// constraints currently narrowing the alerts list. Rendered by AlertsPage only
+// when at least one of those is active. Each chip removes exactly one
+// constraint; the "Clear all" button wipes them (incl. any search) in a single
+// navigation.
 //
-// The three filter sources live in different places (tab + env in the URL,
-// the DSL search text in local React state because navigate() is async — see
-// the comment block in AlertsPage), so this component takes one remove
-// callback per source rather than owning any state itself.
+// The DSL search text is deliberately NOT shown here: the SearchBar already
+// displays it verbatim and carries its own one-click ✕ clear, so a "Search:"
+// chip would just duplicate both. Tab + env, by contrast, are set elsewhere
+// (the tab strip and env bar) and earn a dismissable chip.
 import { Icon } from "@/shared/icons/Icon";
 import { Button } from "@/shared/ui/Button";
 import { tabById, type TabId } from "./tabs";
@@ -19,14 +20,10 @@ export type ActiveFiltersProps = {
   envs: string[];
   /** Resolves an environment UID to its display name (falls back to the UID). */
   envName: (uid: string) => string;
-  /** Current DSL search text. Empty/whitespace renders no chip. */
-  search: string;
   /** Remove a single environment from the selection. */
   onRemoveEnv: (uid: string) => void;
   /** Reset the lifecycle tab back to the default "alerts" tab. */
   onClearTab: () => void;
-  /** Clear the DSL search text + parsed condition. */
-  onClearSearch: () => void;
   /** Reset every filter at once (single updateSearch + local-state reset). */
   onClearAll: () => void;
 };
@@ -35,17 +32,15 @@ function Chip({
   label,
   value,
   onRemove,
-  mono,
 }: {
   label: string;
   value: string;
   onRemove: () => void;
-  mono?: boolean;
 }) {
   return (
     <span className={styles.chip}>
       <span className={styles.chipLabel}>{label}</span>
-      <span className={mono ? styles.chipValueMono : styles.chipValue}>{value}</span>
+      <span className={styles.chipValue}>{value}</span>
       <button
         type="button"
         className={styles.chipRemove}
@@ -62,13 +57,10 @@ export function ActiveFilters({
   tab,
   envs,
   envName,
-  search,
   onRemoveEnv,
   onClearTab,
-  onClearSearch,
   onClearAll,
 }: ActiveFiltersProps) {
-  const trimmedSearch = search.trim();
   const showTab = tab !== "alerts";
 
   return (
@@ -77,9 +69,6 @@ export function ActiveFilters({
       {envs.map((uid) => (
         <Chip key={uid} label="Env" value={envName(uid)} onRemove={() => onRemoveEnv(uid)} />
       ))}
-      {trimmedSearch ? (
-        <Chip label="Search" value={trimmedSearch} onRemove={onClearSearch} mono />
-      ) : null}
       <Button size="sm" variant="ghost" className={styles.clearAll} onClick={onClearAll}>
         Clear all
       </Button>

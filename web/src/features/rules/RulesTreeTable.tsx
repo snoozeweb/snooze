@@ -52,6 +52,7 @@ import { Menu, MenuContent, MenuItem, MenuTrigger } from "@/shared/ui/Menu";
 import { RowDetailPanel } from "@/shared/ui/RowDetailPanel";
 import { toast } from "@/shared/ui/toast/useToast";
 import { prettyCondition } from "@/lib/condition/pretty";
+import { summariseModification } from "@/shared/modifications/summarise";
 import { ConfirmDeleteDialog, useConfirmDelete } from "@/shared/ui/resourceContextMenu";
 import { DataTableContextMenu, type ContextMenuItem } from "@/shared/ui/DataTableContextMenu";
 import type { ParsedCondition } from "@/shared/ui/SearchBar";
@@ -990,9 +991,8 @@ function StaticTreeRowInner({
             <span className={styles.comment}>—</span>
           ) : (
             mods.map((m, i) => (
-              <Badge key={i} variant="neutral">
-                {String((m[0] as string | number | null | undefined) ?? "")}{" "}
-                {String((m[1] as string | number | null | undefined) ?? "")}
+              <Badge key={i} variant="neutral" className={styles.modBadge!}>
+                {summariseModification(m)}
               </Badge>
             ))
           )}
@@ -1200,9 +1200,8 @@ function SortableTreeRowInner({
             <span className={styles.comment}>—</span>
           ) : (
             mods.map((m, i) => (
-              <Badge key={i} variant="neutral">
-                {String((m[0] as string | number | null | undefined) ?? "")}{" "}
-                {String((m[1] as string | number | null | undefined) ?? "")}
+              <Badge key={i} variant="neutral" className={styles.modBadge!}>
+                {summariseModification(m)}
               </Badge>
             ))
           )}

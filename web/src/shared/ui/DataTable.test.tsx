@@ -115,6 +115,42 @@ describe("DataTable", () => {
     expect(handler).toHaveBeenCalled();
   });
 
+  it("overlays a count pill on the kebab and folds its label into the a11y name", () => {
+    render(
+      <DataTable
+        data={[sample[0]!, sample[1]!]}
+        columns={columns}
+        rowKey={(r) => r.id}
+        rowActions={() => [{ key: "edit", label: "Edit", onSelect: vi.fn() }]}
+        // alpha gets a badge of 2; beta gets none.
+        rowActionsBadge={(r) => (r.id === "1" ? { count: 2, label: "2 comments" } : undefined)}
+      />,
+    );
+    // The pill text renders only for the badged row.
+    expect(screen.getByText("2")).toBeInTheDocument();
+    // …and the kebab's accessible name carries the badge label.
+    expect(screen.getByRole("button", { name: /row actions, 2 comments/i })).toBeInTheDocument();
+    // The un-badged row keeps the plain "Row actions" name.
+    const plain = screen
+      .getAllByRole("button", { name: /^row actions$/i })
+      .filter((b) => b.getAttribute("aria-label") === "Row actions");
+    expect(plain.length).toBe(1);
+  });
+
+  it("renders no pill when rowActionsBadge returns a zero/undefined count", () => {
+    render(
+      <DataTable
+        data={[sample[0]!]}
+        columns={columns}
+        rowKey={(r) => r.id}
+        rowActions={() => [{ key: "edit", label: "Edit", onSelect: vi.fn() }]}
+        rowActionsBadge={() => ({ count: 0 })}
+      />,
+    );
+    expect(screen.getByRole("button", { name: /^row actions$/i })).toBeInTheDocument();
+    expect(screen.queryByText("0")).toBeNull();
+  });
+
   it("selectable: shift-click selects an inclusive range from the last anchor", () => {
     let current: Set<string> = new Set<string>();
     const onSelectionChange = (next: Set<string>) => {

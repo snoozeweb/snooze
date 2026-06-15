@@ -253,6 +253,16 @@
      back the horizontal scroll; badges wrap to new lines instead. */
   min-width: 0;
 }
+/* A single modification badge now carries the full "OP field = value" summary,
+   so a verbose value (long regex, big dict) could otherwise stretch one badge
+   wide enough to reintroduce horizontal scroll. Cap it and ellipsize; the
+   editor shows the untruncated form on click. */
+.modBadge {
+  max-width: 28ch;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 .indent {
   display: inline-block;
   flex-shrink: 0;

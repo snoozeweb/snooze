@@ -14,6 +14,29 @@
   first visit. The seed is idempotent — re-running with the flag enabled is a
   no-op. Designed for the Render try.snoozeweb.net deployment.
 
+### Changed
+
+- **Web — Settings → OIDC / SSO uses progressive disclosure.** The OIDC tab now
+  behaves like the LDAP tab: only the *Enabled* toggle shows until OIDC is
+  switched on, then the issuer, client, scope and claim settings appear. Stops
+  the tab dumping eight provider fields on operators who haven't enabled SSO.
+- **Web — Rules "Modifications" column shows the full action.** Each badge now
+  reads e.g. `SET environment = prod`, `ARRAY_APPEND tags += urgent`,
+  `REGEX_SUB msg = s/foo/bar/` or `KV_SET owner = owners[host]` instead of the
+  truncated `SET environment`, so the rule's effect is legible without opening
+  the editor.
+- **Web — Alerts search no longer shows a redundant chip.** The active-filters
+  strip dropped the *Search* chip (the search box already displays the query and
+  has its own clear button); the strip now appears only for tab / environment
+  filters.
+
+### Added (web)
+
+- **Web — comment count on alert rows.** A row whose `comment_count > 0` now
+  carries a small count pill on the corner of its actions (`⋯`) button, flagging
+  alerts that already have discussion; the full thread stays in the expandable
+  row detail.
+
 ---
 
 ## v2.2.0

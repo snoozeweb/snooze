@@ -19,6 +19,20 @@ function recordHits(r: Record_): number {
   return 0;
 }
 
+// `comment_count` is maintained server-side by the comment plugin
+// (internal/pluginimpl/comment/plugin.go), incremented on every comment —
+// including ack/close/esc state-changes. Not a typed Record field (records
+// are dynamic), so read it defensively like `duplicates` above. Read-only.
+export function recordCommentCount(r: Record_): number {
+  const v = (r as { comment_count?: unknown }).comment_count;
+  if (typeof v === "number") return v;
+  if (typeof v === "string") {
+    const n = Number(v);
+    return Number.isFinite(n) ? n : 0;
+  }
+  return 0;
+}
+
 export const alertColumns: ColumnDef<Record_>[] = [
   {
     id: "date_epoch",

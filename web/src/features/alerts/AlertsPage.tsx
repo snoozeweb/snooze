@@ -18,7 +18,7 @@ import { Records, useCommentRecord, useShelveRecord } from "./api";
 import { AlertRowDetail } from "./AlertRowDetail";
 import { ActiveFilters } from "./ActiveFilters";
 import { AlertsFilters, type AlertFilters } from "./Filters";
-import { alertColumns } from "./columns";
+import { alertColumns, recordCommentCount } from "./columns";
 import { useAutoRefresh } from "./useAutoRefresh";
 import type { AlertState, Record_ } from "./types";
 import { tabById, type TabId } from "./tabs";
@@ -339,6 +339,14 @@ export function AlertsPage() {
     [openDialog, shelveMut],
   );
 
+  // Count pill on the kebab: signals a row carries discussion (the full thread
+  // lives in the expandable row detail). Only rendered when comment_count > 0.
+  const rowActionsBadge = useCallback((row: Record_) => {
+    const n = recordCommentCount(row);
+    if (n <= 0) return undefined;
+    return { count: n, label: `${n} comment${n === 1 ? "" : "s"}` };
+  }, []);
+
   // inlineAction fires an ack/close comment mutation *directly*, skipping the
   // confirm dialog the kebab/bulk paths use. On success it raises an undo
   // toast whose inverse re-opens the record (type:"open").
@@ -626,6 +634,11 @@ export function AlertsPage() {
     selectedEnvs.length > 0 ||
     activeTab !== "alerts";
 
+  // Whether the ActiveFilters chip strip should render. It only carries tab +
+  // env chips now (search shows in the SearchBar itself, with its own clear),
+  // so a search-only filter leaves the strip empty — gate on tab/env alone.
+  const hasChipFilters = selectedEnvs.length > 0 || activeTab !== "alerts";
+
   // Resolve an env UID to its display name for the ActiveFilters chips. Falls
   // back to the UID when the env list hasn't loaded or the env was deleted.
   const envName = useCallback(
@@ -657,11 +670,6 @@ export function AlertsPage() {
   const clearTab = useCallback(() => {
     updateSearch({ page: 1, tab: undefined } as unknown as Partial<AlertsSearch>);
   }, [updateSearch]);
-  const clearSearchText = useCallback(() => {
-    setSearchText("");
-    setSearchCondition(null);
-    if (page !== 1) updateSearch({ page: 1 });
-  }, [page, updateSearch]);
   const clearAllFilters = useCallback(() => {
     setSearchText("");
     setSearchCondition(null);
@@ -749,15 +757,13 @@ export function AlertsPage() {
           } as Partial<AlertsSearch>);
         }}
       />
-      {hasActiveFilters ? (
+      {hasChipFilters ? (
         <ActiveFilters
           tab={activeTab}
           envs={selectedEnvs}
           envName={envName}
-          search={searchText}
           onRemoveEnv={removeEnv}
           onClearTab={clearTab}
-          onClearSearch={clearSearchText}
           onClearAll={clearAllFilters}
         />
       ) : null}
@@ -812,6 +818,7 @@ export function AlertsPage() {
             onChange: handlePageChange,
           }}
           rowActions={rowActions}
+          rowActionsBadge={rowActionsBadge}
           quickActions={quickActions}
           rowKeyBindings={rowKeyBindings}
           rowAccent={rowAccent}
