@@ -176,8 +176,8 @@ func seedDemoRules(ctx context.Context, drv db.Driver) error {
 		{
 			// Mirrors the "Parse Host Components" rule: REGEX_PARSE on host
 			// sets service, tier, instance_num on every passing alert.
-			"name":    "Parse Host Components",
-			"enabled": true,
+			"name":      "Parse Host Components",
+			"enabled":   true,
 			"condition": map[string]any{"type": "ALWAYS_TRUE"},
 			"modifications": []any{
 				[]any{"REGEX_PARSE", "host", `^(?P<service>[a-z]+)-(?P<tier>[a-z]+)-(?P<instance_num>\d+)`},
@@ -186,8 +186,8 @@ func seedDemoRules(ctx context.Context, drv db.Driver) error {
 		},
 		{
 			// Day Shift: hours 08–19.
-			"name":    "Day Shift",
-			"enabled": true,
+			"name":      "Day Shift",
+			"enabled":   true,
 			"condition": matches("timestamp", ` (0[89]|1[0-9]):`),
 			"modifications": []any{
 				[]any{"SET", "period", "day"},
@@ -196,8 +196,8 @@ func seedDemoRules(ctx context.Context, drv db.Driver) error {
 		},
 		{
 			// Night Shift: hours 00–07 and 20–23.
-			"name":    "Night Shift",
-			"enabled": true,
+			"name":      "Night Shift",
+			"enabled":   true,
 			"condition": matches("timestamp", ` (0[0-7]|2[0-3]):`),
 			"modifications": []any{
 				[]any{"SET", "period", "night"},
@@ -318,9 +318,9 @@ func seedDemoSnoozes(ctx context.Context, drv db.Driver) error {
 			"hits":         int64(0),
 		},
 		{
-			"name":    "Staging Weekend Maintenance",
-			"enabled": true,
-			"discard": false,
+			"name":      "Staging Weekend Maintenance",
+			"enabled":   true,
+			"discard":   false,
 			"condition": eq("environment", "staging"),
 			"time_constraints": map[string]any{
 				// Sunday=0, Saturday=6 (Go's time.Weekday).
@@ -783,11 +783,11 @@ func demoComputeHash(host, message string) string {
 	h.Write([]byte("Host and Message"))
 	h.Write([]byte("host"))
 	h.Write([]byte("="))
-	fmt.Fprint(h, host)
+	h.Write([]byte(host))
 	h.Write([]byte("|"))
 	h.Write([]byte("message"))
 	h.Write([]byte("="))
-	fmt.Fprint(h, message)
+	h.Write([]byte(message))
 	h.Write([]byte("|"))
 	return hex.EncodeToString(h.Sum(nil))
 }
