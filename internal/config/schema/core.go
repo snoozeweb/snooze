@@ -25,6 +25,7 @@ type Core struct {
 	Database               Database `koanf:"database" validate:"required"`
 	InitSleep              int      `koanf:"init_sleep" validate:"min=0"`
 	CreateRootUser         bool     `koanf:"create_root_user"`
+	SeedDemo               bool     `koanf:"seed_demo"`
 	SSL                    SSL      `koanf:"ssl"`
 	Backup                 Backup   `koanf:"backup"`
 	CORS                   CORS     `koanf:"cors"`

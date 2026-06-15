@@ -66,6 +66,11 @@ func (c *Core) bootstrap(ctx context.Context) error {
 			return fmt.Errorf("boot: bootstrap db: %w", err)
 		}
 	}
+	if c.Cfg.Core.SeedDemo {
+		if err := SeedDemoData(seedCtx, c.Driver); err != nil {
+			return fmt.Errorf("boot: seed demo: %w", err)
+		}
+	}
 	if rogue, err := auth.RogueReservedRoles(snoozetypes.WithPlatformScope(ctx), c.Driver); err != nil {
 		c.Logger().Warn("boot: rogue reserved-role audit failed", "err", err)
 	} else if len(rogue) > 0 {

@@ -23,10 +23,16 @@
 # Optional env:
 #   RENDER_SERVICE_ID     Service to redeploy. Default: try.snoozeweb.net (snoozeweb-go).
 #   IMAGE_REPO            Docker repo. Default: snoozeweb/snooze.
-#   SKIP_BUILD=1          Skip the `task docker:build` step.
-#   SKIP_PUSH=1           Skip the `docker push` step (implies no Render redeploy).
-#   SKIP_LATEST=1         Skip tagging+pushing :latest.
-#   DEPLOY_TIMEOUT_SECS   Polling budget (default 600).
+#   SKIP_BUILD=1                        Skip the `task docker:build` step.
+#   SKIP_PUSH=1                         Skip the `docker push` step (implies no Render redeploy).
+#   SKIP_LATEST=1                       Skip tagging+pushing :latest.
+#   DEPLOY_TIMEOUT_SECS                 Polling budget (default 600).
+#
+# Demo data (set these in the Render service's Environment settings):
+#   SNOOZE_SERVER_CORE_SEED_DEMO=true   Seed rich demo data on first boot (environments,
+#                                       users, rules, actions, notifications, snooze
+#                                       filters, 17 alerts, comments). Idempotent —
+#                                       safe to leave enabled; re-runs are no-ops.
 set -Eeuo pipefail
 
 readonly DEFAULT_TAG="2.0.0"

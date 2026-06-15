@@ -1,3 +1,19 @@
+## [Unreleased]
+
+### Added
+
+- **Demo seed on first boot.** Set `SNOOZE_SERVER_CORE_SEED_DEMO=true` (or
+  `core.seed_demo: true` in `core.yaml`) and the bootstrap phase populates a
+  rich demonstration dataset: three environments (production / staging /
+  development with colours and conditions), three extra users (alice.martin,
+  bob.chen, charlie.ops), three rules (Parse Host Components, Day Shift, Night
+  Shift), two actions, two notifications, three snooze filters, 17 alert records
+  in mixed states enriched as if they passed through the full pipeline, and five
+  comments. The seed is idempotent — re-running with the flag enabled is a
+  no-op. Designed for the Render try.snoozeweb.net deployment.
+
+---
+
 ## v2.2.0
 
 ### Added
