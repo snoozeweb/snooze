@@ -92,13 +92,18 @@
 .headerRow,
 .row {
   display: grid;
+  /* All three content columns are fluid (minmax) rather than fixed, so the
+     grid collapses to fit its container instead of forcing a ~708px floor
+     that made the whole table scroll sideways on narrower viewports. The
+     small px floors keep name/mods readable; condition floors at 0 because
+     its cell ellipsis-truncates. Only the 28px icon columns stay fixed. */
   grid-template-columns:
     28px /* expand chevron     */
     28px /* drag handle        */
     28px /* selection checkbox */
-    240px /* name              */
-    minmax(0, 1fr) /* condition   */
-    260px /* modifications     */
+    minmax(140px, 1.5fr) /* name          */
+    minmax(0, 2fr) /* condition           */
+    minmax(160px, 1.5fr) /* modifications */
     28px /* add-rule menu     */;
   gap: var(--space-3);
   padding: var(--space-2) var(--space-3);
@@ -244,6 +249,9 @@
   display: inline-flex;
   gap: var(--space-1);
   flex-wrap: wrap;
+  /* Floor at 0 so a long badge can't inflate the now-fluid track and bring
+     back the horizontal scroll; badges wrap to new lines instead. */
+  min-width: 0;
 }
 .indent {
   display: inline-block;
