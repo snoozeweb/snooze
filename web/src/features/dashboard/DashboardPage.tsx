@@ -17,7 +17,7 @@ import { presetToRange, type TimeRange } from "./time-range";
 import { StatTiles, type TileId } from "./StatTiles";
 import { DashboardSkeleton } from "./DashboardSkeleton";
 import { ActivityFeed } from "./ActivityFeed";
-import { alertsSearchForBucket } from "./bucket-utils";
+import { alertsSearchForBucket, alertsSearchForRange } from "./bucket-utils";
 import styles from "./DashboardPage.module.css";
 
 // Series keys must match the exact strings the backend /stats emits in
@@ -191,6 +191,15 @@ export function DashboardPage() {
     });
   };
 
+  // Dragging a range across the chart navigates to the alerts spanning the
+  // whole dragged window (first → last bucket).
+  const handleRangeSelect = (fromX: string, toX: string) => {
+    void navigate({
+      to: "/web/alerts",
+      search: { search: alertsSearchForRange(fromX, toX, bucket) },
+    });
+  };
+
   const handleSeverityClick = (label: string) => {
     void navigate({ to: "/web/alerts", search: { search: `severity = ${label}` } });
   };
@@ -261,6 +270,7 @@ export function DashboardPage() {
                   theme={theme}
                   ariaLabel="Alerts over time by series"
                   onPointClick={handlePointClick}
+                  onRangeSelect={handleRangeSelect}
                 />
               )}
             </Card>

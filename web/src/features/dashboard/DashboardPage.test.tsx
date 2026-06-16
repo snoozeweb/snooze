@@ -15,7 +15,7 @@ import { mswServer } from "@/tests/msw/server";
 import { TooltipProvider } from "@/shared/ui/Tooltip";
 import { ToastProvider, Toaster } from "@/shared/ui/Toast";
 import { DashboardPage } from "./DashboardPage";
-import { alertsSearchForBucket } from "./bucket-utils";
+import { alertsSearchForBucket, alertsSearchForRange } from "./bucket-utils";
 
 // Chart.js canvas stub for jsdom.
 beforeAll(() => {
@@ -347,5 +347,24 @@ describe("alertsSearchForBucket", () => {
     const from = Math.floor(Date.parse(x) / 1000);
     const to = from + bucket;
     expect(alertsSearchForBucket(x, bucket)).toBe(`date_epoch > ${from} and date_epoch < ${to}`);
+  });
+});
+
+describe("alertsSearchForRange", () => {
+  it("spans from the first bucket start to one bucket past the last", () => {
+    const fromX = "2026-05-14T00:00:00Z";
+    const toX = "2026-05-14T03:00:00Z";
+    const bucket = 3600;
+    const from = Math.floor(Date.parse(fromX) / 1000);
+    const to = Math.floor(Date.parse(toX) / 1000) + bucket;
+    expect(alertsSearchForRange(fromX, toX, bucket)).toBe(
+      `date_epoch > ${from} and date_epoch < ${to}`,
+    );
+  });
+
+  it("matches alertsSearchForBucket when the range is a single bucket", () => {
+    const x = "2026-05-14T00:00:00Z";
+    const bucket = 3600;
+    expect(alertsSearchForRange(x, x, bucket)).toBe(alertsSearchForBucket(x, bucket));
   });
 });

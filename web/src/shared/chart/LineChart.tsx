@@ -35,11 +35,24 @@ export type LineSeries = {
   data: Array<{ x: string; y: number }>;
 };
 
+// Pixels the cursor must travel after mousedown before we treat the gesture as
+// a range drag rather than a click. Keeps a slightly-jittery click from
+// drawing a (zero-width) selection and swallowing the point-click drill-down.
+const DRAG_THRESHOLD_PX = 4;
+
 export type LineChartProps = {
   series: LineSeries[];
   height?: number;
   /** Called when a data point is clicked, with the series label and point's x value. */
   onPointClick?: (seriesLabel: string, x: string) => void;
+  /**
+   * Called when the user drags a range across the plot, with the x values of
+   * the first and last buckets the selection covers (Grafana-style). When set,
+   * dragging paints a translucent selection box and fires this on release; a
+   * plain click still goes through onPointClick. fromX may equal toX when the
+   * drag stays within one bucket.
+   */
+  onRangeSelect?: (fromX: string, toX: string) => void;
   /** When true, the Chart.js built-in legend is shown and supports click-toggling datasets. */
   toggleableLegend?: boolean;
   /**
@@ -60,15 +73,20 @@ export function LineChart({
   series,
   height = 240,
   onPointClick,
+  onRangeSelect,
   toggleableLegend,
   ariaLabel,
   theme,
 }: LineChartProps) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const chartRef = useRef<Chart | null>(null);
+  const overlayRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
     if (!canvasRef.current) return;
+    // Set by a completed drag so the click the browser fires right after the
+    // mouseup doesn't also drill into a single bucket via onClick below.
+    let suppressNextClick = false;
     applyChartDefaults();
     const datasets: ChartDataset<"line">[] = series.map((s) => ({
       label: s.label,
@@ -108,6 +126,10 @@ export function LineChart({
       },
       ...(onPointClick != null && {
         onClick(_evt: unknown, elements: Array<{ datasetIndex: number; index: number }>) {
+          if (suppressNextClick) {
+            suppressNextClick = false;
+            return;
+          }
           if (!elements.length) return;
           const { datasetIndex, index } = elements[0]!;
           const seriesLabel = series[datasetIndex]?.label;
@@ -127,17 +149,101 @@ export function LineChart({
       data: { datasets },
       options,
     });
+
+    // Grafana-style drag-to-select-range, wired only when the caller wants it.
+    // We paint a DOM overlay (not a canvas rect) so it re-themes via CSS tokens
+    // and survives Chart.js' own redraws.
+    let detachDrag: (() => void) | undefined;
+    const canvas = canvasRef.current;
+    if (onRangeSelect && canvas) {
+      const pxOf = (e: MouseEvent) => e.clientX - canvas.getBoundingClientRect().left;
+
+      // Map a canvas-relative pixel to a bucket index via the x scale.
+      const indexAt = (px: number): number | null => {
+        const scale = chartRef.current?.scales["x"] as
+          | { getValueForPixel?: (p: number) => number | undefined }
+          | undefined;
+        const data = series[0]?.data;
+        if (!scale?.getValueForPixel || !data?.length) return null;
+        const raw = scale.getValueForPixel(px);
+        if (raw == null || Number.isNaN(raw)) return null;
+        return Math.max(0, Math.min(data.length - 1, Math.round(raw)));
+      };
+
+      const paint = (aPx: number, bPx: number) => {
+        const overlay = overlayRef.current;
+        const area = chartRef.current?.chartArea as
+          | { left: number; right: number; top: number; bottom: number }
+          | undefined;
+        if (!overlay || !area) return;
+        const left = Math.max(area.left, Math.min(aPx, bPx));
+        const right = Math.min(area.right, Math.max(aPx, bPx));
+        overlay.style.display = "block";
+        overlay.style.left = `${left}px`;
+        overlay.style.top = `${area.top}px`;
+        overlay.style.width = `${Math.max(0, right - left)}px`;
+        overlay.style.height = `${Math.max(0, area.bottom - area.top)}px`;
+      };
+      const hide = () => {
+        if (overlayRef.current) overlayRef.current.style.display = "none";
+      };
+
+      let drag: { startPx: number; moved: boolean } | null = null;
+
+      const onMove = (e: MouseEvent) => {
+        if (!drag) return;
+        const px = pxOf(e);
+        if (Math.abs(px - drag.startPx) > DRAG_THRESHOLD_PX) drag.moved = true;
+        if (drag.moved) paint(drag.startPx, px);
+      };
+      const onUp = (e: MouseEvent) => {
+        window.removeEventListener("mousemove", onMove);
+        window.removeEventListener("mouseup", onUp);
+        const d = drag;
+        drag = null;
+        hide();
+        if (!d?.moved) return; // a click, not a drag — let onClick drill instead
+        const a = indexAt(d.startPx);
+        const b = indexAt(pxOf(e));
+        if (a == null || b == null) return;
+        const data = series[0]!.data;
+        const fromX = data[Math.min(a, b)]?.x;
+        const toX = data[Math.max(a, b)]?.x;
+        if (fromX == null || toX == null) return;
+        suppressNextClick = true; // swallow the click the browser fires post-drag
+        onRangeSelect(fromX, toX);
+      };
+      const onDown = (e: MouseEvent) => {
+        if (e.button !== 0) return; // primary button only
+        e.preventDefault(); // no text/image drag-select while selecting
+        drag = { startPx: pxOf(e), moved: false };
+        window.addEventListener("mousemove", onMove);
+        window.addEventListener("mouseup", onUp);
+      };
+
+      canvas.addEventListener("mousedown", onDown);
+      detachDrag = () => {
+        canvas.removeEventListener("mousedown", onDown);
+        window.removeEventListener("mousemove", onMove);
+        window.removeEventListener("mouseup", onUp);
+      };
+    }
+
     return () => {
+      detachDrag?.();
       chartRef.current?.destroy();
       chartRef.current = null;
     };
     // `theme` is intentionally a dep: toggling light/dark must re-resolve the
     // token-driven axis/grid colours even though the series data is unchanged.
-  }, [series, onPointClick, toggleableLegend, theme]);
+  }, [series, onPointClick, onRangeSelect, toggleableLegend, theme]);
 
   return (
     <div className={styles.wrap} style={{ height }}>
       <canvas ref={canvasRef} role="img" aria-label={ariaLabel} />
+      {onRangeSelect ? (
+        <div ref={overlayRef} className={styles.selection} aria-hidden="true" />
+      ) : null}
     </div>
   );
 }

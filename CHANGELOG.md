@@ -20,6 +20,12 @@
   behaves like the LDAP tab: only the *Enabled* toggle shows until OIDC is
   switched on, then the issuer, client, scope and claim settings appear. Stops
   the tab dumping eight provider fields on operators who haven't enabled SSO.
+- **Web — Dashboard "Alerts over time" shows a selection box while dragging.**
+  Dragging across the chart now paints a translucent accent-coloured band that
+  follows the cursor (Grafana-style), and on release drills into the alerts
+  spanning the **whole** dragged window (first → last bucket) instead of just
+  the bucket under the release point. A plain click still drills into a single
+  bucket.
 - **Web — Rules "Modifications" column shows the full action.** Each badge now
   reads e.g. `SET environment = prod`, `ARRAY_APPEND tags += urgent`,
   `REGEX_SUB msg = s/foo/bar/` or `KV_SET owner = owners[host]` instead of the
