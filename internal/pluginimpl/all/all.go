@@ -13,6 +13,7 @@ package all
 import (
 	// Data models — CRUD-able config/state collections.
 	_ "github.com/snoozeweb/snooze/internal/pluginimpl/action"
+	_ "github.com/snoozeweb/snooze/internal/pluginimpl/apikey"
 	_ "github.com/snoozeweb/snooze/internal/pluginimpl/audit"
 	_ "github.com/snoozeweb/snooze/internal/pluginimpl/comment"
 	_ "github.com/snoozeweb/snooze/internal/pluginimpl/environment"

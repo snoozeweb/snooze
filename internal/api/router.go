@@ -36,7 +36,11 @@ type Router struct {
 	// and /api/v1/login/logout endpoints. Concrete type at runtime is
 	// *auth.RefreshTokenStore; the interface narrows the dependency for
 	// route tests. Nil disables both endpoints (logout still returns 204).
-	Refresh         refreshIssuer
+	Refresh refreshIssuer
+	// APIKeys is the user API-key store. When non-nil, a snz_-prefixed Bearer
+	// token is authenticated via it in the Auth middleware. Nil disables key
+	// auth (the JWT path is unaffected).
+	APIKeys         *auth.APIKeyStore
 	Plugins         map[string]plugins.Plugin
 	Host            plugins.Host
 	DB              db.Driver
@@ -103,7 +107,11 @@ func (rt *Router) Build() chi.Router {
 	r.Use(middleware.CORS(corsCfg))
 	// 7. Auth — last so the request_id/trace are already set on context.
 	skip := rt.skipAuth
-	r.Use(middleware.Auth(rt.Auth, skip))
+	var keys middleware.APIKeyAuthenticator
+	if rt.APIKeys != nil {
+		keys = rt.APIKeys
+	}
+	r.Use(middleware.Auth(rt.Auth, keys, skip))
 
 	// --- public endpoints (skip filter above lets them through) -------------
 	rt.mountHealth(r)

@@ -48,6 +48,17 @@ ro_tenant
 Read Only for the **tenant registry**. Allows listing and inspecting tenant
 documents. Also a platform-tier permission.
 
+ro_apikey  
+Read every API key in your tenant — the admin **API Keys** page. Tenant-scoped.
+
+rw_apikey  
+Edit (rename / change expiry) and revoke any API key in your tenant.
+Tenant-scoped.
+
+Any logged-in user can manage **their own** keys from **Profile → API Keys**
+without these permissions; `ro_apikey` / `rw_apikey` only gate the tenant-wide
+admin view. See [API keys](./api_keys.md).
+
 can_comment  
 Allow to acknowledge, re-escalate or comment any received alert. [More on Alerts](./alerts.md)
 

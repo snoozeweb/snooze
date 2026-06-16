@@ -1,0 +1,11 @@
+---
+name: 'API Key'
+desc: 'User API keys (admin surface). Keys are minted via /api/v1/user/me/apikeys.'
+route_defaults:
+    primary: [tenant_id, owner, name]
+    check_permissions: true
+    duplicate_policy: 'reject'
+search_fields:
+    - owner
+    - name
+    - key_prefix

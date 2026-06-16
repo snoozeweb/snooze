@@ -12,6 +12,9 @@ type Auth struct {
 	RefreshTokenLease Duration `koanf:"refresh_token_lease"`
 	TokenIssuer       string   `koanf:"token_issuer"`
 	TokenAudience     string   `koanf:"token_audience"`
+	// APIKeyMaxTTL caps how far in the future a user-minted API key may expire.
+	// A key created without an explicit expiry defaults to now + this value.
+	APIKeyMaxTTL Duration `koanf:"apikey_max_ttl"`
 }
 
 // DefaultAuth returns the canonical defaults: HS256, 1h access lease, 7d refresh lease.
@@ -23,5 +26,6 @@ func DefaultAuth() Auth {
 		RefreshTokenLease: Duration(7 * 24 * time.Hour),
 		TokenIssuer:       "snooze",
 		TokenAudience:     "snooze",
+		APIKeyMaxTTL:      Duration(365 * 24 * time.Hour),
 	}
 }

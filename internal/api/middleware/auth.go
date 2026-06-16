@@ -1,6 +1,7 @@
 package middleware
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"strings"
@@ -15,20 +16,25 @@ import (
 // header — the canonical use case is /healthz, /readyz, /metrics, /login.
 type SkipPredicate func(r *http.Request) bool
 
+// APIKeyAuthenticator resolves a raw API key into claims. *auth.APIKeyStore
+// satisfies it. Passed to Auth so a snz_-prefixed Bearer token authenticates
+// as a user without a login JWT.
+type APIKeyAuthenticator interface {
+	Resolve(ctx context.Context, raw string) (snoozetypes.Claims, error)
+}
+
 // Auth returns a chi middleware that validates the Authorization: Bearer
-// token via engine, then stores the resulting Claims on the request context
-// (auth.WithClaims) and stamps the tenant slug (auth.WithTenant). A missing
-// or invalid token yields a 401 ErrEnvelope. skip lets the caller bypass the
-// check for public endpoints.
-func Auth(engine *auth.TokenEngine, skip SkipPredicate) func(http.Handler) http.Handler {
+// token, then stores the resulting Claims on the request context
+// (auth.WithClaims) and stamps the tenant slug (auth.WithTenant). A token
+// prefixed with auth.APIKeyPrefix is resolved via keys (when non-nil);
+// otherwise it is verified as a login JWT via engine. A missing or invalid
+// token yields a 401 ErrEnvelope. skip lets the caller bypass the check for
+// public endpoints.
+func Auth(engine *auth.TokenEngine, keys APIKeyAuthenticator, skip SkipPredicate) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			if skip != nil && skip(r) {
 				next.ServeHTTP(w, r)
-				return
-			}
-			if engine == nil {
-				writeUnauthorized(w, r, "auth not configured")
 				return
 			}
 			header := r.Header.Get("Authorization")
@@ -41,11 +47,29 @@ func Auth(engine *auth.TokenEngine, skip SkipPredicate) func(http.Handler) http.
 				writeUnauthorized(w, r, "expected Authorization: Bearer <token>")
 				return
 			}
-			claims, err := engine.Verify(parts[1])
-			if err != nil {
-				writeUnauthorized(w, r, "invalid token")
-				return
+			token := parts[1]
+
+			var claims snoozetypes.Claims
+			if keys != nil && strings.HasPrefix(token, auth.APIKeyPrefix) {
+				c, err := keys.Resolve(r.Context(), token)
+				if err != nil {
+					writeUnauthorized(w, r, "invalid api key")
+					return
+				}
+				claims = c
+			} else {
+				if engine == nil {
+					writeUnauthorized(w, r, "auth not configured")
+					return
+				}
+				c, err := engine.Verify(token)
+				if err != nil {
+					writeUnauthorized(w, r, "invalid token")
+					return
+				}
+				claims = c
 			}
+
 			// Stamp claims on context (existing behaviour).
 			ctx := auth.WithClaims(r.Context(), claims)
 			// Stamp tenant on context (D3). Empty claim (legacy token) falls

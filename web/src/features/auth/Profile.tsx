@@ -10,6 +10,7 @@ import { ApiError } from "@/lib/api/client";
 import { permissionBadgeVariant } from "@/lib/format/permission-color";
 import { secondsUntilExpiry } from "@/lib/auth/jwt";
 import { useAuth } from "@/lib/auth/store";
+import { ApiKeysSection } from "@/features/account/apikeys/ApiKeysSection";
 import { changeOwnPassword } from "./api";
 import styles from "./Profile.module.css";
 
@@ -193,6 +194,9 @@ export function Profile() {
           <ChangePasswordForm />
         </Card>
       ) : null}
+      <Card padded>
+        <ApiKeysSection />
+      </Card>
       <div>
         <Button variant="danger" leadingIcon="lock" onClick={handleLogout}>
           Log out

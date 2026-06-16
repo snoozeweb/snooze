@@ -2,6 +2,12 @@
 
 ### Added
 
+- **User API keys.** Users can mint/revoke personal API keys (Profile → API
+  Keys) carrying a subset of their own permissions and an optional, capped
+  expiry; authenticate with `Authorization: Bearer snz_…`. Effective
+  permissions are bounded live by the owner's current roles. New `ro_apikey` /
+  `rw_apikey` permissions gate a tenant-scoped admin **API Keys** page. New
+  config `auth.apikey_max_ttl` (default 365d).
 - **Demo seed on first boot.** Set `SNOOZE_SERVER_CORE_SEED_DEMO=true` (or
   `core.seed_demo: true` in `core.yaml`) and the bootstrap phase populates a
   rich demonstration dataset: three environments (production / staging /

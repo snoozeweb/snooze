@@ -129,6 +129,7 @@ func (c *Core) bootSecrets(ctx context.Context) error {
 	}
 	c.Tokens = engine
 	c.Refresh = auth.NewRefreshTokenStore(c.Driver, time.Duration(c.Cfg.Auth.RefreshTokenLease))
+	c.APIKeys = auth.NewAPIKeyStore(c.Driver, c.Cfg.Auth.APIKeyMaxTTL.AsDuration())
 	return nil
 }
 

@@ -216,7 +216,16 @@ export interface paths {
                     content: {
                         "application/json": {
                             data?: {
-                                backends?: string[];
+                                backends?: {
+                                    /** @example microsoft */
+                                    name: string;
+                                    /** @enum {string} */
+                                    kind: "password" | "redirect";
+                                    /** @example Microsoft 365 */
+                                    display_name?: string;
+                                    /** @example microsoft */
+                                    icon?: string;
+                                }[];
                                 /** @description Active tenants with listed:true (or absent). Sorted
                                  *     by display_name. Empty array when there is only the
                                  *     default tenant or none are listed.
@@ -293,6 +302,107 @@ export interface paths {
                     content: {
                         "application/json": components["schemas"]["ErrEnvelope"];
                     };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/login/{provider}/start": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Begin an OIDC redirect login
+         * @description Initiates an OAuth 2.0 / OIDC authorization-code flow for the named
+         *     provider (e.g. `microsoft`). Sets a short-lived signed state cookie
+         *     and issues a 302 redirect to the identity provider's authorize endpoint.
+         *
+         */
+        get: {
+            parameters: {
+                query?: {
+                    /** @description Relative SPA path to return to after sign-in. If omitted, the SPA lands on /web/alerts. */
+                    return_to?: string;
+                    /** @description Tenant slug. Omit to use the default tenant. */
+                    org?: string;
+                };
+                header?: never;
+                path: {
+                    /** @description The configured `method` value (e.g. `microsoft`). */
+                    provider: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Redirect to the identity provider's authorize endpoint. Sets a short-lived signed state cookie. */
+                302: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/login/{provider}/callback": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * OIDC redirect callback
+         * @description Receives the authorization-code callback from the identity provider.
+         *     Exchanges the code for tokens, validates the ID token, resolves or
+         *     creates the Snooze user, and issues a signed session JWT.
+         *
+         *     On success, redirects to `/web/login/callback#token=<jwt>`.
+         *     On failure, redirects to `/web/login?sso_error=<message>`.
+         *
+         */
+        get: {
+            parameters: {
+                query?: {
+                    /** @description Authorization code returned by the identity provider. */
+                    code?: string;
+                    /** @description CSRF state token. Must match the signed state cookie. */
+                    state?: string;
+                    /** @description Error code returned by the identity provider on failure. */
+                    error?: string;
+                };
+                header?: never;
+                path: {
+                    /** @description The configured `method` value (e.g. `microsoft`). */
+                    provider: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description On success, redirect to /web/login/callback with the session token in the URL fragment. On failure, redirect to /web/login?sso_error=... */
+                302: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
                 };
             };
         };
@@ -647,6 +757,120 @@ export interface paths {
             };
         };
         delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/user/me/apikeys": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List my API keys */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description The caller's API keys (secrets stripped). */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            data?: components["schemas"]["APIKey"][];
+                        };
+                    };
+                };
+            };
+        };
+        put?: never;
+        /**
+         * Create an API key for myself
+         * @description Mints a key scoped to the caller, carrying a subset of the caller's own permissions. The raw key is returned once. Not permitted when the request is itself authenticated with an API key.
+         *
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["APIKeyCreate"];
+                };
+            };
+            responses: {
+                /** @description Created. Body includes the raw `key` (shown once). */
+                201: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["APIKeyCreated"];
+                    };
+                };
+                403: components["responses"]["Forbidden"];
+                409: components["responses"]["Conflict"];
+                /** @description Invalid expiry, or requested permissions are malformed. */
+                422: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrEnvelope"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/user/me/apikeys/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Revoke one of my API keys */
+        delete: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Deleted. */
+                204: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                404: components["responses"]["NotFound"];
+            };
+        };
         options?: never;
         head?: never;
         patch?: never;
@@ -1487,6 +1711,12 @@ export interface paths {
                 path: {
                     /** @description Plugin / collection name. The built-in set is enumerated in
                      *     `internal/pluginimpl/all/all.go`.
+                     *
+                     *     The `apikey` collection is the tenant-scoped admin surface over user
+                     *     API keys: reads require `ro_apikey` and writes require `rw_apikey`.
+                     *     `POST`/`PUT` are rejected here — mint keys via
+                     *     `POST /api/v1/user/me/apikeys`; admins may only `PATCH`
+                     *     (`name`/`expires_at`), revoke, or `DELETE`.
                      *      */
                     plugin: components["parameters"]["PluginPath"];
                 };
@@ -1589,6 +1819,12 @@ export interface paths {
                 path: {
                     /** @description Plugin / collection name. The built-in set is enumerated in
                      *     `internal/pluginimpl/all/all.go`.
+                     *
+                     *     The `apikey` collection is the tenant-scoped admin surface over user
+                     *     API keys: reads require `ro_apikey` and writes require `rw_apikey`.
+                     *     `POST`/`PUT` are rejected here — mint keys via
+                     *     `POST /api/v1/user/me/apikeys`; admins may only `PATCH`
+                     *     (`name`/`expires_at`), revoke, or `DELETE`.
                      *      */
                     plugin: components["parameters"]["PluginPath"];
                 };
@@ -1692,6 +1928,12 @@ export interface paths {
             path: {
                 /** @description Plugin / collection name. The built-in set is enumerated in
                  *     `internal/pluginimpl/all/all.go`.
+                 *
+                 *     The `apikey` collection is the tenant-scoped admin surface over user
+                 *     API keys: reads require `ro_apikey` and writes require `rw_apikey`.
+                 *     `POST`/`PUT` are rejected here — mint keys via
+                 *     `POST /api/v1/user/me/apikeys`; admins may only `PATCH`
+                 *     (`name`/`expires_at`), revoke, or `DELETE`.
                  *      */
                 plugin: components["parameters"]["PluginPath"];
             };
@@ -1721,6 +1963,12 @@ export interface paths {
                 path: {
                     /** @description Plugin / collection name. The built-in set is enumerated in
                      *     `internal/pluginimpl/all/all.go`.
+                     *
+                     *     The `apikey` collection is the tenant-scoped admin surface over user
+                     *     API keys: reads require `ro_apikey` and writes require `rw_apikey`.
+                     *     `POST`/`PUT` are rejected here — mint keys via
+                     *     `POST /api/v1/user/me/apikeys`; admins may only `PATCH`
+                     *     (`name`/`expires_at`), revoke, or `DELETE`.
                      *      */
                     plugin: components["parameters"]["PluginPath"];
                 };
@@ -1757,6 +2005,12 @@ export interface paths {
                 path: {
                     /** @description Plugin / collection name. The built-in set is enumerated in
                      *     `internal/pluginimpl/all/all.go`.
+                     *
+                     *     The `apikey` collection is the tenant-scoped admin surface over user
+                     *     API keys: reads require `ro_apikey` and writes require `rw_apikey`.
+                     *     `POST`/`PUT` are rejected here — mint keys via
+                     *     `POST /api/v1/user/me/apikeys`; admins may only `PATCH`
+                     *     (`name`/`expires_at`), revoke, or `DELETE`.
                      *      */
                     plugin: components["parameters"]["PluginPath"];
                 };
@@ -1806,6 +2060,12 @@ export interface paths {
                 path: {
                     /** @description Plugin / collection name. The built-in set is enumerated in
                      *     `internal/pluginimpl/all/all.go`.
+                     *
+                     *     The `apikey` collection is the tenant-scoped admin surface over user
+                     *     API keys: reads require `ro_apikey` and writes require `rw_apikey`.
+                     *     `POST`/`PUT` are rejected here — mint keys via
+                     *     `POST /api/v1/user/me/apikeys`; admins may only `PATCH`
+                     *     (`name`/`expires_at`), revoke, or `DELETE`.
                      *      */
                     plugin: components["parameters"]["PluginPath"];
                 };
@@ -1850,6 +2110,12 @@ export interface paths {
                 path: {
                     /** @description Plugin / collection name. The built-in set is enumerated in
                      *     `internal/pluginimpl/all/all.go`.
+                     *
+                     *     The `apikey` collection is the tenant-scoped admin surface over user
+                     *     API keys: reads require `ro_apikey` and writes require `rw_apikey`.
+                     *     `POST`/`PUT` are rejected here — mint keys via
+                     *     `POST /api/v1/user/me/apikeys`; admins may only `PATCH`
+                     *     (`name`/`expires_at`), revoke, or `DELETE`.
                      *      */
                     plugin: components["parameters"]["PluginPath"];
                 };
@@ -1896,6 +2162,12 @@ export interface paths {
             path: {
                 /** @description Plugin / collection name. The built-in set is enumerated in
                  *     `internal/pluginimpl/all/all.go`.
+                 *
+                 *     The `apikey` collection is the tenant-scoped admin surface over user
+                 *     API keys: reads require `ro_apikey` and writes require `rw_apikey`.
+                 *     `POST`/`PUT` are rejected here — mint keys via
+                 *     `POST /api/v1/user/me/apikeys`; admins may only `PATCH`
+                 *     (`name`/`expires_at`), revoke, or `DELETE`.
                  *      */
                 plugin: components["parameters"]["PluginPath"];
                 uid: string;
@@ -1910,6 +2182,12 @@ export interface paths {
                 path: {
                     /** @description Plugin / collection name. The built-in set is enumerated in
                      *     `internal/pluginimpl/all/all.go`.
+                     *
+                     *     The `apikey` collection is the tenant-scoped admin surface over user
+                     *     API keys: reads require `ro_apikey` and writes require `rw_apikey`.
+                     *     `POST`/`PUT` are rejected here — mint keys via
+                     *     `POST /api/v1/user/me/apikeys`; admins may only `PATCH`
+                     *     (`name`/`expires_at`), revoke, or `DELETE`.
                      *      */
                     plugin: components["parameters"]["PluginPath"];
                     uid: string;
@@ -1948,6 +2226,12 @@ export interface paths {
                 path: {
                     /** @description Plugin / collection name. The built-in set is enumerated in
                      *     `internal/pluginimpl/all/all.go`.
+                     *
+                     *     The `apikey` collection is the tenant-scoped admin surface over user
+                     *     API keys: reads require `ro_apikey` and writes require `rw_apikey`.
+                     *     `POST`/`PUT` are rejected here — mint keys via
+                     *     `POST /api/v1/user/me/apikeys`; admins may only `PATCH`
+                     *     (`name`/`expires_at`), revoke, or `DELETE`.
                      *      */
                     plugin: components["parameters"]["PluginPath"];
                     uid: string;
@@ -1984,6 +2268,12 @@ export interface paths {
                 path: {
                     /** @description Plugin / collection name. The built-in set is enumerated in
                      *     `internal/pluginimpl/all/all.go`.
+                     *
+                     *     The `apikey` collection is the tenant-scoped admin surface over user
+                     *     API keys: reads require `ro_apikey` and writes require `rw_apikey`.
+                     *     `POST`/`PUT` are rejected here — mint keys via
+                     *     `POST /api/v1/user/me/apikeys`; admins may only `PATCH`
+                     *     (`name`/`expires_at`), revoke, or `DELETE`.
                      *      */
                     plugin: components["parameters"]["PluginPath"];
                     uid: string;
@@ -2013,6 +2303,12 @@ export interface paths {
                 path: {
                     /** @description Plugin / collection name. The built-in set is enumerated in
                      *     `internal/pluginimpl/all/all.go`.
+                     *
+                     *     The `apikey` collection is the tenant-scoped admin surface over user
+                     *     API keys: reads require `ro_apikey` and writes require `rw_apikey`.
+                     *     `POST`/`PUT` are rejected here — mint keys via
+                     *     `POST /api/v1/user/me/apikeys`; admins may only `PATCH`
+                     *     (`name`/`expires_at`), revoke, or `DELETE`.
                      *      */
                     plugin: components["parameters"]["PluginPath"];
                     uid: string;
@@ -2046,6 +2342,33 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        APIKey: {
+            uid?: string;
+            owner?: string;
+            owner_method?: string;
+            name?: string;
+            /** @description First 12 chars of the key, for identification. */
+            key_prefix?: string;
+            permissions?: string[];
+            groups?: string[];
+            created_at?: number;
+            expires_at?: number;
+            revoked_at?: number;
+        };
+        APIKeyCreate: {
+            name: string;
+            /** @description Must be a subset of the caller's own permissions. */
+            permissions?: string[];
+            /**
+             * Format: date-time
+             * @description RFC3339. Omit to default to the configured maximum lifetime.
+             */
+            expires_at?: string;
+        };
+        APIKeyCreated: components["schemas"]["APIKey"] & {
+            /** @description The raw key (snz_…). Returned ONCE, on creation only. */
+            key?: string;
+        };
         /** @example {
          *       "status": "ok"
          *     } */
@@ -2462,8 +2785,14 @@ export interface components {
     parameters: {
         /** @description Plugin / collection name. The built-in set is enumerated in
          *     `internal/pluginimpl/all/all.go`.
+         *
+         *     The `apikey` collection is the tenant-scoped admin surface over user
+         *     API keys: reads require `ro_apikey` and writes require `rw_apikey`.
+         *     `POST`/`PUT` are rejected here — mint keys via
+         *     `POST /api/v1/user/me/apikeys`; admins may only `PATCH`
+         *     (`name`/`expires_at`), revoke, or `DELETE`.
          *      */
-        PluginPath: "action" | "aggregaterule" | "alertmanager" | "audit" | "azuremonitor" | "cloudwatch" | "comment" | "datadog" | "discord" | "environment" | "googlechat" | "grafana" | "heartbeat" | "influxdb2" | "kapacitor" | "kv" | "mail" | "newrelic" | "notification" | "ntfy" | "opsgenie" | "pagerduty" | "patlite" | "profile" | "prometheus" | "pushover" | "record" | "role" | "rule" | "script" | "sentry" | "servicenow" | "settings" | "slack" | "snooze" | "sns" | "stats" | "statuspage" | "telegram" | "twilio" | "user" | "webhook" | "widget";
+        PluginPath: "action" | "aggregaterule" | "alertmanager" | "apikey" | "audit" | "azuremonitor" | "cloudwatch" | "comment" | "datadog" | "discord" | "environment" | "googlechat" | "grafana" | "heartbeat" | "influxdb2" | "kapacitor" | "kv" | "mail" | "newrelic" | "notification" | "ntfy" | "opsgenie" | "pagerduty" | "patlite" | "profile" | "prometheus" | "pushover" | "record" | "role" | "rule" | "script" | "sentry" | "servicenow" | "settings" | "slack" | "snooze" | "sns" | "stats" | "statuspage" | "telegram" | "twilio" | "user" | "webhook" | "widget";
         /** @description Base64url-encoded JSON condition. Empty (or absent) selects
          *     every document. Use `POST /{plugin}/search` for queries that
          *     won't fit in a URL.

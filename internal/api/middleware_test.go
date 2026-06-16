@@ -62,7 +62,7 @@ func TestAuthMiddleware_BearerHappyPath(t *testing.T) {
 	require.NoError(t, err)
 
 	var seen snoozetypes.Claims
-	h := middleware.Auth(eng, nil)(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	h := middleware.Auth(eng, nil, nil)(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		c, ok := auth.ClaimsFrom(r.Context())
 		require.True(t, ok)
 		seen = c
@@ -78,7 +78,7 @@ func TestAuthMiddleware_BearerHappyPath(t *testing.T) {
 
 func TestAuthMiddleware_Missing(t *testing.T) {
 	eng := testTokenEngine(t)
-	h := middleware.Auth(eng, nil)(http.HandlerFunc(func(_ http.ResponseWriter, _ *http.Request) {
+	h := middleware.Auth(eng, nil, nil)(http.HandlerFunc(func(_ http.ResponseWriter, _ *http.Request) {
 		t.Fatal("downstream must not be reached")
 	}))
 	rec := httptest.NewRecorder()
@@ -92,7 +92,7 @@ func TestAuthMiddleware_Missing(t *testing.T) {
 
 func TestAuthMiddleware_BadSignature(t *testing.T) {
 	eng := testTokenEngine(t)
-	h := middleware.Auth(eng, nil)(http.HandlerFunc(func(_ http.ResponseWriter, _ *http.Request) {
+	h := middleware.Auth(eng, nil, nil)(http.HandlerFunc(func(_ http.ResponseWriter, _ *http.Request) {
 		t.Fatal("downstream must not be reached")
 	}))
 	rec := httptest.NewRecorder()
@@ -106,7 +106,7 @@ func TestAuthMiddleware_Skip(t *testing.T) {
 	eng := testTokenEngine(t)
 	reached := false
 	skip := func(r *http.Request) bool { return strings.HasPrefix(r.URL.Path, "/healthz") }
-	h := middleware.Auth(eng, skip)(http.HandlerFunc(func(_ http.ResponseWriter, _ *http.Request) {
+	h := middleware.Auth(eng, nil, skip)(http.HandlerFunc(func(_ http.ResponseWriter, _ *http.Request) {
 		reached = true
 	}))
 	rec := httptest.NewRecorder()
@@ -126,7 +126,7 @@ func TestAuthMiddleware_SetsTenantFromClaim(t *testing.T) {
 
 	var capturedTenantID string
 	var capturedOK bool
-	h := middleware.Auth(eng, nil)(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	h := middleware.Auth(eng, nil, nil)(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		capturedTenantID, capturedOK = auth.TenantFrom(r.Context())
 		w.WriteHeader(http.StatusOK)
 	}))
@@ -152,7 +152,7 @@ func TestAuthMiddleware_SetsDefaultTenantForLegacyToken(t *testing.T) {
 	require.NoError(t, err)
 
 	var capturedTenantID string
-	h := middleware.Auth(eng, nil)(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	h := middleware.Auth(eng, nil, nil)(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		capturedTenantID, _ = auth.TenantFrom(r.Context())
 		w.WriteHeader(http.StatusOK)
 	}))

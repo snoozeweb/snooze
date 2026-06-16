@@ -514,6 +514,60 @@ paths:
             application/json:
               schema: {$ref: '#/components/schemas/ErrEnvelope'}
 
+  /api/v1/user/me/apikeys:
+    get:
+      tags: [auth]
+      summary: List my API keys
+      responses:
+        '200':
+          description: The caller's API keys (secrets stripped).
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items: {$ref: '#/components/schemas/APIKey'}
+    post:
+      tags: [auth]
+      summary: Create an API key for myself
+      description: >
+        Mints a key scoped to the caller, carrying a subset of the caller's own
+        permissions. The raw key is returned once. Not permitted when the
+        request is itself authenticated with an API key.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/APIKeyCreate'}
+      responses:
+        '201':
+          description: Created. Body includes the raw `key` (shown once).
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/APIKeyCreated'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '409': {$ref: '#/components/responses/Conflict'}
+        '422':
+          description: Invalid expiry, or requested permissions are malformed.
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/ErrEnvelope'}
+  /api/v1/user/me/apikeys/{id}:
+    delete:
+      tags: [auth]
+      summary: Revoke one of my API keys
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: {type: string}
+      responses:
+        '204':
+          description: Deleted.
+        '404': {$ref: '#/components/responses/NotFound'}
+
   /api/v1/action/test:
     post:
       tags: [crud]
@@ -1348,6 +1402,15 @@ components:
         deployments; single-tenant deployments leave ingest open (existing
         behaviour preserved).
 
+    apiKeyAuth:
+      type: http
+      scheme: bearer
+      description: >
+        A user API key, presented as `Authorization: Bearer snz_…`. Keys are
+        minted at `/api/v1/user/me/apikeys`, carry a subset of the owner's
+        permissions, and are bounded live by the owner's current permissions on
+        every request.
+
   parameters:
     PluginPath:
       name: plugin
@@ -1356,12 +1419,19 @@ components:
       description: |
         Plugin / collection name. The built-in set is enumerated in
         `internal/pluginimpl/all/all.go`.
+
+        The `apikey` collection is the tenant-scoped admin surface over user
+        API keys: reads require `ro_apikey` and writes require `rw_apikey`.
+        `POST`/`PUT` are rejected here — mint keys via
+        `POST /api/v1/user/me/apikeys`; admins may only `PATCH`
+        (`name`/`expires_at`), revoke, or `DELETE`.
       schema:
         type: string
         enum:
           - action
           - aggregaterule
           - alertmanager
+          - apikey
           - audit
           - azuremonitor
           - cloudwatch
@@ -1475,6 +1545,47 @@ components:
             $ref: '#/components/schemas/ErrEnvelope'
 
   schemas:
+    APIKey:
+      type: object
+      properties:
+        uid: {type: string}
+        owner: {type: string}
+        owner_method: {type: string}
+        name: {type: string}
+        key_prefix:
+          type: string
+          description: First 12 chars of the key, for identification.
+        permissions:
+          type: array
+          items: {type: string}
+        groups:
+          type: array
+          items: {type: string}
+        created_at: {type: number}
+        expires_at: {type: number}
+        revoked_at: {type: number}
+    APIKeyCreate:
+      type: object
+      required: [name]
+      properties:
+        name: {type: string}
+        permissions:
+          type: array
+          items: {type: string}
+          description: Must be a subset of the caller's own permissions.
+        expires_at:
+          type: string
+          format: date-time
+          description: RFC3339. Omit to default to the configured maximum lifetime.
+    APIKeyCreated:
+      allOf:
+        - $ref: '#/components/schemas/APIKey'
+        - type: object
+          properties:
+            key:
+              type: string
+              description: The raw key (snz_…). Returned ONCE, on creation only.
+
     StatusOK:
       type: object
       required: [status]

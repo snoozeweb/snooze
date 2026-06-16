@@ -1,13 +1,16 @@
 package api
 
 import (
+	"errors"
 	"net/http"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 	"golang.org/x/crypto/bcrypt"
 
 	"github.com/snoozeweb/snooze/internal/auth"
 	"github.com/snoozeweb/snooze/internal/db"
+	"github.com/snoozeweb/snooze/pkg/snoozetypes"
 )
 
 // passwordChangeRequest is the body accepted by POST /api/v1/user/me/password.
@@ -30,6 +33,9 @@ type passwordChangeRequest struct {
 func (rt *Router) mountUser(r chi.Router) {
 	r.Route("/api/v1/user/me", func(sub chi.Router) {
 		sub.Post("/password", rt.handleSelfPasswordChange)
+		sub.Get("/apikeys", rt.handleListMyAPIKeys)
+		sub.Post("/apikeys", rt.handleCreateMyAPIKey)
+		sub.Delete("/apikeys/{id}", rt.handleDeleteMyAPIKey)
 	})
 }
 
@@ -116,4 +122,117 @@ func (rt *Router) handleSelfPasswordChange(w http.ResponseWriter, r *http.Reques
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
+}
+
+// apiKeyCreateRequest is the body for POST /api/v1/user/me/apikeys.
+type apiKeyCreateRequest struct {
+	Name        string   `json:"name"`
+	Permissions []string `json:"permissions"`
+	// ExpiresAt is RFC3339; omit/empty to default to the configured cap.
+	ExpiresAt string `json:"expires_at"`
+}
+
+// requireSelf reads the verified Claims off the request context, refusing the
+// request when the API-key store is not wired (503) or the caller is
+// unauthenticated (401). The returned claims identify the caller whose keys the
+// self-service routes operate on.
+func (rt *Router) requireSelf(w http.ResponseWriter, r *http.Request) (snoozetypes.Claims, bool) {
+	if rt.APIKeys == nil || rt.DB == nil {
+		WriteError(w, r, ErrUnavailable.WithMessage("api keys not configured"))
+		return snoozetypes.Claims{}, false
+	}
+	claims, ok := auth.ClaimsFrom(r.Context())
+	if !ok || claims.Subject == "" {
+		WriteError(w, r, ErrUnauthorized.WithMessage("authentication required"))
+		return snoozetypes.Claims{}, false
+	}
+	return claims, true
+}
+
+// handleCreateMyAPIKey POST /api/v1/user/me/apikeys.
+//
+// Body: {name, permissions?, expires_at?}. Mints a key scoped to the caller,
+// carrying a subset of the caller's own permissions; the raw key is returned
+// exactly once (HTTP 201). A request authenticated with an API key may not mint
+// further keys — minting requires an interactive session so the caller's live
+// perms bound the grant.
+func (rt *Router) handleCreateMyAPIKey(w http.ResponseWriter, r *http.Request) {
+	claims, ok := rt.requireSelf(w, r)
+	if !ok {
+		return
+	}
+	if claims.Method == auth.APIKeyMethod {
+		WriteError(w, r, ErrForbidden.WithMessage("API keys cannot create other API keys"))
+		return
+	}
+	var body apiKeyCreateRequest
+	if err := ParseJSONBody(r, &body); err != nil {
+		WriteError(w, r, err)
+		return
+	}
+	var expiresAt time.Time
+	if body.ExpiresAt != "" {
+		t, err := time.Parse(time.RFC3339, body.ExpiresAt)
+		if err != nil {
+			WriteError(w, r, ErrValidation.WithMessage("expires_at must be RFC3339"))
+			return
+		}
+		expiresAt = t
+	}
+	raw, doc, err := rt.APIKeys.Issue(r.Context(), claims, body.Name, body.Permissions, expiresAt)
+	if err != nil {
+		WriteError(w, r, mapAPIKeyError(err))
+		return
+	}
+	doc["key"] = raw // shown exactly once
+	WriteJSON(w, http.StatusCreated, doc)
+}
+
+// handleListMyAPIKeys GET /api/v1/user/me/apikeys lists the caller's own keys
+// with key_hash stripped.
+func (rt *Router) handleListMyAPIKeys(w http.ResponseWriter, r *http.Request) {
+	claims, ok := rt.requireSelf(w, r)
+	if !ok {
+		return
+	}
+	keys, err := rt.APIKeys.ListByOwner(r.Context(), claims.Subject, claims.Method)
+	if err != nil {
+		WriteError(w, r, ErrInternal.WithCause(err))
+		return
+	}
+	WriteJSON(w, http.StatusOK, map[string]any{"data": keys})
+}
+
+// handleDeleteMyAPIKey DELETE /api/v1/user/me/apikeys/{id} deletes a key only
+// when it is owned by the caller (404 otherwise).
+func (rt *Router) handleDeleteMyAPIKey(w http.ResponseWriter, r *http.Request) {
+	claims, ok := rt.requireSelf(w, r)
+	if !ok {
+		return
+	}
+	id := chi.URLParam(r, "id")
+	deleted, err := rt.APIKeys.DeleteByID(r.Context(), claims.Subject, claims.Method, id)
+	if err != nil {
+		WriteError(w, r, ErrInternal.WithCause(err))
+		return
+	}
+	if !deleted {
+		WriteError(w, r, ErrNotFound.WithMessage("api key not found"))
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// mapAPIKeyError translates store sentinels to API errors.
+func mapAPIKeyError(err error) error {
+	switch {
+	case errors.Is(err, auth.ErrAPIKeyForbiddenPerm):
+		return ErrForbidden.WithMessage(err.Error())
+	case errors.Is(err, auth.ErrAPIKeyDuplicateName):
+		return ErrConflict.WithMessage(err.Error())
+	case errors.Is(err, auth.ErrAPIKeyExpiryTooFar), errors.Is(err, auth.ErrAPIKeyExpiryPast), errors.Is(err, auth.ErrAPIKeyNameRequired):
+		return ErrValidation.WithMessage(err.Error())
+	default:
+		return ErrInternal.WithCause(err)
+	}
 }

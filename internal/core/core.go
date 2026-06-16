@@ -39,6 +39,7 @@ type Core struct {
 	Driver    db.Driver
 	Tokens    *auth.TokenEngine
 	Refresh   *auth.RefreshTokenStore
+	APIKeys   *auth.APIKeyStore
 	MsgBus    mq.Bus
 	Reg       *telemetry.Registry
 	Trc       trace.Tracer
