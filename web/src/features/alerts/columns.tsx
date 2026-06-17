@@ -5,6 +5,7 @@ import { TimeCell } from "@/shared/ui/TimeCell";
 import { severityColor } from "@/lib/format/severity-color";
 import { formatTTL, stateBadgeVariant, stateLabel } from "./format";
 import type { AlertState, Record_ } from "./types";
+import styles from "./columns.module.css";
 
 // Records carry a `duplicates` counter (int64) bumped by the aggregate-rule
 // plugin every time an incoming alert collapses into an existing row.
@@ -116,18 +117,6 @@ export const alertColumns: ColumnDef<Record_>[] = [
   {
     id: "message",
     header: "Message",
-    cell: (r) => (
-      <span
-        style={{
-          display: "inline-block",
-          maxWidth: "400px",
-          overflow: "hidden",
-          textOverflow: "ellipsis",
-          whiteSpace: "nowrap",
-        }}
-      >
-        {r.message ?? ""}
-      </span>
-    ),
+    cell: (r) => <span className={styles.message}>{r.message ?? ""}</span>,
   },
 ];

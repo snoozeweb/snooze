@@ -985,7 +985,8 @@ test("mobile tour: walk top-level routes at phone width", async ({
   await api.alerts.sendMany([
     {
       host: "srv-prod-1",
-      message: "Disk usage above 90%",
+      message:
+        "Disk usage above 90% on /var/log/app — sustained for 15m, projected full in ~2h; investigate log rotation and the nightly batch job before it pages on-call",
       severity: "critical",
       source: "prometheus",
     },

@@ -1,0 +1,25 @@
+/*
+ * Alert message cell. On the dense desktop table the message is clamped to a
+ * single scannable line with an ellipsis. In DataTable card mode (the table
+ * wrapper is an inline-size container; cards appear at a <=640px container —
+ * see DataTable.module.css) the row has room to breathe, so show the FULL
+ * message, wrapping across lines. Driving the un-clamp off the same 640px
+ * container query means the message expands exactly when the row becomes a
+ * card — never in a normal table row.
+ */
+.message {
+  display: inline-block;
+  max-width: 400px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+@container (max-width: 640px) {
+  .message {
+    max-width: none;
+    overflow: visible;
+    white-space: normal;
+    overflow-wrap: anywhere;
+  }
+}
