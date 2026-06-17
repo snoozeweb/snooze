@@ -367,12 +367,12 @@
     order: 10;
     justify-content: flex-start;
   }
-  .table tbody .row td.expandCell {
+  .table tbody .row td.actionsCell {
     flex: 0 0 auto;
     order: 11;
     justify-content: center;
   }
-  .table tbody .row td.actionsCell {
+  .table tbody .row td.expandCell {
     flex: 0 0 auto;
     order: 12;
     justify-content: center;
