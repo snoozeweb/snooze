@@ -338,7 +338,18 @@
   .table tbody .row td.actionsCell::before {
     content: "";
   }
-  .toolbarRow,
+  /* Search + toolbar share one row on desktop; on a phone the right-hand
+     toolbar (count + actions) keeps its width and starves the search box to a
+     sliver. Stack them so the search bar gets the FULL width, with the count
+     and actions on their own row beneath it (count left, actions right). */
+  .toolbarRow {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .toolbar,
+  .toolbarSelected {
+    justify-content: space-between;
+  }
   .pagination {
     flex-wrap: wrap;
   }
