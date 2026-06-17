@@ -304,6 +304,12 @@
     white-space: nowrap;
   }
   .table tbody .row {
+    /* Wrapping flex column: data fields each take a full-width row; the
+       control cells (checkbox, expand, quick actions, kebab) are reordered
+       below into a footer action row. */
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
     border: 1px solid var(--border);
     border-radius: var(--radius-md);
     margin-bottom: var(--space-2);
@@ -314,9 +320,17 @@
   .table tbody .row[data-accent="true"] {
     border-left: 3px solid var(--row-accent);
   }
-  /* Label/value rows. `data-label` comes from the column header. */
+  /* Single severity accent: the card already carries the left border, so
+     suppress the inset strip the base rule paints on the first cell — without
+     this the accent renders twice (card border + per-row inset bar). */
+  .table tbody .row[data-accent] td:first-child {
+    box-shadow: none;
+  }
+  /* Label/value rows. `data-label` comes from the column header. Each data
+     field spans the full card width. */
   .table tbody .row td {
     display: flex;
+    flex: 0 0 100%;
     justify-content: space-between;
     gap: var(--space-3);
     padding: 4px 0;
@@ -337,6 +351,31 @@
   .table tbody .row td.quickActionsCell::before,
   .table tbody .row td.actionsCell::before {
     content: "";
+  }
+  /* Control cells reflow into a footer action row instead of stacking each on
+     its own line: the selection checkbox pins to the top-right; the quick
+     actions sit at the footer's left and grow, with the expand chevron and the
+     row-actions kebab grouped together on the right. `order` overrides the DOM
+     order (expand is DOM-first, so it would otherwise render up top). */
+  .table tbody .row td.checkboxCell {
+    flex: 0 0 100%;
+    order: -1;
+    justify-content: flex-end;
+  }
+  .table tbody .row td.quickActionsCell {
+    flex: 1 1 auto;
+    order: 10;
+    justify-content: flex-start;
+  }
+  .table tbody .row td.expandCell {
+    flex: 0 0 auto;
+    order: 11;
+    justify-content: center;
+  }
+  .table tbody .row td.actionsCell {
+    flex: 0 0 auto;
+    order: 12;
+    justify-content: center;
   }
   /* Search + toolbar share one row on desktop; on a phone the right-hand
      toolbar (count + actions) keeps its width and starves the search box to a
