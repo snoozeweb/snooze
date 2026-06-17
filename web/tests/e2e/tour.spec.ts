@@ -1001,6 +1001,17 @@ test("mobile tour: walk top-level routes at phone width", async ({
   await new Promise((r) => setTimeout(r, 600));
 
   await visit("/web/alerts", "01-alerts");
+
+  // Select an alert: the bulk-action bar must wrap its buttons (Acknowledge,
+  // Close, Re-escalate, Comment) across the full width — never a horizontal
+  // scroll. Per-row checkboxes carry aria-label "Select row <key>".
+  const firstRowCheckbox = page.getByRole("checkbox", { name: /^Select row /i }).first();
+  await firstRowCheckbox.waitFor({ state: "visible" }).catch(() => {});
+  await firstRowCheckbox.check({ force: true });
+  await noOverflow("alerts bulk-action bar");
+  await shoot("01b-alerts-selected");
+  await firstRowCheckbox.uncheck({ force: true });
+
   await visit("/web/dashboard", "02-dashboard");
   await visit("/web/snoozes", "03-snoozes");
   await visit("/web/rules", "04-rules");

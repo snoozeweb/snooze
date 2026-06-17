@@ -346,9 +346,25 @@
     flex-direction: column;
     align-items: stretch;
   }
-  .toolbar,
-  .toolbarSelected {
+  /* Non-selected toolbar: count on the left, the single action (New / refresh)
+     on the right. */
+  .toolbar {
     justify-content: space-between;
+  }
+  /* Bulk-selection bar: "N selected" on its own line, then the action buttons
+     wrap across the full width and grow to fill each row — so every action
+     (Acknowledge, Close, Re-escalate, Comment, …) is reachable as a large
+     touch target instead of disappearing behind a horizontal scroll. */
+  .toolbarSelected {
+    flex-direction: column;
+    align-items: stretch;
+    gap: var(--space-2);
+  }
+  .toolbarActions {
+    flex-wrap: wrap;
+  }
+  .toolbarSelected .toolbarActions > * {
+    flex: 1 1 auto;
   }
   .pagination {
     flex-wrap: wrap;
