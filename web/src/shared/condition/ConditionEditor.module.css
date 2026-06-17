@@ -6,6 +6,9 @@
   background: var(--bg-canvas);
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
+  /* Query container so the recursive builder can reflow when the editor is
+     narrow (full-screen drawer sheet on mobile) without any viewport math. */
+  container-type: inline-size;
 }
 .empty {
   display: flex;
@@ -113,4 +116,30 @@
   margin-top: var(--space-1);
   color: var(--severity-error);
   font-size: var(--text-xs);
+}
+
+/* ── Narrow editor (mobile drawer sheet) ─────────────────────────
+   When the editor is too narrow for the field/op/value/actions row to stay
+   on one line (it collapses each input to a sliver), stack a leaf vertically:
+   field on its own line, op + value sharing the next, and the action buttons
+   on a right-aligned line below. Nesting indentation tightens too, so a
+   deeply-nested tree doesn't run out of width. Driven by the editor's own
+   width (container query), so desktop drawers (~504px editor) are unaffected. */
+@container (max-width: 480px) {
+  .leaf {
+    flex-wrap: wrap;
+  }
+  .field {
+    flex: 1 1 100%;
+  }
+  .value {
+    flex: 1 1 auto;
+  }
+  .actions {
+    flex: 1 1 100%;
+    justify-content: flex-end;
+  }
+  .children {
+    padding-left: var(--space-2);
+  }
 }

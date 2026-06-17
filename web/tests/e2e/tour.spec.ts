@@ -974,6 +974,27 @@ test("mobile tour: walk top-level routes at phone width", async ({
     condition: { type: "MATCHES", field: "host", value: "^srv-prod-" },
     modifications: [["SET", "environment", "production"]],
   });
+  // Nested AND(OR, NOT(EXISTS), leaf) tree so the condition builder has a
+  // multi-level structure to exercise on mobile.
+  await api.rules.create({
+    name: "page-prod-criticals",
+    enabled: true,
+    condition: {
+      type: "AND",
+      args: [
+        {
+          type: "OR",
+          args: [
+            { type: "MATCHES", field: "host", value: "^srv-prod-" },
+            { type: "EQUALS", field: "environment", value: "production" },
+          ],
+        },
+        { type: "NOT", arg: { type: "EXISTS", field: "shelved" } },
+        { type: "EQUALS", field: "severity", value: "critical" },
+      ],
+    },
+    modifications: [["SET", "page_oncall", true]],
+  });
   await api.snoozes.create({
     name: "weekend-window",
     enabled: true,
@@ -1036,5 +1057,18 @@ test("mobile tour: walk top-level routes at phone width", async ({
   await page.getByRole("button", { name: /^new$/i }).click({ force: true });
   await noOverflow("new-rule-sheet");
   await shoot("41-new-rule-sheet");
+  await page.keyboard.press("Escape");
+
+  // Condition builder with a nested tree: it must reflow (stacked leaves,
+  // tighter indent) and not overflow horizontally on a phone.
+  await page.goto(server.baseURL + "/web/rules");
+  await page.waitForLoadState("networkidle").catch(() => {});
+  await page.getByText("page-prod-criticals").click({ force: true });
+  await page
+    .getByRole("tab", { name: /^Builder$/i })
+    .waitFor({ state: "visible" })
+    .catch(() => {});
+  await noOverflow("rule condition builder");
+  await shoot("42-rule-condition-builder");
   await page.keyboard.press("Escape");
 });
