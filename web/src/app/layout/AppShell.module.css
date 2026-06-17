@@ -1,5 +1,6 @@
 .shell {
-  height: 100vh;
+  height: 100vh; /* fallback for engines without dvh */
+  height: 100dvh;
   display: flex;
   flex-direction: column;
 }
@@ -19,6 +20,16 @@
   overflow: auto;
   /* Transparent so the body canvas texture (grid + glow) shows in gutters */
   background: transparent;
+}
+
+/* Mobile shell only: give the scrolling main bottom breathing room so its
+   last content isn't visually crowded against the fixed bottom-tab bar. The
+   bar is a flex sibling (not overlapping), so this is polish, not occlusion
+   prevention. Desktop .main is unchanged. */
+@media (max-width: 1023.98px) {
+  .main {
+    padding-bottom: var(--space-3);
+  }
 }
 
 /* Skip link — first focusable element in the shell. Positioned off-screen

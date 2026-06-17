@@ -74,3 +74,17 @@
 .clearAll {
   margin-left: var(--space-1);
 }
+
+/*
+ * Phones: the chip strip already wraps (flex-wrap above). Cap the mono search
+ * chip to the viewport so a long DSL query can't push the strip — and thus the
+ * page — wider than 360px. Desktop (>768px) keeps the 320px cap.
+ */
+@media (max-width: 768px) {
+  .strip {
+    flex-wrap: wrap;
+  }
+  .chipValueMono {
+    max-width: calc(100vw - var(--space-4) * 2 - var(--space-5));
+  }
+}

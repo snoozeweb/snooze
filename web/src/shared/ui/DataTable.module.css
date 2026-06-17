@@ -2,6 +2,7 @@
   display: flex;
   flex-direction: column;
   gap: var(--space-2);
+  container-type: inline-size;
 }
 /* Header row: search bar shares this row with the count + actions cluster
    so toggling selection never shifts the table vertically and the empty
@@ -278,4 +279,72 @@
   display: inline-flex;
   align-items: center;
   gap: var(--space-1);
+}
+
+/* ── Card mode ──────────────────────────────────────────────────────────
+   Below --bp-sm (640px) the dense grid can't show all columns, so each row
+   becomes a labeled card. Container query (not viewport) so the table adapts
+   to its own column wherever it's placed; one DOM, no JS branch. */
+@container (max-width: 640px) {
+  .table,
+  .table tbody,
+  .table tr,
+  .table td {
+    display: block;
+    width: auto;
+  }
+  /* Keep the header in the a11y tree but off-screen. */
+  .table thead {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+  .table tbody .row {
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    margin-bottom: var(--space-2);
+    padding: var(--space-2);
+    background: var(--bg-surface);
+    position: relative;
+  }
+  .table tbody .row[data-accent="true"] {
+    border-left: 3px solid var(--row-accent);
+  }
+  /* Label/value rows. `data-label` comes from the column header. */
+  .table tbody .row td {
+    display: flex;
+    justify-content: space-between;
+    gap: var(--space-3);
+    padding: 4px 0;
+    text-align: left !important;
+    border: 0;
+  }
+  .table tbody .row td::before {
+    content: attr(data-label);
+    color: var(--text-muted);
+    font-size: var(--text-xs);
+    font-weight: var(--weight-medium);
+    flex-shrink: 0;
+  }
+  /* Cells with no label (checkbox, expand chevron, quick actions, kebab) sit
+     inline at the top of the card and don't render a label dash. */
+  .table tbody .row td.checkboxCell::before,
+  .table tbody .row td.expandCell::before,
+  .table tbody .row td.quickActionsCell::before,
+  .table tbody .row td.actionsCell::before {
+    content: "";
+  }
+  .toolbarRow,
+  .pagination {
+    flex-wrap: wrap;
+  }
+  /* Hover-reveal quick actions don't work on touch — always show them. Kept
+     last so it beats the `.row:hover .quickActions` opacity rule above. */
+  .table tbody .row .quickActions {
+    opacity: 1;
+  }
 }

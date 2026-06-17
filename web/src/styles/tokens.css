@@ -26,6 +26,19 @@
   --radius-lg: 10px;
   --radius-pill: 9999px;
 
+  /* Responsive breakpoints (min-width semantics; used by media/container
+     queries and mirrored by useIsMobileShell for the shell swap). */
+  --bp-sm: 640px;
+  --bp-md: 768px;
+  --bp-lg: 1024px;
+
+  /* Minimum touch hit area (WCAG 2.5.5 / Apple HIG). Applied on coarse
+     pointers / the mobile shell — desktop density is unaffected. */
+  --touch-target: 44px;
+
+  /* Safe-area inset for notched phones (bottom nav padding). */
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
+
   /* Font families — IBM Plex superfamily (self-hosted via @fontsource,
      imported in main.tsx). Sans and mono share skeletons and vertical
      metrics, so mixed label + mono-timestamp rows align without hacks. */

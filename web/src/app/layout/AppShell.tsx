@@ -2,14 +2,17 @@ import { useCallback, useState } from "react";
 import { Outlet, useMatches, useNavigate } from "@tanstack/react-router";
 import { Sidebar } from "./Sidebar";
 import { Topbar } from "./Topbar";
+import { BottomNav } from "./BottomNav";
 import { CommandPalette } from "./CommandPalette";
 import { useShortcut } from "@/shared/hooks/useShortcut";
+import { useIsMobileShell } from "@/shared/hooks/useIsMobileShell";
 import { pickBreadcrumb } from "./breadcrumb";
 import styles from "./AppShell.module.css";
 
 export function AppShell() {
   const [paletteOpen, setPaletteOpen] = useState(false);
   const navigate = useNavigate();
+  const isMobile = useIsMobileShell();
 
   const open = useCallback(() => setPaletteOpen(true), []);
 
@@ -32,12 +35,13 @@ export function AppShell() {
         Skip to content
       </a>
       <div className={styles.body}>
-        <Sidebar />
+        {!isMobile ? <Sidebar /> : null}
         <div className={styles.content}>
-          <Topbar {...(breadcrumb ? { breadcrumb } : {})} onOpenPalette={open} />
+          <Topbar {...(breadcrumb ? { breadcrumb } : {})} onOpenPalette={open} mobile={isMobile} />
           <main id="main-content" tabIndex={-1} className={styles.main}>
             <Outlet />
           </main>
+          {isMobile ? <BottomNav /> : null}
         </div>
       </div>
       <CommandPalette open={paletteOpen} onOpenChange={setPaletteOpen} />

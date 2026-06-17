@@ -8,6 +8,7 @@
 import { dirname, resolve } from "node:path";
 import { mkdirSync, rmSync } from "node:fs";
 import { fileURLToPath } from "node:url";
+import { expect } from "@playwright/test";
 import { test } from "./harness/fixtures";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -16,12 +17,7 @@ const SHOTS_DIR = resolve(__dirname, ".screenshots");
 test.describe.configure({ mode: "serial" });
 test.skip(!process.env.SNOOZE_TOUR, "set SNOOZE_TOUR=1 to run the visual tour");
 
-test("visual tour: seed and screenshot every menu", async ({
-  page,
-  api,
-  server,
-  adminAuth,
-}) => {
+test("visual tour: seed and screenshot every menu", async ({ page, api, server, adminAuth }) => {
   test.setTimeout(180_000);
   rmSync(SHOTS_DIR, { recursive: true, force: true });
   mkdirSync(SHOTS_DIR, { recursive: true });
@@ -617,7 +613,7 @@ test("visual tour: seed and screenshot every menu", async ({
   await page.getByText("tag-production").click({ force: true });
   // Scroll the drawer body to the bottom — the audit pane is the last
   // section after Modifications.
-  const drawerBody = page.locator('[data-radix-scroll-area-viewport], section').last();
+  const drawerBody = page.locator("[data-radix-scroll-area-viewport], section").last();
   await drawerBody.evaluate((el) => el.scrollIntoView({ block: "end" })).catch(() => undefined);
   await shoot("21c-edit-rule-audit-pane");
   await goto("/web/rules");
@@ -862,11 +858,7 @@ test("visual tour: seed and screenshot every menu", async ({
 
   // Environments
   await captureNew("/web/admin/environments", "environments-drawer-new");
-  await captureEditByText(
-    "/web/admin/environments",
-    "production",
-    "environments-drawer-edit",
-  );
+  await captureEditByText("/web/admin/environments", "production", "environments-drawer-edit");
 
   // KV
   await captureNew("/web/admin/kv", "kv-drawer-new");
@@ -921,10 +913,112 @@ test("visual tour: seed and screenshot every menu", async ({
 
   // ── 4. Light theme variant of a couple of pages ─────────────────────────
   await goto("/web/alerts");
-  await page
-    .getByRole("button", { name: /switch to (light|dark) theme/i })
-    .click({ force: true });
+  await page.getByRole("button", { name: /switch to (light|dark) theme/i }).click({ force: true });
   await shoot("30-alerts-light");
   await goto("/web/dashboard");
   await shoot("31-dashboard-light");
+});
+
+// ── Mobile tour ──────────────────────────────────────────────────────────────
+// A second, lighter pass at a phone viewport (390×844). Walks the top-level
+// routes, ASSERTS no horizontal page overflow at 360-class widths (the core
+// mobile-friendliness guarantee), exercises the bottom-nav "More" sheet and a
+// full-screen editor sheet, and screenshots each with a `-mobile` suffix. Same
+// SNOOZE_TOUR gate as the desktop tour above.
+test("mobile tour: walk top-level routes at phone width", async ({
+  page,
+  api,
+  server,
+  adminAuth,
+}) => {
+  test.setTimeout(120_000);
+  await page.setViewportSize({ width: 390, height: 844 });
+
+  const cdp = await page.context().newCDPSession(page);
+  const { writeFile } = await import("node:fs/promises");
+  const shoot = async (name: string) => {
+    const { data } = await cdp.send("Page.captureScreenshot", {
+      format: "jpeg",
+      quality: 80,
+      captureBeyondViewport: false,
+    });
+    await writeFile(resolve(SHOTS_DIR, `${name}-mobile.jpg`), Buffer.from(data, "base64"));
+  };
+  // The mobile-friendliness contract: no page should scroll horizontally at
+  // phone width. Allow 2px for sub-pixel rounding.
+  const noOverflow = async (label: string) => {
+    const overflow = await page.evaluate(
+      () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
+    );
+    expect(overflow, `horizontal overflow on ${label}`).toBeLessThanOrEqual(2);
+  };
+  const visit = async (route: string, name: string) => {
+    await page.goto(server.baseURL + route);
+    await page.waitForLoadState("networkidle").catch(() => {});
+    await noOverflow(name);
+    await shoot(name);
+  };
+
+  await visit("/web/login", "00-login");
+  await adminAuth();
+
+  // Compact seed so the data tables have rows that must collapse into cards.
+  await api.environments.create({ name: "production", color: "#3fb950" });
+  await api.rules.create({
+    name: "tag-production",
+    enabled: true,
+    condition: { type: "MATCHES", field: "host", value: "^srv-prod-" },
+    modifications: [["SET", "environment", "production"]],
+  });
+  await api.snoozes.create({
+    name: "weekend-window",
+    enabled: true,
+    condition: { type: "EQUALS", field: "host", value: "noisy-1" },
+  });
+  await api.users.create({ name: "alice", type: "local", roles: ["admin"] });
+  // Let the rule cache settle before ingesting alerts.
+  await new Promise((r) => setTimeout(r, 400));
+  await api.alerts.sendMany([
+    {
+      host: "srv-prod-1",
+      message: "Disk usage above 90%",
+      severity: "critical",
+      source: "prometheus",
+    },
+    { host: "srv-prod-2", message: "OOM kill: nginx", severity: "error", source: "syslog" },
+    {
+      host: "db-master",
+      message: "Replication lag 12s",
+      severity: "warning",
+      source: "pg-replication",
+    },
+  ]);
+  await new Promise((r) => setTimeout(r, 600));
+
+  await visit("/web/alerts", "01-alerts");
+  await visit("/web/dashboard", "02-dashboard");
+  await visit("/web/snoozes", "03-snoozes");
+  await visit("/web/rules", "04-rules");
+  await visit("/web/notifications", "06-notifications");
+  await visit("/web/admin/users", "08-admin-users");
+  await visit("/web/admin/settings", "13-admin-settings");
+
+  // Bottom-nav "More" sheet (overflow nav + theme toggle + log out).
+  await page.goto(server.baseURL + "/web/alerts");
+  await page.waitForLoadState("networkidle").catch(() => {});
+  await page.getByRole("button", { name: /^more$/i }).click({ force: true });
+  await page
+    .getByRole("dialog", { name: /menu/i })
+    .waitFor({ state: "visible" })
+    .catch(() => {});
+  await shoot("40-more-sheet");
+  await page.keyboard.press("Escape");
+
+  // Full-screen editor sheet on mobile.
+  await page.goto(server.baseURL + "/web/rules");
+  await page.waitForLoadState("networkidle").catch(() => {});
+  await page.getByRole("button", { name: /^new$/i }).click({ force: true });
+  await noOverflow("new-rule-sheet");
+  await shoot("41-new-rule-sheet");
+  await page.keyboard.press("Escape");
 });

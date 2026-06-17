@@ -58,6 +58,15 @@ canvas texture paints once); `main` scrolls internally.
   `getComputedStyle`, with jsdom/SSR fallbacks) so charts re-theme with
   light/dark. `DistributionBar` is the pure-CSS distribution strip (there is
   no donut chart).
+* **Responsive / mobile.** Breakpoint tokens `--bp-sm/md/lg` (plus
+  `--touch-target`, `--safe-bottom`) live in `tokens.css`. The shell swaps from
+  the desktop sidebar to the touch layout (bottom-tab `BottomNav` + `MoreSheet`)
+  below `--bp-lg` (1024px) via the `useIsMobileShell()` hook — the **only** JS
+  layout fork. Everywhere else, adapt with **container queries** (a primitive
+  reacts to its own container — e.g. `DataTable` collapses rows into cards at a
+  ≤640px container) and `@media (pointer: coarse)` for touch sizing, never
+  viewport media queries scattered per page. Desktop output (≥`--bp-lg`) must
+  stay byte-for-byte unchanged.
 
 ---
 

@@ -3,13 +3,10 @@ import { Icon } from "@/shared/icons/Icon";
 import { Kbd } from "@/shared/ui/Kbd";
 import { Logo } from "@/shared/ui/Logo";
 import { Menu, MenuContent, MenuItem, MenuSeparator, MenuTrigger } from "@/shared/ui/Menu";
-import { GROUP_LABELS, NAV_ITEMS, type NavGroup } from "./nav-items";
+import { GROUP_LABELS, type NavGroup } from "./nav-items";
+import { visibleNavItems } from "./nav-list";
 import { useAuth } from "@/lib/auth/store";
-import {
-  hasAnyPermission,
-  hasPlatformPermission,
-  isPlatformPermission,
-} from "@/lib/auth/permissions";
+import { hasAnyPermission } from "@/lib/auth/permissions";
 import { useActiveAlertCount } from "@/features/alerts/api";
 import styles from "./Sidebar.module.css";
 
@@ -30,6 +27,10 @@ export function Sidebar() {
   const { data: alertCountData } = useActiveAlertCount(canSeeAlerts);
   const alertTotal = alertCountData?.meta.total ?? 0;
 
+  // Permission-filtered nav, centralized in nav-list so the Sidebar, BottomNav
+  // and MoreSheet all apply the same RequirePlatformPerm-aware rule.
+  const permitted = visibleNavItems(claims);
+
   return (
     <aside className={styles.sidebar} aria-label="Primary navigation">
       <Link to="/web/alerts" className={styles.brand} aria-label="Snooze home">
@@ -37,18 +38,7 @@ export function Sidebar() {
       </Link>
       <nav className={styles.nav}>
         {GROUPS.map((group) => {
-          const items = NAV_ITEMS.filter((i) => {
-            if (i.group !== group) return false;
-            if (!i.permissions || i.permissions.length === 0) return true;
-            // Platform-tier items (e.g. Tenants) mirror the backend's
-            // RequirePlatformPerm: literal perm (rw_all does NOT count) AND
-            // default-tenant origin. Gating them with hasAnyPermission would
-            // show a menu whose API 403s rw_all admins and non-default tenants.
-            if (i.permissions.some(isPlatformPermission)) {
-              return hasPlatformPermission(claims, i.permissions);
-            }
-            return hasAnyPermission(claims, i.permissions);
-          });
+          const items = permitted.filter((i) => i.group === group);
           if (items.length === 0) return null;
           return (
             <div className={styles.group} key={group}>

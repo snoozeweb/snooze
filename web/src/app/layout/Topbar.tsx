@@ -12,6 +12,7 @@ import styles from "./Topbar.module.css";
 export type TopbarProps = {
   breadcrumb?: Breadcrumb;
   onOpenPalette: () => void;
+  mobile?: boolean;
 };
 
 function UserMenu() {
@@ -48,7 +49,7 @@ function UserMenu() {
   );
 }
 
-export function Topbar({ breadcrumb, onOpenPalette }: TopbarProps) {
+export function Topbar({ breadcrumb, onOpenPalette, mobile }: TopbarProps) {
   const { theme, toggleTheme } = useTheme();
   return (
     <header className={styles.topbar}>
@@ -69,18 +70,24 @@ export function Topbar({ breadcrumb, onOpenPalette }: TopbarProps) {
         ) : null}
       </div>
       <div className={styles.right}>
-        <button type="button" className={styles.paletteOpener} onClick={onOpenPalette}>
-          <Icon name="search" size={12} />
-          <span>Search…</span>
-          <Kbd>⌘K</Kbd>
-        </button>
-        <HowToMenu />
-        <span className={styles.sep} aria-hidden="true" />
-        <IconButton
-          icon={theme === "dark" ? "sun" : "moon"}
-          label={theme === "dark" ? "Switch to light theme" : "Switch to dark theme"}
-          onClick={toggleTheme}
-        />
+        {mobile ? (
+          <IconButton icon="search" label="Search…" onClick={onOpenPalette} />
+        ) : (
+          <>
+            <button type="button" className={styles.paletteOpener} onClick={onOpenPalette}>
+              <Icon name="search" size={12} />
+              <span>Search…</span>
+              <Kbd>⌘K</Kbd>
+            </button>
+            <HowToMenu />
+            <span className={styles.sep} aria-hidden="true" />
+            <IconButton
+              icon={theme === "dark" ? "sun" : "moon"}
+              label={theme === "dark" ? "Switch to light theme" : "Switch to dark theme"}
+              onClick={toggleTheme}
+            />
+          </>
+        )}
         <UserMenu />
       </div>
     </header>

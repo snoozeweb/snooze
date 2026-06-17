@@ -52,3 +52,19 @@
   outline: 2px solid var(--focus-ring);
   outline-offset: 2px;
 }
+
+/*
+ * Phones: the grouped-tabs row (Settings, Profile, …) can hold more triggers
+ * than fit at 360px. Let the strip scroll horizontally instead of forcing the
+ * whole page to scroll, and keep each trigger on one line. Desktop unchanged.
+ */
+@media (max-width: 768px) {
+  .list {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+  .trigger {
+    white-space: nowrap;
+    flex-shrink: 0;
+  }
+}

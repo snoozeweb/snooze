@@ -100,3 +100,11 @@
 .spinner {
   position: absolute;
 }
+
+@media (pointer: coarse) {
+  .sm,
+  .md,
+  .lg {
+    min-height: var(--touch-target);
+  }
+}

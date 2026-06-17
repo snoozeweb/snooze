@@ -14,7 +14,11 @@
   padding: var(--space-4);
 }
 .card {
-  width: min(400px, 100%);
+  /* min() already clamps to the padded page width, so the card fits 360px
+     without horizontal scroll. The explicit viewport cap is a belt-and-braces
+     guard for the fixed 400px branch. Desktop (>768px) is unaffected because
+     the 400px card is always narrower than the viewport there. */
+  width: min(400px, 100%, calc(100vw - var(--space-4) * 2));
   background: var(--bg-surface);
   border: 1px solid var(--border);
   border-top: 2px solid var(--accent);

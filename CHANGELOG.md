@@ -2,6 +2,16 @@
 
 ### Added
 
+- **Mobile-friendly web UI.** The SPA is now usable on phones down to 360px,
+  optimized for on-call triage. Below 1024px the desktop sidebar shell is
+  replaced by a thumb-reachable **bottom-tab bar** (Alerts · Dashboard ·
+  Snoozes · Rules) plus a **More** sheet holding the rest of the navigation,
+  theme toggle, and account actions; data tables collapse into labeled
+  **cards**, editor drawers and the command palette open as **full-screen
+  sheets**, and interactive controls meet the 44px touch-target minimum on
+  coarse pointers. The ≥1024px desktop layout is unchanged. Implemented as a
+  pure CSS/container-query retrofit (new `--bp-sm/md/lg`, `--touch-target`,
+  `--safe-bottom` tokens; one `useIsMobileShell` hook) — no new dependencies.
 - **User API keys.** Users can mint/revoke personal API keys (Profile → API
   Keys) carrying a subset of their own permissions and an optional, capped
   expiry; authenticate with `Authorization: Bearer snz_…`. Effective

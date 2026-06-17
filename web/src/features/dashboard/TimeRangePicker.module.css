@@ -26,3 +26,14 @@
   align-items: center;
   gap: var(--space-2);
 }
+
+/* Phones: let the preset/custom controls wrap instead of overflowing the
+   header row. Desktop (>768px) keeps the single-row picker. */
+@media (max-width: 768px) {
+  .bar {
+    flex-wrap: wrap;
+  }
+  .custom {
+    flex-wrap: wrap;
+  }
+}

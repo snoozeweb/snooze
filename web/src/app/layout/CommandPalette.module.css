@@ -127,3 +127,25 @@
   text-align: center;
   color: var(--text-muted);
 }
+
+/* Phones: the palette becomes a full-screen search surface (opened from the
+   Topbar search icon). Desktop keeps the centered floating panel above. */
+@media (max-width: 768px) {
+  .content {
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    transform: none;
+    width: 100%;
+    max-height: 100dvh;
+    border-radius: 0;
+    border: 0;
+  }
+  .content[data-state="open"] {
+    animation: fadeIn var(--dur-fast) var(--ease-out);
+  }
+  .list {
+    flex: 1;
+  }
+}

@@ -107,3 +107,42 @@
   background: var(--bg-hover);
   color: var(--text-strong);
 }
+
+/* Full-screen sheet on phones: the 560px right panel becomes an edge-to-edge
+   sheet that slides up. Desktop (>768px) keeps the side panel above. */
+@media (max-width: 768px) {
+  .content {
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    width: 100%;
+    max-width: 100%;
+    border-left: 0;
+  }
+  .content[data-state="open"] {
+    animation: sheetUp var(--dur-md) var(--ease-out);
+  }
+  .content[data-state="closed"] {
+    animation: sheetDown var(--dur-fast) var(--ease-out);
+  }
+  .footer {
+    padding-bottom: calc(var(--space-3) + var(--safe-bottom));
+  }
+}
+@keyframes sheetUp {
+  from {
+    transform: translateY(100%);
+  }
+  to {
+    transform: translateY(0);
+  }
+}
+@keyframes sheetDown {
+  from {
+    transform: translateY(0);
+  }
+  to {
+    transform: translateY(100%);
+  }
+}

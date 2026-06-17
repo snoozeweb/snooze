@@ -46,3 +46,14 @@
   color: var(--text-strong);
   background: var(--bg-hover);
 }
+
+/*
+ * Phones: the environment pills already wrap (flex-wrap above); reaffirm it
+ * under the mobile breakpoint so the pill strip never forces page-wide
+ * horizontal scroll at 360px. Desktop (>768px) unchanged.
+ */
+@media (max-width: 768px) {
+  .bar {
+    flex-wrap: wrap;
+  }
+}

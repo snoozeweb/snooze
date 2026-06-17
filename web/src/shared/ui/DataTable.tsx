@@ -648,7 +648,11 @@ function DataTableRowInner<T>({
           </td>
         ) : null}
         {columns.map((col) => (
-          <td key={col.id} {...(col.align === "right" ? { style: { textAlign: "right" } } : {})}>
+          <td
+            key={col.id}
+            data-label={col.header}
+            {...(col.align === "right" ? { style: { textAlign: "right" } } : {})}
+          >
             {col.cell(row)}
           </td>
         ))}

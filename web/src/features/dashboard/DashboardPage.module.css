@@ -73,3 +73,16 @@
   padding: var(--space-3);
   background: var(--bg-elevated);
 }
+
+/* Phones: the multi-column dashboard grids stack to a single column so the
+   charts go full-bleed and nothing forces page-wide horizontal scroll.
+   Chart canvases are responsive by default; the grid cells are width-fluid
+   (no fixed px width), so the canvases follow. Desktop (>768px) unchanged. */
+@media (max-width: 768px) {
+  .row1,
+  .row2,
+  .row3,
+  .strip {
+    grid-template-columns: 1fr;
+  }
+}

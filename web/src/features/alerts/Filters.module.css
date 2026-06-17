@@ -71,3 +71,15 @@
   outline-offset: -2px;
   border-radius: var(--radius-sm);
 }
+
+/*
+ * Phones: the lifecycle tab strip and env pills already scroll horizontally
+ * (overflow-x: auto above). Add momentum scrolling so the band itself scrolls
+ * instead of forcing page-wide horizontal scroll at 360px. Desktop unchanged.
+ */
+@media (max-width: 768px) {
+  .tabRow,
+  .tabs {
+    -webkit-overflow-scrolling: touch;
+  }
+}

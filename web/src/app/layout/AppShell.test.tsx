@@ -1,5 +1,5 @@
 import { render, screen } from "@testing-library/react";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   createRootRoute,
   createRoute,
@@ -48,13 +48,27 @@ function setup(pathname = "/web/alerts") {
   /* eslint-enable @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-assignment */
 }
 
+function mockMatchMedia(matches: boolean) {
+  vi.stubGlobal(
+    "matchMedia",
+    vi.fn().mockImplementation((query: string) => ({
+      matches,
+      media: query,
+      addEventListener: () => undefined,
+      removeEventListener: () => undefined,
+    })),
+  );
+}
+
 describe("AppShell", () => {
   afterEach(() => {
     localStorage.clear();
     authStore.getState().logout();
+    vi.unstubAllGlobals();
   });
 
   it("renders the Topbar, Sidebar, and the matched route's content", () => {
+    // jsdom has no matchMedia → useIsMobileShell defaults to desktop (false).
     setup("/web/alerts");
     expect(screen.getByRole("img", { name: /snooze/i })).toBeInTheDocument();
     expect(screen.getByText("Alerts page")).toBeInTheDocument();
@@ -66,5 +80,25 @@ describe("AppShell", () => {
     setup("/web/dashboard");
     // Dashboard appears in sidebar AND breadcrumb — assert at least 2 instances
     expect(screen.getAllByText("Dashboard").length).toBeGreaterThanOrEqual(2);
+  });
+
+  it("renders the desktop Sidebar and no BottomNav above the shell breakpoint", () => {
+    mockMatchMedia(false);
+    loginWithPerms(["ro_record"]);
+    setup("/web/alerts");
+    // The desktop sidebar is the <aside> landmark labeled "Primary navigation".
+    expect(screen.getByRole("complementary", { name: /primary navigation/i })).toBeInTheDocument();
+    // The bottom bar is the <nav> labeled "Primary" — absent on desktop.
+    expect(screen.queryByRole("navigation", { name: /^primary$/i })).toBeNull();
+  });
+
+  it("renders the BottomNav and hides the Sidebar below the shell breakpoint", () => {
+    mockMatchMedia(true);
+    loginWithPerms(["ro_record"]);
+    setup("/web/alerts");
+    // The bottom-tab bar (<nav aria-label="Primary">) is present…
+    expect(screen.getByRole("navigation", { name: /^primary$/i })).toBeInTheDocument();
+    // …and the desktop sidebar (<aside aria-label="Primary navigation">) is not.
+    expect(screen.queryByRole("complementary", { name: /primary navigation/i })).toBeNull();
   });
 });

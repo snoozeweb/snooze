@@ -3,6 +3,12 @@
   grid-template-columns: repeat(6, 1fr);
   gap: var(--space-3);
 }
+/* Phones: the 6-up KPI strip collapses to a single column. Desktop unchanged. */
+@media (max-width: 768px) {
+  .strip {
+    grid-template-columns: 1fr;
+  }
+}
 .tile {
   border: 1px solid var(--border);
   border-left: 3px solid var(--tile-accent, var(--border));

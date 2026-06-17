@@ -33,13 +33,13 @@
   gap: var(--space-3);
 }
 /* Two-column row for short fields — keeps the drawer compact so the user
-   doesn't need to scroll for typical edits. Stacks under 720px. */
+   doesn't need to scroll for typical edits. Stacks under 768px. */
 .grid2 {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: var(--space-2);
 }
-@media (max-width: 720px) {
+@media (max-width: 768px) {
   .grid2 {
     grid-template-columns: 1fr;
   }

@@ -65,3 +65,14 @@
 .danger:hover:not(:disabled) {
   filter: brightness(1.1);
 }
+
+/* Touch devices: enforce the minimum hit area regardless of visual size.
+   Desktop (fine pointer) keeps the compact 28/32/38px sizes above. */
+@media (pointer: coarse) {
+  .sm,
+  .md,
+  .lg {
+    min-width: var(--touch-target);
+    min-height: var(--touch-target);
+  }
+}
