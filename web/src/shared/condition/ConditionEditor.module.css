@@ -122,10 +122,16 @@
    When the editor is too narrow for the field/op/value/actions row to stay
    on one line (it collapses each input to a sliver), stack a leaf vertically:
    field on its own line, op + value sharing the next, and the action buttons
-   on a right-aligned line below. Nesting indentation tightens too, so a
-   deeply-nested tree doesn't run out of width. Driven by the editor's own
-   width (container query), so desktop drawers (~504px editor) are unaffected. */
-@container (max-width: 480px) {
+   on a right-aligned line below. Group headers (AND/OR/NOT) wrap their action
+   buttons too, so a deeply-nested tree never forces a horizontal scrollbar on
+   the smallest phones. Nesting indentation tightens for the same reason.
+
+   Driven by the editor's OWN width (container query), so the fixed 560px
+   desktop drawer — editor content-box ~502px, ~487px once a scrollbar appears
+   — stays comfortably above the 460px trigger and is unaffected. The drawer
+   only narrows below this once it becomes a full-screen sheet (viewport
+   <= 768px), so stacking is effectively phone-only. */
+@container (max-width: 460px) {
   .leaf {
     flex-wrap: wrap;
   }
@@ -138,6 +144,11 @@
   .actions {
     flex: 1 1 100%;
     justify-content: flex-end;
+  }
+  /* Let the +/duplicate/trash buttons wrap below the operator select instead
+     of overflowing when a group sits several levels deep. */
+  .groupHeader {
+    flex-wrap: wrap;
   }
   .children {
     padding-left: var(--space-2);
