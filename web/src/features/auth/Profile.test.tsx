@@ -66,11 +66,7 @@ describe("Profile", () => {
   beforeEach(() => {
     localStorage.clear();
     authStore.getState().logout();
-    mswServer.use(
-      http.get("/api/v1/user/me/apikeys", () =>
-        HttpResponse.json({ data: [] }),
-      ),
-    );
+    mswServer.use(http.get("/api/v1/user/me/apikeys", () => HttpResponse.json({ data: [] })));
   });
   afterEach(() => {
     localStorage.clear();

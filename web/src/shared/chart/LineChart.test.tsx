@@ -141,7 +141,11 @@ describe("LineChart", () => {
   it("invokes onRangeSelect with the from/to x of a dragged span", () => {
     const onRangeSelect = vi.fn();
     const { container } = render(
-      <LineChart ariaLabel="Alerts over time" series={THREE_POINTS} onRangeSelect={onRangeSelect} />,
+      <LineChart
+        ariaLabel="Alerts over time"
+        series={THREE_POINTS}
+        onRangeSelect={onRangeSelect}
+      />,
     );
     const canvas = container.querySelector("canvas")!;
     // Drag from x=0 (bucket 0) to x=80 (bucket 2); 80px > the click threshold.
@@ -155,7 +159,11 @@ describe("LineChart", () => {
   it("treats a sub-threshold press-release as a click, not a range drag", () => {
     const onRangeSelect = vi.fn();
     const { container } = render(
-      <LineChart ariaLabel="Alerts over time" series={THREE_POINTS} onRangeSelect={onRangeSelect} />,
+      <LineChart
+        ariaLabel="Alerts over time"
+        series={THREE_POINTS}
+        onRangeSelect={onRangeSelect}
+      />,
     );
     const canvas = container.querySelector("canvas")!;
     // Move only 2px (< DRAG_THRESHOLD_PX) — this is a click, not a selection.
