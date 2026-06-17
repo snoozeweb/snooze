@@ -22,6 +22,10 @@
 
 ### Changed
 
+- **Web — Sidebar user chip opens an account menu.** Clicking the avatar/username
+  at the bottom of the left navigation now opens a dropdown with **Profile** and
+  **Log out** shortcuts (mirroring the top-bar user menu), so the two most common
+  account actions are reachable from where the signed-in user is shown.
 - **Web — Settings → OIDC / SSO uses progressive disclosure.** The OIDC tab now
   behaves like the LDAP tab: only the *Enabled* toggle shows until OIDC is
   switched on, then the issuer, client, scope and claim settings appear. Stops

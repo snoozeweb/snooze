@@ -1,4 +1,5 @@
 import { render, screen, waitFor } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it } from "vitest";
 import {
   createRootRoute,
@@ -117,6 +118,24 @@ describe("Sidebar", () => {
     setup();
     // Footer now shows "org:acme" (the tenant line in mono)
     expect(screen.getByText("org:acme")).toBeInTheDocument();
+  });
+
+  it("opens an account menu with Profile and Log out from the footer user chip", async () => {
+    loginWithClaims({ sub: "alice" });
+    const user = userEvent.setup();
+    setup();
+    await user.click(screen.getByRole("button", { name: /account menu — signed in as alice/i }));
+    expect(screen.getByRole("menuitem", { name: /profile/i })).toBeInTheDocument();
+    expect(screen.getByRole("menuitem", { name: /log out/i })).toBeInTheDocument();
+  });
+
+  it("clears the auth session when Log out is chosen from the footer menu", async () => {
+    loginWithClaims({ sub: "alice" });
+    const user = userEvent.setup();
+    setup();
+    await user.click(screen.getByRole("button", { name: /account menu — signed in as alice/i }));
+    await user.click(screen.getByRole("menuitem", { name: /log out/i }));
+    expect(authStore.getState().isAuthenticated).toBe(false);
   });
 
   it("shows the Tenants nav item when the user has ro_tenant", () => {

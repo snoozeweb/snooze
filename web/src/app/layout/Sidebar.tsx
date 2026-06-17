@@ -1,7 +1,8 @@
-import { Link, useLocation } from "@tanstack/react-router";
+import { Link, useLocation, useNavigate } from "@tanstack/react-router";
 import { Icon } from "@/shared/icons/Icon";
 import { Kbd } from "@/shared/ui/Kbd";
 import { Logo } from "@/shared/ui/Logo";
+import { Menu, MenuContent, MenuItem, MenuSeparator, MenuTrigger } from "@/shared/ui/Menu";
 import { GROUP_LABELS, NAV_ITEMS, type NavGroup } from "./nav-items";
 import { useAuth } from "@/lib/auth/store";
 import {
@@ -20,7 +21,9 @@ const ALERTS_PERMS = ["ro_record", "rw_record"];
 export function Sidebar() {
   const location = useLocation();
   const currentPath = location.pathname;
-  const { claims } = useAuth();
+  const { claims, logout } = useAuth();
+  const navigate = useNavigate();
+  const username = claims?.sub ?? "anonymous";
 
   // Live alert-count badge: only fetch when the user can see the Alerts item.
   const canSeeAlerts = hasAnyPermission(claims, ALERTS_PERMS);
@@ -78,12 +81,39 @@ export function Sidebar() {
         })}
       </nav>
       <div className={styles.footer}>
-        <div className={styles.footerRow1}>
-          <span className={styles.footerAvatar} aria-hidden="true">
-            {(claims?.sub ?? "?").charAt(0).toUpperCase()}
-          </span>
-          <span className={styles.footerUsername}>{claims?.sub ?? "anonymous"}</span>
-        </div>
+        <Menu>
+          <MenuTrigger>
+            <button
+              type="button"
+              className={styles.footerUser}
+              aria-label={`Account menu — signed in as ${username}`}
+            >
+              <span className={styles.footerAvatar} aria-hidden="true">
+                {username.charAt(0).toUpperCase()}
+              </span>
+              <span className={styles.footerUsername}>{username}</span>
+              <span className={styles.footerChevron} aria-hidden="true">
+                <Icon name="chevron-up" size={14} />
+              </span>
+            </button>
+          </MenuTrigger>
+          <MenuContent side="top" align="start">
+            <MenuItem leadingIcon="sliders" onSelect={() => void navigate({ to: "/web/profile" })}>
+              Profile
+            </MenuItem>
+            <MenuSeparator />
+            <MenuItem
+              leadingIcon="lock"
+              danger
+              onSelect={() => {
+                logout();
+                void navigate({ to: "/web/login" });
+              }}
+            >
+              Log out
+            </MenuItem>
+          </MenuContent>
+        </Menu>
         {claims?.tenant_id ? (
           <span className={styles.footerTenant} aria-label="Organization">
             org:{claims.tenant_id}
