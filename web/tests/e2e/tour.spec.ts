@@ -963,7 +963,11 @@ test("mobile tour: walk top-level routes at phone width", async ({
   await adminAuth();
 
   // Compact seed so the data tables have rows that must collapse into cards.
+  // Several environments so the alerts-page EnvironmentBar has multiple pills
+  // (it must flow as chips on its own row, not stack one-per-line).
   await api.environments.create({ name: "production", color: "#3fb950" });
+  await api.environments.create({ name: "staging", color: "#d4a017" });
+  await api.environments.create({ name: "dev", color: "#4f8cff" });
   await api.rules.create({
     name: "tag-production",
     enabled: true,

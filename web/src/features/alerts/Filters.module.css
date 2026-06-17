@@ -73,13 +73,30 @@
 }
 
 /*
- * Phones: the lifecycle tab strip and env pills already scroll horizontally
- * (overflow-x: auto above). Add momentum scrolling so the band itself scrolls
- * instead of forcing page-wide horizontal scroll at 360px. Desktop unchanged.
+ * Phones: side-by-side, the lifecycle tab strip eats the width and the
+ * EnvironmentBar pills get squeezed into a narrow right-hand column where they
+ * wrap one-per-line (ugly vertical stack). Below 768px, stack the header into
+ * two full-width rows instead: the tab strip (scrolling horizontally) on top,
+ * the environment pills flowing left-to-right as chips beneath it. The
+ * underline border moves onto the tab strip so the active-tab underline still
+ * sits on a line; the right-alignment divider on .envSlot is dropped.
  */
 @media (max-width: 768px) {
-  .tabRow,
+  .tabRow {
+    flex-direction: column;
+    align-items: stretch;
+    gap: var(--space-2);
+    overflow-x: visible;
+    border-bottom: 0;
+  }
   .tabs {
+    border-bottom: 1px solid var(--border);
     -webkit-overflow-scrolling: touch;
+  }
+  .envSlot {
+    margin-left: 0;
+    padding-left: 0;
+    padding-bottom: 0;
+    border-left: 0;
   }
 }
