@@ -10,6 +10,7 @@ import {
   Outlet,
   RouterProvider,
 } from "@tanstack/react-router";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { mswServer } from "@/tests/msw/server";
 import { ToastProvider, Toaster } from "@/shared/ui/Toast";
 import { TooltipProvider } from "@/shared/ui/Tooltip";
@@ -30,6 +31,7 @@ function loginWith(perms: string[], method: string = "local") {
 }
 
 function setup() {
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   const root = createRootRoute({ component: () => <Outlet /> });
   const profile = createRoute({
     getParentRoute: () => root,
@@ -48,12 +50,14 @@ function setup() {
     history: createMemoryHistory({ initialEntries: ["/web/profile"] }),
   } as any);
   return render(
-    <TooltipProvider delay={0}>
-      <ToastProvider>
-        <RouterProvider router={router as any} />
-        <Toaster />
-      </ToastProvider>
-    </TooltipProvider>,
+    <QueryClientProvider client={client}>
+      <TooltipProvider delay={0}>
+        <ToastProvider>
+          <RouterProvider router={router as any} />
+          <Toaster />
+        </ToastProvider>
+      </TooltipProvider>
+    </QueryClientProvider>,
   );
   /* eslint-enable @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-argument, @typescript-eslint/no-unsafe-assignment */
 }
@@ -62,6 +66,11 @@ describe("Profile", () => {
   beforeEach(() => {
     localStorage.clear();
     authStore.getState().logout();
+    mswServer.use(
+      http.get("/api/v1/user/me/apikeys", () =>
+        HttpResponse.json({ data: [] }),
+      ),
+    );
   });
   afterEach(() => {
     localStorage.clear();
