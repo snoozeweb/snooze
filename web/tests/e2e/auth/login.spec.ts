@@ -143,9 +143,9 @@ test.describe("login (local)", () => {
 
     // Topbar.tsx: <IconButton icon="users" label={`Signed in as ${username}`} />
     // The root token's sub claim is "root".
-    // Radix DropdownMenu renders two button elements — use getByLabel to
-    // target the visible icon button specifically (avoids strict-mode error).
-    await page.getByLabel(/signed in as/i).click({ force: true });
+    // Scope to the <header> to avoid matching the Sidebar footer user chip
+    // (which also contains "signed in as" in its aria-label).
+    await page.locator("header").getByLabel(/signed in as/i).click({ force: true });
 
     // MenuItem text is "Log out" (exactly, from Topbar.tsx).
     await page.getByRole("menuitem", { name: "Log out" }).click({ force: true });

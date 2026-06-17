@@ -1,4 +1,4 @@
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { Outlet, useMatches, useNavigate } from "@tanstack/react-router";
 import { Sidebar } from "./Sidebar";
 import { Topbar } from "./Topbar";
@@ -6,6 +6,7 @@ import { BottomNav } from "./BottomNav";
 import { CommandPalette } from "./CommandPalette";
 import { useShortcut } from "@/shared/hooks/useShortcut";
 import { useIsMobileShell } from "@/shared/hooks/useIsMobileShell";
+import { useAuth } from "@/lib/auth/store";
 import { pickBreadcrumb } from "./breadcrumb";
 import styles from "./AppShell.module.css";
 
@@ -13,6 +14,16 @@ export function AppShell() {
   const [paletteOpen, setPaletteOpen] = useState(false);
   const navigate = useNavigate();
   const isMobile = useIsMobileShell();
+  const { isAuthenticated } = useAuth();
+
+  // Reactive cross-tab logout guard: when another tab clears the token from
+  // localStorage the auth store's storage-event listener sets isAuthenticated
+  // to false. Navigate to login immediately so the session is always in sync.
+  useEffect(() => {
+    if (!isAuthenticated) {
+      void navigate({ to: "/web/login" });
+    }
+  }, [isAuthenticated, navigate]);
 
   const open = useCallback(() => setPaletteOpen(true), []);
 
