@@ -350,3 +350,68 @@ func (s *stubStream) Close(_ context.Context) error {
 	s.closed = true
 	return nil
 }
+
+// TestHitsOnlyUpdate covers the predicate that suppresses the hit-counter
+// reload storm: only an update touching solely `hits` is skipped; inserts,
+// deletes, and updates touching any rule-affecting field are kept.
+func TestHitsOnlyUpdate(t *testing.T) {
+	cases := []struct {
+		name string
+		raw  bson.M
+		want bool
+	}{
+		{"hits only", bson.M{"operationType": "update", "updateDescription": bson.M{"updatedFields": bson.M{"hits": int64(5)}}}, true},
+		{"hits plus semantic field", bson.M{"operationType": "update", "updateDescription": bson.M{"updatedFields": bson.M{"hits": int64(5), "enabled": true}}}, false},
+		{"semantic field only", bson.M{"operationType": "update", "updateDescription": bson.M{"updatedFields": bson.M{"enabled": true}}}, false},
+		{"insert", bson.M{"operationType": "insert", "fullDocument": bson.M{"uid": "x"}}, false},
+		{"delete", bson.M{"operationType": "delete", "documentKey": bson.M{"uid": "x"}}, false},
+		{"update without updateDescription", bson.M{"operationType": "update"}, false},
+		{"update with empty updatedFields", bson.M{"operationType": "update", "updateDescription": bson.M{"updatedFields": bson.M{}}}, false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			require.Equal(t, tc.want, hitsOnlyUpdate(tc.raw))
+		})
+	}
+}
+
+// TestRunStream_SkipsHitsOnlyUpdate drives a hit-counter bump followed by a real
+// edit through the stub stream and asserts only the real edit is dispatched —
+// the bump must not trigger a reload (the self-induced reload storm).
+func TestRunStream_SkipsHitsOnlyUpdate(t *testing.T) {
+	buf := &bytes.Buffer{}
+	b := newTestBus(t, captureLogger(buf))
+
+	stream := &stubStream{
+		events: []bson.M{
+			{
+				"operationType":     "update",
+				"documentKey":       bson.M{"uid": "bump"},
+				"fullDocument":      bson.M{"uid": "bump", "tenant_id": "default"},
+				"updateDescription": bson.M{"updatedFields": bson.M{"hits": int64(99)}},
+			},
+			{
+				"operationType":     "update",
+				"documentKey":       bson.M{"uid": "edit"},
+				"fullDocument":      bson.M{"uid": "edit", "tenant_id": "default"},
+				"updateDescription": bson.M{"updatedFields": bson.M{"enabled": false}},
+			},
+		},
+	}
+	b.open = func(_ context.Context, _ string) (changeStream, error) { return stream, nil }
+
+	subCtx, subCancel := context.WithCancel(context.Background())
+	defer subCancel()
+	ch, err := b.Subscribe(subCtx, "collection.snooze")
+	require.NoError(t, err)
+
+	select {
+	case ev := <-ch:
+		// The hits-only bump precedes the edit in the stream; the first event
+		// the subscriber sees must be the edit, proving the bump was dropped.
+		require.Equal(t, []string{"edit"}, ev.UIDs, "hits-only update should have been skipped")
+		require.Equal(t, "write", ev.Op)
+	case <-time.After(time.Second):
+		t.Fatal("did not receive dispatched event")
+	}
+}

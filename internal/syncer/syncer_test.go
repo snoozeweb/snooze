@@ -523,3 +523,67 @@ func TestSyncer_ConcurrentMultiTenantReloadsAllFire(t *testing.T) {
 	cancel()
 	require.NoError(t, <-done)
 }
+
+// blockingPlugin's first Reload blocks until its context is cancelled,
+// simulating a wedged DB call. Later Reloads return immediately. attempts
+// counts every Reload entry.
+type blockingPlugin struct {
+	name     string
+	attempts int64
+}
+
+func (p *blockingPlugin) Name() string { return p.name }
+
+func (p *blockingPlugin) Reload(ctx context.Context) error {
+	if atomic.AddInt64(&p.attempts, 1) == 1 {
+		<-ctx.Done() // wedge until the syncer's reload timeout cancels us
+		return ctx.Err()
+	}
+	return nil
+}
+
+func (p *blockingPlugin) Attempts() int64 { return atomic.LoadInt64(&p.attempts) }
+
+// TestSyncer_ReloadTimeoutKeepsSyncerLive is the regression guard for the frozen
+// cache: a Reload that wedges must not permanently stall the dispatch loop. With
+// the per-reload timeout, a later event still triggers a reload. On the previous
+// unbounded code the loop blocked on the first reload forever and the second
+// reload never happened.
+func TestSyncer_ReloadTimeoutKeepsSyncerLive(t *testing.T) {
+	bus := newFakeBus()
+	defer bus.Close()
+	plug := &blockingPlugin{name: "snooze"}
+	s := &Syncer{
+		Bus:           bus,
+		Plugins:       map[string]Pluggable{plug.Name(): plug},
+		Debounce:      10 * time.Millisecond,
+		ReloadTimeout: 60 * time.Millisecond,
+		Logger:        quietLogger(),
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	done := make(chan error, 1)
+	go func() { done <- s.Run(ctx) }()
+
+	require.Eventually(t, func() bool {
+		bus.mu.Lock()
+		defer bus.mu.Unlock()
+		return len(bus.subs) >= 2
+	}, time.Second, 5*time.Millisecond, "subscriptions not registered")
+
+	// First event → first reload, which wedges.
+	require.NoError(t, bus.Publish(ctx, Event{Topic: "collection.snooze", Op: "write", Collection: "snooze"}))
+	require.Eventually(t, func() bool { return plug.Attempts() >= 1 },
+		time.Second, 5*time.Millisecond, "first reload not attempted")
+
+	// Keep nudging: once the wedged reload times out, the loop must recover and
+	// run a second reload. Unbounded code never gets here.
+	require.Eventually(t, func() bool {
+		_ = bus.Publish(ctx, Event{Topic: "collection.snooze", Op: "write", Collection: "snooze"})
+		return plug.Attempts() >= 2
+	}, 2*time.Second, 20*time.Millisecond, "syncer did not recover after a wedged reload")
+
+	cancel()
+	require.NoError(t, <-done)
+}

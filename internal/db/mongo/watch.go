@@ -202,9 +202,46 @@ func (b *mongoBus) consumeStream(ctx context.Context, collection string, stream 
 				slog.Any("err", err))
 			continue
 		}
+		if hitsOnlyUpdate(raw) {
+			// A per-rule `hits` counter bump (e.g. the snooze plugin's
+			// bumpHits on every live match) carries no rule-affecting change.
+			// Dispatching it would trigger a full plugin Reload, so on a busy
+			// server the hit-counter feedback loop becomes a self-induced
+			// reload storm. Drop it: nothing downstream needs to reload.
+			continue
+		}
 		ev := changeEventToSyncerEvent(raw, collection)
 		b.dispatch(ev)
 	}
+}
+
+// hitsOnlyUpdate reports whether an update change event modified ONLY the
+// per-rule `hits` audit counter and nothing else. Such writes come from the
+// synchronous UpdateOne the snooze/notification plugins issue against their own
+// collection on every match; the `hits` field is never read into a cached rule
+// (docToRule ignores it), so a reload triggered by it is pure waste — and on a
+// high-volume server the churn both burns cycles and widens the window for a
+// slow reload to stall the single syncer dispatch goroutine. Inserts, deletes,
+// replaces, and any update touching a semantically meaningful field
+// (condition, enabled, time_constraints, …) are never skipped.
+func hitsOnlyUpdate(raw bson.M) bool {
+	if op, _ := raw["operationType"].(string); op != "update" {
+		return false
+	}
+	ud, ok := raw["updateDescription"].(bson.M)
+	if !ok {
+		return false
+	}
+	updated, ok := ud["updatedFields"].(bson.M)
+	if !ok || len(updated) == 0 {
+		return false
+	}
+	for k := range updated {
+		if k != "hits" {
+			return false
+		}
+	}
+	return true
 }
 
 // dispatch forwards e to every subscriber whose prefix matches.

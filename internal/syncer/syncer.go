@@ -16,6 +16,14 @@ import (
 // the subsequent Reload call.
 const defaultDebounce = 100 * time.Millisecond
 
+// defaultReloadTimeout bounds a single plug.Reload call. A reload that blocks
+// past this (e.g. a wedged DB cursor) is abandoned so the single per-plugin
+// dispatch goroutine cannot be stalled forever — the failure mode that freezes
+// a plugin's in-memory cache at its last-loaded state while the server keeps
+// serving. Generous relative to a healthy reload (which is a single indexed
+// query), tight enough to recover from a stall within one window.
+const defaultReloadTimeout = 30 * time.Second
+
 // Pluggable is the slice of the plugin contract the Syncer needs: a name and a
 // Reload method that refreshes in-memory state from the database.
 type Pluggable interface {
@@ -38,7 +46,10 @@ type Syncer struct {
 	Bus      Bus
 	Plugins  map[string]Pluggable
 	Debounce time.Duration
-	Logger   *slog.Logger
+	// ReloadTimeout bounds each plug.Reload call. Zero selects
+	// defaultReloadTimeout. See reloadBounded for why this matters.
+	ReloadTimeout time.Duration
+	Logger        *slog.Logger
 }
 
 // Run subscribes to one fan-in stream per plugin and dispatches debounced
@@ -207,10 +218,43 @@ func (s *Syncer) dispatchLoop(ctx context.Context, name string, plug Pluggable, 
 				if tenant != "" {
 					reloadCtx = snoozetypes.WithTenant(ctx, tenant)
 				}
-				if err := plug.Reload(reloadCtx); err != nil {
-					logger.Warn("syncer: reload failed", "plugin", name, "tenant", tenant, "err", err)
-				}
+				s.reloadBounded(reloadCtx, name, plug, tenant, logger)
 			}
 		}
+	}
+}
+
+// reloadBounded runs plug.Reload(ctx) under a timeout. The reload executes in
+// its own goroutine and the dispatch loop waits on either completion or the
+// timeout — so a Reload that wedges (a hung DB query that ignores cancellation,
+// say) can stall the loop for at most ReloadTimeout instead of forever. Without
+// this bound a single stuck reload silently freezes the plugin's cache: the
+// dispatch goroutine never returns to drain its event channel, every later
+// change event is dropped, and no reload ever runs again until the process is
+// restarted.
+//
+// A timed-out reload's goroutine may linger (it owns a cancelled ctx and will
+// unwind when its blocked operation honours cancellation). Reloads are
+// idempotent full-state rebuilds guarded by the plugin's own lock, so a lagging
+// reload overlapping a fresh one is safe.
+func (s *Syncer) reloadBounded(ctx context.Context, name string, plug Pluggable, tenant string, logger *slog.Logger) {
+	timeout := s.ReloadTimeout
+	if timeout <= 0 {
+		timeout = defaultReloadTimeout
+	}
+	rctx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
+
+	done := make(chan error, 1)
+	go func() { done <- plug.Reload(rctx) }()
+
+	select {
+	case err := <-done:
+		if err != nil {
+			logger.Warn("syncer: reload failed", "plugin", name, "tenant", tenant, "err", err)
+		}
+	case <-rctx.Done():
+		logger.Warn("syncer: reload timed out; abandoned to keep the syncer live",
+			"plugin", name, "tenant", tenant, "timeout", timeout)
 	}
 }
