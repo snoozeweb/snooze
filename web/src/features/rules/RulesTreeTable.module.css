@@ -2,6 +2,10 @@
   display: flex;
   flex-direction: column;
   gap: var(--space-2);
+  /* Query container so the tree can card-collapse on a narrow column
+     without a JS layout fork — same mechanism as DataTable.module.css.
+     Proven to coexist with the sticky .headerRow below. */
+  container-type: inline-size;
 }
 
 /* Toolbar row — search bar + count/actions in the same horizontal slot.
@@ -359,4 +363,137 @@
   padding: var(--space-3);
   background: var(--bg-canvas);
   border-bottom: 1px solid var(--border-muted);
+}
+
+/* ── Card mode ──────────────────────────────────────────────────────────
+   Below 640px (matching DataTable's --bp-sm card breakpoint) the 7-column
+   grid can't show name + condition + modifications + controls without
+   scrolling sideways, so each row reflows into a labeled card. A container
+   query (not a viewport media query) so the tree adapts to its own column
+   wherever it's placed — one DOM, no JS branch. Desktop (≥640px container)
+   is byte-for-byte untouched: everything below lives inside this block.
+
+   Reordering is desktop-only here. The drag handle is the ONLY drag
+   affordance — dnd-kit's listeners are bound to .handle alone
+   (RulesTreeTable.tsx) — so hiding it disables drag without unmounting the
+   DndContext or forking the component in JS. */
+@container (max-width: 640px) {
+  /* The column header is redundant once each card field self-labels. */
+  .headerRow {
+    display: none;
+  }
+
+  /* Drop the table frame so the cards stand alone (matches DataTable). */
+  .tableScroll {
+    border: 0;
+    background: transparent;
+    overflow-x: visible;
+  }
+
+  /* Row → card: a wrapping flex column. row-gap separates the stacked
+     fields and the footer line; column-gap spaces the footer controls. */
+  .row {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--space-2) var(--space-3);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    margin-bottom: var(--space-2);
+    padding: var(--space-3);
+    background: var(--bg-surface);
+  }
+  /* The base rule strips the last row's border for the table look; cards
+     each carry a full border. */
+  .row:last-child {
+    border-bottom: 1px solid var(--border);
+  }
+
+  /* Hide the drag handle → no touch reorder (desktop-only). */
+  .handle {
+    display: none;
+  }
+
+  /* Name = card title, full width. The inline .indent span is kept so the
+     nesting depth stays legible. */
+  .nameCell {
+    order: 0;
+    flex: 0 0 100%;
+  }
+
+  /* Condition + Modifications: labeled fields. The ::before label takes a
+     full row, then the value wraps full-width beneath it (no ellipsis
+     truncation of long conditions; mod badges wrap). */
+  .conditionCell {
+    order: 1;
+    flex: 0 0 100%;
+    display: flex;
+    flex-wrap: wrap;
+    white-space: normal;
+    overflow: visible;
+    text-overflow: clip;
+  }
+  .modsCell {
+    order: 2;
+    flex: 0 0 100%;
+    display: flex;
+    flex-wrap: wrap;
+  }
+  .conditionCell::before,
+  .modsCell::before {
+    flex: 0 0 100%;
+    color: var(--text-muted);
+    font-family: var(--font-sans);
+    font-size: var(--text-xs);
+    font-weight: var(--weight-medium);
+    margin-bottom: 2px;
+  }
+  .conditionCell::before {
+    content: "Condition";
+  }
+  .modsCell::before {
+    content: "Modifications";
+  }
+
+  /* Footer action row: checkbox + expand chevron sit left, the "+ Add"
+     menu pins right. They wrap onto one line beneath the fields because
+     the modifications field above is full-width. The add menu is
+     hover-revealed on desktop — force it visible for touch. */
+  .checkboxCell {
+    order: 3;
+    flex: 0 0 auto;
+  }
+  .expandBtn {
+    order: 4;
+    flex: 0 0 auto;
+  }
+  .addCell {
+    order: 5;
+    flex: 0 0 auto;
+    margin-left: auto;
+  }
+  .addBtn {
+    opacity: 1;
+  }
+
+  /* Toolbar row: search takes the full width; the count + actions cluster
+     drops beneath it (port of DataTable's mobile toolbar stacking). */
+  .toolbarRow {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .toolbar {
+    justify-content: space-between;
+  }
+  .toolbarSelected {
+    flex-direction: column;
+    align-items: stretch;
+    gap: var(--space-2);
+  }
+  .toolbarActions {
+    flex-wrap: wrap;
+  }
+  .toolbarSelected .toolbarActions > * {
+    flex: 1 1 auto;
+  }
 }

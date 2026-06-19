@@ -1,5 +1,17 @@
 ## [Unreleased]
 
+### Fixed
+
+- **Web — the Rules tree is now mobile-responsive.** The drag-and-drop rule
+  hierarchy was the one table that still scrolled sideways on a phone (the
+  v2.3.0 mobile pass card-collapsed every `DataTable` but not the bespoke rules
+  tree). Below a 640px container each rule now reflows into a labeled **card**
+  — name as the title, Condition and Modifications as wrapped fields, and the
+  select / expand / **+ Add** controls in a footer row (the add menu is now
+  always visible on touch instead of hover-revealed). Reordering stays a
+  desktop gesture: the drag handle is hidden on narrow screens. Pure
+  container-query CSS — the ≥640px desktop layout is unchanged.
+
 ### Changed
 
 - **Web — table rows are now text-selectable, with a context-menu Copy.**
