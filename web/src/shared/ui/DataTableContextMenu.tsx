@@ -1,7 +1,9 @@
-import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
+import { copyToClipboard } from "@/lib/clipboard";
 import { Icon } from "@/shared/icons/Icon";
 import type { IconName } from "@/shared/icons/icon-names";
+import { toast } from "@/shared/ui/toast/useToast";
 import styles from "./DataTableContextMenu.module.css";
 
 export type ContextMenuItem = {
@@ -18,12 +20,47 @@ export type DataTableContextMenuProps = {
   x: number;
   y: number;
   onClose: () => void;
+  /**
+   * Highlighted text captured when the menu opened. When non-blank, a "Copy"
+   * item is prepended to the top of the menu that copies exactly this text —
+   * so a user who selected text inside a row can grab it (the row-open click
+   * is suppressed during a selection; see DataTable.handleRowClick). Blank or
+   * omitted → no Copy item, and the menu renders the consumer's items as-is.
+   */
+  copyText?: string;
 };
 
-export function DataTableContextMenu({ items, x, y, onClose }: DataTableContextMenuProps) {
+export function DataTableContextMenu({
+  items,
+  x,
+  y,
+  onClose,
+  copyText,
+}: DataTableContextMenuProps) {
   const ref = useRef<HTMLUListElement>(null);
   const [focused, setFocused] = useState<number>(0);
   const [pos, setPos] = useState<{ left: number; top: number }>({ left: x, top: y });
+
+  // Prepend a "Copy" item when text is selected. Memoized on (items, copyText)
+  // so its identity stays stable across the internal re-renders driven by
+  // focus changes — the focus-reset and keydown effects key off this array and
+  // would otherwise reset the highlight on every arrow press.
+  const menuItems = useMemo<ContextMenuItem[]>(() => {
+    if (copyText && copyText.trim() !== "") {
+      const copyItem: ContextMenuItem = {
+        key: "__copy-selection",
+        label: "Copy",
+        icon: "copy",
+        onSelect: async () => {
+          const ok = await copyToClipboard(copyText);
+          if (ok) toast.success("Copied to clipboard");
+          else toast.error("Clipboard unavailable");
+        },
+      };
+      return [copyItem, ...items];
+    }
+    return items;
+  }, [items, copyText]);
 
   // Adjust position so the menu stays within the viewport.
   useLayoutEffect(() => {
@@ -54,26 +91,26 @@ export function DataTableContextMenu({ items, x, y, onClose }: DataTableContextM
       } else if (e.key === "ArrowDown") {
         e.preventDefault();
         setFocused((i) => {
-          const next = items.findIndex((it, idx) => idx > i && !it.disabled);
+          const next = menuItems.findIndex((it, idx) => idx > i && !it.disabled);
           if (next !== -1) return next;
-          const first = items.findIndex((it) => !it.disabled);
+          const first = menuItems.findIndex((it) => !it.disabled);
           return first === -1 ? i : first;
         });
       } else if (e.key === "ArrowUp") {
         e.preventDefault();
         setFocused((i) => {
           for (let k = i - 1; k >= 0; k--) {
-            const it = items[k];
+            const it = menuItems[k];
             if (it && !it.disabled) return k;
           }
-          for (let k = items.length - 1; k > i; k--) {
-            const it = items[k];
+          for (let k = menuItems.length - 1; k > i; k--) {
+            const it = menuItems[k];
             if (it && !it.disabled) return k;
           }
           return i;
         });
       } else if (e.key === "Enter") {
-        const item = items[focused];
+        const item = menuItems[focused];
         if (item && !item.disabled) {
           e.preventDefault();
           onClose();
@@ -91,12 +128,12 @@ export function DataTableContextMenu({ items, x, y, onClose }: DataTableContextM
       document.removeEventListener("scroll", onScroll, true);
       document.removeEventListener("keydown", onKey);
     };
-  }, [items, focused, onClose]);
+  }, [menuItems, focused, onClose]);
 
   useEffect(() => {
-    const first = items.findIndex((it) => !it.disabled);
+    const first = menuItems.findIndex((it) => !it.disabled);
     if (first !== -1) setFocused(first);
-  }, [items]);
+  }, [menuItems]);
 
   // Focus the menu container on mount so keyboard events are captured
   // immediately. The document-level keydown listener handles Arrow/Enter/Escape
@@ -115,7 +152,7 @@ export function DataTableContextMenu({ items, x, y, onClose }: DataTableContextM
       className={styles.menu}
       style={{ left: pos.left, top: pos.top }}
     >
-      {items.map((item, idx) => {
+      {menuItems.map((item, idx) => {
         const classes = [
           styles.item,
           item.danger ? styles.danger : null,

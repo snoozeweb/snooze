@@ -1,3 +1,15 @@
+## [Unreleased]
+
+### Changed
+
+- **Web — table rows are now text-selectable, with a context-menu Copy.**
+  Drag-selecting text inside a table row no longer opens the row (the
+  click-to-open is suppressed while a selection is active), so cell values can
+  finally be highlighted and copied. Right-clicking a row with text selected
+  shows a **Copy** entry at the top of the context menu that copies exactly the
+  highlighted text. The redundant **Open** entry was removed from row context
+  menus — clicking a row already opens it.
+
 ## v2.3.0
 
 ### Added

@@ -157,7 +157,12 @@ export function DataTable<T>({
   const [expandedInner, setExpandedInner] = useState<Set<string>>(() => new Set<string>());
   const isControlledExpansion = expandedKeys !== undefined;
   const expanded = isControlledExpansion ? expandedKeys : expandedInner;
-  const [ctxMenu, setCtxMenu] = useState<{ row: T; x: number; y: number } | null>(null);
+  const [ctxMenu, setCtxMenu] = useState<{
+    row: T;
+    x: number;
+    y: number;
+    selection: string;
+  } | null>(null);
   // Anchor index for shift-click range selection. Set on every plain click
   // of a row's checkbox; consumed when the next click arrives with shift.
   const [anchorIndex, setAnchorIndex] = useState<number | null>(null);
@@ -286,6 +291,12 @@ export function DataTable<T>({
   // onClick / onContextMenu handlers handed to every row. Stable so they
   // don't bust the row memo; the row passes back its own index/coords.
   const handleRowClick = useCallback((index: number) => {
+    // If the user just drag-selected text inside the grid, the trailing click
+    // shouldn't also open the row (which navigates away and clobbers the
+    // selection). A plain click collapses any prior selection on mousedown, so
+    // this guard only trips at the end of a real text selection.
+    const sel = typeof window !== "undefined" ? window.getSelection() : null;
+    if (sel && !sel.isCollapsed && sel.toString().trim() !== "") return;
     setFocusedIndex(index);
     const row = dataRef.current[index];
     if (row) onRowOpenRef.current?.(row);
@@ -294,7 +305,11 @@ export function DataTable<T>({
   const handleRowContextMenu = useCallback((index: number, x: number, y: number) => {
     setFocusedIndex(index);
     const row = dataRef.current[index];
-    if (row) setCtxMenu({ row, x, y });
+    // Capture the highlighted text now: right-click preserves the selection, so
+    // this reflects what the user wants the menu's "Copy" item to copy.
+    const selection =
+      typeof window !== "undefined" ? (window.getSelection()?.toString() ?? "") : "";
+    if (row) setCtxMenu({ row, x, y, selection });
   }, []);
 
   const handleCheckboxToggle = useCallback(
@@ -540,6 +555,7 @@ export function DataTable<T>({
           items={contextMenuItems(ctxMenu.row)}
           x={ctxMenu.x}
           y={ctxMenu.y}
+          copyText={ctxMenu.selection}
           onClose={() => setCtxMenu(null)}
         />
       ) : null}

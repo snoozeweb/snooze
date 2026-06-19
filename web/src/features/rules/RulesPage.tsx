@@ -277,25 +277,19 @@ export function RulesPage() {
   const aggregateContextMenu = useCallback(
     (row: AggregateRule): ContextMenuItem[] =>
       buildResourceContextMenu(row, {
-        onOpen: (r) => {
-          if (r.uid) updateSearch({ uid: r.uid });
-        },
         onDelete: (uid) => removeAggregate.mutateAsync(uid),
         requestDelete: (r) => confirmDelete.request([r]),
       }),
-    [updateSearch, removeAggregate, confirmDelete],
+    [removeAggregate, confirmDelete],
   );
 
   const ruleContextMenu = useCallback(
     (row: Rule): ContextMenuItem[] =>
       buildResourceContextMenu(row, {
-        onOpen: (r) => {
-          if (r.uid) updateSearch({ uid: r.uid });
-        },
         onDelete: (uid) => removeRule.mutateAsync(uid),
         requestDelete: (r) => confirmDeleteRule.request([r]),
       }),
-    [updateSearch, removeRule, confirmDeleteRule],
+    [removeRule, confirmDeleteRule],
   );
 
   const aggregateBulkActions = useCallback(

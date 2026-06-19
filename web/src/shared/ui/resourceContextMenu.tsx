@@ -2,27 +2,15 @@ import { useCallback, useState } from "react";
 import { Button } from "@/shared/ui/Button";
 import { Dialog, DialogBody, DialogContent, DialogFooter, DialogTitle } from "@/shared/ui/Dialog";
 import { toast } from "@/shared/ui/toast/useToast";
+import { copyToClipboard } from "@/lib/clipboard";
 import type { ContextMenuItem } from "@/shared/ui/DataTableContextMenu";
 
 type WithUid = { uid?: string };
 
 export type ResourceMenuParams<T extends WithUid> = {
-  onOpen: (row: T) => void;
   onDelete: (uid: string) => Promise<unknown>;
   extras?: (row: T) => ContextMenuItem[];
 };
-
-async function copyToClipboard(text: string): Promise<boolean> {
-  try {
-    if (navigator.clipboard?.writeText) {
-      await navigator.clipboard.writeText(text);
-      return true;
-    }
-  } catch {
-    /* fall through */
-  }
-  return false;
-}
 
 // eslint-disable-next-line react-refresh/only-export-components
 export function buildResourceContextMenu<T extends WithUid>(
@@ -30,12 +18,6 @@ export function buildResourceContextMenu<T extends WithUid>(
   params: ResourceMenuParams<T> & { requestDelete: (row: T) => void },
 ): ContextMenuItem[] {
   const items: ContextMenuItem[] = [
-    {
-      key: "open",
-      label: "Open",
-      icon: "eye",
-      onSelect: () => params.onOpen(row),
-    },
     {
       key: "copy-json",
       label: "Copy as JSON",

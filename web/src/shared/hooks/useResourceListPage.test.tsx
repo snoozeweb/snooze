@@ -97,18 +97,15 @@ describe("useResourceListPage", () => {
     expect([...hook.result.current.selectedKeys]).toEqual(["a", "b"]);
   });
 
-  it("contextMenuItems wires Open (uid -> updateSearch) and Delete (-> confirm dialog)", () => {
+  it("contextMenuItems no longer wires Open (rows open on click) but keeps copy + Delete", () => {
     const { hook } = setup();
     const items = hook.result.current.contextMenuItems({ uid: "u9", name: "n" });
-    const open = items.find((i) => i.key === "open");
+    // "Open" was dropped — clicking the row already opens it, so the duplicate
+    // menu entry is gone.
+    expect(items.find((i) => i.key === "open")).toBeUndefined();
+    expect(items.find((i) => i.key === "copy-json")).toBeDefined();
     const del = items.find((i) => i.key === "delete");
-    expect(open).toBeDefined();
     expect(del).toBeDefined();
-
-    act(() => {
-      void open?.onSelect();
-    });
-    expect(applySearch(undefined)).toEqual({ uid: "u9" });
 
     // Requesting delete opens the confirm dialog with the row queued.
     act(() => {

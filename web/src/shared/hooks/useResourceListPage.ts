@@ -128,14 +128,11 @@ export function useResourceListPage<T extends WithUid, S extends BaseListSearch 
   const contextMenuItems = useCallback(
     (row: T): ContextMenuItem[] =>
       buildResourceContextMenu(row, {
-        onOpen: (r) => {
-          if (r.uid) updateSearch({ uid: r.uid } as Partial<S>);
-        },
         onDelete: (uid) => deleteOne(uid),
         requestDelete: (r) => requestDelete([r]),
         ...(contextMenuExtras ? { extras: contextMenuExtras } : {}),
       }),
-    [updateSearch, deleteOne, requestDelete, contextMenuExtras],
+    [deleteOne, requestDelete, contextMenuExtras],
   );
 
   const bulkActions = useCallback(

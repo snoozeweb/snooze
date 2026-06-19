@@ -43,6 +43,21 @@ describe("DataTable", () => {
     expect(onRowOpen).toHaveBeenCalledWith(sample[1]);
   });
 
+  it("does not open the row when a text selection is active (drag-select)", async () => {
+    const onRowOpen = vi.fn();
+    const user = userEvent.setup();
+    // Simulate the user having dragged to highlight text: the trailing click
+    // lands on the row, but a non-collapsed selection exists.
+    const sel = { isCollapsed: false, toString: () => "highlighted" } as unknown as Selection;
+    const spy = vi.spyOn(window, "getSelection").mockReturnValue(sel);
+    render(
+      <DataTable data={sample} columns={columns} rowKey={(r) => r.id} onRowOpen={onRowOpen} />,
+    );
+    await user.click(screen.getByText("beta"));
+    expect(onRowOpen).not.toHaveBeenCalled();
+    spy.mockRestore();
+  });
+
   it("selectable: header checkbox toggles all rows", async () => {
     const onSelectionChange = vi.fn();
     const user = userEvent.setup();
@@ -287,6 +302,24 @@ describe("DataTable", () => {
       );
       fireEvent.contextMenu(screen.getByText("beta"));
       expect(factory).toHaveBeenCalledWith(sample[1]);
+    });
+
+    it("adds a Copy item at the top when text is selected at right-click time", () => {
+      const sel = { isCollapsed: false, toString: () => "abc" } as unknown as Selection;
+      const spy = vi.spyOn(window, "getSelection").mockReturnValue(sel);
+      render(
+        <DataTable
+          data={sample}
+          columns={columns}
+          rowKey={(r) => r.id}
+          contextMenuItems={() => [{ key: "delete", label: "Delete", onSelect: vi.fn() }]}
+        />,
+      );
+      fireEvent.contextMenu(screen.getByText("alpha"));
+      const items = screen.getAllByRole("menuitem");
+      expect(items[0]).toHaveTextContent("Copy");
+      expect(screen.getByText("Delete")).toBeInTheDocument();
+      spy.mockRestore();
     });
 
     it("Escape closes the menu", () => {
@@ -711,7 +744,9 @@ describe("DataTable", () => {
       fireEvent.keyDown(table, { key: "j", ctrlKey: true });
       fireEvent.keyDown(table, { key: "k", ctrlKey: true });
       // No row should be focused (focusedIndex stays at -1 initial value).
-      const rows = screen.getAllByRole("row").filter((r) => r.getAttribute("data-focused") === "true");
+      const rows = screen
+        .getAllByRole("row")
+        .filter((r) => r.getAttribute("data-focused") === "true");
       expect(rows).toHaveLength(0);
     });
 

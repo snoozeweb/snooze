@@ -8,6 +8,7 @@ import { Tooltip } from "@/shared/ui/Tooltip";
 import { toast } from "@/shared/ui/toast/useToast";
 import { Button } from "@/shared/ui/Button";
 import { ApiError } from "@/lib/api/client";
+import { copyToClipboard } from "@/lib/clipboard";
 import { ConfirmDeleteDialog, useConfirmDelete } from "@/shared/ui/resourceContextMenu";
 import { encodeConditionQ } from "@/lib/condition/serialize";
 import type { Condition } from "@/lib/condition/types";
@@ -85,18 +86,6 @@ function buildQueryParam(
   const combined: Condition =
     parts.length === 1 ? (parts[0] as Condition) : { type: "AND", args: parts };
   return encodeConditionQ(combined);
-}
-
-async function copyToClipboard(text: string): Promise<boolean> {
-  try {
-    if (navigator.clipboard?.writeText) {
-      await navigator.clipboard.writeText(text);
-      return true;
-    }
-  } catch {
-    /* fall through */
-  }
-  return false;
 }
 
 export function AlertsPage() {
