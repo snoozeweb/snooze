@@ -663,5 +663,72 @@ describe("DataTable", () => {
       fireEvent.keyDown(table, { key: "a" });
       expect(ack).toHaveBeenCalledTimes(1);
     });
+
+    it("rowKeyBindings do NOT fire when Ctrl is held (Ctrl+C, Ctrl+A, …)", () => {
+      const comment = vi.fn();
+      const ack = vi.fn();
+      render(
+        <DataTable
+          data={sample}
+          columns={columns}
+          rowKey={(r) => r.id}
+          rowKeyBindings={() => ({ c: comment, a: ack })}
+        />,
+      );
+      const table = screen.getByRole("grid");
+      table.focus();
+      fireEvent.keyDown(table, { key: "j" }); // focus row 1
+      // Ctrl+C and Ctrl+A must pass through without triggering the bindings.
+      fireEvent.keyDown(table, { key: "c", ctrlKey: true });
+      fireEvent.keyDown(table, { key: "a", ctrlKey: true });
+      expect(comment).not.toHaveBeenCalled();
+      expect(ack).not.toHaveBeenCalled();
+    });
+
+    it("rowKeyBindings do NOT fire when Meta (Cmd) is held", () => {
+      const comment = vi.fn();
+      render(
+        <DataTable
+          data={sample}
+          columns={columns}
+          rowKey={(r) => r.id}
+          rowKeyBindings={() => ({ c: comment })}
+        />,
+      );
+      const table = screen.getByRole("grid");
+      table.focus();
+      fireEvent.keyDown(table, { key: "j" });
+      fireEvent.keyDown(table, { key: "c", metaKey: true });
+      expect(comment).not.toHaveBeenCalled();
+    });
+
+    it("j/k vim aliases do NOT fire when Ctrl is held (Ctrl+J, Ctrl+K)", () => {
+      render(<DataTable data={sample} columns={columns} rowKey={(r) => r.id} />);
+      const table = screen.getByRole("grid");
+      table.focus();
+      // Ctrl+J and Ctrl+K must not move focus so global shortcuts (e.g. command
+      // palette on Ctrl+K) are not intercepted by the table.
+      fireEvent.keyDown(table, { key: "j", ctrlKey: true });
+      fireEvent.keyDown(table, { key: "k", ctrlKey: true });
+      // No row should be focused (focusedIndex stays at -1 initial value).
+      const rows = screen.getAllByRole("row").filter((r) => r.getAttribute("data-focused") === "true");
+      expect(rows).toHaveLength(0);
+    });
+
+    it("e does NOT expand when Ctrl is held", () => {
+      render(
+        <DataTable
+          data={sample}
+          columns={columns}
+          rowKey={(r) => r.id}
+          renderExpanded={(r) => <div data-testid={`exp-${r.id}`}>{r.name}</div>}
+        />,
+      );
+      const table = screen.getByRole("grid");
+      table.focus();
+      fireEvent.keyDown(table, { key: "j" }); // focus row 1
+      fireEvent.keyDown(table, { key: "e", ctrlKey: true });
+      expect(screen.queryByTestId("exp-1")).toBeNull();
+    });
   });
 });

@@ -113,8 +113,11 @@ export type DataTableProps<T> = {
   onExpandedChange?: (expandedKeys: ReadonlySet<string>) => void;
   /** Per-row keyboard shortcuts for the focused row, keyed by lowercase
    *  single key (e.g. `{ a: ackFn, c: commentFn }`). Bindings are ignored
-   *  while the user is typing into an editable field. Reserved keys
-   *  (arrows, j/k, e, x, Enter) are handled by the table and win. */
+   *  while the user is typing into an editable field, and when any modifier
+   *  key (Ctrl/Cmd/Alt) is held — those combos are reserved for browser
+   *  actions (Ctrl+C copy, Ctrl+A select-all) and the global shortcut
+   *  registry. Reserved unmodified keys (arrows, j/k, e, x, Enter) are
+   *  handled by the table itself and take precedence. */
   rowKeyBindings?: (row: T) => Record<string, () => void>;
 };
 
@@ -309,15 +312,23 @@ export function DataTable<T>({
       // Don't hijack keys the user is typing into a field that happens to
       // live inside the grid (e.g. an inline editor or the search bar).
       if (isEditable(e.target)) return;
+      // Single-letter shortcuts (j/k vim aliases, e/x, and consumer bindings
+      // like a/c) must NOT fire when Ctrl, Cmd, or Alt is held. Those combos
+      // are reserved for browser actions (Ctrl+C copy, Ctrl+A select-all,
+      // Ctrl+X cut) and for the global shortcut registry (Ctrl+K command
+      // palette, Ctrl+1…5 page nav). Arrow keys and Enter are navigation keys
+      // that are unambiguous regardless of modifier state.
+      const hasModifier = e.ctrlKey || e.metaKey || e.altKey;
       const key = e.key.toLowerCase();
       const rows = dataRef.current;
       const focused = focusedIndexRef.current;
       const rk = rowKeyRef.current;
-      // j/k vim aliases mirror ArrowDown/ArrowUp.
-      if (e.key === "ArrowDown" || key === "j") {
+      // j/k vim aliases mirror ArrowDown/ArrowUp; only fire unmodified so
+      // Ctrl+J / Ctrl+K are not swallowed before reaching the window listener.
+      if (e.key === "ArrowDown" || (!hasModifier && key === "j")) {
         e.preventDefault();
         setFocusedIndex((i) => Math.min(rows.length - 1, i + 1));
-      } else if (e.key === "ArrowUp" || key === "k") {
+      } else if (e.key === "ArrowUp" || (!hasModifier && key === "k")) {
         e.preventDefault();
         setFocusedIndex((i) => Math.max(0, i - 1));
       } else if (e.key === "Enter") {
@@ -326,19 +337,19 @@ export function DataTable<T>({
           e.preventDefault();
           onRowOpenRef.current(row);
         }
-      } else if (key === "e" && renderExpanded) {
+      } else if (!hasModifier && key === "e" && renderExpanded) {
         const row = rows[focused];
         if (row) {
           e.preventDefault();
           toggleExpanded(rk(row));
         }
-      } else if (key === "x" && selectable) {
+      } else if (!hasModifier && key === "x" && selectable) {
         const row = rows[focused];
         if (row) {
           e.preventDefault();
           toggleOne(rk(row));
         }
-      } else if (rowKeyBindingsRef.current) {
+      } else if (!hasModifier && rowKeyBindingsRef.current) {
         // Consumer-supplied per-row bindings (a=ack, c=comment, …). These run
         // after the reserved keys above so the table's own shortcuts win.
         const row = rows[focused];
