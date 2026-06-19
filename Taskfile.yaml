@@ -138,7 +138,7 @@ tasks:
       See scripts/render-deploy.sh for the full set of knobs (SKIP_BUILD,
       SKIP_PUSH, RENDER_SERVICE_ID, IMAGE_REPO, …).
     vars:
-      TAG: '{{ .TAG | default "2.2.0" }}'
+      TAG: '{{ .TAG | default "2.3.0" }}'
     cmds:
     - scripts/render-deploy.sh {{ .TAG }}
     preconditions:
