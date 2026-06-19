@@ -18,6 +18,7 @@ import (
 // configured cap is unset.
 const DefaultAPIKeyMaxTTL = 365 * 24 * time.Hour
 
+// Sentinel errors returned by the API key store.
 var (
 	ErrAPIKeyNotFound      = errors.New("api key not found")
 	ErrAPIKeyExpired       = errors.New("api key expired")

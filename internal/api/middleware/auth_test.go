@@ -27,7 +27,7 @@ func TestAuth_APIKeyPath(t *testing.T) {
 			gotSub = c.Subject
 		}
 	}))
-	req := httptest.NewRequest("GET", "/api/v1/rule", nil)
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/rule", nil)
 	req.Header.Set("Authorization", "Bearer "+auth.APIKeyPrefix+"deadbeef")
 	rec := httptest.NewRecorder()
 	h.ServeHTTP(rec, req)
@@ -38,8 +38,8 @@ func TestAuth_APIKeyPath(t *testing.T) {
 
 func TestAuth_APIKeyRejected(t *testing.T) {
 	keys := stubKeys{err: auth.ErrAPIKeyExpired}
-	h := Auth(nil, keys, nil)(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(200) }))
-	req := httptest.NewRequest("GET", "/api/v1/rule", nil)
+	h := Auth(nil, keys, nil)(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusOK) }))
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/rule", nil)
 	req.Header.Set("Authorization", "Bearer "+auth.APIKeyPrefix+"x")
 	rec := httptest.NewRecorder()
 	h.ServeHTTP(rec, req)
