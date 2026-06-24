@@ -7,26 +7,28 @@ import (
 	"log/slog"
 	"strings"
 	"sync"
+
+	"github.com/snoozeweb/snooze/internal/jiraadf"
 )
 
 // envelope is the wire shape of one /alert payload entry. The bulk of the
 // fields shadow the JIRA config so operators can override per-alert via the
 // webhook action payload in snooze-server.
 type envelope struct {
-	ProjectKey       string         `json:"project_key"`
-	IssueType        string         `json:"issue_type"`
-	IssueTypeID      jsonString     `json:"issue_type_id"`
-	Priority         string         `json:"priority"`
-	Labels           []string       `json:"labels"`
-	Assignee         string         `json:"assignee"`
-	Reporter         string         `json:"reporter"`
-	InitialStatus    string         `json:"initial_status"`
-	ExtraFields      map[string]any `json:"extra_fields"`
-	CustomFields     map[string]any `json:"custom_fields"`
-	Alert            recordSummary  `json:"alert"`
-	Message          string         `json:"message"`
-	NotificationName string         `json:"-"` // populated from alert.notification_from.name
-	NotificationMsg  string         `json:"-"` // populated from alert.notification_from.message
+	ProjectKey       string                `json:"project_key"`
+	IssueType        string                `json:"issue_type"`
+	IssueTypeID      jsonString            `json:"issue_type_id"`
+	Priority         string                `json:"priority"`
+	Labels           []string              `json:"labels"`
+	Assignee         string                `json:"assignee"`
+	Reporter         string                `json:"reporter"`
+	InitialStatus    string                `json:"initial_status"`
+	ExtraFields      map[string]any        `json:"extra_fields"`
+	CustomFields     map[string]any        `json:"custom_fields"`
+	Alert            jiraadf.RecordSummary `json:"alert"`
+	Message          string                `json:"message"`
+	NotificationName string                `json:"-"` // populated from alert.notification_from.name
+	NotificationMsg  string                `json:"-"` // populated from alert.notification_from.message
 }
 
 // jsonString accepts either a JSON string or a JSON number and stores the
@@ -105,7 +107,7 @@ func (f *forwarder) handleEnvelopes(ctx context.Context, envs []envelope, action
 		}
 		record := env.Alert
 		if record == nil {
-			record = recordSummary{}
+			record = jiraadf.RecordSummary{}
 		}
 		recordHash := strField(record, "hash", "")
 		populateNotification(&env, record)
@@ -135,7 +137,7 @@ func (f *forwarder) handleEnvelopes(ctx context.Context, envs []envelope, action
 
 // populateNotification flattens record.notification_from into the envelope so
 // downstream code doesn't have to keep walking the record map.
-func populateNotification(env *envelope, record recordSummary) {
+func populateNotification(env *envelope, record jiraadf.RecordSummary) {
 	nf, ok := record["notification_from"].(map[string]any)
 	if !ok {
 		return
@@ -151,7 +153,7 @@ func populateNotification(env *envelope, record recordSummary) {
 // findExistingIssue walks the record's snooze_webhook_responses and returns
 // the JIRA issue key created by a previous invocation of this action, or ""
 // when none exists. The shape mirrors the Python `_find_existing_issue`.
-func findExistingIssue(record recordSummary, actionName string) string {
+func findExistingIssue(record jiraadf.RecordSummary, actionName string) string {
 	raw, ok := record["snooze_webhook_responses"]
 	if !ok {
 		return ""
@@ -183,7 +185,7 @@ func findExistingIssue(record recordSummary, actionName string) string {
 
 // updateExisting adds a comment to a pre-existing issue and optionally
 // reopens it when ReopenClosed is set.
-func (f *forwarder) updateExisting(ctx context.Context, issueKey string, record recordSummary, env envelope) {
+func (f *forwarder) updateExisting(ctx context.Context, issueKey string, record jiraadf.RecordSummary, env envelope) {
 	comment := buildComment(record, env)
 	if err := f.jira.AddComment(ctx, issueKey, comment); err != nil {
 		f.logger.Error("jira: add comment failed",
@@ -199,7 +201,7 @@ func (f *forwarder) updateExisting(ctx context.Context, issueKey string, record 
 
 // buildComment renders the re-escalation comment body. Kept plain text — JIRA
 // wraps it in ADF inside AddComment.
-func buildComment(record recordSummary, env envelope) string {
+func buildComment(record jiraadf.RecordSummary, env envelope) string {
 	var b strings.Builder
 	timestamp := strField(record, "timestamp", "")
 	if timestamp != "" {
@@ -247,7 +249,7 @@ func (f *forwarder) reopenIfClosed(ctx context.Context, issueKey string) {
 
 // createNew creates a brand-new JIRA issue and applies the configured
 // initial-status transition when applicable.
-func (f *forwarder) createNew(ctx context.Context, env envelope, record recordSummary, recordHash string) (string, error) {
+func (f *forwarder) createNew(ctx context.Context, env envelope, record jiraadf.RecordSummary, recordHash string) (string, error) {
 	projectKey := env.ProjectKey
 	if projectKey == "" {
 		projectKey = f.cfg.ProjectKey
@@ -305,14 +307,14 @@ func (f *forwarder) createNew(ctx context.Context, env envelope, record recordSu
 	description := f.formatDescription(record)
 
 	if env.Message != "" {
-		description = appendStrongLine(description, "Custom message", env.Message)
+		description = jiraadf.AppendStrongLine(description, "Custom message", env.Message)
 	}
 	if env.NotificationName != "" {
 		text := "Notified by " + env.NotificationName
 		if env.NotificationMsg != "" {
 			text += ": " + env.NotificationMsg
 		}
-		description = appendPlainLine(description, text)
+		description = jiraadf.AppendPlainLine(description, text)
 	}
 
 	req := CreateIssueRequest{
@@ -362,7 +364,7 @@ func resolveIssueType(env envelope, cfg Config) (name, id string) {
 }
 
 // resolvePriority picks the priority with payload > severity-mapping > default.
-func resolvePriority(env envelope, record recordSummary, cfg Config) string {
+func resolvePriority(env envelope, record jiraadf.RecordSummary, cfg Config) string {
 	if env.Priority != "" {
 		return env.Priority
 	}
@@ -458,7 +460,7 @@ func (f *forwarder) transitionToStatus(ctx context.Context, issueKey, target, co
 // and description_template. We use the Python `${var}` syntax via
 // strings.NewReplacer rather than text/template so configs ported from the
 // Python plugin keep working unmodified.
-func templateVars(record recordSummary, snoozeURL string) *strings.Replacer {
+func templateVars(record jiraadf.RecordSummary, snoozeURL string) *strings.Replacer {
 	return strings.NewReplacer(
 		"${severity}", strField(record, "severity", "Unknown"),
 		"${host}", strField(record, "host", "Unknown"),
@@ -473,7 +475,7 @@ func templateVars(record recordSummary, snoozeURL string) *strings.Replacer {
 
 // formatSummary renders cfg.SummaryTemplate against the record and clamps
 // the result to 255 characters (JIRA's summary field limit).
-func (f *forwarder) formatSummary(record recordSummary) string {
+func (f *forwarder) formatSummary(record jiraadf.RecordSummary) string {
 	rendered := templateVars(record, f.cfg.SnoozeURL).Replace(f.cfg.SummaryTemplate)
 	if len(rendered) > 255 {
 		rendered = rendered[:255]
@@ -483,12 +485,12 @@ func (f *forwarder) formatSummary(record recordSummary) string {
 
 // formatDescription renders cfg.DescriptionTemplate when set, or falls back
 // to the canonical rich ADF description.
-func (f *forwarder) formatDescription(record recordSummary) ADF {
+func (f *forwarder) formatDescription(record jiraadf.RecordSummary) jiraadf.ADF {
 	if f.cfg.DescriptionTemplate == "" {
-		return buildDescriptionADF(record, f.cfg.SnoozeURL)
+		return jiraadf.BuildDescriptionADF(record, f.cfg.SnoozeURL)
 	}
 	rendered := templateVars(record, f.cfg.SnoozeURL).Replace(f.cfg.DescriptionTemplate)
-	return textADF(rendered)
+	return jiraadf.TextADF(rendered)
 }
 
 // jsonUnmarshalString is a tiny json string decoder so we don't have to
@@ -505,3 +507,18 @@ func jsonUnmarshalString(data []byte, dest *string) error {
 }
 
 var errInvalidJSONString = errors.New("jira: invalid JSON string")
+
+// strField returns rec[key] as a trimmed string, or fallback when the key is
+// missing or not a string.
+func strField(rec jiraadf.RecordSummary, key, fallback string) string {
+	v, ok := rec[key]
+	if !ok || v == nil {
+		return fallback
+	}
+	if s, ok := v.(string); ok {
+		if t := strings.TrimSpace(s); t != "" {
+			return t
+		}
+	}
+	return fallback
+}

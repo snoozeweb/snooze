@@ -14,6 +14,8 @@ import (
 	"net/url"
 	"strings"
 	"time"
+
+	"github.com/snoozeweb/snooze/internal/jiraadf"
 )
 
 // retryAttempts mirrors the Python plugin's retry budget (3 tries total).
@@ -249,7 +251,7 @@ type CreateIssueRequest struct {
 	IssueType   string
 	IssueTypeID string
 	Summary     string
-	Description ADF
+	Description jiraadf.ADF
 	Priority    string
 	Labels      []string
 	ExtraFields map[string]any
@@ -321,7 +323,7 @@ func priorityNeedsString(err error) bool {
 // AddComment posts a plain-text comment to issueKey. The text is wrapped in
 // ADF.
 func (c *Client) AddComment(ctx context.Context, issueKey, text string) error {
-	body := map[string]any{"body": textADF(text)}
+	body := map[string]any{"body": jiraadf.TextADF(text)}
 	return c.do(ctx, http.MethodPost, "/issue/"+url.PathEscape(issueKey)+"/comment", body, nil)
 }
 
@@ -332,7 +334,7 @@ func (c *Client) Transition(ctx context.Context, issueKey, transitionID, comment
 	if comment != "" {
 		body["update"] = map[string]any{
 			"comment": []map[string]any{{
-				"add": map[string]any{"body": textADF(comment)},
+				"add": map[string]any{"body": jiraadf.TextADF(comment)},
 			}},
 		}
 	}

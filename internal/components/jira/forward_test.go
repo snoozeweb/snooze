@@ -12,6 +12,8 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
+
+	"github.com/snoozeweb/snooze/internal/jiraadf"
 )
 
 // newTestJira spins up an httptest.Server speaking enough of the JIRA REST v3
@@ -56,7 +58,7 @@ func TestForward_createIssue_newAlert(t *testing.T) {
 	require.NoError(t, err)
 	f := newForwarder(cfg, client, nil)
 
-	rec := recordSummary{
+	rec := jiraadf.RecordSummary{
 		"host":     "srv-1",
 		"severity": "critical",
 		"message":  "disk full",
@@ -100,7 +102,7 @@ func TestForward_existingIssue_comments(t *testing.T) {
 	cfg, _ := minimalCfg().WithDefaults()
 	f := newForwarder(cfg, client, nil)
 
-	rec := recordSummary{
+	rec := jiraadf.RecordSummary{
 		"host":     "srv-1",
 		"severity": "warning",
 		"message":  "still failing",
@@ -132,7 +134,7 @@ func TestForward_priorityOverride(t *testing.T) {
 	_ = f.handleEnvelopes(context.Background(), []envelope{{
 		ProjectKey: "OPS",
 		Priority:   "Lowest",
-		Alert:      recordSummary{"severity": "critical", "hash": "h"},
+		Alert:      jiraadf.RecordSummary{"severity": "critical", "hash": "h"},
 	}}, "jira-action")
 	require.Equal(t, "Lowest", got["fields"].(map[string]any)["priority"].(map[string]any)["name"])
 }
@@ -149,7 +151,7 @@ func TestForward_issueTypeIDPrecedence(t *testing.T) {
 	_ = f.handleEnvelopes(context.Background(), []envelope{{
 		ProjectKey:  "OPS",
 		IssueTypeID: jsonString("12345"),
-		Alert:       recordSummary{"hash": "h"},
+		Alert:       jiraadf.RecordSummary{"hash": "h"},
 	}}, "jira-action")
 	issuetype := got["fields"].(map[string]any)["issuetype"].(map[string]any)
 	require.Equal(t, "12345", issuetype["id"])
@@ -170,7 +172,7 @@ func TestForward_customFieldsMerge(t *testing.T) {
 	f := newForwarder(cfg, client, nil)
 	_ = f.handleEnvelopes(context.Background(), []envelope{{
 		ProjectKey: "OPS",
-		Alert:      recordSummary{"hash": "h"},
+		Alert:      jiraadf.RecordSummary{"hash": "h"},
 		CustomFields: map[string]any{
 			"customfield_10200": "payload-override",
 		},
@@ -210,7 +212,7 @@ func TestForward_priorityFallbackToString(t *testing.T) {
 	out := f.handleEnvelopes(context.Background(), []envelope{{
 		ProjectKey: "OPS",
 		Priority:   "High",
-		Alert:      recordSummary{"hash": "h"},
+		Alert:      jiraadf.RecordSummary{"hash": "h"},
 	}}, "jira-action")
 	require.Equal(t, "OPS-5", out["h"].IssueKey)
 	require.Equal(t, int32(2), attempts.Load(), "expected one retry after string-priority hint")
@@ -240,8 +242,8 @@ func TestForward_emailToAccountIDResolution(t *testing.T) {
 	f := newForwarder(cfg, client, nil)
 	// Two alerts → the email lookup should only run once thanks to the cache.
 	_ = f.handleEnvelopes(context.Background(), []envelope{
-		{ProjectKey: "OPS", Alert: recordSummary{"hash": "h1"}},
-		{ProjectKey: "OPS", Alert: recordSummary{"hash": "h2"}},
+		{ProjectKey: "OPS", Alert: jiraadf.RecordSummary{"hash": "h1"}},
+		{ProjectKey: "OPS", Alert: jiraadf.RecordSummary{"hash": "h2"}},
 	}, "jira-action")
 	require.Equal(t, int32(1), lookups.Load())
 }
@@ -256,9 +258,9 @@ func TestForward_messageLimitDropsExcess(t *testing.T) {
 	cfg.MessageLimit = 2
 	f := newForwarder(cfg, client, nil)
 	envs := []envelope{
-		{ProjectKey: "OPS", Alert: recordSummary{"hash": "a"}},
-		{ProjectKey: "OPS", Alert: recordSummary{"hash": "b"}},
-		{ProjectKey: "OPS", Alert: recordSummary{"hash": "c"}},
+		{ProjectKey: "OPS", Alert: jiraadf.RecordSummary{"hash": "a"}},
+		{ProjectKey: "OPS", Alert: jiraadf.RecordSummary{"hash": "b"}},
+		{ProjectKey: "OPS", Alert: jiraadf.RecordSummary{"hash": "c"}},
 	}
 	_ = f.handleEnvelopes(context.Background(), envs, "jira-action")
 	require.Equal(t, int32(2), creations.Load())
@@ -275,7 +277,7 @@ func TestForward_summaryClampedTo255(t *testing.T) {
 	long := strings.Repeat("x", 400)
 	_ = f.handleEnvelopes(context.Background(), []envelope{{
 		ProjectKey: "OPS",
-		Alert:      recordSummary{"hash": "h", "message": long},
+		Alert:      jiraadf.RecordSummary{"hash": "h", "message": long},
 	}}, "jira-action")
 	summary := got["fields"].(map[string]any)["summary"].(string)
 	require.LessOrEqual(t, len(summary), 255)
@@ -302,7 +304,7 @@ func TestForward_userCacheConcurrent(t *testing.T) {
 			defer wg.Done()
 			_ = f.handleEnvelopes(context.Background(), []envelope{{
 				ProjectKey: "OPS",
-				Alert:      recordSummary{"hash": "h"},
+				Alert:      jiraadf.RecordSummary{"hash": "h"},
 			}}, "jira-action")
 		}(i)
 	}

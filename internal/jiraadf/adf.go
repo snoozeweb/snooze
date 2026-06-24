@@ -1,11 +1,14 @@
-package jira
+// Package jiraadf builds the Atlassian Document Format (ADF) documents JIRA
+// Cloud expects for issue descriptions and comments. Shared by the snooze-jira
+// daemon (internal/components/jira) and the in-process jira notifier
+// (internal/pluginimpl/jira).
+package jiraadf
 
 import "strings"
 
-// ADF is the Atlassian Document Format envelope JIRA Cloud expects for issue
-// descriptions and comments. We model only the subset we actually emit
-// (paragraphs, headings, marked text) — the format is large but the daemon
-// never needs more than this.
+// ADF is the document envelope JIRA Cloud expects for issue descriptions and
+// comments. We model only the subset we emit (paragraphs, headings, marked
+// text).
 type ADF struct {
 	Type    string     `json:"type"`
 	Version int        `json:"version"`
@@ -32,10 +35,14 @@ type ADFMark struct {
 	Attrs map[string]any `json:"attrs,omitempty"`
 }
 
-// textADF builds an ADF document from plain text. Each newline-delimited
-// non-empty line becomes a paragraph; blank lines become empty paragraphs so
-// formatting is preserved across multi-line description templates.
-func textADF(text string) ADF {
+// RecordSummary is the free-form shape of an inbound Snooze record (the webhook
+// payload carries plugin-injected fields like `hash` that don't live on the
+// typed struct).
+type RecordSummary = map[string]any
+
+// TextADF builds an ADF document from plain text. Each newline-delimited
+// non-empty line becomes a paragraph; blank lines become empty paragraphs.
+func TextADF(text string) ADF {
 	doc := ADF{Type: "doc", Version: 1}
 	for _, line := range strings.Split(text, "\n") {
 		if strings.TrimSpace(line) == "" {
@@ -50,36 +57,24 @@ func textADF(text string) ADF {
 	return doc
 }
 
-// recordSummary is the shape of an inbound Snooze record. We use a free-form
-// map (not pkg/snoozetypes.Record) because the webhook payload carries
-// plugin-injected fields like `hash` and `snooze_webhook_responses` that
-// don't live on the typed struct.
-type recordSummary = map[string]any
-
-// strField returns rec[key] as a trimmed string, or fallback when the key is
-// missing or not a string. Float64 and int values are also formatted to keep
-// JSON-decoded numbers usable.
-func strField(rec recordSummary, key, fallback string) string {
+// strField returns rec[key] as a trimmed string, or fallback when missing/empty.
+func strField(rec RecordSummary, key, fallback string) string {
 	v, ok := rec[key]
 	if !ok || v == nil {
 		return fallback
 	}
-	switch t := v.(type) {
-	case string:
-		s := strings.TrimSpace(t)
-		if s == "" {
-			return fallback
+	if s, ok := v.(string); ok {
+		if t := strings.TrimSpace(s); t != "" {
+			return t
 		}
-		return s
-	default:
-		return fallback
 	}
+	return fallback
 }
 
-// buildDescriptionADF renders the default rich-text description for a new
-// issue: a "Snooze Alert" heading, a row per canonical field, the message
-// (if any), and a clickable link back to the Snooze UI.
-func buildDescriptionADF(rec recordSummary, snoozeURL string) ADF {
+// BuildDescriptionADF renders the default rich-text description for a new issue:
+// a "Snooze Alert" heading, a row per canonical field, the message (if any), and
+// a clickable link back to the Snooze UI when snoozeURL is non-empty.
+func BuildDescriptionADF(rec RecordSummary, snoozeURL string) ADF {
 	doc := ADF{Type: "doc", Version: 1}
 	doc.Content = append(doc.Content, ADFBlock{
 		Type:    "heading",
@@ -93,10 +88,10 @@ func buildDescriptionADF(rec recordSummary, snoozeURL string) ADF {
 		{"severity", "Severity"},
 		{"timestamp", "Timestamp"},
 	} {
-		doc.Content = append(doc.Content, labeledLine(kv.label, strField(rec, kv.key, "Unknown")))
+		doc.Content = append(doc.Content, LabeledLine(kv.label, strField(rec, kv.key, "Unknown")))
 	}
 	if msg := strField(rec, "message", ""); msg != "" {
-		doc.Content = append(doc.Content, labeledLine("Message", msg))
+		doc.Content = append(doc.Content, LabeledLine("Message", msg))
 	}
 	if snoozeURL != "" {
 		hash := strField(rec, "hash", "")
@@ -113,9 +108,8 @@ func buildDescriptionADF(rec recordSummary, snoozeURL string) ADF {
 	return doc
 }
 
-// labeledLine returns a paragraph with a bold "<label>: " prefix followed by
-// the value. Used by the default description renderer.
-func labeledLine(label, value string) ADFBlock {
+// LabeledLine returns a paragraph with a bold "<label>: " prefix followed by value.
+func LabeledLine(label, value string) ADFBlock {
 	return ADFBlock{
 		Type: "paragraph",
 		Content: []ADFInline{
@@ -125,16 +119,14 @@ func labeledLine(label, value string) ADFBlock {
 	}
 }
 
-// appendStrongLine appends a bold-prefixed paragraph to doc and returns it.
-// Used by the daemon to splice extras like "Custom message" / notification
-// origin onto a description after the canonical fields.
-func appendStrongLine(doc ADF, label, value string) ADF {
-	doc.Content = append(doc.Content, labeledLine(label, value))
+// AppendStrongLine appends a bold-prefixed paragraph to doc and returns it.
+func AppendStrongLine(doc ADF, label, value string) ADF {
+	doc.Content = append(doc.Content, LabeledLine(label, value))
 	return doc
 }
 
-// appendPlainLine appends a single-paragraph plain-text line to doc.
-func appendPlainLine(doc ADF, text string) ADF {
+// AppendPlainLine appends a single-paragraph plain-text line to doc.
+func AppendPlainLine(doc ADF, text string) ADF {
 	doc.Content = append(doc.Content, ADFBlock{
 		Type:    "paragraph",
 		Content: []ADFInline{{Type: "text", Text: text}},

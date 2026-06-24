@@ -1,4 +1,4 @@
-package jira
+package jiraadf
 
 import (
 	"encoding/json"
@@ -9,7 +9,7 @@ import (
 )
 
 func TestTextADF_paragraphsPerLine(t *testing.T) {
-	doc := textADF("Hello\nWorld\n\nFooter")
+	doc := TextADF("Hello\nWorld\n\nFooter")
 	require.Equal(t, "doc", doc.Type)
 	require.Equal(t, 1, doc.Version)
 	require.Len(t, doc.Content, 4)
@@ -20,7 +20,7 @@ func TestTextADF_paragraphsPerLine(t *testing.T) {
 }
 
 func TestBuildDescriptionADF_hasLinkAndFields(t *testing.T) {
-	rec := recordSummary{
+	rec := RecordSummary{
 		"host":      "srv-1",
 		"source":    "syslog",
 		"process":   "kernel",
@@ -29,7 +29,7 @@ func TestBuildDescriptionADF_hasLinkAndFields(t *testing.T) {
 		"message":   "disk full",
 		"hash":      "abc123",
 	}
-	doc := buildDescriptionADF(rec, "https://snooze.example.com")
+	doc := BuildDescriptionADF(rec, "https://snooze.example.com")
 	raw, err := json.Marshal(doc)
 	require.NoError(t, err)
 	s := string(raw)
@@ -44,7 +44,7 @@ func TestBuildDescriptionADF_hasLinkAndFields(t *testing.T) {
 }
 
 func TestBuildDescriptionADF_unknownFieldsFallback(t *testing.T) {
-	doc := buildDescriptionADF(recordSummary{}, "")
+	doc := BuildDescriptionADF(RecordSummary{}, "")
 	raw, _ := json.Marshal(doc)
 	require.Contains(t, string(raw), "Unknown")
 	// No link block when snooze URL is empty.
@@ -53,7 +53,7 @@ func TestBuildDescriptionADF_unknownFieldsFallback(t *testing.T) {
 
 func TestADFJSONRoundTrip(t *testing.T) {
 	// JIRA insists on `version: 1` at the root — make sure marshal preserves it.
-	doc := textADF("hi")
+	doc := TextADF("hi")
 	raw, err := json.Marshal(doc)
 	require.NoError(t, err)
 	require.True(t, strings.Contains(string(raw), `"version":1`))
