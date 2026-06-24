@@ -87,6 +87,15 @@ function metadataPayload() {
         display_name: "Record",
         // No action_form — should be filtered out of the subtype dropdown.
       },
+      {
+        plugin_name: "jira",
+        name: "Create a JIRA issue",
+        category: "ticketing",
+        action_form: {
+          project_key: { display_name: "Project Key", component: "String" },
+        },
+        daemon: { name: "snooze-jira", blurb: "Auto-close.", doc_url: "https://docs/jira#daemon" },
+      },
     ],
   };
 }
@@ -223,5 +232,24 @@ describe("ActionEditor", () => {
       return el;
     });
     expect(ta.value).toMatch(/"foo":\s*"bar"/);
+  });
+
+  it("shows the daemon chooser before the form for an integration with a daemon", async () => {
+    mswServer.use(http.get("/api/v1/metadata", () => HttpResponse.json(metadataPayload())));
+    const user = userEvent.setup();
+    const Wrapper = wrap();
+    render(
+      <Wrapper>
+        <ActionEditor uid={undefined} onClose={() => undefined} />
+      </Wrapper>,
+    );
+    // Gallery loads; pick the jira plugin which has a daemon block.
+    await user.click(await screen.findByRole("button", { name: /Create a JIRA issue/ }));
+    // Chooser is shown, not the config form.
+    expect(screen.getByText("Built-in")).toBeTruthy();
+    expect(screen.queryByText("Project Key")).toBeNull();
+    // Clicking Built-in advances to the config form.
+    await user.click(screen.getByText("Built-in"));
+    expect(await screen.findByText("Project Key")).toBeTruthy();
   });
 });

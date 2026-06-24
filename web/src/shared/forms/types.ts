@@ -48,6 +48,10 @@ export type Metadata = {
   category?: string;
   // Canonical setup-docs URL, rendered as a "Docs" link in the editor.
   doc_url?: string;
+  // Optional companion daemon that backs this integration with bidirectional /
+  // stateful features beyond the in-process notifier. Presence drives the
+  // built-in-vs-advanced chooser; it implies no live detection.
+  daemon?: { name: string; blurb: string; doc_url: string };
   desc?: string;
   action_form?: Record<string, FormField>;
   setting_form?: Record<string, FormField>;

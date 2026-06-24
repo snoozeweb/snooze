@@ -13,6 +13,7 @@ import type { Metadata } from "@/shared/forms/types";
 import { BrandIcon } from "@/shared/icons/BrandIcon";
 import { brandFor } from "@/shared/icons/brand-names";
 import { IntegrationGallery } from "./IntegrationGallery";
+import { IntegrationModeChooser } from "./IntegrationModeChooser";
 import { Actions, useTestAction } from "./api";
 import type { Action } from "./types";
 import styles from "./NotificationEditor.module.css";
@@ -53,7 +54,7 @@ export function ActionEditor({ uid, onClose }: ActionEditorProps) {
 
   // Wizard step: new actions start by picking an integration; edits jump
   // straight to the config form (the type is already chosen).
-  const [step, setStep] = useState<"pick" | "configure">(isCreate ? "pick" : "configure");
+  const [step, setStep] = useState<"pick" | "choose-mode" | "configure">(isCreate ? "pick" : "configure");
 
   const { register, handleSubmit, reset, formState, watch, setValue } = useForm<FormShape>({
     defaultValues: EMPTY_FORM,
@@ -102,7 +103,8 @@ export function ActionEditor({ uid, onClose }: ActionEditorProps) {
   function pickIntegration(pluginName: string) {
     setValue("selected", pluginName, { shouldDirty: true });
     setSubcontent({});
-    setStep("configure");
+    const picked = formPlugins.find((m) => m.plugin_name === pluginName);
+    setStep(picked?.daemon ? "choose-mode" : "configure");
   }
 
   async function onTest() {
@@ -159,11 +161,14 @@ export function ActionEditor({ uid, onClose }: ActionEditorProps) {
 
   const nameInvalid = formState.isSubmitted && !watch("name").trim();
   const picking = step === "pick";
-  const heading = picking
-    ? "Choose an integration"
-    : isCreate
-      ? `New ${selectedPlugin?.name || selected} action`
-      : "Edit action";
+  const heading =
+    step === "pick"
+      ? "Choose an integration"
+      : step === "choose-mode"
+        ? "How do you want to connect?"
+        : isCreate
+          ? `New ${selectedPlugin?.name || selected} action`
+          : "Edit action";
 
   return (
     <Drawer
@@ -175,7 +180,7 @@ export function ActionEditor({ uid, onClose }: ActionEditorProps) {
       <DrawerContent>
         <DrawerTitle>{heading}</DrawerTitle>
         <DrawerBody key={step}>
-          {picking ? (
+          {step === "pick" ? (
             metadata.isPending ? (
               <div style={{ display: "flex", justifyContent: "center", padding: "var(--space-5)" }}>
                 <Spinner size={20} />
@@ -183,6 +188,12 @@ export function ActionEditor({ uid, onClose }: ActionEditorProps) {
             ) : (
               <IntegrationGallery plugins={formPlugins} onPick={pickIntegration} />
             )
+          ) : step === "choose-mode" && selectedPlugin ? (
+            <IntegrationModeChooser
+              plugin={selectedPlugin}
+              onUseBuiltin={() => setStep("configure")}
+              onBack={() => setStep("pick")}
+            />
           ) : !isCreate && existing.isPending ? (
             <div style={{ display: "flex", justifyContent: "center", padding: "var(--space-5)" }}>
               <Spinner size={20} />
@@ -269,7 +280,7 @@ export function ActionEditor({ uid, onClose }: ActionEditorProps) {
             </form>
           )}
         </DrawerBody>
-        {picking ? (
+        {step === "pick" || step === "choose-mode" ? (
           <DrawerFooter>
             <div style={{ flex: 1 }} />
             <Button variant="ghost" onClick={onClose}>
