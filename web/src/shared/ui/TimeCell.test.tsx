@@ -53,6 +53,13 @@ describe("TimeCell", () => {
     expect(container.textContent).toMatch(/5m ago/);
   });
 
+  it("renders 'just now' for sub-second events without an ' ago' suffix", () => {
+    const epoch = Math.floor(Date.now() / 1000); // diff 0 → "just now"
+    const { container } = renderCell(epoch);
+    expect(container.textContent).toMatch(/just now/);
+    expect(container.textContent).not.toMatch(/just now ago/);
+  });
+
   it("omits the relative prefix for events older than an hour", () => {
     const epoch = Math.floor(new Date(2026, 4, 22, 9, 5).getTime() / 1000); // hours ago
     const { container } = renderCell(epoch);

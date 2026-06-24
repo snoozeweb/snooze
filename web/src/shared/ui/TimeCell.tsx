@@ -47,11 +47,19 @@ export function TimeCell({ epoch, side = "top" }: TimeCellProps) {
   // "Nm ago" prefix only for fresh, past events (< 1h old). Future epochs and
   // older ones fall through to the plain absolute trimDate text.
   const recent = ageSeconds >= 0 && ageSeconds < HOUR_SECONDS;
+  // formatRelativeTime already returns the grammatical "just now" for
+  // sub-second events; only the "5m" / "12s" forms take the " ago" suffix.
+  const relative = recent ? formatRelativeTime(epoch) : "";
+  const relativeLabel = relative === "just now" ? relative : relative ? `${relative} ago` : "";
 
+  // The relative hint always occupies a fixed-width, right-aligned slot (see
+  // .relative in the CSS) — even when empty — so the absolute timestamps after
+  // it line up in a single vertical column down the table, regardless of how
+  // wide the hint is or whether the row is recent enough to carry one.
   return (
     <Tooltip content={full} side={side}>
       <time className={styles.cell} dateTime={iso}>
-        {recent ? <span className={styles.relative}>{formatRelativeTime(epoch)} ago</span> : null}
+        <span className={styles.relative}>{relativeLabel}</span>
         {trimDate(epoch)}
       </time>
     </Tooltip>

@@ -11,8 +11,15 @@
 }
 
 /* The "Nm ago" prefix is a quieter, lighter hint sitting in front of the
-   absolute timestamp — it answers "how recent" without crowding the date. */
+   absolute timestamp — it answers "how recent" without crowding the date.
+   It lives in a fixed-width, right-aligned slot (reserved even when empty)
+   so the absolute timestamps that follow start at the same x on every row
+   and line up vertically down the column. 8.5ch comfortably fits the widest
+   hint ("just now"); shorter hints right-align against the date. */
 .relative {
+  flex: 0 0 auto;
+  min-width: 8.5ch;
+  text-align: right;
   color: var(--text-muted);
   font-size: var(--text-xs);
 }
