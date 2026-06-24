@@ -8,12 +8,12 @@ import styles from "./IntegrationGallery.module.css";
 
 // Fixed display order + labels for the category buckets.
 const CATEGORY_ORDER: { key: string; label: string }[] = [
+  { key: "generic", label: "Generic" },
   { key: "chat", label: "Chat" },
   { key: "oncall", label: "On-call / Incident" },
   { key: "ticketing", label: "Ticketing" },
   { key: "push", label: "Push" },
   { key: "sms", label: "SMS" },
-  { key: "generic", label: "Generic" },
 ];
 
 // Branded notifiers (Slack, Teams, PagerDuty, …) render their brand glyph from

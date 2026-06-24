@@ -45,7 +45,7 @@ describe("IntegrationGallery", () => {
   it("renders only non-empty category groups, in fixed order", () => {
     render(<IntegrationGallery plugins={PLUGINS} onPick={() => undefined} />);
     const headings = screen.getAllByRole("heading").map((h) => h.textContent);
-    expect(headings).toEqual(["Chat", "On-call / Incident", "Generic"]);
+    expect(headings).toEqual(["Generic", "Chat", "On-call / Incident"]);
   });
 
   it("places an uncategorised plugin in the Generic bucket", () => {
