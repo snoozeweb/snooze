@@ -1,0 +1,61 @@
+---
+name: 'Create a JIRA issue'
+desc: 'Open a JIRA Cloud issue via the REST API v3 (fire-and-forget create)'
+icon: 'jira'
+category: 'ticketing'
+doc_url: 'https://snoozeweb.github.io/snooze/general/integrations/jira'
+provides:
+    - notifier
+daemon:
+    name: snooze-jira
+    blurb: 'Auto-close Snooze records when the JIRA ticket is resolved, and comment on re-escalation instead of creating duplicates.'
+    doc_url: 'https://snoozeweb.github.io/snooze/general/integrations/jira#advanced-bidirectional-daemon'
+action_form:
+    jira_url:
+        display_name: JIRA URL
+        component: String
+        description: 'JIRA Cloud base URL (e.g. https://mycompany.atlassian.net)'
+        required: true
+    email:
+        display_name: Email
+        component: String
+        description: 'Atlassian account email for HTTP Basic auth'
+        required: true
+    api_token:
+        display_name: API Token
+        component: Password
+        description: 'Atlassian Cloud API token paired with the email'
+        required: true
+    project_key:
+        display_name: Project Key
+        component: String
+        description: 'Target JIRA project key (e.g. OPS)'
+        required: true
+    issue_type:
+        display_name: Issue Type
+        component: String
+        default_value: 'Task'
+        description: 'JIRA issue type name (default: Task)'
+    priority:
+        display_name: Priority (fallback)
+        component: String
+        description: 'Priority used when the severity is not in the built-in mapping (emergency→Critical, critical→High, warning→Medium, minor→Low, info→Lowest). Leave blank to omit.'
+    summary:
+        display_name: Summary
+        component: String
+        default_value: '[{{ .Severity }}] {{ .Host }} - {{ .Message }}'
+        description: 'Issue summary (Go text/template over the record fields).'
+    description:
+        display_name: Description
+        component: Text
+        description: 'Issue description (Go text/template over the record fields). When blank, a structured default is generated.'
+    labels:
+        display_name: Labels
+        component: String
+        default_value: 'snooze'
+        description: 'Comma-separated labels applied to the new issue.'
+    timeout:
+        display_name: Timeout
+        component: String
+        default_value: '10s'
+        description: 'Request timeout as a Go duration (default 10s)'

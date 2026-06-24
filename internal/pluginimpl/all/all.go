@@ -35,6 +35,7 @@ import (
 	// Notifiers — outbound delivery to an external destination.
 	_ "github.com/snoozeweb/snooze/internal/pluginimpl/discord"
 	_ "github.com/snoozeweb/snooze/internal/pluginimpl/googlechat"
+	_ "github.com/snoozeweb/snooze/internal/pluginimpl/jira"
 	_ "github.com/snoozeweb/snooze/internal/pluginimpl/mail"
 	_ "github.com/snoozeweb/snooze/internal/pluginimpl/mattermost"
 	_ "github.com/snoozeweb/snooze/internal/pluginimpl/ntfy"
