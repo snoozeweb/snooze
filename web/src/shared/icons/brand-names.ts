@@ -9,6 +9,7 @@ export const BRAND_NAMES = [
   "discord",
   "telegram",
   "googlechat",
+  "jira",
   "pagerduty",
   "opsgenie",
   "statuspage",

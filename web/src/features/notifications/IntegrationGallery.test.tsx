@@ -34,6 +34,13 @@ const PLUGINS: Metadata[] = [
     action_form: { url: { display_name: "URL", component: "String" } },
   },
   {
+    plugin_name: "jira",
+    name: "Create a JIRA issue",
+    display_name: "Open a JIRA Cloud issue",
+    category: "ticketing",
+    action_form: { project_key: { display_name: "Project Key", component: "String" } },
+  },
+  {
     plugin_name: "mystery",
     name: "Mystery",
     display_name: "No category set",
@@ -45,7 +52,7 @@ describe("IntegrationGallery", () => {
   it("renders only non-empty category groups, in fixed order", () => {
     render(<IntegrationGallery plugins={PLUGINS} onPick={() => undefined} />);
     const headings = screen.getAllByRole("heading").map((h) => h.textContent);
-    expect(headings).toEqual(["Generic", "Chat", "On-call / Incident"]);
+    expect(headings).toEqual(["Generic", "Chat", "On-call / Incident", "Ticketing"]);
   });
 
   it("places an uncategorised plugin in the Generic bucket", () => {
@@ -69,6 +76,12 @@ describe("IntegrationGallery", () => {
     expect(pagerduty.querySelector("use")?.getAttribute("href")).toBe(
       "/web/brands.svg#brand-pagerduty",
     );
+  });
+
+  it("shows the brand glyph for the Jira card", () => {
+    render(<IntegrationGallery plugins={PLUGINS} onPick={() => undefined} />);
+    const jira = screen.getByRole("button", { name: /Create a JIRA issue/ });
+    expect(jira.querySelector("use")?.getAttribute("href")).toBe("/web/brands.svg#brand-jira");
   });
 
   it("falls back to the category glyph for a notifier without a brand logo", () => {
