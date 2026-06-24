@@ -6,6 +6,10 @@ category: 'chat'
 doc_url: 'https://snoozeweb.github.io/snooze/general/integrations/googlechat'
 provides:
     - notifier
+daemon:
+    name: snooze-googlechat
+    blurb: 'Bidirectional Google Chat bot for interactive alert handling (in development).'
+    doc_url: 'https://snoozeweb.github.io/snooze/general/integrations/googlechat#advanced-bidirectional-daemon'
 # Field order: webhook first, then content knobs, then threading, then timeout.
 action_form:
     webhook_url:

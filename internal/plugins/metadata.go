@@ -28,12 +28,18 @@ type Metadata struct {
 	// buckets the plugin (chat|oncall|ticketing|push|sms|generic; empty →
 	// "generic"); DocURL is the canonical setup-docs page, shown as a "Docs"
 	// link in the Actions editor.
-	Category        string         `yaml:"category" json:"category,omitempty"`
-	DocURL          string         `yaml:"doc_url" json:"doc_url,omitempty"`
-	DefaultSorting  string         `yaml:"default_sorting" json:"default_sorting,omitempty"`
-	DefaultOrdering string         `yaml:"default_ordering" json:"default_ordering,omitempty"`
-	AutoReload      bool           `yaml:"auto_reload" json:"auto_reload,omitempty"`
-	Widgets         map[string]any `yaml:"widgets" json:"widgets,omitempty"`
+	Category string `yaml:"category" json:"category,omitempty"`
+	DocURL   string `yaml:"doc_url" json:"doc_url,omitempty"`
+	// Daemon advertises an optional companion daemon that backs this
+	// integration with bidirectional / stateful features beyond the
+	// in-process notifier (e.g. snooze-jira's auto-close poller). Its
+	// presence drives the frontend's built-in-vs-advanced chooser; it
+	// implies NO live detection of whether the daemon is running.
+	Daemon          *DaemonMetadata `yaml:"daemon" json:"daemon,omitempty"`
+	DefaultSorting  string          `yaml:"default_sorting" json:"default_sorting,omitempty"`
+	DefaultOrdering string          `yaml:"default_ordering" json:"default_ordering,omitempty"`
+	AutoReload      bool            `yaml:"auto_reload" json:"auto_reload,omitempty"`
+	Widgets         map[string]any  `yaml:"widgets" json:"widgets,omitempty"`
 	// ActionForm is a YAML-ordered map of (field name → descriptor). Order
 	// matters: the React frontend renders fields in the order they appear
 	// here, which is the order they were declared in metadata.yaml. A plain
@@ -67,6 +73,15 @@ type Metadata struct {
 	// on Metadata for the parsing details.
 	ForceOrder int  `yaml:"force_order" json:"force_order,omitempty"`
 	Tree       bool `yaml:"tree" json:"tree,omitempty"`
+}
+
+// DaemonMetadata is the companion-daemon descriptor surfaced in the Actions
+// editor. Purely informational — it carries no runtime address and triggers no
+// health check.
+type DaemonMetadata struct {
+	Name   string `yaml:"name" json:"name,omitempty"`
+	Blurb  string `yaml:"blurb" json:"blurb,omitempty"`
+	DocURL string `yaml:"doc_url" json:"doc_url,omitempty"`
 }
 
 // Route is a single per-path override for the plugin's HTTP surface. A nil

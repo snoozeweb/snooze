@@ -147,6 +147,28 @@ func TestParseMetadata_Invalid(t *testing.T) {
 	require.Error(t, err)
 }
 
+func TestParseMetadataDaemonBlock(t *testing.T) {
+	t.Parallel()
+	in := []byte(`
+name: 'Send a Microsoft Teams message'
+category: chat
+daemon:
+    name: snooze-teams
+    blurb: 'Ack/close from Teams.'
+    doc_url: 'https://example/teams#daemon'
+`)
+	m, err := ParseMetadata(in)
+	if err != nil {
+		t.Fatalf("ParseMetadata: %v", err)
+	}
+	if m.Daemon == nil {
+		t.Fatal("Daemon is nil; expected parsed block")
+	}
+	if m.Daemon.Name != "snooze-teams" || m.Daemon.Blurb != "Ack/close from Teams." || m.Daemon.DocURL != "https://example/teams#daemon" {
+		t.Fatalf("unexpected daemon: %+v", m.Daemon)
+	}
+}
+
 func TestParseMetadataCategoryAndDocURL(t *testing.T) {
 	t.Parallel()
 	data := []byte("name: Teams\ncategory: chat\ndoc_url: https://snoozeweb.github.io/snooze/general/integrations/teams\n")

@@ -6,6 +6,10 @@ category: 'chat'
 doc_url: 'https://snoozeweb.github.io/snooze/general/integrations/teams'
 provides:
     - notifier
+daemon:
+    name: snooze-teams
+    blurb: 'Acknowledge, close and snooze alerts directly from Teams via @mention commands (bidirectional).'
+    doc_url: 'https://snoozeweb.github.io/snooze/general/integrations/teams#advanced-bidirectional-daemon'
 action_form:
     webhook_url:
         display_name: Webhook URL

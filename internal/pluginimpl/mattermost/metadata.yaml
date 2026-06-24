@@ -6,6 +6,10 @@ category: 'chat'
 doc_url: 'https://snoozeweb.github.io/snooze/general/integrations/mattermost'
 provides:
     - notifier
+daemon:
+    name: snooze-mattermost
+    blurb: 'Acknowledge, close and snooze alerts from Mattermost via slash commands (bidirectional).'
+    doc_url: 'https://snoozeweb.github.io/snooze/general/integrations/mattermost#advanced-bidirectional-daemon'
 action_form:
     webhook_url:
         display_name: Webhook URL
