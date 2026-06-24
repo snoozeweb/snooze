@@ -2,9 +2,49 @@
 sidebar_position: 35
 ---
 
-# JIRA Cloud (output)
+# JIRA Cloud (output / bidirectional)
 
-## Overview
+This integration has two modes:
+
+- **Built-in notifier (easy, recommended):** configured entirely in the Snooze Actions editor — Snooze creates a JIRA issue directly, no extra process required. Start here.
+- **Advanced: bidirectional daemon (optional):** the `snooze-jira` daemon adds auto-close (JIRA → Snooze) and re-escalation deduplication (comment on an existing ticket instead of opening a duplicate). See [below](#advanced-bidirectional-daemon).
+
+## In-process notifier (recommended)
+
+The built-in `jira` notifier is configured entirely in the Snooze web UI under **Notifications → Actions → New → JIRA**. It calls the JIRA Cloud REST API v3 directly from the Snooze server process — no separate daemon, no extra config file.
+
+**What it does:** for every notification that matches a rule, it creates one new JIRA issue. It is fire-and-forget: there is no deduplication (each notification creates a fresh issue) and no auto-close (resolving the ticket in JIRA does not close the Snooze record). It appears in the Actions gallery under **Ticketing**, alongside ServiceNow.
+
+**Action fields** (configured in the Actions editor):
+
+| Field | Required | Description |
+|-------|----------|-------------|
+| `jira_url` | yes | JIRA Cloud base URL (e.g. `https://mycompany.atlassian.net`). |
+| `jira_email` | yes | Atlassian account email for HTTP Basic auth. |
+| `jira_api_token` | yes | Atlassian Cloud API token paired with `jira_email`. |
+| `project_key` | yes | JIRA project key (e.g. `OPS`). |
+| `issue_type` | no | Issue type name (default: `Task`). |
+| `priority` | no | Issue priority (default: `Medium`). |
+| `summary_template` | no | Go `text/template` for the issue summary (default: `[{{ .Severity }}] {{ .Host }} - {{ .Message }}`). |
+| `description_template` | no | Go `text/template` for the issue description. |
+| `labels` | no | Labels to apply to every new issue (default: `["snooze"]`). |
+| `timeout` | no | Per-request timeout (default: `30s`). |
+
+Use the **Send test** button in the Actions editor to create a sample issue and confirm the connection works end-to-end.
+
+If you need deduplication, auto-close, or re-escalation comments on an existing ticket, use the daemon described below.
+
+## Advanced: bidirectional daemon {#advanced-bidirectional-daemon}
+
+**When to use the daemon instead of (or in addition to) the in-process notifier:**
+
+- You want resolving a JIRA ticket to automatically close the corresponding Snooze record (bidirectional poller).
+- You want re-escalations to add a comment to the existing ticket rather than opening a duplicate.
+- You want finer control over issue transitions (`initial_status`, `reopen_closed`).
+
+For simple ticket creation without any of the above, the in-process notifier is sufficient.
+
+### Overview
 
 **snooze-jira** is a standalone daemon that bridges snooze-server with JIRA Cloud. It exposes a small HTTP server that snooze-server hits as a **webhook action** to create and update JIRA issues from Snooze alerts. An optional background poller closes Snooze records when the corresponding JIRA ticket transitions to a Done status category.
 
@@ -230,4 +270,3 @@ The daemon responds with `200 OK` and a JSON body summarising the created (or up
 - **Transition availability.** `reopen_status_name` and `initial_status` must name a workflow status that is reachable from the ticket's current status via an existing transition. The daemon logs a warning if no matching transition is found.
 - **Assignee / reporter resolution.** When `assignee` or `reporter` is set to an email address, the daemon calls `GET /rest/api/3/user/search` to resolve it to an Atlassian `accountId`. A failed lookup is logged and the field is omitted from the issue creation payload rather than aborting.
 - **Message limit.** A single webhook POST is capped at `message_limit` alerts (default 10). Batches larger than this are truncated with a warning; split large notification actions or increase the limit if needed.
-

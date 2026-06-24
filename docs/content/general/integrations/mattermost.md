@@ -4,7 +4,53 @@ sidebar_position: 27
 
 # Mattermost (output / bidirectional)
 
-## Overview
+This integration has two modes:
+
+- **Built-in notifier (easy, recommended):** configured in the Snooze Actions editor — Snooze posts directly to a Mattermost channel via an Incoming Webhook URL. No separate process required. Start here.
+- **Advanced: bidirectional daemon (optional):** the `snooze-mattermost` daemon adds interactive triage from Mattermost (`ack`, `close`, `reopen`, `comment` commands via @-mention or `/snooze` prefix). See [below](#advanced-bidirectional-daemon).
+
+## In-process notifier (Incoming Webhook)
+
+The built-in `mattermost` notifier ships as part of snooze-server. Configure it as a notification
+**action** from the web UI (Notifications → Actions → New → *Mattermost*), or directly:
+
+```json
+{
+  "name": "mattermost-prod",
+  "action": {
+    "selected": "mattermost",
+    "subcontent": {
+      "webhook_url": "https://mattermost.example.com/hooks/xxxxxxxx",
+      "channel": "alerts",
+      "message": "*{{ .Severity }}* on `{{ .Host }}`: {{ .Message }}"
+    }
+  }
+}
+```
+
+| Field | Required | Description |
+|-------|----------|-------------|
+| `webhook_url` | yes | Mattermost Incoming Webhook URL. |
+| `channel` | no | Channel override (defaults to the webhook's configured channel). |
+| `username` | no | Display-name override for the posting bot. |
+| `icon_url` | no | Avatar URL for the posting bot. |
+| `message` | no | Go `text/template` over the record (default ``*{{ .Severity }}* on `{{ .Host }}`: {{ .Message }}``). |
+| `timeout` | no | Request timeout as a Go duration (default `10s`). |
+
+It posts to a Mattermost **Incoming Webhook** URL using the Slack-compatible attachment payload. The attachment colour follows severity; a resolved alert renders green with a `✅ Resolved` prefix. Use the **Send test** button in the Actions editor to verify delivery.
+
+If you need operators to acknowledge or close alerts from within Mattermost, set up the daemon described below.
+
+## Advanced: bidirectional daemon {#advanced-bidirectional-daemon}
+
+**When to use the daemon instead of (or in addition to) the in-process notifier:**
+
+- You want operators to triage alerts directly from Mattermost using @-mention or `/snooze` commands (`ack`, `close`, `reopen`, `comment`).
+- You want the daemon to post alerts via the Mattermost REST API rather than an Incoming Webhook.
+
+For simple "push a message to a channel" notifications, the in-process notifier is sufficient.
+
+### Overview
 
 **snooze-mattermost** is a standalone, bidirectional daemon that connects Snooze to a Mattermost server. It operates in two directions simultaneously:
 
@@ -120,7 +166,7 @@ Personal access tokens must be enabled by the Mattermost system admin (**System 
 
 `mattermost_team` takes the team's URL slug — the short name visible in the Mattermost URL (`https://mm.example.com/<team-slug>/...`), not the display name. `channels` takes channel slugs in the same format.
 
-Invite the bot to each channel it should monitor. If `channels` is left empty the daemon responds in every channel the bot account has been added to — restricting to a specific list is recommended in production.
+Invite the bot to each channel it should monitor. If `channels` is left empty the daemon accepts commands from any channel the bot account can see. In shared or public Mattermost instances it is strongly recommended to set an explicit list.
 
 ### snooze-server webhook action (outbound alerts)
 
@@ -212,43 +258,6 @@ The bot should reply with the command list within a few seconds. If there is no 
 - **WebSocket transport only.** The daemon relies entirely on the Mattermost WebSocket event stream for inbound command delivery. It does not set up an HTTP slash-command endpoint — the `/snooze …` syntax is parsed from regular messages, not from the Mattermost slash-command registration mechanism.
 - **UID-based commands.** Every action verb requires an explicit alert UID. There is no thread-based correlation (unlike snooze-teams): the bot does not infer which alert a reply belongs to from the channel thread. Operators must copy the UID from the notification post or the Snooze web UI.
 - **Channel allow-list.** When `channels` is empty the daemon accepts commands from any channel the bot account can see. In shared or public Mattermost instances it is strongly recommended to set an explicit list.
-- **No \`\`snooze\`\` verb.** The Mattermost daemon supports `ack`, `close`, `reopen`, and `comment` — but not a timed `snooze <duration>` command (unlike snooze-teams). Use the Snooze web UI or the MCP tool to create a snooze entry.
+- **No `snooze` verb.** The Mattermost daemon supports `ack`, `close`, `reopen`, and `comment` — but not a timed `snooze <duration>` command (unlike snooze-teams). Use the Snooze web UI or the MCP tool to create a snooze entry.
 - **Reconnect back-off.** On WebSocket disconnect the daemon waits `reconnect_initial_backoff` before the first retry, doubling each attempt up to `reconnect_max_backoff`. During a reconnect window inbound commands are not processed; outbound alert delivery (if the webhook path is also used) is unaffected as it goes through the REST API directly.
-- **No SDK dependency.** The daemon implements only the WebSocket message shapes it needs (`posted` events) hand-rolled against the Mattermost v4 wire format. Some Mattermost versions stringify the `post` field inside the `posted` event data; the daemon handles both the stringified and inline- object forms for robustness.
-
-## In-process notifier (Incoming Webhook)
-
-Besides the standalone `snooze-mattermost` daemon, snooze-server ships a
-lightweight **in-process `mattermost` notifier** for the simple "push a message
-to a channel" case (no separate process, no bidirectional command handling).
-
-It posts to a Mattermost **Incoming Webhook** URL using the Slack-compatible
-attachment payload. Configure it as a notification **action** from the web UI
-(Notifications → Actions → New → *Mattermost*), or directly:
-
-```json
-{
-  "name": "mattermost-prod",
-  "action": {
-    "selected": "mattermost",
-    "subcontent": {
-      "webhook_url": "https://mattermost.example.com/hooks/xxxxxxxx",
-      "channel": "alerts",
-      "message": "*{{ .Severity }}* on `{{ .Host }}`: {{ .Message }}"
-    }
-  }
-}
-```
-
-| Field | Required | Description |
-|-------|----------|-------------|
-| `webhook_url` | yes | Mattermost Incoming Webhook URL. |
-| `channel` | no | Channel override (defaults to the webhook's configured channel). |
-| `username` | no | Display-name override for the posting bot. |
-| `icon_url` | no | Avatar URL for the posting bot. |
-| `message` | no | Go `text/template` over the record (default ``*{{ .Severity }}* on `{{ .Host }}`: {{ .Message }}``). |
-| `timeout` | no | Request timeout as a Go duration (default `10s`). |
-
-The attachment colour follows severity; a resolved alert renders green with a
-`✅ Resolved` prefix. Use the **Send test** button in the Actions editor to verify
-delivery.
+- **No SDK dependency.** The daemon implements only the WebSocket message shapes it needs (`posted` events) hand-rolled against the Mattermost v4 wire format. Some Mattermost versions stringify the `post` field inside the `posted` event data; the daemon handles both the stringified and inline-object forms for robustness.

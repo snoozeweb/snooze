@@ -4,6 +4,11 @@ sidebar_position: 26
 
 # Google Chat (output)
 
+This integration has two modes:
+
+- **Built-in notifier (easy, recommended):** configured in the Snooze Actions editor — Snooze posts directly to a Google Chat space via an Incoming Webhook URL. No extra process required. Start here; it is fully functional.
+- **Advanced: bidirectional daemon (optional, in development):** a `snooze-googlechat` daemon that subscribes to Pub/Sub and can receive commands from Chat. It is currently in development and not yet available for general use. See [below](#advanced-bidirectional-daemon).
+
 ## Overview
 
 The **Google Chat** notifier is an outbound-only in-process Snooze plugin. When a notification rule matches an alert, the plugin POSTs a message to a Google Chat space via an [Incoming Webhook](https://developers.google.com/workspace/chat/quickstart/webhooks) URL. No external SDK is used — only the Go standard library.
@@ -14,12 +19,6 @@ Two message styles are available:
 - **Plain text** (`use_card: false`): a simple `{"text": "..."}` message.
 
 Optional reply threading groups related messages under the same thread key (e.g. all notifications for the same alert hash).
-
-:::note
-
-The bidirectional Google Chat bot (`snooze-googlechat` daemon) is a separate, work-in-progress component that subscribes to Pub/Sub and can receive commands from Chat. It is **not** covered by this plugin.
-
-:::
 
 ## Configuration
 
@@ -61,7 +60,15 @@ The test sends two messages (one card, one plain text) to the space and asserts 
 |----|----|
 | `SNOOZE_E2E_GOOGLECHAT_WEBHOOK` | Full Incoming Webhook URL for the target test space. |
 
-Environment variables
+## Advanced: bidirectional daemon {#advanced-bidirectional-daemon}
+
+:::note
+
+The bidirectional Google Chat daemon (`snooze-googlechat`) is currently **in development**. The in-process notifier described above is fully functional and covers the majority of use cases.
+
+:::
+
+When available, the daemon will subscribe to a Google Cloud Pub/Sub topic to receive incoming messages from Chat and forward triage commands (acknowledge, close, etc.) to the Snooze REST API — providing the same bidirectional workflow as the Teams and Mattermost daemons. Configuration and setup instructions will be added here once the daemon is released.
 
 ## Notes & limitations
 
@@ -70,4 +77,3 @@ Environment variables
 - **Rate limits**: Google Chat enforces a per-space webhook rate limit (roughly one message per second as of 2026). High-volume deployments should use aggregate rules to reduce notification frequency.
 - **cardsV2 formatting**: the card header uses `.Host` as the title and `.Severity` as the subtitle. The message template populates the single `decoratedText` widget. Advanced card layouts (buttons, images, etc.) are not currently supported.
 - **Resolve path**: there is no distinct resolve/close action — when `rec.State == "close"` the same template renders with the resolved record fields. Use conditional template logic (`{{ if eq .State "close" }}` ... `{{ end }}`) to customise the message for resolved events.
-
