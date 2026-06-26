@@ -50,10 +50,16 @@ type Plugin struct {
 	newClient func(timeout time.Duration) *http.Client
 }
 
-func (p *Plugin) Name() string                   { return "jira" }
-func (p *Plugin) Metadata() plugins.Metadata     { return p.meta }
+// Name returns the plugin identifier.
+func (p *Plugin) Name() string { return "jira" }
+
+// Metadata returns the plugin metadata loaded from metadata.yaml.
+func (p *Plugin) Metadata() plugins.Metadata { return p.meta }
+
+// Reload is a no-op; configuration is read per-notification from the host.
 func (p *Plugin) Reload(_ context.Context) error { return nil }
 
+// PostInit stores the host reference and ensures the HTTP client factory is set.
 func (p *Plugin) PostInit(_ context.Context, host plugins.Host) error {
 	p.host = host
 	if p.newClient == nil {
