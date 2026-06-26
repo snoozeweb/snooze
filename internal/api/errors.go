@@ -65,6 +65,10 @@ var (
 	ErrInternal = &Error{Code: "internal", Status: http.StatusInternalServerError}
 	// ErrUnavailable indicates the service is not ready to handle the request.
 	ErrUnavailable = &Error{Code: "unavailable", Status: http.StatusServiceUnavailable}
+	// ErrPolicyRejected indicates the alert was rejected by a reject-policy rule
+	// before persistence. The sender should inspect the rule name returned in the
+	// message and correct the alert or contact the operator.
+	ErrPolicyRejected = &Error{Code: "policy_rejected", Status: http.StatusUnprocessableEntity}
 )
 
 // WithMessage returns a copy of e with the human-readable Message set. The
@@ -155,6 +159,8 @@ func defaultMessage(code string) string {
 		return "validation failed"
 	case "unavailable":
 		return "service unavailable"
+	case "policy_rejected":
+		return "alert rejected by policy"
 	default:
 		return "internal server error"
 	}

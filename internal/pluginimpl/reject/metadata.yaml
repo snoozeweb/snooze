@@ -1,0 +1,9 @@
+---
+name: 'Reject'
+desc: 'Reject-at-ingest policy rules. Alerts matching an enabled rule are aborted before persistence and the sender receives HTTP 422.'
+default_sorting: 'name'
+auto_reload: true
+route_defaults:
+    class_name: RejectRoute
+    primary: [name]
+    duplicate_policy: 'reject'

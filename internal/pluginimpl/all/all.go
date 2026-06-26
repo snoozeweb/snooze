@@ -29,6 +29,7 @@ import (
 
 	// Pipeline processors — transform / gate alerts as they flow through.
 	_ "github.com/snoozeweb/snooze/internal/pluginimpl/notification"
+	_ "github.com/snoozeweb/snooze/internal/pluginimpl/reject"
 	_ "github.com/snoozeweb/snooze/internal/pluginimpl/rule"
 	_ "github.com/snoozeweb/snooze/internal/pluginimpl/snooze"
 

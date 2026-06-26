@@ -1,5 +1,13 @@
 ## [Unreleased]
 
+### Added
+
+- **Reject-at-ingest policy processor.** A new `reject` plugin provides a
+  CRUD-managed collection of condition-based policy rules. Alerts matching any
+  enabled rule are aborted before persistence and the sender receives an HTTP
+  422 `policy_rejected` response with the matching rule's name, replacing the
+  previous silent discard behaviour.
+
 ### Fixed
 
 - **Web — the Rules tree is now mobile-responsive.** The drag-and-drop rule

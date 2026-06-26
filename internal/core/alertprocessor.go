@@ -5,13 +5,16 @@ import (
 	"encoding/json"
 	"fmt"
 
+	"github.com/snoozeweb/snooze/internal/plugins"
 	"github.com/snoozeweb/snooze/pkg/snoozetypes"
 )
 
 // ProcessRecordMap is the loose-map adapter for the internal/api package's
 // AlertProcessor interface. It marshals the incoming map into a typed
 // Record, drives the pipeline, and emits the result as a map ready for
-// JSON encoding.
+// JSON encoding. The pipeline Action is propagated to the caller so that
+// handleAlertPost can distinguish a policy-reject ActionAbort from a normal
+// successful pass.
 //
 // This is a thin shim because the API surface predates the typed Record:
 // /api/v1/alerts callers post raw JSON, the handler decodes to map[string]any,
@@ -19,16 +22,16 @@ import (
 //
 // Compile-time guarantee that *Core satisfies api.AlertProcessor lives in
 // cmd/snooze-server/main.go (wired at boot).
-func (c *Core) ProcessRecordMap(ctx context.Context, rec map[string]any) (map[string]any, error) {
+func (c *Core) ProcessRecordMap(ctx context.Context, rec map[string]any) (map[string]any, plugins.Action, error) {
 	in, err := mapToRecord(rec)
 	if err != nil {
-		return nil, fmt.Errorf("core: decode incoming record: %w", err)
+		return nil, plugins.ActionContinue, fmt.Errorf("core: decode incoming record: %w", err)
 	}
-	out, _, err := c.ProcessRecord(ctx, in)
+	out, action, err := c.ProcessRecord(ctx, in)
 	if err != nil {
-		return nil, err
+		return nil, plugins.ActionContinue, err
 	}
-	return recordToMap(out), nil
+	return recordToMap(out), action, nil
 }
 
 // mapToRecord JSON-round-trips the loose map into a typed Record. Unknown

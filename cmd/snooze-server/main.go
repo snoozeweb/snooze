@@ -36,6 +36,7 @@ import (
 	"github.com/snoozeweb/snooze/internal/db/postgres"
 	"github.com/snoozeweb/snooze/internal/db/sqlite"
 	"github.com/snoozeweb/snooze/internal/migrate"
+	"github.com/snoozeweb/snooze/internal/plugins"
 	"github.com/snoozeweb/snooze/internal/syncer"
 	"github.com/snoozeweb/snooze/internal/telemetry"
 	"github.com/snoozeweb/snooze/internal/version"
@@ -59,7 +60,7 @@ type coreAdapter struct{ *core.Core }
 
 // ProcessRecord forwards to Core.ProcessRecordMap. The signature matches
 // api.AlertProcessor.
-func (a *coreAdapter) ProcessRecord(ctx context.Context, rec map[string]any) (map[string]any, error) {
+func (a *coreAdapter) ProcessRecord(ctx context.Context, rec map[string]any) (map[string]any, plugins.Action, error) {
 	return a.ProcessRecordMap(ctx, rec)
 }
 

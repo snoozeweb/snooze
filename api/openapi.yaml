@@ -644,7 +644,11 @@ paths:
                   items: {$ref: '#/components/schemas/Record'}
       responses:
         '200':
-          description: Per-record processing result.
+          description: |
+            Per-record processing result. Records that were silently discarded
+            (e.g. by a `snooze` discard rule) are omitted from `data` without
+            an entry in `errors`. Mixed batches where some records pass and
+            some are policy-rejected return 200 with the rejections in `errors`.
           content:
             application/json:
               schema:
@@ -657,6 +661,19 @@ paths:
                   errors:
                     type: array
                     items: {type: string}
+        '422':
+          description: |
+            All records in the batch were rejected by an enabled `reject` policy
+            rule. The response body carries code `policy_rejected` and a message
+            containing the matching rule name. Fix the alert or contact the
+            operator to adjust the policy rule.
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/ErrEnvelope'}
+              example:
+                error:
+                  code: policy_rejected
+                  message: "policy_rejected: blacklist-untrusted-source"
 
   /api/v1/cluster/status:
     get:

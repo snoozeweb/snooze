@@ -23,7 +23,7 @@ import (
 // core. We keep it interface-shaped so the API package does not import
 // internal/core (avoiding the import cycle internal/core → internal/api).
 type AlertProcessor interface {
-	ProcessRecord(ctx context.Context, rec map[string]any) (map[string]any, error)
+	ProcessRecord(ctx context.Context, rec map[string]any) (map[string]any, plugins.Action, error)
 }
 
 // Router assembles the chi router used by the snooze-server binary. Fields
