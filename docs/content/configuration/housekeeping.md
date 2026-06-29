@@ -178,6 +178,26 @@ The Go schema lives in `internal/config/schema/housekeeper.go`.
 > disables auto-escalation entirely — the escalate pass becomes a no-op.
 > Editable at runtime without a server restart.
 
+### shelve_timeout
+
+> Type  
+> string (Go duration)
+>
+> Default  
+> `"4h"`
+>
+> How long a *timed* shelve lasts before the alert is automatically returned to
+> open. Posting a `shelve` comment transitions the record to `shelved` and stamps
+> a server-controlled `shelve_until = now + shelve_timeout`; once that deadline
+> passes, the minute-cadence `unshelve_timeout` sweep reverts the record to `open`
+> (clearing `shelve_until`) and writes an auto comment. This is distinct from the
+> legacy *permanent* shelve (`ttl=-1`, `shelve_until=0`), which has no duration
+> and is never auto-returned. Editable at runtime in **Settings → Housekeeping**
+> without a server restart. A timed shelve leaves `ttl` untouched, so if `ttl` is
+> shorter than `shelve_timeout` the `cleanup_alert` job may delete the alert
+> before the shelve expires — keep `shelve_timeout` below `record_ttl` if you need
+> the alert to survive its shelve.
+
 ## Ack expiry & auto-escalation
 
 A minute-cadence housekeeper sweep (`escalate_timeout`) enforces the

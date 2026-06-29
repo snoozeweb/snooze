@@ -182,7 +182,27 @@ Default TTL is 172800 seconds (2 days). Check the housekeeper page for more info
 
 ### Shelve
 
-A mean to keep some alerts from being deleted is to shelve them. The operation actually deletes their **TTL** field.
+There are two distinct shelve behaviours:
+
+**Permanent shelve.** A means to keep some alerts from being deleted is to shelve
+them. The operation actually deletes their **TTL** field (sets `ttl=-1`,
+`shelve_until=0`). These alerts are exempt from deletion and have no auto-return —
+they stay shelved until an operator acts on them.
+
+**Timed shelve (auto-return).** Posting a `shelve` comment temporarily silences a
+single noisy alert: it transitions the record to `state="shelved"` and stamps a
+server-controlled `shelve_until = now + housekeeping.shelve_timeout` (default
+4h). A minute-cadence housekeeper sweep (`unshelve_timeout`) reverts any shelved
+record past its `shelve_until` deadline back to `open`, clears `shelve_until`, and
+writes an automatic *"Shelve expired — reverted to open"* timeline comment.
+Posting an `unshelve`, `open`, `close`, or `ack` comment lifts the timed shelve
+early (clears `shelve_until`). The duration is operator-configurable at runtime in
+**Settings → Housekeeping** (`housekeeping.shelve_timeout`).
+
+The two behaviours coexist: the auto-return sweep's `shelve_until > 0` guard never
+touches a permanent shelve (`shelve_until=0`). A timed shelve leaves `ttl` alone,
+so the alert can still expire normally — if its `ttl` is shorter than
+`shelve_timeout`, the TTL cleanup job may delete it before the shelve expires.
 
 ## Timeline
 

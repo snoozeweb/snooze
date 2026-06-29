@@ -275,6 +275,52 @@ func TestAfterCreate_OpenClearsAckUntil(t *testing.T) {
 	}
 }
 
+// TestAfterCreate_ShelveStampsShelveUntil verifies that posting a shelve comment
+// transitions the record to "shelved" AND stamps shelve_until = now +
+// shelve_timeout. The clock and timeout are both injected/configured so the
+// deadline math is deterministic.
+func TestAfterCreate_ShelveStampsShelveUntil(t *testing.T) {
+	host := newTestHost(t)
+	host.cfg = config.Default()
+	host.cfg.Housekeeper.ShelveTimeout = schema.Duration(3 * time.Hour)
+
+	now := time.Unix(1_500_000, 0).UTC()
+	p := &Plugin{clock: func() time.Time { return now }}
+	require.NoError(t, p.PostInit(guardCtx(), host))
+
+	uid := seedRecord(t, host, "open")
+	doc := map[string]any{"record_uid": uid, "type": "shelve", "message": "noisy"}
+	require.NoError(t, p.AfterCreate(guardCtx(), []map[string]any{doc}))
+
+	rec := recordDoc(t, host, uid)
+	require.Equal(t, "shelved", rec["state"], "shelve must transition state to shelved")
+	require.Equal(t, now.Add(3*time.Hour).Unix(), asInt64(t, rec["shelve_until"]),
+		"shelve_until must be now + shelve_timeout")
+}
+
+// TestAfterCreate_OpenClearsShelveUntil verifies that posting an open comment on
+// a shelved record clears shelve_until back to 0 (the timed shelve is lifted).
+func TestAfterCreate_OpenClearsShelveUntil(t *testing.T) {
+	host := newTestHost(t)
+
+	now := time.Unix(2_500_000, 0).UTC()
+	p := &Plugin{clock: func() time.Time { return now }}
+	require.NoError(t, p.PostInit(guardCtx(), host))
+
+	// Start shelved with a non-zero shelve_until so the open transition's clear
+	// is observable.
+	uid := seedRecord(t, host, "shelved")
+	require.NoError(t, host.DB().UpdateOne(guardCtx(), "record", uid,
+		db.Document{"shelve_until": int64(99999)}, false))
+
+	doc := map[string]any{"record_uid": uid, "type": "open", "message": "reopen"}
+	require.NoError(t, p.AfterCreate(guardCtx(), []map[string]any{doc}))
+
+	rec := recordDoc(t, host, uid)
+	require.Equal(t, "open", rec["state"])
+	require.Equal(t, int64(0), asInt64(t, rec["shelve_until"]), "open must clear shelve_until")
+}
+
 // seedAckedBy stamps acked_by onto an existing record so the clear/preserve
 // paths can be exercised from a record that was already acknowledged.
 func seedAckedBy(t *testing.T, host *testHost, uid, who string) {

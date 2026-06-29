@@ -269,6 +269,26 @@ func (r *RuntimeSettings) EscalateAfter(ctx context.Context) time.Duration {
 	return hk.EscalateAfter.AsDuration()
 }
 
+// ShelveTimeout returns the current housekeeping.shelve_timeout window — how
+// long a time-boxed shelve lasts before the unshelve-timeout sweep reverts the
+// record from "shelved" to "open". Falls back to the 4h baseline when unset or
+// on a read error. Mirrors AckTimeout; the comment plugin reads this to stamp
+// shelve_until.
+func (r *RuntimeSettings) ShelveTimeout(ctx context.Context) time.Duration {
+	fallback := schema.DefaultHousekeeper().ShelveTimeout.AsDuration()
+	if r == nil {
+		return fallback
+	}
+	hk, err := r.Housekeeper(ctx)
+	if err != nil {
+		return fallback
+	}
+	if d := hk.ShelveTimeout.AsDuration(); d > 0 {
+		return d
+	}
+	return fallback
+}
+
 // Housekeeper returns the current housekeeper configuration with the same
 // "baseline + DB overrides" layering as LDAP.
 func (r *RuntimeSettings) Housekeeper(ctx context.Context) (HousekeeperConfig, error) {
@@ -527,6 +547,7 @@ func applyHousekeeperOverrides(out *HousekeeperConfig, values map[string]any) {
 	overlayDuration(values, "housekeeping.cleanup_refresh_token", &out.CleanupRefreshToken)
 	overlayDuration(values, "housekeeping.ack_timeout", &out.AckTimeout)
 	overlayDuration(values, "housekeeping.escalate_after", &out.EscalateAfter)
+	overlayDuration(values, "housekeeping.shelve_timeout", &out.ShelveTimeout)
 }
 
 // overlayDuration writes the value at key into dst, parsing the

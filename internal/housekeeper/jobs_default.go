@@ -280,6 +280,85 @@ func recordFromDoc(doc db.Document) snoozetypes.Record {
 	return rec
 }
 
+// UnshelveTimeoutJob auto-returns time-boxed shelves every minute, per active
+// tenant. Like EscalateTimeoutJob it is REVERT-not-delete. Inside the
+// per-tenant context from ForEachTenant (so the driver injects tenant_id —
+// Search/UpdateOne/Write/IncMany are NEVER called under platform scope) it
+// reverts every record with state=="shelved" and 0 < shelve_until <= now back
+// to "open": shelve_until clears to 0, an auto unshelve-comment records the
+// revert on the timeline, and comment_count is bumped.
+//
+// The legacy permanent shelve (shelve_until==0) is deliberately excluded by the
+// `shelve_until > 0` guard in expiredShelveQuery, so those alerts are never
+// auto-unshelved. clk supplies the deadline reference time — no time.Now() in
+// this core path. The deadline is the epoch already stamped on the record, so
+// the job needs no timeout config at runtime.
+func UnshelveTimeoutJob(d db.Driver, clk Clock) IntervalJob {
+	return IntervalJob{
+		Interval: time.Minute,
+		Job: NewJobFunc("unshelve_timeout", func(ctx context.Context) error {
+			return ForEachTenant(ctx, d, func(tctx context.Context, _ string) error {
+				now := clk.Now().Unix()
+				return revertExpiredShelves(tctx, d, now)
+			})
+		}),
+	}
+}
+
+// expiredShelveQuery builds the `state==state AND 0 < shelve_until <= now`
+// predicate the unshelve sweep matches on. The `shelve_until > 0` lower bound
+// excludes the legacy permanent shelve (shelve_until==0). Delegates to the
+// shared expiredDeadlineCond used by the escalate sweep.
+func expiredShelveQuery(state string, now int64) condition.Cond {
+	return expiredDeadlineCond(state, "shelve_until", now)
+}
+
+// revertExpiredShelves reverts every shelved record past its deadline. Must run
+// under a tenant-scoped tctx.
+func revertExpiredShelves(tctx context.Context, d db.Driver, now int64) error {
+	docs, _, err := d.Search(tctx, recordCollection, expiredShelveQuery("shelved", now), db.Page{})
+	if err != nil {
+		return fmt.Errorf("housekeeper: unshelve_timeout: search expired shelves: %w", err)
+	}
+	for _, doc := range docs {
+		uid, _ := doc["uid"].(string)
+		if uid == "" {
+			continue
+		}
+		patch := db.Document{"state": "open", "shelve_until": int64(0)}
+		if err := d.UpdateOne(tctx, recordCollection, uid, patch, true); err != nil {
+			return fmt.Errorf("housekeeper: unshelve_timeout: revert shelve %s: %w", uid, err)
+		}
+		writeUnshelveAutoComment(tctx, d, uid, now)
+	}
+	return nil
+}
+
+// writeUnshelveAutoComment appends an auto unshelve comment to the timeline and
+// bumps the record's comment_count. Adapted from writeLifecycleComment /
+// aggregaterule.writeAutoComment: the write goes straight to the driver (the
+// comment plugin's AfterCreate is bypassed) so the counter bump is explicit.
+// Best-effort: a failed timeline write must never abort the sweep.
+func writeUnshelveAutoComment(tctx context.Context, d db.Driver, recordUID string, now int64) {
+	if d == nil || recordUID == "" {
+		return
+	}
+	doc := db.Document{
+		"record_uid": recordUID,
+		"type":       "unshelve",
+		"message":    "Shelve expired — reverted to open",
+		"date_epoch": now,
+		"auto":       true,
+	}
+	if _, err := d.Write(tctx, commentCollection, []db.Document{doc}, db.WriteOptions{UpdateTime: true}); err != nil {
+		slog.Default().Warn("housekeeper: unshelve_timeout: write auto comment", "uid", recordUID, "err", err)
+		return
+	}
+	if _, err := d.IncMany(tctx, recordCollection, "comment_count", condition.Equals("uid", recordUID), 1); err != nil {
+		slog.Default().Warn("housekeeper: unshelve_timeout: bump comment_count", "uid", recordUID, "err", err)
+	}
+}
+
 // CleanupSnoozeJob deletes snooze rows whose time-constraint datetime entries
 // are all in the past. Matches the Python `cleanup_snooze` semantics
 // (cron-driven, daily). The interval argument tunes the cadence; the cron

@@ -132,6 +132,26 @@ func TestRuntimeSettingsHousekeeperLifecycleTimeouts(t *testing.T) {
 	require.Equal(t, 30*time.Minute, rs.EscalateAfter(ctx))
 }
 
+// TestRuntimeSettings_ShelveTimeout verifies the timed-shelve window overlays
+// from the DB and that the ShelveTimeout accessor surfaces it; with no override
+// it falls back to the 4h baseline.
+func TestRuntimeSettings_ShelveTimeout(t *testing.T) {
+	d := newDriver(t)
+	ctx := auth.WithTenant(context.Background(), snoozetypes.DefaultTenant)
+
+	// Cold start: no override → 4h baseline.
+	rs := NewRuntimeSettings(d, Default(), time.Minute)
+	require.Equal(t, 4*time.Hour, rs.ShelveTimeout(ctx))
+
+	// DB override is surfaced both via the Housekeeper snapshot and the accessor.
+	writeSetting(ctx, t, d, "housekeeping.shelve_timeout", "90m")
+	rs2 := NewRuntimeSettings(d, Default(), time.Minute)
+	got, err := rs2.Housekeeper(ctx)
+	require.NoError(t, err)
+	require.Equal(t, 90*time.Minute, got.ShelveTimeout.AsDuration())
+	require.Equal(t, 90*time.Minute, rs2.ShelveTimeout(ctx))
+}
+
 // TestRuntimeSettingsLifecycleTimeoutDefaults checks the cold-start fallback:
 // ack_timeout defaults to 24h, escalate_after to 0 (disabled).
 func TestRuntimeSettingsLifecycleTimeoutDefaults(t *testing.T) {

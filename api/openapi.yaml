@@ -1121,9 +1121,10 @@ paths:
       description: |
         Sets `state` on every `record` matching the `q` condition in a single
         call, returning the matched/updated counts. `state` must be one of
-        `ack`, `close`, `open`, `esc` (the same set the per-record comment path
-        uses). Requires the `rw_record` permission (the `rw_all` wildcard also
-        satisfies it).
+        `ack`, `close`, `open`, `esc`, `shelve`, `unshelve` (the same set the
+        per-record comment path uses; `shelve`→`shelved` stamps a timed
+        `shelve_until`, `unshelve`→`open` clears it). Requires the `rw_record`
+        permission (the `rw_all` wildcard also satisfies it).
 
         Unlike posting a state-changing comment per record, the bulk path sets
         `state` directly and does **not** fan out one comment per record (a
@@ -1151,7 +1152,7 @@ paths:
               properties:
                 state:
                   type: string
-                  enum: [ack, close, open, esc]
+                  enum: [ack, close, open, esc, shelve, unshelve]
                 message:
                   type: string
                   description: Recorded once in the audit summary.
@@ -2804,6 +2805,16 @@ components:
             `housekeeping.escalate_after` is set, an alert left unacknowledged
             past this is flipped to `esc` and re-notified. `0`/absent means
             escalation is not armed.
+        shelve_until:
+          type: integer
+          format: int64
+          description: |
+            Timed-shelve auto-return deadline (epoch seconds). Stamped when a
+            `shelve` comment is posted (`now + housekeeping.shelve_timeout`); the
+            housekeeper's `unshelve_timeout` sweep reverts the record from
+            `shelved` to `open` once this passes. `0`/absent means either no
+            timed shelve or the legacy permanent shelve (`ttl=-1`), which is
+            never auto-unshelved.
       additionalProperties: true
 
     ListResponse:

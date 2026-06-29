@@ -176,12 +176,19 @@ func (p *Plugin) AfterCreate(ctx context.Context, docs []map[string]any) error {
 		patch := db.Document{}
 		commentType, _ := doc["type"].(string)
 		if t := commentType; stateChangingActions[t] {
-			patch["state"] = t
+			// Most actions are their own state; the timed-shelve pair maps to a
+			// distinct state ("shelve"→"shelved", "unshelve"→"open").
+			targetState := t
+			if s, ok := stateForAction[t]; ok {
+				targetState = s
+			}
+			patch["state"] = targetState
 			// Stamp the server-controlled timed-lifecycle deadlines, mirroring
 			// Alerta's timeout.py server-override. now comes from the injected
 			// clock (never time.Now() in this core path); the timeouts are read
 			// live from the runtime settings (falling back to the file-config
-			// baseline). The escalate-timeout housekeeper sweep enforces these.
+			// baseline). The escalate-timeout / unshelve-timeout housekeeper
+			// sweeps enforce these.
 			ackTimeout, escalateAfter := p.lifecycleTimeouts(ctx)
 			now := p.now().Unix()
 			switch t {
@@ -189,6 +196,8 @@ func (p *Plugin) AfterCreate(ctx context.Context, docs []map[string]any) error {
 				// An ack pauses escalation and arms an expiry.
 				patch["ack_until"] = now + int64(ackTimeout.Seconds())
 				patch["escalate_at"] = int64(0)
+				// Lifting any timed shelve: an explicit ack supersedes it.
+				patch["shelve_until"] = int64(0)
 				// Denormalise the acknowledger onto the record for the alert-list
 				// "Acked by" column. doc["user"] is server-authoritative by now
 				// (TransformWrite stamped it from the JWT claims). A user-less ack
@@ -206,10 +215,20 @@ func (p *Plugin) AfterCreate(ctx context.Context, docs []map[string]any) error {
 				} else {
 					patch["escalate_at"] = int64(0)
 				}
+				// Reopening also lifts any timed shelve.
+				patch["shelve_until"] = int64(0)
 			case "close":
-				// Terminal: nothing left to expire or escalate.
+				// Terminal: nothing left to expire, escalate, or unshelve.
 				patch["ack_until"] = int64(0)
 				patch["escalate_at"] = int64(0)
+				patch["shelve_until"] = int64(0)
+			case "shelve":
+				// Park the alert in "shelved" and stamp the auto-return deadline.
+				// The unshelve-timeout sweep reverts it once now passes this.
+				patch["shelve_until"] = now + int64(p.shelveTimeout(ctx).Seconds())
+			case "unshelve":
+				// Explicitly lifting the timed shelve clears the deadline.
+				patch["shelve_until"] = int64(0)
 			}
 		}
 		rec, err := p.host.DB().GetOne(ctx, "record", db.Document{"uid": uid})
@@ -285,4 +304,33 @@ func (p *Plugin) lifecycleTimeouts(ctx context.Context) (ackTimeout, escalateAft
 		escalateAfter = cfg.Housekeeper.EscalateAfter.AsDuration()
 	}
 	return ackTimeout, escalateAfter
+}
+
+// shelveTimeout resolves the live timed-shelve window the shelve stamping uses,
+// with the same preference order as lifecycleTimeouts: process-wide
+// RuntimeSettings (tenant-aware, DB-overridable), then the file-config
+// baseline, then the schema default (4h). The unshelve-timeout housekeeper
+// sweep reads the same RuntimeSettings, keeping the stamped deadline consistent
+// with enforcement.
+func (p *Plugin) shelveTimeout(ctx context.Context) time.Duration {
+	timeout := schema.DefaultShelveTimeout
+	if p.host == nil {
+		return timeout
+	}
+	if rsh, ok := p.host.(plugins.RuntimeSettingsHost); ok {
+		if rs := rsh.RuntimeSettings(); rs != nil {
+			if hk, err := rs.Housekeeper(ctx); err == nil {
+				if d := hk.ShelveTimeout.AsDuration(); d > 0 {
+					return d
+				}
+				return timeout
+			}
+		}
+	}
+	if cfg := p.host.Config(); cfg != nil {
+		if d := cfg.Housekeeper.ShelveTimeout.AsDuration(); d > 0 {
+			return d
+		}
+	}
+	return timeout
 }

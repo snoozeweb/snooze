@@ -2,6 +2,11 @@
 
 ### Added
 
+- **Timed shelve with auto-return.** Posting a `shelve` comment transitions an
+  alert to `shelved` and stamps a `shelve_until` epoch. A new minute-cadence
+  housekeeper sweep reverts any shelved alert past its deadline back to `open`
+  and writes an auto-comment. Duration is operator-configurable via
+  `housekeeping.shelve_timeout` (default 4h, live-editable in Settings).
 - **PagerDuty inbound status sync.** A new webhook receiver at
   `/api/v1/webhook/pagerduty` maps `incident.acknowledge` → `State: "ack"` and
   `incident.resolve` → `State: "close"` back onto the originating Snooze record

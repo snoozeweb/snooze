@@ -44,6 +44,14 @@ func TestDefaultHousekeeper_LifecycleTimeouts(t *testing.T) {
 	require.Equal(t, time.Duration(0), h.EscalateAfter.AsDuration())
 }
 
+// TestDefaultHousekeeper_ShelveTimeout pins the timed-shelve default: a
+// time-boxed shelve lasts 4h before the unshelve-timeout sweep returns the
+// alert to open.
+func TestDefaultHousekeeper_ShelveTimeout(t *testing.T) {
+	h := DefaultHousekeeper()
+	require.Equal(t, 4*time.Hour, h.ShelveTimeout.AsDuration())
+}
+
 func TestNotification_Defaults(t *testing.T) {
 	n := DefaultNotification()
 	require.Equal(t, time.Minute, n.NotificationFreq.AsDuration())

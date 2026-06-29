@@ -247,6 +247,12 @@ setting_form:
         description: 'How long an unacknowledged open alert may sit before auto-escalating to esc and re-notifying (Go duration string). Set 0 to disable auto-escalation.'
         default_value: '0s'
         group: 'housekeeping'
+    housekeeping.shelve_timeout:
+        display_name: 'Shelve timeout'
+        component: 'String'
+        description: 'How long a timed shelve lasts before the alert is automatically returned to open (Go duration string, e.g. "4h"). Posting a shelve comment stamps shelve_until = now + this; the minute-cadence sweep enforces it. Does not affect the legacy permanent shelve.'
+        default_value: '4h'
+        group: 'housekeeping'
     # --- Console (web-console defaults, served at GET /api/v1/config) ---------
     # These keys live in the runtime ``console`` settings section and overlay
     # the server's code defaults (internal/api/routes_config.go). The endpoint

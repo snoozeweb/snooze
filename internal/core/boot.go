@@ -440,6 +440,11 @@ func (c *Core) bootHousekeeper() error {
 		// auto-escalates overdue opens.
 		liveIntervalReg(housekeeper.EscalateTimeoutJob(c.Driver, housekeeper.SystemClock(), c.Settings, notify),
 			func(context.Context) time.Duration { return time.Minute }),
+		// Timed shelve auto-return: fixed minute cadence. The deadline is the
+		// shelve_until epoch already stamped on each record, so the job needs no
+		// live config — it reverts any shelved record past its deadline to open.
+		liveIntervalReg(housekeeper.UnshelveTimeoutJob(c.Driver, housekeeper.SystemClock()),
+			func(context.Context) time.Duration { return time.Minute }),
 	}
 
 	for _, j := range jobs {

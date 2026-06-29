@@ -34,6 +34,25 @@ var allowedTransitions = map[string]map[string]bool{
 // transition, and ValidateTransition lets it pass through.
 var stateChangingActions = map[string]bool{
 	"ack": true, "close": true, "open": true, "esc": true,
+	"shelve": true, "unshelve": true,
+}
+
+// stateForAction maps a state-changing comment type to the record `state` it
+// drives. Most actions are their own state (ack→"ack"); the timed-shelve pair
+// is the exception — "shelve" parks the record in "shelved" and "unshelve"
+// returns it to "open". A missing entry means action==state.
+var stateForAction = map[string]string{
+	"shelve":   "shelved",
+	"unshelve": "open",
+}
+
+// alwaysAllowedActions are state-changing actions with no per-state validity
+// table: they are legal from any current state and so fail-open in
+// ValidateTransition. The timed-shelve pair belongs here — an operator may
+// shelve a noisy alert (or unshelve it) regardless of its ack/open/close
+// posture, mirroring Alerta's permissive shelve action.
+var alwaysAllowedActions = map[string]bool{
+	"shelve": true, "unshelve": true,
 }
 
 // ValidateTransition returns ErrInvalidTransition (wrapped with the specific
@@ -44,6 +63,9 @@ var stateChangingActions = map[string]bool{
 func ValidateTransition(currentState, action string) error {
 	if !stateChangingActions[action] {
 		return nil
+	}
+	if alwaysAllowedActions[action] {
+		return nil // shelve/unshelve are legal from any state (fail-open)
 	}
 	actions, known := allowedTransitions[currentState]
 	if !known {

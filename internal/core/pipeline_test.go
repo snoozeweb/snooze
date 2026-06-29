@@ -311,3 +311,18 @@ func TestRecordToDoc_StampsAckUntilAndEscalateAt(t *testing.T) {
 	_, hasEsc := zero["escalate_at"]
 	require.False(t, hasEsc, "zero escalate_at must be elided")
 }
+
+// TestRecordToDoc_StampsShelveUntil locks in the projector contract for the
+// timed-shelve field: a non-zero ShelveUntil is emitted as int64, and a zero
+// value is elided (a zero shelve_until is the legacy permanent-shelve marker
+// the housekeeper's `OpGt shelve_until 0` guard deliberately never sweeps).
+func TestRecordToDoc_StampsShelveUntil(t *testing.T) {
+	t.Parallel()
+
+	doc := recordToDoc(snoozetypes.Record{UID: "r1", ShelveUntil: 9999})
+	require.Equal(t, int64(9999), doc["shelve_until"])
+
+	zero := recordToDoc(snoozetypes.Record{UID: "r2"})
+	_, hasShelve := zero["shelve_until"]
+	require.False(t, hasShelve, "zero shelve_until must be elided")
+}

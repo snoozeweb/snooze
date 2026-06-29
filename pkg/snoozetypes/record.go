@@ -40,6 +40,14 @@ type Record struct {
 	// notifications). Armed when a record enters open/esc and escalate_after>0;
 	// cleared (0) on ack/close and one-shot on escalation.
 	EscalateAt int64 `json:"escalate_at,omitempty"`
+	// ShelveUntil is the epoch-seconds deadline after which a time-boxed shelve
+	// expires: the housekeeper's unshelve-timeout sweep reverts the record from
+	// "shelved" back to "open" once now passes this. Stamped when a state→shelve
+	// comment is posted (now + housekeeping.shelve_timeout); cleared (0) on
+	// unshelve/open/close/ack. A zero (absent) value is the legacy permanent
+	// shelve (ttl=-1) marker — the sweep's `shelve_until > 0` guard never
+	// auto-unshelves those. Projected by recordToDoc.
+	ShelveUntil int64 `json:"shelve_until,omitempty"`
 	// Extra carries any plugin-injected fields (rule modifications, aggregaterule
 	// counters, etc.) that don't have a typed home.
 	Extra map[string]any `json:"-"`
