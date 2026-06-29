@@ -2,6 +2,7 @@ package comment
 
 import (
 	"context"
+	"errors"
 	"log/slog"
 	"path/filepath"
 	"slices"
@@ -108,4 +109,77 @@ func TestTransformWriteEmptySubjectIsNoop(t *testing.T) {
 	require.False(t, hasUser)
 	_, hasMethod := doc["method"]
 	require.False(t, hasMethod)
+}
+
+// guardCtx returns a tenant-scoped context: the `record` collection is
+// tenant-scoped and fail-closed, so both seeding and the GuardWrite GetOne must
+// carry a tenant.
+func guardCtx() context.Context {
+	return auth.WithTenant(context.Background(), snoozetypes.DefaultTenant)
+}
+
+// seedRecord writes a record with the given state and returns its assigned uid.
+func seedRecord(t *testing.T, host *testHost, state string) string {
+	t.Helper()
+	res, err := host.DB().Write(guardCtx(), "record",
+		[]db.Document{{"state": state}}, db.WriteOptions{})
+	require.NoError(t, err)
+	require.Len(t, res.Added, 1)
+	return res.Added[0]
+}
+
+func TestGuardWrite_BlocksDoubleAck(t *testing.T) {
+	host := newTestHost(t)
+	p := &Plugin{}
+	require.NoError(t, p.PostInit(guardCtx(), host))
+
+	uid := seedRecord(t, host, "ack")
+	doc := map[string]any{"record_uid": uid, "type": "ack", "message": "ack again"}
+	err := p.GuardWrite(guardCtx(), "", doc, false)
+	require.Error(t, err)
+	require.True(t, errors.Is(err, ErrInvalidTransition))
+}
+
+func TestGuardWrite_BlocksAckOfClosed(t *testing.T) {
+	host := newTestHost(t)
+	p := &Plugin{}
+	require.NoError(t, p.PostInit(guardCtx(), host))
+
+	uid := seedRecord(t, host, "close")
+	doc := map[string]any{"record_uid": uid, "type": "ack", "message": "ack a closed alert"}
+	err := p.GuardWrite(guardCtx(), "", doc, false)
+	require.Error(t, err)
+	require.True(t, errors.Is(err, ErrInvalidTransition))
+}
+
+func TestGuardWrite_AllowsAckOfFresh(t *testing.T) {
+	host := newTestHost(t)
+	p := &Plugin{}
+	require.NoError(t, p.PostInit(guardCtx(), host))
+
+	uid := seedRecord(t, host, "")
+	doc := map[string]any{"record_uid": uid, "type": "ack", "message": "first ack"}
+	require.NoError(t, p.GuardWrite(guardCtx(), "", doc, false))
+}
+
+func TestGuardWrite_NonTransitionCommentSkipsGuard(t *testing.T) {
+	host := newTestHost(t)
+	p := &Plugin{}
+	require.NoError(t, p.PostInit(guardCtx(), host))
+
+	// Record is acked; a "note" is not a state-changing action, so it must
+	// pass the guard regardless of the record's current state.
+	uid := seedRecord(t, host, "ack")
+	doc := map[string]any{"record_uid": uid, "type": "note", "message": "just a note"}
+	require.NoError(t, p.GuardWrite(guardCtx(), "", doc, false))
+}
+
+func TestGuardWrite_MissingRecordUIDPassesThrough(t *testing.T) {
+	host := newTestHost(t)
+	p := &Plugin{}
+	require.NoError(t, p.PostInit(guardCtx(), host))
+
+	// No record_uid key — the guard is a no-op for orphan comments.
+	doc := map[string]any{"type": "ack", "message": "orphan ack"}
+	require.NoError(t, p.GuardWrite(guardCtx(), "", doc, false))
 }

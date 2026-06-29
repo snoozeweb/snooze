@@ -39,6 +39,7 @@ var (
 	_ plugins.DataModel        = (*Plugin)(nil)
 	_ plugins.WriteTransformer = (*Plugin)(nil)
 	_ plugins.CreateHook       = (*Plugin)(nil)
+	_ plugins.WriteGuard       = (*Plugin)(nil)
 )
 
 // Name returns the registered plugin name and collection identifier.
@@ -116,6 +117,29 @@ func (p *Plugin) TransformWrite(ctx context.Context, doc map[string]any) error {
 	return nil
 }
 
+// GuardWrite vetoes a state-transition comment whose action is not legal from
+// the linked record's current state, BEFORE the comment is written. It runs
+// only for state-changing comment types ({ack,close,open,esc}); free-form
+// comments, orphan comments (no record_uid), and missing records all pass
+// through (fail-open). A non-nil error aborts the create with HTTP 403.
+func (p *Plugin) GuardWrite(ctx context.Context, _ string, doc map[string]any, _ bool) error {
+	action, _ := doc["type"].(string)
+	if !stateChangingActions[action] {
+		return nil
+	}
+	uid, _ := doc["record_uid"].(string)
+	if uid == "" || p.host == nil {
+		return nil
+	}
+	rec, err := p.host.DB().GetOne(ctx, "record", db.Document{"uid": uid})
+	if err != nil {
+		// Fail-open: a missing/unreadable record is caught later in AfterCreate.
+		return nil
+	}
+	currentState, _ := rec["state"].(string)
+	return ValidateTransition(currentState, action)
+}
+
 // AfterCreate applies side effects after each comment is written:
 //   - For comments with type ∈ {"ack","close","open","esc"}, updates the
 //     linked record's `state` field to match.
@@ -127,15 +151,13 @@ func (p *Plugin) AfterCreate(ctx context.Context, docs []map[string]any) error {
 	if p.host == nil {
 		return nil
 	}
-	stateChanging := map[string]bool{"ack": true, "close": true, "open": true, "esc": true}
-
 	for _, doc := range docs {
 		uid, _ := doc["record_uid"].(string)
 		if uid == "" {
 			continue
 		}
 		patch := db.Document{}
-		if t, ok := doc["type"].(string); ok && stateChanging[t] {
+		if t, ok := doc["type"].(string); ok && stateChangingActions[t] {
 			patch["state"] = t
 		}
 		rec, err := p.host.DB().GetOne(ctx, "record", db.Document{"uid": uid})

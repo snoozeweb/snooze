@@ -21,6 +21,10 @@
 
 ### Fixed
 
+- **Alerts — state-transition comments now validated before they are saved.**
+  Posting an `ack` comment to an already-acknowledged or closed alert, or a
+  `close` comment to a closed alert, now returns a 403 with a clear error
+  message instead of silently applying the nonsensical state change.
 - **New Relic receiver — `acknowledged` alerts now land as `State: "ack"`.**
   A legacy webhook with `current_state: acknowledged` was previously ingested
   as a firing record (empty State), causing Snooze to re-notify despite the

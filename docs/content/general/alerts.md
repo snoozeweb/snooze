@@ -41,6 +41,32 @@ A new alert will always have no initial state, meaning nobody has interacted wit
 
 Expected alert management workflow is: `(esc ->) ack -> close (-> open)`
 
+### Transition rules
+
+Not every action makes sense from every state. When you post a state-changing
+comment (acknowledge, close, re-open, re-escalate) the server checks the move
+against the alert's current state and rejects nonsensical transitions with a
+`403 Forbidden` error before anything is saved — so you can no longer
+double-acknowledge an alert or acknowledge one that is already closed.
+
+The allowed moves are:
+
+- **No state yet (fresh):** can be **acknowledged** or **closed**. It cannot be
+  re-opened (it was never closed) or re-escalated (there is nothing to escalate).
+- **Acknowledged (`ack`):** can be **closed**, **re-opened**, or
+  **re-escalated**. Acknowledging again is rejected.
+- **Re-escalated (`esc`):** can be **acknowledged**, **closed**, or
+  **re-opened**. Re-escalating again is rejected.
+- **Closed (`close`):** can only be **re-opened**. Acknowledging, closing again,
+  or re-escalating a closed alert is rejected.
+- **Re-opened (`open`):** can be **acknowledged** or **closed**. Re-opening
+  again or re-escalating is rejected.
+
+These rules apply only to state-changing comments. Free-form notes are never
+affected, and automatic state changes made by [aggregate rules](./aggregaterules.md)
+(such as re-escalation after a throttle period, or re-open on a new hit) follow
+the same workflow.
+
 ### Acknowledge
 
 Used to let people know that someone is taking care of the issue related to the alert.
