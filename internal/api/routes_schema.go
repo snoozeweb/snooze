@@ -51,13 +51,42 @@ func (rt *Router) handlePermissions(w http.ResponseWriter, _ *http.Request) {
 		"rw_all": {},
 		"ro_all": {},
 	}
+	add := func(perm string) {
+		// Skip the empty string and the `any` sentinel: `any` is an implicit
+		// grant the authorizer adds to every authenticated caller, never an
+		// assignable permission (see plugins.AuthorizationPolicy).
+		if perm == "" || perm == "any" {
+			return
+		}
+		set[perm] = struct{}{}
+	}
+	// addPolicy walks the Read+Write lists of a route's AuthorizationPolicy.
+	// Nil-safe: a route may carry no policy at all.
+	addPolicy := func(pol *plugins.AuthorizationPolicy) {
+		if pol == nil {
+			return
+		}
+		for _, perm := range pol.Read {
+			add(perm)
+		}
+		for _, perm := range pol.Write {
+			add(perm)
+		}
+	}
 	for name, p := range rt.Plugins {
 		set["rw_"+name] = struct{}{}
 		set["ro_"+name] = struct{}{}
-		for _, perm := range p.Metadata().Provides {
-			if perm != "" {
-				set[perm] = struct{}{}
-			}
+		meta := p.Metadata()
+		for _, perm := range meta.Provides {
+			add(perm)
+		}
+		// Named permissions an authorizer honours can be declared only in an
+		// AuthorizationPolicy (on the plugin-level RouteDefaults or on a
+		// per-path Routes override) without ever appearing in Provides. Walk
+		// both so the catalog never silently omits one.
+		addPolicy(meta.RouteDefaults.AuthorizationPolicy)
+		for _, route := range meta.Routes {
+			addPolicy(route.AuthorizationPolicy)
 		}
 	}
 	out := make([]string, 0, len(set))

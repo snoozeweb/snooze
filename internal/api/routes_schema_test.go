@@ -79,3 +79,51 @@ func TestPermissions_UnionAcrossPlugins(t *testing.T) {
 	require.Contains(t, got.Data, "ro_rule")
 	require.Contains(t, got.Data, "rw_secret")
 }
+
+func TestPermissions_AuthorizationPolicyIncluded(t *testing.T) {
+	rt := &Router{Plugins: map[string]plugins.Plugin{
+		"record": &stubPlugin{name: "record", meta: plugins.Metadata{
+			RouteDefaults: plugins.Route{
+				AuthorizationPolicy: &plugins.AuthorizationPolicy{
+					Read:  []string{"any"},
+					Write: []string{"can_comment"},
+				},
+			},
+		}},
+	}}
+	r := chi.NewRouter()
+	rt.mountPermissions(r)
+	rec := httptest.NewRecorder()
+	r.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/v1/permissions", nil))
+	require.Equal(t, http.StatusOK, rec.Code)
+	var got struct {
+		Data []string `json:"data"`
+	}
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &got))
+	require.Contains(t, got.Data, "can_comment")
+	require.NotContains(t, got.Data, "any")
+}
+
+func TestPermissions_RouteOverrideIncluded(t *testing.T) {
+	rt := &Router{Plugins: map[string]plugins.Plugin{
+		"record": &stubPlugin{name: "record", meta: plugins.Metadata{
+			Routes: map[string]plugins.Route{
+				"/x": {
+					AuthorizationPolicy: &plugins.AuthorizationPolicy{
+						Write: []string{"can_escalate"},
+					},
+				},
+			},
+		}},
+	}}
+	r := chi.NewRouter()
+	rt.mountPermissions(r)
+	rec := httptest.NewRecorder()
+	r.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/v1/permissions", nil))
+	require.Equal(t, http.StatusOK, rec.Code)
+	var got struct {
+		Data []string `json:"data"`
+	}
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &got))
+	require.Contains(t, got.Data, "can_escalate")
+}

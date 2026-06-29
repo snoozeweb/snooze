@@ -72,6 +72,13 @@
 
 ### Fixed
 
+- **Permissions catalog — named `authorization_policy` grants are no longer
+  omitted.** `GET /api/v1/permissions` now also walks the `read` + `write`
+  lists of every plugin's `authorization_policy` (on `route_defaults` and on
+  each per-path `routes` override), so the catalog never silently misses a
+  permission string the authorizer actually honours. The implicit `any`
+  sentinel (and the empty string) stays excluded. Response shape is unchanged
+  — a sorted `{data: []string}`.
 - **Alerts — state-transition comments now validated before they are saved.**
   Posting an `ack` comment to an already-acknowledged or closed alert, or a
   `close` comment to a closed alert, now returns a 403 with a clear error

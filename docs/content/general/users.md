@@ -62,6 +62,14 @@ admin view. See [API keys](./api_keys.md).
 can_comment  
 Allow to acknowledge, re-escalate or comment any received alert. [More on Alerts](./alerts.md)
 
+The full, authoritative list of assignable permissions is served by the
+`GET /api/v1/permissions` endpoint (the role editor reads it directly). It is
+the canonical permission list: the sorted union of `rw_all` / `ro_all`, each
+plugin's `{rw,ro}_<name>` pair, every plugin's `provides`, and any named
+permission declared in a plugin's `authorization_policy`. The implicit `any`
+grant is excluded — it is added to every authenticated caller by the
+authorizer and is never assignable.
+
 ### The `platform_admin` role
 
 A special seeded role named `platform_admin` is created at first boot. It

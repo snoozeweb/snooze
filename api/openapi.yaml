@@ -1496,9 +1496,17 @@ paths:
       tags: [schema]
       summary: List every permission string contributed by plugins
       description: |
-        Returns the sorted union of `metadata.provides` from every
-        registered plugin, plus the canonical `rw_all` / `ro_all`
-        wildcards and a per-plugin `{rw,ro}_<name>` pair.
+        Returns the sorted, de-duplicated union of every permission string
+        an authorizer can honour, drawn from four sources:
+
+        - the canonical `rw_all` / `ro_all` wildcards;
+        - a per-plugin `{rw,ro}_<name>` pair;
+        - each plugin's `metadata.provides`;
+        - the `read` + `write` lists of every plugin's `authorization_policy`
+          (on `route_defaults` and on each per-path `routes` override).
+
+        The `any` sentinel is excluded: it is an implicit grant the authorizer
+        adds to every authenticated caller, never an assignable permission.
       responses:
         '200':
           description: Permission list.
