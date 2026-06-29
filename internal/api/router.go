@@ -15,6 +15,7 @@ import (
 	"github.com/snoozeweb/snooze/internal/auth"
 	"github.com/snoozeweb/snooze/internal/config"
 	"github.com/snoozeweb/snooze/internal/db"
+	"github.com/snoozeweb/snooze/internal/housekeeper"
 	"github.com/snoozeweb/snooze/internal/plugins"
 	"github.com/snoozeweb/snooze/internal/telemetry"
 )
@@ -76,6 +77,10 @@ type Router struct {
 	// 503 immediately. Nil disables the switch (intake always allowed) — kept
 	// as a narrow func so this package need not import internal/config for it.
 	IngestAllowed func(context.Context) bool
+	// HK is the housekeeper; when non-nil POST /api/v1/housekeeping/run fires
+	// all registered jobs on demand and GET /api/v1/housekeeping/status reports
+	// the registered-job count. Nil disables both endpoints (they return 503).
+	HK *housekeeper.Housekeeper
 }
 
 // Build assembles the chi router with the canonical middleware chain. The
@@ -121,6 +126,7 @@ func (rt *Router) Build() chi.Router {
 
 	// --- public endpoints (skip filter above lets them through) -------------
 	rt.mountHealth(r)
+	rt.mountHousekeeping(r)
 	rt.mountMetrics(r)
 	rt.mountLogin(r)
 

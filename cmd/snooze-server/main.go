@@ -382,6 +382,7 @@ func runDaemonCtx(ctx context.Context, f *daemonFlags, stderr io.Writer) error {
 		TenantResolver:  ingestResolver,
 		TenantChecker:   middleware.NewDbTenantStatusChecker(drv),
 		IngestAllowed:   c.Settings.IngestAllow,
+		HK:              c.HK,
 	}
 	handler := rt.Build()
 

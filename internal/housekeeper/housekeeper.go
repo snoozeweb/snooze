@@ -262,6 +262,71 @@ func (h *Housekeeper) runLive(ctx context.Context, j Job, s Schedule) {
 	}
 }
 
+// JobResult is the per-job outcome of a RunAll cycle. Error is empty on
+// success; DurationMs is the wall-clock time the job's Run took, in
+// milliseconds (always >= 0). The struct is JSON-marshalled directly by the
+// HTTP layer.
+type JobResult struct {
+	Name       string `json:"name"`
+	Error      string `json:"error,omitempty"`
+	DurationMs int64  `json:"duration_ms"`
+}
+
+// RegisteredJobs returns the number of jobs currently registered. A nil
+// receiver reports 0. Safe to call concurrently.
+func (h *Housekeeper) RegisteredJobs() int {
+	if h == nil {
+		return 0
+	}
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	return len(h.entries)
+}
+
+// RunAll fires every registered job once, synchronously and sequentially, and
+// returns one JobResult per job. It is the on-demand counterpart to Run: the
+// caller blocks until every job has finished. Per-job errors (and recovered
+// panics) are captured in JobResult.Error rather than propagated — RunAll never
+// returns an error and never panics. A nil receiver or empty registry yields an
+// empty slice.
+//
+// RunAll does not coordinate with the scheduler goroutine: a job may run here
+// while Run is also firing it. Jobs are idempotent DB sweeps, so overlapping
+// runs are benign (already-absent rows are a no-op on all backends).
+func (h *Housekeeper) RunAll(ctx context.Context) []JobResult {
+	if h == nil {
+		return nil
+	}
+	h.mu.Lock()
+	entries := append([]entry(nil), h.entries...)
+	h.mu.Unlock()
+
+	results := make([]JobResult, 0, len(entries))
+	for _, e := range entries {
+		results = append(results, h.runOnce(ctx, e.job))
+	}
+	return results
+}
+
+// runOnce invokes a single job with the same panic-recover semantics as invoke,
+// timing it via the package clock, and returns the captured outcome.
+func (h *Housekeeper) runOnce(ctx context.Context, j Job) (res JobResult) {
+	res.Name = j.Name()
+	start := h.clock.Now()
+	defer func() {
+		res.DurationMs = h.clock.Now().Sub(start).Milliseconds()
+		if r := recover(); r != nil {
+			h.log.Error("housekeeper: job panicked", "job", j.Name(), "panic", r)
+			res.Error = fmt.Sprintf("panic: %v", r)
+		}
+	}()
+	if err := j.Run(ctx); err != nil {
+		h.log.Error("housekeeper: job failed", "job", j.Name(), "err", err)
+		res.Error = err.Error()
+	}
+	return res
+}
+
 func (h *Housekeeper) invoke(ctx context.Context, j Job) {
 	defer func() {
 		if r := recover(); r != nil {

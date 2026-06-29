@@ -465,3 +465,59 @@ func TestCleanupStatsJobInvokesDriver(t *testing.T) {
 	require.True(t, ok, "cond.Value must be int64, got %T", got.cond.Value)
 	require.InDelta(t, float64(expectedCutoff), float64(cutoff), 5, "cutoff should be within 5s of expected")
 }
+
+// ---------------------------------------------------------------------------
+// RunAll (on-demand synchronous trigger) tests
+// ---------------------------------------------------------------------------
+
+// TestRunAll_CollectsResults registers two jobs — one succeeds, one returns an
+// error — and verifies RunAll returns one JobResult per job with the failing
+// job's error surfaced and non-negative durations.
+func TestRunAll_CollectsResults(t *testing.T) {
+	h := New(testLogger())
+	require.NoError(t, h.Register(NewJobFunc("ok", func(context.Context) error {
+		return nil
+	}), Schedule{Interval: time.Hour}))
+	require.NoError(t, h.Register(NewJobFunc("bad", func(context.Context) error {
+		return errors.New("boom")
+	}), Schedule{Interval: time.Hour}))
+
+	results := h.RunAll(context.Background())
+	require.Len(t, results, 2)
+
+	byName := map[string]JobResult{}
+	for _, r := range results {
+		byName[r.Name] = r
+		require.GreaterOrEqual(t, r.DurationMs, int64(0))
+	}
+	require.Empty(t, byName["ok"].Error)
+	require.Equal(t, "boom", byName["bad"].Error)
+}
+
+// TestRunAll_PanicIsRecorded ensures a panicking job does not bring down RunAll
+// and is reported as an error like the scheduler path.
+func TestRunAll_PanicIsRecorded(t *testing.T) {
+	h := New(testLogger())
+	require.NoError(t, h.Register(NewJobFunc("panic", func(context.Context) error {
+		panic("kaboom")
+	}), Schedule{Interval: time.Hour}))
+
+	results := h.RunAll(context.Background())
+	require.Len(t, results, 1)
+	require.Equal(t, "panic", results[0].Name)
+	require.NotEmpty(t, results[0].Error)
+}
+
+// TestRunAll_NilHousekeeper checks a zero-value *Housekeeper returns an empty
+// slice without panicking.
+func TestRunAll_NilHousekeeper(t *testing.T) {
+	var h *Housekeeper
+	require.Empty(t, h.RunAll(context.Background()))
+}
+
+// TestRunAll_NilEntries checks a housekeeper with no registered jobs returns an
+// empty slice without panicking.
+func TestRunAll_NilEntries(t *testing.T) {
+	h := New(testLogger())
+	require.Empty(t, h.RunAll(context.Background()))
+}

@@ -2,6 +2,12 @@
 
 ### Added
 
+- **Admin — on-demand housekeeping trigger.**
+  `POST /api/v1/housekeeping/run` (requires `rw_all`) fires every registered
+  cleanup job synchronously and returns per-job results, including errors and
+  durations. `GET /api/v1/housekeeping/status` reports the number of
+  registered jobs. Useful after data floods or to verify a retention change
+  without restarting the server.
 - **Version endpoint.** `GET /api/v1/version` (public, no token required) returns
   the compiled-in version string, git commit, and build date. Operators can use
   this to confirm which binary is running on each cluster node; the SPA can

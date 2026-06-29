@@ -836,6 +836,66 @@ paths:
             application/json:
               schema: {$ref: '#/components/schemas/ErrEnvelope'}
 
+  /api/v1/housekeeping/run:
+    post:
+      tags: [admin]
+      summary: Trigger an on-demand housekeeping cycle
+      operationId: runHousekeeping
+      description: |
+        Fires every registered housekeeping job synchronously and returns the
+        per-job results. Requires the `rw_all` permission. HTTP 200 is returned
+        even when individual jobs failed — failures are surfaced in each job's
+        `error` field and the top-level `errors` count. Returns 503 when the
+        housekeeper is not wired.
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: All registered jobs were invoked (per-job errors in body).
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status: {type: string, example: ok}
+                  jobs:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        name: {type: string}
+                        error: {type: string}
+                        duration_ms: {type: integer}
+                  errors: {type: integer}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '503': {$ref: '#/components/responses/ServiceUnavailable'}
+
+  /api/v1/housekeeping/status:
+    get:
+      tags: [admin]
+      summary: Report housekeeper registration status
+      operationId: housekeepingStatus
+      description: |
+        Reports whether the housekeeper is wired and, when it is, how many jobs
+        are registered. Requires the `rw_all` permission. Returns 503 when the
+        housekeeper is not wired.
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Housekeeper is wired.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status: {type: string, example: ok}
+                  registered_jobs: {type: integer}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '503': {$ref: '#/components/responses/ServiceUnavailable'}
+
   /api/v1/tenant:
     get:
       tags: [platform]
@@ -1668,6 +1728,12 @@ components:
             $ref: '#/components/schemas/ErrEnvelope'
     Conflict:
       description: Conflict (e.g. attempt to delete a reserved resource).
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrEnvelope'
+    ServiceUnavailable:
+      description: The service or a required subsystem is not currently available.
       content:
         application/json:
           schema:
