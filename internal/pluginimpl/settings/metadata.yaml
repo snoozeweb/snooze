@@ -235,3 +235,15 @@ setting_form:
         description: 'Interval between orphan-rule cleanup runs (Go duration string).'
         default_value: '24h'
         group: 'housekeeping'
+    housekeeping.ack_timeout:
+        display_name: 'Ack timeout'
+        component: 'String'
+        description: 'How long an acknowledgement holds before the alert reverts to open (Go duration string, e.g. "24h"). The minute-cadence sweep enforces it.'
+        default_value: '24h'
+        group: 'housekeeping'
+    housekeeping.escalate_after:
+        display_name: 'Escalate after'
+        component: 'String'
+        description: 'How long an unacknowledged open alert may sit before auto-escalating to esc and re-notifying (Go duration string). Set 0 to disable auto-escalation.'
+        default_value: '0s'
+        group: 'housekeeping'

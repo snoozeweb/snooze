@@ -398,6 +398,22 @@ func (c *Core) bootHousekeeper() error {
 		}
 	}
 
+	// notify re-fires the notification dispatcher for an auto-escalated record.
+	// The housekeeper has no Core/pipeline handle, so we hand it a narrow
+	// callback wrapping the registered notification plugin's Process. Process
+	// skips ack/close and dispatches for esc, so the escalate sweep (which sets
+	// the record to "esc" before calling) gets a real re-notification. A nil or
+	// non-Processor plugin (tests, optional-plugin filtering) yields a no-op.
+	notify := func(ctx context.Context, rec snoozetypes.Record) error {
+		p := c.Plugin("notification")
+		proc, ok := p.(plugins.Processor)
+		if !ok {
+			return nil
+		}
+		_, err := proc.Process(ctx, rec)
+		return err
+	}
+
 	jobs := []registration{
 		liveIntervalReg(housekeeper.CleanupTimeoutJob(c.Driver, "record"),
 			liveInterval(func(h config.HousekeeperConfig) time.Duration { return h.CleanupAlert.AsDuration() }, 5*time.Minute)),
@@ -419,6 +435,11 @@ func (c *Core) bootHousekeeper() error {
 			liveInterval(func(h config.HousekeeperConfig) time.Duration { return h.CleanupAPIKey.AsDuration() }, time.Hour)),
 		liveIntervalReg(housekeeper.CleanupRefreshTokenJob(c.Refresh),
 			liveInterval(func(h config.HousekeeperConfig) time.Duration { return h.CleanupRefreshToken.AsDuration() }, time.Hour)),
+		// Timed alert lifecycle: fixed minute cadence (the deadlines are the live
+		// part, read inside the job from c.Settings); reverts expired acks and
+		// auto-escalates overdue opens.
+		liveIntervalReg(housekeeper.EscalateTimeoutJob(c.Driver, housekeeper.SystemClock(), c.Settings, notify),
+			func(context.Context) time.Duration { return time.Minute }),
 	}
 
 	for _, j := range jobs {

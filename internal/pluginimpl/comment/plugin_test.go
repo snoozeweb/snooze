@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"slices"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 	"go.opentelemetry.io/otel"
@@ -14,6 +15,7 @@ import (
 
 	"github.com/snoozeweb/snooze/internal/auth"
 	"github.com/snoozeweb/snooze/internal/config"
+	"github.com/snoozeweb/snooze/internal/config/schema"
 	"github.com/snoozeweb/snooze/internal/db"
 	"github.com/snoozeweb/snooze/internal/db/sqlite"
 	"github.com/snoozeweb/snooze/internal/plugins"
@@ -21,7 +23,10 @@ import (
 	"github.com/snoozeweb/snooze/pkg/snoozetypes"
 )
 
-type testHost struct{ drv *sqlite.Driver }
+type testHost struct {
+	drv *sqlite.Driver
+	cfg *config.Config
+}
 
 func newTestHost(t *testing.T) *testHost {
 	t.Helper()
@@ -32,12 +37,19 @@ func newTestHost(t *testing.T) *testHost {
 	return &testHost{drv: drv}
 }
 
-func (h *testHost) DB() db.Driver                { return h.drv }
-func (h *testHost) Bus() plugins.Bus             { return nil }
-func (h *testHost) Logger() *slog.Logger         { return slog.Default() }
-func (h *testHost) Tracer() trace.Tracer         { return otel.Tracer("comment-test") }
-func (h *testHost) Metrics() *telemetry.Registry { return telemetry.NewRegistry(nil) }
-func (h *testHost) Config() *config.Config       { return config.Default() }
+func (h *testHost) DB() db.Driver        { return h.drv }
+func (h *testHost) Bus() plugins.Bus     { return nil }
+func (h *testHost) Logger() *slog.Logger { return slog.Default() }
+func (h *testHost) Tracer() trace.Tracer { return otel.Tracer("comment-test") }
+func (h *testHost) Metrics() *telemetry.Registry {
+	return telemetry.NewRegistry(nil)
+}
+func (h *testHost) Config() *config.Config {
+	if h.cfg != nil {
+		return h.cfg
+	}
+	return config.Default()
+}
 func (h *testHost) Plugin(string) plugins.Plugin { return nil }
 
 func TestRegistration(t *testing.T) {
@@ -182,4 +194,83 @@ func TestGuardWrite_MissingRecordUIDPassesThrough(t *testing.T) {
 	// No record_uid key — the guard is a no-op for orphan comments.
 	doc := map[string]any{"type": "ack", "message": "orphan ack"}
 	require.NoError(t, p.GuardWrite(guardCtx(), "", doc, false))
+}
+
+// recordDoc fetches the persisted record so AfterCreate side effects can be
+// asserted.
+func recordDoc(t *testing.T, host *testHost, uid string) db.Document {
+	t.Helper()
+	rec, err := host.DB().GetOne(guardCtx(), "record", db.Document{"uid": uid})
+	require.NoError(t, err)
+	return rec
+}
+
+// asInt64 normalizes the loosely-typed numeric a backend may return.
+func asInt64(t *testing.T, v any) int64 {
+	t.Helper()
+	switch x := v.(type) {
+	case int64:
+		return x
+	case int:
+		return int64(x)
+	case float64:
+		return int64(x)
+	default:
+		t.Fatalf("not numeric: %T %v", v, v)
+		return 0
+	}
+}
+
+// TestAfterCreate_AckStampsAckUntil verifies that posting an ack comment stamps
+// ack_until = now + ack_timeout on the linked record and pauses escalation
+// (escalate_at = 0). The clock and timeout are both injected/configured so the
+// deadline math is deterministic.
+func TestAfterCreate_AckStampsAckUntil(t *testing.T) {
+	host := newTestHost(t)
+	host.cfg = config.Default()
+	host.cfg.Housekeeper.AckTimeout = schema.Duration(2 * time.Hour)
+
+	now := time.Unix(1_000_000, 0).UTC()
+	p := &Plugin{clock: func() time.Time { return now }}
+	require.NoError(t, p.PostInit(guardCtx(), host))
+
+	uid := seedRecord(t, host, "")
+	doc := map[string]any{"record_uid": uid, "type": "ack", "message": "ack it"}
+	require.NoError(t, p.AfterCreate(guardCtx(), []map[string]any{doc}))
+
+	rec := recordDoc(t, host, uid)
+	require.Equal(t, "ack", rec["state"])
+	require.Equal(t, now.Add(2*time.Hour).Unix(), asInt64(t, rec["ack_until"]),
+		"ack_until must be now + ack_timeout")
+	// Escalation is paused while acked: escalate_at cleared to 0.
+	if v, ok := rec["escalate_at"]; ok {
+		require.Equal(t, int64(0), asInt64(t, v))
+	}
+}
+
+// TestAfterCreate_OpenClearsAckUntil verifies that posting an open comment
+// clears ack_until back to 0 (the ack is lifted). With escalate_after disabled
+// (default 0) escalate_at stays 0.
+func TestAfterCreate_OpenClearsAckUntil(t *testing.T) {
+	host := newTestHost(t)
+
+	now := time.Unix(2_000_000, 0).UTC()
+	p := &Plugin{clock: func() time.Time { return now }}
+	require.NoError(t, p.PostInit(guardCtx(), host))
+
+	// Start acked so the open transition is legal and ack_until is non-zero.
+	uid := seedRecord(t, host, "ack")
+	require.NoError(t, host.DB().UpdateOne(guardCtx(), "record", uid,
+		db.Document{"ack_until": int64(99999)}, false))
+
+	doc := map[string]any{"record_uid": uid, "type": "open", "message": "reopen"}
+	require.NoError(t, p.AfterCreate(guardCtx(), []map[string]any{doc}))
+
+	rec := recordDoc(t, host, uid)
+	require.Equal(t, "open", rec["state"])
+	require.Equal(t, int64(0), asInt64(t, rec["ack_until"]), "open must clear ack_until")
+	// escalate_after defaults to 0 (disabled) → escalate_at not armed.
+	if v, ok := rec["escalate_at"]; ok {
+		require.Equal(t, int64(0), asInt64(t, v))
+	}
 }

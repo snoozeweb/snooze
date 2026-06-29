@@ -21,6 +21,15 @@ func TestHousekeeper_Defaults(t *testing.T) {
 	require.Equal(t, 400*24*time.Hour, h.CleanupStats.AsDuration())
 }
 
+// TestDefaultHousekeeper_LifecycleTimeouts pins the timed-alert-lifecycle
+// tunables: an ack expires after 24h by default, and auto-escalation is OFF
+// (escalate_after == 0) unless an operator opts in.
+func TestDefaultHousekeeper_LifecycleTimeouts(t *testing.T) {
+	h := DefaultHousekeeper()
+	require.Equal(t, 24*time.Hour, h.AckTimeout.AsDuration())
+	require.Equal(t, time.Duration(0), h.EscalateAfter.AsDuration())
+}
+
 func TestNotification_Defaults(t *testing.T) {
 	n := DefaultNotification()
 	require.Equal(t, time.Minute, n.NotificationFreq.AsDuration())

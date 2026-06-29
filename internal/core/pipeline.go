@@ -268,6 +268,12 @@ func recordToDoc(rec snoozetypes.Record) db.Document {
 	if len(rec.Plugins) > 0 {
 		d["plugins"] = rec.Plugins
 	}
+	if rec.AckUntil != 0 {
+		d["ack_until"] = rec.AckUntil
+	}
+	if rec.EscalateAt != 0 {
+		d["escalate_at"] = rec.EscalateAt
+	}
 	for k, v := range rec.Extra {
 		// Extra fields override the typed ones only if the typed value was
 		// not set above.

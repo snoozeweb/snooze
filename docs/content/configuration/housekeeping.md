@@ -149,3 +149,55 @@ The Go schema lives in `internal/config/schema/housekeeper.go`.
 > Cadence at which expired refresh-token rows are purged from the database.
 > The sweep runs across all tenants. Editable at runtime without a server
 > restart.
+
+### ack_timeout
+
+> Type  
+> string (Go duration)
+>
+> Default  
+> `"24h"`
+>
+> How long an acknowledgement holds before the alert's ack expires. When an
+> operator acks an alert the record is stamped with a server-controlled
+> `ack_until = now + ack_timeout`; once that deadline passes, the
+> escalate-timeout sweep reverts the record from `ack` back to `open`. Editable
+> at runtime in **Settings → Housekeeping** without a server restart.
+
+### escalate_after
+
+> Type  
+> string (Go duration)
+>
+> Default  
+> `"0s"` (disabled)
+>
+> How long an *unacknowledged* open alert may sit before auto-escalation kicks
+> in. With a non-zero value, an alert left `open` past `escalate_after` is
+> flipped to `esc` and its notifications are re-fired. `0` (the default)
+> disables auto-escalation entirely — the escalate pass becomes a no-op.
+> Editable at runtime without a server restart.
+
+## Ack expiry & auto-escalation
+
+A minute-cadence housekeeper sweep (`escalate_timeout`) enforces the
+server-controlled alert lifecycle, per tenant:
+
+- **Expired acks revert to open.** When an operator acknowledges an alert, the
+  record is stamped with `ack_until = now + ack_timeout`. Once that deadline
+  passes the sweep reverts the record to `open` (clearing `ack_until`) and
+  writes an automatic *"Ack expired — reverted to open"* timeline comment.
+  This closes the gap where a one-shot acked alert that never recurred stayed
+  silenced forever.
+- **Overdue opens auto-escalate.** When `escalate_after` is set, an alert that
+  is left `open` past its `escalate_at` deadline is flipped to `esc`, an
+  automatic *"Auto-escalated: unacknowledged past deadline"* comment is written,
+  and its notifications are re-fired. Escalation is **one-shot**: the deadline
+  is cleared on the flip, so the same record is not re-escalated until a new
+  transition re-arms it.
+
+The notification dispatcher's own `frequency` throttle still applies to the
+re-fired notification, so a misconfigured short `escalate_after` cannot spam.
+Note that the TTL `cleanup_alert` job may delete a record before it escalates if
+its `ttl` is shorter than `escalate_after` — keep `escalate_after` below
+`record_ttl` for escalation to be effective.

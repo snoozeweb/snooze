@@ -113,6 +113,36 @@ func TestRuntimeSettingsHousekeeperOverridesDuration(t *testing.T) {
 	require.Equal(t, 45*time.Minute, got.CleanupNotification.AsDuration())
 }
 
+// TestRuntimeSettingsHousekeeperLifecycleTimeouts locks in that the timed-alert
+// lifecycle tunables overlay from the DB and that the AckTimeout/EscalateAfter
+// accessors surface them (with a baseline fallback for ack_timeout).
+func TestRuntimeSettingsHousekeeperLifecycleTimeouts(t *testing.T) {
+	d := newDriver(t)
+	ctx := auth.WithTenant(context.Background(), snoozetypes.DefaultTenant)
+	writeSetting(ctx, t, d, "housekeeping.ack_timeout", "2h")
+	writeSetting(ctx, t, d, "housekeeping.escalate_after", "30m")
+
+	rs := NewRuntimeSettings(d, Default(), time.Minute)
+	got, err := rs.Housekeeper(ctx)
+	require.NoError(t, err)
+	require.Equal(t, 2*time.Hour, got.AckTimeout.AsDuration())
+	require.Equal(t, 30*time.Minute, got.EscalateAfter.AsDuration())
+
+	require.Equal(t, 2*time.Hour, rs.AckTimeout(ctx))
+	require.Equal(t, 30*time.Minute, rs.EscalateAfter(ctx))
+}
+
+// TestRuntimeSettingsLifecycleTimeoutDefaults checks the cold-start fallback:
+// ack_timeout defaults to 24h, escalate_after to 0 (disabled).
+func TestRuntimeSettingsLifecycleTimeoutDefaults(t *testing.T) {
+	d := newDriver(t)
+	ctx := auth.WithTenant(context.Background(), snoozetypes.DefaultTenant)
+
+	rs := NewRuntimeSettings(d, Default(), time.Minute)
+	require.Equal(t, 24*time.Hour, rs.AckTimeout(ctx))
+	require.Equal(t, time.Duration(0), rs.EscalateAfter(ctx))
+}
+
 // TestRuntimeSettingsCacheServesStaleUntilInvalidate is the contract the
 // settings PATCH handler relies on: a fresh read after Set sees the new
 // value only when Invalidate is called, otherwise the cache TTL governs.

@@ -292,3 +292,22 @@ func TestProcessRecord_AlertHitStat(t *testing.T) {
 	}
 	require.Equal(t, wantDims, gotDims)
 }
+
+// TestRecordToDoc_StampsAckUntilAndEscalateAt locks in the projector contract
+// for the timed-lifecycle fields: a non-zero AckUntil/EscalateAt is emitted,
+// and a zero value is elided (the on-disk shape stays compact and the
+// sweep queries behave predictably).
+func TestRecordToDoc_StampsAckUntilAndEscalateAt(t *testing.T) {
+	t.Parallel()
+
+	doc := recordToDoc(snoozetypes.Record{UID: "r1", AckUntil: 123, EscalateAt: 456})
+	require.Equal(t, int64(123), doc["ack_until"])
+	require.Equal(t, int64(456), doc["escalate_at"])
+
+	// Zero values are elided.
+	zero := recordToDoc(snoozetypes.Record{UID: "r2"})
+	_, hasAck := zero["ack_until"]
+	require.False(t, hasAck, "zero ack_until must be elided")
+	_, hasEsc := zero["escalate_at"]
+	require.False(t, hasEsc, "zero escalate_at must be elided")
+}

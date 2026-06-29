@@ -232,6 +232,43 @@ func (r *RuntimeSettings) StatsRetention(ctx context.Context) time.Duration {
 	return hk.CleanupStats.AsDuration()
 }
 
+// AckTimeout returns the current housekeeping.ack_timeout window — how long an
+// acknowledgement holds before the escalate-timeout sweep reverts the record to
+// "open". Falls back to the 24h baseline when unset or on a read error.
+// Implements the narrow lifecycleTimeouts contract the housekeeper's
+// EscalateTimeoutJob expects.
+func (r *RuntimeSettings) AckTimeout(ctx context.Context) time.Duration {
+	fallback := schema.DefaultHousekeeper().AckTimeout.AsDuration()
+	if r == nil {
+		return fallback
+	}
+	hk, err := r.Housekeeper(ctx)
+	if err != nil {
+		return fallback
+	}
+	if d := hk.AckTimeout.AsDuration(); d > 0 {
+		return d
+	}
+	return fallback
+}
+
+// EscalateAfter returns the current housekeeping.escalate_after window — how
+// long an un-acknowledged open alert may sit before auto-escalating to "esc".
+// A zero (or unset, or unreadable) value means auto-escalation is DISABLED, so
+// this deliberately returns 0 in those cases rather than substituting a
+// non-zero default; the sweep treats <=0 as a no-op. Implements the narrow
+// lifecycleTimeouts contract the housekeeper's EscalateTimeoutJob expects.
+func (r *RuntimeSettings) EscalateAfter(ctx context.Context) time.Duration {
+	if r == nil {
+		return 0
+	}
+	hk, err := r.Housekeeper(ctx)
+	if err != nil {
+		return 0
+	}
+	return hk.EscalateAfter.AsDuration()
+}
+
 // Housekeeper returns the current housekeeper configuration with the same
 // "baseline + DB overrides" layering as LDAP.
 func (r *RuntimeSettings) Housekeeper(ctx context.Context) (HousekeeperConfig, error) {
@@ -488,6 +525,8 @@ func applyHousekeeperOverrides(out *HousekeeperConfig, values map[string]any) {
 	overlayDuration(values, "housekeeping.cleanup_orphans", &out.CleanupOrphans)
 	overlayDuration(values, "housekeeping.cleanup_apikey", &out.CleanupAPIKey)
 	overlayDuration(values, "housekeeping.cleanup_refresh_token", &out.CleanupRefreshToken)
+	overlayDuration(values, "housekeeping.ack_timeout", &out.AckTimeout)
+	overlayDuration(values, "housekeeping.escalate_after", &out.EscalateAfter)
 }
 
 // overlayDuration writes the value at key into dst, parsing the

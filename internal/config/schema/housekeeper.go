@@ -18,6 +18,14 @@ type Housekeeper struct {
 	CleanupNotification Duration `koanf:"cleanup_notification"`
 	CleanupAPIKey       Duration `koanf:"cleanup_apikey"`
 	CleanupRefreshToken Duration `koanf:"cleanup_refresh_token"`
+	// AckTimeout is how long an acknowledgement holds before the
+	// escalate-timeout sweep reverts the record from "ack" to "open". Default
+	// 24h (Alerta's ACK_TIMEOUT is 7200s; we pick a more on-call-friendly day).
+	AckTimeout Duration `koanf:"ack_timeout"`
+	// EscalateAfter is how long an un-acknowledged open alert may sit before the
+	// sweep auto-escalates it to "esc" and re-fires its notifications. Default 0
+	// disables auto-escalation entirely (the escalate pass is a no-op).
+	EscalateAfter Duration `koanf:"escalate_after"`
 }
 
 // DefaultHousekeeper returns the Python defaults.
@@ -35,5 +43,7 @@ func DefaultHousekeeper() Housekeeper {
 		CleanupNotification: Duration(3 * 24 * time.Hour),
 		CleanupAPIKey:       Duration(time.Hour),
 		CleanupRefreshToken: Duration(time.Hour),
+		AckTimeout:          Duration(24 * time.Hour),
+		EscalateAfter:       Duration(0),
 	}
 }

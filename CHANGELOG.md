@@ -2,6 +2,7 @@
 
 ### Added
 
+- **Timed alert lifecycle — acks now expire and stale alerts auto-escalate.** An acknowledged alert is stamped with a server-controlled `ack_until`; a new minute-cadence housekeeper sweep reverts expired acks back to `open` and, when `housekeeping.escalate_after` is set, flips an alert left unacknowledged past the deadline to `esc` and re-fires its notifications. Closes the gap where a one-shot acked alert was silenced forever. Both timeouts are live-editable in Settings.
 - **Saved searches.** Operators can now bookmark named DSL filters from the
   Alerts page. Searches are stored per-user/per-tenant at
   `GET /api/v1/savedsearch` and apply instantly with a single click.

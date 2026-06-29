@@ -88,6 +88,12 @@ type Ticker interface {
 
 type systemClock struct{}
 
+// SystemClock returns the production wall-clock implementation of Clock. Jobs
+// that take a Clock directly (e.g. EscalateTimeoutJob, whose deadline math must
+// be fakeable in tests) get this at boot, while the Housekeeper itself defaults
+// to the same clock internally.
+func SystemClock() Clock { return systemClock{} }
+
 func (systemClock) Now() time.Time { return time.Now() }
 func (systemClock) NewTicker(d time.Duration) Ticker {
 	t := time.NewTicker(d)

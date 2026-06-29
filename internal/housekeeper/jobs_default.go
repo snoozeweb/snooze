@@ -2,12 +2,15 @@ package housekeeper
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
+	"log/slog"
 	"time"
 
 	"github.com/snoozeweb/snooze/internal/auth"
 	"github.com/snoozeweb/snooze/internal/condition"
 	"github.com/snoozeweb/snooze/internal/db"
+	"github.com/snoozeweb/snooze/pkg/snoozetypes"
 )
 
 // CleanupTimeoutJob deletes records past their TTL on the named collection
@@ -110,6 +113,171 @@ func CleanupAuditAsIntervalJob(d db.Driver, rs auditRetention) IntervalJob {
 // (the config package's RuntimeSettings type lives upstream of this one).
 type auditRetention interface {
 	AuditRetention(ctx context.Context) time.Duration
+}
+
+// lifecycleTimeouts is the narrow contract EscalateTimeoutJob reads the live
+// ack-expiry and auto-escalation windows from. Declared locally (like
+// auditRetention) to avoid importing the config package and its import cycle.
+// Satisfied by *config.RuntimeSettings.
+type lifecycleTimeouts interface {
+	AckTimeout(ctx context.Context) time.Duration
+	EscalateAfter(ctx context.Context) time.Duration
+}
+
+// recordCollection is the alert collection the escalate-timeout sweep operates
+// on. commentCollection holds the timeline auto-comments it writes.
+const (
+	recordCollection  = "record"
+	commentCollection = "comment"
+)
+
+// EscalateTimeoutJob enforces the server-controlled alert lifecycle every
+// minute, per active tenant. It is REVERT-not-delete (do not confuse with
+// CleanupTimeoutJob, which deletes TTL-expired rows). Two passes run inside the
+// per-tenant context from ForEachTenant so the driver injects tenant_id —
+// Search/UpdateOne are NEVER called under platform scope:
+//
+//  1. Expired-ack revert: every record with state=="ack" and
+//     0 < ack_until <= now reverts to "open", ack_until clears to 0, and
+//     escalate_at is (re-)armed when escalate_after>0 so the reopened alert can
+//     escalate later. An auto open-comment records the revert on the timeline.
+//  2. Escalate overdue (only when escalate_after>0): every record with
+//     state=="open" and 0 < escalate_at <= now flips to "esc", escalate_at
+//     clears to 0 (escalation is one-shot until a new transition re-arms it), an
+//     auto esc-comment is written, and the injected notify callback re-fires the
+//     notification dispatcher with the now-escalated record. notify errors are
+//     logged, not fatal.
+//
+// rs is read live on every fire (operators can retune the windows without a
+// restart); a tenant whose settings are unreadable falls back to defaults via
+// the accessor contract rather than failing the whole sweep. clk supplies the
+// deadline reference time — no time.Now() in this core path.
+func EscalateTimeoutJob(d db.Driver, clk Clock, rs lifecycleTimeouts, notify func(ctx context.Context, rec snoozetypes.Record) error) IntervalJob {
+	return IntervalJob{
+		Interval: time.Minute,
+		Job: NewJobFunc("escalate_timeout", func(ctx context.Context) error {
+			return ForEachTenant(ctx, d, func(tctx context.Context, _ string) error {
+				now := clk.Now().Unix()
+				escalateAfter := time.Duration(0)
+				if rs != nil {
+					escalateAfter = rs.EscalateAfter(tctx)
+				}
+				if err := revertExpiredAcks(tctx, d, now, escalateAfter); err != nil {
+					return err
+				}
+				return escalateOverdueOpens(tctx, d, now, escalateAfter, notify)
+			})
+		}),
+	}
+}
+
+// expiredDeadlineCond builds the `state==s AND 0 < field <= now` predicate the
+// sweep reuses for both passes.
+func expiredDeadlineCond(state, field string, now int64) condition.Cond {
+	return condition.And(
+		condition.Equals("state", state),
+		condition.Cond{Op: condition.OpLte, Field: field, Value: now},
+		condition.Cond{Op: condition.OpGt, Field: field, Value: int64(0)},
+	)
+}
+
+// revertExpiredAcks performs pass 1. Must run under a tenant-scoped tctx.
+func revertExpiredAcks(tctx context.Context, d db.Driver, now int64, escalateAfter time.Duration) error {
+	docs, _, err := d.Search(tctx, recordCollection, expiredDeadlineCond("ack", "ack_until", now), db.Page{})
+	if err != nil {
+		return fmt.Errorf("housekeeper: escalate_timeout: search expired acks: %w", err)
+	}
+	for _, doc := range docs {
+		uid, _ := doc["uid"].(string)
+		if uid == "" {
+			continue
+		}
+		patch := db.Document{"state": "open", "ack_until": int64(0)}
+		if escalateAfter > 0 {
+			patch["escalate_at"] = now + int64(escalateAfter.Seconds())
+		} else {
+			patch["escalate_at"] = int64(0)
+		}
+		if err := d.UpdateOne(tctx, recordCollection, uid, patch, true); err != nil {
+			return fmt.Errorf("housekeeper: escalate_timeout: revert ack %s: %w", uid, err)
+		}
+		writeLifecycleComment(tctx, d, uid, "open", "Ack expired — reverted to open", now)
+	}
+	return nil
+}
+
+// escalateOverdueOpens performs pass 2. A strict no-op when escalateAfter<=0:
+// no Search, no writes, no notifies. Must run under a tenant-scoped tctx.
+func escalateOverdueOpens(tctx context.Context, d db.Driver, now int64, escalateAfter time.Duration, notify func(ctx context.Context, rec snoozetypes.Record) error) error {
+	if escalateAfter <= 0 {
+		return nil
+	}
+	docs, _, err := d.Search(tctx, recordCollection, expiredDeadlineCond("open", "escalate_at", now), db.Page{})
+	if err != nil {
+		return fmt.Errorf("housekeeper: escalate_timeout: search overdue opens: %w", err)
+	}
+	for _, doc := range docs {
+		uid, _ := doc["uid"].(string)
+		if uid == "" {
+			continue
+		}
+		// One-shot: clear escalate_at so the same record is not re-escalated
+		// until a new transition re-arms it.
+		patch := db.Document{"state": "esc", "escalate_at": int64(0)}
+		if err := d.UpdateOne(tctx, recordCollection, uid, patch, true); err != nil {
+			return fmt.Errorf("housekeeper: escalate_timeout: escalate open %s: %w", uid, err)
+		}
+		writeLifecycleComment(tctx, d, uid, "esc", "Auto-escalated: unacknowledged past deadline", now)
+		if notify == nil {
+			continue
+		}
+		rec := recordFromDoc(doc)
+		rec.UID = uid
+		rec.State = "esc"
+		if nerr := notify(tctx, rec); nerr != nil {
+			// Best-effort: a re-notification failure must not abort the sweep.
+			slog.Default().Warn("housekeeper: escalate_timeout: re-notify failed", "uid", uid, "err", nerr)
+		}
+	}
+	return nil
+}
+
+// writeLifecycleComment appends an auto lifecycle comment to the timeline and
+// bumps the record's comment_count, mirroring aggregaterule.writeAutoComment.
+// The write goes straight to the driver (the comment plugin's AfterCreate is
+// bypassed) so the counter bump is done here explicitly. Best-effort: a failed
+// timeline write must never abort the sweep.
+func writeLifecycleComment(tctx context.Context, d db.Driver, recordUID, ctype, message string, now int64) {
+	if d == nil || recordUID == "" {
+		return
+	}
+	doc := db.Document{
+		"record_uid": recordUID,
+		"type":       ctype,
+		"message":    message,
+		"date_epoch": now,
+		"auto":       true,
+	}
+	if _, err := d.Write(tctx, commentCollection, []db.Document{doc}, db.WriteOptions{UpdateTime: true}); err != nil {
+		slog.Default().Warn("housekeeper: escalate_timeout: write auto comment", "uid", recordUID, "type", ctype, "err", err)
+		return
+	}
+	if _, err := d.IncMany(tctx, recordCollection, "comment_count", condition.Equals("uid", recordUID), 1); err != nil {
+		slog.Default().Warn("housekeeper: escalate_timeout: bump comment_count", "uid", recordUID, "err", err)
+	}
+}
+
+// recordFromDoc projects the loose record document the sweep read back into the
+// typed Record the notification dispatcher consumes. Only the fields the
+// dispatcher matches on need to survive; the rest round-trip through JSON.
+func recordFromDoc(doc db.Document) snoozetypes.Record {
+	var rec snoozetypes.Record
+	raw, err := json.Marshal(doc)
+	if err != nil {
+		return rec
+	}
+	_ = json.Unmarshal(raw, &rec)
+	return rec
 }
 
 // CleanupSnoozeJob deletes snooze rows whose time-constraint datetime entries

@@ -1991,6 +1991,22 @@ components:
         plugins:
           type: array
           items: {type: string}
+        ack_until:
+          type: integer
+          format: int64
+          description: |
+            Server-controlled ack-expiry deadline (epoch seconds). Set when the
+            record enters `ack`; the housekeeper's `escalate_timeout` sweep
+            reverts the record to `open` once this passes. `0`/absent means no
+            active ack expiry.
+        escalate_at:
+          type: integer
+          format: int64
+          description: |
+            Auto-escalation deadline (epoch seconds). When
+            `housekeeping.escalate_after` is set, an alert left unacknowledged
+            past this is flipped to `esc` and re-notified. `0`/absent means
+            escalation is not armed.
       additionalProperties: true
 
     ListResponse:

@@ -9,8 +9,10 @@ import (
 	_ "embed"
 	"errors"
 	"fmt"
+	"time"
 
 	"github.com/snoozeweb/snooze/internal/auth"
+	"github.com/snoozeweb/snooze/internal/config/schema"
 	"github.com/snoozeweb/snooze/internal/db"
 	"github.com/snoozeweb/snooze/internal/plugins"
 )
@@ -30,6 +32,12 @@ func factory(meta plugins.Metadata) (plugins.Plugin, error) {
 type Plugin struct {
 	meta plugins.Metadata
 	host plugins.Host
+	// clock supplies "now" for the timed-lifecycle deadline stamping in
+	// AfterCreate. Overrideable for deterministic tests; defaults to time.Now
+	// in PostInit so production never reads a zero clock. Mirrors the
+	// aggregaterule plugin's injected clock — the plugins.Host interface
+	// deliberately exposes no clock, so each plugin owns its own.
+	clock func() time.Time
 }
 
 // Compile-time guarantees that the plugin keeps satisfying the optional
@@ -51,6 +59,9 @@ func (p *Plugin) Metadata() plugins.Metadata { return p.meta }
 // PostInit captures the host for subsequent calls.
 func (p *Plugin) PostInit(_ context.Context, host plugins.Host) error {
 	p.host = host
+	if p.clock == nil {
+		p.clock = time.Now
+	}
 	return nil
 }
 
@@ -159,6 +170,32 @@ func (p *Plugin) AfterCreate(ctx context.Context, docs []map[string]any) error {
 		patch := db.Document{}
 		if t, ok := doc["type"].(string); ok && stateChangingActions[t] {
 			patch["state"] = t
+			// Stamp the server-controlled timed-lifecycle deadlines, mirroring
+			// Alerta's timeout.py server-override. now comes from the injected
+			// clock (never time.Now() in this core path); the timeouts are read
+			// live from the runtime settings (falling back to the file-config
+			// baseline). The escalate-timeout housekeeper sweep enforces these.
+			ackTimeout, escalateAfter := p.lifecycleTimeouts(ctx)
+			now := p.now().Unix()
+			switch t {
+			case "ack":
+				// An ack pauses escalation and arms an expiry.
+				patch["ack_until"] = now + int64(ackTimeout.Seconds())
+				patch["escalate_at"] = int64(0)
+			case "open", "esc":
+				// Reopened/escalated: clear the ack expiry and (re-)arm the
+				// escalation deadline so a reverted alert escalates again.
+				patch["ack_until"] = int64(0)
+				if escalateAfter > 0 {
+					patch["escalate_at"] = now + int64(escalateAfter.Seconds())
+				} else {
+					patch["escalate_at"] = int64(0)
+				}
+			case "close":
+				// Terminal: nothing left to expire or escalate.
+				patch["ack_until"] = int64(0)
+				patch["escalate_at"] = int64(0)
+			}
 		}
 		rec, err := p.host.DB().GetOne(ctx, "record", db.Document{"uid": uid})
 		if err != nil {
@@ -177,4 +214,49 @@ func (p *Plugin) AfterCreate(ctx context.Context, docs []map[string]any) error {
 		}
 	}
 	return nil
+}
+
+// now returns the current time from the injected clock, defaulting to time.Now
+// when the plugin was constructed without PostInit (defensive).
+func (p *Plugin) now() time.Time {
+	if p.clock != nil {
+		return p.clock()
+	}
+	return time.Now()
+}
+
+// lifecycleTimeouts resolves the live ack/escalate timeouts the state-transition
+// stamping uses. Preference order: the process-wide RuntimeSettings (fully
+// live, tenant-aware) when the host exposes it, then the file-config baseline
+// (host.Config().Housekeeper), then the schema defaults. This keeps the
+// observable behaviour identical to the housekeeper sweep, which reads the same
+// RuntimeSettings.
+func (p *Plugin) lifecycleTimeouts(ctx context.Context) (ackTimeout, escalateAfter time.Duration) {
+	def := schema.DefaultHousekeeper()
+	ackTimeout = def.AckTimeout.AsDuration()
+	escalateAfter = def.EscalateAfter.AsDuration()
+
+	if p.host == nil {
+		return ackTimeout, escalateAfter
+	}
+	// Live runtime settings (preferred): tenant-scoped, DB-overridable.
+	if rsh, ok := p.host.(plugins.RuntimeSettingsHost); ok {
+		if rs := rsh.RuntimeSettings(); rs != nil {
+			if hk, err := rs.Housekeeper(ctx); err == nil {
+				if d := hk.AckTimeout.AsDuration(); d > 0 {
+					ackTimeout = d
+				}
+				escalateAfter = hk.EscalateAfter.AsDuration()
+				return ackTimeout, escalateAfter
+			}
+		}
+	}
+	// Fall back to the file-config baseline.
+	if cfg := p.host.Config(); cfg != nil {
+		if d := cfg.Housekeeper.AckTimeout.AsDuration(); d > 0 {
+			ackTimeout = d
+		}
+		escalateAfter = cfg.Housekeeper.EscalateAfter.AsDuration()
+	}
+	return ackTimeout, escalateAfter
 }

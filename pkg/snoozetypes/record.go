@@ -25,6 +25,17 @@ type Record struct {
 	Raw     map[string]any `json:"raw,omitempty"`
 	State   string         `json:"state,omitempty"`
 	Plugins []string       `json:"plugins,omitempty"`
+	// AckUntil is the epoch-seconds deadline after which a server-controlled ack
+	// expires: the housekeeper's escalate-timeout sweep reverts the record from
+	// "ack" back to "open" once now passes this. Set when a state→ack comment is
+	// posted; cleared (0) on any other transition. Survives the JSON hop and is
+	// projected by recordToDoc.
+	AckUntil int64 `json:"ack_until,omitempty"`
+	// EscalateAt is the epoch-seconds deadline after which an un-acknowledged
+	// open alert auto-escalates to "esc" (the sweep flips it and re-fires
+	// notifications). Armed when a record enters open/esc and escalate_after>0;
+	// cleared (0) on ack/close and one-shot on escalation.
+	EscalateAt int64 `json:"escalate_at,omitempty"`
 	// Extra carries any plugin-injected fields (rule modifications, aggregaterule
 	// counters, etc.) that don't have a typed home.
 	Extra map[string]any `json:"-"`
