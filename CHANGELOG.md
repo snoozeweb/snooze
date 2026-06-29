@@ -2,6 +2,11 @@
 
 ### Added
 
+- **Alerts — "Acked by" column in the alert list.** The operator who last
+  acknowledged an alert is now stamped directly onto the record as `acked_by`
+  by the comment plugin. The alert list displays this in a new "Acked by"
+  column; the field is cleared automatically when the alert is re-opened or
+  closed.
 - **Stackdriver / Google Cloud Monitoring inbound receiver.** The new
   `stackdriver` plugin accepts GCP Monitoring incident webhook notifications
   at `/api/v1/webhook/stackdriver`, mapping incident state (`open` →

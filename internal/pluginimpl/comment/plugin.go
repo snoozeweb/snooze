@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/snoozeweb/snooze/internal/auth"
+	"github.com/snoozeweb/snooze/internal/condition"
 	"github.com/snoozeweb/snooze/internal/config/schema"
 	"github.com/snoozeweb/snooze/internal/db"
 	"github.com/snoozeweb/snooze/internal/plugins"
@@ -153,7 +154,12 @@ func (p *Plugin) GuardWrite(ctx context.Context, _ string, doc map[string]any, _
 
 // AfterCreate applies side effects after each comment is written:
 //   - For comments with type ∈ {"ack","close","open","esc"}, updates the
-//     linked record's `state` field to match.
+//     linked record's `state` field to match and stamps the timed-lifecycle
+//     deadlines (ack_until / escalate_at).
+//   - Denormalises the acknowledger onto the record as `acked_by`: stamped
+//     from the comment's resolved `user` on `ack`, removed entirely on
+//     `open`/`close`, and left untouched on `esc` (the last acknowledger is
+//     kept for accountability through a re-escalation).
 //   - Increments the record's `comment_count` field by 1.
 //
 // Errors looking up or writing to the record collection are returned so
@@ -168,7 +174,8 @@ func (p *Plugin) AfterCreate(ctx context.Context, docs []map[string]any) error {
 			continue
 		}
 		patch := db.Document{}
-		if t, ok := doc["type"].(string); ok && stateChangingActions[t] {
+		commentType, _ := doc["type"].(string)
+		if t := commentType; stateChangingActions[t] {
 			patch["state"] = t
 			// Stamp the server-controlled timed-lifecycle deadlines, mirroring
 			// Alerta's timeout.py server-override. now comes from the injected
@@ -182,6 +189,14 @@ func (p *Plugin) AfterCreate(ctx context.Context, docs []map[string]any) error {
 				// An ack pauses escalation and arms an expiry.
 				patch["ack_until"] = now + int64(ackTimeout.Seconds())
 				patch["escalate_at"] = int64(0)
+				// Denormalise the acknowledger onto the record for the alert-list
+				// "Acked by" column. doc["user"] is server-authoritative by now
+				// (TransformWrite stamped it from the JWT claims). A user-less ack
+				// (auto-comment that bypasses TransformWrite) leaves acked_by unset
+				// so omitempty/EXISTS stays clean.
+				if user, _ := doc["user"].(string); user != "" {
+					patch["acked_by"] = user
+				}
 			case "open", "esc":
 				// Reopened/escalated: clear the ack expiry and (re-)arm the
 				// escalation deadline so a reverted alert escalates again.
@@ -211,6 +226,17 @@ func (p *Plugin) AfterCreate(ctx context.Context, docs []map[string]any) error {
 		patch["comment_count"] = current + 1
 		if err := p.host.DB().UpdateOne(ctx, "record", uid, patch, true); err != nil {
 			return fmt.Errorf("comment: update record %s: %w", uid, err)
+		}
+		// Re-opening or closing clears the acknowledger. UnsetFields truly
+		// deletes the key (vs. an UpdateOne zero-value that would leave an empty
+		// string), so omitempty/EXISTS stops matching and the "Acked by" column
+		// renders "—". Runs after the UpdateOne above, which already applied the
+		// state + ack_until/escalate_at clearing for this transition.
+		if commentType == "open" || commentType == "close" {
+			if _, err := p.host.DB().UnsetFields(ctx, "record", []string{"acked_by"},
+				condition.Equals("uid", uid)); err != nil {
+				return fmt.Errorf("comment: unset acked_by on record %s: %w", uid, err)
+			}
 		}
 	}
 	return nil

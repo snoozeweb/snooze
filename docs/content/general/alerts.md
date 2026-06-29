@@ -97,6 +97,23 @@ It can be done automatically by an [aggregate rule](./aggregaterules.md) if the 
 
 It can be done manually by the user to have the alert go through the full processing once more, meaning it can get notified again or snoozed. [Modifications](./rules.md#modifications) can be applied to the alert beforehand.
 
+### Acked by
+
+The alert list shows an **Acked by** column with the login of the operator who
+last acknowledged the alert. It is a convenience denormalisation: when someone
+acknowledges an alert, their login is stamped directly onto the alert record so
+the column reads from the same response that populates every other column — no
+join against the comment timeline.
+
+- The column shows the acknowledger while the alert is **acknowledged**.
+- It is **blank** (`—`) while the alert is open or closed — re-opening or
+  closing an alert clears the field.
+- It is **retained through re-escalation** (`esc`): the last acknowledger stays
+  visible so the team can see who acked before the alert fired again.
+
+Alerts that were already acknowledged before this feature was deployed have no
+stored acknowledger and show `—` until they are acknowledged again.
+
 ## Bulk operations across a query
 
 Instead of acting on one alert at a time, you can apply a single change to

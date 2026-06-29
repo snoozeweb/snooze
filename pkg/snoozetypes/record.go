@@ -20,11 +20,15 @@ type Record struct {
 	// Hash is the aggregaterule-computed duplicate-detection key. Lives as a
 	// typed field so it survives the snooze-server → snooze-teams JSON hop;
 	// stuffing it into Extra would silently drop it because Extra is `json:"-"`.
-	Hash    string         `json:"hash,omitempty"`
-	Tags    []string       `json:"tags,omitempty"`
-	Raw     map[string]any `json:"raw,omitempty"`
-	State   string         `json:"state,omitempty"`
-	Plugins []string       `json:"plugins,omitempty"`
+	Hash  string         `json:"hash,omitempty"`
+	Tags  []string       `json:"tags,omitempty"`
+	Raw   map[string]any `json:"raw,omitempty"`
+	State string         `json:"state,omitempty"`
+	// AckedBy is the login of the operator who last acknowledged the alert.
+	// Stamped by the comment plugin on ack and cleared on open or close.
+	// Empty/absent when the alert has not been acknowledged in its current lifecycle.
+	AckedBy string   `json:"acked_by,omitempty"`
+	Plugins []string `json:"plugins,omitempty"`
 	// AckUntil is the epoch-seconds deadline after which a server-controlled ack
 	// expires: the housekeeper's escalate-timeout sweep reverts the record from
 	// "ack" back to "open" once now passes this. Set when a state→ack comment is

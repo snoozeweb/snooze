@@ -274,3 +274,124 @@ func TestAfterCreate_OpenClearsAckUntil(t *testing.T) {
 		require.Equal(t, int64(0), asInt64(t, v))
 	}
 }
+
+// seedAckedBy stamps acked_by onto an existing record so the clear/preserve
+// paths can be exercised from a record that was already acknowledged.
+func seedAckedBy(t *testing.T, host *testHost, uid, who string) {
+	t.Helper()
+	require.NoError(t, host.DB().UpdateOne(guardCtx(), "record", uid,
+		db.Document{"acked_by": who}, false))
+	rec := recordDoc(t, host, uid)
+	require.Equal(t, who, rec["acked_by"], "seed precondition")
+}
+
+// TestAfterCreate_AckedByStampedOnAck verifies that an ack comment carrying a
+// resolved user stamps acked_by = user onto the linked record (denormalised
+// convenience for the alert-list "Acked by" column).
+func TestAfterCreate_AckedByStampedOnAck(t *testing.T) {
+	host := newTestHost(t)
+	p := &Plugin{}
+	require.NoError(t, p.PostInit(guardCtx(), host))
+
+	uid := seedRecord(t, host, "")
+	doc := map[string]any{"record_uid": uid, "type": "ack", "user": "alice", "message": "ack it"}
+	require.NoError(t, p.AfterCreate(guardCtx(), []map[string]any{doc}))
+
+	rec := recordDoc(t, host, uid)
+	require.Equal(t, "ack", rec["state"])
+	require.Equal(t, "alice", rec["acked_by"], "ack must stamp acked_by = user")
+}
+
+// TestAfterCreate_AckedByClearedOnOpen verifies that re-opening an acknowledged
+// alert truly removes the acked_by key (UnsetFields, not an empty string) so
+// EXISTS/omitempty semantics hold.
+func TestAfterCreate_AckedByClearedOnOpen(t *testing.T) {
+	host := newTestHost(t)
+	p := &Plugin{}
+	require.NoError(t, p.PostInit(guardCtx(), host))
+
+	uid := seedRecord(t, host, "ack")
+	seedAckedBy(t, host, uid, "alice")
+
+	doc := map[string]any{"record_uid": uid, "type": "open", "message": "reopen"}
+	require.NoError(t, p.AfterCreate(guardCtx(), []map[string]any{doc}))
+
+	rec := recordDoc(t, host, uid)
+	require.Equal(t, "open", rec["state"])
+	_, has := rec["acked_by"]
+	require.False(t, has, "open must remove the acked_by key entirely")
+}
+
+// TestAfterCreate_AckedByClearedOnClose verifies the close path also removes
+// the acked_by key.
+func TestAfterCreate_AckedByClearedOnClose(t *testing.T) {
+	host := newTestHost(t)
+	p := &Plugin{}
+	require.NoError(t, p.PostInit(guardCtx(), host))
+
+	uid := seedRecord(t, host, "ack")
+	seedAckedBy(t, host, uid, "alice")
+
+	doc := map[string]any{"record_uid": uid, "type": "close", "message": "resolved"}
+	require.NoError(t, p.AfterCreate(guardCtx(), []map[string]any{doc}))
+
+	rec := recordDoc(t, host, uid)
+	require.Equal(t, "close", rec["state"])
+	_, has := rec["acked_by"]
+	require.False(t, has, "close must remove the acked_by key entirely")
+}
+
+// TestAfterCreate_AckedByPreservedOnEsc verifies that re-escalating keeps the
+// last acknowledger for accountability (Alerta clears on open but is silent on
+// esc; Snooze preserves it).
+func TestAfterCreate_AckedByPreservedOnEsc(t *testing.T) {
+	host := newTestHost(t)
+	p := &Plugin{}
+	require.NoError(t, p.PostInit(guardCtx(), host))
+
+	uid := seedRecord(t, host, "ack")
+	seedAckedBy(t, host, uid, "alice")
+
+	doc := map[string]any{"record_uid": uid, "type": "esc", "message": "fired again"}
+	require.NoError(t, p.AfterCreate(guardCtx(), []map[string]any{doc}))
+
+	rec := recordDoc(t, host, uid)
+	require.Equal(t, "esc", rec["state"])
+	require.Equal(t, "alice", rec["acked_by"], "esc must preserve acked_by")
+}
+
+// TestAfterCreate_AckedByFreeCommentNoChange verifies a free-form comment
+// (no transition type) leaves acked_by untouched.
+func TestAfterCreate_AckedByFreeCommentNoChange(t *testing.T) {
+	host := newTestHost(t)
+	p := &Plugin{}
+	require.NoError(t, p.PostInit(guardCtx(), host))
+
+	uid := seedRecord(t, host, "ack")
+	seedAckedBy(t, host, uid, "alice")
+
+	doc := map[string]any{"record_uid": uid, "type": "", "user": "bob", "message": "just a note"}
+	require.NoError(t, p.AfterCreate(guardCtx(), []map[string]any{doc}))
+
+	rec := recordDoc(t, host, uid)
+	require.Equal(t, "alice", rec["acked_by"], "free comment must not touch acked_by")
+}
+
+// TestAfterCreate_AckedByEmptyUserAck verifies the auto-comment path (ack with
+// no resolved user, e.g. from the aggregate-rule processor that bypasses
+// TransformWrite) does not stamp an empty acked_by — omitempty/EXISTS stays
+// clean and the column renders "—".
+func TestAfterCreate_AckedByEmptyUserAck(t *testing.T) {
+	host := newTestHost(t)
+	p := &Plugin{}
+	require.NoError(t, p.PostInit(guardCtx(), host))
+
+	uid := seedRecord(t, host, "")
+	doc := map[string]any{"record_uid": uid, "type": "ack", "user": "", "message": "auto ack"}
+	require.NoError(t, p.AfterCreate(guardCtx(), []map[string]any{doc}))
+
+	rec := recordDoc(t, host, uid)
+	require.Equal(t, "ack", rec["state"])
+	_, has := rec["acked_by"]
+	require.False(t, has, "empty-user ack must not stamp acked_by")
+}

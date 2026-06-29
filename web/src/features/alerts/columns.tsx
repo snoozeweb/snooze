@@ -34,6 +34,15 @@ export function recordCommentCount(r: Record_): number {
   return 0;
 }
 
+// `acked_by` is denormalised onto the record by the comment plugin
+// (internal/pluginimpl/comment/plugin.go AfterCreate): set to the operator's
+// login on ack, removed on open/close, kept through esc. Read defensively —
+// it's absent on records never acked in their current lifecycle. Read-only.
+export function recordAckedBy(r: Record_): string {
+  const v = (r as { acked_by?: unknown }).acked_by;
+  return typeof v === "string" ? v : "";
+}
+
 export const alertColumns: ColumnDef<Record_>[] = [
   {
     id: "date_epoch",
@@ -63,6 +72,15 @@ export const alertColumns: ColumnDef<Record_>[] = [
       return <Badge variant={stateBadgeVariant(state)}>{stateLabel(state)}</Badge>;
     },
     sortable: true,
+    width: "120px",
+  },
+  {
+    id: "acked_by",
+    header: "Acked by",
+    cell: (r) => {
+      const who = recordAckedBy(r);
+      return who ? <Code>{who}</Code> : <span>—</span>;
+    },
     width: "120px",
   },
   {

@@ -1546,6 +1546,231 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/group": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List server-managed user groups
+         * @description Server-managed groups follow the generic CRUD surface
+         *     (`/api/v1/{plugin}`) for create / replace / patch / delete / search.
+         *     Each group carries `{name, description, members[]}`; membership is folded
+         *     into a user's group set at login (see the `Group` schema). Requires the
+         *     `ro_group` permission.
+         *
+         */
+        get: {
+            parameters: {
+                query?: {
+                    /** @description Base64url-encoded JSON condition. Empty (or absent) selects
+                     *     every document. Use `POST /{plugin}/search` for queries that
+                     *     won't fit in a URL.
+                     *      */
+                    q?: components["parameters"]["QueryQ"];
+                    offset?: components["parameters"]["Offset"];
+                    limit?: components["parameters"]["Limit"];
+                    orderby?: components["parameters"]["OrderBy"];
+                    asc?: components["parameters"]["Asc"];
+                };
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Paginated list of groups. */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            data?: components["schemas"]["Group"][];
+                            meta?: components["schemas"]["ListMeta"];
+                        };
+                    };
+                };
+                401: components["responses"]["Unauthorized"];
+                403: components["responses"]["Forbidden"];
+            };
+        };
+        put?: never;
+        /**
+         * Create a server-managed user group
+         * @description Creates a group `{name, description, members[]}`. The `(tenant_id, name)`
+         *     pair must be unique (duplicate names are rejected). Requires `rw_group`.
+         *
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["Group"];
+                };
+            };
+            responses: {
+                /** @description The created group. */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Group"];
+                    };
+                };
+                400: components["responses"]["BadRequest"];
+                401: components["responses"]["Unauthorized"];
+                403: components["responses"]["Forbidden"];
+                409: components["responses"]["Conflict"];
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/group/{uid}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                uid: string;
+            };
+            cookie?: never;
+        };
+        /** Fetch a single group */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    uid: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description The group document. */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Group"];
+                    };
+                };
+                404: components["responses"]["NotFound"];
+            };
+        };
+        /**
+         * Replace a group
+         * @description Full replacement of the group document. Requires `rw_group`.
+         */
+        put: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    uid: string;
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["Group"];
+                };
+            };
+            responses: {
+                /** @description The replaced group. */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Group"];
+                    };
+                };
+                400: components["responses"]["BadRequest"];
+                404: components["responses"]["NotFound"];
+            };
+        };
+        post?: never;
+        /**
+         * Delete a group
+         * @description Removes the group document. User documents are untouched; members simply
+         *     lose this group's membership at their next login. Requires `rw_group`.
+         *
+         */
+        delete: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    uid: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Deletion count. */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["StatusOK"];
+                    };
+                };
+                404: components["responses"]["NotFound"];
+            };
+        };
+        options?: never;
+        head?: never;
+        /**
+         * Partially update a group
+         * @description Partial update — e.g. PATCH `{"members": [...]}` to add or remove members
+         *     without touching `name`/`description`. Requires `rw_group`.
+         *
+         */
+        patch: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    uid: string;
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["Group"];
+                };
+            };
+            responses: {
+                /** @description The updated group. */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Group"];
+                    };
+                };
+                400: components["responses"]["BadRequest"];
+                404: components["responses"]["NotFound"];
+            };
+        };
+        trace?: never;
+    };
     "/api/v1/record/bulk_state": {
         parameters: {
             query?: never;
@@ -2082,7 +2307,7 @@ export interface paths {
                 query?: never;
                 header?: never;
                 path: {
-                    webhook: "alertmanager" | "azuremonitor" | "cloudwatch" | "datadog" | "grafana" | "graylog" | "influxdb2" | "kapacitor" | "newrelic" | "pingdom" | "prometheus" | "sentry";
+                    webhook: "alertmanager" | "azuremonitor" | "cloudwatch" | "datadog" | "grafana" | "graylog" | "influxdb2" | "kapacitor" | "newrelic" | "pingdom" | "prometheus" | "sentry" | "stackdriver";
                 };
                 cookie?: never;
             };
@@ -3340,6 +3565,23 @@ export interface components {
             /** @description Owning tenant slug (server-stamped). */
             tenant_id?: string;
         };
+        /** @description A server-managed user cohort. `members[]` references users by `{username, method}` (the user collection's identity key). At login the RBAC resolver unions the names of every group the user belongs to into the group set, so a role whose `groups[]` lists this group's name is granted to every member — no IdP required. Keyed by `(tenant_id, name)`.
+         *      */
+        Group: {
+            uid?: string;
+            /** @description Group name, unique within the tenant, e.g. "sre". */
+            name: string;
+            /** @description Optional free-text label. */
+            description?: string;
+            /** @description Users in this group, referenced by username + auth method. */
+            members?: {
+                username?: string;
+                /** @description Auth method, e.g. "local" or "ldap". */
+                method?: string;
+            }[];
+            /** @description Owning tenant slug (server-stamped). */
+            tenant_id?: string;
+        };
         APIKey: {
             uid?: string;
             owner?: string;
@@ -3487,6 +3729,11 @@ export interface components {
             };
             /** @enum {string} */
             state?: "" | "open" | "ack" | "close" | "shelved";
+            /** @description Login of the operator who last acknowledged the alert. Stamped by
+             *     the comment plugin on `ack` and cleared on `open`/`close` (kept
+             *     through `esc`). Absent when the alert is not currently acknowledged.
+             *      */
+            acked_by?: string;
             plugins?: string[];
             /**
              * Format: int64
@@ -3958,7 +4205,7 @@ export interface components {
          *     `syncer.hostname` or loop detection misfires. Hawk-HMAC auth is not
          *     supported.
          *      */
-        PluginPath: "action" | "aggregaterule" | "alertmanager" | "apikey" | "audit" | "azuremonitor" | "cloudwatch" | "comment" | "datadog" | "discord" | "environment" | "forward" | "googlechat" | "grafana" | "heartbeat" | "influxdb2" | "kapacitor" | "kv" | "mail" | "newrelic" | "notification" | "ntfy" | "opsgenie" | "pagerduty" | "patlite" | "profile" | "prometheus" | "pushover" | "record" | "role" | "rule" | "savedsearch" | "script" | "sentry" | "servicenow" | "settings" | "slack" | "snooze" | "sns" | "stats" | "statuspage" | "telegram" | "twilio" | "user" | "webhook" | "widget";
+        PluginPath: "action" | "aggregaterule" | "alertmanager" | "apikey" | "audit" | "azuremonitor" | "cloudwatch" | "comment" | "datadog" | "discord" | "environment" | "forward" | "googlechat" | "grafana" | "heartbeat" | "influxdb2" | "kapacitor" | "kv" | "mail" | "newrelic" | "notification" | "ntfy" | "opsgenie" | "pagerduty" | "patlite" | "profile" | "prometheus" | "pushover" | "record" | "role" | "rule" | "savedsearch" | "script" | "sentry" | "servicenow" | "settings" | "slack" | "snooze" | "sns" | "stackdriver" | "stats" | "statuspage" | "telegram" | "twilio" | "user" | "webhook" | "widget";
         /** @description Base64url-encoded JSON condition. Empty (or absent) selects
          *     every document. Use `POST /{plugin}/search` for queries that
          *     won't fit in a URL.
