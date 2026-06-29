@@ -2,6 +2,11 @@
 
 ### Added
 
+- **Metrics — live record-count gauge.** Added the `snooze_records` gauge
+  (labelled by `state`) to the Prometheus `/metrics` endpoint. It reports the
+  current number of records in the database grouped by state, summed across all
+  tenants and refreshed on every scrape — graph open-alert backlog growth or
+  alert when the queue exceeds a threshold.
 - **Admin — on-demand housekeeping trigger.**
   `POST /api/v1/housekeeping/run` (requires `rw_all`) fires every registered
   cleanup job synchronously and returns per-job results, including errors and

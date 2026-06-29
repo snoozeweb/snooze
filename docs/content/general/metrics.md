@@ -77,6 +77,15 @@ Counter
 
 Total number of notification actions that failed.
 
+### snooze_records
+
+Type: Gauge  
+Labels: `state` (`open`, `ack`, `close`, …)
+
+Current number of records in the database grouped by state. Refreshed on every
+Prometheus scrape. Use to graph open-alert backlog growth or alert when the queue
+exceeds a threshold.
+
 ## Web interface
 
 Snooze web interface has a few built-in charts displaying these metrics under its dashboard section.

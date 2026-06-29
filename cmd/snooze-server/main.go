@@ -358,6 +358,10 @@ func runDaemonCtx(ctx context.Context, f *daemonFlags, stderr io.Writer) error {
 	// deferred drv.Close() above (LIFO), the correct teardown order.
 	defer func() { _ = c.Close() }()
 
+	// Register the live record-count gauge now that the driver exists (it was
+	// not available when NewRegistry ran). Refreshed on every Prometheus scrape.
+	metrics.RegisterRecordGauge(promReg, drv, loggers.Snooze)
+
 	providers := buildAuthProviders(cfg, drv, c.Settings)
 
 	adapter := &coreAdapter{Core: c}

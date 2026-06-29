@@ -41,6 +41,9 @@ func TestNewRegistry_ExposesAllMetrics(t *testing.T) {
 	for _, n := range want {
 		require.True(t, names[n], "missing metric %s", n)
 	}
+	// snooze_records is NOT part of the base registry: it is a custom collector
+	// registered separately via RegisterRecordGauge once the DB driver exists.
+	require.False(t, names["snooze_records"], "snooze_records must be registered separately, not by NewRegistry")
 }
 
 func TestNewRegistry_RegistersDefaultCollectors(t *testing.T) {
