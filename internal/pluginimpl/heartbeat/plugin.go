@@ -33,6 +33,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"strconv"
 	"sync"
 	"time"
 
@@ -301,7 +302,19 @@ func (p *Plugin) HandleWebhook(w http.ResponseWriter, r *http.Request) {
 	}
 	tenantCtx := snoozetypes.WithTenant(r.Context(), tenantID)
 
-	matched, err := p.touch(tenantCtx, name)
+	// Optional ?sent_at=<unix-ms>: when present and parseable we record the
+	// latency on this ping. Absent or unparseable → sentAt 0 (no latency
+	// stored); the ping still succeeds.
+	var sentAt int64
+	if raw := r.URL.Query().Get("sent_at"); raw != "" {
+		if parsed, perr := strconv.ParseInt(raw, 10, 64); perr == nil {
+			sentAt = parsed
+		} else if lg := p.logger(); lg != nil {
+			lg.Warn("heartbeat: ignoring unparseable sent_at", "name", name, "sent_at", raw)
+		}
+	}
+
+	matched, err := p.touch(tenantCtx, name, sentAt)
 	if err != nil {
 		if lg := p.logger(); lg != nil {
 			lg.Warn("heartbeat: ping update failed", "name", name, "err", err)
@@ -325,12 +338,29 @@ func (p *Plugin) HandleWebhook(w http.ResponseWriter, r *http.Request) {
 
 // touch stamps last_seen=now (RFC3339, UTC) on the named heartbeat and returns
 // how many documents matched. A 0 return means the name does not exist.
-func (p *Plugin) touch(ctx context.Context, name string) (int, error) {
+//
+// When sentAt > 0 (a parsed ?sent_at=<unix-ms> from the ping) it additionally
+// stamps last_latency = receive_time - sent_at in milliseconds. A negative
+// latency means the client clock runs ahead of the server's (clock skew); the
+// value is still stored (so operators can see it) and logged at Warn, but the
+// downstream isSlow check uses `>` so a negative value never trips the slow
+// alert — the correct fail-safe.
+func (p *Plugin) touch(ctx context.Context, name string, sentAt int64) (int, error) {
 	driver := p.db()
 	if driver == nil {
 		return 0, fmt.Errorf("heartbeat: no database available")
 	}
 	patch := db.Document{"last_seen": p.now().UTC().Format(time.RFC3339)}
+	if sentAt > 0 {
+		latency := p.now().UnixMilli() - sentAt
+		if latency < 0 {
+			if lg := p.logger(); lg != nil {
+				lg.Warn("heartbeat: negative ping latency (client clock ahead of server?)",
+					"name", name, "latency_ms", latency)
+			}
+		}
+		patch["last_latency"] = latency
+	}
 	return driver.SetFields(ctx, collection, patch, condition.Equals("name", name))
 }
 
@@ -412,8 +442,12 @@ func (p *Plugin) logger() interface {
 	return lg
 }
 
+// clearFired forgets both the miss and slow fired marks for (tenant, name) so a
+// fresh ping fully re-arms the heartbeat: the next overdue window fires a miss
+// again, and the next slow window fires a slow alert again.
 func (p *Plugin) clearFired(tenant, name string) {
 	p.mu.Lock()
 	delete(p.fired, firedKey(tenant, name))
+	delete(p.fired, slowFiredKey(tenant, name))
 	p.mu.Unlock()
 }

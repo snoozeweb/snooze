@@ -22,6 +22,14 @@ type heartbeat struct {
 	Message     string // optional custom message
 	Enabled     bool
 
+	// MaxLatency is the optional per-heartbeat latency threshold in
+	// milliseconds. 0 (or absent) disables latency tracking for the heartbeat.
+	MaxLatency int64
+	// LastLatency is the latency of the most recent ping in milliseconds
+	// (receive_time - sent_at), set whenever a ping carried ?sent_at=. 0 when
+	// no ping has reported latency.
+	LastLatency int64
+
 	// LastSeen is the parsed last-ping time. Zero when never pinged.
 	LastSeen time.Time
 	// LastSeenRaw is the original last_seen value as stored, used both for the
@@ -62,6 +70,12 @@ func parseHeartbeat(doc map[string]any) (heartbeat, bool) {
 
 	if grace, ok := intField(doc, "grace"); ok && grace > 0 {
 		hb.Grace = grace
+	}
+	if maxLat, ok := intField(doc, "max_latency"); ok && maxLat > 0 {
+		hb.MaxLatency = maxLat
+	}
+	if lastLat, ok := intField(doc, "last_latency"); ok {
+		hb.LastLatency = lastLat
 	}
 	if sev, ok := stringField(doc, "severity"); ok && sev != "" {
 		hb.Severity = sev
@@ -200,6 +214,16 @@ func (p *Plugin) Schema() any {
 				"minimum":     0,
 				"description": "Extra slack in seconds before a miss fires (optional).",
 			},
+			"max_latency": map[string]any{
+				"type":        "integer",
+				"minimum":     0,
+				"description": "Maximum acceptable ping latency in milliseconds. 0 or absent disables latency tracking.",
+			},
+			"last_latency": map[string]any{
+				"type":        "integer",
+				"readOnly":    true,
+				"description": "Latency of the most recent ping in milliseconds (receive_time - sent_at). Set by the ping endpoint when ?sent_at= is supplied.",
+			},
 			"last_seen": map[string]any{
 				"type":        "string",
 				"description": "Last ping time (RFC3339 or epoch seconds); set by the ping endpoint.",
@@ -227,9 +251,9 @@ func (p *Plugin) Schema() any {
 			},
 			"status": map[string]any{
 				"type":        "string",
-				"enum":        []string{"ok", "overdue"},
+				"enum":        []string{"ok", "overdue", "slow"},
 				"readOnly":    true,
-				"description": "Computed health status (ok/overdue). Never stored; projected at read time.",
+				"description": "Computed health status (ok/overdue/slow). Never stored; projected at read time.",
 			},
 		},
 		"additionalProperties": true,
@@ -277,6 +301,16 @@ func (p *Plugin) Validate(obj map[string]any) error {
 		}
 		if n < 0 {
 			return fmt.Errorf("heartbeat: 'grace' must not be negative")
+		}
+	}
+
+	if raw, present := obj["max_latency"]; present {
+		n, ok := intField(obj, "max_latency")
+		if !ok {
+			return fmt.Errorf("heartbeat: 'max_latency' must be an integer number of milliseconds (got %T)", raw)
+		}
+		if n < 0 {
+			return fmt.Errorf("heartbeat: 'max_latency' must not be negative")
 		}
 	}
 

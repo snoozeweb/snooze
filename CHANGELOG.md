@@ -2,6 +2,13 @@
 
 ### Added
 
+- **Heartbeat — latency / slow-ping detection.** Heartbeat documents now
+  accept an optional `max_latency` (ms) field. When the ping URL includes
+  `?sent_at=<unix-ms>`, the server records `last_latency = receive_time - sent_at`.
+  If `last_latency > max_latency` while the heartbeat is still within its
+  `interval + grace` window, a lower-severity `"slow"` alert is injected —
+  giving an early-warning signal before the dead-man's switch fully expires.
+  The `status` field (Plan 06) gains a third value: `"slow"`.
 - **Snooze — suppression-bypass severities.** A new `general.snooze_bypass_severities`
   list (default empty) exempts records whose `severity` matches any entry from all
   snooze rules. Set it to e.g. `['ok', 'critical']` to ensure recovery and

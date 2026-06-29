@@ -18,20 +18,43 @@ const (
 	// StatusOverdue means the heartbeat has been silent longer than
 	// interval+grace (or has never been pinged).
 	StatusOverdue HeartbeatStatus = "overdue"
+	// StatusSlow means the heartbeat is still within interval+grace but its
+	// most recent ping latency exceeded max_latency — an early-warning signal.
+	StatusSlow HeartbeatStatus = "slow"
 )
 
-// computeStatus returns the read-time health status for a heartbeat as of now.
-// It is a pure function (no plugin state, no clock) that mirrors the deadline
-// logic in (*Plugin).isOverdue exactly: overdue when now is strictly After the
-// deadline (lastSeen + window). At the exact deadline the heartbeat is still
-// "ok". A never-pinged heartbeat (zero LastSeen) is overdue.
-//
-// Plan 32 will extend this with a "slow" branch ahead of the overdue check
-// without changing the signature.
-func computeStatus(hb heartbeat, now time.Time) HeartbeatStatus {
+// overdue is the single source of truth for the overdue predicate. A heartbeat
+// is overdue when now is strictly After its deadline (lastSeen + window); at the
+// exact deadline it is still "ok". A never-pinged heartbeat (zero LastSeen) has
+// its deadline anchored far in the past and is therefore overdue. Both
+// computeStatus and (*Plugin).isOverdue call this so the read-time status and
+// the scanner can never diverge.
+func overdue(hb heartbeat, now time.Time) bool {
 	deadline := hb.LastSeen.Add(hb.window())
-	if now.After(deadline) {
+	return now.After(deadline)
+}
+
+// isSlow reports whether the heartbeat is "slow": latency tracking is enabled
+// (MaxLatency > 0), the most recent ping latency exceeded the threshold, and the
+// heartbeat is still within its window. A negative LastLatency (clock skew)
+// never trips the threshold. Slow and overdue are mutually exclusive — overdue
+// takes priority — so isSlow is false whenever the heartbeat is overdue. Pure
+// function, no receiver.
+func isSlow(hb heartbeat, now time.Time) bool {
+	return hb.MaxLatency > 0 && hb.LastLatency > hb.MaxLatency && !overdue(hb, now)
+}
+
+// computeStatus returns the read-time health status for a heartbeat as of now.
+// It is a pure function (no plugin state, no clock). Priority order: overdue
+// first (the dead-man's-switch has expired), then slow (within window but
+// latency over threshold), else ok. This keeps "slow" and "overdue" mutually
+// exclusive and consistent with the scanner.
+func computeStatus(hb heartbeat, now time.Time) HeartbeatStatus {
+	if overdue(hb, now) {
 		return StatusOverdue
+	}
+	if isSlow(hb, now) {
+		return StatusSlow
 	}
 	return StatusOK
 }

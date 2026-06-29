@@ -1725,12 +1725,13 @@ paths:
         create / replace / patch / delete / search, but the list and get-one
         responses additionally carry a computed, read-only `status` field
         (`ok` when the heartbeat was pinged within interval+grace, `overdue`
-        when it has been silent longer — or has never been pinged). The field
-        is never stored; it is projected at read time.
+        when it has been silent longer — or has never been pinged, `slow` when
+        within the window but the last ping latency exceeded `max_latency`). The
+        field is never stored; it is projected at read time.
 
         The optional `status` query parameter filters the list to heartbeats
         whose computed status matches one of the supplied values
-        (comma-separated, e.g. `?status=overdue` or `?status=ok,overdue`).
+        (comma-separated, e.g. `?status=overdue` or `?status=ok,slow`).
         When the filter is present, `meta.count` and `meta.total` reflect the
         filtered slice.
       parameters:
@@ -1744,8 +1745,8 @@ paths:
           required: false
           schema: {type: string}
           description: |
-            Comma-separated computed-status filter (`ok`, `overdue`). Absent
-            returns every heartbeat.
+            Comma-separated computed-status filter (`ok`, `overdue`, `slow`).
+            Absent returns every heartbeat.
       responses:
         '200':
           description: Paginated list; each item carries a computed `status`.
@@ -1775,7 +1776,8 @@ paths:
       summary: Fetch a single heartbeat with its computed health status
       description: |
         Like the generic get-one, but the returned document additionally
-        carries the read-only computed `status` field (`ok` / `overdue`).
+        carries the read-only computed `status` field (`ok` / `overdue` /
+        `slow`).
       responses:
         '200':
           description: Heartbeat document with a computed `status`.
@@ -1809,6 +1811,15 @@ paths:
           required: true
           schema: {type: string}
           description: The heartbeat's server-generated secret token.
+        - name: sent_at
+          in: query
+          required: false
+          schema: {type: integer}
+          description: |
+            Client send time in Unix milliseconds. When present the server
+            computes and stores `last_latency = receive_time - sent_at`; an
+            absent or unparseable value is silently ignored and the ping still
+            succeeds.
       responses:
         '200':
           description: Heartbeat stamped.
@@ -2787,6 +2798,21 @@ components:
           type: integer
           minimum: 0
           description: Extra slack in seconds before a miss fires (optional).
+        max_latency:
+          type: integer
+          minimum: 0
+          description: |
+            Maximum acceptable ping latency in milliseconds. 0 or absent disables
+            latency tracking. When a ping carries ?sent_at= and the computed
+            latency exceeds this while the heartbeat is still within its window, a
+            lower-severity `slow` alert fires.
+        last_latency:
+          type: integer
+          readOnly: true
+          description: |
+            Latency of the most recent ping in milliseconds (receive_time -
+            sent_at). Set by the ping endpoint when ?sent_at= is supplied; absent
+            otherwise.
         last_seen:
           type: string
           description: Last ping time (RFC3339 or epoch seconds); set by the ping endpoint.
@@ -2805,12 +2831,13 @@ components:
           description: Optional custom miss-alert message.
         status:
           type: string
-          enum: [ok, overdue]
+          enum: [ok, overdue, slow]
           readOnly: true
           description: |
             Computed health status. `ok` when pinged within interval+grace,
-            `overdue` when silent longer (or never pinged). Never stored;
-            projected at read time on list/get responses only.
+            `overdue` when silent longer (or never pinged), `slow` when within
+            the window but the last ping latency exceeded `max_latency`. Never
+            stored; projected at read time on list/get responses only.
 
     Snooze:
       type: object

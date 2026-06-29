@@ -57,3 +57,84 @@ func TestComputeStatusAtExactDeadline(t *testing.T) {
 	now := lastSeen.Add(hb.window()) // exactly the deadline
 	require.Equal(t, StatusOK, computeStatus(hb, now))
 }
+
+// TestIsSlowFalseWhenNoMaxLatency: with MaxLatency == 0 latency tracking is off,
+// so isSlow is always false regardless of LastLatency.
+func TestIsSlowFalseWhenNoMaxLatency(t *testing.T) {
+	now := time.Date(2026, 5, 27, 12, 0, 0, 0, time.UTC)
+	hb := heartbeat{
+		Name:        "hb1",
+		Interval:    60,
+		LastSeen:    now.Add(-10 * time.Second),
+		MaxLatency:  0,
+		LastLatency: 99999,
+	}
+	require.False(t, isSlow(hb, now))
+}
+
+// TestIsSlowFalseWhenUnderThreshold: latency below the threshold is not slow.
+func TestIsSlowFalseWhenUnderThreshold(t *testing.T) {
+	now := time.Date(2026, 5, 27, 12, 0, 0, 0, time.UTC)
+	hb := heartbeat{
+		Name:        "hb1",
+		Interval:    60,
+		LastSeen:    now.Add(-10 * time.Second),
+		MaxLatency:  2000,
+		LastLatency: 1500,
+	}
+	require.False(t, isSlow(hb, now))
+}
+
+// TestIsSlowTrueWhenOverThreshold: latency above the threshold while within the
+// window is slow.
+func TestIsSlowTrueWhenOverThreshold(t *testing.T) {
+	now := time.Date(2026, 5, 27, 12, 0, 0, 0, time.UTC)
+	hb := heartbeat{
+		Name:        "hb1",
+		Interval:    60,
+		LastSeen:    now.Add(-10 * time.Second),
+		MaxLatency:  2000,
+		LastLatency: 2500,
+	}
+	require.True(t, isSlow(hb, now))
+}
+
+// TestIsSlowFalseWhenOverdue: an overdue heartbeat is never slow — overdue takes
+// priority and the two are mutually exclusive.
+func TestIsSlowFalseWhenOverdue(t *testing.T) {
+	now := time.Date(2026, 5, 27, 12, 0, 0, 0, time.UTC)
+	hb := heartbeat{
+		Name:        "hb1",
+		Interval:    60,
+		LastSeen:    now.Add(-5 * time.Minute), // overdue
+		MaxLatency:  2000,
+		LastLatency: 5000,
+	}
+	require.False(t, isSlow(hb, now))
+}
+
+// TestComputeStatusSlow: within window but over the latency threshold → slow.
+func TestComputeStatusSlow(t *testing.T) {
+	now := time.Date(2026, 5, 27, 12, 0, 0, 0, time.UTC)
+	hb := heartbeat{
+		Name:        "hb1",
+		Interval:    60,
+		LastSeen:    now.Add(-10 * time.Second),
+		MaxLatency:  2000,
+		LastLatency: 3000,
+	}
+	require.Equal(t, StatusSlow, computeStatus(hb, now))
+}
+
+// TestComputeStatusSlowVsOverdue: overdue takes priority over slow.
+func TestComputeStatusSlowVsOverdue(t *testing.T) {
+	now := time.Date(2026, 5, 27, 12, 0, 0, 0, time.UTC)
+	hb := heartbeat{
+		Name:        "hb1",
+		Interval:    60,
+		LastSeen:    now.Add(-5 * time.Minute), // overdue
+		MaxLatency:  2000,
+		LastLatency: 9000,
+	}
+	require.Equal(t, StatusOverdue, computeStatus(hb, now))
+}

@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"slices"
+	"strconv"
 	"sync"
 	"testing"
 	"time"
@@ -441,6 +442,68 @@ func ping(t *testing.T, p *Plugin, method, name, token string) *httptest.Respons
 	return w
 }
 
+// pingSentAt fires a test ping that additionally carries a raw ?sent_at= value
+// (passed verbatim so tests can exercise malformed values too).
+func pingSentAt(t *testing.T, p *Plugin, method, name, token, sentAt string) *httptest.ResponseRecorder {
+	t.Helper()
+	url := "/api/v1/webhook/heartbeat?name=" + name + "&token=" + token + "&sent_at=" + sentAt
+	req := httptest.NewRequest(method, url, nil)
+	w := httptest.NewRecorder()
+	p.HandleWebhook(w, req)
+	return w
+}
+
+// TestPingWithSentAtStoresLatency: a ping carrying ?sent_at=<now-500ms> stores
+// last_latency == 500 on the document.
+func TestPingWithSentAtStoresLatency(t *testing.T) {
+	const tok = "sentat-token"
+	host := newHost()
+	host.driver.add(db.Document{"name": "hb1", "interval": float64(60), "token": tok, "tenant_id": "default"})
+
+	fixed := time.Date(2026, 5, 27, 12, 0, 0, 0, time.UTC)
+	p := newPlugin(t, host)
+	p.now = func() time.Time { return fixed }
+
+	sentAt := strconv.FormatInt(fixed.UnixMilli()-500, 10)
+	w := pingSentAt(t, p, http.MethodPost, "hb1", tok, sentAt)
+	require.Equal(t, http.StatusOK, w.Code)
+
+	doc := host.driver.get("hb1")
+	require.Equal(t, int64(500), doc["last_latency"], "last_latency must be receive_time - sent_at")
+}
+
+// TestPingWithoutSentAtDoesNotStoreLatency: a ping without ?sent_at leaves
+// last_latency absent from the document entirely.
+func TestPingWithoutSentAtDoesNotStoreLatency(t *testing.T) {
+	const tok = "nosentat-token"
+	host := newHost()
+	host.driver.add(db.Document{"name": "hb1", "interval": float64(60), "token": tok, "tenant_id": "default"})
+
+	p := newPlugin(t, host)
+	w := ping(t, p, http.MethodPost, "hb1", tok)
+	require.Equal(t, http.StatusOK, w.Code)
+
+	doc := host.driver.get("hb1")
+	_, has := doc["last_latency"]
+	require.False(t, has, "last_latency must not be set when no sent_at is supplied")
+}
+
+// TestPingWithBadSentAtIsIgnored: a malformed ?sent_at is silently ignored —
+// the ping still succeeds with 200 and no last_latency is stored.
+func TestPingWithBadSentAtIsIgnored(t *testing.T) {
+	const tok = "badsentat-token"
+	host := newHost()
+	host.driver.add(db.Document{"name": "hb1", "interval": float64(60), "token": tok, "tenant_id": "default"})
+
+	p := newPlugin(t, host)
+	w := pingSentAt(t, p, http.MethodPost, "hb1", tok, "notanumber")
+	require.Equal(t, http.StatusOK, w.Code)
+
+	doc := host.driver.get("hb1")
+	_, has := doc["last_latency"]
+	require.False(t, has, "a malformed sent_at must not store last_latency")
+}
+
 func TestPingUpdatesLastSeen(t *testing.T) {
 	const tok = "test-token-abc123"
 	host := newHost()
@@ -675,6 +738,128 @@ func TestFreshPingClearsFiringState(t *testing.T) {
 
 	// A new miss alert must have fired for the new window.
 	require.Len(t, host.seen(), 2)
+}
+
+// ---- scanner: slow / latency detection ------------------------------------
+
+// slowDoc inserts a heartbeat last seen `silentFor` ago with a latency budget.
+func slowDoc(host *fakeHost, name string, interval, grace, maxLatency, lastLatency int64, lastSeen time.Time) {
+	host.driver.add(db.Document{
+		"name":         name,
+		"interval":     float64(interval),
+		"grace":        float64(grace),
+		"severity":     "critical",
+		"enabled":      true,
+		"last_seen":    lastSeen.UTC().Format(time.RFC3339),
+		"max_latency":  float64(maxLatency),
+		"last_latency": float64(lastLatency),
+	})
+}
+
+func TestScanFiresSlowAlert(t *testing.T) {
+	host := newHost()
+	now := time.Date(2026, 5, 27, 12, 0, 0, 0, time.UTC)
+	// last_seen 5s ago, interval 60s → within window (not overdue).
+	// max_latency 2000, last_latency 3000 → slow.
+	slowDoc(host, "hb1", 60, 0, 2000, 3000, now.Add(-5*time.Second))
+
+	p := newPlugin(t, host)
+	p.now = func() time.Time { return now }
+
+	require.NoError(t, p.ScanTenant(snoozetypes.WithTenant(context.Background(), "default")))
+	recs := host.seen()
+	require.Len(t, recs, 1)
+	require.Equal(t, "heartbeat", recs[0].Source)
+	require.Equal(t, "hb1", recs[0].Host)
+	// Severity is downgraded one tier from the configured "critical".
+	require.Equal(t, "major", recs[0].Severity)
+	require.NotEqual(t, "critical", recs[0].Severity, "slow severity must be below the miss severity")
+	require.Contains(t, recs[0].Message, "slow")
+	require.Equal(t, int64(3000), recs[0].Raw["last_latency"])
+	require.Equal(t, int64(2000), recs[0].Raw["max_latency"])
+}
+
+func TestScanSlowDoesNotFireWhenOverdue(t *testing.T) {
+	host := newHost()
+	now := time.Date(2026, 5, 27, 12, 0, 0, 0, time.UTC)
+	// last_seen 5m ago, interval 60s → overdue. Slow must yield to overdue.
+	slowDoc(host, "hb1", 60, 0, 2000, 9000, now.Add(-5*time.Minute))
+
+	p := newPlugin(t, host)
+	p.now = func() time.Time { return now }
+
+	require.NoError(t, p.ScanTenant(snoozetypes.WithTenant(context.Background(), "default")))
+	recs := host.seen()
+	require.Len(t, recs, 1)
+	// The single record is the MISS (full severity), not the slow alert.
+	require.Equal(t, "critical", recs[0].Severity)
+	require.Contains(t, recs[0].Message, "missed")
+}
+
+func TestScanSlowDeduplicates(t *testing.T) {
+	host := newHost()
+	now := time.Date(2026, 5, 27, 12, 0, 0, 0, time.UTC)
+	slowDoc(host, "hb1", 60, 0, 2000, 3000, now.Add(-5*time.Second))
+
+	p := newPlugin(t, host)
+	p.now = func() time.Time { return now }
+
+	require.NoError(t, p.ScanTenant(snoozetypes.WithTenant(context.Background(), "default")))
+	require.Len(t, host.seen(), 1)
+
+	// A second scan without a fresh ping must not re-fire the slow alert.
+	require.NoError(t, p.ScanTenant(snoozetypes.WithTenant(context.Background(), "default")))
+	require.Len(t, host.seen(), 1, "slow alert must dedup across ticks")
+}
+
+func TestScanSlowClearedByFreshPing(t *testing.T) {
+	const tok = "slow-rearm-token"
+	host := newHost()
+	now := time.Date(2026, 5, 27, 12, 0, 0, 0, time.UTC)
+	host.driver.add(db.Document{
+		"name":         "hb1",
+		"interval":     float64(60),
+		"grace":        float64(0),
+		"severity":     "critical",
+		"enabled":      true,
+		"last_seen":    now.Add(-5 * time.Second).UTC().Format(time.RFC3339),
+		"max_latency":  float64(2000),
+		"last_latency": float64(3000),
+		"token":        tok,
+		"tenant_id":    "default",
+	})
+
+	p := newPlugin(t, host)
+	p.now = func() time.Time { return now }
+
+	// First scan fires the slow alert.
+	require.NoError(t, p.ScanTenant(snoozetypes.WithTenant(context.Background(), "default")))
+	require.Len(t, host.seen(), 1)
+
+	// A fresh ping carrying a still-slow latency (sent_at 3s ago = 3000ms)
+	// rewrites last_seen + last_latency and clears the slow fired mark.
+	later := now.Add(1 * time.Second)
+	p.now = func() time.Time { return later }
+	sentAt := strconv.FormatInt(later.UnixMilli()-3000, 10)
+	w := pingSentAt(t, p, http.MethodPost, "hb1", tok, sentAt)
+	require.Equal(t, http.StatusOK, w.Code)
+
+	// The next tick must fire the slow alert again (cleared by the fresh ping).
+	require.NoError(t, p.ScanTenant(snoozetypes.WithTenant(context.Background(), "default")))
+	require.Len(t, host.seen(), 2, "a fresh ping must clear the slow fired state so it can fire again")
+}
+
+func TestScanNoSlowWhenNoMaxLatency(t *testing.T) {
+	host := newHost()
+	now := time.Date(2026, 5, 27, 12, 0, 0, 0, time.UTC)
+	// No max_latency (0) → slow is never evaluated, even with a huge latency.
+	slowDoc(host, "hb1", 60, 0, 0, 99999, now.Add(-5*time.Second))
+
+	p := newPlugin(t, host)
+	p.now = func() time.Time { return now }
+
+	require.NoError(t, p.ScanTenant(snoozetypes.WithTenant(context.Background(), "default")))
+	require.Empty(t, host.seen(), "no slow alert without max_latency")
 }
 
 func TestScanNoProcessorIsNoOp(t *testing.T) {

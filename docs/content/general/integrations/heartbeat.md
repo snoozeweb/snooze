@@ -34,6 +34,12 @@ How often the external job is expected to ping. A heartbeat is "overdue" once th
 `grace` (integer seconds, optional, default `0`)  
 Extra slack added on top of `interval` before a miss fires — absorbs jitter so a job that runs a little late is not flagged.
 
+`max_latency` (integer milliseconds, optional, default `0` / disabled)  
+Maximum acceptable ping latency. When a ping carries `?sent_at=<unix-ms>` and the computed latency exceeds this value *while the heartbeat is still inside its window*, a lower-severity `slow` alert fires. `0` or absent disables latency tracking. See *Latency detection* below.
+
+`last_latency` (integer milliseconds, server-set, read-only)  
+The latency of the most recent ping (`receive_time - sent_at`), stamped by the ping endpoint whenever a ping carries `?sent_at=`. Absent until the first such ping arrives.
+
 `last_seen` (RFC3339 string or epoch seconds, optional)  
 The last ping time. You normally leave this unset on create; the ping endpoint stamps it. A heartbeat that is never pinged becomes overdue once `interval + grace` elapses past its (zero) `last_seen` anchor.
 
@@ -99,6 +105,32 @@ A successful ping updates `last_seen` to "now" and re-arms the switch (clears an
   - `raw`: `name`, `interval`, `grace`, `last_seen` (+ `environment`)
 - A miss fires **at most once per silent window**. The scanner remembers what it has already fired (keyed by `name` + `last_seen`) and will not re-fire on the next tick. A fresh ping changes `last_seen`, clears that memory, and re-arms the switch.
 
+## Latency detection
+
+A heartbeat's dead-man's-switch only fires once the ping *stops arriving*. But a producer whose clock lags, whose queue backs up, or whose delivery path is congested can keep pinging late while still landing inside `interval + grace` — so the switch never trips, and the operator gets no early warning. Latency detection adds that early-warning signal.
+
+Set `max_latency` (milliseconds) on the heartbeat document to enable it, and have the producer include its send time on each ping as `?sent_at=<unix-ms>`:
+
+``` console
+# at the end of your cron job / pipeline, sending the current epoch in ms:
+$ curl -fsS -X POST \
+    "http://localhost:5200/api/v1/webhook/heartbeat?name=nightly-backup&token=<token>&sent_at=$(date +%s%3N)"
+{"status":"ok","name":"nightly-backup"}
+```
+
+On each ping that carries `sent_at`, the server computes `last_latency = receive_time - sent_at` (server receive clock minus the client-supplied send time) and stores it on the document. When `last_latency > max_latency` **and** the heartbeat is still within its `interval + grace` window, the scanner injects a `slow` alert:
+
+- `source: heartbeat`
+- `severity`: the configured miss severity **downgraded one tier** — `critical → major`, `major → minor`, `minor → warning`; any other (custom) severity falls back to `warning`. So a heartbeat with the default `critical` miss severity fires its slow alert at `major`.
+- `message`: `heartbeat <name> slow (latency <last_latency>ms > max <max_latency>ms)`
+- `raw`: `name`, `interval`, `grace`, `last_seen`, plus `last_latency` and `max_latency`
+
+Like a miss, a slow alert fires **at most once per window** and is re-armed by a fresh ping. Slow and overdue are **mutually exclusive**: an overdue heartbeat fires the full-severity miss, never a slow alert — overdue always takes priority.
+
+The Alerta reference (`HEARTBEAT_MAX_LATENCY`) uses a global default of `2000` ms; Snooze places the threshold per-heartbeat instead, so each expectation can carry its own budget with no server-config change.
+
+If the producer's clock runs ahead of the server's, the computed latency is negative; it is stored (so the skew is visible) and logged at `Warn`, but a negative value never trips the `slow` alert — the correct fail-safe.
+
 ## Health status
 
 Both read endpoints inject a computed, read-only `status` field onto every heartbeat in the response, so a dashboard can show a live health column without cross-referencing the records stream:
@@ -113,6 +145,9 @@ The heartbeat was pinged within `interval + grace` (it is inside its silence bud
 
 `overdue`  
 The heartbeat has been silent longer than `interval + grace`, or has never been pinged.
+
+`slow`  
+The heartbeat is still within `interval + grace`, but its most recent ping latency exceeded `max_latency` (see *Latency detection*). Mutually exclusive with `overdue` — an overdue heartbeat is never reported `slow`.
 
 The field is **never stored** — it is projected at read time from the same overdue logic the scanner uses, so it is always consistent with whether a miss alert would fire. It is also exposed in the plugin's JSON Schema as `readOnly`, so the UI renders it as a badge and never offers it for edit. POST/PUT/PATCH bodies that include a `status` field are ignored for persistence.
 
@@ -229,6 +264,7 @@ Then update the external job's curl / wget call to include `&token=<new-token>` 
 - **Resolve alerts.** The scanner only *fires* miss alerts; it does not emit a `state: close` "recovered" record when a ping resumes. A fresh ping silently re-arms the switch. Closing the open alert is left to the operator / a notification or rule on the next ping (a future enhancement could emit a resolve record on the re-arming ping).
 - **Fired state is in-memory.** The dedup set (which window has already fired) lives in the plugin process. A server restart re-arms every heartbeat, so a still-overdue heartbeat will fire once more after a restart. This is intentional — it errs toward visibility.
 - **Never-pinged heartbeats.** A heartbeat created and never pinged becomes overdue once `interval + grace` elapses (its `last_seen` anchor is the zero time), so it will fire. Set `enabled: false` to stage a heartbeat without arming it.
+- **Latency detection is opt-in and producer-driven.** It only activates when the heartbeat sets `max_latency` **and** the producer sends `?sent_at=<unix-ms>` on its pings; a ping without `sent_at` leaves `last_latency` untouched and never fires a slow alert. The Alerta reference default is `2000` ms (global in Alerta; per-heartbeat in Snooze). The downgrade table is fixed (`critical→major→minor→warning`); custom severity strings outside that ladder fall back to `warning` for the slow alert.
 - **CRUD auth.** The CRUD surface is authenticated (`route_defaults: authentication: true`). See *Authentication* for details.
 - **Token rotation.** There is currently no dedicated endpoint to rotate the per-heartbeat token. To change a token, PATCH the heartbeat document with a new `token` value via the authenticated CRUD surface, then update the external job's call to use the new token.
 
