@@ -21,6 +21,7 @@ import (
 	_ "github.com/snoozeweb/snooze/internal/pluginimpl/profile"
 	_ "github.com/snoozeweb/snooze/internal/pluginimpl/record"
 	_ "github.com/snoozeweb/snooze/internal/pluginimpl/role"
+	_ "github.com/snoozeweb/snooze/internal/pluginimpl/savedsearch"
 	_ "github.com/snoozeweb/snooze/internal/pluginimpl/settings"
 	_ "github.com/snoozeweb/snooze/internal/pluginimpl/stats"
 	_ "github.com/snoozeweb/snooze/internal/pluginimpl/tenant"

@@ -1,0 +1,11 @@
+---
+name: 'Saved Search'
+desc: 'Named alert filter bookmarks, scoped per operator'
+route_defaults:
+    primary: [tenant_id, owner, name]
+    check_permissions: true
+    duplicate_policy: reject
+search_fields:
+    - name
+    - owner
+    - query

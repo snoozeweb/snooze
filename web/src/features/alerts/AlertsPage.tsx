@@ -19,6 +19,7 @@ import { Records, useCommentRecord, useShelveRecord } from "./api";
 import { AlertRowDetail } from "./AlertRowDetail";
 import { ActiveFilters } from "./ActiveFilters";
 import { AlertsFilters, type AlertFilters } from "./Filters";
+import { SavedSearches } from "./SavedSearches";
 import { alertColumns, recordCommentCount } from "./columns";
 import { useAutoRefresh } from "./useAutoRefresh";
 import type { AlertState, Record_ } from "./types";
@@ -774,6 +775,7 @@ export function AlertsPage() {
           } as Partial<AlertsSearch>);
         }}
       />
+      <SavedSearches currentQuery={searchText} onApply={handleSearchSubmit} />
       {hasChipFilters ? (
         <ActiveFilters
           tab={activeTab}

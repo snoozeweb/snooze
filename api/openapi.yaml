@@ -1615,6 +1615,12 @@ components:
         (`rule`, `user`, …) or the sentinel value `auth` for authentication
         events (login / login_failed / refresh / logout), with the auth backend
         in `method` and the attempted identity in `username`.
+
+        The `savedsearch` collection holds named alert-filter bookmarks
+        (`name` + DSL `query`). It follows the generic CRUD surface but stamps
+        `owner` from the JWT subject and scopes uniqueness to
+        `(tenant_id, owner, name)`; a caller may only mutate their own
+        bookmarks (admins may curate any). See the `SavedSearch` schema.
       schema:
         type: string
         enum:
@@ -1648,6 +1654,7 @@ components:
           - record
           - role
           - rule
+          - savedsearch
           - script
           - sentry
           - servicenow
@@ -1767,6 +1774,29 @@ components:
               message: alert ingestion is disabled
 
   schemas:
+    SavedSearch:
+      type: object
+      description: >
+        A named alert-filter bookmark: a human label paired with a raw Snooze
+        condition-DSL string. `owner` and `tenant_id` are stamped server-side
+        from the request's JWT and are read-only from the client's view.
+      required: [name, query]
+      properties:
+        uid: {type: string}
+        name:
+          type: string
+          minLength: 1
+          description: Human label, e.g. "prod criticals unacked".
+        query:
+          type: string
+          minLength: 1
+          description: Raw Snooze condition-DSL string, e.g. "severity = critical".
+        owner:
+          type: string
+          description: JWT subject that owns the bookmark (server-stamped).
+        tenant_id:
+          type: string
+          description: Owning tenant slug (server-stamped).
     APIKey:
       type: object
       properties:

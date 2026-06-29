@@ -2,6 +2,9 @@
 
 ### Added
 
+- **Saved searches.** Operators can now bookmark named DSL filters from the
+  Alerts page. Searches are stored per-user/per-tenant at
+  `GET /api/v1/savedsearch` and apply instantly with a single click.
 - **Metrics — live record-count gauge.** Added the `snooze_records` gauge
   (labelled by `state`) to the Prometheus `/metrics` endpoint. It reports the
   current number of records in the database grouped by state, summed across all

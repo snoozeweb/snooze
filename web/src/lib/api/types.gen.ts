@@ -143,6 +143,56 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/version": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Build version info
+         * @description Returns the compiled-in version string, git commit hash, and
+         *     build date. Always public (no bearer token required). Use this
+         *     endpoint to verify which binary is running on each cluster node
+         *     or to display the version in the web UI.
+         *
+         */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Version metadata. */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            /** @example 2.3.1 */
+                            version: string;
+                            /** @example abc1234 */
+                            commit: string;
+                            /** @example 2026-06-26T10:00:00Z */
+                            date: string;
+                        };
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/metrics": {
         parameters: {
             query?: never;
@@ -989,7 +1039,11 @@ export interface paths {
                 };
             };
             responses: {
-                /** @description Per-record processing result. */
+                /** @description Per-record processing result. Records that were silently discarded
+                 *     (e.g. by a `snooze` discard rule) are omitted from `data` without
+                 *     an entry in `errors`. Mixed batches where some records pass and
+                 *     some are policy-rejected return 200 with the rejections in `errors`.
+                 *      */
                 200: {
                     headers: {
                         [name: string]: unknown;
@@ -1001,6 +1055,20 @@ export interface paths {
                         };
                     };
                 };
+                /** @description All records in the batch were rejected by an enabled `reject` policy
+                 *     rule. The response body carries code `policy_rejected` and a message
+                 *     containing the matching rule name. Fix the alert or contact the
+                 *     operator to adjust the policy rule.
+                 *      */
+                422: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrEnvelope"];
+                    };
+                };
+                503: components["responses"]["IngestDisabled"];
             };
         };
         delete?: never;
@@ -1220,6 +1288,54 @@ export interface paths {
                 };
             };
         };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/housekeeping/run": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Trigger an on-demand housekeeping cycle
+         * @description Fires every registered housekeeping job synchronously and returns the
+         *     per-job results. Requires the `rw_all` permission. HTTP 200 is returned
+         *     even when individual jobs failed — failures are surfaced in each job's
+         *     `error` field and the top-level `errors` count. Returns 503 when the
+         *     housekeeper is not wired.
+         *
+         */
+        post: operations["runHousekeeping"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/housekeeping/status": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Report housekeeper registration status
+         * @description Reports whether the housekeeper is wired and, when it is, how many jobs
+         *     are registered. Requires the `rw_all` permission. Returns 503 when the
+         *     housekeeper is not wired.
+         *
+         */
+        get: operations["housekeepingStatus"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -1561,7 +1677,7 @@ export interface paths {
                 query?: never;
                 header?: never;
                 path: {
-                    webhook: "alertmanager" | "azuremonitor" | "cloudwatch" | "datadog" | "grafana" | "influxdb2" | "kapacitor" | "newrelic" | "prometheus" | "sentry";
+                    webhook: "alertmanager" | "azuremonitor" | "cloudwatch" | "datadog" | "grafana" | "graylog" | "influxdb2" | "kapacitor" | "newrelic" | "pingdom" | "prometheus" | "sentry";
                 };
                 cookie?: never;
             };
@@ -1584,8 +1700,140 @@ export interface paths {
                         };
                     };
                 };
+                503: components["responses"]["IngestDisabledWebhook"];
             };
         };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/heartbeat": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List heartbeats with a computed health status
+         * @description Heartbeats follow the generic CRUD surface (`/api/v1/{plugin}`) for
+         *     create / replace / patch / delete / search, but the list and get-one
+         *     responses additionally carry a computed, read-only `status` field
+         *     (`ok` when the heartbeat was pinged within interval+grace, `overdue`
+         *     when it has been silent longer — or has never been pinged). The field
+         *     is never stored; it is projected at read time.
+         *
+         *     The optional `status` query parameter filters the list to heartbeats
+         *     whose computed status matches one of the supplied values
+         *     (comma-separated, e.g. `?status=overdue` or `?status=ok,overdue`).
+         *     When the filter is present, `meta.count` and `meta.total` reflect the
+         *     filtered slice.
+         *
+         */
+        get: {
+            parameters: {
+                query?: {
+                    /** @description Base64url-encoded JSON condition. Empty (or absent) selects
+                     *     every document. Use `POST /{plugin}/search` for queries that
+                     *     won't fit in a URL.
+                     *      */
+                    q?: components["parameters"]["QueryQ"];
+                    offset?: components["parameters"]["Offset"];
+                    limit?: components["parameters"]["Limit"];
+                    orderby?: components["parameters"]["OrderBy"];
+                    asc?: components["parameters"]["Asc"];
+                    /** @description Comma-separated computed-status filter (`ok`, `overdue`). Absent
+                     *     returns every heartbeat.
+                     *      */
+                    status?: string;
+                };
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Paginated list; each item carries a computed `status`. */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            data?: components["schemas"]["Heartbeat"][];
+                            meta?: components["schemas"]["ListMeta"];
+                        };
+                    };
+                };
+                /** @description Malformed query. */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrEnvelope"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/heartbeat/{uid}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                uid: string;
+            };
+            cookie?: never;
+        };
+        /**
+         * Fetch a single heartbeat with its computed health status
+         * @description Like the generic get-one, but the returned document additionally
+         *     carries the read-only computed `status` field (`ok` / `overdue`).
+         *
+         */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    uid: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Heartbeat document with a computed `status`. */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Heartbeat"];
+                    };
+                };
+                /** @description Not found. */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrEnvelope"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -1717,6 +1965,18 @@ export interface paths {
                      *     `POST`/`PUT` are rejected here — mint keys via
                      *     `POST /api/v1/user/me/apikeys`; admins may only `PATCH`
                      *     (`name`/`expires_at`), revoke, or `DELETE`.
+                     *
+                     *     The `audit` collection holds the audit trail. Each row's `object_type`
+                     *     field is the name of the affected collection for CRUD mutations
+                     *     (`rule`, `user`, …) or the sentinel value `auth` for authentication
+                     *     events (login / login_failed / refresh / logout), with the auth backend
+                     *     in `method` and the attempted identity in `username`.
+                     *
+                     *     The `savedsearch` collection holds named alert-filter bookmarks
+                     *     (`name` + DSL `query`). It follows the generic CRUD surface but stamps
+                     *     `owner` from the JWT subject and scopes uniqueness to
+                     *     `(tenant_id, owner, name)`; a caller may only mutate their own
+                     *     bookmarks (admins may curate any). See the `SavedSearch` schema.
                      *      */
                     plugin: components["parameters"]["PluginPath"];
                 };
@@ -1825,6 +2085,18 @@ export interface paths {
                      *     `POST`/`PUT` are rejected here — mint keys via
                      *     `POST /api/v1/user/me/apikeys`; admins may only `PATCH`
                      *     (`name`/`expires_at`), revoke, or `DELETE`.
+                     *
+                     *     The `audit` collection holds the audit trail. Each row's `object_type`
+                     *     field is the name of the affected collection for CRUD mutations
+                     *     (`rule`, `user`, …) or the sentinel value `auth` for authentication
+                     *     events (login / login_failed / refresh / logout), with the auth backend
+                     *     in `method` and the attempted identity in `username`.
+                     *
+                     *     The `savedsearch` collection holds named alert-filter bookmarks
+                     *     (`name` + DSL `query`). It follows the generic CRUD surface but stamps
+                     *     `owner` from the JWT subject and scopes uniqueness to
+                     *     `(tenant_id, owner, name)`; a caller may only mutate their own
+                     *     bookmarks (admins may curate any). See the `SavedSearch` schema.
                      *      */
                     plugin: components["parameters"]["PluginPath"];
                 };
@@ -1934,6 +2206,18 @@ export interface paths {
                  *     `POST`/`PUT` are rejected here — mint keys via
                  *     `POST /api/v1/user/me/apikeys`; admins may only `PATCH`
                  *     (`name`/`expires_at`), revoke, or `DELETE`.
+                 *
+                 *     The `audit` collection holds the audit trail. Each row's `object_type`
+                 *     field is the name of the affected collection for CRUD mutations
+                 *     (`rule`, `user`, …) or the sentinel value `auth` for authentication
+                 *     events (login / login_failed / refresh / logout), with the auth backend
+                 *     in `method` and the attempted identity in `username`.
+                 *
+                 *     The `savedsearch` collection holds named alert-filter bookmarks
+                 *     (`name` + DSL `query`). It follows the generic CRUD surface but stamps
+                 *     `owner` from the JWT subject and scopes uniqueness to
+                 *     `(tenant_id, owner, name)`; a caller may only mutate their own
+                 *     bookmarks (admins may curate any). See the `SavedSearch` schema.
                  *      */
                 plugin: components["parameters"]["PluginPath"];
             };
@@ -1969,6 +2253,18 @@ export interface paths {
                      *     `POST`/`PUT` are rejected here — mint keys via
                      *     `POST /api/v1/user/me/apikeys`; admins may only `PATCH`
                      *     (`name`/`expires_at`), revoke, or `DELETE`.
+                     *
+                     *     The `audit` collection holds the audit trail. Each row's `object_type`
+                     *     field is the name of the affected collection for CRUD mutations
+                     *     (`rule`, `user`, …) or the sentinel value `auth` for authentication
+                     *     events (login / login_failed / refresh / logout), with the auth backend
+                     *     in `method` and the attempted identity in `username`.
+                     *
+                     *     The `savedsearch` collection holds named alert-filter bookmarks
+                     *     (`name` + DSL `query`). It follows the generic CRUD surface but stamps
+                     *     `owner` from the JWT subject and scopes uniqueness to
+                     *     `(tenant_id, owner, name)`; a caller may only mutate their own
+                     *     bookmarks (admins may curate any). See the `SavedSearch` schema.
                      *      */
                     plugin: components["parameters"]["PluginPath"];
                 };
@@ -2011,6 +2307,18 @@ export interface paths {
                      *     `POST`/`PUT` are rejected here — mint keys via
                      *     `POST /api/v1/user/me/apikeys`; admins may only `PATCH`
                      *     (`name`/`expires_at`), revoke, or `DELETE`.
+                     *
+                     *     The `audit` collection holds the audit trail. Each row's `object_type`
+                     *     field is the name of the affected collection for CRUD mutations
+                     *     (`rule`, `user`, …) or the sentinel value `auth` for authentication
+                     *     events (login / login_failed / refresh / logout), with the auth backend
+                     *     in `method` and the attempted identity in `username`.
+                     *
+                     *     The `savedsearch` collection holds named alert-filter bookmarks
+                     *     (`name` + DSL `query`). It follows the generic CRUD surface but stamps
+                     *     `owner` from the JWT subject and scopes uniqueness to
+                     *     `(tenant_id, owner, name)`; a caller may only mutate their own
+                     *     bookmarks (admins may curate any). See the `SavedSearch` schema.
                      *      */
                     plugin: components["parameters"]["PluginPath"];
                 };
@@ -2066,6 +2374,18 @@ export interface paths {
                      *     `POST`/`PUT` are rejected here — mint keys via
                      *     `POST /api/v1/user/me/apikeys`; admins may only `PATCH`
                      *     (`name`/`expires_at`), revoke, or `DELETE`.
+                     *
+                     *     The `audit` collection holds the audit trail. Each row's `object_type`
+                     *     field is the name of the affected collection for CRUD mutations
+                     *     (`rule`, `user`, …) or the sentinel value `auth` for authentication
+                     *     events (login / login_failed / refresh / logout), with the auth backend
+                     *     in `method` and the attempted identity in `username`.
+                     *
+                     *     The `savedsearch` collection holds named alert-filter bookmarks
+                     *     (`name` + DSL `query`). It follows the generic CRUD surface but stamps
+                     *     `owner` from the JWT subject and scopes uniqueness to
+                     *     `(tenant_id, owner, name)`; a caller may only mutate their own
+                     *     bookmarks (admins may curate any). See the `SavedSearch` schema.
                      *      */
                     plugin: components["parameters"]["PluginPath"];
                 };
@@ -2116,6 +2436,18 @@ export interface paths {
                      *     `POST`/`PUT` are rejected here — mint keys via
                      *     `POST /api/v1/user/me/apikeys`; admins may only `PATCH`
                      *     (`name`/`expires_at`), revoke, or `DELETE`.
+                     *
+                     *     The `audit` collection holds the audit trail. Each row's `object_type`
+                     *     field is the name of the affected collection for CRUD mutations
+                     *     (`rule`, `user`, …) or the sentinel value `auth` for authentication
+                     *     events (login / login_failed / refresh / logout), with the auth backend
+                     *     in `method` and the attempted identity in `username`.
+                     *
+                     *     The `savedsearch` collection holds named alert-filter bookmarks
+                     *     (`name` + DSL `query`). It follows the generic CRUD surface but stamps
+                     *     `owner` from the JWT subject and scopes uniqueness to
+                     *     `(tenant_id, owner, name)`; a caller may only mutate their own
+                     *     bookmarks (admins may curate any). See the `SavedSearch` schema.
                      *      */
                     plugin: components["parameters"]["PluginPath"];
                 };
@@ -2168,6 +2500,18 @@ export interface paths {
                  *     `POST`/`PUT` are rejected here — mint keys via
                  *     `POST /api/v1/user/me/apikeys`; admins may only `PATCH`
                  *     (`name`/`expires_at`), revoke, or `DELETE`.
+                 *
+                 *     The `audit` collection holds the audit trail. Each row's `object_type`
+                 *     field is the name of the affected collection for CRUD mutations
+                 *     (`rule`, `user`, …) or the sentinel value `auth` for authentication
+                 *     events (login / login_failed / refresh / logout), with the auth backend
+                 *     in `method` and the attempted identity in `username`.
+                 *
+                 *     The `savedsearch` collection holds named alert-filter bookmarks
+                 *     (`name` + DSL `query`). It follows the generic CRUD surface but stamps
+                 *     `owner` from the JWT subject and scopes uniqueness to
+                 *     `(tenant_id, owner, name)`; a caller may only mutate their own
+                 *     bookmarks (admins may curate any). See the `SavedSearch` schema.
                  *      */
                 plugin: components["parameters"]["PluginPath"];
                 uid: string;
@@ -2188,6 +2532,18 @@ export interface paths {
                      *     `POST`/`PUT` are rejected here — mint keys via
                      *     `POST /api/v1/user/me/apikeys`; admins may only `PATCH`
                      *     (`name`/`expires_at`), revoke, or `DELETE`.
+                     *
+                     *     The `audit` collection holds the audit trail. Each row's `object_type`
+                     *     field is the name of the affected collection for CRUD mutations
+                     *     (`rule`, `user`, …) or the sentinel value `auth` for authentication
+                     *     events (login / login_failed / refresh / logout), with the auth backend
+                     *     in `method` and the attempted identity in `username`.
+                     *
+                     *     The `savedsearch` collection holds named alert-filter bookmarks
+                     *     (`name` + DSL `query`). It follows the generic CRUD surface but stamps
+                     *     `owner` from the JWT subject and scopes uniqueness to
+                     *     `(tenant_id, owner, name)`; a caller may only mutate their own
+                     *     bookmarks (admins may curate any). See the `SavedSearch` schema.
                      *      */
                     plugin: components["parameters"]["PluginPath"];
                     uid: string;
@@ -2232,6 +2588,18 @@ export interface paths {
                      *     `POST`/`PUT` are rejected here — mint keys via
                      *     `POST /api/v1/user/me/apikeys`; admins may only `PATCH`
                      *     (`name`/`expires_at`), revoke, or `DELETE`.
+                     *
+                     *     The `audit` collection holds the audit trail. Each row's `object_type`
+                     *     field is the name of the affected collection for CRUD mutations
+                     *     (`rule`, `user`, …) or the sentinel value `auth` for authentication
+                     *     events (login / login_failed / refresh / logout), with the auth backend
+                     *     in `method` and the attempted identity in `username`.
+                     *
+                     *     The `savedsearch` collection holds named alert-filter bookmarks
+                     *     (`name` + DSL `query`). It follows the generic CRUD surface but stamps
+                     *     `owner` from the JWT subject and scopes uniqueness to
+                     *     `(tenant_id, owner, name)`; a caller may only mutate their own
+                     *     bookmarks (admins may curate any). See the `SavedSearch` schema.
                      *      */
                     plugin: components["parameters"]["PluginPath"];
                     uid: string;
@@ -2274,6 +2642,18 @@ export interface paths {
                      *     `POST`/`PUT` are rejected here — mint keys via
                      *     `POST /api/v1/user/me/apikeys`; admins may only `PATCH`
                      *     (`name`/`expires_at`), revoke, or `DELETE`.
+                     *
+                     *     The `audit` collection holds the audit trail. Each row's `object_type`
+                     *     field is the name of the affected collection for CRUD mutations
+                     *     (`rule`, `user`, …) or the sentinel value `auth` for authentication
+                     *     events (login / login_failed / refresh / logout), with the auth backend
+                     *     in `method` and the attempted identity in `username`.
+                     *
+                     *     The `savedsearch` collection holds named alert-filter bookmarks
+                     *     (`name` + DSL `query`). It follows the generic CRUD surface but stamps
+                     *     `owner` from the JWT subject and scopes uniqueness to
+                     *     `(tenant_id, owner, name)`; a caller may only mutate their own
+                     *     bookmarks (admins may curate any). See the `SavedSearch` schema.
                      *      */
                     plugin: components["parameters"]["PluginPath"];
                     uid: string;
@@ -2309,6 +2689,18 @@ export interface paths {
                      *     `POST`/`PUT` are rejected here — mint keys via
                      *     `POST /api/v1/user/me/apikeys`; admins may only `PATCH`
                      *     (`name`/`expires_at`), revoke, or `DELETE`.
+                     *
+                     *     The `audit` collection holds the audit trail. Each row's `object_type`
+                     *     field is the name of the affected collection for CRUD mutations
+                     *     (`rule`, `user`, …) or the sentinel value `auth` for authentication
+                     *     events (login / login_failed / refresh / logout), with the auth backend
+                     *     in `method` and the attempted identity in `username`.
+                     *
+                     *     The `savedsearch` collection holds named alert-filter bookmarks
+                     *     (`name` + DSL `query`). It follows the generic CRUD surface but stamps
+                     *     `owner` from the JWT subject and scopes uniqueness to
+                     *     `(tenant_id, owner, name)`; a caller may only mutate their own
+                     *     bookmarks (admins may curate any). See the `SavedSearch` schema.
                      *      */
                     plugin: components["parameters"]["PluginPath"];
                     uid: string;
@@ -2342,6 +2734,19 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        /** @description A named alert-filter bookmark: a human label paired with a raw Snooze condition-DSL string. `owner` and `tenant_id` are stamped server-side from the request's JWT and are read-only from the client's view.
+         *      */
+        SavedSearch: {
+            uid?: string;
+            /** @description Human label, e.g. "prod criticals unacked". */
+            name: string;
+            /** @description Raw Snooze condition-DSL string, e.g. "severity = critical". */
+            query: string;
+            /** @description JWT subject that owns the bookmark (server-stamped). */
+            owner?: string;
+            /** @description Owning tenant slug (server-stamped). */
+            tenant_id?: string;
+        };
         APIKey: {
             uid?: string;
             owner?: string;
@@ -2354,6 +2759,12 @@ export interface components {
             created_at?: number;
             expires_at?: number;
             revoked_at?: number;
+            /** @description Unix epoch (seconds) of the last successful authentication with this key. Absent (or 0) if the key has never been used.
+             *      */
+            last_used_at?: number;
+            /** @description Total number of times this key has authenticated a request (throttled: only incremented once per hour, so the value is a lower-bound estimate).
+             *      */
+            use_count?: number;
         };
         APIKeyCreate: {
             name: string;
@@ -2461,6 +2872,12 @@ export interface components {
             uid?: string;
             host?: string;
             source?: string;
+            /** @description Resolved HTTP client IP stamped by the server at ingest. Present on
+             *     all records that pass through `POST /api/v1/alerts` (honouring
+             *     `X-Forwarded-For` / `X-Real-IP` from trusted proxies). Optional —
+             *     caller-supplied values are preserved.
+             *      */
+            source_ip?: string;
             process?: string;
             severity?: string;
             message?: string;
@@ -2492,6 +2909,41 @@ export interface components {
             limit: number;
             offset: number;
             total: number;
+        };
+        /** @description A dead-man's-switch heartbeat record. Created/edited via the generic
+         *     CRUD surface; the list and get-one responses additionally carry the
+         *     read-only computed `status` field.
+         *      */
+        Heartbeat: {
+            /** @description Unique heartbeat name; pinged via ?name=<name>&token=<token>. */
+            name: string;
+            /** @description Server-generated ping secret; supplied as ?token= on every ping. */
+            readonly token?: string;
+            /** @description Expected ping period in seconds. */
+            interval: number;
+            /** @description Extra slack in seconds before a miss fires (optional). */
+            grace?: number;
+            /** @description Last ping time (RFC3339 or epoch seconds); set by the ping endpoint. */
+            last_seen?: string;
+            environment?: string;
+            /** @description Alert host; defaults to the heartbeat name. */
+            host?: string;
+            /** @description Severity of the miss alert. */
+            severity?: string;
+            /** @description Disabled heartbeats are not scanned. */
+            enabled?: boolean;
+            /** @description Optional custom miss-alert message. */
+            message?: string;
+            /**
+             * @description Computed health status. `ok` when pinged within interval+grace,
+             *     `overdue` when silent longer (or never pinged). Never stored;
+             *     projected at read time on list/get responses only.
+             *
+             * @enum {string}
+             */
+            readonly status?: "ok" | "overdue";
+        } & {
+            [key: string]: unknown;
         };
         ErrEnvelope: {
             error: components["schemas"]["ErrBody"];
@@ -2781,6 +3233,39 @@ export interface components {
                 "application/json": components["schemas"]["ErrEnvelope"];
             };
         };
+        /** @description The service or a required subsystem is not currently available. */
+        ServiceUnavailable: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/json": components["schemas"]["ErrEnvelope"];
+            };
+        };
+        /** @description Alert ingestion is currently disabled for this tenant by the runtime
+         *     kill-switch (`ingest.allow = false`). Re-enable it from the Settings
+         *     page (section `ingest`, key `allow`, value `true`) — no restart needed.
+         *      */
+        IngestDisabled: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/json": components["schemas"]["ErrEnvelope"];
+            };
+        };
+        /** @description Alert ingestion is currently disabled for this tenant by the runtime
+         *     kill-switch (`ingest.allow = false`). Re-enable it from the Settings
+         *     page (section `ingest`, key `allow`, value `true`) — no restart needed.
+         *      */
+        IngestDisabledWebhook: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/json": components["schemas"]["ErrEnvelope"];
+            };
+        };
     };
     parameters: {
         /** @description Plugin / collection name. The built-in set is enumerated in
@@ -2791,8 +3276,20 @@ export interface components {
          *     `POST`/`PUT` are rejected here — mint keys via
          *     `POST /api/v1/user/me/apikeys`; admins may only `PATCH`
          *     (`name`/`expires_at`), revoke, or `DELETE`.
+         *
+         *     The `audit` collection holds the audit trail. Each row's `object_type`
+         *     field is the name of the affected collection for CRUD mutations
+         *     (`rule`, `user`, …) or the sentinel value `auth` for authentication
+         *     events (login / login_failed / refresh / logout), with the auth backend
+         *     in `method` and the attempted identity in `username`.
+         *
+         *     The `savedsearch` collection holds named alert-filter bookmarks
+         *     (`name` + DSL `query`). It follows the generic CRUD surface but stamps
+         *     `owner` from the JWT subject and scopes uniqueness to
+         *     `(tenant_id, owner, name)`; a caller may only mutate their own
+         *     bookmarks (admins may curate any). See the `SavedSearch` schema.
          *      */
-        PluginPath: "action" | "aggregaterule" | "alertmanager" | "apikey" | "audit" | "azuremonitor" | "cloudwatch" | "comment" | "datadog" | "discord" | "environment" | "googlechat" | "grafana" | "heartbeat" | "influxdb2" | "kapacitor" | "kv" | "mail" | "newrelic" | "notification" | "ntfy" | "opsgenie" | "pagerduty" | "patlite" | "profile" | "prometheus" | "pushover" | "record" | "role" | "rule" | "script" | "sentry" | "servicenow" | "settings" | "slack" | "snooze" | "sns" | "stats" | "statuspage" | "telegram" | "twilio" | "user" | "webhook" | "widget";
+        PluginPath: "action" | "aggregaterule" | "alertmanager" | "apikey" | "audit" | "azuremonitor" | "cloudwatch" | "comment" | "datadog" | "discord" | "environment" | "googlechat" | "grafana" | "heartbeat" | "influxdb2" | "kapacitor" | "kv" | "mail" | "newrelic" | "notification" | "ntfy" | "opsgenie" | "pagerduty" | "patlite" | "profile" | "prometheus" | "pushover" | "record" | "role" | "rule" | "savedsearch" | "script" | "sentry" | "servicenow" | "settings" | "slack" | "snooze" | "sns" | "stats" | "statuspage" | "telegram" | "twilio" | "user" | "webhook" | "widget";
         /** @description Base64url-encoded JSON condition. Empty (or absent) selects
          *     every document. Use `POST /{plugin}/search` for queries that
          *     won't fit in a URL.
@@ -2808,4 +3305,64 @@ export interface components {
     pathItems: never;
 }
 export type $defs = Record<string, never>;
-export type operations = Record<string, never>;
+export interface operations {
+    runHousekeeping: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description All registered jobs were invoked (per-job errors in body). */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** @example ok */
+                        status?: string;
+                        jobs?: {
+                            name?: string;
+                            error?: string;
+                            duration_ms?: number;
+                        }[];
+                        errors?: number;
+                    };
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            503: components["responses"]["ServiceUnavailable"];
+        };
+    };
+    housekeepingStatus: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Housekeeper is wired. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** @example ok */
+                        status?: string;
+                        registered_jobs?: number;
+                    };
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            503: components["responses"]["ServiceUnavailable"];
+        };
+    };
+}
