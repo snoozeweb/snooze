@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/snoozeweb/snooze/internal/auth"
 	"github.com/snoozeweb/snooze/internal/condition"
 	"github.com/stretchr/testify/require"
 )
@@ -218,6 +219,55 @@ func TestCleanupNotificationJobInvokesDriver(t *testing.T) {
 	require.Equal(t, "cleanup_notification", ij.Job.Name())
 	require.NoError(t, ij.Job.Run(context.Background()))
 	require.Equal(t, 1, calls)
+}
+
+// fakeAPIKeyStore is a tiny in-test fake satisfying the apikeyCleanup
+// interface: it records how many times Cleanup is invoked.
+type fakeAPIKeyStore struct{ calls int }
+
+func (f *fakeAPIKeyStore) Cleanup(_ context.Context) (int, error) {
+	f.calls++
+	return 0, nil
+}
+
+// TestCleanupAPIKeyJobInvokesStore verifies CleanupAPIKeyJob wires through to
+// the store's Cleanup once and runs on the default hourly interval.
+func TestCleanupAPIKeyJobInvokesStore(t *testing.T) {
+	store := &fakeAPIKeyStore{}
+	ij := CleanupAPIKeyJob(store)
+	require.Equal(t, time.Hour, ij.Interval)
+	require.Equal(t, "cleanup_apikey", ij.Job.Name())
+	require.NoError(t, ij.Job.Run(context.Background()))
+	require.Equal(t, 1, store.calls)
+}
+
+// fakeRefreshStore is a tiny in-test fake satisfying the refreshCleanup
+// interface: it records the call count and the context it received so the test
+// can assert the job wrapped it with platform scope.
+type fakeRefreshStore struct {
+	calls  int
+	gotCtx context.Context
+}
+
+func (f *fakeRefreshStore) Cleanup(ctx context.Context) (int, error) {
+	f.calls++
+	f.gotCtx = ctx
+	return 0, nil
+}
+
+// TestCleanupRefreshTokenJobInvokesStore verifies CleanupRefreshTokenJob wires
+// through to the store's Cleanup once, runs hourly, and crucially wraps the
+// context with platform scope so the per-tenant refresh-token rows are swept
+// across all tenants.
+func TestCleanupRefreshTokenJobInvokesStore(t *testing.T) {
+	store := &fakeRefreshStore{}
+	ij := CleanupRefreshTokenJob(store)
+	require.Equal(t, time.Hour, ij.Interval)
+	require.Equal(t, "cleanup_refresh_token", ij.Job.Name())
+	require.NoError(t, ij.Job.Run(context.Background()))
+	require.Equal(t, 1, store.calls)
+	require.True(t, auth.IsPlatformScope(store.gotCtx),
+		"refresh-token cleanup must run with platform scope")
 }
 
 // TestCleanupCommentJob — ported from test_cleanup_comment.

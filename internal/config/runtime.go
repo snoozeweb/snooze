@@ -486,6 +486,8 @@ func applyHousekeeperOverrides(out *HousekeeperConfig, values map[string]any) {
 	overlayDuration(values, "housekeeping.cleanup_audit", &out.CleanupAudit)
 	overlayDuration(values, "housekeeping.cleanup_stats", &out.CleanupStats)
 	overlayDuration(values, "housekeeping.cleanup_orphans", &out.CleanupOrphans)
+	overlayDuration(values, "housekeeping.cleanup_apikey", &out.CleanupAPIKey)
+	overlayDuration(values, "housekeeping.cleanup_refresh_token", &out.CleanupRefreshToken)
 }
 
 // overlayDuration writes the value at key into dst, parsing the

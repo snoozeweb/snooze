@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/snoozeweb/snooze/internal/auth"
 	"github.com/snoozeweb/snooze/internal/condition"
 	"github.com/snoozeweb/snooze/internal/db"
 )
@@ -167,6 +168,46 @@ func CleanupStatsAsIntervalJob(d db.Driver, rs statsRetention) IntervalJob {
 				_, err := d.Delete(tctx, "stats", cond, true)
 				return err
 			})
+		}),
+	}
+}
+
+// apikeyCleanup is the narrow contract CleanupAPIKeyJob needs from the auth
+// layer. Satisfied by *auth.APIKeyStore. Declared as its own type (separate
+// from refreshCleanup, despite the identical signature) to document intent at
+// the call site.
+type apikeyCleanup interface {
+	Cleanup(ctx context.Context) (int, error)
+}
+
+// refreshCleanup is the narrow contract CleanupRefreshTokenJob needs from the
+// auth layer. Satisfied by *auth.RefreshTokenStore.
+type refreshCleanup interface {
+	Cleanup(ctx context.Context) (int, error)
+}
+
+// CleanupAPIKeyJob purges expired API-key rows hourly. APIKeyStore.Cleanup
+// already wraps the call in WithPlatformScope, so this job passes ctx through
+// unchanged and sweeps every tenant in one pass.
+func CleanupAPIKeyJob(s apikeyCleanup) IntervalJob {
+	return IntervalJob{
+		Interval: time.Hour,
+		Job: NewJobFunc("cleanup_apikey", func(ctx context.Context) error {
+			_, err := s.Cleanup(ctx)
+			return err
+		}),
+	}
+}
+
+// CleanupRefreshTokenJob purges expired refresh-token rows hourly. Unlike the
+// API-key store, RefreshTokenStore.Cleanup forwards ctx to the driver as-is,
+// so this job applies WithPlatformScope here to sweep across all tenants.
+func CleanupRefreshTokenJob(s refreshCleanup) IntervalJob {
+	return IntervalJob{
+		Interval: time.Hour,
+		Job: NewJobFunc("cleanup_refresh_token", func(ctx context.Context) error {
+			_, err := s.Cleanup(auth.WithPlatformScope(ctx))
+			return err
 		}),
 	}
 }

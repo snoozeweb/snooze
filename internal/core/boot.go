@@ -415,6 +415,10 @@ func (c *Core) bootHousekeeper() error {
 			liveInterval(func(h config.HousekeeperConfig) time.Duration { return h.CleanupAudit.AsDuration() }, 28*24*time.Hour)),
 		liveIntervalReg(housekeeper.CleanupStatsAsIntervalJob(c.Driver, c.Settings),
 			liveInterval(func(h config.HousekeeperConfig) time.Duration { return h.CleanupStats.AsDuration() }, 400*24*time.Hour)),
+		liveIntervalReg(housekeeper.CleanupAPIKeyJob(c.APIKeys),
+			liveInterval(func(h config.HousekeeperConfig) time.Duration { return h.CleanupAPIKey.AsDuration() }, time.Hour)),
+		liveIntervalReg(housekeeper.CleanupRefreshTokenJob(c.Refresh),
+			liveInterval(func(h config.HousekeeperConfig) time.Duration { return h.CleanupRefreshToken.AsDuration() }, time.Hour)),
 	}
 
 	for _, j := range jobs {

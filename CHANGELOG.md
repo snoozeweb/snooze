@@ -83,6 +83,9 @@
 
 ### Changed
 
+- **Housekeeper** — expired API keys and refresh tokens are now purged hourly.
+  The cadence is tunable via `housekeeping.cleanup_apikey` and
+  `housekeeping.cleanup_refresh_token` (both default to `1h`).
 - **Web — table rows are now text-selectable, with a context-menu Copy.**
   Drag-selecting text inside a table row no longer opens the row (the
   click-to-open is suppressed while a selection is active), so cell values can

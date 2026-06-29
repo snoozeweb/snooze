@@ -16,6 +16,8 @@ type Housekeeper struct {
 	CleanupStats        Duration `koanf:"cleanup_stats"`
 	CleanupSnooze       Duration `koanf:"cleanup_snooze"`
 	CleanupNotification Duration `koanf:"cleanup_notification"`
+	CleanupAPIKey       Duration `koanf:"cleanup_apikey"`
+	CleanupRefreshToken Duration `koanf:"cleanup_refresh_token"`
 }
 
 // DefaultHousekeeper returns the Python defaults.
@@ -31,5 +33,7 @@ func DefaultHousekeeper() Housekeeper {
 		CleanupStats:        Duration(400 * 24 * time.Hour),
 		CleanupSnooze:       Duration(3 * 24 * time.Hour),
 		CleanupNotification: Duration(3 * 24 * time.Hour),
+		CleanupAPIKey:       Duration(time.Hour),
+		CleanupRefreshToken: Duration(time.Hour),
 	}
 }

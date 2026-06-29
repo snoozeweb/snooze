@@ -124,3 +124,28 @@ The Go schema lives in `internal/config/schema/housekeeper.go`.
 > this duration are pruned by the housekeeper. Accepts Go duration strings
 > (e.g. `"720h"`, `"4320h"`). Editable at runtime in **Settings →
 > Housekeeping** without a server restart.
+
+### cleanup_apikey
+
+> Type  
+> string (Go duration)
+>
+> Default  
+> `"1h"`
+>
+> Cadence at which expired API-key rows are purged from the database. Expired
+> keys are already refused at authentication time; this job is pure
+> garbage-collection of the elapsed rows. Editable at runtime without a server
+> restart.
+
+### cleanup_refresh_token
+
+> Type  
+> string (Go duration)
+>
+> Default  
+> `"1h"`
+>
+> Cadence at which expired refresh-token rows are purged from the database.
+> The sweep runs across all tenants. Editable at runtime without a server
+> restart.
