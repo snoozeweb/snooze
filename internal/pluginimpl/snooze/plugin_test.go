@@ -208,6 +208,31 @@ func TestSnoozeMatch_AbortWrite(t *testing.T) {
 	require.Equal(t, "Filter 1", res.Record.Extra["snoozed"])
 }
 
+// TestSnoozeBypassSeverity covers the global general.snooze_bypass_severities
+// early-return: a record whose (case-folded) severity is in the bypass list
+// passes straight through with ActionContinue — before any rule is even tested
+// — while a non-bypassed severity still trips the catch-all rule.
+func TestSnoozeBypassSeverity(t *testing.T) {
+	t.Parallel()
+	h := newStubHost(t)
+	h.cfg.General.SnoozeBySeverities = []string{"ok"}
+	// Catch-all rule: no condition → matches every record.
+	writeRule(t, h, db.Document{"name": "catch-all"})
+	p := newPlugin(t, h, nil)
+	ctx := auth.WithTenant(context.Background(), snoozetypes.DefaultTenant)
+
+	// severity "OK" → bypassed; the catch-all rule must NOT fire.
+	res, err := p.Process(ctx, snoozetypes.Record{Severity: "OK"})
+	require.NoError(t, err)
+	require.Equal(t, plugins.ActionContinue, res.Action)
+	require.Nil(t, res.Record.Extra["snoozed"])
+
+	// severity "critical" → not in the bypass list; catch-all must fire.
+	res2, err := p.Process(ctx, snoozetypes.Record{Severity: "critical"})
+	require.NoError(t, err)
+	require.NotEqual(t, plugins.ActionContinue, res2.Action)
+}
+
 // TestSnoozeMiss_Continue matches the Python `test_snooze_2`: no rule
 // matches, the plugin votes Continue and leaves the record alone.
 func TestSnoozeMiss_Continue(t *testing.T) {

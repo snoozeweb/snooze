@@ -13,6 +13,20 @@ func TestGeneral_Normalize(t *testing.T) {
 	require.Equal(t, []string{"ok", "success", "warning"}, g.OKSeverities)
 }
 
+// TestGeneralNormalize_SnoozeBySeverities verifies the suppression-bypass list
+// is case-folded and trimmed alongside OKSeverities.
+func TestGeneralNormalize_SnoozeBySeverities(t *testing.T) {
+	g := General{SnoozeBySeverities: []string{"OK", " Success "}}
+	g.Normalize()
+	require.Equal(t, []string{"ok", "success"}, g.SnoozeBySeverities)
+}
+
+// TestDefaultGeneral_SnoozeBySeveritiesEmpty pins the default: the bypass list
+// is empty (nil) so suppression bypass is off until an operator opts in.
+func TestDefaultGeneral_SnoozeBySeveritiesEmpty(t *testing.T) {
+	require.Empty(t, DefaultGeneral().SnoozeBySeverities)
+}
+
 func TestHousekeeper_Defaults(t *testing.T) {
 	h := DefaultHousekeeper()
 	require.Equal(t, 48*time.Hour, h.RecordTTL.AsDuration())

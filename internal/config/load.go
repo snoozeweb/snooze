@@ -242,6 +242,7 @@ func isListField(path string) bool {
 		"core.enabled_optional_plugins",
 		"core.backup.excludes",
 		"general.ok_severities",
+		"general.snooze_bypass_severities",
 		"oidc.scopes",
 		"auth_proxy.trusted_proxies":
 		return true
@@ -284,13 +285,14 @@ func defaultsYAML() ([]byte, error) {
 			},
 		},
 		"general": map[string]any{
-			"default_auth_backend": d.General.DefaultAuthBackend,
-			"local_enabled":        d.General.LocalEnabled,
-			"local_users_enabled":  d.General.LocalUsersEnabled,
-			"metrics_enabled":      d.General.MetricsEnabled,
-			"anonymous_enabled":    d.General.AnonymousEnabled,
-			"anonymous_admin":      d.General.AnonymousAdmin,
-			"ok_severities":        d.General.OKSeverities,
+			"default_auth_backend":     d.General.DefaultAuthBackend,
+			"local_enabled":            d.General.LocalEnabled,
+			"local_users_enabled":      d.General.LocalUsersEnabled,
+			"metrics_enabled":          d.General.MetricsEnabled,
+			"anonymous_enabled":        d.General.AnonymousEnabled,
+			"anonymous_admin":          d.General.AnonymousAdmin,
+			"ok_severities":            d.General.OKSeverities,
+			"snooze_bypass_severities": d.General.SnoozeBySeverities,
 		},
 		"housekeeping": map[string]any{
 			"trigger_on_startup":    d.Housekeeper.TriggerOnStartup,

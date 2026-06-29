@@ -15,6 +15,10 @@ type General struct {
 	// anonymous visitor needs full access.
 	AnonymousAdmin bool     `koanf:"anonymous_admin"`
 	OKSeverities   []string `koanf:"ok_severities"`
+	// SnoozeBySeverities exempts records whose severity matches any entry from
+	// all snooze suppression, regardless of which rules are active. Empty
+	// (default) means bypass is off. The Alerta analogue is BLACKOUT_ACCEPT.
+	SnoozeBySeverities []string `koanf:"snooze_bypass_severities"`
 }
 
 // DefaultGeneral returns the canonical defaults.
@@ -30,10 +34,14 @@ func DefaultGeneral() General {
 	}
 }
 
-// Normalize folds the OK severity list to its case-folded form, matching the
-// Python “ok_severities“ validator.
+// Normalize folds the OK severity list and the suppression-bypass severity
+// list to their case-folded forms, matching the Python “ok_severities“
+// validator.
 func (g *General) Normalize() {
 	for i, s := range g.OKSeverities {
 		g.OKSeverities[i] = strings.ToLower(strings.TrimSpace(s))
+	}
+	for i, s := range g.SnoozeBySeverities {
+		g.SnoozeBySeverities[i] = strings.ToLower(strings.TrimSpace(s))
 	}
 }

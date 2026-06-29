@@ -21,6 +21,7 @@ import (
 	_ "embed"
 	"encoding/json"
 	"fmt"
+	"strings"
 	"sync"
 	"time"
 
@@ -159,6 +160,21 @@ func (p *Plugin) Process(ctx context.Context, rec snoozetypes.Record) (plugins.R
 	rules := p.rules[tenantID]
 	host := p.host
 	p.mu.RUnlock()
+
+	// Global suppression-bypass: a record whose severity is listed in
+	// general.snooze_bypass_severities passes straight through, before any
+	// rule is tested, so a maintenance window can never silence a recovery
+	// (e.g. "ok") or a configured escalation (e.g. "critical").
+	if host != nil {
+		if cfg := host.Config(); cfg != nil && len(cfg.General.SnoozeBySeverities) > 0 {
+			sev := strings.ToLower(strings.TrimSpace(rec.Severity))
+			for _, bypass := range cfg.General.SnoozeBySeverities {
+				if sev == bypass {
+					return plugins.Result{Action: plugins.ActionContinue, Record: rec}, nil
+				}
+			}
+		}
+	}
 
 	for _, r := range rules {
 		if !r.match(asMap, now) {

@@ -2,6 +2,10 @@
 
 ### Added
 
+- **Snooze — suppression-bypass severities.** A new `general.snooze_bypass_severities`
+  list (default empty) exempts records whose `severity` matches any entry from all
+  snooze rules. Set it to e.g. `['ok', 'critical']` to ensure recovery and
+  highest-priority events are never silenced by a maintenance window.
 - **aggregaterule**: new record fields `previous_severity` and
   `trend_indication` (`moreSevere`/`lessSevere`/`noChange`) stamped on every
   aggregate merge. Severity escalations (`moreSevere`) now bypass the throttle
