@@ -6,6 +6,8 @@ category: 'oncall'
 doc_url: 'https://snoozeweb.github.io/snooze/general/integrations/pagerduty'
 provides:
     - notifier
+    - receiver
+webhook_description: 'Inbound status sync: PagerDuty webhook v2 (messages[]) acknowledge/resolve/unacknowledge events patch the matching Snooze record state (located by incident_key == record hash, falling back to uid).'
 action_form:
     routing_key:
         display_name: Routing Key

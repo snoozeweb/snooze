@@ -1691,6 +1691,7 @@ paths:
               - influxdb2
               - kapacitor
               - newrelic
+              - pagerduty
               - pingdom
               - prometheus
               - sentry
@@ -1713,6 +1714,59 @@ paths:
                   data:
                     type: array
                     items: {$ref: '#/components/schemas/Record'}
+        '503':
+          $ref: '#/components/responses/IngestDisabledWebhook'
+
+  /api/v1/webhook/pagerduty:
+    post:
+      tags: [webhooks]
+      summary: PagerDuty status-sync inbound webhook
+      description: |
+        Accepts PagerDuty webhook v2 (`messages[]`) payloads and applies
+        ack/close/re-open state transitions to matching Snooze records. Each
+        message's `data.incident.incident_key` locates the originating record
+        (matched against `record.hash`, falling back to `record.uid` — the same
+        dedup-key convention the outbound notifier uses). The event type maps to
+        a Snooze state:
+
+        | PagerDuty event type | Snooze state |
+        |----------------------|--------------|
+        | `incident.acknowledge` | `ack` |
+        | `incident.resolve` | `close` |
+        | `incident.trigger` / `incident.unacknowledge` / `incident.escalate` | re-open (state cleared) |
+        | `incident.assign` / `incident.delegate` / unknown | ignored (no-op) |
+
+        Unknown event types are a fail-open no-op (200 OK, no write) so a Snooze
+        upgrade never causes PagerDuty to retry forever. Like every receiver,
+        this endpoint is unauthenticated by default and gated by `ingest.token`
+        when configured. No PagerDuty webhook signature is validated.
+      security:
+        - {}
+        - ingestToken: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PagerDutyWebhookEnvelope'
+      responses:
+        '200':
+          description: |
+            All messages processed. `updated` is the number of records patched
+            (0 when every message was an ignored event type).
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status: {type: string, example: ok}
+                  updated: {type: integer, example: 1}
+        '400':
+          description: Missing or malformed payload (bad JSON, empty `messages`, or a missing `incident_key`).
+        '404':
+          description: No matching record found for the supplied `incident_key`.
+        '500':
+          description: Internal error (the DB state write failed).
         '503':
           $ref: '#/components/responses/IngestDisabledWebhook'
 
@@ -2897,6 +2951,43 @@ components:
           description: >
             Seconds until the active window closes. 0 when always_on, pending,
             or no upper bound. Never stored; projected at read time.
+
+    PagerDutyWebhookEnvelope:
+      type: object
+      description: |
+        PagerDuty webhook v2 payload. Each entry in `messages` carries an event
+        `type` and a `data.incident` object whose `incident_key` is the
+        dedup-key Snooze set when it triggered the incident.
+      required: [messages]
+      properties:
+        messages:
+          type: array
+          minItems: 1
+          items:
+            type: object
+            required: [type, data]
+            properties:
+              type:
+                type: string
+                description: |
+                  PagerDuty event type, e.g. `incident.acknowledge`,
+                  `incident.resolve`, `incident.trigger`,
+                  `incident.unacknowledge`, `incident.escalate`,
+                  `incident.assign`, `incident.delegate`.
+                example: incident.acknowledge
+              data:
+                type: object
+                properties:
+                  incident:
+                    type: object
+                    required: [incident_key]
+                    properties:
+                      incident_key:
+                        type: string
+                        description: Dedup key Snooze set (== record.hash, fallback record.uid).
+                        example: abc123
+                      incident_number: {type: integer}
+                      html_url: {type: string}
 
     ErrEnvelope:
       type: object

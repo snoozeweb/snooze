@@ -2,6 +2,12 @@
 
 ### Added
 
+- **PagerDuty inbound status sync.** A new webhook receiver at
+  `/api/v1/webhook/pagerduty` maps `incident.acknowledge` → `State: "ack"` and
+  `incident.resolve` → `State: "close"` back onto the originating Snooze record
+  (identified by the `dedup_key` / `incident_key` echoed by PagerDuty).
+  Unacknowledge and escalate events re-open the record. The existing PagerDuty
+  outbound notifier is unchanged.
 - **Heartbeat — latency / slow-ping detection.** Heartbeat documents now
   accept an optional `max_latency` (ms) field. When the ping URL includes
   `?sent_at=<unix-ms>`, the server records `last_latency = receive_time - sent_at`.

@@ -16,6 +16,14 @@
 //
 // The plugin owns no database collection. PostInit stores the host; Reload is
 // a no-op.
+//
+// Inbound status sync: this package is also a WebhookReceiver, mounted at
+// POST /api/v1/webhook/pagerduty (see webhook.go). It accepts PagerDuty webhook
+// v2 (messages[]) payloads and patches the originating record's state —
+// acknowledge → "ack", resolve → "close", trigger/unacknowledge/escalate →
+// re-open (state cleared) — locating the record by the same dedup_key the
+// outbound side sets (rec.Hash, falling back to rec.UID), echoed back as
+// data.incident.incident_key.
 package pagerduty
 
 import (
