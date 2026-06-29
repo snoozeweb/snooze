@@ -54,7 +54,9 @@ export function ActionEditor({ uid, onClose }: ActionEditorProps) {
 
   // Wizard step: new actions start by picking an integration; edits jump
   // straight to the config form (the type is already chosen).
-  const [step, setStep] = useState<"pick" | "choose-mode" | "configure">(isCreate ? "pick" : "configure");
+  const [step, setStep] = useState<"pick" | "choose-mode" | "configure">(
+    isCreate ? "pick" : "configure",
+  );
 
   const { register, handleSubmit, reset, formState, watch, setValue } = useForm<FormShape>({
     defaultValues: EMPTY_FORM,
@@ -160,7 +162,6 @@ export function ActionEditor({ uid, onClose }: ActionEditorProps) {
   }
 
   const nameInvalid = formState.isSubmitted && !watch("name").trim();
-  const picking = step === "pick";
   const heading =
     step === "pick"
       ? "Choose an integration"

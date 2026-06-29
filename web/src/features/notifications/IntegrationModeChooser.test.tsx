@@ -8,12 +8,22 @@ const JIRA: Metadata = {
   plugin_name: "jira",
   name: "Create a JIRA issue",
   category: "ticketing",
-  daemon: { name: "snooze-jira", blurb: "Auto-close records.", doc_url: "https://docs/jira#daemon" },
+  daemon: {
+    name: "snooze-jira",
+    blurb: "Auto-close records.",
+    doc_url: "https://docs/jira#daemon",
+  },
 };
 
 describe("IntegrationModeChooser", () => {
   it("renders both options with the daemon docs link", () => {
-    render(<IntegrationModeChooser plugin={JIRA} onUseBuiltin={() => undefined} onBack={() => undefined} />);
+    render(
+      <IntegrationModeChooser
+        plugin={JIRA}
+        onUseBuiltin={() => undefined}
+        onBack={() => undefined}
+      />,
+    );
     expect(screen.getByText("Built-in")).toBeTruthy();
     const link = screen.getByRole("link", { name: /Advanced · snooze-jira/ });
     expect(link.getAttribute("href")).toBe("https://docs/jira#daemon");
@@ -23,7 +33,9 @@ describe("IntegrationModeChooser", () => {
   it("calls onUseBuiltin when Built-in is clicked", async () => {
     const onUseBuiltin = vi.fn();
     const user = userEvent.setup();
-    render(<IntegrationModeChooser plugin={JIRA} onUseBuiltin={onUseBuiltin} onBack={() => undefined} />);
+    render(
+      <IntegrationModeChooser plugin={JIRA} onUseBuiltin={onUseBuiltin} onBack={() => undefined} />,
+    );
     await user.click(screen.getByText("Built-in"));
     expect(onUseBuiltin).toHaveBeenCalledOnce();
   });
