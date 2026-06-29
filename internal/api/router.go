@@ -198,6 +198,7 @@ func (rt *Router) skipAuth(r *http.Request) bool {
 			"/healthz", "/readyz", "/metrics",
 			"/api/v1/login",
 			"/api/v1/health",
+			"/api/v1/version",
 			// /api/v1/alerts is the generic record-ingest endpoint
 			// (1.5.0 AlertRoute had `authentication = False`).
 			// Anything that POSTs alerts — internal jobs, lightweight

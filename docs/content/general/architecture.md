@@ -42,6 +42,19 @@ It is worth mentioning that the configuration file `/etc/snooze/server/core.yaml
 
 [How to use alerting scripts](./actions.md)
 
+## Management endpoints
+
+Snooze server exposes a small set of public HTTP endpoints (no bearer token
+required) used by load balancers, monitoring scripts, and the web UI:
+
+- `GET /healthz` — liveness probe (200 while the process is up).
+- `GET /readyz` — readiness probe (polls the database driver).
+- `GET /api/v1/health` — verbose per-subsystem health snapshot.
+- `GET /api/v1/version` — the compiled-in version string, git commit, and
+  build date. Public so operators can confirm which binary is running on each
+  cluster node and the SPA can display the running version before login.
+- `GET /metrics` — Prometheus text-format exposition.
+
 ## Examples
 
 ![Sending an alert - Workflow](./images/alert.png)

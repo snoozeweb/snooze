@@ -172,6 +172,35 @@ paths:
                     type: array
                     items: {type: string}
 
+  /api/v1/version:
+    get:
+      tags: [health]
+      summary: Build version info
+      description: |
+        Returns the compiled-in version string, git commit hash, and
+        build date. Always public (no bearer token required). Use this
+        endpoint to verify which binary is running on each cluster node
+        or to display the version in the web UI.
+      security: []
+      responses:
+        '200':
+          description: Version metadata.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [version, commit, date]
+                properties:
+                  version:
+                    type: string
+                    example: "2.3.1"
+                  commit:
+                    type: string
+                    example: "abc1234"
+                  date:
+                    type: string
+                    example: "2026-06-26T10:00:00Z"
+
   /metrics:
     get:
       tags: [telemetry]

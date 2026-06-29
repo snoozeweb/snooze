@@ -2,6 +2,10 @@
 
 ### Added
 
+- **Version endpoint.** `GET /api/v1/version` (public, no token required) returns
+  the compiled-in version string, git commit, and build date. Operators can use
+  this to confirm which binary is running on each cluster node; the SPA can
+  display the running version in the UI.
 - **Ingest kill-switch.** A new `ingest.allow` runtime setting (default `true`)
   lets operators instantly halt all alert intake — both `POST /api/v1/alerts`
   and every webhook receiver — without a server restart. The switch is

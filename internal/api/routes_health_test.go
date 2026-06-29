@@ -127,6 +127,19 @@ func TestHealthVerbose(t *testing.T) {
 	require.Contains(t, rec.Body.String(), `"db":"ok"`)
 }
 
+func TestVersion_ReturnsCompiledFields(t *testing.T) {
+	rt := &Router{}
+	r := chi.NewRouter()
+	rt.mountHealth(r)
+	rec := httptest.NewRecorder()
+	r.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/v1/version", nil))
+	require.Equal(t, http.StatusOK, rec.Code)
+	body := rec.Body.String()
+	require.Contains(t, body, `"version"`)
+	require.Contains(t, body, `"commit"`)
+	require.Contains(t, body, `"date"`)
+}
+
 func TestClusterStatus_StandaloneWhenNodesEmpty(t *testing.T) {
 	rt := &Router{DB: &fakeDB{}}
 	r := chi.NewRouter()

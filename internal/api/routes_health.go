@@ -10,6 +10,7 @@ import (
 
 	"github.com/snoozeweb/snooze/internal/condition"
 	"github.com/snoozeweb/snooze/internal/db"
+	"github.com/snoozeweb/snooze/internal/version"
 )
 
 // clusterMemberFreshOK is the max age of a `last_seen` timestamp for a node
@@ -34,6 +35,9 @@ func (rt *Router) mountHealth(r chi.Router) {
 	})
 	r.Route("/api/v1/cluster", func(sub chi.Router) {
 		sub.Get("/status", rt.handleClusterStatus)
+	})
+	r.Route("/api/v1/version", func(sub chi.Router) {
+		sub.Get("/", rt.handleVersion)
 	})
 }
 
@@ -178,4 +182,16 @@ func (rt *Router) handleHealthVerbose(w http.ResponseWriter, r *http.Request) {
 	resp["subsystems"] = subsystems
 	resp["plugins"] = pluginNames
 	WriteJSON(w, http.StatusOK, resp)
+}
+
+// handleVersion returns the compiled-in release metadata: version string,
+// git commit, and build date. The endpoint is always public so cluster
+// operators and the SPA can display the running version without
+// authenticating.
+func (rt *Router) handleVersion(w http.ResponseWriter, _ *http.Request) {
+	WriteJSON(w, http.StatusOK, map[string]string{
+		"version": version.Version,
+		"commit":  version.Commit,
+		"date":    version.Date,
+	})
 }
