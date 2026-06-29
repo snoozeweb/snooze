@@ -367,6 +367,8 @@ func (p *Plugin) matchAggregate(
 	if host == nil || host.DB() == nil {
 		// In tests with no DB the plugin is a no-op pass-through.
 		rec["duplicates"] = int64(1)
+		newSeverity, _ := rec["severity"].(string)
+		stampTrendFields(rec, "", newSeverity)
 		return rec, plugins.ActionContinue, nil
 	}
 
@@ -379,6 +381,8 @@ func (p *Plugin) matchAggregate(
 	if existing == nil {
 		// First occurrence: mark and pass through.
 		rec["duplicates"] = int64(1)
+		newSeverity, _ := rec["severity"].(string)
+		stampTrendFields(rec, "", newSeverity)
 		return rec, plugins.ActionContinue, nil
 	}
 
@@ -410,6 +414,15 @@ func (p *Plugin) matchAggregate(
 	prevUID, _ := existing["uid"].(string)
 	commentCount := toInt64(existing["comment_count"], 0)
 	flappingCountdown, hasFlap := toInt64WithOk(existing["flapping_countdown"])
+
+	// Derive the previous_severity / trend_indication pair stamped on every
+	// non-error return path below. trendCmp < 0 means severity ROSE (more
+	// severe), which the throttled-duplicate path uses to break through the
+	// throttle so an escalation is never silently dropped.
+	prevSeverity, _ := existing["severity"].(string)
+	newSeverity, _ := rec["severity"].(string)
+	trendCmp := snoozetypes.CompareSeverity(newSeverity, prevSeverity)
+	stampTrendFields(rec, prevSeverity, newSeverity)
 
 	// If this record carried a stale `snoozed` attribution and is about to
 	// continue to the snooze plugin (ActionContinue → next in the pipeline),
@@ -448,8 +461,6 @@ func (p *Plugin) matchAggregate(
 		if prevState != "close" {
 			rec["state"] = "close"
 			rec["comment_count"] = commentCount + 1
-			prevSeverity, _ := existing["severity"].(string)
-			newSeverity, _ := rec["severity"].(string)
 			p.writeAutoComment(ctx, host, prevUID, "close",
 				fmt.Sprintf("Auto closed: Severity %s => %s", prevSeverity, newSeverity), now)
 			return rec, plugins.ActionContinue, nil
@@ -524,6 +535,22 @@ func (p *Plugin) matchAggregate(
 	}
 
 	if throttling {
+		if trendCmp < 0 {
+			// Severity ROSE inside the throttle window — break through the
+			// throttle so the downstream notification sees the escalation
+			// instead of silently swallowing the duplicate. Only moreSevere
+			// bypasses; lessSevere / noChange stay throttled below.
+			ctype := "esc"
+			if prevState == "ack" {
+				rec["state"] = "esc"
+			} else {
+				rec["state"] = prevState
+			}
+			rec["comment_count"] = commentCount + 1
+			p.writeAutoComment(ctx, host, prevUID, ctype,
+				fmt.Sprintf("Severity escalated: %s => %s (throttle bypassed)", prevSeverity, newSeverity), now)
+			return rec, plugins.ActionContinue, nil
+		}
 		// Throttled duplicate: queue the counter bump but drop notifications.
 		p.queueIncrement(ctx, host, hashStr, 1)
 		ruleName, _ := rec["aggregate"].(string)
@@ -605,6 +632,29 @@ func (p *Plugin) writeAutoComment(ctx context.Context, host plugins.Host, record
 				"record_uid", recordUID, "type", ctype, "error", err)
 		}
 	}
+}
+
+// trendString maps the return value of snoozetypes.CompareSeverity to the
+// Alerta TrendIndication string labels.
+func trendString(cmp int) string {
+	switch {
+	case cmp < 0:
+		return "moreSevere"
+	case cmp > 0:
+		return "lessSevere"
+	default:
+		return "noChange"
+	}
+}
+
+// stampTrendFields records the derived previous_severity / trend_indication
+// pair on the outgoing record. `prev` is the severity on the existing aggregate
+// (empty on first occurrence) and `next` the incoming severity. It is called on
+// every non-error return path so dashboard sort/badge consumers can read both
+// fields regardless of the pipeline verdict.
+func stampTrendFields(rec map[string]any, prev, next string) {
+	rec["previous_severity"] = prev
+	rec["trend_indication"] = trendString(snoozetypes.CompareSeverity(next, prev))
 }
 
 // flappingNote renders the "stopped notifications until throttle expires" line

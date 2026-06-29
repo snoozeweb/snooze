@@ -2,6 +2,10 @@
 
 ### Added
 
+- **aggregaterule**: new record fields `previous_severity` and
+  `trend_indication` (`moreSevere`/`lessSevere`/`noChange`) stamped on every
+  aggregate merge. Severity escalations (`moreSevere`) now bypass the throttle
+  window so a `warning` escalating to `critical` is never silently swallowed.
 - **Attribute-based tenant routing.** A new global `tenant_match` registry lets
   operators map IdP groups, email domains, or login names to tenant slugs,
   removing the need for users to know or type their org slug at login. SSO

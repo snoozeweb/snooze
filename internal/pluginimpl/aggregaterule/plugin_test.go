@@ -5,6 +5,7 @@ import (
 	"context"
 	"log/slog"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -958,6 +959,141 @@ func TestAggregate_ThrottleRecordsStat(t *testing.T) {
 	require.Equal(t, "ThrottleRule", c.search["key"])
 	require.Equal(t, wantBucket, c.search["bucket"])
 	require.Equal(t, int64(1), c.delta)
+}
+
+// --- Plan 30: previous_severity + trend_indication ---
+
+// TestTrendString unit-tests the package-private trendString helper that maps
+// snoozetypes.CompareSeverity's -1/0/+1 return to the Alerta TrendIndication
+// label strings.
+func TestTrendString(t *testing.T) {
+	t.Parallel()
+	require.Equal(t, "moreSevere", trendString(-1))
+	require.Equal(t, "noChange", trendString(0))
+	require.Equal(t, "lessSevere", trendString(1))
+}
+
+// TestMatchAggregate_FirstOccurrence_TrendFields verifies that the first
+// occurrence of an aggregate stamps previous_severity == "" and
+// trend_indication == "noChange".
+func TestMatchAggregate_FirstOccurrence_TrendFields(t *testing.T) {
+	t.Parallel()
+	host := newTestHost(t)
+	writeRule(t, host, db.Document{
+		"name": "AggTF", "condition": []any{"=", "a", "1"},
+		"fields": []string{"a"}, "throttle": int64(900),
+	})
+	p := freshPlugin(t, host)
+
+	out, action := runProcess(t, p, host, snoozetypes.Record{Severity: "warning", Extra: map[string]any{"a": "1"}})
+	require.Equal(t, plugins.ActionContinue, action)
+	require.Equal(t, "", out.Extra["previous_severity"])
+	require.Equal(t, "noChange", out.Extra["trend_indication"])
+}
+
+// TestMatchAggregate_ThrottledDuplicate_NoChange_StillThrottled confirms a
+// same-severity duplicate within the throttle window is still dropped
+// (ActionAbortUpdate) and stamps trend_indication == "noChange".
+func TestMatchAggregate_ThrottledDuplicate_NoChange_StillThrottled(t *testing.T) {
+	t.Parallel()
+	host := newTestHost(t)
+	writeRule(t, host, db.Document{
+		"name": "AggNC", "condition": []any{"=", "a", "1"},
+		"fields": []string{"a"}, "throttle": int64(900),
+	})
+	p := freshPlugin(t, host)
+
+	runProcess(t, p, host, snoozetypes.Record{Severity: "warning", Extra: map[string]any{"a": "1"}})
+	out, action := runProcess(t, p, host, snoozetypes.Record{Severity: "warning", Extra: map[string]any{"a": "1"}})
+	require.Equal(t, plugins.ActionAbortUpdate, action, "same-severity duplicate in window must stay throttled")
+	require.Equal(t, "warning", out.Extra["previous_severity"])
+	require.Equal(t, "noChange", out.Extra["trend_indication"])
+}
+
+// TestMatchAggregate_ThrottledDuplicate_MoreSevere_BypassesThrottle is the core
+// behavioural change: a warning escalating to critical inside the throttle
+// window must break through (ActionContinue) and stamp trend == "moreSevere".
+func TestMatchAggregate_ThrottledDuplicate_MoreSevere_BypassesThrottle(t *testing.T) {
+	t.Parallel()
+	host := newTestHost(t)
+	writeRule(t, host, db.Document{
+		"name": "AggMS", "condition": []any{"=", "a", "1"},
+		"fields": []string{"a"}, "throttle": int64(900),
+	})
+	p := freshPlugin(t, host)
+
+	runProcess(t, p, host, snoozetypes.Record{Severity: "warning", Extra: map[string]any{"a": "1"}})
+	out, action := runProcess(t, p, host, snoozetypes.Record{Severity: "critical", Extra: map[string]any{"a": "1"}})
+	require.Equal(t, plugins.ActionContinue, action, "severity rise in window must bypass throttle")
+	require.Equal(t, "warning", out.Extra["previous_severity"])
+	require.Equal(t, "moreSevere", out.Extra["trend_indication"])
+}
+
+// TestMatchAggregate_ThrottledDuplicate_LessSevere_StillThrottled confirms a
+// de-escalation (critical → warning) inside the window stays throttled.
+func TestMatchAggregate_ThrottledDuplicate_LessSevere_StillThrottled(t *testing.T) {
+	t.Parallel()
+	host := newTestHost(t)
+	writeRule(t, host, db.Document{
+		"name": "AggLS", "condition": []any{"=", "a", "1"},
+		"fields": []string{"a"}, "throttle": int64(900),
+	})
+	p := freshPlugin(t, host)
+
+	runProcess(t, p, host, snoozetypes.Record{Severity: "critical", Extra: map[string]any{"a": "1"}})
+	out, action := runProcess(t, p, host, snoozetypes.Record{Severity: "warning", Extra: map[string]any{"a": "1"}})
+	require.Equal(t, plugins.ActionAbortUpdate, action, "de-escalation in window must stay throttled")
+	require.Equal(t, "critical", out.Extra["previous_severity"])
+	require.Equal(t, "lessSevere", out.Extra["trend_indication"])
+}
+
+// TestMatchAggregate_OutsideThrottle_PreviousSeverityStamped verifies that a
+// duplicate landing outside the throttle window carries the prior severity as
+// previous_severity. The clock is fixed far in the future so the persisted
+// date_epoch (real wall-clock at write) is well outside the 10s window.
+func TestMatchAggregate_OutsideThrottle_PreviousSeverityStamped(t *testing.T) {
+	t.Parallel()
+	host := newTestHost(t)
+	writeRule(t, host, db.Document{
+		"name": "AggOT", "condition": []any{"=", "a", "1"},
+		"fields": []string{"a"}, "throttle": int64(10),
+	})
+	p := &Plugin{meta: plugins.Metadata{Name: "aggregaterule"}}
+	p.clock = func() time.Time { return time.Unix(32_000_000_000, 0) }
+	require.NoError(t, p.PostInit(tctx(), host))
+
+	runProcess(t, p, host, snoozetypes.Record{Severity: "warning", Extra: map[string]any{"a": "1"}})
+	out, action := runProcess(t, p, host, snoozetypes.Record{Severity: "critical", Extra: map[string]any{"a": "1"}})
+	require.Equal(t, plugins.ActionContinue, action)
+	require.Equal(t, "warning", out.Extra["previous_severity"])
+	require.Equal(t, "moreSevere", out.Extra["trend_indication"])
+}
+
+// TestMatchAggregate_MoreSevere_AutoComment verifies the throttle-bypass path
+// writes an auto comment containing "Severity escalated" to the comment
+// collection (the same query the web timeline issues).
+func TestMatchAggregate_MoreSevere_AutoComment(t *testing.T) {
+	t.Parallel()
+	host := newTestHost(t)
+	writeRule(t, host, db.Document{
+		"name": "AggMSC", "condition": []any{"=", "a", "1"},
+		"fields": []string{"a"}, "throttle": int64(900),
+	})
+	p := freshPlugin(t, host)
+
+	runProcess(t, p, host, snoozetypes.Record{Severity: "warning", Extra: map[string]any{"a": "1"}})
+	_, action := runProcess(t, p, host, snoozetypes.Record{Severity: "critical", Extra: map[string]any{"a": "1"}})
+	require.Equal(t, plugins.ActionContinue, action)
+
+	uid := aggregateUID(t, host, "AggMSC")
+	comments := commentsByRecord(t, host, uid)
+	var found bool
+	for _, c := range comments {
+		if msg, _ := c["message"].(string); strings.Contains(msg, "Severity escalated") {
+			found = true
+		}
+	}
+	require.True(t, found, "throttle-bypass must write a 'Severity escalated' auto comment")
 }
 
 // TestAggregateRule_TenantIsolation verifies that aggregate rules loaded for

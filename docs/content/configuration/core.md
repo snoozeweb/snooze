@@ -79,6 +79,13 @@ The Go-side schema lives in `internal/config/schema/core.go`.
 >
 > Order in which the alert-processing pipeline runs registered `Processor` plugins. Order matters: earlier plugins see the record first.
 
+> **aggregaterule** stamps two derived fields on every merged record:
+> `previous_severity` (the severity of the existing aggregate before this
+> occurrence, empty string on first occurrence) and `trend_indication`
+> (`moreSevere` / `lessSevere` / `noChange`). When `trend_indication` is
+> `moreSevere` the throttle window is bypassed so the escalation is never
+> silently dropped.
+
 ### database
 
 > Type  
