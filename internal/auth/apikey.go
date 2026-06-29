@@ -6,6 +6,7 @@ import (
 	"encoding/base64"
 	"errors"
 	"fmt"
+	"log/slog"
 	"strings"
 	"time"
 
@@ -17,6 +18,11 @@ import (
 // DefaultAPIKeyMaxTTL bounds how far in the future a key may expire when the
 // configured cap is unset.
 const DefaultAPIKeyMaxTTL = 365 * 24 * time.Hour
+
+// APIKeyLastUsedInterval throttles the last-used write: Resolve records
+// last_used_at/use_count at most once per this interval per key, keeping the
+// auth hot path off the DB on every call.
+const APIKeyLastUsedInterval = time.Hour
 
 // Sentinel errors returned by the API key store.
 var (
@@ -39,6 +45,10 @@ type APIKeyStore struct {
 	resolver *RoleResolver
 	maxTTL   time.Duration
 	now      func() time.Time
+	// afterTouch, when non-nil, is invoked at the end of the fire-and-forget
+	// last-used write goroutine. It is nil in production and set by tests to
+	// deterministically wait for the goroutine to finish before asserting.
+	afterTouch func()
 }
 
 // NewAPIKeyStore constructs a store with the given expiry cap. A zero or
@@ -149,6 +159,15 @@ func (s *APIKeyStore) Resolve(ctx context.Context, raw string) (snoozetypes.Clai
 	if err != nil {
 		return snoozetypes.Claims{}, fmt.Errorf("apikey: resolve roles: %w", err)
 	}
+	// Throttled last-used tracking: record usage at most once per interval. The
+	// write is fire-and-forget — it must never block or fail authentication.
+	if last := asUnix(doc["last_used_at"]); last == 0 ||
+		s.now().UTC().Unix()-last >= int64(APIKeyLastUsedInterval/time.Second) {
+		// Fire-and-forget: the write must outlive this request, so touchLastUsed
+		// deliberately uses context.Background() rather than the request ctx
+		// (which is cancelled the moment Resolve returns).
+		go s.touchLastUsed(raw) //nolint:gosec // intentional detached write; see touchLastUsed
+	}
 	return snoozetypes.Claims{
 		Subject:     owner,
 		Method:      APIKeyMethod,
@@ -157,6 +176,26 @@ func (s *APIKeyStore) Resolve(ctx context.Context, raw string) (snoozetypes.Clai
 		Permissions: IntersectGrant(livePerms, stored),
 		Groups:      groups,
 	}, nil
+}
+
+// touchLastUsed records a successful authentication on the key whose raw value
+// is raw: it bumps use_count and stamps last_used_at. It runs in its own
+// goroutine (fire-and-forget) so a slow or failing DB never blocks or fails
+// auth; failures are logged at DEBUG and swallowed. The two driver calls are
+// intentionally not atomic — use_count is a documented lower-bound estimate.
+func (s *APIKeyStore) touchLastUsed(raw string) {
+	if s.afterTouch != nil {
+		defer s.afterTouch()
+	}
+	now := float64(s.now().UTC().Unix())
+	pctx := WithPlatformScope(context.Background())
+	cond := condition.Equals("key_hash", hashToken(raw))
+	if _, err := s.driver.IncMany(pctx, APIKeyCollection, "use_count", cond, 1); err != nil {
+		slog.Debug("apikey: use_count increment failed", "err", err)
+	}
+	if _, err := s.driver.SetFields(pctx, APIKeyCollection, db.Document{"last_used_at": now}, cond); err != nil {
+		slog.Debug("apikey: last_used_at update failed", "err", err)
+	}
 }
 
 // ListByOwner returns the caller's keys, newest first, with key_hash stripped.

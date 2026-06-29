@@ -2,6 +2,11 @@
 
 ### Added
 
+- **API keys — last-used tracking.** Each key now records `last_used_at`
+  (Unix epoch) and a `use_count` (lower-bound, throttled to at most one
+  write per hour) updated on every successful authentication. Both fields
+  appear in the key-list response so stale machine keys are easy to identify
+  and prune.
 - **Alert ingest now stamps `source_ip`.** Every record posted to
   `POST /api/v1/alerts` receives a `source_ip` field (resolved client IP,
   honouring `X-Forwarded-For` / `X-Real-IP`). Caller-supplied values are

@@ -46,6 +46,11 @@ the request with the result.
 `GET /api/v1/user/me/apikeys` lists your keys (without the secret);
 `DELETE /api/v1/user/me/apikeys/{id}` revokes one. The UI exposes both.
 
+> Keys returned by `GET /api/v1/user/me/apikeys` include `last_used_at`
+> (Unix epoch, absent for never-used keys) and `use_count` (lower-bound
+> request count, updated at most once per hour). Use these to identify
+> stale machine keys that can safely be revoked.
+
 ## Admin: all keys in a tenant
 
 Users with `ro_apikey` can view every key in their tenant on the **API Keys**

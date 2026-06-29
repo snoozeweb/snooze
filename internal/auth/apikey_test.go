@@ -2,10 +2,13 @@ package auth
 
 import (
 	"context"
+	"errors"
 	"path/filepath"
+	"sync"
 	"testing"
 	"time"
 
+	"github.com/snoozeweb/snooze/internal/condition"
 	"github.com/snoozeweb/snooze/internal/db"
 	"github.com/snoozeweb/snooze/internal/db/sqlite"
 	"github.com/snoozeweb/snooze/pkg/snoozetypes"
@@ -119,6 +122,121 @@ func TestAPIKeyStore_ExpiredRejected(t *testing.T) {
 	if _, err := s.Resolve(context.Background(), raw); err == nil {
 		t.Fatal("expected expired-key rejection")
 	}
+}
+
+func TestAPIKeyStore_RecordsLastUsed(t *testing.T) {
+	d := newTestDriver(t)
+	seedUser(t, d, "default", "alice", []string{"r1"}, true)
+	// maxTTL must outlive the +2h Resolve #3 so the key is not expired before the
+	// throttle window (APIKeyLastUsedInterval = 1h) reopens.
+	s := NewAPIKeyStore(d, 30*24*time.Hour)
+	ctx := snoozetypes.WithTenant(context.Background(), "default")
+
+	// Synchronise on the fire-and-forget goroutine: afterTouch fires once the
+	// throttled write has completed, so assertions never race the goroutine and
+	// the goroutine never touches the driver after teardown.
+	var wg sync.WaitGroup
+	s.afterTouch = func() { wg.Done() }
+
+	// Pin the clock so the throttle window is deterministic.
+	base := time.Now().UTC()
+	s.now = func() time.Time { return base }
+
+	raw, _, err := s.Issue(ctx, ownerClaims(), "ci", []string{"ro_rule"}, time.Time{})
+	if err != nil {
+		t.Fatalf("Issue: %v", err)
+	}
+
+	readRow := func() db.Document {
+		t.Helper()
+		doc, err := d.GetOne(WithPlatformScope(ctx), APIKeyCollection, db.Document{"key_hash": hashToken(raw)})
+		if err != nil || doc == nil {
+			t.Fatalf("GetOne: doc=%v err=%v", doc, err)
+		}
+		return doc
+	}
+
+	// Resolve #1: fresh key → last_used_at populated, use_count == 1.
+	wg.Add(1)
+	if _, err := s.Resolve(ctx, raw); err != nil {
+		t.Fatalf("Resolve #1: %v", err)
+	}
+	wg.Wait()
+	doc := readRow()
+	if asUnix(doc["last_used_at"]) == 0 {
+		t.Fatalf("Resolve #1: last_used_at not set: %v", doc["last_used_at"])
+	}
+	if got, _ := doc["use_count"].(float64); got != 1 {
+		t.Fatalf("Resolve #1: use_count = %v, want 1", doc["use_count"])
+	}
+	firstUsed := asUnix(doc["last_used_at"])
+
+	// Resolve #2: within the throttle window → both fields unchanged, no write
+	// (afterTouch must NOT fire, so we don't wg.Add here).
+	s.now = func() time.Time { return base.Add(30 * time.Minute) }
+	if _, err := s.Resolve(ctx, raw); err != nil {
+		t.Fatalf("Resolve #2: %v", err)
+	}
+	doc = readRow()
+	if got := asUnix(doc["last_used_at"]); got != firstUsed {
+		t.Fatalf("Resolve #2: last_used_at changed %d -> %d", firstUsed, got)
+	}
+	if got, _ := doc["use_count"].(float64); got != 1 {
+		t.Fatalf("Resolve #2: use_count = %v, want 1 (throttled)", doc["use_count"])
+	}
+
+	// Resolve #3: past the throttle window → last_used_at bumped, use_count == 2.
+	s.now = func() time.Time { return base.Add(2 * time.Hour) }
+	wg.Add(1)
+	if _, err := s.Resolve(ctx, raw); err != nil {
+		t.Fatalf("Resolve #3: %v", err)
+	}
+	wg.Wait()
+	doc = readRow()
+	if got := asUnix(doc["last_used_at"]); got <= firstUsed {
+		t.Fatalf("Resolve #3: last_used_at not advanced: %d (was %d)", got, firstUsed)
+	}
+	if got, _ := doc["use_count"].(float64); got != 2 {
+		t.Fatalf("Resolve #3: use_count = %v, want 2", doc["use_count"])
+	}
+}
+
+// brokenWriteDriver delegates everything to a real driver except SetFields and
+// IncMany, which always fail — so a failed last-used write cannot break auth.
+type brokenWriteDriver struct {
+	db.Driver
+}
+
+func (brokenWriteDriver) SetFields(context.Context, string, db.Document, condition.Cond) (int, error) {
+	return 0, errors.New("boom")
+}
+
+func (brokenWriteDriver) IncMany(context.Context, string, string, condition.Cond, int64) (int, error) {
+	return 0, errors.New("boom")
+}
+
+func TestAPIKeyStore_LastUsedFireAndForget(t *testing.T) {
+	d := newTestDriver(t)
+	seedUser(t, d, "default", "alice", []string{"r1"}, true)
+	ctx := snoozetypes.WithTenant(context.Background(), "default")
+
+	// Issue against the real driver so the key row exists for the read path.
+	issuer := NewAPIKeyStore(d, time.Hour)
+	raw, _, err := issuer.Issue(ctx, ownerClaims(), "ci", []string{"ro_rule"}, time.Time{})
+	if err != nil {
+		t.Fatalf("Issue: %v", err)
+	}
+
+	// Resolve through a store whose driver fails every last-used write.
+	s := NewAPIKeyStore(brokenWriteDriver{Driver: d}, time.Hour)
+	var wg sync.WaitGroup
+	wg.Add(1)
+	s.afterTouch = func() { wg.Done() }
+
+	if _, err := s.Resolve(ctx, raw); err != nil {
+		t.Fatalf("Resolve must succeed despite write failure, got: %v", err)
+	}
+	wg.Wait() // ensure the goroutine finished before teardown
 }
 
 func TestAPIKeyStore_DemotedOwnerShrinks(t *testing.T) {

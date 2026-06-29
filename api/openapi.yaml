@@ -1660,6 +1660,17 @@ components:
         created_at: {type: number}
         expires_at: {type: number}
         revoked_at: {type: number}
+        last_used_at:
+          type: number
+          description: >
+            Unix epoch (seconds) of the last successful authentication with
+            this key. Absent (or 0) if the key has never been used.
+        use_count:
+          type: number
+          description: >
+            Total number of times this key has authenticated a request
+            (throttled: only incremented once per hour, so the value is a
+            lower-bound estimate).
     APIKeyCreate:
       type: object
       required: [name]
