@@ -1052,6 +1052,7 @@ paths:
               - cloudwatch
               - datadog
               - grafana
+              - graylog
               - influxdb2
               - kapacitor
               - newrelic

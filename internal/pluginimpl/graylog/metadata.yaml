@@ -1,0 +1,8 @@
+---
+name: 'graylog'
+desc: 'Receive Graylog stream-alert HTTP notifications'
+
+route_defaults:
+    authentication: false
+    authorization_policy:
+        write: [any]

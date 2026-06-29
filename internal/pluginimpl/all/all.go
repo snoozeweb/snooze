@@ -61,6 +61,7 @@ import (
 	_ "github.com/snoozeweb/snooze/internal/pluginimpl/cloudwatch"
 	_ "github.com/snoozeweb/snooze/internal/pluginimpl/datadog"
 	_ "github.com/snoozeweb/snooze/internal/pluginimpl/grafana"
+	_ "github.com/snoozeweb/snooze/internal/pluginimpl/graylog"
 	_ "github.com/snoozeweb/snooze/internal/pluginimpl/influxdb2"
 	_ "github.com/snoozeweb/snooze/internal/pluginimpl/kapacitor"
 	_ "github.com/snoozeweb/snooze/internal/pluginimpl/newrelic"

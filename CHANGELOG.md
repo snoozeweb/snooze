@@ -9,6 +9,11 @@
   previous silent discard behaviour.
 - Reject rules are now managed in the web console under a new **Reject** tab on
   the Rules page (create/edit/enable/delete with the standard condition editor).
+- **Graylog webhook receiver.** `POST /api/v1/webhook/graylog` ingests
+  Graylog stream-alert HTTP notifications. `stream.title` becomes the record
+  host; `check_result.result_description` the message. Query-string overrides
+  `event`, `environment`, `service`, `severity`, and `event_type` mirror the
+  Alerta Graylog webhook contract.
 
 ### Fixed
 
