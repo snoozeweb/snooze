@@ -14,6 +14,7 @@ import { encodeConditionQ } from "@/lib/condition/serialize";
 import type { Condition } from "@/lib/condition/types";
 import type { ParsedCondition } from "@/shared/ui/SearchBar";
 import { severityToken } from "@/lib/format/severity-color";
+import { useConsoleConfig } from "@/features/config/api";
 import { Environments } from "@/features/admin/environments/api";
 import { Records, useCommentRecord, useShelveRecord } from "./api";
 import { AlertRowDetail } from "./AlertRowDetail";
@@ -61,6 +62,36 @@ type AlertsSearch = AlertFilters & {
 const PAGE_SIZE = 50;
 
 /**
+ * parseSortBy splits a `sort_by` string (e.g. "-date_epoch") into a field name
+ * and ascending flag. A leading "-" means descending. An empty/undefined input
+ * falls back to `fallbackField` descending — matching the prior hardcode.
+ */
+function parseSortBy(
+  sortBy: string | undefined,
+  fallbackField: string,
+): { field: string; asc: boolean } {
+  const raw = (sortBy ?? "").trim();
+  if (raw === "") return { field: fallbackField, asc: false };
+  if (raw.startsWith("-")) return { field: raw.slice(1), asc: false };
+  return { field: raw, asc: true };
+}
+
+/**
+ * columnsForConfig reorders/filters the static alertColumns to match the
+ * server-configured column id list, preserving the ColumnDef cells. Unknown
+ * ids in the config are skipped; an empty/undefined list returns every column
+ * in its declared order (the prior hardcode).
+ */
+function columnsForConfig(ids: string[] | undefined): typeof alertColumns {
+  if (!ids || ids.length === 0) return alertColumns;
+  const byId = new Map(alertColumns.map((c) => [c.id, c]));
+  const out = ids.map((id) => byId.get(id)).filter((c): c is (typeof alertColumns)[number] => !!c);
+  // Never render an empty table because of a bad config — fall back to the
+  // full set when nothing matched.
+  return out.length > 0 ? out : alertColumns;
+}
+
+/**
  * buildQueryParam combines the active lifecycle-tab preset with the
  * SearchBar's DSL condition into a single Condition AST, then encodes it
  * as base64url JSON for the `?q=` query parameter the CRUD layer expects.
@@ -93,7 +124,15 @@ export function AlertsPage() {
   // useSearch with strict:false returns the validated search params; cast to local type for stronger state/severity literals.
   const search: AlertsSearch = useSearch({ strict: false }) as unknown as AlertsSearch;
   const navigate = useNavigate();
-  const auto = useAutoRefresh(5000);
+  // Server-driven console defaults (GET /api/v1/config). placeholderData means
+  // `config` is always a usable document — the current hardcodes until the
+  // fetch resolves, and on failure. We read refresh/sort/columns from it with
+  // the local fallbacks below.
+  const { data: config } = useConsoleConfig();
+  // Auto-refresh interval comes from the server config (seconds → ms); the
+  // 5000ms fallback matches the prior hardcode if the field is ever missing.
+  const refreshMs = (config?.refresh_interval ?? 5) * 1000;
+  const auto = useAutoRefresh(refreshMs);
   const commentMut = useCommentRecord();
 
   const [selectedKeys, setSelectedKeys] = useState<Set<string>>(new Set());
@@ -108,8 +147,16 @@ export function AlertsPage() {
   const removeMut = Records.useRemove();
 
   const page = search.page ?? 1;
-  const orderby = search.orderby ?? "date_epoch";
-  const asc = search.asc ?? false;
+  // Default sort comes from the server config's `sort_by` (e.g. "-date_epoch":
+  // a "-" prefix means descending). The URL search params still win when
+  // present; the config only supplies the default. Falls back to the prior
+  // hardcode (date_epoch desc) when the field is empty.
+  const { field: defaultSortField, asc: defaultSortAsc } = useMemo(
+    () => parseSortBy(config?.sort_by, "date_epoch"),
+    [config?.sort_by],
+  );
+  const orderby = search.orderby ?? defaultSortField;
+  const asc = search.asc ?? defaultSortAsc;
 
   // Initial SearchBar text is read from `?search=` so deep-links (e.g. the
   // host hyperlink in a Teams alert card pointing at
@@ -678,6 +725,9 @@ export function AlertsPage() {
   // memo in DataTable holds across AlertsPage re-renders (poll refetches,
   // selection/expansion changes) — otherwise a fresh closure every render
   // would defeat the shallow row comparison and re-render all 50 rows.
+  // Columns are server-configurable (console.columns). Memoize so the
+  // identity is stable across re-renders (DataTable's row memo depends on it).
+  const columns = useMemo(() => columnsForConfig(config?.columns), [config?.columns]);
   const rowKey = useCallback((r: Record_) => r.uid ?? `${r.host ?? ""}-${r.date_epoch ?? 0}`, []);
   const rowAccent = useCallback((r: Record_) => severityToken(r.severity ?? ""), []);
   const renderExpanded = useCallback((row: Record_) => <AlertRowDetail row={row} />, []);
@@ -789,7 +839,7 @@ export function AlertsPage() {
       <div id="alerts-panel" role="tabpanel" aria-labelledby={`alerts-tab-${activeTab}`}>
         <DataTable
           data={filtered}
-          columns={alertColumns}
+          columns={columns}
           rowKey={rowKey}
           loading={list.isPending}
           stale={list.isPlaceholderData}
@@ -815,7 +865,7 @@ export function AlertsPage() {
                   ? "Auto-refresh off"
                   : refreshPaused
                     ? "Auto-refresh paused while a row is expanded"
-                    : "Auto-refresh every 5s"
+                    : `Auto-refresh every ${Math.round(refreshMs / 1000)}s`
               }
             >
               {/* Switch renders as a button; use div+aria-label instead of label to satisfy a11y rules */}

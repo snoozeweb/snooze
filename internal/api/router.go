@@ -87,6 +87,12 @@ type Router struct {
 	// all registered jobs on demand and GET /api/v1/housekeeping/status reports
 	// the registered-job count. Nil disables both endpoints (they return 503).
 	HK *housekeeper.Housekeeper
+	// RuntimeStore is the live-editable settings store consulted by the public
+	// GET /api/v1/config endpoint to overlay the runtime `console` section onto
+	// the code defaults. We hold the narrow config.RuntimeStore interface (not
+	// the concrete settings plugin) so this package never imports
+	// internal/pluginimpl. Nil ⇒ /api/v1/config returns pure code defaults.
+	RuntimeStore config.RuntimeStore
 }
 
 // Build assembles the chi router with the canonical middleware chain. The
@@ -153,6 +159,7 @@ func (rt *Router) Build() chi.Router {
 	rt.mountPermissions(r)
 	rt.mountMetadata(r)
 	rt.mountCondition(r)
+	rt.mountConfig(r)
 
 	// --- snooze retro-apply (mounted BEFORE plugin CRUD so the more
 	//     specific `/{uid}/retro_apply` POST wins over the generic
@@ -225,6 +232,10 @@ func (rt *Router) skipAuth(r *http.Request) bool {
 			"/api/v1/login",
 			"/api/v1/health",
 			"/api/v1/version",
+			// /api/v1/config is the public, read-only web-console defaults
+			// document. The login screen needs branding (logo/title) before
+			// a token exists, and the blob is presentation-only.
+			"/api/v1/config",
 			// /api/v1/alerts is the generic record-ingest endpoint
 			// (1.5.0 AlertRoute had `authentication = False`).
 			// Anything that POSTs alerts — internal jobs, lightweight

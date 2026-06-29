@@ -29,14 +29,47 @@ const RANK: Record<string, number> = {
   success: 8,
 };
 
-function variantOf(label: string): Variant {
-  const r = RANK[label.toLowerCase().trim()];
-  if (r === undefined) return "muted";
+// serverRanks holds the runtime severity-rank ladder delivered by
+// GET /api/v1/config (the Plan 21 server ladder, the single source of truth).
+// It is set once at boot via setSeverityRanks; until then it stays empty and
+// the built-in RANK map above is the offline fallback. It NEVER affects
+// colours/tokens — only which labels resolve to which rank (hence variant).
+let serverRanks: Record<string, number> = {};
+
+/**
+ * setSeverityRanks installs the server-provided severity-rank ladder. Called
+ * once at boot from the fetched console config. The server map supersedes the
+ * built-in RANK for any label it defines; labels it omits still fall back to
+ * RANK, and labels in neither map remain unknown (→ muted). Colours/tokens are
+ * untouched — operators place a custom severity by rank, never by colour.
+ */
+export function setSeverityRanks(ranks: Record<string, number> | undefined | null): void {
+  serverRanks = ranks ?? {};
+}
+
+/**
+ * rankOf resolves a normalised severity label to its rank, consulting the
+ * server ladder first, then the built-in RANK fallback. Returns undefined for
+ * labels in neither map.
+ */
+function rankOf(norm: string): number | undefined {
+  const fromServer = serverRanks[norm];
+  if (fromServer !== undefined) return fromServer;
+  return RANK[norm];
+}
+
+function variantFromRank(r: number): Variant {
   if (r <= 2) return "critical";
   if (r === 3) return "error";
   if (r === 4) return "warning";
   if (r === 5 || r === 6 || r === 7) return "info";
   return "ok";
+}
+
+function variantOf(label: string): Variant {
+  const r = rankOf(label.toLowerCase().trim());
+  if (r === undefined) return "muted";
+  return variantFromRank(r);
 }
 
 const CANONICAL_RANK: Record<Variant, number> = {
@@ -64,7 +97,7 @@ export function severityColor(label: string): string {
   const variant = variantOf(norm);
   const base = readToken(TOKEN[variant]) || "#6b7785";
   if (variant === "muted") return base;
-  const rank = RANK[norm] ?? CANONICAL_RANK[variant];
+  const rank = rankOf(norm) ?? CANONICAL_RANK[variant];
   const shift = CANONICAL_RANK[variant] - rank;
   if (shift === 0) return base;
   return shift > 0 ? darken(base, shift * STEP) : lighten(base, -shift * STEP);

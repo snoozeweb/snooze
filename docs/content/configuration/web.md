@@ -65,3 +65,71 @@ The Go schema lives in `internal/config/schema/web.go`.
 enabled: true
 path: /var/lib/snooze/web
 ```
+
+## Console defaults (`/api/v1/config`)
+
+The `web.yaml` section above is **file config** — it governs how the server
+serves the bundle. The *contents* of the console (which columns the alert list
+shows, how often it refreshes, branding, the severity ladder) are **runtime
+settings**, so they live in the DB-backed `console` settings section and are
+editable from the admin **Settings** page without a restart or rebuild.
+
+The server exposes them at a single public, read-only endpoint:
+
+```
+GET /api/v1/config
+```
+
+The SPA fetches this document once at boot and uses its built-in hardcodes only
+as a fallback. The endpoint requires **no auth token** — the login screen needs
+branding before a token exists — and is deliberately presentation-only (it does
+not expose `client_id`, tenant, or provider details). The response is the
+server's code defaults overlaid by any keys set in the `console` settings
+section:
+
+| Key | Type | Default | Meaning |
+|-----|------|---------|---------|
+| `refresh_interval` | int (seconds) | `5` | Alert-list auto-refresh cadence. |
+| `sort_by` | string | `-date_epoch` | Default sort; a `-` prefix means descending. |
+| `default_filter` | string | `""` | Saved-search expression applied by default. |
+| `columns` | string[] | `date_epoch, severity, state, acked_by, hits, host, process, source, environment, ttl, message` | Ordered alert-table column ids. |
+| `severity_ranks` | map\<string,int> | built-in ladder | Label → rank (0 = most severe). Merged onto the built-in ladder. |
+| `logo` | string | `""` | Logo URL or `data:` URI; empty uses the bundled logo. |
+| `title` | string | `""` | Browser/app title; empty uses the default. |
+| `audio` | string | `""` | New-alert audio cue URL; empty disables it. |
+| `clipboard_template` | string | `""` | Copy-to-clipboard template. |
+
+The response also carries a derived `severity_order` array (labels most→least
+severe). It is **always recomputed** from the merged `severity_ranks` and is
+never stored or edited directly.
+
+Edit these keys from the admin Settings page (the **Console** group), or via the
+settings CRUD API:
+
+```
+PUT /api/v1/settings/console
+```
+
+### Ranking a custom severity
+
+Snooze owns a fixed palette of six severity **theme tokens**
+(`--severity-{critical,error,warning,info,ok}`, plus a muted fallback) — colours
+are CSS, light/dark-aware, and **not** configured here. To onboard a custom
+severity label, give it a **rank** instead of a colour. `severity_ranks` merges
+key-by-key onto the built-in ladder, so you add one entry without re-listing the
+whole ladder:
+
+```jsonc
+// PUT /api/v1/settings/console  (the console section's stored values)
+{
+  "severity_ranks": { "p1": 2 }
+}
+```
+
+Rank `2` is the `critical` bucket, so `p1` now **renders red** (the
+`--severity-critical` token) and **sorts alongside the criticals** — no rebuild,
+no hex, theme-safe. The built-in ladder (`emerg`=0, `alert`=1, `crit`/`critical`/
+`fatal`=2, `err`/`error`=3, `warn`/`warning`=4, `notice`=5, `info`=6, `debug`=7,
+`ok`=8) remains in effect for every label you do not override; the server ladder
+shipped by `/api/v1/config` is the single runtime source of truth (the frontend
+keeps an identical map only as an offline fallback).

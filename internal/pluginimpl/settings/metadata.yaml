@@ -247,3 +247,64 @@ setting_form:
         description: 'How long an unacknowledged open alert may sit before auto-escalating to esc and re-notifying (Go duration string). Set 0 to disable auto-escalation.'
         default_value: '0s'
         group: 'housekeeping'
+    # --- Console (web-console defaults, served at GET /api/v1/config) ---------
+    # These keys live in the runtime ``console`` settings section and overlay
+    # the server's code defaults (internal/api/routes_config.go). The endpoint
+    # is public and presentation-only; custom severities are placed by rank
+    # (severity_ranks) and inherit a theme-aware colour automatically — there is
+    # deliberately no per-label colour map.
+    refresh_interval:
+        display_name: 'Auto-refresh interval (seconds)'
+        component: 'Number'
+        description: 'How often the alerts list auto-refreshes, in seconds.'
+        default_value: 5
+        group: 'console'
+    sort_by:
+        display_name: 'Default sort'
+        component: 'String'
+        description: 'Default alert-list sort field; prefix with "-" for descending (e.g. "-date_epoch").'
+        default_value: '-date_epoch'
+        group: 'console'
+    default_filter:
+        display_name: 'Default filter'
+        component: 'String'
+        description: 'Saved-search expression applied to the alerts list by default. Empty shows everything.'
+        default_value: ''
+        group: 'console'
+    columns:
+        display_name: 'Alert table columns'
+        component: 'Arguments'
+        description: 'Ordered column ids shown in the alert list (e.g. date_epoch, severity, state, host, message).'
+        default_value: ['date_epoch', 'severity', 'state', 'acked_by', 'hits', 'host', 'process', 'source', 'environment', 'ttl', 'message']
+        placeholder: 'column id'
+        group: 'console'
+    severity_ranks:
+        display_name: 'Severity rank ladder'
+        component: 'Object'
+        description: 'Label → rank map (0 = most severe). Merged key-by-key onto the built-in ladder; add a custom severity by giving it a rank (e.g. {"p1": 2}) so it sorts and colours like criticals. Colours are CSS theme tokens, not configured here.'
+        default_value: {}
+        group: 'console'
+    logo:
+        display_name: 'Logo'
+        component: 'String'
+        description: 'Logo image URL or data: URI shown in the web console. Empty uses the bundled Snooze logo. Prefer a URL — data URIs bloat the public config blob.'
+        default_value: ''
+        group: 'console'
+    title:
+        display_name: 'Console title'
+        component: 'String'
+        description: 'Browser/app title shown in the web console. Empty uses the default.'
+        default_value: ''
+        group: 'console'
+    audio:
+        display_name: 'New-alert audio cue'
+        component: 'String'
+        description: 'URL of an audio cue played when a new alert arrives. Empty disables the cue.'
+        default_value: ''
+        group: 'console'
+    clipboard_template:
+        display_name: 'Clipboard template'
+        component: 'String'
+        description: 'Template used by the copy-to-clipboard action on an alert. Empty uses the default.'
+        default_value: ''
+        group: 'console'

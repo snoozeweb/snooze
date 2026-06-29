@@ -1671,6 +1671,38 @@ paths:
         '404':
           description: No heartbeat with that name.
 
+  /api/v1/config:
+    get:
+      tags: [schema]
+      security: []
+      summary: Org-wide web-console defaults
+      description: |
+        Public, read-only document of org-wide web-console defaults: the alert
+        table columns, default filter, sort, auto-refresh interval, the severity
+        rank ladder (+ its derived order), and light branding (logo / title /
+        new-alert audio cue / clipboard template). The SPA fetches this once at
+        boot and falls back to its built-in hardcodes when it is unavailable.
+
+        The values are the server's code defaults overlaid by the runtime
+        `console` settings section (edited from the admin Settings page via
+        `PUT /api/v1/settings/console`). `severity_ranks` merges key-by-key onto
+        the built-in ladder, so an operator places a custom severity by giving
+        it a rank (e.g. `{"p1": 2}`) — it then sorts and colours like criticals.
+        `severity_order` is always recomputed from the merged ranks.
+
+        No auth token is required: the login screen needs branding before a
+        token exists, and the blob is deliberately presentation-only (it does
+        NOT expose `client_id` / tenant / provider details).
+      responses:
+        '200':
+          description: Console configuration.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data: {$ref: '#/components/schemas/ConsoleConfig'}
+
   /api/v1/permissions:
     get:
       tags: [schema]
@@ -2216,6 +2248,50 @@ components:
               message: alert ingestion is disabled
 
   schemas:
+    ConsoleConfig:
+      type: object
+      description: >
+        Org-wide web-console defaults served read-only at GET /api/v1/config.
+        Presentation-only: there is no per-label colour map — a custom severity
+        is placed by rank (`severity_ranks`) and inherits a theme-aware
+        `--severity-*` token client-side.
+      properties:
+        columns:
+          type: array
+          items: {type: string}
+          description: Ordered alert-table column ids.
+        default_filter:
+          type: string
+          description: Saved-search expression applied by default, or "".
+        sort_by:
+          type: string
+          description: Default sort field; a "-" prefix means descending (e.g. "-date_epoch").
+        refresh_interval:
+          type: integer
+          description: Alert-list auto-refresh interval, in seconds.
+        severity_ranks:
+          type: object
+          additionalProperties: {type: integer}
+          description: >
+            Label → rank map (0 = most severe): the built-in ladder merged with
+            operator additions. The single runtime source of truth for severity
+            ordering and colour bucketing.
+        severity_order:
+          type: array
+          items: {type: string}
+          description: Labels most→least severe, derived from severity_ranks (never edited directly).
+        logo:
+          type: string
+          description: 'Logo URL or data: URI; "" uses the bundled logo.'
+        title:
+          type: string
+          description: Browser/app title; "" uses the default.
+        audio:
+          type: string
+          description: New-alert audio cue URL; "" disables it.
+        clipboard_template:
+          type: string
+          description: Copy-to-clipboard template; "" uses the default.
     SavedSearch:
       type: object
       description: >

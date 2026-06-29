@@ -1,8 +1,11 @@
 // web/src/lib/format/severity-color.test.ts
 import { describe, it, expect, beforeEach } from "vitest";
-import { severityColor, severityToken } from "./severity-color";
+import { severityColor, severityToken, setSeverityRanks } from "./severity-color";
 
 beforeEach(() => {
+  // Reset the server-provided ladder so one test's ranks never leak into the
+  // next; the built-in RANK fallback is the baseline for every test below.
+  setSeverityRanks(undefined);
   const root = document.documentElement;
   root.removeAttribute("data-theme");
   root.style.setProperty("--severity-critical", "#f04949");
@@ -37,6 +40,39 @@ describe("severityColor", () => {
   });
   it("unknown labels fall back to muted", () => {
     expect(severityColor("banana").toLowerCase()).toBe("#6b7785");
+  });
+});
+
+describe("setSeverityRanks (server ladder supersedes the built-in RANK)", () => {
+  it("a server-ranked custom label buckets into the matching variant token", () => {
+    // No colour is configured — only the rank. p1 → rank 2 means it inherits
+    // the critical variant's --severity-critical token (the canonical rank-2
+    // label resolves to the un-tinted base).
+    setSeverityRanks({ p1: 2 });
+    expect(severityToken("p1")).toBe("var(--severity-critical)");
+    expect(severityColor("p1").toLowerCase()).toBe("#f04949");
+  });
+
+  it("the server map wins over the built-in RANK for the same label", () => {
+    // Built-in: info → rank 6 → info variant. Server says info is rank 2 now,
+    // so it must bucket as critical instead — the server ladder is authoritative.
+    expect(severityToken("info")).toBe("var(--severity-info)");
+    setSeverityRanks({ info: 2 });
+    expect(severityToken("info")).toBe("var(--severity-critical)");
+  });
+
+  it("labels the server map omits still fall back to the built-in RANK", () => {
+    setSeverityRanks({ p1: 2 });
+    // critical/warning/ok aren't in the server map → built-in ranks still apply.
+    expect(severityToken("critical")).toBe("var(--severity-critical)");
+    expect(severityToken("warning")).toBe("var(--severity-warning)");
+    expect(severityToken("ok")).toBe("var(--severity-ok)");
+  });
+
+  it("unknown labels still bucket to muted even with a server map set", () => {
+    setSeverityRanks({ p1: 2 });
+    expect(severityColor("banana").toLowerCase()).toBe("#6b7785");
+    expect(severityToken("banana")).toBeUndefined();
   });
 });
 

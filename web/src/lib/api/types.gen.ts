@@ -2530,6 +2530,63 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/config": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Org-wide web-console defaults
+         * @description Public, read-only document of org-wide web-console defaults: the alert
+         *     table columns, default filter, sort, auto-refresh interval, the severity
+         *     rank ladder (+ its derived order), and light branding (logo / title /
+         *     new-alert audio cue / clipboard template). The SPA fetches this once at
+         *     boot and falls back to its built-in hardcodes when it is unavailable.
+         *
+         *     The values are the server's code defaults overlaid by the runtime
+         *     `console` settings section (edited from the admin Settings page via
+         *     `PUT /api/v1/settings/console`). `severity_ranks` merges key-by-key onto
+         *     the built-in ladder, so an operator places a custom severity by giving
+         *     it a rank (e.g. `{"p1": 2}`) — it then sorts and colours like criticals.
+         *     `severity_order` is always recomputed from the merged ranks.
+         *
+         *     No auth token is required: the login screen needs branding before a
+         *     token exists, and the blob is deliberately presentation-only (it does
+         *     NOT expose `client_id` / tenant / provider details).
+         *
+         */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Console configuration. */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            data?: components["schemas"]["ConsoleConfig"];
+                        };
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/permissions": {
         parameters: {
             query?: never;
@@ -3552,6 +3609,33 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        /** @description Org-wide web-console defaults served read-only at GET /api/v1/config. Presentation-only: there is no per-label colour map — a custom severity is placed by rank (`severity_ranks`) and inherits a theme-aware `--severity-*` token client-side.
+         *      */
+        ConsoleConfig: {
+            /** @description Ordered alert-table column ids. */
+            columns?: string[];
+            /** @description Saved-search expression applied by default, or "". */
+            default_filter?: string;
+            /** @description Default sort field; a "-" prefix means descending (e.g. "-date_epoch"). */
+            sort_by?: string;
+            /** @description Alert-list auto-refresh interval, in seconds. */
+            refresh_interval?: number;
+            /** @description Label → rank map (0 = most severe): the built-in ladder merged with operator additions. The single runtime source of truth for severity ordering and colour bucketing.
+             *      */
+            severity_ranks?: {
+                [key: string]: number;
+            };
+            /** @description Labels most→least severe, derived from severity_ranks (never edited directly). */
+            severity_order?: string[];
+            /** @description Logo URL or data: URI; "" uses the bundled logo. */
+            logo?: string;
+            /** @description Browser/app title; "" uses the default. */
+            title?: string;
+            /** @description New-alert audio cue URL; "" disables it. */
+            audio?: string;
+            /** @description Copy-to-clipboard template; "" uses the default. */
+            clipboard_template?: string;
+        };
         /** @description A named alert-filter bookmark: a human label paired with a raw Snooze condition-DSL string. `owner` and `tenant_id` are stamped server-side from the request's JWT and are read-only from the client's view.
          *      */
         SavedSearch: {

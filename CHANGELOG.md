@@ -2,6 +2,17 @@
 
 ### Added
 
+- **Server-driven web-console config.** `GET /api/v1/config` exposes org-wide
+  defaults (alert-table columns, default filter, sort, auto-refresh interval,
+  severity rank ladder, and branding: logo/title/new-alert audio/clipboard
+  template) from the runtime `console` settings section, overlaid on the
+  server's code defaults. The endpoint is public and read-only; the SPA fetches
+  it at boot and falls back to its hardcodes when unavailable. Custom severities
+  are placed by **rank** (`console.severity_ranks: {"p1": 2}`) and inherit
+  theme-aware colours automatically — no per-label colour map. The Plan 21
+  severity ladder is the single runtime source of truth (the frontend `RANK`
+  map becomes an offline fallback). Editable from the admin Settings page
+  (Console group).
 - **Alerts — "Acked by" column in the alert list.** The operator who last
   acknowledged an alert is now stamped directly onto the record as `acked_by`
   by the comment plugin. The alert list displays this in a new "Acked by"

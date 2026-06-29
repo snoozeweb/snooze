@@ -379,6 +379,11 @@ func runDaemonCtx(ctx context.Context, f *daemonFlags, stderr io.Writer) error {
 
 	adapter := &coreAdapter{Core: c}
 	ingestResolver := middleware.NewTenantResolver()
+	// The settings plugin also implements config.RuntimeStore; the public
+	// GET /api/v1/config endpoint reads the `console` section through it. The
+	// two-return type assertion is nil-safe: a missing/incompatible plugin
+	// leaves consoleStore nil and the endpoint serves pure code defaults.
+	consoleStore, _ := c.Plugins()["settings"].(config.RuntimeStore)
 	rt := &api.Router{
 		Auth:            c.Tokens,
 		Refresh:         c.Refresh,
@@ -401,6 +406,7 @@ func runDaemonCtx(ctx context.Context, f *daemonFlags, stderr io.Writer) error {
 		TenantChecker:   middleware.NewDbTenantStatusChecker(drv),
 		IngestAllowed:   c.Settings.IngestAllow,
 		HK:              c.HK,
+		RuntimeStore:    consoleStore,
 	}
 	handler := rt.Build()
 
