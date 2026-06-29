@@ -21,6 +21,13 @@
 
 ### Fixed
 
+- **New Relic receiver — `acknowledged` alerts now land as `State: "ack"`.**
+  A legacy webhook with `current_state: acknowledged` was previously ingested
+  as a firing record (empty State), causing Snooze to re-notify despite the
+  upstream ack. The legacy-receiver mapping now emits `State: "ack"`, which
+  the notification pipeline suppresses and the aggregaterule plugin re-escalates
+  if the ack lapses. A shared `receiverutil.MapLegacyState` helper is introduced
+  for reuse by future receivers.
 - **Web — the Rules tree is now mobile-responsive.** The drag-and-drop rule
   hierarchy was the one table that still scrolled sideways on a phone (the
   v2.3.0 mobile pass card-collapsed every `DataTable` but not the bespoke rules

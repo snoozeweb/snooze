@@ -277,6 +277,60 @@ func TestLegacyClosedStateEmitsCloseRecord(t *testing.T) {
 	require.Equal(t, "info", rec.Severity)
 }
 
+func TestLegacyAcknowledgedStateEmitsAckRecord(t *testing.T) {
+	host := &fakeHost{}
+	p := newPlugin(t, host)
+
+	body := []byte(`{
+		"incident_id": 99004,
+		"condition_name": "High CPU usage",
+		"details": "Acked by on-call",
+		"severity": "CRITICAL",
+		"current_state": "acknowledged",
+		"policy_name": "Infrastructure Policy",
+		"targets": [{"name": "web-3", "type": "Host", "labels": {}}],
+		"incident_url": "https://alerts.newrelic.com/accounts/1/incidents/99004",
+		"account_name": "Acme Corp"
+	}`)
+
+	w := postWebhook(t, p, body)
+	require.Equal(t, http.StatusOK, w.Code)
+
+	recs := host.seen()
+	require.Len(t, recs, 1)
+	rec := recs[0]
+
+	require.Equal(t, "ack", rec.State)
+	require.Equal(t, "critical", rec.Severity) // ack preserves severity (NOT downgraded)
+	require.Equal(t, "newrelic", rec.Source)
+	require.Equal(t, "acknowledged", rec.Raw["current_state"])
+}
+
+func TestLegacyOpenStateHasNoState(t *testing.T) {
+	host := &fakeHost{}
+	p := newPlugin(t, host)
+
+	body := []byte(`{
+		"incident_id": 99005,
+		"condition_name": "High CPU usage",
+		"details": "Still firing",
+		"severity": "CRITICAL",
+		"current_state": "open",
+		"policy_name": "Infrastructure Policy",
+		"targets": [{"name": "web-3", "type": "Host", "labels": {}}],
+		"incident_url": "https://alerts.newrelic.com/accounts/1/incidents/99005",
+		"account_name": "Acme Corp"
+	}`)
+
+	w := postWebhook(t, p, body)
+	require.Equal(t, http.StatusOK, w.Code)
+
+	recs := host.seen()
+	require.Len(t, recs, 1)
+	require.Empty(t, recs[0].State)
+	require.Equal(t, "critical", recs[0].Severity) // open preserves severity
+}
+
 func TestLegacyNoTargetsFallsBackToConditionName(t *testing.T) {
 	host := &fakeHost{}
 	p := newPlugin(t, host)

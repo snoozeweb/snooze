@@ -61,6 +61,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/snoozeweb/snooze/internal/pluginimpl/receiverutil"
 	"github.com/snoozeweb/snooze/internal/plugins"
 	"github.com/snoozeweb/snooze/pkg/snoozetypes"
 )
@@ -241,7 +242,10 @@ func buildWorkflowRecord(raw map[string]any) snoozetypes.Record {
 //   - Source: "newrelic"
 //   - Host: targets[0].name if present, else condition_name
 //   - Severity: severity field → same priority mapping
-//   - State: "close" when current_state == "closed"
+//   - State: "ack" when current_state == "acknowledged"; "close" when
+//     current_state == "closed"/"resolved"; "" otherwise (via
+//     receiverutil.MapLegacyState). "ack" preserves severity; "close"
+//     downgrades critical → info.
 //   - Message: condition_name + ": " + details (or just condition_name)
 //   - Raw: incident_url, severity, current_state, account_name
 func buildLegacyRecord(raw map[string]any) snoozetypes.Record {
@@ -275,11 +279,9 @@ func buildLegacyRecord(raw map[string]any) snoozetypes.Record {
 		Timestamp: time.Now().UTC(),
 		Raw:       legacyRaw(incidentURL, severity, currentState, accountName),
 	}
-	if currentState == "closed" {
-		rec.State = "close"
-		if rec.Severity == "critical" {
-			rec.Severity = "info"
-		}
+	rec.State = receiverutil.MapLegacyState(currentState)
+	if rec.State == "close" && rec.Severity == "critical" {
+		rec.Severity = "info"
 	}
 	return rec
 }

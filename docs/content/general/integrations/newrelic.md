@@ -69,6 +69,8 @@ New Relic `priority` / `severity` values are mapped as follows:
 
 A `state: CLOSED` (workflow) or `current_state: closed` (legacy) record is emitted with `State: "close"` so downstream Snooze processors can resolve the matching open alert. When the closing record has `critical` severity it is downgraded to `info`.
 
+A legacy `current_state: acknowledged` record is emitted with `State: "ack"` so the notification pipeline suppresses re-alerting while the upstream incident stays acknowledged (and the aggregaterule plugin re-escalates if the ack lapses). Unlike `close`, an `ack` record preserves the original severity.
+
 ### Field reference
 
 ``` text
@@ -79,7 +81,9 @@ Host:     impactedEntities[0].name  (workflow)
 Severity: mapped from priority / severity (see table above)
 Message:  title (workflow)
           condition_name + ": " + details (legacy)
-State:    "close" when CLOSED / closed; empty otherwise
+State:    "ack"   when current_state == "acknowledged" (legacy only)
+          "close" when CLOSED (workflow) / closed (legacy)
+          ""      otherwise
 Raw:      issueUrl, priority, state, accountName, labels  (workflow)
           incident_url, severity, current_state, account_name  (legacy)
 ```
@@ -126,5 +130,6 @@ $ go test -run E2E ./internal/pluginimpl/newrelic/...
 - **gRPC / New Relic agent streams not supported.** The plugin only handles inbound webhook POST requests. Streaming telemetry (metrics, traces, logs) from the New Relic agent protocol requires a separate integration.
 - **Workflow template variables** vary between New Relic accounts and plan tiers. Validate the template in the New Relic *Workflows* → *Test notification* panel before going live.
 - **Legacy shape detection.** The plugin auto-detects the payload shape at runtime: if the JSON object contains a `state` key (uppercased) together with a `title` key, or an `issueUrl` key, it is treated as a workflow payload; otherwise the legacy schema is assumed. This heuristic covers all known New Relic payload variants.
+- **Acknowledged vs closed severity.** A legacy `current_state: acknowledged` record preserves its original severity (it is still an open incident, merely silenced), whereas a `closed`/`CLOSED` record downgrades `critical` to `info`. This matches the Alerta convention. Acknowledged is only carried by the legacy webhook shape; New Relic's workflow `state` field has no `ACKNOWLEDGED` value.
 - **No signature verification.** New Relic webhooks do not carry an HMAC signature by default. If your threat model requires verification, place the endpoint behind a reverse proxy that enforces an IP allowlist or shared secret header.
 
