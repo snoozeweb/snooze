@@ -21,4 +21,12 @@ export type Snooze = {
   hits?: number;
   // Server-set creator (the user that issued the snooze).
   name_create?: string;
+  // Derived lifecycle status computed server-side at read time from
+  // time_constraints.datetime (internal/pluginimpl/snooze/projection.go).
+  // "always_on" means no datetime constraint is set (the rule fires forever).
+  // Read-only; absent on rules served by a server too old to project it.
+  window_status?: "active" | "pending" | "expired" | "always_on";
+  // Seconds until the active window closes. 0 when always_on, pending, or
+  // open-ended (no upper bound). Read-only.
+  remaining_seconds?: number;
 };

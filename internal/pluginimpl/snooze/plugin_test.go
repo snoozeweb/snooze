@@ -2,12 +2,16 @@ package snooze
 
 import (
 	"context"
+	"encoding/json"
 	"log/slog"
+	"net/http"
+	"net/http/httptest"
 	"path/filepath"
 	"sync"
 	"testing"
 	"time"
 
+	"github.com/go-chi/chi/v5"
 	"github.com/stretchr/testify/require"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/trace"
@@ -429,4 +433,77 @@ func TestSnoozeAlertSnoozedCounter(t *testing.T) {
 	require.Equal(t, "Maintenance", c.key)
 	require.Equal(t, int64(1780300800), c.bucket)
 	require.Equal(t, int64(1), c.delta)
+}
+
+// TestSnoozeListProjection seeds a rule with a future `until` and fetches it
+// through the generic CRUD list/get-one handlers wired to the snooze plugin.
+// Because the plugin implements plugins.DocTransformer, both read paths must
+// project window_status and remaining_seconds onto the document. This is the
+// integration guard that ties ProjectDoc to the HTTP read surface.
+func TestSnoozeListProjection(t *testing.T) {
+	t.Parallel()
+	h := newStubHost(t)
+	writeRule(t, h, db.Document{
+		"name":      "Quiet until morning",
+		"condition": []any{"=", "host", "h1"},
+		"time_constraints": map[string]any{
+			"datetime": []any{
+				map[string]any{
+					"from":  fixedNow.Add(-time.Hour).Format(time.RFC3339),
+					"until": fixedNow.Add(time.Hour).Format(time.RFC3339),
+				},
+			},
+		},
+	})
+
+	// Plugin with a deterministic clock pinned to fixedNow.
+	p := newPlugin(t, h, func() time.Time { return fixedNow })
+
+	// Mount the generic CRUD surface against the plugin and issue read requests
+	// with admin claims (AuthorizeCRUD would 401 otherwise).
+	r := chi.NewRouter()
+	plugins.MountCRUD(r, h, p)
+
+	withClaims := func(req *http.Request) *http.Request {
+		ctx := auth.WithClaims(req.Context(), snoozetypes.Claims{
+			Subject:     "test",
+			Method:      "local",
+			Roles:       []string{"admin"},
+			Permissions: []string{"rw_all"},
+		})
+		ctx = auth.WithTenant(ctx, snoozetypes.DefaultTenant)
+		return req.WithContext(ctx)
+	}
+
+	// --- GET /api/v1/snooze (list) ---
+	listReq := withClaims(httptest.NewRequest(http.MethodGet, "/api/v1/snooze", nil))
+	listRec := httptest.NewRecorder()
+	r.ServeHTTP(listRec, listReq)
+	require.Equal(t, http.StatusOK, listRec.Code, listRec.Body.String())
+
+	var list struct {
+		Data []db.Document `json:"data"`
+	}
+	require.NoError(t, json.Unmarshal(listRec.Body.Bytes(), &list))
+	require.Len(t, list.Data, 1)
+	got := list.Data[0]
+	require.Equal(t, "active", got["window_status"])
+	// JSON numbers decode to float64; the projection produced ~3600s.
+	remaining, ok := got["remaining_seconds"].(float64)
+	require.True(t, ok, "remaining_seconds missing or non-numeric: %#v", got["remaining_seconds"])
+	require.InDelta(t, 3600, remaining, 5)
+
+	uid, _ := got["uid"].(string)
+	require.NotEmpty(t, uid)
+
+	// --- GET /api/v1/snooze/{uid} (get-one) ---
+	oneReq := withClaims(httptest.NewRequest(http.MethodGet, "/api/v1/snooze/"+uid, nil))
+	oneRec := httptest.NewRecorder()
+	r.ServeHTTP(oneRec, oneReq)
+	require.Equal(t, http.StatusOK, oneRec.Code, oneRec.Body.String())
+
+	var one db.Document
+	require.NoError(t, json.Unmarshal(oneRec.Body.Bytes(), &one))
+	require.Equal(t, "active", one["window_status"])
+	require.Contains(t, one, "remaining_seconds")
 }

@@ -896,6 +896,67 @@ paths:
                         description: {type: string}
                         values: {type: array, items: {type: string}}
 
+  /api/v1/snooze:
+    get:
+      tags: [crud]
+      summary: List snooze filters with computed window status
+      description: |
+        Snooze filters follow the generic CRUD surface (`/api/v1/{plugin}`) for
+        create / replace / patch / delete / search, but the list and get-one
+        responses additionally carry two computed, read-only fields:
+        `window_status` (`active` / `pending` / `expired` / `always_on`) and
+        `remaining_seconds` (seconds until the active window closes). Both are
+        projected at read time from `time_constraints.datetime`; neither is
+        stored.
+      parameters:
+        - {$ref: '#/components/parameters/QueryQ'}
+        - {$ref: '#/components/parameters/Offset'}
+        - {$ref: '#/components/parameters/Limit'}
+        - {$ref: '#/components/parameters/OrderBy'}
+        - {$ref: '#/components/parameters/Asc'}
+      responses:
+        '200':
+          description: Paginated list; each item carries window_status + remaining_seconds.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items: {$ref: '#/components/schemas/Snooze'}
+                  meta: {$ref: '#/components/schemas/ListMeta'}
+        '400':
+          description: Malformed query.
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/ErrEnvelope'}
+
+  /api/v1/snooze/{uid}:
+    parameters:
+      - name: uid
+        in: path
+        required: true
+        schema: {type: string}
+    get:
+      tags: [crud]
+      summary: Fetch a single snooze with its computed window status
+      description: |
+        Like the generic get-one, but the returned document additionally
+        carries the read-only computed `window_status` and `remaining_seconds`
+        fields.
+      responses:
+        '200':
+          description: Snooze document with window_status + remaining_seconds.
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Snooze'}
+        '404':
+          description: Not found.
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/ErrEnvelope'}
+
   /api/v1/snooze/{uid}/retro_apply:
     post:
       tags: [crud]
@@ -2340,6 +2401,65 @@ components:
             Computed health status. `ok` when pinged within interval+grace,
             `overdue` when silent longer (or never pinged). Never stored;
             projected at read time on list/get responses only.
+
+    Snooze:
+      type: object
+      description: |
+        A snooze filter: a condition + time-constraint window that suppresses
+        matching alerts. Created/edited via the generic CRUD surface; the list
+        and get-one responses additionally carry the read-only computed
+        `window_status` and `remaining_seconds` fields, projected at read time
+        from `time_constraints.datetime`.
+      required: [name]
+      additionalProperties: true
+      properties:
+        name:
+          type: string
+          minLength: 1
+          description: Unique snooze filter name.
+        comment:
+          type: string
+          description: Optional human description.
+        enabled:
+          type: boolean
+          description: Disabled snoozes never match.
+        condition:
+          description: Snooze condition (object or legacy-list DSL form).
+        time_constraints:
+          type: object
+          description: |
+            Active time windows (absolute datetime ranges, daily-time windows,
+            weekdays). The snooze only matches when the current moment is within
+            every populated family.
+        discard:
+          type: boolean
+          description: |
+            When true, matching alerts are dropped from the pipeline; otherwise
+            they are tagged `snoozed:<name>` and allowed through.
+        hits:
+          type: integer
+          readOnly: true
+          description: Server-maintained match counter.
+        name_create:
+          type: string
+          readOnly: true
+          description: The user that created the snooze (server-stamped).
+        window_status:
+          type: string
+          enum: [active, pending, expired, always_on]
+          readOnly: true
+          description: >
+            Derived lifecycle status computed at read time from
+            time_constraints.datetime. "always_on" means no datetime constraint
+            is set (the rule fires indefinitely). Never stored; projected at
+            read time on list/get responses only.
+        remaining_seconds:
+          type: integer
+          format: int64
+          readOnly: true
+          description: >
+            Seconds until the active window closes. 0 when always_on, pending,
+            or no upper bound. Never stored; projected at read time.
 
     ErrEnvelope:
       type: object

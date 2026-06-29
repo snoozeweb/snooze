@@ -167,6 +167,22 @@ type PrimaryKeyer interface {
 	PrimaryKey() []string
 }
 
+// DocTransformer plugins project derived, read-only fields onto each document
+// returned by the generic CRUD read handlers (GET /, GET /{uid}, POST /search).
+// Transform is called once per fetched document, after the DB read and before
+// the JSON response is written. It MUST NOT mutate its argument — it returns a
+// (typically shallow) copy carrying the extra fields — and MUST be cheap: it
+// runs per-document on every list page.
+//
+// The hook is opt-in via a type assertion in the read handlers, so a plugin
+// that does not implement DocTransformer has a byte-identical read path. The
+// canonical implementer is the snooze plugin, which projects window_status and
+// remaining_seconds computed from time_constraints using its injected clock.
+type DocTransformer interface {
+	Plugin
+	Transform(ctx context.Context, doc map[string]any) map[string]any
+}
+
 // WriteTransformer plugins may rewrite the document a CRUD request is about
 // to persist, between Validate and the actual DB write. The implementation
 // mutates the doc in place and returns an error to abort the write with

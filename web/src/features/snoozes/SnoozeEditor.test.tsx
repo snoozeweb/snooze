@@ -103,4 +103,95 @@ describe("SnoozeEditor", () => {
     );
     expect(screen.queryByRole("button", { name: /^diff/i })).not.toBeInTheDocument();
   });
+
+  describe('"Silence for…" shortcut', () => {
+    function captureBody() {
+      const bodies: unknown[] = [];
+      mswServer.use(
+        http.post("/api/v1/snooze", async ({ request }) => {
+          bodies.push(await request.json());
+          return HttpResponse.json({ uid: "s-new", name: "x" });
+        }),
+        http.get("/api/v1/record", () =>
+          HttpResponse.json({ data: [], meta: { count: 0, limit: 50, offset: 0, total: 0 } }),
+        ),
+      );
+      return bodies;
+    }
+
+    type SavedBody = {
+      name: string;
+      time_constraints?: { datetime?: { from?: string; until?: string }[] };
+    };
+
+    it("the 1h preset sets until ≈ now + 3600s", async () => {
+      const bodies = captureBody();
+      const Wrapper = wrap();
+      const user = userEvent.setup();
+      render(
+        <Wrapper>
+          <SnoozeEditor uid={undefined} onClose={vi.fn()} />
+        </Wrapper>,
+      );
+      await user.type(screen.getByLabelText(/^name$/i), "silence-1h");
+      const before = Date.now();
+      await user.click(screen.getByRole("button", { name: /^1h$/i }));
+      await user.click(screen.getByRole("button", { name: /create/i }));
+      await waitFor(() => expect(bodies).toHaveLength(1));
+
+      const body = bodies[0] as SavedBody;
+      const range = body.time_constraints?.datetime?.[0];
+      expect(range).toBeDefined();
+      const untilEpoch = Date.parse(range!.until!);
+      expect(untilEpoch).toBeGreaterThanOrEqual(before + 3600_000 - 5000);
+      expect(untilEpoch).toBeLessThanOrEqual(Date.now() + 3600_000 + 5000);
+    });
+
+    it('the free-text "2h30m" sets until ≈ now + 9000s', async () => {
+      const bodies = captureBody();
+      const Wrapper = wrap();
+      const user = userEvent.setup();
+      render(
+        <Wrapper>
+          <SnoozeEditor uid={undefined} onClose={vi.fn()} />
+        </Wrapper>,
+      );
+      await user.type(screen.getByLabelText(/^name$/i), "silence-free");
+      await user.type(screen.getByLabelText(/silence for/i), "2h30m");
+      const before = Date.now();
+      await user.click(screen.getByRole("button", { name: /^apply$/i }));
+      await user.click(screen.getByRole("button", { name: /create/i }));
+      await waitFor(() => expect(bodies).toHaveLength(1));
+
+      const body = bodies[0] as SavedBody;
+      const range = body.time_constraints?.datetime?.[0];
+      expect(range).toBeDefined();
+      const untilEpoch = Date.parse(range!.until!);
+      expect(untilEpoch).toBeGreaterThanOrEqual(before + 9000_000 - 5000);
+      expect(untilEpoch).toBeLessThanOrEqual(Date.now() + 9000_000 + 5000);
+    });
+
+    it('rejects invalid input ("abc") with a message and no mutation', async () => {
+      const bodies = captureBody();
+      const Wrapper = wrap();
+      const user = userEvent.setup();
+      render(
+        <Wrapper>
+          <SnoozeEditor uid={undefined} onClose={vi.fn()} />
+        </Wrapper>,
+      );
+      await user.type(screen.getByLabelText(/^name$/i), "silence-bad");
+      await user.type(screen.getByLabelText(/silence for/i), "abc");
+      await user.click(screen.getByRole("button", { name: /^apply$/i }));
+
+      // A validation message appears and the form is NOT mutated.
+      expect(await screen.findByText(/invalid duration/i)).toBeInTheDocument();
+
+      await user.click(screen.getByRole("button", { name: /create/i }));
+      await waitFor(() => expect(bodies).toHaveLength(1));
+      const body = bodies[0] as SavedBody;
+      // No datetime range was written by the rejected shortcut.
+      expect(body.time_constraints?.datetime).toBeUndefined();
+    });
+  });
 });

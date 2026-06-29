@@ -2,6 +2,13 @@
 
 ### Added
 
+- **Snooze — window lifecycle status and remaining countdown.** The snooze list
+  now shows a derived *Status* badge (active / pending / expired / always-on)
+  and a *Remaining* countdown column for time-bounded rules. Both are computed
+  server-side at read time from `time_constraints.datetime`; no migration
+  required. The editor gains a **Silence for…** shortcut row (presets 1h / 4h /
+  24h / 7d and a free-text field accepting "2h30m") that sets the absolute
+  datetime window without navigating the date-picker.
 - **Custom source mapping guide.** Operators can now onboard any JSON alert
   source without writing Go: post to `POST /api/v1/alerts` and use a rule tree
   to remap foreign field names to canonical Snooze fields. A new

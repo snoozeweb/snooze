@@ -184,7 +184,7 @@ func MountCRUD(r chi.Router, host Host, p Plugin) {
 	r.Route("/api/v1/"+collection, func(sub chi.Router) {
 		sub.Use(authorize)
 		sub.Get("/", listHandler(host, p, collection))
-		sub.Get("/{uid}", getOneHandler(host, collection))
+		sub.Get("/{uid}", getOneHandler(host, p, collection))
 		mountCRUDWriteRoutes(sub, host, p, collection)
 	})
 }
@@ -206,7 +206,7 @@ func MountCRUD(r chi.Router, host Host, p Plugin) {
 func mountCRUDWriteRoutes(sub chi.Router, host Host, p Plugin, collection string) {
 	sub.Post("/", createHandler(host, p, collection))
 	sub.Delete("/", bulkDeleteHandler(host, p, collection))
-	sub.Post("/search", searchHandler(host, collection))
+	sub.Post("/search", searchHandler(host, p, collection))
 	sub.Put("/{uid}", replaceHandler(host, p, collection))
 	sub.Patch("/{uid}", patchHandler(host, p, collection))
 	sub.Delete("/{uid}", deleteOneHandler(host, p, collection))
@@ -296,7 +296,7 @@ func writeError(w http.ResponseWriter, status int, code, msg string) {
 }
 
 // listHandler GET /api/v1/{plugin}
-func listHandler(host Host, _ Plugin, collection string) http.HandlerFunc {
+func listHandler(host Host, p Plugin, collection string) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		page, cond, err := decodeListParams(r)
 		if err != nil {
@@ -311,6 +311,7 @@ func listHandler(host Host, _ Plugin, collection string) http.HandlerFunc {
 		if docs == nil {
 			docs = []db.Document{}
 		}
+		docs = transformDocs(r.Context(), p, docs)
 		writeJSON(w, http.StatusOK, listResponse{
 			Data: docs,
 			Meta: listMeta{
@@ -324,7 +325,7 @@ func listHandler(host Host, _ Plugin, collection string) http.HandlerFunc {
 }
 
 // searchHandler POST /api/v1/{plugin}/search — body {condition: <Cond>}
-func searchHandler(host Host, collection string) http.HandlerFunc {
+func searchHandler(host Host, p Plugin, collection string) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var body struct {
 			Condition condition.Cond `json:"condition"`
@@ -346,6 +347,7 @@ func searchHandler(host Host, collection string) http.HandlerFunc {
 		if docs == nil {
 			docs = []db.Document{}
 		}
+		docs = transformDocs(r.Context(), p, docs)
 		writeJSON(w, http.StatusOK, listResponse{
 			Data: docs,
 			Meta: listMeta{
@@ -359,7 +361,7 @@ func searchHandler(host Host, collection string) http.HandlerFunc {
 }
 
 // getOneHandler GET /api/v1/{plugin}/{uid}
-func getOneHandler(host Host, collection string) http.HandlerFunc {
+func getOneHandler(host Host, p Plugin, collection string) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		uid := chi.URLParam(r, "uid")
 		if uid == "" {
@@ -371,8 +373,28 @@ func getOneHandler(host Host, collection string) http.HandlerFunc {
 			writeError(w, http.StatusNotFound, "not_found", err.Error())
 			return
 		}
+		if dt, ok := p.(DocTransformer); ok {
+			doc = dt.Transform(r.Context(), doc)
+		}
 		writeJSON(w, http.StatusOK, doc)
 	}
+}
+
+// transformDocs applies a plugin's DocTransformer (when it implements one) to
+// every document in a list/search result, returning the projected slice. A
+// plugin that does not implement DocTransformer pays nothing: the slice is
+// returned unchanged and untouched. The transform must return a copy rather
+// than mutate in place, so the projected fields never leak into a shared cache.
+func transformDocs(ctx context.Context, p Plugin, docs []db.Document) []db.Document {
+	dt, ok := p.(DocTransformer)
+	if !ok {
+		return docs
+	}
+	out := make([]db.Document, len(docs))
+	for i, d := range docs {
+		out[i] = dt.Transform(ctx, d)
+	}
+	return out
 }
 
 // createHandler POST /api/v1/{plugin}. Accepts a single object or an array.

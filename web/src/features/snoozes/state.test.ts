@@ -69,4 +69,38 @@ describe("snoozeState", () => {
       ),
     ).toBe("active");
   });
+
+  describe("prefers the server-computed window_status", () => {
+    it("maps 'always_on' to active", () => {
+      expect(snoozeState({ name: "x", window_status: "always_on" }, FIXED_NOW)).toBe("active");
+    });
+    it("maps 'active' to active", () => {
+      expect(snoozeState({ name: "x", window_status: "active" }, FIXED_NOW)).toBe("active");
+    });
+    it("maps 'pending' to upcoming", () => {
+      expect(snoozeState({ name: "x", window_status: "pending" }, FIXED_NOW)).toBe("upcoming");
+    });
+    it("maps 'expired' to expired", () => {
+      expect(snoozeState({ name: "x", window_status: "expired" }, FIXED_NOW)).toBe("expired");
+    });
+    it("wins over the raw time_constraints when both are present", () => {
+      // datetime says expired (until in the past), but the server says active.
+      // The server field is authoritative.
+      expect(
+        snoozeState(
+          {
+            name: "x",
+            window_status: "active",
+            time_constraints: { datetime: [{ until: PAST }] },
+          },
+          FIXED_NOW,
+        ),
+      ).toBe("active");
+    });
+    it("falls back to the client computation when window_status is absent", () => {
+      expect(
+        snoozeState({ name: "x", time_constraints: { datetime: [{ until: PAST }] } }, FIXED_NOW),
+      ).toBe("expired");
+    });
+  });
 });

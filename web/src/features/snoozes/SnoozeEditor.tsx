@@ -1,6 +1,8 @@
+import { useState } from "react";
 import { useWatch, type Control, type UseFormSetValue } from "react-hook-form";
 import { CollapsibleSection } from "@/shared/ui/CollapsibleSection";
 import { ConditionPreview } from "@/shared/ui/ConditionPreview";
+import { Button } from "@/shared/ui/Button";
 import { Switch } from "@/shared/ui/Switch";
 import { Textarea } from "@/shared/ui/Textarea";
 import { Input } from "@/shared/ui/Input";
@@ -12,8 +14,18 @@ import type { TimeConstraintsGroup } from "@/lib/timeconstraints/types";
 import { DiffSection } from "@/shared/ui/DiffSection";
 import { EditorDrawer, useFieldInvalid, type EditorBodyProps } from "@/shared/forms/EditorDrawer";
 import { Snoozes } from "./api";
+import { parseDuration } from "./duration";
 import type { Snooze } from "./types";
 import styles from "./SnoozeEditor.module.css";
+
+// Preset "silence for" durations, in seconds. Mirrors the common operator
+// shortcuts (an hour, half a shift, a day, a week).
+const SILENCE_PRESETS: { label: string; seconds: number }[] = [
+  { label: "1h", seconds: 3600 },
+  { label: "4h", seconds: 14400 },
+  { label: "24h", seconds: 86400 },
+  { label: "7d", seconds: 604800 },
+];
 
 type FormShape = {
   name: string;
@@ -177,6 +189,20 @@ function SnoozeFields({ control, register, setValue }: EditorBodyProps<FormShape
           <ConditionPreview condition={condition} />
         </div>
       </section>
+      <SilenceFor
+        onApply={(durationSeconds) => {
+          const now = new Date();
+          const until = new Date(now.getTime() + durationSeconds * 1000);
+          setValue(
+            "time_constraints",
+            {
+              ...tc,
+              datetime: [{ from: now.toISOString(), until: until.toISOString() }],
+            },
+            { shouldDirty: true },
+          );
+        }}
+      />
       <CollapsibleSection
         title="Time constraints"
         summary={<TimeConstraintsCell value={tc} />}
@@ -199,5 +225,71 @@ function SnoozeFields({ control, register, setValue }: EditorBodyProps<FormShape
         />
       </div>
     </>
+  );
+}
+
+/** "Silence for…" duration shortcut. Preset buttons plus a free-text field
+ *  (parseDuration-validated) that set a single absolute datetime window from
+ *  now, so operators can quiet a host until morning without the date-picker.
+ *  Invalid free text shows a message and does NOT mutate the form. */
+function SilenceFor({ onApply }: { onApply: (durationSeconds: number) => void }) {
+  const [text, setText] = useState("");
+  const [error, setError] = useState<string | null>(null);
+
+  const applyFreeText = () => {
+    const seconds = parseDuration(text);
+    if (seconds === null) {
+      setError('Invalid duration — try "2h", "30m", or "1d12h".');
+      return;
+    }
+    setError(null);
+    setText("");
+    onApply(seconds);
+  };
+
+  return (
+    <section className={styles.section}>
+      <h3 className={styles.sectionTitle}>Silence for…</h3>
+      <div className={styles.row}>
+        {SILENCE_PRESETS.map((p) => (
+          <Button
+            key={p.label}
+            size="sm"
+            variant="secondary"
+            onClick={() => {
+              setError(null);
+              onApply(p.seconds);
+            }}
+          >
+            {p.label}
+          </Button>
+        ))}
+        <Input
+          aria-label="Silence for (custom duration)"
+          placeholder="e.g. 2h30m"
+          size="sm"
+          value={text}
+          invalid={error !== null}
+          onChange={(e) => {
+            setText(e.target.value);
+            if (error) setError(null);
+          }}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") {
+              e.preventDefault();
+              applyFreeText();
+            }
+          }}
+        />
+        <Button size="sm" variant="secondary" onClick={applyFreeText}>
+          Apply
+        </Button>
+      </div>
+      {error ? (
+        <span role="alert" style={{ color: "var(--severity-error)", fontSize: "var(--text-xs)" }}>
+          {error}
+        </span>
+      ) : null}
+    </section>
   );
 }

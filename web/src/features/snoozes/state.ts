@@ -21,6 +21,22 @@ function epochOf(iso: string | undefined): number | undefined {
 }
 
 export function snoozeState(s: Snooze, nowEpoch = Math.floor(Date.now() / 1000)): SnoozeState {
+  // Prefer the server-computed lifecycle status when present — it is the
+  // authoritative source and matches the Status badge. "always_on" folds into
+  // the Active tab (a permanent rule is doing something now); "pending" is the
+  // server's name for what the tabs call "upcoming".
+  switch (s.window_status) {
+    case "always_on":
+    case "active":
+      return "active";
+    case "pending":
+      return "upcoming";
+    case "expired":
+      return "expired";
+    default:
+      break; // fall through to the legacy client-side computation
+  }
+
   const ranges = s.time_constraints?.datetime ?? [];
   if (ranges.length === 0) return "active";
 
