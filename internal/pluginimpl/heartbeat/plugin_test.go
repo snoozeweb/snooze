@@ -118,9 +118,30 @@ func condMatches(cond condition.Cond, doc db.Document) bool {
 	return false
 }
 
-// --- unused db.Driver methods (return zero values) ---
-func (m *memDB) GetOne(context.Context, string, db.Document) (db.Document, error) {
-	return nil, nil
+// GetOne returns the first document matching every key/value in match (the
+// read handlers query by {"uid": uid}). It returns (nil, db.ErrNotFound) on a
+// miss, mirroring the real driver contract. Returned documents are copied so a
+// caller stamping a computed field cannot mutate the stored row.
+func (m *memDB) GetOne(_ context.Context, _ string, match db.Document) (db.Document, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	for _, d := range m.docs {
+		matches := true
+		for k, v := range match {
+			if d[k] != v {
+				matches = false
+				break
+			}
+		}
+		if matches {
+			cp := db.Document{}
+			for k, v := range d {
+				cp[k] = v
+			}
+			return cp, nil
+		}
+	}
+	return nil, db.ErrNotFound
 }
 func (m *memDB) Convert(context.Context, condition.Cond, []string) (db.DriverQuery, error) {
 	return nil, nil
@@ -321,6 +342,22 @@ func TestSchemaShape(t *testing.T) {
 	require.Contains(t, props, "name")
 	require.Contains(t, props, "interval")
 	require.Contains(t, props, "token", "token must appear in schema")
+}
+
+// TestSchemaIncludesStatusReadOnly asserts the schema advertises the computed
+// `status` field as readOnly so the UI renders it as a badge column without
+// offering it for edit. The field is never persisted; it is projected at read
+// time by handleListHeartbeats / handleGetOneHeartbeat.
+func TestSchemaIncludesStatusReadOnly(t *testing.T) {
+	p := newPlugin(t, newHost())
+	schema, ok := p.Schema().(map[string]any)
+	require.True(t, ok)
+	props, ok := schema["properties"].(map[string]any)
+	require.True(t, ok)
+	require.Contains(t, props, "status", "schema must expose the computed status field")
+	status, ok := props["status"].(map[string]any)
+	require.True(t, ok)
+	require.Equal(t, true, status["readOnly"], "status must be readOnly")
 }
 
 // TestValidateAcceptsDocWithoutToken confirms that Validate does not require

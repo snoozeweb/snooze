@@ -1077,6 +1077,78 @@ paths:
                     type: array
                     items: {$ref: '#/components/schemas/Record'}
 
+  /api/v1/heartbeat:
+    get:
+      tags: [crud]
+      summary: List heartbeats with a computed health status
+      description: |
+        Heartbeats follow the generic CRUD surface (`/api/v1/{plugin}`) for
+        create / replace / patch / delete / search, but the list and get-one
+        responses additionally carry a computed, read-only `status` field
+        (`ok` when the heartbeat was pinged within interval+grace, `overdue`
+        when it has been silent longer — or has never been pinged). The field
+        is never stored; it is projected at read time.
+
+        The optional `status` query parameter filters the list to heartbeats
+        whose computed status matches one of the supplied values
+        (comma-separated, e.g. `?status=overdue` or `?status=ok,overdue`).
+        When the filter is present, `meta.count` and `meta.total` reflect the
+        filtered slice.
+      parameters:
+        - {$ref: '#/components/parameters/QueryQ'}
+        - {$ref: '#/components/parameters/Offset'}
+        - {$ref: '#/components/parameters/Limit'}
+        - {$ref: '#/components/parameters/OrderBy'}
+        - {$ref: '#/components/parameters/Asc'}
+        - name: status
+          in: query
+          required: false
+          schema: {type: string}
+          description: |
+            Comma-separated computed-status filter (`ok`, `overdue`). Absent
+            returns every heartbeat.
+      responses:
+        '200':
+          description: Paginated list; each item carries a computed `status`.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items: {$ref: '#/components/schemas/Heartbeat'}
+                  meta: {$ref: '#/components/schemas/ListMeta'}
+        '400':
+          description: Malformed query.
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/ErrEnvelope'}
+
+  /api/v1/heartbeat/{uid}:
+    parameters:
+      - name: uid
+        in: path
+        required: true
+        schema: {type: string}
+    get:
+      tags: [crud]
+      summary: Fetch a single heartbeat with its computed health status
+      description: |
+        Like the generic get-one, but the returned document additionally
+        carries the read-only computed `status` field (`ok` / `overdue`).
+      responses:
+        '200':
+          description: Heartbeat document with a computed `status`.
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Heartbeat'}
+        '404':
+          description: Not found.
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/ErrEnvelope'}
+
   /api/v1/webhook/heartbeat:
     post:
       tags: [webhooks]
@@ -1767,6 +1839,56 @@ components:
         limit:  {type: integer}
         offset: {type: integer}
         total:  {type: integer}
+
+    Heartbeat:
+      type: object
+      description: |
+        A dead-man's-switch heartbeat record. Created/edited via the generic
+        CRUD surface; the list and get-one responses additionally carry the
+        read-only computed `status` field.
+      required: [name, interval]
+      additionalProperties: true
+      properties:
+        name:
+          type: string
+          minLength: 1
+          description: Unique heartbeat name; pinged via ?name=<name>&token=<token>.
+        token:
+          type: string
+          readOnly: true
+          description: Server-generated ping secret; supplied as ?token= on every ping.
+        interval:
+          type: integer
+          minimum: 1
+          description: Expected ping period in seconds.
+        grace:
+          type: integer
+          minimum: 0
+          description: Extra slack in seconds before a miss fires (optional).
+        last_seen:
+          type: string
+          description: Last ping time (RFC3339 or epoch seconds); set by the ping endpoint.
+        environment: {type: string}
+        host:
+          type: string
+          description: Alert host; defaults to the heartbeat name.
+        severity:
+          type: string
+          description: Severity of the miss alert.
+        enabled:
+          type: boolean
+          description: Disabled heartbeats are not scanned.
+        message:
+          type: string
+          description: Optional custom miss-alert message.
+        status:
+          type: string
+          enum: [ok, overdue]
+          readOnly: true
+          description: |
+            Computed health status. `ok` when pinged within interval+grace,
+            `overdue` when silent longer (or never pinged). Never stored;
+            projected at read time on list/get responses only.
 
     ErrEnvelope:
       type: object

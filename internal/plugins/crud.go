@@ -167,14 +167,63 @@ func MountCRUD(r chi.Router, host Host, p Plugin) {
 	r.Route("/api/v1/"+collection, func(sub chi.Router) {
 		sub.Use(authorize)
 		sub.Get("/", listHandler(host, p, collection))
-		sub.Post("/", createHandler(host, p, collection))
-		sub.Delete("/", bulkDeleteHandler(host, p, collection))
-		sub.Post("/search", searchHandler(host, collection))
 		sub.Get("/{uid}", getOneHandler(host, collection))
-		sub.Put("/{uid}", replaceHandler(host, p, collection))
-		sub.Patch("/{uid}", patchHandler(host, p, collection))
-		sub.Delete("/{uid}", deleteOneHandler(host, p, collection))
+		mountCRUDWriteRoutes(sub, host, p, collection)
 	})
+}
+
+// mountCRUDWriteRoutes installs the write/search/delete surface that is
+// identical across MountCRUD and the exported MountCRUDWriteRoutes:
+//
+//	POST   /          create (single object or array)
+//	DELETE /          bulk delete by ?q=
+//	POST   /search    search by {condition}
+//	PUT    /{uid}      full replace
+//	PATCH  /{uid}      partial merge
+//	DELETE /{uid}      delete one
+//
+// It deliberately does NOT mount the two read routes (GET / and GET /{uid}) so
+// a RouteProvider can override them while reusing the write surface verbatim.
+// All handlers are the same constructors MountCRUD uses, so guard/audit/hook
+// wiring is shared with zero duplication.
+func mountCRUDWriteRoutes(sub chi.Router, host Host, p Plugin, collection string) {
+	sub.Post("/", createHandler(host, p, collection))
+	sub.Delete("/", bulkDeleteHandler(host, p, collection))
+	sub.Post("/search", searchHandler(host, collection))
+	sub.Put("/{uid}", replaceHandler(host, p, collection))
+	sub.Patch("/{uid}", patchHandler(host, p, collection))
+	sub.Delete("/{uid}", deleteOneHandler(host, p, collection))
+}
+
+// MountCRUDWriteRoutes installs the standard write/search/delete surface
+// (POST /, DELETE /, POST /search, PUT/PATCH/DELETE /{uid}) on a router already
+// scoped to /api/v1/{collection}. It is the companion to MountCRUD for
+// RouteProvider plugins that want the canonical write surface but supply their
+// own read handlers (GET / and GET /{uid}) — e.g. the heartbeat plugin, which
+// projects a computed status onto its read responses. The handlers are the very
+// same constructors MountCRUD wires, so guard/audit/hook behaviour is identical
+// — there is no second implementation to keep in sync.
+//
+// The caller is responsible for the authorize middleware (MountCRUD applies it
+// to the parent subrouter before invoking RegisterRoutes).
+func MountCRUDWriteRoutes(r chi.Router, host Host, p Plugin, collection string) {
+	mountCRUDWriteRoutes(r, host, p, collection)
+}
+
+// WriteJSON sets the canonical JSON content-type, writes status, and encodes
+// body. It is the exported form of the internal writeJSON, provided for
+// RouteProvider plugins that build their own read handlers and need to emit the
+// same envelope shape as the generic CRUD layer.
+func WriteJSON(w http.ResponseWriter, status int, body any) {
+	writeJSON(w, status, body)
+}
+
+// DecodeListParams parses the ?q/?limit/?offset/?orderby/?asc list query
+// parameters into a db.Page and condition.Cond, exactly as the generic list
+// handler does. Exported for RouteProvider plugins that reimplement the list
+// route (e.g. heartbeat).
+func DecodeListParams(r *http.Request) (db.Page, condition.Cond, error) {
+	return decodeListParams(r)
 }
 
 // listResponse mirrors snoozetypes.ListResponse for arbitrary document types

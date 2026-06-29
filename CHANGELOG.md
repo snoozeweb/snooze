@@ -18,6 +18,11 @@
   host; `check_result.result_description` the message. Query-string overrides
   `event`, `environment`, `service`, `severity`, and `event_type` mirror the
   Alerta Graylog webhook contract.
+- **Heartbeat — computed `status` field on list/get responses.** `GET
+  /api/v1/heartbeat` and `GET /api/v1/heartbeat/{uid}` now include a
+  read-time `status` field (`ok` or `overdue`) on every heartbeat document.
+  An optional `?status=` query parameter filters the list to heartbeats
+  matching the supplied value(s). No database migration required.
 
 ### Fixed
 

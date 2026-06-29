@@ -206,6 +206,7 @@ var (
 	_ plugins.DataModel        = (*Plugin)(nil)
 	_ plugins.WebhookReceiver  = (*Plugin)(nil)
 	_ plugins.WriteTransformer = (*Plugin)(nil)
+	_ plugins.RouteProvider    = (*Plugin)(nil)
 )
 
 // ---- WebhookReceiver: ping ------------------------------------------------

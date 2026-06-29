@@ -99,6 +99,43 @@ A successful ping updates `last_seen` to "now" and re-arms the switch (clears an
   - `raw`: `name`, `interval`, `grace`, `last_seen` (+ `environment`)
 - A miss fires **at most once per silent window**. The scanner remembers what it has already fired (keyed by `name` + `last_seen`) and will not re-fire on the next tick. A fresh ping changes `last_seen`, clears that memory, and re-arms the switch.
 
+## Health status
+
+Both read endpoints inject a computed, read-only `status` field onto every heartbeat in the response, so a dashboard can show a live health column without cross-referencing the records stream:
+
+- `GET /api/v1/heartbeat` — every item in `data[]` carries `status`.
+- `GET /api/v1/heartbeat/{uid}` — the returned document carries `status`.
+
+`status` is one of:
+
+`ok`  
+The heartbeat was pinged within `interval + grace` (it is inside its silence budget).
+
+`overdue`  
+The heartbeat has been silent longer than `interval + grace`, or has never been pinged.
+
+The field is **never stored** — it is projected at read time from the same overdue logic the scanner uses, so it is always consistent with whether a miss alert would fire. It is also exposed in the plugin's JSON Schema as `readOnly`, so the UI renders it as a badge and never offers it for edit. POST/PUT/PATCH bodies that include a `status` field are ignored for persistence.
+
+### Filtering by status
+
+The list endpoint accepts an optional `status` query parameter — a comma-separated set of status values — and returns only heartbeats whose computed status matches:
+
+``` console
+# only overdue heartbeats:
+$ curl -H 'Authorization: Bearer <operator-token>' \
+    'http://localhost:5200/api/v1/heartbeat?status=overdue'
+
+# healthy ones only:
+$ curl -H 'Authorization: Bearer <operator-token>' \
+    'http://localhost:5200/api/v1/heartbeat?status=ok'
+
+# either (equivalent to omitting the filter):
+$ curl -H 'Authorization: Bearer <operator-token>' \
+    'http://localhost:5200/api/v1/heartbeat?status=ok,overdue'
+```
+
+When the filter is present, `meta.count` and `meta.total` reflect the filtered slice. An absent `status` parameter returns every heartbeat. The filter is applied in-process after the database fetch (heartbeat collections are small by nature), so it requires no database index.
+
 ## Authentication
 
 The heartbeat plugin uses a **two-layer authentication model**:

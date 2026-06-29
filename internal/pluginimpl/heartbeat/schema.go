@@ -225,6 +225,12 @@ func (p *Plugin) Schema() any {
 				"type":        "string",
 				"description": "Optional custom miss-alert message.",
 			},
+			"status": map[string]any{
+				"type":        "string",
+				"enum":        []string{"ok", "overdue"},
+				"readOnly":    true,
+				"description": "Computed health status (ok/overdue). Never stored; projected at read time.",
+			},
 		},
 		"additionalProperties": true,
 	}
