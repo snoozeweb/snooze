@@ -17,6 +17,7 @@ import (
 	_ "github.com/snoozeweb/snooze/internal/pluginimpl/audit"
 	_ "github.com/snoozeweb/snooze/internal/pluginimpl/comment"
 	_ "github.com/snoozeweb/snooze/internal/pluginimpl/environment"
+	_ "github.com/snoozeweb/snooze/internal/pluginimpl/group"
 	_ "github.com/snoozeweb/snooze/internal/pluginimpl/kv"
 	_ "github.com/snoozeweb/snooze/internal/pluginimpl/profile"
 	_ "github.com/snoozeweb/snooze/internal/pluginimpl/record"

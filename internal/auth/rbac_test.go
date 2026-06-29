@@ -91,6 +91,67 @@ func TestRoleResolver_Resolve_EmptyForUnknownUser(t *testing.T) {
 	require.Empty(t, perms)
 }
 
+// TestRoleResolver_Resolve_ServerManagedGroup exercises the server-managed
+// group augmentation: a user with no `groups` on their user document gains a
+// role because a "group" collection document lists them as a member and a role
+// grants itself to that group's name. It also covers the negative case (a user
+// not in the group gets nothing) and the union case (a server-managed group
+// resolves alongside IdP-supplied groups).
+func TestRoleResolver_Resolve_ServerManagedGroup(t *testing.T) {
+	t.Parallel()
+	fdb := newFakeDB()
+	// carol has NO direct roles and NO groups on her user doc.
+	fdb.seed(LocalCollection, db.Document{
+		"name":   "carol",
+		"method": LocalMethod,
+	})
+	// dave is a known user but not a member of the sre group.
+	fdb.seed(LocalCollection, db.Document{
+		"name":   "dave",
+		"method": LocalMethod,
+	})
+	// Server-managed group "sre" lists carol (local) as a member. Members are
+	// stored as an array of {username, method} objects — the post-JSON shape is
+	// []any of map[string]any, which is what the driver returns.
+	fdb.seed(GroupCollection, db.Document{
+		"name": "sre",
+		"members": []any{
+			map[string]any{"username": "carol", "method": LocalMethod},
+			map[string]any{"username": "bob", "method": "ldap"},
+		},
+	})
+	fdb.seed(RoleCollection,
+		db.Document{"name": "sre-oncall", "permissions": []string{"ack", "snooze"}, "groups": []string{"sre"}},
+		db.Document{"name": "ops-role", "permissions": []string{"write"}, "groups": []string{"ops"}},
+	)
+
+	r := NewRoleResolver(fdb)
+
+	// Positive: carol gains sre-oncall via her server-managed group membership.
+	roles, perms, err := r.Resolve(context.Background(), Identity{Username: "carol", Method: LocalMethod})
+	require.NoError(t, err)
+	require.Equal(t, []string{"sre-oncall"}, roles)
+	require.ElementsMatch(t, []string{"ack", "snooze"}, perms)
+
+	// Negative: dave is not a member of any server-managed group and has no
+	// direct roles / IdP groups, so resolves to nothing.
+	roles, perms, err = r.Resolve(context.Background(), Identity{Username: "dave", Method: LocalMethod})
+	require.NoError(t, err)
+	require.Empty(t, roles)
+	require.Empty(t, perms)
+
+	// Union: carol carries an IdP-supplied group "ops" AND her server-managed
+	// "sre" membership — both must resolve.
+	roles, perms, err = r.Resolve(context.Background(), Identity{
+		Username: "carol",
+		Method:   LocalMethod,
+		Groups:   []string{"ops"},
+	})
+	require.NoError(t, err)
+	require.ElementsMatch(t, []string{"sre-oncall", "ops-role"}, roles)
+	require.ElementsMatch(t, []string{"ack", "snooze", "write"}, perms)
+}
+
 func TestHasPermission(t *testing.T) {
 	t.Parallel()
 

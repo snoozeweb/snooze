@@ -989,6 +989,124 @@ paths:
             application/json:
               schema: {$ref: '#/components/schemas/ErrEnvelope'}
 
+  /api/v1/group:
+    get:
+      tags: [crud]
+      summary: List server-managed user groups
+      description: |
+        Server-managed groups follow the generic CRUD surface
+        (`/api/v1/{plugin}`) for create / replace / patch / delete / search.
+        Each group carries `{name, description, members[]}`; membership is folded
+        into a user's group set at login (see the `Group` schema). Requires the
+        `ro_group` permission.
+      parameters:
+        - {$ref: '#/components/parameters/QueryQ'}
+        - {$ref: '#/components/parameters/Offset'}
+        - {$ref: '#/components/parameters/Limit'}
+        - {$ref: '#/components/parameters/OrderBy'}
+        - {$ref: '#/components/parameters/Asc'}
+      responses:
+        '200':
+          description: Paginated list of groups.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items: {$ref: '#/components/schemas/Group'}
+                  meta: {$ref: '#/components/schemas/ListMeta'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+    post:
+      tags: [crud]
+      summary: Create a server-managed user group
+      description: |
+        Creates a group `{name, description, members[]}`. The `(tenant_id, name)`
+        pair must be unique (duplicate names are rejected). Requires `rw_group`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/Group'}
+      responses:
+        '200':
+          description: The created group.
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Group'}
+        '400': {$ref: '#/components/responses/BadRequest'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '409': {$ref: '#/components/responses/Conflict'}
+
+  /api/v1/group/{uid}:
+    parameters:
+      - name: uid
+        in: path
+        required: true
+        schema: {type: string}
+    get:
+      tags: [crud]
+      summary: Fetch a single group
+      responses:
+        '200':
+          description: The group document.
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Group'}
+        '404': {$ref: '#/components/responses/NotFound'}
+    put:
+      tags: [crud]
+      summary: Replace a group
+      description: Full replacement of the group document. Requires `rw_group`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/Group'}
+      responses:
+        '200':
+          description: The replaced group.
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Group'}
+        '400': {$ref: '#/components/responses/BadRequest'}
+        '404': {$ref: '#/components/responses/NotFound'}
+    patch:
+      tags: [crud]
+      summary: Partially update a group
+      description: |
+        Partial update — e.g. PATCH `{"members": [...]}` to add or remove members
+        without touching `name`/`description`. Requires `rw_group`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/Group'}
+      responses:
+        '200':
+          description: The updated group.
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Group'}
+        '400': {$ref: '#/components/responses/BadRequest'}
+        '404': {$ref: '#/components/responses/NotFound'}
+    delete:
+      tags: [crud]
+      summary: Delete a group
+      description: |
+        Removes the group document. User documents are untouched; members simply
+        lose this group's membership at their next login. Requires `rw_group`.
+      responses:
+        '200':
+          description: Deletion count.
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/StatusOK'}
+        '404': {$ref: '#/components/responses/NotFound'}
+
   /api/v1/record/bulk_state:
     post:
       tags: [crud]
@@ -2116,6 +2234,37 @@ components:
         owner:
           type: string
           description: JWT subject that owns the bookmark (server-stamped).
+        tenant_id:
+          type: string
+          description: Owning tenant slug (server-stamped).
+    Group:
+      type: object
+      description: >
+        A server-managed user cohort. `members[]` references users by
+        `{username, method}` (the user collection's identity key). At login the
+        RBAC resolver unions the names of every group the user belongs to into
+        the group set, so a role whose `groups[]` lists this group's name is
+        granted to every member — no IdP required. Keyed by `(tenant_id, name)`.
+      required: [name]
+      properties:
+        uid: {type: string}
+        name:
+          type: string
+          minLength: 1
+          description: Group name, unique within the tenant, e.g. "sre".
+        description:
+          type: string
+          description: Optional free-text label.
+        members:
+          type: array
+          description: Users in this group, referenced by username + auth method.
+          items:
+            type: object
+            properties:
+              username: {type: string}
+              method:
+                type: string
+                description: Auth method, e.g. "local" or "ldap".
         tenant_id:
           type: string
           description: Owning tenant slug (server-stamped).

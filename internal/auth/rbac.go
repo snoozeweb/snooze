@@ -15,6 +15,12 @@ import (
 // shaped as “{name, permissions: [...], groups: [...]}“.
 const RoleCollection = "role"
 
+// GroupCollection is the collection storing server-managed user groups. Each
+// document is shaped as “{name, description, members: [{username, method}]}“.
+// Membership is folded into the resolving user's group set in Resolve so that
+// granting a role to a group covers every member without an IdP.
+const GroupCollection = "group"
+
 // AllPermission is the wildcard permission that grants every action. It
 // matches the Python codebase's "rw_all" semantics.
 const AllPermission = "rw_all"
@@ -69,18 +75,26 @@ func (r *RoleResolver) Resolve(ctx context.Context, id Identity) ([]string, []st
 		}
 	}
 
+	// 1.5. Server-managed groups: union the names of every group whose
+	//      members[] contains this identity into the group set. This augments
+	//      (does not replace) the IdP-supplied id.Groups, so a server-managed
+	//      membership and an IdP group both resolve. The scan is non-fatal: on a
+	//      fresh install the "group" collection may not exist yet.
+	groupSet := make(map[string]struct{}, len(id.Groups))
+	for _, g := range id.Groups {
+		groupSet[g] = struct{}{}
+	}
+	for g := range r.serverManagedGroups(ctx, id.Username, id.Method) {
+		groupSet[g] = struct{}{}
+	}
+
 	// 2. Group-mapped roles: scan the role collection for any document whose
-	//    groups[] intersects id.Groups. We pull all roles and filter in Go;
+	//    groups[] intersects the group set. We pull all roles and filter in Go;
 	//    role counts are small (<100s) so the simple approach beats per-group
 	//    queries.
 	roles, _, err := r.DB.Search(ctx, RoleCollection, condition.Cond{Op: condition.OpAlwaysTrue}, db.Page{})
 	if err != nil {
 		return nil, nil, fmt.Errorf("rbac: search roles: %w", err)
-	}
-
-	groupSet := make(map[string]struct{}, len(id.Groups))
-	for _, g := range id.Groups {
-		groupSet[g] = struct{}{}
 	}
 
 	permSet := make(map[string]struct{})
@@ -105,6 +119,63 @@ func (r *RoleResolver) Resolve(ctx context.Context, id Identity) ([]string, []st
 	}
 
 	return sortedKeys(roleSet), sortedKeys(permSet), nil
+}
+
+// member is a single {username, method} entry in a group document's members[].
+type member struct {
+	Username string
+	Method   string
+}
+
+// serverManagedGroups returns the set of group names whose members[] contains
+// the given {username, method} identity. It scans the whole "group" collection
+// and filters in Go — group counts per tenant are small (tens to low hundreds),
+// matching the role-scan strategy. The incoming ctx is forwarded so the
+// tenant-scoped driver isolates the scan by construction.
+//
+// A DB error is non-fatal: on a fresh install the collection may not exist yet,
+// and a transient outage should degrade gracefully (the user keeps direct and
+// IdP-group roles) rather than block login. The error is intentionally dropped.
+func (r *RoleResolver) serverManagedGroups(ctx context.Context, username, method string) map[string]struct{} {
+	out := make(map[string]struct{})
+	// non-fatal: the "group" collection may not exist yet on a fresh install,
+	// and a transient DB error must not block authentication.
+	groups, _, _ := r.DB.Search(ctx, GroupCollection, condition.Cond{Op: condition.OpAlwaysTrue}, db.Page{})
+	for _, g := range groups {
+		name, _ := g["name"].(string)
+		if name == "" {
+			continue
+		}
+		for _, m := range toMemberSlice(g["members"]) {
+			if m.Username == username && m.Method == method {
+				out[name] = struct{}{}
+				break
+			}
+		}
+	}
+	return out
+}
+
+// toMemberSlice coerces a group document's members[] field into []member,
+// tolerating the post-JSON shape ([]any of map[string]any) the drivers return.
+// Entries missing username or method are kept as-is (their blank field simply
+// fails the identity match in serverManagedGroups).
+func toMemberSlice(v any) []member {
+	raw, ok := v.([]any)
+	if !ok {
+		return nil
+	}
+	out := make([]member, 0, len(raw))
+	for _, e := range raw {
+		m, ok := e.(map[string]any)
+		if !ok {
+			continue
+		}
+		username, _ := m["username"].(string)
+		method, _ := m["method"].(string)
+		out = append(out, member{Username: username, Method: method})
+	}
+	return out
 }
 
 // IsReservedPlatformPerm reports whether p is a platform-only permission that a

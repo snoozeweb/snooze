@@ -2,6 +2,9 @@
 
 ### Added
 
+- Server-managed user groups (`GET/POST/PUT/PATCH/DELETE /api/v1/group`):
+  operators can now create named cohorts, add local or LDAP users as members,
+  and assign roles to the group without editing each user's `roles[]` field.
 - **Snooze — window lifecycle status and remaining countdown.** The snooze list
   now shows a derived *Status* badge (active / pending / expired / always-on)
   and a *Remaining* countdown column for time-bounded rules. Both are computed

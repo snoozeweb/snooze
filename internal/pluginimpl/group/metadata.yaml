@@ -1,0 +1,7 @@
+---
+name: 'Group'
+desc: 'Server-managed user groups for local-method role assignment'
+route_defaults:
+    primary: [tenant_id, name]
+    duplicate_policy: 'reject'
+    check_permissions: true
