@@ -31,9 +31,26 @@ const auditCollection = "audit"
 // underlying Write fails — auditing must never block the mutation it
 // describes.
 //
+// It delegates to the exported EmitBulkAudit so the CRUD callers and the
+// api-package bulk endpoints share a single audit-write implementation.
+func emitAudit(ctx context.Context, host Host, meta Metadata, collection, action string, uids []string, summary string) {
+	EmitBulkAudit(ctx, host, meta, collection, action, uids, summary)
+}
+
+// EmitBulkAudit best-effort records one audit event per affected uid for a
+// mutation that touched many rows in a single driver call (bulk state change,
+// bulk attribute/tag update, bulk delete). It is the exported form of the
+// private emitAudit so the api-package bulk endpoints (which cannot reach the
+// unexported helper) reuse the exact same audit-write logic.
+//
+// It silently no-ops when the plugin opts out via metadata.audit:false, when
+// the target collection is the audit collection itself (infinite-recursion
+// guard), when uids is empty, or when the underlying Write fails — auditing
+// must never block the mutation it describes.
+//
 // The schema mirrors internal/pluginimpl/audit/plugin.go: object_type,
 // object_id, action, username, method, summary, date_epoch.
-func emitAudit(ctx context.Context, host Host, meta Metadata, collection, action string, uids []string, summary string) {
+func EmitBulkAudit(ctx context.Context, host Host, meta Metadata, collection, action string, uids []string, summary string) {
 	if !meta.Audit || collection == auditCollection || len(uids) == 0 {
 		return
 	}

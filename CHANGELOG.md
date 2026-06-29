@@ -2,6 +2,7 @@
 
 ### Added
 
+- Bulk operations across a query: POST /api/v1/record/bulk_state (ack/close/open/esc) and POST /api/v1/{plugin}/bulk_update (set/tag/untag) apply a mutation to every record matching a ?q condition in one call, with one audit row per affected record.
 - Auth-proxy mode: trust an upstream reverse proxy (oauth2-proxy/Pomerium/mod_auth) to authenticate users via configurable username/groups headers, with optional JIT auto-signup, IP allowlist, and group-based role mapping (config: `auth_proxy.*`, disabled by default).
 - **Timed alert lifecycle — acks now expire and stale alerts auto-escalate.** An acknowledged alert is stamped with a server-controlled `ack_until`; a new minute-cadence housekeeper sweep reverts expired acks back to `open` and, when `housekeeping.escalate_after` is set, flips an alert left unacknowledged past the deadline to `esc` and re-fires its notifications. Closes the gap where a one-shot acked alert was silenced forever. Both timeouts are live-editable in Settings.
 - **Saved searches.** Operators can now bookmark named DSL filters from the

@@ -159,6 +159,12 @@ func (rt *Router) Build() chi.Router {
 	//     `/{uid}` handlers chi installs) ----------------------------------
 	rt.mountSnoozeRetro(r)
 
+	// --- bulk operations across a query (mounted BEFORE plugin CRUD for the
+	//     same reason as retro-apply: the specific `/record/bulk_state` and
+	//     `/{plugin}/bulk_update` POSTs must win over the generic `/{uid}`
+	//     handlers chi installs). -------------------------------------------
+	rt.mountBulk(r)
+
 	// --- self-service /api/v1/user/me/* (mounted BEFORE the user plugin's
 	//     CRUD so /me/password wins over the generic /{uid} matcher chi
 	//     would otherwise route to). ----------------------------------------

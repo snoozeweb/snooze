@@ -97,6 +97,66 @@ It can be done automatically by an [aggregate rule](./aggregaterules.md) if the 
 
 It can be done manually by the user to have the alert go through the full processing once more, meaning it can get notified again or snoozed. [Modifications](./rules.md#modifications) can be applied to the alert beforehand.
 
+## Bulk operations across a query
+
+Instead of acting on one alert at a time, you can apply a single change to
+**every** alert matching a query in one HTTP call. Both endpoints resolve the
+query server-side, apply the change with one database call, and return the
+matched/updated counts. They are tenant-scoped: a request only ever touches
+alerts in the caller's own tenant.
+
+The query is passed as the `q` parameter — a base64url-encoded JSON
+[condition](./querylanguage.md), the same shape the list and search endpoints
+use. Omitting `q` matches every alert the caller can see (still constrained to
+their tenant).
+
+### Bulk state change
+
+`POST /api/v1/record/bulk_state?q=<condition>` flips the `state` of every
+matching alert. Requires the `rw_record` permission.
+
+```bash
+curl -X POST "https://<snooze>/api/v1/record/bulk_state?q=<base64url-cond>" \
+  -H 'Authorization: Bearer <token>' \
+  -d '{"state":"ack","message":"silenced for maintenance"}'
+# → {"matched": 47, "updated": 47, "state": "ack"}
+```
+
+`state` must be one of `ack`, `close`, `open`, `esc` (the same set used when
+[acknowledging](./alerts.md#acknowledge) or [closing](./alerts.md#close) a
+single alert); any other value returns `400`.
+
+> **One behavioural difference from the single-alert path.** Acting on one
+> alert posts a comment *and* changes its state. The bulk path changes `state`
+> directly and does **not** write one comment per alert — a query can match
+> thousands of rows. The optional `message` is recorded once in the
+> [audit trail](./audit_trail.md) summary instead.
+
+### Bulk attribute / tag update
+
+`POST /api/v1/{plugin}/bulk_update?q=<condition>` merges attributes and
+adds/removes tags across every matching document. Use `record` as the plugin
+for alerts. Requires the `rw_{plugin}` permission (e.g. `rw_record`). At least
+one of `set`, `tag`, `untag` must be present (an empty body returns `400`), and
+the plugin must own a mutable collection (notifiers, the audit log, etc. are
+rejected with `404`).
+
+```bash
+curl -X POST "https://<snooze>/api/v1/record/bulk_update?q=<base64url-cond>" \
+  -H 'Authorization: Bearer <token>' \
+  -d '{"set":{"environment":"prod"},"tag":["maint"],"untag":["noisy"]}'
+# → {"matched": 12, "set": 12, "tagged": 12, "untagged": 12}
+```
+
+The three operations apply in order: `set` (attribute merge) → `tag` (add) →
+`untag` (remove). **Adding a tag is idempotent**: an alert already carrying the
+tag ends with exactly one copy of it, so re-running the same `tag` request never
+produces duplicates.
+
+Both endpoints write one [audit](./audit_trail.md) row per affected alert when
+auditing is enabled for the collection (above a server-side cap, a single
+summary row carrying the matched count is written instead).
+
 ## Alerts TTL
 
 Alerts are automatically cleaned up by the [housekeeper](./housekeeping.md) after a certain period of time called **TTL** (Time To Live)

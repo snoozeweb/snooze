@@ -840,6 +840,133 @@ paths:
             application/json:
               schema: {$ref: '#/components/schemas/ErrEnvelope'}
 
+  /api/v1/record/bulk_state:
+    post:
+      tags: [crud]
+      summary: Bulk state change across a query
+      description: |
+        Sets `state` on every `record` matching the `q` condition in a single
+        call, returning the matched/updated counts. `state` must be one of
+        `ack`, `close`, `open`, `esc` (the same set the per-record comment path
+        uses). Requires the `rw_record` permission (the `rw_all` wildcard also
+        satisfies it).
+
+        Unlike posting a state-changing comment per record, the bulk path sets
+        `state` directly and does **not** fan out one comment per record (a
+        query can match thousands of rows); the optional `message` is recorded
+        once in the audit summary instead. One audit row is written per affected
+        record (subject to a server-side cap above which a single summary row is
+        written).
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: q
+          in: query
+          required: false
+          description: |
+            base64url-encoded JSON condition (same shape as the list `q`
+            parameter). Omit to match every record the caller's tenant can see.
+          schema: {type: string}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [state]
+              properties:
+                state:
+                  type: string
+                  enum: [ack, close, open, esc]
+                message:
+                  type: string
+                  description: Recorded once in the audit summary.
+      responses:
+        '200':
+          description: Bulk state-change counts.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [matched, updated, state]
+                properties:
+                  matched: {type: integer}
+                  updated: {type: integer}
+                  state: {type: string}
+        '400': {$ref: '#/components/responses/BadRequest'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+
+  /api/v1/{plugin}/bulk_update:
+    post:
+      tags: [crud]
+      summary: Bulk attribute / tag update across a query
+      description: |
+        Applies an attribute merge (`set`), an idempotent tag add (`tag`), and a
+        tag removal (`untag`) to every document of `{plugin}`'s collection
+        matching the `q` condition, in that order, in a single call. At least
+        one of `set` / `tag` / `untag` must be present. `{plugin}` must be a
+        registered data-model collection (notifiers, the audit log, etc. are
+        rejected). Requires the `rw_{plugin}` permission (the `rw_all` wildcard
+        also satisfies it).
+
+        Tag add is idempotent: a record already carrying the tag ends with
+        exactly one copy of it. One audit row is written per affected record
+        when the plugin enables auditing (subject to a server-side cap above
+        which a single summary row is written).
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: plugin
+          in: path
+          required: true
+          description: The data-model collection name (e.g. `record`).
+          schema: {type: string}
+        - name: q
+          in: query
+          required: false
+          description: |
+            base64url-encoded JSON condition. Omit to match every document the
+            caller's tenant can see.
+          schema: {type: string}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              minProperties: 1
+              properties:
+                set:
+                  type: object
+                  additionalProperties: true
+                  description: Field/value pairs merged onto every match.
+                tag:
+                  type: array
+                  items: {type: string}
+                  description: Tags to add (idempotent).
+                untag:
+                  type: array
+                  items: {type: string}
+                  description: Tags to remove.
+      responses:
+        '200':
+          description: Per-op bulk-update counts.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [matched, set, tagged, untagged]
+                properties:
+                  matched: {type: integer}
+                  set: {type: integer}
+                  tagged: {type: integer}
+                  untagged: {type: integer}
+        '400': {$ref: '#/components/responses/BadRequest'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {$ref: '#/components/responses/NotFound'}
+
   /api/v1/housekeeping/run:
     post:
       tags: [admin]
