@@ -3,12 +3,19 @@ package api
 import (
 	"fmt"
 	"net/http"
+	"strings"
 
 	"github.com/go-chi/chi/v5"
 
 	"github.com/snoozeweb/snooze/internal/api/middleware"
+	"github.com/snoozeweb/snooze/internal/auth"
 	"github.com/snoozeweb/snooze/internal/plugins"
 )
+
+// LoopHeader is the request/response header carrying the comma-separated chain
+// of server ids a federated (relayed) alert has already traversed. The
+// federation Processor reads it via auth.LoopChainFrom to prevent relay loops.
+const LoopHeader = "X-Snooze-Loop"
 
 // mountAlerts wires POST /api/v1/alerts.
 //
@@ -51,6 +58,14 @@ func (rt *Router) handleAlertPost(w http.ResponseWriter, r *http.Request) {
 	if rt.IngestAllowed != nil && !rt.IngestAllowed(r.Context()) {
 		WriteError(w, r, ErrUnavailable.WithMessage("alert ingestion is disabled"))
 		return
+	}
+	// Stash the inbound X-Snooze-Loop chain (server ids a relayed alert has
+	// already passed through) on the request context so the federation
+	// Processor can read it and skip re-relaying. Absent header → no chain.
+	ctx := r.Context()
+	if chain := parseLoopChain(r.Header.Get(LoopHeader)); len(chain) > 0 {
+		ctx = auth.WithLoopChain(ctx, chain)
+		r = r.WithContext(ctx)
 	}
 	records, err := ParseJSONOrArray(r)
 	if err != nil {
@@ -98,4 +113,20 @@ func (rt *Router) handleAlertPost(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	WriteJSON(w, http.StatusOK, out)
+}
+
+// parseLoopChain splits a comma-separated X-Snooze-Loop header value into a
+// trimmed, non-empty slice of server ids. An empty header yields nil.
+func parseLoopChain(header string) []string {
+	if strings.TrimSpace(header) == "" {
+		return nil
+	}
+	parts := strings.Split(header, ",")
+	out := make([]string, 0, len(parts))
+	for _, p := range parts {
+		if s := strings.TrimSpace(p); s != "" {
+			out = append(out, s)
+		}
+	}
+	return out
 }

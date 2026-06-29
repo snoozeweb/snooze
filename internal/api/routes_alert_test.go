@@ -11,6 +11,7 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/stretchr/testify/require"
 
+	"github.com/snoozeweb/snooze/internal/auth"
 	"github.com/snoozeweb/snooze/internal/plugins"
 )
 
@@ -168,6 +169,57 @@ func TestAlertRoute_KillSwitch_Allows(t *testing.T) {
 
 	require.Equal(t, http.StatusOK, rec.Code)
 	require.Len(t, fp.got, 1)
+}
+
+// TestHandleAlert_LoopChainFromHeader verifies the X-Snooze-Loop request header
+// is parsed (split on ",", trimmed) and stashed in the request context via
+// auth.WithLoopChain so the federation Processor can read it downstream.
+func TestHandleAlert_LoopChainFromHeader(t *testing.T) {
+	var gotChain []string
+	fp := &fakeProcessor{
+		captureCtx: func(ctx context.Context) {
+			gotChain = auth.LoopChainFrom(ctx)
+		},
+	}
+	r := chi.NewRouter()
+	rt := &Router{Processor: fp}
+	rt.mountAlerts(r)
+
+	body := bytes.NewBufferString(`{"host":"a"}`)
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/alerts", body)
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("X-Snooze-Loop", "a , b")
+	r.ServeHTTP(rec, req)
+
+	require.Equal(t, http.StatusOK, rec.Code)
+	require.Equal(t, []string{"a", "b"}, gotChain)
+}
+
+// TestHandleAlert_NoLoopChainHeader verifies that without the header the chain
+// read from ctx is nil/empty.
+func TestHandleAlert_NoLoopChainHeader(t *testing.T) {
+	var captured bool
+	var gotChain []string
+	fp := &fakeProcessor{
+		captureCtx: func(ctx context.Context) {
+			captured = true
+			gotChain = auth.LoopChainFrom(ctx)
+		},
+	}
+	r := chi.NewRouter()
+	rt := &Router{Processor: fp}
+	rt.mountAlerts(r)
+
+	body := bytes.NewBufferString(`{"host":"a"}`)
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/alerts", body)
+	req.Header.Set("Content-Type", "application/json")
+	r.ServeHTTP(rec, req)
+
+	require.Equal(t, http.StatusOK, rec.Code)
+	require.True(t, captured)
+	require.Empty(t, gotChain)
 }
 
 func TestAlertRoute_BadJSON(t *testing.T) {

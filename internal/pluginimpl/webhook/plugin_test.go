@@ -285,6 +285,39 @@ func TestSendLegacyPythonPayload(t *testing.T) {
 	require.Equal(t, rec.Severity, alert["severity"])
 }
 
+// TestApplyAuth_APIKey covers the apikey auth scheme: the configured key is set
+// on the named header (defaulting to X-API-Key), and an empty key fails closed
+// like bearer/basic do.
+func TestApplyAuth_APIKey(t *testing.T) {
+	t.Run("explicit header", func(t *testing.T) {
+		req, err := http.NewRequestWithContext(context.Background(), http.MethodPost, "http://example.invalid", nil)
+		require.NoError(t, err)
+		require.NoError(t, ApplyAuth(req, Auth{Type: "apikey", APIKey: "k", Header: "X-API-Key"}))
+		require.Equal(t, "k", req.Header.Get("X-API-Key"))
+		require.Empty(t, req.Header.Get("Authorization"), "apikey must not touch Authorization")
+	})
+
+	t.Run("custom header", func(t *testing.T) {
+		req, err := http.NewRequestWithContext(context.Background(), http.MethodPost, "http://example.invalid", nil)
+		require.NoError(t, err)
+		require.NoError(t, ApplyAuth(req, Auth{Type: "apikey", APIKey: "abc", Header: "X-Token"}))
+		require.Equal(t, "abc", req.Header.Get("X-Token"))
+	})
+
+	t.Run("default header when unset", func(t *testing.T) {
+		req, err := http.NewRequestWithContext(context.Background(), http.MethodPost, "http://example.invalid", nil)
+		require.NoError(t, err)
+		require.NoError(t, ApplyAuth(req, Auth{Type: "apikey", APIKey: "abc"}))
+		require.Equal(t, "abc", req.Header.Get("X-API-Key"), "header defaults to X-API-Key")
+	})
+
+	t.Run("empty key fails closed", func(t *testing.T) {
+		req, err := http.NewRequestWithContext(context.Background(), http.MethodPost, "http://example.invalid", nil)
+		require.NoError(t, err)
+		require.Error(t, ApplyAuth(req, Auth{Type: "apikey", Header: "X-API-Key"}))
+	})
+}
+
 func TestPluginInterfaceContract(t *testing.T) {
 	var _ plugins.Plugin = (*Plugin)(nil)
 	var _ plugins.Notifier = (*Plugin)(nil)

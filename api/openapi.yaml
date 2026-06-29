@@ -726,9 +726,27 @@ paths:
         tenant. When no token is present or the token is unknown, the request
         falls back to the `default` tenant. Single-tenant deployments need no
         token (existing behaviour preserved).
+
+        **Alert federation** — relayed alerts carry an `X-Snooze-Loop` request
+        header: a comma-separated chain of the `syncer.hostname` server ids the
+        alert has already traversed. The `forward` plugin appends this server's
+        id before relaying to a peer; if this server's own id is already in the
+        chain the alert is accepted and persisted (HTTP 200) but **not**
+        re-relayed, breaking loops in cyclic (hub-and-spoke / active-active)
+        topologies. Direct (non-federated) submitters omit the header.
       security:
         - {}
         - ingestToken: []
+      parameters:
+        - name: X-Snooze-Loop
+          in: header
+          required: false
+          description: |
+            Comma-separated chain of `syncer.hostname` server ids a relayed
+            alert has already traversed (set by the `forward` federation
+            plugin). Omit when submitting alerts directly.
+          schema: {type: string}
+          example: "hub-eu,hub-us"
       requestBody:
         required: true
         content:
@@ -1833,6 +1851,21 @@ components:
         `owner` from the JWT subject and scopes uniqueness to
         `(tenant_id, owner, name)`; a caller may only mutate their own
         bookmarks (admins may curate any). See the `SavedSearch` schema.
+
+        The `forward` collection holds alert-federation destinations
+        (server-to-server relay). Each row is one downstream peer: `name`
+        (primary, `duplicate_policy: reject`), `enabled` (default `true`),
+        `endpoint` (e.g. `https://peer/api/v1/alerts`), an optional
+        `condition` (relay scoping; empty = match all), `event_classes`
+        (`["*"]` or `["alerts"]`; unknown values rejected at write time), an
+        `auth` object (`type`: `""`/`bearer`/`basic`/`apikey`, plus `token` /
+        `username`+`password` / `api_key`+`header`), `tls_insecure`, and
+        `timeout`. After an alert is accepted by the pipeline, the `forward`
+        Processor fire-and-forget POSTs the post-pipeline record JSON to each
+        matching enabled destination with an `X-Snooze-Loop` header. Edits are
+        hot-reloaded cluster-wide. Each HA node MUST set a distinct
+        `syncer.hostname` or loop detection misfires. Hawk-HMAC auth is not
+        supported.
       schema:
         type: string
         enum:
@@ -1847,6 +1880,7 @@ components:
           - datadog
           - discord
           - environment
+          - forward
           - googlechat
           - grafana
           - heartbeat

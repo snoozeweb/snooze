@@ -2,6 +2,7 @@
 
 ### Added
 
+- Added server-to-server alert federation: a hot-reloadable "forward" destinations collection relays accepted alerts to downstream Snooze/HTTP peers, with condition scoping, per-destination auth (bearer/basic/apikey), and X-Snooze-Loop loop prevention.
 - SAML2 SP-initiated SSO: redirect-to-IdP, ACS endpoint, assertion→identity group mapping, and an SP metadata endpoint (new `saml` config section).
 - Bulk operations across a query: POST /api/v1/record/bulk_state (ack/close/open/esc) and POST /api/v1/{plugin}/bulk_update (set/tag/untag) apply a mutation to every record matching a ?q condition in one call, with one audit row per affected record.
 - Auth-proxy mode: trust an upstream reverse proxy (oauth2-proxy/Pomerium/mod_auth) to authenticate users via configurable username/groups headers, with optional JIT auto-signup, IP allowlist, and group-based role mapping (config: `auth_proxy.*`, disabled by default).

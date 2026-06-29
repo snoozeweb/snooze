@@ -92,10 +92,12 @@ type Config struct {
 
 // Auth carries the optional auth header settings.
 type Auth struct {
-	Type     string // "" | "bearer" | "basic"
+	Type     string // "" | "bearer" | "basic" | "apikey"
 	Token    string // bearer
 	Username string // basic
 	Password string // basic
+	APIKey   string // apikey: the secret value
+	Header   string // apikey: header name (default "X-API-Key")
 }
 
 // Plugin is the webhook notifier.
@@ -376,6 +378,8 @@ func configFromPayload(p plugins.NotificationPayload) (Config, error) {
 			Token:    stringField(a, "token"),
 			Username: stringField(a, "username"),
 			Password: stringField(a, "password"),
+			APIKey:   stringField(a, "api_key"),
+			Header:   stringField(a, "header"),
 		}
 	}
 
@@ -616,10 +620,29 @@ func applyAuth(req *http.Request, a Auth) error {
 		enc := base64.StdEncoding.EncodeToString([]byte(creds))
 		req.Header.Set("Authorization", "Basic "+enc)
 		return nil
+	case "apikey":
+		if a.APIKey == "" {
+			return errors.New("apikey auth requires api_key")
+		}
+		header := a.Header
+		if header == "" {
+			header = "X-API-Key"
+		}
+		req.Header.Set(header, a.APIKey)
+		return nil
 	default:
 		return fmt.Errorf("unsupported auth type %q", a.Type)
 	}
 }
+
+// ApplyAuth is the exported wrapper around applyAuth so sibling plugins (the
+// forward federation plugin) can reuse the single HTTP auth code path rather
+// than re-implementing the bearer/basic/apikey schemes.
+func ApplyAuth(req *http.Request, a Auth) error { return applyAuth(req, a) }
+
+// NewClient is the exported wrapper around defaultClient so sibling plugins can
+// build an http.Client honouring the same TLS / timeout / proxy knobs.
+func NewClient(cfg Config) *http.Client { return defaultClient(cfg) }
 
 // truncate returns at most n bytes of b as a string, with an ellipsis if
 // the input was longer.

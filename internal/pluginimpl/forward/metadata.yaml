@@ -1,0 +1,9 @@
+---
+name: 'forward'
+desc: 'Server-to-server alert federation: relay accepted alerts to downstream Snooze/HTTP peers.'
+default_sorting: 'name'
+auto_reload: true
+route_defaults:
+    class_name: ForwardRoute
+    primary: [name]
+    duplicate_policy: 'reject'
