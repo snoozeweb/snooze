@@ -117,6 +117,52 @@ func TestIsListField_AuthProxyTrustedProxies(t *testing.T) {
 	require.False(t, isListField("auth_proxy.user_header"))
 }
 
+// validateWithSAML builds a valid Default() config, swaps in the given SAML
+// section, and runs the full Config.Validate() — exercising validateSAML
+// through the public entry point.
+func validateWithSAML(t *testing.T, s schema.SAML) error {
+	t.Helper()
+	c := Default()
+	c.SAML = s
+	return c.Validate()
+}
+
+// TestValidateSAML exercises the enabled-mode requirements: a metadata source
+// (URL or XML) and an ACS URL are mandatory when enabled; a disabled section
+// never validates its fields.
+func TestValidateSAML(t *testing.T) {
+	// Disabled: garbage fields are ignored.
+	require.NoError(t, validateWithSAML(t, schema.SAML{Enabled: false}))
+
+	// Enabled but no metadata source and no ACS URL -> error.
+	err := validateWithSAML(t, schema.SAML{Enabled: true})
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "saml")
+
+	// Enabled with a metadata URL but no ACS URL -> error.
+	err = validateWithSAML(t, schema.SAML{Enabled: true, IDPMetadataURL: "https://idp.example/metadata"})
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "acs_url")
+
+	// Enabled with an ACS URL but no metadata source -> error.
+	err = validateWithSAML(t, schema.SAML{Enabled: true, ACSURL: "https://snooze.example/api/v1/login/saml/acs"})
+	require.Error(t, err)
+
+	// Enabled with metadata URL + ACS URL -> OK.
+	require.NoError(t, validateWithSAML(t, schema.SAML{
+		Enabled:        true,
+		IDPMetadataURL: "https://idp.example/metadata",
+		ACSURL:         "https://snooze.example/api/v1/login/saml/acs",
+	}))
+
+	// Enabled with inline metadata XML + ACS URL -> OK.
+	require.NoError(t, validateWithSAML(t, schema.SAML{
+		Enabled:        true,
+		IDPMetadataXML: "<EntityDescriptor/>",
+		ACSURL:         "https://snooze.example/api/v1/login/saml/acs",
+	}))
+}
+
 // The validator must accept every spelling the openDB dispatch understands,
 // so a config copied from the docs (`type: sqlite`) does not hard-fail at boot.
 func TestValidate_AcceptsDriverTypeAliases(t *testing.T) {

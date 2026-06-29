@@ -95,6 +95,29 @@ type RedirectProvider interface {
 	ExchangeAndVerify(ctx context.Context, code, nonce, pkceVerifier string) (Identity, error)
 }
 
+// SAMLProvider is implemented by the SAML2 SP-initiated backend. SAML does not
+// fit RedirectProvider (whose AuthCodeURL/ExchangeAndVerify contract is
+// OAuth-code-flow shaped): the IdP replies by POSTing a signed SAMLResponse to
+// an ACS endpoint, not a GET with ?code=&state=. The login routes special-case
+// these providers with a /start (redirect to IdP), /acs (POST consume) and
+// /metadata (SP EntityDescriptor) trio. Like RedirectProvider, Authenticate
+// returns ErrRedirectProvider.
+type SAMLProvider interface {
+	Provider
+	// DisplayName is the human label rendered on the login button.
+	DisplayName() string
+	// Icon is the icon key rendered on the login button.
+	Icon() string
+	// AuthnRequestURL builds the SP-initiated HTTP-Redirect URL to the IdP SSO
+	// endpoint, embedding relayState.
+	AuthnRequestURL(ctx context.Context, relayState string) (string, error)
+	// ParseAssertion validates the POSTed (base64) SAMLResponse — signature,
+	// audience, conditions, NotOnOrAfter — and returns the resolved Identity.
+	ParseAssertion(ctx context.Context, samlResponse string) (Identity, error)
+	// Metadata returns the SP EntityDescriptor XML for the IdP to register.
+	Metadata(ctx context.Context) ([]byte, error)
+}
+
 // Registry is a name-indexed collection of Providers. It is safe for
 // concurrent use after construction.
 type Registry struct {

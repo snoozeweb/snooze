@@ -93,6 +93,13 @@ func (rt *Router) mountLogin(r chi.Router) {
 					sub.Get("/"+name+"/start", rt.handleOIDCStart(rp))
 					sub.Get("/"+name+"/callback", rt.handleOIDCCallback(rp))
 				}
+				// SAML providers get a /start (redirect to IdP), /acs (POST
+				// consume the assertion) and /metadata (SP EntityDescriptor) trio.
+				if sp, ok := p.(auth.SAMLProvider); ok {
+					sub.Get("/"+name+"/start", rt.handleSAMLStart(sp))
+					sub.Post("/"+name+"/acs", rt.handleSAMLACS(sp))
+					sub.Get("/"+name+"/metadata", rt.handleSAMLMetadata(sp))
+				}
 			}
 		}
 	})
@@ -188,6 +195,12 @@ func (rt *Router) handleLoginIndex(w http.ResponseWriter, r *http.Request) {
 			bi.Kind = "redirect"
 			bi.DisplayName = rp.DisplayName()
 			bi.Icon = rp.Icon()
+		} else if sp, ok := p.(auth.SAMLProvider); ok {
+			// The SPA treats any non-password backend as a redirect button; the
+			// button href points at /start (which 302s to the IdP).
+			bi.Kind = "redirect"
+			bi.DisplayName = sp.DisplayName()
+			bi.Icon = sp.Icon()
 		}
 		infos = append(infos, bi)
 	}
@@ -647,6 +660,15 @@ func (rt *Router) oidcStateKey() ([]byte, error) {
 	return rt.Auth.DeriveKey(oidcStateLabel), nil
 }
 
+// samlStateKey derives the HMAC key for the SAML RelayState cookie from the JWT
+// signing secret (stable per deploy, shared across cluster nodes).
+func (rt *Router) samlStateKey() ([]byte, error) {
+	if rt.Auth == nil {
+		return nil, errors.New("saml: token engine not configured")
+	}
+	return rt.Auth.DeriveKey(samlStateLabel), nil
+}
+
 // secureCookies reports whether the Secure cookie flag should be set: true when
 // the request arrived over TLS directly (r.TLS), via a TLS-terminating proxy
 // that set X-Forwarded-Proto: https, or when the server terminates TLS itself
@@ -766,37 +788,164 @@ func (rt *Router) handleOIDCCallback(rp auth.RedirectProvider) http.HandlerFunc 
 			redirectLoginError(w, r, "sign-in failed")
 			return
 		}
-		if err := rt.checkTenantStatus(r.Context(), org); err != nil {
-			redirectLoginError(w, r, "your organization is not allowed to sign in")
-			return
-		}
-		if id.TenantID == "" {
-			id.TenantID = org
-		}
-		// JIT-provision the SSO user (so it appears on the Users page) and
-		// enforce the enabled flag. A disabled user is blocked here, before any
-		// session is issued. provisionOIDCUser also refreshes last_login/groups,
-		// so the OIDC path does not call updateLastLogin separately.
-		if rt.provisionOIDCUser(authCtx, id) {
-			plugins.EmitAuthAudit(authCtx, rt.DB, id.Username, id.Method, "login_failed", "login failed: account disabled")
-			redirectLoginError(w, r, "your account has been disabled")
-			return
-		}
-		resp, err := rt.signSession(authCtx, id)
+		rt.finishSSOLogin(authCtx, w, r, org, id, st.ReturnTo)
+	}
+}
+
+// finishSSOLogin is the shared tail of both the OIDC callback and the SAML ACS
+// handler, once the provider has produced a verified Identity: gate on the
+// tenant status, JIT-provision the user (enforcing the enabled flag), mint the
+// session, and redirect to the SPA callback with the token in the URL fragment.
+// On any failure it redirects to the login-error page and mints NO token. It
+// must be called with authCtx already tenant-scoped to org.
+func (rt *Router) finishSSOLogin(authCtx context.Context, w http.ResponseWriter, r *http.Request, org string, id auth.Identity, returnTo string) {
+	if err := rt.checkTenantStatus(r.Context(), org); err != nil {
+		redirectLoginError(w, r, "your organization is not allowed to sign in")
+		return
+	}
+	if id.TenantID == "" {
+		id.TenantID = org
+	}
+	// JIT-provision the SSO user (so it appears on the Users page) and enforce
+	// the enabled flag. A disabled user is blocked here, before any session is
+	// issued. provisionOIDCUser also refreshes last_login/groups, so the SSO
+	// paths do not call updateLastLogin separately.
+	if rt.provisionOIDCUser(authCtx, id) {
+		plugins.EmitAuthAudit(authCtx, rt.DB, id.Username, id.Method, "login_failed", "login failed: account disabled")
+		redirectLoginError(w, r, "your account has been disabled")
+		return
+	}
+	resp, err := rt.signSession(authCtx, id)
+	if err != nil {
+		redirectLoginError(w, r, "sign-in failed")
+		return
+	}
+	plugins.EmitAuthAudit(authCtx, rt.DB, id.Username, id.Method, "login", "SSO login successful")
+
+	frag := url.Values{}
+	frag.Set("token", resp.Token)
+	if resp.RefreshToken != "" {
+		frag.Set("refresh_token", resp.RefreshToken)
+	}
+	if returnTo != "" {
+		frag.Set("return_to", returnTo)
+	}
+	http.Redirect(w, r, "/web/login/callback#"+frag.Encode(), http.StatusFound)
+}
+
+// handleSAMLStart begins the SP-initiated SAML flow: generate a random
+// RelayState, store it (with return-to/org) in a signed cookie, and redirect to
+// the IdP SSO endpoint carrying the RelayState.
+func (rt *Router) handleSAMLStart(sp auth.SAMLProvider) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		key, err := rt.samlStateKey()
 		if err != nil {
+			redirectLoginError(w, r, "single sign-on is not configured")
+			return
+		}
+		state, err := randURLToken(24)
+		if err != nil {
+			redirectLoginError(w, r, "could not start sign-in")
+			return
+		}
+		st := samlState{
+			State:    state,
+			ReturnTo: r.URL.Query().Get("return_to"),
+			Org:      r.URL.Query().Get("org"),
+			Exp:      time.Now().Add(10 * time.Minute).Unix(),
+		}
+		cookieVal := encodeSAMLState(key, st)
+		if cookieVal == "" {
+			redirectLoginError(w, r, "could not start sign-in")
+			return
+		}
+		http.SetCookie(w, &http.Cookie{ //nolint:gosec // G124: Secure is set dynamically via secureCookies(r) (TLS / X-Forwarded-Proto); HttpOnly + SameSite=Lax are always set.
+			Name:     samlStateCookie,
+			Value:    cookieVal,
+			Path:     "/api/v1/login",
+			MaxAge:   600,
+			HttpOnly: true,
+			Secure:   rt.secureCookies(r),
+			SameSite: http.SameSiteLaxMode,
+		})
+		authURL, err := sp.AuthnRequestURL(r.Context(), state)
+		if err != nil {
+			redirectLoginError(w, r, "single sign-on is unavailable")
+			return
+		}
+		http.Redirect(w, r, authURL, http.StatusFound)
+	}
+}
+
+// handleSAMLACS consumes the IdP's POSTed SAMLResponse: clear the cookie,
+// constant-time compare the form RelayState against the cookie's State (CSRF
+// defence), validate+map the assertion via the provider, then run the shared
+// SSO tail. RelayState mismatch, a bad assertion, and a disabled user each
+// redirect to the login-error page and mint NO token.
+func (rt *Router) handleSAMLACS(sp auth.SAMLProvider) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		// Always clear the RelayState cookie.
+		http.SetCookie(w, &http.Cookie{ //nolint:gosec // G124: Secure is set dynamically via secureCookies(r) (TLS / X-Forwarded-Proto); HttpOnly + SameSite=Lax are always set.
+			Name: samlStateCookie, Value: "", Path: "/api/v1/login", MaxAge: -1,
+			HttpOnly: true, Secure: rt.secureCookies(r), SameSite: http.SameSiteLaxMode,
+		})
+		key, err := rt.samlStateKey()
+		if err != nil {
+			redirectLoginError(w, r, "single sign-on is not configured")
+			return
+		}
+		c, err := r.Cookie(samlStateCookie)
+		if err != nil {
+			redirectLoginError(w, r, "your sign-in session expired, please try again")
+			return
+		}
+		st, err := decodeSAMLState(key, c.Value)
+		if err != nil {
+			redirectLoginError(w, r, "invalid sign-in session, please try again")
+			return
+		}
+		if err := r.ParseForm(); err != nil {
 			redirectLoginError(w, r, "sign-in failed")
 			return
 		}
-		plugins.EmitAuthAudit(authCtx, rt.DB, id.Username, id.Method, "login", "SSO login successful")
+		// CSRF defence: the form RelayState must match the cookie's State.
+		if subtle.ConstantTimeCompare([]byte(st.State), []byte(r.PostForm.Get("RelayState"))) != 1 {
+			redirectLoginError(w, r, "sign-in could not be verified, please try again")
+			return
+		}
+		samlResponse := r.PostForm.Get("SAMLResponse")
+		if samlResponse == "" {
+			redirectLoginError(w, r, "sign-in failed")
+			return
+		}
+		org := st.Org
+		if org == "" {
+			org = snoozetypes.DefaultTenant
+		}
+		authCtx := auth.WithTenant(r.Context(), org)
+		id, err := sp.ParseAssertion(authCtx, samlResponse)
+		if err != nil {
+			// Identity is not established (signature/audience/expiry check failed),
+			// so username/method are genuinely unknown.
+			plugins.EmitAuthAudit(authCtx, rt.DB, "", "", "login_failed", "login failed: SAML assertion verification failed")
+			redirectLoginError(w, r, "sign-in failed")
+			return
+		}
+		rt.finishSSOLogin(authCtx, w, r, org, id, st.ReturnTo)
+	}
+}
 
-		frag := url.Values{}
-		frag.Set("token", resp.Token)
-		if resp.RefreshToken != "" {
-			frag.Set("refresh_token", resp.RefreshToken)
+// handleSAMLMetadata serves the SP EntityDescriptor XML so an IdP admin can
+// register Snooze in one paste.
+func (rt *Router) handleSAMLMetadata(sp auth.SAMLProvider) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		md, err := sp.Metadata(r.Context())
+		if err != nil {
+			WriteError(w, r, ErrUnavailable.WithMessage("saml metadata unavailable").WithCause(err))
+			return
 		}
-		if st.ReturnTo != "" {
-			frag.Set("return_to", st.ReturnTo)
-		}
-		http.Redirect(w, r, "/web/login/callback#"+frag.Encode(), http.StatusFound)
+		w.Header().Set("Content-Type", "text/xml; charset=utf-8")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write(md)
 	}
 }

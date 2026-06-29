@@ -172,6 +172,39 @@ user_filter: '()'
 	require.Equal(t, "my-secret-password123", cfg.LDAP.BindPassword)
 }
 
+func TestSAMLConfig_Disabled(t *testing.T) {
+	cfg, err := Load(t.TempDir())
+	require.NoError(t, err)
+	require.False(t, cfg.SAML.Enabled)
+	// Defaults survive an empty basedir.
+	require.True(t, cfg.SAML.WantAssertionsSigned)
+	require.Equal(t, "groups", cfg.SAML.GroupsAttribute)
+	require.Equal(t, "saml", cfg.SAML.Method)
+}
+
+func TestSAMLConfig_Read(t *testing.T) {
+	dir := t.TempDir()
+	writeYAML(t, dir, "saml", `---
+enabled: true
+idp_metadata_url: https://idp.example.com/metadata
+acs_url: https://snooze.example.com/api/v1/login/saml/acs
+entity_id: https://snooze.example.com/saml
+groups_attribute: memberOf
+roles_attribute: Role
+display_name: Corporate SSO
+unknown_key: dropped-silently
+`)
+	cfg, err := Load(dir)
+	require.NoError(t, err)
+	require.True(t, cfg.SAML.Enabled)
+	require.Equal(t, "https://idp.example.com/metadata", cfg.SAML.IDPMetadataURL)
+	require.Equal(t, "https://snooze.example.com/api/v1/login/saml/acs", cfg.SAML.ACSURL)
+	require.Equal(t, "https://snooze.example.com/saml", cfg.SAML.EntityID)
+	require.Equal(t, "memberOf", cfg.SAML.GroupsAttribute)
+	require.Equal(t, "Role", cfg.SAML.RolesAttribute)
+	require.Equal(t, "Corporate SSO", cfg.SAML.DisplayName)
+}
+
 func TestIngestConfig_Empty(t *testing.T) {
 	cfg, err := Load(t.TempDir())
 	require.NoError(t, err)

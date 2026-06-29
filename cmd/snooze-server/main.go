@@ -622,6 +622,12 @@ func buildAuthProviders(cfg *config.Config, drv db.Driver, rs *config.RuntimeSet
 		}
 		return rs.OIDC(ctx)
 	}))
+	// SAML is file-config only (no runtime toggle), so unlike OIDC it is
+	// registered only when cfg.SAML.Enabled. The underlying ServiceProvider
+	// (SP key/cert + IdP metadata) is built lazily on the first /start or /acs.
+	if cfg.SAML.Enabled {
+		reg.Register(auth.NewSAMLProvider(cfg.SAML))
+	}
 	return reg
 }
 

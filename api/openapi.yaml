@@ -377,6 +377,69 @@ paths:
         '302':
           description: On success, redirect to /web/login/callback with the session token in the URL fragment. On failure, redirect to /web/login?sso_error=...
 
+  /api/v1/login/{provider}/acs:
+    post:
+      tags: [auth]
+      summary: SAML2 Assertion Consumer Service (ACS)
+      description: |
+        Consumes the IdP's SP-initiated SAML2 response. The IdP POSTs a base64
+        `SAMLResponse` and the echoed `RelayState` as a urlencoded form. The
+        server constant-time compares `RelayState` against the signed
+        RelayState cookie (CSRF defence), validates the assertion's signature,
+        audience, conditions and NotOnOrAfter, maps the NameID + group/role
+        attributes to a Snooze identity, JIT-provisions the user, and mints a
+        session.
+
+        On success, redirects to `/web/login/callback#token=<jwt>`.
+        On RelayState mismatch, a bad/expired assertion, or a disabled user,
+        redirects to `/web/login?sso_error=<message>` and mints no token.
+      security: []
+      parameters:
+        - name: provider
+          in: path
+          required: true
+          schema: {type: string}
+          description: "The configured SAML `method` value (e.g. `saml`)."
+      requestBody:
+        required: true
+        content:
+          application/x-www-form-urlencoded:
+            schema:
+              type: object
+              required: [SAMLResponse]
+              properties:
+                SAMLResponse:
+                  type: string
+                  description: "Base64-encoded SAML2 Response (signed assertion)."
+                RelayState:
+                  type: string
+                  description: "Opaque RelayState echoed by the IdP; must match the signed cookie."
+      responses:
+        '302':
+          description: On success, redirect to /web/login/callback with the session token in the URL fragment. On failure, redirect to /web/login?sso_error=...
+
+  /api/v1/login/{provider}/metadata:
+    get:
+      tags: [auth]
+      summary: SAML2 SP metadata (EntityDescriptor)
+      description: |
+        Returns the Service Provider's SAML2 `EntityDescriptor` XML so an IdP
+        administrator can register Snooze in one paste. Lists the ACS endpoint
+        and (when an SP signing cert is configured) the SP signing certificate.
+      security: []
+      parameters:
+        - name: provider
+          in: path
+          required: true
+          schema: {type: string}
+          description: "The configured SAML `method` value (e.g. `saml`)."
+      responses:
+        '200':
+          description: SP EntityDescriptor XML.
+          content:
+            text/xml:
+              schema: {type: string}
+
   /api/v1/login/local:
     post:
       tags: [auth]

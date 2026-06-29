@@ -22,6 +22,7 @@ type Config struct {
 	Syncer       schema.Syncer       `koanf:"syncer"`
 	Ingest       schema.Ingest       `koanf:"ingest"`
 	OIDC         schema.OIDC         `koanf:"oidc"`
+	SAML         schema.SAML         `koanf:"saml"`
 	AuthProxy    schema.AuthProxy    `koanf:"auth_proxy"`
 }
 
@@ -40,6 +41,7 @@ func Default() *Config {
 		Syncer:       schema.DefaultSyncer(),
 		Ingest:       schema.DefaultIngest(),
 		OIDC:         schema.DefaultOIDC(),
+		SAML:         schema.DefaultSAML(),
 		AuthProxy:    schema.DefaultAuthProxy(),
 	}
 }

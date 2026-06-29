@@ -34,6 +34,7 @@ var sectionFiles = map[string]string{
 	"syncer":        "syncer",
 	"ingest":        "ingest",
 	"oidc":          "oidc",
+	"saml":          "saml",
 	"auth_proxy":    "auth_proxy",
 }
 
@@ -340,6 +341,15 @@ func defaultsYAML() ([]byte, error) {
 			"roles_claim":      d.OIDC.RolesClaim,
 			"groups_claim":     d.OIDC.GroupsClaim,
 			"admin_role_value": d.OIDC.AdminRoleValue,
+		},
+		"saml": map[string]any{
+			"enabled":                d.SAML.Enabled,
+			"want_assertions_signed": d.SAML.WantAssertionsSigned,
+			"groups_attribute":       d.SAML.GroupsAttribute,
+			"method":                 d.SAML.Method,
+			"display_name":           d.SAML.DisplayName,
+			"icon":                   d.SAML.Icon,
+			"admin_role_value":       d.SAML.AdminRoleValue,
 		},
 		"auth_proxy": map[string]any{
 			"enabled":          d.AuthProxy.Enabled,

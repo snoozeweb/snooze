@@ -23,6 +23,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/require"
+
 	"github.com/snoozeweb/snooze/internal/auth"
 	"github.com/snoozeweb/snooze/internal/condition"
 	"github.com/snoozeweb/snooze/internal/config"
@@ -182,6 +184,30 @@ func TestMigrateSubcommandErrors(t *testing.T) {
 	if code := run([]string{"migrate", "bogus"}, &stdout, &stderr); code != exitUsage {
 		t.Fatalf("unknown migration: code = %d, want %d (stderr=%q)", code, exitUsage, stderr.String())
 	}
+}
+
+// TestBuildAuthProviders asserts the provider registry reflects the config:
+// local + ldap + oidc are always registered; anonymous and saml only when
+// their sections are enabled.
+func TestBuildAuthProviders(t *testing.T) {
+	// Defaults: local, ldap, oidc registered; anonymous + saml absent.
+	cfg := config.Default()
+	reg := buildAuthProviders(cfg, nil, nil)
+	require.ElementsMatch(t, []string{"local", "ldap", "microsoft"}, reg.Names())
+	_, err := reg.Get("saml")
+	require.Error(t, err, "saml must not be registered when disabled")
+
+	// Enable SAML + anonymous: both appear, and the SAML provider satisfies the
+	// SAMLProvider interface.
+	cfg = config.Default()
+	cfg.SAML.Enabled = true
+	cfg.General.AnonymousEnabled = true
+	reg = buildAuthProviders(cfg, nil, nil)
+	require.ElementsMatch(t, []string{"local", "ldap", "microsoft", "anonymous", "saml"}, reg.Names())
+	p, err := reg.Get("saml")
+	require.NoError(t, err)
+	_, ok := p.(auth.SAMLProvider)
+	require.True(t, ok, "registered saml provider must implement auth.SAMLProvider")
 }
 
 // TestSplitHostPort exercises the small flag helper in isolation.

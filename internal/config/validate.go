@@ -45,6 +45,9 @@ func validate(c *Config) error {
 	if err := validateOIDC(&c.OIDC); err != nil {
 		return fmt.Errorf("config: oidc: %w", err)
 	}
+	if err := validateSAML(&c.SAML); err != nil {
+		return fmt.Errorf("config: saml: %w", err)
+	}
 	if err := validateAuthProxy(&c.AuthProxy); err != nil {
 		return fmt.Errorf("config: auth_proxy: %w", err)
 	}
@@ -104,6 +107,27 @@ func validateOIDC(o *schema.OIDC) error {
 	}
 	if !strings.HasPrefix(o.Issuer, "https://") {
 		return fmt.Errorf("issuer must be an https URL, got %q", o.Issuer)
+	}
+	return nil
+}
+
+// validateSAML enforces that, when SAML is enabled, an IdP metadata source
+// (URL or inline XML) and the ACS URL are present. The signature/audience
+// checks belong to the crewjam library at runtime; here we only gate on the
+// fields the SP cannot start without.
+func validateSAML(s *schema.SAML) error {
+	if !s.Enabled {
+		return nil
+	}
+	var missing []string
+	if s.IDPMetadataURL == "" && s.IDPMetadataXML == "" {
+		missing = append(missing, "idp_metadata_url or idp_metadata_xml")
+	}
+	if s.ACSURL == "" {
+		missing = append(missing, "acs_url")
+	}
+	if len(missing) > 0 {
+		return fmt.Errorf("missing required fields when enabled: %s", strings.Join(missing, ", "))
 	}
 	return nil
 }
