@@ -52,3 +52,10 @@ func TestSyncer_Defaults(t *testing.T) {
 	require.NotEmpty(t, s.Hostname)
 	require.Equal(t, time.Second, s.SyncInterval.AsDuration())
 }
+
+// TestIngestDefault_AllowIsTrue locks in that fresh deployments allow alert
+// ingestion by default — the kill-switch is opt-in (operators flip it to false
+// during a flood or maintenance window).
+func TestIngestDefault_AllowIsTrue(t *testing.T) {
+	require.True(t, DefaultIngest().Allow)
+}

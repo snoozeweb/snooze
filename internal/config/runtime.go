@@ -247,6 +247,40 @@ func (r *RuntimeSettings) Housekeeper(ctx context.Context) (HousekeeperConfig, e
 	return out, nil
 }
 
+// IngestAllow reports whether alert ingestion is currently permitted for the
+// tenant in ctx. It is the runtime kill-switch read by the HTTP edge guards on
+// POST /api/v1/alerts and the webhook receivers. The file-config baseline
+// (schema.Ingest.Allow, default true) is the starting point; a DB-stored
+// "ingest.allow" row overrides it per-tenant.
+//
+// It deliberately fails OPEN: a nil receiver, a missing key, or any
+// settings-read error all return true. A DB hiccup must never silently lock
+// operators out of intake.
+func (r *RuntimeSettings) IngestAllow(ctx context.Context) bool {
+	if r == nil {
+		return true
+	}
+	values, err := r.load(ctx)
+	if err != nil {
+		return true
+	}
+	out := r.baseline.Ingest
+	applyIngestOverrides(&out, values)
+	return out.Allow
+}
+
+// applyIngestOverrides overlays the dotted-prefix DB values onto a baseline
+// Ingest config. Only the runtime kill-switch (ingest.allow) is overridable;
+// the hardening fields (token, sns_verify, sentry_secret) stay file-config
+// only — they are infra secrets, not ops toggles. Unknown keys are ignored.
+func applyIngestOverrides(out *schema.Ingest, values map[string]any) {
+	if v, ok := values["ingest.allow"]; ok {
+		if b, ok := asBool(v); ok {
+			out.Allow = b
+		}
+	}
+}
+
 // Get returns the raw DB-stored value for a flat key, or the second return
 // value `false` when the key isn't in the catalogue. Useful for ad-hoc
 // access from places that don't have a typed schema struct.

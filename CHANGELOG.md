@@ -2,6 +2,10 @@
 
 ### Added
 
+- **Ingest kill-switch.** A new `ingest.allow` runtime setting (default `true`)
+  lets operators instantly halt all alert intake — both `POST /api/v1/alerts`
+  and every webhook receiver — without a server restart. The switch is
+  per-tenant and responds with `503 Service Unavailable` while disabled.
 - **API keys — last-used tracking.** Each key now records `last_used_at`
   (Unix epoch) and a `use_count` (lower-bound, throttled to at most one
   write per hour) updated on every successful authentication. Both fields

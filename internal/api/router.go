@@ -70,6 +70,12 @@ type Router struct {
 	// TenantChecker verifies that the resolved ingest tenant is not suspended.
 	// Nil disables the check (tests; single-tenant deploys without the tenant plugin).
 	TenantChecker middleware.TenantStatusChecker
+	// IngestAllowed is the runtime kill-switch: it reports whether alert intake
+	// is currently permitted for the tenant in the request context. When it
+	// returns false, POST /api/v1/alerts and every webhook receiver respond
+	// 503 immediately. Nil disables the switch (intake always allowed) — kept
+	// as a narrow func so this package need not import internal/config for it.
+	IngestAllowed func(context.Context) bool
 }
 
 // Build assembles the chi router with the canonical middleware chain. The
@@ -273,6 +279,13 @@ func (rt *Router) mountWebhooks(r chi.Router) {
 			resolver = middleware.NewTenantResolver()
 		}
 		sub.Use(middleware.IngestTenant(resolver, rt.TenantChecker))
+
+		// 3. Runtime kill-switch: reject every receiver with 503 while ingest
+		//    is disabled for the tenant in context. Applied after IngestTenant
+		//    so the tenant is resolved before the per-tenant flag is read.
+		if rt.IngestAllowed != nil {
+			sub.Use(middleware.IngestAllow(rt.IngestAllowed))
+		}
 
 		for name, p := range rt.Plugins {
 			wr, ok := p.(plugins.WebhookReceiver)

@@ -122,6 +122,54 @@ func TestAlertPost_DoesNotOverwriteSourceIP(t *testing.T) {
 	require.Equal(t, "10.0.0.1", fp.got[0]["source_ip"])
 }
 
+// TestAlertRoute_KillSwitch_Blocks — when IngestAllowed returns false the
+// handler short-circuits with 503 before the processor is ever called.
+func TestAlertRoute_KillSwitch_Blocks(t *testing.T) {
+	fp := &fakeProcessor{}
+	r := chi.NewRouter()
+	rt := &Router{
+		Processor:     fp,
+		IngestAllowed: func(context.Context) bool { return false },
+	}
+	rt.mountAlerts(r)
+
+	body := bytes.NewBufferString(`{"host":"a"}`)
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/alerts", body)
+	req.Header.Set("Content-Type", "application/json")
+	r.ServeHTTP(rec, req)
+
+	require.Equal(t, http.StatusServiceUnavailable, rec.Code)
+	require.Empty(t, fp.got, "processor must not run while ingest is disabled")
+	var resp struct {
+		Error struct {
+			Code string `json:"code"`
+		} `json:"error"`
+	}
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &resp))
+	require.Equal(t, "unavailable", resp.Error.Code)
+}
+
+// TestAlertRoute_KillSwitch_Allows — IngestAllowed returns true → normal 200.
+func TestAlertRoute_KillSwitch_Allows(t *testing.T) {
+	fp := &fakeProcessor{}
+	r := chi.NewRouter()
+	rt := &Router{
+		Processor:     fp,
+		IngestAllowed: func(context.Context) bool { return true },
+	}
+	rt.mountAlerts(r)
+
+	body := bytes.NewBufferString(`{"host":"a"}`)
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/alerts", body)
+	req.Header.Set("Content-Type", "application/json")
+	r.ServeHTTP(rec, req)
+
+	require.Equal(t, http.StatusOK, rec.Code)
+	require.Len(t, fp.got, 1)
+}
+
 func TestAlertRoute_BadJSON(t *testing.T) {
 	fp := &fakeProcessor{}
 	r := chi.NewRouter()

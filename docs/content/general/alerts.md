@@ -124,3 +124,40 @@ posting client supplies its own `source_ip`, the server-resolved value is
 not overwritten. Use this field in [Rules](./rules.md) to route or
 annotate alerts by origin.
 
+## Maintenance mode (ingest kill-switch)
+
+During an alert flood (an incoming storm that would saturate the pipeline or
+fill the database) or a planned maintenance window, you can halt **all** new
+alert intake instantly — without restarting the server.
+
+The switch is the `ingest.allow` runtime setting. It defaults to `true`
+(ingestion enabled). Set it to `false` and every subsequent
+`POST /api/v1/alerts` request **and** every [webhook receiver](./integrations/index.md)
+returns `503 Service Unavailable` immediately, rather than dropping the request
+silently. The switch is **per-tenant**: suspending one tenant does not affect
+the others.
+
+### Disabling intake
+
+From the **Settings** page, edit the `ingest` section and set the `allow` key to
+`false`. Equivalently, via the API:
+
+```bash
+curl -X POST https://<snooze>/api/v1/settings \
+  -H 'Authorization: Bearer <token>' \
+  -d '{"name":"ingest.allow","value":false}'
+```
+
+The change takes effect on the next settings read for that tenant (within the
+runtime-settings cache window, ≤ 5 seconds).
+
+### Re-enabling intake
+
+Set `ingest.allow` back to `true` (or delete the key) from the Settings page or
+the API. Normal `200` responses resume within the same cache window. No restart
+is required.
+
+> **Fail-open by design.** If the settings store cannot be read (for example a
+> transient database error), the switch defaults to *allow* — a storage hiccup
+> never silently locks operators out of alert intake.
+

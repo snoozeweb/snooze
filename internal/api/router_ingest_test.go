@@ -105,6 +105,61 @@ func TestRouter_IngestTenant_WebhookSetsDefaultTenant(t *testing.T) {
 	require.Equal(t, snoozetypes.DefaultTenant, capturedTenant)
 }
 
+// TestRouter_IngestKillSwitch_AlertsAnd_Webhooks is the end-to-end contract for
+// the runtime ingest kill-switch: with IngestAllowed→false BOTH /api/v1/alerts
+// and /api/v1/webhook/<receiver> return 503; flip it to →true and both return
+// 200. Driven through a full httptest.NewServer so the middleware chain (incl.
+// the webhook subrouter) is exercised exactly as in production.
+func TestRouter_IngestKillSwitch_AlertsAnd_Webhooks(t *testing.T) {
+	authOff := false
+	wr := &webhookStub{
+		wantSeg: "/alertmanager",
+		stubPlugin: stubPlugin{
+			name: "alertmanager",
+			meta: plugins.Metadata{
+				Name: "alertmanager",
+				RouteDefaults: plugins.Route{
+					Authentication:      &authOff,
+					AuthorizationPolicy: &plugins.AuthorizationPolicy{Write: []string{"any"}},
+				},
+			},
+		},
+	}
+
+	allow := false // start disabled
+	rt := &Router{
+		Auth:          testTokenEngine(t),
+		Processor:     &fakeProcessor{},
+		Plugins:       map[string]plugins.Plugin{"alertmanager": wr},
+		Config:        &config.Config{},
+		IngestAllowed: func(context.Context) bool { return allow },
+	}
+	srv := httptest.NewServer(rt.Build())
+	defer srv.Close()
+
+	post := func(path string) int {
+		resp, err := http.Post(srv.URL+path, "application/json", strings.NewReader(`{"host":"h1"}`))
+		require.NoError(t, err)
+		_ = resp.Body.Close()
+		return resp.StatusCode
+	}
+
+	// Disabled → both endpoints 503.
+	require.Equal(t, http.StatusServiceUnavailable, post("/api/v1/alerts"),
+		"alerts must be 503 while ingest is disabled")
+	require.Equal(t, http.StatusServiceUnavailable, post("/api/v1/webhook/alertmanager"),
+		"webhook must be 503 while ingest is disabled")
+	require.False(t, wr.called, "webhook handler must not run while disabled")
+
+	// Re-enable → both endpoints 200.
+	allow = true
+	require.Equal(t, http.StatusOK, post("/api/v1/alerts"),
+		"alerts must be 200 once ingest is re-enabled")
+	require.Equal(t, http.StatusOK, post("/api/v1/webhook/alertmanager"),
+		"webhook must be 200 once ingest is re-enabled")
+	require.True(t, wr.called, "webhook handler must run once re-enabled")
+}
+
 // TestRouter_IngestTenant_AlertsRouteSetsTenant verifies that /api/v1/alerts
 // also receives the tenant resolved by IngestTenant.
 func TestRouter_IngestTenant_AlertsRouteSetsTenant(t *testing.T) {

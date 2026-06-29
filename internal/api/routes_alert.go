@@ -47,6 +47,11 @@ func (rt *Router) handleAlertPost(w http.ResponseWriter, r *http.Request) {
 		WriteError(w, r, ErrUnavailable.WithMessage("alert ingestion disabled"))
 		return
 	}
+	// Runtime kill-switch: reject before parsing/DB access while disabled.
+	if rt.IngestAllowed != nil && !rt.IngestAllowed(r.Context()) {
+		WriteError(w, r, ErrUnavailable.WithMessage("alert ingestion is disabled"))
+		return
+	}
 	records, err := ParseJSONOrArray(r)
 	if err != nil {
 		WriteError(w, r, err)

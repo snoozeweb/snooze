@@ -381,6 +381,7 @@ func runDaemonCtx(ctx context.Context, f *daemonFlags, stderr io.Writer) error {
 		WebFS:           openWebFS(webDirFromConfig(cfg.Web), loggers.API),
 		TenantResolver:  ingestResolver,
 		TenantChecker:   middleware.NewDbTenantStatusChecker(drv),
+		IngestAllowed:   c.Settings.IngestAllow,
 	}
 	handler := rt.Build()
 

@@ -674,6 +674,8 @@ paths:
                 error:
                   code: policy_rejected
                   message: "policy_rejected: blacklist-untrusted-source"
+        '503':
+          $ref: '#/components/responses/IngestDisabled'
 
   /api/v1/cluster/status:
     get:
@@ -1076,6 +1078,8 @@ paths:
                   data:
                     type: array
                     items: {$ref: '#/components/schemas/Record'}
+        '503':
+          $ref: '#/components/responses/IngestDisabledWebhook'
 
   /api/v1/heartbeat:
     get:
@@ -1639,6 +1643,32 @@ components:
         application/json:
           schema:
             $ref: '#/components/schemas/ErrEnvelope'
+    IngestDisabled:
+      description: |
+        Alert ingestion is currently disabled for this tenant by the runtime
+        kill-switch (`ingest.allow = false`). Re-enable it from the Settings
+        page (section `ingest`, key `allow`, value `true`) — no restart needed.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrEnvelope'
+          example:
+            error:
+              code: unavailable
+              message: alert ingestion is disabled
+    IngestDisabledWebhook:
+      description: |
+        Alert ingestion is currently disabled for this tenant by the runtime
+        kill-switch (`ingest.allow = false`). Re-enable it from the Settings
+        page (section `ingest`, key `allow`, value `true`) — no restart needed.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrEnvelope'
+          example:
+            error:
+              code: ingest_disabled
+              message: alert ingestion is disabled
 
   schemas:
     APIKey:
