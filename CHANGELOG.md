@@ -2,6 +2,14 @@
 
 ### Added
 
+- **Attribute-based tenant routing.** A new global `tenant_match` registry lets
+  operators map IdP groups, email domains, or login names to tenant slugs,
+  removing the need for users to know or type their org slug at login. SSO
+  (OIDC/SAML) and LDAP users who authenticate without an explicit `org` are
+  routed to the matched tenant automatically; rules are evaluated by `priority`
+  (first hit wins). The `tenant_match.fail_closed` runtime setting (default
+  `false`) denies an unmatched user with `403` instead of landing them in the
+  `default` tenant. CRUD at `/api/v1/tenant_match` (requires `rw_tenant`).
 - **Server-driven web-console config.** `GET /api/v1/config` exposes org-wide
   defaults (alert-table columns, default filter, sort, auto-refresh interval,
   severity rank ladder, and branding: logo/title/new-alert audio/clipboard

@@ -95,6 +95,12 @@ func TestIdentity_HasTenantID_Field(t *testing.T) {
 	require.Equal(t, "acme", id.TenantID)
 }
 
+func TestIdentityEmailField(t *testing.T) {
+	t.Parallel()
+	id := Identity{Email: "u@example.com"}
+	require.Equal(t, "u@example.com", id.Email)
+}
+
 func TestLocalProvider_Authenticate_CarriesTenantID(t *testing.T) {
 	t.Parallel()
 	fdb := newFakeDB()

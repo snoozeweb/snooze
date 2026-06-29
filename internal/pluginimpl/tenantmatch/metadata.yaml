@@ -1,0 +1,8 @@
+---
+name: 'TenantMatch'
+desc: 'Attribute-to-tenant routing rules'
+route_defaults:
+    primary: [match_type, match]
+    duplicate_policy: 'reject'
+    check_permissions: true
+audit: true

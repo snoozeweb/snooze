@@ -204,9 +204,13 @@ func (rt *Router) handleLoginIndex(w http.ResponseWriter, r *http.Request) {
 		}
 		infos = append(infos, bi)
 	}
-	WriteJSON(w, http.StatusOK, map[string]any{
-		"data": map[string]any{"backends": infos, "tenants": tenants},
-	})
+	data := map[string]any{"backends": infos, "tenants": tenants}
+	// Surface tenant_match_enabled so the login UI can tell the user that org
+	// routing is automatic (Plan 29). Only true when ≥1 rule is loaded.
+	if rt.TenantMatch != nil && rt.TenantMatch.HasRules() {
+		data["tenant_match_enabled"] = true
+	}
+	WriteJSON(w, http.StatusOK, map[string]any{"data": data})
 }
 
 // handleLogin runs the username/password flow against the registered
@@ -228,6 +232,9 @@ func (rt *Router) handleLogin(method string) http.HandlerFunc {
 			WriteError(w, r, ErrNotFound.WithMessage("unknown auth backend").WithCause(err))
 			return
 		}
+		// org is the tenant the credential is authenticated against. The raw
+		// body.Org (empty when omitted) is kept separately so attribute-based
+		// resolution can distinguish "no explicit org" from an explicit "default".
 		org := body.Org
 		if org == "" {
 			org = snoozetypes.DefaultTenant
@@ -260,16 +267,31 @@ func (rt *Router) handleLogin(method string) http.HandlerFunc {
 			WriteError(w, r, ErrUnauthorized.WithMessage("invalid credentials"))
 			return
 		}
+		// Attribute-based tenant resolution (Plan 29): when the user supplied no
+		// explicit non-default org, consult the tenant_match registry. A no-op
+		// when the feature is not wired or the org was explicit. fail_closed +
+		// no match denies the login with 403.
+		resolvedOrg, err := rt.resolveTenantFromAttributes(body.Org, id)
+		if err != nil {
+			if errors.Is(err, auth.ErrNoTenantMatch) {
+				plugins.EmitAuthAudit(authCtx, rt.DB, id.Username, method, "login_failed", "login failed: no organization matched")
+				WriteError(w, r, ErrForbidden.WithMessage("no organization matched your account"))
+				return
+			}
+			WriteError(w, r, ErrInternal.WithCause(err))
+			return
+		}
+		org = resolvedOrg
+		authCtx = auth.WithTenant(r.Context(), org)
 		// Suspend check: look up the tenant registry under platform scope and
-		// reject the login when the org is suspended.
+		// reject the login when the (resolved) org is suspended.
 		if err := rt.checkTenantStatus(r.Context(), org); err != nil {
 			WriteError(w, r, err)
 			return
 		}
-		// Ensure TenantID propagates even when provider doesn't set it.
-		if id.TenantID == "" {
-			id.TenantID = org
-		}
+		// The resolved org is authoritative for the session: stamp it on the
+		// identity (provider-supplied TenantID came from the pre-resolution org).
+		id.TenantID = org
 		resp, err := rt.signSession(authCtx, id)
 		if err != nil {
 			WriteError(w, r, ErrInternal.WithCause(err))
@@ -416,15 +438,27 @@ func (rt *Router) handleLoginAnonymous(w http.ResponseWriter, r *http.Request) {
 		WriteError(w, r, ErrUnauthorized.WithMessage("anonymous login refused").WithCause(err))
 		return
 	}
+	// Attribute-based tenant resolution (Plan 29): mirror handleLogin. A no-op
+	// when the feature is unwired or the org was explicit.
+	resolvedOrg, err := rt.resolveTenantFromAttributes(body.Org, id)
+	if err != nil {
+		if errors.Is(err, auth.ErrNoTenantMatch) {
+			plugins.EmitAuthAudit(authCtx, rt.DB, id.Username, id.Method, "login_failed", "login failed: no organization matched")
+			WriteError(w, r, ErrForbidden.WithMessage("no organization matched your account"))
+			return
+		}
+		WriteError(w, r, ErrInternal.WithCause(err))
+		return
+	}
+	org = resolvedOrg
+	authCtx = auth.WithTenant(r.Context(), org)
 	// Suspend check: mirror handleLogin so an anonymous session cannot be
 	// issued against a suspended org.
 	if err := rt.checkTenantStatus(r.Context(), org); err != nil {
 		WriteError(w, r, err)
 		return
 	}
-	if id.TenantID == "" {
-		id.TenantID = org
-	}
+	id.TenantID = org
 	resp, err := rt.signSession(authCtx, id)
 	if err != nil {
 		WriteError(w, r, ErrInternal.WithCause(err))
@@ -601,6 +635,47 @@ func (rt *Router) resolveRoles(ctx context.Context, claims *snoozetypes.Claims) 
 	}
 	claims.Roles = roles
 	claims.Permissions = perms
+}
+
+// resolveTenantFromAttributes maps an authenticated Identity to the tenant the
+// session should land in, consulting the global tenant_match registry (Plan 29).
+// requestedOrg is the RAW org from the login request (empty when omitted) — NOT
+// pre-defaulted to DefaultTenant, so the resolver can tell "no explicit org"
+// from an explicit "default".
+//
+// Safety invariants:
+//   - rt.TenantMatch == nil (feature not wired): returns requestedOrg, or
+//     DefaultTenant when it is empty — existing login behaviour is byte-identical.
+//   - The resolver itself is a no-op for an explicit, non-default org (the user
+//     was explicit; their choice always wins, even under fail_closed).
+//   - With fail_closed off (default) an unmatched user resolves to DefaultTenant,
+//     so existing deployments keep falling through to default.
+//
+// On ErrNoTenantMatch (fail_closed + no rule) the error is propagated so the
+// caller can deny the login with 403.
+func (rt *Router) resolveTenantFromAttributes(requestedOrg string, id auth.Identity) (string, error) {
+	if rt.TenantMatch == nil {
+		if requestedOrg == "" {
+			return snoozetypes.DefaultTenant, nil
+		}
+		return requestedOrg, nil
+	}
+	resolved, err := rt.TenantMatch.Resolve(requestedOrg, id)
+	if err != nil {
+		return "", err
+	}
+	// Emit a debug line when the registry actively routed the user somewhere
+	// other than the (defaulted) org they would otherwise have landed in. No
+	// credentials are logged — only the resolved tenant slug and the username.
+	fallback := requestedOrg
+	if fallback == "" {
+		fallback = snoozetypes.DefaultTenant
+	}
+	if rt.Logger != nil && resolved != fallback {
+		rt.Logger.Debug("tenant_match: routed login by attribute",
+			"username", id.Username, "tenant", resolved, "method", id.Method)
+	}
+	return resolved, nil
 }
 
 // checkTenantStatus fetches the tenant document (under platform scope) and
@@ -788,24 +863,43 @@ func (rt *Router) handleOIDCCallback(rp auth.RedirectProvider) http.HandlerFunc 
 			redirectLoginError(w, r, "sign-in failed")
 			return
 		}
-		rt.finishSSOLogin(authCtx, w, r, org, id, st.ReturnTo)
+		// Pass the RAW st.Org (not the defaulted org) so attribute resolution can
+		// tell "no explicit org" from an explicit "default".
+		rt.finishSSOLogin(authCtx, w, r, st.Org, id, st.ReturnTo)
 	}
 }
 
 // finishSSOLogin is the shared tail of both the OIDC callback and the SAML ACS
-// handler, once the provider has produced a verified Identity: gate on the
-// tenant status, JIT-provision the user (enforcing the enabled flag), mint the
-// session, and redirect to the SPA callback with the token in the URL fragment.
-// On any failure it redirects to the login-error page and mints NO token. It
-// must be called with authCtx already tenant-scoped to org.
-func (rt *Router) finishSSOLogin(authCtx context.Context, w http.ResponseWriter, r *http.Request, org string, id auth.Identity, returnTo string) {
+// handler, once the provider has produced a verified Identity: resolve the
+// tenant from attributes (Plan 29), gate on the tenant status, JIT-provision
+// the user (enforcing the enabled flag), mint the session, and redirect to the
+// SPA callback with the token in the URL fragment. On any failure it redirects
+// to the login-error page and mints NO token.
+//
+// requestedOrg is the RAW org from the login start (empty when the user did not
+// pick one) — NOT pre-defaulted, so attribute resolution can distinguish "no
+// explicit org" from an explicit "default". finishSSOLogin re-scopes authCtx to
+// the resolved tenant itself.
+func (rt *Router) finishSSOLogin(authCtx context.Context, w http.ResponseWriter, r *http.Request, requestedOrg string, id auth.Identity, returnTo string) {
+	// Attribute-based tenant resolution. A no-op when the feature is unwired or
+	// the org was explicit. fail_closed + no match denies the login.
+	org, err := rt.resolveTenantFromAttributes(requestedOrg, id)
+	if err != nil {
+		if errors.Is(err, auth.ErrNoTenantMatch) {
+			plugins.EmitAuthAudit(authCtx, rt.DB, id.Username, id.Method, "login_failed", "login failed: no organization matched")
+			redirectLoginError(w, r, "no organization matched your account")
+			return
+		}
+		redirectLoginError(w, r, "sign-in failed")
+		return
+	}
+	authCtx = auth.WithTenant(r.Context(), org)
 	if err := rt.checkTenantStatus(r.Context(), org); err != nil {
 		redirectLoginError(w, r, "your organization is not allowed to sign in")
 		return
 	}
-	if id.TenantID == "" {
-		id.TenantID = org
-	}
+	// The resolved org is authoritative for the session.
+	id.TenantID = org
 	// JIT-provision the SSO user (so it appears on the Users page) and enforce
 	// the enabled flag. A disabled user is blocked here, before any session is
 	// issued. provisionOIDCUser also refreshes last_login/groups, so the SSO
@@ -931,7 +1025,9 @@ func (rt *Router) handleSAMLACS(sp auth.SAMLProvider) http.HandlerFunc {
 			redirectLoginError(w, r, "sign-in failed")
 			return
 		}
-		rt.finishSSOLogin(authCtx, w, r, org, id, st.ReturnTo)
+		// Pass the RAW st.Org (not the defaulted org) so attribute resolution can
+		// tell "no explicit org" from an explicit "default".
+		rt.finishSSOLogin(authCtx, w, r, st.Org, id, st.ReturnTo)
 	}
 }
 

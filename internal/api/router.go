@@ -77,6 +77,13 @@ type Router struct {
 	// TenantChecker verifies that the resolved ingest tenant is not suspended.
 	// Nil disables the check (tests; single-tenant deploys without the tenant plugin).
 	TenantChecker middleware.TenantStatusChecker
+	// TenantMatch resolves an authenticated SSO/LDAP Identity to a tenant slug
+	// from the global tenant_match registry, used by the login handlers when the
+	// user did not supply an explicit non-default org (Plan 29). Nil means the
+	// feature is not wired: resolveTenantFromAttributes then returns the
+	// requested org (or DefaultTenant) unchanged — existing login behaviour is
+	// byte-identical.
+	TenantMatch *auth.TenantMatchResolver
 	// IngestAllowed is the runtime kill-switch: it reports whether alert intake
 	// is currently permitted for the tenant in the request context. When it
 	// returns false, POST /api/v1/alerts and every webhook receiver respond

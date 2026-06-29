@@ -53,6 +53,11 @@ type Identity struct {
 	Method   string
 	TenantID string // tenant slug extracted from the login request's org field (D3/D10)
 	Groups   []string
+	// Email is the user's email address surfaced by the provider (OIDC "email"
+	// claim, LDAP email attribute). It is transient — used only during the login
+	// round-trip for attribute-based tenant resolution (Plan 29) — and is never
+	// persisted to the user record.
+	Email string
 }
 
 // Provider authenticates a set of credentials and produces an Identity. Name

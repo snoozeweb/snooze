@@ -146,6 +146,9 @@ func (l *LDAPProvider) Authenticate(ctx context.Context, c Credentials) (Identit
 		Method:   LDAPMethod,
 		TenantID: tenantID,
 		Groups:   groups,
+		// Email feeds attribute-based tenant resolution (Plan 29); transient,
+		// never persisted. The email attribute is already in the search attrs.
+		Email: entry.GetAttributeValue(cfg.EmailAttribute),
 	}, nil
 }
 

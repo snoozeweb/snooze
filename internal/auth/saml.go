@@ -238,6 +238,12 @@ func (p *SAMLBackend) identityFromAssertion(ctx context.Context, pa *parsedAsser
 	}
 	sort.Strings(groups)
 	tenantID, _ := TenantFrom(ctx)
+	// TODO(plan-29): populate Identity.Email from the assertion for attribute-
+	// based tenant resolution (domain match). The SAML config has no configurable
+	// email attribute name yet (schema.SAML carries only groups/roles attributes);
+	// adding one is out of scope here. Until then, domain-type tenant_match rules
+	// do not fire for SAML logins — a documented limitation. Group- and login-type
+	// rules work unchanged.
 	return Identity{
 		Username: pa.NameID,
 		Method:   p.cfg.Method,

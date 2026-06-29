@@ -100,11 +100,75 @@ Response:
 
 Update any login links you have distributed with the new key.
 
+## Automatic organization routing
+
+Operators can spare users from ever knowing or typing their organization slug
+by defining a global **`tenant_match`** registry. Each rule maps one identity
+attribute to a target tenant. When an SSO (OIDC/SAML) or LDAP user authenticates
+**without an explicit, non-default `org`**, the login flow consults the registry
+and routes the user to the matched tenant automatically.
+
+A rule document:
+
+```json
+{
+  "match_type": "group",   // "group" | "domain" | "login"
+  "match":      "ops-team", // the literal value compared (case-insensitive)
+  "tenant_id":  "acme",     // slug of the target tenant (must already exist)
+  "priority":   0           // lower = evaluated first; ties broken by uid
+}
+```
+
+The three match types:
+
+| `match_type` | Fires when | Source |
+|---|---|---|
+| `group` | any of the user's IdP/LDAP groups equals `match` (case-insensitive) | OIDC `groups`/`roles` claims, LDAP `memberOf`, SAML group attribute |
+| `domain` | the user's email ends with `@<match>` (case-insensitive) | OIDC `email` claim, LDAP email attribute |
+| `login` | the username equals `match` (case-insensitive) | the authenticated username |
+
+Rules are evaluated in `(priority ASC, uid ASC)` order; the **first hit wins**.
+To express the conventional group → domain → login precedence, give group rules
+a lower `priority` than domain rules, and domain rules a lower priority than
+login rules.
+
+`match_type` + `match` is the effective unique key: two rules for the same pair
+are rejected. `tenant_id` must name an existing tenant (referential integrity is
+checked on write). The collection is **global** — only platform operators with
+the `rw_tenant` permission may manage it (`GET|POST /api/v1/tenant_match`,
+`GET|PATCH|DELETE /api/v1/tenant_match/{uid}`).
+
+### The `tenant_match.fail_closed` setting
+
+A platform-wide runtime setting (`tenant_match.fail_closed`, boolean, default
+**`false`**) controls what happens to a user who matches **no** rule and did not
+supply an explicit org:
+
+| `tenant_match.fail_closed` | Unmatched user with no explicit org |
+|---|---|
+| `false` (default) | Lands in the `default` tenant — the safe migration default; existing deployments are unaffected. |
+| `true` | **Denied** with `403 "no organization matched your account"` — no session is issued. |
+
+An explicit, non-default `org` in the login request always wins and is never
+overridden, even under `fail_closed`.
+
+:::note SAML email matching
+SAML logins do not currently surface an email address, so **`domain` rules do
+not fire for SAML**. Use `group` or `login` rules for SAML, or OIDC/LDAP for
+domain-based routing. (This is a documented limitation; OIDC and LDAP populate
+the email used for domain matching.)
+:::
+
+When at least one rule exists, `GET /api/v1/login` includes
+`"tenant_match_enabled": true` so the login UI can tell the user that
+organization routing is automatic.
+
 ## API reference
 
 | Endpoint | Description |
 |---|---|
-| `GET /api/v1/login` | Returns `{ backends, tenants }`. The `tenants` array contains only active + listed tenants; `login_key` is never included. |
+| `GET /api/v1/login` | Returns `{ backends, tenants, tenant_match_enabled? }`. The `tenants` array contains only active + listed tenants; `login_key` is never included. `tenant_match_enabled` is `true` when ≥1 routing rule exists. |
+| `GET\|POST /api/v1/tenant_match`, `GET\|PATCH\|DELETE /api/v1/tenant_match/{uid}` | CRUD over the global attribute→tenant routing registry. Requires the `rw_tenant` permission (platform admin). |
 | `GET /api/v1/login/tenant?key=<login_key>` | Resolves an opaque key to `{ id, display_name }`. Returns a generic 404 for unknown, empty, or suspended tenants — it never resolves by slug. |
 | `POST /api/v1/tenant/{id}/rotate-login-key` | Generates a new `login_key`, invalidates the previous one, and returns `{ id, login_key }`. Requires the `rw_tenant` permission (platform admin). |
 

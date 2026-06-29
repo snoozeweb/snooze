@@ -7,6 +7,8 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -800,4 +802,193 @@ func TestLoginIndex_RuntimeEnabledSurfacesUnderDefaultTenant(t *testing.T) {
 	r.ServeHTTP(rec, req)
 	require.Equal(t, http.StatusOK, rec.Code)
 	require.Contains(t, rec.Body.String(), `"ldap"`, "a default-tenant runtime-enabled backend must appear on the login index")
+}
+
+// --- Plan 29: attribute-based tenant resolution ----------------------------
+
+// loginTestRouterWithTenantMatch builds a login router with a wired
+// TenantMatchResolver loaded from the given match-rule documents.
+func loginTestRouterWithTenantMatch(t *testing.T, failClosed bool, ruleDocs []map[string]any, providers ...auth.Provider) (chi.Router, *Router) {
+	t.Helper()
+	_, rt := loginTestRouter(t, providers...)
+	resolver := auth.NewTenantMatchResolver()
+	resolver.LoadFromDocs(ruleDocs, failClosed)
+	rt.TenantMatch = resolver
+	// Re-mount so the resolver-aware handlers serve the request.
+	r2 := chi.NewRouter()
+	rt.mountLogin(r2)
+	return r2, rt
+}
+
+// TestHandleLogin_TenantMatchOverridesDefault: an LDAP login with no org and a
+// group rule pointing at acme yields a JWT with tenant_id=acme.
+func TestHandleLogin_TenantMatchOverridesDefault(t *testing.T) {
+	r, rt := loginTestRouterWithTenantMatch(t, false,
+		[]map[string]any{{"match_type": "group", "match": "ops", "tenant_id": "acme", "uid": "u1"}},
+		&fakeProvider{
+			name: "ldap", wantUser: "alice", wantPass: "secret", enabled: true,
+			identity: auth.Identity{Username: "alice", Method: "ldap", Groups: []string{"ops"}},
+		},
+	)
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/login/ldap",
+		bytes.NewBufferString(`{"username":"alice","password":"secret"}`))
+	req.Header.Set("Content-Type", "application/json")
+	r.ServeHTTP(rec, req)
+
+	require.Equal(t, http.StatusOK, rec.Code, "body=%s", rec.Body.String())
+	var resp loginResponse
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &resp))
+	claims, err := rt.Auth.Verify(resp.Token)
+	require.NoError(t, err)
+	require.Equal(t, "acme", claims.TenantID, "group rule must route the user to acme")
+}
+
+// TestHandleLogin_ExplicitOrgSkipsTenantMatch: an explicit non-default org is
+// honored even when a group rule would route the user elsewhere.
+func TestHandleLogin_ExplicitOrgSkipsTenantMatch(t *testing.T) {
+	r, rt := loginTestRouterWithTenantMatch(t, false,
+		[]map[string]any{{"match_type": "group", "match": "ops", "tenant_id": "acme", "uid": "u1"}},
+		&fakeProvider{
+			name: "ldap", wantUser: "alice", wantPass: "secret", enabled: true,
+			identity: auth.Identity{Username: "alice", Method: "ldap", Groups: []string{"ops"}},
+		},
+	)
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/login/ldap",
+		bytes.NewBufferString(`{"username":"alice","password":"secret","org":"acme2"}`))
+	req.Header.Set("Content-Type", "application/json")
+	r.ServeHTTP(rec, req)
+
+	require.Equal(t, http.StatusOK, rec.Code, "body=%s", rec.Body.String())
+	var resp loginResponse
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &resp))
+	claims, err := rt.Auth.Verify(resp.Token)
+	require.NoError(t, err)
+	require.Equal(t, "acme2", claims.TenantID, "explicit org must win over the group rule")
+}
+
+// TestHandleLogin_TenantMatch_FailClosed_NoMatch: with fail_closed and no
+// matching rule, the login is denied with 403.
+func TestHandleLogin_TenantMatch_FailClosed_NoMatch(t *testing.T) {
+	r, _ := loginTestRouterWithTenantMatch(t, true,
+		[]map[string]any{{"match_type": "group", "match": "ops", "tenant_id": "acme", "uid": "u1"}},
+		&fakeProvider{
+			name: "ldap", wantUser: "alice", wantPass: "secret", enabled: true,
+			identity: auth.Identity{Username: "alice", Method: "ldap", Groups: []string{"other"}},
+		},
+	)
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/login/ldap",
+		bytes.NewBufferString(`{"username":"alice","password":"secret"}`))
+	req.Header.Set("Content-Type", "application/json")
+	r.ServeHTTP(rec, req)
+
+	require.Equal(t, http.StatusForbidden, rec.Code, "body=%s", rec.Body.String())
+	require.Contains(t, rec.Body.String(), "no organization matched your account")
+}
+
+// TestHandleLogin_TenantMatch_OpenMode_NoMatchLandsDefault: with fail_closed
+// off (default), an unmatched user still lands in the default tenant — existing
+// deployments are unaffected.
+func TestHandleLogin_TenantMatch_OpenMode_NoMatchLandsDefault(t *testing.T) {
+	r, rt := loginTestRouterWithTenantMatch(t, false,
+		[]map[string]any{{"match_type": "group", "match": "ops", "tenant_id": "acme", "uid": "u1"}},
+		&fakeProvider{
+			name: "ldap", wantUser: "alice", wantPass: "secret", enabled: true,
+			identity: auth.Identity{Username: "alice", Method: "ldap", Groups: []string{"other"}},
+		},
+	)
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/login/ldap",
+		bytes.NewBufferString(`{"username":"alice","password":"secret"}`))
+	req.Header.Set("Content-Type", "application/json")
+	r.ServeHTTP(rec, req)
+
+	require.Equal(t, http.StatusOK, rec.Code, "body=%s", rec.Body.String())
+	var resp loginResponse
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &resp))
+	claims, err := rt.Auth.Verify(resp.Token)
+	require.NoError(t, err)
+	require.Equal(t, snoozetypes.DefaultTenant, claims.TenantID)
+}
+
+// TestHandleOIDCCallback_TenantMatchDomain: an OIDC callback with a domain rule
+// for example.com and an email user@example.com routes to the rule's tenant.
+func TestHandleOIDCCallback_TenantMatchDomain(t *testing.T) {
+	store := &userStoreDB{}
+	rp := &fakeRedirectProvider{
+		name: "microsoft", enabled: true,
+		identity: auth.Identity{Username: "alice@example.com", Method: "microsoft", Email: "alice@example.com"},
+	}
+	_, rt := oidcTestRouterWithDB(t, rp, store)
+	resolver := auth.NewTenantMatchResolver()
+	resolver.LoadFromDocs([]map[string]any{
+		{"match_type": "domain", "match": "example.com", "tenant_id": "globex", "uid": "u1"},
+	}, false)
+	rt.TenantMatch = resolver
+	// Re-mount so the resolver-aware callback serves the request.
+	r2 := chi.NewRouter()
+	rt.mountLogin(r2)
+
+	w := oidcCallback(t, r2, rt, "") // no explicit org
+	require.Equal(t, http.StatusFound, w.Code, "body=%s", w.Body.String())
+	loc := w.Header().Get("Location")
+	require.Contains(t, loc, "/web/login/callback#")
+	vals, err := url.ParseQuery(loc[strings.Index(loc, "#")+1:])
+	require.NoError(t, err)
+	claims, err := rt.Auth.Verify(vals.Get("token"))
+	require.NoError(t, err)
+	require.Equal(t, "globex", claims.TenantID, "domain rule must route alice@example.com to globex")
+
+	// The JIT-provisioned user row must also land under the matched tenant.
+	doc, err := store.GetOne(context.Background(), "user", db.Document{"name": "alice@example.com", "method": "microsoft"})
+	require.NoError(t, err)
+	require.Equal(t, "globex", doc["tenant_id"])
+}
+
+// TestHandleOIDCCallback_ExplicitOrgSkipsTenantMatch: an explicit org on the
+// OIDC start (carried in the state cookie) is honored over a domain rule.
+func TestHandleOIDCCallback_ExplicitOrgSkipsTenantMatch(t *testing.T) {
+	store := &userStoreDB{}
+	rp := &fakeRedirectProvider{
+		name: "microsoft", enabled: true,
+		identity: auth.Identity{Username: "alice@example.com", Method: "microsoft", Email: "alice@example.com"},
+	}
+	_, rt := oidcTestRouterWithDB(t, rp, store)
+	resolver := auth.NewTenantMatchResolver()
+	resolver.LoadFromDocs([]map[string]any{
+		{"match_type": "domain", "match": "example.com", "tenant_id": "globex", "uid": "u1"},
+	}, true) // even fail_closed must not override an explicit org
+	rt.TenantMatch = resolver
+	r2 := chi.NewRouter()
+	rt.mountLogin(r2)
+
+	w := oidcCallback(t, r2, rt, "acme2") // explicit org in the state
+	require.Equal(t, http.StatusFound, w.Code, "body=%s", w.Body.String())
+	loc := w.Header().Get("Location")
+	vals, err := url.ParseQuery(loc[strings.Index(loc, "#")+1:])
+	require.NoError(t, err)
+	claims, err := rt.Auth.Verify(vals.Get("token"))
+	require.NoError(t, err)
+	require.Equal(t, "acme2", claims.TenantID, "explicit org must win over the domain rule")
+}
+
+// TestResolveTenantFromAttributes_NilResolver verifies the no-op path: with no
+// resolver wired, the helper returns the requested org (or DefaultTenant when
+// empty) — existing login behaviour is byte-identical.
+func TestResolveTenantFromAttributes_NilResolver(t *testing.T) {
+	t.Parallel()
+	rt := &Router{} // TenantMatch == nil
+	got, err := rt.resolveTenantFromAttributes("", auth.Identity{Username: "alice"})
+	require.NoError(t, err)
+	require.Equal(t, snoozetypes.DefaultTenant, got)
+
+	got, err = rt.resolveTenantFromAttributes("acme", auth.Identity{Username: "alice"})
+	require.NoError(t, err)
+	require.Equal(t, "acme", got)
 }

@@ -211,6 +211,9 @@ func (p *OIDCProvider) identityFromClaims(ctx context.Context, cfg schema.OIDC, 
 		Method:   cfg.Method,
 		TenantID: tenantID,
 		Groups:   groups,
+		// Email feeds attribute-based tenant resolution (Plan 29); transient,
+		// never persisted.
+		Email: firstClaimString(m, "email"),
 	}
 }
 

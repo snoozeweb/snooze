@@ -268,6 +268,13 @@ paths:
                             display_name:
                               type: string
                               description: "Human-readable label."
+                      tenant_match_enabled:
+                        type: boolean
+                        description: |
+                          Present and true when at least one tenant_match
+                          routing rule exists, so the login UI can tell the
+                          user that organization routing is automatic. Omitted
+                          when no rules are defined.
 
   /api/v1/login/tenant:
     get:
@@ -1508,6 +1515,145 @@ paths:
         '404': {$ref: '#/components/responses/NotFound'}
         '409': {$ref: '#/components/responses/Conflict'}
 
+  /api/v1/tenant_match:
+    get:
+      tags: [platform]
+      summary: List attribute→tenant routing rules
+      description: |
+        Returns all `tenant_match` rules. The collection is global (platform
+        scope, not per-tenant). Requires `ro_tenant` or `rw_tenant`.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: offset
+          in: query
+          schema: {type: integer, default: 0}
+        - name: limit
+          in: query
+          schema: {type: integer, default: 20}
+        - name: orderby
+          in: query
+          schema: {type: string}
+        - name: asc
+          in: query
+          schema: {type: boolean, default: true}
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data, meta]
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/TenantMatchRule'
+                  meta:
+                    $ref: '#/components/schemas/ListMeta'
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+    post:
+      tags: [platform]
+      summary: Create a routing rule
+      description: |
+        Creates an attribute→tenant routing rule. Requires `rw_tenant`. The
+        `(match_type, match)` pair must be unique (a duplicate returns 409) and
+        `tenant_id` must name an existing tenant.
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TenantMatchRule'
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/TenantMatchRule'
+        '400': {$ref: '#/components/responses/BadRequest'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '409': {$ref: '#/components/responses/Conflict'}
+
+  /api/v1/tenant_match/{uid}:
+    get:
+      tags: [platform]
+      summary: Get a routing rule by uid
+      description: Requires `ro_tenant` or `rw_tenant`.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: uid
+          in: path
+          required: true
+          schema: {type: string}
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TenantMatchRule'
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {$ref: '#/components/responses/NotFound'}
+    patch:
+      tags: [platform]
+      summary: Update a routing rule
+      description: Requires `rw_tenant`.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: uid
+          in: path
+          required: true
+          schema: {type: string}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TenantMatchRule'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TenantMatchRule'
+        '400': {$ref: '#/components/responses/BadRequest'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {$ref: '#/components/responses/NotFound'}
+    delete:
+      tags: [platform]
+      summary: Delete a routing rule
+      description: Requires `rw_tenant`.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: uid
+          in: path
+          required: true
+          schema: {type: string}
+      responses:
+        '204':
+          description: Deleted
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {$ref: '#/components/responses/NotFound'}
+
   /api/v1/webhook/{webhook}:
     post:
       tags: [webhooks]
@@ -2502,6 +2648,37 @@ components:
         updated_at:
           type: integer
           format: int64
+
+    TenantMatchRule:
+      type: object
+      description: |
+        One attribute→tenant routing rule in the global tenant_match registry
+        (Plan 29). When an SSO/LDAP user authenticates without an explicit,
+        non-default org, the login flow evaluates these rules in
+        (priority ASC, uid ASC) order and routes the user to the first match's
+        tenant_id.
+      required: [match_type, match, tenant_id]
+      properties:
+        uid:
+          type: string
+          description: "Server-assigned id (response only)."
+        match_type:
+          type: string
+          enum: [group, domain, login]
+          description: |
+            How `match` is compared: 'group' (any of the user's groups, case-
+            insensitive), 'domain' (email ends with @match, case-insensitive),
+            or 'login' (username, case-insensitive).
+        match:
+          type: string
+          description: "The literal value compared (case-insensitive)."
+        tenant_id:
+          type: string
+          description: "Target tenant slug; must name an existing tenant."
+        priority:
+          type: integer
+          default: 0
+          description: "Lower is evaluated first; ties broken by uid."
 
     Record:
       type: object

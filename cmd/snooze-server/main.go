@@ -40,6 +40,7 @@ import (
 	"github.com/snoozeweb/snooze/internal/syncer"
 	"github.com/snoozeweb/snooze/internal/telemetry"
 	"github.com/snoozeweb/snooze/internal/version"
+	"github.com/snoozeweb/snooze/pkg/snoozetypes"
 
 	// Blank-imported to trigger every plugin package's init() and populate
 	// the process-wide plugin registry. Only the server binary needs this.
@@ -379,6 +380,29 @@ func runDaemonCtx(ctx context.Context, f *daemonFlags, stderr io.Writer) error {
 
 	adapter := &coreAdapter{Core: c}
 	ingestResolver := middleware.NewTenantResolver()
+
+	// Attribute-based tenant resolution (Plan 29). Construct the in-memory
+	// resolver and wire it into both the Router (consulted by the login routes)
+	// and the tenant_match plugin (which loads rules into it on PostInit/Reload).
+	// Because the plugin's boot-time PostInit ran before this wire-up (its
+	// resolver was nil then), we trigger an explicit Reload now to perform the
+	// initial load; subsequent loads happen automatically when the syncer
+	// reports a change to the tenant_match collection.
+	tenantMatch := auth.NewTenantMatchResolver()
+	if p := c.Plugins()[auth.TenantMatchCollection]; p != nil {
+		if wirer, ok := p.(interface {
+			SetResolver(*auth.TenantMatchResolver)
+			SetFailClosedReader(func(context.Context) bool)
+		}); ok {
+			wirer.SetResolver(tenantMatch)
+			wirer.SetFailClosedReader(func(ctx context.Context) bool {
+				return tenantMatchFailClosed(ctx, c.Settings)
+			})
+			if err := p.Reload(ctx); err != nil {
+				loggers.API.Warn("tenant_match: initial rule load failed", slog.Any("err", err))
+			}
+		}
+	}
 	// The settings plugin also implements config.RuntimeStore; the public
 	// GET /api/v1/config endpoint reads the `console` section through it. The
 	// two-return type assertion is nil-safe: a missing/incompatible plugin
@@ -404,6 +428,7 @@ func runDaemonCtx(ctx context.Context, f *daemonFlags, stderr io.Writer) error {
 		WebFS:           openWebFS(webDirFromConfig(cfg.Web), loggers.API),
 		TenantResolver:  ingestResolver,
 		TenantChecker:   middleware.NewDbTenantStatusChecker(drv),
+		TenantMatch:     tenantMatch,
 		IngestAllowed:   c.Settings.IngestAllow,
 		HK:              c.HK,
 		RuntimeStore:    consoleStore,
@@ -504,6 +529,31 @@ func applyFlagOverrides(cfg *config.Config, f *daemonFlags) {
 		cfg.Web.Enabled = f.webDir != ""
 		cfg.Web.Path = f.webDir
 	}
+}
+
+// tenantMatchFailClosed reads the tenant_match.fail_closed runtime setting. It
+// is a platform-wide toggle (the tenant_match registry is global), so it is
+// read under the default tenant where platform settings live. Default false:
+// the safe migration default — an unmatched user falls through to DefaultTenant
+// rather than being denied (existing deployments are unaffected until an
+// operator explicitly enables it).
+func tenantMatchFailClosed(ctx context.Context, settings *config.RuntimeSettings) bool {
+	if settings == nil {
+		return false
+	}
+	sctx := auth.WithTenant(ctx, snoozetypes.DefaultTenant)
+	v, ok, err := settings.Get(sctx, "tenant_match.fail_closed")
+	if err != nil || !ok {
+		return false
+	}
+	switch x := v.(type) {
+	case bool:
+		return x
+	case string:
+		s := strings.ToLower(strings.TrimSpace(x))
+		return s == "true" || s == "1" || s == "yes" || s == "on"
+	}
+	return false
 }
 
 // webDirFromConfig resolves the web section into the directory openWebFS

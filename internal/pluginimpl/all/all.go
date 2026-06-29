@@ -26,6 +26,7 @@ import (
 	_ "github.com/snoozeweb/snooze/internal/pluginimpl/settings"
 	_ "github.com/snoozeweb/snooze/internal/pluginimpl/stats"
 	_ "github.com/snoozeweb/snooze/internal/pluginimpl/tenant"
+	_ "github.com/snoozeweb/snooze/internal/pluginimpl/tenantmatch"
 	_ "github.com/snoozeweb/snooze/internal/pluginimpl/user"
 	_ "github.com/snoozeweb/snooze/internal/pluginimpl/widget"
 

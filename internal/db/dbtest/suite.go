@@ -63,6 +63,7 @@ func RunDriverSuite(t *testing.T, name string, factory Factory) {
 		{"CleanupSnooze", testCleanupSnooze},
 		{"CleanupNotification", testCleanupNotification},
 		{"ComputeStats", testComputeStats},
+		{"TenantMatchCollection", testTenantMatchCollection},
 		{"WriteStampsTenantID", testWriteStampsTenantID},
 		{"WriteUpsertTenantFenced", testWriteUpsertTenantFenced},
 		{"BulkIncrementTenantIsolation", testBulkIncrementTenantIsolation},
@@ -668,6 +669,45 @@ func testCleanupNotification(t *testing.T, drv db.Driver) {
 // testWriteStampsTenantID verifies that Write injects tenant_id into the stored
 // document and that a Search under the same tenant returns it, while a Search
 // under a different tenant returns nothing.
+// testTenantMatchCollection confirms the global (NOT tenant-scoped) tenant_match
+// collection is writable and queryable on every backend. tenant_match is
+// registered global by the tenantmatch plugin's PostInit at server boot; the
+// dbtest package does not import that plugin, so we register it here before the
+// round-trip. Because it is global, a write under one tenant context is visible
+// from a different tenant context (no tenant_id predicate is injected).
+func testTenantMatchCollection(t *testing.T, drv db.Driver) {
+	db.RegisterGlobalCollection("tenant_match")
+	require.True(t, db.IsGlobalCollection("tenant_match"))
+
+	// Write two rules under tenant alpha.
+	ctxA := snoozetypes.WithTenant(context.Background(), "alpha")
+	res, err := drv.Write(ctxA, "tenant_match", []db.Document{
+		{"match_type": "group", "match": "ops", "tenant_id": "acme", "priority": 0},
+		{"match_type": "domain", "match": "example.com", "tenant_id": "globex", "priority": 1},
+	}, db.WriteOptions{Primary: []string{"match_type", "match"}, UpdateTime: false})
+	require.NoError(t, err)
+	require.Len(t, res.Added, 2)
+
+	// Read them back from a DIFFERENT tenant context: a global collection is not
+	// fenced by tenant, so both rules are visible and carry no tenant_id stamp.
+	ctxB := snoozetypes.WithTenant(context.Background(), "beta")
+	docs, total, err := drv.Search(ctxB, "tenant_match", condition.Cond{}, db.Page{})
+	require.NoError(t, err)
+	require.Equal(t, 2, total, "global tenant_match rules must be visible across tenants")
+	require.Len(t, docs, 2)
+	for _, d := range docs {
+		_, stamped := d["tenant_id"].(string)
+		// A global collection is never stamped with the writer's tenant.
+		require.False(t, stamped && d["tenant_id"] == "alpha",
+			"global collection must not be stamped with the writer's tenant")
+	}
+
+	// A GetOne by the natural key resolves regardless of tenant context.
+	got, err := drv.GetOne(ctxB, "tenant_match", db.Document{"match_type": "group", "match": "ops"})
+	require.NoError(t, err)
+	require.Equal(t, "acme", got["tenant_id"])
+}
+
 func testWriteStampsTenantID(t *testing.T, drv db.Driver) {
 	ctxA := snoozetypes.WithTenant(context.Background(), "alpha")
 	ctxB := snoozetypes.WithTenant(context.Background(), "beta")
