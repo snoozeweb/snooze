@@ -16,6 +16,7 @@ import (
 	"github.com/snoozeweb/snooze/internal/auth"
 	"github.com/snoozeweb/snooze/internal/condition"
 	"github.com/snoozeweb/snooze/internal/db"
+	"github.com/snoozeweb/snooze/internal/plugins"
 	"github.com/snoozeweb/snooze/pkg/snoozetypes"
 )
 
@@ -225,6 +226,7 @@ func (rt *Router) handleLogin(method string) http.HandlerFunc {
 		})
 		if err != nil {
 			if errors.Is(err, auth.ErrProviderDisabled) {
+				plugins.EmitAuthAudit(authCtx, rt.DB, body.Username, method, "login_failed", "login failed: backend disabled")
 				WriteError(w, r, ErrConflict.WithMessage("backend disabled"))
 				return
 			}
@@ -233,6 +235,7 @@ func (rt *Router) handleLogin(method string) http.HandlerFunc {
 			// password has already verified, so this does not let an anonymous
 			// guesser enumerate account state.
 			if errors.Is(err, auth.ErrUserDisabled) {
+				plugins.EmitAuthAudit(authCtx, rt.DB, body.Username, method, "login_failed", "login failed: account disabled")
 				WriteError(w, r, ErrForbidden.WithMessage("account disabled"))
 				return
 			}
@@ -240,6 +243,7 @@ func (rt *Router) handleLogin(method string) http.HandlerFunc {
 			// "wrong password" branches so a timing-cheap caller cannot
 			// distinguish them. The underlying Provider also uses
 			// constant-time bcrypt comparison.
+			plugins.EmitAuthAudit(authCtx, rt.DB, body.Username, method, "login_failed", "login failed: invalid credentials")
 			WriteError(w, r, ErrUnauthorized.WithMessage("invalid credentials"))
 			return
 		}
@@ -260,6 +264,7 @@ func (rt *Router) handleLogin(method string) http.HandlerFunc {
 		}
 		rt.updateLastLogin(authCtx, id)
 		WriteJSON(w, http.StatusOK, resp)
+		plugins.EmitAuthAudit(authCtx, rt.DB, id.Username, method, "login", "login successful")
 	}
 }
 
@@ -390,9 +395,11 @@ func (rt *Router) handleLoginAnonymous(w http.ResponseWriter, r *http.Request) {
 	id, err := provider.Authenticate(authCtx, auth.Credentials{})
 	if err != nil {
 		if errors.Is(err, auth.ErrProviderDisabled) {
+			plugins.EmitAuthAudit(authCtx, rt.DB, "anonymous", "anonymous", "login_failed", "login failed: backend disabled")
 			WriteError(w, r, ErrConflict.WithMessage("backend disabled"))
 			return
 		}
+		plugins.EmitAuthAudit(authCtx, rt.DB, "anonymous", "anonymous", "login_failed", "login failed: anonymous login refused")
 		WriteError(w, r, ErrUnauthorized.WithMessage("anonymous login refused").WithCause(err))
 		return
 	}
@@ -411,6 +418,7 @@ func (rt *Router) handleLoginAnonymous(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	WriteJSON(w, http.StatusOK, resp)
+	plugins.EmitAuthAudit(authCtx, rt.DB, id.Username, id.Method, "login", "anonymous login successful")
 }
 
 // handleRefresh exchanges a refresh token for a new access+refresh pair.
@@ -441,14 +449,21 @@ func (rt *Router) handleRefresh(w http.ResponseWriter, r *http.Request) {
 	pctx := auth.WithPlatformScope(r.Context())
 	claims, newRefresh, refreshExp, err := rt.Refresh.VerifyAndRotate(pctx, body.RefreshToken)
 	if err != nil {
+		// The token failed verification, so the identity is unknown; write the
+		// failure row under the platform-scoped request context.
+		plugins.EmitAuthAudit(pctx, rt.DB, "", "", "login_failed", "refresh failed: invalid refresh token")
 		WriteError(w, r, ErrUnauthorized.WithMessage("invalid refresh token").WithCause(err))
 		return
 	}
+	// Past VerifyAndRotate the identity is known: re-scope the audit write to the
+	// token's own tenant so the row lands in the correct tenant partition.
+	auditCtx := auth.WithTenant(r.Context(), claims.TenantID)
 	// Block a user disabled since login: revoke the just-rotated token and
 	// refuse, so a disabled account cannot keep minting access tokens for the
 	// remainder of the refresh lease.
 	if rt.userDisabled(r.Context(), claims) {
 		_ = rt.Refresh.Revoke(pctx, newRefresh)
+		plugins.EmitAuthAudit(auditCtx, rt.DB, claims.Subject, claims.Method, "login_failed", "refresh failed: account disabled")
 		WriteError(w, r, ErrUnauthorized.WithMessage("account disabled"))
 		return
 	}
@@ -475,6 +490,7 @@ func (rt *Router) handleRefresh(w http.ResponseWriter, r *http.Request) {
 		RefreshExpiresAt: refreshExp,
 		Method:           claims.Method,
 	})
+	plugins.EmitAuthAudit(auditCtx, rt.DB, claims.Subject, claims.Method, "refresh", "token refreshed")
 }
 
 // handleLogout revokes the supplied refresh token. The endpoint is always a
@@ -500,6 +516,13 @@ func (rt *Router) handleLogout(w http.ResponseWriter, r *http.Request) {
 		pctx := auth.WithPlatformScope(r.Context())
 		_ = rt.Refresh.Revoke(pctx, body.RefreshToken)
 	}
+	// logout does NOT verify the token before revoking it (the revoke is fenced
+	// purely by the high-entropy token_hash), so the caller's identity is
+	// genuinely unknown here — emit with empty username/method. The
+	// platform-scoped request context is the right write scope: logout carries
+	// no tenant and never resolves one. Recording that a logout request occurred
+	// is still useful as a security-trail timestamp.
+	plugins.EmitAuthAudit(auth.WithPlatformScope(r.Context()), rt.DB, "", "", "logout", "logout (identity unknown)")
 	w.WriteHeader(http.StatusNoContent)
 }
 
@@ -737,6 +760,9 @@ func (rt *Router) handleOIDCCallback(rp auth.RedirectProvider) http.HandlerFunc 
 		authCtx := auth.WithTenant(r.Context(), org)
 		id, err := rp.ExchangeAndVerify(authCtx, code, st.Nonce, st.Verifier)
 		if err != nil {
+			// Identity is not established yet (the code exchange / ID-token
+			// verification failed), so username/method are genuinely unknown.
+			plugins.EmitAuthAudit(authCtx, rt.DB, id.Username, id.Method, "login_failed", "login failed: SSO code exchange/verification failed")
 			redirectLoginError(w, r, "sign-in failed")
 			return
 		}
@@ -752,6 +778,7 @@ func (rt *Router) handleOIDCCallback(rp auth.RedirectProvider) http.HandlerFunc 
 		// session is issued. provisionOIDCUser also refreshes last_login/groups,
 		// so the OIDC path does not call updateLastLogin separately.
 		if rt.provisionOIDCUser(authCtx, id) {
+			plugins.EmitAuthAudit(authCtx, rt.DB, id.Username, id.Method, "login_failed", "login failed: account disabled")
 			redirectLoginError(w, r, "your account has been disabled")
 			return
 		}
@@ -760,6 +787,7 @@ func (rt *Router) handleOIDCCallback(rp auth.RedirectProvider) http.HandlerFunc 
 			redirectLoginError(w, r, "sign-in failed")
 			return
 		}
+		plugins.EmitAuthAudit(authCtx, rt.DB, id.Username, id.Method, "login", "SSO login successful")
 
 		frag := url.Values{}
 		frag.Set("token", resp.Token)

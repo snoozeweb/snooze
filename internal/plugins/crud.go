@@ -70,6 +70,42 @@ func emitAudit(ctx context.Context, host Host, meta Metadata, collection, action
 	}
 }
 
+// EmitAuthAudit writes a single auth-category audit row directly to the audit
+// collection. It is best-effort: errors are logged and never surfaced to the
+// caller. Use it for login / login_failed / refresh / logout events that occur
+// outside the CRUD mounter (no Host available, no Metadata.Audit flag) — the
+// login routes in internal/api are the canonical callers.
+//
+// The document shape mirrors the private emitAudit and the audit plugin schema
+// exactly (object_type/object_id/action/username/method/summary/date_epoch).
+// object_type is the sentinel "auth" rather than a collection name; the cleanup
+// queries key on object_id for retention, so no cleanup change is needed.
+//
+// An empty username still writes a row (the logout path has no verified
+// identity) — recording that a request occurred is intentional, not skipped.
+// drv == nil is a safe no-op (some unit tests have no DB wired).
+func EmitAuthAudit(ctx context.Context, drv db.Driver, username, method, action, summary string) {
+	if drv == nil {
+		return
+	}
+	docs := []db.Document{{
+		"object_type": "auth",
+		"object_id":   username,
+		"action":      action,
+		"username":    username,
+		"method":      method,
+		"summary":     summary,
+		"date_epoch":  float64(time.Now().Unix()),
+	}}
+	if _, err := drv.Write(ctx, auditCollection, docs, db.WriteOptions{UpdateTime: false}); err != nil {
+		slog.Warn("plugins: auth audit emit failed",
+			"action", action,
+			"username", username,
+			"method", method,
+			"err", err)
+	}
+}
+
 // MountCRUD installs the standard REST surface for a plugin's collection at
 // /api/v1/{plugin}. The collection name is taken from p.Name().
 //

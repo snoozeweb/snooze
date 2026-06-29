@@ -7,6 +7,7 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"sync"
 	"testing"
 	"time"
 
@@ -651,6 +652,132 @@ func TestLoginIndex_DefaultBackendFirst(t *testing.T) {
 	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &body))
 	require.NotEmpty(t, body.Data.Backends)
 	require.Equal(t, "ldap", body.Data.Backends[0].Name, "configured default_auth_backend must be listed first")
+}
+
+// ---- Auth-event audit emission -------------------------------------------
+
+// auditCapturingDB embeds userStoreDB (so the user store, tenant-status, and
+// role-resolution paths keep working) and records every write to the "audit"
+// collection so the login-route tests can assert auth-event rows. Writes to
+// other collections delegate to the embedded userStoreDB.
+type auditCapturingDB struct {
+	userStoreDB
+	auditMu   sync.Mutex
+	auditRows []db.Document
+}
+
+func (a *auditCapturingDB) Write(ctx context.Context, coll string, docs []db.Document, opts db.WriteOptions) (db.WriteResult, error) {
+	if coll == "audit" {
+		a.auditMu.Lock()
+		a.auditRows = append(a.auditRows, docs...)
+		a.auditMu.Unlock()
+		return db.WriteResult{}, nil
+	}
+	return a.userStoreDB.Write(ctx, coll, docs, opts)
+}
+
+func (a *auditCapturingDB) audit() []db.Document {
+	a.auditMu.Lock()
+	defer a.auditMu.Unlock()
+	return append([]db.Document(nil), a.auditRows...)
+}
+
+func TestHandleLogin_AuditOnSuccess(t *testing.T) {
+	_, rt := loginTestRouter(t, &fakeProvider{
+		name:     "local",
+		wantUser: "alice",
+		wantPass: "secret",
+		enabled:  true,
+		identity: auth.Identity{Username: "alice", Method: "local"},
+	})
+	adb := &auditCapturingDB{}
+	rt.DB = adb
+	r2 := chi.NewRouter()
+	rt.mountLogin(r2)
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/login/local",
+		bytes.NewBufferString(`{"username":"alice","password":"secret"}`))
+	req.Header.Set("Content-Type", "application/json")
+	r2.ServeHTTP(rec, req)
+
+	require.Equal(t, http.StatusOK, rec.Code, "body=%s", rec.Body.String())
+	rows := adb.audit()
+	require.Len(t, rows, 1)
+	require.Equal(t, "auth", rows[0]["object_type"])
+	require.Equal(t, "login", rows[0]["action"])
+	require.Equal(t, "alice", rows[0]["username"])
+	require.Equal(t, "local", rows[0]["method"])
+}
+
+func TestHandleLogin_AuditOnFailure(t *testing.T) {
+	_, rt := loginTestRouter(t, &fakeProvider{
+		name:     "local",
+		wantUser: "alice",
+		wantPass: "secret",
+		enabled:  true,
+		identity: auth.Identity{Username: "alice", Method: "local"},
+	})
+	adb := &auditCapturingDB{}
+	rt.DB = adb
+	r2 := chi.NewRouter()
+	rt.mountLogin(r2)
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/login/local",
+		bytes.NewBufferString(`{"username":"alice","password":"wrong"}`))
+	req.Header.Set("Content-Type", "application/json")
+	r2.ServeHTTP(rec, req)
+
+	require.Equal(t, http.StatusUnauthorized, rec.Code)
+	rows := adb.audit()
+	require.Len(t, rows, 1)
+	require.Equal(t, "login_failed", rows[0]["action"])
+	require.Equal(t, "alice", rows[0]["username"], "the attempted username must be recorded")
+}
+
+func TestHandleRefresh_AuditOnSuccess(t *testing.T) {
+	_, rt := loginTestRouter(t, &fakeProvider{name: "local", enabled: true})
+	adb := &auditCapturingDB{}
+	rt.DB = adb
+	rt.Refresh.(*fakeRefresh).verifyClaims = snoozetypes.Claims{
+		Subject: "alice", Method: "local", TenantID: "default",
+	}
+	r2 := chi.NewRouter()
+	rt.mountLogin(r2)
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/login/refresh",
+		bytes.NewBufferString(`{"refresh_token":"refresh-alice"}`))
+	req.Header.Set("Content-Type", "application/json")
+	r2.ServeHTTP(rec, req)
+
+	require.Equal(t, http.StatusOK, rec.Code, "body=%s", rec.Body.String())
+	rows := adb.audit()
+	require.Len(t, rows, 1)
+	require.Equal(t, "refresh", rows[0]["action"])
+	require.Equal(t, "alice", rows[0]["username"])
+	require.Equal(t, "local", rows[0]["method"])
+}
+
+func TestHandleLogout_AuditRow(t *testing.T) {
+	_, rt := loginTestRouter(t)
+	adb := &auditCapturingDB{}
+	rt.DB = adb
+	r2 := chi.NewRouter()
+	rt.mountLogin(r2)
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/login/logout",
+		bytes.NewBufferString(`{"refresh_token":"refresh-alice"}`))
+	req.Header.Set("Content-Type", "application/json")
+	r2.ServeHTTP(rec, req)
+
+	require.Equal(t, http.StatusNoContent, rec.Code)
+	rows := adb.audit()
+	require.Len(t, rows, 1)
+	require.Equal(t, "logout", rows[0]["action"])
+	require.Equal(t, "", rows[0]["username"], "logout does not verify the token, so identity is unknown")
 }
 
 // tenantGatedProvider is enabled only when the context carries the default

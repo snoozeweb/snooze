@@ -538,6 +538,51 @@ func TestAudit_CapturesUsernameFromContext(t *testing.T) {
 	require.Equal(t, "enabled", rows[0]["summary"])
 }
 
+// ---- EmitAuthAudit (auth-event audit category) --------------------------
+
+// TestEmitAuthAudit_WritesRow verifies a single auth-category audit row is
+// written with the expected object_type/action/username/method fields.
+func TestEmitAuthAudit_WritesRow(t *testing.T) {
+	t.Parallel()
+	memo := newMemDB()
+
+	EmitAuthAudit(context.Background(), memo, "alice", "local", "login", "login ok")
+
+	rows := auditDocs(memo)
+	require.Len(t, rows, 1)
+	require.Equal(t, "auth", rows[0]["object_type"])
+	require.Equal(t, "alice", rows[0]["object_id"])
+	require.Equal(t, "login", rows[0]["action"])
+	require.Equal(t, "alice", rows[0]["username"])
+	require.Equal(t, "local", rows[0]["method"])
+	require.Equal(t, "login ok", rows[0]["summary"])
+	require.IsType(t, float64(0), rows[0]["date_epoch"])
+}
+
+// TestEmitAuthAudit_NilDriverNoOp verifies a nil driver does not panic and
+// writes nothing.
+func TestEmitAuthAudit_NilDriverNoOp(t *testing.T) {
+	t.Parallel()
+	require.NotPanics(t, func() {
+		EmitAuthAudit(context.Background(), nil, "alice", "local", "login", "login ok")
+	})
+}
+
+// TestEmitAuthAudit_EmptyUsernameAllowed verifies the logout path (no known
+// identity) still writes a row rather than silently skipping.
+func TestEmitAuthAudit_EmptyUsernameAllowed(t *testing.T) {
+	t.Parallel()
+	memo := newMemDB()
+
+	EmitAuthAudit(context.Background(), memo, "", "", "logout", "logout (identity unknown)")
+
+	rows := auditDocs(memo)
+	require.Len(t, rows, 1)
+	require.Equal(t, "auth", rows[0]["object_type"])
+	require.Equal(t, "logout", rows[0]["action"])
+	require.Equal(t, "", rows[0]["username"])
+}
+
 func TestMetadata_AuditDefaultsToTrueWhenAbsent(t *testing.T) {
 	t.Parallel()
 	// Most plugins don't declare `audit:` — the default semantic is "audit

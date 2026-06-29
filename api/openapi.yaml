@@ -1443,6 +1443,12 @@ components:
         `POST`/`PUT` are rejected here — mint keys via
         `POST /api/v1/user/me/apikeys`; admins may only `PATCH`
         (`name`/`expires_at`), revoke, or `DELETE`.
+
+        The `audit` collection holds the audit trail. Each row's `object_type`
+        field is the name of the affected collection for CRUD mutations
+        (`rule`, `user`, …) or the sentinel value `auth` for authentication
+        events (login / login_failed / refresh / logout), with the auth backend
+        in `method` and the attempted identity in `username`.
       schema:
         type: string
         enum:

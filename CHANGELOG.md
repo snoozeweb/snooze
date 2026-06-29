@@ -2,6 +2,10 @@
 
 ### Added
 
+- **Audit — structured auth-event trail.** Login, login-failed, token-refresh,
+  and logout events are now written as queryable rows to the `audit` collection
+  (`object_type: auth`) in addition to the existing HTTP request log lines.
+  Retention follows the standard housekeeper `audit` TTL.
 - **Reject-at-ingest policy processor.** A new `reject` plugin provides a
   CRUD-managed collection of condition-based policy rules. Alerts matching any
   enabled rule are aborted before persistence and the sender receives an HTTP
