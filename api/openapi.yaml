@@ -55,7 +55,7 @@ info:
 
     A number of plugins (`alertmanager`, `azuremonitor`, `cloudwatch`,
     `datadog`, `grafana`, `influxdb2`, `kapacitor`, `newrelic`,
-    `pingdom`, `prometheus`, `sentry`) replace the generic CRUD with an inbound
+    `pingdom`, `prometheus`, `sentry`, `stackdriver`) replace the generic CRUD with an inbound
     webhook surface under `/api/v1/webhook/{name}`; the `heartbeat`
     plugin exposes a token-gated ping at `/api/v1/webhook/heartbeat`.
 
@@ -1548,6 +1548,7 @@ paths:
               - pingdom
               - prometheus
               - sentry
+              - stackdriver
       requestBody:
         required: true
         content:
@@ -2102,6 +2103,7 @@ components:
           - slack
           - snooze
           - sns
+          - stackdriver
           - stats
           - statuspage
           - telegram

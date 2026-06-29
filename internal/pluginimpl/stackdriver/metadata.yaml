@@ -1,0 +1,13 @@
+---
+name: 'stackdriver'
+desc: 'Receive Google Cloud Monitoring (Stackdriver) incident webhook notifications'
+
+# Webhook receivers are unauthenticated by design — GCP Monitoring notification
+# channels push incidents without credentials and carry no shared-secret HMAC.
+# `write: [any]` grants every authenticated caller write access too (because the
+# authorizer adds `any` to the user's permission set), so this plugin is
+# effectively public on both axes. Mirrors the azuremonitor / newrelic policy.
+route_defaults:
+    authentication: false
+    authorization_policy:
+        write: [any]

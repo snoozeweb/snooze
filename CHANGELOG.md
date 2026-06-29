@@ -2,6 +2,12 @@
 
 ### Added
 
+- **Stackdriver / Google Cloud Monitoring inbound receiver.** The new
+  `stackdriver` plugin accepts GCP Monitoring incident webhook notifications
+  at `/api/v1/webhook/stackdriver`, mapping incident state (`open` →
+  critical, `acknowledged` → ack, `closed` → ok/close) to Snooze records.
+  The optional `documentation.content` JSON blob overrides any record field
+  before pipeline submission.
 - Server-managed user groups (`GET/POST/PUT/PATCH/DELETE /api/v1/group`):
   operators can now create named cohorts, add local or LDAP users as members,
   and assign roles to the group without editing each user's `roles[]` field.
