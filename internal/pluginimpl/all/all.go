@@ -71,7 +71,9 @@ import (
 	_ "github.com/snoozeweb/snooze/internal/pluginimpl/pingdom"
 	_ "github.com/snoozeweb/snooze/internal/pluginimpl/prometheus"
 	_ "github.com/snoozeweb/snooze/internal/pluginimpl/sentry"
+	_ "github.com/snoozeweb/snooze/internal/pluginimpl/slackinteractive"
 	_ "github.com/snoozeweb/snooze/internal/pluginimpl/stackdriver"
+	_ "github.com/snoozeweb/snooze/internal/pluginimpl/telegraminteractive"
 
 	// Multi-role — implement more than one of the roles above.
 	_ "github.com/snoozeweb/snooze/internal/pluginimpl/aggregaterule" // data model + pipeline processor

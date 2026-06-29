@@ -29,6 +29,14 @@ func factory(meta plugins.Metadata) (plugins.Plugin, error) {
 	return &Plugin{meta: meta}, nil
 }
 
+// New constructs a comment Plugin instance. It is exported so sibling packages
+// (the Plan 36 chataction helper's tests) can wire a real comment plugin into a
+// test host and exercise the genuine create seam (TransformWrite + GuardWrite +
+// AfterCreate) rather than re-implementing the state-transition mechanics.
+func New(meta plugins.Metadata) (plugins.Plugin, error) {
+	return factory(meta)
+}
+
 // Plugin is the data-model plugin for record comments.
 type Plugin struct {
 	meta plugins.Metadata

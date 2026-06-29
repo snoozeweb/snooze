@@ -220,6 +220,104 @@ func TestSendCustomMessage(t *testing.T) {
 	require.Equal(t, "ALERT: warning on db-1.example.com", gotText)
 }
 
+// TestSend_InteractiveKeyboard verifies that meta interactive:true attaches a
+// reply_markup.inline_keyboard whose buttons carry callback_data "ack <uid>",
+// "close <uid>", "open <uid>". The default (interactive off) must omit
+// reply_markup entirely so existing notifier behaviour is byte-identical.
+func TestSend_InteractiveKeyboard(t *testing.T) {
+	var (
+		mu      sync.Mutex
+		gotBody []byte
+	)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		mu.Lock()
+		gotBody, _ = io.ReadAll(r.Body)
+		mu.Unlock()
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"ok":true}`))
+	}))
+	t.Cleanup(srv.Close)
+
+	p := newPluginForTest(t)
+	meta := sampleMeta(srv.URL)
+	meta["interactive"] = true
+	rec := sampleRecord() // uid rec-1, state "" (not resolved)
+	require.NoError(t, p.Send(context.Background(), rec, plugins.NotificationPayload{Meta: meta}))
+
+	mu.Lock()
+	body := gotBody
+	mu.Unlock()
+
+	var req sendMessageRequest
+	require.NoError(t, json.Unmarshal(body, &req))
+	require.NotNil(t, req.ReplyMarkup, "interactive:true must attach reply_markup")
+	require.NotEmpty(t, req.ReplyMarkup.InlineKeyboard)
+
+	// Flatten and assert the ack button carries "ack <uid>".
+	var datas []string
+	for _, row := range req.ReplyMarkup.InlineKeyboard {
+		for _, btn := range row {
+			datas = append(datas, btn.CallbackData)
+		}
+	}
+	require.Contains(t, datas, "ack rec-1")
+	require.Contains(t, datas, "close rec-1")
+}
+
+// TestSend_InteractiveDefaultOff verifies that without interactive the request
+// body carries no reply_markup — the default path stays byte-identical.
+func TestSend_InteractiveDefaultOff(t *testing.T) {
+	var (
+		mu      sync.Mutex
+		gotBody []byte
+	)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		mu.Lock()
+		gotBody, _ = io.ReadAll(r.Body)
+		mu.Unlock()
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"ok":true}`))
+	}))
+	t.Cleanup(srv.Close)
+
+	p := newPluginForTest(t)
+	require.NoError(t, p.Send(context.Background(), sampleRecord(), plugins.NotificationPayload{Meta: sampleMeta(srv.URL)}))
+
+	mu.Lock()
+	body := gotBody
+	mu.Unlock()
+	require.NotContains(t, string(body), "reply_markup", "default path must not emit reply_markup")
+}
+
+// TestSend_InteractiveResolvedNoButtons verifies a resolved (state:close) record
+// emits no buttons even when interactive:true (nothing left to act on).
+func TestSend_InteractiveResolvedNoButtons(t *testing.T) {
+	var (
+		mu      sync.Mutex
+		gotBody []byte
+	)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		mu.Lock()
+		gotBody, _ = io.ReadAll(r.Body)
+		mu.Unlock()
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"ok":true}`))
+	}))
+	t.Cleanup(srv.Close)
+
+	p := newPluginForTest(t)
+	meta := sampleMeta(srv.URL)
+	meta["interactive"] = true
+	rec := sampleRecord()
+	rec.State = "close"
+	require.NoError(t, p.Send(context.Background(), rec, plugins.NotificationPayload{Meta: meta}))
+
+	mu.Lock()
+	body := gotBody
+	mu.Unlock()
+	require.NotContains(t, string(body), "reply_markup", "resolved messages must carry no buttons")
+}
+
 // --- error paths -----------------------------------------------------------
 
 // TestSendAPIReturnsFalse verifies that {"ok":false,...} propagates as an error.

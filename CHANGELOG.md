@@ -2,6 +2,18 @@
 
 ### Added
 
+- **Chat ack/close/re-open from Slack & Telegram message buttons.** The Slack
+  and Telegram notifiers can now render opt-in interactive buttons
+  (`interactive: true` on the action form; default off). New webhook receivers
+  (`POST /api/v1/webhook/slack`, `POST /api/v1/webhook/telegram`) apply the
+  pressed action through the Plan 05 transition guard — writing an attributed
+  comment so the dashboard activity feed records it — and edit the chat message
+  in place. Slack requests are authenticated by the v0 request signature
+  (`slack_interactive.signing_secret`, constant-time HMAC-SHA256 with a 5-minute
+  replay window); Telegram by the `X-Telegram-Bot-Api-Secret-Token` header
+  (`telegram_interactive.secret_token`, constant-time). Both fail closed: an
+  unset secret makes the receiver reject every request (401). An illegal move
+  (e.g. ack of a closed alert) is refused and the chat reply states why.
 - **OIDC provider presets + multiple simultaneous IdPs.** A new optional
   `provider:` key (`google`/`azure`/`cognito`/`keycloak`/`gitlab`) plus
   `provider_params` pre-fills the discovery `issuer` from a built-in table, so

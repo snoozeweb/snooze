@@ -319,6 +319,68 @@ func TestSendBotTokenResolve(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
+// Interactive buttons
+// ---------------------------------------------------------------------------
+
+// TestBuildPayload_InteractiveButtons verifies that interactive:true on a
+// non-resolved record appends an actions block whose block_id is the record uid
+// and whose buttons carry value ∈ {ack,close,open}; a resolved record emits no
+// actions block.
+func TestBuildPayload_InteractiveButtons(t *testing.T) {
+	rec := sampleRecord() // uid rec-1, state "" (not resolved)
+
+	cfg := config{Interactive: true, WebhookURL: "https://hooks.slack/x"}
+	body, err := buildPayload(cfg, rec, "disk full")
+	require.NoError(t, err)
+
+	var got webhookPayload
+	require.NoError(t, json.Unmarshal(body, &got))
+
+	var actions *slackBlock
+	for i := range got.Blocks {
+		if got.Blocks[i].Type == "actions" {
+			actions = &got.Blocks[i]
+			break
+		}
+	}
+	require.NotNil(t, actions, "interactive non-resolved message must carry an actions block")
+	require.Equal(t, "rec-1", actions.BlockID, "actions block_id must be the record uid")
+
+	var values []string
+	for _, b := range actions.Elements {
+		values = append(values, b.Value)
+	}
+	require.ElementsMatch(t, []string{"ack", "close", "open"}, values)
+}
+
+// TestBuildPayload_InteractiveResolvedNoButtons verifies that a resolved
+// (state:close) record emits no actions block even when interactive:true.
+func TestBuildPayload_InteractiveResolvedNoButtons(t *testing.T) {
+	rec := sampleRecord()
+	rec.State = "close"
+
+	cfg := config{Interactive: true, WebhookURL: "https://hooks.slack/x"}
+	body, err := buildPayload(cfg, rec, "disk full")
+	require.NoError(t, err)
+
+	var got webhookPayload
+	require.NoError(t, json.Unmarshal(body, &got))
+	for _, b := range got.Blocks {
+		require.NotEqual(t, "actions", b.Type, "resolved messages must carry no buttons")
+	}
+}
+
+// TestBuildPayload_InteractiveDefaultOff verifies that without interactive the
+// payload carries no actions block — the default path stays byte-identical.
+func TestBuildPayload_InteractiveDefaultOff(t *testing.T) {
+	rec := sampleRecord()
+	cfg := config{WebhookURL: "https://hooks.slack/x"}
+	body, err := buildPayload(cfg, rec, "disk full")
+	require.NoError(t, err)
+	require.NotContains(t, string(body), `"actions"`, "default path must not emit an actions block")
+}
+
+// ---------------------------------------------------------------------------
 // Error cases
 // ---------------------------------------------------------------------------
 

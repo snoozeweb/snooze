@@ -50,10 +50,46 @@ const defaultMessage = "<b>{{ .Severity | htmlEscape }}</b> on {{ .Host | htmlEs
 // sendMessageRequest mirrors the relevant fields of the Telegram Bot API
 // sendMessage request body.
 type sendMessageRequest struct {
-	ChatID              string `json:"chat_id"`
-	Text                string `json:"text"`
-	ParseMode           string `json:"parse_mode,omitempty"`
-	DisableNotification bool   `json:"disable_notification,omitempty"`
+	ChatID              string                `json:"chat_id"`
+	Text                string                `json:"text"`
+	ParseMode           string                `json:"parse_mode,omitempty"`
+	DisableNotification bool                  `json:"disable_notification,omitempty"`
+	ReplyMarkup         *inlineKeyboardMarkup `json:"reply_markup,omitempty"`
+}
+
+// inlineKeyboardMarkup is the Telegram inline keyboard attached below a message
+// (https://core.telegram.org/bots/api#inlinekeyboardmarkup). Snooze uses it to
+// render the ack/close/open action buttons when interactive mode is on.
+type inlineKeyboardMarkup struct {
+	InlineKeyboard [][]inlineKeyboardButton `json:"inline_keyboard"`
+}
+
+// inlineKeyboardButton is one button. CallbackData encodes "<action> <uid>"
+// (e.g. "ack rec-1"); Telegram echoes it back in callback_query.data when the
+// button is pressed, which the telegraminteractive receiver decodes.
+type inlineKeyboardButton struct {
+	Text         string `json:"text"`
+	CallbackData string `json:"callback_data"`
+}
+
+// buildInteractiveKeyboard returns the ack/close/open inline keyboard for rec,
+// or nil when the record is resolved (state "close") — a closed alert has
+// nothing left to act on, so it carries no buttons. callback_data follows the
+// "<action> <uid>" convention the receiver parses.
+func buildInteractiveKeyboard(rec snoozetypes.Record) *inlineKeyboardMarkup {
+	if rec.State == "close" {
+		return nil
+	}
+	uid := rec.UID
+	return &inlineKeyboardMarkup{
+		InlineKeyboard: [][]inlineKeyboardButton{
+			{
+				{Text: "Ack", CallbackData: "ack " + uid},
+				{Text: "Close", CallbackData: "close " + uid},
+				{Text: "Re-open", CallbackData: "open " + uid},
+			},
+		},
+	}
 }
 
 // sendMessageResponse is the envelope returned by the Telegram Bot API.
@@ -73,6 +109,10 @@ type Config struct {
 	APIBase             string
 	Message             string
 	Timeout             time.Duration
+	// Interactive, when true, attaches ack/close/open inline-keyboard buttons
+	// to the message (opt-in; default off). The buttons drive the
+	// telegraminteractive webhook receiver.
+	Interactive bool
 }
 
 // Plugin is the Telegram notifier.
@@ -132,6 +172,9 @@ func (p *Plugin) Send(ctx context.Context, rec snoozetypes.Record, payload plugi
 		Text:                text,
 		ParseMode:           parseMode,
 		DisableNotification: cfg.DisableNotification,
+	}
+	if cfg.Interactive {
+		reqBody.ReplyMarkup = buildInteractiveKeyboard(rec)
 	}
 	bodyBytes, err := json.Marshal(reqBody)
 	if err != nil {
@@ -222,6 +265,9 @@ func configFromMeta(meta map[string]any) (Config, error) {
 	}
 	if v, ok := meta["disable_notification"].(bool); ok {
 		cfg.DisableNotification = v
+	}
+	if v, ok := meta["interactive"].(bool); ok {
+		cfg.Interactive = v
 	}
 	if t, ok := parseTimeout(meta["timeout"]); ok {
 		cfg.Timeout = t

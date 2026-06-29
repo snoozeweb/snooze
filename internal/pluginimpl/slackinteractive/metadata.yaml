@@ -1,0 +1,15 @@
+---
+name: 'slackinteractive'
+desc: 'Receive Slack interactive message button presses (ack/close/re-open an alert from chat)'
+
+# This is a webhook receiver, not a notifier — it has no action_form. It is
+# mounted publicly (authentication: false) like the other receivers; the
+# state-mutation endpoint is protected INSIDE the handler by Slack's v0 request
+# signature (HMAC-SHA256 over the raw body keyed by the configured
+# slack_interactive.signing_secret), constant-time compared with a 5-minute
+# replay window (fail-closed: an unset signing_secret 401s every request).
+# `write: [any]` mirrors the other receivers' authorization policy.
+route_defaults:
+    authentication: false
+    authorization_policy:
+        write: [any]

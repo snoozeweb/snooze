@@ -25,6 +25,12 @@ type Config struct {
 	SAML         schema.SAML         `koanf:"saml"`
 	AuthProxy    schema.AuthProxy    `koanf:"auth_proxy"`
 
+	// Chat-interactive webhook receivers (Plan 36): file-config credentials
+	// for the inbound Slack/Telegram message-button receivers. Both fail closed
+	// — an unset secret makes the corresponding receiver 401 every request.
+	SlackInteractive    schema.SlackInteractive    `koanf:"slack_interactive"`
+	TelegramInteractive schema.TelegramInteractive `koanf:"telegram_interactive"`
+
 	// OIDCProviders is the OPTIONAL multi-IdP list, loaded from
 	// oidc_providers.yaml. It is independent of the legacy scalar OIDC above:
 	// when this slice is non-empty buildAuthProviders registers one provider per
@@ -51,6 +57,9 @@ func Default() *Config {
 		OIDC:         schema.DefaultOIDC(),
 		SAML:         schema.DefaultSAML(),
 		AuthProxy:    schema.DefaultAuthProxy(),
+
+		SlackInteractive:    schema.DefaultSlackInteractive(),
+		TelegramInteractive: schema.DefaultTelegramInteractive(),
 	}
 }
 

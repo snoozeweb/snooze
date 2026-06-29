@@ -36,6 +36,11 @@ action_form:
         component: Switch
         default_value: false
         description: 'Send the message silently — the recipient receives no notification sound'
+    interactive:
+        display_name: Interactive Buttons
+        component: Switch
+        default_value: false
+        description: 'Attach ack/close/re-open inline-keyboard buttons under the message. Requires the telegram_interactive webhook receiver to be configured (bot_token + secret_token) and the bot webhook pointed at /api/v1/webhook/telegram.'
     api_base:
         display_name: API Base URL
         component: String

@@ -38,6 +38,32 @@ timeout: "10s"
 
 When `parse_mode` is `HTML`, Telegram accepts only a [limited subset of HTML tags](https://core.telegram.org/bots/api#html-style): `<b>`, `<i>`, `<u>`, `<s>`, `<code>`, `<pre>`, `<a href="…">`. Always HTML-escape dynamic record fields with the `htmlEscape` template function to avoid message delivery failures caused by stray `<` or `&` characters in hostnames or log messages.
 
+## Interactive buttons (ack from chat)
+
+Snooze can render **Ack / Close / Re-open** inline-keyboard buttons under each alert message so an operator can change a record's state straight from Telegram. The message is edited in place to show the new state, and the action goes through the same transition-validity table the dashboard uses — an illegal move (double-ack, ack of a closed alert) is refused and the reply says so. Resolved (`close`) alerts render no buttons.
+
+This needs a publicly reachable Snooze and a webhook registered with a secret token.
+
+1. **Configure the receiver** in the file config — section `telegram_interactive` (`telegram_interactive.yaml`, or `SNOOZE_SERVER_TELEGRAM_INTERACTIVE_*`):
+
+   ```yaml
+   bot_token: "123456789:ABC…"   # the bot token (for editMessageText / answerCallbackQuery)
+   secret_token: "a-long-random-string"
+   api_base: "https://api.telegram.org"   # override for a self-hosted Bot API
+   ```
+
+   The receiver constant-time compares the `X-Telegram-Bot-Api-Secret-Token` header against `secret_token`. **Fail-closed:** while `secret_token` is empty the endpoint returns `401` for every request.
+2. **Register the webhook** with Telegram, pinning the secret token so Telegram echoes it on every delivery:
+
+   ```console
+   $ curl "https://api.telegram.org/bot<token>/setWebhook" \
+       -d "url=https://<your-snooze>/api/v1/webhook/telegram" \
+       -d "secret_token=a-long-random-string"
+   ```
+3. **Turn on the buttons** on the notification's Telegram action: set **Interactive Buttons** (`interactive`) to on.
+
+The chat username is recorded as the comment's `user`/`method` (free-text channel attribution) — it is not mapped to a Snooze principal, so chat acks bypass per-user RBAC (the bot credential is the trust boundary).
+
 ## End-to-end test setup
 
 The e2e test in `internal/pluginimpl/telegram/e2e_test.go` sends one real Telegram message to verify the full integration. It is **skipped by default** unless both env vars below are set.

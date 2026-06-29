@@ -57,7 +57,12 @@ info:
     `datadog`, `grafana`, `influxdb2`, `kapacitor`, `newrelic`,
     `pingdom`, `prometheus`, `sentry`, `stackdriver`) replace the generic CRUD with an inbound
     webhook surface under `/api/v1/webhook/{name}`; the `heartbeat`
-    plugin exposes a token-gated ping at `/api/v1/webhook/heartbeat`.
+    plugin exposes a token-gated ping at `/api/v1/webhook/heartbeat`. The
+    `slackinteractive` and `telegraminteractive` receivers
+    (`/api/v1/webhook/slack`, `/api/v1/webhook/telegram`) apply ack/close/re-open
+    actions from chat message buttons and authenticate each request with the
+    chat platform's own signature/secret header (fail closed: an unset secret
+    rejects every request).
 
     ## Conditions (the `q` parameter)
 
@@ -1770,6 +1775,119 @@ paths:
           description: Internal error (the DB state write failed).
         '503':
           $ref: '#/components/responses/IngestDisabledWebhook'
+
+  /api/v1/webhook/slack:
+    post:
+      tags: [webhooks]
+      summary: Slack interactive-message inbound webhook (ack from chat)
+      description: |
+        Receives Slack interactivity payloads fired when an operator presses an
+        ack/close/re-open button under an alert message rendered by the Slack
+        notifier's interactive mode. The body is
+        `application/x-www-form-urlencoded` with a single `payload` field holding
+        the Block Kit interaction JSON; `actions[0].value` is the action verb
+        (`ack`/`close`/`open`) and `actions[0].block_id` is the record uid.
+
+        The transition is applied through the same validity table the dashboard
+        uses (an attributed comment is written so the activity feed records it);
+        an illegal move is refused. The response is a Slack message-replacement
+        JSON body (`replace_original: true`) that strips the buttons and shows
+        the new state — Slack edits the message in place.
+
+        **Authentication (fail closed):** every request is verified against the
+        Slack `v0=` request signature —
+        `X-Slack-Signature = "v0=" + HMAC-SHA256(signing_secret,
+        "v0:" + X-Slack-Request-Timestamp + ":" + rawBody)` — compared in
+        constant time, with timestamps more than 5 minutes from now rejected.
+        While `slack_interactive.signing_secret` is unset the endpoint returns
+        `401` for every request.
+      parameters:
+        - name: X-Slack-Signature
+          in: header
+          required: true
+          schema: {type: string}
+          description: 'Slack v0 request signature (`v0=<hex HMAC-SHA256>`).'
+        - name: X-Slack-Request-Timestamp
+          in: header
+          required: true
+          schema: {type: string}
+          description: 'Unix-seconds request timestamp included in the signature base string.'
+      requestBody:
+        required: true
+        content:
+          application/x-www-form-urlencoded:
+            schema:
+              type: object
+              properties:
+                payload:
+                  type: string
+                  description: 'URL-encoded Block Kit interaction JSON.'
+      responses:
+        '200':
+          description: |
+            Action processed (including a refused illegal transition — chat-client
+            UX requires a 200). Body is the Slack message-replacement JSON.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  replace_original: {type: boolean, example: true}
+                  text: {type: string, example: '✅ Acknowledged by alice'}
+        '400':
+          description: Missing or malformed `payload`.
+        '401':
+          description: Signature missing/invalid, timestamp stale, or signing secret unset (fail closed).
+
+  /api/v1/webhook/telegram:
+    post:
+      tags: [webhooks]
+      summary: Telegram callback-query inbound webhook (ack from chat)
+      description: |
+        Receives Telegram `callback_query` updates fired when an operator presses
+        an ack/close/re-open inline-keyboard button under an alert message
+        rendered by the Telegram notifier's interactive mode.
+        `callback_query.data` is `"<action> <uid>"` (e.g. `ack rec-1`) and
+        `callback_query.from` is the actor.
+
+        The transition is applied through the same validity table the dashboard
+        uses (an attributed comment is written); the message is edited in place
+        via `editMessageText` and the callback is always answered to clear the
+        client spinner. An illegal move is refused with a message edit and still
+        returns 200.
+
+        **Authentication (fail closed):** the `X-Telegram-Bot-Api-Secret-Token`
+        header (set by Telegram when the webhook is registered with `setWebhook`)
+        is constant-time compared against `telegram_interactive.secret_token`.
+        While that secret is unset the endpoint returns `401` for every request.
+      parameters:
+        - name: X-Telegram-Bot-Api-Secret-Token
+          in: header
+          required: true
+          schema: {type: string}
+          description: 'Per-webhook secret token Telegram echoes on every delivery.'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              description: 'A Telegram Update object carrying a `callback_query`.'
+      responses:
+        '200':
+          description: |
+            Action processed (including a refused illegal transition). Body is
+            `{"status":"ok"}`.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status: {type: string, example: ok}
+        '400':
+          description: Malformed Telegram update payload.
+        '401':
+          description: Secret token mismatch, or secret token unset (fail closed).
 
   /api/v1/heartbeat:
     get:

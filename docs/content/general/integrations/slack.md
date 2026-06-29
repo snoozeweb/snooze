@@ -59,6 +59,25 @@ The Block Kit attachment colour bar is derived from the record's `severity` fiel
 
 When the record's `state` field is `"close"` (a resolution event), the colour is always `good` regardless of severity, and the rendered message is prefixed with `✅ Resolved:`.
 
+## Interactive buttons (ack from chat)
+
+Snooze can render **Ack / Close / Re-open** buttons under each alert message so an operator can change a record's state straight from Slack — no dashboard round-trip. The chat message is edited in place to drop the buttons and show the new state ("Acknowledged by @alice"). State changes go through the same transition-validity table the dashboard uses, so an illegal move (double-ack, ack of a closed alert) is refused and the reply says so.
+
+This needs three things: a publicly reachable Snooze, a Slack app with a signing secret, and the `interactive` action-form field enabled.
+
+1. **Create a Slack app** (https://api.slack.com/apps) and copy its **Signing Secret** (Basic Information → App Credentials).
+2. **Enable Interactivity** (Interactivity & Shortcuts) and set the **Request URL** to `https://<your-snooze>/api/v1/webhook/slack`.
+3. **Configure the receiver** in the file config — section `slack_interactive` (`slack_interactive.yaml`, or `SNOOZE_SERVER_SLACK_INTERACTIVE_SIGNING_SECRET`):
+
+   ```yaml
+   signing_secret: "8f742231b10e..."   # the app's Signing Secret
+   ```
+
+   The receiver verifies the Slack `v0=` request signature (`HMAC-SHA256` over the raw body, constant-time) and rejects requests older than 5 minutes. **Fail-closed:** while `signing_secret` is empty the endpoint returns `401` for every request, so a missing secret is never an open door.
+4. **Turn on the buttons** on the notification's Slack action: set **Interactive Buttons** (`interactive`) to on. Resolved (`close`) alerts render no buttons.
+
+The chat username is recorded as the comment's `user`/`method` (free-text channel attribution) — it is not mapped to a Snooze principal, so chat acks bypass per-user RBAC (the Slack app credential is the trust boundary).
+
 ## End-to-end test setup
 
 To run the end-to-end test you need a Slack channel with either an Incoming Webhook or a bot token configured.

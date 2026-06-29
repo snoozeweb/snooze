@@ -33,6 +33,11 @@ action_form:
         display_name: Icon Emoji
         component: String
         description: 'Emoji to use as the bot icon, e.g. :robot_face: (Incoming Webhook mode only).'
+    interactive:
+        display_name: Interactive Buttons
+        component: Switch
+        default_value: false
+        description: 'Append ack/close/re-open action buttons under the message. Requires the slackinteractive webhook receiver to be configured (signing_secret) and the Slack app Interactivity request URL pointed at /api/v1/webhook/slack.'
     timeout:
         display_name: Timeout
         component: String

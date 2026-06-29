@@ -37,6 +37,9 @@ var sectionFiles = map[string]string{
 	"oidc_providers": "oidc_providers",
 	"saml":           "saml",
 	"auth_proxy":     "auth_proxy",
+	// Plan 36 chat-interactive receiver credentials (file-config tier).
+	"slack_interactive":    "slack_interactive",
+	"telegram_interactive": "telegram_interactive",
 }
 
 // Load reads every known section YAML file under basedir, layers environment

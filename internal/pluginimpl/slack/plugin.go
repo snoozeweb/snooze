@@ -196,6 +196,10 @@ type config struct {
 	Username   string
 	IconEmoji  string
 	Timeout    time.Duration
+	// Interactive, when true, appends an ack/close/open actions block to a
+	// non-resolved message (opt-in; default off). The buttons drive the
+	// slackinteractive webhook receiver.
+	Interactive bool
 }
 
 // configFromMeta decodes config from the action_form Meta map. Exactly one of
@@ -214,6 +218,9 @@ func configFromMeta(meta map[string]any) (config, error) {
 	cfg.Channel = metaString(meta, "channel")
 	cfg.Username = metaString(meta, "username")
 	cfg.IconEmoji = metaString(meta, "icon_emoji")
+	if v, ok := meta["interactive"].(bool); ok {
+		cfg.Interactive = v
+	}
 
 	if m := metaString(meta, "message"); m != "" {
 		cfg.Message = m
@@ -306,10 +313,42 @@ func severityColor(severity string, resolved bool) string {
 	}
 }
 
-// slackBlock is a minimal Block Kit block (section or header).
+// slackBlock is a minimal Block Kit block (section, header, or actions). For an
+// actions block, BlockID carries the record uid (so the receiver knows which
+// record a pressed button refers to) and Elements holds the buttons.
 type slackBlock struct {
-	Type string        `json:"type"`
-	Text *slackTextObj `json:"text,omitempty"`
+	Type     string        `json:"type"`
+	Text     *slackTextObj `json:"text,omitempty"`
+	BlockID  string        `json:"block_id,omitempty"`
+	Elements []slackButton `json:"elements,omitempty"`
+}
+
+// slackButton is a Block Kit button element. Value carries the action verb
+// (ack/close/open); the receiver reads it from actions[0].value and the record
+// uid from the enclosing block_id.
+type slackButton struct {
+	Type     string       `json:"type"`  // always "button"
+	Text     slackTextObj `json:"text"`  // plain_text label
+	Value    string       `json:"value"` // action verb
+	ActionID string       `json:"action_id"`
+}
+
+// buildActionsBlock returns the ack/close/open actions block for rec, or nil
+// when the record is resolved (state "close") — nothing left to act on. The
+// block_id is the record uid; each button's value is the action verb.
+func buildActionsBlock(rec snoozetypes.Record) *slackBlock {
+	if rec.State == "close" {
+		return nil
+	}
+	return &slackBlock{
+		Type:    "actions",
+		BlockID: rec.UID,
+		Elements: []slackButton{
+			{Type: "button", Text: slackTextObj{Type: "plain_text", Text: "Ack"}, Value: "ack", ActionID: "snooze_ack"},
+			{Type: "button", Text: slackTextObj{Type: "plain_text", Text: "Close"}, Value: "close", ActionID: "snooze_close"},
+			{Type: "button", Text: slackTextObj{Type: "plain_text", Text: "Re-open"}, Value: "open", ActionID: "snooze_open"},
+		},
+	}
 }
 
 // slackTextObj is a Slack mrkdwn or plain_text composition object.
@@ -358,6 +397,14 @@ func buildPayload(cfg config, rec snoozetypes.Record, msg string) ([]byte, error
 			Type: "section",
 			Text: &slackTextObj{Type: "mrkdwn", Text: displayMsg},
 		},
+	}
+
+	// Opt-in interactive controls: append an actions block (ack/close/open)
+	// carrying the record uid as block_id. Resolved messages get none.
+	if cfg.Interactive {
+		if ab := buildActionsBlock(rec); ab != nil {
+			blocks = append(blocks, *ab)
+		}
 	}
 
 	attachment := slackAttachment{Color: color}

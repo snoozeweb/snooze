@@ -1,0 +1,14 @@
+---
+name: 'telegraminteractive'
+desc: 'Receive Telegram inline-keyboard button presses (ack/close/re-open an alert from chat)'
+
+# This is a webhook receiver, not a notifier — it has no action_form. It is
+# mounted publicly (authentication: false) like the other receivers; the
+# state-mutation endpoint is protected INSIDE the handler by a constant-time
+# match of the X-Telegram-Bot-Api-Secret-Token header against the configured
+# telegram_interactive.secret_token (fail-closed: an unset secret 401s every
+# request). `write: [any]` mirrors the other receivers' authorization policy.
+route_defaults:
+    authentication: false
+    authorization_policy:
+        write: [any]
