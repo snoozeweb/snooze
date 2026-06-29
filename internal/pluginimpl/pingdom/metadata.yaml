@@ -1,0 +1,7 @@
+---
+name: 'pingdom'
+desc: 'Receive Pingdom uptime check state-change webhooks'
+route_defaults:
+    authentication: false
+    authorization_policy:
+        write: [any]

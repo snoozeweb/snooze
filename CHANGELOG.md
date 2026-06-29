@@ -46,6 +46,9 @@
   host; `check_result.result_description` the message. Query-string overrides
   `event`, `environment`, `service`, `severity`, and `event_type` mirror the
   Alerta Graylog webhook contract.
+- **`pingdom`** — Pingdom uptime state-change webhook receiver. DOWN events
+  produce `warning`/`critical` records; UP events close the prior DOWN via
+  `State="close"`. Mounted at `/api/v1/webhook/pingdom`.
 - **Heartbeat — computed `status` field on list/get responses.** `GET
   /api/v1/heartbeat` and `GET /api/v1/heartbeat/{uid}` now include a
   read-time `status` field (`ok` or `overdue`) on every heartbeat document.

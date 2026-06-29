@@ -65,6 +65,7 @@ import (
 	_ "github.com/snoozeweb/snooze/internal/pluginimpl/influxdb2"
 	_ "github.com/snoozeweb/snooze/internal/pluginimpl/kapacitor"
 	_ "github.com/snoozeweb/snooze/internal/pluginimpl/newrelic"
+	_ "github.com/snoozeweb/snooze/internal/pluginimpl/pingdom"
 	_ "github.com/snoozeweb/snooze/internal/pluginimpl/prometheus"
 	_ "github.com/snoozeweb/snooze/internal/pluginimpl/sentry"
 

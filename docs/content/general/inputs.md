@@ -10,7 +10,7 @@ To receive alerts from different sources, Snooze server exposes an HTTP API; eac
 
 :::info
 
-The full catalogue of input integrations — REST API, Prometheus, Alertmanager, Grafana, CloudWatch, Datadog, Azure Monitor, Sentry, New Relic, InfluxDB 2, Kapacitor, Syslog, SNMP traps, RELP, SMTP, OpenTelemetry, Kubernetes events, heartbeats and Pacemaker — with per-integration setup — lives under [Integrations](./integrations/index.md).
+The full catalogue of input integrations — REST API, Prometheus, Alertmanager, Grafana, CloudWatch, Datadog, Azure Monitor, Sentry, New Relic, Pingdom, InfluxDB 2, Kapacitor, Syslog, SNMP traps, RELP, SMTP, OpenTelemetry, Kubernetes events, heartbeats and Pacemaker — with per-integration setup — lives under [Integrations](./integrations/index.md).
 
 :::
 
