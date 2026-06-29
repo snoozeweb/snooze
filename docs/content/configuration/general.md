@@ -74,3 +74,5 @@ The Go schema lives in `internal/config/schema/general.go`.
 >
 > List of severities that will automatically close the aggregate upon entering the system. This is mainly for icinga/grafana that can close the alert when the status becomes green again
 
+Snooze ranks severities on a syslog-anchored ladder (`emerg > alert > crit/critical > err/error > warn/warning > notice > info > debug > ok`), with common aliases folded in. Values are matched case-insensitively; unknown severities are accepted and treated as opaque (they don't participate in ordering until ranked — see the console severity settings).
+

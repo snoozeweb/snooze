@@ -34,6 +34,16 @@ func tctx() context.Context {
 	return auth.WithTenant(context.Background(), snoozetypes.DefaultTenant)
 }
 
+// TestSeverityVocabularyImportable is an import-cycle smoke test: it confirms
+// this server-internal plugin package can import the canonical severity
+// vocabulary from pkg/snoozetypes without an import cycle, before Plan 30 wires
+// real rank-comparison usage here.
+func TestSeverityVocabularyImportable(t *testing.T) {
+	if len(snoozetypes.DefaultSeverityRank) == 0 {
+		t.Fatal("snoozetypes.DefaultSeverityRank is empty; expected the canonical severity ladder")
+	}
+}
+
 // statCaptureDriver wraps a real db.Driver and captures every BulkIncrement
 // call directed at the stats collection so tests can assert on them without
 // needing a full production pipeline.
