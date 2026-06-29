@@ -40,6 +40,57 @@ func TestValidateOIDC_EnabledHTTPSIssuer(t *testing.T) {
 	require.Contains(t, err.Error(), "https")
 }
 
+// TestValidateOIDCEntries_DuplicateMethod: two entries sharing the same method
+// slug fail validation with a "duplicate method" error.
+func TestValidateOIDCEntries_DuplicateMethod(t *testing.T) {
+	c := Default()
+	c.OIDCProviders = []schema.OIDC{
+		{Method: "google", Enabled: false},
+		{Method: "google", Enabled: false},
+	}
+	err := c.Validate()
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "duplicate method")
+}
+
+// TestValidateOIDCEntries_PresetParamError: an enabled entry with a bad preset
+// (azure missing tenant) fails validation, surfacing the preset error early.
+func TestValidateOIDCEntries_PresetParamError(t *testing.T) {
+	c := Default()
+	c.OIDCProviders = []schema.OIDC{
+		{Method: "azure", Provider: "azure", Enabled: true,
+			ClientID: "c", ClientSecret: "s", RedirectURL: "https://snooze/cb"},
+	}
+	err := c.Validate()
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "tenant")
+}
+
+// TestValidateOIDCEntries_PresetFillsIssuer: an enabled entry with a valid
+// preset and no explicit issuer passes validation (ResolvePreset fills the
+// issuer before the https check).
+func TestValidateOIDCEntries_PresetFillsIssuer(t *testing.T) {
+	c := Default()
+	c.OIDCProviders = []schema.OIDC{
+		{Method: "google", Provider: "google", Enabled: true,
+			ClientID: "c", ClientSecret: "s", RedirectURL: "https://snooze/cb"},
+	}
+	require.NoError(t, c.Validate())
+}
+
+// TestValidateOIDCEntries_EnabledRequiresSecret: an enabled multi-IdP entry with
+// no client_secret fails validation (mirrors the legacy single-OIDC rule).
+func TestValidateOIDCEntries_EnabledRequiresSecret(t *testing.T) {
+	c := Default()
+	c.OIDCProviders = []schema.OIDC{
+		{Method: "google", Provider: "google", Enabled: true,
+			ClientID: "c", RedirectURL: "https://snooze/cb"},
+	}
+	err := c.Validate()
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "client_secret")
+}
+
 func TestLoad_OIDCEnvOverride(t *testing.T) {
 	t.Setenv("SNOOZE_SERVER_OIDC_ENABLED", "true")
 	t.Setenv("SNOOZE_SERVER_OIDC_ISSUER", "https://login.microsoftonline.com/tid/v2.0")

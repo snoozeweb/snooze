@@ -9,6 +9,7 @@ import (
 
 	"github.com/go-playground/validator/v10"
 
+	"github.com/snoozeweb/snooze/internal/auth"
 	"github.com/snoozeweb/snooze/internal/config/schema"
 )
 
@@ -44,6 +45,9 @@ func validate(c *Config) error {
 	}
 	if err := validateOIDC(&c.OIDC); err != nil {
 		return fmt.Errorf("config: oidc: %w", err)
+	}
+	if err := validateOIDCEntries(c.OIDCProviders); err != nil {
+		return fmt.Errorf("config: oidc_providers: %w", err)
 	}
 	if err := validateSAML(&c.SAML); err != nil {
 		return fmt.Errorf("config: saml: %w", err)
@@ -107,6 +111,36 @@ func validateOIDC(o *schema.OIDC) error {
 	}
 	if !strings.HasPrefix(o.Issuer, "https://") {
 		return fmt.Errorf("issuer must be an https URL, got %q", o.Issuer)
+	}
+	return nil
+}
+
+// validateOIDCEntries validates the multi-IdP slice (Config.OIDCProviders). For
+// each entry it resolves the provider preset first (so a bad provider/missing
+// provider_params surfaces a clear error), then applies the same per-entry
+// field checks as the single-IdP path, and finally ensures no two entries share
+// the same method slug (which is the login URL segment + JWT method claim and
+// must be unique across providers). An empty slice is valid — the legacy single
+// `oidc:` path is used instead.
+func validateOIDCEntries(oo []schema.OIDC) error {
+	seen := make(map[string]struct{}, len(oo))
+	for i := range oo {
+		o := oo[i]
+		// Resolve the preset on a copy so the issuer is filled before the
+		// per-entry https/required-field checks run.
+		if err := auth.ResolvePreset(&o); err != nil {
+			return fmt.Errorf("entry %d (method %q): %w", i, o.Method, err)
+		}
+		if err := validateOIDC(&o); err != nil {
+			return fmt.Errorf("entry %d (method %q): %w", i, o.Method, err)
+		}
+		if o.Method == "" {
+			return fmt.Errorf("entry %d: method is required", i)
+		}
+		if _, dup := seen[o.Method]; dup {
+			return fmt.Errorf("duplicate method %q", o.Method)
+		}
+		seen[o.Method] = struct{}{}
 	}
 	return nil
 }

@@ -21,21 +21,22 @@ const envPrefix = "SNOOZE_SERVER_"
 // extension) and the dotted koanf path it populates. The legacy Python config
 // file names are preserved so existing deployments can be migrated 1:1.
 var sectionFiles = map[string]string{
-	"core":          "core",
-	"general":       "general",
-	"housekeeper":   "housekeeping",
-	"housekeeping":  "housekeeping",
-	"notifications": "notification",
-	"notification":  "notification",
-	"ldap_auth":     "ldap",
-	"ldap":          "ldap",
-	"web":           "web",
-	"auth":          "auth",
-	"syncer":        "syncer",
-	"ingest":        "ingest",
-	"oidc":          "oidc",
-	"saml":          "saml",
-	"auth_proxy":    "auth_proxy",
+	"core":           "core",
+	"general":        "general",
+	"housekeeper":    "housekeeping",
+	"housekeeping":   "housekeeping",
+	"notifications":  "notification",
+	"notification":   "notification",
+	"ldap_auth":      "ldap",
+	"ldap":           "ldap",
+	"web":            "web",
+	"auth":           "auth",
+	"syncer":         "syncer",
+	"ingest":         "ingest",
+	"oidc":           "oidc",
+	"oidc_providers": "oidc_providers",
+	"saml":           "saml",
+	"auth_proxy":     "auth_proxy",
 }
 
 // Load reads every known section YAML file under basedir, layers environment
@@ -119,6 +120,16 @@ func loadYAMLFiles(k *koanf.Koanf, basedir string) error {
 			continue
 		}
 		path := filepath.Join(basedir, name)
+		// oidc_providers.yaml is a TOP-LEVEL YAML LIST, which koanf's yaml parser
+		// (a map[string]any document) cannot decode (it errors with
+		// "cannot unmarshal !!seq into map"). We parse it ourselves with yaml.v3
+		// into a slice and set it directly under the koanf key. See loadListFile.
+		if section == "oidc_providers" {
+			if err := loadListFile(k, path, section); err != nil {
+				return fmt.Errorf("config: load %s: %w", path, err)
+			}
+			continue
+		}
 		if err := k.Load(file.Provider(path), yaml.Parser(),
 			koanf.WithMergeFunc(mergeUnder(section)),
 		); err != nil {
@@ -126,6 +137,26 @@ func loadYAMLFiles(k *koanf.Koanf, basedir string) error {
 		}
 	}
 	return nil
+}
+
+// loadListFile reads a YAML file whose top-level document is a sequence and
+// sets it on k under the given dotted key. koanf's yaml parser only accepts a
+// mapping document, so a list-shaped section (oidc_providers) is parsed here
+// with yaml.v3 directly and injected as a []any. An empty/absent file leaves
+// the seeded default (an empty list) in place.
+func loadListFile(k *koanf.Koanf, path, key string) error {
+	raw, err := os.ReadFile(path) //nolint:gosec // path comes from the trusted config dir scan
+	if err != nil {
+		return err
+	}
+	if len(strings.TrimSpace(string(raw))) == 0 {
+		return nil
+	}
+	var list []any
+	if err := yamlv3.Unmarshal(raw, &list); err != nil {
+		return err
+	}
+	return k.Set(key, list)
 }
 
 // mergeUnder produces a koanf merge function that injects every parsed key
@@ -235,6 +266,13 @@ func walkStruct(t reflect.Type, prefix []string, out map[string]string) {
 // isListField returns true for fields whose value should be split on commas
 // when supplied via an environment variable. Built statically because koanf's
 // env provider does not see the destination struct.
+//
+// Note: this only covers SCALAR slices. The multi-IdP oidc_providers list is a
+// slice-of-struct loaded from oidc_providers.yaml; per-entry env override
+// (SNOOZE_SERVER_OIDC_PROVIDERS_*) is NOT supported because there is no stable
+// env key shape for an indexed struct field. The legacy single oidc.scopes
+// override still works. This limitation is documented in
+// docs/content/configuration/oidc_auth.md.
 func isListField(path string) bool {
 	switch path {
 	case "core.audit_excluded_paths",
@@ -343,6 +381,7 @@ func defaultsYAML() ([]byte, error) {
 			"roles_claim":      d.OIDC.RolesClaim,
 			"groups_claim":     d.OIDC.GroupsClaim,
 			"admin_role_value": d.OIDC.AdminRoleValue,
+			"provider":         d.OIDC.Provider,
 		},
 		"saml": map[string]any{
 			"enabled":                d.SAML.Enabled,
@@ -353,6 +392,9 @@ func defaultsYAML() ([]byte, error) {
 			"icon":                   d.SAML.Icon,
 			"admin_role_value":       d.SAML.AdminRoleValue,
 		},
+		// oidc_providers is an optional multi-IdP list; the default is empty
+		// (the legacy single `oidc:` path is used unless this is populated).
+		"oidc_providers": []any{},
 		"auth_proxy": map[string]any{
 			"enabled":          d.AuthProxy.Enabled,
 			"user_header":      d.AuthProxy.UserHeader,

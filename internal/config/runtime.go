@@ -106,6 +106,10 @@ type OIDCConfig = schema.OIDC
 // writes to.
 const settingsCollection = "settings"
 
+// ErrUnknownProvider is returned by OIDCByMethod when the requested method is
+// not present in the baseline OIDCProviders slice.
+var ErrUnknownProvider = errors.New("unknown OIDC provider method")
+
 // RuntimeSettings reads DB-backed settings with a small read-through cache.
 // The cache is tenant-partitioned: each tenant gets its own snapshot, keyed by
 // tenant slug. The PATCH/POST/PUT/DELETE handler for the “settings“ collection
@@ -201,6 +205,39 @@ func (r *RuntimeSettings) OIDC(ctx context.Context) (OIDCConfig, error) {
 	}
 	out := r.baseline.OIDC
 	applyOIDCOverrides(&out, values)
+	return out, nil
+}
+
+// OIDCByMethod returns the live config for one entry of the multi-IdP
+// OIDCProviders slice, identified by its method slug. The baseline entry is the
+// starting point; any DB-stored “oidc.<method>.*“ keys overlay the matching
+// fields. As with the single-IdP OIDC path, “client_secret“ and “method“ are
+// NEVER sourced from the DB — the secret stays a file/env secret and the method
+// is the login URL segment + identity claim. An unknown method returns
+// ErrUnknownProvider. The returned value is a copy; callers may mutate it.
+func (r *RuntimeSettings) OIDCByMethod(ctx context.Context, method string) (OIDCConfig, error) {
+	if r == nil {
+		return OIDCConfig{}, ErrUnknownProvider
+	}
+	var (
+		out   schema.OIDC
+		found bool
+	)
+	for _, e := range r.baseline.OIDCProviders {
+		if e.Method == method {
+			out = e
+			found = true
+			break
+		}
+	}
+	if !found {
+		return OIDCConfig{}, fmt.Errorf("%w: %q", ErrUnknownProvider, method)
+	}
+	values, err := r.load(ctx)
+	if err != nil {
+		return OIDCConfig{}, err
+	}
+	applyOIDCOverridesByMethod(&out, method, values)
 	return out, nil
 }
 
@@ -518,6 +555,50 @@ func applyOIDCOverrides(out *schema.OIDC, values map[string]any) {
 		}
 	}
 	if v, ok := values["oidc.groups_claim"]; ok {
+		if s, ok := asString(v); ok {
+			out.GroupsClaim = s
+		}
+	}
+}
+
+// applyOIDCOverridesByMethod overlays the per-method dotted-prefix DB values
+// (“oidc.<method>.enabled“, “oidc.<method>.issuer“, …) onto a baseline OIDC
+// entry. It mirrors applyOIDCOverrides exactly — same overridable field set,
+// and the client_secret + method are deliberately NOT taken from the DB (the
+// secret stays file/env, the method is the fixed login URL segment + claim).
+func applyOIDCOverridesByMethod(out *schema.OIDC, method string, values map[string]any) {
+	prefix := "oidc." + method + "."
+	if v, ok := values[prefix+"enabled"]; ok {
+		if b, ok := asBool(v); ok {
+			out.Enabled = b
+		}
+	}
+	if v, ok := values[prefix+"issuer"]; ok {
+		if s, ok := asString(v); ok {
+			out.Issuer = s
+		}
+	}
+	if v, ok := values[prefix+"client_id"]; ok {
+		if s, ok := asString(v); ok {
+			out.ClientID = s
+		}
+	}
+	if v, ok := values[prefix+"redirect_url"]; ok {
+		if s, ok := asString(v); ok {
+			out.RedirectURL = s
+		}
+	}
+	if v, ok := values[prefix+"scopes"]; ok {
+		if ss, ok := asStringSlice(v); ok {
+			out.Scopes = ss
+		}
+	}
+	if v, ok := values[prefix+"roles_claim"]; ok {
+		if s, ok := asString(v); ok {
+			out.RolesClaim = s
+		}
+	}
+	if v, ok := values[prefix+"groups_claim"]; ok {
 		if s, ok := asString(v); ok {
 			out.GroupsClaim = s
 		}

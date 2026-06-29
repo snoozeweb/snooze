@@ -2,6 +2,17 @@
 
 ### Added
 
+- **OIDC provider presets + multiple simultaneous IdPs.** A new optional
+  `provider:` key (`google`/`azure`/`cognito`/`keycloak`/`gitlab`) plus
+  `provider_params` pre-fills the discovery `issuer` from a built-in table, so
+  common providers no longer need a hand-typed issuer URL (an explicit `issuer`
+  still wins). A new optional `oidc_providers.yaml` (a top-level list of OIDC
+  entries) registers several identity providers at once — e.g. corporate Entra
+  plus Google Workspace — each on its own `/api/v1/login/{method}` routes. The
+  legacy single `oidc:` config is unchanged and used as a fallback when
+  `oidc_providers` is empty, so existing deployments are unaffected.
+  `client_secret` stays per-entry, file/env only (never from the DB). GitHub
+  OAuth (no `id_token`) remains out of scope.
 - **Timed shelve with auto-return.** Posting a `shelve` comment transitions an
   alert to `shelved` and stamps a `shelve_until` epoch. A new minute-cadence
   housekeeper sweep reverts any shelved alert past its deadline back to `open`

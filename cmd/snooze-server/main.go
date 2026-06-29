@@ -668,16 +668,37 @@ func buildAuthProviders(cfg *config.Config, drv db.Driver, rs *config.RuntimeSet
 	if cfg.General.AnonymousEnabled {
 		reg.Register(auth.NewAnonymousProvider(true))
 	}
-	// OIDC is always registered (like LDAP) so a runtime oidc.enabled=true edit
-	// takes effect without a restart. The provider reads its live config from
-	// RuntimeSettings (issuer/client_id/redirect_url/scopes/claims/enabled);
-	// the client_secret + method stay in the file-config baseline.
-	reg.Register(auth.NewOIDCProvider(cfg.OIDC, func(ctx context.Context) (schema.OIDC, error) {
-		if rs == nil {
-			return cfg.OIDC, nil
+	// OIDC providers are always registered (like LDAP) so a runtime
+	// oidc[.<method>].enabled=true edit takes effect without a restart. Each
+	// provider reads its live config from RuntimeSettings
+	// (issuer/client_id/redirect_url/scopes/claims/enabled); the client_secret +
+	// method stay in the file-config baseline.
+	//
+	// EffectiveOIDCProviders is the backward-compat seam: when the multi-IdP
+	// oidc_providers list is non-empty we register one provider per entry and
+	// each reads its live config via OIDCByMethod; otherwise it returns the
+	// single legacy OIDC (when configured), which reads via the unchanged
+	// OIDC(ctx) path. A blank legacy config yields an empty list — nothing is
+	// registered.
+	providers := cfg.OIDCProviders
+	if len(providers) > 0 {
+		for _, entry := range providers {
+			e := entry // capture per iteration
+			reg.Register(auth.NewOIDCProvider(e, func(ctx context.Context) (schema.OIDC, error) {
+				if rs == nil {
+					return e, nil
+				}
+				return rs.OIDCByMethod(ctx, e.Method)
+			}))
 		}
-		return rs.OIDC(ctx)
-	}))
+	} else if cfg.OIDC.Enabled || cfg.OIDC.Method != "" {
+		reg.Register(auth.NewOIDCProvider(cfg.OIDC, func(ctx context.Context) (schema.OIDC, error) {
+			if rs == nil {
+				return cfg.OIDC, nil
+			}
+			return rs.OIDC(ctx)
+		}))
+	}
 	// SAML is file-config only (no runtime toggle), so unlike OIDC it is
 	// registered only when cfg.SAML.Enabled. The underlying ServiceProvider
 	// (SP key/cert + IdP metadata) is built lazily on the first /start or /acs.

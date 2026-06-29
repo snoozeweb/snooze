@@ -9,6 +9,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/snoozeweb/snooze/internal/auth"
+	"github.com/snoozeweb/snooze/internal/config/schema"
 	"github.com/snoozeweb/snooze/internal/db"
 	"github.com/snoozeweb/snooze/internal/db/sqlite"
 	"github.com/snoozeweb/snooze/pkg/snoozetypes"
@@ -93,6 +94,69 @@ func TestRuntimeSettingsOIDCOverridesExceptSecret(t *testing.T) {
 	require.Equal(t, []string{"openid", "profile", "email", "User.Read"}, got.Scopes)
 	require.Equal(t, "file-secret", got.ClientSecret, "client_secret must never come from the DB")
 	require.Equal(t, "microsoft", got.Method, "method must never come from the DB")
+}
+
+// TestRuntimeSettings_OIDCByMethod_FallsBackToBaseline: with no DB overrides,
+// OIDCByMethod returns the matching baseline entry from OIDCProviders.
+func TestRuntimeSettings_OIDCByMethod_FallsBackToBaseline(t *testing.T) {
+	d := newDriver(t)
+	ctx := auth.WithTenant(context.Background(), snoozetypes.DefaultTenant)
+	baseline := Default()
+	baseline.OIDCProviders = []schema.OIDC{
+		{Method: "google", Provider: "google", Issuer: "https://accounts.google.com",
+			ClientID: "gid", ClientSecret: "gsec"},
+		{Method: "azure", Provider: "azure", Issuer: "https://login.microsoftonline.com/tid/v2.0",
+			ClientID: "aid", ClientSecret: "asec"},
+	}
+
+	rs := NewRuntimeSettings(d, baseline, time.Minute)
+	got, err := rs.OIDCByMethod(ctx, "azure")
+	require.NoError(t, err)
+	require.Equal(t, "azure", got.Method)
+	require.Equal(t, "aid", got.ClientID)
+	require.Equal(t, "asec", got.ClientSecret)
+}
+
+// TestRuntimeSettings_OIDCByMethod_AppliesOverride: a DB row keyed
+// oidc.<method>.enabled overrides that entry's field; the client_secret stays
+// file-config-only (a stray DB row must be ignored).
+func TestRuntimeSettings_OIDCByMethod_AppliesOverride(t *testing.T) {
+	d := newDriver(t)
+	ctx := auth.WithTenant(context.Background(), snoozetypes.DefaultTenant)
+	baseline := Default()
+	baseline.OIDCProviders = []schema.OIDC{
+		{Method: "google", Provider: "google", Issuer: "https://accounts.google.com",
+			ClientID: "gid", ClientSecret: "file-secret", Enabled: false},
+	}
+
+	writeSetting(ctx, t, d, "oidc.google.enabled", true)
+	writeSetting(ctx, t, d, "oidc.google.client_id", "gid-override")
+	// Stray secret/method rows must be ignored.
+	writeSetting(ctx, t, d, "oidc.google.client_secret", "db-secret-should-be-ignored")
+	writeSetting(ctx, t, d, "oidc.google.method", "evil")
+
+	rs := NewRuntimeSettings(d, baseline, time.Minute)
+	got, err := rs.OIDCByMethod(ctx, "google")
+	require.NoError(t, err)
+	require.True(t, got.Enabled)
+	require.Equal(t, "gid-override", got.ClientID)
+	require.Equal(t, "file-secret", got.ClientSecret, "client_secret must never come from the DB")
+	require.Equal(t, "google", got.Method, "method must never come from the DB")
+}
+
+// TestRuntimeSettings_OIDCByMethod_UnknownMethod: a method not present in the
+// OIDCProviders slice returns ErrUnknownProvider.
+func TestRuntimeSettings_OIDCByMethod_UnknownMethod(t *testing.T) {
+	d := newDriver(t)
+	ctx := auth.WithTenant(context.Background(), snoozetypes.DefaultTenant)
+	baseline := Default()
+	baseline.OIDCProviders = []schema.OIDC{
+		{Method: "google", Provider: "google", Issuer: "https://accounts.google.com"},
+	}
+
+	rs := NewRuntimeSettings(d, baseline, time.Minute)
+	_, err := rs.OIDCByMethod(ctx, "nope")
+	require.ErrorIs(t, err, ErrUnknownProvider)
 }
 
 // TestRuntimeSettingsHousekeeperOverridesDuration locks in that string-form

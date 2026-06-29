@@ -210,6 +210,43 @@ func TestBuildAuthProviders(t *testing.T) {
 	require.True(t, ok, "registered saml provider must implement auth.SAMLProvider")
 }
 
+// TestBuildAuthProviders_MultiOIDC: a config with two OIDCProviders entries
+// registers one provider per entry (both methods appear), and the single legacy
+// OIDC method is NOT registered (the multi-IdP slice takes precedence).
+func TestBuildAuthProviders_MultiOIDC(t *testing.T) {
+	cfg := config.Default()
+	cfg.OIDCProviders = []schema.OIDC{
+		{Method: "google", Provider: "google", Issuer: "https://accounts.google.com",
+			ClientID: "gid", ClientSecret: "gsec", DisplayName: "Google", Icon: "google"},
+		{Method: "azure", Provider: "azure", Issuer: "https://login.microsoftonline.com/tid/v2.0",
+			ClientID: "aid", ClientSecret: "asec", DisplayName: "Microsoft Entra", Icon: "microsoft"},
+	}
+	reg := buildAuthProviders(cfg, nil, nil)
+	require.Subset(t, reg.Names(), []string{"google", "azure"})
+	// The legacy single-OIDC default method ("microsoft") is absent when the
+	// multi-IdP slice is in use.
+	require.NotContains(t, reg.Names(), "microsoft")
+}
+
+// TestBuildAuthProviders_SingleOIDCFallback: with no OIDCProviders, the legacy
+// scalar OIDC is registered under its method when it is configured.
+func TestBuildAuthProviders_SingleOIDCFallback(t *testing.T) {
+	cfg := config.Default() // OIDC.Method = "microsoft", Enabled = false but Method set
+	reg := buildAuthProviders(cfg, nil, nil)
+	require.Contains(t, reg.Names(), "microsoft")
+}
+
+// TestBuildAuthProviders_LegacyDisabledNoRegister: with no OIDCProviders and the
+// legacy OIDC having neither Enabled nor a Method, no OIDC provider is
+// registered (defensive: a hand-blanked config).
+func TestBuildAuthProviders_LegacyDisabledNoRegister(t *testing.T) {
+	cfg := config.Default()
+	cfg.OIDC.Method = ""
+	cfg.OIDC.Enabled = false
+	reg := buildAuthProviders(cfg, nil, nil)
+	require.NotContains(t, reg.Names(), "microsoft")
+}
+
 // TestSplitHostPort exercises the small flag helper in isolation.
 func TestSplitHostPort(t *testing.T) {
 	cases := []struct {

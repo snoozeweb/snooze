@@ -24,6 +24,14 @@ type Config struct {
 	OIDC         schema.OIDC         `koanf:"oidc"`
 	SAML         schema.SAML         `koanf:"saml"`
 	AuthProxy    schema.AuthProxy    `koanf:"auth_proxy"`
+
+	// OIDCProviders is the OPTIONAL multi-IdP list, loaded from
+	// oidc_providers.yaml. It is independent of the legacy scalar OIDC above:
+	// when this slice is non-empty buildAuthProviders registers one provider per
+	// entry; when empty it falls back to the single OIDC. See
+	// EffectiveOIDCProviders. Kept separate (not a refactor of OIDC into a slice)
+	// so every existing single-`oidc:` deployment loads byte-identically.
+	OIDCProviders []schema.OIDC `koanf:"oidc_providers"`
 }
 
 // Default returns a Config populated with the canonical default values for
@@ -50,3 +58,21 @@ func Default() *Config {
 // “Load“ and can be invoked again after any in-memory mutation (which should
 // be rare — runtime mutations belong to :type:`RuntimeSettings`).
 func (c *Config) Validate() error { return validate(c) }
+
+// EffectiveOIDCProviders returns the operative list of OIDC identity providers:
+// the explicit multi-IdP slice (OIDCProviders) when it is non-empty, otherwise
+// a single-element slice wrapping the legacy scalar OIDC — but only when that
+// legacy entry is actually configured (Enabled or a non-empty Method). When
+// neither is set it returns nil. This is the single seam that preserves
+// backward compatibility: existing single-`oidc:` deployments take the fallback
+// branch and behave exactly as before. Both buildAuthProviders (provider
+// registration) and core.bootstrap (admin-group seeding) consume it.
+func (c *Config) EffectiveOIDCProviders() []schema.OIDC {
+	if len(c.OIDCProviders) > 0 {
+		return c.OIDCProviders
+	}
+	if c.OIDC.Enabled || c.OIDC.Method != "" {
+		return []schema.OIDC{c.OIDC}
+	}
+	return nil
+}

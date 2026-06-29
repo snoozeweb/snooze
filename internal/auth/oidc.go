@@ -111,9 +111,20 @@ type oidcInit struct {
 
 // oidcConfigSignature fingerprints the fields that feed OIDC discovery + the
 // oauth2/verifier setup. When it changes (operator edited issuer/client_id/
-// scopes/redirect/secret) the cached discovery is rebuilt on the next use.
+// scopes/redirect/secret, or the preset provider/provider_params) the cached
+// discovery is rebuilt on the next use. Provider + sorted provider_params are
+// included so a live preset-param edit (which changes the resolved issuer)
+// triggers rediscovery even though Issuer is filled later by ResolvePreset.
 func oidcConfigSignature(c schema.OIDC) string {
-	parts := append([]string{c.Issuer, c.ClientID, c.ClientSecret, c.RedirectURL}, c.Scopes...)
+	parts := append([]string{c.Issuer, c.ClientID, c.ClientSecret, c.RedirectURL, c.Provider}, c.Scopes...)
+	keys := make([]string, 0, len(c.ProviderParams))
+	for k := range c.ProviderParams {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	for _, k := range keys {
+		parts = append(parts, k+"="+c.ProviderParams[k])
+	}
 	return strings.Join(parts, "\x00")
 }
 
@@ -125,6 +136,11 @@ func oidcConfigSignature(c schema.OIDC) string {
 // (nil source, inited pinned true) short-circuits with no network discovery.
 func (p *OIDCProvider) ensureInit(ctx context.Context) (oidcInit, schema.OIDC, error) {
 	cfg := p.effective(ctx)
+	// Resolve the preset (provider/provider_params -> issuer) on the effective
+	// copy before discovery, so a live provider_params edit takes effect. A
+	// preset error here is non-fatal to the signature computation; the issuer
+	// stays empty and oidc.NewProvider below surfaces the real failure.
+	_ = ResolvePreset(&cfg)
 	sig := oidcConfigSignature(cfg)
 	p.mu.Lock()
 	defer p.mu.Unlock()

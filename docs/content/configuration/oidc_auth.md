@@ -184,6 +184,124 @@ The Go schema lives in `internal/config/schema/oidc.go`; the runtime overlay in
 > installs you add the value manually through the Roles UI (see
 > [Role mapping](#role-mapping)).
 
+### provider
+
+> Type  
+> string (optional)
+>
+> Default  
+> _(empty)_
+>
+> Optional **preset key** that pre-fills `issuer` from a built-in table so you
+> do not have to hand-type the discovery URL. Recognized values: `google`,
+> `azure`, `cognito`, `keycloak`, `gitlab`. When set, the issuer is resolved at
+> config-load time and again before each sign-in (so a live `provider_params`
+> edit takes effect). An explicitly-set `issuer` **always wins** — the preset is
+> advisory. An unknown value (e.g. `github`) is a configuration error. See
+> [Provider presets](#provider-presets) for the full table.
+
+### provider_params
+
+> Type  
+> map[string]string (optional)
+>
+> Preset-specific template variables consumed when `provider` is set. The
+> required keys depend on the preset (e.g. `tenant` for `azure`, `region` +
+> `pool_id` for `cognito`). See [Provider presets](#provider-presets).
+
+## Provider presets {#provider-presets}
+
+Instead of hand-typing the issuer discovery URL you can set `provider:` to a
+recognized preset; Snooze fills `issuer` from the table below. Set `issuer:`
+explicitly to override the preset for any provider.
+
+| `provider` | Resolved `issuer` | Required `provider_params` |
+|---|---|---|
+| `google` | `https://accounts.google.com` | _(none)_ |
+| `azure` | `https://login.microsoftonline.com/{tenant}/v2.0` | `tenant` |
+| `cognito` | `https://cognito-idp.{region}.amazonaws.com/{pool_id}` | `region`, `pool_id` |
+| `keycloak` | `{url}/realms/{realm}` | `url`, `realm` |
+| `gitlab` | `{url}` (defaults to `https://gitlab.com`) | _(none; `url` optional)_ |
+
+```yaml title="oidc.yaml — Google Workspace via preset"
+enabled: true
+provider: google           # fills issuer = https://accounts.google.com
+client_id: "<google-client-id>"
+client_secret: ""          # via SNOOZE_SERVER_OIDC_CLIENT_SECRET
+redirect_url: "https://<snooze-host>/api/v1/login/microsoft/callback"
+```
+
+```yaml title="oidc.yaml — Keycloak via preset"
+enabled: true
+provider: keycloak
+provider_params:
+  url: "https://idp.corp.example"
+  realm: "snooze"
+client_id: "snooze"
+client_secret: ""          # via SNOOZE_SERVER_OIDC_CLIENT_SECRET
+redirect_url: "https://<snooze-host>/api/v1/login/microsoft/callback"
+```
+
+> **GitHub is out of scope.** GitHub OAuth has no `id_token` and is a custom
+> REST provider, not OIDC; setting `provider: github` is rejected. A native
+> GitHub backend is tracked as a separate, future plan.
+
+## Multiple simultaneous identity providers {#multi-idp}
+
+A single `oidc.yaml` configures one IdP. To run **several IdPs at once** (e.g.
+corporate Entra for employees plus Google Workspace for contractors), add a
+separate `oidc_providers.yaml` file — a **top-level YAML list**, one entry per
+provider. Each entry is the same `schema.OIDC` shape as `oidc.yaml`, plus a
+mandatory unique `method` (the login URL segment + identity claim).
+
+```yaml title="oidc_providers.yaml"
+- method: google
+  provider: google
+  enabled: true
+  client_id: "<google-client-id>"
+  client_secret: ""        # see the secret note below
+  redirect_url: "https://snooze.corp/api/v1/login/google/callback"
+- method: azure
+  provider: azure
+  provider_params:
+    tenant: "00000000-0000-0000-0000-000000000000"
+  enabled: true
+  client_id: "<entra-client-id>"
+  client_secret: ""
+  redirect_url: "https://snooze.corp/api/v1/login/azure/callback"
+```
+
+Behavior and constraints:
+
+- **Precedence.** When `oidc_providers.yaml` is present and non-empty it is used
+  and the single legacy `oidc.yaml` entry is **not** registered. When it is
+  absent or empty, the legacy `oidc.yaml` path is used unchanged. Existing
+  single-IdP deployments are unaffected — no migration is required.
+- **Unique `method`.** Two entries sharing a `method` fail validation at boot
+  (`duplicate method`). Each `method` becomes the login route segment
+  (`/api/v1/login/{method}/start`) and the JWT method claim, so it must be
+  unique and stable.
+- **`client_secret` is still per-entry and file/env only.** It is never read
+  from the database. Because there is one `SNOOZE_SERVER_OIDC_CLIENT_SECRET`
+  variable, in multi-IdP deployments put each entry's secret directly in
+  `oidc_providers.yaml` (mounted as a secret file by your deployment tooling),
+  or use distinct env/secret-file injection per entry. Do not commit secrets.
+- **Admin-group seeding.** On a fresh install the seeded `admin` role's
+  `groups[]` is populated from the **first enabled entry that carries an
+  `admin_role_value`**.
+- **Live runtime override.** Per-entry runtime overrides use keys of the form
+  `oidc.<method>.<field>` (e.g. `oidc.google.enabled`) rather than the
+  single-IdP `oidc.<field>`. The `client_secret` and `method` of an entry are
+  never overridable from the DB, mirroring the single-IdP rule.
+- **Env-var override limitation.** Individual fields of `oidc_providers` entries
+  **cannot** be overridden via `SNOOZE_SERVER_OIDC_PROVIDERS_*` environment
+  variables — there is no stable env-key shape for an indexed slice-of-struct
+  field. Edit `oidc_providers.yaml` directly (or use the per-method runtime
+  override keys above). The legacy single-IdP `SNOOZE_SERVER_OIDC_*` overrides
+  still work.
+- **Web UI.** The **Settings → OIDC / SSO** tab edits the single legacy entry
+  today; live multi-IdP editing through the UI is not yet exposed.
+
 ## Example configuration
 
 ```yaml title="oidc.yaml"

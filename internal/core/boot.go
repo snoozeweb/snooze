@@ -57,11 +57,11 @@ func (c *Core) bootstrap(ctx context.Context) error {
 			return fmt.Errorf("boot: auth bootstrap db: %w", err)
 		}
 		// Seed default RBAC roles + aggregate rule + init marker under the
-		// default tenant.
-		adminGroup := ""
-		if c.Cfg.OIDC.Enabled {
-			adminGroup = c.Cfg.OIDC.AdminRoleValue
-		}
+		// default tenant. The admin-group value is taken from the effective OIDC
+		// provider list (multi-IdP slice, or the single legacy OIDC fallback) so
+		// the turnkey admin->admin mapping works regardless of which OIDC config
+		// shape the operator used.
+		adminGroup := effectiveAdminGroup(c.Cfg)
 		if err := BootstrapDB(seedCtx, c.Driver, adminGroup); err != nil {
 			return fmt.Errorf("boot: bootstrap db: %w", err)
 		}
@@ -99,6 +99,22 @@ func (c *Core) bootstrap(ctx context.Context) error {
 		return err
 	}
 	return nil
+}
+
+// effectiveAdminGroup returns the OIDC admin-role value used to seed the
+// "admin" RBAC role's groups[] on first boot (the turnkey admin->admin
+// mapping). It walks the effective OIDC provider list (the multi-IdP slice, or
+// the single legacy OIDC fallback) and returns the first ENABLED entry's
+// non-empty AdminRoleValue. A disabled entry is skipped so a configured-but-off
+// provider does not silently grant admin to a literal group named after its
+// AdminRoleValue. Returns "" when no enabled entry carries one.
+func effectiveAdminGroup(cfg *config.Config) string {
+	for _, o := range cfg.EffectiveOIDCProviders() {
+		if o.Enabled && o.AdminRoleValue != "" {
+			return o.AdminRoleValue
+		}
+	}
+	return ""
 }
 
 // bootSecrets runs EnsureSecrets and constructs the TokenEngine plus the

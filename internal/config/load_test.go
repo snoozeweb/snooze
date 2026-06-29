@@ -227,6 +227,74 @@ sentry_secret: sentry-hmac-secret
 	require.Equal(t, "sentry-hmac-secret", cfg.Ingest.SentrySecret)
 }
 
+// TestLoad_OIDCProviders_Empty: with no oidc_providers.yaml, the new slice is
+// nil and the legacy scalar OIDC is unaffected.
+func TestLoad_OIDCProviders_Empty(t *testing.T) {
+	cfg, err := Load(t.TempDir())
+	require.NoError(t, err)
+	require.Empty(t, cfg.OIDCProviders)
+	// Legacy scalar still defaults as before.
+	require.Equal(t, "microsoft", cfg.OIDC.Method)
+	require.False(t, cfg.OIDC.Enabled)
+}
+
+// TestLoad_OIDCProviders_YAML: a top-level YAML list of two entries decodes
+// into cfg.OIDCProviders with the correct Method values. This is the koanf
+// slice-of-struct decode under test.
+func TestLoad_OIDCProviders_YAML(t *testing.T) {
+	dir := t.TempDir()
+	writeYAML(t, dir, "oidc_providers", `---
+- method: google
+  provider: google
+  enabled: true
+  issuer: https://accounts.google.com
+  client_id: gid
+  client_secret: gsec
+  redirect_url: https://snooze.corp/api/v1/login/google/callback
+- method: azure
+  provider: azure
+  provider_params:
+    tenant: tid-123
+  enabled: true
+  issuer: https://login.microsoftonline.com/tid-123/v2.0
+  client_id: aid
+  client_secret: asec
+  redirect_url: https://snooze.corp/api/v1/login/azure/callback
+`)
+	cfg, err := Load(dir)
+	require.NoError(t, err)
+	require.Len(t, cfg.OIDCProviders, 2)
+	require.Equal(t, "google", cfg.OIDCProviders[0].Method)
+	require.Equal(t, "azure", cfg.OIDCProviders[1].Method)
+	require.Equal(t, "tid-123", cfg.OIDCProviders[1].ProviderParams["tenant"])
+	require.True(t, cfg.OIDCProviders[0].Enabled)
+	// Legacy scalar untouched.
+	require.Equal(t, "microsoft", cfg.OIDC.Method)
+}
+
+// TestLoad_OIDCProviders_DuplicateMethod: two entries sharing a method fail
+// Validate() with a "duplicate method" error.
+func TestLoad_OIDCProviders_DuplicateMethod(t *testing.T) {
+	dir := t.TempDir()
+	writeYAML(t, dir, "oidc_providers", `---
+- method: google
+  issuer: https://accounts.google.com
+  enabled: true
+  client_id: gid
+  client_secret: gsec
+  redirect_url: https://snooze.corp/api/v1/login/google/callback
+- method: google
+  issuer: https://accounts.google.com
+  enabled: true
+  client_id: gid2
+  client_secret: gsec2
+  redirect_url: https://snooze.corp/api/v1/login/google/callback
+`)
+	_, err := Load(dir)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "duplicate method")
+}
+
 func TestEnv_GeneralMetrics(t *testing.T) {
 	t.Setenv("SNOOZE_SERVER_GENERAL_METRICS_ENABLED", "false")
 	cfg, err := Load(t.TempDir())

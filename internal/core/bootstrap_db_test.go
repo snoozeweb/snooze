@@ -6,6 +6,8 @@ import (
 
 	"github.com/stretchr/testify/require"
 
+	"github.com/snoozeweb/snooze/internal/config"
+	"github.com/snoozeweb/snooze/internal/config/schema"
 	"github.com/snoozeweb/snooze/internal/db"
 )
 
@@ -59,6 +61,42 @@ func TestBootstrapDB_MarkerVariants(t *testing.T) {
 	drv.seed(generalCollection, db.Document{bootstrapMarkerField: false})
 	require.NoError(t, BootstrapDB(context.Background(), drv, ""))
 	require.Len(t, drv.docs(roleCollection), 3)
+}
+
+// TestBootstrap_AdminGroupMultiOIDC: with two OIDCProviders entries where only
+// one (enabled) carries an AdminRoleValue, effectiveAdminGroup picks that value
+// to seed the admin role's groups[].
+func TestBootstrap_AdminGroupMultiOIDC(t *testing.T) {
+	t.Parallel()
+	cfg := config.Default()
+	cfg.OIDC = schema.OIDC{} // ensure the legacy scalar is not in play
+	cfg.OIDCProviders = []schema.OIDC{
+		{Method: "google", Provider: "google", Enabled: true}, // no AdminRoleValue
+		{Method: "azure", Provider: "azure", Enabled: true, AdminRoleValue: "SnoozeAdmins"},
+	}
+	require.Equal(t, "SnoozeAdmins", effectiveAdminGroup(cfg))
+}
+
+// TestBootstrap_AdminGroupSkipsDisabled: a disabled entry's AdminRoleValue is
+// not used even if it is the only one set.
+func TestBootstrap_AdminGroupSkipsDisabled(t *testing.T) {
+	t.Parallel()
+	cfg := config.Default()
+	cfg.OIDC = schema.OIDC{}
+	cfg.OIDCProviders = []schema.OIDC{
+		{Method: "azure", Provider: "azure", Enabled: false, AdminRoleValue: "SnoozeAdmins"},
+	}
+	require.Equal(t, "", effectiveAdminGroup(cfg))
+}
+
+// TestBootstrap_AdminGroupLegacyFallback: with no OIDCProviders, the enabled
+// legacy scalar OIDC's AdminRoleValue is used (backward compatibility).
+func TestBootstrap_AdminGroupLegacyFallback(t *testing.T) {
+	t.Parallel()
+	cfg := config.Default()
+	cfg.OIDC.Enabled = true
+	cfg.OIDC.AdminRoleValue = "Admin"
+	require.Equal(t, "Admin", effectiveAdminGroup(cfg))
 }
 
 func TestDefaultRoles_AdminGroupSeed(t *testing.T) {
