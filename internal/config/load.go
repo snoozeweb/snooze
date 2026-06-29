@@ -34,6 +34,7 @@ var sectionFiles = map[string]string{
 	"syncer":        "syncer",
 	"ingest":        "ingest",
 	"oidc":          "oidc",
+	"auth_proxy":    "auth_proxy",
 }
 
 // Load reads every known section YAML file under basedir, layers environment
@@ -240,7 +241,8 @@ func isListField(path string) bool {
 		"core.enabled_optional_plugins",
 		"core.backup.excludes",
 		"general.ok_severities",
-		"oidc.scopes":
+		"oidc.scopes",
+		"auth_proxy.trusted_proxies":
 		return true
 	}
 	return false
@@ -338,6 +340,15 @@ func defaultsYAML() ([]byte, error) {
 			"roles_claim":      d.OIDC.RolesClaim,
 			"groups_claim":     d.OIDC.GroupsClaim,
 			"admin_role_value": d.OIDC.AdminRoleValue,
+		},
+		"auth_proxy": map[string]any{
+			"enabled":          d.AuthProxy.Enabled,
+			"user_header":      d.AuthProxy.UserHeader,
+			"groups_header":    d.AuthProxy.GroupsHeader,
+			"groups_separator": d.AuthProxy.GroupsSep,
+			"auto_signup":      d.AuthProxy.AutoSignup,
+			"trusted_proxies":  d.AuthProxy.TrustedProxies,
+			"method":           d.AuthProxy.Method,
 		},
 	}
 	return yamlv3.Marshal(m)

@@ -56,6 +56,67 @@ func TestValidate_AcceptsPostgresDSN(t *testing.T) {
 	require.NoError(t, c.Validate())
 }
 
+// validateWithAuthProxy builds a valid Default() config, swaps in the given
+// AuthProxy section, and runs the full Config.Validate() — exercising
+// validateAuthProxy through the public entry point.
+func validateWithAuthProxy(t *testing.T, a schema.AuthProxy) error {
+	t.Helper()
+	c := Default()
+	c.AuthProxy = a
+	return c.Validate()
+}
+
+// TestValidate_DefaultAuthProxyMethod pins the seeded method tag — proxy users
+// are provisioned and stamped under method "proxy".
+func TestValidate_DefaultAuthProxyMethod(t *testing.T) {
+	require.Equal(t, "proxy", Default().AuthProxy.Method)
+}
+
+func TestValidateAuthProxy_DisabledIgnoresGarbage(t *testing.T) {
+	// A disabled proxy section never validates its fields, even malformed ones.
+	require.NoError(t, validateWithAuthProxy(t, schema.AuthProxy{
+		Enabled:        false,
+		UserHeader:     "",
+		TrustedProxies: []string{"not-an-ip", "garbage/99"},
+	}))
+}
+
+func TestValidateAuthProxy_EnabledRequiresUserHeader(t *testing.T) {
+	err := validateWithAuthProxy(t, schema.AuthProxy{Enabled: true, UserHeader: ""})
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "user_header")
+}
+
+func TestValidateAuthProxy_EnabledRejectsBadTrustedProxy(t *testing.T) {
+	err := validateWithAuthProxy(t, schema.AuthProxy{
+		Enabled:        true,
+		UserHeader:     "X-Forwarded-User",
+		TrustedProxies: []string{"10.0.0.0/8", "not-an-ip"},
+	})
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "trusted_proxies")
+}
+
+func TestValidateAuthProxy_EnabledValidIsOK(t *testing.T) {
+	// Bare IP and CIDR are both accepted; empty TrustedProxies is valid (WARN, not error).
+	require.NoError(t, validateWithAuthProxy(t, schema.AuthProxy{
+		Enabled:        true,
+		UserHeader:     "X-Forwarded-User",
+		TrustedProxies: []string{"10.0.0.0/8", "192.168.1.10", "::1"},
+	}))
+	require.NoError(t, validateWithAuthProxy(t, schema.AuthProxy{
+		Enabled:        true,
+		UserHeader:     "X-Forwarded-User",
+		TrustedProxies: nil,
+	}))
+}
+
+func TestIsListField_AuthProxyTrustedProxies(t *testing.T) {
+	require.True(t, isListField("auth_proxy.trusted_proxies"))
+	// A non-list auth_proxy field must NOT comma-split.
+	require.False(t, isListField("auth_proxy.user_header"))
+}
+
 // The validator must accept every spelling the openDB dispatch understands,
 // so a config copied from the docs (`type: sqlite`) does not hard-fail at boot.
 func TestValidate_AcceptsDriverTypeAliases(t *testing.T) {

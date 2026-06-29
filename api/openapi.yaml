@@ -89,6 +89,10 @@ servers:
 
 security:
   - bearerAuth: []
+  # Trusted-header (auth-proxy) mode is an alternative to a Bearer token on
+  # every authenticated route, but only when auth_proxy.enabled=true and the
+  # request comes from a trusted proxy IP. Disabled by default.
+  - proxyHeader: []
 
 tags:
   - name: health
@@ -1594,6 +1598,24 @@ components:
         minted at `/api/v1/user/me/apikeys`, carry a subset of the owner's
         permissions, and are bounded live by the owner's current permissions on
         every request.
+
+    proxyHeader:
+      type: apiKey
+      in: header
+      name: X-Forwarded-User
+      description: >
+        Trusted-header (auth-proxy) mode. Gated by `auth_proxy.enabled` and
+        **disabled by default**. When enabled, an upstream reverse proxy
+        (oauth2-proxy / Pomerium / mod_auth_openidc) that has already
+        authenticated the user forwards the identity in the configured username
+        header (default `X-Forwarded-User`) and an optional groups header
+        (default `X-Forwarded-Groups`). Snooze JIT-provisions a `method=proxy`
+        user, maps the groups to roles, and authenticates the request with no
+        `Authorization` token. The header is only honored when the request's
+        client IP is within `auth_proxy.trusted_proxies` — Snooze does not
+        validate the header value itself, so the proxy MUST strip any
+        client-supplied copy. A failed gate (untrusted IP / absent header)
+        falls through to the Bearer/`snz_` paths, never a hard reject.
 
   parameters:
     PluginPath:

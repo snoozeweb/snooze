@@ -45,6 +45,38 @@ func validate(c *Config) error {
 	if err := validateOIDC(&c.OIDC); err != nil {
 		return fmt.Errorf("config: oidc: %w", err)
 	}
+	if err := validateAuthProxy(&c.AuthProxy); err != nil {
+		return fmt.Errorf("config: auth_proxy: %w", err)
+	}
+	return nil
+}
+
+// validateAuthProxy enforces the enabled-mode requirements for the
+// trusted-header auth mode. When disabled it is always valid. When enabled,
+// user_header must be set and every trusted_proxies entry must parse as an IP
+// or CIDR. An empty trusted_proxies list while enabled is intentionally NOT an
+// error — it is a fail-open operator choice (e.g. the proxy terminates on the
+// same pod/loopback); boot logs a loud WARN instead (see cmd/snooze-server).
+func validateAuthProxy(a *schema.AuthProxy) error {
+	if !a.Enabled {
+		return nil
+	}
+	if a.UserHeader == "" {
+		return errors.New("user_header is required when enabled")
+	}
+	for _, entry := range a.TrustedProxies {
+		entry = strings.TrimSpace(entry)
+		if entry == "" {
+			continue
+		}
+		if _, _, err := net.ParseCIDR(entry); err == nil {
+			continue
+		}
+		if net.ParseIP(entry) != nil {
+			continue
+		}
+		return fmt.Errorf("trusted_proxies entry %q is not a valid IP or CIDR", entry)
+	}
 	return nil
 }
 

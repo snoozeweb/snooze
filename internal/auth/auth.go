@@ -30,6 +30,11 @@ var (
 	// that the provider uses the browser-redirect flow (Start/Callback), not a
 	// password POST. The login routes special-case these providers.
 	ErrRedirectProvider = errors.New("auth provider uses redirect flow")
+	// ErrUserNotProvisioned is returned by ProxyAuthenticator.Authenticate when
+	// an upstream-proxied user is unknown and auto-signup is disabled. The auth
+	// middleware maps it to a 403 (matching Alerta's "user auto-signup is
+	// disabled"); it is deliberately distinct from ErrInvalidCredentials.
+	ErrUserNotProvisioned = errors.New("user not provisioned (auto-signup disabled)")
 )
 
 // Credentials carry the inputs to Provider.Authenticate. The Extra map is

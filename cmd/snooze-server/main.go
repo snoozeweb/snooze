@@ -364,6 +364,19 @@ func runDaemonCtx(ctx context.Context, f *daemonFlags, stderr io.Writer) error {
 
 	providers := buildAuthProviders(cfg, drv, c.Settings)
 
+	// Auth-proxy (trusted-header) mode. Disabled by default; only constructed
+	// when explicitly enabled. An empty trusted_proxies list is a valid but
+	// fail-open operator choice — log a loud WARN once at boot so it is never a
+	// silent authentication-bypass surface.
+	var proxyAuth middleware.ProxyAuth
+	if cfg.AuthProxy.Enabled {
+		proxyAuth = auth.NewProxyAuthenticator(drv, auth.NewRoleResolver(drv), cfg.AuthProxy.Method)
+		if len(cfg.AuthProxy.TrustedProxies) == 0 {
+			loggers.Snooze.Warn("auth_proxy enabled with no trusted_proxies: identity headers are trusted from ANY source IP — only safe behind a proxy that strips client-supplied copies of the headers",
+				slog.String("user_header", cfg.AuthProxy.UserHeader))
+		}
+	}
+
 	adapter := &coreAdapter{Core: c}
 	ingestResolver := middleware.NewTenantResolver()
 	rt := &api.Router{
@@ -380,6 +393,7 @@ func runDaemonCtx(ctx context.Context, f *daemonFlags, stderr io.Writer) error {
 		Tracer:          c.Trc,
 		Config:          cfg,
 		Providers:       providers,
+		ProxyAuth:       proxyAuth,
 		Processor:       adapter,
 		CORSConfig:      corsFromConfig(cfg.Core.CORS),
 		WebFS:           openWebFS(webDirFromConfig(cfg.Web), loggers.API),

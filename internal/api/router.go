@@ -41,7 +41,13 @@ type Router struct {
 	// APIKeys is the user API-key store. When non-nil, a snz_-prefixed Bearer
 	// token is authenticated via it in the Auth middleware. Nil disables key
 	// auth (the JWT path is unaffected).
-	APIKeys         *auth.APIKeyStore
+	APIKeys *auth.APIKeyStore
+	// ProxyAuth provisions/resolves trusted-header (auth-proxy) users. It is
+	// consulted by the Auth middleware ONLY when Config.AuthProxy.Enabled is
+	// true; when the mode is disabled (the default) it is ignored and the
+	// middleware chain is byte-identical to the no-proxy path. Concrete type at
+	// runtime is *auth.ProxyAuthenticator.
+	ProxyAuth       middleware.ProxyAuth
 	Plugins         map[string]plugins.Plugin
 	Host            plugins.Host
 	DB              db.Driver
@@ -122,7 +128,15 @@ func (rt *Router) Build() chi.Router {
 	if rt.APIKeys != nil {
 		keys = rt.APIKeys
 	}
-	r.Use(middleware.Auth(rt.Auth, keys, skip))
+	// Auth-proxy (trusted-header) mode is gated behind an explicit enable: when
+	// off (the default) we keep the exact existing middleware.Auth call path so
+	// behaviour is byte-identical. When on, AuthWithProxy adds the trusted-header
+	// branch in front of the unchanged Bearer/snz_/JWT path.
+	if rt.Config != nil && rt.Config.AuthProxy.Enabled && rt.ProxyAuth != nil {
+		r.Use(middleware.AuthWithProxy(rt.Auth, keys, rt.ProxyAuth, &rt.Config.AuthProxy, skip))
+	} else {
+		r.Use(middleware.Auth(rt.Auth, keys, skip))
+	}
 
 	// --- public endpoints (skip filter above lets them through) -------------
 	rt.mountHealth(r)
