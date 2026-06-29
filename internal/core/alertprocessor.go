@@ -38,6 +38,16 @@ func (c *Core) ProcessRecordMap(ctx context.Context, rec map[string]any) (map[st
 // keys land in the Record.Extra map by way of the unmarshal path's tolerance.
 // We deliberately reuse encoding/json rather than hand-coding the field
 // mapping so the Record's JSON tags remain the single source of truth.
+//
+// Custom-source ingest hint: the reserved key `_preserve_raw` is a transient
+// sentinel, not a record field. When a posted body carries `_preserve_raw` with
+// a truthy value, every unrecognised (extra) key is copied verbatim into
+// rec.Raw — archiving the original foreign payload for audit before any rule
+// remaps the canonical fields. An explicitly-sent `raw` object is never
+// clobbered (existing entries win; foreign keys are merged in). The sentinel is
+// consumed here and never reaches the record or the pipeline: it is listed in
+// knownRecordKeys (so it is excluded from the Extra projection) and deleted from
+// Extra defensively. See docs/content/general/integrations/custom-source.md.
 func mapToRecord(m map[string]any) (snoozetypes.Record, error) {
 	if m == nil {
 		return snoozetypes.Record{}, nil
@@ -62,7 +72,54 @@ func mapToRecord(m map[string]any) (snoozetypes.Record, error) {
 		}
 		rec.Extra[k] = v
 	}
+	// Opt-in raw preservation: copy the captured extra keys into rec.Raw when
+	// the caller set `_preserve_raw` truthy. This runs before any rule processor,
+	// so a later DELETE modification on a canonical field does not strip the
+	// archived original from raw. Existing raw entries are never overwritten.
+	if v, ok := m["_preserve_raw"]; ok && isTruthyAny(v) {
+		if rec.Raw == nil {
+			rec.Raw = map[string]any{}
+		}
+		for k, val := range rec.Extra {
+			if _, exists := rec.Raw[k]; !exists {
+				rec.Raw[k] = val
+			}
+		}
+	}
+	// The sentinel is never a record field. It is in knownRecordKeys so it is
+	// already excluded from the Extra projection above; delete it defensively in
+	// case the known-key set is ever edited out of sync.
+	delete(rec.Extra, "_preserve_raw")
+	if len(rec.Extra) == 0 {
+		rec.Extra = nil
+	}
 	return rec, nil
+}
+
+// isTruthyAny reports whether v is a truthy ingest-hint value: a non-zero
+// numeric, a non-empty string, or boolean true. It mirrors the loose-truthiness
+// a JSON sender expects from a `_preserve_raw` flag (true, 1, "1", "true" all
+// enable; false, 0, "" disable).
+func isTruthyAny(v any) bool {
+	switch x := v.(type) {
+	case bool:
+		return x
+	case string:
+		return x != "" && x != "false" && x != "0"
+	case int:
+		return x != 0
+	case int32:
+		return x != 0
+	case int64:
+		return x != 0
+	case float32:
+		return x != 0
+	case float64:
+		return x != 0
+	case nil:
+		return false
+	}
+	return false
 }
 
 // recordToMap is the inverse: emits the typed fields with their JSON names,
@@ -76,8 +133,11 @@ func recordToMap(rec snoozetypes.Record) map[string]any {
 	return out
 }
 
-// knownRecordKeys lists the JSON tags of snoozetypes.Record's typed fields.
-// Keep in sync with pkg/snoozetypes/record.go.
+// knownRecordKeys lists the JSON tags of snoozetypes.Record's typed fields,
+// plus the reserved `_preserve_raw` ingest sentinel. Listing the sentinel here
+// keeps it out of the Extra projection in mapToRecord (it is a transient hint,
+// never a record field). Keep the typed entries in sync with
+// pkg/snoozetypes/record.go.
 var knownRecordKeys = map[string]struct{}{
 	"uid":         {},
 	"host":        {},
@@ -94,4 +154,6 @@ var knownRecordKeys = map[string]struct{}{
 	"raw":         {},
 	"state":       {},
 	"plugins":     {},
+	// Reserved ingest hint; consumed by mapToRecord, never stored.
+	"_preserve_raw": {},
 }

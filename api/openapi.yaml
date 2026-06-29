@@ -749,6 +749,13 @@ paths:
           example: "hub-eu,hub-us"
       requestBody:
         required: true
+        description: |
+          A record may carry any extra (non-schema) keys; they are preserved and
+          exposed to rules and templates. The reserved ingest hint
+          `_preserve_raw: true` copies every extra key into the record's `raw`
+          field before rules run (the original foreign payload is archived for
+          audit) and is itself stripped from the stored record. See the
+          [Custom source mapping](/docs/general/integrations/custom-source) guide.
         content:
           application/json:
             schema:

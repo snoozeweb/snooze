@@ -2,6 +2,12 @@
 
 ### Added
 
+- **Custom source mapping guide.** Operators can now onboard any JSON alert
+  source without writing Go: post to `POST /api/v1/alerts` and use a rule tree
+  to remap foreign field names to canonical Snooze fields. A new
+  `_preserve_raw: true` ingest hint copies all unrecognised keys into the record's
+  `raw` field before rules run, preserving the original payload for audit.
+  See [Custom source mapping](docs/content/general/integrations/custom-source.md).
 - Canonical severity vocabulary in `pkg/snoozetypes` (`DefaultSeverityRank`, `SeverityRank`, `SeverityVariant`, `NormalizeSeverity`, `CompareSeverity`), mirroring the frontend severity ladder. Enables severity-aware re-escalation (Plan 30), suppression bypass (Plan 31), and the server-driven console config (Plan 28).
 - Added server-to-server alert federation: a hot-reloadable "forward" destinations collection relays accepted alerts to downstream Snooze/HTTP peers, with condition scoping, per-destination auth (bearer/basic/apikey), and X-Snooze-Loop loop prevention.
 - SAML2 SP-initiated SSO: redirect-to-IdP, ACS endpoint, assertion→identity group mapping, and an SP metadata endpoint (new `saml` config section).

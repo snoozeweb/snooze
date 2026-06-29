@@ -201,3 +201,9 @@ $ curl -s https://snooze.example.com/api/v1/record \
 - **Idempotency.** The endpoint is not idempotent. Submitting the same payload twice creates two separate records (subject to aggregate-rule deduplication configured in the pipeline).
 - **Content-Type.** The request must carry `Content-Type: application/json`. Requests with a missing or non-JSON content type will be rejected.
 
+# Custom source mapping
+
+A monitoring tool that posts non-canonical JSON (e.g. `{"alertname": "DiskFull", "node": "web-1", "level": "critical"}`) can be onboarded without writing any Go: post to this endpoint and add a [rule](../rules.md) that remaps the foreign field names onto the canonical Snooze fields (`host`, `severity`, `message`, …). To keep the original payload for audit, add `"_preserve_raw": true` to the body — every unrecognised key is then copied verbatim into the record's `raw` field before rules run (and the hint itself is stripped from the stored record).
+
+See [Custom source mapping](./custom-source.md) for the full three-step recipe, a worked example, and the modification-op reference.
+
