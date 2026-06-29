@@ -3,7 +3,7 @@ import { Badge } from "@/shared/ui/Badge";
 import { Code } from "@/shared/ui/Code";
 import { prettyCondition } from "@/lib/condition/pretty";
 import { secondsToHuman } from "@/lib/format/seconds";
-import type { AggregateRule, Rule } from "./types";
+import type { AggregateRule, RejectRule, Rule } from "./types";
 
 // eslint-disable-next-line react-refresh/only-export-components
 function ConditionCell({ rule }: { rule: Rule }) {
@@ -66,6 +66,35 @@ export const ruleColumns: ColumnDef<Rule>[] = [
     header: "Modifications",
     cell: (r) => <ModificationsCell mods={r.modifications} />,
     width: "260px",
+  },
+];
+
+// Reject-rule columns: name + enabled badge + condition summary. Reject rules
+// are a flat first-match list; the enabled state is shown explicitly (unlike
+// the rule/aggregate tables, which grey disabled rows instead).
+export const rejectColumns: ColumnDef<RejectRule>[] = [
+  {
+    id: "name",
+    header: "Name",
+    cell: (r) => <Code>{r.name}</Code>,
+    sortable: true,
+    width: "220px",
+  },
+  {
+    id: "enabled",
+    header: "Enabled",
+    cell: (r) =>
+      r.enabled === false ? (
+        <Badge variant="neutral">Disabled</Badge>
+      ) : (
+        <Badge variant="ok">Enabled</Badge>
+      ),
+    width: "120px",
+  },
+  {
+    id: "condition",
+    header: "Condition",
+    cell: (r) => <ConditionCell rule={r} />,
   },
 ];
 

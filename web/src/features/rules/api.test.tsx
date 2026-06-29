@@ -4,7 +4,7 @@ import { http, HttpResponse } from "msw";
 import { describe, expect, it } from "vitest";
 import type { ReactNode } from "react";
 import { mswServer } from "@/tests/msw/server";
-import { Rules, AggregateRules } from "./api";
+import { Rules, AggregateRules, Reject } from "./api";
 
 function wrap() {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
@@ -40,5 +40,19 @@ describe("rules.api", () => {
     const { result } = renderHook(() => AggregateRules.useList(), { wrapper: wrap() });
     await waitFor(() => expect(result.current.isSuccess).toBe(true));
     expect(result.current.data?.data[0]?.name).toBe("Group by host");
+  });
+
+  it("Reject.useList fetches from /api/v1/reject", async () => {
+    mswServer.use(
+      http.get("/api/v1/reject", () =>
+        HttpResponse.json({
+          data: [{ uid: "rj1", name: "Block legacy sources" }],
+          meta: { count: 1, limit: 20, offset: 0, total: 1 },
+        }),
+      ),
+    );
+    const { result } = renderHook(() => Reject.useList(), { wrapper: wrap() });
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+    expect(result.current.data?.data[0]?.name).toBe("Block legacy sources");
   });
 });

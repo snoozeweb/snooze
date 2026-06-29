@@ -7,6 +7,8 @@
   enabled rule are aborted before persistence and the sender receives an HTTP
   422 `policy_rejected` response with the matching rule's name, replacing the
   previous silent discard behaviour.
+- Reject rules are now managed in the web console under a new **Reject** tab on
+  the Rules page (create/edit/enable/delete with the standard condition editor).
 
 ### Fixed
 

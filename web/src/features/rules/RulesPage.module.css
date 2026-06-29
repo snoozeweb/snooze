@@ -4,3 +4,11 @@
   flex-direction: column;
   gap: var(--space-3);
 }
+
+/* One-line helper caption shown under the active tab's trigger. */
+.tabHelp {
+  margin: 0;
+  margin-top: calc(-1 * var(--space-1));
+  font-size: var(--text-sm);
+  color: var(--text-muted);
+}

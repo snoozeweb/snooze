@@ -94,6 +94,65 @@ describe("RulesPage", () => {
     await waitFor(() => expect(screen.getByText("By host")).toBeInTheDocument());
   });
 
+  it("switches to the Reject tab and lists reject rules with its helper caption", async () => {
+    mswServer.use(
+      http.get("/api/v1/rule", () =>
+        HttpResponse.json({ data: [], meta: { count: 0, limit: 50, offset: 0, total: 0 } }),
+      ),
+      http.get("/api/v1/reject", () =>
+        HttpResponse.json({
+          data: [{ uid: "rj1", name: "Block legacy", enabled: true }],
+          meta: { count: 1, limit: 50, offset: 0, total: 1 },
+        }),
+      ),
+    );
+    const user = userEvent.setup();
+    setup();
+    await user.click(screen.getByRole("tab", { name: /reject/i }));
+    await waitFor(() => expect(screen.getByText("Block legacy")).toBeInTheDocument());
+    expect(screen.getByText(/return 422 to the sender/i)).toBeInTheDocument();
+  });
+
+  it("renders all three tab helper captions", () => {
+    mswServer.use(
+      http.get("/api/v1/rule", () =>
+        HttpResponse.json({ data: [], meta: { count: 0, limit: 50, offset: 0, total: 0 } }),
+      ),
+    );
+    setup();
+    expect(screen.getByText(/transform a matching alert, then continue/i)).toBeInTheDocument();
+    expect(screen.getByText(/collapse duplicate alerts into one/i)).toBeInTheDocument();
+    expect(screen.getByText(/return 422 to the sender/i)).toBeInTheDocument();
+  });
+
+  it("clicking a reject row opens the RejectEditor", async () => {
+    mswServer.use(
+      http.get("/api/v1/rule", () =>
+        HttpResponse.json({ data: [], meta: { count: 0, limit: 50, offset: 0, total: 0 } }),
+      ),
+      http.get("/api/v1/reject", () =>
+        HttpResponse.json({
+          data: [{ uid: "rj1", name: "Block legacy", enabled: true }],
+          meta: { count: 1, limit: 50, offset: 0, total: 1 },
+        }),
+      ),
+      http.get("/api/v1/reject/rj1", () =>
+        HttpResponse.json({ uid: "rj1", name: "Block legacy", enabled: true }),
+      ),
+      http.get("/api/v1/record", () =>
+        HttpResponse.json({ data: [], meta: { count: 0, limit: 50, offset: 0, total: 0 } }),
+      ),
+    );
+    const user = userEvent.setup();
+    setup();
+    await user.click(screen.getByRole("tab", { name: /reject/i }));
+    await waitFor(() => expect(screen.getByText("Block legacy")).toBeInTheDocument());
+    await user.click(screen.getByText("Block legacy"));
+    await waitFor(() =>
+      expect(screen.getByRole("dialog", { name: /edit reject rule/i })).toBeInTheDocument(),
+    );
+  });
+
   it("clicking a row opens the RuleEditor", async () => {
     mswServer.use(
       http.get("/api/v1/rule", () =>

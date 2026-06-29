@@ -639,15 +639,17 @@ const profileRoute = createRoute({
 });
 
 type RulesSearchParams = {
-  tab?: "rules" | "aggregates";
+  tab?: "rules" | "aggregates" | "reject";
   uid?: string;
   page?: number;
   orderby?: string;
   asc?: boolean;
   // Per-tab search queries: `search` for the Rules tab, `aggSearch` for the
-  // Aggregates tab — distinct keys so they don't collide in the URL.
+  // Aggregates tab, `rejSearch` for the Reject tab — distinct keys so they
+  // don't collide in the URL.
   search?: string;
   aggSearch?: string;
+  rejSearch?: string;
 };
 
 const rulesRoute = createRoute({
@@ -657,7 +659,7 @@ const rulesRoute = createRoute({
   validateSearch: (raw): RulesSearchParams => {
     const out: Record<string, unknown> = {};
     const tab = typeof raw["tab"] === "string" ? raw["tab"] : undefined;
-    if (tab === "rules" || tab === "aggregates") out["tab"] = tab;
+    if (tab === "rules" || tab === "aggregates" || tab === "reject") out["tab"] = tab;
     if (typeof raw["uid"] === "string") out["uid"] = raw["uid"];
     const pageRaw = raw["page"];
     const page =
@@ -680,6 +682,7 @@ const rulesRoute = createRoute({
     if (asc !== undefined) out["asc"] = asc;
     if (typeof raw["search"] === "string") out["search"] = raw["search"];
     if (typeof raw["aggSearch"] === "string") out["aggSearch"] = raw["aggSearch"];
+    if (typeof raw["rejSearch"] === "string") out["rejSearch"] = raw["rejSearch"];
     return out as RulesSearchParams;
   },
 });

@@ -78,8 +78,38 @@ Once saved, a POST to `/api/v1/alerts` with `"source": "legacy-syslog01"` return
 }
 ```
 
-## Web interface
+## Managing reject rules in the console
 
-Use the **Reject** section of the administration panel to create, edit, enable, or
-disable policy rules. The `condition` field accepts the same DSL used by Snooze
-filters and Aggregate rules — see [Conditions](./conditions.md) for the full syntax.
+Reject rules are managed in the web console under the **Reject** tab on the
+**Rules** page (alongside the **Rules** and **Aggregates** tabs) — there is no
+separate nav entry. The tab lists every reject rule as a flat table and lets you:
+
+- **Create** a rule with **+ New** — set a `name`, the **Enabled** toggle, and a
+  `condition` using the standard condition editor.
+- **Edit** a rule by clicking its row, which opens the same drawer pre-filled.
+- **Enable / disable** a rule from the editor's Enabled toggle (a disabled rule is
+  kept but not evaluated).
+- **Delete** one or many rules from the row context menu or the bulk selection.
+
+A reject rule has exactly three fields — `name`, `enabled`, and `condition` — so the
+editor has **no** modifications (those are Rules), aggregate fields, or time
+constraints (those are Snoozes). The `condition` field accepts the same DSL used by
+Snooze filters and Aggregate rules — see [Conditions](./conditions.md) for the full
+syntax. Reject is a flat first-match list (evaluation order is the backend's, not
+user-orderable), so there is no drag-to-reorder as there is for the modify-rule tree.
+
+### Reject vs Rules vs Aggregates vs Snoozes
+
+The Rules page hosts three ingest-time tools; Snoozes is the time-based silencer.
+Use the one that matches the intent:
+
+| Tool | What it does | Returns to sender |
+|---|---|---|
+| **Reject** | Drops a matching alert at ingest, **before** Rules — nothing is persisted. | HTTP **422** (`policy_rejected`) — the sender is told. |
+| **Rules** | Transforms a matching alert (set/delete fields, …), then continues the pipeline. | HTTP 200 — the alert is stored. |
+| **Aggregates** | Collapses duplicate alerts into one record by a key field. | HTTP 200 — de-duplicated. |
+| **Snoozes** | Silences matching alerts for a **time-bounded** window (optionally discarding). | HTTP 200 — silently snoozed/discarded. |
+
+For **time-bounded** silencing — quiet a noisy source until Monday, mute during a
+maintenance window — use a [Snooze](./snooze.md), not a reject rule. Reject is a
+permanent, terminal gate that reports the rejection back to the sender.

@@ -7,26 +7,40 @@ import { EmptyState } from "@/shared/ui/EmptyState";
 import { RowDetailPanel } from "@/shared/ui/RowDetailPanel";
 import { TabList, TabPanel, TabTrigger, Tabs } from "@/shared/ui/Tabs";
 import { useTableSearch } from "@/shared/hooks/useTableSearch";
+import type { ResourceHooks } from "@/lib/api/resource";
 import {
   buildResourceContextMenu,
   ConfirmDeleteDialog,
   useConfirmDelete,
 } from "@/shared/ui/resourceContextMenu";
-import { AggregateRules, Rules } from "./api";
+import { AggregateRules, Reject, Rules } from "./api";
 import { RuleEditor, type RuleInsertion } from "./RuleEditor";
+import { RejectEditor } from "./RejectEditor";
 import { RulesTreeTable, type InsertDirection } from "./RulesTreeTable";
-import { aggregateRuleColumns } from "./columns";
+import { aggregateRuleColumns, rejectColumns } from "./columns";
 import { ROOT } from "./tree";
 import { ruleRowDisabled } from "./ruleUtils";
-import type { AggregateRule, Rule } from "./types";
+import type { AggregateRule, RejectRule, Rule } from "./types";
 import styles from "./RulesPage.module.css";
 
+type RulesTab = "rules" | "aggregates" | "reject";
+
 type RulesSearch = {
-  tab?: "rules" | "aggregates";
+  tab?: RulesTab;
   uid?: string | undefined;
   page?: number;
   orderby?: string;
   asc?: boolean;
+};
+
+// One-line helper caption per tab — keeps the three ingest-time tools (and the
+// time-based Snoozes) from being confused. Factored into a map so the captions
+// have a single home (REFACTOR step).
+const TAB_HELP: Record<RulesTab, string> = {
+  rules: "Transform a matching alert, then continue.",
+  aggregates: "Collapse duplicate alerts into one.",
+  reject:
+    "Drop a matching alert at ingest and return 422 to the sender (runs before Rules). For time-bounded silencing, use Snoozes.",
 };
 
 // TanStack Router's navigate types are locked to the registered route tree at
@@ -77,12 +91,21 @@ export function RulesPage() {
     [navigate],
   );
 
-  const resource = tab === "rules" ? Rules : AggregateRules;
+  // The active tab's resource hooks. The three resource records have
+  // structurally divergent mutation signatures, so a bare ternary collapses
+  // the union's `useList` return to `any`; we only ever read `useList` here
+  // (the rows are re-typed per tab at their DataTable), so type the slot as
+  // the widest row shape (Rule) and adapt at each use site.
+  const resource = (tab === "rules"
+    ? Rules
+    : tab === "aggregates"
+      ? AggregateRules
+      : Reject) as unknown as ResourceHooks<Rule, Partial<Rule>, Partial<Rule>>;
   const isTree = tab === "rules";
 
-  // Each tab carries its own search state — switching between Rules and
-  // Aggregates preserves the query you typed in the other tab. The active
-  // tab decides which filter is actually applied.
+  // Each tab carries its own search state — switching between tabs preserves
+  // the query you typed in the others. The active tab decides which filter is
+  // actually applied.
   const ruleSearch = useTableSearch({
     collection: "rule",
     placeholder: "name = … AND enabled = true",
@@ -97,10 +120,25 @@ export function RulesPage() {
       if (page !== 1) updateSearch({ page: 1 });
     },
   });
+  const rejectSearch = useTableSearch({
+    collection: "reject",
+    placeholder: "name = … AND enabled = true",
+    // Distinct URL key so the Reject-tab query doesn't collide with the other
+    // two bars in the address bar.
+    paramKey: "rejSearch",
+    onFilterChange: () => {
+      if (page !== 1) updateSearch({ page: 1 });
+    },
+  });
+
+  // The non-tree (flat) tabs — Aggregates and Reject — share the paginated
+  // table shape; pick the active tab's committed query.
+  const flatQ = tab === "aggregates" ? aggregateSearch.q : rejectSearch.q;
 
   // Rules tab: load the full set (limit=1000) so the tree component can
   // build the parent/child hierarchy client-side without juggling
-  // pagination across levels. Aggregates tab keeps the paginated table.
+  // pagination across levels. Aggregates and Reject tabs keep the paginated
+  // table.
   const list = resource.useList(
     isTree
       ? {
@@ -114,7 +152,7 @@ export function RulesPage() {
           limit: PAGE_SIZE,
           orderby,
           asc,
-          ...(aggregateSearch.q ? { q: aggregateSearch.q } : {}),
+          ...(flatQ ? { q: flatQ } : {}),
         },
   );
 
@@ -122,11 +160,13 @@ export function RulesPage() {
 
   const removeRule = Rules.useRemove();
   const removeAggregate = AggregateRules.useRemove();
+  const removeReject = Reject.useRemove();
   const updateRule = Rules.useUpdate();
-  // Selection state is held per-tab so switching between Rules and
-  // Aggregates doesn't accidentally cross-contaminate.
+  // Selection state is held per-tab so switching between tabs doesn't
+  // accidentally cross-contaminate.
   const [ruleSelected, setRuleSelected] = useState<Set<string>>(new Set());
   const [aggregateSelected, setAggregateSelected] = useState<Set<string>>(new Set());
+  const [rejectSelected, setRejectSelected] = useState<Set<string>>(new Set());
 
   // ── Drag-and-drop staging ────────────────────────────────────────────
   // Drops accumulate as a Map keyed by uid (last write wins so dragging
@@ -273,6 +313,11 @@ export function RulesPage() {
     noun: "aggregate rule",
     onAfter: () => setAggregateSelected(new Set()),
   });
+  const confirmDeleteReject = useConfirmDelete<RejectRule>({
+    onDelete: (uid) => removeReject.mutateAsync(uid),
+    noun: "reject rule",
+    onAfter: () => setRejectSelected(new Set()),
+  });
 
   const aggregateContextMenu = useCallback(
     (row: AggregateRule): ContextMenuItem[] =>
@@ -281,6 +326,15 @@ export function RulesPage() {
         requestDelete: (r) => confirmDelete.request([r]),
       }),
     [removeAggregate, confirmDelete],
+  );
+
+  const rejectContextMenu = useCallback(
+    (row: RejectRule): ContextMenuItem[] =>
+      buildResourceContextMenu(row, {
+        onDelete: (uid) => removeReject.mutateAsync(uid),
+        requestDelete: (r) => confirmDeleteReject.request([r]),
+      }),
+    [removeReject, confirmDeleteReject],
   );
 
   const ruleContextMenu = useCallback(
@@ -304,6 +358,20 @@ export function RulesPage() {
       </Button>
     ),
     [confirmDelete],
+  );
+
+  const rejectBulkActions = useCallback(
+    (rows: RejectRule[]) => (
+      <Button
+        size="sm"
+        variant="danger"
+        leadingIcon="trash"
+        onClick={() => confirmDeleteReject.request(rows)}
+      >
+        Delete ({rows.length})
+      </Button>
+    ),
+    [confirmDeleteReject],
   );
 
   // Translate a per-row "+ Add above/below/as child" click into a concrete
@@ -359,6 +427,7 @@ export function RulesPage() {
   // tabbed-header right slot.
   const ruleRows = useMemo(() => list.data?.data ?? [], [list.data]);
   const aggregateRows = useMemo(() => list.data?.data ?? [], [list.data]);
+  const rejectRows = useMemo(() => (list.data?.data ?? []) as unknown as RejectRule[], [list.data]);
   const selectedRuleRows = useMemo(
     () => ruleRows.filter((r) => ruleSelected.has(r.uid ?? r.name)),
     [ruleRows, ruleSelected],
@@ -366,6 +435,10 @@ export function RulesPage() {
   const selectedAggregateRows = useMemo(
     () => aggregateRows.filter((r) => aggregateSelected.has(r.uid ?? r.name)),
     [aggregateRows, aggregateSelected],
+  );
+  const selectedRejectRows = useMemo(
+    () => rejectRows.filter((r) => rejectSelected.has(r.uid ?? r.name)),
+    [rejectRows, rejectSelected],
   );
   // Toolbar pieces: `header` is the count-or-selection text shown to the
   // left of `actions`; `actions` is the buttons cluster. Both sit on the
@@ -435,17 +508,35 @@ export function RulesPage() {
         New
       </Button>
     );
+  const rejectToolbarHeader =
+    selectedRejectRows.length > 0
+      ? `${selectedRejectRows.length} selected`
+      : `${list.data?.meta.total ?? 0} reject rules`;
+  const rejectToolbarActions =
+    selectedRejectRows.length > 0 ? (
+      rejectBulkActions(selectedRejectRows)
+    ) : (
+      <Button size="sm" variant="primary" leadingIcon="plus" onClick={() => setCreating(true)}>
+        New
+      </Button>
+    );
 
   return (
     <div className={styles.page}>
-      <Tabs
-        value={tab}
-        onValueChange={(v) => updateSearch({ tab: v as "rules" | "aggregates", page: 1 })}
-      >
+      <Tabs value={tab} onValueChange={(v) => updateSearch({ tab: v as RulesTab, page: 1 })}>
         <TabList>
           <TabTrigger value="rules">Rules</TabTrigger>
           <TabTrigger value="aggregates">Aggregates</TabTrigger>
+          <TabTrigger value="reject">Reject</TabTrigger>
         </TabList>
+        {/* Per-tab helper caption. All three stay mounted (the inactive ones
+            hidden) so the caption is share/deep-link stable and discoverable
+            without switching tabs. */}
+        {(Object.keys(TAB_HELP) as RulesTab[]).map((t) => (
+          <p key={t} className={styles.tabHelp} hidden={t !== tab}>
+            {TAB_HELP[t]}
+          </p>
+        ))}
         <TabPanel value={tab}>
           {isTree ? (
             <RulesTreeTable
@@ -469,6 +560,64 @@ export function RulesPage() {
                   New rule
                 </Button>
               }
+            />
+          ) : tab === "reject" ? (
+            <DataTable<RejectRule>
+              data={rejectRows}
+              columns={rejectColumns}
+              rowKey={(r) => r.uid ?? r.name}
+              loading={list.isPending}
+              rowDisabled={ruleRowDisabled}
+              contextMenuItems={rejectContextMenu}
+              selectable
+              selectedKeys={rejectSelected}
+              onSelectionChange={setRejectSelected}
+              search={rejectSearch.searchProp}
+              toolbarHeader={rejectToolbarHeader}
+              toolbar={rejectToolbarActions}
+              emptyState={
+                <EmptyState
+                  icon="file-text"
+                  title="No reject rules yet"
+                  description="Reject rules drop a matching alert at ingest and return 422 to the sender."
+                  action={
+                    <Button
+                      size="md"
+                      variant="primary"
+                      leadingIcon="plus"
+                      onClick={() => setCreating(true)}
+                    >
+                      New reject rule
+                    </Button>
+                  }
+                />
+              }
+              renderExpanded={(row) => (
+                <RowDetailPanel
+                  row={row as unknown as Record<string, unknown>}
+                  objectType="reject"
+                  objectId={row.uid}
+                />
+              )}
+              serverSort={{
+                sortBy: orderby,
+                order: asc ? "asc" : "desc",
+                onChange: (next) =>
+                  updateSearch({
+                    orderby: next.sortBy,
+                    asc: next.order === "asc",
+                    page: 1,
+                  }),
+              }}
+              serverPagination={{
+                page,
+                pageSize: PAGE_SIZE,
+                total: list.data?.meta.total ?? 0,
+                onChange: (next) => updateSearch({ page: next.page }),
+              }}
+              onRowOpen={(row) => {
+                if (row.uid) updateSearch({ uid: row.uid });
+              }}
             />
           ) : (
             <DataTable<AggregateRule>
@@ -533,23 +682,37 @@ export function RulesPage() {
       </Tabs>
 
       {detailUid !== undefined ? (
-        <RuleEditor
-          plugin={editorPlugin}
-          uid={detailUid}
-          onClose={() => updateSearch({ uid: undefined })}
-        />
+        tab === "reject" ? (
+          <RejectEditor uid={detailUid} onClose={() => updateSearch({ uid: undefined })} />
+        ) : (
+          <RuleEditor
+            plugin={editorPlugin}
+            uid={detailUid}
+            onClose={() => updateSearch({ uid: undefined })}
+          />
+        )
       ) : null}
 
       {creating ? (
-        <RuleEditor
-          plugin={editorPlugin}
-          uid={undefined}
-          onClose={() => {
-            setCreating(false);
-            setPendingInsertion(null);
-          }}
-          {...(pendingInsertion ? { insertion: pendingInsertion } : {})}
-        />
+        tab === "reject" ? (
+          <RejectEditor
+            uid={undefined}
+            onClose={() => {
+              setCreating(false);
+              setPendingInsertion(null);
+            }}
+          />
+        ) : (
+          <RuleEditor
+            plugin={editorPlugin}
+            uid={undefined}
+            onClose={() => {
+              setCreating(false);
+              setPendingInsertion(null);
+            }}
+            {...(pendingInsertion ? { insertion: pendingInsertion } : {})}
+          />
+        )
       ) : null}
       <ConfirmDeleteDialog
         state={confirmDelete.state}
@@ -560,6 +723,11 @@ export function RulesPage() {
         state={confirmDeleteRule.state}
         onCancel={confirmDeleteRule.cancel}
         onConfirm={() => void confirmDeleteRule.confirm()}
+      />
+      <ConfirmDeleteDialog
+        state={confirmDeleteReject.state}
+        onCancel={confirmDeleteReject.cancel}
+        onConfirm={() => void confirmDeleteReject.confirm()}
       />
     </div>
   );

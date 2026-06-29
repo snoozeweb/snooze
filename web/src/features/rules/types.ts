@@ -18,6 +18,17 @@ export type Rule = {
   tree_order?: number;
 };
 
+// Reject rule: a flat, terminal first-match policy evaluated at ingest by the
+// `reject` processor (before the rule tree). A strict subset of Rule — no
+// modifications / parents / tree_order. Matching alerts are aborted with HTTP
+// 422 to the sender.
+export type RejectRule = {
+  uid?: string;
+  name: string;
+  enabled?: boolean;
+  condition?: Condition;
+};
+
 export type AggregateRule = Rule & {
   fields?: string[];
   watch?: string[];
