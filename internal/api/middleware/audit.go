@@ -27,7 +27,7 @@ func Audit(logger *slog.Logger, excludedPrefixes []string) func(http.Handler) ht
 				slog.String("method", r.Method),
 				slog.String("path", r.URL.Path),
 				slog.Int("status", sw.status),
-				slog.String("remote", clientIP(r)),
+				slog.String("remote", ClientIP(r)),
 				slog.Duration("duration", time.Since(start)),
 				slog.Int("bytes", sw.bytes),
 			)
@@ -74,8 +74,8 @@ func (s *statusRecorder) Write(b []byte) (int, error) {
 	return n, err
 }
 
-// clientIP picks the client IP from X-Forwarded-For / X-Real-IP / RemoteAddr.
-func clientIP(r *http.Request) string {
+// ClientIP picks the client IP from X-Forwarded-For / X-Real-IP / RemoteAddr.
+func ClientIP(r *http.Request) string {
 	if v := r.Header.Get("X-Forwarded-For"); v != "" {
 		if i := strings.IndexByte(v, ','); i >= 0 {
 			return strings.TrimSpace(v[:i])

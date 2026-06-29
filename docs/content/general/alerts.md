@@ -115,3 +115,12 @@ By clicking on the grey arrow on an alert, a timeline appears. It contains a his
 
 Comments and state changes you make are recorded against your username. The dashboard's **Recent activity** pane lists these attributed user actions, excluding automatic system entries such as escalations and auto-close.
 
+## Ingest provenance
+
+The server automatically adds a `source_ip` field to every alert record
+received via `POST /api/v1/alerts`. The value is the resolved client IP
+(honouring `X-Forwarded-For` and `X-Real-IP` from trusted proxies). If the
+posting client supplies its own `source_ip`, the server-resolved value is
+not overwritten. Use this field in [Rules](./rules.md) to route or
+annotate alerts by origin.
+

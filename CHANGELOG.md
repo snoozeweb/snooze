@@ -2,6 +2,10 @@
 
 ### Added
 
+- **Alert ingest now stamps `source_ip`.** Every record posted to
+  `POST /api/v1/alerts` receives a `source_ip` field (resolved client IP,
+  honouring `X-Forwarded-For` / `X-Real-IP`). Caller-supplied values are
+  preserved. Use the field in Rules to route or filter by collector origin.
 - **Audit — structured auth-event trail.** Login, login-failed, token-refresh,
   and logout events are now written as queryable rows to the `audit` collection
   (`object_type: auth`) in addition to the existing HTTP request log lines.

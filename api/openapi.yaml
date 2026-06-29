@@ -1798,6 +1798,13 @@ components:
         uid:         {type: string}
         host:        {type: string}
         source:      {type: string}
+        source_ip:
+          type: string
+          description: |
+            Resolved HTTP client IP stamped by the server at ingest. Present on
+            all records that pass through `POST /api/v1/alerts` (honouring
+            `X-Forwarded-For` / `X-Real-IP` from trusted proxies). Optional —
+            caller-supplied values are preserved.
         process:     {type: string}
         severity:    {type: string}
         message:     {type: string}

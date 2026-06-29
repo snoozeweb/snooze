@@ -73,9 +73,53 @@ func TestAlertRoute_BatchArray(t *testing.T) {
 	rec := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/alerts", body)
 	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("X-Forwarded-For", "203.0.113.5")
 	r.ServeHTTP(rec, req)
 	require.Equal(t, http.StatusOK, rec.Code)
 	require.Len(t, fp.got, 2)
+	// Both records in the batch receive the same resolved source_ip.
+	require.Equal(t, "203.0.113.5", fp.got[0]["source_ip"])
+	require.Equal(t, "203.0.113.5", fp.got[1]["source_ip"])
+}
+
+// TestAlertPost_StampsSourceIP verifies that handleAlertPost injects
+// source_ip into every record that lacks one, using the resolved client IP.
+func TestAlertPost_StampsSourceIP(t *testing.T) {
+	fp := &fakeProcessor{}
+	r := chi.NewRouter()
+	rt := &Router{Processor: fp}
+	rt.mountAlerts(r)
+
+	body := bytes.NewBufferString(`{"host":"a"}`)
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/alerts", body)
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("X-Forwarded-For", "203.0.113.5")
+	r.ServeHTTP(rec, req)
+
+	require.Equal(t, http.StatusOK, rec.Code)
+	require.Len(t, fp.got, 1)
+	require.Equal(t, "203.0.113.5", fp.got[0]["source_ip"])
+}
+
+// TestAlertPost_DoesNotOverwriteSourceIP verifies that a caller-supplied
+// non-empty source_ip survives the handler unchanged.
+func TestAlertPost_DoesNotOverwriteSourceIP(t *testing.T) {
+	fp := &fakeProcessor{}
+	r := chi.NewRouter()
+	rt := &Router{Processor: fp}
+	rt.mountAlerts(r)
+
+	body := bytes.NewBufferString(`{"host":"a","source_ip":"10.0.0.1"}`)
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/alerts", body)
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("X-Forwarded-For", "203.0.113.5")
+	r.ServeHTTP(rec, req)
+
+	require.Equal(t, http.StatusOK, rec.Code)
+	require.Len(t, fp.got, 1)
+	require.Equal(t, "10.0.0.1", fp.got[0]["source_ip"])
 }
 
 func TestAlertRoute_BadJSON(t *testing.T) {

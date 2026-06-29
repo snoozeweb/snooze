@@ -52,6 +52,9 @@ func (rt *Router) handleAlertPost(w http.ResponseWriter, r *http.Request) {
 		WriteError(w, r, err)
 		return
 	}
+	// Stamp the resolved HTTP client IP onto every record as provenance,
+	// unless the caller supplied a non-empty source_ip of their own.
+	ip := middleware.ClientIP(r)
 	out := struct {
 		Data   []map[string]any `json:"data"`
 		Errors []string         `json:"errors,omitempty"`
@@ -61,6 +64,9 @@ func (rt *Router) handleAlertPost(w http.ResponseWriter, r *http.Request) {
 
 	rejections := 0
 	for _, rec := range records {
+		if v, _ := rec["source_ip"].(string); v == "" {
+			rec["source_ip"] = ip
+		}
 		res, action, err := rt.Processor.ProcessRecord(r.Context(), rec)
 		if err != nil {
 			out.Errors = append(out.Errors, err.Error())
