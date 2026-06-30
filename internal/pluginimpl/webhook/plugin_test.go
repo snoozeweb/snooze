@@ -250,10 +250,12 @@ func TestAuthValidation(t *testing.T) {
 	require.Contains(t, err.Error(), "unsupported auth type")
 }
 
-// TestSendLegacyPythonPayload verifies the Python-era idioms still produce
-// the right body. The action records ported from 1.x use `payload` instead
-// of `body`, and embed `{{ __self__ | tojson() }}` to inline the record.
-func TestSendLegacyPythonPayload(t *testing.T) {
+// TestSendLegacyPythonIdioms verifies the Python-era Jinja idioms still
+// produce the right body. Records ported from 1.x embed
+// `{{ __self__ | tojson() }}` to inline the record; that translation is
+// preserved. The legacy `payload` *key* those records used is not — the
+// `migrate webhook-body` migration renames it to the canonical `body` key.
+func TestSendLegacyPythonIdioms(t *testing.T) {
 	var captured struct {
 		body        []byte
 		contentType string
@@ -269,8 +271,8 @@ func TestSendLegacyPythonPayload(t *testing.T) {
 	rec := sampleRecord()
 	err := p.Send(context.Background(), rec, plugins.NotificationPayload{
 		Meta: map[string]any{
-			"url":     srv.URL + "/alert",
-			"payload": `{"channels": ["teams/abc/channels/def"], "alert": {{ __self__  | tojson() }} }`,
+			"url":  srv.URL + "/alert",
+			"body": `{"channels": ["teams/abc/channels/def"], "alert": {{ __self__  | tojson() }} }`,
 		},
 	})
 	require.NoError(t, err)
@@ -375,7 +377,7 @@ func recordingBatchServer(t *testing.T) (*httptest.Server, *batchRecorder) {
 func batchMeta(url, action string, maxsize int, timerSec int) map[string]any {
 	return map[string]any{
 		"url":           url,
-		"payload":       `{"channels": ["teams/T/channels/C"], "alert": {{ __self__  | tojson() }} }`,
+		"body":          `{"channels": ["teams/T/channels/C"], "alert": {{ __self__  | tojson() }} }`,
 		"batch":         true,
 		"batch_maxsize": maxsize,
 		"batch_timer":   timerSec,

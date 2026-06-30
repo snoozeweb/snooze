@@ -338,14 +338,6 @@ func configFromPayload(p plugins.NotificationPayload) (Config, error) {
 	if v, ok := p.Meta["body"].(string); ok && v != "" {
 		cfg.Body = v
 	}
-	// Python's webhook plugin spelled the body template `payload`. Accept it
-	// as a fallback so action records ported from 1.x keep dispatching
-	// without an operator-side migration.
-	if cfg.Body == "" {
-		if v, ok := p.Meta["payload"].(string); ok && v != "" {
-			cfg.Body = v
-		}
-	}
 	if v, ok := p.Meta["tls_insecure"].(bool); ok {
 		cfg.TLSInsecure = v
 	}

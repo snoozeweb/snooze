@@ -42,3 +42,6 @@ docs/configuration/*.rst
 
 # Local brainstorm/plan/spec artifacts — kept on disk, never committed
 docs/superpowers/
+
+# Alerta→Snooze port implementation plans (local-only working set)
+alerta-port-plans/

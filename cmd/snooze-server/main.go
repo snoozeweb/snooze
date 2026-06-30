@@ -107,6 +107,7 @@ Usage:
   snooze-server version                            Print version and exit
   snooze-server migrate-config --from <dir>        Convert legacy Python config (placeholder)
   snooze-server migrate multitenancy [--config <dir>]  Backfill tenant_id on an existing DB (one-shot)
+  snooze-server migrate webhook-body [--config <dir>]  Rename webhook actions' payload→body (one-shot)
   snooze-server root-token [--socket <path>]       Read the one-shot root token`)
 }
 
@@ -123,8 +124,10 @@ func runMigrate(args []string, stdout, stderr io.Writer) int {
 	switch name {
 	case "multitenancy":
 		return runMigrateMultitenancy(args[1:], stdout, stderr)
+	case "webhook-body":
+		return runMigrateWebhookBody(args[1:], stdout, stderr)
 	default:
-		_, _ = fmt.Fprintf(stderr, "migrate: unknown migration %q (known: multitenancy)\n", name)
+		_, _ = fmt.Fprintf(stderr, "migrate: unknown migration %q (known: multitenancy, webhook-body)\n", name)
 		return exitUsage
 	}
 }
@@ -176,6 +179,52 @@ func runMigrateMultitenancy(args []string, stdout, stderr io.Writer) int {
 		return exitErr
 	}
 	_, _ = fmt.Fprintln(stdout, "multitenancy migration complete")
+	return exitOK
+}
+
+// runMigrateWebhookBody opens the configured database driver and runs the
+// idempotent webhook payload→body rename (migrate.RunWebhookBodyRenameMigration).
+// Python-era webhook actions stored the request-body template under the
+// `payload` subcontent key; this rewrites them to the canonical `body` key so
+// the editor and dispatcher agree on a single field name. Idempotent and
+// sentinel-guarded, so re-runs are no-ops. On a pre-multitenancy database, run
+// it after `migrate multitenancy`.
+func runMigrateWebhookBody(args []string, stdout, stderr io.Writer) int {
+	fs := flag.NewFlagSet("migrate webhook-body", flag.ContinueOnError)
+	fs.SetOutput(stderr)
+	configDir := fs.String("config", "/etc/snooze/server-go", "directory containing YAML config files")
+	if err := fs.Parse(args); err != nil {
+		if errors.Is(err, flag.ErrHelp) {
+			return exitOK
+		}
+		return exitUsage
+	}
+
+	// Honour SIGINT/SIGTERM so a long rewrite can be interrupted cleanly.
+	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+	defer stop()
+
+	cfg, err := config.Load(*configDir)
+	if err != nil {
+		_, _ = fmt.Fprintf(stderr, "migrate: load config: %v\n", err)
+		return exitErr
+	}
+
+	logger := slog.New(slog.NewTextHandler(stderr, &slog.HandlerOptions{Level: slog.LevelInfo}))
+	slog.SetDefault(logger)
+
+	drv, err := openDB(ctx, cfg.Core.Database, logger)
+	if err != nil {
+		_, _ = fmt.Fprintf(stderr, "migrate: open database: %v\n", err)
+		return exitErr
+	}
+	defer func() { _ = drv.Close() }()
+
+	if err := migrate.RunWebhookBodyRenameMigration(ctx, drv); err != nil {
+		_, _ = fmt.Fprintf(stderr, "migrate: %v\n", err)
+		return exitErr
+	}
+	_, _ = fmt.Fprintln(stdout, "webhook body rename migration complete")
 	return exitOK
 }
 
