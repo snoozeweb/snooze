@@ -250,6 +250,7 @@ func (p *Plugin) Process(ctx context.Context, rec snoozetypes.Record) (plugins.R
 	recMap := recordToMap(rec)
 	now := recordTime(rec)
 
+	var matched []string
 	for _, e := range entries {
 		if !e.IsEnabled() {
 			continue
@@ -260,7 +261,15 @@ func (p *Plugin) Process(ctx context.Context, rec snoozetypes.Record) (plugins.R
 		if !e.TimeConstraints.Match(now) {
 			continue
 		}
+		matched = append(matched, e.Name)
 		p.dispatch(ctx, e, rec)
+	}
+
+	if len(matched) > 0 {
+		if rec.Extra == nil {
+			rec.Extra = map[string]any{}
+		}
+		rec.Extra["notifications"] = matched
 	}
 
 	return plugins.Result{Action: plugins.ActionContinue, Record: rec}, nil

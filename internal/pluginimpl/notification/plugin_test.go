@@ -292,7 +292,13 @@ func TestNotification(t *testing.T) {
 		res, err := p.Process(tctx(), rec)
 		require.NoError(t, err)
 		require.Equal(t, plugins.ActionContinue, res.Action)
-		require.Equal(t, rec, res.Record)
+		// The notification stamp adds Extra["notifications"] but must leave every
+		// other record field intact.
+		require.Equal(t, rec.UID, res.Record.UID)
+		require.Equal(t, rec.Host, res.Record.Host)
+		require.Equal(t, rec.Message, res.Record.Message)
+		require.Equal(t, rec.Timestamp, res.Record.Timestamp)
+		require.Equal(t, []string{"Notification1"}, res.Record.Extra["notifications"])
 
 		calls := waitForCalls(t, notifier, 1, time.Second)
 		require.Len(t, calls, 1)
@@ -671,6 +677,22 @@ func TestNotificationStats_TenantPartition(t *testing.T) {
 	require.Len(t, errorOps, 1, "expected exactly 1 action_error op for BadAction")
 	require.Equal(t, tenant, errorOps[0].search["tenant_id"],
 		"action_error counter must land in the dispatch tenant's partition, not the platform bucket")
+}
+
+func TestProcessStampsNotifications(t *testing.T) {
+	h := newHost(t)
+	writeEntries(t, h, []map[string]any{
+		{"name": "n-alpha", "condition": []any{"=", "host", "web01"}, "actions": []any{}},
+		{"name": "n-beta", "condition": []any{"=", "host", "web01"}, "actions": []any{}},
+		{"name": "n-nomatch", "condition": []any{"=", "host", "db01"}, "actions": []any{}},
+	})
+	p := newPlugin(t, h)
+
+	res, err := p.Process(tctx(), snoozetypes.Record{Host: "web01", Hash: "h1"})
+	require.NoError(t, err)
+
+	got, _ := res.Record.Extra["notifications"].([]string)
+	require.ElementsMatch(t, []string{"n-alpha", "n-beta"}, got)
 }
 
 // TestNotification_TenantIsolation verifies that entries and actions loaded for
