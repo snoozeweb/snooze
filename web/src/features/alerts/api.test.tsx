@@ -46,6 +46,48 @@ describe("alerts.api", () => {
     });
     expect(bodies[0]).toEqual({ record_uid: "r1", type: "ack", message: "got it" });
   });
+
+  it("useCommentRecord posts type=shelve with duration to /api/v1/comment", async () => {
+    const bodies: unknown[] = [];
+    mswServer.use(
+      http.post("/api/v1/comment", async ({ request }) => {
+        bodies.push(await request.json());
+        return HttpResponse.json({ ok: true });
+      }),
+    );
+    const wrapper = makeWrapper();
+    const { result } = renderHook(() => useCommentRecord(), { wrapper });
+    await act(async () => {
+      await result.current.mutateAsync({
+        record_uid: "r1",
+        type: "shelve",
+        duration: 14400,
+        message: "maintenance",
+      });
+    });
+    expect(bodies[0]).toEqual({
+      record_uid: "r1",
+      type: "shelve",
+      duration: 14400,
+      message: "maintenance",
+    });
+  });
+
+  it("useCommentRecord posts type=unshelve to /api/v1/comment", async () => {
+    const bodies: unknown[] = [];
+    mswServer.use(
+      http.post("/api/v1/comment", async ({ request }) => {
+        bodies.push(await request.json());
+        return HttpResponse.json({ ok: true });
+      }),
+    );
+    const wrapper = makeWrapper();
+    const { result } = renderHook(() => useCommentRecord(), { wrapper });
+    await act(async () => {
+      await result.current.mutateAsync({ record_uid: "r1", type: "unshelve" });
+    });
+    expect(bodies[0]).toEqual({ record_uid: "r1", type: "unshelve" });
+  });
 });
 
 describe("useShelveRecord", () => {

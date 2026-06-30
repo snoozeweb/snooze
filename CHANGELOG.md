@@ -1,5 +1,17 @@
 ## [Unreleased]
 
+### Changed
+
+- **Shelve action now posts a `shelve` comment** with a configurable duration (default 4h
+  from the dialog picker) instead of patching `ttl=-1`. Alerts automatically return to open
+  when the duration expires (requires Plan 34 backend). A `ShelveDialog` duration picker
+  (1h / 4h / 8h / 24h / 48h / Custom) replaces the old immediate toggle.
+- **Legacy permanent-exempt action (`ttl=-1`)** preserved under **"Permanent exempt (legacy)"**
+  in the row action menu, clearly labelled to prevent confusion with timed shelve.
+- **Shelved tab** now includes alerts with `state=="shelved"` (new backend model) in addition
+  to the legacy `ttl<0` predicate.
+- **TTL column** shows `"returns in Xh Ym"` for timed-shelved alerts based on `shelve_until`.
+
 ### Added
 
 - **Alerts table — action gating:** illegal state transitions (e.g. Acknowledge

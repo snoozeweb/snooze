@@ -3,7 +3,14 @@ import { Badge } from "@/shared/ui/Badge";
 import { Code } from "@/shared/ui/Code";
 import { TimeCell } from "@/shared/ui/TimeCell";
 import { severityColor } from "@/lib/format/severity-color";
-import { formatCountdown, formatTTL, stateBadgeVariant, stateLabel, trendLabel } from "./format";
+import {
+  formatCountdown,
+  formatShelveUntil,
+  formatTTL,
+  stateBadgeVariant,
+  stateLabel,
+  trendLabel,
+} from "./format";
 import type { AlertState, Record_ } from "./types";
 import styles from "./columns.module.css";
 
@@ -26,6 +33,17 @@ function recordHits(r: Record_): number {
 // are dynamic), so read it defensively like `duplicates` above. Read-only.
 export function recordCommentCount(r: Record_): number {
   const v = (r as { comment_count?: unknown }).comment_count;
+  if (typeof v === "number") return v;
+  if (typeof v === "string") {
+    const n = Number(v);
+    return Number.isFinite(n) ? n : 0;
+  }
+  return 0;
+}
+
+/** Reads shelve_until defensively (dynamic field from Plan 34 backend). */
+export function recordShelveUntil(r: Record_): number {
+  const v = (r as { shelve_until?: unknown }).shelve_until;
   if (typeof v === "number") return v;
   if (typeof v === "string") {
     const n = Number(v);
@@ -188,7 +206,11 @@ export const alertColumns: ColumnDef<Record_>[] = [
     // pre-existing rows from before the stamping change).
     id: "ttl",
     header: "TTL",
-    cell: (r) => <span>{formatTTL(r.ttl, r.date_epoch)}</span>,
+    cell: (r) => {
+      const su = recordShelveUntil(r);
+      const label = su > 0 ? formatShelveUntil(su) : formatTTL(r.ttl, r.date_epoch);
+      return <span>{label}</span>;
+    },
     width: "120px",
   },
   {

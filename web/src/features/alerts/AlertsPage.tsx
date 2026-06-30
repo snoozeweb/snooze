@@ -27,6 +27,7 @@ import { useAutoRefresh } from "./useAutoRefresh";
 import type { AlertState, Record_ } from "./types";
 import { tabById, type TabId } from "./tabs";
 import { ActionDialog, type ActionType } from "./ActionDialog";
+import { ShelveDialog } from "./ShelveDialog";
 import { InjectAlertsDialog } from "./InjectAlertsDialog";
 import { isActionAllowed } from "./transitions";
 import styles from "./AlertsPage.module.css";
@@ -154,6 +155,7 @@ export function AlertsPage() {
   // reading right out from under them.
   const [expandedCount, setExpandedCount] = useState(0);
   const [dialog, setDialog] = useState<{ type: ActionType; records: Record_[] } | null>(null);
+  const [shelveDialog, setShelveDialog] = useState<Record_[] | null>(null);
   const [injectOpen, setInjectOpen] = useState(false);
   const shelveMut = useShelveRecord();
   const removeMut = Records.useRemove();
@@ -293,6 +295,7 @@ export function AlertsPage() {
     (row: Record_): RowAction[] => {
       const state = (row.state ?? "") as AlertState;
       const isClosed = state === "close";
+      // ttl<0 branch: legacy permanent-exempt rows (pre-plan-34b); new-model rows use state=="shelved"
       const isShelved = state === "shelved" || (row.ttl !== undefined && row.ttl < 0);
 
       const out: RowAction[] = [];
@@ -319,47 +322,81 @@ export function AlertsPage() {
       });
 
       if (!isClosed) {
-        out.push({
-          key: isShelved ? "unshelve" : "shelve",
-          label: isShelved ? "Unshelve" : "Shelve",
-          icon: isShelved ? "eye" : "eye-off",
-          onSelect: () => {
-            void (async () => {
-              try {
-                await shelveMut.mutateAsync({
-                  uid: row.uid ?? "",
-                  shelve: !isShelved,
-                  currentTTL: row.ttl,
-                });
-                // Upgrade the old success toast to an undo: the inverse is a
-                // single shelve call flipping `shelve` back, restoring the
-                // record's prior TTL magnitude.
-                toast.undo(`${isShelved ? "Unshelved" : "Shelved"} • ${recordLabel(row)}`, () => {
-                  void (async () => {
-                    try {
-                      await shelveMut.mutateAsync({
-                        uid: row.uid ?? "",
-                        shelve: isShelved,
-                        currentTTL: row.ttl,
-                      });
-                    } catch (e) {
-                      const detail = e instanceof ApiError ? e.detail : "Undo failed";
-                      toast.error(detail);
-                    }
-                  })();
-                });
-              } catch (e) {
-                const detail = e instanceof ApiError ? e.detail : "Action failed";
-                toast.error(detail);
-              }
-            })();
-          },
-        });
+        if (isShelved) {
+          // Unshelve via new comment-based API
+          out.push({
+            key: "unshelve",
+            label: "Unshelve",
+            icon: "eye",
+            onSelect: () => {
+              void (async () => {
+                try {
+                  await commentMut.mutateAsync({ record_uid: row.uid ?? "", type: "unshelve" });
+                  toast.undo(`Unshelved • ${recordLabel(row)}`, () => {
+                    void (async () => {
+                      try {
+                        await commentMut.mutateAsync({ record_uid: row.uid ?? "", type: "shelve" });
+                      } catch (e) {
+                        const detail = e instanceof ApiError ? e.detail : "Undo failed";
+                        toast.error(detail);
+                      }
+                    })();
+                  });
+                } catch (e) {
+                  const detail = e instanceof ApiError ? e.detail : "Action failed";
+                  toast.error(detail);
+                }
+              })();
+            },
+          });
+        } else {
+          // Timed shelve via ShelveDialog
+          out.push({
+            key: "shelve",
+            label: "Shelve",
+            icon: "eye-off",
+            onSelect: () => setShelveDialog([row]),
+          });
+          // Legacy permanent-exempt (ttl=-1) — kept as a clearly-labelled secondary action
+          out.push({
+            key: "permanent-exempt",
+            label: "Permanent exempt (legacy)",
+            icon: "eye-off",
+            onSelect: () => {
+              void (async () => {
+                try {
+                  await shelveMut.mutateAsync({
+                    uid: row.uid ?? "",
+                    shelve: true,
+                    currentTTL: row.ttl,
+                  });
+                  toast.undo(`Permanent exempt • ${recordLabel(row)}`, () => {
+                    void (async () => {
+                      try {
+                        await shelveMut.mutateAsync({
+                          uid: row.uid ?? "",
+                          shelve: false,
+                          currentTTL: row.ttl,
+                        });
+                      } catch (e) {
+                        const detail = e instanceof ApiError ? e.detail : "Undo failed";
+                        toast.error(detail);
+                      }
+                    })();
+                  });
+                } catch (e) {
+                  const detail = e instanceof ApiError ? e.detail : "Action failed";
+                  toast.error(detail);
+                }
+              })();
+            },
+          });
+        }
       }
 
       return out;
     },
-    [openDialog, shelveMut],
+    [openDialog, shelveMut, commentMut],
   );
 
   // Count pill on the kebab: signals a row carries discussion (the full thread
@@ -532,6 +569,7 @@ export function AlertsPage() {
     [openDialog, confirmDelete],
   );
 
+  // TODO(34b): wire ShelveDialog to bulk selection
   const bulkActions = useCallback((rows: Record_[]) => {
     const openBulkDialog = (type: ActionType) => setDialog({ type, records: rows });
     // Show a bulk button when at least one selected row allows the action.
@@ -890,6 +928,48 @@ export function AlertsPage() {
         state={confirmDelete.state}
         onCancel={confirmDelete.cancel}
         onConfirm={() => void confirmDelete.confirm()}
+      />
+      <ShelveDialog
+        open={shelveDialog !== null}
+        records={shelveDialog ?? []}
+        onOpenChange={(o) => {
+          if (!o) setShelveDialog(null);
+        }}
+        submitting={commentMut.isPending}
+        onConfirm={async ({ duration, message }) => {
+          if (!shelveDialog) return;
+          try {
+            for (const r of shelveDialog) {
+              await commentMut.mutateAsync({
+                record_uid: r.uid ?? "",
+                type: "shelve",
+                ...(duration ? { duration } : {}),
+                ...(message ? { message } : {}),
+              });
+            }
+            const label =
+              shelveDialog.length === 1
+                ? recordLabel(shelveDialog[0]!)
+                : `${shelveDialog.length} alerts`;
+            toast.undo(`Shelved • ${label}`, () => {
+              void (async () => {
+                try {
+                  for (const r of shelveDialog) {
+                    await commentMut.mutateAsync({ record_uid: r.uid ?? "", type: "unshelve" });
+                  }
+                } catch (e) {
+                  const detail = e instanceof ApiError ? e.detail : "Undo failed";
+                  toast.error(detail);
+                }
+              })();
+            });
+          } catch (e) {
+            const detail = e instanceof ApiError ? e.detail : "Action failed";
+            toast.error(detail);
+          } finally {
+            setShelveDialog(null);
+          }
+        }}
       />
       <InjectAlertsDialog open={injectOpen} onOpenChange={setInjectOpen} />
     </div>

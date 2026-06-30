@@ -40,10 +40,11 @@ describe("alert tabs catalog", () => {
     });
   });
 
-  it("Shelved tab matches NOT EXISTS ttl OR ttl<0 (Python 1.x alert.yaml)", () => {
+  it("Shelved tab matches state==shelved (new-model) OR legacy ttl predicates", () => {
     expect(tabById("shelved").condition).toEqual({
       type: "OR",
       args: [
+        { type: "EQUALS", field: "state", value: "shelved" },
         { type: "NOT", arg: { type: "EXISTS", field: "ttl" } },
         { type: "LT", field: "ttl", value: 0 },
       ],

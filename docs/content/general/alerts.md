@@ -239,6 +239,19 @@ Posting an `unshelve`, `open`, `close`, or `ack` comment lifts the timed shelve
 early (clears `shelve_until`). The duration is operator-configurable at runtime in
 **Settings → Housekeeping** (`housekeeping.shelve_timeout`).
 
+**Using the UI:** Click **Shelve** in the row action menu to open a duration picker
+(default 4 h). Select a preset (1 h / 4 h / 8 h / 24 h / 48 h) or enter a custom
+number of hours. Add an optional note and click **Shelve**. To remove a shelve early,
+click **Unshelve** in the row action menu.
+
+**Permanent exempt (legacy):** Use **Permanent exempt (legacy)** from the row action
+menu to set `ttl=-1`. The alert is excluded from TTL cleanup indefinitely and does not
+auto-return. Unlike timed shelve, this does not set `shelve_until` and the alert stays
+shelved until an operator acts on it.
+
+**The Shelved tab** shows both timed-shelved alerts (`state=="shelved"`) and legacy
+permanent-exempt alerts (`ttl=-1`).
+
 The two behaviours coexist: the auto-return sweep's `shelve_until > 0` guard never
 touches a permanent shelve (`shelve_until=0`). A timed shelve leaves `ttl` alone,
 so the alert can still expire normally — if its `ttl` is shorter than

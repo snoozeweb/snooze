@@ -20,8 +20,10 @@ export function useActiveAlertCount(enabled: boolean) {
 
 export type CommentInput = {
   record_uid: string;
-  type: "ack" | "close" | "open" | "esc" | "comment";
+  type: "ack" | "close" | "open" | "esc" | "comment" | "shelve" | "unshelve";
   message?: string;
+  /** seconds; only meaningful when type=="shelve". 0 → use server default. */
+  duration?: number;
 };
 
 export function useCommentRecord(): UseMutationResult<unknown, ApiError, CommentInput> {
@@ -41,6 +43,7 @@ export function useCommentRecord(): UseMutationResult<unknown, ApiError, Comment
 // internal/config/schema/housekeeper.go::DefaultHousekeeper (48h).
 const FALLBACK_UNSHELVE_TTL = 48 * 60 * 60;
 
+/** @deprecated — permanent-exempt only; timed shelve uses useCommentRecord */
 export type ShelveInput = {
   uid: string;
   /** Whether we're shelving (true) or unshelving (false). */
@@ -57,6 +60,7 @@ export type ShelveInput = {
   currentTTL?: number | undefined;
 };
 
+/** @deprecated — permanent-exempt only; timed shelve uses useCommentRecord */
 export function useShelveRecord(): UseMutationResult<unknown, ApiError, ShelveInput> {
   const qc = useQueryClient();
   return useMutation({
@@ -70,6 +74,7 @@ export function useShelveRecord(): UseMutationResult<unknown, ApiError, ShelveIn
   });
 }
 
+/** @deprecated — permanent-exempt only; timed shelve uses useCommentRecord */
 // computeNextTTL emits the new ttl for a shelve / unshelve toggle. The
 // rules mirror Snooze 1.x's web/src/views/Record.vue::toggle_ttl, with one
 // fix: that helper multiplied by -1 unconditionally, which silently

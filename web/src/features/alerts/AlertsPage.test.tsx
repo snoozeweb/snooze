@@ -713,4 +713,56 @@ describe("AlertsPage", () => {
     expect(strip).toHaveTextContent(/acknowledged/i);
     expect(screen.getByRole("button", { name: /clear all/i })).toBeInTheDocument();
   });
+
+  // ── Plan 34b: timed shelve via ShelveDialog ────────────────────────────────
+
+  it("shelve action on open row opens ShelveDialog and POSTs type=shelve with duration", async () => {
+    const calls: unknown[] = [];
+    mswServer.use(
+      http.get("/api/v1/record", () =>
+        HttpResponse.json({
+          data: [{ uid: "r1", host: "srv-1", state: "open", date_epoch: 1 }],
+          meta: { count: 1, limit: 50, offset: 0, total: 1 },
+        }),
+      ),
+      http.post("/api/v1/comment", async ({ request }) => {
+        calls.push(await request.json());
+        return HttpResponse.json({ ok: true });
+      }),
+    );
+    const user = userEvent.setup();
+    setup();
+    await waitFor(() => expect(screen.getByText("srv-1")).toBeInTheDocument());
+    await user.click(screen.getAllByRole("button", { name: /row actions/i })[0]!);
+    await user.click(screen.getByRole("menuitem", { name: /^shelve$/i }));
+    // ShelveDialog should open
+    await waitFor(() => expect(screen.getByRole("dialog")).toBeInTheDocument());
+    // Submit with default 4h duration
+    await user.click(screen.getByRole("button", { name: /^shelve$/i }));
+    await waitFor(() => expect(calls.length).toBe(1));
+    expect(calls[0]).toMatchObject({ record_uid: "r1", type: "shelve", duration: 14400 });
+  });
+
+  it("unshelve on shelved row POSTs type=unshelve to /api/v1/comment", async () => {
+    const calls: unknown[] = [];
+    mswServer.use(
+      http.get("/api/v1/record", () =>
+        HttpResponse.json({
+          data: [{ uid: "r1", host: "srv-1", state: "shelved", date_epoch: 1 }],
+          meta: { count: 1, limit: 50, offset: 0, total: 1 },
+        }),
+      ),
+      http.post("/api/v1/comment", async ({ request }) => {
+        calls.push(await request.json());
+        return HttpResponse.json({ ok: true });
+      }),
+    );
+    const user = userEvent.setup();
+    setup();
+    await waitFor(() => expect(screen.getByText("srv-1")).toBeInTheDocument());
+    await user.click(screen.getAllByRole("button", { name: /row actions/i })[0]!);
+    await user.click(screen.getByRole("menuitem", { name: /^unshelve$/i }));
+    await waitFor(() => expect(calls.length).toBe(1));
+    expect(calls[0]).toMatchObject({ record_uid: "r1", type: "unshelve" });
+  });
 });
