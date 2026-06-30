@@ -97,6 +97,44 @@ Snooze unions every server-managed group the user belongs to into the user's
 group set, then matches roles against that set. The user gains the role without
 `sre-oncall` ever appearing in their own `roles[]` field.
 
+## Managing groups in the console
+
+Groups are manageable from the web console under **Admin → Groups**
+(`/web/admin/groups`). No curl required.
+
+The Groups page shows three columns:
+
+- **Name** — the group's identifier, displayed in monospace.
+- **Description** — a free-text note (shown as `—` when empty).
+- **Members** — a count badge (`N members`) for the number of `{username, method}` pairs.
+
+### Adding a member
+
+Open a group by clicking its row (or click **New** to create one). In the editor
+drawer, scroll to the **Members** section. Use the inline add form:
+
+1. Type a **username** in the text input.
+2. Select a **method** from the dropdown:
+   - `local` — for local-password accounts.
+   - `ldap` — for accounts authenticated via an LDAP directory.
+   - **Other…** — reveals a free-form text field for OIDC methods such as
+     `microsoft` or `google`.
+3. Click **Add member**. The pair appears in the member list immediately.
+
+Adding the same `{username, method}` pair twice is a no-op — duplicates are
+silently de-duplicated client-side.
+
+### Removing a member
+
+Each member row has a remove button (×). Click it to remove the pair from the
+list. The change is not persisted until you click **Save**.
+
+### Membership takes effect on next login
+
+Group membership is resolved at authentication time. Adding a user to a group
+grants the associated role(s) on their **next login or token refresh**, not
+immediately for an already-authenticated session.
+
 ## Notes
 
 - **Deleting a group** never touches any user document. Members simply lose that

@@ -229,6 +229,45 @@ const rolesRoute = createRoute({
   },
 });
 
+type GroupsSearchParams = {
+  uid?: string;
+  page?: number;
+  orderby?: string;
+  asc?: boolean;
+  search?: string;
+};
+
+const groupsRoute = createRoute({
+  getParentRoute: () => webLayoutRoute,
+  path: "/web/admin/groups",
+  component: lazyRouteComponent(() => import("@/features/admin/groups/GroupsPage"), "GroupsPage"),
+  validateSearch: (raw): GroupsSearchParams => {
+    const out: Record<string, unknown> = {};
+    if (typeof raw["uid"] === "string") out["uid"] = raw["uid"];
+    const pageRaw = raw["page"];
+    const page =
+      typeof pageRaw === "number"
+        ? pageRaw
+        : typeof pageRaw === "string" && /^\d+$/.test(pageRaw)
+          ? Number(pageRaw)
+          : undefined;
+    if (page !== undefined) out["page"] = page;
+    if (typeof raw["orderby"] === "string") out["orderby"] = raw["orderby"];
+    const ascRaw = raw["asc"];
+    const asc =
+      typeof ascRaw === "boolean"
+        ? ascRaw
+        : ascRaw === "true"
+          ? true
+          : ascRaw === "false"
+            ? false
+            : undefined;
+    if (asc !== undefined) out["asc"] = asc;
+    if (typeof raw["search"] === "string") out["search"] = raw["search"];
+    return out as GroupsSearchParams;
+  },
+});
+
 type EnvironmentsSearchParams = {
   uid?: string;
   page?: number;
@@ -804,6 +843,7 @@ const routeTree = rootRoute.addChildren([
     dashboardRoute,
     usersRoute,
     rolesRoute,
+    groupsRoute,
     apikeysRoute,
     environmentsRoute,
     widgetsRoute,

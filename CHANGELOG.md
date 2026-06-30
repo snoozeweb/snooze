@@ -2,6 +2,9 @@
 
 ### Added
 
+- Groups are now manageable in the web console (Admin → Groups): create named cohorts, add/remove
+  `{username, method}` member pairs, and assign roles to the group via the existing Roles editor.
+
 - **Security Audit console.** A new "Security Audit" admin page
   (`/web/admin/audit`) lists all auth-event audit rows
   (`login`, `login_failed`, `token refresh`, `logout`) with columns for

@@ -75,6 +75,13 @@ export const NAV_ITEMS: NavItem[] = [
     permissions: ["ro_role", "rw_role"],
   },
   {
+    to: "/web/admin/groups",
+    label: "Groups",
+    icon: "users",
+    group: "admin",
+    permissions: ["ro_group", "rw_group"],
+  },
+  {
     // "key" is not in ICON_NAMES; "lock" is the closest existing glyph.
     to: "/web/admin/apikeys",
     label: "API Keys",
