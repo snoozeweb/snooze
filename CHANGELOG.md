@@ -2,6 +2,12 @@
 
 ### Added
 
+- Added **"Federation" admin page** (`/web/admin/forward`) for managing alert-forwarding
+  destinations in the web console: create, edit, enable/disable, and delete forward destinations
+  with condition scoping, event-class selection, and bearer / basic / apikey auth sub-form.
+  The Advanced section (collapsible) covers auth, TLS verification, and request timeout.
+  A 409 conflict surfaces "name already taken" inline.
+
 - **Tenant routing admin UI:** a new **Org matching** page under Admin lets operators manage
   attribute→tenant routing rules (group / domain / login → tenant slug) via create / edit / delete
   forms with columns for match type, match value, target tenant, and priority. A duplicate
