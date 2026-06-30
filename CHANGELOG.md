@@ -249,6 +249,16 @@
   read-time `status` field (`ok` or `overdue`) on every heartbeat document.
   An optional `?status=` query parameter filters the list to heartbeats
   matching the supplied value(s). No database migration required.
+- **Alert flow visibility: matched notifications + action outcomes.** Each
+  processed alert now records the notification entries it matched
+  (`record.notifications`) and the outcome of every action they fired
+  (`record.actions`: `success`/`error`(with message)/`skipped`/`pending`/`sent`).
+  The Alerts row-detail panel gains a **Flow** tab beside the Timeline,
+  rendering the pipeline path (input → rules → aggregate → notifications →
+  actions, or a terminal snooze box) with green/red action boxes — click a red
+  box for the error. Action-outcome resolution is one merge-write per notifying
+  alert, gated by the new `notification.persist_action_outcomes` flag
+  (default `true`; disable on high-volume SQLite).
 
 ### Fixed
 
