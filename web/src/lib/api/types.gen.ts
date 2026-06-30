@@ -286,6 +286,12 @@ export interface paths {
                                     /** @description Human-readable label. */
                                     display_name: string;
                                 }[];
+                                /** @description Present and true when at least one tenant_match
+                                 *     routing rule exists, so the login UI can tell the
+                                 *     user that organization routing is automatic. Omitted
+                                 *     when no rules are defined.
+                                 *      */
+                                tenant_match_enabled?: boolean;
                             };
                         };
                     };
@@ -1784,9 +1790,10 @@ export interface paths {
          * Bulk state change across a query
          * @description Sets `state` on every `record` matching the `q` condition in a single
          *     call, returning the matched/updated counts. `state` must be one of
-         *     `ack`, `close`, `open`, `esc` (the same set the per-record comment path
-         *     uses). Requires the `rw_record` permission (the `rw_all` wildcard also
-         *     satisfies it).
+         *     `ack`, `close`, `open`, `esc`, `shelve`, `unshelve` (the same set the
+         *     per-record comment path uses; `shelve`→`shelved` stamps a timed
+         *     `shelve_until`, `unshelve`→`open` clears it). Requires the `rw_record`
+         *     permission (the `rw_all` wildcard also satisfies it).
          *
          *     Unlike posting a state-changing comment per record, the bulk path sets
          *     `state` directly and does **not** fan out one comment per record (a
@@ -1812,7 +1819,7 @@ export interface paths {
                 content: {
                     "application/json": {
                         /** @enum {string} */
-                        state: "ack" | "close" | "open" | "esc";
+                        state: "ack" | "close" | "open" | "esc" | "shelve" | "unshelve";
                         /** @description Recorded once in the audit summary. */
                         message?: string;
                     };
@@ -2276,6 +2283,196 @@ export interface paths {
         };
         trace?: never;
     };
+    "/api/v1/tenant_match": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List attribute→tenant routing rules
+         * @description Returns all `tenant_match` rules. The collection is global (platform
+         *     scope, not per-tenant). Requires `ro_tenant` or `rw_tenant`.
+         *
+         */
+        get: {
+            parameters: {
+                query?: {
+                    offset?: number;
+                    limit?: number;
+                    orderby?: string;
+                    asc?: boolean;
+                };
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            data: components["schemas"]["TenantMatchRule"][];
+                            meta: components["schemas"]["ListMeta"];
+                        };
+                    };
+                };
+                401: components["responses"]["Unauthorized"];
+                403: components["responses"]["Forbidden"];
+            };
+        };
+        put?: never;
+        /**
+         * Create a routing rule
+         * @description Creates an attribute→tenant routing rule. Requires `rw_tenant`. The
+         *     `(match_type, match)` pair must be unique (a duplicate returns 409) and
+         *     `tenant_id` must name an existing tenant.
+         *
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["TenantMatchRule"];
+                };
+            };
+            responses: {
+                /** @description Created */
+                201: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            data?: components["schemas"]["TenantMatchRule"][];
+                        };
+                    };
+                };
+                400: components["responses"]["BadRequest"];
+                401: components["responses"]["Unauthorized"];
+                403: components["responses"]["Forbidden"];
+                409: components["responses"]["Conflict"];
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/tenant_match/{uid}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get a routing rule by uid
+         * @description Requires `ro_tenant` or `rw_tenant`.
+         */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    uid: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["TenantMatchRule"];
+                    };
+                };
+                401: components["responses"]["Unauthorized"];
+                403: components["responses"]["Forbidden"];
+                404: components["responses"]["NotFound"];
+            };
+        };
+        put?: never;
+        post?: never;
+        /**
+         * Delete a routing rule
+         * @description Requires `rw_tenant`.
+         */
+        delete: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    uid: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Deleted */
+                204: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                401: components["responses"]["Unauthorized"];
+                403: components["responses"]["Forbidden"];
+                404: components["responses"]["NotFound"];
+            };
+        };
+        options?: never;
+        head?: never;
+        /**
+         * Update a routing rule
+         * @description Requires `rw_tenant`.
+         */
+        patch: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    uid: string;
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["TenantMatchRule"];
+                };
+            };
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["TenantMatchRule"];
+                    };
+                };
+                400: components["responses"]["BadRequest"];
+                401: components["responses"]["Unauthorized"];
+                403: components["responses"]["Forbidden"];
+                404: components["responses"]["NotFound"];
+            };
+        };
+        trace?: never;
+    };
     "/api/v1/webhook/{webhook}": {
         parameters: {
             query?: never;
@@ -2307,7 +2504,7 @@ export interface paths {
                 query?: never;
                 header?: never;
                 path: {
-                    webhook: "alertmanager" | "azuremonitor" | "cloudwatch" | "datadog" | "grafana" | "graylog" | "influxdb2" | "kapacitor" | "newrelic" | "pingdom" | "prometheus" | "sentry" | "stackdriver";
+                    webhook: "alertmanager" | "azuremonitor" | "cloudwatch" | "datadog" | "grafana" | "graylog" | "influxdb2" | "kapacitor" | "newrelic" | "pagerduty" | "pingdom" | "prometheus" | "sentry" | "stackdriver";
                 };
                 cookie?: never;
             };
@@ -2339,6 +2536,269 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/webhook/pagerduty": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * PagerDuty status-sync inbound webhook
+         * @description Accepts PagerDuty webhook v2 (`messages[]`) payloads and applies
+         *     ack/close/re-open state transitions to matching Snooze records. Each
+         *     message's `data.incident.incident_key` locates the originating record
+         *     (matched against `record.hash`, falling back to `record.uid` — the same
+         *     dedup-key convention the outbound notifier uses). The event type maps to
+         *     a Snooze state:
+         *
+         *     | PagerDuty event type | Snooze state |
+         *     |----------------------|--------------|
+         *     | `incident.acknowledge` | `ack` |
+         *     | `incident.resolve` | `close` |
+         *     | `incident.trigger` / `incident.unacknowledge` / `incident.escalate` | re-open (state cleared) |
+         *     | `incident.assign` / `incident.delegate` / unknown | ignored (no-op) |
+         *
+         *     Unknown event types are a fail-open no-op (200 OK, no write) so a Snooze
+         *     upgrade never causes PagerDuty to retry forever. Like every receiver,
+         *     this endpoint is unauthenticated by default and gated by `ingest.token`
+         *     when configured. No PagerDuty webhook signature is validated.
+         *
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["PagerDutyWebhookEnvelope"];
+                };
+            };
+            responses: {
+                /** @description All messages processed. `updated` is the number of records patched
+                 *     (0 when every message was an ignored event type).
+                 *      */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            /** @example ok */
+                            status?: string;
+                            /** @example 1 */
+                            updated?: number;
+                        };
+                    };
+                };
+                /** @description Missing or malformed payload (bad JSON, empty `messages`, or a missing `incident_key`). */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description No matching record found for the supplied `incident_key`. */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description Internal error (the DB state write failed). */
+                500: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                503: components["responses"]["IngestDisabledWebhook"];
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/webhook/slack": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Slack interactive-message inbound webhook (ack from chat)
+         * @description Receives Slack interactivity payloads fired when an operator presses an
+         *     ack/close/re-open button under an alert message rendered by the Slack
+         *     notifier's interactive mode. The body is
+         *     `application/x-www-form-urlencoded` with a single `payload` field holding
+         *     the Block Kit interaction JSON; `actions[0].value` is the action verb
+         *     (`ack`/`close`/`open`) and `actions[0].block_id` is the record uid.
+         *
+         *     The transition is applied through the same validity table the dashboard
+         *     uses (an attributed comment is written so the activity feed records it);
+         *     an illegal move is refused. The response is a Slack message-replacement
+         *     JSON body (`replace_original: true`) that strips the buttons and shows
+         *     the new state — Slack edits the message in place.
+         *
+         *     **Authentication (fail closed):** every request is verified against the
+         *     Slack `v0=` request signature —
+         *     `X-Slack-Signature = "v0=" + HMAC-SHA256(signing_secret,
+         *     "v0:" + X-Slack-Request-Timestamp + ":" + rawBody)` — compared in
+         *     constant time, with timestamps more than 5 minutes from now rejected.
+         *     While `slack_interactive.signing_secret` is unset the endpoint returns
+         *     `401` for every request.
+         *
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header: {
+                    /** @description Slack v0 request signature (`v0=<hex HMAC-SHA256>`). */
+                    "X-Slack-Signature": string;
+                    /** @description Unix-seconds request timestamp included in the signature base string. */
+                    "X-Slack-Request-Timestamp": string;
+                };
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/x-www-form-urlencoded": {
+                        /** @description URL-encoded Block Kit interaction JSON. */
+                        payload?: string;
+                    };
+                };
+            };
+            responses: {
+                /** @description Action processed (including a refused illegal transition — chat-client
+                 *     UX requires a 200). Body is the Slack message-replacement JSON.
+                 *      */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            /** @example true */
+                            replace_original?: boolean;
+                            /** @example ✅ Acknowledged by alice */
+                            text?: string;
+                        };
+                    };
+                };
+                /** @description Missing or malformed `payload`. */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description Signature missing/invalid, timestamp stale, or signing secret unset (fail closed). */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/webhook/telegram": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Telegram callback-query inbound webhook (ack from chat)
+         * @description Receives Telegram `callback_query` updates fired when an operator presses
+         *     an ack/close/re-open inline-keyboard button under an alert message
+         *     rendered by the Telegram notifier's interactive mode.
+         *     `callback_query.data` is `"<action> <uid>"` (e.g. `ack rec-1`) and
+         *     `callback_query.from` is the actor.
+         *
+         *     The transition is applied through the same validity table the dashboard
+         *     uses (an attributed comment is written); the message is edited in place
+         *     via `editMessageText` and the callback is always answered to clear the
+         *     client spinner. An illegal move is refused with a message edit and still
+         *     returns 200.
+         *
+         *     **Authentication (fail closed):** the `X-Telegram-Bot-Api-Secret-Token`
+         *     header (set by Telegram when the webhook is registered with `setWebhook`)
+         *     is constant-time compared against `telegram_interactive.secret_token`.
+         *     While that secret is unset the endpoint returns `401` for every request.
+         *
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header: {
+                    /** @description Per-webhook secret token Telegram echoes on every delivery. */
+                    "X-Telegram-Bot-Api-Secret-Token": string;
+                };
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": Record<string, never>;
+                };
+            };
+            responses: {
+                /** @description Action processed (including a refused illegal transition). Body is
+                 *     `{"status":"ok"}`.
+                 *      */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            /** @example ok */
+                            status?: string;
+                        };
+                    };
+                };
+                /** @description Malformed Telegram update payload. */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description Secret token mismatch, or secret token unset (fail closed). */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/heartbeat": {
         parameters: {
             query?: never;
@@ -2352,12 +2812,13 @@ export interface paths {
          *     create / replace / patch / delete / search, but the list and get-one
          *     responses additionally carry a computed, read-only `status` field
          *     (`ok` when the heartbeat was pinged within interval+grace, `overdue`
-         *     when it has been silent longer — or has never been pinged). The field
-         *     is never stored; it is projected at read time.
+         *     when it has been silent longer — or has never been pinged, `slow` when
+         *     within the window but the last ping latency exceeded `max_latency`). The
+         *     field is never stored; it is projected at read time.
          *
          *     The optional `status` query parameter filters the list to heartbeats
          *     whose computed status matches one of the supplied values
-         *     (comma-separated, e.g. `?status=overdue` or `?status=ok,overdue`).
+         *     (comma-separated, e.g. `?status=overdue` or `?status=ok,slow`).
          *     When the filter is present, `meta.count` and `meta.total` reflect the
          *     filtered slice.
          *
@@ -2374,8 +2835,8 @@ export interface paths {
                     limit?: components["parameters"]["Limit"];
                     orderby?: components["parameters"]["OrderBy"];
                     asc?: components["parameters"]["Asc"];
-                    /** @description Comma-separated computed-status filter (`ok`, `overdue`). Absent
-                     *     returns every heartbeat.
+                    /** @description Comma-separated computed-status filter (`ok`, `overdue`, `slow`).
+                     *     Absent returns every heartbeat.
                      *      */
                     status?: string;
                 };
@@ -2428,7 +2889,8 @@ export interface paths {
         /**
          * Fetch a single heartbeat with its computed health status
          * @description Like the generic get-one, but the returned document additionally
-         *     carries the read-only computed `status` field (`ok` / `overdue`).
+         *     carries the read-only computed `status` field (`ok` / `overdue` /
+         *     `slow`).
          *
          */
         get: {
@@ -2494,6 +2956,12 @@ export interface paths {
                     name: string;
                     /** @description The heartbeat's server-generated secret token. */
                     token: string;
+                    /** @description Client send time in Unix milliseconds. When present the server
+                     *     computes and stores `last_latency = receive_time - sent_at`; an
+                     *     absent or unparseable value is silently ignored and the ping still
+                     *     succeeds.
+                     *      */
+                    sent_at?: number;
                 };
                 header?: never;
                 path?: never;
@@ -3782,6 +4250,33 @@ export interface components {
             /** Format: int64 */
             updated_at?: number;
         };
+        /** @description One attribute→tenant routing rule in the global tenant_match registry
+         *     (Plan 29). When an SSO/LDAP user authenticates without an explicit,
+         *     non-default org, the login flow evaluates these rules in
+         *     (priority ASC, uid ASC) order and routes the user to the first match's
+         *     tenant_id.
+         *      */
+        TenantMatchRule: {
+            /** @description Server-assigned id (response only). */
+            uid?: string;
+            /**
+             * @description How `match` is compared: 'group' (any of the user's groups, case-
+             *     insensitive), 'domain' (email ends with @match, case-insensitive),
+             *     or 'login' (username, case-insensitive).
+             *
+             * @enum {string}
+             */
+            match_type: "group" | "domain" | "login";
+            /** @description The literal value compared (case-insensitive). */
+            match: string;
+            /** @description Target tenant slug; must name an existing tenant. */
+            tenant_id: string;
+            /**
+             * @description Lower is evaluated first; ties broken by uid.
+             * @default 0
+             */
+            priority: number;
+        };
         /** @description The canonical alert document moving through the Snooze
          *     pipeline. Mirrors `pkg/snoozetypes.Record`. Fields are
          *     permissive — plugins routinely inject extra keys that don't
@@ -3837,6 +4332,47 @@ export interface components {
              *
              */
             escalate_at?: number;
+            /**
+             * Format: int64
+             * @description Timed-shelve auto-return deadline (epoch seconds). Stamped when a
+             *     `shelve` comment is posted (`now + housekeeping.shelve_timeout`); the
+             *     housekeeper's `unshelve_timeout` sweep reverts the record from
+             *     `shelved` to `open` once this passes. `0`/absent means either no
+             *     timed shelve or the legacy permanent shelve (`ttl=-1`), which is
+             *     never auto-unshelved.
+             *
+             */
+            shelve_until?: number;
+            /** @description Names of the rule-plugin rules this alert matched, in match order.
+             *     Stamped by the `rule` plugin.
+             *      */
+            rules?: string[];
+            /** @description Name of the aggregate rule that grouped this alert (the
+             *     `aggregaterule` plugin).
+             *      */
+            aggregate?: string;
+            /** @description Name of the snooze rule that silenced this alert, when one matched.
+             *     Present only on snoozed alerts; absent otherwise.
+             *      */
+            snoozed?: string;
+            /** @description Names of the notification entries whose condition and time-constraints
+             *     matched this alert. Stamped by the `notification` plugin.
+             *      */
+            notifications?: string[];
+            /** @description Per-action outcome for every action a matched notification referenced.
+             *     Misconfigured actions appear with status `error` and a reason; actions
+             *     of a frequency-disabled notification appear as `skipped`.
+             *      */
+            actions?: {
+                /** @description Configured action entry name. */
+                name?: string;
+                /** @description The notification entry that triggered this action. */
+                notification?: string;
+                /** @enum {string} */
+                status?: "pending" | "sent" | "success" | "error" | "skipped";
+                /** @description Failure reason; present when status is `error`. */
+                error?: string;
+            }[];
         } & {
             [key: string]: unknown;
         };
@@ -3865,6 +4401,17 @@ export interface components {
             interval: number;
             /** @description Extra slack in seconds before a miss fires (optional). */
             grace?: number;
+            /** @description Maximum acceptable ping latency in milliseconds. 0 or absent disables
+             *     latency tracking. When a ping carries ?sent_at= and the computed
+             *     latency exceeds this while the heartbeat is still within its window, a
+             *     lower-severity `slow` alert fires.
+             *      */
+            max_latency?: number;
+            /** @description Latency of the most recent ping in milliseconds (receive_time -
+             *     sent_at). Set by the ping endpoint when ?sent_at= is supplied; absent
+             *     otherwise.
+             *      */
+            readonly last_latency?: number;
             /** @description Last ping time (RFC3339 or epoch seconds); set by the ping endpoint. */
             last_seen?: string;
             environment?: string;
@@ -3878,12 +4425,13 @@ export interface components {
             message?: string;
             /**
              * @description Computed health status. `ok` when pinged within interval+grace,
-             *     `overdue` when silent longer (or never pinged). Never stored;
-             *     projected at read time on list/get responses only.
+             *     `overdue` when silent longer (or never pinged), `slow` when within
+             *     the window but the last ping latency exceeded `max_latency`. Never
+             *     stored; projected at read time on list/get responses only.
              *
              * @enum {string}
              */
-            readonly status?: "ok" | "overdue";
+            readonly status?: "ok" | "overdue" | "slow";
         } & {
             [key: string]: unknown;
         };
@@ -3929,6 +4477,34 @@ export interface components {
             readonly remaining_seconds?: number;
         } & {
             [key: string]: unknown;
+        };
+        /** @description PagerDuty webhook v2 payload. Each entry in `messages` carries an event
+         *     `type` and a `data.incident` object whose `incident_key` is the
+         *     dedup-key Snooze set when it triggered the incident.
+         *      */
+        PagerDutyWebhookEnvelope: {
+            messages: {
+                /**
+                 * @description PagerDuty event type, e.g. `incident.acknowledge`,
+                 *     `incident.resolve`, `incident.trigger`,
+                 *     `incident.unacknowledge`, `incident.escalate`,
+                 *     `incident.assign`, `incident.delegate`.
+                 *
+                 * @example incident.acknowledge
+                 */
+                type: string;
+                data: {
+                    incident?: {
+                        /**
+                         * @description Dedup key Snooze set (== record.hash, fallback record.uid).
+                         * @example abc123
+                         */
+                        incident_key: string;
+                        incident_number?: number;
+                        html_url?: string;
+                    };
+                };
+            }[];
         };
         ErrEnvelope: {
             error: components["schemas"]["ErrBody"];

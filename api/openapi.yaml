@@ -2933,6 +2933,49 @@ components:
             `shelved` to `open` once this passes. `0`/absent means either no
             timed shelve or the legacy permanent shelve (`ttl=-1`), which is
             never auto-unshelved.
+        rules:
+          type: array
+          items: {type: string}
+          description: |
+            Names of the rule-plugin rules this alert matched, in match order.
+            Stamped by the `rule` plugin.
+        aggregate:
+          type: string
+          description: |
+            Name of the aggregate rule that grouped this alert (the
+            `aggregaterule` plugin).
+        snoozed:
+          type: string
+          description: |
+            Name of the snooze rule that silenced this alert, when one matched.
+            Present only on snoozed alerts; absent otherwise.
+        notifications:
+          type: array
+          items: {type: string}
+          description: |
+            Names of the notification entries whose condition and time-constraints
+            matched this alert. Stamped by the `notification` plugin.
+        actions:
+          type: array
+          description: |
+            Per-action outcome for every action a matched notification referenced.
+            Misconfigured actions appear with status `error` and a reason; actions
+            of a frequency-disabled notification appear as `skipped`.
+          items:
+            type: object
+            properties:
+              name:
+                type: string
+                description: Configured action entry name.
+              notification:
+                type: string
+                description: The notification entry that triggered this action.
+              status:
+                type: string
+                enum: [pending, sent, success, error, skipped]
+              error:
+                type: string
+                description: Failure reason; present when status is `error`.
       additionalProperties: true
 
     ListResponse:
