@@ -107,12 +107,19 @@ type Router struct {
 //
 // Chain order:
 //
-//	RequestID → RealIP → Recoverer → Trace → Audit → CORS → Auth (skip *)
+//	RequestID → CapturePeerIP → RealIP → Recoverer → Trace → Audit → CORS → Auth (skip *)
 func (rt *Router) Build() chi.Router {
 	r := chi.NewRouter()
 
 	// 1. RequestID first so every later middleware sees the id.
 	r.Use(middleware.RequestID())
+	// 1.5. CapturePeerIP stashes the genuine TCP peer (RemoteAddr from the
+	// socket) BEFORE RealIP overwrites it from the spoofable X-Forwarded-For/
+	// X-Real-IP/True-Client-IP headers. This ordering is load-bearing: the
+	// auth-proxy trust gate reads PeerIP, so capturing here is what makes the
+	// trusted_proxies allowlist immune to header spoofing. Unconditional and
+	// cheap (a context write); harmless when auth-proxy is off.
+	r.Use(middleware.CapturePeerIP)
 	// 2. RealIP from chi — populates RemoteAddr from X-Forwarded-For/X-Real-IP.
 	r.Use(chimw.RealIP)
 	// 3. Recoverer wraps everything below so a panic still emits an envelope.

@@ -88,9 +88,9 @@ The proxy branch runs **before** the normal `Authorization` check and is a
 strict fall-through gate — it never rejects a request that simply isn't a
 proxied one:
 
-- **Untrusted source IP** (when `trusted_proxies` is non-empty and the client IP
-  is outside it) → the headers are ignored and the request continues to the
-  Bearer/`snz_`/JWT path.
+- **Untrusted peer** (when `trusted_proxies` is non-empty and the immediate TCP
+  peer address is outside it) → the headers are ignored and the request
+  continues to the Bearer/`snz_`/JWT path.
 - **Missing username header** → fall through (so the proxy itself can reach
   `/api/v1/login`, health checks, etc.).
 - **Valid `Bearer` JWT or `snz_` key present** → still authenticates normally;
@@ -103,22 +103,29 @@ Groups are **re-synced** onto the user document on every authenticated request,
 so a change to the user's groups at the IdP takes effect on the next request
 (role mapping stays live rather than frozen at first sign-in).
 
-### `trusted_proxies` semantics and the RealIP interaction
+### `trusted_proxies` semantics
 
-`trusted_proxies` is **the proxy's own IP as Snooze sees it on the request** —
-not the end-user's IP. The gate evaluates the client IP via the same picker the
-audit log uses (`X-Forwarded-For` → `X-Real-IP` → `RemoteAddr`).
+`trusted_proxies` is **the proxy's own IP as Snooze sees it on the TCP
+connection** — not the end-user's IP. The gate matches against the **immediate
+TCP peer address** (`RemoteAddr` as the Go HTTP server reads it from the socket),
+captured by a dedicated `CapturePeerIP` middleware that runs **before** chi's
+`RealIP`. It is therefore **immune to `X-Forwarded-For` / `X-Real-IP` spoofing**:
+a client reaching Snooze directly cannot forge a trusted address by setting those
+headers, because the gate never consults them.
 
-Be aware that Snooze's middleware chain runs chi's `RealIP` **before** the auth
-middleware: `RealIP` rewrites `RemoteAddr` from `X-Forwarded-For`/`X-Real-IP`
-when those headers are present. In a typical single-hop deployment the proxy is
-the immediate peer and does not send `X-Forwarded-For` to Snooze, so the gate
-sees the proxy's real address — set `trusted_proxies` to that. **If your proxy
-forwards `X-Forwarded-For`/`X-Real-IP`, those headers determine the IP the gate
-checks**, so an untrusted client could influence it; in that topology either
-strip those headers at the proxy or list the forwarded address. When in doubt,
-test with an explicit request and confirm the gate denies an out-of-range
-source.
+:::note Audit and ingest are unaffected
+The audit log's `remote` field and the client IP stamped onto ingested records
+still honor `X-Forwarded-For` / `X-Real-IP` (operators want the real client
+behind the proxy there). Only the `trusted_proxies` trust decision uses the
+genuine peer.
+:::
+
+Set `trusted_proxies` to the proxy's real connecting address (the socket peer
+Snooze observes). In a single-hop deployment that is the proxy's own IP. This
+does **not** remove the requirement to strip inbound client copies of the
+identity headers at the proxy (see the security warning above): the IP allowlist
+proves the *connection* came from the proxy, but the proxy must still ensure the
+*identity headers* on that connection are its own and not a client's.
 
 ## Groups → roles mapping
 

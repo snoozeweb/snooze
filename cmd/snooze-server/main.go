@@ -422,7 +422,7 @@ func runDaemonCtx(ctx context.Context, f *daemonFlags, stderr io.Writer) error {
 	if cfg.AuthProxy.Enabled {
 		proxyAuth = auth.NewProxyAuthenticator(drv, auth.NewRoleResolver(drv), cfg.AuthProxy.Method)
 		if len(cfg.AuthProxy.TrustedProxies) == 0 {
-			loggers.Snooze.Warn("auth_proxy enabled with no trusted_proxies: identity headers are trusted from ANY source IP — only safe behind a proxy that strips client-supplied copies of the headers",
+			loggers.Snooze.Warn("auth_proxy enabled with no trusted_proxies: identity headers are trusted from ANY direct TCP peer — only safe behind a proxy that strips client-supplied copies of the headers",
 				slog.String("user_header", cfg.AuthProxy.UserHeader))
 		}
 	}

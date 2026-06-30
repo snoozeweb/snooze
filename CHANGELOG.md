@@ -202,6 +202,18 @@
   highlighted text. The redundant **Open** entry was removed from row context
   menus — clicking a row already opens it.
 
+### Security
+
+- **Fixed an authentication-bypass in auth-proxy mode (`auth_proxy.enabled=true`).** The
+  `trusted_proxies` IP allowlist was evaluated against `ClientIP`, which reads the
+  client-controllable `X-Forwarded-For` / `X-Real-IP` headers first. An attacker reaching Snooze
+  directly could send `X-Forwarded-For: <a trusted-proxy IP>` together with `X-Forwarded-User: root`
+  to satisfy the allowlist and be trusted as any user, with no token. The allowlist now matches the
+  genuine TCP peer address (`RemoteAddr` captured by a new `CapturePeerIP` middleware mounted before
+  chi's `RealIP`), which ignores all forwarding headers. Audit-log and ingested-record client-IP
+  capture are unchanged (they still honor `X-Forwarded-For`). Only deployments that had explicitly
+  enabled `auth_proxy` were affected; the mode is off by default.
+
 ## v2.3.0
 
 ### Added

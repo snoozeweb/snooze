@@ -179,6 +179,60 @@ func TestAuth_ProxyTrustedIPAuthenticates(t *testing.T) {
 	}
 }
 
+// TestAuth_ProxySpoofedXFFDoesNotBypassAllowlist is the security regression for
+// CWE-290/CWE-348: an UNtrusted direct TCP peer (203.0.113.7, outside the
+// 10.0.0.0/8 allowlist) sends X-Forwarded-For: <a trusted-proxy IP> together
+// with X-Forwarded-User: root and no Authorization. The trust gate must compare
+// against the genuine peer (PeerIP), NOT the spoofable XFF header (ClientIP), so
+// the allowlist rejects, the provisioner is never consulted (no JIT user, no
+// ephemeral Claims), and the request falls through to the missing-Authorization
+// 401. Built through the production order: CapturePeerIP wraps AuthWithProxy.
+func TestAuth_ProxySpoofedXFFDoesNotBypassAllowlist(t *testing.T) {
+	cfg := enabledProxyCfg()
+	cfg.TrustedProxies = []string{"10.0.0.0/8"}
+	proxy := &stubProxy{claims: snoozetypes.Claims{Subject: "root", Method: "proxy"}}
+	h := CapturePeerIP(AuthWithProxy(testEngine(t), nil, proxy, cfg, nil)(http.HandlerFunc(func(_ http.ResponseWriter, _ *http.Request) {
+		t.Fatal("downstream must not be reached for a spoofed-XFF proxy request")
+	})))
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/rule", nil)
+	req.RemoteAddr = "203.0.113.7:5555"           // genuine peer, OUTSIDE 10.0.0.0/8
+	req.Header.Set("X-Forwarded-For", "10.0.0.1") // spoofed trusted-proxy IP
+	req.Header.Set("X-Forwarded-User", "root")
+	// no Authorization header
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("status = %d, want 401 (spoofed XFF must not satisfy the allowlist)", rec.Code)
+	}
+	if proxy.calledOnce {
+		t.Fatal("provisioner was consulted on a spoofed XFF — auth bypass NOT closed")
+	}
+}
+
+// TestAuth_ProxyXRealIPDoesNotBypassAllowlist is the sibling regression covering
+// the second header ClientIP/RealIP honor: spoofing via X-Real-IP instead of
+// X-Forwarded-For must equally fail the peer-based trust gate.
+func TestAuth_ProxyXRealIPDoesNotBypassAllowlist(t *testing.T) {
+	cfg := enabledProxyCfg()
+	cfg.TrustedProxies = []string{"10.0.0.0/8"}
+	proxy := &stubProxy{claims: snoozetypes.Claims{Subject: "root", Method: "proxy"}}
+	h := CapturePeerIP(AuthWithProxy(testEngine(t), nil, proxy, cfg, nil)(http.HandlerFunc(func(_ http.ResponseWriter, _ *http.Request) {
+		t.Fatal("downstream must not be reached for a spoofed-X-Real-IP proxy request")
+	})))
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/rule", nil)
+	req.RemoteAddr = "203.0.113.7:5555"     // genuine peer, OUTSIDE 10.0.0.0/8
+	req.Header.Set("X-Real-IP", "10.0.0.1") // spoofed trusted-proxy IP
+	req.Header.Set("X-Forwarded-User", "root")
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("status = %d, want 401 (spoofed X-Real-IP must not satisfy the allowlist)", rec.Code)
+	}
+	if proxy.calledOnce {
+		t.Fatal("provisioner was consulted on a spoofed X-Real-IP — auth bypass NOT closed")
+	}
+}
+
 // TestAuth_ProxyNoAutoSignup403: the provisioner returns ErrUserNotProvisioned
 // → a 403 ErrEnvelope (not a fall-through, not a 401).
 func TestAuth_ProxyNoAutoSignup403(t *testing.T) {
