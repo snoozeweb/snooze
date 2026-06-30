@@ -4,6 +4,7 @@
 import type { ReactNode } from "react";
 import { Badge, type BadgeVariant } from "@/shared/ui/Badge";
 import { Popover, PopoverTrigger, PopoverContent } from "@/shared/ui/Popover";
+import { Tooltip } from "@/shared/ui/Tooltip";
 import type { Record_ } from "./types";
 import styles from "./AlertFlowChart.module.css";
 
@@ -56,7 +57,11 @@ function ActionChip({ action }: { action: ActionResult }) {
   if (status === "error" && action.error) {
     return (
       <Popover>
-        <PopoverTrigger className={styles.chipButton} aria-label={`${action.name} error details`}>
+        <PopoverTrigger
+          type="button"
+          className={styles.chipButton}
+          aria-label={`${action.name ?? "Action"} error details`}
+        >
           {badge}
         </PopoverTrigger>
         <PopoverContent>
@@ -65,11 +70,15 @@ function ActionChip({ action }: { action: ActionResult }) {
       </Popover>
     );
   }
-  return (
-    <span className={styles.chip} title={ACTION_HINT[status]}>
-      {badge}
-    </span>
-  );
+  const hint = ACTION_HINT[status];
+  if (hint) {
+    return (
+      <Tooltip content={hint}>
+        <span className={styles.chip}>{badge}</span>
+      </Tooltip>
+    );
+  }
+  return <span className={styles.chip}>{badge}</span>;
 }
 
 export function AlertFlowChart({ row }: { row: Record_ }) {
@@ -94,6 +103,7 @@ export function AlertFlowChart({ row }: { row: Record_ }) {
       <Connector />
       <Node label="Aggregate">
         <span className={styles.value}>{row.aggregate || "—"}</span>
+        {/* hash is an extra key stamped by the aggregaterule plugin; not in the Record schema, hence the typeof guard */}
         {typeof row.hash === "string" && row.hash ? (
           <span className={styles.subtle}>{row.hash.slice(0, 12)}</span>
         ) : null}
