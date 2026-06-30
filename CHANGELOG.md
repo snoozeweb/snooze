@@ -1,5 +1,14 @@
 ## [Unreleased]
 
+### Added
+
+- **Console branding is now consumed by the SPA:** `console.logo` renders in the sidebar and login
+  screen (falling back to the bundled Snooze logo when empty), `console.title` drives the browser
+  tab title (defaulting to `"Snooze"`), `console.audio` plays a cue when new alerts arrive during
+  auto-refresh, `console.clipboard_template` formats the row copy action using `{{field}}`
+  substitution (empty defaults to pretty-printed JSON), and `console.default_filter` pre-fills the
+  alerts SearchBar on a clean load (URL `?search=` still overrides it per session).
+
 ### Changed
 
 - **Bulk alert actions (ack/close/re-escalate) now call `POST /api/v1/record/bulk_state` once

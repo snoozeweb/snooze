@@ -1,7 +1,7 @@
 import { act, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { toastStore } from "@/shared/ui/toast/useToast";
 import {
   createMemoryHistory,
@@ -964,5 +964,185 @@ describe("AlertsPage", () => {
     await user.click(screen.getByRole("menuitem", { name: /^unshelve$/i }));
     await waitFor(() => expect(calls.length).toBe(1));
     expect(calls[0]).toMatchObject({ record_uid: "r1", type: "unshelve" });
+  });
+});
+
+// ── Plan 28b: console branding consumption ────────────────────────────────
+
+/** MSW response body for GET /api/v1/config */
+function makeConfigResponse(overrides: Record<string, unknown> = {}) {
+  return {
+    data: {
+      columns: ["date_epoch", "severity", "state", "host", "message"],
+      default_filter: "",
+      sort_by: "-date_epoch",
+      refresh_interval: 5,
+      severity_ranks: {},
+      severity_order: [],
+      logo: "",
+      title: "",
+      audio: "",
+      clipboard_template: "",
+      ...overrides,
+    },
+  };
+}
+
+describe("AlertsPage — Plan 28b: clipboard template", () => {
+  afterEach(() => {
+    toastStore.clear();
+    vi.restoreAllMocks();
+  });
+
+  it("copy-json with empty template copies JSON stringify output", async () => {
+    const written: string[] = [];
+    vi.spyOn(navigator.clipboard, "writeText").mockImplementation((text: string) => {
+      written.push(text);
+      return Promise.resolve();
+    });
+    mswServer.use(
+      http.get("/api/v1/config", () => HttpResponse.json(makeConfigResponse())),
+      http.get("/api/v1/record", () =>
+        HttpResponse.json({
+          data: [{ uid: "r1", host: "db01", message: "disk full", state: "open", date_epoch: 1 }],
+          meta: { count: 1, limit: 50, offset: 0, total: 1 },
+        }),
+      ),
+    );
+    const user = userEvent.setup();
+    setup();
+    await waitFor(() => expect(screen.getByText("db01")).toBeInTheDocument());
+    const row = screen.getByText("db01").closest("tr")!;
+    await user.pointer({ keys: "[MouseRight]", target: row });
+    await waitFor(() =>
+      expect(screen.getByRole("menu", { name: /row context menu/i })).toBeInTheDocument(),
+    );
+    // With empty clipboard_template, label is "Copy as JSON"
+    await user.click(screen.getByRole("menuitem", { name: /copy as json/i }));
+    await waitFor(() => expect(written.length).toBeGreaterThan(0));
+    // Should be JSON — parseable and contain the host field
+    const parsed = JSON.parse(written[0]!) as Record<string, unknown>;
+    expect(parsed.host).toBe("db01");
+  });
+
+  it("copy action with clipboard_template substitutes template fields", async () => {
+    const written: string[] = [];
+    vi.spyOn(navigator.clipboard, "writeText").mockImplementation((text: string) => {
+      written.push(text);
+      return Promise.resolve();
+    });
+    mswServer.use(
+      http.get("/api/v1/config", () =>
+        HttpResponse.json(makeConfigResponse({ clipboard_template: "{{host}} — {{message}}" })),
+      ),
+      http.get("/api/v1/record", () =>
+        HttpResponse.json({
+          data: [{ uid: "r1", host: "db01", message: "disk full", state: "open", date_epoch: 1 }],
+          meta: { count: 1, limit: 50, offset: 0, total: 1 },
+        }),
+      ),
+    );
+    const user = userEvent.setup();
+    setup();
+    await waitFor(() => expect(screen.getByText("db01")).toBeInTheDocument());
+    const row = screen.getByText("db01").closest("tr")!;
+    await user.pointer({ keys: "[MouseRight]", target: row });
+    await waitFor(() =>
+      expect(screen.getByRole("menu", { name: /row context menu/i })).toBeInTheDocument(),
+    );
+    // With a template set, label becomes "Copy" (not "Copy as JSON")
+    await user.click(screen.getByRole("menuitem", { name: /^copy$/i }));
+    await waitFor(() => expect(written.length).toBeGreaterThan(0));
+    expect(written[0]).toBe("db01 — disk full");
+  });
+});
+
+describe("AlertsPage — Plan 28b: default_filter seeding", () => {
+  afterEach(() => {
+    toastStore.clear();
+  });
+
+  it("pre-fills SearchBar from config.default_filter when no ?search= URL param", async () => {
+    mswServer.use(
+      http.get("/api/v1/config", () =>
+        HttpResponse.json(makeConfigResponse({ default_filter: "severity = critical" })),
+      ),
+      http.get("/api/v1/record", () =>
+        HttpResponse.json({
+          data: [],
+          meta: { count: 0, limit: 50, offset: 0, total: 0 },
+        }),
+      ),
+    );
+    setup("/web/alerts");
+    const input = await screen.findByRole("textbox", { name: /search/i });
+    await waitFor(() => expect((input as HTMLInputElement).value).toBe("severity = critical"));
+  });
+
+  it("URL ?search= wins over config.default_filter", async () => {
+    mswServer.use(
+      http.get("/api/v1/config", () =>
+        HttpResponse.json(makeConfigResponse({ default_filter: "severity = critical" })),
+      ),
+      http.get("/api/v1/record", () =>
+        HttpResponse.json({
+          data: [],
+          meta: { count: 0, limit: 50, offset: 0, total: 0 },
+        }),
+      ),
+    );
+    setup("/web/alerts?search=host%20%3D%20db01");
+    const input = await screen.findByRole("textbox", { name: /search/i });
+    // URL takes precedence — should be "host = db01", not "severity = critical"
+    await waitFor(() => expect((input as HTMLInputElement).value).toBe("host = db01"));
+  });
+});
+
+describe("AlertsPage — Plan 28b: audio cue", () => {
+  afterEach(() => {
+    toastStore.clear();
+    vi.restoreAllMocks();
+  });
+
+  it("does not call new Audio when config.audio is empty", async () => {
+    const audioMock = vi.fn().mockReturnValue({ play: vi.fn().mockResolvedValue(undefined) });
+    vi.stubGlobal("Audio", audioMock);
+
+    mswServer.use(
+      http.get("/api/v1/config", () => HttpResponse.json(makeConfigResponse({ audio: "" }))),
+      http.get("/api/v1/record", () =>
+        HttpResponse.json({
+          data: [{ uid: "r1", host: "srv-1", state: "open", date_epoch: 1 }],
+          meta: { count: 1, limit: 50, offset: 0, total: 5 },
+        }),
+      ),
+    );
+    setup();
+    await waitFor(() => expect(screen.getByText("srv-1")).toBeInTheDocument());
+    expect(audioMock).not.toHaveBeenCalled();
+    vi.unstubAllGlobals();
+  });
+
+  it("does not play on first load even when total > 0 (prevTotalRef starts at -1)", async () => {
+    const playMock = vi.fn().mockResolvedValue(undefined);
+    const audioMock = vi.fn().mockReturnValue({ play: playMock });
+    vi.stubGlobal("Audio", audioMock);
+
+    mswServer.use(
+      http.get("/api/v1/config", () =>
+        HttpResponse.json(makeConfigResponse({ audio: "https://example.com/alert.wav" })),
+      ),
+      http.get("/api/v1/record", () =>
+        HttpResponse.json({
+          data: [{ uid: "r1", host: "srv-1", state: "open", date_epoch: 1 }],
+          meta: { count: 1, limit: 50, offset: 0, total: 5 },
+        }),
+      ),
+    );
+    setup();
+    await waitFor(() => expect(screen.getByText("srv-1")).toBeInTheDocument());
+    // First load: prevTotalRef.current was -1, so no play should have occurred
+    expect(playMock).not.toHaveBeenCalled();
+    vi.unstubAllGlobals();
   });
 });

@@ -91,13 +91,13 @@ section:
 |-----|------|---------|---------|
 | `refresh_interval` | int (seconds) | `5` | Alert-list auto-refresh cadence. |
 | `sort_by` | string | `-date_epoch` | Default sort; a `-` prefix means descending. |
-| `default_filter` | string | `""` | Saved-search expression applied by default. |
+| `default_filter` | string | `""` | Search expression pre-filled in the alerts SearchBar on a clean load; URL `?search=` overrides it per session. |
 | `columns` | string[] | `date_epoch, severity, state, acked_by, hits, host, process, source, environment, ttl, message` | Ordered alert-table column ids. |
 | `severity_ranks` | map\<string,int> | built-in ladder | Label → rank (0 = most severe). Merged onto the built-in ladder. |
-| `logo` | string | `""` | Logo URL or `data:` URI; empty uses the bundled logo. |
-| `title` | string | `""` | Browser/app title; empty uses the default. |
-| `audio` | string | `""` | New-alert audio cue URL; empty disables it. |
-| `clipboard_template` | string | `""` | Copy-to-clipboard template. |
+| `logo` | string | `""` | Logo URL or `data:` URI; empty uses the bundled Snooze logo. |
+| `title` | string | `""` | Browser tab title; empty defaults to `"Snooze"`. |
+| `audio` | string | `""` | URL of an audio file played when new alerts arrive during auto-refresh; empty disables. |
+| `clipboard_template` | string | `""` | `{{field}}` template for the row copy action; empty formats as pretty-printed JSON. |
 
 The response also carries a derived `severity_order` array (labels most→least
 severe). It is **always recomputed** from the merged `severity_ranks` and is
@@ -109,6 +109,33 @@ settings CRUD API:
 ```
 PUT /api/v1/settings/console
 ```
+
+### Branding and UX fields
+
+**`console.logo`** — Set to a URL (e.g. `https://cdn.example.com/logo.png`) or a `data:` URI to
+replace the bundled Snooze logo in the sidebar and login screen. An empty value (the default)
+restores the bundled logo. Prefer a URL over a data URI — large data URIs bloat the public config
+blob served to every browser session.
+
+**`console.title`** — The browser-tab title. Defaults to `"Snooze"` when empty; set it to your
+organisation name (e.g. `"Acme Ops"`) to brand the tab across every page.
+
+**`console.audio`** — URL of an audio file (`.wav`, `.mp3`, `.ogg`) played once each time the
+auto-refresh poll detects new incoming alerts (i.e. the total count grows). The cue is silent on
+initial page load and when auto-refresh is disabled. Browsers require a prior user gesture before
+they allow audio playback; if the alert cue does not sound, ensure the operator has interacted with
+the page (e.g. clicked something after logging in). Set to empty to disable entirely.
+
+**`console.clipboard_template`** — A `{{field}}` substitution template for the "Copy" action in
+the alert row context menu. Each `{{fieldname}}` is replaced with the matching field value from the
+alert record (unknown fields expand to an empty string). When empty, the action copies the full
+alert as pretty-printed JSON (the prior default). Example: `{{host}} — {{message}}` copies a
+one-liner summary.
+
+**`console.default_filter`** — A SearchBar DSL expression pre-filled on a clean page load. Useful
+for operators who always work within a specific scope (e.g. `severity = critical`). The URL
+`?search=` parameter overrides it per-session, so individual deep-links and saved searches are
+always honoured.
 
 ### Ranking a custom severity
 

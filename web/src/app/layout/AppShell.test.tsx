@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   createRootRoute,
@@ -11,6 +11,14 @@ import {
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { authStore } from "@/lib/auth/store";
 import { AppShell } from "./AppShell";
+
+// Mock useConsoleConfig so all AppShell tests run without a server.
+// Individual tests override via vi.mocked(useConsoleConfig).mockReturnValue(…).
+vi.mock("@/features/config/api", () => ({
+  useConsoleConfig: vi.fn().mockReturnValue({ data: { title: "", logo: "" } }),
+}));
+
+import { useConsoleConfig } from "@/features/config/api";
 
 function loginWithPerms(perms: string[]) {
   const header = btoa(JSON.stringify({ alg: "HS256", typ: "JWT" }));
@@ -60,11 +68,39 @@ function mockMatchMedia(matches: boolean) {
   );
 }
 
+// ── document.title effect ──────────────────────────────────────────────────
+
+describe("AppShell document.title", () => {
+  afterEach(() => {
+    localStorage.clear();
+    authStore.getState().logout();
+    vi.clearAllMocks();
+    document.title = "";
+  });
+
+  it("sets document.title to 'Snooze' when config.title is empty", async () => {
+    vi.mocked(useConsoleConfig).mockReturnValue({
+      data: { title: "", logo: "" },
+    } as ReturnType<typeof useConsoleConfig>);
+    setup();
+    await waitFor(() => expect(document.title).toBe("Snooze"));
+  });
+
+  it("sets document.title to the configured org name", async () => {
+    vi.mocked(useConsoleConfig).mockReturnValue({
+      data: { title: "Acme Ops", logo: "" },
+    } as ReturnType<typeof useConsoleConfig>);
+    setup();
+    await waitFor(() => expect(document.title).toBe("Acme Ops"));
+  });
+});
+
 describe("AppShell", () => {
   afterEach(() => {
     localStorage.clear();
     authStore.getState().logout();
     vi.unstubAllGlobals();
+    vi.clearAllMocks();
   });
 
   it("renders the Topbar, Sidebar, and the matched route's content", () => {

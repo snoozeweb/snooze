@@ -9,6 +9,7 @@ import { toast } from "@/shared/ui/toast/useToast";
 import { Button } from "@/shared/ui/Button";
 import { ApiError } from "@/lib/api/client";
 import { copyToClipboard } from "@/lib/clipboard";
+import { expandTemplate } from "@/lib/clipboard-template";
 import { ConfirmDeleteDialog, useConfirmDelete } from "@/shared/ui/resourceContextMenu";
 import { encodeConditionQ } from "@/lib/condition/serialize";
 import type { Condition } from "@/lib/condition/types";
@@ -204,6 +205,24 @@ export function AlertsPage() {
       setSearchText(search.search ?? "");
     }
   }, [search.search]);
+
+  // Config-seeding: once (and only once) when the server config resolves a
+  // non-empty default_filter and the URL has no ?search= of its own. This is
+  // symmetric to the URL-seeding effect above. The ref prevents re-seeding on
+  // subsequent renders (config is staleTime=Infinity so it won't change, but
+  // guard it explicitly so the logic is correct by construction).
+  const configDefaultSeededRef = useRef(false);
+  useEffect(() => {
+    if (
+      !configDefaultSeededRef.current && // only once
+      !search.search && // URL wins when present
+      config?.default_filter // non-empty server default
+    ) {
+      configDefaultSeededRef.current = true;
+      setSearchText(config.default_filter);
+    }
+  }, [config?.default_filter, search.search]);
+
   const [searchCondition, setSearchCondition] = useState<ParsedCondition | null>(null);
   const activeTab: TabId = search.tab ?? "alerts";
 
@@ -289,6 +308,38 @@ export function AlertsPage() {
       ...(effectiveIntervalMs !== undefined ? { refetchInterval: effectiveIntervalMs } : {}),
     },
   );
+
+  // Audio cue: play once per poll tick that grows the alert count.
+  // Guard order:
+  //   1. config.audio non-empty — no-op when the field is "" (CONSOLE_FALLBACK default)
+  //   2. auto.enabled — user who turned off auto-refresh should not hear cues
+  //   3. !refreshPaused — no cue while a detail panel is open
+  //   4. prevTotalRef.current >= 0 — skip until at least one successful data load has
+  //      established a baseline. The ref starts at -1; it is only updated when
+  //      list.data is non-null (i.e. a real server response, not loading state).
+  //      This ensures the very first data arrival never triggers audio regardless
+  //      of how many "total = 0" (loading) renders preceded it.
+  //   5. total > prevTotalRef.current — count actually grew
+  const prevTotalRef = useRef<number>(-1);
+  useEffect(() => {
+    // Only update the baseline when we have real data, not during loading.
+    if (!list.data) return;
+    const total = list.data.meta.total;
+    if (
+      config?.audio &&
+      auto.enabled &&
+      !refreshPaused &&
+      prevTotalRef.current >= 0 &&
+      total > prevTotalRef.current
+    ) {
+      new Audio(config.audio).play().catch(() => {
+        // Autoplay policy (NotAllowedError) — silently swallow.
+        // A prior user gesture (login click) is usually sufficient,
+        // but browsers can still block before the first gesture.
+      });
+    }
+    prevTotalRef.current = total;
+  }, [list.data, config?.audio, auto.enabled, refreshPaused]);
 
   const filtered = list.data?.data ?? [];
 
@@ -524,11 +575,21 @@ export function AlertsPage() {
       const items: ContextMenuItem[] = [
         {
           key: "copy-json",
-          label: "Copy as JSON",
+          // When a clipboard_template is configured, the copy action expands it
+          // and the label becomes simply "Copy"; without a template it falls back
+          // to pretty-printed JSON and keeps the "Copy as JSON" label.
+          label: config?.clipboard_template ? "Copy" : "Copy as JSON",
           icon: "copy",
           onSelect: async () => {
-            const ok = await copyToClipboard(JSON.stringify(row, null, 2));
-            if (ok) toast.success("Copied JSON to clipboard");
+            const text = expandTemplate(
+              config?.clipboard_template ?? "",
+              row as Record<string, unknown>,
+            );
+            const ok = await copyToClipboard(text);
+            if (ok)
+              toast.success(
+                config?.clipboard_template ? "Copied to clipboard" : "Copied JSON to clipboard",
+              );
             else toast.error("Clipboard unavailable");
           },
         },
@@ -578,7 +639,7 @@ export function AlertsPage() {
 
       return items;
     },
-    [openDialog, confirmDelete],
+    [openDialog, confirmDelete, config?.clipboard_template],
   );
 
   const bulkActions = useCallback(
