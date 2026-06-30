@@ -1,5 +1,7 @@
 import { JsonViewer } from "@/shared/ui/JsonViewer";
+import { Tabs, TabList, TabTrigger, TabPanel } from "@/shared/ui/Tabs";
 import { CommentTimeline } from "./CommentTimeline";
+import { AlertFlowChart } from "./AlertFlowChart";
 import type { Record_ } from "./types";
 import styles from "./AlertRowDetail.module.css";
 
@@ -18,9 +20,9 @@ function stripPrivateKeys(row: Record<string, unknown>): Record<string, unknown>
 
 /**
  * AlertRowDetail — content for the inline row-expansion panel on the alerts
- * list. Mirrors RowDetailPanel's two-column layout (JsonViewer left, activity
- * right) but uses CommentTimeline instead of AuditTimeline because alerts
- * carry user-authored comments rather than CRUD audit events.
+ * list. Left column: the raw record (JsonViewer). Right column: a tabbed
+ * container — Timeline (comment/activity history, default) and Flow (the
+ * pipeline path the alert took).
  */
 export function AlertRowDetail({ row }: AlertRowDetailProps) {
   const cleaned = stripPrivateKeys(row as unknown as Record<string, unknown>);
@@ -30,8 +32,18 @@ export function AlertRowDetail({ row }: AlertRowDetailProps) {
         <JsonViewer value={cleaned} />
       </div>
       <div className={styles.col}>
-        <h4 className={styles.heading}>Timeline</h4>
-        <CommentTimeline recordUid={row.uid} />
+        <Tabs defaultValue="timeline">
+          <TabList>
+            <TabTrigger value="timeline">Timeline</TabTrigger>
+            <TabTrigger value="flow">Flow</TabTrigger>
+          </TabList>
+          <TabPanel value="timeline">
+            <CommentTimeline recordUid={row.uid} />
+          </TabPanel>
+          <TabPanel value="flow">
+            <AlertFlowChart row={row} />
+          </TabPanel>
+        </Tabs>
       </div>
     </div>
   );

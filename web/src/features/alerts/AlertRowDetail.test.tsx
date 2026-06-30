@@ -1,4 +1,5 @@
 import { render, screen, waitFor } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { http, HttpResponse } from "msw";
 import { describe, expect, it } from "vitest";
@@ -45,6 +46,27 @@ describe("AlertRowDetail", () => {
     expect(screen.getByText(/disk full/)).toBeInTheDocument();
     // The underscore-prefixed key must not appear.
     expect(screen.queryByText(/_internal/)).toBeNull();
+  });
+
+  it("defaults to the Timeline tab and switches to Flow", async () => {
+    mswServer.use(
+      http.get("/api/v1/comment", () =>
+        HttpResponse.json({
+          data: [],
+          meta: { count: 0, limit: 100, offset: 0, total: 0 },
+        }),
+      ),
+    );
+    const row = { uid: "u1", source: "syslog", aggregate: "Host and Message" } as Record_;
+    const Wrapper = wrap();
+    render(
+      <Wrapper>
+        <AlertRowDetail row={row} />
+      </Wrapper>,
+    );
+    expect(screen.getByRole("tab", { name: "Timeline" })).toHaveAttribute("data-state", "active");
+    await userEvent.click(screen.getByRole("tab", { name: "Flow" }));
+    expect(screen.getByText("syslog")).toBeInTheDocument();
   });
 
   it("renders a CommentTimeline scoped to the row's uid", async () => {
