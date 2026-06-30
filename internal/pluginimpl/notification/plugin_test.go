@@ -15,6 +15,7 @@ import (
 	"go.opentelemetry.io/otel/trace"
 
 	"github.com/snoozeweb/snooze/internal/auth"
+	"github.com/snoozeweb/snooze/internal/condition"
 	"github.com/snoozeweb/snooze/internal/config"
 	"github.com/snoozeweb/snooze/internal/db"
 	"github.com/snoozeweb/snooze/internal/db/asyncwriter"
@@ -693,6 +694,175 @@ func TestProcessStampsNotifications(t *testing.T) {
 
 	got, _ := res.Record.Extra["notifications"].([]string)
 	require.ElementsMatch(t, []string{"n-alpha", "n-beta"}, got)
+}
+
+// boomNotifier always returns an error containing "boom" from Send.
+// Distinct from the existing failingNotifier so the two test suites can
+// coexist without conflicting error-message assertions.
+type boomNotifier struct {
+	name  string
+	total atomic.Int64
+}
+
+func (n *boomNotifier) Name() string                                 { return n.name }
+func (n *boomNotifier) Metadata() plugins.Metadata                   { return plugins.Metadata{Name: n.name} }
+func (n *boomNotifier) PostInit(context.Context, plugins.Host) error { return nil }
+func (n *boomNotifier) Reload(context.Context) error                 { return nil }
+func (n *boomNotifier) Send(context.Context, snoozetypes.Record, plugins.NotificationPayload) error {
+	n.total.Add(1)
+	return errors.New("boom: dial tcp timeout")
+}
+
+// recordActions reads the persisted record's `actions` field by hash.
+func recordActions(t *testing.T, h *testHost, hash string) []map[string]any {
+	t.Helper()
+	docs, _, err := h.driver.Search(tctx(), recordCollectionName, condition.Equals("hash", hash), db.Page{})
+	require.NoError(t, err)
+	require.Len(t, docs, 1)
+	raw, _ := docs[0]["actions"].([]any)
+	out := make([]map[string]any, 0, len(raw))
+	for _, r := range raw {
+		if m, ok := r.(map[string]any); ok {
+			out = append(out, m)
+		}
+	}
+	return out
+}
+
+// recDoc projects a record into the loose doc shape the driver stores, enough
+// for these tests (hash + Extra fields).
+func recDoc(rec snoozetypes.Record) db.Document {
+	d := db.Document{}
+	if rec.Host != "" {
+		d["host"] = rec.Host
+	}
+	if rec.Hash != "" {
+		d["hash"] = rec.Hash
+	}
+	for k, v := range rec.Extra {
+		d[k] = v
+	}
+	return d
+}
+
+func TestActionMisconfiguredStampsError(t *testing.T) {
+	h := newHost(t)
+	writeEntries(t, h, []map[string]any{
+		{"name": "n1", "condition": []any{"=", "host", "web01"}, "actions": []any{"ghost"}},
+	})
+	p := newPlugin(t, h)
+
+	res, err := p.Process(tctx(), snoozetypes.Record{Host: "web01", Hash: "h1"})
+	require.NoError(t, err)
+
+	acts, _ := res.Record.Extra["actions"].([]any)
+	require.Len(t, acts, 1)
+	a := acts[0].(map[string]any)
+	require.Equal(t, "ghost", a["name"])
+	require.Equal(t, "n1", a["notification"])
+	require.Equal(t, "error", a["status"])
+	require.Contains(t, a["error"], "not found")
+}
+
+func TestActionFrequencyOffStampsSkipped(t *testing.T) {
+	h := newHost(t)
+	writeActions(t, h, []map[string]any{
+		{"name": "mail", "action": map[string]any{"selected": "mail-notif", "subcontent": map[string]any{}}},
+	})
+	writeEntries(t, h, []map[string]any{
+		{"name": "n1", "condition": []any{"=", "host", "web01"}, "actions": []any{"mail"},
+			"frequency": map[string]any{"total": 0}},
+	})
+	h.registerNotifier(&recordingNotifier{name: "mail-notif"})
+	p := newPlugin(t, h)
+
+	res, err := p.Process(tctx(), snoozetypes.Record{Host: "web01", Hash: "h1"})
+	require.NoError(t, err)
+	acts := res.Record.Extra["actions"].([]any)
+	require.Equal(t, "skipped", acts[0].(map[string]any)["status"])
+}
+
+func TestActionResolvesSuccess(t *testing.T) {
+	h := newHost(t)
+	writeActions(t, h, []map[string]any{
+		{"name": "mail", "action": map[string]any{"selected": "mail-notif", "subcontent": map[string]any{}}},
+	})
+	writeEntries(t, h, []map[string]any{
+		{"name": "n1", "condition": []any{"=", "host", "web01"}, "actions": []any{"mail"}},
+	})
+	rec := &recordingNotifier{name: "mail-notif"}
+	h.registerNotifier(rec)
+	p := newPlugin(t, h)
+
+	res, err := p.Process(tctx(), snoozetypes.Record{Host: "web01", Hash: "h1"})
+	require.NoError(t, err)
+	_, err = h.driver.Write(tctx(), recordCollectionName, []db.Document{recDoc(res.Record)}, db.WriteOptions{Primary: []string{"hash"}, UpdateTime: true})
+	require.NoError(t, err)
+
+	require.Equal(t, "pending", res.Record.Extra["actions"].([]any)[0].(map[string]any)["status"])
+
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) {
+		acts := recordActions(t, h, "h1")
+		if len(acts) == 1 && acts[0]["status"] == "success" {
+			return
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	t.Fatalf("action never resolved to success; last = %v", recordActions(t, h, "h1"))
+}
+
+func TestActionResolvesError(t *testing.T) {
+	h := newHost(t)
+	writeActions(t, h, []map[string]any{
+		{"name": "hook", "action": map[string]any{"selected": "hook-notif", "subcontent": map[string]any{}}},
+	})
+	writeEntries(t, h, []map[string]any{
+		{"name": "n1", "condition": []any{"=", "host", "web01"}, "actions": []any{"hook"}},
+	})
+	h.plugins["hook-notif"] = &boomNotifier{name: "hook-notif"}
+	p := newPlugin(t, h)
+
+	res, err := p.Process(tctx(), snoozetypes.Record{Host: "web01", Hash: "h1"})
+	require.NoError(t, err)
+	_, err = h.driver.Write(tctx(), recordCollectionName, []db.Document{recDoc(res.Record)}, db.WriteOptions{Primary: []string{"hash"}, UpdateTime: true})
+	require.NoError(t, err)
+
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) {
+		acts := recordActions(t, h, "h1")
+		if len(acts) == 1 && acts[0]["status"] == "error" {
+			require.Contains(t, acts[0]["error"], "boom")
+			return
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	t.Fatalf("action never resolved to error; last = %v", recordActions(t, h, "h1"))
+}
+
+func TestActionPersistOffStaysSent(t *testing.T) {
+	h := newHost(t)
+	h.cfg.Notification.PersistActionOutcomes = false
+	writeActions(t, h, []map[string]any{
+		{"name": "mail", "action": map[string]any{"selected": "mail-notif", "subcontent": map[string]any{}}},
+	})
+	writeEntries(t, h, []map[string]any{
+		{"name": "n1", "condition": []any{"=", "host", "web01"}, "actions": []any{"mail"}},
+	})
+	rec := &recordingNotifier{name: "mail-notif"}
+	h.registerNotifier(rec)
+	p := newPlugin(t, h)
+
+	res, err := p.Process(tctx(), snoozetypes.Record{Host: "web01", Hash: "h1"})
+	require.NoError(t, err)
+	_, err = h.driver.Write(tctx(), recordCollectionName, []db.Document{recDoc(res.Record)}, db.WriteOptions{Primary: []string{"hash"}, UpdateTime: true})
+	require.NoError(t, err)
+
+	require.Equal(t, "sent", res.Record.Extra["actions"].([]any)[0].(map[string]any)["status"])
+	waitForCalls(t, rec, 1, time.Second)
+
+	time.Sleep(100 * time.Millisecond)
+	require.Equal(t, "sent", recordActions(t, h, "h1")[0]["status"])
 }
 
 // TestNotification_TenantIsolation verifies that entries and actions loaded for

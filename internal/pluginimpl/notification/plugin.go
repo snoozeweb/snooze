@@ -55,6 +55,52 @@ const recordCollectionName = "record"
 // a hung HTTP target cannot leak goroutines indefinitely.
 const notifierSendTimeout = 30 * time.Second
 
+// notifierWriteBackTimeout caps the single action-outcome SetFields/UpdateOne
+// write-back. A DB merge is far faster than a notifier round-trip, so it gets a
+// tighter bound than notifierSendTimeout to keep the coordinator goroutine short-lived.
+const notifierWriteBackTimeout = 10 * time.Second
+
+// Action-outcome statuses stamped onto record.actions.
+const (
+	actionPending = "pending"
+	actionSent    = "sent"
+	actionSuccess = "success"
+	actionError   = "error"
+	actionSkipped = "skipped"
+)
+
+// actionResult is the in-memory form of one record.actions entry. It is
+// converted to a plain map (actionResultsToAny) before being stored so it
+// serializes identically across all three DB backends.
+type actionResult struct {
+	Name         string
+	Notification string
+	Status       string
+	Error        string
+}
+
+// sendTask binds a queued notifier send to the result slot it resolves.
+type sendTask struct {
+	idx      int
+	notifier plugins.Notifier
+	payload  plugins.NotificationPayload
+}
+
+func actionResultsToAny(results []actionResult) []any {
+	out := make([]any, len(results))
+	for i, r := range results {
+		m := map[string]any{"name": r.Name, "status": r.Status}
+		if r.Notification != "" {
+			m["notification"] = r.Notification
+		}
+		if r.Error != "" {
+			m["error"] = r.Error
+		}
+		out[i] = m
+	}
+	return out
+}
+
 // Action is one entry in a notification's `actions` array on the wire. The
 // Python code only stores the action name (a string) — this Go port accepts
 // the same shape via UnmarshalJSON.
@@ -250,7 +296,12 @@ func (p *Plugin) Process(ctx context.Context, rec snoozetypes.Record) (plugins.R
 	recMap := recordToMap(rec)
 	now := recordTime(rec)
 
+	persist := p.persistActionOutcomes()
+
 	var matched []string
+	var results []actionResult
+	var sends []sendTask
+
 	for _, e := range entries {
 		if !e.IsEnabled() {
 			continue
@@ -262,82 +313,172 @@ func (p *Plugin) Process(ctx context.Context, rec snoozetypes.Record) (plugins.R
 			continue
 		}
 		matched = append(matched, e.Name)
-		p.dispatch(ctx, e, rec)
+		if len(e.Actions) == 0 {
+			continue
+		}
+		skip := e.Frequency != nil && e.Frequency.Total == 0
+		if !skip {
+			plugins.RecordStat(ctx, p.host, rec.DateEpoch, "notification_sent",
+				map[string]string{"name": e.Name}, 1)
+		}
+		for _, name := range e.Actions {
+			r := actionResult{Name: name, Notification: e.Name}
+			if skip {
+				r.Status = actionSkipped
+				results = append(results, r)
+				continue
+			}
+			notifier, payload, ok, reason := p.resolveNotifier(ctx, e, name, rec)
+			if !ok {
+				r.Status = actionError
+				r.Error = reason
+				results = append(results, r)
+				continue
+			}
+			if persist {
+				r.Status = actionPending
+			} else {
+				r.Status = actionSent
+			}
+			idx := len(results)
+			results = append(results, r)
+			sends = append(sends, sendTask{idx: idx, notifier: notifier, payload: payload})
+		}
 	}
 
+	if rec.Extra == nil && (len(matched) > 0 || len(results) > 0) {
+		rec.Extra = map[string]any{}
+	}
 	if len(matched) > 0 {
-		if rec.Extra == nil {
-			rec.Extra = map[string]any{}
-		}
 		rec.Extra["notifications"] = matched
+	}
+	if len(results) > 0 {
+		rec.Extra["actions"] = actionResultsToAny(results)
+	}
+
+	if len(sends) > 0 {
+		p.spawnCoordinator(ctx, rec, results, sends, persist)
 	}
 
 	return plugins.Result{Action: plugins.ActionContinue, Record: rec}, nil
 }
 
-// dispatch resolves each action name against the cached action map and fires
-// the matching Notifier.Send on a detached goroutine. Errors are logged but
-// never propagate back to the pipeline — delivery is best-effort by design.
-func (p *Plugin) dispatch(ctx context.Context, e Entry, rec snoozetypes.Record) {
-	if len(e.Actions) == 0 {
-		return
+// resolveNotifier looks up the named action, validates its notifier, and builds
+// the send payload. On any miss it returns ok=false plus a human-readable reason
+// recorded as the action's error.
+func (p *Plugin) resolveNotifier(ctx context.Context, e Entry, name string, rec snoozetypes.Record) (plugins.Notifier, plugins.NotificationPayload, bool, string) {
+	ad, ok := p.lookupAction(ctx, name)
+	if !ok {
+		return nil, plugins.NotificationPayload{}, false, fmt.Sprintf("action %q not found", name)
 	}
-	if e.Frequency != nil && e.Frequency.Total == 0 {
-		// Python: action_obj['total'] == 0 means "do not send"; we honour
-		// the same convention so operators can stage a notification before
-		// flipping it on.
-		return
+	if ad.Action.Selected == "" {
+		return nil, plugins.NotificationPayload{}, false, fmt.Sprintf("action %q has no notifier (action.selected empty)", name)
 	}
+	plug := p.host.Plugin(ad.Action.Selected)
+	if plug == nil {
+		return nil, plugins.NotificationPayload{}, false, fmt.Sprintf("notifier %q not registered", ad.Action.Selected)
+	}
+	notifier, ok := plug.(plugins.Notifier)
+	if !ok {
+		return nil, plugins.NotificationPayload{}, false, fmt.Sprintf("target %q is not a notifier", ad.Action.Selected)
+	}
+	payload := plugins.NotificationPayload{
+		Template: ad.Action.Selected,
+		Meta:     metaFromSubcontent(ad.Action.Subcontent, e, ad.Name),
+		Inject:   p.injectFunc(ctx, rec),
+	}
+	return notifier, payload, true, ""
+}
 
-	// Count one notification_sent per matched notification entry dispatch.
-	plugins.RecordStat(ctx, p.host, rec.DateEpoch, "notification_sent",
-		map[string]string{"name": e.Name}, 1)
-
-	for _, name := range e.Actions {
-		ad, ok := p.lookupAction(ctx, name)
-		if !ok {
-			if lg := p.logger(); lg != nil {
-				lg.Warn("notification: action not found",
-					"notification", e.Name,
-					"action", name)
-			}
-			continue
-		}
-		if ad.Action.Selected == "" {
-			if lg := p.logger(); lg != nil {
-				lg.Warn("notification: action missing notifier (action.selected empty)",
-					"notification", e.Name,
-					"action", name)
-			}
-			continue
-		}
-		plug := p.host.Plugin(ad.Action.Selected)
-		if plug == nil {
-			if lg := p.logger(); lg != nil {
-				lg.Warn("notification: notifier plugin not registered",
-					"notification", e.Name,
-					"action", name,
-					"selected", ad.Action.Selected)
-			}
-			continue
-		}
-		notifier, ok := plug.(plugins.Notifier)
-		if !ok {
-			if lg := p.logger(); lg != nil {
-				lg.Warn("notification: target plugin is not a Notifier",
-					"notification", e.Name,
-					"action", name,
-					"selected", ad.Action.Selected)
-			}
-			continue
-		}
-		payload := plugins.NotificationPayload{
-			Template: ad.Action.Selected,
-			Meta:     metaFromSubcontent(ad.Action.Subcontent, e, ad.Name),
-			Inject:   p.injectFunc(ctx, rec),
-		}
-		p.fireSend(ctx, notifier, rec, payload, e.Name, name)
+// persistActionOutcomes reports whether the async resolution write-back is on.
+// Defaults true when no config is wired (matches DefaultNotification).
+func (p *Plugin) persistActionOutcomes() bool {
+	if p.host == nil {
+		return true
 	}
+	if cfg := p.host.Config(); cfg != nil {
+		return cfg.Notification.PersistActionOutcomes
+	}
+	return true
+}
+
+// spawnCoordinator fires every queued send concurrently on a single detached
+// goroutine (so Process returns immediately), records the per-send metrics,
+// resolves each pending result to success/error, then — when persist is true —
+// writes the fully-resolved actions array back to the record exactly once via a
+// hash-keyed SetFields (uid fallback), mirroring injectFunc's tenant re-stamp.
+func (p *Plugin) spawnCoordinator(ctx context.Context, rec snoozetypes.Record, results []actionResult, sends []sendTask, persist bool) {
+	host := p.host
+	eventEpoch := rec.DateEpoch
+	hash := rec.Hash
+	uid := rec.UID
+	tenantID, _ := auth.TenantFrom(ctx)
+
+	go func() { //nolint:gosec // detached: the request ctx is cancelled on return
+		var wg sync.WaitGroup
+		var mu sync.Mutex
+		for _, st := range sends {
+			wg.Add(1)
+			go func(st sendTask) {
+				defer wg.Done()
+				sendCtx, cancel := context.WithTimeout(context.Background(), notifierSendTimeout)
+				defer cancel()
+				if tenantID != "" {
+					sendCtx = auth.WithTenant(sendCtx, tenantID)
+				}
+				sendErr := st.notifier.Send(sendCtx, rec, st.payload)
+				status, metric := actionSuccess, "action_success"
+				if sendErr != nil {
+					status, metric = actionError, "action_error"
+					if lg := p.logger(); lg != nil {
+						lg.Warn("notification: notifier send failed",
+							"action", results[st.idx].Name,
+							"notification", results[st.idx].Notification,
+							"selected", st.payload.Template,
+							"err", sendErr)
+					}
+				}
+				plugins.RecordStat(sendCtx, host, eventEpoch, metric,
+					map[string]string{"name": results[st.idx].Name}, 1)
+				mu.Lock()
+				results[st.idx].Status = status
+				if sendErr != nil {
+					results[st.idx].Error = sendErr.Error()
+				}
+				mu.Unlock()
+			}(st)
+		}
+		wg.Wait()
+
+		if !persist || host == nil || host.DB() == nil {
+			return
+		}
+		writeCtx, cancel := context.WithTimeout(context.Background(), notifierWriteBackTimeout)
+		defer cancel()
+		if tenantID != "" {
+			writeCtx = auth.WithTenant(writeCtx, tenantID)
+		}
+		patch := db.Document{"actions": actionResultsToAny(results)}
+		if hash != "" {
+			if _, err := host.DB().SetFields(writeCtx, recordCollectionName, patch, condition.Equals("hash", hash)); err != nil {
+				if lg := p.logger(); lg != nil {
+					lg.Warn("notification: action-outcome write-back (hash) failed", "hash", hash, "err", err)
+				}
+			}
+			return
+		}
+		if uid != "" {
+			if err := host.DB().UpdateOne(writeCtx, recordCollectionName, uid, patch, false); err != nil {
+				if lg := p.logger(); lg != nil {
+					lg.Warn("notification: action-outcome write-back (uid) failed", "uid", uid, "err", err)
+				}
+			}
+			return
+		}
+		if lg := p.logger(); lg != nil {
+			lg.Warn("notification: action-outcome write-back skipped: record has neither hash nor uid")
+		}
+	}()
 }
 
 // lookupAction returns the cached action doc, refreshing the cache once on a
@@ -448,53 +589,6 @@ func (p *Plugin) injectFunc(ctx context.Context, rec snoozetypes.Record) plugins
 			}
 		}
 	}
-}
-
-// fireSend launches a detached goroutine that invokes notifier.Send under a
-// fresh background context capped by notifierSendTimeout. The pipeline ctx is
-// intentionally not propagated: it is cancelled as soon as Process returns,
-// which would prematurely abort every Notifier round-trip.
-//
-// notification, action, and rec.DateEpoch are passed as named parameters (value
-// copies), so the goroutine closure captures them safely even when fireSend is
-// called inside a loop over e.Actions — no loop-variable capture bug.
-//
-// ctx is the dispatch context (carries the tenant). The detached goroutine does
-// NOT keep ctx alive (it is cancelled when Process returns), but we capture its
-// tenant slug up-front and re-stamp it on the fresh send context via
-// auth.WithTenant. Without this, the action_success / action_error counters
-// would flush under a naked context.Background() with no tenant_id and leak into
-// the platform partition instead of the originating tenant's.
-func (p *Plugin) fireSend(ctx context.Context, notifier plugins.Notifier, rec snoozetypes.Record, payload plugins.NotificationPayload, notification, action string) {
-	host := p.host
-	eventEpoch := rec.DateEpoch
-	tenantID, _ := auth.TenantFrom(ctx)
-	go func() { //nolint:gosec // context.Background() is intentional: goroutine outlives the request; request ctx is already cancelled on return
-		sendCtx, cancel := context.WithTimeout(context.Background(), notifierSendTimeout)
-		defer cancel()
-		sendErr := notifier.Send(sendCtx, rec, payload)
-		if sendErr != nil {
-			if lg := p.logger(); lg != nil {
-				lg.Warn("notification: notifier send failed",
-					"notification", notification,
-					"action", action,
-					"selected", payload.Template,
-					"err", sendErr)
-			}
-		}
-		metric := "action_success"
-		if sendErr != nil {
-			metric = "action_error"
-		}
-		// Re-stamp the dispatch tenant so these delivery-outcome counters land
-		// in the originating tenant's partition rather than the platform bucket.
-		statCtx := sendCtx
-		if tenantID != "" {
-			statCtx = auth.WithTenant(sendCtx, tenantID)
-		}
-		plugins.RecordStat(statCtx, host, eventEpoch, metric,
-			map[string]string{"name": action}, 1)
-	}()
 }
 
 // logger returns the host logger or the default if the host is missing one.
