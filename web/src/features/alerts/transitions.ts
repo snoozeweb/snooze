@@ -1,9 +1,46 @@
 import type { AlertState } from "./types";
 import type { ActionType } from "./ActionDialog";
+import type { Record_ } from "./types";
 
 type GateableAction = ActionType | "shelve" | "unshelve";
 
 const ALWAYS_ALLOWED: ReadonlySet<GateableAction> = new Set(["shelve", "unshelve", "comment"]);
+
+/**
+ * Shown in the bulk-action success toast to warn operators that bulk state
+ * changes do not write per-alert activity entries (unlike the single-alert
+ * /comment path). Directs them to the Audit log.
+ */
+export const BULK_STATE_CAVEAT =
+  "No per-alert activity entry was written — see Audit log for details.";
+
+// Valid target states for each source state.
+// Keep in sync with ALLOWED below and the backend transition.go.
+const VALID_FROM: Readonly<Record<string, ActionType[]>> = {
+  "": ["ack", "close"],
+  open: ["ack", "close"],
+  ack: ["close", "esc", "open"],
+  esc: ["ack", "close", "open"],
+  close: ["open"],
+  shelved: ["open"],
+};
+
+/**
+ * Returns the set of ActionTypes that are valid for ALL rows in the selection.
+ * "comment" and "tag" are always valid and are not returned here (callers add
+ * them unconditionally). An empty selection returns an empty set.
+ */
+export function validBulkStates(rows: Record_[]): Set<ActionType> {
+  if (rows.length === 0) return new Set<ActionType>();
+  const sets = rows.map(
+    (r) => new Set<ActionType>(VALID_FROM[(r.state ?? "") as AlertState] ?? []),
+  );
+  const first = new Set<ActionType>(sets[0]);
+  for (const action of [...first]) {
+    if (!sets.every((s) => s.has(action))) first.delete(action);
+  }
+  return first;
+}
 
 // Keep in sync with: internal/pluginimpl/comment/transition.go::allowedTransitions.
 // Mirror of the (current_state, action) validity table. A true value means the

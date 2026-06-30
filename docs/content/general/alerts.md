@@ -154,6 +154,53 @@ join against the comment timeline.
 Alerts that were already acknowledged before this feature was deployed have no
 stored acknowledger and show `—` until they are acknowledged again.
 
+## Bulk operations from the console
+
+The alerts table lets you apply a state change, comment, or attribute/tag update to multiple
+alerts at once directly from the web UI.
+
+### Row-select scope
+
+Select one or more rows using the checkboxes. The bulk action bar appears above the table with
+buttons for every state transition that is valid for **all** selected rows:
+
+- **Acknowledge / Close / Re-escalate / Re-open** — call `POST /api/v1/record/bulk_state` once
+  with a `q` condition built from the selected row UIDs. The success toast shows
+  `N alerts updated (M changed)`.
+- **Comment** — still posts one `/comment` per selected row (bulk_state does not write per-record
+  notes). Use this for the activity feed.
+- **Tag / set fields** — opens the tag dialog (see below).
+
+The action bar hides buttons that are invalid for the current selection (e.g. **Acknowledge**
+is hidden when all selected rows are closed). When transition eligibility cannot be checked
+(select-all-matching mode, see below), all state buttons are shown.
+
+> **Activity-feed caveat.** Bulk state changes (`bulk_state`) do not write a per-alert timeline
+> entry — a query can match thousands of rows. The optional message is recorded once in the
+> [audit trail](./audit_trail.md). Use the **Comment** action if you need a note visible on each
+> alert's individual timeline.
+
+### Select all N matching this filter
+
+When the total result count exceeds the visible page (50 rows) and rows are selected, a
+**"Select all N matching this filter"** link appears in the action bar. Clicking it switches
+subsequent bulk actions to target every record matching the current tab and search query
+instead of just the visible selection — including off-page rows. The action buttons relabel
+to show the full count, e.g. `Acknowledge (all 1200)`.
+
+Click **Clear selection scope** to return to the page-only scope.
+
+### Tag / set fields dialog
+
+The **Tag / set fields** button opens a dialog with three sections:
+
+- **Set attributes** — key/value pairs merged onto every matched alert (e.g. `environment=prod`).
+- **Add tags** — comma- or space-delimited chips; idempotent (existing tags are not duplicated).
+- **Remove tags** — chips to strip from matched alerts.
+
+On submit the dialog calls `POST /api/v1/record/bulk_update` and shows a toast:
+`N matched — M set, K tagged, J untagged`.
+
 ## Bulk operations across a query
 
 Instead of acting on one alert at a time, you can apply a single change to

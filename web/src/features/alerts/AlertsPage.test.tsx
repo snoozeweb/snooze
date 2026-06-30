@@ -71,8 +71,8 @@ describe("AlertsPage", () => {
     expect(screen.getByText(/disk full/)).toBeInTheDocument();
   });
 
-  it("offers an Acknowledge action on open rows that POSTs to /comment via dialog", async () => {
-    const calls: unknown[] = [];
+  it("offers an Acknowledge action on open rows that POSTs to /record/bulk_state via dialog", async () => {
+    const bulkCalls: Array<{ url: string; body: unknown }> = [];
     mswServer.use(
       http.get("/api/v1/record", () =>
         HttpResponse.json({
@@ -80,9 +80,9 @@ describe("AlertsPage", () => {
           meta: { count: 1, limit: 50, offset: 0, total: 1 },
         }),
       ),
-      http.post("/api/v1/comment", async ({ request }) => {
-        calls.push(await request.json());
-        return HttpResponse.json({ ok: true });
+      http.post("/api/v1/record/bulk_state", async ({ request }) => {
+        bulkCalls.push({ url: request.url, body: await request.json() });
+        return HttpResponse.json({ matched: 1, updated: 1, state: "ack" });
       }),
     );
     const user = userEvent.setup();
@@ -93,8 +93,13 @@ describe("AlertsPage", () => {
     // Dialog should appear; confirm it
     await waitFor(() => expect(screen.getByRole("dialog")).toBeInTheDocument());
     await user.click(screen.getByRole("button", { name: /^acknowledge$/i }));
-    await waitFor(() => expect(calls.length).toBe(1));
-    expect(calls[0]).toMatchObject({ record_uid: "r1", type: "ack" });
+    await waitFor(() => expect(bulkCalls.length).toBe(1));
+    // body should have state:"ack"
+    expect(bulkCalls[0]!.body).toMatchObject({ state: "ack" });
+    // q param decodes to uid IN ["r1"]
+    const rawQ = new URL(bulkCalls[0]!.url).searchParams.get("q") ?? "";
+    const decoded = JSON.parse(atob(rawQ.replace(/-/g, "+").replace(/_/g, "/"))) as unknown;
+    expect(decoded).toMatchObject({ type: "IN", field: "uid", value: ["r1"] });
   });
 
   it("expanding a row via the chevron renders the JSON + CommentTimeline", async () => {
@@ -134,8 +139,8 @@ describe("AlertsPage", () => {
     expect(screen.queryByRole("dialog")).toBeNull();
   });
 
-  it("bulk acknowledge: posts one comment per selected row, then clears selection", async () => {
-    const calls: unknown[] = [];
+  it("bulk acknowledge: fires one POST to /record/bulk_state, shows count toast", async () => {
+    const bulkCalls: Array<{ url: string; body: unknown }> = [];
     mswServer.use(
       http.get("/api/v1/record", () =>
         HttpResponse.json({
@@ -146,9 +151,9 @@ describe("AlertsPage", () => {
           meta: { count: 2, limit: 50, offset: 0, total: 2 },
         }),
       ),
-      http.post("/api/v1/comment", async ({ request }) => {
-        calls.push(await request.json());
-        return HttpResponse.json({ ok: true });
+      http.post("/api/v1/record/bulk_state", async ({ request }) => {
+        bulkCalls.push({ url: request.url, body: await request.json() });
+        return HttpResponse.json({ matched: 2, updated: 2, state: "ack" });
       }),
     );
     const user = userEvent.setup();
@@ -159,15 +164,14 @@ describe("AlertsPage", () => {
     await user.click(screen.getByRole("button", { name: /acknowledge \(2\)/i }));
     await user.click(screen.getByRole("button", { name: /^acknowledge$/i }));
 
-    await waitFor(() => expect(calls).toHaveLength(2));
-    const types = (calls as Array<{ type: string }>).map((c) => c.type);
-    expect(types.every((t) => t === "ack")).toBe(true);
+    // One bulk call, not two comment calls
+    await waitFor(() => expect(bulkCalls).toHaveLength(1));
+    expect(bulkCalls[0]!.body).toMatchObject({ state: "ack" });
 
-    // Bulk ack raises a count-bearing undo toast ("N alerts updated") that
-    // still carries the Undo affordance (re-opens every succeeded uid).
+    // Success toast shows matched count
     await waitFor(() => {
       const toasts = toastStore.getSnapshot();
-      expect(toasts.some((t) => /2 alerts updated/i.test(t.description) && t.action)).toBe(true);
+      expect(toasts.some((t) => /2 alerts updated/i.test(t.description))).toBe(true);
     });
   });
 
@@ -712,6 +716,202 @@ describe("AlertsPage", () => {
     const strip = screen.getByRole("group", { name: /active filters/i });
     expect(strip).toHaveTextContent(/acknowledged/i);
     expect(screen.getByRole("button", { name: /clear all/i })).toBeInTheDocument();
+  });
+
+  // ── Plan 18b: bulk state via bulk_state endpoint ───────────────────────────
+
+  it("bulk ack fires one POST to /record/bulk_state, zero to /comment", async () => {
+    const bulkCalls: Array<{ url: string; body: unknown }> = [];
+    const commentCalls: unknown[] = [];
+    mswServer.use(
+      http.get("/api/v1/record", () =>
+        HttpResponse.json({
+          data: [
+            { uid: "r1", host: "srv-1", state: "open", date_epoch: 1 },
+            { uid: "r2", host: "srv-2", state: "open", date_epoch: 2 },
+          ],
+          meta: { count: 2, limit: 50, offset: 0, total: 2 },
+        }),
+      ),
+      http.post("/api/v1/record/bulk_state", async ({ request }) => {
+        bulkCalls.push({ url: request.url, body: await request.json() });
+        return HttpResponse.json({ matched: 2, updated: 2, state: "ack" });
+      }),
+      http.post("/api/v1/comment", async ({ request }) => {
+        commentCalls.push(await request.json());
+        return HttpResponse.json({ ok: true });
+      }),
+    );
+    const user = userEvent.setup();
+    setup();
+    await waitFor(() => expect(screen.getByText("srv-1")).toBeInTheDocument());
+    await user.click(screen.getByRole("checkbox", { name: /select all/i }));
+    await user.click(screen.getByRole("button", { name: /acknowledge \(2\)/i }));
+    await user.click(screen.getByRole("button", { name: /^acknowledge$/i }));
+    await waitFor(() => expect(bulkCalls).toHaveLength(1));
+    expect(commentCalls).toHaveLength(0);
+    // q decodes to uid IN ["r1","r2"]
+    const rawQ = new URL((bulkCalls[0] as { url: string }).url).searchParams.get("q") ?? "";
+    const decoded = JSON.parse(atob(rawQ.replace(/-/g, "+").replace(/_/g, "/"))) as unknown;
+    expect(decoded).toMatchObject({
+      type: "IN",
+      field: "uid",
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+      value: expect.arrayContaining(["r1", "r2"]),
+    });
+  });
+
+  it("bulk ack warns about no per-record comment in the toast", async () => {
+    mswServer.use(
+      http.get("/api/v1/record", () =>
+        HttpResponse.json({
+          data: [
+            { uid: "r1", host: "srv-1", state: "open", date_epoch: 1 },
+            { uid: "r2", host: "srv-2", state: "open", date_epoch: 2 },
+          ],
+          meta: { count: 2, limit: 50, offset: 0, total: 2 },
+        }),
+      ),
+      http.post("/api/v1/record/bulk_state", () => {
+        return HttpResponse.json({ matched: 2, updated: 2, state: "ack" });
+      }),
+    );
+    const user = userEvent.setup();
+    setup();
+    await waitFor(() => expect(screen.getByText("srv-1")).toBeInTheDocument());
+    await user.click(screen.getByRole("checkbox", { name: /select all/i }));
+    await user.click(screen.getByRole("button", { name: /acknowledge \(2\)/i }));
+    await user.click(screen.getByRole("button", { name: /^acknowledge$/i }));
+    await waitFor(() => {
+      const toasts = toastStore.getSnapshot();
+      expect(toasts.some((t) => /2 alerts updated/i.test(t.description))).toBe(true);
+      expect(toasts.some((t) => /no per-alert activity/i.test(t.description ?? ""))).toBe(true);
+    });
+  });
+
+  it('"Select all N" affordance appears when total > page size and rows selected', async () => {
+    // Build 50 rows for the page, with total=200
+    const rows = Array.from({ length: 50 }, (_, i) => ({
+      uid: `r${i}`,
+      host: `srv-${i}`,
+      state: "open",
+      date_epoch: i + 1,
+    }));
+    mswServer.use(
+      http.get("/api/v1/record", () =>
+        HttpResponse.json({
+          data: rows,
+          meta: { count: 50, limit: 50, offset: 0, total: 200 },
+        }),
+      ),
+    );
+    const user = userEvent.setup();
+    setup();
+    await waitFor(() => expect(screen.getByText("srv-0")).toBeInTheDocument());
+    await user.click(screen.getByRole("checkbox", { name: /select all/i }));
+    // A button or text containing "select all 200" should appear
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: /select all 200/i })).toBeInTheDocument(),
+    );
+  });
+
+  it('"Select all N": clicking it switches to query-scope q (no ?q= for default tab)', async () => {
+    const bulkCalls: Array<{ url: string; body: unknown }> = [];
+    const rows = Array.from({ length: 50 }, (_, i) => ({
+      uid: `r${i}`,
+      host: `srv-${i}`,
+      state: "open",
+      date_epoch: i + 1,
+    }));
+    mswServer.use(
+      http.get("/api/v1/record", () =>
+        HttpResponse.json({
+          data: rows,
+          meta: { count: 50, limit: 50, offset: 0, total: 200 },
+        }),
+      ),
+      http.post("/api/v1/record/bulk_state", async ({ request }) => {
+        bulkCalls.push({ url: request.url, body: await request.json() });
+        return HttpResponse.json({ matched: 200, updated: 200, state: "ack" });
+      }),
+    );
+    const user = userEvent.setup();
+    // Navigate to default tab (no ?tab= param). buildQueryParam returns the
+    // ACTIVE_ALERTS condition for the default "alerts" tab.
+    setup("/web/alerts");
+    await waitFor(() => expect(screen.getByText("srv-0")).toBeInTheDocument());
+    await user.click(screen.getByRole("checkbox", { name: /select all/i }));
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: /select all 200/i })).toBeInTheDocument(),
+    );
+    await user.click(screen.getByRole("button", { name: /select all 200/i }));
+    await user.click(screen.getByRole("button", { name: /acknowledge \(all 200\)/i }));
+    await user.click(screen.getByRole("button", { name: /^acknowledge$/i }));
+    await waitFor(() => expect(bulkCalls).toHaveLength(1));
+    // The default "alerts" tab encodes the ACTIVE_ALERTS condition, so q IS set
+    const url = new URL((bulkCalls[0] as { url: string }).url);
+    // q should be the active-alerts tab condition (non-empty), not a uid IN list
+    const q = url.searchParams.get("q");
+    // q must be non-null (ACTIVE_ALERTS tab always contributes a condition)
+    expect(q).not.toBeNull();
+    // And the response count (200) surfaces in the toast
+    await waitFor(() => {
+      const toasts = toastStore.getSnapshot();
+      expect(toasts.some((t) => /200 alerts updated/i.test(t.description))).toBe(true);
+    });
+  });
+
+  it("comment action still loops per-uid (not bulk_state)", async () => {
+    const bulkCalls: unknown[] = [];
+    const commentCalls: unknown[] = [];
+    mswServer.use(
+      http.get("/api/v1/record", () =>
+        HttpResponse.json({
+          data: [
+            { uid: "r1", host: "srv-1", state: "open", date_epoch: 1 },
+            { uid: "r2", host: "srv-2", state: "open", date_epoch: 2 },
+          ],
+          meta: { count: 2, limit: 50, offset: 0, total: 2 },
+        }),
+      ),
+      http.post("/api/v1/record/bulk_state", async ({ request }) => {
+        bulkCalls.push(await request.json());
+        return HttpResponse.json({ matched: 0, updated: 0, state: "ack" });
+      }),
+      http.post("/api/v1/comment", async ({ request }) => {
+        commentCalls.push(await request.json());
+        return HttpResponse.json({ ok: true });
+      }),
+    );
+    const user = userEvent.setup();
+    setup();
+    await waitFor(() => expect(screen.getByText("srv-1")).toBeInTheDocument());
+    await user.click(screen.getByRole("checkbox", { name: /select all/i }));
+    await user.click(screen.getByRole("button", { name: /comment \(2\)/i }));
+    await user.type(screen.getByPlaceholderText(/type your comment/i), "investigating");
+    await user.click(screen.getByRole("button", { name: /^comment$/i }));
+    await waitFor(() => expect(commentCalls).toHaveLength(2));
+    expect(bulkCalls).toHaveLength(0);
+  });
+
+  it("bulk action bar: ack button hidden for all-closed selection", async () => {
+    mswServer.use(
+      http.get("/api/v1/record", () =>
+        HttpResponse.json({
+          data: [
+            { uid: "r1", host: "srv-1", state: "close", date_epoch: 1 },
+            { uid: "r2", host: "srv-2", state: "close", date_epoch: 2 },
+          ],
+          meta: { count: 2, limit: 50, offset: 0, total: 2 },
+        }),
+      ),
+    );
+    const user = userEvent.setup();
+    setup();
+    await waitFor(() => expect(screen.getByText("srv-1")).toBeInTheDocument());
+    await user.click(screen.getByRole("checkbox", { name: /select all/i }));
+    // For all-closed rows, only Re-open is valid; Acknowledge must be absent
+    expect(screen.queryByRole("button", { name: /acknowledge \(2\)/i })).toBeNull();
   });
 
   // ── Plan 34b: timed shelve via ShelveDialog ────────────────────────────────

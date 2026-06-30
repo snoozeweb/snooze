@@ -2,6 +2,20 @@
 
 ### Changed
 
+- **Bulk alert actions (ack/close/re-escalate) now call `POST /api/v1/record/bulk_state` once
+  for the entire selection** instead of one `POST /comment` per row; the success toast shows the
+  matched/updated counts. The `comment` action still uses the per-record loop (bulk_state does not
+  write per-alert activity entries).
+
+### Added
+
+- **"Select all N matching this filter" affordance** on the alerts action bar: when the total
+  result count exceeds the visible page and rows are selected, a link expands the bulk scope
+  beyond the visible page to every record matching the current tab and search query.
+- **"Tag / set fields" button** in the alerts action bar opens a dialog for bulk-tagging or
+  merging attributes across a selection (`POST /api/v1/record/bulk_update`); the success toast
+  shows per-op counts (matched / set / tagged / untagged).
+
 - **Shelve action now posts a `shelve` comment** with a configurable duration (default 4h
   from the dialog picker) instead of patching `ttl=-1`. Alerts automatically return to open
   when the duration expires (requires Plan 34 backend). A `ShelveDialog` duration picker

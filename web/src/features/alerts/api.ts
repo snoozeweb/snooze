@@ -2,7 +2,7 @@ import { useMutation, useQueryClient, type UseMutationResult } from "@tanstack/r
 import { api, type ApiError } from "@/lib/api/client";
 import { defineResource } from "@/lib/api/resource";
 import type { Record_ } from "./types";
-import { encodeConditionQ } from "@/lib/condition/serialize";
+import { encodeConditionQ, type Condition } from "@/lib/condition/serialize";
 import { ACTIVE_ALERTS } from "./tabs";
 
 export const Records = defineResource<Record_>("record");
@@ -68,6 +68,84 @@ export function useShelveRecord(): UseMutationResult<unknown, ApiError, ShelveIn
       const nextTTL = computeNextTTL(shelve, currentTTL);
       return api<unknown>("PATCH", `/record/${uid}`, { body: { ttl: nextTTL } });
     },
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: Records.queryKey.all });
+    },
+  });
+}
+
+// ── Bulk operations ───────────────────────────────────────────────────────────
+
+/**
+ * encodeUidsAsQ wraps a uid list into an IN condition and base64url-encodes it
+ * for use as the `?q=` parameter of bulk endpoints.
+ * Produces: { type:"IN", field:"uid", value:[...uids] }
+ */
+export function encodeUidsAsQ(uids: string[]): string {
+  const cond: Condition = { type: "IN", field: "uid", value: uids };
+  return encodeConditionQ(cond);
+}
+
+export type BulkStateInput = {
+  q?: string;
+  state: "ack" | "close" | "open" | "esc";
+  message?: string;
+};
+
+export type BulkStateResponse = {
+  matched: number;
+  updated: number;
+  state: string;
+};
+
+export function useBulkStateRecord(): UseMutationResult<
+  BulkStateResponse,
+  ApiError,
+  BulkStateInput
+> {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ q, state, message }) =>
+      api<BulkStateResponse>("POST", "/record/bulk_state", {
+        ...(q ? { query: { q } } : {}),
+        body: { state, ...(message ? { message } : {}) },
+      }),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: Records.queryKey.all });
+    },
+  });
+}
+
+export type BulkUpdateInput = {
+  q?: string;
+  set?: Record<string, unknown>;
+  tag?: string[];
+  untag?: string[];
+};
+
+export type BulkUpdateResponse = {
+  matched: number;
+  set: number;
+  tagged: number;
+  untagged: number;
+};
+
+export function useBulkUpdateRecord(): UseMutationResult<
+  BulkUpdateResponse,
+  ApiError,
+  BulkUpdateInput
+> {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ q, set, tag, untag }) =>
+      api<BulkUpdateResponse>("POST", "/record/bulk_update", {
+        ...(q ? { query: { q } } : {}),
+        body: {
+          ...(set ? { set } : {}),
+          ...(tag ? { tag } : {}),
+          ...(untag ? { untag } : {}),
+        },
+      }),
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: Records.queryKey.all });
     },
