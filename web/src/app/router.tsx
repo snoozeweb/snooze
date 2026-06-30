@@ -706,6 +706,50 @@ const devRoutes = import.meta.env.DEV
     ]
   : [];
 
+type HeartbeatsSearchParams = {
+  uid?: string;
+  page?: number;
+  orderby?: string;
+  asc?: boolean;
+  search?: string;
+  status?: string;
+};
+
+const heartbeatsRoute = createRoute({
+  getParentRoute: () => webLayoutRoute,
+  path: "/web/heartbeats",
+  component: lazyRouteComponent(
+    () => import("@/features/heartbeats/HeartbeatsPage"),
+    "HeartbeatsPage",
+  ),
+  validateSearch: (raw): HeartbeatsSearchParams => {
+    const out: Record<string, unknown> = {};
+    if (typeof raw["uid"] === "string") out["uid"] = raw["uid"];
+    const pageRaw = raw["page"];
+    const page =
+      typeof pageRaw === "number"
+        ? pageRaw
+        : typeof pageRaw === "string" && /^\d+$/.test(pageRaw)
+          ? Number(pageRaw)
+          : undefined;
+    if (page !== undefined) out["page"] = page;
+    if (typeof raw["orderby"] === "string") out["orderby"] = raw["orderby"];
+    const ascRaw = raw["asc"];
+    const asc =
+      typeof ascRaw === "boolean"
+        ? ascRaw
+        : ascRaw === "true"
+          ? true
+          : ascRaw === "false"
+            ? false
+            : undefined;
+    if (asc !== undefined) out["asc"] = asc;
+    if (typeof raw["search"] === "string") out["search"] = raw["search"];
+    if (typeof raw["status"] === "string") out["status"] = raw["status"];
+    return out as HeartbeatsSearchParams;
+  },
+});
+
 const routeTree = rootRoute.addChildren([
   indexRoute,
   loginRoute,
@@ -716,6 +760,7 @@ const routeTree = rootRoute.addChildren([
     rulesRoute,
     snoozesRoute,
     notificationsRoute,
+    heartbeatsRoute,
     dashboardRoute,
     usersRoute,
     rolesRoute,

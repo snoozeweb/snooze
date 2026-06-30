@@ -2,6 +2,13 @@
 
 ### Added
 
+- **Heartbeats console page.** A new **Heartbeats** page (`/web/heartbeats`) in
+  the **Configure** sidebar group lets operators manage dead-man's-switch
+  heartbeats from the web console: create/edit/delete, browse with a live status
+  badge (`ok` / `slow` / `overdue`), filter by status, and copy-paste the ping URL
+  and token directly from the editor drawer. No backend change (requires Plans 06
+  and 32 in `done/`).
+
 - **Console branding is now consumed by the SPA:** `console.logo` renders in the sidebar and login
   screen (falling back to the bundled Snooze logo when empty), `console.title` drives the browser
   tab title (defaulting to `"Snooze"`), `console.audio` plays a cue when new alerts arrive during

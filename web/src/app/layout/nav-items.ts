@@ -53,6 +53,14 @@ export const NAV_ITEMS: NavItem[] = [
     shortcut: "mod+5",
   },
   {
+    to: "/web/heartbeats",
+    label: "Heartbeats",
+    icon: "activity",
+    group: "configure",
+    permissions: ["ro_heartbeat", "rw_heartbeat"],
+    shortcut: "mod+6",
+  },
+  {
     to: "/web/admin/users",
     label: "Users",
     icon: "users",
