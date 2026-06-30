@@ -1,0 +1,86 @@
+.flow {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+}
+.node {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--surface-2);
+  padding: var(--space-2) var(--space-3);
+}
+.nodeLabel {
+  font-size: var(--text-xs);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-muted);
+  font-weight: var(--weight-semibold);
+  margin-bottom: var(--space-1);
+}
+.nodeBody {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+}
+.value {
+  font-size: var(--text-sm);
+}
+.subtle {
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+}
+.none {
+  font-size: var(--text-sm);
+  color: var(--text-muted);
+  font-style: italic;
+}
+.connector {
+  width: 2px;
+  height: var(--space-4);
+  background: var(--border-muted);
+  align-self: center;
+}
+.fork {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+  align-items: flex-start;
+  width: 100%;
+}
+.branch {
+  flex: 1 1 140px;
+  min-width: 0;
+  border: 1px solid var(--border-muted);
+  border-radius: var(--radius-md);
+  padding: var(--space-2);
+  background: var(--surface-3);
+}
+.branchHead {
+  font-size: var(--text-sm);
+  font-weight: var(--weight-semibold);
+  margin-bottom: var(--space-2);
+  word-break: break-word;
+}
+.branchActions {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-1);
+}
+.chip {
+  display: inline-flex;
+}
+.chipButton {
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+}
+.errorMsg {
+  font-size: var(--text-sm);
+  max-width: 320px;
+  white-space: pre-wrap;
+  word-break: break-word;
+}

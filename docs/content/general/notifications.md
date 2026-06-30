@@ -94,3 +94,25 @@ delay (0) every (10) total (-1)
 # indefinitely (will stop if someone acknowledges the alert)
 ```
 
+## Alert flow: matched notifications and action outcomes
+
+Each processed alert records the path it took through the pipeline:
+
+- `notifications` — the names of the notification entries whose condition and
+  time window matched the alert.
+- `actions` — one entry per action a matched notification referenced, each with
+  a `status`:
+  - `success` — the notifier sent it.
+  - `error` — the send failed, or the action is misconfigured (the `error`
+    field carries the reason).
+  - `skipped` — the notification's frequency is disabled (`total: 0`).
+  - `pending` — the send is in flight (resolves to `success`/`error`).
+  - `sent` — dispatched while outcome tracking is disabled (see the
+    `persist_action_outcomes` flag in [Notification configuration](../configuration/notifications.md#persist_action_outcomes)).
+
+Expand an alert in the **Alerts** view and open the **Flow** tab to see this as
+a flowchart: input → rules → aggregate, then a branch for each matched
+notification, each showing the actions it fired (boxes are green on success, red
+on error — click a red box for the message). When a snooze rule silenced the
+alert, the chart ends at the **Snooze** box (no notifications or actions).
+

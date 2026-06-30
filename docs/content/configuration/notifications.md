@@ -45,3 +45,19 @@ The Go schema lives in `internal/config/schema/notification.go`.
 >
 > Number of times to retry sending a failed notification
 
+### persist_action_outcomes
+
+> Type  
+> boolean
+>
+> Default  
+> `true`
+>
+> When enabled, the server resolves each fired action's outcome (`pending` →
+> `success`/`error`) and writes it back onto the alert record — one extra
+> merge-write per notifying alert. Disable it on single-writer SQLite under high
+> alert volume: the matched notifications and the action list are still recorded,
+> but fired actions stay at status `sent` instead of resolving to
+> `success`/`error`. See the alert Flow tab in
+> [Notifications](../general/notifications.md#alert-flow-matched-notifications-and-action-outcomes).
+
