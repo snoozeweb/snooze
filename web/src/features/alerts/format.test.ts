@@ -1,10 +1,12 @@
 import { describe, expect, it, vi } from "vitest";
 import {
+  formatCountdown,
   formatRelativeTime,
   formatTTL,
   severityBadgeVariant,
   stateBadgeVariant,
   stateLabel,
+  trendLabel,
   trimDate,
 } from "./format";
 
@@ -145,6 +147,67 @@ describe("trimDate", () => {
   it("returns '—' for undefined / 0", () => {
     expect(trimDate(undefined)).toBe("—");
     expect(trimDate(0)).toBe("—");
+  });
+});
+
+describe("formatCountdown", () => {
+  it("returns '' for zero (no deadline)", () => {
+    expect(formatCountdown(0)).toBe("");
+  });
+
+  it("returns '' for undefined", () => {
+    expect(formatCountdown(undefined)).toBe("");
+  });
+
+  it("returns '' when deadline is in the past", () => {
+    const pastEpoch = Math.floor(Date.now() / 1000) - 3600;
+    expect(formatCountdown(pastEpoch)).toBe("");
+  });
+
+  it("returns 'in Xh' for a future deadline 3 hours away", () => {
+    vi.useFakeTimers();
+    const now = new Date("2026-06-30T12:00:00Z");
+    vi.setSystemTime(now);
+    try {
+      const futureEpoch = Math.floor(now.getTime() / 1000) + 3 * 3600;
+      expect(formatCountdown(futureEpoch)).toBe("in 3h");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("returns 'in Xh Ym' for a deadline with hours and minutes remaining", () => {
+    vi.useFakeTimers();
+    const now = new Date("2026-06-30T12:00:00Z");
+    vi.setSystemTime(now);
+    try {
+      const futureEpoch = Math.floor(now.getTime() / 1000) + 2 * 3600 + 30 * 60;
+      expect(formatCountdown(futureEpoch)).toBe("in 2h 30m");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+});
+
+describe("trendLabel", () => {
+  it("returns 'Severity escalated' for moreSevere", () => {
+    expect(trendLabel("moreSevere")).toBe("Severity escalated");
+  });
+
+  it("returns 'Severity decreased' for lessSevere", () => {
+    expect(trendLabel("lessSevere")).toBe("Severity decreased");
+  });
+
+  it("returns 'No change' for noChange", () => {
+    expect(trendLabel("noChange")).toBe("No change");
+  });
+
+  it("returns '' for empty string", () => {
+    expect(trendLabel("")).toBe("");
+  });
+
+  it("returns '' for unknown trend value", () => {
+    expect(trendLabel("unknown")).toBe("");
   });
 });
 

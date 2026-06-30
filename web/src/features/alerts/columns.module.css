@@ -23,3 +23,12 @@
     overflow-wrap: anywhere;
   }
 }
+
+/* Inline lifecycle hint (ack expiry, escalation deadline) shown inside table
+ * cells. Rendered in a smaller secondary color so it reads as supplementary
+ * metadata rather than competing with the primary cell content. */
+.hint {
+  font-size: 0.75em;
+  color: var(--color-text-secondary, var(--text-muted));
+  margin-left: 0.4em;
+}

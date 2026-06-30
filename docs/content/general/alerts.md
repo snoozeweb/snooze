@@ -67,6 +67,46 @@ affected, and automatic state changes made by [aggregate rules](./aggregaterules
 (such as re-escalation after a throttle period, or re-open on a new hit) follow
 the same workflow.
 
+### Action gating
+
+The web UI mirrors the transition table above: actions that would be rejected by
+the server (e.g. **Acknowledge** on an already-acknowledged alert, **Re-escalate**
+on a fresh alert) are hidden from the kebab menu, quick-action buttons,
+right-click context menu, and bulk toolbar. You will not see a button that is
+currently illegal for the selected row's state.
+
+The backend 403 remains as a concurrent-change backstop — if another operator
+changes an alert's state between the moment you see the page and the moment you
+click, the server still rejects the now-stale action and the UI shows an error
+toast.
+
+### Ack expiry countdown
+
+When the `housekeeping.ack_timeout` setting is configured, the server stamps an
+`ack_until` deadline (epoch seconds) onto each acknowledged alert. The alerts
+table shows this deadline as an **"in Xh Ym"** hint next to the username in the
+**Acked by** column, so operators can see at a glance how long before the
+acknowledgement expires and the alert returns to open.
+
+Rows without a deadline (zero or absent `ack_until`) show no extra text — the
+column renders normally.
+
+### Trend indicator
+
+When the aggregaterule plugin processes repeated hits on an existing alert it
+stamps a `trend_indication` value reflecting whether the latest severity is
+higher, lower, or equal to the previous one:
+
+| Column symbol | `trend_indication` value | Meaning |
+|---|---|---|
+| `↑` | `moreSevere` | Severity escalated since the last hit |
+| `↓` | `lessSevere` | Severity decreased since the last hit |
+| `—` | `noChange` / absent | Severity unchanged or no trend data yet |
+
+The `↕` column is sortable by `trend_indication`. Operators who have a
+server-configured `console.columns` list must add `"trend"` to their list to see
+this column.
+
 ### Acknowledge
 
 Used to let people know that someone is taking care of the issue related to the alert.

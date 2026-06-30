@@ -16,6 +16,7 @@ import type { ParsedCondition } from "@/shared/ui/SearchBar";
 import { severityToken } from "@/lib/format/severity-color";
 import { useConsoleConfig } from "@/features/config/api";
 import { Environments } from "@/features/admin/environments/api";
+import type { IconName } from "@/shared/icons/icon-names";
 import { Records, useCommentRecord, useShelveRecord } from "./api";
 import { AlertRowDetail } from "./AlertRowDetail";
 import { ActiveFilters } from "./ActiveFilters";
@@ -27,7 +28,18 @@ import type { AlertState, Record_ } from "./types";
 import { tabById, type TabId } from "./tabs";
 import { ActionDialog, type ActionType } from "./ActionDialog";
 import { InjectAlertsDialog } from "./InjectAlertsDialog";
+import { isActionAllowed } from "./transitions";
 import styles from "./AlertsPage.module.css";
+
+// Module-scope constant so the reference is stable across renders (DataTable's
+// row memo depends on stable rowActions identity). comment/shelve are always-
+// allowed and appended unconditionally after the filtered set.
+const CANDIDATE_ROW_ACTIONS: Array<{ key: ActionType; label: string; icon: IconName }> = [
+  { key: "ack", label: "Acknowledge", icon: "thumbs-up" },
+  { key: "close", label: "Close", icon: "lock" },
+  { key: "esc", label: "Re-escalate", icon: "rotate-cw" },
+  { key: "open", label: "Re-open", icon: "rotate-cw" },
+];
 
 /** Short human label for a record used in undo-toast copy ("Acknowledged X"). */
 function recordLabel(r: Record_): string {
@@ -280,54 +292,25 @@ export function AlertsPage() {
   const rowActions = useCallback(
     (row: Record_): RowAction[] => {
       const state = (row.state ?? "") as AlertState;
-      const isOpen = state === "" || state === "open";
-      const isAcked = state === "ack";
       const isClosed = state === "close";
       const isShelved = state === "shelved" || (row.ttl !== undefined && row.ttl < 0);
 
       const out: RowAction[] = [];
 
-      if (isOpen) {
-        out.push({
-          key: "ack",
-          label: "Acknowledge",
-          icon: "thumbs-up",
-          onSelect: () => openDialog("ack", [row]),
-        });
-        out.push({
-          key: "close",
-          label: "Close",
-          icon: "lock",
-          onSelect: () => openDialog("close", [row]),
-        });
-        out.push({
-          key: "esc",
-          label: "Re-escalate",
-          icon: "rotate-cw",
-          onSelect: () => openDialog("esc", [row]),
-        });
-      } else if (isAcked) {
-        out.push({
-          key: "close",
-          label: "Close",
-          icon: "lock",
-          onSelect: () => openDialog("close", [row]),
-        });
-        out.push({
-          key: "esc",
-          label: "Re-escalate",
-          icon: "rotate-cw",
-          onSelect: () => openDialog("esc", [row]),
-        });
-      } else if (isClosed) {
-        out.push({
-          key: "open",
-          label: "Re-open",
-          icon: "rotate-cw",
-          onSelect: () => openDialog("open", [row]),
-        });
+      // Flat filter over candidates using the transition gate — replaces the
+      // nested if (isOpen) / else if (isAcked) / else if (isClosed) chains.
+      for (const { key, label, icon } of CANDIDATE_ROW_ACTIONS) {
+        if (isActionAllowed(state, key)) {
+          out.push({
+            key,
+            label,
+            icon,
+            onSelect: () => openDialog(key, [row]),
+          });
+        }
       }
 
+      // comment is always-allowed.
       out.push({
         key: "comment",
         label: "Comment",
@@ -432,12 +415,9 @@ export function AlertsPage() {
   const quickActions = useCallback(
     (row: Record_): RowAction[] => {
       const state = (row.state ?? "") as AlertState;
-      const isOpen = state === "" || state === "open";
-      const isAcked = state === "ack";
-      const isClosed = state === "close";
 
       const out: RowAction[] = [];
-      if (isOpen) {
+      if (isActionAllowed(state, "ack")) {
         out.push({
           key: "ack",
           label: "Acknowledge",
@@ -445,7 +425,7 @@ export function AlertsPage() {
           onSelect: () => inlineAction(row, "ack"),
         });
       }
-      if (isOpen || isAcked) {
+      if (isActionAllowed(state, "close")) {
         out.push({
           key: "close",
           label: "Close",
@@ -453,14 +433,13 @@ export function AlertsPage() {
           onSelect: () => inlineAction(row, "close"),
         });
       }
-      if (!isClosed) {
-        out.push({
-          key: "comment",
-          label: "Comment",
-          icon: "message-square",
-          onSelect: () => openDialog("comment", [row]),
-        });
-      }
+      // comment is always-allowed.
+      out.push({
+        key: "comment",
+        label: "Comment",
+        icon: "message-square",
+        onSelect: () => openDialog("comment", [row]),
+      });
       return out;
     },
     [inlineAction, openDialog],
@@ -492,9 +471,6 @@ export function AlertsPage() {
   const contextMenuItems = useCallback(
     (row: Record_): ContextMenuItem[] => {
       const state = (row.state ?? "") as AlertState;
-      const isOpen = state === "" || state === "open";
-      const isAcked = state === "ack";
-      const isClosed = state === "close";
 
       const items: ContextMenuItem[] = [
         {
@@ -522,36 +498,19 @@ export function AlertsPage() {
         },
       ];
 
-      if (isOpen || isAcked) {
-        if (isOpen) {
+      // Flat filter over candidates using the transition gate.
+      for (const { key, label, icon } of CANDIDATE_ROW_ACTIONS) {
+        if (isActionAllowed(state, key)) {
           items.push({
-            key: "ack",
-            label: "Acknowledge",
-            icon: "thumbs-up",
-            onSelect: () => openDialog("ack", [row]),
+            key,
+            label,
+            icon,
+            onSelect: () => openDialog(key, [row]),
           });
         }
-        items.push({
-          key: "close",
-          label: "Close",
-          icon: "lock",
-          onSelect: () => openDialog("close", [row]),
-        });
-        items.push({
-          key: "esc",
-          label: "Re-escalate",
-          icon: "rotate-cw",
-          onSelect: () => openDialog("esc", [row]),
-        });
-      } else if (isClosed) {
-        items.push({
-          key: "open",
-          label: "Re-open",
-          icon: "rotate-cw",
-          onSelect: () => openDialog("open", [row]),
-        });
       }
 
+      // comment is always-allowed.
       items.push({
         key: "comment",
         label: "Comment",
@@ -575,32 +534,46 @@ export function AlertsPage() {
 
   const bulkActions = useCallback((rows: Record_[]) => {
     const openBulkDialog = (type: ActionType) => setDialog({ type, records: rows });
+    // Show a bulk button when at least one selected row allows the action.
+    // The conservative `rows.every` alternative would be confusing for mixed
+    // selections (49 open + 1 closed): hiding "Ack" because of one closed row
+    // would surprise operators. The backend 403 catches the few that slip
+    // through on heterogeneous selections.
+    const anyAllows = (action: ActionType) =>
+      rows.some((r) => isActionAllowed((r.state ?? "") as AlertState, action));
     return (
       <>
-        <Button
-          size="sm"
-          variant="secondary"
-          leadingIcon="thumbs-up"
-          onClick={() => openBulkDialog("ack")}
-        >
-          Acknowledge ({rows.length})
-        </Button>
-        <Button
-          size="sm"
-          variant="secondary"
-          leadingIcon="lock"
-          onClick={() => openBulkDialog("close")}
-        >
-          Close ({rows.length})
-        </Button>
-        <Button
-          size="sm"
-          variant="secondary"
-          leadingIcon="rotate-cw"
-          onClick={() => openBulkDialog("esc")}
-        >
-          Re-escalate ({rows.length})
-        </Button>
+        {anyAllows("ack") ? (
+          <Button
+            size="sm"
+            variant="secondary"
+            leadingIcon="thumbs-up"
+            onClick={() => openBulkDialog("ack")}
+          >
+            Acknowledge ({rows.length})
+          </Button>
+        ) : null}
+        {anyAllows("close") ? (
+          <Button
+            size="sm"
+            variant="secondary"
+            leadingIcon="lock"
+            onClick={() => openBulkDialog("close")}
+          >
+            Close ({rows.length})
+          </Button>
+        ) : null}
+        {anyAllows("esc") ? (
+          <Button
+            size="sm"
+            variant="secondary"
+            leadingIcon="rotate-cw"
+            onClick={() => openBulkDialog("esc")}
+          >
+            Re-escalate ({rows.length})
+          </Button>
+        ) : null}
+        {/* comment is always-allowed */}
         <Button
           size="sm"
           variant="secondary"

@@ -3,7 +3,7 @@ import { Badge } from "@/shared/ui/Badge";
 import { Code } from "@/shared/ui/Code";
 import { TimeCell } from "@/shared/ui/TimeCell";
 import { severityColor } from "@/lib/format/severity-color";
-import { formatTTL, stateBadgeVariant, stateLabel } from "./format";
+import { formatCountdown, formatTTL, stateBadgeVariant, stateLabel, trendLabel } from "./format";
 import type { AlertState, Record_ } from "./types";
 import styles from "./columns.module.css";
 
@@ -43,6 +43,15 @@ export function recordAckedBy(r: Record_): string {
   return typeof v === "string" ? v : "";
 }
 
+// `trend_indication` is not yet in the OpenAPI schema (Plan 30 writes it as an
+// extra doc field). Read defensively. Once Plan 30's OpenAPI regeneration adds
+// the typed field to types.gen.ts, this cast can be replaced with r.trend_indication.
+function recordTrend(r: Record_): "moreSevere" | "lessSevere" | "noChange" | "" {
+  const v = (r as { trend_indication?: unknown }).trend_indication;
+  if (v === "moreSevere" || v === "lessSevere" || v === "noChange") return v;
+  return "";
+}
+
 export const alertColumns: ColumnDef<Record_>[] = [
   {
     id: "date_epoch",
@@ -65,6 +74,33 @@ export const alertColumns: ColumnDef<Record_>[] = [
     width: "100px",
   },
   {
+    // Trend badge: ↑/↓/— reflecting trend_indication stamped by aggregaterule.
+    // trend_indication is not yet in the OpenAPI schema (Plan 30 adds it); the
+    // recordTrend helper reads it defensively. Operators who have a server-
+    // configured console.columns list must add "trend" to see this column.
+    id: "trend",
+    header: "↕",
+    cell: (r) => {
+      const t = recordTrend(r);
+      if (t === "moreSevere")
+        return (
+          <span title={trendLabel("moreSevere")} aria-label={trendLabel("moreSevere")}>
+            ↑
+          </span>
+        );
+      if (t === "lessSevere")
+        return (
+          <span title={trendLabel("lessSevere")} aria-label={trendLabel("lessSevere")}>
+            ↓
+          </span>
+        );
+      return <span aria-hidden="true">—</span>;
+    },
+    sortable: true,
+    align: "right",
+    width: "60px",
+  },
+  {
     id: "state",
     header: "State",
     cell: (r) => {
@@ -75,13 +111,36 @@ export const alertColumns: ColumnDef<Record_>[] = [
     width: "120px",
   },
   {
+    // escalate_hint column: shows a countdown for open/esc rows with escalate_at set.
+    // No header; renders nothing on acked/closed rows even if the field is present.
+    id: "escalate_hint",
+    header: "",
+    cell: (r) => {
+      const state = (r.state ?? "") as AlertState;
+      const isOpen = state === "" || state === "open" || state === "esc";
+      const countdown = isOpen ? formatCountdown(r.escalate_at) : "";
+      return countdown ? (
+        <span className={styles.hint} title="Auto-escalation deadline">
+          {countdown}
+        </span>
+      ) : null;
+    },
+    width: "120px",
+  },
+  {
     id: "acked_by",
     header: "Acked by",
     cell: (r) => {
       const who = recordAckedBy(r);
-      return who ? <Code>{who}</Code> : <span>—</span>;
+      const countdown = formatCountdown(r.ack_until);
+      return (
+        <span>
+          {who ? <Code>{who}</Code> : <span>—</span>}
+          {countdown ? <span className={styles.hint}>{countdown}</span> : null}
+        </span>
+      );
     },
-    width: "120px",
+    width: "160px",
   },
   {
     id: "hits",

@@ -2,6 +2,18 @@
 
 ### Added
 
+- **Alerts table — action gating:** illegal state transitions (e.g. Acknowledge
+  on an already-acked alert) are now hidden from the kebab menu, quick-action
+  buttons, right-click context menu, and bulk toolbar; the backend 403 remains
+  as a concurrent-change backstop.
+- **Alerts table — lifecycle countdowns:** acked rows now show an "in Xh" expiry
+  countdown when `ack_until` is set; open rows show "escalates in Xh" when
+  `escalate_at` is armed.
+- **Alerts table — trend badge:** a ↑/↓/— indicator in the severity column
+  reflects `trend_indication` stamped by the aggregaterule plugin on every merge.
+- **Comment timeline — system comments:** auto-generated comments from the
+  housekeeper (`auto: true`) are attributed as "System (auto)" and cannot be
+  edited or deleted.
 - **Chat ack/close/re-open from Slack & Telegram message buttons.** The Slack
   and Telegram notifiers can now render opt-in interactive buttons
   (`interactive: true` on the action form; default off). New webhook receivers

@@ -423,6 +423,279 @@ describe("AlertsPage", () => {
     expect(calls[0]).toMatchObject({ record_uid: "r1", type: "ack" });
   });
 
+  // ── Action gating ─────────────────────────────────────────────────────────
+
+  it("ack_hidden_for_acked_rows — Acknowledge absent from kebab on acked row", async () => {
+    mswServer.use(
+      http.get("/api/v1/record", () =>
+        HttpResponse.json({
+          data: [{ uid: "r1", host: "srv-1", state: "ack", date_epoch: 1 }],
+          meta: { count: 1, limit: 50, offset: 0, total: 1 },
+        }),
+      ),
+    );
+    const user = userEvent.setup();
+    setup();
+    await waitFor(() => expect(screen.getByText("srv-1")).toBeInTheDocument());
+    await user.click(screen.getAllByRole("button", { name: /row actions/i })[0]!);
+    expect(screen.queryByRole("menuitem", { name: /^acknowledge$/i })).toBeNull();
+  });
+
+  it("close_available_for_acked_rows — Close present in kebab on acked row", async () => {
+    mswServer.use(
+      http.get("/api/v1/record", () =>
+        HttpResponse.json({
+          data: [{ uid: "r1", host: "srv-1", state: "ack", date_epoch: 1 }],
+          meta: { count: 1, limit: 50, offset: 0, total: 1 },
+        }),
+      ),
+    );
+    const user = userEvent.setup();
+    setup();
+    await waitFor(() => expect(screen.getByText("srv-1")).toBeInTheDocument());
+    await user.click(screen.getAllByRole("button", { name: /row actions/i })[0]!);
+    expect(screen.getByRole("menuitem", { name: /^close$/i })).toBeInTheDocument();
+  });
+
+  it("esc_available_for_acked_rows — Re-escalate present in kebab on acked row", async () => {
+    mswServer.use(
+      http.get("/api/v1/record", () =>
+        HttpResponse.json({
+          data: [{ uid: "r1", host: "srv-1", state: "ack", date_epoch: 1 }],
+          meta: { count: 1, limit: 50, offset: 0, total: 1 },
+        }),
+      ),
+    );
+    const user = userEvent.setup();
+    setup();
+    await waitFor(() => expect(screen.getByText("srv-1")).toBeInTheDocument());
+    await user.click(screen.getAllByRole("button", { name: /row actions/i })[0]!);
+    expect(screen.getByRole("menuitem", { name: /re-escalate/i })).toBeInTheDocument();
+  });
+
+  it("reopen_only_for_closed_rows — Re-open present, Acknowledge and Close absent on closed row", async () => {
+    mswServer.use(
+      http.get("/api/v1/record", () =>
+        HttpResponse.json({
+          data: [{ uid: "r1", host: "srv-1", state: "close", date_epoch: 1 }],
+          meta: { count: 1, limit: 50, offset: 0, total: 1 },
+        }),
+      ),
+    );
+    const user = userEvent.setup();
+    setup();
+    await waitFor(() => expect(screen.getByText("srv-1")).toBeInTheDocument());
+    await user.click(screen.getAllByRole("button", { name: /row actions/i })[0]!);
+    expect(screen.getByRole("menuitem", { name: /re-open/i })).toBeInTheDocument();
+    expect(screen.queryByRole("menuitem", { name: /^acknowledge$/i })).toBeNull();
+    expect(screen.queryByRole("menuitem", { name: /^close$/i })).toBeNull();
+  });
+
+  it("esc_hidden_for_fresh_rows — Re-escalate absent from kebab on fresh row", async () => {
+    mswServer.use(
+      http.get("/api/v1/record", () =>
+        HttpResponse.json({
+          data: [{ uid: "r1", host: "srv-1", state: "", date_epoch: 1 }],
+          meta: { count: 1, limit: 50, offset: 0, total: 1 },
+        }),
+      ),
+    );
+    const user = userEvent.setup();
+    setup();
+    await waitFor(() => expect(screen.getByText("srv-1")).toBeInTheDocument());
+    await user.click(screen.getAllByRole("button", { name: /row actions/i })[0]!);
+    expect(screen.queryByRole("menuitem", { name: /re-escalate/i })).toBeNull();
+  });
+
+  it("bulk_ack_hidden_when_all_closed — Acknowledge bulk button absent when selecting closed row", async () => {
+    mswServer.use(
+      http.get("/api/v1/record", () =>
+        HttpResponse.json({
+          data: [{ uid: "r1", host: "srv-1", state: "close", date_epoch: 1 }],
+          meta: { count: 1, limit: 50, offset: 0, total: 1 },
+        }),
+      ),
+    );
+    const user = userEvent.setup();
+    setup();
+    await waitFor(() => expect(screen.getByText("srv-1")).toBeInTheDocument());
+    await user.click(screen.getByRole("checkbox", { name: /select all/i }));
+    // Acknowledge button should not appear since the only row is closed (no row allows ack)
+    expect(screen.queryByRole("button", { name: /acknowledge \(1\)/i })).toBeNull();
+  });
+
+  it("quick_ack_absent_for_acked_row — inline Acknowledge icon-button absent on acked row", async () => {
+    mswServer.use(
+      http.get("/api/v1/record", () =>
+        HttpResponse.json({
+          data: [{ uid: "r1", host: "srv-1", state: "ack", date_epoch: 1 }],
+          meta: { count: 1, limit: 50, offset: 0, total: 1 },
+        }),
+      ),
+    );
+    setup();
+    await waitFor(() => expect(screen.getByText("srv-1")).toBeInTheDocument());
+    // The inline Acknowledge quick-action button should not be in the DOM for an acked row
+    expect(screen.queryByRole("button", { name: /^acknowledge$/i })).toBeNull();
+  });
+
+  // ── Columns: lifecycle countdown + trend ───────────────────────────────────
+
+  it("ack_countdown_renders_on_acked_row — shows 'in Xh' in acked_by cell", async () => {
+    const nowSec = Math.floor(Date.now() / 1000);
+    mswServer.use(
+      http.get("/api/v1/record", () =>
+        HttpResponse.json({
+          data: [
+            {
+              uid: "r1",
+              host: "srv-1",
+              state: "ack",
+              acked_by: "alice",
+              ack_until: nowSec + 10800, // 3 hours
+              date_epoch: 1,
+            },
+          ],
+          meta: { count: 1, limit: 50, offset: 0, total: 1 },
+        }),
+      ),
+    );
+    setup();
+    await waitFor(() => expect(screen.getByText("srv-1")).toBeInTheDocument());
+    expect(screen.getByText(/in \d+h/)).toBeInTheDocument();
+  });
+
+  it("ack_countdown_absent_when_zero — no countdown when ack_until is 0", async () => {
+    mswServer.use(
+      http.get("/api/v1/record", () =>
+        HttpResponse.json({
+          data: [
+            {
+              uid: "r1",
+              host: "srv-1",
+              state: "ack",
+              acked_by: "alice",
+              ack_until: 0,
+              date_epoch: 1,
+            },
+          ],
+          meta: { count: 1, limit: 50, offset: 0, total: 1 },
+        }),
+      ),
+    );
+    setup();
+    await waitFor(() => expect(screen.getByText("srv-1")).toBeInTheDocument());
+    expect(screen.queryByText(/in \d+h/)).toBeNull();
+  });
+
+  it("escalate_hint_renders_on_open_row — shows escalation countdown on open row", async () => {
+    const nowSec = Math.floor(Date.now() / 1000);
+    mswServer.use(
+      http.get("/api/v1/record", () =>
+        HttpResponse.json({
+          data: [
+            {
+              uid: "r1",
+              host: "srv-1",
+              state: "",
+              escalate_at: nowSec + 7200, // 2 hours
+              date_epoch: 1,
+            },
+          ],
+          meta: { count: 1, limit: 50, offset: 0, total: 1 },
+        }),
+      ),
+    );
+    setup();
+    await waitFor(() => expect(screen.getByText("srv-1")).toBeInTheDocument());
+    expect(screen.getByTitle(/auto-escalation deadline/i)).toBeInTheDocument();
+  });
+
+  it("escalate_hint_absent_on_acked_row — no escalation hint when row is acked", async () => {
+    const nowSec = Math.floor(Date.now() / 1000);
+    mswServer.use(
+      http.get("/api/v1/record", () =>
+        HttpResponse.json({
+          data: [
+            {
+              uid: "r1",
+              host: "srv-1",
+              state: "ack",
+              escalate_at: nowSec + 7200,
+              acked_by: "alice",
+              date_epoch: 1,
+            },
+          ],
+          meta: { count: 1, limit: 50, offset: 0, total: 1 },
+        }),
+      ),
+    );
+    setup();
+    await waitFor(() => expect(screen.getByText("srv-1")).toBeInTheDocument());
+    expect(screen.queryByTitle(/auto-escalation deadline/i)).toBeNull();
+  });
+
+  it("trend_up_renders_for_moreSevere — ↑ shown for moreSevere", async () => {
+    mswServer.use(
+      http.get("/api/v1/record", () =>
+        HttpResponse.json({
+          data: [
+            {
+              uid: "r1",
+              host: "srv-1",
+              state: "open",
+              trend_indication: "moreSevere",
+              date_epoch: 1,
+            },
+          ],
+          meta: { count: 1, limit: 50, offset: 0, total: 1 },
+        }),
+      ),
+    );
+    setup();
+    await waitFor(() => expect(screen.getByText("srv-1")).toBeInTheDocument());
+    expect(screen.getByTitle("Severity escalated")).toBeInTheDocument();
+  });
+
+  it("trend_down_renders_for_lessSevere — ↓ shown for lessSevere", async () => {
+    mswServer.use(
+      http.get("/api/v1/record", () =>
+        HttpResponse.json({
+          data: [
+            {
+              uid: "r1",
+              host: "srv-1",
+              state: "open",
+              trend_indication: "lessSevere",
+              date_epoch: 1,
+            },
+          ],
+          meta: { count: 1, limit: 50, offset: 0, total: 1 },
+        }),
+      ),
+    );
+    setup();
+    await waitFor(() => expect(screen.getByText("srv-1")).toBeInTheDocument());
+    expect(screen.getByTitle("Severity decreased")).toBeInTheDocument();
+  });
+
+  it("trend_dash_for_noChange_or_absent — dash rendered when trend absent", async () => {
+    mswServer.use(
+      http.get("/api/v1/record", () =>
+        HttpResponse.json({
+          data: [{ uid: "r1", host: "srv-1", state: "open", date_epoch: 1 }],
+          meta: { count: 1, limit: 50, offset: 0, total: 1 },
+        }),
+      ),
+    );
+    setup();
+    await waitFor(() => expect(screen.getByText("srv-1")).toBeInTheDocument());
+    // The trend column renders a dash (—) for absent/noChange rows
+    // aria-hidden so check by text content
+    const dashes = screen.getAllByText("—");
+    expect(dashes.length).toBeGreaterThan(0);
+  });
+
   it("shows the ActiveFilters chip strip with a non-default tab and Clear all", async () => {
     mswServer.use(
       http.get("/api/v1/record", () =>
