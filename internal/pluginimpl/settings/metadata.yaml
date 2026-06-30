@@ -253,6 +253,21 @@ setting_form:
         description: 'How long a timed shelve lasts before the alert is automatically returned to open (Go duration string, e.g. "4h"). Posting a shelve comment stamps shelve_until = now + this; the minute-cadence sweep enforces it. Does not affect the legacy permanent shelve.'
         default_value: '4h'
         group: 'housekeeping'
+    # --- Ingest ---------------------------------------------------------------
+    ingest.allow:
+        display_name: 'Alert intake enabled'
+        component: 'Switch'
+        description: >-
+            Master kill-switch for alert ingestion. When disabled, every
+            POST /api/v1/alerts and every webhook receiver returns 503 Service
+            Unavailable immediately — useful during an alert flood or a
+            planned maintenance window. Per-tenant; toggling one tenant does
+            not affect others. Changes take effect within the runtime-settings
+            cache window (≤ 5 seconds). Fails open: a transient DB error
+            never locks you out.
+        default_value: true
+        danger: true
+        group: 'ingest'
     # --- Console (web-console defaults, served at GET /api/v1/config) ---------
     # These keys live in the runtime ``console`` settings section and overlay
     # the server's code defaults (internal/api/routes_config.go). The endpoint

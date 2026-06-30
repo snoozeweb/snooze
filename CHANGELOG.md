@@ -2,6 +2,13 @@
 
 ### Added
 
+- **Ingest kill-switch toggle.** A dedicated **Ingest** tab now appears in
+  Settings with an **Alert intake enabled** switch. Disabling it halts all
+  `POST /api/v1/alerts` requests and every webhook receiver (503 Service
+  Unavailable) for the current tenant instantly, matching the documented
+  maintenance-mode workflow. The card has a red left-border accent and a
+  danger Save button; a warning caption appears when intake is paused.
+
 - **API keys — usage display in the console.** The admin keys table now shows
   "Last used" (sortable, relative time) and "Uses" columns. The self-service
   profile card shows the last-used age and a "Stale" badge for keys idle for

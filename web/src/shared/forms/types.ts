@@ -31,6 +31,11 @@ export type FormField = {
   // Logical bucket the field belongs to. Used by the Settings page to render
   // grouped pickers (general vs notification); ignored elsewhere.
   group?: string;
+  // When true, the SettingCard renders a danger (red) border accent, a red
+  // Save button, and a warning caption when the value is false. Intended for
+  // operational kill-switches (e.g. ingest.allow). Optional; existing cards
+  // that omit this key are unaffected.
+  danger?: boolean;
 };
 
 export type Metadata = {

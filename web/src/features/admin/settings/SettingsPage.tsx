@@ -22,6 +22,8 @@ const TAB_ORDER = [
   "ldap",
   "oidc",
   "housekeeping",
+  "ingest",
+  "console",
   "tenant_routing",
 ] as const;
 
@@ -31,6 +33,8 @@ const TAB_LABELS: Record<string, string> = {
   ldap: "LDAP",
   oidc: "OIDC / SSO",
   housekeeping: "Housekeeping",
+  ingest: "Ingest",
+  console: "Console",
   tenant_routing: "Tenant routing",
 };
 

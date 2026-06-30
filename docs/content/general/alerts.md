@@ -336,8 +336,8 @@ the others.
 
 ### Disabling intake
 
-From the **Settings** page, edit the `ingest` section and set the `allow` key to
-`false`. Equivalently, via the API:
+From the **Settings** page → **Ingest** tab, toggle **Alert intake enabled** to off and click Save.
+Equivalently, via the API:
 
 ```bash
 curl -X POST https://<snooze>/api/v1/settings \

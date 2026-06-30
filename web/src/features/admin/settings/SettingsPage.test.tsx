@@ -97,6 +97,14 @@ function settingsMetadata() {
           default_value: "24h",
           group: "housekeeping",
         },
+        "ingest.allow": {
+          display_name: "Alert intake enabled",
+          component: "Switch",
+          description: "Master kill-switch for alert ingestion.",
+          default_value: true,
+          danger: true,
+          group: "ingest",
+        },
       },
     },
   };
@@ -148,6 +156,7 @@ describe("SettingsPage", () => {
     expect(screen.getByRole("tab", { name: "LDAP" })).toBeInTheDocument();
     expect(screen.getByRole("tab", { name: "OIDC / SSO" })).toBeInTheDocument();
     expect(screen.getByRole("tab", { name: "Housekeeping" })).toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: "Ingest" })).toBeInTheDocument();
   });
 
   it("renders General-group cards in the active panel by default", async () => {
@@ -393,5 +402,92 @@ describe("SettingsPage", () => {
     );
     await user.click(screen.getByRole("tab", { name: "Tenant routing" }));
     await waitFor(() => expect(screen.getByText("Fail closed on no match")).toBeInTheDocument());
+  });
+});
+
+describe("Ingest tab", () => {
+  it("renders an Ingest tab when the catalogue contains an ingest group", async () => {
+    mswServer.use(
+      http.get("/api/v1/metadata/settings", () => HttpResponse.json(settingsMetadata())),
+      http.get("/api/v1/settings", () =>
+        HttpResponse.json({ data: [], meta: { count: 0, limit: 500, offset: 0, total: 0 } }),
+      ),
+    );
+    setup();
+    await waitFor(() => expect(screen.getByRole("tab", { name: "Ingest" })).toBeInTheDocument());
+    // Verify position: Housekeeping comes before Ingest.
+    const tabs = screen.getAllByRole("tab");
+    const housekeepingIdx = tabs.findIndex((t) => t.textContent === "Housekeeping");
+    const ingestIdx = tabs.findIndex((t) => t.textContent === "Ingest");
+    expect(housekeepingIdx).toBeLessThan(ingestIdx);
+  });
+
+  it("Ingest tab shows the ingest.allow Switch card", async () => {
+    mswServer.use(
+      http.get("/api/v1/metadata/settings", () => HttpResponse.json(settingsMetadata())),
+      http.get("/api/v1/settings", () =>
+        HttpResponse.json({ data: [], meta: { count: 0, limit: 500, offset: 0, total: 0 } }),
+      ),
+    );
+    setup();
+    const user = userEvent.setup();
+    await waitFor(() => expect(screen.getByRole("tab", { name: "Ingest" })).toBeInTheDocument());
+    await user.click(screen.getByRole("tab", { name: "Ingest" }));
+    await waitFor(() => expect(screen.getByText("Alert intake enabled")).toBeInTheDocument());
+    // The Switch control renders a role="switch" element.
+    expect(screen.getByRole("switch")).toBeInTheDocument();
+    // Save button on the ingest card should have danger variant class.
+    const ingestCard = screen.getByText("Alert intake enabled").closest("section")!;
+    const saveBtn = Array.from(ingestCard.querySelectorAll("button")).find(
+      (b) => b.textContent?.trim().toLowerCase() === "save",
+    )!;
+    expect(saveBtn.className).toMatch(/danger/i);
+  });
+
+  it("Ingest tab shows the pause warning when ingest.allow is false", async () => {
+    mswServer.use(
+      http.get("/api/v1/metadata/settings", () => HttpResponse.json(settingsMetadata())),
+      http.get("/api/v1/settings", () =>
+        HttpResponse.json({
+          data: [{ uid: "s-ingest", name: "ingest.allow", value: false }],
+          meta: { count: 1, limit: 500, offset: 0, total: 1 },
+        }),
+      ),
+    );
+    setup();
+    const user = userEvent.setup();
+    await waitFor(() => expect(screen.getByRole("tab", { name: "Ingest" })).toBeInTheDocument());
+    await user.click(screen.getByRole("tab", { name: "Ingest" }));
+    await waitFor(() => expect(screen.getByText(/Alert intake is/i)).toBeInTheDocument());
+    expect(screen.getByText(/paused/i)).toBeInTheDocument();
+  });
+
+  it("Ingest tab POSTs ingest.allow=false when Save is clicked after toggling off", async () => {
+    const bodies: Array<Record<string, unknown>> = [];
+    mswServer.use(
+      http.get("/api/v1/metadata/settings", () => HttpResponse.json(settingsMetadata())),
+      http.get("/api/v1/settings", () =>
+        HttpResponse.json({ data: [], meta: { count: 0, limit: 500, offset: 0, total: 0 } }),
+      ),
+      http.post("/api/v1/settings", async ({ request }) => {
+        bodies.push((await request.json()) as Record<string, unknown>);
+        return HttpResponse.json({ uid: "new-ingest", name: "ingest.allow" });
+      }),
+    );
+    setup();
+    const user = userEvent.setup();
+    await waitFor(() => expect(screen.getByRole("tab", { name: "Ingest" })).toBeInTheDocument());
+    await user.click(screen.getByRole("tab", { name: "Ingest" }));
+    await waitFor(() => expect(screen.getByText("Alert intake enabled")).toBeInTheDocument());
+    // Toggle the Switch off (it starts at default_value: true).
+    await user.click(screen.getByRole("switch"));
+    // Click Save on the ingest card.
+    const ingestCard = screen.getByText("Alert intake enabled").closest("section")!;
+    const saveBtn = Array.from(ingestCard.querySelectorAll("button")).find(
+      (b) => b.textContent?.trim().toLowerCase() === "save",
+    )!;
+    await user.click(saveBtn);
+    await waitFor(() => expect(bodies).toHaveLength(1));
+    expect(bodies[0]).toMatchObject({ name: "ingest.allow", value: false });
   });
 });
