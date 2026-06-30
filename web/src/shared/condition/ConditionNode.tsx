@@ -220,6 +220,7 @@ export function ConditionNode({
   function setField(field: string) {
     if (
       leaf.type === "EQUALS" ||
+      leaf.type === "NOT_EQUALS" ||
       leaf.type === "CONTAINS" ||
       leaf.type === "MATCHES" ||
       leaf.type === "SEARCH"
@@ -253,7 +254,7 @@ export function ConditionNode({
     const newShape = valueShapeForOp(nextType);
     if (newShape === "string") {
       onChange({
-        type: nextType as "EQUALS" | "CONTAINS" | "MATCHES" | "SEARCH",
+        type: nextType as "EQUALS" | "NOT_EQUALS" | "CONTAINS" | "MATCHES" | "SEARCH",
         field: fieldText,
         value: "",
       });
@@ -275,6 +276,7 @@ export function ConditionNode({
   function setStringValue(v: string) {
     if (
       leaf.type === "EQUALS" ||
+      leaf.type === "NOT_EQUALS" ||
       leaf.type === "CONTAINS" ||
       leaf.type === "MATCHES" ||
       leaf.type === "SEARCH"
@@ -337,6 +339,7 @@ export function ConditionNode({
       <div className={styles.value}>
         {shape === "string" &&
         (leaf.type === "EQUALS" ||
+          leaf.type === "NOT_EQUALS" ||
           leaf.type === "CONTAINS" ||
           leaf.type === "MATCHES" ||
           leaf.type === "SEARCH") ? (

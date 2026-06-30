@@ -26,6 +26,7 @@ function encodeArray(v: string[]): string {
 
 const LEAF_OP: Partial<Record<ConditionType, string>> = {
   EQUALS: "=",
+  NOT_EQUALS: "!=",
   MATCHES: "~",
   CONTAINS: "CONTAINS",
   LT: "<",
@@ -55,6 +56,7 @@ export function encodeText(c: Condition): string {
     case "IN":
       return `${encodeIdent(c.field)} IN ${encodeArray(c.value)}`;
     case "EQUALS":
+    case "NOT_EQUALS":
     case "MATCHES":
     case "CONTAINS":
     case "LT":
@@ -85,6 +87,7 @@ type TokKind =
   | "RBRACK"
   | "COMMA"
   | "EQ"
+  | "NEQ"
   | "LT"
   | "LE"
   | "GT"
@@ -179,8 +182,13 @@ function lex(src: string): Tok[] | TextParseError {
       continue;
     }
     if (ch === "!") {
-      out.push({ kind: "NOT", text: "!", pos: i });
-      i++;
+      if (src[i + 1] === "=") {
+        out.push({ kind: "NEQ", text: "!=", pos: i });
+        i += 2;
+      } else {
+        out.push({ kind: "NOT", text: "!", pos: i });
+        i++;
+      }
       continue;
     }
     if (ch === "<") {
@@ -338,6 +346,7 @@ function parseTerm(p: Parser): Condition | TextParseError {
     }
     const opMap: Partial<Record<TokKind, Condition["type"]>> = {
       EQ: "EQUALS",
+      NEQ: "NOT_EQUALS",
       TILDE: "MATCHES",
       MATCHES_KW: "MATCHES",
       CONTAINS_KW: "CONTAINS",

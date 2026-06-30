@@ -1,4 +1,4 @@
-export type LeafStringOp = "EQUALS" | "CONTAINS" | "MATCHES" | "SEARCH";
+export type LeafStringOp = "EQUALS" | "NOT_EQUALS" | "CONTAINS" | "MATCHES" | "SEARCH";
 export type LeafNumberOp = "LT" | "GT" | "LE" | "GE";
 export type LeafArrayOp = "IN";
 export type LeafExistsOp = "EXISTS";

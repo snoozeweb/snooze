@@ -9,16 +9,17 @@ type OperatorMeta = {
 };
 
 export const OPERATORS: OperatorMeta[] = [
-  { type: "EQUALS", label: "equals", valueShape: "string" },
-  { type: "CONTAINS", label: "contains", valueShape: "string" },
-  { type: "MATCHES", label: "matches", valueShape: "string" },
-  { type: "SEARCH", label: "search", valueShape: "string" },
-  { type: "IN", label: "in", valueShape: "array" },
+  { type: "EQUALS", label: "=", valueShape: "string" },
+  { type: "NOT_EQUALS", label: "≠", valueShape: "string" },
   { type: "LT", label: "<", valueShape: "number" },
   { type: "LE", label: "≤", valueShape: "number" },
   { type: "GT", label: ">", valueShape: "number" },
   { type: "GE", label: "≥", valueShape: "number" },
   { type: "EXISTS", label: "exists", valueShape: "none" },
+  { type: "CONTAINS", label: "contains", valueShape: "string" },
+  { type: "MATCHES", label: "matches", valueShape: "string" },
+  { type: "SEARCH", label: "search", valueShape: "string" },
+  { type: "IN", label: "in", valueShape: "array" },
   { type: "ALWAYS_TRUE", label: "always", valueShape: "none" },
 ];
 
