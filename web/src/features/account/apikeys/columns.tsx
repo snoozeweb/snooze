@@ -65,5 +65,23 @@ export function makeApiKeyColumns(): ColumnDef<ApiKey>[] {
       sortable: true,
       width: "160px",
     },
+    {
+      id: "last_used_at",
+      header: "Last used",
+      cell: (r) =>
+        r.last_used_at ? (
+          <TimeCell epoch={r.last_used_at} />
+        ) : (
+          <span style={{ color: "var(--text-muted)" }}>never</span>
+        ),
+      sortable: true,
+      width: "160px",
+    },
+    {
+      id: "use_count",
+      header: "Uses",
+      cell: (r) => <span>{r.use_count ?? 0}</span>,
+      width: "80px",
+    },
   ];
 }

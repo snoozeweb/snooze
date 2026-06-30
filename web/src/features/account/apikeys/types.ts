@@ -9,6 +9,10 @@ export type ApiKey = {
   created_at?: number;
   expires_at?: number;
   revoked_at?: number;
+  /** Unix epoch (seconds). Absent (0) when the key has never been used. */
+  last_used_at?: number;
+  /** Lower-bound count; updated at most once per hour. */
+  use_count?: number;
 };
 
 export type ApiKeyCreate = {

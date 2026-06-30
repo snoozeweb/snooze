@@ -1,6 +1,7 @@
 import { EditorDrawer } from "@/shared/forms/EditorDrawer";
 import { Input } from "@/shared/ui/Input";
 import { DatePicker } from "@/shared/ui/DatePicker";
+import { TimeCell } from "@/shared/ui/TimeCell";
 import { ApiKeys } from "./api";
 import type { ApiKey } from "./types";
 
@@ -64,6 +65,28 @@ export function ApiKeyAdminEditor({
                 onChange={(v) => setValue("expires", v, { shouldDirty: true })}
               />
             </div>
+            {get.data && (
+              <div style={{ display: "flex", flexDirection: "column", gap: "var(--space-1)" }}>
+                <span style={{ fontWeight: 600 }}>Usage</span>
+                <div
+                  style={{
+                    display: "flex",
+                    gap: "var(--space-4)",
+                    fontSize: "var(--font-size-sm)",
+                    color: "var(--color-text-muted)",
+                  }}
+                >
+                  <span>
+                    Last used:{" "}
+                    {get.data.last_used_at ? <TimeCell epoch={get.data.last_used_at} /> : "Never"}
+                  </span>
+                  <span>Uses: {get.data.use_count ?? 0}</span>
+                </div>
+                <small style={{ color: "var(--color-text-muted)" }}>
+                  Updated at most once per hour.
+                </small>
+              </div>
+            )}
           </>
         );
       }}

@@ -2,6 +2,12 @@
 
 ### Added
 
+- **API keys — usage display in the console.** The admin keys table now shows
+  "Last used" (sortable, relative time) and "Uses" columns. The self-service
+  profile card shows the last-used age and a "Stale" badge for keys idle for
+  more than 30 days. The admin edit drawer shows a read-only usage summary.
+  (Values are updated at most once per hour per the Plan 08 throttle.)
+
 - Added **"Federation" admin page** (`/web/admin/forward`) for managing alert-forwarding
   destinations in the web console: create, edit, enable/disable, and delete forward destinations
   with condition scoping, event-class selection, and bearer / basic / apikey auth sub-form.
