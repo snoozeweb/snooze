@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { AlertFlowChart } from "./AlertFlowChart";
 import { TooltipProvider } from "@/shared/ui/Tooltip";
@@ -51,7 +51,7 @@ describe("AlertFlowChart", () => {
     renderChart({
       ...base,
       notifications: ["oncall"],
-      actions: [{ name: "webhook", status: "error", error: "dial tcp timeout" }],
+      actions: [{ name: "webhook", notification: "oncall", status: "error", error: "dial tcp timeout" }],
     });
     await userEvent.click(screen.getByRole("button", { name: /webhook error details/i }));
     expect(await screen.findByText("dial tcp timeout")).toBeInTheDocument();
@@ -62,9 +62,9 @@ describe("AlertFlowChart", () => {
       ...base,
       notifications: ["oncall"],
       actions: [
-        { name: "page", status: "skipped" },
-        { name: "email", status: "pending" },
-        { name: "webhook", status: "sent" },
+        { name: "page", notification: "oncall", status: "skipped" },
+        { name: "email", notification: "oncall", status: "pending" },
+        { name: "webhook", notification: "oncall", status: "sent" },
       ],
     });
     expect(screen.getByText(/page/)).toBeInTheDocument();
@@ -77,9 +77,31 @@ describe("AlertFlowChart", () => {
     renderChart({ uid: "u2", source: "prom" });
     // Empty rules, notifications and actions each render the placeholder.
     expect(screen.getAllByText("none").length).toBeGreaterThanOrEqual(2);
-    // Scope the meaningful checks to the Rules and Actions nodes specifically.
+    // Scope the meaningful checks to the Rules and Notifications nodes specifically.
     const node = (label: string) => screen.getByText(label).closest("div")!.parentElement!;
     expect(node("Rules")).toHaveTextContent("none");
-    expect(node("Actions")).toHaveTextContent("none");
+    expect(node("Notifications")).toHaveTextContent("none");
+  });
+
+  it("forks into a branch per matched notification, each with its own actions", () => {
+    renderChart({
+      ...base,
+      notifications: ["oncall", "slack-team"],
+      actions: [
+        { name: "email", notification: "oncall", status: "success" },
+        { name: "pager", notification: "oncall", status: "error", error: "boom" },
+        { name: "webhook", notification: "slack-team", status: "success" },
+        { name: "sms", notification: "slack-team", status: "skipped" },
+      ],
+    });
+    // each notification renders as its own branch card (header = its name)
+    const oncall = screen.getByText("oncall").parentElement as HTMLElement;
+    const slack = screen.getByText("slack-team").parentElement as HTMLElement;
+    // actions appear under their own notification, not the other
+    expect(within(oncall).getByText(/email/)).toBeInTheDocument();
+    expect(within(oncall).getByText(/pager/)).toBeInTheDocument();
+    expect(within(slack).getByText(/webhook/)).toBeInTheDocument();
+    expect(within(slack).getByText(/sms/)).toBeInTheDocument();
+    expect(within(slack).queryByText(/email/)).not.toBeInTheDocument();
   });
 });
