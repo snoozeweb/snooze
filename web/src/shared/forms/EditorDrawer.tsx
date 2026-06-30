@@ -171,6 +171,10 @@ export type EditorDrawerProps<
    *  (the editor will close itself later, e.g. after a credential dialog). */
   onCreated?: ((result: CreateResult) => boolean | void | Promise<boolean | void>) | undefined;
 
+  /** Custom toast message shown when the server returns a 409 Conflict
+   *  (duplicate primary key). Falls back to the server's detail message. */
+  conflictMessage?: string | undefined;
+
   /** Field layout, as a render prop receiving the RHF handles. The frame
    *  renders this as a component element (not an inline call), so it is safe
    *  to call hooks — `useWatch`, `useFieldInvalid`, `useFormState` — directly
@@ -209,6 +213,7 @@ export function EditorDrawer<
     formId,
     formClassName,
     onCreated,
+    conflictMessage,
     children,
   } = props;
 
@@ -279,7 +284,11 @@ export function EditorDrawer<
       }
       onClose();
     } catch (e) {
-      toast.error(e instanceof ApiError ? e.detail : "Save failed");
+      if (conflictMessage && e instanceof ApiError && e.status === 409) {
+        toast.error(conflictMessage);
+      } else {
+        toast.error(e instanceof ApiError ? e.detail : "Save failed");
+      }
     } finally {
       setSubmitting(false);
     }

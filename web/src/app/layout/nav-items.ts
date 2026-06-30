@@ -133,6 +133,14 @@ export const NAV_ITEMS: NavItem[] = [
     group: "admin",
     permissions: ["ro_tenant", "rw_tenant"],
   },
+  {
+    // "git-branch" is not in ICON_NAMES; "sliders" is the closest available glyph.
+    to: "/web/admin/tenant-routing",
+    label: "Org matching",
+    icon: "sliders",
+    group: "admin",
+    permissions: ["ro_tenant", "rw_tenant"],
+  },
 ];
 
 export const GROUP_LABELS: Record<NavGroup, string> = {

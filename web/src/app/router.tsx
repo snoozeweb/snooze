@@ -485,6 +485,46 @@ const tenantsRoute = createRoute({
   },
 });
 
+type TenantRoutingSearchParams = {
+  uid?: string;
+  page?: number;
+  orderby?: string;
+  asc?: boolean;
+};
+
+const tenantRoutingRoute = createRoute({
+  getParentRoute: () => webLayoutRoute,
+  path: "/web/admin/tenant-routing",
+  component: lazyRouteComponent(
+    () => import("@/features/admin/tenant-routing/TenantRoutingPage"),
+    "TenantRoutingPage",
+  ),
+  validateSearch: (raw): TenantRoutingSearchParams => {
+    const out: Record<string, unknown> = {};
+    if (typeof raw["uid"] === "string") out["uid"] = raw["uid"];
+    const pageRaw = raw["page"];
+    const page =
+      typeof pageRaw === "number"
+        ? pageRaw
+        : typeof pageRaw === "string" && /^\d+$/.test(pageRaw)
+          ? Number(pageRaw)
+          : undefined;
+    if (page !== undefined) out["page"] = page;
+    if (typeof raw["orderby"] === "string") out["orderby"] = raw["orderby"];
+    const ascRaw = raw["asc"];
+    const asc =
+      typeof ascRaw === "boolean"
+        ? ascRaw
+        : ascRaw === "true"
+          ? true
+          : ascRaw === "false"
+            ? false
+            : undefined;
+    if (asc !== undefined) out["asc"] = asc;
+    return out as TenantRoutingSearchParams;
+  },
+});
+
 type AlertsSearchParams = {
   state?: string;
   severity?: string;
@@ -851,6 +891,7 @@ const routeTree = rootRoute.addChildren([
     settingsRoute,
     statusRoute,
     tenantsRoute,
+    tenantRoutingRoute,
     authAuditRoute,
     ...devRoutes,
     profileRoute,

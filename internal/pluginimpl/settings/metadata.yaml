@@ -314,3 +314,14 @@ setting_form:
         description: 'Template used by the copy-to-clipboard action on an alert. Empty uses the default.'
         default_value: ''
         group: 'console'
+    # --- Tenant routing --------------------------------------------------------
+    tenant_match.fail_closed:
+        display_name: 'Fail closed on no match'
+        component: 'Switch'
+        description: >-
+          When enabled, a user whose identity matches no routing rule (and did not
+          supply an explicit org) is denied login instead of falling through to the
+          default organisation. Recommended: enable only after all routing rules are
+          defined. Default: off (open / fall-through).
+        default_value: false
+        group: 'tenant_routing'

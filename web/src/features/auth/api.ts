@@ -115,23 +115,28 @@ export type PublicTenant = { id: string; display_name: string };
 
 // LoginConfig bundles the backends list and the public tenant list returned
 // by GET /api/v1/login so callers only need one request on page load.
-export type LoginConfig = { backends: LoginBackend[]; tenants: PublicTenant[] };
+export type LoginConfig = {
+  backends: LoginBackend[];
+  tenants: PublicTenant[];
+  /** True when the server has at least one tenant_match routing rule active.
+   *  Signals the login page to show a hint that org auto-detection is active. */
+  tenantMatchEnabled?: boolean;
+};
 
 // fetchLoginConfig fetches both the auth backends and the public tenant list
 // from GET /api/v1/login in a single call.
 export async function fetchLoginConfig(): Promise<LoginConfig> {
-  const r = await api<{ data?: { backends?: unknown; tenants?: PublicTenant[] } }>(
-    "GET",
-    "/login",
-    {
-      skipAuthHandling: true,
-    },
-  );
+  const r = await api<{
+    data?: { backends?: unknown; tenants?: PublicTenant[]; tenant_match_enabled?: unknown };
+  }>("GET", "/login", {
+    skipAuthHandling: true,
+  });
   const backends = parseBackends(r.data?.backends);
   const tenants = (r.data?.tenants ?? []).filter(
     (t): t is PublicTenant => !!t && typeof t.id === "string",
   );
-  return { backends, tenants };
+  const tenantMatchEnabled = r.data?.tenant_match_enabled === true;
+  return { backends, tenants, ...(tenantMatchEnabled ? { tenantMatchEnabled: true } : {}) };
 }
 
 // resolveTenantByKey resolves an opaque per-tenant login key to its

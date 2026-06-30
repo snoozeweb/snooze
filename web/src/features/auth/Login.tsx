@@ -149,6 +149,13 @@ export function Login() {
     );
   }
 
+  const tenantMatchHint =
+    cfgQuery.data?.tenantMatchEnabled && !lockedTenant && tenants.length > 1 ? (
+      <p className={styles.tenantMatchHint}>
+        Your organisation is detected automatically — you do not need to select one.
+      </p>
+    ) : null;
+
   const orgField =
     !lockedTenant && tenants.length > 1 ? (
       <div className={`${styles.field} ${styles.orgField}`}>
@@ -228,13 +235,17 @@ export function Login() {
                 required
               />
             </div>
+            {tenantMatchHint}
             {orgField}
             <Button type="submit" variant="primary" loading={submitting} fullWidth>
               {primary === "ldap" ? "Sign in via LDAP" : "Sign in"}
             </Button>
           </form>
         ) : (
-          <>{orgField}</>
+          <>
+            {tenantMatchHint}
+            {orgField}
+          </>
         )}
 
         {altBackends.length > 0 ? (

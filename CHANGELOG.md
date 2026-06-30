@@ -2,6 +2,13 @@
 
 ### Added
 
+- **Tenant routing admin UI:** a new **Org matching** page under Admin lets operators manage
+  attribute→tenant routing rules (group / domain / login → tenant slug) via create / edit / delete
+  forms with columns for match type, match value, target tenant, and priority. A duplicate
+  `(match type, match)` pair surfaces a conflict message. A new **Tenant routing** tab in Settings
+  exposes the `tenant_match.fail_closed` safety toggle. The login page shows a hint when org
+  auto-detection is active (`tenant_match_enabled: true` from the server).
+
 - Groups are now manageable in the web console (Admin → Groups): create named cohorts, add/remove
   `{username, method}` member pairs, and assign roles to the group via the existing Roles editor.
 

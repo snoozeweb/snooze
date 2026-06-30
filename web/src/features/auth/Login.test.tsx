@@ -59,4 +59,49 @@ describe("Login", () => {
     expect(await screen.findByRole("button", { name: /microsoft 365/i })).toBeInTheDocument();
     expect(screen.queryByLabelText(/password/i)).not.toBeInTheDocument();
   });
+
+  it("shows org-auto-detect hint when tenant_match_enabled is true and tenants > 1", async () => {
+    vi.spyOn(authApi, "fetchLoginConfig").mockResolvedValue({
+      backends: [{ name: "local", kind: "password" }],
+      tenants: [
+        { id: "acme", display_name: "Acme Corp" },
+        { id: "default", display_name: "Default" },
+      ],
+      tenantMatchEnabled: true,
+    });
+    renderLogin();
+    // Wait for the credential form to be fully rendered (query has resolved),
+    // then assert the hint is present.
+    await screen.findByLabelText(/username/i);
+    expect(screen.getByText(/your organisation is detected automatically/i)).toBeInTheDocument();
+  });
+
+  it("does NOT show hint when tenant_match_enabled is false", async () => {
+    vi.spyOn(authApi, "fetchLoginConfig").mockResolvedValue({
+      backends: [{ name: "local", kind: "password" }],
+      tenants: [
+        { id: "acme", display_name: "Acme Corp" },
+        { id: "default", display_name: "Default" },
+      ],
+      tenantMatchEnabled: false,
+    });
+    renderLogin();
+    await screen.findByLabelText(/username/i);
+    expect(
+      screen.queryByText(/your organisation is detected automatically/i),
+    ).not.toBeInTheDocument();
+  });
+
+  it("does NOT show hint when only one tenant (org picker hidden anyway)", async () => {
+    vi.spyOn(authApi, "fetchLoginConfig").mockResolvedValue({
+      backends: [{ name: "local", kind: "password" }],
+      tenants: [{ id: "acme", display_name: "Acme Corp" }],
+      tenantMatchEnabled: true,
+    });
+    renderLogin();
+    await screen.findByLabelText(/username/i);
+    expect(
+      screen.queryByText(/your organisation is detected automatically/i),
+    ).not.toBeInTheDocument();
+  });
 });

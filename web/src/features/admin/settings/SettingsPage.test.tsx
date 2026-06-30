@@ -345,4 +345,53 @@ describe("SettingsPage", () => {
     await waitFor(() => expect(screen.getByRole("tab", { name: "General" })).toBeInTheDocument());
     expect(screen.queryByRole("tab", { name: "Custom" })).toBeNull();
   });
+
+  it("renders a 'Tenant routing' tab when catalogue includes tenant_match.fail_closed", async () => {
+    const metadata = settingsMetadata();
+    /* eslint-disable @typescript-eslint/no-explicit-any */
+    (metadata.data.setting_form as Record<string, any>)["tenant_match.fail_closed"] = {
+      display_name: "Fail closed on no match",
+      component: "Switch",
+      description: "Deny login when no routing rule matches.",
+      default_value: false,
+      group: "tenant_routing",
+    };
+    /* eslint-enable @typescript-eslint/no-explicit-any */
+    mswServer.use(
+      http.get("/api/v1/metadata/settings", () => HttpResponse.json(metadata)),
+      http.get("/api/v1/settings", () =>
+        HttpResponse.json({ data: [], meta: { count: 0, limit: 500, offset: 0, total: 0 } }),
+      ),
+    );
+    setup();
+    await waitFor(() =>
+      expect(screen.getByRole("tab", { name: "Tenant routing" })).toBeInTheDocument(),
+    );
+  });
+
+  it("tenant_match.fail_closed switch is visible on the Tenant routing tab", async () => {
+    const metadata = settingsMetadata();
+    /* eslint-disable @typescript-eslint/no-explicit-any */
+    (metadata.data.setting_form as Record<string, any>)["tenant_match.fail_closed"] = {
+      display_name: "Fail closed on no match",
+      component: "Switch",
+      description: "Deny login when no routing rule matches.",
+      default_value: false,
+      group: "tenant_routing",
+    };
+    /* eslint-enable @typescript-eslint/no-explicit-any */
+    mswServer.use(
+      http.get("/api/v1/metadata/settings", () => HttpResponse.json(metadata)),
+      http.get("/api/v1/settings", () =>
+        HttpResponse.json({ data: [], meta: { count: 0, limit: 500, offset: 0, total: 0 } }),
+      ),
+    );
+    setup();
+    const user = userEvent.setup();
+    await waitFor(() =>
+      expect(screen.getByRole("tab", { name: "Tenant routing" })).toBeInTheDocument(),
+    );
+    await user.click(screen.getByRole("tab", { name: "Tenant routing" }));
+    await waitFor(() => expect(screen.getByText("Fail closed on no match")).toBeInTheDocument());
+  });
 });
