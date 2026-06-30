@@ -2,6 +2,14 @@
 
 ### Added
 
+- **Security Audit console.** A new "Security Audit" admin page
+  (`/web/admin/audit`) lists all auth-event audit rows
+  (`login`, `login_failed`, `token refresh`, `logout`) with columns for
+  timestamp, action, username, method, and summary. Free-text filter via the
+  standard condition search bar. The auth-action badge labels were also
+  fixed — they previously rendered as `undefined` in the existing per-object
+  audit timeline.
+
 - **Heartbeats console page.** A new **Heartbeats** page (`/web/heartbeats`) in
   the **Configure** sidebar group lets operators manage dead-man's-switch
   heartbeats from the web console: create/edit/delete, browse with a live status

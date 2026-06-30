@@ -1,26 +1,11 @@
 import { useState } from "react";
 import { Badge } from "@/shared/ui/Badge";
-import type { BadgeVariant } from "@/shared/ui/Badge";
 import { IconButton } from "@/shared/ui/IconButton";
 import { Skeleton } from "@/shared/ui/Skeleton";
 import { formatRelativeTime } from "@/features/alerts/format";
 import { useObjectAudit } from "./api";
-import type { AuditAction } from "./types";
+import { ACTION_LABEL, ACTION_VARIANT } from "./maps";
 import styles from "./AuditTimeline.module.css";
-
-const ACTION_LABEL: Record<AuditAction, string> = {
-  create: "created",
-  patch: "edited",
-  replace: "replaced",
-  delete: "deleted",
-};
-
-const ACTION_VARIANT: Record<AuditAction, BadgeVariant> = {
-  create: "info",
-  patch: "neutral",
-  replace: "warning",
-  delete: "muted",
-};
 
 export type AuditTimelineProps = {
   objectType: string;

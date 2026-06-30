@@ -110,6 +110,14 @@ export const NAV_ITEMS: NavItem[] = [
     group: "admin",
     permissions: ["ro_settings", "rw_settings"],
   },
+  {
+    to: "/web/admin/audit",
+    label: "Security Audit",
+    // "shield" is not in ICON_NAMES; "lock" is the nearest available glyph.
+    icon: "lock",
+    group: "admin",
+    permissions: ["ro_audit", "rw_audit"],
+  },
   { to: "/web/admin/status", label: "Status", icon: "activity", group: "admin" },
   {
     to: "/web/admin/tenants",

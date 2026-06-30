@@ -750,6 +750,46 @@ const heartbeatsRoute = createRoute({
   },
 });
 
+type AuthAuditSearchParams = {
+  page?: number;
+  orderby?: string;
+  asc?: boolean;
+  search?: string;
+};
+
+const authAuditRoute = createRoute({
+  getParentRoute: () => webLayoutRoute,
+  path: "/web/admin/audit",
+  component: lazyRouteComponent(
+    () => import("@/features/admin/audit/AuthAuditPage"),
+    "AuthAuditPage",
+  ),
+  validateSearch: (raw): AuthAuditSearchParams => {
+    const out: Record<string, unknown> = {};
+    const pageRaw = raw["page"];
+    const page =
+      typeof pageRaw === "number"
+        ? pageRaw
+        : typeof pageRaw === "string" && /^\d+$/.test(pageRaw)
+          ? Number(pageRaw)
+          : undefined;
+    if (page !== undefined) out["page"] = page;
+    if (typeof raw["orderby"] === "string") out["orderby"] = raw["orderby"];
+    const ascRaw = raw["asc"];
+    const asc =
+      typeof ascRaw === "boolean"
+        ? ascRaw
+        : ascRaw === "true"
+          ? true
+          : ascRaw === "false"
+            ? false
+            : undefined;
+    if (asc !== undefined) out["asc"] = asc;
+    if (typeof raw["search"] === "string") out["search"] = raw["search"];
+    return out as AuthAuditSearchParams;
+  },
+});
+
 const routeTree = rootRoute.addChildren([
   indexRoute,
   loginRoute,
@@ -771,6 +811,7 @@ const routeTree = rootRoute.addChildren([
     settingsRoute,
     statusRoute,
     tenantsRoute,
+    authAuditRoute,
     ...devRoutes,
     profileRoute,
   ]),
