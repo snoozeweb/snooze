@@ -122,6 +122,17 @@ On each ping that carries `sent_at`, the server computes `last_latency = receive
 
 - `source: heartbeat`
 - `severity`: the configured miss severity **downgraded one tier** — `critical → major`, `major → minor`, `minor → warning`; any other (custom) severity falls back to `warning`. So a heartbeat with the default `critical` miss severity fires its slow alert at `major`.
+
+  > **Note on tier names.** The downgrade steps `major` and `minor` are the
+  > heartbeat scanner's internal bucket labels, not entries in the canonical Snooze
+  > syslog severity ladder. When a heartbeat document's `miss_severity` is set to
+  > `critical`, the slow alert is fired at `major`. Because `major` is not a
+  > standard syslog tier, it sorts as an unknown severity in the UI. If you want
+  > the slow alert to appear on the standard ladder, set `miss_severity` to
+  > `err` (the next tier below `crit`) and accept that the slow alert fires at the
+  > same tier as a miss-minus-one would under a custom mapping. A future
+  > configuration option may allow an explicit `slow_severity` per heartbeat.
+
 - `message`: `heartbeat <name> slow (latency <last_latency>ms > max <max_latency>ms)`
 - `raw`: `name`, `interval`, `grace`, `last_seen`, plus `last_latency` and `max_latency`
 
@@ -325,7 +336,7 @@ Then update the external job's curl / wget call to include `&token=<new-token>` 
 - **Resolve alerts.** The scanner only *fires* miss alerts; it does not emit a `state: close` "recovered" record when a ping resumes. A fresh ping silently re-arms the switch. Closing the open alert is left to the operator / a notification or rule on the next ping (a future enhancement could emit a resolve record on the re-arming ping).
 - **Fired state is in-memory.** The dedup set (which window has already fired) lives in the plugin process. A server restart re-arms every heartbeat, so a still-overdue heartbeat will fire once more after a restart. This is intentional — it errs toward visibility.
 - **Never-pinged heartbeats.** A heartbeat created and never pinged becomes overdue once `interval + grace` elapses (its `last_seen` anchor is the zero time), so it will fire. Set `enabled: false` to stage a heartbeat without arming it.
-- **Latency detection is opt-in and producer-driven.** It only activates when the heartbeat sets `max_latency` **and** the producer sends `?sent_at=<unix-ms>` on its pings; a ping without `sent_at` leaves `last_latency` untouched and never fires a slow alert. The Alerta reference default is `2000` ms (global in Alerta; per-heartbeat in Snooze). The downgrade table is fixed (`critical→major→minor→warning`); custom severity strings outside that ladder fall back to `warning` for the slow alert.
+- **Latency detection is opt-in and producer-driven.** It only activates when the heartbeat sets `max_latency` **and** the producer sends `?sent_at=<unix-ms>` on its pings; a ping without `sent_at` leaves `last_latency` untouched and never fires a slow alert. The Alerta reference default is `2000` ms (global in Alerta; per-heartbeat in Snooze). The downgrade table is fixed (`critical→major`, `major→minor`, `minor→warning`, any other value→`warning`). Note that `major` and `minor` are heartbeat-local bucket labels, not canonical syslog tiers — see the note in *Latency detection* above. Custom severity strings not in the downgrade table fall back to `warning`.
 - **CRUD auth.** The CRUD surface is authenticated (`route_defaults: authentication: true`). See *Authentication* for details.
 - **Token rotation.** There is currently no dedicated endpoint to rotate the per-heartbeat token. To change a token, PATCH the heartbeat document with a new `token` value via the authenticated CRUD surface, then update the external job's call to use the new token.
 

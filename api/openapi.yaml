@@ -2977,6 +2977,22 @@ components:
               error:
                 type: string
                 description: Failure reason; present when status is `error`.
+        previous_severity:
+          type: string
+          description: |
+            Severity of the existing aggregate at the moment this occurrence
+            arrived. Empty on the first occurrence. Stamped by the
+            `aggregaterule` plugin; absent on records that did not hit an
+            aggregate rule.
+        trend_indication:
+          type: string
+          enum: [moreSevere, lessSevere, noChange, '']
+          description: |
+            Computed severity-change direction relative to `previous_severity`.
+            `moreSevere` triggers an unconditional throttle bypass so
+            escalations are never silently dropped. Stamped by the
+            `aggregaterule` plugin; absent on first occurrences and on records
+            that did not hit an aggregate rule.
       additionalProperties: true
 
     ListResponse:

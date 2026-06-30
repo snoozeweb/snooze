@@ -39,7 +39,13 @@ A new alert will always have no initial state, meaning nobody has interacted wit
 `open`  
 [Re-opened](./alerts.md#re-open).
 
-Expected alert management workflow is: `(esc ->) ack -> close (-> open)`
+`shelved`  
+[Shelved](./alerts.md#shelve) — temporarily silenced until a timed expiry or
+an operator unshelve action.
+
+Expected alert management workflow is: `(esc ->) ack -> close (-> open)`.
+Alerts may be shelved from any active state; a shelved alert returns to `open`
+automatically on expiry or can be manually unshelved.
 
 ### Transition rules
 
@@ -51,16 +57,20 @@ double-acknowledge an alert or acknowledge one that is already closed.
 
 The allowed moves are:
 
-- **No state yet (fresh):** can be **acknowledged** or **closed**. It cannot be
-  re-opened (it was never closed) or re-escalated (there is nothing to escalate).
-- **Acknowledged (`ack`):** can be **closed**, **re-opened**, or
-  **re-escalated**. Acknowledging again is rejected.
-- **Re-escalated (`esc`):** can be **acknowledged**, **closed**, or
-  **re-opened**. Re-escalating again is rejected.
+- **No state yet (fresh):** can be **acknowledged**, **closed**, or **shelved**.
+  It cannot be re-opened (it was never closed) or re-escalated (there is nothing
+  to escalate).
+- **Acknowledged (`ack`):** can be **closed**, **re-opened**, **re-escalated**,
+  or **shelved**. Acknowledging again is rejected.
+- **Re-escalated (`esc`):** can be **acknowledged**, **closed**, **re-opened**,
+  or **shelved**. Re-escalating again is rejected.
 - **Closed (`close`):** can only be **re-opened**. Acknowledging, closing again,
   or re-escalating a closed alert is rejected.
-- **Re-opened (`open`):** can be **acknowledged** or **closed**. Re-opening
-  again or re-escalating is rejected.
+- **Re-opened (`open`):** can be **acknowledged**, **closed**, or **shelved**.
+  Re-opening again or re-escalating is rejected.
+- **Shelved (`shelved`):** can be **unshelved** (back to `open`),
+  **acknowledged**, or **closed** (lifting the shelve early). Posting a new
+  `shelve` on an already-shelved alert resets the `shelve_until` deadline.
 
 These rules apply only to state-changing comments. Free-form notes are never
 affected, and automatic state changes made by [aggregate rules](./aggregaterules.md)
@@ -228,7 +238,9 @@ curl -X POST "https://<snooze>/api/v1/record/bulk_state?q=<base64url-cond>" \
 
 `state` must be one of `ack`, `close`, `open`, `esc` (the same set used when
 [acknowledging](./alerts.md#acknowledge) or [closing](./alerts.md#close) a
-single alert); any other value returns `400`.
+single alert); any other value returns `400`. Note: `shelved` is not accepted
+by `bulk_state` — use the per-alert timeline endpoint instead (`POST
+/api/v1/record/{uid}/comment` with a `shelve` comment type).
 
 > **One behavioural difference from the single-alert path.** Acting on one
 > alert posts a comment *and* changes its state. The bulk path changes `state`

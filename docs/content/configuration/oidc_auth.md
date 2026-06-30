@@ -228,7 +228,7 @@ enabled: true
 provider: google           # fills issuer = https://accounts.google.com
 client_id: "<google-client-id>"
 client_secret: ""          # via SNOOZE_SERVER_OIDC_CLIENT_SECRET
-redirect_url: "https://<snooze-host>/api/v1/login/microsoft/callback"
+redirect_url: "https://<snooze-host>/api/v1/login/google/callback"
 ```
 
 ```yaml title="oidc.yaml — Keycloak via preset"
@@ -239,7 +239,7 @@ provider_params:
   realm: "snooze"
 client_id: "snooze"
 client_secret: ""          # via SNOOZE_SERVER_OIDC_CLIENT_SECRET
-redirect_url: "https://<snooze-host>/api/v1/login/microsoft/callback"
+redirect_url: "https://<snooze-host>/api/v1/login/keycloak/callback"
 ```
 
 > **GitHub is out of scope.** GitHub OAuth has no `id_token` and is a custom

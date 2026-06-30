@@ -51,6 +51,31 @@ The Go schema lives in `internal/config/schema/ingest.go`. See also the per-inte
 >
 > When non-empty, verify the Sentry `sentry-hook-signature` HMAC-SHA256 header on the `sentry` receiver against this client secret (constant-time compare). A missing or mismatched signature is rejected with `403`. When empty, no signature is required.
 
+### allow
+
+> Type  
+> boolean
+>
+> Default  
+> `true`
+>
+> Runtime kill-switch for all alert ingest on this tenant. When `false`, every
+> subsequent `POST /api/v1/alerts` request and every webhook receiver under
+> `/api/v1/webhook/*` returns `503 Service Unavailable` immediately, rather than
+> dropping the request silently. The switch is **per-tenant**: suspending one
+> tenant does not affect the others.
+>
+> This setting is stored in the **runtime settings store** (not in this YAML
+> file). The YAML value shown here is the file-level seed; the live value is
+> edited from **Settings → General → Ingest** in the web UI, or via the API
+> (`POST /api/v1/settings` with `{"name":"ingest.allow","value":false}`). Changes
+> take effect within ≤ 5 seconds (one settings-cache cycle). Fail-open: if the
+> settings store cannot be read, the switch defaults to `true` — a transient
+> database error never locks operators out of alert intake.
+>
+> See also [Maintenance mode](../general/alerts.md#maintenance-mode-ingest-kill-switch)
+> for the operator workflow.
+
 ## Example
 
 ``` yaml
@@ -59,6 +84,7 @@ The Go schema lives in `internal/config/schema/ingest.go`. See also the per-inte
 token: "a-long-random-shared-secret"
 sns_verify: true
 sentry_secret: "your-sentry-client-secret"
+allow: true   # set to false in Settings to halt ingest (runtime setting, not reloaded from file)
 ```
 
 ## Multi-tenant ingest

@@ -4373,6 +4373,22 @@ export interface components {
                 /** @description Failure reason; present when status is `error`. */
                 error?: string;
             }[];
+            /** @description Severity of the existing aggregate at the moment this occurrence
+             *     arrived. Empty on the first occurrence. Stamped by the
+             *     `aggregaterule` plugin; absent on records that did not hit an
+             *     aggregate rule.
+             *      */
+            previous_severity?: string;
+            /**
+             * @description Computed severity-change direction relative to `previous_severity`.
+             *     `moreSevere` triggers an unconditional throttle bypass so
+             *     escalations are never silently dropped. Stamped by the
+             *     `aggregaterule` plugin; absent on first occurrences and on records
+             *     that did not hit an aggregate rule.
+             *
+             * @enum {string}
+             */
+            trend_indication?: "moreSevere" | "lessSevere" | "noChange" | "";
         } & {
             [key: string]: unknown;
         };

@@ -36,7 +36,59 @@ Plugin **CRUD** endpoints (rules, snoozes, notifications, heartbeats, …) are u
 New here? Start with **[Send your first alert](./sending-alerts.md)** for the
 fastest paths to get alerts flowing, then see the per-integration pages below.
 
+**Generic entry points**
+
+- [REST API](./rest-api.md) — direct HTTP `POST /api/v1/alerts`; the base for
+  all integrations
+- [Custom source mapping](./custom-source.md) — normalize arbitrary JSON
+  payloads from any source without writing code
+
+**Webhook receivers** (mounted at `/api/v1/webhook/*`)
+
+- [Alertmanager](./alertmanager.md)
+- [Azure Monitor](./azuremonitor.md)
+- [CloudWatch / SNS](./cloudwatch.md)
+- [Datadog](./datadog.md)
+- [Grafana](./grafana.md)
+- [Graylog](./graylog.md)
+- [InfluxDB 2 / Kapacitor](./influxdb2.md) · [Kapacitor](./kapacitor.md)
+- [New Relic](./newrelic.md)
+- [OpenTelemetry (OTLP)](./otlp.md)
+- [PagerDuty inbound sync](./pagerduty.md#inbound-webhook-status-sync)
+- [Pingdom](./pingdom.md)
+- [Prometheus](./prometheus.md)
+- [Sentry](./sentry.md)
+- [Stackdriver / Google Cloud Monitoring](./stackdriver.md)
+
+**Standalone collector daemons**
+
+- [Heartbeat](./heartbeat.md) — dead-man's-switch monitoring
+- [Kubernetes events](./k8s-events.md)
+- [Pacemaker](./pacemaker.md)
+- [RELP](./relp.md) — syslog RELP receiver
+- [SMTP](./smtp.md) — receive alerts as email
+- [SNMP traps](./snmptrap.md)
+- [Syslog](./syslog.md) (legacy daemon)
+
 ## Outputs
 
-
-
+- [Discord](./discord.md)
+- [Google Chat](./googlechat.md)
+- [Jira](./jira.md)
+- [Mail (SMTP)](./mail.md)
+- [Mattermost](./mattermost.md)
+- [MCP](./mcp.md)
+- [Microsoft Teams](./teams.md)
+- [Ntfy](./ntfy.md)
+- [OpsGenie](./opsgenie.md)
+- [PagerDuty](./pagerduty.md)
+- [Patlite](./patlite.md)
+- [Pushover](./pushover.md)
+- [Script](./script.md)
+- [ServiceNow](./servicenow.md)
+- [Slack](./slack.md) (interactive ack/close/re-open buttons supported)
+- [SNS](./sns.md)
+- [Statuspage](./statuspage.md)
+- [Telegram](./telegram.md) (interactive ack/close/re-open buttons supported)
+- [Twilio](./twilio.md)
+- [Webhook (generic)](./webhook.md)
