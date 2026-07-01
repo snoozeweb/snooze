@@ -208,6 +208,7 @@ unknown_key: dropped-silently
 func TestIngestConfig_Empty(t *testing.T) {
 	cfg, err := Load(t.TempDir())
 	require.NoError(t, err)
+	require.True(t, cfg.Ingest.Allow, "ingest kill-switch must default to allowed with no ingest.yaml on disk")
 	require.Empty(t, cfg.Ingest.Token)
 	require.False(t, cfg.Ingest.SNSVerify)
 	require.Empty(t, cfg.Ingest.SentrySecret)

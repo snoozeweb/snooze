@@ -398,6 +398,12 @@ func defaultsYAML() ([]byte, error) {
 		// oidc_providers is an optional multi-IdP list; the default is empty
 		// (the legacy single `oidc:` path is used unless this is populated).
 		"oidc_providers": []any{},
+		"ingest": map[string]any{
+			"allow":         d.Ingest.Allow,
+			"token":         d.Ingest.Token,
+			"sns_verify":    d.Ingest.SNSVerify,
+			"sentry_secret": d.Ingest.SentrySecret,
+		},
 		"auth_proxy": map[string]any{
 			"enabled":          d.AuthProxy.Enabled,
 			"user_header":      d.AuthProxy.UserHeader,
