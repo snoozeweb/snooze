@@ -16,7 +16,7 @@ describe("operators", () => {
   });
 
   it("labels are human-readable", () => {
-    expect(operatorLabel("EQUALS")).toBe("equals");
+    expect(operatorLabel("EQUALS")).toBe("=");
     expect(operatorLabel("MATCHES")).toBe("matches");
     expect(operatorLabel("ALWAYS_TRUE")).toBe("always");
   });

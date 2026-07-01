@@ -2,6 +2,8 @@
   display: inline-flex;
   align-items: center;
   width: 100%;
+  min-width: 0;
+  overflow: hidden;
   background: var(--bg-surface);
   color: var(--text-strong);
   border: 1px solid var(--border);
@@ -21,6 +23,7 @@
 
 .input {
   flex: 1;
+  min-width: 0;
   background: transparent;
   border: 0;
   outline: none;
