@@ -92,6 +92,12 @@ export function SavedSearches({ currentQuery, onApply }: SavedSearchesProps) {
         )}
         {canSave ? (
           <div className={styles.saveForm}>
+            <p
+              className={styles.empty}
+              style={{ flexBasis: "100%", margin: 0, fontSize: "var(--text-xs)" }}
+            >
+              Saves this query only — not the active tab or environment filter.
+            </p>
             <label className={styles.label} htmlFor="saved-search-name">
               Name
             </label>

@@ -79,11 +79,35 @@ export function notificationRowDisabled(r: Notification): boolean {
 // summarizeSubcontent picks 1-3 short hints from the subcontent map so the
 // "Action" column reads at a glance ("url=…", "command=…", "host=…") instead
 // of just showing the plugin name twice. Mirrors the Python "pprint" cell.
+// Non-secret identifying fields, broadened well beyond the original 6 so the
+// column actually summarizes the integrations ops teams use (teams/discord/
+// mattermost webhook_url, jira jira_url/project_key, opsgenie region/priority,
+// ntfy topic, telegram chat_id, mail to/from, …). Deliberately excludes
+// credential-shaped keys — we never render tokens/passwords/keys in the table.
+const SUMMARY_KEYS = [
+  "url",
+  "webhook_url",
+  "jira_url",
+  "project_key",
+  "command",
+  "script",
+  "host",
+  "to",
+  "from",
+  "channel",
+  "room",
+  "topic",
+  "chat_id",
+  "region",
+  "priority",
+  "email",
+  "sender",
+];
+
 function summarizeSubcontent(sub: Record<string, unknown> | undefined): string {
   if (!sub) return "";
-  const preferred = ["url", "command", "script", "host", "to", "channel"];
   const parts: string[] = [];
-  for (const key of preferred) {
+  for (const key of SUMMARY_KEYS) {
     const v = sub[key];
     if (v === undefined || v === null || v === "") continue;
     parts.push(`${key}=${shortValue(v)}`);

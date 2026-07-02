@@ -10,9 +10,11 @@ export type AuditPage = {
 };
 
 // useObjectAudit returns the audit-log entries for a single resource,
-// newest last. The query is gated on objectId — calling it with undefined
-// is fine (the hook stays disabled) so callers can mount conditionally
-// in editor drawers that haven't loaded data yet.
+// newest FIRST (asc:false) so page 1 shows the change the operator most likely
+// opened the audit to see — matching the sibling CommentTimeline convention.
+// The query is gated on objectId — calling it with undefined is fine (the hook
+// stays disabled) so callers can mount conditionally in editor drawers that
+// haven't loaded data yet.
 export function useObjectAudit(
   objectType: string,
   objectId: string | undefined,
@@ -37,7 +39,7 @@ export function useObjectAudit(
         query: {
           ...(q !== undefined ? { q } : {}),
           orderby: "date_epoch",
-          asc: true,
+          asc: false,
           limit,
           offset,
         },

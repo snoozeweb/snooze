@@ -50,6 +50,13 @@ describe("SavedSearches", () => {
     expect(onApply).toHaveBeenCalledWith("severity = critical");
   });
 
+  it("notes that saving captures only the query, not the tab or environment", async () => {
+    const user = userEvent.setup();
+    render(<SavedSearches currentQuery={'host = "srv"'} onApply={() => undefined} />);
+    await open(user);
+    expect(screen.getByText(/not the active tab or environment/i)).toBeInTheDocument();
+  });
+
   it("saves the current query when given a name", async () => {
     const user = userEvent.setup();
     render(<SavedSearches currentQuery="host = web" onApply={() => undefined} />);
