@@ -14,17 +14,19 @@ var _ dbpkg.SourceActivityAggregator = (*Driver)(nil)
 // (never nil) when the collection is absent.
 func (d *Driver) SourceActivity(ctx context.Context, since int64) ([]dbpkg.SourceActivity, error) {
 	out := []dbpkg.SourceActivity{}
+	// Resolve tenant scope FIRST so a naked context fails closed [H3] even when
+	// the `record` table does not exist yet. tenant predicate binds as $2
+	// (since is $1).
+	tenantClause, tenantArgs, err := tenantPredicate(ctx, "record", "", 2)
+	if err != nil {
+		return out, fmt.Errorf("postgres: source activity: %w", err)
+	}
 	table, err := d.tableIfExists(ctx, "record")
 	if err != nil {
 		return out, err
 	}
 	if table == "" {
 		return out, nil
-	}
-	// tenant predicate binds as $2 (since is $1).
-	tenantClause, tenantArgs, err := tenantPredicate(ctx, "record", "", 2)
-	if err != nil {
-		return out, fmt.Errorf("postgres: source activity: %w", err)
 	}
 	qt := quoteIdent(table)
 	q := fmt.Sprintf(

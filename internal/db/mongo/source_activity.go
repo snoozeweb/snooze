@@ -55,6 +55,8 @@ func (d *Driver) SourceActivity(ctx context.Context, since int64) ([]dbpkg.Sourc
 		if src == "" {
 			src = "unknown"
 		}
+		// int64(row.LastEpoch) is lossless: Unix-second epochs are far below
+		// float64's 2^53 exact-integer limit (SQLite/Postgres stay integer end-to-end).
 		out = append(out, dbpkg.SourceActivity{Source: src, LastEpoch: int64(row.LastEpoch), Count: row.Count})
 	}
 	return out, cur.Err()

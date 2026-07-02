@@ -874,6 +874,7 @@ func RunTenantIsolationSuite(t *testing.T, name string, factory Factory) {
 		{"CleanupAuditLogsPerTenant", testCleanupAuditLogsPerTenant},
 		{"CleanupNotificationPerTenant", testCleanupNotificationPerTenant},
 		{"ComputeStatsPerTenant", testComputeStatsPerTenant},
+		{"SourceActivityPerTenant", testSourceActivityPerTenant},
 		{"ReadWriteNakedContextFailClosed", testReadWriteNakedContextFailClosed},
 		{"CleanupNakedContextFailClosed", testCleanupNakedContextFailClosed},
 	}
@@ -1624,4 +1625,45 @@ func testSourceActivity(t *testing.T, drv db.Driver) {
 	require.False(t, hasSyslog) // base+10 < base+20
 	_, hasOtlp := got2["otlp"]
 	require.False(t, hasOtlp) // epoch 0 < base+20
+
+	// Boundary inclusivity: since == an existing epoch INCLUDES that row (>=).
+	rows3, err := agg.SourceActivity(ctx(), base+30)
+	require.NoError(t, err)
+	got3 := map[string]db.SourceActivity{}
+	for _, r := range rows3 {
+		got3[r.Source] = r
+	}
+	require.Equal(t, int64(1), got3["prometheus"].Count) // base+30 == since, >= includes it
+	require.Equal(t, int64(base+30), got3["prometheus"].LastEpoch)
+}
+
+// testSourceActivityPerTenant proves SourceActivity is tenant-fenced: each
+// tenant sees only its own sources, never the other's. [H3]
+func testSourceActivityPerTenant(t *testing.T, drv db.Driver) {
+	agg, ok := drv.(db.SourceActivityAggregator)
+	require.True(t, ok, "driver must implement SourceActivityAggregator")
+
+	ctxA := snoozetypes.WithTenant(context.Background(), "alpha")
+	ctxB := snoozetypes.WithTenant(context.Background(), "beta")
+	base := int64(1_700_000_000)
+	mustWriteCtx(ctxA, t, drv, "record", db.Document{"host": "a1", "source": "grafana", "date_epoch": base})
+	mustWriteCtx(ctxB, t, drv, "record", db.Document{"host": "b1", "source": "datadog", "date_epoch": base + 1})
+
+	rowsA, err := agg.SourceActivity(ctxA, 0)
+	require.NoError(t, err)
+	gotA := map[string]db.SourceActivity{}
+	for _, r := range rowsA {
+		gotA[r.Source] = r
+	}
+	require.Contains(t, gotA, "grafana", "alpha must see its own source")
+	require.NotContains(t, gotA, "datadog", "alpha must not see beta's source")
+
+	rowsB, err := agg.SourceActivity(ctxB, 0)
+	require.NoError(t, err)
+	gotB := map[string]db.SourceActivity{}
+	for _, r := range rowsB {
+		gotB[r.Source] = r
+	}
+	require.Contains(t, gotB, "datadog", "beta must see its own source")
+	require.NotContains(t, gotB, "grafana", "beta must not see alpha's source")
 }

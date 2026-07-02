@@ -14,6 +14,12 @@ var _ dbpkg.SourceActivityAggregator = (*Driver)(nil)
 // (never nil) when the collection is absent.
 func (d *Driver) SourceActivity(ctx context.Context, since int64) ([]dbpkg.SourceActivity, error) {
 	out := []dbpkg.SourceActivity{}
+	// Resolve tenant scope FIRST so a naked context fails closed [H3] even when
+	// the `record` table does not exist yet (mirrors CleanupTimeout/CleanupOrphans).
+	tenantID, injectTenant, tenantErr := dbpkg.TenantScope(ctx, "record")
+	if tenantErr != nil {
+		return out, fmt.Errorf("sqlite: SourceActivity: %w", tenantErr)
+	}
 	exists, err := d.collectionExists(ctx, "record")
 	if err != nil {
 		return out, err
@@ -24,10 +30,6 @@ func (d *Driver) SourceActivity(ctx context.Context, since int64) ([]dbpkg.Sourc
 	tbl, err := tableName("record")
 	if err != nil {
 		return out, err
-	}
-	tenantID, injectTenant, tenantErr := dbpkg.TenantScope(ctx, "record")
-	if tenantErr != nil {
-		return out, fmt.Errorf("sqlite: SourceActivity: %w", tenantErr)
 	}
 	tenantClause := ""
 	var tenantArgs []any

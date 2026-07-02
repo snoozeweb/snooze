@@ -19,6 +19,17 @@ func TestSourceActivityEmptyCollection(t *testing.T) {
 	require.Empty(t, rows)
 }
 
+// TestSourceActivityNakedContextFailsClosed pins the [H3] invariant: `record`
+// is tenant-scoped, so a context with neither a tenant nor platform scope must
+// fail closed with ErrNoTenant — even before the table exists (tenant scope is
+// resolved before the existence check).
+func TestSourceActivityNakedContextFailsClosed(t *testing.T) {
+	t.Parallel()
+	d := newTestDriver(t)
+	_, err := d.SourceActivity(context.Background(), 0)
+	require.ErrorIs(t, err, snoozetypes.ErrNoTenant)
+}
+
 func TestSourceActivityTenantIsolation(t *testing.T) {
 	t.Parallel()
 	d := newTestDriver(t)
