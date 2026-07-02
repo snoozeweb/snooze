@@ -34,6 +34,7 @@ export function EnvironmentsPage() {
     setSelectedKeys,
     confirmDelete,
     contextMenuItems,
+    rowActions,
     bulkActions,
   } = useResourceListPage<Environment, EnvironmentsSearch>({
     to: "/web/admin/environments",
@@ -65,6 +66,7 @@ export function EnvironmentsPage() {
         rowKey={(r) => r.uid ?? r.name}
         loading={list.isPending}
         contextMenuItems={contextMenuItems}
+        rowActions={rowActions}
         selectable
         selectedKeys={selectedKeys}
         onSelectionChange={setSelectedKeys}

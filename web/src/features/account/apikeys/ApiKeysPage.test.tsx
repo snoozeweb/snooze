@@ -1,7 +1,6 @@
 import { render, screen, waitFor } from "@testing-library/react";
-import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
-import { beforeAll, describe, expect, it } from "vitest";
+import { describe, expect, it } from "vitest";
 import {
   createMemoryHistory,
   createRootRoute,
@@ -14,9 +13,8 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { mswServer } from "@/tests/msw/server";
 import { TooltipProvider } from "@/shared/ui/Tooltip";
 import { ToastProvider, Toaster } from "@/shared/ui/Toast";
-import { NotificationsPage } from "./NotificationsPage";
+import { ApiKeysPage } from "./ApiKeysPage";
 
-// Radix UI's BubbleInput (used by Select inside editors) calls ResizeObserver in jsdom.
 beforeAll(() => {
   if (typeof window !== "undefined" && !window.ResizeObserver) {
     window.ResizeObserver = class ResizeObserver {
@@ -27,18 +25,18 @@ beforeAll(() => {
   }
 });
 
-function setup(pathname = "/web/notifications") {
+function setup() {
   const root = createRootRoute({ component: () => <Outlet /> });
-  const notifications = createRoute({
+  const route = createRoute({
     getParentRoute: () => root,
-    path: "/web/notifications",
-    component: NotificationsPage,
+    path: "/web/admin/apikeys",
+    component: ApiKeysPage,
   });
-  const tree = root.addChildren([notifications]);
+  const tree = root.addChildren([route]);
   /* eslint-disable @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-argument */
   const router = createRouter({
     routeTree: tree,
-    history: createMemoryHistory({ initialEntries: [pathname] }),
+    history: createMemoryHistory({ initialEntries: ["/web/admin/apikeys"] }),
   } as any);
   /* eslint-enable @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-argument */
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
@@ -46,6 +44,7 @@ function setup(pathname = "/web/notifications") {
     <QueryClientProvider client={client}>
       <TooltipProvider delay={0}>
         <ToastProvider>
+          {/* router is locally constructed; cast needed for the registered-router type mismatch */}
           <RouterProvider router={router as Parameters<typeof RouterProvider>[0]["router"]} />
           <Toaster />
         </ToastProvider>
@@ -54,50 +53,31 @@ function setup(pathname = "/web/notifications") {
   );
 }
 
-describe("NotificationsPage", () => {
-  it("lists notifications in the Notifications tab", async () => {
+describe("ApiKeysPage", () => {
+  it("lists API keys returned by GET /api/v1/apikey", async () => {
     mswServer.use(
-      http.get("/api/v1/notification", () =>
+      http.get("/api/v1/apikey", () =>
         HttpResponse.json({
-          data: [{ uid: "n1", name: "Page on-call", enabled: true }],
+          data: [{ uid: "ak1", owner: "alice", name: "ci-key" }],
           meta: { count: 1, limit: 50, offset: 0, total: 1 },
-        }),
-      ),
-      http.get("/api/v1/action", () =>
-        HttpResponse.json({
-          data: [],
-          meta: { count: 0, limit: 50, offset: 0, total: 0 },
         }),
       ),
     );
     setup();
-    await waitFor(() => expect(screen.getByText("Page on-call")).toBeInTheDocument());
-    // The single-row Delete / Copy actions are discoverable via a visible kebab,
-    // not just the invisible right-click menu.
-    expect(screen.getByLabelText("Row actions")).toBeInTheDocument();
+    await waitFor(() => expect(screen.getByText("ci-key")).toBeInTheDocument());
   });
 
-  it("switches to the Actions tab and lists actions", async () => {
+  it("surfaces a discoverable row-actions kebab (not just right-click)", async () => {
     mswServer.use(
-      http.get("/api/v1/notification", () =>
+      http.get("/api/v1/apikey", () =>
         HttpResponse.json({
-          data: [],
-          meta: { count: 0, limit: 50, offset: 0, total: 0 },
-        }),
-      ),
-      http.get("/api/v1/action", () =>
-        HttpResponse.json({
-          data: [
-            { uid: "a1", name: "Slack-prod", action: { selected: "webhook", subcontent: {} } },
-          ],
+          data: [{ uid: "ak1", owner: "alice", name: "ci-key" }],
           meta: { count: 1, limit: 50, offset: 0, total: 1 },
         }),
       ),
     );
-    const user = userEvent.setup();
     setup();
-    await user.click(screen.getByRole("tab", { name: /actions/i }));
-    await waitFor(() => expect(screen.getByText("Slack-prod")).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText("ci-key")).toBeInTheDocument());
     expect(screen.getByLabelText("Row actions")).toBeInTheDocument();
   });
 });

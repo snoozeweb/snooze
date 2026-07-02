@@ -6,6 +6,7 @@ import { Icon } from "@/shared/icons/Icon";
 import type { IconName } from "@/shared/icons/icon-names";
 import { IconButton } from "./IconButton";
 import { Menu, MenuContent, MenuItem, MenuTrigger } from "./Menu";
+import { Popover, PopoverContent, PopoverTrigger } from "./Popover";
 import { SearchBar, type ParsedCondition } from "./SearchBar";
 import { Skeleton } from "./Skeleton";
 import { isEditable } from "@/shared/hooks/useShortcut";
@@ -119,6 +120,13 @@ export type DataTableProps<T> = {
    *  registry. Reserved unmodified keys (arrows, j/k, e, x, Enter) are
    *  handled by the table itself and take precedence. */
   rowKeyBindings?: (row: T) => Record<string, () => void>;
+  /** Page-supplied row keyboard bindings to advertise, e.g.
+   *  `[{ keys: "A", label: "Acknowledge" }]`. When provided, the toolbar shows
+   *  a "?" affordance that opens a legend combining these with the table's own
+   *  built-in navigation shortcuts (move / open / expand / select). Opt-in:
+   *  tables that don't pass this get no legend, so the affordance only appears
+   *  where per-row shortcuts actually exist (e.g. the Alerts table). */
+  keyboardHints?: { keys: string; label: string }[];
 };
 
 export function DataTable<T>({
@@ -149,6 +157,7 @@ export function DataTable<T>({
   expandedKeys,
   onExpandedChange,
   rowKeyBindings,
+  keyboardHints,
 }: DataTableProps<T>) {
   const [focusedIndex, setFocusedIndex] = useState<number>(-1);
   // Uncontrolled expansion store. Ignored when `expandedKeys` is supplied —
@@ -391,7 +400,9 @@ export function DataTable<T>({
   );
 
   const hasSelection = selectable && bulkActions && selectedRows.length > 0;
-  const showToolbar = toolbar !== undefined || toolbarHeader !== undefined || hasSelection;
+  const hasKeyboardHints = (keyboardHints?.length ?? 0) > 0;
+  const showToolbar =
+    toolbar !== undefined || toolbarHeader !== undefined || hasSelection || hasKeyboardHints;
 
   // Total rendered columns — kept in one place so the empty-state colspan,
   // the expanded-panel colspan, and the header all stay in sync.
@@ -401,6 +412,21 @@ export function DataTable<T>({
     (renderExpanded ? 1 : 0) +
     (quickActions ? 1 : 0) +
     (rowActions ? 1 : 0);
+
+  // Keyboard-shortcut legend: only built (and only shown) when the page opts in
+  // via `keyboardHints`. We prepend the table's own built-in bindings — derived
+  // from the capabilities actually enabled — so the legend never advertises a
+  // shortcut that does nothing on this particular table.
+  const keyboardShortcuts = useMemo(() => {
+    if (!keyboardHints || keyboardHints.length === 0) return [];
+    const builtin: { keys: string; label: string }[] = [
+      { keys: "↑ ↓ · J K", label: "Move between rows" },
+    ];
+    if (onRowOpen) builtin.push({ keys: "Enter", label: "Open row" });
+    if (renderExpanded) builtin.push({ keys: "E", label: "Expand / collapse row" });
+    if (selectable) builtin.push({ keys: "X", label: "Select / deselect row" });
+    return [...builtin, ...keyboardHints];
+  }, [keyboardHints, onRowOpen, renderExpanded, selectable]);
 
   return (
     <div className={styles.wrap}>
@@ -430,6 +456,32 @@ export function DataTable<T>({
               ) : null}
               <div className={styles.toolbarActions}>
                 {hasSelection ? bulkActions(selectedRows) : toolbar}
+                {keyboardShortcuts.length > 0 ? (
+                  <Popover>
+                    <PopoverTrigger asChild>
+                      <IconButton
+                        icon="info"
+                        label="Keyboard shortcuts"
+                        size="sm"
+                        withTooltip={false}
+                      />
+                    </PopoverTrigger>
+                    <PopoverContent align="end">
+                      <div
+                        className={styles.shortcutLegend}
+                        role="list"
+                        aria-label="Keyboard shortcuts"
+                      >
+                        {keyboardShortcuts.map((s) => (
+                          <div key={s.keys} className={styles.shortcutRow} role="listitem">
+                            <kbd className={styles.kbd}>{s.keys}</kbd>
+                            <span>{s.label}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </PopoverContent>
+                  </Popover>
+                ) : null}
               </div>
             </div>
           ) : null}
@@ -737,7 +789,10 @@ function RowActionsMenu({
   const menu = (
     <Menu>
       <MenuTrigger>
-        <IconButton icon="more-horizontal" label={triggerLabel} size="sm" />
+        {/* Radix MenuTrigger child → opt out of IconButton's own Tooltip: the
+            kebab already reads as an actions affordance and its aria-label
+            names it; a hover tooltip repeating "Row actions" is just noise. */}
+        <IconButton icon="more-horizontal" label={triggerLabel} size="sm" withTooltip={false} />
       </MenuTrigger>
       <MenuContent>
         {actions.map((a) => (

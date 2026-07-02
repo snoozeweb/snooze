@@ -34,6 +34,7 @@ export function WidgetsPage() {
     setSelectedKeys,
     confirmDelete,
     contextMenuItems,
+    rowActions,
     bulkActions,
   } = useResourceListPage<Widget, WidgetsSearch>({
     to: "/web/admin/widgets",
@@ -65,6 +66,7 @@ export function WidgetsPage() {
         rowKey={(r) => r.uid ?? r.name}
         loading={list.isPending}
         contextMenuItems={contextMenuItems}
+        rowActions={rowActions}
         selectable
         selectedKeys={selectedKeys}
         onSelectionChange={setSelectedKeys}

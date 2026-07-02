@@ -1,6 +1,7 @@
 import { createElement, useCallback, useState, type ReactNode } from "react";
 import { useNavigate } from "@tanstack/react-router";
 import { Button } from "@/shared/ui/Button";
+import type { RowAction } from "@/shared/ui/DataTable";
 import type { ContextMenuItem } from "@/shared/ui/DataTableContextMenu";
 import { buildResourceContextMenu, useConfirmDelete } from "@/shared/ui/resourceContextMenu";
 
@@ -63,6 +64,13 @@ export type ResourceListPageApi<T extends WithUid, S extends BaseListSearch> = {
    */
   contextMenuItems: (row: T) => ContextMenuItem[];
   /**
+   * Visible row-actions kebab builder — the SAME Copy JSON / Copy YAML /
+   * extras / Delete items as `contextMenuItems`, but surfaced through
+   * DataTable's `rowActions` kebab so they're discoverable (and touch-safe)
+   * instead of hiding behind right-click only. Identity-stable.
+   */
+  rowActions: (row: T) => RowAction[];
+  /**
    * Default bulk-action: a single danger "Delete (N)" button that opens the
    * confirm dialog. Identity-stable. Pages with extra bulk actions (snoozes)
    * build their own and ignore this.
@@ -118,7 +126,8 @@ export function useResourceListPage<T extends WithUid, S extends BaseListSearch 
   // After a delete, keep only the rows that FAILED selected (empty on full
   // success → clears), so the operator can retry exactly those.
   const keepFailedSelected = useCallback(
-    (failedRows: T[]) => setSelectedKeys(new Set(failedRows.map((r) => r.uid ?? "").filter(Boolean))),
+    (failedRows: T[]) =>
+      setSelectedKeys(new Set(failedRows.map((r) => r.uid ?? "").filter(Boolean))),
     [],
   );
 
@@ -147,6 +156,11 @@ export function useResourceListPage<T extends WithUid, S extends BaseListSearch 
     [deleteOne, requestDelete, contextMenuExtras],
   );
 
+  // The visible kebab shows exactly the same actions as the right-click menu —
+  // ContextMenuItem and RowAction are structurally identical, so we reuse the
+  // one builder. Same reference → one stable identity for the row memo.
+  const rowActions: (row: T) => RowAction[] = contextMenuItems;
+
   const bulkActions = useCallback(
     (rows: T[]) =>
       createElement(
@@ -173,6 +187,7 @@ export function useResourceListPage<T extends WithUid, S extends BaseListSearch 
     setSelectedKeys,
     confirmDelete,
     contextMenuItems,
+    rowActions,
     bulkActions,
     openRow,
   };

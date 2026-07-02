@@ -55,14 +55,22 @@ export function TenantsPage() {
     orderby,
     asc,
   });
+  // Depend on the STABLE members, not the mutation/confirm wrapper objects
+  // (which get a new identity every render): `mutateAsync` is referentially
+  // stable in react-query and `request` is a useCallback in useConfirmDelete.
+  // This keeps `contextMenuItems` identity-stable — it's now also wired to the
+  // DataTable's per-row `rowActions` kebab, so an unstable value would defeat
+  // the DataTableRow memo and re-render every tenant row on each 5s poll.
+  const deleteTenant = remove.mutateAsync;
+  const requestTenantDelete = confirmDelete.request;
   const contextMenuItems = useCallback(
     (row: Tenant): ContextMenuItem[] =>
       buildResourceContextMenu({ ...row, uid: row.id } as Tenant & { uid?: string }, {
-        onDelete: (uid) => remove.mutateAsync(uid),
+        onDelete: (uid) => deleteTenant(uid),
         requestDelete: (r) =>
-          confirmDelete.request([{ ...r, uid: (r as Tenant & { uid?: string }).uid ?? row.id }]),
+          requestTenantDelete([{ ...r, uid: (r as Tenant & { uid?: string }).uid ?? row.id }]),
       }),
-    [remove, confirmDelete],
+    [deleteTenant, requestTenantDelete],
   );
   const bulkActions = useCallback(
     (rows: Tenant[]) => (
@@ -110,6 +118,7 @@ export function TenantsPage() {
         rowKey={(r) => r.id}
         loading={list.isPending}
         contextMenuItems={contextMenuItems}
+        rowActions={contextMenuItems}
         selectable
         selectedKeys={selectedKeys}
         onSelectionChange={setSelectedKeys}

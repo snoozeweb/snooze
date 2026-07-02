@@ -67,6 +67,20 @@ describe("RolesPage", () => {
     await waitFor(() => expect(screen.getByText("admin")).toBeInTheDocument());
   });
 
+  it("surfaces a discoverable row-actions kebab (not just right-click)", async () => {
+    mswServer.use(
+      http.get("/api/v1/role", () =>
+        HttpResponse.json({
+          data: [{ uid: "r1", name: "admin", permissions: ["rw_rule"] }],
+          meta: { count: 1, limit: 50, offset: 0, total: 1 },
+        }),
+      ),
+    );
+    setup();
+    await waitFor(() => expect(screen.getByText("admin")).toBeInTheDocument());
+    expect(screen.getByLabelText("Row actions")).toBeInTheDocument();
+  });
+
   it("renders ro_tenant with a distinct badge variant (not the same class as ro_record)", async () => {
     mswServer.use(
       http.get("/api/v1/role", () =>

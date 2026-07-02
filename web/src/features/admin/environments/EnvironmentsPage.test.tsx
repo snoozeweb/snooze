@@ -66,4 +66,18 @@ describe("EnvironmentsPage", () => {
     setup();
     await waitFor(() => expect(screen.getByText("production")).toBeInTheDocument());
   });
+
+  it("surfaces a discoverable row-actions kebab (not just right-click)", async () => {
+    mswServer.use(
+      http.get("/api/v1/environment", () =>
+        HttpResponse.json({
+          data: [{ uid: "e1", name: "production", color: "#ff0000" }],
+          meta: { count: 1, limit: 50, offset: 0, total: 1 },
+        }),
+      ),
+    );
+    setup();
+    await waitFor(() => expect(screen.getByText("production")).toBeInTheDocument());
+    expect(screen.getByLabelText("Row actions")).toBeInTheDocument();
+  });
 });

@@ -47,6 +47,7 @@ export function UsersPage() {
     setSelectedKeys,
     confirmDelete,
     contextMenuItems,
+    rowActions,
     bulkActions,
   } = useResourceListPage<User, UsersSearch>({
     to: "/web/admin/users",
@@ -163,6 +164,7 @@ export function UsersPage() {
             rowKey={(r) => r.uid ?? r.name}
             loading={list.isPending}
             contextMenuItems={contextMenuItems}
+            rowActions={rowActions}
             selectable
             selectedKeys={selectedKeys}
             onSelectionChange={setSelectedKeys}

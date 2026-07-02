@@ -66,4 +66,18 @@ describe("WidgetsPage", () => {
     setup();
     await waitFor(() => expect(screen.getByText("patlite-floor1")).toBeInTheDocument());
   });
+
+  it("surfaces a discoverable row-actions kebab (not just right-click)", async () => {
+    mswServer.use(
+      http.get("/api/v1/widget", () =>
+        HttpResponse.json({
+          data: [{ uid: "w1", name: "patlite-floor1", widget_type: "patlite" }],
+          meta: { count: 1, limit: 50, offset: 0, total: 1 },
+        }),
+      ),
+    );
+    setup();
+    await waitFor(() => expect(screen.getByText("patlite-floor1")).toBeInTheDocument());
+    expect(screen.getByLabelText("Row actions")).toBeInTheDocument();
+  });
 });

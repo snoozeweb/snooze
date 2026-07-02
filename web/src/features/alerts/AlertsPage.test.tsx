@@ -201,6 +201,26 @@ describe("AlertsPage", () => {
     expect(calls[0]).toMatchObject({ record_uid: "r1", type: "comment", message: "investigating" });
   });
 
+  it("surfaces the row keyboard shortcuts in a discoverable legend", async () => {
+    mswServer.use(
+      http.get("/api/v1/record", () =>
+        HttpResponse.json({
+          data: [{ uid: "r1", host: "srv-1", state: "open", date_epoch: 1 }],
+          meta: { count: 1, limit: 50, offset: 0, total: 1 },
+        }),
+      ),
+    );
+    const user = userEvent.setup();
+    setup();
+    await waitFor(() => expect(screen.getByText("srv-1")).toBeInTheDocument());
+    await user.click(screen.getByRole("button", { name: /keyboard shortcuts/i }));
+    // The legend teaches both the built-in navigation keys and the alert-row
+    // bindings (a=ack, c=comment) that were previously undiscoverable.
+    expect(await screen.findByText("Move between rows")).toBeInTheDocument();
+    expect(screen.getByText(/acknowledge focused alert/i)).toBeInTheDocument();
+    expect(screen.getByText(/comment on focused alert/i)).toBeInTheDocument();
+  });
+
   it("right-click context menu shows Copy/Acknowledge/Comment/Delete items", async () => {
     mswServer.use(
       http.get("/api/v1/record", () =>

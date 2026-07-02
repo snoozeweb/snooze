@@ -79,6 +79,15 @@ type AlertsSearch = AlertFilters & {
 
 const PAGE_SIZE = 50;
 
+// Advertised in the DataTable's "?" shortcuts legend. Mirrors the per-row
+// bindings wired in `rowKeyBindings` (a=ack, c=comment); the table prepends its
+// own built-in navigation shortcuts (move / open / expand / select). Module
+// constant so its identity is stable across renders (row-memo contract).
+const ALERT_KEYBOARD_HINTS = [
+  { keys: "A", label: "Acknowledge focused alert" },
+  { keys: "C", label: "Comment on focused alert" },
+];
+
 /**
  * parseSortBy splits a `sort_by` string (e.g. "-date_epoch") into a field name
  * and ascending flag. A leading "-" means descending. An empty/undefined input
@@ -293,8 +302,7 @@ export function AlertsPage() {
     onDelete: (uid) => removeMut.mutateAsync(uid),
     noun: "alert",
     // Keep only failed rows selected so a retry targets exactly them.
-    onAfter: (failed) =>
-      setSelectedKeys(new Set(failed.map((r) => r.uid ?? "").filter(Boolean))),
+    onAfter: (failed) => setSelectedKeys(new Set(failed.map((r) => r.uid ?? "").filter(Boolean))),
   });
 
   const openDialog = useCallback(
@@ -912,6 +920,7 @@ export function AlertsPage() {
           rowActionsBadge={rowActionsBadge}
           quickActions={quickActions}
           rowKeyBindings={rowKeyBindings}
+          keyboardHints={ALERT_KEYBOARD_HINTS}
           rowAccent={rowAccent}
           contextMenuItems={contextMenuItems}
           renderExpanded={renderExpanded}

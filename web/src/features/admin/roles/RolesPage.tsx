@@ -35,6 +35,7 @@ export function RolesPage() {
     setSelectedKeys,
     confirmDelete,
     contextMenuItems,
+    rowActions,
     bulkActions,
   } = useResourceListPage<Role, RolesSearch>({
     to: "/web/admin/roles",
@@ -67,6 +68,7 @@ export function RolesPage() {
         rowKey={(r) => r.uid ?? r.name}
         loading={list.isPending}
         contextMenuItems={contextMenuItems}
+        rowActions={rowActions}
         selectable
         selectedKeys={selectedKeys}
         onSelectionChange={setSelectedKeys}

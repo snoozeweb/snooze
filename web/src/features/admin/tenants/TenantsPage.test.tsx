@@ -71,6 +71,20 @@ describe("TenantsPage", () => {
     expect(screen.getByText("default")).toBeInTheDocument();
   });
 
+  it("surfaces a discoverable row-actions kebab (not just right-click)", async () => {
+    mswServer.use(
+      http.get("/api/v1/tenant", () =>
+        HttpResponse.json({
+          data: [{ id: "acme", display_name: "Acme Corp", status: "active" }],
+          meta: { count: 1, limit: 50, offset: 0, total: 1 },
+        }),
+      ),
+    );
+    setup();
+    await waitFor(() => expect(screen.getByText("acme")).toBeInTheDocument());
+    expect(screen.getByLabelText("Row actions")).toBeInTheDocument();
+  });
+
   it("shows the empty state when there are no tenants", async () => {
     mswServer.use(
       http.get("/api/v1/tenant", () =>

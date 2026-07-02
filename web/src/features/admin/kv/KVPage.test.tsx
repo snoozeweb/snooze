@@ -80,6 +80,13 @@ describe("KVPage", () => {
     expect(screen.getByText("colors")).toBeInTheDocument();
   });
 
+  it("surfaces a discoverable row-actions kebab (not just right-click)", async () => {
+    mockKV([{ uid: "k1", dict: "colors", key: "MY_KEY", value: "my-value" }]);
+    setup();
+    await waitFor(() => expect(screen.getByText("MY_KEY")).toBeInTheDocument());
+    expect(screen.getByLabelText("Row actions")).toBeInTheDocument();
+  });
+
   it("shows an All tab plus one tab per dictionary when several dicts exist", async () => {
     mockKV([
       { uid: "k1", dict: "colors", key: "red", value: "#f00" },

@@ -78,6 +78,7 @@ describe("useResourceListPage", () => {
     const first = {
       updateSearch: hook.result.current.updateSearch,
       contextMenuItems: hook.result.current.contextMenuItems,
+      rowActions: hook.result.current.rowActions,
       bulkActions: hook.result.current.bulkActions,
       setSelectedKeys: hook.result.current.setSelectedKeys,
       openRow: hook.result.current.openRow,
@@ -85,6 +86,7 @@ describe("useResourceListPage", () => {
     hook.rerender();
     expect(hook.result.current.updateSearch).toBe(first.updateSearch);
     expect(hook.result.current.contextMenuItems).toBe(first.contextMenuItems);
+    expect(hook.result.current.rowActions).toBe(first.rowActions);
     expect(hook.result.current.bulkActions).toBe(first.bulkActions);
     expect(hook.result.current.setSelectedKeys).toBe(first.setSelectedKeys);
     expect(hook.result.current.openRow).toBe(first.openRow);
@@ -123,6 +125,38 @@ describe("useResourceListPage", () => {
     expect(keys).toContain("retro-apply");
     // Extras land before the trailing Delete item.
     expect(keys.indexOf("retro-apply")).toBeLessThan(keys.indexOf("delete"));
+  });
+
+  it("rowActions mirrors the context menu so the visible kebab is discoverable", () => {
+    const { hook } = setup();
+    const items = hook.result.current.rowActions({ uid: "u9", name: "n" });
+    const keys = items.map((i) => i.key);
+    // The kebab surfaces the same Copy JSON / Copy YAML / Delete actions that
+    // used to hide behind right-click only.
+    expect(keys).toContain("copy-json");
+    expect(keys).toContain("copy-yaml");
+    expect(keys).toContain("delete");
+  });
+
+  it("rowActions threads contextMenuExtras before Delete, like the context menu", () => {
+    const { hook } = setup({
+      contextMenuExtras: () => [{ key: "retro-apply", label: "Retro apply", onSelect: () => {} }],
+    });
+    const keys = hook.result.current.rowActions({ uid: "u1", name: "n" }).map((i) => i.key);
+    expect(keys).toContain("retro-apply");
+    expect(keys.indexOf("retro-apply")).toBeLessThan(keys.indexOf("delete"));
+  });
+
+  it("rowActions Delete opens the same confirm dialog as the context menu", () => {
+    const { hook } = setup();
+    const del = hook.result.current
+      .rowActions({ uid: "u9", name: "n" })
+      .find((i) => i.key === "delete");
+    expect(del).toBeDefined();
+    act(() => {
+      void del?.onSelect();
+    });
+    expect(hook.result.current.confirmDelete.state?.rows).toEqual([{ uid: "u9", name: "n" }]);
   });
 
   it("confirmDelete.confirm deletes each row's uid via remove.mutateAsync", async () => {

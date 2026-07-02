@@ -75,6 +75,20 @@ describe("UsersPage", () => {
     await waitFor(() => expect(screen.getByText("Edit user")).toBeInTheDocument());
   });
 
+  it("surfaces a discoverable row-actions kebab (not just right-click)", async () => {
+    mswServer.use(
+      http.get("/api/v1/user", () =>
+        HttpResponse.json({
+          data: [{ uid: "u1", name: "alice", type: "local" }],
+          meta: { count: 1, limit: 50, offset: 0, total: 1 },
+        }),
+      ),
+    );
+    setup();
+    await waitFor(() => expect(screen.getByText("alice")).toBeInTheDocument());
+    expect(screen.getByLabelText("Row actions")).toBeInTheDocument();
+  });
+
   it("renders a tab for each redirect (SSO) backend", async () => {
     mswServer.use(
       http.get("/api/v1/login", () =>

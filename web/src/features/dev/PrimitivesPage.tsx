@@ -90,8 +90,10 @@ export function PrimitivesPage() {
 
       <Section title="Overlays">
         <Row>
+          {/* IconButton self-tooltips from its label by default; opt out here
+              so this explicit wrapper can show richer content than the label. */}
           <Tooltip content="Refresh the list">
-            <IconButton icon="refresh" label="Refresh" />
+            <IconButton icon="refresh" label="Refresh" withTooltip={false} />
           </Tooltip>
           <Popover>
             <PopoverTrigger>
@@ -101,7 +103,8 @@ export function PrimitivesPage() {
           </Popover>
           <Menu>
             <MenuTrigger>
-              <IconButton icon="more-horizontal" label="More" />
+              {/* MenuTrigger child → opt out of the self-Tooltip (see IconButton). */}
+              <IconButton icon="more-horizontal" label="More" withTooltip={false} />
             </MenuTrigger>
             <MenuContent>
               <MenuItem leadingIcon="edit">Edit</MenuItem>

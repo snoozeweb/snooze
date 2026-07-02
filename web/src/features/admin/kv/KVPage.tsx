@@ -43,6 +43,7 @@ export function KVPage() {
     setSelectedKeys,
     confirmDelete,
     contextMenuItems,
+    rowActions,
     bulkActions,
   } = useResourceListPage<KV, KVSearch>({
     to: "/web/admin/kv",
@@ -112,6 +113,7 @@ export function KVPage() {
       rowKey={(r) => r.uid ?? r.key}
       loading={list.isPending}
       contextMenuItems={contextMenuItems}
+      rowActions={rowActions}
       selectable
       selectedKeys={selectedKeys}
       onSelectionChange={setSelectedKeys}

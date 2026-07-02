@@ -59,6 +59,34 @@
   gap: var(--space-2);
 }
 
+/* Keyboard-shortcuts legend rendered inside the "?" Popover. */
+.shortcutLegend {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  min-width: 12rem;
+}
+.shortcutRow {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  justify-content: space-between;
+  font-size: var(--text-sm);
+}
+.shortcutRow span {
+  color: var(--text-muted);
+}
+.kbd {
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  color: var(--text-strong);
+  background: var(--bg-hover);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 0 var(--space-2);
+  white-space: nowrap;
+}
+
 .tableScroll {
   width: 100%;
   overflow-x: auto;

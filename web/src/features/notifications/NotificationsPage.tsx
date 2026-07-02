@@ -138,6 +138,7 @@ export function NotificationsPage() {
               rowDisabled={notificationRowDisabled}
               loading={notifList.isPending}
               contextMenuItems={notif.contextMenuItems}
+              rowActions={notif.rowActions}
               selectable
               selectedKeys={notif.selectedKeys}
               onSelectionChange={notif.setSelectedKeys}
@@ -195,6 +196,7 @@ export function NotificationsPage() {
               rowKey={(r) => r.uid ?? r.name}
               loading={actionList.isPending}
               contextMenuItems={action.contextMenuItems}
+              rowActions={action.rowActions}
               selectable
               selectedKeys={action.selectedKeys}
               onSelectionChange={action.setSelectedKeys}

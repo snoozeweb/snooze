@@ -44,6 +44,7 @@ export function ApiKeysPage() {
     setSelectedKeys,
     confirmDelete,
     contextMenuItems,
+    rowActions,
     bulkActions,
   } = useResourceListPage<ApiKey, ApiKeysSearch>({
     to: "/web/admin/apikeys",
@@ -77,6 +78,7 @@ export function ApiKeysPage() {
         rowKey={(r) => r.uid ?? r.name}
         loading={list.isPending}
         contextMenuItems={contextMenuItems}
+        rowActions={rowActions}
         selectable
         selectedKeys={selectedKeys}
         onSelectionChange={setSelectedKeys}

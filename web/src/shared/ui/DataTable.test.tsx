@@ -130,6 +130,38 @@ describe("DataTable", () => {
     expect(handler).toHaveBeenCalled();
   });
 
+  it("exposes a keyboard-shortcuts legend when keyboardHints are provided", async () => {
+    const user = userEvent.setup();
+    render(
+      <DataTable
+        data={sample}
+        columns={columns}
+        rowKey={(r) => r.id}
+        selectable
+        renderExpanded={(r) => <div>{r.name} details</div>}
+        onRowOpen={vi.fn()}
+        keyboardHints={[
+          { keys: "A", label: "Acknowledge" },
+          { keys: "C", label: "Comment" },
+        ]}
+      />,
+    );
+    const trigger = screen.getByRole("button", { name: /keyboard shortcuts/i });
+    await user.click(trigger);
+    // Built-ins derived from the table's own capabilities…
+    expect(await screen.findByText("Move between rows")).toBeInTheDocument();
+    expect(screen.getByText(/select/i)).toBeInTheDocument();
+    expect(screen.getByText(/expand/i)).toBeInTheDocument();
+    // …plus the page-supplied row bindings.
+    expect(screen.getByText("Acknowledge")).toBeInTheDocument();
+    expect(screen.getByText("Comment")).toBeInTheDocument();
+  });
+
+  it("omits the keyboard-shortcuts legend when no keyboardHints are provided", () => {
+    render(<DataTable data={sample} columns={columns} rowKey={(r) => r.id} selectable />);
+    expect(screen.queryByRole("button", { name: /keyboard shortcuts/i })).toBeNull();
+  });
+
   it("overlays a count pill on the kebab and folds its label into the a11y name", () => {
     render(
       <DataTable

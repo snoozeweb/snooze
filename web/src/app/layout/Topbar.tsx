@@ -24,7 +24,10 @@ function UserMenu() {
   return (
     <Menu>
       <MenuTrigger>
-        <IconButton icon="users" label={`Signed in as ${username}`} />
+        {/* As a Radix MenuTrigger child, opt out of IconButton's own Tooltip:
+            the aria-label already names the trigger and a hover tooltip that
+            just repeats it adds noise (and stacks a second Radix trigger). */}
+        <IconButton icon="users" label={`Signed in as ${username}`} withTooltip={false} />
       </MenuTrigger>
       <MenuContent>
         <MenuItem leadingIcon="sliders" onSelect={() => void navigate({ to: "/web/profile" })}>
