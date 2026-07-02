@@ -124,6 +124,16 @@
   color: var(--accent);
   display: inline-flex;
 }
+.optionText {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.optionDesc {
+  color: var(--text-muted);
+  font-size: var(--text-xs);
+}
 .empty {
   padding: var(--space-3);
   text-align: center;

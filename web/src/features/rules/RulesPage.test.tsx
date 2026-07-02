@@ -125,6 +125,23 @@ describe("RulesPage", () => {
     expect(screen.getByText(/return 422 to the sender/i)).toBeInTheDocument();
   });
 
+  it("explains rule-nesting semantics and links to the rules docs", () => {
+    mswServer.use(
+      http.get("/api/v1/rule", () =>
+        HttpResponse.json({ data: [], meta: { count: 0, limit: 50, offset: 0, total: 0 } }),
+      ),
+    );
+    setup();
+    // Indentation is a conditional gate, not just visual grouping — say so.
+    expect(
+      screen.getByText(/child rules only run if their parent's condition matched/i),
+    ).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /learn more/i })).toHaveAttribute(
+      "href",
+      "https://snoozeweb.github.io/snooze/general/rules",
+    );
+  });
+
   it("clicking a reject row opens the RejectEditor", async () => {
     mswServer.use(
       http.get("/api/v1/rule", () =>

@@ -67,6 +67,24 @@ describe("RolesPage", () => {
     await waitFor(() => expect(screen.getByText("admin")).toBeInTheDocument());
   });
 
+  it("gives each permission badge a describing tooltip in the table", async () => {
+    mswServer.use(
+      http.get("/api/v1/role", () =>
+        HttpResponse.json({
+          data: [{ uid: "r1", name: "analyst", permissions: ["ro_rule"] }],
+          meta: { count: 1, limit: 50, offset: 0, total: 1 },
+        }),
+      ),
+    );
+    setup();
+    const badge = await screen.findByText("ro_rule");
+    // The wrapper carries a title so hovering the read-only badge explains it.
+    expect(badge.closest("[title]")).toHaveAttribute(
+      "title",
+      expect.stringMatching(/read-only access to rules/i),
+    );
+  });
+
   it("surfaces a discoverable row-actions kebab (not just right-click)", async () => {
     mswServer.use(
       http.get("/api/v1/role", () =>

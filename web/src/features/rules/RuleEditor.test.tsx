@@ -195,6 +195,28 @@ describe("RuleEditor", () => {
     expect(screen.getByLabelText(/^Diff$/)).toBeInTheDocument();
   });
 
+  it("offers record field-name autocomplete in the aggregate Fields picker", async () => {
+    mswServer.use(
+      http.get("/api/v1/record", () =>
+        HttpResponse.json({
+          data: [{ host: "srv-1", severity: "high" }],
+          meta: { count: 1, limit: 50, offset: 0, total: 1 },
+        }),
+      ),
+    );
+    const Wrapper = wrap();
+    const user = userEvent.setup();
+    render(
+      <Wrapper>
+        <RuleEditor plugin="aggregaterule" uid={undefined} onClose={() => undefined} />
+      </Wrapper>,
+    );
+    // The aggregate group-key picker should share the Condition builder's field
+    // suggestions rather than being a blank free-text box.
+    await user.click(await screen.findByRole("combobox", { name: /aggregation fields/i }));
+    expect(await screen.findByRole("option", { name: /severity/i })).toBeInTheDocument();
+  });
+
   it("hides the Diff section when creating", () => {
     mswServer.use(
       http.get("/api/v1/record", () =>

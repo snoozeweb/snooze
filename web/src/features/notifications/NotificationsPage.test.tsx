@@ -77,6 +77,30 @@ describe("NotificationsPage", () => {
     expect(screen.getByLabelText("Row actions")).toBeInTheDocument();
   });
 
+  it("keeps the WHEN/HOW concept strip visible even once a tab has rows", async () => {
+    mswServer.use(
+      http.get("/api/v1/notification", () =>
+        HttpResponse.json({
+          data: [{ uid: "n1", name: "Page on-call", enabled: true }],
+          meta: { count: 1, limit: 50, offset: 0, total: 1 },
+        }),
+      ),
+      http.get("/api/v1/action", () =>
+        HttpResponse.json({ data: [], meta: { count: 0, limit: 50, offset: 0, total: 0 } }),
+      ),
+    );
+    setup();
+    await waitFor(() => expect(screen.getByText("Page on-call")).toBeInTheDocument());
+    // The mental-model strip is not gated on emptiness, so it survives a
+    // populated list, and it links to the notifications docs.
+    expect(screen.getByText(/decide/i)).toBeInTheDocument();
+    const link = screen.getByRole("link", { name: /learn more/i });
+    expect(link).toHaveAttribute(
+      "href",
+      "https://snoozeweb.github.io/snooze/general/notifications",
+    );
+  });
+
   it("switches to the Actions tab and lists actions", async () => {
     mswServer.use(
       http.get("/api/v1/notification", () =>

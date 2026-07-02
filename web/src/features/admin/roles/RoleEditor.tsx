@@ -4,6 +4,7 @@ import { EditorDrawer, useFieldInvalid, type EditorBodyProps } from "@/shared/fo
 import { Input } from "@/shared/ui/Input";
 import { MultiCombobox } from "@/shared/ui/MultiCombobox";
 import { Textarea } from "@/shared/ui/Textarea";
+import { permissionDescription } from "@/lib/format/permission-info";
 import { Roles, usePermissionsCatalogue } from "./api";
 import type { Role } from "./types";
 import styles from "./RoleEditor.module.css";
@@ -80,12 +81,16 @@ function RoleFields({ register, control, setValue }: EditorBodyProps<FormShape>)
   // round-trip. Mirrors the pattern used by UserEditor for roles.
   const catalogueData = catalogue.data;
   const permissionOptions = useMemo(() => {
+    const toOption = (p: string) => {
+      const description = permissionDescription(p);
+      return description ? { value: p, label: p, description } : { value: p, label: p };
+    };
     const known = catalogueData ?? [];
     const seen = new Set(known);
-    const merged = known.map((p) => ({ value: p, label: p }));
+    const merged = known.map(toOption);
     for (const p of permissions) {
       if (!seen.has(p)) {
-        merged.push({ value: p, label: p });
+        merged.push(toOption(p));
         seen.add(p);
       }
     }

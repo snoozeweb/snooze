@@ -15,6 +15,7 @@ import { MultiCombobox } from "@/shared/ui/MultiCombobox";
 import { Switch } from "@/shared/ui/Switch";
 import { Textarea } from "@/shared/ui/Textarea";
 import { ConditionEditor } from "@/shared/condition/ConditionEditor";
+import { useFieldSuggestions } from "@/shared/condition/useFieldSuggestions";
 import { ModificationList } from "@/shared/modifications/ModificationList";
 import type { ApiError } from "@/lib/api/client";
 import type { Condition } from "@/lib/condition/types";
@@ -233,6 +234,15 @@ function RuleFields({
   const throttleDefault = useWatch({ control, name: "throttleDefault" });
   const throttleOverrides = useWatch({ control, name: "throttleOverrides" });
 
+  // Share the Condition builder's record field-name suggestions with the
+  // aggregate group-key / watch pickers, so a typo (which silently breaks
+  // aggregation) gets the same autocomplete help one section down.
+  const { fields: recordFields } = useFieldSuggestions("record");
+  const fieldOptions = useMemo(
+    () => recordFields.map((f) => ({ value: f, label: f })),
+    [recordFields],
+  );
+
   return (
     <>
       <section className={styles.section}>
@@ -270,7 +280,7 @@ function RuleFields({
             <MultiCombobox
               aria-label="Aggregation fields"
               placeholder="e.g. host, source"
-              options={[]}
+              options={fieldOptions}
               value={fields}
               onChange={(next) => setValue("fields", next, { shouldDirty: true })}
               allowCustom
@@ -281,7 +291,7 @@ function RuleFields({
             <MultiCombobox
               aria-label="Watch fields"
               placeholder="e.g. severity, state"
-              options={[]}
+              options={fieldOptions}
               value={watchFields}
               onChange={(next) => setValue("watch", next, { shouldDirty: true })}
               allowCustom

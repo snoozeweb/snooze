@@ -68,6 +68,22 @@ describe("RoleEditor", () => {
     expect(screen.getByLabelText("Remove rw_rule")).toBeInTheDocument();
   });
 
+  it("explains what each permission grants in the dropdown", async () => {
+    stubCatalogue();
+    const Wrapper = wrap();
+    const user = userEvent.setup();
+    render(
+      <Wrapper>
+        <RoleEditor uid={undefined} onClose={() => undefined} />
+      </Wrapper>,
+    );
+    await user.click(await screen.findByRole("combobox", { name: /permissions/i }));
+    // Options carry a human-readable description, not just the raw token, so an
+    // operator doesn't have to know the ro_/rw_ naming convention.
+    const option = await screen.findByRole("option", { name: /ro_rule/ });
+    expect(option).toHaveTextContent(/read-only access to rules/i);
+  });
+
   it("removes a permission when the badge X is clicked", async () => {
     stubCatalogue();
     mswServer.use(

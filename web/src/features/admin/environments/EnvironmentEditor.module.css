@@ -16,6 +16,12 @@
   flex-direction: column;
   gap: 4px;
 }
+.hint {
+  margin: var(--space-1) 0 0;
+  color: var(--text-muted);
+  font-size: var(--text-sm);
+}
+
 .label {
   font-size: var(--text-xs);
   text-transform: uppercase;

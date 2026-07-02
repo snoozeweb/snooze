@@ -82,7 +82,8 @@ export function EnvironmentsPage() {
           <EmptyState
             icon="file-text"
             title="No environments yet"
-            description="Environment tags categorise hosts (prod, staging, …)."
+            description="Environments appear as filter buttons above the alert list; each one's Filter condition decides which alerts its button matches."
+            docsSlug="general/environments"
             action={
               <Button
                 size="md"

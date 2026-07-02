@@ -1,4 +1,5 @@
 import { permissionBadgeVariant } from "@/lib/format/permission-color";
+import { permissionDescription } from "@/lib/format/permission-info";
 import { isPlatformRole } from "@/lib/format/role-color";
 import type { ColumnDef } from "@/shared/ui/DataTable";
 import { Badge } from "@/shared/ui/Badge";
@@ -26,11 +27,16 @@ export const roleColumns: ColumnDef<Role>[] = [
       if (perms.length === 0) return <span style={{ color: "var(--text-muted)" }}>—</span>;
       return (
         <span style={{ display: "inline-flex", gap: "var(--space-1)", flexWrap: "wrap" }}>
-          {perms.map((p) => (
-            <Badge key={p} variant={permissionBadgeVariant(p)}>
-              {p}
-            </Badge>
-          ))}
+          {perms.map((p) => {
+            // Native title (not the app Tooltip) so the read-only cell carries a
+            // hover explanation without depending on a TooltipProvider ancestor.
+            const desc = permissionDescription(p);
+            return (
+              <span key={p} style={{ display: "inline-flex" }} {...(desc ? { title: desc } : {})}>
+                <Badge variant={permissionBadgeVariant(p)}>{p}</Badge>
+              </span>
+            );
+          })}
         </span>
       );
     },

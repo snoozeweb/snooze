@@ -67,6 +67,22 @@ describe("EnvironmentsPage", () => {
     await waitFor(() => expect(screen.getByText("production")).toBeInTheDocument());
   });
 
+  it("teaches what an environment is (and links to docs) in the empty state", async () => {
+    mswServer.use(
+      http.get("/api/v1/environment", () =>
+        HttpResponse.json({ data: [], meta: { count: 0, limit: 50, offset: 0, total: 0 } }),
+      ),
+    );
+    setup();
+    // The description now describes the real behaviour (filter buttons), not
+    // the misleading "categorise hosts", and offers a docs link.
+    await waitFor(() => expect(screen.getByText(/filter buttons/i)).toBeInTheDocument());
+    expect(screen.getByRole("link", { name: /learn more/i })).toHaveAttribute(
+      "href",
+      "https://snoozeweb.github.io/snooze/general/environments",
+    );
+  });
+
   it("surfaces a discoverable row-actions kebab (not just right-click)", async () => {
     mswServer.use(
       http.get("/api/v1/environment", () =>

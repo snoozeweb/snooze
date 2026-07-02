@@ -80,6 +80,18 @@ describe("KVPage", () => {
     expect(screen.getByText("colors")).toBeInTheDocument();
   });
 
+  it("teaches the KV concept (and links to docs) in the empty state", async () => {
+    mockKV([]);
+    setup();
+    await waitFor(() =>
+      expect(screen.getByText(/look up by name at runtime/i)).toBeInTheDocument(),
+    );
+    expect(screen.getByRole("link", { name: /learn more/i })).toHaveAttribute(
+      "href",
+      "https://snoozeweb.github.io/snooze/general/kv",
+    );
+  });
+
   it("surfaces a discoverable row-actions kebab (not just right-click)", async () => {
     mockKV([{ uid: "k1", dict: "colors", key: "MY_KEY", value: "my-value" }]);
     setup();

@@ -3,6 +3,7 @@ import { useBlocker, useNavigate, useSearch } from "@tanstack/react-router";
 import { Button } from "@/shared/ui/Button";
 import { DataTable } from "@/shared/ui/DataTable";
 import type { ContextMenuItem } from "@/shared/ui/DataTableContextMenu";
+import { DocsLink } from "@/shared/ui/DocsLink";
 import { EmptyState } from "@/shared/ui/EmptyState";
 import { RowDetailPanel } from "@/shared/ui/RowDetailPanel";
 import { TabList, TabPanel, TabTrigger, Tabs } from "@/shared/ui/Tabs";
@@ -38,7 +39,8 @@ type RulesSearch = {
 // time-based Snoozes) from being confused. Factored into a map so the captions
 // have a single home (REFACTOR step).
 const TAB_HELP: Record<RulesTab, string> = {
-  rules: "Transform a matching alert, then continue.",
+  rules:
+    "Transform a matching alert, then continue. Child rules only run if their parent's condition matched — indentation is a conditional gate, not just grouping.",
   aggregates: "Collapse duplicate alerts into one.",
   reject:
     "Drop a matching alert at ingest and return 422 to the sender (runs before Rules). For time-bounded silencing, use Snoozes.",
@@ -531,7 +533,7 @@ export function RulesPage() {
             without switching tabs. */}
         {(Object.keys(TAB_HELP) as RulesTab[]).map((t) => (
           <p key={t} className={styles.tabHelp} hidden={t !== tab}>
-            {TAB_HELP[t]}
+            {TAB_HELP[t]} {t === "rules" ? <DocsLink slug="general/rules" /> : null}
           </p>
         ))}
         <TabPanel value={tab}>

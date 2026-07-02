@@ -13,7 +13,7 @@ import type { Metadata } from "@/shared/forms/types";
 import { BrandIcon } from "@/shared/icons/BrandIcon";
 import { brandFor } from "@/shared/icons/brand-names";
 import { IntegrationGallery } from "./IntegrationGallery";
-import { IntegrationModeChooser } from "./IntegrationModeChooser";
+import { DaemonCompanionNote } from "./DaemonCompanionNote";
 import { Actions, useTestAction } from "./api";
 import type { Action } from "./types";
 import styles from "./NotificationEditor.module.css";
@@ -53,10 +53,11 @@ export function ActionEditor({ uid, onClose }: ActionEditorProps) {
   const testAction = useTestAction();
 
   // Wizard step: new actions start by picking an integration; edits jump
-  // straight to the config form (the type is already chosen).
-  const [step, setStep] = useState<"pick" | "choose-mode" | "configure">(
-    isCreate ? "pick" : "configure",
-  );
+  // straight to the config form (the type is already chosen). There is no
+  // separate built-in-vs-daemon "choose" step: the built-in action is always
+  // configured here, and any optional companion daemon is surfaced as a
+  // non-blocking note inside this form (see DaemonCompanionNote).
+  const [step, setStep] = useState<"pick" | "configure">(isCreate ? "pick" : "configure");
 
   const { register, handleSubmit, reset, formState, watch, setValue } = useForm<FormShape>({
     defaultValues: EMPTY_FORM,
@@ -106,8 +107,10 @@ export function ActionEditor({ uid, onClose }: ActionEditorProps) {
   function pickIntegration(pluginName: string) {
     setValue("selected", pluginName, { shouldDirty: true });
     setSubcontent({});
-    const picked = formPlugins.find((m) => m.plugin_name === pluginName);
-    setStep(picked?.daemon ? "choose-mode" : "configure");
+    // Always configure the built-in action. A companion daemon (if any) is an
+    // optional add-on shown as a note inside the form — never an alternative
+    // that could be chosen instead, leaving no Action created.
+    setStep("configure");
   }
 
   async function onTest() {
@@ -186,11 +189,9 @@ export function ActionEditor({ uid, onClose }: ActionEditorProps) {
   const heading =
     step === "pick"
       ? "Choose an integration"
-      : step === "choose-mode"
-        ? "How do you want to connect?"
-        : isCreate
-          ? `New ${selectedPlugin?.name || selected} action`
-          : "Edit action";
+      : isCreate
+        ? `New ${selectedPlugin?.name || selected} action`
+        : "Edit action";
 
   return (
     <Drawer
@@ -210,12 +211,6 @@ export function ActionEditor({ uid, onClose }: ActionEditorProps) {
             ) : (
               <IntegrationGallery plugins={formPlugins} onPick={pickIntegration} />
             )
-          ) : step === "choose-mode" && selectedPlugin ? (
-            <IntegrationModeChooser
-              plugin={selectedPlugin}
-              onUseBuiltin={() => setStep("configure")}
-              onBack={() => setStep("pick")}
-            />
           ) : !isCreate && existing.isPending ? (
             <div style={{ display: "flex", justifyContent: "center", padding: "var(--space-5)" }}>
               <Spinner size={20} />
@@ -263,6 +258,9 @@ export function ActionEditor({ uid, onClose }: ActionEditorProps) {
                     placeholder="e.g. slack-prod"
                   />
                 </div>
+                {selectedPlugin?.daemon ? (
+                  <DaemonCompanionNote daemon={selectedPlugin.daemon} />
+                ) : null}
               </section>
 
               {selectedPlugin && selectedPlugin.action_form ? (
@@ -307,7 +305,7 @@ export function ActionEditor({ uid, onClose }: ActionEditorProps) {
             </form>
           )}
         </DrawerBody>
-        {step === "pick" || step === "choose-mode" ? (
+        {step === "pick" ? (
           <DrawerFooter>
             <div style={{ flex: 1 }} />
             <Button variant="ghost" onClick={onClose}>

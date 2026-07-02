@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { api, type ApiError } from "@/lib/api/client";
+import { docsUrl } from "@/lib/docs";
 import { Icon } from "@/shared/icons/Icon";
 import { tokenize, type Token } from "@/shared/searchdsl/lexer";
 import { suggest, type FieldInfo, type Suggestion } from "@/shared/searchdsl/suggest";
@@ -448,6 +449,21 @@ export function SearchBar({
           <Icon name="x" size={14} />
         </button>
       ) : null}
+      {/* Persistent, discoverable pointer to the query-language reference — the
+          DSL is rich (regex, exists, IN-lists, AND/OR/NOT) but was otherwise
+          only learnable by trial-and-error autocomplete. A real anchor (with
+          aria-label + title) rather than a Tooltip-wrapped button, since
+          SearchBar renders in many provider-less contexts. */}
+      <a
+        className={styles.helpBtn}
+        href={docsUrl("general/querylanguage")}
+        target="_blank"
+        rel="noreferrer"
+        aria-label="Query language help"
+        title="Query language help"
+      >
+        <Icon name="book" size={14} />
+      </a>
       {open && suggestion.items.length > 0 ? (
         <div
           className={styles.popover}

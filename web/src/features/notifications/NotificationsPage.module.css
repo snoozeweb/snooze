@@ -4,3 +4,17 @@
   flex-direction: column;
   gap: var(--space-3);
 }
+
+.conceptStrip {
+  margin: 0;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-1) var(--space-2);
+  color: var(--text-muted);
+  font-size: var(--text-sm);
+}
+.conceptStrip strong {
+  color: var(--text-strong);
+  font-weight: 600;
+}

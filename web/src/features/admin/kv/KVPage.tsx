@@ -129,7 +129,8 @@ export function KVPage() {
         <EmptyState
           icon="file-text"
           title="No key-values yet"
-          description="Configuration values modifications and plugins can read at runtime."
+          description="Named key → value pairs, grouped into dictionaries, that rule actions and plugins can look up by name at runtime."
+          docsSlug="general/kv"
           action={
             <Button
               size="md"

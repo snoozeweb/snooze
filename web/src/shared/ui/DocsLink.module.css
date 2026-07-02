@@ -1,0 +1,11 @@
+.docsLink {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  font-size: var(--text-sm);
+  color: var(--accent);
+  text-decoration: none;
+}
+.docsLink:hover {
+  text-decoration: underline;
+}

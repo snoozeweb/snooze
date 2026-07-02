@@ -22,4 +22,16 @@ describe("EmptyState", () => {
     render(<EmptyState title="x" action={<button>Refresh</button>} />);
     expect(screen.getByRole("button", { name: "Refresh" })).toBeInTheDocument();
   });
+
+  it("renders a docs 'Learn more' link when docsSlug is given", () => {
+    render(<EmptyState title="No key-values yet" docsSlug="general/kv" />);
+    const link = screen.getByRole("link");
+    expect(link).toHaveAttribute("href", "https://snoozeweb.github.io/snooze/general/kv");
+    expect(link).toHaveAttribute("target", "_blank");
+  });
+
+  it("renders no docs link when docsSlug is omitted", () => {
+    render(<EmptyState title="x" description="y" />);
+    expect(screen.queryByRole("link")).toBeNull();
+  });
 });

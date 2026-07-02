@@ -98,13 +98,17 @@ function EnvironmentFields({ register, control, setValue }: EditorBodyProps<Form
         </div>
         <div className={styles.field}>
           <label className={styles.label} htmlFor="environment-tree-order">
-            Tree order
+            Button order
           </label>
           <Input
             id="environment-tree-order"
             type="number"
             {...register("tree_order", { valueAsNumber: true })}
           />
+          <p className={styles.hint}>
+            Left-to-right position of this environment&apos;s filter button on the Alerts page
+            (lower numbers sit first). Not a hierarchy — the buttons are a flat row.
+          </p>
         </div>
       </section>
       <section className={styles.section}>

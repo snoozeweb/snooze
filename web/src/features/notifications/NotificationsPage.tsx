@@ -8,6 +8,7 @@ import { TabList, TabPanel, TabTrigger, Tabs } from "@/shared/ui/Tabs";
 import { useTableSearch } from "@/shared/hooks/useTableSearch";
 import { useResourceListPage, type BaseListSearch } from "@/shared/hooks/useResourceListPage";
 import { ConfirmDeleteDialog } from "@/shared/ui/resourceContextMenu";
+import { DocsLink } from "@/shared/ui/DocsLink";
 import { ActionEditor } from "./ActionEditor";
 import { Actions, Notifications } from "./api";
 import { actionColumns, notificationColumns, notificationRowDisabled } from "./columns";
@@ -121,6 +122,14 @@ export function NotificationsPage() {
 
   return (
     <div className={styles.page}>
+      {/* Persistent WHEN/HOW mental model — the two-tab distinction was only
+          explained in each tab's empty state, so it vanished once a single row
+          existed. This strip keeps it available for every future user. */}
+      <p className={styles.conceptStrip}>
+        <strong>Notifications</strong> decide <em>when</em> an alert should trigger delivery;{" "}
+        <strong>Actions</strong> decide <em>how</em> and <em>where</em> it&apos;s delivered.{" "}
+        <DocsLink slug="general/notifications" />
+      </p>
       <Tabs
         value={tab}
         onValueChange={(v) => updateSearch({ tab: v as "notifications" | "actions", page: 1 })}

@@ -48,6 +48,17 @@ describe("SearchBar", () => {
     expect(screen.getByRole("textbox", { name: "Search" })).toBeInTheDocument();
   });
 
+  it("offers a persistent help link to the query-language docs", () => {
+    mswServer.use(DEFAULT_FIELDS_HANDLER);
+    setup();
+    const help = screen.getByRole("link", { name: /query|syntax|help/i });
+    expect(help).toHaveAttribute(
+      "href",
+      "https://snoozeweb.github.io/snooze/general/querylanguage",
+    );
+    expect(help).toHaveAttribute("target", "_blank");
+  });
+
   it("shows the placeholder until the user types", () => {
     mswServer.use(DEFAULT_FIELDS_HANDLER);
     setup();

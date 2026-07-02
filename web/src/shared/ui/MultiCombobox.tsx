@@ -8,7 +8,13 @@ import * as RP from "@radix-ui/react-popover";
 import { Icon } from "@/shared/icons/Icon";
 import styles from "./MultiCombobox.module.css";
 
-export type MultiComboboxOption = { value: string; label: string };
+export type MultiComboboxOption = {
+  value: string;
+  label: string;
+  /** Optional one-line explanation shown as muted secondary text under the
+   *  label in the dropdown (e.g. what an RBAC permission grants). */
+  description?: string;
+};
 
 export type MultiComboboxProps = {
   options: MultiComboboxOption[];
@@ -205,7 +211,12 @@ export function MultiCombobox({
                   onClick={() => toggle(opt.value)}
                   onMouseEnter={() => setActiveIndex(i)}
                 >
-                  <span>{opt.label}</span>
+                  <span className={styles.optionText}>
+                    <span>{opt.label}</span>
+                    {opt.description ? (
+                      <span className={styles.optionDesc}>{opt.description}</span>
+                    ) : null}
+                  </span>
                   {isSelected(opt.value) ? (
                     <span className={styles.optionCheck}>
                       <Icon name="check" size={12} />

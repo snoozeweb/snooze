@@ -263,7 +263,7 @@ describe("ActionEditor", () => {
     expect(ta.value).toMatch(/"foo":\s*"bar"/);
   });
 
-  it("shows the daemon chooser before the form for an integration with a daemon", async () => {
+  it("goes straight to the config form for a daemon integration, with the daemon as an optional note", async () => {
     mswServer.use(http.get("/api/v1/metadata", () => HttpResponse.json(metadataPayload())));
     const user = userEvent.setup();
     const Wrapper = wrap();
@@ -274,11 +274,12 @@ describe("ActionEditor", () => {
     );
     // Gallery loads; pick the jira plugin which has a daemon block.
     await user.click(await screen.findByRole("button", { name: /Create a JIRA issue/ }));
-    // Chooser is shown, not the config form.
-    expect(screen.getByText("Built-in")).toBeTruthy();
-    expect(screen.queryByText("Project Key")).toBeNull();
-    // Clicking Built-in advances to the config form.
-    await user.click(screen.getByText("Built-in"));
+    // No either/or chooser: the built-in action's config form is shown directly,
+    // so an operator can never "pick the daemon" and leave without an Action.
     expect(await screen.findByText("Project Key")).toBeTruthy();
+    expect(screen.queryByText("How do you want to connect?")).toBeNull();
+    // The daemon is surfaced as an optional, non-blocking companion note.
+    expect(screen.getByText(/not required/i)).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /set up snooze-jira/i })).toBeInTheDocument();
   });
 });

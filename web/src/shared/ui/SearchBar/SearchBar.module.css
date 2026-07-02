@@ -82,6 +82,18 @@
   color: var(--text-strong);
 }
 
+.helpBtn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 var(--space-2);
+  color: var(--text-muted);
+  text-decoration: none;
+}
+.helpBtn:hover {
+  color: var(--accent);
+}
+
 .overlay {
   pointer-events: none;
   color: var(--text-strong);
