@@ -40,5 +40,5 @@ epoch seconds>` query parameter. The endpoint requires the `ro_stats` (or
 `rw_stats`) permission — the same permission that gates the Inputs nav entry.
 
 The list of supported inputs is the same catalogue that powers the _How to
-inject alerts_ guide (opened from the page header via **How to send alerts**),
+inject alerts_ guide (opened from the page header via **How to receive alerts**),
 so the two never drift.

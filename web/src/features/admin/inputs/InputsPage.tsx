@@ -59,7 +59,7 @@ export function InputsPage() {
       <div className={styles.header}>
         <h1>Inputs</h1>
         <Button variant="primary" leadingIcon="plug" onClick={() => setSetup("")}>
-          How to send alerts
+          How to receive alerts
         </Button>
       </div>
 

@@ -64,7 +64,7 @@ describe("InputsPage", () => {
       ),
     );
     setup();
-    expect(screen.getByRole("button", { name: /how to send alerts/i })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /how to receive alerts/i })).toBeInTheDocument();
     // The table shows loading skeletons until the activity fetch settles, then
     // renders the (always-present) catalogue rows — REST API is always there —
     // and the uncatalogued "graylog" source lands in "Other sources".
@@ -91,7 +91,7 @@ describe("InputsPage", () => {
     // The header CTA calls setSetup("") — the empty-string sentinel is falsy,
     // so setupId resolves to undefined and the dialog opens on the default REST
     // tab with no source pre-selected.
-    await userEvent.click(screen.getByRole("button", { name: /how to send alerts/i }));
+    await userEvent.click(screen.getByRole("button", { name: /how to receive alerts/i }));
     expect(await screen.findByText("How to inject alerts")).toBeInTheDocument();
     // REST panel content proves no webhook/daemon source was pre-selected.
     expect(screen.getByText("POST /api/v1/alerts")).toBeInTheDocument();
@@ -100,7 +100,7 @@ describe("InputsPage", () => {
   it("clears the dialog when closed", async () => {
     mswServer.use(http.get("/api/v1/inputs", () => HttpResponse.json({ data: [] })));
     setup();
-    await userEvent.click(screen.getByRole("button", { name: /how to send alerts/i }));
+    await userEvent.click(screen.getByRole("button", { name: /how to receive alerts/i }));
     expect(await screen.findByText("How to inject alerts")).toBeInTheDocument();
     // Close → onOpenChange(false) → setSetup(undefined) strips ?setup, which
     // unmounts the dialog.
