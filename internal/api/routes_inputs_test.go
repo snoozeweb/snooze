@@ -7,6 +7,7 @@ import (
 	"net/http/httptest"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/stretchr/testify/require"
@@ -84,4 +85,42 @@ func TestInputs_BadSince(t *testing.T) {
 	rec := httptest.NewRecorder()
 	r.ServeHTTP(rec, req)
 	require.Equal(t, http.StatusBadRequest, rec.Code)
+}
+
+func TestInputs_NegativeSince(t *testing.T) {
+	t.Parallel()
+	r, _ := inputsHarness(t)
+	req := authReq("GET", "/api/v1/inputs?since=-1", nil, "ro_stats")
+	rec := httptest.NewRecorder()
+	r.ServeHTTP(rec, req)
+	require.Equal(t, http.StatusBadRequest, rec.Code)
+}
+
+func TestInputs_DefaultWindowExcludesOldSources(t *testing.T) {
+	t.Parallel()
+	r, d := inputsHarness(t)
+	ctx := snoozetypes.WithTenant(context.Background(), snoozetypes.DefaultTenant)
+	now := time.Now().Unix()
+	_, err := d.Write(ctx, "record", []db.Document{
+		{"host": "old", "source": "ancient", "date_epoch": now - 35*24*3600}, // > 30d → excluded
+		{"host": "new", "source": "recent", "date_epoch": now - 5*24*3600},   // < 30d → included
+	}, db.WriteOptions{UpdateTime: false})
+	require.NoError(t, err)
+
+	req := authReq("GET", "/api/v1/inputs", nil, "ro_stats") // no ?since → 30-day default
+	rec := httptest.NewRecorder()
+	r.ServeHTTP(rec, req)
+	require.Equal(t, http.StatusOK, rec.Code)
+
+	var body struct {
+		Data []db.SourceActivity `json:"data"`
+	}
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &body))
+	got := map[string]db.SourceActivity{}
+	for _, row := range body.Data {
+		got[row.Source] = row
+	}
+	_, hasAncient := got["ancient"]
+	require.False(t, hasAncient, "source older than the 30-day default window must be excluded")
+	require.Equal(t, int64(1), got["recent"].Count)
 }

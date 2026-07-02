@@ -3399,6 +3399,8 @@ export interface paths {
          *     alert epoch and a count, within a lookback window. Backs the admin
          *     Inputs page. `since` is a Unix epoch (seconds); when omitted the server
          *     uses a 30-day window. Requires the `ro_stats`/`rw_stats` permission.
+         *     Returns 503 when the configured storage backend does not implement the
+         *     source-activity aggregation capability.
          *
          */
         get: {
@@ -3431,6 +3433,7 @@ export interface paths {
                         "application/json": components["schemas"]["ErrEnvelope"];
                     };
                 };
+                503: components["responses"]["ServiceUnavailable"];
             };
         };
         put?: never;

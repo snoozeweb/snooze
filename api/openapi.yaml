@@ -2175,6 +2175,8 @@ paths:
         alert epoch and a count, within a lookback window. Backs the admin
         Inputs page. `since` is a Unix epoch (seconds); when omitted the server
         uses a 30-day window. Requires the `ro_stats`/`rw_stats` permission.
+        Returns 503 when the configured storage backend does not implement the
+        source-activity aggregation capability.
       parameters:
         - name: since
           in: query
@@ -2192,6 +2194,8 @@ paths:
           content:
             application/json:
               schema: {$ref: '#/components/schemas/ErrEnvelope'}
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
 
   /api/v1/{plugin}:
     parameters:
