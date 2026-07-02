@@ -77,8 +77,8 @@ export function InputsPage() {
         <Card padded>
           <h2 className={styles.cardTitle}>Other sources</h2>
           <p className={styles.hint}>
-            Alert sources seen in records that don&apos;t match a known input — custom REST
-            posters, or receivers without a catalogue entry.
+            Alert sources seen in records that don&apos;t match a known input — custom REST posters,
+            or receivers without a catalogue entry.
           </p>
           <DataTable<InputRow> data={other} columns={columns} rowKey={(r) => r.id} />
         </Card>

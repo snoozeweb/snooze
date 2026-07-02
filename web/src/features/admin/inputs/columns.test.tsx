@@ -75,7 +75,9 @@ describe("makeInputColumns", () => {
 
   it("renders '—' for docs when docSlug is absent", () => {
     render(
-      <>{cell("docs", { id: "graylog", name: "graylog", family: "other", catalogue: false }).node}</>,
+      <>
+        {cell("docs", { id: "graylog", name: "graylog", family: "other", catalogue: false }).node}
+      </>,
     );
     expect(screen.getByText("—")).toBeInTheDocument();
     expect(screen.queryByRole("link")).toBeNull();
@@ -95,14 +97,18 @@ describe("makeInputColumns", () => {
 
   it("renders no Setup button for an 'other' row", () => {
     render(
-      <>{cell("setup", { id: "graylog", name: "graylog", family: "other", catalogue: false }).node}</>,
+      <>
+        {cell("setup", { id: "graylog", name: "graylog", family: "other", catalogue: false }).node}
+      </>,
     );
     expect(screen.queryByRole("button")).toBeNull();
   });
 
   it("renders a Type badge with the family label", () => {
     render(
-      <>{cell("family", { id: "syslog", name: "Syslog", family: "daemon", catalogue: true }).node}</>,
+      <>
+        {cell("family", { id: "syslog", name: "Syslog", family: "daemon", catalogue: true }).node}
+      </>,
     );
     expect(screen.getByText("Daemon")).toBeInTheDocument();
   });

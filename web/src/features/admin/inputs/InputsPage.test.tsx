@@ -105,8 +105,6 @@ describe("InputsPage", () => {
     // Close → onOpenChange(false) → setSetup(undefined) strips ?setup, which
     // unmounts the dialog.
     await userEvent.click(screen.getByRole("button", { name: /^close$/i }));
-    await waitFor(() =>
-      expect(screen.queryByText("How to inject alerts")).not.toBeInTheDocument(),
-    );
+    await waitFor(() => expect(screen.queryByText("How to inject alerts")).not.toBeInTheDocument());
   });
 });
