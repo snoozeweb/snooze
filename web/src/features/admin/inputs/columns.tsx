@@ -52,6 +52,13 @@ export function makeInputColumns(onSetup: (id: string) => void): ColumnDef<Input
       width: "160px",
     },
     {
+      id: "count",
+      header: "Alerts",
+      align: "right",
+      cell: (r) => (r.count !== undefined ? <span>{r.count}</span> : <span style={muted}>—</span>),
+      width: "100px",
+    },
+    {
       id: "docs",
       header: "Docs",
       cell: (r) =>

@@ -53,6 +53,32 @@ describe("makeInputColumns", () => {
     expect(document.querySelector("time")).toBeInTheDocument();
   });
 
+  it("renders the alert count when set", () => {
+    render(
+      <>
+        {
+          cell("count", {
+            id: "grafana",
+            name: "Grafana",
+            family: "webhook",
+            catalogue: true,
+            count: 42,
+          }).node
+        }
+      </>,
+    );
+    expect(screen.getByText("42")).toBeInTheDocument();
+  });
+
+  it("renders '—' for count when undefined", () => {
+    render(
+      <>
+        {cell("count", { id: "syslog", name: "Syslog", family: "daemon", catalogue: true }).node}
+      </>,
+    );
+    expect(screen.getByText("—")).toBeInTheDocument();
+  });
+
   it("renders a docs link when docSlug is set", () => {
     render(
       <>
