@@ -62,3 +62,20 @@ describe("InjectAlertsDialog", () => {
     expect(onOpenChange).toHaveBeenCalledWith(false);
   });
 });
+
+describe("InjectAlertsDialog deep-linking", () => {
+  it("defaults to the REST tab with no initial props", () => {
+    render(<InjectAlertsDialog open onOpenChange={() => {}} />);
+    expect(screen.getByText("POST /api/v1/alerts")).toBeInTheDocument();
+  });
+
+  it("opens on the Webhooks tab focused on the given source", () => {
+    render(<InjectAlertsDialog open onOpenChange={() => {}} initialSourceId="datadog" />);
+    expect(screen.getByText("POST /api/v1/webhook/datadog")).toBeInTheDocument();
+  });
+
+  it("opens on the Daemon tab focused on the given source", () => {
+    render(<InjectAlertsDialog open onOpenChange={() => {}} initialSourceId="syslog" />);
+    expect(screen.getByText(/Full Syslog docs/)).toBeInTheDocument();
+  });
+});

@@ -15,6 +15,7 @@ import { docsUrl } from "@/lib/docs";
 import {
   type InjectionFamily,
   type InjectionSource,
+  INJECTION_SOURCES,
   REST_SOURCE,
   sourcesForFamily,
 } from "./injectionGuide";
@@ -23,6 +24,10 @@ import styles from "./InjectAlertsDialog.module.css";
 export type InjectAlertsDialogProps = {
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  /** Deep-link target: which tab/family to open on. Ignored when `initialSourceId` resolves to a source. */
+  initialFamily?: InjectionFamily;
+  /** Deep-link target: which source to pre-select (implies its family). Takes precedence over `initialFamily`. */
+  initialSourceId?: string;
 };
 
 // The base URL used in copy-pasteable snippets. Prefer the live origin so the
@@ -52,9 +57,21 @@ function SourcePanel({ source, baseUrl }: { source: InjectionSource; baseUrl: st
   );
 }
 
-function FamilyBrowser({ family, baseUrl }: { family: InjectionFamily; baseUrl: string }) {
+function FamilyBrowser({
+  family,
+  baseUrl,
+  initialSourceId,
+}: {
+  family: InjectionFamily;
+  baseUrl: string;
+  initialSourceId?: string;
+}) {
   const sources = sourcesForFamily(family);
-  const [selectedId, setSelectedId] = useState(sources[0]?.id ?? "");
+  const [selectedId, setSelectedId] = useState(
+    initialSourceId && sources.some((s) => s.id === initialSourceId)
+      ? initialSourceId
+      : (sources[0]?.id ?? ""),
+  );
   const selected = sources.find((s) => s.id === selectedId) ?? sources[0];
   return (
     <div className={styles.browser}>
@@ -76,8 +93,27 @@ function FamilyBrowser({ family, baseUrl }: { family: InjectionFamily; baseUrl: 
   );
 }
 
-export function InjectAlertsDialog({ open, onOpenChange }: InjectAlertsDialogProps) {
+export function InjectAlertsDialog({
+  open,
+  onOpenChange,
+  initialFamily,
+  initialSourceId,
+}: InjectAlertsDialogProps) {
   const baseUrl = useMemo(() => resolveBaseUrl(), []);
+  // Resolve the deep-link target: an explicit source id wins (and implies its
+  // family), else fall back to a bare family, else the REST tab. The Tabs
+  // tree below is keyed on this target so that reopening the dialog with a
+  // different target remounts it — Radix Tabs only honors `defaultValue` on
+  // mount, and FamilyBrowser's `selectedId` state would likewise otherwise
+  // survive across a source-id change.
+  const target = useMemo(() => {
+    if (initialSourceId) {
+      const source = INJECTION_SOURCES.find((s) => s.id === initialSourceId);
+      if (source) return { family: source.family, id: source.id as string | undefined };
+    }
+    if (initialFamily) return { family: initialFamily, id: undefined as string | undefined };
+    return { family: "rest" as InjectionFamily, id: undefined as string | undefined };
+  }, [initialSourceId, initialFamily]);
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       {/* styles.content is `string | undefined` under noUncheckedIndexedAccess;
@@ -90,7 +126,7 @@ export function InjectAlertsDialog({ open, onOpenChange }: InjectAlertsDialogPro
             Connect a monitoring source to start ingesting alerts. Pick how your source talks to
             Snooze.
           </DialogDescription>
-          <Tabs defaultValue="rest">
+          <Tabs key={`${target.family}:${target.id ?? ""}`} defaultValue={target.family}>
             <TabList>
               <TabTrigger value="rest">REST API</TabTrigger>
               <TabTrigger value="webhook">Webhooks</TabTrigger>
@@ -100,10 +136,22 @@ export function InjectAlertsDialog({ open, onOpenChange }: InjectAlertsDialogPro
               <SourcePanel source={REST_SOURCE} baseUrl={baseUrl} />
             </TabPanel>
             <TabPanel value="webhook">
-              <FamilyBrowser family="webhook" baseUrl={baseUrl} />
+              <FamilyBrowser
+                family="webhook"
+                baseUrl={baseUrl}
+                {...(target.family === "webhook" && target.id !== undefined
+                  ? { initialSourceId: target.id }
+                  : {})}
+              />
             </TabPanel>
             <TabPanel value="daemon">
-              <FamilyBrowser family="daemon" baseUrl={baseUrl} />
+              <FamilyBrowser
+                family="daemon"
+                baseUrl={baseUrl}
+                {...(target.family === "daemon" && target.id !== undefined
+                  ? { initialSourceId: target.id }
+                  : {})}
+              />
             </TabPanel>
           </Tabs>
         </DialogBody>
