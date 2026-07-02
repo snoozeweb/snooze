@@ -18,6 +18,7 @@ import { StatTiles, type TileId } from "./StatTiles";
 import { DashboardSkeleton } from "./DashboardSkeleton";
 import { ActivityFeed } from "./ActivityFeed";
 import { alertsSearchForBucket, alertsSearchForRange } from "./bucket-utils";
+import { capDistributions, formatBucketLabel } from "./chart-format";
 import styles from "./DashboardPage.module.css";
 
 // Series keys must match the exact strings the backend /stats emits in
@@ -41,6 +42,13 @@ function CardTitle({ icon, children }: { icon: IconName; children: string }) {
       {children}
     </h2>
   );
+}
+
+// One-line qualifier under a card title. Distinguishes the cumulative
+// distribution panels ("events in this period, any state") from the live
+// "By state" snapshot, which otherwise look interchangeable under pressure.
+function CardHint({ children }: { children: string }) {
+  return <p className={styles.cardHint}>{children}</p>;
 }
 
 // Search params backing the time-range picker. Mirrors the dashboard route's
@@ -183,6 +191,10 @@ export function DashboardPage() {
     };
   }, [data, prevStats.data]);
 
+  // Readable axis/tooltip labels at the grain of the selected range, replacing
+  // the raw RFC3339 bucket timestamps.
+  const formatX = useCallback((x: string) => formatBucketLabel(x, range.range), [range.range]);
+
   // Any series/point click navigates to the alerts in that time bucket.
   const handlePointClick = (_seriesLabel: string, x: string) => {
     void navigate({
@@ -234,6 +246,26 @@ export function DashboardPage() {
     return out;
   }, [data]);
 
+  // Cap the high-cardinality bar panels to their top slice so they stay legible
+  // on busy instances (dozens of rules/filters/actions), and render them
+  // horizontal + height-scaled like "Top hosts" rather than as fixed-height
+  // vertical sliver-bars with skipped labels.
+  const actionBars = useMemo(() => {
+    const { keys, capped, total } = capDistributions(
+      [data?.totals.by_action_success ?? {}, data?.totals.by_action_failure ?? {}],
+      BAR_PANEL_CAP,
+    );
+    return { count: keys.length, total, success: capped[0]!, failure: capped[1]! };
+  }, [data]);
+  const throttledBars = useMemo(
+    () => capDistributions([data?.totals.by_throttled ?? {}], BAR_PANEL_CAP),
+    [data],
+  );
+  const snoozedBars = useMemo(
+    () => capDistributions([data?.totals.by_snoozed ?? {}], BAR_PANEL_CAP),
+    [data],
+  );
+
   return (
     <div className={styles.page}>
       {/* Header */}
@@ -269,6 +301,7 @@ export function DashboardPage() {
                   toggleableLegend
                   theme={theme}
                   ariaLabel="Alerts over time by series"
+                  formatX={formatX}
                   onPointClick={handlePointClick}
                   onRangeSelect={handleRangeSelect}
                 />
@@ -284,6 +317,7 @@ export function DashboardPage() {
           <div className={styles.row2}>
             <Card padded>
               <CardTitle icon="alert-triangle">By severity</CardTitle>
+              <CardHint>Events in this period, any state</CardHint>
               {severityDist.length > 0 ? (
                 <DistributionBar
                   data={severityDist}
@@ -297,6 +331,7 @@ export function DashboardPage() {
 
             <Card padded>
               <CardTitle icon="layers">By environment</CardTitle>
+              <CardHint>Events in this period, any state</CardHint>
               {environmentDist.length > 0 ? (
                 <DistributionBar
                   data={environmentDist}
@@ -310,6 +345,7 @@ export function DashboardPage() {
 
             <Card padded>
               <CardTitle icon="check-circle">By state</CardTitle>
+              <CardHint>Alerts in this period, by current state</CardHint>
               {stateDist.length > 0 ? (
                 <DistributionBar
                   data={stateDist}
@@ -344,21 +380,26 @@ export function DashboardPage() {
           <div className={styles.row3}>
             <Card padded>
               <CardTitle icon="megaphone">Actions</CardTitle>
-              {Object.keys(data.totals.by_action_success).length > 0 ||
-              Object.keys(data.totals.by_action_failure).length > 0 ? (
+              {actionBars.total > BAR_PANEL_CAP ? (
+                <CardHint>{`Top ${BAR_PANEL_CAP} of ${actionBars.total}`}</CardHint>
+              ) : null}
+              {actionBars.count > 0 ? (
                 <BarChart
+                  horizontal
+                  sort="value"
                   theme={theme}
                   ariaLabel="Action runs by name, successful versus failed"
+                  height={barPanelHeight(actionBars.count, 44)}
                   series={[
                     {
                       label: "Successful",
                       color: seriesColor("Successful"),
-                      data: data.totals.by_action_success,
+                      data: actionBars.success,
                     },
                     {
                       label: "Failed",
                       color: seriesColor("Failed"),
-                      data: data.totals.by_action_failure,
+                      data: actionBars.failure,
                     },
                   ]}
                 />
@@ -369,15 +410,21 @@ export function DashboardPage() {
 
             <Card padded>
               <CardTitle icon="filter">Throttled by rule</CardTitle>
-              {Object.keys(data.totals.by_throttled).length > 0 ? (
+              {throttledBars.total > BAR_PANEL_CAP ? (
+                <CardHint>{`Top ${BAR_PANEL_CAP} of ${throttledBars.total}`}</CardHint>
+              ) : null}
+              {throttledBars.keys.length > 0 ? (
                 <BarChart
+                  horizontal
+                  sort="value"
                   theme={theme}
                   ariaLabel="Throttled alert count by rule"
+                  height={barPanelHeight(throttledBars.keys.length)}
                   series={[
                     {
                       label: "Throttled",
                       color: seriesColor("Throttled"),
-                      data: data.totals.by_throttled,
+                      data: throttledBars.capped[0]!,
                     },
                   ]}
                 />
@@ -388,15 +435,21 @@ export function DashboardPage() {
 
             <Card padded>
               <CardTitle icon="bell-off">Snoozed by filter</CardTitle>
-              {Object.keys(data.totals.by_snoozed).length > 0 ? (
+              {snoozedBars.total > BAR_PANEL_CAP ? (
+                <CardHint>{`Top ${BAR_PANEL_CAP} of ${snoozedBars.total}`}</CardHint>
+              ) : null}
+              {snoozedBars.keys.length > 0 ? (
                 <BarChart
+                  horizontal
+                  sort="value"
                   theme={theme}
                   ariaLabel="Snoozed alert count by filter"
+                  height={barPanelHeight(snoozedBars.keys.length)}
                   series={[
                     {
                       label: "Snoozed",
                       color: seriesColor("Snoozed"),
-                      data: data.totals.by_snoozed,
+                      data: snoozedBars.capped[0]!,
                     },
                   ]}
                 />
@@ -465,6 +518,17 @@ function tabForState(state: string): TabId | undefined {
   const tab = direct[state.toLowerCase()];
   // Guard against a future tab-id rename: only return a tab that still exists.
   return tab && tabById(tab).id === tab ? tab : undefined;
+}
+
+// Top-slice size for the high-cardinality bar panels (throttled / snoozed /
+// actions). Matches the spirit of the server-side top-10 by_host cap.
+const BAR_PANEL_CAP = 12;
+
+// Height for a horizontal bar panel: scale with the row count (like "Top
+// hosts") so bars stay readable, with a sensible floor for small sets.
+// `perRow` is larger for grouped panels (Actions stacks two bars per row).
+function barPanelHeight(count: number, perRow = 28): number {
+  return Math.max(240, count * perRow);
 }
 
 function bucketFromRange(range: TimeRange["range"]): number {

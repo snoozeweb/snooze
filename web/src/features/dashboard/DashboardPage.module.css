@@ -51,6 +51,13 @@
   margin: 0 0 var(--space-2) 0;
 }
 
+/* Qualifier line under a distribution card's title (cumulative vs. live). */
+.cardHint {
+  margin: calc(-1 * var(--space-1)) 0 var(--space-3);
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+}
+
 .empty {
   display: flex;
   align-items: center;

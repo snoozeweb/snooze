@@ -214,6 +214,40 @@ describe("DashboardPage", () => {
     expect(screen.getByText("By weekday")).toBeInTheDocument();
   });
 
+  it("qualifies the cumulative distribution panels vs the live state panel", async () => {
+    mswServer.use(
+      http.get("/api/v1/stats", () => HttpResponse.json(FULL_STATS_RESPONSE)),
+      http.get("/api/v1/comment", () => HttpResponse.json(COMMENTS_RESPONSE)),
+    );
+    setup();
+    await screen.findByText("By severity");
+    // Severity and environment are event totals over the window (any state)…
+    expect(screen.getAllByText(/events in this period, any state/i)).toHaveLength(2);
+    // …while "By state" is distinct alerts in the window grouped by current
+    // state (still windowed — not a live/now snapshot).
+    expect(screen.getByText(/alerts in this period, by current state/i)).toBeInTheDocument();
+  });
+
+  it("labels the top-N cap on a high-cardinality bar panel instead of truncating silently", async () => {
+    const by_throttled: Record<string, number> = {};
+    for (let i = 0; i < 15; i++) by_throttled[`rule${i}`] = 15 - i;
+    mswServer.use(
+      http.get("/api/v1/stats", () =>
+        HttpResponse.json({
+          ...FULL_STATS_RESPONSE,
+          data: {
+            ...FULL_STATS_RESPONSE.data,
+            totals: { ...FULL_STATS_RESPONSE.data.totals, by_throttled },
+          },
+        }),
+      ),
+      http.get("/api/v1/comment", () => HttpResponse.json(COMMENTS_RESPONSE)),
+    );
+    setup();
+    // 15 rules capped to 12 → the panel says so rather than looking complete.
+    expect(await screen.findByText(/top 12 of 15/i)).toBeInTheDocument();
+  });
+
   it("prefixes each pane title with its content icon", async () => {
     mswServer.use(
       http.get("/api/v1/stats", () => HttpResponse.json(FULL_STATS_RESPONSE)),

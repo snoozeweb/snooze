@@ -56,6 +56,13 @@ export type LineChartProps = {
   /** When true, the Chart.js built-in legend is shown and supports click-toggling datasets. */
   toggleableLegend?: boolean;
   /**
+   * Formats a bucket's x value (an ISO string) into a human-readable label,
+   * applied to BOTH the x-axis ticks and the tooltip title. Without it the raw
+   * RFC3339 string is shown (illegible + collides on dense ranges). Callers
+   * supply a range-aware formatter (e.g. hour-of-day vs. date).
+   */
+  formatX?: (x: string) => string;
+  /**
    * Accessible name for the canvas, exposed as aria-label + role="img" so
    * the chart is announced as a single labelled image rather than an
    * unlabelled graphic. Describe what the chart shows (e.g. "Alerts over time").
@@ -75,6 +82,7 @@ export function LineChart({
   onPointClick,
   onRangeSelect,
   toggleableLegend,
+  formatX,
   ariaLabel,
   theme,
 }: LineChartProps) {
@@ -110,13 +118,35 @@ export function LineChart({
           position: "bottom",
           labels: { boxWidth: 10, boxHeight: 10 },
         },
-        tooltip: { mode: "index", intersect: false },
+        tooltip: {
+          mode: "index",
+          intersect: false,
+          ...(formatX && {
+            callbacks: {
+              title(items: Array<{ label: string }>) {
+                const raw = items[0]?.label;
+                return raw ? formatX(raw) : "";
+              },
+            },
+          }),
+        },
       },
       scales: {
         x: {
           type: "category",
           grid: { display: false },
-          ticks: { color: chartToken("--text-muted"), maxRotation: 0 },
+          ticks: {
+            color: chartToken("--text-muted"),
+            maxRotation: 0,
+            // The formatter turns each (auto-skipped) tick from a raw RFC3339
+            // string into a short, readable label. autoSkip is already the
+            // Chart.js default, so dense ranges stay legible.
+            ...(formatX && {
+              callback(this: { getLabelForValue: (v: number) => string }, value: string | number) {
+                return formatX(this.getLabelForValue(value as number));
+              },
+            }),
+          },
         },
         y: {
           grid: { color: chartToken("--border-muted") },
@@ -236,7 +266,7 @@ export function LineChart({
     };
     // `theme` is intentionally a dep: toggling light/dark must re-resolve the
     // token-driven axis/grid colours even though the series data is unchanged.
-  }, [series, onPointClick, onRangeSelect, toggleableLegend, theme]);
+  }, [series, onPointClick, onRangeSelect, toggleableLegend, formatX, theme]);
 
   return (
     <div className={styles.wrap} style={{ height }}>

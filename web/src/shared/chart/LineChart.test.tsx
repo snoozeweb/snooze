@@ -200,4 +200,26 @@ describe("LineChart", () => {
     onClick?.({}, [{ datasetIndex: 0, index: 0 }], {});
     expect(onPointClick).toHaveBeenCalledTimes(1);
   });
+
+  it("routes axis ticks and the tooltip title through formatX when provided", () => {
+    captured.config = null;
+    const formatX = vi.fn((x: string) => `fmt:${x}`);
+    render(<LineChart ariaLabel="Alerts over time" series={THREE_POINTS} formatX={formatX} />);
+    const cfg = captured.config as {
+      options: {
+        scales: { x: { ticks: { callback: (this: unknown, v: unknown) => unknown } } };
+        plugins: {
+          tooltip: { callbacks: { title: (items: Array<{ label: string }>) => unknown } };
+        };
+      };
+    };
+    // Category-scale tick callback receives the index; `this.getLabelForValue`
+    // yields the category (the bucket's x string), which formatX rewrites.
+    const tickCb = cfg.options.scales.x.ticks.callback;
+    const scaleThis = { getLabelForValue: () => "2026-06-01T01:00:00Z" };
+    expect(tickCb.call(scaleThis, 1)).toBe("fmt:2026-06-01T01:00:00Z");
+    // Tooltip title uses the first hovered item's label.
+    const titleCb = cfg.options.plugins.tooltip.callbacks.title;
+    expect(titleCb([{ label: "2026-06-01T02:00:00Z" }])).toBe("fmt:2026-06-01T02:00:00Z");
+  });
 });
