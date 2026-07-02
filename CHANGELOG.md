@@ -169,6 +169,10 @@
   read-time `status` field (`ok` or `overdue`) on every heartbeat document.
   An optional `?status=` query parameter filters the list to heartbeats
   matching the supplied value(s). No database migration required.
+- **Inputs page** (Admin → Inputs): lists every supported alert input with its
+  last-received time, a docs link, and a per-input "how to send alerts" guide.
+- `GET /api/v1/inputs`: per-source alert activity (max epoch + count within a
+  windowed lookback), gated by `ro_stats`/`rw_stats`.
 
 ### Fixed
 
