@@ -131,6 +131,23 @@ type RecordAggregator interface {
 	RecordStats(ctx context.Context, from, to time.Time, bucketSec int64) (RecordStatsBuckets, error)
 }
 
+// SourceActivity is one row of SourceActivityAggregator.SourceActivity: the
+// most recent alert epoch and the count of alerts for a given record `source`,
+// within the requested window.
+type SourceActivity struct {
+	Source    string `json:"source"`
+	LastEpoch int64  `json:"last_epoch"`
+	Count     int64  `json:"count"`
+}
+
+// SourceActivityAggregator is an optional capability answering "when did each
+// alert source last send, and how many, since `since`?" in one grouped query.
+// The /api/v1/inputs handler probes for it via type assertion. `since` is a
+// Unix epoch (seconds); 0 means no lower bound. Results are tenant-scoped.
+type SourceActivityAggregator interface {
+	SourceActivity(ctx context.Context, since int64) ([]SourceActivity, error)
+}
+
 // Driver is the contract every storage backend implements. Methods that return
 // counts return -1 on a backend that cannot cheaply compute the count.
 type Driver interface {

@@ -63,6 +63,7 @@ func RunDriverSuite(t *testing.T, name string, factory Factory) {
 		{"CleanupSnooze", testCleanupSnooze},
 		{"CleanupNotification", testCleanupNotification},
 		{"ComputeStats", testComputeStats},
+		{"SourceActivity", testSourceActivity},
 		{"TenantMatchCollection", testTenantMatchCollection},
 		{"WriteStampsTenantID", testWriteStampsTenantID},
 		{"WriteUpsertTenantFenced", testWriteUpsertTenantFenced},
@@ -1572,4 +1573,55 @@ func testCleanupNakedContextFailClosed(t *testing.T, drv db.Driver) {
 
 	_, err = drv.ComputeStats(naked, "stats", time.Unix(0, 0), time.Now(), "day")
 	require.ErrorIs(t, err, snoozetypes.ErrNoTenant, "ComputeStats on naked ctx must fail closed, got: %v", err)
+}
+
+// testSourceActivity exercises db.SourceActivityAggregator: MAX(date_epoch) +
+// COUNT(*) per record `source`, honoring the `since` lower bound. It also pins
+// the cross-backend parity edges: a missing OR empty-string `source` merges
+// into "unknown", and a missing `date_epoch` is treated as epoch 0.
+func testSourceActivity(t *testing.T, drv db.Driver) {
+	agg, ok := drv.(db.SourceActivityAggregator)
+	require.True(t, ok, "driver must implement SourceActivityAggregator")
+
+	base := int64(1_700_000_000)
+	// Preserve seeded date_epoch (UpdateTime would overwrite it with now).
+	_, err := drv.Write(ctx(), "record", []db.Document{
+		{"host": "h1", "source": "prometheus", "date_epoch": base},
+		{"host": "h2", "source": "prometheus", "date_epoch": base + 30},
+		{"host": "h3", "source": "syslog", "date_epoch": base + 10},
+		{"host": "h4", "date_epoch": base + 5},               // no source → "unknown"
+		{"host": "h5", "source": "", "date_epoch": base + 7}, // empty source → "unknown"
+		{"host": "h6", "source": "otlp"},                     // no date_epoch → 0
+	}, db.WriteOptions{UpdateTime: false})
+	require.NoError(t, err)
+
+	rows, err := agg.SourceActivity(ctx(), 0)
+	require.NoError(t, err)
+	got := map[string]db.SourceActivity{}
+	for _, r := range rows {
+		got[r.Source] = r
+	}
+	require.Equal(t, int64(base+30), got["prometheus"].LastEpoch)
+	require.Equal(t, int64(2), got["prometheus"].Count)
+	require.Equal(t, int64(base+10), got["syslog"].LastEpoch)
+	require.Equal(t, int64(1), got["syslog"].Count)
+	// h4 (missing source) + h5 (empty source) both fold into "unknown".
+	require.Equal(t, int64(2), got["unknown"].Count)
+	require.Equal(t, int64(base+7), got["unknown"].LastEpoch)
+	// h6 has no date_epoch → epoch 0, still counted when since=0.
+	require.Equal(t, int64(0), got["otlp"].LastEpoch)
+	require.Equal(t, int64(1), got["otlp"].Count)
+
+	// Window filter: since = base+20 drops the earlier rows.
+	rows2, err := agg.SourceActivity(ctx(), base+20)
+	require.NoError(t, err)
+	got2 := map[string]db.SourceActivity{}
+	for _, r := range rows2 {
+		got2[r.Source] = r
+	}
+	require.Equal(t, int64(1), got2["prometheus"].Count) // only base+30 survives
+	_, hasSyslog := got2["syslog"]
+	require.False(t, hasSyslog) // base+10 < base+20
+	_, hasOtlp := got2["otlp"]
+	require.False(t, hasOtlp) // epoch 0 < base+20
 }
