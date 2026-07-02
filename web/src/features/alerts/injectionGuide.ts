@@ -152,6 +152,33 @@ const WEBHOOK_SEEDS: WebhookSeed[] = [
     sourceKeys: ["kapacitor"],
   },
   {
+    id: "graylog",
+    name: "Graylog",
+    endpoint: "POST /api/v1/webhook/graylog",
+    summary:
+      "Add a Graylog stream alert HTTP notification pointing at this URL. Fire-only — there's no resolved callback, so rely on a snooze TTL or manual close for resolution.",
+    docSlug: "general/integrations/graylog",
+    sourceKeys: ["graylog"],
+  },
+  {
+    id: "stackdriver",
+    name: "Stackdriver",
+    endpoint: "POST /api/v1/webhook/stackdriver",
+    summary:
+      "Add a Google Cloud Monitoring (Stackdriver) notification channel targeting this URL. Incident state — open, acknowledged, closed — drives record severity and close events.",
+    docSlug: "general/integrations/stackdriver",
+    sourceKeys: ["stackdriver"],
+  },
+  {
+    id: "pingdom",
+    name: "Pingdom",
+    endpoint: "POST /api/v1/webhook/pingdom",
+    summary:
+      "Add a Pingdom webhook integration pointing at this URL. UP/DOWN state changes drive severity, and a resolving UP event closes the record.",
+    docSlug: "general/integrations/pingdom",
+    sourceKeys: ["pingdom"],
+  },
+  {
     id: "heartbeat",
     name: "Heartbeat",
     endpoint: "POST /api/v1/webhook/heartbeat",

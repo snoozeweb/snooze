@@ -9,11 +9,11 @@ import {
 } from "./injectionGuide";
 
 describe("injectionGuide catalogue", () => {
-  it("covers REST + 11 webhooks + 6 daemons", () => {
+  it("covers REST + 14 webhooks + 6 daemons", () => {
     expect(REST_SOURCE.id).toBe("rest");
-    expect(WEBHOOK_SOURCES).toHaveLength(11);
+    expect(WEBHOOK_SOURCES).toHaveLength(14);
     expect(DAEMON_SOURCES).toHaveLength(6);
-    expect(INJECTION_SOURCES).toHaveLength(18);
+    expect(INJECTION_SOURCES).toHaveLength(21);
   });
 
   it("every source has a summary and a docs slug, and unique ids", () => {
@@ -28,7 +28,7 @@ describe("injectionGuide catalogue", () => {
 
   it("sourcesForFamily filters by family", () => {
     expect(sourcesForFamily("rest").map((s) => s.id)).toEqual(["rest"]);
-    expect(sourcesForFamily("webhook")).toHaveLength(11);
+    expect(sourcesForFamily("webhook")).toHaveLength(14);
     expect(sourcesForFamily("daemon")).toHaveLength(6);
     expect(sourcesForFamily("daemon")).toEqual(DAEMON_SOURCES);
   });
