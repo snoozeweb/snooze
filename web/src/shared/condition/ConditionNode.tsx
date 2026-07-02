@@ -7,6 +7,7 @@ import { IconButton } from "@/shared/ui/IconButton";
 import { Input } from "@/shared/ui/Input";
 import { Select, SelectContent, SelectItem, SelectTrigger } from "@/shared/ui/Select";
 import { OPERATORS, valueShapeForOp } from "@/lib/condition/operators";
+import { switchLogicOp } from "./logicOps";
 import type { Condition, ConditionType } from "@/lib/condition/types";
 import styles from "./ConditionEditor.module.css";
 
@@ -94,16 +95,9 @@ export function ConditionNode({
     const children = childArgsOf(logic);
 
     function changeLogicOp(nextOp: "AND" | "OR" | "NOT") {
-      if (nextOp === "NOT") {
-        // NOT takes a single arg — keep the first child, drop the rest.
-        const first = children[0] ?? defaultLeaf();
-        onChange({ type: "NOT", arg: first });
-        return;
-      }
-      // AND/OR need at least two args so the editor stays paired.
-      let args = children.slice();
-      if (args.length < 2) args = [...args, defaultLeaf()];
-      onChange({ type: nextOp, args });
+      // Switching a multi-child group to NOT negates the whole group rather than
+      // discarding all but the first child (see switchLogicOp) — no data loss.
+      onChange(switchLogicOp(logic, nextOp, defaultLeaf));
     }
 
     function addChild() {

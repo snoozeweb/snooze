@@ -1,4 +1,4 @@
-import { act, render, screen, waitFor } from "@testing-library/react";
+import { act, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { http, HttpResponse } from "msw";
@@ -6,6 +6,7 @@ import { describe, expect, it, vi, afterEach } from "vitest";
 import type { ReactNode } from "react";
 import { mswServer } from "@/tests/msw/server";
 import { authStore } from "@/lib/auth/store";
+import { toastStore } from "@/shared/ui/toast/useToast";
 import { CommentTimeline } from "./CommentTimeline";
 
 function wrap() {
@@ -29,6 +30,7 @@ describe("CommentTimeline", () => {
   afterEach(() => {
     vi.useRealTimers();
     authStore.getState().logout();
+    toastStore.clear();
   });
 
   it("posting an ack from the composer resyncs the alert list (invalidates record queries)", async () => {
@@ -58,17 +60,97 @@ describe("CommentTimeline", () => {
     );
 
     await screen.findByLabelText(/new comment/i);
-    // Switch the composer to "acknowledged", write a note, and post.
+    // Switch the composer to "acknowledged", write a note, and submit. The
+    // submit button is action-labelled, so it reads "Acknowledge" here.
     await user.click(screen.getByRole("button", { name: /acknowledged/i }));
     await user.type(screen.getByLabelText(/new comment/i), "on it");
     await act(async () => {
-      await user.click(screen.getByRole("button", { name: /^post$/i }));
+      await user.click(screen.getByRole("button", { name: /^acknowledge$/i }));
     });
 
     await waitFor(() => expect(bodies).toHaveLength(1));
     expect(bodies[0]).toMatchObject({ type: "ack" });
     const invalidatedKeys = spy.mock.calls.map((c) => JSON.stringify(c[0]?.queryKey));
     expect(invalidatedKeys).toContain(JSON.stringify(["record"]));
+  });
+
+  it("labels the submit button by the selected action and offers undo on a state change", async () => {
+    // A single generic "Post" button that silently changes alert state is a
+    // doomed-affordance smell. The button must name what it does, and a
+    // state-changing post must be undoable like the rest of the app.
+    loginWithPerms(["can_comment"]);
+    const posts: Array<{ type: string }> = [];
+    mswServer.use(
+      http.get("/api/v1/comment", () =>
+        HttpResponse.json({ data: [], meta: { count: 0, limit: 5, offset: 0, total: 0 } }),
+      ),
+      http.post("/api/v1/comment", async ({ request }) => {
+        posts.push((await request.json()) as { type: string });
+        return HttpResponse.json({ ok: true });
+      }),
+    );
+    const user = userEvent.setup();
+    render(
+      <QueryClientProvider
+        client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}
+      >
+        <CommentTimeline recordUid="r1" />
+      </QueryClientProvider>,
+    );
+    await screen.findByLabelText(/new comment/i);
+    // Default type is comment → the submit reads "Comment", not "Post".
+    expect(screen.getByRole("button", { name: /^comment$/i })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /^post$/i })).toBeNull();
+    // Switch to acknowledge → the submit relabels.
+    await user.click(screen.getByRole("button", { name: /acknowledged/i }));
+    expect(screen.getByRole("button", { name: /^acknowledge$/i })).toBeInTheDocument();
+    // Posting the ack raises an undo toast.
+    await user.type(screen.getByLabelText(/new comment/i), "on it");
+    await act(async () => {
+      await user.click(screen.getByRole("button", { name: /^acknowledge$/i }));
+    });
+    await waitFor(() => expect(posts.some((p) => p.type === "ack")).toBe(true));
+    await waitFor(() => expect(toastStore.getSnapshot().some((t) => t.action)).toBe(true));
+  });
+
+  it("confirms before deleting a comment", async () => {
+    loginWithPerms(["can_comment", "rw_record"]);
+    let deleted = 0;
+    mswServer.use(
+      http.get("/api/v1/comment", () =>
+        HttpResponse.json({
+          data: [
+            {
+              uid: "c1",
+              record_uid: "r1",
+              type: "comment",
+              message: "note here",
+              user: "tester",
+              date_epoch: 100,
+            },
+          ],
+          meta: { count: 1, limit: 5, offset: 0, total: 1 },
+        }),
+      ),
+      http.delete("/api/v1/comment/c1", () => {
+        deleted += 1;
+        return new HttpResponse(null, { status: 204 });
+      }),
+    );
+    const user = userEvent.setup();
+    render(
+      <QueryClientProvider
+        client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}
+      >
+        <CommentTimeline recordUid="r1" />
+      </QueryClientProvider>,
+    );
+    await screen.findByText("note here");
+    await user.click(screen.getByRole("button", { name: /delete comment/i }));
+    const dialog = await screen.findByRole("dialog");
+    expect(deleted).toBe(0);
+    await user.click(within(dialog).getByRole("button", { name: /delete/i }));
+    await waitFor(() => expect(deleted).toBe(1));
   });
 
   it("hides composer ack/esc chips the backend would reject for the record's state", async () => {

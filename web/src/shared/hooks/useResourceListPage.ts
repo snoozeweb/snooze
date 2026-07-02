@@ -36,6 +36,12 @@ export type UseResourceListPageOptions<T extends WithUid> = {
    * (e.g. snooze's retro-apply). Must be identity-stable across renders.
    */
   contextMenuExtras?: (row: T) => ContextMenuItem[];
+  /**
+   * Override the delete-confirm title/message for high-blast-radius resources
+   * (tenant → data inaccessible; role → users lose permissions). Must be a
+   * STABLE reference (module-level fn or useCallback).
+   */
+  confirmDescribe?: ((rows: T[]) => { title?: string; message: string }) | undefined;
 };
 
 export type ResourceListPageApi<T extends WithUid, S extends BaseListSearch> = {
@@ -84,7 +90,7 @@ export type ResourceListPageApi<T extends WithUid, S extends BaseListSearch> = {
 export function useResourceListPage<T extends WithUid, S extends BaseListSearch = BaseListSearch>(
   opts: UseResourceListPageOptions<T>,
 ): ResourceListPageApi<T, S> {
-  const { to, remove, noun, contextMenuExtras } = opts;
+  const { to, remove, noun, contextMenuExtras, confirmDescribe } = opts;
   const navigate = useNavigate();
 
   const updateSearch = useCallback(
@@ -109,7 +115,12 @@ export function useResourceListPage<T extends WithUid, S extends BaseListSearch 
   const openRow = useCallback((uid: string) => updateSearch({ uid } as Partial<S>), [updateSearch]);
 
   const [selectedKeys, setSelectedKeys] = useState<Set<string>>(new Set());
-  const clearSelection = useCallback(() => setSelectedKeys(new Set()), []);
+  // After a delete, keep only the rows that FAILED selected (empty on full
+  // success → clears), so the operator can retry exactly those.
+  const keepFailedSelected = useCallback(
+    (failedRows: T[]) => setSelectedKeys(new Set(failedRows.map((r) => r.uid ?? "").filter(Boolean))),
+    [],
+  );
 
   // useMutation's result object changes identity on status flips, but its
   // mutateAsync method is referentially stable — capture it so the callbacks
@@ -118,7 +129,8 @@ export function useResourceListPage<T extends WithUid, S extends BaseListSearch 
   const confirmDelete = useConfirmDelete<T>({
     onDelete: deleteOne,
     noun,
-    onAfter: clearSelection,
+    onAfter: keepFailedSelected,
+    describe: confirmDescribe,
   });
   // useConfirmDelete returns a fresh object literal each render, but its
   // `request` action is stable. Depending on the action (not the wrapper)

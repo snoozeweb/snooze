@@ -20,6 +20,7 @@ import { RulesTreeTable, type InsertDirection } from "./RulesTreeTable";
 import { aggregateRuleColumns, rejectColumns } from "./columns";
 import { ROOT } from "./tree";
 import { ruleRowDisabled } from "./ruleUtils";
+import { shouldFirePendingHotkey } from "./pendingHotkeys";
 import type { AggregateRule, RejectRule, Rule } from "./types";
 import styles from "./RulesPage.module.css";
 
@@ -247,18 +248,13 @@ export function RulesPage() {
   }, []);
 
   // Keyboard shortcuts for pending-drop mode: Esc cancels, Enter validates.
-  // Guarded against form fields so a stray Enter in the search bar / editor
-  // drawer doesn't fire the save unexpectedly.
+  // Guarded against form fields AND open modals (shouldFirePendingHotkey) so a
+  // stray Enter in the search bar, or an Escape closing the editor drawer, can't
+  // silently discard or double-commit the staged reorder.
   useEffect(() => {
     if (pendingCount === 0) return;
     function onKey(e: KeyboardEvent) {
-      const target = e.target as HTMLElement | null;
-      if (target) {
-        const tag = target.tagName;
-        if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT" || target.isContentEditable) {
-          return;
-        }
-      }
+      if (!shouldFirePendingHotkey(e.target)) return;
       if (e.key === "Escape") {
         e.preventDefault();
         cancelPending();
@@ -306,17 +302,18 @@ export function RulesPage() {
   const confirmDeleteRule = useConfirmDelete<Rule>({
     onDelete: (uid) => removeRule.mutateAsync(uid),
     noun: "rule",
-    onAfter: () => setRuleSelected(new Set()),
+    onAfter: (failed) => setRuleSelected(new Set(failed.map((r) => r.uid ?? "").filter(Boolean))),
   });
   const confirmDelete = useConfirmDelete<AggregateRule>({
     onDelete: (uid) => removeAggregate.mutateAsync(uid),
     noun: "aggregate rule",
-    onAfter: () => setAggregateSelected(new Set()),
+    onAfter: (failed) =>
+      setAggregateSelected(new Set(failed.map((r) => r.uid ?? "").filter(Boolean))),
   });
   const confirmDeleteReject = useConfirmDelete<RejectRule>({
     onDelete: (uid) => removeReject.mutateAsync(uid),
     noun: "reject rule",
-    onAfter: () => setRejectSelected(new Set()),
+    onAfter: (failed) => setRejectSelected(new Set(failed.map((r) => r.uid ?? "").filter(Boolean))),
   });
 
   const aggregateContextMenu = useCallback(

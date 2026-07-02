@@ -292,7 +292,9 @@ export function AlertsPage() {
   const confirmDelete = useConfirmDelete<Record_>({
     onDelete: (uid) => removeMut.mutateAsync(uid),
     noun: "alert",
-    onAfter: () => setSelectedKeys(new Set()),
+    // Keep only failed rows selected so a retry targets exactly them.
+    onAfter: (failed) =>
+      setSelectedKeys(new Set(failed.map((r) => r.uid ?? "").filter(Boolean))),
   });
 
   const openDialog = useCallback(

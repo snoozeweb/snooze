@@ -2,6 +2,7 @@ import { useCallback, useMemo, useState } from "react";
 import { useSearch } from "@tanstack/react-router";
 import { useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/shared/ui/Button";
+import { Dialog, DialogBody, DialogContent, DialogFooter, DialogTitle } from "@/shared/ui/Dialog";
 import { DataTable, type RowAction } from "@/shared/ui/DataTable";
 import type { ContextMenuItem } from "@/shared/ui/DataTableContextMenu";
 import { EmptyState } from "@/shared/ui/EmptyState";
@@ -52,20 +53,52 @@ export function SnoozesPage() {
   const remove = Snoozes.useRemove();
   const qc = useQueryClient();
 
-  const runRetroApply = useCallback(
-    async (row: Snooze) => {
-      if (!row.uid) return;
-      try {
-        const res = await apiClient<RetroApplyResponse>("POST", `/snooze/${row.uid}/retro_apply`);
-        const verb = res.deleted ? "discarded" : "tagged";
-        toast.success(`${res.matched} alerts ${verb} by ${row.name}`);
-        void qc.invalidateQueries({ queryKey: Snoozes.queryKey.all });
-        void qc.invalidateQueries({ queryKey: Records.queryKey.all });
-      } catch (e) {
-        toast.error(e instanceof ApiError ? e.detail : "Retro-apply failed");
+  // A discard snooze's retro-apply permanently DELETES every matching alert
+  // (backend hard-deletes when discard=true), so it goes behind a confirm.
+  // Tag-mode retro-apply is non-destructive and runs immediately.
+  const [retroConfirm, setRetroConfirm] = useState<Snooze[] | null>(null);
+  const [retroBusy, setRetroBusy] = useState(false);
+
+  const doRetroApply = useCallback(
+    async (rows: Snooze[]) => {
+      const targets = rows.filter((r) => r.uid);
+      if (targets.length === 0) return;
+      const results = await Promise.allSettled(
+        targets.map((r) => apiClient<RetroApplyResponse>("POST", `/snooze/${r.uid}/retro_apply`)),
+      );
+      if (targets.length === 1) {
+        const res = results[0];
+        if (res && res.status === "fulfilled") {
+          const verb = res.value.deleted ? "discarded" : "tagged";
+          toast.success(`${res.value.matched} alerts ${verb} by ${targets[0]!.name}`);
+        } else {
+          const reason =
+            res && res.status === "rejected" && res.reason instanceof ApiError
+              ? res.reason.detail
+              : "Retro-apply failed";
+          toast.error(reason);
+        }
+      } else {
+        const ok = results.filter((r) => r.status === "fulfilled").length;
+        const failed = results.length - ok;
+        if (failed === 0) toast.success(`Retro-applied ${ok} snooze${ok === 1 ? "" : "s"}`);
+        else if (ok === 0)
+          toast.error(`Retro-apply failed for all ${failed} snooze${failed === 1 ? "" : "s"}`);
+        else toast.error(`Retro-apply: ${ok} succeeded, ${failed} failed`);
       }
+      void qc.invalidateQueries({ queryKey: Snoozes.queryKey.all });
+      void qc.invalidateQueries({ queryKey: Records.queryKey.all });
     },
     [qc],
+  );
+
+  // Confirm first when any target is a discard snooze; otherwise run now.
+  const requestRetroApply = useCallback(
+    (rows: Snooze[]) => {
+      if (rows.some((r) => r.discard)) setRetroConfirm(rows);
+      else void doRetroApply(rows);
+    },
+    [doRetroApply],
   );
 
   // Inject a retro-apply item into the standard resource context menu.
@@ -74,11 +107,12 @@ export function SnoozesPage() {
       {
         key: "retro-apply",
         label: r.discard ? "Retro-apply (delete matches)" : "Retro-apply (tag matches)",
-        icon: "rotate-cw",
-        onSelect: () => void runRetroApply(r),
+        icon: r.discard ? "trash" : "rotate-cw",
+        ...(r.discard ? { danger: true } : {}),
+        onSelect: () => requestRetroApply([r]),
       },
     ],
-    [runRetroApply],
+    [requestRetroApply],
   );
 
   const { updateSearch, selectedKeys, setSelectedKeys, confirmDelete, contextMenuItems } =
@@ -128,8 +162,9 @@ export function SnoozesPage() {
         {
           key: "retro-apply",
           label: row.discard ? "Retro-apply (delete matches)" : "Retro-apply (tag matches)",
-          icon: "rotate-cw",
-          onSelect: () => void runRetroApply(row),
+          icon: row.discard ? "trash" : "rotate-cw",
+          ...(row.discard ? { danger: true } : {}),
+          onSelect: () => requestRetroApply([row]),
         },
         {
           key: "edit",
@@ -139,7 +174,7 @@ export function SnoozesPage() {
         },
       ];
     },
-    [updateSearch, runRetroApply],
+    [updateSearch, requestRetroApply],
   );
 
   const bulkActions = useCallback(
@@ -149,29 +184,7 @@ export function SnoozesPage() {
           size="sm"
           variant="secondary"
           leadingIcon="rotate-cw"
-          onClick={() => {
-            void (async () => {
-              const results = await Promise.allSettled(
-                rows.map(async (r) => {
-                  if (!r.uid) throw new Error("no uid");
-                  return apiClient<RetroApplyResponse>("POST", `/snooze/${r.uid}/retro_apply`);
-                }),
-              );
-              const ok = results.filter((r) => r.status === "fulfilled").length;
-              const failed = results.length - ok;
-              if (failed === 0) {
-                toast.success(`Retro-applied ${ok} snooze${ok === 1 ? "" : "s"}`);
-              } else if (ok === 0) {
-                toast.error(
-                  `Retro-apply failed for all ${failed} snooze${failed === 1 ? "" : "s"}`,
-                );
-              } else {
-                toast.error(`Retro-apply: ${ok} succeeded, ${failed} failed`);
-              }
-              void qc.invalidateQueries({ queryKey: Snoozes.queryKey.all });
-              void qc.invalidateQueries({ queryKey: Records.queryKey.all });
-            })();
-          }}
+          onClick={() => requestRetroApply(rows)}
         >
           Retro-apply ({rows.length})
         </Button>
@@ -185,7 +198,7 @@ export function SnoozesPage() {
         </Button>
       </>
     ),
-    [confirmDelete, qc],
+    [confirmDelete, requestRetroApply],
   );
 
   // Toolbar header + actions: now rendered next to the SearchBar via the
@@ -284,6 +297,51 @@ export function SnoozesPage() {
         onCancel={confirmDelete.cancel}
         onConfirm={() => void confirmDelete.confirm()}
       />
+      <Dialog
+        open={retroConfirm !== null}
+        onOpenChange={(o) => {
+          if (!o) setRetroConfirm(null);
+        }}
+      >
+        <DialogContent>
+          <DialogTitle>Delete matching alerts?</DialogTitle>
+          <DialogBody>
+            {(() => {
+              const rows = retroConfirm ?? [];
+              const discarders = rows.filter((r) => r.discard);
+              if (rows.length === 1) {
+                return `"${rows[0]!.name}" is a discard snooze — retro-applying it permanently deletes every alert that currently matches its condition. This cannot be undone.`;
+              }
+              return `${discarders.length} of the ${rows.length} selected snoozes discard matches — retro-applying permanently deletes every alert those currently match. This cannot be undone.`;
+            })()}
+          </DialogBody>
+          <DialogFooter>
+            <Button variant="secondary" onClick={() => setRetroConfirm(null)} disabled={retroBusy}>
+              Cancel
+            </Button>
+            <Button
+              variant="danger"
+              leadingIcon="trash"
+              loading={retroBusy}
+              disabled={retroBusy}
+              onClick={() => {
+                const rows = retroConfirm ?? [];
+                void (async () => {
+                  setRetroBusy(true);
+                  try {
+                    await doRetroApply(rows);
+                  } finally {
+                    setRetroBusy(false);
+                    setRetroConfirm(null);
+                  }
+                })();
+              }}
+            >
+              Delete matching alerts
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

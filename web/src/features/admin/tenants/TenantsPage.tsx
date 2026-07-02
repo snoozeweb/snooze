@@ -14,6 +14,7 @@ import { Tenants } from "./api";
 import { AdminCredentialDialog } from "./AdminCredentialDialog";
 import { TenantEditor } from "./TenantEditor";
 import { tenantColumns } from "./columns";
+import { describeTenantDelete } from "./deleteCopy";
 import type { AdminCredential, Tenant } from "./types";
 import styles from "./TenantsPage.module.css";
 
@@ -45,6 +46,7 @@ export function TenantsPage() {
     to: "/web/admin/tenants",
     remove,
     noun: "tenant",
+    confirmDescribe: describeTenantDelete,
   });
 
   const list = Tenants.useList({

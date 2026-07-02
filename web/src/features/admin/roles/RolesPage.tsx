@@ -10,6 +10,7 @@ import { ConfirmDeleteDialog } from "@/shared/ui/resourceContextMenu";
 import { Roles } from "./api";
 import { RoleEditor } from "./RoleEditor";
 import { roleColumns } from "./columns";
+import { describeRoleDelete } from "./deleteCopy";
 import type { Role } from "./types";
 import styles from "./RolesPage.module.css";
 
@@ -39,6 +40,7 @@ export function RolesPage() {
     to: "/web/admin/roles",
     remove,
     noun: "role",
+    confirmDescribe: describeRoleDelete,
   });
 
   const rolesSearch = useTableSearch({

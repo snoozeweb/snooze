@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { Button } from "@/shared/ui/Button";
+import { Dialog, DialogBody, DialogContent, DialogFooter, DialogTitle } from "@/shared/ui/Dialog";
 import { MetadataField } from "@/shared/forms/MetadataForm";
 import { toast } from "@/shared/ui/toast/useToast";
 import { ApiError } from "@/lib/api/client";
@@ -73,6 +74,11 @@ export function SettingCard({ field, name, initialValue, recordUid, onChange }: 
   const update = Settings.useUpdate();
   const remove = Settings.useRemove();
 
+  // Reverting deletes the persisted override — for ldap.*/oidc.* that can
+  // disable an auth method live, so it goes behind a confirm instead of firing
+  // on a single click like the harmless Reset next to it.
+  const [confirmingRevert, setConfirmingRevert] = useState(false);
+
   // Dirty tracking: compare the typed value against what came from the DB.
   // When no record exists we compare against the catalogue's default so the
   // user can save the default verbatim if they want to (creates a row).
@@ -104,6 +110,7 @@ export function SettingCard({ field, name, initialValue, recordUid, onChange }: 
     try {
       await remove.mutateAsync(recordUid);
       toast.success(`Reverted ${field.display_name} to default`);
+      setConfirmingRevert(false);
       onChange();
     } catch (e) {
       toast.error(e instanceof ApiError ? e.detail : "Revert failed");
@@ -135,8 +142,7 @@ export function SettingCard({ field, name, initialValue, recordUid, onChange }: 
             size="sm"
             variant="ghost"
             className={styles.deleteSpacer}
-            onClick={() => void handleRevert()}
-            loading={remove.isPending}
+            onClick={() => setConfirmingRevert(true)}
             disabled={submitting}
           >
             Revert to default
@@ -155,6 +161,32 @@ export function SettingCard({ field, name, initialValue, recordUid, onChange }: 
           Save
         </Button>
       </div>
+      <Dialog open={confirmingRevert} onOpenChange={setConfirmingRevert}>
+        <DialogContent>
+          <DialogTitle>Revert {field.display_name} to default?</DialogTitle>
+          <DialogBody>
+            This removes your saved value for {field.display_name} and restores the built-in
+            default. It takes effect immediately and cannot be undone.
+          </DialogBody>
+          <DialogFooter>
+            <Button
+              variant="secondary"
+              onClick={() => setConfirmingRevert(false)}
+              disabled={remove.isPending}
+            >
+              Cancel
+            </Button>
+            <Button
+              variant="danger"
+              onClick={() => void handleRevert()}
+              loading={remove.isPending}
+              disabled={remove.isPending}
+            >
+              Revert to default
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </section>
   );
 }

@@ -12,6 +12,7 @@
 import { useState } from "react";
 import { Badge, type BadgeVariant } from "@/shared/ui/Badge";
 import { Button } from "@/shared/ui/Button";
+import { Dialog, DialogBody, DialogContent, DialogFooter, DialogTitle } from "@/shared/ui/Dialog";
 import { IconButton } from "@/shared/ui/IconButton";
 import { Skeleton } from "@/shared/ui/Skeleton";
 import { useAuth } from "@/lib/auth/store";
@@ -51,6 +52,13 @@ const TYPE_VARIANT: Record<Comment["type"], BadgeVariant> = {
 // posting can route through useCommentRecord (which resyncs the record list).
 const COMPOSER_TYPES = ["comment", "ack", "esc"] as const;
 type ComposerType = (typeof COMPOSER_TYPES)[number];
+// The submit button names exactly what it will do — a generic "Post" that
+// silently changes alert state is a doomed affordance.
+const SUBMIT_LABEL: Record<ComposerType, string> = {
+  comment: "Comment",
+  ack: "Acknowledge",
+  esc: "Re-escalate",
+};
 const PAGE_SIZE_OPTIONS = [5, 10, 20] as const;
 
 export function CommentTimeline({
@@ -91,6 +99,9 @@ export function CommentTimeline({
   // Edit state — one comment at a time.
   const [editingUid, setEditingUid] = useState<string | undefined>(undefined);
   const [editDraft, setEditDraft] = useState("");
+  // Delete confirmation — comment deletion is irreversible, so it goes behind a
+  // confirm dialog instead of firing on a single trash-icon click.
+  const [deletingUid, setDeletingUid] = useState<string | undefined>(undefined);
 
   if (recordUid === undefined) {
     return <p className={styles.empty}>Open an alert to see its timeline.</p>;
@@ -107,16 +118,29 @@ export function CommentTimeline({
   );
 
   async function handlePost() {
-    if (!draft.trim() || !recordUid) return;
+    const rid = recordUid;
+    if (!draft.trim() || !rid) return;
+    const type = draftType;
     try {
-      await post.mutateAsync({
-        record_uid: recordUid,
-        type: draftType,
-        message: draft.trim(),
-      });
+      await post.mutateAsync({ record_uid: rid, type, message: draft.trim() });
       setDraft("");
       setDraftType("comment");
-      toast.success("Posted");
+      if (type === "ack" || type === "esc") {
+        // A state change from here is undoable, like the inline row actions: the
+        // Undo posts a compensating re-open (both events stay on the timeline).
+        const verb = type === "ack" ? "Acknowledged" : "Re-escalated";
+        toast.undo(verb, () => {
+          void (async () => {
+            try {
+              await post.mutateAsync({ record_uid: rid, type: "open" });
+            } catch (e) {
+              toast.error(e instanceof ApiError ? e.detail : "Undo failed");
+            }
+          })();
+        });
+      } else {
+        toast.success("Comment posted");
+      }
     } catch (e) {
       toast.error(e instanceof ApiError ? e.detail : "Post failed");
     }
@@ -137,6 +161,7 @@ export function CommentTimeline({
   async function handleDelete(uid: string) {
     try {
       await remove.mutateAsync(uid);
+      setDeletingUid(undefined);
       toast.success("Deleted");
     } catch (e) {
       toast.error(e instanceof ApiError ? e.detail : "Delete failed");
@@ -180,7 +205,7 @@ export function CommentTimeline({
                 void handlePost();
               }}
             >
-              Post
+              {SUBMIT_LABEL[draftType]}
             </Button>
           </div>
         </div>
@@ -269,7 +294,7 @@ export function CommentTimeline({
                     label="Delete comment"
                     size="sm"
                     variant="ghost"
-                    onClick={() => c.uid && void handleDelete(c.uid)}
+                    onClick={() => c.uid && setDeletingUid(c.uid)}
                   />
                 </span>
               ) : (
@@ -337,6 +362,37 @@ export function CommentTimeline({
           </span>
         </div>
       ) : null}
+
+      <Dialog
+        open={deletingUid !== undefined}
+        onOpenChange={(o) => {
+          if (!o) setDeletingUid(undefined);
+        }}
+      >
+        <DialogContent>
+          <DialogTitle>Delete comment?</DialogTitle>
+          <DialogBody>This permanently removes the comment. It cannot be undone.</DialogBody>
+          <DialogFooter>
+            <Button
+              variant="secondary"
+              onClick={() => setDeletingUid(undefined)}
+              disabled={remove.isPending}
+            >
+              Cancel
+            </Button>
+            <Button
+              variant="danger"
+              loading={remove.isPending}
+              disabled={remove.isPending}
+              onClick={() => {
+                if (deletingUid) void handleDelete(deletingUid);
+              }}
+            >
+              Delete
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

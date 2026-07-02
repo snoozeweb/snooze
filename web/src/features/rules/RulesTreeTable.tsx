@@ -312,7 +312,7 @@ export function RulesTreeTable({
   const confirmDelete = useConfirmDelete<Rule>({
     onDelete: (uid) => remove.mutateAsync(uid),
     noun: "rule",
-    onAfter: () => setSelected(new Set()),
+    onAfter: (failed) => setSelected(new Set(failed.map((r) => r.uid ?? "").filter(Boolean))),
   });
 
   // Per-row "details" expansion. We force-close while dragging — leaving

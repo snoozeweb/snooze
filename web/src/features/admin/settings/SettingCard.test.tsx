@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { http, HttpResponse } from "msw";
@@ -192,7 +192,9 @@ describe("SettingCard", () => {
     expect(screen.getByRole("button", { name: /^save$/i })).toBeDisabled();
   });
 
-  it("Delete reverts a record by DELETEing it", async () => {
+  it("revert asks for confirmation first, then DELETEs the record", async () => {
+    // Reverting an ldap.*/oidc.* setting deletes the live override — one misclick
+    // can disable an auth method for everyone. It must confirm before deleting.
     let deleted = 0;
     mswServer.use(
       http.delete("/api/v1/settings/s-5", () => {
@@ -214,7 +216,12 @@ describe("SettingCard", () => {
         />
       </Wrapper>,
     );
+    // Clicking the toolbar button opens a confirm dialog — it must NOT delete yet.
     await user.click(screen.getByRole("button", { name: /revert to default/i }));
+    const dialog = await screen.findByRole("dialog");
+    expect(deleted).toBe(0);
+    // Confirm inside the dialog to actually delete.
+    await user.click(within(dialog).getByRole("button", { name: /revert/i }));
     await waitFor(() => expect(deleted).toBe(1));
     await waitFor(() => expect(onChange).toHaveBeenCalled());
   });

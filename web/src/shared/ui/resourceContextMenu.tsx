@@ -2,10 +2,18 @@ import { useCallback, useState } from "react";
 import { Button } from "@/shared/ui/Button";
 import { Dialog, DialogBody, DialogContent, DialogFooter, DialogTitle } from "@/shared/ui/Dialog";
 import { toast } from "@/shared/ui/toast/useToast";
+import { ApiError } from "@/lib/api/client";
 import { copyToClipboard } from "@/lib/clipboard";
 import type { ContextMenuItem } from "@/shared/ui/DataTableContextMenu";
 
 type WithUid = { uid?: string };
+
+// Best-effort human label for a row in failure messages. Most resources carry a
+// name or host; fall back to the uid.
+function deleteLabel(row: WithUid): string {
+  const r = row as { name?: string; host?: string; uid?: string };
+  return r.name ?? r.host ?? r.uid ?? "?";
+}
 
 export type ResourceMenuParams<T extends WithUid> = {
   onDelete: (uid: string) => Promise<unknown>;
@@ -63,26 +71,42 @@ export type ConfirmState<T> = {
 export function useConfirmDelete<T extends WithUid>(opts: {
   onDelete: (uid: string) => Promise<unknown>;
   noun: string;
-  /** Optional invalidator to refresh related queries after delete. */
-  onAfter?: () => void;
+  /**
+   * Called after the delete settles, with the rows that FAILED (empty on full
+   * success). Callers use it to keep only the failed rows selected — so a retry
+   * targets exactly them and successfully-deleted rows don't linger selected.
+   */
+  onAfter?: (failedRows: T[]) => void;
+  /**
+   * Override the confirm dialog's title/message for high-blast-radius deletes
+   * (e.g. a tenant makes all its data inaccessible; a role strips permissions).
+   * Pass a STABLE reference (module-level fn or useCallback) so `request` stays
+   * identity-stable for DataTable's row memo.
+   */
+  describe?: ((rows: T[]) => { title?: string; message: string }) | undefined;
 }) {
   const [state, setState] = useState<ConfirmState<T> | null>(null);
+  // Destructure the stable inputs so `request` depends only on them (callers
+  // pass a stable `describe`), keeping its identity stable for DataTable's memo.
+  const { noun, describe } = opts;
 
   const request = useCallback(
     (rows: T[]) => {
       if (rows.length === 0) return;
       const n = rows.length;
+      const custom = describe?.(rows);
       setState({
         rows,
         busy: false,
-        title: n === 1 ? `Delete ${opts.noun}?` : `Delete ${n} ${opts.noun}s?`,
+        title: custom?.title ?? (n === 1 ? `Delete ${noun}?` : `Delete ${n} ${noun}s?`),
         message:
-          n === 1
-            ? `This will permanently delete the selected ${opts.noun}.`
-            : `This will permanently delete ${n} ${opts.noun}s.`,
+          custom?.message ??
+          (n === 1
+            ? `This will permanently delete the selected ${noun}.`
+            : `This will permanently delete ${n} ${noun}s.`),
       });
     },
-    [opts.noun],
+    [noun, describe],
   );
 
   const cancel = useCallback(() => setState(null), []);
@@ -94,15 +118,27 @@ export function useConfirmDelete<T extends WithUid>(opts: {
       rows.map((r) => (r.uid ? opts.onDelete(r.uid) : Promise.reject(new Error("no uid")))),
     );
     const ok = results.filter((r) => r.status === "fulfilled").length;
-    const failed = results.length - ok;
+    const failedRows = rows.filter((_, i) => results[i]?.status === "rejected");
+    const failed = failedRows.length;
     if (failed === 0) {
       toast.success(`Deleted ${ok} ${opts.noun}${ok === 1 ? "" : "s"}`);
-    } else if (ok === 0) {
-      toast.error(`Failed to delete ${failed} ${opts.noun}${failed === 1 ? "" : "s"}`);
     } else {
-      toast.error(`${failed} of ${results.length} deletions failed`);
+      // Surface the backend's actual reason (e.g. a GuardDelete rejection) and,
+      // failing that, which rows failed — never a bare count.
+      const firstReason: unknown = results.find(
+        (r): r is PromiseRejectedResult => r.status === "rejected",
+      )?.reason;
+      const detail = firstReason instanceof ApiError ? firstReason.detail : "";
+      const because = detail || failedRows.map(deleteLabel).join(", ");
+      const prefix =
+        ok === 0
+          ? `Failed to delete ${failed} ${opts.noun}${failed === 1 ? "" : "s"}`
+          : `Deleted ${ok}; ${failed} ${opts.noun}${failed === 1 ? "" : "s"} failed`;
+      toast.error(because ? `${prefix}: ${because}` : prefix);
     }
-    opts.onAfter?.();
+    // Hand back the failed rows so the caller keeps only those selected (retry
+    // target). On full success this is empty, which clears the selection.
+    opts.onAfter?.(failedRows);
     setState(null);
   }, [opts, state]);
 

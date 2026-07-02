@@ -1,4 +1,5 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import { describe, expect, it } from "vitest";
 import {
@@ -65,5 +66,31 @@ describe("SnoozesPage", () => {
     );
     setup();
     await waitFor(() => expect(screen.getByText("Friday quiet")).toBeInTheDocument());
+  });
+
+  it("retro-apply on a discard snooze asks for confirmation before hard-deleting matches", async () => {
+    let posts = 0;
+    mswServer.use(
+      http.get("/api/v1/snooze", () =>
+        HttpResponse.json({
+          data: [{ uid: "s1", name: "Noisy disk", enabled: true, discard: true }],
+          meta: { count: 1, limit: 1000, offset: 0, total: 1 },
+        }),
+      ),
+      http.post("/api/v1/snooze/s1/retro_apply", () => {
+        posts += 1;
+        return HttpResponse.json({ matched: 5, deleted: 5, snooze: "s1" });
+      }),
+    );
+    const user = userEvent.setup();
+    setup();
+    await waitFor(() => expect(screen.getByText("Noisy disk")).toBeInTheDocument());
+    await user.click(screen.getByRole("button", { name: /row actions/i }));
+    await user.click(screen.getByRole("menuitem", { name: /retro-apply \(delete matches\)/i }));
+    // A discard retro-apply permanently deletes records — it must confirm first.
+    const dialog = await screen.findByRole("dialog");
+    expect(posts).toBe(0);
+    await user.click(within(dialog).getByRole("button", { name: /delete/i }));
+    await waitFor(() => expect(posts).toBe(1));
   });
 });

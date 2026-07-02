@@ -108,7 +108,7 @@ describe("ConditionEditor", () => {
 });
 
 describe("ConditionEditor — logic operator changes", () => {
-  it("switching AND → NOT truncates to the first child", async () => {
+  it("switching a multi-child AND → NOT negates the whole group (no child dropped)", async () => {
     let last: Condition | undefined;
     const Wrapper = wrap();
     render(
@@ -131,13 +131,19 @@ describe("ConditionEditor — logic operator changes", () => {
     const select = screen.getAllByRole("combobox")[0];
     if (!select) throw new Error("expected logic operator select");
     fireEvent.click(select);
-    // The hidden <select> Radix renders is also driven by changing value;
-    // simplest path: click trigger then click NOT option.
     const opt = await screen.findByRole("option", { name: "NOT" });
     fireEvent.click(opt);
+    // Previously this discarded the second clause; now it preserves every
+    // sub-condition by negating the group.
     expect(last).toEqual({
       type: "NOT",
-      arg: { type: "EQUALS", field: "host", value: "srv-1" },
+      arg: {
+        type: "AND",
+        args: [
+          { type: "EQUALS", field: "host", value: "srv-1" },
+          { type: "EQUALS", field: "env", value: "prod" },
+        ],
+      },
     });
   });
 
