@@ -1,9 +1,14 @@
 // AlertFlowChart — the pipeline path a single alert actually took:
 //   input → rules → aggregate → (snooze, terminal) | notifications → actions
 // All data comes from the record row; no fetch. Colours via Badge variants only.
-import type { ReactNode } from "react";
+// Every entity (rule, aggregate, snooze, notification, action) deep-links to
+// its management page with the page's search filter pre-set to the clicked
+// object by name — the same URL contract the dashboard drill-downs and
+// ActivityFeed use (see useTableSearch / SearchBar). Navigating to a page with
+// ?search=name = "X" lands with that filter already applied.
+import { Fragment, type ReactNode } from "react";
+import { Link } from "@tanstack/react-router";
 import { Badge, type BadgeVariant } from "@/shared/ui/Badge";
-import { Popover, PopoverTrigger, PopoverContent } from "@/shared/ui/Popover";
 import { Tooltip } from "@/shared/ui/Tooltip";
 import type { Record_ } from "./types";
 import styles from "./AlertFlowChart.module.css";
@@ -32,6 +37,15 @@ const ACTION_HINT: Record<string, string> = {
   sent: "Dispatched — outcome tracking disabled",
 };
 
+// nameQuery encodes a value into a search-DSL equality on `name`, e.g.
+// `name = "web-01"`. Backslash and double-quote are escaped to match the
+// lexer's string rules (shared/searchdsl/lexer.ts) so names containing spaces
+// or quotes still round-trip through the target page's SearchBar cleanly.
+function nameQuery(value: string): string {
+  const escaped = value.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
+  return `name = "${escaped}"`;
+}
+
 function Node({ label, children }: { label: string; children: ReactNode }) {
   return (
     <div className={styles.node}>
@@ -54,31 +68,27 @@ function ActionChip({ action }: { action: ActionResult }) {
       <span aria-hidden="true">{glyph}</span> {action.name}
     </Badge>
   );
-  if (status === "error" && action.error) {
-    return (
-      <Popover>
-        <PopoverTrigger
-          type="button"
-          className={styles.chipButton}
-          aria-label={`${action.name ?? "Action"} error details`}
-        >
-          {badge}
-        </PopoverTrigger>
-        <PopoverContent>
-          <div className={styles.errorMsg}>{action.error}</div>
-        </PopoverContent>
-      </Popover>
-    );
+  // The error message and the sent/skipped hints are both surfaced as a hover
+  // tooltip, which frees the chip's click to deep-link to the Actions page.
+  const tip = status === "error" && action.error ? action.error : ACTION_HINT[status];
+
+  // An action with no name can't be deep-linked — render the badge as plain
+  // text (with its tooltip, if any) so nothing is dropped.
+  if (!action.name) {
+    const plain = <span className={styles.chip}>{badge}</span>;
+    return tip ? <Tooltip content={tip}>{plain}</Tooltip> : plain;
   }
-  const hint = ACTION_HINT[status];
-  if (hint) {
-    return (
-      <Tooltip content={hint}>
-        <span className={styles.chip}>{badge}</span>
-      </Tooltip>
-    );
-  }
-  return <span className={styles.chip}>{badge}</span>;
+
+  const link = (
+    <Link
+      to="/web/notifications"
+      search={{ tab: "actions", actionSearch: nameQuery(action.name) }}
+      className={[styles.chip, styles.chipLink].join(" ")}
+    >
+      {badge}
+    </Link>
+  );
+  return tip ? <Tooltip content={tip}>{link}</Tooltip> : link;
 }
 
 // notificationBranches groups the alert's actions under the notification that
@@ -90,7 +100,16 @@ function notificationBranches(
   notifications: string[],
   actions: ActionResult[],
 ): { name: string; actions: ActionResult[] }[] {
-  const order: string[] = [...notifications];
+  // De-duplicate notification names. Names are not unique across notification
+  // entries (entries are keyed by uid, not name), and a branch's actions are
+  // attributed purely by name (see the filter below) — so two entries sharing
+  // a name are indistinguishable here and must collapse into one branch.
+  // Without this, `["oncall", "oncall"]` would render two identical branches
+  // (same key, same filtered actions).
+  const order: string[] = [];
+  for (const n of notifications) {
+    if (!order.includes(n)) order.push(n);
+  }
   for (const a of actions) {
     const n = a.notification ?? "";
     if (n && !order.includes(n)) order.push(n);
@@ -109,7 +128,17 @@ function notificationBranches(
 function NotificationBranch({ name, actions }: { name: string; actions: ActionResult[] }) {
   return (
     <div className={styles.branch}>
-      {name ? <div className={styles.branchHead}>{name}</div> : null}
+      {name ? (
+        <div className={styles.branchHead}>
+          <Link
+            to="/web/notifications"
+            search={{ tab: "notifications", search: nameQuery(name) }}
+            className={styles.entityLink}
+          >
+            {name}
+          </Link>
+        </div>
+      ) : null}
       {actions.length > 0 ? (
         <div className={styles.branchActions}>
           {actions.map((a, i) => (
@@ -128,6 +157,10 @@ export function AlertFlowChart({ row }: { row: Record_ }) {
   const notifications = row.notifications ?? [];
   const actions = row.actions ?? [];
   const snoozed = row.snoozed;
+  // "default" is the aggregaterule plugin's synthetic fallback bucket — it has
+  // no backing rule, so a deep-link would dead-end on an empty list. Render it
+  // (and the empty "—") as plain text; link only real aggregate rule names.
+  const aggregateLinkable = row.aggregate && row.aggregate !== "default";
 
   return (
     <div className={styles.flow}>
@@ -137,14 +170,39 @@ export function AlertFlowChart({ row }: { row: Record_ }) {
       <Connector />
       <Node label="Rules">
         {rules.length > 0 ? (
-          <span className={styles.value}>{rules.join(", ")}</span>
+          <span className={styles.value}>
+            {rules.map((r, i) => (
+              <Fragment key={`${r}-${i}`}>
+                {i > 0 ? ", " : null}
+                <Link
+                  to="/web/rules"
+                  search={{ tab: "rules", search: nameQuery(r) }}
+                  className={styles.entityLink}
+                >
+                  {r}
+                </Link>
+              </Fragment>
+            ))}
+          </span>
         ) : (
           <span className={styles.none}>none</span>
         )}
       </Node>
       <Connector />
       <Node label="Aggregate">
-        <span className={styles.value}>{row.aggregate || "—"}</span>
+        <span className={styles.value}>
+          {aggregateLinkable ? (
+            <Link
+              to="/web/rules"
+              search={{ tab: "aggregates", aggSearch: nameQuery(row.aggregate as string) }}
+              className={styles.entityLink}
+            >
+              {row.aggregate}
+            </Link>
+          ) : (
+            row.aggregate || "—"
+          )}
+        </span>
         {/* hash is an extra key stamped by the aggregaterule plugin; not in the Record schema, hence the typeof guard */}
         {typeof row.hash === "string" && row.hash ? (
           <span className={styles.subtle}>{row.hash.slice(0, 12)}</span>
@@ -153,9 +211,15 @@ export function AlertFlowChart({ row }: { row: Record_ }) {
       <Connector />
       {snoozed ? (
         <Node label="Snooze">
-          <Badge variant="muted">
-            <span aria-hidden="true">⊘</span> {snoozed}
-          </Badge>
+          <Link
+            to="/web/snoozes"
+            search={{ search: nameQuery(snoozed) }}
+            className={styles.chipLink}
+          >
+            <Badge variant="muted">
+              <span aria-hidden="true">⊘</span> {snoozed}
+            </Badge>
+          </Link>
           <span className={styles.subtle}>silenced — pipeline stopped</span>
         </Node>
       ) : (
@@ -163,7 +227,7 @@ export function AlertFlowChart({ row }: { row: Record_ }) {
           {notifications.length > 0 || actions.length > 0 ? (
             <div className={styles.fork}>
               {notificationBranches(notifications, actions).map((b, i) => (
-                <NotificationBranch key={b.name || `orphaned-${i}`} name={b.name} actions={b.actions} />
+                <NotificationBranch key={`${b.name || "orphaned"}-${i}`} name={b.name} actions={b.actions} />
               ))}
             </div>
           ) : (

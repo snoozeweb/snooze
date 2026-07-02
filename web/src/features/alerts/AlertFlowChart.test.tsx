@@ -1,18 +1,56 @@
 import { describe, expect, it } from "vitest";
 import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import {
+  createMemoryHistory,
+  createRootRoute,
+  createRoute,
+  createRouter,
+  Outlet,
+  RouterProvider,
+} from "@tanstack/react-router";
 import { AlertFlowChart } from "./AlertFlowChart";
 import { TooltipProvider } from "@/shared/ui/Tooltip";
 import type { Record_ } from "./types";
 
-// Non-error action chips render their hint through the shared Tooltip, which
-// needs a TooltipProvider ancestor (mounted app-wide in app/router.tsx).
+// AlertFlowChart renders TanStack <Link>s, which need a RouterProvider ancestor
+// with the target routes registered, plus a TooltipProvider for chip hints
+// (both are mounted app-wide in app/router.tsx). We stand up a minimal memory
+// router whose home route hosts the chart — mirroring ActivityFeed.test.tsx.
 function renderChart(row: Record_) {
+  const root = createRootRoute({ component: () => <Outlet /> });
+  const home = createRoute({
+    getParentRoute: () => root,
+    path: "/",
+    component: () => (
+      <TooltipProvider delay={0}>
+        <AlertFlowChart row={row} />
+      </TooltipProvider>
+    ),
+  });
+  const stub = (path: string) =>
+    createRoute({ getParentRoute: () => root, path, component: () => <div>{path}</div> });
+  const tree = root.addChildren([
+    home,
+    stub("/web/rules"),
+    stub("/web/snoozes"),
+    stub("/web/notifications"),
+  ]);
+  /* eslint-disable @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-argument */
+  const router = createRouter({
+    routeTree: tree,
+    history: createMemoryHistory({ initialEntries: ["/"] }),
+  } as any);
+  /* eslint-enable @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-argument */
   return render(
-    <TooltipProvider delay={0}>
-      <AlertFlowChart row={row} />
-    </TooltipProvider>,
+    <RouterProvider router={router as Parameters<typeof RouterProvider>[0]["router"]} />,
   );
+}
+
+// Pull the decoded query params out of a link's href.
+function linkParams(name: string | RegExp): URLSearchParams {
+  const href = screen.getByRole("link", { name }).getAttribute("href") ?? "";
+  return new URL(href, "http://x").searchParams;
 }
 
 const base: Record_ = {
@@ -34,30 +72,104 @@ describe("AlertFlowChart", () => {
       ],
     });
     expect(screen.getByText("syslog")).toBeInTheDocument();
-    expect(screen.getByText("disk-warn, env-tag")).toBeInTheDocument();
-    expect(screen.getByText("oncall")).toBeInTheDocument();
-    expect(screen.getByText(/email/)).toBeInTheDocument();
-    expect(screen.getByText(/webhook/)).toBeInTheDocument();
+    // Rules are now individual links, not a joined string.
+    expect(screen.getByRole("link", { name: "disk-warn" })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "env-tag" })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "oncall" })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /email/ })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /webhook/ })).toBeInTheDocument();
   });
 
-  it("is terminal at the snooze node when snoozed", () => {
+  it("deep-links each rule to the Rules tab filtered by name", () => {
+    renderChart(base);
+    const disk = linkParams("disk-warn");
+    expect(disk.get("tab")).toBe("rules");
+    expect(disk.get("search")).toBe('name = "disk-warn"');
+    expect(linkParams("env-tag").get("search")).toBe('name = "env-tag"');
+    expect(screen.getByRole("link", { name: "disk-warn" }).getAttribute("href")).toContain(
+      "/web/rules",
+    );
+  });
+
+  it("deep-links the aggregate to the Aggregates tab filtered by name", () => {
+    renderChart(base);
+    const agg = linkParams("Host and Message");
+    expect(agg.get("tab")).toBe("aggregates");
+    expect(agg.get("aggSearch")).toBe('name = "Host and Message"');
+    expect(screen.getByRole("link", { name: "Host and Message" }).getAttribute("href")).toContain(
+      "/web/rules",
+    );
+  });
+
+  it("renders the synthetic 'default' aggregate bucket as plain text, not a link", () => {
+    renderChart({ ...base, aggregate: "default" });
+    expect(screen.queryByRole("link", { name: "default" })).not.toBeInTheDocument();
+    expect(screen.getByText("default")).toBeInTheDocument();
+  });
+
+  it("escapes quotes and backslashes in the deep-link query", () => {
+    renderChart({ ...base, rules: ['weird"rule', "back\\slash"] });
+    expect(linkParams('weird"rule').get("search")).toBe('name = "weird\\"rule"');
+    expect(linkParams("back\\slash").get("search")).toBe('name = "back\\\\slash"');
+  });
+
+  it("is terminal at the snooze node when snoozed, and deep-links the snooze by name", () => {
     renderChart({ ...base, snoozed: "maint-window", notifications: ["oncall"] });
-    expect(screen.getByText("maint-window")).toBeInTheDocument();
+    const snooze = screen.getByRole("link", { name: /maint-window/ });
+    expect(snooze).toBeInTheDocument();
+    expect(snooze.getAttribute("href")).toContain("/web/snoozes");
+    expect(linkParams(/maint-window/).get("search")).toBe('name = "maint-window"');
+    // Pipeline stops at snooze — no notifications node, no oncall link.
     expect(screen.queryByText("Notifications")).not.toBeInTheDocument();
-    expect(screen.queryByText("oncall")).not.toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "oncall" })).not.toBeInTheDocument();
   });
 
-  it("reveals the error message when an error chip is clicked", async () => {
+  it("deep-links a notification branch head to the Notifications tab by name", () => {
     renderChart({
       ...base,
       notifications: ["oncall"],
-      actions: [{ name: "webhook", notification: "oncall", status: "error", error: "dial tcp timeout" }],
+      actions: [{ name: "email", notification: "oncall", status: "success" }],
     });
-    await userEvent.click(screen.getByRole("button", { name: /webhook error details/i }));
-    expect(await screen.findByText("dial tcp timeout")).toBeInTheDocument();
+    const n = linkParams("oncall");
+    expect(n.get("tab")).toBe("notifications");
+    expect(n.get("search")).toBe('name = "oncall"');
+    expect(screen.getByRole("link", { name: "oncall" }).getAttribute("href")).toContain(
+      "/web/notifications",
+    );
   });
 
-  it("renders non-error action chips with no error-details popover", () => {
+  it("deep-links an action chip to the Actions tab by name", () => {
+    renderChart({
+      ...base,
+      notifications: ["oncall"],
+      actions: [{ name: "email", notification: "oncall", status: "success" }],
+    });
+    const a = linkParams(/email/);
+    expect(a.get("tab")).toBe("actions");
+    expect(a.get("actionSearch")).toBe('name = "email"');
+    expect(screen.getByRole("link", { name: /email/ }).getAttribute("href")).toContain(
+      "/web/notifications",
+    );
+  });
+
+  it("navigates on an error action and exposes the error via a hover tooltip", async () => {
+    renderChart({
+      ...base,
+      notifications: ["oncall"],
+      actions: [
+        { name: "webhook", notification: "oncall", status: "error", error: "dial tcp timeout" },
+      ],
+    });
+    // The error chip is now a navigation link (not a popover button).
+    const chip = screen.getByRole("link", { name: /webhook/ });
+    expect(linkParams(/webhook/).get("actionSearch")).toBe('name = "webhook"');
+    // Its error text is reachable on hover, via the shared tooltip. Radix
+    // renders the content plus a visually-hidden a11y copy, so match all.
+    await userEvent.hover(chip);
+    expect((await screen.findAllByText("dial tcp timeout")).length).toBeGreaterThan(0);
+  });
+
+  it("renders skipped/pending/sent action chips as links (no popover button)", () => {
     renderChart({
       ...base,
       notifications: ["oncall"],
@@ -67,20 +179,34 @@ describe("AlertFlowChart", () => {
         { name: "webhook", notification: "oncall", status: "sent" },
       ],
     });
-    expect(screen.getByText(/page/)).toBeInTheDocument();
-    expect(screen.getByText(/email/)).toBeInTheDocument();
-    expect(screen.getByText(/webhook/)).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /page/ })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /email/ })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /webhook/ })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /error details/i })).not.toBeInTheDocument();
+  });
+
+  it("collapses duplicate notification names into a single branch", () => {
+    // Notification names are not unique across entries (entries are keyed by
+    // uid), so a record can carry the same name twice. It must render one
+    // branch, not two identical ones.
+    renderChart({
+      ...base,
+      notifications: ["oncall", "oncall"],
+      actions: [{ name: "email", notification: "oncall", status: "success" }],
+    });
+    expect(screen.getAllByRole("link", { name: "oncall" })).toHaveLength(1);
+    expect(screen.getAllByRole("link", { name: /email/ })).toHaveLength(1);
   });
 
   it("shows the none placeholder for empty rules and actions on a minimal record", () => {
     renderChart({ uid: "u2", source: "prom" });
-    // Empty rules, notifications and actions each render the placeholder.
+    // Empty rules and notifications each render the placeholder.
     expect(screen.getAllByText("none").length).toBeGreaterThanOrEqual(2);
-    // Scope the meaningful checks to the Rules and Notifications nodes specifically.
     const node = (label: string) => screen.getByText(label).closest("div")!.parentElement!;
     expect(node("Rules")).toHaveTextContent("none");
     expect(node("Notifications")).toHaveTextContent("none");
+    // Nothing to link on a minimal record.
+    expect(screen.queryAllByRole("link")).toHaveLength(0);
   });
 
   it("forks into a branch per matched notification, each with its own actions", () => {
@@ -94,14 +220,14 @@ describe("AlertFlowChart", () => {
         { name: "sms", notification: "slack-team", status: "skipped" },
       ],
     });
-    // each notification renders as its own branch card (header = its name)
-    const oncall = screen.getByText("oncall").parentElement as HTMLElement;
-    const slack = screen.getByText("slack-team").parentElement as HTMLElement;
-    // actions appear under their own notification, not the other
-    expect(within(oncall).getByText(/email/)).toBeInTheDocument();
-    expect(within(oncall).getByText(/pager/)).toBeInTheDocument();
-    expect(within(slack).getByText(/webhook/)).toBeInTheDocument();
-    expect(within(slack).getByText(/sms/)).toBeInTheDocument();
-    expect(within(slack).queryByText(/email/)).not.toBeInTheDocument();
+    // Each notification head link → its branch card is head.parent.parent.
+    const oncall = screen.getByRole("link", { name: "oncall" }).parentElement!.parentElement!;
+    const slack = screen.getByRole("link", { name: "slack-team" }).parentElement!.parentElement!;
+    // Actions appear under their own notification, not the other.
+    expect(within(oncall).getByRole("link", { name: /email/ })).toBeInTheDocument();
+    expect(within(oncall).getByRole("link", { name: /pager/ })).toBeInTheDocument();
+    expect(within(slack).getByRole("link", { name: /webhook/ })).toBeInTheDocument();
+    expect(within(slack).getByRole("link", { name: /sms/ })).toBeInTheDocument();
+    expect(within(slack).queryByRole("link", { name: /email/ })).not.toBeInTheDocument();
   });
 });

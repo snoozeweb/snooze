@@ -72,15 +72,31 @@
 .chip {
   display: inline-flex;
 }
-.chipButton {
-  background: none;
-  border: none;
-  padding: 0;
+
+/* Entity deep-links. Text links (rules, aggregate, notification head) underline
+   on hover; chip links (snooze, action) wrap a Badge pill, so they lift on
+   hover instead of underlining. Both keep a visible keyboard focus ring. */
+.entityLink,
+.chipLink {
+  color: inherit;
   cursor: pointer;
+  border-radius: var(--radius-sm);
 }
-.errorMsg {
-  font-size: var(--text-sm);
-  max-width: 320px;
-  white-space: pre-wrap;
-  word-break: break-word;
+.entityLink {
+  text-decoration: none;
+}
+.entityLink:hover {
+  text-decoration: underline;
+}
+.chipLink {
+  display: inline-flex;
+  text-decoration: none;
+}
+.chipLink:hover {
+  opacity: 0.85;
+}
+.entityLink:focus-visible,
+.chipLink:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
 }

@@ -1,17 +1,50 @@
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import {
+  createMemoryHistory,
+  createRootRoute,
+  createRoute,
+  createRouter,
+  Outlet,
+  RouterProvider,
+} from "@tanstack/react-router";
 import { http, HttpResponse } from "msw";
 import { describe, expect, it } from "vitest";
-import type { ReactNode } from "react";
 import { mswServer } from "@/tests/msw/server";
 import { AlertRowDetail } from "./AlertRowDetail";
 import type { Record_ } from "./types";
 
-function wrap() {
+// AlertRowDetail's Flow tab embeds AlertFlowChart, whose entities are TanStack
+// <Link>s — so the detail needs a RouterProvider ancestor (app-wide in
+// production via app/router.tsx). Stand up a minimal memory router whose home
+// route hosts the detail and stubs the deep-link targets so the links resolve.
+function renderDetail(row: Record_) {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-  return ({ children }: { children: ReactNode }) => (
-    <QueryClientProvider client={client}>{children}</QueryClientProvider>
+  const root = createRootRoute({ component: () => <Outlet /> });
+  const home = createRoute({
+    getParentRoute: () => root,
+    path: "/",
+    component: () => <AlertRowDetail row={row} />,
+  });
+  const stub = (path: string) =>
+    createRoute({ getParentRoute: () => root, path, component: () => <div>{path}</div> });
+  const tree = root.addChildren([
+    home,
+    stub("/web/rules"),
+    stub("/web/snoozes"),
+    stub("/web/notifications"),
+  ]);
+  /* eslint-disable @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-argument */
+  const router = createRouter({
+    routeTree: tree,
+    history: createMemoryHistory({ initialEntries: ["/"] }),
+  } as any);
+  /* eslint-enable @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-argument */
+  return render(
+    <QueryClientProvider client={client}>
+      <RouterProvider router={router as Parameters<typeof RouterProvider>[0]["router"]} />
+    </QueryClientProvider>,
   );
 }
 
@@ -35,12 +68,7 @@ describe("AlertRowDetail", () => {
         }),
       ),
     );
-    const Wrapper = wrap();
-    render(
-      <Wrapper>
-        <AlertRowDetail row={rowWithPrivate} />
-      </Wrapper>,
-    );
+    renderDetail(rowWithPrivate);
     // JsonViewer renders the cleaned object as a tree of <pre> elements.
     expect(screen.getByText(/srv-1/)).toBeInTheDocument();
     expect(screen.getByText(/disk full/)).toBeInTheDocument();
@@ -58,12 +86,7 @@ describe("AlertRowDetail", () => {
       ),
     );
     const row = { uid: "u1", source: "syslog", aggregate: "Host and Message" } as Record_;
-    const Wrapper = wrap();
-    render(
-      <Wrapper>
-        <AlertRowDetail row={row} />
-      </Wrapper>,
-    );
+    renderDetail(row);
     expect(screen.getByRole("tab", { name: "Timeline" })).toHaveAttribute("data-state", "active");
     await userEvent.click(screen.getByRole("tab", { name: "Flow" }));
     expect(screen.getByText("syslog")).toBeInTheDocument();
@@ -84,12 +107,7 @@ describe("AlertRowDetail", () => {
       }),
     );
     const row: Record_ = { uid: "r1", host: "srv-1", date_epoch: 1 };
-    const Wrapper = wrap();
-    render(
-      <Wrapper>
-        <AlertRowDetail row={row} />
-      </Wrapper>,
-    );
+    renderDetail(row);
     await waitFor(() => expect(screen.getByText(/no comments yet/i)).toBeInTheDocument());
   });
 });
