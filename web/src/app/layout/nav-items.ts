@@ -102,6 +102,13 @@ export const NAV_ITEMS: NavItem[] = [
     group: "admin",
     permissions: ["ro_settings", "rw_settings"],
   },
+  {
+    to: "/web/admin/inputs",
+    label: "Inputs",
+    icon: "download",
+    group: "admin",
+    permissions: ["ro_stats", "rw_stats"],
+  },
   { to: "/web/admin/status", label: "Status", icon: "activity", group: "admin" },
   {
     to: "/web/admin/tenants",

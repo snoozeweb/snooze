@@ -400,6 +400,22 @@ const settingsRoute = createRoute({
   },
 });
 
+type InputsSearchParams = { setup?: string };
+
+const inputsRoute = createRoute({
+  getParentRoute: () => webLayoutRoute,
+  path: "/web/admin/inputs",
+  component: lazyRouteComponent(
+    () => import("@/features/admin/inputs/InputsPage"),
+    "InputsPage",
+  ),
+  validateSearch: (raw): InputsSearchParams => {
+    const out: Record<string, unknown> = {};
+    if (typeof raw["setup"] === "string") out["setup"] = raw["setup"];
+    return out as InputsSearchParams;
+  },
+});
+
 const statusRoute = createRoute({
   getParentRoute: () => webLayoutRoute,
   path: "/web/admin/status",
@@ -724,6 +740,7 @@ const routeTree = rootRoute.addChildren([
     widgetsRoute,
     kvRoute,
     settingsRoute,
+    inputsRoute,
     statusRoute,
     tenantsRoute,
     ...devRoutes,

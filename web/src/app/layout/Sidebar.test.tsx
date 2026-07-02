@@ -74,7 +74,7 @@ describe("Sidebar", () => {
     expect(screen.getByText("Admin")).toBeInTheDocument();
   });
 
-  it("renders all 13 nav items", () => {
+  it("renders all 14 nav items", () => {
     loginWithPerms(ALL_PERMS);
     setup();
     const expected = [
@@ -89,6 +89,7 @@ describe("Sidebar", () => {
       "Widgets",
       "Key-values",
       "Settings",
+      "Inputs",
       "Status",
       "Tenants",
     ];
