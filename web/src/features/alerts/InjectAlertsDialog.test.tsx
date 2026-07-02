@@ -74,8 +74,13 @@ describe("InjectAlertsDialog deep-linking", () => {
     expect(screen.getByText("POST /api/v1/webhook/datadog")).toBeInTheDocument();
   });
 
-  it("opens on the Daemon tab focused on the given source", () => {
-    render(<InjectAlertsDialog open onOpenChange={() => {}} initialSourceId="syslog" />);
-    expect(screen.getByText(/Full Syslog docs/)).toBeInTheDocument();
+  it("opens on the Daemon tab focused on a non-default source", () => {
+    render(<InjectAlertsDialog open onOpenChange={() => {}} initialSourceId="otlp" />);
+    expect(screen.getByText(/Full OTLP logs docs/)).toBeInTheDocument();
+  });
+
+  it("falls back to the REST tab for an unknown initialSourceId", () => {
+    render(<InjectAlertsDialog open onOpenChange={() => {}} initialSourceId="bogus" />);
+    expect(screen.getByText("POST /api/v1/alerts")).toBeInTheDocument();
   });
 });

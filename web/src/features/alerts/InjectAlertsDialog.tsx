@@ -101,11 +101,12 @@ export function InjectAlertsDialog({
 }: InjectAlertsDialogProps) {
   const baseUrl = useMemo(() => resolveBaseUrl(), []);
   // Resolve the deep-link target: an explicit source id wins (and implies its
-  // family), else fall back to a bare family, else the REST tab. The Tabs
-  // tree below is keyed on this target so that reopening the dialog with a
-  // different target remounts it — Radix Tabs only honors `defaultValue` on
-  // mount, and FamilyBrowser's `selectedId` state would likewise otherwise
-  // survive across a source-id change.
+  // family), else fall back to a bare family, else the REST tab. The Tabs tree
+  // below is keyed on this target so that changing the target while the dialog
+  // stays open remounts it — Radix Tabs only honors `defaultValue` on mount,
+  // and FamilyBrowser's `selectedId` state would likewise otherwise survive a
+  // source-id change. (A close→open cycle already remounts via the portal, so
+  // the key only matters for a live target change.)
   const target = useMemo(() => {
     if (initialSourceId) {
       const source = INJECTION_SOURCES.find((s) => s.id === initialSourceId);
