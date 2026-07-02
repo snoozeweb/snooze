@@ -3386,6 +3386,61 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/inputs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Per-source alert-input activity
+         * @description For each alert `source` observed in stored records, the most recent
+         *     alert epoch and a count, within a lookback window. Backs the admin
+         *     Inputs page. `since` is a Unix epoch (seconds); when omitted the server
+         *     uses a 30-day window. Requires the `ro_stats`/`rw_stats` permission.
+         *
+         */
+        get: {
+            parameters: {
+                query?: {
+                    /** @description Lower-bound Unix epoch (seconds). Defaults to now − 30 days. */
+                    since?: number;
+                };
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Per-source activity. */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["InputsResponse"];
+                    };
+                };
+                /** @description Bad `since` parameter. */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrEnvelope"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/{plugin}": {
         parameters: {
             query?: never;
@@ -4602,6 +4657,17 @@ export interface components {
         StatsResponse: {
             data: components["schemas"]["StatsData"];
             meta: components["schemas"]["StatsMeta"];
+        };
+        InputActivity: {
+            /** @description Record source string (lowercased join key on the client). */
+            source: string;
+            /** @description Most recent alert epoch (seconds) for this source in the window. */
+            last_epoch: number;
+            /** @description Number of alerts from this source in the window. */
+            count: number;
+        };
+        InputsResponse: {
+            data: components["schemas"]["InputActivity"][];
         };
         StatsData: {
             series: components["schemas"]["SeriesBucket"][];

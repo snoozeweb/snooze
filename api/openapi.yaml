@@ -2166,6 +2166,33 @@ paths:
             application/json:
               schema: {$ref: '#/components/schemas/ErrEnvelope'}
 
+  /api/v1/inputs:
+    get:
+      tags: [crud]
+      summary: Per-source alert-input activity
+      description: |
+        For each alert `source` observed in stored records, the most recent
+        alert epoch and a count, within a lookback window. Backs the admin
+        Inputs page. `since` is a Unix epoch (seconds); when omitted the server
+        uses a 30-day window. Requires the `ro_stats`/`rw_stats` permission.
+      parameters:
+        - name: since
+          in: query
+          required: false
+          schema: {type: integer}
+          description: Lower-bound Unix epoch (seconds). Defaults to now − 30 days.
+      responses:
+        '200':
+          description: Per-source activity.
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/InputsResponse'}
+        '400':
+          description: Bad `since` parameter.
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/ErrEnvelope'}
+
   /api/v1/{plugin}:
     parameters:
       - {$ref: '#/components/parameters/PluginPath'}
@@ -3291,6 +3318,22 @@ components:
           $ref: '#/components/schemas/StatsData'
         meta:
           $ref: '#/components/schemas/StatsMeta'
+
+    InputActivity:
+      type: object
+      required: [source, last_epoch, count]
+      properties:
+        source: {type: string, description: "Record source string (lowercased join key on the client)."}
+        last_epoch: {type: integer, description: "Most recent alert epoch (seconds) for this source in the window."}
+        count: {type: integer, description: "Number of alerts from this source in the window."}
+
+    InputsResponse:
+      type: object
+      required: [data]
+      properties:
+        data:
+          type: array
+          items: {$ref: '#/components/schemas/InputActivity'}
 
     StatsData:
       type: object
