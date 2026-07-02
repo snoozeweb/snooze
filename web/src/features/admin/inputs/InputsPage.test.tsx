@@ -84,4 +84,29 @@ describe("InputsPage", () => {
     ).toBeInTheDocument();
     expect(screen.getByText("POST /api/v1/webhook/grafana")).toBeInTheDocument();
   });
+
+  it("opens on the REST tab (no pre-selection) from the header button", async () => {
+    mswServer.use(http.get("/api/v1/inputs", () => HttpResponse.json({ data: [] })));
+    setup();
+    // The header CTA calls setSetup("") — the empty-string sentinel is falsy,
+    // so setupId resolves to undefined and the dialog opens on the default REST
+    // tab with no source pre-selected.
+    await userEvent.click(screen.getByRole("button", { name: /how to send alerts/i }));
+    expect(await screen.findByText("How to inject alerts")).toBeInTheDocument();
+    // REST panel content proves no webhook/daemon source was pre-selected.
+    expect(screen.getByText("POST /api/v1/alerts")).toBeInTheDocument();
+  });
+
+  it("clears the dialog when closed", async () => {
+    mswServer.use(http.get("/api/v1/inputs", () => HttpResponse.json({ data: [] })));
+    setup();
+    await userEvent.click(screen.getByRole("button", { name: /how to send alerts/i }));
+    expect(await screen.findByText("How to inject alerts")).toBeInTheDocument();
+    // Close → onOpenChange(false) → setSetup(undefined) strips ?setup, which
+    // unmounts the dialog.
+    await userEvent.click(screen.getByRole("button", { name: /^close$/i }));
+    await waitFor(() =>
+      expect(screen.queryByText("How to inject alerts")).not.toBeInTheDocument(),
+    );
+  });
 });

@@ -66,7 +66,7 @@ export function makeInputColumns(onSetup: (id: string) => void): ColumnDef<Input
     },
     {
       id: "setup",
-      header: "",
+      header: "Setup",
       align: "right",
       cell: (r) =>
         r.catalogue ? (
