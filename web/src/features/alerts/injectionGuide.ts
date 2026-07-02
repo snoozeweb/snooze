@@ -20,6 +20,12 @@ export type InjectionSource = {
   snippet: (baseUrl: string) => string;
   /** Route slug of the existing per-integration docs page. */
   docSlug: string;
+  /**
+   * Lowercased record `source` string(s) this input stamps on alerts, used to
+   * join live activity on the Inputs page. Omitted for REST (its source is
+   * caller-defined and therefore not attributable to a single input).
+   */
+  sourceKeys?: string[];
 };
 
 /**
@@ -66,6 +72,7 @@ const WEBHOOK_SEEDS: WebhookSeed[] = [
     summary:
       "Add a Grafana webhook contact point (or legacy webhook notifier) pointing at this URL. Each evaluated alert match becomes a record.",
     docSlug: "general/integrations/grafana",
+    sourceKeys: ["grafana"],
   },
   {
     id: "alertmanager",
@@ -74,6 +81,7 @@ const WEBHOOK_SEEDS: WebhookSeed[] = [
     summary:
       "Add a Prometheus Alertmanager `webhook_configs` receiver targeting this URL. Firing and resolved alerts become records.",
     docSlug: "general/integrations/alertmanager",
+    sourceKeys: ["alertmanager"],
   },
   {
     id: "prometheus",
@@ -82,6 +90,7 @@ const WEBHOOK_SEEDS: WebhookSeed[] = [
     summary:
       "Forward Prometheus alerting webhooks to this URL when you want Snooze to receive them directly.",
     docSlug: "general/integrations/prometheus",
+    sourceKeys: ["prometheus"],
   },
   {
     id: "datadog",
@@ -90,6 +99,7 @@ const WEBHOOK_SEEDS: WebhookSeed[] = [
     summary:
       "Create a Datadog Webhooks integration with this URL as the endpoint, then call it from a monitor's notification message.",
     docSlug: "general/integrations/datadog",
+    sourceKeys: ["datadog"],
   },
   {
     id: "cloudwatch",
@@ -98,6 +108,7 @@ const WEBHOOK_SEEDS: WebhookSeed[] = [
     summary:
       "Subscribe this URL to the SNS topic that receives your CloudWatch alarm notifications. Set `ingest.sns_verify: true` to verify SNS signatures.",
     docSlug: "general/integrations/cloudwatch",
+    sourceKeys: ["cloudwatch"],
   },
   {
     id: "sentry",
@@ -106,6 +117,7 @@ const WEBHOOK_SEEDS: WebhookSeed[] = [
     summary:
       "Add this URL as a Sentry webhook (internal integration / alert rule). Set `ingest.sentry_secret` to verify the HMAC signature.",
     docSlug: "general/integrations/sentry",
+    sourceKeys: ["sentry"],
   },
   {
     id: "newrelic",
@@ -113,6 +125,7 @@ const WEBHOOK_SEEDS: WebhookSeed[] = [
     endpoint: "POST /api/v1/webhook/newrelic",
     summary: "Point a New Relic workflow webhook notification destination at this URL.",
     docSlug: "general/integrations/newrelic",
+    sourceKeys: ["newrelic"],
   },
   {
     id: "azuremonitor",
@@ -120,6 +133,7 @@ const WEBHOOK_SEEDS: WebhookSeed[] = [
     endpoint: "POST /api/v1/webhook/azuremonitor",
     summary: "Add an Azure Monitor action group webhook action targeting this URL.",
     docSlug: "general/integrations/azuremonitor",
+    sourceKeys: ["azuremonitor"],
   },
   {
     id: "influxdb2",
@@ -127,6 +141,7 @@ const WEBHOOK_SEEDS: WebhookSeed[] = [
     endpoint: "POST /api/v1/webhook/influxdb2",
     summary: "Configure an InfluxDB 2 HTTP notification endpoint pointing at this URL.",
     docSlug: "general/integrations/influxdb2",
+    sourceKeys: ["influxdb2"],
   },
   {
     id: "kapacitor",
@@ -134,6 +149,7 @@ const WEBHOOK_SEEDS: WebhookSeed[] = [
     endpoint: "POST /api/v1/webhook/kapacitor",
     summary: "Add a Kapacitor HTTP POST handler (or `.post()` in a TICKscript) targeting this URL.",
     docSlug: "general/integrations/kapacitor",
+    sourceKeys: ["kapacitor"],
   },
   {
     id: "heartbeat",
@@ -142,6 +158,7 @@ const WEBHOOK_SEEDS: WebhookSeed[] = [
     summary:
       "Dead-man's switch: have a cron job periodically hit this URL. A missed ping escalates into an alert. The URL carries a per-heartbeat token (see docs).",
     docSlug: "general/integrations/heartbeat",
+    sourceKeys: ["heartbeat"],
   },
 ];
 
@@ -161,6 +178,7 @@ export const DAEMON_SOURCES: InjectionSource[] = [
     snippet: (baseUrl) =>
       `# /etc/rsyslog.d/snooze.conf — forward everything over UDP\n*.*  @${hostOf(baseUrl)}:514`,
     docSlug: "general/integrations/syslog",
+    sourceKeys: ["syslog"],
   },
   {
     id: "snmptrap",
@@ -170,6 +188,7 @@ export const DAEMON_SOURCES: InjectionSource[] = [
     snippet: (baseUrl) =>
       `snmptrap -v2c -c public ${hostOf(baseUrl)}:162 '' \\\n  1.3.6.1.4.1.8072.2.3.0.1`,
     docSlug: "general/integrations/snmptrap",
+    sourceKeys: ["snmptrap"],
   },
   {
     id: "relp",
@@ -180,6 +199,7 @@ export const DAEMON_SOURCES: InjectionSource[] = [
     snippet: (baseUrl) =>
       `# /etc/rsyslog.d/snooze-relp.conf\nmodule(load="omrelp")\naction(type="omrelp" target="${hostOf(baseUrl)}" port="2514")`,
     docSlug: "general/integrations/relp",
+    sourceKeys: ["relp"],
   },
   {
     id: "smtp",
@@ -190,6 +210,7 @@ export const DAEMON_SOURCES: InjectionSource[] = [
     snippet: (baseUrl) =>
       `swaks --server ${hostOf(baseUrl)}:25 --to alerts@snooze \\\n  --from monitor@host --header "Subject: Disk full on web-1" --body "..."`,
     docSlug: "general/integrations/smtp",
+    sourceKeys: ["smtp"],
   },
   {
     id: "otlp",
@@ -200,6 +221,7 @@ export const DAEMON_SOURCES: InjectionSource[] = [
     snippet: (baseUrl) =>
       `export OTEL_EXPORTER_OTLP_LOGS_ENDPOINT=http://${hostOf(baseUrl)}:4318/v1/logs`,
     docSlug: "general/integrations/otlp",
+    sourceKeys: ["otlp"],
   },
   {
     id: "k8s-events",
@@ -210,6 +232,7 @@ export const DAEMON_SOURCES: InjectionSource[] = [
     snippet: () =>
       `# Runs in-cluster as a Deployment; no client config.\n# See the docs for the manifest / Helm values.`,
     docSlug: "general/integrations/k8s-events",
+    sourceKeys: ["kubernetes"],
   },
 ];
 

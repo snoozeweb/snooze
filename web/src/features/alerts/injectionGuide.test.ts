@@ -55,3 +55,20 @@ describe("injectionGuide catalogue", () => {
     expect(hostOf("not a url")).toBe("not a url");
   });
 });
+
+describe("sourceKeys", () => {
+  it("every webhook and daemon source has lowercase sourceKeys", () => {
+    for (const s of [...WEBHOOK_SOURCES, ...DAEMON_SOURCES]) {
+      expect(s.sourceKeys, `${s.id} must define sourceKeys`).toBeDefined();
+      expect(s.sourceKeys!.length).toBeGreaterThan(0);
+      for (const k of s.sourceKeys!) {
+        expect(k).toBe(k.toLowerCase());
+      }
+    }
+  });
+
+  it("the REST source has no sourceKeys (caller-defined source)", () => {
+    const rest = INJECTION_SOURCES.find((s) => s.id === "rest");
+    expect(rest?.sourceKeys).toBeUndefined();
+  });
+});
