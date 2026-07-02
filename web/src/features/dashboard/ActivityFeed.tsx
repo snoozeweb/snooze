@@ -1,5 +1,6 @@
 import { Link } from "@tanstack/react-router";
 import { Badge, type BadgeVariant } from "@/shared/ui/Badge";
+import { Button } from "@/shared/ui/Button";
 import { Spinner } from "@/shared/ui/Spinner";
 import { trimDate } from "@/features/alerts/format";
 import type { Comment } from "@/features/alerts/comments";
@@ -34,6 +35,19 @@ export function ActivityFeed() {
     return (
       <div className={styles.center}>
         <Spinner size={20} />
+      </div>
+    );
+  }
+
+  // A failed fetch must not masquerade as "nothing happened" — during an
+  // incident that distinction is exactly what the operator needs.
+  if (q.isError) {
+    return (
+      <div className={styles.center}>
+        <span>Couldn&apos;t load recent activity.</span>
+        <Button size="sm" variant="ghost" onClick={() => void q.refetch()}>
+          Retry
+        </Button>
       </div>
     );
   }

@@ -52,6 +52,15 @@ function setup(initialEntry = "/web/admin/inputs") {
 }
 
 describe("InputsPage", () => {
+  it("surfaces an error with retry when activity fails to load, without faking an all-idle table", async () => {
+    mswServer.use(http.get("/api/v1/inputs", () => new HttpResponse(null, { status: 503 })));
+    setup();
+    expect(await screen.findByText(/couldn't load ingestion activity/i)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /retry/i })).toBeInTheDocument();
+    // The catalogue is still shown so "how do I set this up" keeps working.
+    expect(screen.getByRole("button", { name: /how to receive alerts/i })).toBeInTheDocument();
+  });
+
   it("renders the how-to button and catalogue + other-source rows", async () => {
     mswServer.use(
       http.get("/api/v1/inputs", () =>

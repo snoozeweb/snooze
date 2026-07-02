@@ -63,6 +63,22 @@ export function InputsPage() {
         </Button>
       </div>
 
+      {query.isError ? (
+        // Don't let a failed activity fetch masquerade as "every input is idle":
+        // the catalogue below still renders, but flag that the counts/last-seen
+        // are unavailable so the operator doesn't misread it while debugging why
+        // alerts stopped flowing.
+        <Card padded>
+          <p className={styles.hint}>
+            Couldn&apos;t load ingestion activity — the “last received” and alert counts below may be
+            missing or stale.
+          </p>
+          <Button size="sm" variant="secondary" onClick={() => void query.refetch()}>
+            Retry
+          </Button>
+        </Card>
+      ) : null}
+
       <DataTable<InputRow>
         data={inputs}
         columns={columns}

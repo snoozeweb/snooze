@@ -47,6 +47,14 @@ function setup() {
 }
 
 describe("ActivityFeed", () => {
+  it("shows an error with retry when the feed fails to load — not a false 'no activity'", async () => {
+    mswServer.use(http.get("/api/v1/comment", () => new HttpResponse(null, { status: 500 })));
+    setup();
+    expect(await screen.findByText(/couldn't load recent activity/i)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /retry/i })).toBeInTheDocument();
+    expect(screen.queryByText(/no recent activity/i)).toBeNull();
+  });
+
   it("lists recent user actions with trimDate and a link to the alert", async () => {
     mswServer.use(
       http.get("/api/v1/comment", () =>

@@ -11,11 +11,20 @@ function cell(id: string, row: InputRow, onSetup = vi.fn()) {
 }
 
 describe("makeInputColumns", () => {
-  it("renders 'never' for an idle catalogue input", () => {
+  it("renders a window-scoped 'none in 30d' (not a misleading 'never') for an idle input", () => {
     render(
       <>{cell("last", { id: "syslog", name: "Syslog", family: "daemon", catalogue: true }).node}</>,
     );
-    expect(screen.getByText("never")).toBeInTheDocument();
+    // The activity is looked back only 30 days, so an input quiet longer than
+    // that isn't truly "never" — say so, and explain the window in a tooltip.
+    const el = screen.getByText(/none in 30d/i);
+    expect(el).toBeInTheDocument();
+    expect(el).toHaveAttribute("title", expect.stringMatching(/30 days/i));
+  });
+
+  it("labels the alert count column with its lookback window", () => {
+    const col = makeInputColumns(vi.fn()).find((c) => c.id === "count")!;
+    expect(col.header).toMatch(/30d/);
   });
 
   it("renders '—' for REST", () => {

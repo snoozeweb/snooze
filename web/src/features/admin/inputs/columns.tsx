@@ -47,13 +47,21 @@ export function makeInputColumns(onSetup: (id: string) => void): ColumnDef<Input
         ) : r.lastEpoch ? (
           <TimeCell epoch={r.lastEpoch} />
         ) : (
-          <span style={muted}>never</span>
+          // Not "never": activity is only looked back 30 days, so an input that
+          // last fired 45 days ago (or a decommissioned one) would otherwise
+          // look identical to one that was never configured.
+          <span
+            style={muted}
+            title="No alerts received in the last 30 days — the activity lookback window."
+          >
+            none in 30d
+          </span>
         ),
       width: "160px",
     },
     {
       id: "count",
-      header: "Alerts",
+      header: "Alerts (30d)",
       align: "right",
       cell: (r) => (r.count !== undefined ? <span>{r.count}</span> : <span style={muted}>—</span>),
       width: "100px",
