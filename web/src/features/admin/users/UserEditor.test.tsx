@@ -58,6 +58,32 @@ describe("UserEditor", () => {
     expect((bodies[0] as { password: string }).password).toBe("s3cr3t");
   });
 
+  it("does not let an admin add a role that isn't in the catalogue (no silent mistyped role)", async () => {
+    mswServer.use(
+      http.get("/api/v1/role", () =>
+        HttpResponse.json({
+          data: [{ uid: "r1", name: "admin" }],
+          meta: { count: 1, limit: 500, offset: 0, total: 1 },
+        }),
+      ),
+    );
+    const Wrapper = wrap();
+    const user = userEvent.setup();
+    render(
+      <Wrapper>
+        <UserEditor uid={undefined} onClose={() => undefined} />
+      </Wrapper>,
+    );
+    await user.click(screen.getByRole("combobox", { name: /roles/i }));
+    const search = await screen.findByLabelText(/search options/i);
+    await user.type(search, "amdin");
+    // A mistyped role must not be addable: no "press Enter to add" affordance,
+    // and Enter creates no pill (it would grant nothing and confuse later).
+    expect(screen.queryByText(/press enter to add/i)).toBeNull();
+    await user.keyboard("{Enter}");
+    expect(screen.queryByLabelText(/remove amdin/i)).toBeNull();
+  });
+
   it("edits an existing user; empty password is omitted from the PATCH", async () => {
     const bodies: unknown[] = [];
     mswServer.use(

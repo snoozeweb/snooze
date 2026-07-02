@@ -112,11 +112,15 @@ export function WidgetEditor({ uid, onClose }: WidgetEditorProps) {
         if (selectedDef) {
           widgetType = selectedDef.type;
           configObj = {};
+          const missing: string[] = [];
           for (const field of selectedDef.fields) {
             const raw = form.config[field.name];
-            const provided = raw !== undefined && raw !== "";
+            const provided = raw !== undefined && raw.trim() !== "";
             if (!provided) {
               if (field.default !== undefined) configObj[field.name] = field.default;
+              // A required field with no value and no default would otherwise
+              // save a broken widget that only fails later, at notify time.
+              else if (field.required) missing.push(field.label);
               continue;
             }
             if (field.kind === "int") {
@@ -129,6 +133,10 @@ export function WidgetEditor({ uid, onClose }: WidgetEditorProps) {
             } else {
               configObj[field.name] = raw;
             }
+          }
+          if (missing.length > 0) {
+            setJsonError(`${missing.join(", ")} ${missing.length === 1 ? "is" : "are"} required`);
+            throw new EditorAbort();
           }
         } else {
           widgetType = form.customWidgetType.trim() || undefined;

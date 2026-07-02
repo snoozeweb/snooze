@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { useWatch, type Control, type UseFormSetValue } from "react-hook-form";
+import { timeConstraintsError } from "@/lib/timeconstraints/validate";
 import { CollapsibleSection } from "@/shared/ui/CollapsibleSection";
 import { ConditionPreview } from "@/shared/ui/ConditionPreview";
 import { Button } from "@/shared/ui/Button";
@@ -12,7 +13,12 @@ import { ConditionEditor } from "@/shared/condition/ConditionEditor";
 import type { Condition } from "@/lib/condition/types";
 import type { TimeConstraintsGroup } from "@/lib/timeconstraints/types";
 import { DiffSection } from "@/shared/ui/DiffSection";
-import { EditorDrawer, useFieldInvalid, type EditorBodyProps } from "@/shared/forms/EditorDrawer";
+import {
+  EditorAbort,
+  EditorDrawer,
+  useFieldInvalid,
+  type EditorBodyProps,
+} from "@/shared/forms/EditorDrawer";
 import { Snoozes } from "./api";
 import { parseDuration } from "./duration";
 import type { Snooze } from "./types";
@@ -55,6 +61,9 @@ export function SnoozeEditor({ uid, onClose }: SnoozeEditorProps) {
   const get = Snoozes.useGet(isCreate ? undefined : uid);
   const create = Snoozes.useCreate();
   const update = Snoozes.useUpdate();
+  // Set in formToBody before throwing EditorAbort; read by the body to render
+  // the inline message (mirrors WidgetEditor's jsonError pattern).
+  const [tcError, setTcError] = useState<string | null>(null);
 
   return (
     <EditorDrawer<FormShape, Snooze>
@@ -73,6 +82,14 @@ export function SnoozeEditor({ uid, onClose }: SnoozeEditorProps) {
         discard: s.discard ?? false,
       })}
       formToBody={(form) => {
+        setTcError(null);
+        // Block an incomplete time window (e.g. an unfilled "Add range"), which
+        // would save a snooze that never matches yet reads as "always on".
+        const tcErr = timeConstraintsError(form.time_constraints);
+        if (tcErr) {
+          setTcError(tcErr);
+          throw new EditorAbort();
+        }
         const hasTimeConstraints =
           (form.time_constraints.datetime?.length ?? 0) > 0 ||
           (form.time_constraints.time?.length ?? 0) > 0 ||
@@ -98,7 +115,7 @@ export function SnoozeEditor({ uid, onClose }: SnoozeEditorProps) {
       formId="snooze-form"
       formClassName={styles.stack}
     >
-      {(body) => <SnoozeFields {...body} />}
+      {(body) => <SnoozeFields {...body} tcError={tcError} />}
     </EditorDrawer>
   );
 }
@@ -148,7 +165,12 @@ function SnoozeDiff({
   return <DiffSection original={original} current={projected} />;
 }
 
-function SnoozeFields({ control, register, setValue }: EditorBodyProps<FormShape>) {
+function SnoozeFields({
+  control,
+  register,
+  setValue,
+  tcError,
+}: EditorBodyProps<FormShape> & { tcError: string | null }) {
   const nameInvalid = useFieldInvalid(control, "name");
   const condition = useWatch({ control, name: "condition" });
   const tc = useWatch({ control, name: "time_constraints" });
@@ -212,6 +234,14 @@ function SnoozeFields({ control, register, setValue }: EditorBodyProps<FormShape
           value={tc}
           onChange={(g) => setValue("time_constraints", g, { shouldDirty: true })}
         />
+        {tcError ? (
+          <span
+            role="alert"
+            style={{ color: "var(--severity-critical)", fontSize: "var(--text-xs)" }}
+          >
+            {tcError}
+          </span>
+        ) : null}
       </CollapsibleSection>
       <div className={styles.field}>
         <label className={styles.label} htmlFor="snooze-comment">

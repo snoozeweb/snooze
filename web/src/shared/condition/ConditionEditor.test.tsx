@@ -107,6 +107,49 @@ describe("ConditionEditor", () => {
   });
 });
 
+describe("ConditionEditor — Text mode", () => {
+  it("propagates a valid Text-mode edit via onChange without switching back to Builder", async () => {
+    // The bug: typing a condition in Text mode and clicking Save (never touching
+    // Builder) silently discarded the edit because onChange was never called.
+    const changes: Condition[] = [];
+    const Wrapper = wrap();
+    render(
+      <Wrapper>
+        <ConditionEditor
+          value={{ type: "EQUALS", field: "host", value: "srv-1" }}
+          onChange={(c) => changes.push(c)}
+          plugin="record"
+        />
+      </Wrapper>,
+    );
+    await userEvent.click(screen.getByRole("tab", { name: /text/i }));
+    const textarea = await screen.findByLabelText(/condition text/i);
+    fireEvent.change(textarea, { target: { value: "host = srv-9" } });
+    // The parsed edit must reach the form immediately — no Builder round-trip.
+    expect(changes.length).toBeGreaterThan(0);
+    expect(changes[changes.length - 1]).toMatchObject({ field: "host", value: "srv-9" });
+  });
+
+  it("does not call onChange while the Text is unparseable (keeps the last valid AST)", async () => {
+    const changes: Condition[] = [];
+    const Wrapper = wrap();
+    render(
+      <Wrapper>
+        <ConditionEditor
+          value={{ type: "EQUALS", field: "host", value: "srv-1" }}
+          onChange={(c) => changes.push(c)}
+          plugin="record"
+        />
+      </Wrapper>,
+    );
+    await userEvent.click(screen.getByRole("tab", { name: /text/i }));
+    const textarea = await screen.findByLabelText(/condition text/i);
+    fireEvent.change(textarea, { target: { value: "host = = broken" } });
+    expect(changes).toHaveLength(0);
+    expect(screen.getByRole("alert")).toBeInTheDocument();
+  });
+});
+
 describe("ConditionEditor — logic operator changes", () => {
   it("switching a multi-child AND → NOT negates the whole group (no child dropped)", async () => {
     let last: Condition | undefined;

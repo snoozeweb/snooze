@@ -147,13 +147,17 @@ function UserFields({ register, control, setValue, isCreate }: EditorBodyProps<F
         </div>
         <div className={styles.field}>
           <span className={styles.label}>Roles</span>
+          {/* No allowCustom: a free-typed role name that doesn't exist grants
+              nothing (rbac only resolves known roles) yet looks identical to a
+              real one. roleOptions already merges in any already-assigned role
+              that's since been renamed/deleted, so editing a stale user is
+              unaffected. */}
           <MultiCombobox
             aria-label="Roles"
             placeholder="Select one or more roles"
             options={roleOptions}
             value={rolesValue}
             onChange={(next) => setValue("roles", next, { shouldDirty: true })}
-            allowCustom
           />
         </div>
         <div className={styles.field}>

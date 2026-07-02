@@ -90,6 +90,32 @@ describe("WidgetEditor", () => {
     expect(onClose).toHaveBeenCalled();
   });
 
+  it("blocks save when a required typed field is empty (no silent broken widget)", async () => {
+    const bodies: unknown[] = [];
+    mswServer.use(
+      http.post("/api/v1/widget", async ({ request }) => {
+        bodies.push(await request.json());
+        return HttpResponse.json({ uid: "w-new", name: "x" });
+      }),
+    );
+    const onClose = vi.fn();
+    const Wrapper = wrap();
+    const user = userEvent.setup();
+    render(
+      <Wrapper>
+        <WidgetEditor uid={undefined} onClose={onClose} />
+      </Wrapper>,
+    );
+    await user.type(screen.getByLabelText(/^name$/i), "patlite-floor1");
+    await user.selectOptions(screen.getByLabelText(/widget type/i), "patlite");
+    // Leave the required Host field empty and try to create.
+    await user.click(screen.getByRole("button", { name: /create/i }));
+    // Must not POST, must surface which field is required, must stay open.
+    expect(bodies).toHaveLength(0);
+    expect(screen.getByText(/host.*required/i)).toBeInTheDocument();
+    expect(onClose).not.toHaveBeenCalled();
+  });
+
   it("shows the JSON textarea when Other is selected and posts the parsed object", async () => {
     const bodies: unknown[] = [];
     mswServer.use(

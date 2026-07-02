@@ -52,7 +52,15 @@ export function ConditionEditor({ value, onChange, plugin }: ConditionEditorProp
   function handleTextChange(v: string) {
     setText(v);
     const r = parseText(v);
-    setParseError(r.ok ? null : `${r.error.message} (col ${r.error.pos + 1})`);
+    if (r.ok) {
+      setParseError(null);
+      // Propagate every valid edit immediately (like Builder mode), so a Text
+      // edit isn't silently discarded when the user saves without switching
+      // back to Builder. Unparseable input keeps the last valid AST untouched.
+      onChange(r.value);
+    } else {
+      setParseError(`${r.error.message} (col ${r.error.pos + 1})`);
+    }
   }
 
   return (

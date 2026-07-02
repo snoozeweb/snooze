@@ -59,6 +59,34 @@ describe("SnoozeEditor", () => {
     expect((bodies[0] as { name: string }).name).toBe("quiet-friday");
   });
 
+  it("blocks save when a time range is left incomplete (no silent never-matching snooze)", async () => {
+    const bodies: unknown[] = [];
+    mswServer.use(
+      http.post("/api/v1/snooze", async ({ request }) => {
+        bodies.push(await request.json());
+        return HttpResponse.json({ uid: "s-new", name: "x" });
+      }),
+      http.get("/api/v1/record", () =>
+        HttpResponse.json({ data: [], meta: { count: 0, limit: 50, offset: 0, total: 0 } }),
+      ),
+    );
+    const onClose = vi.fn();
+    const Wrapper = wrap();
+    const user = userEvent.setup();
+    render(
+      <Wrapper>
+        <SnoozeEditor uid={undefined} onClose={onClose} />
+      </Wrapper>,
+    );
+    await user.type(screen.getByLabelText(/^name$/i), "quiet-friday");
+    // Add an absolute date range but leave both bounds empty.
+    await user.click(screen.getByRole("button", { name: /add range/i }));
+    await user.click(screen.getByRole("button", { name: /create/i }));
+    expect(bodies).toHaveLength(0);
+    expect(screen.getByText(/date range needs a start or an end/i)).toBeInTheDocument();
+    expect(onClose).not.toHaveBeenCalled();
+  });
+
   it("shows the Diff section in edit mode", async () => {
     mswServer.use(
       http.get("/api/v1/snooze/sn1", () =>

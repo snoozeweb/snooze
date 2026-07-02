@@ -90,6 +90,7 @@ export function ActionEditor({ uid, onClose }: ActionEditorProps) {
 
   const [submitting, setSubmitting] = useState(false);
   const [jsonError, setJsonError] = useState<string | null>(null);
+  const [requiredError, setRequiredError] = useState<string | null>(null);
 
   const formPlugins = useMemo(() => plugins_with_form(metadata.data), [metadata.data]);
   const selected = watch("selected");
@@ -122,10 +123,30 @@ export function ActionEditor({ uid, onClose }: ActionEditorProps) {
   async function onSubmit(form: FormShape) {
     setSubmitting(true);
     setJsonError(null);
+    setRequiredError(null);
     try {
       let sub: Record<string, unknown>;
       if (selectedPlugin) {
         sub = subcontent;
+        // Enforce the plugin's required action_form fields instead of just
+        // decorating them with a `*`: a blank required field (e.g. a webhook
+        // URL or Jira credentials) would otherwise save an action that only
+        // fails silently at notify time.
+        const missing: string[] = [];
+        for (const [key, field] of Object.entries(selectedPlugin.action_form ?? {})) {
+          if (!field.required) continue;
+          // Booleans always have a valid value (undefined reads as "off"), so
+          // "required" can't mean "non-empty" for them — skip.
+          if (field.component === "Switch" || field.component === "Boolean") continue;
+          const v = sub[key];
+          const empty = v === undefined || v === null || (typeof v === "string" && v.trim() === "");
+          if (empty) missing.push(field.display_name || key);
+        }
+        if (missing.length > 0) {
+          setRequiredError(`${missing.join(", ")} ${missing.length === 1 ? "is" : "are"} required`);
+          setSubmitting(false);
+          return;
+        }
       } else {
         try {
           sub = JSON.parse(form.subcontent_json) as Record<string, unknown>;
@@ -253,6 +274,11 @@ export function ActionEditor({ uid, onClose }: ActionEditorProps) {
                     onChange={setSubcontent}
                     idPrefix={`action-${selectedPlugin.plugin_name}`}
                   />
+                  {requiredError ? (
+                    <span style={{ color: "var(--severity-critical)", fontSize: "var(--text-xs)" }}>
+                      {requiredError}
+                    </span>
+                  ) : null}
                 </section>
               ) : useJsonFallback ? (
                 <section className={styles.section}>

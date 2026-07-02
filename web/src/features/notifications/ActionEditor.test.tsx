@@ -143,6 +143,35 @@ describe("ActionEditor", () => {
     expect(onClose).toHaveBeenCalled();
   });
 
+  it("blocks save when a required action-config field is empty", async () => {
+    const bodies: unknown[] = [];
+    mswServer.use(
+      http.get("/api/v1/metadata", () => HttpResponse.json(metadataPayload())),
+      http.get("/api/v1/metadata/webhook", () =>
+        HttpResponse.json({ data: metadataPayload().data[1] }),
+      ),
+      http.post("/api/v1/action", async ({ request }) => {
+        bodies.push(await request.json());
+        return HttpResponse.json({ uid: "a-new", name: "x" });
+      }),
+    );
+    const onClose = vi.fn();
+    const Wrapper = wrap();
+    const user = userEvent.setup();
+    render(
+      <Wrapper>
+        <ActionEditor uid={undefined} onClose={onClose} />
+      </Wrapper>,
+    );
+    await user.click(await screen.findByRole("button", { name: /Call a webhook/ }));
+    await user.type(screen.getByLabelText(/^name$/i), "hook-prod");
+    // Leave the required URL empty and try to create.
+    await user.click(screen.getByRole("button", { name: /create/i }));
+    expect(bodies).toHaveLength(0);
+    expect(screen.getByText(/URL.*required/i)).toBeInTheDocument();
+    expect(onClose).not.toHaveBeenCalled();
+  });
+
   it("shows only plugins that have an action_form as gallery cards", async () => {
     mswServer.use(http.get("/api/v1/metadata", () => HttpResponse.json(metadataPayload())));
     const Wrapper = wrap();
