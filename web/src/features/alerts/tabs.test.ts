@@ -14,7 +14,7 @@ describe("alert tabs catalog", () => {
     ]);
   });
 
-  it("default Alerts tab excludes ack, close, and snoozed records", () => {
+  it("default Alerts tab excludes ack, close, snoozed, and shelved records", () => {
     const tab = tabById("alerts");
     expect(tab.condition).toEqual({
       type: "AND",
@@ -22,8 +22,17 @@ describe("alert tabs catalog", () => {
         { type: "NOT", arg: { type: "EQUALS", field: "state", value: "ack" } },
         { type: "NOT", arg: { type: "EQUALS", field: "state", value: "close" } },
         { type: "NOT", arg: { type: "EXISTS", field: "snoozed" } },
+        // Shelving flips ttl negative (useShelveRecord/computeNextTTL); this
+        // clause is what actually drops a shelved row out of the default view.
+        { type: "NOT", arg: { type: "LT", field: "ttl", value: 0 } },
       ],
     });
+  });
+
+  it("shelving (ttl < 0) excludes an alert from the default Alerts tab", () => {
+    const tab = tabById("alerts");
+    const args = tab.condition?.type === "AND" ? tab.condition.args : [];
+    expect(args).toContainEqual({ type: "NOT", arg: { type: "LT", field: "ttl", value: 0 } });
   });
 
   it("Snoozed tab matches records with a snoozed field set", () => {

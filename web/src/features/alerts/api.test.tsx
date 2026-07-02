@@ -1,7 +1,7 @@
 import { act, renderHook, waitFor } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { http, HttpResponse } from "msw";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import type { ReactNode } from "react";
 import { mswServer } from "@/tests/msw/server";
 import { Records, useCommentRecord, useShelveRecord } from "./api";
@@ -45,6 +45,28 @@ describe("alerts.api", () => {
       await result.current.mutateAsync({ record_uid: "r1", type: "ack", message: "got it" });
     });
     expect(bodies[0]).toEqual({ record_uid: "r1", type: "ack", message: "got it" });
+  });
+
+  it("useCommentRecord invalidates BOTH record and comment queries", async () => {
+    // A state-changing comment (ack/esc) mutates record state server-side AND
+    // appends to the comment log. If we only invalidate one, either the alert
+    // list/badge or an open comment timeline goes stale. Post from the timeline
+    // composer desynced the list precisely because it invalidated only comments.
+    const client = new QueryClient({
+      defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+    });
+    const spy = vi.spyOn(client, "invalidateQueries");
+    mswServer.use(http.post("/api/v1/comment", () => HttpResponse.json({ ok: true })));
+    const wrapper = ({ children }: { children: ReactNode }) => (
+      <QueryClientProvider client={client}>{children}</QueryClientProvider>
+    );
+    const { result } = renderHook(() => useCommentRecord(), { wrapper });
+    await act(async () => {
+      await result.current.mutateAsync({ record_uid: "r1", type: "ack" });
+    });
+    const invalidatedKeys = spy.mock.calls.map((c) => JSON.stringify(c[0]?.queryKey));
+    expect(invalidatedKeys).toContain(JSON.stringify(["record"]));
+    expect(invalidatedKeys).toContain(JSON.stringify(["comment"]));
   });
 });
 

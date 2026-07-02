@@ -20,6 +20,8 @@ import { toast } from "@/shared/ui/toast/useToast";
 import { ApiError } from "@/lib/api/client";
 import { trimDate } from "./format";
 import { Comments, useRecordComments, type Comment } from "./comments";
+import { useCommentRecord } from "./api";
+import { canTransition } from "./transitions";
 import styles from "./CommentTimeline.module.css";
 
 const TYPE_LABEL: Record<Comment["type"], string> = {
@@ -44,10 +46,26 @@ const TYPE_VARIANT: Record<Comment["type"], BadgeVariant> = {
   unshelve: "neutral",
 };
 
-const COMPOSER_TYPES: Comment["type"][] = ["comment", "ack", "esc"];
+// The composer only offers free-form comment plus the two transitions that
+// make sense to author with a note. All three are valid CommentInput types, so
+// posting can route through useCommentRecord (which resyncs the record list).
+const COMPOSER_TYPES = ["comment", "ack", "esc"] as const;
+type ComposerType = (typeof COMPOSER_TYPES)[number];
 const PAGE_SIZE_OPTIONS = [5, 10, 20] as const;
 
-export function CommentTimeline({ recordUid }: { recordUid: string | undefined }) {
+export function CommentTimeline({
+  recordUid,
+  state,
+}: {
+  recordUid: string | undefined;
+  /**
+   * The linked record's current lifecycle state. When provided, the composer
+   * hides the ack/esc chips the backend would reject from that state (same
+   * transition table as the rest of the Alerts UI). Omitted/undefined → all
+   * chips shown (fail-open), matching the backend's permissive default.
+   */
+  state?: string | undefined;
+}) {
   const { claims } = useAuth();
   const currentUser = claims?.sub ?? "";
   const canComment = hasAnyPermission(claims, ["can_comment"]);
@@ -60,13 +78,16 @@ export function CommentTimeline({ recordUid }: { recordUid: string | undefined }
     offset: (page - 1) * pageSize,
   });
 
-  const create = Comments.useCreate();
+  // Posting routes through useCommentRecord (not Comments.useCreate) so an
+  // ack/esc authored here invalidates the record list/count too — not just the
+  // comment log — keeping the alert table in sync with the state change.
+  const post = useCommentRecord();
   const update = Comments.useUpdate();
   const remove = Comments.useRemove();
 
   // Composer state
   const [draft, setDraft] = useState("");
-  const [draftType, setDraftType] = useState<Comment["type"]>("comment");
+  const [draftType, setDraftType] = useState<ComposerType>("comment");
   // Edit state — one comment at a time.
   const [editingUid, setEditingUid] = useState<string | undefined>(undefined);
   const [editDraft, setEditDraft] = useState("");
@@ -79,10 +100,16 @@ export function CommentTimeline({ recordUid }: { recordUid: string | undefined }
   const items = q.data?.data ?? [];
   const pageCount = Math.max(1, Math.ceil(total / pageSize));
 
+  // Comment is always allowed; ack/esc only when the backend accepts them from
+  // the current state. Without a known state, show all (fail-open).
+  const composerTypes = COMPOSER_TYPES.filter(
+    (t) => t === "comment" || state === undefined || canTransition(state, t),
+  );
+
   async function handlePost() {
     if (!draft.trim() || !recordUid) return;
     try {
-      await create.mutateAsync({
+      await post.mutateAsync({
         record_uid: recordUid,
         type: draftType,
         message: draft.trim(),
@@ -131,7 +158,7 @@ export function CommentTimeline({ recordUid }: { recordUid: string | undefined }
           />
           <div className={styles.composerRow}>
             <span className={styles.composerType} role="group" aria-label="Comment type">
-              {COMPOSER_TYPES.map((t) => (
+              {composerTypes.map((t) => (
                 <button
                   key={t}
                   type="button"
@@ -147,8 +174,8 @@ export function CommentTimeline({ recordUid }: { recordUid: string | undefined }
             <Button
               size="sm"
               variant="primary"
-              loading={create.isPending}
-              disabled={create.isPending || !draft.trim()}
+              loading={post.isPending}
+              disabled={post.isPending || !draft.trim()}
               onClick={() => {
                 void handlePost();
               }}

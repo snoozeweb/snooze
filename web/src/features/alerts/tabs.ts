@@ -30,10 +30,17 @@ export type TabDef = {
 
 /**
  * "Alerts" — the default landing tab, showing active alerts that need
- * attention: not closed, not acknowledged, not currently snoozed. The
- * three-clause AND matches origin/master:
+ * attention: not closed, not acknowledged, not currently snoozed, not shelved.
  *
- *   AND(NOT(state=ack), NOT(state=close), NOT(EXISTS snoozed))
+ *   AND(NOT(state=ack), NOT(state=close), NOT(EXISTS snoozed), NOT(ttl < 0))
+ *
+ * The first three clauses match origin/master. The fourth (ttl < 0) is what
+ * makes Shelve do what it says: shelving flips a record's ttl negative (see
+ * useShelveRecord/computeNextTTL in api.ts), and without excluding ttl<0 here
+ * a shelved row stayed put in this default view — and kept being counted by
+ * useActiveAlertCount, which reuses this exact preset. Mirrors the "Shelved"
+ * tab's own `ttl < 0` branch, so a shelved alert leaves "Alerts" and appears
+ * under "Shelved" instead.
  */
 export const ACTIVE_ALERTS: Condition = {
   type: "AND",
@@ -41,6 +48,7 @@ export const ACTIVE_ALERTS: Condition = {
     { type: "NOT", arg: { type: "EQUALS", field: "state", value: "ack" } },
     { type: "NOT", arg: { type: "EQUALS", field: "state", value: "close" } },
     { type: "NOT", arg: { type: "EXISTS", field: "snoozed" } },
+    { type: "NOT", arg: { type: "LT", field: "ttl", value: 0 } },
   ],
 };
 

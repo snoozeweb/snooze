@@ -1,10 +1,11 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { act, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { http, HttpResponse } from "msw";
 import { describe, expect, it, vi, afterEach } from "vitest";
 import type { ReactNode } from "react";
 import { mswServer } from "@/tests/msw/server";
+import { authStore } from "@/lib/auth/store";
 import { CommentTimeline } from "./CommentTimeline";
 
 function wrap() {
@@ -16,9 +17,79 @@ function wrap() {
   );
 }
 
+function loginWithPerms(perms: string[]) {
+  const header = btoa(JSON.stringify({ alg: "HS256", typ: "JWT" }));
+  const body = btoa(
+    JSON.stringify({ sub: "tester", exp: Math.floor(Date.now() / 1000) + 3600, permissions: perms }),
+  );
+  authStore.getState().login(`${header}.${body}.sig`);
+}
+
 describe("CommentTimeline", () => {
   afterEach(() => {
     vi.useRealTimers();
+    authStore.getState().logout();
+  });
+
+  it("posting an ack from the composer resyncs the alert list (invalidates record queries)", async () => {
+    // The composer can drive a real state transition (ack/esc). If it only
+    // invalidates comment queries, the alert table/badge stay stale until an
+    // unrelated refetch. It must invalidate record queries too.
+    loginWithPerms(["can_comment"]);
+    const bodies: Array<{ type: string }> = [];
+    mswServer.use(
+      http.get("/api/v1/comment", () =>
+        HttpResponse.json({ data: [], meta: { count: 0, limit: 5, offset: 0, total: 0 } }),
+      ),
+      http.post("/api/v1/comment", async ({ request }) => {
+        bodies.push((await request.json()) as { type: string });
+        return HttpResponse.json({ ok: true });
+      }),
+    );
+    const client = new QueryClient({
+      defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+    });
+    const spy = vi.spyOn(client, "invalidateQueries");
+    const user = userEvent.setup();
+    render(
+      <QueryClientProvider client={client}>
+        <CommentTimeline recordUid="r1" />
+      </QueryClientProvider>,
+    );
+
+    await screen.findByLabelText(/new comment/i);
+    // Switch the composer to "acknowledged", write a note, and post.
+    await user.click(screen.getByRole("button", { name: /acknowledged/i }));
+    await user.type(screen.getByLabelText(/new comment/i), "on it");
+    await act(async () => {
+      await user.click(screen.getByRole("button", { name: /^post$/i }));
+    });
+
+    await waitFor(() => expect(bodies).toHaveLength(1));
+    expect(bodies[0]).toMatchObject({ type: "ack" });
+    const invalidatedKeys = spy.mock.calls.map((c) => JSON.stringify(c[0]?.queryKey));
+    expect(invalidatedKeys).toContain(JSON.stringify(["record"]));
+  });
+
+  it("hides composer ack/esc chips the backend would reject for the record's state", async () => {
+    // A closed alert can only be re-opened; ack/esc from here would 403. The
+    // composer must gate its transition chips on the record's state, like the
+    // rest of the page — comment stays available.
+    loginWithPerms(["can_comment"]);
+    mswServer.use(
+      http.get("/api/v1/comment", () =>
+        HttpResponse.json({ data: [], meta: { count: 0, limit: 5, offset: 0, total: 0 } }),
+      ),
+    );
+    render(
+      <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
+        <CommentTimeline recordUid="r1" state="close" />
+      </QueryClientProvider>,
+    );
+    await screen.findByLabelText(/new comment/i);
+    expect(screen.getByRole("button", { name: /commented/i })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /acknowledged/i })).toBeNull();
+    expect(screen.queryByRole("button", { name: /re-escalated/i })).toBeNull();
   });
 
   it("renders the comment date in the alert-table format (trimDate), not relative", async () => {

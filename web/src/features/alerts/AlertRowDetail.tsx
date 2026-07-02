@@ -38,7 +38,7 @@ export function AlertRowDetail({ row }: AlertRowDetailProps) {
             <TabTrigger value="flow">Flow</TabTrigger>
           </TabList>
           <TabPanel value="timeline">
-            <CommentTimeline recordUid={row.uid} />
+            <CommentTimeline recordUid={row.uid} state={row.state} />
           </TabPanel>
           <TabPanel value="flow">
             <AlertFlowChart row={row} />

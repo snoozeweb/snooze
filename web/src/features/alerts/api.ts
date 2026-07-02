@@ -4,6 +4,7 @@ import { defineResource } from "@/lib/api/resource";
 import type { Record_ } from "./types";
 import { encodeConditionQ } from "@/lib/condition/serialize";
 import { ACTIVE_ALERTS } from "./tabs";
+import { Comments } from "./comments";
 
 export const Records = defineResource<Record_>("record");
 
@@ -29,7 +30,13 @@ export function useCommentRecord(): UseMutationResult<unknown, ApiError, Comment
   return useMutation({
     mutationFn: (input: CommentInput) => api<unknown>("POST", "/comment", { body: input }),
     onSuccess: () => {
+      // A state-changing comment (ack/close/open/esc) mutates the record's state
+      // server-side AND appends to the comment log, so both must refetch: the
+      // record list/count for the new state, and any mounted comment timeline
+      // for the new entry. Invalidating only one leaves the other stale — the
+      // bug that let a timeline-composer ack silently desync the alert list.
       void qc.invalidateQueries({ queryKey: Records.queryKey.all });
+      void qc.invalidateQueries({ queryKey: Comments.queryKey.all });
     },
   });
 }

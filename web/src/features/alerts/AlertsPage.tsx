@@ -17,13 +17,14 @@ import { severityToken } from "@/lib/format/severity-color";
 import { useConsoleConfig } from "@/features/config/api";
 import { Environments } from "@/features/admin/environments/api";
 import { Records, useCommentRecord, useShelveRecord } from "./api";
+import { allowedTransitionActions, canTransition, type TransitionAction } from "./transitions";
 import { AlertRowDetail } from "./AlertRowDetail";
 import { ActiveFilters } from "./ActiveFilters";
 import { AlertsFilters, type AlertFilters } from "./Filters";
 import { SavedSearches } from "./SavedSearches";
 import { alertColumns, recordCommentCount } from "./columns";
 import { useAutoRefresh } from "./useAutoRefresh";
-import type { AlertState, Record_ } from "./types";
+import type { Record_ } from "./types";
 import { tabById, type TabId } from "./tabs";
 import { ActionDialog, type ActionType } from "./ActionDialog";
 import { InjectAlertsDialog } from "./InjectAlertsDialog";
@@ -33,6 +34,23 @@ import styles from "./AlertsPage.module.css";
 function recordLabel(r: Record_): string {
   return r.host ?? r.message ?? r.uid ?? "alert";
 }
+
+// Display label + icon for each lifecycle transition. Which of these are
+// *offered* for a given row is decided by transitions.ts (mirroring the backend
+// table), so every menu/toolbar/keyboard/bulk surface stays in lockstep and the
+// UI never shows an action the server would reject.
+const TRANSITION_LABEL: Record<TransitionAction, string> = {
+  ack: "Acknowledge",
+  close: "Close",
+  esc: "Re-escalate",
+  open: "Re-open",
+};
+const TRANSITION_ICON = {
+  ack: "thumbs-up",
+  close: "lock",
+  esc: "rotate-cw",
+  open: "rotate-cw",
+} as const;
 
 type AlertsSearch = AlertFilters & {
   page?: number;
@@ -143,6 +161,11 @@ export function AlertsPage() {
   const [expandedCount, setExpandedCount] = useState(0);
   const [dialog, setDialog] = useState<{ type: ActionType; records: Record_[] } | null>(null);
   const [injectOpen, setInjectOpen] = useState(false);
+  // Drives the ActionDialog confirm button across a whole bulk submit. A single
+  // shared mutation's isPending only tracks its latest call, so it could flip
+  // back to enabled mid-batch (inviting a double-submit); this local flag stays
+  // true until every request in the batch settles.
+  const [bulkSubmitting, setBulkSubmitting] = useState(false);
   const shelveMut = useShelveRecord();
   const removeMut = Records.useRemove();
 
@@ -279,52 +302,19 @@ export function AlertsPage() {
 
   const rowActions = useCallback(
     (row: Record_): RowAction[] => {
-      const state = (row.state ?? "") as AlertState;
-      const isOpen = state === "" || state === "open";
-      const isAcked = state === "ack";
+      const state = row.state ?? "";
       const isClosed = state === "close";
       const isShelved = state === "shelved" || (row.ttl !== undefined && row.ttl < 0);
 
       const out: RowAction[] = [];
 
-      if (isOpen) {
+      // Only the transitions the backend accepts from this state (transition.go).
+      for (const action of allowedTransitionActions(state)) {
         out.push({
-          key: "ack",
-          label: "Acknowledge",
-          icon: "thumbs-up",
-          onSelect: () => openDialog("ack", [row]),
-        });
-        out.push({
-          key: "close",
-          label: "Close",
-          icon: "lock",
-          onSelect: () => openDialog("close", [row]),
-        });
-        out.push({
-          key: "esc",
-          label: "Re-escalate",
-          icon: "rotate-cw",
-          onSelect: () => openDialog("esc", [row]),
-        });
-      } else if (isAcked) {
-        out.push({
-          key: "close",
-          label: "Close",
-          icon: "lock",
-          onSelect: () => openDialog("close", [row]),
-        });
-        out.push({
-          key: "esc",
-          label: "Re-escalate",
-          icon: "rotate-cw",
-          onSelect: () => openDialog("esc", [row]),
-        });
-      } else if (isClosed) {
-        out.push({
-          key: "open",
-          label: "Re-open",
-          icon: "rotate-cw",
-          onSelect: () => openDialog("open", [row]),
+          key: action,
+          label: TRANSITION_LABEL[action],
+          icon: TRANSITION_ICON[action],
+          onSelect: () => openDialog(action, [row]),
         });
       }
 
@@ -431,13 +421,13 @@ export function AlertsPage() {
   // dialog because it requires a message.
   const quickActions = useCallback(
     (row: Record_): RowAction[] => {
-      const state = (row.state ?? "") as AlertState;
-      const isOpen = state === "" || state === "open";
-      const isAcked = state === "ack";
-      const isClosed = state === "close";
+      const state = row.state ?? "";
 
       const out: RowAction[] = [];
-      if (isOpen) {
+      // ack/close run inline (no dialog) — gate them on the real transition
+      // table so escalated rows get quick ack/close and re-opened rows don't
+      // offer transitions the backend rejects.
+      if (canTransition(state, "ack")) {
         out.push({
           key: "ack",
           label: "Acknowledge",
@@ -445,7 +435,7 @@ export function AlertsPage() {
           onSelect: () => inlineAction(row, "ack"),
         });
       }
-      if (isOpen || isAcked) {
+      if (canTransition(state, "close")) {
         out.push({
           key: "close",
           label: "Close",
@@ -453,7 +443,7 @@ export function AlertsPage() {
           onSelect: () => inlineAction(row, "close"),
         });
       }
-      if (!isClosed) {
+      if (state !== "close") {
         out.push({
           key: "comment",
           label: "Comment",
@@ -473,12 +463,12 @@ export function AlertsPage() {
   // row is focused and the user isn't typing into a field.
   const rowKeyBindings = useCallback(
     (row: Record_): Record<string, () => void> => {
-      const state = (row.state ?? "") as AlertState;
-      const isOpen = state === "" || state === "open";
+      const state = row.state ?? "";
       const bindings: Record<string, () => void> = {
         c: () => openDialog("comment", [row]),
       };
-      if (isOpen) bindings.a = () => inlineAction(row, "ack");
+      // 'a' acks inline only where the backend allows it (fresh/open/escalated).
+      if (canTransition(state, "ack")) bindings.a = () => inlineAction(row, "ack");
       return bindings;
     },
     [inlineAction, openDialog],
@@ -491,10 +481,7 @@ export function AlertsPage() {
   // mirroring the bulk-toolbar surface.
   const contextMenuItems = useCallback(
     (row: Record_): ContextMenuItem[] => {
-      const state = (row.state ?? "") as AlertState;
-      const isOpen = state === "" || state === "open";
-      const isAcked = state === "ack";
-      const isClosed = state === "close";
+      const state = row.state ?? "";
 
       const items: ContextMenuItem[] = [
         {
@@ -522,33 +509,13 @@ export function AlertsPage() {
         },
       ];
 
-      if (isOpen || isAcked) {
-        if (isOpen) {
-          items.push({
-            key: "ack",
-            label: "Acknowledge",
-            icon: "thumbs-up",
-            onSelect: () => openDialog("ack", [row]),
-          });
-        }
+      // Same transition table as the kebab/quick/keyboard surfaces.
+      for (const action of allowedTransitionActions(state)) {
         items.push({
-          key: "close",
-          label: "Close",
-          icon: "lock",
-          onSelect: () => openDialog("close", [row]),
-        });
-        items.push({
-          key: "esc",
-          label: "Re-escalate",
-          icon: "rotate-cw",
-          onSelect: () => openDialog("esc", [row]),
-        });
-      } else if (isClosed) {
-        items.push({
-          key: "open",
-          label: "Re-open",
-          icon: "rotate-cw",
-          onSelect: () => openDialog("open", [row]),
+          key: action,
+          label: TRANSITION_LABEL[action],
+          icon: TRANSITION_ICON[action],
+          onSelect: () => openDialog(action, [row]),
         });
       }
 
@@ -574,38 +541,64 @@ export function AlertsPage() {
   );
 
   const bulkActions = useCallback((rows: Record_[]) => {
-    const openBulkDialog = (type: ActionType) => setDialog({ type, records: rows });
+    // A bulk transition applies only to the selected rows the backend would
+    // accept it for. Gate each button on that subset (and send only those rows)
+    // so a mixed-state selection can't silently partial-fail, and the count
+    // reflects what will actually change.
+    const applicable = (action: TransitionAction) =>
+      rows.filter((r) => canTransition(r.state ?? "", action));
+    const ackRows = applicable("ack");
+    const closeRows = applicable("close");
+    const escRows = applicable("esc");
+    const openRows = applicable("open");
+    const openBulkDialog = (type: ActionType, records: Record_[]) => setDialog({ type, records });
     return (
       <>
-        <Button
-          size="sm"
-          variant="secondary"
-          leadingIcon="thumbs-up"
-          onClick={() => openBulkDialog("ack")}
-        >
-          Acknowledge ({rows.length})
-        </Button>
-        <Button
-          size="sm"
-          variant="secondary"
-          leadingIcon="lock"
-          onClick={() => openBulkDialog("close")}
-        >
-          Close ({rows.length})
-        </Button>
-        <Button
-          size="sm"
-          variant="secondary"
-          leadingIcon="rotate-cw"
-          onClick={() => openBulkDialog("esc")}
-        >
-          Re-escalate ({rows.length})
-        </Button>
+        {ackRows.length > 0 ? (
+          <Button
+            size="sm"
+            variant="secondary"
+            leadingIcon="thumbs-up"
+            onClick={() => openBulkDialog("ack", ackRows)}
+          >
+            Acknowledge ({ackRows.length})
+          </Button>
+        ) : null}
+        {closeRows.length > 0 ? (
+          <Button
+            size="sm"
+            variant="secondary"
+            leadingIcon="lock"
+            onClick={() => openBulkDialog("close", closeRows)}
+          >
+            Close ({closeRows.length})
+          </Button>
+        ) : null}
+        {escRows.length > 0 ? (
+          <Button
+            size="sm"
+            variant="secondary"
+            leadingIcon="rotate-cw"
+            onClick={() => openBulkDialog("esc", escRows)}
+          >
+            Re-escalate ({escRows.length})
+          </Button>
+        ) : null}
+        {openRows.length > 0 ? (
+          <Button
+            size="sm"
+            variant="secondary"
+            leadingIcon="rotate-cw"
+            onClick={() => openBulkDialog("open", openRows)}
+          >
+            Re-open ({openRows.length})
+          </Button>
+        ) : null}
         <Button
           size="sm"
           variant="secondary"
           leadingIcon="message-square"
-          onClick={() => openBulkDialog("comment")}
+          onClick={() => openBulkDialog("comment", rows)}
         >
           Comment ({rows.length})
         </Button>
@@ -617,15 +610,21 @@ export function AlertsPage() {
     async ({ message }: { message: string }) => {
       if (!dialog) return;
       const { type, records } = dialog;
-      const results = await Promise.allSettled(
-        records.map((r) =>
-          commentMut.mutateAsync({
-            record_uid: r.uid ?? "",
-            type,
-            ...(message ? { message } : {}),
-          }),
-        ),
-      );
+      setBulkSubmitting(true);
+      let results: PromiseSettledResult<unknown>[];
+      try {
+        results = await Promise.allSettled(
+          records.map((r) =>
+            commentMut.mutateAsync({
+              record_uid: r.uid ?? "",
+              type,
+              ...(message ? { message } : {}),
+            }),
+          ),
+        );
+      } finally {
+        setBulkSubmitting(false);
+      }
       const ok = results.filter((r) => r.status === "fulfilled").length;
       const failed = results.length - ok;
       if (failed === 0) {
@@ -656,9 +655,30 @@ export function AlertsPage() {
           toast.success(`${ok} alert${ok === 1 ? "" : "s"} updated`);
         }
         setDialog(null);
-        setSelectedKeys(new Set());
+        // Deselect only the rows this action actually targeted. bulkActions now
+        // sends per-action subsets (e.g. "Re-escalate (2)" on a mixed selection),
+        // so clearing the whole selection would drop rows the operator still
+        // wants to act on. Single-row (kebab) actions delete a row that may not
+        // be in the set at all — a harmless no-op.
+        setSelectedKeys((prev) => {
+          const next = new Set(prev);
+          for (const r of records) next.delete(r.uid ?? "");
+          return next;
+        });
       } else {
-        toast.error(`${failed} of ${records.length} failed; ${ok} succeeded`);
+        // Surface the backend's actual reason (e.g. an invalid-transition 403)
+        // instead of a bare count, so the operator knows why it failed and
+        // whether to retry.
+        const firstRejected = results.find(
+          (r): r is PromiseRejectedResult => r.status === "rejected",
+        );
+        const detail =
+          firstRejected && firstRejected.reason instanceof ApiError
+            ? firstRejected.reason.detail
+            : "";
+        toast.error(
+          `${failed} of ${records.length} failed${detail ? `: ${detail}` : ""}; ${ok} succeeded`,
+        );
       }
     },
     [commentMut, dialog],
@@ -910,7 +930,7 @@ export function AlertsPage() {
           actionType={dialog.type}
           records={dialog.records}
           onConfirm={submitDialog}
-          submitting={commentMut.isPending}
+          submitting={bulkSubmitting}
         />
       ) : null}
       <ConfirmDeleteDialog

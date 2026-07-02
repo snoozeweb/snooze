@@ -440,4 +440,182 @@ describe("AlertsPage", () => {
     expect(strip).toHaveTextContent(/acknowledged/i);
     expect(screen.getByRole("button", { name: /clear all/i })).toBeInTheDocument();
   });
+
+  // ── Phase 1: state-transition parity with the backend ─────────────────────
+
+  async function openKebab(state: string) {
+    mswServer.use(
+      http.get("/api/v1/record", () =>
+        HttpResponse.json({
+          data: [{ uid: "r1", host: "srv-1", severity: "info", state, date_epoch: 1 }],
+          meta: { count: 1, limit: 50, offset: 0, total: 1 },
+        }),
+      ),
+    );
+    const user = userEvent.setup();
+    setup();
+    await waitFor(() => expect(screen.getByText("srv-1")).toBeInTheDocument());
+    await user.click(screen.getAllByRole("button", { name: /row actions/i })[0]!);
+    await waitFor(() => expect(screen.getByRole("menu")).toBeInTheDocument());
+    return user;
+  }
+
+  it("escalated rows are actionable: kebab offers Acknowledge/Close/Re-open, never Re-escalate", async () => {
+    await openKebab("esc");
+    expect(screen.getByRole("menuitem", { name: /^acknowledge$/i })).toBeInTheDocument();
+    expect(screen.getByRole("menuitem", { name: /^close$/i })).toBeInTheDocument();
+    expect(screen.getByRole("menuitem", { name: /^re-open$/i })).toBeInTheDocument();
+    expect(screen.queryByRole("menuitem", { name: /re-escalate/i })).toBeNull();
+  });
+
+  it("re-opened rows never offer Re-escalate (the button the backend always 403s)", async () => {
+    await openKebab("open");
+    expect(screen.getByRole("menuitem", { name: /^acknowledge$/i })).toBeInTheDocument();
+    expect(screen.getByRole("menuitem", { name: /^close$/i })).toBeInTheDocument();
+    expect(screen.queryByRole("menuitem", { name: /re-escalate/i })).toBeNull();
+  });
+
+  it("acknowledged rows offer Re-open (previously missing)", async () => {
+    await openKebab("ack");
+    expect(screen.getByRole("menuitem", { name: /^re-open$/i })).toBeInTheDocument();
+    expect(screen.getByRole("menuitem", { name: /^close$/i })).toBeInTheDocument();
+    expect(screen.getByRole("menuitem", { name: /re-escalate/i })).toBeInTheDocument();
+  });
+
+  it("bulk Re-escalate is hidden when no selected row can be escalated", async () => {
+    mswServer.use(
+      http.get("/api/v1/record", () =>
+        HttpResponse.json({
+          data: [
+            { uid: "r1", host: "srv-1", state: "open", date_epoch: 1 },
+            { uid: "r2", host: "srv-2", state: "open", date_epoch: 2 },
+          ],
+          meta: { count: 2, limit: 50, offset: 0, total: 2 },
+        }),
+      ),
+    );
+    const user = userEvent.setup();
+    setup();
+    await waitFor(() => expect(screen.getByText("srv-1")).toBeInTheDocument());
+    await user.click(screen.getByRole("checkbox", { name: /select all/i }));
+    // Open rows can be acked/closed but not re-escalated (that's an ack-only
+    // transition), so the bulk Re-escalate button must not appear.
+    expect(screen.getByRole("button", { name: /acknowledge \(2\)/i })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /close \(2\)/i })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /re-escalate/i })).toBeNull();
+  });
+
+  it("bulk partial failure surfaces the backend's reason, not just a count", async () => {
+    mswServer.use(
+      http.get("/api/v1/record", () =>
+        HttpResponse.json({
+          data: [
+            { uid: "r1", host: "srv-1", state: "open", date_epoch: 1 },
+            { uid: "r2", host: "srv-2", state: "open", date_epoch: 2 },
+          ],
+          meta: { count: 2, limit: 50, offset: 0, total: 2 },
+        }),
+      ),
+      http.post("/api/v1/comment", async ({ request }) => {
+        const body = (await request.json()) as { record_uid: string };
+        if (body.record_uid === "r2") {
+          return HttpResponse.json(
+            { error: { code: "invalid_transition", message: "alert already acknowledged" } },
+            { status: 403 },
+          );
+        }
+        return HttpResponse.json({ ok: true });
+      }),
+    );
+    const user = userEvent.setup();
+    setup();
+    await waitFor(() => expect(screen.getByText("srv-1")).toBeInTheDocument());
+    await user.click(screen.getByRole("checkbox", { name: /select all/i }));
+    await user.click(screen.getByRole("button", { name: /acknowledge \(2\)/i }));
+    await user.click(screen.getByRole("button", { name: /^acknowledge$/i }));
+
+    await waitFor(() => {
+      const toasts = toastStore.getSnapshot();
+      expect(toasts.some((t) => /alert already acknowledged/i.test(t.description))).toBe(true);
+    });
+  });
+
+  it("keeps the bulk confirm disabled until every request in the batch settles", async () => {
+    // r2 resolves immediately; r1 hangs. A single shared mutation's isPending
+    // tracks only its latest call, so once r2 (the last-initiated) settled it
+    // would flip the confirm back to enabled while r1 is still in flight —
+    // inviting a double-submit. The confirm must stay disabled until all settle.
+    let recordGets = 0;
+    let releaseSlow: () => void = () => {};
+    const slow = new Promise<void>((r) => {
+      releaseSlow = r;
+    });
+    mswServer.use(
+      http.get("/api/v1/record", () => {
+        recordGets += 1;
+        return HttpResponse.json({
+          data: [
+            { uid: "r1", host: "srv-1", state: "open", date_epoch: 1 },
+            { uid: "r2", host: "srv-2", state: "open", date_epoch: 2 },
+          ],
+          meta: { count: 2, limit: 50, offset: 0, total: 2 },
+        });
+      }),
+      http.post("/api/v1/comment", async ({ request }) => {
+        const body = (await request.json()) as { record_uid: string };
+        if (body.record_uid === "r1") await slow; // r1 stays in flight
+        return HttpResponse.json({ ok: true });
+      }),
+    );
+    const user = userEvent.setup();
+    setup();
+    await waitFor(() => expect(screen.getByText("srv-1")).toBeInTheDocument());
+    const initialGets = recordGets;
+    await user.click(screen.getByRole("checkbox", { name: /select all/i }));
+    await user.click(screen.getByRole("button", { name: /acknowledge \(2\)/i }));
+    await user.click(screen.getByRole("button", { name: /^acknowledge$/i }));
+
+    // r2's success invalidates the record list → a refetch fires. Once we see
+    // it, r2's mutation has fully settled (its onSuccess ran) while r1 is still
+    // hung. The confirm — queried by its form assoc since `loading` hides the
+    // label — must still be disabled.
+    await waitFor(() => expect(recordGets).toBeGreaterThan(initialGets));
+    const submit = document.querySelector<HTMLButtonElement>('button[form="action-form"]');
+    expect(submit).not.toBeNull();
+    expect(submit).toBeDisabled();
+
+    act(() => releaseSlow());
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+  });
+
+  it("a subset bulk action deselects only the rows it acted on, keeping the rest selected", async () => {
+    // Mixed selection: r1 is acked (escalatable), r2 is open (not). The toolbar
+    // shows "Re-escalate (1)" for r1 only. Acting on it must not wipe r2 from
+    // the selection — the operator still wants to act on r2.
+    mswServer.use(
+      http.get("/api/v1/record", () =>
+        HttpResponse.json({
+          data: [
+            { uid: "r1", host: "srv-1", state: "ack", date_epoch: 1 },
+            { uid: "r2", host: "srv-2", state: "open", date_epoch: 2 },
+          ],
+          meta: { count: 2, limit: 50, offset: 0, total: 2 },
+        }),
+      ),
+      http.post("/api/v1/comment", () => HttpResponse.json({ ok: true })),
+    );
+    const user = userEvent.setup();
+    setup();
+    await waitFor(() => expect(screen.getByText("srv-1")).toBeInTheDocument());
+    await user.click(screen.getByRole("checkbox", { name: /select all/i }));
+    // Only r1 (ack) can be re-escalated → the button acts on that single row.
+    await user.click(screen.getByRole("button", { name: /re-escalate \(1\)/i }));
+    await user.click(screen.getByRole("button", { name: /^re-escalate$/i }));
+
+    // r1 gets deselected; r2 remains selected (its checkbox still checked).
+    await waitFor(() =>
+      expect(screen.getByRole("checkbox", { name: /select row r1/i })).not.toBeChecked(),
+    );
+    expect(screen.getByRole("checkbox", { name: /select row r2/i })).toBeChecked();
+  });
 });
