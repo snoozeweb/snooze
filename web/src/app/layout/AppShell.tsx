@@ -4,6 +4,7 @@ import { Sidebar } from "./Sidebar";
 import { Topbar } from "./Topbar";
 import { BottomNav } from "./BottomNav";
 import { CommandPalette } from "./CommandPalette";
+import { RouteGuard } from "./RouteGuard";
 import { useShortcut } from "@/shared/hooks/useShortcut";
 import { useIsMobileShell } from "@/shared/hooks/useIsMobileShell";
 import { useAuth } from "@/lib/auth/store";
@@ -50,7 +51,9 @@ export function AppShell() {
         <div className={styles.content}>
           <Topbar {...(breadcrumb ? { breadcrumb } : {})} onOpenPalette={open} mobile={isMobile} />
           <main id="main-content" tabIndex={-1} className={styles.main}>
-            <Outlet />
+            <RouteGuard>
+              <Outlet />
+            </RouteGuard>
           </main>
           {isMobile ? <BottomNav /> : null}
         </div>

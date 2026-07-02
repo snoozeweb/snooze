@@ -24,6 +24,40 @@ describe("LoginCallback", () => {
     });
   });
 
+  it("preserves a deep link's encoded query state (no double-decode)", async () => {
+    // The server single-encodes the destination into the fragment;
+    // URLSearchParams decodes it once. A second decodeURIComponent would mangle
+    // the still-encoded query state ('%3D' → '=').
+    const dest = "/web/alerts?q=a%3Db";
+    window.location.hash = `#token=jwt&return_to=${encodeURIComponent(dest)}`;
+    render(<LoginCallback />);
+    await vi.waitFor(() => {
+      expect(navigate).toHaveBeenCalledWith({ to: dest });
+    });
+  });
+
+  it("keeps a destination containing a raw '%' instead of silently dropping it", async () => {
+    // A second decodeURIComponent throws on a lone '%', which the old code
+    // swallowed and fell back to /web/alerts.
+    const dest = "/web/x?p=100%";
+    window.location.hash = `#token=jwt&return_to=${encodeURIComponent(dest)}`;
+    render(<LoginCallback />);
+    await vi.waitFor(() => {
+      expect(navigate).toHaveBeenCalledWith({ to: dest });
+    });
+  });
+
+  it("rejects a protocol-relative return_to (open-redirect guard)", async () => {
+    window.location.hash = `#token=jwt&return_to=${encodeURIComponent("//evil.example")}`;
+    render(<LoginCallback />);
+    await vi.waitFor(() => expect(navigate).toHaveBeenCalled());
+    // Falls back to a safe same-origin path (the user's first permitted page),
+    // never the attacker's cross-origin target.
+    const dest = (navigate.mock.calls[0]![0] as { to: string }).to;
+    expect(dest.startsWith("/")).toBe(true);
+    expect(dest).not.toContain("evil");
+  });
+
   it("redirects to /web/login when no token is present", async () => {
     window.location.hash = "#oops=1";
     render(<LoginCallback />);

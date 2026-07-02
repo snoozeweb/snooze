@@ -64,6 +64,11 @@
   flex: 1 1 auto;
   min-width: 0;
 }
+.fieldError {
+  margin: var(--space-1) 0 0;
+  font-size: var(--text-sm);
+  color: var(--severity-critical);
+}
 .formActions {
   display: flex;
   gap: var(--space-2);

@@ -125,6 +125,21 @@ describe("Profile", () => {
     expect(bodies[0]).toEqual({ current_password: "secret", password: "newpass1" });
   });
 
+  it("explains a password mismatch in text (not colour alone) and wires it to the field", async () => {
+    loginWith(["rw_rule"], "local");
+    const user = userEvent.setup();
+    setup();
+    await user.type(screen.getByLabelText(/^new password$/i), "newpass1");
+    await user.type(screen.getByLabelText(/confirm new password/i), "different");
+    const msg = await screen.findByText(/passwords do not match/i);
+    expect(msg).toBeInTheDocument();
+    // The confirm field points at the message via aria-describedby.
+    const confirm = screen.getByLabelText(/confirm new password/i);
+    expect(confirm.getAttribute("aria-describedby")).toBe(msg.id);
+    // Submit stays blocked while they mismatch.
+    expect(screen.getByRole("button", { name: /update password/i })).toBeDisabled();
+  });
+
   it("change-password form is hidden for non-local accounts", () => {
     loginWith(["rw_rule"], "ldap");
     setup();

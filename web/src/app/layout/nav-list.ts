@@ -19,3 +19,13 @@ export function visibleNavItems(claims: JwtClaims | null): NavItem[] {
     return hasAnyPermission(claims, i.permissions);
   });
 }
+
+/**
+ * firstLandingPath returns the first nav destination the user is actually
+ * allowed to see, used as the post-login / root-redirect landing target so a
+ * user without alert permissions isn't dumped onto the record-gated Alerts page
+ * (an Access-denied wall). Falls back to /web/alerts when nothing is visible.
+ */
+export function firstLandingPath(claims: JwtClaims | null): string {
+  return visibleNavItems(claims)[0]?.to ?? "/web/alerts";
+}

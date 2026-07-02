@@ -121,7 +121,15 @@ function ChangePasswordForm() {
             value={confirm}
             onChange={(e) => setConfirm(e.target.value)}
             invalid={mismatch}
+            aria-describedby={mismatch ? "profile-confirm-error" : undefined}
           />
+          {mismatch ? (
+            // Not colour alone (WCAG 1.4.1 / 3.3.1): name the error in text and
+            // wire it to the field via aria-describedby above.
+            <p id="profile-confirm-error" className={styles.fieldError} role="alert">
+              Passwords do not match.
+            </p>
+          ) : null}
         </div>
       </div>
       <div className={styles.formActions}>

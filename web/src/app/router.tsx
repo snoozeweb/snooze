@@ -11,6 +11,7 @@ import { TooltipProvider } from "@/shared/ui/Tooltip";
 import { ToastProvider, Toaster } from "@/shared/ui/Toast";
 import { Spinner } from "@/shared/ui/Spinner";
 import { AppShell } from "./layout/AppShell";
+import { firstLandingPath } from "./layout/nav-list";
 // Dev-only showroom pages stay statically imported: they live behind the
 // `import.meta.env.DEV` route block below, which Rollup dead-code-eliminates
 // (along with these modules) from production builds. See devRoutes.
@@ -77,7 +78,7 @@ const indexRoute = createRoute({
   path: "/",
   beforeLoad: () => {
     // eslint-disable-next-line @typescript-eslint/only-throw-error
-    throw redirect({ to: "/web/alerts" as string });
+    throw redirect({ to: firstLandingPath(authStore.getState().claims) });
   },
 });
 
@@ -105,7 +106,7 @@ const webIndexRoute = createRoute({
   path: "/web/",
   beforeLoad: () => {
     // eslint-disable-next-line @typescript-eslint/only-throw-error
-    throw redirect({ to: "/web/alerts" as string });
+    throw redirect({ to: firstLandingPath(authStore.getState().claims) });
   },
 });
 

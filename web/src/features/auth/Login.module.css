@@ -77,6 +77,11 @@
   color: var(--severity-critical);
   font-size: var(--text-sm);
 }
+.hint {
+  margin: var(--space-1) 0 0;
+  font-size: var(--text-xs);
+  color: var(--severity-critical);
+}
 .anonymous {
   text-align: center;
   padding: var(--space-3) 0;
