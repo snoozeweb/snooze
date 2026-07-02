@@ -58,7 +58,7 @@ describe("InputsPage", () => {
         HttpResponse.json({
           data: [
             { source: "grafana", last_epoch: 1_700_000_000, count: 3 },
-            { source: "graylog", last_epoch: 1_690_000_000, count: 1 },
+            { source: "acme-monitor", last_epoch: 1_690_000_000, count: 1 },
           ],
         }),
       ),
@@ -67,10 +67,10 @@ describe("InputsPage", () => {
     expect(screen.getByRole("button", { name: /how to receive alerts/i })).toBeInTheDocument();
     // The table shows loading skeletons until the activity fetch settles, then
     // renders the (always-present) catalogue rows — REST API is always there —
-    // and the uncatalogued "graylog" source lands in "Other sources".
+    // and the uncatalogued "acme-monitor" source lands in "Other sources".
     await waitFor(() => expect(screen.getByText("REST API")).toBeInTheDocument());
     expect(screen.getByText("Other sources")).toBeInTheDocument();
-    expect(screen.getByText("graylog")).toBeInTheDocument();
+    expect(screen.getByText("acme-monitor")).toBeInTheDocument();
   });
 
   it("opens InjectAlertsDialog pre-focused on a row's Setup button", async () => {
