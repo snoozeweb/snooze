@@ -3,7 +3,7 @@ import { describe, it, expect, vi } from "vitest";
 import { AdminCredentialDialog } from "./AdminCredentialDialog";
 
 describe("AdminCredentialDialog", () => {
-  it("renders the username and password once", () => {
+  it("shows the password in a copy field with a copy affordance", () => {
     render(
       <AdminCredentialDialog
         credential={{ username: "ops", password: "SECRET-PW-123", method: "local", created: true }}
@@ -11,7 +11,10 @@ describe("AdminCredentialDialog", () => {
       />,
     );
     expect(screen.getByText("ops")).toBeInTheDocument();
-    expect(screen.getByText("SECRET-PW-123")).toBeInTheDocument();
+    // Password is a CopyField (readonly input) so the copy gives toast feedback,
+    // rather than a hand-rolled button that fails silently.
+    expect(screen.getByDisplayValue("SECRET-PW-123")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /copy/i })).toBeInTheDocument();
     expect(screen.getByText(/won't see/i)).toBeInTheDocument();
   });
 

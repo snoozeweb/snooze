@@ -26,4 +26,13 @@ describe("Input", () => {
     const { container } = render(<Input leadingIcon="search" trailingIcon="x" />);
     expect(container.querySelectorAll("svg")).toHaveLength(2);
   });
+
+  it("visually reads as disabled (like a disabled Button) when disabled", () => {
+    const { container } = render(<Input disabled aria-label="Tenant ID" />);
+    expect(screen.getByRole("textbox")).toBeDisabled();
+    // The wrapper (not just the raw input) carries a disabled class so it dims
+    // and drops the hover affordance, matching disabled Buttons.
+    const wrap = container.querySelector("div");
+    expect(wrap?.className).toMatch(/disabled/i);
+  });
 });

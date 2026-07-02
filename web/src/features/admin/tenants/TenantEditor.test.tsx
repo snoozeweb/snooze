@@ -85,7 +85,9 @@ describe("TenantEditor create — admin provisioning", () => {
     await user.type(await screen.findByLabelText(/slug/i), "acme");
     await user.type(screen.getByLabelText(/display name/i), "Acme");
     await user.click(screen.getByRole("button", { name: /create/i }));
-    expect(await screen.findByText("PWPWPWPWPWPWPWPWPWPWPWPWPWPWPWPW")).toBeInTheDocument();
+    // The one-time password shows in a CopyField (readonly input), so it's a
+    // display value rather than text content.
+    expect(await screen.findByDisplayValue("PWPWPWPWPWPWPWPWPWPWPWPWPWPWPWPW")).toBeInTheDocument();
     // onClose must NOT be called yet — drawer should remain open until dialog is dismissed
     expect(onClose).not.toHaveBeenCalled();
   });

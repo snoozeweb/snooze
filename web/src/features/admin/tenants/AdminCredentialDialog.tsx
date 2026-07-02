@@ -8,8 +8,8 @@ import {
   DialogClose,
 } from "@/shared/ui/Dialog";
 import { Button } from "@/shared/ui/Button";
+import { CopyField } from "@/shared/ui/CopyField";
 import type { AdminCredential } from "./types";
-import styles from "./AdminCredentialDialog.module.css";
 
 export type AdminCredentialDialogProps = {
   /** null = closed/no credential. */
@@ -37,16 +37,10 @@ export function AdminCredentialDialog({ credential, onClose }: AdminCredentialDi
             <dd>{credential.username}</dd>
             <dt>Password</dt>
             <dd>
-              <code className={styles.password}>{credential.password}</code>
-              <Button
-                type="button"
-                size="sm"
-                variant="ghost"
-                aria-label="Copy password"
-                onClick={() => void navigator.clipboard?.writeText(credential.password)}
-              >
-                Copy
-              </Button>
+              {/* CopyField (as CreateApiKeyForm uses) gives copy-success/failure
+                  toast feedback — critical for a one-time-shown secret, unlike
+                  the old hand-rolled button that failed silently. */}
+              <CopyField value={credential.password} aria-label="Password" />
             </dd>
           </dl>
         </DialogBody>

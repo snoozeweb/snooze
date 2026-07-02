@@ -10,6 +10,7 @@ import { useMemo } from "react";
 import { Link } from "@tanstack/react-router";
 import { Icon } from "@/shared/icons/Icon";
 import { Environments } from "@/features/admin/environments/api";
+import { envColor } from "@/features/admin/environments/environment-color";
 import type { Environment } from "@/features/admin/environments/types";
 import { useAuth } from "@/lib/auth/store";
 import { hasAnyPermission } from "@/lib/auth/permissions";
@@ -90,7 +91,9 @@ export function EnvironmentBar({ selected, onChange }: EnvironmentBarProps) {
       </button>
       {envs.map((env) => {
         const active = env.uid !== undefined && selectedSet.has(env.uid);
-        const color = env.color || "var(--accent)";
+        // Fall back to a stable per-name palette colour (not a uniform accent or
+        // a black pill) so uncoloured environments stay distinguishable.
+        const color = env.color || envColor(env.name);
         return (
           <button
             key={env.uid ?? env.name}

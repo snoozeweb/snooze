@@ -124,6 +124,18 @@ describe("EditorDrawer", () => {
     expect(screen.queryByRole("button", { name: /^save$/i })).not.toBeInTheDocument();
   });
 
+  it("disables Save while the record is still loading in edit mode", () => {
+    const Wrapper = wrap();
+    render(
+      <Wrapper>
+        <Harness uid="t1" get={fakeGet({ isPending: true })} />
+      </Wrapper>,
+    );
+    // Clicking Save before the record loads did nothing (the form isn't mounted
+    // yet); the button must be visibly disabled instead of a silent no-op.
+    expect(screen.getByRole("button", { name: /^save$/i })).toBeDisabled();
+  });
+
   it("posts the mapped body, toasts success, and closes on Create", async () => {
     const bodies: Partial<Rec>[] = [];
     const onClose = vi.fn();

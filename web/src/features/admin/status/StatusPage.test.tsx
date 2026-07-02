@@ -41,6 +41,28 @@ describe("StatusPage", () => {
     await waitFor(() => expect(screen.getByText("snooze1")).toBeInTheDocument());
     expect(screen.getByText("snooze2")).toBeInTheDocument();
     expect(screen.getByText("rule")).toBeInTheDocument();
+    // One-glance verdict banner: snooze2 is degraded → one issue detected.
+    expect(screen.getByText(/1 issue detected/i)).toBeInTheDocument();
+    // Freshness caption.
+    expect(screen.getByText(/updated/i)).toBeInTheDocument();
+  });
+
+  it("shows an all-clear verdict when everything is healthy", async () => {
+    mswServer.use(
+      http.get("/api/v1/cluster/status", () =>
+        HttpResponse.json({
+          cluster: { members: [{ name: "snooze1", status: "ok" }], leader: "snooze1" },
+          plugins: [{ name: "rule", loaded: true }],
+        }),
+      ),
+    );
+    const Wrapper = wrap();
+    render(
+      <Wrapper>
+        <StatusPage />
+      </Wrapper>,
+    );
+    await waitFor(() => expect(screen.getByText(/all systems operational/i)).toBeInTheDocument());
   });
 
   it("shows an empty state when the API errors", async () => {

@@ -86,6 +86,26 @@ describe("MoreSheet", () => {
     expect(screen.queryByRole("link", { name: /^dashboard$/i })).toBeNull();
   });
 
+  it("groups the overflow items under section headers, matching the sidebar", () => {
+    loginWithPerms(ALL_PERMS);
+    setup();
+    // The flat list is replaced by Operate/Configure/Admin sections; overflow
+    // here spans Configure (Notifications) and Admin.
+    expect(screen.getByText("Configure")).toBeInTheDocument();
+    expect(screen.getByText("Admin")).toBeInTheDocument();
+  });
+
+  it("surfaces the How-to entries and config-health warnings on mobile", async () => {
+    loginWithPerms(ALL_PERMS);
+    setup();
+    expect(screen.getByRole("button", { name: /receive alerts/i })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /send alerts/i })).toBeInTheDocument();
+    // Default handlers report 0 actions / 0 notifications → the unconfigured-
+    // pipeline warning must survive on mobile (it was desktop-only before).
+    expect(await screen.findByText(/no actions/i)).toBeInTheDocument();
+    expect(await screen.findByText(/no notifications/i)).toBeInTheDocument();
+  });
+
   it("shows Profile, a theme toggle, and Log out", () => {
     loginWithPerms(ALL_PERMS);
     setup();

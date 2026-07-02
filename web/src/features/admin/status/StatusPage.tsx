@@ -4,12 +4,20 @@ import { Code } from "@/shared/ui/Code";
 import { Spinner } from "@/shared/ui/Spinner";
 import { useClusterStatus } from "./api";
 import type { ClusterMember } from "./types";
+import { clusterVerdict } from "./verdict";
 import styles from "./StatusPage.module.css";
 
 function memberBadgeVariant(status: ClusterMember["status"]): "ok" | "warning" | "critical" {
   if (status === "ok") return "ok";
   if (status === "degraded") return "warning";
   return "critical";
+}
+
+// Coarse "updated Xs/Xm ago" caption from the query's dataUpdatedAt.
+function updatedAgo(updatedAt: number): string {
+  const secs = Math.max(0, Math.round((Date.now() - updatedAt) / 1000));
+  if (secs < 60) return `Updated ${secs}s ago`;
+  return `Updated ${Math.round(secs / 60)}m ago`;
 }
 
 export function StatusPage() {
@@ -31,6 +39,18 @@ export function StatusPage() {
         </Card>
       ) : (
         <div className={styles.grid}>
+          {(() => {
+            const verdict = clusterVerdict(data);
+            return (
+              <div
+                className={`${styles.verdict} ${styles[verdict.tone]!} ${styles.full!}`}
+                role="status"
+              >
+                <span className={styles.verdictLabel}>{verdict.label}</span>
+                <span className={styles.updated}>{updatedAgo(q.dataUpdatedAt)}</span>
+              </div>
+            );
+          })()}
           <Card padded className={styles.full!}>
             <h2 className={styles.cardTitle}>Cluster</h2>
             {data.cluster?.members && data.cluster.members.length > 0 ? (

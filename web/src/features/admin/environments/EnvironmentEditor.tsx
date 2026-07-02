@@ -57,7 +57,12 @@ export function EnvironmentEditor({ uid, onClose }: EnvironmentEditorProps) {
       })}
       formToBody={(form) => ({
         name: form.name,
-        ...(form.color ? { color: form.color } : {}),
+        // Treat the color input's default black (#000000) as "no explicit
+        // color" so an untouched new environment isn't persisted as an
+        // indistinguishable black pill — the alerts bar then assigns a stable
+        // per-name palette color instead. A deliberately dark category color
+        // can still be picked as e.g. #010101.
+        ...(form.color && form.color.toLowerCase() !== "#000000" ? { color: form.color } : {}),
         ...(form.comment ? { comment: form.comment } : {}),
         ...(isAlwaysTrue(form.condition) ? {} : { condition: form.condition }),
         ...(Number.isFinite(form.tree_order) ? { tree_order: form.tree_order } : {}),

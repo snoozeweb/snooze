@@ -123,10 +123,11 @@ describe("TenantsPage", () => {
     );
     // A confirmation dialog appears first; the password is NOT revealed yet.
     expect(await screen.findByText(/reset admin password\?/i)).toBeInTheDocument();
-    expect(screen.queryByText("NEWPWNEWPWNEWPWNEWPWNEWPWNEWPWNE")).not.toBeInTheDocument();
-    // Confirming performs the reset and reveals the new password.
+    expect(screen.queryByDisplayValue("NEWPWNEWPWNEWPWNEWPWNEWPWNEWPWNE")).not.toBeInTheDocument();
+    // Confirming performs the reset and reveals the new password in a CopyField
+    // (readonly input) — a display value, not text content.
     await userEvent.click(await screen.findByRole("button", { name: /reset password/i }));
-    expect(await screen.findByText("NEWPWNEWPWNEWPWNEWPWNEWPWNEWPWNE")).toBeInTheDocument();
+    expect(await screen.findByDisplayValue("NEWPWNEWPWNEWPWNEWPWNEWPWNEWPWNE")).toBeInTheDocument();
   });
 
   it("does not reset when the confirmation is cancelled", async () => {

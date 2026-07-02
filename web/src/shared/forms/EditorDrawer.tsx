@@ -357,7 +357,11 @@ export function EditorDrawer<
             form={formId}
             variant="primary"
             loading={submitting}
-            disabled={submitting}
+            // Also disable while the record is still loading (edit mode): the
+            // form isn't mounted yet, so the submit target doesn't exist and a
+            // click would be a silent no-op. The body already shows the load
+            // spinner, so the button just greys out rather than double-spinning.
+            disabled={submitting || (!isCreate && get.isPending)}
           >
             {isCreate ? "Create" : "Save"}
           </Button>

@@ -21,6 +21,15 @@
   border-color: var(--severity-critical) !important;
 }
 
+/* Match the disabled-Button look (opacity 0.55) and drop the hover affordance
+   so a locked field (e.g. a tenant's ID on edit) reads as non-editable. */
+.disabledWrap {
+  opacity: 0.55;
+}
+.disabledWrap:hover {
+  border-color: var(--border);
+}
+
 .input {
   flex: 1;
   min-width: 0;

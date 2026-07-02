@@ -21,7 +21,13 @@ export function Input({
   ref,
   ...rest
 }: InputProps) {
-  const wrapClasses = [styles.wrap, styles[size], invalid ? styles.invalid : null, className]
+  const wrapClasses = [
+    styles.wrap,
+    styles[size],
+    invalid ? styles.invalid : null,
+    rest.disabled ? styles.disabledWrap : null,
+    className,
+  ]
     .filter(Boolean)
     .join(" ");
   return (

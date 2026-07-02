@@ -53,6 +53,11 @@ describe("EnvironmentEditor", () => {
     await user.type(screen.getByLabelText(/^name$/i), "staging");
     await user.click(screen.getByRole("button", { name: /create/i }));
     await waitFor(() => expect(bodies).toHaveLength(1));
-    expect((bodies[0] as { name: string }).name).toBe("staging");
+    const body = bodies[0] as { name: string; color?: string };
+    expect(body.name).toBe("staging");
+    // An untouched color input defaults to #000000 — that must NOT be persisted
+    // (it would render as an indistinguishable black pill); the bar assigns a
+    // per-name palette color instead.
+    expect(body.color).toBeUndefined();
   });
 });

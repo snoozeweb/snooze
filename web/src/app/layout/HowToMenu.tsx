@@ -4,7 +4,7 @@ import { Icon } from "@/shared/icons/Icon";
 import { Menu, MenuContent, MenuItem, MenuTrigger } from "@/shared/ui/Menu";
 import { InjectAlertsDialog } from "@/features/alerts/InjectAlertsDialog";
 import { SendAlertsDialog } from "@/features/notifications/SendAlertsDialog";
-import { Actions, Notifications } from "@/features/notifications/api";
+import { useConfigHealth } from "./useConfigHealth";
 import styles from "./HowToMenu.module.css";
 
 export function HowToMenu() {
@@ -14,11 +14,7 @@ export function HowToMenu() {
   const location = useLocation();
   const isAlertsPage = location.pathname.startsWith("/web/alerts");
 
-  const actionList = Actions.useList({ limit: 1 }, { enabled: isAlertsPage });
-  const notifList = Notifications.useList({ limit: 1 }, { enabled: isAlertsPage });
-
-  const actionCount = actionList.data?.meta.total ?? null;
-  const notifCount = notifList.data?.meta.total ?? null;
+  const { actionCount, notifCount } = useConfigHealth(isAlertsPage);
 
   return (
     <>
