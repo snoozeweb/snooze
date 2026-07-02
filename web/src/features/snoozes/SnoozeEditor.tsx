@@ -155,11 +155,19 @@ function SnoozeDiff({
   const enabled = useWatch({ control, name: "enabled" });
   const condition = useWatch({ control, name: "condition" });
   const discard = useWatch({ control, name: "discard" });
+  const timeConstraints = useWatch({ control, name: "time_constraints" });
+  // Mirror formToBody's conditional inclusion so the diff reflects time-window
+  // edits (previously omitted entirely, so a snooze schedule change showed no diff).
+  const hasTimeConstraints =
+    (timeConstraints.datetime?.length ?? 0) > 0 ||
+    (timeConstraints.time?.length ?? 0) > 0 ||
+    (timeConstraints.weekdays?.length ?? 0) > 0;
   const projected: Snooze = {
     name,
     ...(comment ? { comment } : {}),
     enabled,
     condition,
+    ...(hasTimeConstraints ? { time_constraints: timeConstraints } : {}),
     ...(discard ? { discard: true } : {}),
   };
   return <DiffSection original={original} current={projected} />;

@@ -19,4 +19,16 @@ describe("DurationInput", () => {
     render(<DurationInput value={0} onChange={() => undefined} aria-label="TTL" />);
     expect(screen.getByText("forever")).toBeInTheDocument();
   });
+  it("accepts human shorthand and emits the equivalent seconds", () => {
+    const onChange = vi.fn();
+    render(<DurationInput value={0} onChange={onChange} aria-label="TTL" />);
+    fireEvent.change(screen.getByLabelText("TTL"), { target: { value: "2h30m" } });
+    expect(onChange).toHaveBeenCalledWith(9000);
+  });
+  it("still accepts raw seconds", () => {
+    const onChange = vi.fn();
+    render(<DurationInput value={0} onChange={onChange} aria-label="TTL" />);
+    fireEvent.change(screen.getByLabelText("TTL"), { target: { value: "7200" } });
+    expect(onChange).toHaveBeenCalledWith(7200);
+  });
 });

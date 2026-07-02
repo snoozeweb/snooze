@@ -22,7 +22,10 @@ describe("TimeConstraintsCell", () => {
         value={{
           weekdays: [{ weekdays: [1, 2, 3, 4, 5] }],
           time: [{ from: "09:00", until: "17:00" }],
-          datetime: [{ from: "2026-01-01T08:00:00Z", until: "2026-01-02T18:00:00Z" }],
+          // Zone-less wall-clock (the picker's wire shape). The cell must render
+          // it back as the SAME wall-clock the operator authored, in any TZ —
+          // not shifted by the viewer's UTC offset (the getUTC* bug).
+          datetime: [{ from: "2026-01-01T08:00", until: "2026-01-02T18:00" }],
         }}
       />,
     );
@@ -131,8 +134,8 @@ describe("TimeConstraintsCell", () => {
       <TimeConstraintsCell
         value={{
           datetime: [
-            { from: "2026-01-01T08:00:00Z", until: "2026-01-02T18:00:00Z" },
-            { from: "2026-02-10T00:00:00Z", until: "2026-02-11T23:59:00Z" },
+            { from: "2026-01-01T08:00", until: "2026-01-02T18:00" },
+            { from: "2026-02-10T00:00", until: "2026-02-11T23:59" },
           ],
         }}
       />,
@@ -145,7 +148,7 @@ describe("TimeConstraintsCell", () => {
     render(
       <TimeConstraintsCell
         value={{
-          datetime: [{ from: "2026-01-01T08:00:00Z" }, { until: "2026-02-01T18:00:00Z" }],
+          datetime: [{ from: "2026-01-01T08:00" }, { until: "2026-02-01T18:00" }],
         }}
       />,
     );

@@ -79,11 +79,18 @@ function formatHourRange(from?: string, until?: string): string {
 
 // formatDateTime renders an RFC3339-ish string as "YYYY-MM-DD HH:mm" in
 // local time. Falls back to the raw string if Date parsing fails.
+//
+// It uses LOCAL accessors (getFullYear/getHours/…), not getUTC*: a zone-less
+// wire value like "2026-07-02T09:00" is parsed by Date as local time, so
+// reading it back with getUTC* re-shifted it by the viewer's offset and showed
+// a different clock than the operator authored. Local accessors render the same
+// wall-clock for a zone-less value, and render an offset/Z value in the
+// viewer's own zone — consistent either way.
 function formatDateTime(s: string): string {
   const d = new Date(s);
   if (Number.isNaN(d.getTime())) return s;
   const pad = (n: number) => n.toString().padStart(2, "0");
-  return `${d.getUTCFullYear()}-${pad(d.getUTCMonth() + 1)}-${pad(d.getUTCDate())} ${pad(d.getUTCHours())}:${pad(d.getUTCMinutes())}`;
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
 
 function formatDateRange(from?: string, until?: string): string {

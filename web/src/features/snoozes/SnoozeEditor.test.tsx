@@ -87,6 +87,36 @@ describe("SnoozeEditor", () => {
     expect(onClose).not.toHaveBeenCalled();
   });
 
+  it("includes time-constraint changes in the pre-save diff", async () => {
+    mswServer.use(
+      http.get("/api/v1/snooze/sn1", () =>
+        HttpResponse.json({
+          uid: "sn1",
+          name: "quiet-friday",
+          enabled: true,
+          condition: { type: "ALWAYS_TRUE" },
+        }),
+      ),
+      http.get("/api/v1/record", () =>
+        HttpResponse.json({ data: [], meta: { count: 0, limit: 50, offset: 0, total: 0 } }),
+      ),
+    );
+    const Wrapper = wrap();
+    const user = userEvent.setup();
+    render(
+      <Wrapper>
+        <SnoozeEditor uid="sn1" onClose={() => undefined} />
+      </Wrapper>,
+    );
+    await screen.findByDisplayValue("quiet-friday");
+    // Add a time window via a Silence-for preset (single click sets datetime).
+    await user.click(screen.getByRole("button", { name: "1h" }));
+    // Open the diff — it must reflect the new time window, not omit it. The
+    // drawer portals to document.body, so assert against the whole document.
+    await user.click(screen.getByRole("button", { name: /^diff/i }));
+    await waitFor(() => expect(document.body.textContent).toMatch(/time_constraints/));
+  });
+
   it("shows the Diff section in edit mode", async () => {
     mswServer.use(
       http.get("/api/v1/snooze/sn1", () =>
