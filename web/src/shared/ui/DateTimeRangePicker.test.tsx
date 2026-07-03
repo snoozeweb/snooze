@@ -150,7 +150,7 @@ describe("DateTimeRangePicker", () => {
       expect(screen.getByRole("grid")).toBeInTheDocument();
     });
 
-    it("emits ISO-local strings (no seconds, no Z) when the from-time changes", async () => {
+    it("emits ZONED RFC3339 (seconds + offset) when the from-time changes", async () => {
       const user = userEvent.setup();
       const onChange = vi.fn<(next: { from?: string; until?: string }) => void>();
       render(
@@ -168,11 +168,14 @@ describe("DateTimeRangePicker", () => {
       await user.type(fromInput, "10:30");
       expect(onChange).toHaveBeenCalled();
       const last = onChange.mock.calls.at(-1)?.[0];
-      // Wire shape: "YYYY-MM-DDTHH:MM" — exactly what
-      // <input type="datetime-local"> produces today. No seconds, no
-      // timezone suffix.
-      expect(last?.from).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/);
-      expect(last?.until).toBe("2026-05-16T08:00");
+      // Editing one bound normalizes BOTH bounds to a single zoned frame —
+      // "YYYY-MM-DDTHH:MM:SS±HH:MM" — so a legacy zone-less range can't end up
+      // half-zoned (which the backend would read as a mixed UTC/local window
+      // that never matches). The untouched bound keeps its wall clock
+      // (2026-05-16 08:00), now carrying an explicit offset.
+      const zoned = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}[+-]\d{2}:\d{2}$/;
+      expect(last?.from).toMatch(zoned);
+      expect(last?.until).toMatch(/^2026-05-16T08:00:00[+-]\d{2}:\d{2}$/);
     });
   });
 

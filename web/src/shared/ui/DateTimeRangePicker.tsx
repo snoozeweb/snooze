@@ -4,16 +4,20 @@
 //   - mode="datetime": a react-day-picker (mode="range") + two
 //                      <input type="time"> spinners.
 //
-// Wire shape is identical to the legacy native inputs:
-//   - time mode emits "HH:MM" strings
-//   - datetime mode emits "YYYY-MM-DDTHH:MM" strings (no seconds, no Z)
-// so the Go backend sees the same payload it sees today.
+// Wire shape:
+//   - time mode emits "HH:MM" strings (a recurring wall clock — unchanged)
+//   - datetime mode emits ZONED RFC3339 ("YYYY-MM-DDTHH:MM:SS±HH:MM"), with the
+//     offset computed for the picked date, so the backend stores the exact
+//     instant the operator meant instead of parsing a zone-less value as UTC.
+//     See lib/timeconstraints/datetimeWire.ts for the round-trip rationale
+//     (incl. why this is DST-safe and how legacy zone-less values are read).
 //
 // Restores the calendar+range visualisation that the old Vue UI offered
 // via @vuepic/vue-datepicker, but stays inside the existing Radix +
 // CSS-tokens design system.
 import { useId, useMemo, useState } from "react";
 import { DayPicker, type DateRange } from "react-day-picker";
+import { composeZonedIso, splitZonedIso } from "@/lib/timeconstraints/datetimeWire";
 import { Popover, PopoverContent, PopoverTrigger } from "./Popover";
 import styles from "./DateTimeRangePicker.module.css";
 // react-day-picker ships its own structural CSS that defines the layout
@@ -63,61 +67,26 @@ const dpClassNames = {
   button_next: styles.dpNavButton ?? "",
 };
 
-// "YYYY-MM-DDTHH:MM" → { date: Date | null, time: "HH:MM" | "" }
-//
-// We pad to "HH:MM" so the underlying <input type="time"> always
-// renders a value; an empty string would reset the spinner to its
-// default placeholder which would be hard to control between renders.
-function splitIsoLocal(s?: string): { date: Date | null; time: string } {
-  if (!s) return { date: null, time: "" };
-  // Accept the wire-shape "YYYY-MM-DDTHH:MM" *and* the full
-  // RFC3339-with-seconds shape ("YYYY-MM-DDTHH:MM:SS...Z?") that the
-  // backend may still hand us on initial load. We extract HH:MM only;
-  // anything finer-grained gets dropped on the round-trip.
-  const m = s.match(/^(\d{4})-(\d{2})-(\d{2})(?:T(\d{2}):(\d{2}))?/);
-  if (!m) return { date: null, time: "" };
-  const y = Number(m[1]);
-  const mo = Number(m[2]);
-  const d = Number(m[3]);
-  const time = m[4] && m[5] ? `${m[4]}:${m[5]}` : "";
-  // We construct the Date in local time on purpose — the wire format
-  // has no timezone, so the calendar should display the same day the
-  // user typed without UTC drift.
-  const date = new Date(y, mo - 1, d);
-  return { date, time };
-}
+const pad = (n: number): string => String(n).padStart(2, "0");
 
-// Compose a local Date + "HH:MM" back into the ISO-local wire format.
-// We don't call Date.toISOString() because that would emit UTC; the
-// backend wants the literal local-clock representation.
-function composeIsoLocal(date: Date | null | undefined, time: string): string | undefined {
-  if (!date) return undefined;
-  const pad = (n: number) => String(n).padStart(2, "0");
-  const y = date.getFullYear();
-  const mo = pad(date.getMonth() + 1);
-  const d = pad(date.getDate());
-  const t = /^\d{2}:\d{2}$/.test(time) ? time : "00:00";
-  return `${y}-${mo}-${d}T${t}`;
-}
-
-function formatDateOnly(s?: string): string {
-  const { date } = splitIsoLocal(s);
-  if (!date) return DATE_PLACEHOLDER;
-  const pad = (n: number) => String(n).padStart(2, "0");
-  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
-}
-
-function formatTime(s?: string): string {
+// formatTimeOfDay renders a time-mode value ("HH:MM", tolerating a legacy
+// "HH:MM:SS±HH:MM") down to "HH:MM".
+function formatTimeOfDay(s?: string): string {
   if (!s) return TIME_PLACEHOLDER;
-  // Three input shapes need to be handled:
-  //   "HH:MM"                         (time-mode wire shape)
-  //   "YYYY-MM-DDTHH:MM"              (datetime-mode wire shape)
-  //   "YYYY-MM-DDTHH:MM:SS(.fff)?(Z)?" (older RFC3339-with-seconds payloads
-  //                                    that the backend may still emit on
-  //                                    initial load; we just want HH:MM).
-  const t = s.includes("T") ? s.split("T")[1] : s;
-  const m = (t ?? "").match(/^(\d{2}:\d{2})/);
-  return m?.[1] ?? TIME_PLACEHOLDER;
+  const m = s.match(/^(\d{2}):(\d{2})/);
+  return m ? `${m[1]}:${m[2]}` : TIME_PLACEHOLDER;
+}
+
+// datetimeLabel renders a datetime-mode wire value as "YYYY-MM-DD HH:MM" in the
+// viewer's local zone (zoned values) or its literal wall clock (legacy
+// zone-less values) — the split rules live in splitZonedIso.
+function datetimeLabel(s?: string): string {
+  const placeholder = `${DATE_PLACEHOLDER} ${TIME_PLACEHOLDER}`;
+  if (!s) return placeholder;
+  const { date, time } = splitZonedIso(s);
+  if (!date) return placeholder;
+  const dateStr = `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
+  return `${dateStr} ${time || TIME_PLACEHOLDER}`;
 }
 
 export function DateTimeRangePicker({
@@ -133,8 +102,8 @@ export function DateTimeRangePicker({
 
   // Pre-compute the calendar's selected range (datetime mode only).
   const { fromDate, fromTime, untilDate, untilTime, calendarSelected } = useMemo(() => {
-    const from = splitIsoLocal(value.from);
-    const until = splitIsoLocal(value.until);
+    const from = splitZonedIso(value.from);
+    const until = splitZonedIso(value.until);
     let selected: DateRange | undefined;
     if (from.date || until.date) {
       // react-day-picker's DateRange wants `from` set when there's a
@@ -156,15 +125,9 @@ export function DateTimeRangePicker({
 
   const triggerLabel = useMemo(() => {
     if (mode === "time") {
-      return `${formatTime(value.from)} – ${formatTime(value.until)}`;
+      return `${formatTimeOfDay(value.from)} – ${formatTimeOfDay(value.until)}`;
     }
-    const fromLabel = value.from
-      ? `${formatDateOnly(value.from)} ${formatTime(value.from)}`
-      : `${DATE_PLACEHOLDER} ${TIME_PLACEHOLDER}`;
-    const untilLabel = value.until
-      ? `${formatDateOnly(value.until)} ${formatTime(value.until)}`
-      : `${DATE_PLACEHOLDER} ${TIME_PLACEHOLDER}`;
-    return `${fromLabel} → ${untilLabel}`;
+    return `${datetimeLabel(value.from)} → ${datetimeLabel(value.until)}`;
   }, [mode, value.from, value.until]);
 
   const triggerAriaLabel = `${ariaLabelFrom} / ${ariaLabelUntil} (${triggerLabel})`;
@@ -186,9 +149,16 @@ export function DateTimeRangePicker({
   }
 
   // ── datetime mode change handlers ─────────────────────────────────────
+  // Recompose BOTH bounds from their current (date, time) split — not just the
+  // edited one. Both already display in the viewer's local zone, so this
+  // normalizes the whole range to a single zoned frame. Passing the untouched
+  // bound through verbatim would instead leave a legacy zone-less value beside
+  // a freshly zoned one; the backend then reads the zone-less side as UTC and
+  // the zoned side as local, which can silently invert a narrow window into one
+  // that never matches.
   function emitDatetimeTime(side: "from" | "until", nextTime: string) {
-    const fromIso = side === "from" ? composeIsoLocal(fromDate, nextTime) : value.from;
-    const untilIso = side === "until" ? composeIsoLocal(untilDate, nextTime) : value.until;
+    const fromIso = composeZonedIso(fromDate, side === "from" ? nextTime : fromTime);
+    const untilIso = composeZonedIso(untilDate, side === "until" ? nextTime : untilTime);
     onChange({
       ...(fromIso !== undefined ? { from: fromIso } : {}),
       ...(untilIso !== undefined ? { until: untilIso } : {}),
@@ -202,8 +172,8 @@ export function DateTimeRangePicker({
     }
     // Preserve the existing time-of-day when the user only picked dates;
     // default to 00:00 / 23:59 when there's no prior value.
-    const newFrom = range.from ? composeIsoLocal(range.from, fromTime || "00:00") : undefined;
-    const newUntil = range.to ? composeIsoLocal(range.to, untilTime || "23:59") : undefined;
+    const newFrom = range.from ? composeZonedIso(range.from, fromTime || "00:00") : undefined;
+    const newUntil = range.to ? composeZonedIso(range.to, untilTime || "23:59") : undefined;
     onChange({
       ...(newFrom !== undefined ? { from: newFrom } : {}),
       ...(newUntil !== undefined ? { until: newUntil } : {}),
