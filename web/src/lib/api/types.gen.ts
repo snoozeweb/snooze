@@ -3066,13 +3066,18 @@ export interface paths {
         /**
          * List every permission string contributed by plugins
          * @description Returns the sorted, de-duplicated union of every permission string
-         *     an authorizer can honour, drawn from four sources:
+         *     an authorizer can actually honour, drawn from three sources:
          *
          *     - the canonical `rw_all` / `ro_all` wildcards;
          *     - a per-plugin `{rw,ro}_<name>` pair;
-         *     - each plugin's `metadata.provides`;
          *     - the `read` + `write` lists of every plugin's `authorization_policy`
          *       (on `route_defaults` and on each per-path `routes` override).
+         *
+         *     Raw `metadata.provides` entries are deliberately excluded: `provides`
+         *     advertises plugin capabilities (e.g. `notifier` / `receiver`) that no
+         *     authorizer checks, so they are not assignable permissions. A functional
+         *     custom permission such as `can_comment` still appears — via the
+         *     `authorization_policy` that references it, not via `provides`.
          *
          *     The `any` sentinel is excluded: it is an implicit grant the authorizer
          *     adds to every authenticated caller, never an assignable permission.

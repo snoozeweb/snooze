@@ -39,9 +39,16 @@ func (rt *Router) handleSchema(w http.ResponseWriter, r *http.Request) {
 }
 
 // mountPermissions wires GET /api/v1/permissions which enumerates every
-// permission string contributed by registered plugins. The output is the
-// sorted union of metadata.provides + the canonical {rw,ro}_all wildcards
-// + a per-plugin {rw,ro}_<name> pair, matching the Python convention.
+// permission string an authorizer can actually honour. The output is the
+// sorted union of the canonical {rw,ro}_all wildcards, a per-plugin
+// {rw,ro}_<name> pair, and every permission named in a route's
+// authorization_policy (read+write). It deliberately does NOT surface raw
+// metadata.provides entries: `provides` advertises plugin capabilities
+// (e.g. `notifier` / `receiver`) that the authorizer never checks, so listing
+// them as assignable permissions would be misleading — a role could "grant"
+// them yet nothing would change. A functional custom permission such as
+// `can_comment` still appears because the comment plugin references it in its
+// authorization_policy, which the loop below picks up.
 func (rt *Router) mountPermissions(r chi.Router) {
 	r.Get("/api/v1/permissions", rt.handlePermissions)
 }
@@ -77,13 +84,10 @@ func (rt *Router) handlePermissions(w http.ResponseWriter, _ *http.Request) {
 		set["rw_"+name] = struct{}{}
 		set["ro_"+name] = struct{}{}
 		meta := p.Metadata()
-		for _, perm := range meta.Provides {
-			add(perm)
-		}
-		// Named permissions an authorizer honours can be declared only in an
-		// AuthorizationPolicy (on the plugin-level RouteDefaults or on a
-		// per-path Routes override) without ever appearing in Provides. Walk
-		// both so the catalog never silently omits one.
+		// Assignable custom permissions are declared in an AuthorizationPolicy
+		// (on the plugin-level RouteDefaults or on a per-path Routes override).
+		// Walk both so the catalog never silently omits one. metadata.provides
+		// is intentionally NOT consulted here — see mountPermissions.
 		addPolicy(meta.RouteDefaults.AuthorizationPolicy)
 		for _, route := range meta.Routes {
 			addPolicy(route.AuthorizationPolicy)

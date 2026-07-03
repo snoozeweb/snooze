@@ -60,7 +60,7 @@ func TestSchemaRoute_UnknownPlugin(t *testing.T) {
 func TestPermissions_UnionAcrossPlugins(t *testing.T) {
 	rt := &Router{Plugins: map[string]plugins.Plugin{
 		"record": &stubPlugin{name: "record"},
-		"rule":   &stubPlugin{name: "rule", meta: plugins.Metadata{Provides: []string{"rw_secret"}}},
+		"rule":   &stubPlugin{name: "rule", meta: plugins.Metadata{Provides: []string{"notifier", "receiver"}}},
 	}}
 	r := chi.NewRouter()
 	rt.mountPermissions(r)
@@ -77,7 +77,13 @@ func TestPermissions_UnionAcrossPlugins(t *testing.T) {
 	require.Contains(t, got.Data, "ro_record")
 	require.Contains(t, got.Data, "rw_rule")
 	require.Contains(t, got.Data, "ro_rule")
-	require.Contains(t, got.Data, "rw_secret")
+	// `provides` entries are capability tags (notifier / receiver), not
+	// assignable permissions: nothing in the authorizer honours them, so they
+	// must NOT leak into the catalogue. Only provides entries also wired into
+	// an authorization_policy (e.g. can_comment) are surfaced — via that policy,
+	// not via provides. See TestPermissions_AuthorizationPolicyIncluded.
+	require.NotContains(t, got.Data, "notifier")
+	require.NotContains(t, got.Data, "receiver")
 }
 
 func TestPermissions_AuthorizationPolicyIncluded(t *testing.T) {
