@@ -202,23 +202,16 @@ export function SnoozesPage() {
 
   // Toolbar header + actions: now rendered next to the SearchBar via the
   // DataTable's `toolbarHeader` / `toolbar` slots so every list page shares
-  // the same horizontal chrome.
-  const selectedSnoozeRows = useMemo(
-    () => paged.filter((r) => selectedKeys.has(r.uid ?? r.name)),
-    [paged, selectedKeys],
+  // the same horizontal chrome. `bulkActions` goes straight to DataTable's
+  // own `bulkActions` prop — that's what switches the toolbar chip to its
+  // amber "selected" treatment, which building the text here ourselves
+  // would skip.
+  const snoozesToolbarHeader = `${filtered.length} ${tab} snoozes`;
+  const snoozesToolbarActions = (
+    <Button size="sm" variant="primary" leadingIcon="plus" onClick={() => setCreating(true)}>
+      New
+    </Button>
   );
-  const snoozesToolbarHeader =
-    selectedSnoozeRows.length > 0
-      ? `${selectedSnoozeRows.length} selected`
-      : `${filtered.length} ${tab} snoozes`;
-  const snoozesToolbarActions =
-    selectedSnoozeRows.length > 0 ? (
-      bulkActions(selectedSnoozeRows)
-    ) : (
-      <Button size="sm" variant="primary" leadingIcon="plus" onClick={() => setCreating(true)}>
-        New
-      </Button>
-    );
 
   return (
     <div className={styles.page}>
@@ -241,6 +234,7 @@ export function SnoozesPage() {
             selectable
             selectedKeys={selectedKeys}
             onSelectionChange={setSelectedKeys}
+            bulkActions={bulkActions}
             loading={list.isPending}
             search={snoozeSearch.searchProp}
             toolbarHeader={snoozesToolbarHeader}

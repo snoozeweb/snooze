@@ -124,4 +124,38 @@ describe("NotificationsPage", () => {
     await waitFor(() => expect(screen.getByText("Slack-prod")).toBeInTheDocument());
     expect(screen.getByLabelText("Row actions")).toBeInTheDocument();
   });
+
+  it("selecting a row switches the toolbar to the amber bulk-actions chip on both tabs", async () => {
+    mswServer.use(
+      http.get("/api/v1/notification", () =>
+        HttpResponse.json({
+          data: [{ uid: "n1", name: "On critical", enabled: true }],
+          meta: { count: 1, limit: 50, offset: 0, total: 1 },
+        }),
+      ),
+      http.get("/api/v1/action", () =>
+        HttpResponse.json({
+          data: [
+            { uid: "a1", name: "Slack-prod", action: { selected: "webhook", subcontent: {} } },
+          ],
+          meta: { count: 1, limit: 50, offset: 0, total: 1 },
+        }),
+      ),
+    );
+    const user = userEvent.setup();
+    setup();
+
+    await waitFor(() => expect(screen.getByText("On critical")).toBeInTheDocument());
+    expect(screen.queryByRole("region", { name: /bulk actions/i })).not.toBeInTheDocument();
+    await user.click(screen.getByRole("checkbox", { name: /select row/i }));
+    expect(screen.getByRole("region", { name: /bulk actions/i })).toBeInTheDocument();
+    expect(screen.getByText("1 selected")).toBeInTheDocument();
+
+    await user.click(screen.getByRole("tab", { name: /actions/i }));
+    await waitFor(() => expect(screen.getByText("Slack-prod")).toBeInTheDocument());
+    expect(screen.queryByRole("region", { name: /bulk actions/i })).not.toBeInTheDocument();
+    await user.click(screen.getByRole("checkbox", { name: /select row/i }));
+    expect(screen.getByRole("region", { name: /bulk actions/i })).toBeInTheDocument();
+    expect(screen.getByText("1 selected")).toBeInTheDocument();
+  });
 });

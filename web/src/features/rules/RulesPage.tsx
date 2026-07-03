@@ -437,24 +437,17 @@ export function RulesPage() {
     () => ruleRows.filter((r) => ruleSelected.has(r.uid ?? r.name)),
     [ruleRows, ruleSelected],
   );
-  const selectedAggregateRows = useMemo(
-    () => aggregateRows.filter((r) => aggregateSelected.has(r.uid ?? r.name)),
-    [aggregateRows, aggregateSelected],
-  );
-  const selectedRejectRows = useMemo(
-    () => rejectRows.filter((r) => rejectSelected.has(r.uid ?? r.name)),
-    [rejectRows, rejectSelected],
-  );
   // Toolbar pieces: `header` is the count-or-selection text shown to the
   // left of `actions`; `actions` is the buttons cluster. Both sit on the
   // same row as the SearchBar inside each tab's table component, so we no
   // longer push them into the TabList's right slot.
+  // The selected-count text isn't computed here: RulesTreeTable shows its
+  // own amber "N selected" chip (DataTable's selection styling) whenever
+  // rows are selected and nothing is pending, overriding this header.
   const rulesToolbarHeader =
     pendingCount > 0
       ? `${pendingCount} pending change${pendingCount === 1 ? "" : "s"}`
-      : selectedRuleRows.length > 0
-        ? `${selectedRuleRows.length} selected`
-        : `${list.data?.meta.total ?? 0} rules`;
+      : `${list.data?.meta.total ?? 0} rules`;
   // Toolbar "+ New" — always available (in non-pending, non-selection
   // states). New rules are appended at the end of the root level so the
   // existing tree stays put; no sibling shifts are required, which keeps
@@ -501,30 +494,22 @@ export function RulesPage() {
         New
       </Button>
     );
-  const aggregateToolbarHeader =
-    selectedAggregateRows.length > 0
-      ? `${selectedAggregateRows.length} selected`
-      : `${list.data?.meta.total ?? 0} aggregate rules`;
-  const aggregateToolbarActions =
-    selectedAggregateRows.length > 0 ? (
-      aggregateBulkActions(selectedAggregateRows)
-    ) : (
-      <Button size="sm" variant="primary" leadingIcon="plus" onClick={() => setCreating(true)}>
-        New
-      </Button>
-    );
-  const rejectToolbarHeader =
-    selectedRejectRows.length > 0
-      ? `${selectedRejectRows.length} selected`
-      : `${list.data?.meta.total ?? 0} reject rules`;
-  const rejectToolbarActions =
-    selectedRejectRows.length > 0 ? (
-      rejectBulkActions(selectedRejectRows)
-    ) : (
-      <Button size="sm" variant="primary" leadingIcon="plus" onClick={() => setCreating(true)}>
-        New
-      </Button>
-    );
+  // `aggregateBulkActions` / `rejectBulkActions` go straight to DataTable's
+  // own `bulkActions` prop — that's what switches the toolbar chip to its
+  // amber "selected" treatment, so the header/actions here only need to
+  // cover the no-selection state.
+  const aggregateToolbarHeader = `${list.data?.meta.total ?? 0} aggregate rules`;
+  const aggregateToolbarActions = (
+    <Button size="sm" variant="primary" leadingIcon="plus" onClick={() => setCreating(true)}>
+      New
+    </Button>
+  );
+  const rejectToolbarHeader = `${list.data?.meta.total ?? 0} reject rules`;
+  const rejectToolbarActions = (
+    <Button size="sm" variant="primary" leadingIcon="plus" onClick={() => setCreating(true)}>
+      New
+    </Button>
+  );
 
   return (
     <div className={styles.page}>
@@ -578,6 +563,7 @@ export function RulesPage() {
               selectable
               selectedKeys={rejectSelected}
               onSelectionChange={setRejectSelected}
+              bulkActions={rejectBulkActions}
               search={rejectSearch.searchProp}
               toolbarHeader={rejectToolbarHeader}
               toolbar={rejectToolbarActions}
@@ -637,6 +623,7 @@ export function RulesPage() {
               selectable
               selectedKeys={aggregateSelected}
               onSelectionChange={setAggregateSelected}
+              bulkActions={aggregateBulkActions}
               search={aggregateSearch.searchProp}
               toolbarHeader={aggregateToolbarHeader}
               toolbar={aggregateToolbarActions}

@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useState } from "react";
 import { useSearch } from "@tanstack/react-router";
 import { Button } from "@/shared/ui/Button";
 import { DataTable } from "@/shared/ui/DataTable";
@@ -88,37 +88,17 @@ export function NotificationsPage() {
 
   const list = tab === "notifications" ? notifList : actionList;
 
-  // Tabbed header actions — bulk-action bar when rows are selected,
-  // otherwise the count + "+ New" affordance. The active tab decides
-  // which selection set drives the rendering.
-  const activeNotifRows = useMemo(
-    () => (notifList.data?.data ?? []).filter((r) => notif.selectedKeys.has(r.uid ?? r.name)),
-    [notifList.data, notif.selectedKeys],
-  );
-  const activeActionRows = useMemo(
-    () => (actionList.data?.data ?? []).filter((r) => action.selectedKeys.has(r.uid ?? r.name)),
-    [actionList.data, action.selectedKeys],
-  );
-  const activeSelectedCount =
-    tab === "notifications" ? activeNotifRows.length : activeActionRows.length;
   // Toolbar pieces — rendered next to the SearchBar inside DataTable for
-  // both tabs so the page chrome matches every other list page.
-  const toolbarHeader =
-    activeSelectedCount > 0
-      ? `${activeSelectedCount} selected`
-      : `${list.data?.meta.total ?? 0} ${tab}`;
-  const toolbarActions =
-    activeSelectedCount > 0 ? (
-      tab === "notifications" ? (
-        notif.bulkActions(activeNotifRows)
-      ) : (
-        action.bulkActions(activeActionRows)
-      )
-    ) : (
-      <Button size="sm" variant="primary" leadingIcon="plus" onClick={() => setCreating(true)}>
-        New
-      </Button>
-    );
+  // both tabs so the page chrome matches every other list page. Each tab's
+  // `bulkActions` builder is passed straight through to DataTable's own
+  // `bulkActions` prop — that's what switches the toolbar chip to its amber
+  // "selected" treatment, so we don't build the selected-count text here.
+  const toolbarHeader = `${list.data?.meta.total ?? 0} ${tab}`;
+  const toolbarActions = (
+    <Button size="sm" variant="primary" leadingIcon="plus" onClick={() => setCreating(true)}>
+      New
+    </Button>
+  );
 
   return (
     <div className={styles.page}>
@@ -151,6 +131,7 @@ export function NotificationsPage() {
               selectable
               selectedKeys={notif.selectedKeys}
               onSelectionChange={notif.setSelectedKeys}
+              bulkActions={notif.bulkActions}
               search={notifSearch.searchProp}
               toolbarHeader={toolbarHeader}
               toolbar={toolbarActions}
@@ -209,6 +190,7 @@ export function NotificationsPage() {
               selectable
               selectedKeys={action.selectedKeys}
               onSelectionChange={action.setSelectedKeys}
+              bulkActions={action.bulkActions}
               search={actionSearch.searchProp}
               toolbarHeader={toolbarHeader}
               toolbar={toolbarActions}

@@ -73,6 +73,24 @@ describe("RulesPage", () => {
     expect(screen.getByText("Drop noise")).toBeInTheDocument();
   });
 
+  it("Rules tab: selecting a row switches the toolbar to the amber bulk-actions chip", async () => {
+    mswServer.use(
+      http.get("/api/v1/rule", () =>
+        HttpResponse.json({
+          data: [{ uid: "rl1", name: "Tag prod", enabled: true, comment: "" }],
+          meta: { count: 1, limit: 50, offset: 0, total: 1 },
+        }),
+      ),
+    );
+    const user = userEvent.setup();
+    setup();
+    await waitFor(() => expect(screen.getByText("Tag prod")).toBeInTheDocument());
+    expect(screen.queryByRole("region", { name: /bulk actions/i })).not.toBeInTheDocument();
+    await user.click(screen.getByRole("checkbox", { name: /select rule tag prod/i }));
+    expect(screen.getByRole("region", { name: /bulk actions/i })).toBeInTheDocument();
+    expect(screen.getByText("1 selected")).toBeInTheDocument();
+  });
+
   it("switches to the Aggregates tab and lists aggregate rules", async () => {
     mswServer.use(
       http.get("/api/v1/rule", () =>
@@ -113,6 +131,28 @@ describe("RulesPage", () => {
     expect(screen.getByLabelText("Row actions")).toBeInTheDocument();
   });
 
+  it("Aggregates tab: selecting a row switches the toolbar to the amber bulk-actions chip", async () => {
+    mswServer.use(
+      http.get("/api/v1/rule", () =>
+        HttpResponse.json({ data: [], meta: { count: 0, limit: 50, offset: 0, total: 0 } }),
+      ),
+      http.get("/api/v1/aggregaterule", () =>
+        HttpResponse.json({
+          data: [{ uid: "ar1", name: "By host", enabled: true }],
+          meta: { count: 1, limit: 50, offset: 0, total: 1 },
+        }),
+      ),
+    );
+    const user = userEvent.setup();
+    setup();
+    await user.click(screen.getByRole("tab", { name: /aggregates/i }));
+    await waitFor(() => expect(screen.getByText("By host")).toBeInTheDocument());
+    expect(screen.queryByRole("region", { name: /bulk actions/i })).not.toBeInTheDocument();
+    await user.click(screen.getByRole("checkbox", { name: /select row/i }));
+    expect(screen.getByRole("region", { name: /bulk actions/i })).toBeInTheDocument();
+    expect(screen.getByText("1 selected")).toBeInTheDocument();
+  });
+
   it("switches to the Reject tab and lists reject rules with its helper caption", async () => {
     mswServer.use(
       http.get("/api/v1/rule", () =>
@@ -149,6 +189,28 @@ describe("RulesPage", () => {
     await user.click(screen.getByRole("tab", { name: /reject/i }));
     await waitFor(() => expect(screen.getByText("Block legacy")).toBeInTheDocument());
     expect(screen.getByLabelText("Row actions")).toBeInTheDocument();
+  });
+
+  it("Reject tab: selecting a row switches the toolbar to the amber bulk-actions chip", async () => {
+    mswServer.use(
+      http.get("/api/v1/rule", () =>
+        HttpResponse.json({ data: [], meta: { count: 0, limit: 50, offset: 0, total: 0 } }),
+      ),
+      http.get("/api/v1/reject", () =>
+        HttpResponse.json({
+          data: [{ uid: "rj1", name: "Block legacy", enabled: true }],
+          meta: { count: 1, limit: 50, offset: 0, total: 1 },
+        }),
+      ),
+    );
+    const user = userEvent.setup();
+    setup();
+    await user.click(screen.getByRole("tab", { name: /reject/i }));
+    await waitFor(() => expect(screen.getByText("Block legacy")).toBeInTheDocument());
+    expect(screen.queryByRole("region", { name: /bulk actions/i })).not.toBeInTheDocument();
+    await user.click(screen.getByRole("checkbox", { name: /select row/i }));
+    expect(screen.getByRole("region", { name: /bulk actions/i })).toBeInTheDocument();
+    expect(screen.getByText("1 selected")).toBeInTheDocument();
   });
 
   it("renders all three tab helper captions", () => {

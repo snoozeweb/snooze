@@ -594,14 +594,21 @@ export function RulesTreeTable({
   const isRowSelected = (id: string) => selected.has(id);
 
   const hasSelection = selectedRules.length > 0;
-  // When selection is controlled by the host, it also renders its own
-  // bulk-action surface alongside the search bar (see toolbar prop below),
-  // so we skip the internal bulk-action segment to avoid double-rendering.
-  // The toolbar / toolbarHeader props still render — they're the page's
-  // chosen content for the right side of the search row.
-  const renderInternalBulk = !isControlled && hasSelection;
+  // The amber "selected" chip is DataTable's own selection styling — it
+  // applies whenever rows are selected, whether or not the host controls
+  // selection itself, so a page's own selected-count text never has to
+  // reinvent it (and risk skipping the styling like a plain toolbarHeader
+  // string would). `pending` (uncommitted tree reorders) takes priority:
+  // that's a different state than "rows selected" and keeps its own neutral
+  // toolbarHeader/toolbar content from the host.
+  const showSelectedChip = hasSelection && !pending;
+  // The internal Delete button only renders in uncontrolled mode — a
+  // controlled host renders its own bulk actions via the `toolbar` prop
+  // (e.g. Cancel/Save while reorders are pending, Delete otherwise), so
+  // rendering both here would double up.
+  const renderInternalDeleteButton = !isControlled && hasSelection;
   const showToolbarSlot =
-    toolbar !== undefined || toolbarHeader !== undefined || renderInternalBulk;
+    toolbar !== undefined || toolbarHeader !== undefined || showSelectedChip;
 
   return (
     <div className={styles.wrap}>
@@ -620,17 +627,17 @@ export function RulesTreeTable({
           ) : null}
           {showToolbarSlot ? (
             <div
-              className={renderInternalBulk ? styles.toolbarSelected : styles.toolbar}
+              className={showSelectedChip ? styles.toolbarSelected : styles.toolbar}
               role="region"
-              aria-label={renderInternalBulk ? "Bulk actions" : "Table toolbar"}
+              aria-label={showSelectedChip ? "Bulk actions" : "Table toolbar"}
             >
-              {renderInternalBulk ? (
+              {showSelectedChip ? (
                 <span className={styles.toolbarCount}>{selectedRules.length} selected</span>
               ) : toolbarHeader !== undefined ? (
                 <span className={styles.toolbarHeader}>{toolbarHeader}</span>
               ) : null}
               <div className={styles.toolbarActions}>
-                {renderInternalBulk ? (
+                {renderInternalDeleteButton ? (
                   <Button
                     size="sm"
                     variant="danger"

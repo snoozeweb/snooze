@@ -114,4 +114,22 @@ describe("SnoozesPage", () => {
     await user.click(within(dialog).getByRole("button", { name: /delete/i }));
     await waitFor(() => expect(posts).toBe(1));
   });
+
+  it("selecting a row switches the toolbar to the amber bulk-actions chip", async () => {
+    mswServer.use(
+      http.get("/api/v1/snooze", () =>
+        HttpResponse.json({
+          data: [{ uid: "s1", name: "Friday quiet", enabled: true, ttl: 3600 }],
+          meta: { count: 1, limit: 1000, offset: 0, total: 1 },
+        }),
+      ),
+    );
+    const user = userEvent.setup();
+    setup();
+    await waitFor(() => expect(screen.getByText("Friday quiet")).toBeInTheDocument());
+    expect(screen.queryByRole("region", { name: /bulk actions/i })).not.toBeInTheDocument();
+    await user.click(screen.getByRole("checkbox", { name: /select row/i }));
+    expect(screen.getByRole("region", { name: /bulk actions/i })).toBeInTheDocument();
+    expect(screen.getByText("1 selected")).toBeInTheDocument();
+  });
 });

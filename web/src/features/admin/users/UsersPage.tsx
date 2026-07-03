@@ -125,24 +125,17 @@ export function UsersPage() {
     ...(q ? { q } : {}),
   });
 
-  const selectedUserRows = useMemo(
-    () => (list.data?.data ?? []).filter((r) => selectedKeys.has(r.uid ?? r.name)),
-    [list.data, selectedKeys],
-  );
   // Toolbar pieces — rendered next to the SearchBar inside DataTable so the
-  // surface matches every other list page.
-  const usersToolbarHeader =
-    selectedUserRows.length > 0
-      ? `${selectedUserRows.length} selected`
-      : `${list.data?.meta.total ?? 0} users`;
-  const usersToolbarActions =
-    selectedUserRows.length > 0 ? (
-      bulkActions(selectedUserRows)
-    ) : (
-      <Button size="sm" variant="primary" leadingIcon="plus" onClick={() => setCreating(true)}>
-        New
-      </Button>
-    );
+  // surface matches every other list page. `bulkActions` is passed straight
+  // through to DataTable's own `bulkActions` prop, which is what switches the
+  // toolbar chip to its amber "selected" treatment — building the selected-
+  // count text here ourselves would show the right label without the styling.
+  const usersToolbarHeader = `${list.data?.meta.total ?? 0} users`;
+  const usersToolbarActions = (
+    <Button size="sm" variant="primary" leadingIcon="plus" onClick={() => setCreating(true)}>
+      New
+    </Button>
+  );
 
   return (
     <div className={styles.page}>
@@ -168,6 +161,7 @@ export function UsersPage() {
             selectable
             selectedKeys={selectedKeys}
             onSelectionChange={setSelectedKeys}
+            bulkActions={bulkActions}
             search={userSearch.searchProp}
             toolbarHeader={usersToolbarHeader}
             toolbar={usersToolbarActions}
