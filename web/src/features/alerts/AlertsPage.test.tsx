@@ -1230,5 +1230,3 @@ describe("AlertsPage — Plan 28b: audio cue", () => {
     vi.unstubAllGlobals();
   });
 });
-  });
-});
