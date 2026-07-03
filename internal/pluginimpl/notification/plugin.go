@@ -60,6 +60,17 @@ const notifierSendTimeout = 30 * time.Second
 // tighter bound than notifierSendTimeout to keep the coordinator goroutine short-lived.
 const notifierWriteBackTimeout = 10 * time.Second
 
+// writeBackRetryInterval is the pause between hash-keyed write-back attempts.
+// The coordinator goroutine can finish (and try to persist the resolved
+// status) before the pipeline's own initial write of the record lands, since
+// Process spawns the goroutine and returns before its caller persists the
+// record (see internal/core/pipeline.go: notification is last in the default
+// process order, so the final writeRecord happens immediately after Process
+// returns). SetFields is a no-op when no row matches yet, so without a retry
+// the resolved status would be silently dropped. Retrying within
+// notifierWriteBackTimeout closes that window.
+const writeBackRetryInterval = 20 * time.Millisecond
+
 // Action-outcome statuses stamped onto record.actions.
 const (
 	actionPending = "pending"
@@ -460,12 +471,30 @@ func (p *Plugin) spawnCoordinator(ctx context.Context, rec snoozetypes.Record, r
 		}
 		patch := db.Document{"actions": actionResultsToAny(results)}
 		if hash != "" {
-			if _, err := host.DB().SetFields(writeCtx, recordCollectionName, patch, condition.Equals("hash", hash)); err != nil {
-				if lg := p.logger(); lg != nil {
-					lg.Warn("notification: action-outcome write-back (hash) failed", "hash", hash, "err", err)
+			cond := condition.Equals("hash", hash)
+			for {
+				matched, err := host.DB().SetFields(writeCtx, recordCollectionName, patch, cond)
+				if err != nil {
+					if lg := p.logger(); lg != nil {
+						lg.Warn("notification: action-outcome write-back (hash) failed", "hash", hash, "err", err)
+					}
+					return
+				}
+				if matched > 0 {
+					return
+				}
+				// No row yet: the caller (e.g. the pipeline's final writeRecord)
+				// may not have persisted the record. Retry until it lands or the
+				// write-back deadline expires.
+				select {
+				case <-writeCtx.Done():
+					if lg := p.logger(); lg != nil {
+						lg.Warn("notification: action-outcome write-back (hash) gave up: record never appeared", "hash", hash)
+					}
+					return
+				case <-time.After(writeBackRetryInterval):
 				}
 			}
-			return
 		}
 		if uid != "" {
 			if err := host.DB().UpdateOne(writeCtx, recordCollectionName, uid, patch, false); err != nil {
