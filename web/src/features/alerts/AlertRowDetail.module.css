@@ -1,22 +1,13 @@
+/* Desktop-only layout: Record (1/2) · Flow (1/4) · Timeline (1/4). Below the
+   app shell's mobile breakpoint AlertRowDetail renders a tabbed view instead
+   (see AlertRowDetail.tsx), so this grid is never shown narrow — no collapse
+   media query needed. */
 .grid {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  grid-template-columns: minmax(0, 2fr) minmax(0, 1fr) minmax(0, 1fr);
   gap: var(--space-4);
   align-items: start;
 }
 .col {
   min-width: 0;
-}
-.heading {
-  margin: 0 0 var(--space-2) 0;
-  font-size: var(--text-xs);
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-  color: var(--text-muted);
-  font-weight: var(--weight-semibold);
-}
-@media (max-width: 720px) {
-  .grid {
-    grid-template-columns: 1fr;
-  }
 }

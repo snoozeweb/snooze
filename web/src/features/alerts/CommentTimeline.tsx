@@ -232,8 +232,14 @@ export function CommentTimeline({
             <div key={c.uid ?? `${c.date_epoch}-${c.user ?? ""}`} className={styles.row}>
               <span className={styles.dot} />
               <div className={styles.body}>
+                {/* Badge and its who·when meta share one line — the timestamp
+                    sits flush-right of the badge — so each entry stays compact
+                    in the narrow desktop Timeline column. */}
                 <span className={styles.head}>
                   <Badge variant={TYPE_VARIANT[c.type]}>{TYPE_LABEL[c.type]}</Badge>
+                  <span className={styles.meta}>
+                    {c.user ?? "system"} · {trimDate(c.date_epoch)}
+                  </span>
                 </span>
                 {editingUid === c.uid ? (
                   <>
@@ -268,14 +274,9 @@ export function CommentTimeline({
                       </Button>
                     </span>
                   </>
-                ) : (
-                  <>
-                    {c.message ? <p className={styles.message}>{c.message}</p> : null}
-                    <span className={styles.meta}>
-                      {c.user ?? "system"} · {trimDate(c.date_epoch)}
-                    </span>
-                  </>
-                )}
+                ) : c.message ? (
+                  <p className={styles.message}>{c.message}</p>
+                ) : null}
               </div>
               {canEdit && c.uid && editingUid !== c.uid ? (
                 <span className={styles.actions}>

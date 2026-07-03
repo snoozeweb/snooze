@@ -10,10 +10,26 @@ import {
   RouterProvider,
 } from "@tanstack/react-router";
 import { http, HttpResponse } from "msw";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { mswServer } from "@/tests/msw/server";
 import { AlertRowDetail } from "./AlertRowDetail";
 import type { Record_ } from "./types";
+
+// AlertRowDetail switches on useIsMobileShell (window.matchMedia). jsdom has no
+// matchMedia, so the hook defaults to desktop — every test below renders the
+// 3-column layout unless it opts into the mobile branch via mockMatchMedia(true).
+function mockMatchMedia(matches: boolean) {
+  vi.stubGlobal(
+    "matchMedia",
+    vi.fn().mockImplementation((query: string) => ({
+      matches,
+      media: query,
+      addEventListener: () => {},
+      removeEventListener: () => {},
+    })),
+  );
+}
+afterEach(() => vi.unstubAllGlobals());
 
 // AlertRowDetail's Flow tab embeds AlertFlowChart, whose entities are TanStack
 // <Link>s — so the detail needs a RouterProvider ancestor (app-wide in
@@ -76,7 +92,27 @@ describe("AlertRowDetail", () => {
     expect(screen.queryByText(/_internal/)).toBeNull();
   });
 
-  it("defaults to the Timeline tab and switches to Flow", async () => {
+  it("shows Record, Flow and Timeline at once on desktop (no tabs)", async () => {
+    mswServer.use(
+      http.get("/api/v1/comment", () =>
+        HttpResponse.json({
+          data: [],
+          meta: { count: 0, limit: 100, offset: 0, total: 0 },
+        }),
+      ),
+    );
+    const row = { uid: "u1", source: "syslog", aggregate: "Host and Message" } as Record_;
+    renderDetail(row);
+    // No tab chrome on desktop — all three surfaces render simultaneously.
+    expect(screen.queryByRole("tab")).toBeNull();
+    // Flow (source) is visible without any interaction...
+    expect(screen.getByText("syslog")).toBeInTheDocument();
+    // ...and so is the Timeline (its empty state), rendered directly.
+    await waitFor(() => expect(screen.getByText(/no comments yet/i)).toBeInTheDocument());
+  });
+
+  it("collapses to tabs on mobile, defaulting to Timeline", async () => {
+    mockMatchMedia(true);
     mswServer.use(
       http.get("/api/v1/comment", () =>
         HttpResponse.json({
@@ -88,8 +124,12 @@ describe("AlertRowDetail", () => {
     const row = { uid: "u1", source: "syslog", aggregate: "Host and Message" } as Record_;
     renderDetail(row);
     expect(screen.getByRole("tab", { name: "Timeline" })).toHaveAttribute("data-state", "active");
+    // Flow lives behind its tab until selected.
+    expect(screen.queryByText("syslog")).toBeNull();
     await userEvent.click(screen.getByRole("tab", { name: "Flow" }));
     expect(screen.getByText("syslog")).toBeInTheDocument();
+    // Record (JSON) is the third tab.
+    expect(screen.getByRole("tab", { name: "Record" })).toBeInTheDocument();
   });
 
   it("renders a CommentTimeline scoped to the row's uid", async () => {

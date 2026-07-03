@@ -22,10 +22,12 @@
   display: flex;
   flex-direction: column;
   gap: 2px;
+  min-width: 0;
 }
 .head {
-  display: inline-flex;
-  align-items: center;
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
   gap: var(--space-2);
   font-size: var(--text-sm);
 }
@@ -37,6 +39,7 @@
 .meta {
   font-size: var(--text-xs);
   color: var(--text-muted);
+  white-space: nowrap;
 }
 .empty {
   font-size: var(--text-sm);
