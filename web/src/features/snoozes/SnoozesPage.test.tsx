@@ -68,6 +68,27 @@ describe("SnoozesPage", () => {
     await waitFor(() => expect(screen.getByText("Friday quiet")).toBeInTheDocument());
   });
 
+  it("row-actions kebab includes Copy/Delete, not just Edit and retro-apply", async () => {
+    mswServer.use(
+      http.get("/api/v1/snooze", () =>
+        HttpResponse.json({
+          data: [{ uid: "s1", name: "Friday quiet", enabled: true, ttl: 3600 }],
+          meta: { count: 1, limit: 1000, offset: 0, total: 1 },
+        }),
+      ),
+    );
+    const user = userEvent.setup();
+    setup();
+    await waitFor(() => expect(screen.getByText("Friday quiet")).toBeInTheDocument());
+    await user.click(screen.getByRole("button", { name: /row actions/i }));
+    // Copy/Delete used to only be reachable via the right-click context menu;
+    // the visible kebab must offer the same items, not a hand-picked subset.
+    expect(screen.getByRole("menuitem", { name: /edit/i })).toBeInTheDocument();
+    expect(screen.getByRole("menuitem", { name: /copy as json/i })).toBeInTheDocument();
+    expect(screen.getByRole("menuitem", { name: /copy as yaml/i })).toBeInTheDocument();
+    expect(screen.getByRole("menuitem", { name: /delete/i })).toBeInTheDocument();
+  });
+
   it("retro-apply on a discard snooze asks for confirmation before hard-deleting matches", async () => {
     let posts = 0;
     mswServer.use(

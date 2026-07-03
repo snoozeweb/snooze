@@ -573,6 +573,7 @@ export function RulesPage() {
               rowKey={(r) => r.uid ?? r.name}
               loading={list.isPending}
               rowDisabled={ruleRowDisabled}
+              rowActions={rejectContextMenu}
               contextMenuItems={rejectContextMenu}
               selectable
               selectedKeys={rejectSelected}
@@ -631,6 +632,7 @@ export function RulesPage() {
               rowKey={(r) => r.uid ?? r.name}
               loading={list.isPending}
               rowDisabled={ruleRowDisabled}
+              rowActions={aggregateContextMenu}
               contextMenuItems={aggregateContextMenu}
               selectable
               selectedKeys={aggregateSelected}

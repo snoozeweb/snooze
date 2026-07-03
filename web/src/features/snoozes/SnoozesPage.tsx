@@ -155,26 +155,25 @@ export function SnoozesPage() {
   );
   const paged = filtered.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
 
+  // Visible kebab mirrors the right-click menu (Copy JSON / Copy YAML /
+  // retro-apply / Delete via contextMenuItems) plus Edit up front — Snoozes
+  // rows expand inline on click instead of opening the editor, so Edit needs
+  // its own entry here. Without this, Copy/Delete would hide behind the
+  // touch-unreachable context menu the same way c475acbe fixed elsewhere.
   const rowActions = useCallback(
     (row: Snooze): RowAction[] => {
       if (!row.uid) return [];
       return [
-        {
-          key: "retro-apply",
-          label: row.discard ? "Retro-apply (delete matches)" : "Retro-apply (tag matches)",
-          icon: row.discard ? "trash" : "rotate-cw",
-          ...(row.discard ? { danger: true } : {}),
-          onSelect: () => requestRetroApply([row]),
-        },
         {
           key: "edit",
           label: "Edit",
           icon: "edit",
           onSelect: () => updateSearch({ uid: row.uid! }),
         },
+        ...contextMenuItems(row),
       ];
     },
-    [updateSearch, requestRetroApply],
+    [updateSearch, contextMenuItems],
   );
 
   const bulkActions = useCallback(

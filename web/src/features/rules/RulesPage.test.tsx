@@ -94,6 +94,25 @@ describe("RulesPage", () => {
     await waitFor(() => expect(screen.getByText("By host")).toBeInTheDocument());
   });
 
+  it("Aggregates tab surfaces a discoverable row-actions kebab (not just right-click)", async () => {
+    mswServer.use(
+      http.get("/api/v1/rule", () =>
+        HttpResponse.json({ data: [], meta: { count: 0, limit: 50, offset: 0, total: 0 } }),
+      ),
+      http.get("/api/v1/aggregaterule", () =>
+        HttpResponse.json({
+          data: [{ uid: "ar1", name: "By host", enabled: true }],
+          meta: { count: 1, limit: 50, offset: 0, total: 1 },
+        }),
+      ),
+    );
+    const user = userEvent.setup();
+    setup();
+    await user.click(screen.getByRole("tab", { name: /aggregates/i }));
+    await waitFor(() => expect(screen.getByText("By host")).toBeInTheDocument());
+    expect(screen.getByLabelText("Row actions")).toBeInTheDocument();
+  });
+
   it("switches to the Reject tab and lists reject rules with its helper caption", async () => {
     mswServer.use(
       http.get("/api/v1/rule", () =>
@@ -111,6 +130,25 @@ describe("RulesPage", () => {
     await user.click(screen.getByRole("tab", { name: /reject/i }));
     await waitFor(() => expect(screen.getByText("Block legacy")).toBeInTheDocument());
     expect(screen.getByText(/return 422 to the sender/i)).toBeInTheDocument();
+  });
+
+  it("Reject tab surfaces a discoverable row-actions kebab (not just right-click)", async () => {
+    mswServer.use(
+      http.get("/api/v1/rule", () =>
+        HttpResponse.json({ data: [], meta: { count: 0, limit: 50, offset: 0, total: 0 } }),
+      ),
+      http.get("/api/v1/reject", () =>
+        HttpResponse.json({
+          data: [{ uid: "rj1", name: "Block legacy", enabled: true }],
+          meta: { count: 1, limit: 50, offset: 0, total: 1 },
+        }),
+      ),
+    );
+    const user = userEvent.setup();
+    setup();
+    await user.click(screen.getByRole("tab", { name: /reject/i }));
+    await waitFor(() => expect(screen.getByText("Block legacy")).toBeInTheDocument());
+    expect(screen.getByLabelText("Row actions")).toBeInTheDocument();
   });
 
   it("renders all three tab helper captions", () => {
