@@ -294,7 +294,7 @@ export function CommentTimeline({
                     icon="trash"
                     label="Delete comment"
                     size="sm"
-                    variant="ghost"
+                    variant="ghostDanger"
                     onClick={() => c.uid && setDeletingUid(c.uid)}
                   />
                 </span>

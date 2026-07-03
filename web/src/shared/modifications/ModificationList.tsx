@@ -146,7 +146,7 @@ export function ModificationList({ value, onChange }: ModificationListProps) {
             <IconButton
               icon="trash"
               label="Remove"
-              variant="ghost"
+              variant="ghostDanger"
               size="sm"
               onClick={() => remove(i)}
             />

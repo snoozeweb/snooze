@@ -141,7 +141,7 @@ export function TimeConstraintsEditor({ value, onChange }: TimeConstraintsEditor
             />
             <IconButton
               icon="trash"
-              variant="ghost"
+              variant="ghostDanger"
               size="sm"
               label={`Remove time window ${idx + 1}`}
               onClick={() => setTime(time.filter((_, j) => j !== idx))}
@@ -190,7 +190,7 @@ export function TimeConstraintsEditor({ value, onChange }: TimeConstraintsEditor
             />
             <IconButton
               icon="trash"
-              variant="ghost"
+              variant="ghostDanger"
               size="sm"
               label={`Remove date range ${idx + 1}`}
               onClick={() => setDatetime(datetime.filter((_, j) => j !== idx))}

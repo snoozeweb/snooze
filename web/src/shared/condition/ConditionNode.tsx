@@ -184,7 +184,7 @@ export function ConditionNode({
           <IconButton
             icon="trash"
             label={isRoot ? "Clear" : "Remove group"}
-            variant="ghost"
+            variant="ghostDanger"
             size="sm"
             onClick={handleRootOrEscalateDelete}
           />
@@ -375,7 +375,7 @@ export function ConditionNode({
         <IconButton
           icon="trash"
           label="Remove"
-          variant="ghost"
+          variant="ghostDanger"
           size="sm"
           onClick={handleRootOrEscalateDelete}
         />

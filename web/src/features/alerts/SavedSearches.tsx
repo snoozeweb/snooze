@@ -83,7 +83,7 @@ export function SavedSearches({ currentQuery, onApply }: SavedSearchesProps) {
                   icon="trash"
                   label={`Delete ${s.name}`}
                   size="sm"
-                  variant="ghost"
+                  variant="ghostDanger"
                   onClick={() => remove(s.uid, s.name)}
                 />
               </li>

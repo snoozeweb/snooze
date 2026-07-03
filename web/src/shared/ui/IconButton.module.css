@@ -66,6 +66,14 @@
   filter: brightness(1.1);
 }
 
+.ghostDanger {
+  background: transparent;
+  color: var(--severity-critical);
+}
+.ghostDanger:hover:not(:disabled) {
+  background: rgb(240 73 73 / 0.12);
+}
+
 /* Touch devices: enforce the minimum hit area regardless of visual size.
    Desktop (fine pointer) keeps the compact 28/32/38px sizes above. */
 @media (pointer: coarse) {
