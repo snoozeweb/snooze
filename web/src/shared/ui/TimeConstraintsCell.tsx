@@ -20,6 +20,11 @@ export function TimeConstraintsCell({ value }: TimeConstraintsCellProps) {
     return <span className={styles.muted}>Always</span>;
   }
 
+  // The recurring families (weekdays / hours) are read in this named zone; show
+  // it so the times aren't a silent UTC default.
+  const tz = value?.tz;
+  const showTz = !!tz && (wd.length > 0 || time.length > 0);
+
   return (
     <span className={styles.wrap}>
       {wd.length > 0 ? (
@@ -39,6 +44,14 @@ export function TimeConstraintsCell({ value }: TimeConstraintsCellProps) {
                 {formatHourRange(t.from, t.until)}
               </span>
             ))}
+          </span>
+        </span>
+      ) : null}
+      {showTz ? (
+        <span className={styles.block}>
+          <span className={styles.label}>Zone</span>
+          <span className={styles.values}>
+            <span className={styles.line}>{tz}</span>
           </span>
         </span>
       ) : null}
@@ -87,9 +100,13 @@ function formatHourRange(from?: string, until?: string): string {
 // wall-clock for a zone-less value, and render an offset/Z value in the
 // viewer's own zone — consistent either way.
 function formatDateTime(s: string): string {
+  const pad = (n: number) => n.toString().padStart(2, "0");
+  // A bare calendar date ("YYYY-MM-DD") is parsed by `new Date` as UTC
+  // midnight, which local accessors then shift across the date line in western
+  // zones. It is already the display form, so return it verbatim.
+  if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
   const d = new Date(s);
   if (Number.isNaN(d.getTime())) return s;
-  const pad = (n: number) => n.toString().padStart(2, "0");
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
 

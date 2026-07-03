@@ -88,6 +88,41 @@ describe("NotificationEditor", () => {
     expect(await screen.findByRole("button", { name: /^diff/i })).toBeInTheDocument();
   });
 
+  it("keeps time_constraints & frequency in the diff (no spurious deletion)", async () => {
+    // Both are saved by formToBody, so the diff must project them too —
+    // otherwise an unchanged rule shows them as a full removal on every edit.
+    mswServer.use(
+      http.get("/api/v1/notification/nt2", () =>
+        HttpResponse.json({
+          uid: "nt2",
+          name: "windowed",
+          enabled: true,
+          condition: { type: "ALWAYS_TRUE" },
+          actions: ["slack-prod"],
+          time_constraints: { weekdays: [{ weekdays: [1] }], tz: "Europe/Paris" },
+          frequency: { total: 3 },
+        }),
+      ),
+      http.get("/api/v1/record", () =>
+        HttpResponse.json({ data: [], meta: { count: 0, limit: 50, offset: 0, total: 0 } }),
+      ),
+    );
+    const Wrapper = wrap();
+    const user = userEvent.setup();
+    render(
+      <Wrapper>
+        <NotificationEditor uid="nt2" onClose={() => undefined} />
+      </Wrapper>,
+    );
+    await user.click(await screen.findByRole("button", { name: /^diff/i }));
+    const pre = await screen.findByLabelText("Diff");
+    const removedLines = Array.from(pre.querySelectorAll("div"))
+      .map((d) => d.textContent ?? "")
+      .filter((t) => t.startsWith("- "));
+    // These load unchanged, so they must be context lines, never deletions.
+    expect(removedLines.join("\n")).not.toMatch(/weekdays|Europe\/Paris|total/);
+  });
+
   it("hides the Diff section when creating", () => {
     mswServer.use(
       http.get("/api/v1/record", () =>

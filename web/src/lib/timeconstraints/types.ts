@@ -23,6 +23,12 @@ export type TimeConstraintsGroup = {
   datetime?: DateTimeConstraint[];
   time?: TimeOfDayConstraint[];
   weekdays?: WeekdaysConstraint[];
+  // IANA timezone name (e.g. "Europe/Paris") the RECURRING families (daily
+  // time windows + weekdays) are interpreted in. Captured from the browser
+  // when a recurring family is added and preserved thereafter, so those windows
+  // track a real zone (DST included) instead of the backend's UTC default.
+  // Absolute datetime ranges carry their own offset and are unaffected.
+  tz?: string;
 };
 
 export const WEEKDAY_LABELS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"] as const;

@@ -4,6 +4,7 @@
 // Empty groups are treated as "always matches" by the backend, so the
 // editor surfaces each family only when the user opts in by adding a
 // constraint.
+import { useMemo } from "react";
 import { Button } from "@/shared/ui/Button";
 import { IconButton } from "@/shared/ui/IconButton";
 import { DateTimeRangePicker } from "@/shared/ui/DateTimeRangePicker";
@@ -21,20 +22,51 @@ export function TimeConstraintsEditor({ value, onChange }: TimeConstraintsEditor
   const time = g.time ?? [];
   const weekdays = g.weekdays?.[0]?.weekdays ?? [];
 
+  // The browser's IANA zone, captured once. Recurring families (daily windows +
+  // weekdays) are interpreted in it so they track a real zone (DST included)
+  // instead of the backend's UTC default.
+  const browserTz = useMemo(() => {
+    try {
+      return Intl.DateTimeFormat().resolvedOptions().timeZone || undefined;
+    } catch {
+      return undefined;
+    }
+  }, []);
+
+  // The zone actually persisted on this group's recurring families, shown
+  // read-only. Gated on g.tz (not browserTz) so it matches the cell and never
+  // claims a zone the saved rule doesn't carry — an edit stamps browserTz via
+  // emit(), at which point g.tz is set and the note appears.
+  const effectiveTz = g.tz && (time.length > 0 || weekdays.length > 0) ? g.tz : undefined;
+
+  // emit normalizes the group's tz around the recurring families: stamp one
+  // (preserving any existing) when a recurring family is present, drop it when
+  // none remain. Absolute datetime ranges alone never carry a tz.
+  function emit(next: TimeConstraintsGroup) {
+    const hasRecurring = (next.time?.length ?? 0) > 0 || (next.weekdays?.length ?? 0) > 0;
+    if (!hasRecurring) {
+      const { tz: _drop, ...rest } = next;
+      onChange(rest);
+      return;
+    }
+    const tz = next.tz ?? browserTz;
+    onChange(tz ? { ...next, tz } : next);
+  }
+
   // exactOptionalPropertyTypes: spread an empty object instead of
   // assigning `undefined`, so the resulting Group either has the key
   // present (with values) or omits it entirely.
   function setDatetime(next: typeof datetime) {
     const { datetime: _drop, ...rest } = g;
-    onChange(next.length > 0 ? { ...rest, datetime: next } : rest);
+    emit(next.length > 0 ? { ...rest, datetime: next } : rest);
   }
   function setTime(next: typeof time) {
     const { time: _drop, ...rest } = g;
-    onChange(next.length > 0 ? { ...rest, time: next } : rest);
+    emit(next.length > 0 ? { ...rest, time: next } : rest);
   }
   function setWeekdays(next: number[]) {
     const { weekdays: _drop, ...rest } = g;
-    onChange(
+    emit(
       next.length > 0
         ? { ...rest, weekdays: [{ weekdays: [...next].sort((a, b) => a - b) }] }
         : rest,
@@ -117,6 +149,14 @@ export function TimeConstraintsEditor({ value, onChange }: TimeConstraintsEditor
           </div>
         ))}
       </div>
+
+      {/* Timezone the recurring families above are interpreted in. Read-only:
+          captured from the browser, shown so it is never a hidden default. */}
+      {effectiveTz ? (
+        <p className={styles.empty}>
+          Daily windows &amp; weekdays are interpreted in {effectiveTz}.
+        </p>
+      ) : null}
 
       {/* Absolute datetime ranges — list of {from, until} ISO strings. */}
       <div>

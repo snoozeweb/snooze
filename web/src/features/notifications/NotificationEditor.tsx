@@ -137,12 +137,25 @@ function NotificationDiff({
   const enabled = useWatch({ control, name: "enabled" });
   const condition = useWatch({ control, name: "condition" });
   const actions = useWatch({ control, name: "actions" });
+  const timeConstraints = useWatch({ control, name: "time_constraints" });
+  const frequency = useWatch({ control, name: "frequency" });
+  // Mirror formToBody's conditional inclusion so the diff reflects time-window
+  // and frequency edits. Omitting them (as this did) hid those changes and made
+  // an existing block render as a spurious full deletion on every edit.
+  const hasTimeConstraints =
+    (timeConstraints.datetime?.length ?? 0) > 0 ||
+    (timeConstraints.time?.length ?? 0) > 0 ||
+    (timeConstraints.weekdays?.length ?? 0) > 0;
+  const hasFrequency =
+    (frequency.total ?? 0) > 0 || (frequency.delay ?? 0) > 0 || (frequency.every ?? 0) > 0;
   const projected: Notification = {
     name,
     ...(comment ? { comment } : {}),
     enabled,
     condition,
     ...(actions.length > 0 ? { actions } : {}),
+    ...(hasTimeConstraints ? { time_constraints: timeConstraints } : {}),
+    ...(hasFrequency ? { frequency } : {}),
   };
   return <DiffSection original={original} current={projected} />;
 }

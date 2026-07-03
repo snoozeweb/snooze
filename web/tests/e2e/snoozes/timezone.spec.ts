@@ -182,4 +182,37 @@ test.describe("snooze datetime timezone (#31)", () => {
       await ctx.close();
     }
   });
+
+  test("a daily-time window is stored with the browser's named tz (FU-2)", async ({
+    cdpBrowser,
+    server,
+    api,
+  }) => {
+    const { ctx, page } = await parisContext(cdpBrowser, server, api);
+    try {
+      await page.goto(server.baseURL + "/web/snoozes");
+      await page.getByRole("button", { name: /^new$/i }).click({ force: true });
+      await expect(page.getByRole("heading", { name: /new snooze/i })).toBeVisible();
+      await page.getByLabel("Name").fill("e2e-tz-daily");
+
+      // Adding a daily window is enough to stamp the recurring zone.
+      await page.getByRole("button", { name: /^add window$/i }).click({ force: true });
+      await expect(page.getByText(/interpreted in Europe\/Paris/)).toBeVisible();
+
+      await page.getByRole("button", { name: /^create$/i }).click({ force: true });
+      await expect(page.getByText(/snooze created/i).first()).toBeVisible();
+
+      const list = (await api.snoozes.list()) as Array<{
+        name?: string;
+        time_constraints?: { tz?: string; time?: Array<{ from?: string; until?: string }> };
+      }>;
+      const found = list.find((s) => s.name === "e2e-tz-daily");
+      expect(found?.time_constraints?.tz).toBe("Europe/Paris");
+      // The daily bound stays a bare wall clock — the DST-safe representation is
+      // the named tz, NOT a baked offset (which would only be right half the year).
+      expect(found?.time_constraints?.time?.[0]?.from).toBe("09:00");
+    } finally {
+      await ctx.close();
+    }
+  });
 });

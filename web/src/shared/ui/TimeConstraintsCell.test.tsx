@@ -155,6 +155,30 @@ describe("TimeConstraintsCell", () => {
     expect(screen.getByText("from 2026-01-01 08:00")).toBeInTheDocument();
     expect(screen.getByText("until 2026-02-01 18:00")).toBeInTheDocument();
   });
+
+  it("renders a bare calendar date literally (no UTC-midnight day shift)", () => {
+    // "YYYY-MM-DD" must show the same day in every viewer TZ — `new Date("…")`
+    // would parse it as UTC midnight and slip a day west of UTC.
+    render(
+      <TimeConstraintsCell value={{ datetime: [{ from: "2026-07-02", until: "2026-07-05" }] }} />,
+    );
+    expect(screen.getByText("2026-07-02 → 2026-07-05")).toBeInTheDocument();
+  });
+
+  it("shows the Zone block when a named tz accompanies a recurring family", () => {
+    render(<TimeConstraintsCell value={{ weekdays: [{ weekdays: [1] }], tz: "Europe/Paris" }} />);
+    expect(screen.getByText("Zone")).toBeInTheDocument();
+    expect(screen.getByText("Europe/Paris")).toBeInTheDocument();
+  });
+
+  it("omits the Zone block when tz has no recurring family to qualify", () => {
+    render(
+      <TimeConstraintsCell
+        value={{ datetime: [{ from: "2026-01-01T08:00:00+01:00" }], tz: "Europe/Paris" }}
+      />,
+    );
+    expect(screen.queryByText("Zone")).not.toBeInTheDocument();
+  });
 });
 
 describe("summarizeTimeConstraints (unchanged contract)", () => {

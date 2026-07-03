@@ -1385,8 +1385,9 @@ export interface paths {
          *     responses additionally carry two computed, read-only fields:
          *     `window_status` (`active` / `pending` / `expired` / `always_on`) and
          *     `remaining_seconds` (seconds until the active window closes). Both are
-         *     projected at read time from `time_constraints.datetime`; neither is
-         *     stored.
+         *     projected at read time from the whole `time_constraints` group (the same
+         *     predicate the pipeline suppresses on — datetime, daily-time and weekday
+         *     families AND'd, in `time_constraints.tz` when set); neither is stored.
          *
          */
         get: {
@@ -4497,7 +4498,7 @@ export interface components {
          *     matching alerts. Created/edited via the generic CRUD surface; the list
          *     and get-one responses additionally carry the read-only computed
          *     `window_status` and `remaining_seconds` fields, projected at read time
-         *     from `time_constraints.datetime`.
+         *     from the whole `time_constraints` group.
          *      */
         Snooze: {
             /** @description Unique snooze filter name. */
@@ -4510,7 +4511,11 @@ export interface components {
             condition?: unknown;
             /** @description Active time windows (absolute datetime ranges, daily-time windows,
              *     weekdays). The snooze only matches when the current moment is within
-             *     every populated family.
+             *     every populated family. An optional IANA `tz` (e.g. "Europe/Paris")
+             *     names the zone the RECURRING families (daily-time + weekdays) are
+             *     interpreted in — so they track that zone's wall clock (DST included)
+             *     instead of UTC; absolute datetime bounds carry their own offset and
+             *     are unaffected. Absent `tz` preserves the UTC interpretation.
              *      */
             time_constraints?: Record<string, never>;
             /** @description When true, matching alerts are dropped from the pipeline; otherwise
@@ -4522,7 +4527,7 @@ export interface components {
             /** @description The user that created the snooze (server-stamped). */
             readonly name_create?: string;
             /**
-             * @description Derived lifecycle status computed at read time from time_constraints.datetime. "always_on" means no datetime constraint is set (the rule fires indefinitely). Never stored; projected at read time on list/get responses only.
+             * @description Derived lifecycle status computed at read time from the whole time_constraints group (all populated families AND'd, resolved in time_constraints.tz when set) — the same predicate the pipeline suppresses on. "active" means the rule matches now; "always_on" means no constraint is set in any family (the rule fires indefinitely); a rule wholly past its datetime window is "expired"; anything else (a future window, or a recurring window between slots) is "pending". Never stored; projected on list/get responses only.
              *
              * @enum {string}
              */

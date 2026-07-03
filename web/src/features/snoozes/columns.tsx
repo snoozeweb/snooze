@@ -23,6 +23,7 @@ const STATUS_BADGE: Record<
 // shows its time-to-close via secondsToHuman; anything else (no countdown:
 // pending, expired, or a server too old to project the field) shows "—".
 function remainingLabel(r: Snooze): string {
+  if (r.enabled === false) return "—"; // a disabled rule is not counting down
   if (r.window_status === "always_on") return "forever";
   if (!r.remaining_seconds) return "—";
   return secondsToHuman(r.remaining_seconds);
@@ -33,6 +34,9 @@ export const snoozeColumns: ColumnDef<Snooze>[] = [
     id: "window_status",
     header: "Status",
     cell: (r) => {
+      // A disabled rule never suppresses, so its window lifecycle is moot —
+      // say so plainly instead of showing a misleading "active"/"pending".
+      if (r.enabled === false) return <Badge variant="muted">disabled</Badge>;
       if (!r.window_status) return <span style={{ color: "var(--text-muted)" }}>—</span>;
       const { variant, label } = STATUS_BADGE[r.window_status];
       return <Badge variant={variant}>{label}</Badge>;
