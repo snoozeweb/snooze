@@ -22,14 +22,20 @@ const (
 // snooze document and returns a SHALLOW COPY of doc with those two fields
 // injected. The input map is never mutated.
 //
-// Logic (mirrors Alerta's Blackout.status property):
+// Logic (mirrors Alerta's Blackout.status property, extended so the badge
+// tracks the SAME predicate the pipeline suppresses on — all populated
+// constraint families AND'd, not just the absolute datetime family):
 //
-//   - No datetime family → always_on, remaining 0 (the rule fires forever).
-//   - A datetime range covering now (from<=now<=until, or one-sided) → active.
-//     remaining_seconds = max(0, seconds until that range's until) when the
-//     winning range has an until; 0 for an open-ended (no-until) active range.
-//   - Every range strictly in the future (from>now) → pending, remaining 0.
-//   - Every range strictly in the past (until<now) → expired, remaining 0.
+//   - No constraint in any family → always_on, remaining 0 (fires forever).
+//   - The rule matches now (timeconstraints.Group.Match) → active.
+//     remaining_seconds = max(0, seconds until the active datetime range's
+//     until) when that range is bounded; 0 for an open-ended active range or a
+//     rule active purely via time-of-day/weekday windows.
+//   - Not matching now, and the absolute datetime family is wholly in the past
+//     (so the rule can never fire again) → expired, remaining 0.
+//   - Not matching now otherwise (a future datetime window, or a recurring
+//     time-of-day/weekday window waiting for its next slot) → pending,
+//     remaining 0.
 //
 // now is supplied by the caller (the plugin's injected clock) so the result is
 // deterministic in tests; ProjectDoc never reads the wall clock itself.
@@ -48,53 +54,91 @@ func ProjectDoc(doc db.Document, now time.Time) db.Document {
 	return out
 }
 
-// classify parses the time_constraints blob and reduces its datetime family to
-// a (status, remaining_seconds) pair. A nil/absent/empty datetime family is
-// always_on. Unparseable constraints are treated as always_on (fail-safe: a
-// malformed rule must not masquerade as expired and silently lose its badge).
+// classify parses the time_constraints blob and reduces it to a (status,
+// remaining_seconds) pair. A nil/absent constraint blob, or one with no
+// constraints in any family, is always_on. Unparseable constraints are treated
+// as always_on (fail-safe: a malformed rule must not masquerade as expired and
+// silently lose its badge).
+//
+// "active" is decided by timeconstraints.Group.Match — the exact predicate the
+// snooze pipeline suppresses on — so a rule gated off by a weekday or a
+// time-of-day window never reads as active, and a recurring window that has no
+// absolute datetime family never reads as always_on.
 func classify(rawTC any, now time.Time) (string, int64) {
 	if rawTC == nil {
 		return statusAlwaysOn, 0
 	}
 	g, err := parseTimeConstraints(rawTC)
-	if err != nil || len(g.DateTime) == 0 {
+	if err != nil {
+		return statusAlwaysOn, 0
+	}
+	// No constraint in any family: the rule fires forever.
+	if len(g.DateTime) == 0 && len(g.Time) == 0 && len(g.Weekdays) == 0 {
 		return statusAlwaysOn, 0
 	}
 
+	// Currently suppressing? Ask the same matcher the pipeline uses.
+	if g.Match(now) {
+		return statusActive, activeRemaining(g.DateTime, now)
+	}
+
+	// Not active now. Only the absolute datetime family can retire a rule for
+	// good; recurring time-of-day/weekday windows always come back around, so a
+	// rule with a still-live (or absent) datetime family reads as pending.
+	if datetimeExhausted(g.DateTime, now) {
+		return statusExpired, 0
+	}
+	return statusPending, 0
+}
+
+// activeRemaining returns the countdown to the moment the absolute datetime
+// window closes: the LATEST until among the datetime ranges that currently
+// cover now (overlapping ranges extend each other, so the first one is not
+// necessarily the last to close). A currently-active open-ended range — or an
+// active rule with no datetime family at all — never closes on datetime
+// grounds, so there is no countdown and it returns 0. This counts the datetime
+// bound only; a tighter daily time-of-day window is not reflected
+// (remaining_seconds has always been a datetime-family approximation).
+func activeRemaining(ranges []timeconstraints.DateTimeConstraint, now time.Time) int64 {
 	var (
-		anyPending bool
-		anyExpired bool
+		latest    time.Time
+		haveBound bool
 	)
-	for _, r := range g.DateTime {
-		switch {
-		case isActiveRange(r, now):
-			// First active range wins. remaining counts down to its until,
-			// when bounded; an open-ended active range has no countdown.
-			if r.Until != nil {
-				return statusActive, remainingSeconds(*r.Until, now)
-			}
-			return statusActive, 0
-		case r.From != nil && r.From.After(now):
-			anyPending = true
-		case r.Until != nil && r.Until.Before(now):
-			anyExpired = true
-		default:
-			// A range with neither bound (matches nothing per the constraint
-			// semantics) or any other shape is not active; ignore it.
+	for _, r := range ranges {
+		if !isActiveRange(r, now) {
+			continue
+		}
+		if r.Until == nil {
+			// An active open-ended range holds the window open indefinitely,
+			// regardless of any bounded ranges alongside it.
+			return 0
+		}
+		if !haveBound || r.Until.After(latest) {
+			latest = *r.Until
+			haveBound = true
 		}
 	}
-
-	// No range is currently active. Prefer pending over expired so a rule with
-	// a future window still reads as "scheduled" even if it also has a stale
-	// past range alongside it.
-	switch {
-	case anyPending:
-		return statusPending, 0
-	case anyExpired:
-		return statusExpired, 0
-	default:
-		return statusAlwaysOn, 0
+	if !haveBound {
+		return 0
 	}
+	return remainingSeconds(latest, now)
+}
+
+// datetimeExhausted reports whether the absolute datetime family exists and is
+// wholly in the past — every range is bounded by an until that has already
+// elapsed — so the datetime AND-gate can never be satisfied again. A family
+// with any open-ended (no-until) or not-yet-elapsed range is still live, as is
+// an absent datetime family (a purely recurring rule never expires).
+func datetimeExhausted(ranges []timeconstraints.DateTimeConstraint, now time.Time) bool {
+	if len(ranges) == 0 {
+		return false
+	}
+	for _, r := range ranges {
+		if r.Until == nil || !r.Until.Before(now) {
+			return false
+		}
+	}
+	return true
 }
 
 // isActiveRange reports whether r covers now: from<=now<=until, or a one-sided
