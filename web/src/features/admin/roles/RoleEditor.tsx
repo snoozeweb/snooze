@@ -1,10 +1,10 @@
 import { useMemo } from "react";
 import { useWatch } from "react-hook-form";
 import { EditorDrawer, useFieldInvalid, type EditorBodyProps } from "@/shared/forms/EditorDrawer";
+import { PermissionsCombobox } from "@/shared/forms/PermissionsCombobox";
 import { Input } from "@/shared/ui/Input";
 import { MultiCombobox } from "@/shared/ui/MultiCombobox";
 import { Textarea } from "@/shared/ui/Textarea";
-import { permissionDescription } from "@/lib/format/permission-info";
 import { Roles, usePermissionsCatalogue } from "./api";
 import type { Role } from "./types";
 import styles from "./RoleEditor.module.css";
@@ -76,27 +76,6 @@ function RoleFields({ register, control, setValue }: EditorBodyProps<FormShape>)
   // ones (e.g. "GrafanaAdmin").
   const groupOptions = useMemo(() => groups.map((g) => ({ value: g, label: g })), [groups]);
 
-  // Merge the catalogue with any permissions already on the role so a
-  // legacy/unknown value still renders as a badge and survives a Save
-  // round-trip. Mirrors the pattern used by UserEditor for roles.
-  const catalogueData = catalogue.data;
-  const permissionOptions = useMemo(() => {
-    const toOption = (p: string) => {
-      const description = permissionDescription(p);
-      return description ? { value: p, label: p, description } : { value: p, label: p };
-    };
-    const known = catalogueData ?? [];
-    const seen = new Set(known);
-    const merged = known.map(toOption);
-    for (const p of permissions) {
-      if (!seen.has(p)) {
-        merged.push(toOption(p));
-        seen.add(p);
-      }
-    }
-    return merged;
-  }, [catalogueData, permissions]);
-
   return (
     <>
       <section className={styles.section}>
@@ -119,10 +98,8 @@ function RoleFields({ register, control, setValue }: EditorBodyProps<FormShape>)
           <span className={styles.label} id="role-permissions-label">
             Permissions
           </span>
-          <MultiCombobox
-            aria-label="Permissions"
-            placeholder="Select one or more permissions"
-            options={permissionOptions}
+          <PermissionsCombobox
+            available={catalogue.data ?? []}
             value={permissions}
             onChange={(next) => setValue("permissions", next, { shouldDirty: true })}
           />

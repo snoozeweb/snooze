@@ -6,9 +6,9 @@
 import { useMemo, useState } from "react";
 import { useAuth } from "@/lib/auth/store";
 import { usePermissionsCatalogue } from "@/features/admin/roles/api";
+import { PermissionsCombobox } from "@/shared/forms/PermissionsCombobox";
 import { Button } from "@/shared/ui/Button";
 import { Input } from "@/shared/ui/Input";
-import { MultiCombobox } from "@/shared/ui/MultiCombobox";
 import { DatePicker } from "@/shared/ui/DatePicker";
 import { CopyField } from "@/shared/ui/CopyField";
 import { toast } from "@/shared/ui/toast/useToast";
@@ -23,11 +23,12 @@ export function CreateApiKeyForm({ onDone }: { onDone: () => void }) {
   }, [claims]);
   const isWildcard = ownPerms.includes("rw_all");
   const catalogue = usePermissionsCatalogue();
-  const options = useMemo(() => {
+  // Offer the caller's own permissions (or the full catalogue when the caller
+  // holds rw_all), minus the reserved tenant grants an API key may never carry.
+  // The backend is the real subset-of-caller gate; this just scopes the picker.
+  const available = useMemo(() => {
     const src = isWildcard ? (catalogue.data ?? []) : ownPerms;
-    return src
-      .filter((p) => p !== "ro_tenant" && p !== "rw_tenant")
-      .map((p) => ({ value: p, label: p }));
+    return src.filter((p) => p !== "ro_tenant" && p !== "rw_tenant");
   }, [isWildcard, catalogue.data, ownPerms]);
 
   const [name, setName] = useState("");
@@ -79,9 +80,8 @@ export function CreateApiKeyForm({ onDone }: { onDone: () => void }) {
       </div>
       <div style={{ display: "flex", flexDirection: "column", gap: "var(--space-1)" }}>
         <span>Permissions (subset of your own)</span>
-        <MultiCombobox
-          aria-label="Permissions"
-          options={options}
+        <PermissionsCombobox
+          available={available}
           value={perms}
           onChange={setPerms}
           allowCustom
