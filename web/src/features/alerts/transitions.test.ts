@@ -1,6 +1,5 @@
 import { describe, expect, it } from "vitest";
 import {
-  allowedTransitionActions,
   canTransition,
   isActionAllowed,
   validBulkStates,
@@ -29,25 +28,6 @@ describe("alert transition parity with the backend", () => {
       });
     }
   }
-
-  it("makes escalated alerts actionable (ack/close/re-open), never re-escalate", () => {
-    // The headline bug: state "esc" previously matched none of the row-action
-    // branches, leaving escalated alerts unresolvable from the row UI.
-    expect(allowedTransitionActions("esc")).toEqual(["ack", "close", "open"]);
-  });
-
-  it("never offers Re-escalate on fresh or re-opened alerts (the always-403 button)", () => {
-    expect(allowedTransitionActions("")).toEqual(["ack", "close"]);
-    expect(allowedTransitionActions("open")).toEqual(["ack", "close"]);
-  });
-
-  it("offers Re-open on acknowledged alerts (previously missing)", () => {
-    expect(allowedTransitionActions("ack")).toEqual(["close", "esc", "open"]);
-  });
-
-  it("offers only Re-open on closed alerts", () => {
-    expect(allowedTransitionActions("close")).toEqual(["open"]);
-  });
 
   it("fails open on an unknown state, matching the backend's ValidateTransition", () => {
     for (const action of ["ack", "close", "open", "esc"] as TransitionAction[]) {

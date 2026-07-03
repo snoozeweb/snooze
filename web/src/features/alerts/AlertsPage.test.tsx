@@ -873,6 +873,49 @@ describe("AlertsPage", () => {
     });
   });
 
+  it("bulk_state failure surfaces the backend's reason, not a generic message", async () => {
+    // The single bulk_state call either succeeds or fails wholesale; when it
+    // 403s (e.g. an invalid transition or missing permission) the error toast
+    // must carry the backend's detail so the operator knows why — not the bare
+    // "Bulk action failed" fallback. Regression guard for the merge that
+    // replaced main's per-record bulk loop with plan 18b's single bulk_state.
+    mswServer.use(
+      http.get("/api/v1/record", () =>
+        HttpResponse.json({
+          data: [
+            { uid: "r1", host: "srv-1", state: "open", date_epoch: 1 },
+            { uid: "r2", host: "srv-2", state: "open", date_epoch: 2 },
+          ],
+          meta: { count: 2, limit: 50, offset: 0, total: 2 },
+        }),
+      ),
+      http.post("/api/v1/record/bulk_state", () =>
+        HttpResponse.json(
+          { error: { code: "invalid_transition", message: "alert already acknowledged" } },
+          { status: 403 },
+        ),
+      ),
+    );
+    const user = userEvent.setup();
+    setup();
+    await waitFor(() => expect(screen.getByText("srv-1")).toBeInTheDocument());
+    await user.click(screen.getByRole("checkbox", { name: /select all/i }));
+    await user.click(screen.getByRole("button", { name: /acknowledge \(2\)/i }));
+    await user.click(screen.getByRole("button", { name: /^acknowledge$/i }));
+
+    // The backend's detail surfaces in the error toast...
+    await waitFor(() => {
+      const toasts = toastStore.getSnapshot();
+      expect(toasts.some((t) => /alert already acknowledged/i.test(t.description ?? ""))).toBe(
+        true,
+      );
+    });
+    // ...and NOT the generic fallback.
+    expect(toastStore.getSnapshot().some((t) => t.description === "Bulk action failed")).toBe(
+      false,
+    );
+  });
+
   it('"Select all N" affordance appears when total > page size and rows selected', async () => {
     // Build 50 rows for the page, with total=200
     const rows = Array.from({ length: 50 }, (_, i) => ({

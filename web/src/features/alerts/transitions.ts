@@ -24,9 +24,6 @@ const ALLOWED: Record<string, Record<TransitionAction, boolean>> = {
   open: { ack: true, close: true, esc: false, open: false },
 };
 
-// Canonical order the actions appear in menus/toolbars.
-const ORDER: TransitionAction[] = ["ack", "close", "esc", "open"];
-
 /**
  * canTransition reports whether `action` is legal from a record's current
  * `state`, mirroring the backend's ValidateTransition. Unknown states fail
@@ -37,14 +34,6 @@ export function canTransition(state: string, action: TransitionAction): boolean 
   const row = ALLOWED[state];
   if (!row) return true; // fail-open on an unknown state, matching the backend
   return row[action];
-}
-
-/**
- * allowedTransitionActions lists the state-changing actions to offer for
- * `state`, in canonical menu order.
- */
-export function allowedTransitionActions(state: string): TransitionAction[] {
-  return ORDER.filter((action) => canTransition(state, action));
 }
 
 // ── Action gating (kebab menu / quick actions / context menu / bulk toolbar) ──
