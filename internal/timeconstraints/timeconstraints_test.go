@@ -251,3 +251,66 @@ func TestGroupTZ_Invalid(t *testing.T) {
 	err := json.Unmarshal([]byte(`{"tz":"Mars/Olympus_Mons","time":[{"from":"09:00","until":"17:00"}]}`), &g)
 	require.Error(t, err)
 }
+
+// TestGroupTZ_RejectLocal: "Local" resolves to the server's process zone —
+// non-portable — so it is rejected in favor of an explicit IANA name.
+func TestGroupTZ_RejectLocal(t *testing.T) {
+	var g Group
+	err := json.Unmarshal([]byte(`{"tz":"Local","weekdays":[{"weekdays":[1]}]}`), &g)
+	require.Error(t, err)
+}
+
+// TestGroupTZ_RejectBareDatetime: with a group tz, an absolute datetime bound
+// must carry its own offset (a bare bound would be ambiguous — tz or UTC?). A
+// zoned datetime bound alongside a tz is fine.
+func TestGroupTZ_RejectBareDatetime(t *testing.T) {
+	var g Group
+	err := json.Unmarshal(
+		[]byte(`{"tz":"Europe/Paris","datetime":[{"from":"2026-07-01T09:00"}]}`), &g)
+	require.Error(t, err)
+
+	var ok Group
+	require.NoError(t, json.Unmarshal(
+		[]byte(`{"tz":"Europe/Paris","datetime":[{"from":"2026-07-01T09:00:00+02:00"}],"weekdays":[{"weekdays":[1]}]}`),
+		&ok))
+}
+
+// TestGroupTZ_RoundTrip is the #2 landmine guard: marshaling a parsed named-zone
+// group and re-parsing it must preserve DST-safety — the recurring bounds stay
+// bare (+ tz), never a baked fixed offset that would freeze to one season.
+func TestGroupTZ_RoundTrip(t *testing.T) {
+	g1 := gFromJSON(t, `{"tz":"Europe/Paris","time":[{"from":"09:00","until":"17:00"}]}`)
+
+	out, err := json.Marshal(g1)
+	require.NoError(t, err)
+	// The wire form keeps the named tz and bare bounds — no baked offset.
+	require.Contains(t, string(out), `"tz":"Europe/Paris"`)
+	require.NotContains(t, string(out), "+02:00")
+	require.NotContains(t, string(out), "+01:00")
+
+	var g2 Group
+	require.NoError(t, json.Unmarshal(out, &g2))
+
+	// Both seasons still resolve in Paris after the round-trip: 09:00 Paris is
+	// 07:00Z in summer and 08:00Z in winter — a frozen offset could not satisfy
+	// both.
+	require.True(t, g2.Match(mustParse(t, "2026-07-15T07:00:00Z")), "09:00 Paris summer")
+	require.False(t, g2.Match(mustParse(t, "2026-07-15T06:30:00Z")), "08:30 Paris summer")
+	require.True(t, g2.Match(mustParse(t, "2026-01-15T08:00:00Z")), "09:00 Paris winter")
+	require.False(t, g2.Match(mustParse(t, "2026-01-15T07:30:00Z")), "08:30 Paris winter")
+}
+
+// TestGroupTZ_RoundTripExplicit: an explicitly-zoned bound keeps its offset
+// through a marshal round-trip (it is not a bare bound).
+func TestGroupTZ_RoundTripExplicit(t *testing.T) {
+	g1 := gFromJSON(t, `{"time":[{"from":"09:00+02:00","until":"17:00+02:00"}]}`)
+	out, err := json.Marshal(g1)
+	require.NoError(t, err)
+	require.Contains(t, string(out), "+02:00")
+
+	var g2 Group
+	require.NoError(t, json.Unmarshal(out, &g2))
+	// 09:00+02:00 == 07:00Z, so 07:30Z (09:30+02:00) is inside the window.
+	require.True(t, g2.Match(mustParse(t, "2026-07-15T07:30:00Z")))
+	require.False(t, g2.Match(mustParse(t, "2026-07-15T06:30:00Z")))
+}

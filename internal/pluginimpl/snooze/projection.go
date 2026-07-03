@@ -49,28 +49,38 @@ func ProjectDoc(doc db.Document, now time.Time) db.Document {
 	for k, v := range doc {
 		out[k] = v
 	}
-	out["window_status"] = status
-	out["remaining_seconds"] = remaining
+	// An empty status means the constraints could not be parsed. The pipeline
+	// drops such a rule (it never suppresses), so leave the fields off rather
+	// than assert a confident lifecycle — the UI renders a neutral "—" and does
+	// not claim the rule is actively suppressing.
+	if status != "" {
+		out["window_status"] = status
+		out["remaining_seconds"] = remaining
+	}
 	return out
 }
 
 // classify parses the time_constraints blob and reduces it to a (status,
 // remaining_seconds) pair. A nil/absent constraint blob, or one with no
-// constraints in any family, is always_on. Unparseable constraints are treated
-// as always_on (fail-safe: a malformed rule must not masquerade as expired and
-// silently lose its badge).
+// constraints in any family, is always_on. Unparseable constraints return an
+// empty status so ProjectDoc omits the badge — the pipeline drops the same
+// rule, so a neutral "—" is honest where the old always_on wrongly read as
+// "suppressing forever".
 //
-// "active" is decided by timeconstraints.Group.Match — the exact predicate the
-// snooze pipeline suppresses on — so a rule gated off by a weekday or a
+// "active" is decided by timeconstraints.Group.Match — the same time-window
+// predicate the pipeline suppresses on — so a rule gated off by a weekday or a
 // time-of-day window never reads as active, and a recurring window that has no
-// absolute datetime family never reads as always_on.
+// absolute datetime family never reads as always_on. (The pipeline additionally
+// requires the rule be enabled and its condition to parse; those are orthogonal
+// to the window and out of scope here — the Status column reflects enabled
+// separately, and a bad condition is a separate, pre-existing gap.)
 func classify(rawTC any, now time.Time) (string, int64) {
 	if rawTC == nil {
 		return statusAlwaysOn, 0
 	}
 	g, err := parseTimeConstraints(rawTC)
 	if err != nil {
-		return statusAlwaysOn, 0
+		return "", 0
 	}
 	// No constraint in any family: the rule fires forever.
 	if len(g.DateTime) == 0 && len(g.Time) == 0 && len(g.Weekdays) == 0 {

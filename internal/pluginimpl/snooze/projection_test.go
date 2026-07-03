@@ -378,6 +378,24 @@ func TestProjectDoc_TimeWindowInNamedZone(t *testing.T) {
 	require.Equal(t, "active", got["window_status"])
 }
 
+// TestProjectDoc_MalformedOmitsStatus: an unparseable time_constraints (here an
+// unknown tz) yields NO window_status/remaining_seconds — the pipeline drops
+// such a rule, so the badge stays neutral ("—") instead of the old, misleading
+// "always_on" that read as "suppressing forever".
+func TestProjectDoc_MalformedOmitsStatus(t *testing.T) {
+	t.Parallel()
+	got := ProjectDoc(db.Document{
+		"name": "broken-tz",
+		"time_constraints": map[string]any{
+			"tz":   "Mars/Nowhere",
+			"time": []any{map[string]any{"from": "09:00", "until": "17:00"}},
+		},
+	}, fixedNow)
+	require.NotContains(t, got, "window_status", "a malformed rule must not assert a lifecycle")
+	require.NotContains(t, got, "remaining_seconds")
+	require.Equal(t, "broken-tz", got["name"], "other fields are preserved")
+}
+
 // TestProjectDoc_ShallowCopy: ProjectDoc must not mutate the input map; it
 // returns a shallow copy carrying the two derived fields.
 func TestProjectDoc_ShallowCopy(t *testing.T) {

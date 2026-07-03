@@ -6,6 +6,7 @@ package timeconstraints
 import (
 	"encoding/json"
 	"fmt"
+	"regexp"
 	"strings"
 	"time"
 )
@@ -81,9 +82,17 @@ func (g Group) Match(t time.Time) bool {
 // UnmarshalJSON decodes the group and, when a tz is present, resolves it and
 // binds the recurring families to that zone: bare (offset-less) time-of-day
 // bounds adopt it, and Match evaluates weekdays against the local day in it. An
-// unknown zone name is a hard error (callers treat a bad rule as skipped /
-// fail-safe). Absent tz leaves every family in its wire zone (UTC for bare
-// bounds) — byte-identical to the pre-tz behavior.
+// unknown zone name, "Local", or a bare datetime bound under a tz is a hard
+// error. Absent tz leaves every family in its wire zone (UTC for bare bounds)
+// — byte-identical to the pre-tz behavior.
+//
+// This type is shared by the snooze AND notification plugins, and both treat a
+// decode error as "skip this rule/entry" (fail-safe: snooze then suppresses
+// nothing; a notification then does not fire). That drop is a deliberate,
+// logged trade-off for genuinely ambiguous input — and unreachable from the UI,
+// which only ever emits a real IANA tz and always zones its datetime picker.
+// Callers wanting a hard write-time 400 instead would need a DataModel.Validate
+// hook (neither plugin is a DataModel today).
 func (g *Group) UnmarshalJSON(data []byte) error {
 	type alias Group // strip Group's methods so the decode does not recurse
 	var a alias
@@ -94,13 +103,56 @@ func (g *Group) UnmarshalJSON(data []byte) error {
 	if g.TZ == "" {
 		return nil
 	}
+	// "Local" resolves to the server's process zone — non-portable and almost
+	// never what a rule author means. Require an explicit IANA name.
+	if g.TZ == "Local" {
+		return fmt.Errorf("time constraints: tz %q is not portable; use an IANA name like \"Europe/Paris\" or \"UTC\"", g.TZ)
+	}
 	loc, err := time.LoadLocation(g.TZ)
 	if err != nil {
 		return fmt.Errorf("time constraints: tz %q: %w", g.TZ, err)
 	}
+	// A tz names the zone for the group's zone-LESS bounds. An absolute datetime
+	// bound must stay a self-contained instant (carry its own offset), else
+	// "09:00 on 2026-07-01" is ambiguous — the group tz or UTC? Reject the
+	// ambiguity so the caller is explicit (the UI's date picker always emits a
+	// zoned value; recurring HH:MM/weekday bounds are what the tz is for).
+	if err := rejectBareDateTime(data); err != nil {
+		return err
+	}
 	g.loc = loc
 	for i := range g.Time {
 		g.Time[i].bindZone(loc)
+	}
+	return nil
+}
+
+var offsetSuffix = regexp.MustCompile(`[+-]\d{2}:\d{2}$`)
+
+// hasZoneDesignator reports whether an ISO string carries its own zone — a
+// trailing Z or a ±HH:MM offset.
+func hasZoneDesignator(s string) bool {
+	return strings.HasSuffix(s, "Z") || offsetSuffix.MatchString(s)
+}
+
+// rejectBareDateTime errors if any populated datetime bound lacks an explicit
+// zone. Only consulted when the group carries a tz (see UnmarshalJSON).
+func rejectBareDateTime(data []byte) error {
+	var probe struct {
+		DateTime []struct {
+			From  string `json:"from"`
+			Until string `json:"until"`
+		} `json:"datetime"`
+	}
+	if err := json.Unmarshal(data, &probe); err != nil {
+		return err
+	}
+	for _, d := range probe.DateTime {
+		for _, b := range []string{d.From, d.Until} {
+			if b != "" && !hasZoneDesignator(b) {
+				return fmt.Errorf("time constraints: datetime bound %q must include a timezone offset when a group tz is set", b)
+			}
+		}
 	}
 	return nil
 }
@@ -386,7 +438,16 @@ func (d daytime) onDate(rd time.Time) time.Time {
 }
 
 func (d daytime) String() string {
-	// HH:MM:SS±HH:MM, matching Python `datetime.time.isoformat()`.
+	// A bare (offset-less) bound renders WITHOUT a zone: the zone, if any, lives
+	// on the Group's tz, so baking a fixed offset here would both freeze it
+	// against DST and make it re-parse as explicit (immune to re-binding) — the
+	// round-trip landmine. This mirrors the wire form the editor emits ("HH:MM").
+	if !d.explicit {
+		return fmt.Sprintf("%02d:%02d:%02d", d.Hour, d.Minute, d.Second)
+	}
+	// Explicit bound: HH:MM:SS±HH:MM, matching Python `datetime.time.isoformat()`.
+	// The offset is read from d.Loc which is a fixed zone here (an explicit
+	// bound never carries a named zone), so time.Now() only picks that constant.
 	_, offsetSec := time.Now().In(d.Loc).Zone()
 	if d.Loc == time.UTC {
 		offsetSec = 0

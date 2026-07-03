@@ -4515,7 +4515,10 @@ export interface components {
              *     names the zone the RECURRING families (daily-time + weekdays) are
              *     interpreted in — so they track that zone's wall clock (DST included)
              *     instead of UTC; absolute datetime bounds carry their own offset and
-             *     are unaffected. Absent `tz` preserves the UTC interpretation.
+             *     are unaffected. Absent `tz` preserves the UTC interpretation. When
+             *     `tz` is set it must be a real IANA name (not "Local"), and every
+             *     absolute datetime bound must carry an explicit offset — a bare,
+             *     zone-less datetime is rejected as ambiguous.
              *      */
             time_constraints?: Record<string, never>;
             /** @description When true, matching alerts are dropped from the pipeline; otherwise
@@ -4527,7 +4530,7 @@ export interface components {
             /** @description The user that created the snooze (server-stamped). */
             readonly name_create?: string;
             /**
-             * @description Derived lifecycle status computed at read time from the whole time_constraints group (all populated families AND'd, resolved in time_constraints.tz when set) — the same predicate the pipeline suppresses on. "active" means the rule matches now; "always_on" means no constraint is set in any family (the rule fires indefinitely); a rule wholly past its datetime window is "expired"; anything else (a future window, or a recurring window between slots) is "pending". Never stored; projected on list/get responses only.
+             * @description Derived lifecycle status computed at read time from the whole time_constraints group (all populated families AND'd, resolved in time_constraints.tz when set) — the same predicate the pipeline suppresses on. "active" means the rule matches now; "always_on" means no constraint is set in any family (the rule fires indefinitely); a rule wholly past its datetime window is "expired"; anything else (a future window, or a recurring window between slots) is "pending". Omitted entirely when time_constraints cannot be parsed (the pipeline drops such a rule too). Never stored; projected on list/get responses only.
              *
              * @enum {string}
              */
