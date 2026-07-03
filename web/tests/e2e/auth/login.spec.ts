@@ -141,13 +141,15 @@ test.describe("login (local)", () => {
     await adminAuth();
     await expect(page).toHaveURL(/\/web\/alerts/);
 
-    // Topbar.tsx: <IconButton icon="users" label={`Signed in as ${username}`} />
-    // The root token's sub claim is "root".
-    // Scope to the <header> to avoid matching the Sidebar footer user chip
-    // (which also contains "signed in as" in its aria-label).
-    await page.locator("header").getByLabel(/signed in as/i).click({ force: true });
+    // On desktop the account menu lives only in the Sidebar footer (the Topbar
+    // copy is mobile-only — see Topbar.tsx, which renders <UserMenu /> only when
+    // `mobile`). Sidebar.tsx labels the trigger "Account menu — signed in as
+    // <username>"; the root token's sub claim is "root".
+    await page
+      .getByRole("button", { name: /account menu — signed in as/i })
+      .click({ force: true });
 
-    // MenuItem text is "Log out" (exactly, from Topbar.tsx).
+    // MenuItem text is "Log out" (exactly, from Sidebar.tsx).
     await page.getByRole("menuitem", { name: "Log out" }).click({ force: true });
 
     await expect(page).toHaveURL(/\/web\/login/);

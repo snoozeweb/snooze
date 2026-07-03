@@ -152,14 +152,23 @@ export async function createApi(baseURL: string, token: string): Promise<SnoozeA
         return out.data ?? [];
       },
       async clear() {
+        // Sequential delete loop with per-response checks. Firing every remove
+        // with Promise.all raced the server's audit + cleanup writers under
+        // load and returned occasional 5xx — and because the old code never
+        // inspected the responses, a failed delete was silently swallowed and
+        // the row survived into the *next* test's seed, skewing its counts
+        // (e.g. select-all reporting "7 selected" instead of "5", or a leftover
+        // acked row hiding from the open Alerts tab). The generic
+        // resourceApi.clear() above was already fixed the same way; keep this
+        // alerts-specific loop in lockstep.
         const items = (await this.list()) as { uid?: string }[];
-        await Promise.all(
-          items
-            .filter((a) => a.uid)
-            .map((a) =>
-              ctx.delete(`${baseURL}/api/v1/record/${a.uid}`, { headers }),
-            ),
-        );
+        for (const a of items) {
+          if (!a.uid) continue;
+          const r = await ctx.delete(`${baseURL}/api/v1/record/${a.uid}`, { headers });
+          if (!r.ok() && r.status() !== 404) {
+            throw new Error(`clear record ${a.uid}: ${r.status()} ${await r.text()}`);
+          }
+        }
       },
     },
     // Plugin names verified against api/openapi.yaml PluginPath enum (line 566–590).

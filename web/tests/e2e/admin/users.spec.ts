@@ -24,13 +24,22 @@ test.describe("admin / users", () => {
     await expect(page.getByRole("heading", { name: /new user/i })).toBeVisible();
 
     await page.locator("#user-name").fill("e2e-new-user");
-    // Roles is now a MultiCombobox (allowCustom). Open the popover, type
-    // the role name, press Enter to add it as a badge.
+    // Roles is a MultiCombobox WITHOUT allowCustom — a free-typed role that
+    // isn't in the catalogue grants nothing, so the picker only lets you select
+    // existing roles (see UserEditor.tsx). "viewer" is one of the three default
+    // roles every tenant is seeded with (internal/pluginimpl/tenant/seed.go).
+    // Open the popover, filter to it, and click the matching option.
     const roles = page.getByRole("combobox", { name: "Roles" });
     await roles.click();
-    const search = page.getByPlaceholder(/search or type/i);
+    const search = page.getByRole("textbox", { name: /search options/i });
     await search.fill("viewer");
-    await search.press("Enter");
+    // Click the filtered option rather than pressing Enter: Enter selects
+    // filtered[activeIndex], which is empty until the role catalogue query
+    // resolves — a race that flakes under load. Waiting for the option to
+    // render gates on the catalogue actually being loaded.
+    await page.getByRole("option", { name: "viewer" }).click();
+    // The role is now a removable badge on the trigger.
+    await expect(page.getByRole("combobox", { name: "Roles" })).toContainText("viewer");
     await page.locator("#user-password").fill("hunter2-hashed-placeholder");
 
     await page.getByRole("button", { name: /^create$/i }).click({ force: true });
