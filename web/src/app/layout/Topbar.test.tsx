@@ -89,9 +89,11 @@ describe("Topbar", () => {
   });
 
   it("user menu shows the logged-in username", async () => {
+    // The account menu only renders in the Topbar on mobile — desktop's
+    // equivalent is the Sidebar footer menu (tested separately).
     loginAs("alice");
     const user = userEvent.setup();
-    renderTopbar({ onOpenPalette: () => undefined });
+    renderTopbar({ onOpenPalette: () => undefined, mobile: true });
     await user.click(screen.getByRole("button", { name: /signed in as alice/i }));
     expect(screen.getByRole("menuitem", { name: /profile.*alice/i })).toBeInTheDocument();
   });
@@ -108,11 +110,17 @@ describe("Topbar", () => {
     );
     authStore.getState().login(`${header}.${body}.sig`);
     const user = userEvent.setup();
-    renderTopbar({ onOpenPalette: () => undefined });
+    renderTopbar({ onOpenPalette: () => undefined, mobile: true });
     await user.click(screen.getByRole("button", { name: /signed in as alice/i }));
     expect(screen.getByRole("menuitem", { name: /profile.*alice/i })).toBeInTheDocument();
     // Org slug is shown inside the menu
     expect(screen.getByText(/acme/)).toBeInTheDocument();
+  });
+
+  it("does not render the account menu on desktop (Sidebar footer covers it)", () => {
+    loginAs("alice");
+    renderTopbar({ onOpenPalette: () => undefined });
+    expect(screen.queryByRole("button", { name: /signed in as alice/i })).not.toBeInTheDocument();
   });
 
   it("renders the How to button", () => {

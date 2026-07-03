@@ -52,7 +52,7 @@ function UserMenu() {
   );
 }
 
-export function Topbar({ breadcrumb, onOpenPalette, mobile }: TopbarProps) {
+export function Topbar({ breadcrumb, onOpenPalette, mobile = false }: TopbarProps) {
   const { theme, toggleTheme } = useTheme();
   return (
     <header className={styles.topbar}>
@@ -91,7 +91,11 @@ export function Topbar({ breadcrumb, onOpenPalette, mobile }: TopbarProps) {
             />
           </>
         )}
-        <UserMenu />
+        {/* On desktop the Sidebar's footer already has an account menu with
+            the same Profile/Log out actions (plus the tenant slug); showing
+            this one too duplicated the surface. Mobile hides the Sidebar
+            entirely, so this is the only account entry point there. */}
+        {mobile ? <UserMenu /> : null}
       </div>
     </header>
   );
