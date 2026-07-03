@@ -12,7 +12,11 @@
   green/red action boxes — click a red box for the error. Action-outcome
   resolution is one merge-write per notifying alert, gated by the new
   `notification.persist_action_outcomes` flag (default `true`; disable on
-  high-volume SQLite).
+  high-volume SQLite). The demo seed (`core.seed_demo`) now stamps these fields
+  on its sample alerts too — the matched rules, the `Host and Message`
+  aggregate, and the notifications/actions each critical alert fired (with one
+  deliberately-failed Slack delivery on the escalated alert) — so the Flow panel
+  is fully populated out of the box.
 - **Chat ack/close/re-open from Slack & Telegram message buttons.** The Slack
   and Telegram notifiers can now render opt-in interactive buttons
   (`interactive: true` on the action form; default off). New webhook receivers

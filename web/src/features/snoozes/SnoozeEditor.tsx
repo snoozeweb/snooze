@@ -205,7 +205,7 @@ function SnoozeFields({
             onCheckedChange={(v) => setValue("discard", v, { shouldDirty: true })}
             aria-label="Discard"
           />
-          <span>Discard matching alerts (drop instead of tag)</span>
+          <span>Discard matching alerts</span>
         </span>
       </section>
       <section className={styles.section}>

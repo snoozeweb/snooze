@@ -347,8 +347,13 @@ func seedDemoSnoozes(ctx context.Context, drv db.Driver) error {
 //   - "Day/Night Shift" rules     → period
 //   - "Host and Message" aggrule  → hash
 //
-// Snoozed records additionally carry a snoozed field matching the name of the
-// first snooze filter that would have matched them at processing time.
+// It also stamps the pipeline-attribution fields the AlertFlowChart renders
+// (see demoBuildFlow): rules, aggregate, and — for alerts that reach the end of
+// the pipeline — notifications + actions. Snoozed records additionally carry a
+// snoozed field matching the name of the first snooze filter that would have
+// matched them at processing time; the snooze plugin terminates the pipeline
+// there, so those records get no notifications/actions (the flow chart shows a
+// snooze terminal node in place of the notifications fork).
 //
 // Records are written via ReplaceOne (upsert) so that pre-assigned UIDs are
 // honoured on first boot — Write rejects documents whose uid does not already
@@ -364,6 +369,11 @@ func seedDemoRecords(ctx context.Context, drv db.Driver, now time.Time, rUIDs []
 		tags                                                []string
 		ts                                                  time.Time
 		snoozeRule                                          string // non-empty → snoozed alert
+		// errAction/errReason inject a single failed-delivery outcome into the
+		// alert's flow attribution: the named action is stamped status=error with
+		// errReason as its tooltip, so the flow chart's error rendering is
+		// exercised. Empty errAction leaves every matched action a success.
+		errAction, errReason string
 	}
 
 	defs := []alertDef{
@@ -434,6 +444,10 @@ func seedDemoRecords(ctx context.Context, drv db.Driver, now time.Time, rUIDs []
 			message: "Disk space on /var/lib/postgresql at 92% — escalated to DBA",
 			tags:    []string{"critical", "escalated"},
 			ts:      yesterday.Add(7*time.Hour + 45*time.Minute),
+			// The on-call Slack webhook 503'd, so the page went unseen and the
+			// alert escalated — a coherent story for the flow chart's error chip.
+			errAction: "Slack #ops-alerts",
+			errReason: "webhook POST returned 503 Service Unavailable",
 		},
 		// --- close (index 10 = R11: CPU — receives a comment) ---
 		{
@@ -516,6 +530,10 @@ func seedDemoRecords(ctx context.Context, drv db.Driver, now time.Time, rUIDs []
 		if def.snoozeRule != "" {
 			doc["snoozed"] = def.snoozeRule
 		}
+		// Stamp the flow-chart attribution (rules, aggregate, and — for
+		// non-snoozed alerts — notifications + actions). Runs after the snooze
+		// assignment so it can honour the pipeline-stops-at-snooze rule.
+		demoBuildFlow(doc, def.errAction, def.errReason)
 		// ReplaceOne upserts by uid so pre-assigned UIDs work on first boot.
 		// Write rejects documents whose uid doesn't already exist, which would
 		// silently drop every record.
@@ -774,6 +792,108 @@ func demoBuildEnrichment(doc db.Document, ts time.Time) {
 	message, _ := doc["message"].(string)
 	doc["hash"] = demoComputeHash(host, message)
 	doc["plugins"] = []string{"rule", "aggregaterule"}
+}
+
+// demoNotifRule mirrors one seeded notification's match condition and action
+// fan-out so the demo flow attribution stays in lock-step with the real
+// notifications. Keep name / matches / actions here identical to what
+// seedDemoNotifications writes.
+type demoNotifRule struct {
+	name    string
+	matches func(severity, environment string) bool
+	actions []string // action-entry names, in the order the notification lists them
+}
+
+// demoNotifRules is the demo notification set, evaluated top-to-bottom just as
+// the notification plugin walks its entries. MUST mirror seedDemoNotifications:
+//   - "Critical Alerts"      → severity == critical, fires "Slack #ops-alerts"
+//   - "Production Incidents" → production && critical, fires "Email Operations"
+var demoNotifRules = []demoNotifRule{
+	{
+		name:    "Critical Alerts",
+		matches: func(sev, _ string) bool { return sev == "critical" },
+		actions: []string{"Slack #ops-alerts"},
+	},
+	{
+		name:    "Production Incidents",
+		matches: func(sev, env string) bool { return sev == "critical" && env == "production" },
+		actions: []string{"Email Operations"},
+	},
+}
+
+// demoBuildFlow stamps the pipeline-attribution fields the AlertFlowChart reads
+// (rules, aggregate, and — for alerts that reach the end of the pipeline —
+// notifications + actions) so demo alerts render a fully populated flow diagram.
+// The values mirror what the live rule / aggregaterule / notification plugins
+// would stamp for the seeded configuration:
+//
+//   - rules:         "Parse Host Components" (its condition is ALWAYS_TRUE, so it
+//     matches every alert) followed by the one shift rule whose
+//     hour window matched — Day Shift (08–19) or Night Shift
+//     (20–07) — read off the `period` demoBuildEnrichment set.
+//   - aggregate:     "Host and Message" — the default aggregate rule BootstrapDB
+//     seeds, and the exact rule demoComputeHash replicates, so the
+//     flow chart's aggregate deep-link resolves to a real rule.
+//   - notifications: every seeded notification whose condition matches, by name.
+//   - actions:       one entry per action each matched notification references,
+//     each carrying its delivery outcome (success, or an injected
+//     transient error) — the same {name, notification, status,
+//     error} shape the notification plugin emits.
+//
+// A snoozed alert is silenced at the snooze plugin and never reaches the
+// notification plugin, so it gets rules + aggregate only. That matches the flow
+// chart, which renders a snooze terminal node ("silenced — pipeline stopped")
+// in place of the notifications fork whenever `snoozed` is set.
+//
+// errAction/errReason inject a single failed outcome: a matched action whose
+// name equals errAction is stamped status=error with errReason as its message;
+// an empty errAction leaves every matched action a success.
+func demoBuildFlow(doc db.Document, errAction, errReason string) {
+	severity, _ := doc["severity"].(string)
+	environment, _ := doc["environment"].(string)
+	period, _ := doc["period"].(string)
+
+	// Rules: the always-on host parser, then the shift rule the hour selected.
+	shift := "Night Shift"
+	if period == "day" {
+		shift = "Day Shift"
+	}
+	doc["rules"] = []string{"Parse Host Components", shift}
+
+	// Aggregate: the default "Host and Message" rule (see demoComputeHash).
+	doc["aggregate"] = "Host and Message"
+
+	// Snoozed alerts terminate before the notification plugin — no fan-out.
+	if s, _ := doc["snoozed"].(string); s != "" {
+		return
+	}
+
+	var notifications []string
+	var actions []any
+	for _, n := range demoNotifRules {
+		if !n.matches(severity, environment) {
+			continue
+		}
+		notifications = append(notifications, n.name)
+		for _, actionName := range n.actions {
+			result := map[string]any{
+				"name":         actionName,
+				"notification": n.name,
+				"status":       "success",
+			}
+			if errAction != "" && actionName == errAction {
+				result["status"] = "error"
+				result["error"] = errReason
+			}
+			actions = append(actions, result)
+		}
+	}
+	if len(notifications) > 0 {
+		doc["notifications"] = notifications
+	}
+	if len(actions) > 0 {
+		doc["actions"] = actions
+	}
 }
 
 // demoComputeHash replicates aggregaterule.computeHash for the default "Host
