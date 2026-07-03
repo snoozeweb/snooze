@@ -16,7 +16,16 @@ import styles from "./SettingsPage.module.css";
 
 // Canonical tab order. Anything in the catalogue with a `group:` key not
 // listed here is appended at the end, title-cased.
-const TAB_ORDER = ["general", "notifications", "ldap", "oidc", "housekeeping"] as const;
+const TAB_ORDER = [
+  "general",
+  "notifications",
+  "ldap",
+  "oidc",
+  "housekeeping",
+  "ingest",
+  "console",
+  "tenant_routing",
+] as const;
 
 const TAB_LABELS: Record<string, string> = {
   general: "General",
@@ -24,6 +33,9 @@ const TAB_LABELS: Record<string, string> = {
   ldap: "LDAP",
   oidc: "OIDC / SSO",
   housekeeping: "Housekeeping",
+  ingest: "Ingest",
+  console: "Console",
+  tenant_routing: "Tenant routing",
 };
 
 // Auth-provider tabs use progressive disclosure: the master `<provider>.enabled`

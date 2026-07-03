@@ -3,7 +3,16 @@
 // collection. Field names mirror internal/pluginimpl/audit/plugin.go and the
 // cleanup queries in internal/db/{sqlite,postgres,mongo}/cleanup.go which
 // index on `object_id`.
-export type AuditAction = "create" | "patch" | "replace" | "delete";
+export type AuditAction =
+  | "create"
+  | "patch"
+  | "replace"
+  | "delete"
+  // auth-event actions emitted by EmitAuthAudit
+  | "login"
+  | "login_failed"
+  | "refresh"
+  | "logout";
 
 export type AuditEntry = {
   uid?: string;

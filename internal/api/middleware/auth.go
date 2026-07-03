@@ -129,16 +129,19 @@ func AuthWithProxy(engine *auth.TokenEngine, keys APIKeyAuthenticator, proxy Pro
 // genuinely tried proxy auth). It returns handled=false to signal the caller to
 // fall through to the Bearer/snz_/JWT path:
 //
-//   - the request's client IP is outside a non-empty TrustedProxies list, or
+//   - the genuine TCP peer (PeerIP, NOT a forwarded header) is outside a
+//     non-empty TrustedProxies list, or
 //   - the configured user header is absent/blank.
 //
 // In both fall-through cases the request did NOT present proxy credentials, so
 // a real Bearer/key request from the same caller must still be honored.
 func tryProxyAuth(w http.ResponseWriter, r *http.Request, proxy ProxyAuth, cfg *schema.AuthProxy, next http.Handler) bool {
-	// IP gate: when an allowlist is configured, the request's client IP must
+	// IP gate: when an allowlist is configured, the genuine TCP peer (PeerIP,
+	// captured before chi RealIP and independent of any forwarding header) must
 	// fall within it; otherwise this is not a trusted proxy request → fall
-	// through (do not 401 here).
-	if len(cfg.TrustedProxies) > 0 && !ipInTrustedProxies(ClientIP(r), cfg.TrustedProxies) {
+	// through (do not 401 here). Using PeerIP — not the XFF-aware ClientIP —
+	// closes the X-Forwarded-For/X-Real-IP spoofing bypass.
+	if len(cfg.TrustedProxies) > 0 && !ipInTrustedProxies(PeerIP(r), cfg.TrustedProxies) {
 		return false
 	}
 

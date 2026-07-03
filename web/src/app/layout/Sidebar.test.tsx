@@ -35,6 +35,7 @@ const ALL_PERMS = [
   "ro_snooze",
   "ro_rule",
   "ro_notification",
+  "ro_heartbeat",
   "ro_user",
   "ro_role",
   "ro_environment",
@@ -83,6 +84,7 @@ describe("Sidebar", () => {
       "Snoozes",
       "Rules",
       "Notifications",
+      "Heartbeats",
       "Users",
       "Roles",
       "Environments",
@@ -96,6 +98,14 @@ describe("Sidebar", () => {
     for (const label of expected) {
       expect(screen.getByText(label)).toBeInTheDocument();
     }
+  });
+
+  it("shows the Heartbeats nav item when the user has ro_heartbeat", () => {
+    loginWithPerms(["ro_heartbeat"]);
+    setup();
+    expect(screen.getByText("Heartbeats")).toBeInTheDocument();
+    const link = screen.getByRole("link", { name: /heartbeats/i });
+    expect(link).toHaveAttribute("href", "/web/heartbeats");
   });
 
   it("marks the active item with aria-current=page", () => {

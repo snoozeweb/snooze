@@ -11,6 +11,7 @@ export type ApiKey = {
    *  key is first used. The server throttles the write to at most once/hour, so
    *  it lags real usage by up to an hour (use_count is likewise a lower bound). */
   last_used_at?: number;
+  /** Lower-bound count; updated at most once per hour. */
   use_count?: number;
   expires_at?: number;
   revoked_at?: number;

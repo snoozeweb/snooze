@@ -1,4 +1,5 @@
 import { useTheme } from "@/shared/hooks/useTheme";
+import { useConsoleConfig } from "@/features/config/api";
 import styles from "./Logo.module.css";
 
 export type LogoProps = {
@@ -8,7 +9,12 @@ export type LogoProps = {
 
 export function Logo({ className, alt = "Snooze" }: LogoProps) {
   const { theme } = useTheme();
-  const src = theme === "dark" ? "/web/logo_white.png" : "/web/logo.png";
+  const { data: config } = useConsoleConfig();
+  const src = config?.logo
+    ? config.logo
+    : theme === "dark"
+      ? "/web/logo_white.png"
+      : "/web/logo.png";
   return (
     <img
       src={src}

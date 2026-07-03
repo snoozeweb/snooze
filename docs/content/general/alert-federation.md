@@ -123,6 +123,57 @@ The default falls back to the OS hostname, which is usually distinct already, bu
 relying on that is fragile in container/Kubernetes deployments where hostnames may
 collide — set it explicitly.
 
+## Managing destinations in the console
+
+Forward destinations can be created, edited, enabled/disabled, and deleted from
+the web console at **Admin → Federation** (`/web/admin/forward`).
+
+### Admin page
+
+The list page shows all configured destinations with columns: name, enabled
+status, endpoint URL, auth type, condition summary, and event classes. Click any
+row to open the editor drawer.
+
+### Editor sections
+
+The drawer has four sections:
+
+1. **Identity** — The destination name (primary key; must be unique). The Enabled
+   toggle appears beside the title and can be flipped without opening the full
+   drawer.
+
+2. **Destination** — Endpoint URL (where the relay POST is sent) and event classes
+   selector (`All (*)` or `Alerts`). Only these two values are accepted by the
+   backend.
+
+3. **Condition** — Optional [condition DSL](./conditions.md) to scope which alerts
+   are relayed. Leave empty (ALWAYS_TRUE) to relay all accepted alerts.
+
+4. **Advanced** (collapsible, closed by default) — Auth sub-form, TLS verification
+   toggle, and a timeout field (Go duration string, e.g. `30s`, `1m`).
+
+### Auth sub-form
+
+Select the authentication type from the dropdown in the Advanced section:
+
+| Type | Fields shown |
+|---|---|
+| None | — |
+| Bearer token | Token (password field) |
+| Basic | Username + Password |
+| API key | Key value + Header name (defaults to `X-API-Key`) |
+
+### HA prerequisite reminder
+
+:::warning
+
+Each Snooze node in an HA cluster must set a distinct `syncer.hostname`.
+Nodes that find their own hostname in the inbound `X-Snooze-Loop` header accept
+the alert without re-relaying — but if two nodes share a hostname, loop detection
+breaks. See the HA prerequisite section above for details.
+
+:::
+
 ## Caveats
 
 - **No retries / dead-letter.** Relay is fire-and-forget with no retry, matching

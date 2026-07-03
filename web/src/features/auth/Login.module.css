@@ -144,3 +144,10 @@
   align-items: center;
   gap: 0.5rem;
 }
+
+.tenantMatchHint {
+  color: var(--text-muted);
+  font-size: var(--font-size-sm);
+  margin: 0;
+  padding: var(--space-1) 0;
+}

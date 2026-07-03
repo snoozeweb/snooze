@@ -2,7 +2,7 @@ import { useMutation, useQueryClient, type UseMutationResult } from "@tanstack/r
 import { api, type ApiError } from "@/lib/api/client";
 import { defineResource } from "@/lib/api/resource";
 import type { Record_ } from "./types";
-import { encodeConditionQ } from "@/lib/condition/serialize";
+import { encodeConditionQ, type Condition } from "@/lib/condition/serialize";
 import { ACTIVE_ALERTS } from "./tabs";
 import { Comments } from "./comments";
 
@@ -21,8 +21,10 @@ export function useActiveAlertCount(enabled: boolean) {
 
 export type CommentInput = {
   record_uid: string;
-  type: "ack" | "close" | "open" | "esc" | "comment";
+  type: "ack" | "close" | "open" | "esc" | "comment" | "shelve" | "unshelve";
   message?: string;
+  /** seconds; only meaningful when type=="shelve". 0 → use server default. */
+  duration?: number;
 };
 
 export function useCommentRecord(): UseMutationResult<unknown, ApiError, CommentInput> {
@@ -48,6 +50,7 @@ export function useCommentRecord(): UseMutationResult<unknown, ApiError, Comment
 // internal/config/schema/housekeeper.go::DefaultHousekeeper (48h).
 const FALLBACK_UNSHELVE_TTL = 48 * 60 * 60;
 
+/** @deprecated — permanent-exempt only; timed shelve uses useCommentRecord */
 export type ShelveInput = {
   uid: string;
   /** Whether we're shelving (true) or unshelving (false). */
@@ -64,6 +67,7 @@ export type ShelveInput = {
   currentTTL?: number | undefined;
 };
 
+/** @deprecated — permanent-exempt only; timed shelve uses useCommentRecord */
 export function useShelveRecord(): UseMutationResult<unknown, ApiError, ShelveInput> {
   const qc = useQueryClient();
   return useMutation({
@@ -77,6 +81,85 @@ export function useShelveRecord(): UseMutationResult<unknown, ApiError, ShelveIn
   });
 }
 
+// ── Bulk operations ───────────────────────────────────────────────────────────
+
+/**
+ * encodeUidsAsQ wraps a uid list into an IN condition and base64url-encodes it
+ * for use as the `?q=` parameter of bulk endpoints.
+ * Produces: { type:"IN", field:"uid", value:[...uids] }
+ */
+export function encodeUidsAsQ(uids: string[]): string {
+  const cond: Condition = { type: "IN", field: "uid", value: uids };
+  return encodeConditionQ(cond);
+}
+
+export type BulkStateInput = {
+  q?: string;
+  state: "ack" | "close" | "open" | "esc";
+  message?: string;
+};
+
+export type BulkStateResponse = {
+  matched: number;
+  updated: number;
+  state: string;
+};
+
+export function useBulkStateRecord(): UseMutationResult<
+  BulkStateResponse,
+  ApiError,
+  BulkStateInput
+> {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ q, state, message }) =>
+      api<BulkStateResponse>("POST", "/record/bulk_state", {
+        ...(q ? { query: { q } } : {}),
+        body: { state, ...(message ? { message } : {}) },
+      }),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: Records.queryKey.all });
+    },
+  });
+}
+
+export type BulkUpdateInput = {
+  q?: string;
+  set?: Record<string, unknown>;
+  tag?: string[];
+  untag?: string[];
+};
+
+export type BulkUpdateResponse = {
+  matched: number;
+  set: number;
+  tagged: number;
+  untagged: number;
+};
+
+export function useBulkUpdateRecord(): UseMutationResult<
+  BulkUpdateResponse,
+  ApiError,
+  BulkUpdateInput
+> {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ q, set, tag, untag }) =>
+      api<BulkUpdateResponse>("POST", "/record/bulk_update", {
+        ...(q ? { query: { q } } : {}),
+        body: {
+          ...(set ? { set } : {}),
+          ...(tag ? { tag } : {}),
+          ...(untag ? { untag } : {}),
+        },
+      }),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: Records.queryKey.all });
+    },
+  });
+}
+
+/** @deprecated — permanent-exempt only; timed shelve uses useCommentRecord */
 // computeNextTTL emits the new ttl for a shelve / unshelve toggle. The
 // rules mirror Snooze 1.x's web/src/views/Record.vue::toggle_ttl, with one
 // fix: that helper multiplied by -1 unconditionally, which silently

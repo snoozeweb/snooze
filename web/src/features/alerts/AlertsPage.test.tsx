@@ -1,7 +1,7 @@
 import { act, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { toastStore } from "@/shared/ui/toast/useToast";
 import {
   createMemoryHistory,
@@ -71,8 +71,8 @@ describe("AlertsPage", () => {
     expect(screen.getByText(/disk full/)).toBeInTheDocument();
   });
 
-  it("offers an Acknowledge action on open rows that POSTs to /comment via dialog", async () => {
-    const calls: unknown[] = [];
+  it("offers an Acknowledge action on open rows that POSTs to /record/bulk_state via dialog", async () => {
+    const bulkCalls: Array<{ url: string; body: unknown }> = [];
     mswServer.use(
       http.get("/api/v1/record", () =>
         HttpResponse.json({
@@ -80,9 +80,9 @@ describe("AlertsPage", () => {
           meta: { count: 1, limit: 50, offset: 0, total: 1 },
         }),
       ),
-      http.post("/api/v1/comment", async ({ request }) => {
-        calls.push(await request.json());
-        return HttpResponse.json({ ok: true });
+      http.post("/api/v1/record/bulk_state", async ({ request }) => {
+        bulkCalls.push({ url: request.url, body: await request.json() });
+        return HttpResponse.json({ matched: 1, updated: 1, state: "ack" });
       }),
     );
     const user = userEvent.setup();
@@ -93,8 +93,13 @@ describe("AlertsPage", () => {
     // Dialog should appear; confirm it
     await waitFor(() => expect(screen.getByRole("dialog")).toBeInTheDocument());
     await user.click(screen.getByRole("button", { name: /^acknowledge$/i }));
-    await waitFor(() => expect(calls.length).toBe(1));
-    expect(calls[0]).toMatchObject({ record_uid: "r1", type: "ack" });
+    await waitFor(() => expect(bulkCalls.length).toBe(1));
+    // body should have state:"ack"
+    expect(bulkCalls[0]!.body).toMatchObject({ state: "ack" });
+    // q param decodes to uid IN ["r1"]
+    const rawQ = new URL(bulkCalls[0]!.url).searchParams.get("q") ?? "";
+    const decoded = JSON.parse(atob(rawQ.replace(/-/g, "+").replace(/_/g, "/"))) as unknown;
+    expect(decoded).toMatchObject({ type: "IN", field: "uid", value: ["r1"] });
   });
 
   it("expanding a row via the chevron renders the JSON + CommentTimeline", async () => {
@@ -134,8 +139,8 @@ describe("AlertsPage", () => {
     expect(screen.queryByRole("dialog")).toBeNull();
   });
 
-  it("bulk acknowledge: posts one comment per selected row, then clears selection", async () => {
-    const calls: unknown[] = [];
+  it("bulk acknowledge: fires one POST to /record/bulk_state, shows count toast", async () => {
+    const bulkCalls: Array<{ url: string; body: unknown }> = [];
     mswServer.use(
       http.get("/api/v1/record", () =>
         HttpResponse.json({
@@ -146,9 +151,9 @@ describe("AlertsPage", () => {
           meta: { count: 2, limit: 50, offset: 0, total: 2 },
         }),
       ),
-      http.post("/api/v1/comment", async ({ request }) => {
-        calls.push(await request.json());
-        return HttpResponse.json({ ok: true });
+      http.post("/api/v1/record/bulk_state", async ({ request }) => {
+        bulkCalls.push({ url: request.url, body: await request.json() });
+        return HttpResponse.json({ matched: 2, updated: 2, state: "ack" });
       }),
     );
     const user = userEvent.setup();
@@ -159,15 +164,14 @@ describe("AlertsPage", () => {
     await user.click(screen.getByRole("button", { name: /acknowledge \(2\)/i }));
     await user.click(screen.getByRole("button", { name: /^acknowledge$/i }));
 
-    await waitFor(() => expect(calls).toHaveLength(2));
-    const types = (calls as Array<{ type: string }>).map((c) => c.type);
-    expect(types.every((t) => t === "ack")).toBe(true);
+    // One bulk call, not two comment calls
+    await waitFor(() => expect(bulkCalls).toHaveLength(1));
+    expect(bulkCalls[0]!.body).toMatchObject({ state: "ack" });
 
-    // Bulk ack raises a count-bearing undo toast ("N alerts updated") that
-    // still carries the Undo affordance (re-opens every succeeded uid).
+    // Success toast shows matched count
     await waitFor(() => {
       const toasts = toastStore.getSnapshot();
-      expect(toasts.some((t) => /2 alerts updated/i.test(t.description) && t.action)).toBe(true);
+      expect(toasts.some((t) => /2 alerts updated/i.test(t.description))).toBe(true);
     });
   });
 
@@ -443,6 +447,279 @@ describe("AlertsPage", () => {
     expect(calls[0]).toMatchObject({ record_uid: "r1", type: "ack" });
   });
 
+  // ── Action gating ─────────────────────────────────────────────────────────
+
+  it("ack_hidden_for_acked_rows — Acknowledge absent from kebab on acked row", async () => {
+    mswServer.use(
+      http.get("/api/v1/record", () =>
+        HttpResponse.json({
+          data: [{ uid: "r1", host: "srv-1", state: "ack", date_epoch: 1 }],
+          meta: { count: 1, limit: 50, offset: 0, total: 1 },
+        }),
+      ),
+    );
+    const user = userEvent.setup();
+    setup();
+    await waitFor(() => expect(screen.getByText("srv-1")).toBeInTheDocument());
+    await user.click(screen.getAllByRole("button", { name: /row actions/i })[0]!);
+    expect(screen.queryByRole("menuitem", { name: /^acknowledge$/i })).toBeNull();
+  });
+
+  it("close_available_for_acked_rows — Close present in kebab on acked row", async () => {
+    mswServer.use(
+      http.get("/api/v1/record", () =>
+        HttpResponse.json({
+          data: [{ uid: "r1", host: "srv-1", state: "ack", date_epoch: 1 }],
+          meta: { count: 1, limit: 50, offset: 0, total: 1 },
+        }),
+      ),
+    );
+    const user = userEvent.setup();
+    setup();
+    await waitFor(() => expect(screen.getByText("srv-1")).toBeInTheDocument());
+    await user.click(screen.getAllByRole("button", { name: /row actions/i })[0]!);
+    expect(screen.getByRole("menuitem", { name: /^close$/i })).toBeInTheDocument();
+  });
+
+  it("esc_available_for_acked_rows — Re-escalate present in kebab on acked row", async () => {
+    mswServer.use(
+      http.get("/api/v1/record", () =>
+        HttpResponse.json({
+          data: [{ uid: "r1", host: "srv-1", state: "ack", date_epoch: 1 }],
+          meta: { count: 1, limit: 50, offset: 0, total: 1 },
+        }),
+      ),
+    );
+    const user = userEvent.setup();
+    setup();
+    await waitFor(() => expect(screen.getByText("srv-1")).toBeInTheDocument());
+    await user.click(screen.getAllByRole("button", { name: /row actions/i })[0]!);
+    expect(screen.getByRole("menuitem", { name: /re-escalate/i })).toBeInTheDocument();
+  });
+
+  it("reopen_only_for_closed_rows — Re-open present, Acknowledge and Close absent on closed row", async () => {
+    mswServer.use(
+      http.get("/api/v1/record", () =>
+        HttpResponse.json({
+          data: [{ uid: "r1", host: "srv-1", state: "close", date_epoch: 1 }],
+          meta: { count: 1, limit: 50, offset: 0, total: 1 },
+        }),
+      ),
+    );
+    const user = userEvent.setup();
+    setup();
+    await waitFor(() => expect(screen.getByText("srv-1")).toBeInTheDocument());
+    await user.click(screen.getAllByRole("button", { name: /row actions/i })[0]!);
+    expect(screen.getByRole("menuitem", { name: /re-open/i })).toBeInTheDocument();
+    expect(screen.queryByRole("menuitem", { name: /^acknowledge$/i })).toBeNull();
+    expect(screen.queryByRole("menuitem", { name: /^close$/i })).toBeNull();
+  });
+
+  it("esc_hidden_for_fresh_rows — Re-escalate absent from kebab on fresh row", async () => {
+    mswServer.use(
+      http.get("/api/v1/record", () =>
+        HttpResponse.json({
+          data: [{ uid: "r1", host: "srv-1", state: "", date_epoch: 1 }],
+          meta: { count: 1, limit: 50, offset: 0, total: 1 },
+        }),
+      ),
+    );
+    const user = userEvent.setup();
+    setup();
+    await waitFor(() => expect(screen.getByText("srv-1")).toBeInTheDocument());
+    await user.click(screen.getAllByRole("button", { name: /row actions/i })[0]!);
+    expect(screen.queryByRole("menuitem", { name: /re-escalate/i })).toBeNull();
+  });
+
+  it("bulk_ack_hidden_when_all_closed — Acknowledge bulk button absent when selecting closed row", async () => {
+    mswServer.use(
+      http.get("/api/v1/record", () =>
+        HttpResponse.json({
+          data: [{ uid: "r1", host: "srv-1", state: "close", date_epoch: 1 }],
+          meta: { count: 1, limit: 50, offset: 0, total: 1 },
+        }),
+      ),
+    );
+    const user = userEvent.setup();
+    setup();
+    await waitFor(() => expect(screen.getByText("srv-1")).toBeInTheDocument());
+    await user.click(screen.getByRole("checkbox", { name: /select all/i }));
+    // Acknowledge button should not appear since the only row is closed (no row allows ack)
+    expect(screen.queryByRole("button", { name: /acknowledge \(1\)/i })).toBeNull();
+  });
+
+  it("quick_ack_absent_for_acked_row — inline Acknowledge icon-button absent on acked row", async () => {
+    mswServer.use(
+      http.get("/api/v1/record", () =>
+        HttpResponse.json({
+          data: [{ uid: "r1", host: "srv-1", state: "ack", date_epoch: 1 }],
+          meta: { count: 1, limit: 50, offset: 0, total: 1 },
+        }),
+      ),
+    );
+    setup();
+    await waitFor(() => expect(screen.getByText("srv-1")).toBeInTheDocument());
+    // The inline Acknowledge quick-action button should not be in the DOM for an acked row
+    expect(screen.queryByRole("button", { name: /^acknowledge$/i })).toBeNull();
+  });
+
+  // ── Columns: lifecycle countdown + trend ───────────────────────────────────
+
+  it("ack_countdown_renders_on_acked_row — shows 'in Xh' in acked_by cell", async () => {
+    const nowSec = Math.floor(Date.now() / 1000);
+    mswServer.use(
+      http.get("/api/v1/record", () =>
+        HttpResponse.json({
+          data: [
+            {
+              uid: "r1",
+              host: "srv-1",
+              state: "ack",
+              acked_by: "alice",
+              ack_until: nowSec + 10800, // 3 hours
+              date_epoch: 1,
+            },
+          ],
+          meta: { count: 1, limit: 50, offset: 0, total: 1 },
+        }),
+      ),
+    );
+    setup();
+    await waitFor(() => expect(screen.getByText("srv-1")).toBeInTheDocument());
+    expect(screen.getByText(/in \d+h/)).toBeInTheDocument();
+  });
+
+  it("ack_countdown_absent_when_zero — no countdown when ack_until is 0", async () => {
+    mswServer.use(
+      http.get("/api/v1/record", () =>
+        HttpResponse.json({
+          data: [
+            {
+              uid: "r1",
+              host: "srv-1",
+              state: "ack",
+              acked_by: "alice",
+              ack_until: 0,
+              date_epoch: 1,
+            },
+          ],
+          meta: { count: 1, limit: 50, offset: 0, total: 1 },
+        }),
+      ),
+    );
+    setup();
+    await waitFor(() => expect(screen.getByText("srv-1")).toBeInTheDocument());
+    expect(screen.queryByText(/in \d+h/)).toBeNull();
+  });
+
+  it("escalate_hint_renders_on_open_row — shows escalation countdown on open row", async () => {
+    const nowSec = Math.floor(Date.now() / 1000);
+    mswServer.use(
+      http.get("/api/v1/record", () =>
+        HttpResponse.json({
+          data: [
+            {
+              uid: "r1",
+              host: "srv-1",
+              state: "",
+              escalate_at: nowSec + 7200, // 2 hours
+              date_epoch: 1,
+            },
+          ],
+          meta: { count: 1, limit: 50, offset: 0, total: 1 },
+        }),
+      ),
+    );
+    setup();
+    await waitFor(() => expect(screen.getByText("srv-1")).toBeInTheDocument());
+    expect(screen.getByTitle(/auto-escalation deadline/i)).toBeInTheDocument();
+  });
+
+  it("escalate_hint_absent_on_acked_row — no escalation hint when row is acked", async () => {
+    const nowSec = Math.floor(Date.now() / 1000);
+    mswServer.use(
+      http.get("/api/v1/record", () =>
+        HttpResponse.json({
+          data: [
+            {
+              uid: "r1",
+              host: "srv-1",
+              state: "ack",
+              escalate_at: nowSec + 7200,
+              acked_by: "alice",
+              date_epoch: 1,
+            },
+          ],
+          meta: { count: 1, limit: 50, offset: 0, total: 1 },
+        }),
+      ),
+    );
+    setup();
+    await waitFor(() => expect(screen.getByText("srv-1")).toBeInTheDocument());
+    expect(screen.queryByTitle(/auto-escalation deadline/i)).toBeNull();
+  });
+
+  it("trend_up_renders_for_moreSevere — ↑ shown for moreSevere", async () => {
+    mswServer.use(
+      http.get("/api/v1/record", () =>
+        HttpResponse.json({
+          data: [
+            {
+              uid: "r1",
+              host: "srv-1",
+              state: "open",
+              trend_indication: "moreSevere",
+              date_epoch: 1,
+            },
+          ],
+          meta: { count: 1, limit: 50, offset: 0, total: 1 },
+        }),
+      ),
+    );
+    setup();
+    await waitFor(() => expect(screen.getByText("srv-1")).toBeInTheDocument());
+    expect(screen.getByTitle("Severity escalated")).toBeInTheDocument();
+  });
+
+  it("trend_down_renders_for_lessSevere — ↓ shown for lessSevere", async () => {
+    mswServer.use(
+      http.get("/api/v1/record", () =>
+        HttpResponse.json({
+          data: [
+            {
+              uid: "r1",
+              host: "srv-1",
+              state: "open",
+              trend_indication: "lessSevere",
+              date_epoch: 1,
+            },
+          ],
+          meta: { count: 1, limit: 50, offset: 0, total: 1 },
+        }),
+      ),
+    );
+    setup();
+    await waitFor(() => expect(screen.getByText("srv-1")).toBeInTheDocument());
+    expect(screen.getByTitle("Severity decreased")).toBeInTheDocument();
+  });
+
+  it("trend_dash_for_noChange_or_absent — dash rendered when trend absent", async () => {
+    mswServer.use(
+      http.get("/api/v1/record", () =>
+        HttpResponse.json({
+          data: [{ uid: "r1", host: "srv-1", state: "open", date_epoch: 1 }],
+          meta: { count: 1, limit: 50, offset: 0, total: 1 },
+        }),
+      ),
+    );
+    setup();
+    await waitFor(() => expect(screen.getByText("srv-1")).toBeInTheDocument());
+    // The trend column renders a dash (—) for absent/noChange rows
+    // aria-hidden so check by text content
+    const dashes = screen.getAllByText("—");
+    expect(dashes.length).toBeGreaterThan(0);
+  });
+
   it("shows the ActiveFilters chip strip with a non-default tab and Clear all", async () => {
     mswServer.use(
       http.get("/api/v1/record", () =>
@@ -525,7 +802,11 @@ describe("AlertsPage", () => {
     expect(screen.queryByRole("button", { name: /re-escalate/i })).toBeNull();
   });
 
-  it("bulk partial failure surfaces the backend's reason, not just a count", async () => {
+  // ── Plan 18b: bulk state via bulk_state endpoint ───────────────────────────
+
+  it("bulk ack fires one POST to /record/bulk_state, zero to /comment", async () => {
+    const bulkCalls: Array<{ url: string; body: unknown }> = [];
+    const commentCalls: unknown[] = [];
     mswServer.use(
       http.get("/api/v1/record", () =>
         HttpResponse.json({
@@ -536,14 +817,12 @@ describe("AlertsPage", () => {
           meta: { count: 2, limit: 50, offset: 0, total: 2 },
         }),
       ),
+      http.post("/api/v1/record/bulk_state", async ({ request }) => {
+        bulkCalls.push({ url: request.url, body: await request.json() });
+        return HttpResponse.json({ matched: 2, updated: 2, state: "ack" });
+      }),
       http.post("/api/v1/comment", async ({ request }) => {
-        const body = (await request.json()) as { record_uid: string };
-        if (body.record_uid === "r2") {
-          return HttpResponse.json(
-            { error: { code: "invalid_transition", message: "alert already acknowledged" } },
-            { status: 403 },
-          );
-        }
+        commentCalls.push(await request.json());
         return HttpResponse.json({ ok: true });
       }),
     );
@@ -553,89 +832,403 @@ describe("AlertsPage", () => {
     await user.click(screen.getByRole("checkbox", { name: /select all/i }));
     await user.click(screen.getByRole("button", { name: /acknowledge \(2\)/i }));
     await user.click(screen.getByRole("button", { name: /^acknowledge$/i }));
+    await waitFor(() => expect(bulkCalls).toHaveLength(1));
+    expect(commentCalls).toHaveLength(0);
+    // q decodes to uid IN ["r1","r2"]
+    const rawQ = new URL((bulkCalls[0] as { url: string }).url).searchParams.get("q") ?? "";
+    const decoded = JSON.parse(atob(rawQ.replace(/-/g, "+").replace(/_/g, "/"))) as unknown;
+    expect(decoded).toMatchObject({
+      type: "IN",
+      field: "uid",
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+      value: expect.arrayContaining(["r1", "r2"]),
+    });
+  });
 
+  it("bulk ack warns about no per-record comment in the toast", async () => {
+    mswServer.use(
+      http.get("/api/v1/record", () =>
+        HttpResponse.json({
+          data: [
+            { uid: "r1", host: "srv-1", state: "open", date_epoch: 1 },
+            { uid: "r2", host: "srv-2", state: "open", date_epoch: 2 },
+          ],
+          meta: { count: 2, limit: 50, offset: 0, total: 2 },
+        }),
+      ),
+      http.post("/api/v1/record/bulk_state", () => {
+        return HttpResponse.json({ matched: 2, updated: 2, state: "ack" });
+      }),
+    );
+    const user = userEvent.setup();
+    setup();
+    await waitFor(() => expect(screen.getByText("srv-1")).toBeInTheDocument());
+    await user.click(screen.getByRole("checkbox", { name: /select all/i }));
+    await user.click(screen.getByRole("button", { name: /acknowledge \(2\)/i }));
+    await user.click(screen.getByRole("button", { name: /^acknowledge$/i }));
     await waitFor(() => {
       const toasts = toastStore.getSnapshot();
-      expect(toasts.some((t) => /alert already acknowledged/i.test(t.description))).toBe(true);
+      expect(toasts.some((t) => /2 alerts updated/i.test(t.description))).toBe(true);
+      expect(toasts.some((t) => /no per-alert activity/i.test(t.description ?? ""))).toBe(true);
     });
   });
 
-  it("keeps the bulk confirm disabled until every request in the batch settles", async () => {
-    // r2 resolves immediately; r1 hangs. A single shared mutation's isPending
-    // tracks only its latest call, so once r2 (the last-initiated) settled it
-    // would flip the confirm back to enabled while r1 is still in flight —
-    // inviting a double-submit. The confirm must stay disabled until all settle.
-    let recordGets = 0;
-    let releaseSlow: () => void = () => {};
-    const slow = new Promise<void>((r) => {
-      releaseSlow = r;
-    });
+  it('"Select all N" affordance appears when total > page size and rows selected', async () => {
+    // Build 50 rows for the page, with total=200
+    const rows = Array.from({ length: 50 }, (_, i) => ({
+      uid: `r${i}`,
+      host: `srv-${i}`,
+      state: "open",
+      date_epoch: i + 1,
+    }));
     mswServer.use(
-      http.get("/api/v1/record", () => {
-        recordGets += 1;
-        return HttpResponse.json({
+      http.get("/api/v1/record", () =>
+        HttpResponse.json({
+          data: rows,
+          meta: { count: 50, limit: 50, offset: 0, total: 200 },
+        }),
+      ),
+    );
+    const user = userEvent.setup();
+    setup();
+    await waitFor(() => expect(screen.getByText("srv-0")).toBeInTheDocument());
+    await user.click(screen.getByRole("checkbox", { name: /select all/i }));
+    // A button or text containing "select all 200" should appear
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: /select all 200/i })).toBeInTheDocument(),
+    );
+  });
+
+  it('"Select all N": clicking it switches to query-scope q (no ?q= for default tab)', async () => {
+    const bulkCalls: Array<{ url: string; body: unknown }> = [];
+    const rows = Array.from({ length: 50 }, (_, i) => ({
+      uid: `r${i}`,
+      host: `srv-${i}`,
+      state: "open",
+      date_epoch: i + 1,
+    }));
+    mswServer.use(
+      http.get("/api/v1/record", () =>
+        HttpResponse.json({
+          data: rows,
+          meta: { count: 50, limit: 50, offset: 0, total: 200 },
+        }),
+      ),
+      http.post("/api/v1/record/bulk_state", async ({ request }) => {
+        bulkCalls.push({ url: request.url, body: await request.json() });
+        return HttpResponse.json({ matched: 200, updated: 200, state: "ack" });
+      }),
+    );
+    const user = userEvent.setup();
+    // Navigate to default tab (no ?tab= param). buildQueryParam returns the
+    // ACTIVE_ALERTS condition for the default "alerts" tab.
+    setup("/web/alerts");
+    await waitFor(() => expect(screen.getByText("srv-0")).toBeInTheDocument());
+    await user.click(screen.getByRole("checkbox", { name: /select all/i }));
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: /select all 200/i })).toBeInTheDocument(),
+    );
+    await user.click(screen.getByRole("button", { name: /select all 200/i }));
+    await user.click(screen.getByRole("button", { name: /acknowledge \(all 200\)/i }));
+    await user.click(screen.getByRole("button", { name: /^acknowledge$/i }));
+    await waitFor(() => expect(bulkCalls).toHaveLength(1));
+    // The default "alerts" tab encodes the ACTIVE_ALERTS condition, so q IS set
+    const url = new URL((bulkCalls[0] as { url: string }).url);
+    // q should be the active-alerts tab condition (non-empty), not a uid IN list
+    const q = url.searchParams.get("q");
+    // q must be non-null (ACTIVE_ALERTS tab always contributes a condition)
+    expect(q).not.toBeNull();
+    // And the response count (200) surfaces in the toast
+    await waitFor(() => {
+      const toasts = toastStore.getSnapshot();
+      expect(toasts.some((t) => /200 alerts updated/i.test(t.description))).toBe(true);
+    });
+  });
+
+  it("comment action still loops per-uid (not bulk_state)", async () => {
+    const bulkCalls: unknown[] = [];
+    const commentCalls: unknown[] = [];
+    mswServer.use(
+      http.get("/api/v1/record", () =>
+        HttpResponse.json({
           data: [
             { uid: "r1", host: "srv-1", state: "open", date_epoch: 1 },
             { uid: "r2", host: "srv-2", state: "open", date_epoch: 2 },
           ],
           meta: { count: 2, limit: 50, offset: 0, total: 2 },
-        });
+        }),
+      ),
+      http.post("/api/v1/record/bulk_state", async ({ request }) => {
+        bulkCalls.push(await request.json());
+        return HttpResponse.json({ matched: 0, updated: 0, state: "ack" });
       }),
       http.post("/api/v1/comment", async ({ request }) => {
-        const body = (await request.json()) as { record_uid: string };
-        if (body.record_uid === "r1") await slow; // r1 stays in flight
+        commentCalls.push(await request.json());
         return HttpResponse.json({ ok: true });
       }),
     );
     const user = userEvent.setup();
     setup();
     await waitFor(() => expect(screen.getByText("srv-1")).toBeInTheDocument());
-    const initialGets = recordGets;
     await user.click(screen.getByRole("checkbox", { name: /select all/i }));
-    await user.click(screen.getByRole("button", { name: /acknowledge \(2\)/i }));
-    await user.click(screen.getByRole("button", { name: /^acknowledge$/i }));
-
-    // r2's success invalidates the record list → a refetch fires. Once we see
-    // it, r2's mutation has fully settled (its onSuccess ran) while r1 is still
-    // hung. The confirm — queried by its form assoc since `loading` hides the
-    // label — must still be disabled.
-    await waitFor(() => expect(recordGets).toBeGreaterThan(initialGets));
-    const submit = document.querySelector<HTMLButtonElement>('button[form="action-form"]');
-    expect(submit).not.toBeNull();
-    expect(submit).toBeDisabled();
-
-    act(() => releaseSlow());
-    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    await user.click(screen.getByRole("button", { name: /comment \(2\)/i }));
+    await user.type(screen.getByPlaceholderText(/type your comment/i), "investigating");
+    await user.click(screen.getByRole("button", { name: /^comment$/i }));
+    await waitFor(() => expect(commentCalls).toHaveLength(2));
+    expect(bulkCalls).toHaveLength(0);
   });
 
-  it("a subset bulk action deselects only the rows it acted on, keeping the rest selected", async () => {
-    // Mixed selection: r1 is acked (escalatable), r2 is open (not). The toolbar
-    // shows "Re-escalate (1)" for r1 only. Acting on it must not wipe r2 from
-    // the selection — the operator still wants to act on r2.
+  it("bulk action bar: ack button hidden for all-closed selection", async () => {
     mswServer.use(
       http.get("/api/v1/record", () =>
         HttpResponse.json({
           data: [
-            { uid: "r1", host: "srv-1", state: "ack", date_epoch: 1 },
-            { uid: "r2", host: "srv-2", state: "open", date_epoch: 2 },
+            { uid: "r1", host: "srv-1", state: "close", date_epoch: 1 },
+            { uid: "r2", host: "srv-2", state: "close", date_epoch: 2 },
           ],
           meta: { count: 2, limit: 50, offset: 0, total: 2 },
         }),
       ),
-      http.post("/api/v1/comment", () => HttpResponse.json({ ok: true })),
     );
     const user = userEvent.setup();
     setup();
     await waitFor(() => expect(screen.getByText("srv-1")).toBeInTheDocument());
     await user.click(screen.getByRole("checkbox", { name: /select all/i }));
-    // Only r1 (ack) can be re-escalated → the button acts on that single row.
-    await user.click(screen.getByRole("button", { name: /re-escalate \(1\)/i }));
-    await user.click(screen.getByRole("button", { name: /^re-escalate$/i }));
+    // For all-closed rows, only Re-open is valid; Acknowledge must be absent
+    expect(screen.queryByRole("button", { name: /acknowledge \(2\)/i })).toBeNull();
+  });
 
-    // r1 gets deselected; r2 remains selected (its checkbox still checked).
-    await waitFor(() =>
-      expect(screen.getByRole("checkbox", { name: /select row r1/i })).not.toBeChecked(),
+  // ── Plan 34b: timed shelve via ShelveDialog ────────────────────────────────
+
+  it("shelve action on open row opens ShelveDialog and POSTs type=shelve with duration", async () => {
+    const calls: unknown[] = [];
+    mswServer.use(
+      http.get("/api/v1/record", () =>
+        HttpResponse.json({
+          data: [{ uid: "r1", host: "srv-1", state: "open", date_epoch: 1 }],
+          meta: { count: 1, limit: 50, offset: 0, total: 1 },
+        }),
+      ),
+      http.post("/api/v1/comment", async ({ request }) => {
+        calls.push(await request.json());
+        return HttpResponse.json({ ok: true });
+      }),
     );
-    expect(screen.getByRole("checkbox", { name: /select row r2/i })).toBeChecked();
+    const user = userEvent.setup();
+    setup();
+    await waitFor(() => expect(screen.getByText("srv-1")).toBeInTheDocument());
+    await user.click(screen.getAllByRole("button", { name: /row actions/i })[0]!);
+    await user.click(screen.getByRole("menuitem", { name: /^shelve$/i }));
+    // ShelveDialog should open
+    await waitFor(() => expect(screen.getByRole("dialog")).toBeInTheDocument());
+    // Submit with default 4h duration
+    await user.click(screen.getByRole("button", { name: /^shelve$/i }));
+    await waitFor(() => expect(calls.length).toBe(1));
+    expect(calls[0]).toMatchObject({ record_uid: "r1", type: "shelve", duration: 14400 });
+  });
+
+  it("unshelve on shelved row POSTs type=unshelve to /api/v1/comment", async () => {
+    const calls: unknown[] = [];
+    mswServer.use(
+      http.get("/api/v1/record", () =>
+        HttpResponse.json({
+          data: [{ uid: "r1", host: "srv-1", state: "shelved", date_epoch: 1 }],
+          meta: { count: 1, limit: 50, offset: 0, total: 1 },
+        }),
+      ),
+      http.post("/api/v1/comment", async ({ request }) => {
+        calls.push(await request.json());
+        return HttpResponse.json({ ok: true });
+      }),
+    );
+    const user = userEvent.setup();
+    setup();
+    await waitFor(() => expect(screen.getByText("srv-1")).toBeInTheDocument());
+    await user.click(screen.getAllByRole("button", { name: /row actions/i })[0]!);
+    await user.click(screen.getByRole("menuitem", { name: /^unshelve$/i }));
+    await waitFor(() => expect(calls.length).toBe(1));
+    expect(calls[0]).toMatchObject({ record_uid: "r1", type: "unshelve" });
+  });
+});
+
+// ── Plan 28b: console branding consumption ────────────────────────────────
+
+/** MSW response body for GET /api/v1/config */
+function makeConfigResponse(overrides: Record<string, unknown> = {}) {
+  return {
+    data: {
+      columns: ["date_epoch", "severity", "state", "host", "message"],
+      default_filter: "",
+      sort_by: "-date_epoch",
+      refresh_interval: 5,
+      severity_ranks: {},
+      severity_order: [],
+      logo: "",
+      title: "",
+      audio: "",
+      clipboard_template: "",
+      ...overrides,
+    },
+  };
+}
+
+describe("AlertsPage — Plan 28b: clipboard template", () => {
+  afterEach(() => {
+    toastStore.clear();
+    vi.restoreAllMocks();
+  });
+
+  it("copy-json with empty template copies JSON stringify output", async () => {
+    const written: string[] = [];
+    vi.spyOn(navigator.clipboard, "writeText").mockImplementation((text: string) => {
+      written.push(text);
+      return Promise.resolve();
+    });
+    mswServer.use(
+      http.get("/api/v1/config", () => HttpResponse.json(makeConfigResponse())),
+      http.get("/api/v1/record", () =>
+        HttpResponse.json({
+          data: [{ uid: "r1", host: "db01", message: "disk full", state: "open", date_epoch: 1 }],
+          meta: { count: 1, limit: 50, offset: 0, total: 1 },
+        }),
+      ),
+    );
+    const user = userEvent.setup();
+    setup();
+    await waitFor(() => expect(screen.getByText("db01")).toBeInTheDocument());
+    const row = screen.getByText("db01").closest("tr")!;
+    await user.pointer({ keys: "[MouseRight]", target: row });
+    await waitFor(() =>
+      expect(screen.getByRole("menu", { name: /row context menu/i })).toBeInTheDocument(),
+    );
+    // With empty clipboard_template, label is "Copy as JSON"
+    await user.click(screen.getByRole("menuitem", { name: /copy as json/i }));
+    await waitFor(() => expect(written.length).toBeGreaterThan(0));
+    // Should be JSON — parseable and contain the host field
+    const parsed = JSON.parse(written[0]!) as Record<string, unknown>;
+    expect(parsed.host).toBe("db01");
+  });
+
+  it("copy action with clipboard_template substitutes template fields", async () => {
+    const written: string[] = [];
+    vi.spyOn(navigator.clipboard, "writeText").mockImplementation((text: string) => {
+      written.push(text);
+      return Promise.resolve();
+    });
+    mswServer.use(
+      http.get("/api/v1/config", () =>
+        HttpResponse.json(makeConfigResponse({ clipboard_template: "{{host}} — {{message}}" })),
+      ),
+      http.get("/api/v1/record", () =>
+        HttpResponse.json({
+          data: [{ uid: "r1", host: "db01", message: "disk full", state: "open", date_epoch: 1 }],
+          meta: { count: 1, limit: 50, offset: 0, total: 1 },
+        }),
+      ),
+    );
+    const user = userEvent.setup();
+    setup();
+    await waitFor(() => expect(screen.getByText("db01")).toBeInTheDocument());
+    const row = screen.getByText("db01").closest("tr")!;
+    await user.pointer({ keys: "[MouseRight]", target: row });
+    await waitFor(() =>
+      expect(screen.getByRole("menu", { name: /row context menu/i })).toBeInTheDocument(),
+    );
+    // With a template set, label becomes "Copy" (not "Copy as JSON")
+    await user.click(screen.getByRole("menuitem", { name: /^copy$/i }));
+    await waitFor(() => expect(written.length).toBeGreaterThan(0));
+    expect(written[0]).toBe("db01 — disk full");
+  });
+});
+
+describe("AlertsPage — Plan 28b: default_filter seeding", () => {
+  afterEach(() => {
+    toastStore.clear();
+  });
+
+  it("pre-fills SearchBar from config.default_filter when no ?search= URL param", async () => {
+    mswServer.use(
+      http.get("/api/v1/config", () =>
+        HttpResponse.json(makeConfigResponse({ default_filter: "severity = critical" })),
+      ),
+      http.get("/api/v1/record", () =>
+        HttpResponse.json({
+          data: [],
+          meta: { count: 0, limit: 50, offset: 0, total: 0 },
+        }),
+      ),
+    );
+    setup("/web/alerts");
+    const input = await screen.findByRole("textbox", { name: /search/i });
+    await waitFor(() => expect((input as HTMLInputElement).value).toBe("severity = critical"));
+  });
+
+  it("URL ?search= wins over config.default_filter", async () => {
+    mswServer.use(
+      http.get("/api/v1/config", () =>
+        HttpResponse.json(makeConfigResponse({ default_filter: "severity = critical" })),
+      ),
+      http.get("/api/v1/record", () =>
+        HttpResponse.json({
+          data: [],
+          meta: { count: 0, limit: 50, offset: 0, total: 0 },
+        }),
+      ),
+    );
+    setup("/web/alerts?search=host%20%3D%20db01");
+    const input = await screen.findByRole("textbox", { name: /search/i });
+    // URL takes precedence — should be "host = db01", not "severity = critical"
+    await waitFor(() => expect((input as HTMLInputElement).value).toBe("host = db01"));
+  });
+});
+
+describe("AlertsPage — Plan 28b: audio cue", () => {
+  afterEach(() => {
+    toastStore.clear();
+    vi.restoreAllMocks();
+  });
+
+  it("does not call new Audio when config.audio is empty", async () => {
+    const audioMock = vi.fn().mockReturnValue({ play: vi.fn().mockResolvedValue(undefined) });
+    vi.stubGlobal("Audio", audioMock);
+
+    mswServer.use(
+      http.get("/api/v1/config", () => HttpResponse.json(makeConfigResponse({ audio: "" }))),
+      http.get("/api/v1/record", () =>
+        HttpResponse.json({
+          data: [{ uid: "r1", host: "srv-1", state: "open", date_epoch: 1 }],
+          meta: { count: 1, limit: 50, offset: 0, total: 5 },
+        }),
+      ),
+    );
+    setup();
+    await waitFor(() => expect(screen.getByText("srv-1")).toBeInTheDocument());
+    expect(audioMock).not.toHaveBeenCalled();
+    vi.unstubAllGlobals();
+  });
+
+  it("does not play on first load even when total > 0 (prevTotalRef starts at -1)", async () => {
+    const playMock = vi.fn().mockResolvedValue(undefined);
+    const audioMock = vi.fn().mockReturnValue({ play: playMock });
+    vi.stubGlobal("Audio", audioMock);
+
+    mswServer.use(
+      http.get("/api/v1/config", () =>
+        HttpResponse.json(makeConfigResponse({ audio: "https://example.com/alert.wav" })),
+      ),
+      http.get("/api/v1/record", () =>
+        HttpResponse.json({
+          data: [{ uid: "r1", host: "srv-1", state: "open", date_epoch: 1 }],
+          meta: { count: 1, limit: 50, offset: 0, total: 5 },
+        }),
+      ),
+    );
+    setup();
+    await waitFor(() => expect(screen.getByText("srv-1")).toBeInTheDocument());
+    // First load: prevTotalRef.current was -1, so no play should have occurred
+    expect(playMock).not.toHaveBeenCalled();
+    vi.unstubAllGlobals();
+  });
+});
   });
 });

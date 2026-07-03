@@ -45,3 +45,11 @@
 .deleteSpacer {
   margin-right: auto;
 }
+.cardDanger {
+  border-left: 3px solid var(--severity-critical);
+}
+.dangerWarning {
+  color: var(--severity-critical);
+  font-size: var(--text-xs);
+  margin: var(--space-1) 0 0;
+}

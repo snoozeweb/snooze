@@ -30,8 +30,10 @@ type AuthProxy struct {
 	AutoSignup bool `koanf:"auto_signup"`
 	// TrustedProxies is the IP/CIDR allowlist of the proxy's own address as
 	// Snooze sees it. The proxy branch only trusts the identity headers when the
-	// request's client IP falls within one of these entries. Empty => allow any
-	// (logged as a loud boot WARN — a deliberate fail-open operator choice).
+	// immediate TCP peer address (RemoteAddr before RealIP, NOT any forwarded
+	// header) falls within one of these entries — so it cannot be spoofed via
+	// X-Forwarded-For / X-Real-IP. Empty => allow any (logged as a loud boot
+	// WARN — a deliberate fail-open operator choice).
 	TrustedProxies []string `koanf:"trusted_proxies"`
 	// Method is the identity method tag stamped on the JIT user document and the
 	// Claims.Method. Default "proxy".

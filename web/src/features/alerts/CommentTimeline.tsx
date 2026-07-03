@@ -226,10 +226,19 @@ export function CommentTimeline({
         <p className={styles.empty}>No comments yet.</p>
       ) : (
         items.map((c) => {
+          // Read auto defensively: the OpenAPI schema does not yet describe this field.
+          // Auto-comments (from the housekeeper or aggregaterule plugin) are attributed
+          // as "System (auto)" and cannot be edited or deleted.
+          const isAuto = (c as { auto?: unknown }).auto === true;
+          const attribution = isAuto ? "System (auto)" : (c.user ?? "system");
           const isOwn = !!c.user && c.user === currentUser;
-          const canEdit = isOwn || canModerate;
+          const canEdit = !isAuto && (isOwn || canModerate);
           return (
-            <div key={c.uid ?? `${c.date_epoch}-${c.user ?? ""}`} className={styles.row}>
+            <div
+              key={c.uid ?? `${c.date_epoch}-${c.user ?? ""}`}
+              className={styles.row}
+              data-auto={isAuto || undefined}
+            >
               <span className={styles.dot} />
               <div className={styles.body}>
                 {/* Badge and its who·when meta share one line — the timestamp
@@ -238,7 +247,7 @@ export function CommentTimeline({
                 <span className={styles.head}>
                   <Badge variant={TYPE_VARIANT[c.type]}>{TYPE_LABEL[c.type]}</Badge>
                   <span className={styles.meta}>
-                    {c.user ?? "system"} · {trimDate(c.date_epoch)}
+                    {attribution} · {trimDate(c.date_epoch)}
                   </span>
                 </span>
                 {editingUid === c.uid ? (

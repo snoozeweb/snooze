@@ -173,6 +173,91 @@ func proxyEnabledConfig() *config.Config {
 	return cfg
 }
 
+// TestBuild_AuthProxyPeerIPGate locks the mount order: the trust gate must
+// compare against the genuine TCP peer (captured by CapturePeerIP BEFORE chi
+// RealIP rewrites RemoteAddr), so a spoofed X-Forwarded-For from an untrusted
+// peer is rejected even through the FULL production chain (RealIP present).
+//
+// httptest.NewServer dials from loopback, so the genuine peer is 127.0.0.1.
+//   - Spoof sub-case: trusted=10.0.0.0/8, XFF=10.0.0.5 → the real peer (127.x)
+//     is untrusted; the request must fall through to 401 and NOT provision a
+//     JIT user. (Note: chi RealIP rewrites RemoteAddr to 10.0.0.5 here — a
+//     RemoteAddr-only gate would have been fooled; capturing before RealIP is
+//     exactly what prevents that amplification.)
+//   - Genuine sub-case: trusted=127.0.0.0/8 (the real loopback peer) → the
+//     proxy path authenticates through the full chain and provisions the user.
+func TestBuild_AuthProxyPeerIPGate(t *testing.T) {
+	seedRole := func(drv *memDriver) {
+		drv.seed(auth.RoleCollection, db.Document{
+			"name":        "operator",
+			"tenant_id":   snoozetypes.DefaultTenant,
+			"permissions": []string{"ro_rule"},
+			"groups":      []string{"ops"},
+		})
+	}
+
+	t.Run("spoofed XFF from untrusted peer is rejected", func(t *testing.T) {
+		drv := newMemDriver()
+		seedRole(drv)
+		cfg := proxyEnabledConfig()
+		cfg.AuthProxy.TrustedProxies = []string{"10.0.0.0/8"} // loopback NOT in here
+		rt := &Router{
+			Auth:      testTokenEngine(t),
+			DB:        drv,
+			Config:    cfg,
+			ProxyAuth: auth.NewProxyAuthenticator(drv, auth.NewRoleResolver(drv), "proxy"),
+			Plugins:   map[string]plugins.Plugin{"record": &stubPlugin{name: "record"}},
+		}
+		srv := httptest.NewServer(rt.Build())
+		defer srv.Close()
+
+		req, err := http.NewRequest(http.MethodGet, srv.URL+"/api/v1/permissions", nil)
+		require.NoError(t, err)
+		req.Header.Set("X-Forwarded-For", "10.0.0.5") // spoofed trusted-proxy IP
+		req.Header.Set("X-Forwarded-User", "root")
+		resp, err := http.DefaultClient.Do(req)
+		require.NoError(t, err)
+		defer func() { _ = resp.Body.Close() }()
+		require.Equal(t, http.StatusUnauthorized, resp.StatusCode,
+			"spoofed XFF from an untrusted TCP peer must 401, got %d", resp.StatusCode)
+
+		// And no JIT user was created (the provisioner was never reached).
+		_, err = drv.GetOne(context.Background(), auth.LocalCollection, db.Document{"name": "root", "method": "proxy"})
+		require.ErrorIs(t, err, db.ErrNotFound,
+			"spoofed XFF must not JIT-provision a user")
+	})
+
+	t.Run("genuine trusted peer authenticates through full chain", func(t *testing.T) {
+		drv := newMemDriver()
+		seedRole(drv)
+		cfg := proxyEnabledConfig()
+		cfg.AuthProxy.TrustedProxies = []string{"127.0.0.0/8"} // the real loopback peer
+		rt := &Router{
+			Auth:      testTokenEngine(t),
+			DB:        drv,
+			Config:    cfg,
+			ProxyAuth: auth.NewProxyAuthenticator(drv, auth.NewRoleResolver(drv), "proxy"),
+			Plugins:   map[string]plugins.Plugin{"record": &stubPlugin{name: "record"}},
+		}
+		srv := httptest.NewServer(rt.Build())
+		defer srv.Close()
+
+		req, err := http.NewRequest(http.MethodGet, srv.URL+"/api/v1/permissions", nil)
+		require.NoError(t, err)
+		req.Header.Set("X-Forwarded-User", "alice")
+		req.Header.Set("X-Forwarded-Groups", "ops")
+		resp, err := http.DefaultClient.Do(req)
+		require.NoError(t, err)
+		defer func() { _ = resp.Body.Close() }()
+		require.NotEqual(t, http.StatusUnauthorized, resp.StatusCode,
+			"genuine trusted peer must authenticate through the full chain, got %d", resp.StatusCode)
+
+		doc, err := drv.GetOne(context.Background(), auth.LocalCollection, db.Document{"name": "alice", "method": "proxy"})
+		require.NoError(t, err)
+		require.NotContains(t, doc, "password")
+	})
+}
+
 // TestBuild_AuthProxyEnabledWiresMiddleware proves the conditional wiring: when
 // the config enables the proxy mode and rt.ProxyAuth is set, a request carrying
 // the proxy headers (no Authorization) reaches a mounted handler.

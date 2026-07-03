@@ -4,6 +4,8 @@
 // a state-changing action the server would accept. When they drift, operators
 // get controls that silently 403 (the doomed "Re-escalate" on fresh/re-opened
 // rows) — or, worse, escalated alerts with no ack/close/re-open control at all.
+import type { ActionType } from "./ActionDialog";
+import type { AlertState, Record_ } from "./types";
 
 export type TransitionAction = "ack" | "close" | "esc" | "open";
 
@@ -43,4 +45,64 @@ export function canTransition(state: string, action: TransitionAction): boolean 
  */
 export function allowedTransitionActions(state: string): TransitionAction[] {
   return ORDER.filter((action) => canTransition(state, action));
+}
+
+// ── Action gating (kebab menu / quick actions / context menu / bulk toolbar) ──
+// Superset of TransitionAction: also covers the non-state-changing "comment"
+// action and the timed shelve/unshelve pair, which are always offered
+// regardless of state (the backend never rejects them on state grounds).
+
+export type GateableAction = ActionType | "shelve" | "unshelve";
+
+const ALWAYS_ALLOWED: ReadonlySet<GateableAction> = new Set(["shelve", "unshelve", "comment"]);
+
+/**
+ * Shown in the bulk-action success toast to warn operators that bulk state
+ * changes do not write per-alert activity entries (unlike the single-alert
+ * /comment path). Directs them to the Audit log.
+ */
+export const BULK_STATE_CAVEAT =
+  "No per-alert activity entry was written — see Audit log for details.";
+
+// Valid target states for each source state.
+// Keep in sync with ALLOWED above and the backend transition.go.
+const VALID_FROM: Readonly<Record<string, ActionType[]>> = {
+  "": ["ack", "close"],
+  open: ["ack", "close"],
+  ack: ["close", "esc", "open"],
+  esc: ["ack", "close", "open"],
+  close: ["open"],
+  shelved: ["open"],
+};
+
+/**
+ * Returns the set of ActionTypes that are valid for ALL rows in the selection.
+ * "comment" and "tag" are always valid and are not returned here (callers add
+ * them unconditionally). An empty selection returns an empty set.
+ */
+export function validBulkStates(rows: Record_[]): Set<ActionType> {
+  if (rows.length === 0) return new Set<ActionType>();
+  const sets = rows.map(
+    (r) => new Set<ActionType>(VALID_FROM[(r.state ?? "") as AlertState] ?? []),
+  );
+  const first = new Set<ActionType>(sets[0]);
+  for (const action of [...first]) {
+    if (!sets.every((s) => s.has(action))) first.delete(action);
+  }
+  return first;
+}
+
+/**
+ * isActionAllowed reports whether `action` is legal from a record's current
+ * `state`. Shares the ALLOWED transition table above for the state-changing
+ * actions; comment/shelve/unshelve are always allowed regardless of state.
+ * Unknown states and unknown actions both fail open, matching the backend.
+ */
+// eslint-disable-next-line @typescript-eslint/no-redundant-type-constituents
+export function isActionAllowed(state: AlertState | string, action: GateableAction): boolean {
+  if (ALWAYS_ALLOWED.has(action)) return true;
+  const row = ALLOWED[state];
+  if (!row) return true; // unknown state → fail-open
+  const allowed = (row as Record<string, boolean>)[action];
+  return allowed === undefined ? true : allowed; // unknown action → fail-open
 }

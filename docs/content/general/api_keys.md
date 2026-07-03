@@ -57,3 +57,16 @@ Users with `ro_apikey` can view every key in their tenant on the **API Keys**
 admin page; `rw_apikey` can rename, change expiry, and revoke any of them.
 Admins never see raw secrets and cannot mint keys on another user's behalf —
 revocation is the lever.
+
+#### Console display
+
+The **Admin → API keys** table now shows a **Last used** column (sortable — click to sort
+by staleness) and a **Uses** column. Both values are updated at most once per hour; `use_count`
+is a lower-bound estimate.
+
+On the **Profile** page, each key's subtitle includes "last used X ago" (or "last used never"
+for a key that has never authenticated a request). Keys unused for more than 30 days show a
+**Stale** badge as a prompt to revoke them.
+
+In the **Edit** drawer (Admin → API keys → click a row), the read-only Usage section shows the
+last-used timestamp and total uses, with a note that values are updated at most hourly.

@@ -274,6 +274,94 @@ describe("CommentTimeline", () => {
     await waitFor(() => expect(screen.getByText(/Page 1 \/ 3/)).toBeInTheDocument());
   });
 
+  it("auto_comment_shows_system_attribution — auto:true attributed as 'System (auto)'", async () => {
+    mswServer.use(
+      http.get("/api/v1/comment", () =>
+        HttpResponse.json({
+          data: [
+            {
+              uid: "c-auto",
+              record_uid: "r1",
+              type: "comment",
+              message: "Ack expired, reverted to open",
+              date_epoch: 1000,
+              user: null,
+              auto: true,
+            },
+          ],
+          meta: { count: 1, limit: 5, offset: 0, total: 1 },
+        }),
+      ),
+    );
+    const Wrapper = wrap();
+    render(
+      <Wrapper>
+        <CommentTimeline recordUid="r1" />
+      </Wrapper>,
+    );
+    await waitFor(() => expect(screen.getByText(/System \(auto\)/)).toBeInTheDocument());
+  });
+
+  it("auto_comment_hides_edit_delete — no Edit/Delete buttons on auto comment", async () => {
+    mswServer.use(
+      http.get("/api/v1/comment", () =>
+        HttpResponse.json({
+          data: [
+            {
+              uid: "c-auto",
+              record_uid: "r1",
+              type: "comment",
+              message: "Auto-generated system note",
+              date_epoch: 1000,
+              user: "system",
+              auto: true,
+            },
+          ],
+          meta: { count: 1, limit: 5, offset: 0, total: 1 },
+        }),
+      ),
+    );
+    const Wrapper = wrap();
+    render(
+      <Wrapper>
+        <CommentTimeline recordUid="r1" />
+      </Wrapper>,
+    );
+    await waitFor(() => expect(screen.getByText(/System \(auto\)/)).toBeInTheDocument());
+    expect(screen.queryByRole("button", { name: /edit comment/i })).toBeNull();
+    expect(screen.queryByRole("button", { name: /delete comment/i })).toBeNull();
+  });
+
+  it("manual_comment_shows_user_attribution — regular comment shows user name", async () => {
+    mswServer.use(
+      http.get("/api/v1/comment", () =>
+        HttpResponse.json({
+          data: [
+            {
+              uid: "c-manual",
+              record_uid: "r1",
+              type: "comment",
+              message: "Investigating now",
+              date_epoch: 1000,
+              user: "alice",
+            },
+          ],
+          meta: { count: 1, limit: 5, offset: 0, total: 1 },
+        }),
+      ),
+    );
+    const Wrapper = wrap();
+    render(
+      <Wrapper>
+        <CommentTimeline recordUid="r1" />
+      </Wrapper>,
+    );
+    await waitFor(() => expect(screen.getByText(/alice/)).toBeInTheDocument());
+    // Edit/Delete shown when user matches (useAuth returns empty sub by default but
+    // canModerate=false too — so no edit in test env; just verify user is shown)
+    expect(screen.queryByText(/System \(auto\)/)).toBeNull();
+  });
+
   it("renders one row per comment", async () => {
     mswServer.use(
       http.get("/api/v1/comment", () =>

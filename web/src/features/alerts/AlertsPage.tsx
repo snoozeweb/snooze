@@ -9,6 +9,7 @@ import { toast } from "@/shared/ui/toast/useToast";
 import { Button } from "@/shared/ui/Button";
 import { ApiError } from "@/lib/api/client";
 import { copyToClipboard } from "@/lib/clipboard";
+import { expandTemplate } from "@/lib/clipboard-template";
 import { ConfirmDeleteDialog, useConfirmDelete } from "@/shared/ui/resourceContextMenu";
 import { encodeConditionQ } from "@/lib/condition/serialize";
 import type { Condition } from "@/lib/condition/types";
@@ -16,41 +17,43 @@ import type { ParsedCondition } from "@/shared/ui/SearchBar";
 import { severityToken } from "@/lib/format/severity-color";
 import { useConsoleConfig } from "@/features/config/api";
 import { Environments } from "@/features/admin/environments/api";
-import { Records, useCommentRecord, useShelveRecord } from "./api";
-import { allowedTransitionActions, canTransition, type TransitionAction } from "./transitions";
+import type { IconName } from "@/shared/icons/icon-names";
+import {
+  Records,
+  useCommentRecord,
+  useShelveRecord,
+  useBulkStateRecord,
+  encodeUidsAsQ,
+} from "./api";
 import { AlertRowDetail } from "./AlertRowDetail";
 import { ActiveFilters } from "./ActiveFilters";
 import { AlertsFilters, type AlertFilters } from "./Filters";
 import { SavedSearches } from "./SavedSearches";
 import { alertColumns, recordCommentCount } from "./columns";
 import { useAutoRefresh } from "./useAutoRefresh";
-import type { Record_ } from "./types";
+import type { Record_, AlertState } from "./types";
 import { tabById, type TabId } from "./tabs";
 import { ActionDialog, type ActionType } from "./ActionDialog";
+import { ShelveDialog } from "./ShelveDialog";
+import { BulkTagDialog } from "./BulkTagDialog";
 import { InjectAlertsDialog } from "./InjectAlertsDialog";
+import { isActionAllowed, validBulkStates, BULK_STATE_CAVEAT } from "./transitions";
 import styles from "./AlertsPage.module.css";
+
+// Module-scope constant so the reference is stable across renders (DataTable's
+// row memo depends on stable rowActions identity). comment/shelve are always-
+// allowed and appended unconditionally after the filtered set.
+const CANDIDATE_ROW_ACTIONS: Array<{ key: ActionType; label: string; icon: IconName }> = [
+  { key: "ack", label: "Acknowledge", icon: "thumbs-up" },
+  { key: "close", label: "Close", icon: "lock" },
+  { key: "esc", label: "Re-escalate", icon: "rotate-cw" },
+  { key: "open", label: "Re-open", icon: "rotate-cw" },
+];
 
 /** Short human label for a record used in undo-toast copy ("Acknowledged X"). */
 function recordLabel(r: Record_): string {
   return r.host ?? r.message ?? r.uid ?? "alert";
 }
-
-// Display label + icon for each lifecycle transition. Which of these are
-// *offered* for a given row is decided by transitions.ts (mirroring the backend
-// table), so every menu/toolbar/keyboard/bulk surface stays in lockstep and the
-// UI never shows an action the server would reject.
-const TRANSITION_LABEL: Record<TransitionAction, string> = {
-  ack: "Acknowledge",
-  close: "Close",
-  esc: "Re-escalate",
-  open: "Re-open",
-};
-const TRANSITION_ICON = {
-  ack: "thumbs-up",
-  close: "lock",
-  esc: "rotate-cw",
-  open: "rotate-cw",
-} as const;
 
 type AlertsSearch = AlertFilters & {
   page?: number;
@@ -169,13 +172,19 @@ export function AlertsPage() {
   // reading right out from under them.
   const [expandedCount, setExpandedCount] = useState(0);
   const [dialog, setDialog] = useState<{ type: ActionType; records: Record_[] } | null>(null);
+  const [shelveDialog, setShelveDialog] = useState<Record_[] | null>(null);
+  const [bulkTagOpen, setBulkTagOpen] = useState(false);
   const [injectOpen, setInjectOpen] = useState(false);
   // Drives the ActionDialog confirm button across a whole bulk submit. A single
   // shared mutation's isPending only tracks its latest call, so it could flip
   // back to enabled mid-batch (inviting a double-submit); this local flag stays
   // true until every request in the batch settles.
   const [bulkSubmitting, setBulkSubmitting] = useState(false);
+  // When selectAllMode is true, bulk actions target the live page query (all
+  // matching records) rather than an IN-uid list for the visible selection.
+  const [selectAllMode, setSelectAllMode] = useState(false);
   const shelveMut = useShelveRecord();
+  const bulkStateMut = useBulkStateRecord();
   const removeMut = Records.useRemove();
 
   const page = search.page ?? 1;
@@ -210,6 +219,24 @@ export function AlertsPage() {
       setSearchText(search.search ?? "");
     }
   }, [search.search]);
+
+  // Config-seeding: once (and only once) when the server config resolves a
+  // non-empty default_filter and the URL has no ?search= of its own. This is
+  // symmetric to the URL-seeding effect above. The ref prevents re-seeding on
+  // subsequent renders (config is staleTime=Infinity so it won't change, but
+  // guard it explicitly so the logic is correct by construction).
+  const configDefaultSeededRef = useRef(false);
+  useEffect(() => {
+    if (
+      !configDefaultSeededRef.current && // only once
+      !search.search && // URL wins when present
+      config?.default_filter // non-empty server default
+    ) {
+      configDefaultSeededRef.current = true;
+      setSearchText(config.default_filter);
+    }
+  }, [config?.default_filter, search.search]);
+
   const [searchCondition, setSearchCondition] = useState<ParsedCondition | null>(null);
   const activeTab: TabId = search.tab ?? "alerts";
 
@@ -296,6 +323,38 @@ export function AlertsPage() {
     },
   );
 
+  // Audio cue: play once per poll tick that grows the alert count.
+  // Guard order:
+  //   1. config.audio non-empty — no-op when the field is "" (CONSOLE_FALLBACK default)
+  //   2. auto.enabled — user who turned off auto-refresh should not hear cues
+  //   3. !refreshPaused — no cue while a detail panel is open
+  //   4. prevTotalRef.current >= 0 — skip until at least one successful data load has
+  //      established a baseline. The ref starts at -1; it is only updated when
+  //      list.data is non-null (i.e. a real server response, not loading state).
+  //      This ensures the very first data arrival never triggers audio regardless
+  //      of how many "total = 0" (loading) renders preceded it.
+  //   5. total > prevTotalRef.current — count actually grew
+  const prevTotalRef = useRef<number>(-1);
+  useEffect(() => {
+    // Only update the baseline when we have real data, not during loading.
+    if (!list.data) return;
+    const total = list.data.meta.total;
+    if (
+      config?.audio &&
+      auto.enabled &&
+      !refreshPaused &&
+      prevTotalRef.current >= 0 &&
+      total > prevTotalRef.current
+    ) {
+      new Audio(config.audio).play().catch(() => {
+        // Autoplay policy (NotAllowedError) — silently swallow.
+        // A prior user gesture (login click) is usually sufficient,
+        // but browsers can still block before the first gesture.
+      });
+    }
+    prevTotalRef.current = total;
+  }, [list.data, config?.audio, auto.enabled, refreshPaused]);
+
   const filtered = list.data?.data ?? [];
 
   const confirmDelete = useConfirmDelete<Record_>({
@@ -312,22 +371,27 @@ export function AlertsPage() {
 
   const rowActions = useCallback(
     (row: Record_): RowAction[] => {
-      const state = row.state ?? "";
+      const state = (row.state ?? "") as AlertState;
       const isClosed = state === "close";
+      // ttl<0 branch: legacy permanent-exempt rows (pre-plan-34b); new-model rows use state=="shelved"
       const isShelved = state === "shelved" || (row.ttl !== undefined && row.ttl < 0);
 
       const out: RowAction[] = [];
 
-      // Only the transitions the backend accepts from this state (transition.go).
-      for (const action of allowedTransitionActions(state)) {
-        out.push({
-          key: action,
-          label: TRANSITION_LABEL[action],
-          icon: TRANSITION_ICON[action],
-          onSelect: () => openDialog(action, [row]),
-        });
+      // Flat filter over candidates using the transition gate — replaces the
+      // nested if (isOpen) / else if (isAcked) / else if (isClosed) chains.
+      for (const { key, label, icon } of CANDIDATE_ROW_ACTIONS) {
+        if (isActionAllowed(state, key)) {
+          out.push({
+            key,
+            label,
+            icon,
+            onSelect: () => openDialog(key, [row]),
+          });
+        }
       }
 
+      // comment is always-allowed.
       out.push({
         key: "comment",
         label: "Comment",
@@ -336,47 +400,81 @@ export function AlertsPage() {
       });
 
       if (!isClosed) {
-        out.push({
-          key: isShelved ? "unshelve" : "shelve",
-          label: isShelved ? "Unshelve" : "Shelve",
-          icon: isShelved ? "eye" : "eye-off",
-          onSelect: () => {
-            void (async () => {
-              try {
-                await shelveMut.mutateAsync({
-                  uid: row.uid ?? "",
-                  shelve: !isShelved,
-                  currentTTL: row.ttl,
-                });
-                // Upgrade the old success toast to an undo: the inverse is a
-                // single shelve call flipping `shelve` back, restoring the
-                // record's prior TTL magnitude.
-                toast.undo(`${isShelved ? "Unshelved" : "Shelved"} • ${recordLabel(row)}`, () => {
-                  void (async () => {
-                    try {
-                      await shelveMut.mutateAsync({
-                        uid: row.uid ?? "",
-                        shelve: isShelved,
-                        currentTTL: row.ttl,
-                      });
-                    } catch (e) {
-                      const detail = e instanceof ApiError ? e.detail : "Undo failed";
-                      toast.error(detail);
-                    }
-                  })();
-                });
-              } catch (e) {
-                const detail = e instanceof ApiError ? e.detail : "Action failed";
-                toast.error(detail);
-              }
-            })();
-          },
-        });
+        if (isShelved) {
+          // Unshelve via new comment-based API
+          out.push({
+            key: "unshelve",
+            label: "Unshelve",
+            icon: "eye",
+            onSelect: () => {
+              void (async () => {
+                try {
+                  await commentMut.mutateAsync({ record_uid: row.uid ?? "", type: "unshelve" });
+                  toast.undo(`Unshelved • ${recordLabel(row)}`, () => {
+                    void (async () => {
+                      try {
+                        await commentMut.mutateAsync({ record_uid: row.uid ?? "", type: "shelve" });
+                      } catch (e) {
+                        const detail = e instanceof ApiError ? e.detail : "Undo failed";
+                        toast.error(detail);
+                      }
+                    })();
+                  });
+                } catch (e) {
+                  const detail = e instanceof ApiError ? e.detail : "Action failed";
+                  toast.error(detail);
+                }
+              })();
+            },
+          });
+        } else {
+          // Timed shelve via ShelveDialog
+          out.push({
+            key: "shelve",
+            label: "Shelve",
+            icon: "eye-off",
+            onSelect: () => setShelveDialog([row]),
+          });
+          // Legacy permanent-exempt (ttl=-1) — kept as a clearly-labelled secondary action
+          out.push({
+            key: "permanent-exempt",
+            label: "Permanent exempt (legacy)",
+            icon: "eye-off",
+            onSelect: () => {
+              void (async () => {
+                try {
+                  await shelveMut.mutateAsync({
+                    uid: row.uid ?? "",
+                    shelve: true,
+                    currentTTL: row.ttl,
+                  });
+                  toast.undo(`Permanent exempt • ${recordLabel(row)}`, () => {
+                    void (async () => {
+                      try {
+                        await shelveMut.mutateAsync({
+                          uid: row.uid ?? "",
+                          shelve: false,
+                          currentTTL: row.ttl,
+                        });
+                      } catch (e) {
+                        const detail = e instanceof ApiError ? e.detail : "Undo failed";
+                        toast.error(detail);
+                      }
+                    })();
+                  });
+                } catch (e) {
+                  const detail = e instanceof ApiError ? e.detail : "Action failed";
+                  toast.error(detail);
+                }
+              })();
+            },
+          });
+        }
       }
 
       return out;
     },
-    [openDialog, shelveMut],
+    [openDialog, shelveMut, commentMut],
   );
 
   // Count pill on the kebab: signals a row carries discussion (the full thread
@@ -431,13 +529,13 @@ export function AlertsPage() {
   // dialog because it requires a message.
   const quickActions = useCallback(
     (row: Record_): RowAction[] => {
-      const state = row.state ?? "";
+      const state = (row.state ?? "") as AlertState;
 
       const out: RowAction[] = [];
       // ack/close run inline (no dialog) — gate them on the real transition
       // table so escalated rows get quick ack/close and re-opened rows don't
       // offer transitions the backend rejects.
-      if (canTransition(state, "ack")) {
+      if (isActionAllowed(state, "ack")) {
         out.push({
           key: "ack",
           label: "Acknowledge",
@@ -445,7 +543,7 @@ export function AlertsPage() {
           onSelect: () => inlineAction(row, "ack"),
         });
       }
-      if (canTransition(state, "close")) {
+      if (isActionAllowed(state, "close")) {
         out.push({
           key: "close",
           label: "Close",
@@ -453,14 +551,13 @@ export function AlertsPage() {
           onSelect: () => inlineAction(row, "close"),
         });
       }
-      if (state !== "close") {
-        out.push({
-          key: "comment",
-          label: "Comment",
-          icon: "message-square",
-          onSelect: () => openDialog("comment", [row]),
-        });
-      }
+      // comment is always-allowed.
+      out.push({
+        key: "comment",
+        label: "Comment",
+        icon: "message-square",
+        onSelect: () => openDialog("comment", [row]),
+      });
       return out;
     },
     [inlineAction, openDialog],
@@ -473,12 +570,12 @@ export function AlertsPage() {
   // row is focused and the user isn't typing into a field.
   const rowKeyBindings = useCallback(
     (row: Record_): Record<string, () => void> => {
-      const state = row.state ?? "";
+      const state = (row.state ?? "") as AlertState;
       const bindings: Record<string, () => void> = {
         c: () => openDialog("comment", [row]),
       };
       // 'a' acks inline only where the backend allows it (fresh/open/escalated).
-      if (canTransition(state, "ack")) bindings.a = () => inlineAction(row, "ack");
+      if (isActionAllowed(state, "ack")) bindings.a = () => inlineAction(row, "ack");
       return bindings;
     },
     [inlineAction, openDialog],
@@ -491,16 +588,26 @@ export function AlertsPage() {
   // mirroring the bulk-toolbar surface.
   const contextMenuItems = useCallback(
     (row: Record_): ContextMenuItem[] => {
-      const state = row.state ?? "";
+      const state = (row.state ?? "") as AlertState;
 
       const items: ContextMenuItem[] = [
         {
           key: "copy-json",
-          label: "Copy as JSON",
+          // When a clipboard_template is configured, the copy action expands it
+          // and the label becomes simply "Copy"; without a template it falls back
+          // to pretty-printed JSON and keeps the "Copy as JSON" label.
+          label: config?.clipboard_template ? "Copy" : "Copy as JSON",
           icon: "copy",
           onSelect: async () => {
-            const ok = await copyToClipboard(JSON.stringify(row, null, 2));
-            if (ok) toast.success("Copied JSON to clipboard");
+            const text = expandTemplate(
+              config?.clipboard_template ?? "",
+              row as Record<string, unknown>,
+            );
+            const ok = await copyToClipboard(text);
+            if (ok)
+              toast.success(
+                config?.clipboard_template ? "Copied to clipboard" : "Copied JSON to clipboard",
+              );
             else toast.error("Clipboard unavailable");
           },
         },
@@ -519,16 +626,19 @@ export function AlertsPage() {
         },
       ];
 
-      // Same transition table as the kebab/quick/keyboard surfaces.
-      for (const action of allowedTransitionActions(state)) {
-        items.push({
-          key: action,
-          label: TRANSITION_LABEL[action],
-          icon: TRANSITION_ICON[action],
-          onSelect: () => openDialog(action, [row]),
-        });
+      // Flat filter over candidates using the transition gate.
+      for (const { key, label, icon } of CANDIDATE_ROW_ACTIONS) {
+        if (isActionAllowed(state, key)) {
+          items.push({
+            key,
+            label,
+            icon,
+            onSelect: () => openDialog(key, [row]),
+          });
+        }
       }
 
+      // comment is always-allowed.
       items.push({
         key: "comment",
         label: "Comment",
@@ -547,151 +657,194 @@ export function AlertsPage() {
 
       return items;
     },
-    [openDialog, confirmDelete],
+    [openDialog, confirmDelete, config?.clipboard_template],
   );
 
-  const bulkActions = useCallback((rows: Record_[]) => {
-    // A bulk transition applies only to the selected rows the backend would
-    // accept it for. Gate each button on that subset (and send only those rows)
-    // so a mixed-state selection can't silently partial-fail, and the count
-    // reflects what will actually change.
-    const applicable = (action: TransitionAction) =>
-      rows.filter((r) => canTransition(r.state ?? "", action));
-    const ackRows = applicable("ack");
-    const closeRows = applicable("close");
-    const escRows = applicable("esc");
-    const openRows = applicable("open");
-    const openBulkDialog = (type: ActionType, records: Record_[]) => setDialog({ type, records });
-    return (
-      <>
-        {ackRows.length > 0 ? (
+  const bulkActions = useCallback(
+    (rows: Record_[]) => {
+      const openBulkDialog = (type: ActionType) => setDialog({ type, records: rows });
+      const total = list.data?.meta.total ?? 0;
+      const pageCount = rows.length;
+
+      // Transition eligibility: intersection of valid moves across all selected
+      // rows. When selectAllMode is true we cannot know off-page states, so we
+      // show all state buttons as enabled (with a tooltip caveat handled via
+      // the disabled prop being false).
+      const valid = selectAllMode
+        ? new Set<ActionType>(["ack", "close", "open", "esc"])
+        : validBulkStates(rows);
+
+      // Label suffix: show "all N" when operating on the full query scope.
+      const countLabel = selectAllMode ? `all ${total}` : String(pageCount);
+
+      return (
+        <>
+          {/* State-transition buttons gated on validity */}
+          {valid.has("ack") ? (
+            <Button
+              size="sm"
+              variant="secondary"
+              leadingIcon="thumbs-up"
+              onClick={() => openBulkDialog("ack")}
+            >
+              Acknowledge ({countLabel})
+            </Button>
+          ) : null}
+          {valid.has("close") ? (
+            <Button
+              size="sm"
+              variant="secondary"
+              leadingIcon="lock"
+              onClick={() => openBulkDialog("close")}
+            >
+              Close ({countLabel})
+            </Button>
+          ) : null}
+          {valid.has("esc") ? (
+            <Button
+              size="sm"
+              variant="secondary"
+              leadingIcon="rotate-cw"
+              onClick={() => openBulkDialog("esc")}
+            >
+              Re-escalate ({countLabel})
+            </Button>
+          ) : null}
+          {valid.has("open") ? (
+            <Button
+              size="sm"
+              variant="secondary"
+              leadingIcon="rotate-cw"
+              onClick={() => openBulkDialog("open")}
+            >
+              Re-open ({countLabel})
+            </Button>
+          ) : null}
+          {/* comment is always-allowed */}
           <Button
             size="sm"
             variant="secondary"
-            leadingIcon="thumbs-up"
-            onClick={() => openBulkDialog("ack", ackRows)}
+            leadingIcon="message-square"
+            onClick={() => openBulkDialog("comment")}
           >
-            Acknowledge ({ackRows.length})
+            Comment ({pageCount})
           </Button>
-        ) : null}
-        {closeRows.length > 0 ? (
+          {/* Tag / set fields */}
           <Button
             size="sm"
             variant="secondary"
-            leadingIcon="lock"
-            onClick={() => openBulkDialog("close", closeRows)}
+            leadingIcon="edit"
+            onClick={() => setBulkTagOpen(true)}
           >
-            Close ({closeRows.length})
+            Tag / set fields ({countLabel})
           </Button>
-        ) : null}
-        {escRows.length > 0 ? (
-          <Button
-            size="sm"
-            variant="secondary"
-            leadingIcon="rotate-cw"
-            onClick={() => openBulkDialog("esc", escRows)}
-          >
-            Re-escalate ({escRows.length})
-          </Button>
-        ) : null}
-        {openRows.length > 0 ? (
-          <Button
-            size="sm"
-            variant="secondary"
-            leadingIcon="rotate-cw"
-            onClick={() => openBulkDialog("open", openRows)}
-          >
-            Re-open ({openRows.length})
-          </Button>
-        ) : null}
-        <Button
-          size="sm"
-          variant="secondary"
-          leadingIcon="message-square"
-          onClick={() => openBulkDialog("comment", rows)}
-        >
-          Comment ({rows.length})
-        </Button>
-      </>
-    );
-  }, []);
+          {/* "Select all N matching this filter" affordance */}
+          {!selectAllMode && total > pageCount && pageCount > 0 ? (
+            <Button
+              size="sm"
+              variant="ghost"
+              onClick={() => {
+                setSelectAllMode(true);
+              }}
+            >
+              Select all {total} matching this filter
+            </Button>
+          ) : null}
+          {selectAllMode ? (
+            <Button
+              size="sm"
+              variant="ghost"
+              onClick={() => {
+                setSelectAllMode(false);
+              }}
+            >
+              Clear selection scope
+            </Button>
+          ) : null}
+        </>
+      );
+    },
+    [list.data?.meta.total, selectAllMode],
+  );
 
   const submitDialog = useCallback(
     async ({ message }: { message: string }) => {
       if (!dialog) return;
       const { type, records } = dialog;
+
+      if (type === "comment") {
+        // comment still uses the per-record /comment loop (bulk_state does not
+        // write per-record notes).
+        setBulkSubmitting(true);
+        let results: PromiseSettledResult<unknown>[];
+        try {
+          results = await Promise.allSettled(
+            records.map((r) =>
+              commentMut.mutateAsync({
+                record_uid: r.uid ?? "",
+                type,
+                ...(message ? { message } : {}),
+              }),
+            ),
+          );
+        } finally {
+          setBulkSubmitting(false);
+        }
+        const ok = results.filter((r) => r.status === "fulfilled").length;
+        const failed = results.length - ok;
+        if (failed === 0) {
+          toast.success(`${ok} alert${ok === 1 ? "" : "s"} updated`);
+          setDialog(null);
+          setSelectedKeys(new Set());
+        } else {
+          // Surface the backend's actual reason (e.g. an invalid-transition 403)
+          // instead of a bare count, so the operator knows why it failed and
+          // whether to retry.
+          const firstRejected = results.find(
+            (r): r is PromiseRejectedResult => r.status === "rejected",
+          );
+          const detail =
+            firstRejected && firstRejected.reason instanceof ApiError
+              ? firstRejected.reason.detail
+              : "";
+          toast.error(
+            `${failed} of ${records.length} failed${detail ? `: ${detail}` : ""}; ${ok} succeeded`,
+          );
+        }
+        return;
+      }
+
+      // State-transition types (ack|close|open|esc): one bulk_state call.
+      // selectAllMode → use the live page query (all matching records);
+      // default → build an IN-uid condition from the visible selection.
+      const bulkQ = selectAllMode ? q : encodeUidsAsQ(records.map((r) => r.uid ?? ""));
       setBulkSubmitting(true);
-      let results: PromiseSettledResult<unknown>[];
       try {
-        results = await Promise.allSettled(
-          records.map((r) =>
-            commentMut.mutateAsync({
-              record_uid: r.uid ?? "",
-              type,
-              ...(message ? { message } : {}),
-            }),
-          ),
-        );
+        const resp = await bulkStateMut.mutateAsync({
+          ...(bulkQ ? { q: bulkQ } : {}),
+          state: type,
+          ...(message ? { message } : {}),
+        });
+        const pl = resp.matched === 1 ? "" : "s";
+        const mainMsg = `${resp.matched} alert${pl} updated`;
+        const partialNote =
+          resp.matched !== resp.updated
+            ? ` (${resp.updated} changed, ${resp.matched - resp.updated} already in target state)`
+            : "";
+        // Description must carry both the count and the caveat because tests
+        // assert against t.description.
+        toast.success(`${mainMsg}${partialNote} — ${BULK_STATE_CAVEAT}`);
+        setDialog(null);
+        setSelectedKeys(new Set());
+        setSelectAllMode(false);
+      } catch (e) {
+        const detail = e instanceof ApiError ? e.detail : "Bulk action failed";
+        toast.error(detail);
       } finally {
         setBulkSubmitting(false);
       }
-      const ok = results.filter((r) => r.status === "fulfilled").length;
-      const failed = results.length - ok;
-      if (failed === 0) {
-        // Bulk ack/close keep the confirm dialog but gain the same undo
-        // affordance as the inline path: a single re-open of every uid that
-        // succeeded (compensating events — the ack/close stays on each
-        // record's timeline). esc/comment have no meaningful single-step
-        // inverse, so they keep the plain success toast.
-        const undoableUids =
-          type === "ack" || type === "close" ? records.map((r) => r.uid ?? "").filter(Boolean) : [];
-        if (undoableUids.length > 0) {
-          // Keep the documented count-bearing copy ("N alerts updated") AND the
-          // undo affordance: the description states how many records changed,
-          // the Undo button re-opens every uid that succeeded (compensating
-          // events). esc/comment fall through to the plain success toast below.
-          toast.undo(`${ok} alert${ok === 1 ? "" : "s"} updated`, () => {
-            void (async () => {
-              const undoResults = await Promise.allSettled(
-                undoableUids.map((uid) =>
-                  commentMut.mutateAsync({ record_uid: uid, type: "open" }),
-                ),
-              );
-              const undoFailed = undoResults.filter((r) => r.status === "rejected").length;
-              if (undoFailed > 0) toast.error(`Undo failed for ${undoFailed} alerts`);
-            })();
-          });
-        } else {
-          toast.success(`${ok} alert${ok === 1 ? "" : "s"} updated`);
-        }
-        setDialog(null);
-        // Deselect only the rows this action actually targeted. bulkActions now
-        // sends per-action subsets (e.g. "Re-escalate (2)" on a mixed selection),
-        // so clearing the whole selection would drop rows the operator still
-        // wants to act on. Single-row (kebab) actions delete a row that may not
-        // be in the set at all — a harmless no-op.
-        setSelectedKeys((prev) => {
-          const next = new Set(prev);
-          for (const r of records) next.delete(r.uid ?? "");
-          return next;
-        });
-      } else {
-        // Surface the backend's actual reason (e.g. an invalid-transition 403)
-        // instead of a bare count, so the operator knows why it failed and
-        // whether to retry.
-        const firstRejected = results.find(
-          (r): r is PromiseRejectedResult => r.status === "rejected",
-        );
-        const detail =
-          firstRejected && firstRejected.reason instanceof ApiError
-            ? firstRejected.reason.detail
-            : "";
-        toast.error(
-          `${failed} of ${records.length} failed${detail ? `: ${detail}` : ""}; ${ok} succeeded`,
-        );
-      }
     },
-    [commentMut, dialog],
+    [commentMut, bulkStateMut, dialog, selectAllMode, q],
   );
 
   // Distinguish a genuinely empty install (no alerts ingested yet) from a
@@ -794,7 +947,10 @@ export function AlertsPage() {
     [updateSearch],
   );
   const handlePageChange = useCallback(
-    (next: { page: number }) => updateSearch({ page: next.page }),
+    (next: { page: number }) => {
+      setSelectAllMode(false);
+      updateSearch({ page: next.page });
+    },
     [updateSearch],
   );
   const searchProp = useMemo(
@@ -876,7 +1032,13 @@ export function AlertsPage() {
           emptyState={emptyState}
           selectable
           selectedKeys={selectedKeys}
-          onSelectionChange={setSelectedKeys}
+          onSelectionChange={(keys) => {
+            setSelectedKeys(keys);
+            // Reset selectAllMode when the user manually changes the selection
+            // (deselecting a row, or unchecking select-all should exit the
+            // "all N matching" scope).
+            if (keys.size === 0) setSelectAllMode(false);
+          }}
           bulkActions={bulkActions}
           // SearchBar lives in DataTable's toolbar row so the bulk-action
           // bar that appears on row selection sits next to it instead of
@@ -936,7 +1098,10 @@ export function AlertsPage() {
         <ActionDialog
           open
           onOpenChange={(o) => {
-            if (!o) setDialog(null);
+            if (!o) {
+              setDialog(null);
+              setSelectAllMode(false);
+            }
           }}
           actionType={dialog.type}
           records={dialog.records}
@@ -944,10 +1109,58 @@ export function AlertsPage() {
           submitting={bulkSubmitting}
         />
       ) : null}
+      <BulkTagDialog
+        open={bulkTagOpen}
+        onOpenChange={(o) => setBulkTagOpen(o)}
+        q={selectAllMode ? q : encodeUidsAsQ([...selectedKeys])}
+        recordCount={selectAllMode ? (list.data?.meta.total ?? 0) : selectedKeys.size}
+      />
       <ConfirmDeleteDialog
         state={confirmDelete.state}
         onCancel={confirmDelete.cancel}
         onConfirm={() => void confirmDelete.confirm()}
+      />
+      <ShelveDialog
+        open={shelveDialog !== null}
+        records={shelveDialog ?? []}
+        onOpenChange={(o) => {
+          if (!o) setShelveDialog(null);
+        }}
+        submitting={commentMut.isPending}
+        onConfirm={async ({ duration, message }) => {
+          if (!shelveDialog) return;
+          try {
+            for (const r of shelveDialog) {
+              await commentMut.mutateAsync({
+                record_uid: r.uid ?? "",
+                type: "shelve",
+                ...(duration ? { duration } : {}),
+                ...(message ? { message } : {}),
+              });
+            }
+            const label =
+              shelveDialog.length === 1
+                ? recordLabel(shelveDialog[0]!)
+                : `${shelveDialog.length} alerts`;
+            toast.undo(`Shelved • ${label}`, () => {
+              void (async () => {
+                try {
+                  for (const r of shelveDialog) {
+                    await commentMut.mutateAsync({ record_uid: r.uid ?? "", type: "unshelve" });
+                  }
+                } catch (e) {
+                  const detail = e instanceof ApiError ? e.detail : "Undo failed";
+                  toast.error(detail);
+                }
+              })();
+            });
+          } catch (e) {
+            const detail = e instanceof ApiError ? e.detail : "Action failed";
+            toast.error(detail);
+          } finally {
+            setShelveDialog(null);
+          }
+        }}
       />
       <InjectAlertsDialog open={injectOpen} onOpenChange={setInjectOpen} />
     </div>

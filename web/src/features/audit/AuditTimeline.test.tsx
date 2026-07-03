@@ -86,6 +86,45 @@ describe("AuditTimeline", () => {
     expect(screen.getByText(/bob/)).toBeInTheDocument();
   });
 
+  it("renders auth-action rows with correct label and badge", async () => {
+    mswServer.use(
+      http.get("/api/v1/audit", () =>
+        HttpResponse.json({
+          data: [
+            {
+              uid: "a1",
+              object_type: "auth",
+              object_id: "alice",
+              action: "login_failed",
+              username: "alice",
+              method: "local",
+              summary: "login failed: invalid credentials",
+              date_epoch: 1747300000,
+            },
+            {
+              uid: "a2",
+              object_type: "auth",
+              object_id: "",
+              action: "logout",
+              date_epoch: 1747300100,
+            },
+          ],
+          meta: { count: 2, limit: 5, offset: 0, total: 2 },
+        }),
+      ),
+    );
+    const Wrapper = wrap();
+    render(
+      <Wrapper>
+        <AuditTimeline objectType="auth" objectId="alice" />
+      </Wrapper>,
+    );
+    await waitFor(() => expect(screen.getByText("login failed")).toBeInTheDocument());
+    expect(screen.getByText("logout")).toBeInTheDocument();
+    // username falls back to "system" when missing (logout path)
+    expect(screen.getByText(/system/)).toBeInTheDocument();
+  });
+
   it("falls back to 'system' when username is missing", async () => {
     mswServer.use(
       http.get("/api/v1/audit", () =>

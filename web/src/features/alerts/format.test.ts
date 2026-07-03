@@ -1,10 +1,14 @@
 import { describe, expect, it, vi } from "vitest";
 import {
+  formatCountdown,
   formatRelativeTime,
+  formatShelveUntil,
   formatTTL,
+  humanDuration,
   severityBadgeVariant,
   stateBadgeVariant,
   stateLabel,
+  trendLabel,
   trimDate,
 } from "./format";
 
@@ -148,6 +152,67 @@ describe("trimDate", () => {
   });
 });
 
+describe("formatCountdown", () => {
+  it("returns '' for zero (no deadline)", () => {
+    expect(formatCountdown(0)).toBe("");
+  });
+
+  it("returns '' for undefined", () => {
+    expect(formatCountdown(undefined)).toBe("");
+  });
+
+  it("returns '' when deadline is in the past", () => {
+    const pastEpoch = Math.floor(Date.now() / 1000) - 3600;
+    expect(formatCountdown(pastEpoch)).toBe("");
+  });
+
+  it("returns 'in Xh' for a future deadline 3 hours away", () => {
+    vi.useFakeTimers();
+    const now = new Date("2026-06-30T12:00:00Z");
+    vi.setSystemTime(now);
+    try {
+      const futureEpoch = Math.floor(now.getTime() / 1000) + 3 * 3600;
+      expect(formatCountdown(futureEpoch)).toBe("in 3h");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("returns 'in Xh Ym' for a deadline with hours and minutes remaining", () => {
+    vi.useFakeTimers();
+    const now = new Date("2026-06-30T12:00:00Z");
+    vi.setSystemTime(now);
+    try {
+      const futureEpoch = Math.floor(now.getTime() / 1000) + 2 * 3600 + 30 * 60;
+      expect(formatCountdown(futureEpoch)).toBe("in 2h 30m");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+});
+
+describe("trendLabel", () => {
+  it("returns 'Severity escalated' for moreSevere", () => {
+    expect(trendLabel("moreSevere")).toBe("Severity escalated");
+  });
+
+  it("returns 'Severity decreased' for lessSevere", () => {
+    expect(trendLabel("lessSevere")).toBe("Severity decreased");
+  });
+
+  it("returns 'No change' for noChange", () => {
+    expect(trendLabel("noChange")).toBe("No change");
+  });
+
+  it("returns '' for empty string", () => {
+    expect(trendLabel("")).toBe("");
+  });
+
+  it("returns '' for unknown trend value", () => {
+    expect(trendLabel("unknown")).toBe("");
+  });
+});
+
 describe("formatTTL", () => {
   it("returns 'shelved' for negative ttl regardless of date_epoch", () => {
     expect(formatTTL(-1, 1_700_000_000)).toBe("shelved");
@@ -175,5 +240,54 @@ describe("formatTTL", () => {
     // 75 seconds from now: 1m + ~15s
     const out = formatTTL(75, now);
     expect(out).toMatch(/^in 1m \d{2}s$|^in 1m$/);
+  });
+});
+
+describe("humanDuration (exported)", () => {
+  it("is exported and returns a non-empty string for positive input", () => {
+    expect(humanDuration(3600)).toBe("1h");
+    expect(humanDuration(3661)).toBe("1h 1m");
+    expect(humanDuration(86400)).toBe("1d");
+    expect(humanDuration(90061)).toBe("1d 1h");
+    expect(humanDuration(45)).toBe("45s");
+  });
+});
+
+describe("formatShelveUntil", () => {
+  it("returns '' for undefined", () => {
+    expect(formatShelveUntil(undefined)).toBe("");
+  });
+
+  it("returns '' for zero", () => {
+    expect(formatShelveUntil(0)).toBe("");
+  });
+
+  it("returns 'expired (pending sweep)' when deadline is in the past", () => {
+    const past = Math.floor(Date.now() / 1000) - 3600;
+    expect(formatShelveUntil(past)).toBe("expired (pending sweep)");
+  });
+
+  it("returns 'returns in Xh' for a future deadline 2 hours away", () => {
+    vi.useFakeTimers();
+    const now = new Date("2026-06-30T12:00:00Z");
+    vi.setSystemTime(now);
+    try {
+      const futureEpoch = Math.floor(now.getTime() / 1000) + 2 * 3600;
+      expect(formatShelveUntil(futureEpoch)).toBe("returns in 2h");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("returns 'returns in Xh Ym' for a deadline with hours and minutes", () => {
+    vi.useFakeTimers();
+    const now = new Date("2026-06-30T12:00:00Z");
+    vi.setSystemTime(now);
+    try {
+      const futureEpoch = Math.floor(now.getTime() / 1000) + 3 * 3600 + 30 * 60;
+      expect(formatShelveUntil(futureEpoch)).toBe("returns in 3h 30m");
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

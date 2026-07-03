@@ -6,8 +6,17 @@ import { Badge } from "@/shared/ui/Badge";
 import { Button } from "@/shared/ui/Button";
 import { toast } from "@/shared/ui/toast/useToast";
 import { ApiError } from "@/lib/api/client";
+import { formatRelativeTime } from "@/lib/format/time";
 import { useMyApiKeys, useDeleteMyApiKey } from "./api";
 import { CreateApiKeyForm } from "./CreateApiKeyForm";
+
+const STALE_DAYS = 30;
+const STALE_THRESHOLD_SEC = STALE_DAYS * 86_400;
+
+function isStale(lastUsedAt: number | undefined): boolean {
+  if (!lastUsedAt) return true; // never used
+  return Math.floor(Date.now() / 1000) - lastUsedAt > STALE_THRESHOLD_SEC;
+}
 
 function fmtDate(unix?: number): string {
   if (!unix) return "—";
@@ -68,9 +77,25 @@ export function ApiKeysSection() {
               }}
             >
               <div style={{ flex: 1 }}>
-                <div style={{ fontWeight: 600 }}>{k.name}</div>
+                <div
+                  style={{
+                    fontWeight: 600,
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "var(--space-1)",
+                  }}
+                >
+                  {k.name}
+                  {isStale(k.last_used_at) ? (
+                    <span data-stale>
+                      <Badge variant="warning">Stale</Badge>
+                    </span>
+                  ) : null}
+                </div>
                 <div style={{ color: "var(--color-text-muted)", fontSize: "var(--font-size-sm)" }}>
-                  {k.key_prefix}… · expires {fmtDate(k.expires_at)}
+                  {k.key_prefix}… · expires {fmtDate(k.expires_at)} · last used{" "}
+                  {k.last_used_at ? `${formatRelativeTime(k.last_used_at)} ago` : "never"}
+                  {k.use_count ? ` · ${k.use_count} uses` : null}
                 </div>
                 <div
                   style={{

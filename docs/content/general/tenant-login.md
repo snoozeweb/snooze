@@ -163,6 +163,53 @@ When at least one rule exists, `GET /api/v1/login` includes
 `"tenant_match_enabled": true` so the login UI can tell the user that
 organization routing is automatic.
 
+## Managing routing rules in the console
+
+Routing rules can be managed visually in the web console without using `curl`.
+
+**Where to find it:** Admin → **Org matching** (sidebar).
+
+The page lists all `tenant_match` rules with four columns:
+
+| Column | Description |
+|---|---|
+| Match type | Badge (Group / Domain / Login) indicating what attribute is compared |
+| Match value | The literal string matched (case-insensitive) |
+| Tenant | The target tenant slug |
+| Priority | Lower = evaluated first; 0 is the default |
+
+### Creating a rule
+
+1. Click **New rule** in the toolbar.
+2. Select a **Match type** (Group / Domain / Login).
+3. Enter the **Match value**:
+   - Group → the exact group name as returned by the IdP or LDAP (case-insensitive).
+   - Domain → the email domain, e.g. `example.com`.
+   - Login → the username, case-insensitive.
+4. Choose the **Target tenant** from the dropdown (populated from your active tenant list).
+5. Optionally adjust the **Priority** (default 0). Lower values are evaluated first.
+6. Click **Create**.
+
+If you attempt to create a duplicate `(match type, match)` pair the server returns a 409
+conflict and the drawer shows: _"A rule for this (match type, match) pair already exists."_
+
+### Editing and deleting rules
+
+- Click a row to open the rule in the editor drawer. Modify any field and click **Save**.
+- Use the row context menu (⋯) → **Delete**, then confirm the dialog.
+
+### The `fail_closed` safety toggle
+
+The **Tenant routing** tab in **Admin → Settings** exposes the `tenant_match.fail_closed`
+boolean toggle (default **off**):
+
+- **Off (default):** a user who matches no rule lands in the `default` tenant.
+- **On:** a user who matches no rule (and supplied no explicit org) is denied login.
+
+Enable `fail_closed` only _after_ you have defined routing rules for all users who need
+to land in a non-default tenant. Enabling it prematurely will lock out users who have no
+matching rule.
+
 ## API reference
 
 | Endpoint | Description |

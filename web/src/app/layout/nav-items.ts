@@ -53,6 +53,14 @@ export const NAV_ITEMS: NavItem[] = [
     shortcut: "mod+5",
   },
   {
+    to: "/web/heartbeats",
+    label: "Heartbeats",
+    icon: "activity",
+    group: "configure",
+    permissions: ["ro_heartbeat", "rw_heartbeat"],
+    shortcut: "mod+6",
+  },
+  {
     to: "/web/admin/users",
     label: "Users",
     icon: "users",
@@ -65,6 +73,13 @@ export const NAV_ITEMS: NavItem[] = [
     icon: "user-plus",
     group: "admin",
     permissions: ["ro_role", "rw_role"],
+  },
+  {
+    to: "/web/admin/groups",
+    label: "Groups",
+    icon: "users",
+    group: "admin",
+    permissions: ["ro_group", "rw_group"],
   },
   {
     // "key" is not in ICON_NAMES; "lock" is the closest existing glyph.
@@ -109,11 +124,33 @@ export const NAV_ITEMS: NavItem[] = [
     group: "admin",
     permissions: ["ro_stats", "rw_stats"],
   },
+  {
+    to: "/web/admin/audit",
+    label: "Security Audit",
+    // "shield" is not in ICON_NAMES; "lock" is the nearest available glyph.
+    icon: "lock",
+    group: "admin",
+    permissions: ["ro_audit", "rw_audit"],
+  },
+  {
+    to: "/web/admin/forward",
+    label: "Federation",
+    icon: "server",
+    group: "admin",
+  },
   { to: "/web/admin/status", label: "Status", icon: "activity", group: "admin" },
   {
     to: "/web/admin/tenants",
     label: "Tenants",
     icon: "layers",
+    group: "admin",
+    permissions: ["ro_tenant", "rw_tenant"],
+  },
+  {
+    // "git-branch" is not in ICON_NAMES; "sliders" is the closest available glyph.
+    to: "/web/admin/tenant-routing",
+    label: "Org matching",
+    icon: "sliders",
     group: "admin",
     permissions: ["ro_tenant", "rw_tenant"],
   },

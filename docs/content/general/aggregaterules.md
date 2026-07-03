@@ -126,6 +126,46 @@ Two **enabled** rules may not share the same `fields` list. If you attempt to cr
 
 Even during the throttle period, closed alerts getting new hits are being re-opened and therefore notified. However, an anti-flapping feature is present to cap the number of the times this behavior can happen. by default it is set to 3, meaning only 3 subsequent hits can be notified until the throttle period ends.
 
+## Trend indication and severity escalation bypass
+
+When the `aggregaterule` plugin merges an incoming alert into an existing
+aggregate, it stamps two derived fields onto the record before passing it to the
+rest of the pipeline:
+
+`previous_severity`  
+The severity of the existing aggregate record at the moment this occurrence
+arrived. Empty string on the first occurrence (no prior record exists).
+
+`trend_indication`  
+A computed transition descriptor. One of:
+
+- `moreSevere` — the incoming severity is ranked higher than `previous_severity`
+  on the canonical syslog ladder (`emerg > alert > crit > err > warn > notice >
+  info > debug > ok`).
+- `lessSevere` — the incoming severity is ranked lower.
+- `noChange` — same severity, or the ladder cannot rank one or both values.
+
+**Throttle bypass on escalation.** When `trend_indication` is `moreSevere` the
+aggregate rule immediately resets its throttle window and passes the record on,
+even if the window has not yet expired. This ensures a severity escalation (e.g.
+`warning → critical`) is never silently swallowed mid-throttle. This bypass is
+unconditional — it fires independently of whether `severity` is listed in the
+rule's `watch` list. Listing `severity` in `watch` additionally handles the
+`lessSevere` direction (de-escalations) and `noChange` value changes in other
+watched fields.
+
+Both fields are present on the record for downstream use in `rule` conditions
+and `notification` conditions. For example, to notify only on escalations:
+
+```yaml
+# Notification condition: only send when severity got worse
+condition: ["=", "trend_indication", "moreSevere"]
+```
+
+These fields are never stored as first-class database columns; they exist as
+record-level metadata injected by the plugin for the duration of the pipeline
+run and are persisted into the record document's `raw`/extra map.
+
 ## Web interface
 
 ![](./images/web_aggregaterules.png)

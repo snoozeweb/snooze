@@ -120,8 +120,10 @@ export function SettingCard({ field, name, initialValue, recordUid, onChange }: 
   const notSet = recordUid === undefined;
   const submitting = create.isPending || update.isPending || remove.isPending;
 
+  const cardClass = field.danger ? `${styles.card} ${styles.cardDanger}` : styles.card;
+
   return (
-    <section className={styles.card}>
+    <section className={cardClass}>
       <div className={styles.header}>
         <label htmlFor={fieldId} className={styles.label} id={`label-${fieldId}`}>
           {field.display_name}
@@ -133,6 +135,13 @@ export function SettingCard({ field, name, initialValue, recordUid, onChange }: 
         ) : null}
       </div>
       {field.description ? <p className={styles.description}>{field.description}</p> : null}
+      {field.danger && value === false ? (
+        <p className={styles.dangerWarning}>
+          Alert intake is <strong>paused</strong> for this tenant. All{" "}
+          <code>POST /api/v1/alerts</code> requests and webhook receivers return <code>503</code>.
+          Re-enable to restore normal flow (takes effect within ≤ 5 s).
+        </p>
+      ) : null}
       <div className={styles.control}>
         <MetadataField id={fieldId} field={field} value={value} onChange={(v) => setValue(v)} />
       </div>
@@ -153,7 +162,7 @@ export function SettingCard({ field, name, initialValue, recordUid, onChange }: 
         </Button>
         <Button
           size="sm"
-          variant="primary"
+          variant={field.danger ? "danger" : "primary"}
           onClick={() => void handleSave()}
           loading={create.isPending || update.isPending}
           disabled={!dirty || submitting}

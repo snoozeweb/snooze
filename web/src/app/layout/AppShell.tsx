@@ -8,6 +8,7 @@ import { RouteGuard } from "./RouteGuard";
 import { useShortcut } from "@/shared/hooks/useShortcut";
 import { useIsMobileShell } from "@/shared/hooks/useIsMobileShell";
 import { useAuth } from "@/lib/auth/store";
+import { useConsoleConfig } from "@/features/config/api";
 import { pickBreadcrumb } from "./breadcrumb";
 import styles from "./AppShell.module.css";
 
@@ -16,6 +17,16 @@ export function AppShell() {
   const navigate = useNavigate();
   const isMobile = useIsMobileShell();
   const { isAuthenticated } = useAuth();
+  const { data: config } = useConsoleConfig();
+
+  // Drive the browser tab title from the server config. Falls back to "Snooze"
+  // when the field is empty (CONSOLE_FALLBACK.title = ""). The config is primed
+  // synchronously from the TanStack Query cache (fetchConsoleConfig ran at boot),
+  // so there is no observable flicker for orgs with a custom title.
+  const appTitle = config?.title || "Snooze";
+  useEffect(() => {
+    document.title = appTitle;
+  }, [appTitle]);
 
   // Reactive cross-tab logout guard: when another tab clears the token from
   // localStorage the auth store's storage-event listener sets isAuthenticated

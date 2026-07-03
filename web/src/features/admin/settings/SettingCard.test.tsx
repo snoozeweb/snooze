@@ -242,3 +242,103 @@ describe("SettingCard", () => {
     expect(screen.queryByRole("button", { name: /revert to default/i })).toBeNull();
   });
 });
+
+describe("SettingCard — danger modifier", () => {
+  const dangerField: FormField = {
+    display_name: "Alert intake enabled",
+    component: "Switch",
+    description: "Master kill-switch for alert ingestion.",
+    default_value: true,
+    danger: true,
+    group: "ingest",
+  };
+
+  it("applies cardDanger class when field.danger is true", () => {
+    const Wrapper = wrap();
+    const { container } = render(
+      <Wrapper>
+        <SettingCard
+          field={dangerField}
+          name="ingest.allow"
+          initialValue={false}
+          recordUid="s-ingest"
+          onChange={() => {}}
+        />
+      </Wrapper>,
+    );
+    const card = container.querySelector("section");
+    expect(card?.className).toMatch(/cardDanger/);
+  });
+
+  it("renders the Save button with variant danger when field.danger is true", () => {
+    const Wrapper = wrap();
+    render(
+      <Wrapper>
+        <SettingCard
+          field={dangerField}
+          name="ingest.allow"
+          initialValue={false}
+          recordUid="s-ingest"
+          onChange={() => {}}
+        />
+      </Wrapper>,
+    );
+    // The danger Save button should carry a data attribute or class that
+    // identifies the danger variant. We assert the button exists; the
+    // variant is applied as a CSS module class — check the element has a
+    // class containing "danger".
+    const saveBtn = screen.getByRole("button", { name: /^save$/i });
+    expect(saveBtn.className).toMatch(/danger/i);
+  });
+
+  it("shows the pause warning caption when field.danger is true and value is false", () => {
+    const Wrapper = wrap();
+    render(
+      <Wrapper>
+        <SettingCard
+          field={dangerField}
+          name="ingest.allow"
+          initialValue={false}
+          recordUid="s-ingest"
+          onChange={() => {}}
+        />
+      </Wrapper>,
+    );
+    expect(screen.getByText(/Alert intake is/i)).toBeInTheDocument();
+    expect(screen.getByText(/paused/i)).toBeInTheDocument();
+  });
+
+  it("does not show the pause warning when field.danger is true but value is true", () => {
+    const Wrapper = wrap();
+    render(
+      <Wrapper>
+        <SettingCard
+          field={dangerField}
+          name="ingest.allow"
+          initialValue={true}
+          recordUid="s-ingest"
+          onChange={() => {}}
+        />
+      </Wrapper>,
+    );
+    expect(screen.queryByText(/Alert intake is/i)).toBeNull();
+  });
+
+  it("does not apply danger class or show warning on a non-danger field", () => {
+    const Wrapper = wrap();
+    const { container } = render(
+      <Wrapper>
+        <SettingCard
+          field={switchField}
+          name="metrics_enabled"
+          initialValue={true}
+          recordUid="s-metrics"
+          onChange={() => {}}
+        />
+      </Wrapper>,
+    );
+    const card = container.querySelector("section");
+    expect(card?.className).not.toMatch(/cardDanger/);
+    expect(screen.queryByText(/Alert intake is/i)).toBeNull();
+  });
+});

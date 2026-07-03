@@ -230,6 +230,45 @@ const rolesRoute = createRoute({
   },
 });
 
+type GroupsSearchParams = {
+  uid?: string;
+  page?: number;
+  orderby?: string;
+  asc?: boolean;
+  search?: string;
+};
+
+const groupsRoute = createRoute({
+  getParentRoute: () => webLayoutRoute,
+  path: "/web/admin/groups",
+  component: lazyRouteComponent(() => import("@/features/admin/groups/GroupsPage"), "GroupsPage"),
+  validateSearch: (raw): GroupsSearchParams => {
+    const out: Record<string, unknown> = {};
+    if (typeof raw["uid"] === "string") out["uid"] = raw["uid"];
+    const pageRaw = raw["page"];
+    const page =
+      typeof pageRaw === "number"
+        ? pageRaw
+        : typeof pageRaw === "string" && /^\d+$/.test(pageRaw)
+          ? Number(pageRaw)
+          : undefined;
+    if (page !== undefined) out["page"] = page;
+    if (typeof raw["orderby"] === "string") out["orderby"] = raw["orderby"];
+    const ascRaw = raw["asc"];
+    const asc =
+      typeof ascRaw === "boolean"
+        ? ascRaw
+        : ascRaw === "true"
+          ? true
+          : ascRaw === "false"
+            ? false
+            : undefined;
+    if (asc !== undefined) out["asc"] = asc;
+    if (typeof raw["search"] === "string") out["search"] = raw["search"];
+    return out as GroupsSearchParams;
+  },
+});
+
 type EnvironmentsSearchParams = {
   uid?: string;
   page?: number;
@@ -457,6 +496,88 @@ const tenantsRoute = createRoute({
             : undefined;
     if (asc !== undefined) out["asc"] = asc;
     return out as TenantsSearchParams;
+  },
+});
+
+type ForwardSearchParams = {
+  uid?: string;
+  page?: number;
+  orderby?: string;
+  asc?: boolean;
+  search?: string;
+};
+
+const forwardRoute = createRoute({
+  getParentRoute: () => webLayoutRoute,
+  path: "/web/admin/forward",
+  component: lazyRouteComponent(
+    () => import("@/features/admin/forward/ForwardPage"),
+    "ForwardPage",
+  ),
+  validateSearch: (raw): ForwardSearchParams => {
+    const out: Record<string, unknown> = {};
+    if (typeof raw["uid"] === "string") out["uid"] = raw["uid"];
+    const pageRaw = raw["page"];
+    const page =
+      typeof pageRaw === "number"
+        ? pageRaw
+        : typeof pageRaw === "string" && /^\d+$/.test(pageRaw)
+          ? Number(pageRaw)
+          : undefined;
+    if (page !== undefined) out["page"] = page;
+    if (typeof raw["orderby"] === "string") out["orderby"] = raw["orderby"];
+    const ascRaw = raw["asc"];
+    const asc =
+      typeof ascRaw === "boolean"
+        ? ascRaw
+        : ascRaw === "true"
+          ? true
+          : ascRaw === "false"
+            ? false
+            : undefined;
+    if (asc !== undefined) out["asc"] = asc;
+    if (typeof raw["search"] === "string") out["search"] = raw["search"];
+    return out as ForwardSearchParams;
+  },
+});
+
+type TenantRoutingSearchParams = {
+  uid?: string;
+  page?: number;
+  orderby?: string;
+  asc?: boolean;
+};
+
+const tenantRoutingRoute = createRoute({
+  getParentRoute: () => webLayoutRoute,
+  path: "/web/admin/tenant-routing",
+  component: lazyRouteComponent(
+    () => import("@/features/admin/tenant-routing/TenantRoutingPage"),
+    "TenantRoutingPage",
+  ),
+  validateSearch: (raw): TenantRoutingSearchParams => {
+    const out: Record<string, unknown> = {};
+    if (typeof raw["uid"] === "string") out["uid"] = raw["uid"];
+    const pageRaw = raw["page"];
+    const page =
+      typeof pageRaw === "number"
+        ? pageRaw
+        : typeof pageRaw === "string" && /^\d+$/.test(pageRaw)
+          ? Number(pageRaw)
+          : undefined;
+    if (page !== undefined) out["page"] = page;
+    if (typeof raw["orderby"] === "string") out["orderby"] = raw["orderby"];
+    const ascRaw = raw["asc"];
+    const asc =
+      typeof ascRaw === "boolean"
+        ? ascRaw
+        : ascRaw === "true"
+          ? true
+          : ascRaw === "false"
+            ? false
+            : undefined;
+    if (asc !== undefined) out["asc"] = asc;
+    return out as TenantRoutingSearchParams;
   },
 });
 
@@ -720,6 +841,90 @@ const devRoutes = import.meta.env.DEV
     ]
   : [];
 
+type HeartbeatsSearchParams = {
+  uid?: string;
+  page?: number;
+  orderby?: string;
+  asc?: boolean;
+  search?: string;
+  status?: string;
+};
+
+const heartbeatsRoute = createRoute({
+  getParentRoute: () => webLayoutRoute,
+  path: "/web/heartbeats",
+  component: lazyRouteComponent(
+    () => import("@/features/heartbeats/HeartbeatsPage"),
+    "HeartbeatsPage",
+  ),
+  validateSearch: (raw): HeartbeatsSearchParams => {
+    const out: Record<string, unknown> = {};
+    if (typeof raw["uid"] === "string") out["uid"] = raw["uid"];
+    const pageRaw = raw["page"];
+    const page =
+      typeof pageRaw === "number"
+        ? pageRaw
+        : typeof pageRaw === "string" && /^\d+$/.test(pageRaw)
+          ? Number(pageRaw)
+          : undefined;
+    if (page !== undefined) out["page"] = page;
+    if (typeof raw["orderby"] === "string") out["orderby"] = raw["orderby"];
+    const ascRaw = raw["asc"];
+    const asc =
+      typeof ascRaw === "boolean"
+        ? ascRaw
+        : ascRaw === "true"
+          ? true
+          : ascRaw === "false"
+            ? false
+            : undefined;
+    if (asc !== undefined) out["asc"] = asc;
+    if (typeof raw["search"] === "string") out["search"] = raw["search"];
+    if (typeof raw["status"] === "string") out["status"] = raw["status"];
+    return out as HeartbeatsSearchParams;
+  },
+});
+
+type AuthAuditSearchParams = {
+  page?: number;
+  orderby?: string;
+  asc?: boolean;
+  search?: string;
+};
+
+const authAuditRoute = createRoute({
+  getParentRoute: () => webLayoutRoute,
+  path: "/web/admin/audit",
+  component: lazyRouteComponent(
+    () => import("@/features/admin/audit/AuthAuditPage"),
+    "AuthAuditPage",
+  ),
+  validateSearch: (raw): AuthAuditSearchParams => {
+    const out: Record<string, unknown> = {};
+    const pageRaw = raw["page"];
+    const page =
+      typeof pageRaw === "number"
+        ? pageRaw
+        : typeof pageRaw === "string" && /^\d+$/.test(pageRaw)
+          ? Number(pageRaw)
+          : undefined;
+    if (page !== undefined) out["page"] = page;
+    if (typeof raw["orderby"] === "string") out["orderby"] = raw["orderby"];
+    const ascRaw = raw["asc"];
+    const asc =
+      typeof ascRaw === "boolean"
+        ? ascRaw
+        : ascRaw === "true"
+          ? true
+          : ascRaw === "false"
+            ? false
+            : undefined;
+    if (asc !== undefined) out["asc"] = asc;
+    if (typeof raw["search"] === "string") out["search"] = raw["search"];
+    return out as AuthAuditSearchParams;
+  },
+});
+
 const routeTree = rootRoute.addChildren([
   indexRoute,
   loginRoute,
@@ -730,9 +935,11 @@ const routeTree = rootRoute.addChildren([
     rulesRoute,
     snoozesRoute,
     notificationsRoute,
+    heartbeatsRoute,
     dashboardRoute,
     usersRoute,
     rolesRoute,
+    groupsRoute,
     apikeysRoute,
     environmentsRoute,
     widgetsRoute,
@@ -741,6 +948,9 @@ const routeTree = rootRoute.addChildren([
     inputsRoute,
     statusRoute,
     tenantsRoute,
+    tenantRoutingRoute,
+    forwardRoute,
+    authAuditRoute,
     ...devRoutes,
     profileRoute,
   ]),

@@ -121,3 +121,9 @@
   color: var(--text-muted);
   font-style: italic;
 }
+
+/* Auto-generated comments (housekeeper, aggregaterule) use a muted dot
+ * so they read as system activity rather than operator action. */
+[data-auto] .dot {
+  background: var(--color-border, var(--border));
+}

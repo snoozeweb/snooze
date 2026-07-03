@@ -82,6 +82,9 @@ const REESCALATED: Condition = {
 const SHELVED: Condition = {
   type: "OR",
   args: [
+    // New model: state field is the source of truth
+    { type: "EQUALS", field: "state", value: "shelved" },
+    // Legacy model: ttl<0 permanent shelve (ttl=-1) and pre-plan-34 rows
     { type: "NOT", arg: { type: "EXISTS", field: "ttl" } },
     { type: "LT", field: "ttl", value: 0 },
   ],

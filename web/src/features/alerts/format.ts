@@ -97,10 +97,47 @@ export function formatTTL(ttl: number | undefined, dateEpochSec: number | undefi
   return `in ${humanDuration(remaining)}`;
 }
 
+/**
+ * formatCountdown renders a relative "in Xh Ym" label for a future epoch
+ * deadline (seconds). Returns "" when absent, zero, or already past —
+ * so callers can use a falsy check to skip rendering.
+ */
+export function formatCountdown(epochSec: number | undefined): string {
+  if (!epochSec) return "";
+  const remaining = epochSec - Math.floor(Date.now() / 1000);
+  if (remaining <= 0) return "";
+  return `in ${humanDuration(remaining)}`;
+}
+
+/**
+ * formatShelveUntil renders the timed-shelve countdown for records where
+ * state=="shelved" and shelve_until > 0.
+ *
+ * Returns "" when shelve_until is absent or zero — caller falls through to
+ * formatTTL for legacy ttl<0 permanent-shelved rows.
+ */
+export function formatShelveUntil(shelveUntilEpoch: number | undefined): string {
+  if (!shelveUntilEpoch) return "";
+  const now = Math.floor(Date.now() / 1000);
+  const remaining = shelveUntilEpoch - now;
+  if (remaining <= 0) return "expired (pending sweep)";
+  return `returns in ${humanDuration(remaining)}`;
+}
+
+const TREND_LABEL: Record<string, string> = {
+  moreSevere: "Severity escalated",
+  lessSevere: "Severity decreased",
+  noChange: "No change",
+};
+
+export function trendLabel(trend: string): string {
+  return TREND_LABEL[trend] ?? "";
+}
+
 // humanDuration emits the two largest non-zero units (d / h / m / s) for a
 // duration in seconds. Keeps the cell narrow without losing precision when
 // the alert is about to expire ("in 12m 04s" vs "in 12m").
-function humanDuration(totalSec: number): string {
+export function humanDuration(totalSec: number): string {
   const d = Math.floor(totalSec / 86400);
   const h = Math.floor((totalSec % 86400) / 3600);
   const m = Math.floor((totalSec % 3600) / 60);

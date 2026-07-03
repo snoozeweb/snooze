@@ -2,21 +2,84 @@
 
 ### Added
 
-- **Alert flow visibility: matched notifications + action outcomes.** Each
-  processed alert now records the notification entries it matched
-  (`record.notifications`) and the outcome of every action they fired
-  (`record.actions`: `success`/`error`(with message)/`skipped`/`pending`/`sent`).
-  The Alerts row-detail panel gains a **Flow** tab beside the Timeline,
-  rendering the pipeline path (input → rules → aggregate, then a branch per
-  matched notification with its own actions, or a terminal snooze box) with
-  green/red action boxes — click a red box for the error. Action-outcome
-  resolution is one merge-write per notifying alert, gated by the new
-  `notification.persist_action_outcomes` flag (default `true`; disable on
-  high-volume SQLite). The demo seed (`core.seed_demo`) now stamps these fields
-  on its sample alerts too — the matched rules, the `Host and Message`
-  aggregate, and the notifications/actions each critical alert fired (with one
-  deliberately-failed Slack delivery on the escalated alert) — so the Flow panel
-  is fully populated out of the box.
+- **Ingest kill-switch toggle.** A dedicated **Ingest** tab now appears in
+  Settings with an **Alert intake enabled** switch. Disabling it halts all
+  `POST /api/v1/alerts` requests and every webhook receiver (503 Service
+  Unavailable) for the current tenant instantly, matching the documented
+  maintenance-mode workflow. The card has a red left-border accent and a
+  danger Save button; a warning caption appears when intake is paused.
+
+- **API keys — usage display in the console.** The admin keys table now shows
+  "Last used" (sortable, relative time) and "Uses" columns. The self-service
+  profile card shows the last-used age and a "Stale" badge for keys idle for
+  more than 30 days. The admin edit drawer shows a read-only usage summary.
+  (Values are updated at most once per hour per the Plan 08 throttle.)
+
+- Added **"Federation" admin page** (`/web/admin/forward`) for managing alert-forwarding
+  destinations in the web console: create, edit, enable/disable, and delete forward destinations
+  with condition scoping, event-class selection, and bearer / basic / apikey auth sub-form.
+  The Advanced section (collapsible) covers auth, TLS verification, and request timeout.
+  A 409 conflict surfaces "name already taken" inline.
+
+- **Tenant routing admin UI:** a new **Org matching** page under Admin lets operators manage
+  attribute→tenant routing rules (group / domain / login → tenant slug) via create / edit / delete
+  forms with columns for match type, match value, target tenant, and priority. A duplicate
+  `(match type, match)` pair surfaces a conflict message. A new **Tenant routing** tab in Settings
+  exposes the `tenant_match.fail_closed` safety toggle. The login page shows a hint when org
+  auto-detection is active (`tenant_match_enabled: true` from the server).
+
+- Groups are now manageable in the web console (Admin → Groups): create named cohorts, add/remove
+  `{username, method}` member pairs, and assign roles to the group via the existing Roles editor.
+
+- **Security Audit console.** A new "Security Audit" admin page
+  (`/web/admin/audit`) lists all auth-event audit rows
+  (`login`, `login_failed`, `token refresh`, `logout`) with columns for
+  timestamp, action, username, method, and summary. Free-text filter via the
+  standard condition search bar. The auth-action badge labels were also
+  fixed — they previously rendered as `undefined` in the existing per-object
+  audit timeline.
+
+- **Heartbeats console page.** A new **Heartbeats** page (`/web/heartbeats`) in
+  the **Configure** sidebar group lets operators manage dead-man's-switch
+  heartbeats from the web console: create/edit/delete, browse with a live status
+  badge (`ok` / `slow` / `overdue`), filter by status, and copy-paste the ping URL
+  and token directly from the editor drawer. No backend change (requires Plans 06
+  and 32 in `done/`).
+
+- **Console branding is now consumed by the SPA:** `console.logo` renders in the sidebar and login
+  screen (falling back to the bundled Snooze logo when empty), `console.title` drives the browser
+  tab title (defaulting to `"Snooze"`), `console.audio` plays a cue when new alerts arrive during
+  auto-refresh, `console.clipboard_template` formats the row copy action using `{{field}}`
+  substitution (empty defaults to pretty-printed JSON), and `console.default_filter` pre-fills the
+  alerts SearchBar on a clean load (URL `?search=` still overrides it per session).
+
+- **"Select all N matching this filter" affordance** on the alerts action bar: when the total
+  result count exceeds the visible page and rows are selected, a link expands the bulk scope
+  beyond the visible page to every record matching the current tab and search query.
+- **"Tag / set fields" button** in the alerts action bar opens a dialog for bulk-tagging or
+  merging attributes across a selection (`POST /api/v1/record/bulk_update`); the success toast
+  shows per-op counts (matched / set / tagged / untagged).
+- **Shelve action now posts a `shelve` comment** with a configurable duration (default 4h
+  from the dialog picker) instead of patching `ttl=-1`. Alerts automatically return to open
+  when the duration expires (requires Plan 34 backend). A `ShelveDialog` duration picker
+  (1h / 4h / 8h / 24h / 48h / Custom) replaces the old immediate toggle.
+- **Legacy permanent-exempt action (`ttl=-1`)** preserved under **"Permanent exempt (legacy)"**
+  in the row action menu, clearly labelled to prevent confusion with timed shelve.
+- **Shelved tab** now includes alerts with `state=="shelved"` (new backend model) in addition
+  to the legacy `ttl<0` predicate.
+- **TTL column** shows `"returns in Xh Ym"` for timed-shelved alerts based on `shelve_until`.
+- **Alerts table — action gating:** illegal state transitions (e.g. Acknowledge
+  on an already-acked alert) are now hidden from the kebab menu, quick-action
+  buttons, right-click context menu, and bulk toolbar; the backend 403 remains
+  as a concurrent-change backstop.
+- **Alerts table — lifecycle countdowns:** acked rows now show an "in Xh" expiry
+  countdown when `ack_until` is set; open rows show "escalates in Xh" when
+  `escalate_at` is armed.
+- **Alerts table — trend badge:** a ↑/↓/— indicator in the severity column
+  reflects `trend_indication` stamped by the aggregaterule plugin on every merge.
+- **Comment timeline — system comments:** auto-generated comments from the
+  housekeeper (`auto: true`) are attributed as "System (auto)" and cannot be
+  edited or deleted.
 - **Chat ack/close/re-open from Slack & Telegram message buttons.** The Slack
   and Telegram notifiers can now render opt-in interactive buttons
   (`interactive: true` on the action form; default off). New webhook receivers
@@ -173,6 +236,21 @@
   read-time `status` field (`ok` or `overdue`) on every heartbeat document.
   An optional `?status=` query parameter filters the list to heartbeats
   matching the supplied value(s). No database migration required.
+- **Alert flow visibility: matched notifications + action outcomes.** Each
+  processed alert now records the notification entries it matched
+  (`record.notifications`) and the outcome of every action they fired
+  (`record.actions`: `success`/`error`(with message)/`skipped`/`pending`/`sent`).
+  The Alerts row-detail panel gains a **Flow** tab beside the Timeline,
+  rendering the pipeline path (input → rules → aggregate, then a branch per
+  matched notification with its own actions, or a terminal snooze box) with
+  green/red action boxes — click a red box for the error. Action-outcome
+  resolution is one merge-write per notifying alert, gated by the new
+  `notification.persist_action_outcomes` flag (default `true`; disable on
+  high-volume SQLite). The demo seed (`core.seed_demo`) now stamps these fields
+  on its sample alerts too — the matched rules, the `Host and Message`
+  aggregate, and the notifications/actions each critical alert fired (with one
+  deliberately-failed Slack delivery on the escalated alert) — so the Flow panel
+  is fully populated out of the box.
 - **Inputs page** (Admin → Inputs): lists every supported alert input with its
   last-received time, a docs link, and a per-input "how to receive alerts" guide.
 - `GET /api/v1/inputs`: per-source alert activity (max epoch + count within a
@@ -210,6 +288,10 @@
 
 ### Changed
 
+- **Bulk alert actions (ack/close/re-escalate) now call `POST /api/v1/record/bulk_state` once
+  for the entire selection** instead of one `POST /comment` per row; the success toast shows the
+  matched/updated counts. The `comment` action still uses the per-record loop (bulk_state does not
+  write per-alert activity entries).
 - **Housekeeper** — expired API keys and refresh tokens are now purged hourly.
   The cadence is tunable via `housekeeping.cleanup_apikey` and
   `housekeeping.cleanup_refresh_token` (both default to `1h`).
@@ -220,6 +302,18 @@
   shows a **Copy** entry at the top of the context menu that copies exactly the
   highlighted text. The redundant **Open** entry was removed from row context
   menus — clicking a row already opens it.
+
+### Security
+
+- **Fixed an authentication-bypass in auth-proxy mode (`auth_proxy.enabled=true`).** The
+  `trusted_proxies` IP allowlist was evaluated against `ClientIP`, which reads the
+  client-controllable `X-Forwarded-For` / `X-Real-IP` headers first. An attacker reaching Snooze
+  directly could send `X-Forwarded-For: <a trusted-proxy IP>` together with `X-Forwarded-User: root`
+  to satisfy the allowlist and be trusted as any user, with no token. The allowlist now matches the
+  genuine TCP peer address (`RemoteAddr` captured by a new `CapturePeerIP` middleware mounted before
+  chi's `RealIP`), which ignores all forwarding headers. Audit-log and ingested-record client-IP
+  capture are unchanged (they still honor `X-Forwarded-For`). Only deployments that had explicitly
+  enabled `auth_proxy` were affected; the mode is off by default.
 
 ## v2.3.0
 

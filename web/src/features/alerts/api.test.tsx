@@ -4,7 +4,13 @@ import { http, HttpResponse } from "msw";
 import { describe, expect, it, vi } from "vitest";
 import type { ReactNode } from "react";
 import { mswServer } from "@/tests/msw/server";
-import { Records, useCommentRecord, useShelveRecord } from "./api";
+import {
+  Records,
+  useCommentRecord,
+  useShelveRecord,
+  useBulkStateRecord,
+  useBulkUpdateRecord,
+} from "./api";
 
 function makeWrapper() {
   const client = new QueryClient({
@@ -67,6 +73,108 @@ describe("alerts.api", () => {
     const invalidatedKeys = spy.mock.calls.map((c) => JSON.stringify(c[0]?.queryKey));
     expect(invalidatedKeys).toContain(JSON.stringify(["record"]));
     expect(invalidatedKeys).toContain(JSON.stringify(["comment"]));
+  });
+
+  it("useCommentRecord posts type=shelve with duration to /api/v1/comment", async () => {
+    const bodies: unknown[] = [];
+    mswServer.use(
+      http.post("/api/v1/comment", async ({ request }) => {
+        bodies.push(await request.json());
+        return HttpResponse.json({ ok: true });
+      }),
+    );
+    const wrapper = makeWrapper();
+    const { result } = renderHook(() => useCommentRecord(), { wrapper });
+    await act(async () => {
+      await result.current.mutateAsync({
+        record_uid: "r1",
+        type: "shelve",
+        duration: 14400,
+        message: "maintenance",
+      });
+    });
+    expect(bodies[0]).toEqual({
+      record_uid: "r1",
+      type: "shelve",
+      duration: 14400,
+      message: "maintenance",
+    });
+  });
+
+  it("useCommentRecord posts type=unshelve to /api/v1/comment", async () => {
+    const bodies: unknown[] = [];
+    mswServer.use(
+      http.post("/api/v1/comment", async ({ request }) => {
+        bodies.push(await request.json());
+        return HttpResponse.json({ ok: true });
+      }),
+    );
+    const wrapper = makeWrapper();
+    const { result } = renderHook(() => useCommentRecord(), { wrapper });
+    await act(async () => {
+      await result.current.mutateAsync({ record_uid: "r1", type: "unshelve" });
+    });
+    expect(bodies[0]).toEqual({ record_uid: "r1", type: "unshelve" });
+  });
+});
+
+describe("useBulkStateRecord", () => {
+  it("posts to /record/bulk_state with q and state", async () => {
+    const calls: Array<{ url: string; body: unknown }> = [];
+    mswServer.use(
+      http.post("/api/v1/record/bulk_state", async ({ request }) => {
+        calls.push({ url: request.url, body: await request.json() });
+        return HttpResponse.json({ matched: 3, updated: 3, state: "ack" });
+      }),
+    );
+    const wrapper = makeWrapper();
+    const { result } = renderHook(() => useBulkStateRecord(), { wrapper });
+    await act(async () => {
+      await result.current.mutateAsync({ q: "dGVzdA", state: "ack", message: "maint" });
+    });
+    expect(calls).toHaveLength(1);
+    const url = new URL(calls[0]!.url);
+    expect(url.searchParams.get("q")).toBe("dGVzdA");
+    expect(calls[0]!.body).toEqual({ state: "ack", message: "maint" });
+    expect(result.current.data).toEqual({ matched: 3, updated: 3, state: "ack" });
+  });
+
+  it("omits q param when undefined (match-all)", async () => {
+    const calls: Array<{ url: string; body: unknown }> = [];
+    mswServer.use(
+      http.post("/api/v1/record/bulk_state", async ({ request }) => {
+        calls.push({ url: request.url, body: await request.json() });
+        return HttpResponse.json({ matched: 10, updated: 10, state: "close" });
+      }),
+    );
+    const wrapper = makeWrapper();
+    const { result } = renderHook(() => useBulkStateRecord(), { wrapper });
+    await act(async () => {
+      await result.current.mutateAsync({ state: "close" });
+    });
+    expect(calls).toHaveLength(1);
+    const url = new URL(calls[0]!.url);
+    expect(url.searchParams.has("q")).toBe(false);
+  });
+});
+
+describe("useBulkUpdateRecord", () => {
+  it("posts to /record/bulk_update with tag and untag", async () => {
+    const calls: Array<{ url: string; body: unknown }> = [];
+    mswServer.use(
+      http.post("/api/v1/record/bulk_update", async ({ request }) => {
+        calls.push({ url: request.url, body: await request.json() });
+        return HttpResponse.json({ matched: 2, set: 0, tagged: 2, untagged: 1 });
+      }),
+    );
+    const wrapper = makeWrapper();
+    const { result } = renderHook(() => useBulkUpdateRecord(), { wrapper });
+    await act(async () => {
+      await result.current.mutateAsync({ tag: ["maint"], untag: ["noisy"] });
+    });
+    expect(calls).toHaveLength(1);
+    expect(calls[0]!.body).toEqual({ tag: ["maint"], untag: ["noisy"] });
+    expect(result.current.data).toEqual({ matched: 2, set: 0, tagged: 2, untagged: 1 });
   });
 });
 
