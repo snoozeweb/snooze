@@ -54,6 +54,16 @@ export function makeApiKeyColumns(): ColumnDef<ApiKey>[] {
       },
     },
     {
+      id: "last_used_at",
+      header: "Last used",
+      // TimeCell renders a muted "—" for an absent/zero epoch, which is exactly
+      // the "never used yet" case — no custom fallback needed (unlike Expires,
+      // where "never" positively means "no expiry").
+      cell: (r) => <TimeCell epoch={r.last_used_at} />,
+      sortable: true,
+      width: "160px",
+    },
+    {
       id: "expires_at",
       header: "Expires",
       cell: (r) =>

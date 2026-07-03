@@ -67,6 +67,36 @@ describe("ApiKeysPage", () => {
     await waitFor(() => expect(screen.getByText("ci-key")).toBeInTheDocument());
   });
 
+  it("shows a Last used column before Expires, with a time for used keys and — for unused", async () => {
+    mswServer.use(
+      http.get("/api/v1/apikey", () =>
+        HttpResponse.json({
+          data: [
+            // Used once, long ago (far past → TimeCell renders an absolute time,
+            // not the volatile "Nm ago" hint).
+            { uid: "ak1", owner: "alice", name: "used-key", last_used_at: 1704067200 },
+            // Never used → last_used_at absent.
+            { uid: "ak2", owner: "bob", name: "fresh-key" },
+          ],
+          meta: { count: 2, limit: 50, offset: 0, total: 2 },
+        }),
+      ),
+    );
+    const { container } = setup();
+    await waitFor(() => expect(screen.getByText("used-key")).toBeInTheDocument());
+
+    // The new column is present and ordered before Expires.
+    const headers = screen.getAllByRole("columnheader").map((h) => h.textContent ?? "");
+    const lastUsedIdx = headers.findIndex((h) => /last used/i.test(h));
+    const expiresIdx = headers.findIndex((h) => /expires/i.test(h));
+    expect(lastUsedIdx).toBeGreaterThanOrEqual(0);
+    expect(expiresIdx).toBeGreaterThanOrEqual(0);
+    expect(lastUsedIdx).toBeLessThan(expiresIdx);
+
+    // The used key renders its last-used epoch as a semantic <time> element.
+    expect(container.querySelector('time[datetime^="2024-01-01"]')).toBeInTheDocument();
+  });
+
   it("surfaces a discoverable row-actions kebab (not just right-click)", async () => {
     mswServer.use(
       http.get("/api/v1/apikey", () =>

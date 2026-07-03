@@ -71,6 +71,8 @@ func (p *Plugin) Schema() any {
 			"permissions":  map[string]any{"type": "array", "items": str},
 			"groups":       map[string]any{"type": "array", "items": str},
 			"created_at":   num,
+			"last_used_at": num,
+			"use_count":    num,
 			"expires_at":   num,
 			"revoked_at":   num,
 		},

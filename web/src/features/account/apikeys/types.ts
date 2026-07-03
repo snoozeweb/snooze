@@ -7,6 +7,11 @@ export type ApiKey = {
   permissions?: string[];
   groups?: string[];
   created_at?: number;
+  /** Epoch seconds of the last successful auth with this key; absent until the
+   *  key is first used. The server throttles the write to at most once/hour, so
+   *  it lags real usage by up to an hour (use_count is likewise a lower bound). */
+  last_used_at?: number;
+  use_count?: number;
   expires_at?: number;
   revoked_at?: number;
 };
