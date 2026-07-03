@@ -85,9 +85,32 @@
 
 .argsRowSingle {
   display: grid;
-  grid-template-columns: 1fr auto;
+  grid-template-columns: auto 1fr auto;
   gap: var(--space-2);
   align-items: center;
+}
+
+.dragHandle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 28px;
+  color: var(--text-muted);
+  border-radius: var(--radius-sm);
+  cursor: grab;
+  /* Stop the browser from claiming the drag as a scroll/pan gesture on touch. */
+  touch-action: none;
+}
+.dragHandle:hover {
+  color: var(--text-strong);
+}
+.dragHandle:active {
+  cursor: grabbing;
+}
+.dragHandle[aria-disabled="true"] {
+  cursor: not-allowed;
+  opacity: 0.5;
 }
 
 .removeBtn {

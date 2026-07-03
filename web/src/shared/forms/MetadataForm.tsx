@@ -1,4 +1,30 @@
-import { useEffect, useMemo, useState, type ReactElement } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type CSSProperties,
+  type ReactElement,
+} from "react";
+import {
+  DndContext,
+  KeyboardSensor,
+  PointerSensor,
+  closestCenter,
+  useSensor,
+  useSensors,
+  type DragEndEvent,
+} from "@dnd-kit/core";
+import {
+  SortableContext,
+  arrayMove,
+  sortableKeyboardCoordinates,
+  useSortable,
+  verticalListSortingStrategy,
+} from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
+import { Icon } from "@/shared/icons/Icon";
 import { Input } from "@/shared/ui/Input";
 import { Switch } from "@/shared/ui/Switch";
 import { Textarea } from "@/shared/ui/Textarea";
@@ -365,44 +391,182 @@ function ArgumentsControl({
   }
 
   const ph = typeof field.placeholder === "string" ? field.placeholder : "value";
-  const list: string[] = Array.isArray(value) ? (value as unknown[]).map((x) => asString(x)) : [];
+  return (
+    <ArgumentsListView
+      placeholder={ph}
+      value={value}
+      onChange={(next) => onChange(next)}
+      disabled={disabled}
+    />
+  );
+}
 
-  function commit(next: string[]) {
-    onChange(next);
+type ListRow = { id: string; v: string };
+
+function arraysEqual(a: string[], b: string[]): boolean {
+  if (a.length !== b.length) return false;
+  for (let i = 0; i < a.length; i++) if (a[i] !== b[i]) return false;
+  return true;
+}
+
+/**
+ * Single-value Arguments editor: a vertical list of string inputs, each with a
+ * grip handle so rows can be reordered by drag-and-drop (dnd-kit). Order is
+ * meaningful for these lists — e.g. the console `columns` setting is an ordered
+ * list of column ids — so the committed value is the reordered string array.
+ *
+ * Rows carry a stable synthetic id (not the array index) so a row's identity
+ * follows the row itself across reorders/inserts/removals; using the index
+ * would make dnd-kit re-key the wrong elements mid-drag.
+ */
+function ArgumentsListView({
+  placeholder,
+  value,
+  onChange,
+  disabled,
+}: {
+  placeholder: string;
+  value: unknown;
+  onChange: (v: string[]) => void;
+  disabled: boolean;
+}) {
+  const incoming = useMemo(
+    () => (Array.isArray(value) ? (value as unknown[]).map((x) => asString(x)) : []),
+    [value],
+  );
+
+  // Monotonic id source for stable row identity. A ref (not state) so minting
+  // never triggers a render; ids only need to be unique within this editor.
+  const nextId = useRef(0);
+  const mintRows = useCallback(
+    (values: string[]): ListRow[] => values.map((v) => ({ id: `arg-${nextId.current++}`, v })),
+    [],
+  );
+
+  const [rows, setRows] = useState<ListRow[]>(() => mintRows(incoming));
+
+  // Resync when the parent value changes for reasons other than our own edits
+  // (a Reset, or a save-refetch). Diff by the ordered string list so we only
+  // re-mint ids — and lose in-flight drag/focus identity — when we truly must.
+  useEffect(() => {
+    if (
+      !arraysEqual(
+        rows.map((r) => r.v),
+        incoming,
+      )
+    ) {
+      setRows(mintRows(incoming));
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [incoming]);
+
+  function commit(next: ListRow[]) {
+    setRows(next);
+    onChange(next.map((r) => r.v));
+  }
+
+  // Pointer drag activates only after 6px so a plain click on the handle
+  // doesn't start a drag; keyboard drag uses the sortable coordinate getter.
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
+  );
+
+  function handleDragEnd(e: DragEndEvent) {
+    const { active, over } = e;
+    if (!over || active.id === over.id) return;
+    const from = rows.findIndex((r) => r.id === active.id);
+    const to = rows.findIndex((r) => r.id === over.id);
+    if (from < 0 || to < 0) return;
+    commit(arrayMove(rows, from, to));
   }
 
   return (
     <div className={styles.argsRows}>
-      {list.map((item, i) => (
-        <div key={i} className={styles.argsRowSingle}>
-          <Input
-            value={item}
-            onChange={(e) => {
-              const n = [...list];
-              n[i] = e.target.value;
-              commit(n);
-            }}
-            placeholder={ph}
-            disabled={disabled}
-          />
-          <button
-            type="button"
-            className={styles.removeBtn}
-            onClick={() => commit(list.filter((_, j) => j !== i))}
-            disabled={disabled}
-            aria-label="Remove row"
-          >
-            ×
-          </button>
-        </div>
-      ))}
+      <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+        <SortableContext items={rows.map((r) => r.id)} strategy={verticalListSortingStrategy}>
+          {rows.map((row, i) => (
+            <SortableArgRow
+              key={row.id}
+              id={row.id}
+              value={row.v}
+              placeholder={placeholder}
+              disabled={disabled}
+              onValueChange={(v) => {
+                const n = [...rows];
+                n[i] = { ...n[i]!, v };
+                commit(n);
+              }}
+              onRemove={() => commit(rows.filter((_, j) => j !== i))}
+            />
+          ))}
+        </SortableContext>
+      </DndContext>
       <button
         type="button"
         className={styles.addBtn}
-        onClick={() => commit([...list, ""])}
+        onClick={() => commit([...rows, ...mintRows([""])])}
         disabled={disabled}
       >
         + Add row
+      </button>
+    </div>
+  );
+}
+
+function SortableArgRow({
+  id,
+  value,
+  placeholder,
+  disabled,
+  onValueChange,
+  onRemove,
+}: {
+  id: string;
+  value: string;
+  placeholder: string;
+  disabled: boolean;
+  onValueChange: (v: string) => void;
+  onRemove: () => void;
+}) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
+    id,
+    disabled,
+  });
+  const style: CSSProperties = {
+    // Pin the horizontal axis: it's a vertical list, so a row should only
+    // slide up/down as it's dragged, never drift sideways with the pointer.
+    transform: transform ? CSS.Transform.toString({ ...transform, x: 0 }) : undefined,
+    transition: transition ?? undefined,
+    // Float the dragged row above its neighbours so it isn't clipped.
+    zIndex: isDragging ? 1 : undefined,
+    position: isDragging ? "relative" : undefined,
+  };
+  return (
+    <div ref={setNodeRef} style={style} className={styles.argsRowSingle}>
+      <span
+        {...attributes}
+        {...listeners}
+        data-drag-handle
+        className={styles.dragHandle}
+        aria-label="Drag to reorder"
+      >
+        <Icon name="grip" size={16} />
+      </span>
+      <Input
+        value={value}
+        onChange={(e) => onValueChange(e.target.value)}
+        placeholder={placeholder}
+        disabled={disabled}
+      />
+      <button
+        type="button"
+        className={styles.removeBtn}
+        onClick={onRemove}
+        disabled={disabled}
+        aria-label="Remove row"
+      >
+        ×
       </button>
     </div>
   );
