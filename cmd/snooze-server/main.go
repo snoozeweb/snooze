@@ -23,6 +23,11 @@ import (
 	"syscall"
 	"time"
 
+	// Embed the IANA timezone database so named-timezone snooze/notification
+	// windows (time_constraints.tz, e.g. "Europe/Paris") resolve even on
+	// minimal container images that ship no /usr/share/zoneinfo.
+	_ "time/tzdata"
+
 	"golang.org/x/sync/errgroup"
 
 	"github.com/snoozeweb/snooze/internal/api"

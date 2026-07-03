@@ -25,12 +25,25 @@ type Constraint interface {
 //	{
 //	  "datetime": [{"from": "...", "until": "..."}, ...],
 //	  "time":     [{"from": "HH:MM±TZ",  "until": "HH:MM±TZ"}, ...],
-//	  "weekdays": [{"weekdays": [0, 1, ...]}, ...]
+//	  "weekdays": [{"weekdays": [0, 1, ...]}, ...],
+//	  "tz":       "Europe/Paris"
 //	}
 type Group struct {
 	DateTime []DateTimeConstraint `json:"datetime,omitempty"`
 	Time     []TimeConstraint     `json:"time,omitempty"`
 	Weekdays []WeekdaysConstraint `json:"weekdays,omitempty"`
+	// TZ is an optional IANA timezone name (e.g. "Europe/Paris") the RECURRING
+	// families are interpreted in: bare (offset-less) time-of-day bounds resolve
+	// in this zone, and the weekday family is evaluated against the local day in
+	// it — so a "Mondays, 09:00–17:00" window tracks that zone's wall clock,
+	// DST included, instead of being read as UTC. An absent/empty tz preserves
+	// the legacy UTC interpretation (non-breaking). The absolute datetime family
+	// is unaffected: those bounds are instants carrying their own offset.
+	TZ string `json:"tz,omitempty"`
+
+	// loc is the resolved TZ, populated by UnmarshalJSON; nil when TZ is empty.
+	// Unexported, so it is neither marshaled nor set by the default decoder.
+	loc *time.Location
 }
 
 // Match returns true when t satisfies every populated constraint family.
@@ -38,21 +51,58 @@ type Group struct {
 // AND'd together. An empty Group always matches.
 func (g Group) Match(t time.Time) bool {
 	if len(g.DateTime) > 0 {
+		// Absolute instants — comparison is zone-independent, so t is used raw.
 		if !anyMatch(g.DateTime, t) {
 			return false
 		}
 	}
 	if len(g.Time) > 0 {
+		// Each bound resolves against its own Loc (bound to g.loc when the wire
+		// value was bare — see UnmarshalJSON), so the daily window is evaluated
+		// in the group's zone.
 		if !anyMatch(g.Time, t) {
 			return false
 		}
 	}
 	if len(g.Weekdays) > 0 {
-		if !anyMatch(g.Weekdays, t) {
+		// Evaluate the weekday against the local day in the group's zone, so a
+		// "Mondays" rule flips at that zone's midnight rather than UTC's.
+		wt := t
+		if g.loc != nil {
+			wt = t.In(g.loc)
+		}
+		if !anyMatch(g.Weekdays, wt) {
 			return false
 		}
 	}
 	return true
+}
+
+// UnmarshalJSON decodes the group and, when a tz is present, resolves it and
+// binds the recurring families to that zone: bare (offset-less) time-of-day
+// bounds adopt it, and Match evaluates weekdays against the local day in it. An
+// unknown zone name is a hard error (callers treat a bad rule as skipped /
+// fail-safe). Absent tz leaves every family in its wire zone (UTC for bare
+// bounds) — byte-identical to the pre-tz behavior.
+func (g *Group) UnmarshalJSON(data []byte) error {
+	type alias Group // strip Group's methods so the decode does not recurse
+	var a alias
+	if err := json.Unmarshal(data, &a); err != nil {
+		return err
+	}
+	*g = Group(a)
+	if g.TZ == "" {
+		return nil
+	}
+	loc, err := time.LoadLocation(g.TZ)
+	if err != nil {
+		return fmt.Errorf("time constraints: tz %q: %w", g.TZ, err)
+	}
+	g.loc = loc
+	for i := range g.Time {
+		g.Time[i].bindZone(loc)
+	}
+	return nil
 }
 
 // String renders the Group using the same `(c1 or c2) and (c3)` layout as
@@ -200,6 +250,9 @@ type TimeConstraint struct {
 type daytime struct {
 	Hour, Minute, Second int
 	Loc                  *time.Location
+	// explicit is true when the wire value carried its own zone (…±HH:MM or
+	// …Z). A Group tz binds only bare bounds, never an explicit one.
+	explicit bool
 }
 
 type timeWire struct {
@@ -232,6 +285,16 @@ func (c *TimeConstraint) UnmarshalJSON(data []byte) error {
 }
 
 // MarshalJSON renders the constraint in `HH:MM:SS±HH:MM` form.
+//
+// CAUTION: this flattens a bound to a FIXED offset (via daytime.String, which
+// reads the offset at call time), so it does not round-trip a named-zone Group
+// — a bound bound to Group.tz would re-emit as a frozen offset that no longer
+// tracks DST and, on the next parse, reads as explicit (immune to re-binding).
+// This is safe today only because nothing marshals the typed Group back to the
+// store: CRUD persists the raw request map and ProjectDoc shallow-copies it, so
+// Group.tz + bare bounds survive verbatim. A future normalize-on-save path must
+// add a Group.MarshalJSON that re-emits tz + bare bounds instead of relying on
+// this.
 func (c TimeConstraint) MarshalJSON() ([]byte, error) {
 	var w timeWire
 	if c.From != nil {
@@ -241,6 +304,19 @@ func (c TimeConstraint) MarshalJSON() ([]byte, error) {
 		w.Until = c.Until.String()
 	}
 	return json.Marshal(w)
+}
+
+// bindZone binds any bare (offset-less) bound to loc, so a recurring daily
+// window written as "HH:MM" tracks that zone's wall clock — DST included —
+// rather than being read as UTC. A bound that carried an explicit offset on
+// the wire is left exactly as authored.
+func (c *TimeConstraint) bindZone(loc *time.Location) {
+	if c.From != nil && !c.From.explicit {
+		c.From.Loc = loc
+	}
+	if c.Until != nil && !c.Until.explicit {
+		c.Until.Loc = loc
+	}
 }
 
 // Match reports whether t falls within the configured daily window. The
@@ -346,15 +422,24 @@ func parseDateTime(s string) (time.Time, error) {
 }
 
 // parseDaytime parses an HH:MM, HH:MM:SS, HH:MM±HH:MM, HH:MM:SS±HH:MM or
-// full-datetime string and keeps only the wall-clock + tz offset.
+// full-datetime string and keeps only the wall-clock + tz offset. The zoned
+// layouts (and the datetime fallback) set explicit=true so a Group tz never
+// overrides a bound the author zoned themselves.
 func parseDaytime(s string) (daytime, error) {
-	timeLayouts := []string{
+	zonedLayouts := []string{
 		"15:04:05Z07:00",
 		"15:04Z07:00",
+	}
+	for _, l := range zonedLayouts {
+		if t, err := time.Parse(l, s); err == nil {
+			return daytime{Hour: t.Hour(), Minute: t.Minute(), Second: t.Second(), Loc: t.Location(), explicit: true}, nil
+		}
+	}
+	bareLayouts := []string{
 		"15:04:05",
 		"15:04",
 	}
-	for _, l := range timeLayouts {
+	for _, l := range bareLayouts {
 		if t, err := time.Parse(l, s); err == nil {
 			loc := t.Location()
 			if loc == nil {
@@ -363,9 +448,10 @@ func parseDaytime(s string) (daytime, error) {
 			return daytime{Hour: t.Hour(), Minute: t.Minute(), Second: t.Second(), Loc: loc}, nil
 		}
 	}
-	// Fall back to full datetimes (e.g. someone stored an RFC3339).
+	// Fall back to full datetimes (e.g. someone stored an RFC3339). Such a value
+	// denotes a specific zone/instant, so treat it as explicit.
 	if t, err := parseDateTime(s); err == nil {
-		return daytime{Hour: t.Hour(), Minute: t.Minute(), Second: t.Second(), Loc: t.Location()}, nil
+		return daytime{Hour: t.Hour(), Minute: t.Minute(), Second: t.Second(), Loc: t.Location(), explicit: true}, nil
 	}
 	return daytime{}, fmt.Errorf("could not parse %q as time-of-day", s)
 }

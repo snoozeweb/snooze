@@ -4,6 +4,10 @@ import (
 	"testing"
 	"time"
 
+	// Embed the zone database so a tz-carrying rule classifies deterministically
+	// regardless of the runner's /usr/share/zoneinfo (mirrors the server binary).
+	_ "time/tzdata"
+
 	"github.com/stretchr/testify/require"
 
 	"github.com/snoozeweb/snooze/internal/db"
@@ -355,6 +359,23 @@ func TestProjectDoc_TimeWindowAcrossMidnight(t *testing.T) {
 	require.Equal(t, "active", ProjectDoc(doc, night)["window_status"])
 
 	require.Equal(t, "pending", ProjectDoc(doc, fixedNow)["window_status"]) // 12:00
+}
+
+// TestProjectDoc_TimeWindowInNamedZone: the badge honors a named-zone daily
+// window. fixedNow is 12:00 UTC = 14:00 Europe/Paris (+02:00 summer); a
+// 13:00–18:00 Paris window covers it → active. Read as UTC (no tz) the same
+// bounds would be 13:00–18:00 UTC and 12:00 UTC would be pending — so this
+// asserts classify() resolves through the group's tz.
+func TestProjectDoc_TimeWindowInNamedZone(t *testing.T) {
+	t.Parallel()
+	got := ProjectDoc(db.Document{
+		"name": "paris-afternoon",
+		"time_constraints": map[string]any{
+			"tz":   "Europe/Paris",
+			"time": []any{map[string]any{"from": "13:00", "until": "18:00"}},
+		},
+	}, fixedNow)
+	require.Equal(t, "active", got["window_status"])
 }
 
 // TestProjectDoc_ShallowCopy: ProjectDoc must not mutate the input map; it
