@@ -46,6 +46,12 @@ const TAB_HELP: Record<RulesTab, string> = {
     "Drop a matching alert at ingest and return 422 to the sender (runs before Rules). For time-bounded silencing, use Snoozes.",
 };
 
+const TAB_DOCS_SLUG: Record<RulesTab, string> = {
+  rules: "general/rules",
+  aggregates: "general/aggregaterules",
+  reject: "general/reject",
+};
+
 // TanStack Router's navigate types are locked to the registered route tree at
 // build time. Casting through unknown avoids type errors when the route is
 // locally constructed in tests and still works when fully registered.
@@ -533,7 +539,7 @@ export function RulesPage() {
             without switching tabs. */}
         {(Object.keys(TAB_HELP) as RulesTab[]).map((t) => (
           <p key={t} className={styles.tabHelp} hidden={t !== tab}>
-            {TAB_HELP[t]} {t === "rules" ? <DocsLink slug="general/rules" /> : null}
+            {TAB_HELP[t]} <DocsLink slug={TAB_DOCS_SLUG[t]} />
           </p>
         ))}
         <TabPanel value={tab}>
