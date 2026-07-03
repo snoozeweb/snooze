@@ -45,10 +45,14 @@ export function InputsPage() {
     [navigate],
   );
 
-  const { inputs, other } = useMemo(
-    () => mergeCatalogueWithActivity(INJECTION_SOURCES, query.data?.data ?? []),
-    [query.data],
-  );
+  const { inputs, other } = useMemo(() => {
+    const merged = mergeCatalogueWithActivity(INJECTION_SOURCES, query.data?.data ?? []);
+    const byCountDesc = (a: InputRow, b: InputRow) => (b.count ?? 0) - (a.count ?? 0);
+    return {
+      inputs: [...merged.inputs].sort(byCountDesc),
+      other: [...merged.other].sort(byCountDesc),
+    };
+  }, [query.data]);
   const columns = useMemo(() => makeInputColumns(setSetup), [setSetup]);
 
   const setupOpen = search.setup !== undefined;

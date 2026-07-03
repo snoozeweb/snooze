@@ -8,7 +8,7 @@
 /* One-line helper caption shown under the active tab's trigger. */
 .tabHelp {
   margin: 0;
-  margin-top: calc(-1 * var(--space-1));
+  margin-top: var(--space-2);
   font-size: var(--text-sm);
   color: var(--text-muted);
 }
