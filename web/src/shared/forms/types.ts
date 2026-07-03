@@ -31,6 +31,12 @@ export type FormField = {
   // Logical bucket the field belongs to. Used by the Settings page to render
   // grouped pickers (general vs notification); ignored elsewhere.
   group?: string;
+  // For Switch: flips the displayed checked state and the value written back
+  // on toggle, so a positively-phrased label (e.g. "Maintenance mode") can be
+  // backed by a negatively-phrased stored value (e.g. `ingest.allow`) without
+  // the toggle reading backwards. The stored/baseline value is unaffected —
+  // dirty-tracking and defaults in SettingCard keep comparing the raw value.
+  invert?: boolean;
 };
 
 export type Metadata = {

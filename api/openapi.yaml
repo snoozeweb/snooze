@@ -3319,6 +3319,14 @@ components:
             Logical section the field belongs to (e.g. "general" or
             "notification" for settings). Used by the frontend to render
             grouped pickers; ignored by the server.
+        invert:
+          type: boolean
+          description: |
+            For a Switch field: flips the displayed checked state and the
+            value written back on toggle, so a positively-phrased label
+            (e.g. "Maintenance mode") can be backed by a
+            negatively-phrased stored value (e.g. `ingest.allow`).
+            Ignored by the server.
         options:
           type: array
           items:

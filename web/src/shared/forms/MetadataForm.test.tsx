@@ -139,6 +139,25 @@ describe("MetadataForm", () => {
     expect(onChange).toHaveBeenLastCalledWith({ tls: true });
   });
 
+  it("renders an inverted Switch flipped, and fires onChange with the negated value", async () => {
+    const onChange = vi.fn();
+    const fields: Record<string, FormField> = {
+      "ingest.allow": {
+        display_name: "Maintenance mode",
+        component: "Switch",
+        invert: true,
+      },
+    };
+    const user = userEvent.setup();
+    render(<Harness fields={fields} initial={{ "ingest.allow": true }} onChange={onChange} />);
+    // value=true (ingestion allowed) displays as OFF (not under maintenance).
+    const sw = screen.getByRole("switch", { name: /Maintenance mode/ });
+    expect(sw).toHaveAttribute("aria-checked", "false");
+    await user.click(sw);
+    // Turning the switch ON stores false (ingestion disallowed).
+    expect(onChange).toHaveBeenLastCalledWith({ "ingest.allow": false });
+  });
+
   it("renders Boolean as native checkbox and fires onChange with boolean", async () => {
     const onChange = vi.fn();
     const fields: Record<string, FormField> = {

@@ -187,8 +187,8 @@ function FieldControl({ id, field, value, onChange, disabled }: ControlProps) {
         <div className={styles.switchRow}>
           <Switch
             id={id}
-            checked={asBool(value)}
-            onCheckedChange={(v) => onChange(v)}
+            checked={field.invert ? !asBool(value) : asBool(value)}
+            onCheckedChange={(v) => onChange(field.invert ? !v : v)}
             disabled={disabled}
             aria-labelledby={`label-${id}`}
           />

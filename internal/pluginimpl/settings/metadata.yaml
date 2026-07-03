@@ -19,6 +19,13 @@ routes:
 # grouped by section (general vs notification). Description text is the
 # canonical copy from docs/content/configuration/{general,notifications}.md.
 setting_form:
+    ingest.allow:
+        display_name: 'Maintenance mode'
+        component: 'Switch'
+        description: 'When enabled, every POST /api/v1/alerts and every webhook receiver returns 503 immediately — useful during an alert flood or a maintenance window. Takes effect immediately, no restart needed.'
+        default_value: true
+        invert: true
+        group: 'general'
     default_auth_backend:
         display_name: 'Default authentication backend'
         component: 'Selector'

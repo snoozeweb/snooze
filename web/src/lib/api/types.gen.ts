@@ -4658,6 +4658,13 @@ export interface components {
              *     grouped pickers; ignored by the server.
              *      */
             group?: string;
+            /** @description For a Switch field: flips the displayed checked state and the
+             *     value written back on toggle, so a positively-phrased label
+             *     (e.g. "Maintenance mode") can be backed by a
+             *     negatively-phrased stored value (e.g. `ingest.allow`).
+             *     Ignored by the server.
+             *      */
+            invert?: boolean;
             options?: {
                 text?: string;
                 value?: unknown;
