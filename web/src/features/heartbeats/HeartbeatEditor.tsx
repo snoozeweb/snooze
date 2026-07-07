@@ -1,4 +1,5 @@
 import { useWatch, type Control, type UseFormSetValue } from "react-hook-form";
+import { Icon } from "@/shared/icons/Icon";
 import { Switch } from "@/shared/ui/Switch";
 import { Input } from "@/shared/ui/Input";
 import { Badge } from "@/shared/ui/Badge";
@@ -278,6 +279,22 @@ function HeartbeatFields({
             <span className={styles.readOnlyValue}>{lastLatencyDisplay}</span>
           </div>
         </section>
+      ) : null}
+
+      {isCreate ? (
+        <aside className={styles.note} role="note">
+          <span className={styles.noteIcon} aria-hidden="true">
+            <Icon name="info" size={16} />
+          </span>
+          <div>
+            <p className={styles.noteTitle}>Ping URL &amp; API key generated on save</p>
+            <p className={styles.noteBody}>
+              When you create this heartbeat, Snooze generates a secret token (its API key) and a
+              unique ping URL. Your job calls that URL on schedule to keep the switch alive — both
+              appear here, ready to copy, the moment you save.
+            </p>
+          </div>
+        </aside>
       ) : null}
     </>
   );

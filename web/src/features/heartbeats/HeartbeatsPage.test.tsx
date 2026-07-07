@@ -129,14 +129,41 @@ describe("HeartbeatsPage", () => {
     setup();
     await waitFor(() => expect(screen.getByText("hb-ok")).toBeInTheDocument());
 
-    // Click the Overdue filter chip
-    await user.click(screen.getByRole("button", { name: /overdue/i }));
+    // Click the Overdue filter tab
+    await user.click(screen.getByRole("tab", { name: /overdue/i }));
 
     await waitFor(() => {
       expect(capturedUrl).toContain("status=overdue");
     });
     // After filtering, only overdue row is visible
     await waitFor(() => expect(screen.getByText("hb-overdue")).toBeInTheDocument());
+  });
+
+  it("status_filter_all_clears_status_param", async () => {
+    // Regression: clicking "All" must clear the status query. The old handler
+    // set no `status` key, so the merge kept the previous filter and "All"
+    // silently did nothing.
+    const capturedStatuses: (string | null)[] = [];
+    mswServer.use(
+      http.get("/api/v1/heartbeat", ({ request }) => {
+        const statusParam = new URL(request.url).searchParams.get("status");
+        capturedStatuses.push(statusParam);
+        const items = statusParam === "overdue" ? [FIXTURE_OVERDUE] : [FIXTURE_OK, FIXTURE_OVERDUE];
+        return HttpResponse.json(makeListResponse(items));
+      }),
+    );
+    const user = userEvent.setup();
+    setup();
+    await waitFor(() => expect(screen.getByText("hb-ok")).toBeInTheDocument());
+
+    // Filter to Overdue…
+    await user.click(screen.getByRole("tab", { name: /overdue/i }));
+    await waitFor(() => expect(capturedStatuses).toContain("overdue"));
+
+    // …then back to All — the latest request must carry no status filter.
+    await user.click(screen.getByRole("tab", { name: /^all$/i }));
+    await waitFor(() => expect(capturedStatuses[capturedStatuses.length - 1]).toBeNull());
+    await waitFor(() => expect(screen.getByText("hb-ok")).toBeInTheDocument());
   });
 
   it("empty_state_shows_when_no_rows", async () => {

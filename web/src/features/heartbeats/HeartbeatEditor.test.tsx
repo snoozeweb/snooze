@@ -50,6 +50,17 @@ describe("HeartbeatEditor", () => {
     expect(screen.getByLabelText(/interval/i)).toBeInTheDocument();
   });
 
+  it("create_mode_shows_token_generation_note", () => {
+    const Wrapper = wrap();
+    render(
+      <Wrapper>
+        <HeartbeatEditor uid={undefined} onClose={() => undefined} />
+      </Wrapper>,
+    );
+    // Users should learn up front that a ping URL + API key appear after saving.
+    expect(screen.getByText(/generated on save/i)).toBeInTheDocument();
+  });
+
   it("renders_grace_and_max_latency_inputs", () => {
     const Wrapper = wrap();
     render(
