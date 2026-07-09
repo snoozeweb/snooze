@@ -18,6 +18,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"slices"
 	"strings"
@@ -122,6 +123,10 @@ func (p *Plugin) Send(ctx context.Context, rec snoozetypes.Record, payload plugi
 		return fmt.Errorf("snoozepeer: relay POST failed: %w", err)
 	}
 	defer resp.Body.Close() //nolint:errcheck
+	// Drain the (bounded) response body so net/http can return the connection to
+	// the keep-alive pool. snoozepeer is the sole relay path and typically
+	// relays many alerts to a fixed set of peers, so connection reuse matters.
+	_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, 1<<16))
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		return fmt.Errorf("snoozepeer: peer rejected relay: HTTP %d", resp.StatusCode)
 	}
