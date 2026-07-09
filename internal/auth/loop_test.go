@@ -9,7 +9,7 @@ import (
 
 // TestLoopChainRoundTrip verifies WithLoopChain / LoopChainFrom round-trip a
 // server-id chain through the context, and that a context with no chain yields
-// nil (the federation Processor relies on a missing chain reading as empty).
+// nil (the snoozepeer notifier relies on a missing chain reading as empty).
 func TestLoopChainRoundTrip(t *testing.T) {
 	t.Parallel()
 

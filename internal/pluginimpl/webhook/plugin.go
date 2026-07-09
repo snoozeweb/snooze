@@ -628,8 +628,8 @@ func applyAuth(req *http.Request, a Auth) error {
 }
 
 // ApplyAuth is the exported wrapper around applyAuth so sibling plugins (the
-// forward federation plugin) can reuse the single HTTP auth code path rather
-// than re-implementing the bearer/basic/apikey schemes.
+// snoozepeer federation notifier) can reuse the single HTTP auth code path
+// rather than re-implementing the bearer/basic/apikey schemes.
 func ApplyAuth(req *http.Request, a Auth) error { return applyAuth(req, a) }
 
 // NewClient is the exported wrapper around defaultClient so sibling plugins can

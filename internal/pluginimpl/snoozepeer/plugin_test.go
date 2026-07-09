@@ -27,9 +27,9 @@ import (
 //
 // testHost is a minimal stub satisfying the full plugins.Host interface.
 // snoozepeer's PostInit never touches the DB (config lives in the action's
-// subcontent, not in a collection), so DB() is a nil driver here — unlike
-// internal/pluginimpl/forward/plugin_test.go's testHost, which backs DB()
-// with a real sqlite instance because forward's Reload actually queries one.
+// subcontent, not in a collection), so DB() is a nil driver here — unlike a
+// Processor plugin's testHost, which would back DB() with a real sqlite
+// instance because such a plugin's Reload actually queries a collection.
 
 type testHost struct {
 	cfg    *config.Config

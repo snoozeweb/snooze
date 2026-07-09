@@ -173,7 +173,7 @@ func TestAlertRoute_KillSwitch_Allows(t *testing.T) {
 
 // TestHandleAlert_LoopChainFromHeader verifies the X-Snooze-Loop request header
 // is parsed (split on ",", trimmed) and stashed in the request context via
-// auth.WithLoopChain so the federation Processor can read it downstream.
+// auth.WithLoopChain so the snoozepeer notifier can read it downstream.
 func TestHandleAlert_LoopChainFromHeader(t *testing.T) {
 	var gotChain []string
 	fp := &fakeProcessor{

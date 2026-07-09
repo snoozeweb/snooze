@@ -14,7 +14,7 @@ import (
 
 // LoopHeader is the request/response header carrying the comma-separated chain
 // of server ids a federated (relayed) alert has already traversed. The
-// federation Processor reads it via auth.LoopChainFrom to prevent relay loops.
+// snoozepeer notifier reads it via auth.LoopChainFrom to prevent relay loops.
 const LoopHeader = "X-Snooze-Loop"
 
 // mountAlerts wires POST /api/v1/alerts.
@@ -60,8 +60,8 @@ func (rt *Router) handleAlertPost(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	// Stash the inbound X-Snooze-Loop chain (server ids a relayed alert has
-	// already passed through) on the request context so the federation
-	// Processor can read it and skip re-relaying. Absent header → no chain.
+	// already passed through) on the request context so the snoozepeer
+	// notifier can read it and skip re-relaying. Absent header → no chain.
 	ctx := r.Context()
 	if chain := parseLoopChain(r.Header.Get(LoopHeader)); len(chain) > 0 {
 		ctx = auth.WithLoopChain(ctx, chain)

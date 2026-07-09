@@ -78,6 +78,5 @@ import (
 
 	// Multi-role — implement more than one of the roles above.
 	_ "github.com/snoozeweb/snooze/internal/pluginimpl/aggregaterule" // data model + pipeline processor
-	_ "github.com/snoozeweb/snooze/internal/pluginimpl/forward"       // data model + pipeline processor (alert federation)
 	_ "github.com/snoozeweb/snooze/internal/pluginimpl/heartbeat"     // data model + inbound webhook + lifecycle
 )
