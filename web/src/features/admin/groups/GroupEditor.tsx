@@ -1,10 +1,7 @@
-import { useState } from "react";
 import { useWatch } from "react-hook-form";
 import { EditorDrawer, useFieldInvalid, type EditorBodyProps } from "@/shared/forms/EditorDrawer";
+import { UsersMultiSelect } from "@/shared/forms/UsersMultiSelect";
 import { Input } from "@/shared/ui/Input";
-import { Badge } from "@/shared/ui/Badge";
-import { Button } from "@/shared/ui/Button";
-import { Code } from "@/shared/ui/Code";
 import { Groups } from "./api";
 import type { Group, GroupMember } from "./types";
 import styles from "./GroupEditor.module.css";
@@ -94,72 +91,20 @@ function MemberList({
   setValue,
 }: Pick<EditorBodyProps<FormShape>, "control" | "setValue">) {
   const members = useWatch({ control, name: "members" });
-  const [username, setUsername] = useState("");
-  const [method, setMethod] = useState("local");
-  const [customMethod, setCustomMethod] = useState("");
-
-  const effectiveMethod = method === "__other__" ? customMethod : method;
-
-  const addMember = () => {
-    if (!username.trim() || !effectiveMethod.trim()) return;
-    const next = members.filter(
-      (m) => !(m.username === username.trim() && m.method === effectiveMethod.trim()),
-    );
-    next.push({ username: username.trim(), method: effectiveMethod.trim() });
-    setValue("members", next, { shouldDirty: true });
-    setUsername("");
-    setMethod("local");
-    setCustomMethod("");
-  };
 
   return (
-    <div className={styles.memberSection}>
-      <span className={styles.label}>Members</span>
-      <ul className={styles.memberList}>
-        {members.map((m) => (
-          <li key={`${m.username}:${m.method}`} className={styles.memberRow}>
-            <Code>{m.username}</Code>
-            <Badge variant="neutral">{m.method}</Badge>
-            <button
-              type="button"
-              aria-label={`Remove ${m.username} (${m.method})`}
-              onClick={() =>
-                setValue(
-                  "members",
-                  members.filter((x) => !(x.username === m.username && x.method === m.method)),
-                  { shouldDirty: true },
-                )
-              }
-            >
-              &times;
-            </button>
-          </li>
-        ))}
-      </ul>
-      <div className={styles.addRow}>
-        <Input
-          aria-label="Username"
-          value={username}
-          onChange={(e) => setUsername(e.target.value)}
-          placeholder="username"
-        />
-        <select aria-label="Method" value={method} onChange={(e) => setMethod(e.target.value)}>
-          <option value="local">local</option>
-          <option value="ldap">ldap</option>
-          <option value="__other__">Other&hellip;</option>
-        </select>
-        {method === "__other__" && (
-          <Input
-            aria-label="Custom method"
-            value={customMethod}
-            onChange={(e) => setCustomMethod(e.target.value)}
-            placeholder="e.g. microsoft"
-          />
-        )}
-        <Button type="button" size="sm" variant="secondary" onClick={addMember}>
-          Add member
-        </Button>
-      </div>
+    <div className={styles.field}>
+      {/* UsersMultiSelect is not a native control, so the visible label is
+          cosmetic — the picker is reached via its aria-label ("Members"). */}
+      <span className={styles.label} id="group-members-label">
+        Members
+      </span>
+      <UsersMultiSelect
+        aria-label="Members"
+        placeholder="Select users to add to this group"
+        value={members}
+        onChange={(next) => setValue("members", next, { shouldDirty: true })}
+      />
     </div>
   );
 }

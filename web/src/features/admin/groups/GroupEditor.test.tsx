@@ -33,8 +33,21 @@ function wrap() {
   );
 }
 
+// The member picker reads the existing user list. Tests that add a member stub
+// it with a known set so the dropdown offers predictable options.
+function stubUsers(users: { name: string; method: string }[]) {
+  mswServer.use(
+    http.get("/api/v1/user", () =>
+      HttpResponse.json({
+        data: users.map((u, i) => ({ uid: `u${i}`, ...u })),
+        meta: { count: users.length, limit: 500, offset: 0, total: users.length },
+      }),
+    ),
+  );
+}
+
 describe("GroupEditor", () => {
-  it("renders name, description, and member list inputs", () => {
+  it("renders name, description, and the member picker", () => {
     const onClose = vi.fn();
     const Wrapper = wrap();
     render(
@@ -44,10 +57,11 @@ describe("GroupEditor", () => {
     );
     expect(screen.getByLabelText(/^name$/i)).toBeInTheDocument();
     expect(screen.getByLabelText(/description/i)).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /add member/i })).toBeInTheDocument();
+    expect(screen.getByRole("combobox", { name: /members/i })).toBeInTheDocument();
   });
 
-  it("adds a member pair to the list", async () => {
+  it("picks a member from the existing-users dropdown, showing its auth method", async () => {
+    stubUsers([{ name: "alice", method: "local" }]);
     const onClose = vi.fn();
     const Wrapper = wrap();
     const user = userEvent.setup();
@@ -56,15 +70,14 @@ describe("GroupEditor", () => {
         <GroupEditor uid={undefined} onClose={onClose} />
       </Wrapper>,
     );
-    await user.type(screen.getByLabelText(/^username$/i), "alice");
-    // Method defaults to "local" — no need to change
-    await user.click(screen.getByRole("button", { name: /add member/i }));
-    expect(screen.getByText("alice")).toBeInTheDocument();
-    // The member list row renders a badge with "local"; there may also be "local" in the select option.
-    // Assert the badge specifically.
-    const badges = screen.getAllByText("local");
-    // At least one badge element should exist (not just the option)
-    expect(badges.length).toBeGreaterThanOrEqual(1);
+    await user.click(screen.getByRole("combobox", { name: /members/i }));
+    // The option carries the auth method as muted secondary text, so an operator
+    // doesn't have to know or guess which backend owns the account.
+    const option = await screen.findByRole("option", { name: /alice/ });
+    expect(option).toHaveTextContent(/local/i);
+    await user.click(option);
+    // The chosen user renders as a removable pill inside the combobox.
+    expect(screen.getByLabelText("Remove alice")).toBeInTheDocument();
   });
 
   it("removes a member from the list", async () => {
@@ -85,13 +98,14 @@ describe("GroupEditor", () => {
         <GroupEditor uid="g1" onClose={onClose} />
       </Wrapper>,
     );
-    // Wait for form hydration
-    await waitFor(() => expect(screen.getByText("alice")).toBeInTheDocument());
-    await user.click(screen.getByRole("button", { name: /remove alice/i }));
-    expect(screen.queryByText("alice")).not.toBeInTheDocument();
+    // Wait for form hydration — the member renders as a pill with a remove button.
+    await waitFor(() => expect(screen.getByLabelText("Remove alice")).toBeInTheDocument());
+    await user.click(screen.getByLabelText("Remove alice"));
+    expect(screen.queryByLabelText("Remove alice")).not.toBeInTheDocument();
   });
 
-  it("creates a group with name, description, and members", async () => {
+  it("creates a group with name, description, and a picked member", async () => {
+    stubUsers([{ name: "bob", method: "ldap" }]);
     const bodies: unknown[] = [];
     mswServer.use(
       http.post("/api/v1/group", async ({ request }) => {
@@ -109,10 +123,8 @@ describe("GroupEditor", () => {
     );
     await user.type(screen.getByLabelText(/^name$/i), "sre-test");
     await user.type(screen.getByLabelText(/description/i), "Test group");
-    await user.type(screen.getByLabelText(/^username$/i), "bob");
-    // Change method to ldap
-    await user.selectOptions(screen.getByLabelText(/^method$/i), "ldap");
-    await user.click(screen.getByRole("button", { name: /add member/i }));
+    await user.click(screen.getByRole("combobox", { name: /members/i }));
+    await user.click(await screen.findByRole("option", { name: /bob/ }));
     await user.click(screen.getByRole("button", { name: /create/i }));
     await waitFor(() => expect(bodies).toHaveLength(1));
     const sent = bodies[0] as {
@@ -122,6 +134,7 @@ describe("GroupEditor", () => {
     };
     expect(sent.name).toBe("sre-test");
     expect(sent.description).toBe("Test group");
+    // The picker preserves the user's real auth method — the admin never typed it.
     expect(sent.members[0]).toEqual({ username: "bob", method: "ldap" });
   });
 

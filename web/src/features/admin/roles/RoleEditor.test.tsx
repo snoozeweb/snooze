@@ -182,4 +182,34 @@ describe("RoleEditor", () => {
     await waitFor(() => expect(bodies).toHaveLength(1));
     expect((bodies[0] as { groups: string[] }).groups).toEqual(["GrafanaAdmin"]);
   });
+
+  it("suggests groups from the Groups menu and from users' identities", async () => {
+    stubCatalogue();
+    mswServer.use(
+      http.get("/api/v1/group", () =>
+        HttpResponse.json({
+          data: [{ uid: "g1", name: "sre", description: "SRE team" }],
+          meta: { count: 1, limit: 500, offset: 0, total: 1 },
+        }),
+      ),
+      http.get("/api/v1/user", () =>
+        HttpResponse.json({
+          data: [{ uid: "u1", name: "alice", method: "ldap", groups: ["GrafanaAdmin"] }],
+          meta: { count: 1, limit: 500, offset: 0, total: 1 },
+        }),
+      ),
+    );
+    const Wrapper = wrap();
+    const user = userEvent.setup();
+    render(
+      <Wrapper>
+        <RoleEditor uid={undefined} onClose={() => undefined} />
+      </Wrapper>,
+    );
+    await user.click(await screen.findByRole("combobox", { name: /groups/i }));
+    // A group defined in the Groups menu is offered as a suggestion…
+    expect(await screen.findByRole("option", { name: /sre/ })).toBeInTheDocument();
+    // …alongside a group discovered on a real user's identity (LDAP CN / OIDC claim).
+    expect(await screen.findByRole("option", { name: /GrafanaAdmin/ })).toBeInTheDocument();
+  });
 });

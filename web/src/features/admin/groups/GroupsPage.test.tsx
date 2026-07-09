@@ -70,11 +70,13 @@ const GROUP_RESPONSE = {
 };
 
 describe("GroupsPage", () => {
-  it("lists groups with member count", async () => {
+  it("lists groups with the full member list", async () => {
     mswServer.use(http.get("/api/v1/group", () => HttpResponse.json(GROUP_RESPONSE)));
     setup();
     await waitFor(() => expect(screen.getByText("sre")).toBeInTheDocument());
-    expect(screen.getByText("2 members")).toBeInTheDocument();
+    // The Members column names every member rather than showing a bare count.
+    expect(screen.getByText("alice")).toBeInTheDocument();
+    expect(screen.getByText("bob")).toBeInTheDocument();
   });
 
   it("opening a row opens GroupEditor", async () => {

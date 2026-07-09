@@ -3,9 +3,11 @@ import { useWatch } from "react-hook-form";
 import { EditorDrawer, useFieldInvalid, type EditorBodyProps } from "@/shared/forms/EditorDrawer";
 import { PermissionsCombobox } from "@/shared/forms/PermissionsCombobox";
 import { Input } from "@/shared/ui/Input";
-import { MultiCombobox } from "@/shared/ui/MultiCombobox";
+import { MultiCombobox, type MultiComboboxOption } from "@/shared/ui/MultiCombobox";
 import { Textarea } from "@/shared/ui/Textarea";
 import { Roles, usePermissionsCatalogue } from "./api";
+import { Groups } from "@/features/admin/groups/api";
+import { Users } from "@/features/admin/users/api";
 import type { Role } from "./types";
 import styles from "./RoleEditor.module.css";
 
@@ -70,11 +72,37 @@ function RoleFields({ register, control, setValue }: EditorBodyProps<FormShape>)
   const permissions = useWatch({ control, name: "permissions" });
   const groups = useWatch({ control, name: "groups" });
 
-  // Groups are free-form values from the auth backend (LDAP CNs, OIDC app-role
-  // / group-claim strings). There is no server catalogue, so the options are
-  // just whatever the role already has; allowCustom lets the admin type new
-  // ones (e.g. "GrafanaAdmin").
-  const groupOptions = useMemo(() => groups.map((g) => ({ value: g, label: g })), [groups]);
+  // The group→role mapping matches an auth-backend group string. There's no
+  // single server catalogue for those, so we suggest from the two places groups
+  // actually come from: groups seen on real user identities (LDAP CNs / OIDC
+  // claims populated at login) and groups an admin defined in the Groups menu.
+  // allowCustom still lets them type one that hasn't surfaced yet.
+  const definedGroups = Groups.useList({ limit: 500, orderby: "name", asc: true });
+  const usersList = Users.useList({ limit: 500 });
+
+  const groupOptions = useMemo<MultiComboboxOption[]>(() => {
+    // name → source description. Fill discovered first (lower precedence), then
+    // let a defined group override with its own description.
+    const byName = new Map<string, string | undefined>();
+    for (const u of usersList.data?.data ?? []) {
+      for (const g of u.groups ?? []) {
+        if (!byName.has(g)) byName.set(g, "Discovered on users");
+      }
+    }
+    for (const g of definedGroups.data?.data ?? []) {
+      byName.set(g.name, g.description ? `Group · ${g.description}` : "Group");
+    }
+    // Keep already-mapped groups present even if neither source lists them, so
+    // they render as badges and survive a save.
+    for (const g of groups) {
+      if (!byName.has(g)) byName.set(g, undefined);
+    }
+    return [...byName.entries()]
+      .sort((a, b) => a[0].localeCompare(b[0]))
+      .map(([value, description]) =>
+        description ? { value, label: value, description } : { value, label: value },
+      );
+  }, [definedGroups.data, usersList.data, groups]);
 
   return (
     <>
@@ -110,7 +138,7 @@ function RoleFields({ register, control, setValue }: EditorBodyProps<FormShape>)
           </span>
           <MultiCombobox
             aria-label="Groups"
-            placeholder="Map auth-backend groups (e.g. GrafanaAdmin) to this role"
+            placeholder="Pick a group or type an auth-backend group (e.g. GrafanaAdmin)"
             options={groupOptions}
             value={groups}
             onChange={(next) => setValue("groups", next, { shouldDirty: true })}
