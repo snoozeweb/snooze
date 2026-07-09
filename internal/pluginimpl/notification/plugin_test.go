@@ -108,6 +108,25 @@ func (n *failingNotifier) Send(_ context.Context, _ snoozetypes.Record, _ plugin
 	return errors.New("send: simulated failure")
 }
 
+// loopChainNotifier captures the X-Snooze-Loop chain observed on the context
+// handed to Send. Used to assert that spawnCoordinator re-attaches the
+// pipeline's loop chain onto the detached per-send goroutine's context, so a
+// federation notifier's loop prevention keeps seeing the chain it needs.
+type loopChainNotifier struct {
+	name  string
+	chain chan []string
+}
+
+func (n *loopChainNotifier) Name() string                                 { return n.name }
+func (n *loopChainNotifier) Metadata() plugins.Metadata                   { return plugins.Metadata{Name: n.name} }
+func (n *loopChainNotifier) PostInit(context.Context, plugins.Host) error { return nil }
+func (n *loopChainNotifier) Reload(context.Context) error                 { return nil }
+
+func (n *loopChainNotifier) Send(ctx context.Context, _ snoozetypes.Record, _ plugins.NotificationPayload) error {
+	n.chain <- auth.LoopChainFrom(ctx)
+	return nil
+}
+
 // incCaptureDriver wraps the SQLite driver and overrides BulkIncrement to
 // capture increment operations so tests can inspect what RecordStat emits.
 type incCaptureDriver struct {
@@ -895,4 +914,36 @@ func TestNotification_TenantIsolation(t *testing.T) {
 	betaEntries := p.entries["beta"]
 	p.mu.RUnlock()
 	require.Empty(t, betaEntries)
+}
+
+// TestSpawnCoordinatorPropagatesLoopChain verifies that the X-Snooze-Loop
+// chain attached to the pipeline/request context (as the ingestion handler
+// does for a relayed alert) survives into the context passed to
+// Notifier.Send. Before the fix, spawnCoordinator rebuilt each sendCtx from
+// context.Background() and re-attached only the tenant, silently dropping
+// the loop chain — which would defeat a federation notifier's loop
+// prevention.
+func TestSpawnCoordinatorPropagatesLoopChain(t *testing.T) {
+	h := newHost(t)
+	writeActions(t, h, []map[string]any{
+		{"name": "Federate", "action": map[string]any{"selected": "loopy", "subcontent": map[string]any{}}},
+	})
+	writeEntries(t, h, []map[string]any{
+		{"name": "n1", "condition": []any{"=", "host", "web01"}, "actions": []any{"Federate"}},
+	})
+	notifier := &loopChainNotifier{name: "loopy", chain: make(chan []string, 1)}
+	h.plugins[notifier.name] = notifier
+
+	p := newPlugin(t, h)
+
+	ctx := auth.WithLoopChain(tctx(), []string{"upstream-node"})
+	_, err := p.Process(ctx, snoozetypes.Record{Host: "web01", Hash: "h1"})
+	require.NoError(t, err)
+
+	select {
+	case got := <-notifier.chain:
+		require.Equal(t, []string{"upstream-node"}, got)
+	case <-time.After(2 * time.Second):
+		t.Fatal("timed out waiting for notifier.Send to observe the loop chain")
+	}
 }

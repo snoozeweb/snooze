@@ -424,6 +424,7 @@ func (p *Plugin) spawnCoordinator(ctx context.Context, rec snoozetypes.Record, r
 	hash := rec.Hash
 	uid := rec.UID
 	tenantID, _ := auth.TenantFrom(ctx)
+	loopChain := auth.LoopChainFrom(ctx)
 
 	go func() { //nolint:gosec // detached: the request ctx is cancelled on return
 		var wg sync.WaitGroup
@@ -436,6 +437,9 @@ func (p *Plugin) spawnCoordinator(ctx context.Context, rec snoozetypes.Record, r
 				defer cancel()
 				if tenantID != "" {
 					sendCtx = auth.WithTenant(sendCtx, tenantID)
+				}
+				if len(loopChain) > 0 {
+					sendCtx = auth.WithLoopChain(sendCtx, loopChain)
 				}
 				sendErr := st.notifier.Send(sendCtx, rec, st.payload)
 				status, metric := actionSuccess, "action_success"
