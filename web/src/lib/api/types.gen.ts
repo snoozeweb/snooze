@@ -1138,11 +1138,12 @@ export interface paths {
          *
          *     **Alert federation** — relayed alerts carry an `X-Snooze-Loop` request
          *     header: a comma-separated chain of the `syncer.hostname` server ids the
-         *     alert has already traversed. The `forward` plugin appends this server's
-         *     id before relaying to a peer; if this server's own id is already in the
-         *     chain the alert is accepted and persisted (HTTP 200) but **not**
-         *     re-relayed, breaking loops in cyclic (hub-and-spoke / active-active)
-         *     topologies. Direct (non-federated) submitters omit the header.
+         *     alert has already traversed. A `snoozepeer` notification action appends
+         *     this server's id before relaying to a peer; if this server's own id is
+         *     already in the chain the alert is accepted and persisted (HTTP 200) but
+         *     **not** re-relayed, breaking loops in cyclic (hub-and-spoke /
+         *     active-active) topologies. Direct (non-federated) submitters omit the
+         *     header.
          *
          */
         post: {
@@ -1151,8 +1152,8 @@ export interface paths {
                 header?: {
                     /**
                      * @description Comma-separated chain of `syncer.hostname` server ids a relayed
-                     *     alert has already traversed (set by the `forward` federation
-                     *     plugin). Omit when submitting alerts directly.
+                     *     alert has already traversed (set by the `snoozepeer` federation
+                     *     notification action). Omit when submitting alerts directly.
                      *
                      * @example hub-eu,hub-us
                      */
@@ -3146,21 +3147,6 @@ export interface paths {
                      *     `owner` from the JWT subject and scopes uniqueness to
                      *     `(tenant_id, owner, name)`; a caller may only mutate their own
                      *     bookmarks (admins may curate any). See the `SavedSearch` schema.
-                     *
-                     *     The `forward` collection holds alert-federation destinations
-                     *     (server-to-server relay). Each row is one downstream peer: `name`
-                     *     (primary, `duplicate_policy: reject`), `enabled` (default `true`),
-                     *     `endpoint` (e.g. `https://peer/api/v1/alerts`), an optional
-                     *     `condition` (relay scoping; empty = match all), `event_classes`
-                     *     (`["*"]` or `["alerts"]`; unknown values rejected at write time), an
-                     *     `auth` object (`type`: `""`/`bearer`/`basic`/`apikey`, plus `token` /
-                     *     `username`+`password` / `api_key`+`header`), `tls_insecure`, and
-                     *     `timeout`. After an alert is accepted by the pipeline, the `forward`
-                     *     Processor fire-and-forget POSTs the post-pipeline record JSON to each
-                     *     matching enabled destination with an `X-Snooze-Loop` header. Edits are
-                     *     hot-reloaded cluster-wide. Each HA node MUST set a distinct
-                     *     `syncer.hostname` or loop detection misfires. Hawk-HMAC auth is not
-                     *     supported.
                      *      */
                     plugin: components["parameters"]["PluginPath"];
                 };
@@ -3281,21 +3267,6 @@ export interface paths {
                      *     `owner` from the JWT subject and scopes uniqueness to
                      *     `(tenant_id, owner, name)`; a caller may only mutate their own
                      *     bookmarks (admins may curate any). See the `SavedSearch` schema.
-                     *
-                     *     The `forward` collection holds alert-federation destinations
-                     *     (server-to-server relay). Each row is one downstream peer: `name`
-                     *     (primary, `duplicate_policy: reject`), `enabled` (default `true`),
-                     *     `endpoint` (e.g. `https://peer/api/v1/alerts`), an optional
-                     *     `condition` (relay scoping; empty = match all), `event_classes`
-                     *     (`["*"]` or `["alerts"]`; unknown values rejected at write time), an
-                     *     `auth` object (`type`: `""`/`bearer`/`basic`/`apikey`, plus `token` /
-                     *     `username`+`password` / `api_key`+`header`), `tls_insecure`, and
-                     *     `timeout`. After an alert is accepted by the pipeline, the `forward`
-                     *     Processor fire-and-forget POSTs the post-pipeline record JSON to each
-                     *     matching enabled destination with an `X-Snooze-Loop` header. Edits are
-                     *     hot-reloaded cluster-wide. Each HA node MUST set a distinct
-                     *     `syncer.hostname` or loop detection misfires. Hawk-HMAC auth is not
-                     *     supported.
                      *      */
                     plugin: components["parameters"]["PluginPath"];
                 };
@@ -3475,21 +3446,6 @@ export interface paths {
                  *     `owner` from the JWT subject and scopes uniqueness to
                  *     `(tenant_id, owner, name)`; a caller may only mutate their own
                  *     bookmarks (admins may curate any). See the `SavedSearch` schema.
-                 *
-                 *     The `forward` collection holds alert-federation destinations
-                 *     (server-to-server relay). Each row is one downstream peer: `name`
-                 *     (primary, `duplicate_policy: reject`), `enabled` (default `true`),
-                 *     `endpoint` (e.g. `https://peer/api/v1/alerts`), an optional
-                 *     `condition` (relay scoping; empty = match all), `event_classes`
-                 *     (`["*"]` or `["alerts"]`; unknown values rejected at write time), an
-                 *     `auth` object (`type`: `""`/`bearer`/`basic`/`apikey`, plus `token` /
-                 *     `username`+`password` / `api_key`+`header`), `tls_insecure`, and
-                 *     `timeout`. After an alert is accepted by the pipeline, the `forward`
-                 *     Processor fire-and-forget POSTs the post-pipeline record JSON to each
-                 *     matching enabled destination with an `X-Snooze-Loop` header. Edits are
-                 *     hot-reloaded cluster-wide. Each HA node MUST set a distinct
-                 *     `syncer.hostname` or loop detection misfires. Hawk-HMAC auth is not
-                 *     supported.
                  *      */
                 plugin: components["parameters"]["PluginPath"];
             };
@@ -3537,21 +3493,6 @@ export interface paths {
                      *     `owner` from the JWT subject and scopes uniqueness to
                      *     `(tenant_id, owner, name)`; a caller may only mutate their own
                      *     bookmarks (admins may curate any). See the `SavedSearch` schema.
-                     *
-                     *     The `forward` collection holds alert-federation destinations
-                     *     (server-to-server relay). Each row is one downstream peer: `name`
-                     *     (primary, `duplicate_policy: reject`), `enabled` (default `true`),
-                     *     `endpoint` (e.g. `https://peer/api/v1/alerts`), an optional
-                     *     `condition` (relay scoping; empty = match all), `event_classes`
-                     *     (`["*"]` or `["alerts"]`; unknown values rejected at write time), an
-                     *     `auth` object (`type`: `""`/`bearer`/`basic`/`apikey`, plus `token` /
-                     *     `username`+`password` / `api_key`+`header`), `tls_insecure`, and
-                     *     `timeout`. After an alert is accepted by the pipeline, the `forward`
-                     *     Processor fire-and-forget POSTs the post-pipeline record JSON to each
-                     *     matching enabled destination with an `X-Snooze-Loop` header. Edits are
-                     *     hot-reloaded cluster-wide. Each HA node MUST set a distinct
-                     *     `syncer.hostname` or loop detection misfires. Hawk-HMAC auth is not
-                     *     supported.
                      *      */
                     plugin: components["parameters"]["PluginPath"];
                 };
@@ -3606,21 +3547,6 @@ export interface paths {
                      *     `owner` from the JWT subject and scopes uniqueness to
                      *     `(tenant_id, owner, name)`; a caller may only mutate their own
                      *     bookmarks (admins may curate any). See the `SavedSearch` schema.
-                     *
-                     *     The `forward` collection holds alert-federation destinations
-                     *     (server-to-server relay). Each row is one downstream peer: `name`
-                     *     (primary, `duplicate_policy: reject`), `enabled` (default `true`),
-                     *     `endpoint` (e.g. `https://peer/api/v1/alerts`), an optional
-                     *     `condition` (relay scoping; empty = match all), `event_classes`
-                     *     (`["*"]` or `["alerts"]`; unknown values rejected at write time), an
-                     *     `auth` object (`type`: `""`/`bearer`/`basic`/`apikey`, plus `token` /
-                     *     `username`+`password` / `api_key`+`header`), `tls_insecure`, and
-                     *     `timeout`. After an alert is accepted by the pipeline, the `forward`
-                     *     Processor fire-and-forget POSTs the post-pipeline record JSON to each
-                     *     matching enabled destination with an `X-Snooze-Loop` header. Edits are
-                     *     hot-reloaded cluster-wide. Each HA node MUST set a distinct
-                     *     `syncer.hostname` or loop detection misfires. Hawk-HMAC auth is not
-                     *     supported.
                      *      */
                     plugin: components["parameters"]["PluginPath"];
                 };
@@ -3688,21 +3614,6 @@ export interface paths {
                      *     `owner` from the JWT subject and scopes uniqueness to
                      *     `(tenant_id, owner, name)`; a caller may only mutate their own
                      *     bookmarks (admins may curate any). See the `SavedSearch` schema.
-                     *
-                     *     The `forward` collection holds alert-federation destinations
-                     *     (server-to-server relay). Each row is one downstream peer: `name`
-                     *     (primary, `duplicate_policy: reject`), `enabled` (default `true`),
-                     *     `endpoint` (e.g. `https://peer/api/v1/alerts`), an optional
-                     *     `condition` (relay scoping; empty = match all), `event_classes`
-                     *     (`["*"]` or `["alerts"]`; unknown values rejected at write time), an
-                     *     `auth` object (`type`: `""`/`bearer`/`basic`/`apikey`, plus `token` /
-                     *     `username`+`password` / `api_key`+`header`), `tls_insecure`, and
-                     *     `timeout`. After an alert is accepted by the pipeline, the `forward`
-                     *     Processor fire-and-forget POSTs the post-pipeline record JSON to each
-                     *     matching enabled destination with an `X-Snooze-Loop` header. Edits are
-                     *     hot-reloaded cluster-wide. Each HA node MUST set a distinct
-                     *     `syncer.hostname` or loop detection misfires. Hawk-HMAC auth is not
-                     *     supported.
                      *      */
                     plugin: components["parameters"]["PluginPath"];
                 };
@@ -3765,21 +3676,6 @@ export interface paths {
                      *     `owner` from the JWT subject and scopes uniqueness to
                      *     `(tenant_id, owner, name)`; a caller may only mutate their own
                      *     bookmarks (admins may curate any). See the `SavedSearch` schema.
-                     *
-                     *     The `forward` collection holds alert-federation destinations
-                     *     (server-to-server relay). Each row is one downstream peer: `name`
-                     *     (primary, `duplicate_policy: reject`), `enabled` (default `true`),
-                     *     `endpoint` (e.g. `https://peer/api/v1/alerts`), an optional
-                     *     `condition` (relay scoping; empty = match all), `event_classes`
-                     *     (`["*"]` or `["alerts"]`; unknown values rejected at write time), an
-                     *     `auth` object (`type`: `""`/`bearer`/`basic`/`apikey`, plus `token` /
-                     *     `username`+`password` / `api_key`+`header`), `tls_insecure`, and
-                     *     `timeout`. After an alert is accepted by the pipeline, the `forward`
-                     *     Processor fire-and-forget POSTs the post-pipeline record JSON to each
-                     *     matching enabled destination with an `X-Snooze-Loop` header. Edits are
-                     *     hot-reloaded cluster-wide. Each HA node MUST set a distinct
-                     *     `syncer.hostname` or loop detection misfires. Hawk-HMAC auth is not
-                     *     supported.
                      *      */
                     plugin: components["parameters"]["PluginPath"];
                 };
@@ -3844,21 +3740,6 @@ export interface paths {
                  *     `owner` from the JWT subject and scopes uniqueness to
                  *     `(tenant_id, owner, name)`; a caller may only mutate their own
                  *     bookmarks (admins may curate any). See the `SavedSearch` schema.
-                 *
-                 *     The `forward` collection holds alert-federation destinations
-                 *     (server-to-server relay). Each row is one downstream peer: `name`
-                 *     (primary, `duplicate_policy: reject`), `enabled` (default `true`),
-                 *     `endpoint` (e.g. `https://peer/api/v1/alerts`), an optional
-                 *     `condition` (relay scoping; empty = match all), `event_classes`
-                 *     (`["*"]` or `["alerts"]`; unknown values rejected at write time), an
-                 *     `auth` object (`type`: `""`/`bearer`/`basic`/`apikey`, plus `token` /
-                 *     `username`+`password` / `api_key`+`header`), `tls_insecure`, and
-                 *     `timeout`. After an alert is accepted by the pipeline, the `forward`
-                 *     Processor fire-and-forget POSTs the post-pipeline record JSON to each
-                 *     matching enabled destination with an `X-Snooze-Loop` header. Edits are
-                 *     hot-reloaded cluster-wide. Each HA node MUST set a distinct
-                 *     `syncer.hostname` or loop detection misfires. Hawk-HMAC auth is not
-                 *     supported.
                  *      */
                 plugin: components["parameters"]["PluginPath"];
                 uid: string;
@@ -3891,21 +3772,6 @@ export interface paths {
                      *     `owner` from the JWT subject and scopes uniqueness to
                      *     `(tenant_id, owner, name)`; a caller may only mutate their own
                      *     bookmarks (admins may curate any). See the `SavedSearch` schema.
-                     *
-                     *     The `forward` collection holds alert-federation destinations
-                     *     (server-to-server relay). Each row is one downstream peer: `name`
-                     *     (primary, `duplicate_policy: reject`), `enabled` (default `true`),
-                     *     `endpoint` (e.g. `https://peer/api/v1/alerts`), an optional
-                     *     `condition` (relay scoping; empty = match all), `event_classes`
-                     *     (`["*"]` or `["alerts"]`; unknown values rejected at write time), an
-                     *     `auth` object (`type`: `""`/`bearer`/`basic`/`apikey`, plus `token` /
-                     *     `username`+`password` / `api_key`+`header`), `tls_insecure`, and
-                     *     `timeout`. After an alert is accepted by the pipeline, the `forward`
-                     *     Processor fire-and-forget POSTs the post-pipeline record JSON to each
-                     *     matching enabled destination with an `X-Snooze-Loop` header. Edits are
-                     *     hot-reloaded cluster-wide. Each HA node MUST set a distinct
-                     *     `syncer.hostname` or loop detection misfires. Hawk-HMAC auth is not
-                     *     supported.
                      *      */
                     plugin: components["parameters"]["PluginPath"];
                     uid: string;
@@ -3962,21 +3828,6 @@ export interface paths {
                      *     `owner` from the JWT subject and scopes uniqueness to
                      *     `(tenant_id, owner, name)`; a caller may only mutate their own
                      *     bookmarks (admins may curate any). See the `SavedSearch` schema.
-                     *
-                     *     The `forward` collection holds alert-federation destinations
-                     *     (server-to-server relay). Each row is one downstream peer: `name`
-                     *     (primary, `duplicate_policy: reject`), `enabled` (default `true`),
-                     *     `endpoint` (e.g. `https://peer/api/v1/alerts`), an optional
-                     *     `condition` (relay scoping; empty = match all), `event_classes`
-                     *     (`["*"]` or `["alerts"]`; unknown values rejected at write time), an
-                     *     `auth` object (`type`: `""`/`bearer`/`basic`/`apikey`, plus `token` /
-                     *     `username`+`password` / `api_key`+`header`), `tls_insecure`, and
-                     *     `timeout`. After an alert is accepted by the pipeline, the `forward`
-                     *     Processor fire-and-forget POSTs the post-pipeline record JSON to each
-                     *     matching enabled destination with an `X-Snooze-Loop` header. Edits are
-                     *     hot-reloaded cluster-wide. Each HA node MUST set a distinct
-                     *     `syncer.hostname` or loop detection misfires. Hawk-HMAC auth is not
-                     *     supported.
                      *      */
                     plugin: components["parameters"]["PluginPath"];
                     uid: string;
@@ -4031,21 +3882,6 @@ export interface paths {
                      *     `owner` from the JWT subject and scopes uniqueness to
                      *     `(tenant_id, owner, name)`; a caller may only mutate their own
                      *     bookmarks (admins may curate any). See the `SavedSearch` schema.
-                     *
-                     *     The `forward` collection holds alert-federation destinations
-                     *     (server-to-server relay). Each row is one downstream peer: `name`
-                     *     (primary, `duplicate_policy: reject`), `enabled` (default `true`),
-                     *     `endpoint` (e.g. `https://peer/api/v1/alerts`), an optional
-                     *     `condition` (relay scoping; empty = match all), `event_classes`
-                     *     (`["*"]` or `["alerts"]`; unknown values rejected at write time), an
-                     *     `auth` object (`type`: `""`/`bearer`/`basic`/`apikey`, plus `token` /
-                     *     `username`+`password` / `api_key`+`header`), `tls_insecure`, and
-                     *     `timeout`. After an alert is accepted by the pipeline, the `forward`
-                     *     Processor fire-and-forget POSTs the post-pipeline record JSON to each
-                     *     matching enabled destination with an `X-Snooze-Loop` header. Edits are
-                     *     hot-reloaded cluster-wide. Each HA node MUST set a distinct
-                     *     `syncer.hostname` or loop detection misfires. Hawk-HMAC auth is not
-                     *     supported.
                      *      */
                     plugin: components["parameters"]["PluginPath"];
                     uid: string;
@@ -4093,21 +3929,6 @@ export interface paths {
                      *     `owner` from the JWT subject and scopes uniqueness to
                      *     `(tenant_id, owner, name)`; a caller may only mutate their own
                      *     bookmarks (admins may curate any). See the `SavedSearch` schema.
-                     *
-                     *     The `forward` collection holds alert-federation destinations
-                     *     (server-to-server relay). Each row is one downstream peer: `name`
-                     *     (primary, `duplicate_policy: reject`), `enabled` (default `true`),
-                     *     `endpoint` (e.g. `https://peer/api/v1/alerts`), an optional
-                     *     `condition` (relay scoping; empty = match all), `event_classes`
-                     *     (`["*"]` or `["alerts"]`; unknown values rejected at write time), an
-                     *     `auth` object (`type`: `""`/`bearer`/`basic`/`apikey`, plus `token` /
-                     *     `username`+`password` / `api_key`+`header`), `tls_insecure`, and
-                     *     `timeout`. After an alert is accepted by the pipeline, the `forward`
-                     *     Processor fire-and-forget POSTs the post-pipeline record JSON to each
-                     *     matching enabled destination with an `X-Snooze-Loop` header. Edits are
-                     *     hot-reloaded cluster-wide. Each HA node MUST set a distinct
-                     *     `syncer.hostname` or loop detection misfires. Hawk-HMAC auth is not
-                     *     supported.
                      *      */
                     plugin: components["parameters"]["PluginPath"];
                     uid: string;
@@ -4954,23 +4775,8 @@ export interface components {
          *     `owner` from the JWT subject and scopes uniqueness to
          *     `(tenant_id, owner, name)`; a caller may only mutate their own
          *     bookmarks (admins may curate any). See the `SavedSearch` schema.
-         *
-         *     The `forward` collection holds alert-federation destinations
-         *     (server-to-server relay). Each row is one downstream peer: `name`
-         *     (primary, `duplicate_policy: reject`), `enabled` (default `true`),
-         *     `endpoint` (e.g. `https://peer/api/v1/alerts`), an optional
-         *     `condition` (relay scoping; empty = match all), `event_classes`
-         *     (`["*"]` or `["alerts"]`; unknown values rejected at write time), an
-         *     `auth` object (`type`: `""`/`bearer`/`basic`/`apikey`, plus `token` /
-         *     `username`+`password` / `api_key`+`header`), `tls_insecure`, and
-         *     `timeout`. After an alert is accepted by the pipeline, the `forward`
-         *     Processor fire-and-forget POSTs the post-pipeline record JSON to each
-         *     matching enabled destination with an `X-Snooze-Loop` header. Edits are
-         *     hot-reloaded cluster-wide. Each HA node MUST set a distinct
-         *     `syncer.hostname` or loop detection misfires. Hawk-HMAC auth is not
-         *     supported.
          *      */
-        PluginPath: "action" | "aggregaterule" | "alertmanager" | "apikey" | "audit" | "azuremonitor" | "cloudwatch" | "comment" | "datadog" | "discord" | "environment" | "forward" | "googlechat" | "grafana" | "heartbeat" | "influxdb2" | "kapacitor" | "kv" | "mail" | "newrelic" | "notification" | "ntfy" | "opsgenie" | "pagerduty" | "patlite" | "profile" | "prometheus" | "pushover" | "record" | "role" | "rule" | "savedsearch" | "script" | "sentry" | "servicenow" | "settings" | "slack" | "snooze" | "sns" | "stackdriver" | "stats" | "statuspage" | "telegram" | "twilio" | "user" | "webhook" | "widget";
+        PluginPath: "action" | "aggregaterule" | "alertmanager" | "apikey" | "audit" | "azuremonitor" | "cloudwatch" | "comment" | "datadog" | "discord" | "environment" | "googlechat" | "grafana" | "heartbeat" | "influxdb2" | "kapacitor" | "kv" | "mail" | "newrelic" | "notification" | "ntfy" | "opsgenie" | "pagerduty" | "patlite" | "profile" | "prometheus" | "pushover" | "record" | "role" | "rule" | "savedsearch" | "script" | "sentry" | "servicenow" | "settings" | "slack" | "snooze" | "sns" | "stackdriver" | "stats" | "statuspage" | "telegram" | "twilio" | "user" | "webhook" | "widget";
         /** @description Base64url-encoded JSON condition. Empty (or absent) selects
          *     every document. Use `POST /{plugin}/search` for queries that
          *     won't fit in a URL.

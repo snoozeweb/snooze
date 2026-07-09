@@ -132,12 +132,6 @@ export const NAV_ITEMS: NavItem[] = [
     group: "admin",
     permissions: ["ro_audit", "rw_audit"],
   },
-  {
-    to: "/web/admin/forward",
-    label: "Federation",
-    icon: "server",
-    group: "admin",
-  },
   { to: "/web/admin/status", label: "Status", icon: "activity", group: "admin" },
   {
     to: "/web/admin/tenants",
