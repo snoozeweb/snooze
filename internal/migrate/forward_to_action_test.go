@@ -113,3 +113,67 @@ func TestForwardToAction_EmptyIsNoOp(t *testing.T) {
 	require.NoError(t, err)
 	require.Empty(t, actions2)
 }
+
+// TestForwardToAction_ReRunDoesNotDuplicate proves the doc-comment claim that
+// the per-row (tenant_id, name) upserts make a re-run safe even if the sentinel
+// guard is bypassed. We convert one row, clear the completion sentinel, re-seed
+// the SAME-named forward row, then re-run. The re-run re-converts the row via
+// upsert, which must UPDATE the existing action/notification in place rather
+// than INSERT duplicates — so exactly one of each remains, with unchanged
+// content, and the re-seeded source row is deleted again.
+func TestForwardToAction_ReRunDoesNotDuplicate(t *testing.T) {
+	drv := newSQLiteDriver(t)
+	ctx := context.Background()
+	pctx := auth.WithPlatformScope(ctx)
+
+	seedForward := func() {
+		_, err := drv.Write(pctx, "forward", []db.Document{
+			{
+				"name":         "central-hub",
+				"enabled":      true,
+				"endpoint":     "https://hub.example.com/api/v1/alerts",
+				"condition":    []any{"=", "severity", "critical"},
+				"tls_insecure": false,
+				"timeout":      30,
+				"tenant_id":    snoozetypes.DefaultTenant,
+			},
+		}, db.WriteOptions{UpdateTime: false})
+		require.NoError(t, err)
+	}
+
+	seedForward()
+	require.NoError(t, RunForwardToActionMigration(ctx, drv))
+
+	// Bypass the sentinel guard: clear just the forward-migration marker doc.
+	_, err := drv.Delete(pctx, "general", condition.Equals(forwardToActionMarkerField, true), false)
+	require.NoError(t, err)
+	done, err := isForwardMigrated(pctx, drv)
+	require.NoError(t, err)
+	require.False(t, done, "sentinel cleared for the re-run")
+
+	// Re-seed the same-named forward row and re-run.
+	seedForward()
+	require.NoError(t, RunForwardToActionMigration(ctx, drv))
+
+	// Still exactly one action and one notification (upsert updated in place).
+	actions, _, err := drv.Search(pctx, "action", condition.Cond{}, db.Page{})
+	require.NoError(t, err)
+	require.Len(t, actions, 1, "re-run must not duplicate the action")
+	env, ok := actions[0]["action"].(map[string]any)
+	require.True(t, ok)
+	require.Equal(t, "snoozepeer", env["selected"])
+	sub, ok := env["subcontent"].(map[string]any)
+	require.True(t, ok)
+	require.Equal(t, "https://hub.example.com/api/v1/alerts", sub["endpoint"])
+
+	notifications, _, err := drv.Search(pctx, "notification", condition.Cond{}, db.Page{})
+	require.NoError(t, err)
+	require.Len(t, notifications, 1, "re-run must not duplicate the notification")
+	actionsField, _ := notifications[0]["actions"].([]any)
+	require.Equal(t, []any{"central-hub"}, actionsField)
+
+	// The re-seeded source row was deleted again.
+	fwd, _, err := drv.Search(pctx, "forward", condition.Cond{}, db.Page{})
+	require.NoError(t, err)
+	require.Empty(t, fwd)
+}

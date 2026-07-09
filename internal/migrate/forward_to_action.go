@@ -159,21 +159,28 @@ func RunForwardToActionMigration(ctx context.Context, drv db.Driver) error {
 			db.WriteOptions{Primary: []string{"tenant_id", "name"}, UpdateTime: true}); err != nil {
 			return fmt.Errorf("migrate: write notification %q: %w", name, err)
 		}
-		converted++
-	}
 
-	if len(fwd) > 0 {
-		// force=true: an unconditional delete of every remaining forward row
-		// is the point (the collection is retired), and the sqlite driver
-		// otherwise refuses an empty-condition delete as a safety guard.
-		if _, err := drv.Delete(pctx, "forward", condition.Cond{}, true); err != nil {
-			return fmt.Errorf("migrate: delete converted forward rows: %w", err)
+		// Delete only the row we just converted, keyed by its uid, and only
+		// after both writes above succeeded. A scoped delete (rather than a
+		// blanket delete of the whole collection at the end) avoids a TOCTOU
+		// footgun: the forward CRUD API is still live until a later task
+		// removes it, so a whole-collection delete could wipe rows created
+		// after the initial Search, and would also destroy nameless/skipped
+		// rows without converting them. A non-empty condition does not need
+		// force. A row with no uid is left in place (nothing to key on).
+		if uid := fwdStr(d, "uid"); uid != "" {
+			if _, err := drv.Delete(pctx, "forward", condition.Equals("uid", uid), false); err != nil {
+				return fmt.Errorf("migrate: delete converted forward %q: %w", name, err)
+			}
+		} else {
+			slog.Warn("migrate: converted forward row has no uid, not deleting source", "name", name)
 		}
+		converted++
 	}
 
 	if err := writeForwardMigratedSentinel(pctx, drv); err != nil {
 		return err
 	}
-	slog.Info("migrate: forward->action migration complete", "converted", converted)
+	slog.Info("migrate: forward->action migration complete", "converted", converted, "total", len(fwd))
 	return nil
 }
