@@ -113,6 +113,7 @@ Usage:
   snooze-server migrate-config --from <dir>        Convert legacy Python config (placeholder)
   snooze-server migrate multitenancy [--config <dir>]  Backfill tenant_id on an existing DB (one-shot)
   snooze-server migrate webhook-body [--config <dir>]  Rename webhook actions' payload→body (one-shot)
+  snooze-server migrate forward-to-action [--config <dir>]  Convert forward destinations to snoozepeer actions (one-shot)
   snooze-server root-token [--socket <path>]       Read the one-shot root token`)
 }
 
@@ -131,8 +132,10 @@ func runMigrate(args []string, stdout, stderr io.Writer) int {
 		return runMigrateMultitenancy(args[1:], stdout, stderr)
 	case "webhook-body":
 		return runMigrateWebhookBody(args[1:], stdout, stderr)
+	case "forward-to-action":
+		return runMigrateForwardToAction(args[1:], stdout, stderr)
 	default:
-		_, _ = fmt.Fprintf(stderr, "migrate: unknown migration %q (known: multitenancy, webhook-body)\n", name)
+		_, _ = fmt.Fprintf(stderr, "migrate: unknown migration %q (known: multitenancy, webhook-body, forward-to-action)\n", name)
 		return exitUsage
 	}
 }
@@ -230,6 +233,52 @@ func runMigrateWebhookBody(args []string, stdout, stderr io.Writer) int {
 		return exitErr
 	}
 	_, _ = fmt.Fprintln(stdout, "webhook body rename migration complete")
+	return exitOK
+}
+
+// runMigrateForwardToAction opens the configured database driver and runs the
+// idempotent forward->action/notification conversion
+// (migrate.RunForwardToActionMigration). The legacy `forward` federation
+// collection is rewritten into a `snoozepeer`-selected action plus a
+// notification entry carrying the destination's condition, then the source
+// row is deleted. Idempotent and sentinel-guarded, so re-runs are no-ops; a
+// no-op when the forward collection is empty or absent (the common case).
+func runMigrateForwardToAction(args []string, stdout, stderr io.Writer) int {
+	fs := flag.NewFlagSet("migrate forward-to-action", flag.ContinueOnError)
+	fs.SetOutput(stderr)
+	configDir := fs.String("config", "/etc/snooze/server-go", "directory containing YAML config files")
+	if err := fs.Parse(args); err != nil {
+		if errors.Is(err, flag.ErrHelp) {
+			return exitOK
+		}
+		return exitUsage
+	}
+
+	// Honour SIGINT/SIGTERM so a long rewrite can be interrupted cleanly.
+	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+	defer stop()
+
+	cfg, err := config.Load(*configDir)
+	if err != nil {
+		_, _ = fmt.Fprintf(stderr, "migrate: load config: %v\n", err)
+		return exitErr
+	}
+
+	logger := slog.New(slog.NewTextHandler(stderr, &slog.HandlerOptions{Level: slog.LevelInfo}))
+	slog.SetDefault(logger)
+
+	drv, err := openDB(ctx, cfg.Core.Database, logger)
+	if err != nil {
+		_, _ = fmt.Fprintf(stderr, "migrate: open database: %v\n", err)
+		return exitErr
+	}
+	defer func() { _ = drv.Close() }()
+
+	if err := migrate.RunForwardToActionMigration(ctx, drv); err != nil {
+		_, _ = fmt.Fprintf(stderr, "migrate: %v\n", err)
+		return exitErr
+	}
+	_, _ = fmt.Fprintln(stdout, "forward->action migration complete")
 	return exitOK
 }
 
