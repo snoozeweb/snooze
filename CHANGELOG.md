@@ -2,6 +2,15 @@
 
 ### Added
 
+- Federation is now a notification action. The standalone **Federation** admin
+  page and the `forward` collection are removed; relaying to a Snooze peer is
+  configured as a **Forward to another Snooze peer** (`snoozepeer`) action on a
+  notification. Deployments with existing `forward` destinations convert them by
+  running `snooze-server migrate forward-to-action` (a one-time, idempotent
+  operator command — it is not run automatically at daemon startup). The
+  `X-Snooze-Loop` loop-prevention contract and the per-node `syncer.hostname`
+  requirement are unchanged.
+
 - **Ingest kill-switch toggle.** A dedicated **Ingest** tab now appears in
   Settings with an **Alert intake enabled** switch. Disabling it halts all
   `POST /api/v1/alerts` requests and every webhook receiver (503 Service
@@ -14,12 +23,6 @@
   profile card shows the last-used age and a "Stale" badge for keys idle for
   more than 30 days. The admin edit drawer shows a read-only usage summary.
   (Values are updated at most once per hour per the Plan 08 throttle.)
-
-- Added **"Federation" admin page** (`/web/admin/forward`) for managing alert-forwarding
-  destinations in the web console: create, edit, enable/disable, and delete forward destinations
-  with condition scoping, event-class selection, and bearer / basic / apikey auth sub-form.
-  The Advanced section (collapsible) covers auth, TLS verification, and request timeout.
-  A 409 conflict surfaces "name already taken" inline.
 
 - **Tenant routing admin UI:** a new **Org matching** page under Admin lets operators manage
   attribute→tenant routing rules (group / domain / login → tenant slug) via create / edit / delete

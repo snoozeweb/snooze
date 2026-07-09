@@ -116,3 +116,49 @@ notification, each showing the actions it fired (boxes are green on success, red
 on error — click a red box for the message). When a snooze rule silenced the
 alert, the chart ends at the **Snooze** box (no notifications or actions).
 
+## Federating alerts to a Snooze peer
+
+To relay accepted alerts to a downstream Snooze (or generic HTTP) peer — for
+hub-and-spoke or active/active topologies — configure a **notification** whose
+action is a **Forward to another Snooze peer** (`snoozepeer`) target.
+
+1. Create an **action** of type *Forward to another Snooze peer* with the peer's
+   endpoint (e.g. `https://hub.example.com/api/v1/alerts`) and optional
+   per-peer auth (bearer / basic / apikey), TLS-verification, and timeout.
+2. Create a **notification** whose **condition** scopes which accepted alerts
+   relay (leave empty to relay everything) and whose **actions** list includes
+   the snoozepeer action.
+
+Relay sends the normalized post-pipeline record to the peer's
+`POST /api/v1/alerts`, which re-runs its own pipeline on it. Relay is
+**fire-and-forget**: a slow or failing peer never blocks or fails local
+ingestion, and there are no retries (to avoid amplification storms).
+
+### Loop prevention
+
+In a cyclic topology (A → B → A, or a mesh of hubs) Snooze prevents infinite
+relaying with the `X-Snooze-Loop` header — a comma-separated chain of the server
+ids an alert has already passed through. A server that finds its own id in the
+inbound chain accepts the alert but does not re-relay it. A server's id is its
+`syncer.hostname`.
+
+### HA prerequisite: distinct `syncer.hostname`
+
+Loop detection keys on `syncer.hostname`. **Each federated node must set a
+distinct `syncer.hostname`** — if two nodes share one, loop detection breaks.
+Set it explicitly per node (the OS-hostname default is fragile in
+container/Kubernetes deployments):
+
+``` yaml
+# syncer.yaml on node A
+hostname: hub-eu
+```
+
+### Upgrading from the standalone Federation page
+
+Earlier releases had a dedicated **Federation** admin page backed by a `forward`
+collection. Federation is now a notification action. Deployments that had
+`forward` destinations convert them once by running
+`snooze-server migrate forward-to-action` (idempotent; safe to run on a database
+with no forward destinations — it does nothing).
+
