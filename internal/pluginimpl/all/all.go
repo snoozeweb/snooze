@@ -50,6 +50,7 @@ import (
 	_ "github.com/snoozeweb/snooze/internal/pluginimpl/script"
 	_ "github.com/snoozeweb/snooze/internal/pluginimpl/servicenow"
 	_ "github.com/snoozeweb/snooze/internal/pluginimpl/slack"
+	_ "github.com/snoozeweb/snooze/internal/pluginimpl/snoozepeer"
 	_ "github.com/snoozeweb/snooze/internal/pluginimpl/sns"
 	_ "github.com/snoozeweb/snooze/internal/pluginimpl/statuspage"
 	_ "github.com/snoozeweb/snooze/internal/pluginimpl/teams"

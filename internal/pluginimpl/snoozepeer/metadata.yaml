@@ -1,0 +1,27 @@
+---
+name: 'Forward to another Snooze peer'
+desc: 'Relay the alert to a downstream Snooze/HTTP peer (federation)'
+icon: 'server'
+category: 'generic'
+provides:
+    - notifier
+action_form:
+    endpoint:
+        display_name: Endpoint
+        component: String
+        description: 'Peer URL, e.g. https://peer.example.com/api/v1/alerts'
+        required: true
+    auth:
+        display_name: Authentication
+        component: Object
+        description: 'Optional per-peer auth (none / bearer / basic / apikey)'
+    tls_insecure:
+        display_name: Skip TLS verification
+        component: Switch
+        description: 'Skip TLS certificate verification (lab / self-signed only)'
+        default_value: false
+    timeout:
+        display_name: Timeout (seconds)
+        component: Number
+        description: 'Per-relay request timeout in seconds; 0 uses the default'
+        default_value: 30
