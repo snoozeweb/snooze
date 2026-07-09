@@ -87,6 +87,7 @@ fastest paths to get alerts flowing, then see the per-integration pages below.
 - [Script](./script.md)
 - [ServiceNow](./servicenow.md)
 - [Slack](./slack.md) (interactive ack/close/re-open buttons supported)
+- [Snooze peer (federation)](./snoozepeer.md) — relay alerts to a downstream Snooze/HTTP peer
 - [SNS](./sns.md)
 - [Statuspage](./statuspage.md)
 - [Telegram](./telegram.md) (interactive ack/close/re-open buttons supported)

@@ -3,6 +3,7 @@ name: 'Forward to another Snooze peer'
 desc: 'Relay the alert to a downstream Snooze/HTTP peer (federation)'
 icon: 'server'
 category: 'generic'
+doc_url: 'https://snoozeweb.github.io/snooze/general/integrations/snoozepeer'
 provides:
     - notifier
 action_form:

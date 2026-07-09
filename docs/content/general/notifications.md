@@ -120,7 +120,9 @@ alert, the chart ends at the **Snooze** box (no notifications or actions).
 
 To relay accepted alerts to a downstream Snooze (or generic HTTP) peer — for
 hub-and-spoke or active/active topologies — configure a **notification** whose
-action is a **Forward to another Snooze peer** (`snoozepeer`) target.
+action is a **Forward to another Snooze peer** (`snoozepeer`) target. See the
+[Snooze peer / federation](./integrations/snoozepeer.md) integration page for the
+full action-field reference.
 
 1. Create an **action** of type *Forward to another Snooze peer* with the peer's
    endpoint (e.g. `https://hub.example.com/api/v1/alerts`) and optional
