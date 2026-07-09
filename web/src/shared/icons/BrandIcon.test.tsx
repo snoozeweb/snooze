@@ -3,7 +3,7 @@ import { join } from "node:path";
 import { render } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 import { BrandIcon } from "./BrandIcon";
-import { BRAND_NAMES, brandFor } from "./brand-names";
+import { BRAND_NAMES, MASK_BRANDS, brandFor, maskUrlFor } from "./brand-names";
 
 describe("BrandIcon", () => {
   it("renders an svg with a use reference to the named brand symbol", () => {
@@ -41,6 +41,35 @@ describe("BrandIcon", () => {
     const { container } = render(<BrandIcon name="slack" className="my-brand" />);
     expect(container.querySelector("svg")!.classList.contains("my-brand")).toBe(true);
   });
+
+  it("paints a mask brand (snoozepeer) as a currentColor-filled masked span", () => {
+    const { container } = render(<BrandIcon name="snoozepeer" />);
+    // Mask brands render a <span>, not the sprite <svg><use>.
+    expect(container.querySelector("svg use")).toBeNull();
+    const span = container.querySelector("span")!;
+    expect(span).not.toBeNull();
+    // Filled with currentColor so it inherits text color and hover-accent,
+    // exactly like the sprite glyphs — keeping the white PNG theme-safe.
+    expect(span.style.backgroundColor.toLowerCase()).toBe("currentcolor");
+    expect(span.style.width).toBe("16px");
+  });
+
+  it("sizes and labels a mask brand like a sprite brand", () => {
+    const { container, rerender } = render(<BrandIcon name="snoozepeer" size={24} />);
+    const span = container.querySelector("span")!;
+    expect(span.style.width).toBe("24px");
+    expect(span.getAttribute("aria-hidden")).toBe("true");
+    rerender(<BrandIcon name="snoozepeer" label="Snooze peer" size={24} />);
+    const labelled = container.querySelector("span")!;
+    expect(labelled.getAttribute("aria-hidden")).toBeNull();
+    expect(labelled.getAttribute("role")).toBe("img");
+    expect(labelled.getAttribute("aria-label")).toBe("Snooze peer");
+  });
+
+  it("forwards className to a mask brand's span root", () => {
+    const { container } = render(<BrandIcon name="snoozepeer" className="my-brand" />);
+    expect(container.querySelector("span")!.classList.contains("my-brand")).toBe(true);
+  });
 });
 
 describe("brandFor", () => {
@@ -67,6 +96,20 @@ describe("brandFor", () => {
     expect(BRAND_NAMES).toContain("sns");
     expect(BRAND_NAMES).not.toContain("mail");
   });
+
+  it("resolves mask brands (snoozepeer) without listing them in the sprite set", () => {
+    expect(brandFor("snoozepeer")).toBe("snoozepeer");
+    // Mask brands must NOT be in BRAND_NAMES, or the sprite lockstep guard below
+    // would demand a <symbol> that doesn't exist.
+    expect(BRAND_NAMES).not.toContain("snoozepeer" as never);
+  });
+});
+
+describe("maskUrlFor", () => {
+  it("returns the PNG asset for a mask brand and null for a sprite brand", () => {
+    expect(maskUrlFor("snoozepeer")).toBe("/web/logo-symbol.png");
+    expect(maskUrlFor("slack")).toBeNull();
+  });
 });
 
 describe("brands.svg sprite", () => {
@@ -77,5 +120,14 @@ describe("brands.svg sprite", () => {
 
   it.each(BRAND_NAMES)("has a symbol for %s", (name) => {
     expect(sprite).toContain(`id="brand-${name}"`);
+  });
+});
+
+describe("mask brand assets", () => {
+  // Lockstep guard: every masked-raster brand must ship its PNG under public/,
+  // or BrandIcon renders an empty box. The "/web/…" URL maps to public/… .
+  it.each(Object.entries(MASK_BRANDS))("ships the asset for %s", (_name, url) => {
+    const rel = url.replace(/^\/web\//, "");
+    expect(() => readFileSync(join(process.cwd(), "public", rel))).not.toThrow();
   });
 });

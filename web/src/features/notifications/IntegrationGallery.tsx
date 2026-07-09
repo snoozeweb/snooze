@@ -16,9 +16,10 @@ const CATEGORY_ORDER: { key: string; label: string }[] = [
   { key: "sms", label: "SMS" },
 ];
 
-// Branded notifiers (Slack, Teams, PagerDuty, …) render their brand glyph from
-// web/public/brands.svg via brandFor(); everything else falls back to the
-// bucket's monochrome glyph from the icon sprite (web/public/icons.svg).
+// Branded notifiers (Slack, Teams, PagerDuty, the Snooze-bell snoozepeer, …)
+// render their brand glyph via brandFor() — a sprite symbol from
+// web/public/brands.svg or a masked PNG silhouette; everything else falls back
+// to the bucket's monochrome glyph from the icon sprite (web/public/icons.svg).
 const CATEGORY_ICON: Record<string, IconName> = {
   chat: "message-square",
   oncall: "bell",
