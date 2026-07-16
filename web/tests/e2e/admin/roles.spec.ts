@@ -40,7 +40,10 @@ test.describe("admin / roles", () => {
     await search.fill("rw_rule");
     await page.getByRole("option", { name: "rw_rule" }).click({ force: true });
     await search.fill("rw_snooze");
-    await page.getByRole("option", { name: "rw_snooze" }).click({ force: true });
+    // Anchored regex: a bare "rw_snooze" substring-matches the accessible names
+    // of both "rw_snooze …" and "rw_snoozepeer …" (strict-mode violation since
+    // the snoozepeer permission landed).
+    await page.getByRole("option", { name: /^rw_snooze\s/ }).click({ force: true });
 
     await page.getByRole("button", { name: /^create$/i }).click({ force: true });
     await expect(page.getByText(/role created/i).first()).toBeVisible();
