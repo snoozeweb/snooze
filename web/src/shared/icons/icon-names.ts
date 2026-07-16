@@ -8,6 +8,7 @@ export const ICON_NAMES = [
   "x",
   "check",
   "more-horizontal",
+  "panel-right",
   "plus",
   "refresh",
   "search",

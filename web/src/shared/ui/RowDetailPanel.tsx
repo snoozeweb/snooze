@@ -20,15 +20,18 @@ function stripPrivateKeys(row: Record<string, unknown>): Record<string, unknown>
 export function RowDetailPanel({ row, objectType, objectId }: RowDetailPanelProps) {
   const cleaned = stripPrivateKeys(row);
   const uid = objectId ?? (typeof row.uid === "string" ? row.uid : undefined);
+  // Rendered inside the docked row inspector (~600px), so the record and its
+  // audit log stack vertically rather than sitting side-by-side.
   return (
-    <div className={styles.grid}>
-      <div className={styles.col}>
+    <div className={styles.stack}>
+      <section>
+        <h4 className={styles.heading}>Record</h4>
         <JsonViewer value={cleaned} />
-      </div>
-      <div className={styles.col}>
+      </section>
+      <section>
         <h4 className={styles.heading}>Audit log</h4>
         <AuditTimeline objectType={objectType} objectId={uid} />
-      </div>
+      </section>
     </div>
   );
 }

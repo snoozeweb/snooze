@@ -102,7 +102,7 @@ describe("AlertsPage", () => {
     expect(decoded).toMatchObject({ type: "IN", field: "uid", value: ["r1"] });
   });
 
-  it("expanding a row via the chevron renders the JSON + CommentTimeline", async () => {
+  it("inspecting a row opens the inspector on Timeline, with the JSON behind the Record tab", async () => {
     mswServer.use(
       http.get("/api/v1/record", () =>
         HttpResponse.json({
@@ -129,14 +129,18 @@ describe("AlertsPage", () => {
     const user = userEvent.setup();
     setup();
     await waitFor(() => expect(screen.getByText("srv-1")).toBeInTheDocument());
-    // No drawer should mount on the bare list.
+    // No modal dialog should mount on the bare list.
     expect(screen.queryByRole("dialog")).toBeNull();
-    // Toggle the inline expansion.
-    await user.click(screen.getByRole("button", { name: /^Expand row /i }));
-    // The expansion panel surfaces the CommentTimeline empty state and the
-    // alert uid in the JsonViewer.
+    // Open the docked inspector.
+    await user.click(screen.getByRole("button", { name: /^Inspect row /i }));
+    // Timeline is the default tab — its empty state renders immediately. The
+    // inspector is non-modal, so still no dialog.
     await waitFor(() => expect(screen.getByText(/no comments yet/i)).toBeInTheDocument());
     expect(screen.queryByRole("dialog")).toBeNull();
+    // The raw record lives behind the Record tab — click it to see the JSON
+    // (the alert uid only appears there, not in the table).
+    await user.click(screen.getByRole("tab", { name: /^record$/i }));
+    expect(screen.getByText(/r1/)).toBeInTheDocument();
   });
 
   it("bulk acknowledge: fires one POST to /record/bulk_state, shows count toast", async () => {

@@ -1,13 +1,43 @@
-/* Desktop-only layout: Record (1/2) · Flow (1/4) · Timeline (1/4). Below the
-   app shell's mobile breakpoint AlertRowDetail renders a tabbed view instead
-   (see AlertRowDetail.tsx), so this grid is never shown narrow — no collapse
-   media query needed. */
-.grid {
-  display: grid;
-  grid-template-columns: minmax(0, 2fr) minmax(0, 1fr) minmax(0, 1fr);
-  gap: var(--space-4);
-  align-items: start;
+/* One column for every viewport — the inspector is already a narrow panel, so
+   the detail stacks the summary header above the tabbed surfaces. */
+.detail {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
 }
-.col {
-  min-width: 0;
+
+.summary {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+.badges {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+}
+/* Source rendered as a quiet mono chip — it identifies the ingest path without
+   competing with the severity/state badges. */
+.source {
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+  background: var(--bg-hover);
+  border: 1px solid var(--border-muted);
+  border-radius: var(--radius-sm);
+  padding: 0 var(--space-2);
+}
+.message {
+  margin: 0;
+  color: var(--text);
+  font-size: var(--text-sm);
+  line-height: var(--leading-normal);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  user-select: text;
+}
+.received {
+  font-size: var(--text-xs);
+  color: var(--text-muted);
 }

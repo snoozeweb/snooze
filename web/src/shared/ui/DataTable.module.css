@@ -146,6 +146,14 @@
   background: color-mix(in srgb, var(--accent-bg) 85%, var(--bg-surface));
 }
 
+/* Inspected-row marker: the row whose detail is open in the docked inspector.
+   A subtle bg on all cells; the amber-tinted inspect toggle carries the rest of
+   the signal. (No edge bar: the table's right edge usually sits underneath the
+   overlaying panel, so a right-side accent would never be seen.) */
+.row[data-inspected="true"] td {
+  background: var(--bg-hover);
+}
+
 /* Row accent strip: a 3px inset bar painted on the first cell from the
    --row-accent custom property the consumer sets on the <tr>. Inset
    (box-shadow) rather than border so it never shifts column widths, and
@@ -253,18 +261,9 @@
   background: var(--bg-hover);
   color: var(--text);
 }
-.expandedRow td {
-  background: var(--bg-canvas);
-  border-bottom: 1px solid var(--border-muted);
-}
-.expandedRow:hover td {
-  background: var(--bg-canvas);
-}
-.expandedCell {
-  padding: var(--space-3) !important;
-}
-.expandedPanel {
-  display: block;
+/* The inspect toggle tints amber while its row is the one being inspected. */
+.expandBtn[data-active="true"] {
+  color: var(--accent);
 }
 
 .sortBtn {

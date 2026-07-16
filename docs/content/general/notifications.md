@@ -110,7 +110,8 @@ Each processed alert records the path it took through the pipeline:
   - `sent` — dispatched while outcome tracking is disabled (see the
     `persist_action_outcomes` flag in [Notification configuration](../configuration/notifications.md#persist_action_outcomes)).
 
-Expand an alert in the **Alerts** view and open the **Flow** tab to see this as
+Inspect an alert in the **Alerts** view (the panel-right toggle in the first
+column opens the docked inspector) and open the **Flow** tab to see this as
 a flowchart: input → rules → aggregate, then a branch for each matched
 notification, each showing the actions it fired (boxes are green on success, red
 on error — click a red box for the message). When a snooze rule silenced the

@@ -6,7 +6,7 @@ test.describe("alert detail drawer", () => {
     await adminAuth();
   });
 
-  test("expanded row shows the alert's full field map", async ({ page, api, server }) => {
+  test("inspector shows the alert's full field map", async ({ page, api, server }) => {
     await api.alerts.send({
       host: "srv-detail",
       message: "disk full",
@@ -16,18 +16,20 @@ test.describe("alert detail drawer", () => {
     await page.goto(server.baseURL + "/web/alerts");
     await expect(page.getByText("srv-detail")).toBeVisible();
 
-    // AlertsPage uses DataTable's renderExpanded (AlertRowDetail), not a
-    // Drawer. Each row has a chevron button labelled "Expand row <key>" that
-    // toggles an inline panel showing the JsonViewer + CommentTimeline.
+    // AlertsPage uses DataTable's renderExpanded (AlertRowDetail), rendered in a
+    // docked side inspector. Each row has a "panel-right" button labelled
+    // "Inspect row <key>" that opens the inspector. It opens on the Timeline
+    // tab; the raw record (JsonViewer) lives behind the "Record" tab.
     await page
-      .getByRole("button", { name: /^expand row/i })
+      .getByRole("button", { name: /^inspect row/i })
       .first()
       .click({ force: true });
+    await page.getByRole("tab", { name: /^record$/i }).click({ force: true });
 
-    // The inline panel renders the full record via JsonViewer; the host /
-    // message / severity / source values all appear as text nodes. Use
-    // .first() because JsonViewer renders each field twice — once in the
-    // table column (plain) and once in the JSON tree (quoted span).
+    // The Record tab renders the full record via JsonViewer; the message /
+    // severity / source values all appear as text nodes. Use .first() because
+    // some fields also render in the table column / summary header (plain),
+    // besides the JSON tree (quoted span).
     await expect(page.getByText("disk full").first()).toBeVisible();
     await expect(page.getByText("critical").first()).toBeVisible();
     await expect(page.getByText("prom").first()).toBeVisible();
@@ -124,15 +126,16 @@ test.describe("alert detail drawer", () => {
     await textarea.fill("first note");
     await dialog.getByRole("button", { name: /^comment$/i }).click({ force: true });
 
-    // Expand the row inline (no drawer here) and check the timeline.
+    // Open the inspector; Timeline is the default tab, so the comment shows
+    // without switching tabs.
     await page
-      .getByRole("button", { name: /^expand row/i })
+      .getByRole("button", { name: /^inspect row/i })
       .first()
       .click({ force: true });
     await expect(page.getByText("first note")).toBeVisible();
   });
 
-  test("expanded row collapses when chevron is toggled again", async ({ page, api, server }) => {
+  test("inspector closes when the toggle is clicked again", async ({ page, api, server }) => {
     await api.alerts.send({
       host: "srv-close-drawer",
       message: "m",
@@ -142,12 +145,13 @@ test.describe("alert detail drawer", () => {
     await page.goto(server.baseURL + "/web/alerts");
     await expect(page.getByText("srv-close-drawer")).toBeVisible();
 
-    const expandBtn = page.getByRole("button", { name: /^expand row/i }).first();
-    await expandBtn.click({ force: true });
-    await expect(expandBtn).toHaveAttribute("aria-expanded", "true");
+    const inspectBtn = page.getByRole("button", { name: /^inspect row/i }).first();
+    await inspectBtn.click({ force: true });
+    await expect(inspectBtn).toHaveAttribute("aria-expanded", "true");
 
-    // Clicking again collapses the inline panel.
-    await expandBtn.click({ force: true });
-    await expect(expandBtn).toHaveAttribute("aria-expanded", "false");
+    // Clicking the same toggle again closes the inspector (single-row
+    // inspection: same key → empty set).
+    await inspectBtn.click({ force: true });
+    await expect(inspectBtn).toHaveAttribute("aria-expanded", "false");
   });
 });

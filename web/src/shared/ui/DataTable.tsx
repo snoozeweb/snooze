@@ -11,6 +11,7 @@ import { SearchBar, type ParsedCondition } from "./SearchBar";
 import { Skeleton } from "./Skeleton";
 import { isEditable } from "@/shared/hooks/useShortcut";
 import { DataTableContextMenu, type ContextMenuItem } from "./DataTableContextMenu";
+import { RowInspector } from "./RowInspector";
 import styles from "./DataTable.module.css";
 
 export type ColumnDef<T> = {
@@ -99,18 +100,24 @@ export type DataTableProps<T> = {
   /** When true for a row, the row renders with muted styling — used to
    *  indicate `enabled:false` records without dedicating a column. */
   rowDisabled?: (row: T) => boolean;
-  /** When provided, each row gets a chevron in a dedicated first column
-   *  that toggles an inline "details" panel rendered beneath the row.
-   *  Multiple rows may be expanded at once. */
+  /** When provided, each row gets a "panel-right" toggle in a dedicated first
+   *  column that opens a docked side inspector (`RowInspector`) showing that
+   *  row's detail. Inspection is single-row: the expanded-keys Set holds at
+   *  most one key — opening a row replaces whatever was inspected before. */
   renderExpanded?: (row: T) => ReactNode;
+  /** Optional inspector header title for the inspected row. Falls back to
+   *  "Row details" when omitted. */
+  expandedTitle?: (row: T) => ReactNode;
   /** Controlled expansion. When supplied, the table renders exactly this set
    *  and routes every toggle through `onExpandedChange` instead of keeping
-   *  its own state. Omit it for the (unchanged) uncontrolled default. */
+   *  its own state. Holds at most one key — the inspector shows a single row.
+   *  Omit it for the (unchanged) uncontrolled default. */
   expandedKeys?: ReadonlySet<string>;
-  /** Fires whenever the set of expanded row keys changes. Lets the parent
-   *  react to "user is actively reading a row" without pulling expansion
-   *  state out of the table (e.g. pause polling on the alerts page). Also
-   *  the write channel for controlled expansion (`expandedKeys`). */
+  /** Fires whenever the set of expanded row keys changes (size 0 or 1 — the
+   *  inspector shows a single row). Lets the parent react to "user is actively
+   *  reading a row" without pulling expansion state out of the table (e.g.
+   *  pause polling on the alerts page). Also the write channel for controlled
+   *  expansion (`expandedKeys`). */
   onExpandedChange?: (expandedKeys: ReadonlySet<string>) => void;
   /** Per-row keyboard shortcuts for the focused row, keyed by lowercase
    *  single key (e.g. `{ a: ackFn, c: commentFn }`). Bindings are ignored
@@ -154,6 +161,7 @@ export function DataTable<T>({
   onRowOpen,
   rowDisabled,
   renderExpanded,
+  expandedTitle,
   expandedKeys,
   onExpandedChange,
   rowKeyBindings,
@@ -188,30 +196,89 @@ export function DataTable<T>({
   const dataRef = useRef<T[]>(data);
   const focusedIndexRef = useRef<number>(focusedIndex);
   const expandedKeysRef = useRef<ReadonlySet<string> | undefined>(expandedKeys);
+  const expandedInnerRef = useRef<ReadonlySet<string>>(expandedInner);
   const onSelectionChangeRef = useRef(onSelectionChange);
   const onExpandedChangeRef = useRef(onExpandedChange);
   const onRowOpenRef = useRef(onRowOpen);
   const rowKeyRef = useRef(rowKey);
   const rowKeyBindingsRef = useRef(rowKeyBindings);
   const isControlledExpansionRef = useRef(isControlledExpansion);
+  // The table root (role="grid"): closeInspector focuses it so keyboard
+  // context returns to the grid when the inspector closes.
+  const gridRef = useRef<HTMLTableElement>(null);
 
-  const toggleExpanded = useCallback((key: string) => {
+  // Single-inspection write channel. `null` closes the inspector; a key opens
+  // exactly that row (replacing whatever was inspected). Routes through the
+  // controlled/uncontrolled fork so the parent owns the set when it supplies
+  // `expandedKeys`.
+  const setInspectedKey = useCallback((key: string | null) => {
+    const next = key === null ? new Set<string>() : new Set<string>([key]);
     if (isControlledExpansionRef.current) {
-      // Controlled: compute the next set off the current prop and hand it
-      // back; the parent owns the state.
-      const next = new Set(expandedKeysRef.current);
-      if (next.has(key)) next.delete(key);
-      else next.add(key);
       onExpandedChangeRef.current?.(next);
-      return;
+    } else {
+      setExpandedInner(next);
     }
-    setExpandedInner((prev) => {
-      const next = new Set(prev);
-      if (next.has(key)) next.delete(key);
-      else next.add(key);
-      return next;
-    });
   }, []);
+
+  // REPLACE semantics: toggling the currently-inspected row closes the
+  // inspector; toggling any other row moves inspection to it.
+  const toggleExpanded = useCallback(
+    (key: string) => {
+      const cur = isControlledExpansionRef.current
+        ? expandedKeysRef.current
+        : expandedInnerRef.current;
+      setInspectedKey(cur?.has(key) ? null : key);
+    },
+    [setInspectedKey],
+  );
+
+  // Chevron-toggle handler for the rows: besides toggling inspection, it moves
+  // row focus to the clicked row so the keyboard context (arrows/j/k, per-row
+  // bindings) — and therefore the inspector's focus-follow — starts from the
+  // row the operator just opened, not from wherever focus last was.
+  const toggleExpandedAt = useCallback(
+    (key: string, index: number) => {
+      setFocusedIndex(index);
+      toggleExpanded(key);
+    },
+    [toggleExpanded],
+  );
+
+  // Retarget inspection to the row at `index` AND focus it — used by the
+  // inspector's prev/next controls.
+  const inspectIndex = useCallback(
+    (index: number) => {
+      const row = dataRef.current[index];
+      if (!row) return;
+      setFocusedIndex(index);
+      setInspectedKey(rowKeyRef.current(row));
+    },
+    [setInspectedKey],
+  );
+
+  // Close the inspector and hand keyboard focus back to the grid.
+  const closeInspector = useCallback(() => {
+    setInspectedKey(null);
+    gridRef.current?.focus();
+  }, [setInspectedKey]);
+
+  // Focus-follow: when the inspector is already open, moving focus (j/k/arrows
+  // or a click) retargets it to the newly focused row. A no-op when closed, so
+  // navigating a closed list never opens the inspector. Called from the event
+  // handlers (never a focusedIndex effect) so a background refetch can't move
+  // the inspection out from under the operator.
+  const retargetIfOpen = useCallback(
+    (index: number) => {
+      const cur = isControlledExpansionRef.current
+        ? expandedKeysRef.current
+        : expandedInnerRef.current;
+      if (!cur || cur.size === 0) return;
+      const row = dataRef.current[index];
+      if (!row) return;
+      setInspectedKey(rowKeyRef.current(row));
+    },
+    [setInspectedKey],
+  );
 
   // Surface expansion changes to the parent so it can pause polling, etc.
   // Only the uncontrolled path fires from here — in the controlled path the
@@ -238,6 +305,7 @@ export function DataTable<T>({
   dataRef.current = data;
   focusedIndexRef.current = focusedIndex;
   expandedKeysRef.current = expandedKeys;
+  expandedInnerRef.current = expandedInner;
   onSelectionChangeRef.current = onSelectionChange;
   onExpandedChangeRef.current = onExpandedChange;
   onRowOpenRef.current = onRowOpen;
@@ -299,17 +367,22 @@ export function DataTable<T>({
 
   // onClick / onContextMenu handlers handed to every row. Stable so they
   // don't bust the row memo; the row passes back its own index/coords.
-  const handleRowClick = useCallback((index: number) => {
-    // If the user just drag-selected text inside the grid, the trailing click
-    // shouldn't also open the row (which navigates away and clobbers the
-    // selection). A plain click collapses any prior selection on mousedown, so
-    // this guard only trips at the end of a real text selection.
-    const sel = typeof window !== "undefined" ? window.getSelection() : null;
-    if (sel && !sel.isCollapsed && sel.toString().trim() !== "") return;
-    setFocusedIndex(index);
-    const row = dataRef.current[index];
-    if (row) onRowOpenRef.current?.(row);
-  }, []);
+  const handleRowClick = useCallback(
+    (index: number) => {
+      // If the user just drag-selected text inside the grid, the trailing click
+      // shouldn't also open the row (which navigates away and clobbers the
+      // selection). A plain click collapses any prior selection on mousedown, so
+      // this guard only trips at the end of a real text selection.
+      const sel = typeof window !== "undefined" ? window.getSelection() : null;
+      if (sel && !sel.isCollapsed && sel.toString().trim() !== "") return;
+      setFocusedIndex(index);
+      // When the inspector is open, a click retargets it to the clicked row.
+      retargetIfOpen(index);
+      const row = dataRef.current[index];
+      if (row) onRowOpenRef.current?.(row);
+    },
+    [retargetIfOpen],
+  );
 
   const handleRowContextMenu = useCallback((index: number, x: number, y: number) => {
     setFocusedIndex(index);
@@ -351,10 +424,14 @@ export function DataTable<T>({
       // Ctrl+J / Ctrl+K are not swallowed before reaching the window listener.
       if (e.key === "ArrowDown" || (!hasModifier && key === "j")) {
         e.preventDefault();
-        setFocusedIndex((i) => Math.min(rows.length - 1, i + 1));
+        const next = Math.min(rows.length - 1, focused + 1);
+        setFocusedIndex(next);
+        retargetIfOpen(next);
       } else if (e.key === "ArrowUp" || (!hasModifier && key === "k")) {
         e.preventDefault();
-        setFocusedIndex((i) => Math.max(0, i - 1));
+        const next = Math.max(0, focused - 1);
+        setFocusedIndex(next);
+        retargetIfOpen(next);
       } else if (e.key === "Enter") {
         const row = rows[focused];
         if (row && onRowOpenRef.current) {
@@ -386,12 +463,24 @@ export function DataTable<T>({
         }
       }
     },
-    [renderExpanded, selectable, toggleExpanded, toggleOne],
+    [renderExpanded, selectable, toggleExpanded, toggleOne, retargetIfOpen],
   );
 
   useEffect(() => {
     if (focusedIndex >= data.length) setFocusedIndex(data.length - 1);
   }, [data.length, focusedIndex]);
+
+  // Auto-close the inspector when the inspected row leaves the data (page
+  // change, filter, or refetch that drops the row). Guarded on !loading so the
+  // transient empty-data render during a fetch doesn't close a valid inspection.
+  useEffect(() => {
+    if (loading) return;
+    if (expanded.size !== 1) return;
+    const [key] = expanded;
+    if (key !== undefined && !allKeys.includes(key)) {
+      setInspectedKey(null);
+    }
+  }, [loading, expanded, allKeys, setInspectedKey]);
 
   const isEmpty = !loading && data.length === 0;
   const selectedRows = useMemo(
@@ -423,10 +512,30 @@ export function DataTable<T>({
       { keys: "↑ ↓ · J K", label: "Move between rows" },
     ];
     if (onRowOpen) builtin.push({ keys: "Enter", label: "Open row" });
-    if (renderExpanded) builtin.push({ keys: "E", label: "Expand / collapse row" });
+    if (renderExpanded) builtin.push({ keys: "E", label: "Inspect row" });
     if (selectable) builtin.push({ keys: "X", label: "Select / deselect row" });
     return [...builtin, ...keyboardHints];
   }, [keyboardHints, onRowOpen, renderExpanded, selectable]);
+
+  // Resolve the single inspected row for the docked inspector. The set holds at
+  // most one key; when that key maps to a visible row we render the panel.
+  const inspectedKey = expanded.size === 1 ? [...expanded][0] : undefined;
+  const inspectedIndex = inspectedKey !== undefined ? allKeys.indexOf(inspectedKey) : -1;
+  const inspectedRow = inspectedIndex >= 0 ? data[inspectedIndex] : undefined;
+  const inspectorActions =
+    renderExpanded && inspectedRow && quickActions
+      ? quickActions(inspectedRow).map((a) => (
+          <IconButton
+            key={a.key}
+            icon={a.icon ?? "more-horizontal"}
+            label={a.label}
+            size="sm"
+            {...(a.danger ? { variant: "danger" as const } : {})}
+            {...(a.disabled ? { disabled: true } : {})}
+            onClick={a.onSelect}
+          />
+        ))
+      : null;
 
   return (
     <div className={styles.wrap}>
@@ -490,6 +599,7 @@ export function DataTable<T>({
 
       <div className={styles.tableScroll}>
         <table
+          ref={gridRef}
           role="grid"
           tabIndex={0}
           onKeyDown={onKeyDown}
@@ -499,7 +609,7 @@ export function DataTable<T>({
         >
           <thead>
             <tr className={styles.headerRow}>
-              {renderExpanded ? <th className={styles.expandCell} aria-label="Expand" /> : null}
+              {renderExpanded ? <th className={styles.expandCell} aria-label="Inspect" /> : null}
               {selectable ? (
                 <th className={styles.checkboxCell} scope="col">
                   <Checkbox
@@ -581,7 +691,6 @@ export function DataTable<T>({
                     isExpanded={expanded.has(key)}
                     isDisabled={rowDisabled?.(row) ?? false}
                     accent={rowAccent?.(row)}
-                    totalCols={totalCols}
                     hasContextMenu={contextMenuItems !== undefined}
                     quickActions={quickActions}
                     rowActions={rowActions}
@@ -589,7 +698,7 @@ export function DataTable<T>({
                     renderExpanded={renderExpanded}
                     onRowClick={handleRowClick}
                     onRowContextMenu={handleRowContextMenu}
-                    onToggleExpanded={toggleExpanded}
+                    onToggleExpanded={toggleExpandedAt}
                     onCheckboxCellClick={handleCheckboxClick}
                     onCheckboxToggle={handleCheckboxToggle}
                   />
@@ -599,6 +708,21 @@ export function DataTable<T>({
           </tbody>
         </table>
       </div>
+
+      {renderExpanded && inspectedRow ? (
+        <RowInspector
+          title={expandedTitle?.(inspectedRow) ?? "Row details"}
+          {...(inspectorActions ? { actions: inspectorActions } : {})}
+          position={{ index: inspectedIndex, total: data.length }}
+          onPrev={inspectedIndex > 0 ? () => inspectIndex(inspectedIndex - 1) : undefined}
+          onNext={
+            inspectedIndex < data.length - 1 ? () => inspectIndex(inspectedIndex + 1) : undefined
+          }
+          onClose={closeInspector}
+        >
+          {renderExpanded(inspectedRow)}
+        </RowInspector>
+      ) : null}
 
       {serverPagination ? <PaginationBar pag={serverPagination} /> : null}
 
@@ -626,7 +750,6 @@ type DataTableRowProps<T> = {
   isExpanded: boolean;
   isDisabled: boolean;
   accent: string | undefined;
-  totalCols: number;
   hasContextMenu: boolean;
   quickActions: ((row: T) => RowAction[]) | undefined;
   rowActions: ((row: T) => RowAction[]) | undefined;
@@ -634,7 +757,7 @@ type DataTableRowProps<T> = {
   renderExpanded: ((row: T) => ReactNode) | undefined;
   onRowClick: (index: number) => void;
   onRowContextMenu: (index: number, x: number, y: number) => void;
-  onToggleExpanded: (key: string) => void;
+  onToggleExpanded: (key: string, index: number) => void;
   onCheckboxCellClick: (key: string, index: number, shiftKey: boolean) => void;
   onCheckboxToggle: (key: string, index: number) => void;
 };
@@ -658,7 +781,6 @@ function DataTableRowInner<T>({
   isExpanded,
   isDisabled,
   accent,
-  totalCols,
   hasContextMenu,
   quickActions,
   rowActions,
@@ -671,101 +793,94 @@ function DataTableRowInner<T>({
   onCheckboxToggle,
 }: DataTableRowProps<T>) {
   return (
-    <>
-      <tr
-        className={styles.row}
-        {...(isFocused ? { "data-focused": "true" } : {})}
-        {...(isSelected ? { "data-selected": "true" } : {})}
-        {...(isDisabled ? { "data-disabled": "true" } : {})}
-        {...(accent
-          ? {
-              "data-accent": "true",
-              style: { "--row-accent": accent } as CSSProperties,
-            }
-          : {})}
-        onClick={() => onRowClick(index)}
-        {...(hasContextMenu
-          ? {
-              onContextMenu: (e: React.MouseEvent<HTMLTableRowElement>) => {
-                e.preventDefault();
-                onRowContextMenu(index, e.clientX, e.clientY);
-              },
-            }
-          : {})}
-      >
-        {renderExpanded ? (
-          <td className={styles.expandCell} onClick={(e) => e.stopPropagation()}>
-            <button
-              type="button"
-              className={styles.expandBtn}
-              aria-label={`Expand row ${key}`}
-              aria-expanded={isExpanded}
-              onClick={() => onToggleExpanded(key)}
-            >
-              <Icon name={isExpanded ? "chevron-down" : "chevron-right"} size={14} />
-            </button>
-          </td>
-        ) : null}
-        {selectable ? (
-          <td
-            className={styles.checkboxCell}
-            onClick={(e) => {
-              // Swallow the row-level onClick so it doesn't also open the row,
-              // and route through the shift-aware selection handler.
-              e.stopPropagation();
-              onCheckboxCellClick(key, index, e.shiftKey);
-            }}
+    <tr
+      className={styles.row}
+      {...(isFocused ? { "data-focused": "true" } : {})}
+      {...(isSelected ? { "data-selected": "true" } : {})}
+      {...(isExpanded ? { "data-inspected": "true" } : {})}
+      {...(isDisabled ? { "data-disabled": "true" } : {})}
+      {...(accent
+        ? {
+            "data-accent": "true",
+            style: { "--row-accent": accent } as CSSProperties,
+          }
+        : {})}
+      onClick={() => onRowClick(index)}
+      {...(hasContextMenu
+        ? {
+            onContextMenu: (e: React.MouseEvent<HTMLTableRowElement>) => {
+              e.preventDefault();
+              onRowContextMenu(index, e.clientX, e.clientY);
+            },
+          }
+        : {})}
+    >
+      {renderExpanded ? (
+        <td className={styles.expandCell} onClick={(e) => e.stopPropagation()}>
+          <button
+            type="button"
+            className={styles.expandBtn}
+            aria-label={`Inspect row ${key}`}
+            aria-expanded={isExpanded}
+            {...(isExpanded ? { "data-active": "true" } : {})}
+            onClick={() => onToggleExpanded(key, index)}
           >
-            <Checkbox
-              aria-label={`Select row ${key}`}
-              checked={isSelected}
-              // Pointer / keyboard events on the Checkbox itself are still
-              // routed to onCheckedChange; the parent td handler covers
-              // shift-click on the cell area.
-              onCheckedChange={() => onCheckboxToggle(key, index)}
-            />
-          </td>
-        ) : null}
-        {columns.map((col) => (
-          <td
-            key={col.id}
-            data-label={col.header}
-            {...(col.align === "right" ? { style: { textAlign: "right" } } : {})}
-          >
-            {col.cell(row)}
-          </td>
-        ))}
-        {quickActions ? (
-          <td className={styles.quickActionsCell} onClick={(e) => e.stopPropagation()}>
-            <div className={styles.quickActions}>
-              {quickActions(row).map((a) => (
-                <IconButton
-                  key={a.key}
-                  icon={a.icon ?? "more-horizontal"}
-                  label={a.label}
-                  size="sm"
-                  {...(a.danger ? { variant: "danger" as const } : {})}
-                  {...(a.disabled ? { disabled: true } : {})}
-                  onClick={a.onSelect}
-                />
-              ))}
-            </div>
-          </td>
-        ) : null}
-        {rowActions ? (
-          <td className={styles.actionsCell} onClick={(e) => e.stopPropagation()}>
-            <RowActionsMenu actions={rowActions(row)} badge={rowActionsBadge?.(row)} />
-          </td>
-        ) : null}
-      </tr>
-      {renderExpanded && isExpanded ? (
-        <tr className={styles.expandedRow}>
-          <td colSpan={totalCols} className={styles.expandedCell}>
-            <div className={styles.expandedPanel}>{renderExpanded(row)}</div>
-          </td>
-        </tr>
+            <Icon name="panel-right" size={14} />
+          </button>
+        </td>
       ) : null}
-    </>
+      {selectable ? (
+        <td
+          className={styles.checkboxCell}
+          onClick={(e) => {
+            // Swallow the row-level onClick so it doesn't also open the row,
+            // and route through the shift-aware selection handler.
+            e.stopPropagation();
+            onCheckboxCellClick(key, index, e.shiftKey);
+          }}
+        >
+          <Checkbox
+            aria-label={`Select row ${key}`}
+            checked={isSelected}
+            // Pointer / keyboard events on the Checkbox itself are still
+            // routed to onCheckedChange; the parent td handler covers
+            // shift-click on the cell area.
+            onCheckedChange={() => onCheckboxToggle(key, index)}
+          />
+        </td>
+      ) : null}
+      {columns.map((col) => (
+        <td
+          key={col.id}
+          data-label={col.header}
+          {...(col.align === "right" ? { style: { textAlign: "right" } } : {})}
+        >
+          {col.cell(row)}
+        </td>
+      ))}
+      {quickActions ? (
+        <td className={styles.quickActionsCell} onClick={(e) => e.stopPropagation()}>
+          <div className={styles.quickActions}>
+            {quickActions(row).map((a) => (
+              <IconButton
+                key={a.key}
+                icon={a.icon ?? "more-horizontal"}
+                label={a.label}
+                size="sm"
+                {...(a.danger ? { variant: "danger" as const } : {})}
+                {...(a.disabled ? { disabled: true } : {})}
+                onClick={a.onSelect}
+              />
+            ))}
+          </div>
+        </td>
+      ) : null}
+      {rowActions ? (
+        <td className={styles.actionsCell} onClick={(e) => e.stopPropagation()}>
+          <RowActionsMenu actions={rowActions(row)} badge={rowActionsBadge?.(row)} />
+        </td>
+      ) : null}
+    </tr>
   );
 }
 

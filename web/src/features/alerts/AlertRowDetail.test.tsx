@@ -10,26 +10,21 @@ import {
   RouterProvider,
 } from "@tanstack/react-router";
 import { http, HttpResponse } from "msw";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
+import { TooltipProvider } from "@/shared/ui/Tooltip";
 import { mswServer } from "@/tests/msw/server";
 import { AlertRowDetail } from "./AlertRowDetail";
 import type { Record_ } from "./types";
 
-// AlertRowDetail switches on useIsMobileShell (window.matchMedia). jsdom has no
-// matchMedia, so the hook defaults to desktop — every test below renders the
-// 3-column layout unless it opts into the mobile branch via mockMatchMedia(true).
-function mockMatchMedia(matches: boolean) {
-  vi.stubGlobal(
-    "matchMedia",
-    vi.fn().mockImplementation((query: string) => ({
-      matches,
-      media: query,
-      addEventListener: () => {},
-      removeEventListener: () => {},
-    })),
+// Empty comment list so CommentTimeline (the default Timeline tab) resolves to
+// its empty state in every test.
+function stubComments() {
+  mswServer.use(
+    http.get("/api/v1/comment", () =>
+      HttpResponse.json({ data: [], meta: { count: 0, limit: 100, offset: 0, total: 0 } }),
+    ),
   );
 }
-afterEach(() => vi.unstubAllGlobals());
 
 // AlertRowDetail's Flow tab embeds AlertFlowChart, whose entities are TanStack
 // <Link>s — so the detail needs a RouterProvider ancestor (app-wide in
@@ -59,77 +54,71 @@ function renderDetail(row: Record_) {
   /* eslint-enable @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-argument */
   return render(
     <QueryClientProvider client={client}>
-      <RouterProvider router={router as Parameters<typeof RouterProvider>[0]["router"]} />
+      <TooltipProvider>
+        {/* The summary header's TimeCell renders a Tooltip, which needs a
+            provider ancestor (app-wide in production). */}
+        <RouterProvider router={router as Parameters<typeof RouterProvider>[0]["router"]} />
+      </TooltipProvider>
     </QueryClientProvider>,
   );
 }
 
 describe("AlertRowDetail", () => {
-  it("renders the JSON of the row stripped of underscore-prefixed keys", () => {
+  it("renders the summary header (severity, state, source, message, time) without repeating host", () => {
+    stubComments();
     const row: Record_ = {
       uid: "r1",
       host: "srv-1",
       severity: "critical",
       state: "open",
       message: "disk full",
+      source: "prom",
       date_epoch: 1,
     };
-    // Inject an internal key that should be stripped, mirroring RowDetailPanel.
-    const rowWithPrivate = { ...row, _internal: "secret" } as Record_;
-    mswServer.use(
-      http.get("/api/v1/comment", () =>
-        HttpResponse.json({
-          data: [],
-          meta: { count: 0, limit: 100, offset: 0, total: 0 },
-        }),
-      ),
-    );
-    renderDetail(rowWithPrivate);
-    // JsonViewer renders the cleaned object as a tree of <pre> elements.
-    expect(screen.getByText(/srv-1/)).toBeInTheDocument();
-    expect(screen.getByText(/disk full/)).toBeInTheDocument();
-    // The underscore-prefixed key must not appear.
-    expect(screen.queryByText(/_internal/)).toBeNull();
-  });
-
-  it("shows Record, Flow and Timeline at once on desktop (no tabs)", async () => {
-    mswServer.use(
-      http.get("/api/v1/comment", () =>
-        HttpResponse.json({
-          data: [],
-          meta: { count: 0, limit: 100, offset: 0, total: 0 },
-        }),
-      ),
-    );
-    const row = { uid: "u1", source: "syslog", aggregate: "Host and Message" } as Record_;
     renderDetail(row);
-    // No tab chrome on desktop — all three surfaces render simultaneously.
-    expect(screen.queryByRole("tab")).toBeNull();
-    // Flow (source) is visible without any interaction...
-    expect(screen.getByText("syslog")).toBeInTheDocument();
-    // ...and so is the Timeline (its empty state), rendered directly.
-    await waitFor(() => expect(screen.getByText(/no comments yet/i)).toBeInTheDocument());
+    // Severity + state badges.
+    expect(screen.getByText("critical")).toBeInTheDocument();
+    expect(screen.getByText("Open")).toBeInTheDocument();
+    // Source chip.
+    expect(screen.getByText("prom")).toBeInTheDocument();
+    // Message (selectable) is shown directly in the header.
+    expect(screen.getByText("disk full")).toBeInTheDocument();
+    // Host is the inspector title, so it is NOT repeated in the detail body.
+    expect(screen.queryByText("srv-1")).toBeNull();
   });
 
-  it("collapses to tabs on mobile, defaulting to Timeline", async () => {
-    mockMatchMedia(true);
-    mswServer.use(
-      http.get("/api/v1/comment", () =>
-        HttpResponse.json({
-          data: [],
-          meta: { count: 0, limit: 100, offset: 0, total: 0 },
-        }),
-      ),
-    );
+  it("shows Timeline / Flow / Record tabs with Timeline active by default", async () => {
+    stubComments();
     const row = { uid: "u1", source: "syslog", aggregate: "Host and Message" } as Record_;
     renderDetail(row);
     expect(screen.getByRole("tab", { name: "Timeline" })).toHaveAttribute("data-state", "active");
-    // Flow lives behind its tab until selected.
-    expect(screen.queryByText("syslog")).toBeNull();
-    await userEvent.click(screen.getByRole("tab", { name: "Flow" }));
-    expect(screen.getByText("syslog")).toBeInTheDocument();
-    // Record (JSON) is the third tab.
+    expect(screen.getByRole("tab", { name: "Flow" })).toBeInTheDocument();
     expect(screen.getByRole("tab", { name: "Record" })).toBeInTheDocument();
+    // Timeline content (its empty state) is visible without interaction.
+    await waitFor(() => expect(screen.getByText(/no comments yet/i)).toBeInTheDocument());
+  });
+
+  it("reveals the Flow chart and the Record JSON when their tabs are selected", async () => {
+    stubComments();
+    const row = {
+      uid: "u1",
+      source: "syslog",
+      aggregate: "Host and Message",
+      _internal: "secret",
+    } as Record_;
+    renderDetail(row);
+    const user = userEvent.setup();
+    // Flow lives behind its tab until selected — the aggregate value is
+    // Flow-only (the Aggregate node), unlike source which also sits in the chip.
+    expect(screen.queryByText("Host and Message")).toBeNull();
+    await user.click(screen.getByRole("tab", { name: "Flow" }));
+    expect(screen.getByText("Host and Message")).toBeInTheDocument();
+    // Record tab renders the row JSON stripped of underscore-prefixed keys. The
+    // uid only appears in this JSON tree (not the summary header), so it's an
+    // unambiguous marker that the Record surface is showing.
+    await user.click(screen.getByRole("tab", { name: "Record" }));
+    expect(screen.getByText(/u1/)).toBeInTheDocument();
+    expect(screen.queryByText(/_internal/)).toBeNull();
   });
 
   it("renders a CommentTimeline scoped to the row's uid", async () => {

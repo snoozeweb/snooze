@@ -166,10 +166,10 @@ export function AlertsPage() {
   const commentMut = useCommentRecord();
 
   const [selectedKeys, setSelectedKeys] = useState<Set<string>>(new Set());
-  // Counts how many inline alert details panels are currently open. When
-  // non-zero we pause the auto-refresh poll — refetching swaps the row's
-  // backing object, which can yank the timeline / JSON viewer the user is
-  // reading right out from under them.
+  // Tracks whether the row inspector is open (single-row inspection, so this is
+  // 0 or 1). When non-zero we pause the auto-refresh poll — refetching swaps
+  // the row's backing object, which can yank the timeline / JSON the operator
+  // is reading right out from under them.
   const [expandedCount, setExpandedCount] = useState(0);
   const [dialog, setDialog] = useState<{ type: ActionType; records: Record_[] } | null>(null);
   const [shelveDialog, setShelveDialog] = useState<Record_[] | null>(null);
@@ -303,9 +303,8 @@ export function AlertsPage() {
     [navigate],
   );
 
-  // Pause auto-refresh while the user is reading at least one inline
-  // detail panel — same intent as the existing toggle, but driven by the
-  // user's gaze instead of an explicit click.
+  // Pause auto-refresh while the operator is reading a row in the inspector —
+  // same intent as the explicit toggle, but driven by the user's gaze.
   const refreshPaused = expandedCount > 0;
   const effectiveIntervalMs =
     auto.intervalMs !== undefined && !refreshPaused ? auto.intervalMs : undefined;
@@ -582,8 +581,8 @@ export function AlertsPage() {
   );
 
   // Right-click context menu. The "Open" item is omitted: DataTable doesn't
-  // expose a programmatic-expand API and the chevron in the first column is
-  // the canonical way to toggle the inline panel. We keep the universal
+  // expose a programmatic-inspect API and the panel-right toggle in the first
+  // column is the canonical way to open the row inspector. We keep the universal
   // Copy-as-JSON / Copy-as-YAML pair and append the alert-specific verbs,
   // mirroring the bulk-toolbar surface.
   const contextMenuItems = useCallback(
@@ -914,6 +913,12 @@ export function AlertsPage() {
   const rowKey = useCallback((r: Record_) => r.uid ?? `${r.host ?? ""}-${r.date_epoch ?? 0}`, []);
   const rowAccent = useCallback((r: Record_) => severityToken(r.severity ?? ""), []);
   const renderExpanded = useCallback((row: Record_) => <AlertRowDetail row={row} />, []);
+  // Inspector title: the alert's host in mono (falls back to uid). Host is not
+  // repeated in the panel body, so this is where the operator reads it.
+  const expandedTitle = useCallback(
+    (r: Record_) => <span className={styles.inspectorHost}>{r.host ?? r.uid ?? "alert"}</span>,
+    [],
+  );
   const handleExpandedChange = useCallback(
     (keys: ReadonlySet<string>) => setExpandedCount(keys.size),
     [],
@@ -1056,7 +1061,7 @@ export function AlertsPage() {
                 !auto.enabled
                   ? "Auto-refresh off"
                   : refreshPaused
-                    ? "Auto-refresh paused while a row is expanded"
+                    ? "Auto-refresh paused while the inspector is open"
                     : `Auto-refresh every ${Math.round(refreshMs / 1000)}s`
               }
             >
@@ -1086,11 +1091,13 @@ export function AlertsPage() {
           rowAccent={rowAccent}
           contextMenuItems={contextMenuItems}
           renderExpanded={renderExpanded}
-          // Uncontrolled expansion (Phase 2's default path): DataTable owns the
-          // expanded set and reports size changes here so we can pause polling
-          // while the operator reads an inline panel. Keeping the uncontrolled
-          // path means the `e`-to-expand shortcut and chevron both keep working
-          // without AlertsPage tracking the key set.
+          expandedTitle={expandedTitle}
+          // Uncontrolled inspection (the default path): DataTable owns the
+          // single-row expanded set and reports size changes here so we can
+          // pause polling while the operator reads a row in the inspector.
+          // Keeping the uncontrolled path means the `e` shortcut and the
+          // panel-right toggle both keep working without AlertsPage tracking
+          // the key.
           onExpandedChange={handleExpandedChange}
         />
       </div>

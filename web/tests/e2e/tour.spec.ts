@@ -645,7 +645,24 @@ test("visual tour: seed and screenshot every menu", async ({ page, api, server, 
   // The TimeConstraints CollapsibleSection auto-opens when content is
   // present, but if it hasn't, click the header to make sure the new
   // DateTimeRangePicker chip is visible in the screenshot.
-  await goto("/web/snoozes");
+  //
+  // weekend-window only buckets under the default Active tab while its
+  // window is live (weekends 22:00–06:00); on a weekday run it sits in
+  // Upcoming. Reveal whichever tab holds it so the tour isn't
+  // day-of-week dependent.
+  const revealWeekendWindow = async () => {
+    await goto("/web/snoozes");
+    const row = page.getByText("weekend-window").first();
+    const onActiveTab = await row
+      .waitFor({ state: "visible", timeout: 2_000 })
+      .then(() => true)
+      .catch(() => false);
+    if (!onActiveTab) {
+      await page.getByRole("tab", { name: /^upcoming/i }).click({ force: true });
+      await row.waitFor({ state: "visible" });
+    }
+  };
+  await revealWeekendWindow();
   await page.getByText("weekend-window").click({ force: true });
   // Click the section header if it's not already expanded. The header
   // exposes aria-expanded; we click only when it's "false" so we don't
@@ -730,7 +747,9 @@ test("visual tour: seed and screenshot every menu", async ({ page, api, server, 
   // Edit-snooze counterpart to 21-edit-rule-drawer. The original tour only
   // captured the empty "new" drawer; an existing snooze populates the
   // ConditionEditor + TTL + comment fields so the screenshot actually
-  // illustrates the edit surface.
+  // illustrates the edit surface. (revealWeekendWindow: weekday runs find
+  // the row under Upcoming, not Active.)
+  await revealWeekendWindow();
   await page.getByText("weekend-window").click({ force: true });
   await shoot("22a-edit-snooze-drawer");
   await page.keyboard.press("Escape");
@@ -741,23 +760,23 @@ test("visual tour: seed and screenshot every menu", async ({ page, api, server, 
   await page.keyboard.press("Escape");
 
   await goto("/web/alerts");
-  // Alerts moved from a detail-drawer to inline row expansion (chevron
-  // toggle) — matching every other list page. The expanded panel renders
-  // a JsonViewer (left) + CommentTimeline (right). The pre-screenshot
-  // seed inserted comment/ack/esc events on srv-prod-1, so the timeline
-  // pane now shows the populated badges instead of the empty state.
-  // Target the chevron on the srv-prod-1 row (not the first chevron, since
-  // the table is sorted by date_epoch desc and the most recent alert is
-  // "auth").
+  // Alerts open in a docked side inspector (the "panel-right" toggle in the
+  // first column) instead of an inline expanded row. The inspector opens on
+  // the Timeline tab (summary header + Timeline/Flow/Record tabs). The
+  // pre-screenshot seed inserted comment/ack/esc events on srv-prod-1, so the
+  // timeline pane shows populated activity. Target the toggle on the srv-prod-1
+  // row (not the first toggle, since the table is sorted by date_epoch desc and
+  // the most recent alert is "auth").
   const prodRow = page.locator("tr", { hasText: "srv-prod-1" }).first();
   await prodRow.waitFor({ state: "attached" });
-  const alertExpand = prodRow.getByRole("button", { name: /^Expand row /i });
+  const alertExpand = prodRow.getByRole("button", { name: /^Inspect row /i });
   await alertExpand.click({ force: true });
-  // The JsonViewer renders <pre> nodes synchronously; CommentTimeline
-  // fetches comments async. Wait on the <pre> first.
-  await page.locator("pre").first().waitFor({ state: "visible" });
+  // Timeline is the default tab; wait for the comment composer to render so the
+  // screenshot doesn't capture mid-animation (the Record JSON <pre> is behind
+  // the Record tab now, so we can't wait on it here).
+  await page.getByPlaceholder(/write a comment/i).waitFor({ state: "visible" });
   await shoot("24-alert-row-expanded");
-  // Collapse so the bulk-ack screenshot below isn't crowded by the panel.
+  // Close so the bulk-ack screenshot below isn't crowded by the panel.
   await alertExpand.click({ force: true });
 
   // Row-actions menu: bulk-ack dialog
@@ -819,9 +838,14 @@ test("visual tour: seed and screenshot every menu", async ({ page, api, server, 
   await shoot("aggregate-rules-drawer-edit");
   await page.keyboard.press("Escape");
 
-  // Snoozes
+  // Snoozes. weekend-window may bucket under Upcoming on weekday runs (see
+  // revealWeekendWindow above), so the edit capture reveals it first instead
+  // of going through captureEditByText's default-tab click.
   await captureNew("/web/snoozes", "snoozes-drawer-new");
-  await captureEditByText("/web/snoozes", "weekend-window", "snoozes-drawer-edit");
+  await revealWeekendWindow();
+  await page.getByText("weekend-window", { exact: false }).first().click({ force: true });
+  await shoot("snoozes-drawer-edit");
+  await page.keyboard.press("Escape");
 
   // Notifications — Notifications tab (default).
   await captureNew("/web/notifications", "notifications-drawer-new");
@@ -879,35 +903,32 @@ test("visual tour: seed and screenshot every menu", async ({ page, api, server, 
   await page.getByRole("tab", { name: /^housekeeping$/i }).click({ force: true });
   await shoot("13-admin-settings-housekeeping");
 
-  // ── 3c. Inline row-expansion (chevron toggle) ───────────────────────────
+  // ── 3c. Docked row inspector (panel-right toggle) ───────────────────────
   //
-  // Recently-landed feature: every non-alert DataTable now exposes a
-  // first-column chevron that toggles an inline RowDetailPanel
-  // (JsonViewer + AuditTimeline). The Rules tab uses RulesTreeTable, so
-  // the chevron only appears on the *Aggregates* tab, on Snoozes, and on
-  // admin pages. We pick Snoozes because the seeded rows include a
-  // populated time_constraints object — the JsonViewer pane therefore
-  // has interesting content for the screenshot.
+  // Every non-alert DataTable exposes a first-column "panel-right" toggle
+  // that opens the docked RowInspector (RowDetailPanel: a Record JSON
+  // section stacked above an AuditTimeline). The Rules tab uses
+  // RulesTreeTable, so the toggle only appears on the *Aggregates* tab, on
+  // Snoozes, and on admin pages. We pick Snoozes because the seeded rows
+  // include a populated time_constraints object — the JsonViewer pane
+  // therefore has interesting content for the screenshot.
   //
-  // Selector: DataTable renders the chevron as <button aria-label="Expand
+  // Selector: DataTable renders the toggle as <button aria-label="Inspect
   // row ${key}"> (see web/src/shared/ui/DataTable.tsx). Use the first
   // such button so we're stable against row order.
-  await goto("/web/snoozes");
-  // Wait for a real row to render. The Snoozes table is initially in a
-  // loading state (skeleton rows have no chevron); the chevron only
-  // appears once the data has resolved. Wait on the row text first so we
-  // don't race the skeleton.
-  await page.getByText("weekend-window").first().waitFor({ state: "attached" });
-  // Selector: DataTable renders the chevron as <button aria-label="Expand
-  // row ${key}"> (see web/src/shared/ui/DataTable.tsx). Use the first
-  // such button — `force:true` works around opacity:0.55 on disabled
-  // rows (which Playwright might consider non-actionable otherwise).
-  const firstExpand = page.getByRole("button", { name: /^Expand row /i }).first();
+  // revealWeekendWindow (defined above) also covers the initial loading
+  // state: the Snoozes table starts as skeleton rows with no toggle, and
+  // waiting on the row text avoids racing the skeleton. It lands on
+  // whichever tab holds weekend-window on this day of the week.
+  await revealWeekendWindow();
+  // `force:true` works around opacity:0.55 on disabled rows (which
+  // Playwright might otherwise consider non-actionable).
+  const firstExpand = page.getByRole("button", { name: /^Inspect row /i }).first();
   await firstExpand.waitFor({ state: "attached" });
   await firstExpand.click({ force: true });
-  // The expanded panel renders a <pre> inside JsonViewer; wait for it so
-  // the screenshot doesn't capture mid-animation. Audit fetch is async,
-  // but the JsonViewer pane is rendered synchronously by React.
+  // RowDetailPanel renders a <pre> inside JsonViewer synchronously; wait
+  // for it so the screenshot doesn't capture mid-animation. The audit
+  // fetch is async, but the JsonViewer pane is rendered synchronously.
   await page.locator("pre").first().waitFor({ state: "visible" });
   await shoot("snoozes-row-expanded");
 
@@ -1063,7 +1084,9 @@ test("mobile tour: walk top-level routes at phone width", async ({
   // tighter indent) and not overflow horizontally on a phone.
   await page.goto(server.baseURL + "/web/rules");
   await page.waitForLoadState("networkidle").catch(() => {});
-  await page.getByText("page-prod-criticals").click({ force: true });
+  // .first(): the card-mode tree row renders the rule name in two <code>
+  // nodes (both inside the same row), which trips strict mode.
+  await page.getByText("page-prod-criticals").first().click({ force: true });
   await page
     .getByRole("tab", { name: /^Builder$/i })
     .waitFor({ state: "visible" })

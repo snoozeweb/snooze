@@ -151,7 +151,7 @@ describe("DataTable", () => {
     // Built-ins derived from the table's own capabilities…
     expect(await screen.findByText("Move between rows")).toBeInTheDocument();
     expect(screen.getByText(/select/i)).toBeInTheDocument();
-    expect(screen.getByText(/expand/i)).toBeInTheDocument();
+    expect(screen.getByText(/inspect row/i)).toBeInTheDocument();
     // …plus the page-supplied row bindings.
     expect(screen.getByText("Acknowledge")).toBeInTheDocument();
     expect(screen.getByText("Comment")).toBeInTheDocument();
@@ -415,13 +415,13 @@ describe("DataTable", () => {
     });
   });
 
-  describe("row expansion", () => {
-    it("does not render the expand-chevron column when renderExpanded is omitted", () => {
+  describe("row inspection", () => {
+    it("does not render the inspect-toggle column when renderExpanded is omitted", () => {
       render(<DataTable data={sample} columns={columns} rowKey={(r) => r.id} />);
-      expect(screen.queryByRole("button", { name: /expand row/i })).toBeNull();
+      expect(screen.queryByRole("button", { name: /inspect row/i })).toBeNull();
     });
 
-    it("renders a chevron toggle per row when renderExpanded is provided", () => {
+    it("renders an inspect toggle per row when renderExpanded is provided", () => {
       render(
         <DataTable
           data={sample}
@@ -430,11 +430,11 @@ describe("DataTable", () => {
           renderExpanded={(r) => <div>details for {r.name}</div>}
         />,
       );
-      const toggles = screen.getAllByRole("button", { name: /expand row/i });
+      const toggles = screen.getAllByRole("button", { name: /inspect row/i });
       expect(toggles.length).toBe(sample.length);
     });
 
-    it("clicking the chevron toggles expansion without triggering onRowOpen", async () => {
+    it("clicking the toggle opens the inspector without triggering onRowOpen, and toggling again closes it", async () => {
       const onRowOpen = vi.fn();
       const user = userEvent.setup();
       render(
@@ -447,15 +447,16 @@ describe("DataTable", () => {
         />,
       );
       expect(screen.queryByTestId("exp-2")).toBeNull();
-      const toggles = screen.getAllByRole("button", { name: /expand row/i });
+      const toggles = screen.getAllByRole("button", { name: /inspect row/i });
       await user.click(toggles[1]!);
+      // The inspector portals to document.body — screen queries still find it.
       expect(screen.getByTestId("exp-2")).toBeInTheDocument();
       expect(onRowOpen).not.toHaveBeenCalled();
       await user.click(toggles[1]!);
       expect(screen.queryByTestId("exp-2")).toBeNull();
     });
 
-    it("allows multiple rows to be expanded simultaneously", async () => {
+    it("inspecting a second row retargets the inspector (single-row inspection)", async () => {
       const user = userEvent.setup();
       render(
         <DataTable
@@ -465,12 +466,75 @@ describe("DataTable", () => {
           renderExpanded={(r) => <div data-testid={`exp-${r.id}`}>{r.name}</div>}
         />,
       );
-      const toggles = screen.getAllByRole("button", { name: /expand row/i });
+      const toggles = screen.getAllByRole("button", { name: /inspect row/i });
       await user.click(toggles[0]!);
-      await user.click(toggles[2]!);
       expect(screen.getByTestId("exp-1")).toBeInTheDocument();
+      // Opening another row replaces the inspection rather than stacking.
+      await user.click(toggles[2]!);
       expect(screen.getByTestId("exp-3")).toBeInTheDocument();
-      expect(screen.queryByTestId("exp-2")).toBeNull();
+      expect(screen.queryByTestId("exp-1")).toBeNull();
+    });
+
+    it("renders expandedTitle in the inspector header", async () => {
+      const user = userEvent.setup();
+      render(
+        <DataTable
+          data={sample}
+          columns={columns}
+          rowKey={(r) => r.id}
+          renderExpanded={(r) => <div>{r.name}</div>}
+          expandedTitle={(r) => <span>Title: {r.name}</span>}
+        />,
+      );
+      await user.click(screen.getAllByRole("button", { name: /inspect row/i })[0]!);
+      expect(screen.getByText("Title: alpha")).toBeInTheDocument();
+    });
+
+    it("Escape closes the inspector", async () => {
+      const user = userEvent.setup();
+      render(
+        <DataTable
+          data={sample}
+          columns={columns}
+          rowKey={(r) => r.id}
+          renderExpanded={(r) => <div data-testid={`exp-${r.id}`}>{r.name}</div>}
+        />,
+      );
+      await user.click(screen.getAllByRole("button", { name: /inspect row/i })[0]!);
+      expect(screen.getByTestId("exp-1")).toBeInTheDocument();
+      fireEvent.keyDown(document.body, { key: "Escape" });
+      expect(screen.queryByTestId("exp-1")).toBeNull();
+    });
+
+    it("prev/next navigate the inspector and disable at the ends", async () => {
+      const user = userEvent.setup();
+      render(
+        <DataTable
+          data={sample}
+          columns={columns}
+          rowKey={(r) => r.id}
+          renderExpanded={(r) => <div data-testid={`exp-${r.id}`}>{r.name}</div>}
+        />,
+      );
+      const toggles = screen.getAllByRole("button", { name: /inspect row/i });
+      await user.click(toggles[0]!);
+      expect(screen.getByTestId("exp-1")).toBeInTheDocument();
+      // On the first row: Previous disabled, Next enabled.
+      expect(screen.getByRole("button", { name: /previous row/i })).toBeDisabled();
+      expect(screen.getByRole("button", { name: /next row/i })).toBeEnabled();
+
+      await user.click(screen.getByRole("button", { name: /next row/i }));
+      expect(screen.getByTestId("exp-2")).toBeInTheDocument();
+      expect(screen.queryByTestId("exp-1")).toBeNull();
+
+      await user.click(screen.getByRole("button", { name: /next row/i }));
+      expect(screen.getByTestId("exp-3")).toBeInTheDocument();
+      // On the last row: Next disabled, Previous enabled.
+      expect(screen.getByRole("button", { name: /next row/i })).toBeDisabled();
+      expect(screen.getByRole("button", { name: /previous row/i })).toBeEnabled();
+
+      await user.click(screen.getByRole("button", { name: /previous row/i }));
+      expect(screen.getByTestId("exp-2")).toBeInTheDocument();
     });
 
     it("clicking the row body still calls onRowOpen", async () => {
@@ -489,7 +553,7 @@ describe("DataTable", () => {
       expect(onRowOpen).toHaveBeenCalledWith(sample[1]);
     });
 
-    it("fires onExpandedChange with the current set of expanded keys", async () => {
+    it("fires onExpandedChange with the single-inspection size sequence (0→1→1→0)", async () => {
       const onExpandedChange = vi.fn();
       const user = userEvent.setup();
       render(
@@ -502,26 +566,27 @@ describe("DataTable", () => {
         />,
       );
       // Initial mount fires once with the empty default — consumers treat
-      // that as "nothing is expanded" so it's harmless.
+      // that as "nothing is inspected" so it's harmless.
       const sizes = () =>
         onExpandedChange.mock.calls.map(([keys]) => (keys as ReadonlySet<string>).size);
       expect(sizes()).toEqual([0]);
 
-      const toggles = screen.getAllByRole("button", { name: /expand row/i });
-      await user.click(toggles[0]!);
+      const toggles = screen.getAllByRole("button", { name: /inspect row/i });
+      await user.click(toggles[0]!); // open row 1
       expect(sizes()).toEqual([0, 1]);
 
-      await user.click(toggles[2]!);
-      expect(sizes()).toEqual([0, 1, 2]);
+      await user.click(toggles[2]!); // retarget to row 3 (still a single key)
+      expect(sizes()).toEqual([0, 1, 1]);
+      const afterRetarget = onExpandedChange.mock.calls.at(-1)?.[0] as ReadonlySet<string>;
+      expect([...afterRetarget]).toEqual(["3"]);
 
-      await user.click(toggles[0]!);
-      expect(sizes()).toEqual([0, 1, 2, 1]);
-
+      await user.click(toggles[2]!); // toggling the same row closes the inspector
+      expect(sizes()).toEqual([0, 1, 1, 0]);
       const last = onExpandedChange.mock.calls.at(-1)?.[0] as ReadonlySet<string>;
-      expect([...last]).toEqual(["3"]);
+      expect(last.size).toBe(0);
     });
 
-    it("controlled expansion renders exactly expandedKeys and routes toggles through onExpandedChange", async () => {
+    it("controlled inspection renders exactly expandedKeys and routes toggles through onExpandedChange (single row)", async () => {
       const onExpandedChange = vi.fn();
       const user = userEvent.setup();
       const { rerender } = render(
@@ -534,30 +599,31 @@ describe("DataTable", () => {
           onExpandedChange={onExpandedChange}
         />,
       );
-      // Only the controlled key is expanded — internal state is bypassed.
+      // Only the controlled key is inspected — internal state is bypassed.
       expect(screen.getByTestId("exp-2")).toBeInTheDocument();
       expect(screen.queryByTestId("exp-1")).toBeNull();
 
-      // Clicking another chevron must NOT self-expand; it asks the parent.
-      const toggles = screen.getAllByRole("button", { name: /expand row/i });
+      // Clicking another toggle must NOT self-inspect; it asks the parent, and
+      // single-row semantics mean the proposed set is just the new key.
+      const toggles = screen.getAllByRole("button", { name: /inspect row/i });
       await user.click(toggles[0]!);
       expect(screen.queryByTestId("exp-1")).toBeNull();
       const next = onExpandedChange.mock.calls.at(-1)?.[0] as ReadonlySet<string>;
-      expect([...next].sort()).toEqual(["1", "2"]);
+      expect([...next]).toEqual(["1"]);
 
-      // Parent applies the new set → row 1 now renders expanded.
+      // Parent applies the new set → row 1 now renders inspected, row 2 closes.
       rerender(
         <DataTable
           data={sample}
           columns={columns}
           rowKey={(r) => r.id}
           renderExpanded={(r) => <div data-testid={`exp-${r.id}`}>{r.name}</div>}
-          expandedKeys={new Set(["1", "2"])}
+          expandedKeys={new Set(["1"])}
           onExpandedChange={onExpandedChange}
         />,
       );
       expect(screen.getByTestId("exp-1")).toBeInTheDocument();
-      expect(screen.getByTestId("exp-2")).toBeInTheDocument();
+      expect(screen.queryByTestId("exp-2")).toBeNull();
     });
   });
 
@@ -660,7 +726,7 @@ describe("DataTable", () => {
       expect(screen.getByText("alpha").closest("tr")).toHaveAttribute("data-focused", "true");
     });
 
-    it("e toggles expansion of the focused row when renderExpanded is set", () => {
+    it("e toggles inspection of the focused row when renderExpanded is set", () => {
       render(
         <DataTable
           data={sample}
@@ -675,6 +741,26 @@ describe("DataTable", () => {
       fireEvent.keyDown(table, { key: "e" });
       expect(screen.getByTestId("exp-1")).toBeInTheDocument();
       fireEvent.keyDown(table, { key: "e" });
+      expect(screen.queryByTestId("exp-1")).toBeNull();
+    });
+
+    it("ArrowDown retargets the open inspector to the newly focused row", () => {
+      render(
+        <DataTable
+          data={sample}
+          columns={columns}
+          rowKey={(r) => r.id}
+          renderExpanded={(r) => <div data-testid={`exp-${r.id}`}>{r.name}</div>}
+        />,
+      );
+      const table = screen.getByRole("grid");
+      table.focus();
+      fireEvent.keyDown(table, { key: "ArrowDown" }); // focus row 1
+      fireEvent.keyDown(table, { key: "e" }); // inspect row 1
+      expect(screen.getByTestId("exp-1")).toBeInTheDocument();
+      // Moving focus while the inspector is open follows to the next row.
+      fireEvent.keyDown(table, { key: "ArrowDown" });
+      expect(screen.getByTestId("exp-2")).toBeInTheDocument();
       expect(screen.queryByTestId("exp-1")).toBeNull();
     });
 
