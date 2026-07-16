@@ -1,7 +1,7 @@
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
-import { beforeAll, describe, expect, it } from "vitest";
+import { afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import {
   createMemoryHistory,
   createRootRoute,
@@ -12,6 +12,7 @@ import {
 } from "@tanstack/react-router";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { mswServer } from "@/tests/msw/server";
+import { authStore } from "@/lib/auth/store";
 import { TooltipProvider } from "@/shared/ui/Tooltip";
 import { ToastProvider, Toaster } from "@/shared/ui/Toast";
 import { SettingsPage } from "./SettingsPage";
@@ -489,5 +490,69 @@ describe("Ingest tab", () => {
     await user.click(saveBtn);
     await waitFor(() => expect(bodies).toHaveLength(1));
     expect(bodies[0]).toMatchObject({ name: "ingest.allow", value: false });
+  });
+});
+
+describe("Housekeeping run panel (rw_all gating)", () => {
+  function login(permissions: string[]) {
+    const header = btoa(JSON.stringify({ alg: "HS256", typ: "JWT" }));
+    const body = btoa(
+      JSON.stringify({ sub: "x", exp: Math.floor(Date.now() / 1000) + 3600, permissions }),
+    );
+    authStore.getState().login(`${header}.${body}.sig`);
+  }
+
+  beforeEach(() => {
+    localStorage.clear();
+    authStore.getState().logout();
+  });
+  afterEach(() => {
+    localStorage.clear();
+    authStore.getState().logout();
+  });
+
+  it("shows the on-demand run panel to an admin (rw_all)", async () => {
+    login(["rw_all"]);
+    mswServer.use(
+      http.get("/api/v1/metadata/settings", () => HttpResponse.json(settingsMetadata())),
+      http.get("/api/v1/settings", () =>
+        HttpResponse.json({ data: [], meta: { count: 0, limit: 500, offset: 0, total: 0 } }),
+      ),
+      http.get("/api/v1/housekeeping/status", () =>
+        HttpResponse.json({ status: "ok", registered_jobs: 3 }),
+      ),
+    );
+    setup();
+    const user = userEvent.setup();
+    await waitFor(() =>
+      expect(screen.getByRole("tab", { name: "Housekeeping" })).toBeInTheDocument(),
+    );
+    await user.click(screen.getByRole("tab", { name: "Housekeeping" }));
+    expect(await screen.findByRole("button", { name: "Run now" })).toBeInTheDocument();
+  });
+
+  it("hides the run panel from a settings editor without rw_all", async () => {
+    login(["ro_settings", "rw_settings"]);
+    mswServer.use(
+      http.get("/api/v1/metadata/settings", () => HttpResponse.json(settingsMetadata())),
+      http.get("/api/v1/settings", () =>
+        HttpResponse.json({ data: [], meta: { count: 0, limit: 500, offset: 0, total: 0 } }),
+      ),
+    );
+    setup();
+    const user = userEvent.setup();
+    await waitFor(() =>
+      expect(screen.getByRole("tab", { name: "Housekeeping" })).toBeInTheDocument(),
+    );
+    await user.click(screen.getByRole("tab", { name: "Housekeeping" }));
+    // The tab itself is visible (settings permission), but the admin-only run
+    // action is not offered.
+    await waitFor(() =>
+      expect(screen.getByRole("tab", { name: "Housekeeping" })).toHaveAttribute(
+        "aria-selected",
+        "true",
+      ),
+    );
+    expect(screen.queryByRole("button", { name: "Run now" })).toBeNull();
   });
 });

@@ -7,9 +7,11 @@ import { TabList, TabPanel, TabTrigger, Tabs } from "@/shared/ui/Tabs";
 import { Textarea } from "@/shared/ui/Textarea";
 import { toast } from "@/shared/ui/toast/useToast";
 import { ConfirmDeleteDialog, useConfirmDelete } from "@/shared/ui/resourceContextMenu";
+import { RequirePerm } from "@/shared/auth/RequirePerm";
 import { ApiError } from "@/lib/api/client";
 import type { FormField } from "@/shared/forms/types";
 import { Settings, useSettingsCatalogue, useSettingsList } from "./api";
+import { HousekeepingRunPanel } from "./HousekeepingRunPanel";
 import { SettingCard } from "./SettingCard";
 import type { Setting } from "./types";
 import styles from "./SettingsPage.module.css";
@@ -188,6 +190,16 @@ export function SettingsPage() {
           return (
             <TabPanel key={g.key} value={g.key}>
               <div className={styles.cards}>
+                {g.key === "housekeeping" ? (
+                  // The on-demand run is an admin action gated by rw_all on the
+                  // server, independent of the ro_settings/rw_settings that
+                  // gates this tab. Gate the panel the same way so a
+                  // settings-editor without rw_all never sees a button the API
+                  // would 403.
+                  <RequirePerm all={["rw_all"]}>
+                    <HousekeepingRunPanel />
+                  </RequirePerm>
+                ) : null}
                 {g.entries.length === 0 ? (
                   <div className={styles.empty}>No settings in this group.</div>
                 ) : (
