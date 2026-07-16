@@ -32,8 +32,7 @@ export function switchLogicOp(
   // round-trip restores the original — otherwise we'd nest a group inside a
   // group and pad it with a spurious blank leaf.
   const inner = current.type === "NOT" ? current.arg : undefined;
-  const base =
-    inner && (inner.type === "AND" || inner.type === "OR") ? inner.args : children;
+  const base = inner && (inner.type === "AND" || inner.type === "OR") ? inner.args : children;
   // AND/OR need at least two args so the editor stays paired.
   let args = base.slice();
   if (args.length < 2) args = [...args, makeLeaf()];

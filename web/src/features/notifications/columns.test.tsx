@@ -16,7 +16,9 @@ describe("actions summary column", () => {
 
   it("summarizes a jira action via its non-secret identifiers", () => {
     render(
-      <>{actionCell({ jira_url: "https://jira.example", project_key: "OPS", api_token: "secret" })}</>,
+      <>
+        {actionCell({ jira_url: "https://jira.example", project_key: "OPS", api_token: "secret" })}
+      </>,
     );
     expect(screen.getByText(/jira_url=|project_key=/)).toBeInTheDocument();
   });

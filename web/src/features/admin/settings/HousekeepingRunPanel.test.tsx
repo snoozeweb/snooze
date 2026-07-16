@@ -119,8 +119,6 @@ describe("HousekeepingRunPanel", () => {
     await user.click(await screen.findByRole("button", { name: "Run housekeeping" }));
 
     expect(await screen.findByText("db timeout")).toBeInTheDocument();
-    expect(
-      await screen.findByText(/Housekeeping finished with 1 job error/i),
-    ).toBeInTheDocument();
+    expect(await screen.findByText(/Housekeeping finished with 1 job error/i)).toBeInTheDocument();
   });
 });

@@ -74,8 +74,8 @@ export function InputsPage() {
         // alerts stopped flowing.
         <Card padded>
           <p className={styles.hint}>
-            Couldn&apos;t load ingestion activity — the “last received” and alert counts below may be
-            missing or stale.
+            Couldn&apos;t load ingestion activity — the “last received” and alert counts below may
+            be missing or stale.
           </p>
           <Button size="sm" variant="secondary" onClick={() => void query.refetch()}>
             Retry

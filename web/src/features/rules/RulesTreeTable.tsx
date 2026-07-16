@@ -607,8 +607,7 @@ export function RulesTreeTable({
   // (e.g. Cancel/Save while reorders are pending, Delete otherwise), so
   // rendering both here would double up.
   const renderInternalDeleteButton = !isControlled && hasSelection;
-  const showToolbarSlot =
-    toolbar !== undefined || toolbarHeader !== undefined || showSelectedChip;
+  const showToolbarSlot = toolbar !== undefined || toolbarHeader !== undefined || showSelectedChip;
 
   return (
     <div className={styles.wrap}>

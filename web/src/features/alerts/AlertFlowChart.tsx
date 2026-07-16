@@ -227,7 +227,11 @@ export function AlertFlowChart({ row }: { row: Record_ }) {
           {notifications.length > 0 || actions.length > 0 ? (
             <div className={styles.fork}>
               {notificationBranches(notifications, actions).map((b, i) => (
-                <NotificationBranch key={`${b.name || "orphaned"}-${i}`} name={b.name} actions={b.actions} />
+                <NotificationBranch
+                  key={`${b.name || "orphaned"}-${i}`}
+                  name={b.name}
+                  actions={b.actions}
+                />
               ))}
             </div>
           ) : (

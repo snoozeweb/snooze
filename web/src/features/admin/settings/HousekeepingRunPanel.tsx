@@ -62,8 +62,8 @@ export function HousekeepingRunPanel() {
           Run housekeeping now
         </h3>
         <p className={styles.subtitle}>
-          Fires every registered cleanup job once, across all tenants. Jobs prune records past
-          their configured retention windows, so this permanently deletes data.
+          Fires every registered cleanup job once, across all tenants. Jobs prune records past their
+          configured retention windows, so this permanently deletes data.
         </p>
       </div>
 

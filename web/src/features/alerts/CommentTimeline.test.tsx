@@ -21,7 +21,11 @@ function wrap() {
 function loginWithPerms(perms: string[]) {
   const header = btoa(JSON.stringify({ alg: "HS256", typ: "JWT" }));
   const body = btoa(
-    JSON.stringify({ sub: "tester", exp: Math.floor(Date.now() / 1000) + 3600, permissions: perms }),
+    JSON.stringify({
+      sub: "tester",
+      exp: Math.floor(Date.now() / 1000) + 3600,
+      permissions: perms,
+    }),
   );
   authStore.getState().login(`${header}.${body}.sig`);
 }
@@ -164,7 +168,9 @@ describe("CommentTimeline", () => {
       ),
     );
     render(
-      <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
+      <QueryClientProvider
+        client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}
+      >
         <CommentTimeline recordUid="r1" state="close" />
       </QueryClientProvider>,
     );
