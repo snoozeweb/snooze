@@ -49,12 +49,12 @@ func newTestHost(hostname string) *testHost {
 	}
 }
 
-func (h *testHost) DB() db.Driver                     { return nil }
-func (h *testHost) Bus() plugins.Bus                  { return nil }
-func (h *testHost) Logger() *slog.Logger              { return h.logger }
-func (h *testHost) Tracer() trace.Tracer              { return h.tracer }
-func (h *testHost) Metrics() *telemetry.Registry      { return h.metr }
-func (h *testHost) Config() *config.Config            { return h.cfg }
+func (h *testHost) DB() db.Driver                  { return nil }
+func (h *testHost) Bus() plugins.Bus               { return nil }
+func (h *testHost) Logger() *slog.Logger           { return h.logger }
+func (h *testHost) Tracer() trace.Tracer           { return h.tracer }
+func (h *testHost) Metrics() *telemetry.Registry   { return h.metr }
+func (h *testHost) Config() *config.Config         { return h.cfg }
 func (h *testHost) Plugin(_ string) plugins.Plugin { return nil }
 
 // frozenNow is the deterministic clock injected into every test plugin, so
