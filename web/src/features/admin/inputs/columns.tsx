@@ -60,14 +60,14 @@ export function makeInputColumns(onSetup: (id: string) => void): ColumnDef<Input
             none in 30d
           </span>
         ),
-      width: "160px",
+      width: "192px",
     },
     {
       id: "count",
       header: "Alerts (30d)",
       align: "right",
       cell: (r) => (r.count !== undefined ? <span>{r.count}</span> : <span style={muted}>—</span>),
-      width: "100px",
+      width: "120px",
       hideBelow: "lg",
     },
     {

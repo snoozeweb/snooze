@@ -144,7 +144,7 @@ export function makeUserColumns(roleGroupIndex: Map<string, string[]>): ColumnDe
         ) : (
           <span style={{ color: "var(--text-muted)" }}>never</span>
         ),
-      width: "120px",
+      width: "240px",
       hideBelow: "xl",
     },
     {

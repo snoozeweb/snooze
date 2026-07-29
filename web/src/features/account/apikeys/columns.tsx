@@ -62,7 +62,7 @@ export function makeApiKeyColumns(): ColumnDef<ApiKey>[] {
       // where "never" positively means "no expiry").
       cell: (r) => <TimeCell epoch={r.last_used_at} />,
       sortable: true,
-      width: "160px",
+      width: "240px",
       hideBelow: "lg",
     },
     {
@@ -75,7 +75,7 @@ export function makeApiKeyColumns(): ColumnDef<ApiKey>[] {
           <span style={{ color: "var(--text-muted)" }}>never</span>
         ),
       sortable: true,
-      width: "160px",
+      width: "240px",
       hideBelow: "lg",
     },
     {

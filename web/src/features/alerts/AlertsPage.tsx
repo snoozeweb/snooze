@@ -936,12 +936,6 @@ export function AlertsPage() {
       updateSearch({ record: k ?? undefined } as unknown as Partial<AlertsSearch>),
     [updateSearch],
   );
-  // Row click opens the detail drawer for that alert (row click was previously
-  // unused on this page). DataTable's text-selection guard covers drag-copy.
-  const handleRowOpen = useCallback(
-    (row: Record_) => updateSearch({ record: recordKey(row) } as unknown as Partial<AlertsSearch>),
-    [updateSearch],
-  );
   const handleSearchChange = useCallback(
     (c: { text: string; condition: ParsedCondition | null }) => {
       setSearchText(c.text);
@@ -1109,14 +1103,14 @@ export function AlertsPage() {
           keyboardHints={ALERT_KEYBOARD_HINTS}
           rowAccent={rowAccent}
           contextMenuItems={contextMenuItems}
-          onRowOpen={handleRowOpen}
           renderDetails={renderDetails}
           detailsTitle={detailsTitle}
           // Controlled detail drawer: the open record lives in the URL
           // (?record=), so it's shareable/deep-linkable and survives reloads.
           // A ?record= uid that isn't on the current page clears itself once
-          // loading settles (DataTable's auto-close). Row click, the "View
-          // details" kebab item, and the `E` shortcut all route through here.
+          // loading settles (DataTable's auto-close). The "View details" kebab
+          // item, the hover-revealed eye icon, and the `E` shortcut all route
+          // through here (row click intentionally does not open the drawer).
           detailsKey={record ?? null}
           onDetailsKeyChange={handleDetailsKeyChange}
         />
