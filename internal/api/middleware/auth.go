@@ -49,6 +49,96 @@ func Auth(engine *auth.TokenEngine, keys APIKeyAuthenticator, skip SkipPredicate
 	return AuthWithProxy(engine, keys, nil, nil, skip)
 }
 
+// Bearer-resolution sentinels returned by resolveBearer. Each maps 1:1 to the
+// 401 message AuthWithProxy wrote inline before the helper was extracted;
+// keeping them distinct (rather than one generic error) lets AuthWithProxy
+// reproduce those exact messages via err.Error() while OptionalAuth, which
+// doesn't care about the reason, can treat every one identically.
+var (
+	errMissingAuthHeader = errors.New("missing authorization header")
+	errMalformedBearer   = errors.New("expected Authorization: Bearer <token>")
+	errInvalidAPIKey     = errors.New("invalid api key")
+	errAuthNotConfigured = errors.New("auth not configured")
+	errInvalidToken      = errors.New("invalid token")
+)
+
+// resolveBearer extracts and resolves the Authorization: Bearer token off r:
+// a snz_-prefixed token is resolved via keys (when non-nil), anything else is
+// verified as a login JWT via engine. It is the shared core of the strict
+// AuthWithProxy path and the OptionalAuth path below. On any failure the
+// returned error is one of the sentinels above.
+func resolveBearer(r *http.Request, engine *auth.TokenEngine, keys APIKeyAuthenticator) (snoozetypes.Claims, error) {
+	header := r.Header.Get("Authorization")
+	if header == "" {
+		return snoozetypes.Claims{}, errMissingAuthHeader
+	}
+	parts := strings.SplitN(header, " ", 2)
+	if len(parts) != 2 || !strings.EqualFold(parts[0], "Bearer") {
+		return snoozetypes.Claims{}, errMalformedBearer
+	}
+	token := parts[1]
+
+	if keys != nil && strings.HasPrefix(token, auth.APIKeyPrefix) {
+		c, err := keys.Resolve(r.Context(), token)
+		if err != nil {
+			return snoozetypes.Claims{}, errInvalidAPIKey
+		}
+		return c, nil
+	}
+	if engine == nil {
+		return snoozetypes.Claims{}, errAuthNotConfigured
+	}
+	c, err := engine.Verify(token)
+	if err != nil {
+		return snoozetypes.Claims{}, errInvalidToken
+	}
+	return c, nil
+}
+
+// claimsToContext stamps claims on ctx (auth.WithClaims) and the resolved
+// tenant slug (auth.WithTenant), falling back to snoozetypes.DefaultTenant
+// when the claim's TenantID is empty (legacy token). Shared by the strict
+// Bearer path, the proxy path, and OptionalAuth so the fallback rule can't
+// drift between them.
+func claimsToContext(ctx context.Context, claims snoozetypes.Claims) context.Context {
+	ctx = auth.WithClaims(ctx, claims)
+	tenantID := claims.TenantID
+	if tenantID == "" {
+		tenantID = snoozetypes.DefaultTenant
+	}
+	return auth.WithTenant(ctx, tenantID)
+}
+
+// OptionalAuth returns a chi middleware that stamps Claims/tenant on the
+// context exactly like the strict Auth/AuthWithProxy path when the request
+// carries a well-formed, resolvable Bearer token — but, unlike Auth, it never
+// rejects the request. A missing Authorization header, a malformed Bearer
+// value, or a token that fails to resolve (bad snz_ key / invalid or expired
+// JWT) all serve the request unmodified: no claims, no tenant, no 401.
+//
+// This exists for public-but-tenant-aware endpoints — today, only
+// GET /api/v1/config. That route is in skipAuth so the anonymous login screen
+// can bootstrap branding before a token exists; the strict Auth middleware
+// short-circuits skipAuth paths before ever parsing the Authorization header,
+// so a logged-in caller hitting a skipAuth route never gets claims/tenant on
+// the context either, even though the settings-plugin document the handler
+// reads is tenant-scoped. Mounting OptionalAuth on that one route (in place of
+// the global skip) lets the handler see the caller's tenant when a valid
+// token is present, while an anonymous caller still gets served (with pure
+// code defaults, since there's no tenant to overlay).
+func OptionalAuth(engine *auth.TokenEngine, keys APIKeyAuthenticator) func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			claims, err := resolveBearer(r, engine, keys)
+			if err != nil {
+				next.ServeHTTP(w, r)
+				return
+			}
+			next.ServeHTTP(w, r.WithContext(claimsToContext(r.Context(), claims)))
+		})
+	}
+}
+
 // AuthWithProxy is Auth plus an optional upstream-proxy (trusted-header) branch.
 // When cfg is non-nil, cfg.Enabled is true, and proxy is non-nil, a request
 // carrying the configured user header from a trusted IP authenticates via the
@@ -76,49 +166,15 @@ func AuthWithProxy(engine *auth.TokenEngine, keys APIKeyAuthenticator, proxy Pro
 				}
 			}
 
-			header := r.Header.Get("Authorization")
-			if header == "" {
-				writeUnauthorized(w, r, "missing authorization header")
+			claims, err := resolveBearer(r, engine, keys)
+			if err != nil {
+				// err.Error() reproduces the exact 401 message this block wrote
+				// inline before resolveBearer was extracted (see the sentinels
+				// above resolveBearer's definition) — byte-identical behaviour.
+				writeUnauthorized(w, r, err.Error())
 				return
 			}
-			parts := strings.SplitN(header, " ", 2)
-			if len(parts) != 2 || !strings.EqualFold(parts[0], "Bearer") {
-				writeUnauthorized(w, r, "expected Authorization: Bearer <token>")
-				return
-			}
-			token := parts[1]
-
-			var claims snoozetypes.Claims
-			if keys != nil && strings.HasPrefix(token, auth.APIKeyPrefix) {
-				c, err := keys.Resolve(r.Context(), token)
-				if err != nil {
-					writeUnauthorized(w, r, "invalid api key")
-					return
-				}
-				claims = c
-			} else {
-				if engine == nil {
-					writeUnauthorized(w, r, "auth not configured")
-					return
-				}
-				c, err := engine.Verify(token)
-				if err != nil {
-					writeUnauthorized(w, r, "invalid token")
-					return
-				}
-				claims = c
-			}
-
-			// Stamp claims on context (existing behaviour).
-			ctx := auth.WithClaims(r.Context(), claims)
-			// Stamp tenant on context (D3). Empty claim (legacy token) falls
-			// back to DefaultTenant.
-			tenantID := claims.TenantID
-			if tenantID == "" {
-				tenantID = snoozetypes.DefaultTenant
-			}
-			ctx = auth.WithTenant(ctx, tenantID)
-			next.ServeHTTP(w, r.WithContext(ctx))
+			next.ServeHTTP(w, r.WithContext(claimsToContext(r.Context(), claims)))
 		})
 	}
 }
@@ -162,13 +218,7 @@ func tryProxyAuth(w http.ResponseWriter, r *http.Request, proxy ProxyAuth, cfg *
 		return true
 	}
 
-	ctx := auth.WithClaims(r.Context(), claims)
-	tenantID := claims.TenantID
-	if tenantID == "" {
-		tenantID = snoozetypes.DefaultTenant
-	}
-	ctx = auth.WithTenant(ctx, tenantID)
-	next.ServeHTTP(w, r.WithContext(ctx))
+	next.ServeHTTP(w, r.WithContext(claimsToContext(r.Context(), claims)))
 	return true
 }
 

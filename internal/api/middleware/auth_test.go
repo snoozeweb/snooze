@@ -312,6 +312,96 @@ func TestAuth_APIKeyRejected(t *testing.T) {
 	}
 }
 
+// TestOptionalAuth_NoHeaderServesAnonymously: no Authorization header at all →
+// next is served (no 401) and no claims/tenant land on the context.
+func TestOptionalAuth_NoHeaderServesAnonymously(t *testing.T) {
+	reached := false
+	h := OptionalAuth(testEngine(t), nil)(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		reached = true
+		if _, ok := auth.ClaimsFrom(r.Context()); ok {
+			t.Fatal("no claims should be stamped for an anonymous request")
+		}
+		if _, ok := auth.TenantFrom(r.Context()); ok {
+			t.Fatal("no tenant should be stamped for an anonymous request")
+		}
+		w.WriteHeader(http.StatusOK)
+	}))
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/config", nil)
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+	if !reached || rec.Code != http.StatusOK {
+		t.Fatalf("reached=%v status=%d, want true/200", reached, rec.Code)
+	}
+}
+
+// TestOptionalAuth_ValidJWTStampsClaims: a well-formed, resolvable Bearer JWT
+// stamps claims + tenant on the context exactly like the strict Auth path.
+func TestOptionalAuth_ValidJWTStampsClaims(t *testing.T) {
+	eng := testEngine(t)
+	tok, _, err := eng.Sign(snoozetypes.Claims{Subject: "alice", Method: "local", TenantID: "acme"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var seen snoozetypes.Claims
+	var seenTenant string
+	h := OptionalAuth(eng, nil)(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		seen, _ = auth.ClaimsFrom(r.Context())
+		seenTenant, _ = auth.TenantFrom(r.Context())
+		w.WriteHeader(http.StatusOK)
+	}))
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/config", nil)
+	req.Header.Set("Authorization", "Bearer "+tok)
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", rec.Code)
+	}
+	if seen.Subject != "alice" {
+		t.Fatalf("claims subject = %q, want alice", seen.Subject)
+	}
+	if seenTenant != "acme" {
+		t.Fatalf("tenant = %q, want acme", seenTenant)
+	}
+}
+
+// TestOptionalAuth_GarbageTokenServesAnonymously: a malformed/invalid Bearer
+// token must NOT 401 — the request is served without claims, same as no
+// header at all.
+func TestOptionalAuth_GarbageTokenServesAnonymously(t *testing.T) {
+	reached := false
+	h := OptionalAuth(testEngine(t), nil)(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		reached = true
+		if _, ok := auth.ClaimsFrom(r.Context()); ok {
+			t.Fatal("no claims should be stamped for a garbage token")
+		}
+		w.WriteHeader(http.StatusOK)
+	}))
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/config", nil)
+	req.Header.Set("Authorization", "Bearer not-a-real-token")
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+	if !reached || rec.Code != http.StatusOK {
+		t.Fatalf("reached=%v status=%d, want true/200", reached, rec.Code)
+	}
+}
+
+// TestOptionalAuth_MalformedHeaderServesAnonymously covers the non-Bearer
+// Authorization header shape (e.g. Basic auth) — also anonymous, never 401.
+func TestOptionalAuth_MalformedHeaderServesAnonymously(t *testing.T) {
+	reached := false
+	h := OptionalAuth(testEngine(t), nil)(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		reached = true
+		w.WriteHeader(http.StatusOK)
+	}))
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/config", nil)
+	req.Header.Set("Authorization", "Basic dXNlcjpwYXNz")
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+	if !reached || rec.Code != http.StatusOK {
+		t.Fatalf("reached=%v status=%d, want true/200", reached, rec.Code)
+	}
+}
+
 // testEngine builds an HS256 token engine for the proxy middleware tests so the
 // Bearer fall-through path can verify a real signed token.
 func testEngine(t *testing.T) *auth.TokenEngine {

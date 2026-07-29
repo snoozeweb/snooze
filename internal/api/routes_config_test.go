@@ -3,6 +3,7 @@ package api
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -11,6 +12,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/snoozeweb/snooze/internal/config"
+	"github.com/snoozeweb/snooze/pkg/snoozetypes"
 )
 
 // fakeRuntimeStore is a minimal config.RuntimeStore used by the config-route
@@ -21,6 +23,10 @@ type fakeRuntimeStore struct {
 	// console is the payload returned for GetSection(ctx, "console", dst). A
 	// nil map decodes to nothing (no override).
 	console map[string]any
+	// err, when non-nil, is returned by GetSection unconditionally instead of
+	// decoding console — used to exercise handleConfig's error handling (the
+	// ErrNoTenant anonymous-fallback vs. a genuine 500).
+	err error
 }
 
 func (f *fakeRuntimeStore) Get(context.Context, string, string) (any, bool, error) {
@@ -28,6 +34,9 @@ func (f *fakeRuntimeStore) Get(context.Context, string, string) (any, bool, erro
 }
 
 func (f *fakeRuntimeStore) GetSection(_ context.Context, section string, dst any) error {
+	if f.err != nil {
+		return f.err
+	}
 	if section != "console" || f.console == nil {
 		return nil
 	}
@@ -121,6 +130,71 @@ func TestConfig_OverrideMergesRanksAndScalars(t *testing.T) {
 		require.Equal(t, 2, cfg.SeverityRanks[cfg.SeverityOrder[i]],
 			"every label between p1 and critical must be rank 2 (same severity block)")
 	}
+}
+
+// TestConfig_ErrNoTenantFallsBackToDefaults covers the anonymous-caller path:
+// GetSection fails closed with snoozetypes.ErrNoTenant (a naked/no-tenant
+// context — exactly what an unauthenticated request through OptionalAuth
+// produces) and handleConfig must serve pure code defaults with a 200,
+// not a 500.
+func TestConfig_ErrNoTenantFallsBackToDefaults(t *testing.T) {
+	store := &fakeRuntimeStore{err: snoozetypes.ErrNoTenant}
+	code, cfg := getConfig(t, store)
+	require.Equal(t, http.StatusOK, code)
+	require.Equal(t, 2, cfg.SeverityRanks["critical"], "must fall back to pure code defaults")
+	require.Equal(t, 5, cfg.RefreshSecs)
+}
+
+// TestConfig_OtherStoreErrorIs500 asserts that a GetSection failure NOT
+// wrapping ErrNoTenant (a genuine storage/decode failure) still 500s — only
+// the no-tenant case gets the anonymous-fallback treatment.
+func TestConfig_OtherStoreErrorIs500(t *testing.T) {
+	store := &fakeRuntimeStore{err: errors.New("boom: storage unavailable")}
+	code, _ := getConfig(t, store)
+	require.Equal(t, http.StatusInternalServerError, code)
+}
+
+// TestConfig_AuthenticatedCallerGetsOverlay: a request bearing a valid JWT
+// still reaches the same overlay-applying code path as an anonymous request
+// (OptionalAuth resolving the token must not disturb handleConfig's normal
+// behaviour — this is the route wired with the token engine / key store from
+// Router, mirroring how Build() wires the strict Auth middleware).
+func TestConfig_AuthenticatedCallerGetsOverlay(t *testing.T) {
+	eng := testTokenEngine(t)
+	tok, _, err := eng.Sign(snoozetypes.Claims{Subject: "alice", Method: "local", TenantID: "acme"})
+	require.NoError(t, err)
+
+	store := &fakeRuntimeStore{console: map[string]any{"refresh_interval": 42}}
+	rt := &Router{RuntimeStore: store, Auth: eng}
+	r := chi.NewRouter()
+	rt.mountConfig(r)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/config", nil)
+	req.Header.Set("Authorization", "Bearer "+tok)
+	rec := httptest.NewRecorder()
+	r.ServeHTTP(rec, req)
+	require.Equal(t, http.StatusOK, rec.Code)
+
+	var env struct {
+		Data ConsoleConfig `json:"data"`
+	}
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &env))
+	require.Equal(t, 42, env.Data.RefreshSecs, "overlay must still apply for an authenticated caller")
+}
+
+// TestConfig_InvalidTokenStillServesDefaults: a garbage Bearer token on
+// /api/v1/config must not 401 (OptionalAuth's whole point) — it falls back to
+// the same anonymous/no-tenant path as no header at all.
+func TestConfig_InvalidTokenStillServesDefaults(t *testing.T) {
+	rt := &Router{Auth: testTokenEngine(t)}
+	r := chi.NewRouter()
+	rt.mountConfig(r)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/config", nil)
+	req.Header.Set("Authorization", "Bearer garbage")
+	rec := httptest.NewRecorder()
+	r.ServeHTTP(rec, req)
+	require.Equal(t, http.StatusOK, rec.Code)
 }
 
 func TestConfig_ReachableWithoutAuth(t *testing.T) {

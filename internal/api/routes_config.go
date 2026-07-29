@@ -1,11 +1,13 @@
 package api
 
 import (
+	"errors"
 	"net/http"
 	"sort"
 
 	"github.com/go-chi/chi/v5"
 
+	"github.com/snoozeweb/snooze/internal/api/middleware"
 	"github.com/snoozeweb/snooze/pkg/snoozetypes"
 )
 
@@ -162,25 +164,47 @@ func (o *consoleOverride) applyTo(cc *ConsoleConfig) {
 }
 
 // mountConfig wires GET /api/v1/config — the public, read-only web-console
-// defaults document. It is added to skipAuth so the login screen can
-// bootstrap branding before a token exists.
+// defaults document. The path stays in skipAuth (router.go) so the strict
+// Auth middleware keeps skipping it globally, but this mount replaces that
+// skip with middleware.OptionalAuth on this one route: it resolves a Bearer
+// token when present (stamping claims/tenant so a logged-in caller's
+// `console` overlay applies) without ever 401ing an anonymous caller (the
+// login screen bootstrapping branding before a token exists). rt.Auth and
+// rt.APIKeys are the same token engine / key store the strict middleware in
+// Build() is constructed with, so a token valid there is valid here.
 func (rt *Router) mountConfig(r chi.Router) {
-	r.Get("/api/v1/config", rt.handleConfig)
+	var keys middleware.APIKeyAuthenticator
+	if rt.APIKeys != nil {
+		keys = rt.APIKeys
+	}
+	r.With(middleware.OptionalAuth(rt.Auth, keys)).Get("/api/v1/config", rt.handleConfig)
 }
 
 // handleConfig builds the code defaults, overlays the runtime `console`
 // settings section (when a RuntimeStore is wired), recomputes the derived
 // severity order, and writes the {"data": …} envelope. It is read-only; a nil
 // store yields pure defaults.
+//
+// The settings collection is tenant-scoped, so GetSection fails closed with
+// snoozetypes.ErrNoTenant when the context carries no tenant — which is
+// exactly the case for an anonymous caller (OptionalAuth left no claims on
+// the context: no token, or an invalid one). That is not an error worth a
+// 500: anonymous callers (the login screen) get the pure code defaults,
+// while an authenticated caller's OptionalAuth-resolved tenant reaches the
+// overlay below. Any other GetSection error (storage failure, decode error)
+// still 500s.
 func (rt *Router) handleConfig(w http.ResponseWriter, r *http.Request) {
 	cc := DefaultConsoleConfig()
 	if rt.RuntimeStore != nil {
 		var ov consoleOverride
 		if err := rt.RuntimeStore.GetSection(r.Context(), "console", &ov); err != nil {
-			WriteError(w, r, ErrInternal.WithCause(err))
-			return
+			if !errors.Is(err, snoozetypes.ErrNoTenant) {
+				WriteError(w, r, ErrInternal.WithCause(err))
+				return
+			}
+		} else {
+			ov.applyTo(&cc)
 		}
-		ov.applyTo(&cc)
 	}
 	WriteJSON(w, http.StatusOK, map[string]any{"data": cc})
 }
