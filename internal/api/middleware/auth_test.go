@@ -389,7 +389,7 @@ func TestOptionalAuth_GarbageTokenServesAnonymously(t *testing.T) {
 // Authorization header shape (e.g. Basic auth) — also anonymous, never 401.
 func TestOptionalAuth_MalformedHeaderServesAnonymously(t *testing.T) {
 	reached := false
-	h := OptionalAuth(testEngine(t), nil)(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	h := OptionalAuth(testEngine(t), nil)(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		reached = true
 		w.WriteHeader(http.StatusOK)
 	}))

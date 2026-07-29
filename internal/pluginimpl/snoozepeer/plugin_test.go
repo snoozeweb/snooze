@@ -55,7 +55,7 @@ func (h *testHost) Logger() *slog.Logger              { return h.logger }
 func (h *testHost) Tracer() trace.Tracer              { return h.tracer }
 func (h *testHost) Metrics() *telemetry.Registry      { return h.metr }
 func (h *testHost) Config() *config.Config            { return h.cfg }
-func (h *testHost) Plugin(name string) plugins.Plugin { return nil }
+func (h *testHost) Plugin(_ string) plugins.Plugin { return nil }
 
 // frozenNow is the deterministic clock injected into every test plugin, so
 // the relay path never reaches time.Now() directly (the injected-clock rule).

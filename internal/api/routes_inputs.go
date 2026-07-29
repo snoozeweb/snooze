@@ -1,5 +1,6 @@
-// routes_inputs.go exposes db.SourceActivityAggregator over HTTP: per-source
+// This file exposes db.SourceActivityAggregator over HTTP: per-source
 // last-received activity, backing the admin Inputs page.
+
 package api
 
 import (
