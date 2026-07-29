@@ -568,8 +568,12 @@ describe("AlertsPage", () => {
   });
 
   // ── Columns: lifecycle countdown + trend ───────────────────────────────────
+  // acked_by / escalate_hint / trend no longer render as their own columns —
+  // the ack owner + countdown and the escalation countdown now live as a
+  // hint inside the State cell, and the trend arrow rides inside the Sev
+  // cell (see columns.tsx).
 
-  it("ack_countdown_renders_on_acked_row — shows 'in Xh' in acked_by cell", async () => {
+  it("ack_countdown_renders_on_acked_row — shows 'in Xh' in the State cell hint", async () => {
     const nowSec = Math.floor(Date.now() / 1000);
     mswServer.use(
       http.get("/api/v1/record", () =>
@@ -707,21 +711,32 @@ describe("AlertsPage", () => {
     expect(screen.getByTitle("Severity decreased")).toBeInTheDocument();
   });
 
-  it("trend_dash_for_noChange_or_absent — dash rendered when trend absent", async () => {
+  it("trend_arrow_absent_for_noChange_or_absent — no ↑/↓ arrow rendered in the Sev cell", async () => {
     mswServer.use(
       http.get("/api/v1/record", () =>
         HttpResponse.json({
-          data: [{ uid: "r1", host: "srv-1", state: "open", date_epoch: 1 }],
-          meta: { count: 1, limit: 50, offset: 0, total: 1 },
+          data: [
+            { uid: "r1", host: "srv-1", state: "open", date_epoch: 1 },
+            {
+              uid: "r2",
+              host: "srv-2",
+              state: "open",
+              trend_indication: "noChange",
+              date_epoch: 2,
+            },
+          ],
+          meta: { count: 2, limit: 50, offset: 0, total: 2 },
         }),
       ),
     );
     setup();
     await waitFor(() => expect(screen.getByText("srv-1")).toBeInTheDocument());
-    // The trend column renders a dash (—) for absent/noChange rows
-    // aria-hidden so check by text content
-    const dashes = screen.getAllByText("—");
-    expect(dashes.length).toBeGreaterThan(0);
+    expect(screen.getByText("srv-2")).toBeInTheDocument();
+    // No arrow (and no "—" placeholder that used to occupy its own trend
+    // column) renders for absent/noChange trend — the Sev cell shows just
+    // the severity badge.
+    expect(screen.queryByTitle("Severity escalated")).toBeNull();
+    expect(screen.queryByTitle("Severity decreased")).toBeNull();
   });
 
   it("shows the ActiveFilters chip strip with a non-default tab and Clear all", async () => {

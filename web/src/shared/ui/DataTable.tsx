@@ -703,7 +703,7 @@ export function DataTable<T>({
                   {
                     key: "__details__",
                     label: "View details",
-                    icon: "panel-right" as const,
+                    icon: "eye" as const,
                     onSelect: () => openDetailsAt(rowKey(ctxMenu.row), ctxMenu.index),
                   },
                 ]
@@ -782,7 +782,7 @@ function DataTableRowInner<T>({
         {
           key: "__details__",
           label: "View details",
-          icon: "panel-right",
+          icon: "eye",
           onSelect: () => onOpenDetails(key, index),
         },
         ...(rowActions ? rowActions(row) : []),
@@ -850,7 +850,7 @@ function DataTableRowInner<T>({
                 the same spot on every table. */}
             {hasDetails ? (
               <IconButton
-                icon="panel-right"
+                icon="eye"
                 label="View details"
                 size="sm"
                 onClick={() => onOpenDetails(key, index)}

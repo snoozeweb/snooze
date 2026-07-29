@@ -72,7 +72,7 @@ function recordTrend(r: Record_): "moreSevere" | "lessSevere" | "noChange" | "" 
 
 // Column width budget: under `table-layout: fixed`, the sum of every VISIBLE
 // column's fixed width (plus the 12px quick-actions spacer, the kebab's
-// 32px, and cell padding, which counts toward width under border-box) must
+// 36px, and cell padding, which counts toward width under border-box) must
 // leave the flexible Message column >=~180px at the lower edge of each tier
 // band — otherwise Message (and the quick-actions overlay that floats over
 // its tail) get squeezed toward zero. Hidden columns aren't gone: they
@@ -94,82 +94,61 @@ export const alertColumns: ColumnDef<Record_>[] = [
     // Gradated per-severity tint from the dashboard palette (severityColor),
     // so e.g. emerg/crit/alert render as distinct red shades — matching the
     // dashboard's "By severity" chart instead of the flat variant buckets.
+    // The trend arrow (↑/↓, reflecting trend_indication stamped by
+    // aggregaterule) rides alongside the badge instead of its own column —
+    // it only renders for an actual severity change; noChange/absent shows
+    // nothing rather than a "—" placeholder that ate a whole column before.
     header: "Sev",
-    cell: (r) => <Badge color={severityColor(r.severity ?? "")}>{r.severity ?? "—"}</Badge>,
-    sortable: true,
-    width: "90px",
-  },
-  {
-    // Trend badge: ↑/↓/— reflecting trend_indication stamped by aggregaterule.
-    // trend_indication is not yet in the OpenAPI schema (Plan 30 adds it); the
-    // recordTrend helper reads it defensively. Operators who have a server-
-    // configured console.columns list must add "trend" to see this column.
-    id: "trend",
-    header: "↕",
     cell: (r) => {
       const t = recordTrend(r);
-      if (t === "moreSevere")
-        return (
-          <span title={trendLabel("moreSevere")} aria-label={trendLabel("moreSevere")}>
-            ↑
-          </span>
-        );
-      if (t === "lessSevere")
-        return (
-          <span title={trendLabel("lessSevere")} aria-label={trendLabel("lessSevere")}>
-            ↓
-          </span>
-        );
-      return <span aria-hidden="true">—</span>;
+      return (
+        <span className={styles.cell}>
+          <Badge color={severityColor(r.severity ?? "")}>{r.severity ?? "—"}</Badge>
+          {t === "moreSevere" ? (
+            <span title={trendLabel("moreSevere")} aria-label={trendLabel("moreSevere")}>
+              ↑
+            </span>
+          ) : t === "lessSevere" ? (
+            <span title={trendLabel("lessSevere")} aria-label={trendLabel("lessSevere")}>
+              ↓
+            </span>
+          ) : null}
+        </span>
+      );
     },
     sortable: true,
-    align: "right",
-    width: "56px",
-    hideBelow: "lg",
+    width: "100px",
   },
   {
     id: "state",
     header: "State",
+    // Lifecycle metadata (who acked it + when the ack expires, or the
+    // auto-escalation deadline for open-ish rows) rides in a muted, truncating
+    // hint alongside the state badge instead of two mostly-dashed columns.
     cell: (r) => {
       const state = (r.state ?? "") as AlertState;
-      return <Badge variant={stateBadgeVariant(state)}>{stateLabel(state)}</Badge>;
-    },
-    sortable: true,
-    width: "110px",
-  },
-  {
-    // escalate_hint column: shows a countdown for open/esc rows with escalate_at set.
-    // No header; renders nothing on acked/closed rows even if the field is present.
-    id: "escalate_hint",
-    header: "",
-    cell: (r) => {
-      const state = (r.state ?? "") as AlertState;
-      const isOpen = state === "" || state === "open" || state === "esc";
-      const countdown = isOpen ? formatCountdown(r.escalate_at) : "";
-      return countdown ? (
-        <span className={styles.hint} title="Auto-escalation deadline">
-          {countdown}
-        </span>
-      ) : null;
-    },
-    width: "110px",
-    hideBelow: "xl",
-  },
-  {
-    id: "acked_by",
-    header: "Acked by",
-    cell: (r) => {
-      const who = recordAckedBy(r);
-      const countdown = formatCountdown(r.ack_until);
+      const isOpenish = state === "" || state === "open" || state === "esc";
+      let hint = "";
+      let hintTitle: string | undefined;
+      if (state === "ack") {
+        hint = [recordAckedBy(r), formatCountdown(r.ack_until)].filter(Boolean).join(" · ");
+      } else if (isOpenish) {
+        hint = formatCountdown(r.escalate_at);
+        hintTitle = "Auto-escalation deadline";
+      }
       return (
-        <span>
-          {who ? <Code>{who}</Code> : <span>—</span>}
-          {countdown ? <span className={styles.hint}>{countdown}</span> : null}
+        <span className={styles.cell}>
+          <Badge variant={stateBadgeVariant(state)}>{stateLabel(state)}</Badge>
+          {hint ? (
+            <span className={styles.hint} {...(hintTitle ? { title: hintTitle } : {})}>
+              {hint}
+            </span>
+          ) : null}
         </span>
       );
     },
-    width: "140px",
-    hideBelow: "xl",
+    sortable: true,
+    width: "150px",
   },
   {
     id: "hits",
@@ -198,14 +177,14 @@ export const alertColumns: ColumnDef<Record_>[] = [
     cell: (r) => (r.process ? <Code>{r.process}</Code> : <span>—</span>),
     sortable: true,
     width: "110px",
-    hideBelow: "xxl",
+    hideBelow: "xl",
   },
   {
     id: "source",
     header: "Source",
     cell: (r) => r.source ?? "—",
     width: "100px",
-    hideBelow: "xxl",
+    hideBelow: "xl",
   },
   {
     id: "environment",

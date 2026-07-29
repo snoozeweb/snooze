@@ -140,12 +140,14 @@
   padding: var(--space-2) var(--space-3);
   border-bottom: 1px solid var(--border-muted);
   color: var(--text);
-  /* Fixed layout lets a cell be narrower than its content — these keep a
-     single unbroken token (uid, hostname) from painting over the next
-     column while still letting normal text wrap (rows may grow taller). */
+  /* Fixed layout lets a cell be narrower than its content — cells are
+     single-line and ellipsize rather than wrap (mid-word wrapping made rows
+     ragged and hard to scan). Flex badge/hint clusters (see columns.module.css
+     .cell) still wrap internally via their own flex layout, which ignores
+     the inherited `white-space` here. */
   overflow: hidden;
   text-overflow: ellipsis;
-  overflow-wrap: anywhere;
+  white-space: nowrap;
 }
 /* With the old leading toggle column gone, the first column would sit almost
    flush against the table border — give it a touch more breathing room. The
@@ -204,15 +206,21 @@
   padding: 0 var(--space-2) 0 var(--space-3) !important;
 }
 .actionsCell {
-  width: 32px;
-  /* 2px not --space-2 (8px): the "sm" IconButton is 28px square (see
-     IconButton.module.css), so anything more than 2px/side would make the
-     button itself wider than the 32px cell and — now that overflow is
-     visible below — push it past the table's own right edge (it's the
-     last column) into genuine horizontal scroll. */
-  padding: 0 2px !important;
+  /* 36px not 32px: the "sm" IconButton is 28px square (see
+     IconButton.module.css) and the count badge overhangs it by -5px
+     (absolute, right:-5px, see RowActionsMenu) — 28 + 6px right pad still
+     clips 2px of the overhang if the cell is only 32px. 36px + the 2px/6px
+     padding split below puts both the button AND the badge's overhang
+     entirely inside the cell, so this (the last column) never pushes the
+     table's scrollWidth past its clientWidth. */
+  width: 36px;
+  /* Asymmetric: 2px on the left (same reasoning as before — anything more
+     would make the 28px button wider than the available space) and 6px on
+     the right so the badge's -5px overhang lands inside the cell instead of
+     the table's own right edge. */
+  padding: 0 6px 0 2px !important;
   text-align: right;
-  /* The count badge overhangs the kebab button by -5px (absolute, see
+  /* The count badge overhangs the kebab button (absolute, see
      RowActionsMenu) — the new `.row td` overflow:hidden would clip it.
      !important: `.row td` (a class + type selector, specificity 0-1-1)
      otherwise outranks this single-class selector (0-1-0) and wins despite
@@ -397,6 +405,11 @@
     padding: 4px 0;
     text-align: left !important;
     border: 0;
+    /* Undo the desktop single-line ellipsis (see `.row td` above) — a card
+       has room to breathe, so stacked fields wrap naturally instead of
+       truncating. */
+    overflow: visible;
+    white-space: normal;
   }
   .table tbody .row td::before {
     content: attr(data-label);

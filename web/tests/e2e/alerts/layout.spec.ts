@@ -29,7 +29,7 @@ test.describe("alerts table layout", () => {
       source: "test",
     });
 
-    const widths = [720, 900, 1200, 1500, 1750];
+    const widths = [720, 900, 1200, 1500, 1750, 1920];
     for (const width of widths) {
       await page.setViewportSize({ width, height: 900 });
       await page.goto(server.baseURL + "/web/alerts");

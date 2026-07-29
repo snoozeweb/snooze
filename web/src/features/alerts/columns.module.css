@@ -24,11 +24,28 @@
   }
 }
 
-/* Inline lifecycle hint (ack expiry, escalation deadline) shown inside table
- * cells. Rendered in a smaller secondary color so it reads as supplementary
- * metadata rather than competing with the primary cell content. */
+/* Sev/State cell wrapper: badge + trend arrow (Sev) or badge + lifecycle
+ * hint (State) laid out side by side on a single line. `min-width: 0` lets
+ * the hint's own text-overflow ellipsis (below) engage instead of pushing
+ * the cell wider than its fixed column width. */
+.cell {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
+}
+
+/* Inline lifecycle hint (ack owner + expiry, escalation deadline) shown
+ * inside table cells. Rendered in a smaller secondary color so it reads as
+ * supplementary metadata rather than competing with the primary cell
+ * content. Truncates with an ellipsis rather than wrapping or stretching
+ * the fixed-width State column — the parent `.cell`'s flex `gap` supplies
+ * the spacing from the badge, so no margin here. */
 .hint {
   font-size: 0.75em;
   color: var(--color-text-secondary, var(--text-muted));
-  margin-left: 0.4em;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
 }

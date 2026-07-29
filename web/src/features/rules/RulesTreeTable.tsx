@@ -92,6 +92,10 @@ const ALWAYS = prettyCondition(undefined);
 const prettyCache = new WeakMap<object, string>();
 function cachedPretty(condition: Rule["condition"]): string {
   if (!condition) return ALWAYS;
+  // A malformed rule created via the raw API can carry a non-object condition
+  // (e.g. a bare string) — those can't key a WeakMap, and crashing the whole
+  // tree over one bad row isn't worth it. Render them uncached.
+  if (typeof condition !== "object") return prettyCondition(condition);
   const cached = prettyCache.get(condition);
   if (cached !== undefined) return cached;
   const computed = prettyCondition(condition);
@@ -359,7 +363,7 @@ export function RulesTreeTable({
         items.push({
           key: "__details__",
           label: "View details",
-          icon: "panel-right",
+          icon: "eye",
           onSelect: () => openDetails(rule),
         });
       }
@@ -1091,7 +1095,7 @@ function StaticTreeRowInner({
           <div className={styles.quickActions}>
             {onOpenDetails ? (
               <IconButton
-                icon="panel-right"
+                icon="eye"
                 label="View details"
                 size="sm"
                 className={styles.quickDetailsBtn}
@@ -1310,7 +1314,7 @@ function SortableTreeRowInner({
           <div className={styles.quickActions}>
             {onOpenDetails ? (
               <IconButton
-                icon="panel-right"
+                icon="eye"
                 label="View details"
                 size="sm"
                 className={styles.quickDetailsBtn}
