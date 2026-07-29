@@ -92,7 +92,7 @@ export function ApiKeysPage() {
             description="Users mint their own API keys from their profile; they appear here for admin review."
           />
         }
-        renderExpanded={(row) => (
+        renderDetails={(row) => (
           <RowDetailPanel
             row={row as unknown as Record<string, unknown>}
             objectType="apikey"

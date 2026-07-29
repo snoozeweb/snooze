@@ -55,12 +55,23 @@ function recordLabel(r: Record_): string {
   return r.host ?? r.message ?? r.uid ?? "alert";
 }
 
+/** Stable key for a record row — the uid, or a host+timestamp fallback for the
+ *  rare uid-less row. Must match DataTable's `rowKey` so the `?record=` URL
+ *  value resolves back to a visible row. Module-scope so it's usable before the
+ *  memoized `rowKey` callback is declared (context menu, row-open handler). */
+function recordKey(r: Record_): string {
+  return r.uid ?? `${r.host ?? ""}-${r.date_epoch ?? 0}`;
+}
+
 type AlertsSearch = AlertFilters & {
   page?: number;
   orderby?: string;
   asc?: boolean;
   /** Comma-separated env UIDs in the URL (parsed/stringified in onChange). */
   env?: string;
+  /** Open detail-drawer record key (its uid). Round-trips the modal detail
+   *  drawer through the URL so an open alert is shareable / deep-linkable. */
+  record?: string;
   /**
    * SearchBar DSL text. Seeds local state on mount and re-seeds on external
    * URL changes (browser nav, deep-links such as the host hyperlink in Teams
@@ -84,7 +95,7 @@ const PAGE_SIZE = 50;
 
 // Advertised in the DataTable's "?" shortcuts legend. Mirrors the per-row
 // bindings wired in `rowKeyBindings` (a=ack, c=comment); the table prepends its
-// own built-in navigation shortcuts (move / open / expand / select). Module
+// own built-in navigation shortcuts (move / open / view / select). Module
 // constant so its identity is stable across renders (row-memo contract).
 const ALERT_KEYBOARD_HINTS = [
   { keys: "A", label: "Acknowledge focused alert" },
@@ -166,11 +177,6 @@ export function AlertsPage() {
   const commentMut = useCommentRecord();
 
   const [selectedKeys, setSelectedKeys] = useState<Set<string>>(new Set());
-  // Tracks whether the row inspector is open (single-row inspection, so this is
-  // 0 or 1). When non-zero we pause the auto-refresh poll — refetching swaps
-  // the row's backing object, which can yank the timeline / JSON the operator
-  // is reading right out from under them.
-  const [expandedCount, setExpandedCount] = useState(0);
   const [dialog, setDialog] = useState<{ type: ActionType; records: Record_[] } | null>(null);
   const [shelveDialog, setShelveDialog] = useState<Record_[] | null>(null);
   const [bulkTagOpen, setBulkTagOpen] = useState(false);
@@ -303,9 +309,14 @@ export function AlertsPage() {
     [navigate],
   );
 
-  // Pause auto-refresh while the operator is reading a row in the inspector —
-  // same intent as the explicit toggle, but driven by the user's gaze.
-  const refreshPaused = expandedCount > 0;
+  // Open detail record (drives the modal detail drawer, synced to the URL as
+  // ?record=). Undefined = no drawer open.
+  const record = search.record;
+
+  // Pause auto-refresh while the detail drawer is open — refetching swaps the
+  // row's backing object, which can yank the timeline / JSON the operator is
+  // reading right out from under them.
+  const refreshPaused = record !== undefined;
   const effectiveIntervalMs =
     auto.intervalMs !== undefined && !refreshPaused ? auto.intervalMs : undefined;
 
@@ -580,16 +591,23 @@ export function AlertsPage() {
     [inlineAction, openDialog],
   );
 
-  // Right-click context menu. The "Open" item is omitted: DataTable doesn't
-  // expose a programmatic-inspect API and the panel-right toggle in the first
-  // column is the canonical way to open the row inspector. We keep the universal
-  // Copy-as-JSON / Copy-as-YAML pair and append the alert-specific verbs,
-  // mirroring the bulk-toolbar surface.
+  // Right-click context menu. The page owns the drawer's open state (via the
+  // ?record= URL param), so a "View details" item at the top opens the modal
+  // detail drawer for the row. We then keep the universal Copy-as-JSON /
+  // Copy-as-YAML pair and append the alert-specific verbs, mirroring the
+  // bulk-toolbar surface.
   const contextMenuItems = useCallback(
     (row: Record_): ContextMenuItem[] => {
       const state = (row.state ?? "") as AlertState;
 
       const items: ContextMenuItem[] = [
+        {
+          key: "view-details",
+          label: "View details",
+          icon: "panel-right",
+          onSelect: () =>
+            updateSearch({ record: recordKey(row) } as unknown as Partial<AlertsSearch>),
+        },
         {
           key: "copy-json",
           // When a clipboard_template is configured, the copy action expands it
@@ -656,7 +674,7 @@ export function AlertsPage() {
 
       return items;
     },
-    [openDialog, confirmDelete, config?.clipboard_template],
+    [openDialog, confirmDelete, config?.clipboard_template, updateSearch],
   );
 
   const bulkActions = useCallback(
@@ -910,18 +928,27 @@ export function AlertsPage() {
   // Columns are server-configurable (console.columns). Memoize so the
   // identity is stable across re-renders (DataTable's row memo depends on it).
   const columns = useMemo(() => columnsForConfig(config?.columns), [config?.columns]);
-  const rowKey = useCallback((r: Record_) => r.uid ?? `${r.host ?? ""}-${r.date_epoch ?? 0}`, []);
+  const rowKey = useCallback((r: Record_) => recordKey(r), []);
   const rowAccent = useCallback((r: Record_) => severityToken(r.severity ?? ""), []);
-  const renderExpanded = useCallback((row: Record_) => <AlertRowDetail row={row} />, []);
-  // Inspector title: the alert's host in mono (falls back to uid). Host is not
-  // repeated in the panel body, so this is where the operator reads it.
-  const expandedTitle = useCallback(
-    (r: Record_) => <span className={styles.inspectorHost}>{r.host ?? r.uid ?? "alert"}</span>,
+  const renderDetails = useCallback((row: Record_) => <AlertRowDetail row={row} />, []);
+  // Drawer title: the alert's host in mono (falls back to uid). Host is not
+  // repeated in the drawer body, so this is where the operator reads it.
+  const detailsTitle = useCallback(
+    (r: Record_) => <span className={styles.detailsHost}>{r.host ?? r.uid ?? "alert"}</span>,
     [],
   );
-  const handleExpandedChange = useCallback(
-    (keys: ReadonlySet<string>) => setExpandedCount(keys.size),
-    [],
+  // Controlled detail drawer: write the open record to the URL (?record=),
+  // dropping the key when the drawer closes so deep-links stay clean.
+  const handleDetailsKeyChange = useCallback(
+    (k: string | null) =>
+      updateSearch({ record: k ?? undefined } as unknown as Partial<AlertsSearch>),
+    [updateSearch],
+  );
+  // Row click opens the detail drawer for that alert (row click was previously
+  // unused on this page). DataTable's text-selection guard covers drag-copy.
+  const handleRowOpen = useCallback(
+    (row: Record_) => updateSearch({ record: recordKey(row) } as unknown as Partial<AlertsSearch>),
+    [updateSearch],
   );
   const handleSearchChange = useCallback(
     (c: { text: string; condition: ParsedCondition | null }) => {
@@ -1061,7 +1088,7 @@ export function AlertsPage() {
                 !auto.enabled
                   ? "Auto-refresh off"
                   : refreshPaused
-                    ? "Auto-refresh paused while the inspector is open"
+                    ? "Auto-refresh paused while the detail drawer is open"
                     : `Auto-refresh every ${Math.round(refreshMs / 1000)}s`
               }
             >
@@ -1090,15 +1117,16 @@ export function AlertsPage() {
           keyboardHints={ALERT_KEYBOARD_HINTS}
           rowAccent={rowAccent}
           contextMenuItems={contextMenuItems}
-          renderExpanded={renderExpanded}
-          expandedTitle={expandedTitle}
-          // Uncontrolled inspection (the default path): DataTable owns the
-          // single-row expanded set and reports size changes here so we can
-          // pause polling while the operator reads a row in the inspector.
-          // Keeping the uncontrolled path means the `e` shortcut and the
-          // panel-right toggle both keep working without AlertsPage tracking
-          // the key.
-          onExpandedChange={handleExpandedChange}
+          onRowOpen={handleRowOpen}
+          renderDetails={renderDetails}
+          detailsTitle={detailsTitle}
+          // Controlled detail drawer: the open record lives in the URL
+          // (?record=), so it's shareable/deep-linkable and survives reloads.
+          // A ?record= uid that isn't on the current page clears itself once
+          // loading settles (DataTable's auto-close). Row click, the "View
+          // details" kebab item, and the `E` shortcut all route through here.
+          detailsKey={record ?? null}
+          onDetailsKeyChange={handleDetailsKeyChange}
         />
       </div>
       {dialog ? (

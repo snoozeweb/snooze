@@ -15,15 +15,27 @@ export function DrawerTrigger({ ref, ...props }: DrawerTriggerProps) {
 export function DrawerContent({
   children,
   className,
+  wide = false,
+  onOpenAutoFocus,
 }: {
   children: ReactNode;
   className?: string;
+  /** Opt-in wide variant for read surfaces (e.g. the DataTable detail
+   *  drawer). Edit drawers keep the default 560px width. */
+  wide?: boolean;
+  /** Radix pass-through: override where focus lands when the drawer opens.
+   *  Radix's default focuses the first tabbable element, which pops that
+   *  element's Tooltip when it's an IconButton — read drawers redirect the
+   *  initial focus to a neutral container instead. */
+  onOpenAutoFocus?: (e: Event) => void;
 }) {
-  const classes = [styles.content, className].filter(Boolean).join(" ");
+  const classes = [styles.content, wide ? styles.wide : "", className].filter(Boolean).join(" ");
   return (
     <RD.Portal>
       <RD.Overlay className={styles.overlay} />
-      <RD.Content className={classes}>{children}</RD.Content>
+      <RD.Content className={classes} {...(onOpenAutoFocus ? { onOpenAutoFocus } : {})}>
+        {children}
+      </RD.Content>
     </RD.Portal>
   );
 }

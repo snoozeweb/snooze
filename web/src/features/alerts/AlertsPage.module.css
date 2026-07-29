@@ -9,8 +9,8 @@
   align-items: center;
   gap: var(--space-2);
 }
-/* Inspector title: the alert host, in mono to match the Host column's Code
-   cell. The inspector header itself handles truncation. */
-.inspectorHost {
+/* Detail-drawer title: the alert host, in mono to match the Host column's Code
+   cell. The drawer header itself handles truncation. */
+.detailsHost {
   font-family: var(--font-mono);
 }

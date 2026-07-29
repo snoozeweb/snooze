@@ -142,7 +142,7 @@ export function HeartbeatsPage() {
                 }
               />
             }
-            renderExpanded={(row) => (
+            renderDetails={(row) => (
               <RowDetailPanel
                 row={row as unknown as Record<string, unknown>}
                 objectType="heartbeat"

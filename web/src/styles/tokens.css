@@ -89,10 +89,6 @@
      opened from inside a Drawer or Dialog are not hidden by the modal
      overlay. Toasts stay on top of everything. */
   --z-sticky: 10;
-  /* Docked row inspector — a non-modal side panel that sits above sticky
-     table headers but below every menu/popover/tooltip/dialog portal (all
-     ≥ --z-dropdown) so those still layer above it. */
-  --z-panel: 15;
   --z-dropdown: 20;
   --z-modal: 30;
   --z-popover: 40;

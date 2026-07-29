@@ -11,7 +11,7 @@ import { SearchBar, type ParsedCondition } from "./SearchBar";
 import { Skeleton } from "./Skeleton";
 import { isEditable } from "@/shared/hooks/useShortcut";
 import { DataTableContextMenu, type ContextMenuItem } from "./DataTableContextMenu";
-import { RowInspector } from "./RowInspector";
+import { Drawer, DrawerBody, DrawerContent, DrawerTitle } from "./Drawer";
 import styles from "./DataTable.module.css";
 
 export type ColumnDef<T> = {
@@ -100,25 +100,17 @@ export type DataTableProps<T> = {
   /** When true for a row, the row renders with muted styling — used to
    *  indicate `enabled:false` records without dedicating a column. */
   rowDisabled?: (row: T) => boolean;
-  /** When provided, each row gets a "panel-right" toggle in a dedicated first
-   *  column that opens a docked side inspector (`RowInspector`) showing that
-   *  row's detail. Inspection is single-row: the expanded-keys Set holds at
-   *  most one key — opening a row replaces whatever was inspected before. */
-  renderExpanded?: (row: T) => ReactNode;
-  /** Optional inspector header title for the inspected row. Falls back to
-   *  "Row details" when omitted. */
-  expandedTitle?: (row: T) => ReactNode;
-  /** Controlled expansion. When supplied, the table renders exactly this set
-   *  and routes every toggle through `onExpandedChange` instead of keeping
-   *  its own state. Holds at most one key — the inspector shows a single row.
-   *  Omit it for the (unchanged) uncontrolled default. */
-  expandedKeys?: ReadonlySet<string>;
-  /** Fires whenever the set of expanded row keys changes (size 0 or 1 — the
-   *  inspector shows a single row). Lets the parent react to "user is actively
-   *  reading a row" without pulling expansion state out of the table (e.g.
-   *  pause polling on the alerts page). Also the write channel for controlled
-   *  expansion (`expandedKeys`). */
-  onExpandedChange?: (expandedKeys: ReadonlySet<string>) => void;
+  /** Content of the modal details drawer for a row. When provided, rows get a
+   *  "View details" entry in the row-actions kebab, the `E` shortcut, and pages
+   *  may open it via their own affordances (e.g. alerts row click). */
+  renderDetails?: (row: T) => ReactNode;
+  /** Drawer title for the detail row. Falls back to "Details". */
+  detailsTitle?: (row: T) => ReactNode;
+  /** Controlled open-record key (null = closed). Omit for uncontrolled. */
+  detailsKey?: string | null;
+  /** Fires with the row key when the drawer opens / retargets, null on close.
+   *  Write channel for controlled mode; notification for uncontrolled. */
+  onDetailsKeyChange?: (key: string | null) => void;
   /** Per-row keyboard shortcuts for the focused row, keyed by lowercase
    *  single key (e.g. `{ a: ackFn, c: commentFn }`). Bindings are ignored
    *  while the user is typing into an editable field, and when any modifier
@@ -130,7 +122,7 @@ export type DataTableProps<T> = {
   /** Page-supplied row keyboard bindings to advertise, e.g.
    *  `[{ keys: "A", label: "Acknowledge" }]`. When provided, the toolbar shows
    *  a "?" affordance that opens a legend combining these with the table's own
-   *  built-in navigation shortcuts (move / open / expand / select). Opt-in:
+   *  built-in navigation shortcuts (move / open / view / select). Opt-in:
    *  tables that don't pass this get no legend, so the affordance only appears
    *  where per-row shortcuts actually exist (e.g. the Alerts table). */
   keyboardHints?: { keys: string; label: string }[];
@@ -160,20 +152,20 @@ export function DataTable<T>({
   stale = false,
   onRowOpen,
   rowDisabled,
-  renderExpanded,
-  expandedTitle,
-  expandedKeys,
-  onExpandedChange,
+  renderDetails,
+  detailsTitle,
+  detailsKey,
+  onDetailsKeyChange,
   rowKeyBindings,
   keyboardHints,
 }: DataTableProps<T>) {
   const [focusedIndex, setFocusedIndex] = useState<number>(-1);
-  // Uncontrolled expansion store. Ignored when `expandedKeys` is supplied —
-  // the controlled path reads from the prop and never touches this. The
-  // uncontrolled default path is therefore byte-identical in behaviour.
-  const [expandedInner, setExpandedInner] = useState<Set<string>>(() => new Set<string>());
-  const isControlledExpansion = expandedKeys !== undefined;
-  const expanded = isControlledExpansion ? expandedKeys : expandedInner;
+  // Uncontrolled details store. Ignored when `detailsKey` is supplied — the
+  // controlled path reads from the prop and never touches this. A single
+  // string|null: the key of the row whose detail drawer is open, or null.
+  const [detailsInner, setDetailsInner] = useState<string | null>(null);
+  const isControlledDetails = detailsKey !== undefined;
+  const activeDetailsKey = isControlledDetails ? detailsKey : detailsInner;
   const [ctxMenu, setCtxMenu] = useState<{
     row: T;
     x: number;
@@ -195,101 +187,98 @@ export function DataTable<T>({
   const allKeysRef = useRef<string[]>([]);
   const dataRef = useRef<T[]>(data);
   const focusedIndexRef = useRef<number>(focusedIndex);
-  const expandedKeysRef = useRef<ReadonlySet<string> | undefined>(expandedKeys);
-  const expandedInnerRef = useRef<ReadonlySet<string>>(expandedInner);
+  const detailsKeyRef = useRef<string | null | undefined>(detailsKey);
+  const detailsInnerRef = useRef<string | null>(detailsInner);
   const onSelectionChangeRef = useRef(onSelectionChange);
-  const onExpandedChangeRef = useRef(onExpandedChange);
+  const onDetailsKeyChangeRef = useRef(onDetailsKeyChange);
   const onRowOpenRef = useRef(onRowOpen);
   const rowKeyRef = useRef(rowKey);
   const rowKeyBindingsRef = useRef(rowKeyBindings);
-  const isControlledExpansionRef = useRef(isControlledExpansion);
-  // The table root (role="grid"): closeInspector focuses it so keyboard
-  // context returns to the grid when the inspector closes.
+  const isControlledDetailsRef = useRef(isControlledDetails);
+  // The table root (role="grid"): closeDetails focuses it so keyboard context
+  // returns to the grid when the drawer closes.
   const gridRef = useRef<HTMLTableElement>(null);
+  // The detail drawer's key-nav wrapper — receives the drawer's initial focus
+  // (see onOpenAutoFocus on its DrawerContent).
+  const detailKeyNavRef = useRef<HTMLDivElement>(null);
 
-  // Single-inspection write channel. `null` closes the inspector; a key opens
-  // exactly that row (replacing whatever was inspected). Routes through the
-  // controlled/uncontrolled fork so the parent owns the set when it supplies
-  // `expandedKeys`.
-  const setInspectedKey = useCallback((key: string | null) => {
-    const next = key === null ? new Set<string>() : new Set<string>([key]);
-    if (isControlledExpansionRef.current) {
-      onExpandedChangeRef.current?.(next);
+  // Details write channel. `null` closes the drawer; a key opens exactly that
+  // row (replacing whatever was open). Routes through the controlled/
+  // uncontrolled fork so the parent owns the key when it supplies `detailsKey`.
+  const setDetailsKey = useCallback((key: string | null) => {
+    if (isControlledDetailsRef.current) {
+      onDetailsKeyChangeRef.current?.(key);
     } else {
-      setExpandedInner(next);
+      setDetailsInner(key);
     }
   }, []);
 
-  // REPLACE semantics: toggling the currently-inspected row closes the
-  // inspector; toggling any other row moves inspection to it.
-  const toggleExpanded = useCallback(
-    (key: string) => {
-      const cur = isControlledExpansionRef.current
-        ? expandedKeysRef.current
-        : expandedInnerRef.current;
-      setInspectedKey(cur?.has(key) ? null : key);
-    },
-    [setInspectedKey],
-  );
-
-  // Chevron-toggle handler for the rows: besides toggling inspection, it moves
-  // row focus to the clicked row so the keyboard context (arrows/j/k, per-row
-  // bindings) — and therefore the inspector's focus-follow — starts from the
-  // row the operator just opened, not from wherever focus last was.
-  const toggleExpandedAt = useCallback(
+  // Open the drawer on the row at `key`/`index` AND focus that row so the
+  // keyboard context (arrows/j/k, per-row bindings) resumes there when the
+  // drawer closes. Used by the "View details" kebab item and the `E` shortcut.
+  const openDetailsAt = useCallback(
     (key: string, index: number) => {
       setFocusedIndex(index);
-      toggleExpanded(key);
+      setDetailsKey(key);
     },
-    [toggleExpanded],
+    [setDetailsKey],
   );
 
-  // Retarget inspection to the row at `index` AND focus it — used by the
-  // inspector's prev/next controls.
-  const inspectIndex = useCallback(
+  // Retarget the open drawer to the row at `index` AND focus it — used by the
+  // drawer's prev/next controls and the in-drawer ArrowUp/ArrowDown.
+  const retargetDetails = useCallback(
     (index: number) => {
       const row = dataRef.current[index];
       if (!row) return;
       setFocusedIndex(index);
-      setInspectedKey(rowKeyRef.current(row));
+      setDetailsKey(rowKeyRef.current(row));
     },
-    [setInspectedKey],
+    [setDetailsKey],
   );
 
-  // Close the inspector and hand keyboard focus back to the grid.
-  const closeInspector = useCallback(() => {
-    setInspectedKey(null);
+  // Close the drawer and hand keyboard focus back to the grid.
+  const closeDetails = useCallback(() => {
+    setDetailsKey(null);
     gridRef.current?.focus();
-  }, [setInspectedKey]);
+  }, [setDetailsKey]);
 
-  // Focus-follow: when the inspector is already open, moving focus (j/k/arrows
-  // or a click) retargets it to the newly focused row. A no-op when closed, so
-  // navigating a closed list never opens the inspector. Called from the event
-  // handlers (never a focusedIndex effect) so a background refetch can't move
-  // the inspection out from under the operator.
-  const retargetIfOpen = useCallback(
-    (index: number) => {
-      const cur = isControlledExpansionRef.current
-        ? expandedKeysRef.current
-        : expandedInnerRef.current;
-      if (!cur || cur.size === 0) return;
-      const row = dataRef.current[index];
-      if (!row) return;
-      setInspectedKey(rowKeyRef.current(row));
+  // In-drawer ArrowUp/ArrowDown = previous/next row. Guarded by isEditable so
+  // typing in the comment composer never navigates. Attached to a wrapper
+  // inside DrawerContent so it fires wherever focus sits in the drawer.
+  const onDrawerKeyDown = useCallback(
+    (e: React.KeyboardEvent<HTMLDivElement>) => {
+      if (e.key !== "ArrowUp" && e.key !== "ArrowDown") return;
+      if (isEditable(e.target)) return;
+      const cur = isControlledDetailsRef.current
+        ? (detailsKeyRef.current ?? null)
+        : detailsInnerRef.current;
+      if (cur === null) return;
+      const rows = dataRef.current;
+      const idx = rows.findIndex((r) => rowKeyRef.current(r) === cur);
+      if (idx < 0) return;
+      if (e.key === "ArrowUp") {
+        if (idx > 0) {
+          e.preventDefault();
+          retargetDetails(idx - 1);
+        }
+      } else if (idx < rows.length - 1) {
+        e.preventDefault();
+        retargetDetails(idx + 1);
+      }
     },
-    [setInspectedKey],
+    [retargetDetails],
   );
 
-  // Surface expansion changes to the parent so it can pause polling, etc.
+  // Surface details-key changes to the parent so it can pause polling, etc.
   // Only the uncontrolled path fires from here — in the controlled path the
-  // parent already owns the set and toggleExpanded calls onExpandedChange
+  // parent already owns the key and setDetailsKey calls onDetailsKeyChange
   // directly, so re-firing on every render would double-notify.
-  // The initial empty-set fire on mount is harmless — consumers treat
-  // size === 0 as "nothing expanded", which matches the default state.
+  // The initial null fire on mount is harmless — consumers treat null as
+  // "nothing open", which matches the default state.
   useEffect(() => {
-    if (isControlledExpansion) return;
-    onExpandedChange?.(expandedInner);
-  }, [expandedInner, isControlledExpansion, onExpandedChange]);
+    if (isControlledDetails) return;
+    onDetailsKeyChange?.(detailsInner);
+  }, [detailsInner, isControlledDetails, onDetailsKeyChange]);
 
   const selSet = useMemo(() => selectedKeys ?? new Set<string>(), [selectedKeys]);
   const allKeys = useMemo(() => data.map(rowKey), [data, rowKey]);
@@ -304,14 +293,14 @@ export function DataTable<T>({
   allKeysRef.current = allKeys;
   dataRef.current = data;
   focusedIndexRef.current = focusedIndex;
-  expandedKeysRef.current = expandedKeys;
-  expandedInnerRef.current = expandedInner;
+  detailsKeyRef.current = detailsKey;
+  detailsInnerRef.current = detailsInner;
   onSelectionChangeRef.current = onSelectionChange;
-  onExpandedChangeRef.current = onExpandedChange;
+  onDetailsKeyChangeRef.current = onDetailsKeyChange;
   onRowOpenRef.current = onRowOpen;
   rowKeyRef.current = rowKey;
   rowKeyBindingsRef.current = rowKeyBindings;
-  isControlledExpansionRef.current = isControlledExpansion;
+  isControlledDetailsRef.current = isControlledDetails;
 
   const toggleAll = useCallback(() => {
     const onSel = onSelectionChangeRef.current;
@@ -367,22 +356,17 @@ export function DataTable<T>({
 
   // onClick / onContextMenu handlers handed to every row. Stable so they
   // don't bust the row memo; the row passes back its own index/coords.
-  const handleRowClick = useCallback(
-    (index: number) => {
-      // If the user just drag-selected text inside the grid, the trailing click
-      // shouldn't also open the row (which navigates away and clobbers the
-      // selection). A plain click collapses any prior selection on mousedown, so
-      // this guard only trips at the end of a real text selection.
-      const sel = typeof window !== "undefined" ? window.getSelection() : null;
-      if (sel && !sel.isCollapsed && sel.toString().trim() !== "") return;
-      setFocusedIndex(index);
-      // When the inspector is open, a click retargets it to the clicked row.
-      retargetIfOpen(index);
-      const row = dataRef.current[index];
-      if (row) onRowOpenRef.current?.(row);
-    },
-    [retargetIfOpen],
-  );
+  const handleRowClick = useCallback((index: number) => {
+    // If the user just drag-selected text inside the grid, the trailing click
+    // shouldn't also open the row (which navigates away and clobbers the
+    // selection). A plain click collapses any prior selection on mousedown, so
+    // this guard only trips at the end of a real text selection.
+    const sel = typeof window !== "undefined" ? window.getSelection() : null;
+    if (sel && !sel.isCollapsed && sel.toString().trim() !== "") return;
+    setFocusedIndex(index);
+    const row = dataRef.current[index];
+    if (row) onRowOpenRef.current?.(row);
+  }, []);
 
   const handleRowContextMenu = useCallback((index: number, x: number, y: number) => {
     setFocusedIndex(index);
@@ -424,25 +408,21 @@ export function DataTable<T>({
       // Ctrl+J / Ctrl+K are not swallowed before reaching the window listener.
       if (e.key === "ArrowDown" || (!hasModifier && key === "j")) {
         e.preventDefault();
-        const next = Math.min(rows.length - 1, focused + 1);
-        setFocusedIndex(next);
-        retargetIfOpen(next);
+        setFocusedIndex(Math.min(rows.length - 1, focused + 1));
       } else if (e.key === "ArrowUp" || (!hasModifier && key === "k")) {
         e.preventDefault();
-        const next = Math.max(0, focused - 1);
-        setFocusedIndex(next);
-        retargetIfOpen(next);
+        setFocusedIndex(Math.max(0, focused - 1));
       } else if (e.key === "Enter") {
         const row = rows[focused];
         if (row && onRowOpenRef.current) {
           e.preventDefault();
           onRowOpenRef.current(row);
         }
-      } else if (!hasModifier && key === "e" && renderExpanded) {
+      } else if (!hasModifier && key === "e" && renderDetails) {
         const row = rows[focused];
         if (row) {
           e.preventDefault();
-          toggleExpanded(rk(row));
+          openDetailsAt(rk(row), focused);
         }
       } else if (!hasModifier && key === "x" && selectable) {
         const row = rows[focused];
@@ -463,24 +443,24 @@ export function DataTable<T>({
         }
       }
     },
-    [renderExpanded, selectable, toggleExpanded, toggleOne, retargetIfOpen],
+    [renderDetails, selectable, openDetailsAt, toggleOne],
   );
 
   useEffect(() => {
     if (focusedIndex >= data.length) setFocusedIndex(data.length - 1);
   }, [data.length, focusedIndex]);
 
-  // Auto-close the inspector when the inspected row leaves the data (page
-  // change, filter, or refetch that drops the row). Guarded on !loading so the
-  // transient empty-data render during a fetch doesn't close a valid inspection.
+  // Auto-close the drawer when the open row leaves the data (page change,
+  // filter, or refetch that drops the row — or a deep-linked ?record= that
+  // isn't on the current page). Guarded on !loading so the transient empty-data
+  // render during a fetch doesn't close a valid open record.
   useEffect(() => {
     if (loading) return;
-    if (expanded.size !== 1) return;
-    const [key] = expanded;
-    if (key !== undefined && !allKeys.includes(key)) {
-      setInspectedKey(null);
+    if (activeDetailsKey == null) return;
+    if (!allKeys.includes(activeDetailsKey)) {
+      setDetailsKey(null);
     }
-  }, [loading, expanded, allKeys, setInspectedKey]);
+  }, [loading, activeDetailsKey, allKeys, setDetailsKey]);
 
   const isEmpty = !loading && data.length === 0;
   const selectedRows = useMemo(
@@ -493,14 +473,20 @@ export function DataTable<T>({
   const showToolbar =
     toolbar !== undefined || toolbarHeader !== undefined || hasSelection || hasKeyboardHints;
 
-  // Total rendered columns — kept in one place so the empty-state colspan,
-  // the expanded-panel colspan, and the header all stay in sync.
+  // A kebab column renders when the page supplies row actions OR when
+  // `renderDetails` is set (the auto-appended "View details" item still needs
+  // the column). Same for the quick-actions column: `renderDetails` adds a
+  // built-in hover-revealed "View details" IconButton, so the column must
+  // exist even when the page supplies no quickActions of its own — it's the
+  // per-row visual cue that the detail drawer exists. Kept in one place so
+  // header / body / totalCols agree.
+  const hasKebab = rowActions !== undefined || renderDetails !== undefined;
+  const hasQuickCol = quickActions !== undefined || renderDetails !== undefined;
+
+  // Total rendered columns — kept in one place so the empty-state colspan and
+  // the header stay in sync.
   const totalCols =
-    columns.length +
-    (selectable ? 1 : 0) +
-    (renderExpanded ? 1 : 0) +
-    (quickActions ? 1 : 0) +
-    (rowActions ? 1 : 0);
+    columns.length + (selectable ? 1 : 0) + (hasQuickCol ? 1 : 0) + (hasKebab ? 1 : 0);
 
   // Keyboard-shortcut legend: only built (and only shown) when the page opts in
   // via `keyboardHints`. We prepend the table's own built-in bindings — derived
@@ -512,19 +498,18 @@ export function DataTable<T>({
       { keys: "↑ ↓ · J K", label: "Move between rows" },
     ];
     if (onRowOpen) builtin.push({ keys: "Enter", label: "Open row" });
-    if (renderExpanded) builtin.push({ keys: "E", label: "Inspect row" });
+    if (renderDetails) builtin.push({ keys: "E", label: "View details" });
     if (selectable) builtin.push({ keys: "X", label: "Select / deselect row" });
     return [...builtin, ...keyboardHints];
-  }, [keyboardHints, onRowOpen, renderExpanded, selectable]);
+  }, [keyboardHints, onRowOpen, renderDetails, selectable]);
 
-  // Resolve the single inspected row for the docked inspector. The set holds at
-  // most one key; when that key maps to a visible row we render the panel.
-  const inspectedKey = expanded.size === 1 ? [...expanded][0] : undefined;
-  const inspectedIndex = inspectedKey !== undefined ? allKeys.indexOf(inspectedKey) : -1;
-  const inspectedRow = inspectedIndex >= 0 ? data[inspectedIndex] : undefined;
-  const inspectorActions =
-    renderExpanded && inspectedRow && quickActions
-      ? quickActions(inspectedRow).map((a) => (
+  // Resolve the open row for the detail drawer. When the key maps to a visible
+  // row we render the modal drawer after the table.
+  const detailsIndex = activeDetailsKey != null ? allKeys.indexOf(activeDetailsKey) : -1;
+  const detailsRow = detailsIndex >= 0 ? data[detailsIndex] : undefined;
+  const detailsActions =
+    renderDetails && detailsRow && quickActions
+      ? quickActions(detailsRow).map((a) => (
           <IconButton
             key={a.key}
             icon={a.icon ?? "more-horizontal"}
@@ -609,7 +594,6 @@ export function DataTable<T>({
         >
           <thead>
             <tr className={styles.headerRow}>
-              {renderExpanded ? <th className={styles.expandCell} aria-label="Inspect" /> : null}
               {selectable ? (
                 <th className={styles.checkboxCell} scope="col">
                   <Checkbox
@@ -644,17 +628,16 @@ export function DataTable<T>({
                   )}
                 </th>
               ))}
-              {quickActions ? (
+              {hasQuickCol ? (
                 <th className={styles.quickActionsCell} aria-label="Quick actions" />
               ) : null}
-              {rowActions ? <th className={styles.actionsCell} aria-label="Actions" /> : null}
+              {hasKebab ? <th className={styles.actionsCell} aria-label="Actions" /> : null}
             </tr>
           </thead>
           <tbody>
             {loading ? (
               Array.from({ length: 5 }).map((_, idx) => (
                 <tr key={idx} className={styles.skeletonRow}>
-                  {renderExpanded ? <td className={styles.expandCell} /> : null}
                   {selectable ? (
                     <td className={styles.checkboxCell}>
                       <Skeleton width={14} height={14} />
@@ -665,8 +648,8 @@ export function DataTable<T>({
                       <Skeleton height={12} />
                     </td>
                   ))}
-                  {quickActions ? <td className={styles.quickActionsCell} /> : null}
-                  {rowActions ? <td className={styles.actionsCell} /> : null}
+                  {hasQuickCol ? <td className={styles.quickActionsCell} /> : null}
+                  {hasKebab ? <td className={styles.actionsCell} /> : null}
                 </tr>
               ))
             ) : isEmpty ? (
@@ -688,17 +671,16 @@ export function DataTable<T>({
                     selectable={selectable}
                     isSelected={selSet.has(key)}
                     isFocused={idx === focusedIndex}
-                    isExpanded={expanded.has(key)}
                     isDisabled={rowDisabled?.(row) ?? false}
                     accent={rowAccent?.(row)}
                     hasContextMenu={contextMenuItems !== undefined}
                     quickActions={quickActions}
                     rowActions={rowActions}
                     rowActionsBadge={rowActionsBadge}
-                    renderExpanded={renderExpanded}
+                    hasDetails={renderDetails !== undefined}
                     onRowClick={handleRowClick}
                     onRowContextMenu={handleRowContextMenu}
-                    onToggleExpanded={toggleExpandedAt}
+                    onOpenDetails={openDetailsAt}
                     onCheckboxCellClick={handleCheckboxClick}
                     onCheckboxToggle={handleCheckboxToggle}
                   />
@@ -709,19 +691,69 @@ export function DataTable<T>({
         </table>
       </div>
 
-      {renderExpanded && inspectedRow ? (
-        <RowInspector
-          title={expandedTitle?.(inspectedRow) ?? "Row details"}
-          {...(inspectorActions ? { actions: inspectorActions } : {})}
-          position={{ index: inspectedIndex, total: data.length }}
-          onPrev={inspectedIndex > 0 ? () => inspectIndex(inspectedIndex - 1) : undefined}
-          onNext={
-            inspectedIndex < data.length - 1 ? () => inspectIndex(inspectedIndex + 1) : undefined
-          }
-          onClose={closeInspector}
+      {renderDetails && detailsRow ? (
+        <Drawer
+          open
+          onOpenChange={(o) => {
+            if (!o) closeDetails();
+          }}
         >
-          {renderExpanded(inspectedRow)}
-        </RowInspector>
+          <DrawerContent
+            wide
+            // Radix would focus the first tabbable element on open — a
+            // quick-action IconButton here, which pops its Tooltip over the
+            // drawer. Land the initial focus on the key-nav wrapper instead:
+            // neutral (no tooltip), and ArrowUp/ArrowDown paging works
+            // immediately without an extra Tab.
+            onOpenAutoFocus={(e) => {
+              e.preventDefault();
+              detailKeyNavRef.current?.focus();
+            }}
+          >
+            {/* Flex-column wrapper filling the drawer: gives ArrowUp/ArrowDown
+                a single keydown target covering the whole drawer (title
+                toolbar + body) and receives the initial open focus. It's a
+                passive event-delegation container — the interactive controls
+                (nav buttons, comment composer) live inside and own their own
+                semantics — so it carries no role of its own. */}
+            {/* eslint-disable-next-line jsx-a11y/no-static-element-interactions */}
+            <div
+              ref={detailKeyNavRef}
+              tabIndex={-1}
+              className={styles.detailKeyNav}
+              onKeyDown={onDrawerKeyDown}
+            >
+              <DrawerTitle
+                onClose={closeDetails}
+                toolbar={
+                  <>
+                    {detailsActions}
+                    <span className={styles.detailsPosition}>
+                      {detailsIndex + 1} / {data.length}
+                    </span>
+                    <IconButton
+                      icon="chevron-up"
+                      label="Previous row"
+                      size="sm"
+                      disabled={detailsIndex <= 0}
+                      onClick={() => retargetDetails(detailsIndex - 1)}
+                    />
+                    <IconButton
+                      icon="chevron-down"
+                      label="Next row"
+                      size="sm"
+                      disabled={detailsIndex >= data.length - 1}
+                      onClick={() => retargetDetails(detailsIndex + 1)}
+                    />
+                  </>
+                }
+              >
+                {detailsTitle?.(detailsRow) ?? "Details"}
+              </DrawerTitle>
+              <DrawerBody>{renderDetails(detailsRow)}</DrawerBody>
+            </div>
+          </DrawerContent>
+        </Drawer>
       ) : null}
 
       {serverPagination ? <PaginationBar pag={serverPagination} /> : null}
@@ -747,29 +779,31 @@ type DataTableRowProps<T> = {
   selectable: boolean;
   isSelected: boolean;
   isFocused: boolean;
-  isExpanded: boolean;
   isDisabled: boolean;
   accent: string | undefined;
   hasContextMenu: boolean;
   quickActions: ((row: T) => RowAction[]) | undefined;
   rowActions: ((row: T) => RowAction[]) | undefined;
   rowActionsBadge: ((row: T) => { count: number; label?: string } | undefined) | undefined;
-  renderExpanded: ((row: T) => ReactNode) | undefined;
+  /** Whether the table has a details drawer — gates the auto-appended
+   *  "View details" kebab item (and the kebab column itself when no
+   *  `rowActions` are supplied). */
+  hasDetails: boolean;
   onRowClick: (index: number) => void;
   onRowContextMenu: (index: number, x: number, y: number) => void;
-  onToggleExpanded: (key: string, index: number) => void;
+  onOpenDetails: (key: string, index: number) => void;
   onCheckboxCellClick: (key: string, index: number, shiftKey: boolean) => void;
   onCheckboxToggle: (key: string, index: number) => void;
 };
 
 // One table row, memoized with the DEFAULT shallow comparison. Function props
-// (columns, quickActions, rowActions, renderExpanded, the handlers) take part
-// in equality, so the parent must keep them stable — which it does via
-// useCallback for its internal handlers and which consumers do for their
-// row-builder props. The payoff: a focus move or a single selection toggle
-// changes one row's `isFocused`/`isSelected` prop and re-renders only that
-// row, not all 50. Structural sharing from react-query keeps `row` identity
-// stable across refetches, so the 5s poll skips unchanged rows too.
+// (columns, quickActions, rowActions, the handlers) take part in equality, so
+// the parent must keep them stable — which it does via useCallback for its
+// internal handlers and which consumers do for their row-builder props. The
+// payoff: a focus move or a single selection toggle changes one row's
+// `isFocused`/`isSelected` prop and re-renders only that row, not all 50.
+// Structural sharing from react-query keeps `row` identity stable across
+// refetches, so the 5s poll skips unchanged rows too.
 function DataTableRowInner<T>({
   row,
   rowKeyValue: key,
@@ -778,26 +812,40 @@ function DataTableRowInner<T>({
   selectable,
   isSelected,
   isFocused,
-  isExpanded,
   isDisabled,
   accent,
   hasContextMenu,
   quickActions,
   rowActions,
   rowActionsBadge,
-  renderExpanded,
+  hasDetails,
   onRowClick,
   onRowContextMenu,
-  onToggleExpanded,
+  onOpenDetails,
   onCheckboxCellClick,
   onCheckboxToggle,
 }: DataTableRowProps<T>) {
+  // Auto-append a "View details" item as the FIRST kebab entry when the table
+  // has a details drawer. When the page supplies no `rowActions`, the kebab
+  // still renders with just this item.
+  const kebabActions: RowAction[] | undefined = hasDetails
+    ? [
+        {
+          key: "__details__",
+          label: "View details",
+          icon: "panel-right",
+          onSelect: () => onOpenDetails(key, index),
+        },
+        ...(rowActions ? rowActions(row) : []),
+      ]
+    : rowActions
+      ? rowActions(row)
+      : undefined;
   return (
     <tr
       className={styles.row}
       {...(isFocused ? { "data-focused": "true" } : {})}
       {...(isSelected ? { "data-selected": "true" } : {})}
-      {...(isExpanded ? { "data-inspected": "true" } : {})}
       {...(isDisabled ? { "data-disabled": "true" } : {})}
       {...(accent
         ? {
@@ -815,20 +863,6 @@ function DataTableRowInner<T>({
           }
         : {})}
     >
-      {renderExpanded ? (
-        <td className={styles.expandCell} onClick={(e) => e.stopPropagation()}>
-          <button
-            type="button"
-            className={styles.expandBtn}
-            aria-label={`Inspect row ${key}`}
-            aria-expanded={isExpanded}
-            {...(isExpanded ? { "data-active": "true" } : {})}
-            onClick={() => onToggleExpanded(key, index)}
-          >
-            <Icon name="panel-right" size={14} />
-          </button>
-        </td>
-      ) : null}
       {selectable ? (
         <td
           className={styles.checkboxCell}
@@ -858,26 +892,39 @@ function DataTableRowInner<T>({
           {col.cell(row)}
         </td>
       ))}
-      {quickActions ? (
+      {quickActions || hasDetails ? (
         <td className={styles.quickActionsCell} onClick={(e) => e.stopPropagation()}>
           <div className={styles.quickActions}>
-            {quickActions(row).map((a) => (
+            {/* Built-in hover-revealed "View details" — the per-row visual cue
+                that the detail drawer exists, leading the cluster so it sits in
+                the same spot on every table. */}
+            {hasDetails ? (
               <IconButton
-                key={a.key}
-                icon={a.icon ?? "more-horizontal"}
-                label={a.label}
+                icon="panel-right"
+                label="View details"
                 size="sm"
-                {...(a.danger ? { variant: "danger" as const } : {})}
-                {...(a.disabled ? { disabled: true } : {})}
-                onClick={a.onSelect}
+                onClick={() => onOpenDetails(key, index)}
               />
-            ))}
+            ) : null}
+            {quickActions
+              ? quickActions(row).map((a) => (
+                  <IconButton
+                    key={a.key}
+                    icon={a.icon ?? "more-horizontal"}
+                    label={a.label}
+                    size="sm"
+                    {...(a.danger ? { variant: "danger" as const } : {})}
+                    {...(a.disabled ? { disabled: true } : {})}
+                    onClick={a.onSelect}
+                  />
+                ))
+              : null}
           </div>
         </td>
       ) : null}
-      {rowActions ? (
+      {kebabActions ? (
         <td className={styles.actionsCell} onClick={(e) => e.stopPropagation()}>
-          <RowActionsMenu actions={rowActions(row)} badge={rowActionsBadge?.(row)} />
+          <RowActionsMenu actions={kebabActions} badge={rowActionsBadge?.(row)} />
         </td>
       ) : null}
     </tr>

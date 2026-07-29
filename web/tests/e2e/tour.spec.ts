@@ -760,24 +760,23 @@ test("visual tour: seed and screenshot every menu", async ({ page, api, server, 
   await page.keyboard.press("Escape");
 
   await goto("/web/alerts");
-  // Alerts open in a docked side inspector (the "panel-right" toggle in the
-  // first column) instead of an inline expanded row. The inspector opens on
-  // the Timeline tab (summary header + Timeline/Flow/Record tabs). The
-  // pre-screenshot seed inserted comment/ack/esc events on srv-prod-1, so the
-  // timeline pane shows populated activity. Target the toggle on the srv-prod-1
-  // row (not the first toggle, since the table is sorted by date_epoch desc and
-  // the most recent alert is "auth").
+  // Alerts open in a modal detail drawer (Radix Dialog) opened by clicking the
+  // row. The drawer opens on the Timeline tab (summary header +
+  // Timeline/Flow/Record tabs). The pre-screenshot seed inserted
+  // comment/ack/esc events on srv-prod-1, so the timeline pane shows populated
+  // activity. Click the srv-prod-1 row (not the first row, since the table is
+  // sorted by date_epoch desc and the most recent alert is "auth").
   const prodRow = page.locator("tr", { hasText: "srv-prod-1" }).first();
   await prodRow.waitFor({ state: "attached" });
-  const alertExpand = prodRow.getByRole("button", { name: /^Inspect row /i });
-  await alertExpand.click({ force: true });
+  await prodRow.click({ force: true });
   // Timeline is the default tab; wait for the comment composer to render so the
   // screenshot doesn't capture mid-animation (the Record JSON <pre> is behind
   // the Record tab now, so we can't wait on it here).
   await page.getByPlaceholder(/write a comment/i).waitFor({ state: "visible" });
   await shoot("24-alert-row-expanded");
-  // Close so the bulk-ack screenshot below isn't crowded by the panel.
-  await alertExpand.click({ force: true });
+  // Close (Radix Esc dismissal) so the bulk-ack screenshot below isn't crowded
+  // by the drawer.
+  await page.keyboard.press("Escape");
 
   // Row-actions menu: bulk-ack dialog
   await page.locator("thead").getByRole("checkbox").first().check({ force: true });
@@ -903,34 +902,33 @@ test("visual tour: seed and screenshot every menu", async ({ page, api, server, 
   await page.getByRole("tab", { name: /^housekeeping$/i }).click({ force: true });
   await shoot("13-admin-settings-housekeeping");
 
-  // ── 3c. Docked row inspector (panel-right toggle) ───────────────────────
+  // ── 3c. Modal detail drawer (row-actions kebab → "View details") ────────
   //
-  // Every non-alert DataTable exposes a first-column "panel-right" toggle
-  // that opens the docked RowInspector (RowDetailPanel: a Record JSON
-  // section stacked above an AuditTimeline). The Rules tab uses
-  // RulesTreeTable, so the toggle only appears on the *Aggregates* tab, on
-  // Snoozes, and on admin pages. We pick Snoozes because the seeded rows
-  // include a populated time_constraints object — the JsonViewer pane
-  // therefore has interesting content for the screenshot.
+  // Every non-alert DataTable auto-appends a "View details" item to the
+  // row-actions kebab that opens the modal detail drawer (RowDetailPanel: a
+  // Record JSON section stacked above an AuditTimeline). We pick Snoozes
+  // because the seeded rows include a populated time_constraints object — the
+  // JsonViewer pane therefore has interesting content for the screenshot.
+  // (A row click on Snoozes opens the SnoozeEditor, so we go through the kebab
+  // rather than clicking the row.)
   //
-  // Selector: DataTable renders the toggle as <button aria-label="Inspect
-  // row ${key}"> (see web/src/shared/ui/DataTable.tsx). Use the first
-  // such button so we're stable against row order.
   // revealWeekendWindow (defined above) also covers the initial loading
-  // state: the Snoozes table starts as skeleton rows with no toggle, and
+  // state: the Snoozes table starts as skeleton rows with no kebab, and
   // waiting on the row text avoids racing the skeleton. It lands on
   // whichever tab holds weekend-window on this day of the week.
   await revealWeekendWindow();
   // `force:true` works around opacity:0.55 on disabled rows (which
   // Playwright might otherwise consider non-actionable).
-  const firstExpand = page.getByRole("button", { name: /^Inspect row /i }).first();
-  await firstExpand.waitFor({ state: "attached" });
-  await firstExpand.click({ force: true });
+  const firstKebab = page.getByRole("button", { name: /row actions/i }).first();
+  await firstKebab.waitFor({ state: "attached" });
+  await firstKebab.click({ force: true });
+  await page.getByRole("menuitem", { name: /view details/i }).click({ force: true });
   // RowDetailPanel renders a <pre> inside JsonViewer synchronously; wait
   // for it so the screenshot doesn't capture mid-animation. The audit
   // fetch is async, but the JsonViewer pane is rendered synchronously.
   await page.locator("pre").first().waitFor({ state: "visible" });
   await shoot("snoozes-row-expanded");
+  await page.keyboard.press("Escape");
 
   // ── 4. Light theme variant of a couple of pages ─────────────────────────
   await goto("/web/alerts");

@@ -32,6 +32,16 @@
   flex-direction: column;
 }
 
+/* Opt-in wide variant (DrawerContent wide). Read surfaces such as the
+   DataTable detail drawer need more room than the 560px edit default. On
+   mobile the .content rule inside the @media block below comes later in
+   source order (equal specificity), so it still fullscreens this variant —
+   no !important needed. */
+.wide {
+  width: clamp(720px, 60vw, 1200px);
+  max-width: calc(100vw - 64px);
+}
+
 .content[data-state="open"] {
   animation: slideIn var(--dur-md) var(--ease-out);
 }

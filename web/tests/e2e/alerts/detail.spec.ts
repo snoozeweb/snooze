@@ -6,7 +6,7 @@ test.describe("alert detail drawer", () => {
     await adminAuth();
   });
 
-  test("inspector shows the alert's full field map", async ({ page, api, server }) => {
+  test("detail drawer shows the alert's full field map", async ({ page, api, server }) => {
     await api.alerts.send({
       host: "srv-detail",
       message: "disk full",
@@ -16,15 +16,13 @@ test.describe("alert detail drawer", () => {
     await page.goto(server.baseURL + "/web/alerts");
     await expect(page.getByText("srv-detail")).toBeVisible();
 
-    // AlertsPage uses DataTable's renderExpanded (AlertRowDetail), rendered in a
-    // docked side inspector. Each row has a "panel-right" button labelled
-    // "Inspect row <key>" that opens the inspector. It opens on the Timeline
-    // tab; the raw record (JsonViewer) lives behind the "Record" tab.
-    await page
-      .getByRole("button", { name: /^inspect row/i })
-      .first()
-      .click({ force: true });
-    await page.getByRole("tab", { name: /^record$/i }).click({ force: true });
+    // AlertsPage renders AlertRowDetail in a modal detail drawer (Radix Dialog)
+    // opened by clicking the row. The drawer opens on the Timeline tab; the raw
+    // record (JsonViewer) lives behind the "Record" tab.
+    await page.locator("tr", { hasText: "srv-detail" }).first().click({ force: true });
+    const dialog = page.getByRole("dialog");
+    await expect(dialog).toBeVisible();
+    await dialog.getByRole("tab", { name: /^record$/i }).click({ force: true });
 
     // The Record tab renders the full record via JsonViewer; the message /
     // severity / source values all appear as text nodes. Use .first() because
@@ -126,16 +124,14 @@ test.describe("alert detail drawer", () => {
     await textarea.fill("first note");
     await dialog.getByRole("button", { name: /^comment$/i }).click({ force: true });
 
-    // Open the inspector; Timeline is the default tab, so the comment shows
-    // without switching tabs.
-    await page
-      .getByRole("button", { name: /^inspect row/i })
-      .first()
-      .click({ force: true });
+    // Open the detail drawer by clicking the row; Timeline is the default tab,
+    // so the comment shows without switching tabs.
+    await page.locator("tr", { hasText: "srv-comment" }).first().click({ force: true });
+    await expect(page.getByRole("dialog")).toBeVisible();
     await expect(page.getByText("first note")).toBeVisible();
   });
 
-  test("inspector closes when the toggle is clicked again", async ({ page, api, server }) => {
+  test("detail drawer closes on Escape", async ({ page, api, server }) => {
     await api.alerts.send({
       host: "srv-close-drawer",
       message: "m",
@@ -145,13 +141,13 @@ test.describe("alert detail drawer", () => {
     await page.goto(server.baseURL + "/web/alerts");
     await expect(page.getByText("srv-close-drawer")).toBeVisible();
 
-    const inspectBtn = page.getByRole("button", { name: /^inspect row/i }).first();
-    await inspectBtn.click({ force: true });
-    await expect(inspectBtn).toHaveAttribute("aria-expanded", "true");
+    // Row click opens the modal drawer; Radix Dialog gives Esc + outside-click
+    // dismissal for free.
+    await page.locator("tr", { hasText: "srv-close-drawer" }).first().click({ force: true });
+    const dialog = page.getByRole("dialog");
+    await expect(dialog).toBeVisible();
 
-    // Clicking the same toggle again closes the inspector (single-row
-    // inspection: same key → empty set).
-    await inspectBtn.click({ force: true });
-    await expect(inspectBtn).toHaveAttribute("aria-expanded", "false");
+    await page.keyboard.press("Escape");
+    await expect(dialog).toBeHidden();
   });
 });

@@ -182,7 +182,7 @@ export function UsersPage() {
                 }
               />
             }
-            renderExpanded={(row) => (
+            renderDetails={(row) => (
               <RowDetailPanel
                 row={row as unknown as Record<string, unknown>}
                 objectType="user"

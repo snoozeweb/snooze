@@ -131,6 +131,16 @@
   border-bottom: 1px solid var(--border-muted);
   color: var(--text);
 }
+/* With the old leading toggle column gone, the first column would sit almost
+   flush against the table border — give it a touch more breathing room. The
+   severity accent strip (data-accent) is an inset box-shadow on the cell edge,
+   so it's unaffected. Card mode's own `padding: 4px 0` shorthand outranks this
+   (higher specificity), so cards keep their tighter geometry. The checkbox
+   cell opts out via its !important shorthand and carries its own left pad. */
+.table th:first-child,
+.table td:first-child {
+  padding-left: var(--space-4);
+}
 .row:last-child td {
   border-bottom: 0;
 }
@@ -144,14 +154,6 @@
    selected row stays legible even under the hover highlight. */
 .row[data-selected="true"] td {
   background: color-mix(in srgb, var(--accent-bg) 85%, var(--bg-surface));
-}
-
-/* Inspected-row marker: the row whose detail is open in the docked inspector.
-   A subtle bg on all cells; the amber-tinted inspect toggle carries the rest of
-   the signal. (No edge bar: the table's right edge usually sits underneath the
-   overlaying panel, so a right-side accent would never be seen.) */
-.row[data-inspected="true"] td {
-  background: var(--bg-hover);
 }
 
 /* Row accent strip: a 3px inset bar painted on the first cell from the
@@ -180,8 +182,10 @@
 }
 
 .checkboxCell {
-  width: 28px;
-  padding: 0 var(--space-2) !important;
+  width: 32px;
+  /* Extra left pad: the checkbox is the first column when present, and the
+     leading toggle column that used to buffer it from the table edge is gone. */
+  padding: 0 var(--space-2) 0 var(--space-3) !important;
 }
 .actionsCell {
   width: 32px;
@@ -241,29 +245,27 @@
 .quickActions:focus-within {
   opacity: 1;
 }
-.expandCell {
-  width: 28px;
-  padding: 0 var(--space-2) !important;
-  text-align: center;
+/* Detail drawer helpers ─────────────────────────────────────────────────
+   The modal detail drawer is rendered by DataTable after the table (see the
+   Drawer in DataTable.tsx). `detailKeyNav` wraps the drawer's title + body so
+   ArrowUp/ArrowDown have one keydown target covering the whole drawer. A real
+   flex column (not display:contents) because it also takes the drawer's
+   initial focus (tabIndex=-1) — a contents box can't be focused. It fills
+   DrawerContent's column so DrawerBody keeps its own scroll.
+   `detailsPosition` is the mono "N / M" row counter in the header toolbar. */
+.detailKeyNav {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  outline: none;
 }
-.expandBtn {
-  background: none;
-  border: 0;
+.detailsPosition {
+  font-family: var(--font-mono);
+  font-feature-settings: var(--font-features-numeric);
+  font-size: var(--text-xs);
   color: var(--text-muted);
-  cursor: pointer;
-  padding: 2px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  border-radius: var(--radius-sm);
-}
-.expandBtn:hover {
-  background: var(--bg-hover);
-  color: var(--text);
-}
-/* The inspect toggle tints amber while its row is the one being inspected. */
-.expandBtn[data-active="true"] {
-  color: var(--accent);
+  white-space: nowrap;
 }
 
 .sortBtn {
@@ -371,19 +373,17 @@
     font-weight: var(--weight-medium);
     flex-shrink: 0;
   }
-  /* Cells with no label (checkbox, expand chevron, quick actions, kebab) sit
-     inline at the top of the card and don't render a label dash. */
+  /* Cells with no label (checkbox, quick actions, kebab) sit inline at the top
+     of the card and don't render a label dash. */
   .table tbody .row td.checkboxCell::before,
-  .table tbody .row td.expandCell::before,
   .table tbody .row td.quickActionsCell::before,
   .table tbody .row td.actionsCell::before {
     content: "";
   }
   /* Control cells reflow into a footer action row instead of stacking each on
      its own line: the selection checkbox pins to the top-right; the quick
-     actions sit at the footer's left and grow, with the expand chevron and the
-     row-actions kebab grouped together on the right. `order` overrides the DOM
-     order (expand is DOM-first, so it would otherwise render up top). */
+     actions sit at the footer's left and grow, with the row-actions kebab on
+     the right. `order` overrides the DOM order. */
   .table tbody .row td.checkboxCell {
     flex: 0 0 100%;
     order: -1;
@@ -397,11 +397,6 @@
   .table tbody .row td.actionsCell {
     flex: 0 0 auto;
     order: 11;
-    justify-content: center;
-  }
-  .table tbody .row td.expandCell {
-    flex: 0 0 auto;
-    order: 12;
     justify-content: center;
   }
   /* Search + toolbar share one row on desktop; on a phone the right-hand

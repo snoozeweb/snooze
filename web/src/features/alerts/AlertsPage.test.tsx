@@ -102,7 +102,7 @@ describe("AlertsPage", () => {
     expect(decoded).toMatchObject({ type: "IN", field: "uid", value: ["r1"] });
   });
 
-  it("inspecting a row opens the inspector on Timeline, with the JSON behind the Record tab", async () => {
+  it("clicking a row opens the detail drawer on Timeline, with the JSON behind the Record tab", async () => {
     mswServer.use(
       http.get("/api/v1/record", () =>
         HttpResponse.json({
@@ -129,14 +129,14 @@ describe("AlertsPage", () => {
     const user = userEvent.setup();
     setup();
     await waitFor(() => expect(screen.getByText("srv-1")).toBeInTheDocument());
-    // No modal dialog should mount on the bare list.
+    // No drawer on the bare list.
     expect(screen.queryByRole("dialog")).toBeNull();
-    // Open the docked inspector.
-    await user.click(screen.getByRole("button", { name: /^Inspect row /i }));
-    // Timeline is the default tab — its empty state renders immediately. The
-    // inspector is non-modal, so still no dialog.
+    // Row click opens the modal detail drawer (AlertsPage wires onRowOpen to
+    // set ?record=). The drawer is a Radix Dialog → role=dialog.
+    await user.click(screen.getByText("srv-1"));
+    await waitFor(() => expect(screen.getByRole("dialog")).toBeInTheDocument());
+    // Timeline is the default tab — its empty state renders immediately.
     await waitFor(() => expect(screen.getByText(/no comments yet/i)).toBeInTheDocument());
-    expect(screen.queryByRole("dialog")).toBeNull();
     // The raw record lives behind the Record tab — click it to see the JSON
     // (the alert uid only appears there, not in the table).
     await user.click(screen.getByRole("tab", { name: /^record$/i }));

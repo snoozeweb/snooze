@@ -97,7 +97,7 @@ export function RolesPage() {
             }
           />
         }
-        renderExpanded={(row) => (
+        renderDetails={(row) => (
           <RowDetailPanel
             row={row as unknown as Record<string, unknown>}
             objectType="role"

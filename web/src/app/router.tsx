@@ -554,6 +554,9 @@ type AlertsSearchParams = {
   // stripped on every navigation through this route.
   tab?: string;
   env?: string;
+  // Open detail-drawer record key. AlertsPage syncs the modal detail drawer's
+  // open alert here so it's shareable / deep-linkable.
+  record?: string;
 };
 
 const alertsRoute = createRoute({
@@ -589,6 +592,7 @@ const alertsRoute = createRoute({
     setIf("uid", s("uid"));
     setIf("tab", s("tab"));
     setIf("env", s("env"));
+    setIf("record", s("record"));
     return out as AlertsSearchParams;
   },
 });

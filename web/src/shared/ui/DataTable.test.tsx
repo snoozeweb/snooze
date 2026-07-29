@@ -138,7 +138,7 @@ describe("DataTable", () => {
         columns={columns}
         rowKey={(r) => r.id}
         selectable
-        renderExpanded={(r) => <div>{r.name} details</div>}
+        renderDetails={(r) => <div>{r.name} details</div>}
         onRowOpen={vi.fn()}
         keyboardHints={[
           { keys: "A", label: "Acknowledge" },
@@ -151,7 +151,7 @@ describe("DataTable", () => {
     // Built-ins derived from the table's own capabilities…
     expect(await screen.findByText("Move between rows")).toBeInTheDocument();
     expect(screen.getByText(/select/i)).toBeInTheDocument();
-    expect(screen.getByText(/inspect row/i)).toBeInTheDocument();
+    expect(screen.getByText(/view details/i)).toBeInTheDocument();
     // …plus the page-supplied row bindings.
     expect(screen.getByText("Acknowledge")).toBeInTheDocument();
     expect(screen.getByText("Comment")).toBeInTheDocument();
@@ -415,26 +415,31 @@ describe("DataTable", () => {
     });
   });
 
-  describe("row inspection", () => {
-    it("does not render the inspect-toggle column when renderExpanded is omitted", () => {
-      render(<DataTable data={sample} columns={columns} rowKey={(r) => r.id} />);
+  describe("detail drawer", () => {
+    // The details API renders a modal drawer AFTER the table — there is no
+    // leading toggle column anymore. Rows open it via the auto-appended
+    // "View details" kebab item, the `E` shortcut, or a page-owned affordance.
+    const renderDet = (r: Row) => <div data-testid={`det-${r.id}`}>details for {r.name}</div>;
+
+    it("renders no leading inspect column and no drawer by default", () => {
+      render(
+        <DataTable
+          data={sample}
+          columns={columns}
+          rowKey={(r) => r.id}
+          renderDetails={renderDet}
+        />,
+      );
       expect(screen.queryByRole("button", { name: /inspect row/i })).toBeNull();
+      expect(screen.queryByRole("dialog")).toBeNull();
     });
 
-    it("renders an inspect toggle per row when renderExpanded is provided", () => {
-      render(
-        <DataTable
-          data={sample}
-          columns={columns}
-          rowKey={(r) => r.id}
-          renderExpanded={(r) => <div>details for {r.name}</div>}
-        />,
-      );
-      const toggles = screen.getAllByRole("button", { name: /inspect row/i });
-      expect(toggles.length).toBe(sample.length);
+    it("renders no kebab column when neither rowActions nor renderDetails is set", () => {
+      render(<DataTable data={sample} columns={columns} rowKey={(r) => r.id} />);
+      expect(screen.queryByRole("button", { name: /row actions/i })).toBeNull();
     });
 
-    it("clicking the toggle opens the inspector without triggering onRowOpen, and toggling again closes it", async () => {
+    it("auto-appends a 'View details' kebab item (even without rowActions) that opens the drawer", async () => {
       const onRowOpen = vi.fn();
       const user = userEvent.setup();
       render(
@@ -443,187 +448,255 @@ describe("DataTable", () => {
           columns={columns}
           rowKey={(r) => r.id}
           onRowOpen={onRowOpen}
-          renderExpanded={(r) => <div data-testid={`exp-${r.id}`}>details for {r.name}</div>}
+          renderDetails={renderDet}
         />,
       );
-      expect(screen.queryByTestId("exp-2")).toBeNull();
-      const toggles = screen.getAllByRole("button", { name: /inspect row/i });
-      await user.click(toggles[1]!);
-      // The inspector portals to document.body — screen queries still find it.
-      expect(screen.getByTestId("exp-2")).toBeInTheDocument();
+      // The kebab column renders even though no rowActions were supplied.
+      const kebabs = screen.getAllByRole("button", { name: /row actions/i });
+      expect(kebabs.length).toBe(sample.length);
+      await user.click(kebabs[1]!);
+      await user.click(screen.getByRole("menuitem", { name: /view details/i }));
+      expect(screen.getByTestId("det-2")).toBeInTheDocument();
+      // Opening the drawer from the kebab must not also fire the row-open path.
       expect(onRowOpen).not.toHaveBeenCalled();
-      await user.click(toggles[1]!);
-      expect(screen.queryByTestId("exp-2")).toBeNull();
     });
 
-    it("inspecting a second row retargets the inspector (single-row inspection)", async () => {
+    it("renders a per-row 'View details' quick action that opens the drawer", async () => {
       const user = userEvent.setup();
       render(
         <DataTable
           data={sample}
           columns={columns}
           rowKey={(r) => r.id}
-          renderExpanded={(r) => <div data-testid={`exp-${r.id}`}>{r.name}</div>}
+          renderDetails={renderDet}
         />,
       );
-      const toggles = screen.getAllByRole("button", { name: /inspect row/i });
-      await user.click(toggles[0]!);
-      expect(screen.getByTestId("exp-1")).toBeInTheDocument();
-      // Opening another row replaces the inspection rather than stacking.
-      await user.click(toggles[2]!);
-      expect(screen.getByTestId("exp-3")).toBeInTheDocument();
-      expect(screen.queryByTestId("exp-1")).toBeNull();
+      // The quick-actions column renders even though the page supplied no
+      // quickActions — the built-in button is the row's visual cue that a
+      // detail drawer exists.
+      const buttons = screen.getAllByRole("button", { name: "View details" });
+      expect(buttons.length).toBe(sample.length);
+      await user.click(buttons[1]!);
+      expect(screen.getByTestId("det-2")).toBeInTheDocument();
     });
 
-    it("renders expandedTitle in the inspector header", async () => {
+    it("leads the quick-actions cluster with 'View details' before page quick actions", () => {
+      render(
+        <DataTable
+          data={[sample[0]!]}
+          columns={columns}
+          rowKey={(r) => r.id}
+          renderDetails={renderDet}
+          quickActions={(r) => [{ key: "ack", label: `Ack ${r.name}`, onSelect: vi.fn() }]}
+        />,
+      );
+      const details = screen.getByRole("button", { name: "View details" });
+      const ack = screen.getByRole("button", { name: "Ack alpha" });
+      // Same cluster, details first.
+      expect(details.compareDocumentPosition(ack) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    });
+
+    it("prepends 'View details' before the page's own row actions", async () => {
       const user = userEvent.setup();
+      render(
+        <DataTable
+          data={[sample[0]!]}
+          columns={columns}
+          rowKey={(r) => r.id}
+          renderDetails={renderDet}
+          rowActions={(r) => [{ key: "edit", label: `Edit ${r.name}`, onSelect: vi.fn() }]}
+        />,
+      );
+      await user.click(screen.getByRole("button", { name: /row actions/i }));
+      const items = screen.getAllByRole("menuitem");
+      expect(items[0]).toHaveTextContent("View details");
+      expect(items[1]).toHaveTextContent("Edit alpha");
+    });
+
+    it("opens the drawer via the E shortcut on the focused row", () => {
       render(
         <DataTable
           data={sample}
           columns={columns}
           rowKey={(r) => r.id}
-          renderExpanded={(r) => <div>{r.name}</div>}
-          expandedTitle={(r) => <span>Title: {r.name}</span>}
+          renderDetails={renderDet}
         />,
       );
-      await user.click(screen.getAllByRole("button", { name: /inspect row/i })[0]!);
-      expect(screen.getByText("Title: alpha")).toBeInTheDocument();
+      const table = screen.getByRole("grid");
+      table.focus();
+      fireEvent.keyDown(table, { key: "ArrowDown" }); // focus row 1 (id "1")
+      fireEvent.keyDown(table, { key: "e" });
+      expect(screen.getByTestId("det-1")).toBeInTheDocument();
     });
 
-    it("Escape closes the inspector", async () => {
-      const user = userEvent.setup();
-      render(
-        <DataTable
-          data={sample}
-          columns={columns}
-          rowKey={(r) => r.id}
-          renderExpanded={(r) => <div data-testid={`exp-${r.id}`}>{r.name}</div>}
-        />,
-      );
-      await user.click(screen.getAllByRole("button", { name: /inspect row/i })[0]!);
-      expect(screen.getByTestId("exp-1")).toBeInTheDocument();
-      fireEvent.keyDown(document.body, { key: "Escape" });
-      expect(screen.queryByTestId("exp-1")).toBeNull();
-    });
-
-    it("prev/next navigate the inspector and disable at the ends", async () => {
-      const user = userEvent.setup();
-      render(
-        <DataTable
-          data={sample}
-          columns={columns}
-          rowKey={(r) => r.id}
-          renderExpanded={(r) => <div data-testid={`exp-${r.id}`}>{r.name}</div>}
-        />,
-      );
-      const toggles = screen.getAllByRole("button", { name: /inspect row/i });
-      await user.click(toggles[0]!);
-      expect(screen.getByTestId("exp-1")).toBeInTheDocument();
-      // On the first row: Previous disabled, Next enabled.
-      expect(screen.getByRole("button", { name: /previous row/i })).toBeDisabled();
-      expect(screen.getByRole("button", { name: /next row/i })).toBeEnabled();
-
-      await user.click(screen.getByRole("button", { name: /next row/i }));
-      expect(screen.getByTestId("exp-2")).toBeInTheDocument();
-      expect(screen.queryByTestId("exp-1")).toBeNull();
-
-      await user.click(screen.getByRole("button", { name: /next row/i }));
-      expect(screen.getByTestId("exp-3")).toBeInTheDocument();
-      // On the last row: Next disabled, Previous enabled.
-      expect(screen.getByRole("button", { name: /next row/i })).toBeDisabled();
-      expect(screen.getByRole("button", { name: /previous row/i })).toBeEnabled();
-
-      await user.click(screen.getByRole("button", { name: /previous row/i }));
-      expect(screen.getByTestId("exp-2")).toBeInTheDocument();
-    });
-
-    it("clicking the row body still calls onRowOpen", async () => {
-      const onRowOpen = vi.fn();
-      const user = userEvent.setup();
-      render(
-        <DataTable
-          data={sample}
-          columns={columns}
-          rowKey={(r) => r.id}
-          onRowOpen={onRowOpen}
-          renderExpanded={(r) => <div>details for {r.name}</div>}
-        />,
-      );
-      await user.click(screen.getByText("beta"));
-      expect(onRowOpen).toHaveBeenCalledWith(sample[1]);
-    });
-
-    it("fires onExpandedChange with the single-inspection size sequence (0→1→1→0)", async () => {
-      const onExpandedChange = vi.fn();
-      const user = userEvent.setup();
-      render(
-        <DataTable
-          data={sample}
-          columns={columns}
-          rowKey={(r) => r.id}
-          renderExpanded={(r) => <div>details for {r.name}</div>}
-          onExpandedChange={onExpandedChange}
-        />,
-      );
-      // Initial mount fires once with the empty default — consumers treat
-      // that as "nothing is inspected" so it's harmless.
-      const sizes = () =>
-        onExpandedChange.mock.calls.map(([keys]) => (keys as ReadonlySet<string>).size);
-      expect(sizes()).toEqual([0]);
-
-      const toggles = screen.getAllByRole("button", { name: /inspect row/i });
-      await user.click(toggles[0]!); // open row 1
-      expect(sizes()).toEqual([0, 1]);
-
-      await user.click(toggles[2]!); // retarget to row 3 (still a single key)
-      expect(sizes()).toEqual([0, 1, 1]);
-      const afterRetarget = onExpandedChange.mock.calls.at(-1)?.[0] as ReadonlySet<string>;
-      expect([...afterRetarget]).toEqual(["3"]);
-
-      await user.click(toggles[2]!); // toggling the same row closes the inspector
-      expect(sizes()).toEqual([0, 1, 1, 0]);
-      const last = onExpandedChange.mock.calls.at(-1)?.[0] as ReadonlySet<string>;
-      expect(last.size).toBe(0);
-    });
-
-    it("controlled inspection renders exactly expandedKeys and routes toggles through onExpandedChange (single row)", async () => {
-      const onExpandedChange = vi.fn();
+    it("falls back to a 'Details' drawer title, and renders detailsTitle when supplied", async () => {
       const user = userEvent.setup();
       const { rerender } = render(
         <DataTable
           data={sample}
           columns={columns}
           rowKey={(r) => r.id}
-          renderExpanded={(r) => <div data-testid={`exp-${r.id}`}>{r.name}</div>}
-          expandedKeys={new Set(["2"])}
-          onExpandedChange={onExpandedChange}
+          renderDetails={renderDet}
         />,
       );
-      // Only the controlled key is inspected — internal state is bypassed.
-      expect(screen.getByTestId("exp-2")).toBeInTheDocument();
-      expect(screen.queryByTestId("exp-1")).toBeNull();
+      await user.click(screen.getAllByRole("button", { name: /row actions/i })[0]!);
+      await user.click(screen.getByRole("menuitem", { name: /view details/i }));
+      expect(screen.getByRole("dialog")).toHaveTextContent("Details");
 
-      // Clicking another toggle must NOT self-inspect; it asks the parent, and
-      // single-row semantics mean the proposed set is just the new key.
-      const toggles = screen.getAllByRole("button", { name: /inspect row/i });
-      await user.click(toggles[0]!);
-      expect(screen.queryByTestId("exp-1")).toBeNull();
-      const next = onExpandedChange.mock.calls.at(-1)?.[0] as ReadonlySet<string>;
-      expect([...next]).toEqual(["1"]);
-
-      // Parent applies the new set → row 1 now renders inspected, row 2 closes.
       rerender(
         <DataTable
           data={sample}
           columns={columns}
           rowKey={(r) => r.id}
-          renderExpanded={(r) => <div data-testid={`exp-${r.id}`}>{r.name}</div>}
-          expandedKeys={new Set(["1"])}
-          onExpandedChange={onExpandedChange}
+          renderDetails={renderDet}
+          detailsTitle={(r) => <span>Title: {r.name}</span>}
         />,
       );
-      expect(screen.getByTestId("exp-1")).toBeInTheDocument();
-      expect(screen.queryByTestId("exp-2")).toBeNull();
+      expect(screen.getByText("Title: alpha")).toBeInTheDocument();
+    });
+
+    it("prev/next retarget the drawer and disable at the ends", async () => {
+      const user = userEvent.setup();
+      render(
+        <DataTable
+          data={sample}
+          columns={columns}
+          rowKey={(r) => r.id}
+          renderDetails={renderDet}
+        />,
+      );
+      await user.click(screen.getAllByRole("button", { name: /row actions/i })[0]!);
+      await user.click(screen.getByRole("menuitem", { name: /view details/i }));
+      expect(screen.getByTestId("det-1")).toBeInTheDocument();
+      // On the first row: Previous disabled, Next enabled; counter reads 1 / 3.
+      expect(screen.getByText("1 / 3")).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: /previous row/i })).toBeDisabled();
+      expect(screen.getByRole("button", { name: /next row/i })).toBeEnabled();
+
+      await user.click(screen.getByRole("button", { name: /next row/i }));
+      expect(screen.getByTestId("det-2")).toBeInTheDocument();
+      expect(screen.queryByTestId("det-1")).toBeNull();
+
+      await user.click(screen.getByRole("button", { name: /next row/i }));
+      expect(screen.getByTestId("det-3")).toBeInTheDocument();
+      // On the last row: Next disabled, Previous enabled.
+      expect(screen.getByRole("button", { name: /next row/i })).toBeDisabled();
+      expect(screen.getByRole("button", { name: /previous row/i })).toBeEnabled();
+
+      await user.click(screen.getByRole("button", { name: /previous row/i }));
+      expect(screen.getByTestId("det-2")).toBeInTheDocument();
+    });
+
+    it("Escape closes the drawer", async () => {
+      const user = userEvent.setup();
+      render(
+        <DataTable
+          data={sample}
+          columns={columns}
+          rowKey={(r) => r.id}
+          renderDetails={renderDet}
+        />,
+      );
+      await user.click(screen.getAllByRole("button", { name: /row actions/i })[0]!);
+      await user.click(screen.getByRole("menuitem", { name: /view details/i }));
+      expect(screen.getByRole("dialog")).toBeInTheDocument();
+      await user.keyboard("{Escape}");
+      expect(screen.queryByRole("dialog")).toBeNull();
+    });
+
+    it("clicking the row body still calls onRowOpen (page-owned open), without opening the drawer", async () => {
+      const onRowOpen = vi.fn();
+      const user = userEvent.setup();
+      render(
+        <DataTable
+          data={sample}
+          columns={columns}
+          rowKey={(r) => r.id}
+          onRowOpen={onRowOpen}
+          renderDetails={renderDet}
+        />,
+      );
+      await user.click(screen.getByText("beta"));
+      expect(onRowOpen).toHaveBeenCalledWith(sample[1]);
+      // Uncontrolled DataTable does not open the drawer on a bare row click —
+      // that's the page's call (AlertsPage wires onRowOpen to open it).
+      expect(screen.queryByRole("dialog")).toBeNull();
+    });
+
+    it("fires onDetailsKeyChange with the open key, and null on close (uncontrolled)", async () => {
+      const onDetailsKeyChange = vi.fn();
+      const user = userEvent.setup();
+      render(
+        <DataTable
+          data={sample}
+          columns={columns}
+          rowKey={(r) => r.id}
+          renderDetails={renderDet}
+          onDetailsKeyChange={onDetailsKeyChange}
+        />,
+      );
+      // Mount fires once with null (uncontrolled effect) — "nothing open".
+      expect(onDetailsKeyChange.mock.calls).toEqual([[null]]);
+
+      await user.click(screen.getAllByRole("button", { name: /row actions/i })[0]!);
+      await user.click(screen.getByRole("menuitem", { name: /view details/i }));
+      expect(onDetailsKeyChange).toHaveBeenLastCalledWith("1");
+
+      await user.keyboard("{Escape}");
+      expect(onDetailsKeyChange).toHaveBeenLastCalledWith(null);
+    });
+
+    it("controlled detailsKey renders exactly that row and routes opens through onDetailsKeyChange", async () => {
+      const onDetailsKeyChange = vi.fn();
+      const user = userEvent.setup();
+      const { rerender } = render(
+        <DataTable
+          data={sample}
+          columns={columns}
+          rowKey={(r) => r.id}
+          renderDetails={renderDet}
+          detailsKey={null}
+          onDetailsKeyChange={onDetailsKeyChange}
+        />,
+      );
+      // Controlled + closed: no drawer, and the mount effect does NOT fire.
+      expect(screen.queryByRole("dialog")).toBeNull();
+      expect(onDetailsKeyChange).not.toHaveBeenCalled();
+
+      // Opening a row asks the parent (write channel) without self-opening —
+      // the modal drawer would otherwise make the table inert, so the open
+      // affordance must round-trip through the controlled prop.
+      await user.click(screen.getAllByRole("button", { name: /row actions/i })[0]!);
+      await user.click(screen.getByRole("menuitem", { name: /view details/i }));
+      expect(onDetailsKeyChange).toHaveBeenLastCalledWith("1");
+      expect(screen.queryByRole("dialog")).toBeNull();
+
+      // Parent applies detailsKey="1" → the drawer opens for exactly row 1.
+      rerender(
+        <DataTable
+          data={sample}
+          columns={columns}
+          rowKey={(r) => r.id}
+          renderDetails={renderDet}
+          detailsKey="1"
+          onDetailsKeyChange={onDetailsKeyChange}
+        />,
+      );
+      expect(screen.getByTestId("det-1")).toBeInTheDocument();
+
+      // Switching the prop retargets to exactly that row.
+      rerender(
+        <DataTable
+          data={sample}
+          columns={columns}
+          rowKey={(r) => r.id}
+          renderDetails={renderDet}
+          detailsKey="2"
+          onDetailsKeyChange={onDetailsKeyChange}
+        />,
+      );
+      expect(screen.getByTestId("det-2")).toBeInTheDocument();
+      expect(screen.queryByTestId("det-1")).toBeNull();
     });
   });
 
@@ -726,13 +799,13 @@ describe("DataTable", () => {
       expect(screen.getByText("alpha").closest("tr")).toHaveAttribute("data-focused", "true");
     });
 
-    it("e toggles inspection of the focused row when renderExpanded is set", () => {
+    it("e opens the details drawer for the focused row when renderDetails is set", () => {
       render(
         <DataTable
           data={sample}
           columns={columns}
           rowKey={(r) => r.id}
-          renderExpanded={(r) => <div data-testid={`exp-${r.id}`}>{r.name}</div>}
+          renderDetails={(r) => <div data-testid={`exp-${r.id}`}>{r.name}</div>}
         />,
       );
       const table = screen.getByRole("grid");
@@ -740,28 +813,6 @@ describe("DataTable", () => {
       fireEvent.keyDown(table, { key: "j" }); // focus row 1
       fireEvent.keyDown(table, { key: "e" });
       expect(screen.getByTestId("exp-1")).toBeInTheDocument();
-      fireEvent.keyDown(table, { key: "e" });
-      expect(screen.queryByTestId("exp-1")).toBeNull();
-    });
-
-    it("ArrowDown retargets the open inspector to the newly focused row", () => {
-      render(
-        <DataTable
-          data={sample}
-          columns={columns}
-          rowKey={(r) => r.id}
-          renderExpanded={(r) => <div data-testid={`exp-${r.id}`}>{r.name}</div>}
-        />,
-      );
-      const table = screen.getByRole("grid");
-      table.focus();
-      fireEvent.keyDown(table, { key: "ArrowDown" }); // focus row 1
-      fireEvent.keyDown(table, { key: "e" }); // inspect row 1
-      expect(screen.getByTestId("exp-1")).toBeInTheDocument();
-      // Moving focus while the inspector is open follows to the next row.
-      fireEvent.keyDown(table, { key: "ArrowDown" });
-      expect(screen.getByTestId("exp-2")).toBeInTheDocument();
-      expect(screen.queryByTestId("exp-1")).toBeNull();
     });
 
     it("moving focus re-renders only the affected rows, not the whole table", () => {
@@ -868,13 +919,13 @@ describe("DataTable", () => {
       expect(rows).toHaveLength(0);
     });
 
-    it("e does NOT expand when Ctrl is held", () => {
+    it("e does NOT open the drawer when Ctrl is held", () => {
       render(
         <DataTable
           data={sample}
           columns={columns}
           rowKey={(r) => r.id}
-          renderExpanded={(r) => <div data-testid={`exp-${r.id}`}>{r.name}</div>}
+          renderDetails={(r) => <div data-testid={`exp-${r.id}`}>{r.name}</div>}
         />,
       );
       const table = screen.getByRole("grid");

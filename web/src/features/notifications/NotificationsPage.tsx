@@ -152,7 +152,7 @@ export function NotificationsPage() {
                   }
                 />
               }
-              renderExpanded={(row) => (
+              renderDetails={(row) => (
                 <RowDetailPanel
                   row={row as unknown as Record<string, unknown>}
                   objectType="notification"
@@ -211,7 +211,7 @@ export function NotificationsPage() {
                   }
                 />
               }
-              renderExpanded={(row) => (
+              renderDetails={(row) => (
                 <RowDetailPanel
                   row={row as unknown as Record<string, unknown>}
                   objectType="action"

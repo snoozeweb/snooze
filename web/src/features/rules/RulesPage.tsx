@@ -584,7 +584,7 @@ export function RulesPage() {
                   }
                 />
               }
-              renderExpanded={(row) => (
+              renderDetails={(row) => (
                 <RowDetailPanel
                   row={row as unknown as Record<string, unknown>}
                   objectType="reject"
@@ -644,7 +644,7 @@ export function RulesPage() {
                   }
                 />
               }
-              renderExpanded={(row) => (
+              renderDetails={(row) => (
                 <RowDetailPanel
                   row={row as unknown as Record<string, unknown>}
                   objectType="aggregaterule"
