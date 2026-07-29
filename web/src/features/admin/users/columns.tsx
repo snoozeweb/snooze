@@ -100,7 +100,7 @@ export function makeUserColumns(roleGroupIndex: Map<string, string[]>): ColumnDe
       header: "Name",
       cell: (r) => <Code>{r.name}</Code>,
       sortable: true,
-      width: "180px",
+      width: "270px",
     },
     {
       id: "type",
@@ -126,13 +126,13 @@ export function makeUserColumns(roleGroupIndex: Map<string, string[]>): ColumnDe
       id: "roles",
       header: "Roles",
       cell: (r) => <RolesCell user={r} roleGroupIndex={roleGroupIndex} />,
-      width: "240px",
+      width: "288px",
     },
     {
       id: "groups",
       header: "Groups",
       cell: (r) => <BadgeList items={r.groups} max={6} />,
-      width: "280px",
+      width: "420px",
       hideBelow: "xl",
     },
     {

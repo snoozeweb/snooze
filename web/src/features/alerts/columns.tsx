@@ -86,7 +86,7 @@ export const alertColumns: ColumnDef<Record_>[] = [
     // timestamp tooltip and a "Nm ago" prefix while the alert is <1h old.
     cell: (r) => <TimeCell epoch={r.date_epoch} />,
     sortable: true,
-    width: "175px",
+    width: "210px",
   },
   {
     id: "severity",
@@ -168,7 +168,7 @@ export const alertColumns: ColumnDef<Record_>[] = [
     header: "Process",
     cell: (r) => (r.process ? <Code>{r.process}</Code> : <span>—</span>),
     sortable: true,
-    width: "130px",
+    width: "169px",
     hideBelow: "xl",
   },
   {

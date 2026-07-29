@@ -67,7 +67,7 @@ export const snoozeColumns: ColumnDef<Snooze>[] = [
     header: "Name",
     cell: (r) => <Code>{r.name}</Code>,
     sortable: true,
-    width: "200px",
+    width: "240px",
   },
   {
     id: "condition",

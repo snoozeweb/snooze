@@ -16,7 +16,7 @@ export function makeApiKeyColumns(): ColumnDef<ApiKey>[] {
       header: "Owner",
       cell: (r) => <Code>{r.owner}</Code>,
       sortable: true,
-      width: "180px",
+      width: "234px",
     },
     {
       id: "name",
