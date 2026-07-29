@@ -35,6 +35,7 @@ export function makeApiKeyColumns(): ColumnDef<ApiKey>[] {
           <span style={{ color: "var(--text-muted)" }}>—</span>
         ),
       width: "160px",
+      hideBelow: "xl",
     },
     {
       id: "permissions",
@@ -62,6 +63,7 @@ export function makeApiKeyColumns(): ColumnDef<ApiKey>[] {
       cell: (r) => <TimeCell epoch={r.last_used_at} />,
       sortable: true,
       width: "160px",
+      hideBelow: "lg",
     },
     {
       id: "expires_at",
@@ -74,24 +76,14 @@ export function makeApiKeyColumns(): ColumnDef<ApiKey>[] {
         ),
       sortable: true,
       width: "160px",
-    },
-    {
-      id: "last_used_at",
-      header: "Last used",
-      cell: (r) =>
-        r.last_used_at ? (
-          <TimeCell epoch={r.last_used_at} />
-        ) : (
-          <span style={{ color: "var(--text-muted)" }}>never</span>
-        ),
-      sortable: true,
-      width: "160px",
+      hideBelow: "lg",
     },
     {
       id: "use_count",
       header: "Uses",
       cell: (r) => <span>{r.use_count ?? 0}</span>,
       width: "80px",
+      hideBelow: "xl",
     },
   ];
 }

@@ -96,6 +96,14 @@
 }
 .table {
   width: 100%;
+  /* Fixed layout: <th> widths are honored exactly instead of acting as
+     minimums, width-less columns share whatever space is left, and the
+     table actually respects `width: 100%` on narrow containers instead of
+     growing to fit each column's min-content (the old `auto` default —
+     the root cause of the card-threshold-to-1800px horizontal-scroll bug).
+     Cells can now be narrower than their content, so body/header cells add
+     overflow safety below. */
+  table-layout: fixed;
   border-collapse: separate;
   border-spacing: 0;
   font-size: var(--text-sm);
@@ -125,11 +133,19 @@
   border-bottom: 1px solid var(--border);
   box-shadow: 0 1px 0 0 var(--border);
   white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 .row td {
   padding: var(--space-2) var(--space-3);
   border-bottom: 1px solid var(--border-muted);
   color: var(--text);
+  /* Fixed layout lets a cell be narrower than its content — these keep a
+     single unbroken token (uid, hostname) from painting over the next
+     column while still letting normal text wrap (rows may grow taller). */
+  overflow: hidden;
+  text-overflow: ellipsis;
+  overflow-wrap: anywhere;
 }
 /* With the old leading toggle column gone, the first column would sit almost
    flush against the table border — give it a touch more breathing room. The
@@ -189,47 +205,41 @@
 }
 .actionsCell {
   width: 32px;
-  padding: 0 var(--space-2) !important;
+  /* 2px not --space-2 (8px): the "sm" IconButton is 28px square (see
+     IconButton.module.css), so anything more than 2px/side would make the
+     button itself wider than the 32px cell and — now that overflow is
+     visible below — push it past the table's own right edge (it's the
+     last column) into genuine horizontal scroll. */
+  padding: 0 2px !important;
   text-align: right;
+  /* The count badge overhangs the kebab button by -5px (absolute, see
+     RowActionsMenu) — the new `.row td` overflow:hidden would clip it.
+     !important: `.row td` (a class + type selector, specificity 0-1-1)
+     otherwise outranks this single-class selector (0-1-0) and wins despite
+     appearing earlier in the file — same reason the padding overrides above
+     need it. */
+  overflow: visible !important;
 }
 
-/* Count pill overlaid on the row-actions kebab (e.g. unread comment count).
-   The wrap is the positioning context; the kebab IconButton fills it and the
-   pill sits in the top-right corner with clicks falling through to the
-   button. */
-.actionsBadgeWrap {
-  position: relative;
-  display: inline-flex;
-}
-.actionsBadge {
-  position: absolute;
-  /* Tuck the pill into the very corner (mostly outside the 28px kebab) so it
-     reads as a badge and doesn't cover the centred ⋯ dots. */
-  top: -5px;
-  right: -5px;
-  min-width: 13px;
-  height: 13px;
-  padding: 0 3px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  border-radius: var(--radius-pill);
-  background: var(--accent);
-  color: var(--accent-fg);
-  font-size: 9px;
-  font-weight: 600;
-  line-height: 1;
-  font-feature-settings: var(--font-features-numeric);
-  pointer-events: none;
-}
-
-/* Quick-actions cell: a fixed-width cluster of inline IconButtons rendered
-   before the kebab. Hidden by default (opacity, not display) so revealing
-   them on hover/focus never reflows the row or shifts columns. */
+/* Quick-actions cell: under `table-layout: fixed` a width-less column splits
+   whatever space is left over with the flexible Message column instead of
+   sizing to content — at narrow container widths the leftover goes negative
+   and both columns collapse to ~0. Reserve nothing: a tiny fixed spacer
+   holds the cell's place in the grid, and the button cluster itself is
+   position:absolute, floating over the row's trailing edge on hover/focus
+   instead of occupying table-layout space. `overflow: visible` lets it
+   escape the new `.row td` clip. */
 .quickActionsCell {
+  width: 12px;
   padding: 0 var(--space-1) !important;
   text-align: right;
   white-space: nowrap;
+  position: relative;
+  /* !important: `.row td` (specificity 0-1-1) otherwise outranks this
+     single-class selector (0-1-0) and wins despite appearing earlier in the
+     file, clipping the floated cluster below to a ~0px sliver — see
+     .actionsCell above for the same fight. */
+  overflow: visible !important;
 }
 .quickActions {
   display: inline-flex;
@@ -237,6 +247,18 @@
   gap: var(--space-1);
   opacity: 0;
   transition: opacity var(--dur-fast) var(--ease-out);
+  /* Float the cluster over the row's trailing edge instead of taking up
+     table-layout space (see .quickActionsCell above). `background: inherit`
+     picks up the td's row-state background (hover/selected/focused) so the
+     cluster reads as a chip sitting over the message tail rather than a
+     transparent overlay. */
+  position: absolute;
+  right: var(--space-1);
+  top: 50%;
+  transform: translateY(-50%);
+  background: inherit;
+  border-radius: var(--radius-sm);
+  padding: 2px var(--space-1);
 }
 /* Reveal on row hover, on keyboard focus of the row, and whenever a quick
    action itself holds focus (so it stays reachable via the keyboard). */
@@ -245,29 +267,6 @@
 .quickActions:focus-within {
   opacity: 1;
 }
-/* Detail drawer helpers ─────────────────────────────────────────────────
-   The modal detail drawer is rendered by DataTable after the table (see the
-   Drawer in DataTable.tsx). `detailKeyNav` wraps the drawer's title + body so
-   ArrowUp/ArrowDown have one keydown target covering the whole drawer. A real
-   flex column (not display:contents) because it also takes the drawer's
-   initial focus (tabIndex=-1) — a contents box can't be focused. It fills
-   DrawerContent's column so DrawerBody keeps its own scroll.
-   `detailsPosition` is the mono "N / M" row counter in the header toolbar. */
-.detailKeyNav {
-  display: flex;
-  flex-direction: column;
-  flex: 1;
-  min-height: 0;
-  outline: none;
-}
-.detailsPosition {
-  font-family: var(--font-mono);
-  font-feature-settings: var(--font-features-numeric);
-  font-size: var(--text-xs);
-  color: var(--text-muted);
-  white-space: nowrap;
-}
-
 .sortBtn {
   background: none;
   border: 0;
@@ -308,6 +307,39 @@
   display: inline-flex;
   align-items: center;
   gap: var(--space-1);
+}
+
+/* ── Column priority tiers ──────────────────────────────────────────────
+   Columns opt in via `hideBelow: "md" | "lg" | "xl" | "xxl"` on their
+   ColumnDef; DataTable mirrors that onto a `data-hide` attribute on both the
+   <th> and its column's <td> (and the loading skeleton's <td>). As the
+   table's own container (not the viewport) shrinks, the least-essential
+   tier goes first: "xxl" columns disappear below 1600px, then "xl" below
+   1280px, then "lg" below 1024px, then "md" below 768px — cumulative, so at
+   700px all four tiers are hidden. Scoped to `640px < width` so these never
+   fight card mode: at <=640px the rules below stop matching and the
+   card-mode block further down takes over, reflowing every field back in
+   (hidden or not) as a stacked card — so a column is never permanently
+   unreachable, only deprioritized. */
+@container (640px < width <= 1600px) {
+  .table [data-hide="xxl"] {
+    display: none;
+  }
+}
+@container (640px < width <= 1280px) {
+  .table [data-hide="xl"] {
+    display: none;
+  }
+}
+@container (640px < width <= 1024px) {
+  .table [data-hide="lg"] {
+    display: none;
+  }
+}
+@container (640px < width <= 768px) {
+  .table [data-hide="md"] {
+    display: none;
+  }
 }
 
 /* ── Card mode ──────────────────────────────────────────────────────────
@@ -393,6 +425,11 @@
     flex: 1 1 auto;
     order: 10;
     justify-content: flex-start;
+    /* Undo the desktop overlay (position:absolute + 12px spacer) so cards
+       keep the footer-row behavior above: the cell participates in normal
+       flex flow again. */
+    position: static;
+    width: auto;
   }
   .table tbody .row td.actionsCell {
     flex: 0 0 auto;
@@ -434,5 +471,11 @@
      last so it beats the `.row:hover .quickActions` opacity rule above. */
   .table tbody .row .quickActions {
     opacity: 1;
+    /* Undo the desktop overlay positioning (see .quickActionsCell reset
+       above) so the cluster sits inline in the card's footer row. */
+    position: static;
+    transform: none;
+    background: none;
+    padding: 0;
   }
 }

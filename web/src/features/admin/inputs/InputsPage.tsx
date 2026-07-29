@@ -4,6 +4,7 @@ import { DataTable } from "@/shared/ui/DataTable";
 import { Button } from "@/shared/ui/Button";
 import { Card } from "@/shared/ui/Card";
 import { EmptyState } from "@/shared/ui/EmptyState";
+import { JsonViewer } from "@/shared/ui/JsonViewer";
 import { INJECTION_SOURCES } from "@/features/alerts/injectionGuide";
 import { InjectAlertsDialog } from "@/features/alerts/InjectAlertsDialog";
 import { useInputActivity } from "./api";
@@ -88,6 +89,11 @@ export function InputsPage() {
         columns={columns}
         rowKey={(r) => r.id}
         loading={query.isPending}
+        // Rows are synthetic catalogue+activity merges (no `uid`, no audit
+        // objectType), so JsonViewer is the whole story here — no
+        // RowDetailPanel/audit-log section to bolt on.
+        renderDetails={(row) => <JsonViewer value={row as unknown as Record<string, unknown>} />}
+        detailsTitle={(row) => row.name}
         emptyState={
           <EmptyState icon="plug" title="No inputs" description="No supported inputs found." />
         }
@@ -100,7 +106,15 @@ export function InputsPage() {
             Alert sources seen in records that don&apos;t match a known input — custom REST posters,
             or receivers without a catalogue entry.
           </p>
-          <DataTable<InputRow> data={other} columns={columns} rowKey={(r) => r.id} />
+          <DataTable<InputRow>
+            data={other}
+            columns={columns}
+            rowKey={(r) => r.id}
+            renderDetails={(row) => (
+              <JsonViewer value={row as unknown as Record<string, unknown>} />
+            )}
+            detailsTitle={(row) => row.name}
+          />
         </Card>
       ) : null}
 

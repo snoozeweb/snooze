@@ -113,6 +113,88 @@ describe("DataTable", () => {
     expect(onChange).toHaveBeenCalledWith({ sortBy: "name", order: "desc" });
   });
 
+  describe("hideBelow", () => {
+    // jsdom can't evaluate container queries, so this only asserts the
+    // `data-hide` attribute lands where DataTable.module.css's
+    // `[data-hide="…"]` selectors expect it — on both the header cell and
+    // every row's body cell for that column, and nowhere else.
+    const tieredColumns: ColumnDef<Row>[] = [
+      { id: "name", header: "Name", cell: (r) => r.name },
+      { id: "severity", header: "Severity", cell: (r) => r.severity, hideBelow: "lg" },
+    ];
+
+    it("stamps data-hide on the th and every td for a column with hideBelow", () => {
+      render(<DataTable data={sample} columns={tieredColumns} rowKey={(r) => r.id} />);
+      const severityHeader = screen.getByRole("columnheader", { name: /severity/i });
+      expect(severityHeader).toHaveAttribute("data-hide", "lg");
+
+      const nameHeader = screen.getByRole("columnheader", { name: /^name$/i });
+      expect(nameHeader).not.toHaveAttribute("data-hide");
+
+      for (const row of sample) {
+        const cell = screen.getByText(row.severity).closest("td")!;
+        expect(cell).toHaveAttribute("data-hide", "lg");
+        const nameCell = screen.getByText(row.name).closest("td")!;
+        expect(nameCell).not.toHaveAttribute("data-hide");
+      }
+    });
+
+    it("stamps data-hide on loading-skeleton cells for a column with hideBelow", () => {
+      render(<DataTable data={[]} columns={tieredColumns} rowKey={(r) => r.id} loading />);
+      const skeletonCells = screen.getAllByTestId("skeleton").map((s) => s.closest("td")!);
+      expect(skeletonCells.some((td) => td.getAttribute("data-hide") === "lg")).toBe(true);
+      expect(skeletonCells.some((td) => !td.hasAttribute("data-hide"))).toBe(true);
+    });
+  });
+
+  describe("aria-sort", () => {
+    const sortableColumns: ColumnDef<Row>[] = [
+      { id: "name", header: "Name", cell: (r) => r.name, sortable: true },
+      { id: "severity", header: "Severity", cell: (r) => r.severity, sortable: true },
+    ];
+
+    it("marks the active ascending column and reports 'none' on other sortable columns", () => {
+      render(
+        <DataTable
+          data={sample}
+          columns={sortableColumns}
+          rowKey={(r) => r.id}
+          serverSort={{ sortBy: "name", order: "asc", onChange: vi.fn() }}
+        />,
+      );
+      expect(screen.getByRole("columnheader", { name: /name/i })).toHaveAttribute(
+        "aria-sort",
+        "ascending",
+      );
+      expect(screen.getByRole("columnheader", { name: /severity/i })).toHaveAttribute(
+        "aria-sort",
+        "none",
+      );
+    });
+
+    it("marks the active column as descending when order is desc", () => {
+      render(
+        <DataTable
+          data={sample}
+          columns={sortableColumns}
+          rowKey={(r) => r.id}
+          serverSort={{ sortBy: "name", order: "desc", onChange: vi.fn() }}
+        />,
+      );
+      expect(screen.getByRole("columnheader", { name: /name/i })).toHaveAttribute(
+        "aria-sort",
+        "descending",
+      );
+    });
+
+    it("omits aria-sort entirely on non-sortable columns and when no serverSort is given", () => {
+      render(<DataTable data={sample} columns={columns} rowKey={(r) => r.id} />);
+      for (const h of screen.getAllByRole("columnheader")) {
+        expect(h).not.toHaveAttribute("aria-sort");
+      }
+    });
+  });
+
   it("renders row-actions menu and fires onSelect", async () => {
     const handler = vi.fn();
     const user = userEvent.setup();
@@ -387,10 +469,63 @@ describe("DataTable", () => {
       expect(screen.queryByRole("menu", { name: /row context menu/i })).toBeNull();
     });
 
-    it("does not attach onContextMenu when contextMenuItems is omitted", () => {
+    it("does not attach onContextMenu when neither contextMenuItems nor renderDetails is set", () => {
       render(<DataTable data={sample} columns={columns} rowKey={(r) => r.id} />);
       fireEvent.contextMenu(screen.getByText("alpha"));
       expect(screen.queryByRole("menu", { name: /row context menu/i })).toBeNull();
+    });
+
+    it("prepends 'View details' ahead of the page's contextMenuItems when renderDetails is set, and opens the drawer", async () => {
+      const user = userEvent.setup();
+      render(
+        <DataTable
+          data={sample}
+          columns={columns}
+          rowKey={(r) => r.id}
+          renderDetails={(r) => <div data-testid={`det-${r.id}`}>{r.name} details</div>}
+          contextMenuItems={() => [{ key: "open", label: "Open", onSelect: vi.fn() }]}
+        />,
+      );
+      fireEvent.contextMenu(screen.getByText("beta"));
+      expect(screen.getByRole("menu", { name: /row context menu/i })).toBeInTheDocument();
+      const items = screen.getAllByRole("menuitem");
+      expect(items[0]).toHaveTextContent("View details");
+      expect(items[1]).toHaveTextContent("Open");
+      await user.click(screen.getByRole("menuitem", { name: /view details/i }));
+      expect(screen.getByTestId("det-2")).toBeInTheDocument();
+    });
+
+    it("shows a right-click menu containing exactly 'View details' when renderDetails is set but contextMenuItems is omitted", () => {
+      render(
+        <DataTable
+          data={sample}
+          columns={columns}
+          rowKey={(r) => r.id}
+          renderDetails={(r) => <div>{r.name} details</div>}
+        />,
+      );
+      fireEvent.contextMenu(screen.getByText("alpha"));
+      const items = screen.getAllByRole("menuitem");
+      expect(items).toHaveLength(1);
+      expect(items[0]).toHaveTextContent("View details");
+    });
+
+    it("still leads with the selection Copy item ahead of the auto 'View details' entry", () => {
+      const sel = { isCollapsed: false, toString: () => "abc" } as unknown as Selection;
+      const spy = vi.spyOn(window, "getSelection").mockReturnValue(sel);
+      render(
+        <DataTable
+          data={sample}
+          columns={columns}
+          rowKey={(r) => r.id}
+          renderDetails={(r) => <div>{r.name} details</div>}
+        />,
+      );
+      fireEvent.contextMenu(screen.getByText("alpha"));
+      const items = screen.getAllByRole("menuitem");
+      expect(items[0]).toHaveTextContent("Copy");
+      expect(items[1]).toHaveTextContent("View details");
+      spy.mockRestore();
     });
 
     it("Enter activates the highlighted item", () => {

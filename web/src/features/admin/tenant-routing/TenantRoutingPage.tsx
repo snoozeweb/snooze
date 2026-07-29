@@ -32,6 +32,7 @@ export function TenantRoutingPage() {
     setSelectedKeys,
     confirmDelete,
     contextMenuItems,
+    rowActions,
     bulkActions,
   } = useResourceListPage<TenantMatchRule, TenantRoutingSearch>({
     to: "/web/admin/tenant-routing",
@@ -54,6 +55,7 @@ export function TenantRoutingPage() {
         rowKey={(r) => r.uid ?? `${r.match_type}-${r.match}`}
         loading={list.isPending}
         contextMenuItems={contextMenuItems}
+        rowActions={rowActions}
         selectable
         selectedKeys={selectedKeys}
         onSelectionChange={setSelectedKeys}

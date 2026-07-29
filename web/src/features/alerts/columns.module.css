@@ -8,8 +8,8 @@
  * card — never in a normal table row.
  */
 .message {
-  display: inline-block;
-  max-width: 400px;
+  display: block;
+  max-width: 100%;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;

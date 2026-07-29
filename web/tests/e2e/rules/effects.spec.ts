@@ -44,7 +44,14 @@ test.describe("rule pipeline effects", () => {
 
     await page.goto(server.baseURL + "/web/alerts");
     await expect(page.getByText("srv-tagged")).toBeVisible();
-    // The environment column shows "prod" after the rule applies.
-    await expect(page.getByText("prod").first()).toBeVisible();
+    // The environment column sits in the columns.tsx "xxl" hide tier — hidden
+    // in the table itself at this viewport's container width — so open the
+    // row's detail drawer (row click) and assert the applied value on its
+    // Record tab instead of on the table at large.
+    await page.locator("tr", { hasText: "srv-tagged" }).first().click({ force: true });
+    const dialog = page.getByRole("dialog");
+    await expect(dialog).toBeVisible();
+    await dialog.getByRole("tab", { name: /^record$/i }).click({ force: true });
+    await expect(dialog.getByText("prod").first()).toBeVisible();
   });
 });

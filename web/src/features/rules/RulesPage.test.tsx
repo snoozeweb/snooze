@@ -91,6 +91,23 @@ describe("RulesPage", () => {
     expect(screen.getByText("1 selected")).toBeInTheDocument();
   });
 
+  it("Rules tab: row kebab View details opens the record/audit drawer", async () => {
+    mswServer.use(
+      http.get("/api/v1/rule", () =>
+        HttpResponse.json({
+          data: [{ uid: "rl1", name: "Tag prod", enabled: true, comment: "" }],
+          meta: { count: 1, limit: 50, offset: 0, total: 1 },
+        }),
+      ),
+    );
+    const user = userEvent.setup();
+    setup();
+    await waitFor(() => expect(screen.getByText("Tag prod")).toBeInTheDocument());
+    await user.click(screen.getByRole("button", { name: /row actions/i }));
+    await user.click(screen.getByRole("menuitem", { name: /view details/i }));
+    expect(screen.getByRole("dialog")).toHaveTextContent("Record");
+  });
+
   it("switches to the Aggregates tab and lists aggregate rules", async () => {
     mswServer.use(
       http.get("/api/v1/rule", () =>

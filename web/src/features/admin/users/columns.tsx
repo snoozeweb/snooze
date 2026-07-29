@@ -107,6 +107,7 @@ export function makeUserColumns(roleGroupIndex: Map<string, string[]>): ColumnDe
       header: "Type",
       cell: (r) => <Badge variant="neutral">{r.method ?? r.type ?? "local"}</Badge>,
       width: "90px",
+      hideBelow: "lg",
     },
     {
       id: "enabled",
@@ -132,6 +133,7 @@ export function makeUserColumns(roleGroupIndex: Map<string, string[]>): ColumnDe
       header: "Groups",
       cell: (r) => <BadgeList items={r.groups} max={6} />,
       width: "280px",
+      hideBelow: "xl",
     },
     {
       id: "last_login",
@@ -143,6 +145,7 @@ export function makeUserColumns(roleGroupIndex: Map<string, string[]>): ColumnDe
           <span style={{ color: "var(--text-muted)" }}>never</span>
         ),
       width: "120px",
+      hideBelow: "xl",
     },
     {
       id: "comment",

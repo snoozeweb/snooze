@@ -3,6 +3,7 @@ import { useSearch, useNavigate, useLocation } from "@tanstack/react-router";
 import { Badge } from "@/shared/ui/Badge";
 import { DataTable, type ColumnDef } from "@/shared/ui/DataTable";
 import { EmptyState } from "@/shared/ui/EmptyState";
+import { JsonViewer } from "@/shared/ui/JsonViewer";
 import { TimeCell } from "@/shared/ui/TimeCell";
 import { useTableSearch } from "@/shared/hooks/useTableSearch";
 import { ACTION_LABEL, ACTION_VARIANT } from "@/features/audit/maps";
@@ -47,6 +48,7 @@ const COLUMNS: ColumnDef<AuditEntry>[] = [
     sortable: true,
     cell: (row) => row.method ?? "—",
     width: "7rem",
+    hideBelow: "lg",
   },
   {
     id: "summary",
@@ -121,6 +123,14 @@ export function AuthAuditPage() {
         loading={result.isPending}
         search={tableSearch.searchProp}
         toolbarHeader={`${total} events`}
+        // JsonViewer, not RowDetailPanel — these rows ARE audit-log entries, so
+        // an "Audit log" section inside the drawer would be circular. Read-only
+        // page: no contextMenuItems/rowActions are added, so the auto "View
+        // details" kebab entry is the only per-row affordance.
+        renderDetails={(row) => <JsonViewer value={row as unknown as Record<string, unknown>} />}
+        detailsTitle={(row) =>
+          `${ACTION_LABEL[row.action]}${row.username ? ` — ${row.username}` : ""}`
+        }
         emptyState={
           <EmptyState
             icon="lock"

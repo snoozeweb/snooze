@@ -34,6 +34,7 @@ export function GroupsPage() {
     setSelectedKeys,
     confirmDelete,
     contextMenuItems,
+    rowActions,
     bulkActions,
   } = useResourceListPage<Group, GroupsSearch>({
     to: "/web/admin/groups",
@@ -65,6 +66,7 @@ export function GroupsPage() {
         rowKey={(r) => r.uid ?? r.name}
         loading={list.isPending}
         contextMenuItems={contextMenuItems}
+        rowActions={rowActions}
         selectable
         selectedKeys={selectedKeys}
         onSelectionChange={setSelectedKeys}

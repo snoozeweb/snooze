@@ -117,12 +117,14 @@ export const aggregateRuleColumns: ColumnDef<AggregateRule>[] = [
     header: "Fields",
     cell: (r) => <StringListCell items={r.fields} />,
     width: "180px",
+    hideBelow: "lg",
   },
   {
     id: "watch",
     header: "Watch",
     cell: (r) => <StringListCell items={r.watch} />,
     width: "180px",
+    hideBelow: "xl",
   },
   {
     id: "throttle",
@@ -140,5 +142,6 @@ export const aggregateRuleColumns: ColumnDef<AggregateRule>[] = [
       );
     },
     width: "160px",
+    hideBelow: "xl",
   },
 ];

@@ -12,6 +12,7 @@ export const notificationColumns: ColumnDef<Notification>[] = [
     header: "Window",
     cell: (r) => <TimeConstraintsCell value={r.time_constraints} />,
     width: "210px",
+    hideBelow: "lg",
   },
   {
     id: "name",
@@ -55,6 +56,7 @@ export const notificationColumns: ColumnDef<Notification>[] = [
       </span>
     ),
     width: "160px",
+    hideBelow: "xl",
   },
   {
     id: "batch",
@@ -69,6 +71,7 @@ export const notificationColumns: ColumnDef<Notification>[] = [
         <Badge variant="muted">no</Badge>
       ),
     width: "80px",
+    hideBelow: "xl",
   },
 ];
 
@@ -163,6 +166,7 @@ export const actionColumns: ColumnDef<Action>[] = [
     header: "Comment",
     cell: (r) => <span style={{ color: "var(--text-muted)" }}>{r.comment ?? "—"}</span>,
     width: "240px",
+    hideBelow: "lg",
   },
   {
     id: "batch",
@@ -177,5 +181,6 @@ export const actionColumns: ColumnDef<Action>[] = [
         <Badge variant="muted">no</Badge>
       ),
     width: "80px",
+    hideBelow: "xl",
   },
 ];

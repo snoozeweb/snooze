@@ -3,15 +3,14 @@ import type { CSSProperties, ReactNode } from "react";
 import { Checkbox } from "./Checkbox";
 import { EmptyState } from "./EmptyState";
 import { Icon } from "@/shared/icons/Icon";
-import type { IconName } from "@/shared/icons/icon-names";
 import { IconButton } from "./IconButton";
-import { Menu, MenuContent, MenuItem, MenuTrigger } from "./Menu";
 import { Popover, PopoverContent, PopoverTrigger } from "./Popover";
+import { RowActionsMenu, type RowAction } from "./RowActionsMenu";
+import { RowDetailsDrawer } from "./RowDetailsDrawer";
 import { SearchBar, type ParsedCondition } from "./SearchBar";
 import { Skeleton } from "./Skeleton";
 import { isEditable } from "@/shared/hooks/useShortcut";
 import { DataTableContextMenu, type ContextMenuItem } from "./DataTableContextMenu";
-import { Drawer, DrawerBody, DrawerContent, DrawerTitle } from "./Drawer";
 import styles from "./DataTable.module.css";
 
 export type ColumnDef<T> = {
@@ -21,16 +20,21 @@ export type ColumnDef<T> = {
   sortable?: boolean;
   align?: "left" | "right";
   width?: string;
+  /** Hides the column via a container query when the TABLE'S OWN CONTAINER
+   *  (not the viewport — DataTable's wrapper is an inline-size container)
+   *  narrows below the tier's breakpoint: "md" 768px, "lg" 1024px, "xl"
+   *  1280px, "xxl" 1600px. Tiers are cumulative as the container shrinks —
+   *  "xxl" columns (least essential) disappear first, then "xl", then "lg",
+   *  then "md" — until card mode kicks in at <=640px and every field
+   *  reflows back in as a stacked card, so nothing is ever unreachable. Use
+   *  for secondary/derived/metadata columns; identity and primary-status
+   *  columns should omit this. */
+  hideBelow?: "md" | "lg" | "xl" | "xxl";
 };
 
-export type RowAction = {
-  key: string;
-  label: string;
-  icon?: IconName;
-  danger?: boolean;
-  disabled?: boolean;
-  onSelect: () => void;
-};
+// Re-exported so existing `import type { RowAction } from "@/shared/ui/DataTable"`
+// call sites (many) keep working — the type now lives in RowActionsMenu.tsx.
+export type { RowAction };
 
 export type DataTableProps<T> = {
   data: T[];
@@ -168,6 +172,7 @@ export function DataTable<T>({
   const activeDetailsKey = isControlledDetails ? detailsKey : detailsInner;
   const [ctxMenu, setCtxMenu] = useState<{
     row: T;
+    index: number;
     x: number;
     y: number;
     selection: string;
@@ -198,9 +203,6 @@ export function DataTable<T>({
   // The table root (role="grid"): closeDetails focuses it so keyboard context
   // returns to the grid when the drawer closes.
   const gridRef = useRef<HTMLTableElement>(null);
-  // The detail drawer's key-nav wrapper — receives the drawer's initial focus
-  // (see onOpenAutoFocus on its DrawerContent).
-  const detailKeyNavRef = useRef<HTMLDivElement>(null);
 
   // Details write channel. `null` closes the drawer; a key opens exactly that
   // row (replacing whatever was open). Routes through the controlled/
@@ -241,33 +243,6 @@ export function DataTable<T>({
     setDetailsKey(null);
     gridRef.current?.focus();
   }, [setDetailsKey]);
-
-  // In-drawer ArrowUp/ArrowDown = previous/next row. Guarded by isEditable so
-  // typing in the comment composer never navigates. Attached to a wrapper
-  // inside DrawerContent so it fires wherever focus sits in the drawer.
-  const onDrawerKeyDown = useCallback(
-    (e: React.KeyboardEvent<HTMLDivElement>) => {
-      if (e.key !== "ArrowUp" && e.key !== "ArrowDown") return;
-      if (isEditable(e.target)) return;
-      const cur = isControlledDetailsRef.current
-        ? (detailsKeyRef.current ?? null)
-        : detailsInnerRef.current;
-      if (cur === null) return;
-      const rows = dataRef.current;
-      const idx = rows.findIndex((r) => rowKeyRef.current(r) === cur);
-      if (idx < 0) return;
-      if (e.key === "ArrowUp") {
-        if (idx > 0) {
-          e.preventDefault();
-          retargetDetails(idx - 1);
-        }
-      } else if (idx < rows.length - 1) {
-        e.preventDefault();
-        retargetDetails(idx + 1);
-      }
-    },
-    [retargetDetails],
-  );
 
   // Surface details-key changes to the parent so it can pause polling, etc.
   // Only the uncontrolled path fires from here — in the controlled path the
@@ -375,7 +350,7 @@ export function DataTable<T>({
     // this reflects what the user wants the menu's "Copy" item to copy.
     const selection =
       typeof window !== "undefined" ? (window.getSelection()?.toString() ?? "") : "";
-    if (row) setCtxMenu({ row, x, y, selection });
+    if (row) setCtxMenu({ row, index, x, y, selection });
   }, []);
 
   const handleCheckboxToggle = useCallback(
@@ -608,6 +583,17 @@ export function DataTable<T>({
                   key={col.id}
                   scope="col"
                   {...(col.width ? { style: { width: col.width } } : {})}
+                  {...(col.hideBelow ? { "data-hide": col.hideBelow } : {})}
+                  {...(col.sortable && serverSort
+                    ? {
+                        "aria-sort":
+                          serverSort.sortBy === col.id
+                            ? serverSort.order === "asc"
+                              ? ("ascending" as const)
+                              : ("descending" as const)
+                            : ("none" as const),
+                      }
+                    : {})}
                 >
                   {col.sortable && serverSort ? (
                     <button
@@ -644,7 +630,7 @@ export function DataTable<T>({
                     </td>
                   ) : null}
                   {columns.map((c) => (
-                    <td key={c.id}>
+                    <td key={c.id} {...(c.hideBelow ? { "data-hide": c.hideBelow } : {})}>
                       <Skeleton height={12} />
                     </td>
                   ))}
@@ -673,7 +659,7 @@ export function DataTable<T>({
                     isFocused={idx === focusedIndex}
                     isDisabled={rowDisabled?.(row) ?? false}
                     accent={rowAccent?.(row)}
-                    hasContextMenu={contextMenuItems !== undefined}
+                    hasContextMenu={contextMenuItems !== undefined || renderDetails !== undefined}
                     quickActions={quickActions}
                     rowActions={rowActions}
                     rowActionsBadge={rowActionsBadge}
@@ -691,76 +677,39 @@ export function DataTable<T>({
         </table>
       </div>
 
-      {renderDetails && detailsRow ? (
-        <Drawer
-          open
-          onOpenChange={(o) => {
-            if (!o) closeDetails();
-          }}
-        >
-          <DrawerContent
-            wide
-            // Radix would focus the first tabbable element on open — a
-            // quick-action IconButton here, which pops its Tooltip over the
-            // drawer. Land the initial focus on the key-nav wrapper instead:
-            // neutral (no tooltip), and ArrowUp/ArrowDown paging works
-            // immediately without an extra Tab.
-            onOpenAutoFocus={(e) => {
-              e.preventDefault();
-              detailKeyNavRef.current?.focus();
-            }}
-          >
-            {/* Flex-column wrapper filling the drawer: gives ArrowUp/ArrowDown
-                a single keydown target covering the whole drawer (title
-                toolbar + body) and receives the initial open focus. It's a
-                passive event-delegation container — the interactive controls
-                (nav buttons, comment composer) live inside and own their own
-                semantics — so it carries no role of its own. */}
-            {/* eslint-disable-next-line jsx-a11y/no-static-element-interactions */}
-            <div
-              ref={detailKeyNavRef}
-              tabIndex={-1}
-              className={styles.detailKeyNav}
-              onKeyDown={onDrawerKeyDown}
-            >
-              <DrawerTitle
-                onClose={closeDetails}
-                toolbar={
-                  <>
-                    {detailsActions}
-                    <span className={styles.detailsPosition}>
-                      {detailsIndex + 1} / {data.length}
-                    </span>
-                    <IconButton
-                      icon="chevron-up"
-                      label="Previous row"
-                      size="sm"
-                      disabled={detailsIndex <= 0}
-                      onClick={() => retargetDetails(detailsIndex - 1)}
-                    />
-                    <IconButton
-                      icon="chevron-down"
-                      label="Next row"
-                      size="sm"
-                      disabled={detailsIndex >= data.length - 1}
-                      onClick={() => retargetDetails(detailsIndex + 1)}
-                    />
-                  </>
-                }
-              >
-                {detailsTitle?.(detailsRow) ?? "Details"}
-              </DrawerTitle>
-              <DrawerBody>{renderDetails(detailsRow)}</DrawerBody>
-            </div>
-          </DrawerContent>
-        </Drawer>
+      {renderDetails ? (
+        <RowDetailsDrawer<T>
+          rows={data}
+          rowKey={rowKey}
+          activeKey={activeDetailsKey ?? null}
+          onNavigate={retargetDetails}
+          onClose={closeDetails}
+          renderDetails={renderDetails}
+          detailsTitle={detailsTitle}
+          actions={detailsActions}
+        />
       ) : null}
 
       {serverPagination ? <PaginationBar pag={serverPagination} /> : null}
 
-      {ctxMenu && contextMenuItems ? (
+      {ctxMenu && (contextMenuItems || renderDetails) ? (
         <DataTableContextMenu
-          items={contextMenuItems(ctxMenu.row)}
+          items={[
+            // Same auto-prepended "View details" entry as the kebab (see
+            // DataTableRowInner) — kept in sync so the two affordances never
+            // diverge on which row action opens the drawer.
+            ...(renderDetails
+              ? [
+                  {
+                    key: "__details__",
+                    label: "View details",
+                    icon: "panel-right" as const,
+                    onSelect: () => openDetailsAt(rowKey(ctxMenu.row), ctxMenu.index),
+                  },
+                ]
+              : []),
+            ...(contextMenuItems ? contextMenuItems(ctxMenu.row) : []),
+          ]}
           x={ctxMenu.x}
           y={ctxMenu.y}
           copyText={ctxMenu.selection}
@@ -887,6 +836,7 @@ function DataTableRowInner<T>({
         <td
           key={col.id}
           data-label={col.header}
+          {...(col.hideBelow ? { "data-hide": col.hideBelow } : {})}
           {...(col.align === "right" ? { style: { textAlign: "right" } } : {})}
         >
           {col.cell(row)}
@@ -934,53 +884,6 @@ function DataTableRowInner<T>({
 // memo() erases the generic, so cast back to a generic component type. The
 // default shallow comparator is intentional (see DataTableRowInner's note).
 const DataTableRow = memo(DataTableRowInner) as typeof DataTableRowInner;
-
-function RowActionsMenu({
-  actions,
-  badge,
-}: {
-  actions: RowAction[];
-  badge?: { count: number; label?: string } | undefined;
-}) {
-  const showBadge = !!badge && badge.count > 0;
-  // Fold the badge meaning into the trigger's accessible name so the pill
-  // isn't a sighted-only signal. Radix MenuTrigger is asChild → the IconButton
-  // must stay its direct child, so the pill is an absolutely-positioned
-  // sibling (pointer-events:none) anchored by the relative wrapper.
-  const triggerLabel = showBadge && badge?.label ? `Row actions, ${badge.label}` : "Row actions";
-  const menu = (
-    <Menu>
-      <MenuTrigger>
-        {/* Radix MenuTrigger child → opt out of IconButton's own Tooltip: the
-            kebab already reads as an actions affordance and its aria-label
-            names it; a hover tooltip repeating "Row actions" is just noise. */}
-        <IconButton icon="more-horizontal" label={triggerLabel} size="sm" withTooltip={false} />
-      </MenuTrigger>
-      <MenuContent>
-        {actions.map((a) => (
-          <MenuItem
-            key={a.key}
-            {...(a.icon ? { leadingIcon: a.icon } : {})}
-            {...(a.danger ? { danger: true } : {})}
-            {...(a.disabled ? { disabled: true } : {})}
-            onSelect={a.onSelect}
-          >
-            {a.label}
-          </MenuItem>
-        ))}
-      </MenuContent>
-    </Menu>
-  );
-  if (!showBadge) return menu;
-  return (
-    <span className={styles.actionsBadgeWrap}>
-      {menu}
-      <span className={styles.actionsBadge} aria-hidden="true">
-        {badge.count > 99 ? "99+" : badge.count}
-      </span>
-    </span>
-  );
-}
 
 function PaginationBar({ pag }: { pag: NonNullable<DataTableProps<unknown>["serverPagination"]> }) {
   const totalPages = Math.max(1, Math.ceil(pag.total / pag.pageSize));

@@ -106,6 +106,47 @@ describe("InputsPage", () => {
     expect(screen.getByText("POST /api/v1/alerts")).toBeInTheDocument();
   });
 
+  it("opens a 'View details' drawer with the row JSON from the kebab", async () => {
+    mswServer.use(
+      http.get("/api/v1/inputs", () =>
+        HttpResponse.json({
+          data: [{ source: "grafana", last_epoch: 1_700_000_000, count: 3 }],
+        }),
+      ),
+    );
+    const user = userEvent.setup();
+    setup();
+    await waitFor(() => expect(screen.getByText("Grafana")).toBeInTheDocument());
+    const row = screen.getByText("Grafana").closest("tr")!;
+    const kebab = within(row).getByRole("button", { name: /row actions/i });
+    await user.click(kebab);
+    const menuitem = screen.getByRole("menuitem", { name: /view details/i });
+    expect(menuitem).toBeInTheDocument();
+    await user.click(menuitem);
+    const dialog = await screen.findByRole("dialog", { name: /grafana/i });
+    expect(within(dialog).getByText(/"webhook"/)).toBeInTheDocument();
+  });
+
+  it("opens a 'View details' drawer for an 'other sources' row too", async () => {
+    mswServer.use(
+      http.get("/api/v1/inputs", () =>
+        HttpResponse.json({
+          data: [{ source: "acme-monitor", last_epoch: 1_690_000_000, count: 1 }],
+        }),
+      ),
+    );
+    const user = userEvent.setup();
+    setup();
+    await waitFor(() => expect(screen.getByText("acme-monitor")).toBeInTheDocument());
+    const row = screen.getByText("acme-monitor").closest("tr")!;
+    const kebab = within(row).getByRole("button", { name: /row actions/i });
+    await user.click(kebab);
+    const menuitem = screen.getByRole("menuitem", { name: /view details/i });
+    await user.click(menuitem);
+    const dialog = await screen.findByRole("dialog", { name: /acme-monitor/i });
+    expect(within(dialog).getByText(/"other"/)).toBeInTheDocument();
+  });
+
   it("clears the dialog when closed", async () => {
     mswServer.use(http.get("/api/v1/inputs", () => HttpResponse.json({ data: [] })));
     setup();

@@ -27,6 +27,7 @@ export const environmentColumns: ColumnDef<Environment>[] = [
     id: "color",
     header: "Color",
     width: "100px",
+    hideBelow: "lg",
     cell: (r) =>
       r.color ? (
         <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
@@ -63,5 +64,6 @@ export const environmentColumns: ColumnDef<Environment>[] = [
     id: "comment",
     header: "Comment",
     cell: (r) => <span style={{ color: "var(--text-muted)" }}>{r.comment ?? "—"}</span>,
+    hideBelow: "xl",
   },
 ];

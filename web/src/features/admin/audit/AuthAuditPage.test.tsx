@@ -1,4 +1,5 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import { describe, expect, it } from "vitest";
 import {
@@ -101,6 +102,39 @@ describe("AuthAuditPage", () => {
     const str = JSON.stringify(decoded);
     expect(str).toContain("object_type");
     expect(str).toContain("auth");
+  });
+
+  it("opens a 'View details' drawer with the raw entry JSON from the row kebab", async () => {
+    mswServer.use(
+      http.get("/api/v1/audit", () =>
+        HttpResponse.json({
+          data: [
+            {
+              uid: "e1",
+              object_type: "auth",
+              object_id: "bob",
+              action: "login",
+              username: "bob",
+              method: "local",
+              summary: "login successful",
+              date_epoch: 1750000000,
+            },
+          ],
+          meta: { count: 1, limit: 50, offset: 0, total: 1 },
+        }),
+      ),
+    );
+    const user = userEvent.setup();
+    setup();
+    await waitFor(() => expect(screen.getByText("bob")).toBeInTheDocument());
+    const row = screen.getByText("bob").closest("tr")!;
+    const kebab = within(row).getByRole("button", { name: /row actions/i });
+    await user.click(kebab);
+    const menuitem = screen.getByRole("menuitem", { name: /view details/i });
+    expect(menuitem).toBeInTheDocument();
+    await user.click(menuitem);
+    const dialog = await screen.findByRole("dialog", { name: /login.*bob/i });
+    expect(within(dialog).getByText(/login successful/)).toBeInTheDocument();
   });
 
   it("shows empty state when no entries are returned", async () => {

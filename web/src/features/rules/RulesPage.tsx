@@ -62,6 +62,20 @@ type NavigateFn = (opts: {
 
 const PAGE_SIZE = 50;
 
+// Module-level (identity-stable) on purpose: RulesTreeTable threads
+// renderDetails through its buildMenuItems → per-row `menuItems` prop, so an
+// inline arrow here would defeat every tree-row memo on each RulesPage
+// re-render (e.g. a single selection toggle re-painting the whole tree).
+function renderRuleDetails(row: Rule) {
+  return (
+    <RowDetailPanel
+      row={row as unknown as Record<string, unknown>}
+      objectType="rule"
+      objectId={row.uid}
+    />
+  );
+}
+
 // Design decision (Phase 6 plan): no virtualization and no branch collapse.
 // Realistic rule counts are in the tens, so TanStack Virtual overhead is not
 // warranted. Branch collapse was audited and rejected: operators rely on
@@ -545,6 +559,7 @@ export function RulesPage() {
               toolbarHeader={rulesToolbarHeader}
               toolbar={rulesToolbarActions}
               contextMenuItems={ruleContextMenu}
+              renderDetails={renderRuleDetails}
               emptyAction={
                 <Button size="md" variant="primary" leadingIcon="plus" onClick={startNewRootRule}>
                   New rule

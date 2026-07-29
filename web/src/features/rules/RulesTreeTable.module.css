@@ -90,25 +90,28 @@
 
 /* Single grid template shared by the header and every row, so columns line
    up even though we render as <div>s (not <table>) to keep the parent/child
-   indent + drag handles simple. The trailing 28px column hosts the per-row
-   "+ Add" menu, the canonical entry point for inserting a sibling or
-   child rule relative to a given row. */
+   indent + drag handles simple. The "quick" column hosts a hover-revealed
+   cluster (View details + the "+ Add" menu); the trailing 28px column hosts
+   the row-actions kebab — same split as DataTable's quickActionsCell /
+   actionsCell. */
 .headerRow,
 .row {
   display: grid;
-  /* All three content columns are fluid (minmax) rather than fixed, so the
-     grid collapses to fit its container instead of forcing a ~708px floor
-     that made the whole table scroll sideways on narrower viewports. The
-     small px floors keep name/mods readable; condition floors at 0 because
-     its cell ellipsis-truncates. Only the 28px icon columns stay fixed. */
+  /* The three text columns are fluid (minmax) rather than fixed, so the
+     grid collapses to fit its container instead of forcing a fixed-width
+     floor that made the whole table scroll sideways on narrower viewports.
+     The small px floors keep name/mods readable; condition floors at 0
+     because its cell ellipsis-truncates. The quick-actions cluster is
+     max-content (it only ever holds 0-2 icon buttons); the icon columns
+     stay fixed at 28px. */
   grid-template-columns:
-    28px /* expand chevron     */
     28px /* drag handle        */
     28px /* selection checkbox */
     minmax(140px, 1.5fr) /* name          */
     minmax(0, 2fr) /* condition           */
     minmax(160px, 1.5fr) /* modifications */
-    28px /* add-rule menu     */;
+    max-content /* quick actions    */
+    28px /* row-actions kebab */;
   gap: var(--space-3);
   padding: var(--space-2) var(--space-3);
   align-items: center;
@@ -228,7 +231,6 @@
 
 /* Cell helpers ------------------------------------------------------------- */
 
-.expandCell,
 .handleCell,
 .checkboxCell {
   display: inline-flex;
@@ -308,32 +310,42 @@
   cursor: grabbing;
 }
 
-.expandBtn {
-  background: none;
-  border: 0;
-  color: var(--text-muted);
-  cursor: pointer;
-  padding: 2px;
+/* Quick-actions cell: a hover-revealed cluster of inline controls — the
+   "View details" icon and the "+ Add" menu trigger — rendered just before
+   the row-actions kebab. Mirrors DataTable's quickActionsCell/quickActions
+   split so the two tables read as one system.
+
+   Each control (not a shared wrapper) owns its own opacity toggle: CSS
+   opacity clamps a whole subtree as a unit, so if the WRAPPER were the one
+   fading in/out, the "+ Add" trigger's `[data-state="open"]` override below
+   (which keeps it visible while its dropdown is open, even after the mouse
+   leaves the row) would have no effect while the wrapper itself is faded
+   out. Controlling opacity per-control avoids that. */
+.quickActionsCell {
   display: inline-flex;
   align-items: center;
-  justify-content: center;
-  width: 24px;
-  height: 24px;
-  border-radius: var(--radius-sm);
+  justify-content: flex-end;
 }
-.expandBtn:hover {
-  background: var(--bg-hover);
-  color: var(--text);
+.quickActions {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+}
+.quickDetailsBtn,
+.addBtn {
+  opacity: 0;
+  transition: opacity var(--dur-fast) var(--ease-out);
+}
+.row:hover .quickDetailsBtn,
+.row:hover .addBtn,
+.row:focus-within .quickDetailsBtn,
+.row:focus-within .addBtn,
+.quickDetailsBtn:focus-visible,
+.addBtn:focus-visible,
+.addBtn[data-state="open"] {
+  opacity: 1;
 }
 
-/* Per-row "+ Add" menu trigger. Sits in the trailing 28px column; visible
-   on row hover or when the menu is open. Keeping it hidden by default
-   keeps the rules table from looking busy in steady state. */
-.addCell {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-}
 .addBtn {
   background: none;
   border: 0;
@@ -346,23 +358,18 @@
   width: 24px;
   height: 24px;
   border-radius: var(--radius-sm);
-  opacity: 0;
-  transition: opacity var(--dur-fast) var(--ease-out);
-}
-.row:hover .addBtn,
-.addBtn[data-state="open"],
-.addBtn:focus-visible {
-  opacity: 1;
 }
 .addBtn:hover {
   background: var(--accent-bg);
   color: var(--accent);
 }
 
-.expandedRow {
-  padding: var(--space-3);
-  background: var(--bg-canvas);
-  border-bottom: 1px solid var(--border-muted);
+/* Row-actions kebab cell — trailing 28px column, always visible (unlike the
+   quick-actions cluster) since it's the sole affordance on touch/mobile. */
+.kebabCell {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
 }
 
 /* ── Card mode ──────────────────────────────────────────────────────────
@@ -455,23 +462,26 @@
     content: "Modifications";
   }
 
-  /* Footer action row: checkbox + expand chevron sit left, the "+ Add"
-     menu pins right. They wrap onto one line beneath the fields because
-     the modifications field above is full-width. The add menu is
-     hover-revealed on desktop — force it visible for touch. */
+  /* Footer action row: checkbox sits left, the quick-actions cluster (View
+     details + Add) grows to fill the middle, the row-actions kebab pins
+     right (mirrors DataTable's card footer: quickActionsCell flex-grow
+     left, actionsCell right). They wrap onto one line beneath the fields
+     because the modifications field above is full-width. Hover-reveal
+     doesn't work on touch — force the quick controls visible. */
   .checkboxCell {
     order: 3;
     flex: 0 0 auto;
   }
-  .expandBtn {
+  .quickActionsCell {
     order: 4;
-    flex: 0 0 auto;
+    flex: 1 1 auto;
+    justify-content: flex-start;
   }
-  .addCell {
+  .kebabCell {
     order: 5;
     flex: 0 0 auto;
-    margin-left: auto;
   }
+  .quickDetailsBtn,
   .addBtn {
     opacity: 1;
   }

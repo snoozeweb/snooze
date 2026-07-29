@@ -48,8 +48,10 @@ import { Checkbox } from "@/shared/ui/Checkbox";
 import { Code } from "@/shared/ui/Code";
 import { Icon } from "@/shared/icons/Icon";
 import { EmptyState } from "@/shared/ui/EmptyState";
+import { IconButton } from "@/shared/ui/IconButton";
 import { Menu, MenuContent, MenuItem, MenuTrigger } from "@/shared/ui/Menu";
-import { RowDetailPanel } from "@/shared/ui/RowDetailPanel";
+import { RowActionsMenu, type RowAction } from "@/shared/ui/RowActionsMenu";
+import { RowDetailsDrawer } from "@/shared/ui/RowDetailsDrawer";
 import { toast } from "@/shared/ui/toast/useToast";
 import { prettyCondition } from "@/lib/condition/pretty";
 import { summariseModification } from "@/shared/modifications/summarise";
@@ -175,6 +177,11 @@ export type RulesTreeTableProps = {
    *  `contextMenuItems`. Returns the items to render for the given row.
    *  Omit to disable the right-click menu. */
   contextMenuItems?: (row: Rule) => ContextMenuItem[];
+  /** Content of the modal details drawer for a row. When provided, rows get
+   *  a "View details" entry in the row-actions kebab and the right-click
+   *  menu, a hover-revealed quick action, and the `E` shortcut — mirroring
+   *  DataTable's `renderDetails`. */
+  renderDetails?: (row: Rule) => React.ReactNode;
 };
 
 export function RulesTreeTable({
@@ -192,6 +199,7 @@ export function RulesTreeTable({
   localResetCounter,
   pending = false,
   contextMenuItems,
+  renderDetails,
 }: RulesTreeTableProps) {
   const update = Rules.useUpdate();
   const remove = Rules.useRemove();
@@ -315,17 +323,13 @@ export function RulesTreeTable({
     onAfter: (failed) => setSelected(new Set(failed.map((r) => r.uid ?? "").filter(Boolean))),
   });
 
-  // Per-row "details" expansion. We force-close while dragging — leaving
-  // expanded panels in place produces a janky drag with rows constantly
-  // resizing, and the original Vue UI hid details during drag too.
-  const [expanded, setExpanded] = useState<Set<string>>(() => new Set());
-  const toggleExpanded = useCallback((key: string) => {
-    setExpanded((prev) => {
-      const next = new Set(prev);
-      if (next.has(key)) next.delete(key);
-      else next.add(key);
-      return next;
-    });
+  // Modal details drawer. Mirrors DataTable's renderDetails/detailsKey
+  // model: a single string|null holding the key of the open row. Always
+  // uncontrolled here — unlike DataTable's alerts use case, no host needs to
+  // own this key.
+  const [detailsKey, setDetailsKey] = useState<string | null>(null);
+  const openDetails = useCallback((rule: Rule) => {
+    setDetailsKey(rule.uid ?? rule.name);
   }, []);
 
   // Drag state. `activeId` is the row being dragged; `overId` is the row
@@ -341,17 +345,66 @@ export function RulesTreeTable({
   const [depthDelta, setDepthDelta] = useState(0);
   const [dropAfter, setDropAfter] = useState(false);
 
+  // Single menu-items builder shared by the kebab AND the right-click menu,
+  // so the two affordances never diverge on which items appear or in what
+  // order: View details first (when renderDetails is set), then the "+ Add"
+  // directions (when insertion is allowed and no reorder is pending), then
+  // the page's own context-menu items (Copy/Delete, …). Bound per-row by
+  // argument (not closure-per-row) so its identity stays stable across
+  // re-renders — rows call `menuItems(node.rule)` themselves.
+  const buildMenuItems = useCallback(
+    (rule: Rule): RowAction[] => {
+      const items: RowAction[] = [];
+      if (renderDetails) {
+        items.push({
+          key: "__details__",
+          label: "View details",
+          icon: "panel-right",
+          onSelect: () => openDetails(rule),
+        });
+      }
+      if (onInsert && !pending) {
+        items.push(
+          {
+            key: "add-above",
+            label: "Add rule above",
+            icon: "chevron-up",
+            onSelect: () => onInsert(rule, "above"),
+          },
+          {
+            key: "add-below",
+            label: "Add rule below",
+            icon: "chevron-down",
+            onSelect: () => onInsert(rule, "below"),
+          },
+          {
+            key: "add-child",
+            label: "Add child rule",
+            icon: "chevron-right",
+            onSelect: () => onInsert(rule, "child"),
+          },
+        );
+      }
+      if (contextMenuItems) items.push(...contextMenuItems(rule));
+      return items;
+    },
+    [renderDetails, onInsert, pending, contextMenuItems, openDetails],
+  );
+
   // Right-click context menu state — anchor position + which row was hit.
   // Mirrors DataTable's pattern: one floating menu, rendered via portal,
-  // driven from the row-level onContextMenu handler.
+  // driven from the row-level onContextMenu handler. Opens whenever the
+  // combined builder above returns at least one item — e.g. View details
+  // alone still opens it even when the page's own `contextMenuItems` is
+  // omitted.
   const [ctxMenu, setCtxMenu] = useState<{ row: Rule; x: number; y: number } | null>(null);
   const onRowContextMenu = useCallback(
     (e: React.MouseEvent<HTMLDivElement>, row: Rule) => {
-      if (!contextMenuItems) return;
+      if (buildMenuItems(row).length === 0) return;
       e.preventDefault();
       setCtxMenu({ row, x: e.clientX, y: e.clientY });
     },
-    [contextMenuItems],
+    [buildMenuItems],
   );
 
   // The PointerSensor activates only after 6px of movement so plain row
@@ -373,6 +426,29 @@ export function RulesTreeTable({
     [activeId, fullFlat],
   );
   const renderedFlat = fullFlat;
+
+  // Flat list of rules backing the details drawer's prev/next navigation —
+  // the same order the tree renders in, whether or not a search filter is
+  // active (both StaticTreeRow and SortableTreeRow draw from renderedFlat).
+  const detailRows = useMemo(() => renderedFlat.map((n) => n.rule), [renderedFlat]);
+
+  // Auto-close the drawer when its row leaves the visible (flattened) list —
+  // e.g. the row was deleted, or a search filter now hides it. Mirrors
+  // DataTable's equivalent effect.
+  useEffect(() => {
+    if (detailsKey == null) return;
+    if (!detailRows.some((r) => (r.uid ?? r.name) === detailsKey)) {
+      setDetailsKey(null);
+    }
+  }, [detailsKey, detailRows]);
+
+  const navigateDetails = useCallback(
+    (index: number) => {
+      const rule = detailRows[index];
+      if (rule) setDetailsKey(rule.uid ?? rule.name);
+    },
+    [detailRows],
+  );
 
   const activeRule = useMemo(() => {
     if (!activeId) return null;
@@ -432,9 +508,6 @@ export function RulesTreeTable({
     setOverId(null);
     setDepthDelta(0);
     setDropAfter(false);
-    // Force-close every expanded details panel — leaving them open while
-    // rows are reshuffling produces the worst kind of layout thrash.
-    setExpanded(new Set());
   }, []);
 
   const handleDragMove = useCallback((e: DragMoveEvent) => {
@@ -669,7 +742,6 @@ export function RulesTreeTable({
       >
         <div role="rowgroup">
           <div className={styles.headerRow} role="row">
-            <span className={styles.expandCell} aria-hidden="true" />
             <span className={styles.handleCell} aria-hidden="true" />
             <span className={styles.checkboxCell}>
               <Checkbox
@@ -682,7 +754,8 @@ export function RulesTreeTable({
             <span>Name</span>
             <span>Condition</span>
             <span>Modifications</span>
-            <span className={styles.addCell} aria-hidden="true" />
+            <span className={styles.quickActionsCell} aria-hidden="true" />
+            <span className={styles.kebabCell} aria-hidden="true" />
           </div>
         </div>
 
@@ -714,10 +787,10 @@ export function RulesTreeTable({
                   onRowOpen={onRowOpen}
                   canInsert={onInsert !== undefined && !pending}
                   {...(onInsert ? { onInsert } : {})}
-                  expanded={expanded.has(id)}
-                  onToggleExpanded={toggleExpanded}
+                  {...(renderDetails ? { onOpenDetails: openDetails } : {})}
+                  menuItems={buildMenuItems}
                   selectionLocked={pending}
-                  {...(contextMenuItems ? { onContextMenu: onRowContextMenu } : {})}
+                  onContextMenu={onRowContextMenu}
                 />
               );
             })
@@ -766,8 +839,8 @@ export function RulesTreeTable({
                         // don't account for and corrupt the staged state.
                         canInsert={onInsert !== undefined && !pending}
                         {...(onInsert ? { onInsert } : {})}
-                        expanded={!activeId && expanded.has(id)}
-                        onToggleExpanded={toggleExpanded}
+                        {...(renderDetails ? { onOpenDetails: openDetails } : {})}
+                        menuItems={buildMenuItems}
                         // Active subtree rows: when the cursor is still over
                         // them (projection=null), stay visible-dimmed in
                         // place; once the cursor commits to a different slot
@@ -781,7 +854,7 @@ export function RulesTreeTable({
                         // slot is occupied by Cancel/Save, so bulk-action
                         // affordances aren't reachable until commit anyway.
                         selectionLocked={pending}
-                        {...(contextMenuItems ? { onContextMenu: onRowContextMenu } : {})}
+                        onContextMenu={onRowContextMenu}
                       />
                     </Fragment>
                   );
@@ -804,9 +877,21 @@ export function RulesTreeTable({
         onConfirm={() => void confirmDelete.confirm()}
       />
 
-      {ctxMenu && contextMenuItems ? (
+      {renderDetails ? (
+        <RowDetailsDrawer<Rule>
+          rows={detailRows}
+          rowKey={(r) => r.uid ?? r.name}
+          activeKey={detailsKey}
+          onNavigate={navigateDetails}
+          onClose={() => setDetailsKey(null)}
+          renderDetails={renderDetails}
+          detailsTitle={(r) => <Code>{r.name}</Code>}
+        />
+      ) : null}
+
+      {ctxMenu ? (
         <DataTableContextMenu
-          items={contextMenuItems(ctxMenu.row)}
+          items={buildMenuItems(ctxMenu.row)}
           x={ctxMenu.x}
           y={ctxMenu.y}
           onClose={() => setCtxMenu(null)}
@@ -824,7 +909,6 @@ export function RulesTreeTable({
 function GhostRow({ rule, depth }: { rule: Rule; depth: number }) {
   return (
     <div className={`${styles.row} ${styles.ghostRow}`} aria-hidden="true">
-      <span className={styles.expandCell} />
       <span className={styles.handleCell}>
         <Icon name="grip" size={16} />
       </span>
@@ -837,7 +921,8 @@ function GhostRow({ rule, depth }: { rule: Rule; depth: number }) {
       </span>
       <span className={styles.conditionCell} />
       <span className={styles.modsCell} />
-      <span className={styles.addCell} />
+      <span className={styles.quickActionsCell} />
+      <span className={styles.kebabCell} />
     </div>
   );
 }
@@ -909,14 +994,15 @@ function StaticTreeRowInner({
   onRowOpen,
   onInsert,
   canInsert = true,
-  expanded,
-  onToggleExpanded,
+  onOpenDetails,
+  menuItems,
   selectionLocked = false,
   onContextMenu,
 }: Omit<SortableTreeRowProps, "id">) {
   const id = node.rule.uid ?? node.rule.name;
   const enabled = node.rule.enabled !== false;
   const mods = node.rule.modifications ?? [];
+  const rowMenuActions = menuItems(node.rule);
   return (
     <div className={styles.rowOuter}>
       <div
@@ -930,39 +1016,33 @@ function StaticTreeRowInner({
           // descendants of this row should open the editor.
           if (!e.currentTarget.contains(e.target as Node)) return;
           const target = e.target as HTMLElement;
-          if (target.closest("[data-expand-toggle]")) return;
           if (target.closest("[data-row-checkbox]")) return;
           if (target.closest("[data-add-rule]")) return;
           onRowOpen(node.rule);
         }}
         onKeyDown={(e) => {
+          if (!e.currentTarget.contains(e.target as Node)) return;
+          const target = e.target as HTMLElement;
           if (e.key === "Enter" || e.key === " ") {
-            if (!e.currentTarget.contains(e.target as Node)) return;
-            const target = e.target as HTMLElement;
-            if (target.closest("[data-expand-toggle]")) return;
             if (target.closest("[data-row-checkbox]")) return;
             if (target.closest("[data-add-rule]")) return;
             onRowOpen(node.rule);
+          } else if (
+            onOpenDetails &&
+            !e.ctrlKey &&
+            !e.metaKey &&
+            !e.altKey &&
+            e.key.toLowerCase() === "e"
+          ) {
+            e.preventDefault();
+            onOpenDetails(node.rule);
           }
         }}
-        {...(onContextMenu ? { onContextMenu: (e) => onContextMenu(e, node.rule) } : {})}
+        onContextMenu={(e) => onContextMenu(e, node.rule)}
         tabIndex={0}
         role="row"
         aria-level={depth + 1}
       >
-        <button
-          type="button"
-          data-expand-toggle
-          className={styles.expandBtn}
-          aria-label={`Expand row ${node.rule.name}`}
-          aria-expanded={expanded}
-          onClick={(e) => {
-            e.stopPropagation();
-            onToggleExpanded(id);
-          }}
-        >
-          <Icon name={expanded ? "chevron-down" : "chevron-right"} size={14} />
-        </button>
         <span className={styles.handle} aria-hidden="true">
           <Icon name="grip" size={16} />
         </span>
@@ -1006,24 +1086,31 @@ function StaticTreeRowInner({
             ))
           )}
         </span>
-        <span className={styles.addCell}>
-          {canInsert && onInsert ? (
-            <AddRuleMenu
-              anchorName={node.rule.name}
-              onPick={(direction) => onInsert(node.rule, direction)}
-            />
-          ) : null}
+        {/* eslint-disable-next-line jsx-a11y/no-static-element-interactions, jsx-a11y/click-events-have-key-events -- Click-swallow shim, same pattern as data-row-checkbox above. */}
+        <span className={styles.quickActionsCell} onClick={(e) => e.stopPropagation()}>
+          <div className={styles.quickActions}>
+            {onOpenDetails ? (
+              <IconButton
+                icon="panel-right"
+                label="View details"
+                size="sm"
+                className={styles.quickDetailsBtn}
+                onClick={() => onOpenDetails(node.rule)}
+              />
+            ) : null}
+            {canInsert && onInsert ? (
+              <AddRuleMenu
+                anchorName={node.rule.name}
+                onPick={(direction) => onInsert(node.rule, direction)}
+              />
+            ) : null}
+          </div>
+        </span>
+        {/* eslint-disable-next-line jsx-a11y/no-static-element-interactions, jsx-a11y/click-events-have-key-events -- Click-swallow shim, same pattern as data-row-checkbox above. */}
+        <span className={styles.kebabCell} onClick={(e) => e.stopPropagation()}>
+          {rowMenuActions.length > 0 ? <RowActionsMenu actions={rowMenuActions} /> : null}
         </span>
       </div>
-      {expanded ? (
-        <div className={styles.expandedRow}>
-          <RowDetailPanel
-            row={node.rule as unknown as Record<string, unknown>}
-            objectType="rule"
-            objectId={node.rule.uid}
-          />
-        </div>
-      ) : null}
     </div>
   );
 }
@@ -1049,9 +1136,16 @@ type SortableTreeRowProps = {
    *  than gating via the `onInsert` spread) so it stays identity-stable
    *  across drag-move re-renders. */
   canInsert?: boolean;
-  expanded: boolean;
-  /** Expansion toggle — receives this row's id (see onToggleSelected). */
-  onToggleExpanded: (id: string) => void;
+  /** Opens the modal details drawer for this row's rule — the quick "View
+   *  details" icon and the `E` shortcut. Omitted entirely when the table has
+   *  no `renderDetails`, which also disables both affordances. */
+  onOpenDetails?: (rule: Rule) => void;
+  /** Builds the combined kebab / right-click menu items for a rule (View
+   *  details + Add above/below/child + the page's own contextMenuItems).
+   *  Stable identity from the parent (useCallback) — rows call
+   *  `menuItems(node.rule)` themselves rather than receiving a pre-built
+   *  per-row array, preserving the row-memo discipline documented below. */
+  menuItems: (rule: Rule) => RowAction[];
   /** Visual mode for active-subtree rows while a drag is in flight:
    *   - "none":      not part of the dragged subtree, render normally
    *   - "dim":       cursor still over the subtree (no-move), stay
@@ -1066,9 +1160,10 @@ type SortableTreeRowProps = {
    *  user focuses on committing/cancelling before doing other actions. */
   selectionLocked?: boolean;
   /** Right-click handler — the host wires this to its context-menu state.
-   *  Receives the event and this row's rule. When omitted, browsers fall
-   *  back to the native context menu. */
-  onContextMenu?: (e: React.MouseEvent<HTMLDivElement>, rule: Rule) => void;
+   *  Receives the event and this row's rule; it decides internally (via the
+   *  same `menuItems` builder) whether there's anything to show, falling
+   *  back to the native context menu when there isn't. */
+  onContextMenu: (e: React.MouseEvent<HTMLDivElement>, rule: Rule) => void;
 };
 
 function SortableTreeRowInner({
@@ -1081,8 +1176,8 @@ function SortableTreeRowInner({
   onRowOpen,
   onInsert,
   canInsert = true,
-  expanded,
-  onToggleExpanded,
+  onOpenDetails,
+  menuItems,
   activeSubtreeMode = "none",
   selectionLocked = false,
   onContextMenu,
@@ -1103,6 +1198,7 @@ function SortableTreeRowInner({
       };
   const enabled = node.rule.enabled !== false;
   const mods = node.rule.modifications ?? [];
+  const rowMenuActions = menuItems(node.rule);
   return (
     <div
       ref={setNodeRef}
@@ -1126,46 +1222,40 @@ function SortableTreeRowInner({
         {...(selected ? { "data-selected": "true" } : {})}
         onClick={(e) => {
           // Suppress row-open when the click started on a control inside
-          // the row (drag handle, expand chevron, checkbox, add menu) OR
+          // the row (drag handle, checkbox, quick actions, kebab) OR
           // bubbled through React's tree from a portaled descendant
           // (Radix dropdowns) — those aren't in the row's DOM subtree.
           if (!e.currentTarget.contains(e.target as Node)) return;
           const target = e.target as HTMLElement;
           if (target.closest("[data-drag-handle]")) return;
-          if (target.closest("[data-expand-toggle]")) return;
           if (target.closest("[data-row-checkbox]")) return;
           if (target.closest("[data-add-rule]")) return;
           onRowOpen(node.rule);
         }}
         onKeyDown={(e) => {
+          if (!e.currentTarget.contains(e.target as Node)) return;
+          const target = e.target as HTMLElement;
           if (e.key === "Enter" || e.key === " ") {
-            if (!e.currentTarget.contains(e.target as Node)) return;
-            const target = e.target as HTMLElement;
             if (target.closest("[data-drag-handle]")) return;
-            if (target.closest("[data-expand-toggle]")) return;
             if (target.closest("[data-row-checkbox]")) return;
             if (target.closest("[data-add-rule]")) return;
             onRowOpen(node.rule);
+          } else if (
+            onOpenDetails &&
+            !e.ctrlKey &&
+            !e.metaKey &&
+            !e.altKey &&
+            e.key.toLowerCase() === "e"
+          ) {
+            e.preventDefault();
+            onOpenDetails(node.rule);
           }
         }}
-        {...(onContextMenu ? { onContextMenu: (e) => onContextMenu(e, node.rule) } : {})}
+        onContextMenu={(e) => onContextMenu(e, node.rule)}
         tabIndex={0}
         role="row"
         aria-level={depth + 1}
       >
-        <button
-          type="button"
-          data-expand-toggle
-          className={styles.expandBtn}
-          aria-label={`Expand row ${node.rule.name}`}
-          aria-expanded={expanded}
-          onClick={(e) => {
-            e.stopPropagation();
-            onToggleExpanded(id);
-          }}
-        >
-          <Icon name={expanded ? "chevron-down" : "chevron-right"} size={14} />
-        </button>
         <span
           {...attributes}
           {...listeners}
@@ -1215,24 +1305,31 @@ function SortableTreeRowInner({
             ))
           )}
         </span>
-        <span className={styles.addCell}>
-          {canInsert && onInsert ? (
-            <AddRuleMenu
-              anchorName={node.rule.name}
-              onPick={(direction) => onInsert(node.rule, direction)}
-            />
-          ) : null}
+        {/* eslint-disable-next-line jsx-a11y/no-static-element-interactions, jsx-a11y/click-events-have-key-events -- Click-swallow shim, same pattern as data-row-checkbox above. */}
+        <span className={styles.quickActionsCell} onClick={(e) => e.stopPropagation()}>
+          <div className={styles.quickActions}>
+            {onOpenDetails ? (
+              <IconButton
+                icon="panel-right"
+                label="View details"
+                size="sm"
+                className={styles.quickDetailsBtn}
+                onClick={() => onOpenDetails(node.rule)}
+              />
+            ) : null}
+            {canInsert && onInsert ? (
+              <AddRuleMenu
+                anchorName={node.rule.name}
+                onPick={(direction) => onInsert(node.rule, direction)}
+              />
+            ) : null}
+          </div>
+        </span>
+        {/* eslint-disable-next-line jsx-a11y/no-static-element-interactions, jsx-a11y/click-events-have-key-events -- Click-swallow shim, same pattern as data-row-checkbox above. */}
+        <span className={styles.kebabCell} onClick={(e) => e.stopPropagation()}>
+          {rowMenuActions.length > 0 ? <RowActionsMenu actions={rowMenuActions} /> : null}
         </span>
       </div>
-      {expanded ? (
-        <div className={styles.expandedRow}>
-          <RowDetailPanel
-            row={node.rule as unknown as Record<string, unknown>}
-            objectType="rule"
-            objectId={node.rule.uid}
-          />
-        </div>
-      ) : null}
     </div>
   );
 }

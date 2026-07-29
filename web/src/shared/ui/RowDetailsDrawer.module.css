@@ -1,0 +1,21 @@
+/* Detail drawer helpers ─────────────────────────────────────────────────
+   `detailKeyNav` wraps the drawer's title + body so ArrowUp/ArrowDown have
+   one keydown target covering the whole drawer. A real flex column (not
+   display:contents) because it also takes the drawer's initial focus
+   (tabIndex=-1) — a contents box can't be focused. It fills DrawerContent's
+   column so DrawerBody keeps its own scroll.
+   `detailsPosition` is the mono "N / M" row counter in the header toolbar. */
+.detailKeyNav {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  outline: none;
+}
+.detailsPosition {
+  font-family: var(--font-mono);
+  font-feature-settings: var(--font-features-numeric);
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+  white-space: nowrap;
+}

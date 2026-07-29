@@ -3,6 +3,7 @@ import { render, screen, fireEvent } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import type { ReactNode } from "react";
+import { RowDetailPanel } from "@/shared/ui/RowDetailPanel";
 import {
   buildTree,
   collectSubtreeIds,
@@ -225,68 +226,242 @@ describe("RulesTreeTable", () => {
     expect(onRowOpen).not.toHaveBeenCalled();
   });
 
-  it("renders an expand chevron on each row", () => {
-    const rules: Rule[] = [{ uid: "r1", name: "alpha" }];
-    const Wrapper = wrap();
-    render(
-      <Wrapper>
-        <RulesTreeTable rules={rules} onRowOpen={() => undefined} />
-      </Wrapper>,
+  describe("row-actions kebab + right-click menu + details drawer", () => {
+    const renderRuleDetails = (r: Rule) => (
+      <RowDetailPanel
+        row={r as unknown as Record<string, unknown>}
+        objectType="rule"
+        objectId={r.uid}
+      />
     );
-    expect(screen.getByLabelText("Expand row alpha")).toBeInTheDocument();
-  });
-
-  it("clicking the expand chevron toggles the details panel without opening the editor", () => {
-    const onRowOpen = vi.fn();
-    const rules: Rule[] = [{ uid: "r1", name: "alpha" }];
-    const Wrapper = wrap();
-    render(
-      <Wrapper>
-        <RulesTreeTable rules={rules} onRowOpen={onRowOpen} />
-      </Wrapper>,
-    );
-    const chevron = screen.getByLabelText("Expand row alpha");
-    expect(chevron).toHaveAttribute("aria-expanded", "false");
-    fireEvent.click(chevron);
-    expect(chevron).toHaveAttribute("aria-expanded", "true");
-    // Details panel mounts: AuditTimeline heading + JsonViewer content (rule uid).
-    expect(screen.getByText("Audit log")).toBeInTheDocument();
-    expect(onRowOpen).not.toHaveBeenCalled();
-    // Toggle back closes it.
-    fireEvent.click(chevron);
-    expect(chevron).toHaveAttribute("aria-expanded", "false");
-    expect(screen.queryByText("Audit log")).not.toBeInTheDocument();
-  });
-
-  it("expand chevrons on sibling rows are independent", () => {
-    const rules: Rule[] = [
-      { uid: "r1", name: "alpha", tree_order: 0 },
-      { uid: "r2", name: "bravo", tree_order: 1 },
+    const pageContextMenu = () => [
+      { key: "copy", label: "Copy JSON", onSelect: vi.fn() },
+      { key: "delete", label: "Delete", danger: true, onSelect: vi.fn() },
     ];
-    const Wrapper = wrap();
-    render(
-      <Wrapper>
-        <RulesTreeTable rules={rules} onRowOpen={() => undefined} />
-      </Wrapper>,
-    );
-    const alphaChevron = screen.getByLabelText("Expand row alpha");
-    fireEvent.click(alphaChevron);
-    expect(alphaChevron).toHaveAttribute("aria-expanded", "true");
-    expect(screen.getByLabelText("Expand row bravo")).toHaveAttribute("aria-expanded", "false");
-  });
 
-  it("the drag handle still works (does not open editor) after expanding details", () => {
-    const onRowOpen = vi.fn();
-    const rules: Rule[] = [{ uid: "r1", name: "alpha" }];
-    const Wrapper = wrap();
-    render(
-      <Wrapper>
-        <RulesTreeTable rules={rules} onRowOpen={onRowOpen} />
-      </Wrapper>,
-    );
-    fireEvent.click(screen.getByLabelText("Expand row alpha"));
-    fireEvent.click(screen.getByLabelText("Drag alpha"));
-    expect(onRowOpen).not.toHaveBeenCalled();
+    it("kebab exists per row and lists View details / Add rule above / below / child / page items in order", async () => {
+      const rules: Rule[] = [{ uid: "r1", name: "alpha" }];
+      const Wrapper = wrap();
+      const user = userEvent.setup();
+      render(
+        <Wrapper>
+          <RulesTreeTable
+            rules={rules}
+            onRowOpen={() => undefined}
+            onInsert={vi.fn()}
+            contextMenuItems={pageContextMenu}
+            renderDetails={renderRuleDetails}
+          />
+        </Wrapper>,
+      );
+      const kebabs = screen.getAllByRole("button", { name: /row actions/i });
+      expect(kebabs.length).toBe(rules.length);
+      await user.click(kebabs[0]!);
+      const items = screen.getAllByRole("menuitem");
+      expect(items.map((i) => i.textContent)).toEqual([
+        "View details",
+        "Add rule above",
+        "Add rule below",
+        "Add child rule",
+        "Copy JSON",
+        "Delete",
+      ]);
+    });
+
+    it("right-click menu shows the same items in the same order", () => {
+      const rules: Rule[] = [{ uid: "r1", name: "alpha" }];
+      const Wrapper = wrap();
+      render(
+        <Wrapper>
+          <RulesTreeTable
+            rules={rules}
+            onRowOpen={() => undefined}
+            onInsert={vi.fn()}
+            contextMenuItems={pageContextMenu}
+            renderDetails={renderRuleDetails}
+          />
+        </Wrapper>,
+      );
+      fireEvent.contextMenu(screen.getByText("alpha"));
+      const items = screen.getAllByRole("menuitem");
+      expect(items.map((i) => i.textContent)).toEqual([
+        "View details",
+        "Add rule above",
+        "Add rule below",
+        "Add child rule",
+        "Copy JSON",
+        "Delete",
+      ]);
+    });
+
+    it("add-items are absent from both menus while pending", async () => {
+      const rules: Rule[] = [{ uid: "r1", name: "alpha" }];
+      const Wrapper = wrap();
+      const user = userEvent.setup();
+      render(
+        <Wrapper>
+          <RulesTreeTable
+            rules={rules}
+            onRowOpen={() => undefined}
+            onInsert={vi.fn()}
+            contextMenuItems={pageContextMenu}
+            renderDetails={renderRuleDetails}
+            pending
+          />
+        </Wrapper>,
+      );
+      await user.click(screen.getByRole("button", { name: /row actions/i }));
+      const items = screen.getAllByRole("menuitem").map((i) => i.textContent);
+      expect(items).toEqual(["View details", "Copy JSON", "Delete"]);
+    });
+
+    it("View details via the kebab opens the drawer showing Record + Audit sections", async () => {
+      const rules: Rule[] = [{ uid: "r1", name: "alpha" }];
+      const Wrapper = wrap();
+      const user = userEvent.setup();
+      render(
+        <Wrapper>
+          <RulesTreeTable
+            rules={rules}
+            onRowOpen={() => undefined}
+            renderDetails={renderRuleDetails}
+          />
+        </Wrapper>,
+      );
+      await user.click(screen.getByRole("button", { name: /row actions/i }));
+      await user.click(screen.getByRole("menuitem", { name: /view details/i }));
+      const dialog = screen.getByRole("dialog");
+      expect(dialog).toHaveTextContent("Record");
+      expect(dialog).toHaveTextContent("Audit log");
+    });
+
+    it("View details via right-click opens the drawer", async () => {
+      const rules: Rule[] = [{ uid: "r1", name: "alpha" }];
+      const Wrapper = wrap();
+      const user = userEvent.setup();
+      render(
+        <Wrapper>
+          <RulesTreeTable
+            rules={rules}
+            onRowOpen={() => undefined}
+            renderDetails={renderRuleDetails}
+          />
+        </Wrapper>,
+      );
+      fireEvent.contextMenu(screen.getByText("alpha"));
+      await user.click(screen.getByRole("menuitem", { name: /view details/i }));
+      expect(screen.getByRole("dialog")).toHaveTextContent("Record");
+    });
+
+    it("the hover-revealed quick 'View details' icon opens the drawer", async () => {
+      const rules: Rule[] = [{ uid: "r1", name: "alpha" }];
+      const Wrapper = wrap();
+      const user = userEvent.setup();
+      render(
+        <Wrapper>
+          <RulesTreeTable
+            rules={rules}
+            onRowOpen={() => undefined}
+            renderDetails={renderRuleDetails}
+          />
+        </Wrapper>,
+      );
+      await user.click(screen.getByRole("button", { name: "View details" }));
+      expect(screen.getByRole("dialog")).toHaveTextContent("Record");
+    });
+
+    it("the unmodified E key opens the drawer for the row it's pressed on", () => {
+      const rules: Rule[] = [{ uid: "r1", name: "alpha" }];
+      const Wrapper = wrap();
+      render(
+        <Wrapper>
+          <RulesTreeTable
+            rules={rules}
+            onRowOpen={() => undefined}
+            renderDetails={renderRuleDetails}
+          />
+        </Wrapper>,
+      );
+      const row = screen.getByText("alpha").closest('[role="row"]')!;
+      fireEvent.keyDown(row, { key: "e" });
+      expect(screen.getByRole("dialog")).toHaveTextContent("Record");
+    });
+
+    it("Ctrl+E does not open the drawer", () => {
+      const rules: Rule[] = [{ uid: "r1", name: "alpha" }];
+      const Wrapper = wrap();
+      render(
+        <Wrapper>
+          <RulesTreeTable
+            rules={rules}
+            onRowOpen={() => undefined}
+            renderDetails={renderRuleDetails}
+          />
+        </Wrapper>,
+      );
+      const row = screen.getByText("alpha").closest('[role="row"]')!;
+      fireEvent.keyDown(row, { key: "e", ctrlKey: true });
+      expect(screen.queryByRole("dialog")).toBeNull();
+    });
+
+    it("drawer prev/next walks the flattened tree order", async () => {
+      const rules: Rule[] = [
+        { uid: "r1", name: "second", tree_order: 1 },
+        { uid: "r2", name: "first", tree_order: 0 },
+        { uid: "r3", name: "child-of-first", parents: ["r2"], tree_order: 0 },
+      ];
+      const renderDet = (r: Rule) => <div data-testid={`det-${r.uid}`}>{r.name}</div>;
+      const Wrapper = wrap();
+      const user = userEvent.setup();
+      render(
+        <Wrapper>
+          <RulesTreeTable rules={rules} onRowOpen={() => undefined} renderDetails={renderDet} />
+        </Wrapper>,
+      );
+      // Flattened order is first, child-of-first, second (tree_order within
+      // each level, depth-first) — open the drawer on the first row.
+      const kebabs = screen.getAllByRole("button", { name: /row actions/i });
+      await user.click(kebabs[0]!);
+      await user.click(screen.getByRole("menuitem", { name: /view details/i }));
+      expect(screen.getByTestId("det-r2")).toBeInTheDocument();
+      expect(screen.getByText("1 / 3")).toBeInTheDocument();
+
+      await user.click(screen.getByRole("button", { name: /next row/i }));
+      expect(screen.getByTestId("det-r3")).toBeInTheDocument();
+
+      await user.click(screen.getByRole("button", { name: /next row/i }));
+      expect(screen.getByTestId("det-r1")).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: /next row/i })).toBeDisabled();
+
+      await user.click(screen.getByRole("button", { name: /previous row/i }));
+      expect(screen.getByTestId("det-r3")).toBeInTheDocument();
+    });
+
+    it("kebab click does not open the editor", async () => {
+      const onRowOpen = vi.fn();
+      const rules: Rule[] = [{ uid: "r1", name: "alpha" }];
+      const Wrapper = wrap();
+      const user = userEvent.setup();
+      render(
+        <Wrapper>
+          <RulesTreeTable rules={rules} onRowOpen={onRowOpen} renderDetails={renderRuleDetails} />
+        </Wrapper>,
+      );
+      await user.click(screen.getByRole("button", { name: /row actions/i }));
+      expect(onRowOpen).not.toHaveBeenCalled();
+    });
+
+    it("no kebab / quick 'View details' render when renderDetails, onInsert, and contextMenuItems are all omitted", () => {
+      const rules: Rule[] = [{ uid: "r1", name: "alpha" }];
+      const Wrapper = wrap();
+      render(
+        <Wrapper>
+          <RulesTreeTable rules={rules} onRowOpen={() => undefined} />
+        </Wrapper>,
+      );
+      expect(screen.queryByRole("button", { name: /row actions/i })).toBeNull();
+      expect(screen.queryByRole("button", { name: "View details" })).toBeNull();
+    });
   });
 
   it("selecting a parent row auto-selects every descendant", () => {

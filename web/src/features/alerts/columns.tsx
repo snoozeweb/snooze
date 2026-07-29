@@ -70,6 +70,14 @@ function recordTrend(r: Record_): "moreSevere" | "lessSevere" | "noChange" | "" 
   return "";
 }
 
+// Column width budget: under `table-layout: fixed`, the sum of every VISIBLE
+// column's fixed width (plus the 12px quick-actions spacer, the kebab's
+// 32px, and cell padding, which counts toward width under border-box) must
+// leave the flexible Message column >=~180px at the lower edge of each tier
+// band — otherwise Message (and the quick-actions overlay that floats over
+// its tail) get squeezed toward zero. Hidden columns aren't gone: they
+// reappear in the detail drawer, and in card mode every field reflows back
+// in regardless of tier.
 export const alertColumns: ColumnDef<Record_>[] = [
   {
     id: "date_epoch",
@@ -89,7 +97,7 @@ export const alertColumns: ColumnDef<Record_>[] = [
     header: "Sev",
     cell: (r) => <Badge color={severityColor(r.severity ?? "")}>{r.severity ?? "—"}</Badge>,
     sortable: true,
-    width: "100px",
+    width: "90px",
   },
   {
     // Trend badge: ↑/↓/— reflecting trend_indication stamped by aggregaterule.
@@ -116,7 +124,8 @@ export const alertColumns: ColumnDef<Record_>[] = [
     },
     sortable: true,
     align: "right",
-    width: "60px",
+    width: "56px",
+    hideBelow: "lg",
   },
   {
     id: "state",
@@ -126,7 +135,7 @@ export const alertColumns: ColumnDef<Record_>[] = [
       return <Badge variant={stateBadgeVariant(state)}>{stateLabel(state)}</Badge>;
     },
     sortable: true,
-    width: "120px",
+    width: "110px",
   },
   {
     // escalate_hint column: shows a countdown for open/esc rows with escalate_at set.
@@ -143,7 +152,8 @@ export const alertColumns: ColumnDef<Record_>[] = [
         </span>
       ) : null;
     },
-    width: "120px",
+    width: "110px",
+    hideBelow: "xl",
   },
   {
     id: "acked_by",
@@ -158,7 +168,8 @@ export const alertColumns: ColumnDef<Record_>[] = [
         </span>
       );
     },
-    width: "160px",
+    width: "140px",
+    hideBelow: "xl",
   },
   {
     id: "hits",
@@ -168,14 +179,16 @@ export const alertColumns: ColumnDef<Record_>[] = [
       return n > 1 ? <Badge variant="muted">×{n}</Badge> : <span>—</span>;
     },
     align: "right",
-    width: "80px",
+    width: "70px",
+    hideBelow: "lg",
   },
   {
     id: "host",
     header: "Host",
     cell: (r) => <Code>{r.host ?? ""}</Code>,
     sortable: true,
-    width: "160px",
+    width: "150px",
+    hideBelow: "md",
   },
   {
     // Process column sits between host and source, mirroring the field
@@ -184,19 +197,22 @@ export const alertColumns: ColumnDef<Record_>[] = [
     header: "Process",
     cell: (r) => (r.process ? <Code>{r.process}</Code> : <span>—</span>),
     sortable: true,
-    width: "120px",
+    width: "110px",
+    hideBelow: "xxl",
   },
   {
     id: "source",
     header: "Source",
     cell: (r) => r.source ?? "—",
-    width: "120px",
+    width: "100px",
+    hideBelow: "xxl",
   },
   {
     id: "environment",
     header: "Environment",
     cell: (r) => r.environment ?? "—",
-    width: "140px",
+    width: "120px",
+    hideBelow: "xxl",
   },
   {
     // TTL column — surfaces the same lifecycle hint old snooze used: how
@@ -211,7 +227,8 @@ export const alertColumns: ColumnDef<Record_>[] = [
       const label = su > 0 ? formatShelveUntil(su) : formatTTL(r.ttl, r.date_epoch);
       return <span>{label}</span>;
     },
-    width: "120px",
+    width: "100px",
+    hideBelow: "xxl",
   },
   {
     id: "message",

@@ -22,7 +22,10 @@ const muted = { color: "var(--text-muted)" } as const;
  */
 export function makeInputColumns(onSetup: (id: string) => void): ColumnDef<InputRow>[] {
   return [
-    { id: "name", header: "Input", cell: (r) => <span>{r.name}</span>, width: "200px" },
+    // No `width`: every other column in this table is fixed, so Input is the
+    // flexible column that absorbs whatever space is left under fixed table
+    // layout.
+    { id: "name", header: "Input", cell: (r) => <span>{r.name}</span> },
     {
       id: "family",
       header: "Type",
@@ -65,6 +68,7 @@ export function makeInputColumns(onSetup: (id: string) => void): ColumnDef<Input
       align: "right",
       cell: (r) => (r.count !== undefined ? <span>{r.count}</span> : <span style={muted}>—</span>),
       width: "100px",
+      hideBelow: "lg",
     },
     {
       id: "docs",
@@ -78,6 +82,7 @@ export function makeInputColumns(onSetup: (id: string) => void): ColumnDef<Input
           <span style={muted}>—</span>
         ),
       width: "120px",
+      hideBelow: "xl",
     },
     {
       id: "setup",

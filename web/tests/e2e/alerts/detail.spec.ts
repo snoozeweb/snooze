@@ -30,7 +30,10 @@ test.describe("alert detail drawer", () => {
     // besides the JSON tree (quoted span).
     await expect(page.getByText("disk full").first()).toBeVisible();
     await expect(page.getByText("critical").first()).toBeVisible();
-    await expect(page.getByText("prom").first()).toBeVisible();
+    // Source ("prom") sits in the columns.tsx "xxl" hide tier — hidden in the
+    // table itself at this viewport's container width — so assert against the
+    // dialog's own JsonViewer rather than the page at large.
+    await expect(dialog.getByText("prom").first()).toBeVisible();
   });
 
   test("ack action changes alert state to Acknowledged via row actions menu", async ({

@@ -1,0 +1,133 @@
+import { useCallback, useRef } from "react";
+import type { KeyboardEvent, ReactNode } from "react";
+import { IconButton } from "./IconButton";
+import { isEditable } from "@/shared/hooks/useShortcut";
+import { Drawer, DrawerBody, DrawerContent, DrawerTitle } from "./Drawer";
+import styles from "./RowDetailsDrawer.module.css";
+
+export type RowDetailsDrawerProps<T> = {
+  rows: T[];
+  rowKey: (row: T) => string;
+  /** Key of the open row; null/absent-in-rows → renders nothing. */
+  activeKey: string | null;
+  /** Retarget to rows[index] (prev/next buttons, in-drawer ArrowUp/ArrowDown). */
+  onNavigate: (index: number) => void;
+  onClose: () => void;
+  renderDetails: (row: T) => ReactNode;
+  detailsTitle?: ((row: T) => ReactNode) | undefined;
+  /** Toolbar IconButtons for the active row (rendered before the counter). */
+  actions?: ReactNode;
+};
+
+/** Modal detail drawer shared by every table-like surface (DataTable,
+ *  RulesTreeTable): a wide Drawer showing one row's details with prev/next
+ *  navigation and an "N / M" position counter. Extracted from DataTable so
+ *  bespoke row surfaces (the Rules tree, which isn't a <table>) can offer the
+ *  same drawer without depending on DataTable itself. */
+export function RowDetailsDrawer<T>({
+  rows,
+  rowKey,
+  activeKey,
+  onNavigate,
+  onClose,
+  renderDetails,
+  detailsTitle,
+  actions,
+}: RowDetailsDrawerProps<T>) {
+  // The detail drawer's key-nav wrapper — receives the drawer's initial focus
+  // (see onOpenAutoFocus on its DrawerContent).
+  const detailKeyNavRef = useRef<HTMLDivElement>(null);
+
+  // In-drawer ArrowUp/ArrowDown = previous/next row. Guarded by isEditable so
+  // typing in the comment composer never navigates. Attached to a wrapper
+  // inside DrawerContent so it fires wherever focus sits in the drawer.
+  const onDrawerKeyDown = useCallback(
+    (e: KeyboardEvent<HTMLDivElement>) => {
+      if (e.key !== "ArrowUp" && e.key !== "ArrowDown") return;
+      if (isEditable(e.target)) return;
+      if (activeKey === null) return;
+      const idx = rows.findIndex((r) => rowKey(r) === activeKey);
+      if (idx < 0) return;
+      if (e.key === "ArrowUp") {
+        if (idx > 0) {
+          e.preventDefault();
+          onNavigate(idx - 1);
+        }
+      } else if (idx < rows.length - 1) {
+        e.preventDefault();
+        onNavigate(idx + 1);
+      }
+    },
+    [activeKey, rows, rowKey, onNavigate],
+  );
+
+  const index = activeKey != null ? rows.findIndex((r) => rowKey(r) === activeKey) : -1;
+  const row = index >= 0 ? rows[index] : undefined;
+
+  if (!row) return null;
+
+  return (
+    <Drawer
+      open
+      onOpenChange={(o) => {
+        if (!o) onClose();
+      }}
+    >
+      <DrawerContent
+        wide
+        // Radix would focus the first tabbable element on open — a
+        // quick-action IconButton here, which pops its Tooltip over the
+        // drawer. Land the initial focus on the key-nav wrapper instead:
+        // neutral (no tooltip), and ArrowUp/ArrowDown paging works
+        // immediately without an extra Tab.
+        onOpenAutoFocus={(e) => {
+          e.preventDefault();
+          detailKeyNavRef.current?.focus();
+        }}
+      >
+        {/* Flex-column wrapper filling the drawer: gives ArrowUp/ArrowDown
+            a single keydown target covering the whole drawer (title
+            toolbar + body) and receives the initial open focus. It's a
+            passive event-delegation container — the interactive controls
+            (nav buttons, comment composer) live inside and own their own
+            semantics — so it carries no role of its own. */}
+        {/* eslint-disable-next-line jsx-a11y/no-static-element-interactions */}
+        <div
+          ref={detailKeyNavRef}
+          tabIndex={-1}
+          className={styles.detailKeyNav}
+          onKeyDown={onDrawerKeyDown}
+        >
+          <DrawerTitle
+            onClose={onClose}
+            toolbar={
+              <>
+                {actions}
+                <span className={styles.detailsPosition}>
+                  {index + 1} / {rows.length}
+                </span>
+                <IconButton
+                  icon="chevron-up"
+                  label="Previous row"
+                  size="sm"
+                  disabled={index <= 0}
+                  onClick={() => onNavigate(index - 1)}
+                />
+                <IconButton
+                  icon="chevron-down"
+                  label="Next row"
+                  size="sm"
+                  disabled={index >= rows.length - 1}
+                  onClick={() => onNavigate(index + 1)}
+                />
+              </>
+            }
+          >
+            {detailsTitle?.(row) ?? "Details"}
+          </DrawerTitle>
+          <DrawerBody>{renderDetails(row)}</DrawerBody>
+        </div>
+      </DrawerContent>
+    </Drawer>
+  );
+}

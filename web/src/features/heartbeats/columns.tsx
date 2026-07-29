@@ -9,11 +9,12 @@ import type { Heartbeat } from "./types";
 
 export const heartbeatColumns: ColumnDef<Heartbeat>[] = [
   {
+    // No `width`: every other column here is fixed, so Name flexes to
+    // absorb whatever space is left under fixed table layout.
     id: "name",
     header: "Name",
     cell: (r) => <Code>{r.name}</Code>,
     sortable: true,
-    width: "220px",
   },
   {
     id: "status",
@@ -34,6 +35,7 @@ export const heartbeatColumns: ColumnDef<Heartbeat>[] = [
       </span>
     ),
     width: "180px",
+    hideBelow: "lg",
   },
   {
     id: "last_seen",
@@ -61,5 +63,6 @@ export const heartbeatColumns: ColumnDef<Heartbeat>[] = [
       );
     },
     width: "160px",
+    hideBelow: "xl",
   },
 ];

@@ -591,23 +591,15 @@ export function AlertsPage() {
     [inlineAction, openDialog],
   );
 
-  // Right-click context menu. The page owns the drawer's open state (via the
-  // ?record= URL param), so a "View details" item at the top opens the modal
-  // detail drawer for the row. We then keep the universal Copy-as-JSON /
-  // Copy-as-YAML pair and append the alert-specific verbs, mirroring the
-  // bulk-toolbar surface.
+  // Right-click context menu. DataTable auto-prepends its own "View details"
+  // item ahead of these (since `renderDetails` is set below), so this list
+  // starts with the universal Copy-as-JSON / Copy-as-YAML pair and appends the
+  // alert-specific verbs, mirroring the bulk-toolbar surface.
   const contextMenuItems = useCallback(
     (row: Record_): ContextMenuItem[] => {
       const state = (row.state ?? "") as AlertState;
 
       const items: ContextMenuItem[] = [
-        {
-          key: "view-details",
-          label: "View details",
-          icon: "panel-right",
-          onSelect: () =>
-            updateSearch({ record: recordKey(row) } as unknown as Partial<AlertsSearch>),
-        },
         {
           key: "copy-json",
           // When a clipboard_template is configured, the copy action expands it
@@ -674,7 +666,7 @@ export function AlertsPage() {
 
       return items;
     },
-    [openDialog, confirmDelete, config?.clipboard_template, updateSearch],
+    [openDialog, confirmDelete, config?.clipboard_template],
   );
 
   const bulkActions = useCallback(

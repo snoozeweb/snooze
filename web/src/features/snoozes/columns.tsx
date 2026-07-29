@@ -53,12 +53,14 @@ export const snoozeColumns: ColumnDef<Snooze>[] = [
     ),
     align: "right",
     width: "110px",
+    hideBelow: "lg",
   },
   {
     id: "time_constraints",
     header: "Window",
     cell: (r) => <TimeConstraintsCell value={r.time_constraints} />,
     width: "210px",
+    hideBelow: "xl",
   },
   {
     id: "name",
@@ -81,6 +83,7 @@ export const snoozeColumns: ColumnDef<Snooze>[] = [
     header: "User",
     cell: (r) => <span style={{ color: "var(--text-muted)" }}>{r.name_create ?? "—"}</span>,
     width: "120px",
+    hideBelow: "xl",
   },
   {
     id: "hits",
@@ -88,6 +91,7 @@ export const snoozeColumns: ColumnDef<Snooze>[] = [
     cell: (r) => <span>{r.hits ?? 0}</span>,
     align: "right",
     width: "80px",
+    hideBelow: "lg",
   },
   {
     id: "discard",
@@ -95,6 +99,7 @@ export const snoozeColumns: ColumnDef<Snooze>[] = [
     cell: (r) =>
       r.discard ? <Badge variant="warning">yes</Badge> : <Badge variant="muted">no</Badge>,
     width: "90px",
+    hideBelow: "lg",
   },
 ];
 

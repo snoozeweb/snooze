@@ -52,6 +52,7 @@ export function HeartbeatsPage() {
     setSelectedKeys,
     confirmDelete,
     contextMenuItems,
+    rowActions,
     bulkActions,
   } = useResourceListPage<Heartbeat, HeartbeatsSearch>({
     to: "/web/heartbeats",
@@ -117,6 +118,7 @@ export function HeartbeatsPage() {
             columns={heartbeatColumns}
             rowKey={(r) => r.uid ?? r.name}
             contextMenuItems={contextMenuItems}
+            rowActions={rowActions}
             selectable
             selectedKeys={selectedKeys}
             onSelectionChange={setSelectedKeys}
