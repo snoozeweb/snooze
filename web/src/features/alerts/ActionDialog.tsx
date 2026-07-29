@@ -122,6 +122,7 @@ export function ActionDialog({
                     className={styles.subjectItem}
                   >
                     <Code>{r.host ?? r.uid ?? "?"}</Code>
+                    {r.message ? <span className={styles.subjectMessage}>{r.message}</span> : null}
                   </div>
                 ))}
               </div>

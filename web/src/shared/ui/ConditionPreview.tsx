@@ -87,8 +87,9 @@ export function ConditionPreview({ condition, pageSize = 5 }: ConditionPreviewPr
                   )}
                 </span>
                 <span>{r.host ?? <span className={styles.muted}>(no host)</span>}</span>
-                <span>{r.source ?? <span className={styles.muted}>—</span>}</span>
-                <span className={styles.muted}>{r.state ?? "Open"}</span>
+                <span className={styles.message}>
+                  {r.message ?? <span className={styles.muted}>—</span>}
+                </span>
               </div>
             ))}
             <div className={styles.controls}>
