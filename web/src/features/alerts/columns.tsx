@@ -140,7 +140,7 @@ export const alertColumns: ColumnDef<Record_>[] = [
       );
     },
     sortable: true,
-    width: "130px",
+    width: "91px",
   },
   {
     id: "hits",
@@ -150,7 +150,7 @@ export const alertColumns: ColumnDef<Record_>[] = [
       return n > 1 ? <Badge variant="muted">×{n}</Badge> : <span>—</span>;
     },
     align: "right",
-    width: "70px",
+    width: "77px",
     hideBelow: "lg",
   },
   {
@@ -168,7 +168,7 @@ export const alertColumns: ColumnDef<Record_>[] = [
     header: "Process",
     cell: (r) => (r.process ? <Code>{r.process}</Code> : <span>—</span>),
     sortable: true,
-    width: "169px",
+    width: "203px",
     hideBelow: "xl",
   },
   {
