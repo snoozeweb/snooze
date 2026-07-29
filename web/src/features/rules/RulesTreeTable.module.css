@@ -116,6 +116,16 @@
   padding: var(--space-2) var(--space-3);
   align-items: center;
 }
+/* Data rows tighten the vertical padding to var(--space-1): unlike DataTable
+   (whose 28px kebab sits in a zero-vertical-padding cell, giving ~36px rows),
+   this grid pads the WHOLE row — 8px around the 28px icon buttons made rules
+   rows ~44px tall, visibly airier than every other table. 4px + 28px ≈ the
+   same ~36px line height as DataTable rows. The header keeps space-2 to match
+   DataTable's header band. */
+.row {
+  padding-top: var(--space-1);
+  padding-bottom: var(--space-1);
+}
 .headerRow {
   background: var(--bg-canvas);
   color: var(--text-muted);

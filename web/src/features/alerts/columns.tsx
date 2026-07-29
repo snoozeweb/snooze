@@ -84,10 +84,9 @@ export const alertColumns: ColumnDef<Record_>[] = [
     header: "When",
     // TimeCell: same trimDate text as before, now mono-tabular with a full
     // timestamp tooltip and a "Nm ago" prefix while the alert is <1h old.
-    // Width bumped 140→160px so the relative prefix doesn't wrap on fresh rows.
     cell: (r) => <TimeCell epoch={r.date_epoch} />,
     sortable: true,
-    width: "160px",
+    width: "175px",
   },
   {
     id: "severity",
@@ -122,25 +121,18 @@ export const alertColumns: ColumnDef<Record_>[] = [
   {
     id: "state",
     header: "State",
-    // Lifecycle metadata (who acked it + when the ack expires, or the
-    // auto-escalation deadline for open-ish rows) rides in a muted, truncating
-    // hint alongside the state badge instead of two mostly-dashed columns.
+    // The auto-escalation countdown rides as a muted hint alongside the badge
+    // on open-ish rows (compact: "in 1d 23h"). Who-acked/ack-expiry does NOT —
+    // it never fit legibly in a column-width hint; the detail drawer carries it.
     cell: (r) => {
       const state = (r.state ?? "") as AlertState;
       const isOpenish = state === "" || state === "open" || state === "esc";
-      let hint = "";
-      let hintTitle: string | undefined;
-      if (state === "ack") {
-        hint = [recordAckedBy(r), formatCountdown(r.ack_until)].filter(Boolean).join(" · ");
-      } else if (isOpenish) {
-        hint = formatCountdown(r.escalate_at);
-        hintTitle = "Auto-escalation deadline";
-      }
+      const hint = isOpenish ? formatCountdown(r.escalate_at) : "";
       return (
         <span className={styles.cell}>
           <Badge variant={stateBadgeVariant(state)}>{stateLabel(state)}</Badge>
           {hint ? (
-            <span className={styles.hint} {...(hintTitle ? { title: hintTitle } : {})}>
+            <span className={styles.hint} title="Auto-escalation deadline">
               {hint}
             </span>
           ) : null}
@@ -148,7 +140,7 @@ export const alertColumns: ColumnDef<Record_>[] = [
       );
     },
     sortable: true,
-    width: "150px",
+    width: "130px",
   },
   {
     id: "hits",
@@ -176,14 +168,14 @@ export const alertColumns: ColumnDef<Record_>[] = [
     header: "Process",
     cell: (r) => (r.process ? <Code>{r.process}</Code> : <span>—</span>),
     sortable: true,
-    width: "110px",
+    width: "130px",
     hideBelow: "xl",
   },
   {
     id: "source",
     header: "Source",
     cell: (r) => r.source ?? "—",
-    width: "100px",
+    width: "120px",
     hideBelow: "xl",
   },
   {

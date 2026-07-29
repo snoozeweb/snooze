@@ -569,11 +569,12 @@ describe("AlertsPage", () => {
 
   // ── Columns: lifecycle countdown + trend ───────────────────────────────────
   // acked_by / escalate_hint / trend no longer render as their own columns —
-  // the ack owner + countdown and the escalation countdown now live as a
-  // hint inside the State cell, and the trend arrow rides inside the Sev
-  // cell (see columns.tsx).
+  // the escalation countdown lives as a hint inside the State cell and the
+  // trend arrow rides inside the Sev cell (see columns.tsx). Ack metadata
+  // (who + until when) deliberately does NOT render in the table: it never
+  // fit legibly in a column-width hint; the detail drawer carries it.
 
-  it("ack_countdown_renders_on_acked_row — shows 'in Xh' in the State cell hint", async () => {
+  it("acked_row_has_no_state_hint — ack owner/expiry live in the drawer, not the cell", async () => {
     const nowSec = Math.floor(Date.now() / 1000);
     mswServer.use(
       http.get("/api/v1/record", () =>
@@ -594,30 +595,8 @@ describe("AlertsPage", () => {
     );
     setup();
     await waitFor(() => expect(screen.getByText("srv-1")).toBeInTheDocument());
-    expect(screen.getByText(/in \d+h/)).toBeInTheDocument();
-  });
-
-  it("ack_countdown_absent_when_zero — no countdown when ack_until is 0", async () => {
-    mswServer.use(
-      http.get("/api/v1/record", () =>
-        HttpResponse.json({
-          data: [
-            {
-              uid: "r1",
-              host: "srv-1",
-              state: "ack",
-              acked_by: "alice",
-              ack_until: 0,
-              date_epoch: 1,
-            },
-          ],
-          meta: { count: 1, limit: 50, offset: 0, total: 1 },
-        }),
-      ),
-    );
-    setup();
-    await waitFor(() => expect(screen.getByText("srv-1")).toBeInTheDocument());
     expect(screen.queryByText(/in \d+h/)).toBeNull();
+    expect(screen.queryByText("alice")).toBeNull();
   });
 
   it("escalate_hint_renders_on_open_row — shows escalation countdown on open row", async () => {
