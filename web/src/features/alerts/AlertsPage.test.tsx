@@ -102,7 +102,7 @@ describe("AlertsPage", () => {
     expect(decoded).toMatchObject({ type: "IN", field: "uid", value: ["r1"] });
   });
 
-  it("clicking a row opens the detail drawer on Timeline, with the JSON behind the Record tab", async () => {
+  it("the 'View details' quick action opens the detail drawer on Timeline, with the JSON behind the Record tab", async () => {
     mswServer.use(
       http.get("/api/v1/record", () =>
         HttpResponse.json({
@@ -131,9 +131,10 @@ describe("AlertsPage", () => {
     await waitFor(() => expect(screen.getByText("srv-1")).toBeInTheDocument());
     // No drawer on the bare list.
     expect(screen.queryByRole("dialog")).toBeNull();
-    // Row click opens the modal detail drawer (AlertsPage wires onRowOpen to
-    // set ?record=). The drawer is a Radix Dialog → role=dialog.
-    await user.click(screen.getByText("srv-1"));
+    // Row click no longer opens the drawer — the hover-revealed "View
+    // details" quick action does (it wires DataTable's onOpenDetails to set
+    // ?record=). The drawer is a Radix Dialog → role=dialog.
+    await user.click(screen.getByRole("button", { name: "View details" }));
     await waitFor(() => expect(screen.getByRole("dialog")).toBeInTheDocument());
     // Timeline is the default tab — its empty state renders immediately.
     await waitFor(() => expect(screen.getByText(/no comments yet/i)).toBeInTheDocument());
