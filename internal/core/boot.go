@@ -3,6 +3,7 @@ package core
 import (
 	"context"
 	"fmt"
+	"sort"
 	"strings"
 	"time"
 
@@ -273,6 +274,7 @@ func (c *Core) bootPlugins(ctx, seedCtx context.Context) error {
 	}
 	c.plugins = filterOptionalPlugins(all, c.Cfg.Core.EnabledOptionalPlugins)
 	c.processOrder = procs
+	cached := c.tenantCachedPlugins()
 
 	// Hydrate every active tenant's processor caches. A per-tenant reload error
 	// is logged and skipped so one broken tenant cannot block boot; a failure
@@ -294,11 +296,56 @@ func (c *Core) bootPlugins(ctx, seedCtx context.Context) error {
 				return nil
 			}
 		}
+		// Non-processors can hold tenant-keyed caches too (kv is the live
+		// example). The syncer refreshes them per tenant at runtime, so boot
+		// warms them the same way; without this a tenant's first records read
+		// an empty cache until the syncer's periodic reload catches up. These
+		// caches are all read-through or advisory, so a failure is never fatal
+		// — not even for the default tenant.
+		for _, p := range cached {
+			if rerr := p.Reload(tctx); rerr != nil {
+				c.Logger().Warn("boot: per-tenant cache hydration failed",
+					"plugin", p.Name(),
+					"tenant", tid,
+					"err", rerr,
+				)
+			}
+		}
 		return nil
 	}); err != nil {
 		return fmt.Errorf("boot: hydrate tenant caches: %w", err)
 	}
 	return nil
+}
+
+// tenantCachedPlugins returns the auto_reload plugins that the processor loop
+// above does not already cover, in a deterministic order (c.plugins is a map,
+// and unordered boot logs are miserable to compare across restarts).
+//
+// auto_reload is the plugin's own declaration that the syncer owns its cache
+// refresh; since the syncer fans those reloads out per tenant, boot hydrates
+// exactly the same set.
+func (c *Core) tenantCachedPlugins() []plugins.Plugin {
+	covered := make(map[string]struct{}, len(c.processOrder))
+	for _, p := range c.processOrder {
+		covered[p.Name()] = struct{}{}
+	}
+	names := make([]string, 0, len(c.plugins))
+	for name, p := range c.plugins {
+		if _, done := covered[name]; done {
+			continue
+		}
+		if !p.Metadata().AutoReload {
+			continue
+		}
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	out := make([]plugins.Plugin, 0, len(names))
+	for _, name := range names {
+		out = append(out, c.plugins[name])
+	}
+	return out
 }
 
 // filterOptionalPlugins drops entries that appear in optionalPlugins unless

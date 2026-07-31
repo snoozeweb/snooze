@@ -2,6 +2,28 @@
 
 ### Fixed
 
+- **`kv` values could leak between tenants.** The kv plugin cached the whole
+  collection in one flat `dict → key → value` map while the collection itself
+  is tenant-scoped, so each per-tenant reload overwrote the cache wholesale and
+  whichever tenant reloaded last served its values to every other tenant. A
+  `KV_SET` rule modification could therefore resolve to another tenant's value
+  — non-deterministically, since it depended on reload order. The cache is now
+  keyed by tenant and every lookup names one. Notably the DB fallback that the
+  cache exists to optimize was already tenant-correct, so the fast path had
+  been the less safe of the two.
+- **`kv` logged a reload failure every 5 minutes.** kv was the only
+  tenant-scoped plugin whose `Reload` had no naked-context guard, so the
+  tenant-less entry in the syncer's reload fan-out — deliberate, and needed by
+  genuinely global collections — fail-closed with `auth: no tenant in context`
+  and logged a warning on every safety tick and every kv write. It now skips a
+  tenant-less reload like every other tenant-scoped plugin.
+- **`kv` was only hydrated for the default tenant at boot.** Boot's per-tenant
+  cache warm-up walked only the configured process plugins; kv has no `Process`
+  method, so it was never in that list and its sole hydration was `PostInit`
+  under the default-tenant seed context. Boot now also warms every `auto_reload`
+  plugin outside the processor list, mirroring what the syncer does at runtime.
+  A tenant whose bucket is not yet loaded falls back to the tenant-scoped
+  database lookup rather than reporting every key as absent.
 - **Live config reload was silently dead on MongoDB.** Editing a snooze filter,
   rule, aggregate rule, or notification took effect only after a
   `snooze-server` restart. The mongo change-stream watcher type-asserted

@@ -91,8 +91,15 @@ type kvSet struct {
 // against Host.Plugin("kv") avoids that without losing the cache hit on the
 // hot path. The DB fallback in applyKVSets covers tests and edge cases where
 // the plugin handle is unavailable.
+//
+// The kv cache is tenant-scoped, so both methods take the ctx that names the
+// tenant. Keep this in step with kv.Plugin: the handle is obtained by type
+// assertion, so a signature drift here does not fail the build — it makes the
+// assertion fail at runtime and silently downgrades every lookup to a
+// per-record DB round-trip.
 type kvGetter interface {
-	Get(dict, key string) (any, bool)
+	Get(ctx context.Context, dict, key string) (any, bool)
+	TenantLoaded(ctx context.Context) bool
 }
 
 // Name returns the registered plugin name.
@@ -273,6 +280,11 @@ func (p *Plugin) applyKVSets(ctx context.Context, view map[string]any, sets []kv
 	if kp := p.host.Plugin("kv"); kp != nil {
 		getter, _ = kp.(kvGetter)
 	}
+	// Hoisted: ctx names one tenant for the whole call, so this is constant
+	// across sets and costs a single read-lock instead of one per lookup.
+	// An unhydrated tenant falls through to the DB path below rather than
+	// reporting every key as absent.
+	useCache := getter != nil && getter.TenantLoaded(ctx)
 	var dbCtx context.Context
 	var cancel context.CancelFunc
 	for _, s := range sets {
@@ -290,8 +302,8 @@ func (p *Plugin) applyKVSets(ctx context.Context, view map[string]any, sets []kv
 		if recordKey == "" {
 			continue
 		}
-		if getter != nil {
-			if v, found := getter.Get(s.Dict, recordKey); found {
+		if useCache {
+			if v, found := getter.Get(ctx, s.Dict, recordKey); found {
 				view[s.OutField] = v
 			}
 			continue

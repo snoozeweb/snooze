@@ -52,6 +52,61 @@ func TestPluggableShim_ForwardsReloadCollections(t *testing.T) {
 	require.Nil(t, plain.ReloadCollections())
 }
 
+// fakeCachedPlugin is a non-processor plugin declaring auto_reload — the shape
+// kv has: a tenant-keyed cache the syncer refreshes once per tenant.
+type fakeCachedPlugin struct {
+	name       string
+	autoReload bool
+}
+
+func (f *fakeCachedPlugin) Name() string { return f.name }
+func (f *fakeCachedPlugin) Metadata() plugins.Metadata {
+	return plugins.Metadata{Name: f.name, AutoReload: f.autoReload}
+}
+func (f *fakeCachedPlugin) PostInit(context.Context, plugins.Host) error { return nil }
+func (f *fakeCachedPlugin) Reload(context.Context) error                 { return nil }
+
+// TestTenantCachedPlugins_SelectsAutoReloadNonProcessors guards the boot
+// hydration gap: kv holds a tenant-keyed cache but has no Process method, so
+// the processor loop never warmed it and only the default tenant (from
+// PostInit's seedCtx) was ever loaded.
+func TestTenantCachedPlugins_SelectsAutoReloadNonProcessors(t *testing.T) {
+	t.Parallel()
+
+	c := &Core{
+		plugins: map[string]plugins.Plugin{
+			"rule":     &fakeProcessor{name: "rule"},
+			"kv":       &fakeCachedPlugin{name: "kv", autoReload: true},
+			"reject":   &fakeCachedPlugin{name: "reject", autoReload: true},
+			"user":     &fakeCachedPlugin{name: "user"},
+			"snoozing": &fakeProcessor{name: "snoozing"},
+		},
+		processOrder: []plugins.Processor{&fakeProcessor{name: "rule"}},
+	}
+
+	names := make([]string, 0, 2)
+	for _, p := range c.tenantCachedPlugins() {
+		names = append(names, p.Name())
+	}
+	require.Equal(t, []string{"kv", "reject"}, names,
+		"expect auto_reload plugins outside processOrder, in deterministic order")
+}
+
+// A plugin that is both auto_reload and a configured processor must not be
+// reloaded twice per tenant.
+func TestTenantCachedPlugins_SkipsPluginsAlreadyInProcessOrder(t *testing.T) {
+	t.Parallel()
+
+	c := &Core{
+		plugins: map[string]plugins.Plugin{
+			"reject": &fakeCachedPlugin{name: "reject", autoReload: true},
+		},
+		processOrder: []plugins.Processor{&fakeProcessor{name: "reject"}},
+	}
+	require.Empty(t, c.tenantCachedPlugins(),
+		"processOrder already hydrates it; a second reload per tenant is waste")
+}
+
 func TestFilterOptionalPlugins_DropsDefaultDisabled(t *testing.T) {
 	t.Parallel()
 	all := map[string]plugins.Plugin{

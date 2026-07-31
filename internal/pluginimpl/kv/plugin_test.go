@@ -56,16 +56,101 @@ func TestPostInitHydratesCache(t *testing.T) {
 	p := &Plugin{meta: plugins.Metadata{Name: "kv"}}
 	require.NoError(t, p.PostInit(ctx, host))
 
-	v, ok := p.Get("colors", "red")
+	require.True(t, p.TenantLoaded(ctx))
+
+	v, ok := p.Get(ctx, "colors", "red")
 	require.True(t, ok)
 	require.Equal(t, "#f00", v)
 
-	_, ok = p.Get("colors", "blue")
+	_, ok = p.Get(ctx, "colors", "blue")
 	require.False(t, ok)
 
-	v, ok = p.Get("shapes", "circle")
+	v, ok = p.Get(ctx, "shapes", "circle")
 	require.True(t, ok)
 	require.EqualValues(t, 1, v)
+}
+
+// TestTenantIsolation is the regression test for the flat cache: reloading one
+// tenant used to replace the whole map, so whichever tenant reloaded last
+// served its values to every other tenant.
+func TestTenantIsolation(t *testing.T) {
+	host := newTestHost(t)
+	defCtx := auth.WithTenant(context.Background(), snoozetypes.DefaultTenant)
+	otherCtx := auth.WithTenant(context.Background(), "acme")
+
+	_, err := host.DB().Write(defCtx, "kv", []db.Document{
+		{"dict": "owner", "key": "web01", "value": "alice"},
+	}, db.WriteOptions{})
+	require.NoError(t, err)
+	_, err = host.DB().Write(otherCtx, "kv", []db.Document{
+		{"dict": "owner", "key": "web01", "value": "bob"},
+	}, db.WriteOptions{})
+	require.NoError(t, err)
+
+	p := &Plugin{meta: plugins.Metadata{Name: "kv"}}
+	require.NoError(t, p.PostInit(defCtx, host))
+	// Hydrating the second tenant must not evict the first.
+	require.NoError(t, p.Reload(otherCtx))
+
+	v, ok := p.Get(defCtx, "owner", "web01")
+	require.True(t, ok)
+	require.Equal(t, "alice", v, "default tenant must not see the other tenant's value")
+
+	v, ok = p.Get(otherCtx, "owner", "web01")
+	require.True(t, ok)
+	require.Equal(t, "bob", v)
+
+	// Reloading the default tenant again must likewise leave "acme" intact.
+	require.NoError(t, p.Reload(defCtx))
+	v, ok = p.Get(otherCtx, "owner", "web01")
+	require.True(t, ok)
+	require.Equal(t, "bob", v)
+}
+
+// TestUnknownTenantIsAMissNotALeak covers a tenant that was never hydrated: it
+// must report unloaded (so the rule plugin falls back to the DB) rather than
+// silently serving another tenant's bucket.
+func TestUnknownTenantIsAMissNotALeak(t *testing.T) {
+	host := newTestHost(t)
+	defCtx := auth.WithTenant(context.Background(), snoozetypes.DefaultTenant)
+	_, err := host.DB().Write(defCtx, "kv", []db.Document{
+		{"dict": "owner", "key": "web01", "value": "alice"},
+	}, db.WriteOptions{})
+	require.NoError(t, err)
+
+	p := &Plugin{meta: plugins.Metadata{Name: "kv"}}
+	require.NoError(t, p.PostInit(defCtx, host))
+
+	ghostCtx := auth.WithTenant(context.Background(), "never-hydrated")
+	require.False(t, p.TenantLoaded(ghostCtx))
+	_, ok := p.Get(ghostCtx, "owner", "web01")
+	require.False(t, ok)
+}
+
+// TestNakedContextIsSkipped pins the guard that silences the syncer's
+// tenant-less fan-out entry: kv is tenant-scoped, so a naked reload is a no-op
+// rather than a fail-closed ErrNoTenant surfacing as a periodic WARN.
+func TestNakedContextIsSkipped(t *testing.T) {
+	host := newTestHost(t)
+	defCtx := auth.WithTenant(context.Background(), snoozetypes.DefaultTenant)
+	_, err := host.DB().Write(defCtx, "kv", []db.Document{
+		{"dict": "owner", "key": "web01", "value": "alice"},
+	}, db.WriteOptions{})
+	require.NoError(t, err)
+
+	p := &Plugin{meta: plugins.Metadata{Name: "kv"}}
+	require.NoError(t, p.PostInit(defCtx, host))
+
+	naked := context.Background()
+	require.NoError(t, p.Reload(naked), "naked reload must not error")
+	require.False(t, p.TenantLoaded(naked))
+	_, ok := p.Get(naked, "owner", "web01")
+	require.False(t, ok)
+
+	// The skipped reload must not have disturbed the hydrated tenant.
+	v, ok := p.Get(defCtx, "owner", "web01")
+	require.True(t, ok)
+	require.Equal(t, "alice", v)
 }
 
 func TestValidate(t *testing.T) {

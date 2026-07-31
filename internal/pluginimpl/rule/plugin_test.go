@@ -25,6 +25,7 @@ import (
 	"github.com/snoozeweb/snooze/internal/db"
 	"github.com/snoozeweb/snooze/internal/db/sqlite"
 	"github.com/snoozeweb/snooze/internal/modification"
+	"github.com/snoozeweb/snooze/internal/pluginimpl/kv"
 	"github.com/snoozeweb/snooze/internal/plugins"
 	"github.com/snoozeweb/snooze/internal/telemetry"
 	"github.com/snoozeweb/snooze/pkg/snoozetypes"
@@ -161,16 +162,46 @@ func TestRule_Process(t *testing.T) {
 	require.Equal(t, []any{"Rule1", "SubRule1", "SubSubRule1"}, out.Record.Extra["rules"])
 }
 
+// The production handle is obtained by type-asserting Host.Plugin("kv") to
+// kvGetter, which means a signature drift between the two packages does NOT
+// break the build — it just makes the assertion fail at runtime and silently
+// downgrades every KV_SET to a per-record DB round-trip. This assertion is the
+// only thing that turns that into a compile error. The dependency is
+// test-only: the rule package itself must stay decoupled from kv.
+var _ kvGetter = (*kv.Plugin)(nil)
+
 // stubKV satisfies the rule package's kvGetter duck-type with a literal map
 // so the test exercises the cached-lookup path without spinning the real kv
 // plugin.
-type stubKV struct{ data map[string]map[string]any }
+//
+// It serves exactly one tenant, mirroring kv.Plugin's tenant-keyed cache: a
+// lookup under any other tenant is a cache miss, not a hit on this data.
+type stubKV struct {
+	tenant string // tenant this stub serves; empty means DefaultTenant
+	data   map[string]map[string]any
+}
 
 func (s *stubKV) Name() string                                 { return "kv" }
 func (s *stubKV) Metadata() plugins.Metadata                   { return plugins.Metadata{Name: "kv"} }
 func (s *stubKV) PostInit(context.Context, plugins.Host) error { return nil }
 func (s *stubKV) Reload(context.Context) error                 { return nil }
-func (s *stubKV) Get(dict, key string) (any, bool) {
+
+func (s *stubKV) servedTenant() string {
+	if s.tenant == "" {
+		return snoozetypes.DefaultTenant
+	}
+	return s.tenant
+}
+
+func (s *stubKV) TenantLoaded(ctx context.Context) bool {
+	tid, ok := auth.TenantFrom(ctx)
+	return ok && tid == s.servedTenant()
+}
+
+func (s *stubKV) Get(ctx context.Context, dict, key string) (any, bool) {
+	if !s.TenantLoaded(ctx) {
+		return nil, false
+	}
 	d, ok := s.data[dict]
 	if !ok {
 		return nil, false
@@ -232,6 +263,68 @@ func TestRule_KVSet_DBFallback(t *testing.T) {
 	out, err := p.Process(ctx, makeRecord(map[string]any{"host": "web01"}))
 	require.NoError(t, err)
 	require.Equal(t, "alice", out.Record.Extra["owner"])
+}
+
+func TestRule_KVSet_TenantIsolation(t *testing.T) {
+	// The kv cache is tenant-scoped. A cache holding another tenant's values
+	// must never satisfy this tenant's KV_SET; the lookup falls back to the DB,
+	// which is itself tenant-scoped, so nothing is written.
+	t.Parallel()
+
+	host := newTestHost(t)
+	ctx := auth.WithTenant(context.Background(), snoozetypes.DefaultTenant)
+	// Cache is hydrated for "acme" only, and holds a value for the same key
+	// this tenant's rule looks up.
+	host.plugs["kv"] = &stubKV{tenant: "acme", data: map[string]map[string]any{
+		"host_owner": {"web01": "bob"},
+	}}
+
+	_, err := host.DB().Write(ctx, "rule", []db.Document{{
+		"name":          "OwnerLookup",
+		"condition":     []any{"=", "host", "web01"},
+		"modifications": []any{[]any{"KV_SET", "host_owner", "host", "owner"}},
+	}}, db.WriteOptions{})
+	require.NoError(t, err)
+
+	p := &Plugin{}
+	require.NoError(t, p.PostInit(ctx, host))
+
+	out, err := p.Process(ctx, makeRecord(map[string]any{"host": "web01"}))
+	require.NoError(t, err)
+	got, has := out.Record.Extra["owner"]
+	require.False(t, has, "must not read another tenant's kv value, got %v", got)
+}
+
+func TestRule_KVSet_UnhydratedTenantFallsBackToDB(t *testing.T) {
+	// A tenant whose bucket has not been hydrated yet (created after boot,
+	// before the syncer's next reload) must fall back to the DB rather than
+	// treat every lookup as a definitive miss.
+	t.Parallel()
+
+	host := newTestHost(t)
+	ctx := auth.WithTenant(context.Background(), snoozetypes.DefaultTenant)
+	// Registered, but hydrated for a different tenant than the one processing.
+	host.plugs["kv"] = &stubKV{tenant: "acme", data: map[string]map[string]any{}}
+
+	_, err := host.DB().Write(ctx, "kv", []db.Document{
+		{"dict": "host_owner", "key": "web01", "value": "alice"},
+	}, db.WriteOptions{})
+	require.NoError(t, err)
+
+	_, err = host.DB().Write(ctx, "rule", []db.Document{{
+		"name":          "OwnerLookup",
+		"condition":     []any{"=", "host", "web01"},
+		"modifications": []any{[]any{"KV_SET", "host_owner", "host", "owner"}},
+	}}, db.WriteOptions{})
+	require.NoError(t, err)
+
+	p := &Plugin{}
+	require.NoError(t, p.PostInit(ctx, host))
+
+	out, err := p.Process(ctx, makeRecord(map[string]any{"host": "web01"}))
+	require.NoError(t, err)
+	require.Equal(t, "alice", out.Record.Extra["owner"],
+		"unhydrated tenant must fall back to the tenant-scoped DB lookup")
 }
 
 func TestRule_KVSet_MissDoesNotMutate(t *testing.T) {
