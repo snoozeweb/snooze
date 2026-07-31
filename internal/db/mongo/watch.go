@@ -57,7 +57,14 @@ type subscription struct {
 	prefix string
 	ch     chan syncer.Event
 	ctx    context.Context
+	// dropped counts events discarded because ch was full. Guarded by
+	// mongoBus.mu; read only for throttled logging in dispatch.
+	dropped uint64
 }
+
+// dropLogEvery throttles the backpressure-drop warning: the first drop per
+// subscriber is logged, then every dropLogEvery-th one.
+const dropLogEvery = 100
 
 // newMongoBus constructs an unstarted bus tied to the given driver.
 func newMongoBus(d *Driver, logger *slog.Logger) *mongoBus {
@@ -228,11 +235,11 @@ func hitsOnlyUpdate(raw bson.M) bool {
 	if op, _ := raw["operationType"].(string); op != "update" {
 		return false
 	}
-	ud, ok := raw["updateDescription"].(bson.M)
+	ud, ok := subDocument(raw["updateDescription"])
 	if !ok {
 		return false
 	}
-	updated, ok := ud["updatedFields"].(bson.M)
+	updated, ok := subDocument(ud["updatedFields"])
 	if !ok || len(updated) == 0 {
 		return false
 	}
@@ -244,7 +251,52 @@ func hitsOnlyUpdate(raw bson.M) bool {
 	return true
 }
 
+// subDocument coerces a nested value of a decoded change event into a keyed
+// document.
+//
+// This exists because of a driver detail that is easy to get wrong and was
+// wrong here for months: `stream.Decode(&raw)` into a bson.M decodes the
+// TOP-LEVEL document as bson.M, but every nested sub-document lands in an `any`
+// slot, and the empty-interface codec materialises those as **bson.D** (an
+// ordered []E), not bson.M. A plain `raw["fullDocument"].(bson.M)` therefore
+// always failed against a live change stream — while unit tests that hand-build
+// bson.M fixtures passed, hiding it.
+//
+// Consequences of that failed assertion, all silent: every hit-counter bump
+// looked like a real edit (hitsOnlyUpdate could not see updateDescription), and
+// every event lost its tenant and uid — which made the syncer reload with a
+// tenant-less context, i.e. a no-op for every tenant-scoped plugin. Net effect:
+// no plugin cache ever refreshed and only a restart applied a config change.
+//
+// Accepts all three shapes so it is correct regardless of how the event was
+// produced (live stream, hand-built fixture, or already-normalised map).
+func subDocument(v any) (bson.M, bool) {
+	switch x := v.(type) {
+	case bson.M:
+		return x, true
+	case map[string]any:
+		return x, true
+	case bson.D:
+		m := make(bson.M, len(x))
+		for _, e := range x {
+			m[e.Key] = e.Value
+		}
+		return m, true
+	default:
+		return nil, false
+	}
+}
+
 // dispatch forwards e to every subscriber whose prefix matches.
+//
+// The send stays non-blocking (a wedged subscriber must not back-pressure the
+// change stream) and stays under b.mu — the same lock dropSub/Close take before
+// closing a subscriber channel, so releasing it here would race a close and
+// panic on send. What changed is that the drop is no longer silent: losing an
+// event means a config change never reaches its plugin, which is precisely the
+// class of failure that is impossible to diagnose after the fact. Logging is
+// throttled (first drop, then every 100th per subscriber) so a genuine storm
+// cannot flood the journal.
 func (b *mongoBus) dispatch(e syncer.Event) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
@@ -255,7 +307,15 @@ func (b *mongoBus) dispatch(e syncer.Event) {
 		select {
 		case s.ch <- e:
 		default:
-			// drop on backpressure
+			s.dropped++
+			if s.dropped == 1 || s.dropped%dropLogEvery == 0 {
+				b.logger.Warn("mongo: change-stream subscriber is full; dropping event",
+					slog.String("topic", e.Topic),
+					slog.String("collection", e.Collection),
+					slog.String("tenant", e.Tenant),
+					slog.String("subscriber", s.prefix),
+					slog.Uint64("dropped_total", s.dropped))
+			}
 		}
 	}
 }
@@ -288,7 +348,9 @@ func changeEventToSyncerEvent(raw bson.M, collection string) syncer.Event {
 	}
 	uids := []string{}
 	var tenant string
-	if doc, ok := raw["fullDocument"].(bson.M); ok {
+	// subDocument, not a bson.M type assertion: a live change stream hands these
+	// nested fields over as bson.D. See subDocument for the full story.
+	if doc, ok := subDocument(raw["fullDocument"]); ok {
 		if uid, ok := doc["uid"].(string); ok && uid != "" {
 			uids = append(uids, uid)
 		}
@@ -296,13 +358,13 @@ func changeEventToSyncerEvent(raw bson.M, collection string) syncer.Event {
 		// reload to the right per-tenant plugin. Global collections carry no
 		// tenant_id, leaving tenant empty (the bare topic). UpdateLookup makes
 		// fullDocument available on inserts/updates/replaces; deletes have no
-		// fullDocument and so carry no tenant (a delete still triggers a reload
-		// via the bare-prefix subscription, just without a tenant context).
+		// fullDocument and so carry no tenant — the syncer fans a tenant-less
+		// event out to every active tenant so the delete still lands.
 		if tid, ok := doc["tenant_id"].(string); ok {
 			tenant = tid
 		}
 	}
-	if dk, ok := raw["documentKey"].(bson.M); ok {
+	if dk, ok := subDocument(raw["documentKey"]); ok {
 		if uid, ok := dk["uid"].(string); ok && uid != "" && len(uids) == 0 {
 			uids = append(uids, uid)
 		}

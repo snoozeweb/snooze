@@ -13,6 +13,8 @@ import (
 
 	"github.com/stretchr/testify/require"
 	"go.mongodb.org/mongo-driver/v2/bson"
+
+	"github.com/snoozeweb/snooze/internal/syncer"
 )
 
 // captureLogger returns a slog.Logger whose JSON output writes into buf.
@@ -341,7 +343,21 @@ func (s *stubStream) Decode(v any) error {
 	if !ok {
 		return errors.New("stubStream: unexpected decode target")
 	}
-	*target = s.events[s.idx]
+	// Round-trip the fixture through real BSON instead of handing the
+	// hand-built bson.M straight back. The live driver decodes a change event
+	// into a top-level bson.M whose nested sub-documents are bson.D, and code
+	// that type-asserts bson.M on them silently misreads every event. A stub
+	// that skips the encode/decode hides exactly that class of bug — it hid it
+	// here for two months. See subDocument in watch.go.
+	raw, err := bson.Marshal(s.events[s.idx])
+	if err != nil {
+		return err
+	}
+	var decoded bson.M
+	if err := bson.Unmarshal(raw, &decoded); err != nil {
+		return err
+	}
+	*target = decoded
 	s.idx++
 	return nil
 }
@@ -371,8 +387,94 @@ func TestHitsOnlyUpdate(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			require.Equal(t, tc.want, hitsOnlyUpdate(tc.raw))
+			// Same fixture as the driver actually delivers it: nested
+			// sub-documents become bson.D once the event has been through a
+			// real BSON round-trip. The predicate must reach the same verdict,
+			// or every hit-counter bump gets dispatched as a real edit.
+			require.Equal(t, tc.want, hitsOnlyUpdate(bsonRoundTrip(t, tc.raw)),
+				"verdict must survive a real BSON decode")
 		})
 	}
+}
+
+// bsonRoundTrip encodes and decodes a fixture the way the mongo driver does for
+// a change event, so tests see production Go types (nested docs as bson.D).
+func bsonRoundTrip(t *testing.T, in bson.M) bson.M {
+	t.Helper()
+	raw, err := bson.Marshal(in)
+	require.NoError(t, err)
+	var out bson.M
+	require.NoError(t, bson.Unmarshal(raw, &out))
+	return out
+}
+
+// TestSubDocument_AcceptsDriverShapes pins the coercion every nested-field read
+// in this file depends on. bson.D is the shape a live change stream produces;
+// bson.M / map[string]any are what hand-built fixtures and normalised documents
+// carry.
+func TestSubDocument_AcceptsDriverShapes(t *testing.T) {
+	want := bson.M{"tenant_id": "acme"}
+	for _, tc := range []struct {
+		name string
+		in   any
+		ok   bool
+	}{
+		{"bson.D (live change stream)", bson.D{{Key: "tenant_id", Value: "acme"}}, true},
+		{"bson.M (hand-built fixture)", bson.M{"tenant_id": "acme"}, true},
+		{"map[string]any (normalised)", map[string]any{"tenant_id": "acme"}, true},
+		{"absent", nil, false},
+		{"scalar", "acme", false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			got, ok := subDocument(tc.in)
+			require.Equal(t, tc.ok, ok)
+			if tc.ok {
+				require.Equal(t, want, got)
+			}
+		})
+	}
+}
+
+// TestChangeEventToSyncerEvent_LiveDecodeTypes is the direct regression guard
+// for the production outage this fixed: with nested docs arriving as bson.D,
+// the event lost its tenant, the syncer reloaded with a tenant-less context,
+// and every tenant-scoped plugin's Reload short-circuited to a silent no-op —
+// so no config change took effect until the process was restarted.
+func TestChangeEventToSyncerEvent_LiveDecodeTypes(t *testing.T) {
+	raw := bsonRoundTrip(t, bson.M{
+		"operationType": "update",
+		"fullDocument":  bson.M{"uid": "uid-1", "tenant_id": "acme", "name": "owned"},
+		"documentKey":   bson.M{"uid": "uid-1"},
+	})
+	require.IsType(t, bson.D{}, raw["fullDocument"], "guard: the driver hands nested docs over as bson.D")
+
+	ev := changeEventToSyncerEvent(raw, "snooze")
+	require.Equal(t, "acme", ev.Tenant, "tenant must survive the driver's decode types")
+	require.Equal(t, "collection.snooze.acme", ev.Topic)
+	require.Equal(t, []string{"uid-1"}, ev.UIDs)
+}
+
+// TestDispatch_LogsDroppedEvent: a full subscriber channel must not swallow an
+// event silently — a dropped event is a config change that never reaches its
+// plugin, undiagnosable after the fact without this line.
+func TestDispatch_LogsDroppedEvent(t *testing.T) {
+	buf := &bytes.Buffer{}
+	b := newTestBus(t, captureLogger(buf))
+
+	// Register the subscription directly: this exercises dispatch in isolation,
+	// without starting a watcher goroutine.
+	sub := &subscription{prefix: "collection.snooze", ch: make(chan syncer.Event, 32)}
+	b.subs = append(b.subs, sub)
+
+	// 32 fills the buffer (nobody is reading); the 33rd must be dropped.
+	for i := 0; i < 33; i++ {
+		b.dispatch(syncer.Event{Topic: "collection.snooze.default", Collection: "snooze", Tenant: "default"})
+	}
+
+	lines := decodeLogLines(t, buf)
+	require.Len(t, lines, 1, "exactly one drop, logged once")
+	require.Equal(t, "mongo: change-stream subscriber is full; dropping event", lines[0]["msg"])
+	require.Equal(t, "collection.snooze", lines[0]["subscriber"])
 }
 
 // TestRunStream_SkipsHitsOnlyUpdate drives a hit-counter bump followed by a real
