@@ -372,8 +372,9 @@ func defaultsYAML() ([]byte, error) {
 			"token_audience":      d.Auth.TokenAudience,
 		},
 		"syncer": map[string]any{
-			"hostname":      d.Syncer.Hostname,
-			"sync_interval": d.Syncer.SyncInterval.String(),
+			"hostname":               d.Syncer.Hostname,
+			"sync_interval":          d.Syncer.SyncInterval.String(),
+			"reload_safety_interval": d.Syncer.ReloadSafetyInterval.String(),
 		},
 		"oidc": map[string]any{
 			"enabled":          d.OIDC.Enabled,

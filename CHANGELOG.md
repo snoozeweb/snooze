@@ -1,3 +1,39 @@
+## Unreleased
+
+### Fixed
+
+- **Live config reload was silently dead on MongoDB.** Editing a snooze filter,
+  rule, aggregate rule, or notification took effect only after a
+  `snooze-server` restart. The mongo change-stream watcher type-asserted
+  `bson.M` on the nested fields of each event, but the driver decodes nested
+  sub-documents as `bson.D` — so every event lost its `tenant_id`, the syncer
+  reloaded under a tenant-less context, and every tenant-scoped plugin
+  correctly treated that as "nothing to do". Nothing logged, and the
+  hit-counter reload-storm filter was inert for the same reason. Change events
+  now read those fields regardless of the driver's decode shape, and the test
+  stub round-trips fixtures through real BSON so the gap cannot reopen.
+  PostgreSQL and SQLite were unaffected (they stamp the tenant from the
+  writer's context).
+
+### Added
+
+- **`syncer.reload_safety_interval`** (default `5m`): a periodic full reload of
+  every plugin cache for every active tenant, backstopping change-event
+  delivery so a lost or dropped event cannot leave a cache stale until the next
+  restart. Set a negative duration to disable it.
+
+### Changed
+
+- The syncer fans a tenant-less change event (a delete carries no full
+  document) out to every active tenant instead of issuing one naked reload that
+  tenant-scoped plugins skip — deleting a filter now takes effect without a
+  restart.
+- A burst of change events can no longer postpone a reload indefinitely: the
+  debounce window still restarts per event but is capped at ten windows.
+- The mongo bus logs when a subscriber's channel is full and an event is
+  dropped (first drop, then every 100th). Previously this was the only
+  unlogged failure point on the reload path.
+
 ## v2.4.0
 
 ### Added

@@ -24,6 +24,20 @@ const defaultDebounce = 100 * time.Millisecond
 // query), tight enough to recover from a stall within one window.
 const defaultReloadTimeout = 30 * time.Second
 
+// maxDebounceFactor caps how long a burst can postpone a reload. The debounce
+// timer restarts on every event, so a stream of events arriving closer together
+// than the debounce window would otherwise defer the reload indefinitely — a
+// busy collection could starve its own cache refresh. Once a window has been
+// open for maxDebounceFactor × debounce, the next event fires the reload
+// instead of extending the wait.
+const maxDebounceFactor = 10
+
+// defaultSafetyReload is the cadence of the belt-and-braces full reload, used
+// when Syncer.SafetyReload is zero. Event delivery is the fast path; this is
+// the backstop that bounds how long a lost, misrouted, or dropped event can
+// leave a cache stale. Set SafetyReload to a negative duration to disable it.
+const defaultSafetyReload = 5 * time.Minute
+
 // Pluggable is the slice of the plugin contract the Syncer needs: a name and a
 // Reload method that refreshes in-memory state from the database.
 type Pluggable interface {
@@ -40,6 +54,18 @@ type ReloadDeps interface {
 	ReloadCollections() []string
 }
 
+// TenantLister enumerates the active tenant IDs. The Syncer needs it because a
+// per-tenant plugin's Reload only refreshes the tenant carried in its context,
+// while some events legitimately arrive without one:
+//
+//   - a delete carries no full document, so the source cannot name its tenant;
+//   - a plugin-level (non-collection) event has no document at all.
+//
+// Without a lister those events reload under a naked context, which every
+// tenant-scoped plugin correctly treats as "nothing to do" — silently. Wiring
+// this makes them fan out to every active tenant instead.
+type TenantLister func(ctx context.Context) ([]string, error)
+
 // Syncer wires a Bus to a set of Pluggable consumers: any event matching a
 // plugin's collection topic triggers a debounced Reload on that plugin.
 type Syncer struct {
@@ -49,7 +75,13 @@ type Syncer struct {
 	// ReloadTimeout bounds each plug.Reload call. Zero selects
 	// defaultReloadTimeout. See reloadBounded for why this matters.
 	ReloadTimeout time.Duration
-	Logger        *slog.Logger
+	// Tenants enumerates active tenants so tenant-less events can be fanned
+	// out. Optional; nil keeps the old behaviour (a naked reload only).
+	Tenants TenantLister
+	// SafetyReload is the cadence of the periodic full reload. Zero selects
+	// defaultSafetyReload; a negative value disables it.
+	SafetyReload time.Duration
+	Logger       *slog.Logger
 }
 
 // Run subscribes to one fan-in stream per plugin and dispatches debounced
@@ -163,11 +195,22 @@ func (s *Syncer) runPlugin(ctx context.Context, name string, plug Pluggable, deb
 // landing inside the same window must both refresh their respective per-tenant
 // caches. Each tenant's Event.Tenant is threaded into the Reload context via
 // snoozetypes.WithTenant so tenant-scoped driver queries inside Reload are
-// correctly injected. The empty tenant (global collection event or
-// plugin-level event) is a valid key on its own and reloads with a naked ctx.
+// correctly injected. The empty tenant (a delete, a global collection, or a
+// plugin-level event) is a valid key on its own: it reloads with a naked ctx
+// and, when a TenantLister is wired, also fans out to every active tenant —
+// see reloadTenants.
+//
+// Two guards keep the loop from going quiet: the debounce window cannot be
+// extended past maxDebounceFactor windows, and a periodic safety tick reloads
+// every tenant regardless of events.
 func (s *Syncer) dispatchLoop(ctx context.Context, name string, plug Pluggable, in <-chan Event, debounce time.Duration, logger *slog.Logger) {
 	var timer *time.Timer
 	var timerC <-chan time.Time
+	// windowOpened marks when the current debounce window started, so a
+	// continuous event stream cannot postpone the reload past maxDebounceFactor
+	// windows. Meaningful only while timer != nil.
+	var windowOpened time.Time
+	maxWait := time.Duration(maxDebounceFactor) * debounce
 	// pending is the set of distinct tenants whose reload is owed this window.
 	// The empty string is a legitimate member (global / plugin-level events).
 	pending := make(map[string]struct{})
@@ -184,6 +227,11 @@ func (s *Syncer) dispatchLoop(ctx context.Context, name string, plug Pluggable, 
 		}
 	}
 
+	safetyTicker, safetyC := s.newSafetyTicker()
+	if safetyTicker != nil {
+		defer safetyTicker.Stop()
+	}
+
 	for {
 		select {
 		case <-ctx.Done():
@@ -196,6 +244,7 @@ func (s *Syncer) dispatchLoop(ctx context.Context, name string, plug Pluggable, 
 			}
 			pending[ev.Tenant] = struct{}{}
 			if timer == nil {
+				windowOpened = time.Now()
 				timer = time.NewTimer(debounce)
 				timerC = timer.C
 			} else {
@@ -205,22 +254,71 @@ func (s *Syncer) dispatchLoop(ctx context.Context, name string, plug Pluggable, 
 					default:
 					}
 				}
-				timer.Reset(debounce)
+				// Extend by one debounce window, but never past maxWait from
+				// the moment the window opened.
+				wait := debounce
+				if remaining := maxWait - time.Since(windowOpened); remaining < wait {
+					wait = max(remaining, 0)
+				}
+				timer.Reset(wait)
 			}
 		case <-timerC:
+			timer, timerC = nil, nil
 			if len(pending) == 0 {
 				continue
 			}
 			tenants := pending
 			pending = make(map[string]struct{})
-			for tenant := range tenants {
-				reloadCtx := ctx
-				if tenant != "" {
-					reloadCtx = snoozetypes.WithTenant(ctx, tenant)
-				}
-				s.reloadBounded(reloadCtx, name, plug, tenant, logger)
+			s.reloadTenants(ctx, name, plug, tenants, logger)
+		case <-safetyC:
+			// Belt and braces: refresh every tenant on a slow cadence so a lost
+			// or misrouted event cannot leave a cache stale until restart.
+			s.reloadTenants(ctx, name, plug, map[string]struct{}{"": {}}, logger)
+		}
+	}
+}
+
+// newSafetyTicker returns the periodic full-reload ticker, or (nil, nil) when
+// the backstop is disabled.
+func (s *Syncer) newSafetyTicker() (*time.Ticker, <-chan time.Time) {
+	interval := s.SafetyReload
+	if interval == 0 {
+		interval = defaultSafetyReload
+	}
+	if interval < 0 {
+		return nil, nil
+	}
+	t := time.NewTicker(interval)
+	return t, t.C
+}
+
+// reloadTenants runs one Reload per distinct tenant in the set. A tenant-less
+// entry means "the source could not name a tenant" (a delete, a plugin-level
+// event, or the safety tick), so it expands to every active tenant — plus the
+// naked reload itself, which is what a genuinely global collection needs.
+//
+// Expanding matters because a tenant-scoped plugin's Reload treats a naked
+// context as a no-op: before this, a delete or an untenanted event simply never
+// reached any cache, and did so without a trace in the logs.
+func (s *Syncer) reloadTenants(ctx context.Context, name string, plug Pluggable, tenants map[string]struct{}, logger *slog.Logger) {
+	if _, global := tenants[""]; global && s.Tenants != nil {
+		ids, err := s.Tenants(ctx)
+		if err != nil {
+			logger.Warn("syncer: list tenants for reload fan-out failed; falling back to the naked reload",
+				"plugin", name, "err", err)
+		}
+		for _, id := range ids {
+			if id != "" {
+				tenants[id] = struct{}{}
 			}
 		}
+	}
+	for tenant := range tenants {
+		reloadCtx := ctx
+		if tenant != "" {
+			reloadCtx = snoozetypes.WithTenant(ctx, tenant)
+		}
+		s.reloadBounded(reloadCtx, name, plug, tenant, logger)
 	}
 }
 

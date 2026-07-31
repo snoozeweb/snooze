@@ -19,7 +19,7 @@ The syncer keeps each replica's in-memory plugin caches consistent. In 2.0 the c
 - PostgreSQL — `LISTEN/NOTIFY` (one channel per collection)
 - SQLite — an in-process channel (single-replica, no fan-out needed)
 
-The two settings below configure this node's heartbeat identity and cadence; the standalone 1-second polling loop used by Python 1.x is gone.
+The settings below configure this node's heartbeat identity and cadence, plus the periodic safety reload; the standalone 1-second polling loop used by Python 1.x is gone.
 
 The Go schema lives in `internal/config/schema/syncer.go`.
 
@@ -44,4 +44,18 @@ The Go schema lives in `internal/config/schema/syncer.go`.
 > `1s`
 >
 > Cadence of the node heartbeat and the debounce window the syncer applies to change-feed events. Cache invalidation itself is driven by the backend's change feed, not a polling loop, but the heartbeat document is rewritten at this cadence so the cluster page in the WebUI reflects liveness. (The legacy `sync_interval_ms` and the `total` replica-count knob were removed in 2.0.)
+>
+> A burst of events cannot postpone a reload indefinitely: the debounce window restarts on each event but is capped at ten windows, after which the next event triggers the reload.
+
+### reload_safety_interval
+
+> Type  
+> Duration
+>
+> Default  
+> `5m`
+>
+> Cadence of a periodic full reload of every plugin cache, for every active tenant. This is a backstop, not the primary mechanism — change-feed events remain the fast path — and it bounds how long a lost, dropped, or untenanted event can leave a cache stale. Without it, a single missed event means an edited filter or rule keeps using its previous definition until the process is restarted.
+>
+> Each tick costs one indexed collection read per plugin per tenant. Lower it if config changes must land faster than the event path guarantees; set a **negative** value (e.g. `-1s`) to disable the backstop entirely and rely on events alone.
 

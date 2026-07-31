@@ -587,3 +587,179 @@ func TestSyncer_ReloadTimeoutKeepsSyncerLive(t *testing.T) {
 	cancel()
 	require.NoError(t, <-done)
 }
+
+// TestSyncer_TenantLessEventFansOutToAllTenants is the regression guard for the
+// silent-no-op class of failure: an event that cannot name its tenant (a delete
+// carries no full document) used to reload under a naked context, which every
+// tenant-scoped plugin correctly skips — so the change never landed anywhere,
+// without a single log line. With a TenantLister wired the syncer must expand
+// that event to every active tenant.
+func TestSyncer_TenantLessEventFansOutToAllTenants(t *testing.T) {
+	bus := newFakeBus()
+	defer bus.Close()
+	plug := &multiTenantPlugin{name: "snooze"}
+	s := &Syncer{
+		Bus:      bus,
+		Plugins:  map[string]Pluggable{plug.Name(): plug},
+		Debounce: 10 * time.Millisecond,
+		Tenants: func(context.Context) ([]string, error) {
+			return []string{"default", "acme"}, nil
+		},
+		SafetyReload: -1, // isolate the event path from the periodic backstop
+		Logger:       quietLogger(),
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	done := make(chan error, 1)
+	go func() { done <- s.Run(ctx) }()
+
+	require.Eventually(t, func() bool {
+		bus.mu.Lock()
+		defer bus.mu.Unlock()
+		return len(bus.subs) >= 2
+	}, time.Second, 5*time.Millisecond, "subscriptions not registered")
+
+	// A delete: no full document, hence no tenant on the event.
+	require.NoError(t, bus.Publish(ctx, Event{
+		Topic: "collection.snooze", Op: "delete", Collection: "snooze",
+	}))
+
+	require.Eventually(t, func() bool {
+		seen := plug.seenTenants()
+		return seen["default"] >= 1 && seen["acme"] >= 1
+	}, 2*time.Second, 5*time.Millisecond, "tenant-less event did not fan out to every tenant")
+
+	cancel()
+	require.NoError(t, <-done)
+}
+
+// TestSyncer_SafetyReloadFiresWithoutEvents covers the periodic backstop: even
+// with no events at all, every active tenant's cache must be refreshed on the
+// safety cadence, so a lost or misrouted event cannot leave a plugin stale
+// until the process restarts.
+func TestSyncer_SafetyReloadFiresWithoutEvents(t *testing.T) {
+	bus := newFakeBus()
+	defer bus.Close()
+	plug := &multiTenantPlugin{name: "snooze"}
+	s := &Syncer{
+		Bus:      bus,
+		Plugins:  map[string]Pluggable{plug.Name(): plug},
+		Debounce: time.Hour, // no event path can fire within the test
+		Tenants: func(context.Context) ([]string, error) {
+			return []string{"default", "acme"}, nil
+		},
+		SafetyReload: 20 * time.Millisecond,
+		Logger:       quietLogger(),
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	done := make(chan error, 1)
+	go func() { done <- s.Run(ctx) }()
+
+	require.Eventually(t, func() bool {
+		seen := plug.seenTenants()
+		return seen["default"] >= 1 && seen["acme"] >= 1
+	}, 2*time.Second, 5*time.Millisecond, "safety reload never refreshed every tenant")
+
+	cancel()
+	require.NoError(t, <-done)
+}
+
+// TestSyncer_SafetyReloadDisabled confirms a negative interval turns the
+// backstop off entirely — an operator who wants event-only reloads gets them.
+func TestSyncer_SafetyReloadDisabled(t *testing.T) {
+	bus := newFakeBus()
+	defer bus.Close()
+	plug := &recordingPlugin{name: "snooze"}
+	s := &Syncer{
+		Bus:          bus,
+		Plugins:      map[string]Pluggable{plug.Name(): plug},
+		Debounce:     time.Hour,
+		SafetyReload: -1,
+		Logger:       quietLogger(),
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	done := make(chan error, 1)
+	go func() { done <- s.Run(ctx) }()
+
+	time.Sleep(120 * time.Millisecond)
+	require.Zero(t, plug.Count(), "safety reload should be disabled")
+
+	cancel()
+	require.NoError(t, <-done)
+}
+
+// TestSyncer_DebounceCannotBeStarved: the debounce timer restarts on every
+// event, so a stream arriving faster than the window would postpone the reload
+// forever. maxDebounceFactor caps the postponement — a reload must land while
+// the stream is still running, not only after it stops.
+func TestSyncer_DebounceCannotBeStarved(t *testing.T) {
+	bus := newFakeBus()
+	defer bus.Close()
+	plug := &recordingPlugin{name: "snooze"}
+	debounce := 20 * time.Millisecond
+	s := &Syncer{
+		Bus:          bus,
+		Plugins:      map[string]Pluggable{plug.Name(): plug},
+		Debounce:     debounce,
+		SafetyReload: -1, // the cap must do the work, not the backstop
+		Logger:       quietLogger(),
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	done := make(chan error, 1)
+	go func() { done <- s.Run(ctx) }()
+
+	require.Eventually(t, func() bool {
+		bus.mu.Lock()
+		defer bus.mu.Unlock()
+		return len(bus.subs) >= 2
+	}, time.Second, 5*time.Millisecond, "subscriptions not registered")
+
+	// Publish continuously at a quarter of the debounce window, i.e. the timer
+	// is reset long before it can ever expire on its own.
+	stop := make(chan struct{})
+	streamDone := make(chan struct{})
+	go func() {
+		defer close(streamDone)
+		ticker := time.NewTicker(debounce / 4)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-stop:
+				return
+			case <-ticker.C:
+				_ = bus.Publish(ctx, Event{Topic: "collection.snooze", Op: "write", Collection: "snooze"})
+			}
+		}
+	}()
+
+	// maxDebounceFactor × debounce is the cap; allow generous slack for CI.
+	reloaded := func() bool { return plug.Count() >= 1 }
+	ok := assertEventuallyWithin(reloaded, maxDebounceFactor*debounce*4, 5*time.Millisecond)
+	close(stop)
+	<-streamDone
+	require.True(t, ok, "reload was starved by a continuous event stream")
+
+	cancel()
+	require.NoError(t, <-done)
+}
+
+// assertEventuallyWithin polls cond until it holds or the budget expires. Used
+// instead of require.Eventually where the caller must run teardown (stopping a
+// publisher goroutine) before failing the test.
+func assertEventuallyWithin(cond func() bool, budget, tick time.Duration) bool {
+	deadline := time.Now().Add(budget)
+	for time.Now().Before(deadline) {
+		if cond() {
+			return true
+		}
+		time.Sleep(tick)
+	}
+	return cond()
+}

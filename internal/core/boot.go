@@ -317,6 +317,21 @@ func filterOptionalPlugins(all map[string]plugins.Plugin, enabledList []string) 
 	return all
 }
 
+// activeTenants lists the ids of every non-suspended tenant. It adapts
+// housekeeper.ForEachTenant (the single implementation of "which tenants are
+// live") to the syncer.TenantLister signature.
+func (c *Core) activeTenants(ctx context.Context) ([]string, error) {
+	var ids []string
+	err := housekeeper.ForEachTenant(ctx, c.Driver, func(_ context.Context, tenantID string) error {
+		ids = append(ids, tenantID)
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	return ids, nil
+}
+
 // bootSyncer constructs the per-driver syncer and the node heartbeat, wiring
 // in the operator-supplied cfg.Syncer values:
 //
@@ -343,6 +358,13 @@ func (c *Core) bootSyncer() error {
 			Plugins:  plugMap,
 			Debounce: interval,
 			Logger:   c.Logger(),
+			// Per-tenant plugin caches only refresh for the tenant in the
+			// reload context, and some events cannot name one (a delete has no
+			// full document). Handing the syncer a tenant lister lets it fan
+			// those out instead of reloading under a naked context, which every
+			// tenant-scoped plugin silently skips.
+			Tenants:      c.activeTenants,
+			SafetyReload: c.Cfg.Syncer.ReloadSafetyInterval.AsDuration(),
 		}
 	}
 
