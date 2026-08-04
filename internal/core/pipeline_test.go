@@ -219,6 +219,100 @@ func TestProcessRecord_PreservesCallerTTL(t *testing.T) {
 	require.Equal(t, int64(-1), out.TTL)
 }
 
+// TestProcessRecord_OKSeverityCloses_Default verifies the pipeline restores
+// Snooze 1.x's central "ok_severities auto-close" enforcement: a record
+// arriving with severity "ok" and no explicit state gets State "close" using
+// the default general.ok_severities list (["ok", "success"]).
+func TestProcessRecord_OKSeverityCloses_Default(t *testing.T) {
+	t.Parallel()
+	p1 := &fakeProcessor{name: "rule", result: plugins.Result{Action: plugins.ActionContinue}}
+	c, _ := newPipelineCore(t, p1)
+	c.Cfg = &config.Config{General: schema.DefaultGeneral()}
+
+	_, _, err := c.ProcessRecord(pctx(), snoozetypes.Record{UID: "uid-ok", Severity: "ok"})
+	require.NoError(t, err)
+	require.Equal(t, "close", p1.recvRec.State)
+}
+
+// TestProcessRecord_OKSeverityCloses_CaseFold verifies severity matching is
+// case-insensitive, since the config list is normalized to lowercase.
+func TestProcessRecord_OKSeverityCloses_CaseFold(t *testing.T) {
+	t.Parallel()
+	p1 := &fakeProcessor{name: "rule", result: plugins.Result{Action: plugins.ActionContinue}}
+	c, _ := newPipelineCore(t, p1)
+	c.Cfg = &config.Config{General: schema.DefaultGeneral()}
+
+	_, _, err := c.ProcessRecord(pctx(), snoozetypes.Record{UID: "uid-ok-upper", Severity: "OK"})
+	require.NoError(t, err)
+	require.Equal(t, "close", p1.recvRec.State)
+}
+
+// TestProcessRecord_NonOKSeverity_LeavesStateEmpty verifies a severity absent
+// from the ok_severities list never gets auto-closed.
+func TestProcessRecord_NonOKSeverity_LeavesStateEmpty(t *testing.T) {
+	t.Parallel()
+	p1 := &fakeProcessor{name: "rule", result: plugins.Result{Action: plugins.ActionContinue}}
+	c, _ := newPipelineCore(t, p1)
+
+	_, _, err := c.ProcessRecord(pctx(), snoozetypes.Record{UID: "uid-warn", Severity: "warning"})
+	require.NoError(t, err)
+	require.Equal(t, "", p1.recvRec.State)
+}
+
+// TestProcessRecord_ExplicitStateNotOverridden verifies that a record which
+// already carries a State (e.g. a webhook receiver plugin's own provider
+// status mapping) is authoritative: stampOKSeverityClose must not touch it,
+// even when the severity is "ok".
+func TestProcessRecord_ExplicitStateNotOverridden(t *testing.T) {
+	t.Parallel()
+
+	p1 := &fakeProcessor{name: "rule", result: plugins.Result{Action: plugins.ActionContinue}}
+	c, _ := newPipelineCore(t, p1)
+	_, _, err := c.ProcessRecord(pctx(), snoozetypes.Record{UID: "uid-open", Severity: "ok", State: "open"})
+	require.NoError(t, err)
+	require.Equal(t, "open", p1.recvRec.State)
+
+	p2 := &fakeProcessor{name: "rule", result: plugins.Result{Action: plugins.ActionContinue}}
+	c2, _ := newPipelineCore(t, p2)
+	_, _, err = c2.ProcessRecord(pctx(), snoozetypes.Record{UID: "uid-close", Severity: "ok", State: "close"})
+	require.NoError(t, err)
+	require.Equal(t, "close", p2.recvRec.State)
+}
+
+// TestProcessRecord_OKSeverityCloses_CustomConfig verifies the Cfg fallback
+// path: a custom general.ok_severities list replaces the default, so "ok" no
+// longer auto-closes but the configured value ("recovered") does.
+func TestProcessRecord_OKSeverityCloses_CustomConfig(t *testing.T) {
+	t.Parallel()
+	p1 := &fakeProcessor{name: "rule", result: plugins.Result{Action: plugins.ActionContinue}}
+	c, _ := newPipelineCore(t, p1)
+	c.Cfg = &config.Config{
+		General: schema.General{OKSeverities: []string{"recovered"}},
+	}
+
+	_, _, err := c.ProcessRecord(pctx(), snoozetypes.Record{UID: "uid-ok-2", Severity: "ok"})
+	require.NoError(t, err)
+	require.Equal(t, "", p1.recvRec.State, "ok is no longer in the custom list")
+
+	p2 := &fakeProcessor{name: "rule", result: plugins.Result{Action: plugins.ActionContinue}}
+	c.processOrder = []plugins.Processor{p2}
+	_, _, err = c.ProcessRecord(pctx(), snoozetypes.Record{UID: "uid-recovered", Severity: "recovered"})
+	require.NoError(t, err)
+	require.Equal(t, "close", p2.recvRec.State)
+}
+
+// TestProcessRecord_EmptySeverity_NeverCloses verifies an empty severity is
+// left untouched — never matches the ok_severities list.
+func TestProcessRecord_EmptySeverity_NeverCloses(t *testing.T) {
+	t.Parallel()
+	p1 := &fakeProcessor{name: "rule", result: plugins.Result{Action: plugins.ActionContinue}}
+	c, _ := newPipelineCore(t, p1)
+
+	_, _, err := c.ProcessRecord(pctx(), snoozetypes.Record{UID: "uid-empty-sev"})
+	require.NoError(t, err)
+	require.Equal(t, "", p1.recvRec.State)
+}
+
 func TestProcessRecord_BumpsAlertHitCounter(t *testing.T) {
 	t.Parallel()
 	p1 := &fakeProcessor{name: "rule", result: plugins.Result{Action: plugins.ActionAbort}}

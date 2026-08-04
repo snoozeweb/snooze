@@ -336,3 +336,70 @@ func TestRuntimeSettings_InvalidateAll(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, "v2.example.com", got.Host)
 }
+
+// TestRuntimeSettingsGeneralBaselineOnly locks in the cold-start contract: with
+// no DB rows, General returns the file-config baseline defaults untouched.
+func TestRuntimeSettingsGeneralBaselineOnly(t *testing.T) {
+	d := newDriver(t)
+	ctx := auth.WithTenant(context.Background(), snoozetypes.DefaultTenant)
+
+	rs := NewRuntimeSettings(d, Default(), time.Minute)
+	got, err := rs.General(ctx)
+	require.NoError(t, err)
+	require.Equal(t, []string{"ok", "success"}, got.OKSeverities)
+	require.Empty(t, got.SnoozeBySeverities)
+}
+
+// TestRuntimeSettingsGeneralOverridesSnoozeBypass verifies that a DB-stored
+// snooze_bypass_severities row overrides the (empty) baseline and that the
+// values are case-folded and trimmed via Normalize, matching the Python
+// ok_severities validator behavior.
+func TestRuntimeSettingsGeneralOverridesSnoozeBypass(t *testing.T) {
+	d := newDriver(t)
+	ctx := auth.WithTenant(context.Background(), snoozetypes.DefaultTenant)
+	writeSetting(ctx, t, d, "snooze_bypass_severities", []string{"OK", " Critical "})
+
+	rs := NewRuntimeSettings(d, Default(), time.Minute)
+	got, err := rs.General(ctx)
+	require.NoError(t, err)
+	require.Equal(t, []string{"ok", "critical"}, got.SnoozeBySeverities)
+	// Untouched field preserves the baseline.
+	require.Equal(t, []string{"ok", "success"}, got.OKSeverities)
+}
+
+// TestRuntimeSettingsGeneralOverridesOKSeverities verifies that a DB-stored
+// ok_severities row replaces the baseline list rather than merging with it.
+func TestRuntimeSettingsGeneralOverridesOKSeverities(t *testing.T) {
+	d := newDriver(t)
+	ctx := auth.WithTenant(context.Background(), snoozetypes.DefaultTenant)
+	writeSetting(ctx, t, d, "ok_severities", []string{"OK", "Warning"})
+
+	rs := NewRuntimeSettings(d, Default(), time.Minute)
+	got, err := rs.General(ctx)
+	require.NoError(t, err)
+	require.Equal(t, []string{"ok", "warning"}, got.OKSeverities)
+}
+
+// TestRuntimeSettingsGeneralNilReceiver verifies the nil-safety contract
+// shared with Housekeeper/LDAP: a nil *RuntimeSettings returns the schema
+// defaults without panicking.
+func TestRuntimeSettingsGeneralNilReceiver(t *testing.T) {
+	var rs *RuntimeSettings
+	got, err := rs.General(context.Background())
+	require.NoError(t, err)
+	require.Equal(t, schema.DefaultGeneral(), got)
+}
+
+// TestRuntimeSettingsGeneralAcceptsCommaSeparatedString verifies that
+// asStringSlice's comma/whitespace-separated string form (the wire shape a
+// hand-edited settings row might use) decodes to the expected entries.
+func TestRuntimeSettingsGeneralAcceptsCommaSeparatedString(t *testing.T) {
+	d := newDriver(t)
+	ctx := auth.WithTenant(context.Background(), snoozetypes.DefaultTenant)
+	writeSetting(ctx, t, d, "ok_severities", "ok,critical")
+
+	rs := NewRuntimeSettings(d, Default(), time.Minute)
+	got, err := rs.General(ctx)
+	require.NoError(t, err)
+	require.Equal(t, []string{"ok", "critical"}, got.OKSeverities)
+}

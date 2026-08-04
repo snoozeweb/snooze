@@ -139,6 +139,7 @@ type stubHost struct {
 	metr        *telemetry.Registry
 	tracer      trace.Tracer
 	asyncWriter *asyncwriter.Writer
+	runtimeSet  *config.RuntimeSettings
 }
 
 func newStubHost(t *testing.T) *stubHost {
@@ -166,6 +167,11 @@ func (h *stubHost) Plugin(string) plugins.Plugin { return nil }
 
 // AsyncWriter satisfies plugins.AsyncWriterHost when an asyncWriter is set.
 func (h *stubHost) AsyncWriter() *asyncwriter.Writer { return h.asyncWriter }
+
+// RuntimeSettings satisfies plugins.RuntimeSettingsHost when runtimeSet is
+// set. Most tests leave it nil, exercising the file-config fallback path in
+// bypassSeverities.
+func (h *stubHost) RuntimeSettings() *config.RuntimeSettings { return h.runtimeSet }
 
 // writeRule inserts a snooze record built from a free-form Document. Returns
 // the assigned uid so tests can poke at the row afterwards.
@@ -565,4 +571,164 @@ func TestSnoozeListProjection(t *testing.T) {
 	require.NoError(t, json.Unmarshal(oneRec.Body.Bytes(), &one))
 	require.Equal(t, "active", one["window_status"])
 	require.Contains(t, one, "remaining_seconds")
+}
+
+// TestSnoozeCloseTransition_DiscardRuleBypassed covers production bug #1: a
+// close against an EXISTING aggregate (duplicates>=2) must reach the
+// pipeline unharmed even when a discard rule matches — the aggregaterule
+// close write must never be dropped, or the alert is wedged open forever.
+func TestSnoozeCloseTransition_DiscardRuleBypassed(t *testing.T) {
+	t.Parallel()
+	h := newStubHost(t)
+	uid := writeRule(t, h, db.Document{
+		"name":      "Filter 1",
+		"condition": []any{"=", "host", "h1"},
+		"discard":   true,
+	})
+	p := newPlugin(t, h, nil)
+
+	ctx := auth.WithTenant(context.Background(), snoozetypes.DefaultTenant)
+	rec := snoozetypes.Record{
+		Host:  "h1",
+		State: "close",
+		Extra: map[string]any{"duplicates": int64(2)},
+	}
+	res, err := p.Process(ctx, rec)
+	require.NoError(t, err)
+	require.Equal(t, plugins.ActionContinue, res.Action)
+	require.Nil(t, res.Record.Extra["snoozed"], "close pass-through must not stamp a snooze attribution")
+
+	got, err := h.driver.GetOne(ctx, "snooze", db.Document{"uid": uid})
+	require.NoError(t, err)
+	hits, _ := toInt64(got["hits"])
+	require.Zero(t, hits, "close pass-through must not bump the rule's hit counter")
+}
+
+// TestSnoozeCloseTransition_TagRuleBypassed is the same close-transition
+// pass-through, but against a non-discard (tag) rule: it must still return
+// ActionContinue with no `snoozed` tag, since the close never reaches the
+// rule loop at all.
+func TestSnoozeCloseTransition_TagRuleBypassed(t *testing.T) {
+	t.Parallel()
+	h := newStubHost(t)
+	writeRule(t, h, db.Document{
+		"name":      "Filter 1",
+		"condition": []any{"=", "host", "h1"},
+	})
+	p := newPlugin(t, h, nil)
+
+	ctx := auth.WithTenant(context.Background(), snoozetypes.DefaultTenant)
+	rec := snoozetypes.Record{
+		Host:  "h1",
+		State: "close",
+		Extra: map[string]any{"duplicates": int64(2)},
+	}
+	res, err := p.Process(ctx, rec)
+	require.NoError(t, err)
+	require.Equal(t, plugins.ActionContinue, res.Action)
+	require.Nil(t, res.Record.Extra["snoozed"])
+}
+
+// TestSnoozeCloseTransition_FirstOccurrenceStillFiltered covers the
+// first-occurrence close (duplicates absent, or stamped 1 when no existing
+// aggregate matched): the state gate must NOT engage, so a fully-discarded
+// alert's recovery event cannot leak a phantom closed row — the discard
+// rule still applies.
+func TestSnoozeCloseTransition_FirstOccurrenceStillFiltered(t *testing.T) {
+	t.Parallel()
+
+	t.Run("duplicates absent", func(t *testing.T) {
+		h := newStubHost(t)
+		writeRule(t, h, db.Document{
+			"name":      "Filter 1",
+			"condition": []any{"=", "host", "h1"},
+			"discard":   true,
+		})
+		p := newPlugin(t, h, nil)
+
+		ctx := auth.WithTenant(context.Background(), snoozetypes.DefaultTenant)
+		rec := snoozetypes.Record{Host: "h1", State: "close"}
+		res, err := p.Process(ctx, rec)
+		require.NoError(t, err)
+		require.Equal(t, plugins.ActionAbort, res.Action)
+	})
+
+	t.Run("duplicates=1", func(t *testing.T) {
+		h := newStubHost(t)
+		writeRule(t, h, db.Document{
+			"name":      "Filter 1",
+			"condition": []any{"=", "host", "h1"},
+			"discard":   true,
+		})
+		p := newPlugin(t, h, nil)
+
+		ctx := auth.WithTenant(context.Background(), snoozetypes.DefaultTenant)
+		rec := snoozetypes.Record{
+			Host:  "h1",
+			State: "close",
+			Extra: map[string]any{"duplicates": int64(1)},
+		}
+		res, err := p.Process(ctx, rec)
+		require.NoError(t, err)
+		require.Equal(t, plugins.ActionAbort, res.Action)
+	})
+}
+
+// TestSnoozeCloseTransition_RequiresCloseState verifies the state gate is
+// required: a non-close record with duplicates>=2 still runs the rules
+// normally (the pass-through is specific to state=="close").
+func TestSnoozeCloseTransition_RequiresCloseState(t *testing.T) {
+	t.Parallel()
+	h := newStubHost(t)
+	writeRule(t, h, db.Document{
+		"name":      "Filter 1",
+		"condition": []any{"=", "host", "h1"},
+		"discard":   true,
+	})
+	p := newPlugin(t, h, nil)
+
+	ctx := auth.WithTenant(context.Background(), snoozetypes.DefaultTenant)
+	rec := snoozetypes.Record{
+		Host:  "h1",
+		State: "open",
+		Extra: map[string]any{"duplicates": int64(5)},
+	}
+	res, err := p.Process(ctx, rec)
+	require.NoError(t, err)
+	require.Equal(t, plugins.ActionAbort, res.Action)
+}
+
+// TestSnoozeBypassSeverity_RuntimeSettingsOverridesFileConfig covers
+// production bug #2: the severity-bypass list must be read from the
+// DB-backed runtime settings store (what the settings UI writes to) rather
+// than only the boot-time file config, so operator edits take effect live.
+func TestSnoozeBypassSeverity_RuntimeSettingsOverridesFileConfig(t *testing.T) {
+	t.Parallel()
+	h := newStubHost(t)
+	// File config has no bypass severities configured.
+	h.cfg.General.SnoozeBySeverities = nil
+
+	ctx := auth.WithTenant(context.Background(), snoozetypes.DefaultTenant)
+	_, err := h.driver.Write(ctx, "settings", []db.Document{
+		{"name": "snooze_bypass_severities", "value": []string{"ok"}},
+	}, db.WriteOptions{Primary: []string{"name"}, UpdateTime: false})
+	require.NoError(t, err)
+
+	h.runtimeSet = config.NewRuntimeSettings(h.driver, h.cfg, time.Minute)
+
+	// Catch-all rule: no condition → matches every record.
+	writeRule(t, h, db.Document{"name": "catch-all"})
+	p := newPlugin(t, h, nil)
+
+	// severity "OK" → bypassed via the runtime store, even though the file
+	// config's SnoozeBySeverities is empty.
+	res, err := p.Process(ctx, snoozetypes.Record{Severity: "OK"})
+	require.NoError(t, err)
+	require.Equal(t, plugins.ActionContinue, res.Action)
+	require.Nil(t, res.Record.Extra["snoozed"])
+
+	// severity "critical" → not in the bypass list; catch-all must fire.
+	res2, err := p.Process(ctx, snoozetypes.Record{Severity: "critical"})
+	require.NoError(t, err)
+	require.NotEqual(t, plugins.ActionContinue, res2.Action)
 }

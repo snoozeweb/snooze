@@ -3,6 +3,7 @@ package core
 import (
 	"context"
 	"fmt"
+	"strings"
 	"time"
 
 	"go.opentelemetry.io/otel/attribute"
@@ -73,6 +74,7 @@ func (c *Core) processRecordInner(ctx context.Context, rec snoozetypes.Record) (
 	if tenant, ok := snoozetypes.TenantFrom(ctx); !ok || tenant == "" {
 		return rec, plugins.ActionAbort, fmt.Errorf("pipeline: refusing to process record without a tenant: %w", snoozetypes.ErrNoTenant)
 	}
+	c.stampOKSeverityClose(ctx, &rec)
 	c.stampDefaultTTL(ctx, &rec)
 	for _, p := range c.processOrder {
 		name := p.Name()
@@ -185,6 +187,58 @@ func (c *Core) recordStatHit(ctx context.Context, rec snoozetypes.Record) {
 		"environment": rec.Environment,
 		"host":        rec.Host,
 	}, 1)
+}
+
+// stampOKSeverityClose closes rec when its severity matches the configured
+// general.ok_severities list (default ["ok", "success"]), documented as "the
+// severities that automatically close the aggregate upon entering the
+// system". Snooze 1.x's Python core enforced this centrally for every
+// record; the Go port loaded and documented the field but nothing ever
+// consumed it, so generic inputs (syslog, snmptrap, a raw record POST) that
+// sent severity "ok" never closed anything. This restores that central
+// enforcement.
+//
+// If rec.State is already set — e.g. a webhook receiver plugin (alertmanager,
+// cloudwatch, datadog, azuremonitor) stamped its own provider-status mapping
+// — the input is authoritative and this stamp does nothing: it only fills an
+// empty State, so those receivers are unaffected.
+func (c *Core) stampOKSeverityClose(ctx context.Context, rec *snoozetypes.Record) {
+	if rec.State != "" {
+		return
+	}
+	severity := strings.ToLower(strings.TrimSpace(rec.Severity))
+	if severity == "" {
+		return
+	}
+
+	// Prefer the live runtime cache so an operator who edits
+	// general.ok_severities in the UI sees the new value on the next alert
+	// without restarting the server.
+	if c.Settings != nil {
+		if gen, err := c.Settings.General(ctx); err == nil {
+			if severityInList(severity, gen.OKSeverities) {
+				rec.State = "close"
+			}
+			return
+		}
+	}
+	// Fallback to the file-config baseline (e.g. tests construct a Core
+	// without a RuntimeSettings).
+	if c.Cfg != nil && severityInList(severity, c.Cfg.General.OKSeverities) {
+		rec.State = "close"
+	}
+}
+
+// severityInList reports whether severity (already case-folded/trimmed)
+// appears in list. The config lists are normalized to lowercase at load
+// time (schema.General.Normalize), so no further folding is needed here.
+func severityInList(severity string, list []string) bool {
+	for _, s := range list {
+		if s == severity {
+			return true
+		}
+	}
+	return false
 }
 
 // stampDefaultTTL fills in rec.TTL with the configured record-ttl default

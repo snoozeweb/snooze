@@ -341,6 +341,30 @@ func (r *RuntimeSettings) Housekeeper(ctx context.Context) (HousekeeperConfig, e
 	return out, nil
 }
 
+// General returns the current general configuration with the same "baseline +
+// DB overrides" layering as Housekeeper. The severity lists are deep-copied
+// before Normalize runs: `out := r.baseline.General` copies the struct but
+// shares the OKSeverities/SnoozeBySeverities backing arrays with the
+// baseline, and Normalize case-folds those slices in place — without the
+// copy, a read with no DB override would rewrite the baseline's own backing
+// array (harmless today since the baseline was normalized at load time and
+// the writes are idempotent, but a lurking hazard if that ever changes).
+func (r *RuntimeSettings) General(ctx context.Context) (schema.General, error) {
+	if r == nil {
+		return schema.DefaultGeneral(), nil
+	}
+	values, err := r.load(ctx)
+	if err != nil {
+		return schema.General{}, err
+	}
+	out := r.baseline.General
+	out.OKSeverities = append([]string(nil), out.OKSeverities...)
+	out.SnoozeBySeverities = append([]string(nil), out.SnoozeBySeverities...)
+	applyGeneralOverrides(&out, values)
+	out.Normalize()
+	return out, nil
+}
+
 // IngestAllow reports whether alert ingestion is currently permitted for the
 // tenant in ctx. It is the runtime kill-switch read by the HTTP edge guards on
 // POST /api/v1/alerts and the webhook receivers. The file-config baseline
@@ -371,6 +395,26 @@ func applyIngestOverrides(out *schema.Ingest, values map[string]any) {
 	if v, ok := values["ingest.allow"]; ok {
 		if b, ok := asBool(v); ok {
 			out.Allow = b
+		}
+	}
+}
+
+// applyGeneralOverrides overlays the FLAT (non-dotted) DB values onto a
+// baseline General config. Only the two severity lists — ok_severities and
+// snooze_bypass_severities — are overridable; the auth-backend toggles
+// (default_auth_backend, local_enabled, anonymous_enabled, …) stay
+// file-config only, since they gate login itself and are set up at
+// deploy/bootstrap time rather than tuned from the settings UI. Unknown keys
+// are ignored.
+func applyGeneralOverrides(out *schema.General, values map[string]any) {
+	if v, ok := values["ok_severities"]; ok {
+		if ss, ok := asStringSlice(v); ok {
+			out.OKSeverities = ss
+		}
+	}
+	if v, ok := values["snooze_bypass_severities"]; ok {
+		if ss, ok := asStringSlice(v); ok {
+			out.SnoozeBySeverities = ss
 		}
 	}
 }

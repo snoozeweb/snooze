@@ -168,17 +168,36 @@ func (p *Plugin) Process(ctx context.Context, rec snoozetypes.Record) (plugins.R
 	host := p.host
 	p.mu.RUnlock()
 
+	// Close-transition pass-through: a `close` against an EXISTING aggregate
+	// (aggregaterule stamps duplicates=prev+1, always >=2 once a prior
+	// aggregate existed) is the pipeline retiring an alert already on the
+	// books, not a new alert to filter. Suppressing it — especially a
+	// discard filter's ActionAbort — drops the close write entirely and
+	// wedges the row open forever, on top of losing its `snoozed`
+	// attribution (aggregaterule strips that on the way through). So this
+	// runs before any rule is even tested, ahead of the severity-bypass
+	// block below, as the strongest invariant. A first-occurrence close
+	// (duplicates < 2 — aggregaterule stamps duplicates=1 when no existing
+	// aggregate matched) still runs the rules below, so a fully-discarded
+	// alert's recovery event cannot leak a phantom closed row.
+	if rec.State == "close" {
+		if dup, ok := toInt64(rec.Extra["duplicates"]); ok && dup >= 2 {
+			return plugins.Result{Action: plugins.ActionContinue, Record: rec}, nil
+		}
+	}
+
 	// Global suppression-bypass: a record whose severity is listed in
 	// general.snooze_bypass_severities passes straight through, before any
 	// rule is tested, so a maintenance window can never silence a recovery
-	// (e.g. "ok") or a configured escalation (e.g. "critical").
-	if host != nil {
-		if cfg := host.Config(); cfg != nil && len(cfg.General.SnoozeBySeverities) > 0 {
-			sev := strings.ToLower(strings.TrimSpace(rec.Severity))
-			for _, bypass := range cfg.General.SnoozeBySeverities {
-				if sev == bypass {
-					return plugins.Result{Action: plugins.ActionContinue, Record: rec}, nil
-				}
+	// (e.g. "ok") or a configured escalation (e.g. "critical"). The list is
+	// read from the DB-backed runtime settings when available (so operator
+	// edits in the settings UI take effect live), falling back to the
+	// boot-time file config otherwise.
+	if bypass := bypassSeverities(ctx, host); len(bypass) > 0 {
+		sev := strings.ToLower(strings.TrimSpace(rec.Severity))
+		for _, b := range bypass {
+			if sev == b {
+				return plugins.Result{Action: plugins.ActionContinue, Record: rec}, nil
 			}
 		}
 	}
@@ -210,6 +229,30 @@ func (p *Plugin) Process(ctx context.Context, rec snoozetypes.Record) (plugins.R
 		return plugins.Result{Action: plugins.ActionAbortWrite, Record: rec}, nil
 	}
 	return plugins.Result{Action: plugins.ActionContinue, Record: rec}, nil
+}
+
+// bypassSeverities returns the current general.snooze_bypass_severities list
+// (already lowercased) for the tenant in ctx. It prefers the DB-backed
+// runtime settings store — the settings UI writes there, and the runtime
+// store already handles per-tenant caching + invalidation — falling back to
+// the boot-time file config when host doesn't expose runtime settings, the
+// settings snapshot itself is nil, or the read errors.
+func bypassSeverities(ctx context.Context, host plugins.Host) []string {
+	if rsHost, ok := host.(plugins.RuntimeSettingsHost); ok {
+		if rs := rsHost.RuntimeSettings(); rs != nil {
+			if general, err := rs.General(ctx); err == nil {
+				return general.SnoozeBySeverities
+			}
+		}
+	}
+	if host == nil {
+		return nil
+	}
+	cfg := host.Config()
+	if cfg == nil {
+		return nil
+	}
+	return cfg.General.SnoozeBySeverities
 }
 
 // cachedRules returns a copy of the cached rule set for tenantID. Test-only convenience.
