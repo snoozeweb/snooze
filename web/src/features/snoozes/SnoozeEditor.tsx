@@ -192,11 +192,17 @@ function CreateAndApplyButton({
               if (e instanceof EditorAbort) return;
               throw e;
             }
+            // The generic create endpoint's response is NOT the created
+            // record — it's the DB write result, `{Added: [uid], ...}`
+            // (internal/db.WriteResult; "payloads are not echoed back"). The
+            // resource hook's `Snooze` return type is a lie callers here
+            // must see through to find the new uid.
             const created = await create.mutateAsync(body);
-            if (created.uid) {
+            const newUid = (created as unknown as { Added?: string[] }).Added?.[0];
+            if (newUid) {
               const res = await apiClient<RetroApplyResponse>(
                 "POST",
-                `/snooze/${created.uid}/retro_apply`,
+                `/snooze/${newUid}/retro_apply`,
               );
               const verb = res.deleted ? "discarded" : "tagged";
               const n = res.matched;

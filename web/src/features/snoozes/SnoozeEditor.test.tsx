@@ -303,7 +303,15 @@ describe("SnoozeEditor", () => {
         ),
         http.post("/api/v1/snooze", async ({ request }) => {
           snoozeBodies.push(await request.json());
-          return HttpResponse.json({ uid: "s-new", name: "quiet-friday" });
+          // The real create endpoint returns the DB write result, NOT the
+          // created record — {Added: [uid], Updated: [], Replaced: [],
+          // Rejected: []} (internal/db.WriteResult has no json tags, so the
+          // wire keys are capitalized). A response shaped like the record
+          // itself (e.g. {uid, name}) would mask the bug this test guards:
+          // CreateAndApplyButton previously read `created.uid`, which is
+          // always undefined on the real endpoint, so retro-apply silently
+          // never fired.
+          return HttpResponse.json({ Added: ["s-new"], Updated: [], Replaced: [], Rejected: [] });
         }),
         http.post("/api/v1/snooze/s-new/retro_apply", () => {
           retroCalls.push("s-new");
