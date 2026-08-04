@@ -212,12 +212,12 @@ export function ConditionNode({
   const fieldText = "field" in leaf ? leaf.field : "";
 
   function setField(field: string) {
+    // SEARCH has no field input (masked below) — it's never reachable here.
     if (
       leaf.type === "EQUALS" ||
       leaf.type === "NOT_EQUALS" ||
       leaf.type === "CONTAINS" ||
-      leaf.type === "MATCHES" ||
-      leaf.type === "SEARCH"
+      leaf.type === "MATCHES"
     ) {
       onChange({ ...leaf, field });
       return;
@@ -245,10 +245,18 @@ export function ConditionNode({
       onChange({ type: "EXISTS", field: fieldText });
       return;
     }
+    if (nextType === "SEARCH") {
+      // SEARCH only ever reads its value (a full-text term across the whole
+      // record) — the backend requires field to stay empty. Force it blank
+      // here rather than carrying over whatever field was set for the
+      // previous operator, which would silently never match.
+      onChange({ type: "SEARCH", field: "", value: "" });
+      return;
+    }
     const newShape = valueShapeForOp(nextType);
     if (newShape === "string") {
       onChange({
-        type: nextType as "EQUALS" | "NOT_EQUALS" | "CONTAINS" | "MATCHES" | "SEARCH",
+        type: nextType as "EQUALS" | "NOT_EQUALS" | "CONTAINS" | "MATCHES",
         field: fieldText,
         value: "",
       });
@@ -304,19 +312,23 @@ export function ConditionNode({
   return (
     <div className={styles.leaf}>
       <div className={styles.field}>
-        <Input
-          value={fieldText}
-          onChange={(e) => setField(e.target.value)}
-          placeholder="field"
-          list={fieldOptions.length > 0 ? "snooze-field-suggestions" : undefined}
-        />
-        {fieldOptions.length > 0 ? (
-          <datalist id="snooze-field-suggestions">
-            {fieldOptions.map((f) => (
-              <option key={f} value={f} />
-            ))}
-          </datalist>
-        ) : null}
+        {leaf.type === "SEARCH" ? null : (
+          <>
+            <Input
+              value={fieldText}
+              onChange={(e) => setField(e.target.value)}
+              placeholder="field"
+              list={fieldOptions.length > 0 ? "snooze-field-suggestions" : undefined}
+            />
+            {fieldOptions.length > 0 ? (
+              <datalist id="snooze-field-suggestions">
+                {fieldOptions.map((f) => (
+                  <option key={f} value={f} />
+                ))}
+              </datalist>
+            ) : null}
+          </>
+        )}
       </div>
       <div className={styles.op}>
         <Select value={leaf.type} onValueChange={(v) => setOperator(v as ConditionType)}>

@@ -184,3 +184,40 @@ describe("ConditionNode — duplicate button", () => {
     expect(andNode.args[0]).not.toBe(andNode.args[1]);
   });
 });
+
+describe("ConditionNode — SEARCH operator (field masked, value-only)", () => {
+  it("renders no field input for an existing SEARCH leaf, only the value input", () => {
+    const Wrapper = wrap();
+    render(
+      <Wrapper>
+        <ConditionNode
+          value={{ type: "SEARCH", field: "", value: "disk full" }}
+          fieldOptions={[]}
+          onChange={() => undefined}
+          isRoot
+        />
+      </Wrapper>,
+    );
+    expect(screen.queryByPlaceholderText("field")).not.toBeInTheDocument();
+    expect(screen.getByPlaceholderText("value")).toHaveValue("disk full");
+  });
+
+  it("switching the operator to SEARCH clears a previously-set field", async () => {
+    const user = userEvent.setup();
+    let last: Condition | undefined;
+    const Wrapper = wrap();
+    render(
+      <Wrapper>
+        <ConditionNode
+          value={{ type: "EQUALS", field: "host", value: "srv-1" }}
+          fieldOptions={[]}
+          onChange={(c) => (last = c)}
+          isRoot
+        />
+      </Wrapper>,
+    );
+    await user.click(screen.getByRole("combobox"));
+    await user.click(screen.getByRole("option", { name: "search" }));
+    expect(last).toEqual({ type: "SEARCH", field: "", value: "" });
+  });
+});
