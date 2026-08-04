@@ -83,9 +83,16 @@ func (rt *Router) handleAlertPost(w http.ResponseWriter, r *http.Request) {
 	}
 
 	rejections := 0
+	validationFailures := 0
 	for _, rec := range records {
 		if v, _ := rec["source_ip"].(string); v == "" {
 			rec["source_ip"] = ip
+		}
+		if isEmptyRecord(rec) {
+			out.Errors = append(out.Errors, "validation_error: record has no host, source, or message")
+			rejections++
+			validationFailures++
+			continue
 		}
 		res, action, err := rt.Processor.ProcessRecord(r.Context(), rec)
 		if err != nil {
@@ -107,12 +114,30 @@ func (rt *Router) handleAlertPost(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// If every record in the batch was policy-rejected, return 422.
+	// If every record in the batch was rejected (policy or validation), return 422.
 	if rejections > 0 && rejections == len(records) {
-		WriteError(w, r, ErrPolicyRejected.WithMessage(out.Errors[0]))
+		if validationFailures == rejections {
+			WriteError(w, r, ErrValidation.WithMessage(out.Errors[0]))
+		} else {
+			WriteError(w, r, ErrPolicyRejected.WithMessage(out.Errors[0]))
+		}
 		return
 	}
 	WriteJSON(w, http.StatusOK, out)
+}
+
+// isEmptyRecord reports whether a record carries none of the three fields
+// the UI and dedup/aggregation logic key an alert's identity on. Such a
+// record — e.g. a malformed integration payload or a bare `{}` POST — would
+// otherwise persist as a real alert row with an auto-generated uid and
+// render as a blank row in the alerts table.
+func isEmptyRecord(rec map[string]any) bool {
+	for _, field := range [...]string{"host", "source", "message"} {
+		if s, _ := rec[field].(string); strings.TrimSpace(s) != "" {
+			return false
+		}
+	}
+	return true
 }
 
 // parseLoopChain splits a comma-separated X-Snooze-Loop header value into a

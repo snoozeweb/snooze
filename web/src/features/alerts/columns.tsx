@@ -156,7 +156,7 @@ export const alertColumns: ColumnDef<Record_>[] = [
   {
     id: "host",
     header: "Host",
-    cell: (r) => <Code>{r.host ?? ""}</Code>,
+    cell: (r) => (r.host ? <Code>{r.host}</Code> : <span>—</span>),
     sortable: true,
     width: "150px",
     hideBelow: "md",
@@ -204,6 +204,6 @@ export const alertColumns: ColumnDef<Record_>[] = [
   {
     id: "message",
     header: "Message",
-    cell: (r) => <span className={styles.message}>{r.message ?? ""}</span>,
+    cell: (r) => <span className={styles.message}>{r.message || "—"}</span>,
   },
 ];
