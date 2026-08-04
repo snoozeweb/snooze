@@ -2,7 +2,9 @@ import { useState } from "react";
 import { Badge } from "@/shared/ui/Badge";
 import { IconButton } from "@/shared/ui/IconButton";
 import { Skeleton } from "@/shared/ui/Skeleton";
+import { Tooltip, TooltipProvider } from "@/shared/ui/Tooltip";
 import { formatRelativeTime } from "@/features/alerts/format";
+import { formatAbsoluteTime } from "@/lib/format/time";
 import { useObjectAudit } from "./api";
 import { ACTION_LABEL, ACTION_VARIANT } from "./maps";
 import styles from "./AuditTimeline.module.css";
@@ -59,7 +61,17 @@ export function AuditTimeline({ objectType, objectId }: AuditTimelineProps) {
               {c.username ? c.username : "system"}
               {c.method ? ` (${c.method})` : ""}
               {" · "}
-              {formatRelativeTime(c.date_epoch)}
+              {/* Radix Tooltip throws without a TooltipProvider ancestor; the
+                  real app already has one at the root, but this nested one
+                  keeps the timeline usable standalone (bare test harnesses,
+                  future embeds) — see IconButton for the same pattern. */}
+              <TooltipProvider delay={200}>
+                <Tooltip content={formatAbsoluteTime(c.date_epoch)}>
+                  <time dateTime={new Date((c.date_epoch ?? 0) * 1000).toISOString()}>
+                    {formatRelativeTime(c.date_epoch)}
+                  </time>
+                </Tooltip>
+              </TooltipProvider>
             </span>
           </div>
         </div>

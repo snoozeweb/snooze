@@ -1,5 +1,5 @@
 import { Tooltip } from "./Tooltip";
-import { formatRelativeTime, trimDate } from "@/lib/format/time";
+import { formatAbsoluteTime, formatRelativeTime, trimDate } from "@/lib/format/time";
 import styles from "./TimeCell.module.css";
 
 export type TimeCellProps = {
@@ -10,14 +10,6 @@ export type TimeCellProps = {
 };
 
 const HOUR_SECONDS = 3600;
-
-// Hoisted so the tooltip string doesn't construct a fresh Intl.DateTimeFormat
-// per cell per render. One shared formatter, locale-default like
-// toLocaleString() but with explicit medium date+time styles.
-const tooltipFormat = new Intl.DateTimeFormat(undefined, {
-  dateStyle: "medium",
-  timeStyle: "medium",
-});
 
 /**
  * TimeCell renders a Snooze epoch (seconds) the way the alerts table does —
@@ -41,7 +33,7 @@ export function TimeCell({ epoch, side = "top" }: TimeCellProps) {
   }
 
   const iso = date.toISOString();
-  const full = tooltipFormat.format(date);
+  const full = formatAbsoluteTime(epoch);
   const now = Math.floor(Date.now() / 1000);
   const ageSeconds = now - epoch;
   // "Nm ago" prefix only for fresh, past events (< 1h old). Future epochs and

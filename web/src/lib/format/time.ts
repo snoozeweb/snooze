@@ -21,6 +21,24 @@ export function formatRelativeTime(dateEpochSec: number | undefined): string {
   return `${Math.floor(diff / 86400)}d`;
 }
 
+// Hoisted so callers don't construct a fresh Intl.DateTimeFormat per render.
+const absoluteFormat = new Intl.DateTimeFormat(undefined, {
+  dateStyle: "medium",
+  timeStyle: "medium",
+});
+
+/**
+ * formatAbsoluteTime renders the full locale date+time for a tooltip —
+ * the counterpart to formatRelativeTime's "Xm ago" for spots that show only
+ * relative time and need an absolute fallback on hover.
+ */
+export function formatAbsoluteTime(dateEpochSec: number | undefined): string {
+  if (dateEpochSec === undefined || dateEpochSec === 0) return "—";
+  const d = new Date(dateEpochSec * 1000);
+  if (Number.isNaN(d.getTime())) return "—";
+  return absoluteFormat.format(d);
+}
+
 const SHORT_MONTHS = [
   "Jan",
   "Feb",
