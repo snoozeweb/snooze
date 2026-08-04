@@ -1,4 +1,12 @@
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react";
 import { useQuery } from "@tanstack/react-query";
 import { api, type ApiError } from "@/lib/api/client";
 import { docsUrl } from "@/lib/docs";
@@ -50,6 +58,10 @@ export type SearchBarProps = {
   className?: string;
   /** Optional aria-label for the textbox (defaults to "Search"). */
   ariaLabel?: string;
+  /** Rendered just after the clear ("x") button — a page-specific affordance
+   *  tied to the current filter (e.g. AlertsPage's "Snooze N matching
+   *  alerts" badge). SearchBar renders it as-is; it owns no logic here. */
+  endSlot?: ReactNode;
 };
 
 type FieldsResponse = { data: FieldInfo[] };
@@ -95,6 +107,7 @@ export function SearchBar({
   placeholder = "host = … AND severity = …",
   className,
   ariaLabel = "Search",
+  endSlot,
 }: SearchBarProps) {
   const inputRef = useRef<HTMLInputElement | null>(null);
   const overlayRef = useRef<HTMLDivElement | null>(null);
@@ -449,6 +462,7 @@ export function SearchBar({
           <Icon name="x" size={14} />
         </button>
       ) : null}
+      {endSlot}
       {/* Persistent, discoverable pointer to the query-language reference — the
           DSL is rich (regex, exists, IN-lists, AND/OR/NOT) but was otherwise
           only learnable by trial-and-error autocomplete. A real anchor (with

@@ -1,4 +1,4 @@
-import { act, render, screen, waitFor } from "@testing-library/react";
+import { act, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -14,16 +14,24 @@ import {
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { TooltipProvider } from "@/shared/ui/Tooltip";
 import { mswServer } from "@/tests/msw/server";
+import { decodeConditionQ } from "@/lib/condition/decode";
 import { AlertsPage } from "./AlertsPage";
 
-function setup(pathname = "/web/alerts") {
+function setup(pathname = "/web/alerts", { withSnoozesStub = false } = {}) {
   const root = createRootRoute({ component: () => <Outlet /> });
   const alerts = createRoute({
     getParentRoute: () => root,
     path: "/web/alerts",
     component: AlertsPage,
   });
-  const tree = root.addChildren([alerts]);
+  // Only the "Snooze this alert" navigation test needs a real destination
+  // route to land on — every other test leaves the tree minimal.
+  const snoozesStub = createRoute({
+    getParentRoute: () => root,
+    path: "/web/snoozes",
+    component: () => <div>snoozes stub</div>,
+  });
+  const tree = withSnoozesStub ? root.addChildren([alerts, snoozesStub]) : root.addChildren([alerts]);
   /* eslint-disable @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-argument */
   const router = createRouter({
     routeTree: tree,
@@ -31,7 +39,7 @@ function setup(pathname = "/web/alerts") {
   } as any);
   /* eslint-enable @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-argument */
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-  return render(
+  render(
     <QueryClientProvider client={client}>
       <TooltipProvider>
         {/* router is locally constructed; cast needed for the registered-router type mismatch */}
@@ -39,6 +47,7 @@ function setup(pathname = "/web/alerts") {
       </TooltipProvider>
     </QueryClientProvider>,
   );
+  return router;
 }
 
 describe("AlertsPage", () => {
@@ -1180,6 +1189,213 @@ describe("AlertsPage — Plan 28b: clipboard template", () => {
     await user.click(screen.getByRole("menuitem", { name: /^copy$/i }));
     await waitFor(() => expect(written.length).toBeGreaterThan(0));
     expect(written[0]).toBe("db01 — disk full");
+  });
+
+  it("'Snooze this alert' (kebab) navigates to /web/snoozes prefilled with host+message and a 1h window", async () => {
+    mswServer.use(
+      http.get("/api/v1/record", () =>
+        HttpResponse.json({
+          data: [{ uid: "r1", host: "db01", message: "disk full", state: "open", date_epoch: 1 }],
+          meta: { count: 1, limit: 50, offset: 0, total: 1 },
+        }),
+      ),
+    );
+    const user = userEvent.setup();
+    const router = setup("/web/alerts", { withSnoozesStub: true });
+    await waitFor(() => expect(screen.getByText("db01")).toBeInTheDocument());
+    await user.click(screen.getAllByRole("button", { name: /row actions/i })[0]!);
+    await user.click(screen.getByRole("menuitem", { name: /snooze this alert/i }));
+    await waitFor(() => expect(router.state.location.pathname).toBe("/web/snoozes"));
+    const params = new URLSearchParams(router.state.location.searchStr);
+    const decoded = decodeConditionQ(params.get("prefillCond") ?? "");
+    expect(decoded).toMatchObject({
+      type: "AND",
+      args: [
+        { type: "EQUALS", field: "host", value: "db01" },
+        { type: "EQUALS", field: "message", value: "disk full" },
+      ],
+    });
+    expect(params.get("prefillName")).toMatch(/db01/);
+    expect(params.get("prefillComment")).toMatch(/r1/);
+    expect(params.get("prefillSeconds")).toBe("3600");
+  });
+
+  it("'Snooze this alert' is also offered from the right-click context menu", async () => {
+    mswServer.use(
+      http.get("/api/v1/record", () =>
+        HttpResponse.json({
+          data: [{ uid: "r1", host: "db01", state: "open", date_epoch: 1 }],
+          meta: { count: 1, limit: 50, offset: 0, total: 1 },
+        }),
+      ),
+    );
+    const user = userEvent.setup();
+    setup("/web/alerts", { withSnoozesStub: true });
+    await waitFor(() => expect(screen.getByText("db01")).toBeInTheDocument());
+    const row = screen.getByText("db01").closest("tr")!;
+    await user.pointer({ keys: "[MouseRight]", target: row });
+    await waitFor(() =>
+      expect(screen.getByRole("menu", { name: /row context menu/i })).toBeInTheDocument(),
+    );
+    expect(screen.getByRole("menuitem", { name: /snooze this alert/i })).toBeInTheDocument();
+  });
+
+  it("bulk-snoozing 5 or fewer selected rows navigates straight to /web/snoozes with an OR'd condition", async () => {
+    mswServer.use(
+      http.get("/api/v1/record", () =>
+        HttpResponse.json({
+          data: [
+            { uid: "r1", host: "db01", message: "disk full", state: "open", date_epoch: 1 },
+            { uid: "r2", host: "db02", message: "disk full", state: "open", date_epoch: 2 },
+            { uid: "r3", host: "db03", message: "disk full", state: "open", date_epoch: 3 },
+          ],
+          meta: { count: 3, limit: 50, offset: 0, total: 3 },
+        }),
+      ),
+    );
+    const user = userEvent.setup();
+    const router = setup("/web/alerts", { withSnoozesStub: true });
+    await waitFor(() => expect(screen.getByText("db01")).toBeInTheDocument());
+    await user.click(screen.getByRole("checkbox", { name: /select all/i }));
+    await user.click(screen.getByRole("button", { name: /^snooze \(3\)$/i }));
+    // No warning dialog at or below the threshold — it should navigate immediately.
+    expect(screen.queryByRole("dialog")).toBeNull();
+    await waitFor(() => expect(router.state.location.pathname).toBe("/web/snoozes"));
+    const params = new URLSearchParams(router.state.location.searchStr);
+    const decoded = decodeConditionQ(params.get("prefillCond") ?? "");
+    expect(decoded).toMatchObject({
+      type: "OR",
+      args: [
+        { type: "AND", args: [{ field: "host", value: "db01" }, { field: "message" }] },
+        { type: "AND", args: [{ field: "host", value: "db02" }, { field: "message" }] },
+        { type: "AND", args: [{ field: "host", value: "db03" }, { field: "message" }] },
+      ],
+    });
+    expect(params.get("prefillName")).toMatch(/3 alerts/);
+  });
+
+  it("bulk-snoozing more than 5 selected rows warns with a compact preview before navigating", async () => {
+    const rows = Array.from({ length: 6 }, (_, i) => ({
+      uid: `r${i + 1}`,
+      host: `db0${i + 1}`,
+      message: "disk full",
+      state: "open",
+      date_epoch: i + 1,
+    }));
+    mswServer.use(
+      http.get("/api/v1/record", () =>
+        HttpResponse.json({
+          data: rows,
+          meta: { count: 6, limit: 50, offset: 0, total: 6 },
+        }),
+      ),
+    );
+    const user = userEvent.setup();
+    const router = setup("/web/alerts", { withSnoozesStub: true });
+    await waitFor(() => expect(screen.getByText("db01")).toBeInTheDocument());
+    await user.click(screen.getByRole("checkbox", { name: /select all/i }));
+    await user.click(screen.getByRole("button", { name: /^snooze \(6\)$/i }));
+
+    const dialog = await screen.findByRole("dialog");
+    expect(within(dialog).getByText(/snooze 6 alerts\?/i)).toBeInTheDocument();
+    // Preview is capped at 5 lines with a "+1 more" tail.
+    expect(within(dialog).getByText(/db01 — disk full/)).toBeInTheDocument();
+    expect(within(dialog).getByText(/db05 — disk full/)).toBeInTheDocument();
+    expect(within(dialog).queryByText(/db06 — disk full/)).toBeNull();
+    expect(within(dialog).getByText(/\+1 more/)).toBeInTheDocument();
+
+    // Cancel: no navigation.
+    await user.click(within(dialog).getByRole("button", { name: /cancel/i }));
+    expect(screen.queryByRole("dialog")).toBeNull();
+    expect(router.state.location.pathname).toBe("/web/alerts");
+
+    // Continue: navigates with all 6 rows OR'd together.
+    await user.click(screen.getByRole("button", { name: /^snooze \(6\)$/i }));
+    const dialog2 = await screen.findByRole("dialog");
+    await user.click(within(dialog2).getByRole("button", { name: /continue/i }));
+    await waitFor(() => expect(router.state.location.pathname).toBe("/web/snoozes"));
+    const params = new URLSearchParams(router.state.location.searchStr);
+    const decoded = decodeConditionQ(params.get("prefillCond") ?? "");
+    expect(decoded?.type).toBe("OR");
+    expect(decoded && "args" in decoded ? decoded.args.length : -1).toBe(6);
+    expect(params.get("prefillName")).toMatch(/6 alerts/);
+  });
+
+  it("shows a plain 'Snooze' badge (no count) next to the SearchBar's clear button once the typed filter matches alerts, and it prefills the snooze editor with that filter", async () => {
+    mswServer.use(
+      http.get("/api/v1/record", () =>
+        HttpResponse.json({
+          data: [{ uid: "r1", host: "db01", state: "open", date_epoch: 1 }],
+          meta: { count: 1, limit: 50, offset: 0, total: 3 },
+        }),
+      ),
+      http.post("/api/v1/condition/parse", () =>
+        HttpResponse.json({ condition: { op: "EQUALS", field: "host", value: "db01" } }),
+      ),
+    );
+    const user = userEvent.setup();
+    const router = setup("/web/alerts", { withSnoozesStub: true });
+    await waitFor(() => expect(screen.getByText("db01")).toBeInTheDocument());
+    // No badge before any search text is entered.
+    expect(screen.queryByText(/^snooze$/i)).toBeNull();
+
+    await user.type(screen.getByRole("textbox", { name: /search/i }), "host = db01");
+    // No count in the label — the visible total reflects the active tab/env
+    // filter too, so it can't be presented as a promise of what the search
+    // condition alone will match once saved without that tab preset.
+    const badge = await screen.findByText(/^snooze$/i);
+
+    await user.click(badge);
+    await waitFor(() => expect(router.state.location.pathname).toBe("/web/snoozes"));
+    const params = new URLSearchParams(router.state.location.searchStr);
+    const decoded = decodeConditionQ(params.get("prefillCond") ?? "");
+    // The frontend's Condition shape (type/args) that ConditionEditor and
+    // encodeConditionQ expect — not the backend's own op/children wire shape
+    // the mocked /condition/parse response above returns (that response only
+    // gates whether the badge shows; the prefilled condition is parsed from
+    // the raw search text via the same DSL parser ConditionEditor uses).
+    expect(decoded).toMatchObject({ type: "EQUALS", field: "host", value: "db01" });
+    expect(params.get("prefillName")).toMatch(/search/i);
+    expect(params.get("prefillComment")).toMatch(/host = db01/);
+    // No stale/misleading count baked into the comment either.
+    expect(params.get("prefillComment")).not.toMatch(/\d+ alert/);
+  });
+
+  it("selecting every row of a single-page, non-empty search skips the bulk-snooze warning and prefills with the search filter itself", async () => {
+    mswServer.use(
+      http.get("/api/v1/record", () =>
+        HttpResponse.json({
+          data: [
+            { uid: "r1", host: "db01", state: "open", date_epoch: 1 },
+            { uid: "r2", host: "db02", state: "open", date_epoch: 2 },
+          ],
+          meta: { count: 2, limit: 50, offset: 0, total: 2 },
+        }),
+      ),
+      http.post("/api/v1/condition/parse", () =>
+        HttpResponse.json({ condition: { op: "EQUALS", field: "host", value: "db0" } }),
+      ),
+    );
+    const user = userEvent.setup();
+    const router = setup("/web/alerts", { withSnoozesStub: true });
+    await waitFor(() => expect(screen.getByText("db01")).toBeInTheDocument());
+    await user.type(screen.getByRole("textbox", { name: /search/i }), "host contains db0");
+    // Wait for the parse to resolve (the badge is a convenient signal that
+    // searchCondition has landed) before selecting rows.
+    await screen.findByText(/^snooze$/i);
+
+    await user.click(screen.getByRole("checkbox", { name: /select all/i }));
+    await user.click(screen.getByRole("button", { name: /^snooze \(2\)$/i }));
+
+    // No warning dialog — every matching row (2 of 2) is already selected.
+    expect(screen.queryByRole("dialog")).toBeNull();
+    await waitFor(() => expect(router.state.location.pathname).toBe("/web/snoozes"));
+    const params = new URLSearchParams(router.state.location.searchStr);
+    const decoded = decodeConditionQ(params.get("prefillCond") ?? "");
+    // The search condition itself (frontend Condition shape), not an OR of
+    // the two rows' host/message.
+    expect(decoded).toMatchObject({ type: "CONTAINS", field: "host", value: "db0" });
+    expect(params.get("prefillName")).toMatch(/search/i);
   });
 });
 

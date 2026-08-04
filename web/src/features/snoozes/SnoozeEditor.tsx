@@ -1,5 +1,6 @@
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useWatch, type Control, type UseFormSetValue } from "react-hook-form";
+import type { UseMutationResult } from "@tanstack/react-query";
 import { timeConstraintsError } from "@/lib/timeconstraints/validate";
 import { CollapsibleSection } from "@/shared/ui/CollapsibleSection";
 import { ConditionPreview } from "@/shared/ui/ConditionPreview";
@@ -11,6 +12,7 @@ import { TimeConstraintsCell } from "@/shared/ui/TimeConstraintsCell";
 import { TimeConstraintsEditor } from "@/shared/ui/TimeConstraintsEditor";
 import { ConditionEditor } from "@/shared/condition/ConditionEditor";
 import type { Condition } from "@/lib/condition/types";
+import { encodeConditionQ } from "@/lib/condition/serialize";
 import type { TimeConstraintsGroup } from "@/lib/timeconstraints/types";
 import { DiffSection } from "@/shared/ui/DiffSection";
 import {
@@ -19,6 +21,9 @@ import {
   useFieldInvalid,
   type EditorBodyProps,
 } from "@/shared/forms/EditorDrawer";
+import { api as apiClient, ApiError } from "@/lib/api/client";
+import { toast } from "@/shared/ui/toast/useToast";
+import { Records } from "@/features/alerts/api";
 import { Snoozes } from "./api";
 import { parseDuration } from "./duration";
 import type { Snooze } from "./types";
@@ -33,7 +38,7 @@ const SILENCE_PRESETS: { label: string; seconds: number }[] = [
   { label: "7d", seconds: 604800 },
 ];
 
-type FormShape = {
+export type FormShape = {
   name: string;
   comment: string;
   enabled: boolean;
@@ -54,9 +59,12 @@ const EMPTY_FORM: FormShape = {
 export type SnoozeEditorProps = {
   uid: string | undefined;
   onClose: () => void;
+  // Overrides EMPTY_FORM's defaults in create mode only — e.g. the
+  // "Snooze this alert" row action prefills name/comment/condition/window.
+  initialForm?: Partial<FormShape>;
 };
 
-export function SnoozeEditor({ uid, onClose }: SnoozeEditorProps) {
+export function SnoozeEditor({ uid, onClose, initialForm }: SnoozeEditorProps) {
   const isCreate = uid === undefined || uid === "";
   const get = Snoozes.useGet(isCreate ? undefined : uid);
   const create = Snoozes.useCreate();
@@ -65,6 +73,33 @@ export function SnoozeEditor({ uid, onClose }: SnoozeEditorProps) {
   // the inline message (mirrors WidgetEditor's jsonError pattern).
   const [tcError, setTcError] = useState<string | null>(null);
 
+  // Shared by the normal submit path (EditorDrawer's formToBody) and the
+  // "Create and apply" footer action, which builds its own request outside
+  // that path — both need the exact same wire mapping and time-window guard.
+  const buildBody = (form: FormShape): Snooze => {
+    setTcError(null);
+    // Block an incomplete time window (e.g. an unfilled "Add range"), which
+    // would save a snooze that never matches yet reads as "always on".
+    const tcErr = timeConstraintsError(form.time_constraints);
+    if (tcErr) {
+      setTcError(tcErr);
+      throw new EditorAbort();
+    }
+    const hasTimeConstraints =
+      (form.time_constraints.datetime?.length ?? 0) > 0 ||
+      (form.time_constraints.time?.length ?? 0) > 0 ||
+      (form.time_constraints.weekdays?.length ?? 0) > 0;
+    const body: Snooze = {
+      name: form.name,
+      ...(form.comment ? { comment: form.comment } : {}),
+      enabled: form.enabled,
+      condition: form.condition,
+      ...(hasTimeConstraints ? { time_constraints: form.time_constraints } : {}),
+      ...(form.discard ? { discard: true } : {}),
+    };
+    return body;
+  };
+
   return (
     <EditorDrawer<FormShape, Snooze>
       uid={uid}
@@ -72,7 +107,7 @@ export function SnoozeEditor({ uid, onClose }: SnoozeEditorProps) {
       get={get}
       create={create}
       update={update}
-      emptyForm={EMPTY_FORM}
+      emptyForm={isCreate && initialForm ? { ...EMPTY_FORM, ...initialForm } : EMPTY_FORM}
       recordToForm={(s) => ({
         name: s.name ?? "",
         comment: s.comment ?? "",
@@ -81,29 +116,7 @@ export function SnoozeEditor({ uid, onClose }: SnoozeEditorProps) {
         time_constraints: s.time_constraints ?? {},
         discard: s.discard ?? false,
       })}
-      formToBody={(form) => {
-        setTcError(null);
-        // Block an incomplete time window (e.g. an unfilled "Add range"), which
-        // would save a snooze that never matches yet reads as "always on".
-        const tcErr = timeConstraintsError(form.time_constraints);
-        if (tcErr) {
-          setTcError(tcErr);
-          throw new EditorAbort();
-        }
-        const hasTimeConstraints =
-          (form.time_constraints.datetime?.length ?? 0) > 0 ||
-          (form.time_constraints.time?.length ?? 0) > 0 ||
-          (form.time_constraints.weekdays?.length ?? 0) > 0;
-        const body: Snooze = {
-          name: form.name,
-          ...(form.comment ? { comment: form.comment } : {}),
-          enabled: form.enabled,
-          condition: form.condition,
-          ...(hasTimeConstraints ? { time_constraints: form.time_constraints } : {}),
-          ...(form.discard ? { discard: true } : {}),
-        };
-        return body;
-      }}
+      formToBody={(form) => buildBody(form)}
       title={(c) => (c ? "New snooze" : "Edit snooze")}
       titleToolbar={({ control, setValue }) => (
         <SnoozeEnabledToggle control={control} setValue={setValue} />
@@ -111,12 +124,97 @@ export function SnoozeEditor({ uid, onClose }: SnoozeEditorProps) {
       footerStart={({ control }) => (
         <SnoozeDiff control={control} original={isCreate ? undefined : get.data} />
       )}
+      secondaryFooterActions={(body) => (
+        <CreateAndApplyButton {...body} buildBody={buildBody} create={create} onClose={onClose} />
+      )}
       successMessage={{ create: "Snooze created", update: "Snooze saved" }}
       formId="snooze-form"
       formClassName={styles.stack}
     >
       {(body) => <SnoozeFields {...body} tcError={tcError} />}
     </EditorDrawer>
+  );
+}
+
+type RetroApplyResponse = { matched: number; deleted?: number; tagged?: number; snooze: string };
+
+/** "Create and apply to N alerts" — creates the snooze, then immediately
+ *  retro-applies it to every alert currently matching its condition, instead
+ *  of leaving the operator to do that as a separate step from the snoozes
+ *  list. Only offered in create mode, and only once N > 0 — an empty match
+ *  makes the button meaningless. */
+function CreateAndApplyButton({
+  control,
+  getValues,
+  isCreate,
+  buildBody,
+  create,
+  onClose,
+}: EditorBodyProps<FormShape> & {
+  buildBody: (form: FormShape) => Snooze;
+  create: UseMutationResult<Snooze, ApiError, Partial<Snooze>>;
+  onClose: () => void;
+}) {
+  const condition = useWatch({ control, name: "condition" });
+  // Debounce like ConditionPreview — leaf-value edits update the condition
+  // AST per keystroke, and we don't want a count request on every one.
+  const [debouncedCondition, setDebouncedCondition] = useState(condition);
+  useEffect(() => {
+    const id = setTimeout(() => setDebouncedCondition(condition), 300);
+    return () => clearTimeout(id);
+  }, [condition]);
+  const q = useMemo(() => {
+    try {
+      return encodeConditionQ(debouncedCondition);
+    } catch {
+      return undefined;
+    }
+  }, [debouncedCondition]);
+  const list = Records.useList({ ...(q !== undefined ? { q } : {}), limit: 1 });
+  const total = list.data?.meta.total ?? 0;
+  const [busy, setBusy] = useState(false);
+
+  if (!isCreate || total <= 0) return null;
+
+  return (
+    <Button
+      variant="secondary"
+      loading={busy}
+      disabled={busy}
+      onClick={() => {
+        void (async () => {
+          setBusy(true);
+          try {
+            let body: Snooze;
+            try {
+              body = buildBody(getValues());
+            } catch (e) {
+              if (e instanceof EditorAbort) return;
+              throw e;
+            }
+            const created = await create.mutateAsync(body);
+            if (created.uid) {
+              const res = await apiClient<RetroApplyResponse>(
+                "POST",
+                `/snooze/${created.uid}/retro_apply`,
+              );
+              const verb = res.deleted ? "discarded" : "tagged";
+              const n = res.matched;
+              toast.success(`Snooze created — ${n} alert${n === 1 ? "" : "s"} ${verb}`);
+            } else {
+              toast.success("Snooze created");
+            }
+            onClose();
+          } catch (e) {
+            toast.error(e instanceof ApiError ? e.detail : "Create and apply failed");
+          } finally {
+            setBusy(false);
+          }
+        })();
+      }}
+    >
+      Create and apply to {total} alert{total === 1 ? "" : "s"}
+    </Button>
   );
 }
 

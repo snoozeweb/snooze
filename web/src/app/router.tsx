@@ -603,6 +603,13 @@ type SnoozesSearchParams = {
   orderby?: string;
   asc?: boolean;
   search?: string;
+  // Prefill for a new snooze, set when arriving via an alert row's "Snooze
+  // this alert" action (see AlertsPage). prefillCond is a base64url-encoded
+  // Condition, matching the ?q= convention (see encodeConditionQ).
+  prefillName?: string;
+  prefillComment?: string;
+  prefillSeconds?: number;
+  prefillCond?: string;
 };
 
 const snoozesRoute = createRoute({
@@ -632,6 +639,17 @@ const snoozesRoute = createRoute({
             : undefined;
     if (asc !== undefined) out["asc"] = asc;
     if (typeof raw["search"] === "string") out["search"] = raw["search"];
+    if (typeof raw["prefillName"] === "string") out["prefillName"] = raw["prefillName"];
+    if (typeof raw["prefillComment"] === "string") out["prefillComment"] = raw["prefillComment"];
+    if (typeof raw["prefillCond"] === "string") out["prefillCond"] = raw["prefillCond"];
+    const prefillSecondsRaw = raw["prefillSeconds"];
+    const prefillSeconds =
+      typeof prefillSecondsRaw === "number"
+        ? prefillSecondsRaw
+        : typeof prefillSecondsRaw === "string" && /^\d+$/.test(prefillSecondsRaw)
+          ? Number(prefillSecondsRaw)
+          : undefined;
+    if (prefillSeconds !== undefined) out["prefillSeconds"] = prefillSeconds;
     return out as SnoozesSearchParams;
   },
 });

@@ -14,6 +14,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { mswServer } from "@/tests/msw/server";
 import { TooltipProvider } from "@/shared/ui/Tooltip";
 import { ToastProvider, Toaster } from "@/shared/ui/Toast";
+import { encodeConditionQ } from "@/lib/condition/serialize";
 import { SnoozesPage } from "./SnoozesPage";
 
 beforeAll(() => {
@@ -26,7 +27,7 @@ beforeAll(() => {
   }
 });
 
-function setup() {
+function setup(initialEntry = "/web/snoozes") {
   const root = createRootRoute({ component: () => <Outlet /> });
   const route = createRoute({
     getParentRoute: () => root,
@@ -37,7 +38,7 @@ function setup() {
   /* eslint-disable @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-argument */
   const router = createRouter({
     routeTree: tree,
-    history: createMemoryHistory({ initialEntries: ["/web/snoozes"] }),
+    history: createMemoryHistory({ initialEntries: [initialEntry] }),
   } as any);
   /* eslint-enable @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-argument */
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
@@ -131,5 +132,37 @@ describe("SnoozesPage", () => {
     await user.click(screen.getByRole("checkbox", { name: /select row/i }));
     expect(screen.getByRole("region", { name: /bulk actions/i })).toBeInTheDocument();
     expect(screen.getByText("1 selected")).toBeInTheDocument();
+  });
+
+  it("opens the New snooze editor prefilled from ?prefillCond/prefillName/prefillComment/prefillSeconds", async () => {
+    mswServer.use(
+      http.get("/api/v1/snooze", () =>
+        HttpResponse.json({ data: [], meta: { count: 0, limit: 1000, offset: 0, total: 0 } }),
+      ),
+    );
+    const cond = encodeConditionQ({
+      type: "AND",
+      args: [
+        { type: "EQUALS", field: "host", value: "db01" },
+        { type: "EQUALS", field: "message", value: "disk full" },
+      ],
+    });
+    const params: Record<string, string> = {
+      prefillCond: cond,
+      prefillName: "Snooze — db01",
+      prefillComment: "Snoozed from alert r1: disk full",
+      prefillSeconds: "3600",
+    };
+    const qs = Object.entries(params)
+      .map(([k, v]) => `${k}=${encodeURIComponent(v)}`)
+      .join("&");
+    setup(`/web/snoozes?${qs}`);
+    // The drawer opens automatically (no click needed) with the name prefilled.
+    const nameInput = await screen.findByLabelText(/^name$/i);
+    expect(nameInput).toHaveValue("Snooze — db01");
+    expect(screen.getByLabelText(/^comment$/i)).toHaveValue("Snoozed from alert r1: disk full");
+    // The condition editor renders an input per EQUALS leaf value.
+    expect(screen.getByDisplayValue("db01")).toBeInTheDocument();
+    expect(screen.getByDisplayValue("disk full")).toBeInTheDocument();
   });
 });

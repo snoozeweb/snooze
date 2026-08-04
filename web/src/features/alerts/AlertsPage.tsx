@@ -7,11 +7,14 @@ import { Switch } from "@/shared/ui/Switch";
 import { Tooltip } from "@/shared/ui/Tooltip";
 import { toast } from "@/shared/ui/toast/useToast";
 import { Button } from "@/shared/ui/Button";
+import { Badge } from "@/shared/ui/Badge";
+import { Dialog, DialogBody, DialogContent, DialogFooter, DialogTitle } from "@/shared/ui/Dialog";
 import { ApiError } from "@/lib/api/client";
 import { copyToClipboard } from "@/lib/clipboard";
 import { expandTemplate } from "@/lib/clipboard-template";
 import { ConfirmDeleteDialog, useConfirmDelete } from "@/shared/ui/resourceContextMenu";
 import { encodeConditionQ } from "@/lib/condition/serialize";
+import { parseText } from "@/lib/condition/text";
 import type { Condition } from "@/lib/condition/types";
 import type { ParsedCondition } from "@/shared/ui/SearchBar";
 import { severityToken } from "@/lib/format/severity-color";
@@ -55,12 +58,62 @@ function recordLabel(r: Record_): string {
   return r.host ?? r.message ?? r.uid ?? "alert";
 }
 
+/** host+message AND condition for the "Snooze this alert" action — the two
+ *  fields that usually identify "this specific problem" without also
+ *  matching every other alert from the same host. Falls back to whichever
+ *  field is present when the other is missing. */
+function snoozeConditionFor(r: Record_): Condition {
+  const parts: Condition[] = [];
+  if (r.host) parts.push({ type: "EQUALS", field: "host", value: r.host });
+  if (r.message) parts.push({ type: "EQUALS", field: "message", value: r.message });
+  if (parts.length === 0) return { type: "ALWAYS_TRUE" };
+  return parts.length === 1 ? parts[0]! : { type: "AND", args: parts };
+}
+
 /** Stable key for a record row — the uid, or a host+timestamp fallback for the
  *  rare uid-less row. Must match DataTable's `rowKey` so the `?record=` URL
  *  value resolves back to a visible row. Module-scope so it's usable before the
  *  memoized `rowKey` callback is declared (context menu, row-open handler). */
 function recordKey(r: Record_): string {
   return r.uid ?? `${r.host ?? ""}-${r.date_epoch ?? 0}`;
+}
+
+// Selecting more than this many rows before bulk-snoozing shows a warning
+// with a preview, since the resulting OR condition gets broad and hard to
+// read back later — better to have the operator glance at what they're
+// about to combine into one rule.
+const BULK_SNOOZE_WARN_THRESHOLD = 5;
+
+/** OR of each selected row's host+message condition — "snooze if it matches
+ *  ANY of these alerts", vs. the single-row AND used by "Snooze this alert". */
+function bulkSnoozeCondition(rows: Record_[]): Condition {
+  const parts = rows.map(snoozeConditionFor);
+  if (parts.length === 0) return { type: "ALWAYS_TRUE" };
+  return parts.length === 1 ? parts[0]! : { type: "OR", args: parts };
+}
+
+function bulkSnoozeName(rows: Record_[]): string {
+  if (rows.length === 1) return `Snooze — ${rows[0]!.host ?? rows[0]!.message ?? "alert"}`;
+  return `Snooze — ${rows.length} alerts`;
+}
+
+function bulkSnoozeComment(rows: Record_[]): string {
+  const r = rows[0];
+  if (rows.length === 1 && r) {
+    return `Snoozed from alert ${r.uid ?? recordKey(r)}${r.message ? `: ${r.message}` : ""}`;
+  }
+  const preview = rows
+    .slice(0, 3)
+    .map((row) => row.host ?? row.uid ?? "alert")
+    .join(", ");
+  const more = rows.length > 3 ? ` and ${rows.length - 3} more` : "";
+  return `Snoozed from ${rows.length} alerts: ${preview}${more}`;
+}
+
+/** "host — message" per row, capped, for the bulk-snooze warning dialog. */
+function bulkSnoozePreview(rows: Record_[], max = 5): { lines: string[]; more: number } {
+  const lines = rows.slice(0, max).map((r) => `${r.host ?? "?"} — ${r.message ?? "(no message)"}`);
+  return { lines, more: Math.max(0, rows.length - max) };
 }
 
 type AlertsSearch = AlertFilters & {
@@ -143,6 +196,39 @@ function columnsForConfig(ids: string[] | undefined): typeof alertColumns {
  * which the Go backend's UnmarshalJSON normalises into the canonical
  * `op` form before the database driver translates it.
  */
+/** The SearchBar's text, as the frontend's own `Condition` AST (type/args) —
+ *  what "the search" means for the snooze-from-search badge and the "select
+ *  every matching row" bulk-snooze shortcut, both of which should snooze on
+ *  the typed filter, not the page's incidental tab/env view state.
+ *
+ * Deliberately does NOT reuse the SearchBar's server-parsed `ParsedCondition`
+ * (the `dsl` used by {@link buildQueryParam} for the `?q=` list filter) —
+ * that's the backend's own wire shape (`op`/`children`, short symbolic ops
+ * like `"="`/`"&gt;"`), fine to forward opaquely as JSON for a list filter, but
+ * WRONG once it needs to be a real `Condition` that ConditionEditor renders
+ * and re-serializes by switching on `.type`/`.args`/`.arg` — feeding it the
+ * wire shape left every switch falling through, i.e. a garbled snooze
+ * condition. `parseText` is the same DSL parser ConditionEditor's own Text
+ * tab uses, so it produces a `Condition` guaranteed compatible with it. */
+function searchOnlyCondition(text: string): Condition | null {
+  if (!text.trim()) return null;
+  const r = parseText(text);
+  return r.ok ? r.value : null;
+}
+
+function searchSnoozeName(searchText: string): string {
+  return `Snooze — search: ${searchText}`;
+}
+
+function searchSnoozeComment(searchText: string): string {
+  // No match count here: the badge's count comes from the currently visible
+  // (tab/env-filtered) list, not from the search condition alone, so it can
+  // overstate or understate what this condition — used on its own, without
+  // the tab preset — will actually match (e.g. it also catches already-acked
+  // alerts the "Alerts" tab hides).
+  return `Snoozed from search "${searchText}"`;
+}
+
 function buildQueryParam(
   tab: TabId,
   dsl: ParsedCondition | null,
@@ -379,6 +465,70 @@ export function AlertsPage() {
     [],
   );
 
+  // "Snooze this alert(s)" — hands off to the snoozes page with a new-snooze
+  // form prefilled from the given rows: a host+message condition (OR'd across
+  // rows when there's more than one), a generated name/comment, and a 1h
+  // window (adjustable before saving).
+  const snoozeRows = useCallback(
+    (rows: Record_[]) => {
+      if (rows.length === 0) return;
+      void navigate({
+        to: "/web/snoozes",
+        search: {
+          prefillCond: encodeConditionQ(bulkSnoozeCondition(rows)),
+          prefillName: bulkSnoozeName(rows),
+          prefillComment: bulkSnoozeComment(rows),
+          prefillSeconds: 3600,
+        },
+      });
+    },
+    [navigate],
+  );
+
+  // "Snooze from search" — the badge next to the SearchBar's clear button,
+  // and the no-warning bulk path below both snooze on the typed filter
+  // itself rather than an OR of individual rows.
+  const snoozeFromCondition = useCallback(
+    (condition: Condition, text: string) => {
+      void navigate({
+        to: "/web/snoozes",
+        search: {
+          prefillCond: encodeConditionQ(condition),
+          prefillName: searchSnoozeName(text),
+          prefillComment: searchSnoozeComment(text),
+          prefillSeconds: 3600,
+        },
+      });
+    },
+    [navigate],
+  );
+
+  // Bulk-snoozing more than BULK_SNOOZE_WARN_THRESHOLD rows ORs that many
+  // conditions into one rule — easy to do by accident from a big selection,
+  // so confirm with a preview first instead of just firing. Exception: when
+  // every alert matching a non-empty search is selected (a single page, so
+  // `rows` really is the full matching set), snoozing on the search
+  // condition itself is exactly as precise as the individual rows would be
+  // and reads back far better later — skip the warning and use it directly.
+  const [snoozeBulkConfirm, setSnoozeBulkConfirm] = useState<Record_[] | null>(null);
+  const requestSnoozeRows = useCallback(
+    (rows: Record_[]) => {
+      // searchCondition !== null: the backend has accepted searchText as a
+      // valid, non-trivial filter — see the note above searchSnoozeCond.
+      const searchCond = searchCondition !== null ? searchOnlyCondition(searchText) : null;
+      const total = list.data?.meta.total ?? -1;
+      const allMatchingSelected =
+        searchCond !== null && !selectAllMode && rows.length > 0 && rows.length === total;
+      if (allMatchingSelected) {
+        snoozeFromCondition(searchCond, searchText);
+        return;
+      }
+      if (rows.length > BULK_SNOOZE_WARN_THRESHOLD) setSnoozeBulkConfirm(rows);
+      else snoozeRows(rows);
+    },
+    [snoozeRows, snoozeFromCondition, searchCondition, searchText, selectAllMode, list.data?.meta.total],
+  );
+
   const rowActions = useCallback(
     (row: Record_): RowAction[] => {
       const state = (row.state ?? "") as AlertState;
@@ -407,6 +557,15 @@ export function AlertsPage() {
         label: "Comment",
         icon: "message-square",
         onSelect: () => openDialog("comment", [row]),
+      });
+
+      // snooze is always-allowed — it's a preventive action, not a state
+      // transition, so it doesn't need transition-gating.
+      out.push({
+        key: "snooze",
+        label: "Snooze this alert",
+        icon: "moon",
+        onSelect: () => snoozeRows([row]),
       });
 
       if (!isClosed) {
@@ -484,7 +643,7 @@ export function AlertsPage() {
 
       return out;
     },
-    [openDialog, shelveMut, commentMut],
+    [openDialog, shelveMut, commentMut, snoozeRows],
   );
 
   // Count pill on the kebab: signals a row carries discussion (the full thread
@@ -656,6 +815,13 @@ export function AlertsPage() {
       });
 
       items.push({
+        key: "snooze",
+        label: "Snooze this alert",
+        icon: "moon",
+        onSelect: () => snoozeRows([row]),
+      });
+
+      items.push({
         key: "delete",
         label: "Delete",
         icon: "trash",
@@ -666,7 +832,7 @@ export function AlertsPage() {
 
       return items;
     },
-    [openDialog, confirmDelete, config?.clipboard_template],
+    [openDialog, confirmDelete, config?.clipboard_template, snoozeRows],
   );
 
   const bulkActions = useCallback(
@@ -747,6 +913,19 @@ export function AlertsPage() {
           >
             Tag / set fields ({countLabel})
           </Button>
+          {/* Snooze — built from the actual row objects (host+message per
+              row), so it's not offered in selectAllMode where off-page rows
+              aren't loaded. */}
+          {!selectAllMode && pageCount > 0 ? (
+            <Button
+              size="sm"
+              variant="secondary"
+              leadingIcon="moon"
+              onClick={() => requestSnoozeRows(rows)}
+            >
+              Snooze ({pageCount})
+            </Button>
+          ) : null}
           {/* "Select all N matching this filter" affordance */}
           {!selectAllMode && total > pageCount && pageCount > 0 ? (
             <Button
@@ -773,7 +952,7 @@ export function AlertsPage() {
         </>
       );
     },
-    [list.data?.meta.total, selectAllMode],
+    [list.data?.meta.total, selectAllMode, requestSnoozeRows],
   );
 
   const submitDialog = useCallback(
@@ -971,14 +1150,43 @@ export function AlertsPage() {
     },
     [updateSearch],
   );
+  // Badge next to the SearchBar's clear button — appears once the typed
+  // filter (ignoring tab/env) matches at least one alert, and jumps straight
+  // to a new snooze prefilled with that same filter. Deliberately doesn't
+  // show a count: `searchMatchCount` is the currently *visible* (tab/env
+  // -filtered) total, which can under/overstate what the search condition
+  // alone will match once saved without that tab preset (e.g. it also
+  // catches already-acked alerts the "Alerts" tab hides) — showing a number
+  // here would just be a misleading promise.
+  // Gate on `searchCondition !== null` too: while the debounced server parse
+  // of a fresh keystroke is in flight (or failed), `list.data` still reflects
+  // the previously-accepted filter (see SearchBar's cadence contract), so a
+  // condition parsed from the newest `searchText` could disagree with what
+  // `searchMatchCount` actually counted.
+  const searchSnoozeCond = useMemo(() => searchOnlyCondition(searchText), [searchText]);
+  const searchMatchCount = list.data?.meta.total ?? 0;
+  const searchBadge = useMemo(() => {
+    if (!searchSnoozeCond || searchCondition === null || searchMatchCount <= 0) return null;
+    return (
+      <button
+        type="button"
+        className={styles.searchSnoozeBadge}
+        onClick={() => snoozeFromCondition(searchSnoozeCond, searchText)}
+        title="Snooze the alerts matching this search"
+      >
+        <Badge variant="info">Snooze</Badge>
+      </button>
+    );
+  }, [searchSnoozeCond, searchCondition, searchMatchCount, searchText, snoozeFromCondition]);
   const searchProp = useMemo(
     () => ({
       value: searchText,
       onChange: handleSearchChange,
       onSubmit: handleSearchSubmit,
       collection: "record",
+      endSlot: searchBadge,
     }),
-    [searchText, handleSearchChange, handleSearchSubmit],
+    [searchText, handleSearchChange, handleSearchSubmit, searchBadge],
   );
   const sortOrder: "asc" | "desc" = asc ? "asc" : "desc";
   const serverSort = useMemo(
@@ -1184,6 +1392,51 @@ export function AlertsPage() {
         }}
       />
       <InjectAlertsDialog open={injectOpen} onOpenChange={setInjectOpen} />
+      <Dialog
+        open={snoozeBulkConfirm !== null}
+        onOpenChange={(o) => {
+          if (!o) setSnoozeBulkConfirm(null);
+        }}
+      >
+        <DialogContent>
+          <DialogTitle>Snooze {snoozeBulkConfirm?.length ?? 0} alerts?</DialogTitle>
+          <DialogBody>
+            <p>
+              This creates one snooze rule matching ANY of these alerts (their host+message
+              conditions OR&apos;d together) — worth a quick glance before combining that many
+              into a single rule:
+            </p>
+            {snoozeBulkConfirm
+              ? (() => {
+                  const { lines, more } = bulkSnoozePreview(snoozeBulkConfirm);
+                  return (
+                    <ul className={styles.snoozePreviewList}>
+                      {lines.map((line, i) => (
+                        <li key={i}>{line}</li>
+                      ))}
+                      {more > 0 ? <li>+{more} more</li> : null}
+                    </ul>
+                  );
+                })()
+              : null}
+          </DialogBody>
+          <DialogFooter>
+            <Button variant="secondary" onClick={() => setSnoozeBulkConfirm(null)}>
+              Cancel
+            </Button>
+            <Button
+              variant="primary"
+              leadingIcon="moon"
+              onClick={() => {
+                if (snoozeBulkConfirm) snoozeRows(snoozeBulkConfirm);
+                setSnoozeBulkConfirm(null);
+              }}
+            >
+              Continue
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

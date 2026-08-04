@@ -252,4 +252,81 @@ describe("SnoozeEditor", () => {
       expect(body.time_constraints?.datetime).toBeUndefined();
     });
   });
+
+  describe('"Create and apply to N alerts" button', () => {
+    it("is not shown when no alert currently matches the condition", async () => {
+      mswServer.use(
+        http.get("/api/v1/record", () =>
+          HttpResponse.json({ data: [], meta: { count: 0, limit: 1, offset: 0, total: 0 } }),
+        ),
+      );
+      const Wrapper = wrap();
+      render(
+        <Wrapper>
+          <SnoozeEditor uid={undefined} onClose={() => undefined} />
+        </Wrapper>,
+      );
+      await screen.findByLabelText(/^name$/i);
+      expect(screen.queryByRole("button", { name: /create and apply/i })).not.toBeInTheDocument();
+    });
+
+    it("is not shown in edit mode, even with matches", async () => {
+      mswServer.use(
+        http.get("/api/v1/snooze/sn1", () =>
+          HttpResponse.json({
+            uid: "sn1",
+            name: "quiet-friday",
+            enabled: true,
+            condition: { type: "ALWAYS_TRUE" },
+          }),
+        ),
+        http.get("/api/v1/record", () =>
+          HttpResponse.json({ data: [], meta: { count: 3, limit: 1, offset: 0, total: 3 } }),
+        ),
+      );
+      const Wrapper = wrap();
+      render(
+        <Wrapper>
+          <SnoozeEditor uid="sn1" onClose={() => undefined} />
+        </Wrapper>,
+      );
+      await screen.findByDisplayValue("quiet-friday");
+      expect(screen.queryByRole("button", { name: /create and apply/i })).not.toBeInTheDocument();
+    });
+
+    it("shows the live match count, and creating then applying tags every matching alert", async () => {
+      const snoozeBodies: unknown[] = [];
+      const retroCalls: string[] = [];
+      mswServer.use(
+        http.get("/api/v1/record", () =>
+          HttpResponse.json({ data: [], meta: { count: 7, limit: 1, offset: 0, total: 7 } }),
+        ),
+        http.post("/api/v1/snooze", async ({ request }) => {
+          snoozeBodies.push(await request.json());
+          return HttpResponse.json({ uid: "s-new", name: "quiet-friday" });
+        }),
+        http.post("/api/v1/snooze/s-new/retro_apply", () => {
+          retroCalls.push("s-new");
+          return HttpResponse.json({ matched: 7, tagged: 7, snooze: "s-new" });
+        }),
+      );
+      const onClose = vi.fn();
+      const Wrapper = wrap();
+      const user = userEvent.setup();
+      render(
+        <Wrapper>
+          <SnoozeEditor uid={undefined} onClose={onClose} />
+        </Wrapper>,
+      );
+      await user.type(screen.getByLabelText(/^name$/i), "quiet-friday");
+      const applyButton = await screen.findByRole("button", {
+        name: /create and apply to 7 alerts/i,
+      });
+      await user.click(applyButton);
+      await waitFor(() => expect(snoozeBodies).toHaveLength(1));
+      await waitFor(() => expect(retroCalls).toHaveLength(1));
+      expect((snoozeBodies[0] as { name: string }).name).toBe("quiet-friday");
+      await waitFor(() => expect(onClose).toHaveBeenCalled());
+    });
+  });
 });

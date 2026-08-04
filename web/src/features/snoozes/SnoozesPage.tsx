@@ -13,9 +13,10 @@ import { useTableSearch } from "@/shared/hooks/useTableSearch";
 import { useResourceListPage, type BaseListSearch } from "@/shared/hooks/useResourceListPage";
 import { ConfirmDeleteDialog } from "@/shared/ui/resourceContextMenu";
 import { api as apiClient, ApiError } from "@/lib/api/client";
+import { decodeConditionQ } from "@/lib/condition/decode";
 import { Records } from "@/features/alerts/api";
 import { Snoozes } from "./api";
-import { SnoozeEditor } from "./SnoozeEditor";
+import { SnoozeEditor, type FormShape } from "./SnoozeEditor";
 import { snoozeColumns, snoozeRowDisabled } from "./columns";
 import { snoozeState, type SnoozeState } from "./state";
 import type { Snooze } from "./types";
@@ -30,6 +31,10 @@ type RetroApplyResponse = {
 
 type SnoozesSearch = BaseListSearch & {
   tab?: SnoozeState;
+  prefillName?: string;
+  prefillComment?: string;
+  prefillSeconds?: number;
+  prefillCond?: string;
 };
 
 const PAGE_SIZE = 50;
@@ -49,6 +54,25 @@ export function SnoozesPage() {
   const detailUid = search.uid;
   const tab: SnoozeState = search.tab ?? "active";
   const [creating, setCreating] = useState(false);
+
+  // "Snooze this alert" (AlertsPage) lands here with ?prefillCond=&prefillName=
+  // etc. instead of local `creating` state, so the editor opens even on a
+  // fresh page load / deep link. Cleared from the URL once the editor closes
+  // so re-opening "New" later starts from EMPTY_FORM again.
+  const prefillCondition = search.prefillCond ? decodeConditionQ(search.prefillCond) : null;
+  const hasPrefill = prefillCondition !== null;
+  const prefillForm = useMemo<Partial<FormShape> | undefined>(() => {
+    if (!prefillCondition) return undefined;
+    const now = new Date();
+    const until = new Date(now.getTime() + (search.prefillSeconds ?? 3600) * 1000);
+    return {
+      name: search.prefillName ?? "",
+      comment: search.prefillComment ?? "",
+      condition: prefillCondition,
+      time_constraints: { datetime: [{ from: now.toISOString(), until: until.toISOString() }] },
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- prefillCondition is derived from search.prefillCond each render; re-deriving it in the deps list would just re-add the same value.
+  }, [search.prefillCond, search.prefillName, search.prefillComment, search.prefillSeconds]);
 
   const remove = Snoozes.useRemove();
   const qc = useQueryClient();
@@ -122,6 +146,15 @@ export function SnoozesPage() {
       noun: "snooze",
       contextMenuExtras,
     });
+
+  const closePrefill = useCallback(() => {
+    updateSearch({
+      prefillName: undefined,
+      prefillComment: undefined,
+      prefillSeconds: undefined,
+      prefillCond: undefined,
+    } as unknown as Partial<SnoozesSearch>);
+  }, [updateSearch]);
 
   const snoozeSearch = useTableSearch({
     collection: "snooze",
@@ -284,7 +317,16 @@ export function SnoozesPage() {
       {detailUid !== undefined ? (
         <SnoozeEditor uid={detailUid} onClose={() => updateSearch({ uid: undefined })} />
       ) : null}
-      {creating ? <SnoozeEditor uid={undefined} onClose={() => setCreating(false)} /> : null}
+      {creating || hasPrefill ? (
+        <SnoozeEditor
+          uid={undefined}
+          {...(prefillForm ? { initialForm: prefillForm } : {})}
+          onClose={() => {
+            setCreating(false);
+            if (hasPrefill) closePrefill();
+          }}
+        />
+      ) : null}
       <ConfirmDeleteDialog
         state={confirmDelete.state}
         onCancel={confirmDelete.cancel}

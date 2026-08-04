@@ -93,6 +93,9 @@ export type DataTableProps<T> = {
     /** Field-catalog collection (rule, snooze, user, …) for autocomplete. */
     collection?: string;
     placeholder?: string;
+    /** Forwarded to SearchBar's `endSlot` — a page-specific affordance next
+     *  to the clear button (e.g. AlertsPage's "Snooze N matching" badge). */
+    endSlot?: ReactNode;
   };
   emptyState?: ReactNode;
   loading?: boolean;
@@ -509,6 +512,7 @@ export function DataTable<T>({
                 {...(search.onSubmit ? { onSubmit: search.onSubmit } : {})}
                 {...(search.collection ? { collection: search.collection } : {})}
                 {...(search.placeholder ? { placeholder: search.placeholder } : {})}
+                {...(search.endSlot !== undefined ? { endSlot: search.endSlot } : {})}
               />
             </div>
           ) : null}

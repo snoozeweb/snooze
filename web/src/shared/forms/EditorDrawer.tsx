@@ -6,6 +6,7 @@ import {
   type Control,
   type FieldValues,
   type Path,
+  type UseFormGetValues,
   type UseFormRegister,
   type UseFormSetValue,
   type UseFormWatch,
@@ -113,6 +114,11 @@ export type EditorBodyProps<Form extends FieldValues> = {
   register: UseFormRegister<Form>;
   setValue: UseFormSetValue<Form>;
   watch: UseFormWatch<Form>;
+  /** One-off read of the current form values — for a footer action that
+   *  builds its own request body outside the normal submit path (e.g.
+   *  Snooze's "Create and apply"), where subscribing via `watch` would be
+   *  overkill. */
+  getValues: UseFormGetValues<Form>;
   isCreate: boolean;
   /** The `<form>` element id; the footer's submit button targets it. */
   formId: string;
@@ -158,6 +164,12 @@ export type EditorDrawerProps<
   /** Rendered at the footer's left edge, flexed to fill (e.g. a Diff). A
    *  function form receives the body payload for scoped subscriptions. */
   footerStart?: ReactNode | ((body: EditorBodyProps<Form>) => ReactNode) | undefined;
+  /** Rendered in the footer between `footerStart` and the Cancel/Create
+   *  pair — for an editor-specific extra action button that runs its own
+   *  submit logic (e.g. Snooze's "Create and apply to N alerts", which needs
+   *  to create then immediately retro-apply). A function form receives the
+   *  body payload, including `getValues`, so it can build its own request. */
+  secondaryFooterActions?: ReactNode | ((body: EditorBodyProps<Form>) => ReactNode) | undefined;
 
   /** Toast text on success. Strings or an {create, update} pair. */
   successMessage: string | { create: string; update: string };
@@ -209,6 +221,7 @@ export function EditorDrawer<
     title,
     titleToolbar,
     footerStart,
+    secondaryFooterActions,
     successMessage,
     formId,
     formClassName,
@@ -220,7 +233,7 @@ export function EditorDrawer<
   const isCreate = uid === undefined || uid === "";
 
   const form = useForm<Form>({ defaultValues: emptyForm as never });
-  const { register, handleSubmit, reset, control, setValue, watch } = form;
+  const { register, handleSubmit, reset, control, setValue, watch, getValues } = form;
 
   // Subscribe to the dirty flag so a user-initiated close with unsaved edits
   // raises an in-DOM confirm step instead of silently discarding. isDirty
@@ -301,6 +314,7 @@ export function EditorDrawer<
     register,
     setValue,
     watch,
+    getValues,
     isCreate,
     formId,
   };
@@ -320,6 +334,12 @@ export function EditorDrawer<
       <EditorBody render={footerStart} body={bodyProps} />
     ) : (
       footerStart
+    );
+  const secondaryFooterNode =
+    typeof secondaryFooterActions === "function" ? (
+      <EditorBody render={secondaryFooterActions} body={bodyProps} />
+    ) : (
+      secondaryFooterActions
     );
 
   return (
@@ -358,6 +378,7 @@ export function EditorDrawer<
           {footerStart !== undefined ? (
             <div style={FOOTER_START_STYLE}>{footerStartNode}</div>
           ) : null}
+          {secondaryFooterNode}
           <Button variant="ghost" onClick={requestClose}>
             Cancel
           </Button>
