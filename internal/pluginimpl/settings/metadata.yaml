@@ -57,8 +57,15 @@ setting_form:
     ok_severities:
         display_name: 'OK severities'
         component: 'Arguments'
-        description: 'List of severities that will automatically close the aggregate upon entering the system. Mainly for icinga/grafana that close the alert when the status becomes green again.'
+        description: 'List of severities that will automatically close the aggregate upon entering the system. Only applies to records arriving without an explicit state — webhook integrations that already report a close state themselves are unaffected. Mainly for icinga/grafana that close the alert when the status becomes green again.'
         default_value: ['ok', 'success']
+        placeholder: 'severity name'
+        group: 'general'
+    snooze_bypass_severities:
+        display_name: 'Snooze bypass severities'
+        component: 'Arguments'
+        description: 'Severities exempt from ALL snooze filters — an escalation safety rail (e.g. "critical", "emergency") so a broad maintenance filter can never silence an escalation. Recoveries/closes of existing alerts are already protected automatically and do not need to be listed. Case-insensitive.'
+        default_value: []
         placeholder: 'severity name'
         group: 'general'
     notification_freq:

@@ -217,6 +217,7 @@ func TestMetadataRoute_SettingsCatalogue(t *testing.T) {
 		"metrics_enabled",
 		"anonymous_enabled",
 		"ok_severities",
+		"snooze_bypass_severities",
 		"notification_freq",
 		"notification_retry",
 	} {

@@ -2,6 +2,16 @@
 
 ### Fixed
 
+- **Close transitions could be wedged open by a snooze filter.** A `discard`
+  filter matching the close write for an existing aggregate dropped it
+  entirely, leaving the alert open forever with its snooze attribution
+  stripped. Close transitions of an existing aggregate now pass through all
+  snooze filters unconditionally.
+- **`general.ok_severities` was documented but unenforced.** The field was
+  loaded and shown in the settings UI, but nothing in the Go port consumed
+  it. It is now enforced centrally in the ingest pipeline: a record arriving
+  without an explicit state whose (case-folded) severity is in the list gets
+  `state: close` stamped before the plugin chain runs.
 - **`kv` values could leak between tenants.** The kv plugin cached the whole
   collection in one flat `dict → key → value` map while the collection itself
   is tenant-scoped, so each per-tenant reload overwrote the cache wholesale and
@@ -39,6 +49,8 @@
 
 ### Added
 
+- **`snooze_bypass_severities`** added to the settings catalogue, so it is
+  editable from the web UI (Settings → General) alongside `ok_severities`.
 - **`syncer.reload_safety_interval`** (default `5m`): a periodic full reload of
   every plugin cache for every active tenant, backstopping change-event
   delivery so a lost or dropped event cannot leave a cache stale until the next
@@ -46,6 +58,9 @@
 
 ### Changed
 
+- `general.ok_severities` and `general.snooze_bypass_severities` are now read
+  from the runtime settings store, falling back to the config file. Editing
+  either from Settings → General applies live, without a restart.
 - The syncer fans a tenant-less change event (a delete carries no full
   document) out to every active tenant instead of issuing one naked reload that
   tenant-scoped plugins skip — deleting a filter now takes effect without a
