@@ -118,7 +118,14 @@ func (p *Plugin) Reload(ctx context.Context) error {
 	if !ok || tenantID == "" {
 		return nil
 	}
-	docs, _, err := host.DB().Search(ctx, collectionName, condition.Cond{}, db.Page{})
+	// Asc: true — rule evaluation is first-match-wins (see Process), so load
+	// order IS priority order. An empty db.Page{} defaults to DESCENDING on
+	// every driver (Mongo and sqlite both sort by insertion order but
+	// Page.Asc's zero value is false), which would let a newer, broader
+	// snooze silently shadow an older, more specific one whenever their
+	// conditions overlap. The sibling `rule` plugin makes the same call
+	// with an explicit Asc: true for the identical reason.
+	docs, _, err := host.DB().Search(ctx, collectionName, condition.Cond{}, db.Page{Asc: true})
 	if err != nil {
 		return fmt.Errorf("snooze: load rules: %w", err)
 	}

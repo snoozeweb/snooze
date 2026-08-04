@@ -361,6 +361,40 @@ func TestSnoozeReload(t *testing.T) {
 	require.Equal(t, plugins.ActionAbortWrite, res.Action)
 }
 
+// TestSnoozeReloadOrder_OlderRuleWinsOverNewerOverlapping guards a real
+// production incident: an older, specific discard rule ("silence this host
+// entirely") was being silently shadowed by an unrelated tag rule created
+// months later, because Reload loaded rules in DESCENDING order (an empty
+// db.Page{} defaults to that on every driver — Page.Asc's zero value is
+// false) instead of insertion order. Process is first-match-wins, so load
+// order is priority order: the older rule must be tried first.
+func TestSnoozeReloadOrder_OlderRuleWinsOverNewerOverlapping(t *testing.T) {
+	t.Parallel()
+	h := newStubHost(t)
+
+	writeRule(t, h, db.Document{
+		"name":      "Older discard rule",
+		"condition": []any{"=", "host", "K8S staging"},
+		"discard":   true,
+	})
+	// Created after the rule above, and its condition also matches the same
+	// record — mirrors the live incident where a later, broader tag rule
+	// (e.g. "K8S Backups", host MATCHES "K8S.*") intercepted alerts an
+	// older host-specific discard rule was meant to own outright.
+	writeRule(t, h, db.Document{
+		"name":      "Newer overlapping tag rule",
+		"condition": []any{"=", "host", "K8S staging"},
+	})
+
+	p := newPlugin(t, h, nil)
+	ctx := auth.WithTenant(context.Background(), snoozetypes.DefaultTenant)
+	rec := snoozetypes.Record{Host: "K8S staging"}
+	res, err := p.Process(ctx, rec)
+	require.NoError(t, err)
+	require.Equal(t, plugins.ActionAbort, res.Action,
+		"the older, more specific rule must win — not the newer overlapping one")
+}
+
 // TestSnooze_TenantIsolation verifies that a snooze rule for tenant A does not
 // affect records processed under tenant B.
 func TestSnooze_TenantIsolation(t *testing.T) {
