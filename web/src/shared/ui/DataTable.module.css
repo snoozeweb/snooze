@@ -182,6 +182,18 @@
   box-shadow: inset 3px 0 0 0 var(--row-accent);
 }
 
+/* Wrapper around every cell's rendered content (see CellTooltip in
+   DataTable.tsx). Block + full width so its clientWidth reflects the
+   visible cell width while scrollWidth reflects the untruncated content —
+   the comparison that decides whether to show the hover tooltip. Doesn't
+   set its own overflow/white-space: clipping still comes from `.row td` (or
+   a column's own clamp like `.message`), so this never changes what's
+   visually painted, only what gets measured. */
+.cellInner {
+  display: block;
+  width: 100%;
+}
+
 /* Cells holding counts / IDs / timestamps. Font stays sans (TimeCell swaps
    to mono itself); this just turns on tabular + slashed-zero figures so
    numbers line up column-to-column. */
@@ -410,6 +422,14 @@
        truncating. */
     overflow: visible;
     white-space: normal;
+  }
+  /* Undo the width:100% flex-basis from .cellInner above — in card mode the
+     td itself is the flex container (label ::before + value side by side via
+     justify-content: space-between); a full-width value item would crowd out
+     the label. Inline + auto width lets it size to its own content again. */
+  .table tbody .row td .cellInner {
+    display: inline;
+    width: auto;
   }
   .table tbody .row td::before {
     content: attr(data-label);

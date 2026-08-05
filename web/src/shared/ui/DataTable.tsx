@@ -11,7 +11,32 @@ import { SearchBar, type ParsedCondition } from "./SearchBar";
 import { Skeleton } from "./Skeleton";
 import { isEditable } from "@/shared/hooks/useShortcut";
 import { DataTableContextMenu, type ContextMenuItem } from "./DataTableContextMenu";
+import { Tooltip } from "./Tooltip";
 import styles from "./DataTable.module.css";
+
+// Wraps a cell's rendered content so a mouse hover reveals the full value in
+// a tooltip, but ONLY when the cell's own single-line ellipsis (`.row td` /
+// column-specific clamps like `.message`) is actually clipping it — measured
+// by comparing the wrapper's scrollWidth to its clientWidth on hover rather
+// than an unconditional `title`, so short values that already fit get no
+// tooltip at all.
+function CellTooltip({ children }: { children: ReactNode }) {
+  const ref = useRef<HTMLSpanElement>(null);
+  const [truncated, setTruncated] = useState(false);
+
+  const checkTruncated = useCallback(() => {
+    const el = ref.current;
+    if (el) setTruncated(el.scrollWidth > el.clientWidth);
+  }, []);
+
+  return (
+    <Tooltip content={truncated ? children : null}>
+      <span ref={ref} className={styles.cellInner} onMouseEnter={checkTruncated}>
+        {children}
+      </span>
+    </Tooltip>
+  );
+}
 
 export type ColumnDef<T> = {
   id: string;
@@ -843,7 +868,7 @@ function DataTableRowInner<T>({
           {...(col.hideBelow ? { "data-hide": col.hideBelow } : {})}
           {...(col.align === "right" ? { style: { textAlign: "right" } } : {})}
         >
-          {col.cell(row)}
+          <CellTooltip>{col.cell(row)}</CellTooltip>
         </td>
       ))}
       {quickActions || hasDetails ? (
