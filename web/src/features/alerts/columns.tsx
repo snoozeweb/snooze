@@ -102,13 +102,23 @@ export const alertColumns: ColumnDef<Record_>[] = [
       const t = recordTrend(r);
       return (
         <span className={styles.cell}>
-          <Badge color={severityColor(r.severity ?? "")}>{r.severity ?? "—"}</Badge>
+          <Badge className={styles.badgeText!} color={severityColor(r.severity ?? "")}>
+            {r.severity ?? "—"}
+          </Badge>
           {t === "moreSevere" ? (
-            <span title={trendLabel("moreSevere")} aria-label={trendLabel("moreSevere")}>
+            <span
+              className={styles.trend}
+              title={trendLabel("moreSevere")}
+              aria-label={trendLabel("moreSevere")}
+            >
               ↑
             </span>
           ) : t === "lessSevere" ? (
-            <span title={trendLabel("lessSevere")} aria-label={trendLabel("lessSevere")}>
+            <span
+              className={styles.trend}
+              title={trendLabel("lessSevere")}
+              aria-label={trendLabel("lessSevere")}
+            >
               ↓
             </span>
           ) : null}
@@ -116,7 +126,7 @@ export const alertColumns: ColumnDef<Record_>[] = [
       );
     },
     sortable: true,
-    width: "100px",
+    width: "130px",
   },
   {
     id: "state",
@@ -130,7 +140,9 @@ export const alertColumns: ColumnDef<Record_>[] = [
       const hint = isOpenish ? formatCountdown(r.escalate_at) : "";
       return (
         <span className={styles.cell}>
-          <Badge variant={stateBadgeVariant(state)}>{stateLabel(state)}</Badge>
+          <Badge className={styles.badgeText!} variant={stateBadgeVariant(state)}>
+            {stateLabel(state)}
+          </Badge>
           {hint ? (
             <span className={styles.hint} title="Auto-escalation deadline">
               {hint}
@@ -140,7 +152,7 @@ export const alertColumns: ColumnDef<Record_>[] = [
       );
     },
     sortable: true,
-    width: "91px",
+    width: "110px",
   },
   {
     id: "hits",

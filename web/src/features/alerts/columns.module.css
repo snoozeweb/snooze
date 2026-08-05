@@ -25,27 +25,45 @@
 }
 
 /* Sev/State cell wrapper: badge + trend arrow (Sev) or badge + lifecycle
- * hint (State) laid out side by side on a single line. `min-width: 0` lets
- * the hint's own text-overflow ellipsis (below) engage instead of pushing
- * the cell wider than its fixed column width. */
+ * hint (State) laid out side by side. `flex-wrap: wrap` lets the trend arrow
+ * / hint drop to a second line rather than being squeezed or clipped when
+ * the badge needs the full cell width — nothing in this cell is ever
+ * cropped, only reflowed. `max-width: 100%` keeps it from forcing the
+ * (fixed-width) column wider than its `<th>`. */
 .cell {
   display: inline-flex;
+  flex-wrap: wrap;
   align-items: center;
-  gap: var(--space-2);
+  gap: var(--space-1) var(--space-2);
   min-width: 0;
+  max-width: 100%;
 }
 
-/* Inline lifecycle hint (ack owner + expiry, escalation deadline) shown
- * inside table cells. Rendered in a smaller secondary color so it reads as
- * supplementary metadata rather than competing with the primary cell
- * content. Truncates with an ellipsis rather than wrapping or stretching
- * the fixed-width State column — the parent `.cell`'s flex `gap` supplies
- * the spacing from the badge, so no margin here. */
+/* The badge carries the unbounded, source-supplied severity/state label, so
+ * unlike a fixed short enum it can't be assumed to fit one line. Overriding
+ * Badge's own `white-space: nowrap` / fixed `height` lets long labels wrap
+ * across multiple lines and grow the pill's height instead of overflowing
+ * past the column and getting hard-clipped by the ancestor `.row td`
+ * (DataTable.module.css) — the fix ensures the label is always fully
+ * visible, never truncated or cropped. */
+.badgeText {
+  flex: 1 1 auto;
+  min-width: 0;
+  height: auto;
+  min-height: 18px;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+/* Trend arrow (Sev column) and lifecycle hint (State column): short, bounded
+ * text that stays on one line but wraps onto its own row via `.cell`'s
+ * flex-wrap above rather than shrinking or clipping. */
+.trend {
+  flex-shrink: 0;
+}
 .hint {
   font-size: 0.75em;
   color: var(--color-text-secondary, var(--text-muted));
-  overflow: hidden;
-  text-overflow: ellipsis;
   white-space: nowrap;
-  min-width: 0;
+  flex-shrink: 0;
 }
