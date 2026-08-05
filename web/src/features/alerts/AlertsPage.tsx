@@ -3,6 +3,7 @@ import { useNavigate, useSearch } from "@tanstack/react-router";
 import { DataTable, type RowAction } from "@/shared/ui/DataTable";
 import type { ContextMenuItem } from "@/shared/ui/DataTableContextMenu";
 import { EmptyState } from "@/shared/ui/EmptyState";
+import { IconButton } from "@/shared/ui/IconButton";
 import { Switch } from "@/shared/ui/Switch";
 import { Tooltip } from "@/shared/ui/Tooltip";
 import { toast } from "@/shared/ui/toast/useToast";
@@ -1277,25 +1278,34 @@ export function AlertsPage() {
           search={searchProp}
           toolbarHeader={`${list.data?.meta.total ?? 0} alerts`}
           toolbar={
-            <Tooltip
-              content={
-                !auto.enabled
-                  ? "Auto-refresh off"
-                  : refreshPaused
-                    ? "Auto-refresh paused while the detail drawer is open"
-                    : `Auto-refresh every ${Math.round(refreshMs / 1000)}s`
-              }
-            >
-              {/* Switch renders as a button; use div+aria-label instead of label to satisfy a11y rules */}
-              <div className={styles.refreshToggle} role="group" aria-label="Auto refresh toggle">
-                <span aria-hidden="true">Auto refresh</span>
-                <Switch
-                  checked={auto.enabled}
-                  onCheckedChange={auto.setEnabled}
-                  aria-label="Auto refresh"
-                />
-              </div>
-            </Tooltip>
+            <>
+              <IconButton
+                icon="refresh"
+                label="Refresh alerts"
+                size="sm"
+                loading={list.isFetching}
+                onClick={() => void list.refetch()}
+              />
+              <Tooltip
+                content={
+                  !auto.enabled
+                    ? "Auto-refresh off"
+                    : refreshPaused
+                      ? "Auto-refresh paused while the detail drawer is open"
+                      : `Auto-refresh every ${Math.round(refreshMs / 1000)}s`
+                }
+              >
+                {/* Switch renders as a button; use div+aria-label instead of label to satisfy a11y rules */}
+                <div className={styles.refreshToggle} role="group" aria-label="Auto refresh toggle">
+                  <span aria-hidden="true">Auto refresh</span>
+                  <Switch
+                    checked={auto.enabled}
+                    onCheckedChange={auto.setEnabled}
+                    aria-label="Auto refresh"
+                  />
+                </div>
+              </Tooltip>
+            </>
           }
           serverSort={serverSort}
           serverPagination={{
