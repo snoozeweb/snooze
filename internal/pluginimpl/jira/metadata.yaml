@@ -37,9 +37,9 @@ action_form:
         default_value: 'Task'
         description: 'JIRA issue type name (default: Task)'
     priority:
-        display_name: Priority (fallback)
+        display_name: Priority (override)
         component: String
-        description: 'Priority used when the severity is not in the built-in mapping (emergency→Critical, critical→High, warning→Medium, minor→Low, info→Lowest). Leave blank to omit.'
+        description: 'Optional. Pins the priority for every issue this action creates, given as a priority id ("3") or a name exactly as your JIRA site shows it ("Moyen", "High"). Leave blank — recommended — and the severity is mapped onto the project''s live priority scheme automatically, in any language. A value that names nothing in that scheme is ignored rather than failing the create.'
     summary:
         display_name: Summary (ticket title)
         component: String

@@ -3,6 +3,7 @@ package jira
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -16,10 +17,49 @@ import (
 	"github.com/snoozeweb/snooze/internal/jiraadf"
 )
 
+// testScheme is the JIRA-default 5-entry priority scheme served by
+// newTestJira: ids 1..5, ordered most severe first.
+var testScheme = []map[string]any{
+	{"id": "1", "name": "Highest"},
+	{"id": "2", "name": "High"},
+	{"id": "3", "name": "Medium"},
+	{"id": "4", "name": "Low"},
+	{"id": "5", "name": "Lowest"},
+}
+
+// writeCreateMeta replies with a createmeta document exposing scheme as the
+// priority field's allowed values.
+func writeCreateMeta(w http.ResponseWriter, scheme []map[string]any) {
+	_ = json.NewEncoder(w).Encode(map[string]any{
+		"projects": []map[string]any{{
+			"issuetypes": []map[string]any{{
+				"id":     "10001",
+				"fields": map[string]any{"priority": map[string]any{"allowedValues": scheme}},
+			}},
+		}},
+	})
+}
+
 // newTestJira spins up an httptest.Server speaking enough of the JIRA REST v3
-// API to drive the forwarder. The handler does request inspection inline so
-// tests stay close to the assertion they care about.
+// API to drive the forwarder. Priority-scheme discovery is answered with
+// testScheme so individual tests only handle the calls they assert on; use
+// newTestJiraRaw when the test wants to drive discovery itself.
 func newTestJira(t *testing.T, h http.HandlerFunc) *Client {
+	t.Helper()
+	return newTestJiraRaw(t, func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/rest/api/3/issue/createmeta":
+			writeCreateMeta(w, testScheme)
+		case "/rest/api/3/priority":
+			_ = json.NewEncoder(w).Encode(testScheme)
+		default:
+			h(w, r)
+		}
+	})
+}
+
+// newTestJiraRaw is newTestJira without the priority-scheme stubs.
+func newTestJiraRaw(t *testing.T, h http.HandlerFunc) *Client {
 	t.Helper()
 	srv := httptest.NewServer(h)
 	t.Cleanup(srv.Close)
@@ -76,8 +116,8 @@ func TestForward_createIssue_newAlert(t *testing.T) {
 	fields := got["fields"].(map[string]any)
 	require.Equal(t, "OPS", fields["project"].(map[string]any)["key"])
 	require.Equal(t, "Task", fields["issuetype"].(map[string]any)["name"])
-	// severity=critical → priority_mapping → High
-	require.Equal(t, "High", fields["priority"].(map[string]any)["name"])
+	// severity=critical → positional in the live scheme → High, sent by id
+	require.Equal(t, map[string]any{"id": "2"}, fields["priority"])
 	// Summary is rendered from the default template.
 	require.Equal(t, "[critical] srv-1 - disk full", fields["summary"])
 	// Description carries the message line.
@@ -136,7 +176,9 @@ func TestForward_priorityOverride(t *testing.T) {
 		Priority:   "Lowest",
 		Alert:      jiraadf.RecordSummary{"severity": "critical", "hash": "h"},
 	}}, "jira-action")
-	require.Equal(t, "Lowest", got["fields"].(map[string]any)["priority"].(map[string]any)["name"])
+	// The override names a real priority, so it wins over the severity — and
+	// still goes on the wire as an id.
+	require.Equal(t, map[string]any{"id": "5"}, got["fields"].(map[string]any)["priority"])
 }
 
 func TestForward_issueTypeIDPrecedence(t *testing.T) {
@@ -184,9 +226,16 @@ func TestForward_customFieldsMerge(t *testing.T) {
 	require.Equal(t, "payload-override", fields["customfield_10200"])
 }
 
+// When the site can't be introspected at all we fall back to the pre-resolver
+// behaviour: send the operator's priority name, and honour JIRA's
+// "priority must be a string" hint.
 func TestForward_priorityFallbackToString(t *testing.T) {
 	var attempts atomic.Int32
-	client := newTestJira(t, func(w http.ResponseWriter, r *http.Request) {
+	client := newTestJiraRaw(t, func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/rest/api/3/issue/createmeta" || r.URL.Path == "/rest/api/3/priority" {
+			w.WriteHeader(http.StatusNotFound) // no scheme discoverable
+			return
+		}
 		n := attempts.Add(1)
 		body := readBodyMap(t, r)
 		fields := body["fields"].(map[string]any)
@@ -408,4 +457,191 @@ func TestEnvelope_decodesSummaryKeys(t *testing.T) {
 		`{"summary":"custom title","summary_template":"T ${host}"}`), &env))
 	require.Equal(t, "custom title", env.Summary)
 	require.Equal(t, "T ${host}", env.SummaryTemplate)
+}
+
+// frenchScheme is a localized 4-entry scheme: the exact shape that made the
+// English default mapping fail with `400 priority: … invalide`.
+var frenchScheme = []map[string]any{
+	{"id": "1", "name": "Critique"},
+	{"id": "2", "name": "Grave"},
+	{"id": "3", "name": "Moyen"},
+	{"id": "4", "name": "Faible"},
+}
+
+// A mapping written in English against a localized site must not fail the
+// create: the unresolvable name is ignored and the severity is placed
+// positionally in the real scheme.
+func TestForward_priorityMappingIgnoredWhenNotInScheme(t *testing.T) {
+	var got map[string]any
+	client := newTestJiraRaw(t, func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/rest/api/3/issue/createmeta":
+			writeCreateMeta(w, frenchScheme)
+		case "/rest/api/3/issue":
+			got = readBodyMap(t, r)
+			_ = json.NewEncoder(w).Encode(map[string]any{"key": "CG-1"})
+		default:
+			t.Fatalf("unexpected request: %s %s", r.Method, r.URL.Path)
+		}
+	})
+	cfg, err := minimalCfg().WithDefaults()
+	require.NoError(t, err)
+	cfg.PriorityMapping = map[string]string{"critical": "Highest"} // English: no such name
+	cfg.Priority = "Medium"                                        // also absent
+	f := newForwarder(cfg, client, nil)
+
+	out := f.handleEnvelopes(context.Background(), []envelope{{
+		ProjectKey: "OPS",
+		Alert:      jiraadf.RecordSummary{"hash": "h", "severity": "critical"},
+	}}, "jira-action")
+
+	require.Equal(t, "CG-1", out["h"].IssueKey)
+	// critical → second position of a 4-entry scheme → Grave (id 2).
+	require.Equal(t, map[string]any{"id": "2"}, got["fields"].(map[string]any)["priority"])
+}
+
+// An id in the mapping is used as-is: the language-free way to pin a priority.
+func TestForward_priorityMappingById(t *testing.T) {
+	var got map[string]any
+	client := newTestJiraRaw(t, func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/rest/api/3/issue/createmeta":
+			writeCreateMeta(w, frenchScheme)
+		default:
+			got = readBodyMap(t, r)
+			_ = json.NewEncoder(w).Encode(map[string]any{"key": "CG-2"})
+		}
+	})
+	cfg, err := minimalCfg().WithDefaults()
+	require.NoError(t, err)
+	cfg.PriorityMapping = map[string]string{"critical": "1"}
+	f := newForwarder(cfg, client, nil)
+	_ = f.handleEnvelopes(context.Background(), []envelope{{
+		ProjectKey: "OPS",
+		Alert:      jiraadf.RecordSummary{"hash": "h", "severity": "critical"},
+	}}, "jira-action")
+	require.Equal(t, map[string]any{"id": "1"}, got["fields"].(map[string]any)["priority"])
+}
+
+// A severity outside Snooze's ladder gets no priority field at all, so JIRA
+// applies the scheme's own default instead of us guessing.
+func TestForward_unrankedSeverityOmitsPriority(t *testing.T) {
+	var got map[string]any
+	client := newTestJira(t, func(w http.ResponseWriter, r *http.Request) {
+		got = readBodyMap(t, r)
+		_ = json.NewEncoder(w).Encode(map[string]any{"key": "OPS-6"})
+	})
+	cfg, err := minimalCfg().WithDefaults()
+	require.NoError(t, err)
+	f := newForwarder(cfg, client, nil)
+	_ = f.handleEnvelopes(context.Background(), []envelope{{
+		ProjectKey: "OPS",
+		Alert:      jiraadf.RecordSummary{"hash": "h", "severity": "major"},
+	}}, "jira-action")
+	_, present := got["fields"].(map[string]any)["priority"]
+	require.False(t, present, "priority must be omitted for an unranked severity")
+}
+
+// The scheme is fetched once per (project, issue type), not once per alert.
+func TestForward_prioritySchemeCached(t *testing.T) {
+	var metaCalls, creates atomic.Int32
+	client := newTestJiraRaw(t, func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/rest/api/3/issue/createmeta":
+			metaCalls.Add(1)
+			writeCreateMeta(w, testScheme)
+		default:
+			n := creates.Add(1)
+			_ = json.NewEncoder(w).Encode(map[string]any{"key": fmt.Sprintf("OPS-%d", n)})
+		}
+	})
+	cfg, err := minimalCfg().WithDefaults()
+	require.NoError(t, err)
+	f := newForwarder(cfg, client, nil)
+
+	envs := make([]envelope, 0, 5)
+	for i := 0; i < 5; i++ {
+		envs = append(envs, envelope{
+			ProjectKey: "OPS",
+			Alert:      jiraadf.RecordSummary{"hash": fmt.Sprintf("h%d", i), "severity": "warning"},
+		})
+	}
+	out := f.handleEnvelopes(context.Background(), envs, "jira-action")
+	require.Len(t, out, 5)
+	require.Equal(t, int32(5), creates.Load())
+	require.Equal(t, int32(1), metaCalls.Load(), "scheme must be cached across alerts")
+}
+
+// When JIRA rejects the priority we resolved, the cached scheme is dropped and
+// the create is retried once against a freshly fetched one.
+func TestForward_priorityRejectedRefetchesScheme(t *testing.T) {
+	var metaCalls, creates atomic.Int32
+	// The site is renumbered between the two createmeta calls: the id we first
+	// resolve stops existing.
+	staleScheme := []map[string]any{{"id": "77", "name": "Ancienne"}}
+	client := newTestJiraRaw(t, func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/rest/api/3/issue/createmeta":
+			if metaCalls.Add(1) == 1 {
+				writeCreateMeta(w, staleScheme)
+				return
+			}
+			writeCreateMeta(w, frenchScheme)
+		default:
+			body := readBodyMap(t, r)
+			prio, _ := body["fields"].(map[string]any)["priority"].(map[string]any)
+			if creates.Add(1) == 1 {
+				require.Equal(t, map[string]any{"id": "77"}, prio)
+				w.Header().Set("Content-Type", "application/json")
+				w.WriteHeader(http.StatusBadRequest)
+				_ = json.NewEncoder(w).Encode(map[string]any{
+					"errors": map[string]string{"priority": "La priorité sélectionnée n'est pas valide."},
+				})
+				return
+			}
+			require.Equal(t, map[string]any{"id": "1"}, prio, "retry must use the refetched scheme")
+			_ = json.NewEncoder(w).Encode(map[string]any{"key": "CG-3"})
+		}
+	})
+	cfg, err := minimalCfg().WithDefaults()
+	require.NoError(t, err)
+	f := newForwarder(cfg, client, nil)
+	out := f.handleEnvelopes(context.Background(), []envelope{{
+		ProjectKey: "OPS",
+		Alert:      jiraadf.RecordSummary{"hash": "h", "severity": "emergency"},
+	}}, "jira-action")
+
+	require.Equal(t, "CG-3", out["h"].IssueKey)
+	require.Equal(t, int32(2), creates.Load(), "expected exactly one retry")
+	require.Equal(t, int32(2), metaCalls.Load(), "scheme must be refetched after a rejection")
+}
+
+// createmeta not exposing the priority field falls back to the site-wide list.
+func TestForward_priorityFallsBackToGlobalList(t *testing.T) {
+	var got map[string]any
+	var listCalls atomic.Int32
+	client := newTestJiraRaw(t, func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/rest/api/3/issue/createmeta":
+			// Priority is not on the create screen.
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"projects": []map[string]any{{"issuetypes": []map[string]any{{"id": "10001", "fields": map[string]any{}}}}},
+			})
+		case "/rest/api/3/priority":
+			listCalls.Add(1)
+			_ = json.NewEncoder(w).Encode(frenchScheme)
+		default:
+			got = readBodyMap(t, r)
+			_ = json.NewEncoder(w).Encode(map[string]any{"key": "CG-4"})
+		}
+	})
+	cfg, err := minimalCfg().WithDefaults()
+	require.NoError(t, err)
+	f := newForwarder(cfg, client, nil)
+	_ = f.handleEnvelopes(context.Background(), []envelope{{
+		ProjectKey: "OPS",
+		Alert:      jiraadf.RecordSummary{"hash": "h", "severity": "warning"},
+	}}, "jira-action")
+	require.Equal(t, int32(1), listCalls.Load())
+	require.Equal(t, map[string]any{"id": "3"}, got["fields"].(map[string]any)["priority"])
 }

@@ -25,17 +25,6 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-// defaultPriorityMapping mirrors the Python plugin: a Snooze severity →
-// JIRA priority name lookup applied when the operator did not override the
-// mapping in jira.yaml.
-var defaultPriorityMapping = map[string]string{
-	"emergency": "Critical",
-	"critical":  "High",
-	"warning":   "Medium",
-	"minor":     "Low",
-	"info":      "Lowest",
-}
-
 // defaultLabels is the label list applied to new issues when no labels are
 // provided in either the config or the inbound payload.
 var defaultLabels = []string{"snooze"}
@@ -98,13 +87,24 @@ type Config struct {
 	// it overrides IssueType.
 	IssueTypeID string `yaml:"issue_type_id"`
 
-	// Priority is the fallback priority when the severity is not present in
-	// PriorityMapping. Defaults to "Medium".
+	// Priority is the fallback override tried when PriorityMapping has no
+	// entry for the severity. Like the mapping values it may be an id or a
+	// name, and is ignored when it names nothing in the live scheme. No
+	// default: an unmatched severity is placed positionally instead.
 	Priority string `yaml:"priority"`
 
-	// PriorityMapping maps Snooze severities to JIRA priority names. When
-	// unset, defaultPriorityMapping is used.
+	// PriorityMapping maps Snooze severities to a JIRA priority, given as
+	// either a priority id ("3") or a priority name ("Moyen"). It is an
+	// override, not a requirement: an entry that names nothing in the
+	// project's live priority scheme is ignored and the severity is placed
+	// positionally in that scheme instead (see internal/jirapriority), so a
+	// mapping written for an English site still opens tickets on a localized
+	// one. Unset means no override at all — pure positional mapping.
 	PriorityMapping map[string]string `yaml:"priority_mapping"`
+
+	// PriorityCacheTTL is how long a discovered priority scheme is trusted
+	// before it is refetched. Defaults to jirapriority.DefaultTTL (1h).
+	PriorityCacheTTL time.Duration `yaml:"priority_cache_ttl"`
 
 	// Labels are the default labels applied to new issues. Defaults to
 	// ["snooze"].
@@ -239,16 +239,6 @@ func (c Config) WithDefaults() (Config, error) {
 	}
 	if c.IssueType == "" {
 		c.IssueType = "Task"
-	}
-	if c.Priority == "" {
-		c.Priority = "Medium"
-	}
-	if c.PriorityMapping == nil {
-		// Operators get a copy so a later mutation can't poison the global.
-		c.PriorityMapping = make(map[string]string, len(defaultPriorityMapping))
-		for k, v := range defaultPriorityMapping {
-			c.PriorityMapping[k] = v
-		}
 	}
 	if c.Labels == nil {
 		c.Labels = append([]string(nil), defaultLabels...)

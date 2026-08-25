@@ -24,6 +24,7 @@ import (
 	_ "embed"
 
 	"github.com/snoozeweb/snooze/internal/jiraadf"
+	"github.com/snoozeweb/snooze/internal/jirapriority"
 	"github.com/snoozeweb/snooze/internal/plugins"
 	"github.com/snoozeweb/snooze/pkg/snoozetypes"
 )
@@ -46,7 +47,11 @@ const defaultSummary = "[{{ .Severity }}] {{ .Host }} - {{ .Message }}"
 const maxSummaryLen = 255
 
 func factory(meta plugins.Metadata) (plugins.Plugin, error) {
-	return &Plugin{meta: meta, newClient: defaultClient}, nil
+	return &Plugin{
+		meta:       meta,
+		newClient:  defaultClient,
+		priorities: jirapriority.NewCache(0),
+	}, nil
 }
 
 // Plugin is the JIRA notifier. Send is safe for concurrent calls; the HTTP
@@ -55,6 +60,10 @@ type Plugin struct {
 	meta      plugins.Metadata
 	host      plugins.Host
 	newClient func(timeout time.Duration) *http.Client
+
+	// priorities caches each JIRA site's priority scheme so severity →
+	// priority resolution costs one request per project, not one per alert.
+	priorities *jirapriority.Cache
 }
 
 // Name returns the plugin identifier.
@@ -71,6 +80,9 @@ func (p *Plugin) PostInit(_ context.Context, host plugins.Host) error {
 	p.host = host
 	if p.newClient == nil {
 		p.newClient = defaultClient
+	}
+	if p.priorities == nil {
+		p.priorities = jirapriority.NewCache(0)
 	}
 	return nil
 }
@@ -89,43 +101,70 @@ func (p *Plugin) Send(ctx context.Context, rec snoozetypes.Record, payload plugi
 }
 
 func (p *Plugin) create(ctx context.Context, cfg config, rec snoozetypes.Record) error {
-	summary := p.summary(cfg, rec)
-
 	fields := map[string]any{
 		"project":     map[string]any{"key": cfg.ProjectKey},
 		"issuetype":   map[string]any{"name": cfg.IssueType},
-		"summary":     summary,
+		"summary":     p.summary(cfg, rec),
 		"description": p.description(cfg, rec),
-	}
-	if prio := priorityFor(cfg, rec.Severity); prio != "" {
-		fields["priority"] = map[string]any{"name": prio}
 	}
 	if len(cfg.Labels) > 0 {
 		fields["labels"] = cfg.Labels
 	}
+	prioField, prioName := p.priorityField(ctx, cfg, rec.Severity)
+	setPriority(fields, prioField, prioName)
 
-	body, err := json.Marshal(map[string]any{"fields": fields})
+	status, preview, err := p.postIssue(ctx, cfg, fields)
 	if err != nil {
-		return fmt.Errorf("jira: marshal body: %w", err)
+		return err
 	}
-
-	issueURL := cfg.JiraURL + "/rest/api/3/issue"
-	req, err := p.newRequest(ctx, cfg, http.MethodPost, issueURL, body)
-	if err != nil {
-		return fmt.Errorf("jira: build create request: %w", err)
+	if priorityRejected(status, preview) {
+		// The scheme changed under us (or the site never accepted what we
+		// resolved): drop the cache, resolve again from a fresh fetch, and
+		// retry once.
+		p.priorities.Invalidate(cfg.JiraURL + "|" + cfg.ProjectKey + "/" + cfg.IssueType)
+		retryField, retryName := p.priorityField(ctx, cfg, rec.Severity)
+		setPriority(fields, retryField, retryName)
+		if status, preview, err = p.postIssue(ctx, cfg, fields); err != nil {
+			return err
+		}
 	}
-
-	resp, err := p.newClient(cfg.Timeout).Do(req)
-	if err != nil {
-		return fmt.Errorf("jira: create request: %w", err)
-	}
-	defer resp.Body.Close() //nolint:errcheck
-
-	preview, _ := io.ReadAll(io.LimitReader(resp.Body, maxResponseBytes))
-	if resp.StatusCode != http.StatusCreated {
-		return fmt.Errorf("jira: create: HTTP %d: %s", resp.StatusCode, truncate(preview, 200))
+	if status != http.StatusCreated {
+		return fmt.Errorf("jira: create: HTTP %d: %s", status, truncate(preview, 200))
 	}
 	return nil
+}
+
+// setPriority writes the resolved priority into fields, or removes the key
+// when nothing resolved so JIRA applies the scheme default.
+func setPriority(fields map[string]any, field map[string]any, name string) {
+	switch {
+	case field != nil:
+		fields["priority"] = field
+	case name != "":
+		fields["priority"] = map[string]any{"name": name}
+	default:
+		delete(fields, "priority")
+	}
+}
+
+// postIssue POSTs one create request and returns its status plus a bounded
+// body preview.
+func (p *Plugin) postIssue(ctx context.Context, cfg config, fields map[string]any) (int, []byte, error) {
+	body, err := json.Marshal(map[string]any{"fields": fields})
+	if err != nil {
+		return 0, nil, fmt.Errorf("jira: marshal body: %w", err)
+	}
+	req, err := p.newRequest(ctx, cfg, http.MethodPost, cfg.JiraURL+"/rest/api/3/issue", body)
+	if err != nil {
+		return 0, nil, fmt.Errorf("jira: build create request: %w", err)
+	}
+	resp, err := p.newClient(cfg.Timeout).Do(req)
+	if err != nil {
+		return 0, nil, fmt.Errorf("jira: create request: %w", err)
+	}
+	defer resp.Body.Close() //nolint:errcheck
+	preview, _ := io.ReadAll(io.LimitReader(resp.Body, maxResponseBytes))
+	return resp.StatusCode, preview, nil
 }
 
 // summary renders the issue title from the configured template, falling back
@@ -314,22 +353,6 @@ func parseTimeout(v any) (time.Duration, bool) {
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
-
-// severityPriority mirrors the snooze-jira daemon's default priority_mapping.
-var severityPriority = map[string]string{
-	"emergency": "Critical",
-	"critical":  "High",
-	"warning":   "Medium",
-	"minor":     "Low",
-	"info":      "Lowest",
-}
-
-func priorityFor(cfg config, severity string) string {
-	if p, ok := severityPriority[strings.ToLower(severity)]; ok {
-		return p
-	}
-	return cfg.Priority
-}
 
 func renderTemplate(tmpl string, rec snoozetypes.Record) (string, error) {
 	if !strings.Contains(tmpl, "{{") {

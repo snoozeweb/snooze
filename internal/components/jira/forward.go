@@ -9,6 +9,7 @@ import (
 	"sync"
 
 	"github.com/snoozeweb/snooze/internal/jiraadf"
+	"github.com/snoozeweb/snooze/internal/jirapriority"
 )
 
 // envelope is the wire shape of one /alert payload entry. The bulk of the
@@ -66,6 +67,11 @@ type forwarder struct {
 
 	userMu sync.Mutex
 	users  map[string]string // email → accountId. "" means lookup failed.
+
+	// priorities caches each (project, issue type) priority scheme so
+	// severity → priority resolution costs one request per project rather
+	// than one per alert.
+	priorities *jirapriority.Cache
 }
 
 // newForwarder constructs a forwarder bound to cfg and jira.
@@ -74,10 +80,11 @@ func newForwarder(cfg Config, jira *Client, logger *slog.Logger) *forwarder {
 		logger = slog.Default()
 	}
 	return &forwarder{
-		cfg:    cfg,
-		jira:   jira,
-		logger: logger,
-		users:  map[string]string{},
+		cfg:        cfg,
+		jira:       jira,
+		logger:     logger,
+		users:      map[string]string{},
+		priorities: jirapriority.NewCache(cfg.PriorityCacheTTL),
 	}
 }
 
@@ -261,7 +268,7 @@ func (f *forwarder) createNew(ctx context.Context, env envelope, record jiraadf.
 	}
 
 	issueType, issueTypeID := resolveIssueType(env, f.cfg)
-	priority := resolvePriority(env, record, f.cfg)
+	priorityField, priorityName := f.resolvePriority(ctx, env, record, projectKey, issueTypeID)
 	labels := env.Labels
 	if labels == nil {
 		labels = f.cfg.Labels
@@ -320,16 +327,31 @@ func (f *forwarder) createNew(ctx context.Context, env envelope, record jiraadf.
 	}
 
 	req := CreateIssueRequest{
-		ProjectKey:  projectKey,
-		IssueType:   issueType,
-		IssueTypeID: issueTypeID,
-		Summary:     summary,
-		Description: description,
-		Priority:    priority,
-		Labels:      labels,
-		ExtraFields: extra,
+		ProjectKey:    projectKey,
+		IssueType:     issueType,
+		IssueTypeID:   issueTypeID,
+		Summary:       summary,
+		Description:   description,
+		PriorityField: priorityField,
+		Priority:      priorityName,
+		Labels:        labels,
+		ExtraFields:   extra,
 	}
 	resp, err := f.jira.CreateIssue(ctx, req)
+	if err != nil && priorityRejected(err) {
+		// The scheme changed under us (or was never valid): drop the cached
+		// copy, resolve again from a fresh fetch, and retry once. If the
+		// retry would send the same thing, don't bother.
+		f.priorities.Invalidate(priorityCacheKey(projectKey, issueTypeID))
+		retryField, retryName := f.resolvePriority(ctx, env, record, projectKey, issueTypeID)
+		if !samePriority(priorityField, priorityName, retryField, retryName) {
+			f.logger.Info("jira: priority rejected, retrying with a freshly resolved scheme",
+				slog.Any("rejected", priorityField),
+				slog.Any("retry", retryField))
+			req.PriorityField, req.Priority = retryField, retryName
+			resp, err = f.jira.CreateIssue(ctx, req)
+		}
+	}
 	if err != nil {
 		return "", err
 	}
@@ -365,16 +387,117 @@ func resolveIssueType(env envelope, cfg Config) (name, id string) {
 	return
 }
 
-// resolvePriority picks the priority with payload > severity-mapping > default.
-func resolvePriority(env envelope, record jiraadf.RecordSummary, cfg Config) string {
-	if env.Priority != "" {
-		return env.Priority
-	}
+// resolvePriority picks the `fields.priority` value for a new issue.
+//
+// It returns (field, "") once the live priority scheme is known — always the
+// id form, because priority *names* are localized per JIRA site and a
+// name-keyed default is wrong on arrival for most of them. The second return
+// is the legacy name, used only when scheme discovery failed and we have
+// nothing better than the operator's string. Both empty means "omit the
+// field" and let JIRA apply the scheme's own default.
+func (f *forwarder) resolvePriority(ctx context.Context, env envelope,
+	record jiraadf.RecordSummary, projectKey, issueTypeID string) (map[string]any, string) {
 	severity := strings.ToLower(strField(record, "severity", ""))
-	if mapped, ok := cfg.PriorityMapping[severity]; ok && mapped != "" {
-		return mapped
+	candidates := priorityCandidates(env, severity, f.cfg)
+
+	key := priorityCacheKey(projectKey, issueTypeID)
+	scheme, err := f.priorities.Get(ctx, key, func(ctx context.Context) (jirapriority.Scheme, error) {
+		sch, err := f.jira.PriorityScheme(ctx, projectKey, issueTypeID)
+		if err == nil {
+			f.logger.Info("jira: resolved priority scheme",
+				slog.String("project", projectKey),
+				slog.String("issue_type_id", issueTypeID),
+				slog.Any("priorities", schemeNames(sch)))
+		}
+		return sch, err
+	})
+	if err != nil {
+		// No scheme: fall back to the pre-resolver behaviour so a site we
+		// can't introspect keeps working exactly as it did before.
+		legacy := firstNonEmpty(candidates)
+		f.logger.Warn("jira: priority scheme lookup failed, sending the configured priority name",
+			slog.String("project", projectKey),
+			slog.String("priority", legacy),
+			slog.Any("err", err))
+		return nil, legacy
 	}
-	return cfg.Priority
+
+	// An operator override wins when it actually names something in the
+	// scheme — by id first, then by name.
+	for _, candidate := range candidates {
+		if res := scheme.Resolve(candidate, ""); res.Priority.ID != "" {
+			return res.Field(), ""
+		}
+	}
+	// Otherwise place the severity positionally in the scheme.
+	if res := scheme.Resolve("", severity); res.Priority.ID != "" {
+		f.logger.Debug("jira: priority resolved from severity",
+			slog.String("severity", severity),
+			slog.String("priority", res.Priority.Name),
+			slog.String("priority_id", res.Priority.ID))
+		return res.Field(), ""
+	}
+	f.logger.Debug("jira: no priority resolved, letting JIRA apply its default",
+		slog.String("severity", severity))
+	return nil, ""
+}
+
+// priorityCandidates lists the operator-supplied priority values to try, in
+// precedence order: payload override, severity mapping, config fallback.
+func priorityCandidates(env envelope, severity string, cfg Config) []string {
+	out := make([]string, 0, 3)
+	if env.Priority != "" {
+		out = append(out, env.Priority)
+	}
+	if mapped, ok := cfg.PriorityMapping[severity]; ok && mapped != "" {
+		out = append(out, mapped)
+	}
+	if cfg.Priority != "" {
+		out = append(out, cfg.Priority)
+	}
+	return out
+}
+
+// priorityCacheKey scopes a cached scheme to the project and issue type it was
+// read for — the create screen can expose different priorities per issue type.
+func priorityCacheKey(projectKey, issueTypeID string) string {
+	return projectKey + "/" + issueTypeID
+}
+
+// schemeNames renders a scheme for logging: "1=Critique, 2=Grave, …".
+func schemeNames(sch jirapriority.Scheme) []string {
+	out := make([]string, 0, len(sch))
+	for _, p := range sch {
+		out = append(out, p.ID+"="+p.Name)
+	}
+	return out
+}
+
+// firstNonEmpty returns the first non-empty entry, or "".
+func firstNonEmpty(values []string) string {
+	for _, v := range values {
+		if v != "" {
+			return v
+		}
+	}
+	return ""
+}
+
+// samePriority reports whether two resolutions would put the same thing on the
+// wire, so a pointless retry can be skipped.
+func samePriority(fieldA map[string]any, nameA string, fieldB map[string]any, nameB string) bool {
+	if nameA != nameB {
+		return false
+	}
+	if len(fieldA) != len(fieldB) {
+		return false
+	}
+	for k, v := range fieldA {
+		if fieldB[k] != v {
+			return false
+		}
+	}
+	return true
 }
 
 // chooseString returns first when non-empty, second otherwise.

@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/snoozeweb/snooze/internal/jiraadf"
+	"github.com/snoozeweb/snooze/internal/jirapriority"
 )
 
 // retryAttempts mirrors the Python plugin's retry budget (3 tries total).
@@ -252,6 +253,13 @@ type CreateIssueRequest struct {
 	IssueTypeID string
 	Summary     string
 	Description jiraadf.ADF
+	// PriorityField is the resolved `fields.priority` value, always the id
+	// form ({"id": "3"}) produced by internal/jirapriority. Nil omits the
+	// field so JIRA applies the scheme default.
+	PriorityField map[string]any
+	// Priority is a legacy priority *name*. It is only used when
+	// PriorityField is nil (scheme discovery failed) and is what triggers
+	// the string-priority retry below.
 	Priority    string
 	Labels      []string
 	ExtraFields map[string]any
@@ -278,7 +286,10 @@ func (c *Client) CreateIssue(ctx context.Context, req CreateIssueRequest) (Creat
 	} else if req.IssueType != "" {
 		fields["issuetype"] = map[string]any{"name": req.IssueType}
 	}
-	if req.Priority != "" {
+	switch {
+	case req.PriorityField != nil:
+		fields["priority"] = req.PriorityField
+	case req.Priority != "":
 		fields["priority"] = map[string]any{"name": req.Priority}
 	}
 	if len(req.Labels) > 0 {
@@ -291,7 +302,7 @@ func (c *Client) CreateIssue(ctx context.Context, req CreateIssueRequest) (Creat
 
 	var resp CreateIssueResponse
 	err := c.do(ctx, http.MethodPost, "/issue", body, &resp)
-	if err != nil && req.Priority != "" && priorityNeedsString(err) {
+	if err != nil && req.PriorityField == nil && req.Priority != "" && priorityNeedsString(err) {
 		// Retry with priority as a bare string. We rebuild fields so the
 		// original payload is untouched in case the caller logs both.
 		fallback := map[string]any{}
@@ -455,4 +466,50 @@ func (c *Client) FindUserByEmail(ctx context.Context, email string) (string, err
 		}
 	}
 	return users[0].AccountID, nil
+}
+
+// ----------------------------------------------------------------------------
+// Priority scheme discovery
+// ----------------------------------------------------------------------------
+
+// PriorityScheme returns the priority scheme that applies to new issues in
+// projectKey / issueTypeID, ordered most severe first.
+//
+// createmeta is asked first because it reflects the project's own scheme and
+// its create screen; when the priority field isn't exposed there we fall back
+// to the site-wide list. Callers cache the result — see internal/jirapriority.
+func (c *Client) PriorityScheme(ctx context.Context, projectKey, issueTypeID string) (jirapriority.Scheme, error) {
+	if projectKey != "" {
+		q := url.Values{}
+		q.Set("projectKeys", projectKey)
+		if issueTypeID != "" {
+			q.Set("issuetypeIds", issueTypeID)
+		}
+		q.Set("expand", "projects.issuetypes.fields")
+		var raw json.RawMessage
+		if err := c.do(ctx, http.MethodGet, "/issue/createmeta?"+q.Encode(), nil, &raw); err != nil {
+			c.logger.Warn("jira: createmeta lookup failed, falling back to the global priority list",
+				slog.String("project", projectKey), slog.Any("err", err))
+		} else if sch, err := jirapriority.ParseCreateMeta(raw, issueTypeID); err != nil {
+			c.logger.Warn("jira: createmeta decode failed", slog.Any("err", err))
+		} else if len(sch) > 0 {
+			return sch, nil
+		}
+	}
+	var raw json.RawMessage
+	if err := c.do(ctx, http.MethodGet, "/priority", nil, &raw); err != nil {
+		return nil, err
+	}
+	return jirapriority.ParsePriorityList(raw)
+}
+
+// priorityRejected reports whether err is a 400 whose field errors blame
+// `priority`. The message text is localized by the JIRA site, so we key off
+// the field name only — never the wording.
+func priorityRejected(err error) bool {
+	je, ok := IsError(err)
+	if !ok {
+		return false
+	}
+	return je.Status == http.StatusBadRequest && je.FieldErrors["priority"] != ""
 }

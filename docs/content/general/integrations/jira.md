@@ -24,7 +24,7 @@ The built-in `jira` notifier is configured entirely in the Snooze web UI under *
 | `api_token` | yes | Atlassian Cloud API token paired with `email`. |
 | `project_key` | yes | JIRA project key (e.g. `OPS`). |
 | `issue_type` | no | Issue type name (default: `Task`). |
-| `priority` | no | Fallback priority used when the severity is not in the built-in mapping (`emergency→Critical`, `critical→High`, `warning→Medium`, `minor→Low`, `info→Lowest`). Blank omits the field. |
+| `priority` | no | Pins the priority, as an id (`3`) or a name your site actually uses (`Moyen`). Blank — recommended — resolves the priority from the severity against the project's live scheme; see [Priorities](#priorities). |
 | `summary` | no | **Ticket title.** Plain text, or a Go `text/template` over the record fields (default: `[{{ .Severity }}] {{ .Host }} - {{ .Message }}`). |
 | `description` | no | Go `text/template` for the issue description. When blank, a structured ADF description is generated. |
 | `labels` | no | Comma-separated labels applied to every new issue (default: `snooze`). |
@@ -49,6 +49,30 @@ Any record field is available: `.Host`, `.Source`, `.Process`, `.Severity`, `.Me
 - A title that renders empty (e.g. `{{ .Process }}` on a record with no process) falls back to `Snooze alert`.
 
 Different rules can create differently-titled tickets: define one JIRA action per title and point each notification rule at the action it needs.
+
+### Priorities {#priorities}
+
+Snooze never sends a priority *name*. Priority names are localized per JIRA site — a French Cloud site reports `Critique / Grave / Moyen / Faible` where an English one reports `Highest / High / Medium / Low / Lowest` — and any admin can rename them, so a name baked into Snooze is wrong on most sites and JIRA answers `400 priority: the selected priority is invalid`, creating nothing.
+
+Instead, on the first issue for a project Snooze reads the priority scheme that project actually offers (`GET /issue/createmeta`, falling back to the site-wide `GET /priority`) and maps the record's severity onto a **position** in that scheme, sending the priority **id** at that position. Ids are stable and language-independent. The scheme is cached (1h by default) so this costs one request per project, not one per alert; if JIRA later rejects the priority — an admin edited the scheme — the cache is dropped and the create is retried once against a freshly read scheme.
+
+Positions come from Snooze's own severity ladder (`emergency`/`emerg`/`panic` → `alert` → `critical`/`crit`/`fatal` → `err`/`error` → `warning` → `notice` → `info` → `debug` → `ok`) spread proportionally over however many priorities the scheme has:
+
+| Severity | 5-priority scheme (JIRA default) | 4-priority scheme (e.g. localized) |
+|----|----|----|
+| `emergency` | Highest | Critique |
+| `critical` | High | Grave |
+| `err` | Medium | Grave |
+| `warning` | Medium | Moyen |
+| `info` | Low | Moyen |
+| `ok` | Lowest | Faible |
+
+Two things follow:
+
+- A severity **outside** that ladder (`major`, `minor`, or anything custom) resolves to nothing, and the priority field is left off the create entirely so JIRA applies the project's own default. Snooze does not guess.
+- Setting `priority` on the action **overrides** the mapping for every issue it creates — by id (`3`) or by a name that exists on your site (`Moyen`, matched case-insensitively). A value that matches neither is ignored and the severity mapping applies instead, so a stale config never blocks a ticket.
+
+If the scheme cannot be read at all (permissions, an unreachable endpoint), Snooze falls back to sending the `priority` value as a name, exactly as older versions did.
 
 If you need deduplication, auto-close, or re-escalation comments on an existing ticket, use the daemon described below.
 
@@ -76,7 +100,7 @@ Configure a **notification action** of type "webhook" on snooze-server and point
 |----|----|
 | `project_key` | `project_key` |
 | `issue_type` / `issue_type_id` | `issue_type` / `issue_type_id` |
-| `priority` | the severity mapping and `priority` |
+| `priority` | the severity mapping and `priority` (id or name — see [Priorities](#priorities)) |
 | `summary` | **the ticket title** — see [below](#override-title-daemon) |
 | `summary_template` | same as `summary`, lower precedence |
 | `labels` | `labels` |
@@ -124,7 +148,10 @@ ssl_verify: true                             # Set false for self-signed JIRA pr
 project_key: OPS                # Required — default JIRA project key
 issue_type: Task                # Default issue type (default: Task)
 # issue_type_id: "10001"        # Override issue_type with a numeric type ID
-priority: Medium                # Fallback priority when severity is not in priority_mapping
+priority: ""                    # Optional priority override (id "3" or a name your
+                                # site uses). Blank = map the severity onto the
+                                # project's live priority scheme automatically.
+priority_cache_ttl: 1h          # How long a discovered priority scheme is trusted
 labels:                         # Labels applied to new issues (default: [snooze])
   - snooze
 summary_template: "[${severity}] ${host} - ${message}"   # Default shown
@@ -137,14 +164,15 @@ reporter: ""                    # JIRA accountId or email; empty = project defau
 extra_fields: {}                # Additional JIRA fields for every new issue
 custom_fields: {}               # customfield_XXXXX → value for every new issue
 
-# --- Priority mapping (Snooze severity → JIRA priority name) ---
-# Defaults shown below; override any entry:
+# --- Priority mapping (optional override; Snooze severity → JIRA priority) ---
+# There is NO default mapping: leave this out and each severity is placed
+# automatically in the project's live priority scheme (see "Priorities").
+# Values may be priority ids (language-independent, recommended when you do
+# want to pin them) or names exactly as your site shows them:
 # priority_mapping:
-#   emergency: Critical
-#   critical:  High
-#   warning:   Medium
-#   minor:     Low
-#   info:      Lowest
+#   emergency: "1"
+#   critical:  "2"
+#   warning:   Moyen
 
 # --- Re-open behaviour ---
 reopen_closed: false            # Reopen Done tickets on re-escalation (default: false)
@@ -190,8 +218,9 @@ debug: false
 | `project_key` | Default JIRA project key (e.g. `OPS`). **Required.** Can be overridden per-payload. |
 | `issue_type` | Default issue type name (e.g. `Task`, `Bug`). Defaults to `Task`. |
 | `issue_type_id` | JIRA issue type ID; overrides `issue_type` when set. |
-| `priority` | Fallback priority when the alert's severity is not in `priority_mapping`. Defaults to `Medium`. |
-| `priority_mapping` | Map of Snooze severity → JIRA priority name. Defaults: `emergency→Critical`, `critical→High`, `warning→Medium`, `minor→Low`, `info→Lowest`. |
+| `priority` | Optional priority override tried when `priority_mapping` has no entry for the severity. An id (`"3"`) or a name your site uses (`Moyen`). No default — an unmatched severity is mapped positionally instead. |
+| `priority_mapping` | Optional per-severity override, values being priority ids or names. **No default**: without it, severities are mapped onto the project's live scheme automatically (see [Priorities](#priorities)). An entry naming nothing in that scheme is ignored rather than failing the create. |
+| `priority_cache_ttl` | How long a discovered priority scheme is trusted before it is refetched. Defaults to `1h`. A rejected priority refetches immediately regardless. |
 | `labels` | Labels applied to every new issue. Defaults to `["snooze"]`. |
 | `summary_template` | Go-style template for the issue summary (ticket title). Variables: `${severity}`, `${host}`, `${source}`, `${process}`, `${message}`, `${timestamp}`. Defaults to `[${severity}] ${host} - ${message}`. Overridable per-alert with the envelope's `summary` / `summary_template`. |
 | `description_template` | Overrides the auto-generated ADF description. Supports the `summary_template` variables plus `${hash}` and `${snooze_url}`. Each line becomes an ADF paragraph. |
@@ -315,6 +344,7 @@ The daemon responds with `200 OK` and a JSON body summarising the created (or up
 - **JIRA Cloud only.** The daemon targets the JIRA Cloud REST API v3 (`/rest/api/3`). JIRA Server / Data Center uses a different authentication model (session cookies or Personal Access Tokens) and may need adjustments.
 - **ADF descriptions.** Issue descriptions are formatted in Atlassian Document Format. The `description_template` config key allows plain-text lines that are each wrapped in an ADF paragraph node; it cannot currently express rich ADF inline formatting.
 - **Poller requires the custom field.** The background poller is silently disabled when `alert_hash_custom_field` is empty. Without the field there is no way to map a JIRA ticket back to its Snooze record.
+- **Priorities are resolved, not guessed.** The daemon reads the project's priority scheme and sends priority ids, so it works on localized JIRA sites out of the box. The account needs to be able to read `createmeta` for the project (any user who can create issues there can); if it cannot, the daemon falls back to sending `priority` / `priority_mapping` values as names.
 - **Transition availability.** `reopen_status_name` and `initial_status` must name a workflow status that is reachable from the ticket's current status via an existing transition. The daemon logs a warning if no matching transition is found.
 - **Assignee / reporter resolution.** When `assignee` or `reporter` is set to an email address, the daemon calls `GET /rest/api/3/user/search` to resolve it to an Atlassian `accountId`. A failed lookup is logged and the field is omitted from the issue creation payload rather than aborting.
 - **Message limit.** A single webhook POST is capped at `message_limit` alerts (default 10). Batches larger than this are truncated with a warning; split large notification actions or increase the limit if needed.

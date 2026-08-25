@@ -27,7 +27,9 @@ func TestWithDefaults_fillsDefaults(t *testing.T) {
 	cfg, err := minimal().WithDefaults()
 	require.NoError(t, err)
 	require.Equal(t, "Task", cfg.IssueType)
-	require.Equal(t, "Medium", cfg.Priority)
+	// No name-based priority defaults: the priority comes from the live JIRA
+	// scheme at create time (internal/jirapriority), not from a guess here.
+	require.Empty(t, cfg.Priority)
 	require.Equal(t, "[${severity}] ${host} - ${message}", cfg.SummaryTemplate)
 	require.Equal(t, "To Do", cfg.ReopenStatusName)
 	require.Equal(t, 5*time.Minute, cfg.PollInterval)
@@ -38,7 +40,7 @@ func TestWithDefaults_fillsDefaults(t *testing.T) {
 	require.Equal(t, 10, cfg.MessageLimit)
 	require.Equal(t, 30*time.Second, cfg.RequestTimeout)
 	require.Equal(t, []string{"snooze"}, cfg.Labels)
-	require.Equal(t, "High", cfg.PriorityMapping["critical"])
+	require.Nil(t, cfg.PriorityMapping)
 	require.Equal(t, "local", cfg.Method)
 }
 
@@ -75,14 +77,20 @@ func TestWithDefaults_trimsTrailingSlash(t *testing.T) {
 	require.Equal(t, "https://snooze.example.com", out.SnoozeURL)
 }
 
-func TestWithDefaults_priorityMappingDeepCopy(t *testing.T) {
-	a, err := minimal().WithDefaults()
+// An operator-supplied priority mapping is preserved verbatim — ids and names
+// alike — and no default is injected on top of it.
+func TestWithDefaults_priorityMappingPreserved(t *testing.T) {
+	c := minimal()
+	c.PriorityMapping = map[string]string{"critical": "2", "warning": "Moyen"}
+	out, err := c.WithDefaults()
 	require.NoError(t, err)
-	b, err := minimal().WithDefaults()
+	require.Equal(t, map[string]string{"critical": "2", "warning": "Moyen"}, out.PriorityMapping)
+
+	// And nothing is invented when it is absent.
+	bare, err := minimal().WithDefaults()
 	require.NoError(t, err)
-	a.PriorityMapping["critical"] = "Custom"
-	require.Equal(t, "High", b.PriorityMapping["critical"],
-		"default priority mapping must not share state across configs")
+	require.Nil(t, bare.PriorityMapping)
+	require.Empty(t, bare.Priority)
 }
 
 func TestLoadConfig(t *testing.T) {

@@ -14,6 +14,23 @@
 
 ### Fixed
 
+- **JIRA priorities are resolved from the live scheme instead of hardcoded
+  English names.** Both the `jira` notifier and the `snooze-jira` daemon
+  shipped a severity → priority map written in English (`critical: High`,
+  `warning: Medium`, …). Priority names are localized per JIRA site and
+  renamable by any admin, so on a site whose priorities are, say, `Critique /
+  Grave / Moyen / Faible`, *every* create failed with
+  `400 priority: the selected priority is invalid` and no ticket was ever
+  opened. Snooze now reads the project's own priority scheme
+  (`GET /issue/createmeta`, falling back to `GET /priority`), maps the
+  severity onto a position in it, and sends the priority **id** — stable and
+  language-independent. The scheme is cached per project (`priority_cache_ttl`,
+  default 1h) and refetched with one retry when JIRA rejects a priority.
+  `priority` / `priority_mapping` become optional overrides accepting an id or
+  a name; a value that names nothing in the scheme is ignored rather than
+  failing the create, and a severity outside Snooze's ladder now omits the
+  field so JIRA applies its own default. New shared package
+  `internal/jirapriority`.
 - **Close transitions could be wedged open by a snooze filter.** A `discard`
   filter matching the close write for an existing aggregate dropped it
   entirely, leaving the alert open forever with its snooze attribution
