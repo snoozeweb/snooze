@@ -1,5 +1,17 @@
 ## Unreleased
 
+### Added
+
+- **The JIRA ticket title is overridable.** The in-process `jira` notifier
+  already rendered its title from the action's **Summary** field; it now
+  clamps the result to JIRA's 255-character limit and falls back to the
+  built-in title (with a warning) instead of dropping the notification when
+  the operator's template fails to render. The `snooze-jira` daemon gained a
+  per-alert override: the `/alert` envelope accepts `summary` (and
+  `summary_template`), taking precedence over `summary_template` in
+  `jira.yaml`, so one webhook action can title its tickets differently from
+  another without a second daemon.
+
 ### Fixed
 
 - **Close transitions could be wedged open by a snooze filter.** A `discard`

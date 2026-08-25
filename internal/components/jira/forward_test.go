@@ -322,3 +322,90 @@ func minimalCfg() Config {
 		ProjectKey:   "OPS",
 	}
 }
+
+// The envelope can override the issue title, either as a literal or as a
+// ${var} template, and `summary` wins over `summary_template`.
+func TestForward_summaryOverriddenByEnvelope(t *testing.T) {
+	cases := []struct {
+		name string
+		env  envelope
+		want string
+	}{
+		{
+			name: "config default",
+			env:  envelope{},
+			want: "[critical] srv-1 - disk full",
+		},
+		{
+			name: "literal summary",
+			env:  envelope{Summary: "Disk full on the primary"},
+			want: "Disk full on the primary",
+		},
+		{
+			name: "templated summary",
+			env:  envelope{Summary: "DISK ${host}/${severity}"},
+			want: "DISK srv-1/critical",
+		},
+		{
+			name: "summary_template only",
+			env:  envelope{SummaryTemplate: "T: ${message}"},
+			want: "T: disk full",
+		},
+		{
+			name: "summary wins over summary_template",
+			env:  envelope{Summary: "winner", SummaryTemplate: "loser"},
+			want: "winner",
+		},
+		{
+			name: "blank override falls back to config",
+			env:  envelope{Summary: "   "},
+			want: "[critical] srv-1 - disk full",
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			var got map[string]any
+			client := newTestJira(t, func(w http.ResponseWriter, r *http.Request) {
+				got = readBodyMap(t, r)
+				_ = json.NewEncoder(w).Encode(map[string]any{"key": "OPS-8"})
+			})
+			cfg, err := minimalCfg().WithDefaults()
+			require.NoError(t, err)
+			f := newForwarder(cfg, client, nil)
+			env := tc.env
+			env.ProjectKey = "OPS"
+			env.Alert = jiraadf.RecordSummary{
+				"hash": "h", "host": "srv-1", "severity": "critical", "message": "disk full",
+			}
+			_ = f.handleEnvelopes(context.Background(), []envelope{env}, "jira-action")
+			require.Equal(t, tc.want, got["fields"].(map[string]any)["summary"])
+		})
+	}
+}
+
+// A per-envelope override is clamped to JIRA's 255-character limit too.
+func TestForward_envelopeSummaryClampedTo255(t *testing.T) {
+	var got map[string]any
+	client := newTestJira(t, func(w http.ResponseWriter, r *http.Request) {
+		got = readBodyMap(t, r)
+		_ = json.NewEncoder(w).Encode(map[string]any{"key": "OPS-9"})
+	})
+	cfg, err := minimalCfg().WithDefaults()
+	require.NoError(t, err)
+	f := newForwarder(cfg, client, nil)
+	_ = f.handleEnvelopes(context.Background(), []envelope{{
+		ProjectKey: "OPS",
+		Summary:    strings.Repeat("y", 400),
+		Alert:      jiraadf.RecordSummary{"hash": "h"},
+	}}, "jira-action")
+	require.Len(t, got["fields"].(map[string]any)["summary"].(string), 255)
+}
+
+// The /alert wire format accepts the summary override keys.
+func TestEnvelope_decodesSummaryKeys(t *testing.T) {
+	var env envelope
+	require.NoError(t, json.Unmarshal([]byte(
+		`{"summary":"custom title","summary_template":"T ${host}"}`), &env))
+	require.Equal(t, "custom title", env.Summary)
+	require.Equal(t, "T ${host}", env.SummaryTemplate)
+}

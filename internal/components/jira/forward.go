@@ -19,6 +19,8 @@ type envelope struct {
 	IssueType        string                `json:"issue_type"`
 	IssueTypeID      jsonString            `json:"issue_type_id"`
 	Priority         string                `json:"priority"`
+	Summary          string                `json:"summary"`
+	SummaryTemplate  string                `json:"summary_template"`
 	Labels           []string              `json:"labels"`
 	Assignee         string                `json:"assignee"`
 	Reporter         string                `json:"reporter"`
@@ -303,7 +305,7 @@ func (f *forwarder) createNew(ctx context.Context, env envelope, record jiraadf.
 		extra[f.cfg.AlertHashCustomField] = link
 	}
 
-	summary := f.formatSummary(record)
+	summary := f.formatSummary(record, env)
 	description := f.formatDescription(record)
 
 	if env.Message != "" {
@@ -473,10 +475,16 @@ func templateVars(record jiraadf.RecordSummary, snoozeURL string) *strings.Repla
 	)
 }
 
-// formatSummary renders cfg.SummaryTemplate against the record and clamps
-// the result to 255 characters (JIRA's summary field limit).
-func (f *forwarder) formatSummary(record jiraadf.RecordSummary) string {
-	rendered := templateVars(record, f.cfg.SnoozeURL).Replace(f.cfg.SummaryTemplate)
+// formatSummary renders the issue title against the record and clamps the
+// result to 255 characters (JIRA's summary field limit). The template is
+// picked with the payload-over-config precedence used everywhere else:
+// envelope `summary` > envelope `summary_template` > cfg.SummaryTemplate.
+// All three go through the same ${var} expansion, so a per-alert override can
+// be either a literal title or a template.
+func (f *forwarder) formatSummary(record jiraadf.RecordSummary, env envelope) string {
+	tmpl := chooseString(strings.TrimSpace(env.Summary), strings.TrimSpace(env.SummaryTemplate))
+	tmpl = chooseString(tmpl, f.cfg.SummaryTemplate)
+	rendered := templateVars(record, f.cfg.SnoozeURL).Replace(tmpl)
 	if len(rendered) > 255 {
 		rendered = rendered[:255]
 	}

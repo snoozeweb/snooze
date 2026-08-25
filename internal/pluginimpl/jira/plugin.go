@@ -38,6 +38,13 @@ func init() {
 const defaultTimeout = 10 * time.Second
 const maxResponseBytes = 4 << 10
 
+// defaultSummary is the built-in issue title template, used when the action
+// leaves the Summary field blank (or supplies one that fails to render).
+const defaultSummary = "[{{ .Severity }}] {{ .Host }} - {{ .Message }}"
+
+// maxSummaryLen is JIRA's hard limit on the summary field.
+const maxSummaryLen = 255
+
 func factory(meta plugins.Metadata) (plugins.Plugin, error) {
 	return &Plugin{meta: meta, newClient: defaultClient}, nil
 }
@@ -82,10 +89,7 @@ func (p *Plugin) Send(ctx context.Context, rec snoozetypes.Record, payload plugi
 }
 
 func (p *Plugin) create(ctx context.Context, cfg config, rec snoozetypes.Record) error {
-	summary, err := renderTemplate(cfg.Summary, rec)
-	if err != nil {
-		return fmt.Errorf("jira: render summary: %w", err)
-	}
+	summary := p.summary(cfg, rec)
 
 	fields := map[string]any{
 		"project":     map[string]any{"key": cfg.ProjectKey},
@@ -122,6 +126,32 @@ func (p *Plugin) create(ctx context.Context, cfg config, rec snoozetypes.Record)
 		return fmt.Errorf("jira: create: HTTP %d: %s", resp.StatusCode, truncate(preview, 200))
 	}
 	return nil
+}
+
+// summary renders the issue title from the configured template, falling back
+// to the built-in template when the operator's override fails to render, and
+// clamping the result to 255 characters (JIRA's summary field limit).
+func (p *Plugin) summary(cfg config, rec snoozetypes.Record) string {
+	rendered, err := renderTemplate(cfg.Summary, rec)
+	if err != nil {
+		if p.host != nil {
+			if lg := p.host.Logger(); lg != nil {
+				lg.Warn("jira: render summary template failed, using default", "error", err)
+			}
+		}
+		rendered, err = renderTemplate(defaultSummary, rec)
+		if err != nil {
+			rendered = defaultSummary
+		}
+	}
+	rendered = strings.TrimSpace(rendered)
+	if rendered == "" {
+		rendered = "Snooze alert"
+	}
+	if len(rendered) > maxSummaryLen {
+		rendered = rendered[:maxSummaryLen]
+	}
+	return rendered
 }
 
 // description renders the templated description when provided, else builds the
@@ -198,7 +228,7 @@ type config struct {
 func configFromMeta(meta map[string]any) (config, error) {
 	cfg := config{
 		IssueType: "Task",
-		Summary:   "[{{ .Severity }}] {{ .Host }} - {{ .Message }}",
+		Summary:   defaultSummary,
 		Labels:    []string{"snooze"},
 		Timeout:   defaultTimeout,
 	}

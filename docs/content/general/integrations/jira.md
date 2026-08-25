@@ -20,17 +20,35 @@ The built-in `jira` notifier is configured entirely in the Snooze web UI under *
 | Field | Required | Description |
 |-------|----------|-------------|
 | `jira_url` | yes | JIRA Cloud base URL (e.g. `https://mycompany.atlassian.net`). |
-| `jira_email` | yes | Atlassian account email for HTTP Basic auth. |
-| `jira_api_token` | yes | Atlassian Cloud API token paired with `jira_email`. |
+| `email` | yes | Atlassian account email for HTTP Basic auth. |
+| `api_token` | yes | Atlassian Cloud API token paired with `email`. |
 | `project_key` | yes | JIRA project key (e.g. `OPS`). |
 | `issue_type` | no | Issue type name (default: `Task`). |
-| `priority` | no | Issue priority (default: `Medium`). |
-| `summary_template` | no | Go `text/template` for the issue summary (default: `[{{ .Severity }}] {{ .Host }} - {{ .Message }}`). |
-| `description_template` | no | Go `text/template` for the issue description. |
-| `labels` | no | Labels to apply to every new issue (default: `["snooze"]`). |
-| `timeout` | no | Per-request timeout (default: `30s`). |
+| `priority` | no | Fallback priority used when the severity is not in the built-in mapping (`emergency→Critical`, `critical→High`, `warning→Medium`, `minor→Low`, `info→Lowest`). Blank omits the field. |
+| `summary` | no | **Ticket title.** Plain text, or a Go `text/template` over the record fields (default: `[{{ .Severity }}] {{ .Host }} - {{ .Message }}`). |
+| `description` | no | Go `text/template` for the issue description. When blank, a structured ADF description is generated. |
+| `labels` | no | Comma-separated labels applied to every new issue (default: `snooze`). |
+| `timeout` | no | Per-request timeout as a Go duration (default: `10s`). |
 
 Use the **Send test** button in the Actions editor to create a sample issue and confirm the connection works end-to-end.
+
+### Overriding the ticket title {#override-title}
+
+The **Summary (ticket title)** field of the action sets the title of every issue the action creates. Leave it blank (or at its default) for `[severity] host - message`, or type your own — either a fixed string or a Go `text/template` rendered against the alert record:
+
+``` text
+[PROD] {{ .Host }} unreachable
+{{ .Severity }} on {{ .Host }} ({{ .Source }}): {{ .Message }}
+Snooze: {{ .Message }}
+```
+
+Any record field is available: `.Host`, `.Source`, `.Process`, `.Severity`, `.Message`, `.Timestamp`, `.Hash`, plus custom fields carried by the record. Notes:
+
+- The rendered title is clamped to **255 characters** — JIRA's limit on the summary field.
+- A template that fails to parse or render is logged as a warning and the built-in default title is used instead, so a typo never stops the ticket from being created.
+- A title that renders empty (e.g. `{{ .Process }}` on a record with no process) falls back to `Snooze alert`.
+
+Different rules can create differently-titled tickets: define one JIRA action per title and point each notification rule at the action it needs.
 
 If you need deduplication, auto-close, or re-escalation comments on an existing ticket, use the daemon described below.
 
@@ -52,7 +70,36 @@ On the first alert for a given record the daemon creates a new JIRA issue. On re
 
 ### How snooze-server feeds it
 
-Configure a **notification action** of type "webhook" on snooze-server and point it at `http://<daemon-host>:5203/alert`. The webhook plugin POSTs one or more alert envelopes (either a single JSON object or a JSON array). Each envelope may carry a `project_key` override; the daemon falls back to the `project_key` configured in `jira.yaml`.
+Configure a **notification action** of type "webhook" on snooze-server and point it at `http://<daemon-host>:5203/alert`. The webhook plugin POSTs one or more alert envelopes (either a single JSON object or a JSON array). Every envelope key below overrides its `jira.yaml` counterpart for that alert only; anything omitted falls back to the file.
+
+| Envelope key | Overrides |
+|----|----|
+| `project_key` | `project_key` |
+| `issue_type` / `issue_type_id` | `issue_type` / `issue_type_id` |
+| `priority` | the severity mapping and `priority` |
+| `summary` | **the ticket title** — see [below](#override-title-daemon) |
+| `summary_template` | same as `summary`, lower precedence |
+| `labels` | `labels` |
+| `assignee` / `reporter` | `assignee` / `reporter` |
+| `initial_status` | `initial_status` |
+| `extra_fields` / `custom_fields` | merged over `extra_fields` / `custom_fields` |
+| `message` | appended to the description as a "Custom message" line |
+
+#### Overriding the ticket title {#override-title-daemon}
+
+The daemon builds the title from `summary_template` in `jira.yaml`. To give one action (or one alert) its own title, send a `summary` in the webhook payload:
+
+``` json
+{
+  "project_key": "OPS",
+  "summary": "[PROD] ${host} unreachable",
+  "alert": { "host": "db-01", "severity": "critical", "message": "down" }
+}
+```
+
+Precedence is `summary` → `summary_template` (envelope) → `summary_template` (`jira.yaml`) → the built-in `[${severity}] ${host} - ${message}`. All of them go through the same `${var}` expansion, so an override can be a fixed string or a template; blank or whitespace-only values are ignored and the next source wins. The result is clamped to 255 characters (JIRA's summary limit).
+
+Re-escalation comments on an existing ticket do not touch its title — the title is set at creation.
 
 The webhook endpoint also accepts a `snooze_action_name` query parameter that is recorded in log output for correlation.
 
@@ -146,7 +193,7 @@ debug: false
 | `priority` | Fallback priority when the alert's severity is not in `priority_mapping`. Defaults to `Medium`. |
 | `priority_mapping` | Map of Snooze severity → JIRA priority name. Defaults: `emergency→Critical`, `critical→High`, `warning→Medium`, `minor→Low`, `info→Lowest`. |
 | `labels` | Labels applied to every new issue. Defaults to `["snooze"]`. |
-| `summary_template` | Go-style template for the issue summary. Variables: `${severity}`, `${host}`, `${source}`, `${process}`, `${message}`, `${timestamp}`. Defaults to `[${severity}] ${host} - ${message}`. |
+| `summary_template` | Go-style template for the issue summary (ticket title). Variables: `${severity}`, `${host}`, `${source}`, `${process}`, `${message}`, `${timestamp}`. Defaults to `[${severity}] ${host} - ${message}`. Overridable per-alert with the envelope's `summary` / `summary_template`. |
 | `description_template` | Overrides the auto-generated ADF description. Supports the `summary_template` variables plus `${hash}` and `${snooze_url}`. Each line becomes an ADF paragraph. |
 | `assignee` | Default assignee — Atlassian `accountId` or email (resolved via `/user/search`). |
 | `reporter` | Default reporter. Same resolution as `assignee`. |
@@ -251,6 +298,7 @@ $ curl -sS -X POST http://localhost:5203/alert \
     -H 'Content-Type: application/json' \
     -d '{
       "project_key": "OPS",
+      "summary": "Replication lag on ${host}",
       "alert": {
         "host": "db-01",
         "source": "prometheus",

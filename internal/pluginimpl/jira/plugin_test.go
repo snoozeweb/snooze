@@ -112,3 +112,70 @@ func TestConfigRequiresFields(t *testing.T) {
 		t.Fatal("expected error when api_token missing")
 	}
 }
+
+// The action's `summary` field overrides the issue title; a broken template
+// falls back to the built-in one rather than dropping the notification.
+func TestSummaryOverride(t *testing.T) {
+	cases := []struct {
+		name    string
+		summary string
+		want    string
+	}{
+		{name: "default", summary: "", want: "[critical] db-01 - down"},
+		{name: "literal", summary: "Database down", want: "Database down"},
+		{name: "template", summary: "{{ .Host }}: {{ .Message }}", want: "db-01: down"},
+		{name: "broken template", summary: "{{ .Host", want: "[critical] db-01 - down"},
+		{name: "blank template output", summary: "{{ .Process }}", want: "Snooze alert"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			var gotBody map[string]any
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				b, _ := io.ReadAll(r.Body)
+				_ = json.Unmarshal(b, &gotBody)
+				w.WriteHeader(http.StatusCreated)
+				_, _ = w.Write([]byte(`{"key":"OPS-1"}`))
+			}))
+			defer srv.Close()
+
+			p := &Plugin{newClient: func(time.Duration) *http.Client { return srv.Client() }}
+			meta := testMeta()
+			meta["jira_url"] = srv.URL
+			if tc.summary != "" {
+				meta["summary"] = tc.summary
+			}
+			rec := snoozetypes.Record{Host: "db-01", Severity: "critical", Message: "down"}
+			if err := p.Send(context.Background(), rec, plugins.NotificationPayload{Meta: meta}); err != nil {
+				t.Fatalf("Send: %v", err)
+			}
+			fields, _ := gotBody["fields"].(map[string]any)
+			if got, _ := fields["summary"].(string); got != tc.want {
+				t.Fatalf("summary = %q, want %q", got, tc.want)
+			}
+		})
+	}
+}
+
+// JIRA rejects summaries longer than 255 characters, so we clamp.
+func TestSummaryClampedTo255(t *testing.T) {
+	var gotBody map[string]any
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		b, _ := io.ReadAll(r.Body)
+		_ = json.Unmarshal(b, &gotBody)
+		w.WriteHeader(http.StatusCreated)
+		_, _ = w.Write([]byte(`{"key":"OPS-1"}`))
+	}))
+	defer srv.Close()
+
+	p := &Plugin{newClient: func(time.Duration) *http.Client { return srv.Client() }}
+	meta := testMeta()
+	meta["jira_url"] = srv.URL
+	rec := snoozetypes.Record{Host: "db-01", Severity: "critical", Message: strings.Repeat("x", 400)}
+	if err := p.Send(context.Background(), rec, plugins.NotificationPayload{Meta: meta}); err != nil {
+		t.Fatalf("Send: %v", err)
+	}
+	fields, _ := gotBody["fields"].(map[string]any)
+	if got, _ := fields["summary"].(string); len(got) != 255 {
+		t.Fatalf("summary length = %d, want 255", len(got))
+	}
+}

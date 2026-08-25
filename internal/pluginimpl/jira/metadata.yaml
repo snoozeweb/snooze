@@ -41,10 +41,10 @@ action_form:
         component: String
         description: 'Priority used when the severity is not in the built-in mapping (emergency→Critical, critical→High, warning→Medium, minor→Low, info→Lowest). Leave blank to omit.'
     summary:
-        display_name: Summary
+        display_name: Summary (ticket title)
         component: String
         default_value: '[{{ .Severity }}] {{ .Host }} - {{ .Message }}'
-        description: 'Issue summary (Go text/template over the record fields).'
+        description: 'Overrides the created ticket title. Plain text, or a Go text/template over the record fields (e.g. "{{ .Host }} down - {{ .Message }}"). Clamped to 255 characters; falls back to the default title when the template is invalid.'
     description:
         display_name: Description
         component: Text
