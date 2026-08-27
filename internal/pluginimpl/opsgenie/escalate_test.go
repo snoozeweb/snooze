@@ -149,8 +149,11 @@ func TestEscalationPriorityOnlyWhenSeverityRose(t *testing.T) {
 		p := newPluginForTest(t)
 		require.NoError(t, p.Send(context.Background(), sampleRecord(),
 			plugins.NotificationPayload{
-				Meta:       baseMeta(srv.URL),
-				Escalation: plugins.Escalation{Count: 1, Trend: "up"},
+				Meta: baseMeta(srv.URL),
+				// sampleRecord() is severity=warning; info -> warning is a rise.
+				Escalation: plugins.Escalation{
+					Count: 1, Severity: "warning", PreviousSeverity: "info",
+				},
 			}))
 		req := og.find(t, "/priority")
 		require.Equal(t, http.MethodPut, req.Method)
@@ -162,8 +165,10 @@ func TestEscalationPriorityOnlyWhenSeverityRose(t *testing.T) {
 		p := newPluginForTest(t)
 		require.NoError(t, p.Send(context.Background(), sampleRecord(),
 			plugins.NotificationPayload{
-				Meta:       baseMeta(srv.URL),
-				Escalation: plugins.Escalation{Count: 1, Trend: "same"},
+				Meta: baseMeta(srv.URL),
+				Escalation: plugins.Escalation{
+					Count: 1, Severity: "warning", PreviousSeverity: "warning",
+				},
 			}))
 		require.False(t, og.has("/priority"))
 	})
@@ -222,8 +227,10 @@ func TestEscalationErrorHandling(t *testing.T) {
 
 		require.NoError(t, p.Send(context.Background(), sampleRecord(),
 			plugins.NotificationPayload{
-				Meta:       baseMeta(srv.URL),
-				Escalation: plugins.Escalation{Count: 1, Trend: "up"},
+				Meta: baseMeta(srv.URL),
+				Escalation: plugins.Escalation{
+					Count: 1, Severity: "warning", PreviousSeverity: "info",
+				},
 			}))
 	})
 }

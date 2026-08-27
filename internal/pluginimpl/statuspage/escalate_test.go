@@ -128,9 +128,11 @@ func TestEscalationUpdatesInsteadOfCreating(t *testing.T) {
 
 	incident, _ := patch.Body["incident"].(map[string]any)
 	body, _ := incident["body"].(string)
-	require.Contains(t, body, "Re-escalated #2 (timeout)")
-	// Statuspage records a new public timeline entry for any PATCH with a body.
-	require.NotEmpty(t, body)
+	require.Contains(t, body, "Re-escalated")
+	// This page faces CUSTOMERS. The escalation ordinal and the internal reason
+	// ("timeout" = a Snooze ack deadline elapsed) must not appear on it.
+	require.NotContains(t, body, "#2")
+	require.NotContains(t, body, "timeout")
 }
 
 // The lifecycle advances one step, and never backwards past a status an
@@ -162,12 +164,14 @@ func TestEscalationStatusProgression(t *testing.T) {
 			if tc.want == nil {
 				require.NotContains(t, incident, "status",
 					"an operator who advanced the incident must not be dragged back")
-				require.NotContains(t, incident, "components")
 			} else {
 				require.Equal(t, tc.want, incident["status"])
-				comps, _ := incident["components"].(map[string]any)
-				require.Equal(t, tc.want, comps["comp-1"])
 			}
+			// An escalation must never send `components`: those take component
+			// statuses (operational / degraded_performance / ...), not incident
+			// statuses, so Statuspage would reject the PATCH and the escalation
+			// body would be lost with it.
+			require.NotContains(t, incident, "components")
 		})
 	}
 }
@@ -218,8 +222,9 @@ func TestNextStatus(t *testing.T) {
 	require.Empty(t, nextStatus(""))
 }
 
-func TestEscalationBody(t *testing.T) {
-	require.Equal(t, "Re-escalated #2 (manual): boom",
-		escalationBody("boom", plugins.Escalation{Count: 2, Reason: "manual"}))
+func TestEscalationBodyOmitsInternalDetail(t *testing.T) {
+	require.Equal(t, "Re-escalated: boom",
+		escalationBody("boom", plugins.Escalation{Count: 2, Reason: "manual", Actor: "alice"}),
+		"a customer-facing page must not carry the ordinal, the reason or the operator")
 	require.Equal(t, "Re-escalated", escalationBody("", plugins.Escalation{}))
 }

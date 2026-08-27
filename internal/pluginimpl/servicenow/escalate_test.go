@@ -214,8 +214,11 @@ func TestEscalationUrgencyBump(t *testing.T) {
 		snow, srv := newSNOWRecorder(t)
 		p := newPluginForTest(t)
 
+		// sampleRecord() is severity=critical, so warning -> critical is a rise.
 		require.NoError(t, p.Send(context.Background(), sampleRecord(),
-			escalationPayload(srv.URL, plugins.Escalation{Count: 1, Trend: "up", PreviousSeverity: "warning"})))
+			escalationPayload(srv.URL, plugins.Escalation{
+				Count: 1, Severity: "critical", PreviousSeverity: "warning",
+			})))
 
 		patch := snow.firstOf(t, http.MethodPatch)
 		require.Equal(t, "1", patch.Body["urgency"]) // critical → 1
@@ -229,7 +232,9 @@ func TestEscalationUrgencyBump(t *testing.T) {
 		p := newPluginForTest(t)
 
 		require.NoError(t, p.Send(context.Background(), sampleRecord(),
-			escalationPayload(srv.URL, plugins.Escalation{Count: 1, Trend: "same"})))
+			escalationPayload(srv.URL, plugins.Escalation{
+				Count: 1, Severity: "critical", PreviousSeverity: "critical",
+			})))
 
 		patch := snow.firstOf(t, http.MethodPatch)
 		require.NotContains(t, patch.Body, "urgency")
@@ -240,7 +245,9 @@ func TestEscalationUrgencyBump(t *testing.T) {
 		snow, srv := newSNOWRecorder(t)
 		p := newPluginForTest(t)
 
-		payload := escalationPayload(srv.URL, plugins.Escalation{Count: 1, Trend: "up"})
+		payload := escalationPayload(srv.URL, plugins.Escalation{
+			Count: 1, Severity: "critical", PreviousSeverity: "warning",
+		})
 		payload.Meta["urgency"] = "3"
 		payload.Meta["impact"] = "3"
 		require.NoError(t, p.Send(context.Background(), sampleRecord(), payload))

@@ -156,4 +156,5 @@ Pushover has no threading, so a [re-escalation](../escalation.md) raises the
 priority one step, capped at 2 (emergency), which retries until the recipient
 acknowledges. That acknowledgement requirement is the point: a re-escalated
 alert should not be dismissible with a glance at a lock screen. The priority
-only ever climbs.
+only ever climbs, and the raise applies even when **Priority** is pinned to an
+explicit value.

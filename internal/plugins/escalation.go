@@ -48,11 +48,17 @@ type Escalation struct {
 	// Duplicates is aggregaterule's occurrence counter for the alert. Distinct
 	// from Count: an alert can recur many times without ever escalating.
 	Duplicates int64
-	// PreviousSeverity and Trend are aggregaterule's derived severity-movement
-	// pair ("up" / "down" / "same"), used by notifiers that raise a ticket
-	// priority only when severity actually rose.
+	// Severity is the alert's current severity, and PreviousSeverity the one it
+	// carried on its previous occurrence (aggregaterule's `previous_severity`).
+	// SeverityRose compares the two.
+	Severity         string
 	PreviousSeverity string
-	Trend            string
+	// Trend is aggregaterule's derived `trend_indication` label. Informational
+	// only: its vocabulary is the Alerta one ("moreSevere" / "lessSevere" /
+	// "noChange"), which is NOT what a notifier should branch on — use
+	// SeverityRose, which compares the severities directly and therefore cannot
+	// drift when that vocabulary changes.
+	Trend string
 }
 
 // IsRe reports whether this delivery is a re-escalation rather than a first
@@ -61,8 +67,26 @@ func (e Escalation) IsRe() bool { return e.Count > 0 }
 
 // SeverityRose reports whether the alert's severity increased relative to its
 // previous occurrence. Notifiers use it to decide whether to raise a priority
-// on the external object.
-func (e Escalation) SeverityRose() bool { return e.Trend == "up" }
+// on the external object — a re-escalation at the same severity must not
+// silently promote a ticket an operator downgraded.
+//
+// Derived by comparing the two severities rather than by reading
+// `trend_indication`. That field's values are Alerta's labels
+// ("moreSevere" / "lessSevere" / "noChange"), so a notifier testing it against
+// any other spelling gets a silent always-false — which is exactly the bug this
+// implementation shipped with before review. Comparing the severities cannot
+// drift, and it also works for a record that never passed through
+// aggregaterule and therefore has no trend at all.
+//
+// No previous severity means no rise can be established, so it returns false:
+// the conservative answer, since the alternative is promoting tickets on
+// incomplete information.
+func (e Escalation) SeverityRose() bool {
+	if e.Severity == "" || e.PreviousSeverity == "" {
+		return false
+	}
+	return snoozetypes.CompareSeverity(e.Severity, e.PreviousSeverity) < 0
+}
 
 // Ordinal renders the human-facing escalation number ("#3"), or "" on a first
 // fire, for message bodies and ticket comments.
@@ -138,6 +162,7 @@ func EscalationFrom(rec snoozetypes.Record) Escalation {
 		Reason:           rec.EscalationReason,
 		Actor:            rec.EscalationActor,
 		Duplicates:       extraInt64(rec.Extra, "duplicates"),
+		Severity:         rec.Severity,
 		PreviousSeverity: extraString(rec.Extra, "previous_severity"),
 		Trend:            extraString(rec.Extra, "trend_indication"),
 	}

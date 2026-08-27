@@ -395,6 +395,46 @@ func TestAggregate_CloseResetsEscalationContext(t *testing.T) {
 	require.Equal(t, int64(0), toInt64(stored[0]["escalation_count"], -1))
 }
 
+// TestAggregate_SeverityRiseIsVisibleToNotifiers pins the contract between what
+// aggregaterule STAMPS and what a notifier READS. It is the test that was
+// missing when SeverityRose was written against an invented `trend_indication`
+// spelling: every unit test passed while the real pipeline produced
+// "moreSevere" and the priority bump silently never fired.
+//
+// Driving the real plugin means the fixture cannot lie about the vocabulary.
+func TestAggregate_SeverityRiseIsVisibleToNotifiers(t *testing.T) {
+	t.Parallel()
+
+	host := newTestHost(t)
+	writeRule(t, host, db.Document{
+		"name":      "AggTrend",
+		"condition": []any{"=", "a", "trend"},
+		"fields":    []string{"a"},
+		"throttle":  int64(0),
+	})
+	p := freshPlugin(t, host)
+
+	// First occurrence at warning, second at critical.
+	runProcess(t, p, host, snoozetypes.Record{
+		Severity: "warning", Extra: map[string]any{"a": "trend"},
+	})
+	out, _ := runProcess(t, p, host, snoozetypes.Record{
+		Severity: "critical", Extra: map[string]any{"a": "trend"},
+	})
+
+	// Whatever label the plugin chose, a notifier must see the rise.
+	require.True(t, plugins.EscalationFrom(out).SeverityRose(),
+		"a warning->critical rise must reach notifiers as SeverityRose (stamped trend was %q)",
+		out.Extra["trend_indication"])
+
+	// And the reverse must not read as a rise.
+	back, _ := runProcess(t, p, host, snoozetypes.Record{
+		Severity: "warning", Extra: map[string]any{"a": "trend"},
+	})
+	require.False(t, plugins.EscalationFrom(back).SeverityRose(),
+		"a critical->warning drop must not promote anything")
+}
+
 // TestAggregate_OK ports test_aggregate_ok: an incoming "close" against an
 // open aggregate closes it.
 func TestAggregate_OK(t *testing.T) {

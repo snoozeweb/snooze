@@ -393,3 +393,55 @@ func TestEscalateTimeoutJob_IgnoresUnexpiredAndZeroDeadlines(t *testing.T) {
 	require.Equal(t, "ack", drv.record("default", "future")["state"])
 	require.Equal(t, "ack", drv.record("default", "zero")["state"])
 }
+
+// TestEscalateTimeoutJob_PreservesUntypedRecordFields is the regression test for
+// the worst bug in the escalation work: the sweep projected the stored document
+// into a typed Record via a JSON round-trip, and Record.Extra is `json:"-"`, so
+// EVERY untyped field was silently dropped on the way to the notifiers.
+//
+// That included notify_ref_<action> — the handle a notifier uses to find the
+// ticket or chat thread it already created. So on the ack-timeout path, which is
+// the most common escalation of all, JIRA would not find its issue and would
+// open a SECOND ticket: exactly the duplication this feature exists to prevent,
+// on the one path that matters most.
+func TestEscalateTimeoutJob_PreservesUntypedRecordFields(t *testing.T) {
+	clk := newFakeClock(time.Unix(2_200_000, 0))
+	now := clk.Now().Unix()
+
+	drv := newEscalateFakeDriver()
+	drv.seedRecord("default", db.Document{
+		"uid": "r-handle", "state": "open", "escalate_at": now - 5,
+		"severity": "critical",
+		// Stamped by a previous delivery of the notifier.
+		"notify_ref_Create ticket": map[string]any{"issue_key": "OPS-1"},
+		// Aggregaterule counters notifiers and conditions also read.
+		"duplicates":        int64(4),
+		"previous_severity": "warning",
+		"trend_indication":  "moreSevere",
+	})
+
+	var notified []snoozetypes.Record
+	notify := func(_ context.Context, rec snoozetypes.Record) error {
+		notified = append(notified, rec)
+		return nil
+	}
+
+	ij := EscalateTimeoutJob(drv, clk, fakeLifecycle{ack: time.Hour, escalate: time.Hour}, notify)
+	runJob(t, ij)
+
+	require.Len(t, notified, 1)
+	rec := notified[0]
+	require.Equal(t, "critical", rec.Severity)
+	require.NotNil(t, rec.Extra, "untyped fields must survive the projection")
+	// The handle a notifier reads via plugins.NotifyRef. Asserted on the raw
+	// field here because internal/plugins cannot be imported from this package
+	// (import cycle through telemetry).
+	ref, ok := rec.Extra["notify_ref_Create ticket"].(map[string]any)
+	require.True(t, ok, "without the handle the notifier opens a duplicate ticket")
+	require.Equal(t, "OPS-1", ref["issue_key"])
+
+	// The aggregaterule counters the escalation context is built from.
+	require.Equal(t, int64(4), rec.Extra["duplicates"])
+	require.Equal(t, "warning", rec.Extra["previous_severity"])
+	require.Equal(t, 1, rec.EscalationCount)
+}

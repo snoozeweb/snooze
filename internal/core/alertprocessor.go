@@ -138,6 +138,13 @@ func recordToMap(rec snoozetypes.Record) map[string]any {
 // keeps it out of the Extra projection in mapToRecord (it is a transient hint,
 // never a record field). Keep the typed entries in sync with
 // pkg/snoozetypes/record.go.
+// See also snoozetypes.RecordFromDocument, which maintains the equivalent set
+// for the READ direction. This list is deliberately not merged with it: it is
+// missing the server-controlled lifecycle fields (acked_by, ack_until,
+// escalate_at, shelve_until, escalation_*) on purpose-by-accident, and adding
+// them would change which keys `_preserve_raw` archives into `raw`. Harmless as
+// it stands — recordToDoc prefers the typed value, so a field appearing in both
+// the typed struct and Extra stores identically — but worth knowing about.
 var knownRecordKeys = map[string]struct{}{
 	"uid":         {},
 	"host":        {},

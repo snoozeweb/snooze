@@ -173,25 +173,31 @@ func (p *Plugin) escalateIncident(
 	// Advance the lifecycle at most one step, and never backwards: an operator
 	// who moved an incident to "monitoring" must not be dragged back to
 	// "investigating" because the underlying alert flapped.
+	//
+	// Deliberately NOT touching `components`. Statuspage's component statuses
+	// are a different vocabulary from incident statuses — operational,
+	// degraded_performance, partial_outage, major_outage — so sending an
+	// incident status there is rejected, and the rejection would take this
+	// PATCH's escalation body down with it. The component keeps whatever status
+	// the create set. (The create path has the same confusion; see the note on
+	// createIncident.)
 	if next := nextStatus(status); next != "" {
 		incident["status"] = next
-		if cfg.ComponentID != "" {
-			incident["components"] = map[string]string{cfg.ComponentID: next}
-		}
 	}
 	return p.patchIncident(ctx, client, cfg, id, incident, timeout)
 }
 
-// escalationBody prefixes the rendered body with the escalation marker, so the
-// public timeline entry reads as a re-escalation rather than a restatement.
-func escalationBody(body string, esc plugins.Escalation) string {
-	prefix := "Re-escalated"
-	if o := esc.Ordinal(); o != "" {
-		prefix += " " + o
-	}
-	if esc.Reason != "" {
-		prefix += " (" + esc.Reason + ")"
-	}
+// escalationBody prefixes the rendered body so the public timeline entry reads
+// as an ongoing incident rather than a restatement of the first one.
+//
+// Statuspage is the ONLY output here that faces customers rather than
+// operators, so the escalation ordinal and reason are deliberately left OUT:
+// "Re-escalated #4 (timeout)" tells the public about Snooze's internal ack
+// deadlines, which is nobody's business outside the on-call rota. Operators get
+// the full detail on the ticketing and chat outputs; the public gets the fact
+// that the incident is still live, timestamped by Statuspage itself.
+func escalationBody(body string, _ plugins.Escalation) string {
+	const prefix = "Re-escalated"
 	if body == "" {
 		return prefix
 	}
@@ -227,6 +233,13 @@ func (p *Plugin) createIncident(ctx context.Context, client *http.Client, cfg co
 	}
 	if cfg.ComponentID != "" {
 		incident["component_ids"] = []string{cfg.ComponentID}
+		// NOTE: `components` maps a component id to a COMPONENT status
+		// (operational / degraded_performance / partial_outage / major_outage),
+		// which is a different vocabulary from the incident status this sends.
+		// Statuspage is expected to reject it, so a create with component_id
+		// configured likely fails. Left as-is rather than guessed at: choosing
+		// which component status a given severity implies is an operator
+		// decision, and it needs a separate config field. Filed as a follow-up.
 		incident["components"] = map[string]string{
 			cfg.ComponentID: cfg.InitialStatus,
 		}

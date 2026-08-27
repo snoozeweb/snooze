@@ -126,6 +126,14 @@ before you pick a mode:
 - **Patlite has no per-alert state at all** — a tower light is either showing
   something or it is not. It can only get more insistent.
 
+## One caveat on "one alert, one object"
+
+The handle is scoped per **action**, not per alert. If two notification rules
+both match the same alert and both reference the *same* action, that action is
+dispatched twice for one alert: two tickets get created and only one key is
+remembered, so subsequent escalations update only that one. Reference an action
+from a single rule, or give each rule its own action.
+
 ## Where the handle is stored
 
 A notifier that creates an external object stores its identifier on the alert as

@@ -97,7 +97,15 @@ customers the wrong story.
 
 The status advances `investigating` → `identified` at most one step. An incident
 someone has already moved to `monitoring` is left where it is: only the person
-who believes the fix is in should move it on.
+who believes the fix is in should move it on. Component statuses are never
+touched by an escalation — they use a different vocabulary from incident
+statuses, and the component keeps whatever the create set.
+
+Unlike every other output, this page faces **customers**, so the update carries
+only a neutral `Re-escalated:` prefix. The escalation number and the internal
+reason (`timeout` means a Snooze acknowledgement deadline elapsed) are
+deliberately withheld from it; operators get that detail on the ticketing and
+chat outputs.
 
 Correlation is by rendered incident name, because Statuspage has no external
 reference or dedup key. Two alerts whose name template renders identically will

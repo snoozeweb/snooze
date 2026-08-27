@@ -1,7 +1,10 @@
 // Package snoozetypes contains wire types shared between the server, CLI, SDK, and components.
 package snoozetypes
 
-import "time"
+import (
+	"encoding/json"
+	"time"
+)
 
 // Record is the canonical alert document moving through the Snooze pipeline.
 // It mirrors the Python record schema. Fields are JSON-friendly and stable across
@@ -115,4 +118,63 @@ type Claims struct {
 	NotBefore   int64    `json:"nbf,omitempty"`
 	IssuedAt    int64    `json:"iat,omitempty"`
 	ID          string   `json:"jti,omitempty"`
+}
+
+// typedRecordFields are the document keys Record decodes into typed struct
+// fields. Everything else belongs in Extra.
+//
+// KEEP IN SYNC with the Record struct above: a typed field missing from this set
+// is merely duplicated into Extra (harmless — projectors prefer the typed
+// value), but a key wrongly listed here is DROPPED, which is not.
+//
+// NOTE: internal/core.knownRecordKeys serves the same purpose for the INGEST
+// direction and is a separate, and currently staler, list (it predates
+// acked_by / the timed-lifecycle deadlines / the escalation fields). Folding the
+// two together would change what `_preserve_raw` archives, so it is deliberately
+// left alone here; update both when adding a typed field.
+var typedRecordFields = map[string]bool{
+	"uid": true, "host": true, "source": true, "process": true,
+	"severity": true, "message": true, "timestamp": true, "date_epoch": true,
+	"ttl": true, "environment": true, "hash": true, "tags": true, "raw": true,
+	"state": true, "acked_by": true, "plugins": true, "ack_until": true,
+	"escalate_at": true, "shelve_until": true, "escalation_count": true,
+	"escalated_at": true, "escalation_reason": true, "escalation_actor": true,
+}
+
+// RecordFromDocument projects a loose record document (as read back from a
+// driver) into a typed Record, keeping the fields Record has no typed home for
+// in Extra.
+//
+// Use this rather than a bare json.Unmarshal into a Record. Extra is
+// `json:"-"`, so unmarshalling drops EVERY untyped field on the floor: the
+// aggregaterule counters, the notification attribution, and — the one that bites
+// — the `notify_ref_<action>` handles a notifier needs to find the ticket or
+// chat thread it already created. A notifier handed a record projected without
+// Extra sees no handle and creates a duplicate.
+func RecordFromDocument(doc map[string]any) (Record, error) {
+	var rec Record
+	raw, err := json.Marshal(doc)
+	if err != nil {
+		return Record{}, err
+	}
+	if err := json.Unmarshal(raw, &rec); err != nil {
+		return Record{}, err
+	}
+	extra := make(map[string]any, len(doc))
+	for k, v := range doc {
+		if typedRecordFields[k] {
+			continue
+		}
+		// Driver bookkeeping (`_id`, `_old`) is not part of the record and must
+		// not ride along into a notifier's outbound payload. Mirrors the
+		// underscore-prefix convention the web inspector strips on.
+		if len(k) > 0 && k[0] == '_' {
+			continue
+		}
+		extra[k] = v
+	}
+	if len(extra) > 0 {
+		rec.Extra = extra
+	}
+	return rec, nil
 }

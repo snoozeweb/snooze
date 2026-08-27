@@ -159,3 +159,8 @@ through urgency: the priority is raised one step (capped at 5), a
 `rotating_light` tag is added so the notification looks different on the phone,
 and the body is prefixed with `New escalation #N`. The priority only ever
 climbs.
+
+This raise applies even when **Priority** is pinned to an explicit value: an
+escalation getting louder is the point of the setting. If you need a hard
+ceiling, pin the priority and route escalations through a separate action with a
+`escalation_count > 0` condition.

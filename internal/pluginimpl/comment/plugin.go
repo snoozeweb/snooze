@@ -7,7 +7,6 @@ package comment
 import (
 	"context"
 	_ "embed"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"time"
@@ -326,7 +325,7 @@ func (p *Plugin) renotify(ctx context.Context, uid string) {
 		p.warn("comment: re-notify: record lookup failed", "uid", uid, "error", err)
 		return
 	}
-	rec, err := recordFromDoc(doc)
+	rec, err := snoozetypes.RecordFromDocument(doc)
 	if err != nil {
 		p.warn("comment: re-notify: record decode failed", "uid", uid, "error", err)
 		return
@@ -334,51 +333,6 @@ func (p *Plugin) renotify(ctx context.Context, uid string) {
 	if _, err := proc.Process(ctx, rec); err != nil {
 		p.warn("comment: re-notify failed", "uid", uid, "error", err)
 	}
-}
-
-// recordFromDoc projects a record document into the typed Record the
-// notification dispatcher consumes, via the JSON tags so the escalation stamp
-// and every other typed field survive.
-func recordFromDoc(doc db.Document) (snoozetypes.Record, error) {
-	raw, err := json.Marshal(doc)
-	if err != nil {
-		return snoozetypes.Record{}, err
-	}
-	var rec snoozetypes.Record
-	if err := json.Unmarshal(raw, &rec); err != nil {
-		return snoozetypes.Record{}, err
-	}
-	// The typed struct drops everything it has no field for, but notifiers and
-	// conditions read those (duplicates, previous_severity, trend_indication,
-	// and the notify_ref_<action> handles), so keep them in Extra.
-	rec.Extra = extraFromDoc(doc)
-	return rec, nil
-}
-
-// extraFromDoc collects the document keys that have no typed home on Record.
-func extraFromDoc(doc db.Document) map[string]any {
-	extra := make(map[string]any, len(doc))
-	for k, v := range doc {
-		if typedRecordFields[k] {
-			continue
-		}
-		extra[k] = v
-	}
-	if len(extra) == 0 {
-		return nil
-	}
-	return extra
-}
-
-// typedRecordFields are the document keys snoozetypes.Record already decodes
-// into typed struct fields; everything else belongs in Extra.
-var typedRecordFields = map[string]bool{
-	"uid": true, "host": true, "source": true, "process": true,
-	"severity": true, "message": true, "timestamp": true, "date_epoch": true,
-	"ttl": true, "environment": true, "hash": true, "tags": true, "raw": true,
-	"state": true, "acked_by": true, "plugins": true, "ack_until": true,
-	"escalate_at": true, "shelve_until": true, "escalation_count": true,
-	"escalated_at": true, "escalation_reason": true, "escalation_actor": true,
 }
 
 // warn logs at warn level when the host exposes a logger.

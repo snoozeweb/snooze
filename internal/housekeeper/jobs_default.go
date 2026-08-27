@@ -2,7 +2,6 @@ package housekeeper
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"log/slog"
 	"time"
@@ -313,15 +312,19 @@ func docInt64(doc db.Document, key string) int64 {
 }
 
 // recordFromDoc projects the loose record document the sweep read back into the
-// typed Record the notification dispatcher consumes. Only the fields the
-// dispatcher matches on need to survive; the rest round-trip through JSON.
+// typed Record the notification dispatcher consumes.
+//
+// Delegates to snoozetypes.RecordFromDocument so the UNTYPED fields survive.
+// This function used to be a bare JSON round-trip, and because Record.Extra is
+// `json:"-"` that silently dropped every one of them — including the
+// notify_ref_<action> handle a notifier uses to find the ticket it already
+// opened. The ack-timeout sweep is the most common escalation there is, so that
+// made JIRA open a second ticket on exactly the path that matters most.
 func recordFromDoc(doc db.Document) snoozetypes.Record {
-	var rec snoozetypes.Record
-	raw, err := json.Marshal(doc)
+	rec, err := snoozetypes.RecordFromDocument(doc)
 	if err != nil {
-		return rec
+		return snoozetypes.Record{}
 	}
-	_ = json.Unmarshal(raw, &rec)
 	return rec
 }
 

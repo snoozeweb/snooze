@@ -725,7 +725,7 @@ func TestProcessPopulatesEscalationContext(t *testing.T) {
 		require.False(t, calls[0].Payload.Escalation.IsRe())
 	})
 
-	t.Run("re_escalation_carries_count_reason_and_trend", func(t *testing.T) {
+	t.Run("re_escalation_carries_count_reason_and_severity_rise", func(t *testing.T) {
 		host := newHost(t)
 		writeActions(t, host, []map[string]any{
 			{"name": "Script", "action": map[string]any{"selected": "script", "subcontent": map[string]any{}}},
@@ -744,9 +744,14 @@ func TestProcessPopulatesEscalationContext(t *testing.T) {
 			Timestamp:        time.Now(),
 			EscalationCount:  2,
 			EscalationReason: "timeout",
+			Severity:         "critical",
 			Extra: map[string]any{
-				"trend_indication": "up",
-				"duplicates":       int64(5),
+				// The REAL label aggregaterule stamps. SeverityRose compares the
+				// severities, not this, precisely so an invented spelling can
+				// never make a dead check look alive.
+				"trend_indication":  "moreSevere",
+				"previous_severity": "warning",
+				"duplicates":        int64(5),
 			},
 		})
 		require.NoError(t, err)
@@ -757,7 +762,7 @@ func TestProcessPopulatesEscalationContext(t *testing.T) {
 		require.Equal(t, 2, esc.Count)
 		require.Equal(t, "#2", esc.Ordinal())
 		require.Equal(t, "timeout", esc.Reason)
-		require.True(t, esc.SeverityRose())
+		require.True(t, esc.SeverityRose(), "warning -> critical must read as a rise")
 		require.Equal(t, int64(5), esc.Duplicates)
 	})
 }

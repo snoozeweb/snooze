@@ -241,14 +241,17 @@ func TestEscalationCommentTemplate(t *testing.T) {
 // Priority is raised only when severity actually rose. Re-escalating at the
 // same severity must not silently promote a ticket an operator downgraded.
 func TestEscalationRaisesPriorityOnlyWhenSeverityRose(t *testing.T) {
+	// Real severity pairs, not a trend label: SeverityRose compares the
+	// severities, and an earlier version of these tests passed against an
+	// invented trend spelling while the bump never fired in production.
 	for name, tc := range map[string]struct {
-		trend      string
-		wantPutSet bool
+		severity, previous string
+		wantPutSet         bool
 	}{
-		"severity_rose": {trend: "up", wantPutSet: true},
-		"severity_same": {trend: "same", wantPutSet: false},
-		"severity_fell": {trend: "down", wantPutSet: false},
-		"trend_unknown": {trend: "", wantPutSet: false},
+		"severity_rose":        {severity: "critical", previous: "warning", wantPutSet: true},
+		"severity_same":        {severity: "critical", previous: "critical", wantPutSet: false},
+		"severity_fell":        {severity: "warning", previous: "critical", wantPutSet: false},
+		"no_previous_severity": {severity: "critical", previous: "", wantPutSet: false},
 	} {
 		t.Run(name, func(t *testing.T) {
 			jira, srv := newJIRARecorder(t)
@@ -258,9 +261,13 @@ func TestEscalationRaisesPriorityOnlyWhenSeverityRose(t *testing.T) {
 
 			stamped := map[string]any{"notify_ref_Create ticket": map[string]any{refIssueKey: "OPS-1"}}
 			payload := escPayload(meta, 1, stamped)
-			payload.Escalation = plugins.Escalation{Count: 1, Trend: tc.trend}
+			payload.Escalation = plugins.Escalation{
+				Count: 1, Severity: tc.severity, PreviousSeverity: tc.previous,
+			}
+			rec := recWithRef(stamped)
+			rec.Severity = tc.severity
 
-			require.NoError(t, p.Send(context.Background(), recWithRef(stamped), payload))
+			require.NoError(t, p.Send(context.Background(), rec, payload))
 
 			puts := jira.matching(http.MethodPut, "/rest/api/3/issue/OPS-1")
 			if tc.wantPutSet {

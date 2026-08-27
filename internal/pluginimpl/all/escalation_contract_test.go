@@ -27,6 +27,33 @@ import (
 	"github.com/snoozeweb/snooze/pkg/snoozetypes"
 )
 
+// escalationFixture is the escalation context every case is driven with.
+//
+// The severity pair is REAL — the values aggregaterule actually stamps — because
+// this suite's original fixtures invented a `trend_indication` spelling ("up")
+// that the pipeline never produces, which hid a bug where the priority bump in
+// three notifiers silently never fired. Fixtures here must mirror the pipeline,
+// not the author's expectation of it. The trend label is deliberately set to the
+// genuine Alerta spelling so nothing can quietly depend on a made-up one.
+func escalationFixture() plugins.Escalation {
+	return plugins.Escalation{
+		Count:  2,
+		Reason: "timeout",
+		// Severity MUST equal the record's own severity (see driveNotifier), and
+		// the rise is expressed by a LOWER PreviousSeverity. If the record's
+		// severity varied between the two runs the requests would differ for
+		// that reason alone, and this test would pass for a notifier that
+		// ignores the escalation completely.
+		Severity:         fixtureSeverity,
+		PreviousSeverity: "info",
+		Trend:            "moreSevere",
+	}
+}
+
+// fixtureSeverity is the severity used on BOTH runs, so severity is never the
+// thing that makes the two requests differ.
+const fixtureSeverity = "warning"
+
 // escalationCase describes how to drive one notifier against a local HTTP
 // stand-in.
 type escalationCase struct {
@@ -164,9 +191,18 @@ func TestEveryNotifierReactsToReEscalation(t *testing.T) {
 			notifier := notifierByName(t, name)
 
 			first := driveNotifier(t, notifier, tc, plugins.Escalation{})
-			escalated := driveNotifier(t, notifier, tc, plugins.Escalation{
-				Count: 2, Reason: "timeout", PreviousSeverity: "info", Trend: "up",
-			})
+			// Drive the first delivery TWICE. Without this the comparison below
+			// is worthless the moment a notifier puts anything time- or
+			// random-varying in its payload: the two runs would differ for that
+			// reason and the test would pass while the notifier ignored the
+			// escalation entirely.
+			firstAgain := driveNotifier(t, notifier, tc, plugins.Escalation{})
+			require.Equal(t, first, firstAgain,
+				"%s produces a non-deterministic request, so this test cannot tell "+
+					"an escalation apart from noise. Make the payload deterministic for "+
+					"a fixed record, or compare a stable projection of it here.", name)
+
+			escalated := driveNotifier(t, notifier, tc, escalationFixture())
 
 			require.NotEmpty(t, first, "the first delivery made no request at all")
 			require.NotEmpty(t, escalated, "the escalation made no request at all")
@@ -242,7 +278,7 @@ func driveNotifier(t *testing.T, notifier plugins.Notifier, tc escalationCase, e
 
 	rec := snoozetypes.Record{
 		UID: "rec-1", Hash: "abc123", Host: "db-1",
-		Source: "syslog", Severity: "warning", Message: "disk full",
+		Source: "syslog", Severity: fixtureSeverity, Message: "disk full",
 		// The record and the payload must agree: the dispatcher derives
 		// payload.Escalation FROM the record (plugins.EscalationFrom), so a
 		// fixture that sets only one of them would be testing a state that

@@ -28,10 +28,11 @@ func TestEscalationFromTypedFields(t *testing.T) {
 		EscalationReason: "manual",
 		EscalationActor:  "alice",
 		EscalatedAt:      1700000000,
+		Severity:         "critical",
 		Extra: map[string]any{
 			"duplicates":        int64(12),
 			"previous_severity": "warning",
-			"trend_indication":  "up",
+			"trend_indication":  "moreSevere",
 		},
 	})
 	require.True(t, e.IsRe())
@@ -69,12 +70,47 @@ func TestEscalationFromExtraFallback(t *testing.T) {
 	}
 }
 
-func TestEscalationTrendDown(t *testing.T) {
-	e := EscalationFrom(snoozetypes.Record{
-		EscalationCount: 1,
-		Extra:           map[string]any{"trend_indication": "down"},
-	})
-	require.False(t, e.SeverityRose(), "a severity drop must not raise a ticket priority")
+// TestSeverityRoseUsesTheRealSeverities is the regression test for a shipped
+// bug: SeverityRose originally read `trend_indication` and compared it to "up".
+// The field's real vocabulary is Alerta's ("moreSevere" / "lessSevere" /
+// "noChange"), so the check was ALWAYS FALSE in production and the priority bump
+// in jira, servicenow and opsgenie silently never happened. The original tests
+// passed only because their fixtures invented the value "up".
+//
+// The severities are now compared directly, so no label vocabulary can break
+// it. These cases deliberately stamp the REAL trend labels to prove the answer
+// no longer depends on them.
+func TestSeverityRoseUsesTheRealSeverities(t *testing.T) {
+	cases := map[string]struct {
+		severity, previous, trend string
+		want                      bool
+	}{
+		"rose_warning_to_critical": {"critical", "warning", "moreSevere", true},
+		"rose_info_to_error":       {"error", "info", "moreSevere", true},
+		"fell_critical_to_warning": {"warning", "critical", "lessSevere", false},
+		"unchanged":                {"warning", "warning", "noChange", false},
+		// A rise must be reported even when the trend label is absent entirely,
+		// which is the case for a record that never passed through
+		// aggregaterule.
+		"rose_with_no_trend_label": {"critical", "warning", "", true},
+		// And a stale/wrong label must not be able to fake a rise.
+		"lying_label":          {"warning", "critical", "moreSevere", false},
+		"no_previous_severity": {"critical", "", "", false},
+		"no_current_severity":  {"", "warning", "moreSevere", false},
+	}
+	for name, tc := range cases {
+		t.Run(name, func(t *testing.T) {
+			e := EscalationFrom(snoozetypes.Record{
+				EscalationCount: 1,
+				Severity:        tc.severity,
+				Extra: map[string]any{
+					"previous_severity": tc.previous,
+					"trend_indication":  tc.trend,
+				},
+			})
+			require.Equal(t, tc.want, e.SeverityRose())
+		})
+	}
 }
 
 func TestOrdinal(t *testing.T) {
