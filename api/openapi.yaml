@@ -2921,7 +2921,12 @@ components:
           additionalProperties: true
         state:
           type: string
-          enum: ['', open, ack, close, shelved]
+          # `esc` is a real, reachable value: the escalate-timeout sweep sets it
+          # when an unacknowledged alert passes its deadline, and an operator's
+          # `esc` comment sets it directly. It was missing from this enum, so a
+          # client generated from this spec had a type that could not represent a
+          # response the API actually returns.
+          enum: ['', open, ack, esc, close, shelved]
         acked_by:
           type: string
           description: |

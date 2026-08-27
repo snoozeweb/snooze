@@ -4192,7 +4192,7 @@ export interface components {
                 [key: string]: unknown;
             };
             /** @enum {string} */
-            state?: "" | "open" | "ack" | "close" | "shelved";
+            state?: "" | "open" | "ack" | "esc" | "close" | "shelved";
             /** @description Login of the operator who last acknowledged the alert. Stamped by
              *     the comment plugin on `ack` and cleared on `open`/`close` (kept
              *     through `esc`). Absent when the alert is not currently acknowledged.
