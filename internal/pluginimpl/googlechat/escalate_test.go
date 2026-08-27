@@ -5,12 +5,14 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/require"
 
 	"github.com/snoozeweb/snooze/internal/plugins"
+	"github.com/snoozeweb/snooze/pkg/snoozetypes"
 )
 
 // gcQuery / gcBody read the capture's snapshot, keeping the assertions terse.
@@ -121,4 +123,106 @@ func TestFirstDeliveryKeepsTheCard(t *testing.T) {
 	raw := string(gcBody(capt))
 	require.Contains(t, raw, "cardsV2")
 	require.False(t, strings.Contains(raw, "New escalation"))
+}
+
+// TestRecordsThreadNameForInboundLookup: the daemon resolves an inbound Chat
+// command back to its alert by thread name. Before the notifier recorded it,
+// that lookup had nothing to match against and every command answered "cannot
+// find the corresponding alert!".
+func TestRecordsThreadNameForInboundLookup(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte(`{"name":"spaces/S/messages/M","thread":{"name":"spaces/S/threads/T1"}}`))
+	}))
+	t.Cleanup(srv.Close)
+
+	stamped := map[string]any{}
+	p := newPluginForTest(t)
+	require.NoError(t, p.Send(context.Background(), sampleRecord(), plugins.NotificationPayload{
+		Meta:   map[string]any{"webhook_url": srv.URL, "action_name": "Chat ops"},
+		Inject: func(field string, value any) { stamped[field] = value },
+	}))
+
+	// The flat list the daemon searches...
+	require.Equal(t, []string{"spaces/S/threads/T1"}, stamped[chatThreadsField])
+	// ...and the per-action handle every other notifier uses.
+	require.Equal(t, "spaces/S/threads/T1",
+		plugins.NotifyRefString(snoozetypes.Record{Extra: stamped}, "Chat ops", "thread_name"))
+}
+
+// The list accumulates across an alert's occurrences without duplicating, since
+// aggregaterule carries it forward.
+func TestThreadListAccumulatesWithoutDuplicates(t *testing.T) {
+	thread := "spaces/S/threads/T1"
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte(`{"thread":{"name":"` + thread + `"}}`))
+	}))
+	t.Cleanup(srv.Close)
+
+	p := newPluginForTest(t)
+	stamped := map[string]any{}
+	inject := func(field string, value any) { stamped[field] = value }
+
+	// A record already carrying a different thread, in the []any shape a driver
+	// round-trip produces.
+	rec := sampleRecord()
+	rec.Extra = map[string]any{chatThreadsField: []any{"spaces/S/threads/T0"}}
+
+	require.NoError(t, p.Send(context.Background(), rec, plugins.NotificationPayload{
+		Meta:   map[string]any{"webhook_url": srv.URL, "action_name": "Chat ops"},
+		Inject: inject,
+	}))
+	require.Equal(t, []string{"spaces/S/threads/T0", thread}, stamped[chatThreadsField])
+
+	// Re-posting into a thread already recorded must not append it twice.
+	clear(stamped)
+	rec.Extra = map[string]any{chatThreadsField: []any{thread}}
+	require.NoError(t, p.Send(context.Background(), rec, plugins.NotificationPayload{
+		Meta:   map[string]any{"webhook_url": srv.URL, "action_name": "Chat ops"},
+		Inject: inject,
+	}))
+	require.NotContains(t, stamped, chatThreadsField)
+}
+
+// A long-lived alert must not grow the record without bound.
+func TestThreadListIsBounded(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte(`{"thread":{"name":"spaces/S/threads/NEW"}}`))
+	}))
+	t.Cleanup(srv.Close)
+
+	existing := make([]any, 0, maxTrackedThreads+5)
+	for i := range maxTrackedThreads + 5 {
+		existing = append(existing, "old-"+strconv.Itoa(i))
+	}
+	rec := sampleRecord()
+	rec.Extra = map[string]any{chatThreadsField: existing}
+
+	stamped := map[string]any{}
+	p := newPluginForTest(t)
+	require.NoError(t, p.Send(context.Background(), rec, plugins.NotificationPayload{
+		Meta:   map[string]any{"webhook_url": srv.URL, "action_name": "Chat ops"},
+		Inject: func(field string, value any) { stamped[field] = value },
+	}))
+
+	got, _ := stamped[chatThreadsField].([]string)
+	require.Len(t, got, maxTrackedThreads)
+	require.Equal(t, "spaces/S/threads/NEW", got[len(got)-1],
+		"the newest thread — the one an operator is plausibly replying in — must survive the trim")
+}
+
+// A response with no thread name must not fail the notification, which already
+// landed; the only cost is an unresolvable inbound command.
+func TestNoThreadNameInResponseIsTolerated(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte(`{}`))
+	}))
+	t.Cleanup(srv.Close)
+
+	stamped := map[string]any{}
+	p := newPluginForTest(t)
+	require.NoError(t, p.Send(context.Background(), sampleRecord(), plugins.NotificationPayload{
+		Meta:   map[string]any{"webhook_url": srv.URL, "action_name": "Chat ops"},
+		Inject: func(field string, value any) { stamped[field] = value },
+	}))
+	require.Empty(t, stamped)
 }

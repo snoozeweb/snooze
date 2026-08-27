@@ -178,17 +178,7 @@ type commentPayload struct {
 const commentEndpoint = "/api/v1/comment"
 
 // recordSearchEndpoint is the canonical structured-search route. Body shape:
-// `{"condition": <Cond>}`. We mirror the Python query (IN thread
-// snooze_webhook_responses.content.threads) with a nested-IN condition:
-// for every entry in snooze_webhook_responses, check whether content.threads
-// contains the thread name we're looking for.
-//
-// TODO: snooze_webhook_responses is read here and in the jira component but
-// nothing in this codebase writes it yet — the googlechat notifier plugin
-// that would record the thread name after sending a Chat message has not
-// been ported from Python. Until that lands this lookup will return zero
-// hits in any real deployment, and the user-facing reply will be "cannot
-// find the corresponding alert!".
+// `{"condition": <Cond>}`.
 const recordSearchEndpoint = "/api/v1/record/search"
 
 // Forwarder owns the business logic that turns a ChatEvent into one or more
@@ -269,34 +259,55 @@ func (f *Forwarder) Handle(ctx context.Context, ev ChatEvent) (string, error) {
 	}
 }
 
-// lookupRecords resolves the records associated with the given thread name.
-// It POSTs a structured condition to /api/v1/record/search that says:
+// lookupRecords resolves the records associated with the given Chat thread.
 //
-//	IN snooze_webhook_responses where content.threads contains <thread>
+// Two queries, tried in order, because two conventions exist for recording
+// which thread an alert was posted into:
 //
-// The wire form is the legacy nested-list shape the server's condition
-// parser accepts; the outer IN's value is itself a list-form condition,
-// which the IN evaluator runs against each element of the
-// snooze_webhook_responses array.
+//  1. `chat_threads`, a flat list the googlechat notifier appends to after each
+//     send. This is the one that works: it is written by the Go server, and the
+//     daemon can query it with a single condition on a field name it knows.
+//  2. `snooze_webhook_responses[].content.threads`, the Snooze 1.x array, for
+//     records migrated from a Python deployment.
+//
+// Shape 1 exists because shape 2 was, for the entire life of this daemon, dead:
+// NOTHING in the Go server ever wrote snooze_webhook_responses, so every
+// inbound Chat command resolved to zero hits and answered "cannot find the
+// corresponding alert!".
 func (f *Forwarder) lookupRecords(ctx context.Context, thread string) ([]recordSearchHit, error) {
 	if thread == "" {
 		return nil, errors.New("empty thread")
 	}
-	body := map[string]any{
-		"condition": []any{
-			"IN",
-			[]any{"IN", thread, "content.threads"},
-			"snooze_webhook_responses",
-		},
+	conditions := []any{
+		// Flat list written by the googlechat notifier.
+		[]any{"IN", thread, "chat_threads"},
+		// Legacy 1.x nested array: for every entry in snooze_webhook_responses,
+		// check whether content.threads contains the thread name.
+		[]any{"IN", []any{"IN", thread, "content.threads"}, "snooze_webhook_responses"},
 	}
-	type envelope struct {
-		Data []recordSearchHit `json:"data"`
+
+	var firstErr error
+	for _, cond := range conditions {
+		type envelope struct {
+			Data []recordSearchHit `json:"data"`
+		}
+		var env envelope
+		if err := f.Client.Post(ctx, recordSearchEndpoint, map[string]any{"condition": cond}, &env); err != nil {
+			// Keep the first error but keep trying: an older server may reject
+			// one of the two shapes outright, and the other may still resolve.
+			if firstErr == nil {
+				firstErr = err
+			}
+			continue
+		}
+		if len(env.Data) > 0 {
+			return env.Data, nil
+		}
 	}
-	var env envelope
-	if err := f.Client.Post(ctx, recordSearchEndpoint, body, &env); err != nil {
-		return nil, err
+	if firstErr != nil {
+		return nil, firstErr
 	}
-	return env.Data, nil
+	return nil, nil
 }
 
 // dispatchSimple posts a comment-batch action for every hit. actionType is the

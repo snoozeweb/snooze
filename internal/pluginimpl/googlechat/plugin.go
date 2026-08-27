@@ -18,6 +18,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"slices"
 	"strings"
 	"text/template"
 	"time"
@@ -162,11 +163,92 @@ func (p *Plugin) Send(ctx context.Context, rec snoozetypes.Record, payload plugi
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		return fmt.Errorf("googlechat: HTTP %d: %s", resp.StatusCode, truncate(preview, 200))
 	}
+	p.recordThread(rec, payload, preview)
 	return nil
 }
 
 // Compile-time proof we satisfy the contract.
 var _ plugins.Notifier = (*Plugin)(nil)
+
+// chatThreadsField is a flat, action-independent list of the Chat thread names
+// this alert has been posted into.
+//
+// It exists so the snooze-googlechat daemon can resolve "which alert does this
+// thread belong to?" from an inbound Chat command with ONE search on a field
+// whose name it knows in advance. The per-action notify_ref handle cannot serve
+// that lookup: the daemon receives a thread name and has no idea which action
+// posted it, so it would have to search every notify_ref_* field there might be.
+const chatThreadsField = "chat_threads"
+
+// recordThread persists the Chat thread this message landed in, so an operator
+// replying in that thread can be matched back to this alert.
+//
+// Two writes, deliberately:
+//
+//   - notify_ref_<action>.thread_name, the per-action handle every other
+//     notifier uses;
+//   - chat_threads, the flat searchable list the daemon queries.
+//
+// A response without a thread name (an older Chat API shape, a webhook that
+// answers with an empty body) leaves both untouched: the notification already
+// landed, and the only cost is that an inbound command on that thread will not
+// resolve.
+func (p *Plugin) recordThread(rec snoozetypes.Record, payload plugins.NotificationPayload, body []byte) {
+	var resp struct {
+		Thread struct {
+			Name string `json:"name"`
+		} `json:"thread"`
+	}
+	if err := json.Unmarshal(body, &resp); err != nil || resp.Thread.Name == "" {
+		return
+	}
+	name := resp.Thread.Name
+	actionName := payload.ActionName()
+
+	plugins.StoreNotifyRef(payload, actionName,
+		plugins.MergeNotifyRef(rec, actionName, map[string]any{"thread_name": name}))
+
+	// Read-modify-write against the in-memory record. aggregaterule carries
+	// chat_threads forward onto every subsequent occurrence, so the list
+	// accumulates across an alert's lifetime rather than being reset per fire.
+	threads := existingThreads(rec)
+	if slices.Contains(threads, name) {
+		return
+	}
+	threads = append(threads, name)
+	// Bound the list: an alert posted into many threads over a long life must
+	// not grow the record without limit. The newest are the ones an operator is
+	// plausibly replying in.
+	if len(threads) > maxTrackedThreads {
+		threads = threads[len(threads)-maxTrackedThreads:]
+	}
+	plugins.InjectField(payload.Inject, chatThreadsField, threads)
+}
+
+// maxTrackedThreads caps how many Chat thread names one alert accumulates.
+const maxTrackedThreads = 20
+
+// existingThreads reads the thread list already on the record, tolerating the
+// []any shape a driver round-trip produces.
+func existingThreads(rec snoozetypes.Record) []string {
+	if rec.Extra == nil {
+		return nil
+	}
+	switch v := rec.Extra[chatThreadsField].(type) {
+	case []string:
+		return slices.Clone(v)
+	case []any:
+		out := make([]string, 0, len(v))
+		for _, item := range v {
+			if s, ok := item.(string); ok && s != "" {
+				out = append(out, s)
+			}
+		}
+		return out
+	default:
+		return nil
+	}
+}
 
 // ---- config -----------------------------------------------------------------
 

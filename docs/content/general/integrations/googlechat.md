@@ -89,3 +89,20 @@ than repeating the card: the thread root already shows host, severity and
 message, so a second card would bury the one new fact.
 
 Clear **Thread Key** if you want every message to start its own conversation.
+
+## Replying from a Chat thread
+
+The notifier records the Chat thread each message lands in, on the alert, so the
+optional `snooze-googlechat` daemon can resolve an inbound command (`ack`,
+`close`, …) typed in that thread back to the alert it belongs to.
+
+Up to 20 thread names are tracked per alert; beyond that the oldest are dropped,
+since the newest thread is the one an operator is plausibly replying in.
+
+:::note
+This did not work before: the daemon's lookup read a Snooze 1.x field
+(`snooze_webhook_responses`) that the Go server never wrote, so every inbound
+command answered "cannot find the corresponding alert!". The daemon now reads
+the flat `chat_threads` list this notifier writes, and still falls back to the
+1.x shape for records migrated from a Python deployment.
+:::
