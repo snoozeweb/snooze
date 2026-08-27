@@ -71,7 +71,7 @@ func (p *Plugin) escalate(
 	case escalateSkip:
 		return nil
 	case escalateNew:
-		return p.createLinked(ctx, cfg, rec, payload, issueKey)
+		return p.createLinked(ctx, cfg, rec, issueKey)
 	}
 
 	status, preview, err := p.addComment(ctx, cfg, issueKey, p.escalationComment(cfg, rec, payload))
@@ -282,7 +282,6 @@ func (p *Plugin) createLinked(
 	ctx context.Context,
 	cfg config,
 	rec snoozetypes.Record,
-	payload plugins.NotificationPayload,
 	previousKey string,
 ) error {
 	key, err := p.createIssue(ctx, cfg, rec)

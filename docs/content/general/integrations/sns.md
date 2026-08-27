@@ -126,3 +126,18 @@ The package ships an env-gated end-to-end test (`internal/pluginimpl/sns/e2e_tes
 - The default endpoint targets the public regional endpoint. Use `endpoint` for FIPS, VPC, dualstack, or LocalStack endpoints.
 - No severity remapping is performed; the raw Snooze severity is available to the subject/message templates.
 
+## Re-escalation
+
+A [re-escalation](../escalation.md) carries `escalation_count`,
+`escalation_reason`, `escalated_by` and `previous_severity` as SNS message
+attributes, so a subscriber or a filter policy can route on them without parsing
+the message body. Nothing is added on a first delivery.
+
+:::warning
+This plugin publishes to a **standard** topic and sets no
+`MessageDeduplicationId`. If FIFO support is ever added, the dedup id must
+incorporate the escalation count: a dedup id derived from the alert alone would
+make AWS silently discard every escalation as a duplicate of the first delivery
+— no error, no message, no page. `MessageGroupId` is the field that should carry
+the alert-stable value, for ordering.
+:::

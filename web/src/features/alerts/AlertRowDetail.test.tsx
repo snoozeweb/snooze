@@ -87,6 +87,41 @@ describe("AlertRowDetail", () => {
     expect(screen.queryByText("srv-1")).toBeNull();
   });
 
+  it("shows an escalation badge only once the alert has been re-escalated", () => {
+    stubComments();
+    const base: Record_ = {
+      uid: "r1",
+      host: "srv-1",
+      severity: "critical",
+      state: "esc",
+      message: "disk full",
+      date_epoch: 1,
+    };
+
+    // A first-delivery alert carries no extra chrome.
+    const { unmount } = renderDetail(base);
+    expect(screen.queryByText(/Re-escalated/)).toBeNull();
+    unmount();
+
+    renderDetail({ ...base, escalation_count: 3, escalation_reason: "timeout" });
+    expect(screen.getByText("Re-escalated x3 (timeout)")).toBeInTheDocument();
+  });
+
+  it("attributes a manual escalation to the operator who made it", () => {
+    stubComments();
+    renderDetail({
+      uid: "r1",
+      host: "srv-1",
+      severity: "critical",
+      state: "esc",
+      date_epoch: 1,
+      escalation_count: 1,
+      escalation_reason: "manual",
+      escalation_actor: "alice",
+    });
+    expect(screen.getByText("Re-escalated by alice")).toBeInTheDocument();
+  });
+
   it("shows Timeline / Flow / Record tabs with Timeline active by default", async () => {
     stubComments();
     const row = { uid: "u1", source: "syslog", aggregate: "Host and Message" } as Record_;

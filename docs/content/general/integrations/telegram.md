@@ -109,3 +109,12 @@ A message will appear in the configured chat on success.
 - **MarkdownV2 escaping.** When `parse_mode` is set to `MarkdownV2`, all special characters (`` _ * [ ] ( ) ~ \` > # + - = | { } . ! ``) in dynamic text must be escaped with a backslash. The plugin does not auto-escape for MarkdownV2 — write your template carefully or prefer `HTML` for operator-controlled text.
 - **No resolve path.** Telegram messages are one-shot; there is no native "resolve" concept. If you need to indicate a resolution, use a distinct template that checks `{{ if eq .State "close" }}…{{ end }}`.
 
+## Re-escalation
+
+A [re-escalation](../escalation.md) is sent as a reply to the message the
+alert's first delivery posted, so the chat shows one conversation per alert.
+`allow_sending_without_reply` is set, so a deleted original cannot make Telegram
+reject the escalation.
+
+Editing the original message instead is deliberately not done: an edit is silent
+in Telegram, so nobody would learn the alert had escalated.

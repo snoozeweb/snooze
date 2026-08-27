@@ -80,3 +80,8 @@ The test sends one embed message to the channel and asserts no error is returned
 - The `timeout` field controls the full HTTP round-trip. Discord's webhook endpoint is generally responsive; the default `10s` is sufficient for most deployments.
 - File attachments are not supported.
 
+## Re-escalation
+
+A Discord webhook cannot open a thread on its own message (that requires a bot
+token), so a [re-escalation](../escalation.md) arrives as a normal message
+carrying a `New escalation #N` banner.

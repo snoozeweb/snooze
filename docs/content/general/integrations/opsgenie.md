@@ -93,3 +93,22 @@ The test creates one alert and then closes it. Both calls must succeed (HTTP 202
 - gRPC / Opsgenie Heartbeat endpoints are not supported.
 - Atlassian is sunsetting standalone Opsgenie around 2027 in favour of Atlassian Operations. During the migration window both the legacy `api.opsgenie.com` and the migrated endpoints share the same Alert API v2 contract, so no Snooze configuration change is anticipated.
 
+## Re-escalation
+
+The alert **alias** (the alert hash) is what makes Opsgenie treat every
+occurrence of an alert as the same alert, and it never changes.
+
+On a [re-escalation](../escalation.md) the plugin does not re-create the alert —
+Opsgenie would de-duplicate it, but silently, so nobody would be paged. Instead
+it:
+
+1. adds a note recording the escalation, its number and its reason;
+2. raises the alert priority, but only when severity actually rose;
+3. **un-acknowledges** the alert, so Opsgenie starts notifying the on-call
+   again. This is the step that actually reaches a human, and the reason a bare
+   re-create is the wrong behaviour.
+
+Set **Un-acknowledge on re-escalation** to false if your process deliberately
+keeps acknowledged alerts quiet. An un-acknowledge on an alert that was never
+acknowledged is rejected by Opsgenie, which is normal and does not fail the
+notification.

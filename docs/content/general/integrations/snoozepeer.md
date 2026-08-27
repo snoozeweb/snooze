@@ -102,3 +102,10 @@ Per-alert relay outcomes (success / error per action) are tracked on the origina
 - The `endpoint` is a fixed URL — unlike the [webhook](./webhook.md) plugin's `url`, it is **not** rendered as a Go template.
 - The relayed body is the raw normalized record; the peer re-runs its own rules/aggregation pipeline on it.
 - Loop prevention only works when every federated node has a **distinct `syncer.hostname`** — see the [HA prerequisite](#ha-prerequisite-distinct-syncerhostname) above.
+
+## Re-escalation
+
+The forwarded record carries its [escalation context](../escalation.md) and
+notifier handles, so the peer's own pipeline sees a re-escalation as one and its
+notifiers update the ticket or thread they already created instead of opening a
+second one.

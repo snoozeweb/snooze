@@ -88,3 +88,17 @@ The plugin currently only sets the incident status to `resolved`; it does not re
 **API rate limits**  
 Statuspage imposes per-key rate limits. Consult the [Statuspage API documentation](https://developer.statuspage.io/) for the current limits. The plugin does not implement automatic back-off or retry; rate-limit errors are returned to the notification worker.
 
+## Re-escalation
+
+On an alert's [re-escalation](../escalation.md) the plugin finds the alert's
+open incident by rendered name and posts an **incident update** on it, rather
+than opening a second incident — two open incidents for one outage tells your
+customers the wrong story.
+
+The status advances `investigating` → `identified` at most one step. An incident
+someone has already moved to `monitoring` is left where it is: only the person
+who believes the fix is in should move it on.
+
+Correlation is by rendered incident name, because Statuspage has no external
+reference or dedup key. Two alerts whose name template renders identically will
+be treated as one incident.

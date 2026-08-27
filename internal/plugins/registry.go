@@ -59,6 +59,37 @@ func Registered() []string {
 	return out
 }
 
+// New constructs a single registered plugin by name, parsing its metadata and
+// running its factory. The returned plugin has NOT had PostInit called, so it
+// has no host, no DB and no logger: it is the plugin's own configuration
+// surface and nothing more.
+//
+// Build is the way the server instantiates the full set with wiring; New exists
+// for callers that need one plugin's behaviour in isolation — enumerating
+// metadata, or exercising a Notifier against a stand-in endpoint.
+func New(name string) (Plugin, error) {
+	raw, ok := registry.Load(name)
+	if !ok {
+		return nil, fmt.Errorf("plugins.New: %q is not registered", name)
+	}
+	e := raw.(*entry)
+	meta, err := ParseMetadata(e.metaRaw)
+	if err != nil {
+		return nil, fmt.Errorf("plugins.New: %s: %w", name, err)
+	}
+	if meta.Name == "" {
+		meta.Name = name
+	}
+	p, err := e.factory(meta)
+	if err != nil {
+		return nil, fmt.Errorf("plugins.New: factory for %s: %w", name, err)
+	}
+	if p == nil {
+		return nil, fmt.Errorf("plugins.New: factory for %s returned nil", name)
+	}
+	return p, nil
+}
+
 // Build instantiates every registered plugin via its Factory, calls PostInit
 // on each (in lexicographic order — the registry has no dependency graph),
 // and returns:

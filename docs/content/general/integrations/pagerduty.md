@@ -132,3 +132,14 @@ Environment variables read by the e2e test:
 - **Rate limits.** PagerDuty imposes an inbound rate limit per routing key. Use Snooze's Aggregate Rule plugin to deduplicate noisy alerts before they reach this notifier.
 - **\`\`links\`\` field.** The `links` array defined by the Events API v2 spec is not exposed as an action_form knob today. Add a custom webhook action chained before the PagerDuty action if you need to attach URLs.
 
+## Re-escalation
+
+A [re-escalation](../escalation.md) is another `trigger` on the **same dedup
+key**, so PagerDuty appends it to the incident it already has instead of opening
+a second one. The dedup key is derived from the alert alone and never from the
+escalation — folding anything escalation-specific into it would split one
+incident into a queue of identical ones.
+
+The escalation count, reason, escalating operator and previous severity travel
+in `custom_details`, where responders can read them and event rules can route
+on them. Nothing is added on a first delivery.

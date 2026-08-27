@@ -373,8 +373,16 @@ func configFromMeta(meta map[string]any) (config, error) {
 		cfg.Priority = v
 	}
 
-	if v, ok := meta["unack_on_escalation"].(bool); ok {
+	// A Switch value can arrive as a bool or as the string "true"/"false"
+	// depending on how the action form was stored (see googlechat's use_card
+	// for the same tolerance).
+	switch v := meta["unack_on_escalation"].(type) {
+	case bool:
 		cfg.UnackOnEscalation = v
+	case string:
+		if v != "" {
+			cfg.UnackOnEscalation = strings.EqualFold(v, "true")
+		}
 	}
 
 	// tags: optional comma-separated string

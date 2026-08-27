@@ -7,13 +7,25 @@ sidebar_position: 35
 This integration has two modes:
 
 - **Built-in notifier (easy, recommended):** configured entirely in the Snooze Actions editor — Snooze creates a JIRA issue directly, no extra process required. Start here.
-- **Advanced: bidirectional daemon (optional):** the `snooze-jira` daemon adds auto-close (JIRA → Snooze) and re-escalation deduplication (comment on an existing ticket instead of opening a duplicate). See [below](#advanced-bidirectional-daemon).
+- **Advanced: bidirectional daemon (optional):** the `snooze-jira` daemon adds the JIRA → Snooze direction — auto-close, so resolving the ticket closes the Snooze alert. See [below](#advanced-bidirectional-daemon).
 
 ## In-process notifier (recommended)
 
 The built-in `jira` notifier is configured entirely in the Snooze web UI under **Notifications → Actions → New → JIRA**. It calls the JIRA Cloud REST API v3 directly from the Snooze server process — no separate daemon, no extra config file.
 
-**What it does:** for every notification that matches a rule, it creates one new JIRA issue. It is fire-and-forget: there is no deduplication (each notification creates a fresh issue) and no auto-close (resolving the ticket in JIRA does not close the Snooze record). It appears in the Actions gallery under **Ticketing**, alongside ServiceNow.
+**What it does:** on an alert's first delivery it creates one JIRA issue and remembers its key. On a [re-escalation](../escalation.md) of the same alert it **comments on that issue instead of opening a second one**, raising the priority if severity rose and transitioning the ticket back out of a Done status. What is not handled here is the reverse direction: resolving the ticket in JIRA does not close the Snooze alert — that needs the daemon below. It appears in the Actions gallery under **Ticketing**, alongside ServiceNow.
+
+### Re-escalation
+
+| Field | Effect |
+|---|---|
+| **On re-escalation** | `reopen` (default) comments and returns a Done ticket to the reopen status; `comment` only comments; `new` opens a second ticket linked to the first; `skip` leaves JIRA untouched. |
+| **Reopen status** | The status a Done ticket is transitioned back to, default `To Do`. When the ticket's workflow offers no such transition the comment is still posted and the transition is skipped. |
+| **Escalation comment (extra)** | Optional text appended to the comment, as plain text or a Go template. The comment already carries the escalation number, reason, host, severity and message. |
+| **Link type** | The issue-link type used to connect the follow-up ticket to the original, used only when **On re-escalation** is `new`. Default `Relates`. |
+
+If the recorded ticket has been deleted, the next escalation creates a fresh one
+rather than silently dropping the alert.
 
 **Action fields** (configured in the Actions editor):
 
@@ -74,14 +86,14 @@ Two things follow:
 
 If the scheme cannot be read at all (permissions, an unreachable endpoint), Snooze falls back to sending the `priority` value as a name, exactly as older versions did.
 
-If you need deduplication, auto-close, or re-escalation comments on an existing ticket, use the daemon described below.
+If you need auto-close (JIRA → Snooze), use the daemon described below.
 
 ## Advanced: bidirectional daemon {#advanced-bidirectional-daemon}
 
 **When to use the daemon instead of (or in addition to) the in-process notifier:**
 
 - You want resolving a JIRA ticket to automatically close the corresponding Snooze record (bidirectional poller).
-- You want re-escalations to add a comment to the existing ticket rather than opening a duplicate.
+- You want the JIRA → Snooze direction. (Re-escalation comments are handled by the built-in notifier too, so that alone is no longer a reason to run the daemon.)
 - You want finer control over issue transitions (`initial_status`, `reopen_closed`).
 
 For simple ticket creation without any of the above, the in-process notifier is sufficient.

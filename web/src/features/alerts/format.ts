@@ -147,3 +147,32 @@ export function humanDuration(totalSec: number): string {
   if (m > 0) return s > 0 ? `${m}m ${pad2(s)}s` : `${m}m`;
   return `${s}s`;
 }
+
+/**
+ * escalationLabel renders the escalation summary shown beside an alert's state:
+ * "Re-escalated x3 (timeout)", or null when the alert has never been
+ * re-escalated.
+ *
+ * "Re-escalated", not "Escalated": the state badge next to it already says
+ * `Escalated` for state=esc, so the two must not read as the same fact. This
+ * one answers how many times and why.
+ *
+ * Null rather than an empty string so a caller renders nothing at all for the
+ * common case — a first-delivery alert should carry no extra chrome.
+ */
+export function escalationLabel(
+  count: number | undefined,
+  reason?: string,
+  actor?: string,
+): string | null {
+  if (!count || count < 1) return null;
+  let label = count === 1 ? "Re-escalated" : `Re-escalated x${count}`;
+  if (reason === "manual" && actor) {
+    // Attribution matters more than the reason word for a manual escalation:
+    // "who did this" is the question an operator asks next.
+    label += ` by ${actor}`;
+  } else if (reason) {
+    label += ` (${reason})`;
+  }
+  return label;
+}

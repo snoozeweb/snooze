@@ -152,3 +152,10 @@ A notification titled **"Snooze E2E test"** should appear on all subscribed devi
 - **Rate limits**: the public `ntfy.sh` instance limits the publish rate per topic/IP. Self-hosted instances have configurable limits via `visitor-request-limit-*` in the ntfy server config.
 - **ntfy gRPC / WebSocket subscribe** is not supported — this plugin only publishes (output direction).
 
+## Re-escalation
+
+ntfy has no threading, so a [re-escalation](../escalation.md) is expressed
+through urgency: the priority is raised one step (capped at 5), a
+`rotating_light` tag is added so the notification looks different on the phone,
+and the body is prefixed with `New escalation #N`. The priority only ever
+climbs.

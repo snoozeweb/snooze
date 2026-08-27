@@ -3,7 +3,7 @@ import { Tabs, TabList, TabTrigger, TabPanel } from "@/shared/ui/Tabs";
 import { Badge } from "@/shared/ui/Badge";
 import { TimeCell } from "@/shared/ui/TimeCell";
 import { severityColor } from "@/lib/format/severity-color";
-import { stateBadgeVariant, stateLabel } from "./format";
+import { escalationLabel, stateBadgeVariant, stateLabel } from "./format";
 import { CommentTimeline } from "./CommentTimeline";
 import { AlertFlowChart } from "./AlertFlowChart";
 import type { AlertState, Record_ } from "./types";
@@ -25,8 +25,9 @@ function stripPrivateKeys(row: Record<string, unknown>): Record<string, unknown>
 /**
  * AlertRowDetail — the body of the docked row inspector on the alerts list.
  *
- * A compact summary header (severity + state badges, source chip, the alert
- * message, received time) sits above three tabs:
+ * A compact summary header (severity + state badges, an escalation badge when
+ * the alert has been re-escalated, source chip, the alert message, received
+ * time) sits above three tabs:
  *   - Timeline (default): comment/activity history + composer — the read-write
  *     action surface, given top billing since triage lives here.
  *   - Flow: the pipeline path the alert took (AlertFlowChart) — read-only.
@@ -41,6 +42,13 @@ function stripPrivateKeys(row: Record<string, unknown>): Record<string, unknown>
 export function AlertRowDetail({ row }: AlertRowDetailProps) {
   const cleaned = stripPrivateKeys(row as unknown as Record<string, unknown>);
   const state = (row.state ?? "") as AlertState;
+  // Only rendered when the alert has actually been re-escalated: a
+  // first-delivery alert carries no extra chrome.
+  const escalation = escalationLabel(
+    row.escalation_count,
+    row.escalation_reason,
+    row.escalation_actor,
+  );
 
   return (
     <div className={styles.detail}>
@@ -48,6 +56,7 @@ export function AlertRowDetail({ row }: AlertRowDetailProps) {
         <div className={styles.badges}>
           <Badge color={severityColor(row.severity ?? "")}>{row.severity ?? "—"}</Badge>
           <Badge variant={stateBadgeVariant(state)}>{stateLabel(state)}</Badge>
+          {escalation ? <Badge variant="warning">{escalation}</Badge> : null}
           {row.source ? <span className={styles.source}>{row.source}</span> : null}
         </div>
         {row.message ? <p className={styles.message}>{row.message}</p> : null}

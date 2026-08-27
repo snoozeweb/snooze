@@ -77,3 +77,15 @@ When available, the daemon will subscribe to a Google Cloud Pub/Sub topic to rec
 - **Rate limits**: Google Chat enforces a per-space webhook rate limit (roughly one message per second as of 2026). High-volume deployments should use aggregate rules to reduce notification frequency.
 - **cardsV2 formatting**: the card header uses `.Host` as the title and `.Severity` as the subtitle. The message template populates the single `decoratedText` widget. Advanced card layouts (buttons, images, etc.) are not currently supported.
 - **Resolve path**: there is no distinct resolve/close action — when `rec.State == "close"` the same template renders with the resolved record fields. Use conditional template logic (`{{ if eq .State "close" }}` ... `{{ end }}`) to customise the message for resolved events.
+
+## Re-escalation
+
+**Thread Key** defaults to the alert hash, so every occurrence and
+[re-escalation](../escalation.md) of one alert lands in a single Chat thread
+rather than starting a new conversation each time.
+
+A re-escalation posts a short text reply (`⚠️ New escalation #N (reason)`) rather
+than repeating the card: the thread root already shows host, severity and
+message, so a second card would bury the one new fact.
+
+Clear **Thread Key** if you want every message to start its own conversation.

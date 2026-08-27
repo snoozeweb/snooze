@@ -165,3 +165,11 @@ collection. Federation is now a notification action. Deployments that had
 `snooze-server migrate forward-to-action` (idempotent; safe to run on a database
 with no forward destinations — it does nothing).
 
+## Re-escalation
+
+An alert can fire more than once in its lifetime, and every output plugin
+handles a re-escalation differently from a first delivery — updating the ticket
+it already opened, replying in the chat thread it already started, or simply
+getting louder. See [Re-escalation](./escalation.md) for the per-plugin
+behaviour, the fields the escalation stamps on a record, and how to write a
+notification rule that fires only for escalations.

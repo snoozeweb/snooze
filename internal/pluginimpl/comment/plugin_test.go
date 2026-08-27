@@ -68,8 +68,10 @@ type recordingProcessor struct {
 	recs []snoozetypes.Record
 }
 
-func (r *recordingProcessor) Name() string                                 { return "notification" }
-func (r *recordingProcessor) Metadata() plugins.Metadata                   { return plugins.Metadata{Name: "notification"} }
+func (r *recordingProcessor) Name() string { return "notification" }
+func (r *recordingProcessor) Metadata() plugins.Metadata {
+	return plugins.Metadata{Name: "notification"}
+}
 func (r *recordingProcessor) PostInit(context.Context, plugins.Host) error { return nil }
 func (r *recordingProcessor) Reload(context.Context) error                 { return nil }
 

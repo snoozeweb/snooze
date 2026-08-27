@@ -261,3 +261,9 @@ The bot should reply with the command list within a few seconds. If there is no 
 - **No `snooze` verb.** The Mattermost daemon supports `ack`, `close`, `reopen`, and `comment` — but not a timed `snooze <duration>` command (unlike snooze-teams). Use the Snooze web UI or the MCP tool to create a snooze entry.
 - **Reconnect back-off.** On WebSocket disconnect the daemon waits `reconnect_initial_backoff` before the first retry, doubling each attempt up to `reconnect_max_backoff`. During a reconnect window inbound commands are not processed; outbound alert delivery (if the webhook path is also used) is unaffected as it goes through the REST API directly.
 - **No SDK dependency.** The daemon implements only the WebSocket message shapes it needs (`posted` events) hand-rolled against the Mattermost v4 wire format. Some Mattermost versions stringify the `post` field inside the `posted` event data; the daemon handles both the stringified and inline-object forms for robustness.
+
+## Re-escalation
+
+A Mattermost incoming webhook returns no post id, so this plugin cannot thread
+(`root_id` requires the API with a token). A [re-escalation](../escalation.md)
+arrives as a normal message carrying a `New escalation #N` banner.

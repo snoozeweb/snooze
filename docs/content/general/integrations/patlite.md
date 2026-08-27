@@ -118,3 +118,13 @@ You can also test the control URL directly with curl to confirm the device firmw
 - Patlite batching is not supported (there is no batch knob in `metadata.yaml`). Each matching alert sends its own control request.
 - The `host` field can include the scheme (`http://` or `https://`) for firmware that exposes HTTPS. When no scheme is present, `http` is used.
 
+## Re-escalation
+
+A tower light has no message and no history — it is either showing something or
+it is not — so the only way it can express a [re-escalation](../escalation.md)
+is by getting harder to ignore. The light **state** is raised one step (`on` →
+`blink1` → `blink2`, which is the most insistent state the LR/LE/NH firmwares
+offer).
+
+The **colour** is deliberately left alone: colour reports severity, and changing
+it would misreport what is wrong.

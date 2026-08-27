@@ -127,3 +127,14 @@ The test sends one or two real messages to the configured channel and asserts no
 - The `timeout` field controls the full HTTP round-trip including TLS handshake. The default `10s` is suitable for most deployments.
 - HTTPS is required by both Slack endpoints; HTTP webhook URLs will be rejected by Slack.
 
+## Re-escalation
+
+In **bot-token mode** a [re-escalation](../escalation.md) is posted as a
+threaded reply under the alert's first message, with `reply_broadcast` set so it
+also appears in the channel — a reply visible only to people already following
+the thread would defeat the point of escalating.
+
+In **webhook mode** threading is not possible: an incoming webhook returns no
+message identity, so there is nothing to reply under. The escalation arrives as
+a normal message carrying a `New escalation #N` banner. Use a bot token if you
+want real threads.

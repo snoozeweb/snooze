@@ -120,3 +120,16 @@ To test `inject_response`, inspect the record in the Snooze UI after the notific
 - Response bodies are capped at 64 KiB for logging/diagnostics. The first 200 bytes are included in the error message on non-2xx responses.
 - The legacy Python `payload` field is accepted as a fallback alias for `body` so that action records ported from Python 1.x continue to work without migration.
 
+## Re-escalation
+
+Two template variables carry the [escalation context](../escalation.md):
+
+- `.Escalation` — `.Count`, `.Reason`, `.Actor`, `.PreviousSeverity`, `.Trend`,
+  plus the helpers `.IsRe`, `.SeverityRose`, `.Ordinal` and `.Banner`.
+- `.NotifyRef` — the handle a previous delivery of this action stored on the
+  alert (see [Re-escalation](../escalation.md#where-the-handle-is-stored)),
+  which is how a receiver can update the object it already created. `.ReplyToIDs`
+  remains available as the narrower, pre-existing form.
+
+The default (template-less) body carries the escalation fields alongside every
+other record field.

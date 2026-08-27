@@ -242,3 +242,27 @@ func TestCloseStillClosesByAlias(t *testing.T) {
 	require.Contains(t, req.Path, rec.Hash)
 	require.False(t, og.has("/notes"))
 }
+
+// A Switch value can be stored as a bool or as a string; both must disable the
+// un-acknowledge, or an operator's setting is silently ignored.
+func TestUnackAcceptsBoolAndStringForms(t *testing.T) {
+	for name, v := range map[string]any{
+		"bool":   false,
+		"string": "false",
+	} {
+		t.Run(name, func(t *testing.T) {
+			meta := baseMeta("https://api.opsgenie.com")
+			meta["unack_on_escalation"] = v
+			cfg, err := configFromMeta(meta)
+			require.NoError(t, err)
+			require.False(t, cfg.UnackOnEscalation)
+		})
+	}
+
+	// An empty string is "unset", not "false": the default must survive.
+	meta := baseMeta("https://api.opsgenie.com")
+	meta["unack_on_escalation"] = ""
+	cfg, err := configFromMeta(meta)
+	require.NoError(t, err)
+	require.True(t, cfg.UnackOnEscalation)
+}

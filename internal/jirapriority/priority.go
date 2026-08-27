@@ -222,7 +222,7 @@ func schemeFrom(entries []wirePriority) Scheme {
 	out := make(Scheme, 0, len(entries))
 	for _, e := range entries {
 		if e.ID != "" {
-			out = append(out, Priority{ID: e.ID, Name: e.Name})
+			out = append(out, Priority(e))
 		}
 	}
 	return out

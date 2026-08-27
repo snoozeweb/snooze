@@ -46,7 +46,7 @@ action_form:
         description: 'Optional comma-separated list of tags to attach to the alert.'
     unack_on_escalation:
         display_name: Un-acknowledge on re-escalation
-        component: Boolean
+        component: Switch
         default_value: true
         description: 'When an alert re-escalates, clear any existing Opsgenie acknowledgement so the on-call starts being notified again. Leave on unless your process deliberately keeps acknowledged alerts quiet: a re-escalation is exactly the case where the acknowledgement has stopped being true. A re-escalation never creates a second Opsgenie alert — the alias stays the same, and a note plus (when severity rose) a priority raise are applied to the existing one.'
     api_base:

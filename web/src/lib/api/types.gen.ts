@@ -4228,6 +4228,34 @@ export interface components {
              *
              */
             shelve_until?: number;
+            /** @description How many times this alert has been re-escalated during its current
+             *     lifecycle: `0`/absent on a first delivery, `1` on the first
+             *     re-escalation, and so on. Stamped by every escalation producer (the
+             *     `escalate_timeout` sweep, a `state->esc` comment, and the
+             *     aggregaterule watchlist) and reset to `0` on close. Output plugins
+             *     branch on it to update the ticket or chat thread they already
+             *     created instead of opening a second one.
+             *      */
+            escalation_count?: number;
+            /**
+             * Format: int64
+             * @description Epoch seconds of the current escalation. `0`/absent when the alert
+             *     has never been escalated.
+             *
+             */
+            escalated_at?: number;
+            /**
+             * @description Which producer escalated the alert: `timeout` (the escalate-timeout
+             *     sweep), `manual` (an operator via the UI or a chat command), or
+             *     `watchlist` (an aggregaterule watched-field change). Absent when
+             *     never escalated.
+             *
+             * @enum {string}
+             */
+            escalation_reason?: "timeout" | "manual" | "watchlist";
+            /** @description Login of the operator who escalated, on a `manual` escalation only.
+             *      */
+            escalation_actor?: string;
             /** @description Names of the rule-plugin rules this alert matched, in match order.
              *     Stamped by the `rule` plugin.
              *      */

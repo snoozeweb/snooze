@@ -111,3 +111,14 @@ The test posts one incident to the `incident` table. Check **Incident → All** 
 - The Table API requires the `rest_api_explorer` role in addition to `itil`. Missing either role causes `HTTP 403`, surfaced as an error by the plugin.
 - ServiceNow PDIs hibernate after inactivity. If the e2e test returns a connection error, log in to the developer portal and wake your instance first.
 
+## Re-escalation
+
+On an alert's [re-escalation](../escalation.md) the plugin looks the incident up
+by `correlation_id` and PATCHes it — adding work notes, raising urgency and
+impact when severity rose (unless the action pins them), and returning a
+Resolved or Closed incident to In Progress. It does **not** open a second
+incident. Only when no incident matches (it was deleted, or the first delivery
+never landed) does an escalation create one.
+
+If the lookup itself fails, the plugin falls back to creating an incident: a
+duplicate ticket is recoverable, a missed escalating alert is not.

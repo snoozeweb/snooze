@@ -115,3 +115,16 @@ To exercise STARTTLS or TLS transport you can use `swaks` or `openssl s_client` 
 - The `timeout` covers the full dial-plus-transaction time. Very large batched messages or slow SMTP servers may require a higher value.
 - The Python 1.x action form did not expose `cc`, `bcc`, `tls_mode`, `username`, `password`, or `timeout`. These are Go-port additions and have no Python equivalent.
 
+## Re-escalation
+
+A [re-escalation](../escalation.md) is threaded into the original conversation
+rather than arriving as an unrelated message. The `Message-ID` is derived
+deterministically from the alert's own identity, so the escalation can point at
+the first delivery's id with no stored state — mail being the one output with no
+API to read a handle back from. Both `In-Reply-To` and `References` are set
+(Outlook keys on one, Gmail on the other).
+
+The escalation also carries `Importance: high`, `X-Priority: 1`, and a subject
+prefixed `Re: [ESCALATED #N]` so it still stands out in a mailbox.
+
+Batched sends coalesce several alerts into one message, so they are not threaded.

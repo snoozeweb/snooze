@@ -282,3 +282,14 @@ A successful post returns a JSON body with `"delivered"` listing the channel ref
 - **Token expiry.** The refresh token stored in `token_file` expires on Microsoft's schedule (90-day inactivity window by default). Run `snooze-teams authorize` and restart the service when this happens.
 - **Self-message detection.** The daemon embeds an HTML comment marker (`<!-- snooze-bot -->`) in every message it posts so the polling loop can skip its own output. Removing or filtering that comment will cause a feedback loop.
 - **Markdown in FactSet values.** The Adaptive Card specification allows Markdown links inside FactSet `value` fields, but some Teams clients (web, certain mobile builds, tenants with Markdown disabled by policy) strip them silently. The card also includes an `Action.OpenUrl` button as a reliable clickable fallback.
+
+## Re-escalation
+
+With the optional `snooze-teams` daemon, a [re-escalation](../escalation.md) is
+posted as a threaded reply under the alert's existing card, carrying the
+escalation number and reason. The root card is not repeated — it already shows
+host, severity and message.
+
+The built-in webhook notifier cannot thread: a Teams incoming webhook returns no
+message identity, so there is nothing to reply under. It posts a normal card
+carrying a `New escalation #N` banner instead.

@@ -115,3 +115,21 @@ For timeout and error-path testing, use a script that sleeps or exits non-zero, 
 - The server process's environment is inherited by the child, plus any `env` overrides. Sensitive variables in the server environment are visible to the script. Use `env` to scope the child's environment explicitly if isolation matters.
 - Batching joins stdins into a JSON array only when every individual stdin renders as valid JSON. If the `stdin` template produces a non-JSON string, batched stdins are joined with newlines instead.
 
+## Re-escalation
+
+A script is the one output whose escalation behaviour Snooze cannot decide for
+you, so it receives the [escalation context](../escalation.md) and makes its own
+call. These variables are always exported, including their zero forms on a first
+delivery, so a script can branch without distinguishing "absent" from "not
+escalated":
+
+| Variable | Value |
+|---|---|
+| `SNOOZE_STATE` | The alert's state (`open`, `esc`, …) |
+| `SNOOZE_ESCALATION_COUNT` | `0` on a first delivery, `1` on the first re-escalation, … |
+| `SNOOZE_ESCALATION_REASON` | `timeout`, `manual`, `watchlist`, or empty |
+| `SNOOZE_ESCALATION_ACTOR` | The escalating operator's login, on a manual escalation |
+| `SNOOZE_PREVIOUS_SEVERITY` | The alert's previous severity |
+
+An `env` entry you configure with one of these names wins over the value Snooze
+would set.

@@ -88,3 +88,16 @@ This plugin uses only the Twilio Programmable Messaging and Voice REST APIs. The
 **Rate limits**  
 Twilio applies per-account and per-number message throughput limits. For high-volume alerting, review the [Twilio messaging limits](https://support.twilio.com/hc/en-us/articles/115002943027) and consider upgrading your account or provisioning additional numbers.
 
+## Re-escalation
+
+A [re-escalation](../escalation.md) is sent in short form — `ESC #3 host:
+message` — because SMS is billed per segment and length-capped, and what the
+recipient needs is that the alert escalated again.
+
+Two opt-in knobs, both off by default (dropping a page is worse than paying for
+one):
+
+| Field | Effect |
+|---|---|
+| **Escalation throttle** | A Go duration; repeat escalations for the same alert inside the window are suppressed and logged. Worth setting where a flapping alert could otherwise text or ring a phone every minute. The window is tracked in memory, so it resets when the server restarts — it is a cost guard, not a guarantee. |
+| **Switch to a voice call at escalation** | The escalation number at which an SMS action places a voice call instead. A ringing phone is the loudest channel available, so it is worth saving for the point where the texts have demonstrably not worked. |
