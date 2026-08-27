@@ -63,6 +63,10 @@ test.describe("session expiry", () => {
 
     await page.addInitScript(
       ({ token, refreshToken }) => {
+        // addInitScript runs on EVERY navigation, reloads included. Seeding
+        // unconditionally would restore the pristine token on the reload below
+        // and quietly un-expire the very thing under test.
+        if (window.localStorage.getItem("snooze-token")) return;
         window.localStorage.setItem("snooze-token", token);
         window.localStorage.setItem("snooze-refresh-token", refreshToken!);
         const payload = token.split(".")[1]!;
@@ -81,11 +85,16 @@ test.describe("session expiry", () => {
     // after lunch and hit refresh" case.
     await page.evaluate(expireStoredToken);
     const staleToken = await page.evaluate(() => window.localStorage.getItem("snooze-token"));
+    let refreshCalls = 0;
+    page.on("request", (r) => {
+      if (r.url().includes("/api/v1/login/refresh")) refreshCalls++;
+    });
     await page.reload();
 
     await expect(page).toHaveURL(/\/web\/alerts/);
     await expect(page).not.toHaveURL(/\/web\/login/);
     // A rotation actually happened rather than the page limping along stale.
+    expect(refreshCalls, "the page must have called /login/refresh").toBeGreaterThan(0);
     await expect
       .poll(() => page.evaluate(() => window.localStorage.getItem("snooze-token")))
       .not.toBe(staleToken);
@@ -114,6 +123,10 @@ test.describe("session expiry", () => {
 
     await page.addInitScript(
       ({ token, refreshToken }) => {
+        // addInitScript runs on EVERY navigation, reloads included. Seeding
+        // unconditionally would restore the pristine token on the reload below
+        // and quietly un-expire the very thing under test.
+        if (window.localStorage.getItem("snooze-token")) return;
         window.localStorage.setItem("snooze-token", token);
         window.localStorage.setItem("snooze-refresh-token", refreshToken!);
         const payload = token.split(".")[1]!;
