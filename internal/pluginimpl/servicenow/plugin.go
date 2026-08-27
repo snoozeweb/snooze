@@ -87,10 +87,20 @@ func (p *Plugin) Reload(_ context.Context) error { return nil }
 
 // Send creates or resolves a ServiceNow incident depending on rec.State.
 //
-//   - Default (firing): POST a new incident.
 //   - rec.State == "close": look up the incident by correlation_id and
 //     PATCH it to state 6 (Resolved). If no matching record exists the call
 //     is a no-op.
+//   - A re-escalation (payload.Escalation.IsRe()): look up the incident by
+//     correlation_id and PATCH it — work notes, an urgency/impact bump when
+//     severity rose, and a reopen when it had been resolved. Only when nothing
+//     matches does it fall through to a create.
+//   - Otherwise (first delivery): POST a new incident.
+//
+// The correlation_id has always made this plugin idempotent in principle — it
+// is derived from the alert hash, so ServiceNow could correlate the duplicates
+// itself. What was missing was using that on the way IN: before this, every
+// escalation POSTed a brand-new incident and left an operator with a queue of
+// identical tickets for one problem.
 func (p *Plugin) Send(ctx context.Context, rec snoozetypes.Record, payload plugins.NotificationPayload) error {
 	cfg, err := configFromMeta(payload.Meta)
 	if err != nil {
@@ -100,15 +110,159 @@ func (p *Plugin) Send(ctx context.Context, rec snoozetypes.Record, payload plugi
 	if rec.State == "close" {
 		return p.resolve(ctx, cfg, rec)
 	}
+	if payload.Escalation.IsRe() {
+		return p.escalate(ctx, cfg, rec, payload)
+	}
 	return p.create(ctx, cfg, rec)
+}
+
+// escalate updates the incident this alert already has instead of opening a
+// second one.
+//
+// A lookup failure deliberately degrades to a create rather than dropping the
+// notification: an operator would rather see a duplicate ticket than miss an
+// escalating alert because ServiceNow's query API was briefly unavailable.
+func (p *Plugin) escalate(ctx context.Context, cfg config, rec snoozetypes.Record, payload plugins.NotificationPayload) error {
+	sysID, state, err := p.findIncident(ctx, cfg, correlationID(rec))
+	if err != nil {
+		p.logWarn("servicenow: escalate: lookup failed, falling back to a create",
+			"correlation_id", correlationID(rec), "error", err)
+		return p.create(ctx, cfg, rec)
+	}
+	if sysID == "" {
+		// Nothing to update (the incident was deleted, or this alert's first
+		// delivery never reached ServiceNow), so a create is correct.
+		return p.create(ctx, cfg, rec)
+	}
+
+	patch := map[string]any{
+		"work_notes": buildEscalationNote(rec, payload.Escalation),
+	}
+	// Only raise urgency/impact when severity actually rose — re-escalating at
+	// the same severity must not silently promote a ticket someone downgraded.
+	if payload.Escalation.SeverityRose() {
+		level := severityToLevel(rec.Severity)
+		if cfg.Urgency == "" || cfg.Urgency == "auto" {
+			patch["urgency"] = level
+		}
+		if cfg.Impact == "" || cfg.Impact == "auto" {
+			patch["impact"] = level
+		}
+	}
+	// An alert that is escalating again is not resolved: pull a Resolved (6) or
+	// Closed (7) incident back to In Progress (2).
+	if state == "6" || state == "7" {
+		patch["state"] = "2"
+	}
+
+	return p.patchIncident(ctx, cfg, sysID, patch)
+}
+
+// buildEscalationNote renders the work-note body appended to the existing
+// incident on each re-escalation.
+func buildEscalationNote(rec snoozetypes.Record, esc plugins.Escalation) string {
+	var b strings.Builder
+	b.WriteString("Re-escalated by Snooze")
+	if o := esc.Ordinal(); o != "" {
+		b.WriteString(" (" + o + ")")
+	}
+	if esc.Reason != "" {
+		b.WriteString(", reason: " + esc.Reason)
+	}
+	if esc.Actor != "" {
+		b.WriteString(", by: " + esc.Actor)
+	}
+	b.WriteString("\n")
+	fmt.Fprintf(&b, "Severity: %s", rec.Severity)
+	if esc.PreviousSeverity != "" && esc.PreviousSeverity != rec.Severity {
+		fmt.Fprintf(&b, " (was %s)", esc.PreviousSeverity)
+	}
+	fmt.Fprintf(&b, "\nHost: %s\nMessage: %s", rec.Host, rec.Message)
+	return b.String()
+}
+
+// correlationID is the stable per-alert key both the create and the lookup
+// paths use: the aggregaterule hash, falling back to the record uid.
+func correlationID(rec snoozetypes.Record) string {
+	if rec.Hash != "" {
+		return rec.Hash
+	}
+	return rec.UID
+}
+
+// findIncident resolves the incident carrying corrID, returning its sys_id and
+// current state. An empty sys_id means "no such incident" and is not an error.
+func (p *Plugin) findIncident(ctx context.Context, cfg config, corrID string) (sysID, state string, err error) {
+	lookupURL := cfg.InstanceURL + "/api/now/table/" + cfg.Table +
+		"?sysparm_query=correlation_id=" + url.QueryEscape(corrID) +
+		"&sysparm_fields=sys_id,state&sysparm_limit=1"
+
+	req, err := p.newRequest(ctx, cfg, http.MethodGet, lookupURL, nil)
+	if err != nil {
+		return "", "", fmt.Errorf("build lookup request: %w", err)
+	}
+	resp, err := p.newClient(cfg.Timeout).Do(req)
+	if err != nil {
+		return "", "", fmt.Errorf("lookup request: %w", err)
+	}
+	defer resp.Body.Close() //nolint:errcheck
+
+	preview, _ := io.ReadAll(io.LimitReader(resp.Body, maxResponseBytes))
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return "", "", fmt.Errorf("lookup: HTTP %d: %s", resp.StatusCode, truncate(preview, 200))
+	}
+	var lookupResp struct {
+		Result []struct {
+			SysID string `json:"sys_id"`
+			State string `json:"state"`
+		} `json:"result"`
+	}
+	if err := json.Unmarshal(preview, &lookupResp); err != nil {
+		return "", "", fmt.Errorf("decode lookup response: %w", err)
+	}
+	if len(lookupResp.Result) == 0 {
+		return "", "", nil
+	}
+	return lookupResp.Result[0].SysID, lookupResp.Result[0].State, nil
+}
+
+// patchIncident PATCHes fields onto the incident identified by sysID.
+func (p *Plugin) patchIncident(ctx context.Context, cfg config, sysID string, fields map[string]any) error {
+	body, err := json.Marshal(fields)
+	if err != nil {
+		return fmt.Errorf("servicenow: marshal patch body: %w", err)
+	}
+	patchURL := cfg.InstanceURL + "/api/now/table/" + cfg.Table + "/" + sysID
+	req, err := p.newRequest(ctx, cfg, http.MethodPatch, patchURL, body)
+	if err != nil {
+		return fmt.Errorf("servicenow: build patch request: %w", err)
+	}
+	resp, err := p.newClient(cfg.Timeout).Do(req)
+	if err != nil {
+		return fmt.Errorf("servicenow: patch request: %w", err)
+	}
+	defer resp.Body.Close() //nolint:errcheck
+
+	preview, _ := io.ReadAll(io.LimitReader(resp.Body, maxResponseBytes))
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return fmt.Errorf("servicenow: patch: HTTP %d: %s", resp.StatusCode, truncate(preview, 200))
+	}
+	return nil
+}
+
+// logWarn logs at warn level when the host exposes a logger.
+func (p *Plugin) logWarn(msg string, args ...any) {
+	if p.host == nil {
+		return
+	}
+	if lg := p.host.Logger(); lg != nil {
+		lg.Warn(msg, args...)
+	}
 }
 
 // create POSTs a new incident to the ServiceNow Table API.
 func (p *Plugin) create(ctx context.Context, cfg config, rec snoozetypes.Record) error {
-	corrID := rec.Hash
-	if corrID == "" {
-		corrID = rec.UID
-	}
+	corrID := correlationID(rec)
 
 	urgency := cfg.Urgency
 	if urgency == "" || urgency == "auto" {
@@ -158,44 +312,14 @@ func (p *Plugin) create(ctx context.Context, cfg config, rec snoozetypes.Record)
 }
 
 // resolve looks up the incident by correlation_id and patches its state to 6
-// (Resolved). If the GET returns zero results the operation is a no-op.
+// (Resolved). A missing incident is a no-op.
 func (p *Plugin) resolve(ctx context.Context, cfg config, rec snoozetypes.Record) error {
-	corrID := rec.Hash
-	if corrID == "" {
-		corrID = rec.UID
-	}
-
-	// Step 1: look up the incident sys_id.
-	lookupURL := cfg.InstanceURL + "/api/now/table/" + cfg.Table +
-		"?sysparm_query=correlation_id=" + url.QueryEscape(corrID) +
-		"&sysparm_limit=1"
-
-	req, err := p.newRequest(ctx, cfg, http.MethodGet, lookupURL, nil)
+	corrID := correlationID(rec)
+	sysID, _, err := p.findIncident(ctx, cfg, corrID)
 	if err != nil {
-		return fmt.Errorf("servicenow: build lookup request: %w", err)
+		return fmt.Errorf("servicenow: %w", err)
 	}
-
-	resp, err := p.newClient(cfg.Timeout).Do(req)
-	if err != nil {
-		return fmt.Errorf("servicenow: lookup request: %w", err)
-	}
-	defer resp.Body.Close() //nolint:errcheck
-
-	preview, _ := io.ReadAll(io.LimitReader(resp.Body, maxResponseBytes))
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return fmt.Errorf("servicenow: lookup: HTTP %d: %s", resp.StatusCode, truncate(preview, 200))
-	}
-
-	var lookupResp struct {
-		Result []struct {
-			SysID string `json:"sys_id"`
-		} `json:"result"`
-	}
-	if err := json.Unmarshal(preview, &lookupResp); err != nil {
-		return fmt.Errorf("servicenow: decode lookup response: %w", err)
-	}
-	if len(lookupResp.Result) == 0 {
-		// No matching record — log and no-op.
+	if sysID == "" {
 		if p.host != nil {
 			if lg := p.host.Logger(); lg != nil {
 				lg.Info("servicenow: resolve: no incident found for correlation_id, skipping",
@@ -204,38 +328,11 @@ func (p *Plugin) resolve(ctx context.Context, cfg config, rec snoozetypes.Record
 		}
 		return nil
 	}
-
-	sysID := lookupResp.Result[0].SysID
-
-	// Step 2: PATCH the incident to Resolved (state=6).
-	closeNotes := fmt.Sprintf("Resolved via Snooze (record %s)", rec.UID)
-	patch := map[string]any{
+	return p.patchIncident(ctx, cfg, sysID, map[string]any{
 		"state":       "6",
 		"close_code":  "Resolved",
-		"close_notes": closeNotes,
-	}
-	patchBody, err := json.Marshal(patch)
-	if err != nil {
-		return fmt.Errorf("servicenow: marshal patch body: %w", err)
-	}
-
-	patchURL := cfg.InstanceURL + "/api/now/table/" + cfg.Table + "/" + sysID
-	patchReq, err := p.newRequest(ctx, cfg, http.MethodPatch, patchURL, patchBody)
-	if err != nil {
-		return fmt.Errorf("servicenow: build patch request: %w", err)
-	}
-
-	patchResp, err := p.newClient(cfg.Timeout).Do(patchReq)
-	if err != nil {
-		return fmt.Errorf("servicenow: patch request: %w", err)
-	}
-	defer patchResp.Body.Close() //nolint:errcheck
-
-	patchPreview, _ := io.ReadAll(io.LimitReader(patchResp.Body, maxResponseBytes))
-	if patchResp.StatusCode < 200 || patchResp.StatusCode >= 300 {
-		return fmt.Errorf("servicenow: patch: HTTP %d: %s", patchResp.StatusCode, truncate(patchPreview, 200))
-	}
-	return nil
+		"close_notes": fmt.Sprintf("Resolved via Snooze (record %s)", rec.UID),
+	})
 }
 
 // newRequest builds an authenticated HTTP request with the JSON accept/content

@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"strconv"
 	"strings"
 	"sync"
 
@@ -159,10 +160,36 @@ func populateNotification(env *envelope, record jiraadf.RecordSummary) {
 	}
 }
 
-// findExistingIssue walks the record's snooze_webhook_responses and returns
-// the JIRA issue key created by a previous invocation of this action, or ""
-// when none exists. The shape mirrors the Python `_find_existing_issue`.
+// findExistingIssue returns the JIRA issue key a previous invocation of this
+// action created for the alert, or "" when there is none — in which case the
+// caller opens a new issue.
+//
+// Three storage shapes are consulted, newest convention first:
+//
+//  1. `notify_ref_<action>.issue_key` — the canonical handle a notifier stores
+//     via plugins.StoreNotifyRef.
+//  2. `response_<action>.issue_key` — what the Go webhook plugin's
+//     `inject_response` writes when this daemon is driven through a webhook
+//     action.
+//  3. `snooze_webhook_responses[].content.issue_key` — the Snooze 1.x array,
+//     kept for records migrated from a Python deployment.
+//
+// Shapes 1 and 2 matter because NOTHING in the Go server ever wrote shape 3:
+// before they were consulted here, a Go-only deployment found no handle and
+// this daemon opened a fresh ticket on every single re-escalation — the very
+// duplication it exists to prevent.
 func findExistingIssue(record jiraadf.RecordSummary, actionName string) string {
+	if actionName != "" {
+		for _, prefix := range []string{"notify_ref_", "response_"} {
+			ref, ok := record[prefix+actionName].(map[string]any)
+			if !ok {
+				continue
+			}
+			if key, _ := ref["issue_key"].(string); key != "" {
+				return key
+			}
+		}
+	}
 	raw, ok := record["snooze_webhook_responses"]
 	if !ok {
 		return ""
@@ -208,29 +235,46 @@ func (f *forwarder) updateExisting(ctx context.Context, issueKey string, record 
 	}
 }
 
-// buildComment renders the re-escalation comment body. Kept plain text — JIRA
-// wraps it in ADF inside AddComment.
+// buildComment renders the re-escalation comment body, delegating to the
+// builder shared with the in-process jira notifier so both modes leave the same
+// audit trail on the same ticket. The escalation ordinal / reason / actor come
+// off the alert itself (the server stamps them; see plugins.EscalationFrom), so
+// a comment says which escalation it is and why.
 func buildComment(record jiraadf.RecordSummary, env envelope) string {
-	var b strings.Builder
-	timestamp := strField(record, "timestamp", "")
-	if timestamp != "" {
-		fmt.Fprintf(&b, "Re-escalation at %s\n", timestamp)
-	} else {
-		b.WriteString("Re-escalation\n")
+	return jiraadf.BuildEscalationComment(record, jiraadf.EscalationComment{
+		Ordinal:          escalationOrdinal(record),
+		Reason:           strField(record, "escalation_reason", ""),
+		Actor:            strField(record, "escalation_actor", ""),
+		NotificationName: env.NotificationName,
+		NotificationMsg:  env.NotificationMsg,
+		CustomMessage:    env.Message,
+	})
+}
+
+// escalationOrdinal renders the alert's escalation_count as "#N", or "" when
+// the field is absent (an alert from a server that predates the escalation
+// bookkeeping, which must keep producing the original header).
+func escalationOrdinal(record jiraadf.RecordSummary) string {
+	n := recordInt(record, "escalation_count")
+	if n <= 0 {
+		return ""
 	}
-	if env.NotificationName != "" {
-		fmt.Fprintf(&b, "From %s\n", env.NotificationName)
-		if env.NotificationMsg != "" {
-			fmt.Fprintf(&b, "%s\n", env.NotificationMsg)
-		}
+	return "#" + strconv.Itoa(n)
+}
+
+// recordInt reads a counter off the alert map, tolerating the numeric shapes a
+// JSON hop and the two drivers produce.
+func recordInt(record jiraadf.RecordSummary, key string) int {
+	switch v := record[key].(type) {
+	case int:
+		return v
+	case int64:
+		return int(v)
+	case float64:
+		return int(v)
+	default:
+		return 0
 	}
-	fmt.Fprintf(&b, "Host: %s\n", strField(record, "host", "Unknown"))
-	fmt.Fprintf(&b, "Severity: %s\n", strField(record, "severity", "Unknown"))
-	fmt.Fprintf(&b, "Message: %s", strField(record, "message", "No message"))
-	if env.Message != "" {
-		fmt.Fprintf(&b, "\nCustom message: %s", env.Message)
-	}
-	return b.String()
 }
 
 // reopenIfClosed transitions issueKey back to cfg.ReopenStatusName when it

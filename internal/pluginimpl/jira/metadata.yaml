@@ -8,7 +8,7 @@ provides:
     - notifier
 daemon:
     name: snooze-jira
-    blurb: 'Auto-close Snooze records when the JIRA ticket is resolved, and comment on re-escalation instead of creating duplicates.'
+    blurb: 'Auto-close Snooze records when the JIRA ticket is resolved. Re-escalation already comments on the existing ticket in the built-in mode; the daemon adds the JIRA-to-Snooze direction.'
     doc_url: 'https://snoozeweb.github.io/snooze/general/integrations/jira#advanced-bidirectional-daemon'
 action_form:
     jira_url:
@@ -54,6 +54,30 @@ action_form:
         component: String
         default_value: 'snooze'
         description: 'Comma-separated labels applied to the new issue.'
+    on_escalation:
+        display_name: On re-escalation
+        component: Selector
+        default_value: 'reopen'
+        options:
+            - {text: 'Comment + reopen the ticket (recommended)', value: reopen}
+            - {text: 'Comment only',                              value: comment}
+            - {text: 'Open a second, linked ticket',              value: new}
+            - {text: 'Do nothing in JIRA',                        value: skip}
+        description: 'What to do when an alert that already has a ticket escalates again. "reopen" (recommended) comments on the existing ticket and transitions it back out of a Done status; "comment" only comments; "new" opens a second ticket linked to the first; "skip" leaves JIRA untouched. Never creates a duplicate ticket except under "new".'
+    reopen_status:
+        display_name: Reopen status
+        component: String
+        default_value: 'To Do'
+        description: 'Status a resolved ticket is transitioned back to on re-escalation, used only when On re-escalation is "reopen". Must be a status the ticket''s workflow actually offers; when it does not, the comment is still posted and the transition is skipped.'
+    escalation_comment:
+        display_name: Escalation comment (extra)
+        component: Text
+        description: 'Optional text appended to the re-escalation comment, as plain text or a Go text/template over the record fields. The comment already carries the escalation number, reason, host, severity and message.'
+    link_type:
+        display_name: Link type
+        component: String
+        default_value: 'Relates'
+        description: 'Issue-link type used to connect the follow-up ticket to the original, used only when On re-escalation is "new".'
     timeout:
         display_name: Timeout
         component: String

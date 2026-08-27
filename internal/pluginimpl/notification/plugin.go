@@ -362,6 +362,13 @@ func (p *Plugin) Process(ctx context.Context, rec snoozetypes.Record) (plugins.R
 	}
 	if len(matched) > 0 {
 		rec.Extra["notifications"] = matched
+		// Attribute the dispatch to the first matching notification. Companion
+		// daemons read this to say which rule paged the operator in the ticket
+		// comment / chat reply they post (see internal/components/jira), and it
+		// is what Snooze 1.x stamped. `message` has no source in the Go port —
+		// notification entries carry no message field — so it stays absent
+		// rather than being faked.
+		rec.Extra["notification_from"] = map[string]any{"name": matched[0]}
 	}
 	if len(results) > 0 {
 		rec.Extra["actions"] = actionResultsToAny(results)

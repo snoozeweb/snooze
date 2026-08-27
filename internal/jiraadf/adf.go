@@ -4,7 +4,10 @@
 // (internal/pluginimpl/jira).
 package jiraadf
 
-import "strings"
+import (
+	"fmt"
+	"strings"
+)
 
 // ADF is the document envelope JIRA Cloud expects for issue descriptions and
 // comments. We model only the subset we emit (paragraphs, headings, marked
@@ -132,4 +135,67 @@ func AppendPlainLine(doc ADF, text string) ADF {
 		Content: []ADFInline{{Type: "text", Text: text}},
 	})
 	return doc
+}
+
+// EscalationComment carries the context rendered into a re-escalation comment
+// body. Every field is optional: the zero value produces the minimal
+// "Re-escalation" header plus the record's own fields, which is what a caller
+// with no escalation bookkeeping (the pre-escalation daemon path) produced.
+type EscalationComment struct {
+	// Ordinal is the human-facing escalation number ("#3"), or "" when the
+	// caller does not track one.
+	Ordinal string
+	// Reason names the escalation producer: "timeout", "manual", "watchlist".
+	Reason string
+	// Actor is the operator who escalated, on a manual escalation only.
+	Actor string
+	// NotificationName / NotificationMsg attribute the escalation to the
+	// notification rule that fired it.
+	NotificationName string
+	NotificationMsg  string
+	// CustomMessage is an operator- or action-supplied addendum.
+	CustomMessage string
+}
+
+// BuildEscalationComment renders the plain-text body posted as a comment on an
+// issue Snooze has already created for this alert, instead of opening a second
+// one. Plain text on purpose: the callers wrap it in a single-paragraph ADF
+// document (see Client.AddComment), and a re-escalation comment is a running
+// log entry rather than a formatted report — the issue description already
+// carries the structured view.
+//
+// Shared by the snooze-jira daemon (internal/components/jira) and the
+// in-process jira notifier (internal/pluginimpl/jira) so the two modes produce
+// the same audit trail on the same ticket.
+func BuildEscalationComment(rec RecordSummary, e EscalationComment) string {
+	var b strings.Builder
+
+	header := "Re-escalation"
+	if e.Ordinal != "" {
+		header += " " + e.Ordinal
+	}
+	if timestamp := strField(rec, "timestamp", ""); timestamp != "" {
+		fmt.Fprintf(&b, "%s at %s\n", header, timestamp)
+	} else {
+		b.WriteString(header + "\n")
+	}
+	if e.Reason != "" {
+		fmt.Fprintf(&b, "Reason: %s\n", e.Reason)
+	}
+	if e.Actor != "" {
+		fmt.Fprintf(&b, "Escalated by: %s\n", e.Actor)
+	}
+	if e.NotificationName != "" {
+		fmt.Fprintf(&b, "From %s\n", e.NotificationName)
+		if e.NotificationMsg != "" {
+			fmt.Fprintf(&b, "%s\n", e.NotificationMsg)
+		}
+	}
+	fmt.Fprintf(&b, "Host: %s\n", strField(rec, "host", "Unknown"))
+	fmt.Fprintf(&b, "Severity: %s\n", strField(rec, "severity", "Unknown"))
+	fmt.Fprintf(&b, "Message: %s", strField(rec, "message", "No message"))
+	if e.CustomMessage != "" {
+		fmt.Fprintf(&b, "\nCustom message: %s", e.CustomMessage)
+	}
+	return b.String()
 }

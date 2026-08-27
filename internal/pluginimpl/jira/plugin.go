@@ -3,10 +3,15 @@
 // HTTP Basic auth (Atlassian email + API token) and an ADF-formatted
 // description.
 //
-// Fire-and-forget: each notification attempts a create. Deduplication,
-// re-escalation comments, reopen, and auto-close on resolution are NOT handled
-// here — those stateful/bidirectional features live in the optional snooze-jira
-// daemon (internal/components/jira).
+// Re-escalation does NOT open a second ticket. The issue key created on the
+// first delivery is persisted against the alert as a notifier handle
+// (plugins.StoreNotifyRef), and every later escalation of the same alert
+// comments on that issue instead, optionally raising its priority when severity
+// rose and transitioning it back out of a Done status. See escalate.go.
+//
+// Auto-close on JIRA-side resolution is still the optional snooze-jira daemon's
+// job (internal/components/jira): it needs to poll JIRA, which an in-process
+// notifier does not do.
 package jira
 
 import (
@@ -87,7 +92,9 @@ func (p *Plugin) PostInit(_ context.Context, host plugins.Host) error {
 	return nil
 }
 
-// Send creates a JIRA issue for a firing record. Close events are a no-op —
+// Send delivers a firing record to JIRA. On a first delivery it creates an
+// issue and remembers its key; on a re-escalation of the same alert it updates
+// that issue rather than creating a second one. Close events are a no-op —
 // auto-close is the snooze-jira daemon's responsibility.
 func (p *Plugin) Send(ctx context.Context, rec snoozetypes.Record, payload plugins.NotificationPayload) error {
 	if rec.State == "close" {
@@ -97,10 +104,40 @@ func (p *Plugin) Send(ctx context.Context, rec snoozetypes.Record, payload plugi
 	if err != nil {
 		return fmt.Errorf("jira: config: %w", err)
 	}
-	return p.create(ctx, cfg, rec)
+
+	// An issue key recorded by a previous delivery is what turns this into an
+	// update instead of a create. It is absent on a first fire, and also when
+	// the alert was closed and has recurred (the close resets the escalation
+	// lifecycle), which is exactly when a new ticket IS the right answer.
+	if key := plugins.NotifyRefString(rec, payload.ActionName(), refIssueKey); key != "" {
+		return p.escalate(ctx, cfg, rec, payload, key)
+	}
+	return p.create(ctx, cfg, rec, payload)
 }
 
-func (p *Plugin) create(ctx context.Context, cfg config, rec snoozetypes.Record) error {
+// create opens a new issue and records its key against the alert, so the next
+// escalation of the same alert comments on it instead of creating a second one.
+func (p *Plugin) create(ctx context.Context, cfg config, rec snoozetypes.Record, payload plugins.NotificationPayload) error {
+	key, err := p.createIssue(ctx, cfg, rec)
+	if err != nil {
+		return err
+	}
+	// A create that succeeded but whose key we could not parse is logged and
+	// left unrecorded: the alert then behaves as it did before this feature
+	// existed (a fresh issue next time), which is preferable to failing a
+	// notification that already landed.
+	if key == "" {
+		p.warn("jira: created issue but could not parse its key from the response")
+		return nil
+	}
+	plugins.StoreNotifyRef(payload, payload.ActionName(),
+		plugins.MergeNotifyRef(rec, payload.ActionName(), map[string]any{refIssueKey: key}))
+	return nil
+}
+
+// createIssue POSTs the issue and returns its key ("" when the response body
+// carried none).
+func (p *Plugin) createIssue(ctx context.Context, cfg config, rec snoozetypes.Record) (string, error) {
 	fields := map[string]any{
 		"project":     map[string]any{"key": cfg.ProjectKey},
 		"issuetype":   map[string]any{"name": cfg.IssueType},
@@ -115,7 +152,7 @@ func (p *Plugin) create(ctx context.Context, cfg config, rec snoozetypes.Record)
 
 	status, preview, err := p.postIssue(ctx, cfg, fields)
 	if err != nil {
-		return err
+		return "", err
 	}
 	if priorityRejected(status, preview) {
 		// The scheme changed under us (or the site never accepted what we
@@ -125,13 +162,34 @@ func (p *Plugin) create(ctx context.Context, cfg config, rec snoozetypes.Record)
 		retryField, retryName := p.priorityField(ctx, cfg, rec.Severity)
 		setPriority(fields, retryField, retryName)
 		if status, preview, err = p.postIssue(ctx, cfg, fields); err != nil {
-			return err
+			return "", err
 		}
 	}
 	if status != http.StatusCreated {
-		return fmt.Errorf("jira: create: HTTP %d: %s", status, truncate(preview, 200))
+		return "", fmt.Errorf("jira: create: HTTP %d: %s", status, truncate(preview, 200))
 	}
-	return nil
+	return parseIssueKey(preview), nil
+}
+
+// parseIssueKey pulls the created issue's key out of a POST /issue response.
+func parseIssueKey(body []byte) string {
+	var resp struct {
+		Key string `json:"key"`
+	}
+	if err := json.Unmarshal(body, &resp); err != nil {
+		return ""
+	}
+	return resp.Key
+}
+
+// warn logs at warn level when a host with a logger is wired.
+func (p *Plugin) warn(msg string, args ...any) {
+	if p.host == nil {
+		return
+	}
+	if lg := p.host.Logger(); lg != nil {
+		lg.Warn(msg, args...)
+	}
 }
 
 // setPriority writes the resolved priority into fields, or removes the key
@@ -262,14 +320,30 @@ type config struct {
 	Description string
 	Labels      []string
 	Timeout     time.Duration
+
+	// OnEscalation is what to do when an alert that already has an issue
+	// escalates again: "reopen" (default), "comment", "new", or "skip".
+	// See escalate.go.
+	OnEscalation string
+	// ReopenStatus is the status a Done issue is transitioned back to when
+	// OnEscalation is "reopen".
+	ReopenStatus string
+	// EscalationComment is an optional template appended to the escalation
+	// comment body.
+	EscalationComment string
+	// LinkType is the issue-link type used when OnEscalation is "new".
+	LinkType string
 }
 
 func configFromMeta(meta map[string]any) (config, error) {
 	cfg := config{
-		IssueType: "Task",
-		Summary:   defaultSummary,
-		Labels:    []string{"snooze"},
-		Timeout:   defaultTimeout,
+		IssueType:    "Task",
+		Summary:      defaultSummary,
+		Labels:       []string{"snooze"},
+		Timeout:      defaultTimeout,
+		OnEscalation: escalateReopen,
+		ReopenStatus: defaultReopenStatus,
+		LinkType:     defaultLinkType,
 	}
 	if meta == nil {
 		return cfg, fmt.Errorf("jira_url is required")
@@ -304,6 +378,25 @@ func configFromMeta(meta map[string]any) (config, error) {
 	}
 	if to, ok := parseTimeout(meta["timeout"]); ok {
 		cfg.Timeout = to
+	}
+	// An unrecognised on_escalation is rejected rather than silently defaulted:
+	// the dispatcher records the reason on the action result, where an operator
+	// can see it, and a typo like "reopn" quietly behaving as "reopen" would be
+	// worse than a visible configuration error.
+	switch v := strings.ToLower(strings.TrimSpace(metaString(meta, "on_escalation"))); v {
+	case escalateComment, escalateReopen, escalateNew, escalateSkip:
+		cfg.OnEscalation = v
+	case "":
+		// keep the default
+	default:
+		return cfg, fmt.Errorf("on_escalation %q is not one of comment/reopen/new/skip", v)
+	}
+	if v := metaString(meta, "reopen_status"); v != "" {
+		cfg.ReopenStatus = v
+	}
+	cfg.EscalationComment = metaString(meta, "escalation_comment")
+	if v := metaString(meta, "link_type"); v != "" {
+		cfg.LinkType = v
 	}
 	return cfg, nil
 }
