@@ -223,7 +223,23 @@ func escalateOverdueOpens(tctx context.Context, d db.Driver, now int64, escalate
 		}
 		// One-shot: clear escalate_at so the same record is not re-escalated
 		// until a new transition re-arms it.
-		patch := db.Document{"state": "esc", "escalate_at": int64(0)}
+		//
+		// The escalation counter is bumped in the same patch so the notifiers
+		// this sweep is about to fire can tell a re-escalation from a first
+		// delivery (and update the existing ticket / thread instead of opening
+		// a second one). It is derived from the document we just read rather
+		// than via an atomic increment because the same value has to reach the
+		// in-memory record handed to notify below — the sweep is the only
+		// writer of this field for a given record in a given pass, and it runs
+		// single-threaded per tenant.
+		count := int(docInt64(doc, "escalation_count")) + 1
+		patch := db.Document{
+			"state":             "esc",
+			"escalate_at":       int64(0),
+			"escalation_count":  count,
+			"escalated_at":      now,
+			"escalation_reason": escalationReasonTimeout,
+		}
 		if err := d.UpdateOne(tctx, recordCollection, uid, patch, true); err != nil {
 			return fmt.Errorf("housekeeper: escalate_timeout: escalate open %s: %w", uid, err)
 		}
@@ -234,6 +250,9 @@ func escalateOverdueOpens(tctx context.Context, d db.Driver, now int64, escalate
 		rec := recordFromDoc(doc)
 		rec.UID = uid
 		rec.State = "esc"
+		rec.EscalationCount = count
+		rec.EscalatedAt = now
+		rec.EscalationReason = escalationReasonTimeout
 		if nerr := notify(tctx, rec); nerr != nil {
 			// Best-effort: a re-notification failure must not abort the sweep.
 			slog.Default().Warn("housekeeper: escalate_timeout: re-notify failed", "uid", uid, "err", nerr)
@@ -264,6 +283,32 @@ func writeLifecycleComment(tctx context.Context, d db.Driver, recordUID, ctype, 
 	}
 	if _, err := d.IncMany(tctx, recordCollection, "comment_count", condition.Equals("uid", recordUID), 1); err != nil {
 		slog.Default().Warn("housekeeper: escalate_timeout: bump comment_count", "uid", recordUID, "err", err)
+	}
+}
+
+// escalationReasonTimeout is the escalation_reason this sweep stamps. The
+// other producers use "manual" (an operator's state→esc comment) and
+// "watchlist" (aggregaterule's field-change auto-re-escalation); notifiers and
+// ticket comments surface the value so an operator can see why they were paged
+// again.
+const escalationReasonTimeout = "timeout"
+
+// docInt64 reads a counter out of a record document, tolerating the int /
+// int64 / float64 shapes the Mongo and SQLite drivers decode numbers into.
+func docInt64(doc db.Document, key string) int64 {
+	switch v := doc[key].(type) {
+	case int64:
+		return v
+	case int:
+		return int64(v)
+	case int32:
+		return int64(v)
+	case float64:
+		return int64(v)
+	case float32:
+		return int64(v)
+	default:
+		return 0
 	}
 }
 

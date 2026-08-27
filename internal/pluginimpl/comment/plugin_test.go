@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"path/filepath"
 	"slices"
+	"sync"
 	"testing"
 	"time"
 
@@ -26,6 +27,9 @@ import (
 type testHost struct {
 	drv *sqlite.Driver
 	cfg *config.Config
+	// notif is returned for Plugin("notification") so the manual-escalation
+	// re-notify path can be observed.
+	notif plugins.Plugin
 }
 
 func newTestHost(t *testing.T) *testHost {
@@ -50,7 +54,39 @@ func (h *testHost) Config() *config.Config {
 	}
 	return config.Default()
 }
-func (h *testHost) Plugin(string) plugins.Plugin { return nil }
+func (h *testHost) Plugin(name string) plugins.Plugin {
+	if name == "notification" {
+		return h.notif
+	}
+	return nil
+}
+
+// recordingProcessor stands in for the notification plugin and records every
+// record the comment plugin re-dispatches.
+type recordingProcessor struct {
+	mu   sync.Mutex
+	recs []snoozetypes.Record
+}
+
+func (r *recordingProcessor) Name() string                                 { return "notification" }
+func (r *recordingProcessor) Metadata() plugins.Metadata                   { return plugins.Metadata{Name: "notification"} }
+func (r *recordingProcessor) PostInit(context.Context, plugins.Host) error { return nil }
+func (r *recordingProcessor) Reload(context.Context) error                 { return nil }
+
+func (r *recordingProcessor) Process(_ context.Context, rec snoozetypes.Record) (plugins.Result, error) {
+	r.mu.Lock()
+	r.recs = append(r.recs, rec)
+	r.mu.Unlock()
+	return plugins.Result{Action: plugins.ActionContinue, Record: rec}, nil
+}
+
+func (r *recordingProcessor) Records() []snoozetypes.Record {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	out := make([]snoozetypes.Record, len(r.recs))
+	copy(out, r.recs)
+	return out
+}
 
 func TestRegistration(t *testing.T) {
 	require.True(t, slices.Contains(plugins.Registered(), "comment"))
@@ -440,4 +476,165 @@ func TestAfterCreate_AckedByEmptyUserAck(t *testing.T) {
 	require.Equal(t, "ack", rec["state"])
 	_, has := rec["acked_by"]
 	require.False(t, has, "empty-user ack must not stamp acked_by")
+}
+
+// TestAfterCreate_EscStampsEscalationContext locks in the manual-escalation
+// producer: an operator escalating from the UI or a chat command must leave the
+// record carrying a count, a reason and the acting login, so the notifiers the
+// re-dispatch reaches can update the ticket / thread they already created.
+func TestAfterCreate_EscStampsEscalationContext(t *testing.T) {
+	host := newTestHost(t)
+
+	now := time.Unix(3_000_000, 0).UTC()
+	p := &Plugin{clock: func() time.Time { return now }}
+	require.NoError(t, p.PostInit(guardCtx(), host))
+
+	uid := seedRecord(t, host, "ack")
+	doc := map[string]any{"record_uid": uid, "type": "esc", "message": "still broken", "user": "alice"}
+	require.NoError(t, p.AfterCreate(guardCtx(), []map[string]any{doc}))
+
+	rec := recordDoc(t, host, uid)
+	require.Equal(t, "esc", rec["state"])
+	require.Equal(t, int64(1), asInt64(t, rec["escalation_count"]))
+	require.Equal(t, now.Unix(), asInt64(t, rec["escalated_at"]))
+	require.Equal(t, "manual", rec["escalation_reason"])
+	require.Equal(t, "alice", rec["escalation_actor"])
+}
+
+// A second manual escalation must increment rather than reset, so a notifier
+// can render "escalation #2" and an operator can see the alert is repeating.
+func TestAfterCreate_EscIncrementsExistingCount(t *testing.T) {
+	host := newTestHost(t)
+	p := &Plugin{clock: func() time.Time { return time.Unix(3_000_100, 0).UTC() }}
+	require.NoError(t, p.PostInit(guardCtx(), host))
+
+	uid := seedRecord(t, host, "ack")
+	require.NoError(t, host.DB().UpdateOne(guardCtx(), "record", uid,
+		db.Document{"escalation_count": 4}, false))
+
+	doc := map[string]any{"record_uid": uid, "type": "esc", "message": "again"}
+	require.NoError(t, p.AfterCreate(guardCtx(), []map[string]any{doc}))
+
+	require.Equal(t, int64(5), asInt64(t, recordDoc(t, host, uid)["escalation_count"]))
+}
+
+// Close is terminal: the next occurrence of this alert is a new incident, so it
+// must reach the notifiers as a first delivery rather than commenting on the
+// ticket that was just resolved.
+func TestAfterCreate_CloseResetsEscalationContext(t *testing.T) {
+	host := newTestHost(t)
+	p := &Plugin{clock: func() time.Time { return time.Unix(3_000_200, 0).UTC() }}
+	require.NoError(t, p.PostInit(guardCtx(), host))
+
+	uid := seedRecord(t, host, "esc")
+	require.NoError(t, host.DB().UpdateOne(guardCtx(), "record", uid, db.Document{
+		"escalation_count":  3,
+		"escalated_at":      int64(123),
+		"escalation_reason": "timeout",
+		"escalation_actor":  "bob",
+	}, false))
+
+	doc := map[string]any{"record_uid": uid, "type": "close", "message": "fixed"}
+	require.NoError(t, p.AfterCreate(guardCtx(), []map[string]any{doc}))
+
+	rec := recordDoc(t, host, uid)
+	require.Equal(t, int64(0), asInt64(t, rec["escalation_count"]))
+	require.Equal(t, int64(0), asInt64(t, rec["escalated_at"]))
+	require.Empty(t, rec["escalation_reason"])
+	require.Empty(t, rec["escalation_actor"])
+}
+
+// TestAfterCreate_EscReNotifies is the point of the manual-escalation work:
+// before this, "escalate" from the UI or a Teams command changed a state field
+// and reached no output plugin at all.
+func TestAfterCreate_EscReNotifies(t *testing.T) {
+	host := newTestHost(t)
+	notif := &recordingProcessor{}
+	host.notif = notif
+
+	now := time.Unix(3_000_300, 0).UTC()
+	p := &Plugin{clock: func() time.Time { return now }}
+	require.NoError(t, p.PostInit(guardCtx(), host))
+
+	uid := seedRecord(t, host, "ack")
+	require.NoError(t, host.DB().UpdateOne(guardCtx(), "record", uid,
+		db.Document{"host": "myhost01", "message": "disk full"}, false))
+
+	doc := map[string]any{"record_uid": uid, "type": "esc", "message": "page again", "user": "alice"}
+	require.NoError(t, p.AfterCreate(guardCtx(), []map[string]any{doc}))
+
+	recs := notif.Records()
+	require.Len(t, recs, 1, "an esc comment must re-fire the dispatcher exactly once")
+	// The dispatcher must see the post-transition record, escalation stamp and
+	// all — that is what makes the notifier comment instead of creating.
+	require.Equal(t, "esc", recs[0].State)
+	require.Equal(t, uid, recs[0].UID)
+	require.Equal(t, "myhost01", recs[0].Host)
+	require.Equal(t, 1, recs[0].EscalationCount)
+	require.Equal(t, "manual", recs[0].EscalationReason)
+	require.Equal(t, "alice", recs[0].EscalationActor)
+}
+
+// Every other transition must leave notification volume exactly as it was.
+func TestAfterCreate_NonEscDoesNotReNotify(t *testing.T) {
+	for _, ctype := range []string{"ack", "open", "close", "shelve", "unshelve", "comment"} {
+		t.Run(ctype, func(t *testing.T) {
+			host := newTestHost(t)
+			notif := &recordingProcessor{}
+			host.notif = notif
+
+			p := &Plugin{clock: func() time.Time { return time.Unix(3_000_400, 0).UTC() }}
+			require.NoError(t, p.PostInit(guardCtx(), host))
+
+			// Start from a state each transition is legal from.
+			from := "open"
+			if ctype == "open" || ctype == "unshelve" {
+				from = "ack"
+			}
+			uid := seedRecord(t, host, from)
+			doc := map[string]any{"record_uid": uid, "type": ctype, "message": "x"}
+			require.NoError(t, p.AfterCreate(guardCtx(), []map[string]any{doc}))
+
+			require.Empty(t, notif.Records(), "%s must not re-notify", ctype)
+		})
+	}
+}
+
+// A notifier blowing up must not fail the operator's comment write, which has
+// already landed and is what their action was about.
+func TestAfterCreate_EscSurvivesNotifierError(t *testing.T) {
+	host := newTestHost(t)
+	host.notif = &failingProcessor{}
+
+	p := &Plugin{clock: func() time.Time { return time.Unix(3_000_500, 0).UTC() }}
+	require.NoError(t, p.PostInit(guardCtx(), host))
+
+	uid := seedRecord(t, host, "ack")
+	doc := map[string]any{"record_uid": uid, "type": "esc", "message": "x"}
+	require.NoError(t, p.AfterCreate(guardCtx(), []map[string]any{doc}),
+		"a notifier failure must not fail the comment write")
+	require.Equal(t, "esc", recordDoc(t, host, uid)["state"])
+}
+
+// A host with no notification plugin registered (optional-plugin filtering,
+// tests) must be a silent no-op rather than a nil dereference.
+func TestAfterCreate_EscWithoutNotificationPlugin(t *testing.T) {
+	host := newTestHost(t)
+	p := &Plugin{clock: func() time.Time { return time.Unix(3_000_600, 0).UTC() }}
+	require.NoError(t, p.PostInit(guardCtx(), host))
+
+	uid := seedRecord(t, host, "ack")
+	doc := map[string]any{"record_uid": uid, "type": "esc", "message": "x"}
+	require.NoError(t, p.AfterCreate(guardCtx(), []map[string]any{doc}))
+	require.Equal(t, "esc", recordDoc(t, host, uid)["state"])
+}
+
+type failingProcessor struct{}
+
+func (f *failingProcessor) Name() string                                 { return "notification" }
+func (f *failingProcessor) Metadata() plugins.Metadata                   { return plugins.Metadata{Name: "notification"} }
+func (f *failingProcessor) PostInit(context.Context, plugins.Host) error { return nil }
+func (f *failingProcessor) Reload(context.Context) error                 { return nil }
+func (f *failingProcessor) Process(context.Context, snoozetypes.Record) (plugins.Result, error) {
+	return plugins.Result{}, errors.New("boom")
 }

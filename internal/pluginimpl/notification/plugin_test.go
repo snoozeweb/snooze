@@ -699,6 +699,98 @@ func TestNotificationStats_TenantPartition(t *testing.T) {
 		"action_error counter must land in the dispatch tenant's partition, not the platform bucket")
 }
 
+// TestProcessPopulatesEscalationContext locks in the dispatcher half of the
+// escalation contract: a notifier learns "this is re-escalation #2, because the
+// ack timed out" from the payload alone, with no DB access of its own. The
+// first-fire case must stay a zero Escalation so every notifier keeps its
+// pre-escalation behaviour on records that never escalated.
+func TestProcessPopulatesEscalationContext(t *testing.T) {
+	t.Run("first_fire_is_zero", func(t *testing.T) {
+		host := newHost(t)
+		writeActions(t, host, []map[string]any{
+			{"name": "Script", "action": map[string]any{"selected": "script", "subcontent": map[string]any{}}},
+		})
+		writeEntries(t, host, []map[string]any{
+			{"name": "N1", "condition": []any{"=", "host", "myhost01"}, "actions": []any{"Script"}},
+		})
+		notifier := &recordingNotifier{name: "script"}
+		host.registerNotifier(notifier)
+		p := newPlugin(t, host)
+
+		_, err := p.Process(tctx(), snoozetypes.Record{UID: "u1", Host: "myhost01", Timestamp: time.Now()})
+		require.NoError(t, err)
+
+		calls := waitForCalls(t, notifier, 1, time.Second)
+		require.Zero(t, calls[0].Payload.Escalation.Count)
+		require.False(t, calls[0].Payload.Escalation.IsRe())
+	})
+
+	t.Run("re_escalation_carries_count_reason_and_trend", func(t *testing.T) {
+		host := newHost(t)
+		writeActions(t, host, []map[string]any{
+			{"name": "Script", "action": map[string]any{"selected": "script", "subcontent": map[string]any{}}},
+		})
+		writeEntries(t, host, []map[string]any{
+			{"name": "N1", "condition": []any{"=", "host", "myhost01"}, "actions": []any{"Script"}},
+		})
+		notifier := &recordingNotifier{name: "script"}
+		host.registerNotifier(notifier)
+		p := newPlugin(t, host)
+
+		_, err := p.Process(tctx(), snoozetypes.Record{
+			UID:              "u1",
+			Host:             "myhost01",
+			State:            "esc",
+			Timestamp:        time.Now(),
+			EscalationCount:  2,
+			EscalationReason: "timeout",
+			Extra: map[string]any{
+				"trend_indication": "up",
+				"duplicates":       int64(5),
+			},
+		})
+		require.NoError(t, err)
+
+		calls := waitForCalls(t, notifier, 1, time.Second)
+		esc := calls[0].Payload.Escalation
+		require.True(t, esc.IsRe())
+		require.Equal(t, 2, esc.Count)
+		require.Equal(t, "#2", esc.Ordinal())
+		require.Equal(t, "timeout", esc.Reason)
+		require.True(t, esc.SeverityRose())
+		require.Equal(t, int64(5), esc.Duplicates)
+	})
+}
+
+// A notification condition must be able to target re-escalations only, which
+// requires escalation_count to reach the condition evaluator.
+func TestProcessConditionCanMatchEscalationCount(t *testing.T) {
+	host := newHost(t)
+	writeActions(t, host, []map[string]any{
+		{"name": "Script", "action": map[string]any{"selected": "script", "subcontent": map[string]any{}}},
+	})
+	writeEntries(t, host, []map[string]any{
+		{"name": "OnlyEsc", "condition": []any{">", "escalation_count", 0}, "actions": []any{"Script"}},
+	})
+	notifier := &recordingNotifier{name: "script"}
+	host.registerNotifier(notifier)
+	p := newPlugin(t, host)
+
+	// First fire: no escalation_count, so the condition must not match.
+	_, err := p.Process(tctx(), snoozetypes.Record{UID: "u1", Host: "h", Timestamp: time.Now()})
+	require.NoError(t, err)
+
+	// Re-escalation: matches.
+	_, err = p.Process(tctx(), snoozetypes.Record{
+		UID: "u2", Host: "h", Timestamp: time.Now(), EscalationCount: 1,
+	})
+	require.NoError(t, err)
+
+	calls := waitForCalls(t, notifier, 1, time.Second)
+	require.Len(t, calls, 1, "only the re-escalation may match `escalation_count > 0`")
+	require.Equal(t, "u2", calls[0].Record.UID)
+}
+
 func TestProcessStampsNotifications(t *testing.T) {
 	h := newHost(t)
 	writeEntries(t, h, []map[string]any{

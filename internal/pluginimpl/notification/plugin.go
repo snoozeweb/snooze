@@ -394,9 +394,10 @@ func (p *Plugin) resolveNotifier(ctx context.Context, e Entry, name string, rec 
 		return nil, plugins.NotificationPayload{}, false, fmt.Sprintf("target %q is not a notifier", ad.Action.Selected)
 	}
 	payload := plugins.NotificationPayload{
-		Template: ad.Action.Selected,
-		Meta:     metaFromSubcontent(ad.Action.Subcontent, e, ad.Name),
-		Inject:   p.injectFunc(ctx, rec),
+		Template:   ad.Action.Selected,
+		Meta:       metaFromSubcontent(ad.Action.Subcontent, e, ad.Name),
+		Inject:     p.injectFunc(ctx, rec),
+		Escalation: plugins.EscalationFrom(rec),
 	}
 	return notifier, payload, true, ""
 }

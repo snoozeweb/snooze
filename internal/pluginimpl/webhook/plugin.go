@@ -534,21 +534,21 @@ func templateData(rec snoozetypes.Record) map[string]any {
 // follow-up under the recorded message — computing the (possibly
 // space-containing) `response_<actionName>` key in Go means the template never
 // has to name the action, sidestepping text/template's identifier rules.
-// `response_*` survives onto the record because aggregaterule carries it
-// forward on a duplicate match (see internal/pluginimpl/aggregaterule).
+// The lookup goes through plugins.NotifyRef, so it resolves both the canonical
+// `notify_ref_<action>` field and the legacy `response_<action>` this plugin's
+// own inject_response writes. Either survives onto the record because
+// aggregaterule carries the handle fields forward on a duplicate match (see
+// internal/pluginimpl/aggregaterule).
 //
 // The lookup tolerates the absence of any layer: a first fire, an action with
 // no recorded response yet, or a malformed response all yield nil → the
 // template renders JSON null and the bridge posts a fresh root message.
 func replyToIDs(rec snoozetypes.Record, actionName string) any {
-	if actionName == "" || rec.Extra == nil {
+	ref := plugins.NotifyRef(rec, actionName)
+	if ref == nil {
 		return nil
 	}
-	resp, ok := rec.Extra["response_"+actionName].(map[string]any)
-	if !ok {
-		return nil
-	}
-	return resp["message_ids"]
+	return ref["message_ids"]
 }
 
 // renderBody returns (body, contentType). When the config body is empty,

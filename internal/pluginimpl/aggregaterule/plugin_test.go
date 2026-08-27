@@ -299,6 +299,102 @@ func TestAggregate_WatchedFields(t *testing.T) {
 	require.Equal(t, int64(1), toInt64(results[0]["comment_count"], 0))
 }
 
+// TestAggregate_WatchlistStampsEscalationContext covers the third escalation
+// producer: a watched-field change against an ACKED aggregate auto-re-escalates
+// it, so the notifiers it reaches must see a re-escalation rather than a first
+// delivery.
+func TestAggregate_WatchlistStampsEscalationContext(t *testing.T) {
+	t.Parallel()
+
+	host := newTestHost(t)
+	writeRule(t, host, db.Document{
+		"name":      "AggEsc",
+		"condition": []any{"=", "a", "9"},
+		"fields":    []string{"a"},
+		"watch":     []string{"c"},
+		"throttle":  int64(900),
+		"flapping":  int64(3),
+	})
+	p := freshPlugin(t, host)
+
+	out1, _ := runProcess(t, p, host, snoozetypes.Record{Extra: map[string]any{"a": "9", "c": "1"}})
+	require.NotEmpty(t, out1.Hash)
+	// Ack it, so the watched-field change takes the ack→esc branch.
+	_, err := host.driver.SetFields(tctx(), recordCollection,
+		db.Document{"state": "ack"}, condition.Equals("hash", out1.Hash))
+	require.NoError(t, err)
+
+	out2, _ := runProcess(t, p, host, snoozetypes.Record{Extra: map[string]any{"a": "9", "c": "2"}})
+	require.Equal(t, "esc", out2.State)
+
+	esc := plugins.EscalationFrom(out2)
+	require.Equal(t, 1, esc.Count)
+	require.Equal(t, "watchlist", esc.Reason)
+	require.True(t, esc.IsRe())
+}
+
+// A plain duplicate of an already-escalated alert must NOT look like a first
+// delivery: without carry-forward the notifier would open a second ticket for
+// an incident it is already tracking.
+func TestAggregate_CarriesForwardEscalationContext(t *testing.T) {
+	t.Parallel()
+
+	host := newTestHost(t)
+	writeRule(t, host, db.Document{
+		"name":      "AggCarry",
+		"condition": []any{"=", "a", "7"},
+		"fields":    []string{"a"},
+		"throttle":  int64(0),
+	})
+	p := freshPlugin(t, host)
+
+	out1, _ := runProcess(t, p, host, snoozetypes.Record{Extra: map[string]any{"a": "7"}})
+	require.NotEmpty(t, out1.Hash)
+
+	_, err := host.driver.SetFields(tctx(), recordCollection, db.Document{
+		"escalation_count":  int64(2),
+		"escalation_reason": "timeout",
+	}, condition.Equals("hash", out1.Hash))
+	require.NoError(t, err)
+
+	out2, _ := runProcess(t, p, host, snoozetypes.Record{Extra: map[string]any{"a": "7"}})
+	esc := plugins.EscalationFrom(out2)
+	require.Equal(t, 2, esc.Count, "the duplicate must inherit the escalation count")
+	require.Equal(t, "timeout", esc.Reason)
+}
+
+// Closing is terminal: the escalation lifecycle resets so the alert's next
+// occurrence is a fresh incident rather than a comment on a resolved ticket.
+// The zeros must be written EXPLICITLY — an absent key would leave the stored
+// count in place through the merge write.
+func TestAggregate_CloseResetsEscalationContext(t *testing.T) {
+	t.Parallel()
+
+	host := newTestHost(t)
+	writeRule(t, host, db.Document{
+		"name":      "AggClose",
+		"condition": []any{"=", "a", "8"},
+		"fields":    []string{"a"},
+		"throttle":  int64(900),
+	})
+	p := freshPlugin(t, host)
+
+	out1, _ := runProcess(t, p, host, snoozetypes.Record{State: "open", Extra: map[string]any{"a": "8"}})
+	_, err := host.driver.SetFields(tctx(), recordCollection,
+		db.Document{"escalation_count": int64(3), "escalation_reason": "timeout"},
+		condition.Equals("hash", out1.Hash))
+	require.NoError(t, err)
+
+	out2, _ := runProcess(t, p, host, snoozetypes.Record{State: "close", Extra: map[string]any{"a": "8"}})
+	require.Equal(t, "close", out2.State)
+	require.Zero(t, plugins.EscalationFrom(out2).Count)
+	require.Equal(t, 0, out2.Extra["escalation_count"], "the reset must be an explicit zero, not an absent key")
+
+	stored := recordsByAggregate(t, host, "AggClose")
+	require.Len(t, stored, 1)
+	require.Equal(t, int64(0), toInt64(stored[0]["escalation_count"], -1))
+}
+
 // TestAggregate_OK ports test_aggregate_ok: an incoming "close" against an
 // open aggregate closes it.
 func TestAggregate_OK(t *testing.T) {
@@ -561,6 +657,38 @@ func TestAggregate_CarriesForwardInjectedResponse(t *testing.T) {
 	out2, _ := runProcess(t, p, host, snoozetypes.Record{Extra: map[string]any{"a": "1"}})
 	require.NotNil(t, out2.Extra["response_Teams"],
 		"response_Teams must be carried forward from the existing aggregate onto the record")
+}
+
+// TestAggregate_CarriesForwardNotifyRef is the escalation-critical twin of the
+// test above, for the canonical `notify_ref_<action>` handle a notifier stores
+// itself (rather than through webhook's inject_response). Without carry-forward
+// the notifier cannot find the JIRA issue / chat thread it already created and
+// opens a second one on every re-escalation.
+func TestAggregate_CarriesForwardNotifyRef(t *testing.T) {
+	t.Parallel()
+
+	host := newTestHost(t)
+	writeRule(t, host, db.Document{
+		"name":      "Agg1",
+		"condition": []any{"=", "a", "1"},
+		"fields":    []string{"a"},
+		"throttle":  int64(900),
+	})
+	p := freshPlugin(t, host)
+
+	out1, _ := runProcess(t, p, host, snoozetypes.Record{Extra: map[string]any{"a": "1"}})
+	require.NotEmpty(t, out1.Hash)
+
+	ref := map[string]any{"issue_key": "OPS-7"}
+	_, err := host.driver.SetFields(tctx(), recordCollection,
+		db.Document{"notify_ref_Create ticket": ref},
+		condition.Equals("hash", out1.Hash))
+	require.NoError(t, err)
+
+	out2, _ := runProcess(t, p, host, snoozetypes.Record{Extra: map[string]any{"a": "1"}})
+	require.Equal(t, "OPS-7",
+		plugins.NotifyRefString(out2, "Create ticket", "issue_key"),
+		"notify_ref_<action> must ride forward onto the duplicate so the notifier updates OPS-7")
 }
 
 // TestPostInit_SeedsDefault verifies that PostInit writes the `_default`

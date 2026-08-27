@@ -406,6 +406,32 @@ func TestRecordToDoc_StampsAckUntilAndEscalateAt(t *testing.T) {
 	require.False(t, hasEsc, "zero escalate_at must be elided")
 }
 
+// TestRecordToDoc_StampsEscalationContext locks in the projector contract for
+// the escalation-context fields notifiers branch on. Zero values must be
+// elided: a record with no escalation_count is what every notifier reads as a
+// first fire, and an explicit 0 on disk would be indistinguishable but noisier.
+func TestRecordToDoc_StampsEscalationContext(t *testing.T) {
+	t.Parallel()
+
+	doc := recordToDoc(snoozetypes.Record{
+		UID:              "r1",
+		EscalationCount:  3,
+		EscalatedAt:      1700000000,
+		EscalationReason: "manual",
+		EscalationActor:  "alice",
+	})
+	require.Equal(t, 3, doc["escalation_count"])
+	require.Equal(t, int64(1700000000), doc["escalated_at"])
+	require.Equal(t, "manual", doc["escalation_reason"])
+	require.Equal(t, "alice", doc["escalation_actor"])
+
+	zero := recordToDoc(snoozetypes.Record{UID: "r2"})
+	for _, k := range []string{"escalation_count", "escalated_at", "escalation_reason", "escalation_actor"} {
+		_, has := zero[k]
+		require.False(t, has, "zero %s must be elided", k)
+	}
+}
+
 // TestRecordToDoc_StampsShelveUntil locks in the projector contract for the
 // timed-shelve field: a non-zero ShelveUntil is emitted as int64, and a zero
 // value is elided (a zero shelve_until is the legacy permanent-shelve marker

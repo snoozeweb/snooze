@@ -258,6 +258,73 @@ func TestEscalateTimeoutJob_EscalatesOverdueOpen(t *testing.T) {
 	require.Equal(t, "esc", notifiedRecs[0].State)
 }
 
+// TestEscalateTimeoutJob_StampsEscalationContext locks in the sweep half of the
+// escalation contract. The counter must land BOTH on the stored row and on the
+// in-memory record handed to notify — the row is what the next occurrence reads,
+// the in-memory copy is what the notifiers about to fire branch on. If they
+// disagree, a notifier either duplicates a ticket or comments on one it never
+// created.
+func TestEscalateTimeoutJob_StampsEscalationContext(t *testing.T) {
+	clk := newFakeClock(time.Unix(2_100_000, 0))
+	now := clk.Now().Unix()
+
+	drv := newEscalateFakeDriver()
+	drv.seedRecord("default", db.Document{
+		"uid": "r-first", "state": "open", "escalate_at": now - 5,
+	})
+	// A record already escalated twice: the sweep must increment, not reset.
+	drv.seedRecord("default", db.Document{
+		"uid": "r-again", "state": "open", "escalate_at": now - 5,
+		"escalation_count": int64(2),
+	})
+
+	var notified []snoozetypes.Record
+	notify := func(_ context.Context, rec snoozetypes.Record) error {
+		notified = append(notified, rec)
+		return nil
+	}
+
+	ij := EscalateTimeoutJob(drv, clk, fakeLifecycle{ack: time.Hour, escalate: time.Hour}, notify)
+	runJob(t, ij)
+
+	first := drv.record("default", "r-first")
+	require.Equal(t, 1, first["escalation_count"])
+	require.Equal(t, now, first["escalated_at"])
+	require.Equal(t, "timeout", first["escalation_reason"])
+
+	again := drv.record("default", "r-again")
+	require.Equal(t, 3, again["escalation_count"], "an already-escalated record must increment")
+
+	byUID := map[string]snoozetypes.Record{}
+	for _, r := range notified {
+		byUID[r.UID] = r
+	}
+	require.Len(t, byUID, 2)
+	require.Equal(t, 1, byUID["r-first"].EscalationCount,
+		"the in-memory record must agree with the stored row")
+	require.Equal(t, 3, byUID["r-again"].EscalationCount)
+	require.Equal(t, "timeout", byUID["r-again"].EscalationReason)
+	require.Equal(t, now, byUID["r-again"].EscalatedAt)
+}
+
+// docInt64 must tolerate whichever numeric shape a driver decoded the counter
+// into, or the sweep silently restarts the count from 1 on some backends.
+func TestDocInt64NumericShapes(t *testing.T) {
+	for name, v := range map[string]any{
+		"int":     7,
+		"int32":   int32(7),
+		"int64":   int64(7),
+		"float64": float64(7),
+		"float32": float32(7),
+	} {
+		t.Run(name, func(t *testing.T) {
+			require.Equal(t, int64(7), docInt64(db.Document{"escalation_count": v}, "escalation_count"))
+		})
+	}
+	require.Equal(t, int64(0), docInt64(db.Document{}, "escalation_count"))
+	require.Equal(t, int64(0), docInt64(db.Document{"escalation_count": "nope"}, "escalation_count"))
+}
+
 // TestEscalateTimeoutJob_SkipsWhenEscalateAfterZero: an overdue open record is
 // left untouched and no notify fires when escalate_after<=0 (the escalate pass
 // is a strict no-op). The expired-ack pass still runs.

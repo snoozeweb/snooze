@@ -48,6 +48,26 @@ type Record struct {
 	// shelve (ttl=-1) marker — the sweep's `shelve_until > 0` guard never
 	// auto-unshelves those. Projected by recordToDoc.
 	ShelveUntil int64 `json:"shelve_until,omitempty"`
+	// EscalationCount is how many times this alert has been re-escalated during
+	// its current lifecycle: 0 on a first delivery, 1 on the first
+	// re-escalation, and so on. Incremented by every escalation producer (the
+	// escalate-timeout sweep, a state→esc comment, and aggregaterule's
+	// watchlist auto-re-escalation) and reset to 0 on close so a genuinely new
+	// occurrence starts fresh. Notifiers branch on it to update an existing
+	// ticket / thread instead of creating a second one; the zero value must
+	// always mean "first fire" so records predating this field behave exactly
+	// as before.
+	EscalationCount int `json:"escalation_count,omitempty"`
+	// EscalatedAt is the epoch-seconds instant the current escalation was
+	// stamped. Zero when the alert has never been escalated.
+	EscalatedAt int64 `json:"escalated_at,omitempty"`
+	// EscalationReason names the producer of the current escalation:
+	// "timeout" (escalate-timeout sweep), "manual" (operator via UI/chat), or
+	// "watchlist" (aggregaterule field change). Empty when never escalated.
+	EscalationReason string `json:"escalation_reason,omitempty"`
+	// EscalationActor is the login of the operator who escalated, on a manual
+	// escalation only. Empty otherwise.
+	EscalationActor string `json:"escalation_actor,omitempty"`
 	// Extra carries any plugin-injected fields (rule modifications, aggregaterule
 	// counters, etc.) that don't have a typed home.
 	Extra map[string]any `json:"-"`

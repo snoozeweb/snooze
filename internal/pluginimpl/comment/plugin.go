@@ -7,6 +7,7 @@ package comment
 import (
 	"context"
 	_ "embed"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"time"
@@ -16,6 +17,7 @@ import (
 	"github.com/snoozeweb/snooze/internal/config/schema"
 	"github.com/snoozeweb/snooze/internal/db"
 	"github.com/snoozeweb/snooze/internal/plugins"
+	"github.com/snoozeweb/snooze/pkg/snoozetypes"
 )
 
 //go:embed metadata.yaml
@@ -183,6 +185,10 @@ func (p *Plugin) AfterCreate(ctx context.Context, docs []map[string]any) error {
 		}
 		patch := db.Document{}
 		commentType, _ := doc["type"].(string)
+		// now comes from the injected clock (never time.Now() in this core
+		// path); both the timed-lifecycle deadlines and the escalation stamp
+		// below use it.
+		now := p.now().Unix()
 		if t := commentType; stateChangingActions[t] {
 			// Most actions are their own state; the timed-shelve pair maps to a
 			// distinct state ("shelve"→"shelved", "unshelve"→"open").
@@ -198,7 +204,6 @@ func (p *Plugin) AfterCreate(ctx context.Context, docs []map[string]any) error {
 			// baseline). The escalate-timeout / unshelve-timeout housekeeper
 			// sweeps enforce these.
 			ackTimeout, escalateAfter := p.lifecycleTimeouts(ctx)
-			now := p.now().Unix()
 			switch t {
 			case "ack":
 				// An ack pauses escalation and arms an expiry.
@@ -243,6 +248,29 @@ func (p *Plugin) AfterCreate(ctx context.Context, docs []map[string]any) error {
 		if err != nil {
 			return fmt.Errorf("comment: lookup record %s: %w", uid, err)
 		}
+		// Escalation bookkeeping, read-modify-written from the row we just
+		// fetched. An operator escalating from the UI or a chat command is a
+		// first-class escalation producer alongside the escalate-timeout sweep,
+		// so the outputs must be able to tell it apart from a first delivery
+		// and update the ticket / thread they already created.
+		switch commentType {
+		case "esc":
+			patch["escalation_count"] = int(docInt64(rec, "escalation_count")) + 1
+			patch["escalated_at"] = now
+			patch["escalation_reason"] = "manual"
+			if user, _ := doc["user"].(string); user != "" {
+				patch["escalation_actor"] = user
+			}
+		case "close":
+			// Terminal: the next occurrence of this alert is a genuinely new
+			// incident, so it must start from a first delivery rather than
+			// inheriting the previous lifecycle's escalation count (which would
+			// make a notifier comment on a ticket that has been resolved).
+			patch["escalation_count"] = 0
+			patch["escalated_at"] = int64(0)
+			patch["escalation_reason"] = ""
+			patch["escalation_actor"] = ""
+		}
 		current, _ := rec["comment_count"].(int64)
 		if c2, ok := rec["comment_count"].(int); ok && current == 0 {
 			current = int64(c2)
@@ -265,8 +293,102 @@ func (p *Plugin) AfterCreate(ctx context.Context, docs []map[string]any) error {
 				return fmt.Errorf("comment: unset acked_by on record %s: %w", uid, err)
 			}
 		}
+		// An operator escalating from the UI or a chat command must reach the
+		// output plugins — otherwise "escalate" silently changes a state field
+		// and nobody gets paged. Only `esc` re-notifies: ack/open/close/shelve
+		// deliberately do not, so notification volume is unchanged for every
+		// other transition.
+		if commentType == "esc" {
+			p.renotify(ctx, uid)
+		}
 	}
 	return nil
+}
+
+// renotify re-fires the notification dispatcher for a manually escalated
+// record, mirroring the escalate-timeout sweep's `notify` callback
+// (internal/core/boot.go). The record is re-read so the dispatcher sees the
+// escalation stamp AfterCreate just wrote.
+//
+// Best-effort by design: a notifier failure must never fail the comment write,
+// which has already landed and is what the operator's action was about. The
+// dispatcher's Process only skips ack/close, so an `esc` record dispatches.
+func (p *Plugin) renotify(ctx context.Context, uid string) {
+	if p.host == nil || p.host.DB() == nil {
+		return
+	}
+	proc, ok := p.host.Plugin("notification").(plugins.Processor)
+	if !ok {
+		return
+	}
+	doc, err := p.host.DB().GetOne(ctx, "record", db.Document{"uid": uid})
+	if err != nil {
+		p.warn("comment: re-notify: record lookup failed", "uid", uid, "error", err)
+		return
+	}
+	rec, err := recordFromDoc(doc)
+	if err != nil {
+		p.warn("comment: re-notify: record decode failed", "uid", uid, "error", err)
+		return
+	}
+	if _, err := proc.Process(ctx, rec); err != nil {
+		p.warn("comment: re-notify failed", "uid", uid, "error", err)
+	}
+}
+
+// recordFromDoc projects a record document into the typed Record the
+// notification dispatcher consumes, via the JSON tags so the escalation stamp
+// and every other typed field survive.
+func recordFromDoc(doc db.Document) (snoozetypes.Record, error) {
+	raw, err := json.Marshal(doc)
+	if err != nil {
+		return snoozetypes.Record{}, err
+	}
+	var rec snoozetypes.Record
+	if err := json.Unmarshal(raw, &rec); err != nil {
+		return snoozetypes.Record{}, err
+	}
+	// The typed struct drops everything it has no field for, but notifiers and
+	// conditions read those (duplicates, previous_severity, trend_indication,
+	// and the notify_ref_<action> handles), so keep them in Extra.
+	rec.Extra = extraFromDoc(doc)
+	return rec, nil
+}
+
+// extraFromDoc collects the document keys that have no typed home on Record.
+func extraFromDoc(doc db.Document) map[string]any {
+	extra := make(map[string]any, len(doc))
+	for k, v := range doc {
+		if typedRecordFields[k] {
+			continue
+		}
+		extra[k] = v
+	}
+	if len(extra) == 0 {
+		return nil
+	}
+	return extra
+}
+
+// typedRecordFields are the document keys snoozetypes.Record already decodes
+// into typed struct fields; everything else belongs in Extra.
+var typedRecordFields = map[string]bool{
+	"uid": true, "host": true, "source": true, "process": true,
+	"severity": true, "message": true, "timestamp": true, "date_epoch": true,
+	"ttl": true, "environment": true, "hash": true, "tags": true, "raw": true,
+	"state": true, "acked_by": true, "plugins": true, "ack_until": true,
+	"escalate_at": true, "shelve_until": true, "escalation_count": true,
+	"escalated_at": true, "escalation_reason": true, "escalation_actor": true,
+}
+
+// warn logs at warn level when the host exposes a logger.
+func (p *Plugin) warn(msg string, args ...any) {
+	if p.host == nil {
+		return
+	}
+	if lg := p.host.Logger(); lg != nil {
+		lg.Warn(msg, args...)
+	}
 }
 
 // now returns the current time from the injected clock, defaulting to time.Now
@@ -276,6 +398,25 @@ func (p *Plugin) now() time.Time {
 		return p.clock()
 	}
 	return time.Now()
+}
+
+// docInt64 reads a counter out of a record document, tolerating the int /
+// int64 / float64 shapes the Mongo and SQLite drivers decode numbers into.
+func docInt64(doc db.Document, key string) int64 {
+	switch v := doc[key].(type) {
+	case int64:
+		return v
+	case int:
+		return int64(v)
+	case int32:
+		return int64(v)
+	case float64:
+		return int64(v)
+	case float32:
+		return int64(v)
+	default:
+		return 0
+	}
 }
 
 // lifecycleTimeouts resolves the live ack/escalate timeouts the state-transition

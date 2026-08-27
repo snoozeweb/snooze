@@ -390,14 +390,22 @@ func (p *Plugin) matchAggregate(
 	// Snooze 1.x merged the entire existing record onto the incoming one
 	// (src/snooze/plugins/core/aggregaterule/plugin.py:73,
 	// `dict(aggregate.items() + record.items())`). The Go port keeps the
-	// identity handling explicit below, but must still ferry `response_<action>`
-	// fields forward: they are stamped by a previous notification's
-	// inject_response and never appear on the incoming alert, so without this
-	// the notification/webhook can't read the recorded Teams message ids to
-	// thread a follow-up reply. Incoming keys win on collision — the alert
-	// payload stays authoritative for everything it does carry.
+	// identity handling explicit below, but must still ferry the notifier
+	// handle fields forward — `notify_ref_<action>` and its legacy
+	// `response_<action>` predecessor (see plugins.IsNotifyRefField). They are
+	// stamped by a previous notification (a notifier's StoreNotifyRef, or
+	// webhook's inject_response) and never appear on the incoming alert, so
+	// without this a notifier can't find the JIRA issue / chat thread it
+	// already created and would create a second one on every re-escalation.
+	// The escalation context is ferried for the same reason: a duplicate
+	// occurrence of an already-escalated alert must not look like a first
+	// delivery to a notifier, or it would create a second ticket for an
+	// incident it is already tracking.
+	//
+	// Incoming keys win on collision — the alert payload stays authoritative
+	// for everything it does carry.
 	for k, v := range existing {
-		if !strings.HasPrefix(k, "response_") {
+		if !plugins.IsNotifyRefField(k) && !escalationCarryFields[k] {
 			continue
 		}
 		if _, ok := rec[k]; !ok {
@@ -461,6 +469,10 @@ func (p *Plugin) matchAggregate(
 		if prevState != "close" {
 			rec["state"] = "close"
 			rec["comment_count"] = commentCount + 1
+			// Terminal: the next occurrence is a genuinely new incident, so
+			// clear the escalation lifecycle rather than letting the next
+			// delivery inherit a count (and comment on a resolved ticket).
+			resetEscalation(rec)
 			p.writeAutoComment(ctx, host, prevUID, "close",
 				fmt.Sprintf("Auto closed: Severity %s => %s", prevSeverity, newSeverity), now)
 			return rec, plugins.ActionContinue, nil
@@ -500,6 +512,13 @@ func (p *Plugin) matchAggregate(
 		case "ack":
 			rec["state"] = "esc"
 			ctype, msg = "esc", "Auto re-escalated from watchlist: "+fields
+			// Watchlist auto-re-escalation is an escalation producer like the
+			// escalate-timeout sweep: stamp the context so the notifiers this
+			// record is about to reach update the ticket / thread they already
+			// created instead of opening a second one.
+			rec["escalation_count"] = int(toInt64(existing["escalation_count"], 0)) + 1
+			rec["escalated_at"] = now.Unix()
+			rec["escalation_reason"] = "watchlist"
 		default:
 			rec["state"] = prevState
 			ctype, msg = "comment", "New escalation from watchlist: "+fields
@@ -645,6 +664,33 @@ func trendString(cmp int) string {
 	default:
 		return "noChange"
 	}
+}
+
+// escalationCarryFields are the escalation-context fields that must ride
+// forward from the stored aggregate onto a duplicate occurrence, alongside the
+// notifier handle fields. The incoming alert never carries them (they are
+// server-stamped by the escalation producers), so without this a duplicate of
+// an escalated alert reaches the notifiers as a first delivery.
+var escalationCarryFields = map[string]bool{
+	"escalation_count":  true,
+	"escalated_at":      true,
+	"escalation_reason": true,
+	"escalation_actor":  true,
+}
+
+// resetEscalation clears the escalation lifecycle on a record that is being
+// closed, so its next occurrence starts from a first delivery. Mirrors the
+// comment plugin's close transition.
+//
+// The zeros are written EXPLICITLY rather than left absent: these keys ride
+// through mergeMapIntoRecord into Record.Extra, and the pipeline's projector
+// elides zero-valued typed fields — so an absent key would leave the stored
+// count untouched on a merge write, and the next occurrence would inherit it.
+func resetEscalation(rec map[string]any) {
+	rec["escalation_count"] = 0
+	rec["escalated_at"] = int64(0)
+	rec["escalation_reason"] = ""
+	rec["escalation_actor"] = ""
 }
 
 // stampTrendFields records the derived previous_severity / trend_indication

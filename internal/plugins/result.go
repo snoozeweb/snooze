@@ -62,6 +62,23 @@ type NotificationPayload struct {
 	// nil for notifiers that don't need it; calls on a nil pointer are
 	// no-ops via the InjectField helper.
 	Inject InjectFunc
+	// Escalation describes whether this is a first delivery or a
+	// re-escalation of an alert the notifier has already delivered. The zero
+	// value means first delivery, so a caller that doesn't populate it gets
+	// pre-escalation behaviour. See escalation.go.
+	Escalation Escalation
+}
+
+// ActionName returns the stored action's name, which the dispatcher stamps into
+// Meta as `action_name`. Notifiers key their persisted external handle on it
+// (see NotifyRef / StoreNotifyRef), so two actions pointing at the same
+// notifier keep independent handles.
+func (p NotificationPayload) ActionName() string {
+	if p.Meta == nil {
+		return ""
+	}
+	s, _ := p.Meta["action_name"].(string)
+	return s
 }
 
 // InjectFunc writes one field onto the originating record. The dispatcher

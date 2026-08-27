@@ -415,6 +415,12 @@ func recordToMap(rec snoozetypes.Record) map[string]any {
 	if len(rec.Plugins) > 0 {
 		m["plugins"] = rec.Plugins
 	}
+	if rec.EscalationCount != 0 {
+		m["escalation_count"] = rec.EscalationCount
+	}
+	if rec.EscalationReason != "" {
+		m["escalation_reason"] = rec.EscalationReason
+	}
 	for k, v := range rec.Extra {
 		if _, exists := m[k]; !exists {
 			m[k] = v

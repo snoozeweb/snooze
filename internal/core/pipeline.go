@@ -331,6 +331,18 @@ func recordToDoc(rec snoozetypes.Record) db.Document {
 	if rec.ShelveUntil != 0 {
 		d["shelve_until"] = rec.ShelveUntil
 	}
+	if rec.EscalationCount != 0 {
+		d["escalation_count"] = rec.EscalationCount
+	}
+	if rec.EscalatedAt != 0 {
+		d["escalated_at"] = rec.EscalatedAt
+	}
+	if rec.EscalationReason != "" {
+		d["escalation_reason"] = rec.EscalationReason
+	}
+	if rec.EscalationActor != "" {
+		d["escalation_actor"] = rec.EscalationActor
+	}
 	for k, v := range rec.Extra {
 		// Extra fields override the typed ones only if the typed value was
 		// not set above.
