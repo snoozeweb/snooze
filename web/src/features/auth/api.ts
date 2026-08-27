@@ -184,18 +184,3 @@ export async function changeOwnPassword(input: {
     },
   });
 }
-
-// postLogout best-effort revokes the supplied refresh token. Server always
-// returns 204 — failures are swallowed so logging out never blocks UI flow.
-export async function postLogout(refreshToken: string | null): Promise<void> {
-  if (!refreshToken) return;
-  try {
-    await api<void>("POST", "/login/logout", {
-      body: { refresh_token: refreshToken },
-      skipAuthHandling: true,
-      skipRefreshHandling: true,
-    });
-  } catch {
-    // Logout is fire-and-forget. The client clears local state regardless.
-  }
-}

@@ -253,9 +253,10 @@ async function tick(): Promise<void> {
   }
   const { fatal } = await ensureRotation();
   if (fatal) {
-    // Refresh token is gone for good. Drop the session; the router's
-    // unauthorized handler / route guard takes it from here.
-    authStore.getState().logout();
+    // Refresh token is gone for good — the server said so, so there is
+    // nothing left to revoke. Drop the session; the router's unauthorized
+    // handler / route guard takes it from here.
+    authStore.getState().logout({ revoke: false });
     return;
   }
   schedule();

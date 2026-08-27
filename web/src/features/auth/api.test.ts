@@ -7,7 +7,6 @@ import {
   loginLdap,
   loginLocal,
   parseBackends,
-  postLogout,
   postRefresh,
   resolveTenantByKey,
   ssoStartUrl,
@@ -80,11 +79,6 @@ describe("login API", () => {
     const refreshed = await postRefresh("seed-refresh");
     expect(refreshed.token.split(".").length).toBe(3);
     expect(refreshed.refreshToken).toMatch(/^refresh-alice-/);
-  });
-
-  it("postLogout never throws", async () => {
-    await expect(postLogout("seed-refresh")).resolves.toBeUndefined();
-    await expect(postLogout(null)).resolves.toBeUndefined();
   });
 });
 

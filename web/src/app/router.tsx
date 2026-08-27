@@ -961,7 +961,9 @@ export const router = createRouter({
 });
 
 setUnauthorizedHandler(() => {
-  authStore.getState().logout();
+  // The server just refused this session, so its refresh token is already
+  // dead — skip the revoke round trip.
+  authStore.getState().logout({ revoke: false });
   // Remember where the operator was so signing back in returns them to it,
   // rather than dropping them on their default landing page. Never capture the
   // login page itself as a destination (that would loop).

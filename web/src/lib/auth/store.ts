@@ -1,5 +1,6 @@
 import { create } from "zustand";
 import { decodeJwt, isExpired, type JwtClaims } from "./jwt";
+import { revokeStoredRefreshToken } from "./revoke";
 import {
   clearToken,
   readClaims,
@@ -15,7 +16,13 @@ export type AuthState = {
   refreshToken: string | null;
   isAuthenticated: boolean;
   login: (token: string, refreshToken?: string | null) => void;
-  logout: () => void;
+  /**
+   * Ends the session. By default the stored refresh token is also revoked
+   * server-side — clearing localStorage alone leaves it usable for the rest of
+   * its lease. Pass `{ revoke: false }` only when the token is already known to
+   * be dead (the server just rejected it), to save a pointless round trip.
+   */
+  logout: (opts?: { revoke?: boolean }) => void;
   refresh: () => void;
 };
 
@@ -53,7 +60,10 @@ export const authStore = create<AuthState>((set) => {
       }
       set(buildSnapshot(token, readClaims(), readRefreshToken()));
     },
-    logout: () => {
+    logout: (opts?: { revoke?: boolean }) => {
+      // Revoke first: clearToken() drops the very token the request needs.
+      // The call is fire-and-forget, so this costs nothing observable.
+      if (opts?.revoke !== false) revokeStoredRefreshToken();
       clearToken();
       set(buildSnapshot(null, null, null));
     },

@@ -107,4 +107,47 @@ test.describe("session expiry", () => {
     // Back where they were asked to sign in from — not the default landing page.
     await expect(page).toHaveURL(/\/web\/rules/);
   });
+
+  test("logging out revokes the refresh token server-side", async ({ page, api, server }) => {
+    const session = await api.loginSession("bob", BOB_PW);
+    expect(session.refreshToken).toBeTruthy();
+
+    await page.addInitScript(
+      ({ token, refreshToken }) => {
+        window.localStorage.setItem("snooze-token", token);
+        window.localStorage.setItem("snooze-refresh-token", refreshToken!);
+        const payload = token.split(".")[1]!;
+        window.localStorage.setItem(
+          "snooze-claims",
+          atob(payload.replace(/-/g, "+").replace(/_/g, "/")),
+        );
+      },
+      { token: session.token, refreshToken: session.refreshToken },
+    );
+
+    await page.goto(server.baseURL + "/web/alerts");
+    await expect(page).toHaveURL(/\/web\/alerts/);
+
+    await page.getByRole("button", { name: /account menu — signed in as/i }).click({ force: true });
+    // Wait for the revoke to actually land before probing, so the assertion
+    // below is about revocation and not about a race with page teardown.
+    const revoked = page.waitForResponse(
+      (r) => r.url().includes("/api/v1/login/logout") && r.status() === 204,
+    );
+    await page.getByRole("menuitem", { name: "Log out" }).click({ force: true });
+    await revoked;
+    await expect(page).toHaveURL(/\/web\/login/);
+
+    // The real test: clearing localStorage is not signing out. Until the server
+    // is told, this token keeps minting access tokens for the rest of its lease
+    // (7 days by default) for anyone who captured it.
+    //
+    // Exactly one probe — rotation revokes the presented token, so a retry loop
+    // here would go green on its own second attempt whether or not logout did
+    // anything.
+    const probe = await api.ctx.post(`${server.baseURL}/api/v1/login/refresh`, {
+      data: { refresh_token: session.refreshToken },
+    });
+    expect(probe.status()).toBe(401);
+  });
 });
