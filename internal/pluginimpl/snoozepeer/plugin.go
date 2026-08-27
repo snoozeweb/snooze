@@ -15,7 +15,6 @@ import (
 	"bytes"
 	"context"
 	_ "embed"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -91,7 +90,13 @@ func (p *Plugin) Send(ctx context.Context, rec snoozetypes.Record, payload plugi
 		return nil
 	}
 
-	body, err := json.Marshal(rec)
+	// MarshalRecord rather than json.Marshal: Record.Extra is `json:"-"`, and
+	// the peer's own pipeline needs what lives there — the escalation context a
+	// watchlist or aggregaterule escalation stamps into Extra, plus the
+	// aggregaterule counters. Without it a re-escalated alert would arrive at
+	// the peer looking like a first delivery, and the peer's notifiers would
+	// open a second ticket for an incident already being tracked.
+	body, err := plugins.MarshalRecord(rec)
 	if err != nil {
 		return fmt.Errorf("snoozepeer: marshal record: %w", err)
 	}

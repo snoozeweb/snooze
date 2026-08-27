@@ -124,10 +124,122 @@ func (p *Plugin) Send(ctx context.Context, rec snoozetypes.Record, payload plugi
 		return nil
 	}
 
-	msg := buildMessage(cfg, to, cc, subject, body)
+	thread := mailThreadFor(rec, cfg, payload)
+	if thread.InReplyTo != "" {
+		subject = escalationSubject(subject, payload.Escalation)
+	}
+
+	msg := buildMessage(cfg, to, cc, subject, body, thread)
 	rcpts := append(append(append([]string{}, to...), cc...), bcc...)
 
 	return p.deliver(ctx, cfg, rcpts, msg)
+}
+
+// mailThread carries the threading headers for one message.
+type mailThread struct {
+	// MessageID is this message's own Message-ID, set on a first delivery so a
+	// later escalation has something to reply to.
+	MessageID string
+	// InReplyTo is the first delivery's Message-ID, set on a re-escalation.
+	InReplyTo string
+	// Urgent raises the priority headers.
+	Urgent bool
+}
+
+// mailThreadFor derives the threading headers for this delivery.
+//
+// The Message-ID is deterministic — derived from the alert's own identity — so
+// no state has to be stored anywhere to thread: the escalation can reconstruct
+// exactly the id the first delivery used. That matters because mail is the one
+// notifier with no API to read a handle back from.
+func mailThreadFor(rec snoozetypes.Record, cfg smtpConfig, payload plugins.NotificationPayload) mailThread {
+	id := deterministicMessageID(rec, cfg, payload.ActionName())
+	if id == "" {
+		return mailThread{}
+	}
+	if !payload.Escalation.IsRe() {
+		return mailThread{MessageID: id}
+	}
+	// A re-escalation gets its own unique Message-ID (two messages must never
+	// share one) and points at the first delivery's.
+	return mailThread{
+		MessageID: escalationMessageID(id, payload.Escalation.Count),
+		InReplyTo: id,
+		Urgent:    true,
+	}
+}
+
+// deterministicMessageID builds the thread-root Message-ID from the alert's
+// stable identity, scoped by action so two mail actions on one alert thread
+// independently. Returns "" when there is no stable identity to key on, in
+// which case threading is skipped rather than guessed.
+func deterministicMessageID(rec snoozetypes.Record, cfg smtpConfig, actionName string) string {
+	key := rec.Hash
+	if key == "" {
+		key = rec.UID
+	}
+	if key == "" {
+		return ""
+	}
+	domain := messageIDDomain(cfg.from)
+	local := "snooze-" + key
+	if actionName != "" {
+		local += "-" + sanitizeMessageIDPart(actionName)
+	}
+	return "<" + local + "@" + domain + ">"
+}
+
+// escalationMessageID derives this escalation's own unique Message-ID from the
+// thread root's.
+func escalationMessageID(rootID string, count int) string {
+	if !strings.HasPrefix(rootID, "<") || !strings.Contains(rootID, "@") {
+		return ""
+	}
+	at := strings.Index(rootID, "@")
+	return rootID[:at] + ".esc" + strconv.Itoa(count) + rootID[at:]
+}
+
+// messageIDDomain extracts the domain to use in a Message-ID from the From
+// address, falling back to a fixed literal when From carries none. The domain
+// need not resolve — it only has to be stable, since the id is an opaque
+// correlation token.
+func messageIDDomain(from string) string {
+	if at := strings.LastIndex(from, "@"); at >= 0 {
+		domain := strings.Trim(from[at+1:], "<> ")
+		if domain != "" {
+			return domain
+		}
+	}
+	return "snooze.local"
+}
+
+// sanitizeMessageIDPart strips the characters that are not legal in the
+// addr-spec local part of a Message-ID.
+func sanitizeMessageIDPart(s string) string {
+	var b strings.Builder
+	for _, r := range s {
+		switch {
+		case r >= 'a' && r <= 'z', r >= 'A' && r <= 'Z', r >= '0' && r <= '9',
+			r == '-', r == '_', r == '.':
+			b.WriteRune(r)
+		default:
+			b.WriteRune('-')
+		}
+	}
+	return b.String()
+}
+
+// escalationSubject marks the subject so the escalation stands out in a mailbox
+// even though it is threaded under the original.
+func escalationSubject(subject string, esc plugins.Escalation) string {
+	marker := "[ESCALATED"
+	if o := esc.Ordinal(); o != "" {
+		marker += " " + o
+	}
+	marker += "]"
+	// Re: keeps mail clients that thread on subject alone in the same
+	// conversation.
+	return "Re: " + marker + " " + subject
 }
 
 // --- config -----------------------------------------------------------------
@@ -368,7 +480,12 @@ func splitAddrs(s string) []string {
 // buildMessage produces an RFC-5322-ish wire message with the standard
 // headers. We avoid MIME multipart (the Python code only sets a single body
 // part on the multipart container, so the on-the-wire result is equivalent).
-func buildMessage(cfg smtpConfig, to, cc []string, subject, body string) []byte {
+//
+// thread carries the RFC-5322 threading headers that make a re-escalation land
+// inside the original conversation in Outlook and Gmail rather than starting a
+// new one. Its zero value emits none, so a first delivery is byte-identical to
+// what this plugin produced before threading existed.
+func buildMessage(cfg smtpConfig, to, cc []string, subject, body string, thread mailThread) []byte {
 	var sb strings.Builder
 	if cfg.from != "" {
 		sb.WriteString("From: ")
@@ -388,8 +505,30 @@ func buildMessage(cfg smtpConfig, to, cc []string, subject, body string) []byte 
 	sb.WriteString("Subject: ")
 	sb.WriteString(subject)
 	sb.WriteString("\r\n")
+	if thread.MessageID != "" {
+		sb.WriteString("Message-ID: ")
+		sb.WriteString(thread.MessageID)
+		sb.WriteString("\r\n")
+	}
+	if thread.InReplyTo != "" {
+		// Both headers: Gmail keys on References, Outlook on In-Reply-To.
+		sb.WriteString("In-Reply-To: ")
+		sb.WriteString(thread.InReplyTo)
+		sb.WriteString("\r\n")
+		sb.WriteString("References: ")
+		sb.WriteString(thread.InReplyTo)
+		sb.WriteString("\r\n")
+	}
+	priority := cfg.priority
+	if thread.Urgent {
+		// An escalation is by definition more urgent than the delivery that
+		// preceded it. 1 is the highest X-Priority; Importance is the header
+		// Outlook actually renders as a red exclamation.
+		priority = 1
+		sb.WriteString("Importance: high\r\n")
+	}
 	sb.WriteString("X-Priority: ")
-	sb.WriteString(strconv.Itoa(cfg.priority))
+	sb.WriteString(strconv.Itoa(priority))
 	sb.WriteString("\r\n")
 	sb.WriteString("MIME-Version: 1.0\r\n")
 	if cfg.mtype == "html" {

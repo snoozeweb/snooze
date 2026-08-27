@@ -649,3 +649,48 @@ func TestInjectResponseDisablesBatch(t *testing.T) {
 	require.EqualValues(t, 1, atomic.LoadInt32(&injected),
 		"inject_response forces immediate dispatch even when batch is on")
 }
+
+// TestBodyTemplateExposesEscalationAndNotifyRef: webhook is the escape hatch
+// for any external system Snooze has no dedicated notifier for, so an operator
+// must be able to branch their payload on the escalation and reach the handle a
+// previous delivery stored.
+func TestBodyTemplateExposesEscalationAndNotifyRef(t *testing.T) {
+	rec := snoozetypes.Record{
+		Host: "db-1",
+		Extra: map[string]any{
+			"notify_ref_Ops": map[string]any{"issue_key": "OPS-1"},
+		},
+	}
+	payload := plugins.NotificationPayload{
+		Meta:       map[string]any{"action_name": "Ops"},
+		Escalation: plugins.Escalation{Count: 3, Reason: "timeout"},
+	}
+
+	body, _, err := renderBody(
+		`{"n":{{ .Escalation.Count }},"why":"{{ .Escalation.Reason }}","ref":{{ .NotifyRef | tojson }}}`,
+		rec, payload)
+	require.NoError(t, err)
+	require.JSONEq(t, `{"n":3,"why":"timeout","ref":{"issue_key":"OPS-1"}}`, string(body))
+}
+
+// The default (template-less) body must carry Extra, or a companion daemon
+// handed the "whole record" cannot find the ticket it already created.
+func TestDefaultBodyIncludesExtra(t *testing.T) {
+	rec := snoozetypes.Record{
+		Host:            "db-1",
+		EscalationCount: 2,
+		Extra: map[string]any{
+			"notify_ref_Ops": map[string]any{"issue_key": "OPS-1"},
+			"duplicates":     float64(4),
+		},
+	}
+	body, ct, err := renderBody("", rec, plugins.NotificationPayload{})
+	require.NoError(t, err)
+	require.Equal(t, "application/json", ct)
+
+	var doc map[string]any
+	require.NoError(t, json.Unmarshal(body, &doc))
+	require.EqualValues(t, 2, doc["escalation_count"])
+	require.EqualValues(t, 4, doc["duplicates"])
+	require.Contains(t, doc, "notify_ref_Ops")
+}

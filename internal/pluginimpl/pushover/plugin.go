@@ -124,6 +124,17 @@ func (p *Plugin) Send(ctx context.Context, rec snoozetypes.Record, payload plugi
 		return fmt.Errorf("pushover: priority: %w", err)
 	}
 
+	// Pushover has no threading, so an escalation is expressed through urgency
+	// and wording: the message is marked and the priority is raised one step
+	// (never lowered, capped at 2 = emergency, which forces retry until the
+	// recipient acknowledges). That acknowledgement requirement is the point —
+	// a re-escalated alert should not be dismissible by a glance at a lock
+	// screen.
+	if payload.Escalation.IsRe() {
+		message = payload.Escalation.PrefixMessage(message)
+		priority = raisePriority(priority)
+	}
+
 	// Build the form-encoded request body.
 	form := url.Values{}
 	form.Set("token", cfg.token)
@@ -260,6 +271,18 @@ func configFromMeta(meta map[string]any) (config, error) {
 		cfg.timeout = t
 	}
 	return cfg, nil
+}
+
+// maxPushoverPriority is Pushover's emergency priority: it retries until the
+// recipient acknowledges.
+const maxPushoverPriority = 2
+
+// raisePriority bumps a Pushover priority one step, capped at emergency.
+func raisePriority(current int) int {
+	if current >= maxPushoverPriority {
+		return maxPushoverPriority
+	}
+	return current + 1
 }
 
 // resolvePriority converts the action_form priority knob and the record's

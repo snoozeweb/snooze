@@ -441,7 +441,7 @@ func TestSend_ConnectionRefused(t *testing.T) {
 
 func TestBuildMessage_Headers(t *testing.T) {
 	cfg := smtpConfig{from: "noc@example.com", priority: 2, mtype: "html"}
-	msg := buildMessage(cfg, []string{"a@x"}, []string{"b@y"}, "Subj", "<p>hi</p>")
+	msg := buildMessage(cfg, []string{"a@x"}, []string{"b@y"}, "Subj", "<p>hi</p>", mailThread{})
 	s := string(msg)
 	require.Contains(t, s, "From: noc@example.com\r\n")
 	require.Contains(t, s, "To: a@x\r\n")

@@ -558,7 +558,7 @@ func replyToIDs(rec snoozetypes.Record, actionName string) any {
 // JSON).
 func renderBody(tmpl string, rec snoozetypes.Record, payload plugins.NotificationPayload) ([]byte, string, error) {
 	if tmpl == "" {
-		data, err := marshalFullRecord(rec)
+		data, err := plugins.MarshalRecord(rec)
 		if err != nil {
 			return nil, "", err
 		}
@@ -579,42 +579,6 @@ func renderBody(tmpl string, rec snoozetypes.Record, payload plugins.Notificatio
 		ct = "application/json"
 	}
 	return []byte(rendered), ct, nil
-}
-
-// marshalFullRecord JSON-encodes the record for the default (template-less)
-// body, flattening Record.Extra alongside the typed fields.
-//
-// Record.Extra is `json:"-"`, so a plain json.Marshal(rec) silently drops
-// everything the pipeline stamped without a typed home — the aggregaterule
-// counters, the notification attribution, the escalation context, and the
-// notify_ref_<action> handles a companion daemon needs to find the ticket or
-// thread it already created. A receiver handed the "whole record" reasonably
-// expects those, so they are folded in here.
-//
-// Purely additive: typed fields win on collision, so no existing key changes
-// shape or value — a consumer only ever sees new keys.
-func marshalFullRecord(rec snoozetypes.Record) ([]byte, error) {
-	raw, err := json.Marshal(rec)
-	if err != nil {
-		return nil, err
-	}
-	if len(rec.Extra) == 0 {
-		return raw, nil
-	}
-	var doc map[string]any
-	if err := json.Unmarshal(raw, &doc); err != nil {
-		return nil, err
-	}
-	if doc == nil {
-		doc = make(map[string]any, len(rec.Extra))
-	}
-	for k, v := range rec.Extra {
-		if _, taken := doc[k]; taken {
-			continue
-		}
-		doc[k] = v
-	}
-	return json.Marshal(doc)
 }
 
 // applyHeaders renders and sets each configured header on the request.

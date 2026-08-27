@@ -24,6 +24,7 @@ import (
 	"log/slog"
 	"os"
 	"os/exec"
+	"strconv"
 	"strings"
 	"sync"
 	"text/template"
@@ -127,7 +128,7 @@ func (p *Plugin) Send(ctx context.Context, rec snoozetypes.Record, payload plugi
 		return fmt.Errorf("script: render cwd: %w", err)
 	}
 
-	renderedEnv := make(map[string]string, len(cfg.env))
+	renderedEnv := make(map[string]string, len(cfg.env)+5)
 	for k, v := range cfg.env {
 		val, err := renderString(v, tplData)
 		if err != nil {
@@ -135,6 +136,12 @@ func (p *Plugin) Send(ctx context.Context, rec snoozetypes.Record, payload plugi
 		}
 		renderedEnv[k] = val
 	}
+	// A script is the one notifier whose escalation behaviour Snooze cannot
+	// decide, so it gets the context and makes its own call. Exported as
+	// environment rather than argv so an existing action's argument list keeps
+	// working untouched. A user-configured env entry of the same name wins:
+	// these are added only when absent.
+	addEscalationEnv(renderedEnv, rec, payload.Escalation)
 
 	// Batched dispatch: queue the rendered per-record state and return
 	// immediately. The flusher invokes the command once using the first
@@ -145,6 +152,25 @@ func (p *Plugin) Send(ctx context.Context, rec snoozetypes.Record, payload plugi
 	}
 
 	return p.runCommand(ctx, cfg, rawArgs, stdinData, renderedCWD, renderedEnv)
+}
+
+// addEscalationEnv exports the escalation context to the child process. Values
+// are always set (including the zero "0"/"" forms on a first delivery) so a
+// script can branch on them without having to distinguish "absent" from
+// "not escalated".
+func addEscalationEnv(env map[string]string, rec snoozetypes.Record, esc plugins.Escalation) {
+	vals := map[string]string{
+		"SNOOZE_STATE":             rec.State,
+		"SNOOZE_ESCALATION_COUNT":  strconv.Itoa(esc.Count),
+		"SNOOZE_ESCALATION_REASON": esc.Reason,
+		"SNOOZE_ESCALATION_ACTOR":  esc.Actor,
+		"SNOOZE_PREVIOUS_SEVERITY": esc.PreviousSeverity,
+	}
+	for k, v := range vals {
+		if _, taken := env[k]; !taken {
+			env[k] = v
+		}
+	}
 }
 
 // runCommand executes the child process with pre-rendered arguments. Used by

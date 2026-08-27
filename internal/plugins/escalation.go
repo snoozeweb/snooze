@@ -165,6 +165,42 @@ func EscalationFrom(rec snoozetypes.Record) Escalation {
 	return e
 }
 
+// MarshalRecord JSON-encodes a record for a notifier that forwards the "whole
+// record" to another system (a companion daemon, a peer, a generic webhook),
+// flattening Record.Extra alongside the typed fields.
+//
+// Record.Extra is `json:"-"`, so a plain json.Marshal drops everything the
+// pipeline stamped without a typed home: the aggregaterule counters, the
+// notification attribution, and the notify_ref_<action> handles a receiver
+// needs to find the ticket or thread it already created. A receiver handed the
+// whole record reasonably expects those.
+//
+// Purely additive: typed fields win on collision, so no existing key changes
+// shape or value — a consumer only ever sees new keys.
+func MarshalRecord(rec snoozetypes.Record) ([]byte, error) {
+	raw, err := json.Marshal(rec)
+	if err != nil {
+		return nil, err
+	}
+	if len(rec.Extra) == 0 {
+		return raw, nil
+	}
+	var doc map[string]any
+	if err := json.Unmarshal(raw, &doc); err != nil {
+		return nil, err
+	}
+	if doc == nil {
+		doc = make(map[string]any, len(rec.Extra))
+	}
+	for k, v := range rec.Extra {
+		if _, taken := doc[k]; taken {
+			continue
+		}
+		doc[k] = v
+	}
+	return json.Marshal(doc)
+}
+
 // NotifyRef returns the external handle a previous Send stored for actionName,
 // or nil when there is none.
 //

@@ -148,6 +148,13 @@ func (p *Plugin) Send(ctx context.Context, rec snoozetypes.Record, payload plugi
 	}
 
 	action := pickAction(cfg.SeverityMap, rec.Severity)
+	// A tower light has no message and no history — it is either showing
+	// something or it is not — so the only way it can express a re-escalation
+	// is by getting harder to ignore. A steady lamp starts flashing, a slow
+	// flash goes fast. The colour is left alone: that is the severity's job,
+	// and changing it would misreport what is wrong.
+	action = escalateAction(action, payload.Escalation)
+
 	reqURL, err := buildURL(cfg, action)
 	if err != nil {
 		return fmt.Errorf("patlite: build url: %w", err)
@@ -234,6 +241,31 @@ func pickAction(m map[string]SeverityAction, severity string) SeverityAction {
 		return a
 	}
 	return SeverityAction{Color: "clear"}
+}
+
+// escalationStates is the light-state progression a re-escalation walks: a
+// steady lamp starts flashing, and a slow flash becomes fast. blink2 is the most
+// insistent state the LR/LE/NH firmwares offer, so it is the end of the line.
+// An empty state means "on" per buildURL's default.
+var escalationStates = map[string]string{
+	"":    "blink1",
+	"on":  "blink1",
+	"off": "blink1",
+	// blink1 -> blink2; blink2 stays put.
+	"blink1": "blink2",
+}
+
+// escalateAction raises the light state one step for a re-escalation. A clear
+// action is returned untouched: an alert being escalated is never expressed by
+// turning the lamp off.
+func escalateAction(action SeverityAction, esc plugins.Escalation) SeverityAction {
+	if !esc.IsRe() || action.IsClear() {
+		return action
+	}
+	if next, ok := escalationStates[strings.ToLower(strings.TrimSpace(action.State))]; ok {
+		action.State = next
+	}
+	return action
 }
 
 // buildURL composes the control-endpoint URL for the chosen action.

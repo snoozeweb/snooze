@@ -110,7 +110,9 @@ func (p *Plugin) flushBucket(key, reason string) {
 		subject = formatBatchSubject(subject, len(bodies))
 	}
 	body := strings.Join(bodies, batchSeparator)
-	msg := buildMessage(cfg, to, cc, subject, body)
+	// A batched send coalesces several records, so there is no single alert to
+	// thread under — the batch goes out as its own message.
+	msg := buildMessage(cfg, to, cc, subject, body, mailThread{})
 	rcpts := append(append(append([]string{}, to...), cc...), bcc...)
 
 	ctx, cancel := context.WithTimeout(context.Background(), cfg.timeout)

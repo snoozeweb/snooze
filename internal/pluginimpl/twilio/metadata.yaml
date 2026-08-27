@@ -46,6 +46,14 @@ action_form:
         component: Text
         default_value: 'Snooze alert. {{ .Severity }} on {{ .Host }}. {{ .Message }}'
         description: 'Text spoken via TwiML <Say> in voice mode (Go text/template over the record fields). XML-special characters are automatically escaped.'
+    escalation_throttle:
+        display_name: Escalation throttle
+        component: String
+        description: 'Suppress repeat escalations for the same alert inside this window, as a Go duration (e.g. "15m"). Empty (the default) sends every escalation. Worth setting where a flapping alert could otherwise text or ring a phone — and bill for it — every minute; suppressed escalations are logged. A re-escalation is always sent in short form ("ESC #3 host: message") because SMS is billed per segment.'
+    voice_escalation_at:
+        display_name: Switch to a voice call at escalation
+        component: String
+        description: 'Escalation number at which an SMS action places a voice call instead. Empty or 0 (the default) never switches. A ringing phone is the loudest channel available, so it is worth saving for the point where the texts have demonstrably not worked.'
     api_base:
         display_name: API base URL
         component: String

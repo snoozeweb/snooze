@@ -1,6 +1,7 @@
 package plugins
 
 import (
+	"encoding/json"
 	"testing"
 	"time"
 
@@ -189,4 +190,71 @@ func TestIsNotifyRefField(t *testing.T) {
 	require.True(t, IsNotifyRefField("response_x"))
 	require.False(t, IsNotifyRefField("host"))
 	require.False(t, IsNotifyRefField("escalation_count"))
+}
+
+// TestMarshalRecordIncludesExtra is the fix for a real data-loss bug: a
+// notifier forwarding the "whole record" used to drop everything the pipeline
+// stamped without a typed home — including the notify_ref handles a companion
+// daemon needs to avoid duplicating a ticket.
+func TestMarshalRecordIncludesExtra(t *testing.T) {
+	raw, err := MarshalRecord(snoozetypes.Record{
+		Host:            "db-1",
+		EscalationCount: 2,
+		Extra: map[string]any{
+			"duplicates":               float64(7),
+			"notify_ref_Create ticket": map[string]any{"issue_key": "OPS-1"},
+		},
+	})
+	require.NoError(t, err)
+
+	var doc map[string]any
+	require.NoError(t, json.Unmarshal(raw, &doc))
+	require.Equal(t, "db-1", doc["host"])
+	require.EqualValues(t, 2, doc["escalation_count"])
+	require.EqualValues(t, 7, doc["duplicates"], "aggregaterule counters must survive")
+	ref, _ := doc["notify_ref_Create ticket"].(map[string]any)
+	require.Equal(t, "OPS-1", ref["issue_key"], "the notifier handle must survive")
+}
+
+// Typed fields win, so the change is purely additive: no existing key can
+// change shape or value because of an Extra entry.
+func TestMarshalRecordTypedFieldsWin(t *testing.T) {
+	raw, err := MarshalRecord(snoozetypes.Record{
+		Host:  "typed",
+		Extra: map[string]any{"host": "extra"},
+	})
+	require.NoError(t, err)
+
+	var doc map[string]any
+	require.NoError(t, json.Unmarshal(raw, &doc))
+	require.Equal(t, "typed", doc["host"])
+}
+
+// With no Extra the output is exactly what json.Marshal produced before, so a
+// consumer of the default webhook body sees no change at all. (A zero
+// time.Time is not elided by omitempty — pre-existing behaviour, asserted here
+// so a future change to it is a deliberate one.)
+func TestMarshalRecordWithoutExtra(t *testing.T) {
+	rec := snoozetypes.Record{Host: "db-1"}
+	raw, err := MarshalRecord(rec)
+	require.NoError(t, err)
+	plain, err := json.Marshal(rec)
+	require.NoError(t, err)
+	require.JSONEq(t, string(plain), string(raw))
+}
+
+func TestBanner(t *testing.T) {
+	require.Empty(t, Escalation{}.Banner())
+	require.Equal(t, "New escalation #1", Escalation{Count: 1}.Banner())
+	require.Equal(t, "New escalation #2 (timeout)",
+		Escalation{Count: 2, Reason: "timeout"}.Banner())
+}
+
+func TestPrefixMessage(t *testing.T) {
+	// A first fire is returned untouched, so a notifier can prefix
+	// unconditionally.
+	require.Equal(t, "disk full", Escalation{}.PrefixMessage("disk full"))
+	require.Equal(t, "⚠️ New escalation #1\ndisk full",
+		Escalation{Count: 1}.PrefixMessage("disk full"))
+	require.Equal(t, "⚠️ New escalation #1", Escalation{Count: 1}.PrefixMessage(""))
 }

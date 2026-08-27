@@ -30,7 +30,9 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"strconv"
 	"strings"
+	"sync"
 	"text/template"
 	"time"
 
@@ -70,6 +72,15 @@ type Plugin struct {
 	// newClient is the http.Client builder. Overridable from tests so that
 	// httptest servers can intercept outbound calls without needing a proxy.
 	newClient func(timeout time.Duration) *http.Client
+
+	// clock is the injectable time source used by the escalation throttle.
+	// nil means time.Now.
+	clock func() time.Time
+
+	// lastEscalation records, per alert+action, when an escalation was last
+	// sent, backing the escalation_throttle guard. Guarded by throttleMu.
+	throttleMu     sync.Mutex
+	lastEscalation map[string]time.Time
 }
 
 // Name returns the registry key.
@@ -99,9 +110,26 @@ func (p *Plugin) Send(ctx context.Context, rec snoozetypes.Record, payload plugi
 		return fmt.Errorf("twilio: config: %w", err)
 	}
 
+	esc := payload.Escalation
+	// Every recipient of a re-escalation gets the short form. SMS is billed and
+	// length-capped, so restating the full alert on the fifth escalation wastes
+	// both; what the recipient needs is that it escalated again.
+	if esc.IsRe() && cfg.EscalationThrottle > 0 {
+		if p.throttled(rec, payload.ActionName(), cfg.EscalationThrottle) {
+			p.warn("twilio: escalation suppressed by escalation_throttle",
+				"host", rec.Host, "escalation_count", esc.Count,
+				"throttle", cfg.EscalationThrottle.String())
+			return nil
+		}
+	}
+	// A sufficiently escalated alert switches to the loudest channel available.
+	if esc.IsRe() && cfg.VoiceEscalationAt > 0 && esc.Count >= cfg.VoiceEscalationAt {
+		cfg.Mode = "voice"
+	}
+
 	var errs []string
 	for _, to := range cfg.Recipients {
-		if err := p.sendOne(ctx, cfg, rec, to); err != nil {
+		if err := p.sendOne(ctx, cfg, rec, to, esc); err != nil {
 			errs = append(errs, fmt.Sprintf("%s: %v", to, err))
 		}
 	}
@@ -113,7 +141,7 @@ func (p *Plugin) Send(ctx context.Context, rec snoozetypes.Record, payload plugi
 }
 
 // sendOne dispatches a single SMS or voice call to one recipient.
-func (p *Plugin) sendOne(ctx context.Context, cfg config, rec snoozetypes.Record, to string) error {
+func (p *Plugin) sendOne(ctx context.Context, cfg config, rec snoozetypes.Record, to string, esc plugins.Escalation) error {
 	timeout := cfg.Timeout
 	if timeout <= 0 {
 		timeout = defaultTimeout
@@ -129,9 +157,9 @@ func (p *Plugin) sendOne(ctx context.Context, cfg config, rec snoozetypes.Record
 
 	switch cfg.Mode {
 	case "voice":
-		apiPath, body, err = buildVoiceRequest(cfg, rec, to)
+		apiPath, body, err = buildVoiceRequest(cfg, rec, to, esc)
 	default: // "sms" or empty
-		apiPath, body, err = buildSMSRequest(cfg, rec, to)
+		apiPath, body, err = buildSMSRequest(cfg, rec, to, esc)
 	}
 	if err != nil {
 		return err
@@ -170,7 +198,7 @@ func (p *Plugin) sendOne(ctx context.Context, cfg config, rec snoozetypes.Record
 }
 
 // buildSMSRequest constructs the URL path and form body for a Messages API call.
-func buildSMSRequest(cfg config, rec snoozetypes.Record, to string) (string, url.Values, error) {
+func buildSMSRequest(cfg config, rec snoozetypes.Record, to string, esc plugins.Escalation) (string, url.Values, error) {
 	msgTmpl := cfg.Message
 	if msgTmpl == "" {
 		msgTmpl = defaultMessageTmpl
@@ -179,6 +207,7 @@ func buildSMSRequest(cfg config, rec snoozetypes.Record, to string) (string, url
 	if err != nil {
 		return "", nil, fmt.Errorf("render message: %w", err)
 	}
+	msg = escalationSMS(msg, rec, esc)
 
 	path := fmt.Sprintf("/2010-04-01/Accounts/%s/Messages.json", cfg.AccountSID)
 	form := url.Values{
@@ -192,7 +221,7 @@ func buildSMSRequest(cfg config, rec snoozetypes.Record, to string) (string, url
 // buildVoiceRequest constructs the URL path and form body for a Calls API call.
 // The voice_message is rendered as a Go template and then XML-escaped before
 // embedding in the <Say> element so alert content cannot break the TwiML structure.
-func buildVoiceRequest(cfg config, rec snoozetypes.Record, to string) (string, url.Values, error) {
+func buildVoiceRequest(cfg config, rec snoozetypes.Record, to string, esc plugins.Escalation) (string, url.Values, error) {
 	voiceTmpl := cfg.VoiceMessage
 	if voiceTmpl == "" {
 		voiceTmpl = defaultVoiceMessageTmpl
@@ -200,6 +229,9 @@ func buildVoiceRequest(cfg config, rec snoozetypes.Record, to string) (string, u
 	sayText, err := renderTemplate(voiceTmpl, rec)
 	if err != nil {
 		return "", nil, fmt.Errorf("render voice_message: %w", err)
+	}
+	if banner := esc.Banner(); banner != "" {
+		sayText = banner + ". " + sayText
 	}
 
 	twiml := fmt.Sprintf("<Response><Say>%s</Say></Response>", xmlEscape(sayText))
@@ -238,6 +270,93 @@ type config struct {
 	VoiceMessage string // <Say> template
 	APIBase      string
 	Timeout      time.Duration
+
+	// EscalationThrottle suppresses repeat escalations for one alert inside
+	// this window. Off (0) by default: dropping a page is worse than paying
+	// for one, so an operator has to opt in. Set it when a flapping alert
+	// could otherwise ring a phone (and bill for it) every minute.
+	EscalationThrottle time.Duration
+	// VoiceEscalationAt switches an SMS action to a voice call once the
+	// escalation count reaches this number. Off (0) by default. A ringing
+	// phone is the loudest channel available, and worth saving for the point
+	// where the texts have demonstrably not worked.
+	VoiceEscalationAt int
+}
+
+// escalationSMS returns the short form sent on a re-escalation.
+//
+// SMS is billed per segment and capped in length, so restating the whole alert
+// on the fifth escalation wastes both. What the recipient needs is that this
+// escalated again, and which alert.
+func escalationSMS(msg string, rec snoozetypes.Record, esc plugins.Escalation) string {
+	if !esc.IsRe() {
+		return msg
+	}
+	head := "ESC"
+	if o := esc.Ordinal(); o != "" {
+		head += " " + o
+	}
+	if rec.Host != "" {
+		head += " " + rec.Host
+	}
+	if rec.Message == "" {
+		return head
+	}
+	return head + ": " + rec.Message
+}
+
+// throttled reports whether an escalation for this alert+action fell inside the
+// configured window, and records this one when it did not.
+//
+// The state is per-process and in memory: it is a cost guard, not a correctness
+// mechanism, so losing it on restart is acceptable. Entries older than the
+// window are pruned on each call, which keeps the map proportional to the
+// number of alerts actively escalating rather than to all alerts ever seen.
+func (p *Plugin) throttled(rec snoozetypes.Record, actionName string, window time.Duration) bool {
+	key := rec.Hash
+	if key == "" {
+		key = rec.UID
+	}
+	if key == "" {
+		return false
+	}
+	key += "|" + actionName
+
+	now := p.now()
+	p.throttleMu.Lock()
+	defer p.throttleMu.Unlock()
+	if p.lastEscalation == nil {
+		p.lastEscalation = map[string]time.Time{}
+	}
+	for k, at := range p.lastEscalation {
+		if now.Sub(at) > window {
+			delete(p.lastEscalation, k)
+		}
+	}
+	if at, ok := p.lastEscalation[key]; ok && now.Sub(at) < window {
+		return true
+	}
+	p.lastEscalation[key] = now
+	return false
+}
+
+// now returns the current time through the injectable clock so the throttle is
+// testable without sleeping.
+func (p *Plugin) now() time.Time {
+	if p.clock != nil {
+		return p.clock()
+	}
+	return time.Now()
+}
+
+// warn logs at warn level when a host with a logger is wired.
+func (p *Plugin) warn(msg string, args ...any) {
+	if p.host == nil {
+		return
+	}
+	if lg := p.host.Logger(); lg != nil {
+		lg.Warn(msg, args...)
+	}
 }
 
 // configFromMeta decodes config from the action_form Meta map. All required
@@ -293,6 +412,11 @@ func configFromMeta(meta map[string]any) (config, error) {
 	if b := metaString(meta, "api_base"); b != "" {
 		cfg.APIBase = strings.TrimRight(b, "/")
 	}
+	if t, ok := parseTimeout(meta["escalation_throttle"]); ok {
+		cfg.EscalationThrottle = t
+	}
+	cfg.VoiceEscalationAt = intFromMeta(meta, "voice_escalation_at")
+
 	if t, ok := parseTimeout(meta["timeout"]); ok {
 		cfg.Timeout = t
 	}
@@ -303,6 +427,27 @@ func configFromMeta(meta map[string]any) (config, error) {
 func metaString(m map[string]any, key string) string {
 	v, _ := m[key].(string)
 	return v
+}
+
+// intFromMeta reads a non-negative integer knob, tolerating the numeric and
+// string shapes an action form can store. Anything unparseable is 0 (off).
+func intFromMeta(meta map[string]any, key string) int {
+	switch v := meta[key].(type) {
+	case int:
+		return max(v, 0)
+	case int64:
+		return max(int(v), 0)
+	case float64:
+		return max(int(v), 0)
+	case string:
+		n, err := strconv.Atoi(strings.TrimSpace(v))
+		if err != nil {
+			return 0
+		}
+		return max(n, 0)
+	default:
+		return 0
+	}
 }
 
 // parseTimeout accepts a duration string, int/float64 seconds, or time.Duration.

@@ -200,3 +200,40 @@ func TestRegistration(t *testing.T) {
 	t.Parallel()
 	require.True(t, slices.Contains(plugins.Registered(), "snoozepeer"))
 }
+
+// TestForwardedRecordKeepsEscalationContext: a peer runs its own pipeline and
+// its own notifiers. If the escalation context did not survive the hop, the
+// peer would see a re-escalated alert as a first delivery and open a second
+// ticket for an incident already being tracked.
+func TestForwardedRecordKeepsEscalationContext(t *testing.T) {
+	var body []byte
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, _ = io.ReadAll(r.Body)
+		w.WriteHeader(http.StatusOK)
+	}))
+	t.Cleanup(srv.Close)
+
+	p := &Plugin{}
+	rec := snoozetypes.Record{
+		Host:            "db-1",
+		EscalationCount: 3,
+		// A watchlist escalation stamps the context into Extra rather than the
+		// typed fields, and Extra is `json:"-"` — this is the case a plain
+		// json.Marshal would silently drop.
+		Extra: map[string]any{
+			"escalation_reason":        "watchlist",
+			"notify_ref_Create ticket": map[string]any{"issue_key": "OPS-1"},
+		},
+	}
+	err := p.Send(context.Background(), rec, plugins.NotificationPayload{
+		Meta: map[string]any{"endpoint": srv.URL, "action_name": "peer-b"},
+	})
+	require.NoError(t, err)
+
+	var doc map[string]any
+	require.NoError(t, json.Unmarshal(body, &doc))
+	require.EqualValues(t, 3, doc["escalation_count"])
+	require.Equal(t, "watchlist", doc["escalation_reason"])
+	require.Contains(t, doc, "notify_ref_Create ticket",
+		"the peer needs the handle to update the ticket rather than create one")
+}

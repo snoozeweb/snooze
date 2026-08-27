@@ -26,6 +26,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"strconv"
 	"strings"
 	"text/template"
 	"time"
@@ -124,6 +125,7 @@ func (p *Plugin) Send(ctx context.Context, rec snoozetypes.Record, payload plugi
 	if s := snsSubject(subject); s != "" {
 		form.Set("Subject", s)
 	}
+	setEscalationAttributes(form, payload.Escalation)
 	body := []byte(form.Encode())
 
 	endpoint := cfg.Endpoint
@@ -186,6 +188,39 @@ func (p *Plugin) Send(ctx context.Context, rec snoozetypes.Record, payload plugi
 		return fmt.Errorf("sns: HTTP %d: %s", resp.StatusCode, truncate(preview, 400))
 	}
 	return nil
+}
+
+// setEscalationAttributes adds the escalation context as SNS message
+// attributes, so a subscriber (a Lambda, an SQS consumer, a filter policy) can
+// route on it without parsing the message body. Nothing is added on a first
+// delivery, so that payload is unchanged.
+//
+// IMPORTANT for any future FIFO support: this plugin publishes to a standard
+// topic today and sets no MessageDeduplicationId. If one is ever added it MUST
+// incorporate the escalation count — a dedup id derived from the alert hash
+// alone would make AWS silently DISCARD every escalation as a duplicate of the
+// first delivery, which is the worst possible failure mode: no error, no
+// message, no page. MessageGroupId is the field that should carry the
+// alert-stable value, for ordering.
+func setEscalationAttributes(form url.Values, esc plugins.Escalation) {
+	if !esc.IsRe() {
+		return
+	}
+	i := 0
+	add := func(name, typ, value string) {
+		if value == "" {
+			return
+		}
+		i++
+		prefix := fmt.Sprintf("MessageAttributes.entry.%d.", i)
+		form.Set(prefix+"Name", name)
+		form.Set(prefix+"Value.DataType", typ)
+		form.Set(prefix+"Value.StringValue", value)
+	}
+	add("escalation_count", "Number", strconv.Itoa(esc.Count))
+	add("escalation_reason", "String", esc.Reason)
+	add("escalated_by", "String", esc.Actor)
+	add("previous_severity", "String", esc.PreviousSeverity)
 }
 
 // snsSubject trims the rendered subject and clamps it to the SNS limit. SNS

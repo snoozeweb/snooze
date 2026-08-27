@@ -19,6 +19,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strconv"
 	"strings"
 	"text/template"
 	"time"
@@ -163,6 +164,16 @@ func (p *Plugin) Send(ctx context.Context, rec snoozetypes.Record, payload plugi
 		tags = deriveTags(rec.Severity)
 	}
 
+	// ntfy has no threading and no per-message handle, so an escalation is
+	// expressed through urgency and wording instead: the body is marked, the
+	// priority is raised (never lowered, and clamped to ntfy's max of 5), and a
+	// siren tag is added so the notification looks different on the phone.
+	if payload.Escalation.IsRe() {
+		body = payload.Escalation.PrefixMessage(body)
+		priority = raisePriority(priority)
+		tags = addTag(tags, escalationTag)
+	}
+
 	// Build the target URL: {server}/{topic}.  Strip any trailing slash from
 	// the server URL to avoid a double slash.
 	server := strings.TrimRight(cfg.Server, "/")
@@ -288,6 +299,40 @@ func configFromMeta(m map[string]any) (Config, error) {
 
 // derivePriority returns the ntfy priority string for a given Snooze severity.
 // Unknown severities fall back to "2" (low).
+// escalationTag is the ntfy emoji shortcode added to a re-escalation so it is
+// visually distinct in the notification list.
+const escalationTag = "rotating_light"
+
+// maxNtfyPriority is ntfy's highest priority value.
+const maxNtfyPriority = 5
+
+// raisePriority bumps a numeric ntfy priority by one, clamped at the maximum.
+// A non-numeric or absent priority becomes the maximum: the caller only asks
+// for a raise on a re-escalation, where erring loud is the right default.
+func raisePriority(current string) string {
+	n, err := strconv.Atoi(strings.TrimSpace(current))
+	if err != nil {
+		return strconv.Itoa(maxNtfyPriority)
+	}
+	if n >= maxNtfyPriority {
+		return strconv.Itoa(maxNtfyPriority)
+	}
+	return strconv.Itoa(n + 1)
+}
+
+// addTag appends tag to a comma-separated ntfy tag list, skipping a duplicate.
+func addTag(tags, tag string) string {
+	if tags == "" {
+		return tag
+	}
+	for _, existing := range strings.Split(tags, ",") {
+		if strings.TrimSpace(existing) == tag {
+			return tags
+		}
+	}
+	return tags + "," + tag
+}
+
 func derivePriority(severity string) string {
 	if p, ok := severityPriority[strings.ToLower(severity)]; ok {
 		return p
