@@ -30,7 +30,8 @@ action_form:
     thread_key:
         display_name: Thread Key
         component: String
-        description: 'When set, replies are threaded under this key (Go text/template). Use {{ .Hash }} to group duplicates.'
+        default_value: '{{ .Hash }}'
+        description: 'Groups messages into one Chat thread (Go text/template). Defaults to the alert hash, so every occurrence and re-escalation of an alert lands in the same thread and a re-escalation posts a short reply instead of a repeated card. Clear it to make every message start its own conversation.'
     timeout:
         display_name: Timeout
         component: String

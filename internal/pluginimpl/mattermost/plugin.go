@@ -78,6 +78,11 @@ func (p *Plugin) Send(ctx context.Context, rec snoozetypes.Record, payload plugi
 	if err != nil {
 		return fmt.Errorf("mattermost: render message: %w", err)
 	}
+	// A Mattermost incoming webhook returns no post id, so this mode cannot
+	// thread (root_id needs the API with a token): a re-escalation posts a
+	// normal message carrying the escalation marker.
+	msg = payload.Escalation.PrefixMessage(msg)
+
 	body, err := buildPayload(cfg, rec, msg)
 	if err != nil {
 		return fmt.Errorf("mattermost: build payload: %w", err)

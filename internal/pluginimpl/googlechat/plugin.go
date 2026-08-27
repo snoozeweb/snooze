@@ -102,7 +102,9 @@ func (p *Plugin) Send(ctx context.Context, rec snoozetypes.Record, payload plugi
 		return fmt.Errorf("googlechat: render message: %w", err)
 	}
 
-	// Render the thread_key template (may be empty).
+	// Render the thread_key template. It defaults to the alert's hash so every
+	// occurrence and re-escalation of one alert lands in one Chat thread
+	// instead of starting a new conversation each time.
 	threadKey, err := renderTemplate("thread_key", cfg.threadKey, rec)
 	if err != nil {
 		return fmt.Errorf("googlechat: render thread_key: %w", err)
@@ -120,8 +122,18 @@ func (p *Plugin) Send(ctx context.Context, rec snoozetypes.Record, payload plugi
 		}
 	}
 
+	// A re-escalation posts a short text reply rather than repeating the card:
+	// the thread root already shows host / severity / message, so a second full
+	// card is noise that buries the one new fact (that this escalated again).
+	// Mirrors the Teams bridge's threaded-reply behaviour.
+	useCard := cfg.useCard
+	if payload.Escalation.IsRe() && threadKey != "" {
+		msgText = payload.Escalation.PrefixMessage(msgText)
+		useCard = false
+	}
+
 	// Build the JSON body.
-	body, err := buildBody(rec, msgText, threadKey, cfg.useCard)
+	body, err := buildBody(rec, msgText, threadKey, useCard)
 	if err != nil {
 		return fmt.Errorf("googlechat: build body: %w", err)
 	}
@@ -167,13 +179,20 @@ type config struct {
 	timeout    time.Duration
 }
 
+// defaultThreadKey groups every occurrence and re-escalation of one alert into
+// a single Chat thread. Before this was the default, each re-escalation started
+// a fresh conversation, so a channel watching a flapping alert filled with
+// identical unlinked cards.
+const defaultThreadKey = "{{ .Hash }}"
+
 // configFromMeta decodes config from the payload Meta map. Missing fields fall
 // back to sensible defaults; a missing webhook_url is a hard error.
 func configFromMeta(meta map[string]any) (config, error) {
 	cfg := config{
-		message: defaultMessage,
-		useCard: true,
-		timeout: defaultTimeout,
+		message:   defaultMessage,
+		useCard:   true,
+		threadKey: defaultThreadKey,
+		timeout:   defaultTimeout,
 	}
 
 	if meta == nil {
@@ -199,6 +218,9 @@ func configFromMeta(meta map[string]any) (config, error) {
 		cfg.useCard = strings.EqualFold(v, "true")
 	}
 
+	// An explicitly configured thread_key wins, including an explicit empty
+	// string — an operator who wants every alert as its own conversation must
+	// be able to say so.
 	if v, ok := meta["thread_key"].(string); ok {
 		cfg.threadKey = v
 	}

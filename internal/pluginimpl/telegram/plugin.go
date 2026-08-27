@@ -55,6 +55,13 @@ type sendMessageRequest struct {
 	ParseMode           string                `json:"parse_mode,omitempty"`
 	DisableNotification bool                  `json:"disable_notification,omitempty"`
 	ReplyMarkup         *inlineKeyboardMarkup `json:"reply_markup,omitempty"`
+	// ReplyToMessageID threads a re-escalation under the message the alert's
+	// first delivery posted.
+	ReplyToMessageID int64 `json:"reply_to_message_id,omitempty"`
+	// AllowSendingWithoutReply keeps the message deliverable when the message
+	// being replied to has been deleted — otherwise Telegram rejects the whole
+	// send and the escalation is lost.
+	AllowSendingWithoutReply bool `json:"allow_sending_without_reply,omitempty"`
 }
 
 // inlineKeyboardMarkup is the Telegram inline keyboard attached below a message
@@ -98,6 +105,9 @@ func buildInteractiveKeyboard(rec snoozetypes.Record) *inlineKeyboardMarkup {
 type sendMessageResponse struct {
 	OK          bool   `json:"ok"`
 	Description string `json:"description,omitempty"`
+	Result      struct {
+		MessageID int64 `json:"message_id"`
+	} `json:"result"`
 }
 
 // Config collects the per-action knobs extracted from payload.Meta.
@@ -167,11 +177,28 @@ func (p *Plugin) Send(ctx context.Context, rec snoozetypes.Record, payload plugi
 		parseMode = ""
 	}
 
+	// A re-escalation replies under the message the first delivery posted, so
+	// the chat shows one conversation per alert instead of a wall of unlinked
+	// messages. Editing the original instead is deliberately NOT done: an edit
+	// is silent in Telegram, so nobody would learn the alert had escalated.
+	actionName := payload.ActionName()
+	replyTo := int64(0)
+	if payload.Escalation.IsRe() {
+		// The banner goes on regardless of whether a root was found: a
+		// re-escalation must read as one even when there is no thread to hang
+		// it under (a first delivery that predates this feature, or one whose
+		// send failed).
+		text = payload.Escalation.PrefixMessage(text)
+		replyTo = notifyRefInt64(rec, actionName, refMessageID)
+	}
+
 	reqBody := sendMessageRequest{
-		ChatID:              cfg.ChatID,
-		Text:                text,
-		ParseMode:           parseMode,
-		DisableNotification: cfg.DisableNotification,
+		ChatID:                   cfg.ChatID,
+		Text:                     text,
+		ParseMode:                parseMode,
+		DisableNotification:      cfg.DisableNotification,
+		ReplyToMessageID:         replyTo,
+		AllowSendingWithoutReply: replyTo != 0,
 	}
 	if cfg.Interactive {
 		reqBody.ReplyMarkup = buildInteractiveKeyboard(rec)
@@ -218,7 +245,39 @@ func (p *Plugin) Send(ctx context.Context, rec snoozetypes.Record, payload plugi
 		}
 		return fmt.Errorf("telegram: API error: %s", desc)
 	}
+	// Remember the thread root so the alert's next escalation replies under it.
+	// Only the FIRST delivery's id is stored: replying to a reply would nest the
+	// conversation one level deeper on every escalation.
+	if replyTo == 0 && apiResp.Result.MessageID != 0 {
+		plugins.StoreNotifyRef(payload, actionName,
+			plugins.MergeNotifyRef(rec, actionName, map[string]any{refMessageID: apiResp.Result.MessageID}))
+	}
 	return nil
+}
+
+// refMessageID is the key under which the thread root's message id is persisted
+// on the alert (see plugins.NotifyRef).
+const refMessageID = "message_id"
+
+// notifyRefInt64 reads a numeric handle field, tolerating the shapes a JSON
+// round-trip and the two drivers produce.
+func notifyRefInt64(rec snoozetypes.Record, actionName, key string) int64 {
+	ref := plugins.NotifyRef(rec, actionName)
+	if ref == nil {
+		return 0
+	}
+	switch v := ref[key].(type) {
+	case int64:
+		return v
+	case int:
+		return int64(v)
+	case int32:
+		return int64(v)
+	case float64:
+		return int64(v)
+	default:
+		return 0
+	}
 }
 
 // defaultClient returns an http.Client with the given timeout.

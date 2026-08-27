@@ -330,7 +330,7 @@ func TestBuildPayload_InteractiveButtons(t *testing.T) {
 	rec := sampleRecord() // uid rec-1, state "" (not resolved)
 
 	cfg := config{Interactive: true, WebhookURL: "https://hooks.slack/x"}
-	body, err := buildPayload(cfg, rec, "disk full")
+	body, err := buildPayload(cfg, rec, "disk full", "", plugins.Escalation{})
 	require.NoError(t, err)
 
 	var got webhookPayload
@@ -360,7 +360,7 @@ func TestBuildPayload_InteractiveResolvedNoButtons(t *testing.T) {
 	rec.State = "close"
 
 	cfg := config{Interactive: true, WebhookURL: "https://hooks.slack/x"}
-	body, err := buildPayload(cfg, rec, "disk full")
+	body, err := buildPayload(cfg, rec, "disk full", "", plugins.Escalation{})
 	require.NoError(t, err)
 
 	var got webhookPayload
@@ -375,7 +375,7 @@ func TestBuildPayload_InteractiveResolvedNoButtons(t *testing.T) {
 func TestBuildPayload_InteractiveDefaultOff(t *testing.T) {
 	rec := sampleRecord()
 	cfg := config{WebhookURL: "https://hooks.slack/x"}
-	body, err := buildPayload(cfg, rec, "disk full")
+	body, err := buildPayload(cfg, rec, "disk full", "", plugins.Escalation{})
 	require.NoError(t, err)
 	require.NotContains(t, string(body), `"actions"`, "default path must not emit an actions block")
 }

@@ -108,16 +108,46 @@ func (p *Plugin) Send(ctx context.Context, rec snoozetypes.Record, payload plugi
 		return fmt.Errorf("slack: render message: %w", err)
 	}
 
-	body, err := buildPayload(cfg, rec, msg)
+	// Threading is bot-token only: an incoming webhook returns no message ts,
+	// so there is nothing to thread under. In webhook mode a re-escalation
+	// posts a normal message carrying the escalation marker — documented as a
+	// limitation of that mode rather than silently doing nothing.
+	actionName := payload.ActionName()
+	threadTS := ""
+	if cfg.BotToken != "" && payload.Escalation.IsRe() {
+		threadTS = plugins.NotifyRefString(rec, actionName, refThreadTS)
+	}
+	if threadTS == "" && payload.Escalation.IsRe() {
+		msg = payload.Escalation.PrefixMessage(msg)
+	}
+
+	body, err := buildPayload(cfg, rec, msg, threadTS, payload.Escalation)
 	if err != nil {
 		return fmt.Errorf("slack: build payload: %w", err)
 	}
 
-	return p.post(ctx, cfg, body)
+	ts, err := p.post(ctx, cfg, body)
+	if err != nil {
+		return err
+	}
+	// Remember the thread root so the alert's next escalation replies under it.
+	// Only the FIRST delivery's ts is stored: Slack threads are one level deep,
+	// and replying to a reply's ts would start a second thread.
+	if threadTS == "" && ts != "" {
+		plugins.StoreNotifyRef(payload, actionName,
+			plugins.MergeNotifyRef(rec, actionName, map[string]any{refThreadTS: ts}))
+	}
+	return nil
 }
 
-// post dispatches the JSON body to Slack (webhook or bot-token mode).
-func (p *Plugin) post(ctx context.Context, cfg config, body []byte) error {
+// refThreadTS is the key under which the thread root's Slack ts is persisted on
+// the alert (see plugins.NotifyRef).
+const refThreadTS = "thread_ts"
+
+// post dispatches the JSON body to Slack (webhook or bot-token mode) and
+// returns the posted message's ts in bot-token mode ("" in webhook mode, which
+// returns no message identity at all).
+func (p *Plugin) post(ctx context.Context, cfg config, body []byte) (string, error) {
 	timeout := cfg.Timeout
 	if timeout <= 0 {
 		timeout = defaultTimeout
@@ -135,7 +165,7 @@ func (p *Plugin) post(ctx context.Context, cfg config, body []byte) error {
 
 	req, err := http.NewRequestWithContext(reqCtx, http.MethodPost, url, bytes.NewReader(body))
 	if err != nil {
-		return fmt.Errorf("slack: build request: %w", err)
+		return "", fmt.Errorf("slack: build request: %w", err)
 	}
 	req.Header.Set("Content-Type", "application/json; charset=utf-8")
 	if cfg.BotToken != "" {
@@ -145,31 +175,36 @@ func (p *Plugin) post(ctx context.Context, cfg config, body []byte) error {
 	client := p.newClient(timeout)
 	resp, err := client.Do(req)
 	if err != nil {
-		return fmt.Errorf("slack: do request: %w", err)
+		return "", fmt.Errorf("slack: do request: %w", err)
 	}
 	defer resp.Body.Close() //nolint:errcheck
 
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return fmt.Errorf("slack: HTTP %d", resp.StatusCode)
+		return "", fmt.Errorf("slack: HTTP %d", resp.StatusCode)
 	}
 
 	// In bot-token mode Slack always returns 200 even on logical failures;
-	// we must decode the body and inspect the ok field.
+	// we must decode the body and inspect the ok field. The same body carries
+	// the posted message's ts, which is the handle a later escalation threads
+	// under.
 	if cfg.BotToken != "" {
 		var apiResp struct {
 			OK    bool   `json:"ok"`
 			Error string `json:"error"`
+			TS    string `json:"ts"`
 		}
 		if err := json.NewDecoder(resp.Body).Decode(&apiResp); err != nil {
 			// Undecodable body after a 200 is treated as success — Slack may
-			// extend the response shape in future versions.
-			return nil
+			// extend the response shape in future versions. No ts, so the next
+			// escalation posts a new root rather than threading.
+			return "", nil
 		}
 		if !apiResp.OK {
-			return fmt.Errorf("slack: api error: %s", apiResp.Error)
+			return "", fmt.Errorf("slack: api error: %s", apiResp.Error)
 		}
+		return apiResp.TS, nil
 	}
-	return nil
+	return "", nil
 }
 
 // defaultClient returns a plain http.Client with the given deadline.
@@ -379,10 +414,18 @@ type botPayload struct {
 	Text        string            `json:"text,omitempty"`
 	Blocks      []slackBlock      `json:"blocks,omitempty"`
 	Attachments []slackAttachment `json:"attachments,omitempty"`
+	// ThreadTS threads a re-escalation under the message the alert's first
+	// delivery posted.
+	ThreadTS string `json:"thread_ts,omitempty"`
+	// ReplyBroadcast surfaces a threaded reply in the channel as well. Without
+	// it a re-escalation would only be visible to whoever is already following
+	// the thread, which defeats the point of escalating.
+	ReplyBroadcast bool `json:"reply_broadcast,omitempty"`
 }
 
-// buildPayload assembles the JSON body for either Slack mode.
-func buildPayload(cfg config, rec snoozetypes.Record, msg string) ([]byte, error) {
+// buildPayload assembles the JSON body for either Slack mode. threadTS is the
+// message the reply should be threaded under, or "" for a new root message.
+func buildPayload(cfg config, rec snoozetypes.Record, msg, threadTS string, esc plugins.Escalation) ([]byte, error) {
 	resolved := rec.State == "close"
 	color := severityColor(rec.Severity, resolved)
 
@@ -390,6 +433,9 @@ func buildPayload(cfg config, rec snoozetypes.Record, msg string) ([]byte, error
 	displayMsg := msg
 	if resolved && !strings.HasPrefix(msg, "✅") {
 		displayMsg = "✅ Resolved: " + msg
+	}
+	if threadTS != "" {
+		displayMsg = esc.PrefixMessage(displayMsg)
 	}
 
 	blocks := []slackBlock{
@@ -411,10 +457,12 @@ func buildPayload(cfg config, rec snoozetypes.Record, msg string) ([]byte, error
 
 	if cfg.BotToken != "" {
 		p := botPayload{
-			Channel:     cfg.Channel,
-			Text:        displayMsg,
-			Blocks:      blocks,
-			Attachments: []slackAttachment{attachment},
+			Channel:        cfg.Channel,
+			Text:           displayMsg,
+			Blocks:         blocks,
+			Attachments:    []slackAttachment{attachment},
+			ThreadTS:       threadTS,
+			ReplyBroadcast: threadTS != "",
 		}
 		return json.Marshal(p)
 	}

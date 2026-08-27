@@ -10,6 +10,7 @@ import (
 	"log/slog"
 	"net/http"
 	"net/url"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -365,9 +366,22 @@ func formatEscalationReply(records []snoozetypes.Record, _ string) string {
 		b.WriteString("⚠️ <b>New escalation</b> ⚠️")
 	case 1:
 		rec := records[0]
-		b.WriteString("⚠️ <b>New escalation</b> on ")
+		b.WriteString("⚠️ <b>New escalation")
+		// The ordinal turns a wall of near-identical replies into something an
+		// operator can read: "#7" says at a glance that this alert is flapping
+		// rather than newly broken.
+		if o := escalationOrdinal(rec); o != "" {
+			b.WriteString(" ")
+			b.WriteString(o)
+		}
+		b.WriteString("</b> on ")
 		b.WriteString(html.EscapeString(alertTimestamp(rec)))
 		b.WriteString(" ⚠️")
+		if reason := rec.EscalationReason; reason != "" {
+			b.WriteString(" <i>(")
+			b.WriteString(html.EscapeString(reason))
+			b.WriteString(")</i>")
+		}
 		if rec.Message != "" {
 			b.WriteString("<br>")
 			b.WriteString(html.EscapeString(rec.Message))
@@ -388,6 +402,16 @@ func formatEscalationReply(records []snoozetypes.Record, _ string) string {
 		}
 	}
 	return "<p>" + b.String() + "</p>" + botMarker
+}
+
+// escalationOrdinal renders the alert's escalation count as "#N", or "" when
+// the field is absent (an alert from a server predating the escalation
+// bookkeeping, which keeps the original wording).
+func escalationOrdinal(rec snoozetypes.Record) string {
+	if rec.EscalationCount <= 0 {
+		return ""
+	}
+	return "#" + strconv.Itoa(rec.EscalationCount)
 }
 
 // formatAlertsCard renders one or more alerts targeting the same channel as

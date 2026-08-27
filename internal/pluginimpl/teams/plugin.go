@@ -94,6 +94,13 @@ func (p *Plugin) Send(ctx context.Context, rec snoozetypes.Record, payload plugi
 	if err != nil {
 		return fmt.Errorf("teams: render message: %w", err)
 	}
+	// A Teams incoming webhook returns no message identity, so this mode cannot
+	// thread: a re-escalation posts a normal card carrying the escalation
+	// marker. Real threaded replies are the optional snooze-teams daemon's job
+	// (internal/components/teams), which posts through the Graph API and does
+	// get a message id back.
+	text = payload.Escalation.PrefixMessage(text)
+
 	body, err := buildPayload(rec, title, text)
 	if err != nil {
 		return fmt.Errorf("teams: build payload: %w", err)

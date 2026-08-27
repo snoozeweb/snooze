@@ -73,6 +73,39 @@ func (e Escalation) Ordinal() string {
 	return "#" + itoa(e.Count)
 }
 
+// Banner is the short human-facing marker a notifier prefixes onto a
+// re-escalation message: "New escalation #3 (timeout)". Empty on a first fire,
+// so a caller can prefix unconditionally.
+//
+// Deliberately plain text with no markup: the chat notifiers that use it have
+// operator-configurable (or absent) markup modes, and a literal "*" showing up
+// in a page is worse than an unstyled one.
+func (e Escalation) Banner() string {
+	if e.Count <= 0 {
+		return ""
+	}
+	b := "New escalation " + e.Ordinal()
+	if e.Reason != "" {
+		b += " (" + e.Reason + ")"
+	}
+	return b
+}
+
+// PrefixMessage returns msg with the escalation Banner prepended on its own
+// line, or msg unchanged on a first fire. The canonical way for a notifier that
+// cannot thread to distinguish a re-escalation from a first delivery.
+func (e Escalation) PrefixMessage(msg string) string {
+	banner := e.Banner()
+	switch {
+	case banner == "":
+		return msg
+	case msg == "":
+		return "⚠️ " + banner
+	default:
+		return "⚠️ " + banner + "\n" + msg
+	}
+}
+
 // itoa avoids pulling strconv into every caller of Ordinal.
 func itoa(n int) string {
 	if n == 0 {

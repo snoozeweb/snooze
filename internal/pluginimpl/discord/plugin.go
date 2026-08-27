@@ -120,7 +120,7 @@ func (p *Plugin) Send(ctx context.Context, rec snoozetypes.Record, payload plugi
 		return fmt.Errorf("discord: config: %w", err)
 	}
 
-	msg, err := buildMessage(cfg, rec)
+	msg, err := buildMessage(cfg, rec, payload.Escalation)
 	if err != nil {
 		return fmt.Errorf("discord: build message: %w", err)
 	}
@@ -222,11 +222,16 @@ func configFromMeta(m map[string]any) (config, error) {
 }
 
 // buildMessage renders the discord payload for the given record.
-func buildMessage(cfg config, rec snoozetypes.Record) (discordMessage, error) {
+// buildMessage renders the Discord message. A re-escalation carries the
+// escalation marker rather than a threaded reply: Discord webhooks cannot
+// create a thread on their own message (that needs a bot token), so this mode
+// has no threading to offer.
+func buildMessage(cfg config, rec snoozetypes.Record, esc plugins.Escalation) (discordMessage, error) {
 	text, err := renderTemplate("message", cfg.Message, rec)
 	if err != nil {
 		return discordMessage{}, err
 	}
+	text = esc.PrefixMessage(text)
 
 	msg := discordMessage{
 		Username:  cfg.Username,
