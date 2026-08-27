@@ -1,4 +1,5 @@
-import { readRefreshToken, readToken, writeRefreshToken, writeToken } from "@/lib/auth/storage";
+import { readRefreshToken, readToken } from "@/lib/auth/storage";
+import { ensureRotation } from "@/lib/auth/session";
 
 export class ApiError extends Error {
   constructor(
@@ -96,42 +97,6 @@ export function setUnauthorizedHandler(handler: (() => void) | null): void {
   unauthorizedHandler = handler;
 }
 
-// In-flight refresh promise. Multiple concurrent 401s share one /refresh
-// call so we never queue up parallel rotations of the same token (which
-// would race and revoke each other).
-let refreshInFlight: Promise<string | null> | null = null;
-
-type RefreshEnvelope = {
-  token: string;
-  refresh_token?: string;
-};
-
-async function rotateTokens(): Promise<string | null> {
-  const stored = readRefreshToken();
-  if (!stored) return null;
-  if (refreshInFlight) return refreshInFlight;
-  refreshInFlight = (async () => {
-    try {
-      const res = await fetch("/api/v1/login/refresh", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ refresh_token: stored }),
-      });
-      if (!res.ok) return null;
-      const env = (await res.json()) as RefreshEnvelope;
-      if (!env.token) return null;
-      writeToken(env.token);
-      writeRefreshToken(env.refresh_token ?? null);
-      return env.token;
-    } catch {
-      return null;
-    } finally {
-      refreshInFlight = null;
-    }
-  })();
-  return refreshInFlight;
-}
-
 async function doFetch(
   method: Method,
   url: string,
@@ -156,14 +121,22 @@ export async function api<T = unknown>(
   let token = readToken();
   let res = await doFetch(method, url, opts.body, opts.signal, token);
 
-  // Transparent refresh: if the access token was rejected but we still
-  // have a refresh token, attempt to rotate once and retry the original
-  // request. The refresh endpoint itself sets skipRefreshHandling so it
-  // never recurses into this branch.
+  // Transparent refresh: if the access token was rejected but we still have a
+  // refresh token, rotate once and retry the original request. The user never
+  // sees the round trip. The refresh endpoint itself sets skipRefreshHandling
+  // so it never recurses into this branch.
+  //
+  // `rotationFatal` records whether the server *rejected* the refresh token as
+  // opposed to being unreachable. Only a rejection means the session is over;
+  // a transient failure must not log anyone out (see below).
+  let rotationFatal = false;
+  let retriedFresh = false;
   if (res.status === 401 && !opts.skipRefreshHandling && readRefreshToken()) {
-    const fresh = await rotateTokens();
-    if (fresh) {
-      token = fresh;
+    const outcome = await ensureRotation();
+    rotationFatal = outcome.fatal;
+    if (outcome.token) {
+      token = outcome.token;
+      retriedFresh = true;
       res = await doFetch(method, url, opts.body, opts.signal, token);
     }
   }
@@ -177,7 +150,14 @@ export async function api<T = unknown>(
       parsed.code === "http_401"
         ? new ApiError(401, "unauthorized", parsed.detail || "Not authenticated", parsed.traceId)
         : parsed;
-    if (!opts.skipAuthHandling) {
+    // Don't tear the session down when refresh failed for a transient reason
+    // (offline, 5xx, proxy restart) and a refresh token is still stored — the
+    // proactive refresher will retry. The request still fails; the caller sees
+    // the error instead of being silently thrown onto the login page.
+    // A 401 that survives a retry with a *freshly minted* token is not a
+    // stale-token problem — the session really is over.
+    const recoverable = !rotationFatal && !retriedFresh && !!readRefreshToken();
+    if (!opts.skipAuthHandling && !recoverable) {
       unauthorizedHandler?.();
     }
     throw err;

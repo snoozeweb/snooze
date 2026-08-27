@@ -452,6 +452,20 @@ export function AlertsPage() {
     prevTotalRef.current = total;
   }, [list.data, config?.audio, auto.enabled, refreshPaused]);
 
+  // A failed fetch leaves the table showing the last good page, so nothing
+  // moves and the refresh button looks broken. Say so instead: a toast on the
+  // click the operator made, and a standing badge for as long as the polls
+  // keep failing.
+  const refreshErrorDetail =
+    list.error instanceof ApiError
+      ? list.error.detail
+      : "Couldn't reach the server — the list below may be stale.";
+  const handleManualRefresh = useCallback(async () => {
+    const { isError, error } = await list.refetch();
+    if (!isError) return;
+    toast.error(error instanceof ApiError ? error.detail : "Couldn't refresh alerts");
+  }, [list]);
+
   const filtered = list.data?.data ?? [];
 
   const confirmDelete = useConfirmDelete<Record_>({
@@ -527,7 +541,14 @@ export function AlertsPage() {
       if (rows.length > BULK_SNOOZE_WARN_THRESHOLD) setSnoozeBulkConfirm(rows);
       else snoozeRows(rows);
     },
-    [snoozeRows, snoozeFromCondition, searchCondition, searchText, selectAllMode, list.data?.meta.total],
+    [
+      snoozeRows,
+      snoozeFromCondition,
+      searchCondition,
+      searchText,
+      selectAllMode,
+      list.data?.meta.total,
+    ],
   );
 
   const rowActions = useCallback(
@@ -1284,8 +1305,13 @@ export function AlertsPage() {
                 label="Refresh alerts"
                 size="sm"
                 loading={list.isFetching}
-                onClick={() => void list.refetch()}
+                onClick={() => void handleManualRefresh()}
               />
+              {list.isError ? (
+                <Tooltip content={refreshErrorDetail}>
+                  <Badge variant="error">Not updating</Badge>
+                </Tooltip>
+              ) : null}
               <Tooltip
                 content={
                   !auto.enabled
@@ -1413,8 +1439,8 @@ export function AlertsPage() {
           <DialogBody>
             <p>
               This creates one snooze rule matching ANY of these alerts (their host+message
-              conditions OR&apos;d together) — worth a quick glance before combining that many
-              into a single rule:
+              conditions OR&apos;d together) — worth a quick glance before combining that many into
+              a single rule:
             </p>
             {snoozeBulkConfirm
               ? (() => {

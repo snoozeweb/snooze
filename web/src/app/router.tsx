@@ -24,6 +24,8 @@ import { authStore } from "@/lib/auth/store";
 import { Login } from "@/features/auth/Login";
 import { LoginCallback } from "@/features/auth/LoginCallback";
 import { setUnauthorizedHandler } from "@/lib/api/client";
+import { ensureFreshToken, startSessionRefresh } from "@/lib/auth/session";
+import { loginRedirectSearch } from "@/lib/auth/return-to";
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -60,16 +62,17 @@ const webLayoutRoute = createRoute({
   getParentRoute: () => rootRoute,
   id: "weblayout",
   component: AppShell,
-  beforeLoad: ({ location }) => {
-    if (!authStore.getState().isAuthenticated) {
-      // eslint-disable-next-line @typescript-eslint/only-throw-error
-      throw redirect({
-        to: "/web/login",
-        search: {
-          return_to: encodeURIComponent(location.href),
-        },
-      });
-    }
+  beforeLoad: async ({ location }) => {
+    // Don't gate on the store snapshot alone: after a long idle (or a browser
+    // reload) the access token can be expired while the refresh token is still
+    // perfectly good. Rotating here means an expired tab resumes silently
+    // instead of bouncing the operator to the login screen.
+    if (await ensureFreshToken()) return;
+    // eslint-disable-next-line @typescript-eslint/only-throw-error
+    throw redirect({
+      to: "/web/login",
+      search: loginRedirectSearch(location.href),
+    });
   },
 });
 
@@ -959,8 +962,15 @@ export const router = createRouter({
 
 setUnauthorizedHandler(() => {
   authStore.getState().logout();
-  void router.navigate({ to: "/web/login" });
+  // Remember where the operator was so signing back in returns them to it,
+  // rather than dropping them on their default landing page. Never capture the
+  // login page itself as a destination (that would loop).
+  const here = `${window.location.pathname}${window.location.search}`;
+  void router.navigate({ to: "/web/login", search: loginRedirectSearch(here) });
 });
+
+// Keep the access token fresh in the background for as long as the tab lives.
+startSessionRefresh();
 
 declare module "@tanstack/react-router" {
   interface Register {

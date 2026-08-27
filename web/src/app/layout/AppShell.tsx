@@ -8,6 +8,7 @@ import { RouteGuard } from "./RouteGuard";
 import { useShortcut } from "@/shared/hooks/useShortcut";
 import { useIsMobileShell } from "@/shared/hooks/useIsMobileShell";
 import { useAuth } from "@/lib/auth/store";
+import { loginRedirectSearch } from "@/lib/auth/return-to";
 import { useConsoleConfig } from "@/features/config/api";
 import { pickBreadcrumb } from "./breadcrumb";
 import styles from "./AppShell.module.css";
@@ -30,10 +31,13 @@ export function AppShell() {
 
   // Reactive cross-tab logout guard: when another tab clears the token from
   // localStorage the auth store's storage-event listener sets isAuthenticated
-  // to false. Navigate to login immediately so the session is always in sync.
+  // to false. Navigate to login immediately so the session is always in sync,
+  // carrying the current page so signing back in lands the operator where they
+  // were rather than on their default page.
   useEffect(() => {
     if (!isAuthenticated) {
-      void navigate({ to: "/web/login" });
+      const here = `${window.location.pathname}${window.location.search}`;
+      void navigate({ to: "/web/login", search: loginRedirectSearch(here) });
     }
   }, [isAuthenticated, navigate]);
 

@@ -315,6 +315,59 @@ describe("api client refresh-on-401", () => {
     expect(seen).toEqual(["/api/v1/rule", "/api/v1/login/refresh"]);
   });
 
+  it("logs the session out when the server rejects the refresh token", async () => {
+    const handler = vi.fn();
+    setUnauthorizedHandler(handler);
+    writeToken(makeFreshToken("erin"));
+    writeRefreshToken("revoked");
+    mockFetch(() => new Response("", { status: 401 }));
+
+    await expect(api("GET", "/rule")).rejects.toBeInstanceOf(ApiError);
+    expect(handler).toHaveBeenCalledTimes(1);
+    setUnauthorizedHandler(null);
+  });
+
+  it("keeps the session when /refresh fails for a transient reason", async () => {
+    // A 502 from a proxy mid-deploy says nothing about the refresh token.
+    // Bouncing the operator to the login page here loses their work for what
+    // is usually a few seconds of server unavailability.
+    const handler = vi.fn();
+    setUnauthorizedHandler(handler);
+    writeToken(makeFreshToken("frank"));
+    writeRefreshToken("still-good");
+    mockFetch((url) =>
+      urlToString(url).endsWith("/api/v1/login/refresh")
+        ? new Response("", { status: 502 })
+        : new Response("", { status: 401 }),
+    );
+
+    await expect(api("GET", "/rule")).rejects.toBeInstanceOf(ApiError);
+    expect(handler).not.toHaveBeenCalled();
+    expect(readRefreshToken()).toBe("still-good");
+    setUnauthorizedHandler(null);
+  });
+
+  it("logs out when even a freshly minted token is refused", async () => {
+    const handler = vi.fn();
+    setUnauthorizedHandler(handler);
+    writeToken(makeFreshToken("grace"));
+    writeRefreshToken("seed");
+    mockFetch((url) =>
+      urlToString(url).endsWith("/api/v1/login/refresh")
+        ? new Response(JSON.stringify({ token: makeFreshToken("grace-2"), refresh_token: "r2" }), {
+            status: 200,
+            headers: { "Content-Type": "application/json" },
+          })
+        : new Response("", { status: 401 }),
+    );
+
+    await expect(api("GET", "/rule")).rejects.toBeInstanceOf(ApiError);
+    // The retry ran with a brand-new token and still 401'd — not a staleness
+    // problem, so the session really is over.
+    expect(handler).toHaveBeenCalledTimes(1);
+    setUnauthorizedHandler(null);
+  });
+
   it("skipRefreshHandling bypasses the retry loop", async () => {
     writeToken(makeFreshToken("dave"));
     writeRefreshToken("seed-refresh");

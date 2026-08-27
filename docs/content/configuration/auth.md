@@ -63,6 +63,8 @@ The Go schema lives in `internal/config/schema/auth.go`.
 > `1h`
 >
 > Lifetime of an access token. After it expires the client exchanges its refresh token for a fresh access token. A zero or negative value falls back to `1h`.
+>
+> The web console renews *before* this elapses — a background timer rotates the token 60 seconds ahead of expiry, and a tab that was suspended (laptop closed, backgrounded for hours) tops itself up the moment it becomes visible again. Operators are not signed out mid-session, and a page reload on an expired access token resumes silently instead of bouncing to the login screen. Shortening this value therefore costs extra `/api/v1/login/refresh` round trips, not extra logins.
 
 ### refresh_token_lease
 
@@ -76,6 +78,8 @@ The Go schema lives in `internal/config/schema/auth.go`.
 > `168h` (7 days)
 >
 > Lifetime of a refresh token. Refresh tokens are stored hashed in the `refresh_token` collection; once this lease elapses the user must log in again.
+>
+> This — not `token_lease` — is what bounds how long an idle console tab keeps working. When it does elapse, the console sends the operator to the login page carrying the page they were on, and returns them to it once they sign back in.
 
 ### token_issuer
 

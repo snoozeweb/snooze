@@ -7,7 +7,7 @@ import { Logo } from "@/shared/ui/Logo";
 import { Icon } from "@/shared/icons/Icon";
 import { ApiError } from "@/lib/api/client";
 import { authStore } from "@/lib/auth/store";
-import { isSafeInternalPath } from "@/lib/auth/return-to";
+import { normalizeReturnTo } from "@/lib/auth/return-to";
 import { firstLandingPath } from "@/app/layout/nav-list";
 import {
   fetchLoginConfig,
@@ -40,7 +40,7 @@ export function Login() {
   // When absent/unsafe, land on the user's first PERMITTED page — computed
   // after login below, since claims aren't available until then — so a user
   // without alert permissions isn't dropped onto the record-gated Alerts wall.
-  const explicitReturnTo = isSafeInternalPath(search.return_to) ? search.return_to : null;
+  const explicitReturnTo = normalizeReturnTo(search.return_to);
 
   const cfgQuery = useQuery({
     queryKey: ["login", "config"],

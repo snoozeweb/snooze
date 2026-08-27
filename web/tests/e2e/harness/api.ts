@@ -26,11 +26,16 @@ export async function mintRootToken(src: RootTokenSource): Promise<string> {
   return body;
 }
 
+export type LoginSession = { token: string; refreshToken: string | null };
+
 export type SnoozeApi = {
   baseURL: string;
   token: string;
   ctx: APIRequestContext;
   loginLocal(username: string, password: string): Promise<string>;
+  /** Full login envelope — the access token plus the refresh token the SPA
+   *  uses to renew it. Needed by tests that exercise session expiry. */
+  loginSession(username: string, password: string): Promise<LoginSession>;
   reset(): Promise<void>;
   alerts: {
     send(record: Record<string, unknown>): Promise<void>;
@@ -59,7 +64,12 @@ export type ResourceApi = {
   clear(): Promise<void>;
 };
 
-function resourceApi(ctx: APIRequestContext, baseURL: string, plugin: string, token: string): ResourceApi {
+function resourceApi(
+  ctx: APIRequestContext,
+  baseURL: string,
+  plugin: string,
+  token: string,
+): ResourceApi {
   const headers = { Authorization: `Bearer ${token}` };
   return {
     async create(body) {
@@ -117,6 +127,12 @@ export async function createApi(baseURL: string, token: string): Promise<SnoozeA
       if (!r.ok()) throw new Error(`login: ${r.status()} ${await r.text()}`);
       const out = (await r.json()) as { token: string };
       return out.token;
+    },
+    async loginSession(username, password) {
+      const r = await ctx.post(`${baseURL}/api/v1/login/local`, { data: { username, password } });
+      if (!r.ok()) throw new Error(`login: ${r.status()} ${await r.text()}`);
+      const out = (await r.json()) as { token: string; refresh_token?: string };
+      return { token: out.token, refreshToken: out.refresh_token ?? null };
     },
     async reset() {
       // `this` is typed as the inferred object literal — cast to the public
