@@ -104,7 +104,7 @@ func (p *Plugin) Send(ctx context.Context, rec snoozetypes.Record, payload plugi
 		return fmt.Errorf("pagerduty: config: %w", err)
 	}
 
-	body, err := buildEvent(cfg, rec)
+	body, err := buildEvent(cfg, rec, payload.Escalation)
 	if err != nil {
 		return fmt.Errorf("pagerduty: build event: %w", err)
 	}
@@ -175,12 +175,20 @@ type pdPayload struct {
 }
 
 // buildEvent constructs and marshals the PagerDuty JSON body from cfg and rec.
-func buildEvent(cfg config, rec snoozetypes.Record) ([]byte, error) {
+//
+// A re-escalation is another `trigger` on the SAME dedup key. PagerDuty then
+// appends it to the incident it already has rather than opening a second one,
+// which is why the dedup key must stay derived from the alert alone: folding
+// anything escalation-specific into it would split one incident into a queue of
+// identical ones. The escalation context travels in custom_details instead,
+// where responders and event rules can see it.
+func buildEvent(cfg config, rec snoozetypes.Record, esc plugins.Escalation) ([]byte, error) {
 	action := "trigger"
 	if rec.State == "close" {
 		action = "resolve"
 	}
 
+	// Derived from the alert's identity ONLY — never from the escalation.
 	dedupKey := rec.Hash
 	if dedupKey == "" {
 		dedupKey = rec.UID
@@ -211,7 +219,7 @@ func buildEvent(cfg config, rec snoozetypes.Record) ([]byte, error) {
 			Summary:       summary,
 			Source:        source,
 			Severity:      sev,
-			CustomDetails: customDetails(rec),
+			CustomDetails: customDetails(rec, esc),
 		},
 	}
 	if !rec.Timestamp.IsZero() {
@@ -252,8 +260,8 @@ func mapSeverity(snoozeSev, action string) string {
 // customDetails builds a compact map of the record's notable fields so PagerDuty
 // rules and responders can filter on them. We omit large or redundant fields
 // (message/host/severity are already in payload.summary) and skip zero values.
-func customDetails(rec snoozetypes.Record) map[string]any {
-	m := make(map[string]any, 8)
+func customDetails(rec snoozetypes.Record, esc plugins.Escalation) map[string]any {
+	m := make(map[string]any, 12)
 	if rec.UID != "" {
 		m["uid"] = rec.UID
 	}
@@ -274,6 +282,21 @@ func customDetails(rec snoozetypes.Record) map[string]any {
 	}
 	if len(rec.Raw) > 0 {
 		m["raw"] = rec.Raw
+	}
+	// Escalation context, so a responder can tell "this fired once" from "this
+	// has now escalated three times" without leaving PagerDuty, and event
+	// rules can route on it. Omitted entirely on a first delivery.
+	if esc.IsRe() {
+		m["escalation_count"] = esc.Count
+		if esc.Reason != "" {
+			m["escalation_reason"] = esc.Reason
+		}
+		if esc.Actor != "" {
+			m["escalated_by"] = esc.Actor
+		}
+		if esc.PreviousSeverity != "" {
+			m["previous_severity"] = esc.PreviousSeverity
+		}
 	}
 	return m
 }

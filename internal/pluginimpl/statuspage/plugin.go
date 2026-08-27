@@ -119,8 +119,95 @@ func (p *Plugin) Send(ctx context.Context, rec snoozetypes.Record, payload plugi
 	if rec.State == "close" {
 		return p.resolveIncident(ctx, client, cfg, rec, timeout)
 	}
+	if payload.Escalation.IsRe() {
+		return p.escalateIncident(ctx, client, cfg, rec, payload, timeout)
+	}
 	return p.createIncident(ctx, client, cfg, rec, timeout)
 }
+
+// escalateIncident posts a new incident UPDATE onto the incident this alert
+// already has, instead of opening a second incident for the same problem.
+//
+// A public status page is the one place a duplicate is most visible: two open
+// incidents for one outage tells customers the wrong story. Statuspage creates
+// an incident update automatically for any PATCH that carries a `body`, so the
+// escalation is recorded as a timeline entry on the existing incident.
+//
+// Correlation is by rendered name — Statuspage has no external-reference or
+// dedup-key concept — which is the same (documented) mechanism the close path
+// has always used.
+func (p *Plugin) escalateIncident(
+	ctx context.Context,
+	client *http.Client,
+	cfg config,
+	rec snoozetypes.Record,
+	payload plugins.NotificationPayload,
+	timeout time.Duration,
+) error {
+	name, err := renderTemplate("name", cfg.NameTmpl, rec)
+	if err != nil {
+		return fmt.Errorf("statuspage: render name: %w", err)
+	}
+	body, err := renderTemplate("body", cfg.BodyTmpl, rec)
+	if err != nil {
+		return fmt.Errorf("statuspage: render body: %w", err)
+	}
+
+	id, status, err := p.findUnresolvedIncident(ctx, client, cfg, name, timeout)
+	if err != nil {
+		// A broken list call must not drop an escalating alert: a duplicate
+		// incident is recoverable, a missed outage update is not.
+		if lg := p.logger(); lg != nil {
+			lg.Info("statuspage: escalate: incident lookup failed, creating instead",
+				"name", name, "error", err)
+		}
+		return p.createIncident(ctx, client, cfg, rec, timeout)
+	}
+	if id == "" {
+		// Nothing open under this name (resolved in between, or the first
+		// delivery never landed), so a create is correct.
+		return p.createIncident(ctx, client, cfg, rec, timeout)
+	}
+
+	incident := map[string]any{"body": escalationBody(body, payload.Escalation)}
+	// Advance the lifecycle at most one step, and never backwards: an operator
+	// who moved an incident to "monitoring" must not be dragged back to
+	// "investigating" because the underlying alert flapped.
+	if next := nextStatus(status); next != "" {
+		incident["status"] = next
+		if cfg.ComponentID != "" {
+			incident["components"] = map[string]string{cfg.ComponentID: next}
+		}
+	}
+	return p.patchIncident(ctx, client, cfg, id, incident, timeout)
+}
+
+// escalationBody prefixes the rendered body with the escalation marker, so the
+// public timeline entry reads as a re-escalation rather than a restatement.
+func escalationBody(body string, esc plugins.Escalation) string {
+	prefix := "Re-escalated"
+	if o := esc.Ordinal(); o != "" {
+		prefix += " " + o
+	}
+	if esc.Reason != "" {
+		prefix += " (" + esc.Reason + ")"
+	}
+	if body == "" {
+		return prefix
+	}
+	return prefix + ": " + body
+}
+
+// statusProgression is Statuspage's incident lifecycle. An escalation advances
+// one step from "investigating" to "identified" and then stops: "monitoring"
+// means someone believes the fix is in, and only they should move it on.
+var statusProgression = map[string]string{
+	"investigating": "identified",
+}
+
+// nextStatus returns the status an escalation should advance to, or "" to leave
+// the incident's status untouched.
+func nextStatus(current string) string { return statusProgression[current] }
 
 // createIncident POSTs a new incident to Statuspage.
 func (p *Plugin) createIncident(ctx context.Context, client *http.Client, cfg config, rec snoozetypes.Record, timeout time.Duration) error {
@@ -183,7 +270,6 @@ func (p *Plugin) createIncident(ctx context.Context, client *http.Client, cfg co
 // Name-matching is the only available correlation mechanism because Statuspage
 // has no external reference / dedup key concept; this is a known limitation.
 func (p *Plugin) resolveIncident(ctx context.Context, client *http.Client, cfg config, rec snoozetypes.Record, timeout time.Duration) error {
-	// Render the name so we can match against unresolved incidents.
 	name, err := renderTemplate("name", cfg.NameTmpl, rec)
 	if err != nil {
 		return fmt.Errorf("statuspage: render name: %w", err)
@@ -193,48 +279,11 @@ func (p *Plugin) resolveIncident(ctx context.Context, client *http.Client, cfg c
 		return fmt.Errorf("statuspage: render body: %w", err)
 	}
 
-	// Step 1: fetch unresolved incidents.
-	listURL := cfg.APIBase + "/v1/pages/" + cfg.PageID + "/incidents/unresolved"
-	reqCtx, cancel := context.WithTimeout(ctx, timeout)
-	defer cancel()
-
-	req, err := http.NewRequestWithContext(reqCtx, http.MethodGet, listURL, nil)
+	id, _, err := p.findUnresolvedIncident(ctx, client, cfg, name, timeout)
 	if err != nil {
-		return fmt.Errorf("statuspage: build list request: %w", err)
+		return err
 	}
-	req.Header.Set("Authorization", "OAuth "+cfg.APIKey)
-
-	resp, err := client.Do(req)
-	if err != nil {
-		return fmt.Errorf("statuspage: list request: %w", err)
-	}
-	defer resp.Body.Close() //nolint:errcheck
-
-	rawList, _ := io.ReadAll(io.LimitReader(resp.Body, 128<<10))
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return fmt.Errorf("statuspage: list HTTP %d: %s", resp.StatusCode, truncate(rawList, 200))
-	}
-
-	// Step 2: decode and find a match. The API returns newest-first; we scan
-	// the slice from the end so the most-recently-created entry wins when
-	// multiple incidents share the same name.
-	var incidents []struct {
-		ID   string `json:"id"`
-		Name string `json:"name"`
-	}
-	if err := json.Unmarshal(rawList, &incidents); err != nil {
-		return fmt.Errorf("statuspage: decode incident list: %w", err)
-	}
-
-	matchID := ""
-	for i := len(incidents) - 1; i >= 0; i-- {
-		if incidents[i].Name == name {
-			matchID = incidents[i].ID
-			break
-		}
-	}
-
-	if matchID == "" {
+	if id == "" {
 		// No match — log and return a no-op (not an error).
 		if lg := p.logger(); lg != nil {
 			lg.Info("statuspage: no unresolved incident matched name; skipping resolve",
@@ -242,39 +291,98 @@ func (p *Plugin) resolveIncident(ctx context.Context, client *http.Client, cfg c
 		}
 		return nil
 	}
+	return p.patchIncident(ctx, client, cfg, id, map[string]any{
+		"status": "resolved",
+		"body":   body,
+	}, timeout)
+}
 
-	// Step 3: PATCH to resolved.
-	patchPayload := map[string]any{
-		"incident": map[string]any{
-			"status": "resolved",
-			"body":   body,
-		},
+// findUnresolvedIncident returns the id and current status of the
+// most-recently-opened unresolved incident whose name matches, or an empty id
+// when none does (which is not an error).
+//
+// The API returns newest-first; the slice is scanned from the end so the
+// most-recently-created entry wins when several incidents share a name.
+func (p *Plugin) findUnresolvedIncident(
+	ctx context.Context,
+	client *http.Client,
+	cfg config,
+	name string,
+	timeout time.Duration,
+) (id, status string, err error) {
+	listURL := cfg.APIBase + "/v1/pages/" + cfg.PageID + "/incidents/unresolved"
+	reqCtx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
+
+	req, err := http.NewRequestWithContext(reqCtx, http.MethodGet, listURL, nil)
+	if err != nil {
+		return "", "", fmt.Errorf("statuspage: build list request: %w", err)
 	}
-	patchBody, err := json.Marshal(patchPayload)
+	req.Header.Set("Authorization", "OAuth "+cfg.APIKey)
+
+	resp, err := client.Do(req)
+	if err != nil {
+		return "", "", fmt.Errorf("statuspage: list request: %w", err)
+	}
+	defer resp.Body.Close() //nolint:errcheck
+
+	rawList, _ := io.ReadAll(io.LimitReader(resp.Body, 128<<10))
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return "", "", fmt.Errorf("statuspage: list HTTP %d: %s", resp.StatusCode, truncate(rawList, 200))
+	}
+
+	var incidents []struct {
+		ID     string `json:"id"`
+		Name   string `json:"name"`
+		Status string `json:"status"`
+	}
+	if err := json.Unmarshal(rawList, &incidents); err != nil {
+		return "", "", fmt.Errorf("statuspage: decode incident list: %w", err)
+	}
+	for i := len(incidents) - 1; i >= 0; i-- {
+		if incidents[i].Name == name {
+			return incidents[i].ID, incidents[i].Status, nil
+		}
+	}
+	return "", "", nil
+}
+
+// patchIncident PATCHes the given incident fields, wrapped in the `incident`
+// envelope the API expects. A body field makes Statuspage record a new incident
+// update on the public timeline.
+func (p *Plugin) patchIncident(
+	ctx context.Context,
+	client *http.Client,
+	cfg config,
+	id string,
+	incident map[string]any,
+	timeout time.Duration,
+) error {
+	payload, err := json.Marshal(map[string]any{"incident": incident})
 	if err != nil {
 		return fmt.Errorf("statuspage: marshal patch body: %w", err)
 	}
 
-	patchURL := cfg.APIBase + "/v1/pages/" + cfg.PageID + "/incidents/" + matchID
-	patchCtx, patchCancel := context.WithTimeout(ctx, timeout)
-	defer patchCancel()
+	patchURL := cfg.APIBase + "/v1/pages/" + cfg.PageID + "/incidents/" + id
+	patchCtx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
 
-	patchReq, err := http.NewRequestWithContext(patchCtx, http.MethodPatch, patchURL, bytes.NewReader(patchBody))
+	req, err := http.NewRequestWithContext(patchCtx, http.MethodPatch, patchURL, bytes.NewReader(payload))
 	if err != nil {
 		return fmt.Errorf("statuspage: build patch request: %w", err)
 	}
-	patchReq.Header.Set("Content-Type", "application/json")
-	patchReq.Header.Set("Authorization", "OAuth "+cfg.APIKey)
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "OAuth "+cfg.APIKey)
 
-	patchResp, err := client.Do(patchReq)
+	resp, err := client.Do(req)
 	if err != nil {
 		return fmt.Errorf("statuspage: patch request: %w", err)
 	}
-	defer patchResp.Body.Close() //nolint:errcheck
+	defer resp.Body.Close() //nolint:errcheck
 
-	patchPreview, _ := io.ReadAll(io.LimitReader(patchResp.Body, 4<<10))
-	if patchResp.StatusCode < 200 || patchResp.StatusCode >= 300 {
-		return fmt.Errorf("statuspage: patch HTTP %d: %s", patchResp.StatusCode, truncate(patchPreview, 200))
+	preview, _ := io.ReadAll(io.LimitReader(resp.Body, 4<<10))
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return fmt.Errorf("statuspage: patch HTTP %d: %s", resp.StatusCode, truncate(preview, 200))
 	}
 	return nil
 }

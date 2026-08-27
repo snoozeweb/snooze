@@ -126,7 +126,103 @@ func (p *Plugin) Send(ctx context.Context, rec snoozetypes.Record, payload plugi
 	if rec.State == "close" {
 		return p.sendClose(ctx, client, cfg, alias, rec)
 	}
+	if payload.Escalation.IsRe() {
+		return p.sendEscalate(ctx, client, cfg, alias, rec, payload.Escalation)
+	}
 	return p.sendCreate(ctx, client, cfg, alias, rec)
+}
+
+// sendEscalate updates the alert Opsgenie already holds for this alias.
+//
+// Re-POSTing a create would be harmless (Opsgenie de-duplicates on alias) but
+// also nearly useless: a duplicate create does not re-page anyone, so an alert
+// that was acknowledged and then escalated would stay quietly acknowledged
+// while the problem got worse. The three calls here are what actually reaches
+// the on-call:
+//
+//  1. a note, so the alert's timeline records the escalation;
+//  2. a priority raise, but only when severity actually rose;
+//  3. an unacknowledge, so an acknowledged alert starts notifying again —
+//     this is the one that matters, and the reason a bare re-create is wrong.
+//
+// The alias is NEVER derived from anything escalation-specific: changing it
+// would make Opsgenie treat the escalation as a brand-new alert, which is
+// precisely the duplicate this function exists to avoid.
+func (p *Plugin) sendEscalate(
+	ctx context.Context,
+	client *http.Client,
+	cfg config,
+	alias string,
+	rec snoozetypes.Record,
+	esc plugins.Escalation,
+) error {
+	base := cfg.APIBase + "/v2/alerts/" + alias
+
+	// The note is the part that must land, so its failure is the returned one.
+	if err := p.doPost(ctx, client, base+"/notes?identifierType=alias", cfg.APIKey, noteRequest{
+		Source: cfg.Source,
+		Note:   buildEscalationNote(rec, esc),
+	}); err != nil {
+		return err
+	}
+
+	// Best-effort from here: the escalation is already on the timeline, and
+	// failing the whole notification over a priority quirk would lose that.
+	if esc.SeverityRose() {
+		priority := cfg.Priority
+		if priority == "auto" || priority == "" {
+			priority = severityToPriority(rec.Severity)
+		}
+		if err := p.doPut(ctx, client, base+"/priority?identifierType=alias", cfg.APIKey,
+			priorityRequest{Priority: priority}); err != nil {
+			p.warn("opsgenie: priority raise failed", "alias", alias, "error", err)
+		}
+	}
+
+	if cfg.UnackOnEscalation {
+		if err := p.doPost(ctx, client, base+"/unacknowledge?identifierType=alias", cfg.APIKey,
+			closeRequest{
+				Source: cfg.Source,
+				Note:   "Unacknowledged by Snooze: the alert re-escalated",
+			}); err != nil {
+			// An alert that was never acknowledged rejects this, which is
+			// normal and not worth surfacing as a notification failure.
+			p.warn("opsgenie: unacknowledge failed (normal when the alert was not acknowledged)",
+				"alias", alias, "error", err)
+		}
+	}
+	return nil
+}
+
+// buildEscalationNote renders the note body appended to the existing alert.
+func buildEscalationNote(rec snoozetypes.Record, esc plugins.Escalation) string {
+	var b strings.Builder
+	b.WriteString("Re-escalated by Snooze")
+	if o := esc.Ordinal(); o != "" {
+		b.WriteString(" " + o)
+	}
+	if esc.Reason != "" {
+		b.WriteString(" (" + esc.Reason + ")")
+	}
+	if esc.Actor != "" {
+		b.WriteString(" by " + esc.Actor)
+	}
+	fmt.Fprintf(&b, "\nSeverity: %s", rec.Severity)
+	if esc.PreviousSeverity != "" && esc.PreviousSeverity != rec.Severity {
+		fmt.Fprintf(&b, " (was %s)", esc.PreviousSeverity)
+	}
+	fmt.Fprintf(&b, "\nHost: %s\nMessage: %s", rec.Host, rec.Message)
+	return b.String()
+}
+
+// warn logs at warn level when a host with a logger is wired.
+func (p *Plugin) warn(msg string, args ...any) {
+	if p.host == nil {
+		return
+	}
+	if lg := p.host.Logger(); lg != nil {
+		lg.Warn(msg, args...)
+	}
 }
 
 // sendCreate POSTs a new alert to /v2/alerts.
@@ -165,10 +261,19 @@ func (p *Plugin) sendClose(ctx context.Context, client *http.Client, cfg config,
 	return p.doPost(ctx, client, u, cfg.APIKey, closeBody)
 }
 
+// doPut is doPost with the PUT verb, used for the priority update.
+func (p *Plugin) doPut(ctx context.Context, client *http.Client, url, apiKey string, body any) error {
+	return p.do(ctx, client, http.MethodPut, url, apiKey, body)
+}
+
 // doPost marshals body to JSON and POSTs it to url with a GenieKey auth
 // header. Returns nil on HTTP 2xx; an error with the status code and
 // truncated body otherwise.
 func (p *Plugin) doPost(ctx context.Context, client *http.Client, url, apiKey string, body any) error {
+	return p.do(ctx, client, http.MethodPost, url, apiKey, body)
+}
+
+func (p *Plugin) do(ctx context.Context, client *http.Client, method, url, apiKey string, body any) error {
 	data, err := json.Marshal(body)
 	if err != nil {
 		return fmt.Errorf("opsgenie: marshal request: %w", err)
@@ -177,7 +282,7 @@ func (p *Plugin) doPost(ctx context.Context, client *http.Client, url, apiKey st
 	reqCtx, cancel := context.WithTimeout(ctx, client.Timeout)
 	defer cancel()
 
-	req, err := http.NewRequestWithContext(reqCtx, http.MethodPost, url, bytes.NewReader(data))
+	req, err := http.NewRequestWithContext(reqCtx, method, url, bytes.NewReader(data))
 	if err != nil {
 		return fmt.Errorf("opsgenie: build request: %w", err)
 	}
@@ -195,6 +300,17 @@ func (p *Plugin) doPost(ctx context.Context, client *http.Client, url, apiKey st
 		return fmt.Errorf("opsgenie: HTTP %d: %s", resp.StatusCode, truncate(preview, 200))
 	}
 	return nil
+}
+
+// noteRequest is the JSON body for POST /v2/alerts/{alias}/notes.
+type noteRequest struct {
+	Source string `json:"source,omitempty"`
+	Note   string `json:"note,omitempty"`
+}
+
+// priorityRequest is the JSON body for PUT /v2/alerts/{alias}/priority.
+type priorityRequest struct {
+	Priority string `json:"priority"`
 }
 
 // createRequest is the JSON body for POST /v2/alerts.
@@ -222,15 +338,22 @@ type config struct {
 	Tags     []string
 	Priority string
 	Timeout  time.Duration
+
+	// UnackOnEscalation controls whether a re-escalation clears an existing
+	// acknowledgement so Opsgenie starts notifying the on-call again. Default
+	// true: an alert that escalates while acknowledged is exactly the case
+	// where the acknowledgement has stopped being true.
+	UnackOnEscalation bool
 }
 
 // configFromMeta decodes a config from the NotificationPayload.Meta map.
 // Fails if api_key is missing.
 func configFromMeta(meta map[string]any) (config, error) {
 	cfg := config{
-		Source:   "Snooze",
-		Priority: "auto",
-		Timeout:  defaultTimeout,
+		Source:            "Snooze",
+		Priority:          "auto",
+		Timeout:           defaultTimeout,
+		UnackOnEscalation: true,
 	}
 	if meta == nil {
 		return cfg, fmt.Errorf("api_key is required")
@@ -248,6 +371,10 @@ func configFromMeta(meta map[string]any) (config, error) {
 
 	if v, ok := meta["priority"].(string); ok && v != "" {
 		cfg.Priority = v
+	}
+
+	if v, ok := meta["unack_on_escalation"].(bool); ok {
+		cfg.UnackOnEscalation = v
 	}
 
 	// tags: optional comma-separated string
