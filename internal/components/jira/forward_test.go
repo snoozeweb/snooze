@@ -645,3 +645,116 @@ func TestForward_priorityFallsBackToGlobalList(t *testing.T) {
 	require.Equal(t, int32(1), listCalls.Load())
 	require.Equal(t, map[string]any{"id": "3"}, got["fields"].(map[string]any)["priority"])
 }
+
+// TestForward_batchShapedResponseHandleComments is the regression for the
+// production duplicate-ticket bug: the handle this daemon hands back is keyed
+// by alert hash (`{"<hash>": {"issue_key": …}}`) and older servers stamped
+// that envelope verbatim under `response_<action>`. Reading only
+// `response_<action>.issue_key` missed it, so every re-escalation of the same
+// alert opened a fresh ticket (CG-1811 then CG-1812, 2026-08-28 02:11/02:13).
+func TestForward_batchShapedResponseHandleComments(t *testing.T) {
+	var commented atomic.Pointer[string]
+	client := newTestJira(t, func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.Method == http.MethodPost && strings.HasSuffix(r.URL.Path, "/comment"):
+			key := strings.Split(strings.TrimPrefix(r.URL.Path, "/rest/api/3/issue/"), "/")[0]
+			commented.Store(&key)
+			w.WriteHeader(http.StatusCreated)
+		default:
+			t.Fatalf("unexpected request (a create means the handle was missed): %s %s", r.Method, r.URL.Path)
+		}
+	})
+	cfg, _ := minimalCfg().WithDefaults()
+	f := newForwarder(cfg, client, nil)
+
+	rec := jiraadf.RecordSummary{
+		"host": "K8S ovh", "severity": "critical", "message": "Deployment down",
+		"hash": "ec2f9135",
+		"response_Jira Ticket": map[string]any{
+			"ec2f9135": map[string]any{"issue_key": "CG-1811"},
+		},
+	}
+	out := f.handleEnvelopes(context.Background(), []envelope{{
+		ProjectKey: "CG", Alert: rec,
+	}}, "Jira Ticket")
+
+	require.Equal(t, "CG-1811", out["ec2f9135"].IssueKey)
+	require.NotNil(t, commented.Load(), "expected a comment on the existing issue")
+	require.Equal(t, "CG-1811", *commented.Load())
+}
+
+func TestFindExistingIssue_shapes(t *testing.T) {
+	tests := []struct {
+		name   string
+		record jiraadf.RecordSummary
+		action string
+		want   string
+	}{
+		{
+			name:   "canonical handle",
+			record: jiraadf.RecordSummary{"hash": "h1", "notify_ref_act": map[string]any{"issue_key": "OPS-1"}},
+			action: "act",
+			want:   "OPS-1",
+		},
+		{
+			name:   "legacy response handle",
+			record: jiraadf.RecordSummary{"hash": "h1", "response_act": map[string]any{"issue_key": "OPS-2"}},
+			action: "act",
+			want:   "OPS-2",
+		},
+		{
+			name:   "batch envelope keyed by this record's hash",
+			record: jiraadf.RecordSummary{"hash": "h1", "response_act": map[string]any{"h1": map[string]any{"issue_key": "OPS-3"}}},
+			action: "act",
+			want:   "OPS-3",
+		},
+		{
+			name:   "batch envelope keyed by another alert's hash is not ours",
+			record: jiraadf.RecordSummary{"hash": "h1", "response_act": map[string]any{"h2": map[string]any{"issue_key": "OPS-4"}}},
+			action: "act",
+			want:   "",
+		},
+		{
+			name:   "unknown action falls back to any stored handle",
+			record: jiraadf.RecordSummary{"hash": "h1", "response_act": map[string]any{"h1": map[string]any{"issue_key": "OPS-5"}}},
+			action: "",
+			want:   "OPS-5",
+		},
+		{
+			name: "unknown action prefers the canonical prefix, then alphabetical",
+			record: jiraadf.RecordSummary{
+				"hash":           "h1",
+				"response_bbb":   map[string]any{"issue_key": "OPS-6"},
+				"notify_ref_zzz": map[string]any{"issue_key": "OPS-7"},
+				"notify_ref_aaa": map[string]any{"issue_key": "OPS-8"},
+			},
+			action: "",
+			want:   "OPS-8",
+		},
+		{
+			name:   "wrong action name does not borrow another action's handle",
+			record: jiraadf.RecordSummary{"hash": "h1", "response_other": map[string]any{"issue_key": "OPS-9"}},
+			action: "act",
+			want:   "",
+		},
+		{
+			name:   "garbage handle",
+			record: jiraadf.RecordSummary{"hash": "h1", "response_act": "not a map"},
+			action: "act",
+			want:   "",
+		},
+		{
+			name: "1.x array still works",
+			record: jiraadf.RecordSummary{"hash": "h1", "snooze_webhook_responses": []any{
+				map[string]any{"action_name": "act", "content": map[string]any{"issue_key": "OPS-10"}},
+			}},
+			action: "act",
+			want:   "OPS-10",
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			require.Equal(t, tc.want, findExistingIssue(tc.record, tc.action))
+		})
+	}
+}

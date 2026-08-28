@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -178,17 +179,28 @@ func populateNotification(env *envelope, record jiraadf.RecordSummary) {
 // before they were consulted here, a Go-only deployment found no handle and
 // this daemon opened a fresh ticket on every single re-escalation — the very
 // duplication it exists to prevent.
+//
+// Two things this function must survive, both observed in production:
+//
+//   - The handle can sit one level deeper than shape 2 describes, under the
+//     alert hash, because this daemon answers `{"<hash>": {"issue_key": …}}`
+//     and older servers stamped that envelope verbatim. issueKeyFrom reads
+//     through it.
+//   - actionName can be empty, when neither the header nor the query
+//     parameter reached us. Then no action-specific field name is knowable
+//     and we fall back to any `notify_ref_*` / `response_*` field carrying an
+//     issue key: commenting on the wrong action's ticket is recoverable,
+//     opening a duplicate on every escalation is what we are here to stop.
 func findExistingIssue(record jiraadf.RecordSummary, actionName string) string {
+	recordHash := strField(record, "hash", "")
 	if actionName != "" {
-		for _, prefix := range []string{"notify_ref_", "response_"} {
-			ref, ok := record[prefix+actionName].(map[string]any)
-			if !ok {
-				continue
-			}
-			if key, _ := ref["issue_key"].(string); key != "" {
+		for _, prefix := range []string{notifyRefPrefix, responsePrefix} {
+			if key := issueKeyFrom(record[prefix+actionName], recordHash); key != "" {
 				return key
 			}
 		}
+	} else if key := anyStoredIssueKey(record, recordHash); key != "" {
+		return key
 	}
 	raw, ok := record["snooze_webhook_responses"]
 	if !ok {
@@ -217,6 +229,66 @@ func findExistingIssue(record jiraadf.RecordSummary, actionName string) string {
 		}
 	}
 	return ""
+}
+
+// Record field prefixes that can hold this daemon's handle. `notify_ref_` is
+// written by plugins.StoreNotifyRef, `response_` by the webhook notifier's
+// inject_response.
+const (
+	notifyRefPrefix = "notify_ref_"
+	responsePrefix  = "response_"
+)
+
+// anyStoredIssueKey scans every handle field on the record for an issue key,
+// for the case where the action name is unknown. Fields are visited in a
+// stable order — `notify_ref_*` before `response_*`, alphabetical within each
+// group — so a record carrying two handles keeps commenting on the same
+// ticket instead of alternating between them run to run.
+func anyStoredIssueKey(record jiraadf.RecordSummary, recordHash string) string {
+	for _, prefix := range []string{notifyRefPrefix, responsePrefix} {
+		fields := make([]string, 0, len(record))
+		for field := range record {
+			if strings.HasPrefix(field, prefix) {
+				fields = append(fields, field)
+			}
+		}
+		sort.Strings(fields)
+		for _, field := range fields {
+			if key := issueKeyFrom(record[field], recordHash); key != "" {
+				return key
+			}
+		}
+	}
+	return ""
+}
+
+// issueKeyFrom pulls an issue key out of one handle field, tolerating the
+// batch envelope this daemon's own /alert response uses.
+//
+// Accepted shapes:
+//
+//	{"issue_key": "CG-1"}                     — the handle itself
+//	{"<recordHash>": {"issue_key": "CG-1"}}   — the batch envelope
+//
+// A single-entry envelope keyed by some other hash is deliberately ignored:
+// its issue key belongs to a different alert.
+func issueKeyFrom(value any, recordHash string) string {
+	ref, ok := value.(map[string]any)
+	if !ok {
+		return ""
+	}
+	if key, _ := ref["issue_key"].(string); key != "" {
+		return key
+	}
+	if recordHash == "" {
+		return ""
+	}
+	inner, ok := ref[recordHash].(map[string]any)
+	if !ok {
+		return ""
+	}
+	key, _ := inner["issue_key"].(string)
+	return key
 }
 
 // updateExisting adds a comment to a pre-existing issue and optionally

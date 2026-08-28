@@ -137,7 +137,15 @@ Precedence is `summary` → `summary_template` (envelope) → `summary_template`
 
 Re-escalation comments on an existing ticket do not touch its title — the title is set at creation.
 
-The webhook endpoint also accepts a `snooze_action_name` query parameter that is recorded in log output for correlation.
+#### How the daemon avoids duplicate tickets {#dedup}
+
+The daemon has no database. It recognises an alert it has already ticketed by reading the issue key back off the alert itself, which means two things have to line up:
+
+1. **The action name must reach the daemon.** snooze-server sends it as the `X-Snooze-Action-Name` header on every webhook call; the name selects the record field (`notify_ref_<action>`, or `response_<action>` for the webhook notifier's `inject_response`) that holds the issue key. An operator can pin it instead with a `snooze_action_name` query parameter on the action URL — do that when the server is older than the header. When neither is present the daemon logs a warning and falls back to *any* handle stored on the record, which is right for a single-action deployment and can comment on the wrong action's ticket when several actions target the same daemon.
+
+2. **`inject_response` must be enabled on the webhook action.** The daemon answers with `{"<alert hash>": {"issue_key": "OPS-123"}}` — one entry per alert, in that shape even for a single alert — and `inject_response` is what stores it on the record. Without it nothing is stored, and every re-escalation opens a new ticket.
+
+Note that `inject_response` and `batch` are mutually exclusive on the webhook notifier: with `inject_response` on, each alert is delivered on its own request so the response can be attributed to its record. Leaving `batch: true` set alongside it is harmless — batching is simply not used.
 
 ### Optional bidirectional poller
 

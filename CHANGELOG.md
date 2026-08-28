@@ -14,6 +14,27 @@
 
 ### Fixed
 
+- **One JIRA ticket per alert again, instead of one per escalation.** The
+  `snooze-jira` daemon recognises an alert it has already ticketed by reading
+  the issue key back off the record, and every leg of that round-trip was
+  broken. The daemon learned the action name — the key that names the record
+  field holding the handle — only from a `snooze_action_name` query parameter
+  that nothing ever set, so it looked under `response_unknown_action` and
+  found nothing; snooze-server now sends `X-Snooze-Action-Name` on every
+  webhook call. And the handle itself sat one level too deep: the daemon
+  answers `{"<alert hash>": {"issue_key": …}}` — one entry per alert, in that
+  shape even for a single alert — and `inject_response` stamped that envelope
+  verbatim, below where every reader looks. The webhook notifier now stamps
+  the record's own entry, and the readers (`plugins.NotifyRef`, the daemon's
+  `findExistingIssue`) see through the old shape so records already stamped
+  keep their ticket. Finally, the body never carried the handle in the first
+  place: `{{ tojson .Record }}` — and the 1.x `{{ __self__ | tojson() }}` that
+  rewrites to it — encoded the record with `encoding/json`, which drops
+  `Record.Extra` (`json:"-"`), so every untyped field went missing from the
+  request body, handles included. `tojson` now encodes a record through
+  `plugins.MarshalRecord`, the same flattening the default body has always
+  used. Observed in production as CG-1811 and CG-1812 opened two minutes
+  apart for the same alert hash.
 - **JIRA priorities are resolved from the live scheme instead of hardcoded
   English names.** Both the `jira` notifier and the `snooze-jira` daemon
   shipped a severity → priority map written in English (`critical: High`,

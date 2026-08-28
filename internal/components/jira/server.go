@@ -10,6 +10,7 @@ import (
 	"log/slog"
 	"net"
 	"net/http"
+	"strings"
 	"time"
 )
 
@@ -108,9 +109,11 @@ func (s *httpServer) handleAlert(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	action := r.URL.Query().Get("snooze_action_name")
+	action := actionNameFrom(r)
 	if action == "" {
-		action = "unknown_action"
+		s.logger.Warn("jira: no action name on /alert; dedup falls back to any stored handle",
+			slog.Int("alerts", len(envs)),
+			slog.String("hint", "upgrade snooze-server (sends X-Snooze-Action-Name) or add ?snooze_action_name=<action> to the webhook URL"))
 	}
 
 	out := s.forwarder.handleEnvelopes(r.Context(), envs, action)
@@ -122,6 +125,25 @@ func (s *httpServer) handleAlert(w http.ResponseWriter, r *http.Request) {
 	if err := json.NewEncoder(w).Encode(out); err != nil {
 		s.logger.Warn("jira: encode response failed", slog.Any("err", err))
 	}
+}
+
+// actionNameFrom resolves which snooze-server notification action drove this
+// call. That name is the dedup key: it selects the `notify_ref_<action>` /
+// `response_<action>` record field where the issue key this daemon hands back
+// gets stored, and therefore where the next delivery for the same alert looks
+// to find it.
+//
+// snooze-server sends it as the `X-Snooze-Action-Name` header. The
+// `snooze_action_name` query parameter is honoured first so an operator can
+// pin the name on the action URL — needed when the server predates the
+// header. Resolving to "" (neither present) puts findExistingIssue into its
+// action-agnostic fallback rather than looking up a field named after a
+// placeholder, which never matches anything.
+func actionNameFrom(r *http.Request) string {
+	if v := strings.TrimSpace(r.URL.Query().Get("snooze_action_name")); v != "" {
+		return v
+	}
+	return strings.TrimSpace(r.Header.Get("X-Snooze-Action-Name"))
 }
 
 // decodeEnvelopes accepts either a single object or a JSON array of objects.
