@@ -14,6 +14,17 @@
 
 ### Fixed
 
+- **A throttled duplicate no longer counts twice.** `duplicates` was bumped
+  twice for every occurrence the aggregate rule held back: once by the merge
+  assignment the pipeline persists (ActionAbortUpdate writes too — it only
+  skips the `date_epoch` stamp) and once more by a queued atomic increment on
+  the same two paths. With a real async writer the increment lands after the
+  write, so a throttled duplicate added 2 — inflating the repeat counter on
+  every aggregated alert (a production record read 197). Without an async
+  writer the old fallback incremented synchronously *before* the write, which
+  then overwrote it, which is why no test caught it. The counter now has one
+  source of truth: the merge assignment. `queueIncrement` and the plugin's
+  private `asyncWriterHost` interface are gone.
 - **The anti-flapping budget refills per throttle window instead of once per
   record.** `flapping_countdown` was only ever decremented, never restored, so
   after `flapping` (default 3) watched-field changes in an aggregate's entire

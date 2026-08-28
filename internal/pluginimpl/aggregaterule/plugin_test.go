@@ -992,9 +992,19 @@ func TestAggregate_WarnsOnDuplicateFields(t *testing.T) {
 	require.Contains(t, buf.String(), "Critical")
 }
 
-// TestAsyncWriter_Increments verifies the plugin queues a `duplicates`
-// increment via the host's async writer for an already-closed record.
-func TestAsyncWriter_Increments(t *testing.T) {
+// TestAggregate_DuplicatesCountedOncePerOccurrence pins the counter to a
+// single source of truth: the merge assignment in matchAggregate, persisted by
+// the pipeline on every verdict.
+//
+// The plugin used to ALSO queue an atomic increment on its two
+// ActionAbortUpdate paths (already-closed duplicate, throttled duplicate). The
+// pipeline's write lands first with prevDup+1 and the queued increment then
+// adds another, so every throttled duplicate counted twice — production read
+// 197 on an alert that had seen far fewer occurrences. It only surfaced with a
+// real async writer wired: without one the old fallback incremented
+// synchronously *before* the write, which then overwrote it with prevDup+1 and
+// looked correct. Hence the writer below.
+func TestAggregate_DuplicatesCountedOncePerOccurrence(t *testing.T) {
 	t.Parallel()
 
 	host := newTestHost(t)
@@ -1012,31 +1022,36 @@ func TestAsyncWriter_Increments(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan error, 1)
 	go func() { done <- w.Run(ctx) }()
+	t.Cleanup(func() {
+		cancel()
+		<-done
+	})
 
 	p := freshPlugin(t, host)
 
-	// Seed an already-closed aggregate.
-	runProcess(t, p, host, snoozetypes.Record{State: "open", Extra: map[string]any{"a": "1"}})
-	runProcess(t, p, host, snoozetypes.Record{State: "close", Extra: map[string]any{"a": "1"}})
-	// Now a second close → should be ActionAbortUpdate and bump duplicates
-	// via the async writer.
-	_, action := runProcess(t, p, host, snoozetypes.Record{State: "close", Extra: map[string]any{"a": "1"}})
-	require.Equal(t, plugins.ActionAbortUpdate, action)
+	// Walk every verdict a duplicate can get, including both paths that used
+	// to double-count.
+	var actions []plugins.Action
+	for _, state := range []string{"open", "close", "close", "open", "open"} {
+		_, action := runProcess(t, p, host, snoozetypes.Record{
+			State: state, Extra: map[string]any{"a": "1"}})
+		actions = append(actions, action)
+	}
+	require.Equal(t, []plugins.Action{
+		plugins.ActionContinue,    // 1: new aggregate
+		plugins.ActionContinue,    // 2: closes it
+		plugins.ActionAbortUpdate, // 3: duplicate of an already-closed aggregate
+		plugins.ActionContinue,    // 4: re-open
+		plugins.ActionAbortUpdate, // 5: throttled duplicate
+	}, actions)
 
-	// Trigger a flush.
-	require.Eventually(t, func() bool {
-		// We can't peek at the writer's bucket from outside; instead, advance
-		// the clock and wait for the bulk increment to land in the DB.
-		clock.Advance(10 * time.Millisecond)
+	// Five occurrences, five duplicates — and it stays five however many
+	// flushes the writer performs.
+	require.Never(t, func() bool {
+		clock.Advance(20 * time.Millisecond)
 		results := recordsByAggregate(t, host, "Agg1")
-		if len(results) != 1 {
-			return false
-		}
-		return toInt64(results[0]["duplicates"], 0) >= 3
-	}, 2*time.Second, 20*time.Millisecond)
-
-	cancel()
-	<-done
+		return len(results) == 1 && toInt64(results[0]["duplicates"], 0) != 5
+	}, 400*time.Millisecond, 25*time.Millisecond)
 }
 
 // TestAggregate_ThrottleRecordsStat verifies that a throttled duplicate

@@ -22,8 +22,9 @@
 //   - When no rule matches, a default-hash bucket is used so every record
 //     still aggregates.
 //
-// The plugin uses `internal/db/asyncwriter` to merge duplicate-counter
-// increments into bulk updates against the `record` collection.
+// `duplicates` is counted in exactly one place — the merge assignment in
+// matchAggregate — because every verdict this plugin returns for a duplicate
+// (ActionContinue and ActionAbortUpdate alike) is persisted by the pipeline.
 package aggregaterule
 
 import (
@@ -43,7 +44,6 @@ import (
 	"github.com/snoozeweb/snooze/internal/auth"
 	"github.com/snoozeweb/snooze/internal/condition"
 	"github.com/snoozeweb/snooze/internal/db"
-	"github.com/snoozeweb/snooze/internal/db/asyncwriter"
 	"github.com/snoozeweb/snooze/internal/plugins"
 	"github.com/snoozeweb/snooze/pkg/snoozetypes"
 )
@@ -457,6 +457,12 @@ func (p *Plugin) matchAggregate(
 	incomingState, _ := rec["state"].(string)
 	incomingDateEpoch := toInt64(rec["date_epoch"], now.Unix())
 	rec["uid"] = prevUID
+	// The one and only `duplicates` bump. Every return path below is written
+	// by the pipeline — ActionAbortUpdate persists too, it just doesn't stamp
+	// date_epoch — so this assignment counts the occurrence exactly once
+	// whatever the verdict. A second mechanism used to bump the counter again
+	// on the two abort paths (see the git history of queueIncrement) and
+	// double-counted every throttled duplicate.
 	rec["duplicates"] = prevDup + 1
 	rec["date_epoch"] = prevDate
 	rec["comment_count"] = commentCount
@@ -479,8 +485,6 @@ func (p *Plugin) matchAggregate(
 		}
 		// Already closed.
 		rec["state"] = "close"
-		// Bump duplicates via async writer if available.
-		p.queueIncrement(ctx, host, hashStr, 1)
 		return rec, plugins.ActionAbortUpdate, nil
 	}
 
@@ -562,8 +566,7 @@ func (p *Plugin) matchAggregate(
 				fmt.Sprintf("Severity escalated: %s => %s (throttle bypassed)", prevSeverity, newSeverity), now)
 			return rec, plugins.ActionContinue, nil
 		}
-		// Throttled duplicate: queue the counter bump but drop notifications.
-		p.queueIncrement(ctx, host, hashStr, 1)
+		// Throttled duplicate: counted above, notifications dropped.
 		ruleName, _ := rec["aggregate"].(string)
 		plugins.RecordStat(ctx, host, incomingDateEpoch, "alert_throttled", map[string]string{"name": ruleName}, 1)
 		rec["state"] = prevState
@@ -616,33 +619,6 @@ func nextFlappingCountdown(countdown int64, hasCountdown bool, budget int64, thr
 		fc = 0
 	}
 	return fc
-}
-
-// queueIncrement asks the async writer to bump `duplicates` on the matching
-// record. If no async writer is wired into the host, the call is a no-op —
-// the in-line ActionContinue / ActionAbortUpdate writes still persist the
-// updated count we placed on rec.
-func (p *Plugin) queueIncrement(ctx context.Context, host plugins.Host, hash string, delta int64) {
-	if host == nil {
-		return
-	}
-	if w, ok := host.(asyncWriterHost); ok {
-		if writer := w.AsyncWriter(); writer != nil {
-			writer.Increment(ctx, recordCollection, "duplicates",
-				db.Document{"hash": hash}, delta)
-			return
-		}
-	}
-	// Fallback: synchronous IncMany on the driver.
-	_, _ = host.DB().IncMany(context.Background(), recordCollection,
-		"duplicates", condition.Equals("hash", hash), delta)
-}
-
-// asyncWriterHost is an optional interface a Host may satisfy to expose an
-// `asyncwriter.Writer`. It avoids forcing the plugins.Host contract to know
-// about asyncwriter directly.
-type asyncWriterHost interface {
-	AsyncWriter() *asyncwriter.Writer
 }
 
 // writeAutoComment persists an automatic lifecycle comment onto the `comment`
