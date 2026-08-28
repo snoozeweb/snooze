@@ -14,6 +14,21 @@
 
 ### Fixed
 
+- **The anti-flapping budget refills per throttle window instead of once per
+  record.** `flapping_countdown` was only ever decremented, never restored, so
+  after `flapping` (default 3) watched-field changes in an aggregate's entire
+  lifetime *every* later re-open or re-escalation was dropped as "flapping" —
+  however many quiet hours sat in between. A nightly K8s alert on production
+  had reached -9, so the transition that mattered (`ok => critical`, the alert
+  starting to fire again) was silently held back, with a timeline note
+  claiming notifications were stopped "until throttle expires (0s left)" —
+  a window that had ended a day earlier. Worse, that path aborts without
+  stamping `date_epoch`, so the throttle clock was not restarted either and
+  the next plain repeat 14 seconds later sailed through as a context-free
+  "New escalation". The countdown now refills whenever the aggregate has been
+  quiet for a full throttle window (as the documentation always described) and
+  floors at 0 instead of running away negative. Inside a window the cap is
+  unchanged, and `throttle: -1` still means the budget never refills.
 - **One JIRA ticket per alert again, instead of one per escalation.** The
   `snooze-jira` daemon recognises an alert it has already ticketed by reading
   the issue key back off the record, and every leg of that round-trip was

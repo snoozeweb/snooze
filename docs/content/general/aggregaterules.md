@@ -122,9 +122,23 @@ Two **enabled** rules may not share the same `fields` list. If you attempt to cr
 
 **Workaround:** add a discriminator field to the condition (e.g. a source tag) so the two rules match disjoint event sets, or collapse them into one rule.
 
+## What the throttle does and does not promise
+
+The throttle means **"at most one notification per window per aggregate"**, and the window restarts each time an occurrence is let through — not on the occurrences it holds back. It is a rate limit, not a per-incident latch.
+
+So the throttle has to be read against how often the upstream sends the *same* alert while it keeps firing. With `repeat_interval: 1m` in AlertManager and `throttle: 120`, an alert that fires for five minutes lets an occurrence through roughly every two minutes: two or three notifications for one incident, each one legitimately outside the previous window. Collapsing an incident onto a single notification means a throttle that spans the incident (15m, 1h), not one just above the send interval.
+
+Two things always break through, whatever the throttle: a severity that **rises** (see [Trend indication](#trend-indication-and-severity-escalation-bypass)) and a **re-open** of a closed aggregate — the latter capped by the anti-flapping budget below.
+
+Note that the notification's own `frequency` is not a second rate limit: only `total: 0` is honoured (as "skip"), while `delay` / `every` / `total > 1` are forwarded to the notifier and otherwise unused. The aggregate rule's throttle is the only rate control on this path.
+
 ## Flapping
 
 Even during the throttle period, closed alerts getting new hits are being re-opened and therefore notified. However, an anti-flapping feature is present to cap the number of the times this behavior can happen. by default it is set to 3, meaning only 3 subsequent hits can be notified until the throttle period ends.
+
+The budget is scoped to the throttle window, not to the record's lifetime: `flapping_countdown` refills to `flapping` as soon as the aggregate has been quiet for a full throttle window (i.e. the last occurrence let through is older than `throttle`). An aggregate that flapped hard yesterday therefore still notifies when it re-opens today. Inside a window the countdown floors at 0, and each held-back hit is written to the timeline with the remaining window.
+
+A `throttle` of `-1` means the window never ends, so the budget never refills: after `flapping` re-opens the aggregate stops notifying re-opens for good.
 
 ## Trend indication and severity escalation bypass
 

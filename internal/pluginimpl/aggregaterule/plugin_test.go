@@ -1297,3 +1297,184 @@ func TestAggregateRule_TenantIsolation(t *testing.T) {
 	p.mu.RUnlock()
 	require.Empty(t, betaRules)
 }
+
+// runPipelineLike is runProcess with the real pipeline's updateTime semantics:
+// ActionContinue / ActionAbortWrite stamp date_epoch, ActionAbortUpdate does
+// not (internal/core/pipeline.go). runProcess stamps it on every verdict, which
+// keeps the throttle window permanently fresh and hides how a held-back
+// occurrence leaves the throttle clock where it was.
+func runPipelineLike(t *testing.T, p *Plugin, host *testHost, in snoozetypes.Record) (snoozetypes.Record, plugins.Action) {
+	t.Helper()
+	res, err := p.Process(tctx(), in)
+	require.NoError(t, err)
+	switch res.Action {
+	case plugins.ActionContinue, plugins.ActionAbortWrite, plugins.ActionAbortUpdate:
+		doc := recordToMap(res.Record)
+		for k, v := range res.Record.Extra {
+			if _, ok := doc[k]; !ok {
+				doc[k] = v
+			}
+		}
+		match := db.Document{"tenant_id": snoozetypes.DefaultTenant}
+		if h, ok := doc["hash"].(string); ok {
+			match["hash"] = h
+		}
+		doc["tenant_id"] = snoozetypes.DefaultTenant
+		_, err := host.driver.ReplaceOne(tctx(), recordCollection, match, doc,
+			res.Action != plugins.ActionAbortUpdate)
+		require.NoError(t, err)
+	}
+	return res.Record, res.Action
+}
+
+// freshPluginRealClock is freshPlugin without the frozen clock. The storage
+// drivers stamp date_epoch from the real wall clock on an updateTime write, so
+// a test that reasons about the throttle window has to share that clock —
+// under the frozen clock every stored date_epoch sits decades in the future
+// and `now - date_epoch` is negative, which reads as "always throttling".
+func freshPluginRealClock(t *testing.T, host *testHost) *Plugin {
+	t.Helper()
+	p := &Plugin{meta: plugins.Metadata{Name: "aggregaterule"}}
+	p.clock = time.Now
+	require.NoError(t, p.PostInit(tctx(), host))
+	return p
+}
+
+// writeFlappingRule is the shape of the production rule behind the incident below:
+// aggregate on host, watch severity, 120s throttle for critical, 3 flaps.
+func writeFlappingRule(t *testing.T, host *testHost) {
+	t.Helper()
+	writeRule(t, host, db.Document{
+		"name":      "AggFlap",
+		"condition": []any{"=", "a", "flap"},
+		"fields":    []string{"a"},
+		"watch":     []string{"severity"},
+		"throttle":  map[string]any{"critical": int64(120), "default": int64(86400)},
+		"flapping":  int64(3),
+	})
+}
+
+// TestAggregate_FlappingBudgetRefillsAfterAQuietWindow: the anti-flapping
+// budget is per throttle window ("only 3 subsequent hits can be notified until
+// the throttle period ends"), not per record lifetime. An aggregate that has
+// been quiet for longer than its throttle must be allowed to re-open and
+// notify, whatever its countdown was when it went quiet.
+//
+// Production had this backwards: the countdown only ever fell, so a nightly
+// K8s alert sat at -9 and every ok => critical transition was silently dropped
+// as "flapping" after hours of silence.
+func TestAggregate_FlappingBudgetRefillsAfterAQuietWindow(t *testing.T) {
+	t.Parallel()
+
+	host := newTestHost(t)
+	writeFlappingRule(t, host)
+	p := freshPluginRealClock(t, host)
+
+	out, _ := runPipelineLike(t, p, host, snoozetypes.Record{
+		Severity: "critical", Extra: map[string]any{"a": "flap"}})
+	require.NotEmpty(t, out.Hash)
+
+	// Yesterday's incident: closed, resolved, countdown long since spent.
+	_, err := host.driver.SetFields(tctx(), recordCollection, db.Document{
+		"state":              "close",
+		"severity":           "ok",
+		"flapping_countdown": int64(-9),
+		"date_epoch":         time.Now().Unix() - 3600,
+	}, condition.Equals("hash", out.Hash))
+	require.NoError(t, err)
+
+	_, action := runPipelineLike(t, p, host, snoozetypes.Record{
+		Severity: "critical", Extra: map[string]any{"a": "flap"}})
+	require.Equal(t, plugins.ActionContinue, action,
+		"an alert that has been quiet for a full throttle window must notify on re-open")
+
+	results := recordsByAggregate(t, host, "AggFlap")
+	require.Len(t, results, 1)
+	require.Equal(t, int64(2), toInt64(results[0]["flapping_countdown"], 99),
+		"the budget must refill to `flapping` minus this hit")
+	require.Equal(t, "open", results[0]["state"])
+}
+
+// TestAggregate_FlappingStillCapsChurnInsideTheWindow: the refill must not cost
+// the feature its point. Inside one throttle window the budget still runs out,
+// and the countdown floors at 0 instead of running away negative.
+func TestAggregate_FlappingStillCapsChurnInsideTheWindow(t *testing.T) {
+	t.Parallel()
+
+	host := newTestHost(t)
+	writeFlappingRule(t, host)
+	p := freshPluginRealClock(t, host)
+
+	runPipelineLike(t, p, host, snoozetypes.Record{
+		Severity: "critical", Extra: map[string]any{"a": "flap"}})
+
+	// Churn severity back and forth well inside the 120s window. The first
+	// three changes spend the budget; everything after is held back.
+	var actions []plugins.Action
+	for i := 0; i < 6; i++ {
+		sev := "critical"
+		if i%2 == 0 {
+			sev = "warning"
+		}
+		_, action := runPipelineLike(t, p, host, snoozetypes.Record{
+			Severity: sev, Extra: map[string]any{"a": "flap"}})
+		actions = append(actions, action)
+	}
+	require.Equal(t, []plugins.Action{
+		plugins.ActionContinue,    // countdown 3 -> 2
+		plugins.ActionContinue,    // 2 -> 1
+		plugins.ActionAbortUpdate, // 1 -> 0: budget spent, held back
+		plugins.ActionAbortUpdate,
+		plugins.ActionAbortUpdate,
+		plugins.ActionAbortUpdate,
+	}, actions)
+
+	results := recordsByAggregate(t, host, "AggFlap")
+	require.Len(t, results, 1)
+	require.Equal(t, int64(0), toInt64(results[0]["flapping_countdown"], 99),
+		"the countdown floors at 0 rather than running away negative")
+}
+
+// TestAggregate_HeldBackTransitionDoesNotLeakATrailingRepeat reproduces the
+// production sequence for alert 3ee4464b (2026-08-28 00:11Z): the ok =>
+// critical transition was held back as flapping, which also left date_epoch
+// where it was, so the very next repeat 14s later found a day-old throttle
+// clock and notified as a plain "New escalation" — a notification that was
+// never throttled and carried none of the transition's context.
+//
+// With the budget refilled the transition itself notifies, restarting the
+// throttle clock, and the trailing repeat is throttled as it should be.
+func TestAggregate_HeldBackTransitionDoesNotLeakATrailingRepeat(t *testing.T) {
+	t.Parallel()
+
+	host := newTestHost(t)
+	writeFlappingRule(t, host)
+	p := freshPluginRealClock(t, host)
+
+	out, _ := runPipelineLike(t, p, host, snoozetypes.Record{
+		Severity: "critical", Extra: map[string]any{"a": "flap"}})
+	_, err := host.driver.SetFields(tctx(), recordCollection, db.Document{
+		"state":              "close",
+		"severity":           "ok",
+		"flapping_countdown": int64(-9),
+		"date_epoch":         time.Now().Unix() - 86400,
+	}, condition.Equals("hash", out.Hash))
+	require.NoError(t, err)
+
+	// 00:11:20 — the alert re-fires: one notification, throttle clock restarted.
+	_, action := runPipelineLike(t, p, host, snoozetypes.Record{
+		Severity: "critical", Extra: map[string]any{"a": "flap"}})
+	require.Equal(t, plugins.ActionContinue, action)
+
+	// 00:11:34 — AlertManager repeats the same critical: no watched change, and
+	// now inside the throttle window.
+	_, action = runPipelineLike(t, p, host, snoozetypes.Record{
+		Severity: "critical", Extra: map[string]any{"a": "flap"}})
+	require.Equal(t, plugins.ActionAbortUpdate, action,
+		"a repeat right after the re-open notification must be throttled")
+
+	results := recordsByAggregate(t, host, "AggFlap")
+	require.Len(t, results, 1)
+	require.Equal(t, int64(1), toInt64(results[0]["comment_count"], 0),
+		"exactly one timeline entry: the re-open, not a trailing escalation")
+}

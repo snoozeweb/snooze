@@ -496,11 +496,7 @@ func (p *Plugin) matchAggregate(
 
 	if len(changedFields) > 0 {
 		// Decrement the flapping countdown and re-open if necessary.
-		fc := flappingCountdown
-		if !hasFlap {
-			fc = flapping
-		}
-		fc--
+		fc := nextFlappingCountdown(flappingCountdown, hasFlap, flapping, throttling)
 		rec["flapping_countdown"] = fc
 		rec["comment_count"] = commentCount + 1
 		fields := strings.Join(changedFields, ", ")
@@ -535,11 +531,7 @@ func (p *Plugin) matchAggregate(
 
 	if prevState == "close" {
 		// Auto re-open without a watch change.
-		fc := flappingCountdown
-		if !hasFlap {
-			fc = flapping
-		}
-		fc--
+		fc := nextFlappingCountdown(flappingCountdown, hasFlap, flapping, throttling)
 		rec["state"] = "open"
 		rec["flapping_countdown"] = fc
 		rec["comment_count"] = commentCount + 1
@@ -590,6 +582,40 @@ func (p *Plugin) matchAggregate(
 	rec["comment_count"] = commentCount + 1
 	p.writeAutoComment(ctx, host, prevUID, ctype, "New escalation", now)
 	return rec, plugins.ActionContinue, nil
+}
+
+// nextFlappingCountdown spends one unit of the aggregate's anti-flapping
+// budget and returns the remainder. A remainder of 0 or less means this hit is
+// held back (see the callers).
+//
+// The budget is per throttle window, not per record lifetime: "only 3
+// subsequent hits can be notified until the throttle period ends"
+// (docs/content/general/aggregaterules.md). So it refills whenever the
+// aggregate has been quiet for a full throttle window — !throttling, i.e. the
+// last pass-through was longer ago than the throttle — and on a record that
+// has no countdown yet.
+//
+// Without the refill the countdown only ever fell, so after `flapping`
+// watch-field changes in the aggregate's whole life EVERY later re-open or
+// re-escalation was dropped as flapping, however many quiet hours sat in
+// between. Two costs, both seen in production on a nightly K8s alert whose
+// countdown had reached -9: the meaningful transition (ok => critical) was
+// swallowed, and because that path aborts without stamping date_epoch, the
+// throttle clock was not restarted either — so the next plain repeat, 14
+// seconds later, sailed through as a fresh "New escalation".
+//
+// The result is clamped at 0: a negative countdown carries no more
+// information than 0 (both mean "budget spent") and 0 refills identically.
+func nextFlappingCountdown(countdown int64, hasCountdown bool, budget int64, throttling bool) int64 {
+	fc := countdown
+	if !hasCountdown || !throttling {
+		fc = budget
+	}
+	fc--
+	if fc < 0 {
+		fc = 0
+	}
+	return fc
 }
 
 // queueIncrement asks the async writer to bump `duplicates` on the matching
