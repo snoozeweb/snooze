@@ -240,10 +240,28 @@ func NotifyRef(rec snoozetypes.Record, actionName string) map[string]any {
 	}
 	for _, prefix := range []string{notifyRefPrefix, legacyRefPrefix} {
 		if ref, ok := rec.Extra[prefix+actionName].(map[string]any); ok && len(ref) > 0 {
-			return ref
+			return unwrapHashKeyed(rec, ref)
 		}
 	}
 	return nil
+}
+
+// unwrapHashKeyed digs the record's own entry out of a batch-shaped handle.
+//
+// A receiver that accepts batches answers with one object per alert keyed by
+// the alert hash — `{"<hash>": {"issue_key": …}}` — and answers in that shape
+// even for a single alert. Older servers stamped that envelope verbatim onto
+// the record, so handles written before webhook's unwrapForRecord landed sit
+// one level too deep. Reading through them here means those records keep
+// their handle instead of causing a duplicate ticket on the next escalation.
+func unwrapHashKeyed(rec snoozetypes.Record, ref map[string]any) map[string]any {
+	if rec.Hash == "" {
+		return ref
+	}
+	if inner, ok := ref[rec.Hash].(map[string]any); ok && len(inner) > 0 {
+		return inner
+	}
+	return ref
 }
 
 // NotifyRefString reads one string field out of the handle, tolerating every

@@ -694,3 +694,173 @@ func TestDefaultBodyIncludesExtra(t *testing.T) {
 	require.EqualValues(t, 4, doc["duplicates"])
 	require.Contains(t, doc, "notify_ref_Ops")
 }
+
+// TestSendsActionNameHeader: the receiving endpoint has no other way to learn
+// which action called it — the URL is whatever the operator typed. The JIRA
+// daemon keys its dedup handle by action name, so without this header it
+// cannot find the ticket it already opened for the alert.
+func TestSendsActionNameHeader(t *testing.T) {
+	var got string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		got = r.Header.Get("X-Snooze-Action-Name")
+		w.WriteHeader(http.StatusOK)
+	}))
+	t.Cleanup(srv.Close)
+
+	p := newPluginForTest(t)
+	require.NoError(t, p.Send(context.Background(), sampleRecord(), plugins.NotificationPayload{
+		Meta: map[string]any{"url": srv.URL, "action_name": "Jira Ticket"},
+	}))
+	require.Equal(t, "Jira Ticket", got)
+}
+
+// An operator-set header wins, so a deployment that already threads the name
+// through some other header name (or wants it suppressed) is not overridden.
+func TestActionNameHeaderOverridable(t *testing.T) {
+	var got string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		got = r.Header.Get("X-Snooze-Action-Name")
+		w.WriteHeader(http.StatusOK)
+	}))
+	t.Cleanup(srv.Close)
+
+	p := newPluginForTest(t)
+	require.NoError(t, p.Send(context.Background(), sampleRecord(), plugins.NotificationPayload{
+		Meta: map[string]any{
+			"url":         srv.URL,
+			"action_name": "Jira Ticket",
+			"headers":     map[string]any{"X-Snooze-Action-Name": "mine"},
+		},
+	}))
+	require.Equal(t, "mine", got)
+}
+
+// TestInjectResponseUnwrapsBatchEnvelope is the server half of the
+// duplicate-ticket regression. A batch-aware receiver answers with one entry
+// per alert keyed by alert hash, and does so even for a single alert. Stamping
+// that envelope whole put the handle one level below where every reader looks,
+// so the next escalation found nothing and the receiver opened a second
+// ticket. Only this record's entry may be stamped.
+func TestInjectResponseUnwrapsBatchEnvelope(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"ec2f9135":{"issue_key":"CG-1811"},"other":{"issue_key":"CG-9999"}}`))
+	}))
+	t.Cleanup(srv.Close)
+
+	rec := sampleRecord()
+	rec.Hash = "ec2f9135"
+
+	p := newPluginForTest(t)
+	stamped := map[string]any{}
+	var mu sync.Mutex
+	require.NoError(t, p.Send(context.Background(), rec, plugins.NotificationPayload{
+		Meta: map[string]any{"url": srv.URL, "inject_response": true, "action_name": "Jira Ticket"},
+		Inject: func(field string, value any) {
+			mu.Lock()
+			defer mu.Unlock()
+			stamped[field] = value
+		},
+	}))
+
+	mu.Lock()
+	defer mu.Unlock()
+	require.Equal(t, map[string]any{"issue_key": "CG-1811"}, stamped["response_Jira Ticket"],
+		"only this record's entry may be stamped, unwrapped")
+}
+
+// A response that is not the batch envelope is stamped verbatim — including
+// one whose keys simply don't include this record's hash.
+func TestInjectResponseKeepsNonBatchShapes(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"issue_key":"CG-1","other":{"issue_key":"CG-2"}}`))
+	}))
+	t.Cleanup(srv.Close)
+
+	rec := sampleRecord()
+	rec.Hash = "ec2f9135"
+
+	p := newPluginForTest(t)
+	stamped := map[string]any{}
+	var mu sync.Mutex
+	require.NoError(t, p.Send(context.Background(), rec, plugins.NotificationPayload{
+		Meta: map[string]any{"url": srv.URL, "inject_response": true, "action_name": "act"},
+		Inject: func(field string, value any) {
+			mu.Lock()
+			defer mu.Unlock()
+			stamped[field] = value
+		},
+	}))
+
+	mu.Lock()
+	defer mu.Unlock()
+	require.Equal(t, map[string]any{"issue_key": "CG-1", "other": map[string]any{"issue_key": "CG-2"}},
+		stamped["response_act"])
+}
+
+func TestUnwrapForRecord(t *testing.T) {
+	inner := map[string]any{"issue_key": "CG-1"}
+	require.Equal(t, inner, unwrapForRecord(map[string]any{"h": inner}, "h"))
+	require.Equal(t, "raw", unwrapForRecord("raw", "h"), "a string response is untouched")
+	require.Equal(t, map[string]any{"h": inner}, unwrapForRecord(map[string]any{"h": inner}, ""),
+		"no hash on the record: nothing to key on")
+	require.Equal(t, map[string]any{"h": "scalar"}, unwrapForRecord(map[string]any{"h": "scalar"}, "h"),
+		"a scalar under the hash is not a handle")
+	require.Equal(t, map[string]any{"h": map[string]any{}}, unwrapForRecord(map[string]any{"h": map[string]any{}}, "h"),
+		"an empty entry is not a handle")
+}
+
+// TestBodyTemplateRecordIncludesExtra: `{{ tojson .Record }}` — and the 1.x
+// `{{ __self__ | tojson() }}` that rewrites to it — must carry the record's
+// Extra fields, because Record.Extra is `json:"-"` and plain encoding/json
+// drops it. Everything a receiver needs to recognise an alert it has already
+// handled (`notify_ref_*`, `response_*`) lives there, so a body without Extra
+// makes the JIRA daemon open a new ticket on every escalation.
+func TestBodyTemplateRecordIncludesExtra(t *testing.T) {
+	var body []byte
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, _ = io.ReadAll(r.Body)
+		w.WriteHeader(http.StatusOK)
+	}))
+	t.Cleanup(srv.Close)
+
+	rec := sampleRecord()
+	rec.Extra = map[string]any{
+		"response_Jira Ticket": map[string]any{"issue_key": "CG-1811"},
+		"duplicates":           42,
+	}
+
+	p := newPluginForTest(t)
+	for _, tmpl := range []string{
+		`{"alert": {{ tojson .Record }}}`,
+		`{"alert": {{ __self__ | tojson() }}}`,
+		`{"alert": {{ __self__ }}}`,
+	} {
+		require.NoError(t, p.Send(context.Background(), rec, plugins.NotificationPayload{
+			Meta: map[string]any{"url": srv.URL, "body": tmpl},
+		}))
+		var got struct {
+			Alert map[string]any `json:"alert"`
+		}
+		require.NoError(t, json.Unmarshal(body, &got), "template %q produced %s", tmpl, body)
+		require.Equal(t, map[string]any{"issue_key": "CG-1811"}, got.Alert["response_Jira Ticket"],
+			"template %q dropped the handle", tmpl)
+		require.Equal(t, float64(42), got.Alert["duplicates"], "template %q dropped an extra field", tmpl)
+		require.Equal(t, "db-1.example.com", got.Alert["host"], "template %q dropped a typed field", tmpl)
+	}
+}
+
+func TestTojsonNonRecordValues(t *testing.T) {
+	out, err := tojson(map[string]any{"a": 1})
+	require.NoError(t, err)
+	require.JSONEq(t, `{"a":1}`, out)
+
+	out, err = tojson((*snoozetypes.Record)(nil))
+	require.NoError(t, err)
+	require.Equal(t, "null", out)
+
+	out, err = tojson(&snoozetypes.Record{Host: "h", Extra: map[string]any{"k": "v"}})
+	require.NoError(t, err)
+	require.JSONEq(t, `{"host":"h","timestamp":"0001-01-01T00:00:00Z","k":"v"}`, out)
+}

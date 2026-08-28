@@ -51,10 +51,16 @@ func init() {
 // the Go port collapses both into a single request timeout.
 const defaultTimeout = 10 * time.Second
 
-// maxResponseBytes caps the body we read for logging/diagnostics. The
-// notifier does not inject responses back into the record (Python's
-// `inject_response` is not modelled in the Go pipeline yet).
+// maxResponseBytes caps the body we read for logging/diagnostics and for
+// `inject_response` (see Config.InjectResponse).
 const maxResponseBytes = 64 << 10
+
+// actionNameHeader tells the receiving endpoint which Snooze action drove
+// the call. Batch-aware receivers (the JIRA daemon, for one) key the handle
+// they hand back — and the handle they look for on the next delivery — by
+// action name, and the operator-supplied URL carries no such hint. Sending
+// it as a header keeps the URL the operator typed intact.
+const actionNameHeader = "X-Snooze-Action-Name"
 
 // Config captures the per-action knobs the worker passes via the
 // NotificationPayload.Meta map (which originates from action_form in the
@@ -73,6 +79,11 @@ type Config struct {
 	// http.Transport routes the outbound request through it. Mirrors the
 	// Python `proxy` action_form field.
 	Proxy string
+
+	// ActionName is the notification action this delivery belongs to. It
+	// names the record field `inject_response` writes to and is sent to the
+	// endpoint as actionNameHeader.
+	ActionName string
 
 	// InjectResponse, when true, parses the HTTP response body (as JSON if
 	// it parses, otherwise as a string) and stamps it onto the originating
@@ -220,6 +231,9 @@ func (p *Plugin) deliver(ctx context.Context, cfg Config, body []byte, contentTy
 	if contentType != "" && req.Header.Get("Content-Type") == "" {
 		req.Header.Set("Content-Type", contentType)
 	}
+	if cfg.ActionName != "" {
+		req.Header.Set(actionNameHeader, cfg.ActionName)
+	}
 
 	if err := applyHeaders(req, cfg.Headers, rec); err != nil {
 		return fmt.Errorf("webhook: render headers: %w", err)
@@ -247,10 +261,9 @@ func (p *Plugin) deliver(ctx context.Context, cfg Config, body []byte, contentTy
 	// inject_response: stamp the response onto the originating record under
 	// `response_<action_name>`. We try to JSON-decode first so downstream
 	// consumers see structured data; on failure we fall back to the raw
-	// string. The action_name lives in Meta — same place the notification
-	// dispatcher placed it via metaFromSubcontent.
+	// string.
 	if cfg.InjectResponse {
-		actionName, _ := payload.Meta["action_name"].(string)
+		actionName := cfg.ActionName
 		if actionName == "" {
 			actionName = "webhook"
 		}
@@ -263,9 +276,37 @@ func (p *Plugin) deliver(ctx context.Context, cfg Config, body []byte, contentTy
 		} else {
 			parsed = string(preview)
 		}
-		plugins.InjectField(payload.Inject, field, parsed)
+		plugins.InjectField(payload.Inject, field, unwrapForRecord(parsed, rec.Hash))
 	}
 	return nil
+}
+
+// unwrapForRecord narrows a batch-shaped response down to the entry that
+// belongs to rec.
+//
+// A receiver that accepts a batch of alerts answers with one object per
+// alert, keyed by the alert hash — `{"<hash>": {...}}` — and it answers in
+// that shape even for a single alert, because it cannot know whether the
+// sender batched. Stamping that envelope verbatim buries the handle one
+// level below where every reader looks for it (`response_<action>.issue_key`
+// and friends), so the next delivery finds no handle and the receiver
+// creates a second ticket / message / incident for the same alert.
+//
+// The unwrap only fires when the record's own hash is a key of the response
+// object, which no non-batch payload has any reason to be.
+func unwrapForRecord(parsed any, hash string) any {
+	if hash == "" {
+		return parsed
+	}
+	obj, ok := parsed.(map[string]any)
+	if !ok {
+		return parsed
+	}
+	inner, ok := obj[hash].(map[string]any)
+	if !ok || len(inner) == 0 {
+		return parsed
+	}
+	return inner
 }
 
 // bodyIsJSON returns true when body is a valid JSON value. Used to gate
@@ -321,9 +362,10 @@ func defaultClient(cfg Config) *http.Client {
 //nolint:gocognit // straight-line key extraction; the linear shape is the point.
 func configFromPayload(p plugins.NotificationPayload) (Config, error) {
 	cfg := Config{
-		Method:  http.MethodPost,
-		Body:    p.Body,
-		Timeout: defaultTimeout,
+		Method:     http.MethodPost,
+		Body:       p.Body,
+		Timeout:    defaultTimeout,
+		ActionName: p.ActionName(),
 	}
 	if p.Meta == nil {
 		return cfg, nil
@@ -393,7 +435,7 @@ func configFromPayload(p plugins.NotificationPayload) (Config, error) {
 		cfg.Batch = false
 	}
 	if cfg.Batch {
-		cfg.BatchKey = cfg.URL + "|" + stringField(p.Meta, "action_name")
+		cfg.BatchKey = cfg.URL + "|" + cfg.ActionName
 	}
 
 	return cfg, nil
@@ -507,14 +549,41 @@ func translatePythonIdioms(tmpl string) string {
 // templateFuncs returns the function map exposed to webhook templates.
 func templateFuncs() template.FuncMap {
 	return template.FuncMap{
-		"tojson": func(v any) (string, error) {
-			raw, err := json.Marshal(v)
-			if err != nil {
-				return "", err
-			}
-			return string(raw), nil
-		},
+		"tojson": tojson,
 	}
+}
+
+// tojson JSON-encodes a template value.
+//
+// A record is encoded through plugins.MarshalRecord rather than
+// encoding/json, because Record.Extra is `json:"-"`: every field Snooze does
+// not have a typed struct field for — rule-added fields, `duplicates`, and
+// crucially the `notify_ref_<action>` / `response_<action>` handles — lives in
+// Extra and would otherwise be dropped from the body. `{{ tojson .Record }}`
+// (and the 1.x `{{ __self__ | tojson() }}` it rewrites) is the idiom every
+// receiver-side integration is built on: the JIRA daemon reads its own issue
+// key back out of that body to decide comment-vs-create, so a body missing
+// Extra means a new ticket on every escalation. This also makes the templated
+// body agree with the default (empty-template) body, which has always gone
+// through MarshalRecord.
+func tojson(v any) (string, error) {
+	var raw []byte
+	var err error
+	switch rec := v.(type) {
+	case snoozetypes.Record:
+		raw, err = plugins.MarshalRecord(rec)
+	case *snoozetypes.Record:
+		if rec == nil {
+			return "null", nil
+		}
+		raw, err = plugins.MarshalRecord(*rec)
+	default:
+		raw, err = json.Marshal(v)
+	}
+	if err != nil {
+		return "", err
+	}
+	return string(raw), nil
 }
 
 // templateData wraps the record so callers can write `{{.Record.Host}}`

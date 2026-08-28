@@ -34,12 +34,22 @@ Wire the plugin through a **Notification → Action** in the Snooze UI or config
 | `body` | Text | *(optional)* | Request body as a Go `text/template` rendered over `.Record` and `.Now`. When empty the plugin sends a JSON-encoded record and sets `Content-Type: application/json` automatically. |
 | `proxy` | String | *(optional)* | HTTP/HTTPS/SOCKS proxy URL through which to route the outbound request (e.g. `http://proxy.local:3128`). |
 | `tls_insecure` | Switch | `false` | Skip TLS certificate verification when calling HTTPS endpoints. Use only for trusted private endpoints. |
-| `inject_response` | Switch | `false` | Parse the HTTP response body (JSON if valid, otherwise raw string) and stamp it onto the originating record under the key `response_<action_name>`. Downstream rules and templates can then access the response. Mutually exclusive with `batch` (the batch path has no single originating record to stamp). |
+| `inject_response` | Switch | `false` | Parse the HTTP response body (JSON if valid, otherwise raw string) and stamp it onto the originating record under the key `response_<action_name>`. Downstream rules and templates can then access the response. Mutually exclusive with `batch` (the batch path has no single originating record to stamp). See [Response injection](#inject-response). |
 | `auth` | Object | *(optional)* | Optional authentication block. Supported shapes: `{type: bearer, token: "..."}` or `{type: basic, username: "...", password: "..."}`. |
 | `timeout` | String | `10s` | Full request timeout as a Go duration string (e.g. `5s`, `30s`, `2m`). |
 | `batch` | Switch | `false` | When enabled, multiple alert bodies are accumulated and POSTed as a single JSON array. Only effective when each rendered body is valid JSON. Ignored when `inject_response` is on. See [Batching](#batching) below. |
 | `batch_maxsize` | Number | `100` | Flush the batch when it reaches this many records. |
 | `batch_timer` | Number | `10` | Flush the batch when it is at least this many seconds old. |
+
+### Headers sent by the plugin
+
+Every request carries `X-Snooze-Action-Name: <action name>`, so a receiver shared by several actions can tell them apart — endpoints that hand a handle back (a ticket id, a message id) key it by action name, and the action URL alone carries no such hint. Setting the same header explicitly in `headers` overrides it.
+
+### Response injection {#inject-response}
+
+With `inject_response` on, the response body is stamped onto the record under `response_<action_name>` so the next delivery for the same alert can read it back — that is how the [JIRA daemon](jira.md#dedup) recognises a ticket it already opened instead of creating a second one.
+
+Endpoints that accept a batch of alerts answer with one entry per alert keyed by alert hash — `{"<hash>": {...}}` — and answer in that shape even when a single alert was sent, since they cannot know whether the sender batched. The plugin recognises its own record's hash as a key and stamps the inner entry, so `response_<action_name>` always holds *this* record's response. Any other response shape is stamped verbatim.
 
 ### Template context
 
@@ -49,7 +59,7 @@ URL, header values, and body are rendered as Go `text/template` with the followi
 - `.Now` — the current UTC time (`time.Time`).
 - `.ReplyToIDs` — for notifiers that support threading (e.g. Teams), the `message_ids` from a previous `inject_response` stamped onto the record; `null` on first fire.
 
-The template function `tojson` is available to JSON-encode any value: `{{ tojson .Record }}`.
+The template function `tojson` is available to JSON-encode any value: `{{ tojson .Record }}`. Encoding the record this way includes its **extra fields** — everything Snooze has no typed field for: rule-added fields, `duplicates`, and the `notify_ref_<action>` / `response_<action>` handles a receiver reads back to recognise an alert it has already handled. That matches the default (empty-template) body.
 
 **Python 1.x compatibility.** Templates that used the Jinja2 idioms `{{ __self__ | tojson() }}` or `{{ __self__ }}` are automatically rewritten to `{{ tojson .Record }}` at parse time, so action records ported from 1.x continue to work without manual migration.
 

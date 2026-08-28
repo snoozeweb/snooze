@@ -294,3 +294,41 @@ func TestPrefixMessage(t *testing.T) {
 		Escalation{Count: 1}.PrefixMessage("disk full"))
 	require.Equal(t, "⚠️ New escalation #1", Escalation{Count: 1}.PrefixMessage(""))
 }
+
+// A batch-aware receiver answers `{"<hash>": {...}}` even for a single alert,
+// and servers before webhook's unwrapForRecord stamped that envelope verbatim.
+// NotifyRef must read through it, otherwise every notifier holding such a
+// record takes its create path again and duplicates the ticket / message.
+func TestNotifyRefReadsThroughBatchEnvelope(t *testing.T) {
+	rec := snoozetypes.Record{
+		Hash: "ec2f9135",
+		Extra: map[string]any{
+			"response_Jira Ticket": map[string]any{
+				"ec2f9135": map[string]any{"issue_key": "CG-1811"},
+			},
+		},
+	}
+	require.Equal(t, "CG-1811", NotifyRefString(rec, "Jira Ticket", "issue_key"))
+}
+
+// Another alert's entry is not this alert's handle.
+func TestNotifyRefIgnoresForeignBatchEntry(t *testing.T) {
+	rec := snoozetypes.Record{
+		Hash: "mine",
+		Extra: map[string]any{
+			"response_act": map[string]any{"theirs": map[string]any{"issue_key": "CG-1"}},
+		},
+	}
+	require.Empty(t, NotifyRefString(rec, "act", "issue_key"))
+}
+
+// A handle that happens to carry a key equal to the record hash is still read
+// as a flat handle: unwrapping only kicks in when the nested value is an
+// object, and the flat lookup is tried first anyway.
+func TestNotifyRefFlatHandleUnaffectedByHash(t *testing.T) {
+	rec := snoozetypes.Record{
+		Hash:  "h1",
+		Extra: map[string]any{"notify_ref_act": map[string]any{"issue_key": "CG-2", "h1": "scalar"}},
+	}
+	require.Equal(t, "CG-2", NotifyRefString(rec, "act", "issue_key"))
+}
