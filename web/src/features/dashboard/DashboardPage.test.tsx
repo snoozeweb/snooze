@@ -70,7 +70,28 @@ const FULL_STATS_RESPONSE = {
     },
     weekday: { "0": 3, "1": 8, "2": 9, "3": 7, "4": 10, "5": 5, "6": 2 },
   },
-  meta: { from: "2026-05-13T00:00:00Z", to: "2026-05-14T00:00:00Z", bucket: 3600 },
+  meta: {
+    from: "2026-05-13T00:00:00Z",
+    to: "2026-05-14T00:00:00Z",
+    bucket: 3600,
+    counters: { enabled: true, present: true },
+  },
+};
+
+const EMPTY_STATS_DATA = {
+  series: [],
+  totals: {
+    by_severity: {},
+    by_environment: {},
+    by_host: {},
+    by_action_success: {},
+    by_action_failure: {},
+    by_throttled: {},
+    by_snoozed: {},
+    by_notification: {},
+  },
+  snapshot: { by_state: {}, total_hits: 0, open: 0, ack: 0, closed: 0 },
+  weekday: {},
 };
 
 const COMMENTS_RESPONSE = {
@@ -168,22 +189,8 @@ describe("DashboardPage", () => {
     mswServer.use(
       http.get("/api/v1/stats", () =>
         HttpResponse.json({
-          data: {
-            series: [],
-            totals: {
-              by_severity: {},
-              by_environment: {},
-              by_host: {},
-              by_action_success: {},
-              by_action_failure: {},
-              by_throttled: {},
-              by_snoozed: {},
-              by_notification: {},
-            },
-            snapshot: { by_state: {}, total_hits: 0, open: 0, ack: 0, closed: 0 },
-            weekday: {},
-          },
-          meta: { from: "", to: "", bucket: 3600 },
+          data: EMPTY_STATS_DATA,
+          meta: { from: "", to: "", bucket: 3600, counters: { enabled: true, present: true } },
         }),
       ),
       http.get("/api/v1/comment", () =>
@@ -195,40 +202,77 @@ describe("DashboardPage", () => {
     expect(screen.getByRole("button", { name: "1d" })).toBeInTheDocument();
   });
 
-  it("renders all cockpit panels when stats data is non-empty", async () => {
+  it("leads with noise removed, then the stream, then supporting panels", async () => {
     mswServer.use(
       http.get("/api/v1/stats", () => HttpResponse.json(FULL_STATS_RESPONSE)),
       http.get("/api/v1/comment", () => HttpResponse.json(COMMENTS_RESPONSE)),
     );
     setup();
 
-    expect(await screen.findByText("Alerts over time")).toBeInTheDocument();
-    expect(screen.getByText("Recent activity")).toBeInTheDocument();
-    expect(screen.getByText("By severity")).toBeInTheDocument();
-    expect(screen.getByText("By environment")).toBeInTheDocument();
-    expect(screen.getByText("By state")).toBeInTheDocument();
-    expect(screen.getByText("Top hosts")).toBeInTheDocument();
-    expect(screen.getByText("Actions")).toBeInTheDocument();
+    // The thesis panel, with both suppression breakdowns folded into it.
+    expect(await screen.findByText("Noise removed")).toBeInTheDocument();
     expect(screen.getByText("Throttled by rule")).toBeInTheDocument();
     expect(screen.getByText("Snoozed by filter")).toBeInTheDocument();
-    expect(screen.getByText("By weekday")).toBeInTheDocument();
+
+    expect(screen.getByText("Alerts over time")).toBeInTheDocument();
+    expect(screen.getByText("By state")).toBeInTheDocument();
+    expect(screen.getByText("Recent activity")).toBeInTheDocument();
+
+    // The secondary breakdowns live behind one tabbed panel instead of four
+    // co-equal cards.
+    expect(screen.getByText("Breakdowns")).toBeInTheDocument();
+    for (const tab of ["Severity", "Environment", "Hosts", "Actions", "Weekday"]) {
+      expect(screen.getByRole("tab", { name: tab })).toBeInTheDocument();
+    }
   });
 
-  it("qualifies the cumulative distribution panels vs the live state panel", async () => {
+  it("says which numbers are live and which are windowed", async () => {
     mswServer.use(
       http.get("/api/v1/stats", () => HttpResponse.json(FULL_STATS_RESPONSE)),
       http.get("/api/v1/comment", () => HttpResponse.json(COMMENTS_RESPONSE)),
     );
     setup();
-    await screen.findByText("By severity");
-    // Severity and environment are event totals over the window (any state)…
-    expect(screen.getAllByText(/events in this period, any state/i)).toHaveLength(2);
-    // …while "By state" is distinct alerts in the window grouped by current
-    // state (still windowed — not a live/now snapshot).
-    expect(screen.getByText(/alerts in this period, by current state/i)).toBeInTheDocument();
+    await screen.findByText("Noise removed");
+
+    // The KPI clusters name their source…
+    expect(screen.getByRole("region", { name: "Right now" })).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "Last 24 hours" })).toBeInTheDocument();
+    // …and every counter-backed panel repeats the window.
+    expect(screen.getAllByText(/last 24 hours/i).length).toBeGreaterThanOrEqual(3);
+    // The live panel says so instead.
+    expect(screen.getByText(/right now, every alert/i)).toBeInTheDocument();
   });
 
-  it("labels the top-N cap on a high-cardinality bar panel instead of truncating silently", async () => {
+  it("takes the headline live count from the same query as the alerts list", async () => {
+    mswServer.use(
+      http.get("/api/v1/stats", () => HttpResponse.json(FULL_STATS_RESPONSE)),
+      http.get("/api/v1/comment", () => HttpResponse.json(COMMENTS_RESPONSE)),
+      // The record store holds 5 rows in state=open (snapshot.open), but only
+      // 2 of them are in the working queue — the rest are snoozed or shelved.
+      // The tile must show the queue, like the sidebar badge and the table.
+      http.get("/api/v1/record", () =>
+        HttpResponse.json({ data: [], meta: { count: 0, limit: 1, offset: 0, total: 2 } }),
+      ),
+    );
+    setup();
+    const live = await screen.findByRole("region", { name: "Right now" });
+    expect(within(live).getByText("2")).toBeInTheDocument();
+    expect(within(live).queryByText("5")).not.toBeInTheDocument();
+  });
+
+  it("computes the suppressed share of the ingest stream", async () => {
+    mswServer.use(
+      http.get("/api/v1/stats", () => HttpResponse.json(FULL_STATS_RESPONSE)),
+      http.get("/api/v1/comment", () => HttpResponse.json(COMMENTS_RESPONSE)),
+    );
+    setup();
+    // by_throttled 2+1 plus by_snoozed 3 = 6 of 15 ingested = 40%.
+    await screen.findByText("Noise removed");
+    expect(screen.getByText("6")).toBeInTheDocument();
+    expect(screen.getByText(/of 15 events suppressed · 40% of the stream/i)).toBeInTheDocument();
+  });
+
+  it("labels the top-N cap on a high-cardinality breakdown instead of truncating silently", async () => {
     const by_throttled: Record<string, number> = {};
     for (let i = 0; i < 15; i++) by_throttled[`rule${i}`] = 15 - i;
     mswServer.use(
@@ -244,8 +288,8 @@ describe("DashboardPage", () => {
       http.get("/api/v1/comment", () => HttpResponse.json(COMMENTS_RESPONSE)),
     );
     setup();
-    // 15 rules capped to 12 → the panel says so rather than looking complete.
-    expect(await screen.findByText(/top 12 of 15/i)).toBeInTheDocument();
+    // 15 rules capped to 6 → the panel says so rather than looking complete.
+    expect(await screen.findByText(/top 6 of 15/i)).toBeInTheDocument();
   });
 
   it("prefixes each pane title with its content icon", async () => {
@@ -254,16 +298,71 @@ describe("DashboardPage", () => {
       http.get("/api/v1/comment", () => HttpResponse.json(COMMENTS_RESPONSE)),
     );
     setup();
-    await screen.findByText("Top hosts");
+    await screen.findByText("Noise removed");
 
     const iconFor = (title: string) =>
       screen.getByText(title).querySelector("use")?.getAttribute("href");
 
+    expect(iconFor("Noise removed")).toBe("/web/icons.svg#icon-filter");
+    expect(iconFor("Alerts over time")).toBe("/web/icons.svg#icon-activity");
     expect(iconFor("Recent activity")).toBe("/web/icons.svg#icon-message-square");
-    expect(iconFor("By severity")).toBe("/web/icons.svg#icon-alert-triangle");
-    expect(iconFor("Top hosts")).toBe("/web/icons.svg#icon-server");
-    expect(iconFor("Snoozed by filter")).toBe("/web/icons.svg#icon-bell-off");
-    expect(iconFor("By weekday")).toBe("/web/icons.svg#icon-calendar");
+    expect(iconFor("By state")).toBe("/web/icons.svg#icon-check-circle");
+    expect(iconFor("Breakdowns")).toBe("/web/icons.svg#icon-layers");
+  });
+
+  describe("honest empty states", () => {
+    const emptyWith = (counters?: { enabled: boolean; present: boolean }) => {
+      mswServer.use(
+        http.get("/api/v1/stats", () =>
+          HttpResponse.json({
+            data: EMPTY_STATS_DATA,
+            meta: {
+              from: "",
+              to: "",
+              bucket: 3600,
+              ...(counters ? { counters } : {}),
+            },
+          }),
+        ),
+        http.get("/api/v1/comment", () =>
+          HttpResponse.json({ data: [], meta: { count: 0, limit: 15, offset: 0, total: 0 } }),
+        ),
+        http.get("/api/v1/environment", () => HttpResponse.json(ENV_RESPONSE)),
+      );
+    };
+
+    it("distinguishes counters being switched off", async () => {
+      emptyWith({ enabled: false, present: false });
+      setup();
+      expect(await screen.findAllByText(/counters are off/i)).not.toHaveLength(0);
+      expect(screen.getAllByText(/metrics_enabled/i)[0]).toBeInTheDocument();
+    });
+
+    it("distinguishes a fresh install from a quiet window", async () => {
+      emptyWith({ enabled: true, present: false });
+      setup();
+      expect(await screen.findAllByText(/no counters yet/i)).not.toHaveLength(0);
+      expect(screen.getAllByText(/first alert is ingested/i)[0]).toBeInTheDocument();
+    });
+
+    it("says the window is quiet when counters do exist elsewhere", async () => {
+      emptyWith({ enabled: true, present: true });
+      setup();
+      expect(await screen.findAllByText(/no events in this window/i)).not.toHaveLength(0);
+      expect(screen.getAllByText(/try a wider range/i)[0]).toBeInTheDocument();
+    });
+
+    it("offers a retry when the stats request fails", async () => {
+      mswServer.use(
+        http.get("/api/v1/stats", () => HttpResponse.json({ detail: "boom" }, { status: 500 })),
+        http.get("/api/v1/comment", () =>
+          HttpResponse.json({ data: [], meta: { count: 0, limit: 15, offset: 0, total: 0 } }),
+        ),
+      );
+      setup();
+      expect(await screen.findByText(/couldn't load the dashboard/i)).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: /try again/i })).toBeInTheDocument();
+    });
   });
 
   it("renders charts when stats data is non-empty", async () => {
@@ -292,9 +391,10 @@ describe("DashboardPage — loading + drill-downs + deltas", () => {
     mockFullDashboard();
     const user = userEvent.setup();
     const { router } = setup();
-    // The severity DistributionBar renders a clickable legend row per label;
-    // scope to the card so the matching bar segment doesn't make it ambiguous.
-    const sevCard = (await screen.findByText("By severity")).closest("section")!;
+    // Severity is the Breakdowns panel's default tab; its DistributionBar
+    // renders a clickable legend row per label. Scope to the card so the
+    // matching bar segment doesn't make it ambiguous.
+    const sevCard = (await screen.findByText("Breakdowns")).closest("section")!;
     // Both the bar segment and the legend row fire onSegmentClick; click either.
     const criticalBtn = within(sevCard).getAllByRole("button", { name: /critical/ })[0]!;
     await user.click(criticalBtn);
@@ -304,38 +404,42 @@ describe("DashboardPage — loading + drill-downs + deltas", () => {
     );
   });
 
-  it("drills a state segment into the matching lifecycle ?tab=", async () => {
+  it("drills a state segment into exactly the rows it counted", async () => {
     mockFullDashboard();
     const user = userEvent.setup();
     const { router } = setup();
-    // by_state has open/ack/closed; the "ack" segment maps to the ack tab.
-    // Scope to the "By state" card so we don't hit the "Ack" KPI tile.
+    // Scope to the "By state" card so we don't hit a KPI tile.
     const stateCard = (await screen.findByText("By state")).closest("section")!;
     const ackBtn = within(stateCard).getAllByRole("button", { name: /ack/ })[0]!;
     await user.click(ackBtn);
     await waitFor(() => expect(router.state.location.pathname).toBe("/web/alerts"));
-    expect((router.state.location.search as { tab?: string }).tab).toBe("ack");
+    // The "All" tab applies no lifecycle preset, so the DSL filter alone
+    // decides the rows — and the list total matches the segment.
+    const search = router.state.location.search as { tab?: string; search?: string };
+    expect(search.tab).toBe("all");
+    expect(search.search).toBe("state = ack");
   });
 
   it("drills an environment segment into ?env=<uid> resolved from the env list", async () => {
     mockFullDashboard();
     const user = userEvent.setup();
     const { router } = setup();
-    const envCard = (await screen.findByText("By environment")).closest("section")!;
+    const breakdowns = (await screen.findByText("Breakdowns")).closest("section")!;
+    await user.click(within(breakdowns).getByRole("tab", { name: "Environment" }));
     // "prod" resolves to env-prod via the Environments list.
-    const prodBtn = within(envCard).getAllByRole("button", { name: /prod/ })[0]!;
+    const prodBtn = within(breakdowns).getAllByRole("button", { name: /prod/ })[0]!;
     await user.click(prodBtn);
     await waitFor(() => expect(router.state.location.pathname).toBe("/web/alerts"));
     expect((router.state.location.search as { env?: string }).env).toBe("env-prod");
   });
 
-  it("navigates a KPI tile to its lifecycle ?tab=", async () => {
+  it("navigates a live KPI tile to its lifecycle ?tab=", async () => {
     mockFullDashboard();
     const user = userEvent.setup();
     const { router } = setup();
-    await user.click(await screen.findByText("Snoozed"));
+    await user.click(await screen.findByText("Acknowledged"));
     await waitFor(() => expect(router.state.location.pathname).toBe("/web/alerts"));
-    expect((router.state.location.search as { tab?: string }).tab).toBe("snoozed");
+    expect((router.state.location.search as { tab?: string }).tab).toBe("ack");
   });
 
   it("renders a trend delta badge when the prior window differs", async () => {

@@ -1,50 +1,87 @@
+/* Two clusters, not six co-equal tiles: live counts on the left, windowed
+   counter sums on the right. The split is the whole point — a shared frame
+   plus one label per group is what tells the reader that "Open" and
+   "Ingested" answer different questions. */
 .strip {
   display: grid;
-  grid-template-columns: repeat(6, 1fr);
+  grid-template-columns: minmax(0, 2fr) minmax(0, 3fr);
   gap: var(--space-3);
 }
-/* Phones: the 6-up KPI strip collapses to a single column. Desktop unchanged. */
-@media (max-width: 768px) {
-  .strip {
-    grid-template-columns: 1fr;
-  }
-}
-.tile {
+
+.group {
   border: 1px solid var(--border);
-  border-left: 3px solid var(--tile-accent, var(--border));
   border-radius: var(--radius-md);
-  padding: var(--space-3);
   background: var(--bg-elevated);
+  padding: var(--space-3);
+}
+
+.groupLabel {
+  margin: 0 0 var(--space-3);
+  font-size: var(--text-xs);
+  font-weight: var(--weight-medium);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-muted);
+}
+
+.tiles {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(0, 1fr);
+}
+
+/* Hairline separators inside a cluster; the cluster frame carries the border. */
+.tiles > * + * {
+  border-left: 1px solid var(--border-muted);
+}
+
+.tile {
+  padding: 0 var(--space-3);
   /* Buttons reset: tiles read identically whether <div> or <button>. */
   font: inherit;
   color: inherit;
   text-align: left;
+  background: none;
+  border: 0;
   width: 100%;
   display: block;
+  border-radius: var(--radius-sm);
 }
-/* Clickable tiles get a pointer + hover/focus affordance via tokens. */
+
+.tiles > .tile:first-child {
+  padding-left: 0;
+}
+
 .clickable {
   cursor: pointer;
-  transition:
-    background var(--dur-fast) var(--ease-out),
-    border-color var(--dur-fast) var(--ease-out);
+  transition: color var(--dur-fast) var(--ease-out);
 }
-.clickable:hover {
-  background: var(--bg-hover);
-  border-color: var(--tile-accent, var(--border));
+.clickable:hover .value,
+.clickable:hover .label {
+  color: var(--text-strong);
+}
+.clickable:hover .icon {
+  color: var(--tile-accent, var(--text-muted));
 }
 .clickable:focus-visible {
-  outline: 2px solid var(--accent);
-  outline-offset: 1px;
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
 }
+
 .value {
-  font-size: var(--text-xl);
+  font-size: var(--text-2xl);
   font-family: var(--font-mono);
   font-feature-settings: var(--font-features-numeric);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.02em;
   color: var(--text-strong);
   display: block;
+  line-height: 1.1;
 }
-/* Trend delta vs the prior window — mono, colour by direction. */
+
+/* Direction vs the prior window. Deliberately uncoloured: more throttling can
+   mean the pipeline is working harder or that more noise arrived — neither
+   reading earns a red or a green. */
 .delta {
   display: inline-block;
   font-family: var(--font-mono);
@@ -52,24 +89,42 @@
   font-size: var(--text-xs);
   color: var(--text-muted);
 }
-.delta[data-dir="up"] {
-  color: var(--severity-critical);
-}
-.delta[data-dir="down"] {
-  color: var(--severity-ok);
-}
+
 .label {
+  margin-top: var(--space-1);
   display: inline-flex;
   align-items: center;
   gap: var(--space-2);
-  font-size: var(--text-md);
+  font-size: var(--text-sm);
   font-weight: var(--weight-medium);
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
   color: var(--text);
 }
+
 /* Inherits --tile-accent set on the tile; the Icon's stroke uses currentColor. */
 .icon {
   display: inline-flex;
   color: var(--tile-accent, var(--text-muted));
+}
+
+/* Narrow viewports: the two clusters stack, and each cluster's tiles wrap to
+   a two-up grid rather than shrinking to unreadable slivers. */
+@media (max-width: 1100px) {
+  .strip {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 640px) {
+  .tiles {
+    grid-auto-flow: row;
+    gap: var(--space-3);
+  }
+  .tiles > * + * {
+    border-left: 0;
+    border-top: 1px solid var(--border-muted);
+    padding-top: var(--space-3);
+  }
+  .tile {
+    padding-left: 0;
+  }
 }

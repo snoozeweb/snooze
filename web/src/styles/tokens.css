@@ -57,6 +57,10 @@
   --text-lg: 16px;
   --text-xl: 19px;
   --text-2xl: 23px;
+  /* One step above the KPI tiles, for the single figure a surface is built to
+     answer (today: the dashboard's "noise removed"). Deliberately the only
+     size in the scale that breaks the ~1.2 ratio — the jump is the point. */
+  --text-3xl: 32px;
 
   /* Line heights */
   --leading-tight: 1.3;

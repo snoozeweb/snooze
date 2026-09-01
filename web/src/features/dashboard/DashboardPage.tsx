@@ -1,6 +1,8 @@
 import { useCallback, useMemo } from "react";
 import { useNavigate, useSearch } from "@tanstack/react-router";
+import { Button } from "@/shared/ui/Button";
 import { Card } from "@/shared/ui/Card";
+import { Tabs, TabList, TabTrigger, TabPanel } from "@/shared/ui/Tabs";
 import { useTheme } from "@/shared/hooks/useTheme";
 import { BarChart } from "@/shared/chart/BarChart";
 import { DistributionBar, type DistributionDatum } from "@/shared/chart/DistributionBar";
@@ -8,15 +10,16 @@ import { LineChart, type LineSeries } from "@/shared/chart/LineChart";
 import { seriesColor } from "@/shared/chart/theme";
 import { severityColor } from "@/lib/format/severity-color";
 import { Environments } from "@/features/admin/environments/api";
-import { tabById, type TabId } from "@/features/alerts/tabs";
-import { Icon } from "@/shared/icons/Icon";
-import type { IconName } from "@/shared/icons/icon-names";
+import { useActiveAlertCount } from "@/features/alerts/api";
 import { useStats } from "./api";
 import { TimeRangePicker } from "./TimeRangePicker";
-import { presetToRange, type TimeRange } from "./time-range";
+import { presetToRange, rangeLabel, type TimeRange } from "./time-range";
 import { StatTiles, type TileId } from "./StatTiles";
 import { DashboardSkeleton } from "./DashboardSkeleton";
 import { ActivityFeed } from "./ActivityFeed";
+import { NoiseRemoved } from "./NoiseRemoved";
+import { PanelEmpty, PanelHint, PanelTitle } from "./Panel";
+import { countersEmpty } from "./empty-copy";
 import { alertsSearchForBucket, alertsSearchForRange } from "./bucket-utils";
 import { capDistributions, formatBucketLabel } from "./chart-format";
 import styles from "./DashboardPage.module.css";
@@ -34,22 +37,6 @@ const LINE_SERIES_KEYS = [
 
 const WEEKDAY_LABELS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"] as const;
 const WEEKDAY_KEYS = ["1", "2", "3", "4", "5", "6", "0"] as const;
-
-function CardTitle({ icon, children }: { icon: IconName; children: string }) {
-  return (
-    <h2 className={styles.cardTitle}>
-      <Icon name={icon} size={14} />
-      {children}
-    </h2>
-  );
-}
-
-// One-line qualifier under a card title. Distinguishes the cumulative
-// distribution panels ("events in this period, any state") from the live
-// "By state" snapshot, which otherwise look interchangeable under pressure.
-function CardHint({ children }: { children: string }) {
-  return <p className={styles.cardHint}>{children}</p>;
-}
 
 // Search params backing the time-range picker. Mirrors the dashboard route's
 // validateSearch (router.tsx): `range` preset key plus epoch-ms `from`/`to`
@@ -119,7 +106,18 @@ export function DashboardPage() {
   const prior = useMemo(() => priorWindow(range.from, range.to), [range.from, range.to]);
   const prevStats = useStats({ from: prior.from, to: prior.to, bucket });
 
+  // The headline live number is the queue the operator actually works: the
+  // same ACTIVE_ALERTS preset behind the sidebar badge and the default alerts
+  // tab. Reading it from that one query (React Query dedupes the key) is what
+  // guarantees the tile, the badge and the table can never print three
+  // different totals — `by_state.open` counts snoozed and shelved rows too.
+  const activeCount = useActiveAlertCount(true);
+
   const data = stats.data?.data;
+  const counters = stats.data?.meta.counters;
+  // Every counter-backed number on the page repeats this label; the live ones
+  // say "Right now" instead. Without it the two halves read as contradictions.
+  const windowLabel = rangeLabel(range.range);
 
   // Environment name → uid, so a "By environment" segment can drill into
   // the alerts page's ?env=<uid> contract. Cached app-wide via the resource.
@@ -180,8 +178,8 @@ export function DashboardPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [data, theme]);
 
-  // Trend deltas vs the prior window. Only range-scoped summed series
-  // (throttled, snoozed) get a delta; live snapshot tiles are point-in-time.
+  // Trend deltas vs the prior window. Only the windowed counter tiles get one;
+  // the live tiles are point-in-time and have no prior-window equivalent.
   const deltas: Partial<Record<TileId, number | null>> = useMemo(() => {
     const prev = prevStats.data?.data?.totals;
     if (!data || !prev) return {};
@@ -216,15 +214,12 @@ export function DashboardPage() {
     void navigate({ to: "/web/alerts", search: { search: `severity = ${label}` } });
   };
 
-  // State buckets map to an alerts lifecycle tab where one matches the
-  // state value; otherwise fall back to a DSL search on `state`.
+  // A state segment drills into exactly the rows it counted: the "All" tab
+  // (no lifecycle preset) plus a DSL filter on the state itself. Routing to a
+  // lifecycle tab instead would land on a different number — the default
+  // "Alerts" tab, for one, also hides snoozed and shelved rows.
   const handleStateClick = (label: string) => {
-    const tab = tabForState(label);
-    if (tab) {
-      void navigate({ to: "/web/alerts", search: { tab } });
-    } else {
-      void navigate({ to: "/web/alerts", search: { search: `state = ${label}` } });
-    }
+    void navigate({ to: "/web/alerts", search: { tab: "all", search: `state = ${label}` } });
   };
 
   const handleEnvClick = (label: string) => {
@@ -246,10 +241,9 @@ export function DashboardPage() {
     return out;
   }, [data]);
 
-  // Cap the high-cardinality bar panels to their top slice so they stay legible
-  // on busy instances (dozens of rules/filters/actions), and render them
-  // horizontal + height-scaled like "Top hosts" rather than as fixed-height
-  // vertical sliver-bars with skipped labels.
+  // Cap the high-cardinality Actions panel to its top slice so it stays
+  // legible on busy instances (dozens of actions), rendered horizontal and
+  // height-scaled rather than as fixed-height vertical slivers.
   const actionBars = useMemo(() => {
     const { keys, capped, total } = capDistributions(
       [data?.totals.by_action_success ?? {}, data?.totals.by_action_failure ?? {}],
@@ -257,14 +251,12 @@ export function DashboardPage() {
     );
     return { count: keys.length, total, success: capped[0]!, failure: capped[1]! };
   }, [data]);
-  const throttledBars = useMemo(
-    () => capDistributions([data?.totals.by_throttled ?? {}], BAR_PANEL_CAP),
-    [data],
-  );
-  const snoozedBars = useMemo(
-    () => capDistributions([data?.totals.by_snoozed ?? {}], BAR_PANEL_CAP),
-    [data],
-  );
+
+  // The primary panel (Noise removed) carries the full explanation; the rest
+  // state the fact only, so a fresh install doesn't repeat one sentence three
+  // times in a single viewport.
+  const windowedEmpty = (subject: string) =>
+    countersEmpty(counters, windowLabel, subject, { terse: true });
 
   return (
     <div className={styles.page}>
@@ -278,26 +270,51 @@ export function DashboardPage() {
       {stats.isPending ? (
         <DashboardSkeleton />
       ) : stats.isError ? (
-        <div className={styles.empty}>Failed to load dashboard stats.</div>
+        <Card padded>
+          <PanelEmpty
+            title="Couldn't load the dashboard"
+            description={stats.error.message || "The stats request failed."}
+          />
+          <div className={styles.errorAction}>
+            <Button variant="secondary" onClick={() => void stats.refetch()}>
+              Try again
+            </Button>
+          </div>
+        </Card>
       ) : data ? (
         <>
           <StatTiles
             snapshot={data.snapshot}
             totals={data.totals}
+            needsAttention={activeCount.data?.meta.total ?? 0}
+            windowLabel={windowLabel}
             deltas={deltas}
             onTileClick={(tab) => void navigate({ to: "/web/alerts", search: { tab } })}
           />
 
-          {/* Row 1: hero chart + activity feed */}
-          <div className={styles.row1}>
+          {/* Row 1 — the two questions the page exists to answer: how much
+              noise was removed, and what the stream looked like over time. */}
+          <div className={styles.rowPrimary}>
             <Card padded>
-              <CardTitle icon="activity">Alerts over time</CardTitle>
+              <NoiseRemoved
+                ingested={data.snapshot.total_hits}
+                throttled={data.totals.by_throttled}
+                snoozed={data.totals.by_snoozed}
+                windowLabel={windowLabel}
+                {...(counters ? { counters } : {})}
+                theme={theme}
+              />
+            </Card>
+
+            <Card padded>
+              <PanelTitle icon="activity">Alerts over time</PanelTitle>
+              <PanelHint>{`${windowLabel}, events per ${bucketLabel(bucket)}`}</PanelHint>
               {lineSeries.length === 0 ? (
-                <div className={styles.empty}>No data.</div>
+                <PanelEmpty {...windowedEmpty("events")} />
               ) : (
                 <LineChart
                   series={lineSeries}
-                  height={280}
+                  height={300}
                   toggleableLegend
                   theme={theme}
                   ariaLabel="Alerts over time by series"
@@ -307,45 +324,15 @@ export function DashboardPage() {
                 />
               )}
             </Card>
-            <Card padded>
-              <CardTitle icon="message-square">Recent activity</CardTitle>
-              <ActivityFeed />
-            </Card>
           </div>
 
-          {/* Row 2: distribution bars + top hosts */}
-          <div className={styles.row2}>
+          {/* Row 2 — supporting detail: the live state of the queue, the
+              secondary breakdowns folded into one tabbed panel, and who did
+              what recently. */}
+          <div className={styles.rowSecondary}>
             <Card padded>
-              <CardTitle icon="alert-triangle">By severity</CardTitle>
-              <CardHint>Events in this period, any state</CardHint>
-              {severityDist.length > 0 ? (
-                <DistributionBar
-                  data={severityDist}
-                  ariaLabel="By severity"
-                  onSegmentClick={handleSeverityClick}
-                />
-              ) : (
-                <div className={styles.empty}>No data.</div>
-              )}
-            </Card>
-
-            <Card padded>
-              <CardTitle icon="layers">By environment</CardTitle>
-              <CardHint>Events in this period, any state</CardHint>
-              {environmentDist.length > 0 ? (
-                <DistributionBar
-                  data={environmentDist}
-                  ariaLabel="By environment"
-                  onSegmentClick={handleEnvClick}
-                />
-              ) : (
-                <div className={styles.empty}>No data.</div>
-              )}
-            </Card>
-
-            <Card padded>
-              <CardTitle icon="check-circle">By state</CardTitle>
-              <CardHint>Alerts in this period, by current state</CardHint>
+              <PanelTitle icon="check-circle">By state</PanelTitle>
+              <PanelHint>Right now, every alert including snoozed and shelved</PanelHint>
               {stateDist.length > 0 ? (
                 <DistributionBar
                   data={stateDist}
@@ -353,122 +340,117 @@ export function DashboardPage() {
                   onSegmentClick={handleStateClick}
                 />
               ) : (
-                <div className={styles.empty}>No data.</div>
+                <PanelEmpty
+                  title="No alerts yet"
+                  description="Nothing has been ingested, so there is no queue to show."
+                />
               )}
             </Card>
 
             <Card padded>
-              <CardTitle icon="server">Top hosts</CardTitle>
-              {Object.keys(data.totals.by_host).length > 0 ? (
-                <BarChart
-                  horizontal
-                  sort="value"
-                  theme={theme}
-                  ariaLabel="Alert count by host"
-                  height={Math.max(240, Object.keys(data.totals.by_host).length * 28)}
-                  series={[
-                    { label: "Hosts", color: seriesColor("Hosts"), data: data.totals.by_host },
-                  ]}
-                />
-              ) : (
-                <div className={styles.empty}>No data.</div>
-              )}
-            </Card>
-          </div>
+              <PanelTitle icon="layers">Breakdowns</PanelTitle>
+              <PanelHint>{`${windowLabel}, events by dimension`}</PanelHint>
+              <Tabs defaultValue="severity">
+                <TabList>
+                  <TabTrigger value="severity">Severity</TabTrigger>
+                  <TabTrigger value="environment">Environment</TabTrigger>
+                  <TabTrigger value="hosts">Hosts</TabTrigger>
+                  <TabTrigger value="actions">Actions</TabTrigger>
+                  <TabTrigger value="weekday">Weekday</TabTrigger>
+                </TabList>
 
-          {/* Row 3: 4 bar panels */}
-          <div className={styles.row3}>
-            <Card padded>
-              <CardTitle icon="megaphone">Actions</CardTitle>
-              {actionBars.total > BAR_PANEL_CAP ? (
-                <CardHint>{`Top ${BAR_PANEL_CAP} of ${actionBars.total}`}</CardHint>
-              ) : null}
-              {actionBars.count > 0 ? (
-                <BarChart
-                  horizontal
-                  sort="value"
-                  theme={theme}
-                  ariaLabel="Action runs by name, successful versus failed"
-                  height={barPanelHeight(actionBars.count, 44)}
-                  series={[
-                    {
-                      label: "Successful",
-                      color: seriesColor("Successful"),
-                      data: actionBars.success,
-                    },
-                    {
-                      label: "Failed",
-                      color: seriesColor("Failed"),
-                      data: actionBars.failure,
-                    },
-                  ]}
-                />
-              ) : (
-                <div className={styles.empty}>No data.</div>
-              )}
+                <TabPanel value="severity">
+                  {severityDist.length > 0 ? (
+                    <DistributionBar
+                      data={severityDist}
+                      ariaLabel="By severity"
+                      onSegmentClick={handleSeverityClick}
+                    />
+                  ) : (
+                    <PanelEmpty {...windowedEmpty("events")} />
+                  )}
+                </TabPanel>
+
+                <TabPanel value="environment">
+                  {environmentDist.length > 0 ? (
+                    <DistributionBar
+                      data={environmentDist}
+                      ariaLabel="By environment"
+                      onSegmentClick={handleEnvClick}
+                    />
+                  ) : (
+                    <PanelEmpty {...windowedEmpty("events")} />
+                  )}
+                </TabPanel>
+
+                <TabPanel value="hosts">
+                  {Object.keys(data.totals.by_host).length > 0 ? (
+                    <BarChart
+                      horizontal
+                      sort="value"
+                      theme={theme}
+                      ariaLabel="Alert count by host"
+                      height={Math.max(220, Object.keys(data.totals.by_host).length * 28)}
+                      series={[
+                        { label: "Hosts", color: seriesColor("Hosts"), data: data.totals.by_host },
+                      ]}
+                    />
+                  ) : (
+                    <PanelEmpty {...windowedEmpty("events")} />
+                  )}
+                </TabPanel>
+
+                <TabPanel value="actions">
+                  {actionBars.count > 0 ? (
+                    <>
+                      {actionBars.total > BAR_PANEL_CAP ? (
+                        <PanelHint>{`Top ${BAR_PANEL_CAP} of ${actionBars.total}`}</PanelHint>
+                      ) : null}
+                      <BarChart
+                        horizontal
+                        sort="value"
+                        theme={theme}
+                        ariaLabel="Action runs by name, successful versus failed"
+                        height={Math.max(220, actionBars.count * 44)}
+                        series={[
+                          {
+                            label: "Successful",
+                            color: seriesColor("Successful"),
+                            data: actionBars.success,
+                          },
+                          {
+                            label: "Failed",
+                            color: seriesColor("Failed"),
+                            data: actionBars.failure,
+                          },
+                        ]}
+                      />
+                    </>
+                  ) : (
+                    <PanelEmpty {...windowedEmpty("action runs")} />
+                  )}
+                </TabPanel>
+
+                <TabPanel value="weekday">
+                  {Object.values(weekdayData).some((v) => v > 0) ? (
+                    <BarChart
+                      theme={theme}
+                      ariaLabel="Alert count by weekday"
+                      series={[
+                        { label: "Alerts", color: seriesColor("Alerts"), data: weekdayData },
+                      ]}
+                    />
+                  ) : (
+                    <PanelEmpty {...windowedEmpty("events")} />
+                  )}
+                </TabPanel>
+              </Tabs>
             </Card>
 
             <Card padded>
-              <CardTitle icon="filter">Throttled by rule</CardTitle>
-              {throttledBars.total > BAR_PANEL_CAP ? (
-                <CardHint>{`Top ${BAR_PANEL_CAP} of ${throttledBars.total}`}</CardHint>
-              ) : null}
-              {throttledBars.keys.length > 0 ? (
-                <BarChart
-                  horizontal
-                  sort="value"
-                  theme={theme}
-                  ariaLabel="Throttled alert count by rule"
-                  height={barPanelHeight(throttledBars.keys.length)}
-                  series={[
-                    {
-                      label: "Throttled",
-                      color: seriesColor("Throttled"),
-                      data: throttledBars.capped[0]!,
-                    },
-                  ]}
-                />
-              ) : (
-                <div className={styles.empty}>No data.</div>
-              )}
-            </Card>
-
-            <Card padded>
-              <CardTitle icon="bell-off">Snoozed by filter</CardTitle>
-              {snoozedBars.total > BAR_PANEL_CAP ? (
-                <CardHint>{`Top ${BAR_PANEL_CAP} of ${snoozedBars.total}`}</CardHint>
-              ) : null}
-              {snoozedBars.keys.length > 0 ? (
-                <BarChart
-                  horizontal
-                  sort="value"
-                  theme={theme}
-                  ariaLabel="Snoozed alert count by filter"
-                  height={barPanelHeight(snoozedBars.keys.length)}
-                  series={[
-                    {
-                      label: "Snoozed",
-                      color: seriesColor("Snoozed"),
-                      data: snoozedBars.capped[0]!,
-                    },
-                  ]}
-                />
-              ) : (
-                <div className={styles.empty}>No data.</div>
-              )}
-            </Card>
-
-            <Card padded>
-              <CardTitle icon="calendar">By weekday</CardTitle>
-              {Object.values(weekdayData).some((v) => v > 0) ? (
-                <BarChart
-                  theme={theme}
-                  ariaLabel="Alert count by weekday"
-                  series={[{ label: "Alerts", color: seriesColor("Alerts"), data: weekdayData }]}
-                />
-              ) : (
-                <div className={styles.empty}>No data.</div>
-              )}
+              <PanelTitle icon="message-square">Recent activity</PanelTitle>
+              <PanelHint>Right now, newest first</PanelHint>
+              <ActivityFeed />
             </Card>
           </div>
         </>
@@ -504,32 +486,9 @@ function priorWindow(from: string, to: string): { from: string; to: string } {
   return { from: new Date(f - span).toISOString(), to: new Date(f).toISOString() };
 }
 
-// Map a snapshot state value to an alerts lifecycle tab when one matches by
-// the tab's preset EQUALS condition on `state`. Returns undefined otherwise.
-function tabForState(state: string): TabId | undefined {
-  const direct: Record<string, TabId> = {
-    open: "alerts",
-    ack: "ack",
-    close: "closed",
-    closed: "closed",
-    shelved: "shelved",
-    esc: "esc",
-  };
-  const tab = direct[state.toLowerCase()];
-  // Guard against a future tab-id rename: only return a tab that still exists.
-  return tab && tabById(tab).id === tab ? tab : undefined;
-}
-
-// Top-slice size for the high-cardinality bar panels (throttled / snoozed /
-// actions). Matches the spirit of the server-side top-10 by_host cap.
+// Top-slice size for the high-cardinality Actions panel. Matches the spirit of
+// the server-side top-10 by_host cap.
 const BAR_PANEL_CAP = 12;
-
-// Height for a horizontal bar panel: scale with the row count (like "Top
-// hosts") so bars stay readable, with a sensible floor for small sets.
-// `perRow` is larger for grouped panels (Actions stacks two bars per row).
-function barPanelHeight(count: number, perRow = 28): number {
-  return Math.max(240, count * perRow);
-}
 
 function bucketFromRange(range: TimeRange["range"]): number {
   if (range === "1d") return 3600; // 1h buckets (hourly server-side)
@@ -537,4 +496,14 @@ function bucketFromRange(range: TimeRange["range"]): number {
   if (range === "1m") return 21600; // 6h buckets
   if (range === "1y") return 86400; // 1d buckets
   return 3600;
+}
+
+/** Bucket size as words, for the hint line under the time-series title. */
+function bucketLabel(seconds: number): string {
+  if (seconds % 86400 === 0) {
+    const d = seconds / 86400;
+    return d === 1 ? "day" : `${d} days`;
+  }
+  const h = Math.max(Math.round(seconds / 3600), 1);
+  return h === 1 ? "hour" : `${h} hours`;
 }

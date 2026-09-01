@@ -19,59 +19,36 @@
   margin: 0;
 }
 
-/* Row 1: hero chart (2fr) + activity feed (1fr) */
-.row1 {
+/* Row 1: the answer (noise removed) beside the shape of the stream over
+   time. Both sit above the fold at 1000px, which is where the product's own
+   claim belongs. */
+.rowPrimary {
   display: grid;
-  grid-template-columns: 2fr 1fr;
+  grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr);
   gap: var(--space-3);
+  align-items: start;
 }
 
-/* Row 2: 4 equal columns — donuts + top hosts */
-.row2 {
+/* Row 2: supporting detail — live queue state, the secondary breakdowns
+   folded into one tabbed panel, and recent activity. */
+.rowSecondary {
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.3fr) minmax(0, 1fr);
   gap: var(--space-3);
+  align-items: start;
 }
 
-/* Row 3: 4 equal columns — bar charts */
-.row3 {
-  display: grid;
-  grid-template-columns: repeat(4, 1fr);
-  gap: var(--space-3);
-}
-
-.cardTitle {
+.errorAction {
   display: flex;
-  align-items: center;
-  gap: var(--space-2);
-  font-size: var(--text-xs);
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-  color: var(--text-muted);
-  margin: 0 0 var(--space-2) 0;
-}
-
-/* Qualifier line under a distribution card's title (cumulative vs. live). */
-.cardHint {
-  margin: calc(-1 * var(--space-1)) 0 var(--space-3);
-  font-size: var(--text-xs);
-  color: var(--text-muted);
-}
-
-.empty {
-  display: flex;
-  align-items: center;
   justify-content: center;
-  height: 240px;
-  color: var(--text-muted);
-  font-size: var(--text-sm);
+  padding-bottom: var(--space-3);
 }
 
-/* Skeleton-only: mirror the StatTiles 6-up KPI strip + tile shell so the
+/* Skeleton-only: mirror the two KPI clusters and the tile shell so the
    loading layout matches the real grid (no jump when data arrives). */
 .strip {
   display: grid;
-  grid-template-columns: repeat(6, 1fr);
+  grid-template-columns: minmax(0, 2fr) minmax(0, 3fr);
   gap: var(--space-3);
 }
 .tileSkeleton {
@@ -81,14 +58,26 @@
   background: var(--bg-elevated);
 }
 
-/* Phones: the multi-column dashboard grids stack to a single column so the
-   charts go full-bleed and nothing forces page-wide horizontal scroll.
-   Chart canvases are responsive by default; the grid cells are width-fluid
-   (no fixed px width), so the canvases follow. Desktop (>768px) unchanged. */
+@media (max-width: 1240px) {
+  .rowSecondary {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  }
+}
+
+@media (max-width: 1100px) {
+  .rowPrimary,
+  .strip {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* Phones: every dashboard grid stacks to a single column so the charts go
+   full-bleed and nothing forces page-wide horizontal scroll. Chart canvases
+   are responsive by default and the grid cells are width-fluid, so the
+   canvases follow. */
 @media (max-width: 768px) {
-  .row1,
-  .row2,
-  .row3,
+  .rowPrimary,
+  .rowSecondary,
   .strip {
     grid-template-columns: 1fr;
   }

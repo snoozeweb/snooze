@@ -22,6 +22,24 @@ export function presetToRange(
   return { from, to };
 }
 
+const RANGE_LABELS: Record<StatsRange, string> = {
+  "1d": "Last 24 hours",
+  "1w": "Last 7 days",
+  "1m": "Last 30 days",
+  "1y": "Last 12 months",
+  custom: "Selected range",
+};
+
+/**
+ * Human name for the selected window, e.g. "Last 24 hours". The dashboard
+ * mixes live figures with counter-backed windowed ones, and the only thing
+ * that keeps them from reading as contradictions is saying which is which —
+ * so every windowed number on the page carries this label.
+ */
+export function rangeLabel(range: StatsRange): string {
+  return RANGE_LABELS[range];
+}
+
 // ── ISO ↔ datetime-local string bridge ────────────────────────────────────
 //
 // TimeRange stores UTC ISO strings ("…Z") because that's what /stats wants.
