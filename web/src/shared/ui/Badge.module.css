@@ -12,6 +12,8 @@
   display: inline-flex;
   align-items: center;
   height: 18px;
+  max-width: 100%;
+  min-width: 0;
   padding: 0 var(--space-2);
   border-radius: var(--radius-pill);
   font-size: var(--text-xs);
@@ -19,6 +21,9 @@
   letter-spacing: 0.02em;
   line-height: 1;
   white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  vertical-align: middle;
   /* Severity glow: a faint bloom in the badge's own text colour. Works for
      inline color-prop badges (currentColor) AND the variant classes below.
      --glow-strength is 0% in the light theme, so the glow self-disables. */

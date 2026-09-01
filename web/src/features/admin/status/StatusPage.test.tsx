@@ -1,4 +1,5 @@
 import { render, screen, waitFor } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { http, HttpResponse } from "msw";
 import { describe, expect, it } from "vitest";
@@ -40,11 +41,40 @@ describe("StatusPage", () => {
     );
     await waitFor(() => expect(screen.getByText("snooze1")).toBeInTheDocument());
     expect(screen.getByText("snooze2")).toBeInTheDocument();
+    // All plugins loaded → the 40-rows-of-"yes" table folds behind a summary
+    // line instead of dumping every row on screen.
+    expect(screen.getByText("2/2 plugins loaded")).toBeInTheDocument();
+    expect(screen.queryByText("rule")).not.toBeInTheDocument();
+    await userEvent.click(screen.getByText("2/2 plugins loaded"));
     expect(screen.getByText("rule")).toBeInTheDocument();
     // One-glance verdict banner: snooze2 is degraded → one issue detected.
     expect(screen.getByText(/1 issue detected/i)).toBeInTheDocument();
     // Freshness caption.
     expect(screen.getByText(/updated/i)).toBeInTheDocument();
+  });
+
+  it("keeps the plugin table expanded and loud when a plugin fails to load", async () => {
+    mswServer.use(
+      http.get("/api/v1/cluster/status", () =>
+        HttpResponse.json({
+          cluster: { members: [{ name: "snooze1", status: "ok" }], leader: "snooze1" },
+          plugins: [
+            { name: "rule", loaded: true },
+            { name: "broken-notifier", loaded: false },
+          ],
+        }),
+      ),
+    );
+    const Wrapper = wrap();
+    render(
+      <Wrapper>
+        <StatusPage />
+      </Wrapper>,
+    );
+    // No summary/disclosure to click through — the failure is visible immediately.
+    await waitFor(() => expect(screen.getByText("broken-notifier")).toBeInTheDocument());
+    expect(screen.getByText("rule")).toBeInTheDocument();
+    expect(screen.getByRole("alert")).toHaveTextContent(/1 of 2 plugins failed to load/i);
   });
 
   it("shows an all-clear verdict when everything is healthy", async () => {

@@ -33,7 +33,12 @@ export const roleColumns: ColumnDef<Role>[] = [
             const desc = permissionDescription(p);
             return (
               <span key={p} style={{ display: "inline-flex" }} {...(desc ? { title: desc } : {})}>
-                <Badge variant={permissionBadgeVariant(p)}>{p}</Badge>
+                {/* title="" opts out of Badge's own default (permission code as
+                    its own tooltip) so hovering finds this wrapper's fuller
+                    description instead of the short code repeated back. */}
+                <Badge variant={permissionBadgeVariant(p)} title="">
+                  {p}
+                </Badge>
               </span>
             );
           })}

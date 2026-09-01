@@ -79,3 +79,9 @@
   padding: var(--space-4);
   text-align: center;
 }
+.pluginFailure {
+  color: var(--severity-critical);
+  font-size: var(--text-sm);
+  font-weight: var(--weight-medium);
+  margin: 0 0 var(--space-2) 0;
+}

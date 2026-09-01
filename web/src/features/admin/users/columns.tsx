@@ -82,7 +82,11 @@ function RolesCell({
           key={r}
           title="Granted automatically via an auth-backend group (not directly editable)"
         >
-          <Badge variant={roleBadgeVariant(r) as never}>{r}</Badge>
+          {/* title="" opts out of Badge's own default so hovering shows this
+              wrapper's fuller explanation instead of just the role name. */}
+          <Badge variant={roleBadgeVariant(r) as never} title="">
+            {r}
+          </Badge>
         </span>
       ))}
     </span>
@@ -100,7 +104,7 @@ export function makeUserColumns(roleGroupIndex: Map<string, string[]>): ColumnDe
       header: "Name",
       cell: (r) => <Code>{r.name}</Code>,
       sortable: true,
-      width: "270px",
+      width: "200px",
     },
     {
       id: "type",
@@ -125,14 +129,18 @@ export function makeUserColumns(roleGroupIndex: Map<string, string[]>): ColumnDe
     {
       id: "roles",
       header: "Roles",
+      // Badges wrap (BadgeList's flexWrap) instead of forcing extra reserved
+      // width — the previous 288px fixed width, plus Groups' 420px, summed
+      // with the rest of the row to more than a typical viewport, producing
+      // a permanent horizontal scrollbar even for 2-3 short rows.
       cell: (r) => <RolesCell user={r} roleGroupIndex={roleGroupIndex} />,
-      width: "288px",
+      width: "220px",
     },
     {
       id: "groups",
       header: "Groups",
-      cell: (r) => <BadgeList items={r.groups} max={6} />,
-      width: "420px",
+      cell: (r) => <BadgeList items={r.groups} max={4} />,
+      width: "220px",
       hideBelow: "xl",
     },
     {
@@ -142,9 +150,16 @@ export function makeUserColumns(roleGroupIndex: Map<string, string[]>): ColumnDe
         r.last_login ? (
           <TimeCell epoch={r.last_login} />
         ) : (
-          <span style={{ color: "var(--text-muted)" }}>never</span>
+          // Not "never" — for token/SSO auth (root's own admin session
+          // included) the backend may simply never have a login event to
+          // stamp, which reads as a lie the moment you're looking at the
+          // page as that very user. "—" says "unknown", not "this account
+          // has never logged in".
+          <span style={{ color: "var(--text-muted)" }} title="No login timestamp recorded">
+            —
+          </span>
         ),
-      width: "240px",
+      width: "160px",
       hideBelow: "xl",
     },
     {

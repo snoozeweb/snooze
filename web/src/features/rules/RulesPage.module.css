@@ -5,10 +5,14 @@
   gap: var(--space-3);
 }
 
-/* One-line helper caption shown under the active tab's trigger. */
+/* One-line helper caption shown under the active tab's trigger. Capped at a
+   readable measure — uncapped it stretches to the full page width (~207
+   characters/line on a wide viewport), well past the ~80ch a line of prose
+   stays scannable at. */
 .tabHelp {
   margin: 0;
   margin-top: var(--space-2);
+  max-width: 80ch;
   font-size: var(--text-sm);
   color: var(--text-muted);
 }

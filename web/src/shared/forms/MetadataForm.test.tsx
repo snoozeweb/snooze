@@ -101,9 +101,12 @@ describe("MetadataForm", () => {
     };
     const user = userEvent.setup();
     render(<Harness fields={fields} onChange={onChange} />);
-    const select = screen.getByLabelText(/Mode/);
-    expect(select.tagName.toLowerCase()).toBe("select");
-    await user.selectOptions(select, "2");
+    // The Selector control is the app's own Combobox-family Select (Radix),
+    // not a native <select> — it renders as a button that opens a listbox.
+    const trigger = screen.getByLabelText(/Mode/);
+    expect(trigger.tagName.toLowerCase()).toBe("button");
+    await user.click(trigger);
+    await user.click(await screen.findByRole("option", { name: "Two" }));
     expect(onChange).toHaveBeenLastCalledWith({ mode: 2 });
   });
 

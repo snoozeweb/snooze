@@ -76,8 +76,9 @@ describe("AlertRowDetail", () => {
       date_epoch: 1,
     };
     renderDetail(row);
-    // Severity + state badges.
-    expect(screen.getByText("critical")).toBeInTheDocument();
+    // Severity + state badges. Severity renders title-cased ("Critical") for
+    // display, with the raw "critical" wire token kept as the badge's title.
+    expect(screen.getByText("Critical")).toBeInTheDocument();
     expect(screen.getByText("Open")).toBeInTheDocument();
     // Source chip.
     expect(screen.getByText("prom")).toBeInTheDocument();

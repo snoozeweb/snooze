@@ -134,6 +134,48 @@ describe("SnoozesPage", () => {
     expect(screen.getByText("1 selected")).toBeInTheDocument();
   });
 
+  it("lands on the first non-empty tab when Active has none", async () => {
+    mswServer.use(
+      http.get("/api/v1/snooze", () =>
+        HttpResponse.json({
+          data: [
+            {
+              uid: "s1",
+              name: "Next quarter freeze",
+              enabled: true,
+              window_status: "pending",
+            },
+            { uid: "s2", name: "Last quarter freeze", enabled: true, window_status: "expired" },
+          ],
+          meta: { count: 2, limit: 1000, offset: 0, total: 2 },
+        }),
+      ),
+    );
+    setup();
+    // Active (0) would show "No active snoozes" today — the page should
+    // redirect to Upcoming (the first non-empty tab) instead.
+    await waitFor(() => expect(screen.getByText("Next quarter freeze")).toBeInTheDocument());
+    expect(screen.queryByText("Last quarter freeze")).not.toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: /upcoming/i })).toHaveAttribute(
+      "aria-selected",
+      "true",
+    );
+  });
+
+  it("stays on an explicitly-requested empty tab (deep link wins)", async () => {
+    mswServer.use(
+      http.get("/api/v1/snooze", () =>
+        HttpResponse.json({
+          data: [{ uid: "s2", name: "Last quarter freeze", enabled: true, window_status: "expired" }],
+          meta: { count: 1, limit: 1000, offset: 0, total: 1 },
+        }),
+      ),
+    );
+    setup("/web/snoozes?tab=active");
+    await waitFor(() => expect(screen.getByText(/no active snoozes/i)).toBeInTheDocument());
+    expect(screen.getByRole("tab", { name: /^active/i })).toHaveAttribute("aria-selected", "true");
+  });
+
   it("opens the New snooze editor prefilled from ?prefillCond/prefillName/prefillComment/prefillSeconds", async () => {
     mswServer.use(
       http.get("/api/v1/snooze", () =>

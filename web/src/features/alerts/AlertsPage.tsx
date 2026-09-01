@@ -20,6 +20,8 @@ import type { Condition } from "@/lib/condition/types";
 import type { ParsedCondition } from "@/shared/ui/SearchBar";
 import { severityToken } from "@/lib/format/severity-color";
 import { useConsoleConfig } from "@/features/config/api";
+import { useStats } from "@/features/dashboard/api";
+import { presetToRange } from "@/features/dashboard/time-range";
 import { usePublishPaletteActions, type PaletteAction } from "@/shared/hooks/usePaletteActions";
 import { Environments } from "@/features/admin/environments/api";
 import type { IconName } from "@/shared/icons/icon-names";
@@ -1187,6 +1189,20 @@ export function AlertsPage() {
     selectedEnvs.length > 0 ||
     activeTab !== "alerts";
 
+  // A cleared queue and a fresh install render identically ("no rows") but
+  // deserve opposite copy: a cleared queue earns "All clear" (the operator
+  // did the work), a fresh install earns onboarding guidance. `counters`
+  // (from /stats) tells them apart cheaply — `present` is true the moment a
+  // single alert has ever been ingested, so it survives the queue being
+  // fully emptied. Only queried once there's actually nothing to show.
+  const isEmptyQueue = !hasActiveFilters && filtered.length === 0 && !list.isPending;
+  const everReceivedRange = useMemo(() => presetToRange("1y"), []);
+  const everReceivedStats = useStats(
+    { ...everReceivedRange, bucket: 86400 },
+    { enabled: isEmptyQueue },
+  );
+  const hasEverReceivedAlert = everReceivedStats.data?.meta.counters?.present ?? false;
+
   // Whether the ActiveFilters chip strip should render. It only carries tab +
   // env chips now (search shows in the SearchBar itself, with its own clear),
   // so a search-only filter leaves the strip empty — gate on tab/env alone.
@@ -1351,6 +1367,12 @@ export function AlertsPage() {
       icon="search"
       title="No alerts match your filters"
       description="Try widening your search, clearing the environment filter, or switching tabs."
+    />
+  ) : hasEverReceivedAlert ? (
+    <EmptyState
+      icon="check-circle"
+      title="All clear"
+      description="Every alert has been triaged. Nothing is waiting on you right now."
     />
   ) : (
     <EmptyState

@@ -118,6 +118,14 @@ export function SettingCard({ field, name, initialValue, recordUid, onChange }: 
   }
 
   const notSet = recordUid === undefined;
+  // The control always shows *something* — the DB value, or the catalogue
+  // default when no record exists. Saying "not set" while the control
+  // plainly renders `true` / `60s` / `48h` reads as a lie, so only use that
+  // wording when there's really nothing to show (no record and an empty
+  // default); otherwise say what's actually happening: the built-in default
+  // applies.
+  const hasMeaningfulDefault =
+    field.default_value !== undefined && field.default_value !== null && field.default_value !== "";
   const submitting = create.isPending || update.isPending || remove.isPending;
 
   const cardClass = field.danger ? `${styles.card} ${styles.cardDanger}` : styles.card;
@@ -128,7 +136,9 @@ export function SettingCard({ field, name, initialValue, recordUid, onChange }: 
         <label htmlFor={fieldId} className={styles.label} id={`label-${fieldId}`}>
           {field.display_name}
         </label>
-        {notSet ? (
+        {notSet && hasMeaningfulDefault ? (
+          <span className={styles.indicator}>default</span>
+        ) : notSet ? (
           <span className={styles.indicator}>not set</span>
         ) : dirty ? (
           <span className={`${styles.indicator} ${styles.indicatorDirty}`}>modified</span>

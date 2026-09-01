@@ -1,6 +1,7 @@
 import { Badge } from "@/shared/ui/Badge";
 import { Card } from "@/shared/ui/Card";
 import { Code } from "@/shared/ui/Code";
+import { CollapsibleSection } from "@/shared/ui/CollapsibleSection";
 import { Spinner } from "@/shared/ui/Spinner";
 import { useClusterStatus } from "./api";
 import type { ClusterMember } from "./types";
@@ -84,30 +85,60 @@ export function StatusPage() {
 
           <Card padded className={styles.full!}>
             <h2 className={styles.cardTitle}>Plugins</h2>
-            {data.plugins && data.plugins.length > 0 ? (
-              <table className={styles.table}>
-                <thead>
-                  <tr>
-                    <th>Name</th>
-                    <th>Loaded</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {data.plugins.map((p) => (
-                    <tr key={p.name}>
-                      <td>
-                        <Code>{p.name}</Code>
-                      </td>
-                      <td>
-                        <Badge variant={p.loaded ? "ok" : "muted"}>{p.loaded ? "yes" : "no"}</Badge>
-                      </td>
+            {(() => {
+              const plugins = data.plugins ?? [];
+              if (plugins.length === 0) return <p className={styles.empty}>No plugins reported.</p>;
+              const loadedCount = plugins.filter((p) => p.loaded).length;
+              const failed = plugins.filter((p) => !p.loaded);
+              const allLoaded = failed.length === 0;
+              const table = (
+                <table className={styles.table}>
+                  <thead>
+                    <tr>
+                      <th>Name</th>
+                      <th>Loaded</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
-            ) : (
-              <p className={styles.empty}>No plugins reported.</p>
-            )}
+                  </thead>
+                  <tbody>
+                    {plugins.map((p) => (
+                      <tr key={p.name}>
+                        <td>
+                          <Code>{p.name}</Code>
+                        </td>
+                        <td>
+                          <Badge variant={p.loaded ? "ok" : "muted"}>
+                            {p.loaded ? "yes" : "no"}
+                          </Badge>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              );
+              // A wall of 40 "yes" rows says nothing an operator needs — fold
+              // it behind one summary line. A failure is the one thing this
+              // card exists to surface, so it stays expanded and loud instead
+              // of hiding behind a click.
+              if (allLoaded) {
+                return (
+                  <CollapsibleSection
+                    title={`${loadedCount}/${plugins.length} plugins loaded`}
+                    defaultOpen={false}
+                  >
+                    {table}
+                  </CollapsibleSection>
+                );
+              }
+              return (
+                <>
+                  <p className={styles.pluginFailure} role="alert">
+                    {failed.length} of {plugins.length} plugins failed to load:{" "}
+                    {failed.map((p) => p.name).join(", ")}
+                  </p>
+                  {table}
+                </>
+              );
+            })()}
           </Card>
         </div>
       )}

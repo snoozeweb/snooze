@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useSearch } from "@tanstack/react-router";
 import { useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/shared/ui/Button";
@@ -52,7 +52,8 @@ export function SnoozesPage() {
   const orderby = search.orderby ?? "name";
   const asc = search.asc ?? true;
   const detailUid = search.uid;
-  const tab: SnoozeState = search.tab ?? "active";
+  const explicitTab = search.tab;
+  const tab: SnoozeState = explicitTab ?? "active";
   const [creating, setCreating] = useState(false);
 
   // "Snooze this alert" (AlertsPage) lands here with ?prefillCond=&prefillName=
@@ -187,6 +188,25 @@ export function SnoozesPage() {
     [allSnoozes, tab],
   );
   const paged = filtered.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
+
+  // Land on the first non-empty tab instead of always defaulting to Active:
+  // a fresh page load with 0 active but some upcoming/expired snoozes used to
+  // show "No active snoozes" while real data sat one click away. Only fires
+  // once, and only when the URL didn't already name a tab explicitly (a
+  // deep link or a user's own click always wins).
+  const autoLandedRef = useRef(false);
+  useEffect(() => {
+    if (explicitTab !== undefined) return;
+    if (list.isPending) return;
+    if (autoLandedRef.current) return;
+    autoLandedRef.current = true;
+    if (counts.active === 0) {
+      const firstNonEmpty = TABS.find((t) => counts[t.value] > 0);
+      if (firstNonEmpty && firstNonEmpty.value !== "active") {
+        updateSearch({ tab: firstNonEmpty.value });
+      }
+    }
+  }, [explicitTab, list.isPending, counts, updateSearch]);
 
   // Visible kebab mirrors the right-click menu (Copy JSON / Copy YAML /
   // retro-apply / Delete via contextMenuItems) plus Edit up front — Snoozes

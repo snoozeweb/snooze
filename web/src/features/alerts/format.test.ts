@@ -6,11 +6,29 @@ import {
   formatTTL,
   humanDuration,
   severityBadgeVariant,
+  severityDisplayLabel,
   stateBadgeVariant,
   stateLabel,
   trendLabel,
   trimDate,
 } from "./format";
+
+describe("severityDisplayLabel", () => {
+  it.each([
+    ["err", "Error"],
+    ["ERR", "Error"],
+    ["crit", "Critical"],
+    ["warn", "Warning"],
+    ["ok", "OK"],
+    ["info", "Info"],
+  ])("title-cases the raw token %s -> %s", (raw, expected) => {
+    expect(severityDisplayLabel(raw)).toBe(expected);
+  });
+
+  it("falls back to capitalizing an unknown token instead of hiding it", () => {
+    expect(severityDisplayLabel("weird")).toBe("Weird");
+  });
+});
 
 describe("severityBadgeVariant", () => {
   it.each([

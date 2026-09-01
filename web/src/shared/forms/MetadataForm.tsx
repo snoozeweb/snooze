@@ -26,6 +26,7 @@ import {
 import { CSS } from "@dnd-kit/utilities";
 import { Icon } from "@/shared/icons/Icon";
 import { Input } from "@/shared/ui/Input";
+import { Select, SelectContent, SelectItem, SelectTrigger } from "@/shared/ui/Select";
 import { Switch } from "@/shared/ui/Switch";
 import { Textarea } from "@/shared/ui/Textarea";
 import type { FormField, FormFieldOption } from "./types";
@@ -277,27 +278,25 @@ function SelectorControl({
   // when reporting back to the parent.
   const stringValue = options.find((o) => asString(o.value) === asString(value))
     ? asString(value)
-    : "";
+    : undefined;
   return (
-    <select
-      id={id}
-      className={styles.select}
-      value={stringValue}
-      onChange={(e) => {
-        const picked = options.find((o) => asString(o.value) === e.target.value);
-        onChange(picked ? picked.value : e.target.value);
+    <Select
+      {...(stringValue !== undefined ? { value: stringValue } : {})}
+      onValueChange={(v) => {
+        const picked = options.find((o) => asString(o.value) === v);
+        onChange(picked ? picked.value : v);
       }}
       disabled={disabled}
     >
-      <option value="" disabled hidden>
-        Select…
-      </option>
-      {options.map((o, i) => (
-        <option key={`${asString(o.value)}-${i}`} value={asString(o.value)}>
-          {o.text}
-        </option>
-      ))}
-    </select>
+      <SelectTrigger id={id} placeholder="Select…" />
+      <SelectContent>
+        {options.map((o, i) => (
+          <SelectItem key={`${asString(o.value)}-${i}`} value={asString(o.value)}>
+            {o.text}
+          </SelectItem>
+        ))}
+      </SelectContent>
+    </Select>
   );
 }
 

@@ -8,6 +8,7 @@ import {
   formatCountdown,
   formatShelveUntil,
   formatTTL,
+  severityDisplayLabel,
   stateBadgeVariant,
   stateLabel,
   trendLabel,
@@ -114,8 +115,12 @@ export const alertColumns: ColumnDef<Record_>[] = [
       const t = recordTrend(r);
       return (
         <span className={styles.cell}>
-          <Badge className={styles.badgeText!} color={severityColor(r.severity ?? "")}>
-            {r.severity ?? "—"}
+          <Badge
+            className={styles.badgeText!}
+            color={severityColor(r.severity ?? "")}
+            title={r.severity ?? "—"}
+          >
+            {r.severity ? severityDisplayLabel(r.severity) : "—"}
           </Badge>
           {t === "moreSevere" ? (
             <span

@@ -25,7 +25,11 @@ export const groupColumns: ColumnDef<Group>[] = [
         <span style={{ display: "inline-flex", gap: "var(--space-1)", flexWrap: "wrap" }}>
           {members.map((m) => (
             <span key={`${m.method}:${m.username}`} title={`${m.username} · ${m.method}`}>
-              <Badge variant="neutral">{m.username}</Badge>
+              {/* title="" opts out of Badge's own default so hovering shows
+                  this wrapper's fuller "username · method" tooltip. */}
+              <Badge variant="neutral" title="">
+                {m.username}
+              </Badge>
             </span>
           ))}
         </span>

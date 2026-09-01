@@ -31,6 +31,13 @@ function remainingLabel(r: Snooze): string {
 
 export const snoozeColumns: ColumnDef<Snooze>[] = [
   {
+    id: "name",
+    header: "Name",
+    cell: (r) => <Code>{r.name}</Code>,
+    sortable: true,
+    width: "240px",
+  },
+  {
     id: "window_status",
     header: "Status",
     cell: (r) => {
@@ -61,13 +68,6 @@ export const snoozeColumns: ColumnDef<Snooze>[] = [
     cell: (r) => <TimeConstraintsCell value={r.time_constraints} />,
     width: "210px",
     hideBelow: "xl",
-  },
-  {
-    id: "name",
-    header: "Name",
-    cell: (r) => <Code>{r.name}</Code>,
-    sortable: true,
-    width: "240px",
   },
   {
     id: "condition",

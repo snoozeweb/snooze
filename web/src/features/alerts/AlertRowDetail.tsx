@@ -3,7 +3,7 @@ import { Tabs, TabList, TabTrigger, TabPanel } from "@/shared/ui/Tabs";
 import { Badge } from "@/shared/ui/Badge";
 import { TimeCell } from "@/shared/ui/TimeCell";
 import { severityColor } from "@/lib/format/severity-color";
-import { escalationLabel, stateBadgeVariant, stateLabel } from "./format";
+import { escalationLabel, severityDisplayLabel, stateBadgeVariant, stateLabel } from "./format";
 import { CommentTimeline } from "./CommentTimeline";
 import { AlertFlowChart } from "./AlertFlowChart";
 import type { AlertState, Record_ } from "./types";
@@ -54,7 +54,9 @@ export function AlertRowDetail({ row }: AlertRowDetailProps) {
     <div className={styles.detail}>
       <div className={styles.summary}>
         <div className={styles.badges}>
-          <Badge color={severityColor(row.severity ?? "")}>{row.severity ?? "—"}</Badge>
+          <Badge color={severityColor(row.severity ?? "")} title={row.severity ?? "—"}>
+            {row.severity ? severityDisplayLabel(row.severity) : "—"}
+          </Badge>
           <Badge variant={stateBadgeVariant(state)}>{stateLabel(state)}</Badge>
           {escalation ? <Badge variant="warning">{escalation}</Badge> : null}
           {row.source ? <span className={styles.source}>{row.source}</span> : null}

@@ -7,11 +7,42 @@ test.describe("alerts list", () => {
   });
 
   test("empty state when no alerts", async ({ page, server }) => {
+    // Every worker's DB is shared across the whole spec-file run, and
+    // /stats' counters.present is deliberately sticky once ANY alert has
+    // ever been ingested — by design, it's what lets the real app tell a
+    // fresh install apart from a cleared queue. That makes it order-
+    // dependent here: whichever spec in this worker ran first may have
+    // already ingested an alert. Mock the endpoint so this test asserts the
+    // fresh-install copy deterministically regardless of run order.
+    await page.route("**/api/v1/stats*", (route) =>
+      route.fulfill({
+        json: {
+          data: { series: [], totals: {}, snapshot: {}, weekday: {} },
+          meta: { from: "", to: "", bucket: 86400, counters: { enabled: true, present: false } },
+        },
+      }),
+    );
     await page.goto(server.baseURL + "/web/alerts");
     // AlertsPage passes a custom EmptyState (not DataTable's "No items"): a
     // genuinely-empty install gets the "No alerts yet" guidance + inject CTA.
     await expect(page.getByText(/no alerts yet/i)).toBeVisible();
     await expect(page.getByRole("button", { name: /how to inject alerts/i })).toBeVisible();
+  });
+
+  test("shows All clear (not onboarding) once the queue has been fully triaged", async ({
+    page,
+    api,
+    server,
+  }) => {
+    // Ingest through the real pipeline so /stats' counters.present flips to
+    // true (recordStatHit runs on ingest), then clear the queue — this is
+    // the "cleared queue" shape, distinct from a fresh install that has
+    // never received anything.
+    await api.alerts.send({ host: "srv-1", message: "disk full", severity: "critical", source: "test" });
+    await api.alerts.clear();
+    await page.goto(server.baseURL + "/web/alerts");
+    await expect(page.getByText(/all clear/i)).toBeVisible();
+    await expect(page.getByRole("button", { name: /how to inject alerts/i })).toBeHidden();
   });
 
   test("ingested alert appears in the table", async ({ page, api, server }) => {

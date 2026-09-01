@@ -37,6 +37,40 @@ export function severityBadgeVariant(severity: AlertSeverity): BadgeVariant {
   return SEVERITY_MAP[severity.toLowerCase().trim()] ?? "muted";
 }
 
+// Display-only title-casing for the raw syslog/monitor severity tokens.
+// Storage and search both keep using the raw wire token ("err", "crit", …)
+// — this only changes what the badge prints; callers should still pass the
+// raw token as the badge's tooltip/title so it stays discoverable/copyable.
+const SEVERITY_DISPLAY: Record<string, string> = {
+  emerg: "Emergency",
+  emergency: "Emergency",
+  panic: "Panic",
+  alert: "Alert",
+  fatal: "Fatal",
+  crit: "Critical",
+  critical: "Critical",
+  err: "Error",
+  error: "Error",
+  fail: "Fail",
+  failure: "Failure",
+  warn: "Warning",
+  warning: "Warning",
+  notice: "Notice",
+  info: "Info",
+  informational: "Informational",
+  ok: "OK",
+  okay: "OK",
+  success: "Success",
+};
+
+export function severityDisplayLabel(severity: string): string {
+  const key = severity.toLowerCase().trim();
+  const known = SEVERITY_DISPLAY[key];
+  if (known) return known;
+  if (!severity) return severity;
+  return severity.charAt(0).toUpperCase() + severity.slice(1);
+}
+
 const STATE_LABEL: Record<AlertState, string> = {
   // Freshly-ingested records carry an empty state until a comment moves them
   // to ack/close/esc. Display them as Open so the column reads cleanly.

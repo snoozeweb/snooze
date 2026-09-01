@@ -25,9 +25,16 @@ export type BadgeProps = {
   color?: string;
   children: ReactNode;
   className?: string;
+  /**
+   * Tooltip shown on hover. Defaults to the string children so a chip that
+   * gets truncated by `.badge`'s own ellipsis (long notifier/integration
+   * names etc.) still reads its full value on hover instead of clipping
+   * silently. Pass `title=""` to opt out.
+   */
+  title?: string;
 };
 
-export function Badge({ variant = "neutral", color, children, className }: BadgeProps) {
+export function Badge({ variant = "neutral", color, children, className, title }: BadgeProps) {
   const classes = [styles.badge, color ? undefined : styles[variant], className]
     .filter(Boolean)
     .join(" ");
@@ -41,8 +48,14 @@ export function Badge({ variant = "neutral", color, children, className }: Badge
         border: `1px solid ${color}`,
       }
     : undefined;
+  // `title=""` explicitly opts out (caller provides its own outer tooltip).
+  // Distinguish "not provided" from "explicitly empty" with the `!==
+  // undefined` check, then drop the attribute entirely when the resolved
+  // value is falsy so an empty string never lands as `title=""` in the DOM.
+  const resolvedTitle =
+    title !== undefined ? title : typeof children === "string" ? children : undefined;
   return (
-    <span className={classes} style={style}>
+    <span className={classes} style={style} {...(resolvedTitle ? { title: resolvedTitle } : {})}>
       {children}
     </span>
   );

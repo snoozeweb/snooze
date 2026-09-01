@@ -331,6 +331,26 @@ describe("AlertsPage", () => {
     expect(screen.getByText(/curl -s -X POST/)).toBeInTheDocument();
   });
 
+  it("earned-empty queue (alerts were ingested, all triaged) shows All clear, not onboarding", async () => {
+    mswServer.use(
+      http.get("/api/v1/record", () =>
+        HttpResponse.json({
+          data: [],
+          meta: { count: 0, limit: 50, offset: 0, total: 0 },
+        }),
+      ),
+      http.get("/api/v1/stats", () =>
+        HttpResponse.json({
+          data: { series: [], totals: {}, snapshot: {}, weekday: {} },
+          meta: { from: "", to: "", bucket: 86400, counters: { enabled: true, present: true } },
+        }),
+      ),
+    );
+    setup();
+    await waitFor(() => expect(screen.getByText(/all clear/i)).toBeInTheDocument());
+    expect(screen.queryByRole("button", { name: /how to inject alerts/i })).toBeNull();
+  });
+
   it("filtered-empty list shows a no-match message, not the inject CTA", async () => {
     mswServer.use(
       http.get("/api/v1/record", () =>

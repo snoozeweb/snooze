@@ -90,4 +90,27 @@ describe("IntegrationGallery", () => {
     const webhook = screen.getByRole("button", { name: /Webhook/ });
     expect(webhook.querySelector("use")?.getAttribute("href")).toBe("/web/icons.svg#icon-plug");
   });
+
+  it("puts initial focus on the search field, not a card", () => {
+    render(<IntegrationGallery plugins={PLUGINS} onPick={() => undefined} />);
+    expect(screen.getByRole("searchbox", { name: /search integrations/i })).toHaveFocus();
+  });
+
+  it("filters cards by name as the user types", async () => {
+    const user = userEvent.setup();
+    render(<IntegrationGallery plugins={PLUGINS} onPick={() => undefined} />);
+    await user.type(screen.getByRole("searchbox", { name: /search integrations/i }), "slack");
+    expect(screen.getByRole("button", { name: /Slack/ })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: /Microsoft Teams/ })).toBeNull();
+  });
+
+  it("shows a no-results state when nothing matches the query", async () => {
+    const user = userEvent.setup();
+    render(<IntegrationGallery plugins={PLUGINS} onPick={() => undefined} />);
+    await user.type(
+      screen.getByRole("searchbox", { name: /search integrations/i }),
+      "no-such-integration",
+    );
+    expect(screen.getByText(/no integrations match/i)).toBeTruthy();
+  });
 });
