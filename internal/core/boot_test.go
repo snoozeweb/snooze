@@ -198,6 +198,51 @@ func TestBootAsync_UpsertEnabled_StatsCountersPersist(t *testing.T) {
 		"counter value must equal the increment delta")
 }
 
+// TestProcessRecord_CounterBucketsAtIngestTime is the end-to-end regression for
+// the dashboard's "TOTAL 0 next to OPEN 8" contradiction. An ingested alert
+// carries no date_epoch of its own — the storage driver stamps it at write
+// time — so the pipeline recorded its counters with eventEpoch 0 and every
+// counter document landed in the 1970-01-01 hour bucket, i.e. outside every
+// window the dashboard can ask for. The counter must be filed under the hour
+// the alert was actually ingested.
+func TestProcessRecord_CounterBucketsAtIngestTime(t *testing.T) {
+	t.Parallel()
+	ctx := auth.WithTenant(context.Background(), snoozetypes.DefaultTenant)
+
+	path := filepath.Join(t.TempDir(), "snooze.db")
+	drv, err := sqlite.New(ctx, sqlite.Config{Path: path})
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = drv.Close() })
+
+	c := &Core{Cfg: config.Default(), Driver: drv}
+	require.NoError(t, c.bootAsync())
+
+	// No date_epoch on the way in — exactly what POST /api/v1/alerts receives.
+	_, action, err := c.ProcessRecord(ctx, snoozetypes.Record{
+		Host: "srv-a", Source: "syslog", Message: "disk full", Severity: "critical",
+	})
+	require.NoError(t, err)
+	require.Equal(t, plugins.ActionContinue, action)
+	require.NoError(t, c.Async.Flush(ctx))
+
+	doc, err := drv.GetOne(ctx, "stats", map[string]any{
+		"metric": "alert_hit", "dim": "source", "key": "syslog",
+	})
+	require.NoError(t, err, "ingesting an alert must write an alert_hit counter")
+
+	var bucket int64
+	switch v := doc["bucket"].(type) {
+	case int64:
+		bucket = v
+	case float64:
+		bucket = int64(v)
+	default:
+		t.Fatalf("unexpected bucket type %T", doc["bucket"])
+	}
+	require.Equal(t, time.Now().UTC().Truncate(time.Hour).Unix(), bucket,
+		"counter must sit in the current hour bucket, not the epoch-0 one")
+}
+
 // TestBootSecrets_PrefersConfiguredTokenSecret is the production-wiring
 // regression for FEATURE 1: when auth.token_secret is set the TokenEngine must
 // be built from THAT key, not the DB-generated one from EnsureSecrets. We prove

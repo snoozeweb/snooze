@@ -1,13 +1,21 @@
 // Package stats implements the "stats" data-model plugin and serves the
 // dashboard's aggregated time-series at GET /api/v1/stats.
 //
-// The response is composed from two sources:
+// The response is composed from two sources, and the split is deliberate —
+// each number in it comes from exactly one of them:
+//
 //  1. The `stats` counter collection (written by the alert/action pipeline via
-//     plugins.RecordStat) — provides the time-series, per-window totals, and
-//     weekday distribution.
+//     plugins.RecordStat) — every WINDOWED number: the time-series, the
+//     per-window totals, the weekday distribution. These count events (hits),
+//     duplicates included, between `from` and `to`.
 //  2. The `record` collection, aggregated either via the optional
-//     db.RecordAggregator SQL path or the in-Go fallback — provides the
-//     ByState snapshot and its derived KPIs.
+//     db.RecordAggregator SQL path or the in-Go fallback — the LIVE snapshot:
+//     how many alerts sit in each state right now, unfiltered by the window.
+//     This is what the alerts table shows, so the two always agree.
+//
+// Mixing the two inside one figure is what made the dashboard contradict
+// itself, so callers should label them apart: `data.snapshot` is "right now",
+// `data.totals`/`data.series` are "in this window".
 package stats
 
 import (
@@ -119,9 +127,23 @@ type statsSnapshot struct {
 }
 
 type statsMeta struct {
-	From   string `json:"from"`
-	To     string `json:"to"`
-	Bucket int    `json:"bucket"`
+	From     string       `json:"from"`
+	To       string       `json:"to"`
+	Bucket   int          `json:"bucket"`
+	Counters countersMeta `json:"counters"`
+}
+
+// countersMeta lets a client tell three empty dashboards apart: metrics turned
+// off (counters will never fill), a fresh install (no counter has ever been
+// written), and a quiet window (counters exist, just none in [from, to]).
+// Without it every one of them renders as the same unhelpful "No data."
+type countersMeta struct {
+	// Enabled mirrors general.metrics_enabled — false means the pipeline
+	// records no counters at all, so every windowed panel stays empty.
+	Enabled bool `json:"enabled"`
+	// Present is true when at least one counter document exists, in this
+	// window or any other.
+	Present bool `json:"present"`
 }
 
 // handleStats serves the dashboard's aggregate. It composes data from two
@@ -154,10 +176,19 @@ func (p *Plugin) handleStats(host plugins.Host) http.HandlerFunc {
 		fromEpoch, toEpoch := from.Unix(), to.Unix()
 
 		// ── 1. Record snapshot (ByState KPIs only) ───────────────────────────
+		// Deliberately NOT windowed. "Open: 8" has to mean the same eight rows
+		// the alerts table lists; scoping it to the picker's window made the
+		// dashboard disagree with the table (and with itself, next to the
+		// windowed counters) for every alert last touched before `from`. The
+		// upper bound stays generous rather than exact so a record stamped a
+		// few seconds ahead by a skewed clock is still counted.
+		liveFrom := time.Unix(0, 0).UTC()
+		liveTo := time.Now().UTC().Add(24 * time.Hour)
+
 		var byState map[string]int64
 
 		if agg, ok := host.DB().(db.RecordAggregator); ok {
-			res, aggErr := agg.RecordStats(r.Context(), from, to, stride)
+			res, aggErr := agg.RecordStats(r.Context(), liveFrom, liveTo, stride)
 			if aggErr != nil {
 				writeJSON(w, http.StatusInternalServerError, map[string]any{
 					"code": "db_error", "detail": aggErr.Error(),
@@ -166,7 +197,7 @@ func (p *Plugin) handleStats(host plugins.Host) http.HandlerFunc {
 			}
 			byState = res.ByState
 		} else {
-			_, _, _, st, scanErr := reduceInGo(r.Context(), host, fromEpoch, toEpoch, stride)
+			_, _, _, st, scanErr := reduceInGo(r.Context(), host, liveFrom.Unix(), liveTo.Unix(), stride)
 			if scanErr != nil {
 				writeJSON(w, http.StatusInternalServerError, map[string]any{
 					"code": "db_error", "detail": scanErr.Error(),
@@ -311,6 +342,14 @@ func (p *Plugin) handleStats(host plugins.Host) http.HandlerFunc {
 			Closed:    byStateInt["close"],
 		}
 
+		// ── 6. Counter provenance ─────────────────────────────────────────────
+		// Only probe outside the window when the window itself came back empty;
+		// a populated window already answers "present".
+		counters := countersMeta{Enabled: metricsEnabled(host), Present: len(docs) > 0}
+		if !counters.Present {
+			counters.Present = anyCounterExists(r.Context(), host)
+		}
+
 		writeJSON(w, http.StatusOK, statsResponse{
 			Data: statsData{
 				Series:   series,
@@ -319,12 +358,32 @@ func (p *Plugin) handleStats(host plugins.Host) http.HandlerFunc {
 				Weekday:  weekday,
 			},
 			Meta: statsMeta{
-				From:   from.UTC().Format(time.RFC3339),
-				To:     to.UTC().Format(time.RFC3339),
-				Bucket: bucketSec,
+				From:     from.UTC().Format(time.RFC3339),
+				To:       to.UTC().Format(time.RFC3339),
+				Bucket:   bucketSec,
+				Counters: counters,
 			},
 		})
 	}
+}
+
+// metricsEnabled reports whether the pipeline is writing counters at all
+// (general.metrics_enabled). A host without config is treated as enabled: the
+// honest default is "counters are on but empty", not "counters are off".
+func metricsEnabled(host plugins.Host) bool {
+	cfg := host.Config()
+	if cfg == nil {
+		return true
+	}
+	return cfg.General.MetricsEnabled
+}
+
+// anyCounterExists answers "has this instance ever written a counter?" with a
+// single one-row search. Used only when the requested window is empty, to tell
+// a fresh install from a quiet period.
+func anyCounterExists(ctx context.Context, host plugins.Host) bool {
+	_, total, err := host.DB().Search(ctx, plugins.StatsCollection, condition.Cond{}, db.Page{PerPage: 1})
+	return err == nil && total > 0
 }
 
 // asInt64 coerces common numeric types that come back from JSON-stored backends

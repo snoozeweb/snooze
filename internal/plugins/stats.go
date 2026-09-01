@@ -25,9 +25,20 @@ type AsyncWriterHost interface {
 // search is {metric, dim, key, bucket} and `value` is incremented by n. The
 // tenant is extracted from ctx by the asyncwriter so stats counter rows are
 // tenant-partitioned automatically.
+//
+// A non-positive eventEpoch means the caller had no event time to bucket by:
+// `date_epoch` is stamped by the storage driver at write time, not by the
+// pipeline, so a freshly ingested alert still carries DateEpoch == 0 when the
+// counters are recorded. Bucketing those at epoch 0 filed every counter under
+// 1970-01-01, i.e. outside every dashboard window — the whole counter half of
+// the dashboard read as empty while live record queries showed alerts. Fall
+// back to "now", which is what the driver is about to stamp anyway.
 func RecordStat(ctx context.Context, host Host, eventEpoch int64, metric string, labels map[string]string, n int64) {
 	if host == nil || metric == "" || n == 0 {
 		return
+	}
+	if eventEpoch <= 0 {
+		eventEpoch = time.Now().UTC().Unix()
 	}
 	cfg := host.Config()
 	if cfg == nil || !cfg.General.MetricsEnabled {

@@ -216,3 +216,78 @@ func TestHandleStats_TopHostCapping(t *testing.T) {
 	require.False(t, hasLowest, "lowest-count host should be evicted")
 	require.True(t, hasHighest, "highest-count host should be retained")
 }
+
+// TestHandleStats_SnapshotIsLive pins the source split: the snapshot counts
+// every alert in each state regardless of the requested window, so the
+// dashboard's "Open" KPI matches the alerts table instead of quietly dropping
+// alerts last touched before `from`.
+func TestHandleStats_SnapshotIsLive(t *testing.T) {
+	t.Parallel()
+	ctx := auth.WithTenant(context.Background(), snoozetypes.DefaultTenant)
+	host := newTestHost(t)
+
+	const bucket = int64(1705312800) // 2024-01-15T10:00:00Z
+	// The record is a year older than the window the dashboard is asking for.
+	_, err := host.DB().Write(ctx, "record", []db.Document{
+		{"state": "open", "severity": "critical", "source": "syslog",
+			"date_epoch": float64(bucket - 365*24*3600)},
+	}, db.WriteOptions{})
+	require.NoError(t, err)
+
+	resp := callStatsHandler(t,
+		host,
+		time.Unix(bucket, 0).UTC().Format(time.RFC3339),
+		time.Unix(bucket+3600, 0).UTC().Format(time.RFC3339),
+	)
+
+	require.Equal(t, 1, resp.Data.Snapshot.Open,
+		"an open alert older than the window is still open right now")
+	require.Equal(t, 1, resp.Data.Snapshot.ByState["open"])
+	require.Zero(t, resp.Data.Snapshot.TotalHits,
+		"the windowed counter half must stay empty — that window really had no events")
+}
+
+// TestHandleStats_CountersMeta covers the three empty-dashboard cases the UI
+// has to word differently: metrics off, nothing ever recorded, and a quiet
+// window on an instance that does have counters.
+func TestHandleStats_CountersMeta(t *testing.T) {
+	t.Parallel()
+	ctx := auth.WithTenant(context.Background(), snoozetypes.DefaultTenant)
+
+	const bucket = int64(1705312800)
+	from := time.Unix(bucket, 0).UTC().Format(time.RFC3339)
+	to := time.Unix(bucket+3600, 0).UTC().Format(time.RFC3339)
+
+	t.Run("fresh install: enabled but nothing recorded", func(t *testing.T) {
+		resp := callStatsHandler(t, newTestHost(t), from, to)
+		require.True(t, resp.Meta.Counters.Enabled)
+		require.False(t, resp.Meta.Counters.Present)
+	})
+
+	t.Run("quiet window: counters exist outside it", func(t *testing.T) {
+		host := newTestHost(t)
+		_, err := host.DB().Write(ctx, plugins.StatsCollection, []db.Document{
+			{"metric": "alert_hit", "dim": "source", "key": "syslog",
+				"bucket": bucket - 30*24*3600, "value": int64(4)},
+		}, db.WriteOptions{Primary: []string{"metric", "dim", "key", "bucket"}})
+		require.NoError(t, err)
+
+		resp := callStatsHandler(t, host, from, to)
+		require.Zero(t, resp.Data.Snapshot.TotalHits, "nothing in this window")
+		require.True(t, resp.Meta.Counters.Present, "but the instance does record counters")
+	})
+
+	t.Run("metrics disabled", func(t *testing.T) {
+		resp := callStatsHandler(t, &metricsOffHost{testHost: newTestHost(t)}, from, to)
+		require.False(t, resp.Meta.Counters.Enabled)
+	})
+}
+
+// metricsOffHost is a testHost with general.metrics_enabled turned off.
+type metricsOffHost struct{ *testHost }
+
+func (h *metricsOffHost) Config() *config.Config {
+	cfg := config.Default()
+	cfg.General.MetricsEnabled = false
+	return cfg
+}

@@ -3476,24 +3476,24 @@ components:
       properties:
         by_state:
           type: object
-          description: "Alert counts keyed by state string."
+          description: "Live alert counts keyed by state string, across all alerts (not windowed)."
           additionalProperties: {type: integer}
         total_hits:
           type: integer
           description: "Total alert hits in the requested window."
         open:
           type: integer
-          description: "Count of records currently in the open state."
+          description: "Live count of records currently in the open state (not windowed)."
         ack:
           type: integer
-          description: "Count of records currently in the ack state."
+          description: "Live count of records currently in the ack state (not windowed)."
         closed:
           type: integer
-          description: "Count of records currently in the close state."
+          description: "Live count of records currently in the close state (not windowed)."
 
     StatsMeta:
       type: object
-      required: [from, to, bucket]
+      required: [from, to, bucket, counters]
       properties:
         from:
           type: string
@@ -3506,6 +3506,23 @@ components:
         bucket:
           type: integer
           description: "Series bucket size in seconds."
+        counters:
+          $ref: '#/components/schemas/StatsCounters'
+
+    StatsCounters:
+      type: object
+      required: [enabled, present]
+      description: |
+        Provenance for the counter-backed half of the response (series,
+        totals, weekday). Lets a client distinguish "metrics are off",
+        "no counter has ever been written" and "quiet window".
+      properties:
+        enabled:
+          type: boolean
+          description: "Mirrors general.metrics_enabled; false means counters are never written."
+        present:
+          type: boolean
+          description: "True when at least one counter document exists, in this window or any other."
 
     AdminCredential:
       type: object

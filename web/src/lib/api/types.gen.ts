@@ -4605,17 +4605,17 @@ export interface components {
             };
         };
         StatsSnapshot: {
-            /** @description Alert counts keyed by state string. */
+            /** @description Live alert counts keyed by state string, across all alerts (not windowed). */
             by_state: {
                 [key: string]: number;
             };
             /** @description Total alert hits in the requested window. */
             total_hits: number;
-            /** @description Count of records currently in the open state. */
+            /** @description Live count of records currently in the open state (not windowed). */
             open: number;
-            /** @description Count of records currently in the ack state. */
+            /** @description Live count of records currently in the ack state (not windowed). */
             ack: number;
-            /** @description Count of records currently in the close state. */
+            /** @description Live count of records currently in the close state (not windowed). */
             closed: number;
         };
         StatsMeta: {
@@ -4631,6 +4631,17 @@ export interface components {
             to: string;
             /** @description Series bucket size in seconds. */
             bucket: number;
+            counters: components["schemas"]["StatsCounters"];
+        };
+        /** @description Provenance for the counter-backed half of the response (series,
+         *     totals, weekday). Lets a client distinguish "metrics are off",
+         *     "no counter has ever been written" and "quiet window".
+         *      */
+        StatsCounters: {
+            /** @description Mirrors general.metrics_enabled; false means counters are never written. */
+            enabled: boolean;
+            /** @description True when at least one counter document exists, in this window or any other. */
+            present: boolean;
         };
         /** @description Provisioned local-admin credential. The `password` is shown exactly
          *     once (it is not stored in plaintext); save it immediately.

@@ -101,6 +101,30 @@ func TestRecordStat_WritesOneDocPerLabel_HourBucketed(t *testing.T) {
 	require.Equal(t, map[string]string{"source": "syslog", "severity": "critical"}, dimKey)
 }
 
+// A record that has not been persisted yet carries DateEpoch == 0 (the storage
+// driver stamps date_epoch at write time), and the alert pipeline records its
+// counters before that happens. Bucketing those at epoch 0 filed every counter
+// under 1970-01-01 — outside every dashboard window — so the dashboard's whole
+// counter half read as empty on a live instance. The counter must land in the
+// current hour instead.
+func TestRecordStat_MissingEventEpochBucketsToNow(t *testing.T) {
+	w, calls := newCapturingWriter()
+	h := &statTestHost{writer: w, metricsEnabled: true}
+	before := time.Now().UTC().Truncate(time.Hour).Unix()
+	RecordStat(context.Background(), h, 0, "alert_hit", map[string]string{"source": "syslog"}, 1)
+	require.NoError(t, w.Flush(context.Background()))
+	after := time.Now().UTC().Truncate(time.Hour).Unix()
+
+	got := *calls
+	require.Len(t, got, 1)
+	bucket, ok := got[0].search["bucket"].(int64)
+	require.True(t, ok, "bucket must be an int64, got %T", got[0].search["bucket"])
+	require.NotZero(t, bucket, "epoch-0 bucket is invisible to every dashboard window")
+	// Tolerates an hour rollover between the two reads.
+	require.GreaterOrEqual(t, bucket, before)
+	require.LessOrEqual(t, bucket, after)
+}
+
 func TestRecordStat_NoopWhenMetricsDisabled(t *testing.T) {
 	w, calls := newCapturingWriter()
 	h := &statTestHost{writer: w, metricsEnabled: false}
