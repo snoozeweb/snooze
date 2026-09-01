@@ -38,7 +38,10 @@ const META: Record<
     title: (n) => (n === 1 ? "Close alert" : `Close ${n} alerts`),
     confirmLabel: "Close",
     description: "Mark the alert(s) as resolved. They will move to the closed view.",
-    variant: "primary",
+    // Danger, not primary: Close ends the alert's triage life, and the
+    // drawer/kebab/bulk affordances that all open this same dialog already
+    // mark Close as the destructive one — the confirm button should match.
+    variant: "danger",
     requireMessage: false,
   },
   open: {

@@ -12,7 +12,7 @@ import {
   type UseFormWatch,
 } from "react-hook-form";
 import type { UseMutationResult, UseQueryResult } from "@tanstack/react-query";
-import { Button } from "@/shared/ui/Button";
+import { Button, type ButtonVariant } from "@/shared/ui/Button";
 import { Dialog, DialogBody, DialogContent, DialogFooter, DialogTitle } from "@/shared/ui/Dialog";
 import { Drawer, DrawerBody, DrawerContent, DrawerFooter, DrawerTitle } from "@/shared/ui/Drawer";
 import { Spinner } from "@/shared/ui/Spinner";
@@ -171,6 +171,16 @@ export type EditorDrawerProps<
    *  body payload, including `getValues`, so it can build its own request. */
   secondaryFooterActions?: ReactNode | ((body: EditorBodyProps<Form>) => ReactNode) | undefined;
 
+  /** Variant for the frame's own Create/Save submit button. Defaults to
+   *  "primary" — the ordinary case of a single commit action. When an
+   *  editor's `secondaryFooterActions` introduces a STRONGER commit (e.g.
+   *  Snooze's "Create and apply to N alerts", the product's actual promise),
+   *  pass "secondary" here so that button reads as the quiet fallback and
+   *  the footer keeps exactly one visual primary. The editor is responsible
+   *  for flipping this back to "primary" once its own stronger action isn't
+   *  actually being offered (e.g. zero matching alerts) — see SnoozeEditor. */
+  submitVariant?: ButtonVariant;
+
   /** Toast text on success. Strings or an {create, update} pair. */
   successMessage: string | { create: string; update: string };
 
@@ -222,6 +232,7 @@ export function EditorDrawer<
     titleToolbar,
     footerStart,
     secondaryFooterActions,
+    submitVariant = "primary",
     successMessage,
     formId,
     formClassName,
@@ -378,14 +389,20 @@ export function EditorDrawer<
           {footerStart !== undefined ? (
             <div style={FOOTER_START_STYLE}>{footerStartNode}</div>
           ) : null}
-          {secondaryFooterNode}
+          {/* Cancel sits at the edge of the commit-button cluster — never
+              between two commits (the anti-pattern this frame used to ship:
+              "Create and apply | Cancel | Create"). The frame's own
+              Create/Save renders last, in reading order right after any
+              stronger secondary commit, so the strongest action lands
+              rightmost. */}
           <Button variant="ghost" onClick={requestClose}>
             Cancel
           </Button>
+          {secondaryFooterNode}
           <Button
             type="submit"
             form={formId}
-            variant="primary"
+            variant={submitVariant}
             loading={submitting}
             // Also disable while the record is still loading (edit mode): the
             // form isn't mounted yet, so the submit target doesn't exist and a

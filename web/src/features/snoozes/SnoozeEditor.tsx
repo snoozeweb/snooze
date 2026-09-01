@@ -72,6 +72,13 @@ export function SnoozeEditor({ uid, onClose, initialForm }: SnoozeEditorProps) {
   // Set in formToBody before throwing EditorAbort; read by the body to render
   // the inline message (mirrors WidgetEditor's jsonError pattern).
   const [tcError, setTcError] = useState<string | null>(null);
+  // Whether "Create and apply to N alerts" is actually being offered this
+  // render (create mode + at least one matching alert) — decides which
+  // commit button is the footer's single primary. Lifted up from
+  // CreateAndApplyButton (which owns the reactive match-count query) via a
+  // plain callback so the frame's own Create button can read it without a
+  // second query subscription living outside the render-prop tree.
+  const [applyVisible, setApplyVisible] = useState(false);
 
   // Shared by the normal submit path (EditorDrawer's formToBody) and the
   // "Create and apply" footer action, which builds its own request outside
@@ -125,8 +132,21 @@ export function SnoozeEditor({ uid, onClose, initialForm }: SnoozeEditorProps) {
         <SnoozeDiff control={control} original={isCreate ? undefined : get.data} />
       )}
       secondaryFooterActions={(body) => (
-        <CreateAndApplyButton {...body} buildBody={buildBody} create={create} onClose={onClose} />
+        <CreateAndApplyButton
+          {...body}
+          buildBody={buildBody}
+          create={create}
+          onClose={onClose}
+          onVisibilityChange={setApplyVisible}
+        />
       )}
+      // "Create and apply to N alerts" is the product's actual promise
+      // (noise reduction happens NOW, not after a second trip to the
+      // snoozes list) — it gets the single primary treatment whenever it's
+      // offered, and the frame's own "Create" quiets down to secondary.
+      // Falls back to "primary" the moment it isn't offered (edit mode, or
+      // zero matching alerts) so the footer never ships with no primary.
+      submitVariant={applyVisible ? "secondary" : "primary"}
       successMessage={{ create: "Snooze created", update: "Snooze saved" }}
       formId="snooze-form"
       formClassName={styles.stack}
@@ -150,10 +170,12 @@ function CreateAndApplyButton({
   buildBody,
   create,
   onClose,
+  onVisibilityChange,
 }: EditorBodyProps<FormShape> & {
   buildBody: (form: FormShape) => Snooze;
   create: UseMutationResult<Snooze, ApiError, Partial<Snooze>>;
   onClose: () => void;
+  onVisibilityChange: (visible: boolean) => void;
 }) {
   const condition = useWatch({ control, name: "condition" });
   // Debounce like ConditionPreview — leaf-value edits update the condition
@@ -173,12 +195,17 @@ function CreateAndApplyButton({
   const list = Records.useList({ ...(q !== undefined ? { q } : {}), limit: 1 });
   const total = list.data?.meta.total ?? 0;
   const [busy, setBusy] = useState(false);
+  const visible = isCreate && total > 0;
 
-  if (!isCreate || total <= 0) return null;
+  useEffect(() => {
+    onVisibilityChange(visible);
+  }, [visible, onVisibilityChange]);
+
+  if (!visible) return null;
 
   return (
     <Button
-      variant="secondary"
+      variant="primary"
       loading={busy}
       disabled={busy}
       onClick={() => {

@@ -56,4 +56,20 @@ describe("ShelveDialog", () => {
     await user.click(screen.getByRole("button", { name: /cancel/i }));
     expect(onOpenChange).toHaveBeenCalledWith(false);
   });
+
+  it("renders a failed attempt inline and keeps the dialog open with Shelve re-enabled", () => {
+    setup({
+      error: {
+        summary: "Couldn't shelve srv-1 — the server ran into a problem.",
+        secondary: "internal server error",
+      },
+    });
+    // Still open, not a corner toast — same Phase 3 pattern as ActionDialog.
+    expect(screen.getByRole("dialog")).toBeInTheDocument();
+    const banner = screen.getByRole("alert");
+    expect(banner).toHaveTextContent("Couldn't shelve srv-1");
+    expect(banner).toHaveTextContent("internal server error");
+    const submitButton = screen.getByRole("button", { name: /try again/i });
+    expect(submitButton).not.toBeDisabled();
+  });
 });

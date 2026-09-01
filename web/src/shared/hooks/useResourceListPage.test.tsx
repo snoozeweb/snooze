@@ -2,6 +2,7 @@ import { renderHook, act } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { useResourceListPage, type BaseListSearch } from "./useResourceListPage";
 import type { ContextMenuItem } from "@/shared/ui/DataTableContextMenu";
+import { isRowActionItem } from "@/shared/ui/RowActionsMenu";
 
 type NavigateCall = {
   to: string;
@@ -151,6 +152,7 @@ describe("useResourceListPage", () => {
     const { hook } = setup();
     const del = hook.result.current
       .rowActions({ uid: "u9", name: "n" })
+      .filter(isRowActionItem)
       .find((i) => i.key === "delete");
     expect(del).toBeDefined();
     act(() => {

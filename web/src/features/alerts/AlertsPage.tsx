@@ -280,6 +280,9 @@ export function AlertsPage() {
   // whenever a fresh dialog opens or a new submit attempt starts.
   const [dialogError, setDialogError] = useState<ErrorCopy | null>(null);
   const [shelveDialog, setShelveDialog] = useState<Record_[] | null>(null);
+  // Failure from the most recent shelve attempt — same inline-error, stay-open
+  // pattern as `dialogError`/ActionDialog (see ShelveDialog's `error` prop).
+  const [shelveDialogError, setShelveDialogError] = useState<ErrorCopy | null>(null);
   const [bulkTagOpen, setBulkTagOpen] = useState(false);
   const [injectOpen, setInjectOpen] = useState(false);
   // Drives the ActionDialog confirm button across a whole bulk submit. A single
@@ -572,8 +575,14 @@ export function AlertsPage() {
       // ttl<0 branch: legacy permanent-exempt rows (pre-plan-34b); new-model rows use state=="shelved"
       const isShelved = state === "shelved" || (row.ttl !== undefined && row.ttl < 0);
 
+      // Grouped with separators (see RowActionSeparator): lifecycle state
+      // changes, then the always-available engage actions, then
+      // silence-and-suppress. A flat 7-item list reads as one undifferentiated
+      // pile — the grouping mirrors how an operator actually thinks about the
+      // menu ("what state should this be in" vs. "how do I quiet it down").
       const out: RowAction[] = [];
 
+      // ── Lifecycle ────────────────────────────────────────────────────
       // Flat filter over candidates using the transition gate — replaces the
       // nested if (isOpen) / else if (isAcked) / else if (isClosed) chains.
       for (const { key, label, icon } of CANDIDATE_ROW_ACTIONS) {
@@ -582,11 +591,18 @@ export function AlertsPage() {
             key,
             label,
             icon,
+            // Close is the one lifecycle action that ends the alert's
+            // triage life — flagged the same as everywhere else it appears
+            // (drawer header, bulk bar) so it never blends in with Ack/Esc.
+            ...(key === "close" ? { danger: true } : {}),
             onSelect: () => openDialog(key, [row]),
           });
         }
       }
 
+      out.push({ key: "sep-lifecycle", separator: true });
+
+      // ── Engage ───────────────────────────────────────────────────────
       // comment is always-allowed.
       out.push({
         key: "comment",
@@ -604,7 +620,9 @@ export function AlertsPage() {
         onSelect: () => snoozeRows([row]),
       });
 
+      // ── Silence & suppress ───────────────────────────────────────────
       if (!isClosed) {
+        out.push({ key: "sep-suppress", separator: true });
         if (isShelved) {
           // Unshelve via new comment-based API
           out.push({
@@ -636,12 +654,18 @@ export function AlertsPage() {
             key: "shelve",
             label: "Shelve",
             icon: "eye-off",
-            onSelect: () => setShelveDialog([row]),
+            onSelect: () => {
+              setShelveDialogError(null);
+              setShelveDialog([row]);
+            },
           });
-          // Legacy permanent-exempt (ttl=-1) — kept as a clearly-labelled secondary action
+          // Legacy code path (ttl=-1) for a shelve that never expires — same
+          // outcome as "Shelve" above minus the timer, so it's named as its
+          // permanent counterpart rather than exposing the implementation's
+          // vintage to the operator.
           out.push({
             key: "permanent-exempt",
-            label: "Permanent exempt (legacy)",
+            label: "Shelve permanently",
             icon: "eye-off",
             onSelect: () => {
               void (async () => {
@@ -651,7 +675,7 @@ export function AlertsPage() {
                     shelve: true,
                     currentTTL: row.ttl,
                   });
-                  toast.undo(`Permanent exempt • ${recordLabel(row)}`, () => {
+                  toast.undo(`Shelved permanently • ${recordLabel(row)}`, () => {
                     void (async () => {
                       try {
                         await shelveMut.mutateAsync({
@@ -739,6 +763,9 @@ export function AlertsPage() {
           key: "ack",
           label: "Acknowledge",
           icon: "thumbs-up",
+          // Labelled (not just an icon) in the one place this list feeds a
+          // header with room for it — the detail drawer's toolbar.
+          emphasize: true,
           onSelect: () => inlineAction(row, "ack"),
         });
       }
@@ -747,6 +774,10 @@ export function AlertsPage() {
           key: "close",
           label: "Close",
           icon: "lock",
+          emphasize: true,
+          // Close reads as the more consequential of the two — visually
+          // distinct so it isn't mistaken for Acknowledge at a glance.
+          danger: true,
           onSelect: () => inlineAction(row, "close"),
         });
       }
@@ -824,13 +855,16 @@ export function AlertsPage() {
         },
       ];
 
-      // Flat filter over candidates using the transition gate.
+      // Flat filter over candidates using the transition gate. Close carries
+      // the same danger marking as the kebab/drawer/bulk bar so it reads
+      // consistently wherever this action surfaces.
       for (const { key, label, icon } of CANDIDATE_ROW_ACTIONS) {
         if (isActionAllowed(state, key)) {
           items.push({
             key,
             label,
             icon,
+            ...(key === "close" ? { danger: true } : {}),
             onSelect: () => openDialog(key, [row]),
           });
         }
@@ -899,9 +933,12 @@ export function AlertsPage() {
             </Button>
           ) : null}
           {valid.has("close") ? (
+            // Close is the one bulk action that ends triage for every
+            // selected alert — danger-weighted so it doesn't read as
+            // identical in stakes to Comment/Tag beside it.
             <Button
               size="sm"
-              variant="secondary"
+              variant="danger"
               leadingIcon="lock"
               onClick={() => openBulkDialog("close")}
             >
@@ -1059,7 +1096,26 @@ export function AlertsPage() {
             : "";
         // Description must carry both the count and the caveat because tests
         // assert against t.description.
-        toast.success(`${mainMsg}${partialNote} — ${BULK_STATE_CAVEAT}`);
+        const description = `${mainMsg}${partialNote} — ${BULK_STATE_CAVEAT}`;
+        // ack/close both have a real, backend-legal inverse ("open" — see
+        // transitions.ts's ALLOWED table), so offer it as an Undo action
+        // instead of leaving the operator to hunt for "Re-open" again. esc's
+        // "undo" is ambiguous (its prior state could have been ack, esc, or
+        // open) and re-open has no single well-defined inverse, so those
+        // stay plain success toasts rather than guessing.
+        if (type === "ack" || type === "close") {
+          toast.undo(description, () => {
+            void (async () => {
+              try {
+                await bulkStateMut.mutateAsync({ ...(bulkQ ? { q: bulkQ } : {}), state: "open" });
+              } catch (e) {
+                toast.error(describeError(e, "Undo failed").summary);
+              }
+            })();
+          });
+        } else {
+          toast.success(description);
+        }
         setDialog(null);
         setSelectedKeys(new Set());
         setSelectAllMode(false);
@@ -1411,11 +1467,18 @@ export function AlertsPage() {
         open={shelveDialog !== null}
         records={shelveDialog ?? []}
         onOpenChange={(o) => {
-          if (!o) setShelveDialog(null);
+          if (!o) {
+            setShelveDialog(null);
+            setShelveDialogError(null);
+          }
         }}
         submitting={commentMut.isPending}
+        error={shelveDialogError}
         onConfirm={async ({ duration, message }) => {
           if (!shelveDialog) return;
+          setShelveDialogError(null);
+          const subject =
+            shelveDialog.length === 1 ? recordLabel(shelveDialog[0]!) : `${shelveDialog.length} alerts`;
           try {
             for (const r of shelveDialog) {
               await commentMut.mutateAsync({
@@ -1440,10 +1503,13 @@ export function AlertsPage() {
                 }
               })();
             });
-          } catch (e) {
-            toast.error(describeError(e, "Action failed").summary);
-          } finally {
             setShelveDialog(null);
+          } catch (e) {
+            // Same anti-pattern Phase 3 fixed in ActionDialog: stay open,
+            // show the failure inline, let the operator retry instead of
+            // silently closing on a failed shelve.
+            setShelveDialogError(describeActionError("shelve", subject, e));
+            toast.error(describeError(e, "Action failed").summary);
           }
         }}
       />

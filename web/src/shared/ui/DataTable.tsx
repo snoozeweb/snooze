@@ -1,11 +1,12 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { CSSProperties, ReactNode } from "react";
+import { Button } from "./Button";
 import { Checkbox } from "./Checkbox";
 import { EmptyState } from "./EmptyState";
 import { Icon } from "@/shared/icons/Icon";
 import { IconButton } from "./IconButton";
 import { Popover, PopoverContent, PopoverTrigger } from "./Popover";
-import { RowActionsMenu, type RowAction } from "./RowActionsMenu";
+import { RowActionsMenu, isRowActionItem, type RowAction } from "./RowActionsMenu";
 import { RowDetailsDrawer } from "./RowDetailsDrawer";
 import { SearchBar, type ParsedCondition } from "./SearchBar";
 import { Skeleton } from "./Skeleton";
@@ -533,17 +534,39 @@ export function DataTable<T>({
   const detailsRow = detailsIndex >= 0 ? data[detailsIndex] : undefined;
   const detailsActions =
     renderDetails && detailsRow && quickActions
-      ? quickActions(detailsRow).map((a) => (
-          <IconButton
-            key={a.key}
-            icon={a.icon ?? "more-horizontal"}
-            label={a.label}
-            size="sm"
-            {...(a.danger ? { variant: "danger" as const } : {})}
-            {...(a.disabled ? { disabled: true } : {})}
-            onClick={a.onSelect}
-          />
-        ))
+      ? quickActions(detailsRow)
+          .filter(isRowActionItem)
+          .map((a) =>
+            // Lifecycle actions (Acknowledge / Close) get a labelled Button
+            // here — this header is the drawer's only chrome, so an
+            // unlabelled icon pair reads as ambiguous at the moment an
+            // operator is deciding whether to commit an irreversible-feeling
+            // action. Everything else (Comment, …) stays icon-only: it
+            // already has a full composer in the body, so the header button
+            // is a shortcut, not the primary affordance.
+            a.emphasize ? (
+              <Button
+                key={a.key}
+                size="sm"
+                variant={a.danger ? "danger" : "secondary"}
+                onClick={a.onSelect}
+                {...(a.icon ? { leadingIcon: a.icon } : {})}
+                {...(a.disabled ? { disabled: true } : {})}
+              >
+                {a.label}
+              </Button>
+            ) : (
+              <IconButton
+                key={a.key}
+                icon={a.icon ?? "more-horizontal"}
+                label={a.label}
+                size="sm"
+                {...(a.danger ? { variant: "danger" as const } : {})}
+                {...(a.disabled ? { disabled: true } : {})}
+                onClick={a.onSelect}
+              />
+            ),
+          )
       : null;
 
   return (
@@ -913,17 +936,19 @@ function DataTableRowInner<T>({
               />
             ) : null}
             {quickActions
-              ? quickActions(row).map((a) => (
-                  <IconButton
-                    key={a.key}
-                    icon={a.icon ?? "more-horizontal"}
-                    label={a.label}
-                    size="sm"
-                    {...(a.danger ? { variant: "danger" as const } : {})}
-                    {...(a.disabled ? { disabled: true } : {})}
-                    onClick={a.onSelect}
-                  />
-                ))
+              ? quickActions(row)
+                  .filter(isRowActionItem)
+                  .map((a) => (
+                    <IconButton
+                      key={a.key}
+                      icon={a.icon ?? "more-horizontal"}
+                      label={a.label}
+                      size="sm"
+                      {...(a.danger ? { variant: "danger" as const } : {})}
+                      {...(a.disabled ? { disabled: true } : {})}
+                      onClick={a.onSelect}
+                    />
+                  ))
               : null}
           </div>
         </td>

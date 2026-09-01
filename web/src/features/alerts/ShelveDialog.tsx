@@ -10,6 +10,8 @@ import {
 import { Button } from "@/shared/ui/Button";
 import { Textarea } from "@/shared/ui/Textarea";
 import { Code } from "@/shared/ui/Code";
+import { InlineError } from "@/shared/ui/InlineError";
+import type { ErrorCopy } from "@/lib/api/errorMessage";
 import type { Record_ } from "./types";
 import styles from "./ShelveDialog.module.css";
 
@@ -19,6 +21,13 @@ export type ShelveDialogProps = {
   records: Record_[];
   onConfirm: (input: { duration: number; message: string }) => Promise<void>;
   submitting?: boolean;
+  /** The most recent failed attempt, rendered inline above the footer. The
+   *  dialog stays open and the confirm button re-enabled (see `submitting`)
+   *  so retrying is just clicking Shelve/Try again — mirrors ActionDialog's
+   *  Phase 3 pattern (a failed shelve used to close the dialog on failure,
+   *  same anti-pattern that fix addressed elsewhere). Cleared by the caller
+   *  when a new attempt starts. */
+  error?: ErrorCopy | null | undefined;
 };
 
 const DURATION_OPTIONS = [
@@ -36,6 +45,7 @@ export function ShelveDialog({
   records,
   onConfirm,
   submitting = false,
+  error = null,
 }: ShelveDialogProps) {
   const [durationValue, setDurationValue] = useState<number | "custom">(14400);
   const [customHours, setCustomHours] = useState("4");
@@ -126,6 +136,7 @@ export function ShelveDialog({
                 rows={3}
               />
             </label>
+            {error ? <InlineError {...error} /> : null}
           </form>
         </DialogBody>
         <DialogFooter>
@@ -139,7 +150,7 @@ export function ShelveDialog({
             loading={submitting}
             disabled={submitting}
           >
-            Shelve
+            {error ? "Try again" : "Shelve"}
           </Button>
         </DialogFooter>
       </DialogContent>

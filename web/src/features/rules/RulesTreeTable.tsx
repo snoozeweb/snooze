@@ -50,7 +50,7 @@ import { Icon } from "@/shared/icons/Icon";
 import { EmptyState } from "@/shared/ui/EmptyState";
 import { IconButton } from "@/shared/ui/IconButton";
 import { Menu, MenuContent, MenuItem, MenuTrigger } from "@/shared/ui/Menu";
-import { RowActionsMenu, type RowAction } from "@/shared/ui/RowActionsMenu";
+import { RowActionsMenu, isRowActionItem, type RowAction } from "@/shared/ui/RowActionsMenu";
 import { RowDetailsDrawer } from "@/shared/ui/RowDetailsDrawer";
 import { toast } from "@/shared/ui/toast/useToast";
 import { prettyCondition } from "@/lib/condition/pretty";
@@ -895,7 +895,7 @@ export function RulesTreeTable({
 
       {ctxMenu ? (
         <DataTableContextMenu
-          items={buildMenuItems(ctxMenu.row)}
+          items={buildMenuItems(ctxMenu.row).filter(isRowActionItem) as ContextMenuItem[]}
           x={ctxMenu.x}
           y={ctxMenu.y}
           onClose={() => setCtxMenu(null)}
