@@ -7,6 +7,15 @@ export type TimeCellProps = {
   epoch: number | undefined;
   /** Tooltip placement; forwarded to the shared Tooltip. */
   side?: "top" | "right" | "bottom" | "left";
+  /**
+   * Relative-only rendering ("2m ago", "5h ago", "3d ago"): one short value
+   * instead of the "Nm ago  Today 14:32" pair, with the absolute timestamp
+   * living only in the tooltip. Used by the alerts table, where the age is
+   * what triage reads and the column width it frees goes to the message.
+   * A future (or unparseable) epoch falls back to the absolute text, since
+   * "ago" would be a lie.
+   */
+  compact?: boolean;
 };
 
 const HOUR_SECONDS = 3600;
@@ -21,8 +30,10 @@ const HOUR_SECONDS = 3600;
  *
  * Phase 2 only ships the primitive; later phases wire it into columns.tsx,
  * the audit timeline, and the snoozes/users tables.
+ *
+ * `compact` swaps that pair for the relative value alone — see the prop docs.
  */
-export function TimeCell({ epoch, side = "top" }: TimeCellProps) {
+export function TimeCell({ epoch, side = "top", compact = false }: TimeCellProps) {
   if (epoch === undefined || epoch === 0) {
     return <span className={styles.cell}>—</span>;
   }
@@ -43,6 +54,21 @@ export function TimeCell({ epoch, side = "top" }: TimeCellProps) {
   // sub-second events; only the "5m" / "12s" forms take the " ago" suffix.
   const relative = recent ? formatRelativeTime(epoch) : "";
   const relativeLabel = relative === "just now" ? relative : relative ? `${relative} ago` : "";
+
+  // Compact: the age is the whole cell. formatRelativeTime already ladders
+  // s → m → h → d, so this stays 2–7 characters at any age.
+  if (compact) {
+    const past = ageSeconds >= 0;
+    const rel = past ? formatRelativeTime(epoch) : "";
+    const label = !past ? trimDate(epoch) : rel === "just now" ? rel : `${rel} ago`;
+    return (
+      <Tooltip content={full} side={side}>
+        <time className={`${styles.cell} ${styles.compact}`} dateTime={iso}>
+          {label}
+        </time>
+      </Tooltip>
+    );
+  }
 
   // The relative hint always occupies a fixed-width, right-aligned slot (see
   // .relative in the CSS) — even when empty — so the absolute timestamps after

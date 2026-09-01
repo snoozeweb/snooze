@@ -92,7 +92,7 @@ section:
 | `refresh_interval` | int (seconds) | `5` | Alert-list auto-refresh cadence. |
 | `sort_by` | string | `-date_epoch` | Default sort; a `-` prefix means descending. |
 | `default_filter` | string | `""` | Search expression pre-filled in the alerts SearchBar on a clean load; URL `?search=` overrides it per session. |
-| `columns` | string[] | `date_epoch, severity, state, acked_by, hits, host, process, source, environment, ttl, message` | Ordered alert-table column ids. |
+| `columns` | string[] | `severity, message, hits, state, date_epoch, host, environment, ttl` | Ordered alert-table column ids. `process` and `source` also exist but are off the default layout — add the id here to bring either back. |
 | `severity_ranks` | map\<string,int> | built-in ladder | Label → rank (0 = most severe). Merged onto the built-in ladder. |
 | `logo` | string | `""` | Logo URL or `data:` URI; empty uses the bundled Snooze logo. |
 | `title` | string | `""` | Browser tab title; empty defaults to `"Snooze"`. |

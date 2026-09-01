@@ -16,10 +16,17 @@ test.describe("alert detail drawer", () => {
     await page.goto(server.baseURL + "/web/alerts");
     await expect(page.getByText("srv-detail")).toBeVisible();
 
-    // AlertsPage renders AlertRowDetail in a modal detail drawer (Radix Dialog)
-    // opened by clicking the row. The drawer opens on the Timeline tab; the raw
-    // record (JsonViewer) lives behind the "Record" tab.
-    await page.locator("tr", { hasText: "srv-detail" }).first().click({ force: true });
+    // AlertsPage renders AlertRowDetail in a modal detail drawer (Radix
+    // Dialog). It opens on the Timeline tab; the raw record (JsonViewer) lives
+    // behind the "Record" tab.
+    // Row click deliberately does NOT open the drawer (AlertsPage wires the
+    // controlled `detailsKey` to the eye button, the kebab's "View details"
+    // item and the E shortcut) — reach for the row's eye button.
+    await page
+      .locator("tr", { hasText: "srv-detail" })
+      .first()
+      .getByRole("button", { name: "View details" })
+      .click({ force: true });
     const dialog = page.getByRole("dialog");
     await expect(dialog).toBeVisible();
     await dialog.getByRole("tab", { name: /^record$/i }).click({ force: true });
@@ -30,9 +37,10 @@ test.describe("alert detail drawer", () => {
     // besides the JSON tree (quoted span).
     await expect(page.getByText("disk full").first()).toBeVisible();
     await expect(page.getByText("critical").first()).toBeVisible();
-    // Source ("prom") sits in the columns.tsx "xxl" hide tier — hidden in the
-    // table itself at this viewport's container width — so assert against the
-    // dialog's own JsonViewer rather than the page at large.
+    // Source is defined in columns.tsx but off the default column layout
+    // (internal/api/routes_config.go `defaultColumns`), so "prom" never
+    // appears in the table — the drawer is exactly where it lives. Assert
+    // against the dialog's own JsonViewer rather than the page at large.
     await expect(dialog.getByText("prom").first()).toBeVisible();
   });
 
@@ -129,7 +137,11 @@ test.describe("alert detail drawer", () => {
 
     // Open the detail drawer by clicking the row; Timeline is the default tab,
     // so the comment shows without switching tabs.
-    await page.locator("tr", { hasText: "srv-comment" }).first().click({ force: true });
+    await page
+      .locator("tr", { hasText: "srv-comment" })
+      .first()
+      .getByRole("button", { name: "View details" })
+      .click({ force: true });
     await expect(page.getByRole("dialog")).toBeVisible();
     await expect(page.getByText("first note")).toBeVisible();
   });
@@ -146,7 +158,11 @@ test.describe("alert detail drawer", () => {
 
     // Row click opens the modal drawer; Radix Dialog gives Esc + outside-click
     // dismissal for free.
-    await page.locator("tr", { hasText: "srv-close-drawer" }).first().click({ force: true });
+    await page
+      .locator("tr", { hasText: "srv-close-drawer" })
+      .first()
+      .getByRole("button", { name: "View details" })
+      .click({ force: true });
     const dialog = page.getByRole("dialog");
     await expect(dialog).toBeVisible();
 

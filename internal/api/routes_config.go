@@ -33,21 +33,31 @@ type ConsoleConfig struct {
 	Clipboard     string         `json:"clipboard_template"` // copy-to-clipboard template, "" = default
 }
 
-// defaultColumns mirrors web/src/features/alerts/columns.tsx alertColumns (in
-// display order). Kept here as the server-owned default the SPA falls back to
-// when no `console.columns` override is set.
+// defaultColumns is the server-owned default alert-table layout the SPA falls
+// back to when no `console.columns` override is set. Message-first: severity
+// then the message (which takes the flexible remainder of the row), then the
+// aggregation count, state and age.
+//
+// Deliberately NOT the full set defined in web/src/features/alerts/columns.tsx
+// — `process` and `source` are defined there but left off this list, because
+// they cost ~320px of every desktop row to repeat what host and message
+// already say and are one click away in the row inspector. An operator who
+// wants them re-adds the id under Settings → Console → "Alert table columns"
+// (the metadata default in internal/pluginimpl/settings/metadata.yaml and the
+// SPA's offline fallback in web/src/features/config/types.ts must match this).
+//
+// `acked_by` used to sit in this list and has never had a column definition to
+// resolve against, so the SPA silently dropped it; it's gone from the default
+// rather than left as a no-op id.
 var defaultColumns = []string{
-	"date_epoch",
 	"severity",
-	"state",
-	"acked_by",
+	"message",
 	"hits",
+	"state",
+	"date_epoch",
 	"host",
-	"process",
-	"source",
 	"environment",
 	"ttl",
-	"message",
 }
 
 const (

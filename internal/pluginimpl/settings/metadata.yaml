@@ -309,8 +309,8 @@ setting_form:
     columns:
         display_name: 'Alert table columns'
         component: 'Arguments'
-        description: 'Ordered column ids shown in the alert list (e.g. date_epoch, severity, state, host, message).'
-        default_value: ['date_epoch', 'severity', 'state', 'acked_by', 'hits', 'host', 'process', 'source', 'environment', 'ttl', 'message']
+        description: 'Ordered column ids shown in the alert list. Also available but off the default layout: process, source.'
+        default_value: ['severity', 'message', 'hits', 'state', 'date_epoch', 'host', 'environment', 'ttl']
         placeholder: 'column id'
         group: 'console'
     severity_ranks:

@@ -44,11 +44,18 @@ test.describe("rule pipeline effects", () => {
 
     await page.goto(server.baseURL + "/web/alerts");
     await expect(page.getByText("srv-tagged")).toBeVisible();
-    // The environment column sits in the columns.tsx "xxl" hide tier — hidden
-    // in the table itself at this viewport's container width — so open the
-    // row's detail drawer (row click) and assert the applied value on its
-    // Record tab instead of on the table at large.
-    await page.locator("tr", { hasText: "srv-tagged" }).first().click({ force: true });
+    // The Environment column sits in the columns.tsx "xl" hide tier — it may
+    // be hidden at this viewport's container width — so open the row's detail
+    // drawer and assert the applied value on its Record tab instead of on the
+    // table at large.
+    // Row click deliberately does NOT open the drawer (AlertsPage wires the
+    // controlled `detailsKey` to the eye button, the kebab's "View details"
+    // item and the E shortcut) — reach for the row's eye button.
+    await page
+      .locator("tr", { hasText: "srv-tagged" })
+      .first()
+      .getByRole("button", { name: "View details" })
+      .click({ force: true });
     const dialog = page.getByRole("dialog");
     await expect(dialog).toBeVisible();
     await dialog.getByRole("tab", { name: /^record$/i }).click({ force: true });

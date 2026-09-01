@@ -500,6 +500,80 @@
   .pagination {
     flex-wrap: wrap;
   }
+  /* ── Prioritised card (opt-in via ColumnDef.cardRole) ─────────────────
+     The generic card above gives every column an equal full-width
+     `label — value` row, which reads fine for a 4-column config table and
+     badly for a 10-column alert row: the field that says what broke ends up
+     a tenth of the card. A table that assigns roles gets a card with a
+     hierarchy instead — one line of status chips, then the headline field,
+     then whatever metadata still earns a labelled row. Everything below is
+     scoped to `[data-card-layout]`, so tables that declared no roles render
+     exactly as before. */
+  .table tbody .row[data-card-layout] {
+    row-gap: 2px;
+  }
+  /* Status chips: unlabelled, sized to content, sharing the first line in
+     column order. Spacing rides on margin rather than the row's `gap` so a
+     role that renders nothing for this record (e.g. Hits on an alert that
+     never repeated) leaves no hole behind it. */
+  .table tbody .row[data-card-layout] td[data-card="header"] {
+    flex: 0 0 auto;
+    order: 0;
+    width: auto;
+    padding: 0;
+    margin-inline-end: var(--space-2);
+    justify-content: flex-start;
+  }
+  /* The headline field. Full width, no label, and set a step stronger than
+     the metadata rows so the eye lands here first. */
+  .table tbody .row[data-card-layout] td[data-card="body"] {
+    flex: 0 0 100%;
+    order: 1;
+    padding: var(--space-1) 0;
+    /* The generic card's `space-between` exists to push a value away from its
+       label; an unlabelled headline has nothing to push against and would end
+       up ragged-right, so start it at the card's edge. */
+    justify-content: flex-start;
+    color: var(--text-strong);
+    font-size: var(--text-sm);
+    line-height: var(--leading-tight);
+  }
+  .table tbody .row[data-card-layout] td[data-card="header"]::before,
+  .table tbody .row[data-card-layout] td[data-card="body"]::before {
+    content: "";
+  }
+  /* Labelled metadata rows sit under the headline, controls under those. */
+  .table tbody .row[data-card-layout] td[data-card="meta"] {
+    order: 2;
+  }
+  /* Deprioritised entirely on a phone — the detail drawer (the eye button in
+     the card's footer) carries the full record. */
+  .table tbody .row[data-card-layout] td[data-card="hidden"] {
+    display: none;
+  }
+  /* The selection checkbox joins the chip line instead of claiming a row of
+     its own, which is a whole line of card height per alert. Its desktop
+     padding (which buffers it from the table's edge) goes: the card already
+     has padding, and those ~20px are the difference between the chip line
+     fitting on one line and wrapping. */
+  .table tbody .row[data-card-layout] td.checkboxCell {
+    flex: 0 0 auto;
+    order: -1;
+    padding: 0 !important;
+    margin-inline-end: var(--space-2);
+    justify-content: flex-start;
+  }
+  /* Cancels the `td:first-child` edge padding for the same reason — in a card
+     the first cell is not against a table border. */
+  .table tbody .row[data-card-layout] td:first-child {
+    padding-left: 0;
+  }
+  /* A chip slot whose cell rendered nothing collapses, so it doesn't leave a
+     margin-sized gap in the chip line. */
+  .table tbody .row[data-card-layout] td[data-card="header"]:has(> .cellInner:empty) {
+    display: none;
+  }
+
   /* Hover-reveal quick actions don't work on touch — always show them. Kept
      last so it beats the `.row:hover .quickActions` opacity rule above. */
   .table tbody .row .quickActions {

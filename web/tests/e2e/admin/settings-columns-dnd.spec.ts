@@ -23,8 +23,9 @@ test.describe("admin / settings — Alert table columns drag reorder", () => {
     const inputs = card.getByRole("textbox");
     const handles = card.getByRole("button", { name: "Drag to reorder" });
 
-    // Default catalogue value seeds 11 ordered column ids.
-    await expect(inputs.first()).toHaveValue("date_epoch");
+    // Default catalogue value seeds the message-first column order
+    // (internal/pluginimpl/settings/metadata.yaml `columns`).
+    await expect(inputs.first()).toHaveValue("severity");
     await expect(handles).toHaveCount(await inputs.count());
     const before = await inputs.evaluateAll((els) =>
       els.map((e) => (e as HTMLInputElement).value),

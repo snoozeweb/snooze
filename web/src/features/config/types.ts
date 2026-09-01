@@ -34,19 +34,9 @@ export type ConsoleConfig = {
 // built-in RANK map remains the offline source of truth until the server map
 // is applied via setSeverityRanks.
 export const CONSOLE_FALLBACK: ConsoleConfig = {
-  columns: [
-    "date_epoch",
-    "severity",
-    "state",
-    "acked_by",
-    "hits",
-    "host",
-    "process",
-    "source",
-    "environment",
-    "ttl",
-    "message",
-  ],
+  // Mirrors internal/api/routes_config.go `defaultColumns` — message-first,
+  // with `process`/`source` defined in columns.tsx but off the default layout.
+  columns: ["severity", "message", "hits", "state", "date_epoch", "host", "environment", "ttl"],
   default_filter: "",
   sort_by: "-date_epoch",
   refresh_interval: 5,

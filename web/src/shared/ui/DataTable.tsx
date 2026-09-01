@@ -50,11 +50,26 @@ export type ColumnDef<T> = {
    *  narrows below the tier's breakpoint: "md" 768px, "lg" 1024px, "xl"
    *  1280px, "xxl" 1600px. Tiers are cumulative as the container shrinks —
    *  "xxl" columns (least essential) disappear first, then "xl", then "lg",
-   *  then "md" — until card mode kicks in at <=640px and every field
-   *  reflows back in as a stacked card, so nothing is ever unreachable. Use
+   *  then "md" — until card mode kicks in at <=640px, where `cardRole`
+   *  (below) decides placement instead and the tier is ignored. Use
    *  for secondary/derived/metadata columns; identity and primary-status
    *  columns should omit this. */
   hideBelow?: "md" | "lg" | "xl" | "xxl";
+  /** Placement of this column once the table collapses into cards (container
+   *  <=640px). Opt-in per table: as long as NO column on a table declares a
+   *  role, every field keeps reflowing in as a labelled `label — value` row
+   *  in column order (the original card). Declaring roles switches that table
+   *  to the prioritised card:
+   *    "header" — a small unlabelled chip on the card's first line, in column
+   *               order, sharing the line with the selection checkbox.
+   *    "body"   — the card's headline: full width, unlabelled, no truncation
+   *               beyond its own clamp. One per table.
+   *    "meta"   — the labelled `label — value` row (the default shape).
+   *    "hidden" — not rendered on the card at all; still reachable through the
+   *               detail drawer / row inspector.
+   *  Tiers (`hideBelow`) and roles never interact: tiers only apply above
+   *  640px, roles only below it. */
+  cardRole?: "header" | "body" | "meta" | "hidden";
 };
 
 // Re-exported so existing `import type { RowAction } from "@/shared/ui/DataTable"`
@@ -486,6 +501,12 @@ export function DataTable<T>({
   const hasKebab = rowActions !== undefined || renderDetails !== undefined;
   const hasQuickCol = quickActions !== undefined || renderDetails !== undefined;
 
+  // Card-layout opt-in: a single column declaring `cardRole` switches the whole
+  // table to the prioritised card (see ColumnDef.cardRole). Flagged on the <tr>
+  // so the card-mode CSS can key off it without touching tables that never
+  // opted in.
+  const hasCardRoles = useMemo(() => columns.some((c) => c.cardRole !== undefined), [columns]);
+
   // Total rendered columns — kept in one place so the empty-state colspan and
   // the header stay in sync.
   const totalCols =
@@ -683,6 +704,7 @@ export function DataTable<T>({
                     rowKeyValue={key}
                     index={idx}
                     columns={columns}
+                    cardRoles={hasCardRoles}
                     selectable={selectable}
                     isSelected={selSet.has(key)}
                     isFocused={idx === focusedIndex}
@@ -754,6 +776,8 @@ type DataTableRowProps<T> = {
   rowKeyValue: string;
   index: number;
   columns: ColumnDef<T>[];
+  /** True when any column declares a `cardRole` — see ColumnDef.cardRole. */
+  cardRoles: boolean;
   selectable: boolean;
   isSelected: boolean;
   isFocused: boolean;
@@ -787,6 +811,7 @@ function DataTableRowInner<T>({
   rowKeyValue: key,
   index,
   columns,
+  cardRoles,
   selectable,
   isSelected,
   isFocused,
@@ -822,6 +847,7 @@ function DataTableRowInner<T>({
   return (
     <tr
       className={styles.row}
+      {...(cardRoles ? { "data-card-layout": "true" } : {})}
       {...(isFocused ? { "data-focused": "true" } : {})}
       {...(isSelected ? { "data-selected": "true" } : {})}
       {...(isDisabled ? { "data-disabled": "true" } : {})}
@@ -866,6 +892,7 @@ function DataTableRowInner<T>({
           key={col.id}
           data-label={col.header}
           {...(col.hideBelow ? { "data-hide": col.hideBelow } : {})}
+          {...(col.cardRole ? { "data-card": col.cardRole } : {})}
           {...(col.align === "right" ? { style: { textAlign: "right" } } : {})}
         >
           <CellTooltip>{col.cell(row)}</CellTooltip>

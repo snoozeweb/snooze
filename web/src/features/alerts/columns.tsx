@@ -3,6 +3,7 @@ import { Badge } from "@/shared/ui/Badge";
 import { Code } from "@/shared/ui/Code";
 import { TimeCell } from "@/shared/ui/TimeCell";
 import { severityColor } from "@/lib/format/severity-color";
+import { MessageCell } from "./MessageCell";
 import {
   formatCountdown,
   formatShelveUntil,
@@ -14,9 +15,12 @@ import {
 import type { AlertState, Record_ } from "./types";
 import styles from "./columns.module.css";
 
-// Records carry a `duplicates` counter (int64) bumped by the aggregate-rule
-// plugin every time an incoming alert collapses into an existing row.
-// internal/pluginimpl/aggregaterule/plugin.go lines ~216–244. Read-only.
+// Records carry a `duplicates` counter (int64) stamped by the aggregate-rule
+// plugin: 1 on the first occurrence, prev+1 every time an incoming alert
+// collapses into an existing row (internal/pluginimpl/aggregaterule/plugin.go,
+// the single bump site around line 466). So 1 (or absent, on records written
+// before the counter existed) means "this happened once" — not "unknown".
+// Read-only.
 function recordHits(r: Record_): number {
   const v = (r as { duplicates?: unknown }).duplicates;
   if (typeof v === "number") return v;
@@ -71,23 +75,31 @@ function recordTrend(r: Record_): "moreSevere" | "lessSevere" | "noChange" | "" 
 }
 
 // Column width budget: under `table-layout: fixed`, the sum of every VISIBLE
-// column's fixed width (plus the 12px quick-actions spacer, the kebab's
-// 36px, and cell padding, which counts toward width under border-box) must
-// leave the flexible Message column >=~180px at the lower edge of each tier
-// band — otherwise Message (and the quick-actions overlay that floats over
-// its tail) get squeezed toward zero. Hidden columns aren't gone: they
-// reappear in the detail drawer, and in card mode every field reflows back
-// in regardless of tier.
+// column's fixed width (plus the 12px quick-actions spacer, the kebab's 36px,
+// the 32px checkbox, and cell padding, which counts toward width under
+// border-box) is subtracted from the container to size the one flexible
+// column — Message. The tiers below are set so Message clears ~480px at every
+// realistic desktop width and never drops under ~240px on a tablet:
+//
+//   container   hidden tiers      fixed+controls   Message
+//   1600px      —                 810px            790px
+//   1280px      xxl               714px            566px
+//   1150px      xxl+xl            594px            556px   (1440px window)
+//   1000px      xxl+xl+lg         530px            470px   (1280px window)
+//    768px      xxl+xl+lg         530px            238px
+//    640px      → card mode (cardRole decides placement, tiers stop applying)
+//
+// Hidden columns aren't gone: they reappear in the detail drawer, and on a
+// phone `cardRole` decides what the card shows.
+//
+// Order is the SERVER's, not this array's: AlertsPage runs the list through
+// `columnsForConfig(config.columns)`, so the default order lives in
+// internal/api/routes_config.go `defaultColumns` (mirrored in
+// features/config/types.ts CONSOLE_FALLBACK and the settings metadata) and
+// this array only has to agree with it. `process` and `source` are defined
+// here but absent from that default list — an operator who wants them back
+// adds the id under Settings → Console → "Alert table columns".
 export const alertColumns: ColumnDef<Record_>[] = [
-  {
-    id: "date_epoch",
-    header: "When",
-    // TimeCell: same trimDate text as before, now mono-tabular with a full
-    // timestamp tooltip and a "Nm ago" prefix while the alert is <1h old.
-    cell: (r) => <TimeCell epoch={r.date_epoch} />,
-    sortable: true,
-    width: "210px",
-  },
   {
     id: "severity",
     // Gradated per-severity tint from the dashboard palette (severityColor),
@@ -126,7 +138,39 @@ export const alertColumns: ColumnDef<Record_>[] = [
       );
     },
     sortable: true,
-    width: "130px",
+    width: "100px",
+    cardRole: "header",
+  },
+  {
+    // Position 2, and the only flexible column: what broke is the reason the
+    // operator opened this page, so it gets the remainder of the width and a
+    // two-line clamp (see MessageCell and the budget table above).
+    id: "message",
+    header: "Message",
+    cell: (r) => (r.message ? <MessageCell text={r.message} /> : <span>—</span>),
+    cardRole: "body",
+  },
+  {
+    // The noise-reduction number, and the one column that says the product's
+    // thesis out loud. `duplicates` is 1 for an alert that happened once, so a
+    // singleton renders NOTHING — an em-dash on every row (what this column
+    // used to be) reads as "no data" and buries the rows that do repeat.
+    id: "hits",
+    header: "Hits",
+    cell: (r) => {
+      const n = recordHits(r);
+      if (n <= 1) return null;
+      const label = `${n} duplicate events aggregated into this alert`;
+      return (
+        <span className={styles.hits} title={label} aria-label={label}>
+          <Badge variant="muted">×{n}</Badge>
+        </span>
+      );
+    },
+    align: "right",
+    width: "64px",
+    hideBelow: "lg",
+    cardRole: "header",
   },
   {
     id: "state",
@@ -152,18 +196,20 @@ export const alertColumns: ColumnDef<Record_>[] = [
       );
     },
     sortable: true,
-    width: "110px",
+    width: "112px",
+    cardRole: "header",
   },
   {
-    id: "hits",
-    header: "Hits",
-    cell: (r) => {
-      const n = recordHits(r);
-      return n > 1 ? <Badge variant="muted">×{n}</Badge> : <span>—</span>;
-    },
-    align: "right",
-    width: "77px",
-    hideBelow: "lg",
+    id: "date_epoch",
+    header: "When",
+    // One relative value ("4m ago", "3d ago") with the absolute timestamp on
+    // hover. The old pairing ("4m ago  Today 14:32") spent 210px saying the
+    // same thing twice; triage reads the age, and the ~120px this frees goes
+    // to the message.
+    cell: (r) => <TimeCell epoch={r.date_epoch} compact />,
+    sortable: true,
+    width: "88px",
+    cardRole: "header",
   },
   {
     id: "host",
@@ -172,30 +218,15 @@ export const alertColumns: ColumnDef<Record_>[] = [
     sortable: true,
     width: "150px",
     hideBelow: "md",
-  },
-  {
-    // Process column sits between host and source, mirroring the field
-    // order from old snooze's src/snooze/defaults/web/alert.yaml.
-    id: "process",
-    header: "Process",
-    cell: (r) => (r.process ? <Code>{r.process}</Code> : <span>—</span>),
-    sortable: true,
-    width: "203px",
-    hideBelow: "xl",
-  },
-  {
-    id: "source",
-    header: "Source",
-    cell: (r) => r.source ?? "—",
-    width: "120px",
-    hideBelow: "xl",
+    cardRole: "meta",
   },
   {
     id: "environment",
     header: "Environment",
     cell: (r) => r.environment ?? "—",
     width: "120px",
-    hideBelow: "xxl",
+    hideBelow: "xl",
+    cardRole: "hidden",
   },
   {
     // TTL column — surfaces the same lifecycle hint old snooze used: how
@@ -210,12 +241,29 @@ export const alertColumns: ColumnDef<Record_>[] = [
       const label = su > 0 ? formatShelveUntil(su) : formatTTL(r.ttl, r.date_epoch);
       return <span>{label}</span>;
     },
-    width: "100px",
+    width: "96px",
     hideBelow: "xxl",
+    cardRole: "hidden",
   },
   {
-    id: "message",
-    header: "Message",
-    cell: (r) => <span className={styles.message}>{r.message || "—"}</span>,
+    // Process and Source: defined, but off the default column list (see the
+    // budget note above). They were costing 320px of a desktop row to repeat
+    // what host+message already say, and both are one click away in the row
+    // inspector's Record tab.
+    id: "process",
+    header: "Process",
+    cell: (r) => (r.process ? <Code>{r.process}</Code> : <span>—</span>),
+    sortable: true,
+    width: "180px",
+    hideBelow: "xl",
+    cardRole: "hidden",
+  },
+  {
+    id: "source",
+    header: "Source",
+    cell: (r) => r.source ?? "—",
+    width: "110px",
+    hideBelow: "xl",
+    cardRole: "hidden",
   },
 ];

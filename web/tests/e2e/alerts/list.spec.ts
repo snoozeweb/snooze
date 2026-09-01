@@ -32,9 +32,15 @@ test.describe("alerts list", () => {
       { host: "h2", message: "msg-b", severity: "critical", source: "t" },
     ]);
     await page.goto(server.baseURL + "/web/alerts");
-    // Wait for both rows
-    await expect(page.getByText("h1")).toBeVisible();
-    await expect(page.getByText("h2")).toBeVisible();
+    // Scope the host assertions to a grid cell. A bare getByText("h1") matches
+    // any element whose *aggregated* text contains those two characters, and
+    // the table's own text runs together across cells — e.g. a TTL of
+    // "in 1d 23h" followed by the pagination's "1–1 of 1" spells "h1" on the
+    // table wrapper, which would make the row look present after it is gone.
+    const hostCell = (host: string) =>
+      page.getByRole("gridcell").getByText(host, { exact: true });
+    await expect(hostCell("h1")).toBeVisible();
+    await expect(hostCell("h2")).toBeVisible();
 
     // The current Filters UI has no severity <Select>: narrowing is done
     // through the search DSL. Type `severity = critical` into the SearchBar
@@ -43,8 +49,8 @@ test.describe("alerts list", () => {
     const search = page.getByRole("textbox", { name: /^search$/i });
     await search.fill("severity = critical");
 
-    await expect(page.getByText("h2")).toBeVisible();
-    await expect(page.getByText("h1")).toBeHidden();
+    await expect(hostCell("h2")).toBeVisible();
+    await expect(hostCell("h1")).toBeHidden();
   });
 
   test("column sort by Host flips row order", async ({ page, api, server }) => {

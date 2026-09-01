@@ -21,8 +21,14 @@ test.describe("search query syncs to the URL", () => {
       { host: "h2", message: "b", severity: "critical", source: "t" },
     ]);
     await page.goto(server.baseURL + "/web/alerts");
-    await expect(page.getByText("h1")).toBeVisible();
-    await expect(page.getByText("h2")).toBeVisible();
+    // Scope the host assertions to a grid cell: a bare getByText("h1") also
+    // matches ancestors whose aggregated text happens to contain those two
+    // characters across cell boundaries (a "in 1d 23h" TTL beside the
+    // "1–1 of 1" pagination spells "h1"), which would hide a real regression.
+    const hostCell = (host: string) =>
+      page.getByRole("gridcell").getByText(host, { exact: true });
+    await expect(hostCell("h1")).toBeVisible();
+    await expect(hostCell("h2")).toBeVisible();
 
     const search = page.getByRole("textbox", { name: /^search$/i });
     await search.fill("severity = critical");
@@ -34,8 +40,8 @@ test.describe("search query syncs to the URL", () => {
     // The committed query is now in the address bar…
     await expect(page).toHaveURL(/[?&]search=severity/);
     // …and the server-side filter is applied (only the critical row survives).
-    await expect(page.getByText("h2")).toBeVisible();
-    await expect(page.getByText("h1")).toBeHidden();
+    await expect(hostCell("h2")).toBeVisible();
+    await expect(hostCell("h1")).toBeHidden();
 
     // Survives a hard reload: the field re-seeds from the URL and the filter
     // is still applied.
@@ -43,8 +49,8 @@ test.describe("search query syncs to the URL", () => {
     await expect(page.getByRole("textbox", { name: /^search$/i })).toHaveValue(
       "severity = critical",
     );
-    await expect(page.getByText("h2")).toBeVisible();
-    await expect(page.getByText("h1")).toBeHidden();
+    await expect(hostCell("h2")).toBeVisible();
+    await expect(hostCell("h1")).toBeHidden();
 
     // Clearing the field drops the param from the URL.
     await page.getByRole("button", { name: /clear search/i }).click();

@@ -1,28 +1,5 @@
-/*
- * Alert message cell. On the dense desktop table the message is clamped to a
- * single scannable line with an ellipsis. In DataTable card mode (the table
- * wrapper is an inline-size container; cards appear at a <=640px container —
- * see DataTable.module.css) the row has room to breathe, so show the FULL
- * message, wrapping across lines. Driving the un-clamp off the same 640px
- * container query means the message expands exactly when the row becomes a
- * card — never in a normal table row.
- */
-.message {
-  display: block;
-  max-width: 100%;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-@container (max-width: 640px) {
-  .message {
-    max-width: none;
-    overflow: visible;
-    white-space: normal;
-    overflow-wrap: anywhere;
-  }
-}
+/* The message cell's own clamp lives with its component — see
+   MessageCell.module.css. */
 
 /* Sev/State cell wrapper: badge + trend arrow (Sev) or badge + lifecycle
  * hint (State) laid out side by side. `flex-wrap: wrap` lets the trend arrow
@@ -66,4 +43,14 @@
   color: var(--color-text-secondary, var(--text-muted));
   white-space: nowrap;
   flex-shrink: 0;
+}
+
+/* Hits: the `×14` chip and its `title`. The wrapper exists so the count keeps
+   tabular figures (a column of counts should line up) and so the explanatory
+   title/aria-label hangs off an element that owns the whole cell — the Badge
+   is a plain span with no prop passthrough. */
+.hits {
+  display: inline-flex;
+  font-feature-settings: var(--font-features-numeric);
+  cursor: default;
 }

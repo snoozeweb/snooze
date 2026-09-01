@@ -23,3 +23,11 @@
   color: var(--text-muted);
   font-size: var(--text-xs);
 }
+
+/* Compact variant (`compact` prop): the relative age IS the value, so it keeps
+   the cell's full-strength colour instead of the muted hint treatment above,
+   and reserves no fixed slot — the whole point is to give the width back to
+   whatever column shares the row (on the alerts table, the message). */
+.compact {
+  color: var(--text);
+}

@@ -1,0 +1,32 @@
+/*
+ * Alert message cell — the widest column and the one the page exists for.
+ * Two lines, clamped: the second line roughly doubles what a row says before
+ * the operator has to open anything, and the ceiling keeps rows scannable (an
+ * unbounded message would let one noisy alert push the next four off the
+ * screen). `overflow-wrap: anywhere` breaks the long unspaced tokens alert
+ * text is full of — paths, URLs, container ids — instead of letting one of
+ * them blow the column out. MessageCell puts the full text on hover whenever
+ * the clamp actually bites.
+ *
+ * In DataTable card mode (the table wrapper is an inline-size container; cards
+ * appear at a <=640px container — see DataTable.module.css) the message is the
+ * card's headline and gets three lines: the card is much narrower, so two
+ * lines there would carry a third of what two desktop lines do.
+ */
+.message {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  max-width: 100%;
+  overflow: hidden;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+@container (max-width: 640px) {
+  .message {
+    -webkit-line-clamp: 3;
+    line-clamp: 3;
+  }
+}
