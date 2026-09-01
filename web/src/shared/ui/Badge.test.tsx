@@ -35,10 +35,12 @@ describe("Badge", () => {
     );
     const el = screen.getByText("sev");
     // color wins over variant: the critical class is gone, the hex drives the
-    // text/border colour and a 15%-alpha fill (the browser serialises the hex
-    // to rgb()/rgba()).
+    // text/border colour and a --badge-tint fill (themed, so a colour-prop
+    // badge holds AA in light as well as dark).
     expect(el.className).not.toMatch(/critical/);
     expect(el.style.color).toBe("rgb(240, 73, 73)");
-    expect(el.style.background).toBe("rgba(240, 73, 73, 0.15)");
+    expect(el.style.background).toBe(
+      "color-mix(in srgb, #f04949 var(--badge-tint), transparent)",
+    );
   });
 });

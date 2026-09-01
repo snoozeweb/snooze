@@ -39,7 +39,6 @@ function UserMenu() {
         <MenuSeparator />
         <MenuItem
           leadingIcon="lock"
-          danger
           onSelect={() => {
             logout();
             void navigate({ to: "/web/login" });

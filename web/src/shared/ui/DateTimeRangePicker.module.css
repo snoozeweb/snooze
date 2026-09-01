@@ -205,8 +205,8 @@
 
 .dpRangeStart .dpDayButton,
 .dpRangeEnd .dpDayButton {
-  background: var(--accent);
-  color: var(--accent-fg);
+  background: var(--accent-solid);
+  color: var(--accent-solid-fg);
   font-weight: var(--weight-medium);
 }
 

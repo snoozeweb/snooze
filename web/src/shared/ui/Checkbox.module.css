@@ -12,7 +12,7 @@
 }
 .root[data-state="checked"],
 .root[data-state="indeterminate"] {
-  background: var(--accent);
+  background: var(--accent-solid);
   border-color: var(--accent);
 }
 .root:disabled {
@@ -21,6 +21,6 @@
 }
 
 .indicator {
-  color: var(--accent-fg);
+  color: var(--accent-solid-fg);
   display: inline-flex;
 }

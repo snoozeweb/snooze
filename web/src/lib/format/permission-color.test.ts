@@ -8,9 +8,13 @@ describe("permissionBadgeVariant", () => {
     expect(permissionBadgeVariant("rw_rule")).not.toBe(permissionBadgeVariant("ro_rule"));
   });
 
-  it("flags rw_all and admin_* as critical", () => {
-    expect(permissionBadgeVariant("rw_all")).toBe("critical");
-    expect(permissionBadgeVariant("admin_users")).toBe("critical");
+  // Full administrative reach is the privilege magenta, not the severity
+  // red — see permission-color.ts. Asserted explicitly so a future edit
+  // can't quietly re-book red for something that isn't a severity.
+  it("flags rw_all and admin_* as admin, never as a severity", () => {
+    expect(permissionBadgeVariant("rw_all")).toBe("admin");
+    expect(permissionBadgeVariant("admin_users")).toBe("admin");
+    expect(permissionBadgeVariant("rw_all")).not.toBe("critical");
   });
 
   it("treats platform-tier perms (ro_tenant / rw_tenant) as warning", () => {

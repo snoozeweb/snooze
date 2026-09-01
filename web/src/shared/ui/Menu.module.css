@@ -45,7 +45,7 @@
   color: var(--severity-critical);
 }
 .danger[data-highlighted] {
-  background: rgb(240 73 73 / 0.12);
+  background: color-mix(in srgb, var(--severity-critical) 12%, transparent);
   color: var(--severity-critical);
 }
 

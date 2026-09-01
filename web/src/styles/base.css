@@ -114,6 +114,46 @@ select:focus-visible {
   outline: none;
 }
 
+/* Browser surfaces. Selection, caret and scrollbars are drawn by the UA in
+   colours that belong to no palette; theming them is the difference between
+   a page that was built and one that was assembled. */
+::selection {
+  background: var(--selection-bg);
+  color: var(--selection-fg);
+}
+
+input,
+textarea,
+[contenteditable] {
+  caret-color: var(--accent);
+}
+
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--scrollbar-thumb) var(--scrollbar-track);
+}
+
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+::-webkit-scrollbar-track {
+  background: var(--scrollbar-track);
+}
+::-webkit-scrollbar-thumb {
+  background: var(--scrollbar-thumb);
+  border: 2px solid transparent;
+  background-clip: padding-box;
+  border-radius: var(--radius-pill);
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--scrollbar-thumb-hover);
+  background-clip: padding-box;
+}
+::-webkit-scrollbar-corner {
+  background: var(--scrollbar-track);
+}
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,

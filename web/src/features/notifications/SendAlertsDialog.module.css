@@ -5,19 +5,25 @@
   margin-top: var(--space-1);
 }
 
+/*
+ * Setup steps, not alerts. These used to hang a 3px coloured tab off the
+ * left edge — decoration borrowed from a callout, and in severity red for a
+ * step the operator simply hasn't done yet. A hairline all the way round
+ * states the same thing; the count chip carries the status.
+ */
 .card {
   padding: var(--space-3);
   background: var(--bg-canvas);
   border-radius: var(--radius-lg);
-  border-left: 3px solid var(--border);
+  border: 1px solid var(--border);
 }
 
 .warn {
-  border-left-color: var(--severity-critical);
+  border-color: color-mix(in srgb, var(--severity-warning) 55%, var(--border));
 }
 
 .ok {
-  border-left-color: var(--severity-ok);
+  border-color: color-mix(in srgb, var(--severity-ok) 45%, var(--border));
 }
 
 .cardTop {
@@ -41,12 +47,12 @@
 }
 
 .countWarn {
-  background: rgb(240 73 73 / 0.15);
-  color: var(--severity-critical);
+  background: color-mix(in srgb, var(--severity-warning) var(--badge-tint), transparent);
+  color: var(--severity-warning);
 }
 
 .countOk {
-  background: rgb(63 185 80 / 0.15);
+  background: color-mix(in srgb, var(--severity-ok) var(--badge-tint), transparent);
   color: var(--severity-ok);
 }
 

@@ -1,63 +1,111 @@
 /*
  * Light theme — overrides via [data-theme="light"].
  *
- * Mirror of theme.dark.css's semantic names, with values tuned for
- * AA contrast against a white canvas. Accent is deep amber-brown
- * (#8a5600) — bright amber fails contrast on white. Severity hues are
- * deeper so they sit on white without vibrating. Atmosphere tokens are
- * nulled (no halos or canvas texture in light theme).
+ * Not a contrast-compliance fallback for the dark theme: the same product,
+ * lit differently. Dark is amber phosphor on a near-black console; light is
+ * the same instrument printed on warm paper — an off-white ledger canvas
+ * with a faint 32px rule, a low sun-warm bloom in the same corner as dark's
+ * glow, and the *same* #ffb000 amber filling its primary controls.
+ *
+ * The one structural difference from dark: bright amber cannot carry text
+ * on paper (#ffb000 on white is 1.9:1), so the accent splits in two —
+ * --accent-solid (#ffb000, for fills, with near-black ink at 10.4:1) and
+ * --accent (deep amber #8a5600, for ink, borders and focus at 6.1:1 on the
+ * surface). Dark aliases the pair to one value, so components stay
+ * token-driven and identical in both themes.
+ *
+ * Every token dark defines has a considered value here. The two that stay
+ * off are marked as decisions, not omissions.
  */
 
 [data-theme="light"] {
-  /* Surfaces */
-  --bg-canvas: #f4f5f7;
-  --bg-surface: #ffffff;
-  --bg-elevated: #ffffff;
-  --bg-hover: #eef0f3;
+  /* Surfaces — warm paper, four real steps (dark's ladder was flattened to
+     two whites before). Canvas is the desk, surface is the sheet. */
+  --bg-canvas: #f5f2ec;
+  --bg-surface: #fffefb;
+  --bg-elevated: #faf7f1;
+  --bg-hover: #efeae1;
 
   /* Mirror of the dark-theme surface ladder (see theme.dark.css). */
   --surface-1: var(--bg-surface);
   --surface-2: var(--bg-elevated);
   --surface-3: var(--bg-hover);
 
-  /* Borders */
-  --border: #d3d9df;
-  --border-muted: #e5e9ed;
+  /* Borders — warm-neutral so hairlines don't read blue on warm paper. */
+  --border: #d8d0c2;
+  --border-muted: #ebe5da;
 
-  /* Text */
-  --text-strong: #1c2127;
-  --text: #404953;
-  --text-muted: #636e7a;
+  /* Text — warm near-black, matching the canvas rather than a cool slate. */
+  --text-strong: #1b1814;
+  --text: #494339;
+  --text-muted: #6b6459;
 
-  /* Accent — deep amber-brown for AA on white. */
+  /* Accent ink — deep amber. 6.1:1 on --bg-surface, 5.1:1 on --bg-hover. */
   --accent: #8a5600;
-  --accent-bg: #fff3d6;
-  --accent-fg: #ffffff;
+  --accent-bg: #fdefd2;
+  --accent-fg: #160f02;
 
-  /* Severity */
-  --severity-critical: #c4241c;
-  --severity-error: #a85a17;
-  --severity-warning: #8a6400;
-  --severity-info: #0969da;
-  --severity-ok: #1a7f37;
+  /* Accent fill — the brand amber itself, identical to dark, with the same
+     near-black ink (10.4:1). This is what makes a primary button read as
+     Snooze in both themes instead of as a brown block. Filled controls also
+     carry a 1px --accent rim so their boundary holds against paper. */
+  --accent-solid: #ffb000;
+  --accent-solid-fg: #160f02;
 
-  /* White text on solid critical fills passes AA in light theme. */
+  /* Severity — deepened so each hue clears 4.5:1 even as tinted chip text
+     on a hovered row, and spread apart so error no longer sits on top of
+     the accent's amber-brown. */
+  --severity-critical: #b51e17;
+  --severity-error: #9f3f0e;
+  --severity-warning: #75600f;
+  --severity-info: #0a5cb8;
+  --severity-ok: #15702c;
+
+  /* White text on solid critical fills passes AA in light theme (6.6:1). */
   --severity-critical-fg: #ffffff;
 
-  /* Alert lifecycle states */
+  /* Alert lifecycle states — same story as dark, one octave down. */
   --state-ack: #6639ba;
-  --state-closed: #6639ba;
+  --state-closed: #456b50;
   --state-snooze: #57606a;
   --state-shelve: #2a5687;
 
-  /* Reserved-role accent — platform_admin. Deeper violet for AA on white. */
-  --role-platform: #7c3aed;
+  /* Privilege tiers — the magenta family (see theme.dark.css). */
+  --role-admin: #a4246e;
+  --role-platform: #8b1fa8;
 
   /* Focus ring */
   --focus-ring: #8a5600;
 
-  /* Atmosphere — no halos or canvas texture in light theme. */
+  /* A tint darkens paper, so light needs a shallower alpha than dark to
+     keep chip text at 4.5:1. */
+  --badge-tint: 9%;
+
+  /* Atmosphere — light gets its own, quieter version of dark's texture
+     rather than nulling it: a warm bloom in the same corner, and the 32px
+     rule inverted to ink-on-paper. Both stay under the threshold where
+     they'd compete with content; opaque panels cover them anyway. */
+  --canvas-glow: radial-gradient(1100px 700px at 18% -8%, rgb(255 176 0 / 0.16), transparent 60%);
+  --canvas-grid: repeating-linear-gradient(
+    to bottom,
+    rgb(60 48 28 / 0.022) 0,
+    rgb(60 48 28 / 0.022) 1px,
+    transparent 1px,
+    transparent 32px
+  );
+  --login-glow: radial-gradient(900px 600px at 50% 30%, rgb(255 176 0 / 0.2), transparent 62%);
+
+  /* Deliberately off: --glow-strength stays 0%. Dark's badge halo is
+     phosphor bloom — light emitted by the chip. On paper nothing emits,
+     and a zero-offset coloured halo behind a chip reads as a print smudge,
+     not as depth. Light states the same emphasis with the tint and rim it
+     already has. */
   --glow-strength: 0%;
-  --canvas-glow: none;
-  --canvas-grid: none;
+
+  /* Browser surfaces — see theme.dark.css. */
+  --selection-bg: rgb(255 176 0 / 0.38);
+  --selection-fg: #241701;
+  --scrollbar-thumb: #d2c9b9;
+  --scrollbar-thumb-hover: #b9ae9a;
+  --scrollbar-track: transparent;
 }

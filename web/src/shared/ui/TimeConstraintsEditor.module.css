@@ -47,8 +47,8 @@
   user-select: none;
 }
 .dayPill[data-active="true"] {
-  background: var(--accent);
-  color: var(--accent-fg);
+  background: var(--accent-solid);
+  color: var(--accent-solid-fg);
   border-color: var(--accent);
 }
 .empty {

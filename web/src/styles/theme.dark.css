@@ -7,8 +7,21 @@
  *
  * "Mission control" register: near-black, slightly warm-neutral
  * surfaces with one amber signal accent (classic amber-phosphor CRT).
- * Blue is reserved exclusively for --severity-info so accent and
- * severity never collide. All text roles hold AA on --bg-surface.
+ *
+ * Colour families — each hue means exactly one thing, so a chip's colour
+ * is readable without its label:
+ *   amber          → brand / interactive chrome (buttons, links, focus)
+ *   red→gold→blue  → severity (critical, error, warning, info, ok)
+ *   violet         → "held": off the operator's queue, either because a
+ *                    human took it (ack) or the pipeline held it back
+ *                    (throttled)
+ *   sage           → "done": closed, inert
+ *   slate greys    → "quiet": snoozed, shelved
+ *   magenta        → privilege tier (admin, platform_admin)
+ * Environments carry arbitrary operator-chosen colours and are marked by a
+ * swatch rather than a filled pill, so they never impersonate a severity.
+ *
+ * All text roles hold AA on --bg-surface.
  */
 
 :root {
@@ -40,6 +53,16 @@
   --accent-bg: #2a2008;
   --accent-fg: #160f02;
 
+  /* Filled accent surfaces (primary buttons, checked controls, active
+     segments). Dark can fill with the accent itself; the light theme
+     splits these so its filled controls stay brand-amber instead of the
+     deep amber-brown it needs for ink. Components that paint a solid
+     accent block read --accent-solid / --accent-solid-fg; components that
+     draw accent *ink* (links, active nav, 8px dots, borders, focus) read
+     --accent. */
+  --accent-solid: var(--accent);
+  --accent-solid-fg: var(--accent-fg);
+
   /* Severity (used on alerts/rows; AA against bg-surface) */
   --severity-critical: #ff5952;
   --severity-error: #f0883e;
@@ -51,23 +74,37 @@
      where white text would fail contrast on the brightened red. */
   --severity-critical-fg: #1a0908;
 
-  /* Alert lifecycle states */
-  --state-ack: #a371f7;
-  --state-closed: #a371f7;
+  /* Alert lifecycle states.
+     ack    — violet: a human owns it. Shared with the pipeline's own
+              "held back" signals (Throttled tile / series), because both
+              mean "off your queue, handled".
+     closed — sage: done and inert. Low chroma so it recedes next to
+              --severity-ok's live green while still reading "resolved".
+     snooze/shelve — the quiet greys. */
+  --state-ack: #b083f9;
+  --state-closed: #84ab90;
   --state-snooze: #768390;
   --state-shelve: #84a8cf;
 
-  /* Reserved-role accent — platform_admin (the platform super-role). A
-     distinct violet, set apart from the red `admin` badge. */
-  --role-platform: #c084fc;
+  /* Privilege tiers — the magenta family. Deliberately NOT severity red:
+     an `admin` chip describes reach, not danger. platform_admin (the
+     reserved super-role) takes the hotter fuchsia step above `admin`. */
+  --role-admin: #f778ba;
+  --role-platform: #e879f9;
 
   /* Focus ring */
   --focus-ring: #ffb000;
 
+  /* Badge / chip tint strength. Chips paint `color-mix(in srgb, <hue>
+     var(--badge-tint), transparent)` behind coloured text; the alpha is
+     themed because a tint lightens a dark surface and darkens a light
+     one, and both directions eat contrast. 10% keeps every chip hue AA
+     (4.5:1) even on a hovered row. */
+  --badge-tint: 10%;
+
   /* Atmosphere — badge halo intensity and the layered canvas texture.
-     Both are nulled in the light theme. The glow/grid alphas are tuned
-     to read as depth, not color; opaque --bg-surface panels sit on top,
-     so texture only shows in gutters. */
+     The glow/grid alphas are tuned to read as depth, not colour; opaque
+     --bg-surface panels sit on top, so texture only shows in gutters. */
   --glow-strength: 30%;
   --canvas-glow: radial-gradient(1100px 700px at 18% -8%, rgb(255 176 0 / 0.045), transparent 60%);
   --canvas-grid: repeating-linear-gradient(
@@ -77,4 +114,17 @@
     transparent 1px,
     transparent 32px
   );
+  /* The login page re-centres the ambient glow behind the card at roughly
+     double the body alpha — the one place the texture is intentionally
+     loud. Themed so light can state its own version rather than inherit
+     a dark-tuned gradient. */
+  --login-glow: radial-gradient(900px 600px at 50% 30%, rgb(255 176 0 / 0.09), transparent 60%);
+
+  /* Browser surfaces — the parts we don't draw. Selection, caret and
+     scrollbars ship with UA defaults that belong to no palette. */
+  --selection-bg: rgb(255 176 0 / 0.28);
+  --selection-fg: #fff6e0;
+  --scrollbar-thumb: #2f3944;
+  --scrollbar-thumb-hover: #3f4b59;
+  --scrollbar-track: transparent;
 }

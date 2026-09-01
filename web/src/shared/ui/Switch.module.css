@@ -9,7 +9,7 @@
   transition: background var(--dur-fast) var(--ease-out);
 }
 .root[data-state="checked"] {
-  background: var(--accent);
+  background: var(--accent-solid);
   border-color: var(--accent);
 }
 .root:disabled {
@@ -27,6 +27,6 @@
   transform: translateX(1px);
 }
 .root[data-state="checked"] .thumb {
-  background: var(--accent-fg);
+  background: var(--accent-solid-fg);
   transform: translateX(13px);
 }

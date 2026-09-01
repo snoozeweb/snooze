@@ -76,7 +76,7 @@ export function MoreSheet({
             {actionCount === 0 ? (
               <button
                 type="button"
-                className={`${styles.item} ${styles.danger}`}
+                className={`${styles.item} ${styles.warn}`}
                 onClick={() => setSendOpen(true)}
               >
                 <Icon name="alert-triangle" size={16} />
@@ -86,7 +86,7 @@ export function MoreSheet({
             {notifCount === 0 ? (
               <button
                 type="button"
-                className={`${styles.item} ${styles.danger}`}
+                className={`${styles.item} ${styles.warn}`}
                 onClick={() => setSendOpen(true)}
               >
                 <Icon name="alert-triangle" size={16} />
@@ -114,7 +114,7 @@ export function MoreSheet({
             {claims?.tenant_id ? <span className={styles.org}>org:{claims.tenant_id}</span> : null}
             <button
               type="button"
-              className={`${styles.item} ${styles.danger}`}
+              className={styles.item}
               onClick={() => {
                 logout();
                 void navigate({ to: "/web/login" });

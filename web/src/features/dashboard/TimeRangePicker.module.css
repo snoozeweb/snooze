@@ -18,8 +18,9 @@
   cursor: pointer;
 }
 .preset[data-active="true"] {
-  background: var(--accent);
-  color: var(--accent-fg);
+  background: var(--accent-solid);
+  color: var(--accent-solid-fg);
+  box-shadow: inset 0 0 0 1px var(--accent);
 }
 .custom {
   display: inline-flex;

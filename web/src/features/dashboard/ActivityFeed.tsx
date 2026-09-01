@@ -18,10 +18,10 @@ const TYPE_LABEL: Record<Comment["type"], string> = {
 };
 
 const TYPE_VARIANT: Record<Comment["type"], BadgeVariant> = {
-  comment: "info",
-  ack: "ok",
-  esc: "warning",
-  close: "closed", // purple (muted)
+  comment: "info", // blue
+  ack: "ack", // violet — a human has it
+  esc: "warning", // gold
+  close: "closed", // sage, muted — done and inert
   open: "neutral",
   shelve: "muted",
   unshelve: "neutral",

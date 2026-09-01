@@ -39,10 +39,10 @@ const TYPE_LABEL: Record<Comment["type"], string> = {
 // the legacy mapping. Mapped to the current Badge variants.
 const TYPE_VARIANT: Record<Comment["type"], BadgeVariant> = {
   comment: "info", // blue
-  ack: "ok", // green
-  esc: "warning", // yellow
-  close: "closed", // purple (muted)
-  open: "neutral", // gray/blue
+  ack: "ack", // violet — a human has it
+  esc: "warning", // gold
+  close: "closed", // sage, muted — done and inert
+  open: "neutral", // gray
   shelve: "muted",
   unshelve: "neutral",
 };

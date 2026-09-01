@@ -37,7 +37,7 @@
 
 .pickerItemActive {
   background: var(--accent-bg);
-  color: var(--accent-fg);
+  color: var(--accent);
   font-weight: var(--weight-medium);
 }
 

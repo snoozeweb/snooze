@@ -9,9 +9,17 @@ describe("roleBadgeVariant", () => {
     expect(isPlatformRole("admin")).toBe(false);
   });
 
-  it("keeps admin distinct (critical) from platform_admin (platform)", () => {
-    expect(roleBadgeVariant("admin")).toBe("critical");
+  it("keeps admin distinct (admin) from platform_admin (platform)", () => {
+    expect(roleBadgeVariant("admin")).toBe("admin");
     expect(roleBadgeVariant("platform_admin")).not.toBe(roleBadgeVariant("admin"));
+  });
+
+  // Reach is not danger: an admin chip must never wear the severity red.
+  it("never gives a role a severity variant", () => {
+    for (const role of ["admin", "root", "owner", "superuser", "platform_admin"]) {
+      expect(roleBadgeVariant(role)).not.toBe("critical");
+      expect(roleBadgeVariant(role)).not.toBe("error");
+    }
   });
 
   it("maps common roles by keyword", () => {

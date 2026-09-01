@@ -37,7 +37,7 @@ const PALETTE_TOKENS = [
   "--severity-warning", // gold
   "--severity-error", // orange
   "--severity-critical", // red
-  "--state-ack", // purple
+  "--state-ack", // violet
   "--state-shelve", // steel blue
   "--state-snooze", // grey
 ] as const;
@@ -52,6 +52,8 @@ export function chartPalette(): string[] {
 // entry here falls through to the categorical palette by index.
 const SERIES_TOKEN: Record<string, string> = {
   Alerts: "--severity-info",
+  // Violet is the "held" hue: off the operator's queue, whether a human took
+  // it (ack) or the pipeline held it back (throttled). See theme.dark.css.
   Throttled: "--state-ack",
   Snoozed: "--severity-warning",
   "Notification sent": "--severity-ok",
@@ -60,6 +62,29 @@ const SERIES_TOKEN: Record<string, string> = {
   Successful: "--severity-ok",
   Failed: "--severity-critical",
   Hosts: "--severity-info",
+  // Lifecycle-state keys from /stats `snapshot.by_state`, so the dashboard's
+  // "By state" bar paints the same hues the badges and the timeline do
+  // instead of falling through to the categorical palette by index — which
+  // handed "close" the severity-ok green purely because it happened to be
+  // the second key in the map.
+  //
+  // The vocabulary is the comment plugin's state values (internal/pluginimpl/
+  // comment/plugin.go): open / ack / close / esc / shelved, plus the snoozed
+  // flag. The "-ed" spellings are accepted too so a backend that normalises
+  // them later doesn't silently fall back to the categorical palette.
+  //
+  // `open` deliberately borrows --severity-error and `esc` --severity-warning:
+  // those two *are* the attention states, and separate tokens for them would
+  // only restate the orange and the gold.
+  open: "--severity-error",
+  ack: "--state-ack",
+  close: "--state-closed",
+  closed: "--state-closed",
+  esc: "--severity-warning",
+  snoozed: "--state-snooze",
+  snooze: "--state-snooze",
+  shelved: "--state-shelve",
+  shelve: "--state-shelve",
 };
 
 /**

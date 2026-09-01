@@ -1,9 +1,14 @@
 // Map common role names to Badge variants so the UI hints at the
-// responsibility level: platform_admin → platform (violet, the reserved
-// super-role), admin/root → critical, oncall/sre → warning,
+// responsibility level: platform_admin → platform (fuchsia, the reserved
+// super-role), admin/root → admin (magenta), oncall/sre → warning,
 // analyst/triage → info, viewer/reader/auditor → muted.
 // Unknown roles fall back to "neutral" so custom names still get a
 // visually distinct chip.
+//
+// `admin` used to render in the severity-critical red. Reach is not danger:
+// an admin chip on a user row was the same colour as a critical alert, and
+// red is reserved for severity and destructive actions. The privilege tiers
+// now share the magenta family (see theme.dark.css).
 import type { BadgeVariant } from "@/shared/ui/Badge";
 
 // The reserved platform-tier super-role. Mirrors the backend's seeded
@@ -17,7 +22,7 @@ export function isPlatformRole(role: string): boolean {
 }
 
 const KEYWORDS: Array<[RegExp, BadgeVariant]> = [
-  [/^(admin|root|owner|super)/i, "critical"],
+  [/^(admin|root|owner|super)/i, "admin"],
   [/oncall|sre|operator|incident|page/i, "warning"],
   [/analyst|triage|sec(urity)?/i, "info"],
   [/viewer|reader|read[-_ ]?only|guest|auditor/i, "muted"],

@@ -206,7 +206,9 @@ export function Profile() {
         <ApiKeysSection />
       </Card>
       <div>
-        <Button variant="danger" leadingIcon="lock" onClick={handleLogout}>
+        {/* Signing out ends a session; it destroys nothing. Red is reserved
+            for severity and for actions that cannot be undone. */}
+        <Button variant="secondary" leadingIcon="lock" onClick={handleLogout}>
           Log out
         </Button>
       </div>

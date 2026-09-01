@@ -11,8 +11,8 @@
 }
 
 .sectionTitle {
-  font-size: var(--font-size-sm);
-  font-weight: var(--font-weight-medium);
+  font-size: var(--text-sm);
+  font-weight: var(--weight-medium);
   color: var(--text-muted);
   margin: 0;
 }
@@ -24,13 +24,13 @@
 }
 
 .label {
-  font-size: var(--font-size-sm);
-  font-weight: var(--font-weight-medium);
-  color: var(--text-primary);
+  font-size: var(--text-sm);
+  font-weight: var(--weight-medium);
+  color: var(--text-strong);
 }
 
 .dangerZone {
-  border-top: 1px solid var(--border-subtle);
+  border-top: 1px solid var(--border-muted);
   padding-top: var(--space-4);
   margin-top: var(--space-4);
 }

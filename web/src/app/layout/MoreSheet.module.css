@@ -119,14 +119,16 @@
   flex-shrink: 0;
   color: var(--text-muted);
 }
-.danger {
-  color: var(--severity-critical);
+/* Setup hints, not errors: an unconfigured output is the next step on a
+   fresh install. Warning gold, matching the topbar's chip. */
+.warn {
+  color: var(--severity-warning);
 }
-.danger svg {
-  color: var(--severity-critical);
+.warn svg {
+  color: var(--severity-warning);
 }
-.danger:hover {
-  color: var(--severity-critical);
+.warn:hover {
+  color: var(--severity-warning);
 }
 .org {
   padding: var(--space-1) var(--space-2);

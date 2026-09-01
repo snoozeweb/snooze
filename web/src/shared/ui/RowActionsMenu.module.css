@@ -19,8 +19,8 @@
   align-items: center;
   justify-content: center;
   border-radius: var(--radius-pill);
-  background: var(--accent);
-  color: var(--accent-fg);
+  background: var(--accent-solid);
+  color: var(--accent-solid-fg);
   font-size: 9px;
   font-weight: 600;
   line-height: 1;

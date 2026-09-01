@@ -6,11 +6,11 @@
   /*
    * The login page is the one place the canvas texture is intentionally
    * loud — the glow is re-centered behind the card (50% 30%) at roughly
-   * double the alpha of the ambient body glow.
-   * In light theme these tokens resolve to "none" and the page stays clean.
+   * double the alpha of the ambient body glow. Both themes state their own
+   * version (see theme.dark.css / theme.light.css): warm phosphor bloom on
+   * the console, low sun on the paper.
    */
-  --login-glow: radial-gradient(900px 600px at 50% 30%, rgb(255 176 0 / 0.09), transparent 60%);
-  background: var(--login-glow), var(--canvas-grid, none), var(--bg-canvas);
+  background: var(--login-glow, none), var(--canvas-grid, none), var(--bg-canvas);
   padding: var(--space-4);
 }
 .card {
@@ -147,7 +147,7 @@
 
 .tenantMatchHint {
   color: var(--text-muted);
-  font-size: var(--font-size-sm);
+  font-size: var(--text-sm);
   margin: 0;
   padding: var(--space-1) 0;
 }

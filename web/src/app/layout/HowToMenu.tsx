@@ -34,14 +34,18 @@ export function HowToMenu() {
         </MenuContent>
       </Menu>
       {isAlertsPage && actionCount === 0 ? (
-        <button type="button" className={styles.dangerBadge} onClick={() => setSendOpen(true)}>
-          <span className={styles.dot} aria-hidden="true" />
+        <button type="button" className={styles.setupBadge} onClick={() => setSendOpen(true)}>
+          <span className={styles.setupIcon} aria-hidden="true">
+            <Icon name="alert-triangle" size={12} />
+          </span>
           No actions
         </button>
       ) : null}
       {isAlertsPage && notifCount === 0 ? (
-        <button type="button" className={styles.dangerBadge} onClick={() => setSendOpen(true)}>
-          <span className={styles.dot} aria-hidden="true" />
+        <button type="button" className={styles.setupBadge} onClick={() => setSendOpen(true)}>
+          <span className={styles.setupIcon} aria-hidden="true">
+            <Icon name="alert-triangle" size={12} />
+          </span>
           No notifications
         </button>
       ) : null}

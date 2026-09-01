@@ -104,11 +104,19 @@ export function EnvironmentBar({ selected, onChange }: EnvironmentBarProps) {
             style={
               active
                 ? { background: color, borderColor: color, color: readableTextOn(color) }
-                : { borderColor: color, color }
+                : undefined
             }
             onClick={() => toggle(env.uid)}
             title={env.comment ?? env.name}
           >
+            {/* Unselected pills carry the environment's colour as a swatch and
+                keep neutral ink. Painting the name itself in the environment
+                colour meant an operator who coloured `production` red got a
+                filter chip indistinguishable from a critical-severity badge —
+                the colour is an identifier, not a status. */}
+            {active ? null : (
+              <span className={styles.swatch} style={{ background: color }} aria-hidden="true" />
+            )}
             {env.name}
           </button>
         );

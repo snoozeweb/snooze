@@ -1,3 +1,13 @@
+/*
+ * Chips. One shape, one contrast recipe: the hue supplies text and border,
+ * `color-mix(hue, --badge-tint)` supplies the fill. --badge-tint is themed
+ * (10% dark / 9% light) because a tint lightens a dark surface and darkens a
+ * light one — at a single alpha, one of the two themes always drops below
+ * 4.5:1 on a hovered row.
+ *
+ * Hue families are documented in theme.dark.css. Nothing here reaches for
+ * severity red unless it means severity.
+ */
 .badge {
   display: inline-flex;
   align-items: center;
@@ -24,43 +34,60 @@
   color: var(--text-muted);
   border: 1px solid var(--border-muted);
 }
+/* info: the severity-info blue, matching the chart series and the "// blue"
+   the callers have always claimed. It used to paint the amber accent, which
+   put brand chrome on a severity chip and left ro_* permissions the same
+   colour as the primary button. */
 .info {
-  background: var(--accent-bg);
-  color: var(--accent);
-  border: 1px solid var(--accent);
+  background: color-mix(in srgb, var(--severity-info) var(--badge-tint), transparent);
+  color: var(--severity-info);
+  border: 1px solid var(--severity-info);
 }
 .warning {
-  background: color-mix(in srgb, var(--severity-warning) 14%, transparent);
+  background: color-mix(in srgb, var(--severity-warning) var(--badge-tint), transparent);
   color: var(--severity-warning);
   border: 1px solid var(--severity-warning);
 }
 .error {
-  background: color-mix(in srgb, var(--severity-error) 14%, transparent);
+  background: color-mix(in srgb, var(--severity-error) var(--badge-tint), transparent);
   color: var(--severity-error);
   border: 1px solid var(--severity-error);
 }
 .critical {
-  background: color-mix(in srgb, var(--severity-critical) 14%, transparent);
+  background: color-mix(in srgb, var(--severity-critical) var(--badge-tint), transparent);
   color: var(--severity-critical);
   border: 1px solid var(--severity-critical);
 }
 .ok {
-  background: color-mix(in srgb, var(--severity-ok) 14%, transparent);
+  background: color-mix(in srgb, var(--severity-ok) var(--badge-tint), transparent);
   color: var(--severity-ok);
   border: 1px solid var(--severity-ok);
 }
-/* closed: a low-emphasis "resolved" chip — purple text on the quiet muted
-   surface (elevated bg + muted border), so it reads as muted-purple rather
-   than a loud filled pill. */
+/* ack: violet, full chroma and a solid rim — an acknowledged alert is
+   claimed, and the chip should look like someone is standing on it. */
+.ack {
+  background: color-mix(in srgb, var(--state-ack) var(--badge-tint), transparent);
+  color: var(--state-ack);
+  border: 1px solid var(--state-ack);
+}
+/* closed: the same sage as the dashboard's "By state" segment, but on the
+   quiet muted surface with a muted rim. Done is not an event — it should
+   sit a step behind everything around it. */
 .closed {
   background: var(--bg-elevated);
   color: var(--state-closed);
   border: 1px solid var(--border-muted);
 }
-/* platform: the reserved platform_admin role — a distinct violet, set apart
-   from the red `admin`/`critical` badges. */
+/* admin / platform: the privilege family (magenta). `admin` describes reach,
+   not danger, so it no longer borrows the critical red. platform_admin — the
+   reserved super-role — takes the hotter fuchsia step above it. */
+.admin {
+  background: color-mix(in srgb, var(--role-admin) var(--badge-tint), transparent);
+  color: var(--role-admin);
+  border: 1px solid var(--role-admin);
+}
 .platform {
-  background: color-mix(in srgb, var(--role-platform) 14%, transparent);
+  background: color-mix(in srgb, var(--role-platform) var(--badge-tint), transparent);
   color: var(--role-platform);
   border: 1px solid var(--role-platform);
 }
