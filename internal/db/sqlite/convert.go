@@ -39,10 +39,6 @@ func pathExpr(field string, terminal bool) string {
 	return "json_extract(data, '" + path + "')"
 }
 
-// jsonPathExpr always returns the JSON-typed extraction (no text coercion).
-// Used when the SQL needs to feed the result into json_type, json_each, etc.
-func jsonPathExpr(field string) string { return pathExpr(field, false) }
-
 // escapeJSONPath converts a dotted path like "a.1.b" into a JSON-path tail
 // suitable for splicing after "$.". Numeric segments become bracketed array
 // indices: "a.1.b" -> "a[1].b".

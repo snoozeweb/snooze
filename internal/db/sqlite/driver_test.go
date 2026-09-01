@@ -296,6 +296,42 @@ func TestConditionEvaluation(t *testing.T) {
 	})
 }
 
+// TestContainsOnPlainTextField is a regression test for a CONTAINS query
+// 500ing with "malformed JSON" against an ordinary text field. CONTAINS's
+// array branch feeds json_each() the field's raw JSON extraction guarded by
+// a sibling `json_type(...) = 'array' AND` check; SQLite's query planner is
+// free to evaluate that correlated subquery before the guard once it
+// flattens the OR tree, so a plain-text value (never valid JSON on its own)
+// could still reach json_each() and blow up the whole query. Multiple rows
+// with a plain-text "message" (not an array) reproduce the plan shape that
+// tripped it — a single-row table was too small for SQLite to pick that
+// plan in manual testing, so this seeds several.
+func TestContainsOnPlainTextField(t *testing.T) {
+	t.Parallel()
+	d := newTestDriver(t)
+	ctx := snoozetypes.WithPlatformScope(context.Background())
+
+	messages := []string{
+		"disk full on srv-1",
+		"cpu high on srv-2",
+		"disk full on srv-3",
+		"memory pressure on srv-4",
+		"disk full on srv-5",
+	}
+	for _, m := range messages {
+		_, err := d.Write(ctx, "record",
+			[]dbpkg.Document{{"message": m}},
+			dbpkg.WriteOptions{},
+		)
+		require.NoError(t, err)
+	}
+
+	c := condition.Cond{Op: condition.OpContains, Field: "message", Value: "disk full"}
+	docs, _, err := d.Search(ctx, "record", c, dbpkg.Page{})
+	require.NoError(t, err)
+	require.Len(t, docs, 3)
+}
+
 func TestUpdateOneUpsert(t *testing.T) {
 	t.Parallel()
 	d := newTestDriver(t)

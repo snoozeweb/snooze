@@ -106,6 +106,38 @@ func (dialect) Exists(field string, _ *sqlbuilder.Binder) string {
 	return "(json_type(data, '$." + escapeJSONPath(field) + "') IS NOT NULL)"
 }
 
+// jsonArrayOrEmpty resolves field to a JSON expression that is *always* a
+// valid JSON array literal, suitable as a json_each() source.
+//
+// Two bugs compounded here, both fixed by this helper:
+//
+//  1. The old array-branch guard called json_type() on the *already
+//     extracted* scalar — json_type(json_extract(data, '$.msg')). SQLite's
+//     json_extract() unwraps a JSON string to its plain SQL text ("disk full
+//     on srv-1", no quotes), and json_type()'s single-argument form requires
+//     its input to itself be JSON text. Handed an ordinary unquoted string,
+//     it doesn't return NULL/false, it raises "malformed JSON" — for every
+//     plain-text field, unconditionally, not just "on some plans". Fixed by
+//     using json_type()'s two-argument form directly against the `data`
+//     column + path (the same pattern dialect.Exists already uses): that
+//     parses the *document*, which is always valid JSON, and never touches
+//     the unwrapped leaf value.
+//  2. Even with (1) fixed, a sibling `json_type(...) = 'array' AND
+//     EXISTS(... json_each(rawExtract) ...)` still hands json_each() the raw
+//     (potentially non-JSON) extraction, and AND's usual left-to-right
+//     short-circuit is not a guarantee once the query planner flattens the
+//     OR tree into a plan — the correlated EXISTS subquery can still be
+//     evaluated first. Substituting '[]' whenever the field isn't an array
+//     makes json_each's input unconditionally valid regardless of
+//     evaluation order; json_each('[]') yields zero rows, so EXISTS is
+//     naturally false and the type guard doesn't need to gate it anymore.
+func jsonArrayOrEmpty(field string) string {
+	path := "$." + escapeJSONPath(field)
+	typeCheck := "json_type(data, '" + path + "')"
+	extract := "json_extract(data, '" + path + "')"
+	return "(CASE WHEN " + typeCheck + " = 'array' THEN " + extract + " ELSE '[]' END)"
+}
+
 func (dialect) Contains(field string, value any, b *sqlbuilder.Binder) string {
 	// CONTAINS: any of the (possibly list) values matches as a regex
 	// (case-insensitive) against the field. Field may itself be a scalar or a
@@ -115,7 +147,7 @@ func (dialect) Contains(field string, value any, b *sqlbuilder.Binder) string {
 		return "0"
 	}
 	textExpr := pathExpr(field, true)
-	jsonExpr := jsonPathExpr(field)
+	arrayExpr := jsonArrayOrEmpty(field)
 
 	var sb strings.Builder
 	sb.WriteString("(")
@@ -130,11 +162,10 @@ func (dialect) Contains(field string, value any, b *sqlbuilder.Binder) string {
 		sb.WriteString(", ")
 		sb.WriteString(textExpr)
 		sb.WriteString(") = 1)")
-		// Array branch (only consulted when the field is a JSON array).
-		sb.WriteString(" OR (json_type(")
-		sb.WriteString(jsonExpr)
-		sb.WriteString(") = 'array' AND EXISTS (SELECT 1 FROM json_each(")
-		sb.WriteString(jsonExpr)
+		// Array branch: json_each always sees a valid array (real array or
+		// '[]'), so a plain-text field simply contributes zero rows here.
+		sb.WriteString(" OR (EXISTS (SELECT 1 FROM json_each(")
+		sb.WriteString(arrayExpr)
 		sb.WriteString(") je WHERE regexp(")
 		sb.WriteString(b.Bind(patStr))
 		sb.WriteString(", je.value) = 1))")
@@ -173,7 +204,7 @@ func emitInLiteralList(field string, values []any, b *sqlbuilder.Binder) string 
 		return "0"
 	}
 	textExpr := pathExpr(field, true)
-	jsonExpr := jsonPathExpr(field)
+	arrayExpr := jsonArrayOrEmpty(field)
 	var sb strings.Builder
 	sb.WriteString("(")
 	// Scalar branch: the field's text matches any literal.
@@ -187,10 +218,10 @@ func emitInLiteralList(field string, values []any, b *sqlbuilder.Binder) string 
 	}
 	sb.WriteString(")")
 	// Array branch: at least one of the field's array elements matches.
-	sb.WriteString(" OR (json_type(")
-	sb.WriteString(jsonExpr)
-	sb.WriteString(") = 'array' AND EXISTS (SELECT 1 FROM json_each(")
-	sb.WriteString(jsonExpr)
+	// json_each always sees a valid array (real array or '[]'), so a
+	// plain-text field simply contributes zero rows — see jsonArrayOrEmpty.
+	sb.WriteString(" OR (EXISTS (SELECT 1 FROM json_each(")
+	sb.WriteString(arrayExpr)
 	sb.WriteString(") je WHERE je.value IN (")
 	for i, v := range values {
 		if i > 0 {
