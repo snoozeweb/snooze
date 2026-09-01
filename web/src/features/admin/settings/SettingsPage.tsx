@@ -8,7 +8,7 @@ import { Textarea } from "@/shared/ui/Textarea";
 import { toast } from "@/shared/ui/toast/useToast";
 import { ConfirmDeleteDialog, useConfirmDelete } from "@/shared/ui/resourceContextMenu";
 import { RequirePerm } from "@/shared/auth/RequirePerm";
-import { ApiError } from "@/lib/api/client";
+import { describeError } from "@/lib/api/errorMessage";
 import type { FormField } from "@/shared/forms/types";
 import { Settings, useSettingsCatalogue, useSettingsList } from "./api";
 import { HousekeepingRunPanel } from "./HousekeepingRunPanel";
@@ -279,7 +279,7 @@ function CustomSettingCard({ record, onChange }: { record: Setting; onChange: ()
       toast.success(`Saved ${record.name}`);
       onChange();
     } catch (e) {
-      toast.error(e instanceof ApiError ? e.detail : "Save failed");
+      toast.error(describeError(e, "Save failed").summary);
     }
   }
 
@@ -299,10 +299,10 @@ function CustomSettingCard({ record, onChange }: { record: Setting; onChange: ()
           if (err) setErr(null);
         }}
         invalid={!!err}
+        errorMessage={err ?? undefined}
         aria-label={`Raw JSON for ${record.name}`}
         className={styles.customJson}
       />
-      {err ? <span className={styles.customError}>{err}</span> : null}
       <div className={styles.customActions}>
         <Button
           size="sm"

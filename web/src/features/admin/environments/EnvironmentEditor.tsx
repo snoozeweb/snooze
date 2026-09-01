@@ -92,6 +92,7 @@ function EnvironmentFields({ register, control, setValue }: EditorBodyProps<Form
             id="environment-name"
             {...register("name")}
             invalid={nameInvalid}
+            errorMessage={nameInvalid ? "Name is required." : undefined}
             placeholder="e.g. production"
           />
         </div>

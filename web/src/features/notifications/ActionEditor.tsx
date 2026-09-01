@@ -255,6 +255,7 @@ export function ActionEditor({ uid, onClose }: ActionEditorProps) {
                     id="action-name"
                     {...register("name")}
                     invalid={nameInvalid}
+                    errorMessage={nameInvalid ? "Name is required." : undefined}
                     placeholder="e.g. slack-prod"
                   />
                 </div>
@@ -285,14 +286,10 @@ export function ActionEditor({ uid, onClose }: ActionEditorProps) {
                     {...register("subcontent_json")}
                     rows={10}
                     invalid={!!jsonError}
+                    errorMessage={jsonError ?? undefined}
                     style={{ fontFamily: "var(--font-mono)" }}
                     aria-label="Config (JSON)"
                   />
-                  {jsonError ? (
-                    <span style={{ color: "var(--severity-critical)", fontSize: "var(--text-xs)" }}>
-                      {jsonError}
-                    </span>
-                  ) : null}
                 </section>
               ) : null}
 

@@ -22,3 +22,9 @@
 .invalid {
   border-color: var(--severity-critical) !important;
 }
+
+.errorMessage {
+  margin: var(--space-1) 0 0;
+  font-size: var(--text-xs);
+  color: var(--severity-critical);
+}

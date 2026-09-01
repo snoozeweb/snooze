@@ -210,6 +210,7 @@ function WidgetFields({ control, register, setValue, jsonError }: WidgetFieldsPr
             id="widget-name"
             {...register("name")}
             invalid={nameInvalid}
+            errorMessage={nameInvalid ? "Name is required." : undefined}
             placeholder="e.g. patlite-floor1"
           />
         </div>
@@ -264,14 +265,10 @@ function WidgetFields({ control, register, setValue, jsonError }: WidgetFieldsPr
             {...register("config_json")}
             rows={10}
             invalid={!!jsonError}
+            errorMessage={jsonError ?? undefined}
             style={{ fontFamily: "var(--font-mono)" }}
             aria-label="Config (JSON)"
           />
-          {jsonError ? (
-            <span style={{ color: "var(--severity-critical)", fontSize: "var(--text-xs)" }}>
-              {jsonError}
-            </span>
-          ) : null}
         </section>
       )}
 

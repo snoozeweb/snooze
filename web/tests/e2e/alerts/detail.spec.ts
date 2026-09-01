@@ -83,6 +83,54 @@ test.describe("alert detail drawer", () => {
     ).toBeVisible();
   });
 
+  test("a failed ack shows an inline, named error inside the still-open dialog — not just a toast", async ({
+    page,
+    api,
+    server,
+  }) => {
+    await api.alerts.send({ host: "srv-fail-ack", message: "m", severity: "info", source: "t" });
+    await page.goto(server.baseURL + "/web/alerts");
+    await expect(page.getByText("srv-fail-ack")).toBeVisible();
+
+    // Force the bulk_state call the confirm button makes to fail with a 500,
+    // mirroring the bug this fixes: a backend 500 used to surface ONLY as a
+    // corner toast reading the raw `internal server error`, while the dialog
+    // stayed open with its confirm button re-enabled but no explanation.
+    await page.route("**/api/v1/record/bulk_state**", (route) =>
+      route.fulfill({
+        status: 500,
+        contentType: "application/json",
+        body: JSON.stringify({ error: { code: "internal", message: "internal server error" } }),
+      }),
+    );
+
+    await page
+      .getByRole("button", { name: /row actions/i })
+      .first()
+      .click({ force: true });
+    await page.getByRole("menuitem", { name: /acknowledge/i }).click({ force: true });
+
+    const dialog = page.getByRole("dialog");
+    await expect(dialog).toBeVisible();
+    await dialog.getByRole("button", { name: /^acknowledge$/i }).click({ force: true });
+
+    // Dialog stays open, names the subject, translates the backend's raw
+    // detail into the app's voice, and keeps the raw detail as pasteable
+    // secondary text — and the confirm button (now "Try again") is enabled.
+    const inlineError = dialog.getByRole("alert");
+    await expect(inlineError).toBeVisible();
+    await expect(inlineError).toContainText(/couldn't acknowledge srv-fail-ack/i);
+    await expect(inlineError).toContainText("internal server error");
+    await expect(dialog).toBeVisible();
+    const retryButton = dialog.getByRole("button", { name: /try again/i });
+    await expect(retryButton).toBeEnabled();
+
+    // Clear the intercept and retry — the operator's exact next action.
+    await page.unroute("**/api/v1/record/bulk_state**");
+    await retryButton.click({ force: true });
+    await expect(dialog).toHaveCount(0);
+  });
+
   test("close action moves alert to Closed state", async ({ page, api, server }) => {
     await api.alerts.send({ host: "srv-close", message: "m", severity: "info", source: "t" });
     await page.goto(server.baseURL + "/web/alerts");

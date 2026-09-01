@@ -177,6 +177,7 @@ function HeartbeatFields({
             id="heartbeat-name"
             {...register("name")}
             invalid={nameInvalid}
+            errorMessage={nameInvalid ? "Name is required." : undefined}
             placeholder="e.g. nightly-backup"
           />
         </div>

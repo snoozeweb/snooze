@@ -125,6 +125,7 @@ function RejectFields({ control, register, setValue }: EditorBodyProps<FormShape
             id="reject-name"
             {...register("name")}
             invalid={nameInvalid}
+            errorMessage={nameInvalid ? "Name is required." : undefined}
             placeholder="e.g. block-legacy-sources"
           />
         </div>

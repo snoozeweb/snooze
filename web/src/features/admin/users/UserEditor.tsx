@@ -119,6 +119,7 @@ function UserFields({ register, control, setValue, isCreate }: EditorBodyProps<F
             id="user-name"
             {...register("name")}
             invalid={nameInvalid}
+            errorMessage={nameInvalid ? "Name is required." : undefined}
             placeholder="e.g. alice"
             autoComplete="username"
             spellCheck={false}

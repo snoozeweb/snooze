@@ -116,4 +116,28 @@ describe("ActionDialog", () => {
     );
     expect(screen.getByRole("button", { name: /acknowledge/i })).toBeDisabled();
   });
+
+  it("renders a failed attempt inline, names the subject, and keeps the dialog open with Confirm re-enabled", () => {
+    render(
+      <ActionDialog
+        open
+        onOpenChange={() => undefined}
+        actionType="ack"
+        records={oneRecord}
+        onConfirm={() => Promise.resolve()}
+        error={{
+          summary: "Couldn't acknowledge srv-1 — the server ran into a problem.",
+          secondary: "internal server error",
+        }}
+      />,
+    );
+    // Still open, not a corner toast.
+    expect(screen.getByRole("dialog")).toBeInTheDocument();
+    const banner = screen.getByRole("alert");
+    expect(banner).toHaveTextContent("Couldn't acknowledge srv-1");
+    expect(banner).toHaveTextContent("internal server error");
+    // Retrying is just clicking Confirm again — it must not be stuck disabled.
+    const confirmButton = screen.getByRole("button", { name: /try again/i });
+    expect(confirmButton).not.toBeDisabled();
+  });
 });

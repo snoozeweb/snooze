@@ -365,6 +365,7 @@ function TenantIdField({
       id="tenant-id"
       {...register("id")}
       invalid={invalid}
+      errorMessage={invalid ? "ID is required." : undefined}
       placeholder="e.g. acme"
       disabled={!isCreate}
     />
@@ -386,6 +387,7 @@ function TenantDisplayNameField({
       id="tenant-display-name"
       {...register("display_name")}
       invalid={invalid}
+      errorMessage={invalid ? "Display name is required." : undefined}
       placeholder="e.g. Acme Corp"
     />
   );

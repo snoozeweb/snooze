@@ -4,6 +4,7 @@ import userEvent from "@testing-library/user-event";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { Login } from "./Login";
 import * as authApi from "./api";
+import { ApiError } from "@/lib/api/client";
 
 const searchState: Record<string, unknown> = {};
 vi.mock("@tanstack/react-router", () => ({
@@ -83,6 +84,22 @@ describe("Login", () => {
     // The focus-management effect previously no-op'd because it fired while the
     // config was still loading (banner not yet mounted).
     await waitFor(() => expect(banner).toHaveFocus());
+  });
+
+  it("shows the app's own wording for a rejected login, not the backend's raw detail", async () => {
+    const user = userEvent.setup();
+    mockConfig([{ name: "local", kind: "password" }]);
+    vi.spyOn(authApi, "loginLocal").mockRejectedValue(
+      new ApiError(401, "unauthorized", "invalid credentials"),
+    );
+    renderLogin();
+    await user.type(await screen.findByLabelText(/username/i), "root");
+    await user.type(screen.getByLabelText(/password/i), "wrong");
+    await user.click(screen.getByRole("button", { name: /^sign in$/i }));
+    const banner = await screen.findByRole("alert");
+    expect(banner).toHaveTextContent("Wrong username or password.");
+    // The backend's own lowercase fragment must never reach the screen.
+    expect(banner).not.toHaveTextContent("invalid credentials");
   });
 
   it("only-SSO config shows the button and no credential form", async () => {

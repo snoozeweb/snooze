@@ -10,6 +10,8 @@ import {
 import { Button } from "@/shared/ui/Button";
 import { Textarea } from "@/shared/ui/Textarea";
 import { Code } from "@/shared/ui/Code";
+import { InlineError } from "@/shared/ui/InlineError";
+import type { ErrorCopy } from "@/lib/api/errorMessage";
 import type { Record_ } from "./types";
 import styles from "./ActionDialog.module.css";
 
@@ -70,6 +72,11 @@ export type ActionDialogProps = {
   records: Record_[];
   onConfirm: (input: { message: string }) => Promise<void>;
   submitting?: boolean;
+  /** The most recent failed attempt, rendered inline above the footer. The
+   *  dialog stays open and the confirm button re-enabled (see `submitting`)
+   *  so retrying is just clicking Confirm again — no separate "Retry"
+   *  control needed. Cleared by the caller when a new attempt starts. */
+  error?: ErrorCopy | null | undefined;
 };
 
 export function ActionDialog({
@@ -79,6 +86,7 @@ export function ActionDialog({
   records,
   onConfirm,
   submitting = false,
+  error = null,
 }: ActionDialogProps) {
   const meta = META[actionType];
   const [message, setMessage] = useState("");
@@ -139,9 +147,12 @@ export function ActionDialog({
                 value={message}
                 onChange={(e) => setMessage(e.target.value)}
                 rows={3}
-                {...(touched && messageInvalid ? { invalid: true } : {})}
+                {...(touched && messageInvalid
+                  ? { invalid: true, errorMessage: "A message is required." }
+                  : {})}
               />
             </label>
+            {error ? <InlineError {...error} /> : null}
           </form>
         </DialogBody>
         <DialogFooter>
@@ -155,7 +166,7 @@ export function ActionDialog({
             loading={submitting}
             disabled={submitting}
           >
-            {meta.confirmLabel}
+            {error ? "Try again" : meta.confirmLabel}
           </Button>
         </DialogFooter>
       </DialogContent>

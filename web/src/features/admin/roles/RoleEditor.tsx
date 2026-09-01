@@ -116,6 +116,7 @@ function RoleFields({ register, control, setValue }: EditorBodyProps<FormShape>)
             id="role-name"
             {...register("name")}
             invalid={nameInvalid}
+            errorMessage={nameInvalid ? "Name is required." : undefined}
             placeholder="e.g. analyst"
           />
         </div>

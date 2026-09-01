@@ -197,6 +197,7 @@ function NotificationFields({ control, register, setValue }: EditorBodyProps<For
               id="notif-name"
               {...register("name")}
               invalid={nameInvalid}
+              errorMessage={nameInvalid ? "Name is required." : undefined}
               placeholder="e.g. page-on-call"
             />
           </div>

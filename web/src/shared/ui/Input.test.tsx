@@ -35,4 +35,17 @@ describe("Input", () => {
     const wrap = container.querySelector("div");
     expect(wrap?.className).toMatch(/disabled/i);
   });
+
+  it("pairs invalid + errorMessage with a visible, announced message wired via aria-describedby", () => {
+    render(<Input invalid errorMessage="Name is required." aria-label="Name" />);
+    const input = screen.getByRole("textbox");
+    const message = screen.getByRole("alert");
+    expect(message).toHaveTextContent("Name is required.");
+    expect(input.getAttribute("aria-describedby")).toBe(message.id);
+  });
+
+  it("does not render a message when invalid but no errorMessage is given", () => {
+    render(<Input invalid aria-label="Name" />);
+    expect(screen.queryByRole("alert")).toBeNull();
+  });
 });

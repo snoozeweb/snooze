@@ -90,8 +90,11 @@ test.describe("login (local)", () => {
     await page.getByLabel("Password").fill("definitely-wrong");
     await page.getByRole("button", { name: "Sign in" }).click({ force: true });
 
-    // Login.tsx renders <div role="alert"> when the API returns an error.
-    await expect(page.getByRole("alert")).toBeVisible();
+    // Login.tsx renders <div role="alert"> when the API returns an error, in
+    // the app's own voice — not the backend's raw `invalid credentials`.
+    const alert = page.getByRole("alert");
+    await expect(alert).toBeVisible();
+    await expect(alert).toHaveText("Wrong username or password.");
     // Must still be on the login page, not the alerts page.
     await expect(page).not.toHaveURL(/\/web\/alerts/);
   });

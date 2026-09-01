@@ -10,7 +10,7 @@ import { toast } from "@/shared/ui/toast/useToast";
 import { Button } from "@/shared/ui/Button";
 import { Badge } from "@/shared/ui/Badge";
 import { Dialog, DialogBody, DialogContent, DialogFooter, DialogTitle } from "@/shared/ui/Dialog";
-import { ApiError } from "@/lib/api/client";
+import { describeActionError, describeError, type ErrorCopy } from "@/lib/api/errorMessage";
 import { copyToClipboard } from "@/lib/clipboard";
 import { expandTemplate } from "@/lib/clipboard-template";
 import { ConfirmDeleteDialog, useConfirmDelete } from "@/shared/ui/resourceContextMenu";
@@ -58,6 +58,16 @@ const CANDIDATE_ROW_ACTIONS: Array<{ key: ActionType; label: string; icon: IconN
 function recordLabel(r: Record_): string {
   return r.host ?? r.message ?? r.uid ?? "alert";
 }
+
+/** Verb form for describeActionError's "Couldn't <verb> <subject>" copy —
+ *  mirrors ActionDialog's META titles/confirmLabels for the same actionType. */
+const ACTION_VERB: Record<ActionType, string> = {
+  ack: "acknowledge",
+  close: "close",
+  open: "re-open",
+  esc: "re-escalate",
+  comment: "comment on",
+};
 
 /** host+message AND condition for the "Snooze this alert" action — the two
  *  fields that usually identify "this specific problem" without also
@@ -265,6 +275,10 @@ export function AlertsPage() {
 
   const [selectedKeys, setSelectedKeys] = useState<Set<string>>(new Set());
   const [dialog, setDialog] = useState<{ type: ActionType; records: Record_[] } | null>(null);
+  // Failure from the most recent submitDialog attempt, rendered inline inside
+  // the ActionDialog (see the corner-toast-only bug this replaces). Cleared
+  // whenever a fresh dialog opens or a new submit attempt starts.
+  const [dialogError, setDialogError] = useState<ErrorCopy | null>(null);
   const [shelveDialog, setShelveDialog] = useState<Record_[] | null>(null);
   const [bulkTagOpen, setBulkTagOpen] = useState(false);
   const [injectOpen, setInjectOpen] = useState(false);
@@ -456,14 +470,14 @@ export function AlertsPage() {
   // moves and the refresh button looks broken. Say so instead: a toast on the
   // click the operator made, and a standing badge for as long as the polls
   // keep failing.
-  const refreshErrorDetail =
-    list.error instanceof ApiError
-      ? list.error.detail
-      : "Couldn't reach the server — the list below may be stale.";
+  const refreshErrorDetail = describeError(
+    list.error,
+    "Couldn't reach the server — the list below may be stale.",
+  ).summary;
   const handleManualRefresh = useCallback(async () => {
     const { isError, error } = await list.refetch();
     if (!isError) return;
-    toast.error(error instanceof ApiError ? error.detail : "Couldn't refresh alerts");
+    toast.error(describeError(error, "Couldn't refresh alerts").summary);
   }, [list]);
 
   const filtered = list.data?.data ?? [];
@@ -475,10 +489,10 @@ export function AlertsPage() {
     onAfter: (failed) => setSelectedKeys(new Set(failed.map((r) => r.uid ?? "").filter(Boolean))),
   });
 
-  const openDialog = useCallback(
-    (type: ActionType, records: Record_[]) => setDialog({ type, records }),
-    [],
-  );
+  const openDialog = useCallback((type: ActionType, records: Record_[]) => {
+    setDialogError(null);
+    setDialog({ type, records });
+  }, []);
 
   // "Snooze this alert(s)" — hands off to the snoozes page with a new-snooze
   // form prefilled from the given rows: a host+message condition (OR'd across
@@ -606,14 +620,12 @@ export function AlertsPage() {
                       try {
                         await commentMut.mutateAsync({ record_uid: row.uid ?? "", type: "shelve" });
                       } catch (e) {
-                        const detail = e instanceof ApiError ? e.detail : "Undo failed";
-                        toast.error(detail);
+                        toast.error(describeError(e, "Undo failed").summary);
                       }
                     })();
                   });
                 } catch (e) {
-                  const detail = e instanceof ApiError ? e.detail : "Action failed";
-                  toast.error(detail);
+                  toast.error(describeError(e, "Action failed").summary);
                 }
               })();
             },
@@ -648,14 +660,12 @@ export function AlertsPage() {
                           currentTTL: row.ttl,
                         });
                       } catch (e) {
-                        const detail = e instanceof ApiError ? e.detail : "Undo failed";
-                        toast.error(detail);
+                        toast.error(describeError(e, "Undo failed").summary);
                       }
                     })();
                   });
                 } catch (e) {
-                  const detail = e instanceof ApiError ? e.detail : "Action failed";
-                  toast.error(detail);
+                  toast.error(describeError(e, "Action failed").summary);
                 }
               })();
             },
@@ -699,14 +709,12 @@ export function AlertsPage() {
                 // Compensating re-open — keeps both events on the timeline.
                 await commentMut.mutateAsync({ record_uid: uid, type: "open" });
               } catch (e) {
-                const detail = e instanceof ApiError ? e.detail : "Undo failed";
-                toast.error(detail);
+                toast.error(describeError(e, "Undo failed").summary);
               }
             })();
           });
         } catch (e) {
-          const detail = e instanceof ApiError ? e.detail : "Action failed";
-          toast.error(detail);
+          toast.error(describeError(e, "Action failed").summary);
         }
       })();
     },
@@ -859,7 +867,10 @@ export function AlertsPage() {
 
   const bulkActions = useCallback(
     (rows: Record_[]) => {
-      const openBulkDialog = (type: ActionType) => setDialog({ type, records: rows });
+      const openBulkDialog = (type: ActionType) => {
+        setDialogError(null);
+        setDialog({ type, records: rows });
+      };
       const total = list.data?.meta.total ?? 0;
       const pageCount = rows.length;
 
@@ -981,6 +992,11 @@ export function AlertsPage() {
     async ({ message }: { message: string }) => {
       if (!dialog) return;
       const { type, records } = dialog;
+      setDialogError(null);
+      // "srv-prod-db-01" for a single record, "3 alerts" for a bulk action —
+      // names the object in the inline failure copy below.
+      const subject =
+        records.length === 1 ? recordLabel(records[0]!) : `${records.length} alerts`;
 
       if (type === "comment") {
         // comment still uses the per-record /comment loop (bulk_state does not
@@ -1009,17 +1025,17 @@ export function AlertsPage() {
         } else {
           // Surface the backend's actual reason (e.g. an invalid-transition 403)
           // instead of a bare count, so the operator knows why it failed and
-          // whether to retry.
+          // whether to retry — inline in the still-open dialog, not just a
+          // toast that can be missed and vanishes with the detail.
           const firstRejected = results.find(
             (r): r is PromiseRejectedResult => r.status === "rejected",
           );
-          const detail =
-            firstRejected && firstRejected.reason instanceof ApiError
-              ? firstRejected.reason.detail
-              : "";
-          toast.error(
-            `${failed} of ${records.length} failed${detail ? `: ${detail}` : ""}; ${ok} succeeded`,
-          );
+          const { summary, secondary } = describeError(firstRejected?.reason, "Comment failed");
+          setDialogError({
+            summary: `${failed} of ${records.length} comments failed — ${summary[0]!.toLowerCase()}${summary.slice(1)}`,
+            ...(secondary ? { secondary } : {}),
+          });
+          toast.error(`${failed} of ${records.length} failed; ${ok} succeeded`);
         }
         return;
       }
@@ -1048,8 +1064,12 @@ export function AlertsPage() {
         setSelectedKeys(new Set());
         setSelectAllMode(false);
       } catch (e) {
-        const detail = e instanceof ApiError ? e.detail : "Bulk action failed";
-        toast.error(detail);
+        // Inline, named, actionable: rendered inside the still-open dialog
+        // (see ActionDialog's `error` prop) so the failure is where the
+        // operator is looking, not only in a corner toast. The toast stays as
+        // a secondary channel for anyone not looking at the dialog.
+        setDialogError(describeActionError(ACTION_VERB[type], subject, e));
+        toast.error(describeError(e, "Bulk action failed").summary);
       } finally {
         setBulkSubmitting(false);
       }
@@ -1365,6 +1385,7 @@ export function AlertsPage() {
           onOpenChange={(o) => {
             if (!o) {
               setDialog(null);
+              setDialogError(null);
               setSelectAllMode(false);
             }
           }}
@@ -1372,6 +1393,7 @@ export function AlertsPage() {
           records={dialog.records}
           onConfirm={submitDialog}
           submitting={bulkSubmitting}
+          error={dialogError}
         />
       ) : null}
       <BulkTagDialog
@@ -1414,14 +1436,12 @@ export function AlertsPage() {
                     await commentMut.mutateAsync({ record_uid: r.uid ?? "", type: "unshelve" });
                   }
                 } catch (e) {
-                  const detail = e instanceof ApiError ? e.detail : "Undo failed";
-                  toast.error(detail);
+                  toast.error(describeError(e, "Undo failed").summary);
                 }
               })();
             });
           } catch (e) {
-            const detail = e instanceof ApiError ? e.detail : "Action failed";
-            toast.error(detail);
+            toast.error(describeError(e, "Action failed").summary);
           } finally {
             setShelveDialog(null);
           }

@@ -12,6 +12,7 @@ import { ToastProvider, Toaster } from "@/shared/ui/Toast";
 import { Spinner } from "@/shared/ui/Spinner";
 import { AppShell } from "./layout/AppShell";
 import { firstLandingPath } from "./layout/nav-list";
+import { NotFound } from "@/shared/auth/NotFound";
 // Dev-only showroom pages stay statically imported: they live behind the
 // `import.meta.env.DEV` route block below, which Rollup dead-code-eliminates
 // (along with these modules) from production builds. See devRoutes.
@@ -62,6 +63,10 @@ const webLayoutRoute = createRoute({
   getParentRoute: () => rootRoute,
   id: "weblayout",
   component: AppShell,
+  // A stray/stale `/web/<unknown>` renders here — inside AppShell's Outlet —
+  // so the sidebar/topbar/theme survive instead of a bare "Not Found" on an
+  // empty canvas.
+  notFoundComponent: NotFound,
   beforeLoad: async ({ location }) => {
     // Don't gate on the store snapshot alone: after a long idle (or a browser
     // reload) the access token can be expired while the refresh token is still
@@ -908,6 +913,17 @@ const authAuditRoute = createRoute({
   },
 });
 
+// Catch-all for any other `/web/*` path (a stale bookmark, a typo, a link
+// into a feature that moved). A literal sibling route always wins over this
+// splat, so it only ever catches genuine dead ends — rendered as a real page
+// (not a thrown not-found) so it's not at the mercy of the router's fuzzy
+// not-found resolution picking some other ancestor's notFoundComponent.
+const webCatchAllRoute = createRoute({
+  getParentRoute: () => webLayoutRoute,
+  path: "/web/$",
+  component: NotFound,
+});
+
 const routeTree = rootRoute.addChildren([
   indexRoute,
   loginRoute,
@@ -935,6 +951,7 @@ const routeTree = rootRoute.addChildren([
     authAuditRoute,
     ...devRoutes,
     profileRoute,
+    webCatchAllRoute,
   ]),
 ]);
 

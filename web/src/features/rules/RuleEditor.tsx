@@ -412,6 +412,7 @@ function RuleNameField({
       id="rule-name"
       {...register("name")}
       invalid={invalid}
+      errorMessage={invalid ? "Name is required." : undefined}
       placeholder="e.g. tag-prod-hosts"
     />
   );

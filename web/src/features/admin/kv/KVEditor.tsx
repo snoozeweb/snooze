@@ -74,6 +74,7 @@ function KVFields({ register, control }: EditorBodyProps<FormShape>) {
           id="kv-dict"
           {...register("dict")}
           invalid={dictInvalid}
+          errorMessage={dictInvalid ? "Dictionary is required." : undefined}
           placeholder="e.g. host_owner_lookup"
         />
       </div>
@@ -85,6 +86,7 @@ function KVFields({ register, control }: EditorBodyProps<FormShape>) {
           id="kv-key"
           {...register("key")}
           invalid={keyInvalid}
+          errorMessage={keyInvalid ? "Key is required." : undefined}
           placeholder="e.g. MY_SETTING"
         />
       </div>

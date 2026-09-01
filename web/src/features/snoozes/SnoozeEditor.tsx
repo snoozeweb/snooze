@@ -300,6 +300,7 @@ function SnoozeFields({
             id="snooze-name"
             {...register("name")}
             invalid={nameInvalid}
+            errorMessage={nameInvalid ? "Name is required." : undefined}
             placeholder="e.g. quiet-friday-night"
           />
         </div>
@@ -412,6 +413,7 @@ function SilenceFor({ onApply }: { onApply: (durationSeconds: number) => void })
           size="sm"
           value={text}
           invalid={error !== null}
+          errorMessage={error ?? undefined}
           onChange={(e) => {
             setText(e.target.value);
             if (error) setError(null);
@@ -427,11 +429,6 @@ function SilenceFor({ onApply }: { onApply: (durationSeconds: number) => void })
           Apply
         </Button>
       </div>
-      {error ? (
-        <span role="alert" style={{ color: "var(--severity-error)", fontSize: "var(--text-xs)" }}>
-          {error}
-        </span>
-      ) : null}
     </section>
   );
 }

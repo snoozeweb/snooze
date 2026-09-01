@@ -5,7 +5,7 @@ import { Button } from "@/shared/ui/Button";
 import { Input } from "@/shared/ui/Input";
 import { Logo } from "@/shared/ui/Logo";
 import { Icon } from "@/shared/icons/Icon";
-import { ApiError } from "@/lib/api/client";
+import { describeError } from "@/lib/api/errorMessage";
 import { authStore } from "@/lib/auth/store";
 import { normalizeReturnTo } from "@/lib/auth/return-to";
 import { firstLandingPath } from "@/app/layout/nav-list";
@@ -115,7 +115,7 @@ export function Login() {
       authStore.getState().login(result.token, result.refreshToken);
       await navigate({ to: explicitReturnTo ?? firstLandingPath(authStore.getState().claims) });
     } catch (err) {
-      setError(err instanceof ApiError ? err.detail : "Sign-in failed. Please try again.");
+      setError(describeError(err, "Sign-in failed. Please try again.").summary);
     } finally {
       setSubmitting(false);
     }
@@ -133,7 +133,7 @@ export function Login() {
       authStore.getState().login(result.token, result.refreshToken);
       await navigate({ to: explicitReturnTo ?? firstLandingPath(authStore.getState().claims) });
     } catch (err) {
-      setError(err instanceof ApiError ? err.detail : "Sign-in failed. Please try again.");
+      setError(describeError(err, "Sign-in failed. Please try again.").summary);
     } finally {
       setSubmitting(false);
     }

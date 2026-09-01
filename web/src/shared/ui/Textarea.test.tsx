@@ -14,4 +14,12 @@ describe("Textarea", () => {
     render(<Textarea invalid />);
     expect(screen.getByRole("textbox")).toHaveAttribute("aria-invalid", "true");
   });
+
+  it("pairs invalid + errorMessage with a visible, announced message wired via aria-describedby", () => {
+    render(<Textarea invalid errorMessage="A message is required." aria-label="Message" />);
+    const textarea = screen.getByRole("textbox");
+    const message = screen.getByRole("alert");
+    expect(message).toHaveTextContent("A message is required.");
+    expect(textarea.getAttribute("aria-describedby")).toBe(message.id);
+  });
 });
