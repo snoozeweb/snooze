@@ -19,9 +19,8 @@ test.describe("alert detail drawer", () => {
     // AlertsPage renders AlertRowDetail in a modal detail drawer (Radix
     // Dialog). It opens on the Timeline tab; the raw record (JsonViewer) lives
     // behind the "Record" tab.
-    // Row click deliberately does NOT open the drawer (AlertsPage wires the
-    // controlled `detailsKey` to the eye button, the kebab's "View details"
-    // item and the E shortcut) — reach for the row's eye button.
+    // A row click opens it too (see the row-click test below); this one goes
+    // through the row's eye button so the two affordances are both covered.
     await page
       .locator("tr", { hasText: "srv-detail" })
       .first()
@@ -42,6 +41,36 @@ test.describe("alert detail drawer", () => {
     // appears in the table — the drawer is exactly where it lives. Assert
     // against the dialog's own JsonViewer rather than the page at large.
     await expect(dialog.getByText("prom").first()).toBeVisible();
+  });
+
+  test("clicking a row opens the drawer; clicking its checkbox only selects", async ({
+    page,
+    api,
+    server,
+  }) => {
+    await api.alerts.send({
+      host: "srv-rowclick",
+      message: "clickable",
+      severity: "info",
+      source: "test",
+    });
+    await page.goto(server.baseURL + "/web/alerts");
+    const row = page.locator("tr", { hasText: "srv-rowclick" }).first();
+    await expect(row).toBeVisible();
+
+    // The checkbox is a control inside the row: it selects, and nothing else.
+    await row.getByRole("checkbox").click({ force: true });
+    await expect(page.getByText("1 selected")).toBeVisible();
+    await expect(page.getByRole("dialog")).toHaveCount(0);
+
+    // The row body is the affordance the mouse reaches for first — before this
+    // fix it did nothing at all.
+    await row.getByText("clickable").first().click({ force: true });
+    const dialog = page.getByRole("dialog");
+    await expect(dialog).toBeVisible();
+    await expect(dialog.getByText("srv-rowclick").first()).toBeVisible();
+    // The URL carries the open record, as it does for every other open path.
+    await expect(page).toHaveURL(/[?&]record=/);
   });
 
   test("ack action changes alert state to Acknowledged via row actions menu", async ({

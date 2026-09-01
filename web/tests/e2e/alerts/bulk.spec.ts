@@ -98,6 +98,69 @@ test.describe("alerts bulk actions", () => {
     await expect(page.getByText("2 selected")).toBeVisible();
   });
 
+  test("mixed-state selection keeps Acknowledge, counts eligibility, and applies to the subset", async ({
+    page,
+    api,
+    server,
+  }) => {
+    // Ack two of the five seeded rows, then select everything on the "All"
+    // tab. Before the fix the intersection of legal transitions was empty, so
+    // Acknowledge and Close silently vanished from the bar.
+    const seeded = (await api.alerts.list()) as Array<{ uid?: string }>;
+    for (const rec of seeded.slice(0, 2)) {
+      if (rec.uid) {
+        await api.comments.create({ record_uid: rec.uid, type: "ack", message: "seed ack" });
+      }
+    }
+
+    await page.goto(server.baseURL + "/web/alerts");
+    await page.getByRole("tab", { name: /^all$/i }).click({ force: true });
+    await expect(page.getByText(hosts[0])).toBeVisible();
+
+    await page.getByRole("checkbox", { name: /select all/i }).check({ force: true });
+    await expect(page.getByText("5 selected")).toBeVisible();
+
+    // 3 of the 5 can still be acked; the button says exactly that.
+    const ack = page.getByRole("button", { name: /acknowledge \(3 of 5\)/i });
+    await expect(ack).toBeVisible();
+    await ack.click({ force: true });
+
+    const dialog = page.getByRole("dialog");
+    await expect(dialog).toBeVisible();
+    await expect(dialog.getByRole("heading", { name: /acknowledge 3 alerts/i })).toBeVisible();
+    await expect(dialog.getByText(/2 of the 5 selected alerts will be skipped/i)).toBeVisible();
+
+    await dialog.getByRole("button", { name: /^acknowledge$/i }).click({ force: true });
+
+    // The result owns up to the rows it left alone.
+    await expect(page.getByText(/3 alerts updated/i).first()).toBeVisible();
+    await expect(page.getByText(/2 skipped/i).first()).toBeVisible();
+  });
+
+  test("a selection where nothing is eligible keeps the button, disabled and explained", async ({
+    page,
+    api,
+    server,
+  }) => {
+    const seeded = (await api.alerts.list()) as Array<{ uid?: string }>;
+    for (const rec of seeded) {
+      if (rec.uid) {
+        await api.comments.create({ record_uid: rec.uid, type: "close", message: "seed close" });
+      }
+    }
+
+    await page.goto(server.baseURL + "/web/alerts");
+    await page.getByRole("tab", { name: /^closed$/i }).click({ force: true });
+    await expect(page.getByText(hosts[0])).toBeVisible();
+
+    await page.getByRole("checkbox", { name: /select all/i }).check({ force: true });
+    const ack = page.getByRole("button", { name: /acknowledge \(0 of 5\)/i });
+    await expect(ack).toBeVisible();
+    await expect(ack).toHaveAttribute("aria-disabled", "true");
+    await ack.click({ force: true });
+    await expect(page.getByRole("dialog")).toHaveCount(0);
+  });
+
   test("re-escalate bulk action opens dialog", async ({ page, api, server }) => {
     // Re-escalate is only a legal transition from the "ack"/"esc" states — the
     // bulk toolbar (correctly) never offers it for fresh/open rows (see

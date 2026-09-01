@@ -36,3 +36,78 @@
 .searchSnoozeBadge:hover {
   filter: brightness(1.1);
 }
+
+/* ── List-query failure ───────────────────────────────────────────────────
+   Replaces the rows when /record can't be read. Same centred rhythm as
+   EmptyState so the table body doesn't jump between the two, but tinted from
+   --severity-critical (which both themes define against their own surface)
+   so it can never be mistaken for the "All clear" card it replaces. */
+.errorPanel {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  padding: var(--space-8) var(--space-5);
+  text-align: center;
+  color: var(--text);
+}
+.errorIcon {
+  color: var(--severity-critical);
+  line-height: 0;
+}
+.errorTitle {
+  margin: 0;
+  font-size: var(--text-md);
+  font-weight: var(--weight-semibold);
+  color: var(--text-strong);
+}
+.errorBody {
+  margin: 0;
+  max-width: 52ch;
+  font-size: var(--text-sm);
+  color: var(--text-muted);
+}
+/* The app's own sentence for the failure (describeError), one step above the
+   raw detail so the two don't read as one paragraph. */
+.errorSummary {
+  margin: 0;
+  font-size: var(--text-sm);
+  font-weight: var(--weight-medium);
+  color: var(--severity-critical);
+}
+/* The server's verbatim words — mono, selectable, pasteable into a ticket.
+   Same idiom as InlineError's `.secondary`. */
+.errorRaw {
+  margin: 0;
+  max-width: 60ch;
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+  user-select: text;
+  word-break: break-word;
+}
+.errorAction {
+  margin-top: var(--space-2);
+}
+
+/* Toolbar chip shown for as long as the polls keep failing. Louder than the
+   Badge it replaces: bordered in the critical hue, carrying the staleness
+   time, and clickable to retry. */
+.staleChip {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  padding: 2px var(--space-2);
+  border: 1px solid var(--severity-critical);
+  border-radius: var(--radius-md);
+  background: color-mix(in srgb, var(--severity-critical) var(--badge-tint), transparent);
+  color: var(--severity-critical);
+  font-size: var(--text-xs);
+  font-weight: var(--weight-medium);
+  white-space: nowrap;
+  cursor: pointer;
+}
+.staleChip:hover {
+  background: color-mix(in srgb, var(--severity-critical) 22%, transparent);
+}

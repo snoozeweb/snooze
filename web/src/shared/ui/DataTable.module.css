@@ -217,6 +217,12 @@
 .row:hover td {
   background: var(--bg-hover);
 }
+/* A row that opens something on click says so with the pointer. Set on the
+   cells (a <tr> doesn't reliably paint the cursor for its children) and only
+   for tables that actually wire an open path — see `clickOpens`. */
+.row[data-clickable="true"] td {
+  cursor: pointer;
+}
 /* Keyboard focus is a different thing from hover and has to look like one:
    the row the operator is *driving* gets a ring, not just a wash, so it
    stays findable after the pointer moves somewhere else. Drawn with inset

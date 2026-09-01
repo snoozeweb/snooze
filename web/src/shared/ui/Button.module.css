@@ -17,6 +17,7 @@
 }
 
 .button:disabled,
+.button[aria-disabled="true"],
 .button[aria-busy="true"] {
   opacity: 0.55;
   cursor: not-allowed;
@@ -43,10 +44,10 @@
   color: var(--accent-solid-fg);
   border-color: var(--accent);
 }
-.primary:hover:not(:disabled) {
+.primary:hover:not(:disabled):not([aria-disabled="true"]) {
   filter: brightness(1.1);
 }
-.primary:active:not(:disabled) {
+.primary:active:not(:disabled):not([aria-disabled="true"]) {
   filter: brightness(0.95);
 }
 
@@ -55,7 +56,7 @@
   color: var(--text-strong);
   border-color: var(--border);
 }
-.secondary:hover:not(:disabled) {
+.secondary:hover:not(:disabled):not([aria-disabled="true"]) {
   background: var(--bg-hover);
 }
 
@@ -64,7 +65,7 @@
   color: var(--text);
   border-color: transparent;
 }
-.ghost:hover:not(:disabled) {
+.ghost:hover:not(:disabled):not([aria-disabled="true"]) {
   background: var(--bg-hover);
   color: var(--text-strong);
   border-color: var(--border);
@@ -75,7 +76,7 @@
   color: var(--severity-critical-fg);
   border-color: var(--severity-critical);
 }
-.danger:hover:not(:disabled) {
+.danger:hover:not(:disabled):not([aria-disabled="true"]) {
   filter: brightness(1.1);
 }
 
@@ -84,7 +85,7 @@
   color: var(--severity-critical);
   border-color: transparent;
 }
-.ghostDanger:hover:not(:disabled) {
+.ghostDanger:hover:not(:disabled):not([aria-disabled="true"]) {
   background: color-mix(in srgb, var(--severity-critical) 12%, transparent);
   border-color: transparent;
 }

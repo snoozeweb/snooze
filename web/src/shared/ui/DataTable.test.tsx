@@ -27,6 +27,33 @@ describe("DataTable", () => {
     expect(screen.getByText(/no items/i)).toBeInTheDocument();
   });
 
+  it("renders errorState instead of emptyState when both are supplied", () => {
+    render(
+      <DataTable
+        data={[]}
+        columns={columns}
+        rowKey={(r) => r.id}
+        emptyState={<div>All clear</div>}
+        errorState={<div>Can&apos;t reach the store</div>}
+      />,
+    );
+    expect(screen.getByText(/can't reach the store/i)).toBeInTheDocument();
+    expect(screen.queryByText(/all clear/i)).toBeNull();
+  });
+
+  it("keeps the rows (not errorState) when a failed refetch still has data", () => {
+    render(
+      <DataTable
+        data={sample}
+        columns={columns}
+        rowKey={(r) => r.id}
+        errorState={<div>Can&apos;t reach the store</div>}
+      />,
+    );
+    expect(screen.getByText("alpha")).toBeInTheDocument();
+    expect(screen.queryByText(/can't reach the store/i)).toBeNull();
+  });
+
   it("renders skeleton rows when loading=true", () => {
     render(<DataTable data={[]} columns={columns} rowKey={(r) => r.id} loading />);
     expect(screen.queryByText(/no items/i)).toBeNull();
@@ -757,6 +784,83 @@ describe("DataTable", () => {
       // Uncontrolled DataTable does not open the drawer on a bare row click —
       // that's the page's call (AlertsPage wires onRowOpen to open it).
       expect(screen.queryByRole("dialog")).toBeNull();
+    });
+
+    it("clicking the row body opens the drawer when the page supplies no onRowOpen", async () => {
+      const user = userEvent.setup();
+      render(
+        <DataTable
+          data={sample}
+          columns={columns}
+          rowKey={(r) => r.id}
+          renderDetails={renderDet}
+        />,
+      );
+      await user.click(screen.getByText("beta"));
+      expect(screen.getByTestId("det-2")).toBeInTheDocument();
+    });
+
+    it("clicking a row's checkbox selects it without opening the drawer", async () => {
+      const user = userEvent.setup();
+      const onSelectionChange = vi.fn();
+      render(
+        <DataTable
+          data={sample}
+          columns={columns}
+          rowKey={(r) => r.id}
+          selectable
+          selectedKeys={new Set<string>()}
+          onSelectionChange={onSelectionChange}
+          renderDetails={renderDet}
+        />,
+      );
+      await user.click(screen.getByRole("checkbox", { name: /select row 2/i }));
+      expect(onSelectionChange).toHaveBeenCalled();
+      expect(screen.queryByRole("dialog")).toBeNull();
+    });
+
+    it("clicking a control inside a cell does not open the drawer", async () => {
+      const user = userEvent.setup();
+      const onCellButton = vi.fn();
+      const withButton: ColumnDef<Row>[] = [
+        {
+          id: "name",
+          header: "Name",
+          cell: (r) => (
+            <button type="button" onClick={onCellButton}>
+              go {r.name}
+            </button>
+          ),
+        },
+      ];
+      render(
+        <DataTable
+          data={sample}
+          columns={withButton}
+          rowKey={(r) => r.id}
+          renderDetails={renderDet}
+        />,
+      );
+      await user.click(screen.getByRole("button", { name: /go beta/i }));
+      expect(onCellButton).toHaveBeenCalled();
+      expect(screen.queryByRole("dialog")).toBeNull();
+    });
+
+    it("does not open the drawer on a row click that ends a text selection", async () => {
+      const user = userEvent.setup();
+      const sel = { isCollapsed: false, toString: () => "highlighted" } as unknown as Selection;
+      const spy = vi.spyOn(window, "getSelection").mockReturnValue(sel);
+      render(
+        <DataTable
+          data={sample}
+          columns={columns}
+          rowKey={(r) => r.id}
+          renderDetails={renderDet}
+        />,
+      );
+      await user.click(screen.getByText("beta"));
+      expect(screen.queryByRole("dialog")).toBeNull();
+      spy.mockRestore();
     });
 
     it("fires onDetailsKeyChange with the open key, and null on close (uncontrolled)", async () => {

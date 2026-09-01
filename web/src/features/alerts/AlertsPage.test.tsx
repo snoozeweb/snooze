@@ -351,6 +351,54 @@ describe("AlertsPage", () => {
     expect(screen.queryByRole("button", { name: /how to inject alerts/i })).toBeNull();
   });
 
+  it("a failed record query shows the error panel — never 'All clear'", async () => {
+    // The regression this guards: with /record 500ing, the page rendered the
+    // green "All clear — every alert has been triaged" card, i.e. it reported
+    // an empty queue it had never managed to read.
+    mswServer.use(
+      http.get("/api/v1/record", () =>
+        HttpResponse.json({ error: { code: "internal" } }, { status: 500 }),
+      ),
+      http.get("/api/v1/stats", () =>
+        HttpResponse.json({
+          data: { series: [], totals: {}, snapshot: {}, weekday: {} },
+          meta: { from: "", to: "", bucket: 86400, counters: { enabled: true, present: true } },
+        }),
+      ),
+    );
+    setup();
+    await waitFor(() =>
+      expect(screen.getByText(/can't reach the alert store/i)).toBeInTheDocument(),
+    );
+    expect(screen.queryByText(/all clear/i)).toBeNull();
+    expect(screen.getByText(/no data loaded/i)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /try again/i })).toBeInTheDocument();
+    // The toolbar says it too, loudly enough to see from the refresh control.
+    expect(screen.getByRole("button", { name: /not updating/i })).toBeInTheDocument();
+  });
+
+  it("the error panel's Try again refetches and restores the list", async () => {
+    let fail = true;
+    mswServer.use(
+      http.get("/api/v1/record", () => {
+        if (fail) return HttpResponse.json({ error: { code: "internal" } }, { status: 500 });
+        return HttpResponse.json({
+          data: [{ uid: "r1", host: "srv-recovered", state: "open", date_epoch: 1 }],
+          meta: { count: 1, limit: 50, offset: 0, total: 1 },
+        });
+      }),
+    );
+    const user = userEvent.setup();
+    setup();
+    await waitFor(() =>
+      expect(screen.getByText(/can't reach the alert store/i)).toBeInTheDocument(),
+    );
+    fail = false;
+    await user.click(screen.getByRole("button", { name: /try again/i }));
+    await waitFor(() => expect(screen.getByText("srv-recovered")).toBeInTheDocument());
+    expect(screen.queryByText(/can't reach the alert store/i)).toBeNull();
+  });
+
   it("filtered-empty list shows a no-match message, not the inject CTA", async () => {
     mswServer.use(
       http.get("/api/v1/record", () =>
@@ -630,7 +678,7 @@ describe("AlertsPage", () => {
     expect(screen.queryByRole("menuitem", { name: /re-escalate/i })).toBeNull();
   });
 
-  it("bulk_ack_hidden_when_all_closed — Acknowledge bulk button absent when selecting closed row", async () => {
+  it("bulk_ack_disabled_when_all_closed — Acknowledge stays on the bar, disabled with a reason", async () => {
     mswServer.use(
       http.get("/api/v1/record", () =>
         HttpResponse.json({
@@ -643,8 +691,12 @@ describe("AlertsPage", () => {
     setup();
     await waitFor(() => expect(screen.getByText("srv-1")).toBeInTheDocument());
     await user.click(screen.getByRole("checkbox", { name: /select all/i }));
-    // Acknowledge button should not appear since the only row is closed (no row allows ack)
-    expect(screen.queryByRole("button", { name: /acknowledge \(1\)/i })).toBeNull();
+    // The verb never vanishes — it reports 0 eligible and refuses, so the
+    // operator learns why instead of watching the button disappear.
+    const ack = screen.getByRole("button", { name: /acknowledge \(0 of 1\)/i });
+    expect(ack).toHaveAttribute("aria-disabled", "true");
+    await user.click(ack);
+    expect(screen.queryByRole("dialog")).toBeNull();
   });
 
   it("quick_ack_absent_for_acked_row — inline Acknowledge icon-button absent on acked row", async () => {
@@ -1114,7 +1166,7 @@ describe("AlertsPage", () => {
     expect(bulkCalls).toHaveLength(0);
   });
 
-  it("bulk action bar: ack button hidden for all-closed selection", async () => {
+  it("bulk action bar: ack button disabled (not hidden) for an all-closed selection", async () => {
     mswServer.use(
       http.get("/api/v1/record", () =>
         HttpResponse.json({
@@ -1130,8 +1182,85 @@ describe("AlertsPage", () => {
     setup();
     await waitFor(() => expect(screen.getByText("srv-1")).toBeInTheDocument());
     await user.click(screen.getByRole("checkbox", { name: /select all/i }));
-    // For all-closed rows, only Re-open is valid; Acknowledge must be absent
-    expect(screen.queryByRole("button", { name: /acknowledge \(2\)/i })).toBeNull();
+    // For all-closed rows only Re-open is legal — Acknowledge reports 0 of 2
+    // and refuses, and Re-open is offered as usual.
+    expect(screen.getByRole("button", { name: /acknowledge \(0 of 2\)/i })).toHaveAttribute(
+      "aria-disabled",
+      "true",
+    );
+    expect(screen.getByRole("button", { name: /re-open \(2\)/i })).toBeInTheDocument();
+  });
+
+  // ── Mixed-state selections: eligibility counts + partial apply ─────────────
+
+  it("mixed selection: Acknowledge shows an eligibility count and applies to the eligible subset", async () => {
+    const bulkCalls: Array<{ url: string; body: unknown }> = [];
+    mswServer.use(
+      http.get("/api/v1/record", () =>
+        HttpResponse.json({
+          data: [
+            { uid: "r1", host: "srv-1", state: "open", date_epoch: 1 },
+            { uid: "r2", host: "srv-2", state: "ack", date_epoch: 2 },
+            { uid: "r3", host: "srv-3", state: "close", date_epoch: 3 },
+          ],
+          meta: { count: 3, limit: 50, offset: 0, total: 3 },
+        }),
+      ),
+      http.post("/api/v1/record/bulk_state", async ({ request }) => {
+        bulkCalls.push({ url: request.url, body: await request.json() });
+        return HttpResponse.json({ matched: 1, updated: 1, state: "ack" });
+      }),
+    );
+    const user = userEvent.setup();
+    // The "All" tab is what mixes lifecycle states in one page; the stub above
+    // returns the mixed set regardless of the filter.
+    setup();
+    await waitFor(() => expect(screen.getByText("srv-1")).toBeInTheDocument());
+    await user.click(screen.getByRole("checkbox", { name: /select all/i }));
+
+    // Only the open row can be acked; the button says so instead of vanishing.
+    const ack = screen.getByRole("button", { name: /acknowledge \(1 of 3\)/i });
+    expect(ack).not.toHaveAttribute("aria-disabled");
+    await user.click(ack);
+
+    // The confirm dialog states what it will skip.
+    const dialog = await screen.findByRole("dialog");
+    expect(within(dialog).getByRole("heading", { name: /acknowledge alert/i })).toBeInTheDocument();
+    expect(within(dialog).getByText(/2 of the 3 selected alerts will be skipped/i)).toBeVisible();
+
+    await user.click(within(dialog).getByRole("button", { name: /^acknowledge$/i }));
+    await waitFor(() => expect(bulkCalls).toHaveLength(1));
+
+    // The request targets ONLY the eligible uid.
+    const rawQ = new URL(bulkCalls[0]!.url).searchParams.get("q") ?? "";
+    expect(JSON.stringify(decodeConditionQ(rawQ))).toContain("r1");
+    expect(JSON.stringify(decodeConditionQ(rawQ))).not.toContain("r2");
+
+    // …and the toast owns up to the rows it left alone.
+    await waitFor(() => {
+      const toasts = toastStore.getSnapshot();
+      expect(toasts.some((t) => /2 skipped/i.test(t.description ?? ""))).toBe(true);
+    });
+  });
+
+  it("mixed selection: Close is offered for every row that isn't already closed", async () => {
+    mswServer.use(
+      http.get("/api/v1/record", () =>
+        HttpResponse.json({
+          data: [
+            { uid: "r1", host: "srv-1", state: "open", date_epoch: 1 },
+            { uid: "r2", host: "srv-2", state: "ack", date_epoch: 2 },
+            { uid: "r3", host: "srv-3", state: "close", date_epoch: 3 },
+          ],
+          meta: { count: 3, limit: 50, offset: 0, total: 3 },
+        }),
+      ),
+    );
+    const user = userEvent.setup();
+    setup();
+    await waitFor(() => expect(screen.getByText("srv-1")).toBeInTheDocument());
+    await user.click(screen.getByRole("checkbox", { name: /select all/i }));
+    expect(screen.getByRole("button", { name: /close \(2 of 3\)/i })).toBeInTheDocument();
   });
 
   // ── Plan 34b: timed shelve via ShelveDialog ────────────────────────────────

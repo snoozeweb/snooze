@@ -19,6 +19,8 @@ import { parseText } from "@/lib/condition/text";
 import type { Condition } from "@/lib/condition/types";
 import type { ParsedCondition } from "@/shared/ui/SearchBar";
 import { severityToken } from "@/lib/format/severity-color";
+import { trimDate } from "@/lib/format/time";
+import { Icon } from "@/shared/icons/Icon";
 import { useConsoleConfig } from "@/features/config/api";
 import { useStats } from "@/features/dashboard/api";
 import { presetToRange } from "@/features/dashboard/time-range";
@@ -45,7 +47,13 @@ import { ActionDialog, type ActionType } from "./ActionDialog";
 import { ShelveDialog } from "./ShelveDialog";
 import { BulkTagDialog } from "./BulkTagDialog";
 import { InjectAlertsDialog } from "./InjectAlertsDialog";
-import { isActionAllowed, validBulkStates, BULK_STATE_CAVEAT } from "./transitions";
+import {
+  isActionAllowed,
+  validBulkStates,
+  eligibleForBulkState,
+  describeBulkSkips,
+  BULK_STATE_CAVEAT,
+} from "./transitions";
 import styles from "./AlertsPage.module.css";
 
 // Module-scope constant so the reference is stable across renders (DataTable's
@@ -57,6 +65,21 @@ const CANDIDATE_ROW_ACTIONS: Array<{ key: ActionType; label: string; icon: IconN
   { key: "esc", label: "Re-escalate", icon: "rotate-cw" },
   { key: "open", label: "Re-open", icon: "rotate-cw" },
 ];
+
+// The two lifecycle verbs the bulk bar always offers (see `stateButton`).
+// `pastVerb` is the participle the refusal tooltip needs ("…can be closed").
+const BULK_STATE_META: Record<
+  "ack" | "close",
+  { label: string; icon: IconName; variant: "secondary" | "danger"; pastVerb: string }
+> = {
+  ack: { label: "Acknowledge", icon: "thumbs-up", variant: "secondary", pastVerb: "acknowledged" },
+  close: { label: "Close", icon: "lock", variant: "danger", pastVerb: "closed" },
+};
+
+/** What a partially-eligible bulk action is leaving behind: how many rows, why,
+ *  and out of how big a selection. Carried into the confirm dialog and the
+ *  result toast so the skipped rows are stated at both ends. */
+type BulkSkip = { count: number; reason: string; selected: number };
 
 /** Short human label for a record used in undo-toast copy ("Acknowledged X"). */
 function recordLabel(r: Record_): string {
@@ -280,7 +303,12 @@ export function AlertsPage() {
   const commentMut = useCommentRecord();
 
   const [selectedKeys, setSelectedKeys] = useState<Set<string>>(new Set());
-  const [dialog, setDialog] = useState<{ type: ActionType; records: Record_[] } | null>(null);
+  const [dialog, setDialog] = useState<{
+    type: ActionType;
+    records: Record_[];
+    /** Set when the bulk bar narrowed `records` to the eligible subset. */
+    skip?: BulkSkip;
+  } | null>(null);
   // Failure from the most recent submitDialog attempt, rendered inline inside
   // the ActionDialog (see the corner-toast-only bug this replaces). Cleared
   // whenever a fresh dialog opens or a new submit attempt starts.
@@ -479,10 +507,16 @@ export function AlertsPage() {
   // moves and the refresh button looks broken. Say so instead: a toast on the
   // click the operator made, and a standing badge for as long as the polls
   // keep failing.
-  const refreshErrorDetail = describeError(
+  const listErrorCopy = describeError(
     list.error,
     "Couldn't reach the server — the list below may be stale.",
-  ).summary;
+  );
+  const refreshErrorDetail = listErrorCopy.summary;
+  // Wall-clock of the last response that actually carried rows. `0` means the
+  // query has never succeeded in this session — the difference between "stale"
+  // and "we never got anything", which the copy below states outright.
+  const lastLoadedAt =
+    list.dataUpdatedAt > 0 ? trimDate(Math.floor(list.dataUpdatedAt / 1000)) : null;
   const handleManualRefresh = useCallback(async () => {
     const { isError, error } = await list.refetch();
     if (!isError) return;
@@ -914,17 +948,18 @@ export function AlertsPage() {
 
   const bulkActions = useCallback(
     (rows: Record_[]) => {
-      const openBulkDialog = (type: ActionType) => {
+      const openBulkDialog = (type: ActionType, records: Record_[] = rows, skip?: BulkSkip) => {
         setDialogError(null);
-        setDialog({ type, records: rows });
+        setDialog({ type, records, ...(skip ? { skip } : {}) });
       };
       const total = list.data?.meta.total ?? 0;
       const pageCount = rows.length;
 
-      // Transition eligibility: intersection of valid moves across all selected
-      // rows. When selectAllMode is true we cannot know off-page states, so we
-      // show all state buttons as enabled (with a tooltip caveat handled via
-      // the disabled prop being false).
+      // Intersection of valid moves across the selection. Now only gates the
+      // two rarer verbs (Re-escalate / Re-open) — Acknowledge and Close are
+      // always rendered by `stateButton` below with their own eligibility
+      // count. When selectAllMode is true the off-page states are unknown, so
+      // every state button is offered and the backend does the filtering.
       const valid = selectAllMode
         ? new Set<ActionType>(["ack", "close", "open", "esc"])
         : validBulkStates(rows);
@@ -932,32 +967,83 @@ export function AlertsPage() {
       // Label suffix: show "all N" when operating on the full query scope.
       const countLabel = selectAllMode ? `all ${total}` : String(pageCount);
 
+      // Acknowledge and Close are the two verbs the whole page exists for, so
+      // they are ALWAYS on the bar. They used to disappear whenever a single
+      // selected row disagreed (the intersection above) — select-all on the
+      // "All" tab left an operator with Comment/Tag/Snooze and no explanation.
+      // Now they carry their own eligibility count, act on the eligible subset,
+      // and say why when nothing qualifies.
+      const stateButton = (action: "ack" | "close") => {
+        const meta = BULK_STATE_META[action];
+        if (selectAllMode) {
+          // Off-page states are unknowable from here; the backend applies the
+          // same transition table per record, so the scope is the whole query.
+          return (
+            <Button
+              size="sm"
+              variant={meta.variant}
+              leadingIcon={meta.icon}
+              onClick={() => openBulkDialog(action)}
+            >
+              {meta.label} ({countLabel})
+            </Button>
+          );
+        }
+        const eligible = eligibleForBulkState(rows, action);
+        const skipped = pageCount - eligible.length;
+        const reason = describeBulkSkips(rows, action);
+        const count = skipped > 0 ? `${eligible.length} of ${pageCount}` : String(pageCount);
+        if (eligible.length === 0) {
+          // aria-disabled rather than `disabled`: the button stays focusable,
+          // so the tooltip that explains the refusal is reachable by keyboard
+          // instead of being a mouse-only courtesy.
+          return (
+            <Tooltip content={`None of the selected alerts can be ${meta.pastVerb} — ${reason}.`}>
+              <Button
+                size="sm"
+                variant={meta.variant}
+                leadingIcon={meta.icon}
+                aria-disabled
+                onClick={() => undefined}
+              >
+                {meta.label} ({count})
+              </Button>
+            </Tooltip>
+          );
+        }
+        return (
+          <Tooltip
+            content={
+              skipped > 0
+                ? `${skipped} of the ${pageCount} selected will be skipped (${reason}).`
+                : null
+            }
+          >
+            <Button
+              size="sm"
+              variant={meta.variant}
+              leadingIcon={meta.icon}
+              onClick={() =>
+                openBulkDialog(
+                  action,
+                  eligible,
+                  skipped > 0 ? { count: skipped, reason, selected: pageCount } : undefined,
+                )
+              }
+            >
+              {meta.label} ({count})
+            </Button>
+          </Tooltip>
+        );
+      };
+
       return (
         <>
-          {/* State-transition buttons gated on validity */}
-          {valid.has("ack") ? (
-            <Button
-              size="sm"
-              variant="secondary"
-              leadingIcon="thumbs-up"
-              onClick={() => openBulkDialog("ack")}
-            >
-              Acknowledge ({countLabel})
-            </Button>
-          ) : null}
-          {valid.has("close") ? (
-            // Close is the one bulk action that ends triage for every
-            // selected alert — danger-weighted so it doesn't read as
-            // identical in stakes to Comment/Tag beside it.
-            <Button
-              size="sm"
-              variant="danger"
-              leadingIcon="lock"
-              onClick={() => openBulkDialog("close")}
-            >
-              Close ({countLabel})
-            </Button>
-          ) : null}
+          {stateButton("ack")}
+          {/* Close is the one bulk action that ends triage for every selected
+              alert — danger-weighted (see BULK_STATE_META) so it doesn't read
+              as identical in stakes to Comment/Tag beside it. */}
+          {stateButton("close")}
           {valid.has("esc") ? (
             <Button
               size="sm"
@@ -1041,7 +1127,7 @@ export function AlertsPage() {
   const submitDialog = useCallback(
     async ({ message }: { message: string }) => {
       if (!dialog) return;
-      const { type, records } = dialog;
+      const { type, records, skip } = dialog;
       setDialogError(null);
       // "srv-prod-db-01" for a single record, "3 alerts" for a bulk action —
       // names the object in the inline failure copy below.
@@ -1106,9 +1192,14 @@ export function AlertsPage() {
           resp.matched !== resp.updated
             ? ` (${resp.updated} changed, ${resp.matched - resp.updated} already in target state)`
             : "";
+        // Rows the bulk bar deliberately left out of the request (an action
+        // that was legal for some of the selection but not all of it) are
+        // reported here — otherwise "7 alerts updated" after selecting 10
+        // reads as three silent failures.
+        const skippedNote = skip ? ` — ${skip.count} skipped (${skip.reason})` : "";
         // Description must carry both the count and the caveat because tests
         // assert against t.description.
-        const description = `${mainMsg}${partialNote} — ${BULK_STATE_CAVEAT}`;
+        const description = `${mainMsg}${partialNote}${skippedNote} — ${BULK_STATE_CAVEAT}`;
         // ack/close both have a real, backend-legal inverse ("open" — see
         // transitions.ts's ALLOWED table), so offer it as an Undo action
         // instead of leaving the operator to hunt for "Re-open" again. esc's
@@ -1362,6 +1453,43 @@ export function AlertsPage() {
     [orderby, sortOrder, handleSortChange],
   );
 
+  // A failed list query is NOT an empty queue. Until this existed, a 500 on
+  // /record rendered the green "All clear — every alert has been triaged"
+  // card: the single most dangerous sentence this product can show, because
+  // it is indistinguishable from the good news it imitates. The panel below
+  // names the problem, dates the staleness, offers the retry, and keeps the
+  // server's own words for the ticket.
+  //
+  // role="alert" sits on the panel (not on a nested InlineError) so the whole
+  // thing is announced once, title first, instead of the raw detail alone.
+  const errorState = list.isError ? (
+    <div className={styles.errorPanel} role="alert">
+      <span className={styles.errorIcon}>
+        <Icon name="alert-triangle" size={24} />
+      </span>
+      <h3 className={styles.errorTitle}>Can&apos;t reach the alert store</h3>
+      <p className={styles.errorBody}>
+        {lastLoadedAt
+          ? `This list is stale as of ${lastLoadedAt}. Alerts may be firing that Snooze can't show you.`
+          : "No data loaded — this is a failed request, not an empty queue. Alerts may be firing that Snooze can't show you."}
+      </p>
+      <p className={styles.errorSummary}>{listErrorCopy.summary}</p>
+      {listErrorCopy.secondary && listErrorCopy.secondary !== listErrorCopy.summary ? (
+        <p className={styles.errorRaw}>{listErrorCopy.secondary}</p>
+      ) : null}
+      <div className={styles.errorAction}>
+        <Button
+          variant="primary"
+          leadingIcon="refresh"
+          loading={list.isFetching}
+          onClick={() => void handleManualRefresh()}
+        >
+          Try again
+        </Button>
+      </div>
+    </div>
+  ) : undefined;
+
   const emptyState = hasActiveFilters ? (
     <EmptyState
       icon="search"
@@ -1426,6 +1554,7 @@ export function AlertsPage() {
           loading={list.isPending}
           stale={list.isPlaceholderData}
           emptyState={emptyState}
+          errorState={errorState}
           selectable
           selectedKeys={selectedKeys}
           onSelectionChange={(keys) => {
@@ -1455,9 +1584,22 @@ export function AlertsPage() {
                 loading={list.isFetching}
                 onClick={() => void handleManualRefresh()}
               />
+              {/* While the polls are failing this is the only thing on screen
+                  that contradicts the table, so it gets weight: a red-bordered
+                  chip that states the staleness and retries on click, not a
+                  quiet pill that reads like metadata. */}
               {list.isError ? (
                 <Tooltip content={refreshErrorDetail}>
-                  <Badge variant="error">Not updating</Badge>
+                  <button
+                    type="button"
+                    className={styles.staleChip}
+                    onClick={() => void handleManualRefresh()}
+                  >
+                    <Icon name="alert-triangle" size={14} />
+                    <span>
+                      {lastLoadedAt ? `Not updating since ${lastLoadedAt}` : "Not updating"}
+                    </span>
+                  </button>
                 </Tooltip>
               ) : null}
               <Tooltip
@@ -1500,9 +1642,9 @@ export function AlertsPage() {
           // Controlled detail drawer: the open record lives in the URL
           // (?record=), so it's shareable/deep-linkable and survives reloads.
           // A ?record= uid that isn't on the current page clears itself once
-          // loading settles (DataTable's auto-close). The "View details" kebab
-          // item, the hover-revealed eye icon, and the `E` shortcut all route
-          // through here (row click intentionally does not open the drawer).
+          // loading settles (DataTable's auto-close). A click on the row body,
+          // the "View details" kebab item, the hover-revealed eye icon, `E`
+          // and Enter all route through here.
           detailsKey={record ?? null}
           onDetailsKeyChange={handleDetailsKeyChange}
           // Inline Flow expander — the chevron on each row, and `F` on the
@@ -1523,6 +1665,11 @@ export function AlertsPage() {
           }}
           actionType={dialog.type}
           records={dialog.records}
+          {...(dialog.skip
+            ? {
+                note: `${dialog.skip.count} of the ${dialog.skip.selected} selected alerts will be skipped (${dialog.skip.reason}).`,
+              }
+            : {})}
           onConfirm={submitDialog}
           submitting={bulkSubmitting}
           error={dialogError}

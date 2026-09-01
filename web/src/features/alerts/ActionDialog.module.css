@@ -3,6 +3,14 @@
   flex-direction: column;
   gap: var(--space-3);
 }
+/* "3 of the 10 selected will be skipped (already acknowledged)" — a caveat
+   about what this confirm will NOT do, so it sits between the description and
+   the subject list, weighted enough to be read rather than skimmed past. */
+.note {
+  margin: 0;
+  font-size: var(--text-sm);
+  color: var(--severity-warning);
+}
 .subjects {
   font-size: var(--text-sm);
   color: var(--text-muted);

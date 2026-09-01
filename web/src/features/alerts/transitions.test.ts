@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
   canTransition,
+  describeBulkSkips,
+  eligibleForBulkState,
   isActionAllowed,
   validBulkStates,
   type TransitionAction,
@@ -143,5 +145,56 @@ describe("validBulkStates", () => {
   it("empty selection → empty set", () => {
     const valid = validBulkStates([]);
     expect(valid.size).toBe(0);
+  });
+});
+
+describe("eligibleForBulkState", () => {
+  it("keeps only the rows the action is legal for", () => {
+    const rows = [makeRow(""), makeRow("ack"), makeRow("close"), makeRow("esc")];
+    expect(eligibleForBulkState(rows, "ack").length).toBe(2); // "" and esc
+    expect(eligibleForBulkState(rows, "close").length).toBe(3); // "", ack, esc
+    expect(eligibleForBulkState(rows, "open").length).toBe(3); // ack, close, esc
+  });
+
+  it("returns every row when they all qualify", () => {
+    const rows = [makeRow(""), makeRow("open")];
+    expect(eligibleForBulkState(rows, "ack")).toHaveLength(2);
+  });
+
+  it("returns nothing when no row qualifies", () => {
+    const rows = [makeRow("close"), makeRow("close")];
+    expect(eligibleForBulkState(rows, "ack")).toHaveLength(0);
+  });
+
+  it("empty selection → empty array", () => {
+    expect(eligibleForBulkState([], "ack")).toHaveLength(0);
+  });
+
+  it("excludes rows in an unrecognised state (fail-closed for bulk)", () => {
+    expect(eligibleForBulkState([makeRow("something-new")], "ack")).toHaveLength(0);
+  });
+});
+
+describe("describeBulkSkips", () => {
+  it("is empty when nothing is skipped", () => {
+    expect(describeBulkSkips([makeRow(""), makeRow("open")], "ack")).toBe("");
+  });
+
+  it("names a single blocking state", () => {
+    expect(describeBulkSkips([makeRow("ack"), makeRow("")], "ack")).toBe("already acknowledged");
+  });
+
+  it("joins several blocking states with 'or'", () => {
+    const rows = [makeRow("ack"), makeRow("close"), makeRow("")];
+    expect(describeBulkSkips(rows, "ack")).toBe("already acknowledged or already closed");
+  });
+
+  it("dedupes repeated states", () => {
+    const rows = [makeRow("close"), makeRow("close"), makeRow("close")];
+    expect(describeBulkSkips(rows, "close")).toBe("already closed");
+  });
+
+  it("falls back to the raw state for an unrecognised one", () => {
+    expect(describeBulkSkips([makeRow("weird")], "ack")).toBe('in state "weird"');
   });
 });

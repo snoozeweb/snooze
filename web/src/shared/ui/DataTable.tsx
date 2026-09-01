@@ -139,6 +139,15 @@ export type DataTableProps<T> = {
     endSlot?: ReactNode;
   };
   emptyState?: ReactNode;
+  /** Rendered in place of the rows when the page's list query has failed —
+   *  opt-in, exactly like `emptyState`, and taking precedence over it so a
+   *  failed fetch can never be mistaken for "nothing to show". Pages pass it
+   *  only while their query `isError`.
+   *
+   *  Only replaces the body when there are NO rows: a refetch that fails while
+   *  a good page is on screen keeps that page (the operator's alerts stay
+   *  readable) and the page signals staleness in its own toolbar. */
+  errorState?: ReactNode;
   loading?: boolean;
   /** When true the table shows its previous rows while a new query is in
    *  flight (TanStack Query keepPreviousData / placeholderData). The table
@@ -206,6 +215,7 @@ export function DataTable<T>({
   toolbarHeader,
   search,
   emptyState,
+  errorState,
   loading = false,
   stale = false,
   onRowOpen,
@@ -258,6 +268,7 @@ export function DataTable<T>({
   const onSelectionChangeRef = useRef(onSelectionChange);
   const onDetailsKeyChangeRef = useRef(onDetailsKeyChange);
   const onRowOpenRef = useRef(onRowOpen);
+  const renderDetailsRef = useRef(renderDetails);
   const rowKeyRef = useRef(rowKey);
   const rowKeyBindingsRef = useRef(rowKeyBindings);
   const isControlledDetailsRef = useRef(isControlledDetails);
@@ -354,6 +365,7 @@ export function DataTable<T>({
   onSelectionChangeRef.current = onSelectionChange;
   onDetailsKeyChangeRef.current = onDetailsKeyChange;
   onRowOpenRef.current = onRowOpen;
+  renderDetailsRef.current = renderDetails;
   rowKeyRef.current = rowKey;
   rowKeyBindingsRef.current = rowKeyBindings;
   isControlledDetailsRef.current = isControlledDetails;
@@ -412,17 +424,30 @@ export function DataTable<T>({
 
   // onClick / onContextMenu handlers handed to every row. Stable so they
   // don't bust the row memo; the row passes back its own index/coords.
-  const handleRowClick = useCallback((index: number) => {
-    // If the user just drag-selected text inside the grid, the trailing click
-    // shouldn't also open the row (which navigates away and clobbers the
-    // selection). A plain click collapses any prior selection on mousedown, so
-    // this guard only trips at the end of a real text selection.
-    const sel = typeof window !== "undefined" ? window.getSelection() : null;
-    if (sel && !sel.isCollapsed && sel.toString().trim() !== "") return;
-    setFocusedIndex(index);
-    const row = dataRef.current[index];
-    if (row) onRowOpenRef.current?.(row);
-  }, []);
+  const handleRowClick = useCallback(
+    (index: number) => {
+      // If the user just drag-selected text inside the grid, the trailing click
+      // shouldn't also open the row (which navigates away and clobbers the
+      // selection). A plain click collapses any prior selection on mousedown, so
+      // this guard only trips at the end of a real text selection.
+      const sel = typeof window !== "undefined" ? window.getSelection() : null;
+      if (sel && !sel.isCollapsed && sel.toString().trim() !== "") return;
+      setFocusedIndex(index);
+      const row = dataRef.current[index];
+      if (!row) return;
+      // Same precedence as Enter (see onKeyDown): a page that supplies
+      // onRowOpen owns what "open this row" means; otherwise a table with a
+      // details drawer opens it. Without this fallback the mouse path
+      // dead-ended on every table that only supplies renderDetails — the row
+      // looked clickable and did nothing.
+      if (onRowOpenRef.current) {
+        onRowOpenRef.current(row);
+        return;
+      }
+      if (renderDetailsRef.current) openDetailsAt(rowKeyRef.current(row), index);
+    },
+    [openDetailsAt],
+  );
 
   const handleRowContextMenu = useCallback((index: number, x: number, y: number) => {
     setFocusedIndex(index);
@@ -642,7 +667,11 @@ export function DataTable<T>({
     const builtin: { keys: string; label: string }[] = [
       { keys: "↑ ↓ · J K", label: "Move between rows" },
     ];
-    if (onRowOpen || renderDetails) builtin.push({ keys: "Enter", label: "Open the focused row" });
+    // Click is listed beside Enter because they now do the same thing (see
+    // handleRowClick) — the legend is where an operator finds out that the
+    // row itself is the affordance, not just the eye icon.
+    if (onRowOpen || renderDetails)
+      builtin.push({ keys: "Enter · Click", label: "Open the focused row" });
     if (renderDetails) builtin.push({ keys: "E", label: "View details" });
     if (renderRowExpansion) builtin.push({ keys: "F", label: `Show ${rowExpansionLabel} inline` });
     if (selectable) builtin.push({ keys: "Space", label: "Select / deselect row" });
@@ -854,7 +883,10 @@ export function DataTable<T>({
             ) : isEmpty ? (
               <tr>
                 <td colSpan={totalCols}>
-                  {emptyState ?? <EmptyState icon="file-text" title="No items" />}
+                  {/* A failed query outranks every empty state: "no rows" and
+                      "we couldn't ask" are different facts, and only one of
+                      them earns "All clear". */}
+                  {errorState ?? emptyState ?? <EmptyState icon="file-text" title="No items" />}
                 </td>
               </tr>
             ) : (
@@ -880,6 +912,7 @@ export function DataTable<T>({
                       rowActions={rowActions}
                       rowActionsBadge={rowActionsBadge}
                       hasDetails={renderDetails !== undefined}
+                      clickOpens={onRowOpen !== undefined || renderDetails !== undefined}
                       hasExpansion={renderRowExpansion !== undefined}
                       expansionLabel={rowExpansionLabel}
                       isExpanded={expanded}
@@ -970,6 +1003,10 @@ type DataTableRowProps<T> = {
    *  "View details" kebab item (and the kebab column itself when no
    *  `rowActions` are supplied). */
   hasDetails: boolean;
+  /** Whether a click on the row body opens something (page `onRowOpen` or the
+   *  details drawer) — drives the pointer cursor so the row looks like what it
+   *  is. Tables with neither keep the default cursor. */
+  clickOpens: boolean;
   /** Whether the table has an inline expansion — gates the chevron toggle. */
   hasExpansion: boolean;
   expansionLabel: string;
@@ -981,6 +1018,15 @@ type DataTableRowProps<T> = {
   onCheckboxCellClick: (key: string, index: number, shiftKey: boolean) => void;
   onCheckboxToggle: (key: string, index: number) => void;
 };
+
+// Controls that own their own click. A click that lands on (or inside) one of
+// these is that control's click, not the row's — pressing a link, a quick
+// action, the expansion chevron or a checkbox must never also open the row.
+// The cells that host them already stopPropagation; this covers controls
+// rendered inside an ordinary data cell by a page's own `cell` renderer.
+const INTERACTIVE_IN_ROW =
+  "a,button,input,select,textarea,label,summary," +
+  '[role="button"],[role="link"],[role="checkbox"],[role="switch"],[role="menuitem"],[contenteditable="true"]';
 
 // One table row, memoized with the DEFAULT shallow comparison. Function props
 // (columns, quickActions, rowActions, the handlers) take part in equality, so
@@ -1007,6 +1053,7 @@ function DataTableRowInner<T>({
   rowActions,
   rowActionsBadge,
   hasDetails,
+  clickOpens,
   hasExpansion,
   expansionLabel,
   isExpanded,
@@ -1039,6 +1086,7 @@ function DataTableRowInner<T>({
       className={styles.row}
       {...(selectable ? { "aria-selected": isSelected } : {})}
       {...(cardRoles ? { "data-card-layout": "true" } : {})}
+      {...(clickOpens ? { "data-clickable": "true" } : {})}
       {...(isFocused ? { "data-focused": "true" } : {})}
       {...(isSelected ? { "data-selected": "true" } : {})}
       {...(isExpanded ? { "data-expanded": "true" } : {})}
@@ -1049,7 +1097,11 @@ function DataTableRowInner<T>({
             style: { "--row-accent": accent } as CSSProperties,
           }
         : {})}
-      onClick={() => onRowClick(index)}
+      onClick={(e: React.MouseEvent<HTMLTableRowElement>) => {
+        const target = e.target as HTMLElement | null;
+        if (target?.closest?.(INTERACTIVE_IN_ROW)) return;
+        onRowClick(index);
+      }}
       {...(hasContextMenu
         ? {
             onContextMenu: (e: React.MouseEvent<HTMLTableRowElement>) => {

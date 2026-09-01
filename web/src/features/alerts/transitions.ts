@@ -64,6 +64,50 @@ const VALID_FROM: Readonly<Record<string, ActionType[]>> = {
   shelved: ["open"],
 };
 
+/** State → the phrase that explains why a row is being skipped, e.g. an
+ *  already-acked row skipped by a bulk Acknowledge reads "already
+ *  acknowledged". Used to name the reason in the bulk bar's tooltip, the
+ *  confirm dialog, and the result toast. */
+const SKIP_LABEL: Readonly<Record<string, string>> = {
+  "": "still open",
+  open: "still open",
+  ack: "already acknowledged",
+  esc: "escalated",
+  close: "already closed",
+  shelved: "shelved",
+};
+
+/**
+ * Rows in `rows` for which `action` is a legal transition — the subset a bulk
+ * Acknowledge/Close should actually apply to.
+ *
+ * The bulk bar used to hide a button whenever ONE selected row disagreed
+ * (validBulkStates is an intersection), so select-all on the "All" tab made
+ * Acknowledge and Close vanish with no explanation. Acting on the eligible
+ * subset and naming the skipped rest is the honest version of that.
+ */
+export function eligibleForBulkState(rows: Record_[], action: ActionType): Record_[] {
+  return rows.filter((r) => (VALID_FROM[(r.state ?? "") as AlertState] ?? []).includes(action));
+}
+
+/**
+ * Names why the ineligible rows in `rows` can't take `action`, as a clause
+ * that slots into "3 skipped (…)" or "None of the selected alerts can be
+ * acknowledged — …". Returns "" when every row is eligible.
+ */
+export function describeBulkSkips(rows: Record_[], action: ActionType): string {
+  const labels: string[] = [];
+  for (const r of rows) {
+    const state = (r.state ?? "") as string;
+    if ((VALID_FROM[state as AlertState] ?? []).includes(action)) continue;
+    const label = SKIP_LABEL[state] ?? `in state "${state}"`;
+    if (!labels.includes(label)) labels.push(label);
+  }
+  if (labels.length === 0) return "";
+  if (labels.length === 1) return labels[0]!;
+  return `${labels.slice(0, -1).join(", ")} or ${labels[labels.length - 1]!}`;
+}
+
 /**
  * Returns the set of ActionTypes that are valid for ALL rows in the selection.
  * "comment" and "tag" are always valid and are not returned here (callers add

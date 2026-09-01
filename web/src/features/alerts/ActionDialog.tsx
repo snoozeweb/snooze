@@ -74,6 +74,10 @@ export type ActionDialogProps = {
   actionType: ActionType;
   records: Record_[];
   onConfirm: (input: { message: string }) => Promise<void>;
+  /** Extra sentence under the description — used by the bulk bar to state the
+   *  rows this action is NOT going to touch ("3 of the 10 selected will be
+   *  skipped…"). The title already carries the eligible count. */
+  note?: string;
   submitting?: boolean;
   /** The most recent failed attempt, rendered inline above the footer. The
    *  dialog stays open and the confirm button re-enabled (see `submitting`)
@@ -88,6 +92,7 @@ export function ActionDialog({
   actionType,
   records,
   onConfirm,
+  note,
   submitting = false,
   error = null,
 }: ActionDialogProps) {
@@ -125,6 +130,7 @@ export function ActionDialog({
         <DialogBody>
           <form className={styles.body} onSubmit={handleSubmit} id="action-form">
             <DialogDescription>{meta.description}</DialogDescription>
+            {note ? <p className={styles.note}>{note}</p> : null}
             {records.length <= 8 ? (
               <div className={styles.subjects}>
                 {records.map((r) => (
