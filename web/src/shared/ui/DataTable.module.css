@@ -17,17 +17,10 @@
   flex: 1 1 auto;
   min-width: 0;
 }
-/* Inline toolbar segment — sits at the right of the row. When selection is
-   active the surface picks up the accent tint so the bulk-actions cluster
-   reads as a distinct state without engulfing the search bar.
-
-   Both states share the same outer geometry (1px border, matching padding,
-   matching radius) so toggling the class on selection never changes the
-   row height — only the colour. Without the transparent placeholder
-   border on .toolbar, selecting a row shifted the table 2px because the
-   selected variant is 1px taller on each side. */
-.toolbar,
-.toolbarSelected {
+/* Inline toolbar segment — sits at the right of the row, next to the search
+   bar, and holds the page's always-available affordances (count, refresh,
+   the "?" legend). */
+.toolbar {
   display: inline-flex;
   align-items: center;
   gap: var(--space-2);
@@ -36,17 +29,70 @@
   border-radius: var(--radius-md);
   font-size: var(--text-sm);
   flex: 0 0 auto;
-}
-.toolbar {
   color: var(--text);
 }
-.toolbarSelected {
+
+/* Bulk-actions bar: its own row beneath the search row, so the query that
+   produced the selection stays full-width and readable while the operator
+   commits an action against it. Accent-tinted so the selected state reads at
+   a glance; wraps rather than squeezing its buttons. */
+.bulkRow {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  padding: var(--space-1) var(--space-2);
+  border: 1px solid var(--accent);
+  border-radius: var(--radius-md);
   background: var(--accent-bg);
   color: var(--accent);
-  border-color: var(--accent);
+  font-size: var(--text-sm);
+  animation: bulkRowIn var(--dur-fast, 120ms) var(--ease-out, ease-out);
+}
+@keyframes bulkRowIn {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .bulkRow {
+    animation: none;
+  }
+}
+.bulkActions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-2);
 }
 .toolbarCount {
   font-weight: var(--weight-semibold);
+  white-space: nowrap;
+}
+
+/* The "?" shortcut affordance. A literal question mark rather than an icon:
+   it is the one keyboard hint every power user already looks for, and it
+   doubles as the label of the key that opens it. */
+.shortcutTrigger {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  line-height: 1;
+  cursor: pointer;
+}
+.shortcutTrigger:hover {
+  color: var(--text-strong);
+  background: var(--bg-hover);
 }
 .toolbarHeader {
   color: var(--text-muted);
@@ -60,21 +106,27 @@
 }
 
 /* Keyboard-shortcuts legend rendered inside the "?" Popover. */
+/* Two columns, not a space-between flex row: the keys share a right edge and
+   the labels share a left one, so the list reads down either side instead of
+   scattering both edges across the popover's width. */
 .shortcutLegend {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-1);
-  min-width: 12rem;
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  align-items: center;
+  gap: var(--space-1) var(--space-3);
 }
 .shortcutRow {
-  display: flex;
+  display: grid;
+  grid-column: 1 / -1;
+  grid-template-columns: subgrid;
   align-items: center;
-  gap: var(--space-3);
-  justify-content: space-between;
   font-size: var(--text-sm);
 }
 .shortcutRow span {
   color: var(--text-muted);
+}
+.shortcutRow .kbd {
+  justify-self: end;
 }
 .kbd {
   font-family: var(--font-mono);
@@ -165,8 +217,36 @@
 .row:hover td {
   background: var(--bg-hover);
 }
+/* Keyboard focus is a different thing from hover and has to look like one:
+   the row the operator is *driving* gets a ring, not just a wash, so it
+   stays findable after the pointer moves somewhere else. Drawn with inset
+   box-shadows on the edge cells (a <tr> can't take an outline reliably
+   across browsers) — no geometry change, so nothing shifts. */
 .row[data-focused="true"] td {
   background: var(--bg-hover);
+  box-shadow:
+    inset 0 1px 0 0 var(--focus-ring),
+    inset 0 -1px 0 0 var(--focus-ring);
+}
+.row[data-focused="true"] td:first-child {
+  box-shadow:
+    inset 0 1px 0 0 var(--focus-ring),
+    inset 0 -1px 0 0 var(--focus-ring),
+    inset 1px 0 0 0 var(--focus-ring);
+}
+.row[data-focused="true"] td:last-child {
+  box-shadow:
+    inset 0 1px 0 0 var(--focus-ring),
+    inset 0 -1px 0 0 var(--focus-ring),
+    inset -1px 0 0 0 var(--focus-ring);
+}
+/* The severity accent strip wins the first cell when both apply — keep it,
+   and hang the ring off the remaining three edges. */
+.row[data-accent][data-focused="true"] td:first-child {
+  box-shadow:
+    inset 3px 0 0 0 var(--row-accent),
+    inset 0 1px 0 0 var(--focus-ring),
+    inset 0 -1px 0 0 var(--focus-ring);
 }
 /* Selected-row amber wash. Slightly stronger than the bare token so a
    selected row stays legible even under the hover highlight. */
@@ -209,6 +289,43 @@
 .dense th {
   padding-top: 4px;
   padding-bottom: 4px;
+}
+
+/* Inline row expansion (renderRowExpansion): a full-width cell hung under its
+   row. Recessed a step behind the table surface and tied to its row by an
+   accent rail on the left, so a long list of rows with one open still reads as
+   "this belongs to that row" rather than as a second table. */
+.expansionRow > td {
+  padding: 0;
+  background: var(--bg-canvas);
+  border-bottom: 1px solid var(--border-muted);
+  /* The parent .row td rules clip and ellipsize single-line cells; the
+     expansion is a block of real content and must be allowed to breathe. */
+  overflow: visible;
+  white-space: normal;
+  text-overflow: clip;
+}
+/* Indented past the checkbox column so it reads as hanging off its row, and
+   recessed onto the canvas colour so it is legibly "under" the table surface
+   rather than a second table. */
+.expansionInner {
+  padding: var(--space-3) var(--space-4) var(--space-4) var(--space-6);
+  animation: expansionIn var(--dur-fast, 120ms) var(--ease-out, ease-out);
+}
+@keyframes expansionIn {
+  from {
+    opacity: 0;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .expansionInner {
+    animation: none;
+  }
+}
+/* An expanded row keeps its expander chevron visible without hover, and the
+   row itself stays tinted, so the pair reads as one unit. */
+.row[data-expanded="true"] td {
+  background: var(--bg-hover);
 }
 
 .checkboxCell {
@@ -284,6 +401,7 @@
    action itself holds focus (so it stays reachable via the keyboard). */
 .row:hover .quickActions,
 .row[data-focused="true"] .quickActions,
+.row[data-expanded="true"] .quickActions,
 .quickActions:focus-within {
   opacity: 1;
 }
@@ -406,6 +524,22 @@
      this the accent renders twice (card border + per-row inset bar). */
   .table tbody .row[data-accent] td:first-child {
     box-shadow: none;
+  }
+  /* Same argument for the keyboard focus ring: the desktop rule draws it from
+     inset shadows on the row's edge cells, but in card mode every cell is its
+     own full-width block, so those shadows would stripe the card. The card
+     takes the ring itself. */
+  .table tbody .row[data-focused="true"] td {
+    box-shadow: none;
+  }
+  .table tbody .row[data-focused="true"] {
+    outline: 2px solid var(--focus-ring);
+    outline-offset: -1px;
+  }
+  /* The inline expansion is a block hung under its card, not a field of it. */
+  .table tbody .expansionRow > td {
+    display: block;
+    padding: 0;
   }
   /* Label/value rows. `data-label` comes from the column header. Each data
      field spans the full card width. */

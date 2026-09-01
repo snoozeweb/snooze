@@ -38,17 +38,23 @@ export function RowDetailsDrawer<T>({
   // (see onOpenAutoFocus on its DrawerContent).
   const detailKeyNavRef = useRef<HTMLDivElement>(null);
 
-  // In-drawer ArrowUp/ArrowDown = previous/next row. Guarded by isEditable so
-  // typing in the comment composer never navigates. Attached to a wrapper
-  // inside DrawerContent so it fires wherever focus sits in the drawer.
+  // In-drawer ArrowUp/ArrowDown — and their j/k aliases — page to the previous
+  // / next row, so the traversal keys an operator just used in the grid keep
+  // working once the drawer is open. Guarded by isEditable so typing in the
+  // comment composer never navigates, and by the modifier check so Ctrl+K
+  // still reaches the command palette. Attached to a wrapper inside
+  // DrawerContent so it fires wherever focus sits in the drawer.
   const onDrawerKeyDown = useCallback(
     (e: KeyboardEvent<HTMLDivElement>) => {
-      if (e.key !== "ArrowUp" && e.key !== "ArrowDown") return;
+      const bare = !e.ctrlKey && !e.metaKey && !e.altKey;
+      const up = e.key === "ArrowUp" || (bare && e.key.toLowerCase() === "k");
+      const down = e.key === "ArrowDown" || (bare && e.key.toLowerCase() === "j");
+      if (!up && !down) return;
       if (isEditable(e.target)) return;
       if (activeKey === null) return;
       const idx = rows.findIndex((r) => rowKey(r) === activeKey);
       if (idx < 0) return;
-      if (e.key === "ArrowUp") {
+      if (up) {
         if (idx > 0) {
           e.preventDefault();
           onNavigate(idx - 1);
@@ -106,16 +112,19 @@ export function RowDetailsDrawer<T>({
                 <span className={styles.detailsPosition}>
                   {index + 1} / {rows.length}
                 </span>
+                {/* The key is named in the label so the drawer teaches its own
+                    shortcut — hovering the button is how most operators will
+                    find out that K / J page through the list from here. */}
                 <IconButton
                   icon="chevron-up"
-                  label="Previous row"
+                  label="Previous row (K)"
                   size="sm"
                   disabled={index <= 0}
                   onClick={() => onNavigate(index - 1)}
                 />
                 <IconButton
                   icon="chevron-down"
-                  label="Next row"
+                  label="Next row (J)"
                   size="sm"
                   disabled={index >= rows.length - 1}
                   onClick={() => onNavigate(index + 1)}

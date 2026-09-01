@@ -52,6 +52,11 @@ export function AppShell() {
   useShortcut("mod+3", () => void navigate({ to: "/web/snoozes" as string }));
   useShortcut("mod+4", () => void navigate({ to: "/web/rules" as string }));
   useShortcut("mod+5", () => void navigate({ to: "/web/notifications" as string }));
+  // mod+6 was advertised on the Heartbeats nav item and in the palette but
+  // never registered — the one gap in the 1–6 run. Admin pages deliberately
+  // stay off the numeric scheme: there are 13 of them and no ordering an
+  // operator could predict, so ⌘K remains their way in.
+  useShortcut("mod+6", () => void navigate({ to: "/web/heartbeats" as string }));
 
   const matches = useMatches();
   const breadcrumb = pickBreadcrumb(matches);

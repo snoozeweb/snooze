@@ -232,8 +232,9 @@ describe("DataTable", () => {
     await user.click(trigger);
     // Built-ins derived from the table's own capabilities…
     expect(await screen.findByText("Move between rows")).toBeInTheDocument();
-    expect(screen.getByText(/select/i)).toBeInTheDocument();
+    expect(screen.getByText("Select / deselect row")).toBeInTheDocument();
     expect(screen.getByText(/view details/i)).toBeInTheDocument();
+    expect(screen.getByText("Clear selection, then focus")).toBeInTheDocument();
     // …plus the page-supplied row bindings.
     expect(screen.getByText("Acknowledge")).toBeInTheDocument();
     expect(screen.getByText("Comment")).toBeInTheDocument();
@@ -982,6 +983,128 @@ describe("DataTable", () => {
       expect(renders["1"]).toBe(3);
       expect(renders["2"]).toBe(2);
       expect(renders["3"]).toBe(1);
+    });
+
+    it("names the focused row via aria-activedescendant", () => {
+      render(<DataTable data={sample} columns={columns} rowKey={(r) => r.id} />);
+      const table = screen.getByRole("grid");
+      table.focus();
+      expect(table).not.toHaveAttribute("aria-activedescendant");
+      fireEvent.keyDown(table, { key: "j" });
+      const focusedRow = screen.getByText("alpha").closest("tr");
+      expect(table.getAttribute("aria-activedescendant")).toBe(focusedRow?.id);
+      expect(focusedRow?.id).toBeTruthy();
+    });
+
+    it("Enter opens the details drawer when the table has one and no onRowOpen", () => {
+      render(
+        <DataTable
+          data={sample}
+          columns={columns}
+          rowKey={(r) => r.id}
+          renderDetails={(r) => <div data-testid={`det-${r.id}`}>{r.name}</div>}
+        />,
+      );
+      const table = screen.getByRole("grid");
+      table.focus();
+      fireEvent.keyDown(table, { key: "j" });
+      fireEvent.keyDown(table, { key: "Enter" });
+      expect(screen.getByTestId("det-1")).toBeInTheDocument();
+    });
+
+    it("Space toggles the focused row's selection", () => {
+      const onSelectionChange = vi.fn();
+      render(
+        <DataTable
+          data={sample}
+          columns={columns}
+          rowKey={(r) => r.id}
+          selectable
+          selectedKeys={new Set()}
+          onSelectionChange={onSelectionChange}
+        />,
+      );
+      const table = screen.getByRole("grid");
+      table.focus();
+      fireEvent.keyDown(table, { key: "j" });
+      fireEvent.keyDown(table, { key: " " });
+      expect(onSelectionChange).toHaveBeenCalledWith(new Set(["1"]));
+    });
+
+    it("x clears the selection, then Escape clears the focus", () => {
+      const onSelectionChange = vi.fn();
+      const { rerender } = render(
+        <DataTable
+          data={sample}
+          columns={columns}
+          rowKey={(r) => r.id}
+          selectable
+          selectedKeys={new Set(["1"])}
+          onSelectionChange={onSelectionChange}
+        />,
+      );
+      const table = screen.getByRole("grid");
+      table.focus();
+      fireEvent.keyDown(table, { key: "j" });
+      fireEvent.keyDown(table, { key: "x" });
+      expect(onSelectionChange).toHaveBeenCalledWith(new Set());
+
+      rerender(
+        <DataTable
+          data={sample}
+          columns={columns}
+          rowKey={(r) => r.id}
+          selectable
+          selectedKeys={new Set()}
+          onSelectionChange={onSelectionChange}
+        />,
+      );
+      expect(screen.getByText("alpha").closest("tr")).toHaveAttribute("data-focused", "true");
+      fireEvent.keyDown(table, { key: "Escape" });
+      expect(screen.getByText("alpha").closest("tr")).not.toHaveAttribute("data-focused");
+    });
+
+    it("f toggles the inline row expansion, and the chevron does the same", async () => {
+      const user = userEvent.setup();
+      render(
+        <DataTable
+          data={sample}
+          columns={columns}
+          rowKey={(r) => r.id}
+          renderRowExpansion={(r) => <div data-testid={`flow-${r.id}`}>{r.name} flow</div>}
+          rowExpansionLabel="pipeline flow"
+        />,
+      );
+      const table = screen.getByRole("grid");
+      table.focus();
+      fireEvent.keyDown(table, { key: "j" });
+      fireEvent.keyDown(table, { key: "f" });
+      expect(screen.getByTestId("flow-1")).toBeInTheDocument();
+      fireEvent.keyDown(table, { key: "f" });
+      expect(screen.queryByTestId("flow-1")).toBeNull();
+
+      // Same state, reached with the mouse.
+      await user.click(screen.getAllByRole("button", { name: /show pipeline flow/i })[0]!);
+      expect(screen.getByTestId("flow-1")).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: /hide pipeline flow/i })).toHaveAttribute(
+        "aria-expanded",
+        "true",
+      );
+    });
+
+    it("? opens the shortcuts legend", async () => {
+      render(
+        <DataTable
+          data={sample}
+          columns={columns}
+          rowKey={(r) => r.id}
+          keyboardHints={[{ keys: "A", label: "Acknowledge" }]}
+        />,
+      );
+      const table = screen.getByRole("grid");
+      table.focus();
+      fireEvent.keyDown(table, { key: "?" });
+      expect(await screen.findByText("Move between rows")).toBeInTheDocument();
     });
 
     it("rowKeyBindings fire for the focused row and skip reserved keys", () => {

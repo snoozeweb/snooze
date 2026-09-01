@@ -116,11 +116,36 @@
   background: var(--accent);
   border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
 }
+.sublist {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+/* Alert results lead with the message — the same message-first order the
+   alerts table itself uses, so recognising a row here is the same act as
+   recognising it there. The host trails as secondary metadata. */
+.alertMessage {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+.searching {
+  padding: var(--space-1) var(--space-2);
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+}
 .optionShortcut {
   margin-left: auto;
+  padding-left: var(--space-2);
+  flex: 0 0 auto;
   font-family: var(--font-mono);
   font-size: var(--text-xs);
   color: var(--text-muted);
+  max-width: 40%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .empty {
   padding: var(--space-3);

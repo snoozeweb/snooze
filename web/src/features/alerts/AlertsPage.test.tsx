@@ -31,7 +31,9 @@ function setup(pathname = "/web/alerts", { withSnoozesStub = false } = {}) {
     path: "/web/snoozes",
     component: () => <div>snoozes stub</div>,
   });
-  const tree = withSnoozesStub ? root.addChildren([alerts, snoozesStub]) : root.addChildren([alerts]);
+  const tree = withSnoozesStub
+    ? root.addChildren([alerts, snoozesStub])
+    : root.addChildren([alerts]);
   /* eslint-disable @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-argument */
   const router = createRouter({
     routeTree: tree,
@@ -434,8 +436,8 @@ describe("AlertsPage", () => {
     expect(calls[1]).toMatchObject({ record_uid: "r1", type: "open" });
   });
 
-  it("keyboard 'a' on a focused open row fires an inline ack", async () => {
-    const calls: Array<{ record_uid: string; type: string }> = [];
+  it("keyboard 'a' on a focused open row opens the Acknowledge confirm dialog", async () => {
+    const calls: Array<{ q?: string; state?: string }> = [];
     mswServer.use(
       http.get("/api/v1/record", () =>
         HttpResponse.json({
@@ -443,22 +445,85 @@ describe("AlertsPage", () => {
           meta: { count: 1, limit: 50, offset: 0, total: 1 },
         }),
       ),
-      http.post("/api/v1/comment", async ({ request }) => {
-        calls.push((await request.json()) as { record_uid: string; type: string });
-        return HttpResponse.json({ ok: true });
+      http.post("/api/v1/record/bulk_state", async ({ request }) => {
+        calls.push((await request.json()) as { q?: string; state?: string });
+        return HttpResponse.json({ matched: 1, updated: 1 });
       }),
     );
     const user = userEvent.setup();
     setup();
     await waitFor(() => expect(screen.getByText("srv-1")).toBeInTheDocument());
 
-    // Focus the grid, move to the first row (ArrowDown), then press 'a'.
+    // Focus the grid, move to the first row (ArrowDown), then press 'a'. A
+    // keystroke lands on whatever row the focus ring is on, so it confirms
+    // rather than firing straight through like the mouse quick-action does.
     const grid = screen.getByRole("grid");
     grid.focus();
     await user.keyboard("{ArrowDown}a");
 
+    const dialog = await screen.findByRole("dialog");
+    expect(within(dialog).getByText(/acknowledge alert/i)).toBeInTheDocument();
+    await user.click(within(dialog).getByRole("button", { name: /^acknowledge$/i }));
     await waitFor(() => expect(calls).toHaveLength(1));
-    expect(calls[0]).toMatchObject({ record_uid: "r1", type: "ack" });
+    expect(calls[0]).toMatchObject({ state: "ack" });
+  });
+
+  it("keyboard 'c' on a focused open row opens the Close confirm dialog", async () => {
+    mswServer.use(
+      http.get("/api/v1/record", () =>
+        HttpResponse.json({
+          data: [{ uid: "r1", host: "srv-1", severity: "info", state: "open", date_epoch: 1 }],
+          meta: { count: 1, limit: 50, offset: 0, total: 1 },
+        }),
+      ),
+    );
+    const user = userEvent.setup();
+    setup();
+    await waitFor(() => expect(screen.getByText("srv-1")).toBeInTheDocument());
+
+    const grid = screen.getByRole("grid");
+    grid.focus();
+    await user.keyboard("{ArrowDown}c");
+
+    const dialog = await screen.findByRole("dialog");
+    expect(within(dialog).getByText(/close alert/i)).toBeInTheDocument();
+  });
+
+  it("keyboard 'f' expands the focused row's pipeline flow inline", async () => {
+    mswServer.use(
+      http.get("/api/v1/record", () =>
+        HttpResponse.json({
+          data: [
+            {
+              uid: "r1",
+              host: "srv-1",
+              state: "open",
+              date_epoch: 1,
+              source: "prometheus",
+              rules: ["tag-prod"],
+            },
+          ],
+          meta: { count: 1, limit: 50, offset: 0, total: 1 },
+        }),
+      ),
+    );
+    const user = userEvent.setup();
+    setup();
+    await waitFor(() => expect(screen.getByText("srv-1")).toBeInTheDocument());
+
+    const grid = screen.getByRole("grid");
+    grid.focus();
+    await user.keyboard("{ArrowDown}f");
+
+    // The SAME AlertFlowChart the drawer's Flow tab renders, hung under the
+    // row — its stage labels are unique to that component.
+    expect(await screen.findByText("Aggregate")).toBeInTheDocument();
+    expect(screen.getByText("Input")).toBeInTheDocument();
+    expect(screen.getByText("tag-prod")).toBeInTheDocument();
+
+    // …and f again collapses it.
+    await user.keyboard("f");
+    await waitFor(() => expect(screen.queryByText("Aggregate")).toBeNull());
   });
 
   // ── Action gating ─────────────────────────────────────────────────────────

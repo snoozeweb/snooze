@@ -20,6 +20,7 @@ import type { Condition } from "@/lib/condition/types";
 import type { ParsedCondition } from "@/shared/ui/SearchBar";
 import { severityToken } from "@/lib/format/severity-color";
 import { useConsoleConfig } from "@/features/config/api";
+import { usePublishPaletteActions, type PaletteAction } from "@/shared/hooks/usePaletteActions";
 import { Environments } from "@/features/admin/environments/api";
 import type { IconName } from "@/shared/icons/icon-names";
 import {
@@ -30,6 +31,7 @@ import {
   encodeUidsAsQ,
 } from "./api";
 import { AlertRowDetail } from "./AlertRowDetail";
+import { AlertFlowChart } from "./AlertFlowChart";
 import { ActiveFilters } from "./ActiveFilters";
 import { AlertsFilters, type AlertFilters } from "./Filters";
 import { SavedSearches } from "./SavedSearches";
@@ -158,12 +160,14 @@ type AlertsSearch = AlertFilters & {
 const PAGE_SIZE = 50;
 
 // Advertised in the DataTable's "?" shortcuts legend. Mirrors the per-row
-// bindings wired in `rowKeyBindings` (a=ack, c=comment); the table prepends its
-// own built-in navigation shortcuts (move / open / view / select). Module
-// constant so its identity is stable across renders (row-memo contract).
+// bindings wired in `rowKeyBindings` (a=ack, c=close, m=comment); the table
+// prepends its own built-in navigation shortcuts (move / open / view / expand /
+// select). Module constant so its identity is stable across renders (row-memo
+// contract).
 const ALERT_KEYBOARD_HINTS = [
   { keys: "A", label: "Acknowledge focused alert" },
-  { keys: "C", label: "Comment on focused alert" },
+  { keys: "C", label: "Close focused alert" },
+  { keys: "M", label: "Comment on focused alert" },
 ];
 
 /**
@@ -483,7 +487,9 @@ export function AlertsPage() {
     toast.error(describeError(error, "Couldn't refresh alerts").summary);
   }, [list]);
 
-  const filtered = list.data?.data ?? [];
+  // Memoized so the empty-array fallback keeps one identity across renders —
+  // several hooks below (selectedRows, the palette actions) depend on it.
+  const filtered = useMemo(() => list.data?.data ?? [], [list.data]);
 
   const confirmDelete = useConfirmDelete<Record_>({
     onDelete: (uid) => removeMut.mutateAsync(uid),
@@ -794,21 +800,26 @@ export function AlertsPage() {
   );
 
   // rowKeyBindings — per-row keyboard shortcuts surfaced through DataTable:
-  //   a → inline ack (only when the state machine allows it; open rows)
-  //   c → open the comment dialog for the focused row
-  // `e` (expand) is handled by DataTable itself. Bindings only fire when a
-  // row is focused and the user isn't typing into a field.
+  //   a → Acknowledge the focused row (confirm dialog)
+  //   c → Close the focused row (confirm dialog)
+  //   m → Comment on the focused row
+  // Each opens the SAME ActionDialog the kebab and bulk bar use. The mouse
+  // quick-actions still ack/close inline with an Undo toast — a click lands on
+  // a row the operator is pointing at, whereas a keystroke lands on whichever
+  // row the focus ring happens to be on, so the keyboard path keeps its
+  // confirm. `e` (details), `f` (flow) and Space (select) are DataTable's own.
+  // Bindings only fire when a row is focused and the user isn't typing.
   const rowKeyBindings = useCallback(
     (row: Record_): Record<string, () => void> => {
       const state = (row.state ?? "") as AlertState;
       const bindings: Record<string, () => void> = {
-        c: () => openDialog("comment", [row]),
+        m: () => openDialog("comment", [row]),
       };
-      // 'a' acks inline only where the backend allows it (fresh/open/escalated).
-      if (isActionAllowed(state, "ack")) bindings.a = () => inlineAction(row, "ack");
+      if (isActionAllowed(state, "ack")) bindings.a = () => openDialog("ack", [row]);
+      if (isActionAllowed(state, "close")) bindings.c = () => openDialog("close", [row]);
       return bindings;
     },
-    [inlineAction, openDialog],
+    [openDialog],
   );
 
   // Right-click context menu. DataTable auto-prepends its own "View details"
@@ -1032,8 +1043,7 @@ export function AlertsPage() {
       setDialogError(null);
       // "srv-prod-db-01" for a single record, "3 alerts" for a bulk action —
       // names the object in the inline failure copy below.
-      const subject =
-        records.length === 1 ? recordLabel(records[0]!) : `${records.length} alerts`;
+      const subject = records.length === 1 ? recordLabel(records[0]!) : `${records.length} alerts`;
 
       if (type === "comment") {
         // comment still uses the per-record /comment loop (bulk_state does not
@@ -1133,6 +1143,40 @@ export function AlertsPage() {
     [commentMut, bulkStateMut, dialog, selectAllMode, q],
   );
 
+  // The rows behind the current selection, resolved from the visible page.
+  const selectedRows = useMemo(
+    () => filtered.filter((r) => selectedKeys.has(recordKey(r))),
+    [filtered, selectedKeys],
+  );
+
+  // Commands this page contributes to ⌘K. Deliberately only the two verbs an
+  // operator reaches the palette for mid-triage — the palette is a shortcut to
+  // the bulk bar, not a second copy of it — and only while a selection exists,
+  // so the palette stays a jump list the rest of the time.
+  const paletteActions = useMemo<PaletteAction[]>(() => {
+    if (selectedRows.length === 0) return [];
+    const hint = `${selectedRows.length} selected`;
+    const out: PaletteAction[] = [];
+    if (validBulkStates(selectedRows).has("ack")) {
+      out.push({
+        id: "alerts-ack-selected",
+        label: "Acknowledge selected alerts",
+        icon: "thumbs-up",
+        hint,
+        run: () => openDialog("ack", selectedRows),
+      });
+    }
+    out.push({
+      id: "alerts-snooze-selected",
+      label: "Snooze selected alerts…",
+      icon: "moon",
+      hint,
+      run: () => requestSnoozeRows(selectedRows),
+    });
+    return out;
+  }, [selectedRows, openDialog, requestSnoozeRows]);
+  usePublishPaletteActions(paletteActions);
+
   // Distinguish a genuinely empty install (no alerts ingested yet) from a
   // filter/search/tab that simply matches nothing. Only the former offers the
   // "how to inject alerts" guidance; the latter nudges the operator to widen
@@ -1200,6 +1244,12 @@ export function AlertsPage() {
   const rowKey = useCallback((r: Record_) => recordKey(r), []);
   const rowAccent = useCallback((r: Record_) => severityToken(r.severity ?? ""), []);
   const renderDetails = useCallback((row: Record_) => <AlertRowDetail row={row} />, []);
+  // The Flow trace — the one view that answers "why did this fire, and what
+  // did it wake up?" — was three interactions deep behind the drawer's Flow
+  // tab. Here it is the same component, hung inline under its row, so reading
+  // the pipeline path costs one keystroke and never loses the list. The drawer
+  // tab stays: it is where Flow sits next to the timeline and the raw record.
+  const renderRowExpansion = useCallback((row: Record_) => <AlertFlowChart row={row} />, []);
   // Drawer title: the alert's host in mono (falls back to uid). Host is not
   // repeated in the drawer body, so this is where the operator reads it.
   const detailsTitle = useCallback(
@@ -1433,6 +1483,10 @@ export function AlertsPage() {
           // through here (row click intentionally does not open the drawer).
           detailsKey={record ?? null}
           onDetailsKeyChange={handleDetailsKeyChange}
+          // Inline Flow expander — the chevron on each row, and `F` on the
+          // focused one.
+          renderRowExpansion={renderRowExpansion}
+          rowExpansionLabel="pipeline flow"
         />
       </div>
       {dialog ? (
@@ -1478,7 +1532,9 @@ export function AlertsPage() {
           if (!shelveDialog) return;
           setShelveDialogError(null);
           const subject =
-            shelveDialog.length === 1 ? recordLabel(shelveDialog[0]!) : `${shelveDialog.length} alerts`;
+            shelveDialog.length === 1
+              ? recordLabel(shelveDialog[0]!)
+              : `${shelveDialog.length} alerts`;
           try {
             for (const r of shelveDialog) {
               await commentMut.mutateAsync({

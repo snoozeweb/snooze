@@ -163,82 +163,90 @@ export function AlertFlowChart({ row }: { row: Record_ }) {
   const aggregateLinkable = row.aggregate && row.aggregate !== "default";
 
   return (
-    <div className={styles.flow}>
-      <Node label="Input">
-        <span className={styles.value}>{row.source || "—"}</span>
-      </Node>
-      <Connector />
-      <Node label="Rules">
-        {rules.length > 0 ? (
-          <span className={styles.value}>
-            {rules.map((r, i) => (
-              <Fragment key={`${r}-${i}`}>
-                {i > 0 ? ", " : null}
-                <Link
-                  to="/web/rules"
-                  search={{ tab: "rules", search: nameQuery(r) }}
-                  className={styles.entityLink}
-                >
-                  {r}
-                </Link>
-              </Fragment>
-            ))}
-          </span>
-        ) : (
-          <span className={styles.none}>none</span>
-        )}
-      </Node>
-      <Connector />
-      <Node label="Aggregate">
-        <span className={styles.value}>
-          {aggregateLinkable ? (
-            <Link
-              to="/web/rules"
-              search={{ tab: "aggregates", aggSearch: nameQuery(row.aggregate as string) }}
-              className={styles.entityLink}
-            >
-              {row.aggregate}
-            </Link>
-          ) : (
-            row.aggregate || "—"
-          )}
-        </span>
-        {/* hash is an extra key stamped by the aggregaterule plugin; not in the Record schema, hence the typeof guard */}
-        {typeof row.hash === "string" && row.hash ? (
-          <span className={styles.subtle}>{row.hash.slice(0, 12)}</span>
-        ) : null}
-      </Node>
-      <Connector />
-      {snoozed ? (
-        <Node label="Snooze">
-          <Link
-            to="/web/snoozes"
-            search={{ search: nameQuery(snoozed) }}
-            className={styles.chipLink}
-          >
-            <Badge variant="muted">
-              <span aria-hidden="true">⊘</span> {snoozed}
-            </Badge>
-          </Link>
-          <span className={styles.subtle}>silenced — pipeline stopped</span>
+    // The sizing container the stage layout keys off: narrow (the drawer's
+    // Flow tab on a laptop) stacks the stages top-to-bottom; wide (the alerts
+    // table's inline expander, or the drawer on a NOC screen) lays the same
+    // stages left-to-right, which is both the shape a pipeline wants and four
+    // times shorter — it matters when the trace is hanging inside a list the
+    // operator is still scanning.
+    <div className={styles.flowContainer}>
+      <div className={styles.flow}>
+        <Node label="Input">
+          <span className={styles.value}>{row.source || "—"}</span>
         </Node>
-      ) : (
-        <Node label="Notifications">
-          {notifications.length > 0 || actions.length > 0 ? (
-            <div className={styles.fork}>
-              {notificationBranches(notifications, actions).map((b, i) => (
-                <NotificationBranch
-                  key={`${b.name || "orphaned"}-${i}`}
-                  name={b.name}
-                  actions={b.actions}
-                />
+        <Connector />
+        <Node label="Rules">
+          {rules.length > 0 ? (
+            <span className={styles.value}>
+              {rules.map((r, i) => (
+                <Fragment key={`${r}-${i}`}>
+                  {i > 0 ? ", " : null}
+                  <Link
+                    to="/web/rules"
+                    search={{ tab: "rules", search: nameQuery(r) }}
+                    className={styles.entityLink}
+                  >
+                    {r}
+                  </Link>
+                </Fragment>
               ))}
-            </div>
+            </span>
           ) : (
             <span className={styles.none}>none</span>
           )}
         </Node>
-      )}
+        <Connector />
+        <Node label="Aggregate">
+          <span className={styles.value}>
+            {aggregateLinkable ? (
+              <Link
+                to="/web/rules"
+                search={{ tab: "aggregates", aggSearch: nameQuery(row.aggregate as string) }}
+                className={styles.entityLink}
+              >
+                {row.aggregate}
+              </Link>
+            ) : (
+              row.aggregate || "—"
+            )}
+          </span>
+          {/* hash is an extra key stamped by the aggregaterule plugin; not in the Record schema, hence the typeof guard */}
+          {typeof row.hash === "string" && row.hash ? (
+            <span className={styles.subtle}>{row.hash.slice(0, 12)}</span>
+          ) : null}
+        </Node>
+        <Connector />
+        {snoozed ? (
+          <Node label="Snooze">
+            <Link
+              to="/web/snoozes"
+              search={{ search: nameQuery(snoozed) }}
+              className={styles.chipLink}
+            >
+              <Badge variant="muted">
+                <span aria-hidden="true">⊘</span> {snoozed}
+              </Badge>
+            </Link>
+            <span className={styles.subtle}>silenced — pipeline stopped</span>
+          </Node>
+        ) : (
+          <Node label="Notifications">
+            {notifications.length > 0 || actions.length > 0 ? (
+              <div className={styles.fork}>
+                {notificationBranches(notifications, actions).map((b, i) => (
+                  <NotificationBranch
+                    key={`${b.name || "orphaned"}-${i}`}
+                    name={b.name}
+                    actions={b.actions}
+                  />
+                ))}
+              </div>
+            ) : (
+              <span className={styles.none}>none</span>
+            )}
+          </Node>
+        )}
+      </div>
     </div>
   );
 }

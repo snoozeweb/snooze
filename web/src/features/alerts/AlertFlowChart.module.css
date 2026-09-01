@@ -1,7 +1,42 @@
+/* Sizing context for the stage layout below. The chart is rendered in two
+   very differently shaped places — the detail drawer's Flow tab (a column
+   560–1200px wide) and the alerts table's inline row expander (the full table
+   width) — so it measures itself rather than taking an orientation prop. */
+.flowContainer {
+  container-type: inline-size;
+}
 .flow {
   display: flex;
   flex-direction: column;
   align-items: stretch;
+}
+
+/* Wide enough for the stages to read left-to-right, which is the direction a
+   pipeline runs and a quarter of the height. Notifications takes the slack:
+   it is the only stage that grows with the data (one branch per notification),
+   the other four are one line each. */
+@container (min-width: 880px) {
+  .flow {
+    flex-direction: row;
+    align-items: stretch;
+  }
+  .node {
+    flex: 0 1 auto;
+    min-width: 0;
+  }
+  .node:last-child {
+    flex: 1 1 auto;
+  }
+  /* On the recessed expander surface the muted hairline all but disappears —
+     the arrow of the pipeline is the whole point of the chart, so it takes the
+     full border tone here. */
+  .connector {
+    width: var(--space-4);
+    height: 2px;
+    align-self: center;
+    flex: 0 0 auto;
+    background: var(--border);
+  }
 }
 .node {
   border: 1px solid var(--border);
