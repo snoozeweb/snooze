@@ -26,7 +26,10 @@
   display: grid;
   grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr);
   gap: var(--space-3);
-  align-items: start;
+  /* Stretch (not start): with `start`, a card's height comes purely from its
+     own content, so the row's cards end at different heights and the bottom
+     edge reads as ragged/misaligned instead of a clean row. */
+  align-items: stretch;
 }
 
 /* Row 2: supporting detail — live queue state, the secondary breakdowns
@@ -35,7 +38,10 @@
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(0, 1.3fr) minmax(0, 1fr);
   gap: var(--space-3);
-  align-items: start;
+  /* Stretch (not start): with `start`, a card's height comes purely from its
+     own content, so the row's cards end at different heights and the bottom
+     edge reads as ragged/misaligned instead of a clean row. */
+  align-items: stretch;
 }
 
 .errorAction {

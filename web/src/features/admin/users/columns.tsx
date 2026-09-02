@@ -165,7 +165,16 @@ export function makeUserColumns(roleGroupIndex: Map<string, string[]>): ColumnDe
     {
       id: "comment",
       header: "Comment",
-      cell: (r) => <span style={{ color: "var(--text-muted)" }}>{r.comment ?? "—"}</span>,
+      cell: (r) => (
+        <span style={{ color: "var(--text-muted)" }} title={r.comment || undefined}>
+          {r.comment ?? "—"}
+        </span>
+      ),
+      // No explicit width meant this was the flexible last column, absorbing
+      // all remaining row width (~300px) for what's usually a short note.
+      // 120px is roughly a 60% cut; a `title` makes a truncated comment
+      // recoverable on hover.
+      width: "120px",
     },
   ];
 }

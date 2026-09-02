@@ -335,10 +335,16 @@
 }
 
 .checkboxCell {
-  width: 32px;
+  /* 18px checkbox (16px + 1px border each side) + 8px right pad + 12px left
+     pad = 38px. At 32px the checkbox itself overflowed the cell and the
+     inherited `.row td` text-overflow: ellipsis rendered as a stray ".."
+     next to every checkbox. */
+  width: 38px;
   /* Extra left pad: the checkbox is the first column when present, and the
      leading toggle column that used to buffer it from the table edge is gone. */
   padding: 0 var(--space-2) 0 var(--space-3) !important;
+  overflow: visible;
+  text-overflow: clip;
 }
 .actionsCell {
   /* 36px not 32px: the "sm" IconButton is 28px square (see

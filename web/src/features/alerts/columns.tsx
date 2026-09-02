@@ -173,7 +173,11 @@ export const alertColumns: ColumnDef<Record_>[] = [
       );
     },
     align: "right",
-    width: "64px",
+    // 64px (minus the cell's 20px of horizontal padding) only fit ~3 digits
+    // before the badge got clipped by the ancestor `.row td` overflow:hidden
+    // — a 5-digit aggregate count (×12345) was cropped. 88px covers up to 7
+    // digits with room to spare.
+    width: "88px",
     hideBelow: "lg",
     cardRole: "header",
   },
