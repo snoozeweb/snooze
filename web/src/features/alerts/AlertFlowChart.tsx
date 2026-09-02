@@ -1,5 +1,9 @@
 // AlertFlowChart — the pipeline path a single alert actually took:
-//   input → rules → aggregate → (snooze, terminal) | notifications → actions
+//   input → rules → aggregate → snooze → notifications → actions
+// The stage list is fixed: every stage renders even when it matched nothing,
+// because "which stage let this through?" is only answerable if the stages that
+// stayed quiet are visible too. A snooze hit makes the run terminal, so the
+// Notifications node then says so instead of being dropped from the chart.
 // All data comes from the record row; no fetch. Colours via Badge variants only.
 // Every entity (rule, aggregate, snooze, notification, action) deep-links to
 // its management page with the page's search filter pre-set to the clicked
@@ -211,41 +215,61 @@ export function AlertFlowChart({ row }: { row: Record_ }) {
             )}
           </span>
           {/* hash is an extra key stamped by the aggregaterule plugin; not in the Record schema, hence the typeof guard */}
+          {/* Labelled, because a bare 12-char hex string under the aggregate
+              name reads as noise. The truncation stays (the full hash is 64
+              chars and would wrap the node) — the title carries the whole
+              value for anyone who needs to match it against a query. */}
           {typeof row.hash === "string" && row.hash ? (
-            <span className={styles.subtle}>{row.hash.slice(0, 12)}</span>
+            <span className={styles.subtle} title={row.hash}>
+              <span className={styles.subtleLabel}>group key </span>
+              {row.hash.slice(0, 12)}
+            </span>
           ) : null}
         </Node>
         <Connector />
-        {snoozed ? (
-          <Node label="Snooze">
-            <Link
-              to="/web/snoozes"
-              search={{ search: nameQuery(snoozed) }}
-              className={styles.chipLink}
-            >
-              <Badge variant="muted">
-                <span aria-hidden="true">⊘</span> {snoozed}
-              </Badge>
-            </Link>
-            <span className={styles.subtle}>silenced — pipeline stopped</span>
-          </Node>
-        ) : (
-          <Node label="Notifications">
-            {notifications.length > 0 || actions.length > 0 ? (
-              <div className={styles.fork}>
-                {notificationBranches(notifications, actions).map((b, i) => (
-                  <NotificationBranch
-                    key={`${b.name || "orphaned"}-${i}`}
-                    name={b.name}
-                    actions={b.actions}
-                  />
-                ))}
-              </div>
-            ) : (
-              <span className={styles.none}>none</span>
-            )}
-          </Node>
-        )}
+        {/* The snooze stage renders whether or not it fired. An operator woken
+            at 03:00 is asking "should this have reached me?", and the silence
+            of a stage that matched nothing is an answer — it is just an answer
+            nobody can read if the stage is missing from the chart. */}
+        <Node label="Snooze">
+          {snoozed ? (
+            <>
+              <Link
+                to="/web/snoozes"
+                search={{ search: nameQuery(snoozed) }}
+                className={styles.chipLink}
+              >
+                <Badge variant="muted">
+                  <span aria-hidden="true">⊘</span> {snoozed}
+                </Badge>
+              </Link>
+              <span className={styles.subtle}>silenced — pipeline stopped</span>
+            </>
+          ) : (
+            <span className={styles.none}>No snooze matched — this one was meant to reach you</span>
+          )}
+        </Node>
+        <Connector />
+        {/* A snooze is terminal: the notification stage never ran, so it carries
+            no branches and no action links — saying "none" here would read as
+            "nothing was configured", which is a different and wrong story. */}
+        <Node label="Notifications">
+          {snoozed ? (
+            <span className={styles.none}>not reached — silenced upstream</span>
+          ) : notifications.length > 0 || actions.length > 0 ? (
+            <div className={styles.fork}>
+              {notificationBranches(notifications, actions).map((b, i) => (
+                <NotificationBranch
+                  key={`${b.name || "orphaned"}-${i}`}
+                  name={b.name}
+                  actions={b.actions}
+                />
+              ))}
+            </div>
+          ) : (
+            <span className={styles.none}>none</span>
+          )}
+        </Node>
       </div>
     </div>
   );

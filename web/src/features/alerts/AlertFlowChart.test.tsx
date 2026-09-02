@@ -114,14 +114,44 @@ describe("AlertFlowChart", () => {
   });
 
   it("is terminal at the snooze node when snoozed, and deep-links the snooze by name", () => {
-    renderChart({ ...base, snoozed: "maint-window", notifications: ["oncall"] });
+    renderChart({
+      ...base,
+      snoozed: "maint-window",
+      notifications: ["oncall"],
+      actions: [{ name: "email", notification: "oncall", status: "success" }],
+    });
     const snooze = screen.getByRole("link", { name: /maint-window/ });
     expect(snooze).toBeInTheDocument();
     expect(snooze.getAttribute("href")).toContain("/web/snoozes");
     expect(linkParams(/maint-window/).get("search")).toBe('name = "maint-window"');
-    // Pipeline stops at snooze — no notifications node, no oncall link.
-    expect(screen.queryByText("Notifications")).not.toBeInTheDocument();
+    expect(screen.getByText("silenced — pipeline stopped")).toBeInTheDocument();
+    // The stage still renders — it just says the run never got there. No
+    // notification or action links, because neither ran.
+    expect(screen.getByText("Notifications")).toBeInTheDocument();
+    expect(screen.getByText("not reached — silenced upstream")).toBeInTheDocument();
     expect(screen.queryByRole("link", { name: "oncall" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: /email/ })).not.toBeInTheDocument();
+  });
+
+  it("always renders the snooze stage, saying so when nothing matched", () => {
+    renderChart({ ...base, notifications: ["oncall"] });
+    expect(screen.getByText("Snooze")).toBeInTheDocument();
+    expect(
+      screen.getByText("No snooze matched — this one was meant to reach you"),
+    ).toBeInTheDocument();
+    // …and the pipeline carries on to the notifications it actually reached.
+    expect(screen.getByRole("link", { name: "oncall" })).toBeInTheDocument();
+    expect(screen.queryByText("not reached — silenced upstream")).not.toBeInTheDocument();
+  });
+
+  it("labels the aggregate hash as the group key and keeps the full value in the title", () => {
+    renderChart(base);
+    const label = screen.getByText("group key");
+    const hash = label.parentElement!;
+    expect(hash).toHaveTextContent("group key abcdef012345");
+    // Truncated on screen, whole in the tooltip.
+    expect(hash).not.toHaveTextContent("abcdef0123456789");
+    expect(hash).toHaveAttribute("title", "abcdef0123456789");
   });
 
   it("deep-links a notification branch head to the Notifications tab by name", () => {

@@ -11,33 +11,6 @@
   align-items: stretch;
 }
 
-/* Wide enough for the stages to read left-to-right, which is the direction a
-   pipeline runs and a quarter of the height. Notifications takes the slack:
-   it is the only stage that grows with the data (one branch per notification),
-   the other four are one line each. */
-@container (min-width: 880px) {
-  .flow {
-    flex-direction: row;
-    align-items: stretch;
-  }
-  .node {
-    flex: 0 1 auto;
-    min-width: 0;
-  }
-  .node:last-child {
-    flex: 1 1 auto;
-  }
-  /* On the recessed expander surface the muted hairline all but disappears —
-     the arrow of the pipeline is the whole point of the chart, so it takes the
-     full border tone here. */
-  .connector {
-    width: var(--space-4);
-    height: 2px;
-    align-self: center;
-    flex: 0 0 auto;
-    background: var(--border);
-  }
-}
 .node {
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
@@ -66,16 +39,80 @@
   color: var(--text-muted);
   font-family: var(--font-mono);
 }
+/* Prefix that names the mono value it precedes (e.g. "group key <hash>"). It is
+   prose, not data, so it drops the mono face and its weight to keep the value
+   the thing the eye lands on. */
+.subtleLabel {
+  font-family: var(--font-sans);
+  opacity: 0.75;
+}
 .none {
   font-size: var(--text-sm);
   color: var(--text-muted);
   font-style: italic;
 }
+
+/* Connector — stacked layout: a vertical rail from one stage to the next.
+   --border-control rather than a border tone: at 1.2:1 against the recessed
+   expander surface the old hairline was invisible in both themes, and the
+   direction of flow is the one thing this chart exists to show. The ::after
+   arrowhead makes that direction explicit rather than implied by reading
+   order. Both are decorative — the node labels carry the meaning — so the
+   element is aria-hidden in the component. */
 .connector {
+  position: relative;
   width: 2px;
   height: var(--space-4);
-  background: var(--border-muted);
+  background: var(--border-control);
   align-self: center;
+}
+.connector::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  bottom: -1px;
+  transform: translateX(-50%);
+  border-left: 4px solid transparent;
+  border-right: 4px solid transparent;
+  border-top: 5px solid var(--border-control);
+}
+
+/* Wide enough for the stages to read left-to-right, which is the direction a
+   pipeline runs and a quarter of the height. Notifications takes the slack:
+   it is the only stage that grows with the data (one branch per notification),
+   the others are one line each.
+   This block sits *after* the base rules on purpose: container queries carry no
+   extra specificity, so when it was declared first the base .connector below it
+   quietly won and the wide layout kept drawing a vertical stub. */
+@container (min-width: 880px) {
+  .flow {
+    flex-direction: row;
+    align-items: stretch;
+  }
+  .node {
+    flex: 0 1 auto;
+    min-width: 0;
+  }
+  .node:last-child {
+    flex: 1 1 auto;
+  }
+  /* Same rail, rotated: horizontal, with the arrowhead pointing right. */
+  .connector {
+    width: var(--space-4);
+    height: 2px;
+    flex: 0 0 auto;
+  }
+  .connector::after {
+    left: auto;
+    right: -1px;
+    top: 50%;
+    bottom: auto;
+    transform: translateY(-50%);
+    border: none;
+    border-top: 4px solid transparent;
+    border-bottom: 4px solid transparent;
+    border-left: 5px solid var(--border-control);
+  }
 }
 .fork {
   display: flex;
