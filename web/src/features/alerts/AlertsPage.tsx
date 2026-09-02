@@ -25,6 +25,7 @@ import { useConsoleConfig } from "@/features/config/api";
 import { useStats } from "@/features/dashboard/api";
 import { presetToRange } from "@/features/dashboard/time-range";
 import { usePublishPaletteActions, type PaletteAction } from "@/shared/hooks/usePaletteActions";
+import { useAnnounce } from "@/shared/a11y/LiveAnnouncer";
 import { Environments } from "@/features/admin/environments/api";
 import type { IconName } from "@/shared/icons/icon-names";
 import {
@@ -502,6 +503,55 @@ export function AlertsPage() {
     }
     prevTotalRef.current = total;
   }, [list.data, config?.audio, auto.enabled, refreshPaused]);
+
+  // Screen-reader parity for the same poll tick. A sighted operator watches the
+  // toolbar count change under them; without this, everyone else gets a table
+  // that silently rewrites itself. Deliberately a separate baseline from the
+  // audio cue's: this one resets whenever the *question* changes (tab, env,
+  // search, sort, page) so a filter the operator just applied is not reported
+  // back to them as if the server had pushed it — they already got feedback
+  // from the control they touched.
+  const announce = useAnnounce();
+  const queryIdentity = `${q ?? ""}|${page}|${orderby}|${asc ? "asc" : "desc"}`;
+  const announceKeyRef = useRef<string | null>(null);
+  const announceTotalRef = useRef<number>(-1);
+  useEffect(() => {
+    if (!list.data) return;
+    // The resource keeps the previous page's data on screen while a new query
+    // key loads (placeholderData: keepPreviousData). That row of numbers
+    // belongs to the *old* question, so pairing it with the new queryIdentity
+    // would rebaseline against a stale total and then report the difference as
+    // if the server had pushed it.
+    if (list.isPlaceholderData) return;
+    const total = list.data.meta.total;
+    const sameQuestion = announceKeyRef.current === queryIdentity;
+    const baseline = announceTotalRef.current;
+    announceKeyRef.current = queryIdentity;
+    announceTotalRef.current = total;
+    // First data for this query — nothing to compare against, and a first load
+    // is something the operator asked for anyway.
+    if (!sameQuestion || baseline < 0) return;
+    // Same guards as the audio cue: silent when the operator turned polling off
+    // or a detail drawer froze it.
+    if (!auto.enabled || refreshPaused) return;
+    if (total === baseline) return;
+    const delta = Math.abs(total - baseline);
+    const direction = total > baseline ? "new" : "fewer";
+    announce(`Alerts refreshed. ${alertCount(total)}, ${delta} ${direction}.`);
+  }, [list.data, list.isPlaceholderData, queryIdentity, auto.enabled, refreshPaused, announce]);
+
+  // The Switch announces its own checked state, which says nothing about what
+  // it controls. Spell out the consequence for the list instead.
+  // Destructured because useAutoRefresh returns a fresh object each render;
+  // the setter itself is stable, so this keeps the handler identity stable too.
+  const { setEnabled: setAutoRefresh } = auto;
+  const handleAutoToggle = useCallback(
+    (next: boolean) => {
+      setAutoRefresh(next);
+      announce(next ? "Auto-refresh on" : "Auto-refresh off");
+    },
+    [setAutoRefresh, announce],
+  );
 
   // A failed fetch leaves the table showing the last good page, so nothing
   // moves and the refresh button looks broken. Say so instead: a toast on the
@@ -1616,7 +1666,7 @@ export function AlertsPage() {
                   <span aria-hidden="true">Auto refresh</span>
                   <Switch
                     checked={auto.enabled}
-                    onCheckedChange={auto.setEnabled}
+                    onCheckedChange={handleAutoToggle}
                     aria-label="Auto refresh"
                   />
                 </div>

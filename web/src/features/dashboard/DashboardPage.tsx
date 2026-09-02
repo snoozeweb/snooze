@@ -11,6 +11,9 @@ import { seriesColor } from "@/shared/chart/theme";
 import { severityColor } from "@/lib/format/severity-color";
 import { Environments } from "@/features/admin/environments/api";
 import { useActiveAlertCount } from "@/features/alerts/api";
+import { useAnnounce } from "@/shared/a11y/LiveAnnouncer";
+import { stateLabel } from "@/features/alerts/format";
+import type { AlertState } from "@/features/alerts/types";
 import { useStats } from "./api";
 import { TimeRangePicker } from "./TimeRangePicker";
 import { presetToRange, rangeLabel, type TimeRange } from "./time-range";
@@ -112,6 +115,22 @@ export function DashboardPage() {
   // guarantees the tile, the badge and the table can never print three
   // different totals — `by_state.open` counts snoozed and shelved rows too.
   const activeCount = useActiveAlertCount(true);
+
+  // This page repaints itself every 30s with no visible cue. "Needs attention"
+  // is the one number an operator would want to hear change — it is the queue
+  // they work — so announce only that, and only when a background poll moved
+  // it. The -1 sentinel keeps the first load silent (arriving at a page is not
+  // a change).
+  const announce = useAnnounce();
+  const prevAttentionRef = useRef<number>(-1);
+  useEffect(() => {
+    if (!activeCount.data) return;
+    const now = activeCount.data.meta.total;
+    const prev = prevAttentionRef.current;
+    prevAttentionRef.current = now;
+    if (prev < 0 || prev === now) return;
+    announce(`Dashboard refreshed. Needs attention: ${now}, was ${prev}.`);
+  }, [activeCount.data, announce]);
 
   const data = stats.data?.data;
   const counters = stats.data?.meta.counters;

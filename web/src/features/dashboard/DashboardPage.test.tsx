@@ -1,4 +1,4 @@
-import { render, screen, waitFor, within } from "@testing-library/react";
+import { act, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import { describe, expect, it } from "vitest";
@@ -14,6 +14,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { mswServer } from "@/tests/msw/server";
 import { TooltipProvider } from "@/shared/ui/Tooltip";
 import { ToastProvider, Toaster } from "@/shared/ui/Toast";
+import { LiveAnnouncerProvider } from "@/shared/a11y/LiveAnnouncer";
 import { DashboardPage } from "./DashboardPage";
 import { alertsSearchForBucket, alertsSearchForRange } from "./bucket-utils";
 
@@ -62,7 +63,9 @@ const FULL_STATS_RESPONSE = {
       by_notification: { slack: 5 },
     },
     snapshot: {
-      by_state: { open: 5, ack: 3, closed: 7 },
+      // by_state keys are the raw record `state` wire values (see
+      // internal/pluginimpl/stats/plugin.go) — "close", not "closed".
+      by_state: { open: 5, ack: 3, close: 7 },
       total_hits: 15,
       open: 5,
       ack: 3,
@@ -157,14 +160,18 @@ function setup() {
     <QueryClientProvider client={client}>
       <TooltipProvider>
         <ToastProvider>
-          {/* router is locally constructed; cast needed for the registered-router type mismatch */}
-          <RouterProvider router={router as Parameters<typeof RouterProvider>[0]["router"]} />
-          <Toaster />
+          {/* Mirrors the real tree (router.tsx mounts this at the root) so the
+              page's refresh announcements land in a live region here too. */}
+          <LiveAnnouncerProvider>
+            {/* router is locally constructed; cast needed for the registered-router type mismatch */}
+            <RouterProvider router={router as Parameters<typeof RouterProvider>[0]["router"]} />
+            <Toaster />
+          </LiveAnnouncerProvider>
         </ToastProvider>
       </TooltipProvider>
     </QueryClientProvider>,
   );
-  return { ...utils, router };
+  return { ...utils, router, client };
 }
 
 // Two environments so the "By environment" drill-down can resolve name→uid.
@@ -410,7 +417,10 @@ describe("DashboardPage — loading + drill-downs + deltas", () => {
     const { router } = setup();
     // Scope to the "By state" card so we don't hit a KPI tile.
     const stateCard = (await screen.findByText("By state")).closest("section")!;
-    const ackBtn = within(stateCard).getAllByRole("button", { name: /ack/ })[0]!;
+    // The legend shows the canonical noun ("Acknowledged"), but the segment
+    // still drills down on the raw wire key ("ack") — label and display text
+    // are decoupled via DistributionDatum.displayLabel.
+    const ackBtn = within(stateCard).getAllByRole("button", { name: /Acknowledged/ })[0]!;
     await user.click(ackBtn);
     await waitFor(() => expect(router.state.location.pathname).toBe("/web/alerts"));
     // The "All" tab applies no lifecycle preset, so the DSL filter alone
@@ -437,7 +447,11 @@ describe("DashboardPage — loading + drill-downs + deltas", () => {
     mockFullDashboard();
     const user = userEvent.setup();
     const { router } = setup();
-    await user.click(await screen.findByText("Acknowledged"));
+    // Scope to the "Right now" tile cluster — the "By state" panel's legend
+    // now also reads "Acknowledged" (the canonical noun, not the raw "ack"
+    // key), so an unscoped query is ambiguous between the tile and the row.
+    const live = await screen.findByRole("region", { name: "Right now" });
+    await user.click(within(live).getByText("Acknowledged"));
     await waitFor(() => expect(router.state.location.pathname).toBe("/web/alerts"));
     expect((router.state.location.search as { tab?: string }).tab).toBe("ack");
   });
@@ -504,5 +518,53 @@ describe("alertsSearchForRange", () => {
     const x = "2026-05-14T00:00:00Z";
     const bucket = 3600;
     expect(alertsSearchForRange(x, x, bucket)).toBe(alertsSearchForBucket(x, bucket));
+  });
+});
+
+// ── Screen-reader parity for the 30s poll ─────────────────────────────────
+
+describe("DashboardPage — refresh announcements", () => {
+  it("announces only when a background refresh moved Needs attention", async () => {
+    let total = 2;
+    mswServer.use(
+      http.get("/api/v1/stats", () => HttpResponse.json(FULL_STATS_RESPONSE)),
+      http.get("/api/v1/comment", () => HttpResponse.json(COMMENTS_RESPONSE)),
+      http.get("/api/v1/record", () =>
+        HttpResponse.json({ data: [], meta: { count: 0, limit: 1, offset: 0, total } }),
+      ),
+    );
+    const { client } = setup();
+    const live = await screen.findByRole("region", { name: "Right now" });
+    expect(within(live).getByText("2")).toBeInTheDocument();
+    // Arriving at the page is not a change: first load stays silent.
+    expect(screen.getByTestId("live-polite").textContent).toBe("");
+
+    total = 4;
+    await act(async () => {
+      await client.refetchQueries();
+    });
+    await waitFor(() =>
+      expect(screen.getByTestId("live-polite")).toHaveTextContent(
+        "Dashboard refreshed. Needs attention: 4, was 2.",
+      ),
+    );
+  });
+
+  it("stays silent when a refresh leaves Needs attention where it was", async () => {
+    mswServer.use(
+      http.get("/api/v1/stats", () => HttpResponse.json(FULL_STATS_RESPONSE)),
+      http.get("/api/v1/comment", () => HttpResponse.json(COMMENTS_RESPONSE)),
+      http.get("/api/v1/record", () =>
+        HttpResponse.json({ data: [], meta: { count: 0, limit: 1, offset: 0, total: 2 } }),
+      ),
+    );
+    const { client } = setup();
+    await screen.findByRole("region", { name: "Right now" });
+    await act(async () => {
+      await client.refetchQueries();
+    });
+    // Long enough to have caught an announcement had one been queued.
+    await act(() => new Promise((r) => setTimeout(r, 500)));
+    expect(screen.getByTestId("live-polite").textContent).toBe("");
   });
 });

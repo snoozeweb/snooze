@@ -9,6 +9,7 @@ import {
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { TooltipProvider } from "@/shared/ui/Tooltip";
 import { ToastProvider, Toaster } from "@/shared/ui/Toast";
+import { LiveAnnouncerProvider } from "@/shared/a11y/LiveAnnouncer";
 import { Spinner } from "@/shared/ui/Spinner";
 import { AppShell } from "./layout/AppShell";
 import { firstLandingPath } from "./layout/nav-list";
@@ -51,8 +52,13 @@ const rootRoute = createRootRoute({
     <QueryClientProvider client={queryClient}>
       <TooltipProvider>
         <ToastProvider>
-          <Outlet />
-          <Toaster />
+          {/* One pair of live regions for the whole app, mounted above the
+              Outlet so every route — and the login screen — can announce
+              through the same hook without ever duplicating a region. */}
+          <LiveAnnouncerProvider>
+            <Outlet />
+            <Toaster />
+          </LiveAnnouncerProvider>
         </ToastProvider>
       </TooltipProvider>
     </QueryClientProvider>

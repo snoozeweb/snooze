@@ -1,8 +1,10 @@
+import { useEffect, useRef } from "react";
 import { Badge } from "@/shared/ui/Badge";
 import { Card } from "@/shared/ui/Card";
 import { Code } from "@/shared/ui/Code";
 import { CollapsibleSection } from "@/shared/ui/CollapsibleSection";
 import { Spinner } from "@/shared/ui/Spinner";
+import { useAnnounce } from "@/shared/a11y/LiveAnnouncer";
 import { useClusterStatus } from "./api";
 import type { ClusterMember } from "./types";
 import { clusterVerdict } from "./verdict";
@@ -24,6 +26,23 @@ function updatedAgo(updatedAt: number): string {
 export function StatusPage() {
   const q = useClusterStatus();
   const data = q.data;
+  const verdict = data ? clusterVerdict(data) : null;
+
+  // The banner below is a role="status" region, but its text only changes on
+  // the *count* of issues; a cluster that goes from fine to broken between two
+  // 15s polls is otherwise silent. Announce the flip and nothing else — one
+  // sentence when it breaks (assertive: this interrupts, it is why the page
+  // exists) and one when it recovers (polite: good news can wait its turn).
+  const announce = useAnnounce();
+  const prevHealthyRef = useRef<boolean | null>(null);
+  useEffect(() => {
+    if (!verdict) return;
+    const healthy = verdict.tone === "ok";
+    const prev = prevHealthyRef.current;
+    prevHealthyRef.current = healthy;
+    if (prev === null || prev === healthy) return;
+    announce(`Cluster status: ${verdict.label}.`, healthy ? undefined : { assertive: true });
+  }, [verdict, announce]);
 
   return (
     <div className={styles.page}>
@@ -40,18 +59,15 @@ export function StatusPage() {
         </Card>
       ) : (
         <div className={styles.grid}>
-          {(() => {
-            const verdict = clusterVerdict(data);
-            return (
-              <div
-                className={`${styles.verdict} ${styles[verdict.tone]!} ${styles.full!}`}
-                role="status"
-              >
-                <span className={styles.verdictLabel}>{verdict.label}</span>
-                <span className={styles.updated}>{updatedAgo(q.dataUpdatedAt)}</span>
-              </div>
-            );
-          })()}
+          {verdict ? (
+            <div
+              className={`${styles.verdict} ${styles[verdict.tone]!} ${styles.full!}`}
+              role="status"
+            >
+              <span className={styles.verdictLabel}>{verdict.label}</span>
+              <span className={styles.updated}>{updatedAgo(q.dataUpdatedAt)}</span>
+            </div>
+          ) : null}
           <Card padded className={styles.full!}>
             <h2 className={styles.cardTitle}>Cluster</h2>
             {data.cluster?.members && data.cluster.members.length > 0 ? (
