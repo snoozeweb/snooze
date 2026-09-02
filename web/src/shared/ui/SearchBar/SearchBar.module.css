@@ -21,7 +21,7 @@
   width: 100%;
   background: var(--bg-surface);
   color: var(--text-strong);
-  border: 1px solid var(--border);
+  border: 1px solid var(--border-control);
   border-radius: var(--radius-md);
   transition: border-color var(--dur-fast) var(--ease-out);
   font-size: var(--text-sm);

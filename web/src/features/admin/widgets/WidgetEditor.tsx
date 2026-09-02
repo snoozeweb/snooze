@@ -44,7 +44,7 @@ const selectStyle: React.CSSProperties = {
   fontSize: "var(--text-sm)",
   background: "var(--bg-surface)",
   color: "var(--text-strong)",
-  border: "1px solid var(--border)",
+  border: "1px solid var(--border-control)",
   borderRadius: "var(--radius-md)",
   padding: "0 var(--space-2)",
   width: "100%",

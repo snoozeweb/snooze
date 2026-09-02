@@ -41,6 +41,13 @@
   /* Borders */
   --border: #2a323c;
   --border-muted: #1b2128;
+  /* Boundary colour for interactive form controls (inputs, textareas,
+     selects, comboboxes, checkboxes, radios, switch tracks). Unlike
+     --border, this must hold >=3:1 against BOTH --bg-surface (3.25:1) and
+     --bg-elevated (3.04:1) so unfocused controls stay perceivable per
+     WCAG 1.4.11. Do not use it for cards, dividers, table rules, popovers,
+     menus or tooltips — those keep --border / --border-muted. */
+  --border-control: #5b6877;
 
   /* Text */
   --text-strong: #eef2f6;

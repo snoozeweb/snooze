@@ -6,7 +6,7 @@
   padding: var(--space-1) var(--space-2);
   min-height: 36px;
   background: var(--bg-surface);
-  border: 1px solid var(--border);
+  border: 1px solid var(--border-control);
   border-radius: var(--radius-md);
   cursor: pointer;
   text-align: left;

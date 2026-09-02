@@ -34,6 +34,13 @@
   /* Borders — warm-neutral so hairlines don't read blue on warm paper. */
   --border: #d8d0c2;
   --border-muted: #ebe5da;
+  /* Boundary colour for interactive form controls (inputs, textareas,
+     selects, comboboxes, checkboxes, radios, switch tracks). Unlike
+     --border, this must hold >=3:1 against BOTH --bg-surface (~3.5:1) and
+     --bg-elevated (~3.2:1) so unfocused controls stay perceivable per
+     WCAG 1.4.11. Do not use it for cards, dividers, table rules, popovers,
+     menus or tooltips — those keep --border / --border-muted. */
+  --border-control: #8f8370;
 
   /* Text — warm near-black, matching the canvas rather than a cool slate. */
   --text-strong: #1b1814;

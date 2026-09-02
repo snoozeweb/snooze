@@ -6,7 +6,7 @@
   width: 16px;
   height: 16px;
   background: var(--bg-surface);
-  border: 1px solid var(--border);
+  border: 1px solid var(--border-control);
   border-radius: 50%;
   display: inline-flex;
   align-items: center;
