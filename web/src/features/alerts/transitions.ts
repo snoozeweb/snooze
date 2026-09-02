@@ -72,7 +72,7 @@ const SKIP_LABEL: Readonly<Record<string, string>> = {
   "": "still open",
   open: "still open",
   ack: "already acknowledged",
-  esc: "escalated",
+  esc: "already re-escalated",
   close: "already closed",
   shelved: "shelved",
 };

@@ -47,6 +47,21 @@ describe("DistributionBar", () => {
     expect(onSegmentClick).toHaveBeenCalledWith("warning");
   });
 
+  it("shows displayLabel in the legend/title while keeping label as the drill-down key", async () => {
+    const onSegmentClick = vi.fn();
+    const user = userEvent.setup();
+    render(
+      <DistributionBar
+        data={[{ label: "ack", displayLabel: "Acknowledged", value: 4, color: "#6639ba" }]}
+        onSegmentClick={onSegmentClick}
+      />,
+    );
+    expect(screen.getByText("Acknowledged")).toBeInTheDocument();
+    expect(screen.queryByText("ack")).not.toBeInTheDocument();
+    await user.click(screen.getByText("Acknowledged"));
+    expect(onSegmentClick).toHaveBeenCalledWith("ack");
+  });
+
   it("sizes segments proportionally to their value", () => {
     const { container } = render(<DistributionBar data={data} />);
     const segments = container.querySelectorAll('[class*="segment"]');

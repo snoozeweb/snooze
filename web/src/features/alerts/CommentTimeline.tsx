@@ -1,7 +1,7 @@
 // CommentTimeline — renders the activity history of a single record:
 //   - Inline composer for users with the can_comment permission.
 //   - Per-type colored badge matching the legacy Vue palette:
-//       comment → info (blue)   ack     → ok       (green)
+//       comment → info (blue)   ack     → ack      (violet)
 //       esc     → warning (yel) close   → closed   (muted purple)
 //       open    → neutral       shelve  → muted    unshelve → neutral
 //   - Edit + delete affordances on the user's own comments, or for any
@@ -177,7 +177,7 @@ export function CommentTimeline({
             className={styles.editArea}
             aria-label="New comment"
             rows={2}
-            placeholder="Write a comment, ack, or escalation note…"
+            placeholder="Write a comment, acknowledgement, or re-escalation note…"
             value={draft}
             onChange={(e) => setDraft(e.target.value)}
           />

@@ -13,8 +13,19 @@ import { useMemo } from "react";
 import styles from "./DistributionBar.module.css";
 
 export type DistributionDatum = {
-  /** Display + drill-down key. */
+  /**
+   * Drill-down key passed to `onSegmentClick` (and used to build DSL/filter
+   * queries by callers) — not necessarily human-readable, e.g. a raw
+   * `state` wire value like "ack" or "esc".
+   */
   label: string;
+  /**
+   * Human-facing text for the segment title, tooltip, and legend row.
+   * Defaults to `label` when omitted — set this whenever `label` is a raw
+   * key rather than prose (e.g. map a lifecycle state through the
+   * canonical noun so the legend reads "Acknowledged", not "ack").
+   */
+  displayLabel?: string;
   value: number;
   /** Resolved CSS colour for this segment + its legend dot. */
   color: string;
@@ -48,7 +59,8 @@ export function DistributionBar({ data, onSegmentClick, ariaLabel }: Distributio
       >
         {items.map((d) => {
           const width = `${pct(d.value, total)}%`;
-          const title = `${d.label}: ${fmt(d.value)} (${pct(d.value, total).toFixed(1)}%)`;
+          const text = d.displayLabel ?? d.label;
+          const title = `${text}: ${fmt(d.value)} (${pct(d.value, total).toFixed(1)}%)`;
           return onSegmentClick ? (
             <button
               key={d.label}
@@ -76,7 +88,7 @@ export function DistributionBar({ data, onSegmentClick, ariaLabel }: Distributio
           const rowContent = (
             <>
               <span className={styles.dot} style={{ background: d.color }} aria-hidden="true" />
-              <span className={styles.label}>{d.label}</span>
+              <span className={styles.label}>{d.displayLabel ?? d.label}</span>
               <span className={styles.count}>{fmt(d.value)}</span>
               <span className={styles.percent}>{percent}</span>
             </>

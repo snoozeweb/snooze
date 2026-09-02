@@ -99,13 +99,20 @@ describe("AlertRowDetail", () => {
       date_epoch: 1,
     };
 
-    // A first-delivery alert carries no extra chrome.
+    // A first-delivery alert carries no extra chrome — just the state chip,
+    // which for state=esc already reads "Re-escalated" (the canonical noun
+    // shared with the tab/tile/legend).
     const { unmount } = renderDetail(base);
-    expect(screen.queryByText(/Re-escalated/)).toBeNull();
+    expect(screen.getAllByText(/Re-escalated/)).toHaveLength(1);
     unmount();
 
+    // Once escalation_count is set, a second badge appears with the count
+    // and reason. It deliberately shares the "Re-escalated" headline with
+    // the state chip (one word per lifecycle fact) — distinguish by the
+    // full "x3 (timeout)" text and by there now being two matches.
     renderDetail({ ...base, escalation_count: 3, escalation_reason: "timeout" });
     expect(screen.getByText("Re-escalated x3 (timeout)")).toBeInTheDocument();
+    expect(screen.getAllByText(/Re-escalated/)).toHaveLength(2);
   });
 
   it("attributes a manual escalation to the operator who made it", () => {

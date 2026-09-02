@@ -56,7 +56,7 @@ it("keeps the windowed counts out of the live cluster — they answer different 
 
 it("gives each tile a semantic icon and an accent color", () => {
   const { container } = renderTiles();
-   // Icons, in tile order: Needs attention, Acknowledged | Throttled, Snoozed, Ingested.
+  // Icons, in tile order: Needs attention, Acknowledged | Throttled, Snoozed, Ingested.
   const hrefs = Array.from(container.querySelectorAll("use")).map((u) => u.getAttribute("href"));
   expect(hrefs).toEqual([
     "/web/icons.svg#icon-bell",
@@ -66,6 +66,12 @@ it("gives each tile a semantic icon and an accent color", () => {
     "/web/icons.svg#icon-layers",
   ]);
   expect(container.querySelectorAll('[style*="--tile-accent"]')).toHaveLength(5);
+});
+
+it("colors the Acknowledged tile with the violet ack token, not the OK-green severity token", () => {
+  renderTiles();
+  const ackTile = screen.getByText("Acknowledged").closest("[style]");
+  expect(ackTile?.getAttribute("style")).toContain("--tile-accent: var(--state-ack)");
 });
 
 describe("clickable tiles", () => {

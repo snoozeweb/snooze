@@ -197,4 +197,8 @@ describe("describeBulkSkips", () => {
   it("falls back to the raw state for an unrecognised one", () => {
     expect(describeBulkSkips([makeRow("weird")], "ack")).toBe('in state "weird"');
   });
+
+  it("names an already re-escalated row blocking a bulk Re-escalate — canonical noun, not bare 'escalated'", () => {
+    expect(describeBulkSkips([makeRow("esc")], "esc")).toBe("already re-escalated");
+  });
 });

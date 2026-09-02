@@ -2,6 +2,7 @@ import type { CSSProperties } from "react";
 import { Icon } from "@/shared/icons/Icon";
 import type { IconName } from "@/shared/icons/icon-names";
 import type { TabId } from "@/features/alerts/tabs";
+import { STATE_NOUN } from "@/features/alerts/lifecycle";
 import type { StatsSnapshot, StatsTotals } from "./types";
 import styles from "./StatTiles.module.css";
 
@@ -80,10 +81,12 @@ export function StatTiles({
     },
     {
       id: "ack",
-      label: "Acknowledged",
+      label: STATE_NOUN.ack,
       value: snapshot.ack,
       icon: "check",
-      accent: "var(--severity-ok)",
+      // Violet, matching the state chip / timeline / feed — not the OK-green
+      // severity token. Acknowledged isn't "fine", it's "someone has it".
+      accent: "var(--state-ack)",
       tab: "ack",
     },
   ];

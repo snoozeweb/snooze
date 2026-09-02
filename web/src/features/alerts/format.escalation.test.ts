@@ -2,9 +2,9 @@ import { describe, expect, it } from "vitest";
 import { escalationLabel } from "./format";
 
 describe("escalationLabel", () => {
-  // "Re-escalated", not "Escalated": the state badge beside it already reads
-  // "Escalated" for state=esc, so the two must not read as the same fact.
-  // Null rather than "" so a first-delivery alert renders no badge at all.
+  // Shares the "Re-escalated" noun with the state chip (state=esc) by
+  // design — one word per lifecycle fact. Null rather than "" so a
+  // first-delivery alert renders no badge at all.
   it("returns null when the alert has never been re-escalated", () => {
     expect(escalationLabel(undefined)).toBeNull();
     expect(escalationLabel(0)).toBeNull();

@@ -1,6 +1,13 @@
 import type { BadgeVariant } from "@/shared/ui/Badge";
 import { formatRelativeTime, trimDate } from "@/lib/format/time";
+import { STATE_NOUN } from "./lifecycle";
 import type { AlertSeverity, AlertState } from "./types";
+
+// Re-exported so existing call sites can keep importing the state-noun map
+// from `format.ts` alongside `stateLabel`/`stateBadgeVariant` — `tabs.ts`
+// imports directly from `./lifecycle` instead, to avoid a format.ts <->
+// tabs.ts import cycle.
+export { STATE_NOUN };
 
 // formatRelativeTime + trimDate moved to `@/lib/format/time` so shared/ui
 // primitives can use them without importing up into this feature folder.
@@ -71,33 +78,28 @@ export function severityDisplayLabel(severity: string): string {
   return severity.charAt(0).toUpperCase() + severity.slice(1);
 }
 
-const STATE_LABEL: Record<AlertState, string> = {
-  // Freshly-ingested records carry an empty state until a comment moves them
-  // to ack/close/esc. Display them as Open so the column reads cleanly.
-  "": "Open",
-  open: "Open",
-  ack: "Ack",
-  esc: "Escalated",
-  close: "Closed",
-  shelved: "Shelved",
-};
+// Canonical noun per state — same word on the chip, tab, tile, and legend.
+// Freshly-ingested records carry an empty state until a comment moves them
+// to ack/close/esc; display them as Open so the column reads cleanly.
+// Sourced from `./lifecycle` (STATE_NOUN) so every surface stays in sync.
 
 // Colour palette tracks lifecycle, not urgency — the Sev column already
 // signals urgency. open/empty → neutral (the default, unattended),
-// ack → info (someone owns it), esc → warning (escalated, attention),
-// close → closed (a muted purple, resolved), shelved → muted (deferred).
+// ack → ack (violet: a human owns it, matches the timeline/feed hue),
+// esc → warning (escalated, attention), close → closed (a muted purple,
+// resolved), shelved → muted (deferred).
 // Mirrors the legacy Vue palette in web/src/utils/api.js on origin/master.
 const STATE_VARIANT: Record<AlertState, BadgeVariant> = {
   "": "neutral",
   open: "neutral",
-  ack: "info",
+  ack: "ack",
   esc: "warning",
   close: "closed",
   shelved: "muted",
 };
 
 export function stateLabel(state: AlertState): string {
-  return STATE_LABEL[state] ?? state;
+  return STATE_NOUN[state] ?? state;
 }
 
 export function stateBadgeVariant(state: AlertState): BadgeVariant {
@@ -187,9 +189,11 @@ export function humanDuration(totalSec: number): string {
  * "Re-escalated x3 (timeout)", or null when the alert has never been
  * re-escalated.
  *
- * "Re-escalated", not "Escalated": the state badge next to it already says
- * `Escalated` for state=esc, so the two must not read as the same fact. This
- * one answers how many times and why.
+ * Deliberately shares the "Re-escalated" noun with the state chip (state=esc
+ * — see STATE_NOUN in `./lifecycle`): the canonical vocabulary uses one word
+ * per lifecycle fact everywhere, so the two badges are allowed to agree on
+ * the headline. This one adds the qualifier the chip has no room for: how
+ * many times and why.
  *
  * Null rather than an empty string so a caller renders nothing at all for the
  * common case — a first-delivery alert should carry no extra chrome.

@@ -205,7 +205,11 @@ export const alertColumns: ColumnDef<Record_>[] = [
       );
     },
     sortable: true,
-    width: "112px",
+    // 112px fit the old "Escalated"/"Ack" labels on one line; the canonical
+    // "Acknowledged"/"Re-escalated" nouns are longer and wrapped to two
+    // lines at that width even though .badgeText tolerates the wrap
+    // (nothing clips) — widened just enough to keep them on one line.
+    width: "136px",
     cardRole: "header",
   },
   {

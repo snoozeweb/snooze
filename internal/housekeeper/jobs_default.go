@@ -200,7 +200,7 @@ func revertExpiredAcks(tctx context.Context, d db.Driver, now int64, escalateAft
 		if err := d.UpdateOne(tctx, recordCollection, uid, patch, true); err != nil {
 			return fmt.Errorf("housekeeper: escalate_timeout: revert ack %s: %w", uid, err)
 		}
-		writeLifecycleComment(tctx, d, uid, "open", "Ack expired — reverted to open", now)
+		writeLifecycleComment(tctx, d, uid, "open", "Acknowledgement expired — reverted to open", now)
 	}
 	return nil
 }

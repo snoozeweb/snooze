@@ -77,11 +77,20 @@ describe("stateLabel + stateBadgeVariant", () => {
   });
 
   it("ack/esc/close/shelved map to appropriate variants", () => {
-    expect(stateBadgeVariant("ack")).toBe("info");
+    // ack → the violet "ack" variant, matching the timeline/feed hue (a
+    // human owns it) instead of the OK-green severity token.
+    expect(stateBadgeVariant("ack")).toBe("ack");
     expect(stateBadgeVariant("esc")).toBe("warning");
     // close → the muted-purple "closed" variant; shelved stays muted gray.
     expect(stateBadgeVariant("close")).toBe("closed");
     expect(stateBadgeVariant("shelved")).toBe("muted");
+  });
+
+  it("uses the canonical lifecycle nouns — same word as the tab/tile/legend", () => {
+    expect(stateLabel("ack")).toBe("Acknowledged");
+    expect(stateLabel("esc")).toBe("Re-escalated");
+    expect(stateLabel("close")).toBe("Closed");
+    expect(stateLabel("shelved")).toBe("Shelved");
   });
 });
 

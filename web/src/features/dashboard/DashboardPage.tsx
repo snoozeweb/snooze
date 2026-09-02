@@ -1,4 +1,4 @@
-import { useCallback, useMemo } from "react";
+import { useCallback, useEffect, useMemo, useRef } from "react";
 import { useNavigate, useSearch } from "@tanstack/react-router";
 import { Button } from "@/shared/ui/Button";
 import { Card } from "@/shared/ui/Card";
@@ -172,6 +172,10 @@ export function DashboardPage() {
     const by = data?.snapshot.by_state ?? {};
     return Object.entries(by).map(([label, value], i) => ({
       label,
+      // Legend/title text uses the same noun as the state chip/tab/tile —
+      // `label` stays the raw wire key so handleStateClick's `state = ${label}`
+      // DSL filter keeps working.
+      displayLabel: stateLabel(label as AlertState),
       value,
       color: seriesColor(label, i),
     }));
