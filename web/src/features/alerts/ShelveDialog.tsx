@@ -13,6 +13,7 @@ import { Code } from "@/shared/ui/Code";
 import { InlineError } from "@/shared/ui/InlineError";
 import type { ErrorCopy } from "@/lib/api/errorMessage";
 import type { Record_ } from "./types";
+import { SHELVE_VS_SNOOZE_HINT } from "./silencingGuide";
 import styles from "./ShelveDialog.module.css";
 
 export type ShelveDialogProps = {
@@ -76,11 +77,23 @@ export function ShelveDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent>
         <DialogTitle>{title}</DialogTitle>
+        {/* Shelve and Snooze are the two verbs operators mix up: one parks a
+            single row, the other stops the whole class of alert from paging.
+            Say which is which here, where the wrong choice is one click away.
+            See silencingGuide.ts for the server behaviour behind the claim. */}
+        <p className={styles.hint}>{SHELVE_VS_SNOOZE_HINT}</p>
         <DialogBody>
           <form className={styles.body} onSubmit={handleSubmit} id="shelve-form">
+            {/* "Silenced" was a lie: shelving does not stop notifications —
+                notification.Process skips only ack and close
+                (internal/pluginimpl/notification/plugin.go:293-296), so a
+                shelved alert that recurs still pages. What it actually does is
+                park the row under the Shelved tab until the chosen window
+                expires. The Snooze cross-link is one line above. */}
             <DialogDescription>
-              The alert will be silenced until the duration expires, then automatically returned to
-              open.
+              {records.length === 1 ? "The alert moves" : "The alerts move"} to the Shelved tab
+              until the duration expires, then {records.length === 1 ? "returns" : "return"} to Open
+              on {records.length === 1 ? "its" : "their"} own.
             </DialogDescription>
             {records.length <= 8 ? (
               <div className={styles.subjects}>

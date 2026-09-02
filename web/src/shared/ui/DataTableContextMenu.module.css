@@ -43,3 +43,34 @@
   width: 16px;
   height: 16px;
 }
+
+/* Label + optional description stack — mirrors Menu.module.css so the kebab
+   and the right-click menu render the same item at the same rhythm. */
+.itemText {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+}
+.withDescription {
+  align-items: flex-start;
+  padding-top: var(--space-2);
+  padding-bottom: var(--space-2);
+}
+.withDescription > svg,
+.withDescription > .iconSlot {
+  margin-top: 2px;
+  flex-shrink: 0;
+}
+.itemDescription {
+  color: var(--text-muted);
+  font-size: var(--text-xs);
+  line-height: 1.35;
+  max-width: 30ch;
+}
+/* Supporting copy stays muted under highlight and under danger — otherwise the
+   two-line item reads as one solid block of accent colour. */
+.item.focused .itemDescription,
+.danger .itemDescription {
+  color: var(--text-muted);
+}

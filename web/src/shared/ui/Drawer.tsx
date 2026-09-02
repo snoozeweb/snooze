@@ -57,7 +57,15 @@ export function DrawerTitle({
       <RD.Title className={styles.title}>{children}</RD.Title>
       {toolbar !== undefined ? <span className={styles.toolbar}>{toolbar}</span> : null}
       <RD.Close asChild>
-        <button type="button" className={styles.closeBtn} aria-label="Close" onClick={onClose}>
+        {/* "Close panel", not "Close": on the alerts drawer this ✕ sits beside
+            a "Close alert" button, and two controls both named "Close" is the
+            kind of ambiguity that gets an alert closed by accident. */}
+        <button
+          type="button"
+          className={styles.closeBtn}
+          aria-label="Close panel"
+          onClick={onClose}
+        >
           <Icon name="x" size={16} />
         </button>
       </RD.Close>

@@ -336,6 +336,75 @@ func TestAfterCreate_ShelveStampsShelveUntil(t *testing.T) {
 		"shelve_until must be now + shelve_timeout")
 }
 
+// TestAfterCreate_ShelveHonoursDuration verifies that an operator-chosen
+// `duration` (seconds, as the shelve dialog posts it) wins over the configured
+// housekeeping.shelve_timeout: shelve_until must be now + duration. The value
+// arrives as a float64 because that is what encoding/json decodes a JSON number
+// into on the real create path.
+func TestAfterCreate_ShelveHonoursDuration(t *testing.T) {
+	host := newTestHost(t)
+	host.cfg = config.Default()
+	host.cfg.Housekeeper.ShelveTimeout = schema.Duration(3 * time.Hour)
+
+	now := time.Unix(1_600_000, 0).UTC()
+	p := &Plugin{clock: func() time.Time { return now }}
+	require.NoError(t, p.PostInit(guardCtx(), host))
+
+	uid := seedRecord(t, host, "open")
+	doc := map[string]any{
+		"record_uid": uid, "type": "shelve", "message": "noisy",
+		"duration": float64(86400),
+	}
+	require.NoError(t, p.AfterCreate(guardCtx(), []map[string]any{doc}))
+
+	rec := recordDoc(t, host, uid)
+	require.Equal(t, "shelved", rec["state"])
+	require.Equal(t, now.Add(24*time.Hour).Unix(), asInt64(t, rec["shelve_until"]),
+		"shelve_until must be now + the chosen duration, not the configured timeout")
+}
+
+// TestAfterCreate_ShelveZeroDurationFallsBack verifies the fallback: a shelve
+// comment carrying duration==0 (the "use the server default" sentinel the web
+// client sends when no explicit window was picked) is stamped from the
+// configured housekeeping.shelve_timeout, exactly as a comment with no
+// duration field at all.
+func TestAfterCreate_ShelveZeroDurationFallsBack(t *testing.T) {
+	host := newTestHost(t)
+	host.cfg = config.Default()
+	host.cfg.Housekeeper.ShelveTimeout = schema.Duration(3 * time.Hour)
+
+	now := time.Unix(1_700_000, 0).UTC()
+	p := &Plugin{clock: func() time.Time { return now }}
+	require.NoError(t, p.PostInit(guardCtx(), host))
+
+	uid := seedRecord(t, host, "open")
+	doc := map[string]any{
+		"record_uid": uid, "type": "shelve", "duration": float64(0),
+	}
+	require.NoError(t, p.AfterCreate(guardCtx(), []map[string]any{doc}))
+
+	rec := recordDoc(t, host, uid)
+	require.Equal(t, now.Add(3*time.Hour).Unix(), asInt64(t, rec["shelve_until"]),
+		"duration==0 must fall back to the configured shelve_timeout")
+}
+
+// TestValidate_Duration covers the duration guard: a negative window would
+// stamp shelve_until in the past (the sweep would revert the alert on its next
+// tick), and a non-numeric one would be silently read as zero. Both are
+// rejected; zero, positive and absent all pass, and no upper bound is enforced
+// — a very long shelve is a legitimate operator choice.
+func TestValidate_Duration(t *testing.T) {
+	p := &Plugin{}
+	require.NoError(t, p.Validate(map[string]any{"record_uid": "r1", "type": "shelve"}))
+	require.NoError(t, p.Validate(map[string]any{"record_uid": "r1", "duration": float64(0)}))
+	require.NoError(t, p.Validate(map[string]any{"record_uid": "r1", "duration": float64(86400)}))
+	require.NoError(t, p.Validate(map[string]any{
+		"record_uid": "r1", "duration": float64(365 * 24 * 3600),
+	}), "no upper bound: a year-long shelve is allowed")
+	require.Error(t, p.Validate(map[string]any{"record_uid": "r1", "duration": float64(-1)}))
+	require.Error(t, p.Validate(map[string]any{"record_uid": "r1", "duration": "4h"}))
+}
+
 // TestAfterCreate_OpenClearsShelveUntil verifies that posting an open comment on
 // a shelved record clears shelve_until back to 0 (the timed shelve is lifted).
 func TestAfterCreate_OpenClearsShelveUntil(t *testing.T) {

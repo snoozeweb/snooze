@@ -14,8 +14,10 @@ import {
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { TooltipProvider } from "@/shared/ui/Tooltip";
 import { mswServer } from "@/tests/msw/server";
+import { LiveAnnouncerProvider } from "@/shared/a11y/LiveAnnouncer";
 import { decodeConditionQ } from "@/lib/condition/decode";
 import { AlertsPage } from "./AlertsPage";
+import { SILENCE_DESCRIPTIONS } from "./silencingGuide";
 
 function setup(pathname = "/web/alerts", { withSnoozesStub = false } = {}) {
   const root = createRootRoute({ component: () => <Outlet /> });
@@ -44,8 +46,12 @@ function setup(pathname = "/web/alerts", { withSnoozesStub = false } = {}) {
   render(
     <QueryClientProvider client={client}>
       <TooltipProvider>
-        {/* router is locally constructed; cast needed for the registered-router type mismatch */}
-        <RouterProvider router={router as Parameters<typeof RouterProvider>[0]["router"]} />
+        {/* Mirrors the real tree (router.tsx mounts this at the root) so the
+            page's refresh announcements land in a live region here too. */}
+        <LiveAnnouncerProvider>
+          {/* router is locally constructed; cast needed for the registered-router type mismatch */}
+          <RouterProvider router={router as Parameters<typeof RouterProvider>[0]["router"]} />
+        </LiveAnnouncerProvider>
       </TooltipProvider>
     </QueryClientProvider>,
   );
@@ -432,7 +438,7 @@ describe("AlertsPage", () => {
     // always in the DOM (hover/focus only toggles opacity via CSS), so DOM
     // presence is the right assertion in jsdom.
     expect(screen.getByRole("button", { name: /^acknowledge$/i })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /^close$/i })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /^close alert$/i })).toBeInTheDocument();
     // Two "Comment" buttons would collide with the kebab menu item, so the
     // quick-action one is scoped to its IconButton role+name.
     expect(screen.getAllByRole("button", { name: /^comment$/i }).length).toBeGreaterThan(0);
@@ -625,7 +631,7 @@ describe("AlertsPage", () => {
     setup();
     await waitFor(() => expect(screen.getByText("srv-1")).toBeInTheDocument());
     await user.click(screen.getAllByRole("button", { name: /row actions/i })[0]!);
-    expect(screen.getByRole("menuitem", { name: /^close$/i })).toBeInTheDocument();
+    expect(screen.getByRole("menuitem", { name: /^close\b/i })).toBeInTheDocument();
   });
 
   it("esc_available_for_acked_rows — Re-escalate present in kebab on acked row", async () => {
@@ -659,7 +665,7 @@ describe("AlertsPage", () => {
     await user.click(screen.getAllByRole("button", { name: /row actions/i })[0]!);
     expect(screen.getByRole("menuitem", { name: /re-open/i })).toBeInTheDocument();
     expect(screen.queryByRole("menuitem", { name: /^acknowledge$/i })).toBeNull();
-    expect(screen.queryByRole("menuitem", { name: /^close$/i })).toBeNull();
+    expect(screen.queryByRole("menuitem", { name: /^close\b/i })).toBeNull();
   });
 
   it("esc_hidden_for_fresh_rows — Re-escalate absent from kebab on fresh row", async () => {
@@ -905,7 +911,7 @@ describe("AlertsPage", () => {
   it("escalated rows are actionable: kebab offers Acknowledge/Close/Re-open, never Re-escalate", async () => {
     await openKebab("esc");
     expect(screen.getByRole("menuitem", { name: /^acknowledge$/i })).toBeInTheDocument();
-    expect(screen.getByRole("menuitem", { name: /^close$/i })).toBeInTheDocument();
+    expect(screen.getByRole("menuitem", { name: /^close\b/i })).toBeInTheDocument();
     expect(screen.getByRole("menuitem", { name: /^re-open$/i })).toBeInTheDocument();
     expect(screen.queryByRole("menuitem", { name: /re-escalate/i })).toBeNull();
   });
@@ -913,14 +919,14 @@ describe("AlertsPage", () => {
   it("re-opened rows never offer Re-escalate (the button the backend always 403s)", async () => {
     await openKebab("open");
     expect(screen.getByRole("menuitem", { name: /^acknowledge$/i })).toBeInTheDocument();
-    expect(screen.getByRole("menuitem", { name: /^close$/i })).toBeInTheDocument();
+    expect(screen.getByRole("menuitem", { name: /^close\b/i })).toBeInTheDocument();
     expect(screen.queryByRole("menuitem", { name: /re-escalate/i })).toBeNull();
   });
 
   it("acknowledged rows offer Re-open (previously missing)", async () => {
     await openKebab("ack");
     expect(screen.getByRole("menuitem", { name: /^re-open$/i })).toBeInTheDocument();
-    expect(screen.getByRole("menuitem", { name: /^close$/i })).toBeInTheDocument();
+    expect(screen.getByRole("menuitem", { name: /^close\b/i })).toBeInTheDocument();
     expect(screen.getByRole("menuitem", { name: /re-escalate/i })).toBeInTheDocument();
   });
 
@@ -1283,7 +1289,7 @@ describe("AlertsPage", () => {
     setup();
     await waitFor(() => expect(screen.getByText("srv-1")).toBeInTheDocument());
     await user.click(screen.getAllByRole("button", { name: /row actions/i })[0]!);
-    await user.click(screen.getByRole("menuitem", { name: /^shelve$/i }));
+    await user.click(screen.getByRole("menuitem", { name: /^shelve(?! permanently)/i }));
     // ShelveDialog should open
     await waitFor(() => expect(screen.getByRole("dialog")).toBeInTheDocument());
     // Submit with default 4h duration
@@ -1310,9 +1316,85 @@ describe("AlertsPage", () => {
     setup();
     await waitFor(() => expect(screen.getByText("srv-1")).toBeInTheDocument());
     await user.click(screen.getAllByRole("button", { name: /row actions/i })[0]!);
-    await user.click(screen.getByRole("menuitem", { name: /^unshelve$/i }));
+    await user.click(screen.getByRole("menuitem", { name: /^unshelve\b/i }));
     await waitFor(() => expect(calls.length).toBe(1));
     expect(calls[0]).toMatchObject({ record_uid: "r1", type: "unshelve" });
+  });
+
+  // A permanently-shelved row is hidden by `ttl < 0`, not by `state`. Posting
+  // an unshelve comment sets state="open" and touches no ttl, so before this
+  // fix "Unshelve" on such a row was a no-op the operator could see: the row
+  // stayed hidden behind the same `ttl < 0` filter (tabs.ts).
+  it("unshelve on a permanently-shelved row (ttl<0) restores a positive ttl", async () => {
+    const comments: unknown[] = [];
+    const patches: unknown[] = [];
+    mswServer.use(
+      http.get("/api/v1/record", () =>
+        HttpResponse.json({
+          data: [{ uid: "r1", host: "srv-1", state: "open", ttl: -172800, date_epoch: 1 }],
+          meta: { count: 1, limit: 50, offset: 0, total: 1 },
+        }),
+      ),
+      http.post("/api/v1/comment", async ({ request }) => {
+        comments.push(await request.json());
+        return HttpResponse.json({ ok: true });
+      }),
+      http.patch("/api/v1/record/:uid", async ({ request }) => {
+        patches.push(await request.json());
+        return HttpResponse.json({ ok: true });
+      }),
+    );
+    const user = userEvent.setup();
+    setup();
+    await waitFor(() => expect(screen.getByText("srv-1")).toBeInTheDocument());
+    await user.click(screen.getAllByRole("button", { name: /row actions/i })[0]!);
+    await user.click(screen.getByRole("menuitem", { name: /^unshelve\b/i }));
+    await waitFor(() => expect(patches.length).toBe(1));
+    // Magnitude preserved, sign flipped back.
+    expect(patches[0]).toMatchObject({ ttl: 172800 });
+    // state was never "shelved", so there is no shelve comment to reverse.
+    expect(comments).toHaveLength(0);
+  });
+
+  it("unshelve on a row that is both shelved and ttl<0 reverses both", async () => {
+    const comments: unknown[] = [];
+    const patches: unknown[] = [];
+    mswServer.use(
+      http.get("/api/v1/record", () =>
+        HttpResponse.json({
+          data: [{ uid: "r1", host: "srv-1", state: "shelved", ttl: -3600, date_epoch: 1 }],
+          meta: { count: 1, limit: 50, offset: 0, total: 1 },
+        }),
+      ),
+      http.post("/api/v1/comment", async ({ request }) => {
+        comments.push(await request.json());
+        return HttpResponse.json({ ok: true });
+      }),
+      http.patch("/api/v1/record/:uid", async ({ request }) => {
+        patches.push(await request.json());
+        return HttpResponse.json({ ok: true });
+      }),
+    );
+    const user = userEvent.setup();
+    setup();
+    await waitFor(() => expect(screen.getByText("srv-1")).toBeInTheDocument());
+    await user.click(screen.getAllByRole("button", { name: /row actions/i })[0]!);
+    await user.click(screen.getByRole("menuitem", { name: /^unshelve\b/i }));
+    await waitFor(() => expect(patches.length).toBe(1));
+    expect(comments[0]).toMatchObject({ record_uid: "r1", type: "unshelve" });
+    expect(patches[0]).toMatchObject({ ttl: 3600 });
+
+    // Undo must reverse BOTH halves, not just the one that is easiest to see.
+    // Fire the toast's Undo action directly (the Toaster isn't mounted here).
+    const undoToast = await waitFor(() => {
+      const t = toastStore.getSnapshot().find((x) => x.action);
+      expect(t).toBeTruthy();
+      return t!;
+    });
+    act(() => undoToast.action!.onSelect());
+    await waitFor(() => expect(patches.length).toBe(2));
+    expect(comments[1]).toMatchObject({ record_uid: "r1", type: "shelve" });
+    expect(patches[1]).toMatchObject({ ttl: -3600 });
   });
 });
 
@@ -1700,5 +1782,173 @@ describe("AlertsPage — Plan 28b: audio cue", () => {
     // First load: prevTotalRef.current was -1, so no play should have occurred
     expect(playMock).not.toHaveBeenCalled();
     vi.unstubAllGlobals();
+  });
+});
+
+// ── Close is not danger-weighted; the four silencing verbs explain themselves ──
+
+describe("AlertsPage — silencing verbs", () => {
+  function oneOpenRow() {
+    mswServer.use(
+      http.get("/api/v1/record", () =>
+        HttpResponse.json({
+          data: [{ uid: "r1", host: "srv-1", state: "open", date_epoch: 1 }],
+          meta: { count: 1, limit: 50, offset: 0, total: 1 },
+        }),
+      ),
+    );
+  }
+
+  it("the kebab groups its items under Change state / Engage / Quiet it down", async () => {
+    oneOpenRow();
+    const user = userEvent.setup();
+    setup();
+    await waitFor(() => expect(screen.getByText("srv-1")).toBeInTheDocument());
+    await user.click(screen.getAllByRole("button", { name: /row actions/i })[0]!);
+    expect(screen.getByText("Change state")).toBeInTheDocument();
+    expect(screen.getByText("Engage")).toBeInTheDocument();
+    expect(screen.getByText("Quiet it down")).toBeInTheDocument();
+  });
+
+  it("the kebab explains Close, Snooze, Shelve and Shelve permanently — and nothing else", async () => {
+    oneOpenRow();
+    const user = userEvent.setup();
+    setup();
+    await waitFor(() => expect(screen.getByText("srv-1")).toBeInTheDocument());
+    await user.click(screen.getAllByRole("button", { name: /row actions/i })[0]!);
+    expect(screen.getByText(SILENCE_DESCRIPTIONS.close)).toBeInTheDocument();
+    expect(screen.getByText(SILENCE_DESCRIPTIONS.snooze)).toBeInTheDocument();
+    expect(screen.getByText(SILENCE_DESCRIPTIONS.shelve)).toBeInTheDocument();
+    expect(screen.getByText(SILENCE_DESCRIPTIONS.shelveForever)).toBeInTheDocument();
+    // Acknowledge / Re-escalate / Comment say what they do; a description on
+    // every row would cost the menu the scannability the groups just bought.
+    const acknowledge = screen.getByRole("menuitem", { name: /^acknowledge$/i });
+    expect(acknowledge).toBeInTheDocument();
+  });
+
+  it("Snooze stays in the kebab for a closed row, the shelve verbs do not", async () => {
+    mswServer.use(
+      http.get("/api/v1/record", () =>
+        HttpResponse.json({
+          data: [{ uid: "r1", host: "srv-1", state: "close", date_epoch: 1 }],
+          meta: { count: 1, limit: 50, offset: 0, total: 1 },
+        }),
+      ),
+    );
+    const user = userEvent.setup();
+    setup();
+    await waitFor(() => expect(screen.getByText("srv-1")).toBeInTheDocument());
+    await user.click(screen.getAllByRole("button", { name: /row actions/i })[0]!);
+    expect(screen.getByRole("menuitem", { name: /^snooze this alert/i })).toBeInTheDocument();
+    expect(screen.queryByRole("menuitem", { name: /^shelve/i })).toBeNull();
+  });
+
+  it("the bulk bar makes Acknowledge the primary button and Close a plain secondary", async () => {
+    oneOpenRow();
+    const user = userEvent.setup();
+    setup();
+    await waitFor(() => expect(screen.getByText("srv-1")).toBeInTheDocument());
+    await user.click(screen.getAllByRole("checkbox")[1]!);
+    const ack = await screen.findByRole("button", { name: /acknowledge \(1\)/i });
+    const close = screen.getByRole("button", { name: /close \(1\)/i });
+    // Red is reserved for Delete: Close is reversible (Re-open / Undo), so it
+    // must not carry the danger class, and Acknowledge takes the one filled
+    // button on the bar.
+    expect(ack.className).toMatch(/primary/);
+    expect(close.className).not.toMatch(/danger/);
+    expect(close.className).toMatch(/secondary/);
+  });
+
+  it("the detail drawer labels the alert verb 'Close alert', distinct from the panel's own ✕", async () => {
+    oneOpenRow();
+    const user = userEvent.setup();
+    setup();
+    await waitFor(() => expect(screen.getByText("srv-1")).toBeInTheDocument());
+    await user.click(screen.getAllByRole("button", { name: /view details/i })[0]!);
+    const drawerClose = await screen.findByRole("button", { name: /^close panel$/i });
+    expect(drawerClose).toBeInTheDocument();
+    const closeAlert = screen.getByRole("button", { name: /^close alert$/i });
+    expect(closeAlert.className).not.toMatch(/danger/);
+    expect(screen.getByRole("button", { name: /^acknowledge$/i }).className).toMatch(/primary/);
+  });
+});
+
+// ── Screen-reader parity for the 30s poll ─────────────────────────────────
+
+describe("AlertsPage — refresh announcements", () => {
+  const polite = () => screen.getByTestId("live-polite");
+
+  /** The live region is written one coalesce window + one repaint after the
+   *  data lands, so "nothing was announced" needs a wait long enough to have
+   *  caught an announcement had there been one. */
+  const settleAnnouncer = () => act(() => new Promise((r) => setTimeout(r, 500)));
+
+  function rowsWithTotals(totals: number[]) {
+    let call = 0;
+    mswServer.use(
+      http.get("/api/v1/record", () => {
+        const total = totals[Math.min(call++, totals.length - 1)]!;
+        return HttpResponse.json({
+          data: [{ uid: "r1", host: "srv-1", state: "open", date_epoch: 1 }],
+          meta: { count: 1, limit: 50, offset: 0, total },
+        });
+      }),
+    );
+  }
+
+  it("announces a background refresh that changed the total", async () => {
+    rowsWithTotals([5, 7]);
+    const user = userEvent.setup();
+    setup();
+    await waitFor(() => expect(screen.getByText("srv-1")).toBeInTheDocument());
+    await user.click(screen.getByRole("button", { name: /refresh alerts/i }));
+    await waitFor(() => expect(polite()).toHaveTextContent("Alerts refreshed. 7 alerts, 2 new."));
+  });
+
+  it("says 'fewer' when the queue shrank, and agrees with a count of one", async () => {
+    rowsWithTotals([3, 1]);
+    const user = userEvent.setup();
+    setup();
+    await waitFor(() => expect(screen.getByText("srv-1")).toBeInTheDocument());
+    await user.click(screen.getByRole("button", { name: /refresh alerts/i }));
+    await waitFor(() => expect(polite()).toHaveTextContent("Alerts refreshed. 1 alert, 2 fewer."));
+  });
+
+  it("says nothing on first load", async () => {
+    rowsWithTotals([5]);
+    setup();
+    await waitFor(() => expect(screen.getByText("srv-1")).toBeInTheDocument());
+    await settleAnnouncer();
+    expect(polite().textContent).toBe("");
+  });
+
+  it("says nothing when the operator's own filter change moved the total", async () => {
+    // The default "alerts" tab sends a ?q=; the "All" tab sends none. Answer
+    // with a different total per question so the count really does move.
+    mswServer.use(
+      http.get("/api/v1/record", ({ request }) => {
+        const total = new URL(request.url).searchParams.get("q") ? 5 : 9;
+        return HttpResponse.json({
+          data: [{ uid: "r1", host: "srv-1", state: "open", date_epoch: 1 }],
+          meta: { count: 1, limit: 50, offset: 0, total },
+        });
+      }),
+    );
+    const user = userEvent.setup();
+    setup();
+    await waitFor(() => expect(screen.getByText("srv-1")).toBeInTheDocument());
+    await user.click(screen.getByRole("tab", { name: /^all$/i }));
+    await waitFor(() => expect(screen.getByText("9 alerts")).toBeInTheDocument());
+    await settleAnnouncer();
+    expect(polite().textContent).toBe("");
+  });
+
+  it("announces the auto-refresh toggle", async () => {
+    rowsWithTotals([5]);
+    const user = userEvent.setup();
+    setup();
+    await waitFor(() => expect(screen.getByText("srv-1")).toBeInTheDocument());
+    await user.click(screen.getByRole("switch", { name: /auto refresh/i }));
+    await waitFor(() => expect(polite()).toHaveTextContent("Auto-refresh off"));
   });
 });

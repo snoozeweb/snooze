@@ -10,6 +10,7 @@
 // constraint beyond the DSL itself.
 
 import type { Condition } from "@/lib/condition/types";
+import { SNOOZED_NOUN, STATE_NOUN } from "./lifecycle";
 
 /**
  * TabId is the URL-safe identifier persisted in `?tab=…`. Stable: do not
@@ -32,15 +33,18 @@ export type TabDef = {
  * "Alerts" — the default landing tab, showing active alerts that need
  * attention: not closed, not acknowledged, not currently snoozed, not shelved.
  *
- *   AND(NOT(state=ack), NOT(state=close), NOT(EXISTS snoozed), NOT(ttl < 0))
+ *   AND(NOT(state=ack), NOT(state=close), NOT(EXISTS snoozed),
+ *       NOT(state=shelved), NOT(ttl < 0))
  *
- * The first three clauses match origin/master. The fourth (ttl < 0) is what
- * makes Shelve do what it says: shelving flips a record's ttl negative (see
- * useShelveRecord/computeNextTTL in api.ts), and without excluding ttl<0 here
- * a shelved row stayed put in this default view — and kept being counted by
- * useActiveAlertCount, which reuses this exact preset. Mirrors the "Shelved"
- * tab's own `ttl < 0` branch, so a shelved alert leaves "Alerts" and appears
- * under "Shelved" instead.
+ * The first three clauses match origin/master. The last two are what make
+ * Shelve do what it says. A timed shelve parks the record in state=shelved
+ * (comment type "shelve", see internal/pluginimpl/comment/transition.go); a
+ * permanent shelve flips ttl negative (useShelveRecord/computeNextTTL in
+ * api.ts). Without excluding both here a shelved row stayed put in this
+ * default view — and kept being counted by useActiveAlertCount, which reuses
+ * this exact preset. Mirrors the "Shelved" tab's two branches, so a shelved
+ * alert leaves "Alerts" and appears under "Shelved" instead, whichever
+ * mechanism shelved it.
  */
 export const ACTIVE_ALERTS: Condition = {
   type: "AND",
@@ -48,6 +52,7 @@ export const ACTIVE_ALERTS: Condition = {
     { type: "NOT", arg: { type: "EQUALS", field: "state", value: "ack" } },
     { type: "NOT", arg: { type: "EQUALS", field: "state", value: "close" } },
     { type: "NOT", arg: { type: "EXISTS", field: "snoozed" } },
+    { type: "NOT", arg: { type: "EQUALS", field: "state", value: "shelved" } },
     { type: "NOT", arg: { type: "LT", field: "ttl", value: 0 } },
   ],
 };
@@ -92,11 +97,15 @@ const SHELVED: Condition = {
 
 export const ALERT_TABS: TabDef[] = [
   { id: "alerts", label: "Alerts", condition: ACTIVE_ALERTS },
-  { id: "snoozed", label: "Snoozed", condition: { type: "EXISTS", field: "snoozed" } },
-  { id: "ack", label: "Acknowledged", condition: { type: "EQUALS", field: "state", value: "ack" } },
-  { id: "esc", label: "Re-escalated", condition: REESCALATED },
-  { id: "closed", label: "Closed", condition: { type: "EQUALS", field: "state", value: "close" } },
-  { id: "shelved", label: "Shelved", condition: SHELVED },
+  { id: "snoozed", label: SNOOZED_NOUN, condition: { type: "EXISTS", field: "snoozed" } },
+  { id: "ack", label: STATE_NOUN.ack, condition: { type: "EQUALS", field: "state", value: "ack" } },
+  { id: "esc", label: STATE_NOUN.esc, condition: REESCALATED },
+  {
+    id: "closed",
+    label: STATE_NOUN.close,
+    condition: { type: "EQUALS", field: "state", value: "close" },
+  },
+  { id: "shelved", label: STATE_NOUN.shelved, condition: SHELVED },
   { id: "all", label: "All", condition: null },
 ];
 

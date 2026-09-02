@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import { describe, expect, it } from "vitest";
@@ -130,5 +130,26 @@ describe("HowToMenu", () => {
     await waitFor(() =>
       expect(screen.getByRole("dialog", { name: /how to send alerts/i })).toBeInTheDocument(),
     );
+  });
+
+  it("dropdown 'Close, snooze or shelve?' opens the silencing guide", async () => {
+    const user = userEvent.setup();
+    setup("/web/rules");
+    await user.click(screen.getByRole("button", { name: /how to/i }));
+    await user.click(screen.getByRole("menuitem", { name: /close, snooze or shelve/i }));
+    const dialog = await screen.findByRole("dialog", { name: /close, snooze or shelve/i });
+    // The point of the dialog is the comparison, so assert the table exists
+    // and names all four verbs plus the Unshelve footnote.
+    expect(within(dialog).getByRole("rowheader", { name: "Close" })).toBeInTheDocument();
+    expect(
+      within(dialog).getByRole("rowheader", { name: "Snooze this alert" }),
+    ).toBeInTheDocument();
+    expect(within(dialog).getByRole("rowheader", { name: "Shelve" })).toBeInTheDocument();
+    expect(
+      within(dialog).getByRole("rowheader", { name: "Shelve permanently" }),
+    ).toBeInTheDocument();
+    expect(
+      within(dialog).getByText(/unshelve returns a shelved alert to open/i),
+    ).toBeInTheDocument();
   });
 });

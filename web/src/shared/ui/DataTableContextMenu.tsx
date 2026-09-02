@@ -12,6 +12,11 @@ export type ContextMenuItem = {
   icon?: IconName;
   danger?: boolean;
   disabled?: boolean;
+  /** One plain sentence under the label. Same purpose as the kebab's
+   *  `RowActionItem.description`: for verbs whose label doesn't say which of
+   *  several near-synonyms it is. Left off for self-evident items so the menu
+   *  stays scannable. */
+  description?: string;
   onSelect: () => void | Promise<void>;
 };
 
@@ -158,6 +163,7 @@ export function DataTableContextMenu({
           item.danger ? styles.danger : null,
           idx === focused ? styles.focused : null,
           item.disabled ? styles.disabled : null,
+          item.description ? styles.withDescription : null,
         ]
           .filter(Boolean)
           .join(" ");
@@ -185,7 +191,12 @@ export function DataTableContextMenu({
             }}
           >
             {item.icon ? <Icon name={item.icon} size={16} /> : <span className={styles.iconSlot} />}
-            <span>{item.label}</span>
+            <span className={styles.itemText}>
+              <span>{item.label}</span>
+              {item.description ? (
+                <span className={styles.itemDescription}>{item.description}</span>
+              ) : null}
+            </span>
           </li>
         );
       })}

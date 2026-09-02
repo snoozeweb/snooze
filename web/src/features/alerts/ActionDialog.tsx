@@ -37,11 +37,13 @@ const META: Record<
   close: {
     title: (n) => (n === 1 ? "Close alert" : `Close ${n} alerts`),
     confirmLabel: "Close",
-    description: "Mark the alert(s) as resolved. They will move to the closed view.",
-    // Danger, not primary: Close ends the alert's triage life, and the
-    // drawer/kebab/bulk affordances that all open this same dialog already
-    // mark Close as the destructive one — the confirm button should match.
-    variant: "danger",
+    description:
+      "Mark the alert(s) as resolved. They move to the Closed view, and a new matching alert re-opens the same row.",
+    // Primary, not danger: Close is reversible — Re-open, the Undo toast, or
+    // the next matching alert re-opening the row on its own. Red is reserved
+    // for Delete, and every surface that opens this dialog (kebab, right-click
+    // menu, drawer header, bulk bar) now paints Close the same way.
+    variant: "primary",
     requireMessage: false,
   },
   open: {

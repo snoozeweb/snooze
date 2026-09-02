@@ -127,4 +127,14 @@ describe("MoreSheet", () => {
     setup(false);
     expect(screen.queryByRole("dialog", { name: /menu/i })).toBeNull();
   });
+
+  it("mirrors the desktop How-to menu's silencing guide entry", async () => {
+    loginWithPerms(ALL_PERMS);
+    const user = userEvent.setup();
+    setup();
+    await user.click(screen.getByRole("button", { name: /close, snooze or shelve/i }));
+    expect(
+      await screen.findByRole("dialog", { name: /close, snooze or shelve/i }),
+    ).toBeInTheDocument();
+  });
 });

@@ -186,11 +186,15 @@ The Go schema lives in `internal/config/schema/housekeeper.go`.
 > Default  
 > `"4h"`
 >
-> How long a *timed* shelve lasts before the alert is automatically returned to
-> open. Posting a `shelve` comment transitions the record to `shelved` and stamps
-> a server-controlled `shelve_until = now + shelve_timeout`; once that deadline
-> passes, the minute-cadence `unshelve_timeout` sweep reverts the record to `open`
-> (clearing `shelve_until`) and writes an auto comment. This is distinct from the
+> The default length of a *timed* shelve — used when the shelve comment does not
+> name its own. Posting a `shelve` comment transitions the record to `shelved`
+> and stamps `shelve_until = now + duration` when the comment carries a positive
+> `duration` (seconds — this is what the web console's shelve dialog sends, so
+> the window the operator picked is the one that is served), falling back to
+> `shelve_until = now + shelve_timeout` when it does not. Either way the deadline
+> is server-controlled; once it passes, the minute-cadence `unshelve_timeout`
+> sweep reverts the record to `open` (clearing `shelve_until`) and writes an auto
+> comment. This is distinct from the
 > legacy *permanent* shelve (`ttl=-1`, `shelve_until=0`), which has no duration
 > and is never auto-returned. Editable at runtime in **Settings → Housekeeping**
 > without a server restart. A timed shelve leaves `ttl` untouched, so if `ttl` is

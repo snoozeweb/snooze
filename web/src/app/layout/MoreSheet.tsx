@@ -5,6 +5,7 @@ import { Icon } from "@/shared/icons/Icon";
 import { useTheme } from "@/shared/hooks/useTheme";
 import { useAuth } from "@/lib/auth/store";
 import { InjectAlertsDialog } from "@/features/alerts/InjectAlertsDialog";
+import { SilencingGuideDialog } from "@/features/alerts/SilencingGuideDialog";
 import { SendAlertsDialog } from "@/features/notifications/SendAlertsDialog";
 import { visibleNavItems } from "./nav-list";
 import { GROUP_LABELS, type NavGroup } from "./nav-items";
@@ -30,6 +31,7 @@ export function MoreSheet({
 
   const [injectOpen, setInjectOpen] = useState(false);
   const [sendOpen, setSendOpen] = useState(false);
+  const [silenceOpen, setSilenceOpen] = useState(false);
   // How-to and its config-health warnings were desktop-only; surface them here
   // so a mobile operator can open the setup dialogs and still sees the
   // unconfigured-pipeline signal. Only fetch while the sheet is open.
@@ -72,6 +74,12 @@ export function MoreSheet({
             <button type="button" className={styles.item} onClick={() => setSendOpen(true)}>
               <Icon name="upload" size={16} />
               <span>Send alerts</span>
+            </button>
+            {/* Mirrors the desktop How-to menu's third entry — this sheet
+                duplicates that list by hand, so it has to be added twice. */}
+            <button type="button" className={styles.item} onClick={() => setSilenceOpen(true)}>
+              <Icon name="moon" size={16} />
+              <span>Close, snooze or shelve?</span>
             </button>
             {actionCount === 0 ? (
               <button
@@ -129,6 +137,7 @@ export function MoreSheet({
       </RD.Portal>
       <InjectAlertsDialog open={injectOpen} onOpenChange={setInjectOpen} />
       <SendAlertsDialog open={sendOpen} onOpenChange={setSendOpen} />
+      <SilencingGuideDialog open={silenceOpen} onOpenChange={setSilenceOpen} />
     </RD.Root>
   );
 }

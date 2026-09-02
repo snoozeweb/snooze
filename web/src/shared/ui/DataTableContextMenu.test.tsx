@@ -57,4 +57,24 @@ describe("DataTableContextMenu", () => {
     expect(onClose).toHaveBeenCalled();
     writeText.mockRestore();
   });
+
+  it("renders an item description under its label", () => {
+    render(
+      <DataTableContextMenu
+        items={[
+          {
+            key: "shelve",
+            label: "Shelve",
+            description: "Parks it until a timer.",
+            onSelect: vi.fn(),
+          },
+        ]}
+        x={0}
+        y={0}
+        onClose={() => undefined}
+      />,
+    );
+    expect(screen.getByText("Parks it until a timer.")).toBeInTheDocument();
+    expect(screen.getByRole("menuitem", { name: /^shelve\b/i })).toBeInTheDocument();
+  });
 });

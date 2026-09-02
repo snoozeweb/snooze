@@ -3,6 +3,7 @@ import { useLocation } from "@tanstack/react-router";
 import { Icon } from "@/shared/icons/Icon";
 import { Menu, MenuContent, MenuItem, MenuTrigger } from "@/shared/ui/Menu";
 import { InjectAlertsDialog } from "@/features/alerts/InjectAlertsDialog";
+import { SilencingGuideDialog } from "@/features/alerts/SilencingGuideDialog";
 import { SendAlertsDialog } from "@/features/notifications/SendAlertsDialog";
 import { useConfigHealth } from "./useConfigHealth";
 import styles from "./HowToMenu.module.css";
@@ -10,6 +11,7 @@ import styles from "./HowToMenu.module.css";
 export function HowToMenu() {
   const [injectOpen, setInjectOpen] = useState(false);
   const [sendOpen, setSendOpen] = useState(false);
+  const [silenceOpen, setSilenceOpen] = useState(false);
 
   const location = useLocation();
   const isAlertsPage = location.pathname.startsWith("/web/alerts");
@@ -31,6 +33,13 @@ export function HowToMenu() {
           <MenuItem leadingIcon="upload" onSelect={() => setSendOpen(true)}>
             Send alerts
           </MenuItem>
+          {/* The first two entries are about getting alerts in and out. This
+              one is about the question every operator hits on day one and the
+              UI can't answer in a label: which of Close / Snooze / Shelve /
+              Shelve permanently do I actually want? */}
+          <MenuItem leadingIcon="moon" onSelect={() => setSilenceOpen(true)}>
+            Close, snooze or shelve?
+          </MenuItem>
         </MenuContent>
       </Menu>
       {isAlertsPage && actionCount === 0 ? (
@@ -51,6 +60,7 @@ export function HowToMenu() {
       ) : null}
       <InjectAlertsDialog open={injectOpen} onOpenChange={setInjectOpen} />
       <SendAlertsDialog open={sendOpen} onOpenChange={setSendOpen} />
+      <SilencingGuideDialog open={silenceOpen} onOpenChange={setSilenceOpen} />
     </>
   );
 }

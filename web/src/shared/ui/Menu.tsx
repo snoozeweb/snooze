@@ -42,6 +42,13 @@ export type MenuItemProps = {
   danger?: boolean;
   leadingIcon?: IconName;
   shortcut?: string;
+  /** One plain sentence under the label explaining what the verb actually
+   *  does. Used where a menu gathers several near-synonyms an operator has
+   *  to choose between (Close / Snooze / Shelve / Shelve permanently) and
+   *  the label alone doesn't say which one to pick. Rendered as real text
+   *  inside the item, so assistive tech reads it with the item rather than
+   *  needing a hover; `textValue` below keeps typeahead on the label. */
+  description?: string;
   children: ReactNode;
 };
 
@@ -51,20 +58,38 @@ export function MenuItem({
   danger,
   leadingIcon,
   shortcut,
+  description,
   children,
 }: MenuItemProps) {
-  const classes = [styles.item, danger ? styles.danger : null].filter(Boolean).join(" ");
+  const classes = [
+    styles.item,
+    danger ? styles.danger : null,
+    description ? styles.withDescription : null,
+  ]
+    .filter(Boolean)
+    .join(" ");
   return (
     <RM.Item
       className={classes}
       {...(disabled !== undefined ? { disabled } : {})}
       {...(onSelect !== undefined ? { onSelect } : {})}
+      {...(description && typeof children === "string" ? { textValue: children } : {})}
     >
       {leadingIcon ? <Icon name={leadingIcon} size={16} /> : null}
-      <span>{children}</span>
+      <span className={styles.itemText}>
+        <span>{children}</span>
+        {description ? <span className={styles.itemDescription}>{description}</span> : null}
+      </span>
       {shortcut ? <span className={styles.shortcut}>{shortcut}</span> : null}
     </RM.Item>
   );
+}
+
+/** A non-interactive heading above a group of items. Radix skips it in
+ *  keyboard navigation and exposes it as the group's label, so it names a
+ *  cluster ("Quiet it down") without adding a stop to arrow-key traversal. */
+export function MenuLabel({ children }: { children: ReactNode }) {
+  return <RM.Label className={styles.groupLabel}>{children}</RM.Label>;
 }
 
 export function MenuSeparator() {

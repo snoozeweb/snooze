@@ -1,0 +1,79 @@
+/* Four columns of prose need more room than the default dialog width; capped
+   so the lines stay readable rather than stretching across a wide monitor. */
+.content {
+  width: min(860px, 94vw);
+  max-width: 94vw;
+}
+
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--text-sm);
+  line-height: 1.45;
+}
+
+.table th,
+.table td {
+  padding: var(--space-2);
+  text-align: left;
+  vertical-align: top;
+  border-bottom: 1px solid var(--border-muted);
+}
+
+.table thead th {
+  color: var(--text-muted);
+  font-size: var(--text-xs);
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.table tbody tr:last-child th,
+.table tbody tr:last-child td {
+  border-bottom: none;
+}
+
+/* The verb is the row's own heading — it's what the operator scans for. */
+.verb {
+  color: var(--text-strong);
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.note {
+  margin: var(--space-3) 0 0;
+  color: var(--text-muted);
+  font-size: var(--text-sm);
+  line-height: 1.45;
+}
+
+/* Four prose columns don't survive a phone: stack each row into a card with
+   the column names carried by the labels the cells already have. */
+@media (max-width: 640px) {
+  .table,
+  .table tbody,
+  .table tr,
+  .table td,
+  .table th {
+    display: block;
+  }
+  .table thead {
+    display: none;
+  }
+  .table tbody tr {
+    padding: var(--space-2) 0;
+    border-bottom: 1px solid var(--border-muted);
+  }
+  .table th,
+  .table td {
+    padding: var(--space-1) 0;
+    border-bottom: none;
+    white-space: normal;
+  }
+  .table td[data-label]::before {
+    content: attr(data-label) ": ";
+    color: var(--text-muted);
+    font-weight: 600;
+  }
+}

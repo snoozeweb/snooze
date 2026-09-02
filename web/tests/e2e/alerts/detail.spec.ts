@@ -100,15 +100,15 @@ test.describe("alert detail drawer", () => {
     // Acking moves the record out of the default "Alerts" tab (whose preset is
     // NOT(state=ack) AND NOT(state=close) AND NOT snoozed), so the row leaves
     // this view on the next refetch. Switch to the "Acknowledged" tab to find
-    // it and assert its state badge reads "Ack" (shortened from the previous
-    // "Acknowledged" label so the State column doesn't grow). Scope to a grid
-    // cell so the tab label / toast text don't satisfy the match.
+    // it and assert its state badge reads "Acknowledged" — the same noun as
+    // the chip, tab, and dashboard tile. Scope to a grid cell so the tab
+    // label / toast text don't satisfy the match.
     await page.getByRole("tab", { name: /^acknowledged$/i }).click({ force: true });
     await expect(
       page.getByRole("gridcell").getByText("srv-ack", { exact: true }).first(),
     ).toBeVisible();
     await expect(
-      page.getByRole("gridcell").getByText("Ack", { exact: true }).first(),
+      page.getByRole("gridcell").getByText("Acknowledged", { exact: true }).first(),
     ).toBeVisible();
   });
 
@@ -169,7 +169,7 @@ test.describe("alert detail drawer", () => {
       .getByRole("button", { name: /row actions/i })
       .first()
       .click({ force: true });
-    await page.getByRole("menuitem", { name: /^close$/i }).click({ force: true });
+    await page.getByRole("menuitem", { name: /^close\b/i }).click({ force: true });
 
     const dialog = page.getByRole("dialog");
     await expect(dialog).toBeVisible();

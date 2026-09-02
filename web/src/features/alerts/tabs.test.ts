@@ -22,10 +22,21 @@ describe("alert tabs catalog", () => {
         { type: "NOT", arg: { type: "EQUALS", field: "state", value: "ack" } },
         { type: "NOT", arg: { type: "EQUALS", field: "state", value: "close" } },
         { type: "NOT", arg: { type: "EXISTS", field: "snoozed" } },
-        // Shelving flips ttl negative (useShelveRecord/computeNextTTL); this
-        // clause is what actually drops a shelved row out of the default view.
+        // Timed shelve parks the row in state=shelved; a permanent shelve
+        // flips ttl negative (useShelveRecord/computeNextTTL). Both clauses
+        // are needed to drop every shelved row out of the default view.
+        { type: "NOT", arg: { type: "EQUALS", field: "state", value: "shelved" } },
         { type: "NOT", arg: { type: "LT", field: "ttl", value: 0 } },
       ],
+    });
+  });
+
+  it("a timed shelve (state=shelved) excludes an alert from the default Alerts tab", () => {
+    const tab = tabById("alerts");
+    const args = tab.condition?.type === "AND" ? tab.condition.args : [];
+    expect(args).toContainEqual({
+      type: "NOT",
+      arg: { type: "EQUALS", field: "state", value: "shelved" },
     });
   });
 

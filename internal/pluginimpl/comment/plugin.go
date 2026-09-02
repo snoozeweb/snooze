@@ -7,6 +7,7 @@ package comment
 import (
 	"context"
 	_ "embed"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"time"
@@ -90,6 +91,11 @@ func (p *Plugin) Schema() any {
 			"message":    map[string]any{"type": "string"},
 			"type":       map[string]any{"type": "string"},
 			"date":       map[string]any{"type": "string"},
+			// Operator-chosen shelve window in seconds. Only meaningful on a
+			// `type: "shelve"` comment, where AfterCreate stamps
+			// shelve_until = now + duration; absent/zero falls back to the
+			// configured housekeeping.shelve_timeout.
+			"duration": map[string]any{"type": "integer", "minimum": 0},
 		},
 		"additionalProperties": true,
 	}
@@ -110,6 +116,19 @@ func (p *Plugin) Validate(obj map[string]any) error {
 	if v, ok := obj["record_uid"]; ok {
 		if s, _ := v.(string); s == "" {
 			return errors.New("comment: record_uid must not be empty")
+		}
+	}
+	// A shelve window is a forward-looking deadline: a negative one would stamp
+	// shelve_until in the past and the unshelve sweep would revert the record on
+	// its next tick, which is not what the operator asked for. There is no upper
+	// bound on purpose — a very long shelve is a legitimate choice.
+	if v, ok := obj["duration"]; ok && v != nil {
+		d, numeric := asSeconds(v)
+		if !numeric {
+			return errors.New("comment: duration must be a number of seconds")
+		}
+		if d < 0 {
+			return errors.New("comment: duration must not be negative")
 		}
 	}
 	return nil
@@ -237,7 +256,15 @@ func (p *Plugin) AfterCreate(ctx context.Context, docs []map[string]any) error {
 			case "shelve":
 				// Park the alert in "shelved" and stamp the auto-return deadline.
 				// The unshelve-timeout sweep reverts it once now passes this.
-				patch["shelve_until"] = now + int64(p.shelveTimeout(ctx).Seconds())
+				// An operator-chosen `duration` (seconds) wins over the
+				// configured housekeeping.shelve_timeout, so the window picked
+				// in the shelve dialog is the window that is actually served;
+				// absent or zero falls back to the configured timeout.
+				window := int64(p.shelveTimeout(ctx).Seconds())
+				if d, ok := asSeconds(doc["duration"]); ok && d > 0 {
+					window = d
+				}
+				patch["shelve_until"] = now + window
 			case "unshelve":
 				// Explicitly lifting the timed shelve clears the deadline.
 				patch["shelve_until"] = int64(0)
@@ -352,6 +379,32 @@ func (p *Plugin) now() time.Time {
 		return p.clock()
 	}
 	return time.Now()
+}
+
+// asSeconds reads a client-supplied second count out of a comment document,
+// tolerating every numeric shape a JSON body or a DB driver can produce
+// (encoding/json decodes numbers into float64; the Mongo and SQLite drivers
+// hand back int/int32/int64). The bool reports whether the value was numeric at
+// all, so a non-numeric `duration` is rejected by Validate instead of being
+// silently read as zero. A nil value (field absent) is "not numeric".
+func asSeconds(v any) (int64, bool) {
+	switch n := v.(type) {
+	case int64:
+		return n, true
+	case int:
+		return int64(n), true
+	case int32:
+		return int64(n), true
+	case float64:
+		return int64(n), true
+	case float32:
+		return int64(n), true
+	case json.Number:
+		i, err := n.Int64()
+		return i, err == nil
+	default:
+		return 0, false
+	}
 }
 
 // docInt64 reads a counter out of a record document, tolerating the int /

@@ -1792,10 +1792,12 @@ export interface paths {
          * Bulk state change across a query
          * @description Sets `state` on every `record` matching the `q` condition in a single
          *     call, returning the matched/updated counts. `state` must be one of
-         *     `ack`, `close`, `open`, `esc`, `shelve`, `unshelve` (the same set the
-         *     per-record comment path uses; `shelve`→`shelved` stamps a timed
-         *     `shelve_until`, `unshelve`→`open` clears it). Requires the `rw_record`
-         *     permission (the `rw_all` wildcard also satisfies it).
+         *     `ack`, `close`, `open`, `esc`; anything else is rejected with a 400.
+         *     The timed-shelve pair is deliberately NOT accepted here: `shelve` needs
+         *     a `shelve_until` deadline stamped alongside the state, and this endpoint
+         *     writes `state` and nothing else — shelve through the per-record comment
+         *     path instead. Requires the `rw_record` permission (the `rw_all` wildcard
+         *     also satisfies it).
          *
          *     Unlike posting a state-changing comment per record, the bulk path sets
          *     `state` directly and does **not** fan out one comment per record (a
@@ -1821,7 +1823,7 @@ export interface paths {
                 content: {
                     "application/json": {
                         /** @enum {string} */
-                        state: "ack" | "close" | "open" | "esc" | "shelve" | "unshelve";
+                        state: "ack" | "close" | "open" | "esc";
                         /** @description Recorded once in the audit summary. */
                         message?: string;
                     };
@@ -4220,7 +4222,9 @@ export interface components {
             /**
              * Format: int64
              * @description Timed-shelve auto-return deadline (epoch seconds). Stamped when a
-             *     `shelve` comment is posted (`now + housekeeping.shelve_timeout`); the
+             *     `shelve` comment is posted: `now + comment.duration` when the
+             *     comment carries a positive `duration` (the window the operator
+             *     picked), otherwise `now + housekeeping.shelve_timeout`. The
              *     housekeeper's `unshelve_timeout` sweep reverts the record from
              *     `shelved` to `open` once this passes. `0`/absent means either no
              *     timed shelve or the legacy permanent shelve (`ttl=-1`), which is
@@ -4302,6 +4306,60 @@ export interface components {
              * @enum {string}
              */
             trend_indication?: "moreSevere" | "lessSevere" | "noChange" | "";
+        } & {
+            [key: string]: unknown;
+        };
+        /** @description A comment attached to a record. Created through the generic CRUD
+         *     surface (`POST /api/v1/{plugin}` with `plugin=comment`), which accepts
+         *     any object; this schema documents the fields the server understands.
+         *
+         *     A comment whose `type` is a state-changing action also transitions the
+         *     linked record: `ack`/`close`/`open`/`esc` set `state` directly,
+         *     `shelve` sets `state=shelved` plus a `shelve_until` deadline, and
+         *     `unshelve` returns the record to `open` and clears the deadline.
+         *      */
+        Comment: {
+            /** @description Server-assigned identifier. */
+            readonly uid?: string;
+            /** @description uid of the record this comment is attached to. */
+            record_uid: string;
+            /**
+             * @description `comment` is a free-form note; every other value additionally
+             *     drives the linked record's state transition.
+             *
+             * @enum {string}
+             */
+            type?: "comment" | "ack" | "close" | "open" | "esc" | "shelve" | "unshelve";
+            /** @description Free-form note. Must not be empty when present. */
+            message?: string;
+            /**
+             * Format: int64
+             * @description Shelve window in seconds. Only meaningful on a `type: "shelve"`
+             *     comment, where the server stamps
+             *     `record.shelve_until = now + duration`. Absent or `0` falls back to
+             *     the configured `housekeeping.shelve_timeout`. Negative values are
+             *     rejected with a 422; there is no upper bound.
+             *
+             */
+            duration?: number;
+            /** @description Server-stamped from the authenticated subject; any client-supplied
+             *     value is overwritten. Absent on auto-comments written by the
+             *     housekeeper or the aggregaterule plugin, which is how the activity
+             *     feed tells a human action from a system event.
+             *      */
+            readonly user?: string;
+            /** @description Auth method of the caller, stamped from the claims when the caller
+             *     did not set one — the chat-ops bridges set it themselves
+             *     (`teams`/`jira`/`mcp`) to record the originating channel.
+             *      */
+            method?: string;
+            /** @description Human-readable creation timestamp. */
+            date?: string;
+            /**
+             * Format: int64
+             * @description Creation time in epoch seconds.
+             */
+            date_epoch?: number;
         } & {
             [key: string]: unknown;
         };

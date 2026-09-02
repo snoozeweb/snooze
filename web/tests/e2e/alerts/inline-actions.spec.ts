@@ -14,7 +14,7 @@ test.describe("alerts inline quick actions", () => {
     await adminAuth();
   });
 
-  test("inline ack flips the row to Ack without opening a dialog", async ({
+  test("inline ack flips the row to Acknowledged without opening a dialog", async ({
     page,
     api,
     server,
@@ -36,18 +36,19 @@ test.describe("alerts inline quick actions", () => {
 
     // Acking moves the record out of the default "Alerts" tab (its preset
     // excludes state=ack), so the row leaves this view on refetch. Switch to
-    // the "Acknowledged" tab and confirm the row is present with an "Ack"
-    // state badge. Both checks are scoped to grid cells so the lifecycle tab
-    // label and the still-visible undo-toast copy ("Acknowledged srv-inline")
-    // don't satisfy the match. The Ack badge takes .first(): the 5s
-    // auto-refresh poll can briefly render the re-fetched row alongside the
-    // in-flight one, yielding two identical "Ack" badges mid-transition.
+    // the "Acknowledged" tab and confirm the row is present with an
+    // "Acknowledged" state badge — same noun as the chip, tab, and tile.
+    // Both checks are scoped to grid cells so the lifecycle tab label and
+    // the still-visible undo-toast copy ("Acknowledged srv-inline") don't
+    // satisfy the match. The badge takes .first(): the 5s auto-refresh poll
+    // can briefly render the re-fetched row alongside the in-flight one,
+    // yielding two identical "Acknowledged" badges mid-transition.
     await page.getByRole("tab", { name: /^acknowledged$/i }).click({ force: true });
     await expect(
       page.getByRole("gridcell").getByText("srv-inline", { exact: true }).first(),
     ).toBeVisible();
     await expect(
-      page.getByRole("gridcell").getByText("Ack", { exact: true }).first(),
+      page.getByRole("gridcell").getByText("Acknowledged", { exact: true }).first(),
     ).toBeVisible();
   });
 
@@ -87,7 +88,7 @@ test.describe("alerts inline quick actions", () => {
     await expect(page.getByText("srv-iclose")).toBeVisible();
 
     await page
-      .getByRole("button", { name: /^close$/i })
+      .getByRole("button", { name: /^close alert$/i })
       .first()
       .click({ force: true });
     await expect(page.getByRole("dialog")).toHaveCount(0);

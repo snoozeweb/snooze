@@ -695,15 +695,20 @@ export function DataTable<T>({
             // Lifecycle actions (Acknowledge / Close) get a labelled Button
             // here — this header is the drawer's only chrome, so an
             // unlabelled icon pair reads as ambiguous at the moment an
-            // operator is deciding whether to commit an irreversible-feeling
-            // action. Everything else (Comment, …) stays icon-only: it
-            // already has a full composer in the body, so the header button
-            // is a shortcut, not the primary affordance.
+            // operator is deciding which verb to commit to. Everything else
+            // (Comment, …) stays icon-only: it already has a full composer in
+            // the body, so the header button is a shortcut, not the primary
+            // affordance.
+            //
+            // Exactly one emphasized action should set `primary` — it becomes
+            // the single filled button, so the header has one focal point
+            // instead of a row of equals. `danger` still outranks it: a
+            // destructive verb is never painted as the happy path.
             a.emphasize ? (
               <Button
                 key={a.key}
                 size="sm"
-                variant={a.danger ? "danger" : "secondary"}
+                variant={a.danger ? "danger" : a.primary ? "primary" : "secondary"}
                 onClick={a.onSelect}
                 {...(a.icon ? { leadingIcon: a.icon } : {})}
                 {...(a.disabled ? { disabled: true } : {})}

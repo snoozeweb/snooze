@@ -46,6 +46,7 @@ import type { Record_, AlertState } from "./types";
 import { tabById, type TabId } from "./tabs";
 import { ActionDialog, type ActionType } from "./ActionDialog";
 import { ShelveDialog } from "./ShelveDialog";
+import { ROW_ACTION_DESCRIPTIONS, SILENCE_DESCRIPTIONS } from "./silencingGuide";
 import { BulkTagDialog } from "./BulkTagDialog";
 import { InjectAlertsDialog } from "./InjectAlertsDialog";
 import {
@@ -62,25 +63,39 @@ import styles from "./AlertsPage.module.css";
 // allowed and appended unconditionally after the filtered set.
 const CANDIDATE_ROW_ACTIONS: Array<{ key: ActionType; label: string; icon: IconName }> = [
   { key: "ack", label: "Acknowledge", icon: "thumbs-up" },
-  { key: "close", label: "Close", icon: "lock" },
+  { key: "close", label: "Close", icon: "check-circle" },
   { key: "esc", label: "Re-escalate", icon: "rotate-cw" },
   { key: "open", label: "Re-open", icon: "rotate-cw" },
 ];
 
 // The two lifecycle verbs the bulk bar always offers (see `stateButton`).
 // `pastVerb` is the participle the refusal tooltip needs ("…can be closed").
+//
+// Weighting: red is reserved for the irreversible — Delete, and nothing else.
+// Close used to wear it, which put a routine, reversible triage verb in the
+// same paint as data loss AND in the same paint as a critical severity badge.
+// Closing is undoable from two directions (Re-open in the kebab, the Undo
+// toast on the inline path), so it is a plain secondary now. Acknowledge takes
+// the single filled button instead: it is the verb this bar exists for and the
+// one an operator reaches for most, and one primary means one focal point.
 const BULK_STATE_META: Record<
   "ack" | "close",
-  { label: string; icon: IconName; variant: "secondary" | "danger"; pastVerb: string }
+  { label: string; icon: IconName; variant: "primary" | "secondary"; pastVerb: string }
 > = {
-  ack: { label: "Acknowledge", icon: "thumbs-up", variant: "secondary", pastVerb: "acknowledged" },
-  close: { label: "Close", icon: "lock", variant: "danger", pastVerb: "closed" },
+  ack: { label: "Acknowledge", icon: "thumbs-up", variant: "primary", pastVerb: "acknowledged" },
+  close: { label: "Close", icon: "check-circle", variant: "secondary", pastVerb: "closed" },
 };
 
 /** What a partially-eligible bulk action is leaving behind: how many rows, why,
  *  and out of how big a selection. Carried into the confirm dialog and the
  *  result toast so the skipped rows are stated at both ends. */
 type BulkSkip = { count: number; reason: string; selected: number };
+
+/** "1 alert" / "4 alerts" — the live-region copy reads the count out loud, so
+ *  the noun has to agree with it. */
+function alertCount(n: number): string {
+  return `${n} alert${n === 1 ? "" : "s"}`;
+}
 
 /** Short human label for a record used in undo-toast copy ("Acknowledged X"). */
 function recordLabel(r: Record_): string {
@@ -667,35 +682,41 @@ export function AlertsPage() {
       // ttl<0 branch: legacy permanent-exempt rows (pre-plan-34b); new-model rows use state=="shelved"
       const isShelved = state === "shelved" || (row.ttl !== undefined && row.ttl < 0);
 
-      // Grouped with separators (see RowActionSeparator): lifecycle state
-      // changes, then the always-available engage actions, then
-      // silence-and-suppress. A flat 7-item list reads as one undifferentiated
-      // pile — the grouping mirrors how an operator actually thinks about the
-      // menu ("what state should this be in" vs. "how do I quiet it down").
+      // Grouped with headings and separators (see RowActionHeading /
+      // RowActionSeparator): lifecycle state changes, then the always-available
+      // engage actions, then the ways to make it stop bothering you. A flat
+      // 7-item list reads as one undifferentiated pile — the grouping mirrors
+      // how an operator actually thinks about the menu ("what state should this
+      // be in" vs. "how do I quiet it down"), and the headings say so out loud
+      // instead of leaving a bare rule to imply it.
       const out: RowAction[] = [];
 
-      // ── Lifecycle ────────────────────────────────────────────────────
+      // ── Change state ─────────────────────────────────────────────────
       // Flat filter over candidates using the transition gate — replaces the
       // nested if (isOpen) / else if (isAcked) / else if (isClosed) chains.
+      const lifecycle: RowAction[] = [];
       for (const { key, label, icon } of CANDIDATE_ROW_ACTIONS) {
         if (isActionAllowed(state, key)) {
-          out.push({
+          lifecycle.push({
             key,
             label,
             icon,
-            // Close is the one lifecycle action that ends the alert's
-            // triage life — flagged the same as everywhere else it appears
-            // (drawer header, bulk bar) so it never blends in with Ack/Esc.
-            ...(key === "close" ? { danger: true } : {}),
+            ...(ROW_ACTION_DESCRIPTIONS[key] ? { description: ROW_ACTION_DESCRIPTIONS[key] } : {}),
             onSelect: () => openDialog(key, [row]),
           });
         }
       }
-
-      out.push({ key: "sep-lifecycle", separator: true });
+      // A heading over nothing is worse than no heading: some states allow no
+      // transition at all, and the group is omitted entirely then.
+      if (lifecycle.length > 0) {
+        out.push({ key: "head-state", heading: "Change state" });
+        out.push(...lifecycle);
+        out.push({ key: "sep-lifecycle", separator: true });
+      }
 
       // ── Engage ───────────────────────────────────────────────────────
       // comment is always-allowed.
+      out.push({ key: "head-engage", heading: "Engage" });
       out.push({
         key: "comment",
         label: "Comment",
@@ -703,32 +724,66 @@ export function AlertsPage() {
         onSelect: () => openDialog("comment", [row]),
       });
 
-      // snooze is always-allowed — it's a preventive action, not a state
-      // transition, so it doesn't need transition-gating.
+      // ── Quiet it down ────────────────────────────────────────────────
+      // Snooze lives here rather than beside Comment: it is one of the four
+      // ways to make an alert stop bothering you, and filing it under
+      // "Engage" hid that. It stays ungated — a snooze is a preventive rule
+      // about future alerts, not a transition on this record, so it is offered
+      // even for closed rows (the shelve verbs below are not).
+      out.push({ key: "sep-suppress", separator: true });
+      out.push({ key: "head-quiet", heading: "Quiet it down" });
       out.push({
         key: "snooze",
         label: "Snooze this alert",
         icon: "moon",
+        description: SILENCE_DESCRIPTIONS.snooze,
         onSelect: () => snoozeRows([row]),
       });
 
-      // ── Silence & suppress ───────────────────────────────────────────
       if (!isClosed) {
-        out.push({ key: "sep-suppress", separator: true });
         if (isShelved) {
-          // Unshelve via new comment-based API
+          // A row can be hidden by EITHER mechanism, and the two are
+          // independent: `state=="shelved"` (timed shelve, a comment) and
+          // `ttl<0` (permanent shelve, a PATCH). Undoing only the one you can
+          // see leaves the row hidden — the bug where "Unshelve" on a
+          // permanently-shelved alert posted a comment, flipped state to
+          // "open", and changed nothing the operator could observe, because
+          // the Shelved tab and the default Alerts preset both filter on
+          // `ttl < 0` too (see tabs.ts). So reverse whichever ones are set,
+          // and both when both are.
+          const wasStateShelved = state === "shelved";
+          const wasPermanent = row.ttl !== undefined && row.ttl < 0;
           out.push({
             key: "unshelve",
             label: "Unshelve",
             icon: "eye",
+            description: SILENCE_DESCRIPTIONS.unshelve,
             onSelect: () => {
               void (async () => {
+                const uid = row.uid ?? "";
                 try {
-                  await commentMut.mutateAsync({ record_uid: row.uid ?? "", type: "unshelve" });
+                  if (wasStateShelved) {
+                    await commentMut.mutateAsync({ record_uid: uid, type: "unshelve" });
+                  }
+                  if (wasPermanent) {
+                    await shelveMut.mutateAsync({ uid, shelve: false, currentTTL: row.ttl });
+                  }
                   toast.undo(`Unshelved • ${recordLabel(row)}`, () => {
                     void (async () => {
                       try {
-                        await commentMut.mutateAsync({ record_uid: row.uid ?? "", type: "shelve" });
+                        if (wasStateShelved) {
+                          await commentMut.mutateAsync({ record_uid: uid, type: "shelve" });
+                        }
+                        if (wasPermanent) {
+                          // The unshelve above flipped the ttl back to its
+                          // positive magnitude, so that positive value is what
+                          // the re-shelve must negate to land on the original.
+                          await shelveMut.mutateAsync({
+                            uid,
+                            shelve: true,
+                            currentTTL: row.ttl === undefined ? undefined : -row.ttl,
+                          });
+                        }
                       } catch (e) {
                         toast.error(describeError(e, "Undo failed").summary);
                       }
@@ -746,6 +801,7 @@ export function AlertsPage() {
             key: "shelve",
             label: "Shelve",
             icon: "eye-off",
+            description: SILENCE_DESCRIPTIONS.shelve,
             onSelect: () => {
               setShelveDialogError(null);
               setShelveDialog([row]);
@@ -759,6 +815,7 @@ export function AlertsPage() {
             key: "permanent-exempt",
             label: "Shelve permanently",
             icon: "eye-off",
+            description: SILENCE_DESCRIPTIONS.shelveForever,
             onSelect: () => {
               void (async () => {
                 try {
@@ -856,20 +913,25 @@ export function AlertsPage() {
           label: "Acknowledge",
           icon: "thumbs-up",
           // Labelled (not just an icon) in the one place this list feeds a
-          // header with room for it — the detail drawer's toolbar.
+          // header with room for it — the detail drawer's toolbar — and the
+          // filled one of the pair: it is the verb an operator reaches for
+          // most, so it gets the header's single focal point.
           emphasize: true,
+          primary: true,
           onSelect: () => inlineAction(row, "ack"),
         });
       }
       if (isActionAllowed(state, "close")) {
         out.push({
           key: "close",
-          label: "Close",
-          icon: "lock",
+          // "Close alert", not "Close": in the detail drawer this button sits
+          // a few pixels from the panel's own ✕ (aria-label "Close panel"),
+          // and one of those two dismisses a panel while the other ends an
+          // alert's triage life. The bulk bar and the kebab keep the bare
+          // "Close" — nothing named "Close" is adjacent there.
+          label: "Close alert",
+          icon: "check-circle",
           emphasize: true,
-          // Close reads as the more consequential of the two — visually
-          // distinct so it isn't mistaken for Acknowledge at a glance.
-          danger: true,
           onSelect: () => inlineAction(row, "close"),
         });
       }
@@ -952,16 +1014,16 @@ export function AlertsPage() {
         },
       ];
 
-      // Flat filter over candidates using the transition gate. Close carries
-      // the same danger marking as the kebab/drawer/bulk bar so it reads
-      // consistently wherever this action surfaces.
+      // Flat filter over candidates using the transition gate. Close is not
+      // danger-marked here or anywhere else — see BULK_STATE_META for why red
+      // now belongs to Delete alone.
       for (const { key, label, icon } of CANDIDATE_ROW_ACTIONS) {
         if (isActionAllowed(state, key)) {
           items.push({
             key,
             label,
             icon,
-            ...(key === "close" ? { danger: true } : {}),
+            ...(ROW_ACTION_DESCRIPTIONS[key] ? { description: ROW_ACTION_DESCRIPTIONS[key] } : {}),
             onSelect: () => openDialog(key, [row]),
           });
         }
@@ -979,6 +1041,7 @@ export function AlertsPage() {
         key: "snooze",
         label: "Snooze this alert",
         icon: "moon",
+        description: SILENCE_DESCRIPTIONS.snooze,
         onSelect: () => snoozeRows([row]),
       });
 
@@ -1090,9 +1153,9 @@ export function AlertsPage() {
       return (
         <>
           {stateButton("ack")}
-          {/* Close is the one bulk action that ends triage for every selected
-              alert — danger-weighted (see BULK_STATE_META) so it doesn't read
-              as identical in stakes to Comment/Tag beside it. */}
+          {/* Acknowledge leads and is the only filled button on the bar; Close
+              follows as a plain secondary. See BULK_STATE_META for why Close
+              gave up its red — it is reversible, and red now means Delete. */}
           {stateButton("close")}
           {valid.has("esc") ? (
             <Button

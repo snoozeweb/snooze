@@ -24,3 +24,13 @@
   margin-bottom: 4px;
   display: block;
 }
+
+/* Sits between the title and the body: quiet, but above the fold, because it
+   exists to stop the operator using the wrong verb. */
+.hint {
+  margin: 0;
+  padding: 0 var(--space-4) var(--space-2);
+  color: var(--text-muted);
+  font-size: var(--text-sm);
+  line-height: 1.4;
+}

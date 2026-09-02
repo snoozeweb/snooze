@@ -264,7 +264,7 @@ setting_form:
     housekeeping.shelve_timeout:
         display_name: 'Shelve timeout'
         component: 'String'
-        description: 'How long a timed shelve lasts before the alert is automatically returned to open (Go duration string, e.g. "4h"). Posting a shelve comment stamps shelve_until = now + this; the minute-cadence sweep enforces it. Does not affect the legacy permanent shelve.'
+        description: 'Default length of a timed shelve, used when the shelve comment does not name its own duration (Go duration string, e.g. "4h"). A shelve posted from the UI carries the window the operator picked and overrides this; the minute-cadence sweep enforces whichever deadline was stamped. Does not affect the legacy permanent shelve.'
         default_value: '4h'
         group: 'housekeeping'
     # --- Ingest ---------------------------------------------------------------

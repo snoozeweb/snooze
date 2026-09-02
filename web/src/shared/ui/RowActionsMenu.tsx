@@ -1,6 +1,6 @@
 import type { IconName } from "@/shared/icons/icon-names";
 import { IconButton } from "./IconButton";
-import { Menu, MenuContent, MenuItem, MenuSeparator, MenuTrigger } from "./Menu";
+import { Menu, MenuContent, MenuItem, MenuLabel, MenuSeparator, MenuTrigger } from "./Menu";
 import styles from "./RowActionsMenu.module.css";
 
 export type RowActionItem = {
@@ -9,11 +9,22 @@ export type RowActionItem = {
   icon?: IconName;
   danger?: boolean;
   disabled?: boolean;
+  /** One plain sentence under the label, in renderers that have room for it
+   *  (the kebab and the right-click menu). For verbs whose label doesn't say
+   *  which of several near-synonyms this is — see the alerts kebab, where
+   *  Close / Snooze / Shelve / Shelve permanently all mean "stop bothering
+   *  me" in four different ways. Icon-only renderings ignore it. */
+  description?: string;
   /** Render this action as a labelled Button (icon+text) rather than an
    *  icon-only control, in the one place that has room for it today: the
    *  detail-drawer header's quick actions (see DataTable's `detailsActions`).
    *  Icon-only renderings (row hover, kebab already shows text) ignore it. */
   emphasize?: boolean;
+  /** Among the emphasized actions, the one the operator most often wants —
+   *  rendered as the single filled Button in that header. At most one action
+   *  per list should set it; `danger` wins if both are set, since a
+   *  destructive action must never be styled as the happy path. */
+  primary?: boolean;
   onSelect: () => void;
 };
 
@@ -22,13 +33,18 @@ export type RowActionItem = {
  *  `rowActions` (kebab) list; row-level quick-action bars never contain one. */
 export type RowActionSeparator = { key: string; separator: true };
 
-export type RowAction = RowActionItem | RowActionSeparator;
+/** A named heading for the group that follows it. Like the separator, only
+ *  the kebab renders it; every other surface filters it out. A separator
+ *  says "these are different", a heading says how. */
+export type RowActionHeading = { key: string; heading: string };
+
+export type RowAction = RowActionItem | RowActionSeparator | RowActionHeading;
 
 /** Narrows a RowAction to its actionable variant — used by every renderer
- *  that doesn't understand separators (row hover buttons, the drawer
- *  header's quick actions). */
+ *  that doesn't understand separators or headings (row hover buttons, the
+ *  drawer header's quick actions, the right-click menu). */
 export function isRowActionItem(a: RowAction): a is RowActionItem {
-  return !("separator" in a);
+  return !("separator" in a) && !("heading" in a);
 }
 
 /** The row-actions kebab: a Menu trigger (⋯) that opens a dropdown of
@@ -57,21 +73,24 @@ export function RowActionsMenu({
         <IconButton icon="more-horizontal" label={triggerLabel} size="sm" withTooltip={false} />
       </MenuTrigger>
       <MenuContent>
-        {actions.map((a) =>
-          isRowActionItem(a) ? (
-            <MenuItem
-              key={a.key}
-              {...(a.icon ? { leadingIcon: a.icon } : {})}
-              {...(a.danger ? { danger: true } : {})}
-              {...(a.disabled ? { disabled: true } : {})}
-              onSelect={a.onSelect}
-            >
-              {a.label}
-            </MenuItem>
-          ) : (
-            <MenuSeparator key={a.key} />
-          ),
-        )}
+        {actions.map((a) => {
+          if (isRowActionItem(a)) {
+            return (
+              <MenuItem
+                key={a.key}
+                {...(a.icon ? { leadingIcon: a.icon } : {})}
+                {...(a.danger ? { danger: true } : {})}
+                {...(a.disabled ? { disabled: true } : {})}
+                {...(a.description ? { description: a.description } : {})}
+                onSelect={a.onSelect}
+              >
+                {a.label}
+              </MenuItem>
+            );
+          }
+          if ("heading" in a) return <MenuLabel key={a.key}>{a.heading}</MenuLabel>;
+          return <MenuSeparator key={a.key} />;
+        })}
       </MenuContent>
     </Menu>
   );
