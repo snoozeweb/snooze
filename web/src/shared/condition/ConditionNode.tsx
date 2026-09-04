@@ -254,11 +254,14 @@ export function ConditionNode({
       return;
     }
     const newShape = valueShapeForOp(nextType);
+    const oldShape = valueShapeForOp(leaf.type);
     if (newShape === "string") {
       onChange({
         type: nextType as "EQUALS" | "NOT_EQUALS" | "CONTAINS" | "MATCHES",
         field: fieldText,
-        value: "",
+        // Same shape (e.g. contains -> matches): keep the operand the
+        // operator was already typing instead of clearing it.
+        value: oldShape === "string" ? (leaf as { value: string }).value : "",
       });
       return;
     }
@@ -266,12 +269,16 @@ export function ConditionNode({
       onChange({
         type: nextType as "LT" | "GT" | "LE" | "GE",
         field: fieldText,
-        value: 0,
+        value: oldShape === "number" ? (leaf as { value: number }).value : 0,
       });
       return;
     }
     if (newShape === "array") {
-      onChange({ type: "IN", field: fieldText, value: [] });
+      onChange({
+        type: "IN",
+        field: fieldText,
+        value: oldShape === "array" ? (leaf as { value: string[] }).value : [],
+      });
     }
   }
 

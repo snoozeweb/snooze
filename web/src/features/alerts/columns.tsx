@@ -143,7 +143,11 @@ export const alertColumns: ColumnDef<Record_>[] = [
       );
     },
     sortable: true,
-    width: "100px",
+    // 100px wrapped the longest label ("Emergency") plus the trend arrow onto
+    // two lines on every row, not just the rare overflow case. 132px (same
+    // budget class as State's 136px, which fits comparably long badge text)
+    // keeps badge + arrow on one line.
+    width: "132px",
     cardRole: "header",
   },
   {
