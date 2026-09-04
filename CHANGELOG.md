@@ -1,4 +1,4 @@
-## Unreleased
+## v2.5.0
 
 ### Added
 
@@ -146,6 +146,46 @@
 - The mongo bus logs when a subscriber's channel is full and an event is
   dropped (first drop, then every 100th). Previously this was the only
   unlogged failure point on the reload path.
+
+### Added
+
+- Re-escalation now reaches every notifier: jira/servicenow update the
+  existing ticket, statuspage/opsgenie/pagerduty escalate onto the existing
+  incident, chat outputs thread instead of reposting, and notifiers with no
+  threading concept still escalate urgency in the message.
+- Google Chat records its thread id so inbound slash-commands resolve back to
+  the right alert.
+- Sessions renew silently in the background instead of dying at token expiry;
+  sign-out now revokes the refresh token.
+- Alerts table: message-first layout, honest duplicate counts, prioritised
+  mobile cards, manual refresh button, truncated-cell tooltips, snooze
+  straight from the row.
+- Dashboard leads with the noise-reduction story; counters are bucketed live
+  at ingest instead of snapshotted.
+- Keyboard triage and alert search in the command palette.
+- Accessible, human failure states across the app; an aria-live announcer for
+  polled screens.
+- Visual refresh: split ack/closed hues, warm-paper light theme, unified
+  lifecycle vocabulary across chips/tabs/tiles/legend/timeline, Close
+  de-weighted in favour of Acknowledge, Flow chart always renders the Snooze
+  stage with visible connectors.
+
+### Fixed
+
+- SQLite: `Contains`/`In` conditions no longer misfire `json_each` against a
+  non-array field.
+- Snooze filters evaluate oldest-first so first-match-wins is stable.
+- "Create and apply" actually retro-applies now (the create response's shape
+  was misread).
+- Empty alert payloads are rejected instead of creating blank table rows.
+- Various small UI honesty/accessibility fixes: no false "All clear" during
+  an outage, no cropped severity/state badges, no stray scrollbar on the
+  Alerts tab strip, absolute time on timeline hover, 3:1 form-control
+  borders.
+- Alerts table's Sev column no longer wraps the badge onto two lines.
+- Condition editor: switching the operator (e.g. `contains` → `matches`, or
+  via SEARCH, which masks the field) keeps the field and operand you already
+  typed instead of clearing them.
 
 ## v2.4.0
 
