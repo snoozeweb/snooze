@@ -3,6 +3,7 @@
 // owns an operator dropdown (for logic) or a field/op/value triplet (for
 // leaves), a (+) button to add a child or fork into AND, and a trash
 // button that delegates removal upward (root collapses to ALWAYS_TRUE).
+import { useRef } from "react";
 import { IconButton } from "@/shared/ui/IconButton";
 import { Input } from "@/shared/ui/Input";
 import { Select, SelectContent, SelectItem, SelectTrigger } from "@/shared/ui/Select";
@@ -60,6 +61,14 @@ export function ConditionNode({
   onDuplicate,
   isRoot = false,
 }: ConditionNodeProps) {
+  // Remembers the last operand typed for each value shape so that hopping
+  // between operators (e.g. GT -> CONTAINS -> GT) restores what was there
+  // before instead of re-clearing it every time. Keyed by shape rather than
+  // by operator since e.g. CONTAINS and MATCHES already share a value via
+  // the same-shape carry-over in setOperator below. Lives for this node's
+  // lifetime only — never persisted, never read by anything else.
+  const rememberedValues = useRef<{ string?: string; number?: number; array?: string[] }>({});
+
   // ── Empty (ALWAYS_TRUE) ────────────────────────────────────────
   if (value.type === "ALWAYS_TRUE") {
     return (
@@ -255,13 +264,16 @@ export function ConditionNode({
     }
     const newShape = valueShapeForOp(nextType);
     const oldShape = valueShapeForOp(leaf.type);
+    // Stash the operand we're leaving behind so switching back to this shape
+    // later (even via an unrelated shape in between) restores it.
+    if (oldShape === "string") rememberedValues.current.string = (leaf as { value: string }).value;
+    if (oldShape === "number") rememberedValues.current.number = (leaf as { value: number }).value;
+    if (oldShape === "array") rememberedValues.current.array = (leaf as { value: string[] }).value;
     if (newShape === "string") {
       onChange({
         type: nextType as "EQUALS" | "NOT_EQUALS" | "CONTAINS" | "MATCHES",
         field: fieldText,
-        // Same shape (e.g. contains -> matches): keep the operand the
-        // operator was already typing instead of clearing it.
-        value: oldShape === "string" ? (leaf as { value: string }).value : "",
+        value: rememberedValues.current.string ?? "",
       });
       return;
     }
@@ -269,7 +281,7 @@ export function ConditionNode({
       onChange({
         type: nextType as "LT" | "GT" | "LE" | "GE",
         field: fieldText,
-        value: oldShape === "number" ? (leaf as { value: number }).value : 0,
+        value: rememberedValues.current.number ?? 0,
       });
       return;
     }
@@ -277,7 +289,7 @@ export function ConditionNode({
       onChange({
         type: "IN",
         field: fieldText,
-        value: oldShape === "array" ? (leaf as { value: string[] }).value : [],
+        value: rememberedValues.current.array ?? [],
       });
     }
   }
@@ -290,12 +302,14 @@ export function ConditionNode({
       leaf.type === "MATCHES" ||
       leaf.type === "SEARCH"
     ) {
+      rememberedValues.current.string = v;
       onChange({ ...leaf, value: v });
     }
   }
 
   function setNumberValue(v: number) {
     if (leaf.type === "LT" || leaf.type === "GT" || leaf.type === "LE" || leaf.type === "GE") {
+      rememberedValues.current.number = v;
       onChange({ ...leaf, value: v });
     }
   }
@@ -306,6 +320,7 @@ export function ConditionNode({
         .split(",")
         .map((s) => s.trim())
         .filter((s) => s.length > 0);
+      rememberedValues.current.array = arr;
       onChange({ ...leaf, value: arr });
     }
   }
