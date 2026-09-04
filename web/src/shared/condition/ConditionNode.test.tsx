@@ -202,7 +202,7 @@ describe("ConditionNode — SEARCH operator (field masked, value-only)", () => {
     expect(screen.getByPlaceholderText("value")).toHaveValue("disk full");
   });
 
-  it("switching the operator to SEARCH clears a previously-set field", async () => {
+  it("switching the operator to SEARCH clears the field but keeps the operand", async () => {
     const user = userEvent.setup();
     let last: Condition | undefined;
     const Wrapper = wrap();
@@ -218,6 +218,6 @@ describe("ConditionNode — SEARCH operator (field masked, value-only)", () => {
     );
     await user.click(screen.getByRole("combobox"));
     await user.click(screen.getByRole("option", { name: "search" }));
-    expect(last).toEqual({ type: "SEARCH", field: "", value: "" });
+    expect(last).toEqual({ type: "SEARCH", field: "", value: "srv-1" });
   });
 });

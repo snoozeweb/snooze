@@ -256,10 +256,15 @@ export function ConditionNode({
     }
     if (nextType === "SEARCH") {
       // SEARCH only ever reads its value (a full-text term across the whole
-      // record) — the backend requires field to stay empty. Force it blank
-      // here rather than carrying over whatever field was set for the
-      // previous operator, which would silently never match.
-      onChange({ type: "SEARCH", field: "", value: "" });
+      // record) — the backend requires field to stay empty. Force the field
+      // blank rather than carrying over whatever field was set for the
+      // previous operator, which would silently never match. The operand
+      // itself is still string-shaped, so it comes from the same memory as
+      // EQUALS/CONTAINS/MATCHES rather than being cleared.
+      if (valueShapeForOp(leaf.type) === "string") {
+        rememberedValues.current.string = (leaf as { value: string }).value;
+      }
+      onChange({ type: "SEARCH", field: "", value: rememberedValues.current.string ?? "" });
       return;
     }
     const newShape = valueShapeForOp(nextType);
