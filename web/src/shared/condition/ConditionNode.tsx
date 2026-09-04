@@ -68,6 +68,10 @@ export function ConditionNode({
   // the same-shape carry-over in setOperator below. Lives for this node's
   // lifetime only — never persisted, never read by anything else.
   const rememberedValues = useRef<{ string?: string; number?: number; array?: string[] }>({});
+  // Same idea for the field (left operand): SEARCH has no field input and
+  // forces it to "" on the backend, which would otherwise wipe out whatever
+  // was typed before hopping to SEARCH and back.
+  const rememberedField = useRef<string>("");
 
   // ── Empty (ALWAYS_TRUE) ────────────────────────────────────────
   if (value.type === "ALWAYS_TRUE") {
@@ -218,10 +222,13 @@ export function ConditionNode({
   // ── Leaf (EQUALS / CONTAINS / EXISTS / IN / numeric) ───────────
   const leaf = value;
   const shape = valueShapeForOp(leaf.type);
-  const fieldText = "field" in leaf ? leaf.field : "";
+  // SEARCH's own field is always "" (forced by the backend) — the field the
+  // user actually typed before switching to SEARCH lives in rememberedField.
+  const fieldText = leaf.type === "SEARCH" ? rememberedField.current : "field" in leaf ? leaf.field : "";
 
   function setField(field: string) {
     // SEARCH has no field input (masked below) — it's never reachable here.
+    rememberedField.current = field;
     if (
       leaf.type === "EQUALS" ||
       leaf.type === "NOT_EQUALS" ||
@@ -256,11 +263,12 @@ export function ConditionNode({
     }
     if (nextType === "SEARCH") {
       // SEARCH only ever reads its value (a full-text term across the whole
-      // record) — the backend requires field to stay empty. Force the field
-      // blank rather than carrying over whatever field was set for the
-      // previous operator, which would silently never match. The operand
-      // itself is still string-shaped, so it comes from the same memory as
-      // EQUALS/CONTAINS/MATCHES rather than being cleared.
+      // record) — the backend requires field to stay empty. The field the
+      // user typed isn't lost though: it's stashed in rememberedField and
+      // restored by `fieldText` above if they switch back off SEARCH. The
+      // operand itself is still string-shaped, so it comes from the same
+      // memory as EQUALS/CONTAINS/MATCHES rather than being cleared.
+      if (leaf.type !== "SEARCH") rememberedField.current = fieldText;
       if (valueShapeForOp(leaf.type) === "string") {
         rememberedValues.current.string = (leaf as { value: string }).value;
       }

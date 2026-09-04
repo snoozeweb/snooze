@@ -2,6 +2,7 @@ import { render, screen, fireEvent } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { describe, expect, it, vi } from "vitest";
+import { useState } from "react";
 import type { ReactNode } from "react";
 import { TooltipProvider } from "@/shared/ui/Tooltip";
 import { ConditionNode } from "./ConditionNode";
@@ -219,5 +220,30 @@ describe("ConditionNode — SEARCH operator (field masked, value-only)", () => {
     await user.click(screen.getByRole("combobox"));
     await user.click(screen.getByRole("option", { name: "search" }));
     expect(last).toEqual({ type: "SEARCH", field: "", value: "srv-1" });
+  });
+
+  it("switching SEARCH back to a field-bearing operator restores the masked field", async () => {
+    const user = userEvent.setup();
+    const Wrapper = wrap();
+    function Controlled() {
+      const [value, setValue] = useState<Condition>({
+        type: "EQUALS",
+        field: "host",
+        value: "srv-1",
+      });
+      return <ConditionNode value={value} fieldOptions={[]} onChange={setValue} isRoot />;
+    }
+    render(
+      <Wrapper>
+        <Controlled />
+      </Wrapper>,
+    );
+    await user.click(screen.getByRole("combobox"));
+    await user.click(screen.getByRole("option", { name: "search" }));
+    // Field input is masked while on SEARCH.
+    expect(screen.queryByPlaceholderText("field")).not.toBeInTheDocument();
+    await user.click(screen.getByRole("combobox"));
+    await user.click(screen.getByRole("option", { name: "=" }));
+    expect(screen.getByPlaceholderText("field")).toHaveValue("host");
   });
 });
