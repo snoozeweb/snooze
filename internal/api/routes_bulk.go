@@ -15,6 +15,12 @@
 // scoped collection, so a match-all (empty) ?q is safe — the driver still
 // AND-s the tenant predicate. The handler never bypasses rt.DB / rt.Host.DB().
 //
+// Plugin write authorization on the bulk paths goes through the opt-in
+// plugins.BulkWriteGuard hook only (see guardBulk): the per-document hooks
+// plugins.WriteTransformer / plugins.WriteGuard are never called here, and a
+// collection carrying one of them has its bulk requests refused rather than
+// half-checked.
+//
 //nolint:revive
 package api
 
@@ -127,7 +133,19 @@ func (rt *Router) handleBulkState(w http.ResponseWriter, r *http.Request) {
 	}
 	ctx := r.Context()
 
-	matched, err := rt.DB.SetFields(ctx, recordCollection, db.Document{"state": req.State}, cond)
+	// bulk_state writes {"state": …} to the record collection, so it goes
+	// through the same bulk authorization gate as bulk_update. A nil plugin —
+	// the registry is not wired in some tests — keeps the historical behaviour:
+	// straight to the driver, no hook. `record` implements no write hook at
+	// all, so in production this is a pass-through.
+	set := db.Document{"state": req.State}
+	if p := rt.plugin(recordCollection); p != nil {
+		if !rt.guardBulk(w, r, p, set, nil, nil) {
+			return
+		}
+	}
+
+	matched, err := rt.DB.SetFields(ctx, recordCollection, set, cond)
 	if err != nil {
 		WriteError(w, r, ErrInternal.WithCause(err))
 		return
@@ -195,6 +213,12 @@ func (rt *Router) handleBulkUpdate(w http.ResponseWriter, r *http.Request) {
 	}
 	ctx := r.Context()
 
+	// Authorize the request as a whole BEFORE any driver call, so bulk_update
+	// is not a hole in the chain the generic CRUD handlers enforce.
+	if !rt.guardBulk(w, r, p, req.Set, req.Tag, req.Untag) {
+		return
+	}
+
 	var resp bulkUpdateResponse
 	if len(req.Set) > 0 {
 		n, serr := rt.DB.SetFields(ctx, name, req.Set, cond)
@@ -239,6 +263,60 @@ func (rt *Router) handleBulkUpdate(w http.ResponseWriter, r *http.Request) {
 	rt.auditBulk(ctx, name, "bulk_update", cond, resp.Matched, bulkUpdateSummary(req))
 
 	WriteJSON(w, http.StatusOK, resp)
+}
+
+// guardBulk authorizes one bulk mutation against p. It reports whether the
+// caller may proceed; when it returns false the response has already been
+// written. Three cases, in order:
+//
+//  1. p implements plugins.BulkWriteGuard — it has opted its collection into
+//     bulk writes and owns the semantics. Call it once, before any driver call;
+//     an error is a 403.
+//  2. p implements plugins.WriteGuard and/or plugins.WriteTransformer but NOT
+//     BulkWriteGuard — refuse the whole request with 403. Those hooks are
+//     per-document and cannot be honoured by a query-wide mutation (see 3
+//     below); running them anyway is worse than refusing, so the collection
+//     stays non-bulk-writable until it opts in.
+//  3. p implements none of them — proceed with no hook, which is exactly the
+//     behaviour these endpoints always had. `record`, the only collection the
+//     web UI bulk-mutates, is this case.
+//
+// Why case 2 refuses instead of adapting the per-document hooks:
+//
+//   - TransformWrite would run once on the shared `set` document, so the
+//     identity fields some transforms stamp (savedsearch's `owner`, comment's
+//     `user`/`method`, taken from the CALLER's claims) would be written onto
+//     every matched row — a bulk edit that quietly reassigns other people's
+//     rows to whoever ran it.
+//   - GuardWrite takes a uid and most implementations authorize against that
+//     row's prior state. A bulk call never loads the rows, so the best it could
+//     pass is "": apikey's guard rejects "" unconditionally (every apikey
+//     bulk_update becomes a 403 about how keys are created), and user's
+//     last-admin/platform_admin protection, role's reserved-role protection and
+//     comment's state-transition rules all silently become no-ops — coverage
+//     that looks enforced and is not.
+//
+// DataModel.Validate is likewise NOT invoked: a bulk body is a partial field
+// merge plus two tag lists, never a whole document, and the collection schemas
+// describe whole documents.
+func (rt *Router) guardBulk(w http.ResponseWriter, r *http.Request,
+	p plugins.Plugin, set db.Document, tag, untag []string,
+) bool {
+	if g, ok := p.(plugins.BulkWriteGuard); ok {
+		if err := g.GuardBulkWrite(r.Context(), set, tag, untag); err != nil {
+			WriteError(w, r, ErrForbidden.WithMessage(err.Error()))
+			return false
+		}
+		return true
+	}
+	_, guards := p.(plugins.WriteGuard)
+	_, transforms := p.(plugins.WriteTransformer)
+	if guards || transforms {
+		WriteError(w, r, ErrForbidden.WithMessage(
+			"collection does not support bulk writes; its write hooks are per-document"))
+		return false
+	}
+	return true
 }
 
 // auditBulk records the audit trail for a bulk mutation. It looks up the

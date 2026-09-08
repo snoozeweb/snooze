@@ -90,7 +90,24 @@ func (rt *Router) handleSnoozeRetroApply(w http.ResponseWriter, r *http.Request)
 		resp.Matched = deleted
 		resp.Deleted = deleted
 	} else {
-		tagged, err := rt.DB.SetFields(ctx, "record", db.Document{"snoozed": name}, cond)
+		// Whole-query write, so it goes through the same gate the bulk
+		// endpoints use (routes_bulk.go guardBulk): one authorization for the
+		// mutation as a whole, and an outright refusal for a collection whose
+		// write hooks are per-document and cannot be honoured here. Without
+		// this, retro-apply was the last ungated query-wide write left in the
+		// api package — a hole in a chain every other path enforces.
+		//
+		// In production this is a pass-through: `record` implements neither
+		// WriteGuard nor WriteTransformer, so guardBulk falls to its no-hook
+		// case. The nil check keeps the tests that wire no plugin host at all
+		// on the historical straight-to-driver path.
+		set := db.Document{"snoozed": name}
+		if p := rt.plugin("record"); p != nil {
+			if !rt.guardBulk(w, r, p, set, nil, nil) {
+				return
+			}
+		}
+		tagged, err := rt.DB.SetFields(ctx, "record", set, cond)
 		if err != nil {
 			WriteError(w, r, ErrInternal.WithCause(err))
 			return
