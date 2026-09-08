@@ -72,6 +72,18 @@ function variantOf(label: string): Variant {
   return variantFromRank(r);
 }
 
+/**
+ * severityRank resolves a raw severity label to its position on the ladder —
+ * LOWER is worse (0 = emergency). Consults the server ladder installed by
+ * setSeverityRanks first, so a custom severity an operator placed between
+ * `crit` and `err` sorts where they put it. Returns undefined for labels in
+ * neither map, so callers can decide where "unknown" belongs (an unrecognised
+ * severity is not evidence of urgency — sort it last).
+ */
+export function severityRank(label: string): number | undefined {
+  return rankOf(label.toLowerCase().trim());
+}
+
 const CANONICAL_RANK: Record<Variant, number> = {
   critical: 2,
   error: 3,

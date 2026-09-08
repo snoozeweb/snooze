@@ -3,8 +3,10 @@ import { Badge } from "@/shared/ui/Badge";
 import { Code } from "@/shared/ui/Code";
 import { prettyCondition } from "@/lib/condition/pretty";
 import { summarizeFrequency } from "@/shared/ui/frequencyUtils";
+import { TimeCell } from "@/shared/ui/TimeCell";
 import { TimeConstraintsCell } from "@/shared/ui/TimeConstraintsCell";
 import type { Action, Notification } from "./types";
+import styles from "./columns.module.css";
 
 export const notificationColumns: ColumnDef<Notification>[] = [
   {
@@ -13,13 +15,17 @@ export const notificationColumns: ColumnDef<Notification>[] = [
     cell: (r) => <TimeConstraintsCell value={r.time_constraints} />,
     width: "210px",
     hideBelow: "lg",
+    cardRole: "meta",
   },
   {
+    // The row's identifier — the card's headline (see alerts' `message`
+    // column for the same "body" precedent).
     id: "name",
     header: "Name",
     cell: (r) => <Code>{r.name}</Code>,
     sortable: true,
     width: "200px",
+    cardRole: "body",
   },
   {
     id: "condition",
@@ -29,6 +35,7 @@ export const notificationColumns: ColumnDef<Notification>[] = [
         {prettyCondition(r.condition)}
       </span>
     ),
+    cardRole: "meta",
   },
   {
     id: "actions",
@@ -46,6 +53,41 @@ export const notificationColumns: ColumnDef<Notification>[] = [
       </span>
     ),
     width: "200px",
+    cardRole: "meta",
+  },
+  {
+    // Server-stamped counters (D10). The column ids are the record field
+    // names on purpose: `serverSort` forwards `sortBy` straight to the CRUD
+    // `orderby`, so `id` IS the sort key.
+    //
+    // cardRole "header" (W18): below the 640px card breakpoint these render
+    // as a compact unlabelled chip on the card's first line instead of a
+    // full `label — value` row. A notification that never sent renders
+    // NOTHING (not an em-dash) — matching alerts' `hits` column — because
+    // DataTable's card CSS only collapses a "header" slot when its content
+    // is truly empty (`td[data-card="header"]:has(> .cellInner:empty)`);
+    // an em-dash placeholder would still count as content and show up as
+    // noise on every never-sent notification's card.
+    id: "hits",
+    header: "Sent",
+    cell: (r) => (r.hits && r.hits > 0 ? <span className={styles.count}>{r.hits}</span> : null),
+    sortable: true,
+    align: "right",
+    width: "80px",
+    hideBelow: "md",
+    cardRole: "header",
+  },
+  {
+    id: "last_sent",
+    header: "Last sent",
+    // See the `hits` comment above: render nothing (rather than TimeCell's
+    // own "—" fallback) so the card omits this slot entirely when a
+    // notification has never sent.
+    cell: (r) => (r.last_sent ? <TimeCell epoch={r.last_sent} compact /> : null),
+    sortable: true,
+    width: "110px",
+    hideBelow: "lg",
+    cardRole: "header",
   },
   {
     id: "frequency",
@@ -57,6 +99,7 @@ export const notificationColumns: ColumnDef<Notification>[] = [
     ),
     width: "160px",
     hideBelow: "xl",
+    cardRole: "meta",
   },
   {
     id: "batch",
@@ -72,6 +115,7 @@ export const notificationColumns: ColumnDef<Notification>[] = [
       ),
     width: "80px",
     hideBelow: "xl",
+    cardRole: "meta",
   },
 ];
 
@@ -107,7 +151,7 @@ const SUMMARY_KEYS = [
   "sender",
 ];
 
-function summarizeSubcontent(sub: Record<string, unknown> | undefined): string {
+export function summarizeSubcontent(sub: Record<string, unknown> | undefined): string {
   if (!sub) return "";
   const parts: string[] = [];
   for (const key of SUMMARY_KEYS) {

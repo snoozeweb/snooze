@@ -7,7 +7,15 @@ export type TextParseResult = { ok: true; value: Condition } | { ok: false; erro
 const IDENT_RE = /^[A-Za-z_][A-Za-z0-9_.-]*$/;
 
 function quoteString(s: string): string {
-  return `"${s.replace(/\\/g, "\\\\").replace(/"/g, '\\"').replace(/\n/g, "\\n").replace(/\t/g, "\\t")}"`;
+  // Defensive String(): EQUALS/NOT_EQUALS also accept a real boolean operand
+  // (see `LeafBoolOp` in ./types.ts), and SEARCH/CONTAINS/MATCHES nodes reach
+  // here straight from the visual builder, which can only *type* strings but
+  // carries whatever the text DSL parsed before. A boolean landing on a
+  // string operator used to throw `s.replace is not a function` from inside a
+  // render, blanking the whole editor; printing `"true"` is a readable
+  // degradation the operator can see and correct.
+  const raw = String(s);
+  return `"${raw.replace(/\\/g, "\\\\").replace(/"/g, '\\"').replace(/\n/g, "\\n").replace(/\t/g, "\\t")}"`;
 }
 
 function encodeIdent(s: string): string {
@@ -81,6 +89,7 @@ type TokKind =
   | "IDENT"
   | "STRING"
   | "NUMBER"
+  | "BOOL"
   | "LPAREN"
   | "RPAREN"
   | "LBRACK"
@@ -103,7 +112,7 @@ type TokKind =
   | "EXISTS_KW"
   | "EOF";
 
-type Tok = { kind: TokKind; text: string; pos: number; num?: number };
+type Tok = { kind: TokKind; text: string; pos: number; num?: number; bool?: boolean };
 
 function isIdentStart(ch: string) {
   return /[A-Za-z_]/.test(ch);
@@ -111,6 +120,13 @@ function isIdentStart(ch: string) {
 function isIdentCont(ch: string) {
   return /[A-Za-z0-9_.-]/.test(ch);
 }
+
+// `true`/`false` are literals, not keywords: the lexer still hands back the
+// source text, so a BOOL token in *field* position (or standing alone) reads
+// as the word it is — only the value position interprets it as a boolean.
+// Quoting (`x = "true"`) always yields a STRING, which is how you ask for the
+// literal four-character value.
+const BOOL_LITERALS: Record<string, boolean> = { true: true, false: false };
 
 const KEYWORDS: Record<string, TokKind> = {
   AND: "AND",
@@ -253,7 +269,9 @@ function lex(src: string): Tok[] | TextParseError {
       while (j < src.length && isIdentCont(src[j]!)) j++;
       const word = src.slice(i, j);
       const kw = KEYWORDS[word.toUpperCase()];
+      const bool = BOOL_LITERALS[word.toLowerCase()];
       if (kw) out.push({ kind: kw, text: word, pos: startPos });
+      else if (bool !== undefined) out.push({ kind: "BOOL", text: word, pos: startPos, bool });
       else out.push({ kind: "IDENT", text: word, pos: startPos });
       i = j;
       continue;
@@ -284,11 +302,15 @@ class Parser {
 
 function parseValue(
   p: Parser,
-): { value: string | number | string[]; isArray: boolean } | TextParseError {
+): { value: string | number | boolean | string[]; isArray: boolean } | TextParseError {
   const t = p.peek();
   if (t.kind === "STRING") {
     p.eat();
     return { value: t.text, isArray: false };
+  }
+  if (t.kind === "BOOL") {
+    p.eat();
+    return { value: t.bool!, isArray: false };
   }
   if (t.kind === "NUMBER") {
     p.eat();
@@ -332,7 +354,7 @@ function parseTerm(p: Parser): Condition | TextParseError {
     return c;
   }
   // <ident-or-string> followed by op, or trailing ? / EXISTS, or bare → SEARCH
-  if (t.kind === "IDENT" || t.kind === "STRING") {
+  if (t.kind === "IDENT" || t.kind === "STRING" || t.kind === "BOOL") {
     const fieldTok = p.eat();
     const field = fieldTok.text;
     const next = p.peek();
@@ -370,6 +392,13 @@ function parseTerm(p: Parser): Condition | TextParseError {
         return { type: op, field, value: v.value };
       }
       if (v.isArray) return p.err(next, "operator does not accept array");
+      if (typeof v.value === "boolean") {
+        // Only equality compares a typed value on the wire; the substring and
+        // regex operators are inherently textual, so a boolean there degrades
+        // to its printed form rather than erroring on the operator's behalf.
+        if (op === "EQUALS" || op === "NOT_EQUALS") return { type: op, field, value: v.value };
+        return { type: op, field, value: v.value ? "true" : "false" } as Condition;
+      }
       return { type: op, field, value: String(v.value) } as Condition;
     }
     // No operator → it was a bare value → SEARCH
@@ -403,6 +432,7 @@ function parseAnd(p: Parser): Condition | TextParseError {
     } else if (
       t.kind === "IDENT" ||
       t.kind === "STRING" ||
+      t.kind === "BOOL" ||
       t.kind === "NUMBER" ||
       t.kind === "LPAREN" ||
       t.kind === "NOT"

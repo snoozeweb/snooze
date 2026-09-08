@@ -21,6 +21,7 @@ import { StatTiles, type TileId } from "./StatTiles";
 import { DashboardSkeleton } from "./DashboardSkeleton";
 import { ActivityFeed } from "./ActivityFeed";
 import { NoiseRemoved } from "./NoiseRemoved";
+import { NotificationsPanel } from "./NotificationsPanel";
 import { PanelEmpty, PanelHint, PanelTitle } from "./Panel";
 import { countersEmpty } from "./empty-copy";
 import { alertsSearchForBucket, alertsSearchForRange } from "./bucket-utils";
@@ -134,6 +135,20 @@ export function DashboardPage() {
 
   const data = stats.data?.data;
   const counters = stats.data?.meta.counters;
+  // Epoch seconds for the notification deep link — the dashboard's window,
+  // so the inspector's Deliveries tab opens pre-filtered to the same range.
+  // `undefined` (rather than a 0-epoch fallback) when either bound is absent
+  // or unparseable, so the link can omit `from`/`to` entirely instead of
+  // pointing the Deliveries timeline at a window matching nothing.
+  const windowEpoch = useMemo(() => {
+    const fromRaw = stats.data?.meta.from;
+    const toRaw = stats.data?.meta.to;
+    if (!fromRaw || !toRaw) return undefined;
+    const from = Math.floor(Date.parse(fromRaw) / 1000);
+    const to = Math.floor(Date.parse(toRaw) / 1000);
+    if (Number.isNaN(from) || Number.isNaN(to)) return undefined;
+    return { from, to };
+  }, [stats.data?.meta.from, stats.data?.meta.to]);
   // Every counter-backed number on the page repeats this label; the live ones
   // say "Right now" instead. Without it the two halves read as contradictions.
   const windowLabel = rangeLabel(range.range);
@@ -379,6 +394,7 @@ export function DashboardPage() {
                   <TabTrigger value="environment">Environment</TabTrigger>
                   <TabTrigger value="hosts">Hosts</TabTrigger>
                   <TabTrigger value="actions">Actions</TabTrigger>
+                  <TabTrigger value="notifications">Notifications</TabTrigger>
                   <TabTrigger value="weekday">Weekday</TabTrigger>
                 </TabList>
 
@@ -452,6 +468,17 @@ export function DashboardPage() {
                   ) : (
                     <PanelEmpty {...windowedEmpty("action runs")} />
                   )}
+                </TabPanel>
+
+                <TabPanel value="notifications">
+                  <NotificationsPanel
+                    byNotification={data.totals.by_notification ?? {}}
+                    windowLabel={windowLabel}
+                    {...(windowEpoch
+                      ? { windowFrom: windowEpoch.from, windowTo: windowEpoch.to }
+                      : {})}
+                    {...(counters ? { counters } : {})}
+                  />
                 </TabPanel>
 
                 <TabPanel value="weekday">

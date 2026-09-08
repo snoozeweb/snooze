@@ -92,7 +92,9 @@ test.describe("login (local)", () => {
 
     // Login.tsx renders <div role="alert"> when the API returns an error, in
     // the app's own voice — not the backend's raw `invalid credentials`.
-    const alert = page.getByRole("alert");
+    // LiveAnnouncer also mounts a `role="alert"` live region
+    // (data-testid="live-assertive") at the router root, so scope past it.
+    const alert = page.getByRole("alert").filter({ hasText: "Wrong username or password." });
     await expect(alert).toBeVisible();
     await expect(alert).toHaveText("Wrong username or password.");
     // Must still be on the login page, not the alerts page.
@@ -148,9 +150,7 @@ test.describe("login (local)", () => {
     // copy is mobile-only — see Topbar.tsx, which renders <UserMenu /> only when
     // `mobile`). Sidebar.tsx labels the trigger "Account menu — signed in as
     // <username>"; the root token's sub claim is "root".
-    await page
-      .getByRole("button", { name: /account menu — signed in as/i })
-      .click({ force: true });
+    await page.getByRole("button", { name: /account menu — signed in as/i }).click({ force: true });
 
     // MenuItem text is "Log out" (exactly, from Sidebar.tsx).
     await page.getByRole("menuitem", { name: "Log out" }).click({ force: true });

@@ -54,7 +54,11 @@ test.describe("rule editor (text mode)", () => {
     await textarea.fill("severity ##");
 
     // Inline error appears (role="alert" inside the Text tab content).
-    await expect(page.getByRole("alert")).toBeVisible();
+    // LiveAnnouncer also mounts a `role="alert"` live region
+    // (data-testid="live-assertive") at the router root, so exclude it —
+    // otherwise getByRole("alert") matches both and violates strict mode.
+    const inlineAlert = page.locator('[role="alert"]:not([data-testid="live-assertive"])');
+    await expect(inlineAlert).toBeVisible();
 
     // Attempting to switch back to Builder is blocked by the parser.
     await page.getByRole("tab", { name: /^builder$/i }).click({ force: true });

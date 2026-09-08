@@ -1,0 +1,79 @@
+/*
+ * Row inspector for the notifications page (notifications + actions tabs).
+ * Lives in the ~600px docked drawer, so everything is a single column and the
+ * summary strip is the only thing that reads before the tabs.
+ *
+ * No `container-type` here: DeliveryTimeline sets its own inline-size
+ * container and nesting a second one would make its rows query the wrong box.
+ */
+.panel {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  min-width: 0;
+}
+
+.summary {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  min-width: 0;
+}
+
+/* Name + state + the actions it fires: the one line that identifies the row. */
+.identity {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-1) var(--space-2);
+  min-width: 0;
+}
+
+.condition {
+  margin: 0;
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+  overflow-wrap: anywhere;
+}
+
+.meta {
+  margin: 0;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--space-2);
+  font-size: var(--text-xs);
+  color: var(--text);
+}
+
+/* Label column of a `label value` meta line — quieter than the value it
+   introduces, uppercase so it never competes with the data. */
+.metaLabel {
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-muted);
+  font-weight: var(--weight-semibold);
+}
+
+/* "Sent 142× · last Today 14:32" — the answer to "is this thing alive?". */
+.counters {
+  margin: 0;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--space-1);
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+}
+
+.countersValue {
+  color: var(--text-strong);
+  font-weight: var(--weight-medium);
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: var(--font-features-numeric);
+}
+
+.countersLast {
+  color: var(--text-muted);
+}

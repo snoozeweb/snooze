@@ -69,6 +69,19 @@ describe("encodeText", () => {
   it("identifier with spaces is quoted", () => {
     expect(encodeText({ type: "EQUALS", field: "my field", value: "v" })).toBe(`"my field" = "v"`);
   });
+  it("degrades a non-string operand on a string operator instead of throwing", () => {
+    // SEARCH's operand is typed `string`, but EQUALS/NOT_EQUALS also accept a
+    // real boolean (LeafBoolOp), and the builder used to carry one across an
+    // operator switch. `quoteString` called `.replace` on it and threw from
+    // inside a render, blanking the editor. Printing `"true"` is the readable
+    // degradation.
+    expect(encodeText({ type: "SEARCH", field: "", value: true } as unknown as Condition)).toBe(
+      `"true"`,
+    );
+    expect(
+      encodeText({ type: "CONTAINS", field: "batch", value: true } as unknown as Condition),
+    ).toBe(`batch CONTAINS true`);
+  });
 });
 
 function ok(s: string) {
@@ -200,10 +213,75 @@ describe("encode/parse round trip", () => {
       ],
     },
     { type: "NOT", arg: { type: "EXISTS", field: "y" } },
+    { type: "EQUALS", field: "batch", value: true },
+    { type: "NOT_EQUALS", field: "batch", value: false },
   ];
   it.each(cases)("round-trips %j", (c) => {
     const r = parseText(encodeText(c));
     expect(r.ok).toBe(true);
     if (r.ok) expect(r.value).toEqual(c);
+  });
+});
+
+describe("boolean literals", () => {
+  it("parses an unquoted true/false as a real boolean", () => {
+    expect(parseText("batch = true")).toEqual({
+      ok: true,
+      value: { type: "EQUALS", field: "batch", value: true },
+    });
+    expect(parseText("batch != false")).toEqual({
+      ok: true,
+      value: { type: "NOT_EQUALS", field: "batch", value: false },
+    });
+  });
+
+  it("is case-insensitive, like the keywords", () => {
+    expect(parseText("batch = TRUE")).toEqual({
+      ok: true,
+      value: { type: "EQUALS", field: "batch", value: true },
+    });
+  });
+
+  it("keeps a QUOTED true as the string it is", () => {
+    // The whole point of the literal: `x = "true"` must still ask for the
+    // four-character value, because some fields really do store that text.
+    expect(parseText('x = "true"')).toEqual({
+      ok: true,
+      value: { type: "EQUALS", field: "x", value: "true" },
+    });
+  });
+
+  it("encodes booleans unquoted so they round-trip", () => {
+    expect(encodeText({ type: "EQUALS", field: "batch", value: true })).toBe("batch = true");
+    expect(encodeText({ type: "EQUALS", field: "x", value: "true" })).toBe('x = "true"');
+  });
+
+  it("still treats a bare true as a full-text search term", () => {
+    expect(parseText("true")).toEqual({
+      ok: true,
+      value: { type: "SEARCH", field: "", value: "true" },
+    });
+  });
+
+  it("degrades a boolean operand on a textual operator to its printed form", () => {
+    // CONTAINS/MATCHES are substring/regex operators — there is no typed
+    // boolean comparison to make, so the literal reads as its text.
+    expect(parseText("note CONTAINS true")).toEqual({
+      ok: true,
+      value: { type: "CONTAINS", field: "note", value: "true" },
+    });
+  });
+
+  it("implicitly ANDs a boolean clause with its neighbour", () => {
+    expect(parseText('batch = true action = "mail"')).toEqual({
+      ok: true,
+      value: {
+        type: "AND",
+        args: [
+          { type: "EQUALS", field: "batch", value: true },
+          { type: "EQUALS", field: "action", value: "mail" },
+        ],
+      },
+    });
   });
 });

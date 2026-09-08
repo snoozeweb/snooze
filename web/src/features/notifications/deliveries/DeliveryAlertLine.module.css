@@ -1,0 +1,84 @@
+/*
+ * One alert line under a delivery row. Lives inside the ~600px docked
+ * inspector, so it is a single grid row: badge (intrinsic), host (intrinsic,
+ * mono), message (takes the rest and ellipsises). Tokens only — the severity
+ * hue comes from severityColor() on the Badge itself.
+ */
+.line {
+  list-style: none;
+  min-width: 0;
+}
+
+.link {
+  display: grid;
+  grid-template-columns: auto auto minmax(0, 1fr);
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
+  padding: 2px var(--space-2);
+  margin-left: calc(var(--space-2) * -1);
+  border-radius: var(--radius-sm);
+  color: inherit;
+  text-decoration: none;
+}
+
+.link:hover {
+  background: var(--bg-hover);
+}
+
+.link:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 1px;
+}
+
+.host {
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  color: var(--text-strong);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 14ch;
+}
+
+/*
+ * Docked inspector at its full width (~600px and up): 14ch clipped an FQDN
+ * host to "srv-edge-cac…" while the message column beside it still had room
+ * to spare — hosts that differ only in their tail then all read the same.
+ */
+@container (min-width: 520px) {
+  .host {
+    max-width: 32ch;
+  }
+}
+
+.message {
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/*
+ * Narrow inspector (a phone-width drawer): one line cannot hold both, and
+ * ellipsising BOTH at once — a 10ch host over a clipped message — made every
+ * row in a batch read identically ("srv-prod…", "srv-prod…"). So the line
+ * splits: severity + the full host first, message underneath. Container
+ * query — the inspector width is what matters, not the viewport (AGENTS.md:
+ * never viewport media queries per component).
+ */
+@container (max-width: 420px) {
+  .link {
+    grid-template-columns: auto minmax(0, 1fr);
+    row-gap: 1px;
+    padding-block: var(--space-1);
+  }
+  .host {
+    max-width: none;
+  }
+  .message {
+    grid-column: 1 / -1;
+  }
+}

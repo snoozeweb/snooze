@@ -41,3 +41,19 @@
   font-size: var(--text-xs);
   color: var(--text-muted);
 }
+/* "Last notified …" line — answers "did anyone get paged?" without opening
+   the Deliveries tab. Muted like .received; the action name gets the mono
+   treatment the rest of the app uses for identifiers. */
+.lastDelivery {
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+}
+.lastDeliveryAction {
+  font-family: var(--font-mono);
+}
+/* Failure variant — same critical text token the alerts table and the
+   delivery timeline use, so a failed send reads as urgent at a glance. */
+.lastDeliveryError {
+  font-size: var(--text-xs);
+  color: var(--severity-critical);
+}

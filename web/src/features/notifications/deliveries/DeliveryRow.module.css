@@ -1,0 +1,154 @@
+/*
+ * A delivery row on the timeline. Same rail geometry as the audit timeline
+ * (24px gutter, 10px dot) so the two histories read as one family when they
+ * sit in adjacent tabs of the same inspector. The dot is the only colour the
+ * row spends on outcome — the status Badge next to it carries the word, so
+ * the signal is never colour-only.
+ */
+.row {
+  display: grid;
+  grid-template-columns: 24px minmax(0, 1fr);
+  gap: var(--space-2);
+  align-items: start;
+  list-style: none;
+  min-width: 0;
+}
+
+.dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  margin-top: 7px;
+  justify-self: center;
+  background: var(--severity-ok);
+}
+.dot[data-status="error"] {
+  background: var(--severity-critical);
+}
+
+.body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  min-width: 0;
+}
+
+/*
+ * Line 1. Wraps rather than scrolls: in a 600px docked inspector a row with an
+ * action, a notifier, a status, a batch chip and an escalation chip will not
+ * fit one line, and a clipped chip is worse than a second line.
+ */
+.headline {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
+  font-size: var(--text-sm);
+}
+
+/* The notifier registry key ("mail", "webhook") — a plugin id, so mono, and
+   muted because the action name above it is the thing an operator looks up. */
+.notifier {
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+}
+
+.alerts {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  min-width: 0;
+}
+
+.moreButton {
+  align-self: flex-start;
+}
+
+.viewAll {
+  align-self: flex-start;
+  font-size: var(--text-xs);
+  color: var(--accent);
+  text-decoration: none;
+}
+.viewAll:hover {
+  text-decoration: underline;
+}
+.viewAll:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
+  border-radius: var(--radius-sm);
+}
+
+/* Line 3 — the failure text. Mono, wrapped, clamped to three lines until the
+   operator asks for the rest. */
+.error {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-2);
+  min-width: 0;
+  padding: var(--space-2);
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-muted);
+  border-radius: var(--radius-sm);
+}
+
+.errorText {
+  flex: 1 1 auto;
+  min-width: 0;
+  margin: 0;
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  line-height: 1.5;
+  color: var(--severity-critical);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.errorText[data-clamped="true"] {
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.errorActions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  flex: 0 0 auto;
+}
+
+/*
+ * Narrow inspector: side-by-side, "Show more" + copy took half the row and
+ * left the failure text ~20 characters per clamped line, which is not enough
+ * of an error to recognise one. The buttons drop below the text instead.
+ */
+@container (max-width: 420px) {
+  .error[data-long] {
+    flex-direction: column;
+    gap: var(--space-1);
+  }
+  .error[data-long] .errorActions {
+    align-self: flex-end;
+  }
+}
+
+.refLink {
+  align-self: flex-start;
+  font-size: var(--text-xs);
+  color: var(--accent);
+  text-decoration: none;
+}
+.refLink:hover {
+  text-decoration: underline;
+}
+.refLink:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
+  border-radius: var(--radius-sm);
+}

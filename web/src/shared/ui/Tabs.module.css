@@ -54,6 +54,20 @@
 }
 
 /*
+ * Desktop: a strip inside a narrow container can still run out of room — the
+ * dashboard's Breakdowns card is ~450px and its six triggers want ~500px, so
+ * the last one ("Weekday") was simply clipped by the card, with no scrollbar
+ * and no way to reach it. Wrapping costs nothing where the strip fits (it is
+ * inert until it overflows) and keeps every tab reachable where it doesn't.
+ * Phones keep the scrolling strip below.
+ */
+@media (min-width: 769px) {
+  .list {
+    flex-wrap: wrap;
+  }
+}
+
+/*
  * Phones: the grouped-tabs row (Settings, Profile, …) can hold more triggers
  * than fit at 360px. Let the strip scroll horizontally instead of forcing the
  * whole page to scroll, and keep each trigger on one line. Desktop unchanged.

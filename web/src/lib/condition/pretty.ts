@@ -33,8 +33,13 @@ function isGroup(c: Condition): c is { type: GroupOp; args: Condition[] } {
 }
 
 function quote(v: unknown): string {
+  // Strings are quoted so `state = "open"` never reads as an identifier.
+  // Booleans and numbers deliberately are not: `batch = true` is a typed
+  // comparison, and printing it as `batch = "true"` would describe a condition
+  // that matches nothing (see lib/condition/types.ts `LeafBoolOp`).
   if (typeof v === "string") return JSON.stringify(v);
-  return String((v as string | number | boolean | null | undefined) ?? "");
+  if (typeof v === "boolean") return v ? "true" : "false";
+  return String((v as string | number | null | undefined) ?? "");
 }
 
 export function prettyCondition(c: Condition | undefined | null): string {

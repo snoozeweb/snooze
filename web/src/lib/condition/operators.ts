@@ -8,6 +8,12 @@ type OperatorMeta = {
   valueShape: ValueShape;
 };
 
+// EQUALS/NOT_EQUALS are string-shaped *in the visual builder* even though the
+// AST also allows a boolean operand (`LeafBoolOp` — the text DSL's
+// `batch = true`). The builder has no boolean widget by design: a typed
+// comparison is a power-user move, and the text form is where power users are.
+// ConditionNode renders such a node as its printed text and turns it back into
+// a string compare if it is edited there.
 export const OPERATORS: OperatorMeta[] = [
   { type: "EQUALS", label: "=", valueShape: "string" },
   { type: "NOT_EQUALS", label: "≠", valueShape: "string" },

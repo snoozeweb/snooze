@@ -1,7 +1,7 @@
 import { act, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
-import { describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
   createMemoryHistory,
   createRootRoute,
@@ -12,6 +12,7 @@ import {
 } from "@tanstack/react-router";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { mswServer } from "@/tests/msw/server";
+import { authStore } from "@/lib/auth/store";
 import { TooltipProvider } from "@/shared/ui/Tooltip";
 import { ToastProvider, Toaster } from "@/shared/ui/Toast";
 import { LiveAnnouncerProvider } from "@/shared/a11y/LiveAnnouncer";
@@ -143,12 +144,19 @@ function setup() {
     component: () => <div>alerts</div>,
     validateSearch: alertsValidateSearch,
   });
+  // Add /web/notifications so the NotificationsPanel deep link resolves.
+  const notificationsRoute = createRoute({
+    getParentRoute: () => root,
+    path: "/web/notifications",
+    component: () => <div>notifications</div>,
+    validateSearch: (raw: Record<string, unknown>) => raw,
+  });
   const route = createRoute({
     getParentRoute: () => root,
     path: "/web/dashboard",
     component: DashboardPage,
   });
-  const tree = root.addChildren([alertsRoute, route]);
+  const tree = root.addChildren([alertsRoute, notificationsRoute, route]);
   /* eslint-disable @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-argument */
   const router = createRouter({
     routeTree: tree,
@@ -191,7 +199,24 @@ function mockFullDashboard() {
   );
 }
 
+function loginWithPerms(perms: string[]) {
+  const header = btoa(JSON.stringify({ alg: "HS256", typ: "JWT" }));
+  const body = btoa(
+    JSON.stringify({
+      sub: "tester",
+      exp: Math.floor(Date.now() / 1000) + 3600,
+      permissions: perms,
+    }),
+  );
+  authStore.getState().login(`${header}.${body}.sig`);
+}
+
 describe("DashboardPage", () => {
+  // The Notifications panel only links into the inspector's Deliveries tab for
+  // a role that can read the delivery log.
+  beforeEach(() => loginWithPerms(["ro_stats", "ro_notification", "ro_notificationlog"]));
+  afterEach(() => authStore.getState().logout());
+
   it("renders the title and the time-range picker", () => {
     mswServer.use(
       http.get("/api/v1/stats", () =>
@@ -228,9 +253,83 @@ describe("DashboardPage", () => {
     // The secondary breakdowns live behind one tabbed panel instead of four
     // co-equal cards.
     expect(screen.getByText("Breakdowns")).toBeInTheDocument();
-    for (const tab of ["Severity", "Environment", "Hosts", "Actions", "Weekday"]) {
+    for (const tab of ["Severity", "Environment", "Hosts", "Actions", "Notifications", "Weekday"]) {
       expect(screen.getByRole("tab", { name: tab })).toBeInTheDocument();
     }
+  });
+
+  it("lists notifications by send count on the Notifications tab, linking a resolved name", async () => {
+    mswServer.use(
+      http.get("/api/v1/stats", () => HttpResponse.json(FULL_STATS_RESPONSE)),
+      http.get("/api/v1/comment", () => HttpResponse.json(COMMENTS_RESPONSE)),
+      http.get("/api/v1/notification", () =>
+        HttpResponse.json({
+          data: [{ uid: "nt-slack", name: "slack" }],
+          meta: { count: 1, limit: 500, offset: 0, total: 1 },
+        }),
+      ),
+    );
+    const user = userEvent.setup();
+    setup();
+    await screen.findByText("Noise removed");
+
+    await user.click(screen.getByRole("tab", { name: "Notifications" }));
+    const link = await screen.findByRole("link", { name: "slack" });
+    const href = link.getAttribute("href") ?? "";
+    expect(href).toContain("/web/notifications");
+    expect(href).toContain("details=nt-slack");
+  });
+
+  // W10: a payload missing the `by_notification` dimension entirely (not
+  // just empty) must not throw — the panel falls back to its empty state.
+  it("renders the Notifications empty state when the stats payload omits by_notification", async () => {
+    const { by_notification: _drop, ...totalsWithoutNotification } =
+      FULL_STATS_RESPONSE.data.totals;
+    mswServer.use(
+      http.get("/api/v1/stats", () =>
+        HttpResponse.json({
+          ...FULL_STATS_RESPONSE,
+          data: { ...FULL_STATS_RESPONSE.data, totals: totalsWithoutNotification },
+        }),
+      ),
+      http.get("/api/v1/comment", () => HttpResponse.json(COMMENTS_RESPONSE)),
+    );
+    const user = userEvent.setup();
+    setup();
+    await screen.findByText("Noise removed");
+
+    await user.click(screen.getByRole("tab", { name: "Notifications" }));
+    expect(await screen.findByText(/no notifications sent/i)).toBeInTheDocument();
+  });
+
+  // W12: an unparseable stats window must not degrade to a bogus 0-epoch
+  // deep link — `from`/`to` should be absent from the href entirely.
+  it("omits from/to from the notification deep link when the stats window can't be parsed", async () => {
+    mswServer.use(
+      http.get("/api/v1/stats", () =>
+        HttpResponse.json({
+          ...FULL_STATS_RESPONSE,
+          meta: { ...FULL_STATS_RESPONSE.meta, from: "not-a-date", to: "not-a-date" },
+        }),
+      ),
+      http.get("/api/v1/comment", () => HttpResponse.json(COMMENTS_RESPONSE)),
+      http.get("/api/v1/notification", () =>
+        HttpResponse.json({
+          data: [{ uid: "nt-slack", name: "slack" }],
+          meta: { count: 1, limit: 500, offset: 0, total: 1 },
+        }),
+      ),
+    );
+    const user = userEvent.setup();
+    setup();
+    await screen.findByText("Noise removed");
+
+    await user.click(screen.getByRole("tab", { name: "Notifications" }));
+    const link = await screen.findByRole("link", { name: "slack" });
+    const href = link.getAttribute("href") ?? "";
+    expect(href).toContain("details=nt-slack");
+    expect(href).not.toContain("from=");
+    expect(href).not.toContain("to=");
   });
 
   it("says which numbers are live and which are windowed", async () => {

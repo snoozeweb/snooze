@@ -1,0 +1,7 @@
+/* Delivery counters on the notifications table (plan D10).
+   Tabular figures so a column of send counts lines up digit-for-digit; the
+   cell itself is right-aligned by DataTable's `align: "right"`. */
+.count {
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: var(--font-features-numeric);
+}

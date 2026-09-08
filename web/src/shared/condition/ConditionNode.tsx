@@ -53,6 +53,22 @@ function cloneCondition(c: Condition): Condition {
   return JSON.parse(JSON.stringify(c)) as Condition;
 }
 
+/**
+ * The operand of a string-shaped leaf, as a string.
+ *
+ * EQUALS/NOT_EQUALS are string-shaped in the builder (see OPERATORS) but the
+ * AST also allows a real boolean there — `LeafBoolOp`, which is what the text
+ * DSL's `batch = true` parses to. Stashing that raw value and handing it to
+ * the next string operator emitted nodes like `{type:"SEARCH", value:true}`,
+ * and `encodeText` then threw `s.replace is not a function` while the editor
+ * was rendering. Coercing here applies the same rule the value <Input>
+ * already applies when it displays such a node: a hand-typed literal edited
+ * in the builder becomes a string compare.
+ */
+function stringOperand(value: string | boolean): string {
+  return typeof value === "string" ? value : String(value);
+}
+
 export function ConditionNode({
   value,
   fieldOptions,
@@ -224,7 +240,8 @@ export function ConditionNode({
   const shape = valueShapeForOp(leaf.type);
   // SEARCH's own field is always "" (forced by the backend) — the field the
   // user actually typed before switching to SEARCH lives in rememberedField.
-  const fieldText = leaf.type === "SEARCH" ? rememberedField.current : "field" in leaf ? leaf.field : "";
+  const fieldText =
+    leaf.type === "SEARCH" ? rememberedField.current : "field" in leaf ? leaf.field : "";
 
   function setField(field: string) {
     // SEARCH has no field input (masked below) — it's never reachable here.
@@ -270,7 +287,9 @@ export function ConditionNode({
       // memory as EQUALS/CONTAINS/MATCHES rather than being cleared.
       if (leaf.type !== "SEARCH") rememberedField.current = fieldText;
       if (valueShapeForOp(leaf.type) === "string") {
-        rememberedValues.current.string = (leaf as { value: string }).value;
+        rememberedValues.current.string = stringOperand(
+          (leaf as { value: string | boolean }).value,
+        );
       }
       onChange({ type: "SEARCH", field: "", value: rememberedValues.current.string ?? "" });
       return;
@@ -279,7 +298,8 @@ export function ConditionNode({
     const oldShape = valueShapeForOp(leaf.type);
     // Stash the operand we're leaving behind so switching back to this shape
     // later (even via an unrelated shape in between) restores it.
-    if (oldShape === "string") rememberedValues.current.string = (leaf as { value: string }).value;
+    if (oldShape === "string")
+      rememberedValues.current.string = stringOperand((leaf as { value: string | boolean }).value);
     if (oldShape === "number") rememberedValues.current.number = (leaf as { value: number }).value;
     if (oldShape === "array") rememberedValues.current.array = (leaf as { value: string[] }).value;
     if (newShape === "string") {
@@ -385,7 +405,12 @@ export function ConditionNode({
           leaf.type === "MATCHES" ||
           leaf.type === "SEARCH") ? (
           <Input
-            value={leaf.value}
+            // EQUALS/NOT_EQUALS can also carry a real boolean (the text DSL's
+            // `batch = true`). The visual builder has no boolean widget and
+            // deliberately does not grow one — it renders the literal as text,
+            // and editing it here turns the node back into a string compare,
+            // which is what a hand-typed operand means anyway.
+            value={typeof leaf.value === "boolean" ? String(leaf.value) : leaf.value}
             onChange={(e) => setStringValue(e.target.value)}
             placeholder="value"
           />

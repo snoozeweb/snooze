@@ -116,6 +116,9 @@ export function ActionEditor({ uid, onClose }: ActionEditorProps) {
   async function onTest() {
     if (!selected) return;
     try {
+      // The test send bypasses batching and reports the real transport
+      // outcome, so a resolved mutation always means it left the box — there
+      // is no deferred "queued" state to report.
       await testAction.mutateAsync({ selected, subcontent });
       toast.success("Test notification sent");
     } catch (e) {

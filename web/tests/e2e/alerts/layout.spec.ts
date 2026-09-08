@@ -41,12 +41,23 @@ test.describe("alerts table layout", () => {
       const box = await messageCell.boundingBox();
       expect(box).not.toBeNull();
       // Floors from the width budget documented in columns.tsx (measured:
-      // 282 / 312 / 392 / 628 / 758 / 832 across the widths below), kept ~10%
-      // under so a font-metric or scrollbar difference isn't a flake. Message
-      // now takes position 2 and the whole flexible remainder, so it clears
-      // ~480px once the window is wide enough to leave that much after the
-      // sidebar — where it used to get ~240px as the last column.
-      const minWidth = width <= 720 ? 250 : width <= 900 ? 280 : width <= 1200 ? 350 : 560;
+      // 220 / 250 / 330 / 542 / 672 / 746 across the widths below), kept
+      // ~10-12% under so a font-metric or scrollbar difference isn't a
+      // flake. Message now takes position 2 and the whole flexible
+      // remainder, so it clears ~480px once the window is wide enough to
+      // leave that much after the sidebar — where it used to get ~240px as
+      // the last column. These floors were lowered because THREE separate
+      // fixed-width columns grew, each taking its increase out of Message's
+      // flexible remainder: 4768ae8d0 (Sev 100px -> 132px, so "Emergency" +
+      // the trend arrow stop wrapping), 39b7a6073 (Hits 64px -> 88px, so a
+      // 5-digit aggregate count stops being clipped) and af112e5cb (State
+      // 112px -> 136px, for the longer "Acknowledged"/"Re-escalated"
+      // nouns) — ~80px in total wherever all three are above their hide
+      // tier. Each is a deliberate width-budget tradeoff, not a regression:
+      // the 200-column, comfortably-clamped Message text at the narrowest
+      // tier is still far from the near-0px collapse this test guards
+      // against.
+      const minWidth = width <= 720 ? 200 : width <= 900 ? 220 : width <= 1200 ? 290 : 480;
       expect(box!.width).toBeGreaterThanOrEqual(minWidth);
 
       // No horizontal scroll: the table's own scroll wrapper (tableScroll)

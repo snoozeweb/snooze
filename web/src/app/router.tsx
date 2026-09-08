@@ -678,6 +678,18 @@ type NotificationsSearchParams = {
   // for the Actions tab — distinct keys so they don't collide in the URL.
   search?: string;
   actionSearch?: string;
+  // Open row-inspector key (a uid) — the docked details drawer is controlled
+  // from here so it's shareable and survives a reload, exactly like the alerts
+  // page's `?record=`. Namespaced per tab like `search`/`actionSearch` above:
+  // the two tabs list different collections, so one shared key would open the
+  // Actions drawer on a notification uid (and vice versa) after a tab switch.
+  // `details` is also the dashboard deep-link's parameter — don't rename it.
+  details?: string;
+  actionDetails?: string;
+  // Epoch (seconds) window the dashboard deep-link pre-filters the Deliveries
+  // tab to; the timeline's window chip clears them.
+  from?: number;
+  to?: number;
 };
 
 const notificationsRoute = createRoute({
@@ -713,6 +725,27 @@ const notificationsRoute = createRoute({
     if (asc !== undefined) out["asc"] = asc;
     if (typeof raw["search"] === "string") out["search"] = raw["search"];
     if (typeof raw["actionSearch"] === "string") out["actionSearch"] = raw["actionSearch"];
+    // An empty `?details=` is not "open nothing", it's a key that matches no
+    // row — it would render a controlled drawer with no target. Reject it the
+    // same way an absent param is rejected.
+    if (typeof raw["details"] === "string" && raw["details"] !== "") {
+      out["details"] = raw["details"];
+    }
+    if (typeof raw["actionDetails"] === "string" && raw["actionDetails"] !== "") {
+      out["actionDetails"] = raw["actionDetails"];
+    }
+    // Parsed exactly like `page` above: TanStack hands us either a number or
+    // the raw query string depending on how the link was built.
+    const epoch = (key: string) => {
+      const v = raw[key];
+      if (typeof v === "number") return v;
+      if (typeof v === "string" && /^\d+$/.test(v)) return Number(v);
+      return undefined;
+    };
+    const from = epoch("from");
+    if (from !== undefined) out["from"] = from;
+    const to = epoch("to");
+    if (to !== undefined) out["to"] = to;
     return out as NotificationsSearchParams;
   },
 });

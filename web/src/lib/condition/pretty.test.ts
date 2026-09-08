@@ -36,4 +36,12 @@ describe("prettyCondition", () => {
       prettyCondition({ type: "AND", args: [{ type: "EQUALS", field: "a", value: 1 } as never] }),
     ).toBe(`a = 1`);
   });
+  it("prints a boolean operand unquoted", () => {
+    // `batch = "true"` would describe a condition that matches nothing — the
+    // drivers compare booleans by type.
+    expect(prettyCondition({ type: "EQUALS", field: "batch", value: true })).toBe("batch = true");
+    expect(prettyCondition({ type: "NOT_EQUALS", field: "batch", value: false })).toBe(
+      "batch ≠ false",
+    );
+  });
 });

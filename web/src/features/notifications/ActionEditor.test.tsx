@@ -282,4 +282,24 @@ describe("ActionEditor", () => {
     expect(screen.getByText(/not required/i)).toBeInTheDocument();
     expect(screen.getByRole("link", { name: /set up snooze-jira/i })).toBeInTheDocument();
   });
+
+  it("says the test alert was sent when the notifier delivered it", async () => {
+    mswServer.use(
+      http.get("/api/v1/metadata", () => HttpResponse.json(metadataPayload())),
+      http.get("/api/v1/metadata/webhook", () =>
+        HttpResponse.json({ data: metadataPayload().data[1] }),
+      ),
+      http.post("/api/v1/action/test", () => HttpResponse.json({ ok: true })),
+    );
+    const user = userEvent.setup();
+    const Wrapper = wrap();
+    render(
+      <Wrapper>
+        <ActionEditor uid={undefined} onClose={() => undefined} />
+      </Wrapper>,
+    );
+    await user.click(await screen.findByRole("button", { name: /Call a webhook/ }));
+    await user.click(await screen.findByRole("button", { name: /send test/i }));
+    expect(await screen.findByText("Test notification sent")).toBeInTheDocument();
+  });
 });

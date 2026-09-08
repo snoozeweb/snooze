@@ -3,6 +3,7 @@ import userEvent from "@testing-library/user-event";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { http, HttpResponse } from "msw";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { useState } from "react";
 import type { ReactNode } from "react";
 import { mswServer } from "@/tests/msw/server";
 import { TooltipProvider } from "@/shared/ui/Tooltip";
@@ -324,5 +325,77 @@ describe("ConditionEditor — nested groups render", () => {
     // Radix exposes the trigger as role=combobox; counting them proves
     // the tree was walked all the way down.
     expect(screen.getAllByRole("combobox").length).toBeGreaterThanOrEqual(3);
+  });
+});
+
+describe("ConditionEditor — boolean operand on a string-shaped operator", () => {
+  // Regression. EQUALS/NOT_EQUALS also carry a real boolean operand — that is
+  // what the text DSL's `batch = true` parses to (see LeafBoolOp). Switching
+  // the operator stashed that raw value and handed it to the next
+  // string-shaped operator, so the builder emitted nodes like
+  // `{ type: "SEARCH", value: true }`. The editor re-encodes the AST on every
+  // change to keep the Text tab in sync, and `encodeText` -> `quoteString`
+  // then threw `s.replace is not a function` mid-render, taking the whole
+  // editor down. Driven through the real ConditionEditor precisely because
+  // that re-encode is the thing that blew up.
+  function Controlled({ initial }: { initial: Condition }) {
+    const [value, setValue] = useState<Condition>(initial);
+    return (
+      <>
+        <ConditionEditor value={value} onChange={setValue} plugin="record" />
+        <output data-testid="ast">{JSON.stringify(value)}</output>
+      </>
+    );
+  }
+
+  /**
+   * The leaf's operator dropdown. The field <Input> carries a `list` (the
+   * suggestions datalist), which also maps to role=combobox and loads
+   * asynchronously — so pick the Radix trigger by element rather than by
+   * document order.
+   */
+  function operatorSelect(): HTMLElement {
+    const trigger = screen.getAllByRole("combobox").find((el) => el.tagName === "BUTTON");
+    if (!trigger) throw new Error("expected the leaf operator select");
+    return trigger;
+  }
+
+  async function switchOperatorTo(label: string) {
+    fireEvent.click(operatorSelect());
+    fireEvent.click(await screen.findByRole("option", { name: label }));
+  }
+
+  it.each([
+    ["search", "SEARCH"],
+    ["contains", "CONTAINS"],
+    ["matches", "MATCHES"],
+  ])("carries a boolean EQUALS operand into %s as text", async (label, type) => {
+    const Wrapper = wrap();
+    render(
+      <Wrapper>
+        <Controlled initial={{ type: "EQUALS", field: "batch", value: true }} />
+      </Wrapper>,
+    );
+    await switchOperatorTo(label);
+
+    const ast = JSON.parse(screen.getByTestId("ast").textContent ?? "null") as Condition;
+    expect(ast.type).toBe(type);
+    expect("value" in ast ? ast.value : undefined).toBe("true");
+    // The editor is still standing: encodeText ran on the new AST (the Text
+    // tab is fed from it) instead of throwing out of the render.
+    expect(screen.getByRole("tab", { name: "Text" })).toBeInTheDocument();
+  });
+
+  it("prints the coerced operand in the Text tab", async () => {
+    const user = userEvent.setup();
+    const Wrapper = wrap();
+    render(
+      <Wrapper>
+        <Controlled initial={{ type: "EQUALS", field: "batch", value: true }} />
+      </Wrapper>,
+    );
+    await switchOperatorTo("search");
+    await user.click(screen.getByRole("tab", { name: "Text" }));
+    expect(screen.getByRole("textbox")).toHaveValue('"true"');
   });
 });

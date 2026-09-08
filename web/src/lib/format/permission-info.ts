@@ -17,6 +17,7 @@ const RESOURCE_LABELS: Record<string, string> = {
   user: "users",
   tenant: "tenants (organisations)",
   audit: "the audit trail",
+  notificationlog: "the notification delivery history",
   stats: "statistics and metrics",
   secret: "stored secrets (credentials)",
 };

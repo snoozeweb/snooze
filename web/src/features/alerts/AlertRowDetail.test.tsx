@@ -10,11 +10,36 @@ import {
   RouterProvider,
 } from "@tanstack/react-router";
 import { http, HttpResponse } from "msw";
-import { describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { TooltipProvider } from "@/shared/ui/Tooltip";
 import { mswServer } from "@/tests/msw/server";
+import { authStore } from "@/lib/auth/store";
+import { decodeConditionQ } from "@/lib/condition/decode";
+import type { Condition } from "@/lib/condition/types";
+import type { DeliveryEntry } from "@/features/notifications/deliveries/types";
 import { AlertRowDetail } from "./AlertRowDetail";
 import type { Record_ } from "./types";
+
+function loginWithPerms(perms: string[]) {
+  const header = btoa(JSON.stringify({ alg: "HS256", typ: "JWT" }));
+  const body = btoa(
+    JSON.stringify({
+      sub: "tester",
+      exp: Math.floor(Date.now() / 1000) + 3600,
+      permissions: perms,
+    }),
+  );
+  authStore.getState().login(`${header}.${body}.sig`);
+}
+
+function leaves(cond: Condition | null): { type: string; field?: string; value?: unknown }[] {
+  if (!cond || cond.type !== "AND") return [];
+  return cond.args.flatMap((a) =>
+    "field" in a && "value" in a
+      ? [{ type: a.type, field: a.field, value: a.value as unknown }]
+      : [],
+  );
+}
 
 // Empty comment list so CommentTimeline (the default Timeline tab) resolves to
 // its empty state in every test.
@@ -24,6 +49,40 @@ function stubComments() {
       HttpResponse.json({ data: [], meta: { count: 0, limit: 100, offset: 0, total: 0 } }),
     ),
   );
+  // Every render fires the Deliveries tab's count probe and the header's
+  // newest-delivery probe; default to "no deliveries" so tests that don't
+  // care about the Deliveries tab aren't left with an unhandled request.
+  stubDeliveries([]);
+}
+
+/**
+ * Serves GET /api/v1/notificationlog, answering from the `q` CONDITION rather
+ * than from the page size. That matters: the inspector's tab-count probe and
+ * the timeline's failed-count probe are BOTH `limit=1`, and only the condition
+ * tells them apart — a stub keyed on `limit` would hand the "3 failed" number
+ * to the "N deliveries" badge and never notice.
+ *
+ * Returns the recorded requests so a test can assert the scope clause (and
+ * that no request was made at all).
+ */
+function stubDeliveries(rows: DeliveryEntry[]) {
+  const seen: { cond: Condition | null; params: URLSearchParams }[] = [];
+  mswServer.use(
+    http.get("/api/v1/notificationlog", ({ request }) => {
+      const url = new URL(request.url);
+      const cond = decodeConditionQ(url.searchParams.get("q") ?? "");
+      seen.push({ cond, params: url.searchParams });
+      const errorOnly = leaves(cond).some((c) => c.field === "status" && c.value === "error");
+      const matched = errorOnly ? rows.filter((r) => r.status === "error") : rows;
+      const limit = Number(url.searchParams.get("limit") ?? "10");
+      const page = matched.slice(0, limit);
+      return HttpResponse.json({
+        data: page,
+        meta: { count: page.length, limit, offset: 0, total: matched.length },
+      });
+    }),
+  );
+  return seen;
 }
 
 // AlertRowDetail's Flow tab embeds AlertFlowChart, whose entities are TanStack
@@ -64,6 +123,9 @@ function renderDetail(row: Record_) {
 }
 
 describe("AlertRowDetail", () => {
+  beforeEach(() => loginWithPerms(["ro_record", "ro_notificationlog"]));
+  afterEach(() => authStore.getState().logout());
+
   it("renders the summary header (severity, state, source, message, time) without repeating host", () => {
     stubComments();
     const row: Record_ = {
@@ -130,13 +192,21 @@ describe("AlertRowDetail", () => {
     expect(screen.getByText("Re-escalated by alice")).toBeInTheDocument();
   });
 
-  it("shows Timeline / Flow / Record tabs with Timeline active by default", async () => {
+  it("shows Timeline / Flow / Deliveries / Record tabs with Timeline active by default", async () => {
     stubComments();
     const row = { uid: "u1", source: "syslog", aggregate: "Host and Message" } as Record_;
     renderDetail(row);
     expect(screen.getByRole("tab", { name: "Timeline" })).toHaveAttribute("data-state", "active");
     expect(screen.getByRole("tab", { name: "Flow" })).toBeInTheDocument();
     expect(screen.getByRole("tab", { name: "Record" })).toBeInTheDocument();
+    // Deliveries sits right after Flow — both answer "what did the pipeline do
+    // with this alert?"; Record is the raw-JSON fallback that closes the strip.
+    expect(screen.getAllByRole("tab").map((t) => t.textContent)).toEqual([
+      "Timeline",
+      "Flow",
+      "Deliveries",
+      "Record",
+    ]);
     // Timeline content (its empty state) is visible without interaction.
     await waitFor(() => expect(screen.getByText(/no comments yet/i)).toBeInTheDocument());
   });
@@ -181,5 +251,150 @@ describe("AlertRowDetail", () => {
     const row: Record_ = { uid: "r1", host: "srv-1", date_epoch: 1 };
     renderDetail(row);
     await waitFor(() => expect(screen.getByText(/no comments yet/i)).toBeInTheDocument());
+  });
+
+  it("labels the Deliveries tab with a count when deliveries exist, and bare otherwise", async () => {
+    stubComments();
+    stubDeliveries([
+      { uid: "d1", date_epoch: 100, status: "success", action: "mail-oncall" },
+      { uid: "d2", date_epoch: 90, status: "success", action: "mail-oncall" },
+    ]);
+    const row: Record_ = { uid: "r1", host: "srv-1", date_epoch: 1 };
+    const { unmount } = renderDetail(row);
+    await waitFor(() =>
+      expect(screen.getByRole("tab", { name: "Deliveries · 2" })).toBeInTheDocument(),
+    );
+    unmount();
+
+    stubDeliveries([]);
+    renderDetail(row);
+    await waitFor(() =>
+      expect(screen.getByRole("tab", { name: "Deliveries" })).toBeInTheDocument(),
+    );
+    expect(screen.queryByText(/Deliveries ·/)).toBeNull();
+  });
+
+  it("renders the delivery timeline when the Deliveries tab is opened", async () => {
+    stubComments();
+    stubDeliveries([{ uid: "d1", date_epoch: 100, status: "success", action: "page-oncall" }]);
+    const row: Record_ = { uid: "r1", host: "srv-1", date_epoch: 1 };
+    renderDetail(row);
+    const user = userEvent.setup();
+    await waitFor(() =>
+      expect(screen.getByRole("tab", { name: "Deliveries · 1" })).toBeInTheDocument(),
+    );
+    await user.click(screen.getByRole("tab", { name: "Deliveries · 1" }));
+    // "page-oncall" also appears in the header's "Last notified … via
+    // page-oncall" line, so scope to the action badge inside the timeline row.
+    await waitFor(() =>
+      expect(screen.getByRole("tabpanel", { name: "Deliveries · 1" })).toHaveTextContent(
+        "page-oncall",
+      ),
+    );
+  });
+
+  it("shows a success 'Last notified' header line from the newest delivery", async () => {
+    stubComments();
+    stubDeliveries([{ uid: "d1", date_epoch: 100, status: "success", action: "mail-oncall" }]);
+    const row: Record_ = { uid: "r1", host: "srv-1", date_epoch: 1 };
+    renderDetail(row);
+    await waitFor(() => expect(screen.getByText(/Last notified/)).toBeInTheDocument());
+    expect(screen.getByText("mail-oncall")).toBeInTheDocument();
+    expect(screen.queryByText(/Last delivery failed/)).toBeNull();
+  });
+
+  it("shows a failed 'Last delivery failed' header line when the newest delivery errored", async () => {
+    stubComments();
+    stubDeliveries([
+      { uid: "d1", date_epoch: 100, status: "error", action: "mail-oncall", error: "dial tcp" },
+    ]);
+    const row: Record_ = { uid: "r1", host: "srv-1", date_epoch: 1 };
+    renderDetail(row);
+    await waitFor(() => expect(screen.getByText(/Last delivery failed/)).toBeInTheDocument());
+    expect(screen.getByText(/\(mail-oncall\)/)).toBeInTheDocument();
+  });
+
+  it("hides the header line entirely when there are no deliveries", async () => {
+    stubComments();
+    stubDeliveries([]);
+    const row: Record_ = { uid: "r1", host: "srv-1", date_epoch: 1 };
+    renderDetail(row);
+    await waitFor(() =>
+      expect(screen.getByRole("tab", { name: "Deliveries" })).toBeInTheDocument(),
+    );
+    expect(screen.queryByText(/Last notified/)).toBeNull();
+    expect(screen.queryByText(/Last delivery failed/)).toBeNull();
+  });
+
+  it("scopes the delivery query to the alert uid with a CONTAINS clause", async () => {
+    stubComments();
+    const seen = stubDeliveries([
+      { uid: "d1", date_epoch: 100, status: "success", action: "mail-oncall" },
+    ]);
+    renderDetail({ uid: "r1", host: "srv-1", date_epoch: 1 });
+    await waitFor(() => expect(seen.length).toBeGreaterThan(0));
+    expect(leaves(seen[0]!.cond)).toContainEqual({
+      type: "CONTAINS",
+      field: "alert_uids",
+      value: "r1",
+    });
+  });
+
+  it("counts the tab from the scope probe, not from the failed probe", async () => {
+    // Both probes are limit=1; only the condition distinguishes them. If they
+    // were confused the tab would read "Deliveries · 1" for 3 deliveries.
+    stubComments();
+    stubDeliveries([
+      { uid: "d1", date_epoch: 100, status: "success", action: "mail-oncall" },
+      { uid: "d2", date_epoch: 90, status: "error", action: "mail-oncall", error: "boom" },
+      { uid: "d3", date_epoch: 80, status: "success", action: "mail-oncall" },
+    ]);
+    renderDetail({ uid: "r1", host: "srv-1", date_epoch: 1 });
+    const user = userEvent.setup();
+    await waitFor(() =>
+      expect(screen.getByRole("tab", { name: "Deliveries · 3" })).toBeInTheDocument(),
+    );
+    await user.click(screen.getByRole("tab", { name: "Deliveries · 3" }));
+    // …and the timeline header reads the failed count off its own probe.
+    await waitFor(() => expect(screen.getByText(/1 failed/)).toBeInTheDocument());
+    expect(screen.getByText("3 deliveries")).toBeInTheDocument();
+  });
+
+  it("never queries the log for a row with no uid", async () => {
+    // `alert_uids CONTAINS ""` is a regex match on the server: an empty
+    // pattern would return every delivery in the tenant under this alert.
+    stubComments();
+    const seen = stubDeliveries([
+      { uid: "d1", date_epoch: 100, status: "success", action: "mail-oncall" },
+    ]);
+    renderDetail({ host: "srv-1", date_epoch: 1 } as Record_);
+    await waitFor(() => expect(screen.getByRole("tab", { name: "Timeline" })).toBeInTheDocument());
+    expect(screen.queryByRole("tab", { name: /Deliveries/ })).toBeNull();
+    expect(seen).toHaveLength(0);
+  });
+
+  it("hides the Deliveries tab — and fires no probe — without ro_notificationlog", async () => {
+    authStore.getState().logout();
+    loginWithPerms(["ro_record", "ro_notification"]);
+    stubComments();
+    const seen = stubDeliveries([
+      { uid: "d1", date_epoch: 100, status: "success", action: "mail-oncall" },
+    ]);
+    renderDetail({ uid: "r1", host: "srv-1", date_epoch: 1 });
+    await waitFor(() => expect(screen.getByRole("tab", { name: "Timeline" })).toBeInTheDocument());
+    expect(screen.queryByRole("tab", { name: /Deliveries/ })).toBeNull();
+    expect(screen.queryByText(/Last notified/)).toBeNull();
+    expect(seen).toHaveLength(0);
+  });
+
+  it("shows the Deliveries tab for a role holding only ro_all", async () => {
+    authStore.getState().logout();
+    loginWithPerms(["ro_all"]);
+    stubComments();
+    stubDeliveries([{ uid: "d1", date_epoch: 100, status: "success", action: "mail-oncall" }]);
+    renderDetail({ uid: "r1", host: "srv-1", date_epoch: 1 });
+    await waitFor(() =>
+      expect(screen.getByRole("tab", { name: "Deliveries · 1" })).toBeInTheDocument(),
+    );
   });
 });

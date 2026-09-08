@@ -19,6 +19,13 @@ export type Notification = {
   actions?: string[];
   time_constraints?: TimeConstraintsGroup;
   frequency?: Frequency;
+  // Server-stamped delivery counters (read-only). `hits` counts successful
+  // deliveries, `last_sent` is the epoch (seconds) of the most recent one.
+  // Both are maintained by the dispatcher via a read-modify-write on
+  // successful deliveries; client-supplied values are stripped on write, so
+  // the editor must never echo them back (see NotificationEditor).
+  hits?: number;
+  last_sent?: number;
 };
 
 // ActionEnvelope mirrors the {selected, subcontent} pair the backend stores at

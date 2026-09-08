@@ -1076,7 +1076,10 @@ export interface paths {
                 };
             };
             responses: {
-                /** @description Test notification delivered. */
+                /** @description Test notification delivered. The test send bypasses batching and
+                 *     reports the real transport outcome, so a 200 always means the
+                 *     notifier accepted the alert — there is no deferred "queued" state.
+                 *      */
                 200: {
                     headers: {
                         [name: string]: unknown;
@@ -3149,6 +3152,13 @@ export interface paths {
                      *     `owner` from the JWT subject and scopes uniqueness to
                      *     `(tenant_id, owner, name)`; a caller may only mutate their own
                      *     bookmarks (admins may curate any). See the `SavedSearch` schema.
+                     *
+                     *     The `notificationlog` collection holds the delivery history: one row
+                     *     per send attempt performed by the notification dispatcher. Rows are
+                     *     written by the server, never by clients — reads require
+                     *     `ro_notificationlog` and the write verbs exist only for tooling.
+                     *     Retention is governed by `housekeeping.cleanup_notificationlog`
+                     *     (default 30 days). See the `NotificationLogEntry` schema.
                      *      */
                     plugin: components["parameters"]["PluginPath"];
                 };
@@ -3269,6 +3279,13 @@ export interface paths {
                      *     `owner` from the JWT subject and scopes uniqueness to
                      *     `(tenant_id, owner, name)`; a caller may only mutate their own
                      *     bookmarks (admins may curate any). See the `SavedSearch` schema.
+                     *
+                     *     The `notificationlog` collection holds the delivery history: one row
+                     *     per send attempt performed by the notification dispatcher. Rows are
+                     *     written by the server, never by clients — reads require
+                     *     `ro_notificationlog` and the write verbs exist only for tooling.
+                     *     Retention is governed by `housekeeping.cleanup_notificationlog`
+                     *     (default 30 days). See the `NotificationLogEntry` schema.
                      *      */
                     plugin: components["parameters"]["PluginPath"];
                 };
@@ -3448,6 +3465,13 @@ export interface paths {
                  *     `owner` from the JWT subject and scopes uniqueness to
                  *     `(tenant_id, owner, name)`; a caller may only mutate their own
                  *     bookmarks (admins may curate any). See the `SavedSearch` schema.
+                 *
+                 *     The `notificationlog` collection holds the delivery history: one row
+                 *     per send attempt performed by the notification dispatcher. Rows are
+                 *     written by the server, never by clients — reads require
+                 *     `ro_notificationlog` and the write verbs exist only for tooling.
+                 *     Retention is governed by `housekeeping.cleanup_notificationlog`
+                 *     (default 30 days). See the `NotificationLogEntry` schema.
                  *      */
                 plugin: components["parameters"]["PluginPath"];
             };
@@ -3495,6 +3519,13 @@ export interface paths {
                      *     `owner` from the JWT subject and scopes uniqueness to
                      *     `(tenant_id, owner, name)`; a caller may only mutate their own
                      *     bookmarks (admins may curate any). See the `SavedSearch` schema.
+                     *
+                     *     The `notificationlog` collection holds the delivery history: one row
+                     *     per send attempt performed by the notification dispatcher. Rows are
+                     *     written by the server, never by clients — reads require
+                     *     `ro_notificationlog` and the write verbs exist only for tooling.
+                     *     Retention is governed by `housekeeping.cleanup_notificationlog`
+                     *     (default 30 days). See the `NotificationLogEntry` schema.
                      *      */
                     plugin: components["parameters"]["PluginPath"];
                 };
@@ -3549,6 +3580,13 @@ export interface paths {
                      *     `owner` from the JWT subject and scopes uniqueness to
                      *     `(tenant_id, owner, name)`; a caller may only mutate their own
                      *     bookmarks (admins may curate any). See the `SavedSearch` schema.
+                     *
+                     *     The `notificationlog` collection holds the delivery history: one row
+                     *     per send attempt performed by the notification dispatcher. Rows are
+                     *     written by the server, never by clients — reads require
+                     *     `ro_notificationlog` and the write verbs exist only for tooling.
+                     *     Retention is governed by `housekeeping.cleanup_notificationlog`
+                     *     (default 30 days). See the `NotificationLogEntry` schema.
                      *      */
                     plugin: components["parameters"]["PluginPath"];
                 };
@@ -3616,6 +3654,13 @@ export interface paths {
                      *     `owner` from the JWT subject and scopes uniqueness to
                      *     `(tenant_id, owner, name)`; a caller may only mutate their own
                      *     bookmarks (admins may curate any). See the `SavedSearch` schema.
+                     *
+                     *     The `notificationlog` collection holds the delivery history: one row
+                     *     per send attempt performed by the notification dispatcher. Rows are
+                     *     written by the server, never by clients — reads require
+                     *     `ro_notificationlog` and the write verbs exist only for tooling.
+                     *     Retention is governed by `housekeeping.cleanup_notificationlog`
+                     *     (default 30 days). See the `NotificationLogEntry` schema.
                      *      */
                     plugin: components["parameters"]["PluginPath"];
                 };
@@ -3678,6 +3723,13 @@ export interface paths {
                      *     `owner` from the JWT subject and scopes uniqueness to
                      *     `(tenant_id, owner, name)`; a caller may only mutate their own
                      *     bookmarks (admins may curate any). See the `SavedSearch` schema.
+                     *
+                     *     The `notificationlog` collection holds the delivery history: one row
+                     *     per send attempt performed by the notification dispatcher. Rows are
+                     *     written by the server, never by clients — reads require
+                     *     `ro_notificationlog` and the write verbs exist only for tooling.
+                     *     Retention is governed by `housekeeping.cleanup_notificationlog`
+                     *     (default 30 days). See the `NotificationLogEntry` schema.
                      *      */
                     plugin: components["parameters"]["PluginPath"];
                 };
@@ -3742,6 +3794,13 @@ export interface paths {
                  *     `owner` from the JWT subject and scopes uniqueness to
                  *     `(tenant_id, owner, name)`; a caller may only mutate their own
                  *     bookmarks (admins may curate any). See the `SavedSearch` schema.
+                 *
+                 *     The `notificationlog` collection holds the delivery history: one row
+                 *     per send attempt performed by the notification dispatcher. Rows are
+                 *     written by the server, never by clients — reads require
+                 *     `ro_notificationlog` and the write verbs exist only for tooling.
+                 *     Retention is governed by `housekeeping.cleanup_notificationlog`
+                 *     (default 30 days). See the `NotificationLogEntry` schema.
                  *      */
                 plugin: components["parameters"]["PluginPath"];
                 uid: string;
@@ -3774,6 +3833,13 @@ export interface paths {
                      *     `owner` from the JWT subject and scopes uniqueness to
                      *     `(tenant_id, owner, name)`; a caller may only mutate their own
                      *     bookmarks (admins may curate any). See the `SavedSearch` schema.
+                     *
+                     *     The `notificationlog` collection holds the delivery history: one row
+                     *     per send attempt performed by the notification dispatcher. Rows are
+                     *     written by the server, never by clients — reads require
+                     *     `ro_notificationlog` and the write verbs exist only for tooling.
+                     *     Retention is governed by `housekeeping.cleanup_notificationlog`
+                     *     (default 30 days). See the `NotificationLogEntry` schema.
                      *      */
                     plugin: components["parameters"]["PluginPath"];
                     uid: string;
@@ -3830,6 +3896,13 @@ export interface paths {
                      *     `owner` from the JWT subject and scopes uniqueness to
                      *     `(tenant_id, owner, name)`; a caller may only mutate their own
                      *     bookmarks (admins may curate any). See the `SavedSearch` schema.
+                     *
+                     *     The `notificationlog` collection holds the delivery history: one row
+                     *     per send attempt performed by the notification dispatcher. Rows are
+                     *     written by the server, never by clients — reads require
+                     *     `ro_notificationlog` and the write verbs exist only for tooling.
+                     *     Retention is governed by `housekeeping.cleanup_notificationlog`
+                     *     (default 30 days). See the `NotificationLogEntry` schema.
                      *      */
                     plugin: components["parameters"]["PluginPath"];
                     uid: string;
@@ -3884,6 +3957,13 @@ export interface paths {
                      *     `owner` from the JWT subject and scopes uniqueness to
                      *     `(tenant_id, owner, name)`; a caller may only mutate their own
                      *     bookmarks (admins may curate any). See the `SavedSearch` schema.
+                     *
+                     *     The `notificationlog` collection holds the delivery history: one row
+                     *     per send attempt performed by the notification dispatcher. Rows are
+                     *     written by the server, never by clients — reads require
+                     *     `ro_notificationlog` and the write verbs exist only for tooling.
+                     *     Retention is governed by `housekeeping.cleanup_notificationlog`
+                     *     (default 30 days). See the `NotificationLogEntry` schema.
                      *      */
                     plugin: components["parameters"]["PluginPath"];
                     uid: string;
@@ -3931,6 +4011,13 @@ export interface paths {
                      *     `owner` from the JWT subject and scopes uniqueness to
                      *     `(tenant_id, owner, name)`; a caller may only mutate their own
                      *     bookmarks (admins may curate any). See the `SavedSearch` schema.
+                     *
+                     *     The `notificationlog` collection holds the delivery history: one row
+                     *     per send attempt performed by the notification dispatcher. Rows are
+                     *     written by the server, never by clients — reads require
+                     *     `ro_notificationlog` and the write verbs exist only for tooling.
+                     *     Retention is governed by `housekeeping.cleanup_notificationlog`
+                     *     (default 30 days). See the `NotificationLogEntry` schema.
                      *      */
                     plugin: components["parameters"]["PluginPath"];
                     uid: string;
@@ -4472,6 +4559,161 @@ export interface components {
         } & {
             [key: string]: unknown;
         };
+        /** @description A notification entry: the routing object that decides **when** an alert
+         *     is delivered. It pairs a condition (and an optional time-constraint
+         *     window) with a list of `action` names that decide **how** the delivery
+         *     happens. Stored in the `notification` collection and served by the
+         *     generic CRUD surface.
+         *
+         *     Each actual send is recorded as a row in the `notificationlog`
+         *     collection — see the `NotificationLogEntry` schema.
+         *      */
+        Notification: {
+            /** @description Server-assigned identifier. */
+            readonly uid?: string;
+            /** @description Unique notification name within the tenant. */
+            name: string;
+            /** @description Optional human description. */
+            comment?: string;
+            /** @description Disabled notifications never match, so nothing is sent. */
+            enabled?: boolean;
+            /** @description Match condition (object or legacy-list DSL form). */
+            condition?: unknown;
+            /** @description Names of the `action` entries fired on a match. */
+            actions?: string[];
+            /** @description Active time windows (absolute datetime ranges, daily-time windows, weekdays). The notification only fires when the current moment is within every populated family.
+             *      */
+            time_constraints?: Record<string, never>;
+            /** @description Throttle parameters forwarded to the notifier. Only `total` is honoured today (`total: 0` skips the send entirely); `delay` and `every` are parsed but not yet implemented.
+             *      */
+            frequency?: {
+                total?: number;
+                delay?: number;
+                every?: number;
+            };
+            /** @description Number of successful deliveries fired by this notification. Maintained by the dispatcher via a read-modify-write on successful deliveries; client-supplied values are stripped on write.
+             *      */
+            readonly hits?: number;
+            /** @description Unix timestamp (seconds) of the most recent successful delivery. Maintained by the dispatcher via a read-modify-write on successful deliveries; client-supplied values are stripped on write. Absent until the first successful send.
+             *      */
+            readonly last_sent?: number;
+            /** @description Owning tenant slug (server-stamped). */
+            readonly tenant_id?: string;
+        } & {
+            [key: string]: unknown;
+        };
+        /** @description One **delivery**: a single send attempt performed by one action, on
+         *     behalf of one or more notifications, covering one or more alerts.
+         *
+         *     Rows live in the tenant-scoped `notificationlog` collection and are
+         *     written by the notification dispatcher — they are **read-only in
+         *     practice**. The CRUD write verbs exist only for tooling and tests; no
+         *     UI path creates or edits a row.
+         *
+         *     Granularity: an unbatched send produces one row per (alert × action).
+         *     A batching notifier (webhook / mail / script with `batch: true`)
+         *     produces exactly one row per flush, listing every member alert in
+         *     `alerts[]`.
+         *
+         *     The `alerts[]` snapshot is captured at send time so the row still
+         *     renders after the alert record's own TTL (default 2 days) has expired.
+         *     The flat `alert_uids` / `alert_hashes` / `notification_uids` /
+         *     `notification_names` arrays exist so the condition DSL can filter rows
+         *     with `field CONTAINS "value"` (object-path filtering into `alerts[]`
+         *     is not expressible).
+         *
+         *     Retention is governed by `housekeeping.cleanup_notificationlog`
+         *     (default `720h` = 30 days); writing rows at all is gated by
+         *     `notification.delivery_log` (default `true`).
+         *      */
+        NotificationLogEntry: {
+            /** @description Server-assigned identifier. */
+            readonly uid?: string;
+            /** @description Send COMPLETION time, Unix seconds. This is the sort key (newest first) and the retention key the housekeeper prunes on.
+             *      */
+            date_epoch?: number;
+            /** @description Unix seconds at which the dispatch was decided (the alert matched during pipeline Process). For a batched row this is the moment the FIRST member was queued, so `date_epoch - queued_epoch` is the batch's dwell time.
+             *      */
+            queued_epoch?: number;
+            /** @description Wall-clock duration of the send call, in milliseconds. */
+            duration_ms?: number;
+            /**
+             * @description Outcome of the attempt. `error` covers both a failed send and a misconfigured action (action not found, no notifier selected, notifier not registered). Frequency-skipped sends are NOT logged.
+             *
+             * @enum {string}
+             */
+            status?: "success" | "error";
+            /** @description Failure text. Present (non-empty) only when `status` is `error`. */
+            error?: string;
+            /** @description Name of the `action` entry that performed the send. */
+            action?: string;
+            /** @description Registry key of the notifier plugin used (`mail`, `webhook`, `script`, `slack`, …) — i.e. the action's `selected` value.
+             *      */
+            notifier?: string;
+            /** @description True when the row describes a batched flush covering several alerts, false for a single unbatched send.
+             *      */
+            batch?: boolean;
+            /**
+             * @description Why the batch flushed: `size` (reached `batch_maxsize`), `timer` (reached `batch_timer`), or `shutdown` (the server drained pending buckets on graceful shutdown). `""` means unbatched — the field is elided from the stored row entirely, so treat absent and empty as the same thing.
+             *
+             * @enum {string}
+             */
+            batch_reason?: "" | "size" | "timer" | "shutdown";
+            /** @description `uid`s of the notifications this delivery was made for. Usually one; a batch may carry several when they share the same action. Flat so `notification_uids CONTAINS "<uid>"` works in the DSL. May be shorter than `notification_names` when a uid could not be resolved.
+             *      */
+            notification_uids?: string[];
+            /** @description Names of the notifications this delivery was made for. */
+            notification_names?: string[];
+            /** @description Number of alerts covered by this delivery — the length of `alerts[]` AFTER de-duplication (members are deduped on uid, falling back to hash, so a batch that queued the same alert twice counts it once). 1 for an unbatched row.
+             *      */
+            alert_count?: number;
+            /** @description `uid`s of the covered alerts. May be SHORTER than `alerts[]`: a first-occurrence alert has no uid until its record lands, and unresolved entries are omitted rather than stored empty. Flat so `alert_uids CONTAINS "<uid>"` works in the DSL.
+             *      */
+            alert_uids?: string[];
+            /** @description Dedup hashes of the covered alerts. Always populated (a hash exists before the record is written), so this is the reliable fallback key when a uid is missing.
+             *      */
+            alert_hashes?: string[];
+            /** @description Per-alert snapshot captured at send time, one entry per covered alert. Kept verbatim so the delivery still renders after the alert record itself has expired.
+             *      */
+            alerts?: ({
+                /** @description Alert record uid. Absent when the alert's uid could not be resolved — a first-occurrence alert has no uid until its record lands, and the key is omitted rather than stored empty. `hash` is always present and is what the UI links on in that case.
+                 *      */
+                uid?: string;
+                /** @description Alert dedup hash. Always present. */
+                hash?: string;
+                /** @description Alert `host` field at send time. */
+                host?: string;
+                /** @description Alert `severity` field at send time. */
+                severity?: string;
+                /** @description Alert `message` at send time, truncated to 512 characters. */
+                message?: string;
+                /** @description Alert lifecycle state at send time (open, ack, esc, …). */
+                state?: string;
+                /** @description Name of the notification that matched this particular alert. Distinguishes members of a mixed batch.
+                 *      */
+                notification?: string;
+            } & {
+                [key: string]: unknown;
+            })[];
+            /** @description Re-escalation depth of this delivery — the maximum over all covered alerts. 0 for a first delivery.
+             *      */
+            escalation_count?: number;
+            /** @description Why the alert re-escalated, when it did: `timeout`, `manual` or `watchlist`. Empty string on a first delivery.
+             *      */
+            escalation_reason?: string;
+            /** @description The external handle the notifier created for this delivery, when it creates one — e.g. `{"issue_key": "OPS-123"}` for Jira, `{"thread_ts": "…"}` for Slack, `{"message_id": …}` for Telegram. Free-form: keys vary per notifier. An optional `url` key carries a directly openable deep link when one is derivable, which the UI renders as an "open in <system>" link. Absent when the notifier returns no handle.
+             *      */
+            ref?: {
+                /** @description Optional deep link to the external object. */
+                url?: string;
+            } & {
+                [key: string]: unknown;
+            };
+            /** @description Owning tenant slug (server-stamped). */
+            readonly tenant_id?: string;
+        } & {
+            [key: string]: unknown;
+        };
         /** @description PagerDuty webhook v2 payload. Each entry in `messages` carries an event
          *     `type` and a `data.incident` object whose `incident_key` is the
          *     dedup-key Snooze set when it triggered the incident.
@@ -4872,8 +5114,15 @@ export interface components {
          *     `owner` from the JWT subject and scopes uniqueness to
          *     `(tenant_id, owner, name)`; a caller may only mutate their own
          *     bookmarks (admins may curate any). See the `SavedSearch` schema.
+         *
+         *     The `notificationlog` collection holds the delivery history: one row
+         *     per send attempt performed by the notification dispatcher. Rows are
+         *     written by the server, never by clients — reads require
+         *     `ro_notificationlog` and the write verbs exist only for tooling.
+         *     Retention is governed by `housekeeping.cleanup_notificationlog`
+         *     (default 30 days). See the `NotificationLogEntry` schema.
          *      */
-        PluginPath: "action" | "aggregaterule" | "alertmanager" | "apikey" | "audit" | "azuremonitor" | "cloudwatch" | "comment" | "datadog" | "discord" | "environment" | "googlechat" | "grafana" | "heartbeat" | "influxdb2" | "kapacitor" | "kv" | "mail" | "newrelic" | "notification" | "ntfy" | "opsgenie" | "pagerduty" | "patlite" | "profile" | "prometheus" | "pushover" | "record" | "role" | "rule" | "savedsearch" | "script" | "sentry" | "servicenow" | "settings" | "slack" | "snooze" | "sns" | "stackdriver" | "stats" | "statuspage" | "telegram" | "twilio" | "user" | "webhook" | "widget";
+        PluginPath: "action" | "aggregaterule" | "alertmanager" | "apikey" | "audit" | "azuremonitor" | "cloudwatch" | "comment" | "datadog" | "discord" | "environment" | "googlechat" | "grafana" | "heartbeat" | "influxdb2" | "kapacitor" | "kv" | "mail" | "newrelic" | "notification" | "notificationlog" | "ntfy" | "opsgenie" | "pagerduty" | "patlite" | "profile" | "prometheus" | "pushover" | "record" | "role" | "rule" | "savedsearch" | "script" | "sentry" | "servicenow" | "settings" | "slack" | "snooze" | "sns" | "stackdriver" | "stats" | "statuspage" | "telegram" | "twilio" | "user" | "webhook" | "widget";
         /** @description Base64url-encoded JSON condition. Empty (or absent) selects
          *     every document. Use `POST /{plugin}/search` for queries that
          *     won't fit in a URL.

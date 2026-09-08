@@ -80,11 +80,19 @@
 /* Phones: every dashboard grid stacks to a single column so the charts go
    full-bleed and nothing forces page-wide horizontal scroll. Chart canvases
    are responsive by default and the grid cells are width-fluid, so the
-   canvases follow. */
+   canvases follow.
+   `minmax(0, 1fr)` rather than the shorthand `1fr` (= minmax(auto, 1fr)),
+   exactly as the wider breakpoints above spell it: with `auto` as the floor
+   the track inflates to its widest card's MIN-CONTENT, and the Breakdowns
+   card's tab strip is ~540px of un-shrinkable triggers. That made every card
+   in the row 542px wide inside a 348px column — the Notifications panel's
+   bars and counts were pushed off-screen and the page scrolled sideways. The
+   strip is already `overflow-x: auto` (Tabs.module.css); it only gets to
+   scroll if the track stops growing for it. */
 @media (max-width: 768px) {
   .rowPrimary,
   .rowSecondary,
   .strip {
-    grid-template-columns: 1fr;
+    grid-template-columns: minmax(0, 1fr);
   }
 }

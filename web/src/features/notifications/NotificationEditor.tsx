@@ -124,14 +124,29 @@ function NotificationEnabledToggle({
   );
 }
 
+/**
+ * `hits` and `last_sent` are server-stamped delivery counters: the API
+ * ignores them on write, so `formToBody` never sends them and the projected
+ * body never carries them. Left on the ORIGINAL side of the diff they would
+ * render as a deletion on every edit ("- hits: 142"), which reads as "saving
+ * will reset the counter". Strip them from the comparison instead.
+ */
+function stripCounters(n: Notification | undefined): Notification | undefined {
+  if (n === undefined) return undefined;
+  if (n.hits === undefined && n.last_sent === undefined) return n;
+  const { hits: _hits, last_sent: _lastSent, ...rest } = n;
+  return rest;
+}
+
 /** Diff scoped to its own subscriptions. */
 function NotificationDiff({
   control,
-  original,
+  original: raw,
 }: {
   control: Control<FormShape>;
   original: Notification | undefined;
 }) {
+  const original = useMemo(() => stripCounters(raw), [raw]);
   const name = useWatch({ control, name: "name" });
   const comment = useWatch({ control, name: "comment" });
   const enabled = useWatch({ control, name: "enabled" });

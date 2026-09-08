@@ -140,4 +140,36 @@ describe("NotificationEditor", () => {
     );
     expect(screen.queryByRole("button", { name: /^diff/i })).not.toBeInTheDocument();
   });
+
+  it("never diffs the server-stamped hits / last_sent counters", async () => {
+    // They are read-only: formToBody drops them, so leaving them on the
+    // original side would render "- hits: 142" on every edit and read as
+    // "saving resets the counter".
+    mswServer.use(
+      http.get("/api/v1/notification/nt3", () =>
+        HttpResponse.json({
+          uid: "nt3",
+          name: "counted",
+          enabled: true,
+          condition: { type: "ALWAYS_TRUE" },
+          actions: ["slack-prod"],
+          hits: 142,
+          last_sent: 1757340000,
+        }),
+      ),
+      http.get("/api/v1/record", () =>
+        HttpResponse.json({ data: [], meta: { count: 0, limit: 50, offset: 0, total: 0 } }),
+      ),
+    );
+    const Wrapper = wrap();
+    const user = userEvent.setup();
+    render(
+      <Wrapper>
+        <NotificationEditor uid="nt3" onClose={() => undefined} />
+      </Wrapper>,
+    );
+    await user.click(await screen.findByRole("button", { name: /^diff/i }));
+    const pre = await screen.findByLabelText("Diff");
+    expect(pre.textContent).not.toMatch(/hits|last_sent/);
+  });
 });
