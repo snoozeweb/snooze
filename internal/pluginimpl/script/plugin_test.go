@@ -289,7 +289,7 @@ func TestBatchScript_JSONStdinJoinsAsArray(t *testing.T) {
 
 	for i := 0; i < 3; i++ {
 		rec := snoozetypes.Record{Host: "h" + string(rune('A'+i))}
-		require.NoError(t, p.Send(context.Background(), rec, plugins.NotificationPayload{Meta: meta}))
+		requireQueued(t, p.Send(context.Background(), rec, plugins.NotificationPayload{Meta: meta}))
 	}
 
 	require.Eventually(t, func() bool {
@@ -317,7 +317,7 @@ func TestBatchScript_NonJSONStdinJoinsWithNewlines(t *testing.T) {
 
 	for i := 0; i < 3; i++ {
 		rec := snoozetypes.Record{Host: "h" + string(rune('A'+i))}
-		require.NoError(t, p.Send(context.Background(), rec, plugins.NotificationPayload{Meta: meta}))
+		requireQueued(t, p.Send(context.Background(), rec, plugins.NotificationPayload{Meta: meta}))
 	}
 
 	require.Eventually(t, func() bool {
@@ -338,8 +338,8 @@ func TestBatchScript_StopDrains(t *testing.T) {
 	out := t.TempDir() + "/stdin.txt"
 	p := newPlugin(t)
 	meta := batchScriptMeta(t, out, 99, 60, "x: {{ .Record.Host }}") // size won't trigger
-	require.NoError(t, p.Send(context.Background(), snoozetypes.Record{Host: "alpha"}, plugins.NotificationPayload{Meta: meta}))
-	require.NoError(t, p.Send(context.Background(), snoozetypes.Record{Host: "beta"}, plugins.NotificationPayload{Meta: meta}))
+	requireQueued(t, p.Send(context.Background(), snoozetypes.Record{Host: "alpha"}, plugins.NotificationPayload{Meta: meta}))
+	requireQueued(t, p.Send(context.Background(), snoozetypes.Record{Host: "beta"}, plugins.NotificationPayload{Meta: meta}))
 
 	require.NoError(t, p.Stop(context.Background()))
 
@@ -347,6 +347,50 @@ func TestBatchScript_StopDrains(t *testing.T) {
 		b, err := os.ReadFile(out)
 		return err == nil && strings.Contains(string(b), "alpha") && strings.Contains(string(b), "beta")
 	}, time.Second, 10*time.Millisecond, "Stop should drain the pending bucket")
+}
+
+// TestBatchScript_SendAfterStopRunsImmediately pins N6 — see the webhook twin
+// for the full rationale: a bucket created after Stop's key snapshot is never
+// drained, so the alert (and its delivery row, counters and stat) vanished.
+func TestBatchScript_SendAfterStopRunsImmediately(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("POSIX-only")
+	}
+	out := t.TempDir() + "/stdin.txt"
+	p := newPlugin(t)
+	meta := batchScriptMeta(t, out, 99, 60, "x: {{ .Record.Host }}") // neither bound triggers
+
+	require.NoError(t, p.Stop(context.Background()))
+
+	err := p.Send(context.Background(), snoozetypes.Record{Host: "alpha"}, plugins.NotificationPayload{Meta: meta})
+	require.NoError(t, err)
+	require.NotErrorIs(t, err, plugins.ErrBatched,
+		"a send that could not be batched must report its real outcome")
+
+	b, readErr := os.ReadFile(out)
+	require.NoError(t, readErr, "the command must have run immediately")
+	require.Equal(t, "x: alpha", strings.TrimSpace(string(b)), "exactly one immediate run")
+	require.Empty(t, p.buckets, "no orphan bucket left behind by the post-Stop send")
+}
+
+// TestBatchScript_StartReopensBatchingAfterStop pins the other half of N6 —
+// see the webhook twin: `stopped` is latched by Stop and only Start clears it,
+// so without the reset a Stop → Start cycle disables batching for good.
+func TestBatchScript_StartReopensBatchingAfterStop(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("POSIX-only")
+	}
+	out := t.TempDir() + "/stdin.txt"
+	p := newPlugin(t)
+	meta := batchScriptMeta(t, out, 99, 60, "x: {{ .Record.Host }}") // neither bound triggers
+
+	require.NoError(t, p.Stop(context.Background()))
+	require.NoError(t, p.Start(context.Background()))
+
+	requireQueued(t, p.Send(context.Background(),
+		snoozetypes.Record{Host: "alpha"}, plugins.NotificationPayload{Meta: meta}))
+	require.Len(t, p.buckets, 1, "the send should have created a bucket")
+	require.NoFileExists(t, out, "nothing should have run immediately")
 }
 
 func TestBatchScript_DegenerateConfigFallsBackToImmediate(t *testing.T) {

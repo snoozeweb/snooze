@@ -67,11 +67,23 @@ func (rt *Router) handleActionTest(w http.ResponseWriter, r *http.Request) {
 		Template: req.Selected,
 		Meta:     meta,
 		// Inject is deliberately nil: a test must not mutate any stored record.
+		//
+		// Test tells the notifier this is a probe, not a dispatch. The three
+		// batching notifiers honour it by delivering immediately instead of
+		// queueing: a synthetic alert must never enter a live tenant bucket
+		// (it would ride out with real alerts and appear in their
+		// delivery-history row), and the operator clicking "Send test" needs a
+		// real answer, not "queued". Nothing about a test send is logged,
+		// counted or stamped anywhere.
+		Test: true,
 	}
 
 	ctx, cancel := context.WithTimeout(r.Context(), actionTestTimeout)
 	defer cancel()
 
+	// Every notifier now reports a real outcome for a test send — the batching
+	// ones bypass their bucket on payload.Test — so there is no deferred
+	// ("queued") case left to represent in the response.
 	if err := notifier.Send(ctx, sampleTestRecord(), payload); err != nil {
 		WriteError(w, r, ErrValidation.WithMessage(err.Error()))
 		return

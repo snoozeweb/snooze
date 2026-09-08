@@ -100,6 +100,49 @@ func TestActionTest_UpstreamFailureSurfacesDetail(t *testing.T) {
 	require.Contains(t, env.Error.Message, "boom")
 }
 
+// TestActionTest_MarksThePayloadAsATest is the contract the three batching
+// notifiers rely on to bypass their bucket: without it, "Send test" on a
+// batching action injects a synthetic alert into the live tenant bucket, where
+// it rides out with real alerts and lands in their delivery-history row.
+func TestActionTest_MarksThePayloadAsATest(t *testing.T) {
+	fake := &fakeNotifier{name: "webhook"}
+	rt := &Router{Plugins: map[string]plugins.Plugin{"webhook": fake}}
+
+	rec := postActionTest(t, rt, map[string]any{
+		"selected": "webhook", "subcontent": map[string]any{"batch": true},
+	})
+	require.Equal(t, http.StatusOK, rec.Code)
+	require.True(t, fake.lastMsg.Test, "the notifier must be told this is a probe")
+	require.Nil(t, fake.lastMsg.Inject, "a test must not mutate any stored record")
+}
+
+// TestActionTest_BatchedIsAFailure: with the bypass in place a batching
+// notifier never answers ErrBatched to a test send, so if one leaks out it is
+// a bug and must surface as a failure rather than a fake "queued" success.
+func TestActionTest_BatchedIsAFailure(t *testing.T) {
+	fake := &fakeNotifier{
+		name: "webhook",
+		sendFn: func(snoozetypes.Record, plugins.NotificationPayload) error {
+			return plugins.ErrBatched
+		},
+	}
+	rt := &Router{Plugins: map[string]plugins.Plugin{"webhook": fake}}
+	rec := postActionTest(t, rt, map[string]any{"selected": "webhook", "subcontent": map[string]any{"batch": true}})
+	require.Equal(t, http.StatusUnprocessableEntity, rec.Code)
+}
+
+func TestActionTest_ResponseHasNoQueuedField(t *testing.T) {
+	fake := &fakeNotifier{name: "teams"}
+	rt := &Router{Plugins: map[string]plugins.Plugin{"teams": fake}}
+	rec := postActionTest(t, rt, map[string]any{"selected": "teams", "subcontent": map[string]any{}})
+
+	require.Equal(t, http.StatusOK, rec.Code)
+	var got map[string]any
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &got))
+	require.Equal(t, map[string]any{"ok": true}, got,
+		"every test send now reports a real outcome; there is no deferred case left")
+}
+
 func TestActionTest_MissingSelected(t *testing.T) {
 	rt := &Router{Plugins: map[string]plugins.Plugin{}}
 	rec := postActionTest(t, rt, map[string]any{"subcontent": map[string]any{}})

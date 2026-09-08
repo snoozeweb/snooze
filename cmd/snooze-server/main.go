@@ -80,6 +80,11 @@ const (
 	exitErr   = 1
 )
 
+// pluginStopGrace bounds the graceful plugin drain on shutdown (see
+// Core.StopPlugins). Matches the HTTP server's grace period so a SIGTERM
+// budget of ~1 minute covers both halves of the teardown.
+const pluginStopGrace = 30 * time.Second
+
 // run is the testable entry point. It returns an exit code rather than calling
 // os.Exit so main_test.go can drive subcommands without spawning a process.
 func run(args []string, stdout, stderr io.Writer) int {
@@ -461,6 +466,16 @@ func runDaemonCtx(ctx context.Context, f *daemonFlags, stderr io.Writer) error {
 	// Closes the mq manager (and its pg/mongo pool/client). Runs before the
 	// deferred drv.Close() above (LIFO), the correct teardown order.
 	defer func() { _ = c.Close() }()
+	// Graceful plugin shutdown. Registered AFTER c.Close so LIFO runs it
+	// FIRST — i.e. once g.Wait() below has returned (the HTTP listener is
+	// down, ingest accepts nothing more) but while the mq bus and the DB
+	// driver are both still open. The batching notifiers drain their pending
+	// buckets here and write the resulting delivery rows, which needs the DB.
+	defer func() {
+		stopCtx, cancel := context.WithTimeout(context.Background(), pluginStopGrace)
+		defer cancel()
+		c.StopPlugins(stopCtx)
+	}()
 
 	// Register the live record-count gauge now that the driver exists (it was
 	// not available when NewRegistry ran). Refreshed on every Prometheus scrape.
@@ -702,6 +717,10 @@ func openDB(ctx context.Context, dbcfg schema.Database, logger *slog.Logger) (db
 			PoolMin:         dbcfg.PoolMinSize,
 			PoolMax:         dbcfg.PoolMaxSize,
 			ApplicationName: "snooze-server",
+			// Same logger as the Mongo branch below: without it the driver
+			// falls back to slog.Default() and its index-maintenance lines
+			// miss whatever handler/attrs the server configured.
+			Logger: logger,
 		})
 	case "mongo", "mongodb":
 		uri := dbcfg.DSN

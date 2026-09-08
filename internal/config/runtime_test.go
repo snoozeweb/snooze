@@ -273,6 +273,59 @@ func TestStatsRetention_FallsBackToBaseline(t *testing.T) {
 	require.Equal(t, 400*24*time.Hour, rs.StatsRetention(ctx))
 }
 
+// TestNotificationLogRetention_OverrideFromDB checks that a DB override for
+// "housekeeping.cleanup_notificationlog" is surfaced by
+// NotificationLogRetention — the knob the Settings UI writes.
+func TestNotificationLogRetention_OverrideFromDB(t *testing.T) {
+	d := newDriver(t)
+	ctx := auth.WithTenant(context.Background(), snoozetypes.DefaultTenant)
+	writeSetting(ctx, t, d, "housekeeping.cleanup_notificationlog", "168h")
+
+	rs := NewRuntimeSettings(d, Default(), time.Minute)
+	require.Equal(t, 168*time.Hour, rs.NotificationLogRetention(ctx))
+}
+
+// TestNotificationLogRetention_FallsBackToBaseline checks that with no DB
+// override the 30-day (720h) file-config baseline is returned.
+func TestNotificationLogRetention_FallsBackToBaseline(t *testing.T) {
+	d := newDriver(t)
+	ctx := auth.WithTenant(context.Background(), snoozetypes.DefaultTenant)
+
+	rs := NewRuntimeSettings(d, Default(), time.Minute)
+	require.Equal(t, 720*time.Hour, rs.NotificationLogRetention(ctx))
+}
+
+// TestDeliveryLog_OverrideFromDB is the live-toggle contract: flipping
+// "notification.delivery_log" off in Settings stops the dispatcher writing
+// delivery rows without a restart.
+func TestDeliveryLog_OverrideFromDB(t *testing.T) {
+	d := newDriver(t)
+	ctx := auth.WithTenant(context.Background(), snoozetypes.DefaultTenant)
+
+	rs := NewRuntimeSettings(d, Default(), time.Minute)
+	require.True(t, rs.DeliveryLog(ctx), "baseline default should be on")
+
+	writeSetting(ctx, t, d, "notification.delivery_log", false)
+	rs.Invalidate()
+	require.False(t, rs.DeliveryLog(ctx))
+}
+
+// TestNotification_SectionSnapshot verifies the Notification accessor layers
+// the DB override over the file-config baseline and leaves the untouched
+// fields alone.
+func TestNotification_SectionSnapshot(t *testing.T) {
+	d := newDriver(t)
+	ctx := auth.WithTenant(context.Background(), snoozetypes.DefaultTenant)
+	writeSetting(ctx, t, d, "notification.delivery_log", false)
+
+	rs := NewRuntimeSettings(d, Default(), time.Minute)
+	got, err := rs.Notification(ctx)
+	require.NoError(t, err)
+	require.False(t, got.DeliveryLog)
+	require.True(t, got.PersistActionOutcomes, "unrelated fields keep the baseline")
+	require.Equal(t, 3, got.NotificationRetry)
+}
+
 // TestRuntimeSettingsEmptyDBReturnsBaseline checks the cold-start case: no
 // settings rows means every accessor returns the bootstrap baseline as-is.
 func TestRuntimeSettingsEmptyDBReturnsBaseline(t *testing.T) {

@@ -20,8 +20,10 @@ import (
 	"context"
 	_ "embed"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
+	"strings"
 	"sync"
 	"time"
 
@@ -71,6 +73,22 @@ const notifierWriteBackTimeout = 10 * time.Second
 // notifierWriteBackTimeout closes that window.
 const writeBackRetryInterval = 20 * time.Millisecond
 
+// uidResolveTimeoutNoPersist bounds the "wait for the record to land" poll when
+// persist_action_outcomes is off. With persist on, the write-back loop has
+// already confirmed the row and the resolving read hits on the first try, so it
+// can share the full notifierWriteBackTimeout budget. With persist off nothing
+// preceded it, and an alert whose record never lands (dropped downstream, DB
+// wedged) would otherwise hold the coordinator goroutine for ten seconds per
+// dispatch. Two seconds is far more than the pipeline's own write needs.
+const uidResolveTimeoutNoPersist = 2 * time.Second
+
+// misconfiguredRowWindow rate-limits the delivery rows a misconfigured action
+// produces (D11). The row exists so an admin sees "this never sends, action X
+// is missing" — one row every ten minutes says that just as well as one row per
+// matching alert, and a broken action on a noisy condition would otherwise
+// write a row per ingested alert, forever, on the ingest path.
+const misconfiguredRowWindow = 10 * time.Minute
+
 // Action-outcome statuses stamped onto record.actions.
 const (
 	actionPending = "pending"
@@ -83,18 +101,30 @@ const (
 // actionResult is the in-memory form of one record.actions entry. It is
 // converted to a plain map (actionResultsToAny) before being stored so it
 // serializes identically across all three DB backends.
+//
+// NotificationUID and Notifier are NOT part of the stored `actions[]` shape:
+// they exist only so the coordinator can attribute a delivery-history row and
+// bump the notification's counters without re-resolving the action. Adding
+// them to actionResultsToAny would change the record's OpenAPI shape.
 type actionResult struct {
-	Name         string
-	Notification string
-	Status       string
-	Error        string
+	Name            string
+	Notification    string
+	NotificationUID string
+	Notifier        string
+	Status          string
+	Error           string
 }
 
-// sendTask binds a queued notifier send to the result slot it resolves.
+// sendTask binds a queued notifier send to the result slot it resolves, plus
+// everything the delivery-history row for that send needs: the alert snapshot
+// (built on the request goroutine so it carries the request tenant and the
+// dispatch time) and the per-send external-handle capture.
 type sendTask struct {
 	idx      int
 	notifier plugins.Notifier
 	payload  plugins.NotificationPayload
+	member   plugins.DeliveryMember
+	ref      *refCapture
 }
 
 func actionResultsToAny(results []actionResult) []any {
@@ -172,6 +202,26 @@ type Plugin struct {
 	mu      sync.RWMutex
 	entries map[string][]Entry              // tenantID → entries
 	actions map[string]map[string]actionDoc // tenantID → name → actionDoc
+
+	// writeBackBudget overrides notifierWriteBackTimeout. Zero (the production
+	// value) means "use the constant"; tests shrink it so the "the record
+	// never lands" path can be exercised without waiting ten seconds for it.
+	writeBackBudget time.Duration
+
+	// misconfMu guards misconfSeen, the rate limiter for misconfigured-action
+	// delivery rows: key = tenant\x00notification-uid\x00action-name, value =
+	// when that combination last produced a row. See recordMisconfigured.
+	misconfMu   sync.Mutex
+	misconfSeen map[string]time.Time
+}
+
+// budget returns the deadline the coordinator gives the action-outcome
+// write-back and, separately, the delivery phase.
+func (p *Plugin) budget() time.Duration {
+	if p.writeBackBudget > 0 {
+		return p.writeBackBudget
+	}
+	return notifierWriteBackTimeout
 }
 
 // Name returns the registry key. Returned lowercase so it matches the
@@ -287,6 +337,30 @@ func decodeActionDoc(d db.Document) (actionDoc, bool) {
 	return ad, true
 }
 
+// counterFields are the dispatcher-owned fields on a notification entry. They
+// are `readOnly: true` in the OpenAPI schema, which documents intent but
+// enforces nothing on the server, so TransformWrite strips them.
+var counterFields = []string{"hits", "last_sent"}
+
+// TransformWrite implements plugins.WriteTransformer: it drops the counters a
+// client tried to set from every create / replace / patch body.
+//
+// `hits` and `last_sent` belong to the dispatcher — it advances them from the
+// coordinator and from batch flushes, off the request path. Letting a client
+// write them would not just fake a number: the editor round-trips whatever the
+// API returns, so one PUT of a stale form would silently rewind a live counter.
+// Stripping (rather than rejecting) is what the OpenAPI already promises,
+// "ignored on write", and keeps a full-object PUT from the UI working.
+//
+// Nothing else on the entry is dispatcher-owned, so no other field is touched;
+// PATCH bodies are partial and a missing key is simply not there to delete.
+func (p *Plugin) TransformWrite(_ context.Context, doc map[string]any) error {
+	for _, f := range counterFields {
+		delete(doc, f)
+	}
+	return nil
+}
+
 // Process inspects rec and dispatches one Notifier.Send per matching action.
 // The verdict is always ActionContinue: notification is a side-effect, not a
 // pipeline gate. Records in the ack/close states are skipped to match Python.
@@ -312,6 +386,9 @@ func (p *Plugin) Process(ctx context.Context, rec snoozetypes.Record) (plugins.R
 	var matched []string
 	var results []actionResult
 	var sends []sendTask
+	// Misconfigured-action rows are collected here and written from a detached
+	// goroutine (D11: nothing about the delivery log runs on the ingest path).
+	var misconfigured []plugins.DeliveryRow
 
 	for _, e := range entries {
 		if !e.IsEnabled() {
@@ -333,17 +410,24 @@ func (p *Plugin) Process(ctx context.Context, rec snoozetypes.Record) (plugins.R
 				map[string]string{"name": e.Name}, 1)
 		}
 		for _, name := range e.Actions {
-			r := actionResult{Name: name, Notification: e.Name}
+			r := actionResult{Name: name, Notification: e.Name, NotificationUID: e.UID}
 			if skip {
+				// D7: a frequency-suppressed action is a config state, not a
+				// delivery. Logging it would add one noise row per matching
+				// alert, so nothing is written to the history.
 				r.Status = actionSkipped
 				results = append(results, r)
 				continue
 			}
-			notifier, payload, ok, reason := p.resolveNotifier(ctx, e, name, rec)
-			if !ok {
+			res := p.resolveNotifier(ctx, e, name, rec)
+			r.Notifier = res.selected
+			if !res.ok {
 				r.Status = actionError
-				r.Error = reason
+				r.Error = res.reason
 				results = append(results, r)
+				if row, ok := p.misconfiguredRow(ctx, e, rec, name, res); ok {
+					misconfigured = append(misconfigured, row)
+				}
 				continue
 			}
 			if persist {
@@ -353,7 +437,13 @@ func (p *Plugin) Process(ctx context.Context, rec snoozetypes.Record) (plugins.R
 			}
 			idx := len(results)
 			results = append(results, r)
-			sends = append(sends, sendTask{idx: idx, notifier: notifier, payload: payload})
+			sends = append(sends, sendTask{
+				idx:      idx,
+				notifier: res.notifier,
+				payload:  res.payload,
+				member:   plugins.MemberFromRecord(ctx, rec, e.Name, e.UID),
+				ref:      res.ref,
+			})
 		}
 	}
 
@@ -374,39 +464,161 @@ func (p *Plugin) Process(ctx context.Context, rec snoozetypes.Record) (plugins.R
 		rec.Extra["actions"] = actionResultsToAny(results)
 	}
 
-	if len(sends) > 0 {
-		p.spawnCoordinator(ctx, rec, results, sends, persist)
+	switch {
+	case len(sends) > 0:
+		// The misconfigured rows ride the coordinator's delivery context, so
+		// they share this record's uid resolution and its single write budget.
+		p.spawnCoordinator(ctx, rec, results, sends, misconfigured, persist)
+	case len(misconfigured) > 0:
+		// Nothing resolved to a notifier, so there is no coordinator — but the
+		// rows still must not be written on the ingest goroutine.
+		p.spawnDeliveryWriter(ctx, misconfigured)
 	}
 
 	return plugins.Result{Action: plugins.ActionContinue, Record: rec}, nil
 }
 
+// resolution is the outcome of resolving one named action to a live notifier.
+// `selected` is the action document's notifier registry key and is set even on
+// a failed resolution when the action document itself was found — the
+// misconfigured-delivery row records it so an operator sees which notifier the
+// action pointed at.
+type resolution struct {
+	notifier plugins.Notifier
+	payload  plugins.NotificationPayload
+	ref      *refCapture
+	selected string
+	ok       bool
+	reason   string
+}
+
 // resolveNotifier looks up the named action, validates its notifier, and builds
 // the send payload. On any miss it returns ok=false plus a human-readable reason
 // recorded as the action's error.
-func (p *Plugin) resolveNotifier(ctx context.Context, e Entry, name string, rec snoozetypes.Record) (plugins.Notifier, plugins.NotificationPayload, bool, string) {
+func (p *Plugin) resolveNotifier(ctx context.Context, e Entry, name string, rec snoozetypes.Record) resolution {
 	ad, ok := p.lookupAction(ctx, name)
 	if !ok {
-		return nil, plugins.NotificationPayload{}, false, fmt.Sprintf("action %q not found", name)
+		return resolution{reason: fmt.Sprintf("action %q not found", name)}
 	}
 	if ad.Action.Selected == "" {
-		return nil, plugins.NotificationPayload{}, false, fmt.Sprintf("action %q has no notifier (action.selected empty)", name)
+		return resolution{reason: fmt.Sprintf("action %q has no notifier (action.selected empty)", name)}
 	}
 	plug := p.host.Plugin(ad.Action.Selected)
 	if plug == nil {
-		return nil, plugins.NotificationPayload{}, false, fmt.Sprintf("notifier %q not registered", ad.Action.Selected)
+		return resolution{selected: ad.Action.Selected, reason: fmt.Sprintf("notifier %q not registered", ad.Action.Selected)}
 	}
 	notifier, ok := plug.(plugins.Notifier)
 	if !ok {
-		return nil, plugins.NotificationPayload{}, false, fmt.Sprintf("target %q is not a notifier", ad.Action.Selected)
+		return resolution{selected: ad.Action.Selected, reason: fmt.Sprintf("target %q is not a notifier", ad.Action.Selected)}
 	}
+	// The capture wraps (never replaces) the record-writing inject closure, so
+	// what a notifier stamps onto the record is unchanged; the wrapper only
+	// also keeps the external handle in memory for this send's history row.
+	ref := &refCapture{browseBase: subcontentString(ad.Action.Subcontent, "jira_url")}
 	payload := plugins.NotificationPayload{
-		Template:   ad.Action.Selected,
-		Meta:       metaFromSubcontent(ad.Action.Subcontent, e, ad.Name),
-		Inject:     p.injectFunc(ctx, rec),
-		Escalation: plugins.EscalationFrom(rec),
+		Template:        ad.Action.Selected,
+		Meta:            metaFromSubcontent(ad.Action.Subcontent, e, ad.Name),
+		Inject:          ref.wrap(p.injectFunc(ctx, rec), rec.Hash),
+		Escalation:      plugins.EscalationFrom(rec),
+		NotificationUID: e.UID,
 	}
-	return notifier, payload, true, ""
+	return resolution{notifier: notifier, payload: payload, ref: ref, selected: ad.Action.Selected, ok: true}
+}
+
+// misconfiguredRow builds the delivery-history row a misconfigured action
+// produces (D7): an admin opening a notification's history must see "this never
+// sends, action X is missing" rather than an empty list.
+//
+// It returns ok=false when an identical (tenant, notification, action) failure
+// already produced a row inside misconfiguredRowWindow. A broken action sits on
+// a condition that keeps matching, so without that rate limit a single config
+// bug would write one row per ingested alert for as long as nobody fixes it —
+// and the row says the same thing every time.
+//
+// The row itself is written by the caller's detached goroutine, never inline:
+// this runs on the ingest path.
+func (p *Plugin) misconfiguredRow(ctx context.Context, e Entry, rec snoozetypes.Record, name string, res resolution) (plugins.DeliveryRow, bool) {
+	tenantID, _ := auth.TenantFrom(ctx)
+	if !p.allowMisconfiguredRow(tenantID, e, name, time.Now()) {
+		return plugins.DeliveryRow{}, false
+	}
+	now := time.Now()
+	return plugins.DeliveryRow{
+		CompletedAt: now,
+		QueuedAt:    now,
+		Status:      plugins.DeliveryStatusError,
+		Error:       res.reason,
+		Action:      name,
+		Notifier:    res.selected,
+		Members:     []plugins.DeliveryMember{plugins.MemberFromRecord(ctx, rec, e.Name, e.UID)},
+	}, true
+}
+
+// allowMisconfiguredRow is the per-(tenant, notification, action) rate limiter
+// behind misconfiguredRow. It reports whether this combination may produce a
+// row now, and records the decision when it may.
+//
+// The map is bounded by the number of DISTINCT broken combinations seen inside
+// the window — not by alert volume — because every accepted insert first sweeps
+// the entries older than the window. A deployment with a handful of broken
+// actions therefore holds a handful of entries, and one that fixes them drops
+// back to none within ten minutes.
+func (p *Plugin) allowMisconfiguredRow(tenantID string, e Entry, action string, now time.Time) bool {
+	notif := e.UID
+	if notif == "" {
+		// A notification that has not been assigned a uid yet is still worth
+		// distinguishing from its siblings; the name is the only key there is.
+		notif = "name:" + e.Name
+	}
+	key := tenantID + "\x00" + notif + "\x00" + action
+
+	p.misconfMu.Lock()
+	defer p.misconfMu.Unlock()
+	if p.misconfSeen == nil {
+		p.misconfSeen = make(map[string]time.Time)
+	}
+	if last, ok := p.misconfSeen[key]; ok && now.Sub(last) < misconfiguredRowWindow {
+		return false
+	}
+	for k, t := range p.misconfSeen {
+		if now.Sub(t) >= misconfiguredRowWindow {
+			delete(p.misconfSeen, k)
+		}
+	}
+	p.misconfSeen[key] = now
+	return true
+}
+
+// spawnDeliveryWriter persists rows on a detached goroutine. Used for the
+// records where every matching action was misconfigured: there is no
+// coordinator to piggyback on, but the write still must not happen on the
+// ingest goroutine (D11) — one synchronous write per alert per broken action is
+// exactly the ingest-path cost the plan rules out.
+func (p *Plugin) spawnDeliveryWriter(ctx context.Context, rows []plugins.DeliveryRow) {
+	host := p.host
+	if len(rows) == 0 || host == nil || host.DB() == nil {
+		return
+	}
+	tenantID, _ := auth.TenantFrom(ctx)
+	go func() { //nolint:gosec // detached: the request ctx is cancelled on return
+		writeCtx, cancel := context.WithTimeout(context.Background(), p.budget())
+		defer cancel()
+		if tenantID != "" {
+			writeCtx = auth.WithTenant(writeCtx, tenantID)
+		}
+		for _, row := range rows {
+			plugins.RecordDelivery(writeCtx, host, row)
+		}
+	}()
+}
+
+// subcontentString reads a string out of an action's subcontent map.
+func subcontentString(sub map[string]any, key string) string {
+	if sub == nil {
+		return ""
+	}
+	s, _ := sub[key].(string)
+	return s
 }
 
 // persistActionOutcomes reports whether the async resolution write-back is on.
@@ -423,20 +635,37 @@ func (p *Plugin) persistActionOutcomes() bool {
 
 // spawnCoordinator fires every queued send concurrently on a single detached
 // goroutine (so Process returns immediately), records the per-send metrics,
-// resolves each pending result to success/error, then — when persist is true —
-// writes the fully-resolved actions array back to the record exactly once via a
-// hash-keyed SetFields (uid fallback), mirroring injectFunc's tenant re-stamp.
-func (p *Plugin) spawnCoordinator(ctx context.Context, rec snoozetypes.Record, results []actionResult, sends []sendTask, persist bool) {
+// resolves each pending result to success/error, then writes the fully-resolved
+// actions array back to the record (when persist is true) via a hash-keyed
+// SetFields (uid fallback), resolves the record uid for the delivery rows, bumps
+// the notification counters and persists the delivery history (including any
+// misconfigured-action rows this record produced).
+//
+// Two separate write contexts, deliberately: the hash-keyed write-back polls
+// until the pipeline's own write of the record lands and is allowed to burn its
+// entire budget doing so. Sharing that context with the delivery work meant a
+// record that never landed left every row to be written on an already-dead
+// context — the write silently no-oped and the history lost the send. The
+// delivery phase therefore starts from a fresh budget.
+//
+// The delivery writes are deliberately NOT gated by persist: turning the
+// action-outcome stamp off is a record-shape choice, while the delivery log has
+// its own switch (notification.delivery_log).
+func (p *Plugin) spawnCoordinator(ctx context.Context, rec snoozetypes.Record, results []actionResult, sends []sendTask, misconfigured []plugins.DeliveryRow, persist bool) {
 	host := p.host
 	eventEpoch := rec.DateEpoch
 	hash := rec.Hash
 	uid := rec.UID
 	tenantID, _ := auth.TenantFrom(ctx)
 	loopChain := auth.LoopChainFrom(ctx)
+	// Dispatch time, captured once on the request goroutine: every row from
+	// this record shares it as `queued_epoch`.
+	queuedAt := time.Now()
 
 	go func() { //nolint:gosec // detached: the request ctx is cancelled on return
 		var wg sync.WaitGroup
 		var mu sync.Mutex
+		rows := make([]plugins.DeliveryRow, 0, len(sends))
 		for _, st := range sends {
 			wg.Add(1)
 			go func(st sendTask) {
@@ -449,10 +678,29 @@ func (p *Plugin) spawnCoordinator(ctx context.Context, rec snoozetypes.Record, r
 				if len(loopChain) > 0 {
 					sendCtx = auth.WithLoopChain(sendCtx, loopChain)
 				}
+				start := time.Now()
 				sendErr := st.notifier.Send(sendCtx, rec, st.payload)
+				if errors.Is(sendErr, plugins.ErrBatched) {
+					// D8: the notifier accepted the alert into a batch bucket.
+					// The outcome belongs to the flush, which writes the row and
+					// owns the success/error accounting — so no stat, no row, no
+					// warning here, and the record's action reads "sent".
+					mu.Lock()
+					results[st.idx].Status = actionSent
+					mu.Unlock()
+					if lg := p.logger(); lg != nil {
+						lg.Debug("notification: send queued for batch delivery",
+							"action", results[st.idx].Name,
+							"notification", results[st.idx].Notification,
+							"selected", st.payload.Template)
+					}
+					return
+				}
 				status, metric := actionSuccess, "action_success"
+				deliveryStatus := plugins.DeliveryStatusSuccess
 				if sendErr != nil {
 					status, metric = actionError, "action_error"
+					deliveryStatus = plugins.DeliveryStatusError
 					if lg := p.logger(); lg != nil {
 						lg.Warn("notification: notifier send failed",
 							"action", results[st.idx].Name,
@@ -463,63 +711,192 @@ func (p *Plugin) spawnCoordinator(ctx context.Context, rec snoozetypes.Record, r
 				}
 				plugins.RecordStat(sendCtx, host, eventEpoch, metric,
 					map[string]string{"name": results[st.idx].Name}, 1)
+				row := plugins.DeliveryRow{
+					CompletedAt: time.Now(),
+					QueuedAt:    queuedAt,
+					Duration:    time.Since(start),
+					Status:      deliveryStatus,
+					Action:      results[st.idx].Name,
+					Notifier:    results[st.idx].Notifier,
+					Members:     []plugins.DeliveryMember{st.member},
+					Ref:         st.ref.snapshot(),
+				}
+				if sendErr != nil {
+					row.Error = sendErr.Error()
+				}
 				mu.Lock()
 				results[st.idx].Status = status
 				if sendErr != nil {
 					results[st.idx].Error = sendErr.Error()
 				}
+				rows = append(rows, row)
 				mu.Unlock()
 			}(st)
 		}
 		wg.Wait()
 
-		if !persist || host == nil || host.DB() == nil {
+		if host == nil || host.DB() == nil {
 			return
 		}
-		writeCtx, cancel := context.WithTimeout(context.Background(), notifierWriteBackTimeout)
-		defer cancel()
+
+		// landed reports whether the write-back actually found the record. It
+		// is the answer to "is there a row to read a uid off?", so when the
+		// write-back gave up there is no point polling for the same row again.
+		landed := false
+		if persist {
+			writeCtx, cancel := context.WithTimeout(context.Background(), p.budget())
+			if tenantID != "" {
+				writeCtx = auth.WithTenant(writeCtx, tenantID)
+			}
+			landed = p.writeBackOutcomes(writeCtx, results, hash, uid)
+			cancel()
+		}
+
+		rows = append(rows, misconfigured...)
+		if len(rows) == 0 {
+			return
+		}
+
+		// A fresh budget for the delivery phase: whatever the write-back spent
+		// waiting for the record is its own business.
+		deliverCtx, cancelDeliver := context.WithTimeout(context.Background(), p.budget())
+		defer cancelDeliver()
 		if tenantID != "" {
-			writeCtx = auth.WithTenant(writeCtx, tenantID)
+			deliverCtx = auth.WithTenant(deliverCtx, tenantID)
 		}
-		patch := db.Document{"actions": actionResultsToAny(results)}
-		if hash != "" {
-			cond := condition.Equals("hash", hash)
-			for {
-				matched, err := host.DB().SetFields(writeCtx, recordCollectionName, patch, cond)
-				if err != nil {
-					if lg := p.logger(); lg != nil {
-						lg.Warn("notification: action-outcome write-back (hash) failed", "hash", hash, "err", err)
+
+		// Evaluated once, and only the log-row work hangs off it: an operator
+		// who turned the delivery log off asked for no history, not for slower
+		// dispatch, so with it off this goroutine does no uid read and no row
+		// write at all. The counters are a separate feature with no switch.
+		logEnabled := plugins.DeliveryLogEnabled(deliverCtx, host)
+
+		// D9: a first-occurrence record has no uid inside Process (the driver
+		// mints it in the pipeline's final write, which runs after Process
+		// returns). Resolve it once for every row of this record; a row that
+		// cannot get one keeps its hash and the UI links by hash instead.
+		if logEnabled && uid == "" && hash != "" && (landed || !persist) {
+			uidCtx := deliverCtx
+			if !persist {
+				// No write-back loop preceded this, so the poll below is the
+				// thing waiting for the record to land. Give it a short leash.
+				var cancelUID context.CancelFunc
+				uidCtx, cancelUID = context.WithTimeout(deliverCtx, uidResolveTimeoutNoPersist)
+				defer cancelUID()
+			}
+			if resolved := p.resolveRecordUID(uidCtx, hash); resolved != "" {
+				for i := range rows {
+					for j := range rows[i].Members {
+						if rows[i].Members[j].UID == "" {
+							rows[i].Members[j].UID = resolved
+						}
 					}
-					return
-				}
-				if matched > 0 {
-					return
-				}
-				// No row yet: the caller (e.g. the pipeline's final writeRecord)
-				// may not have persisted the record. Retry until it lands or the
-				// write-back deadline expires.
-				select {
-				case <-writeCtx.Done():
-					if lg := p.logger(); lg != nil {
-						lg.Warn("notification: action-outcome write-back (hash) gave up: record never appeared", "hash", hash)
-					}
-					return
-				case <-time.After(writeBackRetryInterval):
 				}
 			}
 		}
-		if uid != "" {
-			if err := host.DB().UpdateOne(writeCtx, recordCollectionName, uid, patch, false); err != nil {
-				if lg := p.logger(); lg != nil {
-					lg.Warn("notification: action-outcome write-back (uid) failed", "uid", uid, "err", err)
-				}
-			}
+
+		plugins.BumpNotificationCounters(deliverCtx, host, deliveredMembers(rows))
+		if !logEnabled {
 			return
 		}
-		if lg := p.logger(); lg != nil {
-			lg.Warn("notification: action-outcome write-back skipped: record has neither hash nor uid")
+		for _, row := range rows {
+			plugins.RecordDelivery(deliverCtx, host, row)
 		}
 	}()
+}
+
+// deliveredMembers flattens the members of the SUCCESSFUL rows, which are the
+// only ones allowed to move a notification's counters (D10). The per-
+// notification de-duplication happens in plugins.BumpNotificationCounters, so
+// two actions of the same notification still count as one hit.
+func deliveredMembers(rows []plugins.DeliveryRow) []plugins.DeliveryMember {
+	var out []plugins.DeliveryMember
+	for _, row := range rows {
+		if row.Status != plugins.DeliveryStatusSuccess {
+			continue
+		}
+		out = append(out, row.Members...)
+	}
+	return out
+}
+
+// writeBackOutcomes persists the fully-resolved actions array onto the record,
+// keyed by hash (with a uid fallback). Hash-keyed writes retry until the
+// pipeline's own write of the record lands or writeCtx expires — see
+// writeBackRetryInterval.
+//
+// It reports whether a stored record was actually matched. The caller uses that
+// as "there is a row to read a uid off": when the write-back gave up because
+// the record never appeared, re-polling for the same row would just burn the
+// delivery budget on a second doomed wait.
+func (p *Plugin) writeBackOutcomes(writeCtx context.Context, results []actionResult, hash, uid string) bool {
+	host := p.host
+	patch := db.Document{"actions": actionResultsToAny(results)}
+	if hash != "" {
+		cond := condition.Equals("hash", hash)
+		for {
+			matched, err := host.DB().SetFields(writeCtx, recordCollectionName, patch, cond)
+			if err != nil {
+				if lg := p.logger(); lg != nil {
+					lg.Warn("notification: action-outcome write-back (hash) failed", "hash", hash, "err", err)
+				}
+				return false
+			}
+			if matched > 0 {
+				return true
+			}
+			// No row yet: the caller (e.g. the pipeline's final writeRecord)
+			// may not have persisted the record. Retry until it lands or the
+			// write-back deadline expires.
+			select {
+			case <-writeCtx.Done():
+				if lg := p.logger(); lg != nil {
+					lg.Warn("notification: action-outcome write-back (hash) gave up: record never appeared", "hash", hash)
+				}
+				return false
+			case <-time.After(writeBackRetryInterval):
+			}
+		}
+	}
+	if uid != "" {
+		if err := host.DB().UpdateOne(writeCtx, recordCollectionName, uid, patch, false); err != nil {
+			if lg := p.logger(); lg != nil {
+				lg.Warn("notification: action-outcome write-back (uid) failed", "uid", uid, "err", err)
+			}
+			return false
+		}
+		return true
+	}
+	if lg := p.logger(); lg != nil {
+		lg.Warn("notification: action-outcome write-back skipped: record has neither hash nor uid")
+	}
+	return false
+}
+
+// resolveRecordUID reads the stored record's uid by hash so a delivery row can
+// carry the alert's stable key.
+//
+// It retries on a miss for the same reason writeBackOutcomes does: the record
+// may not have been persisted yet. When persist is on, the write-back has
+// usually already confirmed the row and the first read hits; when it is off (no
+// write-back loop) this bounded retry is what waits for the record. Returns ""
+// on any failure — the row still carries the hash, which is enough for the UI.
+func (p *Plugin) resolveRecordUID(ctx context.Context, hash string) string {
+	for {
+		doc, err := p.host.DB().GetOne(ctx, recordCollectionName, db.Document{"hash": hash})
+		if err == nil {
+			s, _ := doc["uid"].(string)
+			return s
+		}
+		if !errors.Is(err, db.ErrNotFound) {
+			return ""
+		}
+		select {
+		case <-ctx.Done():
+			return ""
+		case <-time.After(writeBackRetryInterval):
+		}
+	}
 }
 
 // lookupAction returns the cached action doc, refreshing the cache once on a
@@ -630,6 +1007,92 @@ func (p *Plugin) injectFunc(ctx context.Context, rec snoozetypes.Record) plugins
 			}
 		}
 	}
+}
+
+// refCapture keeps the external handle a notifier stores during ONE send
+// (jira's issue key, slack's thread ts, telegram's message id …) so the
+// delivery-history row can carry it and the UI can offer an "Open OPS-123 ↗"
+// link.
+//
+// It observes rather than intercepts: wrap() returns a closure that records the
+// handle and then calls the real inject closure unchanged, so what a notifier
+// writes onto the record is exactly what it wrote before. The mutex is not
+// decorative — Inject runs on the notifier's send goroutine while the
+// coordinator reads the snapshot from another.
+type refCapture struct {
+	// browseBase is the action's `jira_url`, used to derive a browse URL from
+	// an issue key. Empty for every other notifier.
+	browseBase string
+
+	mu  sync.Mutex
+	ref map[string]any
+}
+
+// wrap decorates next with the handle capture. next may be nil (no DB handle,
+// or a record with neither hash nor uid) — the capture still works and the
+// record write stays skipped, exactly as before.
+func (c *refCapture) wrap(next plugins.InjectFunc, hash string) plugins.InjectFunc {
+	return func(field string, value any) {
+		c.observe(field, value, hash)
+		if next != nil {
+			next(field, value)
+		}
+	}
+}
+
+// observe keeps the value of a notify_ref_<action> / response_<action> field.
+// The closure is per (send, action), so every handle field reaching it belongs
+// to this send; anything else (a notifier stamping an unrelated field) is
+// ignored.
+//
+// A batch-shaped handle — `{"<hash>": {...}}`, which receivers answering per
+// alert produce even for a single alert — is unwrapped to this record's entry,
+// mirroring plugins.NotifyRef.
+func (c *refCapture) observe(field string, value any, hash string) {
+	if !plugins.IsNotifyRefField(field) {
+		return
+	}
+	ref, ok := value.(map[string]any)
+	if !ok || len(ref) == 0 {
+		return
+	}
+	if hash != "" {
+		if inner, nested := ref[hash].(map[string]any); nested && len(inner) > 0 {
+			ref = inner
+		}
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.ref == nil {
+		c.ref = make(map[string]any, len(ref)+1)
+	}
+	for k, v := range ref {
+		c.ref[k] = v
+	}
+}
+
+// snapshot returns a copy of the captured handle, with a `url` added when one
+// is derivable, or nil when the notifier stored nothing. Nil-receiver safe so
+// call sites never need to guard.
+func (c *refCapture) snapshot() map[string]any {
+	if c == nil {
+		return nil
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if len(c.ref) == 0 {
+		return nil
+	}
+	out := make(map[string]any, len(c.ref)+1)
+	for k, v := range c.ref {
+		out[k] = v
+	}
+	if _, has := out["url"]; !has && c.browseBase != "" {
+		if key, _ := out["issue_key"].(string); key != "" {
+			out["url"] = strings.TrimRight(c.browseBase, "/") + "/browse/" + key
+		}
+	}
+	return out
 }
 
 // logger returns the host logger or the default if the host is missing one.

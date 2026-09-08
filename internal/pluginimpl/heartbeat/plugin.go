@@ -151,6 +151,18 @@ func (p *Plugin) PostInit(ctx context.Context, host plugins.Host) error {
 
 	// Index the token field: the unauthenticated ping resolves a heartbeat (and
 	// thus its tenant) by token under platform scope.
+	//
+	// This is a boot-path call (PostInit runs before the HTTP listener), so it
+	// relies on CreateIndex not blocking on the index build itself. It does
+	// not: the SQLite/Mongo builds are cheap or online, and the Postgres driver
+	// registers the field synchronously but hands the CREATE INDEX
+	// CONCURRENTLY to its own background worker — that statement waits out
+	// every transaction older than the build and must never be awaited here.
+	// Note this call also (re)registers heartbeat's SEARCH fields as exactly
+	// ["token"], transiently overwriting metadata.search_fields. plugins.Build
+	// dispatches its own pass strictly after every PostInit has returned, so it
+	// is the last writer and the metadata list is what ends up registered; the
+	// token index itself is queued regardless of who wrote the field list.
 	if err := driver.CreateIndex(ctx, collection, []string{"token"}); err != nil {
 		if lg := p.logger(); lg != nil {
 			lg.Warn("heartbeat: PostInit create token index failed", "err", err)

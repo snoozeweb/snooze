@@ -19,6 +19,7 @@ import (
 	_ "github.com/snoozeweb/snooze/internal/pluginimpl/environment"
 	_ "github.com/snoozeweb/snooze/internal/pluginimpl/group"
 	_ "github.com/snoozeweb/snooze/internal/pluginimpl/kv"
+	_ "github.com/snoozeweb/snooze/internal/pluginimpl/notificationlog"
 	_ "github.com/snoozeweb/snooze/internal/pluginimpl/profile"
 	_ "github.com/snoozeweb/snooze/internal/pluginimpl/record"
 	_ "github.com/snoozeweb/snooze/internal/pluginimpl/role"

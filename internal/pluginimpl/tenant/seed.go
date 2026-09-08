@@ -22,8 +22,13 @@ var defaultRoles = []map[string]any{
 		"description": "Read-only access within the tenant",
 	},
 	{
-		"name":        "notifications",
-		"permissions": []string{"rw_notification", "ro_all"},
+		"name": "notifications",
+		// ro_notificationlog is listed explicitly even though ro_all already
+		// subsumes it: this list is the readable contract for what the role is
+		// meant to reach, and it must stay in lock-step with the platform seed
+		// in internal/core/bootstrap_db.go (which has no ro_all). Without the
+		// grant, the Deliveries surface — GET /api/v1/notificationlog — 403s.
+		"permissions": []string{"rw_notification", "ro_all", "ro_notificationlog"},
 		"description": "Manage notifications within the tenant",
 	},
 }

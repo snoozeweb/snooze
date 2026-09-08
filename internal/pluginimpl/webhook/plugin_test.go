@@ -393,7 +393,7 @@ func TestBatchFlushesOnMaxsize(t *testing.T) {
 	for i := 0; i < 3; i++ {
 		rec := sampleRecord()
 		rec.UID = "rec-" + string(rune('A'+i))
-		require.NoError(t, p.Send(context.Background(), rec, plugins.NotificationPayload{Meta: meta}))
+		requireQueued(t, p.Send(context.Background(), rec, plugins.NotificationPayload{Meta: meta}))
 	}
 
 	require.Eventually(t, func() bool { return captured.len() == 1 },
@@ -417,8 +417,8 @@ func TestBatchFlushesOnTimer(t *testing.T) {
 	meta := batchMeta(srv.URL+"/alert", "Teams VM", 100, 0) // 0 → fallback; need >0
 	meta["batch_timer"] = 1                                 // 1 second; tests still finish fast
 
-	require.NoError(t, p.Send(context.Background(), sampleRecord(), plugins.NotificationPayload{Meta: meta}))
-	require.NoError(t, p.Send(context.Background(), sampleRecord(), plugins.NotificationPayload{Meta: meta}))
+	requireQueued(t, p.Send(context.Background(), sampleRecord(), plugins.NotificationPayload{Meta: meta}))
+	requireQueued(t, p.Send(context.Background(), sampleRecord(), plugins.NotificationPayload{Meta: meta}))
 
 	// Should fire roughly 1s later, well before the size threshold of 100.
 	require.Eventually(t, func() bool { return captured.len() == 1 },
@@ -435,18 +435,18 @@ func TestBatchKeyIsolation(t *testing.T) {
 	a := batchMeta(srv.URL+"/alert", "Action A", 2, 60)
 	b := batchMeta(srv.URL+"/alert", "Action B", 2, 60)
 
-	require.NoError(t, p.Send(context.Background(), sampleRecord(), plugins.NotificationPayload{Meta: a}))
-	require.NoError(t, p.Send(context.Background(), sampleRecord(), plugins.NotificationPayload{Meta: b}))
+	requireQueued(t, p.Send(context.Background(), sampleRecord(), plugins.NotificationPayload{Meta: a}))
+	requireQueued(t, p.Send(context.Background(), sampleRecord(), plugins.NotificationPayload{Meta: b}))
 
 	// One record in each bucket so far — no flush yet.
 	time.Sleep(50 * time.Millisecond)
 	require.Equal(t, 0, captured.len())
 
-	require.NoError(t, p.Send(context.Background(), sampleRecord(), plugins.NotificationPayload{Meta: a}))
+	requireQueued(t, p.Send(context.Background(), sampleRecord(), plugins.NotificationPayload{Meta: a}))
 	require.Eventually(t, func() bool { return captured.len() == 1 },
 		time.Second, 10*time.Millisecond, "Action A should flush first")
 
-	require.NoError(t, p.Send(context.Background(), sampleRecord(), plugins.NotificationPayload{Meta: b}))
+	requireQueued(t, p.Send(context.Background(), sampleRecord(), plugins.NotificationPayload{Meta: b}))
 	require.Eventually(t, func() bool { return captured.len() == 2 },
 		time.Second, 10*time.Millisecond, "Action B should flush after its second record")
 }
@@ -457,7 +457,7 @@ func TestBatchStopDrains(t *testing.T) {
 	meta := batchMeta(srv.URL+"/alert", "Teams VM", 100, 60) // both bounds far away
 
 	for i := 0; i < 3; i++ {
-		require.NoError(t, p.Send(context.Background(), sampleRecord(), plugins.NotificationPayload{Meta: meta}))
+		requireQueued(t, p.Send(context.Background(), sampleRecord(), plugins.NotificationPayload{Meta: meta}))
 	}
 	require.Equal(t, 0, captured.len(), "no flush expected before Stop")
 
@@ -468,6 +468,49 @@ func TestBatchStopDrains(t *testing.T) {
 	var arr []map[string]any
 	require.NoError(t, json.Unmarshal(captured.snapshot()[0], &arr))
 	require.Len(t, arr, 3)
+}
+
+// TestBatchSendAfterStopDeliversImmediately pins N6. Stop snapshots the bucket
+// keys and drains them, so a Send that queued after the snapshot used to create
+// a fresh bucket whose only trigger was a timer on a dying process: the alert
+// never left, and with it went its delivery row, its notification counters and
+// its action stat. queueForBatch now refuses once Stop has run and Send falls
+// through to the immediate path, whose REAL return value is what makes the
+// dispatcher record all three (it only skips rows for ErrBatched).
+func TestBatchSendAfterStopDeliversImmediately(t *testing.T) {
+	srv, captured := recordingBatchServer(t)
+	p := newPluginForTest(t)
+	meta := batchMeta(srv.URL+"/alert", "Teams VM", 100, 60) // both bounds far away
+
+	require.NoError(t, p.Stop(context.Background()))
+
+	err := p.Send(context.Background(), sampleRecord(), plugins.NotificationPayload{Meta: meta})
+	require.NoError(t, err)
+	require.NotErrorIs(t, err, plugins.ErrBatched,
+		"a send that could not be batched must report its real outcome")
+
+	require.Equal(t, 1, captured.len(), "exactly one immediate POST")
+	var obj map[string]any
+	require.NoError(t, json.Unmarshal(captured.snapshot()[0], &obj),
+		"the body is the rendered object, not a one-element batch array")
+	require.Empty(t, p.buckets, "no orphan bucket left behind by the post-Stop send")
+}
+
+// TestBatchStartReopensBatchingAfterStop pins the other half of N6: `stopped`
+// is the door Stop closes, and only Start re-opens it. Left latched, a
+// Stop → Start cycle would keep every batched action degrading to one
+// immediate send per alert for the rest of the process.
+func TestBatchStartReopensBatchingAfterStop(t *testing.T) {
+	srv, captured := recordingBatchServer(t)
+	p := newPluginForTest(t)
+	meta := batchMeta(srv.URL+"/alert", "Teams VM", 100, 60) // both bounds far away
+
+	require.NoError(t, p.Stop(context.Background()))
+	require.NoError(t, p.Start(context.Background()))
+
+	requireQueued(t, p.Send(context.Background(), sampleRecord(), plugins.NotificationPayload{Meta: meta}))
+	require.Len(t, p.buckets, 1, "the send should have created a bucket")
+	require.Equal(t, 0, captured.len(), "nothing should have been delivered immediately")
 }
 
 func TestBatchDegenerateConfigFallsBackToImmediate(t *testing.T) {

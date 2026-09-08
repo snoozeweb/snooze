@@ -2,6 +2,7 @@ package core
 
 import (
 	"context"
+	"errors"
 	"path/filepath"
 	"testing"
 	"time"
@@ -498,4 +499,190 @@ func toStrings(v any) []string {
 	default:
 		return nil
 	}
+}
+
+// TestHousekeeperJobs_NotificationLogSweepsDaily pins the cadence of the
+// delivery-log retention job. `housekeeping.cleanup_notificationlog` is the
+// RETENTION WINDOW (default 720h), not a period: wiring it through
+// liveInterval made the sweep fire every 30 days, so a row could live up to 60
+// days while the docs promised a daily sweep. The cadence must stay fixed at
+// 24h no matter what the retention is set to.
+func TestHousekeeperJobs_NotificationLogSweepsDaily(t *testing.T) {
+	t.Parallel()
+	cfg := config.Default()
+	cfg.Housekeeper.CleanupNotificationLog = schema.Duration(720 * time.Hour)
+
+	c := &Core{Cfg: cfg, Driver: newFakeDB()}
+	jobs := c.housekeeperJobs(nil)
+
+	var found bool
+	for _, j := range jobs {
+		if j.name != "cleanup_notificationlog" {
+			continue
+		}
+		found = true
+		require.NotNil(t, j.sched.LiveInterval)
+		require.Equal(t, 24*time.Hour, j.sched.LiveInterval(context.Background()),
+			"the delivery-log sweep must run daily, not once per retention window")
+	}
+	require.True(t, found, "cleanup_notificationlog must be registered")
+}
+
+// TestHousekeeperJobs_LiveCadencesStillTrackSettings is the counterpart guard:
+// the jobs whose knob genuinely IS a cadence must keep reading it live, so the
+// fix above did not accidentally freeze the rest of the table.
+func TestHousekeeperJobs_LiveCadencesStillTrackSettings(t *testing.T) {
+	t.Parallel()
+	cfg := config.Default()
+
+	c := &Core{Cfg: cfg, Driver: newFakeDB()}
+	jobs := c.housekeeperJobs(nil)
+
+	want := map[string]time.Duration{
+		"cleanup_timeout/record": 5 * time.Minute,
+		"cleanup_aggregate":      time.Minute,
+		"cleanup_apikey":         time.Hour,
+	}
+	seen := map[string]time.Duration{}
+	for _, j := range jobs {
+		if _, ok := want[j.name]; !ok {
+			continue
+		}
+		require.NotNil(t, j.sched.LiveInterval, "%s must resolve its interval live", j.name)
+		seen[j.name] = j.sched.LiveInterval(context.Background())
+	}
+	require.Equal(t, want, seen)
+}
+
+// fakeLifecyclePlugin implements plugins.LifecycleHook so the shutdown drain
+// can be observed.
+type fakeLifecyclePlugin struct {
+	name      string
+	stopCalls int
+	stopCtx   context.Context
+	stopErr   error
+}
+
+func (f *fakeLifecyclePlugin) Name() string                                 { return f.name }
+func (f *fakeLifecyclePlugin) Metadata() plugins.Metadata                   { return plugins.Metadata{Name: f.name} }
+func (f *fakeLifecyclePlugin) PostInit(context.Context, plugins.Host) error { return nil }
+func (f *fakeLifecyclePlugin) Reload(context.Context) error                 { return nil }
+func (f *fakeLifecyclePlugin) Start(context.Context) error                  { return nil }
+func (f *fakeLifecyclePlugin) Stop(ctx context.Context) error {
+	f.stopCalls++
+	f.stopCtx = ctx
+	return f.stopErr
+}
+
+// TestStopPlugins_CallsLifecycleHooks pins the shutdown drain. Before this
+// existed, plugins.LifecycleHook.Stop was never invoked anywhere in the
+// server: the batching notifiers' shutdown flush (and its batch_reason
+// "shutdown" delivery row) was dead code, and queued-but-unsent alerts
+// vanished on SIGTERM.
+func TestStopPlugins_CallsLifecycleHooks(t *testing.T) {
+	t.Parallel()
+	hooked := &fakeLifecyclePlugin{name: "webhook"}
+	plain := &fakeProcessor{name: "rule"}
+
+	c := &Core{
+		Cfg:     config.Default(),
+		plugins: map[string]plugins.Plugin{"webhook": hooked, "rule": plain},
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	c.StopPlugins(ctx)
+
+	require.Equal(t, 1, hooked.stopCalls, "a LifecycleHook plugin must be stopped")
+	require.NotNil(t, hooked.stopCtx)
+	_, hasDeadline := hooked.stopCtx.Deadline()
+	require.True(t, hasDeadline, "the shutdown deadline must reach the hook")
+}
+
+// TestStopPlugins_SurvivesAFailingHook: one plugin refusing to stop must not
+// prevent the rest from draining, and must not panic the shutdown path.
+func TestStopPlugins_SurvivesAFailingHook(t *testing.T) {
+	t.Parallel()
+	bad := &fakeLifecyclePlugin{name: "aaa-bad", stopErr: errors.New("boom")}
+	good := &fakeLifecyclePlugin{name: "zzz-good"}
+
+	c := &Core{
+		Cfg:     config.Default(),
+		plugins: map[string]plugins.Plugin{bad.name: bad, good.name: good},
+	}
+	c.StopPlugins(context.Background())
+
+	require.Equal(t, 1, bad.stopCalls)
+	require.Equal(t, 1, good.stopCalls, "a failing hook must not abort the drain")
+}
+
+// TestStopPlugins_NilSafe: the shutdown defer runs on every exit path,
+// including ones where Core construction half-failed.
+func TestStopPlugins_NilSafe(t *testing.T) {
+	t.Parallel()
+	var c *Core
+	require.NotPanics(t, func() { c.StopPlugins(context.Background()) })
+	require.NotPanics(t, func() { (&Core{Cfg: config.Default()}).StopPlugins(context.Background()) })
+}
+
+// TestBackfillNotificationsRolePerms covers the migration path for installs
+// that booted before the delivery log existed: BootstrapDB short-circuits on
+// the init_db marker, so the new default grant has to be applied separately or
+// the Deliveries tab 403s for everyone holding only the notifications role.
+func TestBackfillNotificationsRolePerms(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	path := filepath.Join(t.TempDir(), "snooze.db")
+	drv, err := sqlite.New(ctx, sqlite.Config{Path: path})
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = drv.Close() })
+
+	platform := snoozetypes.WithPlatformScope(ctx)
+	// Two active tenants; the backfill must reach both.
+	_, err = drv.Write(platform, auth.TenantCollection, []db.Document{
+		{"id": snoozetypes.DefaultTenant, "status": "active"},
+		{"id": "acme", "status": "active"},
+	}, db.WriteOptions{Primary: []string{"id"}})
+	require.NoError(t, err)
+
+	seed := func(tenant string, docs []db.Document) {
+		tctx := auth.WithTenant(ctx, tenant)
+		_, err := drv.Write(tctx, auth.RoleCollection, docs, db.WriteOptions{Primary: []string{"name"}})
+		require.NoError(t, err)
+	}
+	seed(snoozetypes.DefaultTenant, []db.Document{
+		{"name": "notifications", "permissions": []any{"rw_notification"}}, // legacy: needs the grant
+		{"name": "viewer", "permissions": []any{"ro_all"}},                 // untouched: not the target role
+	})
+	seed("acme", []db.Document{
+		{"name": "notifications", "permissions": []any{"rw_notification", "ro_all"}}, // ro_all subsumes it
+	})
+
+	require.NoError(t, BackfillNotificationsRolePerms(ctx, drv))
+
+	perms := func(tenant, role string) []string {
+		doc, err := drv.GetOne(auth.WithTenant(ctx, tenant), auth.RoleCollection, db.Document{"name": role})
+		require.NoError(t, err)
+		require.NotNil(t, doc)
+		return toStrings(doc["permissions"])
+	}
+	require.Equal(t, []string{"rw_notification", "ro_notificationlog"},
+		perms(snoozetypes.DefaultTenant, "notifications"),
+		"the legacy role must gain the delivery-log read grant")
+	require.Equal(t, []string{"ro_all"}, perms(snoozetypes.DefaultTenant, "viewer"),
+		"unrelated roles must not be touched")
+	require.Equal(t, []string{"rw_notification", "ro_all"}, perms("acme", "notifications"),
+		"ro_all already subsumes the grant — no redundant permission added")
+
+	// Idempotent: a second sweep changes nothing.
+	require.NoError(t, BackfillNotificationsRolePerms(ctx, drv))
+	require.Equal(t, []string{"rw_notification", "ro_notificationlog"},
+		perms(snoozetypes.DefaultTenant, "notifications"))
+}
+
+// TestBackfillNotificationsRolePerms_NilDriver: the boot path calls this
+// unconditionally, so it must not panic on a half-built Core.
+func TestBackfillNotificationsRolePerms_NilDriver(t *testing.T) {
+	t.Parallel()
+	require.Error(t, BackfillNotificationsRolePerms(context.Background(), nil))
 }

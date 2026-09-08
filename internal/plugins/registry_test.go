@@ -5,6 +5,7 @@ import (
 	"errors"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 
@@ -17,6 +18,7 @@ type recordingIndexDB struct {
 	*memDB
 	mu        sync.Mutex
 	indexCols map[string][]string
+	calls     int
 	indexErr  error
 }
 
@@ -30,6 +32,7 @@ func newRecordingIndexDB() *recordingIndexDB {
 func (r *recordingIndexDB) CreateIndex(_ context.Context, collection string, fields []string) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
+	r.calls++
 	if r.indexErr != nil {
 		return r.indexErr
 	}
@@ -41,6 +44,59 @@ func (r *recordingIndexDB) indexed(collection string) []string {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	return append([]string(nil), r.indexCols[collection]...)
+}
+
+func (r *recordingIndexDB) callCount() int {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.calls
+}
+
+// blockingIndexDriver parks inside CreateIndex until release is closed, which
+// is how the background-index-pass test proves Build does not wait for it.
+type blockingIndexDriver struct {
+	*memDB
+	enterOnce sync.Once
+	relOnce   sync.Once
+	entered   chan struct{} // closed when CreateIndex is first entered
+	release   chan struct{} // CreateIndex returns once this is closed
+
+	mu    sync.Mutex
+	calls []string // collections whose CreateIndex has returned
+}
+
+// unblock releases a parked CreateIndex. Idempotent, so it is safe both as the
+// test's own release point and as a t.Cleanup safety net — a driver left
+// parked would otherwise hang every later WaitBackground in the package.
+func (b *blockingIndexDriver) unblock() {
+	b.relOnce.Do(func() { close(b.release) })
+}
+
+func newBlockingIndexDriver() *blockingIndexDriver {
+	return &blockingIndexDriver{
+		memDB:   newMemDB(),
+		entered: make(chan struct{}),
+		release: make(chan struct{}),
+	}
+}
+
+func (b *blockingIndexDriver) CreateIndex(ctx context.Context, collection string, _ []string) error {
+	b.enterOnce.Do(func() { close(b.entered) })
+	select {
+	case <-b.release:
+	case <-ctx.Done():
+		return ctx.Err()
+	}
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	b.calls = append(b.calls, collection)
+	return nil
+}
+
+func (b *blockingIndexDriver) completed() []string {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return append([]string(nil), b.calls...)
 }
 
 // fakePlugin is a minimal Plugin that records the meta it was built with.
@@ -205,9 +261,14 @@ name: audit
 	require.NoError(t, err)
 
 	drv := host.driver.(*recordingIndexDB)
+	// The pass is dispatched to a background goroutine, so poll for it.
+	require.Eventually(t, func() bool {
+		return len(drv.indexed("record")) == 3
+	}, 10*time.Second, 2*time.Millisecond, "search fields never reached the driver")
 	require.Equal(t, []string{"host", "message", "source"}, drv.indexed("record"))
 	// Plugins without search_fields must not trigger an empty CreateIndex.
 	require.Empty(t, drv.indexed("audit"))
+	require.Equal(t, 1, drv.callCount(), "only the plugin with search_fields is indexed")
 }
 
 func TestBuild_SearchFieldRegistrationFailureDoesNotBreakBoot(t *testing.T) {
@@ -225,4 +286,98 @@ search_fields:
 	host := &nullHost{driver: drv}
 	_, _, err := Build(context.Background(), host, nil)
 	require.NoError(t, err, "CreateIndex failure must not abort boot")
+	// The failure happens on the background goroutine; make sure it really
+	// was attempted and swallowed rather than never dispatched.
+	require.Eventually(t, func() bool {
+		return drv.callCount() == 1
+	}, 10*time.Second, 2*time.Millisecond, "CreateIndex was never attempted")
+}
+
+// TestBuild_SearchFieldIndexingRunsInBackground is the N3 guard: index
+// creation used to run inline, so a first boot against a large database paid
+// every CREATE INDEX before the HTTP listener came up. Build must dispatch the
+// pass and return.
+func TestBuild_SearchFieldIndexingRunsInBackground(t *testing.T) {
+	resetForTest()
+	Register("record", []byte(`
+name: record
+search_fields:
+  - host
+`), newFake("record"))
+
+	drv := newBlockingIndexDriver()
+	host := &nullHost{driver: drv}
+
+	// Build runs on its own goroutine only so a regression (inline
+	// CreateIndex) fails the test instead of wedging it until the package
+	// timeout.
+	built := make(chan error, 1)
+	go func() {
+		_, _, err := Build(context.Background(), host, nil)
+		built <- err
+	}()
+	select {
+	case err := <-built:
+		require.NoError(t, err)
+	case <-time.After(10 * time.Second):
+		t.Fatal("Build blocked on CreateIndex: the index pass must run in the background")
+	}
+
+	// CreateIndex has been entered and is still parked, which is what proves
+	// Build returned without waiting for it.
+	select {
+	case <-drv.entered:
+	case <-time.After(10 * time.Second):
+		t.Fatal("CreateIndex was never called")
+	}
+	require.Empty(t, drv.completed(), "CreateIndex returned before it was released")
+
+	drv.unblock()
+	require.Eventually(t, func() bool {
+		return len(drv.completed()) == 1
+	}, 10*time.Second, 2*time.Millisecond, "released CreateIndex never completed")
+	require.Equal(t, []string{"record"}, drv.completed())
+}
+
+// TestBuild_BackgroundIndexPassIsAwaitable pins the other half of the
+// background dispatch: the goroutine is TRACKED, so shutdown can join it.
+//
+// Untracked, the pass ran past the end of Build with nothing to wait on it.
+// On SQLite and Mongo (neither defers index creation internally) the DDL
+// really does execute on that goroutine, so a fast shutdown or a test teardown
+// closing the driver underneath it produced a spurious "search-field
+// registration failed" warning at best, and a race on the driver's internals
+// under -race at worst. Core.StopPlugins now calls WaitBackground.
+func TestBuild_BackgroundIndexPassIsAwaitable(t *testing.T) {
+	resetForTest()
+	Register("record", []byte(`
+name: record
+search_fields:
+  - host
+`), newFake("record"))
+
+	drv := newBlockingIndexDriver()
+	t.Cleanup(drv.unblock)
+	host := &nullHost{driver: drv}
+	_, _, err := Build(context.Background(), host, nil)
+	require.NoError(t, err)
+
+	select {
+	case <-drv.entered:
+	case <-time.After(10 * time.Second):
+		t.Fatal("CreateIndex was never called")
+	}
+
+	// While the pass is parked, WaitBackground must NOT report done.
+	parked, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
+	defer cancel()
+	require.ErrorIs(t, WaitBackground(parked), context.DeadlineExceeded,
+		"WaitBackground must block while the dispatched pass is still running")
+
+	drv.unblock()
+	joined, cancelJoin := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancelJoin()
+	require.NoError(t, WaitBackground(joined))
+	require.Equal(t, []string{"record"}, drv.completed(),
+		"WaitBackground must not return before the pass has finished")
 }

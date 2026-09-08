@@ -80,6 +80,12 @@ setting_form:
         description: 'Number of times to retry sending a failed notification.'
         default_value: 3
         group: 'notification'
+    notification.delivery_log:
+        display_name: 'Delivery log'
+        component: 'Switch'
+        description: 'Record one row per send in the notificationlog collection — action, notifier, status, duration and a snapshot of the alert(s) covered — so every notification, action and alert can show its delivery history. Turn off on write-constrained deployments; the per-action outcome stamps and hit counters are unaffected. Takes effect immediately, no restart needed.'
+        default_value: true
+        group: 'notification'
     # --- LDAP ----------------------------------------------------------------
     ldap.enabled:
         display_name: 'LDAP enabled'
@@ -230,6 +236,12 @@ setting_form:
         component: 'String'
         description: 'Interval between expired-notification cleanup runs (Go duration string).'
         default_value: '72h'
+        group: 'housekeeping'
+    housekeeping.cleanup_notificationlog:
+        display_name: 'Delivery log retention'
+        component: 'String'
+        description: 'Retention window for notification delivery-history rows (Go duration string, e.g. "720h" = 30d).'
+        default_value: '720h'
         group: 'housekeeping'
     housekeeping.cleanup_audit:
         display_name: 'Audit retention'

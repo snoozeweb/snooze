@@ -1047,11 +1047,23 @@ func TestAggregate_DuplicatesCountedOncePerOccurrence(t *testing.T) {
 
 	// Five occurrences, five duplicates — and it stays five however many
 	// flushes the writer performs.
-	require.Never(t, func() bool {
+	//
+	// Polled with a plain synchronous loop rather than require.Never: Never
+	// evaluates its condition on a fresh goroutine per tick and returns as
+	// soon as its own timer fires, so the last condition goroutine can still
+	// be inside recordsByAggregate when the test body returns. The driver's
+	// t.Cleanup then closes the database underneath it and the orphan fails
+	// the (still-running) test with "sql: database is closed" — a load-
+	// sensitive flake with nothing to do with what is being asserted.
+	deadline := time.Now().Add(400 * time.Millisecond)
+	for time.Now().Before(deadline) {
 		clock.Advance(20 * time.Millisecond)
-		results := recordsByAggregate(t, host, "Agg1")
-		return len(results) == 1 && toInt64(results[0]["duplicates"], 0) != 5
-	}, 400*time.Millisecond, 25*time.Millisecond)
+		if results := recordsByAggregate(t, host, "Agg1"); len(results) == 1 {
+			require.EqualValues(t, 5, toInt64(results[0]["duplicates"], 0),
+				"duplicates must stay at five across every writer flush")
+		}
+		time.Sleep(25 * time.Millisecond)
+	}
 }
 
 // TestAggregate_ThrottleRecordsStat verifies that a throttled duplicate

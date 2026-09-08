@@ -23,7 +23,52 @@ var (
 	registry   sync.Map // string -> *entry
 	registered atomic.Int64
 	built      atomic.Bool
+	// background tracks the goroutines Build dispatches (today: the
+	// search-field registration pass, step 4). Shutdown awaits it via
+	// WaitBackground so those goroutines cannot outlive the process' teardown
+	// of the things they use — the DB driver above all.
+	//
+	// Package-scoped rather than returned from Build because the whole
+	// registry is: Build runs exactly once per process (it panics on a second
+	// call), so there is one set of background work per process too, and
+	// threading a WaitGroup through Build's signature would only move the
+	// single global somewhere less obvious. resetForTest deliberately does NOT
+	// touch it — a WaitGroup cannot be reset while a goroutine still holds a
+	// count, and a test's dispatched pass is exactly that.
+	background sync.WaitGroup
 )
+
+// WaitBackground blocks until every goroutine Build dispatched has returned,
+// or ctx expires (returning ctx.Err()). Safe to call when Build never ran, or
+// dispatched nothing: the WaitGroup is then at zero and this returns
+// immediately.
+//
+// Callers are expected to cancel the context they passed to Build FIRST —
+// that is what bounds this wait. The dispatched work is a sequence of
+// driver.CreateIndex calls, and every driver honours cancellation (Postgres
+// cancels the pass and closes its maintenance connection, SQLite/Mongo return
+// the context error from the in-flight statement), so the wait resolves in one
+// cancelled round-trip rather than after the remaining builds.
+//
+// Without this, the pass ran untracked past the end of Build: a fast shutdown
+// or a test teardown could close the driver underneath it, producing a
+// spurious "search-field registration failed" warning at best and a data race
+// on the driver's internals at worst (the SQLite and Mongo drivers do not
+// defer anything internally, so their DDL really is executing on that
+// goroutine).
+func WaitBackground(ctx context.Context) error {
+	done := make(chan struct{})
+	go func() {
+		background.Wait()
+		close(done)
+	}()
+	select {
+	case <-done:
+		return nil
+	case <-ctx.Done():
+		return ctx.Err()
+	}
+}
 
 // Register is called from a plugin package's init() to add itself to the
 // process-wide plugin registry. It panics on a duplicate name, an empty
@@ -102,6 +147,12 @@ func New(name string) (Plugin, error) {
 //
 // Build may only run once per process; a second call panics. This matches the
 // Python codebase's expectation of a single Core lifetime.
+//
+// Search-field registration and its backing index creation are dispatched to a
+// single background goroutine (see step 4) and are therefore NOT complete when
+// Build returns. That goroutine is tracked: WaitBackground blocks until it has
+// finished, and the shutdown path (Core.StopPlugins) calls it so the pass
+// cannot still be issuing DDL while the driver is being closed.
 func Build(ctx context.Context, host Host, processOrder []string) (map[string]Plugin, []Processor, error) {
 	if !built.CompareAndSwap(false, true) {
 		panic("plugins.Build: called twice")
@@ -134,38 +185,100 @@ func Build(ctx context.Context, host Host, processOrder []string) (map[string]Pl
 		metas[name] = meta
 	}
 
-	// 3. Register search_fields with the driver. The SEARCH condition
-	//    operator (bare-word search in the UI's SearchBar) compiles to
-	//    OR(field ~ /value/i) across the fields registered here; without
-	//    this call, the driver's per-collection registry stays empty and
-	//    SEARCH matches nothing. CreateIndex also creates a backing DB
-	//    index on Postgres for fast substring lookups.
-	//
-	//    Best-effort: a CreateIndex failure (read-only DB, transient I/O
-	//    error) logs a warning and continues. Boot must not fail just
-	//    because index creation hit a snag — the SEARCH op will degrade to
-	//    "matches nothing" until the operator retries.
-	if drv := host.DB(); drv != nil {
-		for _, name := range names {
-			meta := metas[name]
-			if len(meta.SearchFields) == 0 {
-				continue
-			}
-			if err := drv.CreateIndex(ctx, name, meta.SearchFields); err != nil {
-				if lg := host.Logger(); lg != nil {
-					lg.Warn("plugins.Build: search-field registration failed",
-						"plugin", name,
-						"fields", meta.SearchFields,
-						"err", err)
-				}
-			}
-		}
-	}
-
-	// 4. PostInit in deterministic order.
+	// 3. PostInit in deterministic order.
 	for _, name := range names {
 		if err := all[name].PostInit(ctx, host); err != nil {
 			return nil, nil, fmt.Errorf("plugins.Build: post-init %s: %w", name, err)
+		}
+	}
+
+	// 4. Register search_fields with the driver, in ONE background goroutine.
+	//
+	//    Why register at all: the SEARCH condition operator (bare-word input
+	//    in the UI's SearchBar) compiles to OR(field ~* /value/i) across the
+	//    fields registered here. With an empty registry SEARCH does not match
+	//    nothing — it falls back to regex-scanning the whole serialised
+	//    document (postgres `data::text ~* $1`, see db/postgres/dialect.go
+	//    Search) — correct, but a guaranteed sequential scan.
+	//
+	//    Why CreateIndex: it also builds the backing single-field indexes on
+	//    all three drivers, so the registered fields are the ones cheap to
+	//    filter and sort on. SQLite gets a json_extract expression index
+	//    (cheap, local file, no special casing needed); Mongo's builds are
+	//    already online; Postgres uses CREATE INDEX CONCURRENTLY, which is
+	//    exactly what must not run inline — it deliberately waits out every
+	//    transaction older than the build.
+	//
+	//    Why the background goroutine: this pass used to run inline, so a
+	//    first boot against a large existing database paid the full index-build
+	//    cost — per collection, per field — before the HTTP listener came up.
+	//    The pass is pure optimisation: SEARCH is correct either way, because
+	//    every driver's CreateIndex stores its field list BEFORE it touches
+	//    the database (postgres/driver.go, sqlite/driver.go and
+	//    mongo/driver.go all open with that store), so the field list is
+	//    registered the moment the call is entered even though the backing
+	//    index is not there yet. What a PENDING pass costs is speed: until
+	//    CreateIndex has been reached for a collection, a SEARCH on it still
+	//    falls back to the whole-document regex scan, so a query in the first
+	//    moments after boot can be slow. It is a single goroutine so N
+	//    collections mean N sequential builds, not N concurrent ones fighting
+	//    over the same pool.
+	//
+	//    Ordering, precisely: this dispatch is after step 3, so every PostInit
+	//    has already run to completion — including the PostInit hooks that
+	//    call CreateIndex themselves (heartbeat indexes its `token` field).
+	//    This goroutine is therefore NOT what keeps an inline CONCURRENTLY
+	//    build off the boot path, and it could not be: those PostInit calls
+	//    happen on the boot critical path with the HTTP listener still down.
+	//    The Postgres driver owns that deferral — its CreateIndex registers
+	//    the field list, ensures the table, and queues the builds for its own
+	//    single worker (see internal/db/postgres/driver.go CreateIndex /
+	//    indexWorker) — so EVERY caller is non-blocking, this one included. On
+	//    SQLite and Mongo there is nothing to defer: their index creation is
+	//    local (a file) or already online, so it runs synchronously inside
+	//    this goroutine.
+	//
+	//    ctx is the process-lifetime boot context: a shutdown mid-build
+	//    cancels the remaining work instead of holding the process open. And
+	//    because the SQLite and Mongo DDL really does execute here, the
+	//    goroutine is registered on the package's `background` WaitGroup,
+	//    which Core.StopPlugins awaits (see WaitBackground): an untracked
+	//    goroutine issuing DDL against a driver the shutdown path is closing
+	//    is a spurious warning at best and a race at worst.
+	//
+	//    Best-effort: a CreateIndex failure (read-only DB, transient I/O
+	//    error, a peer server winning the CONCURRENTLY race) logs a warning
+	//    and moves to the next collection.
+	if drv := host.DB(); drv != nil {
+		type indexJob struct {
+			collection string
+			fields     []string
+		}
+		jobs := make([]indexJob, 0, len(names))
+		for _, name := range names {
+			if fields := metas[name].SearchFields; len(fields) > 0 {
+				jobs = append(jobs, indexJob{
+					collection: name,
+					fields:     append([]string(nil), fields...),
+				})
+			}
+		}
+		if len(jobs) > 0 {
+			lg := host.Logger()
+			background.Add(1)
+			go func() {
+				defer background.Done()
+				for _, job := range jobs {
+					if err := drv.CreateIndex(ctx, job.collection, job.fields); err != nil {
+						if lg != nil {
+							lg.Warn("plugins.Build: search-field registration failed",
+								"plugin", job.collection,
+								"fields", job.fields,
+								"err", err)
+						}
+					}
+				}
+			}()
 		}
 	}
 
@@ -186,6 +299,12 @@ func Build(ctx context.Context, host Host, processOrder []string) (map[string]Pl
 
 // resetForTest wipes the package-global registry. Test-only; never call from
 // production code.
+//
+// It deliberately leaves the `background` WaitGroup alone: a WaitGroup has no
+// safe reset while a counted goroutine is still running, and a previous test's
+// dispatched index pass may well be. Tests that care about that goroutine call
+// WaitBackground instead, which is cumulative across Builds and therefore
+// exactly what they want.
 func resetForTest() {
 	registry.Range(func(k, _ any) bool {
 		registry.Delete(k)

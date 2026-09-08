@@ -124,3 +124,31 @@ func TestDefaultRoles_AdminGroupSeed(t *testing.T) {
 	require.True(t, ok, "groups should be present as []string")
 	require.Empty(t, groups)
 }
+
+// TestBootstrapDB_NotificationsRoleReadsDeliveryLog pins the seeded permission
+// set. The delivery history lives in its own `notificationlog` collection, so
+// rw_notification alone leaves the seeded role with a 403 on the Deliveries
+// surface — the whole point of the role.
+func TestBootstrapDB_NotificationsRoleReadsDeliveryLog(t *testing.T) {
+	t.Parallel()
+	drv := newFakeDB()
+	require.NoError(t, BootstrapDB(context.Background(), drv, ""))
+
+	var perms []string
+	for _, r := range drv.docs(roleCollection) {
+		if r["name"] == notificationsRoleName {
+			perms = stringList(r["permissions"])
+		}
+	}
+	require.Contains(t, perms, "rw_notification")
+	require.Contains(t, perms, notificationLogReadPerm)
+}
+
+func TestStringList(t *testing.T) {
+	t.Parallel()
+	require.Equal(t, []string{"a", "b"}, stringList([]string{"a", "b"}))
+	require.Equal(t, []string{"a", "b"}, stringList([]any{"a", "b"}))
+	require.Equal(t, []string{"a"}, stringList([]any{"a", 7}), "non-strings are dropped")
+	require.Nil(t, stringList("nope"))
+	require.Nil(t, stringList(nil))
+}

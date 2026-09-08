@@ -96,6 +96,10 @@ type LDAPConfig = schema.LDAP
 // snapshot. Same field set as “schema.Housekeeper“.
 type HousekeeperConfig = schema.Housekeeper
 
+// NotificationConfig is the runtime-readable notification-dispatcher
+// configuration snapshot. Same field set as “schema.Notification“.
+type NotificationConfig = schema.Notification
+
 // OIDCConfig is the runtime-readable OIDC configuration snapshot. Same field
 // set as “schema.OIDC“; the “client_secret“ and “method“ fields are never
 // sourced from the DB (see applyOIDCOverrides).
@@ -256,6 +260,23 @@ func (r *RuntimeSettings) AuditRetention(ctx context.Context) time.Duration {
 	return hk.CleanupAudit.AsDuration()
 }
 
+// NotificationLogRetention returns the current value of
+// housekeeping.cleanup_notificationlog, or the file-config baseline when no DB
+// override is set. Returns zero if both are unset. Implements the narrow
+// “notificationLogRetention“ contract expected by the housekeeper's
+// CleanupNotificationLogAsIntervalJob, which substitutes its own 720h fallback
+// on zero. Mirrors AuditRetention exactly.
+func (r *RuntimeSettings) NotificationLogRetention(ctx context.Context) time.Duration {
+	if r == nil {
+		return 0
+	}
+	hk, err := r.Housekeeper(ctx)
+	if err != nil {
+		return 0
+	}
+	return hk.CleanupNotificationLog.AsDuration()
+}
+
 // StatsRetention returns the current housekeeping.cleanup_stats window, or the
 // 400-day baseline when unset. Consumed by the cleanup_stats housekeeper job.
 func (r *RuntimeSettings) StatsRetention(ctx context.Context) time.Duration {
@@ -324,6 +345,56 @@ func (r *RuntimeSettings) ShelveTimeout(ctx context.Context) time.Duration {
 		return d
 	}
 	return fallback
+}
+
+// Notification returns the current notification-dispatcher configuration: the
+// file-config baseline with any DB-stored “notification.*“ keys overlaid. Same
+// layering as Housekeeper. The returned value is a copy.
+func (r *RuntimeSettings) Notification(ctx context.Context) (NotificationConfig, error) {
+	if r == nil {
+		return schema.DefaultNotification(), nil
+	}
+	values, err := r.load(ctx)
+	if err != nil {
+		return NotificationConfig{}, err
+	}
+	out := r.baseline.Notification
+	applyNotificationOverrides(&out, values)
+	return out, nil
+}
+
+// DeliveryLog reports whether the dispatcher should write a delivery-history
+// row per send into the “notificationlog“ collection. It is the live-override
+// counterpart of the file-config “notification.delivery_log“ flag, so an
+// operator toggling it in Settings -> Notifications takes effect on the next
+// send without a restart.
+//
+// It deliberately fails OPEN (returns the baseline default “true“) on a nil
+// receiver or a settings-read error: a DB hiccup must not silently lose the
+// delivery history.
+func (r *RuntimeSettings) DeliveryLog(ctx context.Context) bool {
+	if r == nil {
+		return schema.DefaultNotification().DeliveryLog
+	}
+	n, err := r.Notification(ctx)
+	if err != nil {
+		return r.baseline.Notification.DeliveryLog
+	}
+	return n.DeliveryLog
+}
+
+// applyNotificationOverrides overlays the dotted-prefix DB values onto a
+// baseline Notification config. Only “notification.delivery_log“ is
+// runtime-editable today: notification_freq / notification_retry are parsed
+// but unimplemented (they keep their legacy FLAT settings keys and no overlay),
+// and persist_action_outcomes stays a file-config-only write-pressure knob.
+// Unknown keys are ignored.
+func applyNotificationOverrides(out *schema.Notification, values map[string]any) {
+	if v, ok := values["notification.delivery_log"]; ok {
+		if b, ok := asBool(v); ok {
+			out.DeliveryLog = b
+		}
+	}
 }
 
 // Housekeeper returns the current housekeeper configuration with the same
@@ -665,6 +736,7 @@ func applyHousekeeperOverrides(out *HousekeeperConfig, values map[string]any) {
 	overlayDuration(values, "housekeeping.cleanup_comment", &out.CleanupComment)
 	overlayDuration(values, "housekeeping.cleanup_snooze", &out.CleanupSnooze)
 	overlayDuration(values, "housekeeping.cleanup_notification", &out.CleanupNotification)
+	overlayDuration(values, "housekeeping.cleanup_notificationlog", &out.CleanupNotificationLog)
 	overlayDuration(values, "housekeeping.cleanup_audit", &out.CleanupAudit)
 	overlayDuration(values, "housekeeping.cleanup_stats", &out.CleanupStats)
 	overlayDuration(values, "housekeeping.cleanup_orphans", &out.CleanupOrphans)

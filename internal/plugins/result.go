@@ -67,6 +67,25 @@ type NotificationPayload struct {
 	// value means first delivery, so a caller that doesn't populate it gets
 	// pre-escalation behaviour. See escalation.go.
 	Escalation Escalation
+	// NotificationUID is the uid of the notification entry that routed this
+	// alert to the action. Populated by the notification dispatcher; empty for
+	// out-of-band senders (the action-test endpoint, CLI probes).
+	//
+	// Batching notifiers need it: they queue a delivery member at Send time
+	// and report the whole bucket at flush, by which point the dispatcher's
+	// per-send scope is long gone. The uid is what every UI filter keys on
+	// (names are not unique per tenant), so a member without it cannot be
+	// attributed to its notification.
+	NotificationUID string
+	// Test marks an out-of-band probe send: POST /api/v1/action/test asking
+	// "does this action config actually work?" with a synthetic alert.
+	//
+	// A test send must be REAL (it proves the transport works) but must leave
+	// no trace: batching notifiers deliver it immediately instead of dropping
+	// a phantom alert into a live bucket, and nothing writes a delivery-history
+	// row, a counter bump or an action_success/action_error stat for it.
+	// False for every dispatcher-originated send.
+	Test bool
 }
 
 // ActionName returns the stored action's name, which the dispatcher stamps into

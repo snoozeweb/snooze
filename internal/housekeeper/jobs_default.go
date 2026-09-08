@@ -467,6 +467,37 @@ func CleanupStatsAsIntervalJob(d db.Driver, rs statsRetention) IntervalJob {
 	}
 }
 
+// notificationLogRetention is the narrow contract the cleanup_notificationlog
+// job needs from the config layer (declared locally to avoid importing
+// config, like statsRetention/auditRetention).
+type notificationLogRetention interface {
+	NotificationLogRetention(ctx context.Context) time.Duration
+}
+
+// CleanupNotificationLogAsIntervalJob deletes rows in the `notificationlog`
+// collection whose send-completion time (`date_epoch`) is older than the
+// operator-configured retention window (default 30d / 720h), read fresh
+// from RuntimeSettings on each fire. Daily cadence.
+func CleanupNotificationLogAsIntervalJob(d db.Driver, rs notificationLogRetention) IntervalJob {
+	return IntervalJob{
+		Interval: 24 * time.Hour,
+		Job: NewJobFunc("cleanup_notificationlog", func(ctx context.Context) error {
+			return ForEachTenant(ctx, d, func(tctx context.Context, _ string) error {
+				retention := 720 * time.Hour
+				if rs != nil {
+					if v := rs.NotificationLogRetention(tctx); v > 0 {
+						retention = v
+					}
+				}
+				cutoff := time.Now().Add(-retention).Unix()
+				cond := condition.Cond{Op: condition.OpLt, Field: "date_epoch", Value: cutoff}
+				_, err := d.Delete(tctx, "notificationlog", cond, true)
+				return err
+			})
+		}),
+	}
+}
+
 // apikeyCleanup is the narrow contract CleanupAPIKeyJob needs from the auth
 // layer. Satisfied by *auth.APIKeyStore. Declared as its own type (separate
 // from refreshCleanup, despite the identical signature) to document intent at

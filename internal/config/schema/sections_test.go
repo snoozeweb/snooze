@@ -52,6 +52,14 @@ func TestDefaultHousekeeper_ShelveTimeout(t *testing.T) {
 	require.Equal(t, 4*time.Hour, h.ShelveTimeout.AsDuration())
 }
 
+// TestDefaultHousekeeper_CleanupNotificationLog pins the delivery-log
+// retention default at 30 days (720h), the window the cleanup_notificationlog
+// job prunes on.
+func TestDefaultHousekeeper_CleanupNotificationLog(t *testing.T) {
+	h := DefaultHousekeeper()
+	require.Equal(t, 720*time.Hour, h.CleanupNotificationLog.AsDuration())
+}
+
 func TestNotification_Defaults(t *testing.T) {
 	n := DefaultNotification()
 	require.Equal(t, time.Minute, n.NotificationFreq.AsDuration())

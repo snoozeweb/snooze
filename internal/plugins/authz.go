@@ -34,8 +34,12 @@ type AuthzContext struct {
 	// `rw_<plugin>` grants.
 	PluginName string
 	// Method is the HTTP verb of the inbound request. Anything other
-	// than GET/HEAD is treated as a write.
+	// than GET/HEAD (and the POST .../search read, see IsRead) is treated
+	// as a write.
 	Method string
+	// Path is the inbound request's URL path. Only consulted to recognise
+	// the body-carrying search endpoint; leave empty when irrelevant.
+	Path string
 	// RoutePath is the path-key under Metadata.Routes; pass "" to
 	// resolve only RouteDefaults.
 	RoutePath string
@@ -47,15 +51,60 @@ type AuthzContext struct {
 	NoLogin bool
 }
 
-// IsRead reports whether ctx.Method is a "read" verb. GET and HEAD count as
-// reads; everything else is treated as a write. Mirrors the
-// `req.method in ['GET']` branch in 1.5.0's is_authorized.
+// IsRead reports whether the request is a "read". GET and HEAD count, as does
+// POST on the `/search` sub-path.
+//
+// The search exception is not a special case for one plugin: every plugin's
+// POST /api/v1/<plugin>/search is mounted by the same generic
+// mountCRUDWriteRoutes and runs the same searchHandler as GET ?q= — it is a
+// list with the condition in the body instead of the query string (bodies
+// avoid URL-length limits and base64-encoding the DSL). Counting it as a write
+// meant a read-only role could list a collection but not search it, which
+// nobody would guess from `ro_<plugin>`.
+//
+// Only the plugin's OWN canonical search path qualifies — see isSearchPath.
 func (c AuthzContext) IsRead() bool {
 	switch strings.ToUpper(c.Method) {
 	case http.MethodGet, http.MethodHead:
 		return true
+	case http.MethodPost:
+		return c.isSearchPath()
 	}
 	return false
+}
+
+// authzAPIPrefix is the mount prefix every plugin route lives under. It is a
+// literal in the mount too (crud.go builds each subrouter as
+// "/api/v1/"+p.Name(), and nothing chi.Mounts the API under a further prefix),
+// so isSearchPath can compare the whole path instead of a suffix. If the prefix
+// ever becomes configurable, this is the single place that has to learn about
+// it — and the comparison must then drop to the "/"+PluginName+"/search"
+// suffix.
+const authzAPIPrefix = "/api/v1/"
+
+// isSearchPath reports whether the request addresses the plugin's OWN generic
+// search endpoint: the POST /api/v1/<plugin>/search that mountCRUDWriteRoutes
+// installs, and nothing else. Trailing slashes are tolerated; query strings
+// never reach this field (it is r.URL.Path).
+//
+// The match is exact rather than a "/search" suffix test, and RoutePath must be
+// empty, because both of those loopholes downgraded real writes to reads:
+//
+//   - a RouteProvider plugin is free to mount its own nested POST route
+//     (e.g. /api/v1/foo/bar/search), which a suffix test would hand to any
+//     holder of ro_foo;
+//   - a non-empty RoutePath means the caller is authorizing a NAMED sub-route
+//     (AuthorizeRoute, used by the webhook receiver mount), never the generic
+//     CRUD search — so a receiver whose WebhookPath ended in /search became
+//     ingestion that a read-only token could drive.
+//
+// An empty PluginName has no canonical search path, so it never matches: a
+// non-HTTP caller that only fills in Method is a write.
+func (c AuthzContext) isSearchPath() bool {
+	if c.RoutePath != "" || c.PluginName == "" {
+		return false
+	}
+	return strings.TrimSuffix(c.Path, "/") == authzAPIPrefix+c.PluginName+"/search"
 }
 
 // IsAuthorized returns true when ctx.Claims is allowed to perform the

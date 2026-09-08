@@ -54,6 +54,7 @@ func AuthorizeRoute(meta Metadata, routePath string) func(http.Handler) http.Han
 			ok := IsAuthorized(meta, AuthzContext{
 				PluginName: meta.PluginName,
 				Method:     r.Method,
+				Path:       r.URL.Path,
 				RoutePath:  routePath,
 				Claims:     claims,
 			})

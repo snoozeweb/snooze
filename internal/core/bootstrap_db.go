@@ -7,6 +7,7 @@ import (
 
 	"github.com/snoozeweb/snooze/internal/condition"
 	"github.com/snoozeweb/snooze/internal/db"
+	"github.com/snoozeweb/snooze/internal/housekeeper"
 )
 
 // generalCollection holds the bootstrap marker doc.
@@ -41,11 +42,24 @@ func defaultRoles(adminGroup string) []db.Document {
 			"permissions": []string{"ro_all"},
 		},
 		{
-			"name":        "notifications",
-			"permissions": []string{"rw_notification"},
+			"name": "notifications",
+			// ro_notificationlog is what makes the Deliveries surface readable:
+			// the delivery history lives in its own `notificationlog`
+			// collection, so rw_notification alone gets a 403 on every
+			// GET /api/v1/notificationlog. Keep in lock-step with the
+			// per-tenant seed in internal/pluginimpl/tenant/seed.go and with
+			// backfillNotificationsRole below.
+			"permissions": []string{"rw_notification", notificationLogReadPerm},
 		},
 	}
 }
+
+// notificationLogReadPerm is the implicit read grant for the `notificationlog`
+// collection (plugins derive ro_<plugin> / rw_<plugin> from the plugin name).
+const notificationLogReadPerm = "ro_notificationlog"
+
+// notificationsRoleName is the seeded role that owns notification management.
+const notificationsRoleName = "notifications"
 
 // defaultAggregateRules are the canonical aggregate-rule seed values.
 func defaultAggregateRules() []db.Document {
@@ -107,4 +121,86 @@ func BootstrapDB(ctx context.Context, drv db.Driver, adminGroup string) error {
 	}
 
 	return nil
+}
+
+// BackfillNotificationsRolePerms grants ro_notificationlog to any existing
+// `notifications` role that predates the delivery log.
+//
+// It exists because the seeds above are one-shot: BootstrapDB short-circuits
+// on the `init_db` marker, and the per-tenant seed only runs at tenant
+// creation, so an install that booted before `notificationlog` existed keeps a
+// notifications role with `rw_notification` alone — and every operator holding
+// only that role gets a 403 on the Deliveries tab.
+//
+// Idempotent and conservative: a role that already carries the grant, or a
+// catch-all (ro_all / rw_all) that subsumes it, is left untouched, so repeat
+// boots are no-ops. Note it re-adds the grant on every boot to a role that had
+// it removed by hand — renaming the role (or dropping it) is how an operator
+// opts out. That trade-off is deliberate: the alternative is a role named
+// "notifications" whose Deliveries tab silently 403s.
+//
+// Runs across every active tenant; a per-tenant failure aborts the sweep and
+// is reported to the caller, which logs rather than failing boot.
+func BackfillNotificationsRolePerms(ctx context.Context, drv db.Driver) error {
+	if drv == nil {
+		return errors.New("bootstrap_db: nil driver")
+	}
+	return housekeeper.ForEachTenant(ctx, drv, func(tctx context.Context, tenantID string) error {
+		docs, _, err := drv.Search(tctx, roleCollection,
+			condition.Equals("name", notificationsRoleName), db.Page{})
+		if err != nil {
+			return fmt.Errorf("bootstrap_db: backfill notifications role for %q: %w", tenantID, err)
+		}
+		for _, doc := range docs {
+			uid, _ := doc["uid"].(string)
+			if uid == "" {
+				continue
+			}
+			perms := stringList(doc["permissions"])
+			if hasAny(perms, notificationLogReadPerm, "ro_all", "rw_all") {
+				continue
+			}
+			next := make([]any, 0, len(perms)+1)
+			for _, p := range perms {
+				next = append(next, p)
+			}
+			next = append(next, notificationLogReadPerm)
+			if _, err := drv.SetFields(tctx, roleCollection,
+				db.Document{"permissions": next}, condition.Equals("uid", uid)); err != nil {
+				return fmt.Errorf("bootstrap_db: backfill notifications role for %q: %w", tenantID, err)
+			}
+		}
+		return nil
+	})
+}
+
+// stringList coerces a stored JSON array (which decodes as []any) or a
+// still-typed []string into a plain []string.
+func stringList(v any) []string {
+	switch typed := v.(type) {
+	case []string:
+		return append([]string(nil), typed...)
+	case []any:
+		out := make([]string, 0, len(typed))
+		for _, item := range typed {
+			if s, ok := item.(string); ok {
+				out = append(out, s)
+			}
+		}
+		return out
+	default:
+		return nil
+	}
+}
+
+// hasAny reports whether list contains any of the wanted values.
+func hasAny(list []string, wanted ...string) bool {
+	for _, item := range list {
+		for _, w := range wanted {
+			if item == w {
+				return true
+			}
+		}
+	}
+	return false
 }

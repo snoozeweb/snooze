@@ -12,6 +12,7 @@ import (
 
 	"github.com/snoozeweb/snooze/internal/auth"
 	"github.com/snoozeweb/snooze/internal/condition"
+	"github.com/snoozeweb/snooze/internal/db"
 	"github.com/stretchr/testify/require"
 )
 
@@ -514,6 +515,200 @@ func TestCleanupStatsJobInvokesDriver(t *testing.T) {
 	cutoff, ok := got.cond.Value.(int64)
 	require.True(t, ok, "cond.Value must be int64, got %T", got.cond.Value)
 	require.InDelta(t, float64(expectedCutoff), float64(cutoff), 5, "cutoff should be within 5s of expected")
+}
+
+// ---------------------------------------------------------------------------
+// CleanupNotificationLogAsIntervalJob tests
+// ---------------------------------------------------------------------------
+
+// fixedNotificationLogRetention is a tiny test stub implementing the
+// notificationLogRetention interface with a constant retention value.
+type fixedNotificationLogRetention struct{ d time.Duration }
+
+func (f fixedNotificationLogRetention) NotificationLogRetention(_ context.Context) time.Duration {
+	return f.d
+}
+
+// TestCleanupNotificationLogJobInvokesDriver verifies that
+// CleanupNotificationLogAsIntervalJob wires through to
+// d.Delete("notificationlog", …, force=true) with a condition that filters
+// on date_epoch < cutoff using OpLt. Mirrors TestCleanupStatsJobInvokesDriver.
+func TestCleanupNotificationLogJobInvokesDriver(t *testing.T) {
+	type deleteCall struct {
+		collection string
+		cond       condition.Cond
+		force      bool
+	}
+	var calls []deleteCall
+
+	drv := &cleanupStubDriver{
+		deleteFn: func(_ context.Context, col string, cond condition.Cond, force bool) (int, error) {
+			calls = append(calls, deleteCall{col, cond, force})
+			return 1, nil
+		},
+	}
+
+	retention := 720 * time.Hour
+	ij := CleanupNotificationLogAsIntervalJob(drv, fixedNotificationLogRetention{retention})
+
+	require.Equal(t, 24*time.Hour, ij.Interval)
+	require.Equal(t, "cleanup_notificationlog", ij.Job.Name())
+	require.NoError(t, ij.Job.Run(context.Background()))
+	require.Len(t, calls, 1)
+
+	got := calls[0]
+	require.Equal(t, "notificationlog", got.collection)
+	require.True(t, got.force)
+	require.Equal(t, condition.OpLt, got.cond.Op)
+	require.Equal(t, "date_epoch", got.cond.Field)
+
+	// The cutoff must be approximately now minus the retention window.
+	expectedCutoff := time.Now().Add(-retention).Unix()
+	cutoff, ok := got.cond.Value.(int64)
+	require.True(t, ok, "cond.Value must be int64, got %T", got.cond.Value)
+	require.InDelta(t, float64(expectedCutoff), float64(cutoff), 5, "cutoff should be within 5s of expected")
+}
+
+// TestCleanupNotificationLogJob_NilRetentionFallsBack checks that a nil
+// notificationLogRetention (e.g. RuntimeSettings unavailable) falls back to
+// the documented 720h default rather than panicking or using a zero cutoff.
+func TestCleanupNotificationLogJob_NilRetentionFallsBack(t *testing.T) {
+	var calls []condition.Cond
+	drv := &cleanupStubDriver{
+		deleteFn: func(_ context.Context, _ string, cond condition.Cond, _ bool) (int, error) {
+			calls = append(calls, cond)
+			return 0, nil
+		},
+	}
+
+	ij := CleanupNotificationLogAsIntervalJob(drv, nil)
+	require.NoError(t, ij.Job.Run(context.Background()))
+	require.Len(t, calls, 1)
+
+	expectedCutoff := time.Now().Add(-720 * time.Hour).Unix()
+	cutoff, ok := calls[0].Value.(int64)
+	require.True(t, ok)
+	require.InDelta(t, float64(expectedCutoff), float64(cutoff), 5)
+}
+
+// TestCleanupNotificationLogJob_ZeroRetentionFallsBack checks that an
+// explicit zero retention (unset knob) also falls back to 720h rather than
+// deleting everything with a cutoff of "now".
+func TestCleanupNotificationLogJob_ZeroRetentionFallsBack(t *testing.T) {
+	var calls []condition.Cond
+	drv := &cleanupStubDriver{
+		deleteFn: func(_ context.Context, _ string, cond condition.Cond, _ bool) (int, error) {
+			calls = append(calls, cond)
+			return 0, nil
+		},
+	}
+
+	ij := CleanupNotificationLogAsIntervalJob(drv, fixedNotificationLogRetention{0})
+	require.NoError(t, ij.Job.Run(context.Background()))
+	require.Len(t, calls, 1)
+
+	expectedCutoff := time.Now().Add(-720 * time.Hour).Unix()
+	cutoff, ok := calls[0].Value.(int64)
+	require.True(t, ok)
+	require.InDelta(t, float64(expectedCutoff), float64(cutoff), 5)
+}
+
+// notificationLogFakeDriver is an in-memory fake that actually filters
+// documents per tenant, used to verify real deletion semantics (old rows
+// removed, new rows kept, tenants isolated from one another) rather than
+// just the call wiring. Embeds the zero-value db.Driver interface (like
+// tenantStubDriver) and overrides only Search/Delete.
+type notificationLogFakeDriver struct {
+	db.Driver
+	tenants []db.Document
+	docs    map[string][]db.Document // tenant -> notificationlog docs
+}
+
+func (f *notificationLogFakeDriver) Search(_ context.Context, collection string, _ condition.Cond, _ db.Page) ([]db.Document, int, error) {
+	if collection == "tenant" {
+		return f.tenants, len(f.tenants), nil
+	}
+	return nil, 0, nil
+}
+
+func (f *notificationLogFakeDriver) Delete(ctx context.Context, collection string, cond condition.Cond, _ bool) (int, error) {
+	if collection != "notificationlog" {
+		return 0, nil
+	}
+	tenant, ok := auth.TenantFrom(ctx)
+	if !ok {
+		return 0, nil
+	}
+	cutoff, _ := cond.Value.(int64)
+	kept := make([]db.Document, 0, len(f.docs[tenant]))
+	removed := 0
+	for _, d := range f.docs[tenant] {
+		epoch, _ := d["date_epoch"].(int64)
+		if cond.Op == condition.OpLt && epoch < cutoff {
+			removed++
+			continue
+		}
+		kept = append(kept, d)
+	}
+	f.docs[tenant] = kept
+	return removed, nil
+}
+
+// TestCleanupNotificationLogJob_DeletesOldKeepsNew verifies actual row
+// deletion semantics: rows whose date_epoch is older than the retention
+// window are removed, rows within the window are kept.
+func TestCleanupNotificationLogJob_DeletesOldKeepsNew(t *testing.T) {
+	now := time.Now()
+	old := now.Add(-800 * time.Hour).Unix()  // older than 720h retention
+	recent := now.Add(-1 * time.Hour).Unix() // well within retention
+
+	drv := &notificationLogFakeDriver{
+		tenants: []db.Document{{"id": "acme", "status": "active"}},
+		docs: map[string][]db.Document{
+			"acme": {
+				{"uid": "old-1", "date_epoch": old},
+				{"uid": "recent-1", "date_epoch": recent},
+			},
+		},
+	}
+
+	ij := CleanupNotificationLogAsIntervalJob(drv, fixedNotificationLogRetention{720 * time.Hour})
+	require.NoError(t, ij.Job.Run(context.Background()))
+
+	remaining := drv.docs["acme"]
+	require.Len(t, remaining, 1)
+	require.Equal(t, "recent-1", remaining[0]["uid"])
+}
+
+// TestCleanupNotificationLogJob_PerTenantIsolation verifies each tenant's
+// notificationlog rows are cleaned up independently: tenant A's old row is
+// deleted while tenant B's rows (one old, one recent) are evaluated on their
+// own, with no cross-tenant leakage.
+func TestCleanupNotificationLogJob_PerTenantIsolation(t *testing.T) {
+	now := time.Now()
+	old := now.Add(-800 * time.Hour).Unix()
+	recent := now.Add(-1 * time.Hour).Unix()
+
+	drv := &notificationLogFakeDriver{
+		tenants: []db.Document{
+			{"id": "acme", "status": "active"},
+			{"id": "beta", "status": "active"},
+		},
+		docs: map[string][]db.Document{
+			"acme": {{"uid": "acme-old", "date_epoch": old}},
+			"beta": {
+				{"uid": "beta-old", "date_epoch": old},
+				{"uid": "beta-recent", "date_epoch": recent},
+			},
+		},
+	}
+
+	ij := CleanupNotificationLogAsIntervalJob(drv, fixedNotificationLogRetention{720 * time.Hour})
+	require.NoError(t, ij.Job.Run(context.Background()))
+
+	require.Empty(t, drv.docs["acme"], "tenant acme's old row should be deleted")
+	require.Len(t, drv.docs["beta"], 1, "tenant beta should keep only its recent row")
+	require.Equal(t, "beta-recent", drv.docs["beta"][0]["uid"])
 }
 
 // ---------------------------------------------------------------------------

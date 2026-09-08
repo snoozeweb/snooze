@@ -232,6 +232,32 @@ var auditFields = []fieldInfo{
 	{Name: "uid", Type: "string", Description: "Unique entry id"},
 }
 
+// notificationlogFields — searchable shape for the delivery history.
+//
+// The flat `*_uids` / `*_names` / `*_hashes` arrays are what the DSL can
+// actually filter (`notification_uids CONTAINS "…"`); the nested `alerts[]`
+// snapshot is display-only and deliberately absent from the catalog, since
+// object-path filtering inside an array is not expressible.
+var notificationlogFields = []fieldInfo{
+	{Name: "date_epoch", Type: "number", Description: "When the send completed (unix seconds)"},
+	{Name: "status", Type: "string", Description: "Delivery outcome",
+		Values: []string{"success", "error"}},
+	{Name: "action", Type: "string", Description: "Action entry that sent it"},
+	{Name: "notifier", Type: "string", Description: "Notifier type used (mail, webhook, …)"},
+	// Type "bool" has no editor widget: the web condition editor only produces
+	// string operands, so the description has to tell the operator what to type
+	// (the client-side DSL parser accepts a bare true/false literal). Server-side
+	// ?q= parsing has always handled it.
+	{Name: "batch", Type: "bool", Description: "true/false (boolean literal)"},
+	{Name: "notification_names", Type: "array", Description: "Notifications that routed the alerts"},
+	{Name: "notification_uids", Type: "array", Description: "Uids of those notifications"},
+	{Name: "alert_uids", Type: "array", Description: "Uids of the alerts in this send"},
+	{Name: "alert_hashes", Type: "array", Description: "Dedup hashes of those alerts"},
+	{Name: "escalation_reason", Type: "string", Description: "Why the alert was re-escalated",
+		Values: []string{"timeout", "manual", "watchlist"}},
+	{Name: "uid", Type: "string", Description: "Unique entry id"},
+}
+
 // fieldCatalog is the lookup table backing GET /condition/fields. Plugins
 // whose names match are returned with their canonical fields; unknown
 // collections return an empty array so the UI can fall back to the
@@ -243,18 +269,19 @@ var auditFields = []fieldInfo{
 // the catalog only feeds autocomplete, it never gates which fields are
 // searchable.
 var fieldCatalog = map[string][]fieldInfo{
-	"record":        recordFields,
-	"rule":          ruleFields,
-	"aggregaterule": aggregateRuleFields,
-	"snooze":        snoozeFields,
-	"user":          userFields,
-	"role":          roleFields,
-	"notification":  notificationFields,
-	"action":        actionFields,
-	"environment":   environmentFields,
-	"kv":            kvFields,
-	"widget":        widgetFields,
-	"audit":         auditFields,
+	"record":          recordFields,
+	"rule":            ruleFields,
+	"aggregaterule":   aggregateRuleFields,
+	"snooze":          snoozeFields,
+	"user":            userFields,
+	"role":            roleFields,
+	"notification":    notificationFields,
+	"action":          actionFields,
+	"environment":     environmentFields,
+	"kv":              kvFields,
+	"widget":          widgetFields,
+	"audit":           auditFields,
+	"notificationlog": notificationlogFields,
 }
 
 // handleConditionFields returns the field catalog for the requested

@@ -284,3 +284,91 @@ func TestAuthenticationRequired_DefaultsToTrue(t *testing.T) {
 		RouteDefaults: Route{Authentication: boolPtr(false)},
 	}.AuthenticationRequired(""))
 }
+
+// TestIsRead_SearchPostCountsAsRead pins the generic search exception. Every
+// plugin's POST /api/v1/<plugin>/search is mounted by the same
+// mountCRUDWriteRoutes and runs the same searchHandler as GET ?q= — it is a
+// list with the condition in the body. Classifying it as a write made
+// `ro_<plugin>` a permission that can list but not search, which nobody would
+// guess (the delivery log's Deliveries tab is the surface that exposed it).
+func TestIsRead_SearchPostCountsAsRead(t *testing.T) {
+	t.Parallel()
+	cases := []struct {
+		name      string
+		plugin    string
+		method    string
+		path      string
+		routePath string
+		want      bool
+	}{
+		{"GET list", "notificationlog", "GET", "/api/v1/notificationlog", "", true},
+		{"HEAD", "notificationlog", "HEAD", "/api/v1/notificationlog", "", true},
+		{"POST canonical search", "notificationlog", "POST", "/api/v1/notificationlog/search", "", true},
+		{"POST search trailing slash", "notificationlog", "POST", "/api/v1/notificationlog/search/", "", true},
+		{"POST create", "notificationlog", "POST", "/api/v1/notificationlog", "", false},
+		{"POST on a plugin whose NAME ends in search", "savedsearch", "POST", "/api/v1/savedsearch", "", false},
+		{"POST search on that plugin", "savedsearch", "POST", "/api/v1/savedsearch/search", "", true},
+		{"PUT", "notificationlog", "PUT", "/api/v1/notificationlog/abc", "", false},
+		{"PATCH", "notificationlog", "PATCH", "/api/v1/notificationlog/abc", "", false},
+		{"DELETE on the search path", "notificationlog", "DELETE", "/api/v1/notificationlog/search", "", false},
+		{"POST with no path (non-HTTP caller)", "notificationlog", "POST", "", "", false},
+
+		// N7: a RouteProvider plugin's own nested POST route is a WRITE, even
+		// though it ends in /search. A suffix test handed it to ro_<plugin>.
+		{"POST nested search", "foo", "POST", "/api/v1/foo/bar/search", "", false},
+		{"POST search under another plugin", "foo", "POST", "/api/v1/bar/search", "", false},
+		// A named sub-route (AuthorizeRoute, e.g. the webhook receiver mount)
+		// is never the generic CRUD search, whatever it is spelled.
+		{"POST named sub-route ending in search", "foo", "POST", "/api/v1/webhook/search", "/search", false},
+		{"POST canonical path but named sub-route", "foo", "POST", "/api/v1/foo/search", "/search", false},
+		// No plugin name means no canonical search path.
+		{"POST search with no plugin name", "", "POST", "/api/v1/foo/search", "", false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			require.Equal(t, tc.want, AuthzContext{
+				PluginName: tc.plugin,
+				Method:     tc.method,
+				Path:       tc.path,
+				RoutePath:  tc.routePath,
+			}.IsRead())
+		})
+	}
+}
+
+// TestIsAuthorized_SearchPostAllowedWithReadOnlyPermission is the end-to-end
+// consequence: ro_<plugin> must satisfy POST /<plugin>/search, while POST on
+// the collection root still requires rw_<plugin>.
+func TestIsAuthorized_SearchPostAllowedWithReadOnlyPermission(t *testing.T) {
+	t.Parallel()
+	meta := Metadata{Name: "notificationlog"}
+	ro := snoozetypes.Claims{Permissions: []string{"ro_notificationlog"}}
+
+	require.True(t, IsAuthorized(meta, AuthzContext{
+		PluginName: "notificationlog", Method: "POST",
+		Path: "/api/v1/notificationlog/search", Claims: ro,
+	}), "a read-only role must be able to search")
+
+	require.False(t, IsAuthorized(meta, AuthzContext{
+		PluginName: "notificationlog", Method: "POST",
+		Path: "/api/v1/notificationlog", Claims: ro,
+	}), "creating must still require rw_")
+
+	// A caller with no grant at all is still refused on search.
+	require.False(t, IsAuthorized(meta, AuthzContext{
+		PluginName: "notificationlog", Method: "POST",
+		Path: "/api/v1/notificationlog/search", Claims: snoozetypes.Claims{},
+	}))
+
+	// N7: a nested POST route that merely ENDS in /search is a write. A
+	// RouteProvider plugin can mount one, and ro_<plugin> must not reach it.
+	require.False(t, IsAuthorized(meta, AuthzContext{
+		PluginName: "notificationlog", Method: "POST",
+		Path: "/api/v1/notificationlog/bar/search", Claims: ro,
+	}), "a nested /search route is a write, not the generic search")
+	require.True(t, IsAuthorized(meta, AuthzContext{
+		PluginName: "notificationlog", Method: "POST",
+		Path:   "/api/v1/notificationlog/bar/search",
+		Claims: snoozetypes.Claims{Permissions: []string{"rw_notificationlog"}},
+	}), "rw_ still reaches it")
+}

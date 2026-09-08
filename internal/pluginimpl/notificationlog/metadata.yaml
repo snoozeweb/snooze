@@ -1,0 +1,35 @@
+---
+name: 'Notification log'
+desc: 'Per-send delivery history written by the notification dispatcher'
+
+# search_fields does double duty:
+#   1. It is the field list the SEARCH operator (a bare word in the SearchBar)
+#      expands to — OR(regexp(needle, field)). With the list EMPTY, SEARCH
+#      regex-scans the entire serialised document, which on a 30-day delivery
+#      log is a full-table scan over every alerts[] snapshot.
+#   2. The SQLite and Postgres drivers create one expression index per entry
+#      (json_extract / data->>) when the plugin registers.
+#
+# The four below are the row's scalar dimensions and exactly the columns the
+# Deliveries UI filters and sorts on. `date_epoch` is a weak SEARCH target (a
+# bare word only matches its digits) but it is the sort key AND the retention
+# key the housekeeper sweeps on, so the index earns its place. Array fields
+# (alert_uids, notification_uids, …) are deliberately absent: an expression
+# index on a JSON array is useless for CONTAINS, and SEARCH over them would
+# match uids nobody types.
+search_fields:
+    - date_epoch
+    - status
+    - action
+    - notifier
+# NOTE: no `route_defaults.check_permissions` here. The key is parsed into
+# Metadata.RouteDefaults and merged, but NOTHING reads it — internal/plugins/authz.go
+# derives ro_/rw_<plugin> from the plugin name and never consults it — so
+# carrying it would be a decorative claim of "this route is permission-gated".
+# The gating is real and comes from AuthorizeCRUD; the other plugins that still
+# declare the key (audit, role, user, …) are equally decorative and are left
+# alone rather than churned here.
+#
+# Rows are written by the dispatcher on every send, not by an operator. Auditing
+# them would double the write volume and bury real config changes under noise.
+audit: false

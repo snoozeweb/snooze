@@ -515,7 +515,7 @@ func TestBatchMail_FlushOnMaxsize(t *testing.T) {
 
 	for i := 0; i < 3; i++ {
 		rec := snoozetypes.Record{Host: "h" + strconv.Itoa(i), Message: "boom-" + strconv.Itoa(i)}
-		require.NoError(t, p.Send(context.Background(), rec, plugins.NotificationPayload{Meta: meta}))
+		requireQueued(t, p.Send(context.Background(), rec, plugins.NotificationPayload{Meta: meta}))
 	}
 
 	require.Eventually(t, func() bool {
@@ -541,7 +541,7 @@ func TestBatchMail_StopDrains(t *testing.T) {
 
 	for i := 0; i < 2; i++ {
 		rec := snoozetypes.Record{Host: "h" + strconv.Itoa(i), Message: "pending-" + strconv.Itoa(i)}
-		require.NoError(t, p.Send(context.Background(), rec, plugins.NotificationPayload{Meta: meta}))
+		requireQueued(t, p.Send(context.Background(), rec, plugins.NotificationPayload{Meta: meta}))
 	}
 	require.NoError(t, p.Stop(context.Background()))
 
@@ -549,6 +549,55 @@ func TestBatchMail_StopDrains(t *testing.T) {
 		_, _, _, data := srv.cap.snapshot()
 		return strings.Contains(data, "pending-0") && strings.Contains(data, "pending-1")
 	}, time.Second, 10*time.Millisecond, "Stop should drain the pending bucket into one message")
+}
+
+// TestBatchMail_SendAfterStopSendsImmediately pins N6 — see the webhook twin
+// for the full rationale: a bucket created after Stop's key snapshot is never
+// drained, so the alert (and its delivery row, counters and stat) vanished.
+func TestBatchMail_SendAfterStopSendsImmediately(t *testing.T) {
+	srv := newStubSMTP(t, "")
+	host, port := srv.hostPort()
+
+	p := &Plugin{}
+	require.NoError(t, p.PostInit(context.Background(), nullHost{}))
+	meta := batchMailMeta(host, port, 5, 60, "ops") // neither bound triggers
+
+	require.NoError(t, p.Stop(context.Background()))
+
+	err := p.Send(context.Background(),
+		snoozetypes.Record{Host: "alpha", Message: "now"},
+		plugins.NotificationPayload{Meta: meta})
+	require.NoError(t, err)
+	require.NotErrorIs(t, err, plugins.ErrBatched,
+		"a send that could not be batched must report its real outcome")
+
+	_, _, _, data := srv.cap.snapshot()
+	require.Equal(t, 1, strings.Count(data, "Subject: "), "exactly one immediate message")
+	require.Contains(t, data, "Subject: Alert: alpha", "non-batched subject (no [N] prefix)")
+	require.Contains(t, data, "Body: now")
+	require.Empty(t, p.buckets, "no orphan bucket left behind by the post-Stop send")
+}
+
+// TestBatchMail_StartReopensBatchingAfterStop pins the other half of N6 — see
+// the webhook twin: `stopped` is latched by Stop and only Start clears it, so
+// without the reset a Stop → Start cycle disables batching for good.
+func TestBatchMail_StartReopensBatchingAfterStop(t *testing.T) {
+	srv := newStubSMTP(t, "")
+	host, port := srv.hostPort()
+
+	p := &Plugin{}
+	require.NoError(t, p.PostInit(context.Background(), nullHost{}))
+	meta := batchMailMeta(host, port, 5, 60, "ops") // neither bound triggers
+
+	require.NoError(t, p.Stop(context.Background()))
+	require.NoError(t, p.Start(context.Background()))
+
+	requireQueued(t, p.Send(context.Background(),
+		snoozetypes.Record{Host: "alpha", Message: "now"},
+		plugins.NotificationPayload{Meta: meta}))
+	require.Len(t, p.buckets, 1, "the send should have created a bucket")
+	_, _, _, data := srv.cap.snapshot()
+	require.Empty(t, data, "nothing should have been sent immediately")
 }
 
 func TestBatchMail_DegenerateConfigFallsBackToImmediate(t *testing.T) {

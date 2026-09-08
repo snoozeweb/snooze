@@ -22,8 +22,14 @@ type Housekeeper struct {
 	CleanupStats        Duration `koanf:"cleanup_stats"`
 	CleanupSnooze       Duration `koanf:"cleanup_snooze"`
 	CleanupNotification Duration `koanf:"cleanup_notification"`
-	CleanupAPIKey       Duration `koanf:"cleanup_apikey"`
-	CleanupRefreshToken Duration `koanf:"cleanup_refresh_token"`
+	// CleanupNotificationLog is the retention window for the delivery-history
+	// rows in the `notificationlog` collection: rows whose date_epoch is older
+	// than this are pruned by the daily cleanup_notificationlog job. Default
+	// 720h (30 days). Set 0 to fall back to the 720h default rather than to
+	// disable pruning — an unbounded delivery log is never wanted.
+	CleanupNotificationLog Duration `koanf:"cleanup_notificationlog"`
+	CleanupAPIKey          Duration `koanf:"cleanup_apikey"`
+	CleanupRefreshToken    Duration `koanf:"cleanup_refresh_token"`
 	// AckTimeout is how long an acknowledgement holds before the
 	// escalate-timeout sweep reverts the record from "ack" to "open". Default
 	// 24h (Alerta's ACK_TIMEOUT is 7200s; we pick a more on-call-friendly day).
@@ -43,20 +49,21 @@ type Housekeeper struct {
 // DefaultHousekeeper returns the Python defaults.
 func DefaultHousekeeper() Housekeeper {
 	return Housekeeper{
-		TriggerOnStartup:    true,
-		RecordTTL:           Duration(2 * 24 * time.Hour),
-		CleanupAlert:        Duration(5 * time.Minute),
-		CleanupAggregate:    Duration(5 * time.Minute),
-		CleanupComment:      Duration(24 * time.Hour),
-		CleanupOrphans:      Duration(24 * time.Hour),
-		CleanupAudit:        Duration(28 * 24 * time.Hour),
-		CleanupStats:        Duration(400 * 24 * time.Hour),
-		CleanupSnooze:       Duration(3 * 24 * time.Hour),
-		CleanupNotification: Duration(3 * 24 * time.Hour),
-		CleanupAPIKey:       Duration(time.Hour),
-		CleanupRefreshToken: Duration(time.Hour),
-		AckTimeout:          Duration(24 * time.Hour),
-		EscalateAfter:       Duration(0),
-		ShelveTimeout:       Duration(DefaultShelveTimeout),
+		TriggerOnStartup:       true,
+		RecordTTL:              Duration(2 * 24 * time.Hour),
+		CleanupAlert:           Duration(5 * time.Minute),
+		CleanupAggregate:       Duration(5 * time.Minute),
+		CleanupComment:         Duration(24 * time.Hour),
+		CleanupOrphans:         Duration(24 * time.Hour),
+		CleanupAudit:           Duration(28 * 24 * time.Hour),
+		CleanupStats:           Duration(400 * 24 * time.Hour),
+		CleanupSnooze:          Duration(3 * 24 * time.Hour),
+		CleanupNotification:    Duration(3 * 24 * time.Hour),
+		CleanupNotificationLog: Duration(30 * 24 * time.Hour),
+		CleanupAPIKey:          Duration(time.Hour),
+		CleanupRefreshToken:    Duration(time.Hour),
+		AckTimeout:             Duration(24 * time.Hour),
+		EscalateAfter:          Duration(0),
+		ShelveTimeout:          Duration(DefaultShelveTimeout),
 	}
 }

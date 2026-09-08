@@ -30,6 +30,7 @@ import (
 	"text/template"
 	"time"
 
+	"github.com/snoozeweb/snooze/internal/auth"
 	"github.com/snoozeweb/snooze/internal/plugins"
 	"github.com/snoozeweb/snooze/pkg/snoozetypes"
 )
@@ -68,6 +69,11 @@ type Plugin struct {
 
 	bMu     sync.Mutex
 	buckets map[string]*batchBucket
+	// stopped is set by Stop before it snapshots the bucket keys, so a Send
+	// arriving mid-shutdown cannot create a bucket whose only trigger is a
+	// timer on a dying process. queueForBatch refuses once it is set and Send
+	// falls back to immediate delivery.
+	stopped bool
 }
 
 // Name returns the registry key. We hardcode "script" (matching mail /
@@ -146,9 +152,38 @@ func (p *Plugin) Send(ctx context.Context, rec snoozetypes.Record, payload plugi
 	// Batched dispatch: queue the rendered per-record state and return
 	// immediately. The flusher invokes the command once using the first
 	// record's argv/cwd/env, with stdin joined across records.
-	if cfg.batch {
-		p.queueForBatch(cfg, rawArgs, stdinData, renderedCWD, renderedEnv)
-		return nil
+	// payload.Test bypasses batching entirely: POST /api/v1/action/test asks
+	// "does this config work?", and answering "queued" would both lie about the
+	// result and drop a synthetic alert into a live tenant bucket, where it
+	// would ride out with real alerts and land in their delivery-history row.
+	// A test send therefore takes the immediate path and reports its real
+	// outcome; nothing about it is logged or counted.
+	if cfg.batch && !payload.Test {
+		// Bucket per tenant: the key parseConfig built is the action name
+		// alone, which two tenants running the same action would share — and a
+		// shared bucket means one tenant's alerts on another's stdin. The
+		// tenant comes from ctx, which only Send has.
+		if tenant, ok := auth.TenantFrom(ctx); ok && tenant != "" {
+			cfg.batchKey = tenant + "|" + cfg.batchKey
+		}
+		notifName, _ := payload.Meta["notification_name"].(string)
+		member := plugins.MemberFromRecord(ctx, rec, notifName, payload.NotificationUID)
+		if p.queueForBatch(cfg, rawArgs, stdinData, renderedCWD, renderedEnv, member) {
+			// The outcome of this send is not known yet: the bucket flushes on
+			// size or timer and reports the whole batch as one delivery row. The
+			// dispatcher reads the sentinel as "accepted, outcome deferred".
+			return plugins.ErrBatched
+		}
+		// Stop already drained: no bucket created after its snapshot would ever
+		// flush, so batching this alert would silently drop it. Fall through to
+		// the immediate path and report the real outcome — that return value is
+		// exactly what keeps the delivery row, the notification counters and the
+		// action stat, since the dispatcher records every Send that does not
+		// come back ErrBatched.
+		if lg := p.logger(); lg != nil {
+			lg.Warn("script: batching is shut down, running immediately",
+				"action", cfg.actionName, "key", cfg.batchKey)
+		}
 	}
 
 	return p.runCommand(ctx, cfg, rawArgs, stdinData, renderedCWD, renderedEnv)
@@ -302,7 +337,14 @@ type scriptConfig struct {
 	batch        bool
 	batchMaxsize int
 	batchTimer   time.Duration
-	batchKey     string // action_name; only set when batch is true
+	// batchKey is the dispatch-bucket key (the action name), only set when
+	// batch is true. Send prefixes it with the tenant so two tenants running
+	// the same action never share a bucket.
+	batchKey string
+
+	// actionName is the stored action entry's name. Unlike batchKey it is
+	// always parsed: the batch flush stamps it on the delivery-history row.
+	actionName string
 }
 
 func parseConfig(meta map[string]any) (scriptConfig, error) {
@@ -393,10 +435,9 @@ func parseConfig(meta map[string]any) (scriptConfig, error) {
 	if cfg.batch && (cfg.batchMaxsize <= 1 || cfg.batchTimer <= 0) {
 		cfg.batch = false
 	}
+	cfg.actionName, _ = meta["action_name"].(string)
 	if cfg.batch {
-		if name, ok := meta["action_name"].(string); ok {
-			cfg.batchKey = name
-		}
+		cfg.batchKey = cfg.actionName
 	}
 
 	return cfg, nil

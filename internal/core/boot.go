@@ -67,6 +67,15 @@ func (c *Core) bootstrap(ctx context.Context) error {
 			return fmt.Errorf("boot: bootstrap db: %w", err)
 		}
 	}
+	// Idempotent RBAC backfill. BootstrapDB above short-circuits on the
+	// `init_db` marker, so an install that booted before the delivery log
+	// existed would keep a `notifications` role that cannot read
+	// notificationlog. Runs unconditionally (not under Core.BootstrapDB): it
+	// is a migration for existing data, not a first-boot seed. A failure is
+	// logged, never fatal — a missing RBAC touch-up must not block startup.
+	if err := BackfillNotificationsRolePerms(ctx, c.Driver); err != nil {
+		c.Logger().Warn("boot: notifications role backfill failed", "err", err)
+	}
 	if c.Cfg.Core.SeedDemo {
 		if err := SeedDemoData(seedCtx, c.Driver); err != nil {
 			return fmt.Errorf("boot: seed demo: %w", err)
@@ -464,6 +473,38 @@ func (c *Core) bootHousekeeper() error {
 		housekeeper.WithTriggerOnStartup(c.Cfg.Housekeeper.TriggerOnStartup),
 	)
 
+	// notify re-fires the notification dispatcher for an auto-escalated record.
+	// The housekeeper has no Core/pipeline handle, so we hand it a narrow
+	// callback wrapping the registered notification plugin's Process. Process
+	// skips ack/close and dispatches for esc, so the escalate sweep (which sets
+	// the record to "esc" before calling) gets a real re-notification. A nil or
+	// non-Processor plugin (tests, optional-plugin filtering) yields a no-op.
+	notify := func(ctx context.Context, rec snoozetypes.Record) error {
+		p := c.Plugin("notification")
+		proc, ok := p.(plugins.Processor)
+		if !ok {
+			return nil
+		}
+		_, err := proc.Process(ctx, rec)
+		return err
+	}
+
+	jobs := c.housekeeperJobs(notify)
+
+	for _, j := range jobs {
+		if err := hk.Register(j.job, j.sched); err != nil {
+			return fmt.Errorf("boot: housekeeper register %q: %w", j.name, err)
+		}
+	}
+	c.HK = hk
+	return nil
+}
+
+// housekeeperJobs builds the default cleanup-job registrations. Split out of
+// bootHousekeeper so a test can assert each job's CADENCE without running the
+// scheduler — the distinction between "how often the sweep fires" and "how far
+// back it deletes" is easy to conflate (see cleanup_notificationlog below).
+func (c *Core) housekeeperJobs(notify func(context.Context, snoozetypes.Record) error) []registration {
 	// liveInterval reads the current housekeeper snapshot and returns the
 	// field selector applied to it. The closure-per-job pattern keeps the
 	// call site declarative.
@@ -483,23 +524,7 @@ func (c *Core) bootHousekeeper() error {
 		}
 	}
 
-	// notify re-fires the notification dispatcher for an auto-escalated record.
-	// The housekeeper has no Core/pipeline handle, so we hand it a narrow
-	// callback wrapping the registered notification plugin's Process. Process
-	// skips ack/close and dispatches for esc, so the escalate sweep (which sets
-	// the record to "esc" before calling) gets a real re-notification. A nil or
-	// non-Processor plugin (tests, optional-plugin filtering) yields a no-op.
-	notify := func(ctx context.Context, rec snoozetypes.Record) error {
-		p := c.Plugin("notification")
-		proc, ok := p.(plugins.Processor)
-		if !ok {
-			return nil
-		}
-		_, err := proc.Process(ctx, rec)
-		return err
-	}
-
-	jobs := []registration{
+	return []registration{
 		liveIntervalReg(housekeeper.CleanupTimeoutJob(c.Driver, "record"),
 			liveInterval(func(h config.HousekeeperConfig) time.Duration { return h.CleanupAlert.AsDuration() }, 5*time.Minute)),
 		liveIntervalReg(housekeeper.CleanupAggregateJob(c.Driver),
@@ -516,6 +541,13 @@ func (c *Core) bootHousekeeper() error {
 			liveInterval(func(h config.HousekeeperConfig) time.Duration { return h.CleanupAudit.AsDuration() }, 28*24*time.Hour)),
 		liveIntervalReg(housekeeper.CleanupStatsAsIntervalJob(c.Driver, c.Settings),
 			liveInterval(func(h config.HousekeeperConfig) time.Duration { return h.CleanupStats.AsDuration() }, 400*24*time.Hour)),
+		// Delivery-log retention: FIXED daily cadence. `cleanup_notificationlog`
+		// is the RETENTION WINDOW (default 720h = 30 days), not a period — the
+		// job reads it from c.Settings on every run. Wiring it through
+		// liveInterval would make the sweep fire every 30 days, so a row could
+		// survive up to 60 days; the docs promise a daily sweep.
+		liveIntervalReg(housekeeper.CleanupNotificationLogAsIntervalJob(c.Driver, c.Settings),
+			func(context.Context) time.Duration { return 24 * time.Hour }),
 		liveIntervalReg(housekeeper.CleanupAPIKeyJob(c.APIKeys),
 			liveInterval(func(h config.HousekeeperConfig) time.Duration { return h.CleanupAPIKey.AsDuration() }, time.Hour)),
 		liveIntervalReg(housekeeper.CleanupRefreshTokenJob(c.Refresh),
@@ -531,14 +563,60 @@ func (c *Core) bootHousekeeper() error {
 		liveIntervalReg(housekeeper.UnshelveTimeoutJob(c.Driver, housekeeper.SystemClock()),
 			func(context.Context) time.Duration { return time.Minute }),
 	}
+}
 
-	for _, j := range jobs {
-		if err := hk.Register(j.job, j.sched); err != nil {
-			return fmt.Errorf("boot: housekeeper register %q: %w", j.name, err)
+// StopPlugins runs the plugins.LifecycleHook shutdown hook of every registered
+// plugin, in deterministic (name) order, and logs — never propagates — a
+// failure: one plugin refusing to stop must not abort the rest of the drain.
+//
+// Nothing else in the server calls Stop, so this is the ONLY place a
+// LifecycleHook plugin gets a graceful shutdown. The batching notifiers
+// (mail / script / webhook) drain their pending buckets here and write their
+// delivery rows with batch_reason "shutdown" — without this call that flush
+// never happens and every queued-but-unsent alert is lost silently on SIGTERM.
+//
+// Call it AFTER ingest has stopped accepting (so no new work is queued while
+// we drain) and BEFORE the DB driver closes (the drain writes rows). ctx
+// carries the shutdown deadline; hooks are expected to honour it.
+//
+// The matching Start half is deliberately not wired: the only current
+// implementers document Start as a no-op (buckets are created lazily), so
+// calling it would add a boot-time fan-out with no behaviour behind it. Add it
+// here, next to this method, if a plugin ever needs real startup work.
+//
+// It ALSO joins the background goroutine plugins.Build dispatched for
+// search-field registration, after the drain (the drain's delivery rows are
+// the more valuable use of the remaining grace, and index maintenance is
+// best-effort). That goroutine calls driver.CreateIndex per collection, which
+// on SQLite and Mongo issues DDL inline — so without this join a fast
+// shutdown, or a test's teardown, can close the driver while a statement is in
+// flight: a spurious "search-field registration failed" warning at best, a
+// race on the driver's internals at worst. The wait is bounded because the
+// boot context handed to Build is already cancelled by the time we get here,
+// so each driver's in-flight statement unwinds on cancellation; ctx's own
+// deadline caps it regardless.
+func (c *Core) StopPlugins(ctx context.Context) {
+	if c == nil {
+		return
+	}
+	names := make([]string, 0, len(c.plugins))
+	for name := range c.plugins {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	for _, name := range names {
+		hook, ok := c.plugins[name].(plugins.LifecycleHook)
+		if !ok {
+			continue
+		}
+		if err := hook.Stop(ctx); err != nil {
+			c.Logger().Warn("shutdown: plugin stop failed", "plugin", name, "err", err)
 		}
 	}
-	c.HK = hk
-	return nil
+	if err := plugins.WaitBackground(ctx); err != nil {
+		c.Logger().Warn("shutdown: background plugin work did not finish in time",
+			"err", err)
+	}
 }
 
 type registration struct {

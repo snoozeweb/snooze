@@ -3,6 +3,7 @@ package notification
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log/slog"
 	"path/filepath"
 	"sync"
@@ -1043,4 +1044,696 @@ func TestSpawnCoordinatorPropagatesLoopChain(t *testing.T) {
 	case <-time.After(2 * time.Second):
 		t.Fatal("timed out waiting for notifier.Send to observe the loop chain")
 	}
+}
+
+// ---------------------------------------------------------------------------
+// Delivery history (notificationlog) — Task 4 / Task 6
+// ---------------------------------------------------------------------------
+
+// batchingNotifier models a notifier that queues the alert into a batch bucket
+// and defers the outcome to the flush: it returns plugins.ErrBatched, the D8
+// sentinel the coordinator must treat as "accepted, not delivered".
+type batchingNotifier struct {
+	name  string
+	total atomic.Int64
+}
+
+func (n *batchingNotifier) Name() string                                 { return n.name }
+func (n *batchingNotifier) Metadata() plugins.Metadata                   { return plugins.Metadata{Name: n.name} }
+func (n *batchingNotifier) PostInit(context.Context, plugins.Host) error { return nil }
+func (n *batchingNotifier) Reload(context.Context) error                 { return nil }
+
+func (n *batchingNotifier) Send(context.Context, snoozetypes.Record, plugins.NotificationPayload) error {
+	n.total.Add(1)
+	// Wrapped so the coordinator's errors.Is (not ==) is what is exercised.
+	return fmt.Errorf("script: %w", plugins.ErrBatched)
+}
+
+// refNotifier models jira: it stores an external handle through the payload's
+// inject callback during Send.
+type refNotifier struct {
+	name string
+	ref  map[string]any
+}
+
+func (n *refNotifier) Name() string                                 { return n.name }
+func (n *refNotifier) Metadata() plugins.Metadata                   { return plugins.Metadata{Name: n.name} }
+func (n *refNotifier) PostInit(context.Context, plugins.Host) error { return nil }
+func (n *refNotifier) Reload(context.Context) error                 { return nil }
+
+func (n *refNotifier) Send(_ context.Context, _ snoozetypes.Record, payload plugins.NotificationPayload) error {
+	plugins.StoreNotifyRef(payload, payload.ActionName(), n.ref)
+	return nil
+}
+
+// deliveryRows reads every row currently in the delivery-history collection,
+// oldest first.
+func deliveryRows(t *testing.T, h *testHost) []db.Document {
+	t.Helper()
+	docs, _, err := h.driver.Search(tctx(), plugins.NotificationLogCollection, condition.Cond{}, db.Page{})
+	if err != nil {
+		// The collection is created lazily on first write; before that a
+		// search may legitimately report "unknown collection" on some drivers.
+		return nil
+	}
+	return docs
+}
+
+// waitForDeliveryRows polls until the delivery log holds want rows, then keeps
+// them. Rows are written from the detached coordinator goroutine, so no test
+// may assume Process persisted them.
+func waitForDeliveryRows(t *testing.T, h *testHost, want int, timeout time.Duration) []db.Document {
+	t.Helper()
+	deadline := time.Now().Add(timeout)
+	var rows []db.Document
+	for time.Now().Before(deadline) {
+		rows = deliveryRows(t, h)
+		if len(rows) >= want {
+			return rows
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+	t.Fatalf("delivery log holds %d rows, want %d within %s", len(rows), want, timeout)
+	return nil
+}
+
+// entryUID reads back the server-assigned uid of a seeded notification entry.
+func entryUID(t *testing.T, h *testHost, name string) string {
+	t.Helper()
+	doc, err := h.driver.GetOne(tctx(), collectionName, db.Document{"name": name})
+	require.NoError(t, err)
+	uid, _ := doc["uid"].(string)
+	require.NotEmpty(t, uid, "seeded notification %q has no uid", name)
+	return uid
+}
+
+// seedRecord writes an alert row so the coordinator's hash-keyed write-back and
+// uid resolution have something to find, and returns its server-assigned uid.
+func seedRecord(t *testing.T, h *testHost, hash string) string {
+	t.Helper()
+	_, err := h.driver.Write(tctx(), recordCollectionName,
+		[]db.Document{{"hash": hash, "host": "db-01", "message": "disk 98%", "severity": "critical", "state": "open"}},
+		db.WriteOptions{UpdateTime: true})
+	require.NoError(t, err)
+	doc, err := h.driver.GetOne(tctx(), recordCollectionName, db.Document{"hash": hash})
+	require.NoError(t, err)
+	uid, _ := doc["uid"].(string)
+	require.NotEmpty(t, uid)
+	return uid
+}
+
+// strList flattens a stored []any array of strings.
+func strList(t *testing.T, v any) []string {
+	t.Helper()
+	raw, ok := v.([]any)
+	require.True(t, ok, "expected a list, got %T", v)
+	out := make([]string, 0, len(raw))
+	for _, e := range raw {
+		s, _ := e.(string)
+		out = append(out, s)
+	}
+	return out
+}
+
+// firstAlert returns the first member snapshot of a stored delivery row.
+func firstAlert(t *testing.T, row db.Document) map[string]any {
+	t.Helper()
+	alerts, ok := row["alerts"].([]any)
+	require.True(t, ok, "row has no alerts array: %#v", row["alerts"])
+	require.NotEmpty(t, alerts)
+	m, ok := alerts[0].(map[string]any)
+	require.True(t, ok)
+	return m
+}
+
+// getOneCountDriver counts hash-keyed GetOne reads of the record collection —
+// i.e. the D9 uid resolution — so a test can prove it did NOT happen.
+type getOneCountDriver struct {
+	db.Driver
+	n atomic.Int64
+}
+
+func (d *getOneCountDriver) GetOne(ctx context.Context, collection string, search db.Document) (db.Document, error) {
+	if collection == recordCollectionName {
+		if _, byHash := search["hash"]; byHash {
+			d.n.Add(1)
+		}
+	}
+	return d.Driver.GetOne(ctx, collection, search)
+}
+
+// newPluginWithBudget is newPlugin with a shrunken write-back deadline, for the
+// tests that exercise "the record never lands" without waiting ten seconds.
+func newPluginWithBudget(t *testing.T, h *testHost, budget time.Duration) *Plugin {
+	t.Helper()
+	p := &Plugin{meta: plugins.Metadata{Name: "notification"}, writeBackBudget: budget}
+	require.NoError(t, p.PostInit(tctx(), h))
+	return p
+}
+
+// TestNotificationCountersAreStrippedFromWrites is the server-side half of the
+// `readOnly: true` promise the OpenAPI makes for hits / last_sent: the schema
+// documents it, TransformWrite is what enforces it.
+func TestNotificationCountersAreStrippedFromWrites(t *testing.T) {
+	host := newHost(t)
+	p := newPlugin(t, host)
+
+	// The generic CRUD create/replace/patch handlers only call the hook when
+	// the plugin implements it.
+	var _ plugins.WriteTransformer = p
+
+	writeEntries(t, host, []map[string]any{{"name": "PageOncall", "condition": []any{}}})
+	uid := entryUID(t, host, "PageOncall")
+
+	// The dispatcher stamped a real counter value.
+	_, err := host.driver.SetFields(tctx(), collectionName,
+		db.Document{"hits": 7, "last_sent": 111}, condition.Equals("uid", uid))
+	require.NoError(t, err)
+
+	// What patchHandler does: stamp the URL uid, run TransformWrite, merge.
+	patch := db.Document{"uid": uid, "name": "PageOncall", "hits": 999, "last_sent": 999}
+	require.NoError(t, p.TransformWrite(tctx(), patch))
+	require.NotContains(t, patch, "hits", "a client-supplied counter never reaches the DB")
+	require.NotContains(t, patch, "last_sent")
+	require.Equal(t, "PageOncall", patch["name"], "everything else is left alone")
+	require.NoError(t, host.driver.UpdateOne(tctx(), collectionName, uid, patch, true))
+
+	doc, err := host.driver.GetOne(tctx(), collectionName, db.Document{"uid": uid})
+	require.NoError(t, err)
+	hits, _ := plugins.CounterValue(doc["hits"])
+	require.Equal(t, int64(7), hits, "PATCH hits: 999 must leave the stored counter untouched")
+	last, _ := plugins.CounterValue(doc["last_sent"])
+	require.Equal(t, int64(111), last)
+
+	// A body that never mentions the counters is unchanged.
+	clean := db.Document{"uid": uid, "name": "Renamed"}
+	require.NoError(t, p.TransformWrite(tctx(), clean))
+	require.Equal(t, db.Document{"uid": uid, "name": "Renamed"}, clean)
+}
+
+func TestDeliveryLog(t *testing.T) {
+	const (
+		goodAction = "MailOncall"
+		badAction  = "MailBroken"
+		notifName  = "PageOncall"
+	)
+
+	// seed installs one notification with the given actions and returns the
+	// host, the plugin and the notification's uid.
+	seed := func(t *testing.T, host *testHost, actions []map[string]any, entryActions []any) (*Plugin, string) {
+		t.Helper()
+		writeActions(t, host, actions)
+		writeEntries(t, host, []map[string]any{
+			{"name": notifName, "condition": []any{}, "actions": entryActions},
+		})
+		return newPlugin(t, host), entryUID(t, host, notifName)
+	}
+
+	t.Run("success_send_writes_one_row", func(t *testing.T) {
+		host := newHost(t)
+		notifier := &recordingNotifier{name: "mail"}
+		host.registerNotifier(notifier)
+		p, notifUID := seed(t, host,
+			[]map[string]any{{"name": goodAction, "action": map[string]any{"selected": "mail", "subcontent": map[string]any{}}}},
+			[]any{goodAction})
+
+		uid := seedRecord(t, host, "hash-success")
+		_, err := p.Process(tctx(), snoozetypes.Record{
+			Hash: "hash-success", UID: uid, Host: "db-01", Severity: "critical",
+			Message: "disk 98%", State: "open", Timestamp: time.Now(),
+		})
+		require.NoError(t, err)
+
+		rows := waitForDeliveryRows(t, host, 1, 2*time.Second)
+		require.Len(t, rows, 1)
+		row := rows[0]
+		require.Equal(t, "success", row["status"])
+		require.Equal(t, goodAction, row["action"])
+		require.Equal(t, "mail", row["notifier"])
+		require.Equal(t, false, row["batch"])
+		require.NotContains(t, row, "error")
+		require.Equal(t, []string{notifUID}, strList(t, row["notification_uids"]))
+		require.Equal(t, []string{notifName}, strList(t, row["notification_names"]))
+		require.Equal(t, []string{uid}, strList(t, row["alert_uids"]))
+
+		epoch, ok := plugins.CounterValue(row["date_epoch"])
+		require.True(t, ok)
+		require.Greater(t, epoch, int64(0))
+		queued, ok := plugins.CounterValue(row["queued_epoch"])
+		require.True(t, ok)
+		require.Greater(t, queued, int64(0))
+		durMS, ok := plugins.CounterValue(row["duration_ms"])
+		require.True(t, ok)
+		require.GreaterOrEqual(t, durMS, int64(0))
+		count, ok := plugins.CounterValue(row["alert_count"])
+		require.True(t, ok)
+		require.Equal(t, int64(1), count)
+
+		alert := firstAlert(t, row)
+		require.Equal(t, "db-01", alert["host"])
+		require.Equal(t, "critical", alert["severity"])
+		require.Equal(t, "disk 98%", alert["message"])
+		require.Equal(t, "open", alert["state"])
+		require.Equal(t, notifName, alert["notification"])
+		require.Equal(t, uid, alert["uid"])
+	})
+
+	t.Run("failed_send_writes_error_row", func(t *testing.T) {
+		host := newHost(t)
+		host.plugins["mail"] = &failingNotifier{name: "mail"}
+		p, _ := seed(t, host,
+			[]map[string]any{{"name": badAction, "action": map[string]any{"selected": "mail", "subcontent": map[string]any{}}}},
+			[]any{badAction})
+
+		seedRecord(t, host, "hash-fail")
+		_, err := p.Process(tctx(), snoozetypes.Record{Hash: "hash-fail", Host: "db-01", Timestamp: time.Now()})
+		require.NoError(t, err)
+
+		rows := waitForDeliveryRows(t, host, 1, 2*time.Second)
+		require.Len(t, rows, 1)
+		require.Equal(t, "error", rows[0]["status"])
+		require.Equal(t, "send: simulated failure", rows[0]["error"])
+		require.Equal(t, badAction, rows[0]["action"])
+	})
+
+	t.Run("misconfigured_action_writes_error_row_off_the_ingest_path", func(t *testing.T) {
+		host := newHost(t)
+		writeEntries(t, host, []map[string]any{
+			{"name": notifName, "condition": []any{}, "actions": []any{"DoesNotExist"}},
+		})
+		p := newPlugin(t, host)
+
+		_, err := p.Process(tctx(), snoozetypes.Record{Hash: "hash-missing", Host: "db-01", Timestamp: time.Now()})
+		require.NoError(t, err)
+
+		// D11: no delivery write happens on the pipeline goroutine, not even
+		// for an action that never resolved — so the row shows up shortly
+		// after Process returned, not during it.
+		rows := waitForDeliveryRows(t, host, 1, 2*time.Second)
+		require.Len(t, rows, 1)
+		require.Equal(t, "error", rows[0]["status"])
+		require.Equal(t, `action "DoesNotExist" not found`, rows[0]["error"])
+		require.Equal(t, "DoesNotExist", rows[0]["action"])
+		require.Equal(t, "", rows[0]["notifier"], "action doc was never found, so no notifier key is known")
+	})
+
+	t.Run("misconfigured_notifier_row_keeps_the_selected_key", func(t *testing.T) {
+		host := newHost(t)
+		p, _ := seed(t, host,
+			[]map[string]any{{"name": badAction, "action": map[string]any{"selected": "nope", "subcontent": map[string]any{}}}},
+			[]any{badAction})
+
+		_, err := p.Process(tctx(), snoozetypes.Record{Hash: "hash-noplug", Host: "db-01", Timestamp: time.Now()})
+		require.NoError(t, err)
+
+		rows := waitForDeliveryRows(t, host, 1, 2*time.Second)
+		require.Len(t, rows, 1)
+		require.Equal(t, `notifier "nope" not registered`, rows[0]["error"])
+		require.Equal(t, "nope", rows[0]["notifier"])
+	})
+
+	t.Run("misconfigured_rows_are_deduped_per_notification_and_action", func(t *testing.T) {
+		host := newHost(t)
+		writeEntries(t, host, []map[string]any{
+			{"name": notifName, "condition": []any{}, "actions": []any{"DoesNotExist"}},
+		})
+		p := newPlugin(t, host)
+
+		// A broken action sits on a condition that keeps matching. Fifty alerts
+		// must not become fifty identical rows.
+		for i := range 50 {
+			_, err := p.Process(tctx(), snoozetypes.Record{
+				Hash: fmt.Sprintf("hash-dupe-%d", i), Host: "db-01", Timestamp: time.Now(),
+			})
+			require.NoError(t, err)
+		}
+
+		waitForDeliveryRows(t, host, 1, 2*time.Second)
+		time.Sleep(100 * time.Millisecond) // let any stragglers land
+		rows := deliveryRows(t, host)
+		require.Len(t, rows, 1, "one row per (tenant, notification, action) per window")
+		require.Equal(t, "DoesNotExist", rows[0]["action"])
+
+		// The window is per combination, so a DIFFERENT broken action still
+		// gets its own row.
+		writeEntries(t, host, []map[string]any{
+			{"name": "OtherNotification", "condition": []any{}, "actions": []any{"AlsoMissing"}},
+		})
+		require.NoError(t, p.Reload(tctx()))
+		_, err := p.Process(tctx(), snoozetypes.Record{Hash: "hash-dupe-other", Host: "db-01", Timestamp: time.Now()})
+		require.NoError(t, err)
+		rows = waitForDeliveryRows(t, host, 2, 2*time.Second)
+		require.Len(t, rows, 2)
+	})
+
+	t.Run("misconfigured_row_reappears_once_the_window_expires", func(t *testing.T) {
+		host := newHost(t)
+		writeEntries(t, host, []map[string]any{
+			{"name": notifName, "condition": []any{}, "actions": []any{"DoesNotExist"}},
+		})
+		p := newPlugin(t, host)
+		e := Entry{Name: notifName, UID: "n-1"}
+
+		now := time.Now()
+		require.True(t, p.allowMisconfiguredRow(snoozetypes.DefaultTenant, e, "A", now))
+		require.False(t, p.allowMisconfiguredRow(snoozetypes.DefaultTenant, e, "A", now.Add(time.Minute)))
+		require.True(t, p.allowMisconfiguredRow(snoozetypes.DefaultTenant, e, "A", now.Add(misconfiguredRowWindow)),
+			"the rate limit is a window, not a mute button")
+
+		// Another tenant hitting the same notification+action is a separate
+		// deployment's problem and gets its own row.
+		require.True(t, p.allowMisconfiguredRow("acme", e, "A", now.Add(time.Minute)))
+
+		// The sweep keeps the map bounded: the stale entry from the first call
+		// is gone once a later insert runs.
+		p.misconfMu.Lock()
+		size := len(p.misconfSeen)
+		p.misconfMu.Unlock()
+		require.LessOrEqual(t, size, 2, "expired entries are pruned on insert")
+	})
+
+	t.Run("frequency_skipped_writes_nothing", func(t *testing.T) {
+		host := newHost(t)
+		notifier := &recordingNotifier{name: "mail"}
+		host.registerNotifier(notifier)
+		writeActions(t, host, []map[string]any{
+			{"name": goodAction, "action": map[string]any{"selected": "mail", "subcontent": map[string]any{}}},
+		})
+		writeEntries(t, host, []map[string]any{
+			{"name": notifName, "condition": []any{}, "actions": []any{goodAction},
+				"frequency": map[string]any{"total": 0}},
+		})
+		p := newPlugin(t, host)
+
+		_, err := p.Process(tctx(), snoozetypes.Record{Hash: "hash-skip", Host: "db-01", Timestamp: time.Now()})
+		require.NoError(t, err)
+		time.Sleep(100 * time.Millisecond)
+		require.Empty(t, deliveryRows(t, host), "a frequency-suppressed action is not a delivery")
+	})
+
+	t.Run("batched_send_writes_no_row_no_stat_and_stamps_sent", func(t *testing.T) {
+		host, capDrv := newMetricsHost(t)
+		host.cfg.General.MetricsEnabled = true
+		batching := &batchingNotifier{name: "script"}
+		host.plugins["script"] = batching
+		writeActions(t, host.testHost, []map[string]any{
+			{"name": goodAction, "action": map[string]any{"selected": "script", "subcontent": map[string]any{}}},
+		})
+		writeEntries(t, host.testHost, []map[string]any{
+			{"name": notifName, "condition": []any{}, "actions": []any{goodAction}},
+		})
+		p := newPlugin(t, host.testHost)
+
+		seedRecord(t, host.testHost, "hash-batch")
+		_, err := p.Process(tctx(), snoozetypes.Record{Hash: "hash-batch", Host: "db-01", Timestamp: time.Now()})
+		require.NoError(t, err)
+
+		// Wait for the write-back so the coordinator has definitely finished.
+		var actions []any
+		deadline := time.Now().Add(2 * time.Second)
+		for time.Now().Before(deadline) {
+			doc, err := host.driver.GetOne(tctx(), recordCollectionName, db.Document{"hash": "hash-batch"})
+			require.NoError(t, err)
+			if raw, ok := doc["actions"].([]any); ok && len(raw) > 0 {
+				actions = raw
+				break
+			}
+			time.Sleep(5 * time.Millisecond)
+		}
+		require.Len(t, actions, 1, "the coordinator never wrote the actions array back")
+		entry, ok := actions[0].(map[string]any)
+		require.True(t, ok)
+		require.Equal(t, actionSent, entry["status"],
+			"a batched send is dispatched, not delivered: the flush owns the outcome")
+
+		require.Empty(t, deliveryRows(t, host.testHost), "the flush writes the row, not the dispatcher")
+		require.NoError(t, host.writer.Flush(context.Background()))
+		// No action_success / action_error FROM THE COORDINATOR: the outcome is
+		// the flush's to report, and the flush (a real batching notifier's
+		// flushBucket, not this fake) records one stat per member there. The
+		// fake never flushes, so nothing at all should be here.
+		for _, op := range capDrv.Captured() {
+			require.NotEqual(t, "action_error", op.search["metric"], "ErrBatched is not a failure")
+			require.NotEqual(t, "action_success", op.search["metric"], "ErrBatched is not a delivery")
+		}
+	})
+
+	t.Run("member_uid_resolved_from_hash_when_record_has_none", func(t *testing.T) {
+		host := newHost(t)
+		notifier := &recordingNotifier{name: "mail"}
+		host.registerNotifier(notifier)
+		p, _ := seed(t, host,
+			[]map[string]any{{"name": goodAction, "action": map[string]any{"selected": "mail", "subcontent": map[string]any{}}}},
+			[]any{goodAction})
+
+		// The record already exists in the DB (aggregated duplicate landing
+		// mid-pipeline) but the in-memory copy the dispatcher sees has no uid,
+		// exactly like a first occurrence.
+		uid := seedRecord(t, host, "hash-nouid")
+		_, err := p.Process(tctx(), snoozetypes.Record{Hash: "hash-nouid", Host: "db-01", Timestamp: time.Now()})
+		require.NoError(t, err)
+
+		rows := waitForDeliveryRows(t, host, 1, 2*time.Second)
+		require.Equal(t, uid, firstAlert(t, rows[0])["uid"], "uid must be resolved by hash after the write-back")
+		require.Equal(t, []string{uid}, strList(t, rows[0]["alert_uids"]))
+	})
+
+	t.Run("rows_written_when_action_outcomes_are_not_persisted", func(t *testing.T) {
+		host := newHost(t)
+		host.cfg.Notification.PersistActionOutcomes = false
+		notifier := &recordingNotifier{name: "mail"}
+		host.registerNotifier(notifier)
+		p, _ := seed(t, host,
+			[]map[string]any{{"name": goodAction, "action": map[string]any{"selected": "mail", "subcontent": map[string]any{}}}},
+			[]any{goodAction})
+
+		uid := seedRecord(t, host, "hash-nopersist")
+		_, err := p.Process(tctx(), snoozetypes.Record{Hash: "hash-nopersist", Host: "db-01", Timestamp: time.Now()})
+		require.NoError(t, err)
+
+		rows := waitForDeliveryRows(t, host, 1, 2*time.Second)
+		require.Equal(t, "success", rows[0]["status"])
+		require.Equal(t, uid, firstAlert(t, rows[0])["uid"])
+
+		doc, err := host.driver.GetOne(tctx(), recordCollectionName, db.Document{"hash": "hash-nopersist"})
+		require.NoError(t, err)
+		require.NotContains(t, doc, "actions", "persist_action_outcomes=false must still skip the write-back")
+	})
+
+	t.Run("counters_bump_once_per_notification_per_record", func(t *testing.T) {
+		host := newHost(t)
+		host.registerNotifier(&recordingNotifier{name: "mail"})
+		host.registerNotifier(&recordingNotifier{name: "chat"})
+		p, notifUID := seed(t, host, []map[string]any{
+			{"name": goodAction, "action": map[string]any{"selected": "mail", "subcontent": map[string]any{}}},
+			{"name": "ChatOncall", "action": map[string]any{"selected": "chat", "subcontent": map[string]any{}}},
+		}, []any{goodAction, "ChatOncall"})
+
+		before := time.Now().Unix()
+		seedRecord(t, host, "hash-counters")
+		_, err := p.Process(tctx(), snoozetypes.Record{Hash: "hash-counters", Host: "db-01", Timestamp: time.Now()})
+		require.NoError(t, err)
+
+		waitForDeliveryRows(t, host, 2, 2*time.Second)
+		// The counter write happens before the rows are persisted, so once both
+		// rows are visible the bump has landed.
+		doc, err := host.driver.GetOne(tctx(), collectionName, db.Document{"uid": notifUID})
+		require.NoError(t, err)
+		hits, ok := plugins.CounterValue(doc["hits"])
+		require.True(t, ok, "hits missing: %#v", doc)
+		require.Equal(t, int64(1), hits, "two actions of one notification are one notification hit")
+		lastSent, ok := plugins.CounterValue(doc["last_sent"])
+		require.True(t, ok)
+		require.GreaterOrEqual(t, lastSent, before)
+	})
+
+	t.Run("counters_untouched_on_failed_delivery", func(t *testing.T) {
+		host := newHost(t)
+		host.plugins["mail"] = &failingNotifier{name: "mail"}
+		p, notifUID := seed(t, host,
+			[]map[string]any{{"name": badAction, "action": map[string]any{"selected": "mail", "subcontent": map[string]any{}}}},
+			[]any{badAction})
+
+		seedRecord(t, host, "hash-nocounter")
+		_, err := p.Process(tctx(), snoozetypes.Record{Hash: "hash-nocounter", Host: "db-01", Timestamp: time.Now()})
+		require.NoError(t, err)
+
+		waitForDeliveryRows(t, host, 1, 2*time.Second)
+		doc, err := host.driver.GetOne(tctx(), collectionName, db.Document{"uid": notifUID})
+		require.NoError(t, err)
+		require.NotContains(t, doc, "hits")
+		require.NotContains(t, doc, "last_sent")
+	})
+
+	t.Run("delivery_log_disabled_writes_no_rows_but_still_stamps_outcomes", func(t *testing.T) {
+		host := newHost(t)
+		host.cfg.Notification.DeliveryLog = false
+		notifier := &recordingNotifier{name: "mail"}
+		host.registerNotifier(notifier)
+		p, _ := seed(t, host,
+			[]map[string]any{{"name": goodAction, "action": map[string]any{"selected": "mail", "subcontent": map[string]any{}}}},
+			[]any{goodAction})
+
+		seedRecord(t, host, "hash-off")
+		_, err := p.Process(tctx(), snoozetypes.Record{Hash: "hash-off", Host: "db-01", Timestamp: time.Now()})
+		require.NoError(t, err)
+
+		var actions []any
+		deadline := time.Now().Add(2 * time.Second)
+		for time.Now().Before(deadline) {
+			doc, err := host.driver.GetOne(tctx(), recordCollectionName, db.Document{"hash": "hash-off"})
+			require.NoError(t, err)
+			if raw, ok := doc["actions"].([]any); ok && len(raw) > 0 {
+				actions = raw
+				break
+			}
+			time.Sleep(5 * time.Millisecond)
+		}
+		require.Len(t, actions, 1)
+		entry, _ := actions[0].(map[string]any)
+		require.Equal(t, actionSuccess, entry["status"], "the outcome stamp is independent of the delivery log")
+		require.Empty(t, deliveryRows(t, host), "delivery_log=false must suppress every row")
+	})
+
+	t.Run("captures_notify_ref_and_derives_the_jira_url", func(t *testing.T) {
+		host := newHost(t)
+		host.plugins["jira"] = &refNotifier{name: "jira", ref: map[string]any{"issue_key": "OPS-123"}}
+		p, _ := seed(t, host, []map[string]any{
+			{"name": "JiraOncall", "action": map[string]any{
+				"selected":   "jira",
+				"subcontent": map[string]any{"jira_url": "https://jira.example.com/"},
+			}},
+		}, []any{"JiraOncall"})
+
+		seedRecord(t, host, "hash-jira")
+		_, err := p.Process(tctx(), snoozetypes.Record{Hash: "hash-jira", Host: "db-01", Timestamp: time.Now()})
+		require.NoError(t, err)
+
+		rows := waitForDeliveryRows(t, host, 1, 2*time.Second)
+		ref, ok := rows[0]["ref"].(map[string]any)
+		require.True(t, ok, "row carries no ref: %#v", rows[0])
+		require.Equal(t, "OPS-123", ref["issue_key"])
+		require.Equal(t, "https://jira.example.com/browse/OPS-123", ref["url"])
+
+		// The wrapper must not change what the notifier writes to the record.
+		doc, err := host.driver.GetOne(tctx(), recordCollectionName, db.Document{"hash": "hash-jira"})
+		require.NoError(t, err)
+		stored, ok := doc["notify_ref_JiraOncall"].(map[string]any)
+		require.True(t, ok, "inject_response must still land on the record: %#v", doc)
+		require.Equal(t, "OPS-123", stored["issue_key"])
+	})
+
+	t.Run("row_is_written_even_when_the_record_never_lands", func(t *testing.T) {
+		host := newHost(t)
+		host.registerNotifier(&recordingNotifier{name: "mail"})
+		writeActions(t, host, []map[string]any{
+			{"name": goodAction, "action": map[string]any{"selected": "mail", "subcontent": map[string]any{}}},
+		})
+		writeEntries(t, host, []map[string]any{
+			{"name": notifName, "condition": []any{}, "actions": []any{goodAction}},
+		})
+		// A tight budget so the hash write-back exhausts it quickly. The record
+		// is deliberately never seeded, so the write-back polls until it gives
+		// up — which used to leave the delivery row to be written on a context
+		// that was already dead, silently losing the history of a send that
+		// really happened.
+		p := newPluginWithBudget(t, host, 150*time.Millisecond)
+
+		_, err := p.Process(tctx(), snoozetypes.Record{
+			Hash: "hash-never-lands", Host: "db-01", Severity: "critical",
+			Message: "disk 98%", State: "open", Timestamp: time.Now(),
+		})
+		require.NoError(t, err)
+
+		rows := waitForDeliveryRows(t, host, 1, 3*time.Second)
+		require.Len(t, rows, 1)
+		require.Equal(t, "success", rows[0]["status"])
+		alert := firstAlert(t, rows[0])
+		require.Equal(t, "hash-never-lands", alert["hash"], "the hash is what the UI links on")
+		require.Nil(t, alert["uid"], "no record, no uid — the row still has to exist")
+		require.Empty(t, strList(t, rows[0]["alert_uids"]))
+	})
+
+	t.Run("delivery_log_disabled_skips_the_uid_read", func(t *testing.T) {
+		// The switch is meant to make dispatch cheaper, not just quieter: with
+		// the log off the coordinator must do no hash lookup and no row write.
+		run := func(t *testing.T, enabled bool) (int64, int) {
+			t.Helper()
+			host := newHost(t)
+			host.cfg.Notification.DeliveryLog = enabled
+			counting := &getOneCountDriver{Driver: host.driver}
+			host.driver = counting
+			host.registerNotifier(&recordingNotifier{name: "mail"})
+			p, _ := seed(t, host,
+				[]map[string]any{{"name": goodAction, "action": map[string]any{"selected": "mail", "subcontent": map[string]any{}}}},
+				[]any{goodAction})
+
+			seedRecord(t, host, "hash-uidread")
+			counting.n.Store(0) // the seeding helper reads by hash too
+
+			// No uid on the in-memory record: exactly the first-occurrence
+			// shape that makes the coordinator resolve one.
+			_, err := p.Process(tctx(), snoozetypes.Record{
+				Hash: "hash-uidread", Host: "db-01", Timestamp: time.Now(),
+			})
+			require.NoError(t, err)
+
+			// Wait for the write-back so the coordinator has certainly reached
+			// (or skipped) the delivery phase.
+			deadline := time.Now().Add(2 * time.Second)
+			for time.Now().Before(deadline) {
+				doc, err := host.driver.GetOne(tctx(), recordCollectionName, db.Document{"hash": "hash-uidread"})
+				require.NoError(t, err)
+				if raw, ok := doc["actions"].([]any); ok && len(raw) > 0 {
+					break
+				}
+				time.Sleep(5 * time.Millisecond)
+			}
+			counting.n.Store(0) // the poll above reads by hash as well
+			time.Sleep(150 * time.Millisecond)
+			return counting.n.Load(), len(deliveryRows(t, host))
+		}
+
+		reads, rows := run(t, false)
+		require.Zero(t, reads, "delivery_log=false must not read the record by hash")
+		require.Zero(t, rows)
+	})
+
+	t.Run("counters_bump_even_when_the_delivery_log_is_off", func(t *testing.T) {
+		// hits / last_sent are a separate feature with no switch of their own:
+		// an operator who turned the history off still sees "Sent 142×".
+		host := newHost(t)
+		host.cfg.Notification.DeliveryLog = false
+		host.registerNotifier(&recordingNotifier{name: "mail"})
+		p, notifUID := seed(t, host,
+			[]map[string]any{{"name": goodAction, "action": map[string]any{"selected": "mail", "subcontent": map[string]any{}}}},
+			[]any{goodAction})
+
+		seedRecord(t, host, "hash-counters-nolog")
+		_, err := p.Process(tctx(), snoozetypes.Record{Hash: "hash-counters-nolog", Host: "db-01", Timestamp: time.Now()})
+		require.NoError(t, err)
+
+		require.Eventually(t, func() bool {
+			doc, err := host.driver.GetOne(tctx(), collectionName, db.Document{"uid": notifUID})
+			require.NoError(t, err)
+			hits, ok := plugins.CounterValue(doc["hits"])
+			return ok && hits == 1
+		}, 2*time.Second, 10*time.Millisecond, "the counters do not depend on the delivery log")
+		require.Empty(t, deliveryRows(t, host))
+	})
+
+	t.Run("no_ref_for_a_notifier_that_stores_nothing", func(t *testing.T) {
+		host := newHost(t)
+		host.registerNotifier(&recordingNotifier{name: "mail"})
+		p, _ := seed(t, host,
+			[]map[string]any{{"name": goodAction, "action": map[string]any{"selected": "mail", "subcontent": map[string]any{}}}},
+			[]any{goodAction})
+
+		seedRecord(t, host, "hash-noref")
+		_, err := p.Process(tctx(), snoozetypes.Record{Hash: "hash-noref", Host: "db-01", Timestamp: time.Now()})
+		require.NoError(t, err)
+
+		rows := waitForDeliveryRows(t, host, 1, 2*time.Second)
+		require.NotContains(t, rows[0], "ref")
+	})
 }

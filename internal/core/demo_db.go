@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"regexp"
+	"sort"
 	"time"
 
 	"golang.org/x/crypto/bcrypt"
@@ -84,6 +85,9 @@ func SeedDemoData(ctx context.Context, drv db.Driver) error {
 	}
 	if err := seedDemoStats(ctx, drv, now); err != nil {
 		return fmt.Errorf("demo_db: stats: %w", err)
+	}
+	if err := seedDemoNotificationLog(ctx, drv, now, rUIDs); err != nil {
+		return fmt.Errorf("demo_db: notificationlog: %w", err)
 	}
 
 	if _, err := drv.Write(ctx, generalCollection, []db.Document{{demoMarkerField: true}},
@@ -716,6 +720,297 @@ func seedDemoStats(ctx context.Context, drv db.Driver, now time.Time) error {
 		UpdateTime: false,
 	})
 	return err
+}
+
+// --- notification log (delivery history) ---
+
+// demoAlertRef captures the fields of one already-seeded demo alert record
+// that notificationlog rows reuse as "alerts[]" members, so the row's uid /
+// hash resolve to a real record the operator can open in the alerts table.
+type demoAlertRef struct {
+	uid, host, severity, state, message string
+}
+
+// demoNotificationLogAlerts returns the four demo alert records that are
+// severity=critical AND environment=production — the only ones that match
+// both seeded notifications ("Critical Alerts": severity==critical;
+// "Production Incidents": production && critical). These are rUIDs indices
+// 0, 1, 6 and 9 in seedDemoRecords' defs; host/message/state are kept in
+// lock-step with that list by hand, the same way demoNotifRules mirrors
+// seedDemoNotifications.
+func demoNotificationLogAlerts(rUIDs []string) []demoAlertRef {
+	return []demoAlertRef{
+		{uid: rUIDs[0], host: "web-prod-01", severity: "critical", state: "open",
+			message: "HTTP 5xx error rate above 10% for 5 minutes"},
+		{uid: rUIDs[1], host: "db-prod-01", severity: "critical", state: "open",
+			message: "PostgreSQL connection pool exhausted (95% used)"},
+		{uid: rUIDs[6], host: "web-prod-02", severity: "critical", state: "ack",
+			message: "TLS certificate expiring in 7 days (SAN: *.acme.com)"},
+		{uid: rUIDs[9], host: "db-prod-01", severity: "critical", state: "esc",
+			message: "Disk space on /var/lib/postgresql at 92% — escalated to DBA"},
+	}
+}
+
+// demoAlertMember builds one notificationlog "alerts[]" entry, stamping the
+// same hash demoBuildEnrichment/demoComputeHash gave the underlying record.
+func demoAlertMember(a demoAlertRef, notification string) map[string]any {
+	return map[string]any{
+		"uid":          a.uid,
+		"hash":         demoComputeHash(a.host, a.message),
+		"host":         a.host,
+		"severity":     a.severity,
+		"message":      a.message,
+		"state":        a.state,
+		"notification": notification,
+	}
+}
+
+// demoList renders a notificationlog row's flat array field.
+//
+// The element type is []any, not []string, on purpose — it mirrors
+// plugins.DeliveryRow.Doc(): the in-memory condition evaluator's Flatten only
+// descends into []any, so a []string would make `notification_uids CONTAINS
+// "x"` silently false on every non-SQL path.
+//
+// Empty strings are skipped rather than stored. A notification whose uid could
+// not be resolved must contribute NO entry; writing [""] would give the DSL an
+// empty-string element to match and would make notification_uids longer than
+// the set of notifications it claims to name.
+func demoList(values ...string) []any {
+	out := make([]any, 0, len(values))
+	for _, v := range values {
+		if v == "" {
+			continue
+		}
+		out = append(out, v)
+	}
+	return out
+}
+
+// demoMemberList is demoList for the alerts[] snapshot.
+func demoMemberList(members ...map[string]any) []any {
+	out := make([]any, 0, len(members))
+	for _, m := range members {
+		out = append(out, m)
+	}
+	return out
+}
+
+// demoLookupNotificationUIDs resolves the driver-minted uids of the seeded
+// demo notifications by name. seedDemoNotifications upserts by "name" (no
+// uid supplied), so the uid is only known after the write; notificationlog
+// rows need it for notification_uids so the web UI's "uid IN […]" deep link
+// resolves.
+func demoLookupNotificationUIDs(ctx context.Context, drv db.Driver) (map[string]string, error) {
+	docs, _, err := drv.Search(ctx, "notification", condition.Cond{}, db.Page{})
+	if err != nil {
+		return nil, fmt.Errorf("resolve notification uids: %w", err)
+	}
+	uids := make(map[string]string, len(docs))
+	for _, d := range docs {
+		name, _ := d["name"].(string)
+		uid, _ := d["uid"].(string)
+		if name != "" && uid != "" {
+			uids[name] = uid
+		}
+	}
+	return uids, nil
+}
+
+// demoDeliveryCounters accumulates the per-notification display counters the
+// dispatcher would have stamped while producing the seeded rows.
+type demoDeliveryCounters struct {
+	hits     int64
+	lastSent int64
+}
+
+// seedDemoNotificationLog seeds notificationlog rows spread over the last 7
+// days so try.snoozeweb.net's Deliveries tab is populated on first boot: the
+// bulk are unbatched "mail" successes for "Production Incidents" (one alert
+// each), one row is a batched "webhook" flush for "Critical Alerts" with all
+// four demo alerts as members, and two rows are `error` (one per notifier)
+// carrying a realistic transport error. Timestamps are evenly spaced and
+// deterministic so repeat seeds (and tests) produce a stable count and order.
+//
+// It also stamps the `hits` / `last_sent` counters onto the demo notification
+// entries, because on a live server those are written by the dispatcher as a
+// side effect of the very sends these rows describe. Without them the demo's
+// notifications table shows empty Sent / Last sent columns next to a populated
+// Deliveries tab, which reads as a bug.
+func seedDemoNotificationLog(ctx context.Context, drv db.Driver, now time.Time, rUIDs []string) error {
+	notifUIDs, err := demoLookupNotificationUIDs(ctx, drv)
+	if err != nil {
+		return err
+	}
+	criticalUID := notifUIDs["Critical Alerts"]
+	prodUID := notifUIDs["Production Incidents"]
+
+	alerts := demoNotificationLogAlerts(rUIDs)
+
+	const total = 60
+	const batchSlot = 12
+	const mailErrSlot = 27
+	const webhookErrSlot = 45
+	spacing := 7 * 24 * time.Hour / time.Duration(total)
+
+	counters := map[string]*demoDeliveryCounters{}
+	// bump records what the dispatcher would have stamped on the notification
+	// entry for one SUCCESSFUL delivery: +1 hit (per row, not per alert) and a
+	// last_sent watermark.
+	bump := func(name string, dateEpoch int64) {
+		c, ok := counters[name]
+		if !ok {
+			c = &demoDeliveryCounters{}
+			counters[name] = c
+		}
+		c.hits++
+		if dateEpoch > c.lastSent {
+			c.lastSent = dateEpoch
+		}
+	}
+
+	docs := make([]db.Document, 0, total)
+	for i := 0; i < total; i++ {
+		dateEpoch := now.Add(-time.Duration(i) * spacing).Unix()
+		a := alerts[i%len(alerts)]
+
+		switch i {
+		case batchSlot:
+			members := make([]map[string]any, 0, len(alerts))
+			uids := make([]string, 0, len(alerts))
+			hashes := make([]string, 0, len(alerts))
+			for _, m := range alerts {
+				entry := demoAlertMember(m, "Critical Alerts")
+				members = append(members, entry)
+				uids = append(uids, m.uid)
+				hashes = append(hashes, entry["hash"].(string))
+			}
+			docs = append(docs, db.Document{
+				"date_epoch":         dateEpoch,
+				"queued_epoch":       dateEpoch - 3,
+				"duration_ms":        int64(1840),
+				"status":             "success",
+				"action":             "Slack #ops-alerts",
+				"notifier":           "webhook",
+				"batch":              true,
+				"batch_reason":       "size",
+				"notification_uids":  demoList(criticalUID),
+				"notification_names": demoList("Critical Alerts"),
+				"alert_count":        int64(len(members)),
+				"alert_uids":         demoList(uids...),
+				"alert_hashes":       demoList(hashes...),
+				"alerts":             demoMemberList(members...),
+				"escalation_count":   int64(0),
+				"escalation_reason":  "",
+			})
+			bump("Critical Alerts", dateEpoch)
+		case mailErrSlot:
+			entry := demoAlertMember(a, "Production Incidents")
+			docs = append(docs, db.Document{
+				"date_epoch":         dateEpoch,
+				"queued_epoch":       dateEpoch - 1,
+				"duration_ms":        int64(5012),
+				"status":             "error",
+				"error":              "dial tcp 10.0.0.5:25: connect: connection refused",
+				"action":             "Email Operations",
+				"notifier":           "mail",
+				"batch":              false,
+				"batch_reason":       "",
+				"notification_uids":  demoList(prodUID),
+				"notification_names": demoList("Production Incidents"),
+				"alert_count":        int64(1),
+				"alert_uids":         demoList(a.uid),
+				"alert_hashes":       demoList(entry["hash"].(string)),
+				"alerts":             demoMemberList(entry),
+				"escalation_count":   int64(0),
+				"escalation_reason":  "",
+			})
+		case webhookErrSlot:
+			entry := demoAlertMember(a, "Critical Alerts")
+			docs = append(docs, db.Document{
+				"date_epoch":         dateEpoch,
+				"queued_epoch":       dateEpoch - 1,
+				"duration_ms":        int64(842),
+				"status":             "error",
+				"error":              "webhook: 502 Bad Gateway",
+				"action":             "Slack #ops-alerts",
+				"notifier":           "webhook",
+				"batch":              false,
+				"batch_reason":       "",
+				"notification_uids":  demoList(criticalUID),
+				"notification_names": demoList("Critical Alerts"),
+				"alert_count":        int64(1),
+				"alert_uids":         demoList(a.uid),
+				"alert_hashes":       demoList(entry["hash"].(string)),
+				"alerts":             demoMemberList(entry),
+				"escalation_count":   int64(0),
+				"escalation_reason":  "",
+			})
+		default:
+			entry := demoAlertMember(a, "Production Incidents")
+			docs = append(docs, db.Document{
+				"date_epoch":         dateEpoch,
+				"queued_epoch":       dateEpoch - 1,
+				"duration_ms":        int64(280 + int64(i%5)*40),
+				"status":             "success",
+				"action":             "Email Operations",
+				"notifier":           "mail",
+				"batch":              false,
+				"batch_reason":       "",
+				"notification_uids":  demoList(prodUID),
+				"notification_names": demoList("Production Incidents"),
+				"alert_count":        int64(1),
+				"alert_uids":         demoList(a.uid),
+				"alert_hashes":       demoList(entry["hash"].(string)),
+				"alerts":             demoMemberList(entry),
+				"escalation_count":   int64(0),
+				"escalation_reason":  "",
+			})
+			bump("Production Incidents", dateEpoch)
+		}
+	}
+
+	if _, err := drv.Write(ctx, "notificationlog", docs, db.WriteOptions{UpdateTime: false}); err != nil {
+		return fmt.Errorf("write notificationlog rows: %w", err)
+	}
+	return seedDemoNotificationCounters(ctx, drv, notifUIDs, counters)
+}
+
+// seedDemoNotificationCounters stamps hits / last_sent onto the demo
+// notification entries so the notifications table's Sent and Last sent columns
+// agree with the seeded delivery history.
+//
+// Uses SetFields by uid — the same call the live dispatcher makes — so it also
+// exercises the counter-only publish suppression (db.IsCounterOnlyPatch): the
+// stamp must not trigger a notification-plugin reload. Names are sorted so a
+// repeat seed writes in a stable order.
+func seedDemoNotificationCounters(
+	ctx context.Context,
+	drv db.Driver,
+	notifUIDs map[string]string,
+	counters map[string]*demoDeliveryCounters,
+) error {
+	names := make([]string, 0, len(counters))
+	for name := range counters {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	for _, name := range names {
+		uid := notifUIDs[name]
+		if uid == "" {
+			// The notification could not be resolved (a demo rename): its rows
+			// already carry no uid, so there is nothing to stamp either.
+			continue
+		}
+		c := counters[name]
+		if _, err := drv.SetFields(ctx, "notification", db.Document{
+			"hits":      c.hits,
+			"last_sent": c.lastSent,
+		}, condition.Equals("uid", uid)); err != nil {
+			return fmt.Errorf("stamp notification counters for %q: %w", name, err)
+		}
+	}
+	return nil
 }
 
 // demoStatDoc builds one stats counter document.

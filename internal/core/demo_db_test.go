@@ -244,3 +244,186 @@ func TestSeedDemoDataStampsFlowFields(t *testing.T) {
 		t.Fatalf("snoozed alert should fire no actions, got %v", snz["actions"])
 	}
 }
+
+// --- end-to-end: SeedDemoData seeds the notificationlog delivery history ---
+
+// TestSeedDemoDataSeedsNotificationLog boots the demo seed against a real
+// SQLite driver and confirms the notificationlog rows land with a
+// schema-conformant shape: every row has a valid status, alert_count matches
+// len(alerts), the batch row carries 4 members, the two error rows carry
+// error text, and the collection can be listed newest-first by date_epoch.
+func TestSeedDemoDataSeedsNotificationLog(t *testing.T) {
+	t.Parallel()
+	ctx := snoozetypes.WithTenant(context.Background(), snoozetypes.DefaultTenant)
+
+	path := filepath.Join(t.TempDir(), "snooze.db")
+	drv, err := sqlite.New(ctx, sqlite.Config{Path: path})
+	if err != nil {
+		t.Fatalf("sqlite.New: %v", err)
+	}
+	t.Cleanup(func() { _ = drv.Close() })
+
+	if err := SeedDemoData(ctx, drv); err != nil {
+		t.Fatalf("SeedDemoData: %v", err)
+	}
+
+	rows, total, err := drv.Search(ctx, "notificationlog", condition.Cond{},
+		db.Page{OrderBy: "date_epoch", Asc: false, PerPage: 200})
+	if err != nil {
+		t.Fatalf("search notificationlog: %v", err)
+	}
+	if total != 60 || len(rows) != 60 {
+		t.Fatalf("seeded %d notificationlog rows (search returned %d), want 60", total, len(rows))
+	}
+
+	var batchRows, errorRows int
+	lastDate := int64(1<<63 - 1)
+	for i, r := range rows {
+		status, _ := r["status"].(string)
+		if status != "success" && status != "error" {
+			t.Fatalf("row %d: status = %v, want success|error", i, r["status"])
+		}
+		if status == "error" {
+			errorRows++
+			if errStr, _ := r["error"].(string); errStr == "" {
+				t.Fatalf("row %d: error status but empty error text", i)
+			}
+		}
+		alerts, _ := r["alerts"].([]any)
+		count, ok := demoInt64(r["alert_count"])
+		if !ok {
+			t.Fatalf("row %d: alert_count not numeric, got %T", i, r["alert_count"])
+		}
+		if int(count) != len(alerts) {
+			t.Fatalf("row %d: alert_count = %d, len(alerts) = %d, want equal", i, count, len(alerts))
+		}
+		if batch, _ := r["batch"].(bool); batch {
+			batchRows++
+			if len(alerts) != 4 {
+				t.Fatalf("batch row %d: %d members, want 4", i, len(alerts))
+			}
+		}
+		// date_epoch column is round-tripped as an integer type by every driver
+		// (SQLite may hand back int64 or float64 depending on the storage path).
+		date, ok := demoInt64(r["date_epoch"])
+		if !ok {
+			t.Fatalf("row %d: date_epoch not numeric, got %T", i, r["date_epoch"])
+		}
+		if date > lastDate {
+			t.Fatalf("row %d: date_epoch %d out of order after %d (want descending)", i, date, lastDate)
+		}
+		lastDate = date
+	}
+	if batchRows != 1 {
+		t.Fatalf("batch rows = %d, want 1", batchRows)
+	}
+	if errorRows != 2 {
+		t.Fatalf("error rows = %d, want 2", errorRows)
+	}
+
+	// Flat arrays must be []any, not []string: the in-memory condition
+	// evaluator's Flatten only descends into []any, so a []string makes
+	// `notification_uids CONTAINS "…"` silently false off the SQL path. And no
+	// element may be the empty string — an unresolved uid contributes nothing
+	// rather than a [""] the DSL could match.
+	for i, r := range rows {
+		for _, field := range []string{"notification_uids", "notification_names", "alert_uids", "alert_hashes", "alerts"} {
+			list, ok := r[field].([]any)
+			if !ok {
+				t.Fatalf("row %d: %s is %T, want []any", i, field, r[field])
+			}
+			if len(list) == 0 {
+				t.Fatalf("row %d: %s is empty", i, field)
+			}
+			for _, v := range list {
+				if str, isStr := v.(string); isStr && str == "" {
+					t.Fatalf("row %d: %s contains an empty string", i, field)
+				}
+			}
+		}
+	}
+
+	// The DSL lookups the Deliveries UI issues must actually resolve against
+	// the seeded rows (this is what a []string would have broken).
+	notifs, _, err := drv.Search(ctx, "notification", condition.Cond{}, db.Page{})
+	if err != nil {
+		t.Fatalf("search notification: %v", err)
+	}
+	byName := map[string]db.Document{}
+	for _, n := range notifs {
+		if name, _ := n["name"].(string); name != "" {
+			byName[name] = n
+		}
+	}
+
+	// Counters: the notifications table's Sent / Last sent columns must agree
+	// with the seeded history, exactly as the live dispatcher would leave them.
+	wantHits := map[string]int64{
+		"Critical Alerts":      1,  // one batched webhook success
+		"Production Incidents": 57, // 60 rows - 1 batch - 2 errors
+	}
+	for name, want := range wantHits {
+		doc, ok := byName[name]
+		if !ok {
+			t.Fatalf("demo notification %q missing", name)
+		}
+		hits, ok := demoInt64(doc["hits"])
+		if !ok {
+			t.Fatalf("%s: hits not numeric, got %T", name, doc["hits"])
+		}
+		if hits != want {
+			t.Fatalf("%s: hits = %d, want %d", name, hits, want)
+		}
+		lastSent, ok := demoInt64(doc["last_sent"])
+		if !ok {
+			t.Fatalf("%s: last_sent not numeric, got %T", name, doc["last_sent"])
+		}
+
+		// last_sent must be the newest SUCCESSFUL row for that notification.
+		uid, _ := doc["uid"].(string)
+		if uid == "" {
+			t.Fatalf("%s: no uid", name)
+		}
+		var newestSuccess int64
+		var matched int
+		for _, r := range rows {
+			uids, _ := r["notification_uids"].([]any)
+			var mine bool
+			for _, u := range uids {
+				if u == uid {
+					mine = true
+				}
+			}
+			if !mine {
+				continue
+			}
+			matched++
+			if status, _ := r["status"].(string); status != "success" {
+				continue
+			}
+			if d, _ := demoInt64(r["date_epoch"]); d > newestSuccess {
+				newestSuccess = d
+			}
+		}
+		if matched == 0 {
+			t.Fatalf("%s: no seeded rows reference uid %s", name, uid)
+		}
+		if lastSent != newestSuccess {
+			t.Fatalf("%s: last_sent = %d, want the newest success %d", name, lastSent, newestSuccess)
+		}
+	}
+}
+
+// demoInt64 coerces a DB-roundtripped numeric field (int64 or float64,
+// depending on driver storage) to int64.
+func demoInt64(v any) (int64, bool) {
+	switch x := v.(type) {
+	case int64:
+		return x, true
+	case int:
+		return int64(x), true
+	case float64:
+		return int64(x), true
+	}
+	return 0, false
+}
