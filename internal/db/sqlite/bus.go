@@ -11,7 +11,6 @@ package sqlite
 
 import (
 	"context"
-	"strings"
 	"sync"
 
 	"github.com/snoozeweb/snooze/internal/syncer"
@@ -36,8 +35,8 @@ const subscriberBuffer = 64
 func newInprocBus() *inprocBus { return &inprocBus{} }
 
 // Publish fans an event out to every subscriber whose prefix matches the
-// event topic. Slow subscribers drop the event rather than block the
-// mutation path.
+// event topic (segment-aware — syncer.TopicMatches). Slow subscribers drop
+// the event rather than block the mutation path.
 func (b *inprocBus) Publish(_ context.Context, e syncer.Event) error {
 	// Hold the lock across the fan-out. The sends are non-blocking, so this
 	// never blocks while locked; holding it makes every send mutually exclusive
@@ -49,7 +48,7 @@ func (b *inprocBus) Publish(_ context.Context, e syncer.Event) error {
 		return nil
 	}
 	for _, s := range b.subs {
-		if s.prefix != "" && !strings.HasPrefix(e.Topic, s.prefix) {
+		if !syncer.TopicMatches(e.Topic, s.prefix) {
 			continue
 		}
 		select {
@@ -61,9 +60,9 @@ func (b *inprocBus) Publish(_ context.Context, e syncer.Event) error {
 	return nil
 }
 
-// Subscribe returns a channel that receives events whose Topic starts with
-// topicPrefix. The channel is closed when ctx is cancelled or Close is
-// called on the bus.
+// Subscribe returns a channel that receives events whose Topic matches
+// topicPrefix on dot-delimited segment boundaries (see syncer.TopicMatches).
+// The channel is closed when ctx is cancelled or Close is called on the bus.
 func (b *inprocBus) Subscribe(ctx context.Context, topicPrefix string) (<-chan syncer.Event, error) {
 	b.mu.Lock()
 	if b.closed {

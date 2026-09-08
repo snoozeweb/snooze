@@ -9,6 +9,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"github.com/testcontainers/testcontainers-go"
 	tcmongo "github.com/testcontainers/testcontainers-go/modules/mongodb"
+	"go.mongodb.org/mongo-driver/v2/bson"
 
 	"github.com/snoozeweb/snooze/internal/condition"
 	dbpkg "github.com/snoozeweb/snooze/internal/db"
@@ -205,4 +206,56 @@ func TestDriver_UpdateOneToleratesUIDInPatch(t *testing.T) {
 	require.Equal(t, 1, total, "must update the existing row, not insert a second")
 	require.EqualValues(t, 2, docs[0]["x"])
 	require.Equal(t, "u1", docs[0]["uid"])
+}
+
+// TestCreateIndexCreatesPerFieldIndexes pins the half of CreateIndex that used
+// to be missing: the fields were only "remembered" for SEARCH, so a collection
+// like notificationlog — listed newest-first by date_epoch over a 30-day
+// window — did a COLLSCAN plus an in-memory sort on every page.
+func TestCreateIndexCreatesPerFieldIndexes(t *testing.T) {
+	if testing.Short() {
+		t.Skip("integration: skipping under -short")
+	}
+	drv, cleanup := startMongo(t)
+	defer cleanup()
+	ctx := context.Background()
+	t.Cleanup(func() { _ = drv.Drop(context.Background(), "notificationlog") })
+
+	fields := []string{"date_epoch", "status", "action", "notifier"}
+	require.NoError(t, drv.CreateIndex(ctx, "notificationlog", fields))
+	// Idempotent: boot runs this on every start.
+	require.NoError(t, drv.CreateIndex(ctx, "notificationlog", fields))
+
+	cur, err := drv.coll("notificationlog").Indexes().List(ctx)
+	require.NoError(t, err)
+	var specs []bson.M
+	require.NoError(t, cur.All(ctx, &specs))
+
+	// The `key` sub-document decodes as bson.D, not bson.M — the same
+	// empty-interface-codec detail that broke the change-stream filter for
+	// months (see subDocument in watch.go). Handle both shapes.
+	keyed := map[string]bool{}
+	for _, spec := range specs {
+		switch key := spec["key"].(type) {
+		case bson.D:
+			for _, e := range key {
+				keyed[e.Key] = true
+			}
+		case bson.M:
+			for k := range key {
+				keyed[k] = true
+			}
+		}
+	}
+	require.True(t, keyed["_id"], "sanity: the default _id index must be visible")
+	for _, f := range fields {
+		require.True(t, keyed[f], "missing index on %q; have %v", f, keyed)
+	}
+
+	// SEARCH registration is unchanged.
+	require.Equal(t, fields, drv.searchFieldsFor("notificationlog"))
+
+	// An empty field list stays a pure no-op (most plugins declare none).
+	require.NoError(t, drv.CreateIndex(ctx, "other", nil))
+	require.Empty(t, drv.searchFieldsFor("other"))
 }

@@ -29,12 +29,28 @@ func (d *Driver) SourceActivity(ctx context.Context, since int64) ([]dbpkg.Sourc
 		return out, nil
 	}
 	qt := quoteIdent(table)
+	// numericExpr, not a bare (data->>'date_epoch')::numeric: record.Validate
+	// accepts any JSON value for date_epoch, and one alert carrying a
+	// non-numeric one made the whole inputs page fail with "invalid input
+	// syntax for type numeric" until that row was deleted. COALESCE(..., 0) is
+	// kept, so such a row now counts under its source with last_epoch 0 —
+	// exactly like a record with no date_epoch.
+	//
+	// Error tolerance is the ONLY benefit here. The COALESCE wrapper makes
+	// this predicate un-indexable: Postgres matches an expression index by
+	// comparing expression trees, "COALESCE(<expr>, 0)" is a different node
+	// than "<expr>", and COALESCE is not strict so the planner cannot prove
+	// the partial index's "<expr> IS NOT NULL" predicate either. This query
+	// stays a full scan of `record` (it is an aggregate over every row anyway,
+	// so it always was). Do not "align" it with the index — dropping the
+	// COALESCE would change the aggregate's result for garbage rows.
+	epoch := "COALESCE(" + numericExpr("date_epoch") + ", 0)"
 	q := fmt.Sprintf(
 		"SELECT COALESCE(NULLIF(data->>'source',''), 'unknown') AS source, "+
-			"MAX(COALESCE((data->>'date_epoch')::numeric, 0))::bigint AS last_epoch, "+
+			"MAX(%s)::bigint AS last_epoch, "+
 			"COUNT(*) AS n FROM %s "+
-			"WHERE COALESCE((data->>'date_epoch')::numeric, 0) >= $1%s GROUP BY source",
-		qt, tenantClause,
+			"WHERE %s >= $1%s GROUP BY source",
+		epoch, qt, epoch, tenantClause,
 	)
 	rows, err := d.pool.Query(ctx, q, append([]any{since}, tenantArgs...)...)
 	if err != nil {

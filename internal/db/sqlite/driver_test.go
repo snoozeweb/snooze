@@ -730,7 +730,7 @@ func TestBusFanoutTenantStamped(t *testing.T) {
 	defer cancel()
 
 	// Subscribe on the bare collection prefix; the per-tenant topic must still
-	// match because the syncer subscribes with HasPrefix semantics.
+	// match because the prefix matches on dot-delimited segments.
 	ch, err := d.Watcher().Subscribe(ctx, "collection.rule")
 	require.NoError(t, err)
 
@@ -797,4 +797,136 @@ func TestRegexpUDFErrorBubbles(t *testing.T) {
 	require.Error(t, err)
 	// Should still be a regular Go error, not a panic.
 	require.True(t, errors.Is(err, err) || err != nil)
+}
+
+// TestSetFieldsCounterOnlyDoesNotPublish is the SQL-side twin of the Mongo
+// watcher's counterOnlyUpdate filter (internal/db/counter_fields.go). The
+// notification dispatcher issues one SetFields{hits,last_sent} per successful
+// delivery; if that published, every delivery would debounce-reload the whole
+// notification plugin. The snooze plugin's `hits` bump is suppressed for the
+// same reason. Anything else — including a counter riding along with a real
+// field — must still publish.
+func TestSetFieldsCounterOnlyDoesNotPublish(t *testing.T) {
+	t.Parallel()
+	cases := []struct {
+		name        string
+		collection  string
+		fields      dbpkg.Document
+		wantPublish bool
+	}{
+		{"notification counters", "notification",
+			dbpkg.Document{"hits": int64(3), "last_sent": int64(1757340000)}, false},
+		{"notification hits only", "notification", dbpkg.Document{"hits": int64(3)}, false},
+		{"notification counter plus real field", "notification",
+			dbpkg.Document{"hits": int64(3), "enabled": false}, true},
+		{"notification real field only", "notification", dbpkg.Document{"enabled": false}, true},
+		{"snooze hits", "snooze", dbpkg.Document{"hits": int64(9)}, false},
+		{"snooze last_sent is not a snooze counter", "snooze",
+			dbpkg.Document{"last_sent": int64(1757340000)}, true},
+		{"rule hits is a real edit", "rule", dbpkg.Document{"hits": int64(3)}, true},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			d := newTestDriver(t)
+			ctx, cancel := context.WithCancel(snoozetypes.WithTenant(context.Background(), "acme"))
+			defer cancel()
+
+			res, err := d.Write(ctx, tc.collection,
+				[]dbpkg.Document{{"name": "n1"}}, dbpkg.WriteOptions{})
+			require.NoError(t, err)
+			require.Len(t, res.Added, 1)
+			uid := res.Added[0]
+
+			// Subscribe AFTER the seeding write so only the SetFields shows up.
+			ch, err := d.Watcher().Subscribe(ctx, "collection."+tc.collection)
+			require.NoError(t, err)
+
+			n, err := d.SetFields(ctx, tc.collection, tc.fields, condition.Equals("uid", uid))
+			require.NoError(t, err)
+			require.Equal(t, 1, n, "the row must actually be updated either way")
+
+			select {
+			case ev := <-ch:
+				require.True(t, tc.wantPublish, "counter-only patch must not publish, got %+v", ev)
+				require.Equal(t, []string{uid}, ev.UIDs)
+			case <-time.After(250 * time.Millisecond):
+				require.False(t, tc.wantPublish, "expected a published event")
+			}
+
+			// The write itself always lands, publish or not.
+			doc, err := d.GetOne(ctx, tc.collection, dbpkg.Document{"uid": uid})
+			require.NoError(t, err)
+			require.NotNil(t, doc)
+			for k := range tc.fields {
+				require.Contains(t, doc, k)
+			}
+		})
+	}
+}
+
+// TestUpdateOneCounterOnlyDoesNotPublish covers the other patch-shaped write
+// path: UpdateOne's `patch` IS the field set, so the same suppression applies.
+// `updateTime` stamps date_epoch — a real change — and therefore always
+// publishes.
+func TestUpdateOneCounterOnlyDoesNotPublish(t *testing.T) {
+	t.Parallel()
+	cases := []struct {
+		name        string
+		patch       dbpkg.Document
+		updateTime  bool
+		wantPublish bool
+	}{
+		{"counters only", dbpkg.Document{"hits": int64(3), "last_sent": int64(1757340000)}, false, false},
+		{"counters with updateTime", dbpkg.Document{"hits": int64(3)}, true, true},
+		{"counter plus real field", dbpkg.Document{"hits": int64(3), "enabled": false}, false, true},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			d := newTestDriver(t)
+			ctx, cancel := context.WithCancel(snoozetypes.WithTenant(context.Background(), "acme"))
+			defer cancel()
+
+			require.NoError(t, d.UpdateOne(ctx, "notification", "n-1",
+				dbpkg.Document{"name": "seed"}, false))
+
+			ch, err := d.Watcher().Subscribe(ctx, "collection.notification")
+			require.NoError(t, err)
+
+			require.NoError(t, d.UpdateOne(ctx, "notification", "n-1", tc.patch, tc.updateTime))
+
+			select {
+			case ev := <-ch:
+				require.True(t, tc.wantPublish, "counter-only patch must not publish, got %+v", ev)
+			case <-time.After(250 * time.Millisecond):
+				require.False(t, tc.wantPublish, "expected a published event")
+			}
+		})
+	}
+}
+
+// TestCreateIndexRegistersSearchFieldsBeforeDDL pins the ordering inside
+// CreateIndex: the SEARCH field list is stored BEFORE the table/index DDL
+// runs, so a failed or slow build costs performance only.
+//
+// It matters because plugins.Build dispatches the whole search-field pass to a
+// background goroutine, and SQLite does not defer anything internally — the
+// DDL really does run there, after Build returned. With the store after the
+// DDL, every SEARCH arriving in that window (and every SEARCH at all if the
+// DDL fails) silently degrades to regex-scanning whole serialised documents
+// instead of the registered fields. Here the failure is forced by closing the
+// handle, which is also the real race: a fast shutdown closing the driver
+// under that goroutine.
+func TestCreateIndexRegistersSearchFieldsBeforeDDL(t *testing.T) {
+	t.Parallel()
+	d := newTestDriver(t)
+	require.NoError(t, d.Close()) // every statement from here on fails
+
+	err := d.CreateIndex(context.Background(), "record", []string{"host", "message"})
+	require.Error(t, err, "precondition: the DDL must fail on a closed handle")
+
+	v, ok := d.searchFields.Load("record")
+	require.True(t, ok, "the SEARCH field list must be registered even when the DDL fails")
+	require.Equal(t, []string{"host", "message"}, v.([]string))
 }

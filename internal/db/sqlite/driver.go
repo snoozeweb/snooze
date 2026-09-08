@@ -54,8 +54,9 @@ type Driver struct {
 }
 
 // New opens (or creates) the SQLite database at cfg.Path and returns a
-// Driver. WAL mode, NORMAL synchronous, foreign keys and the configured
-// busy timeout are applied via DSN _pragma directives.
+// Driver. WAL mode, NORMAL synchronous, foreign keys, the configured busy
+// timeout and IMMEDIATE transaction locking are applied via the DSN (see
+// buildDSN).
 func New(ctx context.Context, cfg Config) (*Driver, error) {
 	if cfg.Path == "" {
 		return nil, errors.New("sqlite: Path is required")
@@ -160,22 +161,36 @@ func getRegexp(pattern string) (*regexp.Regexp, error) {
 
 // buildDSN produces a modernc.org/sqlite connection string from cfg.
 //
-// We always layer WAL, NORMAL sync, foreign keys, and the busy timeout. The
-// caller-provided Path may already contain its own query string (e.g.
-// "file::memory:?cache=shared"); in that case we append pragmas with `&`,
-// otherwise with `?`.
+// We always layer WAL, NORMAL sync, foreign keys, the busy timeout, and
+// IMMEDIATE transaction locking. The caller-provided Path may already
+// contain its own query string (e.g. "file::memory:?cache=shared"); in that
+// case we append settings with `&`, otherwise with `?`.
+//
+// _txlock=immediate is load-bearing, not a tuning knob. Every write path in
+// this driver reads before it writes (primary-key lookup, read-modify-write
+// patch). Under the default DEFERRED locking those transactions take a read
+// snapshot first and then try to promote to writer; in WAL mode SQLite
+// refuses that promotion outright — SQLITE_BUSY_SNAPSHOT (517), or plain
+// SQLITE_BUSY (5) when a RESERVED lock is already held — WITHOUT consulting
+// the busy handler, because retrying could deadlock. busy_timeout therefore
+// buys nothing there and concurrent writers fail spuriously. Taking the
+// write lock at BEGIN turns that into an ordinary wait that busy_timeout
+// does cover. modernc.org/sqlite emits "begin immediate" for every
+// transaction that is not opened with sql.TxOptions{ReadOnly: true}, so
+// read-only transactions can still opt back into a deferred BEGIN.
 func buildDSN(cfg Config) string {
-	pragmas := []string{
+	params := []string{
 		"_pragma=journal_mode(WAL)",
 		fmt.Sprintf("_pragma=busy_timeout(%d)", cfg.BusyTimeoutMS),
 		"_pragma=synchronous(NORMAL)",
 		"_pragma=foreign_keys(on)",
+		"_txlock=immediate",
 	}
 	sep := "?"
 	if strings.Contains(cfg.Path, "?") {
 		sep = "&"
 	}
-	return cfg.Path + sep + strings.Join(pragmas, "&")
+	return cfg.Path + sep + strings.Join(params, "&")
 }
 
 // Close releases the underlying *sql.DB and the in-process bus. Idempotent.
@@ -215,11 +230,21 @@ func (d *Driver) Convert(ctx context.Context, cond condition.Cond, searchFields 
 // JSON-extract expression index per field so equality and ordering on
 // hot fields skip a full table scan. Mirrors the Mongo/Postgres
 // semantics: the index list is metadata only as far as SEARCH goes.
+//
+// The SEARCH registration happens FIRST, before any DDL, and that ordering is
+// deliberate — same as the Postgres driver. It is a single atomic map store,
+// whereas everything after it can fail or block (ensure runs CREATE TABLE,
+// each field runs CREATE INDEX). Registering up front means a slow, failed or
+// abandoned index build costs performance only: SEARCH is correctly scoped
+// from the moment CreateIndex is entered, instead of silently degrading to the
+// whole-document regex fallback (see plugins.Build) for as long as the DDL
+// takes. plugins.Build dispatches its pass to a goroutine, so "as long as the
+// DDL takes" is a window a request can land in.
 func (d *Driver) CreateIndex(ctx context.Context, collection string, fields []string) error {
+	d.searchFields.Store(collection, append([]string(nil), fields...))
 	if err := d.ensure(ctx, collection); err != nil {
 		return err
 	}
-	d.searchFields.Store(collection, append([]string(nil), fields...))
 	tbl, err := tableName(collection)
 	if err != nil {
 		return err
@@ -454,7 +479,7 @@ func (d *Driver) Write(ctx context.Context, collection string, docs []dbpkg.Docu
 		return dbpkg.WriteResult{}, fmt.Errorf("sqlite: write: %w", tenantErr)
 	}
 
-	tx, err := d.db.BeginTx(ctx, nil)
+	tx, err := d.beginWrite(ctx)
 	if err != nil {
 		return dbpkg.WriteResult{}, err
 	}
@@ -608,7 +633,7 @@ func (d *Driver) ReplaceOne(ctx context.Context, collection string, match dbpkg.
 		newObj["tenant_id"] = tenantID
 	}
 	cond := searchDictToCondition(match)
-	tx, err := d.db.BeginTx(ctx, nil)
+	tx, err := d.beginWrite(ctx)
 	if err != nil {
 		return 0, err
 	}
@@ -670,7 +695,7 @@ func (d *Driver) UpdateOne(ctx context.Context, collection, uid string, patch db
 		merged["tenant_id"] = tenantID
 	}
 
-	tx, err := d.db.BeginTx(ctx, nil)
+	tx, err := d.beginWrite(ctx)
 	if err != nil {
 		return err
 	}
@@ -701,7 +726,13 @@ func (d *Driver) UpdateOne(ctx context.Context, collection, uid string, patch db
 	if err := tx.Commit(); err != nil {
 		return err
 	}
-	d.publishMutation(ctx, collection, "update", []string{uid})
+	// A patch that only bumps this collection's display counters must not wake
+	// the syncer: the notification dispatcher writes one per delivery and the
+	// resulting reload storm would be entirely self-inflicted. `updateTime`
+	// stamps date_epoch, which IS a real change, so it disables the shortcut.
+	if updateTime || !dbpkg.IsCounterOnlyPatch(collection, patch) {
+		d.publishMutation(ctx, collection, "update", []string{uid})
+	}
 	return nil
 }
 
@@ -735,7 +766,7 @@ func (d *Driver) Delete(ctx context.Context, collection string, cond condition.C
 	}
 
 	// Capture uids first for the bus notification, then delete.
-	tx, err := d.db.BeginTx(ctx, nil)
+	tx, err := d.beginWrite(ctx)
 	if err != nil {
 		return 0, err
 	}
@@ -811,7 +842,10 @@ func (d *Driver) IncMany(ctx context.Context, collection, field string, cond con
 
 // SetFields overwrites the named fields on every document matching cond.
 func (d *Driver) SetFields(ctx context.Context, collection string, fields dbpkg.Document, cond condition.Cond) (int, error) {
-	return d.updateViaPython(ctx, collection, cond, func(doc dbpkg.Document) bool {
+	// `fields` is handed through as the patch so the publish step can recognise
+	// a pure counter bump (notification hits/last_sent, snooze hits) and stay
+	// silent — see db.IsCounterOnlyPatch.
+	return d.updateViaPythonPatch(ctx, collection, cond, fields, func(doc dbpkg.Document) bool {
 		for k, v := range fields {
 			doc[k] = v
 		}
@@ -899,6 +933,14 @@ func (d *Driver) RemoveList(ctx context.Context, collection string, fields map[s
 }
 
 func (d *Driver) updateViaPython(ctx context.Context, collection string, cond condition.Cond, mutate func(dbpkg.Document) bool) (int, error) {
+	return d.updateViaPythonPatch(ctx, collection, cond, nil, mutate)
+}
+
+// updateViaPythonPatch is updateViaPython with the caller's field patch made
+// visible to the publish step. A nil patch means "not a plain field set" and
+// always publishes; a non-nil patch that is a pure counter bump for this
+// collection publishes nothing (db.IsCounterOnlyPatch).
+func (d *Driver) updateViaPythonPatch(ctx context.Context, collection string, cond condition.Cond, patch dbpkg.Document, mutate func(dbpkg.Document) bool) (int, error) {
 	if err := d.ensure(ctx, collection); err != nil {
 		return 0, err
 	}
@@ -910,7 +952,7 @@ func (d *Driver) updateViaPython(ctx context.Context, collection string, cond co
 	if err != nil {
 		return 0, err
 	}
-	tx, err := d.db.BeginTx(ctx, nil)
+	tx, err := d.beginWrite(ctx)
 	if err != nil {
 		return 0, err
 	}
@@ -966,7 +1008,7 @@ func (d *Driver) updateViaPython(ctx context.Context, collection string, cond co
 	if err := tx.Commit(); err != nil {
 		return 0, err
 	}
-	if updated > 0 {
+	if updated > 0 && !dbpkg.IsCounterOnlyPatch(collection, patch) {
 		d.publishMutation(ctx, collection, "update", uids)
 	}
 	return updated, nil
@@ -1114,6 +1156,21 @@ func (d *Driver) collectionExists(ctx context.Context, collection string) (bool,
 		return false, err
 	}
 	return true, nil
+}
+
+// beginWrite opens a transaction for a write path.
+//
+// It relies on _txlock=immediate in the DSN (see buildDSN): the BEGIN takes
+// the database write lock straight away, so a read-then-write transaction
+// can never lose a promotion race to a concurrent writer. Blocking at BEGIN
+// is covered by busy_timeout, unlike the promotion failure it replaces.
+//
+// Read-only paths must NOT use this helper — they run outside any explicit
+// transaction (plain QueryContext) and stay fully concurrent under WAL. A
+// future read-only transaction should pass
+// sql.TxOptions{ReadOnly: true} to d.db.BeginTx so it keeps a deferred BEGIN.
+func (d *Driver) beginWrite(ctx context.Context) (*sql.Tx, error) {
+	return d.db.BeginTx(ctx, nil)
 }
 
 func (d *Driver) publishMutation(ctx context.Context, collection, op string, uids []string) {

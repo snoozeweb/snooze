@@ -11,6 +11,7 @@ import (
 	"go.mongodb.org/mongo-driver/v2/mongo"
 	"go.mongodb.org/mongo-driver/v2/mongo/options"
 
+	dbpkg "github.com/snoozeweb/snooze/internal/db"
 	"github.com/snoozeweb/snooze/internal/syncer"
 )
 
@@ -99,9 +100,10 @@ func (b *mongoBus) openLiveStream(ctx context.Context, collection string) (chang
 // the unified API.
 func (b *mongoBus) Publish(_ context.Context, _ syncer.Event) error { return nil }
 
-// Subscribe registers a topic-prefix subscriber. The returned channel is
-// closed when ctx is cancelled (subscriber-scoped) or when Close is called
-// (bus-scoped).
+// Subscribe registers a topic-prefix subscriber; the prefix matches on
+// dot-delimited segment boundaries (see syncer.TopicMatches). The returned
+// channel is closed when ctx is cancelled (subscriber-scoped) or when Close is
+// called (bus-scoped).
 func (b *mongoBus) Subscribe(ctx context.Context, topicPrefix string) (<-chan syncer.Event, error) {
 	b.mu.Lock()
 	if b.closed {
@@ -209,12 +211,13 @@ func (b *mongoBus) consumeStream(ctx context.Context, collection string, stream 
 				slog.Any("err", err))
 			continue
 		}
-		if hitsOnlyUpdate(raw) {
-			// A per-rule `hits` counter bump (e.g. the snooze plugin's
-			// bumpHits on every live match) carries no rule-affecting change.
-			// Dispatching it would trigger a full plugin Reload, so on a busy
-			// server the hit-counter feedback loop becomes a self-induced
-			// reload storm. Drop it: nothing downstream needs to reload.
+		if counterOnlyUpdate(collection, raw) {
+			// A per-rule counter bump (the snooze plugin's bumpHits on every
+			// live match; the notification dispatcher's hits/last_sent stamp on
+			// every delivery) carries no rule-affecting change. Dispatching it
+			// would trigger a full plugin Reload, so on a busy server the
+			// counter feedback loop becomes a self-induced reload storm. Drop
+			// it: nothing downstream needs to reload.
 			continue
 		}
 		ev := changeEventToSyncerEvent(raw, collection)
@@ -222,16 +225,20 @@ func (b *mongoBus) consumeStream(ctx context.Context, collection string, stream 
 	}
 }
 
-// hitsOnlyUpdate reports whether an update change event modified ONLY the
-// per-rule `hits` audit counter and nothing else. Such writes come from the
-// synchronous UpdateOne the snooze/notification plugins issue against their own
-// collection on every match; the `hits` field is never read into a cached rule
-// (docToRule ignores it), so a reload triggered by it is pure waste — and on a
-// high-volume server the churn both burns cycles and widens the window for a
+// counterOnlyUpdate reports whether an update change event modified ONLY the
+// display counters of `collection` (see db.IsCounterOnlyPatch for the
+// per-collection set) and nothing else. Such writes come from the synchronous
+// read-modify-write the snooze/notification plugins issue against their own
+// collection on every match; a reload triggered by them is pure waste — and on
+// a high-volume server the churn both burns cycles and widens the window for a
 // slow reload to stall the single syncer dispatch goroutine. Inserts, deletes,
 // replaces, and any update touching a semantically meaningful field
-// (condition, enabled, time_constraints, …) are never skipped.
-func hitsOnlyUpdate(raw bson.M) bool {
+// (condition, enabled, time_constraints, …) are never skipped, including when
+// it rides along with a counter.
+//
+// The field set lives in internal/db/counter_fields.go so the SQLite and
+// Postgres publish paths suppress exactly the same writes.
+func counterOnlyUpdate(collection string, raw bson.M) bool {
 	if op, _ := raw["operationType"].(string); op != "update" {
 		return false
 	}
@@ -243,12 +250,7 @@ func hitsOnlyUpdate(raw bson.M) bool {
 	if !ok || len(updated) == 0 {
 		return false
 	}
-	for k := range updated {
-		if k != "hits" {
-			return false
-		}
-	}
-	return true
+	return dbpkg.IsCounterOnlyPatch(collection, updated)
 }
 
 // subDocument coerces a nested value of a decoded change event into a keyed
@@ -263,7 +265,7 @@ func hitsOnlyUpdate(raw bson.M) bool {
 // bson.M fixtures passed, hiding it.
 //
 // Consequences of that failed assertion, all silent: every hit-counter bump
-// looked like a real edit (hitsOnlyUpdate could not see updateDescription), and
+// looked like a real edit (counterOnlyUpdate could not see updateDescription), and
 // every event lost its tenant and uid — which made the syncer reload with a
 // tenant-less context, i.e. a no-op for every tenant-scoped plugin. Net effect:
 // no plugin cache ever refreshed and only a restart applied a config change.
@@ -301,7 +303,7 @@ func (b *mongoBus) dispatch(e syncer.Event) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	for _, s := range b.subs {
-		if !strings.HasPrefix(e.Topic, s.prefix) {
+		if !syncer.TopicMatches(e.Topic, s.prefix) {
 			continue
 		}
 		select {

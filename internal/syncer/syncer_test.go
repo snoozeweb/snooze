@@ -6,7 +6,6 @@ import (
 	"io"
 	"log/slog"
 	"runtime"
-	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -42,7 +41,7 @@ func (b *fakeBus) Publish(_ context.Context, e Event) error {
 	subs := append([]*fakeSub(nil), b.subs...)
 	b.mu.Unlock()
 	for _, s := range subs {
-		if s.prefix != "" && !strings.HasPrefix(e.Topic, s.prefix) {
+		if !TopicMatches(e.Topic, s.prefix) {
 			continue
 		}
 		select {
@@ -762,4 +761,65 @@ func assertEventuallyWithin(cond func() bool, budget, tick time.Duration) bool {
 		time.Sleep(tick)
 	}
 	return cond()
+}
+
+// TestSyncer_SiblingCollectionDoesNotReload is the regression guard for the
+// `notificationlog` collision: a write to `collection.notificationlog.<tenant>`
+// must reload the notificationlog plugin and must NOT reload the notification
+// plugin. Before TopicMatches, plain strings.HasPrefix made every delivery-log
+// row rebuild the notification plugin's cache on every driver.
+func TestSyncer_SiblingCollectionDoesNotReload(t *testing.T) {
+	bus := newFakeBus()
+	defer bus.Close()
+	notif := &recordingPlugin{name: "notification"}
+	notifLog := &recordingPlugin{name: "notificationlog"}
+	s := &Syncer{
+		Bus: bus,
+		Plugins: map[string]Pluggable{
+			notif.Name():    notif,
+			notifLog.Name(): notifLog,
+		},
+		Debounce:     20 * time.Millisecond,
+		SafetyReload: -1, // no backstop reloads muddying the counts
+		Logger:       quietLogger(),
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	done := make(chan error, 1)
+	go func() { done <- s.Run(ctx) }()
+
+	// Two subscriptions per plugin: plugin.<name> and collection.<name>.
+	require.Eventually(t, func() bool {
+		bus.mu.Lock()
+		defer bus.mu.Unlock()
+		return len(bus.subs) >= 4
+	}, time.Second, 5*time.Millisecond, "subscriptions not registered")
+
+	require.NoError(t, bus.Publish(ctx, Event{
+		Topic:      CollectionTopic("notificationlog", "default"),
+		Op:         "write",
+		Collection: "notificationlog",
+		Tenant:     "default",
+	}))
+
+	require.Eventually(t, func() bool { return notifLog.Count() == 1 },
+		time.Second, 5*time.Millisecond, "notificationlog plugin was not reloaded")
+	// Give the notification plugin's debounce window every chance to fire.
+	require.Never(t, func() bool { return notif.Count() > 0 },
+		200*time.Millisecond, 10*time.Millisecond,
+		"notification plugin reloaded on a notificationlog write")
+
+	// The real notification topic still reaches it.
+	require.NoError(t, bus.Publish(ctx, Event{
+		Topic:      CollectionTopic("notification", "default"),
+		Op:         "write",
+		Collection: "notification",
+		Tenant:     "default",
+	}))
+	require.Eventually(t, func() bool { return notif.Count() == 1 },
+		time.Second, 5*time.Millisecond, "notification plugin not reloaded on its own collection event")
+
+	cancel()
+	require.NoError(t, <-done)
 }

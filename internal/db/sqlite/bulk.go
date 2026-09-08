@@ -43,7 +43,7 @@ func (d *Driver) BulkIncrement(ctx context.Context, collection string, ops []dbp
 	if tenantErr != nil {
 		return tenantErr
 	}
-	tx, err := d.db.BeginTx(ctx, nil)
+	tx, err := d.beginWrite(ctx)
 	if err != nil {
 		return err
 	}

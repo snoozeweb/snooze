@@ -158,10 +158,32 @@ func (d *Driver) IncMany(ctx context.Context, collection, field string, cond con
 	// targets aren't supported by Python either.
 	parts := splitDotted(field)
 	pathArr := "ARRAY[" + strings.Join(quoteEachLiteral(parts), ",") + "]"
+	// The READ side of the increment goes through numericExpr rather than a
+	// bare (data#>>path)::numeric: a counter field holding non-numeric text
+	// (nothing validates counter shapes) used to make every Increment on that
+	// row fail with "invalid input syntax for type numeric", which for a
+	// dispatcher counter means the failure repeats forever. COALESCE(..., 0) is
+	// kept, so such a value is now treated as 0 and overwritten by the
+	// increment — the same treatment an absent counter already got. The WRITE
+	// side still uses the jsonb_set path array; only the projection changed.
+	//
+	// CONSTRAINT this imposes on callers: a counter path must not contain a
+	// purely numeric segment. The two sides render a dotted path differently
+	// and always have — numericExpr goes through pathText, which turns a
+	// numeric segment into an ARRAY/JSON integer SUBSCRIPT (`a.1` ->
+	// data->'a'->>1, i.e. "element 1 of the array a"), while the write side
+	// builds #>>ARRAY['a','1'], i.e. "the KEY '1' of the object a". For an
+	// object whose key is literally "1" the read therefore yields NULL, the
+	// COALESCE reads it as 0, and every increment RESETS the counter to delta
+	// instead of adding to it. Nothing ships such a field (the counter paths in
+	// use are all single-segment: `hits`, `last_sent`, `value`), and the
+	// divergence predates the guarded projection — pathText has always
+	// subscripted numeric segments. Do not add a numeric-segment counter path
+	// without unifying the two renderings first.
 	q := fmt.Sprintf(
-		"UPDATE %s SET data = jsonb_set(data, %s, to_jsonb(COALESCE((data#>>%s)::numeric, 0) + %d), true), "+
+		"UPDATE %s SET data = jsonb_set(data, %s, to_jsonb(COALESCE(%s, 0) + %d), true), "+
 			"updated_at = clock_timestamp() WHERE %s",
-		qt, pathArr, pathArr, delta, res.SQL,
+		qt, pathArr, numericExpr(field), delta, res.SQL,
 	)
 	tag, err := d.pool.Exec(ctx, q, res.Params...)
 	if err != nil {
@@ -183,7 +205,11 @@ func quoteEachLiteral(parts []string) []string {
 // with the Mongo and Python backends (nested-key writes via jsonb_set
 // require per-field path arrays).
 func (d *Driver) SetFields(ctx context.Context, collection string, fields dbpkg.Document, cond condition.Cond) (int, error) {
-	return d.updateRowsViaCallback(ctx, collection, cond, func(doc dbpkg.Document) bool {
+	// `fields` is handed through as the patch so the notify step can recognise a
+	// pure counter bump (notification hits/last_sent, snooze hits) and stay
+	// silent — see db.IsCounterOnlyPatch. Without it every delivery would
+	// pg_notify a full notification-plugin reload to every node in the cluster.
+	return d.updateRowsViaCallbackPatch(ctx, collection, cond, fields, func(doc dbpkg.Document) bool {
 		for k, v := range fields {
 			doc[k] = v
 		}
@@ -269,6 +295,14 @@ func (d *Driver) RemoveList(ctx context.Context, collection string, fields map[s
 // decoded data, and writes it back if mutate returns true. Returns the
 // number of touched rows.
 func (d *Driver) updateRowsViaCallback(ctx context.Context, collection string, cond condition.Cond, mutate func(dbpkg.Document) bool) (int, error) {
+	return d.updateRowsViaCallbackPatch(ctx, collection, cond, nil, mutate)
+}
+
+// updateRowsViaCallbackPatch is updateRowsViaCallback with the caller's field
+// patch made visible to the notify step. A nil patch means "not a plain field
+// set" and always notifies; a non-nil patch that is a pure counter bump for
+// this collection notifies nothing (db.IsCounterOnlyPatch).
+func (d *Driver) updateRowsViaCallbackPatch(ctx context.Context, collection string, cond condition.Cond, patch dbpkg.Document, mutate func(dbpkg.Document) bool) (int, error) {
 	table, err := d.ensureCollection(ctx, collection)
 	if err != nil {
 		return 0, err
@@ -324,7 +358,7 @@ func (d *Driver) updateRowsViaCallback(ctx context.Context, collection string, c
 		}
 		updatedUIDs = append(updatedUIDs, p.uid)
 	}
-	if len(updatedUIDs) > 0 {
+	if len(updatedUIDs) > 0 && !dbpkg.IsCounterOnlyPatch(collection, patch) {
 		if err := notifyTx(ctx, tx, collection, "write", updatedUIDs); err != nil {
 			return 0, err
 		}

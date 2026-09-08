@@ -51,13 +51,24 @@ func (d *Driver) CleanupTimeout(ctx context.Context, collection string) (int, er
 		return 0, nil
 	}
 	qt := quoteIdent(table)
+	// numericExpr, not a bare (data->>'x')::numeric. record.Validate accepts
+	// any JSON value for ttl / date_epoch, so a single row holding
+	// {"ttl":"soon"} made this DELETE fail with "invalid input syntax for type
+	// numeric" — and because the housekeeper re-runs the identical statement
+	// every cycle, the whole timeout sweep stayed wedged until someone found
+	// and edited that row. The `data ? 'date_epoch'` test never protected
+	// anything: SQL AND has no guaranteed evaluation order, so the cast can be
+	// evaluated first. Guarded, the bad row yields NULL, the predicate is NULL,
+	// and the row is simply never collected — every other row still is.
+	ttlNum := numericExpr("ttl")
+	epochNum := numericExpr("date_epoch")
 	q := fmt.Sprintf(
 		"DELETE FROM %s WHERE "+
-			"(data->>'ttl')::numeric >= 0 AND "+
+			"%s >= 0 AND "+
 			"data ? 'date_epoch' AND "+
-			"((data->>'date_epoch')::numeric + (data->>'ttl')::numeric) "+
+			"(%s + %s) "+
 			"<= extract(epoch from now())%s",
-		qt, tenantClause,
+		qt, ttlNum, epochNum, ttlNum, tenantClause,
 	)
 	tag, err := d.pool.Exec(ctx, q, tenantArgs...)
 	if err != nil {
@@ -307,17 +318,32 @@ func (d *Driver) CleanupAuditLogs(ctx context.Context, olderThan time.Duration) 
 	// than picking one arbitrary latest row) is deterministic and matches the
 	// SQLite/Mongo backends on same-epoch create+delete ties. 'delete' is the
 	// verb the audit emitter writes (internal/plugins/crud.go).
+	// Guarded numeric projection instead of a bare cast, for the reason spelt
+	// out in CleanupTimeout: one audit row with non-numeric date_epoch would
+	// otherwise wedge audit retention permanently. COALESCE(..., 0) is kept, so
+	// a missing or non-numeric epoch still reads as 0 (the pre-existing
+	// treatment of a missing key) and the only behaviour that changes is the
+	// case that used to raise.
+	//
+	// Error tolerance is the only thing this buys. Wrapping the guarded
+	// expression in COALESCE makes the predicate un-indexable — a different
+	// expression tree than the indexed one, and COALESCE is not strict, so the
+	// partial index's "<expr> IS NOT NULL" predicate cannot be discharged
+	// either. Audit retention scans the collection; that is expected of a
+	// self-joined MAX() over object_id.
+	aEpoch := "COALESCE(" + numericExprOn("a", "date_epoch") + ", 0)"
+	bEpoch := "COALESCE(" + numericExprOn("b", "date_epoch") + ", 0)"
 	q := fmt.Sprintf(
 		"DELETE FROM %s WHERE data->>'object_id' IN ("+
 			"  SELECT a.data->>'object_id' FROM %s a"+
 			"  WHERE a.data->>'action' = 'delete'"+
-			"    AND COALESCE((a.data->>'date_epoch')::numeric, 0) < $1"+
-			"    AND COALESCE((a.data->>'date_epoch')::numeric, 0) = ("+
-			"      SELECT MAX(COALESCE((b.data->>'date_epoch')::numeric, 0))"+
+			"    AND %s < $1"+
+			"    AND %s = ("+
+			"      SELECT MAX(%s)"+
 			"      FROM %s b WHERE b.data->>'object_id' = a.data->>'object_id'%s"+
 			"    )%s"+
 			")%s",
-		qt, qt, qt, bClause, aClause, outerClause,
+		qt, qt, aEpoch, aEpoch, bEpoch, qt, bClause, aClause, outerClause,
 	)
 	args := []any{threshold}
 	args = append(args, bArgs...)
@@ -350,16 +376,35 @@ func (d *Driver) ComputeStats(ctx context.Context, collection string, from, to t
 	from = from.Truncate(time.Hour)
 	trunc := groupByToTruncUnit(groupBy)
 	qt := quoteIdent(table)
+	// Guarded numeric projection: a stat row whose `value` is non-numeric text
+	// used to abort the whole aggregation with "invalid input syntax for type
+	// numeric". COALESCE(..., 0) is kept, so such a row now contributes 0
+	// exactly like a row with no `value` at all.
+	//
+	// `date` gets the same treatment via timestamptzExpr, in BOTH places it is
+	// cast (the projection and the window predicate) — they must agree, or the
+	// predicate would admit a row the projection then reads as NULL. Nothing
+	// in the Go server writes `date` on this collection: plugins.RecordStat
+	// writes an hour-truncated integer `bucket`, and no production caller
+	// invokes ComputeStats at all. The rows that DO carry `date` therefore come
+	// from outside this writer — a Snooze 1.x database, an operator's own
+	// import, or the driver conformance suite (which writes a time.Time,
+	// marshalled by encoding/json as RFC 3339). None of those is validated, so
+	// an unguarded cast is a statement-wide failure waiting on one bad row.
+	// Guarded, such a row falls outside the window and contributes nothing.
+	// See timestamptzExpr for the one gap the guard cannot close
+	// (syntactically valid, non-existent dates such as 2026-02-31).
+	statDate := timestamptzExpr("date")
 	q := fmt.Sprintf(
 		"WITH src AS ("+
-			" SELECT (data->>'date')::timestamptz AS d, "+
+			" SELECT %s AS d, "+
 			"        data->>'key' AS k, "+
-			"        COALESCE((data->>'value')::numeric, 0) AS v "+
-			" FROM %s WHERE (data->>'date')::timestamptz BETWEEN $1 AND $2%s"+
+			"        COALESCE("+numericExpr("value")+", 0) AS v "+
+			" FROM %s WHERE %s BETWEEN $1 AND $2%s"+
 			") "+
 			"SELECT to_char(date_trunc($3, d), 'YYYY-MM-DD\"T\"HH24:MI:OF') AS bucket, "+
 			"k AS key, SUM(v) AS value FROM src GROUP BY bucket, k ORDER BY bucket",
-		qt, tenantClause,
+		statDate, qt, statDate, tenantClause,
 	)
 	rows, err := d.pool.Query(ctx, q, append([]any{from, to, trunc}, tenantArgs...)...)
 	if err != nil {

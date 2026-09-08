@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"strings"
 	"sync"
 	"time"
 
@@ -115,8 +114,9 @@ func (b *pgBus) Publish(ctx context.Context, e syncer.Event) error {
 	return nil
 }
 
-// Subscribe registers a topic-prefix subscription. The returned channel is
-// closed when ctx is cancelled or the bus is closed.
+// Subscribe registers a topic-prefix subscription; the prefix matches on
+// dot-delimited segment boundaries (see syncer.TopicMatches). The returned
+// channel is closed when ctx is cancelled or the bus is closed.
 func (b *pgBus) Subscribe(ctx context.Context, topicPrefix string) (<-chan syncer.Event, error) {
 	b.mu.Lock()
 	if b.closed {
@@ -186,7 +186,7 @@ func (b *pgBus) deliverLocal(e syncer.Event) {
 	b.mu.RLock()
 	defer b.mu.RUnlock()
 	for _, s := range b.subscribers {
-		if s.prefix != "" && !strings.HasPrefix(e.Topic, s.prefix) {
+		if !syncer.TopicMatches(e.Topic, s.prefix) {
 			continue
 		}
 		select {

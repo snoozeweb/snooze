@@ -44,9 +44,28 @@ func (dialect) Neq(field string, value any, b *sqlbuilder.Binder) string {
 		return "(" + pathText(field) + " IS NOT NULL)"
 	}
 	// NULL-safe inequality using IS DISTINCT FROM.
+	//
+	// The numeric branch goes through numericExpr for the same reason
+	// typedCompare does: an unguarded (data->>'f')::numeric aborts the query
+	// with "invalid input syntax for type numeric" the moment one row holds
+	// non-numeric text there. Guarded, such a row yields NULL, and
+	// "NULL IS DISTINCT FROM 5" is TRUE — which is exactly the answer NEQ
+	// wants.
+	//
+	// Behaviour is unchanged for JSON null, for missing keys, and for text
+	// matching numericExpr's guard, which is exactly '^-?[0-9]+(\.[0-9]+)?$'
+	// (optional minus, digits, optional .digits — see numericExpr). A JSON
+	// STRING holding a numeric form OUTSIDE that grammar — " 5", "+5", "1e5",
+	// ".5", "NaN" — used to be accepted by the bare ::numeric cast and now
+	// compares as NULL instead, so NEQ reports TRUE for it (and EQ/range
+	// report no match) rather than casting. Everything that used to raise the
+	// syntax error also becomes NULL, which is the fix. JSON numbers are
+	// untouched: ->> renders them in the canonical form the guard accepts.
+	// (IS DISTINCT FROM is not btree-indexable either way, so this is a
+	// correctness change, not an index one.)
 	switch {
 	case isNumeric(value):
-		return "((" + pathText(field) + ")::numeric IS DISTINCT FROM " + b.Bind(value) + ")"
+		return "(" + numericExpr(field) + " IS DISTINCT FROM " + b.Bind(value) + ")"
 	case isBool(value):
 		return "(" + pathText(field) + " IS DISTINCT FROM " + b.Bind(boolText(value)) + ")"
 	default:
@@ -61,12 +80,29 @@ func (dialect) Compare(field, op string, value any, b *sqlbuilder.Binder) string
 // typedCompare emits "(<expr> OP $N)" with the right cast for the operand type.
 // The outer parens around the cast matter: data->>'k'::numeric parses as
 // data->>('k'::numeric). Mirrors src/snooze/db/postgres/convert.py.
+//
+// The numeric branch emits numericExpr(field), i.e. the CASE-guarded cast, for
+// two reasons. (1) Indexability: Driver.CreateIndex builds an expression index
+// on exactly that string (partial, on "expr IS NOT NULL" — which a strict
+// comparison operator implies), and Postgres only matches an expression index
+// when the predicate's expression is the same one — the previous bare
+// "(data->>'f')::numeric" matched nothing we index, so every range filter on
+// date_epoch was a sequential scan. (2) It fixes a latent runtime error: with
+// the bare cast, a single row holding non-numeric text in a numerically
+// compared field makes the whole query fail with "invalid input syntax for
+// type numeric"; the guarded form yields NULL for that row, which simply does
+// not match.
+//
+// The guard accepts exactly '^-?[0-9]+(\.[0-9]+)?$', which is narrower than
+// ::numeric: a JSON string like " 5", "+5" or "1e5" now yields NULL and
+// matches nothing where it previously cast. See numericExpr for the full
+// grammar and rationale.
 func typedCompare(field, op string, value any, b *sqlbuilder.Binder) string {
 	switch {
 	case isBool(value):
 		return "(" + pathText(field) + " " + op + " " + b.Bind(boolText(value)) + ")"
 	case isNumeric(value):
-		return "((" + pathText(field) + ")::numeric " + op + " " + b.Bind(value) + ")"
+		return "(" + numericExpr(field) + " " + op + " " + b.Bind(value) + ")"
 	default:
 		return "(" + pathText(field) + " " + op + " " + b.Bind(fmt.Sprint(value)) + ")"
 	}

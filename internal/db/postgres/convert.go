@@ -41,9 +41,18 @@ func convert(ctx context.Context, collection string, c condition.Cond, searchFie
 // pathText emits a JSONB navigation expression terminating in ->> (text).
 // Numeric-looking path segments become integer indices so array elements are
 // reachable: "a.1" -> data->'a'->>1.
-func pathText(field string) string {
+func pathText(field string) string { return pathTextOn("", field) }
+
+// pathTextOn is pathText with an optional table alias on the data column, for
+// the self-joining maintenance queries in cleanup.go ("a.data->>'x'"). alias
+// must be a literal identifier written in this package, never user input.
+func pathTextOn(alias, field string) string {
 	parts := strings.Split(field, ".")
 	var b strings.Builder
+	if alias != "" {
+		b.WriteString(alias)
+		b.WriteString(".")
+	}
 	b.WriteString("data")
 	for i, p := range parts {
 		if i == len(parts)-1 {
@@ -54,6 +63,85 @@ func pathText(field string) string {
 		b.WriteString(jsonPathLiteral(p))
 	}
 	return b.String()
+}
+
+// numericExpr emits the guarded numeric projection of a JSONB text leaf:
+// the ::numeric cast when the stored text matches the guard, SQL NULL
+// otherwise.
+//
+// This one helper is the single source of truth for "field as a number" in
+// this package and MUST stay byte-identical across its consumers —
+// dialect.typedCompare (range/equality predicates), dialect.Neq, renderOrderBy
+// (numeric sort key), Driver.CreateIndex (the backing expression index and its
+// partial predicate) and the maintenance queries in cleanup.go /
+// source_activity.go / bulk.go. Postgres only matches an expression index when
+// the query's expression is textually (post-parse) the same, so any divergence
+// here silently downgrades every numeric filter and ORDER BY to a sequential
+// scan.
+//
+// The CASE guard is not only about indexability: an unguarded
+// (data->>'f')::numeric aborts the whole query with "invalid input syntax for
+// type numeric" as soon as a single row holds non-numeric text in a
+// numerically-compared field, and it makes CREATE INDEX fail outright for the
+// same reason. Guarded, such a row yields NULL — it simply does not match.
+//
+// The accepted grammar is EXACTLY '^-?[0-9]+(\.[0-9]+)?$': an optional leading
+// minus, one or more digits, and an optional fractional part of one or more
+// digits. That is DELIBERATELY narrower than what a bare ::numeric cast
+// accepts, and the difference is observable. All of these used to cast (and
+// now compare as NULL, i.e. never match an ordinary comparison and sort last):
+// leading/trailing whitespace (" 5", "5\n"), an explicit plus ("+5"),
+// exponent notation ("1e5", "1E-5"), a bare-dot form (".5", "5."), the special
+// values "NaN"/"Infinity"/"inf", and underscore digit separators ("1_000",
+// Postgres 16+). Numbers stored as JSON numbers rather than JSON strings are
+// unaffected — ->> renders them in the canonical form the guard accepts — so
+// this only bites documents that stashed a hand-formatted numeric STRING.
+// Widening the guard is not free: it must stay a single expression shared with
+// the index, and any character class added here invalidates every existing
+// expression index on disk.
+func numericExpr(field string) string { return numericExprOn("", field) }
+
+// numericExprOn is numericExpr with an optional table alias; see pathTextOn.
+func numericExprOn(alias, field string) string {
+	expr := pathTextOn(alias, field)
+	return fmt.Sprintf("CASE WHEN %s ~ '^-?[0-9]+(\\.[0-9]+)?$' THEN (%s)::numeric END", expr, expr)
+}
+
+// rfc3339Guard is the POSIX regex a JSONB text leaf must match before
+// timestamptzExpr will cast it. It accepts exactly the shape Go's
+// encoding/json produces for a time.Time (RFC 3339, optional fractional
+// seconds, "Z" or a ±HH:MM offset) plus the offset-less "YYYY-MM-DDTHH:MM:SS"
+// form and a space instead of the "T", which is what a hand-written or
+// migrated row tends to carry. Calendar fields are range-checked, not merely
+// counted: month 00/13, hour 25 and minute 60 are all rejected.
+const rfc3339Guard = `^[0-9]{4}-(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01])[T ]` +
+	`([01][0-9]|2[0-3]):[0-5][0-9]:[0-5][0-9](\.[0-9]+)?` +
+	`(Z|[+-]([01][0-9]|2[0-3]):[0-5][0-9])?$`
+
+// timestamptzExpr emits the guarded timestamptz projection of a JSONB text
+// leaf: the ::timestamptz cast when the stored text matches rfc3339Guard, SQL
+// NULL otherwise. It is the timestamp counterpart of numericExpr and exists
+// for the same reason — a single row holding non-timestamp text in a
+// timestamp-cast field used to abort the WHOLE statement with "invalid input
+// syntax for type timestamp with time zone", and since the callers re-run the
+// identical statement on a schedule, that abort repeats forever.
+//
+// The guard is a REGEX, so it is syntactic, and that leaves one documented
+// residual gap: a syntactically well-formed but non-existent instant —
+// "2026-02-31T00:00:00Z", "2025-02-29T00:00:00Z" — matches the guard and still
+// raises "date/time field value out of range" on the cast. Closing that would
+// need either a PL/pgSQL function with an exception block (server-side DDL
+// this driver deliberately does not install) or to_timestamp() with an
+// explicit format mask, which silently ROLLS such a value over (Feb 31 becomes
+// Mar 3) and would therefore invent data. A regex that rejects every string
+// timestamptz rejects does not exist, because leap years are not a regular
+// language. What the guard does cover is the failure that actually happens:
+// arbitrary text ("yesterday", "", "n/a"), numbers, and truncated or
+// otherwise malformed timestamps.
+func timestamptzExpr(field string) string {
+	expr := pathText(field)
+	return fmt.Sprintf("CASE WHEN %s ~ '%s' THEN (%s)::timestamptz END",
+		expr, rfc3339Guard, expr)
 }
 
 // pathJSON emits a JSONB navigation expression terminating in -> (jsonb).
@@ -185,9 +273,12 @@ func renderOrderBy(field string, asc bool) string {
 		dir = "DESC"
 	}
 	expr := pathText(field)
+	// The numeric sort key comes from numericExpr so it is byte-identical to
+	// the predicate form and to the numeric expression index (see N2 in
+	// docs/superpowers/plans/2026-09-08-notification-delivery-history-followups.md).
 	return fmt.Sprintf(
-		"ORDER BY CASE WHEN %s ~ '^-?[0-9]+(\\.[0-9]+)?$' THEN (%s)::numeric END %s NULLS LAST, %s %s NULLS LAST",
-		expr, expr, dir, expr, dir,
+		"ORDER BY %s %s NULLS LAST, %s %s NULLS LAST",
+		numericExpr(field), dir, expr, dir,
 	)
 }
 

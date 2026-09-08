@@ -367,31 +367,54 @@ func (s *stubStream) Close(_ context.Context) error {
 	return nil
 }
 
-// TestHitsOnlyUpdate covers the predicate that suppresses the hit-counter
-// reload storm: only an update touching solely `hits` is skipped; inserts,
-// deletes, and updates touching any rule-affecting field are kept.
-func TestHitsOnlyUpdate(t *testing.T) {
+// TestCounterOnlyUpdate covers the predicate that suppresses the counter-bump
+// reload storm. The counter set is PER COLLECTION (db.IsCounterOnlyPatch):
+// `notification` owns {hits, last_sent}, `snooze` owns {hits} only, and every
+// other collection owns none — so the very same updatedFields document is
+// skipped on one collection and dispatched on another. Inserts, deletes, and
+// updates touching a rule-affecting field are always kept, even when a counter
+// rides along.
+func TestCounterOnlyUpdate(t *testing.T) {
+	upd := func(fields bson.M) bson.M {
+		return bson.M{"operationType": "update", "updateDescription": bson.M{"updatedFields": fields}}
+	}
 	cases := []struct {
-		name string
-		raw  bson.M
-		want bool
+		name       string
+		collection string
+		raw        bson.M
+		want       bool
 	}{
-		{"hits only", bson.M{"operationType": "update", "updateDescription": bson.M{"updatedFields": bson.M{"hits": int64(5)}}}, true},
-		{"hits plus semantic field", bson.M{"operationType": "update", "updateDescription": bson.M{"updatedFields": bson.M{"hits": int64(5), "enabled": true}}}, false},
-		{"semantic field only", bson.M{"operationType": "update", "updateDescription": bson.M{"updatedFields": bson.M{"enabled": true}}}, false},
-		{"insert", bson.M{"operationType": "insert", "fullDocument": bson.M{"uid": "x"}}, false},
-		{"delete", bson.M{"operationType": "delete", "documentKey": bson.M{"uid": "x"}}, false},
-		{"update without updateDescription", bson.M{"operationType": "update"}, false},
-		{"update with empty updatedFields", bson.M{"operationType": "update", "updateDescription": bson.M{"updatedFields": bson.M{}}}, false},
+		{"notification hits only", "notification", upd(bson.M{"hits": int64(5)}), true},
+		{"notification last_sent only", "notification", upd(bson.M{"last_sent": int64(1757340000)}), true},
+		{"notification hits plus last_sent", "notification", upd(bson.M{"hits": int64(5), "last_sent": int64(1757340000)}), true},
+		{"notification last_sent plus semantic field", "notification", upd(bson.M{"last_sent": int64(1757340000), "enabled": true}), false},
+		{"notification hits plus semantic field", "notification", upd(bson.M{"hits": int64(5), "enabled": true}), false},
+		{"notification semantic field only", "notification", upd(bson.M{"enabled": true}), false},
+
+		// snooze counts hits and nothing else: a `last_sent` on a snooze rule
+		// is not a known counter, so it must still dispatch.
+		{"snooze hits only", "snooze", upd(bson.M{"hits": int64(5)}), true},
+		{"snooze last_sent is not a snooze counter", "snooze", upd(bson.M{"last_sent": int64(1757340000)}), false},
+		{"snooze hits plus semantic field", "snooze", upd(bson.M{"hits": int64(5), "discard": true}), false},
+
+		// A collection with no registered counters never skips, whatever the
+		// field is called.
+		{"rule hits is a real edit", "rule", upd(bson.M{"hits": int64(5)}), false},
+		{"record hits is a real edit", "record", upd(bson.M{"hits": int64(5)}), false},
+
+		{"insert", "notification", bson.M{"operationType": "insert", "fullDocument": bson.M{"uid": "x"}}, false},
+		{"delete", "notification", bson.M{"operationType": "delete", "documentKey": bson.M{"uid": "x"}}, false},
+		{"update without updateDescription", "notification", bson.M{"operationType": "update"}, false},
+		{"update with empty updatedFields", "notification", upd(bson.M{}), false},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			require.Equal(t, tc.want, hitsOnlyUpdate(tc.raw))
+			require.Equal(t, tc.want, counterOnlyUpdate(tc.collection, tc.raw))
 			// Same fixture as the driver actually delivers it: nested
 			// sub-documents become bson.D once the event has been through a
 			// real BSON round-trip. The predicate must reach the same verdict,
 			// or every hit-counter bump gets dispatched as a real edit.
-			require.Equal(t, tc.want, hitsOnlyUpdate(bsonRoundTrip(t, tc.raw)),
+			require.Equal(t, tc.want, counterOnlyUpdate(tc.collection, bsonRoundTrip(t, tc.raw)),
 				"verdict must survive a real BSON decode")
 		})
 	}
@@ -477,43 +500,60 @@ func TestDispatch_LogsDroppedEvent(t *testing.T) {
 	require.Equal(t, "collection.snooze", lines[0]["subscriber"])
 }
 
-// TestRunStream_SkipsHitsOnlyUpdate drives a hit-counter bump followed by a real
-// edit through the stub stream and asserts only the real edit is dispatched —
-// the bump must not trigger a reload (the self-induced reload storm).
-func TestRunStream_SkipsHitsOnlyUpdate(t *testing.T) {
-	buf := &bytes.Buffer{}
-	b := newTestBus(t, captureLogger(buf))
-
-	stream := &stubStream{
-		events: []bson.M{
-			{
-				"operationType":     "update",
-				"documentKey":       bson.M{"uid": "bump"},
-				"fullDocument":      bson.M{"uid": "bump", "tenant_id": "default"},
-				"updateDescription": bson.M{"updatedFields": bson.M{"hits": int64(99)}},
-			},
-			{
-				"operationType":     "update",
-				"documentKey":       bson.M{"uid": "edit"},
-				"fullDocument":      bson.M{"uid": "edit", "tenant_id": "default"},
-				"updateDescription": bson.M{"updatedFields": bson.M{"enabled": false}},
-			},
-		},
+// TestRunStream_SkipsCounterOnlyUpdate drives a counter bump followed by a
+// real edit through the stub stream and asserts only the real edit is
+// dispatched: a counter bump must not trigger a reload (the self-induced
+// reload storm).
+//
+// The suppression is per collection, so the table exercises both owners —
+// snooze's bare `hits` bump and the dispatcher's combined {hits, last_sent}
+// stamp on `notification` — plus the negative case that proves the scoping is
+// real: {hits, last_sent} on `snooze` is NOT a snooze counter set and must
+// still dispatch.
+func TestRunStream_SkipsCounterOnlyUpdate(t *testing.T) {
+	update := func(uid string, fields bson.M) bson.M {
+		return bson.M{
+			"operationType":     "update",
+			"documentKey":       bson.M{"uid": uid},
+			"fullDocument":      bson.M{"uid": uid, "tenant_id": "default"},
+			"updateDescription": bson.M{"updatedFields": fields},
+		}
 	}
-	b.open = func(_ context.Context, _ string) (changeStream, error) { return stream, nil }
+	cases := []struct {
+		name       string
+		collection string
+		bump       bson.M
+		wantFirst  string
+	}{
+		{"snooze hits bump is dropped", "snooze", bson.M{"hits": int64(99)}, "edit"},
+		{"notification delivery stamp is dropped", "notification",
+			bson.M{"hits": int64(7), "last_sent": int64(1757340000)}, "edit"},
+		{"last_sent on snooze is a real edit", "snooze",
+			bson.M{"hits": int64(7), "last_sent": int64(1757340000)}, "bump"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			buf := &bytes.Buffer{}
+			b := newTestBus(t, captureLogger(buf))
 
-	subCtx, subCancel := context.WithCancel(context.Background())
-	defer subCancel()
-	ch, err := b.Subscribe(subCtx, "collection.snooze")
-	require.NoError(t, err)
+			stream := &stubStream{events: []bson.M{
+				update("bump", tc.bump),
+				update("edit", bson.M{"enabled": false}),
+			}}
+			b.open = func(_ context.Context, _ string) (changeStream, error) { return stream, nil }
 
-	select {
-	case ev := <-ch:
-		// The hits-only bump precedes the edit in the stream; the first event
-		// the subscriber sees must be the edit, proving the bump was dropped.
-		require.Equal(t, []string{"edit"}, ev.UIDs, "hits-only update should have been skipped")
-		require.Equal(t, "write", ev.Op)
-	case <-time.After(time.Second):
-		t.Fatal("did not receive dispatched event")
+			subCtx, subCancel := context.WithCancel(context.Background())
+			defer subCancel()
+			ch, err := b.Subscribe(subCtx, "collection."+tc.collection)
+			require.NoError(t, err)
+
+			select {
+			case ev := <-ch:
+				require.Equal(t, []string{tc.wantFirst}, ev.UIDs)
+				require.Equal(t, "write", ev.Op)
+			case <-time.After(time.Second):
+				t.Fatal("did not receive dispatched event")
+			}
+		})
 	}
 }

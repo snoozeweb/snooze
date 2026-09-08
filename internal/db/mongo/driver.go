@@ -155,14 +155,46 @@ func (d *Driver) searchFieldsFor(collection string) []string {
 	return nil
 }
 
-// CreateIndex records the list of fields used by SEARCH for the collection.
-// MongoDB does not need an explicit index for $regex with a leading-anchored
-// pattern to use an index, but for parity with the Python implementation the
-// fields are simply remembered here.
-func (d *Driver) CreateIndex(_ context.Context, collection string, fields []string) error {
+// CreateIndex records the list of fields used by SEARCH for the collection AND
+// creates one ascending single-field index per entry, mirroring the SQLite and
+// Postgres drivers.
+//
+// The registry half is what SEARCH compiles against. The index half is what
+// makes equality filters and — more importantly — ORDER BY on a hot key cheap:
+// `notificationlog` is listed newest-first and swept by date_epoch, which on an
+// unindexed 30-day collection is a full COLLSCAN plus an in-memory sort (and
+// Mongo aborts sorts past 32 MB).
+//
+// CreateIndexes is idempotent server-side: re-issuing the same key spec with
+// the same options is a no-op, so this is safe on every boot. Failures are
+// returned to the caller (plugins.Build), which logs and continues — an index
+// that could not be created degrades performance, never correctness.
+//
+// Mongo needs no CONCURRENTLY-style special case (unlike the Postgres driver):
+// index builds on a replica set / 4.2+ standalone are already online, holding
+// only a brief collection lock at start and finish. What did change is the
+// caller — plugins.Build now runs the whole search-field pass in one
+// background goroutine, so this call no longer sits on the boot path.
+func (d *Driver) CreateIndex(ctx context.Context, collection string, fields []string) error {
 	cp := make([]string, len(fields))
 	copy(cp, fields)
 	d.searchFields.Store(collection, cp)
+	if len(fields) == 0 {
+		return nil
+	}
+	models := make([]mongo.IndexModel, 0, len(fields))
+	for _, f := range fields {
+		if f == "" {
+			continue
+		}
+		models = append(models, mongo.IndexModel{Keys: bson.D{{Key: f, Value: 1}}})
+	}
+	if len(models) == 0 {
+		return nil
+	}
+	if _, err := d.coll(collection).Indexes().CreateMany(ctx, models); err != nil {
+		return fmt.Errorf("mongo: create indexes on %q: %w", collection, err)
+	}
 	return nil
 }
 
