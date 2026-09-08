@@ -117,6 +117,162 @@ notification, each showing the actions it fired (boxes are green on success, red
 on error — click a red box for the message). When a snooze rule silenced the
 alert, the chart ends at the **Snooze** box (no notifications or actions).
 
+## Delivery history
+
+Every time an action actually sends — not just matches — Snooze writes one
+**delivery** row: a permanent record of that send, kept independently of the
+alert it was for. A delivery row is:
+
+- **One row per actual send attempt by one action.** An unbatched action
+  writes one row per (alert × action). A batching action (`batch: true` on
+  mail, webhook or script) writes exactly **one row per flush**, listing every
+  alert that was in the batch — not one row per alert.
+- Stored regardless of whether the send worked, with two exceptions: a
+  notification whose [frequency](#frequency) is disabled (`total: 0`) never
+  reaches an action, so it writes nothing at all (there is nothing to log); a
+  **misconfigured action** (the action doesn't exist, has no notifier
+  configured, or points at a notifier plugin that isn't registered) writes a
+  failed row so an operator opening the history sees "this never sends"
+  instead of silence — rate-limited to one row per (notification, action)
+  pair every 10 minutes, so a broken action sitting on a noisy condition
+  doesn't write a row per ingested alert forever.
+
+Each row carries: the send's completion time and duration; `success` or
+`error` (with the error text on failure); the action name and the notifier
+plugin it used (`mail`, `webhook`, `script`, `slack`, …); whether it was a
+batch flush and why the bucket flushed (`size`, `timer`, or `shutdown` — the
+server drained pending batches on a graceful stop); the notification(s) that
+routed the send; a **snapshot** of every alert covered — host, severity,
+message (truncated to 512 characters), state — captured at send time, so the
+row still renders correctly after the alert record itself has expired; the
+re-escalation context (count and reason), when the delivery was a
+re-escalation and not a first send; and, when the notifier produced one, an
+external reference (e.g. a JIRA issue key) with a link.
+
+The alert snapshot is **de-duplicated**: when the same alert reaches one
+batching action twice (two notifications routing it into the same bucket),
+`alerts[]` keeps one entry per alert (keyed on uid, or hash when the uid
+hasn't been resolved yet) and `alert_count` is that deduped count, not the
+number of times the alert was queued. An `alerts[]` entry omits `uid`
+entirely when the alert's own record hadn't been assigned one yet at send
+time — the `hash` is always present and is what the UI falls back to.
+
+### Where to see it
+
+- **Notifications** page → open a row (or pick **View details** from the
+  row-actions menu) → the **Deliveries** tab, shown first because "did this
+  actually send?" is the question that brings an operator to a notification's
+  detail. The same tab, same default, appears on an **action**'s details.
+- The notifications table has **Sent** (a count) and **Last sent** columns,
+  stamped only by a *successful* delivery.
+- An alert's detail drawer (**Alerts** → click a row) has a **Deliveries** tab
+  and, in the summary header, a **"Last notified … via …"** line (or "Last
+  delivery failed …" when the most recent send for that alert errored).
+- The dashboard's **Notifications** panel ranks notifications by send count
+  for the current window and links each one into its Deliveries tab,
+  pre-filtered to that same time window (shown as a dismissable **Window**
+  chip).
+
+### Filtering and deep links
+
+The Deliveries tab has three chips: **All**, **Failed**, **Batched** — client-
+side narrowing of the same scope; the row count above the chips always
+describes the whole scope, not the narrowed list.
+
+A batched row shows every member alert (worst severity first) with a
+**"View all N alerts"** link that opens the **Alerts** table with a query the
+operator can see and edit, e.g. `uid IN ["a1…", "a2…"]` in the search box
+(falling back to `hash IN […]` past 200 uids, or when a uid never resolved).
+Because **alert records expire before delivery rows do** (2 days by default —
+[`record_ttl`](../configuration/housekeeping.md#record_ttl) — versus 30 days
+of delivery retention), an old delivery row keeps its alert snapshot forever,
+but its "View all" link can land on an empty alerts list once the alerts
+themselves have been cleaned up.
+
+### REST
+
+`GET /api/v1/notificationlog` supports the same list/search/`q=` surface as
+every other collection, including `POST /api/v1/notificationlog/search`
+(the DSL-in-body form), which is treated as a read for authorization
+purposes. Requires `ro_notificationlog`: the built-in admin role has it, and
+the seeded **notifications** role includes it too (an idempotent boot-time
+backfill grants it to any pre-existing `notifications` role that predates
+the delivery log). Custom roles need `ro_notificationlog` added explicitly.
+
+Rows are written exclusively by the notification dispatcher — `POST`, `PUT`
+and `PATCH` on `/api/v1/notificationlog` are refused with `403` regardless of
+permissions, since a writable history would let anyone holding
+`rw_notificationlog` fabricate a delivery that never happened. `DELETE` is
+still allowed (with `rw_notificationlog`): deleting history ahead of the
+retention sweep is destructive but not deceptive.
+
+```bash
+curl -G "https://<snooze>/api/v1/notificationlog" \
+  -H 'Authorization: Bearer <token>' \
+  --data-urlencode "q=<base64url condition>" \
+  --data-urlencode "orderby=date_epoch" \
+  --data-urlencode "asc=false"
+```
+
+Useful conditions: `notification_uids CONTAINS "<uid>"` (every delivery a
+given notification produced) and `alert_uids CONTAINS "<uid>"` (every
+delivery a given alert was part of) — `CONTAINS` on an array field is a
+regex match against each element server-side, and uids are regex-safe so
+this is exactly the intended filter. `batch = true` needs a boolean literal,
+not the string `"true"`. The common queries (`date_epoch`, `status`,
+`action`, `notifier`) are backed by an index on every backend — expression
+indexes on SQLite and Postgres, per-field indexes on Mongo. A row looks
+like:
+
+```jsonc
+{
+  "uid": "1f2e…",
+  "date_epoch": 1757340000,
+  "queued_epoch": 1757339998,
+  "duration_ms": 412,
+  "status": "success",
+  "action": "mail-oncall",
+  "notifier": "mail",
+  "batch": false,
+  "notification_uids": ["7f9c…"],
+  "notification_names": ["page-oncall"],
+  "alert_count": 1,
+  "alert_uids": ["a1b2…"],
+  "alert_hashes": ["h1…"],
+  "alerts": [
+    {
+      "uid": "a1b2…",
+      "hash": "h1…",
+      "host": "db-01",
+      "severity": "critical",
+      "message": "disk 98%",
+      "state": "open",
+      "notification": "page-oncall"
+    }
+  ],
+  "escalation_count": 0
+}
+```
+
+### Testing an action
+
+**Send test** delivers immediately, even on a batching action (`batch: true`
+on mail, webhook or script): the test payload bypasses the batch bucket
+entirely rather than joining it, so a synthetic alert never rides out with
+real alerts in their delivery-history row. A test send is a real probe of the
+transport — a 200 or the notifier's own error comes back synchronously — but
+it is otherwise invisible: it writes no delivery row, bumps no `hits`/
+`last_sent` counters, and stamps nothing onto any record.
+
+### Configuration
+
+Writing rows is gated by
+[`notification.delivery_log`](../configuration/notifications.md#delivery_log)
+(default on); turning it off does not affect the `hits`/`last_sent` counters
+on the notification, only the history rows. Retention is
+[`housekeeping.cleanup_notificationlog`](../configuration/housekeeping.md#cleanup_notificationlog)
+(default 30 days).
+
 ## Federating alerts to a Snooze peer
 
 To relay accepted alerts to a downstream Snooze (or generic HTTP) peer — for

@@ -112,6 +112,25 @@ The Go schema lives in `internal/config/schema/housekeeper.go`.
 >
 > Cleanup notifications that have been expired for the given duration (in seconds). Run daily
 
+### cleanup_notificationlog
+
+> Type  
+> string (Go duration)
+>
+> Default  
+> `"720h"` (30 days)
+>
+> Retention window for notification delivery-history rows (the
+> `notificationlog` collection). Rows whose `date_epoch` is older than this
+> duration are pruned by the daily cleanup job. Accepts Go duration strings
+> (e.g. `"168h"`, `"2160h"`); a zero or unparseable value falls back to the
+> 720h default rather than disabling pruning. Editable at runtime in
+> **Settings → Housekeeping** without a server restart. Writing the rows at
+> all is gated by
+> [`delivery_log`](./notifications.md#delivery_log). See
+> [Delivery history](../general/notifications.md#delivery-history) for what the
+> rows contain and where they surface in the web UI.
+
 ### cleanup_stats
 
 > Type  

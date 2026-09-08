@@ -1,3 +1,119 @@
+## Unreleased
+
+### Added
+
+- **Notification delivery history.** Every actual send an action performs —
+  not just a matched notification — is now recorded as a permanent row in a
+  new tenant-scoped `notificationlog` collection: send time, duration,
+  `success`/`error` (with the error text), the action and notifier used,
+  batching info, the notification(s) that routed it, and a snapshot of every
+  alert covered (host, severity, message, state), so a row still renders after
+  the alert record itself has expired. A misconfigured action (missing,
+  notifier-less, or pointing at an unregistered notifier) now writes a failed
+  row instead of failing silently. A **Deliveries** tab surfaces this on a
+  notification's, an action's and an alert's details drawer; the alert
+  inspector also gets a "Last notified … via …" line. The notifications table
+  gained **Sent** and **Last sent** columns, and the dashboard gained a
+  **Notifications** panel ranking notifications by send count for the current
+  window, linking into the matching Deliveries tab. New settings:
+  `notification.delivery_log` (default on) gates the writes;
+  `housekeeping.cleanup_notificationlog` (default 30 days) governs retention,
+  swept by a fixed daily housekeeper job regardless of the retention window's
+  length. Batched sends (mail/webhook/script with `batch: true`) now report
+  their outcome at flush time instead of at queue time — the record's action
+  status reads `sent` until the batch actually delivers — and a batching
+  action also flushes (`batch_reason: "shutdown"`) on a graceful server stop
+  instead of losing its pending bucket. A misconfigured action's row is
+  rate-limited to one per (notification, action) pair every 10 minutes.
+  `GET`/`POST .../search` on `/api/v1/notificationlog` need `ro_notificationlog`
+  (the seeded **notifications** role now includes it, backfilled onto
+  existing installs); the collection otherwise refuses HTTP writes with `403`
+  — rows come from the dispatcher only, `DELETE` still works with
+  `rw_notificationlog`. **Send test** always delivers immediately, even on a
+  batching action, bypassing the batch bucket entirely and leaving no row,
+  counter bump or record stamp behind.
+
+- **Postgres builds a per-search-field expression index.** Every field a
+  plugin declares in `search_fields` now gets two B-tree expression indexes on
+  its collection's table: a text one (`(data->>'field')`, serving the
+  equality/regex/`IN` predicates) and a PARTIAL guarded-numeric one (the
+  `CASE`-guarded `::numeric` cast, `WHERE … IS NOT NULL`, serving range and
+  equality filters such as the housekeeper's `date_epoch < $1` sweep). The
+  expressions are the same ones the query compiler emits, which is what lets
+  the planner match them; the numeric index is partial because for a
+  text-only field it would otherwise be an all-NULL B-tree paid for on every
+  INSERT. Before this, `search_fields` registration was metadata only and a
+  30-day `notificationlog` meant a sequential scan per page.
+
+  The builds never run on a caller's goroutine. `CREATE INDEX CONCURRENTLY`
+  waits out every transaction older than itself, so an inline build stalls
+  boot for as long as the busiest open transaction lives; the driver queues
+  them for a single background worker instead, on a dedicated non-pooled
+  maintenance connection (visible in `pg_stat_activity` with an
+  `… index-maint` application_name) so a `pool_max_size: 1` deployment is not
+  starved. Passes are serialised across replicas by a session-level advisory
+  lock — the loser skips, since the winner is building the identical set — and
+  an interrupted build's leftover invalid index is dropped and rebuilt rather
+  than skipped forever by `IF NOT EXISTS`. SEARCH scoping is registered
+  synchronously and is never affected by a slow or failed build.
+
+### Changed
+
+- **`bulk_update` and `bulk_state` now return `403` for collections whose
+  plugin carries a per-document write hook**, unless that plugin opts in by
+  implementing the new `plugins.BulkWriteGuard`. Affected collections:
+  `apikey`, `role`, `user`, `comment`, `savedsearch`, `notificationlog`,
+  `heartbeat`, `aggregaterule`, `tenantmatch`. The per-document hooks are
+  structurally unusable on a whole-query mutation and dangerous when forced
+  onto one: `TransformWrite` runs once on the shared field merge, so the
+  identity fields some transforms stamp (savedsearch's `owner`, comment's
+  `user`/`method`) would be written onto every matched row — a bulk edit that
+  quietly reassigns other people's rows to whoever ran it — while `GuardWrite`
+  is defined per uid and would receive `""`, turning user's last-admin
+  protection, role's reserved-role protection and comment's state-transition
+  checks into no-ops that still look enforced. Refusing is the safe default;
+  a collection becomes bulk-writable again by implementing `GuardBulkWrite`
+  with semantics chosen for a query-wide write. The alerts UI is unaffected:
+  `record` implements no write hook, so bulk ack/close/tag keep working.
+  Retro-applying a snooze goes through the same gate.
+
+### Fixed
+
+- **A `notificationlog` write no longer reloads the `notification` plugin's
+  cache.** The syncer's topic-prefix match was a plain string prefix, so a
+  change event on `collection.notificationlog.<tenant>` matched the
+  `collection.notification` subscription too (the longer collection name
+  starts with the shorter one). `TopicMatches` is now delimiter-aware.
+- **Batch buckets are tenant-scoped.** The batching notifiers (mail, webhook,
+  script) key their in-memory flush buckets by tenant, so two tenants sharing
+  the same action no longer flush each other's alerts into one delivery.
+- **`hits` and `last_sent` counters on the notification entry** are stamped by
+  the dispatcher on every successful delivery (one read-modify-write per
+  notification per record, not per action), and are excluded from the diff the
+  editor sends back on save so they never appear as a spurious change.
+- **A concurrent SQLite write no longer fails outright with `SQLITE_BUSY`/`SQLITE_BUSY_SNAPSHOT`.** Every write path reads before it writes (primary-key lookup, read-modify-write patch), and under WAL's default DEFERRED locking that read-then-write promotion is refused instead of retried, bypassing `busy_timeout` entirely. `buildDSN` now sets `_txlock=immediate` and every write path opens its transaction through `beginWrite`, so the write lock is taken up front and a concurrent writer just waits out `busy_timeout` instead of erroring.
+- **A counter-only update on `notification` or `snooze` no longer triggers a
+  full plugin reload.** The read-modify-write that stamps `hits`/`last_sent`
+  (and the snooze rule's own hit counter) on every match used to look like a
+  semantically meaningful change to every syncer backend, so a busy server
+  fed itself a reload storm from its own delivery traffic. SQLite, Postgres
+  and Mongo now share one `IsCounterOnlyPatch` field set and suppress the
+  change notification when a patch touches only those fields — generalized
+  from a `notification`-only, `hits`-only check that would have missed the
+  new `last_sent` counter and the `snooze` collection's own `hits` bump.
+- **Postgres maintenance queries survive non-numeric text.** `record.Validate`
+  accepts any JSON value, so a single row holding `{"ttl":"soon"}` or
+  `{"date_epoch":"yesterday"}` used to abort a whole statement with `invalid
+  input syntax for type numeric` — permanently, since the housekeeper and the
+  inputs page re-run the identical statement every cycle, and the `data ? 'x'`
+  tests that looked protective never were (SQL `AND` has no guaranteed
+  evaluation order). The timeout sweep, audit retention, `SourceActivity`,
+  `ComputeStats` and `Increment` now all project through the same guarded
+  expression: a bad value reads as SQL NULL (or `0` where the query already
+  coalesced a missing key), so the offending row is skipped and every other
+  row is processed. `ComputeStats` gets the same treatment for a `date` that
+  is not a timestamp.
+
 ## v2.5.0
 
 ### Added

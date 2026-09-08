@@ -61,3 +61,27 @@ The Go schema lives in `internal/config/schema/notification.go`.
 > `success`/`error`. See the alert Flow tab in
 > [Notifications](../general/notifications.md#alert-flow-matched-notifications-and-action-outcomes).
 
+### delivery_log
+
+> Type  
+> boolean
+>
+> Default  
+> `true`
+>
+> Records one row per send attempt in the tenant-scoped `notificationlog`
+> collection — the delivery history. Each row carries the send time, the action
+> and notifier used, `success`/`error` (with the error text), the duration, the
+> notification(s) it fired for and a snapshot of the alert(s) it covered
+> (host / severity / message / state), so a delivery still renders after the
+> alert record itself has expired. A batching action (webhook / mail / script
+> with `batch: true`) writes exactly one row per flush listing every member.
+> This is what backs the **Deliveries** tab on a notification, an action and an
+> alert. Disable it on write-constrained deployments (single-writer SQLite at
+> high alert volume): the per-action outcome stamps on the record and the
+> notification `hits`/`last_sent` counters are unaffected, only the history
+> rows stop being written. Editable at runtime in **Settings →
+> Notifications** without a server restart. Row retention is
+> [`cleanup_notificationlog`](./housekeeping.md#cleanup_notificationlog). See
+> [Delivery history](../general/notifications.md#delivery-history) for what
+> gets logged and where it surfaces in the web UI.

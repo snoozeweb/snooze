@@ -45,6 +45,15 @@ If another alert is received before the timer expires, it resets it and adds it 
 
 If the timer expires or the number of alerts in the queue is greater than **batch_maxsize**, the queue is flushed.
 
+### Delivery history
+
+Every actual send an action performs is recorded — see
+[Delivery history](./notifications.md#delivery-history). An action's details
+drawer has a **Deliveries** tab listing them (one row per flush for a batching
+action, one row per alert otherwise). **Send test**, even on a batching
+action, delivers immediately — the test payload bypasses the batch bucket
+rather than joining it — and writes no delivery row and bumps no counters.
+
 ## Jinja templates
 
 Most fields in action forms can make use of [Jinja templates](./rules.md#jinja-templates).
