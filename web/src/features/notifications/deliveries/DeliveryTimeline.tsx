@@ -1,11 +1,14 @@
 // DeliveryTimeline — the delivery history of one notification, one action or
 // one alert, newest first.
 //
-// Lives in the ~600px docked inspector, so it is a single column: a count
-// header with All/Failed/Batched chips, an <ol> of rows on a rail, and the
-// audit timeline's paging controls. Everything colour comes from tokens; the
-// only two hues it spends are the rail dot's ok/critical pair, which the
-// status Badge repeats in words.
+// Lives in the ~600px docked inspector: a count header with All/Failed/
+// Batched chips, an <ol> of rows on a rail, and the audit timeline's paging
+// controls. The <ol> owns the column tracks the rows align to — see
+// DeliveryTimeline.module.css — and the rows themselves are *dispatches*, not
+// raw log entries: group.ts folds a notification's action fan-out into one
+// row. Everything colour comes from tokens; the only two hues it spends are
+// the ok/critical pair on the rail dot and the action chips, which repeat the
+// outcome in an icon and in words.
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { Button } from "@/shared/ui/Button";
 import { IconButton } from "@/shared/ui/IconButton";
@@ -15,6 +18,7 @@ import { Icon } from "@/shared/icons/Icon";
 import { describeError } from "@/lib/api/errorMessage";
 import { deliveryScopeKey, useDeliveries, useDeliverySummary, useFailedDeliveryCount } from "./api";
 import { rangeChipLabel } from "./format";
+import { groupDeliveries } from "./group";
 import { DeliveryRow } from "./DeliveryRow";
 import type { DeliveryFilter, DeliveryRange, DeliveryVariant } from "./types";
 import styles from "./DeliveryTimeline.module.css";
@@ -138,7 +142,16 @@ export function DeliveryTimeline({
     setPage(1);
   }
 
-  const rows = query.data?.data ?? [];
+  // Stable identity across renders so the grouping memo below only re-runs
+  // when a new page actually lands.
+  const rows = useMemo(() => query.data?.data ?? [], [query.data]);
+  // The log stores one row per (alert × action); the list shows one row per
+  // dispatch, with the actions as chips inside it. See group.ts for why the
+  // fold happens here (per page) and not on the server.
+  const groups = useMemo(() => groupDeliveries(rows), [rows]);
+  // The route column is a list-wide decision, not a per-row one: reserving it
+  // on some rows and not others is the misalignment the grid exists to fix.
+  const showSubject = variant !== "notification" && groups.some((g) => g.notifications.length > 0);
   const pageCount = Math.max(1, Math.ceil(listTotal / pageSize));
 
   // Belt to the reset's braces: a page can also fall off the end without the
@@ -248,14 +261,16 @@ export function DeliveryTimeline({
         // stale page is never mistaken for the one that was just requested.
         <ol
           className={styles.rows}
+          data-cols={showSubject ? "5" : "4"}
           data-stale={query.isPlaceholderData || undefined}
           aria-busy={query.isPlaceholderData || undefined}
         >
-          {rows.map((row, i) => (
+          {groups.map((group) => (
             <DeliveryRow
-              key={row.uid ?? `${row.date_epoch ?? 0}-${row.action ?? ""}-${i}`}
-              row={row}
+              key={group.key}
+              group={group}
               variant={variant}
+              showSubject={showSubject}
             />
           ))}
         </ol>

@@ -1,24 +1,47 @@
 /*
- * A delivery row on the timeline. Same rail geometry as the audit timeline
- * (24px gutter, 10px dot) so the two histories read as one family when they
- * sit in adjacent tabs of the same inspector. The dot is the only colour the
- * row spends on outcome — the status Badge next to it carries the word, so
- * the signal is never colour-only.
+ * A delivery row on the timeline — one dispatch, its actions side by side.
+ *
+ * The row is a SUBGRID of the list (`.rows` in DeliveryTimeline.module.css):
+ * rail, time, route, actions and meta are tracks shared by every sibling, so
+ * the columns line up down the whole list instead of each row wrapping its own
+ * strip of chips wherever the previous one happened to end. The list owns the
+ * track sizes because only it can see every row's content; the row only says
+ * which cell goes where.
+ *
+ * Same rail geometry as the audit timeline (dot on a narrow gutter) so the two
+ * histories read as one family when they sit in adjacent tabs of the same
+ * inspector. The dot is the only colour the row spends on the group's overall
+ * outcome — each action chip carries its own, in colour, icon and text.
  */
 .row {
   display: grid;
-  grid-template-columns: 24px minmax(0, 1fr);
-  gap: var(--space-2);
+  grid-template-columns: subgrid;
+  grid-column: 1 / -1;
   align-items: start;
+  row-gap: var(--space-1);
   list-style: none;
   min-width: 0;
+}
+
+/* Every first-line cell centres on the same 20px band, so a timestamp, a
+   pill and a plain label share one optical baseline across the tracks. */
+.time,
+.subject,
+.actions,
+.meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-1);
+  min-width: 0;
+  min-height: 20px;
 }
 
 .dot {
   width: 10px;
   height: 10px;
   border-radius: 50%;
-  margin-top: 7px;
+  margin-top: 5px;
   justify-self: center;
   background: var(--severity-ok);
 }
@@ -26,33 +49,51 @@
   background: var(--severity-critical);
 }
 
-.body {
+.time {
+  font-size: var(--text-sm);
+}
+
+/* The action chips. Wrapping inside their own track keeps a fan-out of six
+   actions from pushing the meta column off the row. */
+.actions {
+  gap: var(--space-1) var(--space-2);
+}
+
+.chip {
+  gap: 4px;
+  /* The chips are the row's densest column; let a long action name give way
+     rather than push its neighbours out of alignment. */
+  max-width: 22ch;
+}
+.chipLabel {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.srOnly {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* Everything below the columns: the alerts the dispatch covered, the failures
+   it produced, the tickets it opened. Starts at the time track so the block
+   has one clean left edge under the row's content. */
+.extras {
+  grid-column: 2 / -1;
   display: flex;
   flex-direction: column;
   gap: var(--space-1);
   min-width: 0;
-}
-
-/*
- * Line 1. Wraps rather than scrolls: in a 600px docked inspector a row with an
- * action, a notifier, a status, a batch chip and an escalation chip will not
- * fit one line, and a clipped chip is worse than a second line.
- */
-.headline {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: var(--space-2);
-  min-width: 0;
-  font-size: var(--text-sm);
-}
-
-/* The notifier registry key ("mail", "webhook") — a plugin id, so mono, and
-   muted because the action name above it is the thing an operator looks up. */
-.notifier {
-  font-family: var(--font-mono);
-  font-size: var(--text-xs);
-  color: var(--text-muted);
+  padding-top: 2px;
 }
 
 .alerts {
@@ -84,8 +125,8 @@
   border-radius: var(--radius-sm);
 }
 
-/* Line 3 — the failure text. Mono, wrapped, clamped to three lines until the
-   operator asks for the rest. */
+/* The failure text. Mono, wrapped, clamped to three lines until the operator
+   asks for the rest. One block per failed action in the group. */
 .error {
   display: flex;
   align-items: flex-start;
@@ -114,6 +155,12 @@
   line-clamp: 3;
   -webkit-box-orient: vertical;
   overflow: hidden;
+}
+
+/* Which action produced this text — printed only when the row carries more
+   than one, and quieter than the message it prefixes. */
+.errorAction {
+  color: var(--text-muted);
 }
 
 .errorActions {
@@ -151,4 +198,29 @@
   outline: 2px solid var(--focus-ring);
   outline-offset: 2px;
   border-radius: var(--radius-sm);
+}
+
+/*
+ * Too narrow for columns: the tracks collapse to rail + content (the list
+ * switches its own template to match), and the cells stack in the content
+ * column. Alignment survives — there is simply one column left to align.
+ */
+@container (max-width: 520px) {
+  .row {
+    row-gap: 2px;
+  }
+  .time,
+  .subject,
+  .actions,
+  .meta,
+  .extras {
+    grid-column: 2;
+  }
+  .extras {
+    padding-top: var(--space-1);
+  }
+  .meta:empty,
+  .subject:empty {
+    display: none;
+  }
 }

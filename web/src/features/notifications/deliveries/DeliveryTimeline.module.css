@@ -154,14 +154,43 @@
   }
 }
 
+/*
+ * The list owns the column tracks; every row is a subgrid of them (see
+ * DeliveryRow.module.css). That is what makes the timestamps, the routes and
+ * the action chips line up down the list instead of each row wrapping where
+ * its own content happens to end.
+ *
+ * Tracks: rail · time · route · actions · meta. `max-content` lets the time
+ * column take exactly the widest timestamp present and no more; the route
+ * column is capped at 30% so one long notification name cannot starve the
+ * chips; meta collapses to nothing when no row carries a batch or escalation
+ * chip.
+ *
+ * `data-cols="4"` drops the route track — the notification inspector's rows
+ * are all the same notification, so naming it on every row would be a column
+ * of one repeated value.
+ */
 .rows {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-3);
+  display: grid;
+  grid-template-columns: 18px max-content fit-content(30%) minmax(0, 1fr) auto;
+  row-gap: var(--space-3);
+  column-gap: var(--space-2);
+  align-items: start;
   margin: 0;
   padding: 0;
   list-style: none;
   min-width: 0;
+}
+.rows[data-cols="4"] {
+  grid-template-columns: 18px max-content minmax(0, 1fr) auto;
+}
+
+/* Too narrow for columns: rail + content, and the rows stack their cells. */
+@container (max-width: 520px) {
+  .rows,
+  .rows[data-cols="4"] {
+    grid-template-columns: 18px minmax(0, 1fr);
+  }
 }
 
 /*
@@ -182,7 +211,7 @@
 }
 .skeletonRow {
   display: grid;
-  grid-template-columns: 24px minmax(0, 1fr);
+  grid-template-columns: 18px minmax(0, 1fr);
   gap: var(--space-2);
   align-items: start;
 }
@@ -190,7 +219,7 @@
   width: 10px;
   height: 10px;
   border-radius: 50%;
-  margin-top: 7px;
+  margin-top: 5px;
   justify-self: center;
   background: var(--border);
 }

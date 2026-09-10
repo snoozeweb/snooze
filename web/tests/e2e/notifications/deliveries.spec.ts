@@ -104,8 +104,11 @@ test.describe("delivery history", () => {
     const item = drawer.getByRole("listitem", { name: /^Sent via act-ok, 1 alert/ });
     await expect(item).toHaveCount(1);
     await expect(item.locator("time")).toBeVisible();
-    await expect(item.getByText("Sent", { exact: true })).toBeVisible();
+    // One chip per action, carrying that action's own outcome. The chip reads
+    // the action name; the notifier and the exact completion time live in its
+    // tooltip, since the row prints one timestamp for the whole dispatch.
     await expect(item.getByText("act-ok", { exact: true })).toBeVisible();
+    await expect(item.getByTitle(/^act-ok · script — Sent,/)).toBeVisible();
 
     // The alert that was in the send, with its severity, host and message.
     const alertLink = item.getByRole("link", { name: /^Open alert:/ });
@@ -175,7 +178,7 @@ test.describe("delivery history", () => {
 
     const item = drawer.getByRole("listitem", { name: /^Failed via act-fail/ });
     await expect(item).toHaveCount(1);
-    await expect(item.getByText("Failed", { exact: true })).toBeVisible();
+    await expect(item.getByTitle(/^act-fail · script — Failed,/)).toBeVisible();
     // The error is the whole point of the row: it is shown verbatim, not
     // summarised into "something went wrong".
     await expect(item.locator("pre")).toContainText("script: exit 1");

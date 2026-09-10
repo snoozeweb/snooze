@@ -225,6 +225,31 @@ const BATCH: DeliveryEntry = {
   })),
 };
 
+// Two sends from ONE dispatch: same notification, same alert, same
+// `queued_epoch` — the fan-out the log writes as separate rows and the
+// timeline folds back into one.
+const FANOUT: DeliveryEntry[] = [
+  {
+    ...SENT,
+    uid: "f1",
+    queued_epoch: 1757339998,
+    notification_uids: ["n1"],
+    notification_names: ["notif-a"],
+  },
+  {
+    ...SENT,
+    uid: "f2",
+    date_epoch: 1757339999,
+    queued_epoch: 1757339998,
+    status: "error",
+    error: "401 unauthorized",
+    action: "jira-ops",
+    notifier: "jira",
+    notification_uids: ["n1"],
+    notification_names: ["notif-a"],
+  },
+];
+
 async function runAxe(node: Element): Promise<AxeResults> {
   return new Promise((resolve, reject) => {
     axe.run(node, (err: Error | null, result: AxeResults) => {
@@ -241,7 +266,9 @@ describe("DeliveryTimeline", () => {
     await waitFor(() => expect(screen.getByText("Sent")).toBeInTheDocument());
     expect(screen.getByText("142 deliveries")).toBeInTheDocument();
     expect(screen.getByText("mail-oncall")).toBeInTheDocument();
-    expect(screen.getByText("mail")).toBeInTheDocument();
+    // The notifier rides in the chip's tooltip: the row prints one chip per
+    // action, and a column repeating "mail" down every row earns no width.
+    expect(screen.getByTitle(/^mail-oncall · mail — Sent/)).toBeInTheDocument();
     // The alert line: severity, host and message, all inside one link.
     const link = screen.getByRole("link", { name: /Open alert: Critical — db-01 — disk 98%/ });
     expect(link).toHaveAttribute("href", expect.stringContaining("record=a1"));
@@ -249,6 +276,48 @@ describe("DeliveryTimeline", () => {
     expect(
       screen.getByRole("listitem", { name: /^Sent via mail-oncall, 1 alert, / }),
     ).toBeInTheDocument();
+  });
+
+  it("folds one dispatch's actions into a single row, one chip each", async () => {
+    stubLog(FANOUT, 2);
+    renderTimeline();
+
+    // The header still counts sends — grouping changes the reading, not the
+    // log's own arithmetic.
+    await waitFor(() => expect(screen.getByText("2 deliveries")).toBeInTheDocument());
+    expect(screen.getByText(/1 failed/)).toBeInTheDocument();
+
+    const rows = screen.getAllByRole("listitem", { name: /via/ });
+    expect(rows).toHaveLength(1);
+    const row = rows[0]!;
+    expect(row).toHaveAccessibleName(/^Sent via mail-oncall — failed via jira-ops, 1 alert, /);
+    expect(within(row).getByText("mail-oncall")).toBeInTheDocument();
+    expect(within(row).getByText("jira-ops")).toBeInTheDocument();
+    // One timestamp for the dispatch, not one per action.
+    expect(within(row).getAllByRole("time")).toHaveLength(1);
+    // The failure names the action it came from, since the row has several.
+    expect(within(row).getByText("jira-ops:")).toBeInTheDocument();
+    expect(within(row).getByText(/401 unauthorized/)).toBeInTheDocument();
+  });
+
+  it("keeps two notifications apart on the alert inspector", async () => {
+    stubLog(
+      [
+        FANOUT[0]!,
+        {
+          ...FANOUT[0]!,
+          uid: "f3",
+          notification_uids: ["n2"],
+          notification_names: ["notif-b"],
+        },
+      ],
+      2,
+    );
+    renderTimeline({ variant: "alert", filter: { kind: "alert", uid: "a1" } });
+
+    await waitFor(() => expect(screen.getAllByRole("listitem", { name: /via/ })).toHaveLength(2));
+    expect(screen.getByText("notif-a")).toBeInTheDocument();
+    expect(screen.getByText("notif-b")).toBeInTheDocument();
   });
 
   it("omits the failed suffix when nothing failed", async () => {

@@ -4,6 +4,9 @@
 import { escalationLabel } from "@/features/alerts/format";
 import { severityRank } from "@/lib/format/severity-color";
 import { trimDate } from "@/lib/format/time";
+// Type-only: group.ts imports the formatters below at runtime, so a value
+// import here would close a cycle.
+import type { DeliveryGroup } from "./group";
 import type { DeliveryAlert, DeliveryEntry } from "./types";
 
 /**
@@ -62,19 +65,68 @@ export function sortAlertsBySeverity(alerts: readonly DeliveryAlert[]): Delivery
   return [...alerts].sort((a, b) => severityOrder(a) - severityOrder(b));
 }
 
+/** The name a delivery is filed under: the action, or the raw notifier. */
+export function deliveryActionName(row: DeliveryEntry): string {
+  return row.action ?? row.notifier ?? "";
+}
+
+/**
+ * A chip's tooltip: "mail-oncall · mail — Sent, Today 14:32". The row prints
+ * one timestamp for the whole dispatch and one chip per action, so the
+ * per-send notifier and completion time live here rather than in a column
+ * that would repeat the same value down every row.
+ */
+export function deliveryChipTitle(row: DeliveryEntry): string {
+  const name = deliveryActionName(row);
+  const via = row.notifier && row.notifier !== name ? `${name} · ${row.notifier}` : name;
+  const when = trimDate(row.date_epoch);
+  const tail = [deliveryStatusLabel(row.status), when && when !== "—" ? when : ""]
+    .filter(Boolean)
+    .join(", ");
+  return via ? `${via} — ${tail}` : tail;
+}
+
 /**
  * The `<li>` accessible name: "Sent via mail-oncall, 2 alerts, Today 14:32".
  * Screen readers get the whole row as one sentence instead of a badge soup.
  */
 export function deliveryAriaLabel(row: DeliveryEntry): string {
   const parts: string[] = [];
-  const via = row.action ?? row.notifier;
+  const via = deliveryActionName(row);
   parts.push(
     via ? `${deliveryStatusLabel(row.status)} via ${via}` : deliveryStatusLabel(row.status),
   );
   const n = deliveryAlertCount(row);
   if (n > 0) parts.push(`${n} ${n === 1 ? "alert" : "alerts"}`);
   const when = trimDate(row.date_epoch);
+  if (when && when !== "—") parts.push(when);
+  return parts.join(", ");
+}
+
+/**
+ * The accessible name of a grouped row — the sentence a screen reader gets
+ * instead of a strip of coloured chips:
+ *
+ *   "Sent via mail-oncall, slack-noc — failed via jira-ops, 1 alert, Today 14:32"
+ *
+ * A single-action group reduces exactly to `deliveryAriaLabel`, so a row that
+ * did not need grouping still reads the way it always did.
+ */
+export function deliveryGroupAriaLabel(group: DeliveryGroup): string {
+  const sent = group.rows.filter((r) => r.status !== "error").map(deliveryActionName);
+  const failed = group.rows.filter((r) => r.status === "error").map(deliveryActionName);
+
+  const clauses: string[] = [];
+  if (sent.length > 0) clauses.push(`Sent${sent[0] ? ` via ${sent.join(", ")}` : ""}`);
+  if (failed.length > 0) {
+    const verb = sent.length > 0 ? "failed" : "Failed";
+    clauses.push(`${verb}${failed[0] ? ` via ${failed.join(", ")}` : ""}`);
+  }
+
+  const parts = [clauses.join(" — ")];
+  const n = group.alertCount;
+  if (n > 0) parts.push(`${n} ${n === 1 ? "alert" : "alerts"}`);
+  const when = trimDate(group.dateEpoch);
   if (when && when !== "—") parts.push(when);
   return parts.join(", ");
 }
