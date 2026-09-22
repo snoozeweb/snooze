@@ -432,18 +432,31 @@ func (p *Plugin) matchAggregate(
 	trendCmp := snoozetypes.CompareSeverity(newSeverity, prevSeverity)
 	stampTrendFields(rec, prevSeverity, newSeverity)
 
-	// If this record carried a stale `snoozed` attribution and is about to
-	// continue to the snooze plugin (ActionContinue → next in the pipeline),
-	// clear it so snooze re-evaluates the *current* record and re-asserts
-	// `snoozed` only if it still matches a filter. Without this, an alert
-	// snoozed as a warning keeps `snoozed` after escalating to emergency and
-	// never returns to the Alerts tab. Paths that abort (throttled, flapping,
-	// already-closed) never reach snooze, so their attribution is left intact.
-	// The merge write at pipeline end cannot remove a key, hence the explicit
-	// UnsetFields against the existing row.
+	// If this record carried a stale `snoozed` attribution and the snooze
+	// plugin is going to re-decide, clear it so snooze re-asserts `snoozed`
+	// only if the *current* record still matches a filter. Without this, an
+	// alert snoozed as a warning keeps `snoozed` after escalating to emergency
+	// and never returns to the Alerts tab. The merge write at pipeline end
+	// cannot remove a key, hence the explicit UnsetFields against the existing
+	// row.
+	//
+	// "Going to re-decide" is every verdict that persists — ActionContinue
+	// runs the rest of the pipeline, and the abort-and-persist verdicts get a
+	// plugins.Filter pass (the snooze plugin implements it) before their write
+	// lands. The two exclusions:
+	//
+	//   - ActionAbort: nothing is persisted, so there is nothing to reconcile.
+	//   - a record being retired as `close`: the snooze plugin deliberately
+	//     passes a close against an existing aggregate straight through
+	//     WITHOUT re-stamping (the close-wedge invariant), so clearing here
+	//     would silently strip the attribution off a row nobody is going to
+	//     re-attribute.
 	if _, hadSnoozed := existing["snoozed"]; hadSnoozed && prevUID != "" {
 		defer func() {
-			if outErr != nil || outAction != plugins.ActionContinue {
+			if outErr != nil || outAction == plugins.ActionAbort {
+				return
+			}
+			if state, _ := outRec["state"].(string); state == "close" {
 				return
 			}
 			if _, err := host.DB().UnsetFields(ctx, recordCollection,

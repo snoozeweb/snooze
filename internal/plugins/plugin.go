@@ -43,6 +43,36 @@ type Processor interface {
 	Process(ctx context.Context, rec snoozetypes.Record) (Result, error)
 }
 
+// Filter is an optional refinement a Processor may implement to declare that
+// its verdict is a *suppression* decision — "should this alert be on the books
+// at all" — rather than an ordinary processing step.
+//
+// Why it exists: the pipeline stops at the first plugin that returns an
+// abort verdict, and two of those verdicts (ActionAbortWrite and
+// ActionAbortUpdate) still persist the record. A plugin that short-circuits
+// that way therefore writes an alert to the database without the plugins
+// *after* it ever seeing it. For `aggregaterule`, whose throttle and
+// anti-flapping holds abort-and-persist by design, that meant every throttled
+// duplicate was written while the `snooze` plugin — which sits behind it in
+// the default order — never got to suppress it. With an aggregate throttle of
+// a day, a repeating alert stayed open and un-snoozed for that whole window
+// however many snooze filters matched it.
+//
+// So: whenever a processor aborts-and-persists, the pipeline gives every
+// remaining Filter processor a say before the write lands (see
+// Core.runFilters). A Filter returning ActionAbort cancels the write
+// outright; any other verdict contributes its Record and the original
+// plugin's write semantics are preserved — so a throttled duplicate still
+// persists without bumping date_epoch.
+//
+// Filter must be side-effect-compatible with Process: the pipeline may call
+// either one for a given record, never both. The canonical implementer is the
+// `snooze` plugin, which delegates Filter straight to Process.
+type Filter interface {
+	Processor
+	Filter(ctx context.Context, rec snoozetypes.Record) (Result, error)
+}
+
 // Notifier plugins deliver outbound notifications (mail, webhook, chat …).
 type Notifier interface {
 	Plugin

@@ -732,3 +732,101 @@ func TestSnoozeBypassSeverity_RuntimeSettingsOverridesFileConfig(t *testing.T) {
 	require.NoError(t, err)
 	require.NotEqual(t, plugins.ActionContinue, res2.Action)
 }
+
+// TestSnoozeFilter_MatchesProcess pins plugins.Filter to the same verdict
+// Process gives. The pipeline calls Filter when an earlier processor cut the
+// run short with an abort-and-persist verdict (aggregaterule's throttle and
+// anti-flapping holds), and the suppression decision must not differ from the
+// one the ordinary pass would have made.
+func TestSnoozeFilter_MatchesProcess(t *testing.T) {
+	t.Parallel()
+	h := newStubHost(t)
+	writeRule(t, h, db.Document{
+		"name":      "WAF processes",
+		"condition": []any{"=", "process", "WAF alerts"},
+	})
+	writeRule(t, h, db.Document{
+		"name":      "Warnings",
+		"condition": []any{"=", "severity", "warning"},
+		"discard":   true,
+	})
+	p := newPlugin(t, h, nil)
+	ctx := auth.WithTenant(context.Background(), snoozetypes.DefaultTenant)
+
+	// A throttled duplicate of the live WAF alert: the older, narrower rule
+	// wins, so the record is kept and attributed rather than discarded.
+	rec := snoozetypes.Record{Process: "WAF alerts", Severity: "warning", State: "open"}
+	res, err := p.Filter(ctx, rec)
+	require.NoError(t, err)
+	require.Equal(t, plugins.ActionAbortWrite, res.Action)
+	require.Equal(t, "WAF processes", res.Record.Extra["snoozed"])
+
+	// And a plain warning that only the discard rule covers is dropped.
+	res, err = p.Filter(ctx, snoozetypes.Record{Severity: "warning", State: "open"})
+	require.NoError(t, err)
+	require.Equal(t, plugins.ActionAbort, res.Action)
+}
+
+// TestSnoozeAfterDelete_ClearsStaleAttribution is the regression test for the
+// residue a deleted filter used to leave behind: `snoozed` is an attribution
+// BY NAME and the alerts list treats a record carrying it as silenced, so
+// deleting a broad filter left every record it had stamped hidden behind a
+// filter that no longer existed.
+func TestSnoozeAfterDelete_ClearsStaleAttribution(t *testing.T) {
+	t.Parallel()
+	h := newStubHost(t)
+	uid := writeRule(t, h, db.Document{
+		"name":      "all",
+		"condition": []any{"=", "severity", "warning"},
+	})
+	p := newPlugin(t, h, nil)
+	ctx := auth.WithTenant(context.Background(), snoozetypes.DefaultTenant)
+
+	written, err := h.driver.Write(ctx, recordCollection, []db.Document{
+		{"name": "rec-stamped", "snoozed": "all", "severity": "warning"},
+		{"name": "rec-other", "snoozed": "Warnings", "severity": "warning"},
+		{"name": "rec-clean", "severity": "warning"},
+	}, db.WriteOptions{UpdateTime: true})
+	require.NoError(t, err)
+	require.Len(t, written.Added, 3)
+	stampedUID, otherUID := written.Added[0], written.Added[1]
+
+	// The CRUD delete handler order: GuardDelete, then the DB delete, then
+	// AfterDelete. GuardDelete is what captures the name.
+	require.NoError(t, p.GuardDelete(ctx, []string{uid}))
+	_, err = h.driver.Delete(ctx, collectionName, condition.Equals("uid", uid), false)
+	require.NoError(t, err)
+	require.NoError(t, p.AfterDelete(ctx, []string{uid}))
+
+	stamped, err := h.driver.GetOne(ctx, recordCollection, db.Document{"uid": stampedUID})
+	require.NoError(t, err)
+	require.NotContains(t, stamped, "snoozed",
+		"a record attributed to the deleted filter must not stay silenced")
+
+	other, err := h.driver.GetOne(ctx, recordCollection, db.Document{"uid": otherUID})
+	require.NoError(t, err)
+	require.Equal(t, "Warnings", other["snoozed"],
+		"records attributed to a surviving filter must be left alone")
+}
+
+// TestSnoozeAfterDelete_WithoutGuardIsANoop: AfterDelete has no name to work
+// from if GuardDelete never ran (or the uid was unknown), and must not touch
+// the record collection on a guess.
+func TestSnoozeAfterDelete_WithoutGuardIsANoop(t *testing.T) {
+	t.Parallel()
+	h := newStubHost(t)
+	p := newPlugin(t, h, nil)
+	ctx := auth.WithTenant(context.Background(), snoozetypes.DefaultTenant)
+
+	written, err := h.driver.Write(ctx, recordCollection, []db.Document{
+		{"name": "rec-keep", "snoozed": "all"},
+	}, db.WriteOptions{UpdateTime: true})
+	require.NoError(t, err)
+	require.Len(t, written.Added, 1)
+
+	require.NoError(t, p.AfterDelete(ctx, []string{"never-guarded"}))
+
+	kept, err := h.driver.GetOne(ctx, recordCollection, db.Document{"uid": written.Added[0]})
+	require.NoError(t, err)
+	require.Equal(t, "all", kept["snoozed"])
+}
